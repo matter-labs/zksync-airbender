@@ -1,3 +1,11 @@
+import Airbender.Review.Circuits.ReducedMachine.PhysicalScalar16Setup
+import Airbender.Proofs.ReducedMachine.NativePhysicalScalar16Setup
+import Airbender.Review.Circuits.ReducedMachine.Scalar16Lookups
+import Airbender.Proofs.ReducedMachine.NativeScalar16Lookups
+import Airbender.Review.Circuits.ReducedMachine.Scalar16LookupTheorems
+import Tests.NativePhysicalScalar16Setup
+import Tests.NativeScalar16Lookups
+
 import Airbender.Review.Circuits.ReducedMachine.Scalar16Columns
 import Airbender.Import.ReducedScalar16
 import Airbender.Review.Circuits.ReducedMachine.Scalar16Artifact
@@ -6300,3 +6308,43 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeScalar16Arguments.constant_one_difference_rejected
 #print axioms Airbender.Tests.NativeScalar16Arguments.complete_conditional_sum
 #print axioms Airbender.Tests.NativeScalar16Arguments.complete_conditional_last
+
+#print axioms Airbender.NativePhysicalScalar16SetupProofs.geometry
+#print axioms Airbender.NativePhysicalScalar16SetupProofs.ordinary_value
+#print axioms Airbender.NativePhysicalScalar16SetupProofs.ordinary_tail
+#print axioms Airbender.NativePhysicalScalar16SetupProofs.ordinary_sum
+#print axioms Airbender.NativePhysicalScalar16SetupProofs.normalized_reference
+#print axioms Airbender.NativePhysicalScalar16SetupProofs.normalized_ordinary
+#print axioms Airbender.NativePhysicalScalar16SetupProofs.normalized_terminal
+#print axioms Airbender.NativePhysicalScalar16SetupProofs.normalized_sum
+#print axioms Airbender.NativePhysicalScalar16SetupProofs.bound_initialization
+#print axioms Airbender.NativePhysicalScalar16SetupProofs.bound_setup
+#print axioms Airbender.NativePhysicalScalar16SetupProofs.constructed_ordinary
+#print axioms Airbender.NativePhysicalScalar16SetupProofs.bound_other_setup
+#print axioms Airbender.NativePhysicalScalar16SetupProofs.membership
+#print axioms Airbender.NativeScalar16LookupProofs.body_query
+#print axioms Airbender.NativeScalar16LookupProofs.initialization_query
+#print axioms Airbender.NativeScalar16LookupProofs.constructed_queries
+#print axioms Airbender.NativeScalar16LookupProofs.query_bounds
+#print axioms Airbender.NativeScalar16LookupProofs.initialization_bounds
+#print axioms Airbender.NativeScalar16LookupProofs.initialization_word_bound
+#print axioms Airbender.NativeScalar16LookupProofs.constructed_sum
+#print axioms Airbender.NativeScalar16Lookups.native_initialization_address_bounds
+#print axioms Airbender.NativeScalar16Lookups.native_scalar16_constructed_lookups
+#print axioms Airbender.Tests.NativePhysicalScalar16Setup.actual_geometry
+#print axioms Airbender.Tests.NativePhysicalScalar16Setup.actual_prefix
+#print axioms Airbender.Tests.NativePhysicalScalar16Setup.complete_zero_tail
+#print axioms Airbender.Tests.NativePhysicalScalar16Setup.last_ordinary_zero
+#print axioms Airbender.Tests.NativePhysicalScalar16Setup.literal_membership
+#print axioms Airbender.Tests.NativePhysicalScalar16Setup.wide_value_rejected
+#print axioms Airbender.Tests.NativePhysicalScalar16Setup.full_column_sum
+#print axioms Airbender.Tests.NativePhysicalScalar16Setup.closed_last
+#print axioms Airbender.Tests.NativePhysicalScalar16Setup.source_normalization
+#print axioms Airbender.Tests.NativePhysicalScalar16Setup.constructed_prefix_observation
+#print axioms Airbender.Tests.NativePhysicalScalar16Setup.other_setup_and_main_retained
+#print axioms Airbender.Tests.NativeScalar16Lookups.actual_all_ten_queries
+#print axioms Airbender.Tests.NativeScalar16Lookups.complete_body_logical_lookups
+#print axioms Airbender.Tests.NativeScalar16Lookups.inactive_request_retained
+#print axioms Airbender.Tests.NativeScalar16Lookups.conditional_all_query_bounds
+#print axioms Airbender.Tests.NativeScalar16Lookups.conditional_address_word
+#print axioms Airbender.Tests.NativeScalar16Lookups.complete_conditional_component

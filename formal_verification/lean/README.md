@@ -1556,3 +1556,12 @@ All four body pairs and the initialization-address pair remain, including every
 ordinary row and pole auxiliary. Physical multiplicity/setup observations do not
 yet authenticate the public scalar table or extract lookup membership. Address
 bounds, combined initialized worker history and accounting remain open.
+
+## Constructed native scalar16 lookup boundary
+
+[The same-main constructed lookup roots](Airbender/Review/Circuits/ReducedMachine/Scalar16LookupTheorems.lean) retain the complete
+source component and derive both initialization-address bounds from ALL actual
+family queries on the constructed prefix/zero-tail table. The last normalization
+value is derived symbolically. Logical lookup membership remains an explicit
+cryptographic extraction boundary; no initialized worker history or accounting
+is supplied, and original execution is unchanged.

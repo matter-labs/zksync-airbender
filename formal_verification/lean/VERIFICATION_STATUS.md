@@ -1,5 +1,61 @@
 # Verification status
 
+## Constructed native scalar setup and logical address bounds (8 November 2026)
+
+[The constructed setup](Airbender/Review/Circuits/ReducedMachine/PhysicalScalar16Setup.lean)
+copies the existing certified scalar16 literal prefix into the native reduced
+2^23 domain, retaining every ordinary zero-tail row and excluding the reserved
+last row from lookup membership. [The calculations](Airbender/Proofs/ReducedMachine/NativePhysicalScalar16Setup.lean)
+reuse only the unchanged exported-prefix certificate. They derive the ordinary
+field sum 2,147,450,880 and its Mersenne31 negative 32,767 symbolically, then prove
+the closed normalization reference equals native negative-column-sum normalization
+on every row. No million-row evaluation or table-equivalence premise is used.
+
+The construction changes only physical setup0 on the SAME scalar16 proof.
+All body, base/quartic, multiplicity, polynomial and other setup observations are
+retained. Every constructed ordinary setup value is bound to its actual lookup
+row. Existing complete normalized source acceptance is checked ON this constructed
+setup; no arbitrary observed setup is identified with it by an equality premise.
+
+[The logical lookup boundary](Airbender/Review/Circuits/ReducedMachine/Scalar16Lookups.lean)
+checks ALL TEN actual queries of the four original pairs and the extra raw
+initialization-address pair on ALL 8,388,607 ordinary rows. It supplies no expected
+answer, address bound, read, clock, stream or execution flag. This is an explicit
+Clean-style logical acceptance relation, following the pinned v3 trust boundary.
+It is not extracted from fixed-challenge equations, auxiliary sums or a physical
+proof. Setup commitment/authentication and cryptographic extraction stay open.
+
+[The lookup calculations](Airbender/Proofs/ReducedMachine/NativeScalar16Lookups.lean)
+derive all ten canonical 16-bit bounds from actual constructed table membership,
+including BOTH initialization-address limbs and their 32-bit radix combination.
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/Scalar16LookupTheorems.lean)
+retain the previous complete source/sum component on the SAME main proof and
+expose these bounds under the named logical lookup boundary. This does not prove
+natural sorting, public first/one-before-last/window/image rules, initialized
+worker reads, combined memory history or caller-worker accounting.
+
+[Eleven setup controls](Tests/NativePhysicalScalar16Setup.lean) and
+[six lookup controls](Tests/NativeScalar16Lookups.lean) cover literal prefix/tail,
+wide-value rejection, the derived last value and its source-normalization proof,
+full symbolic column sum, unchanged observations and all ten actual query fields.
+Existing complete CSR BODY plus logical lookups retains an inactive request at
+that WEAKER interface; it is not complete new source/global/worker/physical
+acceptance or a native defect. No full positive nonempty global witness is added.
+Seven modules add 39 explicit roots, preserving all 5,500 prior roots/source bytes.
+Fourteen exact parent origins, one manual source reference and one exact current-v3
+logical-boundary reference are recorded. The unchanged native row-major zero
+initializer was byte-compared and pinned BEFORE adaptation: 101 native pins,
+with all previous 100 unchanged. Other native construction sources were rechecked.
+No production/Sail/parser/exporter/artifact/dependency change or native generation/
+closed heavy replay. General Rust/allocator/u64/field/FFT/LDE/quotient/JSON refinement
+and completeness remain separate; findings and original execution are unchanged.
+
+Next: natural sorted initialization, actual public first/one-before-last/chunk
+window and image, then combined memory history, active worker bounds/key refinement
+and real caller-worker accounting. Physical extraction, remaining decoder/request/
+padding boundaries and checked parity remain open.
+
+
 ## Complete native scalar16 family consistency (7 November 2026)
 
 [The scalar16 component](Airbender/Review/Circuits/ReducedMachine/Scalar16Arguments.lean)
