@@ -1,5 +1,6 @@
 module
 public import Slop.MulDiv
+public import Slop.MulDiv.OpIndex
 public import Slop.Arithmetic.Multiplication
 
 @[expose] public section
@@ -27,9 +28,12 @@ private theorem product_wiring {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   have s1 := selected ⟨1, by decide⟩
   have s2 := selected ⟨2, by decide⟩
   have s3 := selected ⟨3, by decide⟩
-  fin_cases operation <;> fin_cases i <;>
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, index, roleSources, Vector.get] at s0 s1 s2 s3 equation ⊢ <;>
+  fin_cases i <;>
+    simp only [index, List.get_eq_getElem (l := [2, 3, 4, 5, 8, 9, 10, 11]), Fin.val_mk,
+      List.getElem_cons_succ, List.getElem_cons_zero] at equation <;>
+    op_index at equation <;>
+    fin_cases operation <;>
+    simp [Expression.eval, Verification.environment, roleSources, Vector.get] at s0 s1 s2 s3 equation ⊢ <;>
     simp [s0, s1, s2, s3] at equation <;> linear_combination equation
 
 /-- Exact integer product, proved by lifting each bounded byte column separately.
@@ -88,8 +92,8 @@ theorem product_with_remainder {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
   have carry0 := Verification.assertion_of_holds h ⟨19, by rw [constraint_count]; decide⟩
   have carry1 := Verification.assertion_of_holds h ⟨20, by rw [constraint_count]; decide⟩
   have carry2 := Verification.assertion_of_holds h ⟨21, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at byte0 byte1 carry0 carry1 carry2
+  op_index at byte0 byte1 carry0 carry1 carry2
+  simp [Expression.eval, Verification.environment] at byte0 byte1 carry0 carry1 carry2
   have aliases : w 58 = w 33 ∧ w 59 = w 34 ∧ w 62 = w 41 ∧ w 63 = w 42 ∧ w 64 = w 43 := by
     repeat' apply And.intro
     all_goals first | (linear_combination byte0) | (linear_combination byte1) |
@@ -121,9 +125,7 @@ theorem product_with_remainder {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
     calc
       _ = ((-30720 : ZMod p) * 65536) * (a * b) := by ring
       _ = a * b := by rw [inverse]; ring
-  fin_cases i <;>
-    simp [importedConstraints, FlatOperation.constraints,
-      Expression.eval, Verification.environment] at e
+  fin_cases i <;> op_index at e <;> simp [Expression.eval, Verification.environment] at e
   all_goals
     simp only [aliases.1, aliases.2.1, aliases.2.2.1, aliases.2.2.2.1, aliases.2.2.2.2,
       dAlias.1, dAlias.2, ← sub_eq_add_neg, upper49, upper50, upper24, upper25] at e
@@ -178,19 +180,18 @@ theorem remainder_lt_divisor {p : Nat} [Fact p.Prime] (hp : 196608 < p)
   have cmpHi := Verification.assertion_of_holds h ⟨14, by rw [constraint_count]; decide⟩
   have low := Verification.assertion_of_holds h ⟨26, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h ⟨27, by rw [constraint_count]; decide⟩
+  op_index at z div cmpLo cmpHi low high
   have divisionFlags : w 44 = 0 ∧ w 55 = 1 := by
-    cases remainder <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, selected.1, selected.2, zeroFlag] at z div
+    cases remainder <;> simp [Expression.eval, Verification.environment, selected.1, selected.2,
+      zeroFlag] at z div
     all_goals constructor
     all_goals first | exact z | (linear_combination div)
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at cmpLo cmpHi
+  simp [Expression.eval, Verification.environment] at cmpLo cmpHi
   have cmpAlias : w 56 = w 39 ∧ w 57 = w 40 := by
     constructor
     · linear_combination cmpLo
     · linear_combination cmpHi
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, cmpAlias.1, cmpAlias.2, dAlias.1, dAlias.2,
+  simp [Expression.eval, Verification.environment, cmpAlias.1, cmpAlias.2, dAlias.1, dAlias.2,
     divisionFlags.1, divisionFlags.2, -mul_eq_zero] at low high
   let b : ZMod p := -30720 * (w 39 + w 24 - w 51)
   have boolean : b * (b - 1) = 0 := by
@@ -251,9 +252,9 @@ theorem division_nonzero {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
   have qhi := Verification.assertion_of_holds h ⟨7, by rw [constraint_count]; decide⟩
   have rlo := Verification.assertion_of_holds h ⟨8, by rw [constraint_count]; decide⟩
   have rhi := Verification.assertion_of_holds h ⟨9, by rw [constraint_count]; decide⟩
+  op_index at qlo qhi rlo rhi
   cases remainder <;>
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, selected.1, selected.2, other.1, other.2] at qlo qhi rlo rhi
+    simp [Expression.eval, Verification.environment, selected.1, selected.2, other.1, other.2] at qlo qhi rlo rhi
   · have lo : w 49 = w 28 := by linear_combination qlo
     have hi : w 50 = w 29 := by linear_combination qhi
     simpa [lo, hi] using unique.1.symm
@@ -284,9 +285,9 @@ theorem multiplication_result {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
   have qlo := Verification.assertion_of_holds h ⟨6, by rw [constraint_count]; decide⟩
   have qhi := Verification.assertion_of_holds h ⟨7, by rw [constraint_count]; decide⟩
   have quotient : w 49 = w 20 ∧ w 50 = w 21 := by
+    op_index at qlo qhi
     cases high <;>
-      simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment] at s0 s1 s2 s3 qlo qhi <;>
+      simp [Expression.eval, Verification.environment] at s0 s1 s2 s3 qlo qhi <;>
       simp [s0, s1, s2, s3] at qlo qhi <;> constructor
     all_goals first | linear_combination qlo | linear_combination qhi
   have rlo := roles ⟨4, by decide⟩

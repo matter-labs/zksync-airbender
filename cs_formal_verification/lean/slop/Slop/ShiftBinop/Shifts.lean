@@ -1,5 +1,6 @@
 module
 public import Slop.ShiftBinop.ArtifactChecks
+public import Slop.ShiftBinop.OpIndex
 public import Human.Helpers.Properties
 public import Slop.ShiftBinop.Arithmetic
 public import Slop.Constraints
@@ -19,9 +20,8 @@ private theorem shift_wiring {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   intro j
   have equation := Verification.assertion_of_holds h
     ⟨5 + 9 * i.val + j.val, by rw [constraint_count]; have := i.isLt; have := j.isLt; omega⟩
-  fin_cases i <;> fin_cases j <;>
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, selected.1, selected.2] at equation ⊢
+  fin_cases i <;> fin_cases j <;> op_index at equation <;>
+    simp [Expression.eval, Verification.environment, selected.1, selected.2] at equation ⊢
   all_goals linear_combination equation
 
 /-- The same selected shift queries also range every byte of the source word. -/
@@ -55,8 +55,9 @@ theorem shift_amount {p : Nat} [Fact p.Prime] (hp : 256 < p) {w : Nat → ZMod p
   have b := equations 1
   have c := equations 2
   have tag := equations 3
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, selected.1, selected.2] at a b c tag
+  simp only [Fin.coe_ofNat_eq_mod, Nat.reduceMod] at a b c tag
+  op_index at a b c tag
+  simp [Expression.eval, Verification.environment, selected.1, selected.2] at a b c tag
   have wa : w 52 = w 25 := by linear_combination a
   have wb : w 53 = w 26 := by linear_combination b
   have wc : w 54 = w 35 := by linear_combination c
@@ -157,8 +158,8 @@ theorem shift_output_sums {p : Nat} [Fact p.Prime] (hp : 262144 < p)
       (w 35 + w 8).val (w 10).val).extractLsb' (8 * j.val) 8).isLt
   have low := Verification.assertion_of_holds h ⟨41, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h ⟨42, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, selected.1, selected.2] at low high
+  op_index at low high
+  simp [Expression.eval, Verification.environment, selected.1, selected.2] at low high
   have lo := packed_contributions hp w 36 (w 31)
     (fun i j => bounds i ⟨j.val, by have := j.isLt; omega⟩)
     (by linear_combination low)

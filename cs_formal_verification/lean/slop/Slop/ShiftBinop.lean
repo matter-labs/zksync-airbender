@@ -1,5 +1,6 @@
 module
 public import Slop.ShiftBinop.ArtifactChecks
+public import Slop.ShiftBinop.OpIndex
 public import Human.Helpers.Properties
 public import Slop.Arithmetic.Word
 public import Slop.Constraints
@@ -15,13 +16,14 @@ theorem local_flags {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     (w 4 = 0 ∨ w 4 = 1) ∧ ∀ i : Fin 2, w (11 + i.val) = 0 ∨ w (11 + i.val) = 1 := by
   constructor
   · have flag := Verification.assertion_of_holds h ⟨0, by rw [constraint_count]; decide⟩
-    simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero, or_comm] using flag
+    op_index at flag
+    simpa [Expression.eval, Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero,
+      or_comm] using flag
   · intro i
     have flag := Verification.assertion_of_holds h
       ⟨47 + i.val, by rw [constraint_count]; have := i.isLt; omega⟩
-    fin_cases i <;> simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] using flag
+    fin_cases i <;> op_index at flag <;>
+      simpa [Expression.eval, Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] using flag
 
 /-- Logical placement resolves both range queries to final-PC limbs. -/
 theorem local_ranges {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
@@ -50,8 +52,8 @@ theorem pc_successor {p : Nat} [Fact p.Prime] (hp : 196608 < p)
     rw [mapping.2.2.1]; exact (ZMod.natCast_zmod_val _).symm
   have finalHi : w 14 = (final.hi : ZMod p) := by
     rw [mapping.2.2.2]; exact (ZMod.natCast_zmod_val _).symm
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, mapping.1, mapping.2.1, finalLo, finalHi] at carry high
+  op_index at carry high
+  simp [Expression.eval, Verification.environment, mapping.1, mapping.2.1, finalLo, finalHi] at carry high
   let x : ZMod p := -30720 * (initial.lo + 4 - final.lo)
   have boolean : x * (x - 1) = 0 := by
     simpa [x, mul_eq_zero, sub_eq_add_neg] using carry
