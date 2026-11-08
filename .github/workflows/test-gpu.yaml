@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   zksync-airbender-build:
-    runs-on: [ matterlabs-ci-runner-highmem ]
+    runs-on: [ matterlabs-ci-runner-high-performance ]
     strategy:
       fail-fast: false
       matrix:
@@ -23,7 +23,6 @@ jobs:
     container:
       image: nvidia/cuda:${{ matrix.cuda }}-devel-${{ matrix.ubuntu }}
     env:
-      CARGO_BUILD_JOBS: 8
       RUST_TOOLCHAIN: nightly-2026-08-09
       RUST_MIN_STACK: 16777216
       RUSTFLAGS: "-D warnings"
@@ -90,20 +89,20 @@ jobs:
           } | tee build-diagnostics/environment.txt
 
       - name: GPU test serialization drift guard
-        run: cargo +"$RUST_TOOLCHAIN" test -p gpu_core --release --target x86_64-unknown-linux-gnu cpu_nextest_config_covers_all_gpu_crates
+        run: cargo +"$RUST_TOOLCHAIN" test -p gpu_core --profile release-thin --target x86_64-unknown-linux-gnu cpu_nextest_config_covers_all_gpu_crates
 
       - name: Build CLI
         shell: bash
         run: |
           mkdir artifacts
           # Build for A100 (sm_80), L4 (sm_89), H100 (sm_90), and RTX PRO 6000 Blackwell (sm_120).
-          cargo +"$RUST_TOOLCHAIN" build -p cli --features gpu --release --target x86_64-unknown-linux-gnu --timings
-          cp target/x86_64-unknown-linux-gnu/release/cli artifacts/cli
+          cargo +"$RUST_TOOLCHAIN" build -p cli --features gpu --profile release-thin --target x86_64-unknown-linux-gnu --timings
+          cp target/x86_64-unknown-linux-gnu/release-thin/cli artifacts/cli
 
       - name: Compile GPU tests
         shell: bash
         run: |
-          cargo +"$RUST_TOOLCHAIN" test -p gpu_circuit_prover --release --target x86_64-unknown-linux-gnu --no-run --timings --message-format=json > test-build.json
+          cargo +"$RUST_TOOLCHAIN" test -p gpu_circuit_prover --profile release-thin --target x86_64-unknown-linux-gnu --no-run --timings --message-format=json > test-build.json
           python3 - <<'PYTHON'
           import json, shutil
           with open("test-build.json") as source:

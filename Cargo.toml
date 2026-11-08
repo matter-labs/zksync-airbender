@@ -250,6 +250,13 @@ codegen-units = 1
 debug = false
 strip = true
 
+# Release semantics (no debug assertions or overflow checks) with cheaper codegen than
+# `release`: thin LTO and 16 codegen units.
+[profile.release-thin]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+
 [profile.verifier]
 inherits = "release"
 opt-level = 3
