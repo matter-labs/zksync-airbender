@@ -1,5 +1,6 @@
 module
 public import Slop.KeccakSplit.Reference.CallSteps
+public import Mathlib.Tactic.IntervalCases
 
 @[expose] public section
 

@@ -1,5 +1,6 @@
 module
 public import Slop.KeccakSplit.ColumnParity.Iota
+public import Mathlib.Tactic.IntervalCases
 
 @[expose] public section
 

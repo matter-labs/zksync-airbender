@@ -1,6 +1,7 @@
 module
 public import Slop.Arithmetic.LaneRotation
 public import Slop.Arithmetic.Chunks
+public import Mathlib.Tactic.IntervalCases
 
 @[expose] public section
 

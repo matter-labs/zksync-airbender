@@ -1,6 +1,7 @@
 module
 public import Slop.KeccakSplit.ThetaRho.ByteLane
 public import Human.Circuits.KeccakSplit.Call
+public import Mathlib.Tactic.IntervalCases
 
 @[expose] public section
 
