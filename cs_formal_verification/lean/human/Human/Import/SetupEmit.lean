@@ -1,5 +1,10 @@
-import Human.Import.SetupBlocks
-import Lean
+module
+public import Human.Import.SetupBlocks
+public meta import Human.Import.SetupBlocks
+public import Lean
+public meta import Lean
+
+public meta section
 
 /- `import_setup_blocks name from "path"` reads a native setup JSON at elaboration time and
    adds `name : Airbender.Import.Setup.SetupData` with one declaration per column. The terms
@@ -184,9 +189,10 @@ private def tableE (t : Table) : Expr :=
   mkAppN (mkConst ``Airbender.Import.Setup.Table.mk)
     #[natE t.id, natE t.offset, natE t.length, natE t.width, natE t.keyColumns]
 
-/-- Kernel-checked definition without code generation: the data is used by kernel reduction. -/
+/-- Kernel-checked definition without code generation: the data is used by kernel reduction, so its body is
+    exposed to importing modules (`forceExpose`; no effect in a non-module). -/
 private def addDef (name : Name) (ty value : Expr) : CoreM Unit :=
-  addDecl <| .defnDecl {
+  addDecl (forceExpose := true) <| .defnDecl {
     name, levelParams := [], type := ty, value, hints := .abbrev, safety := .safe }
 
 syntax (name := importSetupBlocks) "import_setup_blocks " ident " from " str : command

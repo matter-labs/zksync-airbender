@@ -32,7 +32,23 @@ SRC_DIRS = ("human", "slop", "test")
 # Roots shipped with the toolchain; all are modules since Lean 4.22.
 CORE_ROOTS = {"Init", "Std", "Lean", "Lake"}
 # Files kept non-module by hand: module name -> reason. Their importers stay non-module too.
-KEEP: dict[str, str] = {}
+KEEP: dict[str, str] = {
+    # Kernel evaluation (`decide`, `decide +kernel`, `with_unfolding_all`) of core definitions that Init does not
+    # expose to modules (`Array.map`, `Array.ofFn`, ...): their bodies are invisible to a module's proofs.
+    "Slop.Deleg.Vectors": "decide +kernel on Blake2s/Keccak test vectors needs Init's non-exposed Array bodies",
+    "Slop.KeccakSplit.Reference.CallReference": "decide +kernel over Vector slots needs Init's non-exposed Array bodies",
+    "Slop.Lookups": "with_unfolding_all change through ProvableType.eval needs Init's non-exposed Array.map",
+    "Slop.Bigint.ArtifactChecks": "decide on artifact columns needs Init's non-exposed Vector.ofFn/Array bodies",
+    "Slop.Blake2G.ArtifactChecks": "decide on artifact columns needs Init's non-exposed Vector.ofFn/Array bodies",
+    "Slop.Blake2Round.ArtifactChecks": "decide on artifact columns/names needs Init's non-exposed Array/String bodies",
+    "Slop.Keccak.ArtifactChecks": "decide on artifact columns needs Init's non-exposed Vector.ofFn/Array bodies",
+    "Slop.ShiftBinop.ArtifactChecks": "decide on artifact variable names needs Init's non-exposed List/String bodies",
+    "Slop.KeccakSplit.Memory.Order": "decide on Array.map over artifact ports needs Init's non-exposed Array.map",
+    "Slop.KeccakSplit.Setup.ColumnParity.Rows": "decide +kernel scan of col2Spec needs a non-exposed Init body",
+    "Slop.JumpBranchSlt.Completeness.Witness": "change through fromElements (Vector.map ...) needs Init's Array.map",
+    "Tests.Blake2Compression": "decide on Vector.map of a compression run needs Init's non-exposed Array bodies",
+    "Tests.KeccakFixedTables": "decide on setup rows (Vector equality) needs Init's non-exposed Array bodies",
+}
 # Files that run code at elaboration time (command/term/tactic elaborators, attribute registration): their
 # imports are also `meta` imports and the body is a `public meta section` (meta code may call only meta code or
 # definitions from `meta import`ed modules). Detected by META_RE.
@@ -122,11 +138,11 @@ def external_is_module(name: str) -> bool:
     return result
 
 
-TOP_DECL_RE = re.compile(r"^(?:@\[[^\]]*\]\s*)*(?P<mods>(?:(?:private|protected|noncomputable|nonrec|unsafe|partial)\s+)*)"
-                         r"(?P<kw>theorem|lemma|def|abbrev|instance|structure|inductive|class)\b\s*(?P<name>[^\s:({\[]*)")
+TOP_DECL_RE = re.compile(r"^(?:@\[[^\]]*\]\s*)*(?P<mods>(?:(?:private|protected|noncomputable|nonrec|unsafe|partial|local|scoped)\s+)*)"
+                         r"(?P<kw>theorem|lemma|def|abbrev|instance|structure|inductive|class|example)\b\s*(?P<name>[^\s:({\[]*)")
 
 
-def leaked_private(source: Source) -> set[str]:
+def leaked_private(source: Source, seed: frozenset[str] = frozenset()) -> set[str]:
     """Private declarations that a module could not keep private: in a module a public signature or an exposed
     (`@[expose]`) definition body cannot mention a `private` declaration (a non-module can). Over-approximates
     (a binder with the same name also counts); making a declaration public changes no meaning."""
@@ -143,15 +159,24 @@ def leaked_private(source: Source) -> set[str]:
     if not private:
         return set()
     pattern = re.compile(r"(?<![\w.'])(" + "|".join(re.escape(n) for n in sorted(private)) + r")(?![\w'])")
-    leaked: set[str] = set()
-    for priv, kind, name, lines in blocks:
-        if priv or not kind:
-            continue
-        text = "\n".join(lines)
-        if kind in ("theorem", "lemma"):
-            text = re.split(r":=|\bwhere\b|^\s*\|", text, maxsplit=1, flags=re.M)[0]
-        text = text.split(name, 1)[1] if name and name in text else text
-        leaked |= set(pattern.findall(text))
+    # `seed`: private names another file reaches with `open private ... from` (a module cannot). Iterate to a
+    # fixpoint: a private declaration made public exposes the private names its own signature/body mentions.
+    leaked: set[str] = set(seed) & private
+    while True:
+        before = len(leaked)
+        for priv, kind, name, lines in blocks:
+            if not kind or (priv and name.split(".")[-1] not in leaked):
+                continue
+            text = "\n".join(lines)
+            if kind in ("theorem", "lemma"):
+                text = re.split(r":=|\bwhere\b|^\s*\|", text, maxsplit=1, flags=re.M)[0]
+            text = text.split(name, 1)[1] if name and name in text else text
+            leaked |= set(pattern.findall(text))
+        if len(leaked) == before:
+            break
+    # Generalized field notation (`c.f` for a `private def T.f`) does not find a private name in a module.
+    dotted = {name.split(".")[-1] for priv, kind, name, _ in blocks if priv and "." in name}
+    leaked |= {n for n in dotted if re.search(r"[\w)\]]\." + re.escape(n) + r"(?![\w'])", source.text)}
     return leaked
 
 
@@ -196,7 +221,10 @@ def root_cause(chain: str) -> str:
     return chain.split(" -> ")[-1]
 
 
-def convert(source: Source) -> str:
+MODULES: set[str] = set()  # the files that are (or become) modules, set by main
+
+
+def convert(source: Source, seed: frozenset[str] = frozenset()) -> str:
     meta = bool(META_RE.search(source.text))
     lines = list(source.lines)
     start = strip_leading_comments(lines)
@@ -231,7 +259,11 @@ def convert(source: Source) -> str:
     out = out[:last_import] + ["", section] + ([""] if tail and tail[0].strip() else []) + tail
     body = lines[i:]
     if not meta:
-        body = unprivate(body, leaked_private(source))
+        body = unprivate(body, leaked_private(source, seed))
+    # `open private X from M` cannot reach M's private names in a module; M (converted too) makes X public, and
+    # the opener resolves X by its namespace (a target outside the module set keeps the line and fails loudly).
+    body = [line for line in body
+            if not ((m := re.match(r"^\s*open private .+ from (\S+)\s*$", line)) and m.group(1) in MODULES)]
     out += rewrite_rfl(body)
     return "\n".join(out)
 
@@ -264,6 +296,11 @@ def main() -> int:
     modules = sorted(m for m in sources if block[m] is None)
     stay = sorted(m for m in sources if block[m] is not None)
     broken = [m for m in stay if sources[m].is_module]
+    MODULES.update(modules)
+    opened: dict[str, set[str]] = {}
+    for module in modules:
+        for names, target in re.findall(r"^\s*open private ([^\n]+?) from (\S+)\s*$", sources[module].text, re.M):
+            opened.setdefault(target, set()).update(names.split())
     converted = 0
     for module in modules:
         source = sources[module]
@@ -271,7 +308,7 @@ def main() -> int:
             continue
         converted += 1
         if not args.dry_run:
-            source.path.write_text(convert(source), encoding="utf-8")
+            source.path.write_text(convert(source, frozenset(opened.get(module, ()))), encoding="utf-8")
 
     print(f"files: {len(sources)}; modules: {len(modules)} ({converted} converted now); non-module: {len(stay)}")
     causes: dict[str, int] = {}
