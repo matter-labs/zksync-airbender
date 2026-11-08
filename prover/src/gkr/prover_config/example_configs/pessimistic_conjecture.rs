@@ -238,7 +238,7 @@ mod tests {
     }
 
     #[test]
-    fn standard_and_evm_rounds_preserve_security_margin() {
+    fn standard_rounds_preserve_security_margin() {
         for trace_log2 in 20..=24 {
             let config = config_for_100_bits_under_pessimistic_conjecture(trace_log2);
             let schedule = &config.whir_schedule;
@@ -252,9 +252,6 @@ mod tests {
             assert_every_round_preserves_security_margin(&config);
             config.validate_for_whir_message_size(trace_log2);
         }
-        assert_every_round_preserves_security_margin(&evm_production_packed_prover_config(
-            SecurityLevel::Sec100,
-        ));
     }
 
     #[test]

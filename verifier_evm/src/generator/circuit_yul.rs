@@ -678,9 +678,10 @@ pub fn emit_circuit_yul_with_stats(
     let circuit_rounds = {
         assert!(circuit.trace_len.is_power_of_two() && circuit.trace_len > 0);
         let rounds = circuit.trace_len.trailing_zeros();
-        assert!(
-            matches!(rounds, 21 | 22),
-            "GKR verifier supports trace logs 21 and 22"
+        assert_eq!(
+            rounds as usize,
+            prover::gkr::prover_config::example_configs::l1_wrap_2p21::TRACE_LEN_LOG2,
+            "GKR verifier requires the L1 wrap trace geometry"
         );
         rounds
     };
