@@ -8,7 +8,6 @@ namespace Airbender.Keccak.Proofs.Mix
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2400000
 
 theorem mix_rotation_parts {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
@@ -25,21 +24,11 @@ theorem mix_rotation_parts {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     (w (118 + 24 * operation.val + limb.val)).val =
       (((w (102 + 24 * operation.val + limb.val)).val % 65536) *
         2 ^ ((w (102 + 24 * operation.val + limb.val)).val / 65536)) % 65536 := by
-  have query := byte_lookup_checks hp h ⟨8 * operation.val + limb.val, by omega⟩
-  have tags := selected_tags (by omega) h active (mixMode second) selected
-    ⟨8 * operation.val + limb.val, by omega⟩
-  cases second <;> fin_cases operation <;> simp [isRotation] at rotation
-  all_goals fin_cases limb <;>
-    simp [mixMode, operationTags, byteTag, byteQuery, importedConstraints,
-      FlatOperation.lookups, Expression.eval, Verification.environment,
-      ByteOperationFacts] at tags query ⊢
-  all_goals
-    split at query
-    · rename_i zero
-      have value := congrArg ZMod.val zero
-      simp only [ZMod.val_zero] at value
-      omega
-    · simpa [tags] using query
+  have tag : operationTags[mixMode second][operation.val] = 40 := by
+    cases second <;> fin_cases operation <;> first | rfl | simp [isRotation] at rotation
+  have facts := selected_byte_facts hp h active (mixMode second) selected operation ⟨limb.val, by omega⟩
+  rw [tag] at facts
+  exact rotation_byte_facts facts
 
 theorem mix_rotated_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)

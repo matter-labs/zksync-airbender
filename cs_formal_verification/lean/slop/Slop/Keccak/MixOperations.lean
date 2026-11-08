@@ -1,7 +1,7 @@
 module
 public import Human.Circuits.Keccak.Mix
 public import Slop.Keccak.DecodeControl
-public import Slop.Keccak.FixedLookups
+public import Slop.Keccak.ByteFacts
 public import Slop.Keccak.OpIndex
 public import Slop.Arithmetic.ByteAssembly
 
@@ -11,7 +11,6 @@ namespace Airbender.Keccak.Proofs.Mix
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 600000
 
 def nativeLimbs (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 4, start + 5]
 def temporary (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 2, start + 3]
@@ -73,11 +72,15 @@ theorem mix_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
     ⟨21 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
   have c := Verification.assertion_of_holds h
     ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  cases second <;> fin_cases operation <;> fin_cases limb <;>
-    simp [Variables.modeColumns, mixMode] at m0 m1 m2 m3 m4 m5 m6
+  fin_cases operation <;> fin_cases limb
   all_goals op_index at a b c
-  all_goals simp [Expression.eval, Verification.environment, m0, m1, m2, m3, m4, m5, m6,
-    r0, r1, r2, r3, r4, aColumns, bColumns, cColumns, nativeLimbs, temporary, isRotation, previous] at a b c ⊢
+  all_goals simp only [Expression.eval, Verification.environment, r0, r1, r2, r3, r4,
+    Nat.cast_zero, Nat.cast_one, Nat.cast_ofNat, Int.ofNat_eq_natCast, Int.cast_ofNat, Int.cast_one,
+    Int.cast_zero, Int.cast_negSucc, mul_one, one_mul, mul_zero, zero_mul, add_zero, zero_add] at a b c
+  all_goals cases second
+  all_goals simp [Variables.modeColumns, mixMode] at m0 m1 m2 m3 m4 m5 m6
+  all_goals simp [m0, m1, m2, m3, m4, m5, m6, aColumns, bColumns, cColumns, nativeLimbs, temporary, isRotation,
+    previous] at a b c ⊢
   all_goals first
     | exact ⟨by linear_combination a, by linear_combination c⟩
     | exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
@@ -95,22 +98,11 @@ theorem mix_xor_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     (w (118 + 24 * operation.val + byte.val)).val =
       (w (102 + 24 * operation.val + byte.val)).val ^^^
         (w (110 + 24 * operation.val + byte.val)).val := by
-  have query := byte_lookup_checks hp h ⟨8 * operation.val + byte.val, by omega⟩
-  have tags := selected_tags (by omega) h active (mixMode second) selected
-    ⟨8 * operation.val + byte.val, by omega⟩
-  cases second <;> fin_cases operation <;> simp [isRotation] at xor
-  all_goals fin_cases byte
-  all_goals simp only [byteTag, byteQuery] at tags query
-  all_goals op_index at tags query
-  all_goals simp [mixMode, operationTags, Expression.eval, Verification.environment,
-    ByteOperationFacts] at tags query ⊢
-  all_goals
-    split at query
-    · rename_i zero
-      have value := congrArg ZMod.val zero
-      simp only [ZMod.val_zero] at value
-      omega
-    · simpa [tags] using query
+  have tag : operationTags[mixMode second][operation.val] = 4 := by
+    cases second <;> fin_cases operation <;> first | rfl | simp [isRotation] at xor
+  have facts := selected_byte_facts hp h active (mixMode second) selected operation byte
+  rw [tag] at facts
+  exact xor_byte_facts facts
 
 theorem mix_xor_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)

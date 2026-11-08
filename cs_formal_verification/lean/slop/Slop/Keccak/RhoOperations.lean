@@ -1,7 +1,7 @@
 module
 public import Human.Circuits.Keccak.Rho
 public import Slop.Keccak.DecodeControl
-public import Slop.Keccak.FixedLookups
+public import Slop.Keccak.ByteFacts
 public import Slop.Keccak.OpIndex
 public import Slop.Arithmetic.LaneRotation
 
@@ -11,7 +11,6 @@ namespace Airbender.Keccak.Proofs.Rho
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2400000
 
 abbrev rotations := rhoRotations
 
@@ -54,13 +53,15 @@ theorem rho_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
     ⟨20 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
   have c := Verification.assertion_of_holds h
     ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  fin_cases column <;> fin_cases operation <;> fin_cases limb
+  fin_cases operation <;> fin_cases limb
   all_goals op_index at a c
-  all_goals simp at r0 r1 r2 r3 r4
   all_goals simp only [Expression.eval, Verification.environment, m0, m1, m2, m3, m5, m6,
-    r0, r1, r2, r3, r4, selected, Nat.cast_zero, Nat.cast_one, Nat.cast_ofNat, Nat.cast_add,
+    selected, Nat.cast_zero, Nat.cast_one, Nat.cast_ofNat, Nat.cast_add,
     Int.ofNat_eq_natCast, Int.cast_ofNat, Int.cast_one, Int.cast_zero, Int.cast_negSucc,
-    mul_one, one_mul, mul_zero, zero_mul, add_zero, zero_add] at a c
+    mul_one, one_mul, mul_zero, add_zero, zero_add] at a c
+  all_goals fin_cases column
+  all_goals simp at r0 r1 r2 r3 r4
+  all_goals simp only [r0, r1, r2, r3, r4, mul_one, one_mul, mul_zero, zero_mul, add_zero, zero_add] at a c
   all_goals simp [rotations, rhoRotations, limbOffset, rotationSource, rotationPrevious] at ⊢
   all_goals exact ⟨by linear_combination a, by linear_combination c⟩
 
@@ -78,19 +79,9 @@ theorem rho_rotation_parts {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     (w (118 + 24 * operation.val + limb.val)).val =
       (((w (102 + 24 * operation.val + limb.val)).val % 65536) *
         2 ^ ((w (102 + 24 * operation.val + limb.val)).val / 65536)) % 65536 := by
-  have query := byte_lookup_checks hp h ⟨8 * operation.val + limb.val, by omega⟩
-  have tags := selected_tags (by omega) h active (4 : Fin 7) selected
-    ⟨8 * operation.val + limb.val, by omega⟩
-  fin_cases operation <;> fin_cases limb <;>
-    simp [operationTags, byteTag, byteQuery, importedConstraints,
-      FlatOperation.lookups, Expression.eval, Verification.environment,
-      ByteOperationFacts] at tags query ⊢
-  all_goals
-    split at query
-    · rename_i zero
-      have value := congrArg ZMod.val zero
-      simp only [ZMod.val_zero] at value
-      omega
-    · simpa [tags] using query
+  have tag : operationTags[(4 : Fin 7)][operation.val] = 40 := by fin_cases operation <;> rfl
+  have facts := selected_byte_facts hp h active 4 selected operation ⟨limb.val, by omega⟩
+  rw [tag] at facts
+  exact rotation_byte_facts facts
 
 end Airbender.Keccak.Proofs.Rho

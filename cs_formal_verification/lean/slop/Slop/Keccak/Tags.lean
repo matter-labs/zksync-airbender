@@ -6,7 +6,6 @@ namespace Airbender.Keccak.Proofs
 open Arithmetic
 open scoped BigOperators
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1600000
 set_option warningAsError true
 
 /-- Routing in `cs/src/gkr_circuits/delegation/keccak_special5/mod.rs`.
@@ -33,8 +32,10 @@ theorem tag_polynomial {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 
     (w : Nat → ZMod p) (i : Fin 40) :
     byteTag setup w i = ∑ mode : Fin 7,
       ((operationTags[mode][i.val / 8] : Nat) : ZMod p) * w Variables.modeColumns[mode] := by
-  fin_cases i <;> simp [byteTag, byteQuery, importedConstraints, FlatOperation.lookups,
-    Expression.eval, Verification.environment, operationTags, Variables.modeColumns,
+  fin_cases i
+  all_goals simp only [byteTag, byteQuery]
+  all_goals op_index
+  all_goals simp [Expression.eval, Verification.environment, operationTags, Variables.modeColumns,
     Fin.sum_univ_succ]
   all_goals ring
 

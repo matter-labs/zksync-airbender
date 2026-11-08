@@ -1,7 +1,7 @@
 module
 public import Human.Circuits.Keccak.Iota
 public import Slop.Keccak.DecodeControl
-public import Slop.Keccak.FixedLookups
+public import Slop.Keccak.ByteFacts
 public import Slop.Keccak.OpIndex
 public import Slop.Arithmetic.ByteAssembly
 
@@ -11,7 +11,6 @@ namespace Airbender.Keccak.Proofs
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 600000
 
 private def nativeLimbs (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 4, start + 5]
 private def temporary (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 2, start + 3]
@@ -75,21 +74,19 @@ private theorem iota_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
       (w (102 + 24 * operation.val + byte.val)).val ^^^
         (if operation.val = 0 then iotaByte (w (110 + 24 * operation.val + byte.val)).val
          else (w (110 + 24 * operation.val + byte.val)).val) := by
-  have query := byte_lookup_checks hp h ⟨8 * operation.val + byte.val, by omega⟩
-  have tags := selected_tags (by omega) h active (0 : Fin 7) selected
-    ⟨8 * operation.val + byte.val, by omega⟩
-  fin_cases operation <;> fin_cases byte
-  all_goals simp only [byteTag, byteQuery] at tags query
-  all_goals op_index at tags query
-  all_goals simp [operationTags, Expression.eval, Verification.environment,
-    ByteOperationFacts] at tags query ⊢
-  all_goals
-    split at query
-    · rename_i zero
-      have value := congrArg ZMod.val zero
-      simp only [ZMod.val_zero] at value
-      omega
-    · simpa [tags] using query
+  have facts := selected_byte_facts hp h active 0 selected operation byte
+  by_cases zero : operation.val = 0
+  · have tag : operationTags[(0 : Fin 7)][operation.val] = 38 := by
+      obtain rfl : operation = 0 := Fin.ext zero
+      rfl
+    rw [tag] at facts
+    simpa only [zero, ↓reduceIte] using iota_byte_facts facts
+  · have tag : operationTags[(0 : Fin 7)][operation.val] = 4 := by
+      fin_cases operation
+      · exact absurd rfl zero
+      all_goals rfl
+    rw [tag] at facts
+    simpa only [zero, ↓reduceIte] using xor_byte_facts facts
 
 private theorem effective_round {p : Nat} [Fact p.Prime] (hp : 2048 ≤ p)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
@@ -128,7 +125,8 @@ private theorem constant_limb (round : Fin 32) (limb : Fin 4) :
     iotaByte (round.val + 32 * (2 * limb.val)) +
       256 * iotaByte (round.val + 32 * (2 * limb.val + 1)) =
       adjustedConstant round.val / 65536 ^ limb.val % 65536 := by
-  fin_cases round <;> fin_cases limb <;> decide +kernel
+  revert round limb
+  decide +kernel
 
 private theorem constant_assembly (round : Fin 32) :
     adjustedConstant round.val =
@@ -136,7 +134,8 @@ private theorem constant_assembly (round : Fin 32) :
       65536 * ((adjustedConstant round.val / 65536 % 65536) +
       65536 * ((adjustedConstant round.val / 65536 ^ 2 % 65536) +
       65536 * (adjustedConstant round.val / 65536 ^ 3 % 65536))) := by
-  fin_cases round <;> decide +kernel
+  revert round
+  decide +kernel
 
 private theorem control_pair {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (round : Fin 32)

@@ -1,6 +1,6 @@
 module
 public import Human.Circuits.Keccak.Theta
-public import Slop.Keccak.Lookups
+public import Slop.Keccak.ByteFacts
 public import Slop.Keccak.OpIndex
 public import Slop.Arithmetic.ByteAssembly
 
@@ -10,7 +10,6 @@ namespace Airbender.Keccak.Proofs
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 800000
 
 private theorem theta_rotations {p : Nat} [Fact p.Prime] (hp : 7 < p)
     {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p}
@@ -79,9 +78,11 @@ private theorem theta_bytes {p : Nat} [Fact p.Prime] (hp : 256 ≤ p)
         (w (110 + 24 * operation.val + byte.val)).val := by
   have query := theta_byte_relations hp h active theta
     ⟨8 * operation.val + byte.val, by omega⟩
-  fin_cases operation <;> fin_cases byte <;>
-    simpa [byteQuery, importedConstraints, FlatOperation.lookups, Expression.eval,
-      Verification.environment] using query
+  have ho : (8 * operation.val + byte.val) / 8 = operation.val := by omega
+  have hb : (8 * operation.val + byte.val) % 8 = byte.val := by omega
+  obtain ⟨c0, c1, c2⟩ := byte_columns (setupTable control) w ⟨8 * operation.val + byte.val, by omega⟩
+  simp only [ho, hb] at c0 c1 c2
+  simpa only [c0, c1, c2] using query
 
 /-- Every observed input/output limb is forced by its two native byte queries. -/
 theorem theta_limb_xors {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
