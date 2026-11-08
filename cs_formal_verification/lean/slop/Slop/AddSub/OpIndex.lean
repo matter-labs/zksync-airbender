@@ -6,6 +6,3 @@ public import Human.Circuits.AddSub.Artifact
 
 set_option maxRecDepth 100000 in
 derive_op_index Airbender.AddSub.importedConstraints
-
-set_option maxRecDepth 100000 in
-derive_op_index Airbender.AddSub.importedConstraintsTimestampLookups
