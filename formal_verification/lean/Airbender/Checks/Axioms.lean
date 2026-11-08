@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.DecodedMain
+import Airbender.Proofs.ReducedMachine.NativeDecodedMain
+import Airbender.Review.Trace.Families.ReducedMachine.DecodedMainTheorems
+import Tests.NativeDecodedMain
+
 import Airbender.Proofs.ReducedMachine.NativeRuntimeQueryTransport
 import Airbender.Review.Circuits.ReducedMachine.Tables.RuntimeQueryTransportTheorems
 import Tests.NativeRuntimeQueryTransport
@@ -7320,3 +7325,24 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeRuntimeQueryTransport.no_unrestricted_transfer
 #print axioms Airbender.Tests.NativeRuntimeQueryTransport.csr_outside_domain
 #print axioms Airbender.Tests.NativeRuntimeQueryTransport.retained_tags
+
+#print axioms Airbender.NativeDecodedQueryDomainProofs.supported
+#print axioms Airbender.NativeDecodedQueryDomainProofs.unified
+#print axioms Airbender.NativeDecodedQueryDomainProofs.fixed_queries
+#print axioms Airbender.NativeDecodedQueryDomainProofs.fixed_body
+#print axioms Airbender.NativeDecodedQueryDomainProofs.main_write_rule
+#print axioms Airbender.NativeDecodedQueryDomainProofs.public_body
+#print axioms Airbender.NativeDecodedQueryDomainProofs.counted
+#print axioms Airbender.NativeDecodedMain.native_public_ordinary_body
+#print axioms Airbender.NativeDecodedMain.native_decoded_main_write_rule
+#print axioms Airbender.NativeDecodedMain.native_counted_main_write_rules
+#print axioms Airbender.Tests.NativeDecodedMain.full_csr_body
+#print axioms Airbender.Tests.NativeDecodedMain.csr_tag_retained
+#print axioms Airbender.Tests.NativeDecodedMain.csr_not_ordinary
+#print axioms Airbender.Tests.NativeDecodedMain.csr_write_rule
+#print axioms Airbender.Tests.NativeDecodedMain.inactive_request_retained
+#print axioms Airbender.Tests.NativeDecodedMain.unrestricted_transfer_still_false
+#print axioms Airbender.Tests.NativeDecodedMain.both_constant_queries
+#print axioms Airbender.Tests.NativeDecodedMain.all_dynamic_queries
+#print axioms Airbender.Tests.NativeDecodedMain.original_public_body
+#print axioms Airbender.Tests.NativeDecodedMain.complete_counted_rules

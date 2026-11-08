@@ -1,5 +1,50 @@
 # Verification status
 
+## Public-decoded native main write rules (8 November 2026)
+
+[DecodedMain](Airbender/Review/Circuits/ReducedMachine/DecodedMain.lean) records the
+existing local prefix-read preservation law for actual main writes. It is a
+conclusion for future initialized induction, not a read-range or acceptance premise.
+Copying a value still requires an initialized bound. Every port, both value limbs,
+readonly refresh, store OLDREAD and unmasked SW write remain.
+
+[The short roots](Airbender/Review/Trace/Families/ReducedMachine/DecodedMainTheorems.lean)
+connect original public decoding to complete BODY and write preservation. For the
+seven ordinary profiles, full runtime BODY and original decoded fields derive all
+four actual query tags outside CSR25. Bitwise tags use original funct3, not merely
+a disabled CSR bit. Both sign queries and all four dynamic queries retain exact
+data while using the proved restricted connection to the retained native fixture.
+Generic assembly reconstructs all117 assertions and all22 lookups; the first16
+scalar/timestamp lookups are unchanged. This is derived BODY acceptance for valid
+ordinary sources, not arbitrary table equivalence or historical119-artifact transfer.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeDecodedMain.lean) reuses old
+mask-bit derivations, shift/arithmetic tags and local ordinary/CSR preservation.
+The counted root uses the SAME complete MainDecoder source acceptance, original
+stateful public image at log20 and old named LogicalLookups boundary. Original
+public sources supply all ten fields and PC alignment for EVERY actual execute1
+main position. No per-row mask, read bound, result, onehot or alignment is supplied.
+The original public scope is ordinary7-or-CSR; MOP is excluded. CSR uses its own
+unchanged generic runtime proof, never the ordinary fixed-table connection.
+
+[Ten controls](Tests/NativeDecodedMain.lean) reuse complete LOCAL CSR BODY for both
+execute flags, prove those rows cannot borrow ordinary decoding, preserve inactive
+requests, derive CSR local write rules, retain exact six-query data, and check the
+full conditional counted interface. They are pure/local/conditional controls, not
+new nonempty source-global/whole-worker/physical witnesses, attacks or findings.
+
+Four modules add20 roots and11 exact parent references, preserving all6,323 prior
+ordered roots and exact audit bytes addition-only. Native107 pins, dependencies,
+v3 reference, original Sail, old proofs/acceptance/artifacts and FINDINGS are
+unchanged. All inactive source rows, worker43 ports, poles and auxiliary values
+remain; caller requests are never filtered. LogicalLookups remains explicit,
+not derived from fixed-challenge equations, sums or physical proof enforcement.
+General initialized mixed word bounds, online replay, worker results, inactive
+caller activity/converse accounting, physical cryptography, completeness and parity
+remain open. Original seven-profile Sail still excludes CSR/MOP; CSR local word
+preservation establishes no original CSR execution or frame across delegation.
+
+
 ## Restricted actual runtime query connection (8 November 2026)
 
 [The short query theorem](Airbender/Review/Circuits/ReducedMachine/Tables/RuntimeQueryTransportTheorems.lean)

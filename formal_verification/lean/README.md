@@ -1787,3 +1787,10 @@ Main candidate closure, initialized mixed word bounds and worker execution stay 
 for actual runtime queries outside tag25. CSR1991 rejects unrestricted transfer.
 Public decoded-query coupling and complete main write preservation remain open;
 this is no table-equivalence premise or physical setup proof.
+
+## Public-decoded main writes
+
+[Decoded main write rules](Airbender/Review/Trace/Families/ReducedMachine/DecodedMainTheorems.lean) derive ordinary query domains, complete
+ordinary BODY and local ordinary-or-CSR preservation from the same counted public
+source. PC alignment is public-derived. Inactive rows/requests and all worker ports
+remain. Initialized mixed word bounds and CSR/MOP Sail execution remain open.
