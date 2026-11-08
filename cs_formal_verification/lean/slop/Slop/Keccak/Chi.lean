@@ -10,14 +10,14 @@ open Arithmetic
 set_option warningAsError true
 def chiMode (second : Bool) : Fin 7 := if second then 6 else 5
 private def aColumns (second : Bool) : Vector (Vector Nat 4) 5 :=
-  if second then #v[nativeLimbs 31, nativeLimbs 23, nativeLimbs 15, nativeLimbs 31, nativeLimbs 15]
-  else #v[nativeLimbs 15, nativeLimbs 23, nativeLimbs 15, nativeLimbs 31, nativeLimbs 23]
+  if second then #v[routeNative 31, routeNative 23, routeNative 15, routeNative 31, routeNative 15]
+  else #v[routeNative 15, routeNative 23, routeNative 15, routeNative 31, routeNative 23]
 private def bColumns (second : Bool) : Vector (Vector Nat 4) 5 :=
-  if second then #v[nativeLimbs 15, temporaryLimbs 90, nativeLimbs 47, temporaryLimbs 94, nativeLimbs 39]
-  else #v[nativeLimbs 23, nativeLimbs 31, temporaryLimbs 90, nativeLimbs 39, temporaryLimbs 94]
+  if second then #v[routeNative 15, routeScratch 90, routeNative 47, routeScratch 94, routeNative 39]
+  else #v[routeNative 23, routeNative 31, routeScratch 90, routeNative 39, routeScratch 94]
 private def cColumns (second : Bool) : Vector (Vector Nat 4) 5 :=
-  if second then #v[temporaryLimbs 90, nativeLimbs 25, temporaryLimbs 94, nativeLimbs 33, nativeLimbs 17]
-  else #v[nativeLimbs 49, temporaryLimbs 90, nativeLimbs 17, temporaryLimbs 94, nativeLimbs 25]
+  if second then #v[routeScratch 90, routeNative 25, routeScratch 94, routeNative 33, routeNative 17]
+  else #v[routeNative 49, routeScratch 90, routeNative 17, routeScratch 94, routeNative 25]
 private def isAndn (second : Bool) (operation : Fin 5) : Bool :=
   if second then operation.val = 0 || operation.val = 2
   else operation.val = 0 || operation.val = 1 || operation.val = 3
@@ -231,7 +231,7 @@ theorem chi_first {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   have o0 := operations (0 : Fin 5); have o1 := operations (1 : Fin 5)
   have o2 := operations (2 : Fin 5); have o3 := operations (3 : Fin 5)
   have o4 := operations (4 : Fin 5)
-  simp [aColumns, bColumns, cColumns, nativeLimbs, temporaryLimbs, isAndn] at o0 o1 o2 o3 o4
+  simp [aColumns, bColumns, cColumns, routeNative, routeScratch, isAndn] at o0 o1 o2 o3 o4
   rw [o1] at o2
   rw [o3] at o4
   exact ⟨o2, o4, o0, first_scratch_copy h selected, first_preserved h selected⟩
@@ -248,7 +248,7 @@ theorem chi_second {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   have o0 := operations (0 : Fin 5); have o1 := operations (1 : Fin 5)
   have o2 := operations (2 : Fin 5); have o3 := operations (3 : Fin 5)
   have o4 := operations (4 : Fin 5)
-  simp [aColumns, bColumns, cColumns, nativeLimbs, temporaryLimbs, isAndn] at o0 o1 o2 o3 o4
+  simp [aColumns, bColumns, cColumns, routeNative, routeScratch, isAndn] at o0 o1 o2 o3 o4
   rw [o0] at o1
   rw [o2] at o3
   exact ⟨o4, o1, o3, second_preserved h selected⟩

@@ -15,38 +15,38 @@ namespace Airbender.Keccak.Proofs
 open Arithmetic
 set_option warningAsError true
 
-def nativeLimbs (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 4, start + 5]
-def temporaryLimbs (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 2, start + 3]
+def routeNative (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 4, start + 5]
+def routeScratch (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 2, start + 3]
 
 /-- Theta's routes (mode 3): lane `operation` of the read column, and the scratch lane. Also the filler
     for the rotating modes 1, 2, 4, whose routes these tables do not describe. -/
 def thetaRouteA : Vector (Vector Nat 4) 5 :=
-  #v[nativeLimbs 15, nativeLimbs 23, nativeLimbs 31, nativeLimbs 39, nativeLimbs 47]
+  #v[routeNative 15, routeNative 23, routeNative 31, routeNative 39, routeNative 47]
 def thetaRouteB : Vector (Vector Nat 4) 5 :=
-  #v[nativeLimbs 55, nativeLimbs 55, nativeLimbs 55, nativeLimbs 55, nativeLimbs 55]
+  #v[routeNative 55, routeNative 55, routeNative 55, routeNative 55, routeNative 55]
 def thetaRouteC : Vector (Vector Nat 4) 5 :=
-  #v[nativeLimbs 17, nativeLimbs 25, nativeLimbs 33, nativeLimbs 41, nativeLimbs 49]
+  #v[routeNative 17, routeNative 25, routeNative 33, routeNative 41, routeNative 49]
 
 /-- First input of each operation, by mode (Iota 0, Theta 3, Chi 5 and 6). -/
 def routeA : Vector (Vector (Vector Nat 4) 5) 7 := #v[
-  #v[nativeLimbs 15, nativeLimbs 17, temporaryLimbs 90, temporaryLimbs 94, temporaryLimbs 98],
+  #v[routeNative 15, routeNative 17, routeScratch 90, routeScratch 94, routeScratch 98],
   thetaRouteA, thetaRouteA, thetaRouteA, thetaRouteA,
-  #v[nativeLimbs 15, nativeLimbs 23, nativeLimbs 15, nativeLimbs 31, nativeLimbs 23],
-  #v[nativeLimbs 31, nativeLimbs 23, nativeLimbs 15, nativeLimbs 31, nativeLimbs 15]]
+  #v[routeNative 15, routeNative 23, routeNative 15, routeNative 31, routeNative 23],
+  #v[routeNative 31, routeNative 23, routeNative 15, routeNative 31, routeNative 15]]
 
 /-- Second input of each operation, by mode. -/
 def routeB : Vector (Vector (Vector Nat 4) 5) 7 := #v[
-  #v[temporaryLimbs 86, nativeLimbs 23, nativeLimbs 31, nativeLimbs 39, nativeLimbs 47],
+  #v[routeScratch 86, routeNative 23, routeNative 31, routeNative 39, routeNative 47],
   thetaRouteB, thetaRouteB, thetaRouteB, thetaRouteB,
-  #v[nativeLimbs 23, nativeLimbs 31, temporaryLimbs 90, nativeLimbs 39, temporaryLimbs 94],
-  #v[nativeLimbs 15, temporaryLimbs 90, nativeLimbs 47, temporaryLimbs 94, nativeLimbs 39]]
+  #v[routeNative 23, routeNative 31, routeScratch 90, routeNative 39, routeScratch 94],
+  #v[routeNative 15, routeScratch 90, routeNative 47, routeScratch 94, routeNative 39]]
 
 /-- Output of each operation, by mode. -/
 def routeC : Vector (Vector (Vector Nat 4) 5) 7 := #v[
-  #v[nativeLimbs 17, temporaryLimbs 90, temporaryLimbs 94, temporaryLimbs 98, nativeLimbs 57],
+  #v[routeNative 17, routeScratch 90, routeScratch 94, routeScratch 98, routeNative 57],
   thetaRouteC, thetaRouteC, thetaRouteC, thetaRouteC,
-  #v[nativeLimbs 49, temporaryLimbs 90, nativeLimbs 17, temporaryLimbs 94, nativeLimbs 25],
-  #v[temporaryLimbs 90, nativeLimbs 25, temporaryLimbs 94, nativeLimbs 33, nativeLimbs 17]]
+  #v[routeNative 49, routeScratch 90, routeNative 17, routeScratch 94, routeNative 25],
+  #v[routeScratch 90, routeNative 25, routeScratch 94, routeNative 33, routeNative 17]]
 
 /-- One entry of a route table. -/
 def routeAt (table : Vector (Vector (Vector Nat 4) 5) 7) (mode : Fin 7) (operation : Fin 5) (limb : Fin 4) :

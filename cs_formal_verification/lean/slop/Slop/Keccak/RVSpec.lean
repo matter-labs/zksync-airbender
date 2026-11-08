@@ -160,7 +160,10 @@ theorem next_packed (c : ControlState) :
 theorem schedule_valid : ∀ call : Fin 649,
     (scheduleControl ⟨call.val, by omega⟩).mode.val = 0 ∧ (scheduleControl ⟨call.val, by omega⟩).round.val ≤ 24 ∨
       0 < (scheduleControl ⟨call.val, by omega⟩).mode.val ∧ (scheduleControl ⟨call.val, by omega⟩).round.val < 24 := by
-  decide +kernel
+  intro call
+  have := call.isLt
+  dsimp only [scheduleControl]
+  split_ifs <;> omega
 
 theorem slot_indices_spec (call : Fin 649) (k : Fin 6) :
     (slotIndices call)[k] = (special5Slots (scheduleControl ⟨call.val, by omega⟩).mode.val

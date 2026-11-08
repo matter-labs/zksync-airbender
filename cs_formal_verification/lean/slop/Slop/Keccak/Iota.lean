@@ -11,11 +11,11 @@ namespace Airbender.Keccak.Proofs
 open Arithmetic
 set_option warningAsError true
 private def aColumns : Vector (Vector Nat 4) 5 :=
-  #v[nativeLimbs 15, nativeLimbs 17, temporaryLimbs 90, temporaryLimbs 94, temporaryLimbs 98]
+  #v[routeNative 15, routeNative 17, routeScratch 90, routeScratch 94, routeScratch 98]
 private def bColumns : Vector (Vector Nat 4) 5 :=
-  #v[temporaryLimbs 86, nativeLimbs 23, nativeLimbs 31, nativeLimbs 39, nativeLimbs 47]
+  #v[routeScratch 86, routeNative 23, routeNative 31, routeNative 39, routeNative 47]
 private def cColumns : Vector (Vector Nat 4) 5 :=
-  #v[nativeLimbs 17, temporaryLimbs 90, temporaryLimbs 94, temporaryLimbs 98, nativeLimbs 57]
+  #v[routeNative 17, routeScratch 90, routeScratch 94, routeScratch 98, routeNative 57]
 private def packed {p : Nat} (w : Nat → ZMod p) (columns : Vector Nat 4) : Nat :=
   (w columns[0]).val + 65536 * ((w columns[1]).val +
     65536 * ((w columns[2]).val + 65536 * (w columns[3]).val))
@@ -148,7 +148,7 @@ private theorem control_pair {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
         256 * (round.val + 32 * (2 * limb.val + 1)) : Nat) : ZMod p) := by
     fin_cases limb
     all_goals op_index at definition
-    all_goals simp [Expression.eval, Verification.environment, bColumns, temporaryLimbs, rc] at definition routes ⊢
+    all_goals simp [Expression.eval, Verification.environment, bColumns, routeScratch, rc] at definition routes ⊢
     all_goals linear_combination routes - definition
   have bound : round.val + 32 * (2 * limb.val) +
       256 * (round.val + 32 * (2 * limb.val + 1)) < p := by
@@ -342,7 +342,7 @@ theorem iota_column {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   have op2 := iota_operation hp rc h mapping.active flags.1 flags.2 (2 : Fin 5)
   have op3 := iota_operation hp rc h mapping.active flags.1 flags.2 (3 : Fin 5)
   have op4 := iota_operation hp rc h mapping.active flags.1 flags.2 (4 : Fin 5)
-  simp [packed, aColumns, bColumns, cColumns, nativeLimbs, temporaryLimbs] at op0 op1 op2 op3 op4
+  simp [packed, aColumns, bColumns, cColumns, routeNative, routeScratch] at op0 op1 op2 op3 op4
   have changed : ∀ i : Fin 5, writeLane w ⟨i.val, by omega⟩ =
       (iotaState state round)[5 * column.val + i.val] := by
     intro i
@@ -376,13 +376,13 @@ theorem iota_column {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   have p4 : writeLane w 4 = readLane w 4 := iota_preserved h flags.1 (3 : Fin 4)
   rw [p1, p2, p3, p4]
   change laneValue w 57 = _
-  change laneValue w 57 = packed w (temporaryLimbs 98) ^^^ laneValue w 47 at op4
+  change laneValue w 57 = packed w (routeScratch 98) ^^^ laneValue w 47 at op4
   rw [op4]
-  change packed w (temporaryLimbs 98) = packed w (temporaryLimbs 94) ^^^ laneValue w 39 at op3
+  change packed w (routeScratch 98) = packed w (routeScratch 94) ^^^ laneValue w 39 at op3
   rw [op3]
-  change packed w (temporaryLimbs 94) = packed w (temporaryLimbs 90) ^^^ laneValue w 31 at op2
+  change packed w (routeScratch 94) = packed w (routeScratch 90) ^^^ laneValue w 31 at op2
   rw [op2]
-  change packed w (temporaryLimbs 90) = laneValue w 17 ^^^ laneValue w 23 at op1
+  change packed w (routeScratch 90) = laneValue w 17 ^^^ laneValue w 23 at op1
   rw [op1]
   rfl
 

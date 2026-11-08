@@ -2,7 +2,7 @@ module
 public import Human.Circuits.Keccak.Mix
 public import Slop.Keccak.DecodeControl
 public import Slop.Keccak.ByteFacts
-public import Slop.Keccak.OpIndex
+public import Slop.Keccak.XorRoutes
 public import Slop.Arithmetic.ByteAssembly
 
 @[expose] public section
@@ -10,7 +10,6 @@ public import Slop.Arithmetic.ByteAssembly
 namespace Airbender.Keccak.Proofs.Mix
 open Arithmetic
 set_option warningAsError true
-set_option maxRecDepth 16384
 
 def nativeLimbs (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 4, start + 5]
 def temporary (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 2, start + 3]
@@ -49,42 +48,40 @@ theorem mix_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
       w (118 + 24 * operation.val + 2 * limb.val) +
         256 * w (119 + 24 * operation.val + 2 * limb.val) = w (cColumns second)[operation][limb] := by
   have modes := selected_modes hp h active (mixMode second) selected
-  have m0 := modes (0 : Fin 7); have m1 := modes (1 : Fin 7)
-  have m2 := modes (2 : Fin 7); have m3 := modes (3 : Fin 7)
-  have m4 := modes (4 : Fin 7); have m5 := modes (5 : Fin 7); have m6 := modes (6 : Fin 7)
-  have rho : w 67 = 0 := by
-    cases second <;> simpa [Variables.modeColumns, mixMode] using m4
-  have rotations (i : Fin 5) : w (80 + i.val) = 0 := by
-    have equation := Verification.assertion_of_holds h ⟨9 + i.val, by rw [constraint_count]; omega⟩
-    fin_cases i
-    all_goals op_index at equation
-    all_goals simpa [Expression.eval, Verification.environment, rho] using equation.symm
-  have r0 := rotations (0 : Fin 5); have r1 := rotations (1 : Fin 5)
-  have r2 := rotations (2 : Fin 5); have r3 := rotations (3 : Fin 5); have r4 := rotations (4 : Fin 5)
-  change w 80 = 0 at r0
-  change w 81 = 0 at r1
-  change w 82 = 0 at r2
-  change w 83 = 0 at r3
-  change w 84 = 0 at r4
+  have z63 : w 63 = 0 := by cases second <;> exact modes 0
+  have z66 : w 66 = 0 := by cases second <;> exact modes 3
+  have z67 : w 67 = 0 := by cases second <;> exact modes 4
+  have z68 : w 68 = 0 := by cases second <;> exact modes 5
+  have z69 : w 69 = 0 := by cases second <;> exact modes 6
+  have r0 : w 80 = 0 := rotation_flags_zero h z67 0
+  have r1 : w 81 = 0 := rotation_flags_zero h z67 1
+  have r2 : w 82 = 0 := rotation_flags_zero h z67 2
+  have r3 : w 83 = 0 := rotation_flags_zero h z67 3
+  have r4 : w 84 = 0 := rotation_flags_zero h z67 4
   have a := Verification.assertion_of_holds h
     ⟨20 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
   have b := Verification.assertion_of_holds h
     ⟨21 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
   have c := Verification.assertion_of_holds h
     ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
-  fin_cases operation <;> fin_cases limb
-  all_goals op_index at a b c
-  all_goals simp only [Expression.eval, Verification.environment, r0, r1, r2, r3, r4,
-    Nat.cast_zero, Nat.cast_one, Nat.cast_ofNat, Int.ofNat_eq_natCast, Int.cast_ofNat, Int.cast_one,
-    Int.cast_zero, Int.cast_negSucc, mul_one, one_mul, mul_zero, zero_mul, add_zero, zero_add] at a b c
+  have e64 : w 64 = if second then 0 else 1 := by cases second <;> exact modes 1
+  have e65 : w 65 = if second then 1 else 0 := by cases second <;> exact modes 2
+  cases rotation : isRotation second operation
+  all_goals simp only [Bool.false_eq_true, ↓reduceIte]
   all_goals cases second
-  all_goals simp [Variables.modeColumns, mixMode] at m0 m1 m2 m3 m4 m5 m6
-  all_goals simp [m0, m1, m2, m3, m4, m5, m6, aColumns, bColumns, cColumns, nativeLimbs, temporary, isRotation,
-    previous] at a b c ⊢
+  all_goals simp only [Bool.false_eq_true, ↓reduceIte] at e64 e65
+  all_goals fin_cases operation
+  all_goals first | (exact absurd rotation (by decide)) | skip
+  all_goals fin_cases limb
+  all_goals op_index at a b c
+  all_goals simp only [Expression.eval, Verification.environment, Int.ofNat_eq_natCast, Nat.cast_ofNat,
+    Nat.cast_one, Nat.cast_zero, Int.cast_negSucc, Int.cast_one, Int.cast_ofNat, Int.cast_zero,
+    z63, z66, z67, z68, z69, r0, r1, r2, r3, r4, e64, e65] at a b c
+  -- `ring1!` reads the column tables up to unfolding
   all_goals first
-    | exact ⟨by linear_combination a, by linear_combination c⟩
-    | exact ⟨by linear_combination a, by linear_combination b, by linear_combination c⟩
-
+    | exact ⟨by linear_combination (norm := ring1!) a, by linear_combination (norm := ring1!) c⟩
+    | exact ⟨by linear_combination (norm := ring1!) a, by linear_combination (norm := ring1!) b,
+        by linear_combination (norm := ring1!) c⟩
 
 theorem mix_xor_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
     {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
