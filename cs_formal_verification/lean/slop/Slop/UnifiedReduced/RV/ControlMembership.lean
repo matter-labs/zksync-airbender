@@ -28,7 +28,6 @@ theorem control_constraints [Fact p.Prime] (hp : 4194304 ≤ p)
   have query (i : Fin 13) := Verification.lookup_of_holds holds
     ⟨i.val, by rw [lookup_count]; have := i.isLt; omega⟩
   have q0 := query 0; have q1 := query 1; have q4 := query 4; have q5 := query 5
-  simp only [Fin.coe_ofNat_eq_mod, Nat.reduceMod] at q0 q1 q4 q5
   op_index at q0 q1 q4 q5
   have a := range16_bound q0; have b := range16_bound q1
   have raw := range16_bound q5

@@ -97,7 +97,8 @@ elab "derive_op_index " id:ident : command => do
 
 end Airbender.OpIndex
 
-/-- Rewrite literal-index accesses `(constraints C).get ⟨k, _⟩` / `(lookups C).get ⟨k, _⟩` with the generated lemmas. -/
+/-- Rewrite literal-index accesses `(constraints C).get ⟨k, _⟩` / `(lookups C).get ⟨k, _⟩` with the generated lemmas.
+    Indices built from `Fin` literals (`⟨45 + ↑(2 : Fin 4), _⟩`) are normalized first. -/
 macro "op_index" loc:(Lean.Parser.Tactic.location)? : tactic =>
-  `(tactic| simp only [op_index, Fin.isValue, Fin.val_zero, Fin.val_mk, Fin.val_ofNat, Nat.reduceMul, Nat.reduceAdd,
-    Nat.reduceMod] $[$loc]?)
+  `(tactic| simp only [op_index, Fin.isValue, Fin.val_zero, Fin.val_mk, Fin.val_ofNat, Fin.coe_ofNat_eq_mod,
+    Nat.reduceMul, Nat.reduceAdd, Nat.reduceMod] $[$loc]?)

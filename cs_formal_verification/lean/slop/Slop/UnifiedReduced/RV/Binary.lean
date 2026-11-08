@@ -43,7 +43,6 @@ theorem binary_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : N
     have t := h 0; have a := h 1; have b := h 2
     have c := h 3; have d := h 4; have e := h 5; have f := h 6
     have g := h 7; have k := h 8
-    simp only [Fin.coe_ofNat_eq_mod, Nat.reduceMod] at t a b c d e f g k
     op_index at t a b c d e f g k
     simp [Expression.eval, Verification.environment,
       selected.1, selected.2, other.1, other.2.1, other.2.2.1, other.2.2.2,

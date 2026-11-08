@@ -21,7 +21,6 @@ private theorem shift_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
   constructor
   · have t := h 0
     fin_cases i
-    all_goals simp only [Fin.coe_ofNat_eq_mod, Nat.reduceMod] at t
     all_goals op_index at t
     all_goals simp [Expression.eval, Verification.environment,
       selected.1, selected.2, other.1, other.2.1, other.2.2.1, other.2.2.2] at t ⊢
@@ -95,7 +94,6 @@ theorem shift_amount [Fact p.Prime] (hp : 256 < p)
   simp [Expression.eval, Verification.environment, load] at gate
   have h (i : Fin 4) := Verification.assertion_of_holds holds ⟨45 + i.val, by rw [constraint_count]; have := i.isLt; omega⟩
   have t := h 0; have a := h 1; have b := h 2; have c := h 3
-  simp only [Fin.coe_ofNat_eq_mod, Nat.reduceMod] at t a b c
   op_index at t a b c
   simp [Expression.eval, Verification.environment,
     selected.1, selected.2, other.1, other.2.1, other.2.2.1, other.2.2.2, gate] at t a b c

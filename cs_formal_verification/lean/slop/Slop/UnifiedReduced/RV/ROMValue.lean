@@ -29,7 +29,6 @@ theorem word_rom_value [Fact p.Prime] (hp : 4194304 ≤ p)
   have equations (i : Fin 4) := Verification.assertion_of_holds holds
     ⟨45 + i.val, by rw [constraint_count]; have := i.isLt; omega⟩
   have t := equations 0; have a := equations 1; have b := equations 2; have c := equations 3
-  simp only [Fin.coe_ofNat_eq_mod, Nat.reduceMod] at t a b c
   op_index at t a b c
   simp [Expression.eval, Verification.environment,
     active, enabled, other.1, other.2.1, other.2.2.1, other.2.2.2, binary.1, binary.2] at t a b c

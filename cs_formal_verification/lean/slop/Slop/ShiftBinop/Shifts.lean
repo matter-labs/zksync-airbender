@@ -55,7 +55,6 @@ theorem shift_amount {p : Nat} [Fact p.Prime] (hp : 256 < p) {w : Nat → ZMod p
   have b := equations 1
   have c := equations 2
   have tag := equations 3
-  simp only [Fin.coe_ofNat_eq_mod, Nat.reduceMod] at a b c tag
   op_index at a b c tag
   simp [Expression.eval, Verification.environment, selected.1, selected.2] at a b c tag
   have wa : w 52 = w 25 := by linear_combination a
