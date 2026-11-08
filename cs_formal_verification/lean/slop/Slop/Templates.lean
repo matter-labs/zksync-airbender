@@ -25,6 +25,10 @@ abbrev cell {p : Nat} (i : Nat) : Expression (ZMod p) := Expression.var ⟨i⟩
 abbrev product {p : Nat} (a b : Expression (ZMod p)) : Expression (ZMod p) :=
   ((constant (Int.ofNat 1)).mul a).mul b
 
+/-- `x - y` as `x + 1 * (-1) * y`. -/
+abbrev minus {p : Nat} (x y : Expression (ZMod p)) : Expression (ZMod p) :=
+  x.add (product (constant (Int.negSucc 0)) y)
+
 /-- `x * y` for two columns. -/
 abbrev pair {p : Nat} (x y : Nat) : Expression (ZMod p) := product (cell x) (cell y)
 
@@ -49,6 +53,9 @@ abbrev flag {p : Nat} (x : Nat) : Expression (ZMod p) :=
 
 variable {p : Nat} [Fact p.Prime]
 
+theorem constant_eval (c : Int) (env : Environment (ZMod p)) :
+    (constant c : Expression (ZMod p)).eval env = (c : ZMod p) := rfl
+
 theorem entry_eval (w : Nat → ZMod p) (x : Nat) :
     (entry x : Expression (ZMod p)).eval (Verification.environment w) = w x := by
   simp only [Expression.eval, Verification.environment]
@@ -59,17 +66,23 @@ theorem tag_eval (w : Nat → ZMod p) (t : Nat) :
     (tagEntry t : Expression (ZMod p)).eval (Verification.environment w) = (t : ZMod p) := by
   simp [Expression.eval]
 
+/-- A constraint that holds and evaluates to `x * (x - 1)` forces `x` to be a bit. -/
+theorem bit_of_eval {w : Nat → ZMod p} {ops : List (FlatOperation (ZMod p))}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) ops)
+    {k : Nat} {hk : k < (FlatOperation.constraints ops).length} {e : Expression (ZMod p)}
+    (shape : (FlatOperation.constraints ops).get ⟨k, hk⟩ = e) {x : ZMod p}
+    (value : e.eval (Verification.environment w) = x * (x + -1)) : x = 0 ∨ x = 1 := by
+  have zero := Verification.assertion_of_holds h ⟨k, hk⟩
+  rw [shape, value] at zero
+  rcases mul_eq_zero.mp zero with zero | one
+  · exact Or.inl zero
+  · exact Or.inr (by linear_combination one)
+
 /-- A Boolean constraint that holds forces its column to be a bit. -/
 theorem flag_bit {w : Nat → ZMod p} {ops : List (FlatOperation (ZMod p))}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) ops)
     {k : Nat} {hk : k < (FlatOperation.constraints ops).length} {x : Nat}
-    (shape : (FlatOperation.constraints ops).get ⟨k, hk⟩ = flag x) : w x = 0 ∨ w x = 1 := by
-  have zero := Verification.assertion_of_holds h ⟨k, hk⟩
-  rw [shape] at zero
-  simp only [Expression.eval, Verification.environment] at zero
-  push_cast at zero
-  rcases mul_eq_zero.mp zero with zero | one
-  · exact Or.inl (by simpa using zero)
-  · exact Or.inr (by linear_combination one)
+    (shape : (FlatOperation.constraints ops).get ⟨k, hk⟩ = flag x) : w x = 0 ∨ w x = 1 :=
+  bit_of_eval h shape (by simp only [Expression.eval, Verification.environment]; push_cast; ring)
 
 end Airbender.Templates

@@ -3,6 +3,7 @@ public import Slop.Blake2Round.GTrace
 public import Slop.Blake2Round.Lookups
 public import Slop.Blake2Round.OpIndex
 public import Slop.Eval
+public import Slop.Templates
 public import Mathlib.Tactic.ReduceModChar
 
 @[expose] public section
@@ -134,13 +135,7 @@ theorem flag_carry [Fact p.Prime] {w : Nat → ZMod p}
     {e : Expression (ZMod p)} (hc : (FlatOperation.constraints (importedConstraints setupTable)).get
       ⟨i, hi⟩ = e) {x : ZMod p} (hx : e.eval (Verification.environment w) = x * (x + -1)) :
     x.val < 3 := by
-  have zero := Verification.assertion_of_holds h ⟨i, hi⟩
-  rw [hc, hx] at zero
-  have flag : x = 0 ∨ x = 1 := by
-    rcases mul_eq_zero.mp zero with zero | one
-    · exact Or.inl zero
-    · exact Or.inr (by linear_combination one)
-  have := Arithmetic.boolean_val flag
+  have := Arithmetic.boolean_val (Templates.bit_of_eval h hc hx)
   omega
 
 end Airbender.Blake2Round.Proofs

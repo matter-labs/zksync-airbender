@@ -70,6 +70,30 @@ theorem seed_readonly_cell [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     exact constant _ (List.of_mem_zip included).1
   · exact ⟨sink, sinkMember, address, constant _ (List.mem_of_getLast? last)⟩
 
+/-- A port present in every (nonempty) row that reads one cell, whose every native port copies its read value: the
+    cell's seed token fixes the word every row reads there and the cell's terminal token. -/
+theorem seed_port_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    {data : MemoryData p} {cells : List Cell}
+    (accepted : MemoryAccepted data) (inputs : SeedProofs.SeedInputs data cells) (nonempty : data.rows ≠ [])
+    {port : MemoryPort} {cell : Cell} (present : ∀ row ∈ data.rows, port ∈ row.ports)
+    (address : ∀ row ∈ data.rows, (readToken row.assignment port).address = cell.addressCode)
+    (copies : ∀ edge ∈ data.steps, edge.1.address = cell.addressCode → edge.1.word = edge.2.word) :
+    ∃ source ∈ data.initial, source.address = cell.addressCode ∧
+      (∀ row ∈ data.rows, (readToken row.assignment port).word = source.word) ∧
+      ∃ sink ∈ data.terminal, sink.address = cell.addressCode ∧ sink.word = source.word := by
+  obtain ⟨first, firstMember⟩ := List.exists_mem_of_ne_nil _ nonempty
+  have tracked := seed_port_initialized_cell hp accepted inputs firstMember (present first firstMember)
+    (address first firstMember)
+  obtain ⟨source, sourceMember, sourceCode⟩ := seed_cell_source inputs tracked
+  have constant := seed_readonly_cell hp accepted inputs sourceMember
+    (fun edge member same => copies edge member (same.trans sourceCode))
+  refine ⟨source, sourceMember, sourceCode, fun row member => ?_, ?_⟩
+  · have included : (readToken row.assignment port, row.writeToken port) ∈ data.steps :=
+      List.mem_flatMap.mpr ⟨row, member, List.mem_map.mpr ⟨port, by simpa using present row member, rfl⟩⟩
+    exact constant.1 _ included ((address row member).trans sourceCode.symm)
+  · obtain ⟨sink, sinkMember, sinkAddress, sinkWord⟩ := constant.2
+    exact ⟨sink, sinkMember, sinkAddress.trans sourceCode, sinkWord⟩
+
 private theorem address_clocks_distinct (events : List MemoryAccess)
     (perAddress : ∀ address, ((events.filter fun event => decide (event.2.1 = address)).map Prod.fst).Nodup) :
     (events.map fun event => (event.1, event.2.1)).Nodup := by

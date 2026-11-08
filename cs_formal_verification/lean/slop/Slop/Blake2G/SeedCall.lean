@@ -206,33 +206,11 @@ private theorem seed_pointer_history [Fact p.Prime] (hp : 2 * timestampBase + 4 
     intro empty
     have count := inputs.calls
     cases reduced <;> simp [empty, callCount] at count
-  obtain ⟨first, firstMember⟩ := List.exists_mem_of_ne_nil _ nonempty
-  have family := inputs.family first firstMember
-  have portMember : (pointerPort index) ∈ first.ports := by
-    rw [Delegation.Row.ports, family]
-    fin_cases index <;> simp [pointerPort, importedConstraintsMemoryPorts]
-  have address : (readToken first.assignment (pointerPort index)).address =
-      (Cell.register (BitVec.ofNat 5 (10 + index.val))).addressCode := by
-    fin_cases index <;> rfl
-  have tracked := seed_port_initialized_cell hp accepted inputs.memory firstMember portMember address
-  obtain ⟨source, sourceMember, sourceCode⟩ := seed_cell_source inputs.memory tracked
-  have constant := seed_readonly_cell hp accepted inputs.memory sourceMember
-    (fun edge member same => pointer_copies inputs.family index edge member (same.trans sourceCode))
-  refine ⟨source, sourceMember, sourceCode, ?_, ?_⟩
-  · intro row member
-    have family := inputs.family row member
-    have portMember : (pointerPort index) ∈ row.ports := by
-      rw [Delegation.Row.ports, family]
-      fin_cases index <;> simp [pointerPort, importedConstraintsMemoryPorts]
-    have included : (readToken row.assignment (pointerPort index),
-        row.writeToken (pointerPort index)) ∈ data.steps := by
-      apply List.mem_flatMap.mpr
-      refine ⟨row, member, ?_⟩
-      apply List.mem_map.mpr
-      exact ⟨_, by simpa only [Array.mem_toList_iff] using portMember, rfl⟩
-    exact constant.1 _ included (by rw [sourceCode]; fin_cases index <;> rfl)
-  · obtain ⟨sink, sinkMember, sinkAddress, sinkWord⟩ := constant.2
-    exact ⟨sink, sinkMember, sinkAddress.trans sourceCode, sinkWord⟩
+  exact seed_port_history hp accepted inputs.memory nonempty
+    (fun row member => by
+      rw [Delegation.Row.ports, inputs.family row member]
+      fin_cases index <;> simp [pointerPort, importedConstraintsMemoryPorts])
+    (fun _ _ => by fin_cases index <;> rfl) (pointer_copies inputs.family index)
 
 /-- Seed-level `call_pointers`: the x10/x11 seed tokens fix every row's pointers and the terminal x10/x11. -/
 theorem seed_call_pointers [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)

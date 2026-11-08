@@ -4,6 +4,7 @@ public import Slop.Blake2Round.OpIndex
 public import Slop.Blake2G.OpIndex
 public import Human.Circuits.Blake2Round.Schedule
 public import Slop.Constraints
+public import Slop.Templates
 public import Slop.Arithmetic.Lemmas
 public import Mathlib.Tactic.FinCases
 
@@ -12,7 +13,7 @@ public import Mathlib.Tactic.FinCases
 set_option warningAsError true
 
 namespace Airbender.Blake2Round.Schedule.Proofs
-open Arithmetic
+open Arithmetic Templates
 open scoped BigOperators
 
 def column (round : Fin 10) (position : Fin 16) : Fin 16 :=
@@ -24,20 +25,7 @@ and a mode column; constraint `74 + 2 j + limb` sums, round by round, the terms 
 `Preparation.messageLimb` for message word `column r j`, over the committed products.
 `products_shape` and `message_shape` check the imported constraints against these
 templates, one closed fact per index; `products`, `round_terms` and `round_sum` evaluate the
-templates once. -/
-
-/-- The integer constant `c` as the importer writes it. -/
-abbrev constant {p : Nat} (c : Int) : Expression (ZMod p) := Expression.const (c : ZMod p)
-
-/-- `1 * a * b`. -/
-abbrev product {p : Nat} (a b : Expression (ZMod p)) : Expression (ZMod p) :=
-  ((constant (Int.ofNat 1)).mul a).mul b
-
-/-- `x - y` as `x + 1 * (-1) * y`. -/
-abbrev minus {p : Nat} (x y : Expression (ZMod p)) : Expression (ZMod p) :=
-  x.add (product (constant (Int.negSucc 0)) y)
-
-abbrev cell {p : Nat} (i : Nat) : Expression (ZMod p) := Expression.var ⟨i⟩
+templates once. The expression nodes (`constant`, `product`, `minus`, `cell`) are `Templates`'. -/
 
 /-- Constraint `bit * mode - out`. -/
 def productConstraint {p : Nat} (bit mode out : Nat) : Expression (ZMod p) :=
@@ -80,9 +68,6 @@ theorem message_shape {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6
         ⟨74 + 2 * j.val + limb.val, by rw [constraint_count]; omega⟩ =
       messageConstraint j limb.val := by
   fin_cases j <;> fin_cases limb <;> op_index <;> rfl
-
-theorem constant_eval {p : Nat} [Fact p.Prime] (c : Int) (env : Environment (ZMod p)) :
-    (constant c).eval env = (c : ZMod p) := rfl
 
 /-- The products of the round bits with the two mode columns. -/
 theorem products {p : Nat} [Fact p.Prime]
