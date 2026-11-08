@@ -1043,3 +1043,10 @@ worker execution remain separate; all ports, raw times and source boundaries sta
 and read-slot i before write-slot j>=i on the same complete source. All three
 reads precede the third write; same-row aliases and raw refresh times remain.
 Main candidate closure, initialized mixed word bounds and worker execution stay open.
+
+## Runtime queries outside CSR
+
+[Restricted query connection](Tables/RuntimeQueryTransportTheorems.lean) derives same-query fixed membership
+for actual runtime queries outside tag25. CSR1991 rejects unrestricted transfer.
+Public decoded-query coupling and complete main write preservation remain open;
+this is no table-equivalence premise or physical setup proof.

@@ -1,5 +1,42 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Restricted actual runtime query connection (8 November 2026)
+
+[The short query theorem](Airbender/Review/Circuits/ReducedMachine/Tables/RuntimeQueryTransportTheorems.lean)
+derives membership of the same query in the retained native fixed fixture from
+actual runtime-pool membership when its tag differs from CSR25. This is a proved
+stored-row consequence for that domain, not a table-equivalence premise or an
+arbitrary transfer of complete row acceptance. The historical119-equation artifact
+is not involved. Public-decoder coupling must still establish the query domain
+before any reuse for main write preservation.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeRuntimeQueryTransport.lean)
+uses the existing complete runtime region partition and actual fourth-column
+isolation. Thirteen stored regions are unchanged by construction. Independent
+interval proofs place every finite-index row of each fixed region at its actual
+full-pool offset. Closed length metadata and natural inequalities precede stored
+row getters; generic finite-index equality precedes native data. Explicit branch
+rewrites preserve stored contents without evaluating millions of rows. The runtime
+CSR branch is excluded by the tag guard, while any fixed-CSR helper refers only
+to its own retained fixture data. No physical setup or Rust/JSON refinement follows.
+
+[Four controls](Tests/NativeRuntimeQueryTransport.lean) reuse checked runtime CSR1991
+membership and its rejection by the retained fixed fixture. They prove unrestricted
+whole-table transfer false, show that CSR25 fails the guard, and check the thirteen
+retained tag IDs. This is an existing configuration difference, not a new native
+finding, full accepted worker/global witness or attack. Old table certificates are
+reused without heavy replay.
+
+Three modules add six roots/five exact parent references, preserving all6,317 prior
+ordered roots and exact audit bytes addition-only. Native107 pins, dependencies,
+v3 reference, original Sail, old proofs/acceptance/artifacts and FINDINGS remain
+unchanged. No native adoption, generation, issue assumption or production fix.
+The prior main dependencies and all43 worker write effects remain; main source/
+query coupling, initialized mixed word bounds, online replay, worker results,
+caller activity/converse accounting, physical cryptography, completeness and parity
+remain open. Original seven-profile Sail still excludes CSR/MOP.
+
+
 ## Actual main cross-read dependencies (8 November 2026)
 
 [MainDependencies](Airbender/Review/Circuits/ReducedMachine/MainDependencies.lean)

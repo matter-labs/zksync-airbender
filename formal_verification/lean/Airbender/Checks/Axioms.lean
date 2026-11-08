@@ -1,3 +1,7 @@
+import Airbender.Proofs.ReducedMachine.NativeRuntimeQueryTransport
+import Airbender.Review.Circuits.ReducedMachine.Tables.RuntimeQueryTransportTheorems
+import Tests.NativeRuntimeQueryTransport
+
 import Airbender.Review.Circuits.ReducedMachine.MainDependencies
 import Airbender.Proofs.ReducedMachine.NativeMainDependencies
 import Airbender.Review.Circuits.ReducedMachine.MainDependenciesTheorems
@@ -7309,3 +7313,10 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeMainDependencies.inactive_retention
 #print axioms Airbender.Tests.NativeMainDependencies.complete_conditional
 #print axioms Airbender.Tests.NativeMainDependencies.complete_conditional_counted
+
+#print axioms Airbender.NativeRuntimeQueryTransportProofs.outside_csr
+#print axioms Airbender.ReducedMachine.NativeRuntimePool.native_runtime_noncsr_query
+#print axioms Airbender.Tests.NativeRuntimeQueryTransport.csr_stays_distinct
+#print axioms Airbender.Tests.NativeRuntimeQueryTransport.no_unrestricted_transfer
+#print axioms Airbender.Tests.NativeRuntimeQueryTransport.csr_outside_domain
+#print axioms Airbender.Tests.NativeRuntimeQueryTransport.retained_tags
