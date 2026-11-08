@@ -1,0 +1,11 @@
+module
+public import Slop.OpIndex
+public import Human.Circuits.AddSub.Artifact
+
+@[expose] public section
+
+set_option maxRecDepth 100000 in
+derive_op_index Airbender.AddSub.importedConstraints
+
+set_option maxRecDepth 100000 in
+derive_op_index Airbender.AddSub.importedConstraintsTimestampLookups

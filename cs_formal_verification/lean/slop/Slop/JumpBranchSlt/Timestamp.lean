@@ -1,5 +1,7 @@
 module
 public import Human.Circuits.JumpBranchSlt.Artifact
+public import Slop.JumpBranchSlt.ArtifactChecks
+public import Slop.JumpBranchSlt.OpIndex
 public import Human.Helpers.Properties
 public import Slop.Constraints
 public import Slop.Trace.Timestamps
@@ -14,11 +16,11 @@ theorem timestamp_equations {p : Nat} [Fact p.Prime]
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
     ∃ carry : Nat, carry ≤ 1 ∧ w 2 + 4 = w 18 + 524288 * carry ∧ w 3 + carry = w 19 := by
   have carry := Verification.assertion_of_holds h
-    ⟨12, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨12, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h
-    ⟨13, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at carry high
+    ⟨13, by rw [constraint_count]; decide⟩
+  op_index at carry high
+  simp [Expression.eval, Verification.environment] at carry high
   have boolean : (-3840 * (w 2 + 4 - w 18)) *
       (-3840 * (w 2 + 4 - w 18) - 1) = 0 := by
     convert carry using 1
@@ -33,9 +35,9 @@ theorem final_clock_bound {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
   have timestamps := Verification.holds_of_sublist h
     (List.sublist_append_right importedConstraints importedConstraintsTimestampLookups)
   have low := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
-    ⟨0, by simp [importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+    ⟨0, by rw [timestamp_count]; decide⟩)
   have high := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
-    ⟨1, by simp [importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+    ⟨1, by rw [timestamp_count]; decide⟩)
   simp [Expression.eval, Verification.environment] at low high
   exact ⟨low, high⟩
 
@@ -61,43 +63,43 @@ theorem clocks {p : Nat} [Fact p.Prime]
     simp [importedConstraintsTraceColumns] at member
     rcases member with rfl | rfl | rfl
     · have bit := Verification.assertion_of_holds core
-        ⟨23, by simp [importedConstraints, FlatOperation.constraints]⟩
+        ⟨23, by rw [constraint_count]; decide⟩
       have lower := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
-        ⟨2, by simp [importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+        ⟨2, by rw [timestamp_count]; decide⟩)
       have upper := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
-        ⟨3, by simp [importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+        ⟨3, by rw [timestamp_count]; decide⟩)
       simp [Expression.eval, Verification.environment] at lower upper
       refine ⟨?_, ?_, ?_⟩
-      · simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-          Verification.environment, sub_eq_add_neg] using bit
+      · op_index at bit
+        simpa [Expression.eval, Verification.environment, sub_eq_add_neg] using bit
       · change ((w 20 - w 2 - (0 : Nat) + timestampBase * w 49) : ZMod p).val < timestampBase
         convert lower using 1; congr 1; ring
       · change ((w 21 + timestampBase - w 49 - w 3) : ZMod p).val < timestampBase
         convert upper using 1; congr 1; ring
     · have bit := Verification.assertion_of_holds core
-        ⟨24, by simp [importedConstraints, FlatOperation.constraints]⟩
+        ⟨24, by rw [constraint_count]; decide⟩
       have lower := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
-        ⟨4, by simp [importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+        ⟨4, by rw [timestamp_count]; decide⟩)
       have upper := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
-        ⟨5, by simp [importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+        ⟨5, by rw [timestamp_count]; decide⟩)
       simp [Expression.eval, Verification.environment] at lower upper
       refine ⟨?_, ?_, ?_⟩
-      · simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-          Verification.environment, sub_eq_add_neg] using bit
+      · op_index at bit
+        simpa [Expression.eval, Verification.environment, sub_eq_add_neg] using bit
       · change ((w 24 - w 2 - (1 : Nat) + timestampBase * w 50) : ZMod p).val < timestampBase
         convert lower using 1; congr 1; ring
       · change ((w 25 + timestampBase - w 50 - w 3) : ZMod p).val < timestampBase
         convert upper using 1; congr 1; ring
     · have bit := Verification.assertion_of_holds core
-        ⟨25, by simp [importedConstraints, FlatOperation.constraints]⟩
+        ⟨25, by rw [constraint_count]; decide⟩
       have lower := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
-        ⟨6, by simp [importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+        ⟨6, by rw [timestamp_count]; decide⟩)
       have upper := Trace.Proofs.range_bound (Verification.lookup_of_holds timestamps
-        ⟨7, by simp [importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+        ⟨7, by rw [timestamp_count]; decide⟩)
       simp [Expression.eval, Verification.environment] at lower upper
       refine ⟨?_, ?_, ?_⟩
-      · simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-          Verification.environment, sub_eq_add_neg] using bit
+      · op_index at bit
+        simpa [Expression.eval, Verification.environment, sub_eq_add_neg] using bit
       · change ((w 32 - w 2 - (2 : Nat) + timestampBase * w 51) : ZMod p).val < timestampBase
         convert lower using 1; congr 1; ring
       · change ((w 33 + timestampBase - w 51 - w 3) : ZMod p).val < timestampBase

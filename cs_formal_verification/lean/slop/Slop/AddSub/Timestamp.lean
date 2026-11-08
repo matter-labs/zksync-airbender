@@ -1,5 +1,6 @@
 module
 public import Slop.AddSub.ArtifactChecks
+public import Slop.AddSub.OpIndex
 public import Human.Helpers.Properties
 public import Slop.Arithmetic.Lemmas
 public import Slop.Constraints
@@ -16,11 +17,11 @@ theorem timestamp_equations {p : Nat} [Fact p.Prime]
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
     ∃ c : Nat, c ≤ 1 ∧ w 2 + 4 = w 21 + 524288 * c ∧ w 3 + c = w 22 := by
   have carry := Verification.assertion_of_holds h
-    ⟨14, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨14, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h
-    ⟨15, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at carry high
+    ⟨15, by rw [constraint_count]; decide⟩
+  op_index at carry high
+  simp [Expression.eval, Verification.environment] at carry high
   have boolean : (-3840 * (w 2 + 4 - w 21)) *
       (-3840 * (w 2 + 4 - w 21) - 1) = 0 := by
     convert carry using 1
