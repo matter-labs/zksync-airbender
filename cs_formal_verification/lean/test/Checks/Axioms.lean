@@ -43,7 +43,6 @@ import Tests.UnifiedXorRotate
 import Tests.DelegationOperationEffects
 import Tests.UnifiedTriAddNative
 import Tests.DelegationCaller
-import Tests.DelegationRequestTrace
 import Slop.Keccak.Claims
 import Tests.DelegationZeroInvocation
 import Slop.Blake2G.StateCells
@@ -108,7 +107,6 @@ import Tests.KeccakFixedTables
 import Tests.KeccakControlUpdate
 import Tests.UnifiedReduced
 import Tests.UnifiedMemory
-import Tests.UnifiedDecoder
 import Tests.DelegationTimestamps
 import Tests.DelegationMemory
 import Clean.Specs.Keccak256

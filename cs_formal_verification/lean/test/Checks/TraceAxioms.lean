@@ -1,6 +1,5 @@
 import Tests.PooledHistory
 import Tests.PooledROM
-import Tests.SubwordMemoryHistory
 
 import Tests.SubwordMemoryTimestamp
 import Tests.ShiftBinopTimestamp
@@ -9,7 +8,6 @@ import Tests.ShiftBinopPorts
 import Tests.ShiftBinopImmediate
 import Slop.Trace.BytePorts
 import Tests.MulDivTimestamp
-import Tests.MulDivTrace
 import Tests.BranchTrace
 import Tests.ComparisonTrace
 import Tests.JalrTrace
@@ -24,12 +22,10 @@ import Tests.NonDeterminismDecoder
 import Tests.OracleTrace
 import Tests.PooledOracle
 import Tests.JumpTimestamp
-import Tests.JumpDecoder
 import Tests.JumpPorts
 import Tests.JumpHistory
 import Tests.JumpSailHistory
 import Tests.DiscardedLoad
-import Tests.TraceProgram
 import Tests.TraceROM
 import Tests.TraceStore
 import Tests.SailHistory

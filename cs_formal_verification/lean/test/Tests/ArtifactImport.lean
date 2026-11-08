@@ -38,7 +38,6 @@ import Tests.SubwordMemory
 import Tests.UnifiedDelegation
 import Tests.DelegationROMBoundary
 import Tests.UnifiedReduced
-import Tests.UnifiedDecoder
 import Tests.DelegationTimestamps
 import Tests.DelegationMemory
 import Tests.WordMemory
