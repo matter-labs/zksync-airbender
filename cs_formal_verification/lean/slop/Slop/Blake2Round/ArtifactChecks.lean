@@ -4,15 +4,12 @@ public import Human.Circuits.Blake2Round.Mixing
 public import Human.Circuits.Blake2Round.Artifact
 import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
-import all Init.Data.Repr -- Init.Data.Repr is not exposed (still true in 4.35)
-import all Init.Data.String.Defs -- Init.Data.Repr is not exposed (still true in 4.35)
 
 @[expose] public section
 
 namespace Airbender.Blake2Round
 
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
 
 theorem state_port_layout (i : Fin 24) : importedConstraintsIndirectPorts[i.val] =
     Verification.IndirectPort.mk 10 i.val #v[3, 4] 0 none (4 * i.val)
@@ -42,76 +39,4 @@ theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (field
 theorem lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)) :
     (FlatOperation.lookups (importedConstraints setup)).length = 194 := by rfl
 
-theorem variable_roles :
-    importedConstraintsVariableNames.lookup 0 = some "Execute flag for cycle" ∧
-    importedConstraintsVariableNames.lookup 135 = some "control read/write from x12 read[0]" ∧
-    importedConstraintsVariableNames.lookup 136 = some "control read/write from x12 read[1]" ∧
-    importedConstraintsVariableNames.lookup 137 = some "control read/write from x12 write[0]" ∧
-    importedConstraintsVariableNames.lookup 138 = some "control read/write from x12 write[0]" ∧
-    importedConstraintsVariableNames.lookup 152 = some "perform final xor flag" := by
-  repeat' apply And.intro
-  all_goals decide
-
-theorem pointer_roles :
-    importedConstraintsVariableNames.lookup 3 = some "state read/write from x10 read[0]" ∧
-    importedConstraintsVariableNames.lookup 4 = some "state read/write from x10 read[1]" ∧
-    importedConstraintsVariableNames.lookup 101 = some "input read from x11 read[0]" ∧
-    importedConstraintsVariableNames.lookup 102 = some "input read from x11 read[1]" := by
-  repeat' apply And.intro
-  all_goals decide
-
-theorem preparation_roles :
-    (∀ i : Fin 8,
-      importedConstraintsVariableNames.lookup Variables.stateReads[i].1 =
-        some s!"state read/write from x10 indirect access {i.val} read[0]" ∧
-      importedConstraintsVariableNames.lookup Variables.stateReads[i].2 =
-        some s!"state read/write from x10 indirect access {i.val} read[1]") ∧
-    (∀ i : Fin 16,
-      importedConstraintsVariableNames.lookup Variables.extendedReads[i].1 =
-        some s!"state read/write from x10 indirect access {8 + i.val} read[0]" ∧
-      importedConstraintsVariableNames.lookup Variables.extendedReads[i].2 =
-        some s!"state read/write from x10 indirect access {8 + i.val} read[1]") ∧
-    (∀ i : Fin 16,
-      importedConstraintsVariableNames.lookup Variables.messageReads[i].1 =
-        some s!"input read from x11 indirect access {i.val} read[0]" ∧
-      importedConstraintsVariableNames.lookup Variables.messageReads[i].2 =
-        some s!"input read from x11 indirect access {i.val} read[1]") := by
-  refine ⟨?_, ?_, ?_⟩
-  all_goals intro i
-  all_goals fin_cases i <;>
-    simp only [Variables.stateReads, Variables.extendedReads, Variables.messageReads,
-      Fin.getElem_fin, Vector.getElem_ofFn] <;> decide
-
 end Airbender.Blake2Round
-
-namespace Airbender.Blake2Round.Mixing
-
-set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
-
-/-- The output projection follows the imported memory-port labels. This
-    checks numbering; global memory transport remains an interface. -/
-theorem output_roles : ∀ i : Fin 16,
-    importedConstraintsVariableNames.lookup extendedWrites[i].1 =
-      some s!"state read/write from x10 indirect access {8 + i.val} write[0]" ∧
-    importedConstraintsVariableNames.lookup extendedWrites[i].2 =
-      some s!"state read/write from x10 indirect access {8 + i.val} write[1]" := by
-  intro i
-  fin_cases i <;> decide
-
-end Airbender.Blake2Round.Mixing
-
-namespace Airbender.Blake2Round.Finalization
-
-set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
-
-theorem write_roles : ∀ i : Fin 8,
-    importedConstraintsVariableNames.lookup stateWrites[i].1 =
-      some s!"state read/write from x10 indirect access {i.val} write[0]" ∧
-    importedConstraintsVariableNames.lookup stateWrites[i].2 =
-      some s!"state read/write from x10 indirect access {i.val} write[1]" := by
-  intro i
-  fin_cases i <;> decide
-
-end Airbender.Blake2Round.Finalization

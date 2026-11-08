@@ -17,8 +17,6 @@ remainders `(sum - chunks) / 2^j` and the sums themselves.
 
 namespace Airbender.Blake2Round.Proofs
 
-set_option maxHeartbeats 4000000
-
 /-- First limb of the `d` word of column call `k` (prepared state lane `12 + k`). -/
 def columnDLane : Nat → Nat
   | 0 => 198
@@ -26,6 +24,7 @@ def columnDLane : Nat → Nat
   | 2 => 200
   | _ => 196
 
+@[simps -isSimp (attr := g_trace)]
 def columnTrace {p : Nat} (k : Nat) (w : Nat → ZMod p) : GTrace p :=
   let v : Nat → ZMod p := fun i => w (256 + 40 * k + i)
   let aLo := w (155 + 4 * k)
@@ -70,9 +69,9 @@ def columnTrace {p : Nat} (k : Nat) (w : Nat → ZMod p) : GTrace p :=
     a2Lo := a2Lo, a2Hi := a2Hi, b2Lo := v 36 + 512 * v 39, b2Hi := v 37 + 512 * v 38,
     c2Lo := c2Lo, c2Hi := c2Hi, d2Lo := v 28 + 256 * v 31, d2Hi := v 29 + 256 * v 30 }
 
-/-- An evaluated query column is the named field of a column trace. -/
+/-- An evaluated entry column is the named field of a column trace. -/
 macro "column_eq" : tactic => `(tactic| (
-  simp only [columnTrace, columnDLane, Nat.reduceMul, Nat.reduceAdd, Nat.reduceMod]
+  eval_entry [g_trace, columnDLane, Nat.reduceMul, Nat.reduceMod]
   try mod_ring))
 
 /-- The limb equations of a column call hold by construction, with BabyBear inverses. -/
@@ -81,6 +80,6 @@ theorem column_limbs {p : Nat} [Fact p.Prime] (compatible : 64 * (-31457280 : ZM
   have field := Blake2G.Proofs.serialized_field compatible
   subst field
   unfold babyBearModulus at *
-  constructor <;> simp only [columnTrace] <;> mod_ring
+  constructor <;> simp only [g_trace] <;> mod_ring
 
 end Airbender.Blake2Round.Proofs

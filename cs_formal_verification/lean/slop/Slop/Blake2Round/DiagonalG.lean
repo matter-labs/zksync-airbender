@@ -18,11 +18,10 @@ carry and the high chunk are the expressions `(sum - write) / 2^16` and
 
 namespace Airbender.Blake2Round.Proofs
 
-set_option maxHeartbeats 4000000
-
 /-- First limb of extended state word `i` as written back to memory. -/
 def writeLane (i : Nat) : Nat := 39 + 4 * i
 
+@[simps -isSimp (attr := g_trace)]
 def diagonalTrace {p : Nat} (k : Nat) (w : Nat → ZMod p) : GTrace p :=
   let ca := columnTrace k w
   let cb := columnTrace ((k + 1) % 4) w
@@ -78,10 +77,9 @@ def diagonalTrace {p : Nat} (k : Nat) (w : Nat → ZMod p) : GTrace p :=
     a2Lo := a2Lo, a2Hi := a2Hi, b2Lo := b2Lo, b2Hi := b2Hi,
     c2Lo := c2Lo, c2Hi := c2Hi, d2Lo := d2Lo, d2Hi := d2Hi }
 
-/-- An evaluated query column is the named field of a diagonal trace. -/
+/-- An evaluated entry column is the named field of a diagonal trace. -/
 macro "diagonal_eq" : tactic => `(tactic| (
-  simp only [diagonalTrace, columnTrace, columnDLane, writeLane, Nat.reduceMul, Nat.reduceAdd,
-    Nat.reduceMod]
+  eval_entry [g_trace, columnDLane, writeLane, Nat.reduceMul, Nat.reduceMod]
   try mod_ring))
 
 /-- The limb equations of a diagonal call hold by construction, with BabyBear inverses. -/
@@ -90,6 +88,6 @@ theorem diagonal_limbs {p : Nat} [Fact p.Prime] (compatible : 64 * (-31457280 : 
   have field := Blake2G.Proofs.serialized_field compatible
   subst field
   unfold babyBearModulus at *
-  constructor <;> simp only [diagonalTrace, columnTrace] <;> mod_ring
+  constructor <;> simp only [g_trace] <;> mod_ring
 
 end Airbender.Blake2Round.Proofs

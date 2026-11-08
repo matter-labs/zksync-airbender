@@ -10,9 +10,6 @@ set_option warningAsError true
 
 namespace Airbender.Blake2Round.Proofs
 
-set_option maxRecDepth 16384
-set_option maxHeartbeats 2000000
-
 /-- Each column call's sixteen table rows, four carry flags and limb equations. -/
 theorem column_facts {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1) (call : Fin 4) {w : Nat → ZMod p}

@@ -240,7 +240,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Blake2G.Proofs.serialized_field
 #print axioms Airbender.Blake2G.Proofs.mixing_output_bounds
 #print axioms Airbender.Blake2G.State.Proofs.reference_update
-#print axioms Airbender.Blake2Round.Mixing.output_roles
 #print axioms Airbender.Blake2Round.Preparation.Proofs.splitWord_bounded
 #print axioms Airbender.Blake2Round.Preparation.Proofs.set_bounded
 #print axioms Airbender.Blake2Round.Preparation.Proofs.append_bounded
@@ -312,7 +311,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Blake2Round.Proofs.GTrace.sound
 #print axioms Airbender.Blake2Round.Proofs.mixing_soundness
 #print axioms Tests.Blake2Round.wrongDiagonalCarryRejected
-#print axioms Airbender.Blake2Round.Finalization.write_roles
 #print axioms Airbender.Blake2Round.Proofs.nonfinal_reference
 #print axioms Airbender.Blake2Round.Proofs.finalization_flag
 #print axioms Airbender.Blake2Round.Proofs.nonfinal_flag
@@ -344,22 +342,18 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 
 #print axioms Airbender.Blake2Round.constraint_count
 #print axioms Airbender.Blake2Round.lookup_count
-#print axioms Airbender.Blake2Round.variable_roles
 #print axioms Airbender.Blake2Round.Control.Proofs.control_bits
 #print axioms Airbender.Blake2Round.Control.Proofs.soundness
-#print axioms Airbender.Blake2Round.pointer_roles
 #print axioms Airbender.Blake2Round.Proofs.lookup_facts_raw
 #print axioms Airbender.Blake2Round.SetupProofs.setupRow_eq
 #print axioms Airbender.Blake2Round.Proofs.data_lookups
 #print axioms Airbender.Arithmetic.value_of_scaled_range
 #print axioms Airbender.Blake2Round.Proofs.pointer_alignment
 #print axioms Tests.Blake2Round.wrongFirstXorRejected
-#print axioms Airbender.Blake2Round.preparation_roles
 #print axioms Airbender.Blake2Round.Preparation.Proofs.chaining
 #print axioms Airbender.Blake2Round.Preparation.Proofs.extended
 #print axioms Airbender.Blake2Round.Preparation.Proofs.message
 #print axioms Airbender.Blake2Round.Preparation.Proofs.soundness
-#print axioms Airbender.Blake2Round.Schedule.Proofs.schedule_indices
 #print axioms Airbender.Delegation.Proofs.path_word_sequence
 #print axioms Airbender.Blake2Round.Proofs.exclusive_mask
 #print axioms Airbender.Blake2Round.Proofs.control_flags

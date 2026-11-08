@@ -4,14 +4,9 @@ public import Slop.Blake2Round.DiagonalG
 @[expose] public section
 
 set_option warningAsError true
--- one call's goals may not use every lemma of the shared simp set
-set_option linter.unusedSimpArgs false
 
 namespace Airbender.Blake2Round.Proofs
 
-set_option maxRecDepth 16384
-
-set_option maxHeartbeats 16000000 in
 /-- The sixteen table rows and the carry flags of diagonal G call 3. -/
 theorem diagonal_rows_3 {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
     (compatible : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
@@ -22,94 +17,31 @@ theorem diagonal_rows_3 {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
   have field := Blake2G.Proofs.serialized_field compatible
   subst field
   unfold babyBearModulus at *
-  have r0 := Verification.lookup_of_holds h ⟨114, by rw [lookup_count]; omega⟩
-  op_index at r0
-  replace r0 := lookup_facts hp512 r0 (t := 55) (by simp [tags]) (by eval_entry)
-  eval_entry at r0
-  obtain ⟨q0, ka0⟩ := rows_of_55 r0 (a' := (diagonalTrace 3 w).d0) (b' := (diagonalTrace 3 w).a1b0) (c' := (diagonalTrace 3 w).ka0) (d' := (diagonalTrace 3 w).r0) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have r1 := Verification.lookup_of_holds h ⟨115, by rw [lookup_count]; omega⟩
-  op_index at r1
-  replace r1 := lookup_facts hp512 r1 (t := 4) (by simp [tags]) (by eval_entry)
-  eval_entry at r1
-  have q1 := rows_of_4 r1 (a' := (diagonalTrace 3 w).d1) (b' := (diagonalTrace 3 w).a1b1) (c' := (diagonalTrace 3 w).r1) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have r2 := Verification.lookup_of_holds h ⟨116, by rw [lookup_count]; omega⟩
-  op_index at r2
-  replace r2 := lookup_facts hp512 r2 (t := 55) (by simp [tags]) (by eval_entry)
-  eval_entry at r2
-  obtain ⟨q2, ka1⟩ := rows_of_55 r2 (a' := (diagonalTrace 3 w).d2) (b' := (diagonalTrace 3 w).a1b2) (c' := (diagonalTrace 3 w).ka1) (d' := (diagonalTrace 3 w).r2) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have r3 := Verification.lookup_of_holds h ⟨117, by rw [lookup_count]; omega⟩
-  op_index at r3
-  replace r3 := lookup_facts hp512 r3 (t := 4) (by simp [tags]) (by eval_entry)
-  eval_entry at r3
-  have q3 := rows_of_4 r3 (a' := (diagonalTrace 3 w).d3) (b' := (diagonalTrace 3 w).a1b3) (c' := (diagonalTrace 3 w).r3) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have r4 := Verification.lookup_of_holds h ⟨118, by rw [lookup_count]; omega⟩
-  op_index at r4
-  replace r4 := lookup_facts hp512 r4 (t := 20) (by simp [tags]) (by eval_entry)
-  eval_entry at r4
-  have q4 := rows_of_20 r4 (a' := (diagonalTrace 3 w).b9lo) (b' := (diagonalTrace 3 w).c9lo) (c' := (diagonalTrace 3 w).x9lo) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have r5 := Verification.lookup_of_holds h ⟨119, by rw [lookup_count]; omega⟩
-  op_index at r5
-  replace r5 := lookup_facts hp512 r5 (t := 20) (by simp [tags]) (by eval_entry)
-  eval_entry at r5
-  have q5 := rows_of_20 r5 (a' := (diagonalTrace 3 w).b9hi) (b' := (diagonalTrace 3 w).c9hi) (c' := (diagonalTrace 3 w).x9hi) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have r6 := Verification.lookup_of_holds h ⟨120, by rw [lookup_count]; omega⟩
-  op_index at r6
-  replace r6 := lookup_facts hp512 r6 (t := 57) (by simp [tags]) (by eval_entry)
-  eval_entry at r6
-  have q6 := rows_of_57 r6 (a' := (diagonalTrace 3 w).b4lo) (b' := (diagonalTrace 3 w).b3hi) (c' := (diagonalTrace 3 w).c4lo) (d' := (diagonalTrace 3 w).c3hi) (e' := (diagonalTrace 3 w).x7lo) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have r7 := Verification.lookup_of_holds h ⟨121, by rw [lookup_count]; omega⟩
-  op_index at r7
-  replace r7 := lookup_facts hp512 r7 (t := 57) (by simp [tags]) (by eval_entry)
-  eval_entry at r7
-  have q7 := rows_of_57 r7 (a' := (diagonalTrace 3 w).b4hi) (b' := (diagonalTrace 3 w).b3lo) (c' := (diagonalTrace 3 w).c4hi) (d' := (diagonalTrace 3 w).c3lo) (e' := (diagonalTrace 3 w).x7hi) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have r8 := Verification.lookup_of_holds h ⟨122, by rw [lookup_count]; omega⟩
-  op_index at r8
-  replace r8 := lookup_facts hp512 r8 (t := 4) (by simp [tags]) (by eval_entry)
-  eval_entry at r8
-  have q8 := rows_of_4 r8 (a' := (diagonalTrace 3 w).r3) (b' := (diagonalTrace 3 w).a2b1) (c' := (diagonalTrace 3 w).s0) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have r9 := Verification.lookup_of_holds h ⟨123, by rw [lookup_count]; omega⟩
-  op_index at r9
-  replace r9 := lookup_facts hp512 r9 (t := 4) (by simp [tags]) (by eval_entry)
-  eval_entry at r9
-  have q9 := rows_of_4 r9 (a' := (diagonalTrace 3 w).r1) (b' := (diagonalTrace 3 w).a2b3) (c' := (diagonalTrace 3 w).s1) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have r10 := Verification.lookup_of_holds h ⟨124, by rw [lookup_count]; omega⟩
-  op_index at r10
-  replace r10 := lookup_facts hp512 r10 (t := 55) (by simp [tags]) (by eval_entry)
-  eval_entry at r10
-  obtain ⟨q10, kb0⟩ := rows_of_55 r10 (a' := (diagonalTrace 3 w).r2) (b' := (diagonalTrace 3 w).a2b0) (c' := (diagonalTrace 3 w).kb0) (d' := (diagonalTrace 3 w).s2) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have r11 := Verification.lookup_of_holds h ⟨125, by rw [lookup_count]; omega⟩
-  op_index at r11
-  replace r11 := lookup_facts hp512 r11 (t := 55) (by simp [tags]) (by eval_entry)
-  eval_entry at r11
-  obtain ⟨q11, kb1⟩ := rows_of_55 r11 (a' := (diagonalTrace 3 w).r0) (b' := (diagonalTrace 3 w).a2b2) (c' := (diagonalTrace 3 w).kb1) (d' := (diagonalTrace 3 w).s3) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have r12 := Verification.lookup_of_holds h ⟨126, by rw [lookup_count]; omega⟩
-  op_index at r12
-  replace r12 := lookup_facts hp512 r12 (t := 20) (by simp [tags]) (by eval_entry)
-  eval_entry at r12
-  have q12 := rows_of_20 r12 (a' := (diagonalTrace 3 w).x9hi) (b' := (diagonalTrace 3 w).c2h0) (c' := (diagonalTrace 3 w).t0) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have r13 := Verification.lookup_of_holds h ⟨127, by rw [lookup_count]; omega⟩
-  op_index at r13
-  replace r13 := lookup_facts hp512 r13 (t := 20) (by simp [tags]) (by eval_entry)
-  eval_entry at r13
-  have q13 := rows_of_20 r13 (a' := (diagonalTrace 3 w).x9lo) (b' := (diagonalTrace 3 w).c2h1) (c' := (diagonalTrace 3 w).t1) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have r14 := Verification.lookup_of_holds h ⟨128, by rw [lookup_count]; omega⟩
-  op_index at r14
-  replace r14 := lookup_facts hp512 r14 (t := 56) (by simp [tags]) (by eval_entry)
-  eval_entry at r14
-  obtain ⟨q14, kd0⟩ := rows_of_56 r14 (a' := (diagonalTrace 3 w).x7lo) (b' := (diagonalTrace 3 w).c2l0) (c' := (diagonalTrace 3 w).kd0) (d' := (diagonalTrace 3 w).t2) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have r15 := Verification.lookup_of_holds h ⟨129, by rw [lookup_count]; omega⟩
-  op_index at r15
-  replace r15 := lookup_facts hp512 r15 (t := 56) (by simp [tags]) (by eval_entry)
-  eval_entry at r15
-  obtain ⟨q15, kd1⟩ := rows_of_56 r15 (a' := (diagonalTrace 3 w).x7hi) (b' := (diagonalTrace 3 w).c2l1) (c' := (diagonalTrace 3 w).kd1) (d' := (diagonalTrace 3 w).t3) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq) (by diagonal_eq)
-  have fkc0 := Verification.assertion_of_holds h ⟨159, by rw [constraint_count]; omega⟩
-  op_index at fkc0
-  eval_entry at fkc0
-  have kc0 := carry_of_flag fkc0 (x' := (diagonalTrace 3 w).kc0) (by diagonal_eq)
-  have fkc1 := Verification.assertion_of_holds h ⟨160, by rw [constraint_count]; omega⟩
-  op_index at fkc1
-  eval_entry at fkc1
-  have kc1 := carry_of_flag fkc1 (x' := (diagonalTrace 3 w).kc1) (by diagonal_eq)
-  exact { q0 := q0, q1 := q1, q2 := q2, q3 := q3, ka0 := ka0, ka1 := ka1, q4 := q4, q5 := q5, q6 := q6, q7 := q7, kc0 := kc0, kc1 := kc1, q8 := q8, q9 := q9, q10 := q10, q11 := q11, kb0 := kb0, kb1 := kb1, q12 := q12, q13 := q13, q14 := q14, q15 := q15, kd0 := kd0, kd1 := kd1 }
+  refine
+    { q0 := query_55 hp512 h (importedConstraints.lookup_114 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
+      ka0 := carry_55 hp512 h (importedConstraints.lookup_114 _ (query_lt (by decide))) ?_ ?_
+      q1 := query_4 hp512 h (importedConstraints.lookup_115 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
+      q2 := query_55 hp512 h (importedConstraints.lookup_116 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
+      ka1 := carry_55 hp512 h (importedConstraints.lookup_116 _ (query_lt (by decide))) ?_ ?_
+      q3 := query_4 hp512 h (importedConstraints.lookup_117 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
+      q4 := query_20 hp512 h (importedConstraints.lookup_118 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
+      q5 := query_20 hp512 h (importedConstraints.lookup_119 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
+      q6 := query_57 hp512 h (importedConstraints.lookup_120 _ (query_lt (by decide))) ?_ ?_ ?_ ?_ ?_ ?_
+      q7 := query_57 hp512 h (importedConstraints.lookup_121 _ (query_lt (by decide))) ?_ ?_ ?_ ?_ ?_ ?_
+      q8 := query_4 hp512 h (importedConstraints.lookup_122 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
+      q9 := query_4 hp512 h (importedConstraints.lookup_123 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
+      q10 := query_55 hp512 h (importedConstraints.lookup_124 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
+      kb0 := carry_55 hp512 h (importedConstraints.lookup_124 _ (query_lt (by decide))) ?_ ?_
+      q11 := query_55 hp512 h (importedConstraints.lookup_125 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
+      kb1 := carry_55 hp512 h (importedConstraints.lookup_125 _ (query_lt (by decide))) ?_ ?_
+      q12 := query_20 hp512 h (importedConstraints.lookup_126 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
+      q13 := query_20 hp512 h (importedConstraints.lookup_127 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
+      q14 := query_56 hp512 h (importedConstraints.lookup_128 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
+      kd0 := carry_56 hp512 h (importedConstraints.lookup_128 _ (query_lt (by decide))) ?_ ?_
+      q15 := query_56 hp512 h (importedConstraints.lookup_129 _ (query_lt (by decide))) ?_ ?_ ?_ ?_
+      kd1 := carry_56 hp512 h (importedConstraints.lookup_129 _ (query_lt (by decide))) ?_ ?_
+      kc0 := flag_carry h (importedConstraints.constraint_159 _ (constraint_lt (by decide))) ?_
+      kc1 := flag_carry h (importedConstraints.constraint_160 _ (constraint_lt (by decide))) ?_ }
+  all_goals diagonal_eq
 
 end Airbender.Blake2Round.Proofs
