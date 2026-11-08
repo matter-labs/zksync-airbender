@@ -389,3 +389,11 @@ memberships on every ordinary caller row, including inactive rows, without a
 valid-mask or activity premise. All sixteen query equations are kernel-bound
 before evaluation. Individual caller Booleanity/activity and per-call accounting
 remain open; prior aggregate accounting and joint execution are retained.
+
+## Individual caller validity
+
+[Caller validity](../../Trace/Families/ReducedMachine/CallerValidityTheorems.lean) derives Boolean weights and exact zero-or-one
+request shape on all ordinary rows, including inactive rows, with raw key1991
+and bounded ABI for nonzero requests. Full mixed queries and actual table outputs
+exclude the competing pattern. Activity and per-call accounting remain open;
+no full mask, activity, expected key/range or Boolean weight is supplied.

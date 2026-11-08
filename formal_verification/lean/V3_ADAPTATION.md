@@ -1,5 +1,58 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Individual native caller validity (9 November 2026)
+
+[Caller validity](Airbender/Review/Circuits/ReducedMachine/CallerValidity.lean) and
+[short roots](Airbender/Review/Trace/Families/ReducedMachine/CallerValidityTheorems.lean)
+derive INDIVIDUAL Boolean request weights on EVERY ordinary caller row, including
+execute0. Each complete request is either (0,0,some0,3) or
+(1,1991,some actual-read-high,3). In the nonzero case, raw CSR key1991, raw delegate1,
+ABI-high<65536 and all six competing lookup flags0 are conclusions. No valid full
+mask, activity, funct3 range, one-hot flags, expected key/query/ABI range or
+Boolean request weight is supplied.
+
+[Proof](Airbender/Proofs/ReducedMachine/NativeCallerValidity.lean) reuses all four
+checked mixed tuples and their actual memberships. Generic finite-tag arithmetic,
+Boolean flag bounds and canonical field no-wrap leave only two tag patterns when
+the CSR flag is1. The alternative sends the first tuple to truncation47 and the
+second to comparison22: truncation forces raw delegation=-1, while the linked
+comparison output is Boolean. Their actual stored outputs exclude this case.
+The remaining zero-tag second tuple forces binop*delegate=0. A nonzero request
+therefore excludes binop; the first tuple becomes the actual CSR query and exact
+runtime outputs force key1991/weight1. The original unconditional sign/high query
+derives the ABI bound. The zero-region literal column shapes are kernel-bound
+before their small row calculation. No full-mask129 or source-instruction claim
+is inferred from the competing lookup flags.
+
+The SAME old counted source/public image/log20/OLD LogicalLookups/OLD explicit
+SourceIdentity retain exact aggregate key accounting, active-worker clock/key
+uniqueness, joint initialized execution, all weighted worker outputs, word bounds,
+capacity and MAIN partial dependencies, plus all prior mixed-query memberships.
+No new acceptance or logical/cryptographic boundary is introduced. All inactive
+caller rows and requests, AUX/m0 poles,43worker ports, both raw times, aliases,
+OLDREADs, readonly refreshes, unmasked SW and public x0 timestamps remain.
+
+[18 controls](Tests/NativeCallerValidity.lean) reuse complete old LOCAL CSR BODY
+fixtures for both flags; retain the valid inactive request1; check exact request
+shape, raw key/delegate, ABI, competing flags, all comparison outputs/zero tuple,
+negative weight/wrong key/wide ABI exclusions, mixed memberships and full counted
+source. These are old LOCAL/conditional controls, not new nonempty native-global
+or physical accepted witnesses, attacks, defects or absent-enforcement evidence.
+
+INDIVIDUAL Booleanity and request-key/ABI validity are now closed under the full
+BODY. Physical activity and per-call issuance/fulfillment remain open; the old
+inactive LOCAL fixture still has request1. Aggregate0/1 plus individual Booleanity
+does not itself establish natural per-key counts/no-wrap or a per-call bijection.
+These must be derived from the actual source, without a desired count/activity
+premise. Original CSR/MOP/worker Sail, physical scheduling/standard hash, protocol
+spans/padding-terminal/init-teardown, cryptography, completeness and parity remain
+open. No new native source/pin, parser/importer/exporter, artifact/fixture,
+generation/heavy replay, dependency/v3 refresh, production/Sail/old acceptance or
+FINDINGS change. Existing native hashes/table/source bindings are reused; specific
+checks are not general Rust/compiler/JSON/physical refinement. Zero established
+native defects; no issue assumption/fix. Counts are audit counters, not parity.
+
+
 ## Complete native mixed caller queries (8 November 2026)
 
 [Mixed query model](Airbender/Review/Circuits/ReducedMachine/CallerMixedQueries.lean)

@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.CallerValidity
+import Airbender.Proofs.ReducedMachine.NativeCallerValidity
+import Airbender.Review.Trace.Families.ReducedMachine.CallerValidityTheorems
+import Tests.NativeCallerValidity
+
 import Airbender.Review.Circuits.ReducedMachine.CallerMixedQueries
 import Airbender.Proofs.ReducedMachine.NativeCallerMixedQueries
 import Airbender.Review.Trace.Families.ReducedMachine.CallerMixedQueriesTheorems
@@ -8071,3 +8076,33 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeCallerMixedQueries.last_selector_difference
 #print axioms Airbender.Tests.NativeCallerMixedQueries.inactive_requests_retained
 #print axioms Airbender.Tests.NativeCallerMixedQueries.full_counted_source
+
+#print axioms Airbender.NativeCallerValidityProofs.tag_patterns
+#print axioms Airbender.NativeCallerValidityProofs.selector_patterns
+#print axioms Airbender.NativeCallerValidityProofs.zero_tuple
+#print axioms Airbender.NativeCallerValidityProofs.comparison_boolean
+#print axioms Airbender.NativeCallerValidityProofs.selector_isolation
+#print axioms Airbender.NativeCallerValidityProofs.requested
+#print axioms Airbender.NativeCallerValidityProofs.body
+#print axioms Airbender.NativeCallerValidityProofs.all_rows
+#print axioms Airbender.NativeCallerValidityProofs.counted
+#print axioms Airbender.NativeCallerValidity.native_caller_validity
+#print axioms Airbender.NativeCallerValidity.native_counted_caller_validity
+#print axioms Airbender.Tests.NativeCallerValidity.complete_local_body
+#print axioms Airbender.Tests.NativeCallerValidity.local_request_one
+#print axioms Airbender.Tests.NativeCallerValidity.local_competitors_zero
+#print axioms Airbender.Tests.NativeCallerValidity.inactive_validity
+#print axioms Airbender.Tests.NativeCallerValidity.inactive_requests_retained
+#print axioms Airbender.Tests.NativeCallerValidity.actual_zero_tuple
+#print axioms Airbender.Tests.NativeCallerValidity.all_comparison_outputs_boolean
+#print axioms Airbender.Tests.NativeCallerValidity.individual_boolean
+#print axioms Airbender.Tests.NativeCallerValidity.complete_request_shape
+#print axioms Airbender.Tests.NativeCallerValidity.raw_key
+#print axioms Airbender.Tests.NativeCallerValidity.raw_delegate_one
+#print axioms Airbender.Tests.NativeCallerValidity.abi_high_bound
+#print axioms Airbender.Tests.NativeCallerValidity.all_competitors_zero
+#print axioms Airbender.Tests.NativeCallerValidity.negative_weight_rejected
+#print axioms Airbender.Tests.NativeCallerValidity.wrong_raw_key_rejected
+#print axioms Airbender.Tests.NativeCallerValidity.wide_abi_rejected
+#print axioms Airbender.Tests.NativeCallerValidity.full_mixed_memberships_retained
+#print axioms Airbender.Tests.NativeCallerValidity.full_counted_source
