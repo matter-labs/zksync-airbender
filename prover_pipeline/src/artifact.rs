@@ -3,6 +3,7 @@ use full_statement_verifier::program_proof::ProgramProof;
 use serde::{Deserialize, Serialize};
 use setups::Setups;
 
+/// The current proof artifact schema.
 pub const ARTIFACT_SCHEMA_VERSION: u32 = 5;
 
 /// JSON proof artifact, schema v5. `proof` + `setups` are enough to verify natively; `chain_end_params` is the ordered list of layer
@@ -64,7 +65,7 @@ fn deserialize_artifact_version<'de, D: serde::Deserializer<'de>>(
 fn validate_artifact_version(version: u32) -> Result<(), String> {
     if version != ARTIFACT_SCHEMA_VERSION {
         return Err(format!(
-            "artifact schema version {version} is not the supported {ARTIFACT_SCHEMA_VERSION}"
+            "artifact schema version {version} is not the supported {ARTIFACT_SCHEMA_VERSION}; regenerate"
         ));
     }
     Ok(())

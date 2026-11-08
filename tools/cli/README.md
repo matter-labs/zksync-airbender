@@ -168,25 +168,19 @@ cargo run --release -p cli -- verify \
 
 ## L1 Feeder Checkpoint
 
-`--target l1-feeder` continues a `recursion-unified` proof with a routed
-feeder chain. Each layer uses profile C (`2^22` trace, base LDE 16, cap 16)
-when the verifier program fits one instance; otherwise it uses profile A
-(`2^23` trace, base LDE 4, cap 4). Both use a merged memory and witness
-commitment. The first layer verifies the standard unified proof, and later
-layers verify profile-A proofs.
+`--target l1-feeder` continues a `recursion-unified` proof with a feeder chain.
+The pipeline selects the proving profile from the verifier execution. The first
+layer verifies the standard unified proof, and later layers verify profile-A proofs.
 
-The chain stops at one profile-C instance, whose verification must fit the
-L1 wrap. One profile-A instance continues through another layer. For the
-committed `basic_fibonacci` input, the chain is two A instances, one A
-instance, then one C instance. At most eight feeder layers are allowed.
+The chain must converge to a terminal profile-C proof whose verification fits the
+L1 wrap.
 
 Artifacts use schema 5. The optional `l1` bundle is serialized only when present;
 artifacts without it retain the existing schema-5 encoding. The `l1-feeder`
 artifact is the input of the L1 wrap.
 
-The committed reference can be regenerated in a fresh process with the ignored
-`l1_reference::generate_l1_reference_from_recursion_unified` test, which
-requires 136 GiB MemAvailable.
+For reference regeneration and its resource requirements, follow `REGENERATE` in
+`prover_pipeline/src/l1_reference.rs`.
 
 ```bash
 cargo run --release -p cli -- continue-proof \
