@@ -7,12 +7,6 @@ namespace Airbender.Keccak.Split.Call.Proofs
 open Specs.Keccak256
 set_option warningAsError true
 
-/-- Clean's column parity C[x] is the XOR of lanes 5x .. 5x + 4. -/
-theorem theta_c_entry (v : Vector Nat 25) (column : Nat) (small : column < 5) :
-    (thetaC v)[column] = v[5 * column]'(by omega) ^^^ v[5 * column + 1]'(by omega) ^^^
-      v[5 * column + 2]'(by omega) ^^^ v[5 * column + 3]'(by omega) ^^^ v[5 * column + 4]'(by omega) := by
-  interval_cases column <;> rfl
-
 /-- The slots one parity call reads: its column, C[column] and the unused slot. -/
 def parityReads (round column : Nat) (small : column < 5) (q : Fin 31) : Prop :=
   (∃ k, ∃ _ : k < 5, laneSlot round ⟨5 * column + k, by omega⟩ = q) ∨

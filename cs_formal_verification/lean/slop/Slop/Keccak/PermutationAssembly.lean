@@ -5,7 +5,6 @@ public import Slop.Keccak.Phases.Iota
 public import Slop.Keccak.Phases.Mix
 public import Slop.Keccak.Phases.Rho
 public import Slop.Keccak.Phases.Theta
-import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
 
@@ -13,9 +12,6 @@ namespace Airbender.Keccak.Proofs
 open Specs.Keccak256
 set_option warningAsError true
 set_option maxRecDepth 65536
-set_option maxHeartbeats 1600000
-set_option cbv.maxSteps 2000000
-attribute [local cbv_opaque] rotLeft64 not64 Nat.xor Nat.land roundConstants
 
 def assembledRound (round : Fin 24) (state : LaneState) : LaneState :=
   chiPhase round (rhoPhase round (thetaPhase round (mixPhase round (iotaPhase round state))))
@@ -48,14 +44,28 @@ theorem assembled_round_reference (round : Fin 24) (state : LaneState) :
   rw [assembledRound, chi_phase_lanes, rho_phase_lanes, theta_phase_lanes, unchanged, mixed]
   rfl
 
+/-- Call 648 applies the last original iota constant to the final lane layout. -/
 theorem final_iota_reference (state : LaneState) :
     logicalLanes 24 (microStep 648 state) = iota (logicalLanes 24 state) roundConstants[23] := by
   apply Vector.ext
-  intro i bound
-  simp only [logicalLanes, Vector.getElem_ofFn]
-  interval_cases i
-  all_goals simp only [physical_cached, micro_normalized]
-  all_goals cbv
+  intro lane bound
+  have shape : (648 : Fin 649).val = 27 * 24 + 0 := rfl
+  simp only [iota, Vector.getElem_set, logical_lanes_entry]
+  by_cases first : lane < 5
+  · rw [iota_step_lane shape (by decide) state first (by simp only; omega)]
+    by_cases zero : lane = 0
+    · subst zero
+      simp only [↓reduceIte]
+      rfl
+    · simp only [zero, false_and, ↓reduceIte, eq_comm (a := 0)]
+  · rw [iota_step_kept shape (by decide) state _
+      (fun j position same => by rw [physical_cell_eq_iff, Fin.mk.injEq] at same; omega)
+      (fun same => by
+        have := physical_cell_bound 24 ⟨lane, bound⟩
+        rw [← same] at this
+        simp only at this
+        omega)]
+    simp only [show ¬ (0 = lane) by omega, ↓reduceIte]
 
 theorem final_layout (state : LaneState) : logicalLanes 24 state = logicalLanes 0 state := by
   apply Vector.ext

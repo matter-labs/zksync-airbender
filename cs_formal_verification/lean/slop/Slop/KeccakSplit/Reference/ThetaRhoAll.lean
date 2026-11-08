@@ -15,10 +15,6 @@ theorem rho_pi_entry (v : Vector Nat 25) (lane : Fin 25) :
           omega)) := by
   fin_cases lane <;> rfl
 
-theorem theta_xor_entry (v : Vector Nat 25) (d : Vector Nat 5) (lane : Fin 25) :
-    (thetaXor v d)[lane.val] = v[lane.val] ^^^ d[lane.val / 5]'(by omega) := by
-  fin_cases lane <;> rfl
-
 theorem theta_d_entry (c : Vector Nat 5) (column : Nat) (small : column < 5) :
     (thetaD c)[column] =
       c[(column + 4) % 5]'(by omega) ^^^ rotLeft64 (c[(column + 1) % 5]'(by omega)) 1 := by

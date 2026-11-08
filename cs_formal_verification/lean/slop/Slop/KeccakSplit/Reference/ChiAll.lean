@@ -7,12 +7,6 @@ namespace Airbender.Keccak.Split.Call.Proofs
 open Specs.Keccak256
 set_option warningAsError true
 
-/-- Clean's `chi` on lane (x, y) reads lanes (x + 1, y) and (x + 2, y). -/
-theorem chi_entry (b : Vector Nat 25) (lane : Fin 25) :
-    (chi b)[lane.val] = b[lane.val] ^^^
-      (not64 (b[(lane.val + 5) % 25]'(by omega)) &&& b[(lane.val + 10) % 25]'(by omega)) := by
-  fin_cases lane <;> rfl
-
 /-- The chi calls of any round give each lane its chi value along its row. -/
 theorem chi_phase_slot (round : Fin 24) (state : LaneState) (lane : Fin 25) :
     chiPhase round state (laneSlot (round.val + 1) lane) =

@@ -1,5 +1,6 @@
 module
 public import Slop.KeccakSplit.Reference.PermutationDefinitions
+public import Slop.Keccak.ReferenceLemmas
 import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
@@ -82,34 +83,6 @@ theorem micro_step_congr (index : Fin 361) {one two : LaneState} (physical : Fin
   show (if active : _ < _ then (result index (callInput index one))[_]'_ else one physical) =
     (if active : _ < _ then (result index (callInput index two))[_]'_ else two physical)
   rw [inputs, here]
-
-/-- Five calls in which only `owner` writes `physical` and no other call writes what `owner`
-    reads: the phase gives `physical` the value `owner` computes on the initial state. -/
-theorem fold_owned (step : Fin 5 → LaneState → LaneState) (state : LaneState) (physical : Fin 31)
-    (owner : Fin 5) (reads : Fin 31 → Prop)
-    (kept : ∀ call, call ≠ owner → ∀ t, step call t physical = t physical)
-    (frame : ∀ call, call ≠ owner → ∀ t q, reads q → step call t q = t q)
-    (owned : ∀ t t', (∀ q, reads q → t q = t' q) → step owner t physical = step owner t' physical) :
-    Fin.foldl 5 (fun t call => step call t) state physical = step owner state physical := by
-  have five : Fin.foldl 5 (fun t call => step call t) state =
-      step 4 (step 3 (step 2 (step 1 (step 0 state)))) := by
-    simp only [Fin.foldl_succ_last, Fin.foldl_zero]
-    rfl
-  rw [five]
-  fin_cases owner
-  · rw [kept 4 (by decide), kept 3 (by decide), kept 2 (by decide), kept 1 (by decide)]
-    rfl
-  · rw [kept 4 (by decide), kept 3 (by decide), kept 2 (by decide)]
-    exact owned _ _ fun q read => frame 0 (by decide) _ q read
-  · rw [kept 4 (by decide), kept 3 (by decide)]
-    exact owned _ _ fun q read => by
-      rw [frame 1 (by decide) _ q read, frame 0 (by decide) _ q read]
-  · rw [kept 4 (by decide)]
-    exact owned _ _ fun q read => by
-      rw [frame 2 (by decide) _ q read, frame 1 (by decide) _ q read, frame 0 (by decide) _ q read]
-  · exact owned _ _ fun q read => by
-      rw [frame 3 (by decide) _ q read, frame 2 (by decide) _ q read, frame 1 (by decide) _ q read,
-        frame 0 (by decide) _ q read]
 
 /-! ### Closed slot data: one table per call kind, quantified over the round. -/
 

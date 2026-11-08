@@ -752,7 +752,6 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Blake2G.Proofs.native_addresses
 
 #print axioms Airbender.Keccak.Proofs.physical_cached
-#print axioms Airbender.Keccak.Proofs.micro_normalized
 #print axioms Airbender.Keccak.Proofs.iota_phase_lanes
 #print axioms Airbender.Keccak.Proofs.iota_phase_parities
 #print axioms Airbender.Keccak.Proofs.mix_phase_frame

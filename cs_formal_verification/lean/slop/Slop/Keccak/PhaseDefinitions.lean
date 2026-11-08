@@ -1,14 +1,11 @@
 module
 public import Slop.Keccak.PermutationSchedule
-public import Slop.Keccak.LayoutReduction
 
 @[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256
 set_option warningAsError true
-set_option maxRecDepth 65536
-set_option maxHeartbeats 64000000
 
 def iotaPhase (round : Fin 24) (state : LaneState) : LaneState :=
   Fin.foldl 5 (fun state i => microStep ⟨27 * round.val + i.val, by omega⟩ state) state

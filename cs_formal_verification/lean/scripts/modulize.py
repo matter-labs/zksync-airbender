@@ -84,11 +84,8 @@ IMPORT_ALL: dict[str, tuple[str, ...]] = {
     "Slop.Keccak.RVSpec": (_A,),
     "Slop.KeccakSplit.RVStep": (_A,),
     "Slop.UnifiedReduced.RV.ControlMembership": (_A,),
-    "Slop.Keccak.SlotReduction": (_D, _V),
     "Slop.KeccakSplit.Reference.CallSteps": (_A,),
-    "Slop.Keccak.Phases.Rho": (_A,),
-    "Slop.Keccak.Phases.Theta": (_A,),
-    "Slop.Keccak.PermutationAssembly": (_A,),
+    "Slop.Keccak.PhaseSteps": (_A,),
     "Slop.KeccakSplit.Chain.Calls": (_A,),
     "Tests.DelegationMemory": (_A,),
     "Tests.KeccakChi": (_A,),
@@ -100,10 +97,7 @@ IMPORT_ALL: dict[str, tuple[str, ...]] = {
     "Tests.UnifiedDelegation": (_D, _V),
 }
 # Generated proof families: every file under the prefix gets the same set.
-IMPORT_ALL_PREFIX: dict[str, tuple[str, ...]] = {
-    "Slop.Keccak.Phases.Chi.": (_A,),
-    "Slop.Keccak.Phases.Iota.": (_A,),
-}
+IMPORT_ALL_PREFIX: dict[str, tuple[str, ...]] = {}
 
 
 def import_all_for(module: str) -> tuple[str, ...]:
