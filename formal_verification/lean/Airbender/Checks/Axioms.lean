@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.CallerDecoder
+import Airbender.Proofs.ReducedMachine.NativeCallerDecoder
+import Airbender.Review.Circuits.ReducedMachine.CallerDecoderTheorems
+import Tests.NativeCallerDecoder
+
 import Airbender.Review.Circuits.ReducedMachine.MainDecoder
 import Airbender.Proofs.ReducedMachine.NativeMainDecoder
 import Airbender.Review.Circuits.ReducedMachine.MainDecoderTheorems
@@ -6864,3 +6869,35 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeMainDecoder.empty_counter_rejected
 #print axioms Airbender.Tests.NativeMainDecoder.complete_conditional_joint
 #print axioms Airbender.Tests.NativeMainDecoder.complete_conditional_csr_source
+
+#print axioms Airbender.NativeCallerDecoderProofs.shift_bit
+#print axioms Airbender.NativeCallerDecoderProofs.arithmetic_bit
+#print axioms Airbender.NativeCallerDecoderProofs.bitwise_bit
+#print axioms Airbender.NativeCallerDecoderProofs.comparison_bit
+#print axioms Airbender.NativeCallerDecoderProofs.branch_bit
+#print axioms Airbender.NativeCallerDecoderProofs.jump_bit
+#print axioms Airbender.NativeCallerDecoderProofs.memory_bit
+#print axioms Airbender.NativeCallerDecoderProofs.disabled
+#print axioms Airbender.NativeCallerDecoderProofs.supported_disabled
+#print axioms Airbender.NativeCallerDecoderProofs.unified_disabled
+#print axioms Airbender.NativeCallerDecoderProofs.entry_profile
+#print axioms Airbender.NativeCallerDecoderProofs.csr_shape
+#print axioms Airbender.NativeCallerDecoderProofs.row
+#print axioms Airbender.NativeCallerDecoderProofs.effects
+#print axioms Airbender.NativeCallerDecoderProofs.joint
+#print axioms Airbender.NativeCallerDecoder.native_decoded_caller_request
+#print axioms Airbender.NativeCallerDecoder.native_counted_caller_requests
+#print axioms Airbender.Tests.NativeCallerDecoder.shift_projected
+#print axioms Airbender.Tests.NativeCallerDecoder.arithmetic_projected
+#print axioms Airbender.Tests.NativeCallerDecoder.load_projected
+#print axioms Airbender.Tests.NativeCallerDecoder.store_projected
+#print axioms Airbender.Tests.NativeCallerDecoder.csr_projected
+#print axioms Airbender.Tests.NativeCallerDecoder.csr_query_preserved
+#print axioms Airbender.Tests.NativeCallerDecoder.csr_bit_present
+#print axioms Airbender.Tests.NativeCallerDecoder.shift_bit_absent
+#print axioms Airbender.Tests.NativeCallerDecoder.nonboolean_two_rejected
+#print axioms Airbender.Tests.NativeCallerDecoder.active_local_validity
+#print axioms Airbender.Tests.NativeCallerDecoder.inactive_local_validity
+#print axioms Airbender.Tests.NativeCallerDecoder.inactive_still_requests
+#print axioms Airbender.Tests.NativeCallerDecoder.full_local_negative_nonboolean
+#print axioms Airbender.Tests.NativeCallerDecoder.complete_conditional_joint

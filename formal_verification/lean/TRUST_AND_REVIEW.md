@@ -1,5 +1,61 @@
 # Trust and review boundaries
 
+## Active fetched caller request validity (8 November 2026)
+
+[The mixed public projection](Airbender/Review/Circuits/ReducedMachine/CallerDecoder.lean)
+combines the seven existing ordinary profiles with original CSRRW. Existing
+Unified/Supported/CSR projections and execution roots remain unchanged. Mapping
+adds only the sum tag and preserves every public field/query. This explicit scope
+excludes MOP and other unsupported operations; decoding is not CSR execution.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeCallerDecoder.lean) derives
+request shape from the original decoded instruction. Pure finite mask calculations
+precede witness/native table instantiation. The seven ordinary families have CSR
+bit7 zero; complete native BODY and packed Boolean bits therefore derive the FULL
+zero request tuple, including kind and ABI-high offset. For CSR, original fields
+and all ten query bindings derive the FULL mask129 before the unchanged actual
+runtime lookup theorem is applied. The selector w24 alone is never treated as that
+full mask or as an unmixed CSR query. Actual runtime membership allows1984/1991
+and derives the delegation flag; it gives Boolean request multiplicity and either
+the full zero tuple or exact(1,1991,somew36,3). A nonzero request also recovers the
+original CSRRW1991 constructor with raw rs1/rd, actual mask129/key1991, native
+oracle zero and the actual ABI-high w93 bound. Native oracle zero is not original
+Sail nondeterminism; w36 is not identified with an initialized source value here.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/CallerDecoderTheorems.lean)
+expose local valid-entry consequences and their lift to EVERY actual active
+ordinary physical row of the SAME counted complete MainDecoder source batch.
+The independent original stateful public image and named LogicalLookups remain
+explicit reference/crypto-extraction boundaries. Fetched public sources and all
+ten fields are derived; no expected row opcode/profile, desired clock/read/value/
+address/range/key/state/history/fulfilled ledger/result, fake Trace.Accepted,
+ClockInputs.previous, dedup, OOB proof object, huge evaluation or table equivalence
+is supplied. Joint effects retain main capacity, decoder arguments and actual
+worker progress on the SAME inputs. All inactive physical request/decoder
+equations, auxiliary poles, inactiveD, worker ports, readonly refreshes, OLDREAD,
+unmasked writes and public x0 timestamps remain. No request matching follows
+from fixed-challenge sums/capacity, and no Sail frame crosses delegated effects.
+
+[Fourteen controls](Tests/NativeCallerDecoder.lean) check mixed shift/arithmetic/
+LW/SW/CSR projections, query preservation, CSR/shift bits, a pure non-Boolean
+negative, both active and INACTIVE existing complete LOCAL CSR BODY rows, the
+retained inactive request, local multiplicity rejection and the full conditional
+joint root. They are not new accepted NONEMPTY counted source/global/whole-worker/
+physical witnesses, attacks, defects or absent-enforcement evidence. Valid CSR
+fields can constrain a local inactive request too; they are not established for
+ALL arbitrary inactive rows. This milestone does NOT prove all requests active,
+arbitrary inactive multiplicity Boolean/kind1991, worker anchoring/bounds/rooting,
+initialized OLDREAD values/addresses, STAGE2 keys or issuance/fulfillment/converse
+accounting. Original CSR/MOP/worker Sail execution/retirement, general public/
+physical refinement, cryptography, completeness and parity remain open.
+
+Four modules add31 roots/19 exact parent origins. All5,956 prior ordered roots and
+exact audit bytes remain addition-only. Native107 pins, dependencies, deliberate
+v3 reference and old source/acceptance remain exact. No new native adoption/pin,
+production/circuit/original Sail/importer/exporter/artifact/fixture change, native
+generation/heavy replay, finding, issue assumption, project axiom or fix.
+
+
 ## Counted main and public decoder connection (8 November 2026)
 
 [The counted decoder view](Airbender/Review/Circuits/ReducedMachine/MainDecoder.lean)

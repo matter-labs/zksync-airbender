@@ -345,3 +345,10 @@ physical capacity, not issued requests; caller matching and worker rooting remai
 initialization/caller/worker components and all ordinary decoder equations. Active
 public fetched sources follow under explicit logical lookup extraction; request
 activity, worker rooting and delegated execution remain open.
+
+## Active fetched caller validity
+
+[Mixed ordinary/CSR caller decoding](../../Circuits/ReducedMachine/CallerDecoderTheorems.lean) derives zero ordinary requests
+and exact kind1991 CSR requests on active fetched rows of the SAME counted source
+batch. Logical extraction stays explicit; arbitrary inactive request validity,
+worker anchoring/rooting and delegated Sail execution remain open.
