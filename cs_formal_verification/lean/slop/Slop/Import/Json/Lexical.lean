@@ -165,13 +165,6 @@ theorem skipWs_head : ∀ (l : List UInt8) (b : UInt8) (r : List UInt8), skipWs 
       obtain ⟨rfl, rfl⟩ := h
       simpa using hc
 
-theorem ws_nil : Ws [] := by simp [Ws]
-
-theorem ws_append {w w' : List UInt8} (h : Ws w) (h' : Ws w') : Ws (w ++ w') := by
-  intro b hb; simp only [List.mem_append] at hb; rcases hb with hb | hb
-  · exact h b hb
-  · exact h' b hb
-
 /-! ## Literals -/
 
 theorem dropPrefix_sound : ∀ {p l r : List UInt8}, dropPrefix? p l = some r → l = p ++ r
