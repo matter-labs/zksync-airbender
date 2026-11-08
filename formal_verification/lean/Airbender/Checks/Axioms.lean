@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.LatestReads
+import Airbender.Proofs.ReducedMachine.NativeLatestReads
+import Airbender.Review.Circuits.ReducedMachine.LatestReadsTheorems
+import Tests.NativeLatestReads
+
 import Airbender.Review.Circuits.ReducedMachine.MemoryWriteUniqueness
 import Airbender.Proofs.ReducedMachine.NativeMemoryWriteUniqueness
 import Airbender.Review.Circuits.ReducedMachine.MemoryWriteUniquenessTheorems
@@ -7190,3 +7195,26 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeMemoryWriteUniqueness.zero_factor_retained
 #print axioms Airbender.Tests.NativeMemoryWriteUniqueness.complete_conditional
 #print axioms Airbender.Tests.NativeMemoryWriteUniqueness.complete_conditional_counted
+
+#print axioms Airbender.NativeLatestReadsProofs.on_path
+#print axioms Airbender.NativeLatestReadsProofs.path_latest
+#print axioms Airbender.NativeLatestReadsProofs.effects
+#print axioms Airbender.NativeLatestReadsProofs.counted
+#print axioms Airbender.NativeLatestReads.native_latest_reads
+#print axioms Airbender.NativeLatestReads.native_counted_latest_reads
+#print axioms Airbender.Tests.NativeLatestReads.prior_candidate
+#print axioms Airbender.Tests.NativeLatestReads.exact_predecessor
+#print axioms Airbender.Tests.NativeLatestReads.terminal_not_before_write
+#print axioms Airbender.Tests.NativeLatestReads.gap_candidate_not_available
+#print axioms Airbender.Tests.NativeLatestReads.repeated_rank_not_ordered
+#print axioms Airbender.Tests.NativeLatestReads.changing_values
+#print axioms Airbender.Tests.NativeLatestReads.actual_initial_candidate
+#print axioms Airbender.Tests.NativeLatestReads.actual_write_candidate
+#print axioms Airbender.Tests.NativeLatestReads.oldread_source
+#print axioms Airbender.Tests.NativeLatestReads.exact_oldread_value
+#print axioms Airbender.Tests.NativeLatestReads.all43_worker_latest
+#print axioms Airbender.Tests.NativeLatestReads.inactive_read_retained
+#print axioms Airbender.Tests.NativeLatestReads.zero_factor_retained
+#print axioms Airbender.Tests.NativeLatestReads.all32_register_seeds
+#print axioms Airbender.Tests.NativeLatestReads.complete_conditional
+#print axioms Airbender.Tests.NativeLatestReads.complete_conditional_counted

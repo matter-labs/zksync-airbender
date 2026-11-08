@@ -1015,3 +1015,10 @@ values, Clean online history, worker execution and accounting remain open.
 (address, proof-rank) write occurrences and distinct addresses of all43 active
 worker ports from the same complete accepted flow. Raw fields, inactive ports
 and prior extraction remain. Word values, online history and execution stay open.
+
+## Conditional exact latest reads
+
+[Exact latest native reads](LatestReadsTheorems.lean) derives source membership, no intervening
+same-address write in proof rank, and full raw-token equality at the old-read
+rank. Prior boundaries and all ports remain. General word bounds, Clean online
+history, worker reference execution and accounting stay open.

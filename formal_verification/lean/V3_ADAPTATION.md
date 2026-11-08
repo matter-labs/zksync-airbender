@@ -1,5 +1,47 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Conditional exact latest reads in the derived order (8 November 2026)
+
+[LatestReads](Airbender/Review/Circuits/ReducedMachine/LatestReads.lean) records
+exact latest old-read tokens among actual initialized seeds and all active
+writes. Each active main/worker read is one of those actual tokens and precedes
+its port write in the derived proof order. Every same-address candidate before
+that write has rank at most the old-read rank. A candidate at the old-read rank
+is the identical full raw token, including value and both timestamp fields.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeLatestReads.lean) reuses
+the unchanged generic consecutive-path no-gap lemma before native row-domain
+instantiation. Unique seed addresses and complete counted paths place every
+candidate in the correct path; its rank Nodup derives exact token equality.
+Source membership follows from the same actual accepted permutation. These
+latest-read properties are conclusions, with no desired-read/value/range/key/
+clock/history/path/schedule/result premise or new Accepted relation.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/LatestReadsTheorems.lean)
+retain unchanged full acceptance and prior explicit SourceIdentity, all prior
+path/key/write-uniqueness results, positive main count and every prefix guard.
+The signed rank remains noninjective proof ordering only; raw clocks are never
+recoded or assumed canonical. Different addresses may share ranks. Inactive
+ports, AUX/m0 poles, inactiveD, caller/decoder equations, readonly refreshes,
+OLDREAD, unmasked writes and x0 times remain; caller requests are never filtered.
+
+[Sixteen controls](Tests/NativeLatestReads.lean) cover prior and exact predecessor
+candidates, unavailable gaps, repeated-rank rejection, changing nonzero values,
+seed/write candidate membership, actual read sources and exact values, all43
+worker ports, retained inactive reads and zero factors, all32 GPR seeds and full
+conditional roots. Pure/conditional controls are not new accepted native BODY/
+nonempty source/global/worker/physical witnesses, attacks or native defects.
+
+Four modules add22 roots/10 exact parent references, preserving all6,222 prior
+ordered roots and exact audit bytes addition-only. Native107 pins, dependencies,
+v3 reference, prior proofs/acceptance/artifacts and FINDINGS remain unchanged.
+No new native adoption/pin/intake, production/importer/exporter/fixture change,
+generation, heavy replay, issue assumption, fix or project axiom. Exact latest
+reads in this order do not yet establish general word-value bounds, a Clean
+online history, worker rounds/results, original CSR/MOP/worker Sail, caller
+activity/converse accounting, physical cryptography, completeness or parity.
+
+
 ## Conditional actual write and worker-port uniqueness (8 November 2026)
 
 [MemoryWriteUniqueness](Airbender/Review/Circuits/ReducedMachine/MemoryWriteUniqueness.lean)
