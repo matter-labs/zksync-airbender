@@ -79,7 +79,7 @@ theorem vmem_read1 (σ : SailState) (hs : Airbender.Configured σ) (r : BitVec 5
     (ha : (xget σ r + off).toNat % 1 = 0) (hr : (xget σ r + off).toNat + 1 ≤ Airbender.RAM_END) :
     runSail (vmem_read (.Regidx r) off 1 (.Load .Data) false false false) σ =
       .ok (.Ok (readBytes σ.mem (xget σ r + off).toNat 1)) σ := by
-  sail_run hs using mem_side with [vmem_read_addr1] stepwise
+  sail_run hs with [vmem_read_addr1] stepwise
   rfl
 
 /-- Any aligned readable address (ROM or RAM: an aligned access never straddles the two). -/
@@ -95,7 +95,7 @@ theorem vmem_read2 (σ : SailState) (hs : Airbender.Configured σ) (r : BitVec 5
     (ha : (xget σ r + off).toNat % 2 = 0) (hr : (xget σ r + off).toNat + 2 ≤ Airbender.RAM_END) :
     runSail (vmem_read (.Regidx r) off 2 (.Load .Data) false false false) σ =
       .ok (.Ok (readBytes σ.mem (xget σ r + off).toNat 2)) σ := by
-  sail_run hs using mem_side with [vmem_read_addr2] stepwise
+  sail_run hs with [vmem_read_addr2] stepwise
   rfl
 
 /-- Any aligned readable address (ROM or RAM: an aligned access never straddles the two). -/
@@ -111,7 +111,7 @@ theorem vmem_read4 (σ : SailState) (hs : Airbender.Configured σ) (r : BitVec 5
     (ha : (xget σ r + off).toNat % 4 = 0) (hr : (xget σ r + off).toNat + 4 ≤ Airbender.RAM_END) :
     runSail (vmem_read (.Regidx r) off 4 (.Load .Data) false false false) σ =
       .ok (.Ok (readBytes σ.mem (xget σ r + off).toNat 4)) σ := by
-  sail_run hs using mem_side with [vmem_read_addr4] stepwise
+  sail_run hs with [vmem_read_addr4] stepwise
   rfl
 
 end Slop.Equiv

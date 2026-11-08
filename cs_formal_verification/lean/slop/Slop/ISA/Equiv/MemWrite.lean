@@ -77,7 +77,7 @@ theorem vmem_write1 (σ : SailState) (hs : Airbender.Configured σ) (r : BitVec 
     (h2 : (xget σ r + off).toNat + 1 ≤ Airbender.RAM_END) :
     runSail (vmem_write (.Regidx r) off 1 v (.Store .Data) false false false) σ =
       .ok (.Ok true) { σ with mem := writeBytes σ.mem (xget σ r + off).toNat 1 v } := by
-  sail_run hs using mem_side with [vmem_write_addr_ram1] stepwise
+  sail_run hs with [vmem_write_addr_ram1] stepwise
   rfl
 
 theorem vmem_write_addr_ram2 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec 32) (v : BitVec 16)
@@ -94,7 +94,7 @@ theorem vmem_write2 (σ : SailState) (hs : Airbender.Configured σ) (r : BitVec 
     (h2 : (xget σ r + off).toNat + 2 ≤ Airbender.RAM_END) :
     runSail (vmem_write (.Regidx r) off 2 v (.Store .Data) false false false) σ =
       .ok (.Ok true) { σ with mem := writeBytes σ.mem (xget σ r + off).toNat 2 v } := by
-  sail_run hs using mem_side with [vmem_write_addr_ram2] stepwise
+  sail_run hs with [vmem_write_addr_ram2] stepwise
   rfl
 
 theorem vmem_write_addr_ram4 (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec 32) (v : BitVec 32)
@@ -111,7 +111,7 @@ theorem vmem_write4 (σ : SailState) (hs : Airbender.Configured σ) (r : BitVec 
     (h2 : (xget σ r + off).toNat + 4 ≤ Airbender.RAM_END) :
     runSail (vmem_write (.Regidx r) off 4 v (.Store .Data) false false false) σ =
       .ok (.Ok true) { σ with mem := writeBytes σ.mem (xget σ r + off).toNat 4 v } := by
-  sail_run hs using mem_side with [vmem_write_addr_ram4] stepwise
+  sail_run hs with [vmem_write_addr_ram4] stepwise
   rfl
 
 end Slop.Equiv

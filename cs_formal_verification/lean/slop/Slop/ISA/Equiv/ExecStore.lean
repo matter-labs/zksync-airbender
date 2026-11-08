@@ -19,11 +19,11 @@ theorem exec_store (σ : SailState) (hs : Airbender.Configured σ) (rs2 rs1 : Bi
         { σ with mem := writeBytes σ.mem (xget σ rs1 + x.signExtend 32).toNat n ((xget σ rs2).setWidth (8 * n)) } := by
   simp only [Airbender.toSail, Airbender.execute, execute, execute_STORE, sext12]
   rcases hn with rfl | rfl | rfl
-  · sail_run hs using mem_side with [vmem_write1] stepwise
+  · sail_run hs with [vmem_write1] stepwise
     simp only [setWidth_extract_low8]
-  · sail_run hs using mem_side with [vmem_write2] stepwise
+  · sail_run hs with [vmem_write2] stepwise
     simp only [setWidth_extract_low16]
-  · sail_run hs using mem_side with [vmem_write4] stepwise
+  · sail_run hs with [vmem_write4] stepwise
     rw [extract_full32, BitVec.setWidth_eq]
 
 end Slop.Equiv

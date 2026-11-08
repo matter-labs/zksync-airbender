@@ -25,8 +25,8 @@ theorem exec_load (σ : SailState) (hs : Airbender.Configured σ) (rd rs1 : BitV
   simp only [Airbender.toSail, Airbender.execute, regidx_beq_zreg rd hrd, Bool.false_eq_true, ite_false, execute,
     execute_LOAD, sext12]
   rcases hn with rfl | rfl | rfl
-  · sail_run hs using mem_side with [vmem_read1] stepwise; rfl
-  · sail_run hs using mem_side with [vmem_read2] stepwise; rfl
-  · sail_run hs using mem_side with [vmem_read4] stepwise; rfl
+  · sail_run hs with [vmem_read1] stepwise; rfl
+  · sail_run hs with [vmem_read2] stepwise; rfl
+  · sail_run hs with [vmem_read4] stepwise; rfl
 
 end Slop.Equiv

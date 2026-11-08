@@ -400,11 +400,11 @@ elab_rules : tactic
   | `(tactic| sail_run $hs using $tac) => sailRun hs (some tac)
 elab "sail_run " hs:term : tactic => sailRun hs none
 /-- Like `sail_run … with […]`, but never evaluates the whole rest in the kernel (only single closed actions). -/
-syntax (name := sailRunStepwise) "sail_run " term " using " tactic " with " "[" term,* "]" " stepwise" : tactic
+syntax (name := sailRunStepwise) "sail_run " term (" using " tactic)? " with " "[" term,* "]" " stepwise" : tactic
 elab_rules : tactic
-  | `(tactic| sail_run $hs using $tac with [$ls,*] stepwise) => sailRun hs (some tac) ls.getElems false
-syntax (name := sailRunWith) "sail_run " term " using " tactic " with " "[" term,* "]" : tactic
+  | `(tactic| sail_run $hs $[using $tac]? with [$ls,*] stepwise) => sailRun hs tac ls.getElems false
+syntax (name := sailRunWith) "sail_run " term (" using " tactic)? " with " "[" term,* "]" : tactic
 elab_rules : tactic
-  | `(tactic| sail_run $hs using $tac with [$ls,*]) => sailRun hs (some tac) ls.getElems
+  | `(tactic| sail_run $hs $[using $tac]? with [$ls,*]) => sailRun hs tac ls.getElems
 
 end Slop.Equiv
