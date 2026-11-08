@@ -830,3 +830,10 @@ strict progress, positive active clocks and exclusion of worker-only dependency
 cycles under full prior acceptance and the explicit formal extraction boundary.
 Canonical clock bounds, mixed cycles, seed reachability and initialized worker
 history remain open.
+
+## Conditional mixed memory order
+
+[Exact-token mixed active order](../../../Circuits/ReducedMachine/MixedMemoryOrderTheorems.lean) derives strict progress and excludes
+finite cycles across actual main and worker ports. It retains the prior explicit
+crypto boundaries and all inactive accesses in acceptance. Inactive worker loops,
+seed paths and initialized worker history remain separately scoped.

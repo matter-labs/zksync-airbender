@@ -1,5 +1,58 @@
 # Circuit formal verification plan
 
+## Conditional mixed main/worker memory order (8 November 2026)
+
+[MixedMemoryOrder](Airbender/Review/Circuits/ReducedMachine/MixedMemoryOrder.lean)
+uses exact raw memory tokens as graph vertices. An active edge is an actual port
+of an execute1 main row or an actual Fin43 port of a multiplicity1 worker row.
+Address, value and both timestamp fields stay unchanged. The signed clock measure
+is a noninjective proof ordering, never a replacement timestamp/key encoding.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeMixedMemoryOrder.lean)
+reuses the prior generic modular interval/difference lemmas unchanged. Original
+main BODY borrow/query extraction is separated from ClockInputs.previous: all
+three native borrows and six timestamp queries are derived from complete BODY on
+an abstract table before native runtime setup instantiation. No old-read bound
+is supplied. The same accepted PC-state history derives actual main write bounds;
+the unchanged explicit formal SourceIdentity boundary derives actual old-read
+domains. Explicit raw-coordinate bindings precede field algebra. Every actual
+main port now has strict signed read-before-write order. This covers memory
+observations regardless of instruction profile; it adds no CSR/MOP Sail effects.
+
+Combined with the already checked43-port worker progress, every active mixed
+edge strictly increases the ordering. All nonempty finite mixed active cycles
+are excluded. Every edge read is in the unchanged full native access ledger.
+Inactive worker ports remain in full acceptance and the read ledger, and may
+have zero-clock loops. This theorem makes no strict claim about those loops;
+exact inactive-worker read/write cancellation and seed paths remain open.
+Existing inactive main memory cancellation does not filter caller requests.
+
+[Two short roots](Airbender/Review/Circuits/ReducedMachine/MixedMemoryOrderTheorems.lean)
+retain positive main count, all capacity prefix guards and complete prior
+initialization/main/caller/worker/global components on the same observations.
+The existing formal extraction and tagged memory matching boundaries stay
+explicit. No new Accepted relation, clock/read/value/address/key/range/history/
+fulfilled-stream premise or fake Trace.Accepted is introduced. All inactiveD,
+m0 auxiliary poles, readonly refreshes, OLDREAD, unmasked writes and x0 times stay.
+
+[Sixteen controls](Tests/NativeMixedMemoryOrder.lean) cover main/worker edges,
+full read membership including inactive workers, the old complete LOCAL CSR BODY
+for both execute flags, all three local port orders, retained inactive request1,
+execute0 exclusion from the active main graph, self/two/three/arbitrary finite
+cycle rejection and complete conditional roots. These are structural, local or
+conditional controls, not new nonempty global/source/whole-worker/physical
+accepted witnesses, attacks, defects or absent-other-enforcement evidence.
+
+Four modules add24 roots/12 exact parent references; all6,067 prior ordered roots
+and audit bytes remain addition-only. Native107 source pins, dependencies, v3
+reference, prior proofs/acceptance/artifacts and FINDINGS remain unchanged. No new
+native adoption/pin/intake, production/importer/exporter/fixture change, generation,
+heavy replay, issue assumption, fix or project axiom. Seed reachability,
+initialized worker history/OLDREAD values-addresses, STAGE2 keys, request validity
+and activity, issuance/fulfillment/converse accounting, original CSR/MOP/worker
+Sail, physical cryptography, completeness and parity remain open.
+
+
 ## Conditional worker ordering across clock sentinels (8 November 2026)
 
 [WorkerSignedClocks](Airbender/Review/Circuits/ReducedMachine/WorkerSignedClocks.lean)

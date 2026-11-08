@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.MixedMemoryOrder
+import Airbender.Proofs.ReducedMachine.NativeMixedMemoryOrder
+import Airbender.Review.Circuits.ReducedMachine.MixedMemoryOrderTheorems
+import Tests.NativeMixedMemoryOrder
+
 import Airbender.Review.Circuits.ReducedMachine.WorkerSignedClocks
 import Airbender.Proofs.ReducedMachine.NativeWorkerSignedClocks
 import Airbender.Review.Circuits.ReducedMachine.WorkerSignedClocksTheorems
@@ -6999,3 +7004,28 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerSignedClocks.self_dependency_rejected
 #print axioms Airbender.Tests.NativeWorkerSignedClocks.two_cycle_rejected
 #print axioms Airbender.Tests.NativeWorkerSignedClocks.complete_conditional_counted
+
+#print axioms Airbender.NativeMixedMemoryOrderProofs.main_queries
+#print axioms Airbender.NativeMixedMemoryOrderProofs.main_port_progress
+#print axioms Airbender.NativeMixedMemoryOrderProofs.main_read_member
+#print axioms Airbender.NativeMixedMemoryOrderProofs.step_read_member
+#print axioms Airbender.NativeMixedMemoryOrderProofs.effects
+#print axioms Airbender.NativeMixedMemoryOrderProofs.counted
+#print axioms Airbender.NativeMixedMemoryOrder.native_mixed_memory_order
+#print axioms Airbender.NativeMixedMemoryOrder.native_counted_mixed_memory_order
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.main_edge
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.worker_edge
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.main_read_retained
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.worker_read_retained
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.inactive_worker_read_retained
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.edge_read_retained
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.local_body
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.inactive_local_still_requests
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.local_three_port_progress
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.inactive_local_not_selected
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.self_step_rejected
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.two_cycle_rejected
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.three_cycle_rejected
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.any_finite_cycle_rejected
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.complete_conditional
+#print axioms Airbender.Tests.NativeMixedMemoryOrder.complete_conditional_counted
