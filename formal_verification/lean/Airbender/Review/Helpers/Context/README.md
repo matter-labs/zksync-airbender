@@ -297,3 +297,11 @@ for every selected worker batch, and complete Clean main-memory history when the
 batch is explicitly constructed empty. The real accepted trace retains actual
 seeds/teardown and all main ports. Nonempty-worker chronology, active read bounds,
 keys/accounting and original CSR/MOP/worker Sail execution remain open.
+
+## Actual active-worker clock sources
+
+[The actual worker-clock source theorem](../../Circuits/ReducedMachine/ActiveWorkerClocksTheorems.lean) derives that any unbounded
+actual read clock has an exact multiplicity-one worker-write source on the same
+complete ledger. Accepted inactive workers have both raw clock limbs zero; all
+worker observations remain. Active clock progress/bounds, initialized worker
+reads, keys and request accounting remain open.

@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.ReducedMachine.ActiveWorkerClocks
+import Airbender.Proofs.ReducedMachine.NativeActiveWorkerClocks
+import Airbender.Review.Circuits.ReducedMachine.ActiveWorkerClocksTheorems
+import Tests.NativeActiveWorkerClocks
+
 import Airbender.Review.Circuits.ReducedMachine.NativeMemoryHistory
 import Airbender.Proofs.ReducedMachine.NativeMemoryHistory
 import Airbender.Review.Circuits.ReducedMachine.NativeMemoryHistoryTheorems
@@ -6656,3 +6661,28 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeMemoryHistory.wrong_empty_terminal_rejected
 #print axioms Airbender.Tests.NativeMemoryHistory.full_conditional_read_sources
 #print axioms Airbender.Tests.NativeMemoryHistory.full_conditional_main_history
+
+#print axioms Airbender.NativeActiveWorkerClockProofs.sampled_property
+#print axioms Airbender.NativeActiveWorkerClockProofs.worker_processing
+#print axioms Airbender.NativeActiveWorkerClockProofs.write_clock
+#print axioms Airbender.NativeActiveWorkerClockProofs.padding_clock
+#print axioms Airbender.NativeActiveWorkerClockProofs.bounded_or_active
+#print axioms Airbender.NativeActiveWorkerClockProofs.source_slot
+#print axioms Airbender.NativeActiveWorkerClockProofs.active_writer_member
+#print axioms Airbender.NativeActiveWorkerClockProofs.unbounded_source
+#print axioms Airbender.NativeActiveWorkerClockProofs.read_clocks
+#print axioms Airbender.NativeActiveWorkerClocks.native_active_worker_clock_sources
+#print axioms Airbender.Tests.NativeActiveWorkerClocks.zero_clock_data
+#print axioms Airbender.Tests.NativeActiveWorkerClocks.wide_clock_data
+#print axioms Airbender.Tests.NativeActiveWorkerClocks.wide_clock_not_bounded
+#print axioms Airbender.Tests.NativeActiveWorkerClocks.active_zero_clock_data
+#print axioms Airbender.Tests.NativeActiveWorkerClocks.all43_common_write_clock
+#print axioms Airbender.Tests.NativeActiveWorkerClocks.last_actual_write_clock
+#print axioms Airbender.Tests.NativeActiveWorkerClocks.arbitrary_raw_limbs_retained
+#print axioms Airbender.Tests.NativeActiveWorkerClocks.duplicate_sampling
+#print axioms Airbender.Tests.NativeActiveWorkerClocks.conditional_padding_clock
+#print axioms Airbender.Tests.NativeActiveWorkerClocks.conditional_local_activity
+#print axioms Airbender.Tests.NativeActiveWorkerClocks.exact_actual_source_member
+#print axioms Airbender.Tests.NativeActiveWorkerClocks.complete_empty_sources
+#print axioms Airbender.Tests.NativeActiveWorkerClocks.complete_conditional_sources
+#print axioms Airbender.Tests.NativeActiveWorkerClocks.exact_unbounded_raw_source

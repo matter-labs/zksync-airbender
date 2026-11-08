@@ -1,5 +1,51 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Active sources of actual worker clocks (8 November 2026)
+
+[The actual worker-clock observations](Airbender/Review/Circuits/ReducedMachine/ActiveWorkerClocks.lean)
+retain both raw processing-clock fields and all 43 actual quotient-write ports.
+On the SAME unchanged full InitializationBatch.Accepted, every actual read clock
+is bounded to 19 bits OR has an exact actual multiplicity-one worker-write source.
+If a read clock is unbounded, the source is an actual ordinary worker observation
+and Fin43 slot with the identical token, including address, value and both raw
+timestamp fields; that source worker's common raw clock is itself unbounded.
+
+[The proof assembly](Airbender/Proofs/ReducedMachine/NativeActiveWorkerClocks.lean)
+derives full LocalProcessingAccepted for every actual ordinary worker row from
+the configured source acceptance and SAME shared challenges. It reuses accepted
+processing Boolean multiplicity and zero masks: inactive rows have BOTH raw
+processing-clock limbs zero. Thus inactive workers cannot supply an unbounded
+read clock. Generic finite sampling precedes native domain instantiation, keeps
+positional duplicates and uses only bounded source membership. All inactive
+worker observations, readonly refreshes, OLDREAD, unmasked writes, inactiveD and
+m0 auxiliary poles remain. No caller request or worker row is filtered.
+
+[One short root](Airbender/Review/Circuits/ReducedMachine/ActiveWorkerClocksTheorems.lean)
+adds no acceptance relation or premise for raw clock bounds, progress, seed
+reachability, initialized reads/values/addresses/keys, issued or fulfilled streams,
+schedules or results. Full logical matching/lookups remain explicit extraction
+boundaries. The result isolates the remaining active-worker dependency; it does
+not establish its clock bounds, chronology, request anchoring or initialized
+memory history. The prior empty-batch main-history theorem retains its scope.
+
+[Fourteen controls](Tests/NativeActiveWorkerClocks.lean) cover both raw clock
+limbs, all 43 write slots, the last port, duplicate sampling, accepted padding,
+conditional activity and exact actual source membership, complete EMPTY source
+acceptance, and the full conditional source theorem. Wide-clock and activity-one
+zero-clock DATA projections are not accepted nonempty worker/source/global/
+physical witnesses, attacks, absence-of-enforcement evidence or native defects.
+Four modules add 24 roots with 12 exact parent origins; all 5,790 prior ordered
+roots and exact audit bytes remain. Native 103 pins, dependencies, old proofs/
+acceptance, production/Sail/artifacts/fixtures/importer/exporter and findings are
+unchanged. No native adoption/pin/generation/heavy replay or issue assumption.
+
+Next: derive actual active-worker clock progress, bounds and seed reachability
+on the same complete ledger, then initialized old-read value/address bounds and
+STAGE2 keys, request-versus-execute padding and actual caller-worker accounting.
+Multiplicity-one zero-clock exclusion and original CSR/MOP/worker Sail execution,
+general public/physical refinement, cryptography, completeness and parity remain open.
+
+
 ## Actual read sources and main-memory history (8 November 2026)
 
 [The native memory observations](Airbender/Review/Circuits/ReducedMachine/NativeMemoryHistory.lean)
