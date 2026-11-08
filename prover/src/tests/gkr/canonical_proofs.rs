@@ -308,7 +308,7 @@ fn prove(prepared: Prepared, challenges: &GKRExternalChallenges<BF, E4>, worker:
         &twiddles,
         &prepared.config,
         OperationMode::MultipleChunks,
-        WhirOracleStorage::fully_recompute(),
+        WhirOracleStorage::fully_in_memory_continuous(),
         prepared.top_bits,
         prepared.compiled.trace_len,
         &backend,
@@ -401,7 +401,7 @@ fn compression_pair(mode: SoundnessMode, worker: &Worker) -> (Proof, Proof) {
 
 #[test]
 fn regenerate_canonical_circuit_proofs() {
-    let worker = Worker::new_with_num_threads(8);
+    let worker = Worker::new();
     let mut written = BTreeSet::new();
     for &mode in SoundnessMode::ALL {
         for circuit in CANONICAL_CIRCUITS {
@@ -449,7 +449,7 @@ fn regenerate_canonical_circuit_proofs() {
 }
 
 fn pilot(circuit: CanonicalCircuit) {
-    let worker = Worker::new_with_num_threads(8);
+    let worker = Worker::new();
     let prepared = prepare(circuit, SoundnessMode::DEFAULT, &worker);
     let proof = prove(prepared, &circuit.fixed_external_challenges(), &worker);
     println!(

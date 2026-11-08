@@ -14,9 +14,9 @@ jobs:
   tests:
     name: tests
     runs-on: [matterlabs-ci-runner-high-performance]
-    # The full 28-proof canonical producer measured 36 minutes and 66.6 GB
-    # peak RSS on the CPU host. Keep the high-performance runner and allow
-    # time for compilation and the remaining checks as well.
+    # The full 28-proof canonical producer needs the high-performance
+    # runner's cores and memory; the timeout also covers compilation and the
+    # remaining checks.
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v3

@@ -16,8 +16,10 @@ RUST_MIN_STACK=16777216 cargo test -p prover --lib --features test --profile cli
 
 Use the default features, including `deterministic_pow`, and the regular
 generated layouts. The producer reads each circuit's generated Sec100 config
-for its mode, uses eight worker threads, and writes pretty JSON without a
-trailing newline. It regenerates all 28 files and rejects duplicate writes.
+for its mode, uses every available core with in-memory WHIR oracles, and
+writes pretty JSON without a trailing newline. Proof bytes depend on neither
+the thread count nor the oracle storage mode. It regenerates all 28 files and
+rejects duplicate writes.
 
 The shared recipe is implemented in
 [`canonical_fixtures.rs`](../src/tests/gkr/orchestration/canonical_fixtures.rs).
@@ -68,29 +70,8 @@ Native FSV tests assemble the canonical compression/unified pair with freshly
 replayed boundary metadata. Whole-program `*_cpu_gpu_proof_diff` diagnostics
 remain outside this canonical circuit set.
 
-Two full CPU passes measured 2,144.78 and 2,178.91 seconds, with peak RSS of
-66,624,667,648 and 66,554,937,344 bytes respectively. They used eight workers and
-the optimized CLI profile and produced identical bytes for every entry. The
-[CI job](../../.github/workflows/ci.yml) uses runner label
+The [CI job](../../.github/workflows/ci.yml) uses runner label
 `matterlabs-ci-runner-high-performance` and a 90-minute timeout for proving,
-compilation and the remaining checks.
-
-Existing [Rust CI run 42184209057](https://github.com/matter-labs/zksync-airbender/actions/runs/42184209057)
-provides supporting capacity evidence at `3af2e8def`:
-
-- [`cli_smoke_verify`](https://github.com/matter-labs/zksync-airbender/actions/runs/42184209057/job/127780580344)
-  passed on the same runner label in 38m53s. Its CPU command uses
-  `soundness_mode_smoke.sh ... cpu --cycles-bound 16777216 --worker-threads 8`.
-  The matching command measured **116,486,524 KiB** peak RSS (about 119.3 GB)
-  locally, with zero swaps. Completion in CI supports headroom above the
-  canonical producer's 66.6 GB peak. This inference assumes comparable effective
-  memory across same-label pods, comparable workload RSS and no swap in CI;
-  the CI memory limit and swap use were not measured.
-- The [`tests` job](https://github.com/matter-labs/zksync-airbender/actions/runs/42184209057/job/127780579911)
-  passed in 40m05s, including the old basic producer. Adding the entire measured
-  36-minute replacement pass, without credit for removing the old producer,
-  gives about 76 minutes within the 90-minute budget. This is an allowance
-  estimate; the new complete job has not been timed.
-
-The step logs `MemTotal` and `MemAvailable`; the workflow specifies a runner
-label rather than a guaranteed memory capacity.
+compilation and the remaining checks. The step logs `MemTotal` and
+`MemAvailable`; the workflow specifies a runner label rather than a guaranteed
+memory capacity.
