@@ -9,7 +9,7 @@ public import Slop.KeccakSplit.Field
 @[expose] public section
 
 namespace Airbender.Keccak.Split.Native
-open Proofs
+open _root_.Airbender.Keccak.Split.Native.Proofs
 
 /-- RV sibling of `operation_execution`. -/
 theorem rv_operation_execution [Fact p.Prime] (inverse : 256 * (-7864320 : ZMod p) = 1)

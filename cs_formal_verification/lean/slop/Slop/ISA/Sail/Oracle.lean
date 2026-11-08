@@ -116,7 +116,7 @@ theorem runF_choice_pos {α : Type} (k : FinChoice) (hk0 : @LT.lt Nat instLTNat 
     (cont : Fin k → FreeM ((Except (Sail.Error exception) InstructionEffect) ⊕ FinChoice) α) (s : SailState) :
     runSail (FreeM.impure (.inr k) cont) s = runSail (cont (⟨0, hk0⟩ : Fin k)) s := by
   rw [runF_def, runF_def]
-  exact liftM_impure_ok _ (Sum.inr k : (Except (Sail.Error exception) InstructionEffect) ⊕ FinChoice) cont s ⟨0, hk0⟩ (by simp [hk0] <;> rfl)
+  exact liftM_impure_ok _ (Sum.inr k : (Except (Sail.Error exception) InstructionEffect) ⊕ FinChoice) cont s ⟨0, hk0⟩ (by simp [hk0]; rfl)
 
 theorem oracleGo_sound {α : Type} (known : (r : Register) → Option (RegisterType r))
     (km : Nat → Option (BitVec 8)) (s : SailState)

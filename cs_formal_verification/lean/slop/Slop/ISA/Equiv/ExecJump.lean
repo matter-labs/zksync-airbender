@@ -18,10 +18,10 @@ theorem sext_n {n : Nat} (x : BitVec n) (hn : 0 < n) (h32 : n ≤ 32) :
 
 theorem blt_eq (a b : BitVec 32) : zopz0zI_s a b = a.slt b := by simp [zopz0zI_s, BitVec.slt]
 theorem bge_eq (a b : BitVec 32) : zopz0zKzJ_s a b = !a.slt b := by
-  by_cases h : a.toInt < b.toInt <;> simp [zopz0zKzJ_s, BitVec.slt, h] <;> omega
+  by_cases h : a.toInt < b.toInt <;> simp [zopz0zKzJ_s, BitVec.slt, h]; omega
 theorem bltu_eq (a b : BitVec 32) : zopz0zI_u a b = a.ult b := by simp [zopz0zI_u, BitVec.toNatInt, BitVec.ult]
 theorem bgeu_eq (a b : BitVec 32) : zopz0zKzJ_u a b = !a.ult b := by
-  by_cases h : a.toNat < b.toNat <;> simp [zopz0zKzJ_u, BitVec.toNatInt, BitVec.ult, h] <;> omega
+  by_cases h : a.toNat < b.toNat <;> simp [zopz0zKzJ_u, BitVec.toNatInt, BitVec.ult, h]; omega
 
 theorem exec_branch (σ : SailState) (hs : Airbender.Configured σ) (c : RV.Cond) (rs1 rs2 : BitVec 5) (x : BitVec 13)
     (hal : c.holds (xget σ rs1) (xget σ rs2) = true → (σ.regs .PC + x.signExtend 32).toNat % 4 = 0) :

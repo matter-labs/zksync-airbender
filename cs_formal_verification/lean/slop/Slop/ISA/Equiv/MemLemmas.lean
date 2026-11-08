@@ -22,13 +22,13 @@ theorem is_aligned_vaddr_iff (a : BitVec 32) (n : Nat) :
     is_aligned_vaddr (.Virtaddr a) n = decide (a.toNat % n = 0) := by
   simp only [is_aligned_vaddr, BitVec.toNatInt]
   rw [Int.ofNat_eq_natCast, Int.tmod_eq_emod_of_nonneg (Int.natCast_nonneg _)]
-  rw [← Int.natCast_mod]; by_cases h : a.toNat % n = 0 <;> simp [h] <;> exact_mod_cast h
+  rw [← Int.natCast_mod]; by_cases h : a.toNat % n = 0 <;> simp [h]; exact_mod_cast h
 
 theorem is_aligned_paddr_iff' (x : physaddrbits) (n : Nat) :
     is_aligned_paddr (.Physaddr x) n = decide (x.toNat % n = 0) := by
   simp only [is_aligned_paddr, BitVec.toNatInt]
   rw [Int.ofNat_eq_natCast, Int.tmod_eq_emod_of_nonneg (Int.natCast_nonneg _)]
-  rw [← Int.natCast_mod]; by_cases h : x.toNat % n = 0 <;> simp [h] <;> exact_mod_cast h
+  rw [← Int.natCast_mod]; by_cases h : x.toNat % n = 0 <;> simp [h]; exact_mod_cast h
 
 theorem zero_extend_toNat (a : BitVec 32) {m : Nat} (h : 32 ≤ m) : (zero_extend (m := m) a).toNat = a.toNat := by
   simp only [zero_extend, Sail.BitVec.zeroExtend, BitVec.toNat_setWidth]
@@ -47,9 +47,9 @@ theorem match_ram (a : BitVec 32) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (h1 : A
     range_subset, zopz0zIzJ_u, BitVec.toNatInt, zero_extend, Sail.BitVec.zeroExtend, bits_of_physaddr, to_bits,
     Airbender.RAM_START, Airbender.RAM_END, RV.ROM_END, RV.RAM_END, Airbender.Reference.RiscV.Sail.Configuration.ROM_END, Airbender.Reference.RiscV.Sail.Configuration.RAM_END]
   have hw' : (get_slice_int 64 (↑w) 0 : BitVec 64).toNat = w := by
-    simp [get_slice_int] <;> omega
+    simp [get_slice_int]; omega
   have ha32 := a.isLt
-  have e1 : (BitVec.zeroExtend 64 (BitVec.zeroExtend 34 a)).toNat = a.toNat := by simp <;> omega
+  have e1 : (BitVec.zeroExtend 64 (BitVec.zeroExtend 34 a)).toNat = a.toNat := by simp; omega
   simp [BitVec.toNat_sub, BitVec.toNat_add, hw']
   rw [ite_eq_right (by omega), ite_eq_left (by omega)]
 
@@ -61,9 +61,9 @@ theorem match_rom (a : BitVec 32) (w : Nat) (hw0 : 0 < w) (hw : w ≤ 8) (h2 : a
     range_subset, zopz0zIzJ_u, BitVec.toNatInt, zero_extend, Sail.BitVec.zeroExtend, bits_of_physaddr, to_bits,
     Airbender.RAM_START, RV.ROM_END, Airbender.Reference.RiscV.Sail.Configuration.ROM_END, Airbender.Reference.RiscV.Sail.Configuration.RAM_END]
   have hw' : (get_slice_int 64 (↑w) 0 : BitVec 64).toNat = w := by
-    simp [get_slice_int] <;> omega
+    simp [get_slice_int]; omega
   have ha32 := a.isLt
-  have e1 : (BitVec.zeroExtend 64 (BitVec.zeroExtend 34 a)).toNat = a.toNat := by simp <;> omega
+  have e1 : (BitVec.zeroExtend 64 (BitVec.zeroExtend 34 a)).toNat = a.toNat := by simp; omega
   simp [BitVec.toNat_sub, BitVec.toNat_add, hw']
   constructor <;> omega
 

@@ -15,7 +15,6 @@ theorem dec_csrrw00 (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured 
     runSail (ext_decode w) σ = .ok (Airbender.csrToSail c 0 0) σ := by
   walk_decoder hs
   rw [Slop.runF_pure]
-  subst_known
   bits_lsb
   simp only [Airbender.csrToSail, EStateM.Result.ok.injEq, instruction.CSRReg.injEq, Prod.mk.injEq, and_true]
   and_intros
@@ -26,7 +25,7 @@ theorem dec_csrrw00 (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured 
     simp only [Nat.add_sub_cancel_left] at this
     rw [show c[i] = c.toNat.testBit i from BitVec.getElem_eq_testBit_toNat c i hi, ← this]
     rw [← BitVec.getLsbD_eq_getElem, BitVec.getLsbD_extractLsb]; simp [Nat.add_comm]; omega
-  all_goals first | rfl | decide | (congr 1; close_field) | close_field
+  all_goals rfl
 /-- A delegation call of any kind the CSR table gives. -/
 theorem dec_delegate (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 115)
     (h1 : Bits w 12 3 1) (h2 : Bits w 15 5 0) (h3 : Bits w 7 5 0) {k : RV.DelegationKind}

@@ -14,7 +14,7 @@ theorem sail_int_getElem {α : Type} {n : Nat} (v : Vector α n) (i : Int) (h : 
 theorem bytes1 (x : BitVec 8) : bitvec_to_vecbytes (n := 1) x = #v[x.extractLsb' 0 8] := by
   ext i hi
   simp only [bitvec_to_vecbytes, Vector.getElem_ofFn, Sail.BitVec.slice]
-  interval_cases i <;> rfl
+  interval_cases i; rfl
 
 theorem roundtrip1 (x : BitVec 8) : from_bytes_le (bitvec_to_vecbytes (n := 1) x) = x := by
   rw [bytes1]

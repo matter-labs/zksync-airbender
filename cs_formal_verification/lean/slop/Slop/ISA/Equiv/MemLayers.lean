@@ -14,7 +14,7 @@ theorem pma_ram_load (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec
     (ha : a.toNat % w = 0) (h1 : Airbender.RAM_START ≤ a.toNat) (h2 : a.toNat + w ≤ Airbender.RAM_END) :
     runSail (pmaCheck (.Physaddr (zero_extend a)) w (.Load .Data) .PBMT_PMA false) σ =
       .ok (.Ok { splittable := .CannotSplit, granule_size_exp := 0 }) σ := by
-  sail_run hs using mem_side
+  sail_run hs
   rw [pma_regions_eq hs, match_ram a w (by omega) (by omega) h1 h2]
   sail_run hs using mem_side
   rfl
@@ -23,7 +23,7 @@ theorem pma_rom_load (σ : SailState) (hs : Airbender.Configured σ) (a : BitVec
     (ha : a.toNat % w = 0) (h2 : a.toNat + w ≤ Airbender.RAM_START) :
     runSail (pmaCheck (.Physaddr (zero_extend a)) w (.Load .Data) .PBMT_PMA false) σ =
       .ok (.Ok { splittable := .CannotSplit, granule_size_exp := 0 }) σ := by
-  sail_run hs using mem_side
+  sail_run hs
   rw [pma_regions_eq hs, match_rom a w (by omega) (by omega) h2]
   sail_run hs using mem_side
   rfl
@@ -32,7 +32,7 @@ theorem pma_ram_store (σ : SailState) (hs : Airbender.Configured σ) (a : BitVe
     (ha : a.toNat % w = 0) (h1 : Airbender.RAM_START ≤ a.toNat) (h2 : a.toNat + w ≤ Airbender.RAM_END) :
     runSail (pmaCheck (.Physaddr (zero_extend a)) w (.Store .Data) .PBMT_PMA false) σ =
       .ok (.Ok { splittable := .CannotSplit, granule_size_exp := 0 }) σ := by
-  sail_run hs using mem_side
+  sail_run hs
   rw [pma_regions_eq hs, match_ram a w (by omega) (by omega) h1 h2]
   sail_run hs using mem_side
   rfl
@@ -41,7 +41,7 @@ theorem pma_rom_fetch (σ : SailState) (hs : Airbender.Configured σ) (a : BitVe
     (ha : a.toNat % w = 0) (h2 : a.toNat + w ≤ Airbender.RAM_START) :
     runSail (pmaCheck (.Physaddr (zero_extend a)) w (.InstructionFetch ()) .PBMT_PMA false) σ =
       .ok (.Ok { splittable := .CannotSplit, granule_size_exp := 0 }) σ := by
-  sail_run hs using mem_side
+  sail_run hs
   rw [pma_regions_eq hs, match_rom a w (by omega) (by omega) h2]
   sail_run hs using mem_side
   rfl
