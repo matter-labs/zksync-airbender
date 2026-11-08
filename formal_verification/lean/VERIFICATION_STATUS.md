@@ -44,6 +44,62 @@ redundant branch-only repair is removed; see [FINDINGS.md](FINDINGS.md).
 
 ## Current checkpoint
 
+Full run [42422150221](https://github.com/matter-labs/zksync-airbender/actions/runs/42422150221)
+on signed head 593d068f1d3eede9de2e8717334984fff48cfa9f failed independent
+kernel replay at 13:44:55 UTC on 8 November. ThetaSourceControlSlots exceeded
+the unchanged 2,560 MiB charged-memory cap: exit 125 after 22.34 seconds,
+2,576.95 MiB charged and bounded resident, 2,048 MiB replay stack, no owned
+processes left. Total RSS is telemetry, and the log contains no kernel rejection.
+There are 7,454 successful guarded replays before this leaf in the 8,381-module
+compiled DAG. The preceding Chi controller repair passes actual project replay
+in 14.55 seconds at 1,114.63 MiB charged. Complete replay has not passed, and
+direct/transitive false-proof controls were skipped.
+
+The repair divides each private 121-row, nine-column Theta controller and slot
+calculation into nine closed column proofs and exhaustive column assembly.
+Both original whole-table statements, the complete preceding source and the
+complete downstream private/public proof tail are byte-identical. Review
+statements and premises, production behavior, replay/checker policy, resource
+limits and the retained axiom baseline remain unchanged. All 923 captured
+native fingerprint inputs are byte-identical.
+
+A bounded isolated CORE fixture uses the pinned Lean 4.31 toolchain and copies
+2,828 actual source data definitions. The scratch data is split into small
+modules, widening private data visibility only in that fixture; every copied
+data body is byte-identical. It retains the certified suffix indices and
+compares all 2,178 controller/slot values with the regions sliced from actual
+retained native JSON. Compilation passes in 57.93 seconds at 744.20 MiB charged,
+with only propext and Quot.sound reported. Recompiling the proof module with
+the exact committed recursion/heartbeat limits also passes in 11.60 seconds at
+733.34 MiB charged. The unchanged replay adapter checks the proof module's 72
+safe declarations using those compiled CORE data imports
+in 14.67 seconds at 1,192.60 MiB charged, with no skipped declarations or fixture
+axioms. Changing only the final native row's final slot column is rejected by
+the ninth slot-column proof (exit 1, 12.46 seconds, 758.96 MiB charged). These
+Darwin controls use 2,048/4,096 MiB memory limits, a 90-second deadline, the
+existing process-stack policy and a 2,048 MiB replay thread stack; no owned
+processes remain. Initial monolithic scratch-data compilation hit the smaller
+local memory guards before reaching either proof; splitting that fixture fixes
+its setup. A scratch visibility error was corrected before the successful run.
+Nineteen focused Python controls and 1,302 guide links/anchors pass. This is
+isolated evidence, not complete project validation or Linux replay under the
+2,048 MiB process stack.
+
+The failed run's exact diagnostic receipt is inspected: schema 1, commit
+593d068f1d3eede9de2e8717334984fff48cfa9f, run/attempt 42422150221/1, native
+fingerprint 93bf55f548def02ee3d55793f6c679d601a089d3028ffb82a90e19016d9ce519,
+all 12/16/33/11 checks. Both native stages actually ran. Complete source,
+importer runtime, Review, generated freshness, all 126 exact decoder comparisons
+across eleven inputs, and the retained-baseline environment audit passed. The
+audit retains 5,164 protected roots and covers 229,388 dependencies, with no
+missing roots, changed reports, forbidden axioms, unsafe dependencies or
+undispositioned changes. The failed run completed normally and saved its useful
+5,073,075,605-byte Lean snapshot before publication and retry. These are
+pre-repair results. A new exact-head full assurance run with baseline refresh
+disabled remains required; no final assurance is claimed.
+
+### Prior Chi controller repair
+
 Full run [42350890242](https://github.com/matter-labs/zksync-airbender/actions/runs/42350890242)
 on signed head 9bdfb988e0dd2ab83bf629d1e5c47f032f69030e failed independent
 kernel replay at 22:31:43 UTC on 7 November. The ChiSourceController module

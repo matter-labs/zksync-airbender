@@ -112,17 +112,217 @@ private theorem source_covered {artifact : Artifact} (parsed : parse SourceCaptu
     simp
   exact source_column_lengths SourceCaptureThetaProofs.parsed trace_len_decoded columns_decoded parsed _ member
 
+-- Keep each closed computation within one 121-row column during kernel replay.
+
+private def controllerValueCorrect (index : Fin 121) (column : Fin 9) : Prop :=
+    signedValue ((getFromBlocks (tailBlocks column)
+      (589824 + index.val - (4194304 - tailLength column))).getD 0) =
+      signedValue ((Airbender.Keccak.Split.Native.Fixed.thetaRhoControl.columns[column.val].get? index.val).getD 0)
+
+private theorem controllerValues0 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨0, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues1 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨1, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues2 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨2, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues3 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨3, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues4 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨4, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues5 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨5, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues6 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨6, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues7 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨7, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
+private theorem controllerValues8 : ∀ index : Fin 121,
+    controllerValueCorrect index ⟨8, by decide⟩ := by
+  unfold controllerValueCorrect
+  decide +kernel
+
 private theorem controller_values : ∀ index : Fin 121, ∀ column : Fin 9,
     signedValue ((getFromBlocks (tailBlocks column)
       (589824 + index.val - (4194304 - tailLength column))).getD 0) =
       signedValue ((Airbender.Keccak.Split.Native.Fixed.thetaRhoControl.columns[column.val].get? index.val).getD 0) := by
+  intro index column
+  change controllerValueCorrect index column
+
+  by_cases h0 : column.val = 0
+  · have same : column = ⟨0, by decide⟩ := Fin.ext h0
+    subst column
+    exact controllerValues0 index
+
+  by_cases h1 : column.val = 1
+  · have same : column = ⟨1, by decide⟩ := Fin.ext h1
+    subst column
+    exact controllerValues1 index
+
+  by_cases h2 : column.val = 2
+  · have same : column = ⟨2, by decide⟩ := Fin.ext h2
+    subst column
+    exact controllerValues2 index
+
+  by_cases h3 : column.val = 3
+  · have same : column = ⟨3, by decide⟩ := Fin.ext h3
+    subst column
+    exact controllerValues3 index
+
+  by_cases h4 : column.val = 4
+  · have same : column = ⟨4, by decide⟩ := Fin.ext h4
+    subst column
+    exact controllerValues4 index
+
+  by_cases h5 : column.val = 5
+  · have same : column = ⟨5, by decide⟩ := Fin.ext h5
+    subst column
+    exact controllerValues5 index
+
+  by_cases h6 : column.val = 6
+  · have same : column = ⟨6, by decide⟩ := Fin.ext h6
+    subst column
+    exact controllerValues6 index
+
+  by_cases h7 : column.val = 7
+  · have same : column = ⟨7, by decide⟩ := Fin.ext h7
+    subst column
+    exact controllerValues7 index
+
+  have same : column = ⟨8, by decide⟩ := by
+    apply Fin.ext
+    change column.val = 8
+    have bound := column.isLt
+    omega
+  subst column
+  exact controllerValues8 index
+
+private def slotValueCorrect (index : Fin 121) (column : Fin 9) : Prop :=
+    signedValue ((getFromBlocks (tailBlocks column)
+      (589945 + index.val - (4194304 - tailLength column))).getD 0) =
+      signedValue ((Airbender.Keccak.Split.Native.Fixed.thetaRhoSlots.columns[column.val].get? index.val).getD 0)
+
+private theorem slotValues0 : ∀ index : Fin 121,
+    slotValueCorrect index ⟨0, by decide⟩ := by
+  unfold slotValueCorrect
+  decide +kernel
+
+private theorem slotValues1 : ∀ index : Fin 121,
+    slotValueCorrect index ⟨1, by decide⟩ := by
+  unfold slotValueCorrect
+  decide +kernel
+
+private theorem slotValues2 : ∀ index : Fin 121,
+    slotValueCorrect index ⟨2, by decide⟩ := by
+  unfold slotValueCorrect
+  decide +kernel
+
+private theorem slotValues3 : ∀ index : Fin 121,
+    slotValueCorrect index ⟨3, by decide⟩ := by
+  unfold slotValueCorrect
+  decide +kernel
+
+private theorem slotValues4 : ∀ index : Fin 121,
+    slotValueCorrect index ⟨4, by decide⟩ := by
+  unfold slotValueCorrect
+  decide +kernel
+
+private theorem slotValues5 : ∀ index : Fin 121,
+    slotValueCorrect index ⟨5, by decide⟩ := by
+  unfold slotValueCorrect
+  decide +kernel
+
+private theorem slotValues6 : ∀ index : Fin 121,
+    slotValueCorrect index ⟨6, by decide⟩ := by
+  unfold slotValueCorrect
+  decide +kernel
+
+private theorem slotValues7 : ∀ index : Fin 121,
+    slotValueCorrect index ⟨7, by decide⟩ := by
+  unfold slotValueCorrect
+  decide +kernel
+
+private theorem slotValues8 : ∀ index : Fin 121,
+    slotValueCorrect index ⟨8, by decide⟩ := by
+  unfold slotValueCorrect
   decide +kernel
 
 private theorem slot_values : ∀ index : Fin 121, ∀ column : Fin 9,
     signedValue ((getFromBlocks (tailBlocks column)
       (589945 + index.val - (4194304 - tailLength column))).getD 0) =
       signedValue ((Airbender.Keccak.Split.Native.Fixed.thetaRhoSlots.columns[column.val].get? index.val).getD 0) := by
-  decide +kernel
+  intro index column
+  change slotValueCorrect index column
+
+  by_cases h0 : column.val = 0
+  · have same : column = ⟨0, by decide⟩ := Fin.ext h0
+    subst column
+    exact slotValues0 index
+
+  by_cases h1 : column.val = 1
+  · have same : column = ⟨1, by decide⟩ := Fin.ext h1
+    subst column
+    exact slotValues1 index
+
+  by_cases h2 : column.val = 2
+  · have same : column = ⟨2, by decide⟩ := Fin.ext h2
+    subst column
+    exact slotValues2 index
+
+  by_cases h3 : column.val = 3
+  · have same : column = ⟨3, by decide⟩ := Fin.ext h3
+    subst column
+    exact slotValues3 index
+
+  by_cases h4 : column.val = 4
+  · have same : column = ⟨4, by decide⟩ := Fin.ext h4
+    subst column
+    exact slotValues4 index
+
+  by_cases h5 : column.val = 5
+  · have same : column = ⟨5, by decide⟩ := Fin.ext h5
+    subst column
+    exact slotValues5 index
+
+  by_cases h6 : column.val = 6
+  · have same : column = ⟨6, by decide⟩ := Fin.ext h6
+    subst column
+    exact slotValues6 index
+
+  by_cases h7 : column.val = 7
+  · have same : column = ⟨7, by decide⟩ := Fin.ext h7
+    subst column
+    exact slotValues7 index
+
+  have same : column = ⟨8, by decide⟩ := by
+    apply Fin.ext
+    change column.val = 8
+    have bound := column.isLt
+    omega
+  subst column
+  exact slotValues8 index
 
 private theorem source_tail_get {artifact : Artifact}
     (parsed : parse SourceCaptureTheta.source = .ok artifact) (index : Fin 242) (column : Fin 9) :
