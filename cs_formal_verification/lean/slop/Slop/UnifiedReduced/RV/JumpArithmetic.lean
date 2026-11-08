@@ -8,15 +8,20 @@ namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1800000
 
 theorem control_intermediate_bounds [Fact p.Prime]
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     (Word.mk (w 74).val (w 75).val).Bounded ∧ (w 64).val < limbBase := by
-  have low := Verification.range16_bound (Verification.lookup_of_holds holds ⟨0, by rw [lookup_count]; decide⟩)
-  have high := Verification.range16_bound (Verification.lookup_of_holds holds ⟨1, by rw [lookup_count]; decide⟩)
-  have raw := Verification.range16_bound (Verification.lookup_of_holds holds ⟨5, by rw [lookup_count]; decide⟩)
+  have low := Verification.lookup_of_holds holds ⟨0, by rw [lookup_count]; decide⟩
+  op_index at low
+  replace low := Verification.range16_bound low
+  have high := Verification.lookup_of_holds holds ⟨1, by rw [lookup_count]; decide⟩
+  op_index at high
+  replace high := Verification.range16_bound high
+  have raw := Verification.lookup_of_holds holds ⟨5, by rw [lookup_count]; decide⟩
+  op_index at raw
+  replace raw := Verification.range16_bound raw
   simpa [Expression.eval, Verification.environment, Word.Bounded] using And.intro (And.intro low high) raw
 
 theorem jump_link [Fact p.Prime] (hp : 196608 < p)
@@ -28,7 +33,8 @@ theorem jump_link [Fact p.Prime] (hp : 196608 < p)
       (if w 25 = 1 then 0 else (Word.mk (w 0).val (w 1).val).toBitVec + 4) := by
   have low := Verification.assertion_of_holds holds ⟨12, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds holds ⟨13, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  op_index at low high
+  simp [Expression.eval, Verification.environment,
     other.1, other.2] at low high
   have lowEq : w 0 + 4 = w 74 + 65536 * w 52 := by
     linear_combination low - (w 0 + 4 - w 74 - 65536 * w 52) * selected
@@ -48,7 +54,8 @@ theorem jump_link [Fact p.Prime] (hp : 196608 < p)
   have writeHigh := Verification.assertion_of_holds holds ⟨20, by rw [constraint_count]; decide⟩
   have zeroLow := Verification.assertion_of_holds holds ⟨22, by rw [constraint_count]; decide⟩
   have zeroHigh := Verification.assertion_of_holds holds ⟨23, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  op_index at writeLow writeHigh zeroLow zeroHigh
+  simp [Expression.eval, Verification.environment,
     other.1, other.2] at writeLow writeHigh zeroLow zeroHigh
   rcases local_flags holds 15 with zero | one
   · change w 25 = 0 at zero
@@ -102,14 +109,15 @@ theorem jump_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     · simp [one])
   have branch := Verification.assertion_of_holds h
     ⟨15, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, other.2] at branch
+  op_index at branch
+  simp [Expression.eval, Verification.environment, other.2] at branch
   have low := Verification.assertion_of_holds h
     ⟨16, by rw [constraint_count]; decide⟩
+  op_index at low
   have high := Verification.assertion_of_holds h
     ⟨17, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, other.1, other.2, branch, hc, hb,
+  op_index at high
+  simp [Expression.eval, Verification.environment, other.1, other.2, branch, hc, hb,
     mapping.2.2.1, mapping.2.2.2.1] at low high
   have baseLo : w (if indirect then 36 else 0) = (base.lo : ZMod p) := by
     rw [mapping.1]; exact (ZMod.natCast_zmod_val _).symm
@@ -140,9 +148,9 @@ theorem jump_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   have bit1 : (w 64).val / 2 % 2 = 0 := by
     have checked := Verification.assertion_of_holds h
       ⟨18, by rw [constraint_count]; decide⟩
+    op_index at checked
     cases indirect <;>
-      simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, selected.1, selected.2, branch] at checked
+      simp [Expression.eval, Verification.environment, selected.1, selected.2, branch] at checked
     all_goals
       have eq : (((w 64).val / 2 % 2 : Nat) : ZMod p) = 0 := cleanup.1 ▸ checked
       have eqVal := congrArg ZMod.val eq

@@ -13,7 +13,6 @@ namespace Airbender.UnifiedReduced.Caller.Proofs
 open Trace Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2400000
 
 theorem caller_zeroes [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -25,8 +24,8 @@ theorem caller_zeroes [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : N
   have eq9 := Verification.assertion_of_holds h ⟨9, by rw [constraint_count]; decide⟩
   have eq10 := Verification.assertion_of_holds h ⟨10, by rw [constraint_count]; decide⟩
   have eq11 := Verification.assertion_of_holds h ⟨11, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, selected] at eq6 eq7 eq8 eq9 eq10 eq11
+  op_index at eq6 eq7 eq8 eq9 eq10 eq11
+  simp [Expression.eval, Verification.environment, selected] at eq6 eq7 eq8 eq9 eq10 eq11
   exact ⟨eq6, eq7, eq8, eq9, eq10, eq11⟩
 
 end Airbender.UnifiedReduced.Caller.Proofs

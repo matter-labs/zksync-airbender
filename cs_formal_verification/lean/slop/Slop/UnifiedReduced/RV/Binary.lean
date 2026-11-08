@@ -1,5 +1,6 @@
 module
 public import Slop.UnifiedReduced.ArtifactChecks
+public import Slop.UnifiedReduced.OpIndex
 public import Slop.UnifiedReduced.RV.BinaryLookups
 public import Slop.UnifiedReduced.RV.ShiftLookups
 public import Human.Circuits.UnifiedReduced.Artifact
@@ -12,7 +13,6 @@ namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic Verification
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1600000
 
 def leftByte {p : Nat} (w : Nat → ZMod p) (i : Fin 4) : ZMod p :=
   match i.val with
@@ -43,7 +43,9 @@ theorem binary_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : N
     have t := h 0; have a := h 1; have b := h 2
     have c := h 3; have d := h 4; have e := h 5; have f := h 6
     have g := h 7; have k := h 8
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+    simp only [Fin.coe_ofNat_eq_mod, Nat.reduceMod] at t a b c d e f g k
+    op_index at t a b c d e f g k
+    simp [Expression.eval, Verification.environment,
       selected.1, selected.2, other.1, other.2.1, other.2.2.1, other.2.2.2,
       leftByte, rightByte, immediateByte] at t a b c d e f g k ⊢
     refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩

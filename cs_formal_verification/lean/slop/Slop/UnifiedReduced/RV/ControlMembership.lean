@@ -2,6 +2,8 @@ module
 public import Slop.UnifiedReduced.ControlProjection
 public import Slop.UnifiedReduced.RV.ControlResolution
 public import Slop.JumpBranchSlt.ArtifactChecks
+public import Slop.JumpBranchSlt.OpIndex
+public import Mathlib.Tactic.IntervalCases
 import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
@@ -10,7 +12,6 @@ namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic Verification
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2400000
 
 theorem control_constraints [Fact p.Prime] (hp : 4194304 ≤ p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
@@ -26,8 +27,11 @@ theorem control_constraints [Fact p.Prime] (hp : 4194304 ≤ p)
   have values := control_lookup_values hp holds total binary rom
   have query (i : Fin 13) := Verification.lookup_of_holds holds
     ⟨i.val, by rw [lookup_count]; have := i.isLt; omega⟩
-  have a := range16_bound (query 0); have b := range16_bound (query 1)
-  have raw := range16_bound (query 5)
+  have q0 := query 0; have q1 := query 1; have q4 := query 4; have q5 := query 5
+  simp only [Fin.coe_ofNat_eq_mod, Nat.reduceMod] at q0 q1 q4 q5
+  op_index at q0 q1 q4 q5
+  have a := range16_bound q0; have b := range16_bound q1
+  have raw := range16_bound q5
   simp [Expression.eval, Verification.environment] at a b raw
   have zeroBound : (w 74 + w 75).val < 131072 := by
     rw [ZMod.val_add]
@@ -66,17 +70,26 @@ theorem control_constraints [Fact p.Prime] (hp : 4194304 ≤ p)
     obtain ⟨i, rfl⟩ := List.mem_iff_get.mp member
     exact control_assertions holds jumps selected discarded ⟨i.val, by simpa only [JumpBranchSlt.constraint_count] using i.isLt⟩
   · intro lookup member
-    obtain ⟨i, rfl⟩ := List.mem_iff_get.mp member
-    change Fin 8 at i
-    fin_cases i
-    all_goals first
-      | simpa [JumpBranchSlt.importedConstraints, importedConstraints, FlatOperation.lookups, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Lookup.Contains, Expression.eval, Verification.environment] using query 0
-      | simpa [JumpBranchSlt.importedConstraints, importedConstraints, FlatOperation.lookups, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Lookup.Contains, Expression.eval, Verification.environment] using query 1
-      | simpa [JumpBranchSlt.importedConstraints, importedConstraints, FlatOperation.lookups, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Lookup.Contains, Expression.eval, Verification.environment] using query 4
-      | simpa [JumpBranchSlt.importedConstraints, importedConstraints, FlatOperation.lookups, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Lookup.Contains, Expression.eval, Verification.environment] using query 5
-      | simpa [JumpBranchSlt.importedConstraints, importedConstraints, FlatOperation.lookups, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Lookup.Contains, Expression.eval, Verification.environment] using zero
-      | simpa [JumpBranchSlt.importedConstraints, importedConstraints, FlatOperation.lookups, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Lookup.Contains, Expression.eval, Verification.environment] using sign
-      | simpa [JumpBranchSlt.importedConstraints, importedConstraints, FlatOperation.lookups, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Lookup.Contains, Expression.eval, Verification.environment, add_assoc, add_comm, add_left_comm] using condition
-      | simpa [JumpBranchSlt.importedConstraints, importedConstraints, FlatOperation.lookups, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Lookup.Contains, Expression.eval, Verification.environment] using cleanup
+    obtain ⟨⟨k, hk⟩, rfl⟩ := List.mem_iff_get.mp member
+    have bound : k < 8 := by simpa only [JumpBranchSlt.lookup_count] using hk
+    interval_cases k
+    all_goals op_index
+    -- The imported lookups in order: four ranges, zero test, sign, conditional and cleanup.
+    · simpa [Lookup.Contains, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Expression.eval,
+        Verification.environment] using q0
+    · simpa [Lookup.Contains, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Expression.eval,
+        Verification.environment] using q1
+    · simpa [Lookup.Contains, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Expression.eval,
+        Verification.environment] using q4
+    · simpa [Lookup.Contains, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Expression.eval,
+        Verification.environment] using q5
+    · simpa [Lookup.Contains, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Expression.eval,
+        Verification.environment] using zero
+    · simpa [Lookup.Contains, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Expression.eval,
+        Verification.environment] using sign
+    · simpa [Lookup.Contains, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Expression.eval,
+        Verification.environment, add_assoc, add_comm, add_left_comm] using condition
+    · simpa [Lookup.Contains, controlAssignment, range16, pairLookup, jumpCleanup, Vector.map, Expression.eval,
+        Verification.environment] using cleanup
 
 end Airbender.UnifiedReduced.Proofs.RV

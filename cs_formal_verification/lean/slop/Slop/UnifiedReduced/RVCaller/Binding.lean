@@ -65,7 +65,8 @@ theorem rv_caller_binding [Fact p.Prime] (hp : 524288 < p)
   have s28 : w 28 = 0 := selectors 17
   have s29 : w 29 = 0 := selectors 18
   have disabled := Verification.assertion_of_holds h ⟨88, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+  op_index at disabled
+  simp [Expression.eval,
     Verification.environment, s11, s12, s13, s14, s15, s16, s17, s18, s19, s20, s21, s22, s23, s24, s25, s26, s27, s28, s29] at disabled
   have active : w 4 = 1 := by linear_combination -disabled
   have csr := congrArg (fun fields : Vector (ZMod p) 9 => fields[3]) query
@@ -83,8 +84,8 @@ theorem rv_caller_binding [Fact p.Prime] (hp : 524288 < p)
   have a30 := Verification.assertion_of_holds h ⟨27, by rw [constraint_count]; decide⟩
   have a31 := Verification.assertion_of_holds h ⟨28, by rw [constraint_count]; decide⟩
   have a32 := Verification.assertion_of_holds h ⟨29, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, s28, s29, rd] at a29 a30 a31 a32
+  op_index at a29 a30 a31 a32
+  simp [Expression.eval, Verification.environment, s28, s29, rd] at a29 a30 a31 a32
   have memread : w 38 = w 6 := by linear_combination a29
   have memreadHi : w 39 = 0 := a30
   have memwrite : w 44 = 0 := a31

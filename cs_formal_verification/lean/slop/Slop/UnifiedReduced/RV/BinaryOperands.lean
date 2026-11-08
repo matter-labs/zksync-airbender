@@ -10,7 +10,6 @@ namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1600000
 
 theorem binary_sign_byte [Fact p.Prime] (hp : 256 < p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
@@ -19,11 +18,13 @@ theorem binary_sign_byte [Fact p.Prime] (hp : 256 < p)
     (load : w 28 = 0) :
     (w 9).val < 256 ∧ (w 57).val = if (w 9).val < 128 then 0 else 255 := by
   have gate := Verification.assertion_of_holds holds ⟨39, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, load] at gate
+  op_index at gate
+  simp [Expression.eval, Verification.environment, load] at gate
   have t := Verification.assertion_of_holds holds ⟨45, by rw [constraint_count]; decide⟩
   have a := Verification.assertion_of_holds holds ⟨46, by rw [constraint_count]; decide⟩
   have b := Verification.assertion_of_holds holds ⟨47, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  op_index at t a b
+  simp [Expression.eval, Verification.environment,
     selected.1, selected.2, other.1, other.2.1, other.2.2.1, other.2.2.2, gate] at t a b
   have tag : w 82 = 3 := by linear_combination t
   have key : w 83 = w 9 := by linear_combination a

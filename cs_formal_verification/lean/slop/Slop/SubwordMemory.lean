@@ -2,6 +2,7 @@ module
 public import Slop.SubwordMemory.Lookups
 public import Human.Circuits.SubwordMemory.Artifact
 public import Slop.SubwordMemory.ArtifactChecks
+public import Slop.SubwordMemory.OpIndex
 public import Human.Helpers.Properties
 public import Slop.Arithmetic.Word
 public import Slop.Constraints
@@ -21,8 +22,12 @@ theorem local_flags {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 9)}
   intro i
   have flag := Verification.assertion_of_holds h
     ⟨(#v[0, 34, 35, 36, 37, 38, 4, 6, 39, 40, 41, 42][i]), by rw [constraint_count]; fin_cases i <;> decide⟩
-  fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero, or_comm] at flag ⊢
+  fin_cases i
+  all_goals simp only [Fin.getElem_fin, Vector.getElem_mk, List.getElem_toArray,
+    List.getElem_cons_succ, List.getElem_cons_zero] at flag ⊢
+  all_goals op_index at flag
+  all_goals simp [Expression.eval, Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero,
+    or_comm] at flag ⊢
   all_goals first | exact flag | exact flag.imp id Eq.symm
 
 /-- All five imported ranges: aligned low address, word-cell index, ROM residue and PC. -/
@@ -31,11 +36,21 @@ theorem local_ranges {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 9)
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     (w 39).val < limbBase ∧ (w 40).val < limbBase ∧ (w 42).val < limbBase ∧
       (w 13).val < limbBase ∧ (w 14).val < limbBase := by
-  have a := Verification.range16_bound (Verification.lookup_of_holds h ⟨0, by rw [lookup_count]; decide⟩)
-  have b := Verification.range16_bound (Verification.lookup_of_holds h ⟨1, by rw [lookup_count]; decide⟩)
-  have c := Verification.range16_bound (Verification.lookup_of_holds h ⟨2, by rw [lookup_count]; decide⟩)
-  have d := Verification.range16_bound (Verification.lookup_of_holds h ⟨3, by rw [lookup_count]; decide⟩)
-  have e := Verification.range16_bound (Verification.lookup_of_holds h ⟨4, by rw [lookup_count]; decide⟩)
+  have a := Verification.lookup_of_holds h ⟨0, by rw [lookup_count]; decide⟩
+  op_index at a
+  replace a := Verification.range16_bound a
+  have b := Verification.lookup_of_holds h ⟨1, by rw [lookup_count]; decide⟩
+  op_index at b
+  replace b := Verification.range16_bound b
+  have c := Verification.lookup_of_holds h ⟨2, by rw [lookup_count]; decide⟩
+  op_index at c
+  replace c := Verification.range16_bound c
+  have d := Verification.lookup_of_holds h ⟨3, by rw [lookup_count]; decide⟩
+  op_index at d
+  replace d := Verification.range16_bound d
+  have e := Verification.lookup_of_holds h ⟨4, by rw [lookup_count]; decide⟩
+  op_index at e
+  replace e := Verification.range16_bound e
   simpa [Expression.eval, Verification.environment] using
     And.intro a (And.intro b (And.intro c (And.intro d e)))
 
@@ -51,12 +66,12 @@ theorem pc_successor {p : Nat} [Fact p.Prime] (hp : 196608 < p)
       final.toBitVec = initial.toBitVec + 4 := by
   have carry := Verification.assertion_of_holds h ⟨30, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h ⟨31, by rw [constraint_count]; decide⟩
+  op_index at carry high
   have finalLo : w 13 = (final.lo : ZMod p) := by
     rw [mapping.2.2.1]; exact (ZMod.natCast_zmod_val _).symm
   have finalHi : w 14 = (final.hi : ZMod p) := by
     rw [mapping.2.2.2]; exact (ZMod.natCast_zmod_val _).symm
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, mapping.1, mapping.2.1, finalLo, finalHi] at carry high
+  simp [Expression.eval, Verification.environment, mapping.1, mapping.2.1, finalLo, finalHi] at carry high
   let x : ZMod p := -30720 * (initial.lo + 4 - final.lo)
   have boolean : x * (x - 1) = 0 := by
     simpa [x, mul_eq_zero, sub_eq_add_neg] using carry
@@ -80,9 +95,9 @@ theorem register_address {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (field
       (if store then w 22 else w 28) = 0 := by
   have lo := Verification.assertion_of_holds h ⟨1, by rw [constraint_count]; decide⟩
   have hi := Verification.assertion_of_holds h ⟨2, by rw [constraint_count]; decide⟩
+  op_index at lo hi
   cases store <;>
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, selected] at lo hi ⊢
+    simp [Expression.eval, Verification.environment, selected] at lo hi ⊢
   all_goals constructor <;> first | linear_combination lo | exact hi
 
 /-- The local queries force a canonical, word-aligned low address. -/
@@ -94,13 +109,12 @@ theorem aligned_address {p : Nat} [Fact p.Prime] (hp : 262144 < p)
       (w 39).val < limbBase ∧ (w 39).val % 4 = 0 := by
   have copy := Verification.assertion_of_holds h ⟨7, by rw [constraint_count]; decide⟩
   have aligned := Verification.assertion_of_holds h ⟨8, by rw [constraint_count]; decide⟩
+  op_index at copy aligned
   have copied : (if store then w 27 else w 21) = w 39 := by
-    cases store <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, selected] at copy ⊢
+    cases store <;> simp [Expression.eval, Verification.environment, selected] at copy ⊢
     all_goals linear_combination -copy
   have field : w 39 = 4 * w 40 := by
-    cases store <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, selected] at aligned copied
+    cases store <;> simp [Expression.eval, Verification.environment, selected] at aligned copied
     all_goals rw [copied] at aligned; linear_combination aligned
   have ranges := local_ranges h
   have low := ranges.1
@@ -117,8 +131,8 @@ theorem halfword_aligned {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (field
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
     (halfword : w 11 = 0) : w 35 = 0 := by
   have trap := Verification.assertion_of_holds h ⟨9, by rw [constraint_count]; decide⟩
-  simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, halfword] using trap
+  op_index at trap
+  simpa [Expression.eval, Verification.environment, halfword] using trap
 
 /-- Address addition recovers the word cell and its unique byte offset. The
     selected high address remains a memory-interface bound; the low bound is local. -/
@@ -161,19 +175,18 @@ theorem effective_address {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     · exact highBound
   have low := Verification.assertion_of_holds h ⟨3, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h ⟨5, by rw [constraint_count]; decide⟩
+  op_index at low high
   have hi := mapping.2.2.2.2.2
   have lowField : (source.lo : ZMod p) + immediate.lo =
       cell.lo + w 35 + 2 * w 36 + 65536 * w 37 := by
     cases store <;> simp only [Bool.false_eq_true, ite_false, ite_true] at selected lo hi
     all_goals
-      simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, selected, mapping.1, mapping.2.2.1, lo] at low
+      simp [Expression.eval, Verification.environment, selected, mapping.1, mapping.2.2.1, lo] at low
       linear_combination -(source.lo + immediate.lo - cell.lo - w 35 - 2 * w 36) * inverse - 65536 * low
   have highField : w 37 + (source.hi : ZMod p) + immediate.hi = cell.hi + 65536 * w 38 := by
     cases store <;> simp only [Bool.false_eq_true, ite_false, ite_true] at selected lo hi
     all_goals
-      simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, selected, mapping.1, mapping.2.1,
+      simp [Expression.eval, Verification.environment, selected, mapping.1, mapping.2.1,
         mapping.2.2.1, mapping.2.2.2.1, lo, hi] at low high
       have normalized : w 38 = -30720 * (w 37 + source.hi + immediate.hi - cell.hi) := by
         linear_combination high + 30720 * low
@@ -214,17 +227,16 @@ theorem rom_selection {p : Nat} [Fact p.Prime] (hp : 131072 < p)
       (store = true → 64 ≤ address.hi) := by
   have definition := Verification.assertion_of_holds h ⟨10, by rw [constraint_count]; decide⟩
   have trap := Verification.assertion_of_holds h ⟨11, by rw [constraint_count]; decide⟩
+  op_index at definition trap
   -- The memory port is read on LW and written on SW.
   have residue : w 42 = 65536 * w 41 + address.hi - 64 := by
     cases store <;>
-      simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, selected] at definition mapping
+      simp [Expression.eval, Verification.environment, selected] at definition mapping
     all_goals rw [mapping] at definition; linear_combination definition
   have forbid : store = true → w 41 = 0 := by
     intro hs
     subst store
-    simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, selected] using trap
+    simpa [Expression.eval, Verification.environment, selected] using trap
   have ranges := local_ranges h
   have flag : w 41 = (if address.hi < 64 then 1 else 0) :=
     range_separator hp (by simpa [limbBase] using addressBound.2) (by decide)
@@ -245,13 +257,14 @@ theorem clearing_query {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 
       w 43, 0, 0, 0, 0, 0, 0, 30] := by
   have input := Verification.assertion_of_holds h ⟨12, by rw [constraint_count]; decide⟩
   have output := Verification.assertion_of_holds h ⟨13, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at input output
+  op_index at input output
+  simp [Expression.eval, Verification.environment] at input output
   have inputEq : w 44 = w 36 * w 32 + (1 - w 36) * w 31 + 65536 * w 35 := by
     linear_combination input
   have outputEq : w 45 = w 43 := by linear_combination output
   have query := Verification.lookup_of_holds h ⟨5, by rw [lookup_count]; decide⟩
-  simpa [importedConstraints, FlatOperation.lookups, Lookup.Contains, Table.toRaw, fromElements, Expression.eval,
+  op_index at query
+  simpa [Lookup.Contains, Table.toRaw, fromElements, Expression.eval,
     Verification.environment, inputEq, outputEq] using query
 
 /-- The shared data query, after eliminating copied selectors and result limbs.
@@ -276,8 +289,8 @@ theorem data_query {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 9)}
   have tag := Verification.assertion_of_holds h ⟨27, by rw [constraint_count]; decide⟩
   have enabled := Verification.assertion_of_holds h ⟨28, by rw [constraint_count]; decide⟩
   have outTag := Verification.assertion_of_holds h ⟨29, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at r a s input low outLow high outHigh tag enabled outTag
+  op_index at r a s input low outLow high outHigh tag enabled outTag
+  simp [Expression.eval, Verification.environment] at r a s input low outLow high outHigh tag enabled outTag
   have romEq : w 46 = w 41 := by linear_combination r
   have ramEq : w 47 = 1 - w 10 - w 41 := by linear_combination a
   have storeEq : w 48 = w 10 := by linear_combination s
@@ -294,7 +307,8 @@ theorem data_query {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 9)}
       (1 - w 10 - w 41) * (1 - w 11) * 42 + (1 - w 10 - w 41) * w 11 * 43 +
       w 10 * w 11 * 29) := by linear_combination w 4 * tag + outTag
   have query := Verification.lookup_of_holds h ⟨6, by rw [lookup_count]; decide⟩
-  simpa [importedConstraints, FlatOperation.lookups, Lookup.Contains, Table.toRaw, fromElements,
+  op_index at query
+  simpa [Lookup.Contains, Table.toRaw, fromElements,
     Expression.eval, Verification.environment, keyEq, lowEq, highEq, tagEq] using query
 
 /-- A RAM load selects the read halfword. Tags 42/43 are the Rust
@@ -306,7 +320,8 @@ theorem ram_load_query {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 
     setup.Contains #[] #v[w 36 * w 26 + (1 - w 36) * w 25 + 65536 * w 12 + 131072 * w 35,
       w 33, w 34, 0, 0, 0, 0, 0, (1 - w 11) * 42 + w 11 * 43] := by
   have key := Verification.assertion_of_holds h ⟨18, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment] at key
+  op_index at key
+  simp [Expression.eval, Verification.environment] at key
   have keyEq : w 50 = w 36 * w 26 + (1 - w 36) * w 25 + 65536 * w 12 + 131072 * w 35 := by
     linear_combination key
   simpa [active, load, ram, keyEq] using data_query h
@@ -319,8 +334,8 @@ theorem rom_load_query {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 
     setup.Contains #[] #v[w 21 + 65536 * w 22 + 4194304 * w 12 + 8388608 * w 36 + 16777216 * w 35,
       w 33, w 34, 0, 0, 0, 0, 0, (1 - w 11) * 44 + w 11 * 45] := by
   have key := Verification.assertion_of_holds h ⟨17, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, load] at key
+  op_index at key
+  simp [Expression.eval, Verification.environment, load] at key
   have keyEq : w 49 = w 21 + 65536 * w 22 + 4194304 * w 12 + 8388608 * w 36 + 16777216 * w 35 := by
     linear_combination key
   simpa [active, load, rom, keyEq] using data_query h
@@ -338,8 +353,8 @@ theorem store_query {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 9)}
   have key := Verification.assertion_of_holds h ⟨19, by rw [constraint_count]; decide⟩
   have keep := Verification.assertion_of_holds h ⟨22, by rw [constraint_count]; decide⟩
   have other := Verification.assertion_of_holds h ⟨25, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at key keep other
+  op_index at key keep other
+  simp [Expression.eval, Verification.environment] at key keep other
   have keyEq : w 51 = w 11 * (w 25 + 65536 * w 35) := by linear_combination key
   have keepEq : w 54 = w 36 * w 34 + (1 - w 36) * w 33 - w 11 * w 43 - (1 - w 11) * w 25 := by
     linear_combination keep

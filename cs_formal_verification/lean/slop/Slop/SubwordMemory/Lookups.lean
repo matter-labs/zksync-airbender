@@ -21,8 +21,48 @@ theorem subwordDataRow_low (key lo hi tag : Nat) :
 theorem subwordDataRow_high (key lo hi tag : Nat) :
     (subwordDataRow key lo hi tag)[2] = hi := by rfl
 
-set_option maxRecDepth 4096 in
-set_option maxHeartbeats 800000 in
+theorem subwordDataRow_tag (key lo hi tag : Nat) :
+    (subwordDataRow key lo hi tag)[8] = tag := by rfl
+
+/-- The setup rows by region, proven once: the zero row, the two store regions and the two RAM-load regions
+    are data rows; the two ROM regions carry tags 44 and 45. -/
+theorem subwordRow_regions (program : Nat → BitVec 32) (i : Fin 13238273) :
+    subwordRow program i = subwordDataRow 0 0 0 0 ∨
+    (1 ≤ i.val ∧ i.val < 131073 ∧ subwordRow program i =
+      subwordDataRow (i.val - 1) (subwordStoreContribution false (i.val - 1)) 0 29) ∨
+    (131073 ≤ i.val ∧ i.val < 262145 ∧ subwordRow program i =
+      subwordDataRow (i.val - 131073) (subwordStoreContribution true (i.val - 131073)) 0 30) ∨
+    (262145 ≤ i.val ∧ i.val < 393217 ∧ subwordRow program i =
+      subwordDataRow (i.val - 262145) (subwordLoadLimbs false (i.val - 262145)).1
+        (subwordLoadLimbs false (i.val - 262145)).2 42) ∨
+    (393217 ≤ i.val ∧ i.val < 655361 ∧ subwordRow program i =
+      subwordDataRow (i.val - 393217) (subwordLoadLimbs true (i.val - 393217)).1
+        (subwordLoadLimbs true (i.val - 393217)).2 43) ∨
+    (655361 ≤ i.val ∧ i.val < 4849665 ∧ (subwordRow program i)[8] = 44) ∨
+    (4849665 ≤ i.val ∧ (subwordRow program i)[8] = 45) := by
+  unfold subwordRow
+  dsimp only
+  -- `split_ifs` also splits the ROM regions' inner conditionals; their tags do not depend on them.
+  split_ifs <;> first
+    | exact Or.inl rfl
+    | exact Or.inr (Or.inl ⟨by omega, by omega, rfl⟩)
+    | exact Or.inr (Or.inr (Or.inl ⟨by omega, by omega, rfl⟩))
+    | exact Or.inr (Or.inr (Or.inr (Or.inl ⟨by omega, by omega, rfl⟩)))
+    | exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨by omega, by omega, rfl⟩))))
+    | exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨by omega, by omega, rfl⟩)))))
+    | exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨by omega, rfl⟩)))))
+
+/-- The tag of a setup row as a natural number, read back from a field element. -/
+theorem subwordRow_tag {p : Nat} [Fact p.Prime] (hp : 262144 < p) {program : Nat → BitVec 32}
+    {i : Fin 13238273} {tag : Nat} (bound : tag < p)
+    (selected : ((subwordRow program i).map (fun (n : Nat) => (n : ZMod p)))[8] = (tag : ZMod p)) :
+    (subwordRow program i)[8] = tag := by
+  have tagBound : (subwordRow program i)[8] < p := by
+    rcases subwordRow_regions program i with row | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, row⟩
+    all_goals first | (rw [row]; omega) | (rw [row, subwordDataRow_tag]; omega)
+  exact bounded_nat_eq (F := ZMod p) (p := p) tagBound bound
+    (by simpa only [Vector.getElem_map] using selected)
+
 /-- Read the fixed RAM-load regions of the native Clean setup table. Other
     regions, including caller-selected ROM words, cannot satisfy these tags. -/
 theorem subword_ram_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
@@ -34,47 +74,22 @@ theorem subword_ram_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
       entry[2] = ((subwordLoadLimbs byte key).2 : ZMod p) := by
   change ∃ i : Fin 13238273, entry = (subwordRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
   obtain ⟨i, rfl⟩ := h
-  have tagBound : (subwordRow program i)[8] < p := by
-    unfold subwordRow
-    dsimp only
-    split_ifs <;> first
-      | (change (0 : Nat) < p; omega)
-      | (change (29 : Nat) < p; omega)
-      | (change (30 : Nat) < p; omega)
-      | (change (42 : Nat) < p; omega)
-      | (change (43 : Nat) < p; omega)
-      | (change (44 : Nat) < p; omega)
-      | (change (45 : Nat) < p; omega)
-  have natural : (subwordRow program i)[8] = (if byte then 43 else 42) := by
-    apply bounded_nat_eq (F := ZMod p) (p := p) tagBound
-      (by cases byte <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega)
-    simpa only [Vector.getElem_map] using selected
+  have natural := subwordRow_tag hp (by cases byte <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega)
+    selected
   have indexBound := i.isLt
-  cases byte <;> unfold subwordRow at natural ⊢ <;> dsimp only at natural ⊢
-  all_goals repeat' (first | split at natural | split)
-  all_goals solve
-    | contradiction
-    | (change (29 : Nat) = _ at natural; contradiction)
-    | (change (30 : Nat) = _ at natural; contradiction)
-    | (change (44 : Nat) = _ at natural; contradiction)
-    | (change (45 : Nat) = _ at natural; contradiction)
-    | (change (42 : Nat) = 43 at natural; contradiction)
-    | (change (43 : Nat) = 42 at natural; contradiction)
-    | (change (42 : Nat) = 42 at natural
-       refine ⟨i.val - 262145, ?_, ?_, ?_, ?_⟩ <;> first
-         | omega
-         | (rw [Vector.getElem_map, subwordDataRow_key])
-         | (rw [Vector.getElem_map, subwordDataRow_low])
-         | (rw [Vector.getElem_map, subwordDataRow_high]))
-    | (change (43 : Nat) = 43 at natural
-       refine ⟨i.val - 393217, ?_, ?_, ?_, ?_⟩ <;> first
-         | omega
-         | (rw [Vector.getElem_map, subwordDataRow_key])
-         | (rw [Vector.getElem_map, subwordDataRow_low])
-         | (rw [Vector.getElem_map, subwordDataRow_high]))
+  cases byte <;> simp only [Bool.false_eq_true, ite_false, ite_true] at natural ⊢
+  all_goals
+    rcases subwordRow_regions program i with row | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, row⟩
+  all_goals first
+    | (rw [row] at natural; omega)
+    | (rw [row, subwordDataRow_tag] at natural; omega)
+    | (rw [row]
+       first
+         | exact ⟨i.val - 262145, by omega, by rw [Vector.getElem_map, subwordDataRow_key],
+             by rw [Vector.getElem_map, subwordDataRow_low], by rw [Vector.getElem_map, subwordDataRow_high]⟩
+         | exact ⟨i.val - 393217, by omega, by rw [Vector.getElem_map, subwordDataRow_key],
+             by rw [Vector.getElem_map, subwordDataRow_low], by rw [Vector.getElem_map, subwordDataRow_high]⟩)
 
-set_option maxRecDepth 4096 in
-set_option maxHeartbeats 800000 in
 /-- Read the fixed byte-store regions of the native Clean setup table. Other
     regions, including caller-selected ROM words, cannot satisfy these tags. -/
 theorem subword_store_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
@@ -86,44 +101,23 @@ theorem subword_store_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
       entry[2] = 0 := by
   change ∃ i : Fin 13238273, entry = (subwordRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
   obtain ⟨i, rfl⟩ := h
-  have tagBound : (subwordRow program i)[8] < p := by
-    unfold subwordRow
-    dsimp only
-    split_ifs <;> first
-      | (change (0 : Nat) < p; omega)
-      | (change (29 : Nat) < p; omega)
-      | (change (30 : Nat) < p; omega)
-      | (change (42 : Nat) < p; omega)
-      | (change (43 : Nat) < p; omega)
-      | (change (44 : Nat) < p; omega)
-      | (change (45 : Nat) < p; omega)
-  have natural : (subwordRow program i)[8] = (if clear then 30 else 29) := by
-    apply bounded_nat_eq (F := ZMod p) (p := p) tagBound
-      (by cases clear <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega)
-    simpa only [Vector.getElem_map] using selected
+  have natural := subwordRow_tag hp (by cases clear <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega)
+    selected
   have indexBound := i.isLt
-  cases clear <;> unfold subwordRow at natural ⊢ <;> dsimp only at natural ⊢
-  all_goals repeat' (first | split at natural | split)
-  all_goals solve
-    | contradiction
-    | (change (42 : Nat) = _ at natural; contradiction)
-    | (change (43 : Nat) = _ at natural; contradiction)
-    | (change (44 : Nat) = _ at natural; contradiction)
-    | (change (45 : Nat) = _ at natural; contradiction)
-    | (change (29 : Nat) = 30 at natural; contradiction)
-    | (change (30 : Nat) = 29 at natural; contradiction)
-    | (change (29 : Nat) = 29 at natural
-       refine ⟨i.val - 1, ?_, ?_, ?_, ?_⟩ <;> first
-         | omega
-         | (rw [Vector.getElem_map, subwordDataRow_key])
-         | (rw [Vector.getElem_map, subwordDataRow_low])
-         | (rw [Vector.getElem_map, subwordDataRow_high]; exact Nat.cast_zero))
-    | (change (30 : Nat) = 30 at natural
-       refine ⟨i.val - 131073, ?_, ?_, ?_, ?_⟩ <;> first
-         | omega
-         | (rw [Vector.getElem_map, subwordDataRow_key])
-         | (rw [Vector.getElem_map, subwordDataRow_low])
-         | (rw [Vector.getElem_map, subwordDataRow_high]; exact Nat.cast_zero))
+  cases clear <;> simp only [Bool.false_eq_true, ite_false, ite_true] at natural ⊢
+  all_goals
+    rcases subwordRow_regions program i with row | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, row⟩
+  all_goals first
+    | (rw [row] at natural; omega)
+    | (rw [row, subwordDataRow_tag] at natural; omega)
+    | (rw [row]
+       first
+         | exact ⟨i.val - 1, by omega, by rw [Vector.getElem_map, subwordDataRow_key],
+             by rw [Vector.getElem_map, subwordDataRow_low],
+             by rw [Vector.getElem_map, subwordDataRow_high]; exact Nat.cast_zero⟩
+         | exact ⟨i.val - 131073, by omega, by rw [Vector.getElem_map, subwordDataRow_key],
+             by rw [Vector.getElem_map, subwordDataRow_low],
+             by rw [Vector.getElem_map, subwordDataRow_high]; exact Nat.cast_zero⟩)
 
 /-- The disabled store query has a unique zero row in this setup. -/
 theorem subword_zero_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
@@ -132,26 +126,12 @@ theorem subword_zero_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
     entry[0] = 0 ∧ entry[1] = 0 ∧ entry[2] = 0 := by
   change ∃ i : Fin 13238273, entry = (subwordRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
   obtain ⟨i, rfl⟩ := h
-  have tagBound : (subwordRow program i)[8] < p := by
-    unfold subwordRow
-    dsimp only
-    split_ifs <;> first
-      | (change (0 : Nat) < p; omega)
-      | (change (29 : Nat) < p; omega)
-      | (change (30 : Nat) < p; omega)
-      | (change (42 : Nat) < p; omega)
-      | (change (43 : Nat) < p; omega)
-      | (change (44 : Nat) < p; omega)
-      | (change (45 : Nat) < p; omega)
-  have natural : (subwordRow program i)[8] = 0 :=
-    bounded_nat_eq (F := ZMod p) (p := p) tagBound (by omega)
-      (by simpa only [Vector.getElem_map, Nat.cast_zero] using selected)
-  unfold subwordRow at natural ⊢
-  dsimp only at natural ⊢
-  split_ifs at natural ⊢
-  all_goals solve
-    | contradiction
-    | (simp [subwordDataRow])
+  have natural := subwordRow_tag (tag := 0) hp (by omega) (by simpa only [Nat.cast_zero] using selected)
+  rcases subwordRow_regions program i with row | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, row⟩
+  all_goals first
+    | (rw [row] at natural; omega)
+    | (rw [row, subwordDataRow_tag] at natural; omega)
+    | (rw [row]; simp [subwordDataRow])
 
 /-- A bounded packed input selects the unique fixed store-table contribution. -/
 theorem subword_store_entry {p : Nat} [Fact p.Prime] (hp : 262144 < p)

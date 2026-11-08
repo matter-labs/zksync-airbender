@@ -1,5 +1,6 @@
 module
 public import Slop.UnifiedReduced.ArtifactChecks
+public import Slop.UnifiedReduced.OpIndex
 public import Human.Circuits.UnifiedReduced.Artifact
 public import Human.Helpers.Properties
 public import Slop.Arithmetic.Word
@@ -13,7 +14,6 @@ namespace Airbender.UnifiedReduced.Proofs
 open Airbender.Arithmetic
 
 set_option maxRecDepth 8192
-set_option maxHeartbeats 1200000
 
 /-- Execute, all family flags, shared scratch controls and dispatch/PC controls. -/
 theorem local_flags {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
@@ -28,8 +28,12 @@ theorem local_flags {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 10)
   have flag := Verification.assertion_of_holds h
     ⟨(#v[0, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106,
       107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119][i]), by rw [constraint_count]; fin_cases i <;> decide⟩
-  fin_cases i <;> simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero, or_comm] at flag ⊢
+  fin_cases i
+  all_goals simp only [Fin.getElem_fin, Vector.getElem_mk, List.getElem_toArray,
+    List.getElem_cons_succ, List.getElem_cons_zero] at flag ⊢
+  all_goals op_index at flag
+  all_goals simp [Expression.eval, Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero,
+    or_comm] at flag ⊢
   all_goals exact flag
 
 open scoped BigOperators
@@ -42,8 +46,8 @@ theorem dispatch_count {p : Nat} [Fact p.Prime] (hp : 18 < p)
     (active : w 4 = 1) :
     (∑ i : Fin 18, (w Variables.dispatchColumns[i]).val) ≤ 1 := by
   have definition := Verification.assertion_of_holds h ⟨87, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, active] at definition
+  op_index at definition
+  simp [Expression.eval, Verification.environment, active] at definition
   have bits : ∀ i : Fin 18, w Variables.dispatchColumns[i] = 0 ∨ w Variables.dispatchColumns[i] = 1 := by
     intro i
     have flag := local_flags h (#v[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 19][i])
@@ -61,12 +65,14 @@ theorem dispatch_exclusive {p : Nat} [Fact p.Prime] (hp : 18 < p)
     (set : w Variables.dispatchColumns[selected] = 1) :
     ∀ i : Fin 18, i ≠ selected → w Variables.dispatchColumns[i] = 0 := by
   intro i different
-  have total := dispatch_count hp h active
+  -- Index the dispatch columns before `total` is in context: the index bound's `assumption` attempt would
+  -- otherwise unfold the 18-term sum in `total`.
   have one : (w Variables.dispatchColumns[selected]).val = 1 := by
     rw [set]
     simpa only [Nat.cast_one] using ZMod.val_natCast_of_lt (n := p) (a := 1) (by omega)
-  have zero := sum_le_one_exclusive total selected one i different
   have cast := ZMod.natCast_zmod_val (w Variables.dispatchColumns[i])
+  have total := dispatch_count hp h active
+  have zero := sum_le_one_exclusive total selected one i different
   rw [zero] at cast
   simpa only [Nat.cast_zero] using cast.symm
 
@@ -75,26 +81,31 @@ theorem destination_bounds {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fie
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     (w 50).val < limbBase ∧ (w 51).val < limbBase := by
-  have low := Verification.range16_bound (Verification.lookup_of_holds h ⟨2, by rw [lookup_count]; decide⟩)
-  have high := Verification.range16_bound (Verification.lookup_of_holds h ⟨3, by rw [lookup_count]; decide⟩)
-  simpa [Expression.eval, Verification.environment] using And.intro low high
+  have low := Verification.lookup_of_holds h ⟨2, by rw [lookup_count]; decide⟩
+  have high := Verification.lookup_of_holds h ⟨3, by rw [lookup_count]; decide⟩
+  op_index at low high
+  simpa [Expression.eval, Verification.environment] using
+    And.intro (Verification.range16_bound low) (Verification.range16_bound high)
 
 /-- The initial high-PC limb is already ranged by the shared state interface. -/
 theorem initial_pc_hi_bound {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     (w 1).val < limbBase := by
-  have bound := Verification.range16_bound (Verification.lookup_of_holds h ⟨4, by rw [lookup_count]; decide⟩)
-  simpa [Expression.eval, Verification.environment] using bound
+  have bound := Verification.lookup_of_holds h ⟨4, by rw [lookup_count]; decide⟩
+  op_index at bound
+  simpa [Expression.eval, Verification.environment] using Verification.range16_bound bound
 
 /-- Both final PC limbs are locally ranged, including Family-2 rows. -/
 theorem pc_bounds {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
     {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup)) :
     (w 30).val < limbBase ∧ (w 31).val < limbBase := by
-  have low := Verification.range16_bound (Verification.lookup_of_holds h ⟨11, by rw [lookup_count]; decide⟩)
-  have high := Verification.range16_bound (Verification.lookup_of_holds h ⟨12, by rw [lookup_count]; decide⟩)
-  simpa [Expression.eval, Verification.environment] using And.intro low high
+  have low := Verification.lookup_of_holds h ⟨11, by rw [lookup_count]; decide⟩
+  have high := Verification.lookup_of_holds h ⟨12, by rw [lookup_count]; decide⟩
+  op_index at low high
+  simpa [Expression.eval, Verification.environment] using
+    And.intro (Verification.range16_bound low) (Verification.range16_bound high)
 
 /-- Ordinary active rows use the shared PC increment. JAL/JALR/SLT/BRANCH use
     their own gated path; rd-is-zero is intentionally absent from this exclusion. -/
@@ -112,7 +123,8 @@ theorem pc_successor {p : Nat} [Fact p.Prime] (hp : 131072 < p)
     rw [mapping.2.2.1]; exact (ZMod.natCast_zmod_val _).symm
   have finalHi : w 31 = (final.hi : ZMod p) := by
     rw [mapping.2.2.2]; exact (ZMod.natCast_zmod_val _).symm
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
+  op_index at low high
+  simp [Expression.eval,
     Verification.environment, active, outsideFamily2.1, outsideFamily2.2.1,
     outsideFamily2.2.2.1, outsideFamily2.2.2.2, mapping.1, mapping.2.1, finalLo, finalHi] at low high
   have carry := boolean_val (local_flags h 26)

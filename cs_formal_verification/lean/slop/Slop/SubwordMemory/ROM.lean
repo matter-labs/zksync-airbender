@@ -18,8 +18,6 @@ def romData (program : Nat → BitVec 32) (byte : Bool) (i : Nat) : Nat × Nat :
   subwordLoadLimbs byte (half + 65536 * (i / (if byte then 4 else 2) % 2) +
     (if byte then 131072 * (i % 2) else 0))
 
-set_option maxRecDepth 100000 in
-set_option maxHeartbeats 800000 in
 theorem rom_values {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (byte : Bool)
     (h : (subwordTable program).Contains #[] entry)
@@ -28,42 +26,30 @@ theorem rom_values {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
       entry[1] = ((romData program byte i).1 : ZMod p) ∧ entry[2] = ((romData program byte i).2 : ZMod p) := by
   change ∃ i : Fin 13238273, entry = (subwordRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
   obtain ⟨i, rfl⟩ := h
-  have tagBound : (subwordRow program i)[8] < p := by
-    unfold subwordRow
-    dsimp only
-    split_ifs <;> first
-      | (change (0 : Nat) < p; omega)
-      | (change (29 : Nat) < p; omega)
-      | (change (30 : Nat) < p; omega)
-      | (change (42 : Nat) < p; omega)
-      | (change (43 : Nat) < p; omega)
-      | (change (44 : Nat) < p; omega)
-      | (change (45 : Nat) < p; omega)
-  have natural : (subwordRow program i)[8] = (if byte then 45 else 44) := by
-    apply bounded_nat_eq (F := ZMod p) (p := p) tagBound
-      (by cases byte <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega)
-    simpa only [Vector.getElem_map] using selected
+  have natural := subwordRow_tag (by omega)
+    (by cases byte <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega) selected
   have indexBound := i.isLt
-  cases byte <;> unfold subwordRow at natural ⊢ <;> dsimp only at natural ⊢
-  all_goals repeat' (first | split at natural | split)
-  all_goals solve
-    | contradiction
-    | (change (29 : Nat) = _ at natural; contradiction)
-    | (change (30 : Nat) = _ at natural; contradiction)
-    | (change (42 : Nat) = _ at natural; contradiction)
-    | (change (43 : Nat) = _ at natural; contradiction)
-    | (change (44 : Nat) = 45 at natural; contradiction)
-    | (change (45 : Nat) = 44 at natural; contradiction)
-    | (change (44 : Nat) = 44 at natural
+  cases byte <;> simp only [Bool.false_eq_true, ite_false, ite_true] at natural ⊢
+  all_goals
+    rcases subwordRow_regions program i with row | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ |
+      ⟨_, _, row⟩ | ⟨_, row⟩
+  all_goals first
+    | (rw [row] at natural; omega)
+    | (rw [row, subwordDataRow_tag] at natural; omega)
+    | (unfold subwordRow
+       simp only [show ¬i.val = 0 by omega, show ¬i.val < 131073 by omega, show ¬i.val < 262145 by omega,
+         show ¬i.val < 393217 by omega, show ¬i.val < 655361 by omega, show i.val < 4849665 by omega,
+         ite_false, ite_true]
        refine ⟨i.val - 655361, by omega, ?_, ?_, ?_⟩
-       all_goals simp_all only [romKey, romData, Bool.false_eq_true, ite_false, Nat.div_one, Vector.getElem_map]
-       all_goals simp only [subwordDataRow_key, subwordDataRow_low, subwordDataRow_high, add_zero,
-         if_true, if_false, ite_true, ite_false, Nat.div_one])
-    | (change (45 : Nat) = 45 at natural
+       all_goals simp only [romKey, romData, Bool.false_eq_true, ite_false, Nat.div_one, Vector.getElem_map,
+         subwordDataRow_key, subwordDataRow_low, subwordDataRow_high, add_zero])
+    | (unfold subwordRow
+       simp only [show ¬i.val = 0 by omega, show ¬i.val < 131073 by omega, show ¬i.val < 262145 by omega,
+         show ¬i.val < 393217 by omega, show ¬i.val < 655361 by omega, show ¬i.val < 4849665 by omega,
+         ite_false]
        refine ⟨i.val - 4849665, by omega, ?_, ?_, ?_⟩
-       all_goals simp_all only [romKey, romData, ite_true, Vector.getElem_map]
-       all_goals simp only [subwordDataRow_key, subwordDataRow_low, subwordDataRow_high, add_zero,
-         if_true, if_false, ite_true, ite_false, Nat.div_one])
+       all_goals simp only [romKey, romData, ite_true, Vector.getElem_map,
+         subwordDataRow_key, subwordDataRow_low, subwordDataRow_high])
 
 /-- Every modeled ROM row returns canonical result limbs, independently of
     address/key reconstruction. This supplies native history's write bounds. -/

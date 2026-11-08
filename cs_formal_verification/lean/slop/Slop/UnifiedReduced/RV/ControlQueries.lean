@@ -8,7 +8,6 @@ namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1600000
 
 theorem control_lookup_values [Fact p.Prime] (hp : 4194304 ≤ p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
@@ -30,7 +29,9 @@ theorem control_lookup_values [Fact p.Prime] (hp : 4194304 ≤ p)
   have bt := equation 13; have bk := equation 14; have bv := equation 15
   have ct := equation 22; have ck := equation 23; have cv := equation 24
   have pt := equation 31; have pk := equation 32; have pv := equation 33; have pr := equation 34
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  simp only [Fin.coe_ofNat_eq_mod, Nat.reduceMod] at zt zk zv aTag ak av bt bk bv ct ck cv pt pk pv pr
+  op_index at zt zk zv aTag ak av bt bk bv ct ck cv pt pk pv pr
+  simp [Expression.eval, Verification.environment,
     selected, binary.1, binary.2, rom] at zt zk zv aTag ak av bt bk bv ct ck cv pt pk pv pr
   have tags : w 82 = 1 ∧ w 86 = 5 ∧ w 95 = 5 ∧ w 104 = 51 ∧ w 113 = 2 := by
     constructor

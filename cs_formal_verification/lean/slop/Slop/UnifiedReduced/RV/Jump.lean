@@ -52,8 +52,9 @@ private theorem jump_context {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {word
       by first | simpa using bit 14 true (by decide) | simpa using bit 14 false (by decide)⟩
   obtain ⟨selected, other, binary, load, store, marker⟩ := facts'
   have gate := Verification.assertion_of_holds facts.core ⟨39, by rw [constraint_count]; decide⟩
+  op_index at gate
   have noROM : w 81 = 0 := by
-    simpa [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, load] using gate
+    simpa [Expression.eval, Verification.environment, load] using gate
   have indices := facts.indices (by dsimp [limbBase]; omega)
   rw [destination] at indices
   have write := rv_register_write facts.core store indices.2.2 epoch facts.history

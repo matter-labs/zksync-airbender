@@ -7,7 +7,6 @@ namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic Verification
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1200000
 
 theorem binary_destination [Fact p.Prime] (hp : 65536 < p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p} {left right : BitVec 32}
@@ -46,9 +45,10 @@ theorem binary_destination [Fact p.Prime] (hp : 65536 < p)
   norm_num only at z59 z60 z61 z63 z64 z65 z67 z68 z69 z71 z72 z73
   have low := Verification.assertion_of_holds holds ⟨24, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds holds ⟨25, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  op_index at low high
+  simp [Expression.eval, Verification.environment,
     selected.1, selected.2, z59, z65, z68, z69, z71, z72] at low
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  simp [Expression.eval, Verification.environment,
     selected.1, selected.2, z60, z61, z63, z64, z67, z73] at high
   have lo := byte_pair_value hp (w 58) (w 62) (w 50) (values 0).2.2.1 (values 1).2.2.1
     (by linear_combination low)

@@ -41,9 +41,9 @@ theorem row_write_rule {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
           cases byte <;> simp [byteSelection]
       · change row.assignment 10 = 1 at selected
         have forbid := Verification.assertion_of_holds core ⟨11, by rw [constraint_count]; decide⟩
+        op_index at forbid
         have ram : row.assignment 41 = 0 := by
-          simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-            Verification.environment, selected] using forbid
+          simpa [Expression.eval, Verification.environment, selected] using forbid
         have source : (Word.mk (row.assignment 25).val (row.assignment 26).val).Bounded := by
           have bounded := reads importedConstraintsMemoryPorts[1]
             (by simp [Row.ports, importedConstraintsMemoryPorts]) (by

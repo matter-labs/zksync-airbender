@@ -37,7 +37,8 @@ theorem rv_literal_operands_result [Fact p.Prime] (hp : 196608 < p)
       | exact other 9 (by decide)
   have low := Verification.assertion_of_holds h ⟨4, by rw [UnifiedReduced.constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h ⟨5, by rw [UnifiedReduced.constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  op_index at low high
+  simp [Expression.eval, Verification.environment,
     selected, flags.1, flags.2.1, flags.2.2.1, flags.2.2.2.1, flags.2.2.2.2.1,
     flags.2.2.2.2.2.1, flags.2.2.2.2.2.2, operands.1, operands.2.1, operands.2.2.1, operands.2.2.2] at low high
   have carry := boolean_val (UnifiedReduced.Proofs.local_flags h 21)
@@ -443,8 +444,9 @@ theorem rv_literal_row_output_of_program [Fact p.Prime] (hp : 2 * timestampBase 
   have upper := Verification.assertion_of_holds core ⟨27, by rw [UnifiedReduced.constraint_count]; decide⟩
   have destinationLower := Verification.assertion_of_holds core ⟨28, by rw [UnifiedReduced.constraint_count]; decide⟩
   have destinationUpper := Verification.assertion_of_holds core ⟨29, by rw [UnifiedReduced.constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, sourceRAM] at lower upper
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, destinationRAM] at destinationLower destinationUpper
+  op_index at lower upper destinationLower destinationUpper
+  simp [Expression.eval, Verification.environment, sourceRAM] at lower upper
+  simp [Expression.eval, Verification.environment, destinationRAM] at destinationLower destinationUpper
   have rightLocation : w 38 = w 6 := by linear_combination lower
   have rightUpper : w 39 = 0 := by linear_combination upper
   have outputLocation : w 44 = w 7 := by linear_combination destinationLower

@@ -8,7 +8,6 @@ namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic Trace
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1000000
 
 theorem word_rom_value [Fact p.Prime] (hp : 4194304 ≤ p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
@@ -23,13 +22,16 @@ theorem word_rom_value [Fact p.Prime] (hp : 4194304 ≤ p)
     ⟨excluded 10 (by decide), excluded 11 (by decide), excluded 12 (by decide), excluded 13 (by decide)⟩
   have binary : w 26 = 0 ∧ w 27 = 0 := ⟨excluded 14 (by decide), excluded 15 (by decide)⟩
   have gate := Verification.assertion_of_holds holds ⟨39, by rw [constraint_count]; decide⟩
+  op_index at gate
   have enabled : w 81 = 1 := by
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, load, rom] at gate
+    simp [Expression.eval, Verification.environment, load, rom] at gate
     linear_combination gate
   have equations (i : Fin 4) := Verification.assertion_of_holds holds
     ⟨45 + i.val, by rw [constraint_count]; have := i.isLt; omega⟩
   have t := equations 0; have a := equations 1; have b := equations 2; have c := equations 3
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  simp only [Fin.coe_ofNat_eq_mod, Nat.reduceMod] at t a b c
+  op_index at t a b c
+  simp [Expression.eval, Verification.environment,
     active, enabled, other.1, other.2.1, other.2.2.1, other.2.2.2, binary.1, binary.2] at t a b c
   have tag : w 82 = 34 := by linear_combination t
   have key : w 83 = w 57 + 65536 * w 58 := by linear_combination a
@@ -37,7 +39,8 @@ theorem word_rom_value [Fact p.Prime] (hp : 4194304 ≤ p)
   have resultHigh : w 85 = w 51 := by linear_combination c
   have low := Verification.assertion_of_holds holds ⟨32, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds holds ⟨34, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, load] at low high
+  op_index at low high
+  simp [Expression.eval, Verification.environment, load] at low high
   have addressLow : w 57 = w 38 := by linear_combination low
   have addressHigh : w 58 = w 39 := by linear_combination high
   have classify := (word_rom_selection (by omega) false holds load store).1
@@ -46,7 +49,9 @@ theorem word_rom_value [Fact p.Prime] (hp : 4194304 ≤ p)
     by_contra outside
     rw [ite_eq_right outside, rom] at classify
     exact one_ne_zero classify
-  have lowBound := Verification.range16_bound (Verification.lookup_of_holds holds ⟨6, by rw [lookup_count]; decide⟩)
+  have lowBound := Verification.lookup_of_holds holds ⟨6, by rw [lookup_count]; decide⟩
+  op_index at lowBound
+  replace lowBound := Verification.range16_bound lowBound
   have lowBound : (w 38).val < 65536 := by
     simpa [Expression.eval, Verification.environment, limbBase] using lowBound
   have packed : (w 83).val = (w 38).val + 65536 * (w 39).val := by

@@ -12,7 +12,6 @@ namespace Airbender.UnifiedReduced.Proofs
 open Trace Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1600000
 
 theorem zero_operands_result [Fact p.Prime] (hp : 196608 < p)
     {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
@@ -31,7 +30,8 @@ theorem zero_operands_result [Fact p.Prime] (hp : 196608 < p)
       | exact other 9 (by decide)
   have low := Verification.assertion_of_holds h ⟨4, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h ⟨5, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  op_index at low high
+  simp [Expression.eval, Verification.environment,
     selected, flags.1, flags.2.1, flags.2.2.1, flags.2.2.2.1, flags.2.2.2.2.1,
     flags.2.2.2.2.2.1, flags.2.2.2.2.2.2, operands.1, operands.2.1,
     operands.2.2.1, operands.2.2.2.1, operands.2.2.2.2.1, operands.2.2.2.2.2] at low high

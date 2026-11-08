@@ -76,8 +76,8 @@ theorem rv_row_zero_preserving [Fact p.Prime] (hp : 524288 < p)
       simpa [MemoryAddress.code, pairCode, Cell.addressCode, Nat.pair_eq_pair] using zero
     have noRAM : w 29 = 0 := by simpa using address.1
     have location := Verification.assertion_of_holds h ⟨28, by rw [constraint_count]; decide⟩
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, noRAM] at location
+    op_index at location
+    simp [Expression.eval, Verification.environment, noRAM] at location
     have targetZero : w 7 = 0 := by
       have lo : w 44 = 0 := by simpa using address.2.1
       rw [lo] at location
@@ -107,8 +107,8 @@ theorem rv_row_zero_preserving [Fact p.Prime] (hp : 524288 < p)
           (show w importedConstraintsDecoderColumns.flags[17] = _ from flags 17)
       have low := Verification.assertion_of_holds h ⟨26, by rw [constraint_count]; decide⟩
       have high := Verification.assertion_of_holds h ⟨27, by rw [constraint_count]; decide⟩
-      simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, noReadRAM, rs2] at low high
+      op_index at low high
+      simp [Expression.eval, Verification.environment, noReadRAM, rs2] at low high
       have secondLo : w 38 = 0 := by linear_combination low
       have secondHi : w 39 = 0 := by linear_combination high
       have left := reads importedConstraintsMemoryPorts[0]
@@ -140,8 +140,8 @@ theorem rv_row_zero_preserving [Fact p.Prime] (hp : 524288 < p)
         simpa [marker, importedConstraintsDecoderColumns] using flags 14
       have low := Verification.assertion_of_holds h ⟨22, by rw [constraint_count]; decide⟩
       have high := Verification.assertion_of_holds h ⟨23, by rw [constraint_count]; decide⟩
-      simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, marked] at low high
+      op_index at low high
+      simp [Expression.eval, Verification.environment, marked] at low high
       simp [writeToken, MemoryPort.writeCode, pairCode, low, high]
       rfl
     · have ram : w 29 = 1 := by simpa [store, importedConstraintsDecoderColumns] using flags 18

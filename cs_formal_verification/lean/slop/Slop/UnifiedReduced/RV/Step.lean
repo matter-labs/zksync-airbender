@@ -164,7 +164,8 @@ theorem add_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p) {setup : Table (ZMo
   obtain ⟨s12, s13, s14, s15, s16, s17, s20⟩ := others
   have lo := Verification.assertion_of_holds h ⟨4, by rw [constraint_count]; decide⟩
   have hi := Verification.assertion_of_holds h ⟨5, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  op_index at lo hi
+  simp [Expression.eval, Verification.environment,
     selected, s12, s13, s14, s15, s16, s17, s20] at lo hi
   have carry := boolean_val (local_flags h 21)
   have wrap := boolean_val (local_flags h 20)
@@ -185,7 +186,8 @@ theorem sub_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p) {setup : Table (ZMo
   obtain ⟨s11, s13, s14, s15, s16, s17, s20⟩ := others
   have lo := Verification.assertion_of_holds h ⟨4, by rw [constraint_count]; decide⟩
   have hi := Verification.assertion_of_holds h ⟨5, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  op_index at lo hi
+  simp [Expression.eval, Verification.environment,
     selected, s11, s13, s14, s15, s16, s17, s20] at lo hi
   have carry := boolean_val (local_flags h 21)
   have wrap := boolean_val (local_flags h 20)
@@ -206,7 +208,8 @@ theorem auipc_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p) {setup : Table (Z
   obtain ⟨s11, s12, s14, s15, s16, s17, s20⟩ := others
   have lo := Verification.assertion_of_holds h ⟨4, by rw [constraint_count]; decide⟩
   have hi := Verification.assertion_of_holds h ⟨5, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  op_index at lo hi
+  simp [Expression.eval, Verification.environment,
     selected, s11, s12, s14, s15, s16, s17, s20] at lo hi
   have carry := boolean_val (local_flags h 21)
   have wrap := boolean_val (local_flags h 20)
@@ -230,7 +233,8 @@ theorem triadd_limbs {p : Nat} [Fact p.Prime] (hp : 196608 < p) {setup : Table (
   obtain ⟨s11, s12, s13, s14, s15, s16, s17⟩ := others
   have lo := Verification.assertion_of_holds h ⟨4, by rw [constraint_count]; decide⟩
   have hi := Verification.assertion_of_holds h ⟨5, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  op_index at lo hi
+  simp [Expression.eval, Verification.environment,
     selected, s11, s12, s13, s14, s15, s16, s17] at lo hi
   have c1 := boolean_val (local_flags h 21)
   have c2 := boolean_val (local_flags h 22)

@@ -1,5 +1,7 @@
 module
 public import Human.Circuits.JumpBranchSlt.Artifact
+public import Slop.JumpBranchSlt.ArtifactChecks
+public import Slop.JumpBranchSlt.OpIndex
 public import Slop.ShiftBinop.Lookups
 public import Slop.UnifiedReduced
 public import Slop.UnifiedReduced.ControlKey
@@ -10,7 +12,6 @@ namespace Airbender.UnifiedReduced.Proofs
 open Arithmetic Verification
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 2400000
 
 def controlAssignment (w : Nat → ZMod p) (i : Nat) : ZMod p :=
   match i with
@@ -40,8 +41,9 @@ theorem control_assertions [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
   have e14 := equation 14; have e15 := equation 15; have e16 := equation 16; have e17 := equation 17
   have e18 := equation 18; have e19 := equation 19; have e20 := equation 20; have e21 := equation 21
   have e22 := equation 22; have e23 := equation 23
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, jumps.1, jumps.2, selected] at e0 e12 e13 e14 e15 e16 e17 e18 e19 e20 e21 e22 e23
+  simp only [Fin.coe_ofNat_eq_mod, Nat.reduceMod] at e0 e12 e13 e14 e15 e16 e17 e18 e19 e20 e21 e22 e23
+  op_index at e0 e12 e13 e14 e15 e16 e17 e18 e19 e20 e21 e22 e23
+  simp [Expression.eval, Verification.environment, jumps.1, jumps.2, selected] at e0 e12 e13 e14 e15 e16 e17 e18 e19 e20 e21 e22 e23
   have low : (1 - w 25) * (w 23 * w 59) - w 50 = 0 := by
     rcases local_flags holds 15 with zero | one
     · change w 25 = 0 at zero
@@ -61,9 +63,11 @@ theorem control_assertions [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
     · change w 25 = 1 at one
       simpa [one] using e23
   intro i
+  change ((FlatOperation.constraints (JumpBranchSlt.importedConstraints (p := p))).get
+    ⟨i.val, by simpa only [JumpBranchSlt.constraint_count] using i.isLt⟩).eval _ = 0
   fin_cases i
-  all_goals simp [JumpBranchSlt.importedConstraints, FlatOperation.constraints,
-    Expression.eval, Verification.environment, controlAssignment, jumps.1, jumps.2]
+  all_goals op_index
+  all_goals simp [Expression.eval, Verification.environment, controlAssignment, jumps.1, jumps.2]
   all_goals solve
     | exact e0
     | linear_combination e12

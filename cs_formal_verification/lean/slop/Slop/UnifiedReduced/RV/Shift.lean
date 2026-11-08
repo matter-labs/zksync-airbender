@@ -9,7 +9,6 @@ namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1600000
 
 private theorem shift_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)} {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
@@ -22,13 +21,16 @@ private theorem shift_wiring [Fact p.Prime] {setup : Table (ZMod p) (fields 10)}
   constructor
   · have t := h 0
     fin_cases i
-    all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+    all_goals simp only [Fin.coe_ofNat_eq_mod, Nat.reduceMod] at t
+    all_goals op_index at t
+    all_goals simp [Expression.eval, Verification.environment,
       selected.1, selected.2, other.1, other.2.1, other.2.2.1, other.2.2.2] at t ⊢
     all_goals linear_combination t
   · intro j
     have equation := h ⟨1 + j.val, by have := j.isLt; omega⟩
     fin_cases i <;> fin_cases j
-    all_goals simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+    all_goals op_index at equation
+    all_goals simp [Expression.eval, Verification.environment,
       selected.1, selected.2, other.1, other.2.1, other.2.2.1, other.2.2.2, leftByte] at equation ⊢
     all_goals linear_combination equation
 
@@ -89,10 +91,13 @@ theorem shift_amount [Fact p.Prime] (hp : 256 < p)
     (load : w 28 = 0) :
     (w 76).val < 256 ∧ (-7864320 * (w 42 - w 76)).val < 256 ∧ (w 57).val = (w 76).val % 32 := by
   have gate := Verification.assertion_of_holds holds ⟨39, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, load] at gate
+  op_index at gate
+  simp [Expression.eval, Verification.environment, load] at gate
   have h (i : Fin 4) := Verification.assertion_of_holds holds ⟨45 + i.val, by rw [constraint_count]; have := i.isLt; omega⟩
   have t := h 0; have a := h 1; have b := h 2; have c := h 3
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  simp only [Fin.coe_ofNat_eq_mod, Nat.reduceMod] at t a b c
+  op_index at t a b c
+  simp [Expression.eval, Verification.environment,
     selected.1, selected.2, other.1, other.2.1, other.2.2.1, other.2.2.2, gate] at t a b c
   have tag : w 82 = 8 := by linear_combination t
   have first : w 83 = w 76 := by linear_combination a
@@ -121,7 +126,8 @@ theorem shift_destination [Fact p.Prime] (hp : 262144 < p)
       (w 57 + w 8).val (w 10).val).extractLsb' (8 * j.val) 8).isLt
   have low := Verification.assertion_of_holds holds ⟨24, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds holds ⟨25, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  op_index at low high
+  simp [Expression.eval, Verification.environment,
     selected.1, selected.2] at low high
   have lo := Verification.sum_byte_pairs hp (fun i j => w (58 + 4 * i.val + j.val)) (w 50)
     (fun i j => small i ⟨j.val, by have := j.isLt; omega⟩) (by linear_combination low)

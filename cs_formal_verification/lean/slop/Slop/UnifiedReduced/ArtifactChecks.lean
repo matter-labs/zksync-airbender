@@ -7,6 +7,9 @@ namespace Airbender.UnifiedReduced
 
 set_option maxRecDepth 8192
 
+theorem timestamp_count {p : Nat} [Fact p.Prime] :
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := by rfl
+
 theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
     importedConstraintsTraceColumns.ports := by
   simp [importedConstraintsMemoryPorts, importedConstraintsTraceColumns]

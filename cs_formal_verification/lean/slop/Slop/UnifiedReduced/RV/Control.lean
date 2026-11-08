@@ -48,8 +48,9 @@ theorem control_row_facts {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words :
       have s25 : w 25 = 1 := by simpa using bit 14 true (by decide)
       exact ⟨by simp [s23, s24], by simp [s24, s25], fun h => absurd (m.symm.trans h) (by decide)⟩
   have gate := Verification.assertion_of_holds facts.core ⟨39, by rw [constraint_count]; decide⟩
+  op_index at gate
   have noROM : w 81 = 0 := by
-    simpa [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, s28] using gate
+    simpa [Expression.eval, Verification.environment, s28] using gate
   have indices := facts.indices (by dsimp [limbBase]; omega)
   rw [data] at indices
   have reads := rv_register_reads (by dsimp [limbBase]; omega) facts.core s28 facts.query epoch facts.history

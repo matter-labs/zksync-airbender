@@ -10,7 +10,6 @@ namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic Verification
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option maxHeartbeats 1600000
 
 theorem xorrot_destination [Fact p.Prime] (hp : 262144 < p)
     {words : Nat → BitVec 32} {w : Nat → ZMod p}
@@ -45,7 +44,8 @@ theorem xorrot_destination [Fact p.Prime] (hp : 262144 < p)
     parts i ⟨(j.val + 2 * limb.val + 4 - i.val) % 4, Nat.mod_lt _ (by decide)⟩
   have low := Verification.assertion_of_holds holds ⟨24, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds holds ⟨25, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  op_index at low high
+  simp [Expression.eval, Verification.environment,
     selected.1, selected.2] at low high
   have lo := sum_byte_pairs hp (pairs 0) (w 50) (fun i j => small i _)
     (by dsimp [pairs, parts]; linear_combination low)

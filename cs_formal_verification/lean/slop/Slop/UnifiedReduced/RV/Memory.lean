@@ -124,8 +124,9 @@ theorem sw_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {words : Nat → B
   rw [address] at aligned writable same
   refine ⟨_, RV.exec_store s 4 rs2 rs1 offset aligned writable, ?_⟩
   have readonly := Verification.assertion_of_holds facts.core ⟨38, by rw [constraint_count]; decide⟩
+  op_index at readonly
   have ram : w 54 = 0 := by
-    simpa [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+    simpa [Expression.eval, Verification.environment,
       store] using readonly
   have copy := word_memory_copy true facts.core (by simpa using load) (by simpa using store) ram
   change w 50 = w 42 ∧ w 51 = w 43 at copy

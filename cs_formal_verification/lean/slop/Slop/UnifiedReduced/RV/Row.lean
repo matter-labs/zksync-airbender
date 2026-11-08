@@ -183,8 +183,8 @@ theorem rv_register_reads {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     at indices
   have low := Verification.assertion_of_holds h ⟨26, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h ⟨27, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, noRAM] at low high
+  op_index at low high
+  simp [Expression.eval, Verification.environment, noRAM] at low high
   have location : w 38 = w 6 := by linear_combination low
   have upper : w 39 = 0 := by linear_combination high
   obtain ⟨c0, _, c1, _, _, _, a0, r0, a1, r1, _⟩ := rv_row_ports epoch history
@@ -207,8 +207,8 @@ theorem rv_register_write {p : Nat} [Fact p.Prime]
       RV.Same after (before.setReg rd (Word.mk (w 50).val (w 51).val).toBitVec) := by
   have low := Verification.assertion_of_holds h ⟨28, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h ⟨29, by rw [constraint_count]; decide⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, noStore] at low high
+  op_index at low high
+  simp [Expression.eval, Verification.environment, noStore] at low high
   have location : w 44 = w 7 := by linear_combination low
   have upper : w 45 = 0 := by linear_combination high
   obtain ⟨_, _, _, _, c2, _, _, _, _, _, a2, r2, w2⟩ := rv_row_ports epoch history
