@@ -979,3 +979,10 @@ Second C/B, diagonal calls, full hash and physical schedules remain open.
 all four COLUMN intermediate output vectors into pure G with derived pre-G inputs
 and weighted messages from the SAME counted source. Prior effects stay. Diagonal
 calls, finalization/full worker hash and physical schedules remain open.
+
+## Native diagonal G entry steps
+
+[Diagonal entry](WorkerDiagonalFirstTheorems.lean) derives canonical routed post-column inputs and all
+four first diagonal wrapping A additions/D XORrotate16 results from the SAME
+counted source. Prior column G/replay effects stay. Remaining diagonal steps,
+finalization/write-result/full hash and physical schedules remain open.
