@@ -1,5 +1,6 @@
 module
 public import Human.Import.Schema
+public import Human.Import.Exec.JsonParser
 
 @[expose] public section
 
@@ -17,9 +18,32 @@ A circuit JSON is parsed by `Json.parse` (behaviour fixed by `ParseSoundClaim` a
 namespace Airbender
 open Lean
 
-/-- The JSON value of a text, as a `Lean.Json` for the derived decoders. -/
-def jsonOfText (text : String) : Except String Json :=
-  Json.parse text
+mutual
+/-- A JSON value as a `Lean.Json`, the input of the derived decoders. Integers become `JsonNumber`s with
+    exponent 0; an object becomes a map from member names (unique, by `ParseSoundClaim`) to values. -/
+def Json.Value.toLean : Json.Value → Lean.Json
+  | .null => .null
+  | .bool b => .bool b
+  | .int n => .num (JsonNumber.fromInt n)
+  | .str s => .str s
+  | .arr items => .arr (Json.Value.itemsToLean items).toArray
+  | .obj members => Lean.Json.mkObj (Json.Value.membersToLean members)
+
+/-- `toLean` of each item. -/
+def Json.Value.itemsToLean : List Json.Value → List Lean.Json
+  | [] => []
+  | v :: vs => v.toLean :: Json.Value.itemsToLean vs
+
+/-- `toLean` of each member's value. -/
+def Json.Value.membersToLean : List (String × Json.Value) → List (String × Lean.Json)
+  | [] => []
+  | (k, v) :: ms => (k, v.toLean) :: Json.Value.membersToLean ms
+end
+
+/-- The JSON value of a text: `Json.parse` (behaviour fixed by `ParseSoundClaim` and `TextUniqueClaim`), as a
+    `Lean.Json`. -/
+def jsonOfText (text : String) : Except String Lean.Json :=
+  return (← Json.parse text.toUTF8).toLean
 
 /-- The circuit artifact of a JSON text. -/
 def parseCircuit (text : String) : Except String Circuit := do

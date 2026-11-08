@@ -61,8 +61,11 @@ Directory READMEs explain the relevant references, mappings, assumptions and sco
 [Properties](lean/human/Human/Helpers/Properties.lean) defines soundness,
 completeness and the observable circuit relation. Shared helpers are grouped by
 [topic](lean/human/Human/Helpers/README.md); properties do not require decoder or
-memory-history review. Supporting calculations remain in `slop/`; `Human/Import/` has a
-separate fidelity boundary.
+memory-history review. Supporting calculations remain in `slop/`. The [import guide](lean/human/Human/Import/README.md)
+says what of `Human/Import/` to read: one trusted transcription step (headed `TRUSTED: review`), the meaning of the
+JSON as pure functions, and claims proving that the JSON parser rejects malformed input and duplicate keys and that
+every imported definition is the meaning of its transcribed artifact. `Human/Import/Exec/` (parser, emitters) needs
+no review: each file names the claims that fix its behaviour.
 
 ## Clean, the RV32 spec and Sail
 
@@ -98,8 +101,8 @@ Representation lemmas live in `Slop/Arithmetic/Word.lean`.
 ```
 
 The audit lists theorem axiom dependencies. The checked claims use only standard
-Lean axioms; no `sorry` or project axioms are admitted. Importer tests are not
-proofs of faithful parsing. Subsequent work is in [the plan](docs/FORMAL_VERIFICATION_PLAN.md).
+Lean axioms; no `sorry` or project axioms are admitted. Importer tests check rejection paths; the import's
+correctness is the claims of the import guide, up to its trusted transcription step. Subsequent work is in [the plan](docs/FORMAL_VERIFICATION_PLAN.md).
 The [review check](lean/check_review.py) uses Lean's compiled declaration locations to require an explicit
 axiom root for every source-declared public theorem in `Human/` and `Slop/Final/`. It also resolves
 guide declaration names and local file/heading links. Source-only Rust/Sail names

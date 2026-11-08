@@ -45,7 +45,7 @@ realization and composition. The helper import graph is independent of `Trace/`.
 No circuit or helper module, in `Human/` or `Slop/Final/`, depends transitively on a trace module
 (checked by the review check). `Slop/` contains supporting
 calculations, interfaces, proof assembly and artifact guards. Review `Import/`
-separately for fidelity. Per-circuit `circuitModel` and `InterfaceAssumptions`
+separately for fidelity ([import guide](../lean/human/Human/Import/README.md)). Per-circuit `circuitModel` and `InterfaceAssumptions`
 remain visible; accepted row membership supplies that row's imported constraints.
 Shared initialized history derives bounds, actual reads and preprocessing.
 [RowPosition](../lean/human/Human/Helpers/Context/RowContext.lean) (RV: [RVRowPosition](../lean/human/Human/Helpers/Context/RVRowContext.lean))
@@ -85,18 +85,34 @@ when reviewing or strengthening a theorem.
 ## Import and generation fidelity
 
 CleanCore (Clean's definitions, transcribed) supplies `Expression`, `FlatOperation`, `Environment`, static tables and
-`ConstraintsHoldFlat` directly. The JSON schema is parser data, not a second
-arithmetic semantics. Lean's `Json.parse` and typed `FromJson` instances decode
-the Rust artifact directly. Audit [Parse](../lean/human/Human/Import/Parse.lean),
-[Schema](../lean/human/Human/Import/Schema.lean),
-[Coefficients](../lean/human/Human/Import/Coefficients.lean) and
-[Embed](../lean/human/Human/Import/Embed.lean). Coefficient cast equivalence is proved, but
-faithful parsing/emission is not. Placement guards reject missing or ambiguous
-logical variables and check memory/witness banks. Named imported descriptors do
-not prove that Rust preprocessing or decoder-table contents match the model.
+`ConstraintsHoldFlat` directly. The [import guide](../lean/human/Human/Import/README.md) lists what to read.
 
-Setup tables (`artifacts/setup/*.json`) are read by
-[SetupEmit](../lean/human/Human/Import/SetupEmit.lean) into the blocks of
+- **Trusted (not kernel-checked):** [Transcribe](../lean/human/Human/Import/Transcribe.lean) and
+  [TranscribeCommand](../lean/human/Human/Import/TranscribeCommand.lean), headed `TRUSTED: review`. The import_circuit command
+  reads a circuit JSON, parses it with `Json.parse`, decodes the value with the `FromJson` instances derived for the
+  serde mirror ([Schema](../lean/human/Human/Import/Schema.lean)) and reflects the result as `importedCircuit`
+  (derived `ToExpr`), next to the file's text `importedCircuitSourceBytes`. The sha256 pins of the JSON files are
+  checked by [check_circuit_json.py](../lean/check_circuit_json.py) (verify.sh step 1b).
+- **Proved:** the parser accepts exactly the JSON texts without duplicate member names, and a text has one value
+  (`ParseSoundClaim`, `TextUniqueClaim`, [Theorems](../lean/human/Human/Import/Theorems.lean), against the byte-level
+  grammar of [JsonGrammar](../lean/human/Human/Import/JsonGrammar.lean): RFC 8259 restricted to integers and to `\u`
+  escapes below U+10000). Each artifact's `ArtifactImportClaim` (`StandaloneImportClaim`, `UnifiedImportClaim` for the
+  inits/teardowns layouts) states that every imported definition the claims use is the meaning function applied to
+  `importedCircuit`; the kernel evaluates both sides.
+- **Reviewed as specification:** the meaning, pure functions of the decoded artifact:
+  [Columns](../lean/human/Human/Import/Columns.lean) (logical variables, ports, clocks, decoder columns, per-family
+  query profiles; `PlacementsClaim` states the placement index), [Operations](../lean/human/Human/Import/Operations.lean)
+  (equations and lookups as Clean operations) and
+  [InitsTeardownsLayout](../lean/human/Human/Import/InitsTeardownsLayout.lean); the schema and
+  [Coefficients](../lean/human/Human/Import/Coefficients.lean) (coefficient cast equivalence proved).
+- **Not reviewed:** `Human/Import/Exec/` (the parser and the emitters of the literal terms); each file names the claims
+  that fix its behaviour.
+
+Placement guards reject missing or ambiguous logical variables and check memory/witness banks. Named imported
+descriptors do not prove that Rust preprocessing or decoder-table contents match the model.
+
+Setup tables (`artifacts/setup/*.json`) are parsed by the same `Json.parse` and read by
+[SetupEmit](../lean/human/Human/Import/SetupEmit.lean) (trusted, headed `TRUSTED: review`) into the blocks of
 [SetupBlocks](../lean/human/Human/Import/SetupBlocks.lean). Besides transcribing the JSON,
 the import replaces each recognised table region (table ids in `gridCatalogue`) by a
 `grid` block, a named row formula, after comparing every row of the region with the JSON;

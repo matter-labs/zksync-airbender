@@ -24,7 +24,7 @@ Provenance:
 Row meaning (slop/Slop/Blake2Round/Setup/): `Rows.setupRow_eq` proves that every
 one of the 2^20 decoded rows equals the region formula (`Spec.spec0`..`spec5`):
 rows 0..606207 are the six XOR regions, rows 606208.. are all zero (tag 0).
-The padding rows cannot satisfy a query: `Circuit.blakeRoundQueries` (human/Human/Import/Parse.lean)
+The padding rows cannot satisfy a query: `Circuit.blakeRoundQueries` (human/Human/Import/Columns.lean)
 requires every query's tag column to be a constant in {4, 19, 20, 55, 56, 57}.
 
 ## How the import structures the columns (all four files)
