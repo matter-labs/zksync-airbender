@@ -13,11 +13,11 @@ theorem masked_destination {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (zero : w 15 = 1) : w 30 = 0 ∧ w 31 = 0 := by
   have lo := Verification.assertion_of_holds h
-    ⟨10, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨10, by rw [constraint_count]; decide⟩
   have hi := Verification.assertion_of_holds h
-    ⟨11, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, zero] using And.intro lo hi
+    ⟨11, by rw [constraint_count]; decide⟩
+  op_index at lo hi
+  simpa [Expression.eval, Verification.environment, zero] using And.intro lo hi
 
 private theorem branch_bits {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     {w : Nat → ZMod p} {left right : Word}
@@ -86,9 +86,9 @@ private theorem branch_bits {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     · have hz := mt equal.mp eq
       simp [hz, eq]
   have source := Verification.assertion_of_holds h
-    ⟨3, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, other.2.2] at source
+    ⟨3, by rw [constraint_count]; decide⟩
+  op_index at source
+  simp [Expression.eval, Verification.environment, other.2.2] at source
   have sourceEq : w 43 = w 27 := by linear_combination source
   refine ⟨borrowVal, zeroVal, ?_⟩
   rw [sourceEq, mapping.2.2.2, ZMod.val_natCast, Nat.mod_eq_of_lt (by
@@ -131,9 +131,9 @@ theorem branch_resolution {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   have result := values.2.2.1
   rw [key] at result
   have taken := Verification.assertion_of_holds h
-    ⟨4, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, selected] at taken
+    ⟨4, by rw [constraint_count]; decide⟩
+  op_index at taken
+  simp [Expression.eval, Verification.environment, selected] at taken
   have takenEq : w 45 = w 44 := by linear_combination -taken
   rw [takenEq]
   convert result using 1
@@ -166,11 +166,11 @@ theorem branch_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   have cleanup := (lookup_values hp h).2.2.2
   obtain ⟨c, b, cb, bb, hc, hb⟩ := pc_carries h
   have low := Verification.assertion_of_holds h
-    ⟨5, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨5, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h
-    ⟨6, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, selected, other.1, other.2.1, other.2.2,
+    ⟨6, by rw [constraint_count]; decide⟩
+  op_index at low high
+  simp [Expression.eval, Verification.environment, selected, other.1, other.2.1, other.2.2,
     resolved, hc, hb, mapping.2.2.1, mapping.2.2.2.1] at low high
   have initialLo : w 0 = (initial.lo : ZMod p) := by
     rw [mapping.1]; exact (ZMod.natCast_zmod_val _).symm
@@ -196,9 +196,9 @@ theorem branch_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     · simp only [increment, Bool.false_eq_true, ↓reduceIte] at lowNat
       omega
     · have checked := Verification.assertion_of_holds h
-        ⟨7, by simp [importedConstraints, FlatOperation.constraints]⟩
-      simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, other.1, other.2.1, resolved] at checked
+        ⟨7, by rw [constraint_count]; decide⟩
+      op_index at checked
+      simp [Expression.eval, Verification.environment, other.1, other.2.1, resolved] at checked
       have bit1 : (w 36).val / 2 % 2 = 0 := by
         have eq : (((w 36).val / 2 % 2 : Nat) : ZMod p) = 0 := cleanup.1 ▸ checked
         have eqVal := congrArg ZMod.val eq

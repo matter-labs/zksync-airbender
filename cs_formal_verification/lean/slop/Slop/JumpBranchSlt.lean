@@ -1,6 +1,7 @@
 module
 public import Human.Circuits.JumpBranchSlt.Artifact
 public import Slop.JumpBranchSlt.ArtifactChecks
+public import Slop.JumpBranchSlt.OpIndex
 public import Human.Helpers.Properties
 public import Slop.Arithmetic.Lemmas
 public import Slop.Arithmetic.Word
@@ -19,18 +20,17 @@ theorem local_flags {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     (w 4 = 0 ∨ w 4 = 1) ∧ ∀ k : Fin 5, w (11 + k.val) = 0 ∨ w (11 + k.val) = 1 := by
   constructor
   · have flag := Verification.assertion_of_holds h
-      ⟨0, by simp [importedConstraints, FlatOperation.constraints]⟩
-    simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero, or_comm] using flag
+      ⟨0, by rw [constraint_count]; decide⟩
+    op_index at flag
+    simpa [Expression.eval, Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero, or_comm] using flag
   · intro k
     have index : 14 + k.val < (FlatOperation.constraints (importedConstraints (p := p))).length := by
       rw [constraint_count]
       have := k.isLt
       omega
     have flag := Verification.assertion_of_holds h ⟨14 + k.val, index⟩
-    fin_cases k <;>
-      simpa [importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] using flag
+    fin_cases k <;> op_index at flag <;>
+      simpa [Expression.eval, Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] using flag
 
 /-- Canonical bounds from all four imported range queries. PC alignment and
     final-PC high-limb bounds still require a state/ROM interface. -/
@@ -39,13 +39,13 @@ theorem local_ranges {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     (w 34).val < limbBase ∧ (w 35).val < limbBase ∧
       (w 1).val < limbBase ∧ (w 36).val < limbBase := by
   have a := Verification.range16_bound (Verification.lookup_of_holds h
-    ⟨0, by simp [importedConstraints, FlatOperation.lookups]⟩)
+    ⟨0, by rw [lookup_count]; decide⟩)
   have b := Verification.range16_bound (Verification.lookup_of_holds h
-    ⟨1, by simp [importedConstraints, FlatOperation.lookups]⟩)
+    ⟨1, by rw [lookup_count]; decide⟩)
   have c := Verification.range16_bound (Verification.lookup_of_holds h
-    ⟨2, by simp [importedConstraints, FlatOperation.lookups]⟩)
+    ⟨2, by rw [lookup_count]; decide⟩)
   have d := Verification.range16_bound (Verification.lookup_of_holds h
-    ⟨3, by simp [importedConstraints, FlatOperation.lookups]⟩)
+    ⟨3, by rw [lookup_count]; decide⟩)
   simp [Expression.eval, Verification.environment] at a b c d
   exact ⟨a, b, c, d⟩
 
@@ -60,13 +60,13 @@ theorem lookup_values {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     w 46 = (((w 36).val / 2 % 2 : Nat) : ZMod p) ∧
     w 16 = (((w 36).val - (w 36).val % 4 : Nat) : ZMod p) := by
   have zero := Verification.regIsZero_value (by omega : 131072 ≤ p)
-    (Verification.lookup_of_holds h ⟨4, by simp [importedConstraints, FlatOperation.lookups]⟩)
+    (Verification.lookup_of_holds h ⟨4, by rw [lookup_count]; decide⟩)
   have sign := Verification.u16Sign_value (by omega : 65536 ≤ p)
-    (Verification.lookup_of_holds h ⟨5, by simp [importedConstraints, FlatOperation.lookups]⟩)
+    (Verification.lookup_of_holds h ⟨5, by rw [lookup_count]; decide⟩)
   have resolved := Verification.conditional_value hp
-    (Verification.lookup_of_holds h ⟨6, by simp [importedConstraints, FlatOperation.lookups]⟩)
+    (Verification.lookup_of_holds h ⟨6, by rw [lookup_count]; decide⟩)
   have cleanup := Verification.jumpCleanup_value (by omega : 65536 ≤ p)
-    (Verification.lookup_of_holds h ⟨7, by simp [importedConstraints, FlatOperation.lookups]⟩)
+    (Verification.lookup_of_holds h ⟨7, by rw [lookup_count]; decide⟩)
   simp [Expression.eval, Verification.environment] at zero sign resolved cleanup
   refine ⟨by simpa using zero.2, sign.2, ?_, cleanup.2.1, cleanup.2.2⟩
   simpa [add_assoc, add_comm, add_left_comm] using resolved.2
@@ -87,7 +87,7 @@ theorem resolution_key {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   have oneVal : (1 : ZMod p).val = 1 := ZMod.val_one'' (by omega)
   have values := lookup_values hp h
   have sign := Verification.u16Sign_value (by omega : 65536 ≤ p)
-    (Verification.lookup_of_holds h ⟨5, by simp [importedConstraints, FlatOperation.lookups]⟩)
+    (Verification.lookup_of_holds h ⟨5, by rw [lookup_count]; decide⟩)
   simp [Expression.eval, Verification.environment] at sign
   have signBound : (w 42).val ≤ 1 := by
     rw [sign.2, ZMod.val_natCast]
@@ -97,9 +97,9 @@ theorem resolution_key {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     rw [values.1]
     split <;> simp [oneVal]
   have borrow := Verification.assertion_of_holds h
-    ⟨20, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at borrow
+    ⟨20, by rw [constraint_count]; decide⟩
+  op_index at borrow
+  simp [Expression.eval, Verification.environment] at borrow
   have bits : w 38 = 0 ∨ w 38 = 1 := by
     simpa [mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] using borrow
   have borrowBound : (w 38).val ≤ 1 := by
@@ -127,9 +127,9 @@ theorem unsigned_resolution {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     change ((3 : Nat) : ZMod p).val = 3
     rw [ZMod.val_natCast, Nat.mod_eq_of_lt (by omega)]
   have source := Verification.assertion_of_holds h
-    ⟨3, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, selected] at source
+    ⟨3, by rw [constraint_count]; decide⟩
+  op_index at source
+  simp [Expression.eval, Verification.environment, selected] at source
   have sourceEq : w 43 = w 27 + w 9 := by linear_combination source
   obtain ⟨packed, key, _, _, bit, _, tag, borrowBound⟩ := resolution_key hp h
     (by rw [funct3, threeVal]; decide) (by rw [sourceEq]; exact rightHi)
@@ -149,11 +149,11 @@ theorem timestamp_equations {p : Nat} [Fact p.Prime]
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
     ∃ c : Nat, c ≤ 1 ∧ w 2 + 4 = w 18 + 524288 * c ∧ w 3 + c = w 19 := by
   have carry := Verification.assertion_of_holds h
-    ⟨12, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨12, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h
-    ⟨13, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at carry high
+    ⟨13, by rw [constraint_count]; decide⟩
+  op_index at carry high
+  simp [Expression.eval, Verification.environment] at carry high
   have boolean : (-3840 * (w 2 + 4 - w 18)) *
       (-3840 * (w 2 + 4 - w 18) - 1) = 0 := by
     convert carry using 1
@@ -167,11 +167,11 @@ theorem arithmetic_carries {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
     ∃ c b : Nat, c ≤ 1 ∧ b ≤ 1 ∧ w 37 = (c : ZMod p) ∧ w 38 = (b : ZMod p) := by
   have carry := Verification.assertion_of_holds h
-    ⟨19, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨19, by rw [constraint_count]; decide⟩
   have borrow := Verification.assertion_of_holds h
-    ⟨20, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment] at carry borrow
+    ⟨20, by rw [constraint_count]; decide⟩
+  op_index at carry borrow
+  simp [Expression.eval, Verification.environment] at carry borrow
   obtain ⟨c, cb, hc⟩ := boolean_nat (x := w 37) (by simpa [mul_eq_zero, sub_eq_add_neg] using carry)
   obtain ⟨b, bb, hb⟩ := boolean_nat (x := w 38) (by simpa [mul_eq_zero, sub_eq_add_neg] using borrow)
   exact ⟨c, b, cb, bb, hc, hb⟩
@@ -186,11 +186,11 @@ theorem subtraction_equations {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
       (c : ZMod p) + w 35 + (w 27 + w 9 * w 13) = w 23 + 65536 * b := by
   obtain ⟨c, b, cb, bb, hc, hb⟩ := arithmetic_carries h
   have low := Verification.assertion_of_holds h
-    ⟨1, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨1, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h
-    ⟨2, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, other.1, other.2, hc, hb] at low high
+    ⟨2, by rw [constraint_count]; decide⟩
+  op_index at low high
+  simp [Expression.eval, Verification.environment, other.1, other.2, hc, hb] at low high
   refine ⟨c, b, cb, bb, hc, hb, ?_, ?_⟩
   · linear_combination low - (w 34 + w 26 - w 22 - 65536 * c) * selection
   · linear_combination high - ((c : ZMod p) + w 35 + w 27 - w 23 - 65536 * b) * selection
@@ -231,16 +231,16 @@ theorem comparison_destination {p : Nat} [Fact p.Prime]
     (outputMapping : output.lo = (w 30).val ∧ output.hi = (w 31).val) :
     output.value = (w 44).val := by
   have selectedLow := Verification.assertion_of_holds h
-    ⟨8, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨8, by rw [constraint_count]; decide⟩
   have selectedHigh := Verification.assertion_of_holds h
-    ⟨9, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨9, by rw [constraint_count]; decide⟩
   have outputLow := Verification.assertion_of_holds h
-    ⟨10, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨10, by rw [constraint_count]; decide⟩
   have outputHigh := Verification.assertion_of_holds h
-    ⟨11, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, selected, other.1, other.2.1, nonzero]
-    at selectedLow selectedHigh outputLow outputHigh
+    ⟨11, by rw [constraint_count]; decide⟩
+  op_index at selectedLow selectedHigh outputLow outputHigh
+  simp [Expression.eval,
+    Verification.environment, selected, other.1, other.2.1, nonzero] at selectedLow selectedHigh outputLow outputHigh
   have low : w 30 = w 44 := by linear_combination -selectedLow - outputLow
   have high : w 31 = 0 := by linear_combination selectedHigh - outputHigh
   simp [Word.value, outputMapping.1, outputMapping.2, low, high]
@@ -273,9 +273,9 @@ theorem unsigned_destination {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
     simp [one, oneVal]
   · have notOne : w 38 ≠ 1 := fun one => lt (comparison.mp one)
     have flag := Verification.assertion_of_holds h
-      ⟨20, by simp [importedConstraints, FlatOperation.constraints]⟩
-    simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-      Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] at flag
+      ⟨20, by rw [constraint_count]; decide⟩
+    op_index at flag
+    simp [Expression.eval, Verification.environment, mul_eq_zero, ← sub_eq_add_neg, sub_eq_zero] at flag
     have zero : w 38 = 0 := flag.resolve_right notOne
     simp only [ite_eq_right lt]
     simp [zero]

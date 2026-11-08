@@ -20,19 +20,19 @@ private theorem rv_comparison_destination_bounds {p : Nat} [Fact p.Prime]
     (⟨(w 30).val, (w 31).val⟩ : Word).Bounded := by
   obtain ⟨jal, jalr, comparison, mask⟩ := selected
   have low := Verification.assertion_of_holds h
-    ⟨8, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨8, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h
-    ⟨9, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨9, by rw [constraint_count]; decide⟩
   have outputLow := Verification.assertion_of_holds h
-    ⟨10, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨10, by rw [constraint_count]; decide⟩
   have outputHigh := Verification.assertion_of_holds h
-    ⟨11, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, jal, jalr, comparison] at low high
+    ⟨11, by rw [constraint_count]; decide⟩
+  op_index at low high
+  simp [Expression.eval, Verification.environment, jal, jalr, comparison] at low high
   have lo : w 47 = w 44 := by linear_combination -low
   have hi : w 48 = 0 := high
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, mask, lo, hi] at outputLow outputHigh
+  op_index at outputLow outputHigh
+  simp [Expression.eval, Verification.environment, mask, lo, hi] at outputLow outputHigh
   have written : w 30 = w 44 := by linear_combination -outputLow
   have resolved := (lookup_values hp h).2.2.1
   rw [show w 31 = 0 by exact outputHigh, written, resolved]

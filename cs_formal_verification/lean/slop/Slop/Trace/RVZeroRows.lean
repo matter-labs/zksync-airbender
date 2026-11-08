@@ -165,11 +165,11 @@ private theorem jumpBranch_zero_destination {p : Nat} [Fact p.Prime] {w : Nat �
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) JumpBranchSlt.importedConstraints)
     (discarded : w 15 = 1) : w 30 = 0 ∧ w 31 = 0 := by
   have low := Verification.assertion_of_holds h
-    ⟨10, by simp [JumpBranchSlt.importedConstraints, FlatOperation.constraints]⟩
+    ⟨10, by rw [JumpBranchSlt.constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h
-    ⟨11, by simp [JumpBranchSlt.importedConstraints, FlatOperation.constraints]⟩
-  simp [JumpBranchSlt.importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, discarded] at low high
+    ⟨11, by rw [JumpBranchSlt.constraint_count]; decide⟩
+  op_index at low high
+  simp [Expression.eval, Verification.environment, discarded] at low high
   exact ⟨low, high⟩
 
 theorem jumpBranch_row_zero_preserving {p : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p)

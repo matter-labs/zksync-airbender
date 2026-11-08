@@ -16,9 +16,10 @@ private theorem carry_bits {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
     (∃ c : Nat, c ≤ 1 ∧ w 39 = (c : ZMod p)) ∧
     (∃ c : Nat, c ≤ 1 ∧ w 40 = (c : ZMod p)) := by
-  have h39 := Verification.assertion_of_holds h ⟨25, by simp [importedConstraints, FlatOperation.constraints]⟩
-  have h40 := Verification.assertion_of_holds h ⟨26, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment] at h39 h40
+  have h39 := Verification.assertion_of_holds h ⟨25, by rw [constraint_count]; decide⟩
+  have h40 := Verification.assertion_of_holds h ⟨26, by rw [constraint_count]; decide⟩
+  op_index at h39 h40
+  simp [Expression.eval, Verification.environment] at h39 h40
   constructor
   · apply Arithmetic.boolean_nat
     simpa [mul_eq_zero, sub_eq_add_neg] using h39
@@ -45,14 +46,15 @@ private theorem selected_equations_row {p : Nat} [Fact p.Prime] {row : RowInput}
     rw [wm.outputLo]; exact (ZMod.natCast_zmod_val _).symm
   have outHi : w 34 = (output.destination.hi : ZMod p) := by
     rw [wm.outputHi]; exact (ZMod.natCast_zmod_val _).symm
-  have lo := Verification.assertion_of_holds h ⟨4, by simp [importedConstraints, FlatOperation.constraints]⟩
-  have hi := Verification.assertion_of_holds h ⟨5, by simp [importedConstraints, FlatOperation.constraints]⟩
+  have lo := Verification.assertion_of_holds h ⟨4, by rw [constraint_count]; decide⟩
+  have hi := Verification.assertion_of_holds h ⟨5, by rw [constraint_count]; decide⟩
   have s12 := dc.otherSelectors 12 (by omega) (by omega)
   have s13 := dc.otherSelectors 13 (by omega) (by omega)
   have s14 := dc.otherSelectors 14 (by omega) (by omega)
   have s15 := dc.otherSelectors 15 (by omega) (by omega)
   have s16 := dc.otherSelectors 16 (by omega) (by omega)
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment, dc.addSelector, dc.subSelector, nz,
+  op_index at lo hi
+  simp [Expression.eval, Verification.environment, dc.addSelector, dc.subSelector, nz,
     s12, s13, s14, s15, s16, wm.leftLo, wm.leftHi, wm.rightLo, wm.rightHi,
     wm.immediateLo, wm.immediateHi, wm.pcLo, wm.pcHi, outLo, outHi, hc, hd] at lo hi
   cases hop : row.opcode <;> simp [hop] at lo hi ⊢ <;> constructor
@@ -67,9 +69,9 @@ theorem written_limb_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints) :
     (w 33).val < limbBase ∧ (w 34).val < limbBase := by
   have lo := Verification.range16_bound (Verification.lookup_of_holds h
-    ⟨2, by simp [importedConstraints, FlatOperation.lookups]⟩)
+    ⟨2, by rw [lookup_count]; decide⟩)
   have hi := Verification.range16_bound (Verification.lookup_of_holds h
-    ⟨3, by simp [importedConstraints, FlatOperation.lookups]⟩)
+    ⟨3, by rw [lookup_count]; decide⟩)
   simp [Expression.eval, Verification.environment] at lo hi
   exact ⟨lo, hi⟩
 
@@ -82,13 +84,14 @@ theorem zero_operands_result {p : Nat} [Fact p.Prime] (hp : 196608 < p) {w : Nat
     (Word.mk (w 33).val (w 34).val).toBitVec = 0 := by
   obtain ⟨⟨c, cb, hc⟩, ⟨d, db, hd⟩⟩ := carry_bits h
   obtain ⟨leftLo, leftHi, rightLo, rightHi, immediateLo, immediateHi⟩ := operands
-  have lo := Verification.assertion_of_holds h ⟨4, by simp [importedConstraints, FlatOperation.constraints]⟩
-  have hi := Verification.assertion_of_holds h ⟨5, by simp [importedConstraints, FlatOperation.constraints]⟩
+  have lo := Verification.assertion_of_holds h ⟨4, by rw [constraint_count]; decide⟩
+  have hi := Verification.assertion_of_holds h ⟨5, by rw [constraint_count]; decide⟩
   have flags : w 11 = 0 ∧ w 12 = 0 ∧ w 13 = 0 ∧ w 14 = 0 ∧ w 15 = 0 ∧
       w 16 = 0 := by
     repeat' apply And.intro
     all_goals apply others <;> omega
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment,
+  op_index at lo hi
+  simp [Expression.eval, Verification.environment,
     selected, flags.1, flags.2.1, flags.2.2.1, flags.2.2.2.1, flags.2.2.2.2.1,
     flags.2.2.2.2.2,
     leftLo, leftHi, rightLo, rightHi, immediateLo, immediateHi, hc, hd] at lo hi

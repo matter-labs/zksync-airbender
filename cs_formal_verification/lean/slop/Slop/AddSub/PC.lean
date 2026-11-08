@@ -1,5 +1,6 @@
 module
 public import Slop.AddSub.RowModel
+public import Slop.AddSub.OpIndex
 public import Slop.Arithmetic.Lemmas
 public import Slop.Arithmetic.Word
 public import Slop.Constraints
@@ -16,9 +17,9 @@ theorem pc_bounds {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)
     (mapping : PCMapping initial final w) : final.Bounded := by
   have lo := Verification.range16_bound (Verification.lookup_of_holds h
-    ⟨4, by simp [importedConstraints, FlatOperation.lookups]⟩)
+    ⟨4, by rw [lookup_count]; decide⟩)
   have hi := Verification.range16_bound (Verification.lookup_of_holds h
-    ⟨5, by simp [importedConstraints, FlatOperation.lookups]⟩)
+    ⟨5, by rw [lookup_count]; decide⟩)
   simp [Expression.eval, Verification.environment] at lo hi
   exact ⟨mapping.finalLo ▸ lo, mapping.finalHi ▸ hi⟩
 
@@ -31,15 +32,15 @@ private theorem pc_equations {p : Nat} [Fact p.Prime]
       (initial.lo : ZMod p) + 4 = final.lo + 65536 * c ∧
       (initial.hi : ZMod p) + c = final.hi := by
   have carry := Verification.assertion_of_holds h
-    ⟨12, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨12, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h
-    ⟨13, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨13, by rw [constraint_count]; decide⟩
   have finalLo : w 19 = (final.lo : ZMod p) := by
     rw [mapping.finalLo]; exact (ZMod.natCast_zmod_val _).symm
   have finalHi : w 20 = (final.hi : ZMod p) := by
     rw [mapping.finalHi]; exact (ZMod.natCast_zmod_val _).symm
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, mapping.initialLo, mapping.initialHi, finalLo, finalHi] at carry high
+  op_index at carry high
+  simp [Expression.eval, Verification.environment, mapping.initialLo, mapping.initialHi, finalLo, finalHi] at carry high
   let expression : ZMod p := -30720 * (initial.lo + 4 - final.lo)
   have boolean : expression * (expression - 1) = 0 := by
     simpa [expression, mul_eq_zero, sub_eq_add_neg] using carry

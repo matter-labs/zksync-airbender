@@ -193,7 +193,8 @@ theorem data_lookup {p : Nat} [Fact p.Prime] {rom : Table (ZMod p) (fields 9)}
     all_goals
       simp only [selected, rEq] at address key
       linear_combination key + w 35 * address
-  simpa [importedConstraints, FlatOperation.lookups, Lookup.Contains, Table.toRaw,
+  op_index at query
+  simpa [Lookup.Contains, Table.toRaw,
     Verification.environment, Expression.eval, fromElements, keyEq, loEq, hiEq, tagEq] using query
 
 /-- The zero-tag table row forces RAM loads and stores to copy both data limbs.

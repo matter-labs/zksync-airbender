@@ -96,15 +96,15 @@ theorem rv_comparison_pc {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) {w : Nat 
   have cleanup := (lookup_values hp h).2.2.2.2
   obtain ⟨c, b, cb, bb, hc, hb⟩ := pc_carries h
   have branch := Verification.assertion_of_holds h
-    ⟨4, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, other.2.2] at branch
+    ⟨4, by rw [constraint_count]; decide⟩
+  op_index at branch
+  simp [Expression.eval, Verification.environment, other.2.2] at branch
   have low := Verification.assertion_of_holds h
-    ⟨5, by simp [importedConstraints, FlatOperation.constraints]⟩
+    ⟨5, by rw [constraint_count]; decide⟩
   have high := Verification.assertion_of_holds h
-    ⟨6, by simp [importedConstraints, FlatOperation.constraints]⟩
-  simp [importedConstraints, FlatOperation.constraints, Expression.eval,
-    Verification.environment, selected, other.1, other.2.1, other.2.2, branch, hc, hb] at low high
+    ⟨6, by rw [constraint_count]; decide⟩
+  op_index at low high
+  simp [Expression.eval, Verification.environment, selected, other.1, other.2.1, other.2.2, branch, hc, hb] at low high
   have initialLo : w 0 = (initial.lo : ZMod p) := by
     rw [pcLo]; exact (ZMod.natCast_zmod_val _).symm
   have initialHi : w 1 = (initial.hi : ZMod p) := by

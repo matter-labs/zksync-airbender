@@ -1,6 +1,8 @@
 module
 public import Slop.AddSub.ArtifactChecks
-public import Human.Circuits.WordMemory.Artifact
+public import Slop.AddSub.OpIndex
+public import Slop.WordMemory.ArtifactChecks
+public import Slop.WordMemory.OpIndex
 public import Slop.AddSub.Timestamp
 public import Slop.Trace.Timestamps
 
@@ -15,9 +17,9 @@ theorem addSub_final_bound {p : Nat} [Fact p.Prime]
   have timestamps := Verification.holds_of_sublist h
     (List.sublist_append_right (AddSub.importedConstraints) (AddSub.importedConstraintsTimestampLookups))
   have lb := range_bound (Verification.lookup_of_holds timestamps
-    ⟨0, by simp [AddSub.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+    ⟨0, by rw [AddSub.timestamp_count]; decide⟩)
   have hb := range_bound (Verification.lookup_of_holds timestamps
-    ⟨1, by simp [AddSub.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+    ⟨1, by rw [AddSub.timestamp_count]; decide⟩)
   simp [Expression.eval, Verification.environment] at lb hb
   have finalBound : (decodeTimestamp w AddSub.importedConstraintsTraceColumns.finalTime).Bounded := ⟨lb, hb⟩
   exact finalBound
@@ -57,15 +59,15 @@ theorem addSub_clock {p : Nat} [Fact p.Prime]
   simp [AddSub.importedConstraintsTraceColumns] at member
   rcases member with rfl | rfl | rfl
   · have bit := Verification.assertion_of_holds core
-      ⟨27, by simp [AddSub.importedConstraints, FlatOperation.constraints]⟩
+      ⟨27, by rw [AddSub.constraint_count]; decide⟩
     have lr := range_bound (Verification.lookup_of_holds timestamps
-      ⟨2, by simp [AddSub.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+      ⟨2, by rw [AddSub.timestamp_count]; decide⟩)
     have hr := range_bound (Verification.lookup_of_holds timestamps
-      ⟨3, by simp [AddSub.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+      ⟨3, by rw [AddSub.timestamp_count]; decide⟩)
     simp [Expression.eval, Verification.environment] at lr hr
     have normalized : w 42 * (w 42 - 1) = 0 := by
-      simpa [AddSub.importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, sub_eq_add_neg] using bit
+      op_index at bit
+      simpa [Expression.eval, Verification.environment, sub_eq_add_neg] using bit
     have lower : ((w 23 - w 2 - 0 + timestampBase * w 42) : ZMod p).val < timestampBase := by
       convert lr using 1; congr 1; ring
     have upper : ((w 24 + timestampBase - w 42 - w 3) : ZMod p).val < timestampBase := by
@@ -79,15 +81,15 @@ theorem addSub_clock {p : Nat} [Fact p.Prime]
     omega
 
   · have bit := Verification.assertion_of_holds core
-      ⟨28, by simp [AddSub.importedConstraints, FlatOperation.constraints]⟩
+      ⟨28, by rw [AddSub.constraint_count]; decide⟩
     have lr := range_bound (Verification.lookup_of_holds timestamps
-      ⟨4, by simp [AddSub.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+      ⟨4, by rw [AddSub.timestamp_count]; decide⟩)
     have hr := range_bound (Verification.lookup_of_holds timestamps
-      ⟨5, by simp [AddSub.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+      ⟨5, by rw [AddSub.timestamp_count]; decide⟩)
     simp [Expression.eval, Verification.environment] at lr hr
     have normalized : w 43 * (w 43 - 1) = 0 := by
-      simpa [AddSub.importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, sub_eq_add_neg] using bit
+      op_index at bit
+      simpa [Expression.eval, Verification.environment, sub_eq_add_neg] using bit
     have lower : ((w 27 - w 2 - 1 + timestampBase * w 43) : ZMod p).val < timestampBase := by
       convert lr using 1; congr 1; ring
     have upper : ((w 28 + timestampBase - w 43 - w 3) : ZMod p).val < timestampBase := by
@@ -101,15 +103,15 @@ theorem addSub_clock {p : Nat} [Fact p.Prime]
     omega
 
   · have bit := Verification.assertion_of_holds core
-      ⟨29, by simp [AddSub.importedConstraints, FlatOperation.constraints]⟩
+      ⟨29, by rw [AddSub.constraint_count]; decide⟩
     have lr := range_bound (Verification.lookup_of_holds timestamps
-      ⟨6, by simp [AddSub.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+      ⟨6, by rw [AddSub.timestamp_count]; decide⟩)
     have hr := range_bound (Verification.lookup_of_holds timestamps
-      ⟨7, by simp [AddSub.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+      ⟨7, by rw [AddSub.timestamp_count]; decide⟩)
     simp [Expression.eval, Verification.environment] at lr hr
     have normalized : w 44 * (w 44 - 1) = 0 := by
-      simpa [AddSub.importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, sub_eq_add_neg] using bit
+      op_index at bit
+      simpa [Expression.eval, Verification.environment, sub_eq_add_neg] using bit
     have lower : ((w 35 - w 2 - 2 + timestampBase * w 44) : ZMod p).val < timestampBase := by
       convert lr using 1; congr 1; ring
     have upper : ((w 36 + timestampBase - w 44 - w 3) : ZMod p).val < timestampBase := by
@@ -130,9 +132,9 @@ theorem wordMemory_final_bound {p : Nat} [Fact p.Prime] (rom : Table (ZMod p) (f
   have timestamps := Verification.holds_of_sublist h
     (List.sublist_append_right (WordMemory.importedConstraints rom) (WordMemory.importedConstraintsTimestampLookups))
   have lb := range_bound (Verification.lookup_of_holds timestamps
-    ⟨0, by simp [WordMemory.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+    ⟨0, by rw [WordMemory.timestamp_count]; decide⟩)
   have hb := range_bound (Verification.lookup_of_holds timestamps
-    ⟨1, by simp [WordMemory.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+    ⟨1, by rw [WordMemory.timestamp_count]; decide⟩)
   simp [Expression.eval, Verification.environment] at lb hb
   have finalBound : (decodeTimestamp w WordMemory.importedConstraintsTraceColumns.finalTime).Bounded := ⟨lb, hb⟩
   exact finalBound
@@ -149,10 +151,11 @@ theorem wordMemory_step {p : Nat} [Fact p.Prime]
     (List.sublist_append_left (WordMemory.importedConstraints rom) (WordMemory.importedConstraintsTimestampLookups))
   have finalBound := wordMemory_final_bound rom h
   have boolean := Verification.assertion_of_holds core
-    ⟨20, by simp [WordMemory.importedConstraints, FlatOperation.constraints]⟩
+    ⟨20, by rw [WordMemory.constraint_count]; decide⟩
   have high := Verification.assertion_of_holds core
-    ⟨21, by simp [WordMemory.importedConstraints, FlatOperation.constraints]⟩
-  simp [WordMemory.importedConstraints, FlatOperation.constraints, Expression.eval, Verification.environment] at boolean high
+    ⟨21, by rw [WordMemory.constraint_count]; decide⟩
+  op_index at boolean high
+  simp [Expression.eval, Verification.environment] at boolean high
   have bit : (-3840 * (w 2 + 4 - w 13)) * (-3840 * (w 2 + 4 - w 13) - 1) = 0 := by
     convert boolean using 1
     ring
@@ -182,15 +185,15 @@ theorem wordMemory_clock {p : Nat} [Fact p.Prime]
   simp [WordMemory.importedConstraintsTraceColumns] at member
   rcases member with rfl | rfl | rfl
   · have bit := Verification.assertion_of_holds core
-      ⟨24, by simp [WordMemory.importedConstraints, FlatOperation.constraints]⟩
+      ⟨24, by rw [WordMemory.constraint_count]; decide⟩
     have lr := range_bound (Verification.lookup_of_holds timestamps
-      ⟨2, by simp [WordMemory.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+      ⟨2, by rw [WordMemory.timestamp_count]; decide⟩)
     have hr := range_bound (Verification.lookup_of_holds timestamps
-      ⟨3, by simp [WordMemory.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+      ⟨3, by rw [WordMemory.timestamp_count]; decide⟩)
     simp [Expression.eval, Verification.environment] at lr hr
     have normalized : w 46 * (w 46 - 1) = 0 := by
-      simpa [WordMemory.importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, sub_eq_add_neg] using bit
+      op_index at bit
+      simpa [Expression.eval, Verification.environment, sub_eq_add_neg] using bit
     have lower : ((w 15 - w 2 - 0 + timestampBase * w 46) : ZMod p).val < timestampBase := by
       convert lr using 1; congr 1; ring
     have upper : ((w 16 + timestampBase - w 46 - w 3) : ZMod p).val < timestampBase := by
@@ -204,15 +207,15 @@ theorem wordMemory_clock {p : Nat} [Fact p.Prime]
     omega
 
   · have bit := Verification.assertion_of_holds core
-      ⟨25, by simp [WordMemory.importedConstraints, FlatOperation.constraints]⟩
+      ⟨25, by rw [WordMemory.constraint_count]; decide⟩
     have lr := range_bound (Verification.lookup_of_holds timestamps
-      ⟨4, by simp [WordMemory.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+      ⟨4, by rw [WordMemory.timestamp_count]; decide⟩)
     have hr := range_bound (Verification.lookup_of_holds timestamps
-      ⟨5, by simp [WordMemory.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+      ⟨5, by rw [WordMemory.timestamp_count]; decide⟩)
     simp [Expression.eval, Verification.environment] at lr hr
     have normalized : w 47 * (w 47 - 1) = 0 := by
-      simpa [WordMemory.importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, sub_eq_add_neg] using bit
+      op_index at bit
+      simpa [Expression.eval, Verification.environment, sub_eq_add_neg] using bit
     have lower : ((w 21 - w 2 - 1 + timestampBase * w 47) : ZMod p).val < timestampBase := by
       convert lr using 1; congr 1; ring
     have upper : ((w 22 + timestampBase - w 47 - w 3) : ZMod p).val < timestampBase := by
@@ -226,15 +229,15 @@ theorem wordMemory_clock {p : Nat} [Fact p.Prime]
     omega
 
   · have bit := Verification.assertion_of_holds core
-      ⟨26, by simp [WordMemory.importedConstraints, FlatOperation.constraints]⟩
+      ⟨26, by rw [WordMemory.constraint_count]; decide⟩
     have lr := range_bound (Verification.lookup_of_holds timestamps
-      ⟨6, by simp [WordMemory.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+      ⟨6, by rw [WordMemory.timestamp_count]; decide⟩)
     have hr := range_bound (Verification.lookup_of_holds timestamps
-      ⟨7, by simp [WordMemory.importedConstraintsTimestampLookups, FlatOperation.lookups]⟩)
+      ⟨7, by rw [WordMemory.timestamp_count]; decide⟩)
     simp [Expression.eval, Verification.environment] at lr hr
     have normalized : w 48 * (w 48 - 1) = 0 := by
-      simpa [WordMemory.importedConstraints, FlatOperation.constraints, Expression.eval,
-        Verification.environment, sub_eq_add_neg] using bit
+      op_index at bit
+      simpa [Expression.eval, Verification.environment, sub_eq_add_neg] using bit
     have lower : ((w 27 - w 2 - 2 + timestampBase * w 48) : ZMod p).val < timestampBase := by
       convert lr using 1; congr 1; ring
     have upper : ((w 28 + timestampBase - w 48 - w 3) : ZMod p).val < timestampBase := by
