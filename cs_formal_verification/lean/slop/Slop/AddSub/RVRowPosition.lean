@@ -1,6 +1,9 @@
-import Human.Circuits.AddSub.RVModel
-import Slop.Trace.RVPooledRow
-import Slop.Trace.RVRowGlue
+module
+public import Human.Circuits.AddSub.RVModel
+public import Slop.Trace.RVPooledRow
+public import Slop.Trace.RVRowGlue
+
+@[expose] public section
 
 /-! RV32 AddSub pilot, history side: for an accepted ADD/SUB/ADDI/LUI/AUIPC row and any RV pre-state at which the row
     sits (`RVRowPosition`), the row's two operand registers hold the values the row read.
@@ -25,7 +28,7 @@ theorem rv_addsub_row_position (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (h
   have shape : (⟨.addSub, w⟩ : Row p PooledFamily).ports =
       #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
         importedConstraintsMemoryPorts[2]] := by
-    have portsEq : (⟨.addSub, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := rfl
+    have portsEq : (⟨.addSub, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := by rfl
     rw [portsEq]
     first
       | rfl

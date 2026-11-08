@@ -1,9 +1,12 @@
-import Human.Helpers.Context.Columns
-import Human.Helpers.Context.PCState.Model
-import Human.Helpers.Context.Timestamps
-import Human.Helpers.Decoder.Columns
-import Human.Helpers.Memory.Ports
-import Human.Helpers.Properties
+module
+public import Human.Helpers.Context.Columns
+public import Human.Helpers.Context.PCState.Model
+public import Human.Helpers.Context.Timestamps
+public import Human.Helpers.Decoder.Columns
+public import Human.Helpers.Memory.Ports
+public import Human.Helpers.Properties
+
+@[expose] public section
 
 namespace Airbender.Trace
 

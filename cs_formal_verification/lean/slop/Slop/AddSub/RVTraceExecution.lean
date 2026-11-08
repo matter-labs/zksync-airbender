@@ -1,10 +1,13 @@
-import Slop.Trace.RVFamilySelectors
-import Slop.AddSub.RVDecoder
-import Slop.AddSub.PC
-import Slop.AddSub
-import Slop.Trace.RVFamilyTrace
-import Slop.ISA.RV.DecodeShape
-import Slop.ISA.RV.Step
+module
+public import Slop.Trace.RVFamilySelectors
+public import Slop.AddSub.RVDecoder
+public import Slop.AddSub.PC
+public import Slop.AddSub
+public import Slop.Trace.RVFamilyTrace
+public import Slop.ISA.RV.DecodeShape
+public import Slop.ISA.RV.Step
+
+@[expose] public section
 
 /-! One ADD/SUB-family row of the two-family (ADD/SUB + word memory) trace on the RV route: one `RV.exec` of its
     entry's instruction, agreeing with the row's RV history and final PC (`rv_row_step`). A row whose entry writes x0
@@ -305,7 +308,7 @@ theorem rv_row_step {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (
             simp [rvData, arithmeticFields, hop, nz, RV.State.getReg]
     have inputBounds : InputBounds input.row := ⟨bounds.1, bounds.2, rowImmediate ▸ immediateBound⟩
     exact result_word_row (by omega) core contract hz inputBounds pcBoundsRow rowMapping
-  have destination : output.destination.toBitVec = (Word.mk (w 33).val (w 34).val).toBitVec := rfl
+  have destination : output.destination.toBitVec = (Word.mk (w 33).val (w 34).val).toBitVec := by rfl
   rw [destination] at result
   -- Per opcode: `RV.exec` and agreement with the row's history.
   have rowPCIs : input.row.pc.toBitVec = input.before.pc := by rw [rowPC]; exact rowPCBits

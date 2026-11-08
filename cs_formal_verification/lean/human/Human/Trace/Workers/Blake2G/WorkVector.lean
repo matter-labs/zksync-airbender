@@ -1,7 +1,10 @@
-import Human.Trace.Workers.Blake2Round.Compression
-import Batteries.Data.Fin.Fold
-import Human.Circuits.Blake2G.Execution
-import Human.Circuits.Blake2G.Protocol
+module
+public import Human.Trace.Workers.Blake2Round.Compression
+public import Batteries.Data.Fin.Fold
+public import Human.Circuits.Blake2G.Execution
+public import Human.Circuits.Blake2G.Protocol
+
+@[expose] public section
 
 namespace Airbender.Blake2G.WorkVector
 open Arithmetic Trace

@@ -1,5 +1,8 @@
-import Slop.Trace.RVCells
-import Human.Helpers.Memory.RVHistory
+module
+public import Slop.Trace.RVCells
+public import Human.Helpers.Memory.RVHistory
+
+@[expose] public section
 
 /-! RV twins of `MemoryFrame.history_cell_frame` and `AccessExecution.history_access_execution`: an `RVHistory`
     leaves untouched aligned cells' reads unchanged and exposes each access's position. A RAM cell is RAM at any

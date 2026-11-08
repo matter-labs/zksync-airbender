@@ -1,4 +1,7 @@
-import Human.Helpers.Memory.Ports
+module
+public import Human.Helpers.Memory.Ports
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 

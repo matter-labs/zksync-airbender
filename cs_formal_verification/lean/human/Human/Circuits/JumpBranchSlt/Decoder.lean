@@ -1,5 +1,8 @@
-import Human.Helpers.Decoder.Program
-import Human.Circuits.JumpBranchSlt.Artifact
+module
+public import Human.Helpers.Decoder.Program
+public import Human.Circuits.JumpBranchSlt.Artifact
+
+@[expose] public section
 
 namespace Airbender.JumpBranchSlt
 open Arithmetic

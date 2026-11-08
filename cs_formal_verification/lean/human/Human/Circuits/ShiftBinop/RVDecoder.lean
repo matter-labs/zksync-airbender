@@ -1,5 +1,8 @@
-import Human.Helpers.Decoder.RVProgram
-import Human.Circuits.ShiftBinop.Decoder
+module
+public import Human.Helpers.Decoder.RVProgram
+public import Human.Circuits.ShiftBinop.Decoder
+
+@[expose] public section
 
 namespace Airbender.ShiftBinop
 open Arithmetic

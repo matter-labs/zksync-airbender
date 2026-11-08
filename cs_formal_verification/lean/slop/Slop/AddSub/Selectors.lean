@@ -1,7 +1,10 @@
-import Slop.AddSub.ArtifactChecks
-import Human.Helpers.Properties
-import Slop.Constraints
-import Mathlib.Tactic.FinCases
+module
+public import Slop.AddSub.ArtifactChecks
+public import Human.Helpers.Properties
+public import Slop.Constraints
+public import Mathlib.Tactic.FinCases
+
+@[expose] public section
 
 namespace Airbender.AddSub.Proofs
 

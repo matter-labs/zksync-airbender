@@ -1,5 +1,8 @@
-import Human.Circuits.WordMemory.RVModel
-import Slop.Trace.RVPooledRow
+module
+public import Human.Circuits.WordMemory.RVModel
+public import Slop.Trace.RVPooledRow
+
+@[expose] public section
 
 /-! Native decoder metadata of the RV LW/SW row's instruction (`Trace.rvDecoderFields`, through the pooled registry
     `rvPooledDecoderFields`), and what a matching decoder query fixes in the row: the store selector, PC limbs,

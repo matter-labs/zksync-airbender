@@ -1,5 +1,8 @@
-import Human.Helpers.Decoder.Program
-import Human.Circuits.MulDiv.Artifact
+module
+public import Human.Helpers.Decoder.Program
+public import Human.Circuits.MulDiv.Artifact
+
+@[expose] public section
 
 namespace Airbender.MulDiv
 open Arithmetic

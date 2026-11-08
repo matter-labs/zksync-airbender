@@ -1,5 +1,8 @@
-import Human.Helpers.Memory.SailHistory
-import Human.Helpers.Context.RVRowContext
+module
+public import Human.Helpers.Memory.SailHistory
+public import Human.Helpers.Context.RVRowContext
+
+@[expose] public section
 
 namespace Airbender.Trace
 

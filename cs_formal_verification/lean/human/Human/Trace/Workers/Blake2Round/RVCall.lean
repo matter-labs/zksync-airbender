@@ -1,9 +1,12 @@
-import Human.Trace.Workers.Blake2Round.Call
-import Human.Trace.Workers.Blake2Round.RVCompression
-import Human.Helpers.Delegation.RVBoundaryMemory
-import Human.Trace.Delegation.RVExecution
-import Human.Helpers.Delegation.NativeWindows
-import Human.ISA.DelegationRuns
+module
+public import Human.Trace.Workers.Blake2Round.Call
+public import Human.Trace.Workers.Blake2Round.RVCompression
+public import Human.Helpers.Delegation.RVBoundaryMemory
+public import Human.Trace.Delegation.RVExecution
+public import Human.Helpers.Delegation.NativeWindows
+public import Human.ISA.DelegationRuns
+
+@[expose] public section
 
 /-! RV siblings of the extended-BLAKE call, boundary-call and window contracts (`Call.lean`, `BoundaryCall.lean`,
     `Windows.lean`): the public state is an `RV.State`; RAM cells are RAM at any address, INCLUDING READ-WRITE ACCESS

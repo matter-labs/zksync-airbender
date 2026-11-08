@@ -1,6 +1,9 @@
-import Human.Helpers.Delegation.MixedMemory
-import Human.Helpers.Delegation.RVSharedMemory
-import Human.Helpers.Decoder.RVPooledProgram
+module
+public import Human.Helpers.Delegation.MixedMemory
+public import Human.Helpers.Delegation.RVSharedMemory
+public import Human.Helpers.Decoder.RVPooledProgram
+
+@[expose] public section
 
 /-! RV siblings of the mixed ordinary/caller/worker pool records (`MixedMemory.lean`) over `RVRequestTrace`: both
     decoder tables are RV tables (`RV.decode` of the same public ROM image), the shared seeds are `initialImageRV`

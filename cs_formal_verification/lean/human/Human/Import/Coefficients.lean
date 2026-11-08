@@ -1,5 +1,8 @@
-import Human.Import.Schema
-import Mathlib.Data.ZMod.Basic
+module
+public import Human.Import.Schema
+public import Mathlib.Data.ZMod.Basic
+
+@[expose] public section
 
 namespace Airbender.Artifact
 

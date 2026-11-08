@@ -1,8 +1,11 @@
-import Human.Helpers.Context.RVPooledBoundary
-import Human.Helpers.Core.BabyBearPrime
-import Slop.Trace.RVBootSeed
-import Slop.Trace.ROMView
-import Slop.Final.Circuits.InitsTeardowns.Theorems
+module
+public import Human.Helpers.Context.RVPooledBoundary
+public import Human.Helpers.Core.BabyBearPrime
+public import Slop.Trace.RVBootSeed
+public import Slop.Trace.ROMView
+public import Slop.Final.Circuits.InitsTeardowns.Theorems
+
+@[expose] public section
 
 /-! The boot side of the six-family RV claims (`RVPooledBootInputs`): the native seed is the zero boot image of the
     tracked cells (register seeds, then the inits/teardowns `Init` tokens, `InitsTeardowns.standalone_claim`), so every

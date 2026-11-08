@@ -1,5 +1,8 @@
-import Human.Circuits.AddSub.Artifact
-import Human.Helpers.Delegation.Requests
+module
+public import Human.Circuits.AddSub.Artifact
+public import Human.Helpers.Delegation.Requests
+
+@[expose] public section
 
 namespace Airbender.Delegation.Requests
 open Trace

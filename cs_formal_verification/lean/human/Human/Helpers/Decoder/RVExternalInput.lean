@@ -1,4 +1,7 @@
-import Human.Helpers.Decoder.RVPooledProgram
+module
+public import Human.Helpers.Decoder.RVPooledProgram
+
+@[expose] public section
 
 /-! RV siblings of the external-input (CSR 0x7C0) decoder metadata (`ExternalInput.lean`, `PooledExternalInput.lean`):
     the same native columns and selectors, projected from `RV.Instr` (`RV.decode`'s `inputRead`/`inputWrite`). -/

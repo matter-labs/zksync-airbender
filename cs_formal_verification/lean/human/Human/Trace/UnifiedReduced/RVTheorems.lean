@@ -1,6 +1,9 @@
-import Human.Trace.RVExecution
-import Human.Helpers.Core.BabyBearPrime
-import Human.Helpers.UnifiedReduced.RVExecutionInputs
+module
+public import Human.Trace.RVExecution
+public import Human.Helpers.Core.BabyBearPrime
+public import Human.Helpers.UnifiedReduced.RVExecutionInputs
+
+@[expose] public section
 
 -- The statements proven in slop/Slop/Final/Trace/UnifiedReduced/RVTheorems.lean (checked by verify.sh).
 

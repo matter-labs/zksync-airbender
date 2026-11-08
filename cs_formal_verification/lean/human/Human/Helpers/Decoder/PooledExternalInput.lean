@@ -1,5 +1,8 @@
-import Human.Helpers.Decoder.PooledProgram
-import Human.Helpers.Decoder.ExternalInput
+module
+public import Human.Helpers.Decoder.PooledProgram
+public import Human.Helpers.Decoder.ExternalInput
+
+@[expose] public section
 
 namespace Airbender.Trace.NonDeterminism.Pooled
 

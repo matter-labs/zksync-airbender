@@ -1,4 +1,7 @@
-import Human.Import.Parse
+module
+public import Human.Import.Parse
+
+@[expose] public section
 
 open Airbender
 

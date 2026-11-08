@@ -1,5 +1,8 @@
-import Mathlib.Data.List.Basic
-import Init.Data.BitVec.Lemmas
+module
+public import Mathlib.Data.List.Basic
+public import Init.Data.BitVec.Lemmas
+
+@[expose] public section
 
 namespace Airbender.Trace.ExternalStream
 

@@ -1,6 +1,9 @@
-import Human.Circuits.AddSub.Artifact
-import Human.Circuits.WordMemory.Artifact
-import Human.Helpers.Context.Model
+module
+public import Human.Circuits.AddSub.Artifact
+public import Human.Circuits.WordMemory.Artifact
+public import Human.Helpers.Context.Model
+
+@[expose] public section
 
 namespace Airbender.Trace
 

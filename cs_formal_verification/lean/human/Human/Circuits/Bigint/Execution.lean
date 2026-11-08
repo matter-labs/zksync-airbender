@@ -1,7 +1,10 @@
-import Human.Circuits.Bigint.Additive
-import Human.Circuits.Bigint.Equality
-import Human.Circuits.Bigint.Multiplication
-import Human.Helpers.Delegation.WorkerContext
+module
+public import Human.Circuits.Bigint.Additive
+public import Human.Circuits.Bigint.Equality
+public import Human.Circuits.Bigint.Multiplication
+public import Human.Helpers.Delegation.WorkerContext
+
+@[expose] public section
 
 namespace Airbender.Bigint.Native
 

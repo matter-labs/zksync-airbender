@@ -1,5 +1,8 @@
-import Human.Circuits.Blake2Round.Preparation
-import Human.Circuits.Blake2G.Control
+module
+public import Human.Circuits.Blake2Round.Preparation
+public import Human.Circuits.Blake2G.Control
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Schedule
 open Arithmetic

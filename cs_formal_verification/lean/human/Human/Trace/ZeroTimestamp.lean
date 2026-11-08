@@ -1,8 +1,11 @@
-import Human.Helpers.Core.BabyBearPrime
-import Human.Helpers.Context.Registries.Pooled
-import Human.Helpers.UnifiedReduced.Registry
-import Human.Helpers.Delegation.Memory
-import Human.Circuits.KeccakSplit.Native
+module
+public import Human.Helpers.Core.BabyBearPrime
+public import Human.Helpers.Context.Registries.Pooled
+public import Human.Helpers.UnifiedReduced.Registry
+public import Human.Helpers.Delegation.Memory
+public import Human.Circuits.KeccakSplit.Native
+
+@[expose] public section
 
 /-! No row of a formalised circuit writes a memory-argument token at timestamp 0.
 

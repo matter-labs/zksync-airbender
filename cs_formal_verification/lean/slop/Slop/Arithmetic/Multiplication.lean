@@ -1,6 +1,9 @@
-import Slop.Arithmetic.Word
-import Mathlib.Tactic.Linarith
-import Mathlib.Tactic.FinCases
+module
+public import Slop.Arithmetic.Word
+public import Mathlib.Tactic.Linarith
+public import Mathlib.Tactic.FinCases
+
+@[expose] public section
 
 namespace Airbender.Arithmetic
 

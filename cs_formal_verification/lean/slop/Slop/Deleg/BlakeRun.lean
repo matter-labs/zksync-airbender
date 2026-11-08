@@ -1,4 +1,7 @@
-import Slop.Deleg.BlakeCall
+module
+public import Slop.Deleg.BlakeCall
+
+@[expose] public section
 
 /-! Seven or ten Blake2s round calls, any mode (`blake_mode_run`); in normal mode the compression (`compress`,
 `compressRounds 10`), in compression mode the two-to-one hash (`hash2`, its 10-round version). -/

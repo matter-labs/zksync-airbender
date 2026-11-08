@@ -1,4 +1,7 @@
-import Human.Circuits.Keccak.Controls
+module
+public import Human.Circuits.Keccak.Controls
+
+@[expose] public section
 
 namespace Airbender.Keccak
 

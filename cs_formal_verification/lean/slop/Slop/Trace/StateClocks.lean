@@ -1,4 +1,7 @@
-import Slop.Trace.History
+module
+public import Slop.Trace.History
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 variable {Kind : Type} [CircuitLayout Kind]

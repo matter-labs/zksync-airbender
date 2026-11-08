@@ -1,7 +1,10 @@
-import Slop.Deleg.BlakeRun
-import Slop.Deleg.BlakeG
-import Slop.Deleg.KeccakRun
-import Slop.Deleg.KeccakF1600Run
+module
+public import Slop.Deleg.BlakeRun
+public import Slop.Deleg.BlakeG
+public import Slop.Deleg.KeccakRun
+public import Slop.Deleg.KeccakF1600Run
+
+@[expose] public section
 
 /-! The runs of delegation calls (`Human/ISA/DelegationRuns.lean`). -/
 

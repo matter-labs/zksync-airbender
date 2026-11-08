@@ -1,4 +1,7 @@
-import Slop.SubwordMemory.Values
+module
+public import Slop.SubwordMemory.Values
+
+@[expose] public section
 
 namespace Airbender.SubwordMemory.Proofs
 open Arithmetic Trace

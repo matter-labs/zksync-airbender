@@ -1,8 +1,11 @@
-import Slop.KeccakSplit.ThetaRho.Rotate0
-import Slop.KeccakSplit.ThetaRho.Rotate1
-import Slop.KeccakSplit.ThetaRho.Rotate2
-import Slop.KeccakSplit.ThetaRho.Rotate3
-import Slop.KeccakSplit.ThetaRho.Rotate4
+module
+public import Slop.KeccakSplit.ThetaRho.Rotate0
+public import Slop.KeccakSplit.ThetaRho.Rotate1
+public import Slop.KeccakSplit.ThetaRho.Rotate2
+public import Slop.KeccakSplit.ThetaRho.Rotate3
+public import Slop.KeccakSplit.ThetaRho.Rotate4
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.ThetaRho.Proofs
 open Airbender.Arithmetic

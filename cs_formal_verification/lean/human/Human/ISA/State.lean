@@ -1,3 +1,6 @@
+module
+
+@[expose] public section
 /-! # The machine state of Airbender: registers, PC, ROM image, RAM, the non-determinism input
 
 Below `ROM_END` there are two different things. ROM proper: the immutable setup image; instruction fetch and every

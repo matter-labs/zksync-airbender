@@ -1,9 +1,12 @@
-import Human.Circuits.AddSub.RowInput
-import Human.Helpers.Context.RVInterfaces
-import Human.Helpers.Context.RVRowContext
-import Human.Helpers.Decoder.RVPooledProgram
-import Human.ISA.RV32
-import Human.Helpers.Core.CircuitOutput
+module
+public import Human.Circuits.AddSub.RowInput
+public import Human.Helpers.Context.RVInterfaces
+public import Human.Helpers.Context.RVRowContext
+public import Human.Helpers.Decoder.RVPooledProgram
+public import Human.ISA.RV32
+public import Human.Helpers.Core.CircuitOutput
+
+@[expose] public section
 
 /-! RV32 vocabulary for the ADD/SUB/ADDI/LUI/AUIPC circuit: the input's instruction fields are RV registers and
     immediates, its pre-state is an `RV.State`, and its instruction is `RV.decode` of the public program entry.

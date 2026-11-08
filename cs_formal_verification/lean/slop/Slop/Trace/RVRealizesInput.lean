@@ -1,5 +1,8 @@
-import Slop.Trace.RVRealizes
-import Slop.ISA.RV.Input
+module
+public import Slop.Trace.RVRealizes
+public import Slop.ISA.RV.Input
+
+@[expose] public section
 
 /-! Composition on the RV route with the input stream (CSR 0x7C0 reads), for any circuit registry `Kind`: as
     `rv_compose_rows` / `rv_realizes` (`RVRealizes.lean`), but each row starts from the input left after the reads of

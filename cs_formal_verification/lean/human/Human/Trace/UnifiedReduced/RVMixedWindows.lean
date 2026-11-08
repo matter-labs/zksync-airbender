@@ -1,5 +1,8 @@
-import Human.Helpers.UnifiedReduced.RVWindows
-import Human.Trace.UnifiedReduced.MixedWindows
+module
+public import Human.Helpers.UnifiedReduced.RVWindows
+public import Human.Trace.UnifiedReduced.MixedWindows
+
+@[expose] public section
 
 /-! RV siblings of the Sail-stated unified caller window contracts (same file name without `RV`): states are
     `RV.State`s, cells are read by `Cell.readRV` and executed by `RVHistory`, programs are RV program tables. A RAM cell

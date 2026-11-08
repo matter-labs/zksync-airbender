@@ -1,7 +1,10 @@
-import Human.Helpers.Properties
-import CleanCore.Utils.Bits
-import Mathlib.Tactic.FinCases
-import Mathlib.Tactic.IntervalCases
+module
+public import Human.Helpers.Properties
+public import CleanCore.Utils.Bits
+public import Mathlib.Tactic.FinCases
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 

@@ -1,6 +1,9 @@
-import Slop.Delegation.Requests
-import Slop.AddSub.Selectors
-import Human.Helpers.Delegation.CallerRequests
+module
+public import Slop.Delegation.Requests
+public import Slop.AddSub.Selectors
+public import Human.Helpers.Delegation.CallerRequests
+
+@[expose] public section
 
 namespace Airbender.Delegation.Requests.Proofs
 open Trace

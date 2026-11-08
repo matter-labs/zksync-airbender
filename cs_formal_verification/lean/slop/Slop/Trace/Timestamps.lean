@@ -1,5 +1,8 @@
-import Human.Helpers.Context.Model
-import Slop.Arithmetic.Lemmas
+module
+public import Human.Helpers.Context.Model
+public import Slop.Arithmetic.Lemmas
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 

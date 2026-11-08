@@ -1,6 +1,9 @@
-import Human.Circuits.Blake2G.Model
-import Slop.Constraints
-import Mathlib.Tactic.FinCases
+module
+public import Human.Circuits.Blake2G.Model
+public import Slop.Constraints
+public import Mathlib.Tactic.FinCases
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Proofs
 
@@ -11,14 +14,14 @@ def mixingConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9
   ((importedConstraints setup).drop 3).take 20 ++ (importedConstraints setup).drop 35
 
 theorem mixing_constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)) :
-    (FlatOperation.constraints (mixingConstraints setup)).length = 20 := rfl
+    (FlatOperation.constraints (mixingConstraints setup)).length = 20 := by rfl
 
 theorem mixing_lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)) :
-    (FlatOperation.lookups (mixingConstraints setup)).length = 18 := rfl
+    (FlatOperation.lookups (mixingConstraints setup)).length = 18 := by rfl
 
 theorem mixing_lookups {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)) :
     FlatOperation.lookups (mixingConstraints setup) =
-      (FlatOperation.lookups (importedConstraints setup)).drop 3 := rfl
+      (FlatOperation.lookups (importedConstraints setup)).drop 3 := by rfl
 
 theorem mixing_holds {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 9)}
     {w : Nat → ZMod p}

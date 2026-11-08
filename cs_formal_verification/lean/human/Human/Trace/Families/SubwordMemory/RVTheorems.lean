@@ -1,9 +1,12 @@
-import Human.Trace.RVExecution
-import Human.Helpers.Context.RVBoundary
-import Human.Helpers.Context.Registries.SubwordMemory
-import Human.Circuits.SubwordMemory.RVDecoder
-import Human.Helpers.Memory.ROM
-import Human.Helpers.Tables.Subword
+module
+public import Human.Trace.RVExecution
+public import Human.Helpers.Context.RVBoundary
+public import Human.Helpers.Context.Registries.SubwordMemory
+public import Human.Circuits.SubwordMemory.RVDecoder
+public import Human.Helpers.Memory.ROM
+public import Human.Helpers.Tables.Subword
+
+@[expose] public section
 
 /-! RV32 twin of `RamTraceSoundnessClaim` (`Theorems.lean`): the accepted rows are a run of our spec (`RV.run`) from
     the public starting state `initial : RV.State`. Proven in

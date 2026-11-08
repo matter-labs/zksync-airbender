@@ -1,7 +1,10 @@
-import Slop.Deleg.KeccakFips
-import Human.ISA.Delegations
-import Mathlib.Tactic.FinCases
-import Mathlib.Data.Fintype.Card
+module
+public import Slop.Deleg.KeccakFips
+public import Human.ISA.Delegations
+public import Mathlib.Tactic.FinCases
+public import Mathlib.Data.Fintype.Card
+
+@[expose] public section
 
 /-! Airbender's Keccak special5 delegation (CSR `0x7cb`), one call at a time: the 31 lanes as seen through the slots of
 round `r` (`Rep`: lane `p` in slot `laneSlot r p`, scratch lane `i` at `25 + i`), and what each of the seven
@@ -32,9 +35,9 @@ theorem slot_ne_25 (a : Fin 25) : (a.val = 25) ↔ False := ⟨fun e => by omega
 theorem ne_slot_25 (a : Fin 25) : (25 = a.val) ↔ False := ⟨fun e => by omega, False.elim⟩
 
 theorem finRange6_foldl {α} (f : α → Fin 6 → α) (a : α) :
-    (List.finRange 6).foldl f a = f (f (f (f (f (f a 0) 1) 2) 3) 4) 5 := rfl
+    (List.finRange 6).foldl f a = f (f (f (f (f (f a 0) 1) 2) 3) 4) 5 := by rfl
 
-theorem laneSlot_succ (r : Nat) (p : Fin 25) : laneSlot (r + 1) p = laneSlot r (piSrc p) := rfl
+theorem laneSlot_succ (r : Nat) (p : Fin 25) : laneSlot (r + 1) p = laneSlot r (piSrc p) := by rfl
 
 theorem piSrc_lane_eq (k x k' x' : Fin 5) : piSrc (lane k x) = piSrc (lane k' x') ↔ k = k' ∧ x = x' := by
   rw [piSrc_inj.eq_iff, lane_eq_iff]

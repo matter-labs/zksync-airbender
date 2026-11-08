@@ -1,6 +1,9 @@
-import Human.Circuits.AddSub.Artifact
-import Slop.UnifiedReduced.Completeness.Control
-import Slop.AddSub.Completeness.Attr
+module
+public import Human.Circuits.AddSub.Artifact
+public import Slop.UnifiedReduced.Completeness.Control
+public import Slop.AddSub.Completeness.Attr
+
+@[expose] public section
 
 /-! Completeness of the standalone ADD/SUB circuit: the honest assignment built from
     valid inputs satisfies every retained equation and range query, and, with ordered
@@ -121,51 +124,51 @@ def honest (x : Row) : Nat → ZMod babyBearModulus
 
 -- BEGIN generated columns
 -- generated: one rfl lemma per column (keeps `simp` off the column match)
-@[addsub_honest] theorem col_0 (x : Row) : x.honest 0 = ((x.frame.pcLo : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_1 (x : Row) : x.honest 1 = ((x.frame.pcHi : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_2 (x : Row) : x.honest 2 = ((x.frame.tsLo : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_3 (x : Row) : x.honest 3 = ((x.frame.tsHi : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_4 (x : Row) : x.honest 4 = ((x.active : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_5 (x : Row) : x.honest 5 = (x.rs1 : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_6 (x : Row) : x.honest 6 = (x.rs2 : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_7 (x : Row) : x.honest 7 = (x.rd : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_8 (x : Row) : x.honest 8 = ((x.immLo : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_9 (x : Row) : x.honest 9 = ((x.immHi : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_10 (x : Row) : x.honest 10 = ((x.isOp .add : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_11 (x : Row) : x.honest 11 = ((x.isOp .sub : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_12 (x : Row) : x.honest 12 = ((x.isOp .auipc : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_13 (x : Row) : x.honest 13 = (0 : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_14 (x : Row) : x.honest 14 = (0 : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_15 (x : Row) : x.honest 15 = (0 : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_16 (x : Row) : x.honest 16 = (0 : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_17 (x : Row) : x.honest 17 = ((x.isOp .delegation : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_18 (x : Row) : x.honest 18 = ((x.isOp .oracle : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_19 (x : Row) : x.honest 19 = ((x.frame.finalPcLo : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_20 (x : Row) : x.honest 20 = ((x.frame.finalPcHi : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_21 (x : Row) : x.honest 21 = ((x.frame.finalTsLo : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_22 (x : Row) : x.honest 22 = ((x.frame.finalTsHi : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_23 (x : Row) : x.honest 23 = ((x.frame.prev0Lo : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_24 (x : Row) : x.honest 24 = ((x.frame.prev0Hi : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_25 (x : Row) : x.honest 25 = ((x.aLo : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_26 (x : Row) : x.honest 26 = ((x.aHi : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_27 (x : Row) : x.honest 27 = ((x.frame.prev1Lo : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_28 (x : Row) : x.honest 28 = ((x.frame.prev1Hi : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_29 (x : Row) : x.honest 29 = ((x.bLo : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_30 (x : Row) : x.honest 30 = ((x.bHi : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_31 (x : Row) : x.honest 31 = (x.cLo : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_32 (x : Row) : x.honest 32 = (x.cHi : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_33 (x : Row) : x.honest 33 = ((x.outLo : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_34 (x : Row) : x.honest 34 = ((x.outHi : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_35 (x : Row) : x.honest 35 = ((x.frame.prev2Lo : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_36 (x : Row) : x.honest 36 = ((x.frame.prev2Hi : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_37 (x : Row) : x.honest 37 = (0 : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_38 (x : Row) : x.honest 38 = (0 : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_39 (x : Row) : x.honest 39 = ((x.carryLo : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_40 (x : Row) : x.honest 40 = ((x.carryHi : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_41 (x : Row) : x.honest 41 = (((x.aLo : Nat) + 65536 * (x.aHi : Nat)) * ((x.bLo : Nat) + 65536 * (x.bHi : Nat)) * 943718400 : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_42 (x : Row) : x.honest 42 = ((x.frame.borrow0 : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_43 (x : Row) : x.honest 43 = ((x.frame.borrow1 : Nat) : ZMod babyBearModulus) := rfl
-@[addsub_honest] theorem col_44 (x : Row) : x.honest 44 = ((x.frame.borrow2 : Nat) : ZMod babyBearModulus) := rfl
+@[addsub_honest] theorem col_0 (x : Row) : x.honest 0 = ((x.frame.pcLo : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_1 (x : Row) : x.honest 1 = ((x.frame.pcHi : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_2 (x : Row) : x.honest 2 = ((x.frame.tsLo : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_3 (x : Row) : x.honest 3 = ((x.frame.tsHi : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_4 (x : Row) : x.honest 4 = ((x.active : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_5 (x : Row) : x.honest 5 = (x.rs1 : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_6 (x : Row) : x.honest 6 = (x.rs2 : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_7 (x : Row) : x.honest 7 = (x.rd : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_8 (x : Row) : x.honest 8 = ((x.immLo : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_9 (x : Row) : x.honest 9 = ((x.immHi : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_10 (x : Row) : x.honest 10 = ((x.isOp .add : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_11 (x : Row) : x.honest 11 = ((x.isOp .sub : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_12 (x : Row) : x.honest 12 = ((x.isOp .auipc : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_13 (x : Row) : x.honest 13 = (0 : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_14 (x : Row) : x.honest 14 = (0 : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_15 (x : Row) : x.honest 15 = (0 : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_16 (x : Row) : x.honest 16 = (0 : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_17 (x : Row) : x.honest 17 = ((x.isOp .delegation : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_18 (x : Row) : x.honest 18 = ((x.isOp .oracle : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_19 (x : Row) : x.honest 19 = ((x.frame.finalPcLo : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_20 (x : Row) : x.honest 20 = ((x.frame.finalPcHi : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_21 (x : Row) : x.honest 21 = ((x.frame.finalTsLo : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_22 (x : Row) : x.honest 22 = ((x.frame.finalTsHi : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_23 (x : Row) : x.honest 23 = ((x.frame.prev0Lo : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_24 (x : Row) : x.honest 24 = ((x.frame.prev0Hi : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_25 (x : Row) : x.honest 25 = ((x.aLo : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_26 (x : Row) : x.honest 26 = ((x.aHi : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_27 (x : Row) : x.honest 27 = ((x.frame.prev1Lo : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_28 (x : Row) : x.honest 28 = ((x.frame.prev1Hi : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_29 (x : Row) : x.honest 29 = ((x.bLo : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_30 (x : Row) : x.honest 30 = ((x.bHi : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_31 (x : Row) : x.honest 31 = (x.cLo : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_32 (x : Row) : x.honest 32 = (x.cHi : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_33 (x : Row) : x.honest 33 = ((x.outLo : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_34 (x : Row) : x.honest 34 = ((x.outHi : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_35 (x : Row) : x.honest 35 = ((x.frame.prev2Lo : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_36 (x : Row) : x.honest 36 = ((x.frame.prev2Hi : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_37 (x : Row) : x.honest 37 = (0 : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_38 (x : Row) : x.honest 38 = (0 : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_39 (x : Row) : x.honest 39 = ((x.carryLo : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_40 (x : Row) : x.honest 40 = ((x.carryHi : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_41 (x : Row) : x.honest 41 = (((x.aLo : Nat) + 65536 * (x.aHi : Nat)) * ((x.bLo : Nat) + 65536 * (x.bHi : Nat)) * 943718400 : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_42 (x : Row) : x.honest 42 = ((x.frame.borrow0 : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_43 (x : Row) : x.honest 43 = ((x.frame.borrow1 : Nat) : ZMod babyBearModulus) := by rfl
+@[addsub_honest] theorem col_44 (x : Row) : x.honest 44 = ((x.frame.borrow2 : Nat) : ZMod babyBearModulus) := by rfl
 -- END generated columns
 
 theorem isOp_bool (x : Row) (o : Op) :

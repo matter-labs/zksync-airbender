@@ -1,4 +1,7 @@
-import Slop.KeccakSplit.Setup.ThetaRho.Rows
+module
+public import Slop.KeccakSplit.Setup.ThetaRho.Rows
+
+@[expose] public section
 
 /- Membership in the exported theta/rho table (`ThetaRho.setup`) over BabyBear, by tag:
    byte XOR (4), XOR-and-split (58), control (59), slots (60). Padding rows have tag 0,

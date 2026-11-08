@@ -1,4 +1,7 @@
-import Slop.Trace.RVHistory
+module
+public import Slop.Trace.RVHistory
+
+@[expose] public section
 
 /-! Reads of a three-port row whose first two ports are read-only (`WordMemory.Proofs.rv_row_port_reads` for all
     three ports): the read-only ports leave the RV state unchanged, so every port reads the row's pre-state. -/

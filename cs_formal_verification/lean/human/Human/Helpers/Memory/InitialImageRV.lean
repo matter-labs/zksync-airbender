@@ -1,7 +1,10 @@
-import Human.Helpers.Memory.Values
-import Human.Helpers.Memory.InitialImage
-import Human.Helpers.Context.PCState.Model
-import Human.ISA.State
+module
+public import Human.Helpers.Memory.Values
+public import Human.Helpers.Memory.InitialImage
+public import Human.Helpers.Context.PCState.Model
+public import Human.ISA.State
+
+@[expose] public section
 
 /-! RV-typed siblings of `InitialImage.lean`: the same public cell domain and
     seed tokens, but the starting point is an `RV.State`, not a Sail state.

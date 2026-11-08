@@ -1,6 +1,9 @@
-import Human.Helpers.UnifiedReduced.RVProgram
-import Human.Circuits.UnifiedReduced.Tables.SetupRV
-import Human.Helpers.Context.RVPooledBoundary
+module
+public import Human.Helpers.UnifiedReduced.RVProgram
+public import Human.Circuits.UnifiedReduced.Tables.SetupRV
+public import Human.Helpers.Context.RVPooledBoundary
+
+@[expose] public section
 
 /-! RV siblings of `BootInputsWith`/`ExecutionInputsWith` (`NativeROM.lean`, `ExecutionInputs.lean`): the public
     starting state is an `RV.State`; its ROM image (`rom`) holds the program, and the trace's RAM seeds are the `Init`

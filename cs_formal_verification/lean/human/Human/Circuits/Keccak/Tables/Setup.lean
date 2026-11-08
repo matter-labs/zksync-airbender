@@ -1,6 +1,9 @@
-import Human.Circuits.Keccak.Artifact
-import Human.Helpers.Properties
-import CleanCore.Specs.Keccak256
+module
+public import Human.Circuits.Keccak.Artifact
+public import Human.Helpers.Properties
+public import CleanCore.Specs.Keccak256
+
+@[expose] public section
 
 namespace Airbender.Keccak
 

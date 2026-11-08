@@ -1,5 +1,8 @@
-import Slop.UnifiedReduced.RV.Setup
-import Slop.ShiftBinop.Lookups
+module
+public import Slop.UnifiedReduced.RV.Setup
+public import Slop.ShiftBinop.Lookups
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Setup.Proofs.RV
 open Verification

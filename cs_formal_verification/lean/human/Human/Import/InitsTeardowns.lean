@@ -1,6 +1,12 @@
-import Human.Import.Parse
-import Human.Helpers.Memory.InitsTeardownsColumns
-import Lean
+module
+public import Human.Import.Parse
+public meta import Human.Import.Parse
+public import Human.Helpers.Memory.InitsTeardownsColumns
+public meta import Human.Helpers.Memory.InitsTeardownsColumns
+public import Lean
+public meta import Lean
+
+public meta section
 
 /-! Import of the inits/teardowns sets: the standalone circuit
     (`cs/src/gkr_compiler/inits_and_teardowns.rs`) and the sets inlined into a family

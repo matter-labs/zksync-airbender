@@ -1,4 +1,7 @@
-import Human.Helpers.Delegation.RVMemory
+module
+public import Human.Helpers.Delegation.RVMemory
+
+@[expose] public section
 
 /-! RV siblings of `BoundaryMemory.lean`: a native cut's image read from an `RV.State` (`Cell.readRV`). A RAM cell is
     RAM at any address, INCLUDING READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`); no

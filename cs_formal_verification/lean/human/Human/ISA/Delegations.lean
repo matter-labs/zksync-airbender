@@ -1,5 +1,8 @@
-import Human.ISA.Blake2s
-import Human.ISA.Keccak
+module
+public import Human.ISA.Blake2s
+public import Human.ISA.Keccak
+
+@[expose] public section
 
 /-! # Airbender's delegations (precompiles) — our own spec
 

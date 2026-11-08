@@ -1,4 +1,7 @@
-import Human.ISA.Keccak
+module
+public import Human.ISA.Keccak
+
+@[expose] public section
 
 /-! Keccak-f[1600] as FIPS 202 composes it (§3.2: a round is `ι ∘ χ ∘ π ∘ ρ ∘ θ`, 24 rounds) on our lane numbering
 `x + 5y` and `BitVec 64` lanes. The delegation runs are proven to compute `fipsF`; `KeccakClean` proves that it is

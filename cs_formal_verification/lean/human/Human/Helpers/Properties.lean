@@ -1,4 +1,7 @@
-import CleanCore.Circuit.Operations
+module
+public import CleanCore.Circuit.Operations
+
+@[expose] public section
 
 namespace Airbender.Properties
 

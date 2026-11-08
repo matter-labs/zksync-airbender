@@ -1,10 +1,13 @@
-import Slop.SubwordMemory.Lookups
-import Human.Circuits.SubwordMemory.Artifact
-import Slop.SubwordMemory.ArtifactChecks
-import Human.Helpers.Properties
-import Slop.Arithmetic.Word
-import Slop.Constraints
-import Mathlib.Tactic.FinCases
+module
+public import Slop.SubwordMemory.Lookups
+public import Human.Circuits.SubwordMemory.Artifact
+public import Slop.SubwordMemory.ArtifactChecks
+public import Human.Helpers.Properties
+public import Slop.Arithmetic.Word
+public import Slop.Constraints
+public import Mathlib.Tactic.FinCases
+
+@[expose] public section
 
 namespace Airbender.SubwordMemory.Proofs
 open Airbender.Arithmetic

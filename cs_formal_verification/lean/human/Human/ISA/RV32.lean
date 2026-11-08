@@ -1,4 +1,7 @@
-import Human.ISA.Delegations
+module
+public import Human.ISA.Delegations
+
+@[expose] public section
 
 /-! # RV32IM as Airbender runs it — our own spec, meant to be read
 

@@ -1,10 +1,13 @@
-import Slop.Trace.StateClocks
+module
+public import Slop.Trace.StateClocks
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 variable {Kind : Type} [CircuitLayout Kind]
 set_option warningAsError true
 
-private def windowWeight (lower upper clock : Nat) : Nat :=
+def windowWeight (lower upper clock : Nat) : Nat :=
   min (clock / 4) (upper / 4) - min (clock / 4) (lower / 4)
 
 theorem stride_window_weight {lower upper clock : Nat}
@@ -106,7 +109,7 @@ theorem native_suffix_count [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
       min ((decodeTimestamp row.assignment row.columns.finalTime).value / 4) (lower / 4) = _
     rw [step]
     have startWeight : weight row.start = (decodeTimestamp row.assignment row.columns.initialTime).value / 4 -
-        min ((decodeTimestamp row.assignment row.columns.initialTime).value / 4) (lower / 4) := rfl
+        min ((decodeTimestamp row.assignment row.columns.initialTime).value / 4) (lower / 4) := by rfl
     -- `simp` cannot rewrite `decide p = true` inside the `if`, so the selection is stated as a
     -- plain `if` on the bound `lower ≤ …`, and the arithmetic is one lemma on naturals
     have selection : (if selected row then 1 else 0 : ℕ) =

@@ -1,9 +1,12 @@
-import Mathlib.Data.ZMod.Basic
-import Mathlib.Algebra.Order.BigOperators.Group.Finset
-import Mathlib.Algebra.BigOperators.Ring.Finset
-import Mathlib.Tactic.Ring
-import Mathlib.Tactic.NormNum
-import Mathlib.Tactic.LinearCombination
+module
+public import Mathlib.Data.ZMod.Basic
+public import Mathlib.Algebra.Order.BigOperators.Group.Finset
+public import Mathlib.Algebra.BigOperators.Ring.Finset
+public import Mathlib.Tactic.Ring
+public import Mathlib.Tactic.NormNum
+public import Mathlib.Tactic.LinearCombination
+
+@[expose] public section
 
 namespace Airbender.Arithmetic
 

@@ -1,4 +1,7 @@
-import Human.Circuits.Keccak.Tables.Setup
+module
+public import Human.Circuits.Keccak.Tables.Setup
+
+@[expose] public section
 
 namespace Airbender.Keccak
 

@@ -1,4 +1,7 @@
-import Human.Helpers.Tables.Range
+module
+public import Human.Helpers.Tables.Range
+
+@[expose] public section
 
 namespace Airbender.Trace
 

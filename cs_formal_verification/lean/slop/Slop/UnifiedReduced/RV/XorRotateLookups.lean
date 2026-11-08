@@ -1,4 +1,7 @@
-import Slop.UnifiedReduced.RV.Setup
+module
+public import Slop.UnifiedReduced.RV.Setup
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Setup.Proofs.RV
 open Verification

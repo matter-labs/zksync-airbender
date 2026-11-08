@@ -1,5 +1,8 @@
-import Human.Helpers.Context.RowContext
-import Slop.Trace.RowHistory
+module
+public import Human.Helpers.Context.RowContext
+public import Slop.Trace.RowHistory
+
+@[expose] public section
 namespace Airbender.Trace.Proofs
 open Arithmetic
 

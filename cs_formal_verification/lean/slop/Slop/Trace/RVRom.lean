@@ -1,5 +1,8 @@
-import Slop.Trace.RVHistory
-import Slop.Trace.RVCells
+module
+public import Slop.Trace.RVHistory
+public import Slop.Trace.RVCells
+
+@[expose] public section
 
 /-! The ROM image never changes along the RV write history: cell updates write registers or RAM (`mem`), never
     `rom`. This is the `agree` premise of the fetch lemmas (`rv_step_fetch`) and what ties a LOAD below `ROM_END`

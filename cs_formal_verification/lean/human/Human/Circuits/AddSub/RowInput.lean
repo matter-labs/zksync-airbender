@@ -1,4 +1,7 @@
-import Human.Helpers.Core.Word
+module
+public import Human.Helpers.Core.Word
+
+@[expose] public section
 
 namespace Airbender.Reference.RiscV
 open Airbender.Arithmetic

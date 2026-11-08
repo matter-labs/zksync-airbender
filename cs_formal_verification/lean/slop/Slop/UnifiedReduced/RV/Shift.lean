@@ -1,6 +1,9 @@
-import Slop.UnifiedReduced.RV.Binary
-import Slop.Arithmetic.WordBytes
-import Slop.Arithmetic.ShiftAssembly
+module
+public import Slop.UnifiedReduced.RV.Binary
+public import Slop.Arithmetic.WordBytes
+public import Slop.Arithmetic.ShiftAssembly
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic

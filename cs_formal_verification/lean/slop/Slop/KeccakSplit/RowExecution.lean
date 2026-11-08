@@ -1,9 +1,12 @@
-import Slop.KeccakSplit.RowCommon
-import Slop.Arithmetic.Word
-import Mathlib.Tactic.FinCases
-import Slop.Arithmetic.Bytes
-import Slop.KernelRfl
-import Slop.Trace.InitialImage
+module
+public import Slop.KeccakSplit.RowCommon
+public import Slop.Arithmetic.Word
+public import Mathlib.Tactic.FinCases
+public import Slop.Arithmetic.Bytes
+public import Slop.KernelRfl
+public import Slop.Trace.InitialImage
+
+@[expose] public section
 
 /- Sail-level steps shared by the three split-worker `executes` proofs (ported from
    PR #585's *_call_control_binding, *_call_pointer_binding, *_lane_port_half and

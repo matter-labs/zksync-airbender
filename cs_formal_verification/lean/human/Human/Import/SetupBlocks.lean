@@ -1,4 +1,7 @@
-import Lean
+module
+public import Lean
+
+@[expose] public section
 
 /- Compressed native setup columns, as written by `prover/src/gkr/prover/setup_artifact.rs`
    (`ColumnBlock`, `value_at`), plus grid blocks (a named row formula) that the import emits

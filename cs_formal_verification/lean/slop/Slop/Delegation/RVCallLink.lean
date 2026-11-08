@@ -1,7 +1,10 @@
-import Slop.Deleg.Calls
-import Slop.ISA.RV.Same
-import Slop.ISA.RV.MemSubword
-import Slop.Trace.RVHistory
+module
+public import Slop.Deleg.Calls
+public import Slop.ISA.RV.Same
+public import Slop.ISA.RV.MemSubword
+public import Slop.Trace.RVHistory
+
+@[expose] public section
 
 /-! The delegate link, generic part: a worker call's RV post-state is the spec's run of one `.delegate` call
     (`RV.calls`, `RV.Delegation.effect`), up to the spec's PC advance, and a span of such calls is the spec's run of
@@ -96,7 +99,7 @@ private theorem pc_step (pc : RV.Word) (m : Nat) :
   rw [BitVec.add_assoc]
   congr 1
   apply BitVec.eq_of_toNat_eq
-  have four : (4 : RV.Word).toNat = 4 := rfl
+  have four : (4 : RV.Word).toNat = 4 := by rfl
   simp only [BitVec.toNat_add, BitVec.toNat_ofNat, four]
   omega
 

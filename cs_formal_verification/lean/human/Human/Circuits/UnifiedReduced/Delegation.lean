@@ -1,6 +1,9 @@
-import Human.Circuits.UnifiedReduced.Decoder
-import Human.Helpers.Delegation.Decoder
-import Human.Helpers.Delegation.CallerRequests
+module
+public import Human.Circuits.UnifiedReduced.Decoder
+public import Human.Helpers.Delegation.Decoder
+public import Human.Helpers.Delegation.CallerRequests
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace Arithmetic

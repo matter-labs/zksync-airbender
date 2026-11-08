@@ -1,7 +1,10 @@
-import Human.Helpers.Context.Columns
-import Human.Helpers.Memory.IndirectPorts
-import Mathlib.Data.Nat.Pairing
-import CleanCore.Utils.OfflineMemory
+module
+public import Human.Helpers.Context.Columns
+public import Human.Helpers.Memory.IndirectPorts
+public import Mathlib.Data.Nat.Pairing
+public import CleanCore.Utils.OfflineMemory
+
+@[expose] public section
 
 namespace Airbender.Trace
 
@@ -38,7 +41,7 @@ def WordColumns.evaluate {p : Nat} (columns : WordColumns) (w : Nat → ZMod p) 
   | .u8 c => #v[w c[0] + 256 * w c[1], w c[2] + 256 * w c[3]]
 
 @[simp] theorem WordColumns.evaluate_u16 {p : Nat} (c : Vector Nat 2) (w : Nat → ZMod p) :
-    (WordColumns.u16 c).evaluate w = #v[w c[0], w c[1]] := rfl
+    (WordColumns.u16 c).evaluate w = #v[w c[0], w c[1]] := by rfl
 
 def WordColumns.code {p : Nat} (columns : WordColumns) (w : Nat → ZMod p) : Nat :=
   Nat.pair (columns.evaluate w)[0].val (columns.evaluate w)[1].val
@@ -64,7 +67,7 @@ def pairCode {p : Nat} (w : Nat → ZMod p) (columns : Vector Nat 2) : Nat :=
   Nat.pair (w columns[0]).val (w columns[1]).val
 
 @[simp] theorem WordColumns.code_u16 {p : Nat} (columns : Vector Nat 2) (w : Nat → ZMod p) :
-    (WordColumns.u16 columns).code w = pairCode w columns := rfl
+    (WordColumns.u16 columns).code w = pairCode w columns := by rfl
 
 /-- Encode address space and raw limbs injectively for Clean's memory model.
     Space zero means register; space one means RAM. Bounds/Boolean selectors

@@ -1,8 +1,11 @@
-import Human.Circuits.UnifiedReduced.Decoder
-import Human.Circuits.UnifiedReduced.Tables.Setup
-import Human.Helpers.Context.RowContext
-import Human.Helpers.Decoder.Instruction
-import Human.Helpers.Decoder.PooledProgram
+module
+public import Human.Circuits.UnifiedReduced.Decoder
+public import Human.Circuits.UnifiedReduced.Tables.Setup
+public import Human.Helpers.Context.RowContext
+public import Human.Helpers.Decoder.Instruction
+public import Human.Helpers.Decoder.PooledProgram
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Binary
 open Arithmetic Trace

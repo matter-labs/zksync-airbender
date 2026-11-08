@@ -1,5 +1,8 @@
-import Human.Circuits.Blake2G.Tables.Setup
-import Mathlib.Tactic.FinCases
+module
+public import Human.Circuits.Blake2G.Tables.Setup
+public import Mathlib.Tactic.FinCases
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Proofs
 

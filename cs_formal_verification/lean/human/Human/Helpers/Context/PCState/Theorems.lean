@@ -1,4 +1,7 @@
-import Human.Helpers.Context.PCState.Model
+module
+public import Human.Helpers.Context.PCState.Model
+
+@[expose] public section
 
 -- The statements proven in slop/Slop/Final/Helpers/Context/PCState/Theorems.lean (checked by verify.sh).
 

@@ -1,8 +1,11 @@
-import Human.Circuits.InitsTeardowns.Model
-import Human.Circuits.InitsTeardowns.Artifact
-import Human.Circuits.InitsTeardowns.UnifiedArtifact
-import Human.Helpers.Memory.Native
-import Human.Helpers.Core.Field
+module
+public import Human.Circuits.InitsTeardowns.Model
+public import Human.Circuits.InitsTeardowns.Artifact
+public import Human.Circuits.InitsTeardowns.UnifiedArtifact
+public import Human.Helpers.Memory.Native
+public import Human.Helpers.Core.Field
+
+@[expose] public section
 
 /-! Claims about the inits/teardowns sets: the init tuples are the zero-valued, zero-timestamp boot
     image of the RAM windows named by the public top bits (ROM shadow below 4 MiB included), and each

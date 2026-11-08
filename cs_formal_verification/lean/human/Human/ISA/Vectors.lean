@@ -1,4 +1,7 @@
-import Human.ISA.DelegationRuns
+module
+public import Human.ISA.DelegationRuns
+
+@[expose] public section
 
 /-! # The standards' test vectors
 

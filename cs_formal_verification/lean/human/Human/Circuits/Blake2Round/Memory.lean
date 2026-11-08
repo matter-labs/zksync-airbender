@@ -1,5 +1,8 @@
-import Human.Helpers.Delegation.Memory
-import Human.Circuits.Blake2Round.Row
+module
+public import Human.Helpers.Delegation.Memory
+public import Human.Circuits.Blake2Round.Row
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Memory
 

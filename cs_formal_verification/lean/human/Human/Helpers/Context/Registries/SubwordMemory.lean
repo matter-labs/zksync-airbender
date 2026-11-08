@@ -1,5 +1,8 @@
-import Human.Circuits.SubwordMemory.Decoder
-import Human.Helpers.Context.Model
+module
+public import Human.Circuits.SubwordMemory.Decoder
+public import Human.Helpers.Context.Model
+
+@[expose] public section
 
 namespace Airbender.SubwordMemory
 

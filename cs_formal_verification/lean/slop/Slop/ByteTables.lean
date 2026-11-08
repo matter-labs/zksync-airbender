@@ -1,4 +1,7 @@
-import Human.Helpers.Tables.Bytes
+module
+public import Human.Helpers.Tables.Bytes
+
+@[expose] public section
 
 namespace Airbender.Verification
 

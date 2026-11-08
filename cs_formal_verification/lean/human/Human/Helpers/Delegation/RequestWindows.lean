@@ -1,5 +1,8 @@
-import Human.Helpers.Delegation.Schedule
-import Human.Helpers.Delegation.NativeWindows
+module
+public import Human.Helpers.Delegation.Schedule
+public import Human.Helpers.Delegation.NativeWindows
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller
 open Trace

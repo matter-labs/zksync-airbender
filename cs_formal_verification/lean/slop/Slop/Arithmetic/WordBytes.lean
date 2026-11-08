@@ -1,4 +1,7 @@
-import Slop.Arithmetic.Bytes
+module
+public import Slop.Arithmetic.Bytes
+
+@[expose] public section
 
 namespace Airbender.Arithmetic
 set_option warningAsError true

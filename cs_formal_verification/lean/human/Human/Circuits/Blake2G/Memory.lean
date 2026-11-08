@@ -1,5 +1,8 @@
-import Human.Helpers.Delegation.Memory
-import Human.Circuits.Blake2G.Control
+module
+public import Human.Helpers.Delegation.Memory
+public import Human.Circuits.Blake2G.Control
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Memory
 

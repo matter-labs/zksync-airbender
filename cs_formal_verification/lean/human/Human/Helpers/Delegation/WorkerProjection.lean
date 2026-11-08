@@ -1,4 +1,7 @@
-import Human.Helpers.Delegation.SharedMemory
+module
+public import Human.Helpers.Delegation.SharedMemory
+
+@[expose] public section
 
 namespace Airbender.Delegation
 open Trace

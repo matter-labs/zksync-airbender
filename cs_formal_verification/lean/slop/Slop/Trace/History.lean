@@ -1,5 +1,8 @@
-import Human.Helpers.Context.Model
-import Slop.Trace.ClockHistory
+module
+public import Human.Helpers.Context.Model
+public import Slop.Trace.ClockHistory
+
+@[expose] public section
 namespace Airbender.Trace.Proofs
 
 variable {Kind : Type} [CircuitLayout Kind]

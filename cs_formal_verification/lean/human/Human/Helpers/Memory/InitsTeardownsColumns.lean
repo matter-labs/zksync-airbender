@@ -1,3 +1,6 @@
+module
+
+@[expose] public section
 namespace Airbender.InitsTeardowns
 
 /-- One inits/teardowns set's teardown columns (logical variable IDs, low limb first),

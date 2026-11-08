@@ -1,9 +1,12 @@
-import Human.Circuits.WordMemory.Artifact
-import Slop.WordMemory.ArtifactChecks
-import Human.Helpers.Properties
-import Slop.Arithmetic.Word
-import Slop.Constraints
-import Mathlib.Tactic.FinCases
+module
+public import Human.Circuits.WordMemory.Artifact
+public import Slop.WordMemory.ArtifactChecks
+public import Human.Helpers.Properties
+public import Slop.Arithmetic.Word
+public import Slop.Constraints
+public import Mathlib.Tactic.FinCases
+
+@[expose] public section
 
 namespace Airbender.WordMemory.Proofs
 open Airbender.Arithmetic

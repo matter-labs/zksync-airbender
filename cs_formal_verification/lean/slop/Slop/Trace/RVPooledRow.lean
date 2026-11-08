@@ -1,9 +1,12 @@
-import Human.Helpers.Context.RVInterfaces
-import Slop.Trace.RVProgram
-import Slop.Trace.RVHistory
-import Slop.Trace.RVRom
-import Slop.Trace.RVZero
-import Slop.Trace.RVPooledLaws
+module
+public import Human.Helpers.Context.RVInterfaces
+public import Slop.Trace.RVProgram
+public import Slop.Trace.RVHistory
+public import Slop.Trace.RVRom
+public import Slop.Trace.RVZero
+public import Slop.Trace.RVPooledLaws
+
+@[expose] public section
 
 /-! Shared RV facts for one row of an accepted pooled trace, for every family:
 

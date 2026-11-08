@@ -1,5 +1,8 @@
-import Human.Helpers.Core.Word
-import Mathlib.Algebra.BigOperators.Ring.Finset
+module
+public import Human.Helpers.Core.Word
+public import Mathlib.Algebra.BigOperators.Ring.Finset
+
+@[expose] public section
 
 namespace Airbender.Bigint
 open scoped BigOperators

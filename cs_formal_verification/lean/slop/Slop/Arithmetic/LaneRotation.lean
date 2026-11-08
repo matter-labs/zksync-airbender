@@ -1,5 +1,8 @@
-import Slop.Arithmetic.ByteAssembly
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.Arithmetic.ByteAssembly
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 namespace Airbender.Arithmetic
 set_option warningAsError true

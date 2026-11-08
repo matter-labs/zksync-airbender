@@ -1,6 +1,9 @@
-import Human.Helpers.Delegation.WorkerProjection
-import Human.Helpers.Delegation.RVRequestTrace
-import Human.Helpers.Delegation.RequestEffects
+module
+public import Human.Helpers.Delegation.WorkerProjection
+public import Human.Helpers.Delegation.RVRequestTrace
+public import Human.Helpers.Delegation.RequestEffects
+
+@[expose] public section
 
 /-! RV siblings of the caller-only shared architecture (`SharedMemory.lean`, `SharedOperations.lean`,
     `WorkerProjection.lean`) over `RVRequestTrace`: one initialized pool read from an `RV.State` (`initialImageRV`).

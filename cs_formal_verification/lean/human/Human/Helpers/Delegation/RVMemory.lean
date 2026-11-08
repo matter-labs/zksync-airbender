@@ -1,5 +1,8 @@
-import Human.Helpers.Delegation.WorkerContext
-import Human.Helpers.Memory.RVHistory
+module
+public import Human.Helpers.Delegation.WorkerContext
+public import Human.Helpers.Memory.RVHistory
+
+@[expose] public section
 
 /-! RV-typed siblings of the delegation memory inputs and execution relations (`Memory.lean`, `WorkerContext.lean`):
     the public starting point is an `RV.State`, cells are read by `Cell.readRV` and updated by `Cell.applyRV`

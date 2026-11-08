@@ -1,9 +1,12 @@
-import Human.Circuits.KeccakSplit.Native
-import Human.Helpers.Core.BabyBearPrime
-import Human.Helpers.Memory.InitialImage
-import Slop.KeccakSplit.Setup.Facts
-import Slop.Arithmetic.ByteAssembly
-import Mathlib.Tactic.LinearCombination
+module
+public import Human.Circuits.KeccakSplit.Native
+public import Human.Helpers.Core.BabyBearPrime
+public import Human.Helpers.Memory.InitialImage
+public import Slop.KeccakSplit.Setup.Facts
+public import Slop.Arithmetic.ByteAssembly
+public import Mathlib.Tactic.LinearCombination
+
+@[expose] public section
 
 /- Field and word facts shared by the three split-worker row proofs. -/
 

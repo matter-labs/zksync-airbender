@@ -1,5 +1,8 @@
-import Human.Circuits.Blake2Round.SetupArtifact
-import Slop.Setup.Blocks
+module
+public import Human.Circuits.Blake2Round.SetupArtifact
+public import Slop.Setup.Blocks
+
+@[expose] public section
 
 /- Row formulas of the six exported setup columns (cs/src/tables/binops.rs:
    create_xor_table, create_xor_with_carry_table, create_xor_4x3_table), one

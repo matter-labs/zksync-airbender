@@ -1,5 +1,8 @@
-import Slop.KeccakSplit.ThetaRho.ByteLane
-import Human.Circuits.KeccakSplit.Call
+module
+public import Slop.KeccakSplit.ThetaRho.ByteLane
+public import Human.Circuits.KeccakSplit.Call
+
+@[expose] public section
 
 /- The byte-fragment rotation is the 64-bit rotation, for the rho offsets of column 0. -/
 

@@ -1,10 +1,13 @@
-import Slop.Trace.RVRealizes
-import Slop.Trace.RVPorts
-import Slop.Trace.RVCells
-import Slop.Trace.RVFetch
-import Slop.Trace.RVProgram
-import Slop.Trace.RVZero
-import Slop.Trace.RVRom
+module
+public import Slop.Trace.RVRealizes
+public import Slop.Trace.RVPorts
+public import Slop.Trace.RVCells
+public import Slop.Trace.RVFetch
+public import Slop.Trace.RVProgram
+public import Slop.Trace.RVZero
+public import Slop.Trace.RVRom
+
+@[expose] public section
 
 /-! The single-family trace claims on the RV route, generic over the circuit registry `Kind` and the decoder
     projection: one composition (`rv_family_realizes`), instantiated by each family with its row step

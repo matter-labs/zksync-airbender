@@ -1,8 +1,11 @@
-import Human.Circuits.UnifiedReduced.Artifact
-import Human.Helpers.Core.BabyBearPrime
-import Slop.Constraints
-import Slop.Trace.Timestamps
-import Slop.UnifiedReduced.Completeness.Attr
+module
+public import Human.Circuits.UnifiedReduced.Artifact
+public import Human.Helpers.Core.BabyBearPrime
+public import Slop.Constraints
+public import Slop.Trace.Timestamps
+public import Slop.UnifiedReduced.Completeness.Attr
+
+@[expose] public section
 
 /-! Completeness of the family-independent row frame of the unified circuit: the
     program counter and clock increments, and the eight timestamp range queries of

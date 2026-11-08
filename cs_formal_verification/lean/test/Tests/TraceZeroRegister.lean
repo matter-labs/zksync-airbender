@@ -1,11 +1,14 @@
-import Slop.Trace.RowHistory
-import Human.Helpers.Memory.ROM
-import Slop.Trace.Timestamps
-import Human.Helpers.Decoder.Instruction
-import Slop.AddSub.Selectors
-import Slop.Trace.Family.Values
-import Slop.Trace.PC
-import Human.Helpers.Core.BabyBearPrime
+module
+public import Slop.Trace.RowHistory
+public import Human.Helpers.Memory.ROM
+public import Slop.Trace.Timestamps
+public import Human.Helpers.Decoder.Instruction
+public import Slop.AddSub.Selectors
+public import Slop.Trace.Family.Values
+public import Slop.Trace.PC
+public import Human.Helpers.Core.BabyBearPrime
+
+@[expose] public section
 
 namespace Tests.TraceZeroRegister
 open Airbender Arithmetic Trace
@@ -21,12 +24,12 @@ def assignment : Nat → ZMod babyBearModulus
   | 4 | 10 | 42 | 43 | 44 => 1
   | _ => 0
 def row : Row babyBearModulus := ⟨.addSub, assignment⟩
-private def token (time : Nat) : MemoryToken babyBearModulus := ⟨0, (time, 0), 0⟩
-private def cells : List Cell := [.register 0, .register 1, .register 2]
-private def sourceTokens : List (MemoryToken babyBearModulus) :=
+def token (time : Nat) : MemoryToken babyBearModulus := ⟨0, (time, 0), 0⟩
+def cells : List Cell := [.register 0, .register 1, .register 2]
+def sourceTokens : List (MemoryToken babyBearModulus) :=
   [(Cell.register 1).initialToken 5, (Cell.register 2).initialToken 7]
-private def rom : Table (ZMod babyBearModulus) (fields 9) := ROM.table cells (token 0 :: sourceTokens)
-private def trace : Data babyBearModulus where
+def rom : Table (ZMod babyBearModulus) (fields 9) := ROM.table cells (token 0 :: sourceTokens)
+def trace : Data babyBearModulus where
   rows := [row]
   rom := rom
   initial := row.start
@@ -72,7 +75,7 @@ private theorem boundary : ClockBoundary trace := by
     simp only [trace, sourceTokens, List.mem_cons, List.mem_nil_iff, or_false] at member
     rcases member with rfl | rfl | rfl <;> constructor <;> decide
 
-private def mutated (index : Nat) : ZMod babyBearModulus :=
+def mutated (index : Nat) : ZMod babyBearModulus :=
   if index = 33 then 1 else assignment index
 
 theorem nonzero_native_output_rejected : ¬ FlatOperation.ConstraintsHoldFlat

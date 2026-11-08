@@ -1,6 +1,9 @@
-import Slop.Trace.SailHistory
-import Slop.Trace.MemoryHistory
-import Slop.Trace.Addresses
+module
+public import Slop.Trace.SailHistory
+public import Slop.Trace.MemoryHistory
+public import Slop.Trace.Addresses
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 
@@ -71,7 +74,7 @@ theorem split_memory_history (initial native : List MemoryAccess) (cut : Nat)
         simp only [List.append_eq, List.filter_append]
       _ = List.append (α := MemoryAccess) [] native :=
         congrArg₂ (List.append (α := MemoryAccess)) emptyInitial fullNative
-      _ = _ := rfl
+      _ = _ := by rfl
   have initialEvents : (List.append (α := MemoryAccess) initial native).filter old = initial := by
     calc
       _ = List.append (α := MemoryAccess)

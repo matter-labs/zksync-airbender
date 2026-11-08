@@ -1,5 +1,8 @@
-import Human.Helpers.Delegation.RequestWindows
-import Human.Helpers.UnifiedReduced.MixedMemory
+module
+public import Human.Helpers.Delegation.RequestWindows
+public import Human.Helpers.UnifiedReduced.MixedMemory
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace

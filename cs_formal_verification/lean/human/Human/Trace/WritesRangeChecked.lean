@@ -1,10 +1,13 @@
-import Human.Helpers.Core.BabyBearPrime
-import Human.Helpers.Context.RVPooledBoundary
-import Human.Helpers.Decoder.RVExternalInput
-import Human.Helpers.UnifiedReduced.Registry
-import Human.Helpers.Delegation.Operations
-import Human.Circuits.KeccakSplit.Native
-import Human.Circuits.InitsTeardowns.Model
+module
+public import Human.Helpers.Core.BabyBearPrime
+public import Human.Helpers.Context.RVPooledBoundary
+public import Human.Helpers.Decoder.RVExternalInput
+public import Human.Helpers.UnifiedReduced.Registry
+public import Human.Helpers.Delegation.Operations
+public import Human.Circuits.KeccakSplit.Native
+public import Human.Circuits.InitsTeardowns.Model
+
+@[expose] public section
 
 /-! Every write of a formalised circuit is range-checked: the write side of the inventory behind the open item
     `InitsTeardowns.MemoryArgumentReadsBounded`.

@@ -1,6 +1,9 @@
-import Human.Helpers.Delegation.Memory
-import Human.Circuits.Keccak.Addresses
-import Human.Circuits.Keccak.ControlUpdate
+module
+public import Human.Helpers.Delegation.Memory
+public import Human.Circuits.Keccak.Addresses
+public import Human.Circuits.Keccak.ControlUpdate
+
+@[expose] public section
 
 namespace Airbender.Keccak
 open Trace

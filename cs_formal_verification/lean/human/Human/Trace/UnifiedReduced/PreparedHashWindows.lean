@@ -1,8 +1,11 @@
-import Human.Helpers.UnifiedReduced.ControlPreparation
-import Human.Trace.UnifiedReduced.MixedWindows
-import Human.Helpers.Delegation.SpanABI
-import Human.Trace.Workers.Blake2G.WorkVector
-import Human.Trace.Workers.Keccak.Permutation
+module
+public import Human.Helpers.UnifiedReduced.ControlPreparation
+public import Human.Trace.UnifiedReduced.MixedWindows
+public import Human.Helpers.Delegation.SpanABI
+public import Human.Trace.Workers.Blake2G.WorkVector
+public import Human.Trace.Workers.Keccak.Permutation
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace

@@ -1,4 +1,7 @@
-import Slop.Arithmetic.Chunks
+module
+public import Slop.Arithmetic.Chunks
+
+@[expose] public section
 
 set_option warningAsError true
 

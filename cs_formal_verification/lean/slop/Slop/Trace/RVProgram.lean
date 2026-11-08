@@ -1,6 +1,9 @@
-import Human.Helpers.Decoder.RVPooledProgram
-import Slop.Trace.Program
-import Slop.Trace.RVFetch
+module
+public import Human.Helpers.Decoder.RVPooledProgram
+public import Slop.Trace.Program
+public import Slop.Trace.RVFetch
+
+@[expose] public section
 
 /-! RV program table: lookup membership, the imported nine-column query, and the native metadata of
     ADD/SUB/ADDI/LUI/AUIPC and LW/SW (`Trace.rvDecoderFields`). Twins of the `ProgramEntry` lemmas in
@@ -23,7 +26,7 @@ theorem rv_decoder_member {Kind : Type} [DecidableEq Kind]
   exact ⟨_, present, by simpa using selected, equal⟩
 
 theorem rv_mapped_query {Kind Target : Type} {p : Nat} (f : Kind → Target)
-    (entry : RVProgramEntry Kind) : (entry.mapFamily f).query (p := p) = entry.query := rfl
+    (entry : RVProgramEntry Kind) : (entry.mapFamily f).query (p := p) = entry.query := by rfl
 
 /-- The native fetch query fixes both canonical PC limbs, for any family. -/
 theorem rv_native_query_pc_word {Kind : Type} {p : Nat} (hp : limbBase < p)

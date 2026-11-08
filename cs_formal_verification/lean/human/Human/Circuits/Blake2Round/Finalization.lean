@@ -1,4 +1,7 @@
-import Human.Circuits.Blake2Round.Mixing
+module
+public import Human.Circuits.Blake2Round.Mixing
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Finalization
 

@@ -1,5 +1,8 @@
-import Human.Import.Json
-import Human.Helpers.Core.Field
+module
+public import Human.Import.Json
+public import Human.Helpers.Core.Field
+
+@[expose] public section
 
 namespace Airbender
 open Lean

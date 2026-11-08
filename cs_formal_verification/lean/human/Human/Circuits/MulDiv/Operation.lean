@@ -1,3 +1,6 @@
+module
+
+@[expose] public section
 /-! The four unsigned MUL/DIV operations of the circuit and their selector columns. Shared by the Sail and RV32
     statements (no Sail import). -/
 

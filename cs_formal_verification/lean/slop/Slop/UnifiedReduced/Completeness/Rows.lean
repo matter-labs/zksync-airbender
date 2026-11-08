@@ -1,5 +1,8 @@
-import Human.Circuits.UnifiedReduced.Tables.Setup
-import Mathlib.Tactic.IntervalCases
+module
+public import Human.Circuits.UnifiedReduced.Tables.Setup
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 /-! Completeness direction of the unified setup table: explicit row indices for
     the regions an honest witness queries. Each row is computed once, symbolically. -/

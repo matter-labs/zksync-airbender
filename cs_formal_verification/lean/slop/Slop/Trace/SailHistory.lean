@@ -1,10 +1,13 @@
-import Human.Helpers.Memory.SailHistory
-import Human.Helpers.Memory.History
-import Slop.Trace.MemoryHistory
-import Mathlib.Tactic.FinCases
-import Slop.Arithmetic.Bytes
-import Slop.KernelRfl
-import Slop.Trace.InitialImage
+module
+public import Human.Helpers.Memory.SailHistory
+public import Human.Helpers.Memory.History
+public import Slop.Trace.MemoryHistory
+public import Mathlib.Tactic.FinCases
+public import Slop.Arithmetic.Bytes
+public import Slop.KernelRfl
+public import Slop.Trace.InitialImage
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 open Arithmetic

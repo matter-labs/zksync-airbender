@@ -1,6 +1,9 @@
-import Slop.Trace.RVHistory
-import Slop.ISA.RV.Mem
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.Trace.RVHistory
+public import Slop.ISA.RV.Mem
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 /-! The RV history of one row with three ports, the first two read-only (operand reads, then a destination
     read/write): both reads see the pre-state, the third port's update gives the post-state. -/

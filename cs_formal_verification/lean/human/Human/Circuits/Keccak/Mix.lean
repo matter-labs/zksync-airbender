@@ -1,5 +1,8 @@
-import Human.Circuits.Keccak.Theta
-import Human.Circuits.Keccak.ControlUpdate
+module
+public import Human.Circuits.Keccak.Theta
+public import Human.Circuits.Keccak.ControlUpdate
+
+@[expose] public section
 
 namespace Airbender.Keccak
 

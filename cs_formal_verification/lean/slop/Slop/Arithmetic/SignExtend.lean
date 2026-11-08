@@ -1,5 +1,8 @@
-import Mathlib.Tactic.IntervalCases
-import Mathlib.Tactic.NormNum
+module
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.NormNum
+
+@[expose] public section
 
 namespace Airbender.Arithmetic
 

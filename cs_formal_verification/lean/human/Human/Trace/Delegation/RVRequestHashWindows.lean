@@ -1,6 +1,9 @@
-import Human.Helpers.Delegation.RequestWindows
-import Human.Trace.Delegation.RVHashWindows
-import Human.Trace.Delegation.RVSharedSpans
+module
+public import Human.Helpers.Delegation.RequestWindows
+public import Human.Trace.Delegation.RVHashWindows
+public import Human.Trace.Delegation.RVSharedSpans
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller
 open Trace

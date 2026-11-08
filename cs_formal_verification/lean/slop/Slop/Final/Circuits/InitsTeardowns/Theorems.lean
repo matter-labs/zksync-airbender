@@ -1,5 +1,8 @@
-import Human.Circuits.InitsTeardowns.Theorems
-import Slop.InitsTeardowns.Claims
+module
+public import Human.Circuits.InitsTeardowns.Theorems
+public import Slop.InitsTeardowns.Claims
+
+@[expose] public section
 
 /-! The inits/teardowns claims of `Human.Circuits.InitsTeardowns.Theorems`. -/
 

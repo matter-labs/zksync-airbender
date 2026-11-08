@@ -1,7 +1,10 @@
-import Slop.AddSub.ArtifactChecks
-import Human.Helpers.Properties
-import Slop.Arithmetic.Lemmas
-import Slop.Constraints
+module
+public import Slop.AddSub.ArtifactChecks
+public import Human.Helpers.Properties
+public import Slop.Arithmetic.Lemmas
+public import Slop.Constraints
+
+@[expose] public section
 
 namespace Airbender.AddSub.Proofs
 

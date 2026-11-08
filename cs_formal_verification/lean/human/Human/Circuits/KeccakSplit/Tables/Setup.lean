@@ -1,8 +1,11 @@
-import Human.Circuits.KeccakSplit.ColumnParity.SetupArtifact
-import Human.Circuits.KeccakSplit.ThetaRho.SetupArtifact
-import Human.Circuits.KeccakSplit.Chi5.SetupArtifact
-import CleanCore.Circuit.Operations
-import Mathlib.Algebra.Field.ZMod
+module
+public import Human.Circuits.KeccakSplit.ColumnParity.SetupArtifact
+public import Human.Circuits.KeccakSplit.ThetaRho.SetupArtifact
+public import Human.Circuits.KeccakSplit.Chi5.SetupArtifact
+public import CleanCore.Circuit.Operations
+public import Mathlib.Algebra.Field.ZMod
+
+@[expose] public section
 
 /- Native fixed tables of the three split Keccak workers, as exported from the Rust
    setup (`artifacts/setup/README.md`), not hand-written models. Each table keeps every

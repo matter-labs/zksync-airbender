@@ -1,7 +1,10 @@
-import Human.Trace.Workers.Keccak.RVCall
-import Human.Trace.Delegation.RVHashWindows
-import Human.Helpers.Delegation.RVOperations
-import Human.Circuits.Keccak.Execution
+module
+public import Human.Trace.Workers.Keccak.RVCall
+public import Human.Trace.Delegation.RVHashWindows
+public import Human.Helpers.Delegation.RVOperations
+public import Human.Circuits.Keccak.Execution
+
+@[expose] public section
 
 -- The statements proven in slop/Slop/Final/Trace/Workers/Keccak/RVTheorems.lean (checked by verify.sh). RV siblings
 -- of `Theorems.lean`: the public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING

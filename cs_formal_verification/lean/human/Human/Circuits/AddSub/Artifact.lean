@@ -1,5 +1,8 @@
-import Human.Import.Embed
-import Human.Helpers.Core.Word
+module
+public import Human.Import.Embed
+public import Human.Helpers.Core.Word
+
+@[expose] public section
 
 namespace Airbender.AddSub
 open Arithmetic

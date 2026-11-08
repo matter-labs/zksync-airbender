@@ -1,5 +1,8 @@
-import Human.Circuits.KeccakSplit.ColumnParity.Artifact
-import Slop.Delegation.ClockFacts
+module
+public import Human.Circuits.KeccakSplit.ColumnParity.Artifact
+public import Slop.Delegation.ClockFacts
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Proofs
 open Airbender.Trace

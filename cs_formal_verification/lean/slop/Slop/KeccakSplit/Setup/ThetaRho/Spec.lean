@@ -1,5 +1,8 @@
-import Human.Circuits.KeccakSplit.ThetaRho.SetupArtifact
-import Slop.KeccakSplit.Setup.Common
+module
+public import Human.Circuits.KeccakSplit.ThetaRho.SetupArtifact
+public import Slop.KeccakSplit.Setup.Common
+
+@[expose] public section
 
 /- Row formulas of the nine exported theta/rho setup columns
    (cs/src/tables/binops.rs, keccak_precompile_related.rs), one function per column:

@@ -1,4 +1,7 @@
-import Human.Circuits.InitsTeardowns.Theorems
+module
+public import Human.Circuits.InitsTeardowns.Theorems
+
+@[expose] public section
 
 /-! Window arithmetic of the inits/teardowns sets, for layouts with two word bits and `2 ^ 23` or
     `2 ^ 24` rows (the unified and standalone artifacts). -/

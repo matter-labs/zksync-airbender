@@ -1,7 +1,10 @@
-import Slop.KeccakSplit.Setup.Chi5.ShapesOk
-import Slop.KeccakSplit.Setup.Chi5.Formula
-import Human.Circuits.KeccakSplit.Tables.Setup
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.KeccakSplit.Setup.Chi5.ShapesOk
+public import Slop.KeccakSplit.Setup.Chi5.Formula
+public import Human.Circuits.KeccakSplit.Tables.Setup
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 /- Row meaning of the imported setup: every column decodes to its row formula on all 2^22
    exported rows. Each column is a few blocks: grid blocks and long affine runs matched by
@@ -45,7 +48,7 @@ theorem col9_rows : ∀ n < 4194304, decode chi5Setup_col9 n = col9Spec n :=
 theorem col10_rows : ∀ n < 4194304, decode chi5Setup_col10 n = col10Spec n :=
   rows_of_scan _ col10_longs (by decide +kernel) (by decide +kernel)
 
-theorem traceLen_eq : chi5Setup.traceLen = 4194304 := rfl
+theorem traceLen_eq : chi5Setup.traceLen = 4194304 := by rfl
 
 /-- Every exported row is the formula row. -/
 theorem setupRow_eq (n : Nat) (hn : n < 4194304) :

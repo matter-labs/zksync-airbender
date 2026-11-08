@@ -1,4 +1,7 @@
-import Slop.Trace.History
+module
+public import Slop.Trace.History
+
+@[expose] public section
 
 /-! Every row write of an accepted trace happens at or after the trace's initial clock. -/
 

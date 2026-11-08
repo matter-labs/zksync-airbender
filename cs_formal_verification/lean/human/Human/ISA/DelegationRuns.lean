@@ -1,4 +1,7 @@
-import Human.ISA.RV32
+module
+public import Human.ISA.RV32
+
+@[expose] public section
 
 /-! # Runs of delegation calls (statements only)
 

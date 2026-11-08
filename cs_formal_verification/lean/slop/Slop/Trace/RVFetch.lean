@@ -1,4 +1,7 @@
-import Human.Helpers.Decoder.RVProgram
+module
+public import Human.Helpers.Decoder.RVProgram
+
+@[expose] public section
 
 /-! Fetch link for the RV program table (piece D). A public entry of `rvProgramImageWith` is an aligned ROM word
     that `RV.decode` reads from the starting ROM image; its native data is `projection` of the decoded instruction.

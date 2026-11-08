@@ -1,5 +1,8 @@
-import Human.Helpers.Context.Model
-import Human.Circuits.UnifiedReduced.Artifact
+module
+public import Human.Helpers.Context.Model
+public import Human.Circuits.UnifiedReduced.Artifact
+
+@[expose] public section
 
 namespace Airbender.Trace
 

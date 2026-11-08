@@ -1,4 +1,7 @@
-import Slop.Deleg.Calls
+module
+public import Slop.Deleg.Calls
+
+@[expose] public section
 
 /-! A Keccak delegation call on memory (any of the four CSRs: `keccakCall`): the lanes it writes read back as the
 step's result, `x10` advances; a run of calls along a chain of control words (`calls_chain`). -/

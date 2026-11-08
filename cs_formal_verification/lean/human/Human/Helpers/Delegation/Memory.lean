@@ -1,8 +1,11 @@
-import Human.Circuits.Bigint.Artifact
-import Human.Circuits.Blake2G.Artifact
-import Human.Circuits.Blake2Round.Artifact
-import Human.Circuits.Keccak.Artifact
-import Human.Helpers.Memory.InitialImage
+module
+public import Human.Circuits.Bigint.Artifact
+public import Human.Circuits.Blake2G.Artifact
+public import Human.Circuits.Blake2Round.Artifact
+public import Human.Circuits.Keccak.Artifact
+public import Human.Helpers.Memory.InitialImage
+
+@[expose] public section
 
 namespace Airbender.Delegation
 open Trace

@@ -1,7 +1,10 @@
-import Human.Helpers.Context.RVBoundary
-import Human.Helpers.Decoder.RVPooledProgram
-import Human.Helpers.Memory.ROM
-import Human.Helpers.Tables.Subword
+module
+public import Human.Helpers.Context.RVBoundary
+public import Human.Helpers.Decoder.RVPooledProgram
+public import Human.Helpers.Memory.ROM
+public import Human.Helpers.Tables.Subword
+
+@[expose] public section
 
 namespace Airbender.Trace
 

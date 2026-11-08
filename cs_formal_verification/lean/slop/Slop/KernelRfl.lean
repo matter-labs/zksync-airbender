@@ -1,4 +1,8 @@
-import Lean
+module
+public import Lean
+public meta import Lean
+
+public meta section
 
 /-! `kernel_rfl`: close `a = b` with `Eq.refl a`, skipping the elaborator's definitional check; the kernel checks
 the equation together with the enclosing declaration (lean-strategies §2.4: kernel evaluation of closed data is

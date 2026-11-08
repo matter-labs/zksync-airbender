@@ -1,5 +1,8 @@
-import Human.Helpers.Memory.InitialImage
-import Human.ISA.State
+module
+public import Human.Helpers.Memory.InitialImage
+public import Human.ISA.State
+
+@[expose] public section
 
 namespace Airbender.Trace.ROM
 open Arithmetic

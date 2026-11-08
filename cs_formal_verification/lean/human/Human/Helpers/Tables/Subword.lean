@@ -1,5 +1,8 @@
-import Human.Helpers.Tables.Lookups
-import Human.Circuits.JumpBranchSlt.Tables.Control
+module
+public import Human.Helpers.Tables.Lookups
+public import Human.Circuits.JumpBranchSlt.Tables.Control
+
+@[expose] public section
 
 namespace Airbender.Verification
 

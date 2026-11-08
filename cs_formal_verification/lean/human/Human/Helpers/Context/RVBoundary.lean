@@ -1,6 +1,9 @@
-import Human.Helpers.Decoder.RVProgram
-import Human.Helpers.Memory.InitialImageRV
-import Human.Helpers.Context.Model
+module
+public import Human.Helpers.Decoder.RVProgram
+public import Human.Helpers.Memory.InitialImageRV
+public import Human.Helpers.Context.Model
+
+@[expose] public section
 
 /-! RV-typed sibling of `NativeInputs` (`Boundary.lean`): the public starting point is an `RV.State`. No `Configured`
     premise: the RV spec has no configuration state. Program entries are the RV table (`rvProgramImageWith`). -/

@@ -1,4 +1,7 @@
-import Slop.ISA.RV.Step
+module
+public import Slop.ISA.RV.Step
+
+@[expose] public section
 
 /-! The input (CSR 0x7c0) and runs that read none of it: a run that succeeds with the input empty reads nothing and
 runs the same with any input (`run_lift`). So no contract (`Returns`, …) needs to mention the input. -/
@@ -164,7 +167,7 @@ theorem run_reads : ∀ (ps : List (Reg × Word)) (R : State) (rest : List Word)
     have h0 := hdec 0 (by simp)
     simp only [BitVec.add_zero, List.getElem_cons_zero, Nat.mul_zero, BitVec.ofNat_eq_ofNat] at h0
     have hs := step_read R _ rd v _ hpc (by omega) rfl h0 hin
-    have hpc1 : ((R.setReg rd v).nextInstr.withInput (ps.map (·.2) ++ rest)).pc = R.pc + 4 := rfl
+    have hpc1 : ((R.setReg rd v).nextInstr.withInput (ps.map (·.2) ++ rest)).pc = R.pc + 4 := by rfl
     have ih := run_reads ps ((R.setReg rd v).nextInstr.withInput (ps.map (·.2) ++ rest)) rest rfl
       (by rw [hpc1]; bv_omega) (by rw [hpc1]; simp only [ROM_END] at hrom ⊢; bv_omega)
       (fun i h => by

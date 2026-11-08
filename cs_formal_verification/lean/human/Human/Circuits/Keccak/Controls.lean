@@ -1,5 +1,8 @@
-import Human.Circuits.Keccak.Artifact
-import Human.Helpers.Properties
+module
+public import Human.Circuits.Keccak.Artifact
+public import Human.Helpers.Properties
+
+@[expose] public section
 
 namespace Airbender.Keccak
 open scoped BigOperators

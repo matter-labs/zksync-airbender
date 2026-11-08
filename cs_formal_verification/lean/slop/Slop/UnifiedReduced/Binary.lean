@@ -1,9 +1,12 @@
-import Slop.UnifiedReduced.ArtifactChecks
-import Human.Circuits.UnifiedReduced.Artifact
-import Slop.Constraints
-import Slop.Arithmetic.Bytes
-import Human.Circuits.UnifiedReduced.Tables.Setup
-import Slop.ShiftBinop.Lookups
+module
+public import Slop.UnifiedReduced.ArtifactChecks
+public import Human.Circuits.UnifiedReduced.Artifact
+public import Slop.Constraints
+public import Slop.Arithmetic.Bytes
+public import Human.Circuits.UnifiedReduced.Tables.Setup
+public import Slop.ShiftBinop.Lookups
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs
 open Arithmetic Verification

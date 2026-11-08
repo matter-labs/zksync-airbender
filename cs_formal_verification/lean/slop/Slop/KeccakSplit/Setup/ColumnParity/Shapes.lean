@@ -1,4 +1,7 @@
-import Slop.KeccakSplit.Setup.ColumnParity.Spec
+module
+public import Slop.KeccakSplit.Setup.ColumnParity.Spec
+
+@[expose] public section
 
 /- Long blocks of each imported column, matched by shape: the import's grid blocks and the
    affine runs longer than 200 rows (the other blocks are checked row by row in `Rows`). -/

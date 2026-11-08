@@ -1,4 +1,7 @@
-import Slop.ISA.RV.Mem
+module
+public import Slop.ISA.RV.Mem
+
+@[expose] public section
 
 /-! Byte and halfword accesses inside an aligned memory word, for `RV.read` / `RV.write`: a 1- or 2-byte read at
     byte `k` of the word at `a` is a slice of the word read, and a 1- or 2-byte write there is the 4-byte write of the

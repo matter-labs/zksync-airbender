@@ -1,22 +1,25 @@
-import Human.Helpers.Context.Registries.SubwordMemory
-import Slop.SubwordMemory.Timestamp
-import Slop.Trace.RowHistory
-import Slop.SubwordMemory
+module
+public import Human.Helpers.Context.Registries.SubwordMemory
+public import Slop.SubwordMemory.Timestamp
+public import Slop.Trace.RowHistory
+public import Slop.SubwordMemory
+
+@[expose] public section
 
 namespace Airbender.SubwordMemory
 
 @[simp] theorem trace_columns (kind : TraceKind) :
-    Trace.CircuitLayout.columns kind = importedConstraintsTraceColumns := rfl
+    Trace.CircuitLayout.columns kind = importedConstraintsTraceColumns := by rfl
 
 @[simp] theorem trace_ports (kind : TraceKind) :
-    Trace.CircuitLayout.ports kind = importedConstraintsMemoryPorts := rfl
+    Trace.CircuitLayout.ports kind = importedConstraintsMemoryPorts := by rfl
 
 @[simp] theorem trace_decoder_columns (kind : TraceKind) :
-    Trace.CircuitLayout.decoderColumns kind = importedConstraintsDecoderColumns := rfl
+    Trace.CircuitLayout.decoderColumns kind = importedConstraintsDecoderColumns := by rfl
 
 @[simp] theorem trace_constraints [Fact p.Prime] (kind : TraceKind)
     (rom : Table (ZMod p) (fields 9)) :
-    Trace.CircuitLayout.constraints kind rom = clockConstraints rom := rfl
+    Trace.CircuitLayout.constraints kind rom = clockConstraints rom := by rfl
 
 end Airbender.SubwordMemory
 

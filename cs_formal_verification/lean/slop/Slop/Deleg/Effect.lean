@@ -1,4 +1,7 @@
-import Slop.ISA.RV.Input
+module
+public import Slop.ISA.RV.Input
+
+@[expose] public section
 
 /-! Delegation calls on our spec, for any precompile: one step applies the effect; what the written words read back
 as (`readWords_storeAll`) and that other bytes keep their value (`storeAll_mem_other`, `read_storeAll_other`). -/

@@ -1,7 +1,10 @@
-import Slop.Trace.RVPooledStep
-import Slop.Trace.RVPooledRow
-import Slop.SubwordMemory.RVTraceSoundness
-import Slop.ISA.RV.DecodeShape
+module
+public import Slop.Trace.RVPooledStep
+public import Slop.Trace.RVPooledRow
+public import Slop.SubwordMemory.RVTraceSoundness
+public import Slop.ISA.RV.DecodeShape
+
+@[expose] public section
 
 /-! One LB/LBU/LH/LHU/SB/SH row of a pooled trace is one `RV.exec` of its instruction (`RVPooledRowStep`), from the
     row's own RV history: the row calculation of `SubwordMemory.Proofs.rv_trace_soundness` (`effective_address`,
@@ -79,7 +82,7 @@ theorem rv_subword_row_step {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
   have shape : (⟨.subwordMemory, w⟩ : Row p PooledFamily).ports =
       #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
         importedConstraintsMemoryPorts[2]] := by
-    have portsEq : (⟨.subwordMemory, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := rfl
+    have portsEq : (⟨.subwordMemory, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := by rfl
     rw [portsEq]
     rfl
   have history := facts.history

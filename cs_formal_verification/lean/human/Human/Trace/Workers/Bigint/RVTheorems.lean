@@ -1,5 +1,8 @@
-import Human.Trace.Workers.Bigint.RVCall
-import Human.Helpers.Core.BabyBearPrime
+module
+public import Human.Trace.Workers.Bigint.RVCall
+public import Human.Helpers.Core.BabyBearPrime
+
+@[expose] public section
 
 -- The statements proven in slop/Slop/Final/Trace/Workers/Bigint/RVTheorems.lean (checked by verify.sh). RV sibling
 -- of `Theorems.lean`: the public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING

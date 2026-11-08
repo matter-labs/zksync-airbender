@@ -1,5 +1,8 @@
-import Slop.Arithmetic.CarryChain
-import Mathlib.Algebra.BigOperators.Fin
+module
+public import Slop.Arithmetic.CarryChain
+public import Mathlib.Algebra.BigOperators.Fin
+
+@[expose] public section
 
 namespace Airbender.Arithmetic
 open scoped BigOperators

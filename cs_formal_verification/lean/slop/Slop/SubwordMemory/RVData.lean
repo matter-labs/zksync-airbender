@@ -1,6 +1,9 @@
-import Slop.SubwordMemory
-import Slop.SubwordMemory.ROM
-import Slop.ISA.RV.MemSubword
+module
+public import Slop.SubwordMemory
+public import Slop.SubwordMemory.ROM
+public import Slop.ISA.RV.MemSubword
+
+@[expose] public section
 
 /-! RV twins of the load-data lemmas (`Lookups.lean`, `ROM.lean`, `Data.lean`): the same table and constraint
     reasoning, with the result stated as `RV.exec`'s load extension (`RV.extendLoad`: `BitVec.signExtend` or
@@ -10,7 +13,6 @@ import Slop.ISA.RV.MemSubword
 namespace Airbender.Verification
 open Airbender.Arithmetic
 
-open private rom_values rom_decode romKey romData from Slop.SubwordMemory.ROM
 
 /-- Twin of `subword_packed_extension`. -/
 theorem rv_subword_packed_extension (byte signed highByte : Bool) (half : Nat) (bound : half < 65536) :

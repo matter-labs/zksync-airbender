@@ -1,9 +1,12 @@
-import Human.Helpers.Tables.Subword
-import Slop.Arithmetic.Word
-import Slop.ISA.RV.MemSubword
-import Human.Circuits.AddSub.RowInput
-import Human.Helpers.Core.CircuitOutput
-import Mathlib.Tactic.IntervalCases
+module
+public import Human.Helpers.Tables.Subword
+public import Slop.Arithmetic.Word
+public import Slop.ISA.RV.MemSubword
+public import Human.Circuits.AddSub.RowInput
+public import Human.Helpers.Core.CircuitOutput
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 namespace Airbender.Verification
 open Airbender.Arithmetic
@@ -12,11 +15,11 @@ open Airbender.Arithmetic
 attribute [local irreducible] Nat.sub
 
 theorem subwordDataRow_key (key lo hi tag : Nat) :
-    (subwordDataRow key lo hi tag)[0] = key := rfl
+    (subwordDataRow key lo hi tag)[0] = key := by rfl
 theorem subwordDataRow_low (key lo hi tag : Nat) :
-    (subwordDataRow key lo hi tag)[1] = lo := rfl
+    (subwordDataRow key lo hi tag)[1] = lo := by rfl
 theorem subwordDataRow_high (key lo hi tag : Nat) :
-    (subwordDataRow key lo hi tag)[2] = hi := rfl
+    (subwordDataRow key lo hi tag)[2] = hi := by rfl
 
 set_option maxRecDepth 4096 in
 set_option maxHeartbeats 800000 in

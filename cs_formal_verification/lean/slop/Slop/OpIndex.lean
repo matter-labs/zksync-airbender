@@ -1,5 +1,10 @@
-import CleanCore.Circuit.Operations
-import Slop.OpIndexAttr
+module
+public import CleanCore.Circuit.Operations
+public meta import CleanCore.Circuit.Operations
+public import Slop.OpIndexAttr
+public meta import Slop.OpIndexAttr
+
+public meta section
 
 /-! Per-index interface lemmas for an imported circuit (`import_clean`): one lemma per constraint and
 per lookup, `(FlatOperation.constraints (C args)).get ⟨k, h⟩ = e_k`, proven once by `rfl`. Proofs cite them

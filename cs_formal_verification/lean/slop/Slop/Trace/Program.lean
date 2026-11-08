@@ -1,7 +1,10 @@
-import Human.Helpers.Decoder.Program
-import Slop.Trace.InitialImage
-import Slop.Trace.DecoderBits
-import Slop.KernelRfl
+module
+public import Human.Helpers.Decoder.Program
+public import Slop.Trace.InitialImage
+public import Slop.Trace.DecoderBits
+public import Slop.KernelRfl
+
+@[expose] public section
 namespace Airbender.Trace.Proofs
 open Arithmetic
 

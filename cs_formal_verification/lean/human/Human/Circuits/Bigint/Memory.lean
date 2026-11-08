@@ -1,5 +1,8 @@
-import Human.Helpers.Delegation.Memory
-import Human.Circuits.Bigint.Addresses
+module
+public import Human.Helpers.Delegation.Memory
+public import Human.Circuits.Bigint.Addresses
+
+@[expose] public section
 
 namespace Airbender.Bigint.Memory
 

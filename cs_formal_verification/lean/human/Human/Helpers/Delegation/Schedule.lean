@@ -1,6 +1,9 @@
-import Human.Helpers.Context.Registries.Pooled
-import Human.Helpers.Delegation.Decoder
-import Human.Helpers.Delegation.WorkerContext
+module
+public import Human.Helpers.Context.Registries.Pooled
+public import Human.Helpers.Delegation.Decoder
+public import Human.Helpers.Delegation.WorkerContext
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller
 open Trace

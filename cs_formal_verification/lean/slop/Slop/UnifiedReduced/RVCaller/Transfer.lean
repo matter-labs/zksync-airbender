@@ -1,7 +1,10 @@
-import Slop.Trace.RVTransferWindow
-import Slop.Trace.SeedAddressClocks
-import Slop.Trace.TransferBounds
-import Slop.Delegation.RVSharedImage
+module
+public import Slop.Trace.RVTransferWindow
+public import Slop.Trace.SeedAddressClocks
+public import Slop.Trace.TransferBounds
+public import Slop.Delegation.RVSharedImage
+
+@[expose] public section
 
 /-! RV siblings of the `Transfer.Inputs`-level lemmas (`TransferHistory`, `TransferBounds`, `TransferTerminal`): the
     seeds are an `initialImageRV` of an `RV.State`. Address-domain facts are the state-free `SeedTransfer` ones. -/

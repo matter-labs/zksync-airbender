@@ -1,8 +1,11 @@
-import Human.Helpers.Decoder.PooledProgram
-import Human.Helpers.Memory.ROM
-import Human.Helpers.Tables.Subword
-import Human.Helpers.Delegation.RequestEffects
-import Human.Helpers.Delegation.SharedMemory
+module
+public import Human.Helpers.Decoder.PooledProgram
+public import Human.Helpers.Memory.ROM
+public import Human.Helpers.Tables.Subword
+public import Human.Helpers.Delegation.RequestEffects
+public import Human.Helpers.Delegation.SharedMemory
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller
 open Trace

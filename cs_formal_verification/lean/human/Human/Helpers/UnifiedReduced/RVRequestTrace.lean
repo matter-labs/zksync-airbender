@@ -1,7 +1,10 @@
-import Human.Helpers.UnifiedReduced.RequestTrace
-import Human.Helpers.UnifiedReduced.RVProgram
-import Human.Helpers.Delegation.RVDecoder
-import Human.Helpers.Context.RVRowContext
+module
+public import Human.Helpers.UnifiedReduced.RequestTrace
+public import Human.Helpers.UnifiedReduced.RVProgram
+public import Human.Helpers.Delegation.RVDecoder
+public import Human.Helpers.Context.RVRowContext
+
+@[expose] public section
 
 /-! RV siblings of the unified caller request trace (`RequestTrace.lean`, `Circuits/UnifiedReduced/Delegation.lean`):
     the caller program is an RV program table (ROM bytes decoded by `RV.decode` to `.delegate k`, `csrrw x0, csr, x0`),

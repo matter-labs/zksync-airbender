@@ -1,5 +1,8 @@
-import Human.Helpers.Memory.History
-import Slop.Trace.OfflineMemory
+module
+public import Human.Helpers.Memory.History
+public import Slop.Trace.OfflineMemory
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 
@@ -8,7 +11,7 @@ instance : LawfulBEq MemoryAccess := inferInstanceAs (LawfulBEq (Nat × Nat × N
 
 variable {Kind : Type} [CircuitLayout Kind]
 
-private def retime (clock : Nat → Nat) (event : MemoryAccess) : MemoryAccess :=
+def retime (clock : Nat → Nat) (event : MemoryAccess) : MemoryAccess :=
   (clock event.1, event.2)
 
 def relabelMemoryEvent (clock : MemoryAccess → Nat) (event : MemoryAccess) : MemoryAccess :=

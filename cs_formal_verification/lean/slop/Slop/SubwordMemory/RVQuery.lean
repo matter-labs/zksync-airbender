@@ -1,7 +1,10 @@
-import Human.Circuits.SubwordMemory.RVModel
-import Slop.Trace.DecoderBits
-import Slop.Trace.RVPooledRow
-import Slop.SubwordMemory
+module
+public import Human.Circuits.SubwordMemory.RVModel
+public import Slop.Trace.DecoderBits
+public import Slop.Trace.RVPooledRow
+public import Slop.SubwordMemory
+
+@[expose] public section
 
 /-! Native decoder metadata of the RV subword row's instruction (`SubwordMemory.rvDecoderFields`, through the pooled
     registry `rvPooledDecoderFields`), and what a matching decoder query fixes in the row: the store/byte/sign

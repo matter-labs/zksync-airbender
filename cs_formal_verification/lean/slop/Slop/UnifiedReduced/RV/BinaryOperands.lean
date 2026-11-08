@@ -1,7 +1,10 @@
-import Slop.UnifiedReduced.RV.Binary
-import Slop.Arithmetic.WordBytes
-import Slop.Trace.BytePorts
-import Slop.Arithmetic.SignExtend
+module
+public import Slop.UnifiedReduced.RV.Binary
+public import Slop.Arithmetic.WordBytes
+public import Slop.Trace.BytePorts
+public import Slop.Arithmetic.SignExtend
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic

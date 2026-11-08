@@ -1,8 +1,11 @@
-import Human.Helpers.Core.BabyBearPrime
-import Human.Helpers.Context.RVPooledBoundary
-import Human.Helpers.Decoder.RVExternalInput
-import Human.Helpers.Decoder.PooledExternalInput
-import Human.Trace.RVExecution
+module
+public import Human.Helpers.Core.BabyBearPrime
+public import Human.Helpers.Context.RVPooledBoundary
+public import Human.Helpers.Decoder.RVExternalInput
+public import Human.Helpers.Decoder.PooledExternalInput
+public import Human.Trace.RVExecution
+
+@[expose] public section
 
 /-! Six-family trace claims over our RV32 spec: an accepted six-family trace is a run of `RV.run` from the public
     starting state `initial : RV.State` (not a Sail execution). RV siblings of `Soundness.lean`. Proven in

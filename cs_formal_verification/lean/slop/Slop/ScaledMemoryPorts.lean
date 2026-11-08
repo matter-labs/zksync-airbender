@@ -1,4 +1,7 @@
-import Slop.MemoryPorts
+module
+public import Slop.MemoryPorts
+
+@[expose] public section
 
 namespace Airbender.Verification
 open Arithmetic

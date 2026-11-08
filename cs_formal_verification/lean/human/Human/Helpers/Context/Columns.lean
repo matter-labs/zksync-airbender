@@ -1,4 +1,7 @@
-import Human.Helpers.Context.Timestamps
+module
+public import Human.Helpers.Context.Timestamps
+
+@[expose] public section
 
 namespace Airbender.Trace
 

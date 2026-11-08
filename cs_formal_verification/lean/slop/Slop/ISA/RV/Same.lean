@@ -1,4 +1,7 @@
-import Human.ISA.RV32
+module
+public import Human.ISA.RV32
+
+@[expose] public section
 
 /-! `RV.Same` (agreement on everything a program sees) is a congruence for `RV.exec` and `RV.step`: x0's
     stored value is never read (`getReg` reads x0 as 0). -/

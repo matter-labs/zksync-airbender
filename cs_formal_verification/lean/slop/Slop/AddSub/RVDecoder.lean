@@ -1,5 +1,8 @@
-import Human.Circuits.AddSub.RVModel
-import Slop.Trace.RVProgram
+module
+public import Human.Circuits.AddSub.RVModel
+public import Slop.Trace.RVProgram
+
+@[expose] public section
 
 /-! Native decoder metadata of the RV AddSub row's instruction: `rvDecoderFields (rvInstruction input)` is, per opcode,
     `arithmeticFields` of the RV fields. -/

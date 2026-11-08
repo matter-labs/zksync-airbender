@@ -1,8 +1,11 @@
-import Slop.UnifiedReduced.Trace
-import Slop.UnifiedReduced
-import Slop.Trace.Values
-import Slop.Trace.InitialImage
-import Slop.Trace.MemoryHistory
+module
+public import Slop.UnifiedReduced.Trace
+public import Slop.UnifiedReduced
+public import Slop.Trace.Values
+public import Slop.Trace.InitialImage
+public import Slop.Trace.MemoryHistory
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs
 open Arithmetic Trace Trace.Proofs

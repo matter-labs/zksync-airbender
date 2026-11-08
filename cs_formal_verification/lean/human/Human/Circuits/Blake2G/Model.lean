@@ -1,8 +1,11 @@
-import Human.Circuits.Blake2G.Artifact
-import Human.Circuits.Blake2G.Tables.Setup
-import Human.Helpers.Properties
-import Human.Helpers.Core.Word
-import CleanCore.Specs.BLAKE3
+module
+public import Human.Circuits.Blake2G.Artifact
+public import Human.Circuits.Blake2G.Tables.Setup
+public import Human.Helpers.Properties
+public import Human.Helpers.Core.Word
+public import CleanCore.Specs.BLAKE3
+
+@[expose] public section
 
 namespace Airbender.Blake2G
 

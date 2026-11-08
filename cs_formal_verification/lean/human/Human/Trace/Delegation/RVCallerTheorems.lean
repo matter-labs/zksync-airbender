@@ -1,10 +1,13 @@
-import Human.Helpers.Core.BabyBearPrime
-import Human.Helpers.Delegation.RVSchedule
-import Human.Trace.Delegation.RVRequestEffects
-import Human.Trace.Delegation.RVSharedMemory
-import Human.Trace.Delegation.RVSharedSpans
-import Human.Trace.Delegation.RVMixedMemory
-import Human.Trace.Delegation.RVRequestHashWindows
+module
+public import Human.Helpers.Core.BabyBearPrime
+public import Human.Helpers.Delegation.RVSchedule
+public import Human.Trace.Delegation.RVRequestEffects
+public import Human.Trace.Delegation.RVSharedMemory
+public import Human.Trace.Delegation.RVSharedSpans
+public import Human.Trace.Delegation.RVMixedMemory
+public import Human.Trace.Delegation.RVRequestHashWindows
+
+@[expose] public section
 
 -- The statements proven in slop/Slop/Final/Trace/Delegation/RVCallerTheorems.lean (checked by verify.sh). RV siblings
 -- of `CallerTheorems.lean`: the public starting point is an `RV.State`, the caller table is built by `RV.decode` of

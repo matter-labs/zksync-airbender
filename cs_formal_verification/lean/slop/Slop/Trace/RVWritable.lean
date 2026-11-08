@@ -1,5 +1,8 @@
-import Human.Helpers.Memory.InitialImageRV
-import Slop.Trace.RVHistory
+module
+public import Human.Helpers.Memory.InitialImageRV
+public import Slop.Trace.RVHistory
+
+@[expose] public section
 
 /-! RV-route writable-store law (piece E1, row level). A changing write (a port with `writeValue = some _`) whose
     address is a RAM cell lies in RV ROM-free RAM: only the word and subword store ports write RAM (their address tag

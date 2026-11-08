@@ -1,8 +1,11 @@
-import Slop.Trace.ZeroValues
-import Slop.Trace.RVProgram
-import Slop.Trace.RVHistory
-import Slop.Trace.RVFetch
-import Human.Helpers.Context.Registries.Pooled
+module
+public import Slop.Trace.ZeroValues
+public import Slop.Trace.RVProgram
+public import Slop.Trace.RVHistory
+public import Slop.Trace.RVFetch
+public import Human.Helpers.Context.Registries.Pooled
+
+@[expose] public section
 
 /-! RV-route x0 law (piece E0). `zero` for the RV AddSub row (`rv_addsub_row_position`) is derived here, with no Sail
     state or interpreter fact: the initial image is `initialImageRV` (register reads are `RV.State.getReg`), the row

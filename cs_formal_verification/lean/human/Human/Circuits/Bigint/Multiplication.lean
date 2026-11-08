@@ -1,7 +1,10 @@
-import Human.Circuits.Bigint.Artifact
-import Human.Circuits.Bigint.Word
-import Human.Circuits.Bigint.Tables.Setup
-import Human.Helpers.Properties
+module
+public import Human.Circuits.Bigint.Artifact
+public import Human.Circuits.Bigint.Word
+public import Human.Circuits.Bigint.Tables.Setup
+public import Human.Helpers.Properties
+
+@[expose] public section
 
 namespace Airbender.Bigint.Multiplication
 open Arithmetic

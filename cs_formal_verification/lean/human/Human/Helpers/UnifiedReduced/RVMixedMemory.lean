@@ -1,8 +1,11 @@
-import Human.Helpers.UnifiedReduced.RVRequestTrace
-import Human.Helpers.UnifiedReduced.MixedMemory
-import Human.Helpers.UnifiedReduced.RVProgram
-import Human.Helpers.Memory.RVHistory
-import Human.Circuits.UnifiedReduced.Tables.SetupRV
+module
+public import Human.Helpers.UnifiedReduced.RVRequestTrace
+public import Human.Helpers.UnifiedReduced.MixedMemory
+public import Human.Helpers.UnifiedReduced.RVProgram
+public import Human.Helpers.Memory.RVHistory
+public import Human.Circuits.UnifiedReduced.Tables.SetupRV
+
+@[expose] public section
 
 /-! RV siblings of `MixedMemory.lean` (helpers): the shared unified/worker architecture over `RVRequestTrace`, executed
     as RV cell reads/writes (`RVHistory`) from a public `RV.State`. The ordinary program is the unified RV program table

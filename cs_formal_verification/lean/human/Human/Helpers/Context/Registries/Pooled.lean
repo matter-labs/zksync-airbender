@@ -1,10 +1,13 @@
-import Human.Helpers.Context.Model
-import Human.Circuits.JumpBranchSlt.Artifact
-import Human.Circuits.MulDiv.Artifact
-import Human.Circuits.ShiftBinop.Artifact
-import Human.Circuits.SubwordMemory.Artifact
-import Human.Circuits.AddSub.Artifact
-import Human.Circuits.WordMemory.Artifact
+module
+public import Human.Helpers.Context.Model
+public import Human.Circuits.JumpBranchSlt.Artifact
+public import Human.Circuits.MulDiv.Artifact
+public import Human.Circuits.ShiftBinop.Artifact
+public import Human.Circuits.SubwordMemory.Artifact
+public import Human.Circuits.AddSub.Artifact
+public import Human.Circuits.WordMemory.Artifact
+
+@[expose] public section
 
 namespace Airbender.Trace
 

@@ -1,5 +1,8 @@
-import Human.Trace.Workers.Blake2Round.Call
-import Batteries.Data.Fin.Fold
+module
+public import Human.Trace.Workers.Blake2Round.Call
+public import Batteries.Data.Fin.Fold
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Compression
 open Arithmetic

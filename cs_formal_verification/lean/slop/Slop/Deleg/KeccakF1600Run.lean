@@ -1,5 +1,8 @@
-import Slop.Deleg.KeccakF1600
-import Slop.Deleg.KeccakRun
+module
+public import Slop.Deleg.KeccakF1600
+public import Slop.Deleg.KeccakRun
+
+@[expose] public section
 
 /-! 361 Keccak-f1600 calls from `x10 = 0` (per round 5 column parity, 5 θ+ρ, 5 χ; then one column parity) are
 Keccak-f[1600] (`keccak_f1600_run`). -/
@@ -36,7 +39,7 @@ theorem fRound_calls (r : Nat) (hr : r < 24) : ∀ q ∈ fRound, OneCall f1600St
         (by omega) ⟨rfl, Or.inl hr⟩
 
 theorem fRound_kinds : fRound.map Prod.fst =
-    .replicate 5 .keccakParity ++ .replicate 5 .keccakThetaRho ++ .replicate 5 .keccakChi5 := rfl
+    .replicate 5 .keccakParity ++ .replicate 5 .keccakThetaRho ++ .replicate 5 .keccakChi5 := by rfl
 
 theorem fRound_steps (r : Nat) (S : Vector Lane 31) :
     fRound.foldl (fun S q => f1600Step q.2.1 q.2.2 r S) S = fsteps r fRoundCalls S := by

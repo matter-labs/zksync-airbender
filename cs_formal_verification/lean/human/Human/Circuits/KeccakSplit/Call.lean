@@ -1,6 +1,9 @@
-import Human.Circuits.KeccakSplit.Schedule
-import CleanCore.Specs.Keccak256
-import Human.Helpers.Memory.SailHistory
+module
+public import Human.Circuits.KeccakSplit.Schedule
+public import CleanCore.Specs.Keccak256
+public import Human.Helpers.Memory.SailHistory
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Call
 open Trace

@@ -1,4 +1,7 @@
-import Human.Circuits.Keccak.Theta
+module
+public import Human.Circuits.Keccak.Theta
+
+@[expose] public section
 
 namespace Airbender.Keccak
 

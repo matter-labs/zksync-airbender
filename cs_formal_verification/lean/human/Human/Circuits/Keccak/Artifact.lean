@@ -1,4 +1,7 @@
-import Human.Import.Embed
+module
+public import Human.Import.Embed
+
+@[expose] public section
 
 namespace Airbender.Keccak
 
@@ -15,7 +18,7 @@ def clockConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8)
   importedConstraints setup ++ importedConstraintsTimestampLookups
 
 theorem lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8)) :
-    (FlatOperation.lookups (importedConstraints setup)).length = 42 := rfl
+    (FlatOperation.lookups (importedConstraints setup)).length = 42 := by rfl
 
 namespace Variables
 abbrev execute := 0

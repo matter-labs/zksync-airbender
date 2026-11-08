@@ -1,5 +1,8 @@
-import CleanCore.Circuit.Operations
-import Mathlib.Algebra.Field.ZMod
+module
+public import CleanCore.Circuit.Operations
+public import Mathlib.Algebra.Field.ZMod
+
+@[expose] public section
 
 /-! Completeness of a query into any static table (lean-strategies §2.1): the query holds when its
 evaluated entry is the row at the table's own index. A witness test then checks one closed fact per

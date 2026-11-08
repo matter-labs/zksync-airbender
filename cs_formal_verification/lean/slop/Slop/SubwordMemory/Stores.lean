@@ -1,4 +1,7 @@
-import Slop.SubwordMemory
+module
+public import Slop.SubwordMemory
+
+@[expose] public section
 
 namespace Airbender.SubwordMemory.Proofs
 open Airbender.Arithmetic Airbender.Verification

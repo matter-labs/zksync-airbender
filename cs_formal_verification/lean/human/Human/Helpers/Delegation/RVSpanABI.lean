@@ -1,5 +1,8 @@
-import Human.Helpers.Delegation.SpanABI
-import Human.Helpers.Memory.InitialImageRV
+module
+public import Human.Helpers.Delegation.SpanABI
+public import Human.Helpers.Memory.InitialImageRV
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller
 open Trace

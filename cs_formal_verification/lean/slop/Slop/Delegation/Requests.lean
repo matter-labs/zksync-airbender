@@ -1,4 +1,7 @@
-import Human.Helpers.Delegation.Requests
+module
+public import Human.Helpers.Delegation.Requests
+
+@[expose] public section
 namespace Airbender.Delegation.Requests.Proofs
 open Trace
 set_option warningAsError true

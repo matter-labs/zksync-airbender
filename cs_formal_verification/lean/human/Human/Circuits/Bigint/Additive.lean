@@ -1,5 +1,8 @@
-import Human.Circuits.Bigint.Control
-import Human.Circuits.Bigint.Word
+module
+public import Human.Circuits.Bigint.Control
+public import Human.Circuits.Bigint.Word
+
+@[expose] public section
 
 namespace Airbender.Bigint.Additive
 open Arithmetic

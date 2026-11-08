@@ -1,33 +1,36 @@
-import Human.Circuits.WordMemory.Artifact
+module
+public import Human.Circuits.WordMemory.Artifact
+
+@[expose] public section
 
 namespace Airbender.WordMemory
 
 theorem timestamp_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := rfl
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := by rfl
 
 theorem clock_columns : importedConstraintsTraceColumns =
     (⟨4, #v[0, 1], #v[11, 12], #v[2, 3], #v[13, 14],
       #[⟨0, #v[15, 16], 46⟩, ⟨1, #v[21, 22], 47⟩, ⟨2, #v[27, 28], 48⟩]⟩ :
-      Trace.TraceColumns) := rfl
+      Trace.TraceColumns) := by rfl
 
 theorem memory_ports : importedConstraintsMemoryPorts =
     (#[⟨⟨0, #v[15, 16], 46⟩, .register 5, #v[17, 18], none⟩,
        ⟨⟨1, #v[21, 22], 47⟩, .mixed 10 true #v[19, 20], #v[23, 24], none⟩,
        ⟨⟨2, #v[27, 28], 48⟩, .mixed 10 false #v[25, 26], #v[29, 30], some #v[31, 32]⟩] :
-      Array Trace.MemoryPort) := rfl
+      Array Trace.MemoryPort) := by rfl
 
 theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
     importedConstraintsTraceColumns.ports := by
   simp [importedConstraintsMemoryPorts, importedConstraintsTraceColumns]
 
 theorem decoder_columns : importedConstraintsDecoderColumns =
-    (⟨5, 6, 7, #v[8, 9], none, #[10]⟩ : Trace.DecoderColumns) := rfl
+    (⟨5, 6, 7, #v[8, 9], none, #[10]⟩ : Trace.DecoderColumns) := by rfl
 
 theorem constraint_count {p : Nat} [Fact p.Prime] (rom : Table (ZMod p) (fields 9)) :
-    (FlatOperation.constraints (importedConstraints rom)).length = 27 := rfl
+    (FlatOperation.constraints (importedConstraints rom)).length = 27 := by rfl
 
 theorem lookup_count {p : Nat} [Fact p.Prime] (rom : Table (ZMod p) (fields 9)) :
-    (FlatOperation.lookups (importedConstraints rom)).length = 4 := rfl
+    (FlatOperation.lookups (importedConstraints rom)).length = 4 := by rfl
 
 theorem variable_roles :
     importedConstraintsVariableNames.lookup 0 = some "initial_pc[0]" ∧

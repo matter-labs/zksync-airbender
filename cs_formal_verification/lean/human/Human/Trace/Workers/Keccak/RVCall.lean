@@ -1,10 +1,13 @@
-import Human.Trace.Workers.Keccak.Permutation
-import Human.Helpers.Delegation.RVBoundaryMemory
-import Human.Trace.Delegation.RVExecution
-import Human.ISA.DelegationRuns
-import Human.Helpers.Delegation.NativeWindows
-import Human.Helpers.Delegation.SpanABI
-import Human.Trace.Workers.Blake2G.WorkVector
+module
+public import Human.Trace.Workers.Keccak.Permutation
+public import Human.Helpers.Delegation.RVBoundaryMemory
+public import Human.Trace.Delegation.RVExecution
+public import Human.ISA.DelegationRuns
+public import Human.Helpers.Delegation.NativeWindows
+public import Human.Helpers.Delegation.SpanABI
+public import Human.Trace.Workers.Blake2G.WorkVector
+
+@[expose] public section
 
 /-! RV siblings of the Keccak special5 call, boundary-call, window and permutation contracts (`Call.lean`,
     `BoundaryCall.lean`, `Windows.lean`, `Permutation.lean`): the public state is an `RV.State`; RAM cells are RAM at

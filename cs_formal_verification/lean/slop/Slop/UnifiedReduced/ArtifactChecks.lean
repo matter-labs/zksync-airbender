@@ -1,22 +1,25 @@
-import Human.Circuits.UnifiedReduced.Artifact
+module
+public import Human.Circuits.UnifiedReduced.Artifact
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced
 
 set_option maxRecDepth 8192
 
 theorem timestamp_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := rfl
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := by rfl
 
 theorem clock_columns : importedConstraintsTraceColumns =
     (⟨4, #v[0, 1], #v[30, 31], #v[2, 3], #v[32, 33],
       #[⟨0, #v[34, 35], 123⟩, ⟨1, #v[40, 41], 124⟩, ⟨2, #v[46, 47], 125⟩]⟩ :
-      Trace.TraceColumns) := rfl
+      Trace.TraceColumns) := by rfl
 
 theorem memory_ports : importedConstraintsMemoryPorts =
     (#[⟨⟨0, #v[34, 35], 123⟩, .register 5, #v[36, 37], none⟩,
        ⟨⟨1, #v[40, 41], 124⟩, .mixed 28 false #v[38, 39], #v[42, 43], none⟩,
        ⟨⟨2, #v[46, 47], 125⟩, .mixed 29 false #v[44, 45], #v[48, 49], some #v[50, 51]⟩] :
-      Array Trace.MemoryPort) := rfl
+      Array Trace.MemoryPort) := by rfl
 
 theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
     importedConstraintsTraceColumns.ports := by
@@ -25,13 +28,13 @@ theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.cloc
 theorem decoder_columns : importedConstraintsDecoderColumns =
     (⟨5, 6, 7, #v[8, 9], some 10,
       #[11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]⟩ :
-      Trace.DecoderColumns) := rfl
+      Trace.DecoderColumns) := by rfl
 
 theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 10)) :
-    (FlatOperation.constraints (importedConstraints setup)).length = 120 := rfl
+    (FlatOperation.constraints (importedConstraints setup)).length = 120 := by rfl
 
 theorem lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 10)) :
-    (FlatOperation.lookups (importedConstraints setup)).length = 18 := rfl
+    (FlatOperation.lookups (importedConstraints setup)).length = 18 := by rfl
 
 theorem variable_roles :
     importedConstraintsVariableNames.lookup 0 = some "initial_pc[0]" ∧

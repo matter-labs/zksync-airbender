@@ -1,5 +1,8 @@
-import Human.Helpers.Tables.Bytes
-import Human.Helpers.Memory.ROM
+module
+public import Human.Helpers.Tables.Bytes
+public import Human.Helpers.Memory.ROM
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Setup
 open Verification Trace

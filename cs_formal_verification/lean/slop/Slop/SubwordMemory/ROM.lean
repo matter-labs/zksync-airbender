@@ -1,15 +1,18 @@
-import Slop.SubwordMemory.Lookups
+module
+public import Slop.SubwordMemory.Lookups
+
+@[expose] public section
 
 namespace Airbender.Verification
 open Airbender.Arithmetic
 
 -- Decode only the modeled ROM row layout; Sail remains the instruction semantics.
 attribute [local irreducible] Nat.sub
-private def romKey (byte : Bool) (i : Nat) : Nat :=
+def romKey (byte : Bool) (i : Nat) : Nat :=
   4 * (i / (if byte then 8 else 4)) + 4194304 * (i / (if byte then 4 else 2) % 2) +
     8388608 * (i / (if byte then 2 else 1) % 2) + (if byte then 16777216 * (i % 2) else 0)
 
-private def romData (program : Nat → BitVec 32) (byte : Bool) (i : Nat) : Nat × Nat :=
+def romData (program : Nat → BitVec 32) (byte : Bool) (i : Nat) : Nat × Nat :=
   let half := (program (i / (if byte then 8 else 4))).toNat /
     (if i / (if byte then 2 else 1) % 2 = 1 then 65536 else 1) % 65536
   subwordLoadLimbs byte (half + 65536 * (i / (if byte then 4 else 2) % 2) +
@@ -17,7 +20,7 @@ private def romData (program : Nat → BitVec 32) (byte : Bool) (i : Nat) : Nat 
 
 set_option maxRecDepth 100000 in
 set_option maxHeartbeats 800000 in
-private theorem rom_values {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
+theorem rom_values {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (byte : Bool)
     (h : (subwordTable program).Contains #[] entry)
     (selected : entry[8] = ((if byte then 45 else 44 : Nat) : ZMod p)) :
@@ -85,7 +88,7 @@ theorem subword_rom_bounds {p : Nat} [Fact p.Prime] (hp : 33554432 < p)
     Nat.mod_eq_of_lt loSmall, Nat.mod_eq_of_lt hiSmall]
   exact canonical
 
-private theorem rom_decode (byte signed highHalf highByte : Bool) {cell : Word} {i : Nat}
+theorem rom_decode (byte signed highHalf highByte : Bool) {cell : Word} {i : Nat}
     (bounded : cell.Bounded) (inROM : cell.hi < 64)
     (size : i < (if byte then 8388608 else 4194304))
     (aligned : byte = false → highByte = false)

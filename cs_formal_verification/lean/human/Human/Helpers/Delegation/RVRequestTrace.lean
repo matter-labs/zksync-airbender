@@ -1,6 +1,9 @@
-import Human.Helpers.Delegation.RVDecoder
-import Human.Helpers.Delegation.RVMemory
-import Human.Helpers.Context.Registries.Pooled
+module
+public import Human.Helpers.Delegation.RVDecoder
+public import Human.Helpers.Delegation.RVMemory
+public import Human.Helpers.Context.Registries.Pooled
+
+@[expose] public section
 
 /-! RV siblings of the caller/worker request records (`RequestTrace.lean`): the public caller table is the RV table
     (`rvProgramImage`, `RV.decode`), the public starting point is an `RV.State`, seed cells are read by `Cell.readRV`.

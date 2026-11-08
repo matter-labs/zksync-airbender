@@ -1,5 +1,8 @@
-import Human.Circuits.UnifiedReduced.Delegation
-import Human.Helpers.Delegation.Schedule
+module
+public import Human.Circuits.UnifiedReduced.Delegation
+public import Human.Helpers.Delegation.Schedule
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace

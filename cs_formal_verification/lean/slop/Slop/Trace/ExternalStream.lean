@@ -1,5 +1,8 @@
-import Human.Helpers.Core.ExternalStream
-import Slop.Trace.RowHistory
+module
+public import Human.Helpers.Core.ExternalStream
+public import Slop.Trace.RowHistory
+
+@[expose] public section
 
 namespace Airbender.Trace.ExternalStream.Proofs
 

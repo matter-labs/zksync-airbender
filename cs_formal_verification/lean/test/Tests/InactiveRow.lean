@@ -1,16 +1,19 @@
-import Slop.AddSub.ArtifactChecks
-import Human.Helpers.Properties
-import Slop.Constraints
-import Human.Helpers.Core.BabyBearPrime
+module
+public import Slop.AddSub.ArtifactChecks
+public import Human.Helpers.Properties
+public import Slop.Constraints
+public import Human.Helpers.Core.BabyBearPrime
+
+@[expose] public section
 
 namespace Tests.InactiveRow
 open Airbender
 
 -- This is a witness for the imported local relation, not an architectural execution.
-private def row (i : Nat) : ZMod babyBearModulus :=
+def row (i : Nat) : ZMod babyBearModulus :=
   if i = 19 ∨ i = 21 then 4 else if i = 33 then 123 else 0
 
-private theorem satisfies :
+theorem satisfies :
     FlatOperation.ConstraintsHoldFlat (Verification.environment row) AddSub.importedConstraints := by
   simp [AddSub.importedConstraints, FlatOperation.ConstraintsHoldFlat, Expression.eval,
     Verification.environment, row]

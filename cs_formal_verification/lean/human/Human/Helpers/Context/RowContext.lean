@@ -1,4 +1,7 @@
-import Human.Helpers.Memory.InitialImage
+module
+public import Human.Helpers.Memory.InitialImage
+
+@[expose] public section
 
 namespace Airbender.Trace
 open Arithmetic

@@ -1,6 +1,9 @@
-import Human.Circuits.Bigint.Artifact
-import Human.Circuits.Bigint.Tables.Setup
-import Human.Helpers.Properties
+module
+public import Human.Circuits.Bigint.Artifact
+public import Human.Circuits.Bigint.Tables.Setup
+public import Human.Helpers.Properties
+
+@[expose] public section
 
 namespace Airbender.Bigint.Addresses
 open Arithmetic

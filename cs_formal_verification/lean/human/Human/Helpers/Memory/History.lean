@@ -1,4 +1,7 @@
-import Human.Helpers.Context.Model
+module
+public import Human.Helpers.Context.Model
+
+@[expose] public section
 
 namespace Airbender.Trace
 

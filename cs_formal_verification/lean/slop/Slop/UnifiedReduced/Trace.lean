@@ -1,7 +1,10 @@
-import Human.Helpers.UnifiedReduced.Registry
-import Slop.UnifiedReduced.ArtifactChecks
-import Slop.UnifiedReduced.Timestamp
-import Slop.Trace.History
+module
+public import Human.Helpers.UnifiedReduced.Registry
+public import Slop.UnifiedReduced.ArtifactChecks
+public import Slop.UnifiedReduced.Timestamp
+public import Slop.Trace.History
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs
 open Trace

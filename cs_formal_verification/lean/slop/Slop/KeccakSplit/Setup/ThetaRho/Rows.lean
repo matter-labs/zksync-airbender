@@ -1,7 +1,10 @@
-import Slop.KeccakSplit.Setup.ThetaRho.ShapesOk
-import Slop.KeccakSplit.Setup.ThetaRho.Formula
-import Human.Circuits.KeccakSplit.Tables.Setup
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.KeccakSplit.Setup.ThetaRho.ShapesOk
+public import Slop.KeccakSplit.Setup.ThetaRho.Formula
+public import Human.Circuits.KeccakSplit.Tables.Setup
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 /- Row meaning of the imported setup: every column decodes to its row formula on all 2^22
    exported rows. Each column is a few blocks: grid blocks and long affine runs matched by
@@ -39,7 +42,7 @@ theorem col7_rows : ∀ n < 4194304, decode thetaRhoSetup_col7 n = col7Spec n :=
 theorem col8_rows : ∀ n < 4194304, decode thetaRhoSetup_col8 n = col8Spec n :=
   rows_of_scan _ col8_longs (by decide +kernel) (by decide +kernel)
 
-theorem traceLen_eq : thetaRhoSetup.traceLen = 4194304 := rfl
+theorem traceLen_eq : thetaRhoSetup.traceLen = 4194304 := by rfl
 
 /-- Every exported row is the formula row. -/
 theorem setupRow_eq (n : Nat) (hn : n < 4194304) :

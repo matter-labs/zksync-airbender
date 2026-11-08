@@ -1,6 +1,9 @@
-import Slop.ByteTables
-import Slop.Arithmetic.Bytes
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.ByteTables
+public import Slop.Arithmetic.Bytes
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 namespace Airbender.Verification
 

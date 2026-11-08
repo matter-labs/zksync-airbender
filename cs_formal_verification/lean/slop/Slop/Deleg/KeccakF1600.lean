@@ -1,4 +1,7 @@
-import Slop.Deleg.KeccakRound
+module
+public import Slop.Deleg.KeccakRound
+
+@[expose] public section
 
 /-! The Keccak-f1600 delegations (CSRs `0x7cd` column parity, `0x7cc` θ+ρ, `0x7ce` χ) on the slot view: one call
 of each (`par_rep`, `thetaRho_rep`, `chi_rep`), and a round of 15 calls is a Keccak-f round (`f1600_round`). -/
@@ -8,7 +11,7 @@ open Spec
 set_option linter.unusedSimpArgs false
 
 theorem finRange5_foldl {α} (f : α → Fin 5 → α) (a : α) :
-    (List.finRange 5).foldl f a = f (f (f (f (f a 0) 1) 2) 3) 4 := rfl
+    (List.finRange 5).foldl f a = f (f (f (f (f a 0) 1) 2) 3) 4 := by rfl
 
 macro "fread" "[" ts:Lean.Parser.Tactic.simpLemma,* "]" : tactic => `(tactic| simp only [$ts,*, f1600Step,
   columnParity, set5, finRange5_foldl, ↓reduceIte, slot, scratch, Vector.getElem_set, Fin.getElem_fin,

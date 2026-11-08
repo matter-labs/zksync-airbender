@@ -1,5 +1,8 @@
-import Human.Helpers.Context.RVRowContext
-import Slop.ISA.RV.Mem
+module
+public import Human.Helpers.Context.RVRowContext
+public import Slop.ISA.RV.Mem
+
+@[expose] public section
 
 /-! RV-state laws for the public cells: the RV siblings of `SailCells.lean`. Each law is about one `Cell.readRV` /
     `Cell.writeRV` step on an `RV.State`. Register reads are `getReg` (x0 reads 0), register writes are `setReg`
@@ -9,17 +12,17 @@ namespace Airbender.Trace.Proofs
 open Airbender.Trace
 
 theorem readRV_register (index : BitVec 5) (before : RV.State) :
-    (Cell.register index).readRV before = some (before.getReg index) := rfl
+    (Cell.register index).readRV before = some (before.getReg index) := by rfl
 
 theorem readRV_ram {address : BitVec 32} (before : RV.State) (readable : RV.readable address 4) :
     (Cell.ram address).readRV before = some (RV.read before.mem address 4) := by
   simp [Cell.readRV, readable]
 
 theorem writeRV_register (index : BitVec 5) (value : BitVec 32) (before : RV.State) :
-    (Cell.register index).writeRV value before = some (before.setReg index value) := rfl
+    (Cell.register index).writeRV value before = some (before.setReg index value) := by rfl
 
 theorem writeRV_ram {address : BitVec 32} (value : BitVec 32) (before : RV.State) :
-    (Cell.ram address).writeRV value before = some (before.store address value 4) := rfl
+    (Cell.ram address).writeRV value before = some (before.store address value 4) := by rfl
 
 theorem getReg_setReg_same (before : RV.State) (index : BitVec 5) (value : BitVec 32) :
     (before.setReg index value).getReg index = if index = 0 then 0 else value := by
@@ -30,7 +33,7 @@ theorem getReg_setReg_other (before : RV.State) {index other : BitVec 5} (differ
   simp [RV.State.getReg, RV.State.setReg, different]
 
 theorem getReg_store (before : RV.State) (address value : BitVec 32) (index : BitVec 5) :
-    (before.store address value 4).getReg index = before.getReg index := rfl
+    (before.store address value 4).getReg index = before.getReg index := by rfl
 
 /-- An aligned RAM cell lies in the readable range (the word fits below `2^32`). -/
 theorem readable_of_aligned {address : BitVec 32} (aligned : (Cell.ram address).Aligned) :

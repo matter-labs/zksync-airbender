@@ -1,8 +1,11 @@
-import Slop.Trace.RowHistory
-import Slop.Trace.Terminal
-import Mathlib.Data.List.Chain
-import Human.Helpers.Decoder.Instruction
-import Mathlib.Logic.Relation
+module
+public import Slop.Trace.RowHistory
+public import Slop.Trace.Terminal
+public import Mathlib.Data.List.Chain
+public import Human.Helpers.Decoder.Instruction
+public import Mathlib.Logic.Relation
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 

@@ -1,6 +1,9 @@
-import Human.Circuits.UnifiedReduced.Decoder
-import Human.Circuits.UnifiedReduced.Tables.Setup
-import Human.Circuits.JumpBranchSlt.Model
+module
+public import Human.Circuits.UnifiedReduced.Decoder
+public import Human.Circuits.UnifiedReduced.Tables.Setup
+public import Human.Circuits.JumpBranchSlt.Model
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Control
 open Arithmetic Trace

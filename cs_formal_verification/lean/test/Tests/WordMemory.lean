@@ -1,8 +1,11 @@
-import Slop.WordMemory
-import Mathlib.Tactic.IntervalCases
-import Human.Helpers.Core.BabyBearPrime
-import Human.Circuits.AddSub.RowInput
-import Human.Helpers.Core.CircuitOutput
+module
+public import Slop.WordMemory
+public import Mathlib.Tactic.IntervalCases
+public import Human.Helpers.Core.BabyBearPrime
+public import Human.Circuits.AddSub.RowInput
+public import Human.Helpers.Core.CircuitOutput
+
+@[expose] public section
 
 namespace Tests.WordMemory
 open Airbender
@@ -10,7 +13,7 @@ open Airbender.Arithmetic
 
 -- RAM-only rows use the real setup's disabled-ROM zero query. This small fixture
 -- supplies that row; it makes no assertion about a ROM image or global memory.
-private def zeroTable : Table (ZMod babyBearModulus) (fields 9) := .fromStatic {
+def zeroTable : Table (ZMod babyBearModulus) (fields 9) := .fromStatic {
   name := "DisabledROMFixture"
   length := 1
   row _ := Vector.replicate 9 0
@@ -19,7 +22,7 @@ private def zeroTable : Table (ZMod babyBearModulus) (fields 9) := .fromStatic {
   contains_iff _ := Iff.rfl
 }
 
-private def row (store : Bool) : Nat → ZMod babyBearModulus
+def row (store : Bool) : Nat → ZMod babyBearModulus
   | 0 | 17 => 65532
   | 4 | 5 | 12 | 33 | 36 | 44 => 1
   | 6 => if store then 2 else 0
@@ -36,7 +39,7 @@ private def row (store : Bool) : Nat → ZMod babyBearModulus
   | _ => 0
 
 set_option maxRecDepth 4096 in
-private theorem satisfies (store : Bool) :
+theorem satisfies (store : Bool) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment (row store))
       (WordMemory.importedConstraints zeroTable) := by
   cases store <;>
@@ -63,7 +66,7 @@ example (store : Bool) :
   exact (WordMemory.Proofs.pc_successor (p := babyBearModulus) (by decide) (by decide)
     (satisfies store) ⟨rfl, rfl, rfl, rfl⟩ ⟨by decide, by decide⟩).1
 
-private theorem zero_outputs (entry : Vector (ZMod babyBearModulus) 9)
+theorem zero_outputs (entry : Vector (ZMod babyBearModulus) 9)
     (h : zeroTable.Contains #[] entry) (_tag : entry[8] = 0) :
     entry[1] = 0 ∧ entry[2] = 0 := by
   obtain ⟨i, rfl⟩ := h
@@ -98,7 +101,7 @@ example {rom : Table (ZMod babyBearModulus) (fields 9)} {w : Nat → ZMod babyBe
   norm_num at outside
 
 -- An independently supplied program fixture: zero row and one ROM word.
-private def programTable : Table (ZMod babyBearModulus) (fields 9) := .fromStatic {
+def programTable : Table (ZMod babyBearModulus) (fields 9) := .fromStatic {
   name := "ROMWordFixture"
   length := 2
   row i := if i.val = 0 then Vector.replicate 9 0 else
@@ -109,7 +112,7 @@ private def programTable : Table (ZMod babyBearModulus) (fields 9) := .fromStati
   contains_iff _ := Iff.rfl
 }
 
-private def romRow : Nat → ZMod babyBearModulus
+def romRow : Nat → ZMod babyBearModulus
   | 0 | 17 => 65532
   | 4 | 5 | 7 | 12 | 20 | 25 | 33 | 35 | 37 | 44 => 1
   | 8 | 13 => 4
@@ -123,7 +126,7 @@ private def romRow : Nat → ZMod babyBearModulus
   | _ => 0
 
 set_option maxRecDepth 4096 in
-private theorem rom_satisfies :
+theorem rom_satisfies :
     FlatOperation.ConstraintsHoldFlat (Verification.environment romRow)
       (WordMemory.importedConstraints programTable) := by
   simp [WordMemory.importedConstraints, FlatOperation.ConstraintsHoldFlat,

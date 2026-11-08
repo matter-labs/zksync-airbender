@@ -1,7 +1,10 @@
-import Slop.MulDiv.ArtifactChecks
-import Human.Helpers.Properties
-import Slop.Constraints
-import Slop.Trace.Timestamps
+module
+public import Slop.MulDiv.ArtifactChecks
+public import Human.Helpers.Properties
+public import Slop.Constraints
+public import Slop.Trace.Timestamps
+
+@[expose] public section
 
 namespace Airbender.MulDiv.Proofs
 open Trace

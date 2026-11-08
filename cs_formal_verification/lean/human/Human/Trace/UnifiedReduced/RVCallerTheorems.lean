@@ -1,8 +1,11 @@
-import Human.Helpers.Core.BabyBearPrime
-import Human.Trace.UnifiedReduced.RVMixedMemory
-import Human.Trace.UnifiedReduced.RVMixedWindowProjection
-import Human.Trace.UnifiedReduced.RVPreparedRoundWindows
-import Human.Trace.UnifiedReduced.RVCallerCycles
+module
+public import Human.Helpers.Core.BabyBearPrime
+public import Human.Trace.UnifiedReduced.RVMixedMemory
+public import Human.Trace.UnifiedReduced.RVMixedWindowProjection
+public import Human.Trace.UnifiedReduced.RVPreparedRoundWindows
+public import Human.Trace.UnifiedReduced.RVCallerCycles
+
+@[expose] public section
 
 -- The statements proven in slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean (checked by verify.sh). RV
 -- siblings of the `Caller.*` claims of `Theorems.lean`. Complete hash-span results (`Delegation.Caller.HashSpan.RVResult`) carry the delegate

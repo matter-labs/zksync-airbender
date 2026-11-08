@@ -1,6 +1,9 @@
-import Slop.Deleg.KeccakFips
-import CleanCore.Utils.Rotation
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.Deleg.KeccakFips
+public import CleanCore.Utils.Rotation
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 /-! FIPS 202's composition `fipsF` is `keccakF`, Clean's `keccakPermutation` (`fipsF_eq`): each step maps our
 lanes (`BitVec 64`, numbered `x + 5y`) to Clean's (natural numbers, numbered `5x + y`; `toClean`) as Clean's step
@@ -94,7 +97,7 @@ theorem fipsF_eq (A : Vector Lane 25) : fipsF A = keccakF A := by
     | nil => rfl
     | cons r l ih => rw [List.foldl_cons, List.foldl_cons, ← round_clean, ih]
   have hk : keccakF A = Vector.ofFn fun p => BitVec.ofNat 64 (Airbender.Specs.Keccak256.keccakPermutation (toClean A))[cleanLane p] :=
-    rfl
+    by rfl
   rw [hk, hp]
   apply Vector.ext; intro i hi
   simp only [toClean, Vector.getElem_ofFn, Fin.getElem_fin, Fin.eta, cleanLane_cleanLane, BitVec.ofNat_toNat, BitVec.setWidth_eq]

@@ -1,5 +1,8 @@
-import Human.Helpers.Decoder.Instruction
-import Human.Helpers.Context.FamilyLayout
+module
+public import Human.Helpers.Decoder.Instruction
+public import Human.Helpers.Context.FamilyLayout
+
+@[expose] public section
 
 namespace Airbender.Trace
 open Arithmetic

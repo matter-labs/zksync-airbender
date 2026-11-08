@@ -1,9 +1,12 @@
-import Human.Helpers.UnifiedReduced.RequestTrace
-import Human.Helpers.Memory.SailHistory
-import Human.Circuits.UnifiedReduced.Control
-import Human.Helpers.Memory.Native
-import Human.Helpers.Delegation.RequestEffects
-import Human.Helpers.Delegation.SharedMemory
+module
+public import Human.Helpers.UnifiedReduced.RequestTrace
+public import Human.Helpers.Memory.SailHistory
+public import Human.Circuits.UnifiedReduced.Control
+public import Human.Helpers.Memory.Native
+public import Human.Helpers.Delegation.RequestEffects
+public import Human.Helpers.Delegation.SharedMemory
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace

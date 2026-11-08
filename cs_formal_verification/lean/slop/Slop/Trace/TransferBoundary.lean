@@ -1,5 +1,8 @@
-import Slop.Trace.TransferBounds
-import Slop.Trace.TransferSplit
+module
+public import Slop.Trace.TransferBounds
+public import Slop.Trace.TransferSplit
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs.Transfer
 open Arithmetic

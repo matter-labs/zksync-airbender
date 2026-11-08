@@ -1,4 +1,7 @@
-import Slop.Trace.NativeSailHistory
+module
+public import Slop.Trace.NativeSailHistory
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 

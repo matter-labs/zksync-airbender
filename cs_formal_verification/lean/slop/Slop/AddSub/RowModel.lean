@@ -1,7 +1,10 @@
-import Slop.AddSub.ArtifactChecks
-import Human.Helpers.Properties
-import Human.Circuits.AddSub.RowInput
-import Human.Helpers.Core.CircuitOutput
+module
+public import Slop.AddSub.ArtifactChecks
+public import Human.Helpers.Properties
+public import Human.Circuits.AddSub.RowInput
+public import Human.Helpers.Core.CircuitOutput
+
+@[expose] public section
 
 namespace Airbender.AddSub
 open Airbender.Reference.RiscV

@@ -1,10 +1,13 @@
-import Human.Circuits.MulDiv.Artifact
-import Human.Circuits.MulDiv.Operation
-import Human.Helpers.Context.RVInterfaces
-import Human.Helpers.Context.RVRowContext
-import Human.Helpers.Decoder.RVPooledProgram
-import Human.ISA.RV32
-import Human.Helpers.Core.CircuitOutput
+module
+public import Human.Circuits.MulDiv.Artifact
+public import Human.Circuits.MulDiv.Operation
+public import Human.Helpers.Context.RVInterfaces
+public import Human.Helpers.Context.RVRowContext
+public import Human.Helpers.Decoder.RVPooledProgram
+public import Human.ISA.RV32
+public import Human.Helpers.Core.CircuitOutput
+
+@[expose] public section
 
 /-! RV32 vocabulary for the MUL/MULHU/DIVU/REMU circuit (as `Model.lean`, with RV registers, an `RV.State` pre-state
     and the instruction `RV.decode` of the public program entry). `Circuit.Output` (destination word and PC) is shared

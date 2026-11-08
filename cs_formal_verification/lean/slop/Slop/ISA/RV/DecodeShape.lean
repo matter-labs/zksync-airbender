@@ -1,4 +1,7 @@
-import Human.ISA.RV32
+module
+public import Human.ISA.RV32
+
+@[expose] public section
 
 /-! What a decoded instruction looks like (`Shape`): the immediates' widths, the operations each format allows, the
 CSR rows' registers. The only place besides `Slop/Equiv/Decode.lean` that splits the decoder table: proofs by

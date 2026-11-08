@@ -1,7 +1,10 @@
-import Human.Helpers.UnifiedReduced.Registry
-import Human.Helpers.Decoder.Program
-import Human.Circuits.JumpBranchSlt.Decoder
-import Human.Circuits.ShiftBinop.Decoder
+module
+public import Human.Helpers.UnifiedReduced.Registry
+public import Human.Helpers.Decoder.Program
+public import Human.Circuits.JumpBranchSlt.Decoder
+public import Human.Circuits.ShiftBinop.Decoder
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced
 

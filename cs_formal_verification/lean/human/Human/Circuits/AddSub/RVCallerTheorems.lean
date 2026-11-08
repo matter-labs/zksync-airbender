@@ -1,4 +1,7 @@
-import Human.Helpers.Delegation.RVDecoder
+module
+public import Human.Helpers.Delegation.RVDecoder
+
+@[expose] public section
 
 -- The statements proven in slop/Slop/Final/Circuits/AddSub/RVCallerTheorems.lean (checked by verify.sh). RV siblings
 -- of `CallerTheorems.lean`: the public caller table is built from an `RV.State` (`rvProgramImage`, `RV.decode`); no

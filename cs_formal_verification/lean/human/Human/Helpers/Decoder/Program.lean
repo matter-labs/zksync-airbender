@@ -1,5 +1,8 @@
-import Human.Helpers.Memory.InitialImage
-import Human.Helpers.Memory.ROM
+module
+public import Human.Helpers.Memory.InitialImage
+public import Human.Helpers.Memory.ROM
+
+@[expose] public section
 
 -- The full Sail model compiles its decoder (`encdec_backwards`) as noncomputable (sail/regen.sh,
 -- `proof` variant): these definitions are specifications, read by proofs, never executed.

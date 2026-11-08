@@ -1,5 +1,8 @@
-import Slop.Deleg.KeccakRound
-import Slop.Deleg.KeccakCalls
+module
+public import Slop.Deleg.KeccakRound
+public import Slop.Deleg.KeccakCalls
+
+@[expose] public section
 
 /-! 649 Keccak special5 calls from `x10 = 0` are Keccak-f[1600] (`keccak_special5_run`): 24 rounds of 27 calls
 (`round_rep`), then the last delayed ι. -/
@@ -32,7 +35,7 @@ theorem s5Round_calls (r : Nat) (hr : r < 24) : ∀ q ∈ s5Round, OneCall speci
   rw [hop.2]
   exact oneCall _ _ _ _ s5_effect _ _ r (by omega) (by have := q.2.2.isLt; omega) hop.1
 
-theorem s5Round_kinds : s5Round.map Prod.fst = .replicate 27 .keccak := rfl
+theorem s5Round_kinds : s5Round.map Prod.fst = .replicate 27 .keccak := by rfl
 
 theorem s5_rounds (s : State) (p : Word) (hp : Buffer p 248 256) (h10 : s.getReg 10 = 0) (h11 : s.getReg 11 = p) :
     ∀ n ≤ 24, ∃ t, calls (.replicate (27 * n) .keccak) s = some t ∧

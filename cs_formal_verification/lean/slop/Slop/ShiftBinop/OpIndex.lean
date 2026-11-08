@@ -1,5 +1,8 @@
-import Slop.OpIndex
-import Human.Circuits.ShiftBinop.Artifact
+module
+public import Slop.OpIndex
+public import Human.Circuits.ShiftBinop.Artifact
+
+@[expose] public section
 
 set_option maxRecDepth 100000 in
 derive_op_index Airbender.ShiftBinop.importedConstraints

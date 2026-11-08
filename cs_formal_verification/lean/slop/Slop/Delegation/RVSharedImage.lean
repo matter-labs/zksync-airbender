@@ -1,5 +1,8 @@
-import Slop.Trace.RVTransfer
-import Slop.Trace.RVValues
+module
+public import Slop.Trace.RVTransfer
+public import Slop.Trace.RVValues
+
+@[expose] public section
 
 /-! RV public-image facts used by the shared caller/worker pools (twins of `image_clocks`, `image_restriction`,
     `initial_zero` and `Transfer.Inputs`): the seed image is `initialImageRV` of an `RV.State`. -/

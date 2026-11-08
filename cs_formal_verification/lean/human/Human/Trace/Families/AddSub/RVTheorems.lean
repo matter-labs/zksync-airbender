@@ -1,9 +1,12 @@
-import Human.Helpers.Core.BabyBearPrime
-import Human.Helpers.Memory.Native
-import Human.Helpers.Context.RVBoundary
-import Human.Helpers.Context.RVPooledBoundary
-import Human.Helpers.Context.FamilyLayout
-import Human.Trace.RVExecution
+module
+public import Human.Helpers.Core.BabyBearPrime
+public import Human.Helpers.Memory.Native
+public import Human.Helpers.Context.RVBoundary
+public import Human.Helpers.Context.RVPooledBoundary
+public import Human.Helpers.Context.FamilyLayout
+public import Human.Trace.RVExecution
+
+@[expose] public section
 
 /-! RV32 twins of the ADD/SUB and word-memory trace claims (`Theorems.lean`): the accepted rows are a run of our spec
     (`RV.run`) from the public starting state `initial : RV.State`. `SailSoundnessClaim` (unchanged Sail, LW to x0

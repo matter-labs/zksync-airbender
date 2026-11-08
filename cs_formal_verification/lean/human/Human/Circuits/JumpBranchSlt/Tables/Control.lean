@@ -1,4 +1,7 @@
-import Human.Helpers.Tables.Lookups
+module
+public import Human.Helpers.Tables.Lookups
+
+@[expose] public section
 
 namespace Airbender.Verification
 

@@ -1,5 +1,8 @@
-import Human.Circuits.MulDiv.RVModel
-import Human.Helpers.Core.BabyBearPrime
+module
+public import Human.Circuits.MulDiv.RVModel
+public import Human.Helpers.Core.BabyBearPrime
+
+@[expose] public section
 
 /-! RV32 claims for MUL/MULHU/DIVU/REMU, stated against our spec (`RV.step`, `Human/ISA/RV32.lean`), not Sail:
     the row's pre-state is `input.before : RV.State`. `RV.alu` gives DIVU by zero = all ones and REMU by zero = the

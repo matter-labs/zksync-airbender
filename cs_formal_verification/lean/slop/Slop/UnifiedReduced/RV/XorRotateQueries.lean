@@ -1,5 +1,8 @@
-import Slop.UnifiedReduced.RV.Binary
-import Slop.UnifiedReduced.RV.XorRotateLookups
+module
+public import Slop.UnifiedReduced.RV.Binary
+public import Slop.UnifiedReduced.RV.XorRotateLookups
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic Verification

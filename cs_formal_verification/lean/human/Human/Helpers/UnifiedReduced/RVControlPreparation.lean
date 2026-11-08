@@ -1,5 +1,8 @@
-import Human.Helpers.UnifiedReduced.RVWindows
-import Human.Helpers.UnifiedReduced.ControlPreparation
+module
+public import Human.Helpers.UnifiedReduced.RVWindows
+public import Human.Helpers.UnifiedReduced.ControlPreparation
+
+@[expose] public section
 
 /-! RV siblings of `ControlPreparation.lean` (helpers): public control literals and instruction registries stated over
     `RV.Instr`, the RV program table's instruction being `RV.decode entry.bits`. The literal kinds (`ControlLiteral`)

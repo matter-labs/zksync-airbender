@@ -1,4 +1,7 @@
-import Slop.InitsTeardowns.Window
+module
+public import Slop.InitsTeardowns.Window
+
+@[expose] public section
 
 /-! The `Claims` of `Human.Circuits.InitsTeardowns.Theorems` for any layout of `Shape`. -/
 

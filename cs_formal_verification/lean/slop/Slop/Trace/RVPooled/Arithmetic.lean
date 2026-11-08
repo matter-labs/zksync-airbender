@@ -1,6 +1,9 @@
-import Slop.Trace.RVPooledStep
-import Slop.Trace.RVProgram
-import Slop.ISA.RV.Step
+module
+public import Slop.Trace.RVPooledStep
+public import Slop.Trace.RVProgram
+public import Slop.ISA.RV.Step
+
+@[expose] public section
 
 /-! The standard table's ADD/SUB-family and word-memory metadata (`Trace.rvDecoderFields`), by instruction: the NOP row
     (an arithmetic write to x0 or a discarded load), one of ADD/SUB/ADDI/LUI/AUIPC with `rd ≠ x0`, or LW (`rd ≠ x0`)/SW.

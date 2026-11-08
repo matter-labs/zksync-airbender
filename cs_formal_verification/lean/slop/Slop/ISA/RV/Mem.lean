@@ -1,4 +1,7 @@
-import Human.ISA.RV32
+module
+public import Human.ISA.RV32
+
+@[expose] public section
 
 /-! Byte-memory lemmas for `RV.read` / `RV.write`. -/
 
@@ -115,7 +118,7 @@ theorem write_congr_at (m m' : Word → BitVec 8) (a v : Word) (n : Nat) (b : Wo
     split <;> simp_all
 
 /-- `loadView` as a function (for rewriting under a partial application). -/
-theorem loadView_fun (s : State) : s.loadView = fun a => if a.toNat < ROM_END then s.rom a else s.mem a := rfl
+theorem loadView_fun (s : State) : s.loadView = fun a => if a.toNat < ROM_END then s.rom a else s.mem a := by rfl
 
 theorem loadView_low (s : State) (a : Word) (h : a.toNat < ROM_END) : s.loadView a = s.rom a := by
   simp [State.loadView, h]

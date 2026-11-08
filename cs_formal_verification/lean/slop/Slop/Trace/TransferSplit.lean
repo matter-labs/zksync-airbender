@@ -1,7 +1,10 @@
-import Slop.Trace.RowHistory
-import Mathlib.Data.List.Perm.Subperm
-import Slop.Trace.Terminal
-import Slop.Trace.TransferHistory
+module
+public import Slop.Trace.RowHistory
+public import Mathlib.Data.List.Perm.Subperm
+public import Slop.Trace.Terminal
+public import Slop.Trace.TransferHistory
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs.Transfer
 set_option warningAsError true

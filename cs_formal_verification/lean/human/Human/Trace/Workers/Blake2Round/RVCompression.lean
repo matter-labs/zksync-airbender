@@ -1,5 +1,8 @@
-import Human.Trace.Workers.Blake2Round.Compression
-import Human.Helpers.Delegation.RVMemory
+module
+public import Human.Trace.Workers.Blake2Round.Compression
+public import Human.Helpers.Delegation.RVMemory
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Compression
 open Arithmetic

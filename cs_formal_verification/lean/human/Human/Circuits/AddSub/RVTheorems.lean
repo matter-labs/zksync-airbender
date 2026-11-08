@@ -1,7 +1,10 @@
-import Human.Circuits.AddSub.RVModel
-import Human.Helpers.Core.BabyBearPrime
-import Human.Helpers.Delegation.Decoder
-import Human.Helpers.Delegation.CallerRequests
+module
+public import Human.Circuits.AddSub.RVModel
+public import Human.Helpers.Core.BabyBearPrime
+public import Human.Helpers.Delegation.Decoder
+public import Human.Helpers.Delegation.CallerRequests
+
+@[expose] public section
 
 /-! RV32 claims (B2 pilot). The AddSub claims (first block) are stated against our spec (`RV.step`, `Human/ISA/RV32.lean`),
     not Sail: the row's pre-state is `input.before : RV.State`, which carries the input stream (`RV.State.input`), so there is

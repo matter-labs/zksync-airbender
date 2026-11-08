@@ -1,8 +1,11 @@
-import Slop.Trace.RVPooledStep
-import Slop.Trace.RVPooledRow
-import Slop.WordMemory.RVTraceSoundness
-import Slop.ISA.RV.DecodeShape
-import Slop.Trace.RVPooled.Arithmetic
+module
+public import Slop.Trace.RVPooledStep
+public import Slop.Trace.RVPooledRow
+public import Slop.WordMemory.RVTraceSoundness
+public import Slop.ISA.RV.DecodeShape
+public import Slop.Trace.RVPooled.Arithmetic
+
+@[expose] public section
 
 /-! One LW/SW row of a pooled trace is one `RV.exec` of its instruction (`RVPooledRowStep`), from the row's own RV
     history: the row calculation of `WordMemory.Proofs.rv_trace_soundness` (`effective_address`, `rom_selection`,
@@ -74,7 +77,7 @@ theorem rv_word_row_step {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
   have shape : (⟨.wordMemory, w⟩ : Row p PooledFamily).ports =
       #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
         importedConstraintsMemoryPorts[2]] := by
-    have portsEq : (⟨.wordMemory, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := rfl
+    have portsEq : (⟨.wordMemory, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := by rfl
     rw [portsEq]
     rfl
   have history := facts.history

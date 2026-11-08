@@ -1,6 +1,9 @@
-import Mathlib.Algebra.BigOperators.Fin
-import Mathlib.Tactic.IntervalCases
-import Slop.Arithmetic.Bytes
+module
+public import Mathlib.Algebra.BigOperators.Fin
+public import Mathlib.Tactic.IntervalCases
+public import Slop.Arithmetic.Bytes
+
+@[expose] public section
 
 namespace Airbender.Arithmetic
 set_option warningAsError true

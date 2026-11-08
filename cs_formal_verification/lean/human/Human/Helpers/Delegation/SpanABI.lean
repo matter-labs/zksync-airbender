@@ -1,7 +1,10 @@
-import Human.Helpers.Delegation.WorkerProjection
-import Human.Circuits.Blake2G.Protocol
-import Human.Helpers.Delegation.Operations
-import Human.Circuits.Keccak.Tables.Controller
+module
+public import Human.Helpers.Delegation.WorkerProjection
+public import Human.Circuits.Blake2G.Protocol
+public import Human.Helpers.Delegation.Operations
+public import Human.Circuits.Keccak.Tables.Controller
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller
 open Trace

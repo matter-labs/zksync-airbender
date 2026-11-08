@@ -1,5 +1,8 @@
-import Slop.Deleg.Calls
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.Deleg.Calls
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 /-! The Blake2s round function (CSR `0x7c7`), 7 or 10 rounds, any mode: one call (`blakeRound_mode_call`). -/
 

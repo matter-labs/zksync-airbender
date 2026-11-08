@@ -1,7 +1,10 @@
-import Human.Helpers.UnifiedReduced.RVMixedMemory
-import Human.Helpers.Delegation.RVBoundaryMemory
-import Human.Helpers.Delegation.WorkerProjection
-import Human.Helpers.Delegation.RequestWindows
+module
+public import Human.Helpers.UnifiedReduced.RVMixedMemory
+public import Human.Helpers.Delegation.RVBoundaryMemory
+public import Human.Helpers.Delegation.WorkerProjection
+public import Human.Helpers.Delegation.RequestWindows
+
+@[expose] public section
 
 /-! RV siblings of `Windows.lean`, `WorkerProjection.lean` and `WindowProjection.lean` (helpers): native windows over
     `RVRequestTrace`, and cut images read from `RV.State`s (`Cell.readRV`). A RAM cell is RAM at any address, INCLUDING

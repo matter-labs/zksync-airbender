@@ -1,33 +1,36 @@
-import Human.Circuits.SubwordMemory.Artifact
+module
+public import Human.Circuits.SubwordMemory.Artifact
+
+@[expose] public section
 
 namespace Airbender.SubwordMemory
 
 theorem timestamp_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := rfl
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := by rfl
 
 theorem clock_columns : importedConstraintsTraceColumns =
     (⟨4, #v[0, 1], #v[13, 14], #v[2, 3], #v[15, 16],
       #[⟨0, #v[17, 18], 62⟩, ⟨1, #v[23, 24], 63⟩, ⟨2, #v[29, 30], 64⟩]⟩ :
-      Trace.TraceColumns) := rfl
+      Trace.TraceColumns) := by rfl
 
 theorem memory_ports : importedConstraintsMemoryPorts =
     (#[⟨⟨0, #v[17, 18], 62⟩, .register 5, #v[19, 20], none⟩,
        ⟨⟨1, #v[23, 24], 63⟩, .mixed 10 true #v[21, 22], #v[25, 26], none⟩,
        ⟨⟨2, #v[29, 30], 64⟩, .mixed 10 false #v[27, 28], #v[31, 32], some #v[33, 34]⟩] :
-      Array Trace.MemoryPort) := rfl
+      Array Trace.MemoryPort) := by rfl
 
 theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
     importedConstraintsTraceColumns.ports := by
   simp [importedConstraintsMemoryPorts, importedConstraintsTraceColumns]
 
 theorem decoder_columns : importedConstraintsDecoderColumns =
-    (⟨5, 6, 7, #v[8, 9], none, #[10, 11, 12]⟩ : Trace.DecoderColumns) := rfl
+    (⟨5, 6, 7, #v[8, 9], none, #[10, 11, 12]⟩ : Trace.DecoderColumns) := by rfl
 
 theorem constraint_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)) :
-    (FlatOperation.constraints (importedConstraints setup)).length = 43 := rfl
+    (FlatOperation.constraints (importedConstraints setup)).length = 43 := by rfl
 
 theorem lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)) :
-    (FlatOperation.lookups (importedConstraints setup)).length = 7 := rfl
+    (FlatOperation.lookups (importedConstraints setup)).length = 7 := by rfl
 
 theorem variable_roles :
     importedConstraintsVariableNames.lookup 0 = some "initial_pc[0]" ∧

@@ -1,9 +1,12 @@
-import Slop.AddSub.RowModel
-import Slop.Arithmetic.Lemmas
-import Slop.Arithmetic.Word
-import Slop.AddSub.PC
-import Slop.Constraints
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.AddSub.RowModel
+public import Slop.Arithmetic.Lemmas
+public import Slop.Arithmetic.Word
+public import Slop.AddSub.PC
+public import Slop.Constraints
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 namespace Airbender.AddSub.Proofs
 open Airbender.Reference.RiscV

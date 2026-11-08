@@ -1,5 +1,8 @@
-import Slop.Trace.SeedTransfer
-import Slop.Trace.RVHistory
+module
+public import Slop.Trace.SeedTransfer
+public import Slop.Trace.RVHistory
+
+@[expose] public section
 
 /-! RV twins of the state-touching `Transfer` lemmas (`TransferHistory.native_sail_history_at_boundary`,
     `TransferTerminal.terminal_sail_reads_at_boundary`): the seeds are read from an `RV.State` (`Cell.readRV`) and

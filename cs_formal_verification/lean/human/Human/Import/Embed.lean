@@ -1,10 +1,20 @@
-import Human.Import.Parse
-import Human.Import.Coefficients
-import Human.Helpers.Tables.Range
-import Human.Helpers.Tables.Lookups
-import Human.Circuits.JumpBranchSlt.Tables.Control
-import Human.Helpers.Tables.Bytes
-import Lean
+module
+public import Human.Import.Parse
+public meta import Human.Import.Parse
+public import Human.Import.Coefficients
+public meta import Human.Import.Coefficients
+public import Human.Helpers.Tables.Range
+public meta import Human.Helpers.Tables.Range
+public import Human.Helpers.Tables.Lookups
+public meta import Human.Helpers.Tables.Lookups
+public import Human.Circuits.JumpBranchSlt.Tables.Control
+public meta import Human.Circuits.JumpBranchSlt.Tables.Control
+public import Human.Helpers.Tables.Bytes
+public meta import Human.Helpers.Tables.Bytes
+public import Lean
+public meta import Lean
+
+public meta section
 
 open Lean Elab Command
 

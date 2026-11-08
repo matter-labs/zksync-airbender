@@ -1,6 +1,9 @@
-import Human.ISA.RV32
-import Slop.ISA.RV.Mem
-import Slop.ISA.RV.Attr
+module
+public import Human.ISA.RV32
+public import Slop.ISA.RV.Mem
+public import Slop.ISA.RV.Attr
+
+@[expose] public section
 
 /-! Rewriting lemmas for symbolic runs on the RV32 spec. -/
 
@@ -66,7 +69,7 @@ simproc reduceRSet (State.getReg (State.setReg _ _ _) _) := fun e => do
 theorem goto_ok (s : State) (t : Word) (h : t.toNat % 4 = 0) : s.jumpAligned t = some (s.setPC t) := by
   simp [State.jumpAligned, h]
 
-theorem run_succ (n : Nat) (s : State) : run (n + 1) s = (step s).bind (run n) := rfl
+theorem run_succ (n : Nat) (s : State) : run (n + 1) s = (step s).bind (run n) := by rfl
 
 theorem step_fetch (s : State) (w : Word) (hpc : s.pc.toNat % 4 = 0) (hrom : s.pc.toNat + 4 ≤ ROM_END)
     (hw : read s.rom s.pc 4 = w) : step s = (decode w).bind (exec s) := by
@@ -116,12 +119,12 @@ theorem run_cont {S : State} {P Q : State → Prop} (H : ∃ m S', run m S = som
 
 /-! `exec`, one lemma per instruction kind; side conditions are left to the discharger. -/
 
-theorem exec_lui (s : State) rd imm : exec s (.lui rd imm) = some (s.setReg rd imm).nextInstr := rfl
-theorem exec_auipc (s : State) rd imm : exec s (.auipc rd imm) = some (s.setReg rd (s.pc + imm)).nextInstr := rfl
+theorem exec_lui (s : State) rd imm : exec s (.lui rd imm) = some (s.setReg rd imm).nextInstr := by rfl
+theorem exec_auipc (s : State) rd imm : exec s (.auipc rd imm) = some (s.setReg rd (s.pc + imm)).nextInstr := by rfl
 theorem exec_opImm (s : State) op rd rs1 imm :
-    exec s (.opImm op rd rs1 imm) = some (s.setReg rd (alu op (s.getReg rs1) imm)).nextInstr := rfl
+    exec s (.opImm op rd rs1 imm) = some (s.setReg rd (alu op (s.getReg rs1) imm)).nextInstr := by rfl
 theorem exec_op (s : State) op rd rs1 rs2 :
-    exec s (.op op rd rs1 rs2) = some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).nextInstr := rfl
+    exec s (.op op rd rs1 rs2) = some (s.setReg rd (alu op (s.getReg rs1) (s.getReg rs2))).nextInstr := by rfl
 theorem exec_jal (s : State) rd off (h : (s.pc + off).toNat % 4 = 0) :
     exec s (.jal rd off) = some ((s.setPC (s.pc + off)).setReg rd (s.pc + 4)) := by
   simp only [exec, State.jumpAligned, h, ite_true, Option.map_some]
@@ -163,16 +166,16 @@ theorem exec_store (s : State) n rs2 rs1 off (ha : aligned (s.getReg rs1 + off) 
 /-- A field operation (`mop.rr.N`); `mopVal` stays folded. -/
 theorem exec_mop (s : State) op rd rs1 rs2 :
     exec s (.mop op rd rs1 rs2) = some (s.setReg rd (mopVal op (s.getReg rs1) (s.getReg rs2) (s.getReg rd))).nextInstr :=
-  rfl
+  by rfl
 
 end RV
 
 namespace RV
 /-- Only the input read moves the input: the other state operations keep it. -/
-theorem setReg_input (s : State) (r : Reg) (v : Word) : (s.setReg r v).input = s.input := rfl
-theorem nextInstr_input (s : State) : s.nextInstr.input = s.input := rfl
-theorem setPC_input (s : State) (t : Word) : (s.setPC t).input = s.input := rfl
-theorem store_input (s : State) (a v : Word) (n : Nat) : (s.store a v n).input = s.input := rfl
+theorem setReg_input (s : State) (r : Reg) (v : Word) : (s.setReg r v).input = s.input := by rfl
+theorem nextInstr_input (s : State) : s.nextInstr.input = s.input := by rfl
+theorem setPC_input (s : State) (t : Word) : (s.setPC t).input = s.input := by rfl
+theorem store_input (s : State) (a v : Word) (n : Nat) : (s.store a v n).input = s.input := by rfl
 
 attribute [rv_state] setReg_input nextInstr_input setPC_input store_input
 attribute [rv_state] r_zero5 next_pc set_pc store_pc jump_pc set_mem next_mem store_mem jump_mem next_r store_r jump_r

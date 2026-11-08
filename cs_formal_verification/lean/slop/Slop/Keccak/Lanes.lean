@@ -1,4 +1,7 @@
-import Human.Circuits.Keccak.Mix
+module
+public import Human.Circuits.Keccak.Mix
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true

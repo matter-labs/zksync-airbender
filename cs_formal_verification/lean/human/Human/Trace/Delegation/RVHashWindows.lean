@@ -1,5 +1,8 @@
-import Human.Helpers.Delegation.NativeWindows
-import Human.Helpers.Delegation.RVBoundaryMemory
+module
+public import Human.Helpers.Delegation.NativeWindows
+public import Human.Helpers.Delegation.RVBoundaryMemory
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller
 open Trace

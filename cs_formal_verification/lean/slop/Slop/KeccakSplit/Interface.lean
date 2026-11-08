@@ -1,6 +1,9 @@
-import Human.Circuits.KeccakSplit.Native
-import Human.Helpers.Core.BabyBearPrime
-import Human.Helpers.Memory.SailHistory
+module
+public import Human.Circuits.KeccakSplit.Native
+public import Human.Helpers.Core.BabyBearPrime
+public import Human.Helpers.Memory.SailHistory
+
+@[expose] public section
 
 /- What the trace-level proofs need from each split worker's circuit, as one
    contract (lean-strategies 2.2): the per-kind circuit proofs establish it, the

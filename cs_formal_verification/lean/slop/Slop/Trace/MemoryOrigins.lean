@@ -1,4 +1,7 @@
-import Slop.Trace.Slots
+module
+public import Slop.Trace.Slots
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 

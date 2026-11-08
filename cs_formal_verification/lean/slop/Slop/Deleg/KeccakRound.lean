@@ -1,5 +1,8 @@
-import Slop.Deleg.KeccakSlots
-import Slop.Deleg.KeccakClean
+module
+public import Slop.Deleg.KeccakSlots
+public import Slop.Deleg.KeccakClean
+
+@[expose] public section
 
 /-! One round of Keccak special5 calls (27) is one Keccak-f round on the slot view, in five stages: delayed ι and the
 column parities (`stageA`), θ's `D` (`stageB`), θ (`stageC`), ρ (`stageD`), π and χ (`stageE`). -/

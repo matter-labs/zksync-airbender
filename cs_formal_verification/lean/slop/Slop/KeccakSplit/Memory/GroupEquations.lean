@@ -1,8 +1,11 @@
-import Human.Circuits.KeccakSplit.ThetaRho.Artifact
-import Human.Circuits.KeccakSplit.Chi5.Artifact
-import Slop.Constraints
-import Human.Helpers.Properties
-import Mathlib.Tactic.LinearCombination
+module
+public import Human.Circuits.KeccakSplit.ThetaRho.Artifact
+public import Human.Circuits.KeccakSplit.Chi5.Artifact
+public import Slop.Constraints
+public import Human.Helpers.Properties
+public import Mathlib.Tactic.LinearCombination
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Proofs
 set_option warningAsError true

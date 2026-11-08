@@ -1,9 +1,12 @@
-import Human.Helpers.Context.RVInterfaces
-import Slop.Trace.RVPorts
-import Slop.Trace.RVCells
-import Slop.Trace.RVRowGlue
-import Slop.Trace.InitialImage
-import Slop.ISA.RV.Same
+module
+public import Human.Helpers.Context.RVInterfaces
+public import Slop.Trace.RVPorts
+public import Slop.Trace.RVCells
+public import Slop.Trace.RVRowGlue
+public import Slop.Trace.InitialImage
+public import Slop.ISA.RV.Same
+
+@[expose] public section
 
 /-! The per-row obligation of the six-family RV composition, stated from the row's own RV history (not from the
     whole-trace interface, so it holds for any decoder projection): `RVPooledRowStep` (the row's instruction executes

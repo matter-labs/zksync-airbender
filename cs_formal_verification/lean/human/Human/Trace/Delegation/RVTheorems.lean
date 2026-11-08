@@ -1,5 +1,8 @@
-import Human.Helpers.Delegation.RVOperations
-import Human.Trace.Delegation.RVExecution
+module
+public import Human.Helpers.Delegation.RVOperations
+public import Human.Trace.Delegation.RVExecution
+
+@[expose] public section
 
 -- The statements proven in slop/Slop/Final/Trace/Delegation/RVTheorems.lean (checked by verify.sh). RV siblings of
 -- `Theorems.lean`: the public starting point is an `RV.State` (`RVMemoryInputs`); conclusions unchanged, except that

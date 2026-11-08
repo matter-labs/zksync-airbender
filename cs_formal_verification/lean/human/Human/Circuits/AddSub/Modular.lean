@@ -1,7 +1,10 @@
-import Human.Circuits.AddSub.Artifact
-import Human.Helpers.Properties
-import Human.Helpers.Core.Field
-import Human.Helpers.Core.CircuitOutput
+module
+public import Human.Circuits.AddSub.Artifact
+public import Human.Helpers.Properties
+public import Human.Helpers.Core.Field
+public import Human.Helpers.Core.CircuitOutput
+
+@[expose] public section
 
 namespace Airbender.AddSub.Modular
 open Airbender.Arithmetic

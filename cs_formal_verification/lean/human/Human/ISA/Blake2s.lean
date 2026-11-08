@@ -1,6 +1,9 @@
-import Human.ISA.State
-import Mathlib.Data.Fin.VecNotation
-import CleanCore.Specs.BLAKE3
+module
+public import Human.ISA.State
+public import Mathlib.Data.Fin.VecNotation
+public import CleanCore.Specs.BLAKE3
+
+@[expose] public section
 
 /-! # The Blake2s building blocks (RFC 7693): constants, `G`, one round, used by Airbender's Blake2s delegations
 (`Delegations`). The external reference is Clean's `Specs.BLAKE3` (pinned in `lakefile.toml`; transcribed in CleanCore): BLAKE3 shares

@@ -1,5 +1,8 @@
-import Mathlib.Data.Fin.VecNotation
-import CleanCore.Specs.Keccak256
+module
+public import Mathlib.Data.Fin.VecNotation
+public import CleanCore.Specs.Keccak256
+
+@[expose] public section
 
 /-! # Keccak-f[1600] (FIPS 202, §3.2): 25 lanes of 64 bits, lane `(x, y)` at index `x + 5y`. The permutation is
 Clean's `keccakPermutation` (pinned in `lakefile.toml`; transcribed as `Airbender.Specs.Keccak256.keccakPermutation` in

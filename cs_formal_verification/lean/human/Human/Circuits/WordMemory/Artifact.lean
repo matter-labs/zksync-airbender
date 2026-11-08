@@ -1,4 +1,7 @@
-import Human.Import.Embed
+module
+public import Human.Import.Embed
+
+@[expose] public section
 
 namespace Airbender.WordMemory
 

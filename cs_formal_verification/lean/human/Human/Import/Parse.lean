@@ -1,15 +1,18 @@
-import Human.Import.Schema
-import Human.Helpers.Memory.IndirectPorts
-import Human.Helpers.Context.Columns
-import Human.Helpers.Memory.Ports
-import Human.Helpers.Delegation.Columns
-import Human.Helpers.Decoder.Columns
+module
+public import Human.Import.Schema
+public import Human.Helpers.Memory.IndirectPorts
+public import Human.Helpers.Context.Columns
+public import Human.Helpers.Memory.Ports
+public import Human.Helpers.Delegation.Columns
+public import Human.Helpers.Decoder.Columns
+
+@[expose] public section
 
 namespace Airbender
 open Lean
 
 /-- Scratch aliases must agree in both emitted maps before resolving a lookup. -/
-private def Circuit.lookupAddress (c : Circuit) (address : GKRAddress) : Except String GKRAddress := do
+def Circuit.lookupAddress (c : Circuit) (address : GKRAddress) : Except String GKRAddress := do
   match address with
   | .ScratchSpace i =>
     let some original := c.scratch_space_mapping_rev.entries.toList.lookup i
@@ -24,7 +27,7 @@ private def Circuit.lookupAddress (c : Circuit) (address : GKRAddress) : Except 
   | _ => pure address
 
 /-- Recover one logical variable for a physical address; reject ambiguity. -/
-private def Circuit.logicalVariable (c : Circuit) (address : GKRAddress) : Except String Nat := do
+def Circuit.logicalVariable (c : Circuit) (address : GKRAddress) : Except String Nat := do
   let address ← c.lookupAddress address
   let placements := c.placement_data.entries.filter fun (_, a) => a == address
   match placements.toList with
@@ -82,7 +85,7 @@ def Circuit.timestampExpressions (c : Circuit) : Except String (Array Expr) :=
     unless query.lookup_set_index == index do throw "timestamp lookup set order mismatch"
     c.lookupExpression query.input
 
-private def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat)
+def Circuit.timestampPorts (c : Circuit) (expectedOffset : Nat → Nat)
     (nonComparisonCount : Nat := 2) :
     Except String (Array Trace.TimestampPort) := do
   let column := fun n => do
@@ -159,7 +162,7 @@ def Circuit.decoderColumns (c : Circuit) : Except String Trace.DecoderColumns :=
     #v[← dataColumn decoder.imm.values[0]!, ← dataColumn decoder.imm.values[1]!],
     ← decoder.funct3.mapM dataColumn, ← decoder.circuit_family_mask_bits.mapM c.logicalVariable⟩
 
-private def Circuit.resolveMemoryPorts (c : Circuit) (clocks : Array Trace.TimestampPort)
+def Circuit.resolveMemoryPorts (c : Circuit) (clocks : Array Trace.TimestampPort)
     (delegation : Bool) : Except String (Array Trace.MemoryPort) := do
   let indirects ← if delegation then c.indirectPorts else pure #[]
   let mut indirectIndex := 0
@@ -287,7 +290,7 @@ def Circuit.splitMemoryPorts (c : Circuit) : Except String (Array Trace.MemoryPo
   c.resolveMemoryPorts (← c.splitDelegationColumns).ports true
 
 /-- Validate a fixed-table query shape, including tags, padding and placement. -/
-private def Circuit.fixedQueries (c : Circuit) (width : Nat) (tables : List (Nat × Nat)) :
+def Circuit.fixedQueries (c : Circuit) (width : Nat) (tables : List (Nat × Nat)) :
     Except String (Array (Nat × Array Expr)) := do
   unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == width && width > 0 do
     throw "fixed lookups have an unsupported width or missing table IDs"
@@ -427,7 +430,7 @@ def Circuit.unifiedReducedQueries (c : Circuit) : Except String (Array (Array Ex
 
 /-- Check a prefix of the table offsets; the remaining tables all start at the
     decoder boundary, as in the upstream circuit JSON. -/
-private def Circuit.checkTableOffsets (c : Circuit) (expected : Array Nat)
+def Circuit.checkTableOffsets (c : Circuit) (expected : Array Nat)
     (family : String) : Except String Unit := do
   unless expected.size ≤ c.table_offsets.size do
     throw s!"{family} table offsets are incomplete"
@@ -532,7 +535,7 @@ def Circuit.keccakQueries (c : Circuit) : Except String (Array (Array Expr)) := 
 
 /-- The three split Keccak workers have different fixed-table widths. Keep every
     native query column, including its table ID, and check the setup profile. -/
-private def Circuit.splitKeccakQueries (c : Circuit) (width count boundary : Nat)
+def Circuit.splitKeccakQueries (c : Circuit) (width count boundary : Nat)
     (ids : List Nat) : Except String (Array (Array Expr)) := do
   unless c.tables_ids_in_generic_lookups && c.generic_lookup_tables_width == width do
     throw "split Keccak lookup width or table-ID profile mismatch"

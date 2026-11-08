@@ -1,5 +1,8 @@
-import Human.Circuits.JumpBranchSlt.Model
-import Human.Helpers.Properties
+module
+public import Human.Circuits.JumpBranchSlt.Model
+public import Human.Helpers.Properties
+
+@[expose] public section
 
 namespace Airbender.JumpBranchSlt.Jump
 open Airbender.Arithmetic

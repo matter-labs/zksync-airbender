@@ -1,11 +1,14 @@
-import Human.Helpers.Delegation.RVDecoder
-import Slop.Trace.RVFetch
-import Slop.Trace.DecoderBits
-import Slop.Trace.Program
-import Slop.AddSub.Selectors
-import Slop.AddSub.PC
-import Slop.Delegation.CallerRequests
-import Slop.Deleg.Effect
+module
+public import Human.Helpers.Delegation.RVDecoder
+public import Slop.Trace.RVFetch
+public import Slop.Trace.DecoderBits
+public import Slop.Trace.Program
+public import Slop.AddSub.Selectors
+public import Slop.AddSub.PC
+public import Slop.Delegation.CallerRequests
+public import Slop.Deleg.Effect
+
+@[expose] public section
 
 /-! RV siblings of the caller decoder and PC proofs (`Decoder.lean`, `CallerPC.lean`): the public caller entry comes
     from `rvProgramImage` (`RV.decode` of the ROM image), so the row's instruction is `.delegate k` and `RV.step` at its

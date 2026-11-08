@@ -1,5 +1,8 @@
-import Human.Helpers.Delegation.Operations
-import Human.Helpers.Delegation.RVMemory
+module
+public import Human.Helpers.Delegation.Operations
+public import Human.Helpers.Delegation.RVMemory
+
+@[expose] public section
 
 namespace Airbender.Delegation
 

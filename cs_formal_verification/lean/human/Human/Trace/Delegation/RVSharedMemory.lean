@@ -1,5 +1,8 @@
-import Human.Helpers.Delegation.RVSharedMemory
-import Human.Helpers.Memory.RVHistory
+module
+public import Human.Helpers.Delegation.RVSharedMemory
+public import Human.Helpers.Memory.RVHistory
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller
 open Trace

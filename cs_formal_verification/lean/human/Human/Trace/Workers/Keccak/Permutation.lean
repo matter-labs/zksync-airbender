@@ -1,6 +1,9 @@
-import Human.Trace.Workers.Keccak.Call
-import CleanCore.Specs.Keccak256
-import Human.Helpers.Delegation.WorkerContext
+module
+public import Human.Trace.Workers.Keccak.Call
+public import CleanCore.Specs.Keccak256
+public import Human.Helpers.Delegation.WorkerContext
+
+@[expose] public section
 
 namespace Airbender.Keccak.Permutation
 open Trace

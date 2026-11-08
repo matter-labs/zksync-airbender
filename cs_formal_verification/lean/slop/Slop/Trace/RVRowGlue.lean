@@ -1,4 +1,7 @@
-import Slop.Trace.RVPooledRow
+module
+public import Slop.Trace.RVPooledRow
+
+@[expose] public section
 
 /-! Family-agnostic glue shared by the per-family RV trace proofs (proved once, cited by each family):
 

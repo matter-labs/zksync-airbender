@@ -1,9 +1,12 @@
-import Human.Circuits.JumpBranchSlt.Jump
-import Human.Helpers.Context.RVInterfaces
-import Human.Helpers.Context.RVRowContext
-import Human.Helpers.Decoder.RVPooledProgram
-import Human.Helpers.Core.CircuitOutput
-import Human.ISA.RV32
+module
+public import Human.Circuits.JumpBranchSlt.Jump
+public import Human.Helpers.Context.RVInterfaces
+public import Human.Helpers.Context.RVRowContext
+public import Human.Helpers.Decoder.RVPooledProgram
+public import Human.Helpers.Core.CircuitOutput
+public import Human.ISA.RV32
+
+@[expose] public section
 
 /-! RV32 vocabulary for the SLT/SLTI/SLTU/SLTIU, branch and JAL/JALR circuit (`Model.lean`, `Branch.lean`,
     `Jump.lean`): register fields are `RV.Reg`, the pre-state is an `RV.State`, and the instruction is `RV.decode` of

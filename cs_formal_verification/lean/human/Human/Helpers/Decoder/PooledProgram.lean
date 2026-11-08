@@ -1,9 +1,12 @@
-import Human.Helpers.Context.Registries.Pooled
-import Human.Helpers.Decoder.Program
-import Human.Circuits.JumpBranchSlt.Decoder
-import Human.Circuits.MulDiv.Decoder
-import Human.Circuits.ShiftBinop.Decoder
-import Human.Circuits.SubwordMemory.Decoder
+module
+public import Human.Helpers.Context.Registries.Pooled
+public import Human.Helpers.Decoder.Program
+public import Human.Circuits.JumpBranchSlt.Decoder
+public import Human.Circuits.MulDiv.Decoder
+public import Human.Circuits.ShiftBinop.Decoder
+public import Human.Circuits.SubwordMemory.Decoder
+
+@[expose] public section
 
 namespace Airbender.Trace
 

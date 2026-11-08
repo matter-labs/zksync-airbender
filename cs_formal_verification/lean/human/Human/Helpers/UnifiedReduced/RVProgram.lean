@@ -1,6 +1,9 @@
-import Human.Circuits.UnifiedReduced.Decoder
-import Human.Circuits.JumpBranchSlt.RVDecoder
-import Human.Circuits.ShiftBinop.RVDecoder
+module
+public import Human.Circuits.UnifiedReduced.Decoder
+public import Human.Circuits.JumpBranchSlt.RVDecoder
+public import Human.Circuits.ShiftBinop.RVDecoder
+
+@[expose] public section
 
 /-! The unified program table on `RV.Instr`: `Mixed.decoderFields` (standard `decoderFields` and the TRIADD/XORROT
     `customDecoderFields`) restated in `RV.decode`'s vocabulary (immediates already sign-extended or shifted), plus the

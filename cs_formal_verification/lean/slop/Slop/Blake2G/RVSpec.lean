@@ -1,6 +1,9 @@
-import Human.Trace.Workers.Blake2G.WorkVector
-import Slop.Deleg.BlakeG
-import Slop.Arithmetic.Word
+module
+public import Human.Trace.Workers.Blake2G.WorkVector
+public import Slop.Deleg.BlakeG
+public import Slop.Arithmetic.Word
+
+@[expose] public section
 
 /-! State-free agreement of the G span's reference with the spec's `G` delegation (`RV.Delegation.blakeG`): the
     pinned controller's lanes and message words are `gIndices`/`SIGMA` (`controller_indices`), the x12 schedule is

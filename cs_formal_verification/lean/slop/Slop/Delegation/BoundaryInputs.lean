@@ -1,6 +1,9 @@
-import Human.Helpers.Delegation.Memory
-import Human.Helpers.Delegation.Operations
-import Slop.Trace.TransferBoundary
+module
+public import Human.Helpers.Delegation.Memory
+public import Human.Helpers.Delegation.Operations
+public import Slop.Trace.TransferBoundary
+
+@[expose] public section
 
 namespace Airbender.Delegation.Proofs
 open Trace Trace.Proofs

@@ -1,5 +1,8 @@
-import Slop.Arithmetic.LaneRotation
-import Slop.Arithmetic.Chunks
+module
+public import Slop.Arithmetic.LaneRotation
+public import Slop.Arithmetic.Chunks
+
+@[expose] public section
 
 /- Byte-lane packing and rotation (ported from PR #585's Arithmetic.ByteLaneRotation and
    Arithmetic.ByteLanePacking). -/

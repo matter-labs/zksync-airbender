@@ -1,6 +1,9 @@
-import Human.Circuits.Blake2Round.Tables.Setup
-import Human.Circuits.Blake2Round.Artifact
-import Human.Helpers.Properties
+module
+public import Human.Circuits.Blake2Round.Tables.Setup
+public import Human.Circuits.Blake2Round.Artifact
+public import Human.Helpers.Properties
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Addresses
 open Arithmetic

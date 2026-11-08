@@ -1,5 +1,8 @@
-import Human.Helpers.Memory.Values
-import Human.Helpers.Core.CircuitOutput
+module
+public import Human.Helpers.Memory.Values
+public import Human.Helpers.Core.CircuitOutput
+
+@[expose] public section
 
 namespace Airbender.PCState
 

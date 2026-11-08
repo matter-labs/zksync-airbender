@@ -1,4 +1,7 @@
-import Slop.Arithmetic.Word
+module
+public import Slop.Arithmetic.Word
+
+@[expose] public section
 
 namespace Airbender.Arithmetic
 

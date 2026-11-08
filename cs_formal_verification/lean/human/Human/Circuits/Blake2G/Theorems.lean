@@ -1,5 +1,8 @@
-import Human.Circuits.Blake2G.Model
-import Human.Helpers.Core.BabyBearPrime
+module
+public import Human.Circuits.Blake2G.Model
+public import Human.Helpers.Core.BabyBearPrime
+
+@[expose] public section
 
 -- The statements proven in slop/Slop/Final/Circuits/Blake2G/Theorems.lean (checked by verify.sh).
 

@@ -1,7 +1,10 @@
-import Slop.UnifiedReduced.RV.XorRotateQueries
-import Slop.UnifiedReduced.RV.BinaryOperands
-import Slop.Arithmetic.WordRotation
-import Slop.Arithmetic.ShiftAssembly
+module
+public import Slop.UnifiedReduced.RV.XorRotateQueries
+public import Slop.UnifiedReduced.RV.BinaryOperands
+public import Slop.Arithmetic.WordRotation
+public import Slop.Arithmetic.ShiftAssembly
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic Verification

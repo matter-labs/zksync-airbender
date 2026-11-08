@@ -1,5 +1,8 @@
-import Human.Helpers.Context.Model
-import Human.Helpers.Core.Word
+module
+public import Human.Helpers.Context.Model
+public import Human.Helpers.Core.Word
+
+@[expose] public section
 
 namespace Airbender.Trace
 open Arithmetic

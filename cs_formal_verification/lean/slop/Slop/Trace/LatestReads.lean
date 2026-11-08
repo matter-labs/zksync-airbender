@@ -1,5 +1,8 @@
-import Slop.Trace.MemoryPaths
-import Slop.Trace.MemoryOrigins
+module
+public import Slop.Trace.MemoryPaths
+public import Slop.Trace.MemoryOrigins
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 

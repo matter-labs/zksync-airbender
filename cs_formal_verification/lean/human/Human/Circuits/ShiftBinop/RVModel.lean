@@ -1,9 +1,12 @@
-import Human.Circuits.ShiftBinop.Artifact
-import Human.Helpers.Context.RVInterfaces
-import Human.Helpers.Context.RVRowContext
-import Human.Helpers.Decoder.RVPooledProgram
-import Human.ISA.RV32
-import Human.Helpers.Core.CircuitOutput
+module
+public import Human.Circuits.ShiftBinop.Artifact
+public import Human.Helpers.Context.RVInterfaces
+public import Human.Helpers.Context.RVRowContext
+public import Human.Helpers.Decoder.RVPooledProgram
+public import Human.ISA.RV32
+public import Human.Helpers.Core.CircuitOutput
+
+@[expose] public section
 
 /-! RV32 vocabulary for the XOR/OR/AND, SLL/SRL/SRA (register and immediate forms) and REV8 circuit (as
     `Model.lean`, with RV registers, an `RV.State` pre-state and the instruction `RV.decode` of the public program

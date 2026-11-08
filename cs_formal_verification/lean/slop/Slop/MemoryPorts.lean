@@ -1,5 +1,8 @@
-import Human.Helpers.Memory.IndirectPorts
-import Slop.Arithmetic.Word
+module
+public import Human.Helpers.Memory.IndirectPorts
+public import Slop.Arithmetic.Word
+
+@[expose] public section
 
 namespace Airbender.Verification
 open Arithmetic

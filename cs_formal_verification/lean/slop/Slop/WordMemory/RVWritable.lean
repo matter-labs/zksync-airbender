@@ -1,5 +1,8 @@
-import Slop.Trace.RVWritable
-import Slop.WordMemory
+module
+public import Slop.Trace.RVWritable
+public import Slop.WordMemory
+
+@[expose] public section
 
 namespace Airbender.Trace.RVWritable
 open Arithmetic Trace.Proofs

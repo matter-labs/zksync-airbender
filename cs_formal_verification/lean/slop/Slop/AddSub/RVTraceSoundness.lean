@@ -1,11 +1,14 @@
-import Slop.Trace.RVFamilySelectors
-import Human.Circuits.AddSub.RVTheorems
-import Slop.AddSub.RVDecoder
-import Slop.AddSub.RVRowPosition
-import Slop.AddSub.PC
-import Slop.AddSub
-import Slop.Trace.RVValues
-import Slop.Trace.RVPooledRow
+module
+public import Slop.Trace.RVFamilySelectors
+public import Human.Circuits.AddSub.RVTheorems
+public import Slop.AddSub.RVDecoder
+public import Slop.AddSub.RVRowPosition
+public import Slop.AddSub.PC
+public import Slop.AddSub
+public import Slop.Trace.RVValues
+public import Slop.Trace.RVPooledRow
+
+@[expose] public section
 
 /-! RV32 AddSub soundness (`RVSoundnessClaim`), on the RV route: no Sail state, interpreter or `Configured` fact.
 

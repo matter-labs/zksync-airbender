@@ -1,5 +1,8 @@
-import Human.Helpers.Delegation.Schedule
-import Human.Helpers.Delegation.RVRequestTrace
+module
+public import Human.Helpers.Delegation.Schedule
+public import Human.Helpers.Delegation.RVRequestTrace
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller
 open Trace

@@ -1,5 +1,8 @@
-import Slop.Trace.Values
-import Slop.Trace.RVZero
+module
+public import Slop.Trace.Values
+public import Slop.Trace.RVZero
+
+@[expose] public section
 
 /-! RV-route twin of `pooled_value_bounds` (`PooledValues.lean`): every native read, write and terminal word of an
     accepted pooled trace is bounded, from the RV public initialization (`initialImageRV`) and the RV program table

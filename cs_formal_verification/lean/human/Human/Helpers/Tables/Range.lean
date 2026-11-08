@@ -1,6 +1,9 @@
-import Human.Helpers.Core.Word
-import CleanCore.Circuit.Operations
-import Mathlib.Algebra.Field.ZMod
+module
+public import Human.Helpers.Core.Word
+public import CleanCore.Circuit.Operations
+public import Mathlib.Algebra.Field.ZMod
+
+@[expose] public section
 
 namespace Airbender.Verification
 open Airbender.Arithmetic

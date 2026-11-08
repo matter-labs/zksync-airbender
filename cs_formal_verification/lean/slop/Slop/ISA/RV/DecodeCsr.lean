@@ -1,4 +1,7 @@
-import Human.ISA.RV32
+module
+public import Human.ISA.RV32
+
+@[expose] public section
 
 /-! The interface to the delegation CSR table (`DelegationKind.ofCsr`): a decoded kind's CSR is the one in the word.
 Proofs use only this lemma, never the table, so adding a CSR re-proves nothing downstream. -/

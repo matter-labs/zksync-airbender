@@ -1,4 +1,7 @@
-import Human.Trace.UnifiedReduced.PreparedHashWindows
+module
+public import Human.Trace.UnifiedReduced.PreparedHashWindows
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller
 open Trace

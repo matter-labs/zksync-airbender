@@ -1,4 +1,7 @@
-import Slop.Trace.InitialImage
+module
+public import Slop.Trace.InitialImage
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 open Arithmetic

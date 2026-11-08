@@ -1,5 +1,8 @@
-import Human.Helpers.Context.FamilyLayout
-import Human.Helpers.Memory.Values
+module
+public import Human.Helpers.Context.FamilyLayout
+public import Human.Helpers.Memory.Values
+
+@[expose] public section
 
 namespace Airbender.Trace
 open Arithmetic

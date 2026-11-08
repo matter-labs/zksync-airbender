@@ -1,7 +1,10 @@
-import Slop.Trace.RVProgram
-import Slop.Trace.Family.Timestamps
-import Slop.AddSub.Selectors
-import Slop.WordMemory
+module
+public import Slop.Trace.RVProgram
+public import Slop.Trace.Family.Timestamps
+public import Slop.AddSub.Selectors
+public import Slop.WordMemory
+
+@[expose] public section
 
 /-! ADD/SUB and LW/SW row selectors from the RV program entry (the restricted-scope families of `RVZeroPooled`). -/
 

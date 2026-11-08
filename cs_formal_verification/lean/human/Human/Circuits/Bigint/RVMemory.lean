@@ -1,5 +1,8 @@
-import Human.Circuits.Bigint.Memory
-import Human.Helpers.Delegation.RVMemory
+module
+public import Human.Circuits.Bigint.Memory
+public import Human.Helpers.Delegation.RVMemory
+
+@[expose] public section
 
 /-! RV sibling of the public inputs of `Memory.lean`: the starting point is an `RV.State` (`Delegation.RVMemoryInputs`,
     cells read by `Cell.readRV`). RAM cells are RAM at any address, INCLUDING READ-WRITE ACCESS TO THE SHADOW RAM BELOW

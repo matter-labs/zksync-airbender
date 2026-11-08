@@ -1,4 +1,7 @@
-import Slop.Trace.TransferHistory
+module
+public import Slop.Trace.TransferHistory
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs.Transfer
 set_option warningAsError true

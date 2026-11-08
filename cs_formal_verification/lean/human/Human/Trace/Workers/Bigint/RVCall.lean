@@ -1,6 +1,9 @@
-import Human.Circuits.Bigint.Execution
-import Human.Trace.Delegation.RVExecution
-import Human.ISA.Delegations
+module
+public import Human.Circuits.Bigint.Execution
+public import Human.Trace.Delegation.RVExecution
+public import Human.ISA.Delegations
+
+@[expose] public section
 
 /-! The delegate link of the bigint worker: each bigint row is one `.delegate` call of our RV32 spec
     (`RV.Delegation.bigint`, via `RV.Delegation.effect`). There is no span: one call is the whole 256-bit operation.

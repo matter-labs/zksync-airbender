@@ -1,7 +1,10 @@
-import Human.Helpers.Context.RVInterfaces
-import Human.Helpers.Memory.History
-import Slop.Trace.ZeroValues
-import Slop.Trace.History
+module
+public import Human.Helpers.Context.RVInterfaces
+public import Human.Helpers.Memory.History
+public import Slop.Trace.ZeroValues
+public import Slop.Trace.History
+
+@[expose] public section
 
 /-! Contract (lean-strategies §2.2) of the whole-trace laws of the pooled RV route whose proofs need every
     family's row lemmas: the pooled clock laws, x0 preservation and

@@ -1,4 +1,7 @@
-import Slop.Arithmetic.Lemmas
+module
+public import Slop.Arithmetic.Lemmas
+
+@[expose] public section
 
 namespace Airbender.Arithmetic
 open scoped BigOperators

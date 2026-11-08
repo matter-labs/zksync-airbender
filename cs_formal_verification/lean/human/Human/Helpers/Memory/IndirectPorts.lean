@@ -1,5 +1,8 @@
-import Human.Helpers.Core.Word
-import Mathlib.Data.ZMod.Basic
+module
+public import Human.Helpers.Core.Word
+public import Mathlib.Data.ZMod.Basic
+
+@[expose] public section
 
 namespace Airbender.Verification
 

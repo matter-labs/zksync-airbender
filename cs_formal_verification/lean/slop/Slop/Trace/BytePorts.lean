@@ -1,5 +1,8 @@
-import Slop.Trace.MemoryPorts
-import Slop.Trace.SailHistory
+module
+public import Slop.Trace.MemoryPorts
+public import Slop.Trace.SailHistory
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 open Arithmetic

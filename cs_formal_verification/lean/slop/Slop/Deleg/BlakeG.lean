@@ -1,6 +1,9 @@
-import Slop.Deleg.Calls
-import Slop.Deleg.BlakeRoundG
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.Deleg.Calls
+public import Slop.Deleg.BlakeRoundG
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 /-! The Blake2s `G` delegation (CSR `0x7c8`): one call (`blakeG_call`); 56 calls are 7 rounds, 80 calls 10
 (`blake_g_run`, `blake_g_run10`). -/
@@ -44,7 +47,7 @@ theorem blakeG_call (mem : Word → BitVec 8) (p q : Word) (hp : Buffer p 64 64)
   have h7 : (gCtl red k).getLsbD 7 = red := by
     rw [BitVec.getLsbD, hn, Nat.testBit_eq_decide_div_mod_eq]; cases red <;> simp <;> omega
   have hk' : (gCtl red k).toNat % 128 = k := by rw [hn]; split <;> omega
-  have hnG : (if red = true then 56 else 80) = nG red := rfl
+  have hnG : (if red = true then 56 else 80) = nG red := by rfl
   simp only [Delegation.blakeG, hk', h7, hp2, hq2, hq3, ne_eq, hpq, not_false_eq_true, true_and,
     show (gCtl red k).toNat < 256 by rw [hn]; split <;> omega, hnG, ite_eq_left hk, ite_true, Option.some.injEq,
     Effect.mk.injEq, and_true]

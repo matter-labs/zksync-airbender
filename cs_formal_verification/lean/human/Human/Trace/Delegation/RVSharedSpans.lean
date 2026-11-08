@@ -1,8 +1,11 @@
-import Human.Helpers.Delegation.RVSharedMemory
-import Human.Helpers.Delegation.RVSpanABI
-import Human.Trace.Workers.Blake2G.RVCall
-import Human.Trace.Workers.Blake2Round.RVCall
-import Human.Trace.Workers.Keccak.RVCall
+module
+public import Human.Helpers.Delegation.RVSharedMemory
+public import Human.Helpers.Delegation.RVSpanABI
+public import Human.Trace.Workers.Blake2G.RVCall
+public import Human.Trace.Workers.Blake2Round.RVCall
+public import Human.Trace.Workers.Keccak.RVCall
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller
 open Trace

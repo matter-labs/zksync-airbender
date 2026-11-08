@@ -1,5 +1,8 @@
-import Slop.KeccakSplit.Setup.ThetaRho.Spec
-import Slop.KeccakSplit.Setup.Facts
+module
+public import Slop.KeccakSplit.Setup.ThetaRho.Spec
+public import Slop.KeccakSplit.Setup.Facts
+
+@[expose] public section
 
 /- Meaning of the theta/rho formula rows, by tag, over BabyBear. -/
 
@@ -14,15 +17,15 @@ set_option linter.unusedSimpArgs false
 def formulaRow (n : Nat) : Vector Nat 9 :=
   #v[spec0 n, spec1 n, spec2 n, spec3 n, spec4 n, spec5 n, spec6 n, spec7 n, spec8 n]
 
-theorem get0 (n : Nat) : (formulaRow n)[0] = spec0 n := rfl
-theorem get1 (n : Nat) : (formulaRow n)[1] = spec1 n := rfl
-theorem get2 (n : Nat) : (formulaRow n)[2] = spec2 n := rfl
-theorem get3 (n : Nat) : (formulaRow n)[3] = spec3 n := rfl
-theorem get4 (n : Nat) : (formulaRow n)[4] = spec4 n := rfl
-theorem get5 (n : Nat) : (formulaRow n)[5] = spec5 n := rfl
-theorem get6 (n : Nat) : (formulaRow n)[6] = spec6 n := rfl
-theorem get7 (n : Nat) : (formulaRow n)[7] = spec7 n := rfl
-theorem get8 (n : Nat) : (formulaRow n)[8] = spec8 n := rfl
+theorem get0 (n : Nat) : (formulaRow n)[0] = spec0 n := by rfl
+theorem get1 (n : Nat) : (formulaRow n)[1] = spec1 n := by rfl
+theorem get2 (n : Nat) : (formulaRow n)[2] = spec2 n := by rfl
+theorem get3 (n : Nat) : (formulaRow n)[3] = spec3 n := by rfl
+theorem get4 (n : Nat) : (formulaRow n)[4] = spec4 n := by rfl
+theorem get5 (n : Nat) : (formulaRow n)[5] = spec5 n := by rfl
+theorem get6 (n : Nat) : (formulaRow n)[6] = spec6 n := by rfl
+theorem get7 (n : Nat) : (formulaRow n)[7] = spec7 n := by rfl
+theorem get8 (n : Nat) : (formulaRow n)[8] = spec8 n := by rfl
 
 /-- A field row that is the cast of a formula row of the trace. -/
 def IsFormulaRow (row : Vector (ZMod babyBearModulus) 9) : Prop :=

@@ -1,4 +1,7 @@
-import Slop.KeccakSplit.Setup.Chi5.Rows
+module
+public import Slop.KeccakSplit.Setup.Chi5.Rows
+
+@[expose] public section
 
 /- Membership in the exported chi5 table (`Chi5.setup`) over BabyBear, by tag: chi (65)
    and control (66). Padding rows have tag 0, so a fixed nonzero tag excludes them. -/

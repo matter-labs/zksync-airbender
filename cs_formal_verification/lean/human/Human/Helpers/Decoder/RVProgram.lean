@@ -1,5 +1,8 @@
-import Human.Helpers.Decoder.Program
-import Human.ISA.RV32
+module
+public import Human.Helpers.Decoder.Program
+public import Human.ISA.RV32
+
+@[expose] public section
 
 /-! The public program table in RV32 terms. An entry is a ROM word: its PC, its four bytes and the native decoder
     metadata of `RV.decode` of those bytes. There is no instruction field: the instruction is `RV.decode entry.bits`.

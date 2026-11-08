@@ -1,4 +1,7 @@
-import Slop.Arithmetic.ByteAssembly
+module
+public import Slop.Arithmetic.ByteAssembly
+
+@[expose] public section
 namespace Airbender.Arithmetic
 set_option warningAsError true
 set_option maxHeartbeats 1600000

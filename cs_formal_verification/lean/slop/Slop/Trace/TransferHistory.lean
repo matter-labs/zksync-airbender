@@ -1,5 +1,8 @@
-import Slop.Trace.NativeSailHistory
-import Slop.Trace.OfflineMemory
+module
+public import Slop.Trace.NativeSailHistory
+public import Slop.Trace.OfflineMemory
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs.Transfer
 set_option warningAsError true

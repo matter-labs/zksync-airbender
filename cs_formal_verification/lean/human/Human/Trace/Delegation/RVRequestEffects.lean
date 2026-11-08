@@ -1,5 +1,8 @@
-import Human.Trace.Delegation.RVRequestTrace
-import Human.Helpers.Delegation.RVRequestEffects
+module
+public import Human.Trace.Delegation.RVRequestTrace
+public import Human.Helpers.Delegation.RVRequestEffects
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller
 open Trace

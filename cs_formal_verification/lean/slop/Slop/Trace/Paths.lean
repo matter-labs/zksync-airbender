@@ -1,5 +1,8 @@
-import CleanCore.Utils.SourceSinkPath
-import Slop.Trace.StateClocks
+module
+public import CleanCore.Utils.SourceSinkPath
+public import Slop.Trace.StateClocks
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 
@@ -177,7 +180,7 @@ theorem matched_path {S : Type} [Fintype S] [DecidableEq S]
     change countTransitionInPath edge path = run edge
     omega
 
-private def stateEquiv (p : Nat) :
+def stateEquiv (p : Nat) :
     ((ZMod p × ZMod p) × (ZMod p × ZMod p)) ≃ PCState.State p where
   toFun pair := ⟨pair.1, pair.2⟩
   invFun state := (state.pc, state.timestamp)

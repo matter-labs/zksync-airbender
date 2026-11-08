@@ -1,7 +1,10 @@
-import Human.Helpers.Core.BabyBearPrime
-import Human.Helpers.Context.RVPooledBoundary
-import Human.Helpers.Decoder.RVExternalInput
-import Human.Helpers.UnifiedReduced.RVExecutionInputs
+module
+public import Human.Helpers.Core.BabyBearPrime
+public import Human.Helpers.Context.RVPooledBoundary
+public import Human.Helpers.Decoder.RVExternalInput
+public import Human.Helpers.UnifiedReduced.RVExecutionInputs
+
+@[expose] public section
 
 /-! Teardown values are bounded words, conditioned on the open item `InitsTeardowns.MemoryArgumentReadsBounded`.
 

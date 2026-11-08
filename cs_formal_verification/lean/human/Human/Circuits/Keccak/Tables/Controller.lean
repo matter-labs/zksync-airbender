@@ -1,4 +1,7 @@
-import Human.Circuits.Keccak.Controller
+module
+public import Human.Circuits.Keccak.Controller
+
+@[expose] public section
 
 namespace Airbender.Keccak.Controller
 set_option warningAsError true

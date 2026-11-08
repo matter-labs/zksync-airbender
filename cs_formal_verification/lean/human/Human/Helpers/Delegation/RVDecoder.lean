@@ -1,6 +1,9 @@
-import Human.Helpers.Delegation.Decoder
-import Human.Helpers.Decoder.RVProgram
-import Human.Helpers.Context.RVRowContext
+module
+public import Human.Helpers.Delegation.Decoder
+public import Human.Helpers.Decoder.RVProgram
+public import Human.Helpers.Context.RVRowContext
+
+@[expose] public section
 
 /-! RV siblings of the delegation caller decoder (`Decoder.lean`): the public caller table is built from an `RV.State`
     (`rvProgramImageWith`: the ROM image's bytes, `RV.decode`, then `rvDecoderFields`); an admitted entry decodes to

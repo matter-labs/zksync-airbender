@@ -1,5 +1,8 @@
-import Slop.Arithmetic.Word
-import Mathlib.Data.Nat.Bitwise
+module
+public import Slop.Arithmetic.Word
+public import Mathlib.Data.Nat.Bitwise
+
+@[expose] public section
 
 namespace Airbender.Arithmetic
 

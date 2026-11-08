@@ -1,5 +1,8 @@
-import Human.Import.Embed
-import Mathlib.Tactic.FinCases
+module
+public import Human.Import.Embed
+public import Mathlib.Tactic.FinCases
+
+@[expose] public section
 
 namespace Airbender.Blake2Round
 

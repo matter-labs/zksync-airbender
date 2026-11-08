@@ -1,5 +1,8 @@
-import Human.Circuits.Blake2Round.Execution
-import Human.Circuits.Keccak.Tables.Controller
+module
+public import Human.Circuits.Blake2Round.Execution
+public import Human.Circuits.Keccak.Tables.Controller
+
+@[expose] public section
 
 namespace Airbender.Blake2Round
 open Trace

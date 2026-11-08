@@ -1,5 +1,8 @@
-import Human.Circuits.Blake2G.Addresses
-import Human.Circuits.Blake2G.State
+module
+public import Human.Circuits.Blake2G.Addresses
+public import Human.Circuits.Blake2G.State
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Row
 open Arithmetic

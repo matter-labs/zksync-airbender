@@ -1,7 +1,10 @@
-import Human.Helpers.Delegation.Requests
-import Human.Helpers.Decoder.Program
-import Human.Helpers.Context.FamilyLayout
-import Human.Helpers.Delegation.CallerRequests
+module
+public import Human.Helpers.Delegation.Requests
+public import Human.Helpers.Decoder.Program
+public import Human.Helpers.Context.FamilyLayout
+public import Human.Helpers.Delegation.CallerRequests
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller
 open Trace Arithmetic

@@ -1,5 +1,8 @@
-import Human.Circuits.SubwordMemory.Artifact
-import Human.Helpers.Decoder.Program
+module
+public import Human.Circuits.SubwordMemory.Artifact
+public import Human.Helpers.Decoder.Program
+
+@[expose] public section
 
 namespace Airbender.SubwordMemory
 open Arithmetic

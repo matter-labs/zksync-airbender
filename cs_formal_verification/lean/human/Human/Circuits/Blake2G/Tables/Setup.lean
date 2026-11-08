@@ -1,5 +1,8 @@
-import Human.Helpers.Tables.Range
-import Mathlib.Data.Nat.Bitwise
+module
+public import Human.Helpers.Tables.Range
+public import Mathlib.Data.Nat.Bitwise
+
+@[expose] public section
 
 namespace Airbender.Blake2G
 

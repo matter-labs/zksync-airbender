@@ -1,9 +1,12 @@
-import Human.Circuits.KeccakSplit.ColumnParity.Artifact
-import Human.Circuits.KeccakSplit.ThetaRho.Artifact
-import Human.Circuits.KeccakSplit.Chi5.Artifact
-import Human.Circuits.KeccakSplit.Tables.Setup
-import Human.Circuits.KeccakSplit.Call
-import Human.Helpers.Memory.Values
+module
+public import Human.Circuits.KeccakSplit.ColumnParity.Artifact
+public import Human.Circuits.KeccakSplit.ThetaRho.Artifact
+public import Human.Circuits.KeccakSplit.Chi5.Artifact
+public import Human.Circuits.KeccakSplit.Tables.Setup
+public import Human.Circuits.KeccakSplit.Call
+public import Human.Helpers.Memory.Values
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Native
 open Trace

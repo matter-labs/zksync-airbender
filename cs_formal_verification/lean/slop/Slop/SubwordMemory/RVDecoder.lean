@@ -1,7 +1,10 @@
-import Human.Circuits.SubwordMemory.RVDecoder
-import Human.Circuits.SubwordMemory.Decoder
-import Slop.SubwordMemory
-import Slop.Trace.DecoderBits
+module
+public import Human.Circuits.SubwordMemory.RVDecoder
+public import Human.Circuits.SubwordMemory.Decoder
+public import Slop.SubwordMemory
+public import Slop.Trace.DecoderBits
+
+@[expose] public section
 
 /-! Native metadata facts of `SubwordMemory.rvDecoderFields` (twins of `Decoder.lean` on `RV.Instr`). -/
 

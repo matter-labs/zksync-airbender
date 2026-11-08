@@ -1,4 +1,7 @@
-import Human.Circuits.Bigint.RVMemory
+module
+public import Human.Circuits.Bigint.RVMemory
+
+@[expose] public section
 
 -- The statements proven in slop/Slop/Final/Circuits/Bigint/RVTheorems.lean (checked by verify.sh). RV sibling of
 -- `Theorems.lean`: the public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING READ-WRITE

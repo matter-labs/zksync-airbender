@@ -1,5 +1,8 @@
-import Human.Circuits.JumpBranchSlt.RVModel
-import Slop.Arithmetic.Word
+module
+public import Human.Circuits.JumpBranchSlt.RVModel
+public import Slop.Arithmetic.Word
+
+@[expose] public section
 
 /-! Native decoder metadata of the RV comparison, branch and jump rows' instructions: `rvPooledDecoderFields` of
     `rvInstruction input` is the JumpBranchSlt projection (`JumpBranchSlt.rvDecoderFields`), a function of the

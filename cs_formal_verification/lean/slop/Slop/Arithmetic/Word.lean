@@ -1,6 +1,9 @@
-import Human.Helpers.Core.Word
-import Slop.Arithmetic.Lemmas
-import Mathlib.Data.Nat.Basic
+module
+public import Human.Helpers.Core.Word
+public import Slop.Arithmetic.Lemmas
+public import Mathlib.Data.Nat.Basic
+
+@[expose] public section
 
 namespace Airbender.Arithmetic
 

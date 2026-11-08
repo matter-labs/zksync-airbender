@@ -1,6 +1,9 @@
-import Slop.Trace.Program
-import Slop.Trace.Values
-import Slop.Trace.ZeroValues
+module
+public import Slop.Trace.Program
+public import Slop.Trace.Values
+public import Slop.Trace.ZeroValues
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 

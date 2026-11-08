@@ -1,20 +1,23 @@
-import Human.Circuits.AddSub.Artifact
+module
+public import Human.Circuits.AddSub.Artifact
+
+@[expose] public section
 
 namespace Airbender.AddSub
 
 theorem timestamp_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := rfl
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := by rfl
 
 theorem clock_columns : importedConstraintsTraceColumns =
     (⟨4, #v[0, 1], #v[19, 20], #v[2, 3], #v[21, 22],
       #[⟨0, #v[23, 24], 42⟩, ⟨1, #v[27, 28], 43⟩, ⟨2, #v[35, 36], 44⟩]⟩ :
-      Trace.TraceColumns) := rfl
+      Trace.TraceColumns) := by rfl
 
 theorem memory_ports : importedConstraintsMemoryPorts =
     (#[⟨⟨0, #v[23, 24], 42⟩, .register 5, #v[25, 26], none⟩,
        ⟨⟨1, #v[27, 28], 43⟩, .register 6, #v[29, 30], none⟩,
        ⟨⟨2, #v[35, 36], 44⟩, .register 7, #v[31, 32], some #v[33, 34]⟩] :
-      Array Trace.MemoryPort) := rfl
+      Array Trace.MemoryPort) := by rfl
 
 theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
     importedConstraintsTraceColumns.ports := by
@@ -22,13 +25,13 @@ theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.cloc
 
 theorem decoder_columns : importedConstraintsDecoderColumns =
     (⟨5, 6, 7, #v[8, 9], none, #[10, 11, 12, 13, 14, 15, 16, 17, 18]⟩ :
-      Trace.DecoderColumns) := rfl
+      Trace.DecoderColumns) := by rfl
 
 theorem constraint_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.constraints (importedConstraints (p := p))).length = 30 := rfl
+    (FlatOperation.constraints (importedConstraints (p := p))).length = 30 := by rfl
 
 theorem lookup_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (importedConstraints (p := p))).length = 6 := rfl
+    (FlatOperation.lookups (importedConstraints (p := p))).length = 6 := by rfl
 
 
 theorem variable_roles :

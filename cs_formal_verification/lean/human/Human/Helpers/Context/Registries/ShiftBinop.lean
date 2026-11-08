@@ -1,5 +1,8 @@
-import Human.Circuits.ShiftBinop.Decoder
-import Human.Helpers.Context.Model
+module
+public import Human.Circuits.ShiftBinop.Decoder
+public import Human.Helpers.Context.Model
+
+@[expose] public section
 
 namespace Airbender.ShiftBinop
 

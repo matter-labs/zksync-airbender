@@ -1,9 +1,12 @@
-import Human.Circuits.Blake2Round.Tables.Setup
-import Human.Circuits.Blake2Round.Artifact
-import Human.Helpers.Properties
-import Slop.Blake2Round.Setup.Rows
-import Slop.Constraints
-import Mathlib.Tactic.IntervalCases
+module
+public import Human.Circuits.Blake2Round.Tables.Setup
+public import Human.Circuits.Blake2Round.Artifact
+public import Human.Helpers.Properties
+public import Slop.Blake2Round.Setup.Rows
+public import Slop.Constraints
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Proofs
 

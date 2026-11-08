@@ -1,5 +1,8 @@
-import Slop.Trace.RVTransfer
-import Slop.Trace.TransferBoundary
+module
+public import Slop.Trace.RVTransfer
+public import Slop.Trace.TransferBoundary
+
+@[expose] public section
 
 /-! RV twins of `TransferBoundary.split_native_sail_state` / `split_native_sail_window_at_boundary`: a native
     history cut at native-clock times into RV histories (`RVHistory`) between actual `RV.State`s, each cut state

@@ -1,12 +1,15 @@
-import Slop.WordMemory
-import Human.Helpers.Context.FamilyLayout
-import Slop.WordMemory.RVQuery
-import Slop.WordMemory.RVWritable
-import Slop.Trace.RVValues
-import Slop.Trace.RVRomRead
-import Slop.Trace.RVFamilyTrace
-import Slop.Trace.RVWritable
-import Slop.ISA.RV.DecodeShape
+module
+public import Slop.WordMemory
+public import Human.Helpers.Context.FamilyLayout
+public import Slop.WordMemory.RVQuery
+public import Slop.WordMemory.RVWritable
+public import Slop.Trace.RVValues
+public import Slop.Trace.RVRomRead
+public import Slop.Trace.RVFamilyTrace
+public import Slop.Trace.RVWritable
+public import Slop.ISA.RV.DecodeShape
+
+@[expose] public section
 
 /-! One word-memory row of the two-family (ADD/SUB + word memory) trace on the RV route: one `RV.exec` of its entry's
     instruction (LW to a register other than x0, or SW), agreeing with the row's RV history and final PC

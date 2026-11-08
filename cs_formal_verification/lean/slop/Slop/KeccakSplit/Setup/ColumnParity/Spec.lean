@@ -1,5 +1,8 @@
-import Human.Circuits.KeccakSplit.ColumnParity.SetupArtifact
-import Slop.KeccakSplit.Setup.Common
+module
+public import Human.Circuits.KeccakSplit.ColumnParity.SetupArtifact
+public import Slop.KeccakSplit.Setup.Common
+
+@[expose] public section
 
 /- Row formulas of the eight exported column-parity setup columns
    (cs/src/tables/keccak_precompile_related.rs), one function per column:

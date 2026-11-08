@@ -1,5 +1,8 @@
-import Human.ISA.Blake2s
-import CleanCore.Utils.Rotation
+module
+public import Human.ISA.Blake2s
+public import CleanCore.Utils.Rotation
+
+@[expose] public section
 
 /-! A Blake2s round (`Spec.round`, Clean's round on natural-number words) is its eight `G`s (`Spec.G`, Clean's `g`)
 one after another (`round_G`): Clean's `g` keeps words below `2^32`, so going back to `Word` between two `G`s loses
@@ -50,7 +53,7 @@ theorem G_map (v : Vector Nat 16) (h : ∀ i (hi : i < 16), v[i] < 2 ^ 32) (a b 
 theorem clean_round (N M : Vector Nat 16) :
     Airbender.Specs.BLAKE3.round N M =
       g (g (g (g (g (g (g (g N 0 4 8 12 M[0] M[1]) 1 5 9 13 M[2] M[3]) 2 6 10 14 M[4] M[5]) 3 7 11 15 M[6] M[7])
-        0 5 10 15 M[8] M[9]) 1 6 11 12 M[10] M[11]) 2 7 8 13 M[12] M[13]) 3 4 9 14 M[14] M[15] := rfl
+        0 5 10 15 M[8] M[9]) 1 6 11 12 M[10] M[11]) 2 7 8 13 M[12] M[13]) 3 4 9 14 M[14] M[15] := by rfl
 
 /-- A round is its eight `G`s: the four columns, then the four diagonals. -/
 theorem round_G (m : Vector Word 16) (s : Fin 16 → Fin 16) (v : Vector Word 16) :

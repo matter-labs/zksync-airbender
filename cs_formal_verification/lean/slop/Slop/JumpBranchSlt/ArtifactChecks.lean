@@ -1,20 +1,23 @@
-import Human.Circuits.JumpBranchSlt.Artifact
+module
+public import Human.Circuits.JumpBranchSlt.Artifact
+
+@[expose] public section
 
 namespace Airbender.JumpBranchSlt
 
 theorem timestamp_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := rfl
+    (FlatOperation.lookups (importedConstraintsTimestampLookups (p := p))).length = 8 := by rfl
 
 theorem clock_columns : importedConstraintsTraceColumns =
     (⟨4, #v[0, 1], #v[16, 17], #v[2, 3], #v[18, 19],
       #[⟨0, #v[20, 21], 49⟩, ⟨1, #v[24, 25], 50⟩, ⟨2, #v[32, 33], 51⟩]⟩ :
-      Trace.TraceColumns) := rfl
+      Trace.TraceColumns) := by rfl
 
 theorem memory_ports : importedConstraintsMemoryPorts =
     (#[⟨⟨0, #v[20, 21], 49⟩, .register 5, #v[22, 23], none⟩,
        ⟨⟨1, #v[24, 25], 50⟩, .register 6, #v[26, 27], none⟩,
        ⟨⟨2, #v[32, 33], 51⟩, .register 7, #v[28, 29], some #v[30, 31]⟩] :
-      Array Trace.MemoryPort) := rfl
+      Array Trace.MemoryPort) := by rfl
 
 theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.clock =
     importedConstraintsTraceColumns.ports := by
@@ -22,13 +25,13 @@ theorem memory_clocks : importedConstraintsMemoryPorts.map Trace.MemoryPort.cloc
 
 theorem decoder_columns : importedConstraintsDecoderColumns =
     (⟨5, 6, 7, #v[8, 9], some 10, #[11, 12, 13, 14, 15]⟩ :
-      Trace.DecoderColumns) := rfl
+      Trace.DecoderColumns) := by rfl
 
 theorem constraint_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.constraints (importedConstraints (p := p))).length = 26 := rfl
+    (FlatOperation.constraints (importedConstraints (p := p))).length = 26 := by rfl
 
 theorem lookup_count {p : Nat} [Fact p.Prime] :
-    (FlatOperation.lookups (importedConstraints (p := p))).length = 8 := rfl
+    (FlatOperation.lookups (importedConstraints (p := p))).length = 8 := by rfl
 
 theorem variable_roles :
     importedConstraintsVariableNames.lookup Variables.initialPCLo = some "initial_pc[0]" ∧

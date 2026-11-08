@@ -1,6 +1,9 @@
-import Human.ISA.Delegations
-import Human.Circuits.Bigint.Word
-import Slop.Arithmetic.Digits
+module
+public import Human.ISA.Delegations
+public import Human.Circuits.Bigint.Word
+public import Slop.Arithmetic.Digits
+
+@[expose] public section
 
 /-! The spec side of the bigint delegate link (`RV.Delegation.bigint`): 256-bit numbers as eight words and as sixteen
     16-bit limbs, and the control byte of `x12`. State-free. -/

@@ -1,7 +1,10 @@
-import Slop.WordMemory
-import Slop.Trace.Addresses
-import Human.Helpers.Memory.Native
-import Slop.Trace.Family.History
+module
+public import Slop.WordMemory
+public import Slop.Trace.Addresses
+public import Human.Helpers.Memory.Native
+public import Slop.Trace.Family.History
+
+@[expose] public section
 
 namespace Airbender.Trace.ROMView
 open Arithmetic

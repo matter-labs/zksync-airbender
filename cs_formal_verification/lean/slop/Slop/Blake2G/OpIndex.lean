@@ -1,5 +1,8 @@
-import Slop.OpIndex
-import Slop.Blake2G.Fragment
+module
+public import Slop.OpIndex
+public import Slop.Blake2G.Fragment
+
+@[expose] public section
 
 set_option maxRecDepth 100000 in
 derive_op_index Airbender.Blake2G.Proofs.mixingConstraints

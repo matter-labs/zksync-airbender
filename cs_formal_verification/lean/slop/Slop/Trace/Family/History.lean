@@ -1,9 +1,12 @@
-import Slop.Trace.Family.Timestamps
-import Slop.Trace.History
-import Slop.AddSub.ArtifactChecks
-import Slop.Trace.Rows
-import Slop.WordMemory.ArtifactChecks
-import Human.Helpers.Context.FamilyLayout
+module
+public import Slop.Trace.Family.Timestamps
+public import Slop.Trace.History
+public import Slop.AddSub.ArtifactChecks
+public import Slop.Trace.Rows
+public import Slop.WordMemory.ArtifactChecks
+public import Human.Helpers.Context.FamilyLayout
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 

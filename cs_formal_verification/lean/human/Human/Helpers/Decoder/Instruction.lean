@@ -1,6 +1,9 @@
-import Human.Helpers.Decoder.Program
-import Human.Helpers.Memory.ROM
-import Human.Helpers.Memory.Values
+module
+public import Human.Helpers.Decoder.Program
+public import Human.Helpers.Memory.ROM
+public import Human.Helpers.Memory.Values
+
+@[expose] public section
 
 namespace Airbender.Trace
 

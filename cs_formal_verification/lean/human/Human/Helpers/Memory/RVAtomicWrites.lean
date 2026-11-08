@@ -1,4 +1,7 @@
-import Human.Helpers.Context.RVRowContext
+module
+public import Human.Helpers.Context.RVRowContext
+
+@[expose] public section
 
 /-! RV sibling of `AtomicWrites.lean`: a finite list of typed cell writes executed on an `RV.State` by `Cell.applyRV`
     (a RAM cell is RAM at any address, INCLUDING THE SHADOW RAM BELOW `ROM_END`; writing a cell's current value

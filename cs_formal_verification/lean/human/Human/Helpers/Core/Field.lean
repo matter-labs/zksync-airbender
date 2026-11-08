@@ -1,3 +1,6 @@
+module
+
+@[expose] public section
 namespace Airbender
 
 /-- BabyBear prime. The current layout format carries no field identifier. -/

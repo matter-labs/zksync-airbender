@@ -1,4 +1,7 @@
-import Slop.Trace.SeedTransfer
+module
+public import Slop.Trace.SeedTransfer
+
+@[expose] public section
 
 /-! State-free twin of `TransferHistory.raw_address_clocks_distinct` for any `Transfer.Data`: from the seed facts
     (`SeedTransfer.SeedInputs`), no (clock, address) pair repeats among the raw events. -/

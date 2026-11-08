@@ -1,6 +1,9 @@
-import Human.Circuits.Blake2G.Model
-import Human.Helpers.Delegation.Operations
-import Human.Helpers.Delegation.WorkerContext
+module
+public import Human.Circuits.Blake2G.Model
+public import Human.Helpers.Delegation.Operations
+public import Human.Helpers.Delegation.WorkerContext
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Native
 open Trace

@@ -1,5 +1,8 @@
-import Human.Circuits.KeccakSplit.Call
-import Human.Helpers.Memory.RVAtomicWrites
+module
+public import Human.Circuits.KeccakSplit.Call
+public import Human.Helpers.Memory.RVAtomicWrites
+
+@[expose] public section
 
 /-! RV siblings of `Call.ArgumentsAt` and `Call.ExecutesAt` (`Human/Circuits/KeccakSplit/Call.lean`): one documented
     split call on `RV.State`s; the state block is RAM at any address, INCLUDING THE SHADOW RAM BELOW `ROM_END`. -/

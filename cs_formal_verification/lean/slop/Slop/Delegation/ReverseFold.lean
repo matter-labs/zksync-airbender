@@ -1,5 +1,8 @@
-import Batteries.Data.Fin.Fold
-import Mathlib.Tactic
+module
+public import Batteries.Data.Fin.Fold
+public import Mathlib.Tactic
+
+@[expose] public section
 
 namespace Airbender.Delegation.Proofs
 set_option warningAsError true

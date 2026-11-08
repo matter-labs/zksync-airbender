@@ -1,5 +1,8 @@
-import Human.Circuits.JumpBranchSlt.RVModel
-import Human.Helpers.Core.BabyBearPrime
+module
+public import Human.Circuits.JumpBranchSlt.RVModel
+public import Human.Helpers.Core.BabyBearPrime
+
+@[expose] public section
 
 /-! RV32 claims for the comparison, branch and jump rows, stated against our spec (`RV.step`, `Human/ISA/RV32.lean`),
     not Sail: the row's pre-state is `input.before : RV.State`. `RV.Same` (`ISA/State.lean`) compares two `RV.State`s.

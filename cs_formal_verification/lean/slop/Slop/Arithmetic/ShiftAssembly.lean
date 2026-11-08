@@ -1,4 +1,7 @@
-import Slop.ShiftBinop.Arithmetic
+module
+public import Slop.ShiftBinop.Arithmetic
+
+@[expose] public section
 
 namespace Airbender.Verification
 open Arithmetic

@@ -1,6 +1,9 @@
-import Human.Circuits.Bigint.Artifact
-import Human.Helpers.Core.Word
-import Human.Helpers.Properties
+module
+public import Human.Circuits.Bigint.Artifact
+public import Human.Helpers.Core.Word
+public import Human.Helpers.Properties
+
+@[expose] public section
 
 namespace Airbender.Bigint.Control
 open Arithmetic

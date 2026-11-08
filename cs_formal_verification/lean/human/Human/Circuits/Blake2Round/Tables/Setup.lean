@@ -1,5 +1,8 @@
-import Human.Circuits.Blake2G.Tables.Setup
-import Human.Circuits.Blake2Round.SetupArtifact
+module
+public import Human.Circuits.Blake2G.Tables.Setup
+public import Human.Circuits.Blake2Round.SetupArtifact
+
+@[expose] public section
 
 namespace Airbender.Blake2Round
 

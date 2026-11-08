@@ -1,6 +1,9 @@
-import Slop.KeccakSplit.Setup.Common
-import Human.Circuits.Keccak.Tables.Setup
-import Human.Helpers.Core.BabyBearPrime
+module
+public import Slop.KeccakSplit.Setup.Common
+public import Human.Circuits.Keccak.Tables.Setup
+public import Human.Helpers.Core.BabyBearPrime
+
+@[expose] public section
 
 /- Facts about the controller-row helpers and field casts shared by the three
    split Keccak setup membership proofs. -/

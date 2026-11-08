@@ -1,4 +1,7 @@
-import Slop.Delegation.RVCallLink
+module
+public import Slop.Delegation.RVCallLink
+
+@[expose] public section
 
 /-! The delegate link for a span of calls of different kinds (`RV.calls ks`, e.g. `RV.f1600Calls`): the list-indexed
     sibling of `calls_replicate_link`. -/
@@ -11,7 +14,7 @@ private theorem pc_step (pc : RV.Word) (m : Nat) :
   rw [BitVec.add_assoc]
   congr 1
   apply BitVec.eq_of_toNat_eq
-  have four : (4 : RV.Word).toNat = 4 := rfl
+  have four : (4 : RV.Word).toNat = 4 := by rfl
   simp only [BitVec.toNat_add, BitVec.toNat_ofNat, four]
   omega
 

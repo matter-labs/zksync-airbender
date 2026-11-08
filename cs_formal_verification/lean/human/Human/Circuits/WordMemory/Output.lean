@@ -1,4 +1,7 @@
-import Human.Helpers.Core.Word
+module
+public import Human.Helpers.Core.Word
+
+@[expose] public section
 
 /-! The LW/SW circuit's observable outputs: effective address, transferred word and next PC. Shared by the Sail and
     RV32 statements (no Sail import). -/

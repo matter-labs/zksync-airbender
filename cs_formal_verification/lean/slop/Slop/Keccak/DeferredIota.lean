@@ -1,5 +1,8 @@
-import CleanCore.Specs.Keccak256
-import Batteries.Data.Fin.Fold
+module
+public import CleanCore.Specs.Keccak256
+public import Batteries.Data.Fin.Fold
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256

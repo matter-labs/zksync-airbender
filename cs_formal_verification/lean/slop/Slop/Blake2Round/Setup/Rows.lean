@@ -1,6 +1,9 @@
-import Slop.Blake2Round.Setup.Spec
-import Mathlib.Tactic.IntervalCases
-import Human.Circuits.Blake2Round.Tables.Setup
+module
+public import Slop.Blake2Round.Setup.Spec
+public import Mathlib.Tactic.IntervalCases
+public import Human.Circuits.Blake2Round.Tables.Setup
+
+@[expose] public section
 
 /- Row meaning of the imported setup: every column decodes to its row formula on all 2^20
    exported rows. Each column is a few blocks (the import's grid blocks for the six table
@@ -87,7 +90,7 @@ theorem col5_rows : ∀ n < 1048576, decode blake2RoundSetup_col5 n = col5Spec n
 /-- The row formulas, one per column. -/
 def formulaRow (n : Nat) : Vector Nat 6 := #v[spec0 n, spec1 n, spec2 n, spec3 n, spec4 n, spec5 n]
 
-theorem traceLen_eq : blake2RoundSetup.traceLen = 1048576 := rfl
+theorem traceLen_eq : blake2RoundSetup.traceLen = 1048576 := by rfl
 
 /-- Every exported row is the formula row. -/
 theorem setupRow_eq (n : Nat) (hn : n < 1048576) :

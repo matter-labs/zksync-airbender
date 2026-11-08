@@ -1,10 +1,13 @@
-import Slop.UnifiedReduced.ArtifactChecks
-import Human.Circuits.UnifiedReduced.Artifact
-import Human.Helpers.Properties
-import Slop.Arithmetic.Word
-import Slop.Constraints
-import Mathlib.Tactic.FinCases
-import Mathlib.Tactic.LinearCombination
+module
+public import Slop.UnifiedReduced.ArtifactChecks
+public import Human.Circuits.UnifiedReduced.Artifact
+public import Human.Helpers.Properties
+public import Slop.Arithmetic.Word
+public import Slop.Constraints
+public import Mathlib.Tactic.FinCases
+public import Mathlib.Tactic.LinearCombination
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs
 open Airbender.Arithmetic

@@ -1,5 +1,8 @@
-import Slop.Keccak.DeferredIota
-import Human.Circuits.Keccak.Iota
+module
+public import Slop.Keccak.DeferredIota
+public import Human.Circuits.Keccak.Iota
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 open Specs.Keccak256

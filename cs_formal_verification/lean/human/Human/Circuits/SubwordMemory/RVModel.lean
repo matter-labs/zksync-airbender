@@ -1,9 +1,12 @@
-import Human.Circuits.SubwordMemory.Artifact
-import Human.Circuits.SubwordMemory.Output
-import Human.Helpers.Context.RVInterfaces
-import Human.Helpers.Context.RVRowContext
-import Human.Helpers.Decoder.RVPooledProgram
-import Human.ISA.RV32
+module
+public import Human.Circuits.SubwordMemory.Artifact
+public import Human.Circuits.SubwordMemory.Output
+public import Human.Helpers.Context.RVInterfaces
+public import Human.Helpers.Context.RVRowContext
+public import Human.Helpers.Decoder.RVPooledProgram
+public import Human.ISA.RV32
+
+@[expose] public section
 
 /-! RV32 vocabulary for the LB/LBU/LH/LHU/SB/SH circuit (as `Model.lean`, with RV registers, an `RV.State` pre-state
     and the instruction `RV.decode` of the public program entry). `Output` (aligned cell address, transferred word,

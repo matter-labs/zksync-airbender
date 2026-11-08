@@ -1,5 +1,8 @@
-import Human.Helpers.Delegation.Memory
-import Human.Helpers.Memory.SailHistory
+module
+public import Human.Helpers.Delegation.Memory
+public import Human.Helpers.Memory.SailHistory
+
+@[expose] public section
 
 namespace Airbender.Delegation
 open Trace

@@ -1,8 +1,11 @@
-import Human.Helpers.Memory.InitialImage
-import Slop.Arithmetic.Word
-import Slop.PCState
-import Human.Circuits.AddSub.RowInput
-import Mathlib.Tactic.IntervalCases
+module
+public import Human.Helpers.Memory.InitialImage
+public import Slop.Arithmetic.Word
+public import Slop.PCState
+public import Human.Circuits.AddSub.RowInput
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 open Arithmetic

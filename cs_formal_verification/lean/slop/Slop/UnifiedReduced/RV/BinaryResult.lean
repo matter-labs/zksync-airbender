@@ -1,4 +1,7 @@
-import Slop.UnifiedReduced.RV.Binary
+module
+public import Slop.UnifiedReduced.RV.Binary
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs.RV
 open Arithmetic Verification

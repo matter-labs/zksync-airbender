@@ -1,4 +1,7 @@
-import Slop.Trace.LatestReads
+module
+public import Slop.Trace.LatestReads
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 
@@ -29,7 +32,7 @@ private theorem reversed_edges {S : Type} (path : List S) :
 
 -- Most recent cell first. The last cell is initialized by an actual zero-read
 -- write; real access times are shifted by one to leave time zero for that write.
-private def cellEvents {S : Type} (address : Nat) (rank value : S → Nat) :
+def cellEvents {S : Type} (address : Nat) (rank value : S → Nat) :
     List S → List MemoryAccess
   | [] => []
   | [source] => [(0, address, 0, value source)]

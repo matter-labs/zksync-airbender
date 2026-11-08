@@ -1,5 +1,8 @@
-import Slop.OpIndex
-import Human.Helpers.Properties
+module
+public import Slop.OpIndex
+public import Human.Helpers.Properties
+
+@[expose] public section
 
 /-!
 Evaluation of one entry of a row after `interval_cases j`, for the lookup-padding and constraint proofs

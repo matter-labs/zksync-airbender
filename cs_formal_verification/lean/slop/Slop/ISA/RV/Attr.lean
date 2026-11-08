@@ -1,5 +1,9 @@
-import Lean
-import Human.ISA.RV32
+module
+public import Lean
+public import Human.ISA.RV32
+
+@[expose] public section
+
 -- simp sets (built once, instead of elaborating lemma lists at every call):
 -- rv_word: `decode` of concrete instruction words (generated, slop/Slop/ISA/RV/Code/*.lean)
 register_simp_attr rv_word

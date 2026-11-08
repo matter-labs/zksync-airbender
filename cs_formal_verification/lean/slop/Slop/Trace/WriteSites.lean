@@ -1,6 +1,9 @@
-import Human.Trace.WritesRangeChecked
-import Human.Circuits.InitsTeardowns.Theorems
-import Slop.Trace.Values
+module
+public import Human.Trace.WritesRangeChecked
+public import Human.Circuits.InitsTeardowns.Theorems
+public import Slop.Trace.Values
+
+@[expose] public section
 
 /-! Write sites: a per-port write rule gives `WritesRangeChecked` of a row's memory steps; `Init` tuples write the zero
     word; under `MemoryArgumentReadsBounded`, bounded writes bound every teardown. -/

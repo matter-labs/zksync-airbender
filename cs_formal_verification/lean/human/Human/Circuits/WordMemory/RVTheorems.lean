@@ -1,5 +1,8 @@
-import Human.Circuits.WordMemory.RVModel
-import Human.Helpers.Core.BabyBearPrime
+module
+public import Human.Circuits.WordMemory.RVModel
+public import Human.Helpers.Core.BabyBearPrime
+
+@[expose] public section
 
 /-! RV32 claims for LW/SW, stated against our spec (`RV.step`, `Human/ISA/RV32.lean`), not Sail: the row's pre-state
     is `input.before : RV.State`. `RV.step` has no next state for a misaligned access or a store into ROM, so the

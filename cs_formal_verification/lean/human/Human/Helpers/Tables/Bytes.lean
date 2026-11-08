@@ -1,6 +1,9 @@
-import Human.Helpers.Tables.Lookups
-import Human.Circuits.JumpBranchSlt.Tables.Control
-import CleanCore.Utils.Field
+module
+public import Human.Helpers.Tables.Lookups
+public import Human.Circuits.JumpBranchSlt.Tables.Control
+public import CleanCore.Utils.Field
+
+@[expose] public section
 
 namespace Airbender.Verification
 

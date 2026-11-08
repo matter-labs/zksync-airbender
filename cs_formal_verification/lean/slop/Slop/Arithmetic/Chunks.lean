@@ -1,6 +1,9 @@
-import CleanCore.Specs.BLAKE3
-import Slop.Arithmetic.Lemmas
-import Slop.Arithmetic.Word
+module
+public import CleanCore.Specs.BLAKE3
+public import Slop.Arithmetic.Lemmas
+public import Slop.Arithmetic.Word
+
+@[expose] public section
 
 namespace Airbender.Arithmetic
 

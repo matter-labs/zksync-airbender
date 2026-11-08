@@ -1,7 +1,10 @@
-import Human.Helpers.Delegation.Columns
-import Slop.Trace.Timestamps
-import Slop.Constraints
-import Human.Helpers.Properties
+module
+public import Human.Helpers.Delegation.Columns
+public import Slop.Trace.Timestamps
+public import Slop.Constraints
+public import Human.Helpers.Properties
+
+@[expose] public section
 
 namespace Airbender.Delegation.Proofs
 set_option warningAsError true

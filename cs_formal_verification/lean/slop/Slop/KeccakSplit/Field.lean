@@ -1,5 +1,8 @@
-import Human.Helpers.Core.BabyBearPrime
-import Mathlib.Tactic.LinearCombination
+module
+public import Human.Helpers.Core.BabyBearPrime
+public import Mathlib.Tactic.LinearCombination
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.Native.Proofs
 

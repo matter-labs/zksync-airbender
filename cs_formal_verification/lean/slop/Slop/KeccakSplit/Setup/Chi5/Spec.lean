@@ -1,5 +1,8 @@
-import Human.Circuits.KeccakSplit.Chi5.SetupArtifact
-import Slop.KeccakSplit.Setup.Common
+module
+public import Human.Circuits.KeccakSplit.Chi5.SetupArtifact
+public import Slop.KeccakSplit.Setup.Common
+
+@[expose] public section
 
 /- Row formulas of the eleven exported chi5 setup columns
    (cs/src/tables/keccak_precompile_related.rs), one function per column:

@@ -1,9 +1,12 @@
-import Human.Circuits.WordMemory.Artifact
-import Human.Circuits.WordMemory.Output
-import Human.Helpers.Context.RVInterfaces
-import Human.Helpers.Context.RVRowContext
-import Human.Helpers.Decoder.RVPooledProgram
-import Human.ISA.RV32
+module
+public import Human.Circuits.WordMemory.Artifact
+public import Human.Circuits.WordMemory.Output
+public import Human.Helpers.Context.RVInterfaces
+public import Human.Helpers.Context.RVRowContext
+public import Human.Helpers.Decoder.RVPooledProgram
+public import Human.ISA.RV32
+
+@[expose] public section
 
 /-! RV32 vocabulary for the LW/SW circuit (as `Model.lean`, with RV registers, an `RV.State` pre-state and the
     instruction `RV.decode` of the public program entry). `Output` (effective address, transferred word, next PC) is

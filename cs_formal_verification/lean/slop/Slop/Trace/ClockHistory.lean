@@ -1,5 +1,8 @@
-import Human.Helpers.Context.Timestamps
-import Mathlib.Data.List.Perm.Basic
+module
+public import Human.Helpers.Context.Timestamps
+public import Mathlib.Data.List.Perm.Basic
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 

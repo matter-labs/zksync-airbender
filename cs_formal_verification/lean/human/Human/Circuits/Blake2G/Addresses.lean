@@ -1,4 +1,7 @@
-import Human.Circuits.Blake2G.Control
+module
+public import Human.Circuits.Blake2G.Control
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Addresses
 open Arithmetic

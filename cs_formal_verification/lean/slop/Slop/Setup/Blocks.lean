@@ -1,5 +1,8 @@
-import Human.Import.SetupBlocks
-import Mathlib.Tactic.Ring
+module
+public import Human.Import.SetupBlocks
+public import Mathlib.Tactic.Ring
+
+@[expose] public section
 
 /- Row meaning of compressed setup columns without expanding them. A Boolean scan (run by
    the kernel) checks short blocks row by row; long blocks (the import's grid blocks, long

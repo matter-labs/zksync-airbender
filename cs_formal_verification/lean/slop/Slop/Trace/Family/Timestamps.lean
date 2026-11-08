@@ -1,22 +1,25 @@
-import Slop.Trace.Timestamps
-import Human.Helpers.Context.FamilyLayout
+module
+public import Slop.Trace.Timestamps
+public import Human.Helpers.Context.FamilyLayout
+
+@[expose] public section
 
 namespace Airbender.Trace
 
 @[simp] theorem family_columns (family : Family) :
     CircuitLayout.columns family = (match family with
       | .addSub => AddSub.importedConstraintsTraceColumns
-      | .wordMemory => WordMemory.importedConstraintsTraceColumns) := rfl
+      | .wordMemory => WordMemory.importedConstraintsTraceColumns) := by rfl
 
 @[simp] theorem family_ports (family : Family) :
     CircuitLayout.ports family = (match family with
       | .addSub => AddSub.importedConstraintsMemoryPorts
-      | .wordMemory => WordMemory.importedConstraintsMemoryPorts) := rfl
+      | .wordMemory => WordMemory.importedConstraintsMemoryPorts) := by rfl
 
 @[simp] theorem family_decoder_columns (family : Family) :
     CircuitLayout.decoderColumns family = (match family with
       | .addSub => AddSub.importedConstraintsDecoderColumns
-      | .wordMemory => WordMemory.importedConstraintsDecoderColumns) := rfl
+      | .wordMemory => WordMemory.importedConstraintsDecoderColumns) := by rfl
 
 @[simp] theorem family_constraints [Fact p.Prime] (family : Family)
     (rom : Table (ZMod p) (fields 9)) :

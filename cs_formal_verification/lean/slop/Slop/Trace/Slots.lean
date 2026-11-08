@@ -1,4 +1,7 @@
-import Slop.Trace.Paths
+module
+public import Slop.Trace.Paths
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 
@@ -39,7 +42,7 @@ theorem row_clocks_unique [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (trace.rows.map fun row => (decodeTimestamp row.assignment row.columns.initialTime).value).Nodup :=
   state_clocks_unique hp inverse accepted.constraints accepted.states boundary.initial boundary.aligned
 
-private def slots (time : Nat) : List Nat := [time, time + 1, time + 2]
+def slots (time : Nat) : List Nat := [time, time + 1, time + 2]
 
 theorem slots_unique {times : List Nat} (unique : times.Nodup)
     (aligned : ∀ time ∈ times, time % 4 = 0) : (times.flatMap slots).Nodup := by

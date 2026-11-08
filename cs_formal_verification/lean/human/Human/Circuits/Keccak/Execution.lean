@@ -1,8 +1,11 @@
-import Human.Circuits.Keccak.Iota
-import Human.Circuits.Keccak.Tables.Controller
-import Human.Circuits.Keccak.Addresses
-import Human.Helpers.Delegation.Operations
-import Human.Helpers.Delegation.WorkerContext
+module
+public import Human.Circuits.Keccak.Iota
+public import Human.Circuits.Keccak.Tables.Controller
+public import Human.Circuits.Keccak.Addresses
+public import Human.Helpers.Delegation.Operations
+public import Human.Helpers.Delegation.WorkerContext
+
+@[expose] public section
 
 namespace Airbender.Keccak.Native
 open Trace

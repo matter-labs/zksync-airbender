@@ -1,4 +1,7 @@
-import Slop.KeccakSplit.Setup.ThetaRho.Shapes
+module
+public import Slop.KeccakSplit.Setup.ThetaRho.Shapes
+
+@[expose] public section
 
 /- Agreement of every listed long block with its row formula, by formula: grid blocks by
    their digits (`digits_eq`), affine runs by `omega`. -/

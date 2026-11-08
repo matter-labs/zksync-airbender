@@ -1,5 +1,8 @@
-import Slop.Trace.Paths
-import Mathlib.Data.List.Nodup
+module
+public import Slop.Trace.Paths
+public import Mathlib.Data.List.Nodup
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 

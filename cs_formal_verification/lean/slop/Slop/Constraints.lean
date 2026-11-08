@@ -1,5 +1,8 @@
-import CleanCore.Circuit.Operations
-import Human.Helpers.Tables.Range
+module
+public import CleanCore.Circuit.Operations
+public import Human.Helpers.Tables.Range
+
+@[expose] public section
 
 namespace Airbender.Verification
 

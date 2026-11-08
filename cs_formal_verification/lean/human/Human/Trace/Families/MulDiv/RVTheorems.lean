@@ -1,7 +1,10 @@
-import Human.Trace.RVExecution
-import Human.Helpers.Context.RVBoundary
-import Human.Helpers.Context.Registries.MulDiv
-import Human.Circuits.MulDiv.RVDecoder
+module
+public import Human.Trace.RVExecution
+public import Human.Helpers.Context.RVBoundary
+public import Human.Helpers.Context.Registries.MulDiv
+public import Human.Circuits.MulDiv.RVDecoder
+
+@[expose] public section
 
 /-! RV32 twin of `TraceSoundnessClaim` (`Theorems.lean`): the accepted rows are a run of our spec (`RV.run`) from the
     public starting state `initial : RV.State`. Proven in `slop/Slop/Final/Trace/Families/MulDiv/RVTheorems.lean`

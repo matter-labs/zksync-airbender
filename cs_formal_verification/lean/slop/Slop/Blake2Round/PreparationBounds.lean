@@ -1,4 +1,7 @@
-import Human.Circuits.Blake2Round.Preparation
+module
+public import Human.Circuits.Blake2Round.Preparation
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Preparation.Proofs
 open Arithmetic

@@ -1,5 +1,8 @@
-import Slop.Deleg.Effect
-import Human.ISA.DelegationRuns
+module
+public import Slop.Deleg.Effect
+public import Human.ISA.DelegationRuns
+
+@[expose] public section
 
 /-! Runs of delegation calls (`calls`): one call writing inside a buffer, composing runs, reading what they wrote. -/
 

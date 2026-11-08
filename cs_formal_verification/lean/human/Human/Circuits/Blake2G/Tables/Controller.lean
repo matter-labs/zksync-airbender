@@ -1,4 +1,7 @@
-import Human.Circuits.Blake2G.Controller
+module
+public import Human.Circuits.Blake2G.Controller
+
+@[expose] public section
 
 namespace Airbender.Blake2G.Control
 

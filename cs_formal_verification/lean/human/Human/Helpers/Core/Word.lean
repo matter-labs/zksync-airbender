@@ -1,3 +1,6 @@
+module
+
+@[expose] public section
 namespace Airbender.Arithmetic
 
 def limbBase : Nat := 65536

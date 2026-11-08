@@ -1,4 +1,7 @@
-import Slop.Trace.RVValues
+module
+public import Slop.Trace.RVValues
+
+@[expose] public section
 
 /-! RV twin of `ROM.Proofs.read_source`: an active word-ROM query reads the ROM image at its address
     (`RV.read initial.rom`), not a separately supplied value (from `rv_rom_member`, RVValues.lean). -/

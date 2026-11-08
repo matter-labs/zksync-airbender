@@ -1,9 +1,12 @@
-import Slop.Trace.Family.Timestamps
-import Slop.Trace.Values
-import Slop.AddSub
-import Slop.Trace.Family.History
-import Slop.WordMemory
-import Human.Helpers.Memory.ValueBoundary
+module
+public import Slop.Trace.Family.Timestamps
+public import Slop.Trace.Values
+public import Slop.AddSub
+public import Slop.Trace.Family.History
+public import Slop.WordMemory
+public import Human.Helpers.Memory.ValueBoundary
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 open Arithmetic

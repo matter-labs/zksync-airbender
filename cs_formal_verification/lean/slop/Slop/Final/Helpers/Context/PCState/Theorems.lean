@@ -1,4 +1,7 @@
-import Slop.PCState
+module
+public import Slop.PCState
+
+@[expose] public section
 
 namespace Airbender.PCState
 

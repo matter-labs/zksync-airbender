@@ -1,5 +1,8 @@
-import Human.Circuits.UnifiedReduced.Tables.SetupRV
-import Slop.ByteTables
+module
+public import Human.Circuits.UnifiedReduced.Tables.SetupRV
+public import Slop.ByteTables
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Setup.Proofs.RV
 open Verification

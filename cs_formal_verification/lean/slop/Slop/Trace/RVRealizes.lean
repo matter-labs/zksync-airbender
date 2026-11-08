@@ -1,10 +1,13 @@
-import Human.Trace.RVExecution
-import Slop.Trace.RVHistory
-import Slop.Trace.RVPooledRow
-import Slop.Trace.CompositionCore
-import Slop.Trace.Terminal
-import Slop.ISA.RV.Step
-import Slop.ISA.RV.Same
+module
+public import Human.Trace.RVExecution
+public import Slop.Trace.RVHistory
+public import Slop.Trace.RVPooledRow
+public import Slop.Trace.CompositionCore
+public import Slop.Trace.Terminal
+public import Slop.ISA.RV.Step
+public import Slop.ISA.RV.Same
+
+@[expose] public section
 
 /-! Composition on the RV route, for any circuit registry `Kind`: the accepted rows, in their history-derived order,
     compose into `RV.run` from the public starting state (`RVRealizes`). The per-row obligation is one `RV.step` of the

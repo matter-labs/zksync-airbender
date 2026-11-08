@@ -1,6 +1,9 @@
-import Human.Helpers.Core.Field
-import Mathlib.Algebra.Field.ZMod
-import Mathlib.Tactic.NormNum.Prime
+module
+public import Human.Helpers.Core.Field
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.Tactic.NormNum.Prime
+
+@[expose] public section
 
 namespace Airbender
 

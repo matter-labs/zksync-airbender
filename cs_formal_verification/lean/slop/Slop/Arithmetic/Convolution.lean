@@ -1,4 +1,7 @@
-import Slop.Arithmetic.CarryChain
+module
+public import Slop.Arithmetic.CarryChain
+
+@[expose] public section
 
 namespace Airbender.Arithmetic
 open scoped BigOperators

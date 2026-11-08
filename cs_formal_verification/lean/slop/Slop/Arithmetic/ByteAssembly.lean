@@ -1,4 +1,7 @@
-import Slop.Arithmetic.Chunks
+module
+public import Slop.Arithmetic.Chunks
+
+@[expose] public section
 
 namespace Airbender.Arithmetic
 set_option warningAsError true

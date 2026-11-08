@@ -1,5 +1,8 @@
-import Human.Helpers.Context.RowContext
-import Human.Helpers.Memory.InitialImageRV
+module
+public import Human.Helpers.Context.RowContext
+public import Human.Helpers.Memory.InitialImageRV
+
+@[expose] public section
 
 /-! RV-typed siblings of `WriteHistory` and `RowPosition` (`RowContext.lean`): the row's pre-state is an `RV.State`.
     Native writes: a register write sets the register (x0 reads 0 through `getReg`); a RAM write stores four bytes in

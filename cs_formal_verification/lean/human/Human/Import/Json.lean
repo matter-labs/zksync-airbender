@@ -1,4 +1,7 @@
-import Lean
+module
+public import Lean
+
+@[expose] public section
 
 /- JSON primitives matching Rust serde, without floating point conversions. -/
 namespace Airbender

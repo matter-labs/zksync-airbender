@@ -1,9 +1,12 @@
-import Slop.Trace.RVCells
-import Human.Helpers.Memory.RVHistory
-import Slop.Trace.RowHistory
-import Slop.Trace.SailHistory
-import Slop.Trace.RowContext
-import Slop.Trace.Addresses
+module
+public import Slop.Trace.RVCells
+public import Human.Helpers.Memory.RVHistory
+public import Slop.Trace.RowHistory
+public import Slop.Trace.SailHistory
+public import Slop.Trace.RowContext
+public import Slop.Trace.Addresses
+
+@[expose] public section
 
 /-! RV32 history core: the RV twin of `SailHistory` / `RowContext`. The event-level core (`MemoryHistory`, timestamp
     sorting, permutation, `native_row_order`, `native_events_projection`, `native_history_parts`,

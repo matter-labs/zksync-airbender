@@ -1,17 +1,20 @@
-import Slop.Trace.TransferSplit
-import Slop.Trace.TransferBoundary
+module
+public import Slop.Trace.TransferSplit
+public import Slop.Trace.TransferBoundary
+
+@[expose] public section
 
 namespace Tests.TransferSplit
 open Airbender.Trace Airbender.Trace.Proofs
 set_option warningAsError true
 
-private def seedA : MemoryToken 17 := (Cell.register 1).initialToken 0
-private def seedB : MemoryToken 17 := (Cell.register 2).initialToken 5
-private def middleA : MemoryToken 17 := ⟨seedA.address, (3, 0), Nat.pair 31 0⟩
-private def finalA : MemoryToken 17 := ⟨seedA.address, (6, 0), Nat.pair 42 0⟩
-private def finalB : MemoryToken 17 := ⟨seedB.address, (3, 0), Nat.pair 7 0⟩
+def seedA : MemoryToken 17 := (Cell.register 1).initialToken 0
+def seedB : MemoryToken 17 := (Cell.register 2).initialToken 5
+def middleA : MemoryToken 17 := ⟨seedA.address, (3, 0), Nat.pair 31 0⟩
+def finalA : MemoryToken 17 := ⟨seedA.address, (6, 0), Nat.pair 42 0⟩
+def finalB : MemoryToken 17 := ⟨seedB.address, (3, 0), Nat.pair 7 0⟩
 
-private def data : Transfer.Data 17 :=
+def data : Transfer.Data 17 :=
   ⟨[seedA, seedB], [finalA, finalB], [(middleA, finalA), (seedB, finalB), (seedA, middleA)]⟩
 
 private theorem accepted : Transfer.Facts data := by

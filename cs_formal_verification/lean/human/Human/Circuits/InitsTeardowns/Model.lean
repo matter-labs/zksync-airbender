@@ -1,5 +1,8 @@
-import Human.Helpers.Context.Model
-import Human.Helpers.Memory.InitsTeardownsColumns
+module
+public import Human.Helpers.Context.Model
+public import Human.Helpers.Memory.InitsTeardownsColumns
+
+@[expose] public section
 
 /-! The inits/teardowns circuits: the standalone circuit (`cs/src/gkr_compiler/inits_and_teardowns.rs`)
     and the sets inlined into the unified reduced machine (`inits_and_teardowns_inline.rs`).

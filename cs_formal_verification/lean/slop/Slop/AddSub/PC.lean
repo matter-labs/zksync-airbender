@@ -1,8 +1,11 @@
-import Slop.AddSub.RowModel
-import Slop.Arithmetic.Lemmas
-import Slop.Arithmetic.Word
-import Slop.Constraints
-import Mathlib.Tactic.LinearCombination
+module
+public import Slop.AddSub.RowModel
+public import Slop.Arithmetic.Lemmas
+public import Slop.Arithmetic.Word
+public import Slop.Constraints
+public import Mathlib.Tactic.LinearCombination
+
+@[expose] public section
 
 namespace Airbender.AddSub.Proofs
 open Airbender.Arithmetic

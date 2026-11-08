@@ -1,7 +1,10 @@
-import Human.Circuits.UnifiedReduced.Artifact
-import Human.Helpers.Properties
-import Slop.Constraints
-import Slop.Trace.Timestamps
+module
+public import Human.Circuits.UnifiedReduced.Artifact
+public import Human.Helpers.Properties
+public import Slop.Constraints
+public import Slop.Trace.Timestamps
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Proofs
 open Trace

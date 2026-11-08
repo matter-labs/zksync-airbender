@@ -1,4 +1,7 @@
-import Slop.Delegation.ReverseFold
+module
+public import Slop.Delegation.ReverseFold
+
+@[expose] public section
 
 namespace Airbender.Delegation.Proofs
 set_option warningAsError true

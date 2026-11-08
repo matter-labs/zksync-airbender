@@ -1,6 +1,9 @@
-import Human.Helpers.Context.RVInterfaces
-import Human.Helpers.Memory.Native
-import Human.Circuits.InitsTeardowns.Theorems
+module
+public import Human.Helpers.Context.RVInterfaces
+public import Human.Helpers.Memory.Native
+public import Human.Circuits.InitsTeardowns.Theorems
+
+@[expose] public section
 
 /-! RV sibling of `PooledBootInputs` (`PooledBoundary.lean`): the public starting state is an `RV.State`, and the
     trace's RAM seeds are the inits/teardowns circuit's `Init` tokens (`InitsTeardowns.Witness.initTokens`) instead of

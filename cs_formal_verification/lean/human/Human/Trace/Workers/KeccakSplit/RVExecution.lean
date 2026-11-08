@@ -1,5 +1,8 @@
-import Human.Trace.Workers.KeccakSplit.RVInputs
-import Human.Helpers.Delegation.RVMemory
+module
+public import Human.Trace.Workers.KeccakSplit.RVInputs
+public import Human.Helpers.Delegation.RVMemory
+
+@[expose] public section
 
 /-! RV siblings of the split memory execution and trace mapping (`Execution.lean`). RAM cells are RAM at any address,
     INCLUDING READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/

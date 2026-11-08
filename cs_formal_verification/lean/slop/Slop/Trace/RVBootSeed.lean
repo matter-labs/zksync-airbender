@@ -1,6 +1,9 @@
-import Human.Helpers.Context.RVPooledBoundary
-import Human.Helpers.Core.BabyBearPrime
-import Slop.Trace.RVHistory
+module
+public import Human.Helpers.Context.RVPooledBoundary
+public import Human.Helpers.Core.BabyBearPrime
+public import Slop.Trace.RVHistory
+
+@[expose] public section
 
 /-! Boot seeds from the inits/teardowns circuits, for any trace model: the register seeds followed by the `Init` tokens
     of instances whose top bits pass the verifier's check are the zero boot image of the registers and their windows

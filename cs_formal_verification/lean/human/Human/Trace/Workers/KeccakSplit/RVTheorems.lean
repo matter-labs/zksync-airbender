@@ -1,6 +1,9 @@
-import Human.Trace.Workers.KeccakSplit.RVExecution
-import Human.Trace.Workers.KeccakSplit.RVCall
-import Human.Trace.Workers.Keccak.RVCall
+module
+public import Human.Trace.Workers.KeccakSplit.RVExecution
+public import Human.Trace.Workers.KeccakSplit.RVCall
+public import Human.Trace.Workers.Keccak.RVCall
+
+@[expose] public section
 
 -- The statements proven in slop/Slop/Final/Trace/Workers/KeccakSplit/RVTheorems.lean (checked by verify.sh). RV
 -- siblings of `Theorems.lean`: the public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING

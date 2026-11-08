@@ -1,4 +1,7 @@
-import Human.Import.InitsTeardowns
+module
+public import Human.Import.InitsTeardowns
+
+@[expose] public section
 
 namespace Airbender.InitsTeardowns
 

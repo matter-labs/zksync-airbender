@@ -1,5 +1,8 @@
-import Human.Helpers.Memory.Values
-import Slop.Trace.MemoryOrigins
+module
+public import Human.Helpers.Memory.Values
+public import Slop.Trace.MemoryOrigins
+
+@[expose] public section
 namespace Airbender.Trace.Proofs
 open Arithmetic
 

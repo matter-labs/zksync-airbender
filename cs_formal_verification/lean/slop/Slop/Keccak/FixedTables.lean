@@ -1,12 +1,15 @@
-import Slop.Keccak.Tables
+module
+public import Slop.Keccak.Tables
+
+@[expose] public section
 
 namespace Airbender.Keccak.Proofs
 set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 1200000
 
-private theorem byte_tag (tag index : Nat) : (byteRow tag index)[7] = tag := rfl
-private theorem rotation_tag (key : Nat) : (rotationRow key)[7] = 40 := rfl
+private theorem byte_tag (tag index : Nat) : (byteRow tag index)[7] = tag := by rfl
+private theorem rotation_tag (key : Nat) : (rotationRow key)[7] = 40 := by rfl
 
 private theorem byte_facts (tag index : Nat) (size : index < 65536)
     (known : tag = 4 ∨ tag = 38 ∨ tag = 39) :

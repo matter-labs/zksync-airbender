@@ -1,5 +1,8 @@
-import Human.Helpers.Context.PCState.Model
-import Mathlib.Tactic.NormNum
+module
+public import Human.Helpers.Context.PCState.Model
+public import Mathlib.Tactic.NormNum
+
+@[expose] public section
 
 namespace Airbender.PCState.Proofs
 

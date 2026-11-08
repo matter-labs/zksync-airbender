@@ -1,6 +1,9 @@
-import Human.Helpers.UnifiedReduced.RVWindows
-import Human.Trace.Delegation.RVExecution
-import Human.Trace.Delegation.RVRequestHashWindows
+module
+public import Human.Helpers.UnifiedReduced.RVWindows
+public import Human.Trace.Delegation.RVExecution
+public import Human.Trace.Delegation.RVRequestHashWindows
+
+@[expose] public section
 
 /-! RV siblings of `MixedMemory.lean` and `SharedSpans.lean` (unified callers): the shared unified/caller/worker
     architecture executed as RV cell reads/writes (`RVHistory`) from a public `RV.State`. A RAM cell is RAM at any

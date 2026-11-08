@@ -1,4 +1,7 @@
-import Human.Import.SetupEmit
+module
+public import Human.Import.SetupEmit
+
+@[expose] public section
 
 namespace Airbender.Keccak.Split.ThetaRho
 

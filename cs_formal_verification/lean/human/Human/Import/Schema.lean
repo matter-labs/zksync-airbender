@@ -1,4 +1,7 @@
-import Human.Import.BabyBear
+module
+public import Human.Import.BabyBear
+
+@[expose] public section
 
 /- Native mirror of the v3 Rust serde schema at commit 28ffe3ff0353edd9051485c2974b28b52b495dc4.
    Coefficients are fixed to BabyBear Montgomery encoding. No fields are opaque JSON. -/

@@ -1,5 +1,8 @@
-import Human.Helpers.Tables.Range
-import Mathlib.Data.List.Perm.Basic
+module
+public import Human.Helpers.Tables.Range
+public import Mathlib.Data.List.Perm.Basic
+
+@[expose] public section
 
 namespace Airbender.PCState
 

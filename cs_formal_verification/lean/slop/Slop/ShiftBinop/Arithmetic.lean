@@ -1,6 +1,9 @@
-import Slop.ShiftBinop.Lookups
-import Human.ISA.RV32
-import Mathlib.Tactic.IntervalCases
+module
+public import Slop.ShiftBinop.Lookups
+public import Human.ISA.RV32
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
 
 namespace Airbender.Verification
 open Airbender.Arithmetic

@@ -1,5 +1,8 @@
-import Slop.UnifiedReduced.RV.Setup
-import Slop.Arithmetic.Word
+module
+public import Slop.UnifiedReduced.RV.Setup
+public import Slop.Arithmetic.Word
+
+@[expose] public section
 
 namespace Airbender.UnifiedReduced.Setup.Proofs.RV
 open Trace Arithmetic

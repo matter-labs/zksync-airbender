@@ -1,4 +1,7 @@
-import Human.Helpers.Context.Columns
+module
+public import Human.Helpers.Context.Columns
+
+@[expose] public section
 
 namespace Airbender.Delegation
 

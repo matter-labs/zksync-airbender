@@ -1,11 +1,14 @@
-import Human.Circuits.SubwordMemory.RVTheorems
-import Slop.SubwordMemory.RVQuery
-import Slop.SubwordMemory.RVData
-import Slop.SubwordMemory.RVWritable
-import Slop.SubwordMemory.Stores
-import Slop.Trace.RVPooledRow
-import Slop.Trace.RVRowGlue
-import Slop.Trace.RVRowReads
+module
+public import Human.Circuits.SubwordMemory.RVTheorems
+public import Slop.SubwordMemory.RVQuery
+public import Slop.SubwordMemory.RVData
+public import Slop.SubwordMemory.RVWritable
+public import Slop.SubwordMemory.Stores
+public import Slop.Trace.RVPooledRow
+public import Slop.Trace.RVRowGlue
+public import Slop.Trace.RVRowReads
+
+@[expose] public section
 
 /-! RV32 LB/LBU/LH/LHU/SB/SH soundness (`RVSoundnessClaim`), on the RV route: no Sail state, interpreter,
     `Configured` or `OrdinaryWordAddress` fact.
@@ -104,7 +107,7 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
   have shape : (⟨.subwordMemory, w⟩ : Row p PooledFamily).ports =
       #[importedConstraintsMemoryPorts[0], importedConstraintsMemoryPorts[1],
         importedConstraintsMemoryPorts[2]] := by
-    have portsEq : (⟨.subwordMemory, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := rfl
+    have portsEq : (⟨.subwordMemory, w⟩ : Row p PooledFamily).ports = importedConstraintsMemoryPorts := by rfl
     rw [portsEq]
     rfl
   dsimp only [rowEvents] at current

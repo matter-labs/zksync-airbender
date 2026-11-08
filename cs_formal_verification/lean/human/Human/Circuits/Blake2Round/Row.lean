@@ -1,6 +1,9 @@
-import Human.Circuits.Blake2Round.Addresses
-import Human.Circuits.Blake2Round.Schedule
-import Human.Circuits.Blake2Round.Finalization
+module
+public import Human.Circuits.Blake2Round.Addresses
+public import Human.Circuits.Blake2Round.Schedule
+public import Human.Circuits.Blake2Round.Finalization
+
+@[expose] public section
 
 namespace Airbender.Blake2Round.Row
 open Arithmetic

@@ -1,5 +1,8 @@
-import Human.Circuits.AddSub.RVCallerTheorems
-import Slop.Delegation.RVCallerDecoder
+module
+public import Human.Circuits.AddSub.RVCallerTheorems
+public import Slop.Delegation.RVCallerDecoder
+
+@[expose] public section
 
 namespace Airbender.Delegation.Caller
 

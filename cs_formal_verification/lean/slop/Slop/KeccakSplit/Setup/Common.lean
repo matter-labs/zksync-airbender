@@ -1,5 +1,8 @@
-import Human.Circuits.KeccakSplit.Call
-import Slop.Setup.Blocks
+module
+public import Human.Circuits.KeccakSplit.Call
+public import Slop.Setup.Blocks
+
+@[expose] public section
 
 /- Shared row-formula helpers of the three split Keccak setups
    (cs/src/tables/keccak_precompile_related.rs). -/

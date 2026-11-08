@@ -1,7 +1,10 @@
-import Slop.AddSub.ArtifactChecks
-import Human.Circuits.WordMemory.Artifact
-import Slop.AddSub.Timestamp
-import Slop.Trace.Timestamps
+module
+public import Slop.AddSub.ArtifactChecks
+public import Human.Circuits.WordMemory.Artifact
+public import Slop.AddSub.Timestamp
+public import Slop.Trace.Timestamps
+
+@[expose] public section
 
 namespace Airbender.Trace.Proofs
 
