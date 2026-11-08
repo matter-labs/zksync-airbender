@@ -1,5 +1,50 @@
 # Verification status
 
+## First A/D steps in native worker G calls (8 November 2026)
+
+[First G observables](Airbender/Review/Circuits/Blake2Worker/FirstG.lean) retain
+original pre-mixing inputs, selected messages, both carry bits with weights1/2,
+and actual XOR byte outputs. FULL352-equation/296-query BODY on the unchanged actual
+fixed pool derives all16 carry-bit bounds, eight field tri-addition limb bounds,
+eight D-input limb bounds and exact XOR/rotate16 results in all four column calls.
+These are field limb sums with native carries; whole-word natural modular addition,
+remaining C/B and A/D steps, diagonal calls and full G/hash results remain open.
+No expected read, range, result, round, one-hot mask, schedule or history is supplied.
+
+[Short TRACE roots](Airbender/Review/Trace/Families/ReducedMachine/WorkerFirstGTheorems.lean)
+retain prior state initialization/control/message schedule and the SAME counted
+source, original stateful image/log20, OLD LogicalLookups and OLD explicit
+SourceIdentity. Every ordinary worker, including inactive rows, receives the first
+A/D effects. Prior exact initialized raw-token replay, word bounds, capacity and
+dependencies stay. Public ordinary7-or-CSR excludes MOP; original7 Sail excludes CSR/MOP.
+Logical boundaries remain explicit, not fixed-challenge or physical crypto proofs.
+
+[Proofs](Airbender/Proofs/ReducedMachine/NativeWorkerFirstG.lean) prove generic byte
+reconstruction/XOR and symbolic rotate16 before native data. Kernel syntax bindings
+cover all three fields of the actual16 byte queries before witness evaluation.
+Existing full-pool lookup results and canonical reconstruction are reused unchanged;
+closed Mersenne31 coefficient facts precede native algebra. Full hashes of the two
+already-pinned native G/call-site sources were rechecked against Git67ee.
+No new native pin, importer, artifact, generation or heavy certificate replay.
+Specific bindings do not prove general Rust/JSON/compiler refinement.
+
+[Thirteen controls](Tests/NativeWorkerFirstG.lean) cover two-bit carry encoding,
+a nonzero XOR/rotation vector, old complete LOCAL BODY, all zero-input observations,
+conditional carry/limb/rotation effects, prior schedule retention, corrupt XOR output
+rejection, inactive requests and the complete counted interface. Pure/LOCAL/conditional
+only, not new nonempty source-global/whole-worker/physical witnesses or findings.
+All43 ports, raw timestamps, aliases, readonly refreshes, OLDREADs, auxiliary values,
+m0 poles, inactiveD, caller equations, unmasked writes and public x0 times remain.
+Caller requests are never filtered. No fake Trace.Accepted or Sail frame is used.
+
+Four modules add23 roots and9 exact parent references, preserving all6,428 prior
+ordered roots and exact audit bytes addition-only. Native107 pins, v3 reference,
+dependencies, production, original Sail, old proofs/acceptance and FINDINGS stay.
+Whole-word modular addition, remaining G steps, output finalization/hash results,
+physical round schedules, inactive caller activity/converse accounting, original
+CSR/MOP/worker Sail, physical cryptography, completeness and parity remain open.
+
+
 ## Actual native worker state initialization (8 November 2026)
 
 [State initialization](Airbender/Review/Circuits/Blake2Worker/StateInitialization.lean)

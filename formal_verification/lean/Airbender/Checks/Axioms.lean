@@ -1,3 +1,8 @@
+import Airbender.Review.Circuits.Blake2Worker.FirstG
+import Airbender.Proofs.ReducedMachine.NativeWorkerFirstG
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerFirstGTheorems
+import Tests.NativeWorkerFirstG
+
 import Airbender.Review.Circuits.Blake2Worker.StateInitialization
 import Airbender.Proofs.ReducedMachine.NativeWorkerInitial
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerInitialTheorems
@@ -7455,3 +7460,27 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerInitial.corrupt_initial_rejected
 #print axioms Airbender.Tests.NativeWorkerInitial.inactive_requests_retained
 #print axioms Airbender.Tests.NativeWorkerInitial.complete_counted
+
+#print axioms Airbender.NativeWorkerFirstGProofs.pair_bytes
+#print axioms Airbender.NativeWorkerFirstGProofs.byte_xor
+#print axioms Airbender.NativeWorkerFirstGProofs.rotate16
+#print axioms Airbender.NativeWorkerFirstGProofs.carry_bits
+#print axioms Airbender.NativeWorkerFirstGProofs.limb_bounds
+#print axioms Airbender.NativeWorkerFirstGProofs.rotated
+#print axioms Airbender.NativeWorkerFirstGProofs.row
+#print axioms Airbender.NativeWorkerFirstGProofs.counted
+#print axioms Airbender.NativeWorkerFirstG.native_worker_first_g_step
+#print axioms Airbender.NativeWorkerFirstG.native_counted_worker_first_g_step
+#print axioms Airbender.Tests.NativeWorkerFirstG.carry_weights
+#print axioms Airbender.Tests.NativeWorkerFirstG.xor_rotation_vector
+#print axioms Airbender.Tests.NativeWorkerFirstG.full_local_first_step
+#print axioms Airbender.Tests.NativeWorkerFirstG.zero_sums
+#print axioms Airbender.Tests.NativeWorkerFirstG.zero_d_input
+#print axioms Airbender.Tests.NativeWorkerFirstG.zero_d_output
+#print axioms Airbender.Tests.NativeWorkerFirstG.all_carry_bits
+#print axioms Airbender.Tests.NativeWorkerFirstG.all_limb_bounds
+#print axioms Airbender.Tests.NativeWorkerFirstG.all_d_rotations
+#print axioms Airbender.Tests.NativeWorkerFirstG.prior_control_schedule
+#print axioms Airbender.Tests.NativeWorkerFirstG.corrupt_xor_rejected
+#print axioms Airbender.Tests.NativeWorkerFirstG.inactive_requests_retained
+#print axioms Airbender.Tests.NativeWorkerFirstG.complete_counted

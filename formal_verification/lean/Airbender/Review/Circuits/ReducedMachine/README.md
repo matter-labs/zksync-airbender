@@ -1087,3 +1087,10 @@ hash results, physical round schedules, converse accounting and worker Sail rema
 final-XOR base limbs from actual original reads/control bits. Same counted source
 retains exact replay, word bounds and prior schedule for every ordinary worker.
 G mixing, rotations/XOR, hash results, physical schedules and converse accounting remain open.
+
+## First native G A/D steps
+
+[First G steps](../../Trace/Families/ReducedMachine/WorkerFirstGTheorems.lean) derive weighted Boolean carries, field sum/D bounds
+and exact XOR/rotate16 for all four column calls from FULL native BODY/fixed pool.
+Same counted source retains prior initialization/schedule/replay/word bounds.
+Whole-word addition, remaining G steps, hash results and physical schedules remain open.
