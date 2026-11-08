@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.MixedReplay
+import Airbender.Proofs.ReducedMachine.NativeMixedReplay
+import Airbender.Review.Trace.Families.ReducedMachine.MixedReplayTheorems
+import Tests.NativeMixedReplay
+
 import Airbender.Review.Trace.Families.ReducedMachine.MixedWordBounds
 import Airbender.Proofs.ReducedMachine.NativeMixedWordBounds
 import Airbender.Review.Trace.Families.ReducedMachine.MixedWordBoundsTheorems
@@ -7371,3 +7376,25 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeMixedWordBounds.latest_retained
 #print axioms Airbender.Tests.NativeMixedWordBounds.inactive_requests_retained
 #print axioms Airbender.Tests.NativeMixedWordBounds.complete_counted
+
+#print axioms Airbender.NativeMixedReplayProofs.replay_sorted
+#print axioms Airbender.NativeMixedReplayProofs.replay_exists
+#print axioms Airbender.NativeMixedReplayProofs.initial_unique
+#print axioms Airbender.NativeMixedReplayProofs.head_read
+#print axioms Airbender.NativeMixedReplayProofs.from_roots
+#print axioms Airbender.NativeMixedReplayProofs.effects
+#print axioms Airbender.NativeMixedReplayProofs.counted
+#print axioms Airbender.NativeMixedReplay.native_memory_token_replay
+#print axioms Airbender.NativeMixedReplay.native_counted_mixed_memory_replay
+#print axioms Airbender.Tests.NativeMixedReplay.changing_values
+#print axioms Airbender.Tests.NativeMixedReplay.simultaneous_forward
+#print axioms Airbender.Tests.NativeMixedReplay.simultaneous_reverse
+#print axioms Airbender.Tests.NativeMixedReplay.wrong_read_rejected
+#print axioms Airbender.Tests.NativeMixedReplay.duplicate_addresses_rejected
+#print axioms Airbender.Tests.NativeMixedReplay.raw_token_read
+#print axioms Airbender.Tests.NativeMixedReplay.all_active_ports
+#print axioms Airbender.Tests.NativeMixedReplay.worker43_ports
+#print axioms Airbender.Tests.NativeMixedReplay.word_bounds_retained
+#print axioms Airbender.Tests.NativeMixedReplay.inactive_requests_retained
+#print axioms Airbender.Tests.NativeMixedReplay.complete_source
+#print axioms Airbender.Tests.NativeMixedReplay.complete_counted

@@ -921,3 +921,11 @@ remain. Initialized mixed word bounds and CSR/MOP Sail execution remain open.
 reads and writes, every ordinary worker43 port under both flags, and terminal
 tokens on the same counted public source. Old logical boundaries remain explicit.
 Mixed online replay, worker hash results and original CSR/MOP Sail remain open.
+
+## Exact mixed token replay
+
+[Mixed replay](MixedReplayTheorems.lean) derives exact online token updates for every active
+MAIN/WORKER port from actual seeds to teardown, allowing equal ranks at different
+addresses and retaining BOTH raw timestamps. Prior word bounds and old logical
+boundaries remain. Worker rounds/hash results, physical schedules, converse
+accounting and original CSR/MOP/worker Sail remain open.

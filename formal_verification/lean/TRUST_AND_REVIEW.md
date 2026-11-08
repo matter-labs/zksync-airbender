@@ -1,5 +1,55 @@
 # Trust and review boundaries
 
+## Exact mixed native token replay (8 November 2026)
+
+[MixedReplay](Airbender/Review/Trace/Families/ReducedMachine/MixedReplay.lean)
+records online token updates from the complete actual GPR/RAM seed snapshot to
+actual terminal tokens. Each update consumes its exact old token, preserves the
+address, and replaces it with the actual write token. Every snapshot has unique
+addresses. Values and BOTH raw timestamp fields remain intact.
+
+[Two short roots](Airbender/Review/Trace/Families/ReducedMachine/MixedReplayTheorems.lean)
+derive a serialization containing EVERY active MAIN/WORKER port occurrence. The
+general root retains the SAME complete InitializationBatch acceptance and OLD
+explicit SourceIdentity. CSR/MOP are covered as memory observations only. The
+counted root keeps the SAME MainDecoder source, original stateful public image at
+log20, OLD LogicalLookups and SourceIdentity, with all prior initialized word
+bounds, capacity and dependencies. Its ordinary7-or-CSR public scope excludes MOP.
+Neither logical boundary is a physical cryptographic enforcement proof.
+
+[Proof assembly](Airbender/Proofs/ReducedMachine/NativeMixedReplay.lean) first proves
+a generic residual-permutation induction, before native data/domain instantiation.
+Weakly sorted write ranks and strict per-edge progress force the next exact read
+to be in the current snapshot. Removing one read occurrence and inserting its
+same-address write preserves the full residual token balance and unique addresses.
+Generic mergeSort retains every edge copy. Equal write ranks at different addresses
+are allowed; proof rank never becomes a native clock encoding or an injective time.
+Native assembly reuses existing matching, seed uniqueness and mixed signed order.
+No expected read, snapshot, history, schedule, result or fulfilled ledger is supplied.
+
+Inactive worker43 ports remain in full physical source acceptance and its read
+ledger; only the OLD derived exact logical cancellation is used. They are not all
+claimed rooted or executed. All auxiliary values, poles, inactiveD, caller equations,
+aliases, readonly refreshes, OLDREADs, unmasked writes and public x0 times remain.
+Caller requests are never filtered. No fake Trace.Accepted or Sail frame is used.
+
+[Twelve controls](Tests/NativeMixedReplay.lean) check changing values, wrong-read
+rejection, duplicate-address rejection, both orders of equal-rank independent
+updates, exact raw fields, all active ports, all43 active worker ports, retained
+word bounds/inactive requests, and full original/counted interfaces. These are
+pure/local/conditional controls, not new nonempty source-global/whole-worker/
+physical witnesses, attacks or native findings.
+
+Four modules add21 roots and11 exact parent references, preserving all6,362 prior
+ordered roots and exact audit bytes addition-only. Native107 pins, v3 reference,
+dependencies, original Sail, old proofs/acceptance/artifacts and FINDINGS remain
+unchanged. No native adoption, generation, issue assumption or production fix.
+This closes exact mixed online token replay under the old explicit boundaries;
+physical worker schedules, worker rounds/hash results, arbitrary inactive caller
+activity and converse accounting, original CSR/MOP/worker Sail, cryptography,
+completeness and parity remain open. Original seven-profile Sail excludes CSR/MOP.
+
+
 ## Initialized mixed native word bounds (8 November 2026)
 
 [MixedWordBounds](Airbender/Review/Trace/Families/ReducedMachine/MixedWordBounds.lean)
