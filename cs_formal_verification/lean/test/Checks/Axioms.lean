@@ -697,6 +697,7 @@ import Slop.Final.Trace.UnifiedReduced.RVCallerTheorems
 #print axioms Airbender.Arithmetic.Word.byte_fields
 
 #print axioms Airbender.Keccak.Controller.Proofs.physical_bound
+#print axioms Airbender.Keccak.Controller.Proofs.physical_injective
 #print axioms Airbender.Keccak.Controller.Proofs.rows_bound
 #print axioms Airbender.Keccak.Native.Proofs.lane_ports
 #print axioms Tests.KeccakController.initial_iota
