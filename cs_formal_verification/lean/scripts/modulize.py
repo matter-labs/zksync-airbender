@@ -100,6 +100,13 @@ IMPORT_ALL: dict[str, tuple[str, ...]] = {
     "Slop.Import.Json.Sample": (_R, _S, _I),
     # the standalone inits/teardowns layout and its bytes parsed and decoded, evaluated by the kernel
     "Slop.Final.Circuits.InitsTeardowns.Artifact": (_A, "Init.Data.Range.Basic", _R, _S, _I),
+    # every other circuit's artifact import, evaluated by the kernel
+    **{f"Slop.Final.Circuits.{c}": (_A, "Init.Data.Range.Basic")
+       for c in ("AddSub.Artifact", "Bigint.Artifact", "Blake2G.Artifact", "Blake2Round.Artifact",
+                 "InitsTeardowns.UnifiedArtifact", "JumpBranchSlt.Artifact", "Keccak.Artifact",
+                 "KeccakSplit.Chi5.Artifact", "KeccakSplit.ColumnParity.Artifact", "KeccakSplit.ThetaRho.Artifact",
+                 "MulDiv.Artifact", "ShiftBinop.Artifact", "SubwordMemory.Artifact", "UnifiedReduced.Artifact",
+                 "WordMemory.Artifact")},
 }
 # Generated proof families: every file under the prefix gets the same set.
 IMPORT_ALL_PREFIX: dict[str, tuple[str, ...]] = {}
