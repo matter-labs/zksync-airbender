@@ -114,7 +114,8 @@ is under budget alone. Three stages, each paying only for what the one before co
 The ledger is the file `<LAKE_CACHE_DIR>.module-cpu.tsv`, beside (not inside) Lake's shared artifact cache, so
 worktrees sharing the cache measure each module once per input hash; without the cache it is
 `lean/.lake/module-cpu.tsv` (`MODULE_BUDGET_LEDGER` overrides). Without a ledger, stage 2 measures every module once:
-about one cold build of CPU. `lean/.lake/module-budget.tsv` lists every module's time after a run, slowest first.
+about one cold build of CPU. `lean/.lake/module-budget.tsv` lists every module's time after a run, slowest first. The script needs Python 3.11 or
+later (`tomllib`).
 Fix a module over budget by restructuring its proof (lean-strategies 2.1), never by raising the limit.
 
 ## Reproduce

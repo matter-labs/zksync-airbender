@@ -18,5 +18,6 @@ so the code itself needs no review.
 | [SetupBlocks.lean](SetupBlocks.lean) | The meaning of a setup column (`decode`). |
 | `ArtifactImportClaim` in each `Human/Circuits/<family>/Artifact.lean`; `StandaloneImportClaim`, `UnifiedImportClaim` in `Human/Circuits/InitsTeardowns/` | Every imported definition is the meaning function applied to `importedCircuit`. The kernel evaluates both sides (`slop/Slop/Final/Circuits/*/Artifact.lean`). |
 
-`Exec/` holds the executable code: the JSON parser, the decoder and the emitters of the literal terms. No need to review it:
+`Exec/` holds the executable code: the JSON parser, the decoder, the emitters of the literal terms and FastColumns (copies of
+the `Columns.lean` functions the emitter runs, derived by a command). No need to review it:
 each file names the claims that fix its behaviour.

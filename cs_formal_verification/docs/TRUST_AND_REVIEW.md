@@ -107,8 +107,9 @@ CleanCore (Clean's definitions, transcribed) supplies `Expression`, `FlatOperati
   (equations and lookups as Clean operations) and
   [InitsTeardownsLayout](../lean/human/Human/Import/InitsTeardownsLayout.lean); the schema with its serde JSON and
   [Coefficients](../lean/human/Human/Import/Coefficients.lean) (coefficient cast equivalence proved).
-- **Not reviewed:** `Human/Import/Exec/` (the parser, the decoder and the emitters of the literal terms); each file names the claims
-  that fix its behaviour.
+- **Not reviewed:** `Human/Import/Exec/` (the parser, the decoder, the emitters of the literal terms, and FastColumns, which
+  derives copies of the `Columns.lean` functions with the placement map passed in, for the emitter's speed); each file names
+  the claims that fix its behaviour.
 
 Placement guards reject missing or ambiguous logical variables and check memory/witness banks. Named imported
 descriptors do not prove that Rust preprocessing or decoder-table contents match the model.
