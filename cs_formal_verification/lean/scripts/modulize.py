@@ -85,7 +85,6 @@ IMPORT_ALL: dict[str, tuple[str, ...]] = {
     "Slop.KeccakSplit.RVStep": (_A,),
     "Slop.UnifiedReduced.RV.ControlMembership": (_A,),
     "Slop.KeccakSplit.Reference.CallSteps": (_A,),
-    "Slop.Keccak.PhaseSteps": (_A,),
     "Slop.KeccakSplit.Chain.Calls": (_A,),
     "Tests.DelegationMemory": (_A,),
     "Tests.KeccakChi": (_A,),

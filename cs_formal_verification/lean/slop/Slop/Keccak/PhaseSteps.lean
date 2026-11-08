@@ -1,7 +1,6 @@
 module
 public import Slop.Keccak.PhaseDefinitions
 public import Slop.Keccak.ReferenceLemmas
-import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
 
@@ -44,16 +43,13 @@ def callSlot (call : Fin 649) (j : Fin 6) : Fin 31 :=
 theorem call_reads_entry (call : Fin 649) (state : LaneState) (j : Fin 6) :
     callReads call state j = state (callSlot call j) := rfl
 
-/-- No scheduled call accesses a slot through two ports. -/
-theorem slot_indices_nodup : ∀ call : Fin 649, (slotIndices call).toList.Nodup := by
-  decide +kernel
-
 /-- A call writes the slot of port `j` with its `j`-th micro-operation value. -/
-theorem micro_step_slot (call : Fin 649) (state : LaneState) (j : Fin 6) :
+theorem micro_step_slot {call : Fin 649} (distinct : (slotIndices call).toList.Nodup) (state : LaneState)
+    (j : Fin 6) :
     microStep call state (callSlot call j) =
       microValue (scheduleControl ⟨call.val, by omega⟩) (callReads call state) j := by
   have position : (slotIndices call).toList.idxOf (callSlot call j).val = j.val := by
-    have := (slot_indices_nodup call).idxOf_getElem j.val (by simp only [Vector.length_toList]; omega)
+    have := distinct.idxOf_getElem j.val (by simp only [Vector.length_toList]; omega)
     simpa only [Vector.getElem_toList, callSlot, Fin.getElem_fin] using this
   have active : (slotIndices call).toList.idxOf (callSlot call j).val < 6 := by
     rw [position]
@@ -76,14 +72,15 @@ theorem micro_step_frame (call : Fin 649) (state : LaneState) (physical : Fin 31
   simpa only [Vector.getElem_toList, callSlot, Fin.getElem_fin] using found
 
 /-- A call that writes back what it reads through port `j` leaves that slot unchanged too. -/
-theorem micro_step_kept (call : Fin 649) (state : LaneState) (physical : Fin 31)
+theorem micro_step_kept {call : Fin 649} (distinct : (slotIndices call).toList.Nodup) (state : LaneState)
+    (physical : Fin 31)
     (other : ∀ j : Fin 6, callSlot call j = physical →
       microValue (scheduleControl ⟨call.val, by omega⟩) (callReads call state) j = state physical) :
     microStep call state physical = state physical := by
   by_cases hit : ∃ j : Fin 6, callSlot call j = physical
   · obtain ⟨j, same⟩ := hit
     subst same
-    rw [micro_step_slot]
+    rw [micro_step_slot distinct]
     exact other j rfl
   · exact micro_step_frame call state physical fun j same => hit ⟨j, same⟩
 
@@ -101,25 +98,39 @@ theorem schedule_control_at {call : Fin 649} {round stage : Nat} (shape : call.v
   simp only [scheduleControl, ControlState.mk.injEq, Fin.ext_iff, stageEq, roundEq, modeEq, iterationEq,
     and_self]
 
-/-! ### Closed slot tables, one per call kind, quantified over the round -/
+/-! ### Closed slot tables, one per call kind, quantified over the round
+
+`Vector.ofFn` unfolds by well-founded recursion, slow in the kernel: the controller rows are first
+rewritten to six-entry literals. -/
+
+private theorem of_fn_six {α : Type} (f : Fin 6 → α) : Vector.ofFn f = #v[f 0, f 1, f 2, f 3, f 4, f 5] := by
+  ext i bound
+  simp only [Vector.getElem_ofFn]
+  interval_cases i <;> rfl
 
 private theorem iota_table : ∀ round : Fin 25, ∀ column : Fin 5,
     ∀ valid : 27 * round.val + column.val < 649,
       (∀ j : Fin 5, (slotIndices ⟨27 * round.val + column.val, valid⟩)[j.val] =
         Controller.physicalLane round ⟨5 * column.val + j.val, by omega⟩) ∧
-      (slotIndices ⟨27 * round.val + column.val, valid⟩)[5] = 25 + column.val := by
+      (slotIndices ⟨27 * round.val + column.val, valid⟩)[5] = 25 + column.val ∧
+      (slotIndices ⟨27 * round.val + column.val, valid⟩).toList.Nodup := by
+  simp only [slotIndices, Controller.rows, of_fn_six]
   decide +kernel
 
 private theorem theta_table : ∀ round : Fin 24, ∀ column : Fin 5,
     (∀ j : Fin 5, (slotIndices ⟨27 * round.val + 7 + column.val, by omega⟩)[j.val] =
       Controller.physicalLane round ⟨5 * column.val + j.val, by omega⟩) ∧
-    (slotIndices ⟨27 * round.val + 7 + column.val, by omega⟩)[5] = 25 + (column.val + 4) % 5 := by
+    (slotIndices ⟨27 * round.val + 7 + column.val, by omega⟩)[5] = 25 + (column.val + 4) % 5 ∧
+    (slotIndices ⟨27 * round.val + 7 + column.val, by omega⟩).toList.Nodup := by
+  simp only [slotIndices, Controller.rows, of_fn_six]
   decide +kernel
 
 private theorem rho_table : ∀ round : Fin 24, ∀ column : Fin 5,
     (∀ j : Fin 5, (slotIndices ⟨27 * round.val + 12 + column.val, by omega⟩)[j.val] =
       Controller.physicalLane round ⟨5 * column.val + j.val, by omega⟩) ∧
-    (slotIndices ⟨27 * round.val + 12 + column.val, by omega⟩)[5] = 25 := by
+    (slotIndices ⟨27 * round.val + 12 + column.val, by omega⟩)[5] = 25 ∧
+    (slotIndices ⟨27 * round.val + 12 + column.val, by omega⟩).toList.Nodup := by
+  simp only [slotIndices, Controller.rows, of_fn_six]
   decide +kernel
 
 private theorem chi_first_table : ∀ round : Fin 24, ∀ row : Fin 5,
@@ -132,7 +143,9 @@ private theorem chi_first_table : ∀ round : Fin 24, ∀ row : Fin 5,
     (slotIndices ⟨27 * round.val + 17 + 2 * row.val, by omega⟩)[3] =
       Controller.physicalLane (round.val + 1) ⟨row.val + 20, by omega⟩ ∧
     (slotIndices ⟨27 * round.val + 17 + 2 * row.val, by omega⟩)[4] = 25 ∧
-    (slotIndices ⟨27 * round.val + 17 + 2 * row.val, by omega⟩)[5] = 26 := by
+    (slotIndices ⟨27 * round.val + 17 + 2 * row.val, by omega⟩)[5] = 26 ∧
+    (slotIndices ⟨27 * round.val + 17 + 2 * row.val, by omega⟩).toList.Nodup := by
+  simp only [slotIndices, Controller.rows, of_fn_six]
   decide +kernel
 
 private theorem chi_second_table : ∀ round : Fin 24, ∀ row : Fin 5,
@@ -144,7 +157,9 @@ private theorem chi_second_table : ∀ round : Fin 24, ∀ row : Fin 5,
       Controller.physicalLane (round.val + 1) ⟨row.val + 20, by omega⟩ ∧
     (slotIndices ⟨27 * round.val + 18 + 2 * row.val, by omega⟩)[3] = 25 ∧
     (slotIndices ⟨27 * round.val + 18 + 2 * row.val, by omega⟩)[4] = 26 ∧
-    (slotIndices ⟨27 * round.val + 18 + 2 * row.val, by omega⟩)[5] = 27 := by
+    (slotIndices ⟨27 * round.val + 18 + 2 * row.val, by omega⟩)[5] = 27 ∧
+    (slotIndices ⟨27 * round.val + 18 + 2 * row.val, by omega⟩).toList.Nodup := by
+  simp only [slotIndices, Controller.rows, of_fn_six]
   decide +kernel
 
 /-! ### Iota calls (mode 0): column `column` of round `round` -/
@@ -164,7 +179,13 @@ theorem iota_slot_five : callSlot call 5 = ⟨25 + column, by omega⟩ := by
   obtain ⟨call, bound⟩ := call
   simp only at shape
   subst shape
-  exact Fin.ext (iota_table ⟨round, by omega⟩ ⟨column, small⟩ bound).2
+  exact Fin.ext (iota_table ⟨round, by omega⟩ ⟨column, small⟩ bound).2.1
+
+theorem iota_nodup : (slotIndices call).toList.Nodup := by
+  obtain ⟨call, bound⟩ := call
+  simp only at shape
+  subst shape
+  exact (iota_table ⟨round, by omega⟩ ⟨column, small⟩ bound).2.2
 
 theorem iota_control :
     scheduleControl ⟨call.val, by omega⟩ = ⟨0, ⟨column, small⟩, ⟨round, by omega⟩⟩ :=
@@ -182,7 +203,8 @@ theorem iota_step_lane (state : LaneState) {lane : Fin 25} {j : Nat} (position :
   obtain ⟨lane, bound⟩ := lane
   simp only at hlane
   subst hlane
-  rw [← iota_slot_lane shape small j position, micro_step_slot, iota_control shape small]
+  rw [← iota_slot_lane shape small j position, micro_step_slot (iota_nodup shape small),
+    iota_control shape small]
   simp only [microValue, iotaValue, dite_eq_ite, ↓reduceIte, call_reads_entry, position, Fin.isValue]
   have same : (column = 0 ∧ j = 0 ∧ 0 < round) ↔ (5 * column + j = 0 ∧ 0 < round) := by omega
   simp only [same]
@@ -207,7 +229,7 @@ theorem iota_step_parity (state : LaneState) :
     iota_slot_lane shape small 3 (by decide)
   have l4 : callSlot call 4 = physicalCell round ⟨5 * column + 4, by omega⟩ :=
     iota_slot_lane shape small 4 (by decide)
-  rw [← iota_slot_five shape small, micro_step_slot, iota_control shape small]
+  rw [← iota_slot_five shape small, micro_step_slot (iota_nodup shape small), iota_control shape small]
   simp only [microValue, iotaValue, dite_eq_ite, ↓reduceIte, call_reads_entry, Fin.isValue, l0, l1, l2, l3, l4,
     show ¬ (5 : Fin 6).val < 5 by decide, show (0 : Fin 6).val = 0 from rfl, true_and]
 
@@ -244,7 +266,13 @@ theorem theta_slot_five : callSlot call 5 = ⟨25 + (column + 4) % 5, by omega�
   obtain ⟨call, bound⟩ := call
   simp only at shape
   subst shape
-  exact Fin.ext (theta_table ⟨round, by omega⟩ ⟨column, small⟩).2
+  exact Fin.ext (theta_table ⟨round, by omega⟩ ⟨column, small⟩).2.1
+
+theorem theta_nodup : (slotIndices call).toList.Nodup := by
+  obtain ⟨call, bound⟩ := call
+  simp only at shape
+  subst shape
+  exact (theta_table ⟨round, by omega⟩ ⟨column, small⟩).2.2
 
 theorem theta_control :
     scheduleControl ⟨call.val, by omega⟩ = ⟨3, ⟨column, small⟩, ⟨round, by omega⟩⟩ :=
@@ -262,7 +290,8 @@ theorem theta_step_lane (state : LaneState) {lane : Fin 25} {j : Nat} (position 
   obtain ⟨lane, bound⟩ := lane
   simp only at hlane
   subst hlane
-  rw [← theta_slot_lane shape small j position, micro_step_slot, theta_control shape small]
+  rw [← theta_slot_lane shape small j position, micro_step_slot (theta_nodup shape small),
+    theta_control shape small]
   simp only [microValue, Fin.isValue, Fin.reduceEq, ↓reduceIte, position, call_reads_entry,
     theta_slot_five shape small]
 
@@ -270,7 +299,7 @@ theorem theta_step_lane (state : LaneState) {lane : Fin 25} {j : Nat} (position 
 theorem theta_step_kept (state : LaneState) (physical : Fin 31)
     (lanes : ∀ j (position : j < 5), physicalCell round ⟨5 * column + j, by omega⟩ ≠ physical) :
     microStep call state physical = state physical := by
-  apply micro_step_kept
+  apply micro_step_kept (theta_nodup shape small)
   intro ⟨j, bound⟩ same
   by_cases lane : j < 5
   · rw [theta_slot_lane shape small j lane] at same
@@ -301,7 +330,13 @@ theorem rho_slot_five : callSlot call 5 = ⟨25, by decide⟩ := by
   obtain ⟨call, bound⟩ := call
   simp only at shape
   subst shape
-  exact Fin.ext (rho_table ⟨round, by omega⟩ ⟨column, small⟩).2
+  exact Fin.ext (rho_table ⟨round, by omega⟩ ⟨column, small⟩).2.1
+
+theorem rho_nodup : (slotIndices call).toList.Nodup := by
+  obtain ⟨call, bound⟩ := call
+  simp only at shape
+  subst shape
+  exact (rho_table ⟨round, by omega⟩ ⟨column, small⟩).2.2
 
 theorem rho_control :
     scheduleControl ⟨call.val, by omega⟩ = ⟨4, ⟨column, small⟩, ⟨round, by omega⟩⟩ :=
@@ -319,7 +354,8 @@ theorem rho_step_lane (state : LaneState) {lane : Fin 25} {j : Nat} (position : 
   obtain ⟨lane, bound⟩ := lane
   simp only at hlane
   subst hlane
-  rw [← rho_slot_lane shape small j position, micro_step_slot, rho_control shape small]
+  rw [← rho_slot_lane shape small j position, micro_step_slot (rho_nodup shape small),
+    rho_control shape small]
   simp only [microValue, Fin.isValue, Fin.reduceEq, ↓reduceIte, position, dite_true, call_reads_entry,
     Fin.getElem_fin]
 
@@ -327,7 +363,7 @@ theorem rho_step_lane (state : LaneState) {lane : Fin 25} {j : Nat} (position : 
 theorem rho_step_kept (state : LaneState) (physical : Fin 31)
     (lanes : ∀ j (position : j < 5), physicalCell round ⟨5 * column + j, by omega⟩ ≠ physical) :
     microStep call state physical = state physical := by
-  apply micro_step_kept
+  apply micro_step_kept (rho_nodup shape small)
   intro ⟨j, bound⟩ same
   by_cases lane : j < 5
   · rw [rho_slot_lane shape small j lane] at same
@@ -375,8 +411,14 @@ theorem chi_first_slots :
   obtain ⟨call, bound⟩ := call
   simp only at shape
   subst shape
-  obtain ⟨zero, one, two, three, four, five⟩ := chi_first_table ⟨round, by omega⟩ row
+  obtain ⟨zero, one, two, three, four, five, -⟩ := chi_first_table ⟨round, by omega⟩ row
   exact ⟨Fin.ext zero, Fin.ext one, Fin.ext two, Fin.ext three, Fin.ext four, Fin.ext five⟩
+
+theorem chi_first_nodup : (slotIndices call).toList.Nodup := by
+  obtain ⟨call, bound⟩ := call
+  simp only at shape
+  subst shape
+  exact (chi_first_table ⟨round, by omega⟩ row).2.2.2.2.2.2
 
 theorem chi_first_control :
     scheduleControl ⟨call.val, by omega⟩ = ⟨5, row, ⟨round, by omega⟩⟩ :=
@@ -402,7 +444,7 @@ theorem chi_first_values (state : LaneState) :
   obtain ⟨s0, s1, s2, s3, s4, s5⟩ := chi_first_slots shape
   have value (j : Fin 6) : microStep call state (callSlot call j) =
       microValue ⟨5, row, ⟨round, by omega⟩⟩ (callReads call state) j := by
-    rw [micro_step_slot, chi_first_control shape]
+    rw [micro_step_slot (chi_first_nodup shape), chi_first_control shape]
   have v0 := value 0
   have v1 := value 1
   have v2 := value 2
@@ -442,8 +484,14 @@ theorem chi_second_slots :
   obtain ⟨call, bound⟩ := call
   simp only at shape
   subst shape
-  obtain ⟨zero, one, two, three, four, five⟩ := chi_second_table ⟨round, by omega⟩ row
+  obtain ⟨zero, one, two, three, four, five, -⟩ := chi_second_table ⟨round, by omega⟩ row
   exact ⟨Fin.ext zero, Fin.ext one, Fin.ext two, Fin.ext three, Fin.ext four, Fin.ext five⟩
+
+theorem chi_second_nodup : (slotIndices call).toList.Nodup := by
+  obtain ⟨call, bound⟩ := call
+  simp only at shape
+  subst shape
+  exact (chi_second_table ⟨round, by omega⟩ row).2.2.2.2.2.2
 
 theorem chi_second_control :
     scheduleControl ⟨call.val, by omega⟩ = ⟨6, row, ⟨round, by omega⟩⟩ :=
@@ -466,7 +514,7 @@ theorem chi_second_values (state : LaneState) :
   obtain ⟨s0, s1, s2, s3, s4, s5⟩ := chi_second_slots shape
   have value (j : Fin 6) : microStep call state (callSlot call j) =
       microValue ⟨6, row, ⟨round, by omega⟩⟩ (callReads call state) j := by
-    rw [micro_step_slot, chi_second_control shape]
+    rw [micro_step_slot (chi_second_nodup shape), chi_second_control shape]
   have v0 := value 0
   have v1 := value 1
   have v2 := value 2
@@ -482,7 +530,7 @@ theorem chi_second_kept (state : LaneState) (physical : Fin 31)
   obtain ⟨s0, s1, s2, s3, s4, s5⟩ := chi_second_slots shape
   have value (j : Fin 6) : microStep call state (callSlot call j) =
       microValue ⟨6, row, ⟨round, by omega⟩⟩ (callReads call state) j := by
-    rw [micro_step_slot, chi_second_control shape]
+    rw [micro_step_slot (chi_second_nodup shape), chi_second_control shape]
   have v3 := value 3
   have v4 := value 4
   have v5 := value 5
