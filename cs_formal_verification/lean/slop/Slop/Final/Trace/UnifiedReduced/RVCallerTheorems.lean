@@ -6,6 +6,7 @@ import Slop.UnifiedReduced.RVCaller.RequestHashWindows
 import Slop.UnifiedReduced.RVCaller.WindowProjection
 import Slop.UnifiedReduced.RVCaller.JointHashWindows
 import Slop.UnifiedReduced.RVCaller.MixedWindowProjection
+import Slop.UnifiedReduced.RVCaller.ControlPreparation
 
 namespace Airbender.UnifiedReduced
 
@@ -82,5 +83,27 @@ theorem Caller.rv_mixed_window_projection_soundness : Caller.RVMixedWindowProjec
     positive ordered afterInitial beforeTerminal duration
   exact Caller.Proofs.rv_mixed_projected_window hp clockInverse rotationInverse accepted inputs first last positive
     ordered afterInitial beforeTerminal duration
+
+/-- Public ADDI-from-x0/LUI decoding (`RV.decode` of the RV program table) and accepted native writes prepare the actual
+    control in the RV state at the prepared cut. -/
+theorem Caller.rv_control_preparation_soundness : Caller.RVControlPreparationSoundnessClaim := by
+  intro p _ hp clockInverse rotationInverse data program before ca oa cells cut register literal accepted inputs scope
+    nonzero aligned
+  exact Caller.Proofs.rv_control_preparation hp clockInverse rotationInverse accepted inputs scope nonzero aligned
+
+/-- Two prepared controls use the same actual RV states and intervening native history. -/
+theorem Caller.rv_control_preparation_window_soundness : Caller.RVControlPreparationWindowSoundnessClaim := by
+  intro p _ hp clockInverse rotationInverse data program before ca oa cells lower upper firstRegister lastRegister
+    firstLiteral lastLiteral accepted inputs firstScope lastScope firstNonzero lastNonzero first last ordered
+  exact Caller.Proofs.rv_control_preparation_window hp clockInverse rotationInverse accepted inputs firstScope lastScope
+    firstNonzero lastNonzero first last ordered
+
+/-- Public sequential RV code identifies a caller region; native matching derives its worker family, counts and
+    slots. -/
+theorem Caller.rv_program_window_schedule_soundness : Caller.RVProgramWindowScheduleSoundnessClaim := by
+  intro p _ hp clockInverse data program before ca oa family lower upper accepted publicProgram ordinaryProgram registry
+    region first last positive ordered afterInitial beforeTerminal
+  exact Caller.Proofs.rv_program_caller_window hp clockInverse accepted publicProgram ordinaryProgram registry region
+    first last positive ordered afterInitial beforeTerminal
 
 end Airbender.UnifiedReduced
