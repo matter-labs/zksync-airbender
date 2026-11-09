@@ -4,6 +4,9 @@ mod caps;
 mod inits_and_teardowns;
 mod proth120;
 
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) use proth120::evaluate_witness;
+
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::WhirOracleStorage;
 use execution_prover::messages::{
