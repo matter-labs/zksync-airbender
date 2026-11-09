@@ -8,7 +8,7 @@ pub(crate) use crate::forward::vm::desc::{
     SD_SINGLE_COLUMN, SD_VIRTUAL, SOURCE_WINDOW_COUNT,
 };
 pub const PR_FWD_VM_BUCKETS: u32 = 4;
-pub const PR_FWD_VM_CONST_CAP: usize = gpu_gkr_compiler::geometry::PR_FWD_VM_CONST_CAP;
+pub const PR_FWD_VM_CONST_CAP: usize = 64;
 pub(crate) const CONST_CAP: usize = PR_FWD_VM_CONST_CAP;
 
 #[repr(C)]

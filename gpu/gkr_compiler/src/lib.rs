@@ -3,7 +3,6 @@
 mod analysis;
 pub mod backward;
 mod forward;
-pub mod geometry;
 mod interval_pack;
 #[cfg(feature = "search")]
 mod search;
