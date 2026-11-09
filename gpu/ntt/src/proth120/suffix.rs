@@ -35,32 +35,14 @@ macro_rules! suffix_micro_kernel {
         cuda_kernel_declaration!($name(args: SuffixTileArgs, descriptor: TwiddleDescriptor,));
     };
 }
-suffix_micro_kernel!(ab_pr_dit_suffix_micro_6_1_kernel);
-suffix_micro_kernel!(ab_pr_dit_suffix_micro_6_2_kernel);
-suffix_micro_kernel!(ab_pr_dit_suffix_micro_6_3_kernel);
-suffix_micro_kernel!(ab_pr_dit_suffix_micro_6_4_kernel);
 suffix_micro_kernel!(ab_pr_dit_suffix_micro_7_1_kernel);
-suffix_micro_kernel!(ab_pr_dit_suffix_micro_7_2_kernel);
-suffix_micro_kernel!(ab_pr_dit_suffix_micro_7_3_kernel);
-suffix_micro_kernel!(ab_pr_dit_suffix_micro_7_4_kernel);
 suffix_micro_kernel!(ab_pr_dit_suffix_micro_8_1_kernel);
-suffix_micro_kernel!(ab_pr_dit_suffix_micro_8_2_kernel);
-suffix_micro_kernel!(ab_pr_dit_suffix_micro_8_3_kernel);
 suffix_micro_kernel!(ab_pr_dit_suffix_micro_8_4_kernel);
 
 fn suffix_micro_function(r: u32, log_v: u32) -> SuffixMicroFunction {
     SuffixMicroFunction(match (r, log_v) {
-        (6, 1) => ab_pr_dit_suffix_micro_6_1_kernel,
-        (6, 2) => ab_pr_dit_suffix_micro_6_2_kernel,
-        (6, 3) => ab_pr_dit_suffix_micro_6_3_kernel,
-        (6, 4) => ab_pr_dit_suffix_micro_6_4_kernel,
         (7, 1) => ab_pr_dit_suffix_micro_7_1_kernel,
-        (7, 2) => ab_pr_dit_suffix_micro_7_2_kernel,
-        (7, 3) => ab_pr_dit_suffix_micro_7_3_kernel,
-        (7, 4) => ab_pr_dit_suffix_micro_7_4_kernel,
         (8, 1) => ab_pr_dit_suffix_micro_8_1_kernel,
-        (8, 2) => ab_pr_dit_suffix_micro_8_2_kernel,
-        (8, 3) => ab_pr_dit_suffix_micro_8_3_kernel,
         (8, 4) => ab_pr_dit_suffix_micro_8_4_kernel,
         _ => panic!("Proth120 suffix: no micro kernel for r {r}, log_v {log_v}"),
     })
@@ -141,7 +123,7 @@ pub(crate) fn suffix_launch(
     cosets: u32,
 ) -> SuffixLaunch {
     assert!(
-        (6..=8).contains(&shape.r) && (1..=4).contains(&shape.log_v) && shape.log_v < shape.r,
+        matches!((shape.r, shape.log_v), (7, 1) | (8, 1) | (8, 4)),
         "Proth120 suffix: no micro kernel for r {}, log_v {}",
         shape.r,
         shape.log_v
