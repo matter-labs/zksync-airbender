@@ -16,6 +16,8 @@ pub mod proth120;
 pub(crate) mod upstream;
 
 #[cfg(test)]
+mod primitive_tests;
+#[cfg(test)]
 mod test_utils;
 
 #[cfg(test)]

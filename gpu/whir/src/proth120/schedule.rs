@@ -26,7 +26,7 @@ use super::state::{
 };
 use crate::upstream::{domain_generator_for_size, WhirSchedule};
 
-pub(crate) use crate::pow::query_words;
+use crate::pow::query_words;
 
 pub(crate) fn schedule_pow_and_query_indexes(
     seed: &mut DeviceSlice<u8>,

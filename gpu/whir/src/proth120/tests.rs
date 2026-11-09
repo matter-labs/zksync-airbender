@@ -1,3 +1,4 @@
+use crate::pow::query_words;
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
@@ -7,7 +8,6 @@ use gpu_prover_context::{ProverContext, ProverContextConfig};
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
 use prover::gkr::prover::gkr_backend::{accumulate_base_columns_into_scalar, BatchedBaseColumn};
 use prover::gkr::prover_config::ProofProfile;
-use prover::gkr::sumcheck::eq_poly::fill_eq_table_lsb_first_uninit;
 use prover::gkr::whir::{
     evaluate_monomial_form, fold_eq_poly, fold_evaluation_form, fold_monomial_form,
     special_three_point_eval,
@@ -31,7 +31,7 @@ use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube
 
 use super::commit::schedule_commit_intermediate;
 use super::schedule::{
-    query_words, schedule_delinearization, schedule_eq_update, schedule_pow_and_query_indexes,
+    schedule_delinearization, schedule_eq_update, schedule_pow_and_query_indexes,
 };
 use super::shape::{L1WhirShape, OracleShape};
 use super::state::*;
@@ -258,99 +258,30 @@ fn pr_accumulate_base_matches_cpu() {
 #[test]
 fn pr_eq_from_point_matches_cpu() {
     let ctx = context(6144, None);
-    let stream = ctx.get_exec_stream();
-    let mut rng = TestRng::new(0x7102);
     for log_n in [1, 8, 13, 14, 20, 26] {
-        let point = rng.fields(log_n as usize);
-        let point_dev = upload(&point, stream);
-        let mut state = L1WhirState::new(log_n, 0, &ctx).unwrap();
-        schedule_eq_from_point(&point_dev, &mut state, &ctx).unwrap();
-        let mut expected = Vec::<PR>::with_capacity(1 << log_n);
-        fill_eq_table_lsb_first_uninit(
-            &point,
-            &mut expected.spare_capacity_mut()[..1 << log_n],
-            &worker(),
-        );
-        unsafe {
-            expected.set_len(1 << log_n);
-        }
-        assert_fields(&download(&state.eq, stream), &expected);
+        crate::primitive_tests::eq_case::<PR>(log_n, &ctx);
     }
 }
 
 #[test]
 fn pr_fold_state_matches_cpu() {
     let ctx = context(256, None);
-    let stream = ctx.get_exec_stream();
-    let mut rng = TestRng::new(0x7103);
-    let mut monomials = rng.fields(1 << 12);
-    let mut evals = rng.fields(1 << 12);
-    let mut eq = rng.fields(1 << 12);
-    let mut state = L1WhirState::new(12, 0, &ctx).unwrap();
-    memory_copy_async(&mut state.monomials, &monomials, stream).unwrap();
-    memory_copy_async(&mut state.evals, &evals, stream).unwrap();
-    memory_copy_async(&mut state.eq, &eq, stream).unwrap();
-    for _ in 0..5 {
-        let challenge = rng.field();
-        let challenge_dev = upload(&[challenge], stream);
-        let mut wrong = monomials.clone();
-        let wrong_len = fold_evaluation_form::<PR, PR>(&mut wrong, &challenge, &worker()).len();
-        wrong.truncate(wrong_len);
-        let mut buffer = Vec::with_capacity(monomials.len() / 2);
-        fold_monomial_form(&mut monomials, &mut buffer, &challenge, &worker());
-        assert_ne!(
-            wrong, monomials,
-            "evaluation fold on monomials negative control"
-        );
-        let len = fold_evaluation_form::<PR, PR>(&mut evals, &challenge, &worker()).len();
-        evals.truncate(len);
-        let len = fold_eq_poly::<PR, PR>(&mut eq, &challenge, &worker()).len();
-        eq.truncate(len);
-        schedule_fold_state(&mut state, &challenge_dev, &ctx).unwrap();
-        assert_fields(&download(&state.monomials, stream), &monomials);
-        assert_fields(&download(&state.evals, stream), &evals);
-        assert_fields(&download(&state.eq, stream), &eq);
-    }
+    crate::primitive_tests::fold_case::<PR>(12, 5, &ctx);
 }
 
 #[test]
 fn pr_three_point_matches_cpu() {
     let ctx = context(256, None);
-    let stream = ctx.get_exec_stream();
-    let mut rng = TestRng::new(0x7104);
     for log_n in [1, 4, 9, 14, 20] {
-        let evals = rng.fields(1 << log_n);
-        let eq = rng.fields(1 << log_n);
-        let mut state = L1WhirState::new(log_n, 0, &ctx).unwrap();
-        memory_copy_async(&mut state.evals, &evals, stream).unwrap();
-        memory_copy_async(&mut state.eq, &eq, stream).unwrap();
-        schedule_three_point(&mut state, &ctx).unwrap();
-        let (a, b, mut half) = special_three_point_eval::<PR, PR>(&evals, &eq, &worker());
-        half.double();
-        half.double();
-        assert_fields(&download(&state.reduce_out, stream), &[a, b, half]);
+        crate::primitive_tests::three_point_case::<PR>(log_n, &ctx);
     }
 }
 
 #[test]
 fn pr_monomial_eval_matches_cpu() {
     let ctx = context(256, None);
-    let stream = ctx.get_exec_stream();
-    let mut rng = TestRng::new(0x7105);
     for log_n in [1, 4, 9, 14, 20] {
-        let monomials = rng.fields(1 << log_n);
-        let state = L1WhirState::new(log_n, 0, &ctx).unwrap();
-        let mut state = state;
-        memory_copy_async(&mut state.monomials, &monomials, stream).unwrap();
-        for point in [PR::ZERO, PR::ONE, rng.field()] {
-            let point_dev = upload(&[point], stream);
-            let mut out = upload(&[PR::ZERO], stream);
-            schedule_monomial_eval(&state, &point_dev, &mut out, &ctx).unwrap();
-            assert_fields(
-                &download(&out, stream),
-                &[evaluate_monomial_form(&monomials, &point, &worker())],
-            );
-        }
+        crate::primitive_tests::monomial_case::<PR>(log_n, &ctx);
     }
 }
 
@@ -1149,4 +1080,74 @@ fn pr_in_domain_symbolic_matches_dense() {
         .unwrap();
     run_symbolic_group(&mut state, &mut model, &mut seed, oracle1.log_v, &ctx);
     assert_eq!(state.current_len, 128);
+}
+
+impl crate::primitive_tests::PrimitiveField for PR {
+    type State = L1WhirState;
+    fn sample(seed: u32) -> Self {
+        TestRng::new(u64::from(seed)).field()
+    }
+    fn state(log_n: u32, context: &ProverContext) -> Self::State {
+        L1WhirState::new(log_n, 0, context).unwrap()
+    }
+    fn set_forms(
+        state: &mut Self::State,
+        monomials: &[Self],
+        evals: &[Self],
+        eq: &[Self],
+        context: &ProverContext,
+    ) {
+        let stream = context.get_exec_stream();
+        memory_copy_async(&mut state.monomials, monomials, stream).unwrap();
+        memory_copy_async(&mut state.evals, evals, stream).unwrap();
+        memory_copy_async(&mut state.eq, eq, stream).unwrap();
+        stream.synchronize().unwrap();
+    }
+    fn read_forms(
+        state: &Self::State,
+        context: &ProverContext,
+    ) -> (Vec<Self>, Vec<Self>, Vec<Self>) {
+        let stream = context.get_exec_stream();
+        (
+            download(&state.monomials, stream),
+            download(&state.evals, stream),
+            download(&state.eq, stream),
+        )
+    }
+    fn build_eq(state: &mut Self::State, point: &[Self], context: &ProverContext) -> Vec<Self> {
+        let stream = context.get_exec_stream();
+        let point = upload(point, stream);
+        schedule_eq_from_point(&point, state, context).unwrap();
+        download(&state.eq, stream)
+    }
+    fn fold(state: &mut Self::State, challenge: Self, context: &ProverContext) {
+        let old = (
+            state.monomials.as_ptr(),
+            state.evals.as_ptr(),
+            state.eq.as_ptr(),
+        );
+        let next = state.current_len / 2;
+        let challenge = upload(&[challenge], context.get_exec_stream());
+        schedule_fold_state(state, &challenge, context).unwrap();
+        assert_eq!(state.current_len, next);
+        assert_eq!(state.monomials.len(), next);
+        assert_eq!(state.evals.len(), next);
+        assert_eq!(state.eq.len(), next);
+        assert_ne!(old.0, state.monomials.as_ptr());
+        assert_ne!(old.1, state.evals.as_ptr());
+        assert_ne!(old.2, state.eq.as_ptr());
+    }
+    fn three_point(state: &mut Self::State, context: &ProverContext) -> [Self; 3] {
+        schedule_three_point(state, context).unwrap();
+        download(&state.reduce_out, context.get_exec_stream())
+            .try_into()
+            .unwrap()
+    }
+    fn monomial_eval(state: &mut Self::State, point: Self, context: &ProverContext) -> Self {
+        let stream = context.get_exec_stream();
+        let point = upload(&[point], stream);
+        let mut out = upload(&[PR::ZERO], stream);
+        schedule_monomial_eval(state, &point, &mut out, context).unwrap();
+        download(&out, stream)[0]
+    }
 }
