@@ -6,7 +6,6 @@ use worker::Worker;
 use super::Digest;
 use crate::upstream::{ColumnMajorMerkleTreeConstructor, Keccak256MerkleTreeWithCap, Proth120};
 
-mod gather_tests;
 mod merkle_tests;
 #[cfg(feature = "deterministic_pow")]
 mod pow_tests;
