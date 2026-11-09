@@ -105,7 +105,7 @@ The 30 s are CPU time on the reference machine, the Apple M3 Max (14 cores) this
 the gate compiles a pinned calibration file ([budget_calibration.lean](lean/scripts/budget_calibration.lean), Lean
 core only: kernel reduction, `omega`, `simp`; its sha256 is pinned in the script) and scales the limit by its CPU time
 here / there (`CALIBRATION_REFERENCE_S` = 5.5 s, the lowest of ~20 runs on the reference machine, which ranged
-5.4-6.8 s; lowest of three runs here; factor clamped to 0.5-4). A runner twice as slow per core gets 60 s. On the
+5.4-6.8 s; lowest of three runs here, run at once; factor clamped to 0.5-4). A runner twice as slow per core gets 60 s. On the
 reference machine itself (identified by OS, architecture, CPU model and core count) the factor is capped at 1.05:
 there it is 1 by definition, and load or thermal throttling inflated the measurement to as much as 1.23. The
 ledger keeps raw CPU times; the limit and the factor are printed and written at the end of `module-budget.tsv`.

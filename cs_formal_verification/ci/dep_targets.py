@@ -48,7 +48,38 @@ def find(mod: str, roots: list[Path]) -> Path | None:
     return None
 
 
+def cache_args() -> int:
+    """`--cache-args`: the modules of Mathlib's cache (Mathlib and the packages it ships) that our build imports
+    directly from outside Mathlib (our files, Clean, the Sail model). `lake exe cache get <these>` unpacks them and
+    their imports: what the build needs, not all of Mathlib (anything missed would be built from source)."""
+    ours = [ROOT / d for d in OURS]
+    deps = package_dirs()
+    shipped = ("Mathlib", "Batteries", "Aesop", "Qq", "ProofWidgets", "Plausible", "ImportGraph", "LeanSearchClient")
+    roots = [".".join(p.relative_to(r).with_suffix("").parts) for r in ours for p in r.rglob("*.lean")]
+    seen: set[str] = set()
+    out: set[str] = set()
+    todo = list(roots)
+    while todo:
+        m = todo.pop()
+        if m in seen:
+            continue
+        seen.add(m)
+        src = find(m, ours) or find(m, deps)
+        if src is None:
+            continue
+        for i in imports(src):
+            if i.split(".")[0] in shipped:
+                out.add(i)  # Mathlib's cache follows its imports itself
+            else:
+                todo.append(i)
+    print("\n".join(sorted(out)))
+    print(f"cache: {len(out)} modules imported from Mathlib's cache", file=sys.stderr)
+    return 0
+
+
 def main() -> int:
+    if sys.argv[1:] == ["--cache-args"]:
+        return cache_args()
     ours = [ROOT / d for d in OURS]
     deps = package_dirs()
     cfg = tomllib.loads((ROOT / "lakefile.toml").read_text())

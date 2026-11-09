@@ -50,6 +50,9 @@ echo "   docs/shared/lean-strategies.md 2). Table: lean/.lake/module-budget.tsv"
 python3 scripts/module_budget.py check || fail "module budget"
 
 echo "== 5. Review guides: every public claim theorem is audited, guide names and links resolve"
-python3 check_review.py
+# replay (CI pull requests): the Lean part is skipped when its inputs (guides, audit file, the claim modules' Lake input
+# hashes) equal those of the last passing check, recorded in the build directory; links and layers are always checked
+if [[ $audits == replay ]]; then python3 check_review.py --key .lake/build/review-pass.key --reuse
+else python3 check_review.py --key .lake/build/review-pass.key; fi
 
 echo "OK"

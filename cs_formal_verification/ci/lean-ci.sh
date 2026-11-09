@@ -83,11 +83,23 @@ step_sail_gen() {
 
 step_lean_sail() { "$FV/sail/fetch-lean-sail.sh"; }
 
-step_mathlib() { # up to three attempts: a retry fetches only the files a flaky transfer left missing
-  local i
+step_mathlib() {
+  # Mathlib's prebuilt files, only for the modules the build imports (ci/dep_targets.py --cache-args, ~1750 of 8908
+  # files: the cache tool adds their imports). Anything missed would be compiled from source by the build; lean-deps
+  # reports it. The cache tool binary is kept next to the downloaded archives (same cache key: the manifest), so a
+  # warm run does not rebuild it. Up to three attempts: a retry fetches only what a flaky transfer left missing.
+  cd "$LEAN"
+  local dir=${MATHLIB_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/mathlib} i args
+  local bin=$dir/cache-exe
   for i in 1 2 3; do
-    (cd "$LEAN" && lake exe cache get) && return 0
-    log "lake exe cache get failed (attempt $i)"; sleep 10
+    lake env true || { log "resolving the dependencies failed (attempt $i)"; sleep 10; continue; }
+    args=$(python3 "$CI_DIR/dep_targets.py" --cache-args)
+    if [[ -x $bin ]]; then
+      lake env "$bin" get $args && return 0
+    else
+      lake exe cache get $args && { mkdir -p "$dir"; cp .lake/packages/mathlib/.lake/build/bin/cache "$bin"; return 0; }
+    fi
+    log "Mathlib cache get failed (attempt $i)"; sleep 10
   done
   return 1
 }
@@ -99,6 +111,10 @@ step_lean_deps() { # the dependencies of the build (ci/dep_targets.py), built ap
   local rc=0
   xargs lake build < .lake/dep-targets.txt > .lake/dep-build.log 2>&1 || rc=$?
   grep -E '^(error|Build completed|Some required)' .lake/dep-build.log | tail -20 || true
+  local src
+  src=$(grep -cE 'Built (Mathlib|Batteries|Aesop|Qq|ProofWidgets|Plausible|ImportGraph|LeanSearchClient)[.A-Za-z0-9_]* \(' \
+    .lake/dep-build.log || true)
+  (( src == 0 )) || log "WARNING: $src modules of Mathlib's cache were compiled from source (missing from cache get)"
   return "$rc"
 }
 

@@ -159,18 +159,43 @@ def check_layers():
             pending.extend(path + [dependency] for dependency in graph.get(current, []))
 
 
+def inputs_key(modules):
+    """Everything the Lean part of the check reads: this script, the guides, the audit file, and Lake's input hash of
+    every module it imports (which covers their sources and all their imports)."""
+    import hashlib
+    import json
+    h = hashlib.sha256()
+    for path in (Path(__file__), *GUIDES, ROOT / "test/Checks/Axioms.lean"):
+        h.update(str(path.relative_to(ROOT.parent)).encode() + b"\0" + path.read_bytes() + b"\0")
+    for module in ["Checks.Axioms", *modules]:
+        trace = ROOT.joinpath(".lake/build/lib/lean", *module.split(".")).with_suffix(".trace")
+        h.update(module.encode() + b"\0" + json.loads(trace.read_text())["depHash"].encode() + b"\0")
+    return h.hexdigest()
+
+
 def main():
+    import sys
+    # --key FILE: record the inputs of a passing run; --reuse: skip the Lean part when FILE records these inputs
+    key_file = Path(sys.argv[sys.argv.index("--key") + 1]) if "--key" in sys.argv else None
+    reuse = "--reuse" in sys.argv
     modules = claim_modules()
     # Build first so the compiler inventory describes the current source tree.
     subprocess.run(["lake", "build", "Checks.Axioms", *modules], cwd=ROOT, check=True)
     references = guide_names()
-    output = inventory(modules, references)
-    missing = references - set(re.findall(r"^DOC_DECL (\S+)$", output, re.M))
-    if missing:
-        raise ValueError("Unresolved guide declarations: " + ", ".join(sorted(missing)))
-    count = check_theorems(output, ROOT / "test/Checks/Axioms.lean")
-    print(f"PASS {count} public claim theorems have explicit axiom audit roots")
-    print(f"PASS {len(references)} guide declaration names resolve in Lean")
+    key = inputs_key(modules) if key_file else None
+    if reuse and key_file and key_file.exists() and key_file.read_text().strip() == key:
+        print(f"PASS claim theorem audit roots and {len(references)} guide declaration names: inputs unchanged since "
+              f"the passing check recorded in {key_file.name}")
+    else:
+        output = inventory(modules, references)
+        missing = references - set(re.findall(r"^DOC_DECL (\S+)$", output, re.M))
+        if missing:
+            raise ValueError("Unresolved guide declarations: " + ", ".join(sorted(missing)))
+        count = check_theorems(output, ROOT / "test/Checks/Axioms.lean")
+        print(f"PASS {count} public claim theorems have explicit axiom audit roots")
+        print(f"PASS {len(references)} guide declaration names resolve in Lean")
+        if key_file:
+            key_file.write_text(key + "\n")
     print(f"PASS {check_links()} local guide links and heading anchors resolve")
     check_layers()
     print("PASS context/trace separation")

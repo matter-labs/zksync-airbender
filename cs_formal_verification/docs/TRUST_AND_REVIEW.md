@@ -133,7 +133,8 @@ see only the formula. See [the setup README](../lean/artifacts/setup/README.md).
 | build | Lake rebuilds what changed since the restored build of an earlier commit; unchanged modules are its `.olean` files | everything elaborated again (only the toolchain, Mathlib's published `.olean` files and the generated Sail model are restored) |
 | axiom audits | read from Lake's build log of the audit modules (`VERIFY_AUDITS=replay`): the messages recorded when those `.olean` files were built, the same trust as the files themselves | `lake env lean` elaborates each audit file again (`fresh`) |
 | every `#print axioms` answered, standard axioms only | yes | yes |
-| regressions, test executable, review check, JSON pins | yes | yes |
+| regressions, test executable, JSON pins, guide links | yes | yes |
+| review check's Lean inventory (audit roots, guide names) | skipped when its inputs (guides, audit file, Lake input hashes of the claim modules) equal those of a passing check recorded in the build | yes |
 | module budget | ledger of earlier measurements by input hash, plus the modules built now | every module measured in this run |
 | kernel replay (`leanchecker`: every constant of our modules re-added to the kernel) | no | yes |
 

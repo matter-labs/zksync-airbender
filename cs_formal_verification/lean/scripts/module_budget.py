@@ -292,13 +292,22 @@ def calibrate(lean: str, env: dict[str, str], tmp: Path) -> tuple[float, float]:
     import hashlib
     if hashlib.sha256(CALIBRATION.read_bytes()).hexdigest() != CALIBRATION_SHA256:
         raise RuntimeError(f"{CALIBRATION.name} changed: measure a new CALIBRATION_REFERENCE_S and pin its sha256")
-    best = float("inf")
-    for _ in range(3):
-        o = tmp / "calibration"
-        cpu, rc, out = run_timed([lean, str(CALIBRATION), "-o", f"{o}.olean", "-i", f"{o}.ilean", "-c", f"{o}.c"], env)
+    # the three runs at once (single-threaded elaboration; CPU time, not wall time, is what counts)
+    results: list[tuple[float, int, str]] = []
+
+    def one(k: int) -> None:
+        o = tmp / f"calibration{k}"
+        results.append(run_timed([lean, str(CALIBRATION), "-o", f"{o}.olean", "-i", f"{o}.ilean", "-c", f"{o}.c"], env))
+
+    ths = [threading.Thread(target=one, args=(k,)) for k in range(3)]
+    for t in ths:
+        t.start()
+    for t in ths:
+        t.join()
+    for cpu, rc, out in results:
         if rc != 0:
             raise RuntimeError(f"calibration failed to compile:\n{out[-2000:]}")
-        best = min(best, cpu)
+    best = min(cpu for cpu, _, _ in results)
     lo, hi = CALIBRATION_CLAMP
     if machine_id() == CALIBRATION_REFERENCE_ID:
         hi = CALIBRATION_REFERENCE_CAP
