@@ -22,16 +22,13 @@ use crate::backward::window::coefficient_bank::{
 use crate::proth120::programs::GkrProgramsPr;
 use crate::upstream::{Field, PrimeField, PR};
 
-pub(crate) const PR_COEFF_PLAN_DIRECT: u32 = 0;
-pub(crate) const PR_COEFF_PLAN_SCALED: u32 = 1;
 pub(crate) const PR_COEFF_CHALLENGES: usize = 9;
 pub(crate) const PR_COEFF_CHALLENGE_ABSENT: u8 = 0xff;
-pub(crate) const PR_COEFF_NO_SCALAR: u32 = u32::MAX;
 #[cfg(test)]
 pub(crate) const PR_EVAL_COEFFICIENTS_ARGUMENT_BYTES: usize = size_of::<CoeffFillDescPr>();
 const PR_COEFF_FILL_BLOCK_THREADS: u32 = 128;
 const PR_COEFF_FILL_WARPS: u32 = 4;
-const PR_COEFF_RECIPE_WORDS: usize = 4;
+const PR_COEFF_RECIPE_WORDS: usize = 2;
 const PR_COEFF_MONOMIAL_WORDS: usize = 2;
 
 #[repr(C)]
@@ -39,8 +36,6 @@ const PR_COEFF_MONOMIAL_WORDS: usize = 2;
 pub(crate) struct CoeffRecipePr {
     pub monomial_offset: u32,
     pub monomial_count: u32,
-    pub kind: u32,
-    pub scalar_index: u32,
 }
 
 #[repr(C)]
@@ -102,12 +97,7 @@ impl CoeffMonomialPr {
 
 impl CoeffRecipePr {
     fn words(&self) -> [u32; PR_COEFF_RECIPE_WORDS] {
-        [
-            self.monomial_offset,
-            self.monomial_count,
-            self.kind,
-            self.scalar_index,
-        ]
+        [self.monomial_offset, self.monomial_count]
     }
 }
 
@@ -117,7 +107,6 @@ pub(crate) struct CoeffFillDescPr {
     pub recipes: *const CoeffRecipePr,
     pub monomials: *const CoeffMonomialPr,
     pub monomial_coeffs: *const PR,
-    pub scalars: *const PR,
     pub challenges: *const PR,
     pub claim_batching: *const PR,
     pub coefficients: *mut PR,
@@ -127,24 +116,21 @@ pub(crate) struct CoeffFillDescPr {
 
 const _: () = {
     assert!(size_of::<PR>() == 16);
-    assert!(size_of::<CoeffRecipePr>() == 16 && align_of::<CoeffRecipePr>() == 4);
+    assert!(size_of::<CoeffRecipePr>() == 8 && align_of::<CoeffRecipePr>() == 4);
     assert!(offset_of!(CoeffRecipePr, monomial_count) == 4);
-    assert!(offset_of!(CoeffRecipePr, kind) == 8);
-    assert!(offset_of!(CoeffRecipePr, scalar_index) == 12);
     assert!(size_of::<CoeffMonomialPr>() == 8 && align_of::<CoeffMonomialPr>() == 2);
     assert!(offset_of!(CoeffMonomialPr, challenge_idx_0) == 2);
     assert!(offset_of!(CoeffMonomialPr, challenge_idx_1) == 3);
     assert!(offset_of!(CoeffMonomialPr, power_0) == 4);
     assert!(offset_of!(CoeffMonomialPr, power_1) == 5);
-    assert!(size_of::<CoeffFillDescPr>() == 64 && align_of::<CoeffFillDescPr>() == 8);
+    assert!(size_of::<CoeffFillDescPr>() == 56 && align_of::<CoeffFillDescPr>() == 8);
     assert!(offset_of!(CoeffFillDescPr, monomials) == 8);
     assert!(offset_of!(CoeffFillDescPr, monomial_coeffs) == 16);
-    assert!(offset_of!(CoeffFillDescPr, scalars) == 24);
-    assert!(offset_of!(CoeffFillDescPr, challenges) == 32);
-    assert!(offset_of!(CoeffFillDescPr, claim_batching) == 40);
-    assert!(offset_of!(CoeffFillDescPr, coefficients) == 48);
-    assert!(offset_of!(CoeffFillDescPr, recipe_first) == 56);
-    assert!(offset_of!(CoeffFillDescPr, recipe_count) == 60);
+    assert!(offset_of!(CoeffFillDescPr, challenges) == 24);
+    assert!(offset_of!(CoeffFillDescPr, claim_batching) == 32);
+    assert!(offset_of!(CoeffFillDescPr, coefficients) == 40);
+    assert!(offset_of!(CoeffFillDescPr, recipe_first) == 48);
+    assert!(offset_of!(CoeffFillDescPr, recipe_count) == 52);
     assert!(PR_COEFF_RECIPE_WORDS * size_of::<u32>() == size_of::<CoeffRecipePr>());
     assert!(PR_COEFF_MONOMIAL_WORDS * size_of::<u32>() == size_of::<CoeffMonomialPr>());
     assert!(BWD_COEFF_CHALLENGE_CLAIM_BATCHING as usize == PR_COEFF_CHALLENGES);
@@ -175,7 +161,6 @@ pub(crate) struct CoefficientTablesHostPr {
     pub recipes: Vec<CoeffRecipePr>,
     pub monomials: Vec<CoeffMonomialPr>,
     pub monomial_coeffs: Vec<PR>,
-    pub scalars: Vec<PR>,
     pub immediates: Vec<PR>,
     pub layers: Vec<CoefficientLayerRangesPr>,
 }
@@ -305,21 +290,15 @@ impl CoefficientTablesHostPr {
             let recipe_first = tables.recipes.len();
             tables.push_literals();
             for (index, plan) in window.coefficient_plans.iter().enumerate() {
-                let (recipe, scalar) = match plan {
-                    WindowCoefficientPlan::Direct(recipe) => (recipe, None),
-                    WindowCoefficientPlan::Scaled { recipe, scalar } => {
-                        (recipe, Some(PR::from_u128_with_reduction(*scalar)))
-                    }
-                    WindowCoefficientPlan::LinearBasis { .. } => panic!(
-                        "Proth120 R0 layer {layer} plan {index} is an unsupported LinearBasis plan"
-                    ),
+                let WindowCoefficientPlan::Direct(recipe) = plan else {
+                    panic!("Proth120 R0 layer {layer} plan {index} must be Direct");
                 };
-                tables.push_recipe(recipe, index, scalar, top_bits, layer, keep_zeros);
+                tables.push_recipe(recipe, index, top_bits, layer, keep_zeros);
             }
             let r0_len = tables.recipes.len() - recipe_first;
             tables.push_literals();
             for (index, recipe) in continuation.coefficients.iter().enumerate() {
-                tables.push_recipe(recipe, index, None, top_bits, layer, keep_zeros);
+                tables.push_recipe(recipe, index, top_bits, layer, keep_zeros);
             }
             let continuation_len = tables.recipes.len() - recipe_first - r0_len;
             assert!(
@@ -345,7 +324,7 @@ impl CoefficientTablesHostPr {
             let value = literal
                 .literal::<PR>()
                 .expect("Proth120 reserved coefficient literal");
-            self.push_monomials(&[(value, CoeffMonomialPr::default())], None);
+            self.push_monomials(&[(value, CoeffMonomialPr::default())]);
         }
     }
 
@@ -353,29 +332,18 @@ impl CoefficientTablesHostPr {
         &mut self,
         recipe: &NormalizedCoefficientRecipe,
         index: usize,
-        scalar: Option<PR>,
         top_bits: &[u32],
         _layer: usize,
         keep_zeros: bool,
     ) {
         let translated = translate_recipe(recipe, index, top_bits, keep_zeros);
-        self.push_monomials(&translated, scalar);
+        self.push_monomials(&translated);
     }
 
-    pub(crate) fn push_monomials(
-        &mut self,
-        monomials: &[(PR, CoeffMonomialPr)],
-        scalar: Option<PR>,
-    ) {
+    pub(crate) fn push_monomials(&mut self, monomials: &[(PR, CoeffMonomialPr)]) {
         let offset = u32::try_from(self.monomials.len())
             .expect("Proth120 coefficient monomial table exceeds u32");
-        let (kind, scalar_index) = match scalar {
-            Some(value) => {
-                self.scalars.push(value);
-                (PR_COEFF_PLAN_SCALED, (self.scalars.len() - 1) as u32)
-            }
-            None => (PR_COEFF_PLAN_DIRECT, PR_COEFF_NO_SCALAR),
-        };
+
         for (coeff, monomial) in monomials {
             self.monomial_coeffs.push(*coeff);
             self.monomials.push(*monomial);
@@ -383,8 +351,6 @@ impl CoefficientTablesHostPr {
         self.recipes.push(CoeffRecipePr {
             monomial_offset: offset,
             monomial_count: monomials.len() as u32,
-            kind,
-            scalar_index,
         });
     }
 
@@ -407,13 +373,6 @@ impl CoefficientTablesHostPr {
                 "Proth120 coefficient recipe {index} is not contiguous"
             );
             next += recipe.monomial_count;
-            match recipe.kind {
-                PR_COEFF_PLAN_DIRECT => assert_eq!(recipe.scalar_index, PR_COEFF_NO_SCALAR),
-                PR_COEFF_PLAN_SCALED => {
-                    assert!((recipe.scalar_index as usize) < self.scalars.len())
-                }
-                kind => panic!("Proth120 coefficient recipe {index} has unknown kind {kind}"),
-            }
         }
         assert_eq!(next as usize, self.monomials.len());
         for monomial in &self.monomials {
@@ -438,11 +397,8 @@ impl CoefficientTablesHostPr {
     }
 
     fn values(&self) -> Vec<PR> {
-        let mut values = Vec::with_capacity(
-            self.monomial_coeffs.len() + self.scalars.len() + self.immediates.len(),
-        );
+        let mut values = Vec::with_capacity(self.monomial_coeffs.len() + self.immediates.len());
         values.extend_from_slice(&self.monomial_coeffs);
-        values.extend_from_slice(&self.scalars);
         values.extend_from_slice(&self.immediates);
         values
     }
@@ -466,7 +422,6 @@ pub(crate) struct CoefficientTablesPr {
     values: DeviceAllocation<PR>,
     index: DeviceAllocation<u32>,
     recipe_count: usize,
-    scalar_base: usize,
     immediate_base: usize,
     layers: Vec<CoefficientLayerRangesPr>,
 }
@@ -487,8 +442,7 @@ fn allocate_coefficient_tables_pr(
         values,
         index,
         recipe_count: host.recipes.len(),
-        scalar_base: host.monomial_coeffs.len(),
-        immediate_base: host.monomial_coeffs.len() + host.scalars.len(),
+        immediate_base: host.monomial_coeffs.len(),
         layers: host.layers.clone(),
     };
     Ok((tables, (values_host, index_host)))
@@ -714,7 +668,6 @@ pub(crate) fn schedule_coefficient_range_fill_pr(
         recipes: tables.index.as_ptr().cast(),
         monomials: monomials.cast(),
         monomial_coeffs: tables.values.as_ptr(),
-        scalars: unsafe { tables.values.as_ptr().add(tables.scalar_base) },
         challenges,
         claim_batching,
         coefficients,

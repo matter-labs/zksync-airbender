@@ -28,8 +28,6 @@ EXTERN __launch_bounds__(PR_COEFF_FILL_BLOCK_THREADS) __global__
   }
   acc = gkr_trace_holder_partials_warp_reduce_sum(acc);
   if (lane == 0) {
-    if (recipe.kind == PR_COEFF_PLAN_SCALED)
-      acc = pr::mul(acc, desc.scalars[recipe.scalar_index]);
     desc.coefficients[local] = acc;
   }
 }
