@@ -26,7 +26,7 @@ use gpu_trace::trace::packed::PackedCommitConfig;
 use gpu_trace::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use prover::gkr::prover::transcript_utils::draw_random_field_els;
 use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
-use prover::gkr::prover_config::example_configs::l1_wrap_2p21::EXPLICIT_OUTPUT_LOG2;
+use prover::gkr::prover_config::example_configs::l1_wrap::EXPLICIT_OUTPUT_LOG2;
 use prover::transcript::{Keccak256Transcript, Transcript};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
