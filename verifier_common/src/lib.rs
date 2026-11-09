@@ -403,7 +403,7 @@ pub fn verify_impl<
         &mut ts,
         gkr_output.whir_batching_challenge,
         gkr_output.base_layer_claims.as_slice(),
-        &gkr_output.evaluation_point[..gkr_output.evaluation_point_len],
+        gkr_output.evaluation_point.as_slice(),
         nd_source,
     )?;
 

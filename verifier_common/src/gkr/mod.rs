@@ -63,8 +63,8 @@ pub mod flatten;
 
 #[derive(Clone, Debug)]
 pub struct LayerState<E: Field, const ROUNDS: usize, const ADDRS: usize> {
-    pub prev_point: [E; ROUNDS],
-    pub prev_point_len: usize,
+    /// The current claim point; its length is the number of coordinates written so far.
+    pub prev_point: LazyVec<E, ROUNDS>,
     pub prev_claims: LazyVec<E, ADDRS>,
     pub batching_challenge: E,
 }
@@ -262,8 +262,7 @@ pub fn make_initial_transcript<
 }
 
 pub struct GKRVerifierOutput<E: Field, const ROUNDS: usize, const ADDRS: usize> {
-    pub evaluation_point: [E; ROUNDS],
-    pub evaluation_point_len: usize,
+    pub evaluation_point: LazyVec<E, ROUNDS>,
     pub permutation_read_product: E,
     pub permutation_write_product: E,
     pub inits_and_teardowns_read_product: E,
