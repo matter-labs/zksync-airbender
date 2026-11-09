@@ -1,5 +1,48 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Observed initialization endpoints and complete window component
+
+[The initialization component](Airbender/Review/Trace/Families/ReducedMachine/InitializationComponentTheorems.lean)
+joins actual public initialization endpoints, all ten scalar logical memberships,
+all ordinary initialization padding and native window checks to the same complete
+inactive MAIN/caller/decoder/scalar observation. Endpoint values are constructed
+from the actual first and N-2 records, including all six raw fields. Reserved N-1
+is excluded from this public endpoint. No expected endpoint, seed, lookup, count,
+activity, matching, ledger, history or result is a premise.
+
+The existing scalar constructor is exposed at its original concrete witness by
+a pointwise helper; its calculation assembly is unchanged and its old existential
+theorem and statement remain. Actual four body pairs and initialization address
+queries are derived zero, so membership in the actual public ordinary scalar table
+is derived for every one of the ten queries on every ordinary row. This does not
+extract general lookup membership from rational equations or cryptographic sums.
+Idempotence of the existing public setup constructor is proved generically, with
+no transfer from arbitrary setup observations.
+
+All twelve native endpoint equations hold on the constructed public values. Their
+zero values are derived from the actual original rows. The existing boundary and
+sorting theorem derives padding at every ordinary initialization record. The
+native parser and zero-window fallback retain all four raw teardown fields.
+Every component and adjacent window is checked for any finite indexed repetition
+of this same complete chunk, retaining duplicate positions. This is the window
+component relation, not verifier counters, a full repeated proof batch or global
+acceptance. All22 controls pass, including reserved-row exclusion and rejection
+of corrupted raw endpoint/fallback timestamps.
+
+Full memory/scalar source equations, genuine caller/decoder/scalar polynomials,
+nonzero caller claim, public setups and every prior result remain. Scalar gamma0
+challenge-dependent multiplicity retains its stated source-reference scope; no
+honest frequency-oracle/challenge-timing/transcript refinement is added. The old
+nonpole fixture and primitive-domain conditions remain explicit. Complete global
+memory/delegation, nonempty workers, physical caller activity, larger-batch matching,
+scheduled hash/original CSR-NDstream-MOP-worker Sail, protocol/padding/terminal/
+init-teardown, physical refinement, completeness and parity remain open. This is
+not a NONEMPTY global source/worker/physical witness, a defect or an absence-all-
+other-enforcement proof. All inactive requests/poles/ports/raw times/OLDREAD/
+refresh/aliases/unmasked writes/x0 and the >=257 alternative remain. Native/v3/
+dependency pins, artifacts and FINDINGS are unchanged; no production fix occurs.
+
+
 ## Complete scalar table on the inactive native MAIN component
 
 [The scalar completion](Airbender/Review/Trace/Families/ReducedMachine/ScalarTableCompletionTheorems.lean)

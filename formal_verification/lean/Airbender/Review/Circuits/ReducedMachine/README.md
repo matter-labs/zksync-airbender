@@ -1351,3 +1351,11 @@ public setup, reserved normalization and a genuine difference polynomial to the
 same inactive MAIN/caller/decoder component. All scalar challenge branches and
 zero-multiplicity poles remain. Honest frequency-oracle/transcript refinement,
 global source/worker acceptance and physical caller activity remain open.
+
+## Observed initialization component
+
+[Initialization endpoints and windows](../../Trace/Families/ReducedMachine/InitializationComponentTheorems.lean) share the complete inactive
+MAIN/caller/decoder/scalar source. All ten logical scalar memberships, actual
+first/N-2 public records, ordinary padding and every indexed repeated window are
+derived. Verifier counters, global memory/delegation, nonempty workers and
+physical refinement remain open; duplicate positions and raw fields remain.

@@ -20708,6 +20708,104 @@
       "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
       "backport_reuse_path": "Tests/NativeDecoderTableCompletion.lean",
       "backport_reuse_sha256": "85c8a46640794d5d9182334dc35dc7dd58c56b3b6f795ed3694a51d60f6b1b9c"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeScalarTableCompletion.lean",
+      "change": "Connect actual public initialization endpoints/window components and DERIVED all-ten logical scalar memberships/padding to SAME complete inactive MAIN-caller-decoder-scalar source. Expose existing original fixture pointwise with unchanged calculations and old existential theorem statement retained. Generic public-setup constructor idempotence; endpoints read actual first/N-2 six-field records, reserved N-1 excluded. Native zero-window fallback/all finite indexed copies retain duplicates/ALLraw teardown fields; no expected values/activity/count/lookup/matching/ledger/history/result premise. Not verifier counters/global source-worker acceptance/general physical extraction/honest oracle/transcript/parity. No pin/dependency/artifact/production/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "12b8823b04782587efba7e42cbc8ad8e8776ca29",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeScalarTableCompletion.lean",
+      "backport_reuse_sha256": "3ddd1f27f234eea5ed53bb58e1fa0e21e940910dda4256494d9106140fb1f179"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/InitializationComponent.lean",
+      "change": "Connect actual public initialization endpoints/window components and DERIVED all-ten logical scalar memberships/padding to SAME complete inactive MAIN-caller-decoder-scalar source. Expose existing original fixture pointwise with unchanged calculations and old existential theorem statement retained. Generic public-setup constructor idempotence; endpoints read actual first/N-2 six-field records, reserved N-1 excluded. Native zero-window fallback/all finite indexed copies retain duplicates/ALLraw teardown fields; no expected values/activity/count/lookup/matching/ledger/history/result premise. Not verifier counters/global source-worker acceptance/general physical extraction/honest oracle/transcript/parity. No pin/dependency/artifact/production/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "12b8823b04782587efba7e42cbc8ad8e8776ca29",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ScalarTableCompletion.lean",
+      "backport_reuse_sha256": "1248845abc5b1d4604c7ba80bae02aee92d1a7789177212e25ad3559c01f69f2"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/InitializationComponent.lean",
+      "change": "Connect actual public initialization endpoints/window components and DERIVED all-ten logical scalar memberships/padding to SAME complete inactive MAIN-caller-decoder-scalar source. Expose existing original fixture pointwise with unchanged calculations and old existential theorem statement retained. Generic public-setup constructor idempotence; endpoints read actual first/N-2 six-field records, reserved N-1 excluded. Native zero-window fallback/all finite indexed copies retain duplicates/ALLraw teardown fields; no expected values/activity/count/lookup/matching/ledger/history/result premise. Not verifier counters/global source-worker acceptance/general physical extraction/honest oracle/transcript/parity. No pin/dependency/artifact/production/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "12b8823b04782587efba7e42cbc8ad8e8776ca29",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/InitializationBoundary.lean",
+      "backport_reuse_sha256": "74a3351ddb9387244a56e70638ba717081bc24d46d664659532a826eee644740"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/InitializationComponent.lean",
+      "change": "Connect actual public initialization endpoints/window components and DERIVED all-ten logical scalar memberships/padding to SAME complete inactive MAIN-caller-decoder-scalar source. Expose existing original fixture pointwise with unchanged calculations and old existential theorem statement retained. Generic public-setup constructor idempotence; endpoints read actual first/N-2 six-field records, reserved N-1 excluded. Native zero-window fallback/all finite indexed copies retain duplicates/ALLraw teardown fields; no expected values/activity/count/lookup/matching/ledger/history/result premise. Not verifier counters/global source-worker acceptance/general physical extraction/honest oracle/transcript/parity. No pin/dependency/artifact/production/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "12b8823b04782587efba7e42cbc8ad8e8776ca29",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/InitializationWindow.lean",
+      "backport_reuse_sha256": "088fe0dbe7df72bcb1deb4e7c249f1bd572f87d75e8b272cd1659e59082eac7e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeInitializationComponent.lean",
+      "change": "Connect actual public initialization endpoints/window components and DERIVED all-ten logical scalar memberships/padding to SAME complete inactive MAIN-caller-decoder-scalar source. Expose existing original fixture pointwise with unchanged calculations and old existential theorem statement retained. Generic public-setup constructor idempotence; endpoints read actual first/N-2 six-field records, reserved N-1 excluded. Native zero-window fallback/all finite indexed copies retain duplicates/ALLraw teardown fields; no expected values/activity/count/lookup/matching/ledger/history/result premise. Not verifier counters/global source-worker acceptance/general physical extraction/honest oracle/transcript/parity. No pin/dependency/artifact/production/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "12b8823b04782587efba7e42cbc8ad8e8776ca29",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeScalarTableCompletion.lean",
+      "backport_reuse_sha256": "3ddd1f27f234eea5ed53bb58e1fa0e21e940910dda4256494d9106140fb1f179"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeInitializationComponent.lean",
+      "change": "Connect actual public initialization endpoints/window components and DERIVED all-ten logical scalar memberships/padding to SAME complete inactive MAIN-caller-decoder-scalar source. Expose existing original fixture pointwise with unchanged calculations and old existential theorem statement retained. Generic public-setup constructor idempotence; endpoints read actual first/N-2 six-field records, reserved N-1 excluded. Native zero-window fallback/all finite indexed copies retain duplicates/ALLraw teardown fields; no expected values/activity/count/lookup/matching/ledger/history/result premise. Not verifier counters/global source-worker acceptance/general physical extraction/honest oracle/transcript/parity. No pin/dependency/artifact/production/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "12b8823b04782587efba7e42cbc8ad8e8776ca29",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeScalarPairs.lean",
+      "backport_reuse_sha256": "bf9332f1d348d30b262a9d1c513d74df344f8184bfa53d3ae73197e87ae7cdd7"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeInitializationComponent.lean",
+      "change": "Connect actual public initialization endpoints/window components and DERIVED all-ten logical scalar memberships/padding to SAME complete inactive MAIN-caller-decoder-scalar source. Expose existing original fixture pointwise with unchanged calculations and old existential theorem statement retained. Generic public-setup constructor idempotence; endpoints read actual first/N-2 six-field records, reserved N-1 excluded. Native zero-window fallback/all finite indexed copies retain duplicates/ALLraw teardown fields; no expected values/activity/count/lookup/matching/ledger/history/result premise. Not verifier counters/global source-worker acceptance/general physical extraction/honest oracle/transcript/parity. No pin/dependency/artifact/production/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "12b8823b04782587efba7e42cbc8ad8e8776ca29",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeScalar16Lookups.lean",
+      "backport_reuse_sha256": "e218fcaa043aff59016364a02aaf7925529e74c74ea190e3d441e869f02e8304"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeInitializationComponent.lean",
+      "change": "Connect actual public initialization endpoints/window components and DERIVED all-ten logical scalar memberships/padding to SAME complete inactive MAIN-caller-decoder-scalar source. Expose existing original fixture pointwise with unchanged calculations and old existential theorem statement retained. Generic public-setup constructor idempotence; endpoints read actual first/N-2 six-field records, reserved N-1 excluded. Native zero-window fallback/all finite indexed copies retain duplicates/ALLraw teardown fields; no expected values/activity/count/lookup/matching/ledger/history/result premise. Not verifier counters/global source-worker acceptance/general physical extraction/honest oracle/transcript/parity. No pin/dependency/artifact/production/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "12b8823b04782587efba7e42cbc8ad8e8776ca29",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeInitializationBoundary.lean",
+      "backport_reuse_sha256": "c0789d375c2b142ca6fd63f6f1730484fd19b8b8170dbc51f1ac93b0991a4c1b"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeInitializationComponent.lean",
+      "change": "Connect actual public initialization endpoints/window components and DERIVED all-ten logical scalar memberships/padding to SAME complete inactive MAIN-caller-decoder-scalar source. Expose existing original fixture pointwise with unchanged calculations and old existential theorem statement retained. Generic public-setup constructor idempotence; endpoints read actual first/N-2 six-field records, reserved N-1 excluded. Native zero-window fallback/all finite indexed copies retain duplicates/ALLraw teardown fields; no expected values/activity/count/lookup/matching/ledger/history/result premise. Not verifier counters/global source-worker acceptance/general physical extraction/honest oracle/transcript/parity. No pin/dependency/artifact/production/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "12b8823b04782587efba7e42cbc8ad8e8776ca29",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeInitializationWindow.lean",
+      "backport_reuse_sha256": "df2f845aac4f975402ca3433fbac1d28a257a0a89d4b6c9c2e6b8901a1a36007"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeInitializationComponent.lean",
+      "change": "Connect actual public initialization endpoints/window components and DERIVED all-ten logical scalar memberships/padding to SAME complete inactive MAIN-caller-decoder-scalar source. Expose existing original fixture pointwise with unchanged calculations and old existential theorem statement retained. Generic public-setup constructor idempotence; endpoints read actual first/N-2 six-field records, reserved N-1 excluded. Native zero-window fallback/all finite indexed copies retain duplicates/ALLraw teardown fields; no expected values/activity/count/lookup/matching/ledger/history/result premise. Not verifier counters/global source-worker acceptance/general physical extraction/honest oracle/transcript/parity. No pin/dependency/artifact/production/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "12b8823b04782587efba7e42cbc8ad8e8776ca29",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativePhysicalScalar16Setup.lean",
+      "backport_reuse_sha256": "bfbd03a27e32b1e88dee11e487cddcd60750907a19a75de342f28fdc12db81da"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/InitializationComponentTheorems.lean",
+      "change": "Connect actual public initialization endpoints/window components and DERIVED all-ten logical scalar memberships/padding to SAME complete inactive MAIN-caller-decoder-scalar source. Expose existing original fixture pointwise with unchanged calculations and old existential theorem statement retained. Generic public-setup constructor idempotence; endpoints read actual first/N-2 six-field records, reserved N-1 excluded. Native zero-window fallback/all finite indexed copies retain duplicates/ALLraw teardown fields; no expected values/activity/count/lookup/matching/ledger/history/result premise. Not verifier counters/global source-worker acceptance/general physical extraction/honest oracle/transcript/parity. No pin/dependency/artifact/production/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "12b8823b04782587efba7e42cbc8ad8e8776ca29",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ScalarTableCompletionTheorems.lean",
+      "backport_reuse_sha256": "331e74387d9640cb133e7582654e9ea40958662aa5a28ec978f8a6995ee7ea70"
+    },
+    {
+      "path": "Tests/NativeInitializationComponent.lean",
+      "change": "Connect actual public initialization endpoints/window components and DERIVED all-ten logical scalar memberships/padding to SAME complete inactive MAIN-caller-decoder-scalar source. Expose existing original fixture pointwise with unchanged calculations and old existential theorem statement retained. Generic public-setup constructor idempotence; endpoints read actual first/N-2 six-field records, reserved N-1 excluded. Native zero-window fallback/all finite indexed copies retain duplicates/ALLraw teardown fields; no expected values/activity/count/lookup/matching/ledger/history/result premise. Not verifier counters/global source-worker acceptance/general physical extraction/honest oracle/transcript/parity. No pin/dependency/artifact/production/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "12b8823b04782587efba7e42cbc8ad8e8776ca29",
+      "backport_reuse_path": "Tests/NativeScalarTableCompletion.lean",
+      "backport_reuse_sha256": "829232293362d35f3ef8a402cdbfcc51ab6a468f8663be5c37c5820f2e1a3d69"
+    },
+    {
+      "path": "Tests/NativeInitializationComponent.lean",
+      "change": "Connect actual public initialization endpoints/window components and DERIVED all-ten logical scalar memberships/padding to SAME complete inactive MAIN-caller-decoder-scalar source. Expose existing original fixture pointwise with unchanged calculations and old existential theorem statement retained. Generic public-setup constructor idempotence; endpoints read actual first/N-2 six-field records, reserved N-1 excluded. Native zero-window fallback/all finite indexed copies retain duplicates/ALLraw teardown fields; no expected values/activity/count/lookup/matching/ledger/history/result premise. Not verifier counters/global source-worker acceptance/general physical extraction/honest oracle/transcript/parity. No pin/dependency/artifact/production/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "12b8823b04782587efba7e42cbc8ad8e8776ca29",
+      "backport_reuse_path": "Tests/NativeInitializationBoundary.lean",
+      "backport_reuse_sha256": "41d45e9ce0bf98565e124fa4c361b7d711e7c75a0573e5576f837013781d6b49"
+    },
+    {
+      "path": "Tests/NativeInitializationComponent.lean",
+      "change": "Connect actual public initialization endpoints/window components and DERIVED all-ten logical scalar memberships/padding to SAME complete inactive MAIN-caller-decoder-scalar source. Expose existing original fixture pointwise with unchanged calculations and old existential theorem statement retained. Generic public-setup constructor idempotence; endpoints read actual first/N-2 six-field records, reserved N-1 excluded. Native zero-window fallback/all finite indexed copies retain duplicates/ALLraw teardown fields; no expected values/activity/count/lookup/matching/ledger/history/result premise. Not verifier counters/global source-worker acceptance/general physical extraction/honest oracle/transcript/parity. No pin/dependency/artifact/production/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "12b8823b04782587efba7e42cbc8ad8e8776ca29",
+      "backport_reuse_path": "Tests/NativeInitializationWindow.lean",
+      "backport_reuse_sha256": "e13310b8f1cb40bac2eeb07fca5725d981f273577ac00d429cfd576a09f809d5"
     }
   ],
   "setup_artifacts": [

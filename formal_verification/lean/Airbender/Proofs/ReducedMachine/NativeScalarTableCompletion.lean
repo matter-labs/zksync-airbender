@@ -243,9 +243,9 @@ theorem request_sum_kept {R : Type} [Field R] (gamma : R) (base : MainProof R) :
   simpa only [NativeCallerSumCompletion.requestSum,normalizedMemory] using
     sum_kept (callerAuxiliaryLayout.traceLength-1) gamma base callerAuxiliaryLayout.request (by decide +kernel)
 
-theorem fixture : ∃ w, NativeScalarTableCompletion.Fixture w := by
+theorem original_fixture : NativeScalarTableCompletion.Fixture (NativeCSRPositiveWitness.assignment false) := by
   let w := NativeCSRPositiveWitness.assignment false
-  refine ⟨w,(NativeCSRBodyPaddingProofs.observations false).1,
+  refine ⟨(NativeCSRBodyPaddingProofs.observations false).1,
     (NativeCSRBodyPaddingProofs.observations false).2,?_⟩
   intro Kind R _ embed memory pc ch decoder nonpoles gamma omega primitive publicSetup decoderWitness decoderSetup base witness setup
   let original := NativeInactiveMainProofs.proof embed memory pc ch w
@@ -328,6 +328,9 @@ theorem fixture : ∃ w, NativeScalarTableCompletion.Fixture w := by
   · rw [caller.claim,request_sum_kept]
     exact NativeInactiveMainProofs.request_sum embed memory pc ch w
   · exact Delegation.SumCompletionProofs.not_constant caller.caller.sumPolynomial nonzero
+
+theorem fixture : ∃ w, NativeScalarTableCompletion.Fixture w :=
+  ⟨NativeCSRPositiveWitness.assignment false,original_fixture⟩
 
 theorem pair_terminal {R : Type} [Field R] (gamma : R) (base : MainProof R)
     (column : QuarticColumn) (pair : NativeScalarPairs.PairColumn column) :
