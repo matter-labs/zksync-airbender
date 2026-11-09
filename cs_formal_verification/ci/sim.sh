@@ -13,7 +13,7 @@
 #   ci/sim.sh run fvci-small 4 16g 4 HEAD - head  cold.log
 #   ci/sim.sh run fvci-small 4 16g 4 HEAD head - warm.log
 # FVCI_STOP=sail stops after the Sail model step (to seed or time the sail cache alone). VERIFY_AUDITS (fresh|replay)
-# is passed to verify.sh; FVCI_KERNEL=1 adds the kernel replay (leanchecker) after verify.sh, as the cold CI runs do.
+# is passed to verify.sh; FVCI_KERNEL=1 adds the kernel replay (the kernel_replay job's check) after verify.sh.
 # Each run is a build: on the shared machine run it under the build lock (rvlock/lb.sh ci/sim.sh run ...).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

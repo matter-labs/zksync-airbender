@@ -125,22 +125,28 @@ see only the formula. See [the setup README](../lean/artifacts/setup/README.md).
 
 ## What CI re-checks
 
-`.github/workflows/lean-formal-verification.yml` runs [verify.sh](../verify.sh) in two modes
-([ci/README.md](../ci/README.md)). A local `./verify.sh` is the cold mode without the kernel replay.
+`.github/workflows/lean-formal-verification.yml` runs [verify.sh](../verify.sh) in two modes, and separately a
+kernel replay ([ci/README.md](../ci/README.md)). A local `./verify.sh` is the cold mode.
 
 | | incremental (pull requests) | cold (pushes to protected branches, nightly) |
 |---|---|---|
-| build | Lake rebuilds what changed since the restored build of an earlier commit; unchanged modules are its `.olean` files | everything elaborated again (only the toolchain, Mathlib's published `.olean` files and the generated Sail model are restored) |
+| build | Lake rebuilds what changed since the restored build of an earlier commit; unchanged modules are its `.olean` files | everything elaborated again (only the toolchain, the dependency checkouts, Mathlib's published `.olean` files and the generated Sail model are restored) |
 | axiom audits | read from Lake's build log of the audit modules (`VERIFY_AUDITS=replay`): the messages recorded when those `.olean` files were built, the same trust as the files themselves | `lake env lean` elaborates each audit file again (`fresh`) |
 | every `#print axioms` answered, standard axioms only | yes | yes |
 | regressions, test executable, JSON pins, guide links | yes | yes |
 | review check's Lean inventory (audit roots, guide names) | skipped when its inputs (guides, audit file, Lake input hashes of the claim modules) equal those of a passing check recorded in the build | yes |
 | module budget | ledger of earlier measurements by input hash, plus the modules built now | every module measured in this run |
-| kernel replay (`leanchecker`: every constant of our modules re-added to the kernel) | no | yes |
 
 An incremental run trusts the restored build (produced by an earlier CI run of this repository). The cold runs
 re-derive everything from source each night and on every push to a protected branch, so a bad cached build cannot
 outlive the next cold run.
+
+**Kernel replay** (job `kernel_replay`, the 1st and 15th of each month, or manually): every constant of our modules
+is added to a fresh kernel environment on top of its imports (`leanchecker`, bundled with the toolchain), which
+catches an `.olean` whose declarations the elaborator accepted but the kernel would not. It does not run on pull
+requests or in the cold runs (~25 min, ~10 GB). After the move to Lean 4.35 it becomes `lake check --paranoid` over
+all targets except `human/CleanCore/Equivalence.lean` and `test/Checks/Axioms.lean`, which import Clean's
+`native_decide` prime instances.
 
 ## Modeled tables and logical arguments
 

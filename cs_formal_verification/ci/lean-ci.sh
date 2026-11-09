@@ -12,7 +12,8 @@
 #   ci/lean-ci.sh lean-deps     build the dependencies (Sail model, Clean imports, the test executable's dependency
 #                               objects) apart from our code (ci/dep_targets.py)
 #   ci/lean-ci.sh verify        ./verify.sh, each of its steps timed
-#   ci/lean-ci.sh kernel-check  leanchecker: replay our modules' constants in the kernel (cold runs)
+#   ci/lean-ci.sh build         lake build of the spec, proofs and tests (kernel_replay job)
+#   ci/lean-ci.sh kernel-check  replay our modules' constants in the kernel (kernel_replay job; KERNEL_CHECKER)
 #   ci/lean-ci.sh report        what the build did: modules compiled, slowest modules, peak memory
 #   ci/lean-ci.sh time <step>   run a step, then print its wall time, CPU time and peak memory (container cgroup)
 #
@@ -118,14 +119,27 @@ step_lean_deps() { # the dependencies of the build (ci/dep_targets.py), built ap
   return "$rc"
 }
 
-step_kernel_check() { # leanchecker (bundled with the toolchain): replay every constant of our modules in the kernel
-  # One process replays the modules under these prefixes, KERNEL_CHECK_THREADS (default 2) at a time, each on top of
-  # its own import of the environment. Memory grows fast with that count (measured in the container: 1 -> 1.3 GB,
-  # 2 -> 5.8 GB, 4 -> over 15 GB), so it does not follow LEAN_NUM_THREADS.
+step_build() { (cd "$LEAN" && lake build CleanCore Human Slop Test airbender_tests); }
+
+# The kernel replay (CI job kernel_replay, every two weeks): every constant of our modules re-added to the kernel.
+# KERNEL_CHECKER selects the tool:
+#   leanchecker (now): the toolchain's leanchecker over our module prefixes. One process replays KERNEL_CHECK_THREADS
+#     (default 2) modules at a time, each on top of its own import of the environment; memory grows fast with that
+#     count (container: 1 -> 1.3 GB, 2 -> 5.8-10.1 GB, 4 -> over 15 GB), so it does not follow LEAN_NUM_THREADS.
+#   paranoid: TODO(P3.5, Lean 4.35): `lake check --paranoid` over all targets except human/CleanCore/Equivalence.lean
+#     and test/Checks/Axioms.lean (they import Clean's native_decide prime instances). P3.5 implements this branch
+#     and makes it the default.
+step_kernel_check() {
   cd "$LEAN"
   local t=${KERNEL_CHECK_THREADS:-2}
-  if (( $# )); then LEAN_NUM_THREADS=$t lake env leanchecker "$@"
-  else LEAN_NUM_THREADS=$t lake env leanchecker CleanCore Human Slop Tests Checks; fi
+  case "${KERNEL_CHECKER:-leanchecker}" in
+    leanchecker)
+      if (( $# )); then LEAN_NUM_THREADS=$t lake env leanchecker "$@"
+      else LEAN_NUM_THREADS=$t lake env leanchecker CleanCore Human Slop Tests Checks; fi ;;
+    paranoid)
+      echo "KERNEL_CHECKER=paranoid needs Lean 4.35 (P3.5)" >&2; return 2 ;;
+    *) echo "unknown KERNEL_CHECKER" >&2; return 2 ;;
+  esac
 }
 
 step_verify() {
@@ -212,6 +226,7 @@ case "$cmd" in
   mathlib) step_mathlib ;;
   lean-deps) step_lean_deps ;;
   kernel-check) step_kernel_check "$@" ;;
+  build) step_build ;;
   verify) step_verify ;;
   report) step_report "$@" ;;
   time) step_time "$@" ;;

@@ -38,7 +38,7 @@ SOURCE_NAMES = {
     "verify.sh", "MODULE_BUDGET_JOBS", "MODULE_BUDGET_LEDGER", "MODULE_BUDGET_S", "depHash", "ps", "wait4",
     "CALIBRATION_REFERENCE_S",
     # CI (docs/TRUST_AND_REVIEW.md, What CI re-checks): verify.sh's audit modes, the kernel checker
-    "VERIFY_AUDITS", "fresh", "replay", "leanchecker",
+    "VERIFY_AUDITS", "fresh", "replay", "leanchecker", "kernel_replay", "native_decide",
 }
 
 
