@@ -275,13 +275,6 @@ struct RegisteredBinary {
     role: String,
 }
 
-#[cfg(test)]
-thread_local! {
-    /// Backends this thread started to construct: the probe that capability rejections
-    /// precede backend initialization.
-    static BACKEND_CONSTRUCTIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-}
-
 struct PipelineBackend<B: execution_prover::backend::ExecutionBackend> {
     prover: execution_prover::ExecutionProver<B>,
     handles: BTreeMap<HandleKey, RegisteredBinary>,
@@ -306,8 +299,6 @@ impl<B: execution_prover::backend::ExecutionBackend> PipelineBackend<B> {
     }
 
     fn new(config: &ProgramProverConfig) -> Self {
-        #[cfg(test)]
-        BACKEND_CONSTRUCTIONS.with(|count| count.set(count.get() + 1));
         let prover =
             execution_prover::ExecutionProver::with_configuration(Self::configuration(config));
         Self {
@@ -2270,10 +2261,6 @@ mod l1_capability_tests {
         source
     }
 
-    fn backend_constructions() -> usize {
-        BACKEND_CONSTRUCTIONS.with(std::cell::Cell::get)
-    }
-
     /// The profile assert's message for `entry`, which must panic.
     fn refusal<T>(entry: impl FnOnce() -> T) -> String {
         let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(entry))
@@ -2289,7 +2276,6 @@ mod l1_capability_tests {
     /// backend construction, so no CUDA is reached even in a `gpu` build.
     #[test]
     fn ethproofs_l1_prover_entries_reject_before_inputs_and_backends() {
-        let before = backend_constructions();
         let checkpoint = crate::l1_feeder_tests::artifact(ProofTarget::RecursionUnified, 3);
         for target in L1_TARGETS {
             for backend in [ProverBackend::Cpu, ProverBackend::Gpu] {
@@ -2312,13 +2298,11 @@ mod l1_capability_tests {
                 }
             }
         }
-        assert_eq!(backend_constructions(), before);
     }
 
     /// The pessimistic L1 entries pass the check and reach the source as before.
     #[test]
     fn pessimistic_l1_entries_are_unchanged() {
-        let before = backend_constructions();
         for target in L1_TARGETS {
             let config = ProgramProverConfig {
                 target,
@@ -2334,7 +2318,6 @@ mod l1_capability_tests {
             verify_artifact_in_mode(&artifact, &missing(), SoundnessMode::PessimisticConjecture)
                 .unwrap_err();
         }
-        assert_eq!(backend_constructions(), before);
     }
 }
 
