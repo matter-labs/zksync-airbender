@@ -207,7 +207,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         #[inline(always)]
         #[allow(clippy::too_many_arguments)]
         pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource<#field_struct>>(
-            hash_buf: &mut [u32],
+            hash_buf: &mut [core::mem::MaybeUninit<u32>],
             num_columns: usize,
             gamma_powers: &[#quartic_struct],
             gamma_offset: usize,
@@ -221,12 +221,12 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
                 let idx = col * 2;
 
                 let raw = read_reduced_field_el::<I>(nd_source);
-                *hash_buf.get_unchecked_mut(idx) = raw.as_u32_raw_repr();
+                hash_buf.get_unchecked_mut(idx).write(raw.as_u32_raw_repr());
                 let base_val = raw;
                 #fma_into_acc_0;
 
                 let raw = read_reduced_field_el::<I>(nd_source);
-                *hash_buf.get_unchecked_mut(idx + 1) = raw.as_u32_raw_repr();
+                hash_buf.get_unchecked_mut(idx + 1).write(raw.as_u32_raw_repr());
                 let base_val = raw;
                 #fma_into_acc_1;
 
@@ -329,9 +329,8 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         ) {
             use ::verifier_common::whir::hash_leaf_data_into_state;
 
-            let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
             read_and_batch_leaf::<I>(
-                &mut buf[..LEAF_WORDS], num_columns,
+                &mut hash_buf[..LEAF_WORDS], num_columns,
                 gamma_powers, gamma_offset, acc0, acc1, nd_source,
             );
 
@@ -341,7 +340,8 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             if block_end > LEAF_WORDS {
                 hash_buf.zero_range(LEAF_WORDS, block_end);
             }
-            let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+            // SAFETY: the leaf words and their zero padding up to `block_end` were written above
+            let buf = hash_buf.assume_init_prefix(block_end);
             hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
         }
 

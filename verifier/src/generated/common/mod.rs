@@ -717,7 +717,7 @@ pub fn ext_from_raw_word_slice(words: &[u32]) -> BabyBearExt4 {
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource<BabyBearField>>(
-    hash_buf: &mut [u32],
+    hash_buf: &mut [core::mem::MaybeUninit<u32>],
     num_columns: usize,
     gamma_powers: &[BabyBearExt4],
     gamma_offset: usize,
@@ -730,11 +730,13 @@ pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource<BabyBearField>>(
         let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
         let idx = col * 2;
         let raw = read_reduced_field_el::<I>(nd_source);
-        *hash_buf.get_unchecked_mut(idx) = raw.as_u32_raw_repr();
+        hash_buf.get_unchecked_mut(idx).write(raw.as_u32_raw_repr());
         let base_val = raw;
         field_ops::add_assign_product_with_base(&mut *acc0, &gamma, &base_val);
         let raw = read_reduced_field_el::<I>(nd_source);
-        *hash_buf.get_unchecked_mut(idx + 1) = raw.as_u32_raw_repr();
+        hash_buf
+            .get_unchecked_mut(idx + 1)
+            .write(raw.as_u32_raw_repr());
         let base_val = raw;
         field_ops::add_assign_product_with_base(&mut *acc1, &gamma, &base_val);
         col += 1;
@@ -847,9 +849,8 @@ pub unsafe fn read_and_hash_oracle_leaf<
     nd_source: &mut I,
 ) {
     use verifier_common::whir::hash_leaf_data_into_state;
-    let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
     read_and_batch_leaf::<I>(
-        &mut buf[..LEAF_WORDS],
+        &mut hash_buf[..LEAF_WORDS],
         num_columns,
         gamma_powers,
         gamma_offset,
@@ -862,7 +863,7 @@ pub unsafe fn read_and_hash_oracle_leaf<
     if block_end > LEAF_WORDS {
         hash_buf.zero_range(LEAF_WORDS, block_end);
     }
-    let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+    let buf = hash_buf.assume_init_prefix(block_end);
     hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
 }
 #[inline(always)]

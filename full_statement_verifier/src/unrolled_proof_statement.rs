@@ -267,7 +267,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
 
     // Now we only need to reason about "which program do we execute", and "did it finish successfully or not".
 
-    let mut output: [u32; 16] = MaybeUninit::uninit().assume_init();
+    let mut output = [0u32; 16];
     // in any case we carry registers 10-17 to the next layer - those are the output of the base program
     for i in 0..8 {
         output[i] = registers_buffer[(10 + i) * 3];
@@ -313,16 +313,14 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
         // we require that remaining 8 registers are some hash output in nature, that encodes our
         // chain of executed programs
 
-        let mut aux_registers: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] =
-            MaybeUninit::uninit().assume_init();
+        let mut aux_registers = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
         for i in 8..16 {
             let value = registers_buffer[(10 + i) * 3];
             aux_registers[i - 8] = value;
         }
 
         // So prover can ALWAYS present a preimage
-        let mut preimage: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2] =
-            MaybeUninit::uninit().assume_init();
+        let mut preimage = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2];
         for i in 0..BLAKE2S_DIGEST_SIZE_U32_WORDS * 2 {
             preimage[i] = nd_source.read_word();
         }
@@ -350,8 +348,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
             }
         } else {
             // concatenate and hash
-            let mut input: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2] =
-                MaybeUninit::uninit().assume_init();
+            let mut input = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2];
             for i in 0..8 {
                 input[i] = aux_registers[i];
                 input[i + 8] = end_params_output.0[i];

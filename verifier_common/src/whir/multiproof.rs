@@ -371,7 +371,7 @@ mod tests {
     fn leaf_hash(hasher: &mut DelegatedBlake2sState, leaf: &[u32; 4]) -> Digest {
         let mut buf = AlignedArray64::<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>::from_value(0);
         buf[..4].copy_from_slice(leaf);
-        hash_leaf_data_into_state(hasher, &buf, 4);
+        hash_leaf_data_into_state(hasher, buf.as_aligned_slice(), 4);
         *hasher.read_state_for_output_ref()
     }
 
