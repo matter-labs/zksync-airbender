@@ -13,9 +13,9 @@
     clippy::large_const_arrays
 )]
 use super::common::{
-    dot_eq, draw_field_els_into, draw_field_els_into_after_pow, draw_fresh_field_els_into,
-    draw_single_field_el, draw_single_field_el_after_pow, ext_from_nds, ext_from_raw_words,
-    fold_standard_claims, make_eq_poly, read_field_el, read_reduced_field_el,
+    dot_eq, draw_field_els_into, draw_field_els_into_after_pow, draw_field_els_into_uninit,
+    draw_fresh_field_els_into, draw_single_field_el, draw_single_field_el_after_pow, ext_from_nds,
+    ext_from_raw_words, fold_standard_claims, make_eq_poly, read_field_el, read_reduced_field_el,
     verify_final_step_check, verify_sumcheck_rounds, EXT_DEGREE,
 };
 use super::constants::*;
@@ -2073,14 +2073,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
     nd_source: &mut I,
 ) -> Result<ConcreteGKRVerifierOutput, E::Error> {
     unsafe {
-        let mut init_challenges = LazyVec::<BabyBearExt4, 2>::new();
-        unsafe {
-            init_challenges.set_len(2);
-        }
+        let mut init_challenges = [BabyBearExt4::ZERO; 2];
         read_and_verify_pow::<I>(ts, LOOKUP_CHALLENGES_POW_BITS, nd_source);
-        draw_field_els_into_after_pow::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
-        let lookup_alpha = *init_challenges.get(0);
-        let lookup_additive_challenge = *init_challenges.get(1);
+        draw_field_els_into_after_pow::<DRAW_BUF_CAPACITY>(ts, &mut init_challenges);
+        let [lookup_alpha, lookup_additive_challenge] = init_challenges;
         let address_high_bits_shift: u32 = 0u32;
         let mut evals_commit_buf = CommitBuf::<GKR_EVALS_COMMIT_BUF>::new();
         let evals_data_words = 96usize * EXT_DEGREE;
@@ -2095,10 +2091,13 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         ts.commit(&mut evals_commit_buf, evals_data_words);
         let evals_slice: &[BabyBearExt4] = unsafe { evals_commit_buf.data_as(96usize) };
         let mut all_challenges = LazyVec::<BabyBearExt4, { CLAIM_POINT_CAPACITY + 1 }>::new();
+        draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(
+            ts,
+            &mut all_challenges.spare_capacity_mut()[..5usize],
+        );
         unsafe {
             all_challenges.set_len(5usize);
         }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, all_challenges.as_mut_slice());
         let batching_challenge = *all_challenges.get(5usize - 1);
         let mut eq_buf = LazyVec::<BabyBearExt4, 16usize>::new();
         let eq_challenges: &[BabyBearExt4; 4usize] = all_challenges.as_slice()[..4usize]
@@ -2236,10 +2235,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -2301,10 +2300,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -2366,10 +2365,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -2431,10 +2430,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -2496,10 +2495,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -2561,10 +2560,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -2626,10 +2625,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -2691,10 +2690,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -2756,10 +2755,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -2821,10 +2820,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -2886,10 +2885,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -2951,10 +2950,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -3016,10 +3015,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -3081,10 +3080,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -3146,10 +3145,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -3211,10 +3210,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -3276,10 +3275,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
@@ -3341,10 +3340,10 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {

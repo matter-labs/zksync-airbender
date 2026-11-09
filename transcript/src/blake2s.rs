@@ -1,5 +1,6 @@
 use crate::Transcript;
 use blake2s_u32::*;
+use core::mem::MaybeUninit;
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{FieldExtension, PrimeField};
@@ -244,6 +245,25 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         hasher: &mut blake2s_u32::DelegatedBlake2sState,
         seed: &mut Seed,
         dst: &mut [u32],
+    ) {
+        // SAFETY: `MaybeUninit<u32>` has the layout of `u32`, and the draw only ever writes
+        // initialized words into the destination.
+        let dst = unsafe { &mut *(core::ptr::from_mut(dst) as *mut [MaybeUninit<u32>]) };
+        Self::draw_randomness_into_uninit_using_hasher(hasher, seed, dst);
+    }
+
+    /// Like [`Self::draw_randomness`], for a destination that is not initialized yet: every
+    /// word of `dst` is written. Same length requirements, checked before anything is written.
+    pub fn draw_randomness_into_uninit(seed: &mut Seed, dst: &mut [MaybeUninit<u32>]) {
+        let mut hasher = blake2s_u32::DelegatedBlake2sState::new();
+        Self::draw_randomness_into_uninit_using_hasher(&mut hasher, seed, dst);
+    }
+
+    /// Like [`Self::draw_randomness_into_uninit`], reusing the supplied hasher.
+    pub fn draw_randomness_into_uninit_using_hasher(
+        hasher: &mut blake2s_u32::DelegatedBlake2sState,
+        seed: &mut Seed,
+        dst: &mut [MaybeUninit<u32>],
     ) {
         assert!(!dst.is_empty(), "randomness destination must not be empty");
         assert_eq!(
@@ -544,6 +564,17 @@ impl<const REDUCED_ROUNDS: bool> TranscriptState<REDUCED_ROUNDS> {
     #[inline(always)]
     pub fn draw_raw(&mut self, dst: &mut [u32]) {
         Blake2sTranscript::<REDUCED_ROUNDS>::draw_randomness_using_hasher(
+            &mut self.hasher,
+            &mut self.seed,
+            dst,
+        );
+    }
+
+    /// Like [`Self::draw_raw`], for a destination that is not initialized yet: every word of
+    /// `dst` is written.
+    #[inline(always)]
+    pub fn draw_raw_into_uninit(&mut self, dst: &mut [MaybeUninit<u32>]) {
+        Blake2sTranscript::<REDUCED_ROUNDS>::draw_randomness_into_uninit_using_hasher(
             &mut self.hasher,
             &mut self.seed,
             dst,

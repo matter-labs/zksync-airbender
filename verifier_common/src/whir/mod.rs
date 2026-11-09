@@ -92,9 +92,10 @@ pub fn draw_query_indices<const MAX_QUERIES: usize, const MAX_DRAW_WORDS: usize>
     draw_words: usize,
 ) -> LazyVec<usize, MAX_QUERIES> {
     let mut source_words = LazyVec::<u32, MAX_DRAW_WORDS>::new();
+    ts.draw_raw_into_uninit(&mut source_words.spare_capacity_mut()[..draw_words]);
+    // SAFETY: the draw wrote the first `draw_words` words
     unsafe {
         source_words.set_len(draw_words);
-        ts.draw_raw(source_words.as_mut_slice());
     }
 
     // Skip first word (matches prover's draw_query_bits convention)
