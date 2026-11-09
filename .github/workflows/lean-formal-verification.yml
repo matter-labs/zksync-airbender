@@ -3,9 +3,14 @@ name: "Lean formal verification"
 # per-module budget and the review check. Separate from "Rust CI": runs only when its inputs change.
 # The steps are cs_formal_verification/ci/lean-ci.sh; ci/sim.sh runs the same steps in Docker (see ci/README.md).
 on:
+  # pushes to the branches Rust CI runs on: their caches seed the pull requests that target them (a pull request
+  # can restore caches of its base branch and of the default branch only)
   push:
     branches:
       - main
+      - stable
+      - dev
+      - av_gkr_compiler
     paths:
       - "cs_formal_verification/**"
       # the circuit JSONs the spec imports (lean/lakefile.toml [[input_file]])
