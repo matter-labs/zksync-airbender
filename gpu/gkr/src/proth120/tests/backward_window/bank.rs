@@ -9,10 +9,8 @@ use super::super::cpu_abi::programs;
 use super::super::{make_context, read_back, upload};
 use super::random_canonical;
 use crate::proth120::backward::banks::{
-    schedule_coefficient_bank_fill_pr, schedule_coefficient_range_fill_pr,
-    schedule_coefficient_tables_upload_pr, CoeffMonomialPr, CoefficientBankPr,
-    CoefficientLayerRangesPr, CoefficientTablesHostPr, PR_COEFF_CHALLENGES,
-    PR_COEFF_CHALLENGE_ABSENT, PR_COEFF_PLAN_DIRECT, PR_COEFF_PLAN_SCALED,
+    schedule_coefficient_bank_fill_pr, schedule_coefficient_tables_upload_pr, CoefficientBankPr,
+    CoefficientTablesHostPr, PR_COEFF_CHALLENGES, PR_COEFF_CHALLENGE_ABSENT,
 };
 use crate::proth120::programs::GkrProgramsPr;
 
@@ -91,11 +89,7 @@ fn expected_layer(
             WindowCoefficientPlan::Direct(recipe) => {
                 evaluate_recipe(recipe, challenges, batching, top_bits)
             }
-            WindowCoefficientPlan::Scaled { recipe, scalar } => {
-                *evaluate_recipe(recipe, challenges, batching, top_bits)
-                    .mul_assign(&PR::from_u128_with_reduction(*scalar))
-            }
-            WindowCoefficientPlan::LinearBasis { .. } => panic!("Proth120 LinearBasis plan"),
+            _ => panic!("Proth120 coefficient plan must be Direct"),
         });
     }
     values.extend(literals);
@@ -151,10 +145,9 @@ fn cpu_pr_coefficient_tables_cover_programs() {
         .iter()
         .flat_map(|layer| &layer.window.coefficient_plans)
         .map(|plan| match plan {
-            WindowCoefficientPlan::Direct(recipe)
-            | WindowCoefficientPlan::Scaled { recipe, .. } => recipe.terms.len(),
-            WindowCoefficientPlan::LinearBasis { .. } => {
-                panic!("Proth120 coefficient tables do not support LinearBasis")
+            WindowCoefficientPlan::Direct(recipe) => recipe.terms.len(),
+            _ => {
+                panic!("Proth120 coefficient tables require Direct plans")
             }
         })
         .sum();
@@ -166,7 +159,6 @@ fn cpu_pr_coefficient_tables_cover_programs() {
         .map(|recipe| recipe.terms.len())
         .sum();
     assert!(tables.monomials.len() <= r0_terms + continuation_terms + 4 * tables.layers.len());
-    assert!(tables.scalars.is_empty());
     for monomial in &tables.monomials {
         for index in [monomial.challenge_idx_0, monomial.challenge_idx_1] {
             assert!(index == PR_COEFF_CHALLENGE_ABSENT || usize::from(index) < PR_COEFF_CHALLENGES);
@@ -181,10 +173,9 @@ fn cpu_pr_coefficient_tables_cover_programs() {
         .filter(|product| !product.inits_and_teardowns_top_bits.is_empty())
         .count();
     println!(
-        "GKR_T5_BANK recipes={} monomials={} scalars={} immediates={} r0_plans={:?} continuation_recipes={:?} top_bit_products={}",
+        "GKR_T5_BANK recipes={} monomials={} immediates={} r0_plans={:?} continuation_recipes={:?} top_bit_products={}",
         tables.recipes.len(),
         tables.monomials.len(),
-        tables.scalars.len(),
         tables.immediates.len(),
         r0_plans,
         continuation_recipes,
@@ -295,119 +286,6 @@ fn pr_eval_coefficients_matches_host() {
             }
         }
         assert_eq!(read_back(&d_challenges, PR::ZERO, &context), challenges);
-    }
-    context.get_exec_stream().synchronize().unwrap();
-    drop(keepalive);
-}
-
-fn synthetic_tables(counts: &[usize]) -> CoefficientTablesHostPr {
-    let mut tables = CoefficientTablesHostPr::default();
-    for (slot, &count) in counts.iter().enumerate() {
-        let monomials: Vec<(PR, CoeffMonomialPr)> = (0..count)
-            .map(|i| {
-                (
-                    PR::from_u128_with_reduction(((slot * 31 + i + 1) as u128) << 90 | 7),
-                    CoeffMonomialPr {
-                        batch_power: [0, u16::MAX, 1, 31, 255][i % 5],
-                        challenge_idx_0: if i.is_multiple_of(3) {
-                            PR_COEFF_CHALLENGE_ABSENT
-                        } else {
-                            (i % PR_COEFF_CHALLENGES) as u8
-                        },
-                        challenge_idx_1: if i.is_multiple_of(4) {
-                            PR_COEFF_CHALLENGE_ABSENT
-                        } else {
-                            ((i * 7 + 3) % PR_COEFF_CHALLENGES) as u8
-                        },
-                        power_0: [0, 1, 31, u8::MAX][i % 4],
-                        power_1: [1, 0, 2, u8::MAX][i % 4],
-                        _pad: [0; 2],
-                    },
-                )
-            })
-            .collect();
-        let scalar = (slot % 2 == 1).then(|| PR::from_u128_with_reduction(slot as u128 + 2));
-        tables.push_monomials(&monomials, scalar);
-    }
-    tables.layers.push(CoefficientLayerRangesPr {
-        recipe_first: 0,
-        r0_len: counts.len() as u32,
-        continuation_len: 0,
-        r0_immediates: 0..0,
-        continuation_immediates: 0..0,
-    });
-    tables
-}
-
-fn evaluate_synthetic(
-    tables: &CoefficientTablesHostPr,
-    challenges: &[PR],
-    batching: PR,
-) -> Vec<PR> {
-    tables
-        .recipes
-        .iter()
-        .map(|recipe| {
-            let mut sum = PR::ZERO;
-            let start = recipe.monomial_offset as usize;
-            for index in start..start + recipe.monomial_count as usize {
-                let monomial = tables.monomials[index];
-                let mut term = tables.monomial_coeffs[index];
-                term.mul_assign(&batching.pow(u32::from(monomial.batch_power)));
-                for (challenge, power) in [
-                    (monomial.challenge_idx_0, monomial.power_0),
-                    (monomial.challenge_idx_1, monomial.power_1),
-                ] {
-                    if challenge != PR_COEFF_CHALLENGE_ABSENT {
-                        term.mul_assign(&challenges[challenge as usize].pow(u32::from(power)));
-                    }
-                }
-                sum.add_assign(&term);
-            }
-            match recipe.kind {
-                PR_COEFF_PLAN_DIRECT => {}
-                PR_COEFF_PLAN_SCALED => {
-                    sum.mul_assign(&tables.scalars[recipe.scalar_index as usize]);
-                }
-                kind => panic!("unknown plan kind {kind}"),
-            }
-            sum
-        })
-        .collect()
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn pr_eval_coefficients_synthetic_ranges() {
-    let context = make_context();
-    let counts = [0usize, 1, 2, 3, 31, 32, 33, 63, 64, 65, 297, 5, 1];
-    let host = synthetic_tables(&counts);
-    let (tables, keepalive) = schedule_coefficient_tables_upload_pr(&host, &context).unwrap();
-    let mut rng = StdRng::seed_from_u64(0x5e7);
-    let challenges: Vec<PR> = (0..PR_COEFF_CHALLENGES)
-        .map(|_| random_canonical(&mut rng))
-        .collect();
-    let batching = random_canonical(&mut rng);
-    let expected = evaluate_synthetic(&host, &challenges, batching);
-    let d_challenges = upload(&challenges, &context);
-    let d_batching = upload(&[batching], &context);
-    let poison = PR::from_u128_with_reduction(991);
-    for (first, count) in [(0usize, counts.len()), (4, 7), (10, 1)] {
-        let mut d_bank = upload(&vec![poison; count + 2], &context);
-        schedule_coefficient_range_fill_pr(
-            &tables,
-            first as u32,
-            count as u32,
-            d_challenges.as_ptr(),
-            d_batching.as_ptr(),
-            unsafe { d_bank.as_mut_ptr().add(1) },
-            &context,
-        )
-        .unwrap();
-        let actual = read_back(&d_bank, PR::ZERO, &context);
-        assert_eq!(actual[0], poison);
-        assert_eq!(actual[count + 1], poison);
-        assert_eq!(&actual[1..count + 1], &expected[first..first + count]);
     }
     context.get_exec_stream().synchronize().unwrap();
     drop(keepalive);
