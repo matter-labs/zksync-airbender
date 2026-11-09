@@ -1,4 +1,7 @@
 import copy
+import hashlib
+import http.client
+import io
 import os
 from pathlib import Path
 import struct
@@ -6,8 +9,100 @@ import subprocess
 import tempfile
 import textwrap
 import unittest
+from unittest.mock import call, patch
+import urllib.error
 
 from check_program_decoder_rows import SMALL_PROGRAMS, check_group_shapes, checked_rows, csr_word
+import fetch_production_program
+
+
+class ProductionProgramFetchTest(unittest.TestCase):
+    payload = b'pinned production text'
+
+    def asset(self):
+        return {'name': 'multiblock_batch.text', 'size': len(self.payload),
+                'sha256': hashlib.sha256(self.payload).hexdigest(),
+                'url': 'https://example.invalid/pinned.text'}
+
+    def fetch(self, root, responses):
+        with patch.object(fetch_production_program.urllib.request, 'urlopen',
+                          side_effect=responses) as request, \
+                patch.object(fetch_production_program.time, 'sleep') as sleep, \
+                patch('sys.stdout', new_callable=io.StringIO), \
+                patch('sys.stderr', new_callable=io.StringIO):
+            result = fetch_production_program.fetch(root, {'assets': [self.asset()]})
+        return result, request, sleep
+
+    def test_gateway_failure_and_partial_stream_retry_from_empty_temporary_files(self):
+        class InterruptedStream(io.BytesIO):
+            def read(self, size=-1):
+                if self.tell():
+                    raise http.client.IncompleteRead(b'partial')
+                return super().read(3)
+
+        gateway = urllib.error.HTTPError(self.asset()['url'], 504, 'Gateway Time-out', {}, None)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result, request, sleep = self.fetch(
+                root, [gateway, InterruptedStream(self.payload), io.BytesIO(self.payload)])
+            self.assertEqual(result.read_bytes(), self.payload)
+            self.assertEqual(list(root.iterdir()), [result])
+            self.assertEqual(request.call_args_list,
+                             [call(self.asset()['url'], timeout=60)] * 3)
+            self.assertEqual(sleep.call_args_list, [call(1), call(2)])
+
+    def test_transient_errors_exhaust_three_attempts_without_publishing(self):
+        errors = [urllib.error.HTTPError(self.asset()['url'], code, 'temporary', {}, None)
+                  for code in (408, 429, 500, 502, 503, 504)]
+        errors += [urllib.error.URLError('connection reset'), TimeoutError('timeout'),
+                   ConnectionResetError('reset')]
+        for error in errors:
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                with patch.object(fetch_production_program.urllib.request, 'urlopen',
+                                  side_effect=error) as request, \
+                        patch.object(fetch_production_program.time, 'sleep') as sleep, \
+                        patch('sys.stderr', new_callable=io.StringIO):
+                    with self.assertRaises(type(error)):
+                        fetch_production_program.fetch(root, {'assets': [self.asset()]})
+                self.assertEqual(request.call_count, 3)
+                self.assertEqual(sleep.call_args_list, [call(1), call(2)])
+                self.assertEqual(list(root.iterdir()), [])
+
+    def test_permanent_http_and_invalid_bytes_fail_without_retry(self):
+        specimens = [urllib.error.HTTPError(self.asset()['url'], 404, 'missing', {}, None),
+                     b'x' * len(self.payload), self.payload[:-1], self.payload + b'x']
+        for specimen in specimens:
+            with self.subTest(specimen=specimen), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                response = io.BytesIO(specimen) if isinstance(specimen, bytes) else specimen
+                with patch.object(fetch_production_program.urllib.request, 'urlopen',
+                                  side_effect=[response]) as request, \
+                        patch.object(fetch_production_program.time, 'sleep') as sleep:
+                    with self.assertRaises((urllib.error.HTTPError, ValueError)):
+                        fetch_production_program.fetch(root, {'assets': [self.asset()]})
+                self.assertEqual(request.call_count, 1)
+                sleep.assert_not_called()
+                self.assertEqual(list(root.iterdir()), [])
+
+    def test_retained_assets_are_validated_without_network_or_retry(self):
+        for payload in (self.payload, b'x' * len(self.payload)):
+            with self.subTest(payload=payload), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                path = root / self.asset()['name']
+                path.write_bytes(payload)
+                with patch.object(fetch_production_program.urllib.request, 'urlopen') as request, \
+                        patch.object(fetch_production_program.time, 'sleep') as sleep, \
+                        patch('sys.stdout', new_callable=io.StringIO):
+                    if payload == self.payload:
+                        self.assertEqual(fetch_production_program.fetch(
+                            root, {'assets': [self.asset()]}), path)
+                    else:
+                        with self.assertRaisesRegex(ValueError, 'hash differs'):
+                            fetch_production_program.fetch(root, {'assets': [self.asset()]})
+                request.assert_not_called()
+                sleep.assert_not_called()
+                self.assertEqual(path.read_bytes(), payload)
 
 
 class DecoderExporterPrerequisiteTest(unittest.TestCase):

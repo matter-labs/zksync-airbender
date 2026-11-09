@@ -44,6 +44,50 @@ redundant branch-only repair is removed; see [FINDINGS.md](FINDINGS.md).
 
 ## Current checkpoint
 
+Full run [42574527875](https://github.com/matter-labs/zksync-airbender/actions/runs/42574527875)
+on signed head e9963ba8fc72713414c590729d611f1119a56b05 failed the decoder
+differential at 07:50:39 UTC on 9 November. The completed job log identifies
+HTTP 504 (Gateway Time-out) while fetching the pinned production text. Its
+paired image passed its exact size and SHA-256 checks. All 112 exact decoder
+row/circuit-object comparisons across the ten preceding inputs passed; all
+eleven recorded decoder guards exited 0 and left no owned processes. Production
+decoding did not start. Environment audit, complete replay and false-proof
+controls were skipped, so there is no final assurance.
+
+The fetch repair permits three attempts for transient HTTP or transport errors,
+with one- and two-second delays and the existing 60-second request timeout.
+Every attempt starts with a separate temporary file and removes partial data.
+The exact pinned size and SHA-256 remain required before atomic publication.
+Permanent HTTP errors, size/hash mismatches and invalid retained assets still
+fail immediately. The existing decoder test module runs four new controls for
+504/partial-stream recovery, bounded exhaustion, permanent/invalid responses and
+retained-file validation. All 12 decoder/fetch tests pass; all 48 tests in the
+combined scheduling, axiom, replay, proof-boundary, native-policy and decoder
+groups pass in 14.287 seconds. These use isolated network/process fixtures and
+do not run a local Cargo/Lake/project Lean build or establish the next CI result.
+
+This repair changes only the fetch script, its existing test module and this
+status document. All 923 captured native fingerprint inputs and the retained
+baseline bytes are unchanged. Review statements/premises, production behavior,
+artifact pins, worker guards, stage deadlines and complete assurance coverage
+are retained. A full retry on the signed repair remains required.
+
+The failed run's exact receipt confirms fresh native qualification on e996,
+all 12/16/33/11 checks, with fingerprint
+1ce7d15d75d5ae6aefad93fde1a583d818013bff3883b46af7944daa83e20b16.
+Complete source/runtime/Review passed in 369.21 seconds, followed by generated
+freshness. All 173 actual direct axiom reports use only the allowed three axioms;
+Review confirms 4,205 source identities, nine actual snapshot mutation controls,
+170 public theorems, 210 guide declarations and 1,302 guide links. Runtime exits
+0 in 44.55 seconds at 488.33 MiB charged; Review exits 0 in 96.55 seconds at
+509.62 MiB charged; neither leaves owned processes. The completed job log
+confirms an actual 5,073,152,957-byte Lean restore from run 424877 and successful
+5,073,028,756-byte save at 08:00:53 UTC, before the repair's publication/retry.
+The cache API confirms snapshot 10221248798. Ordinary CPU/GPU CI completed
+successfully on e996; the repair still needs its own CI results.
+
+### Preceding replay scheduling repair
+
 Full run [42487784351](https://github.com/matter-labs/zksync-airbender/actions/runs/42487784351)
 on signed head ce40d160b0f25b7325825a85444531456ec74963 failed independent
 kernel replay at 06:26:07 UTC on 9 November, exactly 15 hours after that stage

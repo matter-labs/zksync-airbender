@@ -2,10 +2,14 @@
 """Fetch the pinned public ZKsync OS text and image for decoder comparisons."""
 import argparse
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
+import sys
 import tempfile
+import time
+import urllib.error
 import urllib.request
 
 
@@ -14,6 +18,37 @@ def verify(path, asset):
         raise ValueError(f"{asset['name']}: production asset size differs")
     if hashlib.sha256(path.read_bytes()).hexdigest() != asset['sha256']:
         raise ValueError(f"{asset['name']}: production asset hash differs")
+
+
+def download(path, asset):
+    for attempt in range(1, 4):
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as output:
+                temporary = Path(output.name)
+                with urllib.request.urlopen(asset['url'], timeout=60) as response:
+                    size = 0
+                    while chunk := response.read(131072):
+                        size += len(chunk)
+                        if size > asset['size']:
+                            raise ValueError(f"{asset['name']}: production download exceeds pinned size")
+                        output.write(chunk)
+            verify(temporary, asset)
+            os.replace(temporary, path)
+            return
+        except (urllib.error.URLError, TimeoutError, ConnectionError,
+                http.client.IncompleteRead) as error:
+            if isinstance(error, urllib.error.HTTPError) and error.code not in (
+                    408, 429, 500, 502, 503, 504):
+                raise
+            if attempt == 3:
+                raise
+            print(f"RETRY {asset['name']} after {error}; attempt {attempt + 1}/3",
+                  file=sys.stderr, flush=True)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+        time.sleep(attempt)
 
 
 def fetch(destination, manifest):
@@ -26,22 +61,7 @@ def fetch(destination, manifest):
         if path.exists():
             verify(path, asset)
         else:
-            temporary = None
-            try:
-                with tempfile.NamedTemporaryFile(dir=destination, delete=False) as output:
-                    temporary = Path(output.name)
-                    with urllib.request.urlopen(asset['url'], timeout=60) as response:
-                        size = 0
-                        while chunk := response.read(131072):
-                            size += len(chunk)
-                            if size > asset['size']:
-                                raise ValueError(f'{name}: production download exceeds pinned size')
-                            output.write(chunk)
-                verify(temporary, asset)
-                os.replace(temporary, path)
-            finally:
-                if temporary is not None:
-                    temporary.unlink(missing_ok=True)
+            download(path, asset)
         print(f"PASS {name} {asset['sha256']}", flush=True)
     return destination / 'multiblock_batch.text'
 
