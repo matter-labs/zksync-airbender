@@ -4,8 +4,10 @@
 
 1. (optional `--bootstrap-sail`) builds the pinned Sail compiler in an opam switch (`opam install . --deps-only`,
    `make install`). Without the flag it only checks that `sail` on PATH (or `~/.opam/sail/bin`) is exactly
-   `Sail 0.20.3 (sail2 @ 2ba3212...)` and that `z3` is on PATH. The bootstrap branch was not re-run end to end here
-   (the installed compiler was built from the same commit with the same steps).
+   `Sail 0.20.3 (sail2 @ 2ba3212...)` and that `z3` is on PATH. The bootstrap runs end to end in the CI container
+   (ubuntu:24.04, apt `opam` 2.1.5 and `z3` 4.8.12; `ci/lean-ci.sh sail-gen`): the generated `SailRV32` tree is
+   byte-identical to the one generated on macOS. The fetched commit is checked out as branch `sail2`, because Sail's
+   version string names the branch (a detached checkout prints `HEAD @ ...` and fails the check).
 2. shallow-fetches `riscv/sail-riscv` at the pinned commit and applies `patches/sail-riscv-*.patch`;
 3. fetches lean-sail with `fetch-lean-sail.sh` (pinned commit + `patches/lean-sail-*.patch`);
 4. runs `sail --lean` with upstream's flags (taken from sail-riscv's `model/CMakeLists.txt`) and `config/airbender-base.json`;

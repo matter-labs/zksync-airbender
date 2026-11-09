@@ -72,6 +72,9 @@ if (( BOOTSTRAP )); then
   [[ -d "$HOME/.opam" ]] || opam init --bare --disable-sandboxing -y
   opam switch list --short | grep -qx "$OPAM_SWITCH" || opam switch create "$OPAM_SWITCH" "$OCAML_VERSION" -y
   fetch_rev "$SAIL_REPO" "$SAIL_REV" "$WORK/sail"
+  # Sail's version string names the checked-out branch ("sail2 @ <rev>"); a detached checkout prints "HEAD @ <rev>"
+  # and fails the version check below. Name the branch as upstream does (the commit is what is pinned).
+  git -C "$WORK/sail" checkout -q -B sail2
   ( cd "$WORK/sail"
     eval "$(opam env --switch="$OPAM_SWITCH")"
     opam install . --deps-only -y
