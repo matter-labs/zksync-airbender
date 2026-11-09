@@ -1,18 +1,21 @@
-import CleanCore
-import Clean.Circuit.Operations
-import Clean.Specs.Keccak256
-import Clean.Specs.BLAKE3
-import Clean.Utils.Bits
-import Clean.Utils.Field
-import Clean.Utils.OfflineMemory
-import Clean.Utils.Rotation
-import Clean.Utils.SourceSinkPath
+module
+public import CleanCore
+public import Clean.Circuit.Operations
+public import Clean.Specs.Keccak256
+public import Clean.Specs.BLAKE3
+public import Clean.Utils.Bits
+public import Clean.Utils.Field
+public import Clean.Utils.OfflineMemory
+public import Clean.Utils.Rotation
+public import Clean.Utils.SourceSinkPath
+
+@[expose] public section
 
 /-! # CleanCore is Clean
 
-`CleanCore` (namespace `Airbender`) transcribes the part of Clean (Verified-zkEVM/clean, pinned 93c9d1e in
-`lakefile.toml`) that the spec and the proofs use. This file is the only one that imports Clean; it is a
-non-module leaf (Clean is not built as Lean modules), checked on every build.
+`CleanCore` (namespace `Airbender`) transcribes the part of Clean (Verified-zkEVM/clean, pinned b41c196 =
+tag v4.35.0 in `lakefile.toml`) that the spec and the proofs use. This file is the only one in `human/` that
+imports Clean; it is a leaf (nothing imports it), checked on every build.
 
 What it shows, per transcribed definition:
 * constraint semantics: our expressions, environments, tables, lookups and flat operations translate one to
@@ -125,48 +128,48 @@ def Table.toClean {Row : TypeMap} [Airbender.ProvableType Row] [_root_.ProvableT
   ⟨t.name, t.Contains, t.Soundness, t.Completeness, t.imply_soundness, t.implied_by_completeness⟩
 
 theorem toRaw_field (t : Airbender.Table F Airbender.field) :
-    RawTable.toClean t.toRaw = (Table.toClean (Row := _root_.field) t).toRaw := rfl
+    RawTable.toClean t.toRaw = (Table.toClean (Row := _root_.field) t).toRaw := by rfl
 
 theorem toRaw_fieldPair (t : Airbender.Table F Airbender.fieldPair) :
-    RawTable.toClean t.toRaw = (Table.toClean (Row := _root_.fieldPair) t).toRaw := rfl
+    RawTable.toClean t.toRaw = (Table.toClean (Row := _root_.fieldPair) t).toRaw := by rfl
 
 theorem toRaw_fieldTriple (t : Airbender.Table F Airbender.fieldTriple) :
-    RawTable.toClean t.toRaw = (Table.toClean (Row := _root_.fieldTriple) t).toRaw := rfl
+    RawTable.toClean t.toRaw = (Table.toClean (Row := _root_.fieldTriple) t).toRaw := by rfl
 
 theorem toRaw_fields {n : ℕ} (t : Airbender.Table F (Airbender.fields n)) :
-    RawTable.toClean t.toRaw = (Table.toClean (Row := _root_.fields n) t).toRaw := rfl
+    RawTable.toClean t.toRaw = (Table.toClean (Row := _root_.fields n) t).toRaw := by rfl
 
 theorem fromStatic_fields {n : ℕ} (t : Airbender.StaticTable F (Airbender.fields n)) :
     Table.toClean (Row := _root_.fields n) (Airbender.Table.fromStatic t) =
       _root_.Table.fromStatic (⟨t.name, t.length, t.row, t.index, t.Spec, t.contains_iff⟩ :
-        _root_.StaticTable F (_root_.fields n)) := rfl
+        _root_.StaticTable F (_root_.fields n)) := by rfl
 
 /-! ## Specifications: equal to Clean's definitions -/
 
-theorem keccak_roundConstants : Airbender.Specs.Keccak256.roundConstants = _root_.Specs.Keccak256.roundConstants := rfl
-theorem keccak_thetaC : Airbender.Specs.Keccak256.thetaC = _root_.Specs.Keccak256.thetaC := rfl
-theorem keccak_thetaD : Airbender.Specs.Keccak256.thetaD = _root_.Specs.Keccak256.thetaD := rfl
-theorem keccak_thetaXor : Airbender.Specs.Keccak256.thetaXor = _root_.Specs.Keccak256.thetaXor := rfl
-theorem keccak_theta : Airbender.Specs.Keccak256.theta = _root_.Specs.Keccak256.theta := rfl
-theorem keccak_rhoPi : Airbender.Specs.Keccak256.rhoPi = _root_.Specs.Keccak256.rhoPi := rfl
-theorem keccak_chi : Airbender.Specs.Keccak256.chi = _root_.Specs.Keccak256.chi := rfl
-theorem keccak_iota : Airbender.Specs.Keccak256.iota = _root_.Specs.Keccak256.iota := rfl
-theorem keccak_keccakRound : Airbender.Specs.Keccak256.keccakRound = _root_.Specs.Keccak256.keccakRound := rfl
+theorem keccak_roundConstants : Airbender.Specs.Keccak256.roundConstants = _root_.Specs.Keccak256.roundConstants := by rfl
+theorem keccak_thetaC : Airbender.Specs.Keccak256.thetaC = _root_.Specs.Keccak256.thetaC := by rfl
+theorem keccak_thetaD : Airbender.Specs.Keccak256.thetaD = _root_.Specs.Keccak256.thetaD := by rfl
+theorem keccak_thetaXor : Airbender.Specs.Keccak256.thetaXor = _root_.Specs.Keccak256.thetaXor := by rfl
+theorem keccak_theta : Airbender.Specs.Keccak256.theta = _root_.Specs.Keccak256.theta := by rfl
+theorem keccak_rhoPi : Airbender.Specs.Keccak256.rhoPi = _root_.Specs.Keccak256.rhoPi := by rfl
+theorem keccak_chi : Airbender.Specs.Keccak256.chi = _root_.Specs.Keccak256.chi := by rfl
+theorem keccak_iota : Airbender.Specs.Keccak256.iota = _root_.Specs.Keccak256.iota := by rfl
+theorem keccak_keccakRound : Airbender.Specs.Keccak256.keccakRound = _root_.Specs.Keccak256.keccakRound := by rfl
 theorem keccak_keccakPermutation :
-    Airbender.Specs.Keccak256.keccakPermutation = _root_.Specs.Keccak256.keccakPermutation := rfl
+    Airbender.Specs.Keccak256.keccakPermutation = _root_.Specs.Keccak256.keccakPermutation := by rfl
 
-theorem blake3_iv : Airbender.Specs.BLAKE3.iv = _root_.Specs.BLAKE3.iv := rfl
-theorem blake3_g : Airbender.Specs.BLAKE3.g = _root_.Specs.BLAKE3.g := rfl
-theorem blake3_roundConstants : Airbender.Specs.BLAKE3.roundConstants = _root_.Specs.BLAKE3.roundConstants := rfl
-theorem blake3_round : Airbender.Specs.BLAKE3.round = _root_.Specs.BLAKE3.round := rfl
+theorem blake3_iv : Airbender.Specs.BLAKE3.iv = _root_.Specs.BLAKE3.iv := by rfl
+theorem blake3_g : Airbender.Specs.BLAKE3.g = _root_.Specs.BLAKE3.g := by rfl
+theorem blake3_roundConstants : Airbender.Specs.BLAKE3.roundConstants = _root_.Specs.BLAKE3.roundConstants := by rfl
+theorem blake3_round : Airbender.Specs.BLAKE3.round = _root_.Specs.BLAKE3.round := by rfl
 
 /-! ## Utilities: equal to Clean's definitions -/
 
-theorem not64_eq : Airbender.not64 = _root_.not64 := rfl
-theorem add32_eq : Airbender.add32 = _root_.add32 := rfl
-theorem rotRight64_eq : Airbender.rotRight64 = _root_.rotRight64 := rfl
-theorem rotRight32_eq : Airbender.rotRight32 = _root_.rotRight32 := rfl
-theorem rotLeft64_eq : Airbender.rotLeft64 = _root_.rotLeft64 := rfl
+theorem not64_eq : Airbender.not64 = _root_.not64 := by rfl
+theorem add32_eq : Airbender.add32 = _root_.add32 := by rfl
+theorem rotRight64_eq : Airbender.rotRight64 = _root_.rotRight64 := by rfl
+theorem rotRight32_eq : Airbender.rotRight32 = _root_.rotRight32 := by rfl
+theorem rotLeft64_eq : Airbender.rotLeft64 = _root_.rotLeft64 := by rfl
 theorem mapRange_eq {α : Type} : @Airbender.Vector.mapRange α = @_root_.Vector.mapRange α := by
   funext n create
   induction n with
@@ -175,18 +178,18 @@ theorem mapRange_eq {α : Type} : @Airbender.Vector.mapRange α = @_root_.Vector
 theorem toBits_eq : Airbender.Utils.Bits.toBits = _root_.Utils.Bits.toBits := by
   funext n x
   simp only [Airbender.Utils.Bits.toBits, _root_.Utils.Bits.toBits, mapRange_eq]
-theorem fromBits_eq {n : ℕ} : @Airbender.Utils.Bits.fromBits n = @_root_.Utils.Bits.fromBits n := rfl
+theorem fromBits_eq {n : ℕ} : @Airbender.Utils.Bits.fromBits n = @_root_.Utils.Bits.fromBits n := by rfl
 theorem fieldToBits_eq {p : ℕ} [Fact p.Prime] :
     @Airbender.Utils.Bits.fieldToBits p _ = @_root_.Utils.Bits.fieldToBits p _ := by
   funext n x
   simp only [Airbender.Utils.Bits.fieldToBits, _root_.Utils.Bits.fieldToBits, toBits_eq]
 theorem fieldFromBits_eq {p n : ℕ} [Fact p.Prime] :
-    @Airbender.Utils.Bits.fieldFromBits p _ n = @_root_.Utils.Bits.fieldFromBits p _ n := rfl
-theorem splitTwoBytes_eq : Airbender.ByteUtils.splitTwoBytes = _root_.ByteUtils.splitTwoBytes := rfl
+    @Airbender.Utils.Bits.fieldFromBits p _ n = @_root_.Utils.Bits.fieldFromBits p _ n := by rfl
+theorem splitTwoBytes_eq : Airbender.ByteUtils.splitTwoBytes = _root_.ByteUtils.splitTwoBytes := by rfl
 
-theorem memoryAccess_eq : Airbender.MemoryAccess = _root_.MemoryAccess := rfl
+theorem memoryAccess_eq : Airbender.MemoryAccess = _root_.MemoryAccess := by rfl
 theorem isTimestampSorted_eq :
-    Airbender.MemoryAccessList.isTimestampSorted = _root_.MemoryAccessList.isTimestampSorted := rfl
+    Airbender.MemoryAccessList.isTimestampSorted = _root_.MemoryAccessList.isTimestampSorted := by rfl
 theorem lastWriteValue_eq :
     Airbender.MemoryAccessList.lastWriteValue = _root_.MemoryAccessList.lastWriteValue := by
   funext accesses
@@ -208,7 +211,7 @@ theorem isConsistentOnline_eq :
     simp only [Airbender.MemoryAccessList.isConsistentOnline, _root_.MemoryAccessList.isConsistentOnline]
     rw [ih, lastWriteValue_eq]
 theorem filterAddress_eq :
-    Airbender.MemoryAccessList.filterAddress = _root_.MemoryAccessList.filterAddress := rfl
+    Airbender.MemoryAccessList.filterAddress = _root_.MemoryAccessList.filterAddress := by rfl
 theorem isConsistentSingleAddress_eq :
     Airbender.MemoryAccessList.isConsistentSingleAddress =
       _root_.MemoryAccessList.isConsistentSingleAddress := by
@@ -224,14 +227,14 @@ theorem isConsistentSingleAddress_eq :
         _root_.MemoryAccessList.isConsistentSingleAddress]
       rw [ih]
 
-theorem run_eq (S : Type) : Airbender.Utils.StateTransition.Run S = _root_.Utils.StateTransition.Run S := rfl
+theorem run_eq (S : Type) : Airbender.Utils.StateTransition.Run S = _root_.Utils.StateTransition.Run S := by rfl
 theorem netFlow_eq (S : Type) [Fintype S] [DecidableEq S] :
-    @Airbender.Utils.StateTransition.Run.netFlow S _ _ = @_root_.Utils.StateTransition.Run.netFlow S _ _ := rfl
+    @Airbender.Utils.StateTransition.Run.netFlow S _ _ = @_root_.Utils.StateTransition.Run.netFlow S _ _ := by rfl
 theorem isAcyclic_eq (S : Type) [DecidableEq S] :
-    @Airbender.Utils.StateTransition.Run.isAcyclic S _ = @_root_.Utils.StateTransition.Run.isAcyclic S _ := rfl
+    @Airbender.Utils.StateTransition.Run.isAcyclic S _ = @_root_.Utils.StateTransition.Run.isAcyclic S _ := by rfl
 theorem countTransitionInPath_eq (S : Type) [DecidableEq S] :
     @Airbender.Utils.StateTransition.countTransitionInPath S _ =
-      @_root_.Utils.StateTransition.countTransitionInPath S _ := rfl
+      @_root_.Utils.StateTransition.countTransitionInPath S _ := by rfl
 
 /-! ## Axioms: the correspondence uses only Lean's standard axioms -/
 

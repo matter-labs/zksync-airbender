@@ -3,7 +3,7 @@ public import Mathlib.Algebra.Field.Basic
 -- Clean's Mathlib/Lean imports for this file, re-exported so importers see what they saw through Clean
 public import Lean.Meta.Tactic.Simp.RegisterCommand
 
-/-! # Expressions and environments (Clean `Clean.Circuit.Expression`, pinned 93c9d1e)
+/-! # Expressions and environments (Clean `Clean.Circuit.Expression`, pinned b41c196)
 
 The part of Clean's constraint language our circuits use, transcribed: a polynomial expression over
 witness variables, evaluated in an environment. Same constructors, fields and definitions as Clean;

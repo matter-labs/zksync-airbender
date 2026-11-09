@@ -3,7 +3,7 @@ public import Mathlib.Algebra.BigOperators.Fin
 -- Clean's Mathlib/Lean imports for this file, re-exported so importers see what they saw through Clean
 public import Mathlib.Data.ZMod.Basic
 
-/-! # `Fin.foldl` as a sum (Clean `Clean.Utils.Fin`, pinned 93c9d1e): transcribed with proofs. -/
+/-! # `Fin.foldl` as a sum (Clean `Clean.Utils.Fin`, pinned b41c196): transcribed with proofs. -/
 
 @[expose] public section
 

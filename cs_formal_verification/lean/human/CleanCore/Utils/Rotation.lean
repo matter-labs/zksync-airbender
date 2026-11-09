@@ -7,7 +7,7 @@ public import Mathlib.Tactic.Linarith
 public import Init.Data.List.Find
 public import Mathlib.Combinatorics.Enumerative.Composition
 
-/-! # 64-bit rotation bounds (Clean `Clean.Utils.Rotation`, pinned 93c9d1e): transcribed with proofs. -/
+/-! # 64-bit rotation bounds (Clean `Clean.Utils.Rotation`, pinned b41c196): transcribed with proofs. -/
 
 @[expose] public section
 

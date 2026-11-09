@@ -7,7 +7,7 @@ public import Lean.Elab.Tactic
 public import Mathlib.Combinatorics.Enumerative.Composition
 public import Mathlib.Control.Monad.Writer
 
-/-! # Keccak-f[1600] (Clean `Clean.Specs.Keccak256`, pinned 93c9d1e)
+/-! # Keccak-f[1600] (Clean `Clean.Specs.Keccak256`, pinned b41c196)
 
 Clean's specification of the Keccak-f[1600] permutation over 25 lanes of 64-bit naturals, transcribed
 verbatim (θ, ρπ, χ, ι, round, permutation). Deviation: the sponge (`absorbBlock`, ...) and Clean's test

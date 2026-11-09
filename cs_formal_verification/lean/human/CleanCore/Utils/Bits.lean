@@ -8,7 +8,7 @@ public import Lean.Meta.Tactic.Simp.RegisterCommand
 public import Mathlib.Algebra.Field.ZMod
 public import Mathlib.Algebra.Order.Star.Basic
 
-/-! # Bit decomposition of naturals and field elements (Clean `Clean.Utils.Bits`, pinned 93c9d1e): transcribed with proofs.
+/-! # Bit decomposition of naturals and field elements (Clean `Clean.Utils.Bits`, pinned b41c196): transcribed with proofs.
 `F p` is `ZMod p`. -/
 
 @[expose] public section

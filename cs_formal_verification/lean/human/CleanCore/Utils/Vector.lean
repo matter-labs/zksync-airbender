@@ -5,7 +5,7 @@ public import Init.Data.List.Find
 public import Mathlib.Analysis.Normed.Ring.Lemmas
 public import Mathlib.Combinatorics.Enumerative.Composition
 
-/-! # `Vector.mapRange` (Clean `Clean.Utils.Vector`, pinned 93c9d1e): transcribed with proofs. -/
+/-! # `Vector.mapRange` (Clean `Clean.Utils.Vector`, pinned b41c196): transcribed with proofs. -/
 
 @[expose] public section
 

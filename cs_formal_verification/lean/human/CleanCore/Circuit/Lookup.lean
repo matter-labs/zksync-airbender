@@ -2,7 +2,7 @@ module
 public import CleanCore.Circuit.Expression
 public import CleanCore.Circuit.Provable
 
-/-! # Lookup tables (Clean `Clean.Circuit.Lookup`, pinned 93c9d1e)
+/-! # Lookup tables (Clean `Clean.Circuit.Lookup`, pinned b41c196)
 
 A table states what it means to contain a row (`Contains`), with two equivalent-or-weaker views for
 proofs (`Soundness`, `Completeness`). A lookup asks that the evaluated entry is in the table, where the

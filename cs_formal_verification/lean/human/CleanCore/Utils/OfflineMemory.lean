@@ -12,7 +12,7 @@ public import Mathlib.Analysis.Normed.Ring.Lemmas
 public import Mathlib.Combinatorics.Enumerative.Composition
 public import Mathlib.Control.Monad.Writer
 
-/-! # Offline memory checking (Clean `Clean.Utils.OfflineMemory`, pinned 93c9d1e): memory accesses, timestamp-sorted
+/-! # Offline memory checking (Clean `Clean.Utils.OfflineMemory`, pinned b41c196): memory accesses, timestamp-sorted
 access lists and their online consistency; transcribed with proofs. Deviation: the circuit gadgets are omitted. -/
 
 @[expose] public section

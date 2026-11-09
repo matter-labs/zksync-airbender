@@ -6,7 +6,7 @@ public import Mathlib.Algebra.Field.ZMod
 public import Mathlib.Algebra.Order.Star.Basic
 public import Mathlib.Analysis.Normed.Ring.Lemmas
 
-/-! # Splitting a 16-bit value into two bytes (Clean `Clean.Utils.Field`, pinned 93c9d1e). -/
+/-! # Splitting a 16-bit value into two bytes (Clean `Clean.Utils.Field`, pinned b41c196). -/
 
 @[expose] public section
 

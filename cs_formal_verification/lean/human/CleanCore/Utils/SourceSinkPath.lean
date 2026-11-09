@@ -4,7 +4,7 @@ public import Mathlib.Algebra.Order.BigOperators.Group.Finset
 public import Mathlib.Algebra.BigOperators.Ring.Finset
 
 /-! # A run with net flow +1 at a source and -1 at a sink contains a path between them (Clean
-`Clean.Utils.SourceSinkPath`, pinned 93c9d1e): transcribed with proofs, only what our trace proofs use. -/
+`Clean.Utils.SourceSinkPath`, pinned b41c196): transcribed with proofs, only what our trace proofs use. -/
 
 @[expose] public section
 

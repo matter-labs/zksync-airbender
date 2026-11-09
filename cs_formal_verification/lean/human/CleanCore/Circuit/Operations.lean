@@ -2,7 +2,7 @@ module
 public import CleanCore.Circuit.Lookup
 public import Mathlib.Tactic.Tauto
 
-/-! # Flat circuit operations (Clean `Clean.Circuit.Operations`, pinned 93c9d1e)
+/-! # Flat circuit operations (Clean `Clean.Circuit.Operations`, pinned b41c196)
 
 An imported circuit is a list of operations: assertions (`e = 0`) and lookups. `ConstraintsHoldFlat env ops`
 says every operation holds in `env`. Same definitions as Clean. Deviation: Clean's `FlatOperation` also has

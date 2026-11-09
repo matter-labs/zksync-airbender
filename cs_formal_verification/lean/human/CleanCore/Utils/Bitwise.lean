@@ -8,7 +8,7 @@ public import Mathlib.Algebra.Order.Star.Basic
 public import Mathlib.Analysis.Normed.Ring.Lemmas
 public import Std.Tactic.BVDecide
 
-/-! # 64- and 32-bit word operations on naturals (Clean `Clean.Utils.Bitwise`, pinned 93c9d1e): the operations the
+/-! # 64- and 32-bit word operations on naturals (Clean `Clean.Utils.Bitwise`, pinned b41c196): the operations the
 Keccak-f[1600] and BLAKE3/Blake2s specs use, and the lemmas our proofs cite; transcribed with proofs. -/
 
 @[expose] public section

@@ -7,7 +7,7 @@ public import Mathlib.Algebra.Order.Star.Basic
 public import Mathlib.Analysis.Normed.Ring.Lemmas
 public import Mathlib.Combinatorics.Enumerative.Composition
 
-/-! # Row types of lookup tables (Clean `Clean.Circuit.Provable`, pinned 93c9d1e)
+/-! # Row types of lookup tables (Clean `Clean.Circuit.Provable`, pinned b41c196)
 
 A table row type is a map `F ↦ row of F` that flattens to a fixed number of field elements. We keep
 only the flattening (`size`, `toElements`, `fromElements`) and the three row types our tables use

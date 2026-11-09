@@ -4,7 +4,7 @@ public import CleanCore.Utils.Bitwise
 public import Init.Data.List.Find
 public import Mathlib.Combinatorics.Enumerative.Composition
 
-/-! # The BLAKE3 mixing function and round (Clean `Clean.Specs.BLAKE3`, pinned 93c9d1e)
+/-! # The BLAKE3 mixing function and round (Clean `Clean.Specs.BLAKE3`, pinned b41c196)
 
 Clean's `iv`, `g`, `roundConstants` and `round`, transcribed verbatim. Blake2s shares the IV and the shape
 of `G` and of a round (its rotation constants and message schedule are stated where it is used).
