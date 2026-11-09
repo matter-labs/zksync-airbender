@@ -99,7 +99,16 @@ Representation lemmas live in `Slop/Arithmetic/Word.lean`.
 
 [Lean strategies](docs/shared/lean-strategies.md) section 2 sets the budget: about 10 s per module, 30 s at most.
 `verify.sh` fails any module of the build targets over 30 s ([module_budget.py](lean/scripts/module_budget.py)). A
-module's time is the CPU time (user + sys) of its `lean` process compiled alone, imports built. Wall time is not
+module's time is the CPU time (user + sys) of its `lean` process compiled alone, imports built (and the precompiled
+`ImportNative` library loaded, as Lake does).
+
+The 30 s are CPU time on the reference machine, the Apple M-series Mac this project is developed on. Before checking,
+the gate compiles a pinned calibration file ([budget_calibration.lean](lean/scripts/budget_calibration.lean), Lean
+core only: kernel reduction, `omega`, `simp`; its sha256 is pinned in the script) and scales the limit by its CPU time
+here / there (`CALIBRATION_REFERENCE_S` = 5.5 s, the lowest of ~20 runs on the reference machine, which ranged
+5.4-6.8 s; lowest of up to three runs here; factor clamped to 0.5-4). A runner twice as slow per core gets 60 s. The
+ledger keeps raw CPU times; the limit and the factor are printed and written at the end of `module-budget.tsv`.
+Changing the calibration file needs a new reference time measured on the reference machine. Wall time is not
 used: under parallel load it is off by 2–4×, and a module that elaborates in parallel finishes in less wall time
 than it costs. Load only inflates CPU time (efficiency cores, shared caches), so a module under budget under load
 is under budget alone. Three stages, each paying only for what the one before could not settle:
@@ -108,8 +117,8 @@ is under budget alone. Three stages, each paying only for what the one before co
    source and every import): an entry is valid exactly as long as Lake would not rebuild the module. A module with
    no entry (restored from Lake's artifact cache, or built outside `verify.sh`) is compiled again outside Lake,
    four at a time (`MODULE_BUDGET_JOBS`), its CPU time read exactly (`wait4`).
-3. A module over budget in 1 or 2 is compiled again alone, at most twice; the lower time counts. Over 30 s alone
-   (`MODULE_BUDGET_S`) fails.
+3. A module over budget in 1 or 2 is compiled again alone, at most twice; the lower time counts. Over the scaled
+   limit alone (`MODULE_BUDGET_S` = 30 s on the reference machine) fails.
 
 The ledger is the file `<LAKE_CACHE_DIR>.module-cpu.tsv`, beside (not inside) Lake's shared artifact cache, so
 worktrees sharing the cache measure each module once per input hash; without the cache it is

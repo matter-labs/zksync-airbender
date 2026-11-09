@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Module build budget (docs/shared/lean-strategies.md 2): every module of ours compiles in at most 30 s of CPU.
+"""Module build budget (docs/shared/lean-strategies.md 2): every module of ours compiles in at most 30 s of CPU on the
+reference machine. `check` first times a pinned calibration file and scales the limit by its CPU time here / on the
+reference machine (CALIBRATION_* below; README "Build budget").
 
 The metric is the CPU time (user + sys) of the module's `lean` process, compiled alone with its imports built.
 Not wall time: wall time under parallel load is off by 2-4x, and a module that elaborates in parallel can finish
@@ -46,6 +48,14 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC_DIRS = ("human", "slop", "test")
 BUILD = ROOT / ".lake" / "build"
 BUDGET = float(os.environ.get("MODULE_BUDGET_S", "30"))
+# The budget is CPU time on the reference machine. The check scales it by a pinned calibration workload's CPU time
+# here / there (scripts/budget_calibration.lean, Lean core only): a machine twice as slow per core gets 60 s.
+CALIBRATION = ROOT / "scripts" / "budget_calibration.lean"
+CALIBRATION_SHA256 = "45aa2de95e7e061ea316fc116e4524448eb8f99c881f36fc4373411f5985781d"
+CALIBRATION_REFERENCE_S = 5.5  # lowest of ~20 runs here (5.4-6.8 s: thermal state, core type)
+CALIBRATION_REFERENCE_MACHINE = "Apple M-series Mac, 14 cores, macOS arm64, Lean 4.34.1 (2026-11-09)"
+CALIBRATION_CLAMP = (0.5, 4.0)
+NATIVES: list = []  # native_libs(), set by the commands that compile
 
 
 def ledger_path() -> Path:
@@ -107,23 +117,29 @@ def mod_of(path: Path) -> str | None:
 IMPORT = re.compile(r"^\s*(?:public\s+|private\s+)?(?:meta\s+)?import\s+(?:all\s+)?([\w.]+)", re.M)
 
 
-def targets() -> list[str]:
-    """Modules of verify.sh's targets: the lakefile's libraries (globs, else roots) and executable, closed under
-    imports of our own files."""
-    cfg = tomllib.loads((ROOT / "lakefile.toml").read_text())
-    every = sorted(m for d in SRC_DIRS for p in (ROOT / d).rglob("*.lean") if (m := mod_of(p)))
-    seeds: set[str] = set()
-    for lib in cfg.get("lean_lib", []):
-        # Lake builds a library's globs; its roots only when it has no globs
-        for g in lib.get("globs", lib.get("roots", [lib["name"]])):
-            if g.endswith(".+"):
-                seeds.update(m for m in every if m.startswith(g[:-2] + "."))
-            elif g.endswith(".*"):
-                seeds.update(m for m in every if m == g[:-2] or m.startswith(g[:-2] + "."))
-            else:
-                seeds.add(g)
-    for exe in cfg.get("lean_exe", []):
-        seeds.add(exe["root"])
+def lakefile() -> dict:
+    return tomllib.loads((ROOT / "lakefile.toml").read_text())
+
+
+def lib_modules(lib: dict, every: list[str]) -> set[str]:
+    """Modules a library builds: its globs; its roots only when it has no globs."""
+    mods: set[str] = set()
+    for g in lib.get("globs", lib.get("roots", [lib["name"]])):
+        if g.endswith(".+"):
+            mods.update(m for m in every if m.startswith(g[:-2] + "."))
+        elif g.endswith(".*"):
+            mods.update(m for m in every if m == g[:-2] or m.startswith(g[:-2] + "."))
+        else:
+            mods.add(g)
+    return mods
+
+
+def all_modules() -> list[str]:
+    return sorted(m for d in SRC_DIRS for p in (ROOT / d).rglob("*.lean") if (m := mod_of(p)))
+
+
+def closure(seeds: set[str] | list[str]) -> set[str]:
+    """Our modules reachable from `seeds` by imports (the seeds included)."""
     seen: set[str] = set()
     todo = [m for m in seeds if src_of(m)]
     while todo:
@@ -134,7 +150,44 @@ def targets() -> list[str]:
         for i in IMPORT.findall(src_of(m).read_text()):
             if i not in seen and src_of(i):
                 todo.append(i)
-    return sorted(seen)
+    return seen
+
+
+def targets() -> list[str]:
+    """Modules of verify.sh's targets: the lakefile's libraries (globs, else roots) and executable, closed under
+    imports of our own files."""
+    cfg = lakefile()
+    every = all_modules()
+    seeds: set[str] = set()
+    for lib in cfg.get("lean_lib", []):
+        seeds |= lib_modules(lib, every)
+    for exe in cfg.get("lean_exe", []):
+        seeds.add(exe["root"])
+    return sorted(closure(seeds))
+
+
+def native_libs() -> list[tuple[set[str], Path | None]]:
+    """The libraries with `precompileModules`: their modules and their shared library (None if not built). Lake
+    loads that library when it compiles an importer (`--load-dynlib`), so its code runs natively, not interpreted."""
+    out = []
+    every = all_modules()
+    for lib in lakefile().get("lean_lib", []):
+        if lib.get("precompileModules"):
+            found = [p for p in (BUILD / "lib").glob(f"lib*_{lib['name']}.*") if p.suffix in (".so", ".dylib", ".dll")]
+            out.append((lib_modules(lib, every), found[0] if found else None))
+    return out
+
+
+def dynlib_args(mod: str, natives: list[tuple[set[str], Path | None]]) -> list[str]:
+    """`--load-dynlib` for each precompiled library that `mod` imports (from outside it), as Lake passes it."""
+    args = []
+    deps = closure([mod]) - {mod}
+    for mods, path in natives:
+        if mod not in mods and deps & mods:
+            if path is None:
+                raise RuntimeError(f"{mod} imports a precompiled library that is not built (lake build first)")
+            args.append(f"--load-dynlib={path}")
+    return args
 
 
 def dep_hash(mod: str) -> str | None:
@@ -217,9 +270,22 @@ def lean_env() -> tuple[str, dict[str, str]]:
 
 
 def compile_alone(mod: str, lean: str, env: dict[str, str], tmp: Path) -> tuple[float, int, str]:
-    """Compile like Lake does (olean, ilean and C outputs, into a scratch dir). Returns (CPU s, exit code, output)."""
+    """Compile like Lake does (olean, ilean and C outputs, into a scratch dir; the precompiled libraries it imports
+    loaded). Returns (CPU s, exit code, output)."""
     o = tmp / mod
-    args = [lean, str(src_of(mod)), "-o", f"{o}.olean", "-i", f"{o}.ilean", "-c", f"{o}.c"]
+    args = [lean, str(src_of(mod)), "-o", f"{o}.olean", "-i", f"{o}.ilean", "-c", f"{o}.c",
+            *dynlib_args(mod, NATIVES)]
+    res = run_timed(args, env)
+    for ext in (".olean", ".ilean", ".c"):
+        try:
+            os.unlink(f"{o}{ext}")
+        except OSError:
+            pass
+    return res
+
+
+def run_timed(args: list[str], env: dict[str, str]) -> tuple[float, int, str]:
+    """Run a process; (its CPU time from wait4, exit code, output)."""
     p = subprocess.Popen(args, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     out_chunks: list[bytes] = []
     reader = threading.Thread(target=lambda: out_chunks.append(p.stdout.read()), daemon=True)
@@ -227,12 +293,26 @@ def compile_alone(mod: str, lean: str, env: dict[str, str], tmp: Path) -> tuple[
     _, status, ru = os.wait4(p.pid, 0)
     reader.join()
     p.returncode = os.waitstatus_to_exitcode(status)
-    for ext in (".olean", ".ilean", ".c"):
-        try:
-            os.unlink(f"{o}{ext}")
-        except OSError:
-            pass
     return ru.ru_utime + ru.ru_stime, p.returncode, b"".join(out_chunks).decode(errors="replace")
+
+
+def calibrate(lean: str, env: dict[str, str], tmp: Path) -> tuple[float, float]:
+    """(this machine's calibration CPU time, the limit's scale factor). The lowest of up to three runs (a run can
+    land on an efficiency core); stops after the first run when it is within 5% of the reference."""
+    import hashlib
+    if hashlib.sha256(CALIBRATION.read_bytes()).hexdigest() != CALIBRATION_SHA256:
+        raise RuntimeError(f"{CALIBRATION.name} changed: measure a new CALIBRATION_REFERENCE_S and pin its sha256")
+    best = float("inf")
+    for _ in range(3):
+        o = tmp / "calibration"
+        cpu, rc, out = run_timed([lean, str(CALIBRATION), "-o", f"{o}.olean", "-i", f"{o}.ilean", "-c", f"{o}.c"], env)
+        if rc != 0:
+            raise RuntimeError(f"calibration failed to compile:\n{out[-2000:]}")
+        best = min(best, cpu)
+        if best <= 1.05 * CALIBRATION_REFERENCE_S:
+            break
+    lo, hi = CALIBRATION_CLAMP
+    return best, min(hi, max(lo, best / CALIBRATION_REFERENCE_S))
 
 
 def verdict(entries: dict[str, list[float]]) -> tuple[float, str]:
@@ -252,9 +332,14 @@ def cmd_check(jobs: int, table: Path | None) -> int:
     led = ledger_read()
     missing = [m for m in mods if (m, hashes[m]) not in led]
     lean, env = lean_env()
+    NATIVES[:] = native_libs()
     tmp = Path(tempfile.mkdtemp(prefix="module-budget-"))
     failed: list[str] = []
     try:
+        cal, scale = calibrate(lean, env, tmp)
+        limit = BUDGET * scale
+        print(f"budget: calibration {cal:.1f} s CPU (reference {CALIBRATION_REFERENCE_S:g} s on "
+              f"{CALIBRATION_REFERENCE_MACHINE}): limit {BUDGET:g} s x {scale:.2f} = {limit:.1f} s", flush=True)
         if missing:
             print(f"budget: measuring {len(missing)} modules not in the ledger ({jobs} at a time)", flush=True)
             lock = threading.Lock()
@@ -291,7 +376,7 @@ def cmd_check(jobs: int, table: Path | None) -> int:
         for m in mods:
             for _ in range(2):
                 cpu, how = verdict(led[(m, hashes[m])])
-                if cpu <= BUDGET or (how == "alone" and len(led[(m, hashes[m])]["alone"]) >= 2):
+                if cpu <= limit or (how == "alone" and len(led[(m, hashes[m])]["alone"]) >= 2):
                     break
                 print(f"budget: re-timing {m} alone ({cpu:.1f} s {how})", flush=True)
                 c, rc, out = compile_alone(m, lean, env, tmp)
@@ -308,15 +393,18 @@ def cmd_check(jobs: int, table: Path | None) -> int:
             f.write("module\tcpu_s\tmeasured\n")
             for (cpu, how), m in rows:
                 f.write(f"{m}\t{cpu:.1f}\t{how}\n")
-    over = [(c, m) for (c, _), m in rows if c > BUDGET]
+            f.write(f"# limit {limit:.1f} s = {BUDGET:g} s x {scale:.2f} (calibration {cal:.1f} s, reference "
+                    f"{CALIBRATION_REFERENCE_S:g} s)\n")
+    over = [(c, m) for (c, _), m in rows if c > limit]
     n15 = sum(1 for (c, _), _ in rows if c > 15)
     n10 = sum(1 for (c, _), _ in rows if c > 10)
     top = ", ".join(f"{m} {c:.1f}" for (c, _), m in rows[:3])
-    print(f"budget: {len(mods)} modules, CPU > 10 s: {n10}, > 15 s: {n15}, > {BUDGET:g} s: {len(over)}; top: {top}")
+    print(f"budget: {len(mods)} modules, CPU > 10 s: {n10}, > 15 s: {n15}, > {limit:.1f} s: {len(over)}; top: {top}")
     if over:
         for c, m in over:
             print(f"  over budget: {m} {c:.1f} s CPU alone")
-        print(f"budget: FAIL {len(over)} modules over {BUDGET:g} s (lean-strategies.md 2: restructure, do not raise)")
+        print(f"budget: FAIL {len(over)} modules over {limit:.1f} s ({BUDGET:g} s on the reference machine; "
+              "lean-strategies.md 2: restructure, do not raise)")
         return 1
     return 0
 
@@ -324,6 +412,7 @@ def cmd_check(jobs: int, table: Path | None) -> int:
 def cmd_time(mods: list[str]) -> int:
     """Time modules alone (imports must be built), without the ledger: for profiling a change."""
     lean, env = lean_env()
+    NATIVES[:] = native_libs()
     tmp = Path(tempfile.mkdtemp(prefix="module-budget-"))
     rc = 0
     try:

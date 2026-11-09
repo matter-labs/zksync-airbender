@@ -123,6 +123,12 @@ any mismatch fails the import. This comparison is an elaborator responsibility w
 trust as the transcription: it is elaborator code, not kernel-checked, and the kernel proofs
 see only the formula. See [the setup README](../lean/artifacts/setup/README.md).
 
+The parser and the setup import run as native code: the `ImportNative` library of
+[lakefile.toml](../lean/lakefile.toml) (SetupEmit and its imports) is precompiled (`precompileModules`) and Lake loads
+it when it elaborates an importer. The source is the same; executing it trusts Lean's compiler and the bundled C
+compiler where the IR interpreter ran it before (both ship with the pinned toolchain). Every emitted constant of the
+20 artifact and setup modules was compared by type and value hash before and after the switch (identical).
+
 The target remains the richer no-cache representation. Compiled-gate implication,
 witness extension and cached-layout equivalence are unproved. Generic prime-field
 claims retain their stated minimum moduli and inverse compatibility; they do not
@@ -144,6 +150,24 @@ Public program tables are built from the ROM image by `RV.read` and `RV.decode`
 still needs review against Rust (`add_sub_family/decoder.rs`, `riscv_transpiler/src/ir/simple_instruction_set.rs`).
 Custom CSR/Zimop behavior is in the spec: the CSR 0x7C0 input read/write forms and the delegation calls are the
 only CSR forms with a next state.
+
+## What CI re-checks
+
+`.github/workflows/lean-formal-verification.yml` runs [verify.sh](../verify.sh) in two modes
+([ci/README.md](../ci/README.md)). A local `./verify.sh` is the cold mode without the kernel replay.
+
+| | incremental (pull requests) | cold (pushes to protected branches, nightly) |
+|---|---|---|
+| build | Lake rebuilds what changed since the restored build of an earlier commit; unchanged modules are its `.olean` files | everything elaborated again (only the toolchain, Mathlib's published `.olean` files and the generated Sail model are restored) |
+| axiom audits | read from Lake's build log of the audit modules (`VERIFY_AUDITS=replay`): the messages recorded when those `.olean` files were built, the same trust as the files themselves | `lake env lean` elaborates each audit file again (`fresh`) |
+| every `#print axioms` answered, standard axioms only | yes | yes |
+| regressions, test executable, review check, JSON pins | yes | yes |
+| module budget | ledger of earlier measurements by input hash, plus the modules built now | every module measured in this run |
+| kernel replay (`leanchecker`: every constant of our modules re-added to the kernel) | no | yes |
+
+An incremental run trusts the restored build (produced by an earlier CI run of this repository). The cold runs
+re-derive everything from source each night and on every push to a protected branch, so a bad cached build cannot
+outlive the next cold run.
 
 ## Modeled tables and logical arguments
 
