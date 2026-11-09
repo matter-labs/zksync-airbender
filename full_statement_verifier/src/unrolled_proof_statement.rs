@@ -63,22 +63,25 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     // we should in parallel verify proofs, and drag along the transcript to assert equality of challenges
     let mut transcript = Blake2sBufferingTranscript::<REDUCED_ROUNDS>::new();
 
-    let mut registers_buffer = MaybeUninit::<[u32; 32 + 2 * 32]>::uninit().assume_init();
+    let mut registers_buffer = MaybeUninit::<[u32; 32 + 2 * 32]>::uninit();
+    let registers_dst = registers_buffer.as_mut_ptr().cast::<u32>();
 
     // first we need to get final register values and timestamps
     for reg_idx in 0..32 {
         let value = nd_source.read_word();
         let timestamp_low = nd_source.read_word();
         let timestamp_high = nd_source.read_word();
-        registers_buffer[reg_idx * 3] = value;
-        registers_buffer[reg_idx * 3 + 1] = timestamp_low;
-        registers_buffer[reg_idx * 3 + 2] = timestamp_high;
+        registers_dst.add(reg_idx * 3).write(value);
+        registers_dst.add(reg_idx * 3 + 1).write(timestamp_low);
+        registers_dst.add(reg_idx * 3 + 2).write(timestamp_high);
     }
+    // SAFETY: the loop above wrote every word of the buffer
+    let registers_buffer: &[u32; 32 + 2 * 32] = registers_buffer.assume_init_ref();
 
     // x0 is always 0, for sanity
     assert_eq!(registers_buffer[0], 0);
 
-    transcript.absorb(&registers_buffer);
+    transcript.absorb(registers_buffer);
 
     let mut final_pc_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
     let final_pc = nd_source.read_word();
@@ -248,7 +251,7 @@ pub unsafe fn verify_full_statement_for_unrolled_circuits<
     let (machine_state_read_set_contribution, machine_state_write_set_contribution) =
         prover::definitions::produce_initial_permutation_product_separate_contributions(
             core::mem::transmute::<&[u32; 32 + 2 * 32], &[(u32, (u32, u32)); NUM_REGISTERS]>(
-                &registers_buffer,
+                registers_buffer,
             ),
             INITIAL_PC,
             split_timestamp(INITIAL_TIMESTAMP),
