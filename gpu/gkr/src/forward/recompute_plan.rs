@@ -119,8 +119,7 @@ fn check_policy_bindings(programs: &GkrPrograms, policy: GkrMemoryPolicy) {
             &header,
             &|a| resolved.get(&plan.canonical(a)).copied(),
             &|_| E4::ONE,
-        )
-        .unwrap_or_else(|e| panic!("recomputation descriptor capacity/closure: {e:?}"));
+        );
         resolved.retain(|a, _| !temporary.contains(a));
     };
     bind(plan.writes.len(), &plan.retained, false, &mut resolved);

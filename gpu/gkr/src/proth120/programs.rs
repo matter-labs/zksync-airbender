@@ -130,6 +130,32 @@ mod cpu_tests {
         ))
         .unwrap();
         let programs = GkrProgramsPr::compile(CircuitType::L1Wrap, Arc::new(artifact));
+        // Match the BabyBear CPU lowering test with the committed wrap program.
+        let resolved =
+            crate::forward::vm::lower_common::resolve_test_columns(&programs.forward.layers, 256);
+        let header = crate::proth120::forward::lower::FwdVmInputs {
+            mapping_arena: std::array::from_fn(|i| std::ptr::without_provenance(i + 1)),
+            decoder_mapping_col: Some(0),
+            table: std::ptr::without_provenance(4),
+            decoder_mapping: std::ptr::without_provenance(5),
+            table_len: 16,
+            count: 16,
+            inits_and_teardowns_top_bits: &[0x1234; 32],
+        };
+        let lowered = crate::proth120::forward::lower::lower_desc(
+            &programs.forward.layers,
+            &header,
+            &|address| {
+                resolved
+                    .iter()
+                    .find_map(|(candidate, column)| (*candidate == address).then_some(*column))
+            },
+        );
+        assert_eq!(
+            lowered.desc.layer_count as usize,
+            programs.forward.layers.len()
+        );
+        assert_eq!(lowered.desc.count, 16);
         let config = ProofProfile::L1Wrap.prover_config(
             21,
             prover::definitions::SoundnessMode::PessimisticConjecture,

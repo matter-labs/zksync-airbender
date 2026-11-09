@@ -2,6 +2,7 @@
 
 pub(crate) mod desc;
 pub(crate) mod lower;
+pub(crate) mod lower_common;
 mod output;
 pub(crate) mod production_bind;
 
