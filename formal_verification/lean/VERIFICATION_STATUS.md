@@ -1,5 +1,61 @@
 # Verification status
 
+## Original caller provenance and control-segment accounting (9 November 2026)
+
+[Caller observations](Airbender/Review/Trace/Families/ReducedMachine/ControlCaller.lean),
+[proof](Airbender/Proofs/ReducedMachine/NativeControlCaller.lean) and
+[short root](Airbender/Review/Trace/Families/ReducedMachine/ControlCallerTheorems.lean)
+compose the OLD caller/worker index matching with the checked control path/source
+positions. EVERY actual worker42 path edge unconditionally has an ORIGINAL
+complete callerRows index with request1 and the SAME full four-field key. Exact
+observations bind masked kind1991, ABI high, caller low+3/high and the actual worker
+write's BOTH raw time fields. This derives logical caller support, not execute1,
+a fetched caller instruction, original CSR/Sail behavior or physical issuance.
+
+On the OLD matching branch, ALL worker control-edge positions and ALL original
+request-one caller positions have unique partners in BOTH directions. Every
+bounded segment's original sourceCount equals the cardinality of ORIGINAL caller
+indices linked to that exact segment. Thus the OLD workerCount equals this derived
+callerCount on THIS SAME path. The result retains the alternative of >=257 actual
+MAIN proofs; the counted public root adds no small-batch/no-wrap/count/activity/
+matching premise. The exact BOTH-limb fold transports to this segment callerCount
+under the matching branch. Caller count is bounded by the COMPLETE callerRows
+length, never silently treated as a count of physically issued instructions.
+
+Generic unique-partner composition precedes native sampling. Old original-index
+matching/Natcounts/worker-source cardinality/path-fold/last-reset/history/validity/
+Nodup/JOINT foundations are reused unchanged. SourceAt/CallerAt use COMPLETE
+original bounded Fin domains, retaining inactive positions and request-positive
+inactive callers. Equal-value/zero-mask worker updates and MAIN copies remain.
+All prior public origins/ordinary arithmetic-logic-comparison-high-zero-shift-
+jump-LW-CSR values/edges/every target and active-worker outcome/JOINT43/all25outputs/
+wordbounds/capacity/MAIN dependencies remain on THIS SAME path. All inactive
+requests/AUX/m0poles/inactiveD/43ports/BOTHrawtimes/OLDREADs/refreshes/aliases/
+unmasked SW/public x0 times remain in full acceptance. Rank is noninjective proof
+order; logical extraction is not physical fixed-challenge/RustJSONFFT/transcript/
+quotient/verifier refinement. No new Accepted/crypto boundary or desired count/
+reset/read/range/address/history/result/one-hot/round/schedule/fulfilled ledger.
+
+[22 controls](Tests/NativeControlCaller.lean) cover original-index composition,
+duplicate/empty partners, all four raw-key mismatch rejections, pure raw field
+clock wrap, OLD LOCAL inactive request-positive validity, actual source/key fields,
+segment counts/bounds, unconditional caller provenance, matching-or-large scope,
+up-to256 consequence and SAME prior targets/workers/ordinary-CSR edges/JOINT/root.
+Pure finite/reference, OLD LOCAL and conditional only; no new native-global/
+wholeworker/physical accepted positive witness, attack, defect or absent-enforcement
+proof. Review contains observations/short root; calculations and assembly stay
+under Proofs, with unchanged separate Import fidelity.
+
+This closes the path-to-original-caller provenance and scoped segment-accounting
+connection. Physical caller activity/issued-call counts, larger-batch universal
+no-wrap/matching, standard round/hash schedules, original CSR/NDstream/MOP/worker
+Sail, protocol spans/padding-terminal/init-teardown, physical cryptography,
+completeness/general physical setup/parity remain open. No native adoption/pin/
+parser/importer/exporter/artifact/fixture/generation/heavy replay/dependency/v3
+refresh/production/Sail/old acceptance/FINDINGS change. Zero established native
+defects; counts are not parity.
+
+
 ## Original worker-source positions and control counts (9 November 2026)
 
 [Source observations](Airbender/Review/Trace/Families/ReducedMachine/ControlSource.lean),

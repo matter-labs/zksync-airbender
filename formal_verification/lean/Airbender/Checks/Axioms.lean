@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.ControlCaller
+import Airbender.Proofs.ReducedMachine.NativeControlCaller
+import Airbender.Review.Trace.Families.ReducedMachine.ControlCallerTheorems
+import Tests.NativeControlCaller
+
 import Airbender.Review.Trace.Families.ReducedMachine.ControlSource
 import Airbender.Proofs.ReducedMachine.NativeControlSource
 import Airbender.Review.Trace.Families.ReducedMachine.ControlSourceTheorems
@@ -8592,3 +8597,38 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeControlSource.old_fold_retained
 #print axioms Airbender.Tests.NativeControlSource.old_joint_retained
 #print axioms Airbender.Tests.NativeControlSource.full_counted_source
+
+#print axioms Airbender.NativeControlCallerProofs.unique_compose
+#print axioms Airbender.NativeControlCallerProofs.provenance
+#print axioms Airbender.NativeControlCallerProofs.caller_fields
+#print axioms Airbender.NativeControlCallerProofs.caller_unique
+#print axioms Airbender.NativeControlCallerProofs.path_matching
+#print axioms Airbender.NativeControlCallerProofs.segment_count
+#print axioms Airbender.NativeControlCallerProofs.caller_count_bound
+#print axioms Airbender.NativeControlCallerProofs.caller_member
+#print axioms Airbender.NativeControlCallerProofs.caller_fold
+#print axioms Airbender.NativeControlCallerProofs.from_prior
+#print axioms Airbender.NativeControlCallerProofs.counted
+#print axioms Airbender.NativeControlCaller.native_counted_control_callers
+#print axioms Airbender.Tests.NativeControlCaller.composed_original_indices
+#print axioms Airbender.Tests.NativeControlCaller.duplicate_caller_positions_rejected
+#print axioms Airbender.Tests.NativeControlCaller.empty_source_has_no_partner
+#print axioms Airbender.Tests.NativeControlCaller.wrong_kind_rejected
+#print axioms Airbender.Tests.NativeControlCaller.wrong_ABI_rejected
+#print axioms Airbender.Tests.NativeControlCaller.wrong_low_rejected
+#print axioms Airbender.Tests.NativeControlCaller.wrong_high_rejected
+#print axioms Airbender.Tests.NativeControlCaller.raw_caller_clock_wrap_kept
+#print axioms Airbender.Tests.NativeControlCaller.inactive_request_positive
+#print axioms Airbender.Tests.NativeControlCaller.old_LOCAL_inactive_validity
+#print axioms Airbender.Tests.NativeControlCaller.exact_source_kept
+#print axioms Airbender.Tests.NativeControlCaller.all_four_raw_fields
+#print axioms Airbender.Tests.NativeControlCaller.segment_counts_conditional
+#print axioms Airbender.Tests.NativeControlCaller.caller_count_original_bound
+#print axioms Airbender.Tests.NativeControlCaller.unconditional_original_caller
+#print axioms Airbender.Tests.NativeControlCaller.same_path_dichotomy
+#print axioms Airbender.Tests.NativeControlCaller.small_batch_scope
+#print axioms Airbender.Tests.NativeControlCaller.all_targets_and_workers_same_path
+#print axioms Airbender.Tests.NativeControlCaller.all_ordinary_CSR_edges_same_path
+#print axioms Airbender.Tests.NativeControlCaller.old_source_indices_retained
+#print axioms Airbender.Tests.NativeControlCaller.old_joint_retained
+#print axioms Airbender.Tests.NativeControlCaller.full_counted_source

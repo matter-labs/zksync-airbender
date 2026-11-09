@@ -484,3 +484,11 @@ worker42 path positions and ORIGINAL complete workerRows active indices. Every
 segment fold count equals its original source-index cardinality, retaining
 equal-value/zero-mask updates and MAIN copies. Issued-call counts, physical
 scheduling and standard hash remain open.
+
+## Original caller provenance and segment counts
+
+[Caller/path accounting](../../Trace/Families/ReducedMachine/ControlCallerTheorems.lean) connects worker42 edges to ORIGINAL caller
+indices at the full raw key. Unique position partners and exact segment caller
+counts hold on the old matching branch, retaining the >=257 MAIN-proof alternative
+and inactive request-positive callers. Physical issuance, standard schedules and
+hash remain open.
