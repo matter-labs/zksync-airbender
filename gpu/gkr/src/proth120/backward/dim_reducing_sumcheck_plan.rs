@@ -132,7 +132,7 @@ impl DimensionReducingLayerPlanPr {
             );
             coeffs.as_mut_ptr()
         };
-        let batch_table = schedule_dr_batch_challenge_table_pr(point_in[n..].as_ptr(), context)?;
+        schedule_dr_batch_challenge_table_pr(point_in[n..].as_ptr(), context)?;
         gkr_ops::build_combined_claim(
             &claims_in,
             &point_in[n..n + 1],
@@ -161,7 +161,6 @@ impl DimensionReducingLayerPlanPr {
                 program,
                 storage,
                 entry_round,
-                batch_table.as_ptr(),
                 point_out.as_ptr(),
                 context,
             )?;
@@ -211,7 +210,6 @@ impl DimensionReducingLayerPlanPr {
                 eq_prefactor: transcript.eq_prefactor,
                 coeffs_out: coeffs,
                 challenges_out: transcript.point_out,
-                batch_challenges: batch_table.as_ptr(),
                 slots,
             },
             &self.capacity,
@@ -262,7 +260,6 @@ impl DimensionReducingLayerPlanPr {
         drop(last);
         drop(claim);
         drop(eq_prefactor);
-        drop(batch_table);
         drop(point_in);
         drop(point_out);
         Ok(ScheduledLayerExecutionPr {

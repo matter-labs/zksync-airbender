@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../batch_challenges_pr.cuh"
+
 #include "abi_pr.cuh"
 
 namespace airbender::gkr::proth120::backward {
@@ -84,7 +86,7 @@ DEVICE_FORCEINLINE void pr_dr_window_slot_body(const pr_dr_window_desc &desc, co
   pr batch_challenges[GKR_DIM_REDUCING_OUTPUTS_PER_SLOT];
 #pragma unroll
   for (u32 output = 0; output < GKR_DIM_REDUCING_OUTPUTS_PER_SLOT; ++output)
-    batch_challenges[output] = load<pr, ld_modifier::ca>(desc.batch_challenges, slot.batch_exp[output]);
+    batch_challenges[output] = ::ab_pr_gkr_dim_reducing_batch_challenge_table[slot.batch_exp[output]];
 
   if constexpr ((GKR_DIM_REDUCING_PAIRWISE_SLOT_MASK & (1u << SLOT)) != 0) {
 #pragma unroll

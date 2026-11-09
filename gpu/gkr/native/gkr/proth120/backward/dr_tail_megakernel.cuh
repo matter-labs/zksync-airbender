@@ -3,6 +3,7 @@
 #include "../../backward/dr_tail_shared.cuh"
 
 #include "../../support/lookup_helpers.cuh"
+#include "batch_challenges_pr.cuh"
 #include "tail_common_pr.cuh"
 
 namespace airbender::gkr::proth120::backward {
@@ -37,23 +38,22 @@ struct pr_dr_tail_megakernel_desc {
   pr *eq_prefactor;
   pr *coeffs_out;
   pr *challenges_out;
-  const pr *batch_challenges;
   pr_dr_tail_slot slots[GKR_DIM_REDUCING_SLOTS];
 };
 
 static_assert(alignof(pr_dr_tail_slot) == 2 && sizeof(pr_dr_tail_slot) == 8, "Proth120 DR-tail slot ABI drift");
 static_assert(__builtin_offsetof(pr_dr_tail_slot, input_source) == 0 && __builtin_offsetof(pr_dr_tail_slot, batch_exp) == 4,
               "Proth120 DR-tail slot offsets drift");
-static_assert(alignof(pr_dr_tail_megakernel_desc) == 8 && sizeof(pr_dr_tail_megakernel_desc) == 200, "Proth120 DR-tail descriptor ABI drift");
+static_assert(alignof(pr_dr_tail_megakernel_desc) == 8 && sizeof(pr_dr_tail_megakernel_desc) == 192, "Proth120 DR-tail descriptor ABI drift");
 static_assert(__builtin_offsetof(pr_dr_tail_megakernel_desc, enabled_mask) == 0 && __builtin_offsetof(pr_dr_tail_megakernel_desc, folding_steps) == 4 &&
                   __builtin_offsetof(pr_dr_tail_megakernel_desc, entry_round) == 8 && __builtin_offsetof(pr_dr_tail_megakernel_desc, source_count) == 12 &&
                   __builtin_offsetof(pr_dr_tail_megakernel_desc, source_ptrs) == 16 && __builtin_offsetof(pr_dr_tail_megakernel_desc, final_sources) == 96 &&
                   __builtin_offsetof(pr_dr_tail_megakernel_desc, tau) == 104 && __builtin_offsetof(pr_dr_tail_megakernel_desc, seed) == 112 &&
                   __builtin_offsetof(pr_dr_tail_megakernel_desc, claim) == 120 && __builtin_offsetof(pr_dr_tail_megakernel_desc, eq_prefactor) == 128 &&
                   __builtin_offsetof(pr_dr_tail_megakernel_desc, coeffs_out) == 136 && __builtin_offsetof(pr_dr_tail_megakernel_desc, challenges_out) == 144 &&
-                  __builtin_offsetof(pr_dr_tail_megakernel_desc, batch_challenges) == 152 && __builtin_offsetof(pr_dr_tail_megakernel_desc, slots) == 160,
+                  __builtin_offsetof(pr_dr_tail_megakernel_desc, slots) == 152,
               "Proth120 DR-tail descriptor offsets drift");
-static_assert(sizeof(pr_dr_tail_megakernel_desc) + sizeof(pr *) == 208, "Proth120 DR-tail complete argument drift");
+static_assert(sizeof(pr_dr_tail_megakernel_desc) + sizeof(pr *) == 200, "Proth120 DR-tail complete argument drift");
 static_assert(std::is_standard_layout_v<pr_dr_tail_megakernel_desc> && std::is_trivially_copyable_v<pr_dr_tail_megakernel_desc>,
               "Proth120 DR-tail descriptor must be a plain record");
 
@@ -116,7 +116,7 @@ struct dr_tail_policy {
   static constexpr unsigned THREADS = 256;
   static constexpr unsigned ENTRY_CHALLENGES = 3;
   static constexpr bool EXPLICIT_EQ_INIT = true;
-  static DEVICE_FORCEINLINE Field batch(const Desc &desc, unsigned exp) { return load<pr, ld_modifier::ca>(desc.batch_challenges, exp); }
+  static DEVICE_FORCEINLINE Field batch(const Desc &desc, unsigned exp) { return ::ab_pr_gkr_dim_reducing_batch_challenge_table[exp]; }
   static DEVICE_FORCEINLINE Field shuffle_value(Field value, unsigned offset) { return shfl_xor(0xffffffffu, value, offset, 8); }
   static DEVICE_FORCEINLINE void build_eq_group(const Field *point, unsigned offset, unsigned count, unsigned group, Field *groups) {
     pr_dr_tail_build_eq_group(point, offset, count, group, groups);

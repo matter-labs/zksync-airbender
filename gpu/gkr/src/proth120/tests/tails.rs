@@ -205,7 +205,11 @@ fn check_tail_case(
         table.push(mul(*table.last().unwrap(), tau[n]));
     }
     assert_eq!(
-        read_back(&d_table, PR::ZERO, context),
+        read_back(
+            unsafe { era_cudart::slice::DeviceSlice::from_raw_parts(d_table, 10) },
+            PR::ZERO,
+            context
+        ),
         table,
         "batch powers"
     );
@@ -248,7 +252,6 @@ fn check_tail_case(
             eq_prefactor: d_eq_prefactor.as_mut_ptr(),
             coeffs_out: d_coeffs.as_mut_ptr(),
             challenges_out: d_challenges.as_mut_ptr(),
-            batch_challenges: d_table.as_ptr(),
             slots,
         },
         &capacity,

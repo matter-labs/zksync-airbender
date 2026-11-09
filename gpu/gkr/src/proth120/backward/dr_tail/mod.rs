@@ -48,7 +48,6 @@ pub(crate) struct DrTailMegakernelDescPr {
     pub(crate) eq_prefactor: *mut PR,
     pub(crate) coeffs_out: *mut PR,
     pub(crate) challenges_out: *mut PR,
-    pub(crate) batch_challenges: *const PR,
     pub(crate) slots: [DrTailSlotPr; GKR_DIM_REDUCING_SLOTS],
 }
 
@@ -60,9 +59,9 @@ const _: () = {
     assert!(align_of::<DrTailSlotPr>() == 2);
     assert!(offset_of!(DrTailSlotPr, input_source) == 0);
     assert!(offset_of!(DrTailSlotPr, batch_exp) == 4);
-    assert!(size_of::<DrTailMegakernelDescPr>() == 200);
+    assert!(size_of::<DrTailMegakernelDescPr>() == 192);
     assert!(align_of::<DrTailMegakernelDescPr>() == 8);
-    assert!(PR_DR_TAIL_ARGUMENT_BYTES == 208);
+    assert!(PR_DR_TAIL_ARGUMENT_BYTES == 200);
     assert!(PR_DR_TAIL_ARGUMENT_BYTES <= KERNEL_ARGUMENT_CEILING_BYTES);
     assert!(offset_of!(DrTailMegakernelDescPr, enabled_mask) == 0);
     assert!(offset_of!(DrTailMegakernelDescPr, folding_steps) == 4);
@@ -76,8 +75,7 @@ const _: () = {
     assert!(offset_of!(DrTailMegakernelDescPr, eq_prefactor) == 128);
     assert!(offset_of!(DrTailMegakernelDescPr, coeffs_out) == 136);
     assert!(offset_of!(DrTailMegakernelDescPr, challenges_out) == 144);
-    assert!(offset_of!(DrTailMegakernelDescPr, batch_challenges) == 152);
-    assert!(offset_of!(DrTailMegakernelDescPr, slots) == 160);
+    assert!(offset_of!(DrTailMegakernelDescPr, slots) == 152);
 };
 
 cuda_kernel!(
@@ -126,7 +124,6 @@ fn assert_capacity_matches_descriptor(
         ("eq prefactor", desc.eq_prefactor as usize),
         ("coefficients", desc.coeffs_out as usize),
         ("challenges", desc.challenges_out as usize),
-        ("batch challenges", desc.batch_challenges as usize),
     ] {
         assert_ne!(pointer, 0, "Proth120 DR-tail {name} pointer is null");
     }

@@ -13,7 +13,6 @@ namespace pr_dr_bwd = ::airbender::gkr::backward;
 
 struct alignas(16) pr_dr_window_desc {
   gkr_dim_reducing_batch<pr> batch;
-  const pr *batch_challenges;
   const pr *eq_high_0;
   const pr *eq_high_1;
   pr *partials;
@@ -25,10 +24,10 @@ struct alignas(16) pr_dr_window_desc {
 static_assert(sizeof(gkr_dim_reducing_batch<pr>) == 288 && alignof(gkr_dim_reducing_batch<pr>) == 8, "Proth120 DR batch ABI drift");
 static_assert(sizeof(pr_dr_window_desc) == 336 && alignof(pr_dr_window_desc) == 16, "Proth120 DR window descriptor ABI drift");
 static_assert(sizeof(pr_dr_window_desc) <= BWD_WINDOW_DESC_CAP, "Proth120 DR window descriptor exceeds the kernel-argument ceiling");
-static_assert(__builtin_offsetof(pr_dr_window_desc, batch) == 0 && __builtin_offsetof(pr_dr_window_desc, batch_challenges) == 288 &&
-                  __builtin_offsetof(pr_dr_window_desc, eq_high_0) == 296 && __builtin_offsetof(pr_dr_window_desc, eq_high_1) == 304 &&
-                  __builtin_offsetof(pr_dr_window_desc, partials) == 312 && __builtin_offsetof(pr_dr_window_desc, claim_point) == 320 &&
-                  __builtin_offsetof(pr_dr_window_desc, log_rows) == 328 && __builtin_offsetof(pr_dr_window_desc, start_round) == 332,
+static_assert(__builtin_offsetof(pr_dr_window_desc, batch) == 0 && __builtin_offsetof(pr_dr_window_desc, eq_high_0) == 288 &&
+                  __builtin_offsetof(pr_dr_window_desc, eq_high_1) == 296 && __builtin_offsetof(pr_dr_window_desc, partials) == 304 &&
+                  __builtin_offsetof(pr_dr_window_desc, claim_point) == 312 && __builtin_offsetof(pr_dr_window_desc, log_rows) == 320 &&
+                  __builtin_offsetof(pr_dr_window_desc, start_round) == 324,
               "Proth120 DR window descriptor offsets drift");
 static_assert(std::is_standard_layout_v<pr_dr_window_desc> && std::is_trivially_copyable_v<pr_dr_window_desc>,
               "Proth120 DR window descriptor must be a plain record");
