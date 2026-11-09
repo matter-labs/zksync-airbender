@@ -31,6 +31,15 @@ compiles at once, and peak memory grows with it. The workflow takes it from the 
 variable `LEAN_CI_THREADS`, else the default in the workflow. Lean does not read the container's CPU quota (`nproc`
 reports the host's CPUs), so set it explicitly.
 
+Most of a Lean process's memory is the imported `.olean` files, mapped from disk (Mathlib alone is 6.6 GB) and
+shared by all Lean processes; its own (anonymous) memory is a few hundred MB. Under a container memory limit the
+mapped files count as page cache, so the limit must exceed that working set (~7-8 GB) plus the per-process memory
+times `LEAN_NUM_THREADS`; below it the build thrashes rather than failing cleanly.
+
+Cache sizes (zstd): toolchain 0.77 GB, Mathlib archives 0.44 GB, Sail model 0.6 MB, build ~0.5 GB per commit key.
+They share the repository's cache quota (10 GB by default) with the Rust jobs' caches; old build keys are evicted
+first.
+
 ## Local reproduction ([sim.sh](sim.sh))
 
 `ci/sim.sh image` builds `fvci:local` ([Dockerfile](Dockerfile): ubuntu:24.04, native arch, the apt packages of the
