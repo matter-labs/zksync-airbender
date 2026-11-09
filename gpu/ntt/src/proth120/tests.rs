@@ -258,14 +258,7 @@ fn pr_eq_update_cpu_parity() {
         guarded[GUARD..GUARD + rows].copy_from_slice(&initial);
         let mut device_eq = upload(&guarded);
         let device_ood = upload(&ood);
-        let device_in_domain = DeviceAllocation::<EqSample>::alloc(0).unwrap();
-        update_eq_poly(
-            &mut device_eq[GUARD..GUARD + rows],
-            &device_ood,
-            &device_in_domain,
-            &stream,
-        )
-        .unwrap();
+        update_eq_poly(&mut device_eq[GUARD..GUARD + rows], &device_ood, &stream).unwrap();
         let actual = download(&device_eq, &stream);
         assert_guards(&actual, GUARD..GUARD + rows);
         assert_raw_eq(&actual[GUARD..GUARD + rows], &expected);
