@@ -126,9 +126,9 @@ pub(crate) struct FwdVmLayer {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(crate) struct FwdVmReductionPair {
-    pub input: [*const E4; 2],
-    pub round_outputs: [[*mut E4; 2]; FUSED_REDUCTION_ROUNDS],
+pub(crate) struct FwdVmReductionPair<F = E4> {
+    pub input: [*const F; 2],
+    pub round_outputs: [[*mut F; 2]; FUSED_REDUCTION_ROUNDS],
     pub kind: u32,
     pub reserved: u32,
 }

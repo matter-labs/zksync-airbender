@@ -266,3 +266,10 @@ impl GpuGKRDimensionReducingBackwardState {
 
 #[cfg(test)]
 mod tests;
+
+pub(crate) use dr_tail::resources::DrTailRawAttributes;
+pub(crate) use dr_tail::{
+    dr_tail_device_optin_cap_bytes, kernel_attributes as dr_tail_kernel_attributes,
+    kernel_occupancy as dr_tail_kernel_occupancy, launch_dr_tail_state,
+    set_kernel_max_dynamic_smem as dr_tail_set_kernel_max_dynamic_smem,
+};
