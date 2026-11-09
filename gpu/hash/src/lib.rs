@@ -14,11 +14,5 @@ pub mod blake2s;
 pub mod keccak256;
 pub mod pow;
 
-#[cfg(feature = "bench")]
-pub mod bench;
-
 #[cfg(test)]
 gpu_core::force_serial_libtest!();
-
-#[cfg(test)]
-mod partial_tree_depth_measurement;
