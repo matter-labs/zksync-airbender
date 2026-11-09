@@ -1,5 +1,45 @@
 # Verification status
 
+## Checked caller sum completion on the inactive native MAIN fixture
+
+[Public caller completion](Airbender/Review/Trace/Families/ReducedMachine/CallerSumCompletionTheorems.lean)
+now derives a genuine nonconstant caller sum polynomial for the old complete
+inactive request-positive CSR1991/x0 MAIN component. The same constructed main
+observation retains the full memory/state/masking/initialization/grand relations,
+first/last grand boundaries, individual decoder access, all ordinary auxiliary
+values and every other auxiliary column. Only the caller column's reserved
+observation is normalized to the negative **derived** ordinary caller sum.
+The claim remains exactly 8388607 times the actual denominator inverse and is
+nonzero. No caller activity, expected count, matching or fulfilled ledger is assumed.
+
+[Generic interpolation and boundary proof](Airbender/Proofs/Memory/DelegationSumCompletion.lean)
+derives samples, degree, zero constant coefficient and the actual boundary divisor
+from the unchanged normalized observations and ordinary sum. It reuses the old
+power-sum and normalization laws before native sampling. The M31 embedding derives
+the native domain-size cast is nonzero. A primitive root on the actual 8388608-point
+domain is an explicit algebraic domain condition; its construction and the physical
+Rust Quartic/FFT/LDE correspondence are not supplied by this theorem. The explicit
+old nonpole fixture domain remains; initialization and decoder poles remain permitted.
+
+[Native assembly](Airbender/Proofs/ReducedMachine/NativeCallerSumCompletion.lean)
+uses the old complete BODY/component constructor and old exact sum/nonzero results.
+[Twenty controls](Tests/NativeCallerSumCompletion.lean) cover finite one/two-point
+completion, wrong reserved value rejection, nonconstancy, every ordinary observation,
+other columns, reserved grand/decoder preservation, same rows/claim and full native
+conditional completion. No eight-million-row or stored-pool evaluation is used.
+These are pure algebraic, old local and conditional component results, **not** a
+native-global NONEMPTY source/worker/physical accepted witness, discrepancy, attack,
+defect or absence-all-other-enforcement proof. FINDINGS and native sources are unchanged.
+
+The caller sum-polynomial/reserved-value obligation for this component is closed.
+Decoder/scalar sum polynomials, setup multiplicities, initialization ordering,
+boundaries/windows, global memory/delegation statements and nonempty worker completion
+remain open. Physical caller activity/issued calls, larger-batch universal matching,
+standard scheduled hash, original CSR/nondeterminism/MOP/worker Sail, protocol spans,
+padding/terminal/init-teardown, cryptography, completeness and parity remain open.
+The old constant reserved-row fixture and its zero-claim rejection remain unchanged.
+
+
 ## Inactive native MAIN component fixture (9 November 2026)
 
 [Component observations](Airbender/Review/Trace/Families/ReducedMachine/InactiveMain.lean),

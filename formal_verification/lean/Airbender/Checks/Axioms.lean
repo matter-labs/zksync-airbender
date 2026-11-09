@@ -1,3 +1,10 @@
+import Airbender.Proofs.Memory.DelegationSumCompletion
+import Airbender.Review.Helpers.Memory.DelegationSumCompletionTheorems
+import Airbender.Review.Trace.Families.ReducedMachine.CallerSumCompletion
+import Airbender.Proofs.ReducedMachine.NativeCallerSumCompletion
+import Airbender.Review.Trace.Families.ReducedMachine.CallerSumCompletionTheorems
+import Tests.NativeCallerSumCompletion
+
 import Airbender.Review.Trace.Families.ReducedMachine.InactiveMain
 import Airbender.Proofs.ReducedMachine.NativeInactiveMain
 import Airbender.Review.Trace.Families.ReducedMachine.InactiveMainTheorems
@@ -8671,3 +8678,39 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeInactiveMain.request_sum_not_zero
 #print axioms Airbender.Tests.NativeInactiveMain.zero_claim_completion_rejected
 #print axioms Airbender.Tests.NativeInactiveMain.full_fixture
+
+#print axioms Airbender.Delegation.SumCompletionProofs.full_sum
+#print axioms Airbender.Delegation.SumCompletionProofs.boundary_of_values
+#print axioms Airbender.Delegation.SumCompletionProofs.normalized_completion
+#print axioms Airbender.Delegation.SumCompletionProofs.not_constant
+#print axioms Airbender.Delegation.normalized_sum_polynomial
+#print axioms Airbender.NativeCallerSumCompletionProofs.ordinary
+#print axioms Airbender.NativeCallerSumCompletionProofs.other_column
+#print axioms Airbender.NativeCallerSumCompletionProofs.request_column
+#print axioms Airbender.NativeCallerSumCompletionProofs.terminal
+#print axioms Airbender.NativeCallerSumCompletionProofs.grand
+#print axioms Airbender.NativeCallerSumCompletionProofs.preserves
+#print axioms Airbender.NativeCallerSumCompletionProofs.domain_nonzero
+#print axioms Airbender.NativeCallerSumCompletionProofs.complete
+#print axioms Airbender.NativeCallerSumCompletionProofs.fixture
+#print axioms Airbender.NativeCallerSumCompletion.native_inactive_caller_sum_completion
+#print axioms Airbender.Tests.NativeCallerSumCompletion.actual_domain
+#print axioms Airbender.Tests.NativeCallerSumCompletion.two_point_reserved
+#print axioms Airbender.Tests.NativeCallerSumCompletion.ordinary_retains_value
+#print axioms Airbender.Tests.NativeCallerSumCompletion.single_point_has_empty_ordinary
+#print axioms Airbender.Tests.NativeCallerSumCompletion.wrong_reserved_rejected
+#print axioms Airbender.Tests.NativeCallerSumCompletion.two_point_completion
+#print axioms Airbender.Tests.NativeCallerSumCompletion.single_point_completion
+#print axioms Airbender.Tests.NativeCallerSumCompletion.nonconstant_two_point
+#print axioms Airbender.Tests.NativeCallerSumCompletion.all_ordinary_auxiliary_retained
+#print axioms Airbender.Tests.NativeCallerSumCompletion.all_other_columns_retained
+#print axioms Airbender.Tests.NativeCallerSumCompletion.reserved_grand_retained
+#print axioms Airbender.Tests.NativeCallerSumCompletion.reserved_decoder_retained
+#print axioms Airbender.Tests.NativeCallerSumCompletion.exact_negative_request_sum
+#print axioms Airbender.Tests.NativeCallerSumCompletion.same_original_rows
+#print axioms Airbender.Tests.NativeCallerSumCompletion.original_grand_claim
+#print axioms Airbender.Tests.NativeCallerSumCompletion.native_domain_cast
+#print axioms Airbender.Tests.NativeCallerSumCompletion.old_inactive_request_kept
+#print axioms Airbender.Tests.NativeCallerSumCompletion.normalized_components
+#print axioms Airbender.Tests.NativeCallerSumCompletion.genuine_caller_completion
+#print axioms Airbender.Tests.NativeCallerSumCompletion.full_fixture

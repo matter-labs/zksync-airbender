@@ -20344,6 +20344,104 @@
       "backport_reuse_revision": "8d7651e04535d3ca4df01c28a6fc5e73c6d4195c",
       "backport_reuse_path": "Tests/NativeCallerDelegation.lean",
       "backport_reuse_sha256": "04104f0543a5a92e86cdd441c8d6f14af7b73ddea24ed072965c081310e04d21"
+    },
+    {
+      "path": "Airbender/Proofs/Memory/DelegationSumCompletion.lean",
+      "change": "Complete genuine caller sum polynomial/reserved observation for the old inactive request-positive native MAIN component on its explicit nonpole/primitive domain. Generic Lagrange samples/degree/full sum/roots/divisor before native sampling; actual M31 embedding derives domain cast nonzero. Preserve all ordinary auxiliary values, all other columns, same full memory/decoder components. Reuse old exact nonzero claim, derive nonconstant polynomial. Not primitive-domain construction, Rust Quartic/FFT refinement, other table/setup/global source/worker completion, physical caller activity, native defect or parity. No old acceptance, native pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "71cf80179a226dc849df492a504aee70bf839705",
+      "backport_reuse_path": "Airbender/Proofs/Memory/DelegationSum.lean",
+      "backport_reuse_sha256": "f5263c20d8f3b1ffc23f2ea0b0482cf113133079fa8943be761f25d24ad73e96"
+    },
+    {
+      "path": "Airbender/Proofs/Memory/DelegationSumCompletion.lean",
+      "change": "Complete genuine caller sum polynomial/reserved observation for the old inactive request-positive native MAIN component on its explicit nonpole/primitive domain. Generic Lagrange samples/degree/full sum/roots/divisor before native sampling; actual M31 embedding derives domain cast nonzero. Preserve all ordinary auxiliary values, all other columns, same full memory/decoder components. Reuse old exact nonzero claim, derive nonconstant polynomial. Not primitive-domain construction, Rust Quartic/FFT refinement, other table/setup/global source/worker completion, physical caller activity, native defect or parity. No old acceptance, native pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "71cf80179a226dc849df492a504aee70bf839705",
+      "backport_reuse_path": "Airbender/Proofs/Tables/NormalizeLast.lean",
+      "backport_reuse_sha256": "c3a30b507862b3ad0afff85cd26b20c00eb0a96736dca1b3c376c4c1854a1157"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/DelegationSumCompletionTheorems.lean",
+      "change": "Complete genuine caller sum polynomial/reserved observation for the old inactive request-positive native MAIN component on its explicit nonpole/primitive domain. Generic Lagrange samples/degree/full sum/roots/divisor before native sampling; actual M31 embedding derives domain cast nonzero. Preserve all ordinary auxiliary values, all other columns, same full memory/decoder components. Reuse old exact nonzero claim, derive nonconstant polynomial. Not primitive-domain construction, Rust Quartic/FFT refinement, other table/setup/global source/worker completion, physical caller activity, native defect or parity. No old acceptance, native pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "71cf80179a226dc849df492a504aee70bf839705",
+      "backport_reuse_path": "Airbender/Review/Helpers/Memory/DelegationSum.lean",
+      "backport_reuse_sha256": "84da251fdf8af0a590f1282487f814352b48a80f174e59d4292b3c79810dc5ca"
+    },
+    {
+      "path": "Airbender/Review/Helpers/Memory/DelegationSumCompletionTheorems.lean",
+      "change": "Complete genuine caller sum polynomial/reserved observation for the old inactive request-positive native MAIN component on its explicit nonpole/primitive domain. Generic Lagrange samples/degree/full sum/roots/divisor before native sampling; actual M31 embedding derives domain cast nonzero. Preserve all ordinary auxiliary values, all other columns, same full memory/decoder components. Reuse old exact nonzero claim, derive nonconstant polynomial. Not primitive-domain construction, Rust Quartic/FFT refinement, other table/setup/global source/worker completion, physical caller activity, native defect or parity. No old acceptance, native pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "71cf80179a226dc849df492a504aee70bf839705",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NormalizeLast.lean",
+      "backport_reuse_sha256": "0c01a060a8e297dfdc8de73c3179ddd3218cefbe8915525755d6c9ad8d5da048"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/CallerSumCompletion.lean",
+      "change": "Complete genuine caller sum polynomial/reserved observation for the old inactive request-positive native MAIN component on its explicit nonpole/primitive domain. Generic Lagrange samples/degree/full sum/roots/divisor before native sampling; actual M31 embedding derives domain cast nonzero. Preserve all ordinary auxiliary values, all other columns, same full memory/decoder components. Reuse old exact nonzero claim, derive nonconstant polynomial. Not primitive-domain construction, Rust Quartic/FFT refinement, other table/setup/global source/worker completion, physical caller activity, native defect or parity. No old acceptance, native pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "71cf80179a226dc849df492a504aee70bf839705",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/InactiveMain.lean",
+      "backport_reuse_sha256": "2550ae261fcac2f6a52c166893371468b556f14df35aa12a64dc2c5468aea4a1"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/CallerSumCompletion.lean",
+      "change": "Complete genuine caller sum polynomial/reserved observation for the old inactive request-positive native MAIN component on its explicit nonpole/primitive domain. Generic Lagrange samples/degree/full sum/roots/divisor before native sampling; actual M31 embedding derives domain cast nonzero. Preserve all ordinary auxiliary values, all other columns, same full memory/decoder components. Reuse old exact nonzero claim, derive nonconstant polynomial. Not primitive-domain construction, Rust Quartic/FFT refinement, other table/setup/global source/worker completion, physical caller activity, native defect or parity. No old acceptance, native pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "71cf80179a226dc849df492a504aee70bf839705",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/MainArguments.lean",
+      "backport_reuse_sha256": "d549a16a2679709441fb6507b2741c34eef697d9d3dcc7f7e58bc8b9fe86c151"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/CallerSumCompletion.lean",
+      "change": "Complete genuine caller sum polynomial/reserved observation for the old inactive request-positive native MAIN component on its explicit nonpole/primitive domain. Generic Lagrange samples/degree/full sum/roots/divisor before native sampling; actual M31 embedding derives domain cast nonzero. Preserve all ordinary auxiliary values, all other columns, same full memory/decoder components. Reuse old exact nonzero claim, derive nonconstant polynomial. Not primitive-domain construction, Rust Quartic/FFT refinement, other table/setup/global source/worker completion, physical caller activity, native defect or parity. No old acceptance, native pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "71cf80179a226dc849df492a504aee70bf839705",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Delegation.lean",
+      "backport_reuse_sha256": "a03519392a81a588c06d12549d509ace35d84981e4f3d3ff534f242c144c56d7"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/CallerSumCompletion.lean",
+      "change": "Complete genuine caller sum polynomial/reserved observation for the old inactive request-positive native MAIN component on its explicit nonpole/primitive domain. Generic Lagrange samples/degree/full sum/roots/divisor before native sampling; actual M31 embedding derives domain cast nonzero. Preserve all ordinary auxiliary values, all other columns, same full memory/decoder components. Reuse old exact nonzero claim, derive nonconstant polynomial. Not primitive-domain construction, Rust Quartic/FFT refinement, other table/setup/global source/worker completion, physical caller activity, native defect or parity. No old acceptance, native pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "71cf80179a226dc849df492a504aee70bf839705",
+      "backport_reuse_path": "Airbender/Review/Helpers/Tables/NormalizeLast.lean",
+      "backport_reuse_sha256": "0c01a060a8e297dfdc8de73c3179ddd3218cefbe8915525755d6c9ad8d5da048"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeCallerSumCompletion.lean",
+      "change": "Complete genuine caller sum polynomial/reserved observation for the old inactive request-positive native MAIN component on its explicit nonpole/primitive domain. Generic Lagrange samples/degree/full sum/roots/divisor before native sampling; actual M31 embedding derives domain cast nonzero. Preserve all ordinary auxiliary values, all other columns, same full memory/decoder components. Reuse old exact nonzero claim, derive nonconstant polynomial. Not primitive-domain construction, Rust Quartic/FFT refinement, other table/setup/global source/worker completion, physical caller activity, native defect or parity. No old acceptance, native pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "71cf80179a226dc849df492a504aee70bf839705",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeInactiveMain.lean",
+      "backport_reuse_sha256": "0d1a9fee777a7b429f46d968d51f5f052cd7ee9efa951839c3ea2d431b2eedaa"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeCallerSumCompletion.lean",
+      "change": "Complete genuine caller sum polynomial/reserved observation for the old inactive request-positive native MAIN component on its explicit nonpole/primitive domain. Generic Lagrange samples/degree/full sum/roots/divisor before native sampling; actual M31 embedding derives domain cast nonzero. Preserve all ordinary auxiliary values, all other columns, same full memory/decoder components. Reuse old exact nonzero claim, derive nonconstant polynomial. Not primitive-domain construction, Rust Quartic/FFT refinement, other table/setup/global source/worker completion, physical caller activity, native defect or parity. No old acceptance, native pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "71cf80179a226dc849df492a504aee70bf839705",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeCallerDelegation.lean",
+      "backport_reuse_sha256": "a2fcd84c90eda45bba1123b773ada5f688124df7a4e090ffce8d683a47d5ecb4"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeCallerSumCompletion.lean",
+      "change": "Complete genuine caller sum polynomial/reserved observation for the old inactive request-positive native MAIN component on its explicit nonpole/primitive domain. Generic Lagrange samples/degree/full sum/roots/divisor before native sampling; actual M31 embedding derives domain cast nonzero. Preserve all ordinary auxiliary values, all other columns, same full memory/decoder components. Reuse old exact nonzero claim, derive nonconstant polynomial. Not primitive-domain construction, Rust Quartic/FFT refinement, other table/setup/global source/worker completion, physical caller activity, native defect or parity. No old acceptance, native pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "71cf80179a226dc849df492a504aee70bf839705",
+      "backport_reuse_path": "Airbender/Proofs/Tables/NormalizeLast.lean",
+      "backport_reuse_sha256": "c3a30b507862b3ad0afff85cd26b20c00eb0a96736dca1b3c376c4c1854a1157"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/CallerSumCompletionTheorems.lean",
+      "change": "Complete genuine caller sum polynomial/reserved observation for the old inactive request-positive native MAIN component on its explicit nonpole/primitive domain. Generic Lagrange samples/degree/full sum/roots/divisor before native sampling; actual M31 embedding derives domain cast nonzero. Preserve all ordinary auxiliary values, all other columns, same full memory/decoder components. Reuse old exact nonzero claim, derive nonconstant polynomial. Not primitive-domain construction, Rust Quartic/FFT refinement, other table/setup/global source/worker completion, physical caller activity, native defect or parity. No old acceptance, native pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "71cf80179a226dc849df492a504aee70bf839705",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/InactiveMainTheorems.lean",
+      "backport_reuse_sha256": "0f2841798884e164d2a6f994df4ec895af0115281bbb31285f2bfc72ae8a948e"
+    },
+    {
+      "path": "Tests/NativeCallerSumCompletion.lean",
+      "change": "Complete genuine caller sum polynomial/reserved observation for the old inactive request-positive native MAIN component on its explicit nonpole/primitive domain. Generic Lagrange samples/degree/full sum/roots/divisor before native sampling; actual M31 embedding derives domain cast nonzero. Preserve all ordinary auxiliary values, all other columns, same full memory/decoder components. Reuse old exact nonzero claim, derive nonconstant polynomial. Not primitive-domain construction, Rust Quartic/FFT refinement, other table/setup/global source/worker completion, physical caller activity, native defect or parity. No old acceptance, native pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "71cf80179a226dc849df492a504aee70bf839705",
+      "backport_reuse_path": "Tests/NativeInactiveMain.lean",
+      "backport_reuse_sha256": "38bba659d90224adb57637cfc31cd475a0174620c4f3570ea19786e9f6075d5d"
+    },
+    {
+      "path": "Tests/NativeCallerSumCompletion.lean",
+      "change": "Complete genuine caller sum polynomial/reserved observation for the old inactive request-positive native MAIN component on its explicit nonpole/primitive domain. Generic Lagrange samples/degree/full sum/roots/divisor before native sampling; actual M31 embedding derives domain cast nonzero. Preserve all ordinary auxiliary values, all other columns, same full memory/decoder components. Reuse old exact nonzero claim, derive nonconstant polynomial. Not primitive-domain construction, Rust Quartic/FFT refinement, other table/setup/global source/worker completion, physical caller activity, native defect or parity. No old acceptance, native pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "71cf80179a226dc849df492a504aee70bf839705",
+      "backport_reuse_path": "Tests/NativeCallerDelegation.lean",
+      "backport_reuse_sha256": "04104f0543a5a92e86cdd441c8d6f14af7b73ddea24ed072965c081310e04d21"
     }
   ],
   "setup_artifacts": [

@@ -2057,3 +2057,11 @@ hash remain open.
 rows with the full ordinary memory chain and individual caller/decoder equations.
 The derived nonzero caller sum rejects a zero-claim completion. Full global source
 acceptance and physical caller activity remain open.
+
+## Caller sum polynomial completion
+
+[Native caller completion](Airbender/Review/Trace/Families/ReducedMachine/CallerSumCompletionTheorems.lean) derives a genuine nonconstant caller sum
+polynomial with normalized reserved value and nonzero actual claim on the same
+inactive MAIN memory/decoder component. [Generic normalized interpolation](Airbender/Review/Helpers/Memory/DelegationSumCompletionTheorems.lean)
+derives samples, degree and boundary divisor. Primitive-domain construction, physical
+FFT refinement, other tables and global source/worker acceptance remain open.
