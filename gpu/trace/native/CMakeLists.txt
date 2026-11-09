@@ -12,6 +12,7 @@ endif ()
 include(${AB_CUDA_CMAKE_DIR}/ab_cuda_target.cmake)
 add_library(gpu_trace_native STATIC)
 add_subdirectory(witness)
+add_subdirectory(commit)
 ab_cuda_configure_target(gpu_trace_native
         PREFIX GPU_TRACE
         INCLUDE_DIRS ${GPU_CORE_NATIVE_INCLUDE})

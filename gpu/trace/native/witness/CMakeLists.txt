@@ -20,3 +20,4 @@ target_sources(gpu_trace_native PRIVATE
         witness_generation.cuh
 )
 add_subdirectory(circuits)
+add_subdirectory(proth120)

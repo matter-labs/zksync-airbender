@@ -1,4 +1,4 @@
-use crate::proof::memory_policy::{WitnessMemoryPolicy, WitnessOpeningStrategy};
+use crate::proof::memory_policy::{PartialTreePolicy, WitnessMemoryPolicy, WitnessOpeningStrategy};
 use std::sync::Arc;
 
 use era_cudart::memory::memory_copy_async;
@@ -75,6 +75,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     bundle: BundleDeviceRefs<'_, 'a, A>,
     tracing_data_transfer: Option<&TracingDataTransfer<'a, A>>,
     witness_policy: WitnessMemoryPolicy,
+    partial_trees: PartialTreePolicy,
     context: &ProverContext,
 ) -> CudaResult<Stage1AndForwardPreparation> {
     let circuit_type = gkr_programs.circuit_type();
@@ -177,6 +178,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         Some(&mut witness_cap_dst),
         witness_policy.commitment,
         witness_policy.post_commitment,
+        partial_trees,
         context,
     )?;
     if let WitnessOpeningStrategy::Recompute(opening) = witness_policy.opening {
@@ -189,6 +191,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
             base_geometry,
             BaseOracleRole::Setup,
             TreesCacheMode::CacheNone,
+            partial_trees.setup,
             context,
         )?)
     } else {
@@ -264,41 +267,4 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         forward_setup,
         d_seed,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use gpu_prover_context::ProverContextConfig;
-
-    #[test]
-    fn proof_slab_allocation_is_32_byte_aligned_with_16_byte_allocator_chunks() {
-        let config = ProverContextConfig {
-            allocator_block_log_size: 10,
-            device_slack_static_bytes: 1,
-            device_slack_per_thread_bytes: 0,
-            device_allocation_blocks_count: Some(4),
-            host_allocator_block_log_size: 5,
-            host_allocator_blocks_count: 1,
-            small_allocator_log_chunk_size: Some(4),
-            small_allocator_pool_blocks: 1,
-            ..Default::default()
-        };
-        let context = ProverContext::new(&config).unwrap();
-
-        // Force the next unconstrained allocation to be 16 mod 32.
-        let leading_slot = context.alloc::<E4>(1, AllocationPlacement::Bottom).unwrap();
-        assert_eq!(
-            leading_slot.as_ptr() as usize & 0x1f,
-            0,
-            "test requires a 32-byte-aligned small-pool base",
-        );
-
-        let slab = allocate_proof_slab(&context, 2 * std::mem::size_of::<E4>()).unwrap();
-        assert_eq!(
-            slab.as_ptr() as usize & 0x1f,
-            0,
-            "proof slab allocation must request 32-byte alignment",
-        );
-    }
 }

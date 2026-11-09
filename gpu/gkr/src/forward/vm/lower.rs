@@ -723,7 +723,13 @@ pub(crate) fn lower_desc(
             if n_consts == CONST_CAP {
                 return Err(FwdVmLowerError::ConstBankOverflow { n: n_consts + 1 });
             }
-            desc.consts[n_consts] = BF::from_u32_with_reduction(value);
+            let canonical = u32::try_from(value)
+                .ok()
+                .filter(|&canonical| canonical < BF::CHARACTERISTICS_U32)
+                .unwrap_or_else(|| {
+                    panic!("forward constant {value} is not a canonical BabyBear value")
+                });
+            desc.consts[n_consts] = BF::from_u32_with_reduction(canonical);
             n_consts += 1;
         }
 

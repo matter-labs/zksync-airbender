@@ -1,4 +1,4 @@
-use super::context::{ProverContext, H2D_STAGING_BYTES};
+use super::context::ProverContext;
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -58,6 +58,12 @@ impl<'a> Transfer<'a> {
             return Ok(());
         }
         self.allocation_awaited = true;
+        let capacity = context.h2d_staging_source().len();
+        assert!(
+            self.staged_bytes.len() <= capacity,
+            "{} staged H2D bytes exceed the {capacity}-byte staging buffer",
+            self.staged_bytes.len()
+        );
         let stream = context.get_h2d_stream();
         if !self.staged_copies.is_empty() {
             let staged_bytes = mem::take(&mut self.staged_bytes);
@@ -65,9 +71,9 @@ impl<'a> Transfer<'a> {
             self.callbacks.schedule(
                 move || {
                     let target = unsafe { fill_target.get_mut() };
-                    // SAFETY: `stage` bounds the packed bytes by the staging
-                    // buffer size; this is an untyped copy between two
-                    // distinct host allocations.
+                    // SAFETY: the packed bytes fit the staging buffer (checked
+                    // above); this is an untyped copy between two distinct
+                    // host allocations.
                     unsafe {
                         ptr::copy_nonoverlapping(
                             staged_bytes.as_ptr().cast::<u8>(),
@@ -92,9 +98,10 @@ impl<'a> Transfer<'a> {
         Ok(())
     }
 
-    /// Records a small H2D copy through the context's staging buffer. Stage
-    /// every value before the bundle's first direct copy; `dst` must outlive
-    /// the submission in [`Transfer::ensure_allocated`].
+    /// Records an H2D copy through the context's staging buffer. Stage every
+    /// value before the bundle's first direct copy; `dst` must outlive the
+    /// submission in [`Transfer::ensure_allocated`], which checks the total
+    /// against the buffer's capacity.
     pub fn stage<T: Copy>(&mut self, values: &[T], dst: &mut DeviceSlice<T>) {
         assert!(
             !self.allocation_awaited,
@@ -103,11 +110,6 @@ impl<'a> Transfer<'a> {
         assert_eq!(values.len(), dst.len());
         let offset = self.staged_bytes.len();
         let bytes = size_of_val(values);
-        assert!(
-            offset + bytes <= H2D_STAGING_BYTES,
-            "{} staged H2D bytes exceed the {H2D_STAGING_BYTES}-byte staging buffer",
-            offset + bytes
-        );
         self.staged_bytes
             .resize(offset + bytes, MaybeUninit::uninit());
         // SAFETY: untyped copy of `bytes` bytes into the freshly sized tail.
@@ -267,6 +269,47 @@ mod tests {
             memory_copy(&mut direct_host, &direct_dst)?;
             assert_eq!(&direct_host, direct.as_ref());
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_staging_capacity_follows_the_config() -> CudaResult<()> {
+        let words: Vec<u32> = (0..1 << 15).collect();
+        let small = ProverContext::new(&ProverContextConfig {
+            device_allocation_blocks_count: Some(48),
+            ..Default::default()
+        })?;
+        let mut dst = small.alloc(words.len(), AllocationPlacement::BestFit)?;
+        let mut transfer = Transfer::new()?;
+        transfer.record_allocated(&small)?;
+        transfer.stage(&words, &mut dst);
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            transfer.record_transferred(&small)
+        }))
+        .expect_err("staging beyond the default capacity must panic");
+        assert_eq!(
+            panic.downcast_ref::<String>().map(String::as_str),
+            Some("131072 staged H2D bytes exceed the 65536-byte staging buffer")
+        );
+        drop(transfer);
+        small.get_exec_stream().synchronize()?;
+        drop(dst);
+        drop(small);
+        let large = ProverContext::new(&ProverContextConfig {
+            device_allocation_blocks_count: Some(48),
+            h2d_staging_bytes: 1 << 18,
+            ..Default::default()
+        })?;
+        let mut dst = large.alloc(words.len(), AllocationPlacement::BestFit)?;
+        let mut transfer = Transfer::new()?;
+        transfer.record_allocated(&large)?;
+        transfer.stage(&words, &mut dst);
+        transfer.record_transferred(&large)?;
+        let _keepalive = transfer.into_keepalive();
+        large.get_h2d_stream().synchronize()?;
+        let mut host = vec![0u32; words.len()];
+        memory_copy(&mut host, &dst)?;
+        assert_eq!(host, words);
         Ok(())
     }
 }

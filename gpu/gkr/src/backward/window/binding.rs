@@ -23,7 +23,7 @@ use crate::backward::window::zeroed_box;
 use crate::backward::{make_eq_sizes, GkrEqSizes, GKR_EQ_GROUP_SIZE, GKR_EQ_HIGH_SLOTS};
 use crate::forward::vm::lower::read_place_to_gkr_address;
 use crate::forward::vm::production_bind::resolve_storage_column;
-use crate::upstream::{FieldKind, GKRAddress};
+use crate::upstream::{FieldKind, GKRAddress, PrimeField};
 use crate::GpuGKRStorage;
 
 pub(crate) const BWD_WINDOW_ADDR_SLOTS: usize = MAX_SOURCE_WINDOWS;
@@ -369,7 +369,12 @@ pub(super) fn build_window_binding(
     binding.eq_sizes = make_eq_sizes(folding_steps - BWD_WINDOW_COORDINATES);
     binding.sections = program.sections;
     bind_window_words(program, addressing, &mut binding.program)?;
-    binding.immediates[..program.immediates.len()].copy_from_slice(&program.immediates);
+    for (raw, &canonical) in binding.immediates[..program.immediates.len()]
+        .iter_mut()
+        .zip(&program.immediates)
+    {
+        *raw = crate::backward::babybear_from_canonical(canonical).as_u32_raw_repr_reduced();
+    }
     Ok(binding)
 }
 

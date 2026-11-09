@@ -53,6 +53,9 @@ use std::path::PathBuf;
 use std::time::Instant;
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile, FsvProgram};
 
+#[cfg(feature = "gpu")]
+pub use gpu_execution_prover::MemoryPreset;
+
 /// Serde-friendly mirror of `prover::definitions::SecurityLevel` (which does
 /// not derive serde) for the persisted artifact.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -128,6 +131,9 @@ pub struct ProgramProverConfig {
     pub worker_threads: Option<usize>,
     /// `None` keeps the backend's default.
     pub replay_threads: Option<usize>,
+    /// GPU device arena preset; Auto selects according to available device memory.
+    #[cfg(feature = "gpu")]
+    pub gpu_memory_preset: MemoryPreset,
 }
 
 /// The deferred L1 scope: the ethproofs compression, wrap and EVM profiles are not implemented.
@@ -154,6 +160,8 @@ impl Default for ProgramProverConfig {
             ram_size: RamSize::default(),
             worker_threads: None,
             replay_threads: None,
+            #[cfg(feature = "gpu")]
+            gpu_memory_preset: MemoryPreset::Auto,
         }
     }
 }
@@ -298,8 +306,13 @@ impl<B: execution_prover::backend::ExecutionBackend> PipelineBackend<B> {
     }
 
     fn new(config: &ProgramProverConfig) -> Self {
-        let prover =
-            execution_prover::ExecutionProver::with_configuration(Self::configuration(config));
+        Self::with_configuration(Self::configuration(config))
+    }
+
+    fn with_configuration(
+        configuration: execution_prover::ExecutionProverConfiguration<B::Configuration>,
+    ) -> Self {
+        let prover = execution_prover::ExecutionProver::with_configuration(configuration);
         Self {
             prover,
             handles: std::collections::BTreeMap::new(),
@@ -952,19 +965,6 @@ pub struct ProgramProver {
 impl ProgramProver {
     pub fn new(source: ProgramSource, config: ProgramProverConfig) -> Result<Self, String> {
         assert_target_mode(config.target, config.soundness_mode);
-        if config.backend == ProverBackend::Gpu {
-            match config.target {
-                ProofTarget::L1 => {
-                    return Err("ProofTarget::L1 is not supported by the GPU backend".into())
-                }
-                ProofTarget::Compression => {
-                    return Err(
-                        "ProofTarget::Compression is not supported by the GPU backend".into(),
-                    );
-                }
-                _ => {}
-            }
-        }
         let fsv = FsvPrograms::load(config.target, config.soundness_mode);
         // Resolve source errors before creating the backend's worker pools and buffers.
         let loaded = load_program(&source)?;
@@ -973,7 +973,10 @@ impl ProgramProver {
             ProverBackend::Gpu => {
                 #[cfg(feature = "gpu")]
                 {
-                    BackendImpl::Gpu(PipelineBackend::new(&config))
+                    let mut configuration =
+                        PipelineBackend::<gpu_execution_prover::GpuBackend>::configuration(&config);
+                    configuration.backend.memory_preset = config.gpu_memory_preset;
+                    BackendImpl::Gpu(PipelineBackend::with_configuration(configuration))
                 }
                 #[cfg(not(feature = "gpu"))]
                 {

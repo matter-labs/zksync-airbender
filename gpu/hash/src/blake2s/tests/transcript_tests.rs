@@ -22,7 +22,15 @@ fn pow() {
     let mut d_result = DeviceAllocation::alloc(1).unwrap();
     let stream = CudaStream::default();
     memory_copy_async(&mut d_seed, &h_seed, &stream).unwrap();
-    blake2s_pow(&d_seed, BITS_COUNT, &mut d_result[0], &stream).unwrap();
+    let mut d_counter = DeviceAllocation::alloc(1).unwrap();
+    blake2s_pow(
+        &d_seed,
+        BITS_COUNT,
+        &mut d_result[0],
+        &mut d_counter[0],
+        &stream,
+    )
+    .unwrap();
     memory_copy_async(&mut h_result, &d_result, &stream).unwrap();
     stream.synchronize().unwrap();
     let mut state = Blake2sState::new();
@@ -33,6 +41,60 @@ fn pow() {
     let mut digest = Digest::default();
     state.absorb_final_block::<USE_REDUCED_BLAKE2_ROUNDS>(&block, STATE_SIZE + 2, &mut digest);
     assert!(digest[0].leading_zeros() >= BITS_COUNT);
+}
+
+#[cfg(feature = "deterministic_pow")]
+fn cpu_pow_digest(seed: &[u32; STATE_SIZE], nonce: u64) -> Digest {
+    let mut state = Blake2sState::new();
+    let mut block = [0; BLOCK_SIZE];
+    block[..STATE_SIZE].copy_from_slice(seed);
+    block[STATE_SIZE] = nonce as u32;
+    block[STATE_SIZE + 1] = (nonce >> 32) as u32;
+    let mut digest = Digest::default();
+    state.absorb_final_block::<USE_REDUCED_BLAKE2_ROUNDS>(&block, STATE_SIZE + 2, &mut digest);
+    digest
+}
+
+#[cfg(feature = "deterministic_pow")]
+#[test]
+fn pow_counter_reaches_top_of_nonce_domain() {
+    let stream = CudaStream::default();
+    let h_seed = [0x3c3c_3c3cu32; STATE_SIZE];
+    let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+    memory_copy_async(&mut d_seed, &h_seed, &stream).unwrap();
+    let mut d_result = DeviceAllocation::alloc(1).unwrap();
+    let mut d_counter = DeviceAllocation::alloc(1).unwrap();
+    let mut run = |bits: u32, first_chunk: u64| {
+        transcript::blake2s_pow_search_bounded(
+            &d_seed,
+            bits,
+            u64::MAX,
+            1,
+            first_chunk,
+            &mut d_result[0],
+            &mut d_counter[0],
+            &stream,
+        )
+        .unwrap();
+        let mut h = [0u64; 2];
+        memory_copy_async(&mut h[..1], &d_result, &stream).unwrap();
+        memory_copy_async(&mut h[1..], &d_counter, &stream).unwrap();
+        stream.synchronize().unwrap();
+        (h[0], h[1])
+    };
+    let bits = 4;
+    assert_eq!(crate::pow::pow_chunk_steps(bits, 1), 1);
+    let first_chunk = u64::MAX / 32 - 4;
+    let hits: Vec<u64> = (first_chunk * 32..u64::MAX)
+        .filter(|nonce| cpu_pow_digest(&h_seed, *nonce)[0].leading_zeros() >= bits)
+        .collect();
+    assert!(!hits.is_empty());
+    assert_eq!(run(bits, first_chunk).0, hits[0]);
+    let chunk = 32 * crate::pow::pow_chunk_steps(32, 1) as u64;
+    let last_chunk = (u64::MAX - 1) / chunk;
+    assert!((last_chunk * chunk..u64::MAX).all(|nonce| cpu_pow_digest(&h_seed, nonce)[0] != 0));
+    assert_eq!(run(32, last_chunk), (u64::MAX, last_chunk + 5));
+    assert_eq!(run(32, u64::MAX / 32), (u64::MAX, u64::MAX / 32 + 4));
 }
 
 // Feature-gated: run with `--features deterministic_pow` (not part of the
@@ -60,7 +122,15 @@ fn pow_deterministic_matches_cpu_baseline() {
             let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
             let mut d_result = DeviceAllocation::alloc(1).unwrap();
             memory_copy_async(&mut d_seed, &seed.0, &stream).unwrap();
-            blake2s_pow(&d_seed, pow_bits, &mut d_result[0], &stream).unwrap();
+            let mut d_counter = DeviceAllocation::alloc(1).unwrap();
+            blake2s_pow(
+                &d_seed,
+                pow_bits,
+                &mut d_result[0],
+                &mut d_counter[0],
+                &stream,
+            )
+            .unwrap();
             memory_copy_async(&mut h_result, &d_result, &stream).unwrap();
             stream.synchronize().unwrap();
             assert_eq!(

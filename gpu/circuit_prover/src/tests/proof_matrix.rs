@@ -143,6 +143,7 @@ fn run_mixed_circuit_multi_schedule_test() {
                 base.final_trace_size_log_2,
                 transfers,
                 ProofMemoryPolicy::default(),
+                crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
                 context,
             )
             .unwrap(),

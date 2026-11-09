@@ -2,25 +2,40 @@
 //! Reachability and remapping include `SourceKind::LookupValue::query`.
 
 use std::collections::BTreeMap;
+use std::marker::PhantomData;
+
+use field::PrimeField;
 
 use super::{
     field_infer::source_field, ArenaBuilder, DagCircuit, DagLayer, Expr, ExprId, FieldKind, Root,
     SourceKind,
 };
 
-/// BabyBear modulus used for canonical constant folding.
-pub(crate) const SIMPLIFY_MODULUS: u64 = 2013265921;
-fn fold_add(a: u32, b: u32) -> u32 {
-    ((a as u64 + b as u64) % SIMPLIFY_MODULUS) as u32
+fn fold_add<F: PrimeField>(a: u128, b: u128) -> u128 {
+    let mut sum = F::from_u128_with_reduction(a);
+    sum.add_assign(&F::from_u128_with_reduction(b));
+    sum.as_u128_reduced()
 }
 
-fn fold_mul(a: u32, b: u32) -> u32 {
-    ((a as u64 * b as u64) % SIMPLIFY_MODULUS) as u32
+fn fold_mul<F: PrimeField>(a: u128, b: u128) -> u128 {
+    let mut product = F::from_u128_with_reduction(a);
+    product.mul_assign(&F::from_u128_with_reduction(b));
+    product.as_u128_reduced()
 }
 
-pub(crate) fn simplify_circuit(dag: DagCircuit) -> DagCircuit {
+pub(crate) fn simplify_circuit<F: PrimeField>(dag: DagCircuit) -> DagCircuit {
+    assert_eq!(
+        dag.modulus,
+        F::CHARACTERISTICS_U128,
+        "gkr_eval_ir: DAG modulus does not match the folding field"
+    );
     DagCircuit {
-        layers: dag.layers.iter().map(simplify_layer_fixpoint).collect(),
+        layers: dag
+            .layers
+            .iter()
+            .map(simplify_layer_fixpoint::<F>)
+            .collect(),
+        modulus: dag.modulus,
     }
 }
 
@@ -31,11 +46,11 @@ pub(crate) fn simplify_circuit(dag: DagCircuit) -> DagCircuit {
 /// `resolutions`, so equality is a genuine fixpoint check. The `iters < 16`
 /// guard catches a runaway (non-terminating or oscillating) rewrite rather
 /// than looping forever.
-pub(crate) fn simplify_layer_fixpoint(layer: &DagLayer) -> DagLayer {
+pub(crate) fn simplify_layer_fixpoint<F: PrimeField>(layer: &DagLayer) -> DagLayer {
     let mut prev = layer.clone();
     let mut iters = 0;
     loop {
-        let next = simplify_layer(&prev);
+        let next = simplify_layer::<F>(&prev);
         iters += 1;
         assert!(
             iters < 16,
@@ -89,13 +104,14 @@ fn fan_out(layer: &DagLayer) -> Vec<usize> {
     counts
 }
 
-pub(crate) fn simplify_layer(layer: &DagLayer) -> DagLayer {
-    let mut rb = Rebuild {
+pub(crate) fn simplify_layer<F: PrimeField>(layer: &DagLayer) -> DagLayer {
+    let mut rb = Rebuild::<F> {
         arena: ArenaBuilder::new(),
         map: vec![None; layer.exprs.len()],
         layer,
         fan_out: fan_out(layer),
         provably_base_memo: vec![None; layer.exprs.len()],
+        field: PhantomData,
     };
     let roots: Vec<Root> = layer
         .roots
@@ -132,12 +148,13 @@ pub(crate) fn simplify_layer(layer: &DagLayer) -> DagLayer {
     }
 }
 
-struct Rebuild<'a> {
+struct Rebuild<'a, F> {
     arena: ArenaBuilder,
     map: Vec<Option<ExprId>>,
     layer: &'a DagLayer,
     fan_out: Vec<usize>,
     provably_base_memo: Vec<Option<bool>>,
+    field: PhantomData<F>,
 }
 
 /// Bottom-up, memoized: is the subtree at `old` (in `layer`) guaranteed to be
@@ -163,14 +180,14 @@ fn provably_base(layer: &DagLayer, memo: &mut [Option<bool>], old: ExprId) -> bo
     result
 }
 
-impl Rebuild<'_> {
+impl<F: PrimeField> Rebuild<'_, F> {
     fn provably_base(&mut self, old: ExprId) -> bool {
         provably_base(self.layer, &mut self.provably_base_memo, old)
     }
 
     /// If the rebuilt (NEW) node `new` is `Source(Constant { value })`, return
     /// `value`.
-    fn as_const(&self, new: ExprId) -> Option<u32> {
+    fn as_const(&self, new: ExprId) -> Option<u128> {
         match &self.arena.exprs()[new.0 as usize] {
             Expr::Source(sid) => match &self.arena.sources()[sid.0 as usize] {
                 SourceKind::Constant { value } => Some(*value),
@@ -181,12 +198,13 @@ impl Rebuild<'_> {
     }
 
     /// Intern a fresh `Constant` source expr in the NEW arena.
-    fn const_expr(&mut self, v: u32) -> ExprId {
+    fn const_expr(&mut self, v: u128) -> ExprId {
         // All callers pass already-reduced fold results (`fold_add`/`fold_mul`
         // output, or a value copied from an existing reduced Constant).
         debug_assert!(
-            (v as u64) < SIMPLIFY_MODULUS,
-            "const_expr: value {v} not reduced mod {SIMPLIFY_MODULUS}"
+            v < F::CHARACTERISTICS_U128,
+            "const_expr: value {v} not reduced mod {}",
+            F::CHARACTERISTICS_U128
         );
         let s = self.arena.intern_source(SourceKind::Constant { value: v });
         self.arena.source_expr(s)
@@ -238,13 +256,13 @@ impl Rebuild<'_> {
                         }
                     }
                     // const-fold: merge all Constant operands
-                    let mut acc: Option<u32> = None;
+                    let mut acc: Option<u128> = None;
                     let mut rest: Vec<ExprId> = Vec::with_capacity(flat.len());
                     for id in flat {
                         match self.as_const(id) {
                             Some(v) => {
                                 acc = Some(match acc {
-                                    Some(a) => fold_add(a, v),
+                                    Some(a) => fold_add::<F>(a, v),
                                     None => v,
                                 })
                             }
@@ -284,13 +302,13 @@ impl Rebuild<'_> {
                         }
                     }
                     // const-fold: merge all Constant operands
-                    let mut acc: Option<u32> = None;
+                    let mut acc: Option<u128> = None;
                     let mut rest: Vec<ExprId> = Vec::with_capacity(flat.len());
                     for id in flat {
                         match self.as_const(id) {
                             Some(v) => {
                                 acc = Some(match acc {
-                                    Some(a) => fold_mul(a, v),
+                                    Some(a) => fold_mul::<F>(a, v),
                                     None => v,
                                 })
                             }
@@ -336,9 +354,12 @@ mod tests {
         BatchingOrder, ChallengeKey, ChallengePower, ChallengeRef, DagCircuit, LookupValueKind,
         ReadPlace, ResolutionStrategy, RootGroup, RootOrigin, SinkInfo, SinkKind,
     };
+    use field::baby_bear::base::BabyBearField;
+    use field::proth120::Proth120;
+    use field::Field;
 
-    /// Build a `Constant` source expr with the given BabyBear value.
-    fn const_expr(a: &mut ArenaBuilder, value: u32) -> ExprId {
+    /// Build a `Constant` source expr with the given canonical value.
+    fn const_expr(a: &mut ArenaBuilder, value: u128) -> ExprId {
         let s = a.intern_source(SourceKind::Constant { value });
         a.source_expr(s)
     }
@@ -368,6 +389,7 @@ mod tests {
     fn circuit_of(layer: DagLayer) -> DagCircuit {
         DagCircuit {
             layers: vec![layer],
+            modulus: BabyBearField::CHARACTERISTICS_U128,
         }
     }
 
@@ -407,7 +429,7 @@ mod tests {
             claim: None,
         };
         let layer = layer_of(a, vec![root], BTreeMap::new());
-        let out = simplify_layer(&layer);
+        let out = simplify_layer::<BabyBearField>(&layer);
         assert_eq!(
             out.exprs.len(),
             1,
@@ -450,7 +472,7 @@ mod tests {
             },
         ];
         let layer = layer_of(a, roots, BTreeMap::new());
-        let out = simplify_layer(&layer);
+        let out = simplify_layer::<BabyBearField>(&layer);
         assert_eq!(
             out.roots[0].expr, out.roots[1].expr,
             "both associations flatten to Add(x,y,z) and CSE-merge"
@@ -478,7 +500,7 @@ mod tests {
             },
         ];
         let layer = layer_of(a, roots, BTreeMap::new());
-        let out = simplify_layer(&layer);
+        let out = simplify_layer::<BabyBearField>(&layer);
         match &out.exprs[out.roots[0].expr.0 as usize] {
             Expr::Add(ops) => assert_eq!(
                 ops.len(),
@@ -508,7 +530,7 @@ mod tests {
             }],
             res,
         );
-        let out = simplify_layer(&layer);
+        let out = simplify_layer::<BabyBearField>(&layer);
         match &out.exprs[out.roots[0].expr.0 as usize] {
             Expr::Add(ops) => assert_eq!(ops.len(), 2, "fenced leaf survives as one operand"),
             other => panic!("expected Add, got {:?}", other),
@@ -538,7 +560,7 @@ mod tests {
             }],
             res,
         );
-        let out = simplify_layer(&layer);
+        let out = simplify_layer::<BabyBearField>(&layer);
         match &out.exprs[out.roots[0].expr.0 as usize] {
             Expr::Add(ops) => assert_eq!(
                 ops.len(),
@@ -579,7 +601,7 @@ mod tests {
             },
         ];
         let layer = layer_of(a, roots, BTreeMap::new());
-        let out = simplify_layer(&layer);
+        let out = simplify_layer::<BabyBearField>(&layer);
         match &out.exprs[out.roots[0].expr.0 as usize] {
             Expr::Add(ops) => assert_eq!(
                 ops.len(),
@@ -595,7 +617,7 @@ mod tests {
     #[test]
     fn double_negation_cancels() {
         let mut a = ArenaBuilder::new();
-        let neg1 = const_expr(&mut a, 2013265920); // p-1
+        let neg1 = const_expr(&mut a, BabyBearField::CHARACTERISTICS_U128 - 1);
         let x = read_like(&mut a, 101); // NOT provably base is fine here
         let inner = a.mul(vec![neg1, x]);
         let outer = a.mul(vec![neg1, inner]); // inner fan-out 1 → flattens
@@ -608,12 +630,62 @@ mod tests {
             }],
             BTreeMap::new(),
         );
-        let out = simplify_layer_fixpoint(&layer);
+        let out = simplify_layer_fixpoint::<BabyBearField>(&layer);
         assert!(
             matches!(&out.exprs[out.roots[0].expr.0 as usize], Expr::Source(_)),
             "Mul(-1, Mul(-1, x)) must collapse to x, got {:?}",
             out.exprs
         );
+    }
+
+    #[test]
+    fn proth120_wide_folds() {
+        let p = Proth120::CHARACTERISTICS_U128;
+        let wide_a = (1u128 << 100) + 12345;
+        let wide_b = p - (1u128 << 70);
+        let mut expected = Proth120::from_u128_with_reduction(wide_a);
+        expected.mul_assign(&Proth120::from_u128_with_reduction(wide_b));
+        let cases: [(Vec<u128>, bool, Option<u128>); 4] = [
+            (vec![p - 1, p - 1], true, Some(1)),
+            (vec![p - 1, 1], false, Some(0)),
+            (vec![wide_a, wide_b], true, Some(expected.as_u128_reduced())),
+            (vec![p - 1, p - 1], true, None),
+        ];
+        for (values, multiply, folded) in cases {
+            let mut a = ArenaBuilder::new();
+            let mut operands: Vec<ExprId> = values
+                .iter()
+                .map(|&value| const_expr(&mut a, value))
+                .collect();
+            if folded.is_none() {
+                operands.push(read_like(&mut a, 7));
+            }
+            let expr = if multiply {
+                a.mul(operands)
+            } else {
+                a.add(operands)
+            };
+            let layer = layer_of(
+                a,
+                vec![Root {
+                    expr,
+                    materialize: None,
+                    claim: None,
+                }],
+                BTreeMap::new(),
+            );
+            let out = simplify_layer_fixpoint::<Proth120>(&layer);
+            let Expr::Source(source) = &out.exprs[out.roots[0].expr.0 as usize] else {
+                panic!("{values:?} must fold to a source, got {:?}", out.exprs);
+            };
+            match (folded, &out.sources[source.0 as usize]) {
+                (Some(value), SourceKind::Constant { value: actual }) => {
+                    assert_eq!(*actual, value, "{values:?}")
+                }
+                (None, SourceKind::Read { .. }) => {}
+                (_, other) => panic!("{values:?} folded to {other:?}"),
+            }
+        }
     }
 
     /// Base annihilator: Mul(0, base) → Constant(0).
@@ -632,7 +704,7 @@ mod tests {
             }],
             BTreeMap::new(),
         );
-        let out = simplify_layer(&layer);
+        let out = simplify_layer::<BabyBearField>(&layer);
         match &out.exprs[out.roots[0].expr.0 as usize] {
             Expr::Source(sid) => assert_eq!(
                 out.sources[sid.0 as usize],
@@ -659,7 +731,7 @@ mod tests {
             }],
             BTreeMap::new(),
         );
-        let out = simplify_layer(&layer);
+        let out = simplify_layer::<BabyBearField>(&layer);
         match &out.exprs[out.roots[0].expr.0 as usize] {
             Expr::Mul(ops) => assert_eq!(ops.len(), 2, "Ext zero product must stay a Mul"),
             other => panic!("field-preservation violated: {:?}", other),
@@ -707,7 +779,7 @@ mod tests {
             ],
             BTreeMap::new(),
         );
-        let out = simplify_layer(&layer);
+        let out = simplify_layer::<BabyBearField>(&layer);
 
         match &out.exprs[out.roots[0].expr.0 as usize] {
             Expr::Add(ops) => {
@@ -763,7 +835,7 @@ mod tests {
             claim: None,
         };
         let layer = layer_of(a, vec![root], BTreeMap::new());
-        let out = simplify_layer(&layer);
+        let out = simplify_layer::<BabyBearField>(&layer);
         // Both the Constant source and the LookupValue source survive.
         assert_eq!(
             out.sources.len(),
@@ -818,7 +890,7 @@ mod tests {
         circuit.layers[0].batching = BatchingOrder {
             roots: vec![super::super::RootId(0)],
         };
-        let out = simplify_circuit(circuit);
+        let out = simplify_circuit::<BabyBearField>(circuit);
         match &out.layers[0].exprs[out.layers[0].roots[0].expr.0 as usize] {
             Expr::Mul(ops) => assert_eq!(ops.len(), 2, "Ext zero product must stay a Mul"),
             other => panic!("field-preservation violated: {:?}", other),
@@ -850,7 +922,7 @@ mod tests {
             BTreeMap::new(),
         );
         let circuit = circuit_of(layer);
-        let out = simplify_circuit(circuit);
+        let out = simplify_circuit::<BabyBearField>(circuit);
         match &out.layers[0].exprs[out.layers[0].roots[0].expr.0 as usize] {
             Expr::Mul(ops) => assert_eq!(ops.len(), 2, "Ext zero product must stay a Mul"),
             other => panic!("field-preservation violated: {:?}", other),

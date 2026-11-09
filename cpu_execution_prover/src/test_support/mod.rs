@@ -28,6 +28,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use worker::Worker;
 
+pub use crate::jobs::expand_inits_and_teardowns;
+
 const FIXTURE_BATCH_ID: u64 = 0;
 
 type Callback = Box<dyn for<'a> FnOnce(L1WrapFixture<'a>) -> Box<dyn Any + Send> + Send>;
@@ -78,7 +80,7 @@ where
         binary,
         text,
         &[(
-            ExecutionKind::L1Wrap21,
+            ExecutionKind::L1Wrap,
             MachineType::Reduced,
             &[ProofProfile::L1Wrap],
         )],
@@ -175,10 +177,10 @@ impl ExecutionBackend for CaptureBackend {
         &self,
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
-        selection: execution_prover::config::SoundnessMode,
+        soundness_mode: execution_prover::config::SoundnessMode,
         profiles: &[ProofProfile],
     ) -> Self::Precomputations {
-        CpuCircuitPrecomputations::from_canonical(circuit, setup, selection, profiles)
+        CpuCircuitPrecomputations::from_canonical(circuit, setup, soundness_mode, profiles)
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {

@@ -1,6 +1,6 @@
 use crate::config::GpuBackendConfiguration;
 use crate::host_storage::{LockedBoxedMemoryHolder, LockedBoxedTraceChunk};
-use crate::precomputations::CircuitPrecomputations;
+use crate::precomputations::{validate_profiles, CircuitPrecomputations};
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength};
 use crate::workers::gpu_manager::GpuManager;
 use crate::A;
@@ -20,12 +20,13 @@ use worker::Worker;
 
 impl CircuitPrecomputation for CircuitPrecomputations {
     fn compiled_circuit(&self) -> &Arc<GKRCircuitArtifact<BF>> {
-        self.gkr_programs.compiled_circuit()
+        self.baby_bear().gkr_programs.compiled_circuit()
     }
 
-    fn setup_cap(&self, _profile: ProofProfile) -> Option<MerkleTreeCapVarLength> {
-        self.setup_host
-            .get_initialized()
+    fn setup_cap(&self, profile: ProofProfile) -> Option<MerkleTreeCapVarLength> {
+        self.baby_bear()
+            .setup_host
+            .get_initialized(profile)
             .map(|setup_host| MerkleTreeCapVarLength {
                 cap: setup_host.unified_tree_cap().to_vec(),
             })
@@ -82,15 +83,13 @@ impl ExecutionBackend for GpuBackend {
         &self,
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
-        selection: SoundnessMode,
+        soundness_mode: SoundnessMode,
         profiles: &[ProofProfile],
     ) -> Self::Precomputations {
-        match profiles {
-            [ProofProfile::Standard] => {
-                CircuitPrecomputations::from_canonical(circuit, setup, selection)
-            }
-            _ => unimplemented!("L1 GPU profile preparation"),
-        }
+        let profiles: Vec<ProofProfile> = validate_profiles(circuit, &setup, profiles)
+            .into_iter()
+            .collect();
+        CircuitPrecomputations::from_canonical(circuit, setup, soundness_mode, &profiles)
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {

@@ -265,6 +265,7 @@ pub fn policy_fields(policy: MemoryPolicy) -> (String, String, String, String, S
     let witness_opening = match policy.witness.opening {
         WitnessOpeningStrategy::ReuseCosets => "reuse_cosets",
         WitnessOpeningStrategy::Recompute(strategy) => opening(strategy),
+        WitnessOpeningStrategy::PackedCosetRecompute => "packed_coset_recompute",
     };
     (
         opening(policy.setup).into(),
@@ -302,6 +303,9 @@ fn policy_expression(policy: MemoryPolicy) -> String {
         WitnessOpeningStrategy::ReuseCosets => "WitnessOpeningStrategy::ReuseCosets".into(),
         WitnessOpeningStrategy::Recompute(strategy) => {
             format!("WitnessOpeningStrategy::Recompute(OpeningStrategy::{strategy:?})")
+        }
+        WitnessOpeningStrategy::PackedCosetRecompute => {
+            "WitnessOpeningStrategy::PackedCosetRecompute".into()
         }
     };
     format!("ProofMemoryPolicy {{ gkr: GkrMemoryPolicy::{:?}, setup: OpeningStrategy::{:?}, memory: OpeningStrategy::{:?}, witness: WitnessMemoryPolicy {{ commitment: WitnessCommitmentStrategy::{:?}, post_commitment: WitnessPostCommitStorage::{:?}, opening: {opening} }} }}", policy.gkr, policy.setup, policy.memory, policy.witness.commitment, policy.witness.post_commitment)
@@ -352,6 +356,7 @@ pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
             UnrolledNonMemoryCircuitType::ShiftBinary,
         )) => "unrolled_non_memory_shift_binary",
         CircuitType::Unrolled(UnrolledCircuitType::Unified) => "unrolled_unified",
+        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it is Compression-only, its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::compression"),
     }
 }
 
@@ -398,6 +403,7 @@ fn circuit_pattern(circuit: CircuitType) -> &'static str {
         CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
             "CircuitType::Unrolled(UnrolledCircuitType::Unified)"
         }
+        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it is Compression-only, its capacity cases run through the bounded harness (tests/l1_memory.rs) and its policy is presets::compression"),
     }
 }
 

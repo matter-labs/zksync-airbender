@@ -13,6 +13,7 @@ use gpu_core::primitives::context::{
     UnsafeMutAccessor,
 };
 use gpu_ntt::ntt_twiddles::DeviceContext;
+use gpu_ntt::proth120;
 use log::error;
 use std::ops::Range;
 
@@ -20,8 +21,8 @@ use std::ops::Range;
 /// depend on the device.
 pub const MAX_SM_COUNT: usize = 256;
 
-/// Capacity of the pinned staging buffer behind `Transfer::stage`.
-pub(crate) const H2D_STAGING_BYTES: usize = 1 << 16;
+/// Default capacity of the pinned staging buffer behind `Transfer::stage`.
+pub const DEFAULT_H2D_STAGING_BYTES: usize = 1 << 16;
 
 #[derive(Copy, Clone, Debug)]
 pub struct ProverContextConfig {
@@ -38,6 +39,10 @@ pub struct ProverContextConfig {
     pub small_allocator_pool_blocks: usize,
     /// See [`AllocationMode`].
     pub inputs_reserve_bytes: usize,
+    pub proth120_ntt_log_max_domain: Option<u32>,
+    /// Capacity of the pinned staging buffer behind `Transfer::stage`: the
+    /// largest total staged by one bundle.
+    pub h2d_staging_bytes: usize,
 }
 
 /// `Ascending` works from the low arena end and `Descending` mirrors it from
@@ -63,6 +68,8 @@ impl Default for ProverContextConfig {
             small_allocator_log_chunk_size: Some(8), // 256-byte granularity for small device allocations
             small_allocator_pool_blocks: 16, // 16 blocks × 1 MB = 16 MB per small allocation pool
             inputs_reserve_bytes: 0,
+            proth120_ntt_log_max_domain: None,
+            h2d_staging_bytes: DEFAULT_H2D_STAGING_BYTES,
         }
     }
 }
@@ -70,6 +77,7 @@ impl Default for ProverContextConfig {
 pub struct ProverContext {
     // Own the device-resident twiddle tables for the full lifetime of the prover context.
     _device_context: DeviceContext,
+    _proth120_device_context: Option<proth120::DeviceContext>,
     device_allocator: DeviceAllocator,
     small_device_allocators: Option<[DeviceAllocator; 2]>,
     host_allocator: HostAllocator,
@@ -135,6 +143,10 @@ impl ProverContext {
         let slack = era_cudart::memory::DeviceAllocation::<u8>::alloc(slack_size)?;
         let allocator_block_log_size = config.allocator_block_log_size;
         let device_context = DeviceContext::create(config.powers_of_w_coarse_log_count)?;
+        let proth120_device_context = config
+            .proth120_ntt_log_max_domain
+            .map(proth120::DeviceContext::create)
+            .transpose()?;
         let exec_stream = CudaStream::create()?;
         let h2d_stream = CudaStream::create()?;
         let device_blocks_count = if let Some(blocks_count) = config.device_allocation_blocks_count
@@ -206,14 +218,19 @@ impl ProverContext {
         )?;
         let host_allocator =
             NonConcurrentStaticHostAllocator::new([host_allocation], host_block_log_size);
+        assert!(
+            config.h2d_staging_bytes > 0,
+            "the H2D staging buffer must not be empty"
+        );
         let mut h2d_staging = era_cudart::memory::HostAllocation::alloc(
-            H2D_STAGING_BYTES,
+            config.h2d_staging_bytes,
             CudaHostAllocFlags::DEFAULT,
         )?;
         let h2d_staging_fill_target = UnsafeMutAccessor::new(&mut h2d_staging[..]);
         let device_properties = DeviceProperties::new()?;
         let context = Self {
             _device_context: device_context,
+            _proth120_device_context: proth120_device_context,
             device_allocator,
             small_device_allocators,
             host_allocator,
@@ -245,6 +262,12 @@ impl ProverContext {
     /// CLEAN/COUPLED triangles and `__constant__` twiddle tables.
     pub fn ntt_device_context(&self) -> &DeviceContext {
         &self._device_context
+    }
+
+    pub fn proth120_ntt_device_context(&self) -> &proth120::DeviceContext {
+        self._proth120_device_context
+            .as_ref()
+            .expect("Proth120 NTT context is not configured")
     }
 
     pub fn get_h2d_stream(&self) -> &CudaStream {

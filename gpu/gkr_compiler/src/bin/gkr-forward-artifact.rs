@@ -4,18 +4,21 @@ use std::path::PathBuf;
 
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::baby_bear::base::BabyBearField;
+use field::proth120::Proth120;
 use gkr_eval_ir::lower_dag;
 use gpu_gkr_compiler::{
-    compile_forward, parse_forward_artifact, search_forward, ForwardSearchRequest, SearchConfig,
+    compile_forward, parse_forward_artifact, search_forward, FieldTag, ForwardSearchRequest,
+    SearchConfig,
 };
 
 const HELP: &str = "gkr-forward-artifact \
   --circuit <stem> --layout <layout-json> --output <artifact-json> \
   --seed <u64> --cache-buckets <usize> --population <usize> --evaluations <usize> \
-  [--incumbent <artifact-json>] [--replace | --if-stale]";
+  [--field babybear|proth120] [--incumbent <artifact-json>] [--replace | --if-stale]";
 
 struct Args {
     circuit: String,
+    field: Option<FieldTag>,
     layout: PathBuf,
     output: PathBuf,
     seed: u64,
@@ -34,6 +37,7 @@ fn next_value(raw: &mut impl Iterator<Item = String>, flag: &str) -> Result<Stri
 
 fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
     let mut circuit = None;
+    let mut field = None;
     let mut layout = None;
     let mut output = None;
     let mut seed = None;
@@ -46,6 +50,13 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
     let mut raw = raw.into_iter();
     while let Some(flag) = raw.next() {
         match flag.as_str() {
+            "--field" => {
+                field = match next_value(&mut raw, &flag)?.as_str() {
+                    "babybear" => None,
+                    "proth120" => Some(FieldTag::Proth120),
+                    other => return Err(format!("unsupported --field {other}")),
+                };
+            }
             "--circuit" => circuit = Some(next_value(&mut raw, &flag)?),
             "--layout" => layout = Some(PathBuf::from(next_value(&mut raw, &flag)?)),
             "--output" => output = Some(PathBuf::from(next_value(&mut raw, &flag)?)),
@@ -85,6 +96,7 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
     }
     let args = Args {
         circuit: circuit.ok_or("missing --circuit")?,
+        field,
         layout: layout.ok_or("missing --layout")?,
         output: output.ok_or("missing --output")?,
         seed: seed.ok_or("missing --seed")?,
@@ -95,7 +107,15 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
         replace,
         if_stale,
     };
-    let expected = format!("{}_schedule_b{}_gkr.json", args.circuit, args.cache_buckets);
+    let suffix = if args.field.is_some() {
+        "_proth120"
+    } else {
+        ""
+    };
+    let expected = format!(
+        "{}_schedule_b{}_gkr{suffix}.json",
+        args.circuit, args.cache_buckets
+    );
     if args.output.file_name().and_then(|name| name.to_str()) != Some(&expected) {
         return Err(format!("output must end in {expected}"));
     }
@@ -108,16 +128,27 @@ fn run(raw_args: Vec<String>) -> Result<(), String> {
         return Err(format!("{} exists; pass --replace", args.output.display()));
     }
     let layout_bytes = std::fs::read(&args.layout).map_err(|error| error.to_string())?;
-    let layout: GKRCircuitArtifact<BabyBearField> =
-        serde_json::from_slice(&layout_bytes).map_err(|error| error.to_string())?;
-    let dag = lower_dag(&layout)?;
+    let dag = match args.field {
+        None => {
+            let layout: GKRCircuitArtifact<BabyBearField> =
+                serde_json::from_slice(&layout_bytes).map_err(|error| error.to_string())?;
+            lower_dag(&layout)?
+        }
+        Some(FieldTag::Proth120) => {
+            let layout: GKRCircuitArtifact<Proth120> =
+                serde_json::from_slice(&layout_bytes).map_err(|error| error.to_string())?;
+            lower_dag(&layout)?
+        }
+    };
 
     if args.if_stale && args.output.exists() {
         let bytes = std::fs::read(&args.output).map_err(|error| error.to_string())?;
         let current = parse_forward_artifact(&bytes, "output")
             .map_err(|error| error.to_string())
             .and_then(|artifact| {
-                if artifact.circuit != args.circuit || artifact.budget_buckets != args.cache_buckets
+                if artifact.circuit != args.circuit
+                    || artifact.budget_buckets != args.cache_buckets
+                    || artifact.field != args.field
                 {
                     return Err("artifact metadata does not match the command".into());
                 }
@@ -149,8 +180,9 @@ fn run(raw_args: Vec<String>) -> Result<(), String> {
         ..SearchConfig::production()
     };
     eprintln!(
-        "search config: seed={} cache_buckets={} population={} evaluations={} {:?}",
-        args.seed, args.cache_buckets, args.population, args.evaluations, config
+        "search config: seed={} cache_buckets={} population={} evaluations={} workers={} field={:?} {:?}",
+        args.seed, args.cache_buckets, args.population, args.evaluations,
+        std::thread::available_parallelism().map_or(1, usize::from), args.field, config
     );
     let artifact = search_forward(ForwardSearchRequest {
         circuit: &args.circuit,
@@ -177,7 +209,10 @@ fn run(raw_args: Vec<String>) -> Result<(), String> {
     let check = std::fs::read(&temporary).map_err(|error| error.to_string())?;
     let check =
         parse_forward_artifact(&check, "temporary output").map_err(|error| error.to_string())?;
-    if check.circuit != args.circuit || check.budget_buckets != args.cache_buckets {
+    if check.circuit != args.circuit
+        || check.budget_buckets != args.cache_buckets
+        || check.field != args.field
+    {
         return Err("temporary artifact metadata does not match the command".into());
     }
     compile_forward(&dag, &check).map_err(|error| format!("temporary artifact: {error:?}"))?;
@@ -215,6 +250,25 @@ mod tests {
         assert!(!parse_args(args.clone()).unwrap().if_stale);
         args.push("--if-stale".into());
         assert!(parse_args(args).unwrap().if_stale);
+    }
+
+    #[test]
+    fn field_selects_output_suffix() {
+        let mut raw = args();
+        assert_eq!(parse_args(raw.clone()).unwrap().field, None);
+        raw.extend(["--field".into(), "proth120".into()]);
+        assert!(parse_args(raw.clone()).is_err());
+        let output = raw.iter().position(|arg| arg == "--output").unwrap() + 1;
+        raw[output] = "tiny_schedule_b4_gkr_proth120.json".into();
+        assert_eq!(
+            parse_args(raw.clone()).unwrap().field,
+            Some(FieldTag::Proth120)
+        );
+        *raw.last_mut().unwrap() = "unknown".into();
+        assert!(parse_args(raw)
+            .err()
+            .unwrap()
+            .contains("unsupported --field"));
     }
 
     #[test]

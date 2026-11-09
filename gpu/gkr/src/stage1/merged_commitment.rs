@@ -13,8 +13,12 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
+use gpu_trace::trace::holder::PartialTreePolicy;
 use gpu_trace::trace::holder::{WitnessCommitmentStrategy, WitnessPostCommitStorage};
-use gpu_trace::trace::memory::{schedule_memory_cap_readback, MemoryCommitmentJob};
+use gpu_trace::trace::memory::{
+    schedule_memory_commitment_job, schedule_memory_commitment_job_in_place,
+    schedule_memory_commitment_job_with_monomials, MemoryCommitmentJob,
+};
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 
 /// Shared H2D ownership for the existing BF memory-and-witness generator.
@@ -61,11 +65,21 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRMergedCommitTransfer<'a, A> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MergedCommitStrategy {
+    AllCosets,
+    InPlace,
+    Monomials,
+}
+
 /// Commit one concatenated memory/witness set in the base geometry of a merged `config`.
 pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
     gkr_programs: &GkrPrograms,
     config: &ProverConfig,
     inputs: GpuGKRMergedCommitTransfer<'a, A>,
+    strategy: MergedCommitStrategy,
+    partial_trees: PartialTreePolicy,
+    persist_partial_trees: bool,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a>> {
     assert_eq!(
@@ -95,6 +109,20 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
         log_rows_per_leaf: geometry.values_per_leaf().trailing_zeros(),
         log_tree_cap_size: geometry.cap_size().trailing_zeros(),
     };
+    let (commitment, storage) = match strategy {
+        MergedCommitStrategy::AllCosets => (
+            WitnessCommitmentStrategy::AllCosets,
+            WitnessPostCommitStorage::RawAndCosets,
+        ),
+        MergedCommitStrategy::InPlace => (
+            WitnessCommitmentStrategy::InPlace,
+            WitnessPostCommitStorage::RawEvaluations,
+        ),
+        MergedCommitStrategy::Monomials => (
+            WitnessCommitmentStrategy::PerCoset,
+            WitnessPostCommitStorage::RawAndMonomials,
+        ),
+    };
     let mut stage1 = GpuGKRStage1Output::generate_for_geometry(
         gkr_programs.circuit_type(),
         gkr_programs.compiled_circuit(),
@@ -105,8 +133,9 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
         inits_and_teardowns.as_ref().map(|input| &input.data_device),
         tracing_data.as_ref().map(|input| &input.data_device),
         None,
-        WitnessCommitmentStrategy::AllCosets,
-        WitnessPostCommitStorage::RawAndCosets,
+        commitment,
+        storage,
+        partial_trees,
         context,
     )?;
     let mut callbacks = Callbacks::new();
@@ -118,14 +147,29 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
         stream,
     )?;
     stage1.release_all_but_memory_trace_holder();
-    stage1.memory_trace_holder.commit_all(context)?;
-    let job = schedule_memory_cap_readback(
-        stage1.memory_trace_holder.unified_device_cap(),
-        stage1.memory_trace_holder.log_lde_factor,
-        callbacks,
-        Some(transfer.into_keepalive()),
-        range,
-        context,
-    )?;
-    Ok(job)
+    let inputs = Some(transfer.into_keepalive());
+    match strategy {
+        MergedCommitStrategy::AllCosets => schedule_memory_commitment_job(
+            &mut stage1.memory_trace_holder,
+            callbacks,
+            inputs,
+            range,
+            context,
+        ),
+        MergedCommitStrategy::InPlace => schedule_memory_commitment_job_in_place(
+            &mut stage1.memory_trace_holder,
+            callbacks,
+            inputs,
+            range,
+            context,
+        ),
+        MergedCommitStrategy::Monomials => schedule_memory_commitment_job_with_monomials(
+            &mut stage1.memory_trace_holder,
+            callbacks,
+            inputs,
+            range,
+            persist_partial_trees,
+            context,
+        ),
+    }
 }

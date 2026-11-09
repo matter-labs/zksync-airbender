@@ -7,8 +7,8 @@ fn check_policies(circuit: CanonicalCircuit, mode: circuit_common::SoundnessMode
     let preparation_peak = base.context.get_used_mem_peak();
     let baseline = base.context.get_used_mem_current();
     base.context.reset_used_mem_peak();
-    let presets =
-        [21usize << 30, 30usize << 30].map(|arena| presets::policy(base.circuit_type, arena));
+    let presets = [21usize << 30, 30usize << 30]
+        .map(|arena| presets::policy(base.circuit_type, ProofProfile::Standard, arena));
     let mut policies = vec![ProofMemoryPolicy::default()];
     for policy in ProofMemoryPolicy::candidates()
         .chain(GkrMemoryPolicy::candidates().map(|gkr| ProofMemoryPolicy {

@@ -1,6 +1,7 @@
 #include "common.cuh"
 #include "primitives/field.cuh"
 #include "primitives/memory.cuh"
+#include "primitives/proth120.cuh"
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
@@ -53,5 +54,6 @@ DEVICE_FORCEINLINE void transpose(const matrix_getter<T, ld_modifier::cs> src, c
   }
 
 TRANSPOSE_KERNEL(bf, 5);
+TRANSPOSE_KERNEL(pr, 4);
 
 } // namespace airbender::ops

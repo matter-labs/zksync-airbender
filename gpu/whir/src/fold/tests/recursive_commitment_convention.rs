@@ -29,11 +29,61 @@ fn fixed_monomial_coeffs(trace_len: usize) -> Vec<E4> {
         .collect()
 }
 
+/// Tree indexes of the first and last leaf under every cap node and in four
+/// cosets, plus seeded interior leaves.
+fn sampled_tree_indexes(
+    total_leaves: usize,
+    leaves_per_coset: usize,
+    tree_cap_size: usize,
+) -> Vec<usize> {
+    let mut indexes = std::collections::BTreeSet::new();
+    let leaves_per_cap_node = total_leaves / tree_cap_size;
+    for node in 0..tree_cap_size {
+        indexes.insert(node * leaves_per_cap_node);
+        indexes.insert((node + 1) * leaves_per_cap_node - 1);
+    }
+    let cosets = total_leaves / leaves_per_coset;
+    for coset in [0, 1, cosets / 2, cosets - 1] {
+        indexes.insert(coset * leaves_per_coset);
+        indexes.insert((coset + 1) * leaves_per_coset - 1);
+    }
+    let mut state = 0x9e37_79b9_7f4a_7c15u64;
+    for _ in 0..256 {
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        indexes.insert((state >> 11) as usize % total_leaves);
+    }
+    indexes.into_iter().collect()
+}
+
+#[derive(Clone, Copy)]
+enum Leaves {
+    All,
+    Sampled,
+}
+
 fn assert_recursive_commitment_matches_live_cpu(
     log_trace_len: u32,
     lde_factor: usize,
     values_per_leaf: usize,
     tree_cap_size: usize,
+) {
+    assert_recursive_commitment_leaves_match_live_cpu(
+        log_trace_len,
+        lde_factor,
+        values_per_leaf,
+        tree_cap_size,
+        Leaves::All,
+    );
+}
+
+fn assert_recursive_commitment_leaves_match_live_cpu(
+    log_trace_len: u32,
+    lde_factor: usize,
+    values_per_leaf: usize,
+    tree_cap_size: usize,
+    leaves: Leaves,
 ) {
     let shape = format!(
         "log_trace_len={log_trace_len} lde_factor={lde_factor} \
@@ -41,7 +91,11 @@ fn assert_recursive_commitment_matches_live_cpu(
     );
 
     let worker = Worker::new();
-    let context = make_test_context(if log_trace_len == 22 { 4096 } else { 512 }, 128);
+    let context = match leaves {
+        Leaves::All => make_test_context(if log_trace_len == 22 { 4096 } else { 512 }, 128),
+        // Production codewords are 2 GiB of E4 values; the 30 GiB arena of the compression gates.
+        Leaves::Sampled => make_test_context(30 << 10, 256),
+    };
     let baseline = context.get_used_mem_current();
     let trace_len = 1usize << log_trace_len;
     let monomial_coeffs = fixed_monomial_coeffs(trace_len);
@@ -101,7 +155,22 @@ fn assert_recursive_commitment_matches_live_cpu(
         // ignored large-domain edge sample. Larger new domains cannot fit
         // exhaustive paths into the helper's 128 MiB host pool.
         const MAX_EXHAUSTIVE_LEAVES: usize = 1 << 15;
-        let folded_indexes: Vec<_> = if total_leaves > MAX_EXHAUSTIVE_LEAVES {
+        let folded_indexes: Vec<_> = if matches!(leaves, Leaves::Sampled) {
+            let rows = trace_len / values_per_leaf;
+            let log_cosets = lde_factor.trailing_zeros();
+            sampled_tree_indexes(total_leaves, rows, tree_cap_size)
+                .into_iter()
+                .map(|index| {
+                    let dest = index / rows;
+                    let coset = if log_cosets == 0 {
+                        0
+                    } else {
+                        dest.reverse_bits() >> (usize::BITS - log_cosets)
+                    };
+                    (index % rows) * lde_factor + coset
+                })
+                .collect()
+        } else if total_leaves > MAX_EXHAUSTIVE_LEAVES {
             let rows = trace_len / values_per_leaf;
             (0..lde_factor)
                 .flat_map(|coset| {
@@ -122,6 +191,15 @@ fn assert_recursive_commitment_matches_live_cpu(
             tree_indexes.push(query.index as u32);
             expected_values.push(values);
             expected_paths.push(query.path);
+        }
+        if matches!(leaves, Leaves::Sampled) {
+            let expected =
+                sampled_tree_indexes(total_leaves, trace_len / values_per_leaf, tree_cap_size);
+            assert!(tree_indexes
+                .iter()
+                .zip(&expected)
+                .all(|(actual, expected)| *actual as usize == *expected));
+            assert_eq!(tree_indexes.len(), expected.len());
         }
         let layers_count = expected_paths[0].len();
         assert!(expected_paths.iter().all(|path| path.len() == layers_count));
@@ -212,4 +290,102 @@ fn assert_recursive_commitment_matches_live_cpu(
 fn recursive_whir_commitment_matches_live_cpu() {
     // M256: compare every committed leaf and path against the CPU encoding.
     assert_recursive_commitment_matches_live_cpu(13, 4, 32, 4);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn recursive_whir_partial_tree_depth_five_matches_live_cpu() {
+    // Exercise both commit dispatches with the reduction roots as the cap.
+    // Each route also has a depth-six control with one upper tree level.
+    assert_recursive_commitment_matches_live_cpu(9, 2, 16, 1);
+    // Fused: 64 coefficient leaves, two-node cap, five path levels.
+    assert_recursive_commitment_matches_live_cpu(9, 2, 16, 2);
+    assert_recursive_commitment_matches_live_cpu(14, 2, 32, 16);
+    // Retained: 1024 coefficient leaves, 32-node cap, five path levels.
+    assert_recursive_commitment_matches_live_cpu(14, 2, 32, 32);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn recursive_whir_fused_shapes_match_live_cpu() {
+    for (log_n, cosets, values, cap) in [
+        (4, 256, 8, 4),
+        (5, 64, 16, 1), // Four valid subtrees in an eight-subtree block.
+        (6, 128, 32, 4),
+        (7, 8, 16, 1), // M8 shuffle; two valid subtrees in the block.
+        (8, 16, 16, 4),
+        (9, 8, 16, 4),
+        (10, 8, 32, 4),
+        (11, 4, 32, 4),
+        (12, 4, 32, 4),
+        (13, 4, 32, 4),
+        // The 2^22 compression's fused oracles at its cap 32, with fewer cosets.
+        (6, 256, 8, 32),
+        (11, 32, 32, 32),
+    ] {
+        assert_recursive_commitment_matches_live_cpu(log_n, cosets, values, cap);
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn recursive_whir_retained_shapes_match_live_cpu() {
+    for log_n in 14..=19 {
+        assert_recursive_commitment_matches_live_cpu(log_n, 2, 32, 16);
+    }
+    for log_n in 15..=19 {
+        assert_recursive_commitment_matches_live_cpu(log_n, 2, 32, 32);
+    }
+}
+
+// The intermediate oracles of the 2^22 compression at the geometry its config
+// produces: the full cap and sampled leaves and paths.
+#[test]
+#[cfg(not(no_cuda))]
+fn compression_oracles_match_live_cpu() {
+    let shapes = crate::test_utils::compression_oracle_shapes();
+    assert!(!shapes.is_empty());
+    for (log_n, log_v, lde_factor, cap_size) in shapes {
+        assert_recursive_commitment_leaves_match_live_cpu(
+            log_n,
+            lde_factor,
+            1 << log_v,
+            cap_size,
+            Leaves::Sampled,
+        );
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+#[ignore = "full default virtual intermediate domain with independent CPU commitment"]
+fn recursive_whir_retained_22_6_matches_live_cpu() {
+    assert_recursive_commitment_matches_live_cpu(22, 32, 64, 16);
+}
+
+macro_rules! existing_recursive_route_cases {
+    ($($name:ident: ($n:expr, $lde:expr, $values:expr, $cap:expr)),* $(,)?) => { $(
+        #[test]
+        #[cfg(not(no_cuda))]
+        fn $name() {
+            assert_recursive_commitment_matches_live_cpu($n, $lde, $values, $cap);
+        }
+    )* };
+}
+existing_recursive_route_cases! {
+    recursive_whir_route_r1_subwarp_matches_live_cpu: (10, 64, 64, 16),
+    recursive_whir_route_r2_block_matches_live_cpu: (10, 16, 16, 16),
+    recursive_whir_route_r3_retained_matches_live_cpu: (14, 2, 16, 16),
+    recursive_whir_route_r4_retained_matches_live_cpu: (14, 2, 32, 16),
+    recursive_whir_subwarp_max_coefficients_match_live_cpu: (11, 2, 128, 1),
+    recursive_whir_block_max_rows_min_slots_match_live_cpu: (10, 2, 4, 1),
+    recursive_whir_retained_leaf9_matches_live_cpu: (14, 2, 512, 1),
+    recursive_whir_retained_leaf13_matches_live_cpu: (18, 2, 8192, 1),
+    recursive_whir_subwarp_horner_r2_matches_live_cpu: (5, 8, 8, 1),
+    recursive_whir_subwarp_one_slot_matches_live_cpu: (2, 32, 1, 1),
+    recursive_whir_subwarp_two_slots_match_live_cpu: (3, 8, 2, 1),
+    recursive_whir_subwarp_constant_slots_match_live_cpu: (3, 32, 8, 1),
+    recursive_whir_block_reader_ceiling_matches_live_cpu: (13, 2, 256, 1),
+    recursive_whir_retained_tiled_residue19_matches_live_cpu: (20, 8, 2, 1),
+    recursive_whir_retained_staging_residue20_matches_live_cpu: (21, 2, 2, 1),
 }

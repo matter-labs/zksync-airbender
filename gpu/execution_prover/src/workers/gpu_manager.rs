@@ -277,7 +277,10 @@ fn handle_worker_result(
         let circuit_type = result.circuit_type();
         let sequence_id = result.sequence_id();
         match &result {
-            GpuWorkResult::L1WrapProof(_) => unimplemented!("L1 wrap GPU proof result handling"),
+            GpuWorkResult::L1WrapProof(result) => {
+                assert_eq!(result.batch_id, batch_id);
+                trace!("BATCH[{batch_id}] GPU_MANAGER received L1 wrap proof from GPU_WORKER[{worker_id}] for circuit {circuit_type:?}[{sequence_id}]");
+            }
             GpuWorkResult::MemoryCommitment(result) => {
                 assert_eq!(result.batch_id, batch_id);
                 trace!("BATCH[{batch_id}] GPU_MANAGER received memory commitment for circuit {circuit_type:?}[{sequence_id}] from GPU_WORKER[{worker_id}]");
@@ -392,5 +395,43 @@ fn drain_eager_dispatch(
             }
             Err(_) => break,
         }
+    }
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    use crate::upstream::OperationMode;
+    use execution_prover::messages::{L1WrapProofRequest, WorkRequest};
+    use execution_prover_model::circuit_type::CircuitType;
+    use execution_prover_model::trace::{ChunkedTraceHolder, InitsAndTeardownsTraceHost};
+    use std::alloc::Global;
+
+    fn empty<T>() -> ChunkedTraceHolder<T, Global> {
+        ChunkedTraceHolder { chunks: Vec::new() }
+    }
+
+    #[test]
+    fn cpu_l1_request_shape() {
+        let request = WorkRequest::<Global, ()>::L1WrapProof(L1WrapProofRequest {
+            batch_id: 7,
+            circuit_type: CircuitType::L1Wrap,
+            precomputations: (),
+            inits_and_teardowns: InitsAndTeardownsTraceHost {
+                page_indices: empty(),
+                values_packed: empty(),
+                timestamps_packed: empty(),
+                top_bits: vec![0, 0],
+            },
+            tracing_data: empty(),
+            operation_mode: OperationMode::SingleChunk {
+                external_challenges_pow_bits: prover::gkr::prover_config::example_configs::l1_wrap::EXTERNAL_CHALLENGES_POW_BITS,
+                register_final_state: [prover::definitions::FinalRegisterValue { value: 0, last_access_timestamp: 0 }; 32],
+                final_pc: 0,
+                final_timestamp: 0,
+            },
+        });
+        assert_eq!(request.batch_id(), 7);
+        assert_eq!(request.circuit_type(), CircuitType::L1Wrap);
+        assert_eq!(request.sequence_id(), 0);
     }
 }

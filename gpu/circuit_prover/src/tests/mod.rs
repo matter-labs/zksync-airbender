@@ -44,6 +44,7 @@ mod commit_memory;
 mod fixtures;
 mod geometry_proof;
 mod inits_and_teardowns;
+mod l1_reference;
 mod lsb_commit_pipeline;
 mod memory_policies;
 mod proof_matrix;
@@ -149,7 +150,7 @@ pub(crate) struct BasicUnrolledFixture {
     /// unified fixture, which proves the inits-and-teardowns layer.
     pub(crate) inits_and_teardowns_host: Option<InitsAndTeardownsTraceHost<std::alloc::Global>>,
     /// Actual global RAM-set top bits assigned to the fixture's local teardown
-    /// slots. `None` uses the canonical contiguous selection for fixtures that
+    /// slots. `None` uses the canonical contiguous soundness_mode for fixtures that
     /// do not need noncontiguous RAM-set rebasing.
     pub(crate) inits_and_teardowns_top_bits: Option<Vec<u32>>,
 }
@@ -174,7 +175,13 @@ impl BasicUnrolledFixture {
         let setup_transfer = self
             .gpu_setup_host
             .as_ref()
-            .map(|host| GpuGKRSetupTransfer::new(Arc::clone(host), context))
+            .map(|host| {
+                GpuGKRSetupTransfer::new(
+                    Arc::clone(host),
+                    gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                    context,
+                )
+            })
             .transpose()?;
         let decoder_transfer = if self.compiled_circuit.has_decoder_lookup {
             Some(DecoderTableTransfer::new(
@@ -253,12 +260,17 @@ impl BasicUnrolledFixture {
             self.final_trace_size_log_2,
             transfers,
             self.memory_policy(),
+            crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
             &self.context,
         )
     }
 
     fn memory_policy(&self) -> ProofMemoryPolicy {
-        presets::policy(self.circuit_type, self.context.get_mem_size())
+        presets::policy(
+            self.circuit_type,
+            ProofProfile::Standard,
+            self.context.get_mem_size(),
+        )
     }
 
     fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static>> {
@@ -284,6 +296,7 @@ impl BasicUnrolledFixture {
             self.final_trace_size_log_2,
             transfers,
             policy,
+            crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
             &self.context,
         )?;
         let mem_after_prove = self.context.get_used_mem_current();
