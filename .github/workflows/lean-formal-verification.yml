@@ -114,9 +114,11 @@ jobs:
       - name: Mathlib cache (lake exe cache get)
         run: cs_formal_verification/ci/lean-ci.sh time mathlib
 
-      # Lake's build outputs of this project, the Sail model and Clean, plus the module budget ledger (keyed by each
-      # module's Lake input hash, so entries from older commits stay valid exactly as long as the module would not
-      # be rebuilt). Lake rebuilds what changed; restore the newest cache of the same toolchain and dependencies.
+      # Lake's build outputs of this project, the Sail model and Clean; the dependencies' C objects (the test
+      # executable links every imported module and Mathlib's cache has no objects: ~3100 files, ~6 min of clang CPU,
+      # 40 MB); the module budget ledger (keyed by each module's Lake input hash, so entries from older commits stay
+      # valid exactly as long as the module would not be rebuilt). Lake rebuilds what changed; restore the newest
+      # cache of the same toolchain and dependencies.
       - name: Restore the Lake build
         id: build-cache
         if: ${{ !inputs.cold }}
@@ -127,6 +129,7 @@ jobs:
             ${{ env.LEAN_DIR }}/.lake/module-cpu.tsv
             ${{ env.LEAN_DIR }}/sail-rv32/.lake
             ${{ env.LEAN_DIR }}/.lake/packages/Clean/.lake
+            ${{ env.LEAN_DIR }}/.lake/packages/*/.lake/build/ir/**/*.c.o*
           key: lean-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-${{ github.sha }}
           restore-keys: |
             lean-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-
@@ -149,6 +152,7 @@ jobs:
             ${{ env.LEAN_DIR }}/.lake/module-cpu.tsv
             ${{ env.LEAN_DIR }}/sail-rv32/.lake
             ${{ env.LEAN_DIR }}/.lake/packages/Clean/.lake
+            ${{ env.LEAN_DIR }}/.lake/packages/*/.lake/build/ir/**/*.c.o*
           key: lean-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-${{ github.sha }}
       - name: Upload the build logs and the budget table
         if: ${{ !cancelled() }}

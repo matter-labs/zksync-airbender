@@ -59,7 +59,8 @@ set +e; T verify; rc=$?; set -e
 
 if [[ "$to" != "-" ]]; then
   echo "== save build cache as $to"
-  save "build-$to" "$L" .lake/build .lake/module-cpu.tsv sail-rv32/.lake .lake/packages/Clean/.lake
+  (cd "$L" && find .lake/packages -path '*/.lake/build/ir/*' -name '*.c.o*' > /tmp/dep-objects)
+  save "build-$to" "$L" .lake/build .lake/module-cpu.tsv sail-rv32/.lake .lake/packages/Clean/.lake -T /tmp/dep-objects
 fi
 echo "JOB rc=$rc"
 exit "$rc"

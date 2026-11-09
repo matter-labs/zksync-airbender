@@ -45,14 +45,16 @@ case "${1:-}" in
     fi
     t0=$(date +%s)
     set +e
-    docker run --rm --name "fvci-run-$$" --cpus "$cpus" --memory "$mem" --memory-swap "$mem" \
+    docker run --name "fvci-run-$$" --cpus "$cpus" --memory "$mem" --memory-swap "$mem" \
       -e LEAN_NUM_THREADS="$threads" -e MODULE_BUDGET_JOBS="${MODULE_BUDGET_JOBS:-4}" -e FVCI_STOP="${FVCI_STOP:-}" \
       "${mounts[@]}" -v "$tmp:/in:ro" -v "$HERE:/opt/fvci:ro" \
       "$IMAGE" bash /opt/fvci/sim-job.sh "$from" "$to" > "$log" 2>&1
     rc=$?
+    oom=$(docker inspect -f '{{.State.OOMKilled}}' "fvci-run-$$" 2>/dev/null || echo "?")
+    docker rm "fvci-run-$$" >/dev/null 2>&1
     set -e
     echo "SIM rev=$(git -C "$REPO" rev-parse --short "$rev") cpus=$cpus mem=$mem threads=$threads from=$from to=$to" \
-      "rc=$rc wall=$(( $(date +%s) - t0 ))s$([[ $rc == 137 ]] && echo ' (killed: OOM?)')" | tee -a "$log"
+      "rc=$rc oom_killed=$oom wall=$(( $(date +%s) - t0 ))s" | tee -a "$log"
     exit "$rc" ;;
   clean)
     shift; docker volume rm "$@" ;;

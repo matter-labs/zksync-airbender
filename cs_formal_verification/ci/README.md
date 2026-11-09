@@ -15,7 +15,7 @@ commands.
 | `sail-gen` | `sail/regen.sh --bootstrap-sail` (builds the pinned Sail compiler with opam, generates the model), then requires the committed `sail-rv32/` files to be reproduced byte for byte | `sail-rv32/SailRV32{,.lean}`, key = hash of every `regen.sh` input (`lean-ci.sh sail-key`); on a hit nothing is generated |
 | `lean-sail` | `sail/fetch-lean-sail.sh` (no upstream licence: fetched, never stored) | no |
 | `mathlib` | `lake exe cache get` (clones the dependencies, unpacks Mathlib's `.olean` files) | the downloaded archives `~/.cache/mathlib` (~0.5 GB), key = manifest: without them ~8900 files are fetched one by one |
-| `verify` | `./verify.sh`, each of its steps timed | `.lake/build`, `.lake/module-cpu.tsv` (the budget ledger), `sail-rv32/.lake`, Clean's `.lake`; key = arch + toolchain + manifest + commit, restored from the newest entry with the same prefix |
+| `verify` | `./verify.sh`, each of its steps timed | `.lake/build`, `.lake/module-cpu.tsv` (the budget ledger), `sail-rv32/.lake`, Clean's `.lake`, the dependencies' C objects (`airbender_tests` links every imported module; Mathlib's cache ships no objects: ~3100 clang compiles, ~6 min CPU, 40 MB); key = arch + toolchain + manifest + commit, restored from the newest entry with the same prefix |
 
 The build cache is Lake's own build directory, not Lake's shared artifact cache (`LAKE_ARTIFACT_CACHE`, used on the
 development machine): that cache is content-addressed and only grows, so each saved entry would carry every older
