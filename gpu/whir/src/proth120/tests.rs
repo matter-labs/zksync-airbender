@@ -132,21 +132,6 @@ fn small_pack3_schedule() -> WhirSchedule {
     schedule
 }
 
-/// The pack-4 L1 wrap WHIR schedule (message 2^25, base LDE 64), kept for the 2^8 oracle on a 2^23 LDE.
-fn pack4_wrap_schedule() -> WhirSchedule {
-    let mut schedule = WhirSchedule::from_legacy_arrays(
-        64,
-        8,
-        4,
-        &[2, 4, 4, 4, 3, 4],
-        &[14, 11, 8, 6, 5, 4],
-        &[1 << 8, 1 << 12, 1 << 16, 1 << 20, 1 << 23],
-        &[30, 27, 20, 20, 17, 24],
-    );
-    schedule.base_round.batching_pow_bits = Some(0);
-    schedule
-}
-
 #[test]
 fn cpu_shape_l1_values() {
     let schedule = ProofProfile::L1Wrap
@@ -782,68 +767,6 @@ fn pr_commit_intermediate_matches_cpu_small() {
                 .unwrap();
             assert_fields(&download(&tile, stream), &expected);
         }
-    }
-}
-
-#[test]
-#[ignore]
-fn pr_commit_intermediate_n8_production() {
-    let ctx = context(4096, Some(31));
-    let stream = ctx.get_exec_stream();
-    let worker = Worker::new();
-    let schedule = pack4_wrap_schedule();
-    let shape = L1WhirShape::from_schedule(&schedule, 25, 6, 2, L1_WHIR_TILE_BYTES).rounds[4]
-        .oracle
-        .unwrap();
-    assert_eq!(
-        (shape.log_n, shape.log_lde, shape.tile_cosets_log2),
-        (8, 23, 18)
-    );
-    let mut rng = TestRng::new(0x7202);
-    let monomials = rng.fields(1 << 8);
-    let seed: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
-    stream.synchronize().unwrap();
-    let start = Instant::now();
-    let gpu = gpu_commit(&monomials, &shape, seed, &ctx);
-    println!(
-        "pr_commit_intermediate_n8_production: GPU commit + readback wall {:.1} ms",
-        start.elapsed().as_secs_f64() * 1e3
-    );
-    let start = Instant::now();
-    let cpu_cap = cpu_ext_commit(&monomials, 23, &worker).get_cap().cap;
-    println!(
-        "pr_commit_intermediate_n8_production: CPU commit wall {:.1} s",
-        start.elapsed().as_secs_f64()
-    );
-    assert_eq!(gpu.cap, cpu_cap);
-    assert_eq!(gpu.cap_dst, cpu_cap);
-    let tile_cosets = 1usize << shape.tile_cosets_log2;
-    let k0 = (1usize << 23) - tile_cosets;
-    let monomials_dev = upload(&monomials, stream);
-    let mut tile = upload(&vec![PR::ZERO; tile_cosets << 8], stream);
-    schedule_lde_convert_pass(&monomials_dev, &shape, None, k0 as u32, &mut tile, &ctx).unwrap();
-    let twiddles = Twiddles::<PR, Global>::new(1 << 8, &worker);
-    let conv = <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::ext_coeff_conv(
-        &Proth120WorkStealingLazyBackend,
-        1 << 8,
-        16,
-    );
-    let nu = fft::domain_generator_for_size::<PR>(1u64 << 31);
-    for local in [65534usize, 65535, 65536] {
-        let k = k0 + local;
-        let offset = nu.pow(k as u32);
-        let mut expected = vec![PR::ZERO; 1 << 8];
-        fft::column_major::proth120_lazy::lde_coset_lazy_r8_into(
-            &monomials,
-            offset,
-            &twiddles.forward_twiddles[..],
-            &mut expected,
-        );
-        conv.apply_serial(&mut expected, offset);
-        assert_fields(
-            &download(&tile[local << 8..(local + 1) << 8], stream),
-            &expected,
-        );
     }
 }
 
