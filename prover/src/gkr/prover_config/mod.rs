@@ -73,7 +73,7 @@ impl ProofProfile {
                     example_configs::l1_wrap_2p21::TRACE_LEN_LOG2,
                     "ProofProfile::L1Wrap requires the 2^21 Proth120 unified circuit"
                 );
-                example_configs::l1_wrap_2p21::packed_prover_config(SecurityLevel::Sec100)
+                example_configs::l1_wrap_2p21::packed_prover_config()
             }
         };
         assert_eq!(
@@ -890,7 +890,7 @@ mod test {
         for config in [
             example_configs::l1_feeder_config_for_2_22(),
             example_configs::l1_feeder_a_config_for_2_23(),
-            example_configs::l1_wrap_2p21::packed_prover_config(SecurityLevel::Sec100),
+            example_configs::l1_wrap_2p21::packed_prover_config(),
         ] {
             config.validate_for_whir_message_size(config.whir_message_size_log2());
         }

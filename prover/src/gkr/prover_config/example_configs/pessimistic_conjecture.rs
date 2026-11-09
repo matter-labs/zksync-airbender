@@ -260,7 +260,7 @@ mod tests {
             (l1_feeder_config_for_2_22(), L1_FEEDER_MAX_POW_BITS),
             (l1_feeder_a_config_for_2_23(), L1_FEEDER_MAX_POW_BITS),
             (
-                l1_wrap_2p21::packed_prover_config(SecurityLevel::Sec100),
+                l1_wrap_2p21::packed_prover_config(),
                 l1_wrap_2p21::MAX_POW_BITS,
             ),
         ] {

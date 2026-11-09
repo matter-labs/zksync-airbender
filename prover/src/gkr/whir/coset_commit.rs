@@ -1202,7 +1202,7 @@ mod test {
         use std::sync::Arc;
 
         let worker = Worker::new_with_num_threads(2);
-        let mut config = packed_prover_config(crate::definitions::SecurityLevel::Sec100);
+        let mut config = packed_prover_config();
         config.trace_len_log2 = 6;
         let trace_len = 1 << config.trace_len_log2;
         let setup = GKRSetup {

@@ -3,7 +3,6 @@
 
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
-use prover::definitions::SecurityLevel;
 use prover::gkr::prover::{GKRProof, OperationMode};
 use prover::gkr::prover_config::example_configs::l1_wrap_2p21;
 use prover::gkr::prover_config::ProverConfig;
@@ -20,7 +19,7 @@ pub use prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTE
 
 /// gkr.sol consumes monomial rounds, transcript-identical to the windowed prover schedule.
 pub fn prover_config() -> ProverConfig {
-    let mut config = l1_wrap_2p21::packed_prover_config(SecurityLevel::Sec100);
+    let mut config = l1_wrap_2p21::packed_prover_config();
     config.same_size_sumcheck_schedule = prover::gkr::prover_config::naive_same_size_schedule();
     config
 }
