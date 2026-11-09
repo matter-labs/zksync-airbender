@@ -1,5 +1,38 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Actual finite pointer-prefix GPR and PC ledgers
+
+[The joined native prefix theorem](Airbender/Review/Trace/Families/ReducedMachine/PointerLedgerTheorems.lean)
+now derives BOTH finite ledgers on the SAME previously checked41-row active
+MAIN/initialization family. ALL32 actual GPR seed/final tokens and ALL123 writes
+and123 reads remain, including x0 OLDREADs, readonly refreshes, duplicate positions
+and both raw timestamp limbs. The PC ledger keeps all41 incoming/outgoing keys
+plus initialPC0/time4 and actual prefix endpointPC164/time168.
+
+Generic list-permutation composition and finite-index transport are checked
+BEFORE native instantiation. Each small native step checks the complete32-register
+state and all three ports; symbolic composition joins the41 steps. No whole-prefix
+kernel decision or full8M-domain evaluation is used. Intermediate states are
+constructed and their ledgers DERIVED from the actual rows, never supplied as
+expected reads/history/ledger premises. The result retains the OLD complete BODY,
+all ordinary initialization adjacency,40 nonpadding RAM records and12 endpoint
+relations on the same assignments.
+
+The actual prefix endpoint has x0 value0/time166, x10 value0/time0 and x11 value128/
+time162; all other GPRs retain zero value/time0. This is BEFORE a future worker,
+not its final verifier boundary. No worker BODY/processing/global matching or
+SourceAccepted is asserted. No inactive row/request is removed from an acceptance
+relation: this ledger concerns the explicit finite active prefix; the complete
+ordinary source components remain unchanged. Full source auxiliaries/grand/scalar/
+decoder/table completion, actual nonempty worker/RAM histories and physical
+extraction remain separate. New41-row code is still NOT the8-word ROM fixture;
+original CSR/NDstream/Sail, scheduled hash, cryptography/completeness and parity
+remain open. No production fix, new native finding, pin/dependency/importer/artifact
+or v3 reference change. Next check fresh finite worker bindings on these actual
+prefix endpoints, retaining all43 ports/aliases and raw fields; do not assume BODY
+or global completion. Counts are not parity.
+
+
 ## Active native pointer prefix and RAM initialization
 
 A concrete family now checks forty active ADDI x11,x0,128 rows followed by an

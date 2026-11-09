@@ -21254,6 +21254,90 @@
       "backport_reuse_revision": "e294d43feba11314b506fd3705564e2a0a3ba256",
       "backport_reuse_path": "Tests/NativeWorkerPointers.lean",
       "backport_reuse_sha256": "59dfd5b8ffeee676848a216545331105a433d0d0db7c946341a0794b312dc287"
+    },
+    {
+      "path": "Airbender/Proofs/Memory/FiniteLedger.lean",
+      "change": "Derive actual finite GPR and PC ledgers for the SAME checked41-row MAIN pointer/initialization prefix. Generic List.Perm composition and finite index transport precede actual data; small complete32-register/three-port steps then compose symbolically. ALL123 reads/writes/32seed-final tokens/raw times/refreshes/duplicates retained. Exact PC0/time4 toPC164/time168. No expected read/history/ledger/activity/count/matching/result premise; no whole-prefix decision. OLD BODY/init components retained. BEFORE-worker endpoint only; no worker BODY/SourceAccepted/global/physical/fetched program/Sail/native finding/parity, no pin/artifact/dependency/importer/production/v3 refresh.",
+      "backport_reuse_revision": "578ca0335dce6e8aebe6745cf7f8da884f3f9cd3",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeMemoryTokens.lean",
+      "backport_reuse_sha256": "7a78f21e892f8f14b4413bd831fc527d36535e3940460a47d06f8b65d5a6a9df"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/PointerPrefix/LedgerSteps.lean",
+      "change": "Derive actual finite GPR and PC ledgers for the SAME checked41-row MAIN pointer/initialization prefix. Generic List.Perm composition and finite index transport precede actual data; small complete32-register/three-port steps then compose symbolically. ALL123 reads/writes/32seed-final tokens/raw times/refreshes/duplicates retained. Exact PC0/time4 toPC164/time168. No expected read/history/ledger/activity/count/matching/result premise; no whole-prefix decision. OLD BODY/init components retained. BEFORE-worker endpoint only; no worker BODY/SourceAccepted/global/physical/fetched program/Sail/native finding/parity, no pin/artifact/dependency/importer/production/v3 refresh.",
+      "backport_reuse_revision": "578ca0335dce6e8aebe6745cf7f8da884f3f9cd3",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/PointerPrefix/Data.lean",
+      "backport_reuse_sha256": "dd2bd63e9298b84b3b1480372786f3ba59d220a10f995041d4573c368f0a2e54"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/PointerPrefix/LedgerSteps.lean",
+      "change": "Derive actual finite GPR and PC ledgers for the SAME checked41-row MAIN pointer/initialization prefix. Generic List.Perm composition and finite index transport precede actual data; small complete32-register/three-port steps then compose symbolically. ALL123 reads/writes/32seed-final tokens/raw times/refreshes/duplicates retained. Exact PC0/time4 toPC164/time168. No expected read/history/ledger/activity/count/matching/result premise; no whole-prefix decision. OLD BODY/init components retained. BEFORE-worker endpoint only; no worker BODY/SourceAccepted/global/physical/fetched program/Sail/native finding/parity, no pin/artifact/dependency/importer/production/v3 refresh.",
+      "backport_reuse_revision": "578ca0335dce6e8aebe6745cf7f8da884f3f9cd3",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/PointerPrefix.lean",
+      "backport_reuse_sha256": "33118a6f8959488aac5b01bccb155f844c4ec5919b46274a025d363395bd96f4"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/PointerPrefix/LedgerSteps.lean",
+      "change": "Derive actual finite GPR and PC ledgers for the SAME checked41-row MAIN pointer/initialization prefix. Generic List.Perm composition and finite index transport precede actual data; small complete32-register/three-port steps then compose symbolically. ALL123 reads/writes/32seed-final tokens/raw times/refreshes/duplicates retained. Exact PC0/time4 toPC164/time168. No expected read/history/ledger/activity/count/matching/result premise; no whole-prefix decision. OLD BODY/init components retained. BEFORE-worker endpoint only; no worker BODY/SourceAccepted/global/physical/fetched program/Sail/native finding/parity, no pin/artifact/dependency/importer/production/v3 refresh.",
+      "backport_reuse_revision": "578ca0335dce6e8aebe6745cf7f8da884f3f9cd3",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeMemoryTokens.lean",
+      "backport_reuse_sha256": "7a78f21e892f8f14b4413bd831fc527d36535e3940460a47d06f8b65d5a6a9df"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/PointerPrefix/LedgerSteps.lean",
+      "change": "Derive actual finite GPR and PC ledgers for the SAME checked41-row MAIN pointer/initialization prefix. Generic List.Perm composition and finite index transport precede actual data; small complete32-register/three-port steps then compose symbolically. ALL123 reads/writes/32seed-final tokens/raw times/refreshes/duplicates retained. Exact PC0/time4 toPC164/time168. No expected read/history/ledger/activity/count/matching/result premise; no whole-prefix decision. OLD BODY/init components retained. BEFORE-worker endpoint only; no worker BODY/SourceAccepted/global/physical/fetched program/Sail/native finding/parity, no pin/artifact/dependency/importer/production/v3 refresh.",
+      "backport_reuse_revision": "578ca0335dce6e8aebe6745cf7f8da884f3f9cd3",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/InitializationSeedBoundary.lean",
+      "backport_reuse_sha256": "2b1565d33e2e617be41bd779083aaf4c7a10533e03141e81d78cdb472312473e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/PointerPrefix/LedgerSteps.lean",
+      "change": "Derive actual finite GPR and PC ledgers for the SAME checked41-row MAIN pointer/initialization prefix. Generic List.Perm composition and finite index transport precede actual data; small complete32-register/three-port steps then compose symbolically. ALL123 reads/writes/32seed-final tokens/raw times/refreshes/duplicates retained. Exact PC0/time4 toPC164/time168. No expected read/history/ledger/activity/count/matching/result premise; no whole-prefix decision. OLD BODY/init components retained. BEFORE-worker endpoint only; no worker BODY/SourceAccepted/global/physical/fetched program/Sail/native finding/parity, no pin/artifact/dependency/importer/production/v3 refresh.",
+      "backport_reuse_revision": "578ca0335dce6e8aebe6745cf7f8da884f3f9cd3",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/MemoryBoundary.lean",
+      "backport_reuse_sha256": "7b374051d5ae65859c5f7f66035c9271ec6a36a39681ec0a2aefc9bcd8b8820c"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/PointerLedger.lean",
+      "change": "Derive actual finite GPR and PC ledgers for the SAME checked41-row MAIN pointer/initialization prefix. Generic List.Perm composition and finite index transport precede actual data; small complete32-register/three-port steps then compose symbolically. ALL123 reads/writes/32seed-final tokens/raw times/refreshes/duplicates retained. Exact PC0/time4 toPC164/time168. No expected read/history/ledger/activity/count/matching/result premise; no whole-prefix decision. OLD BODY/init components retained. BEFORE-worker endpoint only; no worker BODY/SourceAccepted/global/physical/fetched program/Sail/native finding/parity, no pin/artifact/dependency/importer/production/v3 refresh.",
+      "backport_reuse_revision": "578ca0335dce6e8aebe6745cf7f8da884f3f9cd3",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/MemoryTokens.lean",
+      "backport_reuse_sha256": "6079c40b87949478001786649aa570fe6bcb69fbe5f4c3a071211343487ad8f1"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/PointerLedger.lean",
+      "change": "Derive actual finite GPR and PC ledgers for the SAME checked41-row MAIN pointer/initialization prefix. Generic List.Perm composition and finite index transport precede actual data; small complete32-register/three-port steps then compose symbolically. ALL123 reads/writes/32seed-final tokens/raw times/refreshes/duplicates retained. Exact PC0/time4 toPC164/time168. No expected read/history/ledger/activity/count/matching/result premise; no whole-prefix decision. OLD BODY/init components retained. BEFORE-worker endpoint only; no worker BODY/SourceAccepted/global/physical/fetched program/Sail/native finding/parity, no pin/artifact/dependency/importer/production/v3 refresh.",
+      "backport_reuse_revision": "578ca0335dce6e8aebe6745cf7f8da884f3f9cd3",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/PointerPrefix.lean",
+      "backport_reuse_sha256": "33118a6f8959488aac5b01bccb155f844c4ec5919b46274a025d363395bd96f4"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativePointerLedger.lean",
+      "change": "Derive actual finite GPR and PC ledgers for the SAME checked41-row MAIN pointer/initialization prefix. Generic List.Perm composition and finite index transport precede actual data; small complete32-register/three-port steps then compose symbolically. ALL123 reads/writes/32seed-final tokens/raw times/refreshes/duplicates retained. Exact PC0/time4 toPC164/time168. No expected read/history/ledger/activity/count/matching/result premise; no whole-prefix decision. OLD BODY/init components retained. BEFORE-worker endpoint only; no worker BODY/SourceAccepted/global/physical/fetched program/Sail/native finding/parity, no pin/artifact/dependency/importer/production/v3 refresh.",
+      "backport_reuse_revision": "578ca0335dce6e8aebe6745cf7f8da884f3f9cd3",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativePointerPrefix.lean",
+      "backport_reuse_sha256": "b6a57ffd09712653b03b357ea31ada641fd5d8c5589408354f4b4d33c1415ae9"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativePointerLedger.lean",
+      "change": "Derive actual finite GPR and PC ledgers for the SAME checked41-row MAIN pointer/initialization prefix. Generic List.Perm composition and finite index transport precede actual data; small complete32-register/three-port steps then compose symbolically. ALL123 reads/writes/32seed-final tokens/raw times/refreshes/duplicates retained. Exact PC0/time4 toPC164/time168. No expected read/history/ledger/activity/count/matching/result premise; no whole-prefix decision. OLD BODY/init components retained. BEFORE-worker endpoint only; no worker BODY/SourceAccepted/global/physical/fetched program/Sail/native finding/parity, no pin/artifact/dependency/importer/production/v3 refresh.",
+      "backport_reuse_revision": "578ca0335dce6e8aebe6745cf7f8da884f3f9cd3",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeMemoryTokens.lean",
+      "backport_reuse_sha256": "7a78f21e892f8f14b4413bd831fc527d36535e3940460a47d06f8b65d5a6a9df"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/PointerLedgerTheorems.lean",
+      "change": "Derive actual finite GPR and PC ledgers for the SAME checked41-row MAIN pointer/initialization prefix. Generic List.Perm composition and finite index transport precede actual data; small complete32-register/three-port steps then compose symbolically. ALL123 reads/writes/32seed-final tokens/raw times/refreshes/duplicates retained. Exact PC0/time4 toPC164/time168. No expected read/history/ledger/activity/count/matching/result premise; no whole-prefix decision. OLD BODY/init components retained. BEFORE-worker endpoint only; no worker BODY/SourceAccepted/global/physical/fetched program/Sail/native finding/parity, no pin/artifact/dependency/importer/production/v3 refresh.",
+      "backport_reuse_revision": "578ca0335dce6e8aebe6745cf7f8da884f3f9cd3",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/PointerPrefixTheorems.lean",
+      "backport_reuse_sha256": "6212c5a8abed5a5490d5b323f18a60d25b2a55436a9d7864429b37465e55f579"
+    },
+    {
+      "path": "Tests/NativePointerLedger.lean",
+      "change": "Derive actual finite GPR and PC ledgers for the SAME checked41-row MAIN pointer/initialization prefix. Generic List.Perm composition and finite index transport precede actual data; small complete32-register/three-port steps then compose symbolically. ALL123 reads/writes/32seed-final tokens/raw times/refreshes/duplicates retained. Exact PC0/time4 toPC164/time168. No expected read/history/ledger/activity/count/matching/result premise; no whole-prefix decision. OLD BODY/init components retained. BEFORE-worker endpoint only; no worker BODY/SourceAccepted/global/physical/fetched program/Sail/native finding/parity, no pin/artifact/dependency/importer/production/v3 refresh.",
+      "backport_reuse_revision": "578ca0335dce6e8aebe6745cf7f8da884f3f9cd3",
+      "backport_reuse_path": "Tests/NativePointerPrefix.lean",
+      "backport_reuse_sha256": "cbb501c824a66db8519cd2f664481e605f0d3d5a4aa8cdc56f0424491d34aa89"
     }
   ],
   "setup_artifacts": [

@@ -2139,3 +2139,11 @@ initialization relation,40 nonpadding six-field RAM records and all12 actual
 public endpoint relations. RAM0 retains teardown time167. This new program is
 not the old8-word ROM fixture. GPR/PC prefix matching, worker BODY, auxiliaries,
 full global source completion, physical refinement and parity remain open.
+
+## Finite pointer-prefix GPR and PC ledgers
+
+[Actual composed ledgers](Airbender/Review/Trace/Families/ReducedMachine/PointerLedgerTheorems.lean) retain all32 boundary GPRs, all123 source
+reads/writes and every PC/time key of the SAME checked41-row BODY/init prefix.
+Generic composition joins small per-row states; no expected read/history/ledger
+is a premise. The endpoint is BEFORE the worker. Worker BODY, complete global
+source, physical refinement and parity remain open.

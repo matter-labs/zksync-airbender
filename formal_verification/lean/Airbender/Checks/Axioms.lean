@@ -1,3 +1,10 @@
+import Airbender.Proofs.Memory.FiniteLedger
+import Airbender.Proofs.ReducedMachine.PointerPrefix.LedgerSteps
+import Airbender.Review.Trace.Families.ReducedMachine.PointerLedger
+import Airbender.Proofs.ReducedMachine.NativePointerLedger
+import Airbender.Review.Trace.Families.ReducedMachine.PointerLedgerTheorems
+import Tests.NativePointerLedger
+
 import Airbender.Proofs.ReducedMachine.PointerPrefix.Data
 import Airbender.Proofs.ReducedMachine.PointerPrefix.Block0
 import Airbender.Proofs.ReducedMachine.PointerPrefix.Block1
@@ -9145,3 +9152,40 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativePointerPrefix.all_ordinary_ordering
 #print axioms Airbender.Tests.NativePointerPrefix.all_public_fields
 #print axioms Airbender.Tests.NativePointerPrefix.full_components
+
+#print axioms Airbender.PrefixLedgerProofs.compose
+#print axioms Airbender.PrefixLedgerProofs.range_fold
+#print axioms Airbender.PrefixLedgerProofs.range_fin
+#print axioms Airbender.PrefixLedgerProofs.finite_fold
+#print axioms Airbender.NativePointerLedgerProofs.gpr_step
+#print axioms Airbender.NativePointerLedgerProofs.pc_step
+#print axioms Airbender.NativePointerLedgerProofs.initial_registers
+#print axioms Airbender.NativePointerLedgerProofs.final_registers
+#print axioms Airbender.NativePointerLedgerProofs.initial_pc
+#print axioms Airbender.NativePointerLedgerProofs.final_pc
+#print axioms Airbender.NativePointerLedgerProofs.memory_balanced
+#print axioms Airbender.NativePointerLedgerProofs.pc_balanced
+#print axioms Airbender.NativePointerLedgerProofs.balanced
+#print axioms Airbender.NativePointerLedgerProofs.fixture
+#print axioms Airbender.NativePointerLedger.native_pointer_prefix_ledgers
+#print axioms Airbender.Tests.NativePointerLedger.positions
+#print axioms Airbender.Tests.NativePointerLedger.writes_count
+#print axioms Airbender.Tests.NativePointerLedger.reads_count
+#print axioms Airbender.Tests.NativePointerLedger.all_gpr_seeds
+#print axioms Airbender.Tests.NativePointerLedger.all_gpr_endpoints
+#print axioms Airbender.Tests.NativePointerLedger.pc_count
+#print axioms Airbender.Tests.NativePointerLedger.x0_final
+#print axioms Airbender.Tests.NativePointerLedger.x10_final
+#print axioms Airbender.Tests.NativePointerLedger.x11_final
+#print axioms Airbender.Tests.NativePointerLedger.before_csr
+#print axioms Airbender.Tests.NativePointerLedger.retained_high_time
+#print axioms Airbender.Tests.NativePointerLedger.readonly_refresh_changes_token
+#print axioms Airbender.Tests.NativePointerLedger.first_ledger_step
+#print axioms Airbender.Tests.NativePointerLedger.last_ledger_step
+#print axioms Airbender.Tests.NativePointerLedger.final_pc_observation
+#print axioms Airbender.Tests.NativePointerLedger.wrong_pc_time_rejected
+#print axioms Airbender.Tests.NativePointerLedger.duplicate_positions
+#print axioms Airbender.Tests.NativePointerLedger.duplicated_ports
+#print axioms Airbender.Tests.NativePointerLedger.complete_memory
+#print axioms Airbender.Tests.NativePointerLedger.complete_pc
+#print axioms Airbender.Tests.NativePointerLedger.same_full_components
