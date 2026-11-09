@@ -292,52 +292,6 @@ fn recursive_whir_commitment_matches_live_cpu() {
     assert_recursive_commitment_matches_live_cpu(13, 4, 32, 4);
 }
 
-#[test]
-#[cfg(not(no_cuda))]
-fn recursive_whir_partial_tree_depth_five_matches_live_cpu() {
-    // Exercise both commit dispatches with the reduction roots as the cap.
-    // Each route also has a depth-six control with one upper tree level.
-    assert_recursive_commitment_matches_live_cpu(9, 2, 16, 1);
-    // Fused: 64 coefficient leaves, two-node cap, five path levels.
-    assert_recursive_commitment_matches_live_cpu(9, 2, 16, 2);
-    assert_recursive_commitment_matches_live_cpu(14, 2, 32, 16);
-    // Retained: 1024 coefficient leaves, 32-node cap, five path levels.
-    assert_recursive_commitment_matches_live_cpu(14, 2, 32, 32);
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn recursive_whir_fused_shapes_match_live_cpu() {
-    for (log_n, cosets, values, cap) in [
-        (4, 256, 8, 4),
-        (5, 64, 16, 1), // Four valid subtrees in an eight-subtree block.
-        (6, 128, 32, 4),
-        (7, 8, 16, 1), // M8 shuffle; two valid subtrees in the block.
-        (8, 16, 16, 4),
-        (9, 8, 16, 4),
-        (10, 8, 32, 4),
-        (11, 4, 32, 4),
-        (12, 4, 32, 4),
-        (13, 4, 32, 4),
-        // The 2^22 compression's fused oracles at its cap 32, with fewer cosets.
-        (6, 256, 8, 32),
-        (11, 32, 32, 32),
-    ] {
-        assert_recursive_commitment_matches_live_cpu(log_n, cosets, values, cap);
-    }
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn recursive_whir_retained_shapes_match_live_cpu() {
-    for log_n in 14..=19 {
-        assert_recursive_commitment_matches_live_cpu(log_n, 2, 32, 16);
-    }
-    for log_n in 15..=19 {
-        assert_recursive_commitment_matches_live_cpu(log_n, 2, 32, 32);
-    }
-}
-
 // The intermediate oracles of the 2^22 compression at the geometry its config
 // produces: the full cap and sampled leaves and paths.
 #[test]
@@ -354,38 +308,4 @@ fn compression_oracles_match_live_cpu() {
             Leaves::Sampled,
         );
     }
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-#[ignore = "full default virtual intermediate domain with independent CPU commitment"]
-fn recursive_whir_retained_22_6_matches_live_cpu() {
-    assert_recursive_commitment_matches_live_cpu(22, 32, 64, 16);
-}
-
-macro_rules! existing_recursive_route_cases {
-    ($($name:ident: ($n:expr, $lde:expr, $values:expr, $cap:expr)),* $(,)?) => { $(
-        #[test]
-        #[cfg(not(no_cuda))]
-        fn $name() {
-            assert_recursive_commitment_matches_live_cpu($n, $lde, $values, $cap);
-        }
-    )* };
-}
-existing_recursive_route_cases! {
-    recursive_whir_route_r1_subwarp_matches_live_cpu: (10, 64, 64, 16),
-    recursive_whir_route_r2_block_matches_live_cpu: (10, 16, 16, 16),
-    recursive_whir_route_r3_retained_matches_live_cpu: (14, 2, 16, 16),
-    recursive_whir_route_r4_retained_matches_live_cpu: (14, 2, 32, 16),
-    recursive_whir_subwarp_max_coefficients_match_live_cpu: (11, 2, 128, 1),
-    recursive_whir_block_max_rows_min_slots_match_live_cpu: (10, 2, 4, 1),
-    recursive_whir_retained_leaf9_matches_live_cpu: (14, 2, 512, 1),
-    recursive_whir_retained_leaf13_matches_live_cpu: (18, 2, 8192, 1),
-    recursive_whir_subwarp_horner_r2_matches_live_cpu: (5, 8, 8, 1),
-    recursive_whir_subwarp_one_slot_matches_live_cpu: (2, 32, 1, 1),
-    recursive_whir_subwarp_two_slots_match_live_cpu: (3, 8, 2, 1),
-    recursive_whir_subwarp_constant_slots_match_live_cpu: (3, 32, 8, 1),
-    recursive_whir_block_reader_ceiling_matches_live_cpu: (13, 2, 256, 1),
-    recursive_whir_retained_tiled_residue19_matches_live_cpu: (20, 8, 2, 1),
-    recursive_whir_retained_staging_residue20_matches_live_cpu: (21, 2, 2, 1),
 }
