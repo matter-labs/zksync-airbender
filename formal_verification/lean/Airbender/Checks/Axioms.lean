@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.ControlHistory
+import Airbender.Proofs.ReducedMachine.NativeControlHistory
+import Airbender.Review.Trace.Families.ReducedMachine.ControlHistoryTheorems
+import Tests.NativeControlHistory
+
 import Airbender.Review.Trace.Families.ReducedMachine.CallerPosition
 import Airbender.Proofs.ReducedMachine.NativeCallerPosition
 import Airbender.Review.Trace.Families.ReducedMachine.CallerPositionTheorems
@@ -8170,3 +8175,38 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeCallerPosition.all_count_results_retained
 #print axioms Airbender.Tests.NativeCallerPosition.joint_execution_retained
 #print axioms Airbender.Tests.NativeCallerPosition.full_counted_source
+
+#print axioms Airbender.NativeControlHistoryProofs.same_address
+#print axioms Airbender.NativeControlHistoryProofs.initial_address
+#print axioms Airbender.NativeControlHistoryProofs.terminal_address
+#print axioms Airbender.NativeControlHistoryProofs.initial_zero
+#print axioms Airbender.NativeControlHistoryProofs.initial_member
+#print axioms Airbender.NativeControlHistoryProofs.terminal_member
+#print axioms Airbender.NativeControlHistoryProofs.read_address
+#print axioms Airbender.NativeControlHistoryProofs.read_limbs
+#print axioms Airbender.NativeControlHistoryProofs.write_limbs
+#print axioms Airbender.NativeControlHistoryProofs.updated
+#print axioms Airbender.NativeControlHistoryProofs.classified
+#print axioms Airbender.NativeControlHistoryProofs.from_prior
+#print axioms Airbender.NativeControlHistoryProofs.counted
+#print axioms Airbender.NativeControlHistory.native_counted_control_history
+#print axioms Airbender.Tests.NativeControlHistory.zero_seed
+#print axioms Airbender.Tests.NativeControlHistory.zero_seed_time
+#print axioms Airbender.Tests.NativeControlHistory.seed_address
+#print axioms Airbender.Tests.NativeControlHistory.zero_mask_update
+#print axioms Airbender.Tests.NativeControlHistory.first_round_update
+#print axioms Airbender.Tests.NativeControlHistory.multiple_round_update
+#print axioms Airbender.Tests.NativeControlHistory.last_round_update
+#print axioms Airbender.Tests.NativeControlHistory.incoming_low_retained
+#print axioms Airbender.Tests.NativeControlHistory.wrong_high_rejected
+#print axioms Airbender.Tests.NativeControlHistory.uncleared_low_rejected
+#print axioms Airbender.Tests.NativeControlHistory.readonly_gpr11_is_not_control
+#print axioms Airbender.Tests.NativeControlHistory.actual_input_limbs
+#print axioms Airbender.Tests.NativeControlHistory.actual_output_limbs
+#print axioms Airbender.Tests.NativeControlHistory.inactive_request_retained
+#print axioms Airbender.Tests.NativeControlHistory.complete_initial_to_public
+#print axioms Airbender.Tests.NativeControlHistory.full_source_retained
+#print axioms Airbender.Tests.NativeControlHistory.joint_execution_retained
+#print axioms Airbender.Tests.NativeControlHistory.control_edges_classified
+#print axioms Airbender.Tests.NativeControlHistory.every_worker_on_same_path
+#print axioms Airbender.Tests.NativeControlHistory.full_counted_source

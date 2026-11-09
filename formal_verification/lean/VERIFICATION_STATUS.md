@@ -1,5 +1,47 @@
 # Verification status
 
+## Initialized native x12 control history (9 November 2026)
+
+[Control history](Airbender/Review/Trace/Families/ReducedMachine/ControlHistory.lean),
+[proof](Airbender/Proofs/ReducedMachine/NativeControlHistory.lean) and
+[short root](Airbender/Review/Trace/Families/ReducedMachine/ControlHistoryTheorems.lean)
+derive one complete raw-token path from the actual zero GPR12 seed to the actual
+public GPR12 teardown. Its adjacent edges are a permutation of EVERY actual active
+MAIN/worker port at that address, including MAIN readonly timestamp refreshes.
+Every edge is an actual MAIN port or an active worker's exact port42; the old
+derived 43-port address injection excludes other worker ports. Every active worker
+control edge occurs on this SAME path. Both raw timestamps, values and copies stay.
+
+The actual ABI binds incoming limbs134/135 and outgoing136/137 before decoding.
+The old complete weighted transition derives outgoing low zero and outgoing high
+nextHigh(incoming high) on every worker edge. Zero/multiple round masks and the
+incoming low limb remain. Old complete initialized paths and terminal address
+uniqueness supply the history and exact public endpoint; no expected path, reads,
+values, reset, round/schedule or result is assumed. Actual MAIN control writes are
+retained rather than replaced by a supplied reset schedule.
+
+The SAME counted SourceAccepted/public image/log20/OLD LogicalLookups/OLD explicit
+SourceIdentity retain original-position matching OR >=257 MAIN proofs, all natural
+counts, individual request validity, aggregate accounting, JOINT43-port execution,
+weighted outputs, word bounds and partial MAIN dependencies. All inactive rows,
+requests, AUX/poles, 43ports, OLDREADs, aliases, refreshes, unmasked SW and public x0
+times remain in acceptance. This is an initialized logical control chain under the
+old explicit boundaries, not physical verifier refinement, a standard round/hash
+schedule or original CSR/worker Sail execution. Caller activity, larger-batch
+matching/no-wrap, protocol spans/padding-terminal/init-teardown, cryptography,
+completeness and parity remain open. Zero established native defects; FINDINGS and
+production/Sail/old acceptance unchanged.
+
+[20 controls](Tests/NativeControlHistory.lean) retain the zero seed, actual ABI,
+zero/first/multiple/last-mask updates, incoming low, malformed update rejection,
+readonly GPR11/control separation, old LOCAL inactive caller, exact history, edge
+classification, every worker on the same path, prior results and the full root.
+They are pure/old LOCAL/conditional controls, not nonempty native-global/physical
+accepted witnesses, attacks, defects or absent-enforcement evidence. No new source
+adoption/pin, parser/importer/exporter, artifact/fixture, generation/heavy replay,
+dependency or v3 refresh. Counts are audit counters, not parity.
+
+
 ## Native request-position matching (9 November 2026)
 
 [Position matching](Airbender/Review/Trace/Families/ReducedMachine/CallerPosition.lean),

@@ -1969,3 +1969,10 @@ premise is added. Universal activity/per-call matching remains open.
 directions OR at least 257 MAIN proofs. Request-positive inactive callers remain
 included. No count/activity/matching premise is added; physical activity and
 larger-batch matching remain open.
+
+## Initialized x12 control history
+
+[Actual control chain](Airbender/Review/Trace/Families/ReducedMachine/ControlHistoryTheorems.lean) derives the complete zero-seed-to-public
+raw-token path, every actual MAIN control edge and every active worker port42
+update. No path/reset/round/schedule premise; zero/multiple masks and both raw
+times stay. Physical enforcement, caller activity and standard hash remain open.
