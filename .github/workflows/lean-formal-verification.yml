@@ -60,6 +60,8 @@ jobs:
       # LEAN_CI_THREADS overrides the default for the runner class.
       LEAN_NUM_THREADS: ${{ inputs.lean_threads || vars.LEAN_CI_THREADS || '8' }}
       MODULE_BUDGET_JOBS: ${{ vars.LEAN_CI_BUDGET_JOBS || '4' }}
+      # leanchecker's memory grows ~5 GB per concurrent module (ci/lean-ci.sh kernel-check): 2 fit a 16 GB runner
+      KERNEL_CHECK_THREADS: ${{ vars.LEAN_CI_KERNEL_THREADS || '2' }}
       LEAN_DIR: cs_formal_verification/lean
       CI_MODE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.cold)) && 'incremental' || 'cold' }}
       VERIFY_AUDITS: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.cold)) && 'replay' || 'fresh' }}

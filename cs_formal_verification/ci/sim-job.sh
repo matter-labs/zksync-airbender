@@ -75,7 +75,7 @@ if [[ "$to" != "-" ]]; then
   (cd "$L" && find .lake/packages -path '*/.lake/build/ir/*' -name '*.c.o*' > /tmp/dep-objects)
   save "build-$to" "$L" .lake/build .lake/module-cpu.tsv sail-rv32/.lake .lake/packages/Clean/.lake -T /tmp/dep-objects
 fi
-du -sh /root/.elan /root/.cache/mathlib "$L/.lake/packages" "$L/.lake/build" "$L/sail-rv32/.lake" "$FV/build" 2>/dev/null
+du -sh /root/.elan /root/.cache/mathlib "$L/.lake/packages" "$L/.lake/build" "$L/sail-rv32/.lake" "$FV/build" 2>/dev/null || true
 df -h / | tail -1 | awk '{print "disk at end: used " $3 " of " $2}'
 echo "JOB rc=$rc"
 exit "$rc"

@@ -103,10 +103,13 @@ step_lean_deps() { # the dependencies of the build (ci/dep_targets.py), built ap
 }
 
 step_kernel_check() { # leanchecker (bundled with the toolchain): replay every constant of our modules in the kernel
-  # One process; it replays the modules under these prefixes in parallel (LEAN_NUM_THREADS), each on top of its
-  # imports. (A process per module costs ~1.5x the CPU: every process loads the imports again.)
+  # One process replays the modules under these prefixes, KERNEL_CHECK_THREADS (default 2) at a time, each on top of
+  # its own import of the environment. Memory grows fast with that count (measured in the container: 1 -> 1.3 GB,
+  # 2 -> 5.8 GB, 4 -> over 15 GB), so it does not follow LEAN_NUM_THREADS.
   cd "$LEAN"
-  lake env leanchecker CleanCore Human Slop Tests Checks
+  local t=${KERNEL_CHECK_THREADS:-2}
+  if (( $# )); then LEAN_NUM_THREADS=$t lake env leanchecker "$@"
+  else LEAN_NUM_THREADS=$t lake env leanchecker CleanCore Human Slop Tests Checks; fi
 }
 
 step_verify() {
@@ -192,7 +195,7 @@ case "$cmd" in
   lean-sail) step_lean_sail ;;
   mathlib) step_mathlib ;;
   lean-deps) step_lean_deps ;;
-  kernel-check) step_kernel_check ;;
+  kernel-check) step_kernel_check "$@" ;;
   verify) step_verify ;;
   report) step_report "$@" ;;
   time) step_time "$@" ;;

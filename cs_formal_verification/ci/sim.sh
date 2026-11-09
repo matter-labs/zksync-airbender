@@ -24,8 +24,23 @@ src_tar() { # rev out.tar: what actions/checkout gives the job (only the paths t
   local jsons  # the circuit JSONs the Lean sources and the lakefile name (the tests also read a cached layout)
   jsons=$(git -C "$REPO" grep -ohE 'compiled_circuits/[A-Za-z0-9_.-]+\.json' "$1" -- cs_formal_verification/lean |
     sort -u | sed 's|^|cs/|')
+  local linked  # the files outside cs_formal_verification that its guides link (the review check resolves them)
+  linked=$(python3 - "$REPO" "$1" <<'PY'
+import posixpath, re, subprocess, sys
+repo, rev = sys.argv[1], sys.argv[2]
+git = lambda *a: subprocess.run(["git", "-C", repo, *a], capture_output=True, text=True).stdout
+out = set()
+for f in git("ls-tree", "-r", "--name-only", rev, "cs_formal_verification").split():
+    if f.endswith(".md"):
+        for t in re.findall(r"\]\(([^)\s#]+)", git("show", f"{rev}:{f}")):
+            p = posixpath.normpath(posixpath.join(posixpath.dirname(f), t))
+            if "://" not in t and not p.startswith(("cs_formal_verification", "..")) and git("cat-file", "-t", f"{rev}:{p}").strip():
+                out.add(p)
+print("\n".join(sorted(out)))
+PY
+)
   # shellcheck disable=SC2086
-  git -C "$REPO" archive --format=tar -o "$2" "$1" cs_formal_verification $jsons
+  git -C "$REPO" archive --format=tar -o "$2" "$1" cs_formal_verification $(printf '%s\n' $jsons $linked | sort -u)
 }
 
 case "${1:-}" in
@@ -49,6 +64,7 @@ case "${1:-}" in
     docker run --name "fvci-run-$$" --cpus "$cpus" --memory "$mem" --memory-swap "$mem" \
       -e LEAN_NUM_THREADS="$threads" -e MODULE_BUDGET_JOBS="${MODULE_BUDGET_JOBS:-4}" -e FVCI_STOP="${FVCI_STOP:-}" \
       -e VERIFY_AUDITS="${VERIFY_AUDITS:-fresh}" -e FVCI_KERNEL="${FVCI_KERNEL:-0}" \
+      -e KERNEL_CHECK_THREADS="${KERNEL_CHECK_THREADS:-2}" \
       "${mounts[@]}" -v "$tmp:/in:ro" -v "$HERE:/opt/fvci:ro" \
       "$IMAGE" bash /opt/fvci/sim-job.sh "$from" "$to" > "$log" 2>&1
     rc=$?
