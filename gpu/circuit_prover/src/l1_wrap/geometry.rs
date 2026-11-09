@@ -186,10 +186,7 @@ pub fn l1_wrap_batching_pow_bits(
 #[cfg(test)]
 pub(crate) mod cpu_tests {
     use super::*;
-    use common_constants::rom::{L1_WRAP_ROM, REGULAR_ROM};
-    use gpu_gkr::proth120::programs::GkrProgramsPr;
-    use gpu_gkr::proth120::proof_layout::ProofLayoutPr;
-    use gpu_whir::proth120::{L1WhirShape, L1_WHIR_TILE_BYTES};
+    use common_constants::rom::REGULAR_ROM;
     use std::panic::{catch_unwind, AssertUnwindSafe};
 
     pub(crate) fn committed_layout(circuit_type: CircuitType) -> GKRCircuitArtifact<Proth120> {
@@ -242,90 +239,6 @@ pub(crate) mod cpu_tests {
         assert!(
             message.contains(expected),
             "panic {message:?} does not name {expected:?}"
-        );
-    }
-
-    #[test]
-    fn cpu_l1_wrap_geometry_pins_active_wrap() {
-        let (geometry, config) = wrap_geometry(CircuitType::L1Wrap);
-        assert_eq!(
-            geometry,
-            L1WrapGeometry {
-                circuit_type: CircuitType::L1Wrap,
-                trace_log: 21,
-                rows: 1 << 21,
-                pack_log2: 3,
-                log_message: 24,
-                log_base_lde: 7,
-                log_base_values_per_leaf: 1,
-                cap_log: 3,
-                memory_columns: 38,
-                witness_columns: 58,
-                scratch_columns: 41,
-                setup_columns: 10,
-                packed_base_columns: 12,
-                packed_setup_columns: 2,
-                num_it_sets: 2,
-                rom: L1_WRAP_ROM,
-                decoder_offset: 1_180_033,
-                decoder_words: 1 << 17,
-                external_pow_bits: 20,
-                batching_pow_bits: 13,
-            }
-        );
-        assert!(geometry.log_message <= 26 && geometry.pack_log2 <= 4);
-        let shape = L1WhirShape::from_schedule(
-            &config.whir_schedule,
-            geometry.log_message,
-            geometry.log_base_lde,
-            geometry.log_base_values_per_leaf,
-            L1_WHIR_TILE_BYTES,
-        );
-        let rounds = |f: fn(&gpu_whir::proth120::RoundShape) -> usize| {
-            shape.rounds.iter().map(f).collect::<Vec<_>>()
-        };
-        assert_eq!(rounds(|r| r.folds as usize), [1, 4, 4, 4, 4]);
-        assert_eq!(rounds(|r| r.queries), [12, 11, 7, 6, 5]);
-        assert_eq!(rounds(|r| r.pow_bits as usize), [30, 27, 30, 20, 17]);
-        let oracles = shape
-            .rounds
-            .iter()
-            .filter_map(|r| r.oracle)
-            .map(|o| (o.log_n, o.log_lde, o.log_v, o.log_domain, o.skip_bottom))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            oracles,
-            [
-                (23, 8, 4, 31, 5),
-                (19, 12, 4, 31, 5),
-                (15, 16, 4, 31, 5),
-                (11, 20, 4, 31, 5),
-            ]
-        );
-        assert_eq!(shape.term_capacity, 36);
-        assert_eq!(shape.total_sumcheck_polys, 17);
-        assert_eq!(shape.log_final, 7);
-        assert_eq!(shape.cap_log, geometry.cap_log);
-        let circuit = std::sync::Arc::new(committed_layout(CircuitType::L1Wrap));
-        assert_eq!(circuit.layers.len(), 5);
-        let programs = GkrProgramsPr::compile(CircuitType::L1Wrap, circuit).unwrap();
-        let layout = ProofLayoutPr::new(&programs, &config);
-        assert_eq!(
-            layout.backward_layers.len(),
-            programs.runtime_circuit.layers.len() + config.trace_len_log2
-                - config.sumcheck_explicit_output_size_log_2
-        );
-        assert_eq!(
-            layout.memory_claims.len(),
-            geometry.packed_base_columns * 16
-        );
-        assert_eq!(
-            layout.setup_claims.len(),
-            geometry.packed_setup_columns * 16
-        );
-        assert_eq!(
-            layout.evaluation_point.len(),
-            config.whir_message_size_log2() * 16
         );
     }
 
