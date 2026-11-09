@@ -1199,3 +1199,11 @@ the complete inactive MAIN/caller/decoder component for every scalar challenge,
 including poles. The five-pair sum and complete ordinary total are derived from
 actual observations. Reserved scalar normalization, scalar table/setup/polynomial,
 global source/worker acceptance and physical caller activity remain open.
+
+## Complete scalar source component
+
+[Complete scalar16 family](ScalarTableCompletionTheorems.lean) joins actual pair/table source equations,
+public setup, reserved normalization and a genuine difference polynomial to the
+same inactive MAIN/caller/decoder component. All scalar challenge branches and
+zero-multiplicity poles remain. Honest frequency-oracle/transcript refinement,
+global source/worker acceptance and physical caller activity remain open.

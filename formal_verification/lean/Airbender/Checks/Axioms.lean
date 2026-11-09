@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.ScalarTableCompletion
+import Airbender.Proofs.ReducedMachine.NativeScalarTableCompletion
+import Airbender.Review.Trace.Families.ReducedMachine.ScalarTableCompletionTheorems
+import Tests.NativeScalarTableCompletion
+
 import Airbender.Review.Trace.Families.ReducedMachine.ScalarPairs
 import Airbender.Proofs.ReducedMachine.NativeScalarPairs
 import Airbender.Review.Trace.Families.ReducedMachine.ScalarPairsTheorems
@@ -8801,3 +8806,57 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeScalarPairs.all_old_components_retained
 #print axioms Airbender.Tests.NativeScalarPairs.reserved_pair_is_not_yet_normalized
 #print axioms Airbender.Tests.NativeScalarPairs.full_joint_fixture
+
+#print axioms Airbender.NativeScalarTableCompletionProofs.spike_sum
+#print axioms Airbender.NativeScalarTableCompletionProofs.difference_total
+#print axioms Airbender.NativeScalarTableCompletionProofs.normalized_difference
+#print axioms Airbender.NativeScalarTableCompletionProofs.ordinary
+#print axioms Airbender.NativeScalarTableCompletionProofs.other_column
+#print axioms Airbender.NativeScalarTableCompletionProofs.row
+#print axioms Airbender.NativeScalarTableCompletionProofs.preserves
+#print axioms Airbender.NativeScalarTableCompletionProofs.normalized_column
+#print axioms Airbender.NativeScalarTableCompletionProofs.pair_column
+#print axioms Airbender.NativeScalarTableCompletionProofs.table_column
+#print axioms Airbender.NativeScalarTableCompletionProofs.amount_embedding
+#print axioms Airbender.NativeScalarTableCompletionProofs.setup_zero
+#print axioms Airbender.NativeScalarTableCompletionProofs.after_caller
+#print axioms Airbender.NativeScalarTableCompletionProofs.pair_ordinary
+#print axioms Airbender.NativeScalarTableCompletionProofs.table_ordinary
+#print axioms Airbender.NativeScalarTableCompletionProofs.difference_samples
+#print axioms Airbender.NativeScalarTableCompletionProofs.polynomial
+#print axioms Airbender.NativeScalarTableCompletionProofs.table_row
+#print axioms Airbender.NativeScalarTableCompletionProofs.sum_kept
+#print axioms Airbender.NativeScalarTableCompletionProofs.request_sum_kept
+#print axioms Airbender.NativeScalarTableCompletionProofs.fixture
+#print axioms Airbender.NativeScalarTableCompletionProofs.pair_terminal
+#print axioms Airbender.NativeScalarTableCompletionProofs.table_terminal
+#print axioms Airbender.NativeScalarTableCompletionProofs.normalized_column_sum
+#print axioms Airbender.NativeScalarTableCompletion.native_inactive_scalar_table_completion
+#print axioms Airbender.Tests.NativeScalarTableCompletion.actual_typed_geometry
+#print axioms Airbender.Tests.NativeScalarTableCompletion.actual_query_amount
+#print axioms Airbender.Tests.NativeScalarTableCompletion.zero_challenge_amount
+#print axioms Airbender.Tests.NativeScalarTableCompletion.nonzero_challenge_amount
+#print axioms Airbender.Tests.NativeScalarTableCompletion.physical_multiplicity_is_not_body_seven
+#print axioms Airbender.Tests.NativeScalarTableCompletion.spike_first
+#print axioms Airbender.Tests.NativeScalarTableCompletion.full_spike_sum
+#print axioms Airbender.Tests.NativeScalarTableCompletion.actual_first_difference
+#print axioms Airbender.Tests.NativeScalarTableCompletion.actual_later_difference
+#print axioms Airbender.Tests.NativeScalarTableCompletion.zero_challenge_difference
+#print axioms Airbender.Tests.NativeScalarTableCompletion.ordinary_pair_unchanged
+#print axioms Airbender.Tests.NativeScalarTableCompletion.actual_reserved_pair
+#print axioms Airbender.Tests.NativeScalarTableCompletion.actual_reserved_table
+#print axioms Airbender.Tests.NativeScalarTableCompletion.all_six_column_sums_zero
+#print axioms Airbender.Tests.NativeScalarTableCompletion.caller_aux_retained
+#print axioms Airbender.Tests.NativeScalarTableCompletion.grand_aux_retained
+#print axioms Airbender.Tests.NativeScalarTableCompletion.both_decoder_aux_retained
+#print axioms Airbender.Tests.NativeScalarTableCompletion.every_ordinary_table_equation
+#print axioms Airbender.Tests.NativeScalarTableCompletion.zero_multiplicity_pole_retained
+#print axioms Airbender.Tests.NativeScalarTableCompletion.nonzero_multiplicity_pole_rejected
+#print axioms Airbender.Tests.NativeScalarTableCompletion.wrong_positive_accumulator_rejected
+#print axioms Airbender.Tests.NativeScalarTableCompletion.actual_setup_pole_retained
+#print axioms Airbender.Tests.NativeScalarTableCompletion.same_actual_main
+#print axioms Airbender.Tests.NativeScalarTableCompletion.other_physical_witness_retained
+#print axioms Airbender.Tests.NativeScalarTableCompletion.actual_public_setup_bound
+#print axioms Airbender.Tests.NativeScalarTableCompletion.other_physical_setup_retained
+#print axioms Airbender.Tests.NativeScalarTableCompletion.genuine_actual_polynomial_samples
+#print axioms Airbender.Tests.NativeScalarTableCompletion.full_joint_fixture

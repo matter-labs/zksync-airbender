@@ -20603,6 +20603,111 @@
       "backport_reuse_revision": "4dfa9fb41231de2739c1148edfb5092d674937be",
       "backport_reuse_path": "Tests/NativeCallerSumCompletion.lean",
       "backport_reuse_sha256": "43438aa8b62acdc64230c8332b8b03e666646f48a23edfb1ff7b75bdf776b2e6"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ScalarTableCompletion.lean",
+      "change": "Complete all scalar16 pair/table equations, actual public scalar setup and genuine normalized difference polynomial on SAME inactive request-positive native main/caller/decoder component. Normalize exactly five pair columns and table76 by actual negative ordinary sums; retain all other observations. Derive ordinary balance before interpolation, no expected sum/samples/activity/count/matching/ledger premise. Nonzero-gamma multiplicity83886070 at row0; zero-gamma multiplicity0 explicitly retains pole branch, not honest frequency-oracle/transcript refinement. Global source-worker acceptance/physical refinement/parity remain OPEN; no old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ScalarPairs.lean",
+      "backport_reuse_sha256": "cfa2adcfb0510c5bf37b6ec8a4862e685679a60955a00ea97efc0c503ca76113"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ScalarTableCompletion.lean",
+      "change": "Complete all scalar16 pair/table equations, actual public scalar setup and genuine normalized difference polynomial on SAME inactive request-positive native main/caller/decoder component. Normalize exactly five pair columns and table76 by actual negative ordinary sums; retain all other observations. Derive ordinary balance before interpolation, no expected sum/samples/activity/count/matching/ledger premise. Nonzero-gamma multiplicity83886070 at row0; zero-gamma multiplicity0 explicitly retains pole branch, not honest frequency-oracle/transcript refinement. Global source-worker acceptance/physical refinement/parity remain OPEN; no old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Scalar16Arguments.lean",
+      "backport_reuse_sha256": "a6a6b4ccca1dc7753f09af566d84259755c2c3da392707b10cd70fd153c96c60"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ScalarTableCompletion.lean",
+      "change": "Complete all scalar16 pair/table equations, actual public scalar setup and genuine normalized difference polynomial on SAME inactive request-positive native main/caller/decoder component. Normalize exactly five pair columns and table76 by actual negative ordinary sums; retain all other observations. Derive ordinary balance before interpolation, no expected sum/samples/activity/count/matching/ledger premise. Nonzero-gamma multiplicity83886070 at row0; zero-gamma multiplicity0 explicitly retains pole branch, not honest frequency-oracle/transcript refinement. Global source-worker acceptance/physical refinement/parity remain OPEN; no old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/PhysicalScalar16Setup.lean",
+      "backport_reuse_sha256": "22b25bb7b1e020c9aaa69a64b1b5d1710bb9cf2ceeba741112b76e9280b8eb0c"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ScalarTableCompletion.lean",
+      "change": "Complete all scalar16 pair/table equations, actual public scalar setup and genuine normalized difference polynomial on SAME inactive request-positive native main/caller/decoder component. Normalize exactly five pair columns and table76 by actual negative ordinary sums; retain all other observations. Derive ordinary balance before interpolation, no expected sum/samples/activity/count/matching/ledger premise. Nonzero-gamma multiplicity83886070 at row0; zero-gamma multiplicity0 explicitly retains pole branch, not honest frequency-oracle/transcript refinement. Global source-worker acceptance/physical refinement/parity remain OPEN; no old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/DecoderTableArguments.lean",
+      "backport_reuse_sha256": "a54e75f6454dc63d1d6033d7e954b7e9d79811300f492b5dc621c58d46e802f0"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeScalarTableCompletion.lean",
+      "change": "Complete all scalar16 pair/table equations, actual public scalar setup and genuine normalized difference polynomial on SAME inactive request-positive native main/caller/decoder component. Normalize exactly five pair columns and table76 by actual negative ordinary sums; retain all other observations. Derive ordinary balance before interpolation, no expected sum/samples/activity/count/matching/ledger premise. Nonzero-gamma multiplicity83886070 at row0; zero-gamma multiplicity0 explicitly retains pole branch, not honest frequency-oracle/transcript refinement. Global source-worker acceptance/physical refinement/parity remain OPEN; no old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeScalarPairs.lean",
+      "backport_reuse_sha256": "bf9332f1d348d30b262a9d1c513d74df344f8184bfa53d3ae73197e87ae7cdd7"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeScalarTableCompletion.lean",
+      "change": "Complete all scalar16 pair/table equations, actual public scalar setup and genuine normalized difference polynomial on SAME inactive request-positive native main/caller/decoder component. Normalize exactly five pair columns and table76 by actual negative ordinary sums; retain all other observations. Derive ordinary balance before interpolation, no expected sum/samples/activity/count/matching/ledger premise. Nonzero-gamma multiplicity83886070 at row0; zero-gamma multiplicity0 explicitly retains pole branch, not honest frequency-oracle/transcript refinement. Global source-worker acceptance/physical refinement/parity remain OPEN; no old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativePhysicalScalar16Setup.lean",
+      "backport_reuse_sha256": "bfbd03a27e32b1e88dee11e487cddcd60750907a19a75de342f28fdc12db81da"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeScalarTableCompletion.lean",
+      "change": "Complete all scalar16 pair/table equations, actual public scalar setup and genuine normalized difference polynomial on SAME inactive request-positive native main/caller/decoder component. Normalize exactly five pair columns and table76 by actual negative ordinary sums; retain all other observations. Derive ordinary balance before interpolation, no expected sum/samples/activity/count/matching/ledger premise. Nonzero-gamma multiplicity83886070 at row0; zero-gamma multiplicity0 explicitly retains pole branch, not honest frequency-oracle/transcript refinement. Global source-worker acceptance/physical refinement/parity remain OPEN; no old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeCallerSumCompletion.lean",
+      "backport_reuse_sha256": "b57d31b849e773dc0ca86748137a271a2c77fb8c53f5e82d5c323b484d11e0ab"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeScalarTableCompletion.lean",
+      "change": "Complete all scalar16 pair/table equations, actual public scalar setup and genuine normalized difference polynomial on SAME inactive request-positive native main/caller/decoder component. Normalize exactly five pair columns and table76 by actual negative ordinary sums; retain all other observations. Derive ordinary balance before interpolation, no expected sum/samples/activity/count/matching/ledger premise. Nonzero-gamma multiplicity83886070 at row0; zero-gamma multiplicity0 explicitly retains pole branch, not honest frequency-oracle/transcript refinement. Global source-worker acceptance/physical refinement/parity remain OPEN; no old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeInactiveMain.lean",
+      "backport_reuse_sha256": "0d1a9fee777a7b429f46d968d51f5f052cd7ee9efa951839c3ea2d431b2eedaa"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeScalarTableCompletion.lean",
+      "change": "Complete all scalar16 pair/table equations, actual public scalar setup and genuine normalized difference polynomial on SAME inactive request-positive native main/caller/decoder component. Normalize exactly five pair columns and table76 by actual negative ordinary sums; retain all other observations. Derive ordinary balance before interpolation, no expected sum/samples/activity/count/matching/ledger premise. Nonzero-gamma multiplicity83886070 at row0; zero-gamma multiplicity0 explicitly retains pole branch, not honest frequency-oracle/transcript refinement. Global source-worker acceptance/physical refinement/parity remain OPEN; no old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeDecoderTableCompletion.lean",
+      "backport_reuse_sha256": "b3693db50eb787b6e12d6f50a0bfbe798340e59f970a8f2ba2dc87eb35b98f4a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeScalarTableCompletion.lean",
+      "change": "Complete all scalar16 pair/table equations, actual public scalar setup and genuine normalized difference polynomial on SAME inactive request-positive native main/caller/decoder component. Normalize exactly five pair columns and table76 by actual negative ordinary sums; retain all other observations. Derive ordinary balance before interpolation, no expected sum/samples/activity/count/matching/ledger premise. Nonzero-gamma multiplicity83886070 at row0; zero-gamma multiplicity0 explicitly retains pole branch, not honest frequency-oracle/transcript refinement. Global source-worker acceptance/physical refinement/parity remain OPEN; no old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
+      "backport_reuse_path": "Airbender/Proofs/Memory/DelegationSumCompletion.lean",
+      "backport_reuse_sha256": "d349c7309242d13864d091006033c907a524aedaf36c6e1058af48e7efa33197"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeScalarTableCompletion.lean",
+      "change": "Complete all scalar16 pair/table equations, actual public scalar setup and genuine normalized difference polynomial on SAME inactive request-positive native main/caller/decoder component. Normalize exactly five pair columns and table76 by actual negative ordinary sums; retain all other observations. Derive ordinary balance before interpolation, no expected sum/samples/activity/count/matching/ledger premise. Nonzero-gamma multiplicity83886070 at row0; zero-gamma multiplicity0 explicitly retains pole branch, not honest frequency-oracle/transcript refinement. Global source-worker acceptance/physical refinement/parity remain OPEN; no old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
+      "backport_reuse_path": "Airbender/Proofs/Tables/NormalizeLast.lean",
+      "backport_reuse_sha256": "c3a30b507862b3ad0afff85cd26b20c00eb0a96736dca1b3c376c4c1854a1157"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ScalarTableCompletionTheorems.lean",
+      "change": "Complete all scalar16 pair/table equations, actual public scalar setup and genuine normalized difference polynomial on SAME inactive request-positive native main/caller/decoder component. Normalize exactly five pair columns and table76 by actual negative ordinary sums; retain all other observations. Derive ordinary balance before interpolation, no expected sum/samples/activity/count/matching/ledger premise. Nonzero-gamma multiplicity83886070 at row0; zero-gamma multiplicity0 explicitly retains pole branch, not honest frequency-oracle/transcript refinement. Global source-worker acceptance/physical refinement/parity remain OPEN; no old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ScalarPairsTheorems.lean",
+      "backport_reuse_sha256": "7968b200603c0524975610ec36941f8ee306fbba3b23e52d96966b158e2c5b27"
+    },
+    {
+      "path": "Tests/NativeScalarTableCompletion.lean",
+      "change": "Complete all scalar16 pair/table equations, actual public scalar setup and genuine normalized difference polynomial on SAME inactive request-positive native main/caller/decoder component. Normalize exactly five pair columns and table76 by actual negative ordinary sums; retain all other observations. Derive ordinary balance before interpolation, no expected sum/samples/activity/count/matching/ledger premise. Nonzero-gamma multiplicity83886070 at row0; zero-gamma multiplicity0 explicitly retains pole branch, not honest frequency-oracle/transcript refinement. Global source-worker acceptance/physical refinement/parity remain OPEN; no old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
+      "backport_reuse_path": "Tests/NativeScalarPairs.lean",
+      "backport_reuse_sha256": "ea0d081b138205ef59ab1eb2cc99b7c97453936ca9fcae6066e5961dfa841758"
+    },
+    {
+      "path": "Tests/NativeScalarTableCompletion.lean",
+      "change": "Complete all scalar16 pair/table equations, actual public scalar setup and genuine normalized difference polynomial on SAME inactive request-positive native main/caller/decoder component. Normalize exactly five pair columns and table76 by actual negative ordinary sums; retain all other observations. Derive ordinary balance before interpolation, no expected sum/samples/activity/count/matching/ledger premise. Nonzero-gamma multiplicity83886070 at row0; zero-gamma multiplicity0 explicitly retains pole branch, not honest frequency-oracle/transcript refinement. Global source-worker acceptance/physical refinement/parity remain OPEN; no old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
+      "backport_reuse_path": "Tests/NativeCallerSumCompletion.lean",
+      "backport_reuse_sha256": "43438aa8b62acdc64230c8332b8b03e666646f48a23edfb1ff7b75bdf776b2e6"
+    },
+    {
+      "path": "Tests/NativeScalarTableCompletion.lean",
+      "change": "Complete all scalar16 pair/table equations, actual public scalar setup and genuine normalized difference polynomial on SAME inactive request-positive native main/caller/decoder component. Normalize exactly five pair columns and table76 by actual negative ordinary sums; retain all other observations. Derive ordinary balance before interpolation, no expected sum/samples/activity/count/matching/ledger premise. Nonzero-gamma multiplicity83886070 at row0; zero-gamma multiplicity0 explicitly retains pole branch, not honest frequency-oracle/transcript refinement. Global source-worker acceptance/physical refinement/parity remain OPEN; no old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "442c7db27635c35ff9a9c74a925dfbb7762c051e",
+      "backport_reuse_path": "Tests/NativeDecoderTableCompletion.lean",
+      "backport_reuse_sha256": "85c8a46640794d5d9182334dc35dc7dd58c56b3b6f795ed3694a51d60f6b1b9c"
     }
   ],
   "setup_artifacts": [

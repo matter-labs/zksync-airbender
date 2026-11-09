@@ -1,5 +1,49 @@
 # Trust and review boundaries
 
+## Complete scalar table on the inactive native MAIN component
+
+[The scalar completion](Airbender/Review/Trace/Families/ReducedMachine/ScalarTableCompletionTheorems.lean)
+now joins the complete scalar16 source family to the same inactive request-positive
+MAIN/caller/decoder component. All five pair relations, initialization ordering,
+ordinary table equations and genuine difference-polynomial samples/degree/divisor
+are checked on that same main. The previous full memory component, nonconstant
+caller polynomial/nonzero claim and public decoder table/setup remain.
+
+The constructor normalizes exactly the five pair columns12/16/20/24/28 and scalar
+table column76 by their actual negative ordinary sums. Every ordinary pair remains
+2/gamma. The table accumulator is a row0 spike balancing the derived complete pair
+total. Every other auxiliary observation remains, including caller92, decoder72/88
+and grand120. Scalar physical witness7 is separate from BODY7; only that witness
+column and physical scalar setup0 are constructed. The existing actual public
+setup prefix0..65535, full zero tail and reserved value32767 are reused unchanged.
+
+For nonzero gamma the constructed multiplicity at row0 is83886070 and is0 elsewhere.
+For gamma0 it is0, retaining the degenerate pair/table pole branch. This is an
+explicit source-reference fixture, not honest-prover frequency-oracle, challenge
+timing or physical transcript refinement. No scalar nonpole, multiplicity bit/count,
+expected sum/samples/activity/matching/ledger/history/result premise is introduced.
+All other setup poles with zero multiplicity remain permitted.
+
+Generic spike sums, normalization linearity and actual ordinary balance precede
+native sampling. The existing normalized interpolation theorem supplies a genuine
+polynomial from the actual difference observations; its zero claimed sum is derived,
+not assumed. The exact native zero/last divisor is established. All six full column
+sums vanish and the actual reserved values are derived. All28 controls pass; only
+finite coordinates/scalars are kernel evaluated, with no full BODY/pool/domain replay.
+
+This completes the scalar source family for this same component, including reserved
+normalization and public setup. It is not full SourceAccepted, global matching,
+a NONEMPTY global source/worker/physical accepted witness, a native defect or parity.
+The primitive-domain condition remains explicit; its construction/nonemptiness,
+general Rust/Quartic/FFT/LDE/setup authentication and cryptographic extraction remain
+separate. Initialization public boundaries/windows, complete global memory/delegation
+and nonempty workers remain open, as do physical caller activity, larger-batch
+universal matching, scheduled hash/original CSR-NDstream-MOP-worker Sail, protocol,
+padding/terminal/init-teardown and completeness. All prior inactive requests/poles,
+ports/raw times/OLDREAD/refresh/aliases/unmasked writes/x0 and the >=257 alternative
+remain. Pins/dependencies/artifacts/FINDINGS are unchanged; no production fix occurs.
+
+
 ## Actual native scalar pair components
 
 [The scalar pair root](Airbender/Review/Trace/Families/ReducedMachine/ScalarPairsTheorems.lean)
