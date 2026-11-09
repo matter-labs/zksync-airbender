@@ -1,6 +1,5 @@
 mod bank;
 mod continuation;
-mod dr;
 
 use field::{Field, PrimeField};
 use gpu_core::primitives::field::PR;

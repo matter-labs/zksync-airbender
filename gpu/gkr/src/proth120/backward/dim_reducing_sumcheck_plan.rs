@@ -16,8 +16,8 @@ use super::gkr_ops;
 use super::scheduled_execution::{gather_pr, LayerInputPr, ScheduledLayerExecutionPr};
 use super::window::launch_window_tail_pr;
 use super::window_dr::{
-    schedule_dr_batch_challenge_table_pr, unwrap_dr_window_pr, DrLayerTranscriptPr,
-    DrWindowLayerHookPr, DrWindowRawInputKeepalivePr,
+    schedule_dr_batch_challenge_table_pr, DrLayerTranscriptPr, DrWindowLayerHookPr,
+    DrWindowRawInputKeepalivePr,
 };
 use super::GpuGKRDimensionReducingBackwardStatePr;
 use crate::backward::{ClaimBufferLayout, GpuGKRDimensionReducingLayerSlots};
@@ -153,20 +153,18 @@ impl DimensionReducingLayerPlanPr {
             point_out: point_out.as_mut_ptr(),
         };
         let (hook, direct_inputs) = if entry_round == 0 {
-            let inputs = unwrap_dr_window_pr(DrWindowRawInputKeepalivePr::from_projection(
-                storage,
-                program.input_projection(),
-            ))?;
+            let inputs =
+                DrWindowRawInputKeepalivePr::from_projection(storage, program.input_projection());
             (None, Some(inputs))
         } else {
-            let hook = unwrap_dr_window_pr(DrWindowLayerHookPr::bind(
+            let hook = DrWindowLayerHookPr::bind(
                 program,
                 storage,
                 entry_round,
                 batch_table.as_ptr(),
                 point_out.as_ptr(),
                 context,
-            ))?;
+            )?;
             assert_eq!(hook.folding_steps(), n);
             hook.launch_r0(context)?;
             launch_window_tail_pr(&hook.r0_tail_state(&transcript), context)?;
@@ -178,12 +176,10 @@ impl DimensionReducingLayerPlanPr {
             (Some(hook), None)
         };
         let sources = match (&hook, &direct_inputs) {
-            (Some(hook), _) => {
-                unwrap_dr_window_pr(hook.megakernel_source_pointers(program, storage))?
+            (Some(hook), _) => hook.megakernel_source_pointers(program, storage),
+            (None, Some(inputs)) => {
+                inputs.canonical_source_pointers(storage, program.input_projection())
             }
-            (None, Some(inputs)) => unwrap_dr_window_pr(
-                inputs.canonical_source_pointers(storage, program.input_projection()),
-            )?,
             (None, None) => unreachable!(),
         };
         let source_count = self.folding_addresses.len();

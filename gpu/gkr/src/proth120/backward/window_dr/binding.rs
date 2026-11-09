@@ -12,9 +12,7 @@ use gpu_gkr_compiler::{DrWindowInputProjection, DrWindowProgram, KERNEL_ARGUMENT
 use gpu_prover_context::ProverContext;
 
 use super::{plan_dr_window_continuations_pr, DrWindowPassGeometryPr, PR_DR_WINDOW_COORDINATES};
-use crate::backward::window_dr::{
-    dr_window_partials_len, validate_dr_window_folding_steps, DrWindowBindError,
-};
+use crate::backward::window_dr::{dr_window_partials_len, validate_dr_window_folding_steps};
 use crate::backward::{
     make_eq_sizes, pack_source_u16, FoldingArenaBinding, GkrEqSizes, GpuGKRDimensionReducingBatch,
     GpuGKRDimensionReducingSlot, GpuGKRDimensionReducingTables, GpuGKRSourceRecord,
@@ -75,14 +73,6 @@ cuda_kernel!(
     ab_pr_gkr_bwd_dr_window_continuation_kernel(desc: DrWindowLaunchBindingPr)
 );
 
-pub(crate) fn unwrap_dr_window_pr<T>(result: Result<T, DrWindowBindError>) -> CudaResult<T> {
-    match result {
-        Ok(value) => Ok(value),
-        Err(DrWindowBindError::Cuda(error)) => Err(error),
-        Err(error) => panic!("Proth120 DR window invariant failed: {error:?}"),
-    }
-}
-
 pub(crate) fn schedule_dr_batch_challenge_table_pr(
     batching: *const PR,
     context: &ProverContext,
@@ -119,24 +109,26 @@ struct ResolvedStoragePr<'a> {
 fn resolve_storage_pr(
     storage: &GpuGKRStorage<PR, PR>,
     address: GKRAddress,
-) -> Result<ResolvedStoragePr<'_>, DrWindowBindError> {
-    let poly =
-        storage
-            .get_ext_poly_for_address(address)
-            .ok_or(DrWindowBindError::MissingSource {
+) -> ResolvedStoragePr<'_> {
+    let poly = storage
+        .get_ext_poly_for_address(address)
+        .unwrap_or_else(|| {
+            panic!(
+                "Proth120 binding MissingSource: address={:?}, logical_layer={:?}",
                 address,
-                logical_layer: address_storage_layer(address),
-            })?;
+                address_storage_layer(address)
+            )
+        });
     assert_eq!(
         poly.offset % poly.len,
         0,
         "Proth120 DR source must start at a column boundary"
     );
-    Ok(ResolvedStoragePr {
+    ResolvedStoragePr {
         backing: &poly.backing,
         log2_stride: poly.len.ilog2(),
         poly_index: poly.offset / poly.len,
-    })
+    }
 }
 
 pub(crate) struct DrWindowRawInputKeepalivePr {
@@ -147,48 +139,50 @@ impl DrWindowRawInputKeepalivePr {
     pub(crate) fn from_projection(
         storage: &GpuGKRStorage<PR, PR>,
         projection: &DrWindowInputProjection,
-    ) -> Result<Self, DrWindowBindError> {
+    ) -> Self {
         let mut seen = BTreeSet::new();
         let mut backings = Vec::new();
         for &address in projection.canonical_sources() {
-            let backing = Arc::clone(resolve_storage_pr(storage, address)?.backing);
+            let backing = Arc::clone(resolve_storage_pr(storage, address).backing);
             if seen.insert(Arc::as_ptr(&backing) as usize) {
                 backings.push(backing);
             }
         }
-        Ok(Self { backings })
+        Self { backings }
     }
 
     pub(crate) fn canonical_source_pointers(
         &self,
         storage: &GpuGKRStorage<PR, PR>,
         projection: &DrWindowInputProjection,
-    ) -> Result<Vec<*const PR>, DrWindowBindError> {
+    ) -> Vec<*const PR> {
         projection
             .canonical_sources()
             .iter()
             .copied()
             .map(|address| {
-                let resolved = resolve_storage_pr(storage, address)?;
+                let resolved = resolve_storage_pr(storage, address);
                 assert!(
                     self.backings
                         .iter()
                         .any(|backing| Arc::ptr_eq(backing, resolved.backing)),
                     "Proth120 DR raw-input keepalive must own the resolved backing"
                 );
-                let stride = 1usize.checked_shl(resolved.log2_stride).ok_or(
-                    DrWindowBindError::ArenaGeometryOverflow {
-                        log2_stride: resolved.log2_stride,
-                        poly_count: resolved.poly_index + 1,
-                    },
-                )?;
-                let offset = resolved.poly_index.checked_mul(stride).ok_or(
-                    DrWindowBindError::ArenaGeometryOverflow {
-                        log2_stride: resolved.log2_stride,
-                        poly_count: resolved.poly_index + 1,
-                    },
-                )?;
-                Ok(unsafe { resolved.backing.as_ptr().add(offset) })
+                let stride = 1usize.checked_shl(resolved.log2_stride).unwrap_or_else(|| {
+                    panic!(
+                        "Proth120 binding ArenaGeometryOverflow: log2_stride={:?}, poly_count={:?}",
+                        resolved.log2_stride,
+                        resolved.poly_index + 1
+                    )
+                });
+                let offset = resolved.poly_index.checked_mul(stride).unwrap_or_else(|| {
+                    panic!(
+                        "Proth120 binding ArenaGeometryOverflow: log2_stride={:?}, poly_count={:?}",
+                        resolved.log2_stride,
+                        resolved.poly_index + 1
+                    )
+                });
+                unsafe { resolved.backing.as_ptr().add(offset) }
             })
             .collect()
     }
@@ -209,12 +203,8 @@ impl DrCompactSourceTablePr {
         }
     }
 
-    fn intern_storage(
-        &mut self,
-        storage: &GpuGKRStorage<PR, PR>,
-        address: GKRAddress,
-    ) -> Result<u16, DrWindowBindError> {
-        let resolved = resolve_storage_pr(storage, address)?;
+    fn intern_storage(&mut self, storage: &GpuGKRStorage<PR, PR>, address: GKRAddress) -> u16 {
+        let resolved = resolve_storage_pr(storage, address);
         self.intern(
             resolved.backing.as_ptr().cast(),
             resolved.log2_stride,
@@ -222,11 +212,7 @@ impl DrCompactSourceTablePr {
         )
     }
 
-    fn intern_arena(
-        &mut self,
-        arena: FoldingArenaBinding,
-        poly_index: usize,
-    ) -> Result<u16, DrWindowBindError> {
+    fn intern_arena(&mut self, arena: FoldingArenaBinding, poly_index: usize) -> u16 {
         self.intern(arena.base, arena.log2_stride, poly_index)
     }
 
@@ -234,36 +220,27 @@ impl DrCompactSourceTablePr {
         self.tables
     }
 
-    fn intern(
-        &mut self,
-        backing: *const u8,
-        log2_stride: u32,
-        poly_index: usize,
-    ) -> Result<u16, DrWindowBindError> {
-        if poly_index >= GKR_DIM_REDUCING_POLY_CAPACITY {
-            return Err(DrWindowBindError::PolyIndexOverflow {
-                poly_index,
-                capacity: GKR_DIM_REDUCING_POLY_CAPACITY,
-            });
-        }
+    fn intern(&mut self, backing: *const u8, log2_stride: u32, poly_index: usize) -> u16 {
+        assert!(
+            poly_index < GKR_DIM_REDUCING_POLY_CAPACITY,
+            "Proth120 binding PolyIndexOverflow: poly_index={:?}, capacity={:?}",
+            poly_index,
+            GKR_DIM_REDUCING_POLY_CAPACITY
+        );
         let backing_key = backing as usize;
         let slot = if let Some(&slot) = self.by_backing.get(&backing_key) {
             let expected_log2_stride = self.tables.log2_stride[slot];
-            if expected_log2_stride != log2_stride {
-                return Err(DrWindowBindError::StrideMismatch {
-                    backing: backing_key,
-                    expected_log2_stride,
-                    observed_log2_stride: log2_stride,
-                });
-            }
+            assert!(expected_log2_stride == log2_stride,
+                "Proth120 binding StrideMismatch: backing={:?}, expected_log2_stride={:?}, observed_log2_stride={:?}", backing_key, expected_log2_stride, log2_stride
+            );
             slot
         } else {
-            if self.slot_count == GKR_DIM_REDUCING_BASE_SLOTS {
-                return Err(DrWindowBindError::BaseSlotOverflow {
-                    required: self.slot_count + 1,
-                    capacity: GKR_DIM_REDUCING_BASE_SLOTS,
-                });
-            }
+            assert!(
+                self.slot_count != GKR_DIM_REDUCING_BASE_SLOTS,
+                "Proth120 binding BaseSlotOverflow: required={:?}, capacity={:?}",
+                self.slot_count + 1,
+                GKR_DIM_REDUCING_BASE_SLOTS
+            );
             let slot = self.slot_count;
             self.tables.bases[slot] = backing;
             self.tables.log2_stride[slot] = log2_stride;
@@ -271,7 +248,7 @@ impl DrCompactSourceTablePr {
             self.slot_count += 1;
             slot
         };
-        Ok(pack_source_u16(false, slot as u8, poly_index as u16))
+        pack_source_u16(false, slot as u8, poly_index as u16)
     }
 }
 
@@ -316,18 +293,16 @@ struct DrWindowArenaPr {
 }
 
 impl DrWindowArenaPr {
-    fn allocate(
-        context: &ProverContext,
-        log2_stride: u32,
-        poly_count: usize,
-    ) -> Result<Self, DrWindowBindError> {
+    fn allocate(context: &ProverContext, log2_stride: u32, poly_count: usize) -> CudaResult<Self> {
         let required = 1usize
             .checked_shl(log2_stride)
             .and_then(|len| len.checked_mul(poly_count))
-            .ok_or(DrWindowBindError::ArenaGeometryOverflow {
-                log2_stride,
-                poly_count,
-            })?;
+            .unwrap_or_else(|| {
+                panic!(
+                    "Proth120 binding ArenaGeometryOverflow: log2_stride={:?}, poly_count={:?}",
+                    log2_stride, poly_count
+                )
+            });
         Ok(Self {
             allocation: context
                 .alloc_with_extra_alignment::<PR, 1>(required, AllocationPlacement::Top)?,
@@ -336,17 +311,11 @@ impl DrWindowArenaPr {
         })
     }
 
-    fn binding(&self, log2_stride: u32) -> Result<FoldingArenaBinding, DrWindowBindError> {
-        if log2_stride > self.log2_stride {
-            return Err(DrWindowBindError::FinalPublicationStrideMismatch {
-                owner_log2_stride: self.log2_stride,
-                planned_log2_stride: log2_stride,
-            });
-        }
-        Ok(FoldingArenaBinding::new(
-            self.allocation.as_ptr().cast(),
-            log2_stride,
-        ))
+    fn binding(&self, log2_stride: u32) -> FoldingArenaBinding {
+        assert!(log2_stride <= self.log2_stride,
+            "Proth120 binding FinalPublicationStrideMismatch: owner_log2_stride={:?}, planned_log2_stride={:?}", self.log2_stride, log2_stride
+        );
+        FoldingArenaBinding::new(self.allocation.as_ptr().cast(), log2_stride)
     }
 }
 
@@ -457,7 +426,7 @@ fn build_r0_batch(
     storage: &GpuGKRStorage<PR, PR>,
     eq_low: *const PR,
     eq_sizes: GkrEqSizes,
-) -> Result<GpuGKRDimensionReducingBatch<PR>, DrWindowBindError> {
+) -> GpuGKRDimensionReducingBatch<PR> {
     let mut batch = GpuGKRDimensionReducingBatch::<PR> {
         enabled_mask: program.enabled_mask(),
         eq_low,
@@ -470,7 +439,7 @@ fn build_r0_batch(
         for (operand, source_id) in slot.source_ids().iter().copied().enumerate() {
             let address = program.sources()[usize::from(source_id)];
             inputs[operand] =
-                GpuGKRSourceRecord::source_only(table.intern_storage(storage, address)?);
+                GpuGKRSourceRecord::source_only(table.intern_storage(storage, address));
         }
         batch.slots[slot.slot()] = GpuGKRDimensionReducingSlot {
             inputs,
@@ -478,7 +447,7 @@ fn build_r0_batch(
         };
     }
     batch.tables = table.finish();
-    Ok(batch)
+    batch
 }
 
 fn assemble_continuation_batch(
@@ -487,12 +456,8 @@ fn assemble_continuation_batch(
     eq_low: *const PR,
     eq_sizes: GkrEqSizes,
     destination: FoldingArenaBinding,
-    mut intern_source: impl FnMut(
-        &mut DrCompactSourceTablePr,
-        GKRAddress,
-        u16,
-    ) -> Result<u16, DrWindowBindError>,
-) -> Result<GpuGKRDimensionReducingBatch<PR>, DrWindowBindError> {
+    mut intern_source: impl FnMut(&mut DrCompactSourceTablePr, GKRAddress, u16) -> u16,
+) -> GpuGKRDimensionReducingBatch<PR> {
     let mut batch = GpuGKRDimensionReducingBatch::<PR> {
         enabled_mask: program.enabled_mask(),
         eq_low,
@@ -506,25 +471,23 @@ fn assemble_continuation_batch(
         for (input_operand, record) in inputs.iter_mut().enumerate() {
             let publication_index = projection
                 .publication_index(dense_slot, input_operand)
-                .ok_or(DrWindowBindError::MissingPublicationIndex {
-                    dense_slot,
-                    input_operand,
-                })?;
-            let publication = usize::from(publication_index);
-            if publication >= projection.canonical_sources().len() {
-                return Err(DrWindowBindError::PublicationIndexOverflow {
-                    publication_index: publication,
-                    canonical_source_count: projection.canonical_sources().len(),
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Proth120 binding MissingPublicationIndex: dense_slot={:?}, input_operand={:?}", dense_slot, input_operand
+                    )
                 });
-            }
+            let publication = usize::from(publication_index);
+            assert!(publication < projection.canonical_sources().len(),
+                "Proth120 binding PublicationIndexOverflow: publication_index={:?}, canonical_source_count={:?}", publication, projection.canonical_sources().len()
+            );
             let address = program.sources()[usize::from(slot.source_ids()[input_operand])];
-            let source_base = intern_source(&mut table, address, publication_index)?;
+            let source_base = intern_source(&mut table, address, publication_index);
             assert_eq!(
                 source_base & PR_DR_CONTINUATION_FIRST_ACCESS_BIT,
                 0,
                 "Proth120 compact source tables must return a clear first-access bit"
             );
-            let cache_base = table.intern_arena(destination, publication)?;
+            let cache_base = table.intern_arena(destination, publication);
             assert_eq!(
                 cache_base & PR_DR_CONTINUATION_FIRST_ACCESS_BIT,
                 0,
@@ -543,12 +506,10 @@ fn assemble_continuation_batch(
         };
     }
     batch.tables = table.finish();
-    Ok(batch)
+    batch
 }
 
-fn validate_continuation_table_bases(
-    batch: &GpuGKRDimensionReducingBatch<PR>,
-) -> Result<(), DrWindowBindError> {
+fn validate_continuation_table_bases(batch: &GpuGKRDimensionReducingBatch<PR>) {
     for (slot, descriptor) in batch.slots.iter().enumerate() {
         if batch.enabled_mask & (1 << slot) == 0 {
             continue;
@@ -559,42 +520,38 @@ fn validate_continuation_table_bases(
                 (usize::from((record.src >> 11) & 0x0f), false),
                 (usize::from((record.cache >> 11) & 0x0f), true),
             ] {
-                if batch.tables.bases[table_slot].is_null() {
-                    return Err(DrWindowBindError::NullContinuationTableBase {
-                        slot,
-                        input_operand,
-                        table_slot,
-                        destination,
-                    });
-                }
+                assert!(!batch.tables.bases[table_slot].is_null(),
+                    "Proth120 binding NullContinuationTableBase: slot={:?}, input_operand={:?}, table_slot={:?}, destination={:?}", slot, input_operand, table_slot, destination
+                );
             }
         }
     }
-    Ok(())
 }
 
 fn validate_continuation_eq(
     geometry: DrWindowPassGeometryPr,
     eq_sizes: GkrEqSizes,
     pointers: [(&'static str, *const PR); 3],
-) -> Result<(), DrWindowBindError> {
-    if eq_sizes != geometry.eq_entry_sizes() {
-        return Err(DrWindowBindError::EqSizeMismatch);
-    }
+) {
+    assert!(
+        eq_sizes == geometry.eq_entry_sizes(),
+        "Proth120 binding EqSizeMismatch"
+    );
     for (name, pointer) in pointers {
-        if pointer.is_null() {
-            return Err(DrWindowBindError::NullContinuationPointer { pointer: name });
-        }
+        assert!(
+            !pointer.is_null(),
+            "Proth120 binding NullContinuationPointer: pointer={:?}",
+            name
+        );
     }
     for (first, second) in [(0, 1), (0, 2), (1, 2)] {
-        if pointers[first].1 == pointers[second].1 {
-            return Err(DrWindowBindError::ContinuationEqAliasedPointers {
-                first: pointers[first].0,
-                second: pointers[second].0,
-            });
-        }
+        assert!(
+            pointers[first].1 != pointers[second].1,
+            "Proth120 binding ContinuationEqAliasedPointers: first={:?}, second={:?}",
+            pointers[first].0,
+            pointers[second].0
+        );
     }
-    Ok(())
 }
 
 impl DrWindowLayerHookPr {
@@ -605,21 +562,24 @@ impl DrWindowLayerHookPr {
         batch_challenges: *const PR,
         claim_point_out: *const PR,
         context: &ProverContext,
-    ) -> Result<Self, DrWindowBindError> {
+    ) -> CudaResult<Self> {
         let folding_steps = program.folding_steps();
-        validate_dr_window_folding_steps(folding_steps)?;
-        let geometries = plan_dr_window_continuations_pr(folding_steps, entry_round)?;
+        validate_dr_window_folding_steps(folding_steps)
+            .expect("Proth120 DR folding steps must be supported");
+        let geometries = plan_dr_window_continuations_pr(folding_steps, entry_round);
         for (pointer, name) in [
             (batch_challenges, "batch_challenges"),
             (claim_point_out, "claim_point"),
         ] {
-            if pointer.is_null() {
-                return Err(DrWindowBindError::NullContinuationPointer { pointer: name });
-            }
+            assert!(
+                !pointer.is_null(),
+                "Proth120 binding NullContinuationPointer: pointer={:?}",
+                name
+            );
         }
         let projection = program.input_projection();
         let poly_count = projection.canonical_sources().len();
-        let raw_inputs = DrWindowRawInputKeepalivePr::from_projection(storage, projection)?;
+        let raw_inputs = DrWindowRawInputKeepalivePr::from_projection(storage, projection);
 
         let r0_row_tiles = dr_window_row_tiles(folding_steps);
         let slot_count = program.program().enabled_mask().count_ones() as usize;
@@ -643,7 +603,7 @@ impl DrWindowLayerHookPr {
 
         let r0_eq = DrEqCellsPr::allocate(context)?;
         let r0_eq_sizes = make_eq_sizes(folding_steps - PR_DR_WINDOW_COORDINATES);
-        let r0_batch = build_r0_batch(program.program(), storage, r0_eq.low(), r0_eq_sizes)?;
+        let r0_batch = build_r0_batch(program.program(), storage, r0_eq.low(), r0_eq_sizes);
         let r0 = Box::new(DrWindowLaunchBindingPr {
             batch: r0_batch,
             batch_challenges,
@@ -690,13 +650,13 @@ impl DrWindowLayerHookPr {
             let destination_arena = hook.arenas[geometry.destination().index()]
                 .as_ref()
                 .expect("Proth120 DR destination arena was allocated");
-            if destination_arena.poly_count < poly_count {
-                return Err(DrWindowBindError::ArenaCapacity {
-                    required: poly_count,
-                    capacity: destination_arena.poly_count,
-                });
-            }
-            let destination = destination_arena.binding(geometry.log2_stride())?;
+            assert!(
+                destination_arena.poly_count >= poly_count,
+                "Proth120 binding ArenaCapacity: required={:?}, capacity={:?}",
+                poly_count,
+                destination_arena.poly_count
+            );
+            let destination = destination_arena.binding(geometry.log2_stride());
             let batch = if geometry.reads_raw_storage() {
                 assemble_continuation_batch(
                     program.program(),
@@ -705,14 +665,14 @@ impl DrWindowLayerHookPr {
                     eq_sizes,
                     destination,
                     |table, address, _| table.intern_storage(storage, address),
-                )?
+                )
             } else {
                 let previous = previous.expect("Proth120 DR arena source follows a prior pass");
                 debug_assert_eq!(previous.destination(), geometry.destination().opposite());
                 let source = hook.arenas[previous.destination().index()]
                     .as_ref()
                     .expect("Proth120 DR source arena was allocated")
-                    .binding(previous.log2_stride())?;
+                    .binding(previous.log2_stride());
                 assemble_continuation_batch(
                     program.program(),
                     projection,
@@ -722,7 +682,7 @@ impl DrWindowLayerHookPr {
                     |table, _, publication_index| {
                         table.intern_arena(source, usize::from(publication_index))
                     },
-                )?
+                )
             };
             validate_continuation_eq(
                 geometry,
@@ -732,16 +692,16 @@ impl DrWindowLayerHookPr {
                     ("eq_high_1", continuation_eq.high_1().cast_const()),
                     ("eq_low", batch.eq_low),
                 ],
-            )?;
-            validate_continuation_table_bases(&batch)?;
+            );
+            validate_continuation_table_bases(&batch);
             let row_tiles = dr_window_row_tiles(geometry.suffix_folding_steps());
             let required = PR_WINDOW_TAIL_TENSOR_CELLS * (row_tiles * slot_count + 1);
-            if hook.partials.len() < required {
-                return Err(DrWindowBindError::ScratchCapacity {
-                    required,
-                    capacity: hook.partials.len(),
-                });
-            }
+            assert!(
+                hook.partials.len() >= required,
+                "Proth120 binding ScratchCapacity: required={:?}, capacity={:?}",
+                required,
+                hook.partials.len()
+            );
             hook.continuations.push(DrWindowContinuationPassPr {
                 geometry,
                 binding: Box::new(DrWindowLaunchBindingPr {
@@ -842,7 +802,7 @@ impl DrWindowLayerHookPr {
         &self,
         program: &DrWindowLayerProgram,
         storage: &GpuGKRStorage<PR, PR>,
-    ) -> Result<Vec<*const PR>, DrWindowBindError> {
+    ) -> Vec<*const PR> {
         let projection = program.input_projection();
         let canonical_count = projection.canonical_sources().len();
         let Some(last) = self.continuations.last() else {
@@ -854,10 +814,10 @@ impl DrWindowLayerHookPr {
             .as_ref()
             .expect("Proth120 final DR continuation destination must remain owned");
         assert_eq!(arena.poly_count, canonical_count);
-        let binding = arena.binding(last.geometry.log2_stride())?;
+        let binding = arena.binding(last.geometry.log2_stride());
         let stride = 1usize << binding.log2_stride;
-        Ok((0..canonical_count)
+        (0..canonical_count)
             .map(|poly_idx| unsafe { binding.base.cast::<PR>().add(poly_idx * stride) })
-            .collect())
+            .collect()
     }
 }

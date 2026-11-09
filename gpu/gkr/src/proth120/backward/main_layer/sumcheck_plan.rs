@@ -111,8 +111,7 @@ impl MainLayerBackwardStatePr {
                 partials_capacity: partials.len(),
             },
             bank.r0(),
-        )
-        .unwrap_or_else(|error| panic!("Proth120 R0 binding for layer {layer_idx}: {error:?}"));
+        );
         let mapping = &programs.runtime_circuit.scratch_space_mapping_rev;
         let logicalize = |address| logical_protocol_address(address, mapping);
         let folding_evaluation_sources = layer_plan

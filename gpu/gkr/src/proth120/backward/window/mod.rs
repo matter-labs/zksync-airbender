@@ -11,7 +11,7 @@ use gpu_prover_context::ProverContext;
 use gpu_gkr_compiler::backward::{R0Kernel, R0WindowProgram};
 
 use self::binding::{bind_r0_window_pr, WindowLaunchBindingPr, WindowRuntimeScratchPr};
-use crate::backward::window::binding::{window_row_tiles, WindowBindError};
+use crate::backward::window::binding::window_row_tiles;
 use crate::proth120::backward::banks::CoefficientBankViewPr;
 use crate::upstream::PR;
 use crate::GpuGKRStorage;
@@ -176,23 +176,23 @@ pub(crate) fn bind_r0_pr(
     folding_steps: usize,
     scratch: WindowRuntimeScratchPr,
     bank: CoefficientBankViewPr,
-) -> Result<R0WindowLaunchPr, WindowBindError> {
-    let binding = bind_r0_window_pr(&program.window, storage, folding_steps, scratch, bank)?;
+) -> R0WindowLaunchPr {
+    let binding = bind_r0_window_pr(&program.window, storage, folding_steps, scratch, bank);
     let row_tiles = window_row_tiles(1usize << folding_steps);
     let required = r0_partials_len_pr(1usize << folding_steps);
-    if required > scratch.partials_capacity {
-        return Err(WindowBindError::Capacity {
-            resource: "window partials",
-            required,
-            capacity: scratch.partials_capacity,
-        });
-    }
+    assert!(
+        required <= scratch.partials_capacity,
+        "Proth120 binding Capacity: resource={:?}, required={:?}, capacity={:?}",
+        "window partials",
+        required,
+        scratch.partials_capacity
+    );
     let reduced_tensor = unsafe {
         scratch
             .partials
             .add(PR_WINDOW_TAIL_TENSOR_CELLS * row_tiles)
     };
-    Ok(R0WindowLaunchPr {
+    R0WindowLaunchPr {
         binding,
         kernel: program.kernel,
         shape: program.window.shape.bits(),
@@ -202,7 +202,7 @@ pub(crate) fn bind_r0_pr(
         row_tiles,
         reduction_tiles: row_tiles,
         reduced_tensor,
-    })
+    }
 }
 
 pub(crate) fn launch_r0_pr(window: &R0WindowLaunchPr, context: &ProverContext) -> CudaResult<()> {
