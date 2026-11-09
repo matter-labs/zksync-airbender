@@ -12,7 +12,8 @@
 # Example (cold, then warm no-op on the same commit):
 #   ci/sim.sh run fvci-small 4 16g 4 HEAD - head  cold.log
 #   ci/sim.sh run fvci-small 4 16g 4 HEAD head - warm.log
-# FVCI_STOP=sail stops after the Sail model step (to seed or time the sail cache alone).
+# FVCI_STOP=sail stops after the Sail model step (to seed or time the sail cache alone). VERIFY_AUDITS (fresh|replay)
+# is passed to verify.sh; FVCI_KERNEL=1 adds the kernel replay (leanchecker) after verify.sh, as the cold CI runs do.
 # Each run is a build: on the shared machine run it under the build lock (rvlock/lb.sh ci/sim.sh run ...).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -47,6 +48,7 @@ case "${1:-}" in
     set +e
     docker run --name "fvci-run-$$" --cpus "$cpus" --memory "$mem" --memory-swap "$mem" \
       -e LEAN_NUM_THREADS="$threads" -e MODULE_BUDGET_JOBS="${MODULE_BUDGET_JOBS:-4}" -e FVCI_STOP="${FVCI_STOP:-}" \
+      -e VERIFY_AUDITS="${VERIFY_AUDITS:-fresh}" -e FVCI_KERNEL="${FVCI_KERNEL:-0}" \
       "${mounts[@]}" -v "$tmp:/in:ro" -v "$HERE:/opt/fvci:ro" \
       "$IMAGE" bash /opt/fvci/sim-job.sh "$from" "$to" > "$log" 2>&1
     rc=$?

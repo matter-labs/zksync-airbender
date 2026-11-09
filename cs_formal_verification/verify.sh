@@ -23,15 +23,26 @@ python3 scripts/module_budget.py build CleanCore Human Slop || fail "lake build"
 echo "== 3. Regressions; final statements (each slop/Slop/Final theorem proves its human/ ...Claim, test/Checks/Claims.lean); axiom audits"
 python3 scripts/module_budget.py build Test airbender_tests || fail "lake build (tests)"
 lake exe airbender_tests
+# VERIFY_AUDITS=fresh (default): elaborate each audit file again. replay (CI pull requests): read the messages Lake
+# logged for the audit modules in the build above (built now, or replayed from their traces: the same trust as the
+# cached .olean files they import). Either way every `#print axioms` must be answered.
+audits=${VERIFY_AUDITS:-fresh}
+[[ $audits == fresh || $audits == replay ]] || fail "VERIFY_AUDITS must be fresh or replay"
 for audit in Claims Axioms TraceAxioms; do
-  out=$(lake env lean "test/Checks/$audit.lean")
+  if [[ $audits == replay ]]; then
+    out=$(python3 scripts/audit_log.py .lake/verify-build-Test.log "test/Checks/$audit.lean")
+  else
+    out=$(lake env lean "test/Checks/$audit.lean")
+  fi
   # Lean wraps long axiom lists over several lines: join before matching
   lists=$(tr '\n' ' ' <<<"$out" | grep -oE "depends on axioms: \[[^]]*\]" | tr -s ' ' || true)
   n=$(( $(grep -c . <<<"$lists" || true) + $(grep -c "does not depend on any axioms" <<<"$out" || true) ))
   bad=$(grep -vE "^depends on axioms: \[(propext|Classical\.choice|Quot\.sound)(, (propext|Classical\.choice|Quot\.sound))*\]$" \
     <<<"$lists" || true)
   [[ -z "$bad" ]] || { echo "$bad"; fail "non-standard axioms ($audit)"; }
-  echo "$audit: $n theorems, standard axioms only"
+  want=$(grep -c '^#print axioms' "test/Checks/$audit.lean")
+  [[ $n -eq $want ]] || fail "$audit: $n axiom reports for $want #print axioms ($audits; a restored build has no logs: VERIFY_AUDITS=fresh)"
+  echo "$audit: $n theorems, standard axioms only ($audits)"
 done
 
 echo "== 4. Module budget: every module compiles in at most 30 s of CPU, alone (scripts/module_budget.py;"

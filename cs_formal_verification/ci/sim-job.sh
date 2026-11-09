@@ -23,6 +23,7 @@ save() { # name dir paths...
   echo "cache saved: $name ($(du -h "$STORE/$name.tar.zst" | cut -f1), in $(( $(date +%s) - t0 )) s)"
 }
 
+df -h / | tail -1 | awk '{print "disk at start: used " $3 " of " $2}'
 echo "== checkout"
 t0=$(date +%s)
 tar -xf /in/src.tar -C /w
@@ -53,8 +54,15 @@ T mathlib
 echo "== Lake build cache (restore: $from)"
 [[ "$from" == "-" ]] || restore "build-$from" "$L" || true
 
-echo "== verify.sh"
+echo "== dependencies (Sail model, Clean imports, the test executable's dependency objects)"
+T lean-deps
+
+echo "== verify.sh (VERIFY_AUDITS=${VERIFY_AUDITS:-fresh})"
 set +e; T verify; rc=$?; set -e
+if [[ "${FVCI_KERNEL:-0}" == 1 && $rc == 0 ]]; then
+  echo "== kernel replay (leanchecker)"
+  set +e; T kernel-check; rc=$?; set -e
+fi
 "$CI" report "$marker"
 
 if [[ "$to" != "-" ]]; then
@@ -62,5 +70,7 @@ if [[ "$to" != "-" ]]; then
   (cd "$L" && find .lake/packages -path '*/.lake/build/ir/*' -name '*.c.o*' > /tmp/dep-objects)
   save "build-$to" "$L" .lake/build .lake/module-cpu.tsv sail-rv32/.lake .lake/packages/Clean/.lake -T /tmp/dep-objects
 fi
+du -sh /root/.elan /root/.cache/mathlib "$L/.lake/packages" "$L/.lake/build" "$L/sail-rv32/.lake" "$FV/build" 2>/dev/null
+df -h / | tail -1 | awk '{print "disk at end: used " $3 " of " $2}'
 echo "JOB rc=$rc"
 exit "$rc"

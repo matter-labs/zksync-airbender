@@ -9,7 +9,10 @@
 #   ci/lean-ci.sh sail-gen      sail/regen.sh --bootstrap-sail, then check it reproduced the committed files
 #   ci/lean-ci.sh lean-sail     sail/fetch-lean-sail.sh (pinned lean-sail, never cached: no upstream licence)
 #   ci/lean-ci.sh mathlib       lake exe cache get (Mathlib's prebuilt .olean files)
+#   ci/lean-ci.sh lean-deps     build the dependencies (Sail model, Clean imports, the test executable's dependency
+#                               objects) apart from our code (ci/dep_targets.py)
 #   ci/lean-ci.sh verify        ./verify.sh, each of its steps timed
+#   ci/lean-ci.sh kernel-check  leanchecker: replay our modules' constants in the kernel (cold runs)
 #   ci/lean-ci.sh report        what the build did: modules compiled, slowest modules, peak memory
 #   ci/lean-ci.sh time <step>   run a step, then print its wall time, CPU time and peak memory (container cgroup)
 #
@@ -78,6 +81,23 @@ step_mathlib() { # up to three attempts: a retry fetches only the files a flaky 
   return 1
 }
 
+step_lean_deps() { # the dependencies of the build (ci/dep_targets.py), built apart from our code
+  cd "$LEAN"
+  mkdir -p .lake
+  python3 "$CI_DIR/dep_targets.py" > .lake/dep-targets.txt
+  local rc=0
+  xargs lake build < .lake/dep-targets.txt > .lake/dep-build.log 2>&1 || rc=$?
+  grep -E '^(error|Build completed|Some required)' .lake/dep-build.log | tail -20 || true
+  return "$rc"
+}
+
+step_kernel_check() { # leanchecker (bundled with the toolchain): replay every constant of our modules in the kernel
+  # One process; it replays the modules under these prefixes in parallel (LEAN_NUM_THREADS), each on top of its
+  # imports. (A process per module costs ~1.5x the CPU: every process loads the imports again.)
+  cd "$LEAN"
+  lake env leanchecker CleanCore Human Slop Tests Checks
+}
+
 step_verify() {
   # each verify.sh step ("== N. ...") gets the elapsed seconds since the previous one
   local t0 prev now line rc
@@ -142,9 +162,10 @@ step_time() {
   kill $sampler 2>/dev/null; wait $sampler 2>/dev/null || true
   c1=$(awk '/^usage_usec/ {print $2}' $cg/cpu.stat 2>/dev/null || echo 0)
   local pk; read -r -a pk < "$peakf" 2>/dev/null || pk=(0 0 0 0 1)
-  printf 'STEP %-10s rc=%d wall=%ss cpu=%ss peak_anon=%sMiB peak_with_cache=%sMiB lean_procs_max=%s lean_procs_avg=%s\n' \
+  printf 'STEP %-10s rc=%d wall=%ss cpu=%ss peak_anon=%sMiB peak_with_cache=%sMiB lean_procs_max=%s lean_procs_avg=%s disk_used=%sMiB\n' \
     "$name" "$rc" "$(sub "$(date +%s.%N)" "$t0")" "$(sub "$c1" "$c0" 1000000)" "$(( ${pk[0]:-0} / 1048576 ))" \
-    "$(( ${pk[1]:-0} / 1048576 ))" "${pk[2]:-0}" "$(sub "${pk[3]:-0}" 0 "${pk[4]:-1}")"
+    "$(( ${pk[1]:-0} / 1048576 ))" "${pk[2]:-0}" "$(sub "${pk[3]:-0}" 0 "${pk[4]:-1}")" \
+    "$(df -Pm / 2>/dev/null | awk 'NR==2 {print $3}')"
   rm -f "$peakf" "$peakf.t"
   return "$rc"
 }
@@ -158,6 +179,8 @@ case "$cmd" in
   sail-gen) step_sail_gen ;;
   lean-sail) step_lean_sail ;;
   mathlib) step_mathlib ;;
+  lean-deps) step_lean_deps ;;
+  kernel-check) step_kernel_check ;;
   verify) step_verify ;;
   report) step_report "$@" ;;
   time) step_time "$@" ;;

@@ -2,6 +2,13 @@ name: "Lean formal verification"
 # cs_formal_verification/verify.sh: the Lean spec and proofs build, the regressions, the axiom audits, the 30 s
 # per-module budget and the review check. Separate from "Rust CI": runs only when its inputs change.
 # The steps are cs_formal_verification/ci/lean-ci.sh; ci/sim.sh runs the same steps in Docker (see ci/README.md).
+#
+# Two modes (docs/TRUST_AND_REVIEW.md, "What CI re-checks"):
+#   incremental (pull requests, manual runs): restores the newest Lake build, rebuilds what changed, reads the axiom
+#     audits from Lake's (replayed) build log;
+#   cold (pushes to the branches below, nightly): no build cache (toolchain, Mathlib downloads and the Sail model
+#     are still restored), everything elaborated again, fresh audits, and the kernel replays our modules
+#     (leanchecker). Its build seeds the pull requests' cache.
 on:
   # pushes to the branches Rust CI runs on: their caches seed the pull requests that target them (a pull request
   # can restore caches of its base branch and of the default branch only)
@@ -21,6 +28,9 @@ on:
       - "cs_formal_verification/**"
       - "cs/compiled_circuits/*_layout_no_caches_gkr.json"
       - ".github/workflows/lean-formal-verification.yml"
+  # nightly cold run (GitHub runs schedules from the default branch only: inert until this file is on main)
+  schedule:
+    - cron: "17 2 * * *"
   workflow_dispatch:
     inputs:
       lean_threads:
@@ -28,7 +38,7 @@ on:
         required: false
         default: ""
       cold:
-        description: "Ignore the Lake build cache (cold build)"
+        description: "Cold mode: no build cache, fresh audits, kernel replay"
         type: boolean
         default: false
 
@@ -42,7 +52,7 @@ jobs:
   lean_verify:
     name: lean_verify
     runs-on: [matterlabs-ci-runner-high-performance]
-    timeout-minutes: 240
+    timeout-minutes: 360
     container:
       image: ubuntu:24.04
     env:
@@ -51,6 +61,8 @@ jobs:
       LEAN_NUM_THREADS: ${{ inputs.lean_threads || vars.LEAN_CI_THREADS || '8' }}
       MODULE_BUDGET_JOBS: ${{ vars.LEAN_CI_BUDGET_JOBS || '4' }}
       LEAN_DIR: cs_formal_verification/lean
+      CI_MODE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.cold)) && 'incremental' || 'cold' }}
+      VERIFY_AUDITS: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.cold)) && 'replay' || 'fresh' }}
     defaults:
       run:
         shell: bash
@@ -121,7 +133,7 @@ jobs:
       # cache of the same toolchain and dependencies.
       - name: Restore the Lake build
         id: build-cache
-        if: ${{ !inputs.cold }}
+        if: env.CI_MODE == 'incremental'
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -134,15 +146,21 @@ jobs:
           restore-keys: |
             lean-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-
 
-      - name: verify.sh
+      - name: Dependencies (Sail model, Clean imports, the test executable's dependency objects)
         run: |
           touch /tmp/job-start
-          cs_formal_verification/ci/lean-ci.sh time verify
+          cs_formal_verification/ci/lean-ci.sh time lean-deps
+      - name: verify.sh
+        run: cs_formal_verification/ci/lean-ci.sh time verify
+      - name: Kernel replay of our modules (leanchecker; cold mode)
+        if: env.CI_MODE == 'cold'
+        run: cs_formal_verification/ci/lean-ci.sh time kernel-check
       - name: Build report
         if: ${{ !cancelled() }}
         run: cs_formal_verification/ci/lean-ci.sh report /tmp/job-start
 
-      # Saved even when verify.sh fails: the modules that did build are reused by the next run.
+      # Saved in both modes (a cold run seeds the pull requests), even when verify.sh fails: the modules that did
+      # build are reused by the next run.
       - name: Save the Lake build
         if: ${{ !cancelled() && steps.build-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
