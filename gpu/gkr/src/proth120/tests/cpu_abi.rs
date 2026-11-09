@@ -91,7 +91,6 @@ fn cpu_pr_complete_launch_argument_abi() {
             "ab_pr_gkr_dr_tail_megakernel",
             crate::proth120::backward::dr_tail::PR_DR_TAIL_ARGUMENT_BYTES,
         ),
-        ("ab_pr_gkr_sum32_probe_kernel", 32),
         ("ab_pr_gkr_ops_new_claims_two_var_kernel", 32),
         ("ab_pr_gkr_ops_new_claims_linear_kernel", 32),
         ("ab_pr_gkr_ops_dim_reducing_lsb_lines_kernel", 32),
@@ -145,39 +144,20 @@ fn cpu_pr_complete_launch_argument_abi() {
             crate::proth120::backward::banks::PR_EVAL_COEFFICIENTS_ARGUMENT_BYTES,
         ),
     ]);
-    let stage = std::env::var("GKR_ABI_STAGE").unwrap_or_else(|_| "t6".to_owned());
-    assert!(
-        matches!(stage.as_str(), "t4" | "t5" | "t6" | "t7"),
-        "Proth120 ABI stage is not implemented"
-    );
-    if matches!(stage.as_str(), "t6" | "t7") {
-        rows.extend([
-            (
-                "ab_pr_gkr_gather_base_claims_kernel",
-                crate::proth120::base_layer_claims::PR_GATHER_ARGUMENT_BYTES,
-            ),
-            (
-                "ab_pr_gkr_merge_claims_kernel",
-                crate::proth120::packed_merge::PR_MERGE_ARGUMENT_BYTES,
-            ),
-        ]);
+    rows.extend([
+        (
+            "ab_pr_gkr_gather_base_claims_kernel",
+            crate::proth120::base_layer_claims::PR_GATHER_ARGUMENT_BYTES,
+        ),
+        (
+            "ab_pr_gkr_merge_claims_kernel",
+            crate::proth120::packed_merge::PR_MERGE_ARGUMENT_BYTES,
+        ),
+    ]);
+    for (symbol, bytes) in rows {
+        assert!(
+            bytes > 0 && bytes <= 32_764,
+            "{symbol}: {bytes} argument bytes"
+        );
     }
-    rows.sort_by_key(|(symbol, _)| *symbol);
-    let report = serde_json::json!({
-        "schema": 1,
-        "stage": stage,
-        "kernels": rows.iter().map(|(symbol, bytes)| {
-            assert!(*bytes > 0 && *bytes <= 32764);
-            serde_json::json!({"symbol": symbol, "complete_argument_bytes": bytes, "rust_native_layout_assertions": true})
-        }).collect::<Vec<_>>()
-    });
-    if let Ok(path) = std::env::var("GKR_ABI_REPORT") {
-        std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
-    }
-    println!("GKR_ABI {}", report);
-    println!(
-        "GKR_PROOF_LAYOUT bytes={} layers={}",
-        layout.bytes_len(),
-        layout.backward_layers.len()
-    );
 }
