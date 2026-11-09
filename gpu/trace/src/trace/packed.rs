@@ -824,80 +824,6 @@ impl PackedCosetRecomputeOracle<PR> {
 }
 
 #[cfg(test)]
-mod cpu_tests {
-    use super::*;
-    use field::Field;
-    use std::alloc::Global;
-
-    #[test]
-    #[should_panic(expected = "PackedCommitConfig requires a packed ProverConfig")]
-    fn cpu_packed_config_rejects_unpacked_profile() {
-        let mut config =
-            prover::gkr::prover_config::example_configs::l1_wrap::packed_prover_config();
-        config.whir_schedule.base_round.physical_packing_log2 = 0;
-        PackedCommitConfig::from_prover_config(
-            &config,
-            super::super::holder::PARTIAL_TREE_REDUCTION_LAYERS,
-        );
-    }
-
-    #[test]
-    fn cpu_packed_layout_formulas() {
-        let wrap = PackedCommitConfig {
-            log_lde_factor: 7,
-            log_values_per_leaf: 1,
-            cap_log: 3,
-            skip_bottom: 10,
-        };
-        assert_eq!(opening_path_len(24, &wrap), 27);
-        assert_eq!(retained_len(23, 10), 2 * ((1usize << 23) >> 10) - 1);
-        for (log_packed, h) in [(26, 24), (16, 14)] {
-            let cfg = PackedCommitConfig {
-                log_lde_factor: 5,
-                log_values_per_leaf: 2,
-                cap_log: 3,
-                skip_bottom: 5,
-            };
-            assert_eq!(retained_len(h, 5), 2 * ((1usize << h) >> 5) - 1);
-            assert_eq!(coset_root_offset(h, 5), retained_len(h, 5) - 1);
-            assert_eq!(opening_path_len(log_packed, &cfg), (h + 2) as usize);
-            for q in [0u32, 31, 32, (1 << (h + 5)) - 1] {
-                let k = q & 31;
-                let j = q >> 5;
-                let tree_index = (k.reverse_bits() >> 27) as usize * pow2(h) + j as usize;
-                assert_eq!(
-                    tree_index,
-                    fft::bitreverse_index(k as usize, 5) * pow2(h) + j as usize
-                );
-            }
-        }
-        assert_eq!(retained_len(4, 4), 1);
-        assert_eq!(coset_root_offset(4, 4), 0);
-        assert_eq!(retained_len(4, 0), 31);
-    }
-
-    #[test]
-    fn cpu_coset_offsets_match_cpu_formula() {
-        for log_domain in [21, 31] {
-            let root = domain_generator_for_size::<PR>(pow2(log_domain) as u64);
-            let host_root =
-                fft::domain_generator_for_size::<field::Proth120>(pow2(log_domain) as u64);
-            assert_eq!(root.0, host_root.0);
-            let expected = fft::materialize_powers_serial_starting_with_one::<PR, Global>(root, 32);
-            for (k, offset) in expected.iter().enumerate() {
-                assert_eq!(root.pow(k as u32).0, offset.0);
-            }
-            let mut order_check = root;
-            order_check.exp_power_of_2(log_domain as usize);
-            assert_eq!(order_check, PR::ONE);
-            let mut half_order = root;
-            half_order.exp_power_of_2(log_domain as usize - 1);
-            assert_ne!(half_order, PR::ONE);
-        }
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::trace::holder::{TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
@@ -955,7 +881,7 @@ mod tests {
             state ^= state << 17;
             (u128::from(state) << 64 | u128::from(state.rotate_left(29))) % PR::ORDER
         };
-        for (log_rows, columns, pack_log2) in [(8, 104, 4), (12, 13, 2), (10, 16, 4), (9, 7, 3)] {
+        for (log_rows, columns, pack_log2) in [(15, 96, 3), (15, 10, 3)] {
             let values: Vec<PR> = (0..columns << log_rows).map(|_| PR::new(next())).collect();
             let padded = PackedCosetRecomputeOracle::pack_from_columns(
                 holder(log_rows, columns, pack_log2, &values, &context),

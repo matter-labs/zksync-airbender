@@ -1,5 +1,4 @@
 #[doc(hidden)]
-pub mod abi;
 pub(crate) mod banks;
 pub(crate) mod capacity;
 pub(crate) mod dim_reducing_sumcheck_plan;

@@ -19,8 +19,6 @@ namespace airbender::trace::witness::proth120::circuits::NAME {
 
 #include UNROLLED_CIRCUIT_INCLUDE(CIRCUIT_DIR)
 
-KERNEL(NAME, ORACLE)
-
 #include "fused_unrolled.cuh"
 
 } // namespace airbender::trace::witness::proth120::circuits::NAME
