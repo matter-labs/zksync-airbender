@@ -9,18 +9,18 @@ use results::{
 };
 
 impl<B: ExecutionBackend> ExecutionProver<B> {
-    pub(super) fn get_result(
+    pub(super) fn get_result<ND: NonDeterminismCSRSource + Send + 'static>(
         &self,
         proving: bool,
         cache: &mut Option<TraceCache<B::Allocator>>,
         batch_id: u64,
         binary_key: usize,
-        non_determinism_source: Arc<Mutex<Option<impl NonDeterminismCSRSource + Send + 'static>>>,
+        non_determinism_source: ND,
         pow_challenge: u64,
         external_challenges: Option<GKRExternalChallenges<BF, E4>>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
         profile: ProofProfile,
-    ) -> ExecutionProverResult {
+    ) -> (ExecutionProverResult, ND) {
         if let Some(cache) = cache.as_ref() {
             if proving {
                 assert!(cache.simulation_result.is_some());
@@ -87,10 +87,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         } else {
             false
         };
-        if abort_signaled {
-            debug!(
-                "BATCH[{batch_id}] all proof requests have been served from cache, skipping simulation"
-            );
+        let non_determinism_return = if abort_signaled {
+            debug!("BATCH[{batch_id}] all proof requests have been served from cache, skipping simulation");
+            let (sender, receiver) = crossbeam_channel::bounded(1);
+            sender
+                .send(non_determinism_source)
+                .expect("cached non-determinism return channel closed");
+            receiver
         } else {
             self.spawn_simulation_workers(
                 batch_id,
@@ -98,8 +101,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 non_determinism_source,
                 &work_results_sender,
                 &abort,
-            );
-        }
+            )
+        };
         drop(work_results_sender);
 
         let request_context = RequestContext {
@@ -211,7 +214,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 cache.simulation_result = acc.simulation_result.clone();
             }
         }
-        assemble_result(acc, proving, pow_challenge, binary_key, profile)
+        let non_determinism_source = non_determinism_return
+            .recv()
+            .expect("simulation did not return its non-determinism source");
+        (
+            assemble_result(acc, proving, pow_challenge, binary_key, profile),
+            non_determinism_source,
+        )
     }
 
     /// Spawn the simulator worker plus `replay_worker_threads_count` replay
@@ -222,10 +231,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         &self,
         batch_id: u64,
         binary_holder: &BinaryHolder<B>,
-        non_determinism_source: Arc<Mutex<Option<ND>>>,
+        non_determinism_source: ND,
         work_results_sender: &Sender<WorkerResult<B::Allocator>>,
         abort: &Arc<AtomicBool>,
-    ) {
+    ) -> Receiver<ND> {
+        let (non_determinism_sender, non_determinism_receiver) = crossbeam_channel::bounded(1);
         let unified_circuit = binary_holder
             .execution_kind
             .unified_circuit()
@@ -253,7 +263,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 binary_holder.cycles_bound
             };
             let jit_cache = binary_holder.jit_cache.clone();
-            let non_determinism_source = non_determinism_source.clone();
             let work_results_sender = work_results_sender.clone();
             let abort = abort.clone();
             let worker = self.worker.clone();
@@ -284,6 +293,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         jit_cache,
                         &mut memory_holder,
                         non_determinism_source,
+                        non_determinism_sender,
                         free_trace_chunks_sender,
                         free_trace_chunks_receiver,
                         split_snapshot_sender,
@@ -305,6 +315,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                             jit_cache,
                             &mut memory_holder,
                             non_determinism_source,
+                            non_determinism_sender,
                             free_trace_chunks_sender,
                             free_trace_chunks_receiver,
                             unified_snapshot_sender,
@@ -363,48 +374,48 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             });
         }
         drop(free_trace_chunks_sender);
+        non_determinism_receiver
     }
 
-    pub(super) fn commit_memory_inner(
+    pub(super) fn commit_memory_inner<ND: NonDeterminismCSRSource + Send + 'static>(
         &self,
         cache: &mut Option<TraceCache<B::Allocator>>,
         batch_id: u64,
         handle: BinaryHandle,
-        non_determinism_source: Arc<Mutex<Option<impl NonDeterminismCSRSource + Send + 'static>>>,
+        non_determinism_source: ND,
         profile: ProofProfile,
-    ) -> CommitMemoryResult {
+    ) -> (CommitMemoryResult, ND) {
         let binary_key = handle.0;
         info!(
             "BATCH[{batch_id}] PROVER producing memory commitments for binary with key {binary_key:?}"
         );
         let timer = Instant::now();
-        let mut result = self
-            .get_result(
-                false,
-                cache,
-                batch_id,
-                binary_key,
-                non_determinism_source,
-                0,
-                None,
-                BTreeMap::new(),
-                profile,
-            )
-            .into_memory_commitment_result();
+        let (result, non_determinism_source) = self.get_result(
+            false,
+            cache,
+            batch_id,
+            binary_key,
+            non_determinism_source,
+            0,
+            None,
+            BTreeMap::new(),
+            profile,
+        );
+        let mut result = result.into_memory_commitment_result();
         result.binary_handle = handle;
         let elapsed = timer.elapsed().as_secs_f64();
         info!(
             "BATCH[{batch_id}] PROVER produced memory commitments for binary with key {binary_key:?} in {elapsed:.3}s"
         );
-        result
+        (result, non_determinism_source)
     }
 
-    pub(super) fn prove_inner(
+    pub(super) fn prove_inner<ND: NonDeterminismCSRSource + Send + 'static>(
         &self,
         cache: &mut Option<TraceCache<B::Allocator>>,
         batch_id: u64,
         binary_key: usize,
-        non_determinism_source: Arc<Mutex<Option<impl NonDeterminismCSRSource + Send + 'static>>>,
+        non_determinism_source: ND,
         pow_challenge: u64,
         external_challenges: GKRExternalChallenges<BF, E4>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
@@ -412,19 +423,18 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     ) -> ProveResult {
         info!("BATCH[{batch_id}] PROVER producing proofs for binary with key {binary_key:?}");
         let timer = Instant::now();
-        let result = self
-            .get_result(
-                true,
-                cache,
-                batch_id,
-                binary_key,
-                non_determinism_source,
-                pow_challenge,
-                Some(external_challenges),
-                proof_caps,
-                profile,
-            )
-            .into_proof_result();
+        let (result, _) = self.get_result(
+            true,
+            cache,
+            batch_id,
+            binary_key,
+            non_determinism_source,
+            pow_challenge,
+            Some(external_challenges),
+            proof_caps,
+            profile,
+        );
+        let result = result.into_proof_result();
         let elapsed = timer.elapsed().as_secs_f64();
         info!(
             "BATCH[{batch_id}] PROVER produced proofs for binary with key {binary_key:?} in {elapsed:.3}s"

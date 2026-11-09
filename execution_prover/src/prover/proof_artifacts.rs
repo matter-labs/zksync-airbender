@@ -160,7 +160,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             self.host_pool_allocation.is_none() && self.pending_setup_initializations.is_empty(),
             "setup must be finalized before proving or reading artifacts"
         );
-        let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
         self.commit_memory_inner(
             &mut None,
             batch_id,
@@ -168,6 +167,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             non_determinism_source,
             profile,
         )
+        .0
     }
 
     pub fn prove(
@@ -183,7 +183,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let binary_key = commit_ticket.binary_handle.0;
         let (pow_challenge, external_challenges, proof_caps) =
             self.derive_proof_artifacts(binary_key, &commit_ticket);
-        let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
         let mut cache = None;
         self.prove_inner(
             &mut cache,
@@ -210,23 +209,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         );
         let binary_key = handle.0;
         let nd_wrapper = NonDeterminismWrapper::new(non_determinism_source);
-        let non_determinism_source = Arc::new(Mutex::new(Some(nd_wrapper)));
         let mut cache = Some(TraceCache::new());
         let timer = Instant::now();
-        let memory_commitment = self.commit_memory_inner(
-            &mut cache,
-            batch_id,
-            *handle,
-            non_determinism_source.clone(),
-            profile,
-        );
-        let non_determinism_values = Arc::into_inner(non_determinism_source)
-            .expect("non_determinism_source Arc still has other strong refs after commit_memory")
-            .into_inner()
-            .expect("non_determinism_source Mutex was poisoned")
-            .expect("commit_memory consumed the non_determinism_source")
-            .into_replay_source();
-        let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_values)));
+        let (memory_commitment, nd_wrapper) =
+            self.commit_memory_inner(&mut cache, batch_id, *handle, nd_wrapper, profile);
+        let non_determinism_source = nd_wrapper.into_replay_source();
         let (pow_challenge, external_challenges, proof_caps) =
             self.derive_proof_artifacts(binary_key, &memory_commitment);
         let final_register_values = memory_commitment.final_register_values;

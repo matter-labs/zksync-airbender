@@ -104,16 +104,21 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             holder.execution_kind
         );
         let (sender, receiver) = unbounded();
-        self.spawn_simulation_workers(
+        let non_determinism_return = self.spawn_simulation_workers(
             batch_id,
             holder,
-            Arc::new(Mutex::new(Some(non_determinism))),
+            non_determinism,
             &sender,
             &Arc::new(AtomicBool::new(false)),
         );
         drop(sender);
         let trace =
             collect_l1_wrap_trace(holder.execution_kind.unified_circuit().unwrap(), receiver);
+        drop(
+            non_determinism_return
+                .recv()
+                .expect("wrap simulation did not return its non-determinism source"),
+        );
         self.prove_l1_wrap_trace(batch_id, holder, trace)
     }
 

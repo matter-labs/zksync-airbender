@@ -50,7 +50,8 @@ pub(crate) fn run_simulator<
     cycles_bound: Option<u32>,
     jit_cache: Arc<Mutex<TypeMap>>,
     memory_holder: &mut M,
-    non_determinism: Arc<Mutex<Option<ND>>>,
+    non_determinism_source: ND,
+    non_determinism_return: Sender<ND>,
     free_trace_chunks_sender: Sender<S>,
     free_trace_chunks_receiver: Receiver<S>,
     snapshots: Sender<Snapshot<T::Ranges, S>>,
@@ -65,10 +66,6 @@ pub(crate) fn run_simulator<
     assert_eq!(ram_config.ram_size(), memory_holder.ram_size());
 
     trace!("BATCH[{batch_id}] SIMULATOR started");
-    let mut non_determinism_guard = non_determinism
-        .lock()
-        .expect("simulation worker non-determinism mutex poisoned");
-    let non_determinism_source = non_determinism_guard.take().unwrap();
     let ram_words = memory_holder.memory().len();
     let carrier = if T::IS_SPLIT {
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns)
@@ -114,7 +111,9 @@ pub(crate) fn run_simulator<
         empty_it_streamer,
         ..
     } = runner;
-    *non_determinism_guard = Some(non_determinism_source);
+    non_determinism_return
+        .send(non_determinism_source)
+        .expect("simulation non-determinism return channel closed");
     let should_abort = abort.load(std::sync::atomic::Ordering::Relaxed);
     if !should_abort {
         assert!(!is_aborted);
