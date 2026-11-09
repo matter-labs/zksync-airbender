@@ -148,7 +148,7 @@ EXTERN __launch_bounds__(128) __global__
 }
 
 // Distinct physical cosets of the queries in first-occurrence order: touched[s] (s < count), count, and active[s] = s < count
-// (inactive slots get touched 0). One block of 1,024 threads, thread = query.
+// (inactive slots get touched 0). One warp, thread = query.
 EXTERN __launch_bounds__(1024) __global__
     void ab_keccak256_coset_query_plan_kernel(const u32 *queries, const u32 count, const u32 log_lde, u32 *touched, u32 *active, u32 *touched_count) {
   __shared__ u32 first[1u << 12];
