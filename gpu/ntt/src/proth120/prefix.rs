@@ -222,11 +222,6 @@ impl ChunkPlan {
     pub(crate) fn grid_y(&self, pass: &PrefixPass) -> u32 {
         (1u32 << (pass.y_bits(self.log_n) - self.strip_domain_bits)) * self.strip_blocks
     }
-
-    #[cfg(test)]
-    pub(crate) fn launches_per_column_group(&self) -> usize {
-        self.passes.len() * self.strips as usize
-    }
 }
 
 // Groups of prefix stages from {5, 6, 7, 8}: one pass when it fits, else two passes with the

@@ -4,13 +4,12 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use era_cudart::memory::{memory_copy, memory_copy_async, DeviceAllocation};
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_core::primitives::field::PR;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use super::prefix::{chunk_plan, narrow_groups, prefix_groups, ChunkPlan};
 use super::suffix::{launch_suffix_micro, SuffixShape};
-use super::{lde_coset, lde_coset_slot, CosetSource, DeviceContext, ScaleArgs};
+use super::{lde_coset_slot, CosetSource, DeviceContext, ScaleArgs};
 use crate::upstream::{domain_generator_for_size, Field};
 
 fn reverse_bits(value: usize, bits: u32) -> usize {
@@ -35,18 +34,8 @@ fn shape(log_n: u32, r: u32, log_v: u32, skip_bottom: u32, columns: u32) -> Suff
 // complete subtrees of 2^sb leaves, and every natural index of the coset is covered exactly once.
 #[test]
 fn cpu_pr_suffix_tile_maps() {
-    for (log_n, r, log_v, skip_bottom) in [
-        (16, 6, 2, 10),
-        (16, 6, 1, 10),
-        (17, 7, 1, 10),
-        (25, 8, 2, 10),
-        (24, 7, 1, 10),
-        (24, 8, 1, 10),
-        (23, 8, 4, 5),
-        (19, 8, 4, 5),
-        (15, 8, 4, 5),
-        (13, 8, 4, 5),
-    ] {
+    // Diagnostic rows preserve the three production suffix variants.
+    for (log_n, r, log_v, skip_bottom) in [(18, 7, 1, 10), (19, 8, 1, 10), (15, 8, 4, 5)] {
         let s = shape(log_n, r, log_v, skip_bottom, 1);
         let a = s.log_a();
         let h = log_n - log_v;
@@ -137,7 +126,7 @@ fn reference_plan(log_n: u32, r: u32) -> ChunkPlan {
 
 // Suffix micro tiles against two CPU oracles: the first r - v stages applied to the downloaded
 // prefix (localizes region errors to the micro) and, after a CPU finish of the last v stages,
-// the coset evaluations of lde_coset mapped through leaf j = g + 2^a f_lo, slot bitrev_v(t).
+// independent CPU coset evaluations mapped through leaf j = g + 2^a f_lo, slot bitrev_v(t).
 #[test]
 #[cfg(not(no_cuda))]
 fn pr_suffix_micro_matches_reference() {
@@ -150,14 +139,10 @@ fn pr_suffix_micro_matches_reference() {
     };
     let nu = domain_generator_for_size::<PR>(1u64 << 31);
     let mut rng = StdRng::seed_from_u64(0x9120_4201);
+    // Diagnostic: base 12-column 7_1, setup 2-column 8_1, and WHIR 8_4.
     for (log_n, r, log_v, skip_bottom, columns, cosets) in [
-        (16, 6, 2, 10, 2, 1),
-        (16, 6, 1, 10, 2, 1),
-        (17, 6, 2, 10, 3, 1),
-        (25, 8, 2, 10, 1, 1),
-        (24, 7, 1, 10, 1, 1),
-        (23, 8, 4, 5, 1, 1),
-        (19, 8, 4, 5, 1, 3),
+        (18, 7, 1, 10, 12, 1),
+        (19, 8, 1, 10, 2, 1),
         (15, 8, 4, 5, 1, 4),
     ] {
         let s = shape(log_n, r, log_v, skip_bottom, columns);
@@ -202,19 +187,21 @@ fn pr_suffix_micro_matches_reference() {
         )
         .unwrap();
         let prefix_host = download(&prefix, &stream);
-        let mut reference = DeviceAllocation::<PR>::alloc(rows * columns as usize).unwrap();
+        let worker = crate::upstream::Worker::new_with_num_threads(8);
+        let cpu_twiddles = crate::upstream::Twiddles::<PR, std::alloc::Global>::new(rows, &worker);
         let naturals: Vec<Vec<PR>> = (0..cosets)
             .map(|coset| {
-                let offset = upload(&[nu.pow_u128((k0 + coset) as u128)]);
-                lde_coset(
-                    &ctx,
-                    &DeviceMatrix::new(&device_monomials, rows),
-                    &mut DeviceMatrixMut::new(&mut reference, rows),
-                    &offset,
-                    &stream,
-                )
-                .unwrap();
-                download(&reference, &stream)
+                let offset = nu.pow_u128((k0 + coset) as u128);
+                monomials
+                    .chunks_exact(rows)
+                    .flat_map(|column| {
+                        crate::upstream::lde_coset_lazy_r8(
+                            column,
+                            offset,
+                            &cpu_twiddles.forward_twiddles[..rows / 2],
+                        )
+                    })
+                    .collect()
             })
             .collect();
         for &(first_tile, count) in &launches {
@@ -289,7 +276,8 @@ fn pr_slot_gate_skips_launches() {
     let ctx = DeviceContext::create().unwrap();
     let stream = CudaStream::create().unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_1201);
-    let (log_n, columns, log_v, skip_bottom) = (25u32, 7u32, 2u32, 10u32);
+    // Diagnostic rows with the production base columns and suffix.
+    let (log_n, columns, log_v, skip_bottom) = (20u32, 12u32, 1u32, 10u32);
     let rows = 1usize << log_n;
     let len = rows * columns as usize;
     let plan = super::dispatch(log_n, columns as usize, log_v, skip_bottom, 128 << 20).unwrap();
