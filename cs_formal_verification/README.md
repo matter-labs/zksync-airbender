@@ -124,6 +124,10 @@ Fix a module over budget by restructuring its proof (lean-strategies 2.1), never
 ./verify.sh
 ```
 
+CI runs the same `verify.sh` in an ubuntu:24.04 container (`.github/workflows/lean-formal-verification.yml`);
+[ci/README.md](ci/README.md) describes the job, its caches, its memory per thread count, and how to reproduce it
+locally in Docker.
+
 The audit lists theorem axiom dependencies. The checked claims use only standard
 Lean axioms; no `sorry` or project axioms are admitted. Importer tests check rejection paths; the import's
 correctness is the claims of the import guide, up to its trusted transcription step. Subsequent work is in [the plan](docs/FORMAL_VERIFICATION_PLAN.md).
