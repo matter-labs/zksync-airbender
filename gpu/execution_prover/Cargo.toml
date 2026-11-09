@@ -59,7 +59,6 @@ deterministic_pow = ["gpu_circuit_prover/deterministic_pow"]
 verifiers = ["full_statement_verifier/verifiers"]
 
 [dev-dependencies]
-verifier_evm = { path = "../../verifier_evm" }
 env_logger = "0.11"
 gpu_whir = { workspace = true }
 serde = { workspace = true }

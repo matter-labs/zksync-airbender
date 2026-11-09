@@ -20,7 +20,6 @@ use crate::backward::{
     GKR_DIM_REDUCING_POLY_CAPACITY, GKR_EQ_GROUP_TABLE_LEN,
 };
 use crate::proth120::backward::eq::{launch_eq_high_low_pr, resolve_active_eq_slot_pr};
-use crate::proth120::backward::scheduled_execution::{note_device, ResourceEventPr};
 use crate::proth120::backward::window::{WindowTailStatePr, PR_WINDOW_TAIL_TENSOR_CELLS};
 use crate::storage_layout::address_storage_layer;
 use crate::upstream::{GKRAddress, PR};
@@ -262,14 +261,7 @@ impl DrEqCellsPr {
             PR_DR_EQ_TABLE_SLOTS * GKR_EQ_GROUP_TABLE_LEN,
             AllocationPlacement::Top,
         )?;
-        note_device(
-            context,
-            "backward.dr",
-            None,
-            ResourceEventPr::Allocated,
-            "bwd.dr_window.eq_cells",
-            &cells,
-        );
+
         Ok(Self { cells })
     }
 
@@ -340,11 +332,6 @@ pub(crate) struct DrWindowContinuationPassPr {
 }
 
 impl DrWindowContinuationPassPr {
-    #[cfg(test)]
-    pub(crate) fn binding(&self) -> &DrWindowLaunchBindingPr {
-        &self.binding
-    }
-
     pub(crate) fn partial_rows(&self) -> usize {
         self.row_tiles * self.slot_count
     }
@@ -400,8 +387,6 @@ impl DrWindowContinuationPassPr {
 
 pub(crate) struct DrWindowLayerHookPr {
     folding_steps: usize,
-    #[cfg_attr(not(test), allow(dead_code))]
-    entry_round: usize,
     claim_point: *const PR,
     r0: Box<DrWindowLaunchBindingPr>,
     r0_row_tiles: usize,
@@ -591,14 +576,7 @@ impl DrWindowLayerHookPr {
             })
             .fold(dr_window_partials_len(folding_steps), usize::max);
         let mut partials = context.alloc(partials_len, AllocationPlacement::Top)?;
-        note_device(
-            context,
-            "backward.dr",
-            None,
-            ResourceEventPr::Allocated,
-            "bwd.dr_window.partials",
-            &partials,
-        );
+
         let partials_ptr = partials.as_mut_ptr();
 
         let r0_eq = DrEqCellsPr::allocate(context)?;
@@ -617,7 +595,6 @@ impl DrWindowLayerHookPr {
 
         let mut hook = Self {
             folding_steps,
-            entry_round,
             claim_point: claim_point_out,
             r0,
             r0_row_tiles,
@@ -733,21 +710,6 @@ impl DrWindowLayerHookPr {
 
     pub(crate) fn folding_steps(&self) -> usize {
         self.folding_steps
-    }
-
-    #[cfg(test)]
-    pub(crate) fn entry_round(&self) -> usize {
-        self.entry_round
-    }
-
-    #[cfg(test)]
-    pub(crate) fn r0_binding(&self) -> &DrWindowLaunchBindingPr {
-        &self.r0
-    }
-
-    #[cfg(test)]
-    pub(crate) fn r0_row_tiles(&self) -> usize {
-        self.r0_row_tiles
     }
 
     pub(crate) fn continuations(&self) -> &[DrWindowContinuationPassPr] {

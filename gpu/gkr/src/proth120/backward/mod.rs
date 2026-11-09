@@ -20,7 +20,4 @@ pub use banks::{max_coefficient_table_bytes, PreparedCoefficientTablesPr};
 pub use dr_tail::{prepare_dr_tail_resources_pr, DrTailProofPlanPr};
 pub use scheduled_execution::{schedule_backward_pr, GpuGKRBackwardScheduledExecutionPr};
 #[doc(hidden)]
-pub use scheduled_execution::{
-    GKRBackwardStageSnapshotPr, GKRBackwardStageSnapshotSinkPr, ResourceCountsPr, ResourceEventPr,
-    ResourceIdPr, ResourceRecordPr,
-};
+pub use scheduled_execution::{GKRBackwardStageSnapshotPr, GKRBackwardStageSnapshotSinkPr};

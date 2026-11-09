@@ -13,7 +13,9 @@ use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::nvtx::scoped_range;
-use gpu_gkr::proth120::backward::DrTailProofPlanPr;
+use gpu_gkr::proth120::backward::{
+    DrTailProofPlanPr, GKRBackwardStageSnapshotPr, GKRBackwardStageSnapshotSinkPr,
+};
 use gpu_gkr::proth120::inputs::Proth120GkrWitnessInputs;
 use gpu_gkr::proth120::packed_challenges::{self, PackedChallengeConfig, PackedChallenges};
 use gpu_gkr::proth120::programs::GkrProgramsPr;
@@ -45,6 +47,7 @@ pub struct GpuL1WrapProofJob<'a> {
     is_finished_event: CudaEvent,
     callbacks: Callbacks<'a>,
     result: Box<Option<L1WrapResult>>,
+    stage_snapshots: Option<Box<GKRBackwardStageSnapshotSinkPr>>,
     ranges: Vec<Range>,
     keepalive: GpuL1WrapProofJobKeepalive<'a>,
 }
@@ -81,6 +84,60 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     inputs: L1WrapInputs<'a, A>,
     dr_tail_plan: &DrTailProofPlanPr,
     partial_trees: PartialTreePolicy,
+    context: &ProverContext,
+) -> CudaResult<GpuL1WrapProofJob<'a>> {
+    prove_inner(
+        programs,
+        circuit,
+        geometry,
+        config,
+        operation_mode,
+        inputs,
+        dr_tail_plan,
+        partial_trees,
+        None,
+        context,
+    )
+}
+
+#[doc(hidden)]
+#[allow(clippy::too_many_arguments)]
+pub fn prove_stagewise<'a, A: GoodAllocator + 'a>(
+    programs: &Arc<GkrProgramsPr>,
+    circuit: &Arc<GKRCircuitArtifact<PR>>,
+    geometry: &L1WrapGeometry,
+    config: &ProverConfig,
+    operation_mode: OperationMode,
+    inputs: L1WrapInputs<'a, A>,
+    dr_tail_plan: &DrTailProofPlanPr,
+    partial_trees: PartialTreePolicy,
+    context: &ProverContext,
+) -> CudaResult<GpuL1WrapProofJob<'a>> {
+    prove_inner(
+        programs,
+        circuit,
+        geometry,
+        config,
+        operation_mode,
+        inputs,
+        dr_tail_plan,
+        partial_trees,
+        Some(Box::default()),
+        context,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prove_inner<'a, A: GoodAllocator + 'a>(
+    programs: &Arc<GkrProgramsPr>,
+    circuit: &Arc<GKRCircuitArtifact<PR>>,
+    geometry: &L1WrapGeometry,
+    config: &ProverConfig,
+    operation_mode: OperationMode,
+    inputs: L1WrapInputs<'a, A>,
+    dr_tail_plan: &DrTailProofPlanPr,
+    partial_trees: PartialTreePolicy,
+    mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSinkPr>>,
     context: &ProverContext,
 ) -> CudaResult<GpuL1WrapProofJob<'a>> {
     inputs.transfer.ensure_transferred(context)?;
@@ -280,7 +337,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         seed,
         &mut slab,
         dr_tail_plan,
-        None,
+        stage_snapshots.as_deref_mut().map(UnsafeMutAccessor::new),
         GkrPreparedInputsPr {
             coefficient_tables,
             base_claim_indices,
@@ -360,6 +417,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         is_finished_event,
         callbacks,
         result,
+        stage_snapshots,
         ranges: {
             phases.push(range);
             phases
@@ -378,10 +436,20 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
 
 impl GpuL1WrapProofJob<'_> {
     pub fn finish(self) -> CudaResult<L1WrapResult> {
+        self.finish_inner().map(|(result, _)| result)
+    }
+
+    #[doc(hidden)]
+    pub fn finish_stagewise(self) -> CudaResult<(L1WrapResult, Vec<GKRBackwardStageSnapshotPr>)> {
+        self.finish_inner()
+    }
+
+    fn finish_inner(self) -> CudaResult<(L1WrapResult, Vec<GKRBackwardStageSnapshotPr>)> {
         let Self {
             is_finished_event,
             callbacks,
             mut result,
+            stage_snapshots,
             ranges,
             keepalive,
         } = self;
@@ -395,7 +463,10 @@ impl GpuL1WrapProofJob<'_> {
         drop(ranges);
         drop(callbacks);
         drop(keepalive);
-        Ok(result)
+        let snapshots = stage_snapshots
+            .map(|sink| sink.into_snapshots())
+            .unwrap_or_default();
+        Ok((result, snapshots))
     }
 }
 

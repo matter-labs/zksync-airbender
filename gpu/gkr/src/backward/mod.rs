@@ -25,6 +25,7 @@ pub use kernels::{
     GpuGKRBackwardScheduledExecution, GpuGKRDimensionReducingBackwardState, GKR_EQ_GROUP_TABLE_LEN,
     GKR_EQ_HIGH_SLOTS,
 };
+pub(crate) use stage_snapshots::schedule_stage_snapshot_fields;
 #[doc(hidden)]
 pub use stage_snapshots::{GKRBackwardStageSnapshot, GKRBackwardStageSnapshotSink};
 #[cfg(test)]
