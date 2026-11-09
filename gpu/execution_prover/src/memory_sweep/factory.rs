@@ -164,9 +164,10 @@ fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<Tr
         ))))
     }
     match circuit {
-        CircuitType::L1Wrap21 | CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
-            unreachable!("L1 circuits are not enumerated by the all-circuit sweep")
-        }
+        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it is L1Feeder-only, its policy is presets::l1_feeder"),
+            CircuitType::L1Wrap21 => panic!(
+            "L1Wrap is not enumerated by the all-circuit sweep; its policy is presets::l1_wrap"
+        ),
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => Ok(None),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => delegation(
             DelegationCircuitType::BigIntWithControl,
@@ -292,9 +293,10 @@ impl SyntheticInputFactory {
     /// the per-binary builder over the zero image; Blake2G retained for proof-matrix coverage.
     fn precomputations(&self, circuit: CircuitType) -> CircuitPrecomputations {
         match circuit {
-            CircuitType::L1Wrap21 | CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
-                unreachable!("L1 circuits are not enumerated by the all-circuit sweep")
-            }
+            CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it is L1Feeder-only, its policy is presets::l1_feeder"),
+            CircuitType::L1Wrap21 => panic!(
+            "L1Wrap is not enumerated by the all-circuit sweep; its policy is presets::l1_wrap"
+        ),
             CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => {
                 let setup = execution_prover::setup::build_delegation_setup(
                     DelegationCircuitType::Blake2GFunction,

@@ -310,7 +310,7 @@ fn policy_expression(policy: MemoryPolicy) -> String {
 pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
     match circuit {
         CircuitType::L1Wrap21 => panic!("L1Wrap is not enumerated by the all-circuit sweep; its policy is presets::l1_wrap"),
-        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; its policy is presets::l1_feeder"),
+        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it is L1Feeder-only, its policy is presets::l1_feeder"),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
             "delegation_big_int_with_control"
         }
@@ -358,7 +358,7 @@ pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
 fn circuit_pattern(circuit: CircuitType) -> &'static str {
     match circuit {
         CircuitType::L1Wrap21 => panic!("L1Wrap is not enumerated by the all-circuit sweep; its policy is presets::l1_wrap"),
-        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; its policy is presets::l1_feeder"),
+        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it is L1Feeder-only, its policy is presets::l1_feeder"),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
             "CircuitType::Delegation(DelegationCircuitType::BigIntWithControl)"
         }
