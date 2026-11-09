@@ -8,6 +8,7 @@ use crate::upstream::{ColumnMajorMerkleTreeConstructor, Keccak256MerkleTreeWithC
 
 mod gather_tests;
 mod merkle_tests;
+#[cfg(feature = "deterministic_pow")]
 mod pow_tests;
 mod query_plan_tests;
 mod transcript_tests;
