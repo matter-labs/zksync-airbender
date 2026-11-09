@@ -21037,6 +21037,76 @@
       "backport_reuse_revision": "38cb747f0d9cb0a856c2d1ace0dd306f6342ee7e",
       "backport_reuse_path": "Tests/NativeInactiveGlobal.lean",
       "backport_reuse_sha256": "6f977fd7eeb008d783f31b398ea084f46a0d287b7c2ed6b6057760aba3fc5e3d"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/WorkerPointers.lean",
+      "change": "Derive ACTUAL x10/x11 raw pointer-code separation from OLD ALL43 worker address injectivity (ports1/26), nonzero pointer and exact value-changing third MAIN write origins from OLD complete initialized paths/zero seeds and literal readonly worker GPR10/11 refreshes/RAM space separation. Generic last-change path proof BEFORE data. Every nonzero pointer has SAME raw address/encoded value/residual path; some actual MAINexecute1 derives for EVERY active worker. No expected pointer/read/value/bound/seed/history/activity/count/schedule/ledger premise/new Accepted/boundary. Inactive requests/AUX/poles/raw times/aliases remain. NO full positive worker/source/physical/caller-issuance/Sail/native-defect/parity claim; no nativepin/adoption/production/artifact/dependency/heavy replay/v3refresh.",
+      "backport_reuse_revision": "533950d26275167089dcb3bb13ae7fbc7265c5b5",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/WorkerSnapshot.lean",
+      "backport_reuse_sha256": "083323ffd1c956e5e110b745b37383e69a71f871e122a69a41b4d54ee06d8fba"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/WorkerPointers.lean",
+      "change": "Derive ACTUAL x10/x11 raw pointer-code separation from OLD ALL43 worker address injectivity (ports1/26), nonzero pointer and exact value-changing third MAIN write origins from OLD complete initialized paths/zero seeds and literal readonly worker GPR10/11 refreshes/RAM space separation. Generic last-change path proof BEFORE data. Every nonzero pointer has SAME raw address/encoded value/residual path; some actual MAINexecute1 derives for EVERY active worker. No expected pointer/read/value/bound/seed/history/activity/count/schedule/ledger premise/new Accepted/boundary. Inactive requests/AUX/poles/raw times/aliases remain. NO full positive worker/source/physical/caller-issuance/Sail/native-defect/parity claim; no nativepin/adoption/production/artifact/dependency/heavy replay/v3refresh.",
+      "backport_reuse_revision": "533950d26275167089dcb3bb13ae7fbc7265c5b5",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/MemoryRoots.lean",
+      "backport_reuse_sha256": "d3406be7d04282c55a9ee1c8e93ef1e5d8f18e774f86319258d953ef8b6ee71a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeWorkerPointers.lean",
+      "change": "Derive ACTUAL x10/x11 raw pointer-code separation from OLD ALL43 worker address injectivity (ports1/26), nonzero pointer and exact value-changing third MAIN write origins from OLD complete initialized paths/zero seeds and literal readonly worker GPR10/11 refreshes/RAM space separation. Generic last-change path proof BEFORE data. Every nonzero pointer has SAME raw address/encoded value/residual path; some actual MAINexecute1 derives for EVERY active worker. No expected pointer/read/value/bound/seed/history/activity/count/schedule/ledger premise/new Accepted/boundary. Inactive requests/AUX/poles/raw times/aliases remain. NO full positive worker/source/physical/caller-issuance/Sail/native-defect/parity claim; no nativepin/adoption/production/artifact/dependency/heavy replay/v3refresh.",
+      "backport_reuse_revision": "533950d26275167089dcb3bb13ae7fbc7265c5b5",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeMemoryWriteUniqueness.lean",
+      "backport_reuse_sha256": "279ccf0387cfd65830b2ca5ea701cf7cc917c59197e35f07d9ba2a889213753b"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeWorkerPointers.lean",
+      "change": "Derive ACTUAL x10/x11 raw pointer-code separation from OLD ALL43 worker address injectivity (ports1/26), nonzero pointer and exact value-changing third MAIN write origins from OLD complete initialized paths/zero seeds and literal readonly worker GPR10/11 refreshes/RAM space separation. Generic last-change path proof BEFORE data. Every nonzero pointer has SAME raw address/encoded value/residual path; some actual MAINexecute1 derives for EVERY active worker. No expected pointer/read/value/bound/seed/history/activity/count/schedule/ledger premise/new Accepted/boundary. Inactive requests/AUX/poles/raw times/aliases remain. NO full positive worker/source/physical/caller-issuance/Sail/native-defect/parity claim; no nativepin/adoption/production/artifact/dependency/heavy replay/v3refresh.",
+      "backport_reuse_revision": "533950d26275167089dcb3bb13ae7fbc7265c5b5",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeAddressSupport.lean",
+      "backport_reuse_sha256": "a1350de3d643a5d615fe608be2589c4e6d69d209477cfeecf0ac8a62a457ced0"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeWorkerPointers.lean",
+      "change": "Derive ACTUAL x10/x11 raw pointer-code separation from OLD ALL43 worker address injectivity (ports1/26), nonzero pointer and exact value-changing third MAIN write origins from OLD complete initialized paths/zero seeds and literal readonly worker GPR10/11 refreshes/RAM space separation. Generic last-change path proof BEFORE data. Every nonzero pointer has SAME raw address/encoded value/residual path; some actual MAINexecute1 derives for EVERY active worker. No expected pointer/read/value/bound/seed/history/activity/count/schedule/ledger premise/new Accepted/boundary. Inactive requests/AUX/poles/raw times/aliases remain. NO full positive worker/source/physical/caller-issuance/Sail/native-defect/parity claim; no nativepin/adoption/production/artifact/dependency/heavy replay/v3refresh.",
+      "backport_reuse_revision": "533950d26275167089dcb3bb13ae7fbc7265c5b5",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeInitializationSeedBoundary.lean",
+      "backport_reuse_sha256": "79a870ec4d3c45a4f3bcc4095997201b5166c1c0b9881c0d49a5fd59718010d5"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeWorkerPointers.lean",
+      "change": "Derive ACTUAL x10/x11 raw pointer-code separation from OLD ALL43 worker address injectivity (ports1/26), nonzero pointer and exact value-changing third MAIN write origins from OLD complete initialized paths/zero seeds and literal readonly worker GPR10/11 refreshes/RAM space separation. Generic last-change path proof BEFORE data. Every nonzero pointer has SAME raw address/encoded value/residual path; some actual MAINexecute1 derives for EVERY active worker. No expected pointer/read/value/bound/seed/history/activity/count/schedule/ledger premise/new Accepted/boundary. Inactive requests/AUX/poles/raw times/aliases remain. NO full positive worker/source/physical/caller-issuance/Sail/native-defect/parity claim; no nativepin/adoption/production/artifact/dependency/heavy replay/v3refresh.",
+      "backport_reuse_revision": "533950d26275167089dcb3bb13ae7fbc7265c5b5",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeMainStateHistory.lean",
+      "backport_reuse_sha256": "50bf9a0486790266e5f01c87aa60bc8ce1f1884b37f626bb270bd8df22f7d3dd"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeWorkerPointers.lean",
+      "change": "Derive ACTUAL x10/x11 raw pointer-code separation from OLD ALL43 worker address injectivity (ports1/26), nonzero pointer and exact value-changing third MAIN write origins from OLD complete initialized paths/zero seeds and literal readonly worker GPR10/11 refreshes/RAM space separation. Generic last-change path proof BEFORE data. Every nonzero pointer has SAME raw address/encoded value/residual path; some actual MAINexecute1 derives for EVERY active worker. No expected pointer/read/value/bound/seed/history/activity/count/schedule/ledger premise/new Accepted/boundary. Inactive requests/AUX/poles/raw times/aliases remain. NO full positive worker/source/physical/caller-issuance/Sail/native-defect/parity claim; no nativepin/adoption/production/artifact/dependency/heavy replay/v3refresh.",
+      "backport_reuse_revision": "533950d26275167089dcb3bb13ae7fbc7265c5b5",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeWorkerSnapshot.lean",
+      "backport_reuse_sha256": "d83976fc8264ded10218710f29dc9ff88c4d019635ffcebdc11534529aacf291"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/WorkerPointersTheorems.lean",
+      "change": "Derive ACTUAL x10/x11 raw pointer-code separation from OLD ALL43 worker address injectivity (ports1/26), nonzero pointer and exact value-changing third MAIN write origins from OLD complete initialized paths/zero seeds and literal readonly worker GPR10/11 refreshes/RAM space separation. Generic last-change path proof BEFORE data. Every nonzero pointer has SAME raw address/encoded value/residual path; some actual MAINexecute1 derives for EVERY active worker. No expected pointer/read/value/bound/seed/history/activity/count/schedule/ledger premise/new Accepted/boundary. Inactive requests/AUX/poles/raw times/aliases remain. NO full positive worker/source/physical/caller-issuance/Sail/native-defect/parity claim; no nativepin/adoption/production/artifact/dependency/heavy replay/v3refresh.",
+      "backport_reuse_revision": "533950d26275167089dcb3bb13ae7fbc7265c5b5",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/WorkerSeedTheorems.lean",
+      "backport_reuse_sha256": "af8014b2fa41384378f27abaf280b87fe0fa1c30f030b9e87e3dedb3cea0dea1"
+    },
+    {
+      "path": "Tests/NativeWorkerPointers.lean",
+      "change": "Derive ACTUAL x10/x11 raw pointer-code separation from OLD ALL43 worker address injectivity (ports1/26), nonzero pointer and exact value-changing third MAIN write origins from OLD complete initialized paths/zero seeds and literal readonly worker GPR10/11 refreshes/RAM space separation. Generic last-change path proof BEFORE data. Every nonzero pointer has SAME raw address/encoded value/residual path; some actual MAINexecute1 derives for EVERY active worker. No expected pointer/read/value/bound/seed/history/activity/count/schedule/ledger premise/new Accepted/boundary. Inactive requests/AUX/poles/raw times/aliases remain. NO full positive worker/source/physical/caller-issuance/Sail/native-defect/parity claim; no nativepin/adoption/production/artifact/dependency/heavy replay/v3refresh.",
+      "backport_reuse_revision": "533950d26275167089dcb3bb13ae7fbc7265c5b5",
+      "backport_reuse_path": "Tests/NativeWorkerSeed.lean",
+      "backport_reuse_sha256": "fb410e20e1bd379630d2c4dc3153efbec7c4b64eab94a01cf70ac9246a699be4"
+    },
+    {
+      "path": "Tests/NativeWorkerPointers.lean",
+      "change": "Derive ACTUAL x10/x11 raw pointer-code separation from OLD ALL43 worker address injectivity (ports1/26), nonzero pointer and exact value-changing third MAIN write origins from OLD complete initialized paths/zero seeds and literal readonly worker GPR10/11 refreshes/RAM space separation. Generic last-change path proof BEFORE data. Every nonzero pointer has SAME raw address/encoded value/residual path; some actual MAINexecute1 derives for EVERY active worker. No expected pointer/read/value/bound/seed/history/activity/count/schedule/ledger premise/new Accepted/boundary. Inactive requests/AUX/poles/raw times/aliases remain. NO full positive worker/source/physical/caller-issuance/Sail/native-defect/parity claim; no nativepin/adoption/production/artifact/dependency/heavy replay/v3refresh.",
+      "backport_reuse_revision": "533950d26275167089dcb3bb13ae7fbc7265c5b5",
+      "backport_reuse_path": "Tests/NativeWorkerSnapshot.lean",
+      "backport_reuse_sha256": "dda9de41d1f779f6e25b853bf27bf059c7fe34c0d2be66f1b9bf9136f5128417"
     }
   ],
   "setup_artifacts": [

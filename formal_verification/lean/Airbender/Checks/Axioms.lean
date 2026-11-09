@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerPointers
+import Airbender.Proofs.ReducedMachine.NativeWorkerPointers
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerPointersTheorems
+import Tests.NativeWorkerPointers
+
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerSeed
 import Airbender.Proofs.ReducedMachine.NativeWorkerSeed
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerSeedTheorems
@@ -9034,3 +9039,37 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerSeed.four_decoder_observations_retained
 #print axioms Airbender.Tests.NativeWorkerSeed.complete_copy_weight
 #print axioms Airbender.Tests.NativeWorkerSeed.complete_copy_padding
+
+#print axioms Airbender.NativeWorkerPointersProofs.last_change
+#print axioms Airbender.NativeWorkerPointersProofs.geometry
+#print axioms Airbender.NativeWorkerPointersProofs.direct_slots
+#print axioms Airbender.NativeWorkerPointersProofs.pointer_codes
+#print axioms Airbender.NativeWorkerPointersProofs.readonly_pointer
+#print axioms Airbender.NativeWorkerPointersProofs.ram_space
+#print axioms Airbender.NativeWorkerPointersProofs.worker_preserves
+#print axioms Airbender.NativeWorkerPointersProofs.pointer_distinct
+#print axioms Airbender.NativeWorkerPointersProofs.changed_main_port
+#print axioms Airbender.NativeWorkerPointersProofs.seed_zero
+#print axioms Airbender.NativeWorkerPointersProofs.main_active
+#print axioms Airbender.NativeWorkerPointersProofs.pointer_target
+#print axioms Airbender.NativeWorkerPointersProofs.origin
+#print axioms Airbender.NativeWorkerPointersProofs.effects
+#print axioms Airbender.NativeWorkerPointers.native_worker_pointer_origins
+#print axioms Airbender.Tests.NativeWorkerPointers.two_actual_ports
+#print axioms Airbender.Tests.NativeWorkerPointers.pointer_gpr_reads
+#print axioms Airbender.Tests.NativeWorkerPointers.actual_control_port
+#print axioms Airbender.Tests.NativeWorkerPointers.state_ram_uses_actual_read
+#print axioms Airbender.Tests.NativeWorkerPointers.message_ram_uses_actual_read
+#print axioms Airbender.Tests.NativeWorkerPointers.both_readonly_refreshes
+#print axioms Airbender.Tests.NativeWorkerPointers.all43_register_classification
+#print axioms Airbender.Tests.NativeWorkerPointers.indirect_spaces
+#print axioms Airbender.Tests.NativeWorkerPointers.equal_pointers_alias
+#print axioms Airbender.Tests.NativeWorkerPointers.nonzero_message_read
+#print axioms Airbender.Tests.NativeWorkerPointers.zero_state_pointer_allowed_as_reference
+#print axioms Airbender.Tests.NativeWorkerPointers.different_pointer_codes
+#print axioms Airbender.Tests.NativeWorkerPointers.unequal_bases_can_still_overlap
+#print axioms Airbender.Tests.NativeWorkerPointers.finite_path
+#print axioms Airbender.Tests.NativeWorkerPointers.exact_last_changed_value
+#print axioms Airbender.Tests.NativeWorkerPointers.unchanged_suffix_retained
+#print axioms Airbender.Tests.NativeWorkerPointers.actual_main_port
+#print axioms Airbender.Tests.NativeWorkerPointers.complete_active_main_origin

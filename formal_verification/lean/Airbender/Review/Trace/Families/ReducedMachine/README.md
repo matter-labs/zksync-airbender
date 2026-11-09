@@ -1240,3 +1240,12 @@ sparse MAIN/caller candidate cannot extend to logical SourceAccepted plus OLD
 SourceIdentity, for any native-allowed count/workers/surrounding observations.
 All old components and raw fields remain; physical caller activity, nonempty global
 acceptance and parity remain open. No expected seed/activity/count/ledger premise.
+
+## Actual worker pointer origins
+
+[Derived pointer separation and MAIN writes](WorkerPointersTheorems.lean) retain all raw ports and
+initialized paths. Every active worker needs distinct state/message pointer codes;
+each nonzero pointer has an exact value-changing third MAIN write origin, and
+at least one such write exists. Unequal bases alone do not establish all43-port
+separation. No expected pointer/history/activity/ledger premise or issued CSR,
+physical enforcement, global-positive witness or parity claim.

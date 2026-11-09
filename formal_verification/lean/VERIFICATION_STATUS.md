@@ -1,5 +1,38 @@
 # Verification status
 
+## Actual worker pointer separation and MAIN origins
+
+[The pointer-origin root](Airbender/Review/Trace/Families/ReducedMachine/WorkerPointersTheorems.lean)
+derives concrete ABI obligations from complete InitializationBatch acceptance and
+OLD SourceIdentity, without public decoder image/log20/LogicalLookups premises.
+The actual x10/x11 readonly GPR ports0/25 supply the state/message pointer codes.
+Equal codes would alias actual RAM ports1/26, contradicting the OLD derived full
+worker-address injectivity. Thus the codes differ and at least one is nonzero.
+This is a necessary condition; unequal bases alone do not establish all43-port
+separation. A finite reference with message base4 still aliases state offset4.
+
+Generic last-change provenance is proved before native sampling. The OLD complete
+initialized seed encoding derives zero initial values. Every worker preserves
+GPR10/11 values: its only direct ports are readonly x10/x11 and writable x12;
+all other ports retain the distinct RAM space. Each nonzero pointer therefore
+has an ACTUAL value-changing third MAIN write as origin, with execute1, the SAME
+encoded value/address and an exact residual accepted memory path to the pointer
+read. At least one such MAIN write exists for EVERY active worker. No expected
+pointer/read/value/bound/seed/history/activity/count/schedule/ledger is supplied.
+All original tokens, BOTH raw time fields, aliases, readonly refreshes, inactive
+worker/caller rows and poles remain. No new Accepted or crypto boundary is added.
+
+All18 controls pass, including actual ABI coordinates, readonly refreshes, alias
+references and a finite unchanged suffix retaining exact last-change provenance.
+Reference assignments have NO worker Accepted claim. This is logical initialized
+pointer provenance, not a full NONEMPTY source/worker witness, same-caller execute1,
+fetched CSR/issued call, original CSR/NDstream/worker Sail or physical enforcement.
+The prior RAM-seed necessity and both excluded candidates remain. Next construct
+and check actual MAIN pointer writes plus nonpadding RAM initialization for a
+compatible full worker/source candidate. Reuse full address/history foundations;
+physical extraction/domain/FFT/crypto/completeness and parity remain open.
+
+
 ## Active worker seed requirement and sparse-source rejection
 
 [The seed and sparse-source roots](Airbender/Review/Trace/Families/ReducedMachine/WorkerSeedTheorems.lean)
