@@ -1,39 +1,23 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_unsafe,
-    unused_assignments,
-    clippy::needless_range_loop,
-    clippy::too_many_arguments,
-    clippy::manual_div_ceil,
-    clippy::borrow_deref_ref,
-    clippy::identity_op,
-    clippy::missing_safety_doc,
-    clippy::duplicate_mod,
-    clippy::large_const_arrays
-)]
 use super::common::{
-    dot_eq, draw_field_els_into, draw_field_els_into_after_pow, draw_field_els_into_uninit,
-    draw_fresh_field_els_into, draw_single_field_el, draw_single_field_el_after_pow, ext_from_nds,
-    ext_from_raw_words, fold_standard_claims, make_eq_poly, read_field_el, read_reduced_field_el,
+    dot_eq, draw_field_els_into_after_pow, draw_field_els_into_uninit, draw_single_field_el,
+    draw_single_field_el_after_pow, fold_standard_claims, make_eq_poly, read_reduced_field_el,
     verify_final_step_check, verify_sumcheck_rounds, EXT_DEGREE,
 };
 use super::constants::*;
-use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
-use verifier_common::field::{Field, FieldExtension, PrimeField};
+use verifier_common::field::FieldExtension;
+use verifier_common::field::{Field, PrimeField};
 use verifier_common::field_ops;
 use verifier_common::gkr::SimpleGateType;
 use verifier_common::gkr::{GKRVerifierOutput, LayerState};
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
-use verifier_common::structs::{CommitBuf, TranscriptState};
+use verifier_common::structs::CommitBuf;
 use verifier_common::whir::read_and_verify_pow;
 use verifier_common::GKRExternalChallenges;
 #[inline(always)]
-#[allow(unused_variables)]
 unsafe fn layer_0_compute_claim(
     output_claims: &[BabyBearExt4; 53usize],
     batch_base: BabyBearExt4,
@@ -75,16 +59,17 @@ unsafe fn layer_0_compute_claim(
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
 #[inline(always)]
-#[allow(unused_variables, unused_mut, unused_unsafe)]
+#[allow(unused_mut)]
+#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 unsafe fn layer_0_final_step_accumulator(
     evals: &[[BabyBearExt4; 1]],
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
-    lookup_alpha: BabyBearExt4,
-    linearization_challenges: &[BabyBearExt4],
-    permutation_argument_additive_part: BabyBearExt4,
-    address_high_bits_shift: u32,
-    inits_and_teardowns_top_bits: &[u32],
+    _lookup_alpha: BabyBearExt4,
+    _linearization_challenges: &[BabyBearExt4],
+    _permutation_argument_additive_part: BabyBearExt4,
+    _address_high_bits_shift: u32,
+    _inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     {
@@ -1153,7 +1138,6 @@ unsafe fn layer_0_final_step_accumulator(
     acc
 }
 #[inline(always)]
-#[allow(unused_variables)]
 unsafe fn layer_1_compute_claim(
     output_claims: &[BabyBearExt4; 29usize],
     batch_base: BabyBearExt4,
@@ -1182,16 +1166,17 @@ unsafe fn layer_1_compute_claim(
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
 #[inline(always)]
-#[allow(unused_variables, unused_mut, unused_unsafe)]
+#[allow(unused_mut)]
+#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 unsafe fn layer_1_final_step_accumulator(
     evals: &[[BabyBearExt4; 1]],
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
-    lookup_alpha: BabyBearExt4,
-    linearization_challenges: &[BabyBearExt4],
-    permutation_argument_additive_part: BabyBearExt4,
-    address_high_bits_shift: u32,
-    inits_and_teardowns_top_bits: &[u32],
+    _lookup_alpha: BabyBearExt4,
+    _linearization_challenges: &[BabyBearExt4],
+    _permutation_argument_additive_part: BabyBearExt4,
+    _address_high_bits_shift: u32,
+    _inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     {
@@ -1436,7 +1421,6 @@ unsafe fn layer_1_final_step_accumulator(
     acc
 }
 #[inline(always)]
-#[allow(unused_variables)]
 unsafe fn layer_2_compute_claim(
     output_claims: &[BabyBearExt4; 17usize],
     batch_base: BabyBearExt4,
@@ -1458,16 +1442,17 @@ unsafe fn layer_2_compute_claim(
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
 #[inline(always)]
-#[allow(unused_variables, unused_mut, unused_unsafe)]
+#[allow(unused_mut)]
+#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 unsafe fn layer_2_final_step_accumulator(
     evals: &[[BabyBearExt4; 1]],
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
-    lookup_alpha: BabyBearExt4,
-    linearization_challenges: &[BabyBearExt4],
-    permutation_argument_additive_part: BabyBearExt4,
-    address_high_bits_shift: u32,
-    inits_and_teardowns_top_bits: &[u32],
+    _lookup_alpha: BabyBearExt4,
+    _linearization_challenges: &[BabyBearExt4],
+    _permutation_argument_additive_part: BabyBearExt4,
+    _address_high_bits_shift: u32,
+    _inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     {
@@ -1690,7 +1675,6 @@ unsafe fn layer_2_final_step_accumulator(
     acc
 }
 #[inline(always)]
-#[allow(unused_variables)]
 unsafe fn layer_3_compute_claim(
     output_claims: &[BabyBearExt4; 11usize],
     batch_base: BabyBearExt4,
@@ -1709,16 +1693,17 @@ unsafe fn layer_3_compute_claim(
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
 #[inline(always)]
-#[allow(unused_variables, unused_mut, unused_unsafe)]
+#[allow(unused_mut)]
+#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 unsafe fn layer_3_final_step_accumulator(
     evals: &[[BabyBearExt4; 1]],
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
-    lookup_alpha: BabyBearExt4,
-    linearization_challenges: &[BabyBearExt4],
-    permutation_argument_additive_part: BabyBearExt4,
-    address_high_bits_shift: u32,
-    inits_and_teardowns_top_bits: &[u32],
+    _lookup_alpha: BabyBearExt4,
+    _linearization_challenges: &[BabyBearExt4],
+    _permutation_argument_additive_part: BabyBearExt4,
+    _address_high_bits_shift: u32,
+    _inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     {
@@ -1929,7 +1914,6 @@ unsafe fn layer_3_final_step_accumulator(
     acc
 }
 #[inline(always)]
-#[allow(unused_variables)]
 unsafe fn layer_4_compute_claim(
     output_claims: &[BabyBearExt4; 6usize],
     batch_base: BabyBearExt4,
@@ -1943,16 +1927,17 @@ unsafe fn layer_4_compute_claim(
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
 #[inline(always)]
-#[allow(unused_variables, unused_mut, unused_unsafe)]
+#[allow(unused_mut)]
+#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 unsafe fn layer_4_final_step_accumulator(
     evals: &[[BabyBearExt4; 1]],
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
-    lookup_alpha: BabyBearExt4,
-    linearization_challenges: &[BabyBearExt4],
-    permutation_argument_additive_part: BabyBearExt4,
-    address_high_bits_shift: u32,
-    inits_and_teardowns_top_bits: &[u32],
+    _lookup_alpha: BabyBearExt4,
+    _linearization_challenges: &[BabyBearExt4],
+    _permutation_argument_additive_part: BabyBearExt4,
+    _address_high_bits_shift: u32,
+    _inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     {
@@ -2164,7 +2149,6 @@ unsafe fn layer_4_final_step_accumulator(
     acc
 }
 #[inline(always)]
-#[allow(unused_unsafe)]
 unsafe fn dim_reducing_compute_claim(
     output_claims: &[BabyBearExt4; 6usize],
     batch_base: BabyBearExt4,
@@ -2198,13 +2182,12 @@ unsafe fn dim_reducing_compute_claim(
     combined
 }
 #[inline(always)]
-#[allow(unused_unsafe)]
 unsafe fn dim_reducing_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
     indices: &[usize],
 ) -> BabyBearExt4 {
-    let mut acc = BabyBearExt4::ZERO;
+    let mut acc: BabyBearExt4;
     {
         let si0 = unsafe { *indices.get_unchecked(4usize) };
         let si1 = unsafe { *indices.get_unchecked(5usize) };
@@ -2306,7 +2289,7 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
         while k < 22usize {
             let mut t: BabyBearExt4 = BabyBearExt4::ONE;
             let p = pt.get_unchecked(k);
-            field_ops::sub_assign(&mut t, &*p);
+            field_ops::sub_assign(&mut t, p);
             field_ops::mul_assign(&mut result, &t);
             k += 1;
         }
@@ -2316,12 +2299,14 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
     }
     Ok(())
 }
-#[allow(unused_variables, unused_mut, unused_unsafe)]
+#[allow(unused_unsafe)]
 pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     initial_transcript: &ConcreteInitialTranscript,
     ts: &mut ::verifier_common::structs::TranscriptState,
     nd_source: &mut I,
+    claim_point: &mut LazyVec<BabyBearExt4, CLAIM_POINT_CAPACITY>,
+    base_layer_claims: &mut LazyVec<BabyBearExt4, GKR_ADDRS>,
 ) -> Result<ConcreteGKRVerifierOutput, E::Error> {
     unsafe {
         let mut init_challenges = [BabyBearExt4::ZERO; 2];
@@ -2355,7 +2340,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             .try_into()
             .unwrap_unchecked();
         make_eq_poly(eq_challenges, &mut eq_buf);
-        let mut prev_claims: LazyVec<BabyBearExt4, GKR_ADDRS> = LazyVec::new();
+        let prev_claims = base_layer_claims;
+        prev_claims.clear();
         {
             let vals: &[BabyBearExt4; 16usize] =
                 evals_slice[0usize..16usize].try_into().unwrap_unchecked();
@@ -2398,7 +2384,8 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             let claim = dot_eq(vals, eq_arr);
             prev_claims.push(claim);
         }
-        let mut prev_point = LazyVec::<BabyBearExt4, CLAIM_POINT_CAPACITY>::new();
+        let prev_point = claim_point;
+        prev_point.clear();
         for i in 0..4usize {
             prev_point.push(*all_challenges.get(i));
         }
@@ -3673,10 +3660,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<11usize, GKR_ADDRS, GKR_EVAL_BUF>(
-                &eval_buf,
-                &mut state.prev_claims,
-            );
+            fold_standard_claims::<11usize, GKR_ADDRS, GKR_EVAL_BUF>(&eval_buf, state.prev_claims);
             state.batching_challenge = next_batching;
             debug_assert_eq!(state.prev_point.len(), fc_len);
             #[cfg(feature = "verifier_stats")]
@@ -3721,10 +3705,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<17usize, GKR_ADDRS, GKR_EVAL_BUF>(
-                &eval_buf,
-                &mut state.prev_claims,
-            );
+            fold_standard_claims::<17usize, GKR_ADDRS, GKR_EVAL_BUF>(&eval_buf, state.prev_claims);
             state.batching_challenge = next_batching;
             debug_assert_eq!(state.prev_point.len(), fc_len);
             #[cfg(feature = "verifier_stats")]
@@ -3769,10 +3750,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<29usize, GKR_ADDRS, GKR_EVAL_BUF>(
-                &eval_buf,
-                &mut state.prev_claims,
-            );
+            fold_standard_claims::<29usize, GKR_ADDRS, GKR_EVAL_BUF>(&eval_buf, state.prev_claims);
             state.batching_challenge = next_batching;
             debug_assert_eq!(state.prev_point.len(), fc_len);
             #[cfg(feature = "verifier_stats")]
@@ -3817,10 +3795,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<53usize, GKR_ADDRS, GKR_EVAL_BUF>(
-                &eval_buf,
-                &mut state.prev_claims,
-            );
+            fold_standard_claims::<53usize, GKR_ADDRS, GKR_EVAL_BUF>(&eval_buf, state.prev_claims);
             state.batching_challenge = next_batching;
             debug_assert_eq!(state.prev_point.len(), fc_len);
             #[cfg(feature = "verifier_stats")]
@@ -4078,6 +4053,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (181usize, 153usize, 9usize),
                     (182usize, 162usize, 9usize),
                 ];
+                #[allow(clippy::large_const_arrays)]
                 const VL_COLS: [(u32, usize, usize); 171usize] = [
                     (0u32, 0usize, 2usize),
                     (0u32, 2usize, 1usize),
@@ -4251,6 +4227,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (0u32, 136usize, 0usize),
                     (1342177238u32, 136usize, 0usize),
                 ];
+                #[allow(clippy::large_const_arrays)]
                 const VL_TERMS: [(u32, usize); 136usize] = [
                     (268434910u32, 52usize),
                     (268435454u32, 48usize),
@@ -5597,16 +5574,14 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         }
         read_and_verify_pow::<I>(ts, BATCHED_PROXIMITY_POW_BITS, nd_source);
         state.batching_challenge = draw_single_field_el_after_pow(ts);
-        let mut permutation_read_product: BabyBearExt4 = BabyBearExt4::ONE;
-        let mut permutation_write_product: BabyBearExt4 = BabyBearExt4::ONE;
-        #[allow(unused_mut)]
-        let mut inits_and_teardowns_read_product: BabyBearExt4 = BabyBearExt4::ONE;
-        #[allow(unused_mut)]
-        let mut inits_and_teardowns_write_product: BabyBearExt4 = BabyBearExt4::ONE;
+        let permutation_read_product: BabyBearExt4;
+        let permutation_write_product: BabyBearExt4;
+        let inits_and_teardowns_read_product: BabyBearExt4 = BabyBearExt4::ONE;
+        let inits_and_teardowns_write_product: BabyBearExt4 = BabyBearExt4::ONE;
         {
             let mut read_product = BabyBearExt4::ONE;
             for i in 0..16usize {
-                let eval = *evals_slice.get_unchecked(0usize + i);
+                let eval = *evals_slice.get_unchecked(i);
                 field_ops::mul_assign(&mut read_product, &eval);
             }
             let mut write_product = BabyBearExt4::ONE;
@@ -5652,8 +5627,6 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         #[cfg(feature = "verifier_stats")]
         verifier_common::stats::log("GKR MAIN OUTPUT");
         Ok(GKRVerifierOutput {
-            base_layer_claims: state.prev_claims,
-            evaluation_point: state.prev_point,
             permutation_read_product,
             permutation_write_product,
             inits_and_teardowns_read_product,
@@ -5684,12 +5657,16 @@ impl
         initial_transcript: &ConcreteInitialTranscript,
         transcript_state: &mut ::verifier_common::structs::TranscriptState,
         nd_source: &mut I,
+        claim_point: &mut LazyVec<BabyBearExt4, CLAIM_POINT_CAPACITY>,
+        base_layer_claims: &mut LazyVec<BabyBearExt4, GKR_ADDRS>,
     ) -> Result<ConcreteGKRVerifierOutput, E::Error> {
         verify_gkr::<I, E>(
             external_challenges,
             initial_transcript,
             transcript_state,
             nd_source,
+            claim_point,
+            base_layer_claims,
         )
     }
     #[inline(always)]

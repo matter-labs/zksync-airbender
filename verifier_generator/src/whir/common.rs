@@ -84,12 +84,8 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             nd_source: &mut I,
         ) -> Result<(#quartic_struct, #quartic_struct), E::Error> {
             const WHIR_SC_DATA_WORDS: usize = 3 * EXT_DEGREE;
-            const WHIR_SC_COMMIT_BUF: usize = {
-                let total = WHIR_SC_DATA_WORDS;
-                (total + ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
-                    / ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
-                    * ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
-            };
+            const WHIR_SC_COMMIT_BUF: usize = WHIR_SC_DATA_WORDS
+                .next_multiple_of(::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS);
 
             let mut buf = CommitBuf::<WHIR_SC_COMMIT_BUF>::new();
             {
@@ -155,9 +151,11 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
 
         #fold_helpers
 
+        #[allow(dead_code)]
         pub const MAX_HIGH_POWERS: usize = #max_high_powers;
 
         #[inline(always)]
+        #[allow(dead_code)]
         pub fn bitreverse_inplace<T: Copy>(arr: &mut [T]) {
             let n = arr.len();
             if n <= 1 {
@@ -180,6 +178,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
 
         /// Compute bit-reversed high powers of the set-generator inverse for fold_coset.
         #[inline(always)]
+        #[allow(dead_code)]
         pub fn compute_high_powers_offsets(
             fold_steps: usize,
             dst: &mut LazyVec<#field_struct, MAX_HIGH_POWERS>,
@@ -198,6 +197,7 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         }
 
         #[inline(always)]
+        #[allow(dead_code)]
         pub fn ext_from_raw_word_slice(words: &[u32]) -> #quartic_struct {
             debug_assert!(words.len() >= EXT_DEGREE);
             let raw = unsafe { (words.as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
@@ -205,7 +205,8 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         }
 
         #[inline(always)]
-        #[allow(clippy::too_many_arguments)]
+        #[allow(clippy::missing_safety_doc)]
+        #[allow(dead_code)]
         pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource<#field_struct>>(
             hash_buf: &mut [core::mem::MaybeUninit<u32>],
             num_columns: usize,
@@ -316,7 +317,8 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         /// Read one base leaf (two values per column), batch it into
         /// `acc0` / `acc1` and leave its hash in the hasher state.
         #[inline(always)]
-        #[allow(clippy::too_many_arguments)]
+        #[allow(clippy::too_many_arguments, clippy::missing_safety_doc)]
+        #[allow(dead_code)]
         pub unsafe fn read_and_hash_oracle_leaf<I: NonDeterminismSource<#field_struct>, const BUF_SIZE: usize, const LEAF_WORDS: usize>(
             hasher: &mut DelegatedBlake2sState,
             hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<core::mem::MaybeUninit<u32>, BUF_SIZE>,
@@ -346,7 +348,8 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         }
 
         #[inline(always)]
-        #[allow(clippy::too_many_arguments)]
+        #[allow(clippy::too_many_arguments, clippy::missing_safety_doc)]
+        #[allow(dead_code)]
         pub unsafe fn process_oracle_query<I: NonDeterminismSource<#field_struct>, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize>(
             hasher: &mut DelegatedBlake2sState,
             hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<core::mem::MaybeUninit<u32>, BUF_SIZE>,
@@ -377,7 +380,8 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
         /// walked only up to the first ancestor a later query shares (see
         /// `verifier_common::whir::multiproof`).
         #[inline(always)]
-        #[allow(clippy::too_many_arguments)]
+        #[allow(clippy::too_many_arguments, clippy::missing_safety_doc)]
+        #[allow(dead_code)]
         pub unsafe fn process_oracle_query_multiproof<I: NonDeterminismSource<#field_struct>, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize, const MAX_DEPTH: usize>(
             hasher: &mut DelegatedBlake2sState,
             hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<core::mem::MaybeUninit<u32>, BUF_SIZE>,

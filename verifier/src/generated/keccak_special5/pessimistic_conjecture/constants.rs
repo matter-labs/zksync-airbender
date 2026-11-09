@@ -1,23 +1,10 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_unsafe,
-    unused_assignments,
-    clippy::needless_range_loop,
-    clippy::too_many_arguments,
-    clippy::manual_div_ceil,
-    clippy::borrow_deref_ref,
-    clippy::identity_op,
-    clippy::missing_safety_doc,
-    clippy::duplicate_mod,
-    clippy::large_const_arrays
-)]
 use super::common::EXT_DEGREE;
 use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use verifier_common::{DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS};
 #[doc = r" Number of rounds of every same-size GKR layer sumcheck = the number"]
 #[doc = r" of GKR claim-point coordinates: log2 of the LOGICAL (trace-length)"]
 #[doc = r" polynomials. Packing does not change it."]
+#[allow(dead_code)]
 pub const GKR_ROUNDS: usize = 22usize;
 #[doc = r" Capacity of the claim-point buffers: the GKR point plus the"]
 #[doc = r" `PACK_LOG2` coordinates appended after the GKR phase for the packed"]
@@ -26,6 +13,7 @@ pub const GKR_ROUNDS: usize = 22usize;
 pub const CLAIM_POINT_CAPACITY: usize = 22usize;
 pub const TRACE_LEN_LOG2: u32 = 22u32;
 pub const GKR_ADDRS: usize = 377usize;
+#[allow(dead_code)]
 pub const GKR_EVALS: usize = 96usize;
 pub const INIT_AND_TEARDOWN_SETS: usize = 0usize;
 pub const EXTERNAL_CHALLENGES_FLATTENED_SIZE: usize = EXT_DEGREE * (6usize + 1);
@@ -94,14 +82,16 @@ pub const LOOKUP_CHALLENGES_POW_BITS: u32 = 9u32;
 pub const BATCHED_PROXIMITY_POW_BITS: u32 = 9u32;
 pub const MAX_POW_ENTRIES: usize = 127usize;
 pub const FINAL_MONOMIALS_LEN: usize = 2usize;
+#[allow(dead_code)]
 pub const NUM_ORACLES: usize = 3usize;
+#[allow(dead_code)]
 pub const ORACLE_NUM_COLS: [usize; 3usize] = [91usize, 175usize, 8usize];
+#[allow(dead_code)]
 pub const ORACLE_DEPTHS: [usize; 3usize] = [19usize, 19usize, 19usize];
 pub const TOTAL_ORACLE_COLS: usize = 274usize;
 pub const WHIR_ORACLE_DEPTHS: [usize; 4usize] = [17usize, 18usize, 15usize, 11usize];
 pub const WHIR_CAP_SIZE: usize = 16usize;
 pub const WHIR_CAP_WORDS: usize = 128usize;
-use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 pub type ConcreteInitialTranscript = ::verifier_common::InitialGKRTranscript<
     BabyBearExt4,
@@ -113,8 +103,7 @@ pub type ConcreteInitialTranscript = ::verifier_common::InitialGKRTranscript<
     NUM_SETUP_COMMITS,
     PADDING_WORDS,
 >;
-pub type ConcreteGKRVerifierOutput =
-    ::verifier_common::GKRVerifierOutput<BabyBearExt4, CLAIM_POINT_CAPACITY, GKR_ADDRS>;
+pub type ConcreteGKRVerifierOutput = ::verifier_common::GKRVerifierOutput<BabyBearExt4>;
 pub type ConcreteVerifierOutput = ::verifier_common::VerifierOutput<
     BabyBearExt4,
     INIT_AND_TEARDOWN_SETS,

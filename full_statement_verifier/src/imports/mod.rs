@@ -5,10 +5,7 @@
 //! circuit's geometry only), so the aliases below come from the default mode
 //! and every other mode's are asserted to be the same types.
 
-// These modules contain generated verifiers with shape-dependent unused inputs.
-#[allow(unused_variables)]
 pub mod ethproofs_soundcalc;
-#[allow(unused_variables)]
 pub mod pessimistic_conjecture;
 
 pub type UnrolledCircuitOutput =

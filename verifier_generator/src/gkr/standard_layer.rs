@@ -71,7 +71,8 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
 
     quote! {
         #[inline(always)]
-        #[allow(unused_variables)]
+        #[allow(clippy::missing_safety_doc)]
+        #[allow(dead_code)]
         pub unsafe fn eval_linear_relation(
             evals: &[[#quartic_struct; 1]],
             terms: &[(usize, usize)],
@@ -91,7 +92,8 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
         }
 
         #[inline(always)]
-        #[allow(unused_variables)]
+        #[allow(clippy::missing_safety_doc)]
+        #[allow(dead_code)]
         pub unsafe fn eval_vector_lookup(
             evals: &[[#quartic_struct; 1]],
             alpha: #quartic_struct,
@@ -122,7 +124,8 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
         }
 
         #[inline(always)]
-        #[allow(unused_variables)]
+        #[allow(clippy::missing_safety_doc)]
+        #[allow(dead_code)]
         pub unsafe fn eval_max_quadratic(
             evals: &[[#quartic_struct; 1]],
             quad_outer: &[(usize, usize)],
@@ -162,17 +165,26 @@ pub fn generate_eval_helpers<MW: FieldWrapper>() -> TokenStream {
             val
         }
 
+        #[allow(dead_code)]
         pub const ME_OP_ADD_BASE_CONST: usize = 0;
+        #[allow(dead_code)]
         pub const ME_OP_ADD_EVAL: usize = 1;
+        #[allow(dead_code)]
         pub const ME_OP_ADD_ONE_MINUS_EVAL: usize = 2;
+        #[allow(dead_code)]
         pub const ME_OP_CH_MUL_EVAL: usize = 3;
+        #[allow(dead_code)]
         pub const ME_OP_CH_MUL_CONST: usize = 4;
+        #[allow(dead_code)]
         pub const ME_OP_CH_MUL_EVAL_PLUS_CONST: usize = 5;
+        #[allow(dead_code)]
         pub const ME_OP_CH_MUL_EVAL_PLUS_DYN: usize = 6;
+        #[allow(dead_code)]
         pub const ME_OP_BYTE_VALUE_PAIR: usize = 7;
 
         #[inline(always)]
-        #[allow(unused_variables)]
+        #[allow(clippy::missing_safety_doc)]
+        #[allow(dead_code)]
         pub unsafe fn eval_memory_expr(
             evals: &[[#quartic_struct; 1]],
             challenges: &[#quartic_struct],
@@ -782,7 +794,6 @@ pub fn generate_layer_compute_claim<MW: FieldWrapper, F: PrimeField>(
 
     quote! {
         #[inline(always)]
-        #[allow(unused_variables)]
         unsafe fn #fn_name(
             output_claims: &[#quartic_struct; #num_output_addrs],
             batch_base: #quartic_struct,
@@ -1498,18 +1509,36 @@ pub fn generate_layer_final_step_accumulator<MW: FieldWrapper<BaseField = F>, F:
     }
     body.extend(quote! { acc });
 
+    // Every layer shares one signature, but a layer only reads the challenges its gates
+    // need: the others are named with a leading underscore.
+    let param = |name: &str| {
+        if crate::utils::contains_ident(&body, name) {
+            quote::format_ident!("{}", name)
+        } else {
+            quote::format_ident!("_{}", name)
+        }
+    };
+    let lookup_additive_challenge = param("lookup_additive_challenge");
+    let lookup_alpha = param("lookup_alpha");
+    let linearization_challenges = param("linearization_challenges");
+    let permutation_argument_additive_part = param("permutation_argument_additive_part");
+    let address_high_bits_shift = param("address_high_bits_shift");
+    let inits_and_teardowns_top_bits = param("inits_and_teardowns_top_bits");
+
     quote! {
         #[inline(always)]
-        #[allow(unused_variables, unused_mut, unused_unsafe)]
+        // single-term expressions leave their accumulator untouched
+        #[allow(unused_mut)]
+        #[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
         unsafe fn #fn_name(
             evals: &[[#quartic_struct; 1]],
             batch_base: #quartic_struct,
-            lookup_additive_challenge: #quartic_struct,
-            lookup_alpha: #quartic_struct,
-            linearization_challenges: &[#quartic_struct],
-            permutation_argument_additive_part: #quartic_struct,
-            address_high_bits_shift: u32,
-            inits_and_teardowns_top_bits: &[u32],
+            #lookup_additive_challenge: #quartic_struct,
+            #lookup_alpha: #quartic_struct,
+            #linearization_challenges: &[#quartic_struct],
+            #permutation_argument_additive_part: #quartic_struct,
+            #address_high_bits_shift: u32,
+            #inits_and_teardowns_top_bits: &[u32],
         ) -> [#quartic_struct; 2] {
             #body
         }

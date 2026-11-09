@@ -330,7 +330,9 @@ pub trait ConcreteVerifierImpl<
         >,
         transcript_state: &mut ::transcript::TranscriptState,
         nd_source: &mut I,
-    ) -> Result<GKRVerifierOutput<EE, ROUNDS, ADDRS>, E::Error>;
+        claim_point: &mut lazy_vec::LazyVec<EE, ROUNDS>,
+        base_layer_claims: &mut lazy_vec::LazyVec<EE, ADDRS>,
+    ) -> Result<GKRVerifierOutput<EE>, E::Error>;
     fn verify_whir<I: NonDeterminismSource<F>, E: ErrorCreator>(
         initial_transcript: &InitialGKRTranscript<
             EE,
@@ -397,18 +399,24 @@ pub fn verify_impl<
         NUM_SETUP_COMMITS,
         PADDING_WORDS,
     >(external_challenges, nd_source);
+    // The GKR verifier builds its claim point and the base-layer claims directly in these
+    // buffers: they are too large to be returned by value.
+    let mut claim_point = lazy_vec::LazyVec::<EE, ROUNDS>::new();
+    let mut base_layer_claims = lazy_vec::LazyVec::<EE, ADDRS>::new();
     let gkr_output = V::verify_gkr::<I, E>(
         external_challenges,
         &initial_transcript_values,
         &mut ts,
         nd_source,
+        &mut claim_point,
+        &mut base_layer_claims,
     )?;
     V::verify_whir::<I, E>(
         &initial_transcript_values,
         &mut ts,
         gkr_output.whir_batching_challenge,
-        gkr_output.base_layer_claims.as_slice(),
-        gkr_output.evaluation_point.as_slice(),
+        base_layer_claims.as_slice(),
+        claim_point.as_slice(),
         nd_source,
     )?;
 

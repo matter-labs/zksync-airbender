@@ -246,7 +246,7 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
 
     let compute_claim = quote! {
         #[inline(always)]
-        #[allow(unused_variables)]
+        #[allow(clippy::missing_safety_doc)]
         pub unsafe fn compute_claim<const N: usize>(
             output_claims: &[#quartic_struct],
             descs: &[(usize, usize, usize); N],
@@ -358,7 +358,7 @@ fn emit_range_check_eval_check<MW: FieldWrapper>(
     let mul_t_pre = MW::mul_assign_by_base(quote! { t }, quote! { prefactor });
     let add_res_t = MW::add_assign(quote! { result }, quote! { t });
     let dbl_pre = MW::double(quote! { prefactor });
-    let sub_t_p = MW::sub_assign(quote! { t }, quote! { *p });
+    let sub_t_p = MW::sub_assign_ref(quote! { t }, quote! { p });
     let mul_res_t = MW::mul_assign(quote! { result }, quote! { t });
 
     let summary = format!(
@@ -670,9 +670,11 @@ fn generate_cache_relation_checks<MW: FieldWrapper, F: PrimeField>(
                 const VL_DESCS: [(usize, usize, usize); #num_descs] = [
                     #( (#vd_cached, #vd_col_start, #vd_col_count), )*
                 ];
+                #[allow(clippy::large_const_arrays)]
                 const VL_COLS: [(u32, usize, usize); #num_cols] = [
                     #( (#vc_const, #vc_term_start, #vc_term_count), )*
                 ];
+                #[allow(clippy::large_const_arrays)]
                 const VL_TERMS: [(u32, usize); #num_terms] = [
                     #( (#vt_coeff, #vt_dep), )*
                 ];
@@ -1406,10 +1408,14 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             all_challenges.as_slice()[..#evaluation_point_len].try_into().unwrap_unchecked();
         make_eq_poly(eq_challenges, &mut eq_buf);
 
-        let mut prev_claims: LazyVec<#quartic_struct, GKR_ADDRS> = LazyVec::new();
+        // The claims and the claim point of the layer being processed are built in the
+        // caller's buffers and updated there, layer by layer.
+        let prev_claims = base_layer_claims;
+        prev_claims.clear();
         #claim_accum_body
 
-        let mut prev_point = LazyVec::<#quartic_struct, CLAIM_POINT_CAPACITY>::new();
+        let prev_point = claim_point;
+        prev_point.clear();
         for i in 0..#evaluation_point_len {
             prev_point.push(*all_challenges.get(i));
         }
@@ -1818,7 +1824,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                         },
                         quote! {
                             fold_standard_claims::<#num_dedup_addrs, GKR_ADDRS, GKR_EVAL_BUF>(
-                                &eval_buf, &mut state.prev_claims);
+                                &eval_buf, state.prev_claims);
                         },
                     )
                 };
@@ -1923,9 +1929,19 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     };
 
     let mut output_checks = TokenStream::new();
+    let mut inits_and_teardowns_product_emitted = false;
     {
         let mul = |a: TokenStream, b: TokenStream| MW::mul_assign(a, b);
         let add = |a: TokenStream, b: TokenStream| MW::add_assign(a, b);
+
+        // index of the `i`-th evaluation of the output poly that starts at `offset`
+        let eval_at = |offset: usize| {
+            if offset == 0 {
+                quote! { i }
+            } else {
+                quote! { #offset + i }
+            }
+        };
 
         let mut eval_offset = 0usize;
         let mut lookup_type_idx = 0usize;
@@ -1940,16 +1956,18 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 
                     let mul_rp = mul(quote! { read_product }, quote! { eval });
                     let mul_wp = mul(quote! { write_product }, quote! { eval });
+                    let read_at = eval_at(read_off);
+                    let write_at = eval_at(write_off);
                     output_checks.extend(quote! {
                         {
                             let mut read_product = #quartic_one;
                             for i in 0..#evals_per_poly {
-                                let eval = *evals_slice.get_unchecked(#read_off + i);
+                                let eval = *evals_slice.get_unchecked(#read_at);
                                 #mul_rp;
                             }
                             let mut write_product = #quartic_one;
                             for i in 0..#evals_per_poly {
-                                let eval = *evals_slice.get_unchecked(#write_off + i);
+                                let eval = *evals_slice.get_unchecked(#write_at);
                                 #mul_wp;
                             }
                             permutation_read_product = read_product;
@@ -1967,16 +1985,19 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 
                     let mul_rp = mul(quote! { it_read }, quote! { eval });
                     let mul_wp = mul(quote! { it_write }, quote! { eval });
+                    let read_at = eval_at(read_off);
+                    let write_at = eval_at(write_off);
+                    inits_and_teardowns_product_emitted = true;
                     output_checks.extend(quote! {
                         {
                             let mut it_read = #quartic_one;
                             for i in 0..#evals_per_poly {
-                                let eval = *evals_slice.get_unchecked(#read_off + i);
+                                let eval = *evals_slice.get_unchecked(#read_at);
                                 #mul_rp;
                             }
                             let mut it_write = #quartic_one;
                             for i in 0..#evals_per_poly {
-                                let eval = *evals_slice.get_unchecked(#write_off + i);
+                                let eval = *evals_slice.get_unchecked(#write_at);
                                 #mul_wp;
                             }
                             inits_and_teardowns_read_product = it_read;
@@ -1997,13 +2018,15 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                     let mul_n_ad = mul(quote! { t }, quote! { acc_den });
                     let add_an_t = add(quote! { acc_num }, quote! { t });
                     let mul_ad_d = mul(quote! { acc_den }, quote! { d });
+                    let num_at = eval_at(num_off);
+                    let den_at = eval_at(den_off);
                     output_checks.extend(quote! {
                         {
                             let mut acc_num = #quartic_zero;
                             let mut acc_den = #quartic_one;
                             for i in 0..#evals_per_poly {
-                                let n = *evals_slice.get_unchecked(#num_off + i);
-                                let d = *evals_slice.get_unchecked(#den_off + i);
+                                let n = *evals_slice.get_unchecked(#num_at);
+                                let d = *evals_slice.get_unchecked(#den_at);
                                 // acc_num = acc_num * d + n * acc_den
                                 #mul_an_d;
                                 let mut t = n;
@@ -2022,17 +2045,36 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         }
     }
 
+    // Every circuit carries the memory permutation argument; only circuits with
+    // inits/teardowns sets output that product, and the others report the empty one.
+    assert!(
+        output_groups
+            .iter()
+            .any(|group| matches!(group.output_type, OutputType::PermutationProduct)),
+        "the circuit has no permutation product output"
+    );
+    let inits_and_teardowns_products_decl = if inits_and_teardowns_product_emitted {
+        quote! {
+            let inits_and_teardowns_read_product: #quartic_struct;
+            let inits_and_teardowns_write_product: #quartic_struct;
+        }
+    } else {
+        quote! {
+            let inits_and_teardowns_read_product: #quartic_struct = #quartic_one;
+            let inits_and_teardowns_write_product: #quartic_struct = #quartic_one;
+        }
+    };
+
     main_body.extend(packed_claims_merge);
     main_body.extend(quote! {
         read_and_verify_pow::<I>(ts, BATCHED_PROXIMITY_POW_BITS, nd_source);
         state.batching_challenge = draw_single_field_el_after_pow(ts);
 
-        let mut permutation_read_product: #quartic_struct = #quartic_one;
-        let mut permutation_write_product: #quartic_struct = #quartic_one;
-        #[allow(unused_mut)]
-        let mut inits_and_teardowns_read_product: #quartic_struct = #quartic_one;
-        #[allow(unused_mut)]
-        let mut inits_and_teardowns_write_product: #quartic_struct = #quartic_one;
+        // Assigned exactly once by the output checks below; declared without a value so
+        // that a missing assignment fails to compile instead of returning a default.
+        let permutation_read_product: #quartic_struct;
+        let permutation_write_product: #quartic_struct;
+        #inits_and_teardowns_products_decl
 
         #output_checks
 
@@ -2040,8 +2082,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             verifier_common::stats::log("GKR MAIN OUTPUT");
 
         Ok(GKRVerifierOutput {
-            base_layer_claims: state.prev_claims,
-            evaluation_point: state.prev_point,
             permutation_read_product,
             permutation_write_product,
             inits_and_teardowns_read_product,
@@ -2051,6 +2091,22 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
     });
 
     let field_use_stmts = MW::field_use_statements();
+    let quartic_use_stmt = MW::quartic_use_statement();
+    // base-to-extension conversions are the only calls that need the trait in scope, and they
+    // only appear for some relation kinds
+    let field_extension_import = if crate::utils::contains_ident(&layer_functions, "from_base")
+        || crate::utils::contains_ident(&main_body, "from_base")
+    {
+        quote! { use ::verifier_common::field::FieldExtension; }
+    } else {
+        TokenStream::new()
+    };
+    // the packed claim merge is the only user of the fresh multi-element draw
+    let packed_draw_import = if pack_log2 > 0 {
+        quote! { draw_fresh_field_els_into, }
+    } else {
+        TokenStream::new()
+    };
 
     let whir_rounds = whir_schedule.num_rounds();
     let whir_fold_steps = whir_schedule.fold_steps();
@@ -2233,6 +2289,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         /// Number of rounds of every same-size GKR layer sumcheck = the number
         /// of GKR claim-point coordinates: log2 of the LOGICAL (trace-length)
         /// polynomials. Packing does not change it.
+        #[allow(dead_code)]
         pub const GKR_ROUNDS: usize = #max_sumcheck_rounds;
         /// Capacity of the claim-point buffers: the GKR point plus the
         /// `PACK_LOG2` coordinates appended after the GKR phase for the packed
@@ -2241,6 +2298,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         pub const CLAIM_POINT_CAPACITY: usize = #claim_point_capacity;
         pub const TRACE_LEN_LOG2: u32 = #trace_len_log2_u32;
         pub const GKR_ADDRS: usize = #max_addrs;
+        #[allow(dead_code)]
         pub const GKR_EVALS: usize = #max_evals;
 
         pub const INIT_AND_TEARDOWN_SETS: usize = #num_teardown_sets;
@@ -2308,8 +2366,11 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         pub const BATCHED_PROXIMITY_POW_BITS: u32 = #batched_proximity_pow_bits;
         pub const MAX_POW_ENTRIES: usize = #max_pow_entries;
         pub const FINAL_MONOMIALS_LEN: usize = #final_monomials_len;
+        #[allow(dead_code)]
         pub const NUM_ORACLES: usize = #num_oracles;
+        #[allow(dead_code)]
         pub const ORACLE_NUM_COLS: [usize; #num_oracles] = [#(#oracle_num_cols),*];
+        #[allow(dead_code)]
         pub const ORACLE_DEPTHS: [usize; #num_oracles] = [#(#oracle_depths),*];
         pub const TOTAL_ORACLE_COLS: usize = #total_oracle_cols;
         pub const WHIR_ORACLE_DEPTHS: [usize; #num_intermediate_oracles] = [#(#whir_oracle_depths),*];
@@ -2317,7 +2378,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         pub const WHIR_CAP_WORDS: usize = #whir_cap_words;
         #packing_constants
 
-        #field_use_stmts
+        #quartic_use_stmt
 
         pub type ConcreteInitialTranscript = ::verifier_common::InitialGKRTranscript<
             #quartic_struct,
@@ -2329,7 +2390,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             NUM_SETUP_COMMITS,
             PADDING_WORDS,
         >;
-        pub type ConcreteGKRVerifierOutput = ::verifier_common::GKRVerifierOutput<#quartic_struct, CLAIM_POINT_CAPACITY, GKR_ADDRS>;
+        pub type ConcreteGKRVerifierOutput = ::verifier_common::GKRVerifierOutput<#quartic_struct>;
         pub type ConcreteVerifierOutput = ::verifier_common::VerifierOutput<#quartic_struct, INIT_AND_TEARDOWN_SETS, CAP_SIZE, NUM_MEMORY_COMMITS, NUM_SETUP_COMMITS>;
 
     };
@@ -2341,22 +2402,20 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         };
         use ::verifier_common::lazy_vec::LazyVec;
         use ::verifier_common::errors::ErrorCreator;
-        use ::verifier_common::structs::{CommitBuf, TranscriptState};
-        use ::verifier_common::blake2s_u32::{
-            BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS,
-        };
+        use ::verifier_common::structs::CommitBuf;
         use super::common::{
             verify_sumcheck_rounds, verify_final_step_check, fold_standard_claims,
-            make_eq_poly, dot_eq, draw_field_els_into, draw_field_els_into_uninit,
-            draw_fresh_field_els_into, draw_single_field_el,
+            make_eq_poly, dot_eq, draw_field_els_into_uninit,
+            #packed_draw_import
+            draw_single_field_el,
             draw_field_els_into_after_pow, draw_single_field_el_after_pow,
-            read_field_el, read_reduced_field_el,
-            ext_from_nds, ext_from_raw_words,
+            read_reduced_field_el,
             EXT_DEGREE,
         };
         use ::verifier_common::whir::read_and_verify_pow;
         use ::verifier_common::field_ops;
-        use ::verifier_common::field::{Field, FieldExtension, PrimeField};
+        use ::verifier_common::field::{Field, PrimeField};
+        #field_extension_import
         use ::verifier_common::non_determinism_source::NonDeterminismSource;
         use ::verifier_common::GKRExternalChallenges;
         use ::verifier_common::gkr::SimpleGateType;
@@ -2364,12 +2423,15 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 
         #layer_functions
 
-        #[allow(unused_variables, unused_mut, unused_unsafe)]
+        // The whole body is one `unsafe` block, so the helpers' own blocks nest inside it.
+        #[allow(unused_unsafe)]
         pub(crate) fn verify_gkr<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
             external_challenges: &GKRExternalChallenges<#field_struct, #quartic_struct>,
             initial_transcript: &ConcreteInitialTranscript,
             ts: &mut ::verifier_common::structs::TranscriptState,
             nd_source: &mut I,
+            claim_point: &mut LazyVec<#quartic_struct, CLAIM_POINT_CAPACITY>,
+            base_layer_claims: &mut LazyVec<#quartic_struct, GKR_ADDRS>,
         ) -> Result<ConcreteGKRVerifierOutput, E::Error> {
             unsafe { #main_body }
         }
@@ -2395,12 +2457,16 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 initial_transcript: &ConcreteInitialTranscript,
                 transcript_state: &mut ::verifier_common::structs::TranscriptState,
                 nd_source: &mut I,
+                claim_point: &mut LazyVec<#quartic_struct, CLAIM_POINT_CAPACITY>,
+                base_layer_claims: &mut LazyVec<#quartic_struct, GKR_ADDRS>,
             ) -> Result<ConcreteGKRVerifierOutput, E::Error> {
                 verify_gkr::<I, E>(
                     external_challenges,
                     initial_transcript,
                     transcript_state,
                     nd_source,
+                    claim_point,
+                    base_layer_claims,
                 )
             }
             #[inline(always)]
