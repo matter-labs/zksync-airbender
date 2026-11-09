@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.ControlLoad
+import Airbender.Proofs.ReducedMachine.NativeControlLoad
+import Airbender.Review.Trace.Families.ReducedMachine.ControlLoadTheorems
+import Tests.NativeControlLoad
+
 import Airbender.Review.Trace.Families.ReducedMachine.ControlShiftJump
 import Airbender.Proofs.ReducedMachine.NativeControlShiftJump
 import Airbender.Review.Trace.Families.ReducedMachine.ControlShiftJumpTheorems
@@ -8416,3 +8421,38 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeControlShiftJump.old_arithmetic_retained
 #print axioms Airbender.Tests.NativeControlShiftJump.old_joint_retained
 #print axioms Airbender.Tests.NativeControlShiftJump.full_counted_source
+
+#print axioms Airbender.NativeControlLoadProofs.projection
+#print axioms Airbender.NativeControlLoadProofs.fixed_body
+#print axioms Airbender.NativeControlLoadProofs.rd12_load
+#print axioms Airbender.NativeControlLoadProofs.result
+#print axioms Airbender.NativeControlLoadProofs.from_prior
+#print axioms Airbender.NativeControlLoadProofs.counted
+#print axioms Airbender.NativeControlLoad.native_counted_control_load
+#print axioms Airbender.Tests.NativeControlLoad.original_LW_projection
+#print axioms Airbender.Tests.NativeControlLoad.original_SW_projection
+#print axioms Airbender.Tests.NativeControlLoad.SW_dummy_rd
+#print axioms Airbender.Tests.NativeControlLoad.every_rd12_memory_operation_is_LW
+#print axioms Airbender.Tests.NativeControlLoad.ROM_address
+#print axioms Airbender.Tests.NativeControlLoad.ROM_value
+#print axioms Airbender.Tests.NativeControlLoad.ROM_shadow_distinct
+#print axioms Airbender.Tests.NativeControlLoad.ROM_ignores_shadow_value
+#print axioms Airbender.Tests.NativeControlLoad.RAM_boundary_address
+#print axioms Airbender.Tests.NativeControlLoad.RAM_full_RV32_value
+#print axioms Airbender.Tests.NativeControlLoad.RAM_reads_actual_second
+#print axioms Airbender.Tests.NativeControlLoad.ROM_tail_UNIMP
+#print axioms Airbender.Tests.NativeControlLoad.sign_extended_negative_offset
+#print axioms Airbender.Tests.NativeControlLoad.RV32_address_wrap
+#print axioms Airbender.Tests.NativeControlLoad.wrapped_ROM_value
+#print axioms Airbender.Tests.NativeControlLoad.pure_ROM_write
+#print axioms Airbender.Tests.NativeControlLoad.pure_RAM_write
+#print axioms Airbender.Tests.NativeControlLoad.wrong_shadow_result_rejected
+#print axioms Airbender.Tests.NativeControlLoad.load_x0
+#print axioms Airbender.Tests.NativeControlLoad.inactive_CSR_kept
+#print axioms Airbender.Tests.NativeControlLoad.every_actual_LW
+#print axioms Airbender.Tests.NativeControlLoad.all_control_edges_same_path
+#print axioms Airbender.Tests.NativeControlLoad.nonzero_origins_retained
+#print axioms Airbender.Tests.NativeControlLoad.prior_shift_jump_retained
+#print axioms Airbender.Tests.NativeControlLoad.old_logic_retained
+#print axioms Airbender.Tests.NativeControlLoad.old_joint_retained
+#print axioms Airbender.Tests.NativeControlLoad.full_counted_source

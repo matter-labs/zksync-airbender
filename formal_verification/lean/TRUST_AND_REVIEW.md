@@ -1,5 +1,55 @@
 # Trust and review boundaries
 
+## Initialized LW control writes (9 November 2026)
+
+[LW control effects](Airbender/Review/Trace/Families/ReducedMachine/ControlLoad.lean),
+[proof](Airbender/Proofs/ReducedMachine/NativeControlLoad.lean) and
+[short root](Airbender/Review/Trace/Families/ReducedMachine/ControlLoadTheorems.lean)
+derive the actual effective address, alignment and masked third-port write from
+the SAME old counted SourceAccepted/public image/log20/OLD LogicalLookups/OLD
+explicit SourceIdentity. Exact initialized first-read tokens plus the original
+sign-extended immediate derive the full RV32 address, including wrap. ROM selects
+the native eight-word fixture/UNIMP tail; RAM selects the actual initialized second
+read. The retained ROM shadow token is separate and need not equal ROM bytes.
+Actual rd/x0 masking and full RV32 values remain.
+
+Original word-memory constructor projections change only the family tag, retaining
+all ten query fields. The old proved source-specific runtime-to-fixed BODY
+connection supplies existing effective-address, alignment, selection, masked-write
+and routing theorems. There is no arbitrary acceptance transfer/table-equivalence
+premise. The first-read bound follows internally from complete mixed initialized
+history, including worker effects. Original SW has dummy rd0, so every decoded rd12
+word-memory edge is LW; SW remains an unmasked memory write.
+
+Every actual rd12 LW edge joins the SAME complete initialized x12 path with all
+prior shift/jump/logic/arithmetic/CSR edges and nonzero public origins. OLDREADs,
+both raw times, readonly refreshes and positional copies remain. Prior accounting,
+matching/count/validity/mixed queries/JOINT43-port execution/25 weighted outputs/
+word bounds/capacity/MAIN dependencies stay. All inactive requests/AUX/m0 poles/
+inactive D/43ports/aliases/unmasked SW/public x0 times remain. Incoming low and
+zero/multiple masks stay visible; rank is proof order only. No desired address/
+read/range/alignment/reset/history/result/schedule/activity/count/matching premise,
+new acceptance or cryptographic boundary is introduced.
+
+[27 controls](Tests/NativeControlLoad.lean) cover original LW/SW projections,
+SW dummy rd, effective ROM/RAM boundary addresses, ROM/shadow distinction, full
+RV32 RAM data, UNIMP tail, sign-extended negative offsets/address wrap, masked
+writes, wrong shadow result rejection, x0, old LOCAL inactive CSR, actual LW effects,
+same-path membership, nonzero origins and prior/full counted roots. Pure finite
+references with dummy raw bits, an old LOCAL control and conditional consequences
+only; no new native-global/wholeworker/physical accepted witness, attack, defect
+or absence-other-enforcement proof.
+
+All currently supported ordinary rd12 write-family values and same-path membership
+are connected. Last relevant public MAIN reset origins/worker suffix, physical
+caller activity, larger-batch no-wrap/matching, standard round/hash scheduling,
+original CSR/MOP/worker Sail, unified protocol spans, padding-terminal/init-teardown,
+physical cryptography, completeness, general physical setup and parity remain open.
+No native adoption/pin/parser/importer/exporter/artifact/fixture/generation/heavy
+replay/dependency/v3 refresh/production/Sail/old acceptance/FINDINGS change.
+Zero established native defects; counts are not parity.
+
+
 ## Initialized shift and jump control writes (9 November 2026)
 
 [Shift/jump control effects](Airbender/Review/Trace/Families/ReducedMachine/ControlShiftJump.lean),

@@ -454,3 +454,10 @@ resets, last-reset identification and standard worker scheduling remain open.
 writes, with input bounds and public PC alignment derived internally. All rd12
 shift/jump/logic/arithmetic/CSR edges share one complete x12 path. LW reset values,
 last-reset identification and standard worker scheduling remain open.
+
+## Initialized LW control writes
+
+[LW control effects](../../Trace/Families/ReducedMachine/ControlLoadTheorems.lean) derive effective address/alignment and actual
+ROM-or-initialized-RAM writes, retaining distinct ROM shadows. All ordinary rd12
+write families share one complete x12 path; SW remains a memory write. Last-reset
+identification and standard worker scheduling remain open.
