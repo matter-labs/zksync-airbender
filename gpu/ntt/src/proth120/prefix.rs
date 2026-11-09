@@ -42,9 +42,6 @@ macro_rules! dit_scaled_kernel {
         ));
     };
 }
-dit_scaled_kernel!(ab_pr_dit_nonfinal_5_stages_scaled_kernel);
-dit_scaled_kernel!(ab_pr_dit_nonfinal_6_stages_scaled_kernel);
-dit_scaled_kernel!(ab_pr_dit_nonfinal_7_stages_scaled_kernel);
 dit_scaled_kernel!(ab_pr_dit_nonfinal_8_stages_scaled_kernel);
 dit_scaled_kernel!(ab_pr_dit_nonfinal_5_stages_narrow_scaled_kernel);
 dit_scaled_kernel!(ab_pr_dit_nonfinal_6_stages_narrow_scaled_kernel);
@@ -52,9 +49,6 @@ dit_scaled_kernel!(ab_pr_dit_nonfinal_7_stages_narrow_scaled_kernel);
 
 fn dit_scaled_function(pass: &PrefixPass) -> DitScaledFunction {
     DitScaledFunction(match (pass.stages, pass.narrow) {
-        (5, false) => ab_pr_dit_nonfinal_5_stages_scaled_kernel,
-        (6, false) => ab_pr_dit_nonfinal_6_stages_scaled_kernel,
-        (7, false) => ab_pr_dit_nonfinal_7_stages_scaled_kernel,
         (8, false) => ab_pr_dit_nonfinal_8_stages_scaled_kernel,
         (5, true) => ab_pr_dit_nonfinal_5_stages_narrow_scaled_kernel,
         (6, true) => ab_pr_dit_nonfinal_6_stages_narrow_scaled_kernel,
@@ -357,6 +351,15 @@ pub fn twiddle_working_set() -> usize {
     twiddle_bytes(MAX_LOG_MAX_DOMAIN)
 }
 
+// Fixed wrap variants; L2 still selects strip sizes, residency, and tile batches.
+fn suffix_stages(columns: usize, log_v: u32, skip_bottom: u32) -> u32 {
+    match (columns, log_v, skip_bottom) {
+        (12, 1, 10) => 7,
+        (2, 1, 10) | (1, 4, 5) => 8,
+        _ => panic!("Proth120 suffix: unsupported wrap shape ({columns}, {log_v}, {skip_bottom})"),
+    }
+}
+
 fn dispatch_with_budget(
     log_n: u32,
     columns: usize,
@@ -380,7 +383,7 @@ fn dispatch_with_budget(
         });
     }
     let fixed = twiddle_bytes(MAX_LOG_MAX_DOMAIN);
-    for r in [8, 7, 6] {
+    for r in [suffix_stages(columns, log_v, skip_bottom)] {
         let a = log_n - r;
         let tile_bytes = columns.checked_mul(size_of::<PR>() << (skip_bottom + r))?;
         if a < skip_bottom || r < log_v || tile_bytes > MAX_TILE_BYTES {
@@ -432,7 +435,7 @@ fn dispatch_degraded(
     let l2_budget = l2_working_set_budget(l2_cache_size_bytes);
     let fixed = twiddle_bytes(MAX_LOG_MAX_DOMAIN);
     let column = size_of::<PR>() << log_n;
-    for r in [8, 7, 6] {
+    for r in [suffix_stages(columns, log_v, skip_bottom)] {
         let a = log_n - r;
         let tile_bytes = columns.checked_mul(size_of::<PR>() << (skip_bottom + r))?;
         if a < skip_bottom || r < log_v || tile_bytes > MAX_TILE_BYTES {
