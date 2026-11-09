@@ -45,3 +45,6 @@ pub(crate) use prover::gkr::whir::{
     WhirPolyCommitProof,
 };
 pub(crate) use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
+
+pub(crate) use prover::definitions::SoundnessMode;
+pub(crate) use prover::gkr::prover_config::ProofProfile;

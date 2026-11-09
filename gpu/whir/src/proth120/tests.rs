@@ -33,7 +33,7 @@ use super::commit::schedule_commit_intermediate;
 use super::schedule::{
     query_words, schedule_delinearization, schedule_eq_update, schedule_pow_and_query_indexes,
 };
-use super::shape::{L1WhirShape, OracleShape, L1_WHIR_TILE_BYTES};
+use super::shape::{L1WhirShape, OracleShape};
 use super::state::*;
 
 pub(super) fn worker() -> Worker {
@@ -801,7 +801,7 @@ fn pr_transcript_phases_match_reference() {
         &bundle.operation_mode,
         &config,
     );
-    let shape = L1WhirShape::from_schedule(&config.whir_schedule, 24, 7, 1, L1_WHIR_TILE_BYTES);
+    let shape = L1WhirShape::from_schedule(&config.whir_schedule);
     assert_whir_transcript_phases(whir, cpu.handoff_seed, &shape);
 }
 

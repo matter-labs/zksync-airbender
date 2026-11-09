@@ -34,7 +34,6 @@ use gpu_trace::witness::proth120::{
 use gpu_trace::witness::trace_unrolled::PAGE_SIZE_LOG2;
 use gpu_whir::proth120::{
     schedule_l1_whir_fold, L1WhirInputs, L1WhirKeepalive, L1WhirProof, L1WhirShape,
-    L1_WHIR_TILE_BYTES,
 };
 
 use super::{L1Proof, L1WrapGeometry, L1WrapInputs};
@@ -351,13 +350,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     end_phase(p, &mut phases, context)?;
     let p = phase("l1_wrap.whir", context)?;
     let handoff = gkr.whir_handoff();
-    let shape = L1WhirShape::from_schedule(
-        &config.whir_schedule,
-        geometry.log_message,
-        geometry.log_base_lde,
-        geometry.log_base_values_per_leaf,
-        L1_WHIR_TILE_BYTES,
-    );
+    let shape = L1WhirShape::from_schedule(&config.whir_schedule);
     let mut whir = schedule_l1_whir_fold(
         &mut base,
         &mut setup,
