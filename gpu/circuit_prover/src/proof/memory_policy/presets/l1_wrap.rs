@@ -4,9 +4,7 @@ use super::super::{
     WitnessPostCommitStorage,
 };
 
-/// Historical tracker peak for the 104-column 2^21 wrap at pack 3 / 128 cosets and the preset's
-/// depth-10 trees (`tests/l1_stage_parity.rs` `l1_wrap_stages_match_reference`)
-/// on the RTX PRO 6000 Blackwell (sm_120).
+/// Stage bound used by the wrap admission policy; see `gpu/execution_prover/tests/l1_memory.rs`.
 pub const MEASURED_WRAP_STAGE_PEAK_BYTES: usize = 11_517_558_784;
 pub const OVERLAP_BYTES: usize = 1_736_441_856;
 
@@ -23,7 +21,7 @@ pub const fn align_up(bytes: usize, unit: usize) -> usize {
 pub const L1_WRAP_ARENA_MIN_BYTES: usize =
     align_up(MEASURED_WRAP_STAGE_PEAK_BYTES + OVERLAP_BYTES, 1 << 30);
 
-/// Smallest sufficient arena of the bounded capacity matrix (`gpu/execution_prover/tests/l1_memory.rs`: 21/30 GiB candidates, both directions, three opposite followers, proof equal to the 2^21 reference) on the RTX PRO 6000 Blackwell (sm_120).
+/// Whole-proof arena floor qualified by the bounded capacity matrix.
 pub const L1_WRAP_WHOLE_PROOF_FLOOR_BYTES: usize = 21 << 30;
 pub const L1_WRAP_FLOOR_SOURCE: &str = "measured";
 const _: () = assert!(L1_WRAP_WHOLE_PROOF_FLOOR_BYTES >= L1_WRAP_ARENA_MIN_BYTES);
@@ -61,8 +59,7 @@ mod cpu_tests {
     use gpu_trace::witness::circuit_type::CircuitType;
     use riscv_transpiler::witness::UnifiedOpcodeTracingDataWithTimestamp;
 
-    /// The 104-column calibration model, without per-commit tree scratch.
-    /// The current layout model must fit under this historical calibration.
+    /// Preserve the calibrated bound until the capacity suite qualifies a replacement.
     const HISTORICAL_ANALYTIC_COMMIT_PEAK_BYTES: usize = (104 + 10) * (1 << 21) * 16
         + (13 + 2 + 13) * (1 << 24) * 16
         + 2 * align_up(128 * ((1 << 14) - 1) * 32, 1 << 20)
