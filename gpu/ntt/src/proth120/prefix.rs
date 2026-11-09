@@ -466,6 +466,10 @@ pub fn dispatch(
     skip_bottom: u32,
     l2_cache_size_bytes: usize,
 ) -> Result<Dispatch, DispatchError> {
+    assert!(
+        (13..=26).contains(&log_n),
+        "Proth120 dispatch requires a non-small wrap shape"
+    );
     if !(8..=26).contains(&log_n)
         || columns == 0
         || !(1..=4).contains(&log_v)

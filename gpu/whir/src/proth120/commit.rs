@@ -192,6 +192,10 @@ fn schedule_commit_retained(
         )
     });
     let fused_path = fused.is_some();
+    assert!(
+        fused_path,
+        "Proth120 WHIR: retained commitment requires the fused sink"
+    );
     log::debug!(
         "whir commit 2^{} oracle, log_v {}, log_lde {}, skip_bottom {}: {}",
         shape.log_n,

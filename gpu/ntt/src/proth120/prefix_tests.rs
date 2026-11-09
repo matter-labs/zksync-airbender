@@ -141,12 +141,21 @@ fn cpu_pr_chunk_plan_closure() {
         (23, 1, 4, 5),
         (19, 1, 4, 5),
         (15, 1, 4, 5),
-        (11, 1, 4, 5),
+        (18, 12, 1, 10),
+        (18, 2, 1, 10),
+        (18, 2, 1, 5),
+        (19, 12, 1, 10),
+        (19, 2, 1, 10),
+        (20, 12, 1, 10),
     ] {
-        for l2_mib in [0, 1, 4, 16, 40, 50, 96, 128] {
+        for l2_mib in 0..=256 {
             let plan = dispatch(n, c, v, sb, l2_mib * MIB).unwrap();
             assert!(matches!((plan.r, v), (7, 1) | (8, 1) | (8, 4)) || plan.small);
-            if let Some(prefix) = &plan.prefix {
+            let prefix = plan.prefix.as_ref().unwrap();
+            if c == 2 && sb == 5 {
+                assert!(super::has_reference_finish(prefix));
+            }
+            if [0, 1, 4, 16, 40, 50, 96, 128].contains(&l2_mib) {
                 assert_closure(prefix, false);
             }
         }
