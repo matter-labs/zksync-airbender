@@ -4,12 +4,14 @@ use std::sync::Arc;
 
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::result::CudaResult;
-use era_cudart::slice::DeviceVariable;
+use era_cudart::result::{CudaResult, CudaResultWrap};
+use era_cudart::slice::{DeviceSlice, DeviceVariable};
+use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_gkr_compiler::{DrWindowInputProjection, DrWindowProgram, KERNEL_ARGUMENT_CEILING_BYTES};
 use gpu_prover_context::ProverContext;
+use std::ffi::c_void;
 
 use super::{plan_dr_window_continuations_pr, DrWindowPassGeometryPr, PR_DR_WINDOW_COORDINATES};
 use crate::backward::window_dr::{dr_window_partials_len, validate_dr_window_folding_steps};
@@ -36,7 +38,6 @@ const _: () = assert!(PR_WINDOW_TAIL_TENSOR_CELLS == 27);
 #[derive(Clone, Copy)]
 pub(crate) struct DrWindowLaunchBindingPr {
     pub(crate) batch: GpuGKRDimensionReducingBatch<PR>,
-    pub(crate) batch_challenges: *const PR,
     pub(crate) eq_high_0: *const PR,
     pub(crate) eq_high_1: *const PR,
     pub(crate) partials: *mut PR,
@@ -53,13 +54,12 @@ const _: () = {
     assert!(align_of::<DrWindowLaunchBindingPr>() == 16);
     assert!(PR_DR_WINDOW_ARGUMENT_BYTES <= KERNEL_ARGUMENT_CEILING_BYTES);
     assert!(offset_of!(DrWindowLaunchBindingPr, batch) == 0);
-    assert!(offset_of!(DrWindowLaunchBindingPr, batch_challenges) == 288);
-    assert!(offset_of!(DrWindowLaunchBindingPr, eq_high_0) == 296);
-    assert!(offset_of!(DrWindowLaunchBindingPr, eq_high_1) == 304);
-    assert!(offset_of!(DrWindowLaunchBindingPr, partials) == 312);
-    assert!(offset_of!(DrWindowLaunchBindingPr, claim_point) == 320);
-    assert!(offset_of!(DrWindowLaunchBindingPr, log_rows) == 328);
-    assert!(offset_of!(DrWindowLaunchBindingPr, start_round) == 332);
+    assert!(offset_of!(DrWindowLaunchBindingPr, eq_high_0) == 288);
+    assert!(offset_of!(DrWindowLaunchBindingPr, eq_high_1) == 296);
+    assert!(offset_of!(DrWindowLaunchBindingPr, partials) == 304);
+    assert!(offset_of!(DrWindowLaunchBindingPr, claim_point) == 312);
+    assert!(offset_of!(DrWindowLaunchBindingPr, log_rows) == 320);
+    assert!(offset_of!(DrWindowLaunchBindingPr, start_round) == 324);
 };
 
 cuda_kernel!(
@@ -72,21 +72,40 @@ cuda_kernel!(
     ab_pr_gkr_bwd_dr_window_continuation_kernel(desc: DrWindowLaunchBindingPr)
 );
 
+cuda_struct_and_stub! {
+    static ab_pr_gkr_dim_reducing_batch_challenge_table:
+        [PR; GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN];
+}
+
 pub(crate) fn schedule_dr_batch_challenge_table_pr(
     batching: *const PR,
     context: &ProverContext,
-) -> CudaResult<DeviceAllocation<PR>> {
+) -> CudaResult<*const PR> {
     assert!(
         !batching.is_null(),
         "Proth120 DR batch challenge base is null"
     );
-    let mut table = context.alloc(
-        GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN,
-        AllocationPlacement::Top,
-    )?;
+    let mut address: *mut c_void = std::ptr::null_mut();
+    // SAFETY: the CUDA definition and Rust stub name the same ten-element symbol.
+    unsafe {
+        cudaGetSymbolAddress(
+            &mut address,
+            &ab_pr_gkr_dim_reducing_batch_challenge_table as *const _ as *const c_void,
+        )
+    }
+    .wrap()?;
+    // SAFETY: symbol storage spans exactly this table and lives for the CUDA context.
+    // The exec-stream prelude precedes its readers, as for the BabyBear table.
+    let table = unsafe {
+        DeviceSlice::from_raw_parts_mut(
+            address.cast::<PR>(),
+            GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN,
+        )
+    };
+    // SAFETY: the layer keeps its device-resident batching scalar alive through the prelude.
     let base = unsafe { DeviceVariable::from_raw_parts(batching) };
-    gpu_ops::powers::get_powers_by_ref::<PR>(base, 0, &mut table, context.get_exec_stream())?;
-    Ok(table)
+    gpu_ops::powers::get_powers_by_ref::<PR>(base, 0, table, context.get_exec_stream())?;
+    Ok(table.as_ptr())
 }
 
 fn dr_window_row_tiles(folding_steps: usize) -> usize {
@@ -544,7 +563,6 @@ impl DrWindowLayerHookPr {
         program: &DrWindowLayerProgram,
         storage: &GpuGKRStorage<PR, PR>,
         entry_round: usize,
-        batch_challenges: *const PR,
         claim_point_out: *const PR,
         context: &ProverContext,
     ) -> CudaResult<Self> {
@@ -552,16 +570,11 @@ impl DrWindowLayerHookPr {
         validate_dr_window_folding_steps(folding_steps)
             .expect("Proth120 DR folding steps must be supported");
         let geometries = plan_dr_window_continuations_pr(folding_steps, entry_round);
-        for (pointer, name) in [
-            (batch_challenges, "batch_challenges"),
-            (claim_point_out, "claim_point"),
-        ] {
-            assert!(
-                !pointer.is_null(),
-                "Proth120 binding NullContinuationPointer: pointer={:?}",
-                name
-            );
-        }
+        assert!(
+            !claim_point_out.is_null(),
+            "Proth120 DR continuation claim point is null"
+        );
+
         let projection = program.input_projection();
         let poly_count = projection.canonical_sources().len();
         let raw_inputs = DrWindowRawInputKeepalivePr::from_projection(storage, projection);
@@ -584,7 +597,6 @@ impl DrWindowLayerHookPr {
         let r0_batch = build_r0_batch(program.program(), storage, r0_eq.low(), r0_eq_sizes);
         let r0 = Box::new(DrWindowLaunchBindingPr {
             batch: r0_batch,
-            batch_challenges,
             eq_high_0: r0_eq.high_0(),
             eq_high_1: r0_eq.high_1(),
             partials: partials_ptr,
@@ -683,7 +695,6 @@ impl DrWindowLayerHookPr {
                 geometry,
                 binding: Box::new(DrWindowLaunchBindingPr {
                     batch,
-                    batch_challenges,
                     eq_high_0: continuation_eq.high_0(),
                     eq_high_1: continuation_eq.high_1(),
                     partials: partials_ptr,
