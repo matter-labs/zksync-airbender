@@ -42,21 +42,8 @@ macro_rules! leaf_sink_kernel {
         cuda_kernel_declaration!($name(args: LeafSinkArgs, descriptor: TwiddleDescriptor,));
     };
 }
-leaf_sink_kernel!(ab_pr_leaf_sink_1_2_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_2_1_3_commit_kernel);
-leaf_sink_kernel!(ab_pr_leaf_sink_6_2_3_commit_kernel);
-leaf_sink_kernel!(ab_pr_leaf_sink_7_2_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_12_1_3_commit_kernel);
-leaf_sink_kernel!(ab_pr_leaf_sink_13_1_3_commit_kernel);
-leaf_sink_kernel!(ab_pr_leaf_sink_1_2_3_commit_round_loop_kernel);
-leaf_sink_kernel!(ab_pr_leaf_sink_2_1_3_commit_round_loop_kernel);
-leaf_sink_kernel!(ab_pr_leaf_sink_6_2_3_commit_round_loop_kernel);
-leaf_sink_kernel!(ab_pr_leaf_sink_7_2_3_commit_round_loop_kernel);
-leaf_sink_kernel!(ab_pr_leaf_sink_12_1_3_commit_round_loop_kernel);
-leaf_sink_kernel!(ab_pr_leaf_sink_13_1_3_commit_round_loop_kernel);
-leaf_sink_kernel!(ab_pr_leaf_sink_1_3_5_coefficient_tree_kernel);
-leaf_sink_kernel!(ab_pr_leaf_sink_1_4_5_coefficient_tree_kernel);
-leaf_sink_kernel!(ab_pr_leaf_sink_1_3_5_residue_tree_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_1_4_5_residue_tree_kernel);
 
 #[repr(C)]
@@ -86,21 +73,13 @@ macro_rules! leaf_open_kernel {
         );
     };
 }
-leaf_open_kernel!(ab_pr_leaf_sink_1_2_3_open_kernel);
 leaf_open_kernel!(ab_pr_leaf_sink_2_1_3_open_kernel);
-leaf_open_kernel!(ab_pr_leaf_sink_6_2_3_open_kernel);
-leaf_open_kernel!(ab_pr_leaf_sink_7_2_3_open_kernel);
 leaf_open_kernel!(ab_pr_leaf_sink_12_1_3_open_kernel);
-leaf_open_kernel!(ab_pr_leaf_sink_13_1_3_open_kernel);
 
 fn leaf_open_function(columns: u32, log_v: u32) -> Option<LeafOpenFunction> {
     Some(LeafOpenFunction(match (columns, log_v) {
-        (1, 2) => ab_pr_leaf_sink_1_2_3_open_kernel,
         (2, 1) => ab_pr_leaf_sink_2_1_3_open_kernel,
-        (6, 2) => ab_pr_leaf_sink_6_2_3_open_kernel,
-        (7, 2) => ab_pr_leaf_sink_7_2_3_open_kernel,
         (12, 1) => ab_pr_leaf_sink_12_1_3_open_kernel,
-        (13, 1) => ab_pr_leaf_sink_13_1_3_open_kernel,
         _ => return None,
     }))
 }
@@ -123,39 +102,18 @@ pub fn sink_tree_depth(mode: &SinkMode, skip_bottom: u32) -> u32 {
     }
 }
 
-// CoefficientTree leaves come from the residue-tree kernels (the group before its last log_v stages,
-// unscaled by the coset power); the converting kernels (last log_v stages, then the leaf conversion)
-// are the reference. The Commit kernels run several keccak-f rounds per loop iteration; the
-// round-loop kernels (one round per iteration) are the reference.
 fn leaf_sink_function(
     columns: u32,
     log_v: u32,
     tree_depth: u32,
     mode: &SinkMode,
-    reference: bool,
 ) -> Option<LeafSinkFunction> {
-    let commit = matches!(mode, SinkMode::Commit);
-    Some(LeafSinkFunction(
-        match (columns, log_v, tree_depth, commit, reference) {
-            (1, 2, 3, true, false) => ab_pr_leaf_sink_1_2_3_commit_kernel,
-            (2, 1, 3, true, false) => ab_pr_leaf_sink_2_1_3_commit_kernel,
-            (6, 2, 3, true, false) => ab_pr_leaf_sink_6_2_3_commit_kernel,
-            (7, 2, 3, true, false) => ab_pr_leaf_sink_7_2_3_commit_kernel,
-            (12, 1, 3, true, false) => ab_pr_leaf_sink_12_1_3_commit_kernel,
-            (13, 1, 3, true, false) => ab_pr_leaf_sink_13_1_3_commit_kernel,
-            (1, 2, 3, true, true) => ab_pr_leaf_sink_1_2_3_commit_round_loop_kernel,
-            (2, 1, 3, true, true) => ab_pr_leaf_sink_2_1_3_commit_round_loop_kernel,
-            (6, 2, 3, true, true) => ab_pr_leaf_sink_6_2_3_commit_round_loop_kernel,
-            (7, 2, 3, true, true) => ab_pr_leaf_sink_7_2_3_commit_round_loop_kernel,
-            (12, 1, 3, true, true) => ab_pr_leaf_sink_12_1_3_commit_round_loop_kernel,
-            (13, 1, 3, true, true) => ab_pr_leaf_sink_13_1_3_commit_round_loop_kernel,
-            (1, 3, 5, false, false) => ab_pr_leaf_sink_1_3_5_residue_tree_kernel,
-            (1, 4, 5, false, false) => ab_pr_leaf_sink_1_4_5_residue_tree_kernel,
-            (1, 3, 5, false, true) => ab_pr_leaf_sink_1_3_5_coefficient_tree_kernel,
-            (1, 4, 5, false, true) => ab_pr_leaf_sink_1_4_5_coefficient_tree_kernel,
-            _ => return None,
-        },
-    ))
+    Some(LeafSinkFunction(match (columns, log_v, tree_depth, mode) {
+        (2, 1, 3, SinkMode::Commit) => ab_pr_leaf_sink_2_1_3_commit_kernel,
+        (12, 1, 3, SinkMode::Commit) => ab_pr_leaf_sink_12_1_3_commit_kernel,
+        (1, 4, 5, SinkMode::CoefficientTree { .. }) => ab_pr_leaf_sink_1_4_5_residue_tree_kernel,
+        _ => return None,
+    }))
 }
 
 // Commit: depth-3 sink nodes, then at least one node layer up to skip_bottom; coefficient tree:
@@ -174,7 +132,6 @@ pub fn has_leaf_sink(shape: &SuffixShape, mode: &SinkMode) -> bool {
             shape.log_v,
             sink_tree_depth(mode, shape.skip_bottom),
             mode,
-            false,
         )
         .is_some()
 }
@@ -203,7 +160,7 @@ pub(crate) fn sink_launch(
 ) -> SinkLaunch {
     let tree_depth = sink_tree_depth(mode, shape.skip_bottom);
     assert!(
-        leaf_sink_function(shape.columns, shape.log_v, tree_depth, mode, false).is_some(),
+        leaf_sink_function(shape.columns, shape.log_v, tree_depth, mode).is_some(),
         "leaf sink: no kernel for {} columns, log_v {}, skip_bottom {}, {mode:?}",
         shape.columns,
         shape.log_v,
@@ -285,10 +242,6 @@ pub(crate) fn sink_launch(
     }
 }
 
-// The sink of tiles [first_tile, first_tile + tile_count) of `cosets` suffix-micro outputs
-// (`launch_suffix_micro` layout): the last log_v stages, the leaf hashes and the in-block layers;
-// writes the depth-`sink_tree_depth` nodes of launch coset z at
-// out[z * out_coset_stride + node index in the coset tree].
 #[allow(clippy::too_many_arguments)]
 pub fn launch_sink(
     ctx: &DeviceContext,
@@ -300,66 +253,6 @@ pub fn launch_sink(
     mode: SinkMode,
     out: &mut DeviceSlice<Digest>,
     out_coset_stride: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    launch_leaf_sink(
-        ctx,
-        tiles,
-        shape,
-        first_tile,
-        tile_count,
-        cosets,
-        mode,
-        out,
-        out_coset_stride,
-        false,
-        stream,
-    )
-}
-
-// `launch_sink` with the reference kernels: the round-loop Commit kernels and the converting
-// CoefficientTree kernels.
-#[cfg(test)]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn launch_sink_reference(
-    ctx: &DeviceContext,
-    tiles: &DeviceSlice<PR>,
-    shape: &SuffixShape,
-    first_tile: u32,
-    tile_count: u32,
-    cosets: u32,
-    mode: SinkMode,
-    out: &mut DeviceSlice<Digest>,
-    out_coset_stride: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    launch_leaf_sink(
-        ctx,
-        tiles,
-        shape,
-        first_tile,
-        tile_count,
-        cosets,
-        mode,
-        out,
-        out_coset_stride,
-        true,
-        stream,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn launch_leaf_sink(
-    ctx: &DeviceContext,
-    tiles: &DeviceSlice<PR>,
-    shape: &SuffixShape,
-    first_tile: u32,
-    tile_count: u32,
-    cosets: u32,
-    mode: SinkMode,
-    out: &mut DeviceSlice<Digest>,
-    out_coset_stride: usize,
-    reference: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let launch = sink_launch(
@@ -398,14 +291,8 @@ fn launch_leaf_sink(
         k0,
         reserved: 0,
     };
-    let function = leaf_sink_function(
-        shape.columns,
-        shape.log_v,
-        launch.tree_depth,
-        &mode,
-        reference,
-    )
-    .unwrap();
+    let function =
+        leaf_sink_function(shape.columns, shape.log_v, launch.tree_depth, &mode).unwrap();
     function.launch(
         &CudaLaunchConfig::basic(launch.grid, 256, stream),
         &LeafSinkArguments::new(args, ctx.descriptor()),
@@ -920,8 +807,6 @@ macro_rules! residue_sink_kernel {
         );
     };
 }
-residue_sink_kernel!(ab_pr_residue_sink_8_4_kernel);
-residue_sink_kernel!(ab_pr_residue_sink_11_3_kernel);
 residue_sink_kernel!(ab_pr_residue_sink_11_4_kernel);
 
 // The residue-sink kernel and its cosets per block.
@@ -931,8 +816,6 @@ fn residue_sink_function(
     skip_bottom: u32,
 ) -> Option<(ResidueSinkFunction, u32)> {
     let (function, cosets): (ResidueSinkSignature, u32) = match (log_n, log_v, skip_bottom) {
-        (8, 4, 4) => (ab_pr_residue_sink_8_4_kernel, 8),
-        (11, 3, 5) => (ab_pr_residue_sink_11_3_kernel, 1),
         (11, 4, 5) => (ab_pr_residue_sink_11_4_kernel, 1),
         _ => return None,
     };

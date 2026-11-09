@@ -87,10 +87,8 @@ template <u32 V, class T> DEVICE_FORCEINLINE void finish_leaf_group(pr (&x)[1u <
   }
 }
 
-// The hashed leaf of a group: its evaluations (Commit), or its residues P_r(y) (CoefficientTree) either through the last V
-// stages and the leaf conversion (converted) or straight from the group before the last V stages, which holds
-// a^r P_r(y) for the coset scale a = w_D^k (residues).
-enum class leaf_form : u32 { evaluations, converted, residues };
+// Hash the evaluations for Commit, or unscale the group residues for CoefficientTree.
+enum class leaf_form : u32 { evaluations, residues };
 
 template <u32 C, u32 V, u32 TREE_DEPTH, leaf_form FORM, bool OPEN, u32 ROUNDS>
 DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_args &open, const proth120_twiddle_descriptor &d) {
@@ -126,11 +124,9 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
   const u64 column_stride = u64{1} << (args.skip_bottom + args.log_r);
   const pr *group = args.tile + blockIdx.z * args.tile_coset_stride + static_cast<u64>(leaf.tile) * C * column_stride +
                     (static_cast<u64>((leaf.f_lo << args.skip_bottom) + leaf.w) << V);
-  // The column loop's twiddles (C > 1) and the leaf elements absorbed after the first permutation (C = 1, V = 4) wait in
-  // shared memory instead of registers, [entry][thread].
+  // Keep column-loop twiddles in shared memory between absorbs, [entry][thread].
   constexpr u32 HOISTED = C > 1 ? VALUES - 1 : 0;
-  constexpr u32 PARKED = C == 1 && VALUES > 8 && FORM != leaf_form::residues ? VALUES - 8 : 0;
-  __shared__ pr waiting[(HOISTED > PARKED ? HOISTED : PARKED) * 256 + 1];
+  __shared__ pr waiting[HOISTED * 256 + 1];
   if constexpr (HOISTED) {
 #pragma unroll
     for (u32 u = 0; u < V; u++)
@@ -153,13 +149,6 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
     }
     __syncthreads();
   }
-  pr base_root_inv{};
-  if constexpr (FORM == leaf_form::converted) {
-    const u32 log_l = d.log_max_domain;
-    const u64 k = args.k0 + blockIdx.z;
-    const u64 mask = (u64{1} << log_l) - 1;
-    base_root_inv = pr_root_power_inv(d, ((k << (log_l - args.log_domain)) + (static_cast<u64>(leaf.j) << (log_l - args.log_n))) & mask);
-  }
   leaf_sponge<2 * C * VALUES, ROUNDS> sponge;
   if constexpr (FORM == leaf_form::residues)
     static_for<VALUES>([&](auto t) {
@@ -174,8 +163,6 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
       for (u32 t = 0; t < VALUES; t++)
         x[t] = load_in_order(group + decltype(column)::value * column_stride + t);
       finish_leaf_group<V>(x, twiddle);
-      if constexpr (FORM == leaf_form::converted)
-        ab_pr_convert_leaf<V>(d, x, base_root_inv);
       if constexpr (OPEN) {
         for (u32 i = 0; i < hit_count; i++) {
           const u32 q = hits[i];
@@ -188,13 +175,9 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
       }
       static_for<VALUES>([&](auto t) {
         constexpr u32 T = decltype(t)::value;
-        if constexpr (PARKED && T >= 8)
-          waiting[(T - 8) * 256 + tid] = x[T];
-        else
-          sponge.template absorb_element<decltype(column)::value * VALUES + T>(x[T]);
+        sponge.template absorb_element<decltype(column)::value * VALUES + T>(x[T]);
       });
     });
-  static_for<PARKED>([&](auto t) { sponge.template absorb_element<8 + decltype(t)::value>(waiting[decltype(t)::value * 256 + tid]); });
   leaves[tid] = sponge.finalize();
   __syncthreads();
   if (tid < 128)
@@ -295,8 +278,6 @@ DEVICE_FORCEINLINE void residue_sink(const pr *monomials, digest *leaves, const 
     residue_sink<LOG_N, V, COSETS>(monomials, leaves, k0, cosets, log_domain, d);                                                                              \
   }
 
-RESIDUE_SINK_KERNEL(8, 4, 8)
-RESIDUE_SINK_KERNEL(11, 3, 1)
 RESIDUE_SINK_KERNEL(11, 4, 1)
 
 #define LEAF_SINK_KERNEL(C, V, TREE_DEPTH, MODE, FORM, BLOCKS, ROUNDS)                                                                                         \
@@ -311,29 +292,10 @@ RESIDUE_SINK_KERNEL(11, 4, 1)
     leaf_sink<C, V, 3, leaf_form::evaluations, true, 1>(args, open, d);                                                                                        \
   }
 
-// Commit sinks: minimum resident blocks per SM and keccak-f rounds per loop iteration, the fastest per shape (7, 12 and 13
-// columns spill a few registers outside the round loops at 3 blocks).
-LEAF_SINK_KERNEL(1, 2, 3, commit, evaluations, 3, 4)
 LEAF_SINK_KERNEL(2, 1, 3, commit, evaluations, 3, 4)
-LEAF_SINK_KERNEL(6, 2, 3, commit, evaluations, 2, 3)
-LEAF_SINK_KERNEL(7, 2, 3, commit, evaluations, 3, 4)
 LEAF_SINK_KERNEL(12, 1, 3, commit, evaluations, 3, 4)
-LEAF_SINK_KERNEL(13, 1, 3, commit, evaluations, 3, 4)
-LEAF_SINK_KERNEL(1, 2, 3, commit_round_loop, evaluations, 2, 1)
-LEAF_SINK_KERNEL(2, 1, 3, commit_round_loop, evaluations, 2, 1)
-LEAF_SINK_KERNEL(6, 2, 3, commit_round_loop, evaluations, 2, 1)
-LEAF_SINK_KERNEL(7, 2, 3, commit_round_loop, evaluations, 2, 1)
-LEAF_SINK_KERNEL(12, 1, 3, commit_round_loop, evaluations, 2, 1)
-LEAF_SINK_KERNEL(13, 1, 3, commit_round_loop, evaluations, 2, 1)
-LEAF_SINK_KERNEL(1, 3, 5, coefficient_tree, converted, 2, 1)
-LEAF_SINK_KERNEL(1, 4, 5, coefficient_tree, converted, 2, 1)
-LEAF_SINK_KERNEL(1, 3, 5, residue_tree, residues, 3, 1)
 LEAF_SINK_KERNEL(1, 4, 5, residue_tree, residues, 3, 1)
-LEAF_OPEN_KERNEL(1, 2)
 LEAF_OPEN_KERNEL(2, 1)
-LEAF_OPEN_KERNEL(6, 2)
-LEAF_OPEN_KERNEL(7, 2)
 LEAF_OPEN_KERNEL(12, 1)
-LEAF_OPEN_KERNEL(13, 1)
 
 } // namespace airbender::trace::commit
