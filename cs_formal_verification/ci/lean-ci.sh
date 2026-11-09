@@ -69,7 +69,14 @@ step_sail_gen() {
 
 step_lean_sail() { "$FV/sail/fetch-lean-sail.sh"; }
 
-step_mathlib() { (cd "$LEAN" && lake exe cache get); }
+step_mathlib() { # up to three attempts: a retry fetches only the files a flaky transfer left missing
+  local i
+  for i in 1 2 3; do
+    (cd "$LEAN" && lake exe cache get) && return 0
+    log "lake exe cache get failed (attempt $i)"; sleep 10
+  done
+  return 1
+}
 
 step_verify() {
   # each verify.sh step ("== N. ...") gets the elapsed seconds since the previous one

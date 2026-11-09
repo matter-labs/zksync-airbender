@@ -40,3 +40,25 @@ steps baked in). `ci/sim.sh run <store> <cpus> <mem> <threads> <rev> <from> <to>
 cache; `<from>`/`<to>` name the build cache entry restored and saved. `FVCI_STOP=sail` stops after the Sail model.
 Each step prints `STEP <name> wall= cpu= peak=` (CPU and memory from the container's cgroup); `lean-ci.sh report`
 prints the modules compiled, the slowest ones and the container's peak memory.
+
+## Measurements (2026-11-09)
+
+Native reference, Apple M-series (14 cores), `LAKE_ARTIFACT_CACHE` off as in CI, `verify.sh` on a warm build of the
+previous commit. Scenario "PR": three circuit JSONs and the Chi5 setup table re-serialised (same parsed JSON, pins
+updated) plus a proof edit; Lake rebuilds 295 spec/proof modules and 61 test modules. Peak memory is the summed
+physical footprint of the `lean`/`lake` processes (page cache of the mapped `.olean` files excluded).
+
+| scenario | `LEAN_NUM_THREADS` | build (step 2) | tests (step 3 build) | whole `verify.sh` | peak memory |
+|---|---|---|---|---|---|
+| warm no-op | 8 | 4 s | 4 s | 100 s | 0.9 GB |
+| PR | 4 | 353 s | 111 s | ~555 s | 2.8 GB |
+| PR | 8 | 289 s | 78 s | ~465 s | 3.5 GB |
+| PR | 12 | 267 s | 72 s | ~435 s | 4.7 GB |
+
+On a no-op, 80% of the time is the review check (`check_review.py`, ~50 s: it elaborates an inventory of every
+claim module) and the three axiom audits (~37 s). Beyond 8 threads a PR build gains little: on average only ~5
+modules compile at once (the import chain after an artifact change is the critical path).
+
+Other steps: `lake exe cache get` 587 s with an empty `~/.cache/mathlib` (8908 files fetched one at a time on this
+link), 74 s with it restored; the toolchain download 294 s; `sail/regen.sh --bootstrap-sail` 1380 s CPU (most of it
+building OCaml and Sail with opam), none of these on a warm run.

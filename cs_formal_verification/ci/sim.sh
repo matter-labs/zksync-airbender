@@ -5,7 +5,8 @@
 #   ci/sim.sh run <store> <cpus> <mem> <threads> <rev> <from> <to> [log]
 #       run the job on commit <rev> of this repo, with --cpus <cpus> --memory <mem> (no swap) and
 #       LEAN_NUM_THREADS=<threads>. <store> is the named volume holding the simulated actions/cache entries
-#       (a fresh name = cold caches). The build cache is restored from entry <from> and saved as <to> ("-" = none).
+#       (a fresh name = cold caches; an absolute host path keeps the store and the work tree on the host disk).
+#       The build cache is restored from entry <from> and saved as <to> ("-" = none).
 #   ci/sim.sh clean <store>...                       remove the given store volumes
 #
 # Example (cold, then warm no-op on the same commit):
@@ -33,12 +34,20 @@ case "${1:-}" in
     store=$2 cpus=$3 mem=$4 threads=$5 rev=$6 from=$7 to=$8 log=${9:-/dev/stdout}
     tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
     src_tar "$rev" "$tmp/src.tar"
-    docker volume create "$store" >/dev/null
+    if [[ "$store" == /* ]]; then
+      # a host directory instead of a named volume: the store and the work tree live on the host disk (for a Docker VM
+      # whose disk is too small; file I/O through the VM share is slower, so the times are not comparable)
+      mkdir -p "$store/store"; [[ -d "$store/w" ]] && rm -rf "${store:?}/w"; mkdir -p "$store/w"
+      mounts=(-v "$store/store:/store" -v "$store/w:/w")
+    else
+      docker volume create "$store" >/dev/null
+      mounts=(-v "$store:/store")
+    fi
     t0=$(date +%s)
     set +e
     docker run --rm --name "fvci-run-$$" --cpus "$cpus" --memory "$mem" --memory-swap "$mem" \
       -e LEAN_NUM_THREADS="$threads" -e MODULE_BUDGET_JOBS="${MODULE_BUDGET_JOBS:-4}" -e FVCI_STOP="${FVCI_STOP:-}" \
-      -v "$store:/store" -v "$tmp:/in:ro" -v "$HERE:/opt/fvci:ro" \
+      "${mounts[@]}" -v "$tmp:/in:ro" -v "$HERE:/opt/fvci:ro" \
       "$IMAGE" bash /opt/fvci/sim-job.sh "$from" "$to" > "$log" 2>&1
     rc=$?
     set -e
