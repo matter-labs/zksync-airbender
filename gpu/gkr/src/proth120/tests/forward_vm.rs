@@ -23,51 +23,6 @@ use crate::{GpuExtensionFieldPoly, GpuGKRStorage};
 
 use super::{deterministic_columns, make_context, read_back, upload};
 
-pub(crate) fn small_programs() -> (
-    Arc<crate::upstream::GKRCircuitArtifact<PR>>,
-    Arc<crate::proth120::programs::GkrProgramsPr>,
-) {
-    let artifact = Arc::new(
-        cs::gkr_circuits::unified_reduced_machine::build_unified_artifact_core::<
-            PR,
-            field::baby_bear::base::BabyBearField,
-        >(true, 21, 1, prover::common_constants::rom::L1_WRAP_ROM),
-    );
-    let minimum_log = (artifact
-        .total_tables_size
-        .next_power_of_two()
-        .trailing_zeros() as usize)
-        .max(19)
-        .max(12);
-    assert_eq!(
-        minimum_log, 21,
-        "Proth120 small forward shape minimum changed"
-    );
-    assert_eq!(artifact.trace_len, 1 << minimum_log);
-    let dag = gkr_eval_ir::lower_dag(&artifact).unwrap();
-    let schedule = gpu_gkr_compiler::search_forward(gpu_gkr_compiler::ForwardSearchRequest {
-        circuit: "unified_reduced_machine",
-        dag: &dag,
-        cache_buckets: crate::proth120::forward::desc::PR_FWD_VM_BUCKETS as usize,
-        config: gpu_gkr_compiler::SearchConfig {
-            population: 8,
-            evaluations: 64,
-            ..gpu_gkr_compiler::SearchConfig::production()
-        },
-        seed: 0x120,
-        incumbent: None,
-    })
-    .unwrap();
-    let programs = Arc::new(
-        crate::proth120::programs::GkrProgramsPr::compile_with_schedule(
-            Arc::clone(&artifact),
-            &serde_json::to_vec(&schedule).unwrap(),
-        )
-        .unwrap(),
-    );
-    (artifact, programs)
-}
-
 fn mul(mut lhs: PR, rhs: PR) -> PR {
     lhs.mul_assign(&rhs);
     lhs
