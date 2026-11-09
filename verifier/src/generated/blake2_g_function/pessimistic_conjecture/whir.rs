@@ -60,12 +60,11 @@ pub unsafe fn process_oracle_query_single_value<
     nd_source: &mut I,
 ) -> Result<(), E::Error> {
     use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
-    let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
     let mut col = 0;
     while col < num_columns {
         let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
         let raw = read_reduced_field_el::<I>(nd_source);
-        *buf.get_unchecked_mut(col) = raw.as_u32_raw_repr();
+        hash_buf.get_unchecked_mut(col).write(raw.as_u32_raw_repr());
         let base_val = raw;
         field_ops::add_assign_product_with_base(&mut *acc, &gamma, &base_val);
         col += 1;
@@ -74,7 +73,7 @@ pub unsafe fn process_oracle_query_single_value<
     if block_end > LEAF_WORDS {
         hash_buf.zero_range(LEAF_WORDS, block_end);
     }
-    let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+    let buf = hash_buf.assume_init_prefix(block_end);
     hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
     if !verify_merkle_path::<I>(hasher, query_index, depth, cap, nd_source) {
         return Err(E::whir_merkle_path_failed(query));
@@ -108,12 +107,11 @@ pub unsafe fn process_oracle_query_single_value_multiproof<
     nd_source: &mut I,
 ) -> Result<(), E::Error> {
     use verifier_common::whir::hash_leaf_data_into_state;
-    let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
     let mut col = 0;
     while col < num_columns {
         let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
         let raw = read_reduced_field_el::<I>(nd_source);
-        *buf.get_unchecked_mut(col) = raw.as_u32_raw_repr();
+        hash_buf.get_unchecked_mut(col).write(raw.as_u32_raw_repr());
         let base_val = raw;
         field_ops::add_assign_product_with_base(&mut *acc, &gamma, &base_val);
         col += 1;
@@ -122,7 +120,7 @@ pub unsafe fn process_oracle_query_single_value_multiproof<
     if block_end > LEAF_WORDS {
         hash_buf.zero_range(LEAF_WORDS, block_end);
     }
-    let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+    let buf = hash_buf.assume_init_prefix(block_end);
     hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
     if !verify_merkle_multiproof_leaf::<I, MAX_DEPTH>(
         hasher,
@@ -468,9 +466,6 @@ const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [27usize, 27usize,
 const MAX_INTERNAL_FOLD_STEPS: usize = 6usize;
 const MAX_INTERNAL_VALUES_PER_LEAF: usize = 64usize;
 const MAX_INTERNAL_LEAF_EXT_WORDS: usize = MAX_INTERNAL_VALUES_PER_LEAF * EXT_DEGREE;
-const INTERNAL_HASH_BUF_SIZE: usize = MAX_INTERNAL_LEAF_EXT_WORDS
-    .div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS)
-    * BLAKE2S_BLOCK_SIZE_U32_WORDS;
 const MAX_INTERNAL_NUM_QUERIES: usize = 18usize;
 const MAX_INTERNAL_DRAW_WORDS: usize = 16usize;
 #[doc = r" Bit `ir` set: this build opens internal round `ir + 1`'s queries"]
@@ -635,7 +630,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             }
             let block_end = (leaf_ext_words).next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
             hash_buf.zero_range(leaf_ext_words, block_end);
-            let init_buf = hash_buf.assume_init_subarray::<INTERNAL_HASH_BUF_SIZE>();
+            let init_buf = hash_buf.assume_init_prefix(block_end);
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, leaf_ext_words);
             let merkle_ok = if (INTERNAL_MERKLE_MULTIPROOF_MASK >> ir) & 1 == 1 {
                 verify_merkle_multiproof_leaf::<I, MAX_INTERNAL_ORACLE_DEPTH>(
@@ -660,7 +655,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             if !merkle_ok {
                 return Err(E::whir_merkle_path_failed(q));
             }
-            let leaf: &[BabyBearExt4] = unsafe { init_buf.transmute_subslice(0, values_per_leaf) };
+            let leaf: &[BabyBearExt4] = unsafe { hash_buf.transmute_subslice(0, values_per_leaf) };
             let folded = eval_multilinear_with_monomial_tensor(leaf, monomial_weights.as_slice());
             let mut query_point_base = extended_generator.pow(query_index as u32);
             query_point_base.exp_power_of_2(fold_steps);
@@ -682,8 +677,6 @@ const FINAL_FOLD_STEPS: usize = 5usize;
 const FINAL_NUM_QUERIES: usize = 7usize;
 const FINAL_VALUES_PER_LEAF: usize = 32usize;
 const FINAL_LEAF_EXT_WORDS: usize = FINAL_VALUES_PER_LEAF * EXT_DEGREE;
-const FINAL_HASH_BUF_SIZE: usize =
-    FINAL_LEAF_EXT_WORDS.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
 const FINAL_QUERY_INDEX_BITS: usize = 15usize;
 const FINAL_RS_DOMAIN_LOG2: usize = 20usize;
 const FINAL_NUM_COSETS: usize = 16384usize;
@@ -819,7 +812,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
             }
             let block_end = (FINAL_LEAF_EXT_WORDS).next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
             hash_buf.zero_range(FINAL_LEAF_EXT_WORDS, block_end);
-            let init_buf = hash_buf.assume_init_subarray::<FINAL_HASH_BUF_SIZE>();
+            let init_buf = hash_buf.assume_init_prefix(block_end);
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, FINAL_LEAF_EXT_WORDS);
             let merkle_ok = if FINAL_MERKLE_MULTIPROOF {
                 verify_merkle_multiproof_leaf::<I, FINAL_ORACLE_DEPTH>(
@@ -845,7 +838,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
                 return Err(E::whir_merkle_path_failed(q));
             }
             let leaf: &[BabyBearExt4] =
-                unsafe { init_buf.transmute_subslice(0, FINAL_VALUES_PER_LEAF) };
+                unsafe { hash_buf.transmute_subslice(0, FINAL_VALUES_PER_LEAF) };
             let folded = eval_multilinear_with_monomial_tensor(leaf, monomial_weights.as_slice());
             folded_values.push(folded);
             query_base_roots.push(base_root);

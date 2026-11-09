@@ -81,15 +81,17 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
     /// already laid out in 16-word aligned blocks. Avoids the memcopy that `commit_with_seed`
     /// performs. Unused words in the last block must be zeroed by the caller.
     /// `total_words` is the number of meaningful data words (excluding padding); an empty
-    /// commit hashes one zero block.
+    /// commit hashes one zero block. `buf` covers exactly the blocks that get hashed, so a
+    /// larger backing buffer only has to be initialized up to there.
     #[inline(always)]
-    pub fn commit_with_seed_using_hasher_and_aligned_buffer<const N: usize>(
+    pub fn commit_with_seed_using_hasher_and_aligned_buffer(
         hasher: &mut blake2s_u32::DelegatedBlake2sState,
         seed: &mut Seed,
-        buf: &AlignedArray64<u32, N>,
+        buf: &AlignedSlice64<u32>,
         total_words: usize,
     ) {
         let num_blocks = total_words.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS).max(1);
+        debug_assert!(num_blocks * BLAKE2S_BLOCK_SIZE_U32_WORDS <= buf.len());
         let last_active = total_words - (num_blocks - 1) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
         #[cfg(all(target_arch = "riscv32", feature = "special_opcodes_extension"))]
         {
@@ -660,11 +662,13 @@ impl<const N: usize, const REDUCED_ROUNDS: bool> CommitBuf<N, REDUCED_ROUNDS> {
             unsafe { self.inner.zero_range(total, padded) };
         }
         {
+            // SAFETY: the first `total` words were written through `data_write` and the
+            // padding up to `padded` was zeroed above, so this prefix is initialized; the rest
+            // of the capacity may not be and stays out of the view. The buffer is 64-byte
+            // aligned.
+            let written = unsafe { self.inner.assume_init_prefix(padded) };
             Blake2sTranscript::<REDUCED_ROUNDS>::commit_with_seed_using_hasher_and_aligned_buffer(
-                hasher,
-                seed,
-                unsafe { self.inner.assume_init_ref() },
-                total,
+                hasher, seed, written, total,
             );
         }
     }

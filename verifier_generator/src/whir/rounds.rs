@@ -59,7 +59,6 @@ fn round_params(
 /// merkle path, extracting evals, and folding. Used by both internal and final rounds.
 fn generate_single_oracle_query_body<MW: FieldWrapper>(
     leaf_ext_words_expr: TokenStream,
-    hash_buf_size_const: TokenStream,
     values_per_leaf_expr: TokenStream,
     fold_steps_expr: TokenStream,
     merkle_verify: TokenStream,
@@ -103,12 +102,13 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
         let block_end = (#leaf_ext_words_expr).next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
         hash_buf.zero_range(#leaf_ext_words_expr, block_end);
 
-        let init_buf = hash_buf.assume_init_subarray::<#hash_buf_size_const>();
+        // SAFETY: the leaf words and their zero padding up to `block_end` were written above
+        let init_buf = hash_buf.assume_init_prefix(block_end);
         hash_leaf_data_into_state(&mut ts.hasher, init_buf, #leaf_ext_words_expr);
         #merkle_verify
 
         // The leaf words were read as reduced field elements: they are the leaf values as is.
-        let leaf: &[#quartic_struct] = unsafe { init_buf.transmute_subslice(0, #values_per_leaf_expr) };
+        let leaf: &[#quartic_struct] = unsafe { hash_buf.transmute_subslice(0, #values_per_leaf_expr) };
 
         #fold_computation
     }
@@ -413,12 +413,11 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             ) -> Result<(), E::Error> {
                 use ::verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
 
-                let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
                 let mut col = 0;
                 while col < num_columns {
                     let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
                     let raw = read_reduced_field_el::<I>(nd_source);
-                    *buf.get_unchecked_mut(col) = raw.as_u32_raw_repr();
+                    hash_buf.get_unchecked_mut(col).write(raw.as_u32_raw_repr());
                     let base_val = raw;
                     #fma_into_acc;
                     col += 1;
@@ -428,7 +427,8 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 if block_end > LEAF_WORDS {
                     hash_buf.zero_range(LEAF_WORDS, block_end);
                 }
-                let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+                // SAFETY: the leaf words and their zero padding up to `block_end` were written above
+                let buf = hash_buf.assume_init_prefix(block_end);
                 hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
                 if !verify_merkle_path::<I>(hasher, query_index, depth, cap, nd_source) {
                     return Err(E::whir_merkle_path_failed(query));
@@ -458,12 +458,11 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             ) -> Result<(), E::Error> {
                 use ::verifier_common::whir::hash_leaf_data_into_state;
 
-                let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
                 let mut col = 0;
                 while col < num_columns {
                     let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
                     let raw = read_reduced_field_el::<I>(nd_source);
-                    *buf.get_unchecked_mut(col) = raw.as_u32_raw_repr();
+                    hash_buf.get_unchecked_mut(col).write(raw.as_u32_raw_repr());
                     let base_val = raw;
                     #fma_into_acc;
                     col += 1;
@@ -473,7 +472,8 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 if block_end > LEAF_WORDS {
                     hash_buf.zero_range(LEAF_WORDS, block_end);
                 }
-                let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+                // SAFETY: the leaf words and their zero padding up to `block_end` were written above
+                let buf = hash_buf.assume_init_prefix(block_end);
                 hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
                 if !verify_merkle_multiproof_leaf::<I, MAX_DEPTH>(
                     hasher, stack, tree_index, prev_index_equal, next_index, depth, cap, nd_source,
@@ -823,7 +823,6 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
 
     let query_body = generate_single_oracle_query_body::<MW>(
         quote! { leaf_ext_words },
-        quote! { INTERNAL_HASH_BUF_SIZE },
         quote! { values_per_leaf },
         quote! { fold_steps },
         merkle_verify(
@@ -904,7 +903,6 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
         const MAX_INTERNAL_FOLD_STEPS: usize = #max_internal_fold_steps;
         const MAX_INTERNAL_VALUES_PER_LEAF: usize = #max_internal_values_per_leaf;
         const MAX_INTERNAL_LEAF_EXT_WORDS: usize = MAX_INTERNAL_VALUES_PER_LEAF * EXT_DEGREE;
-        const INTERNAL_HASH_BUF_SIZE: usize = MAX_INTERNAL_LEAF_EXT_WORDS.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
         const MAX_INTERNAL_NUM_QUERIES: usize = #max_internal_num_queries;
         const MAX_INTERNAL_DRAW_WORDS: usize = #max_internal_draw_words;
         /// Bit `ir` set: this build opens internal round `ir + 1`'s queries
@@ -1088,7 +1086,6 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
 
     let query_body = generate_single_oracle_query_body::<MW>(
         quote! { FINAL_LEAF_EXT_WORDS },
-        quote! { FINAL_HASH_BUF_SIZE },
         quote! { FINAL_VALUES_PER_LEAF },
         quote! { FINAL_FOLD_STEPS },
         merkle_verify(
@@ -1174,7 +1171,6 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
         const FINAL_NUM_QUERIES: usize = #num_queries;
         const FINAL_VALUES_PER_LEAF: usize = #values_per_leaf;
         const FINAL_LEAF_EXT_WORDS: usize = FINAL_VALUES_PER_LEAF * EXT_DEGREE;
-        const FINAL_HASH_BUF_SIZE: usize = FINAL_LEAF_EXT_WORDS.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
         const FINAL_QUERY_INDEX_BITS: usize = #query_index_bits;
         const FINAL_RS_DOMAIN_LOG2: usize = #rs_domain_log2;
         const FINAL_NUM_COSETS: usize = #num_cosets;
