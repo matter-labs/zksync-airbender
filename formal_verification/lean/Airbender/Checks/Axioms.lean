@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerSeed
+import Airbender.Proofs.ReducedMachine.NativeWorkerSeed
+import Airbender.Review.Trace.Families.ReducedMachine.WorkerSeedTheorems
+import Tests.NativeWorkerSeed
+
 import Airbender.Review.Trace.Families.ReducedMachine.SparseMain
 import Airbender.Proofs.ReducedMachine.NativeSparseMainBody
 import Airbender.Proofs.ReducedMachine.NativeSparseMain
@@ -8987,3 +8992,45 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeSparseMain.raw_padding_aux_zero
 #print axioms Airbender.Tests.NativeSparseMain.actual_reserved_value
 #print axioms Airbender.Tests.NativeSparseMain.memory_columns_unchanged
+
+#print axioms Airbender.NativeWorkerSeedProofs.ram_descriptor
+#print axioms Airbender.NativeWorkerSeedProofs.ram_space
+#print axioms Airbender.NativeWorkerSeedProofs.register_space
+#print axioms Airbender.NativeWorkerSeedProofs.ram_source
+#print axioms Airbender.NativeWorkerSeedProofs.active_requires_seed
+#print axioms Airbender.NativeWorkerSeedProofs.spike_weight
+#print axioms Airbender.NativeWorkerSeedProofs.append_weight
+#print axioms Airbender.NativeWorkerSeedProofs.repeated_weight
+#print axioms Airbender.NativeWorkerSeedProofs.zero_weight
+#print axioms Airbender.NativeWorkerSeedProofs.source_weight
+#print axioms Airbender.NativeWorkerSeedProofs.source_padding
+#print axioms Airbender.NativeWorkerSeedProofs.copy_padding
+#print axioms Airbender.NativeWorkerSeedProofs.copy_weight
+#print axioms Airbender.NativeWorkerSeedProofs.padding_workers_zero
+#print axioms Airbender.NativeWorkerSeedProofs.reject_sparse
+#print axioms Airbender.NativeWorkerSeedProofs.withMain_memory
+#print axioms Airbender.NativeWorkerSeedProofs.withMain_scalar
+#print axioms Airbender.NativeWorkerSeedProofs.withMain_decoder
+#print axioms Airbender.NativeWorkerSeedProofs.constructed_rejection
+#print axioms Airbender.NativeWorkerSeed.native_active_worker_requires_ram_initialization
+#print axioms Airbender.NativeWorkerSeed.native_sparse_global_completion_rejected
+#print axioms Airbender.Tests.NativeWorkerSeed.actual_ram_descriptor
+#print axioms Airbender.Tests.NativeWorkerSeed.every_ram_read
+#print axioms Airbender.Tests.NativeWorkerSeed.every_register_seed
+#print axioms Airbender.Tests.NativeWorkerSeed.zero_ram_is_not_x0
+#print axioms Airbender.Tests.NativeWorkerSeed.original_padding_record
+#print axioms Airbender.Tests.NativeWorkerSeed.idle_padding_record
+#print axioms Airbender.Tests.NativeWorkerSeed.nonzero_time_not_padding
+#print axioms Airbender.Tests.NativeWorkerSeed.teardown_address_still_zero
+#print axioms Airbender.Tests.NativeWorkerSeed.repeated_positions_count
+#print axioms Airbender.Tests.NativeWorkerSeed.absent_position_count
+#print axioms Airbender.Tests.NativeWorkerSeed.colliding_idle_key_kept
+#print axioms Airbender.Tests.NativeWorkerSeed.first_source_weight
+#print axioms Airbender.Tests.NativeWorkerSeed.final_source_weight
+#print axioms Airbender.Tests.NativeWorkerSeed.all_source_padding
+#print axioms Airbender.Tests.NativeWorkerSeed.allowed_counts_stay_nonzero
+#print axioms Airbender.Tests.NativeWorkerSeed.complete_main_retained
+#print axioms Airbender.Tests.NativeWorkerSeed.six_scalar_observations_retained
+#print axioms Airbender.Tests.NativeWorkerSeed.four_decoder_observations_retained
+#print axioms Airbender.Tests.NativeWorkerSeed.complete_copy_weight
+#print axioms Airbender.Tests.NativeWorkerSeed.complete_copy_padding

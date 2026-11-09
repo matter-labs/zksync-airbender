@@ -20960,6 +20960,83 @@
       "backport_reuse_revision": "1747c11420f64ead247c1992beba08bc6044b27e",
       "backport_reuse_path": "Tests/NativeCallerSumCompletion.lean",
       "backport_reuse_sha256": "43438aa8b62acdc64230c8332b8b03e666646f48a23edfb1ff7b75bdf776b2e6"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/WorkerSeed.lean",
+      "change": "Derive actual nonpadding RAM initialization necessity for EVERY active worker from OLD complete initialized seed/address paths and literal worker RAM port1. No desired seed/pointer/read/history/activity premise. SAME checked sparse inactive MAIN has ALL six initfields zero, so every worker multiplicity0 derives; full positional caller key weight=countWord.toNat, OLD formal SourceIdentity coefficient balance=0, native count1..8192 gives exact full logical rejection for ANY surrounding physical observations/copy count/workers. Full old memory/caller polynomial/decoder component retained and rows derived via OLD constructor. No new Accepted/crypto boundary/filter/production/nativepin/adoption/artifact/dependency/heavy replay/v3refresh; NOT physical caller activity/global positive/native defect/parity.",
+      "backport_reuse_revision": "38cb747f0d9cb0a856c2d1ace0dd306f6342ee7e",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/SparseMain.lean",
+      "backport_reuse_sha256": "31f236a63f7b09e29e925a9285de5a63c0ea3a8555681d0d92fd2e460e236a09"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/WorkerSeed.lean",
+      "change": "Derive actual nonpadding RAM initialization necessity for EVERY active worker from OLD complete initialized seed/address paths and literal worker RAM port1. No desired seed/pointer/read/history/activity premise. SAME checked sparse inactive MAIN has ALL six initfields zero, so every worker multiplicity0 derives; full positional caller key weight=countWord.toNat, OLD formal SourceIdentity coefficient balance=0, native count1..8192 gives exact full logical rejection for ANY surrounding physical observations/copy count/workers. Full old memory/caller polynomial/decoder component retained and rows derived via OLD constructor. No new Accepted/crypto boundary/filter/production/nativepin/adoption/artifact/dependency/heavy replay/v3refresh; NOT physical caller activity/global positive/native defect/parity.",
+      "backport_reuse_revision": "38cb747f0d9cb0a856c2d1ace0dd306f6342ee7e",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/InactiveGlobal.lean",
+      "backport_reuse_sha256": "9265039e4822920fbd17881e17ad0fb06a6a7c2f90b4aaa3ef3f05f8b72a90e4"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeWorkerSeed.lean",
+      "change": "Derive actual nonpadding RAM initialization necessity for EVERY active worker from OLD complete initialized seed/address paths and literal worker RAM port1. No desired seed/pointer/read/history/activity premise. SAME checked sparse inactive MAIN has ALL six initfields zero, so every worker multiplicity0 derives; full positional caller key weight=countWord.toNat, OLD formal SourceIdentity coefficient balance=0, native count1..8192 gives exact full logical rejection for ANY surrounding physical observations/copy count/workers. Full old memory/caller polynomial/decoder component retained and rows derived via OLD constructor. No new Accepted/crypto boundary/filter/production/nativepin/adoption/artifact/dependency/heavy replay/v3refresh; NOT physical caller activity/global positive/native defect/parity.",
+      "backport_reuse_revision": "38cb747f0d9cb0a856c2d1ace0dd306f6342ee7e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeAddressSupport.lean",
+      "backport_reuse_sha256": "a1350de3d643a5d615fe608be2589c4e6d69d209477cfeecf0ac8a62a457ced0"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeWorkerSeed.lean",
+      "change": "Derive actual nonpadding RAM initialization necessity for EVERY active worker from OLD complete initialized seed/address paths and literal worker RAM port1. No desired seed/pointer/read/history/activity premise. SAME checked sparse inactive MAIN has ALL six initfields zero, so every worker multiplicity0 derives; full positional caller key weight=countWord.toNat, OLD formal SourceIdentity coefficient balance=0, native count1..8192 gives exact full logical rejection for ANY surrounding physical observations/copy count/workers. Full old memory/caller polynomial/decoder component retained and rows derived via OLD constructor. No new Accepted/crypto boundary/filter/production/nativepin/adoption/artifact/dependency/heavy replay/v3refresh; NOT physical caller activity/global positive/native defect/parity.",
+      "backport_reuse_revision": "38cb747f0d9cb0a856c2d1ace0dd306f6342ee7e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeDelegationKeyAccounting.lean",
+      "backport_reuse_sha256": "b1e2c25da720a3ca9958401dc0fc22925ade8f82e4a94ec0960eb5ec747e7094"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeWorkerSeed.lean",
+      "change": "Derive actual nonpadding RAM initialization necessity for EVERY active worker from OLD complete initialized seed/address paths and literal worker RAM port1. No desired seed/pointer/read/history/activity premise. SAME checked sparse inactive MAIN has ALL six initfields zero, so every worker multiplicity0 derives; full positional caller key weight=countWord.toNat, OLD formal SourceIdentity coefficient balance=0, native count1..8192 gives exact full logical rejection for ANY surrounding physical observations/copy count/workers. Full old memory/caller polynomial/decoder component retained and rows derived via OLD constructor. No new Accepted/crypto boundary/filter/production/nativepin/adoption/artifact/dependency/heavy replay/v3refresh; NOT physical caller activity/global positive/native defect/parity.",
+      "backport_reuse_revision": "38cb747f0d9cb0a856c2d1ace0dd306f6342ee7e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeSparseMain.lean",
+      "backport_reuse_sha256": "474f650fde48ab379ecbcb6c4c1cc16cd4132528f339adfe8b6bceaa9e002e66"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeWorkerSeed.lean",
+      "change": "Derive actual nonpadding RAM initialization necessity for EVERY active worker from OLD complete initialized seed/address paths and literal worker RAM port1. No desired seed/pointer/read/history/activity premise. SAME checked sparse inactive MAIN has ALL six initfields zero, so every worker multiplicity0 derives; full positional caller key weight=countWord.toNat, OLD formal SourceIdentity coefficient balance=0, native count1..8192 gives exact full logical rejection for ANY surrounding physical observations/copy count/workers. Full old memory/caller polynomial/decoder component retained and rows derived via OLD constructor. No new Accepted/crypto boundary/filter/production/nativepin/adoption/artifact/dependency/heavy replay/v3refresh; NOT physical caller activity/global positive/native defect/parity.",
+      "backport_reuse_revision": "38cb747f0d9cb0a856c2d1ace0dd306f6342ee7e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeInactiveGlobal.lean",
+      "backport_reuse_sha256": "0ba8c8aaeb83207871c5b443694eeda8d75b95c9fc466e93db8e8e7d67451ceb"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeWorkerSeed.lean",
+      "change": "Derive actual nonpadding RAM initialization necessity for EVERY active worker from OLD complete initialized seed/address paths and literal worker RAM port1. No desired seed/pointer/read/history/activity premise. SAME checked sparse inactive MAIN has ALL six initfields zero, so every worker multiplicity0 derives; full positional caller key weight=countWord.toNat, OLD formal SourceIdentity coefficient balance=0, native count1..8192 gives exact full logical rejection for ANY surrounding physical observations/copy count/workers. Full old memory/caller polynomial/decoder component retained and rows derived via OLD constructor. No new Accepted/crypto boundary/filter/production/nativepin/adoption/artifact/dependency/heavy replay/v3refresh; NOT physical caller activity/global positive/native defect/parity.",
+      "backport_reuse_revision": "38cb747f0d9cb0a856c2d1ace0dd306f6342ee7e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeMainBatch.lean",
+      "backport_reuse_sha256": "6f66ede4dbca4192a5bd6c907f432ad283dc4d0649cf2a1326770b010790b362"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/WorkerSeedTheorems.lean",
+      "change": "Derive actual nonpadding RAM initialization necessity for EVERY active worker from OLD complete initialized seed/address paths and literal worker RAM port1. No desired seed/pointer/read/history/activity premise. SAME checked sparse inactive MAIN has ALL six initfields zero, so every worker multiplicity0 derives; full positional caller key weight=countWord.toNat, OLD formal SourceIdentity coefficient balance=0, native count1..8192 gives exact full logical rejection for ANY surrounding physical observations/copy count/workers. Full old memory/caller polynomial/decoder component retained and rows derived via OLD constructor. No new Accepted/crypto boundary/filter/production/nativepin/adoption/artifact/dependency/heavy replay/v3refresh; NOT physical caller activity/global positive/native defect/parity.",
+      "backport_reuse_revision": "38cb747f0d9cb0a856c2d1ace0dd306f6342ee7e",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/SparseMainTheorems.lean",
+      "backport_reuse_sha256": "e45bab433c1136c7b1e2942d6e84823149280e125cda57f9e9e1f0e43ba76885"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/WorkerSeedTheorems.lean",
+      "change": "Derive actual nonpadding RAM initialization necessity for EVERY active worker from OLD complete initialized seed/address paths and literal worker RAM port1. No desired seed/pointer/read/history/activity premise. SAME checked sparse inactive MAIN has ALL six initfields zero, so every worker multiplicity0 derives; full positional caller key weight=countWord.toNat, OLD formal SourceIdentity coefficient balance=0, native count1..8192 gives exact full logical rejection for ANY surrounding physical observations/copy count/workers. Full old memory/caller polynomial/decoder component retained and rows derived via OLD constructor. No new Accepted/crypto boundary/filter/production/nativepin/adoption/artifact/dependency/heavy replay/v3refresh; NOT physical caller activity/global positive/native defect/parity.",
+      "backport_reuse_revision": "38cb747f0d9cb0a856c2d1ace0dd306f6342ee7e",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/InactiveGlobalTheorems.lean",
+      "backport_reuse_sha256": "63f9b63dbf2df8b013963b88bf3bbcf6d2def2b06185af019dc01d526a78a7db"
+    },
+    {
+      "path": "Tests/NativeWorkerSeed.lean",
+      "change": "Derive actual nonpadding RAM initialization necessity for EVERY active worker from OLD complete initialized seed/address paths and literal worker RAM port1. No desired seed/pointer/read/history/activity premise. SAME checked sparse inactive MAIN has ALL six initfields zero, so every worker multiplicity0 derives; full positional caller key weight=countWord.toNat, OLD formal SourceIdentity coefficient balance=0, native count1..8192 gives exact full logical rejection for ANY surrounding physical observations/copy count/workers. Full old memory/caller polynomial/decoder component retained and rows derived via OLD constructor. No new Accepted/crypto boundary/filter/production/nativepin/adoption/artifact/dependency/heavy replay/v3refresh; NOT physical caller activity/global positive/native defect/parity.",
+      "backport_reuse_revision": "38cb747f0d9cb0a856c2d1ace0dd306f6342ee7e",
+      "backport_reuse_path": "Tests/NativeSparseMain.lean",
+      "backport_reuse_sha256": "c4962aa14640d988d6e2cec0797d9c7517249d1c4613c51621c51e23a83ebd6f"
+    },
+    {
+      "path": "Tests/NativeWorkerSeed.lean",
+      "change": "Derive actual nonpadding RAM initialization necessity for EVERY active worker from OLD complete initialized seed/address paths and literal worker RAM port1. No desired seed/pointer/read/history/activity premise. SAME checked sparse inactive MAIN has ALL six initfields zero, so every worker multiplicity0 derives; full positional caller key weight=countWord.toNat, OLD formal SourceIdentity coefficient balance=0, native count1..8192 gives exact full logical rejection for ANY surrounding physical observations/copy count/workers. Full old memory/caller polynomial/decoder component retained and rows derived via OLD constructor. No new Accepted/crypto boundary/filter/production/nativepin/adoption/artifact/dependency/heavy replay/v3refresh; NOT physical caller activity/global positive/native defect/parity.",
+      "backport_reuse_revision": "38cb747f0d9cb0a856c2d1ace0dd306f6342ee7e",
+      "backport_reuse_path": "Tests/NativeInactiveGlobal.lean",
+      "backport_reuse_sha256": "6f977fd7eeb008d783f31b398ea084f46a0d287b7c2ed6b6057760aba3fc5e3d"
     }
   ],
   "setup_artifacts": [

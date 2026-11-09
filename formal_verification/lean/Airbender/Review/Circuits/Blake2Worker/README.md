@@ -554,3 +554,12 @@ rows, raw accesses and full memory boundaries. Complete BODY and genuine sparse
 caller polynomial/actual inverse claim are checked. Global matching/source
 identities, nonempty workers and setup/init completion for this trace remain open;
 assess compatibility before rebuilding families. No issued-call or parity claim.
+
+## Active worker RAM seeds and sparse global rejection
+
+[Actual seed necessity and sparse candidate exclusion](../../Trace/Families/ReducedMachine/WorkerSeedTheorems.lean) derive an ordinary
+nonpadding initialization row for every active worker. The complete all-padding
+sparse MAIN/caller candidate cannot extend to logical SourceAccepted plus OLD
+SourceIdentity, for any native-allowed count/workers/surrounding observations.
+All old components and raw fields remain; physical caller activity, nonempty global
+acceptance and parity remain open. No expected seed/activity/count/ledger premise.

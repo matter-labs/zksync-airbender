@@ -1,5 +1,41 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Active worker seed requirement and sparse-source rejection
+
+[The seed and sparse-source roots](Airbender/Review/Trace/Families/ReducedMachine/WorkerSeedTheorems.lean)
+derive that EVERY actual active worker requires an actual ordinary nonpadding
+initialization source row. The selected original worker port1 is a RAM read,
+including at address0; all public GPR seeds have a distinct address-space code.
+The OLD complete initialized seed-path/address theorem derives its seed support.
+No pointer/read/value/bound/history/seed/activity/count or ledger is supplied.
+This result uses complete InitializationBatch acceptance and the OLD explicit
+SourceIdentity boundary; it does not require public decoder image or lookup
+premises and does not establish physical extraction or issued-call activity.
+
+The SAME checked nonconstant sparse MAIN/caller component has all six initialization
+fields zero at every ordinary position. Complete global acceptance therefore
+forces EVERY worker multiplicity0. Generic duplicate-preserving weights, before
+native sampling, derive one actual four-key caller contribution per chunk and
+countWord.toNat for ALL copies. OLD SourceIdentity coefficient balance would force
+that contribution0. The OLD native counter derives1..8192, whose canonical field
+encoding is nonzero. Thus this sparse candidate cannot extend to SourceAccepted
+plus OLD SourceIdentity for ANY surrounding scalar/decoder/public observations,
+u32-indexed copies or complete worker batch. All surrounding observations remain
+exact through an explicit main insertion constructor; no table acceptance transfer.
+
+The public root constructs the OLD full sparse memory/caller component and derives
+its rows before the rejection. Full memory/FIRST-LAST, genuine caller polynomial,
+actual inverse/NONZERO claim and individual decoder access remain. No desired row,
+lookup/activity/count/matching/ledger/history/result premise, inactive-request filter,
+new Accepted or crypto boundary is introduced. All20 controls pass. The rejection
+is logical candidate exclusion, not a native defect, physical verifier rejection,
+general all-inactive/caller-activity theorem or NONEMPTY global accepted witness.
+Primitive-domain construction/nonemptiness/physical FFT and all prior poles/raw
+ports/times and the general >=257 alternative remain separately scoped. Next use
+actual nonpadding RAM initialization in a nonconstant full source/worker candidate;
+do not rebuild table families for this now-excluded all-padding sparse trace.
+
+
 ## Nonconstant inactive MAIN and sparse caller polynomial
 
 [The sparse component](Airbender/Review/Trace/Families/ReducedMachine/SparseMainTheorems.lean)
