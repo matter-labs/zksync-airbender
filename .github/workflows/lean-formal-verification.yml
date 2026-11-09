@@ -99,6 +99,13 @@ jobs:
       - name: Fetch lean-sail (pinned; not cached, no upstream licence)
         run: cs_formal_verification/ci/lean-ci.sh time lean-sail
 
+      # Mathlib's compressed .olean archives (~0.5 GB for one Mathlib version). Without them `lake exe cache get`
+      # downloads ~8900 files one by one (measured 10 min on a slow link, ~1 min when they are here).
+      - name: Restore the Mathlib downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mathlib
+          key: mathlib-${{ hashFiles('cs_formal_verification/lean/lake-manifest.json') }}
       - name: Mathlib cache (lake exe cache get)
         run: cs_formal_verification/ci/lean-ci.sh time mathlib
 

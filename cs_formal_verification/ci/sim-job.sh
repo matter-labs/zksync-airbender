@@ -43,8 +43,12 @@ restore "$skey" "$L/sail-rv32" || { T sail-gen; save "$skey" "$L/sail-rv32" Sail
 T lean-sail
 [[ "${FVCI_STOP:-}" == sail ]] && { echo "JOB stopped after the sail model (FVCI_STOP=sail)"; exit 0; }
 
-echo "== Mathlib cache"
+echo "== Mathlib cache (downloads cached: mathlib-<manifest hash>)"
+mkey="mathlib-$(sha256sum "$L/lake-manifest.json" | cut -c1-16)"
+mkdir -p /root/.cache/mathlib
+mhit=0; restore "$mkey" /root/.cache/mathlib && mhit=1
 T mathlib
+(( mhit )) || save "$mkey" /root/.cache/mathlib .
 
 echo "== Lake build cache (restore: $from)"
 [[ "$from" == "-" ]] || restore "build-$from" "$L" || true
