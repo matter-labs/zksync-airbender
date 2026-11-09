@@ -19,55 +19,11 @@ use gpu_trace::witness::circuit_type::UnrolledCircuitType;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
-struct ProfileSetupCache<S, T, G> {
-    published: OnceLock<BTreeMap<ProofProfile, T>>,
-    /// Consumed once every declared profile is built: once the pinned copies
-    /// exist the heap copy has no reader.
-    source: Mutex<Option<S>>,
-    geometries: BTreeMap<ProofProfile, G>,
-}
-
-impl<S, T: Clone, G: Copy> ProfileSetupCache<S, T, G> {
-    fn new(source: S, geometries: BTreeMap<ProofProfile, G>) -> Self {
-        Self {
-            published: OnceLock::new(),
-            source: Mutex::new(Some(source)),
-            geometries,
-        }
-    }
-
-    fn get_or_try_init<E>(&self, mut build: impl FnMut(&S, G) -> Result<T, E>) -> Result<(), E> {
-        self.published
-            .get_or_try_init(|| {
-                let mut source = self.source.lock().unwrap();
-                let borrowed = source
-                    .as_ref()
-                    .expect("the CPU setup is consumed exactly once");
-                let built = self
-                    .geometries
-                    .iter()
-                    .map(|(&profile, &geometry)| Ok((profile, build(borrowed, geometry)?)))
-                    .collect::<Result<BTreeMap<_, _>, E>>()?;
-                *source = None;
-                Ok(built)
-            })
-            .map(|_| ())
-    }
-
-    fn get(&self, profile: ProofProfile) -> T {
-        self.published
-            .get()
-            .expect(
-                "setup host must be initialized by a constructor/add_binary setup batch before use",
-            )
-            .get(&profile)
-            .unwrap_or_else(|| panic!("ProofProfile::{profile:?} was not declared for this binary"))
-            .clone()
-    }
-}
-
 pub struct LazyGpuGKRSetupHost {
-    cache: ProfileSetupCache<CpuGKRSetup<BF>, Option<Arc<GpuGKRSetupHost>>, BaseCommitmentGeometry>,
+    published: OnceLock<BTreeMap<ProofProfile, Option<Arc<GpuGKRSetupHost>>>>,
+    /// Consumed by the explicit setup batch after all declared profiles are built.
+    source: Mutex<Option<CpuGKRSetup<BF>>>,
+    geometries: BTreeMap<ProofProfile, BaseCommitmentGeometry>,
 }
 
 impl LazyGpuGKRSetupHost {
@@ -94,34 +50,56 @@ impl LazyGpuGKRSetupHost {
             }
         }
         Self {
-            cache: ProfileSetupCache::new(cpu_setup, geometries),
+            published: OnceLock::new(),
+            source: Mutex::new(Some(cpu_setup)),
+            geometries,
         }
     }
 
     pub fn base_commitment_geometry(&self, profile: ProofProfile) -> BaseCommitmentGeometry {
         *self
-            .cache
             .geometries
             .get(&profile)
             .unwrap_or_else(|| panic!("ProofProfile::{profile:?} was not declared for this binary"))
     }
 
     pub fn get_or_init(&self, context: &ProverContext) -> CudaResult<()> {
-        self.cache.get_or_try_init(|cpu_setup, geometry| {
-            if cpu_setup.hypercube_evals.is_empty() {
-                return Ok(None);
-            }
-            let host = GpuGKRSetupHost::precompute_for_geometry(cpu_setup, geometry, context)?;
-            Ok(Some(Arc::new(host)))
-        })
+        self.published
+            .get_or_try_init(|| {
+                let source = self
+                    .source
+                    .lock()
+                    .unwrap()
+                    .take()
+                    .expect("the CPU setup is consumed exactly once");
+                self.geometries
+                    .iter()
+                    .map(|(&profile, &geometry)| {
+                        let host = if source.hypercube_evals.is_empty() {
+                            None
+                        } else {
+                            Some(Arc::new(GpuGKRSetupHost::precompute_for_geometry(
+                                &source, geometry, context,
+                            )?))
+                        };
+                        Ok((profile, host))
+                    })
+                    .collect::<CudaResult<BTreeMap<_, _>>>()
+            })
+            .map(|_| ())
     }
 
     pub fn get_initialized(&self, profile: ProofProfile) -> Option<Arc<GpuGKRSetupHost>> {
-        self.cache.get(profile)
+        self.published
+            .get()
+            .expect("setup host must be initialized by a setup batch before use")
+            .get(&profile)
+            .unwrap_or_else(|| panic!("ProofProfile::{profile:?} was not declared for this binary"))
+            .clone()
     }
 }
 
-pub(crate) fn validate_profiles(
+fn validate_profiles(
     circuit_type: CircuitType,
     setup: &CanonicalCircuitSetup,
     profiles: &[ProofProfile],

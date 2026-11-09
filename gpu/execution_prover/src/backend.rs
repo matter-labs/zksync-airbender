@@ -1,6 +1,6 @@
 use crate::config::GpuBackendConfiguration;
 use crate::host_storage::{LockedBoxedMemoryHolder, LockedBoxedTraceChunk};
-use crate::precomputations::{validate_profiles, CircuitPrecomputations};
+use crate::precomputations::CircuitPrecomputations;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength};
 use crate::workers::gpu_manager::GpuManager;
 use crate::A;
@@ -86,10 +86,7 @@ impl ExecutionBackend for GpuBackend {
         soundness_mode: SoundnessMode,
         profiles: &[ProofProfile],
     ) -> Self::Precomputations {
-        let profiles: Vec<ProofProfile> = validate_profiles(circuit, &setup, profiles)
-            .into_iter()
-            .collect();
-        CircuitPrecomputations::from_canonical(circuit, setup, soundness_mode, &profiles)
+        CircuitPrecomputations::from_canonical(circuit, setup, soundness_mode, profiles)
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {
