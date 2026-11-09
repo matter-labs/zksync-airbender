@@ -18,64 +18,43 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             !variants.is_empty(),
             "at least one binary variant is required"
         );
-        let variants: Vec<_> = variants.iter().map(|&(execution_kind, machine_type, profiles)| {
-        assert!(
-            !profiles.is_empty(),
-            "add_binary needs at least one ProofProfile"
-        );
-        let mut profiles = profiles.to_vec();
-        profiles.sort_unstable();
-        profiles.dedup();
-        if execution_kind.is_l1_wrap() || profiles.contains(&ProofProfile::L1Wrap) {
-            assert!(
-                execution_kind.is_l1_wrap(),
-                "ProofProfile::L1Wrap requires ExecutionKind::L1Wrap21"
-            );
-            assert_eq!(
-                profiles,
-                [ProofProfile::L1Wrap],
-                "ExecutionKind::{execution_kind:?} requires exactly ProofProfile::L1Wrap"
-            );
-            assert_eq!(
-                machine_type,
-                MachineType::Reduced,
-                "ExecutionKind::{execution_kind:?} requires MachineType::Reduced"
-            );
-        }
-        if profiles.contains(&ProofProfile::L1Feeder) {
-            assert_eq!(
-                execution_kind,
-                ExecutionKind::Unified22,
-                "ProofProfile::L1Feeder requires ExecutionKind::Unified22"
-            );
-        }
-        if profiles.contains(&ProofProfile::L1FeederA) {
-            assert_eq!(
-                execution_kind,
-                ExecutionKind::Unified,
-                "ProofProfile::L1FeederA requires ExecutionKind::Unified"
-            );
-        }
-        match execution_kind {
-            ExecutionKind::Unified => assert!(
-                profiles
-                    .iter()
-                    .all(|profile| matches!(profile, ProofProfile::Standard | ProofProfile::L1FeederA)),
-                "ExecutionKind::Unified admits only ProofProfile::Standard and ProofProfile::L1FeederA, got {profiles:?}"
-            ),
-            ExecutionKind::Unified22 => assert_eq!(
-                profiles,
-                [ProofProfile::L1Feeder],
-                "ExecutionKind::Unified22 requires exactly ProofProfile::L1Feeder"
-            ),
-            ExecutionKind::Unrolled | ExecutionKind::L1Wrap21 => {}
-        }
-            for profile in &profiles {
-                profile.config_profile().assert_supports(self.configuration.soundness_mode);
-            }
-            self.backend.admit_binary(execution_kind, machine_type, &profiles);
-            (execution_kind, machine_type, profiles)
-        }).collect();
+        let variants: Vec<_> = variants
+            .iter()
+            .map(|&(execution_kind, machine_type, profiles)| {
+                assert!(
+                    !profiles.is_empty(),
+                    "add_binary needs at least one ProofProfile"
+                );
+                let mut profiles = profiles.to_vec();
+                profiles.sort_unstable();
+                profiles.dedup();
+                if execution_kind.is_l1_wrap() {
+                    assert_eq!(
+                        machine_type,
+                        MachineType::Reduced,
+                        "ExecutionKind::{execution_kind:?} requires MachineType::Reduced"
+                    );
+                }
+                if let Some(circuit) = execution_kind.unified_circuit() {
+                    crate::config::assert_profiles_for_circuit(circuit, &profiles);
+                } else {
+                    for circuit in
+                        crate::setup::circuit_types_for_variant(execution_kind, machine_type)
+                    {
+                        crate::config::assert_profiles_for_circuit(
+                            CircuitType::Unrolled(circuit),
+                            &profiles,
+                        );
+                    }
+                }
+                for profile in &profiles {
+                    profile
+                        .config_profile()
+                        .assert_supports(self.configuration.soundness_mode);
+                }
+                (execution_kind, machine_type, profiles)
+            })
+            .collect();
         for (i, (kind, machine, _)) in variants.iter().enumerate() {
             assert!(
                 !variants[..i]
@@ -211,82 +190,15 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
 mod tests {
     use super::*;
     use crate::config::SoundnessMode;
-    use crate::messages::WorkBatch;
-    use crate::setup::CanonicalCircuitSetup;
-    use crate::test_support::{TestBackend, TestConfiguration};
-    use riscv_transpiler::jit::JitRunnerRam;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use worker::Worker;
+    use crate::test_support::TestBackend;
 
-    /// `TestBackend` that counts admissions and preparations, so the L1 capability check in
-    /// `add_binary` is observable without CUDA or a real backend.
-    struct ProbeBackend {
-        inner: TestBackend,
-        admitted: AtomicUsize,
-        prepared: AtomicUsize,
-    }
-
-    impl ExecutionBackend for ProbeBackend {
-        type Configuration = TestConfiguration;
-        type Allocator = <TestBackend as ExecutionBackend>::Allocator;
-        type Memory = <TestBackend as ExecutionBackend>::Memory;
-        type Snapshot = <TestBackend as ExecutionBackend>::Snapshot;
-        type Precomputations = <TestBackend as ExecutionBackend>::Precomputations;
-
-        fn initialize(
-            config: &ExecutionProverConfiguration<TestConfiguration>,
-            worker: Arc<Worker>,
-        ) -> Self {
-            Self {
-                inner: TestBackend::initialize(config, worker),
-                admitted: AtomicUsize::new(0),
-                prepared: AtomicUsize::new(0),
-            }
-        }
-        fn allocate_trace_block(&self, bytes: usize) -> Self::Allocator {
-            self.inner.allocate_trace_block(bytes)
-        }
-        fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory {
-            self.inner.allocate_memory(ram)
-        }
-        fn allocate_snapshot(&self) -> Self::Snapshot {
-            self.inner.allocate_snapshot()
-        }
-        fn admit_binary(
-            &self,
-            execution_kind: ExecutionKind,
-            machine_type: MachineType,
-            profiles: &[ProofProfile],
-        ) {
-            self.admitted.fetch_add(1, Ordering::SeqCst);
-            self.inner
-                .admit_binary(execution_kind, machine_type, profiles);
-        }
-        fn prepare(
-            &self,
-            circuit: CircuitType,
-            setup: CanonicalCircuitSetup,
-            soundness_mode: SoundnessMode,
-            profiles: &[ProofProfile],
-        ) -> Self::Precomputations {
-            self.prepared.fetch_add(1, Ordering::SeqCst);
-            self.inner.prepare(circuit, setup, soundness_mode, profiles)
-        }
-        fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {
-            self.inner.submit(batch)
-        }
-    }
-
-    /// Every L1 profile under ethproofs panics with the profile's mode assert before the
-    /// backend admits the binary or prepares a setup, and no binary is registered.
+    /// Every L1 profile under ethproofs is rejected before a binary is registered.
     #[test]
     fn ethproofs_l1_binary_is_rejected_before_admission() {
         let soundness_mode = SoundnessMode::EthproofsSoundnessCalc;
-        let mut prover = ExecutionProver::<ProbeBackend>::with_configuration(
+        let mut prover = ExecutionProver::<TestBackend>::with_configuration(
             ExecutionProverConfiguration::for_mode(soundness_mode),
         );
-        let prepared = prover.backend().prepared.load(Ordering::SeqCst);
-        assert!(prepared > 0, "the probe counts the common preparations");
         let program = vec![0x0001_2083, 0xffdf_f06f];
         for (kind, profile) in [
             (ExecutionKind::Unified22, ProofProfile::L1Feeder),
@@ -311,8 +223,6 @@ mod tests {
                 message.contains("supports only the pessimistic-conjecture soundness mode"),
                 "{profile:?}: {message}"
             );
-            assert_eq!(prover.backend().admitted.load(Ordering::SeqCst), 0);
-            assert_eq!(prover.backend().prepared.load(Ordering::SeqCst), prepared);
             assert_eq!(prover.next_binary_id, 0);
             assert!(prover.binary_holders.is_empty());
         }

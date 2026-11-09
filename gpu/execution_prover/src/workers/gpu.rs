@@ -276,7 +276,7 @@ fn schedule_phase_one<'a>(
             (state, inits_and_teardowns, tracing_data)
         }
         GpuWorkRequest::L1WrapProof(_) => {
-            panic!("GPU backend does not support L1 wrap proof requests")
+            unimplemented!("L1 wrap GPU proof scheduling")
         }
         GpuWorkRequest::SetupInitialization(_) => {
             unreachable!("setup initialization returns early above")

@@ -1,9 +1,28 @@
 use crate::upstream::{GKRCircuitArtifact, BF};
 use crate::{CommitmentMode, ExecutionKind, ProofProfile};
-use execution_prover_model::circuit_type::CircuitType;
+use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
 pub use prover::definitions::SoundnessMode;
 use prover::gkr::prover_config::ProverConfig;
 use riscv_transpiler::jit::JitRunnerRam;
+
+/// Assert the profile pairing before registration or direct backend preparation.
+pub fn assert_profiles_for_circuit(circuit: CircuitType, profiles: &[ProofProfile]) {
+    assert!(
+        !profiles.is_empty(),
+        "at least one ProofProfile is required"
+    );
+    let valid = match circuit {
+        CircuitType::L1Wrap21 => profiles == [ProofProfile::L1Wrap],
+        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
+            profiles == [ProofProfile::L1Feeder]
+        }
+        CircuitType::Unrolled(UnrolledCircuitType::Unified) => profiles
+            .iter()
+            .all(|profile| matches!(profile, ProofProfile::Standard | ProofProfile::L1FeederA)),
+        _ => profiles == [ProofProfile::Standard],
+    };
+    assert!(valid, "{circuit:?} does not support profiles {profiles:?}");
+}
 
 /// The config of `circuit_type` under `profile` and `soundness_mode`: `Standard` resolves the selected
 /// mode from the compiled columns, the L1 profiles use their special configs

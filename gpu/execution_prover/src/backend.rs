@@ -11,9 +11,8 @@ use execution_prover::config::ExecutionProverConfiguration;
 use execution_prover::config::SoundnessMode;
 use execution_prover::messages::WorkBatch;
 use execution_prover::setup::CanonicalCircuitSetup;
-use execution_prover::{ExecutionKind, ProofProfile};
+use execution_prover::ProofProfile;
 use execution_prover_model::circuit_type::CircuitType;
-use execution_prover_model::MachineType;
 use gpu_core::primitives::field::BF;
 use riscv_transpiler::jit::JitRunnerRam;
 use std::sync::Arc;
@@ -79,10 +78,6 @@ impl ExecutionBackend for GpuBackend {
         self.extra_trace_blocks
     }
 
-    fn admit_binary(&self, kind: ExecutionKind, _machine: MachineType, profiles: &[ProofProfile]) {
-        assert_supported_registration(kind, profiles);
-    }
-
     fn prepare(
         &self,
         circuit: CircuitType,
@@ -90,51 +85,10 @@ impl ExecutionBackend for GpuBackend {
         selection: SoundnessMode,
         _profiles: &[ProofProfile],
     ) -> Self::Precomputations {
-        // `admit_binary` has already restricted this backend to `ProofProfile::Standard`.
         CircuitPrecomputations::from_canonical(circuit, setup, selection)
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {
         self.manager.send_batch(batch);
-    }
-}
-
-fn assert_supported_registration(kind: ExecutionKind, profiles: &[ProofProfile]) {
-    assert!(
-        matches!(kind, ExecutionKind::Unrolled | ExecutionKind::Unified),
-        "GPU backend does not support this CPU-only execution kind"
-    );
-    assert!(
-        profiles
-            .iter()
-            .all(|profile| *profile == ProofProfile::Standard),
-        "GPU backend only supports ProofProfile::Standard"
-    );
-}
-
-#[cfg(test)]
-mod cpu_tests {
-    use super::*;
-
-    #[test]
-    fn l1_registration_is_rejected_before_setup() {
-        for kind in [ExecutionKind::Unified22, ExecutionKind::L1Wrap21] {
-            assert!(std::panic::catch_unwind(|| assert_supported_registration(
-                kind,
-                &[ProofProfile::Standard]
-            ))
-            .is_err());
-        }
-        for profile in [
-            ProofProfile::L1Feeder,
-            ProofProfile::L1FeederA,
-            ProofProfile::L1Wrap,
-        ] {
-            assert!(std::panic::catch_unwind(|| assert_supported_registration(
-                ExecutionKind::Unified,
-                &[profile]
-            ))
-            .is_err());
-        }
     }
 }

@@ -103,7 +103,7 @@ impl CircuitPrecomputations {
             }
             CanonicalCircuitSetup::Delegation(setup) => (setup.compiled_circuit, setup.setup, None),
             CanonicalCircuitSetup::L1Wrap(_) => {
-                panic!("GPU backend does not support L1 wrap setups")
+                unimplemented!("L1 wrap GPU setup preparation")
             }
         };
         assert_eq!(
