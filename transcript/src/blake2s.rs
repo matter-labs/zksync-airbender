@@ -10,6 +10,11 @@ use field::{FieldExtension, PrimeField};
 //   the data is hashed as message blocks
 // - use seed -> (randomness, new_see)
 
+/// The PoW nonce is a `u64`, hashed as two little-endian `u32` words.
+const POW_NONCE_SIZE_U32_WORDS: usize = 2;
+/// The PoW preimage is the seed followed by the nonce.
+const POW_PREIMAGE_SIZE_U32_WORDS: usize = BLAKE2S_DIGEST_SIZE_U32_WORDS + POW_NONCE_SIZE_U32_WORDS;
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Blake2sTranscript<const REDUCED_ROUNDS: bool = true>;
 
@@ -58,10 +63,10 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         unsafe {
             hasher.reset_with_chaining_value(&seed.0);
             if input.is_empty() {
-                crate::spec_memzero_u32(
-                    hasher.input_buffer.as_mut_ptr().cast::<u32>(),
-                    hasher.input_buffer.as_mut_ptr_range().end.cast::<u32>(),
-                );
+                // both ends come from one pointer: a second borrow of the buffer for the
+                // end would invalidate the start
+                let buffer_ptr = hasher.input_buffer.as_mut_ptr().cast::<u32>();
+                crate::spec_memzero_u32(buffer_ptr, buffer_ptr.add(BLAKE2S_BLOCK_SIZE_U32_WORDS));
             } else {
                 Self::commit_inner(hasher, input, &mut offset);
             }
@@ -199,11 +204,10 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         let mut input_ptr = input.as_ptr();
         let mut buffer_offset = *offset;
         for _ in 0..num_rounds {
-            let mut dst_ptr: *mut u32 = hasher
-                .input_buffer
-                .as_mut_ptr()
-                .cast::<u32>()
-                .add(buffer_offset);
+            // every pointer into the buffer in this round comes from `buffer_ptr`: borrowing
+            // the buffer again would invalidate the ones already derived
+            let buffer_ptr = hasher.input_buffer.as_mut_ptr().cast::<u32>();
+            let mut dst_ptr: *mut u32 = buffer_ptr.add(buffer_offset);
             let words_to_use =
                 core::cmp::min(remaining, BLAKE2S_BLOCK_SIZE_U32_WORDS - buffer_offset);
             crate::spec_memcopy_u32_nonoverlapping(input_ptr, dst_ptr, words_to_use);
@@ -212,10 +216,7 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
             input_ptr = input_ptr.add(words_to_use);
             dst_ptr = dst_ptr.add(words_to_use);
             // zero out the rest
-            crate::spec_memzero_u32(
-                dst_ptr,
-                hasher.input_buffer.as_mut_ptr_range().end.cast::<u32>(),
-            );
+            crate::spec_memzero_u32(dst_ptr, buffer_ptr.add(BLAKE2S_BLOCK_SIZE_U32_WORDS));
             if remaining > 0 {
                 debug_assert_eq!(buffer_offset, BLAKE2S_BLOCK_SIZE_U32_WORDS);
                 hasher.run_round_function::<REDUCED_ROUNDS>(BLAKE2S_BLOCK_SIZE_U32_WORDS, false);
@@ -290,18 +291,17 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         seed: &mut Seed,
     ) {
         hasher.reset();
+        // every pointer into the buffer comes from `buffer_ptr`: borrowing the buffer again
+        // would invalidate the ones already derived
+        let buffer_ptr = hasher.input_buffer.as_mut_ptr().cast::<u32>();
         crate::spec_memcopy_u32_nonoverlapping(
             seed.0.as_ptr().cast::<u32>(),
-            hasher.input_buffer.as_mut_ptr().cast::<u32>(),
+            buffer_ptr,
             BLAKE2S_DIGEST_SIZE_U32_WORDS,
         );
         crate::spec_memzero_u32(
-            hasher
-                .input_buffer
-                .as_mut_ptr()
-                .cast::<u32>()
-                .add(BLAKE2S_DIGEST_SIZE_U32_WORDS),
-            hasher.input_buffer.as_mut_ptr_range().end.cast::<u32>(),
+            buffer_ptr.add(BLAKE2S_DIGEST_SIZE_U32_WORDS),
+            buffer_ptr.add(BLAKE2S_BLOCK_SIZE_U32_WORDS),
         );
 
         if blake2s_u32::DelegatedBlake2sState::SUPPORT_SPEC_SINGLE_ROUND {
@@ -347,16 +347,15 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
             // LE words of nonce
             hasher.input_buffer[8] = nonce as u32;
             hasher.input_buffer[9] = (nonce >> 32) as u32;
+            // both ends come from one pointer: a second borrow of the buffer for the end
+            // would invalidate the start
+            let buffer_ptr = hasher.input_buffer.as_mut_ptr().cast::<u32>();
             crate::spec_memzero_u32(
-                hasher
-                    .input_buffer
-                    .as_mut_ptr()
-                    .cast::<u32>()
-                    .add(BLAKE2S_DIGEST_SIZE_U32_WORDS + 2),
-                hasher.input_buffer.as_mut_ptr_range().end.cast::<u32>(),
+                buffer_ptr.add(POW_PREIMAGE_SIZE_U32_WORDS),
+                buffer_ptr.add(BLAKE2S_BLOCK_SIZE_U32_WORDS),
             );
 
-            hasher.run_round_function::<REDUCED_ROUNDS>(BLAKE2S_DIGEST_SIZE_U32_WORDS + 2, true);
+            hasher.run_round_function::<REDUCED_ROUNDS>(POW_PREIMAGE_SIZE_U32_WORDS, true);
         }
 
         // check that first element is small enough
@@ -448,13 +447,12 @@ impl<const REDUCED_ROUNDS: bool> Blake2sBufferingTranscript<REDUCED_ROUNDS> {
     /// Zeroes the buffer tail through raw pointers; sound for any transcript built and driven
     /// through this type's API.
     pub unsafe fn pad(&mut self) {
+        // both ends come from one pointer: a second borrow of the buffer for the end would
+        // invalidate the start
+        let buffer_ptr = self.state.input_buffer.as_mut_ptr().cast::<u32>();
         crate::spec_memzero_u32(
-            self.state
-                .input_buffer
-                .as_mut_ptr()
-                .cast::<u32>()
-                .add(self.buffer_offset),
-            self.state.input_buffer.as_mut_ptr_range().end.cast::<u32>(),
+            buffer_ptr.add(self.buffer_offset),
+            buffer_ptr.add(BLAKE2S_BLOCK_SIZE_U32_WORDS),
         );
         self.buffer_offset = BLAKE2S_BLOCK_SIZE_U32_WORDS;
     }
@@ -462,13 +460,12 @@ impl<const REDUCED_ROUNDS: bool> Blake2sBufferingTranscript<REDUCED_ROUNDS> {
     pub fn finalize(mut self) -> Seed {
         // easy - always run a final round
         unsafe {
+            // both ends come from one pointer: a second borrow of the buffer for the end
+            // would invalidate the start
+            let buffer_ptr = self.state.input_buffer.as_mut_ptr().cast::<u32>();
             crate::spec_memzero_u32(
-                self.state
-                    .input_buffer
-                    .as_mut_ptr()
-                    .cast::<u32>()
-                    .add(self.buffer_offset),
-                self.state.input_buffer.as_mut_ptr_range().end.cast::<u32>(),
+                buffer_ptr.add(self.buffer_offset),
+                buffer_ptr.add(BLAKE2S_BLOCK_SIZE_U32_WORDS),
             );
             self.state
                 .run_round_function::<REDUCED_ROUNDS>(self.buffer_offset, true);
@@ -480,13 +477,12 @@ impl<const REDUCED_ROUNDS: bool> Blake2sBufferingTranscript<REDUCED_ROUNDS> {
     pub fn finalize_reset(&mut self) -> Seed {
         // easy - always run a final round
         unsafe {
+            // both ends come from one pointer: a second borrow of the buffer for the end
+            // would invalidate the start
+            let buffer_ptr = self.state.input_buffer.as_mut_ptr().cast::<u32>();
             crate::spec_memzero_u32(
-                self.state
-                    .input_buffer
-                    .as_mut_ptr()
-                    .cast::<u32>()
-                    .add(self.buffer_offset),
-                self.state.input_buffer.as_mut_ptr_range().end.cast::<u32>(),
+                buffer_ptr.add(self.buffer_offset),
+                buffer_ptr.add(BLAKE2S_BLOCK_SIZE_U32_WORDS),
             );
             self.state
                 .run_round_function::<REDUCED_ROUNDS>(self.buffer_offset, true);
