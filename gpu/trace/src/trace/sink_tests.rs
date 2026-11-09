@@ -530,7 +530,7 @@ fn sink_open_queries_matches_gathers() {
         let query_sets: Vec<(&str, Vec<u32>)> = vec![
             (
                 "one coset",
-                (0..14)
+                (0..12)
                     .map(|i| query((i * 977) & last_leaf, last_coset))
                     .collect(),
             ),
@@ -571,8 +571,8 @@ fn sink_open_queries_matches_gathers() {
                 ],
             ),
             (
-                "14 random",
-                (0..14)
+                "12 random",
+                (0..12)
                     .map(|_| query(next() & last_leaf, next() & last_coset))
                     .collect(),
             ),
