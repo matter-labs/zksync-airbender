@@ -4,12 +4,6 @@ use super::super::{
     WitnessPostCommitStorage,
 };
 
-/// Arena floor carried from the previously qualified compression source.
-/// Requalification uses A/C, commitment/proof and both allocation directions with `standard_it`.
-/// Other followers and lower arenas remain outside that evidence.
-pub const COMPRESSION_FINAL_FLOOR_BYTES: usize = 21 << 30;
-pub const COMPRESSION_FINAL_FLOOR_SOURCE: &str = "measured";
-
 pub const POLICY: ProofMemoryPolicy = ProofMemoryPolicy {
     gkr: GkrMemoryPolicy::Materialize,
     setup: OpeningStrategy::PerCoset,
@@ -26,7 +20,3 @@ pub const PARTIAL_TREES: PartialTreePolicy = PartialTreePolicy {
     memory: 10,
     ..PartialTreePolicy::DEFAULT
 };
-
-pub fn policy(_arena_bytes: usize) -> ProofMemoryPolicy {
-    POLICY
-}

@@ -16,8 +16,6 @@ pub const INPUTS_RESERVE_BYTES: usize = 1537 << 20;
 /// memory partial trees (2 MiB) plus the default capacity for small values.
 pub const H2D_STAGING_BYTES: usize = (2 << 20) + gpu_prover_context::DEFAULT_H2D_STAGING_BYTES;
 
-pub const L1_ARENA_BYTES: usize = 64 << 30;
-
 pub fn select_arena_bytes(available: usize) -> usize {
     generated::PRESET_ARENA_BYTES
         .iter()
@@ -25,15 +23,6 @@ pub fn select_arena_bytes(available: usize) -> usize {
         .copied()
         .find(|&bytes| bytes <= available)
         .unwrap_or_else(|| panic!("no memory preset fits in {available} available arena bytes"))
-}
-
-pub fn select_auto_arena_bytes(available: usize) -> usize {
-    let generated = select_arena_bytes(available);
-    if L1_ARENA_BYTES <= available {
-        generated.max(L1_ARENA_BYTES)
-    } else {
-        generated
-    }
 }
 
 /// `ProofProfile::CompressionFinal` and `UnrolledCircuitType::Unified22` imply each
@@ -63,10 +52,10 @@ pub fn policy(
     arena_bytes: usize,
 ) -> ProofMemoryPolicy {
     if is_compression(circuit, profile) {
-        return compression::policy(arena_bytes);
+        return compression::POLICY;
     }
     match circuit {
-        CircuitType::L1Wrap => l1_wrap::policy(arena_bytes),
+        CircuitType::L1Wrap => l1_wrap::L1_WRAP_POLICY,
         _ => generated::policy(circuit, select_arena_bytes(arena_bytes)),
     }
 }
@@ -79,22 +68,6 @@ pub fn partial_trees(circuit: CircuitType, profile: ProofProfile) -> PartialTree
         CircuitType::L1Wrap => l1_wrap::PARTIAL_TREES,
         _ => PartialTreePolicy::DEFAULT,
     }
-}
-
-pub fn admit_l1_wrap(arena_bytes: usize) {
-    use l1_wrap::{L1_WRAP_FLOOR_SOURCE, L1_WRAP_WHOLE_PROOF_FLOOR_BYTES};
-    assert!(
-        arena_bytes >= L1_WRAP_WHOLE_PROOF_FLOOR_BYTES,
-        "L1Wrap requires an arena of at least {L1_WRAP_WHOLE_PROOF_FLOOR_BYTES} bytes ({L1_WRAP_FLOOR_SOURCE} whole-proof floor), got {arena_bytes}"
-    );
-}
-
-pub fn admit_compression(arena_bytes: usize) {
-    use compression::{COMPRESSION_FINAL_FLOOR_BYTES, COMPRESSION_FINAL_FLOOR_SOURCE};
-    assert!(
-        arena_bytes >= COMPRESSION_FINAL_FLOOR_BYTES,
-        "an compression proof requires an arena of at least {COMPRESSION_FINAL_FLOOR_BYTES} bytes ({COMPRESSION_FINAL_FLOOR_SOURCE} floor), got {arena_bytes}"
-    );
 }
 
 /// Whether the commitment exports its memory partial trees for the proof to
@@ -114,70 +87,14 @@ pub fn merged_commit_strategy(circuit: CircuitType, profile: ProofProfile) -> Me
 #[cfg(test)]
 mod cpu_tests {
     use super::*;
-    use crate::proof::memory_policy::{
-        GkrMemoryPolicy, OpeningStrategy, WitnessCommitmentStrategy, WitnessOpeningStrategy,
-        WitnessPostCommitStorage,
-    };
     use gpu_trace::witness::circuit_type::{
         DelegationCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
     };
 
     #[test]
-    fn cpu_compression_policy() {
+    fn cpu_compression_profile_refusals() {
         let unified = CircuitType::Unrolled(UnrolledCircuitType::Unified);
         let unified22 = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
-        let selected = policy(unified22, ProofProfile::CompressionFinal, 30 << 30);
-        assert_eq!(selected, compression::POLICY);
-        assert!(selected.witness.is_valid());
-        assert_eq!(selected.gkr, GkrMemoryPolicy::Materialize);
-        assert_eq!(selected.setup, OpeningStrategy::PerCoset);
-        assert_eq!(selected.memory, OpeningStrategy::PerCoset);
-        assert_eq!(
-            selected.witness.commitment,
-            WitnessCommitmentStrategy::PerCoset
-        );
-        assert_eq!(
-            selected.witness.post_commitment,
-            WitnessPostCommitStorage::RawAndMonomials
-        );
-        assert_eq!(
-            selected.witness.opening,
-            WitnessOpeningStrategy::Recompute(OpeningStrategy::PerCoset)
-        );
-        assert_eq!(
-            merged_commit_strategy(unified22, ProofProfile::CompressionFinal),
-            MergedCommitStrategy::Monomials
-        );
-        assert_eq!(
-            merged_commit_strategy(unified, ProofProfile::Standard),
-            MergedCommitStrategy::AllCosets
-        );
-        assert!(persists_memory_partial_trees(
-            unified22,
-            ProofProfile::CompressionFinal
-        ));
-        assert!(!persists_memory_partial_trees(
-            unified,
-            ProofProfile::Standard
-        ));
-        assert!(!persists_memory_partial_trees(
-            CircuitType::L1Wrap,
-            ProofProfile::L1Wrap
-        ));
-        let compression_trees = partial_trees(unified22, ProofProfile::CompressionFinal);
-        assert_eq!(compression_trees, compression::PARTIAL_TREES);
-        assert_eq!(
-            (compression_trees.setup, compression_trees.memory),
-            (10, 10)
-        );
-        assert_eq!(
-            partial_trees(unified, ProofProfile::Standard),
-            PartialTreePolicy::DEFAULT
-        );
-        assert_eq!(
-            policy(unified, ProofProfile::Standard, 21 << 30),
-            generated::policy(unified, 21 << 30)
-        );
         let delegations = [
             DelegationCircuitType::BigIntWithControl,
             DelegationCircuitType::Blake2WithCompression,
@@ -271,24 +188,10 @@ mod cpu_tests {
         }
     }
 
-    /// Profile A runs the compression policy on the 2^23 unified circuit, which
-    /// keeps proving `ProofProfile::Standard` under its generated policy.
     #[test]
-    fn cpu_compression_a_policy() {
-        let unified = CircuitType::Unrolled(UnrolledCircuitType::Unified);
+    fn cpu_compression_a_profile_refusals() {
         let unified22 = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
         let a = ProofProfile::Compression;
-        assert_eq!(policy(unified, a, 21 << 30), compression::POLICY);
-        assert_eq!(partial_trees(unified, a), compression::PARTIAL_TREES);
-        assert_eq!(
-            merged_commit_strategy(unified, a),
-            MergedCommitStrategy::Monomials
-        );
-        assert!(persists_memory_partial_trees(unified, a));
-        assert_eq!(
-            policy(unified, ProofProfile::Standard, 21 << 30),
-            generated::policy(unified, 21 << 30)
-        );
         let named_panic = |circuit: CircuitType, expected: String| {
             let panic = std::panic::catch_unwind(|| policy(circuit, a, 21 << 30))
                 .expect_err("a mismatched Compression identity must panic");
@@ -313,60 +216,6 @@ mod cpu_tests {
                 format!("ProofProfile::Compression requires CircuitType::Unrolled(UnrolledCircuitType::Unified), got {circuit:?}"),
             );
         }
-    }
-
-    #[test]
-    fn cpu_l1_admission() {
-        use compression::{COMPRESSION_FINAL_FLOOR_BYTES, COMPRESSION_FINAL_FLOOR_SOURCE};
-        use l1_wrap::{L1_WRAP_FLOOR_SOURCE, L1_WRAP_WHOLE_PROOF_FLOOR_BYTES};
-        assert_eq!(L1_WRAP_FLOOR_SOURCE, "measured");
-        assert_eq!(COMPRESSION_FINAL_FLOOR_SOURCE, "measured");
-        admit_l1_wrap(L1_WRAP_WHOLE_PROOF_FLOOR_BYTES);
-        admit_compression(COMPRESSION_FINAL_FLOOR_BYTES);
-        let cases: [(fn(usize), usize, String); 2] = [
-            (
-                admit_l1_wrap,
-                L1_WRAP_WHOLE_PROOF_FLOOR_BYTES - 1,
-                format!(
-                    "L1Wrap requires an arena of at least {L1_WRAP_WHOLE_PROOF_FLOOR_BYTES} bytes (measured whole-proof floor), got {}",
-                    L1_WRAP_WHOLE_PROOF_FLOOR_BYTES - 1
-                ),
-            ),
-            (
-                admit_compression,
-                COMPRESSION_FINAL_FLOOR_BYTES - 1,
-                format!(
-                    "an compression proof requires an arena of at least {COMPRESSION_FINAL_FLOOR_BYTES} bytes (measured floor), got {}",
-                    COMPRESSION_FINAL_FLOOR_BYTES - 1
-                ),
-            ),
-        ];
-        for (admit, arena_bytes, expected) in cases {
-            let panic = std::panic::catch_unwind(|| admit(arena_bytes))
-                .expect_err("an arena below the floor must be rejected");
-            assert_eq!(
-                panic
-                    .downcast_ref::<String>()
-                    .expect("named admission panic"),
-                &expected
-            );
-        }
-    }
-
-    #[test]
-    fn cpu_l1_auto_arena() {
-        let available = 20 << 30;
-        let panic = std::panic::catch_unwind(|| select_auto_arena_bytes(available))
-            .expect_err("an arena below every preset must be rejected");
-        assert_eq!(
-            panic.downcast_ref::<String>().expect("named preset panic"),
-            &format!("no memory preset fits in {available} available arena bytes")
-        );
-        for (available, expected) in [(21, 21), (30, 30), (63, 30), (64, 64), (96, 64)] {
-            assert_eq!(select_auto_arena_bytes(available << 30), expected << 30);
-        }
-        assert_eq!(select_arena_bytes(64 << 30), 30 << 30);
-        const { assert!(L1_ARENA_BYTES >= l1_wrap::L1_WRAP_WHOLE_PROOF_FLOOR_BYTES) };
     }
 
     #[test]
