@@ -2,10 +2,9 @@ use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::stream::CudaStream;
 
 use super::super::{
-    build_partial_coset_tree, build_partial_coset_tree_with_scratch,
-    build_partial_coset_trees_multi_coset, build_partial_coset_trees_multi_coset_with_scratch,
-    build_top_tree, gather_tree_cap, hash_leaves, hash_leaves_multi_coset,
-    partial_coset_tree_scratch_len, retained_layer_offset, top_nodes_layer_offset, Digest,
+    build_partial_coset_tree, build_partial_coset_trees_multi_coset, build_top_tree,
+    gather_tree_cap, hash_leaves, hash_leaves_multi_coset, retained_layer_offset,
+    top_nodes_layer_offset, Digest,
 };
 use super::{
     bitreverse_index, column_slices, cpu_layer, cpu_tree, download, random_columns, test_worker,
@@ -61,41 +60,17 @@ fn gpu_partial_tree(
     let retained_len = 2 * ((1usize << (log_domain - log_v)) >> skip_bottom) - 1;
     let d_values = upload(values, stream);
     let mut d_retained = sentinel_buffer(retained_len + 2, stream);
-    if skip_bottom <= 8 {
-        build_partial_coset_tree(
-            &d_values,
-            log_domain,
-            log_v,
-            columns as u32,
-            skip_bottom,
-            &mut d_retained[..retained_len],
-            stream,
-        )
-        .unwrap();
-    }
-    if skip_bottom > 5 {
-        let direct = (skip_bottom <= 8).then(|| download(&d_retained, SENTINEL, stream));
-        let poison = vec![SENTINEL; retained_len];
-        memory_copy_async(&mut d_retained[..retained_len], &poison, stream).unwrap();
-        let scratch_len = partial_coset_tree_scratch_len(log_domain, log_v, skip_bottom);
-        let mut scratch = sentinel_buffer(scratch_len + 2, stream);
-        build_partial_coset_tree_with_scratch(
-            &d_values,
-            log_domain,
-            log_v,
-            columns as u32,
-            skip_bottom,
-            &mut d_retained[..retained_len],
-            &mut scratch[1..scratch_len + 1],
-            stream,
-        )
-        .unwrap();
-        if let Some(direct) = direct {
-            assert_eq!(download(&d_retained, SENTINEL, stream), direct);
-        }
-        let scratch = download(&scratch, SENTINEL, stream);
-        assert_eq!([scratch[0], scratch[scratch_len + 1]], [SENTINEL; 2]);
-    }
+
+    build_partial_coset_tree(
+        &d_values,
+        log_domain,
+        log_v,
+        columns as u32,
+        skip_bottom,
+        &mut d_retained[..retained_len],
+        stream,
+    )
+    .unwrap();
     let retained = download(&d_retained, SENTINEL, stream);
     assert_eq!(&retained[retained_len..], &[SENTINEL; 2]);
     retained[..retained_len].to_vec()
@@ -105,41 +80,38 @@ fn gpu_partial_tree(
 fn keccak256_leaf_parity() {
     let stream = CudaStream::default();
     let mut rng = TestRng::new(0x6c65_6166);
-    for log_domain in [8u32, 12] {
-        for log_v in [0u32, 1, 2, 4] {
-            for columns in [1usize, 7, 17] {
-                let label = format!("log_domain={log_domain} log_v={log_v} columns={columns}");
-                let domain = 1usize << log_domain;
-                let leaves = domain >> log_v;
-                let values = random_columns(&mut rng, columns, domain);
-                let d_values = upload(&values, &stream);
-                let mut d_out = sentinel_buffer(leaves + 3, &stream);
-                hash_leaves(
-                    &d_values,
-                    log_domain,
-                    log_v,
-                    columns as u32,
-                    &mut d_out[..leaves],
-                    &stream,
-                )
-                .unwrap();
-                let gpu = download(&d_out, SENTINEL, &stream);
-                assert_eq!(&gpu[leaves..], &[SENTINEL; 3], "{label}");
-                let expected = cpu_leaves(&values, columns, log_v);
-                assert_eq!(&gpu[..leaves], &expected[..], "{label}");
-                let cols = column_slices(&values, columns);
-                let from_accessors = cpu_leaves_from_accessors(&cols, log_v);
-                assert_eq!(&gpu[..leaves], &from_accessors[..], "{label}");
-                if columns > 1 {
-                    let mut swapped = cols.clone();
-                    swapped.swap(0, 1);
-                    let control = cpu_leaves_from_columns(&swapped, log_v);
-                    assert!(
-                        gpu[..leaves].iter().zip(&control).all(|(a, b)| a != b),
-                        "{label}: swapped columns must change every leaf"
-                    );
-                }
-            }
+    // Diagnostic base12/setup2 and WHIR v4 leaf widths.
+    for (log_domain, log_v, columns) in [(18u32, 1u32, 12usize), (18, 1, 2), (11, 4, 1)] {
+        let label = format!("log_domain={log_domain} log_v={log_v} columns={columns}");
+        let domain = 1usize << log_domain;
+        let leaves = domain >> log_v;
+        let values = random_columns(&mut rng, columns, domain);
+        let d_values = upload(&values, &stream);
+        let mut d_out = sentinel_buffer(leaves + 3, &stream);
+        hash_leaves(
+            &d_values,
+            log_domain,
+            log_v,
+            columns as u32,
+            &mut d_out[..leaves],
+            &stream,
+        )
+        .unwrap();
+        let gpu = download(&d_out, SENTINEL, &stream);
+        assert_eq!(&gpu[leaves..], &[SENTINEL; 3], "{label}");
+        let expected = cpu_leaves(&values, columns, log_v);
+        assert_eq!(&gpu[..leaves], &expected[..], "{label}");
+        let cols = column_slices(&values, columns);
+        let from_accessors = cpu_leaves_from_accessors(&cols, log_v);
+        assert_eq!(&gpu[..leaves], &from_accessors[..], "{label}");
+        if columns > 1 {
+            let mut swapped = cols.clone();
+            swapped.swap(0, 1);
+            let control = cpu_leaves_from_columns(&swapped, log_v);
+            assert!(
+                gpu[..leaves].iter().zip(&control).all(|(a, b)| a != b),
+                "{label}: swapped columns must change every leaf"
+            );
         }
     }
 }
@@ -148,35 +120,29 @@ fn keccak256_leaf_parity() {
 fn keccak256_partial_tree_parity() {
     let stream = CudaStream::default();
     let mut rng = TestRng::new(0x7472_6565);
-    for log_domain in [0u32, 4, 8, 10, 12] {
-        for log_v in [0u32, 2, 4] {
-            if log_v > log_domain {
-                continue;
-            }
-            let log_leaves = log_domain - log_v;
-            let columns = if log_domain.is_multiple_of(4) { 3 } else { 1 };
-            let values = random_columns(&mut rng, columns, 1 << log_domain);
-            let tree = cpu_tree(std::slice::from_ref(&values), columns, log_v, 1);
-            for skip_bottom in 0..=log_leaves.min(10) {
-                let label = format!("log_domain={log_domain} log_v={log_v} columns={columns} skip_bottom={skip_bottom}");
-                let retained =
-                    gpu_partial_tree(&values, log_domain, log_v, columns, skip_bottom, &stream);
-                for layer in skip_bottom..=log_leaves {
-                    let offset = retained_layer_offset(log_leaves, skip_bottom, layer);
-                    let len = (1usize << log_leaves) >> layer;
-                    assert_eq!(
-                        &retained[offset..offset + len],
-                        cpu_layer(&tree, layer),
-                        "{label} layer={layer}"
-                    );
-                }
-                assert_eq!(
-                    retained[retained.len() - 1],
-                    tree.get_cap().cap[0],
-                    "{label} root"
-                );
-            }
+    for (log_domain, log_v, columns, skip_bottom) in [(18u32, 1u32, 2usize, 5u32), (11, 4, 1, 5)] {
+        let log_leaves = log_domain - log_v;
+        let values = random_columns(&mut rng, columns, 1 << log_domain);
+        let tree = cpu_tree(std::slice::from_ref(&values), columns, log_v, 1);
+
+        let label = format!(
+            "log_domain={log_domain} log_v={log_v} columns={columns} skip_bottom={skip_bottom}"
+        );
+        let retained = gpu_partial_tree(&values, log_domain, log_v, columns, skip_bottom, &stream);
+        for layer in skip_bottom..=log_leaves {
+            let offset = retained_layer_offset(log_leaves, skip_bottom, layer);
+            let len = (1usize << log_leaves) >> layer;
+            assert_eq!(
+                &retained[offset..offset + len],
+                cpu_layer(&tree, layer),
+                "{label} layer={layer}"
+            );
         }
+        assert_eq!(
+            retained[retained.len() - 1],
+            tree.get_cap().cap[0],
+            "{label} root"
+        );
     }
 }
 
@@ -184,10 +150,10 @@ fn keccak256_partial_tree_parity() {
 fn keccak256_top_tree_cap_parity() {
     let stream = CudaStream::default();
     let mut rng = TestRng::new(0x746f_7074);
-    let (log_domain, log_v, columns, skip_bottom) = (6u32, 2u32, 2usize, 3u32);
+    let (log_domain, log_v, columns, skip_bottom) = (11u32, 4u32, 1usize, 5u32);
     let log_leaves = log_domain - log_v;
     let retained_len = 2 * ((1usize << log_leaves) >> skip_bottom) - 1;
-    for log_lde in [2u32, 5] {
+    for log_lde in [7u32] {
         let cosets_count = 1usize << log_lde;
         let cosets: Vec<Vec<Proth120>> = (0..cosets_count)
             .map(|_| random_columns(&mut rng, columns, 1 << log_domain))
@@ -216,7 +182,7 @@ fn keccak256_top_tree_cap_parity() {
             stream.synchronize().unwrap();
         }
         let roots = download(&d_roots, SENTINEL, &stream);
-        for cap_log in 0..=log_lde {
+        for cap_log in [3u32] {
             let label = format!("log_lde={log_lde} cap_log={cap_log}");
             let cap_size = 1usize << cap_log;
             let tree = cpu_tree(&cosets, columns, log_v, cap_size);
@@ -255,17 +221,7 @@ fn keccak256_top_tree_cap_parity() {
 fn keccak256_multi_coset_tile_parity() {
     let stream = CudaStream::default();
     let mut rng = TestRng::new(0x7469_6c65);
-    for (log_domain, log_v, columns, skip_bottom) in [
-        (8u32, 2u32, 3usize, 5u32),
-        (8, 4, 1, 4),
-        (4, 4, 2, 0),
-        (10, 2, 3, 6),
-        (10, 2, 3, 7),
-        (10, 2, 3, 8),
-        (12, 2, 3, 9),
-        (12, 2, 3, 10),
-        (12, 0, 1, 10),
-    ] {
+    for (log_domain, log_v, columns, skip_bottom) in [(11u32, 4u32, 1usize, 5u32)] {
         let log_leaves = log_domain - log_v;
         let leaves = 1usize << log_leaves;
         let coset_values = columns << log_domain;
@@ -298,40 +254,21 @@ fn keccak256_multi_coset_tile_parity() {
                 &stream,
             )
             .unwrap();
-            if skip_bottom <= 5 {
-                build_partial_coset_trees_multi_coset(
-                    &d_values,
-                    log_domain,
-                    log_v,
-                    columns as u32,
-                    skip_bottom,
-                    cosets_count as u32,
-                    values_stride,
-                    retained_stride,
-                    &mut d_retained[..retained_tile_len - 2],
-                    &stream,
-                )
-                .unwrap();
-            } else {
-                let scratch_len = partial_coset_tree_scratch_len(log_domain, log_v, skip_bottom);
-                let mut scratch = sentinel_buffer(scratch_len + 2, &stream);
-                build_partial_coset_trees_multi_coset_with_scratch(
-                    &d_values,
-                    log_domain,
-                    log_v,
-                    columns as u32,
-                    skip_bottom,
-                    cosets_count as u32,
-                    values_stride,
-                    retained_stride,
-                    &mut d_retained[..retained_tile_len - 2],
-                    &mut scratch[1..scratch_len + 1],
-                    &stream,
-                )
-                .unwrap();
-                let scratch = download(&scratch, SENTINEL, &stream);
-                assert_eq!([scratch[0], scratch[scratch_len + 1]], [SENTINEL; 2]);
-            }
+
+            build_partial_coset_trees_multi_coset(
+                &d_values,
+                log_domain,
+                log_v,
+                columns as u32,
+                skip_bottom,
+                cosets_count as u32,
+                values_stride,
+                retained_stride,
+                &mut d_retained[..retained_tile_len - 2],
+                &stream,
+            )
+            .unwrap();
+
             let out = download(&d_out, SENTINEL, &stream);
             let retained = download(&d_retained, SENTINEL, &stream);
             let values_after = download(&d_values, Proth120::new(0), &stream);

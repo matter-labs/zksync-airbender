@@ -28,18 +28,11 @@ pub(crate) type Blake2sTranscript =
     prover::transcript::Blake2sTranscript<{ USE_REDUCED_BLAKE2_ROUNDS }>;
 
 #[cfg(test)]
-pub(crate) use fft::Twiddles;
-#[cfg(test)]
 pub(crate) use field::proth120::Proth120;
 #[cfg(test)]
-pub(crate) use prover::gkr::whir::coset_commit::{
-    CosetByCosetBaseCommitment, CosetByCosetExtCommitment,
-};
-#[cfg(test)]
 pub(crate) use prover::merkle_trees::{
-    keccak256_for_everything_tree::{keccak_leaf_encoding_words, Keccak256MerkleTreeWithCap},
-    keccak256_hash_leafs::truncate_keccak_merkle_digest,
-    ColumnMajorMerkleTreeConstructor, MerkleTreeCapVarLength, PathQueryable, PlainCosetLeaves,
+    keccak256_for_everything_tree::Keccak256MerkleTreeWithCap, ColumnMajorMerkleTreeConstructor,
+    MerkleTreeCapVarLength, PathQueryable, PlainCosetLeaves,
 };
 #[cfg(all(test, feature = "deterministic_pow"))]
 pub(crate) use prover::query_utils::{assemble_query_index, BitSource};
