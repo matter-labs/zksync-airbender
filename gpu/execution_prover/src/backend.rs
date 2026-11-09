@@ -83,9 +83,14 @@ impl ExecutionBackend for GpuBackend {
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
         selection: SoundnessMode,
-        _profiles: &[ProofProfile],
+        profiles: &[ProofProfile],
     ) -> Self::Precomputations {
-        CircuitPrecomputations::from_canonical(circuit, setup, selection)
+        match profiles {
+            [ProofProfile::Standard] => {
+                CircuitPrecomputations::from_canonical(circuit, setup, selection)
+            }
+            _ => unimplemented!("L1 GPU profile preparation"),
+        }
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {

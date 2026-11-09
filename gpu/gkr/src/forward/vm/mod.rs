@@ -37,7 +37,7 @@ cuda_kernel_declaration!(pub(crate)
 
 const fn production_fwd_vm_kernel(circuit_type: CircuitType) -> GkrFwdVmReleaseSignature {
     match circuit_type {
-        CircuitType::L1Wrap21 => panic!("GPU backend does not support L1 wrap circuits"),
+        CircuitType::L1Wrap21 => panic!("the BabyBear forward VM is not defined for L1Wrap"),
         CircuitType::Delegation(circuit_type) => match circuit_type {
             DelegationCircuitType::BigIntWithControl => ab_gkr_fwd_vm_b8_kernel,
             DelegationCircuitType::Blake2GFunction => ab_gkr_fwd_vm_b8_kernel,
@@ -49,7 +49,7 @@ const fn production_fwd_vm_kernel(circuit_type: CircuitType) -> GkrFwdVmReleaseS
         },
         CircuitType::Unrolled(circuit_type) => match circuit_type {
             UnrolledCircuitType::Unified22 => {
-                panic!("GPU backend does not support the CPU-only Unified22 circuit")
+                unimplemented!()
             }
             UnrolledCircuitType::InitsAndTeardowns => ab_gkr_fwd_vm_kernel,
             UnrolledCircuitType::Memory(circuit_type) => match circuit_type {

@@ -194,7 +194,7 @@ mod tests {
 
     /// Every L1 profile under ethproofs is rejected before a binary is registered.
     #[test]
-    fn ethproofs_l1_binary_is_rejected_before_admission() {
+    fn ethproofs_l1_binary_is_rejected_before_registration() {
         let soundness_mode = SoundnessMode::EthproofsSoundnessCalc;
         let mut prover = ExecutionProver::<TestBackend>::with_configuration(
             ExecutionProverConfiguration::for_mode(soundness_mode),

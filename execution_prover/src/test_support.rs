@@ -20,8 +20,6 @@ use worker::Worker;
 const BLOCK_BYTES: usize = 64 << 20;
 const POOL_BLOCKS: usize = 64;
 static REQUESTS: AtomicUsize = AtomicUsize::new(0);
-pub(crate) static PROFILES: Mutex<Vec<(u64, CircuitType, bool, ProofProfile)>> =
-    Mutex::new(Vec::new());
 #[derive(Clone)]
 pub(crate) struct TestPrecomputations(pub(crate) Option<Arc<GKRCircuitArtifact<BF>>>);
 
@@ -136,12 +134,6 @@ impl ExecutionBackend for TestBackend {
                     }
                     let result = match request {
                         WorkRequest::L1WrapProof(request) => {
-                            PROFILES.lock().unwrap().push((
-                                request.batch_id,
-                                request.circuit_type,
-                                true,
-                                ProofProfile::L1Wrap,
-                            ));
                             WorkResult::L1WrapProof(crate::messages::L1WrapProofResult {
                                 batch_id: request.batch_id,
                                 circuit_type: request.circuit_type,
@@ -161,12 +153,6 @@ impl ExecutionBackend for TestBackend {
                             })
                         }
                         WorkRequest::MemoryCommitment(request) => {
-                            PROFILES.lock().unwrap().push((
-                                request.batch_id,
-                                request.circuit_type,
-                                false,
-                                request.profile,
-                            ));
                             let config = match request.profile {
                                 ProofProfile::Standard => request
                                     .circuit_type
@@ -190,30 +176,22 @@ impl ExecutionBackend for TestBackend {
                                 ],
                             })
                         }
-                        WorkRequest::Proof(request) => {
-                            PROFILES.lock().unwrap().push((
-                                request.batch_id,
-                                request.circuit_type,
-                                true,
-                                request.profile,
-                            ));
-                            WorkResult::Proof(ProofResult {
-                                batch_id: request.batch_id,
-                                circuit_type: request.circuit_type,
-                                sequence_id: request.sequence_id,
-                                inits_and_teardowns: request.inits_and_teardowns,
-                                tracing_data: request.tracing_data,
-                                proof: crate::upstream::GKRProof {
-                                    external_challenges: request.external_challenges,
-                                    final_explicit_evaluations: Default::default(),
-                                    sumcheck_intermediate_values: Default::default(),
-                                    whir_proof: empty_whir_proof(),
-                                    grand_product_accumulator_computed: Default::default(),
-                                    inits_and_teardowns_top_bits: Vec::new(),
-                                    lookup_challenges_pow_nonce: 0,
-                                },
-                            })
-                        }
+                        WorkRequest::Proof(request) => WorkResult::Proof(ProofResult {
+                            batch_id: request.batch_id,
+                            circuit_type: request.circuit_type,
+                            sequence_id: request.sequence_id,
+                            inits_and_teardowns: request.inits_and_teardowns,
+                            tracing_data: request.tracing_data,
+                            proof: crate::upstream::GKRProof {
+                                external_challenges: request.external_challenges,
+                                final_explicit_evaluations: Default::default(),
+                                sumcheck_intermediate_values: Default::default(),
+                                whir_proof: empty_whir_proof(),
+                                grand_product_accumulator_computed: Default::default(),
+                                inits_and_teardowns_top_bits: Vec::new(),
+                                lookup_challenges_pow_nonce: 0,
+                            },
+                        }),
                     };
                     batch
                         .sender
