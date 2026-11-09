@@ -1,5 +1,46 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Actual native scalar pair components
+
+[The scalar pair root](Airbender/Review/Trace/Families/ReducedMachine/ScalarPairsTheorems.lean)
+joins all five ordinary scalar pair source relations and all adjacent initialization
+ordering to the same complete inactive request-positive MAIN/caller/decoder
+observation. The original full CSR1991/x0 BODY is reused. Its four actual body pairs
+and initialization address/remainder/borrow pairs are derived zero, for both execute
+flags; only the inactive fixture supplies the joint main component. Typed BASE0..4
+product observations are constructed zero, independently of BODY variables such as
+execute4. Typed QUARTIC12/16/20/24/28 observations are constructed as 2/gamma.
+All other base and auxiliary observations remain unchanged.
+
+The five complete pair equations hold for every scalar challenge, including zero.
+At the zero challenge their pole remains permitted; the construction does not claim
+the equations force an accumulator value there. Generic preservation precedes
+native sampling. The full memory/state/mask/init/grand/FIRST-LAST component,
+individual decoder access, constructed public decoder table/setup and genuine
+nonconstant caller polynomial with its derived nonzero claim remain on this same
+main. Initialization ordering covers every actual adjacent ordinary position.
+
+The observed five-pair sum is derived as 10/gamma at every index, and its complete
+ordinary-domain sum as 8388607*(10/gamma). These are scalar-query contributions,
+not issued delegation counts or a supplied expected sum. All 24 controls pass,
+including typed BASE4 versus BODY execute4, corrupted positive accumulators, retained
+zero-challenge poles and the exact ordinary contribution at gamma=1. Only small
+finite coordinate/scalar calculations are kernel evaluated; no full BODY, stored
+pool or eight-million-row enumeration is replayed.
+
+Scalar table multiplicities/setup, its genuine difference polynomial and reserved
+scalar normalization remain open. The reserved pair observations are explicitly
+still 2/gamma. This component is not full SourceAccepted, global matching, a
+NONEMPTY global source/worker/physical witness, a native defect or parity. Existing
+primitive-domain conditions and memory/PC/caller nonpole fixture scope remain
+explicit; no scalar nonpole, desired activity/count/matching/ledger/history/result
+premise or new acceptance/crypto boundary is added. All prior inactive requests,
+poles, ports, raw times, OLDREADs, refreshes, aliases, unmasked writes and x0 remain.
+Physical caller activity, larger-batch universal matching, scheduled hash/Sail,
+protocol/padding/terminal/init-teardown, physical refinement and completeness remain
+separate. Native/v3/dependency pins, artifacts and FINDINGS are unchanged.
+
+
 ## Complete decoder table on the inactive native MAIN component
 
 [Public completion](Airbender/Review/Trace/Families/ReducedMachine/DecoderTableCompletionTheorems.lean)

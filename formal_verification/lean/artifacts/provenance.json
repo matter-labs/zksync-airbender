@@ -20519,6 +20519,90 @@
       "backport_reuse_revision": "f5c2658957ea1b5ce299c93383ea166cd3f09a01",
       "backport_reuse_path": "Tests/NativeInactiveMain.lean",
       "backport_reuse_sha256": "38bba659d90224adb57637cfc31cd475a0174620c4f3570ea19786e9f6075d5d"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ScalarPairs.lean",
+      "change": "Join actual four body scalar pairs plus initialization pair and ALL adjacent initialization ordering to SAME inactive request-positive native main/caller/decoder component. Derive actual zero pair inputs/products; construct only typed BASE0..4 products and QUARTIC12/16/20/24/28 accumulators2/gamma, preserving all other observations and all gamma including poles. Derive actual five-pair sum10/gamma and ordinary total8388607*(10/gamma); no expected activity/count/sum/matching/ledger premise. Reserved scalar normalization/table/setup/difference polynomial/global source-worker acceptance/physical refinement/parity remain OPEN. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "4dfa9fb41231de2739c1148edfb5092d674937be",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/DecoderTableCompletion.lean",
+      "backport_reuse_sha256": "20c92058debf47b1049147ef8c8401d3e5ea094e0480b324b67ea430da66c4aa"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ScalarPairs.lean",
+      "change": "Join actual four body scalar pairs plus initialization pair and ALL adjacent initialization ordering to SAME inactive request-positive native main/caller/decoder component. Derive actual zero pair inputs/products; construct only typed BASE0..4 products and QUARTIC12/16/20/24/28 accumulators2/gamma, preserving all other observations and all gamma including poles. Derive actual five-pair sum10/gamma and ordinary total8388607*(10/gamma); no expected activity/count/sum/matching/ledger premise. Reserved scalar normalization/table/setup/difference polynomial/global source-worker acceptance/physical refinement/parity remain OPEN. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "4dfa9fb41231de2739c1148edfb5092d674937be",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Scalar16Arguments.lean",
+      "backport_reuse_sha256": "a6a6b4ccca1dc7753f09af566d84259755c2c3da392707b10cd70fd153c96c60"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ScalarPairs.lean",
+      "change": "Join actual four body scalar pairs plus initialization pair and ALL adjacent initialization ordering to SAME inactive request-positive native main/caller/decoder component. Derive actual zero pair inputs/products; construct only typed BASE0..4 products and QUARTIC12/16/20/24/28 accumulators2/gamma, preserving all other observations and all gamma including poles. Derive actual five-pair sum10/gamma and ordinary total8388607*(10/gamma); no expected activity/count/sum/matching/ledger premise. Reserved scalar normalization/table/setup/difference polynomial/global source-worker acceptance/physical refinement/parity remain OPEN. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "4dfa9fb41231de2739c1148edfb5092d674937be",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/InitializationRange.lean",
+      "backport_reuse_sha256": "837ef1eb8fb63a912ed1d2ef2a3fdf7823f83a5251395df1ea247d49280b1e40"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ScalarPairs.lean",
+      "change": "Join actual four body scalar pairs plus initialization pair and ALL adjacent initialization ordering to SAME inactive request-positive native main/caller/decoder component. Derive actual zero pair inputs/products; construct only typed BASE0..4 products and QUARTIC12/16/20/24/28 accumulators2/gamma, preserving all other observations and all gamma including poles. Derive actual five-pair sum10/gamma and ordinary total8388607*(10/gamma); no expected activity/count/sum/matching/ledger premise. Reserved scalar normalization/table/setup/difference polynomial/global source-worker acceptance/physical refinement/parity remain OPEN. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "4dfa9fb41231de2739c1148edfb5092d674937be",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/InitializationOrdering.lean",
+      "backport_reuse_sha256": "5d4de0305fae7999f59a54407ec3b0569ec8e9aa8823a248484941a9fea7b462"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeScalarPairs.lean",
+      "change": "Join actual four body scalar pairs plus initialization pair and ALL adjacent initialization ordering to SAME inactive request-positive native main/caller/decoder component. Derive actual zero pair inputs/products; construct only typed BASE0..4 products and QUARTIC12/16/20/24/28 accumulators2/gamma, preserving all other observations and all gamma including poles. Derive actual five-pair sum10/gamma and ordinary total8388607*(10/gamma); no expected activity/count/sum/matching/ledger premise. Reserved scalar normalization/table/setup/difference polynomial/global source-worker acceptance/physical refinement/parity remain OPEN. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "4dfa9fb41231de2739c1148edfb5092d674937be",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeDecoderTableCompletion.lean",
+      "backport_reuse_sha256": "b3693db50eb787b6e12d6f50a0bfbe798340e59f970a8f2ba2dc87eb35b98f4a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeScalarPairs.lean",
+      "change": "Join actual four body scalar pairs plus initialization pair and ALL adjacent initialization ordering to SAME inactive request-positive native main/caller/decoder component. Derive actual zero pair inputs/products; construct only typed BASE0..4 products and QUARTIC12/16/20/24/28 accumulators2/gamma, preserving all other observations and all gamma including poles. Derive actual five-pair sum10/gamma and ordinary total8388607*(10/gamma); no expected activity/count/sum/matching/ledger premise. Reserved scalar normalization/table/setup/difference polynomial/global source-worker acceptance/physical refinement/parity remain OPEN. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "4dfa9fb41231de2739c1148edfb5092d674937be",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeCallerSumCompletion.lean",
+      "backport_reuse_sha256": "b57d31b849e773dc0ca86748137a271a2c77fb8c53f5e82d5c323b484d11e0ab"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeScalarPairs.lean",
+      "change": "Join actual four body scalar pairs plus initialization pair and ALL adjacent initialization ordering to SAME inactive request-positive native main/caller/decoder component. Derive actual zero pair inputs/products; construct only typed BASE0..4 products and QUARTIC12/16/20/24/28 accumulators2/gamma, preserving all other observations and all gamma including poles. Derive actual five-pair sum10/gamma and ordinary total8388607*(10/gamma); no expected activity/count/sum/matching/ledger premise. Reserved scalar normalization/table/setup/difference polynomial/global source-worker acceptance/physical refinement/parity remain OPEN. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "4dfa9fb41231de2739c1148edfb5092d674937be",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeInactiveMain.lean",
+      "backport_reuse_sha256": "0d1a9fee777a7b429f46d968d51f5f052cd7ee9efa951839c3ea2d431b2eedaa"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeScalarPairs.lean",
+      "change": "Join actual four body scalar pairs plus initialization pair and ALL adjacent initialization ordering to SAME inactive request-positive native main/caller/decoder component. Derive actual zero pair inputs/products; construct only typed BASE0..4 products and QUARTIC12/16/20/24/28 accumulators2/gamma, preserving all other observations and all gamma including poles. Derive actual five-pair sum10/gamma and ordinary total8388607*(10/gamma); no expected activity/count/sum/matching/ledger premise. Reserved scalar normalization/table/setup/difference polynomial/global source-worker acceptance/physical refinement/parity remain OPEN. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "4dfa9fb41231de2739c1148edfb5092d674937be",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeScalar16Arguments.lean",
+      "backport_reuse_sha256": "5967463a8e1f38becfb1121984f3cd808c7f7576667d429a6014e9a01299ed58"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeScalarPairs.lean",
+      "change": "Join actual four body scalar pairs plus initialization pair and ALL adjacent initialization ordering to SAME inactive request-positive native main/caller/decoder component. Derive actual zero pair inputs/products; construct only typed BASE0..4 products and QUARTIC12/16/20/24/28 accumulators2/gamma, preserving all other observations and all gamma including poles. Derive actual five-pair sum10/gamma and ordinary total8388607*(10/gamma); no expected activity/count/sum/matching/ledger premise. Reserved scalar normalization/table/setup/difference polynomial/global source-worker acceptance/physical refinement/parity remain OPEN. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "4dfa9fb41231de2739c1148edfb5092d674937be",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeInitializationRange.lean",
+      "backport_reuse_sha256": "cfeca53f0e3a5eade997f346d4bec6ba57094b03c5513465d06400003b866ca5"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ScalarPairsTheorems.lean",
+      "change": "Join actual four body scalar pairs plus initialization pair and ALL adjacent initialization ordering to SAME inactive request-positive native main/caller/decoder component. Derive actual zero pair inputs/products; construct only typed BASE0..4 products and QUARTIC12/16/20/24/28 accumulators2/gamma, preserving all other observations and all gamma including poles. Derive actual five-pair sum10/gamma and ordinary total8388607*(10/gamma); no expected activity/count/sum/matching/ledger premise. Reserved scalar normalization/table/setup/difference polynomial/global source-worker acceptance/physical refinement/parity remain OPEN. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "4dfa9fb41231de2739c1148edfb5092d674937be",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/DecoderTableCompletionTheorems.lean",
+      "backport_reuse_sha256": "7cb50bf90583f10a9fe6a2118a02becc87c16ad25123337dd8d48788deb4c5f9"
+    },
+    {
+      "path": "Tests/NativeScalarPairs.lean",
+      "change": "Join actual four body scalar pairs plus initialization pair and ALL adjacent initialization ordering to SAME inactive request-positive native main/caller/decoder component. Derive actual zero pair inputs/products; construct only typed BASE0..4 products and QUARTIC12/16/20/24/28 accumulators2/gamma, preserving all other observations and all gamma including poles. Derive actual five-pair sum10/gamma and ordinary total8388607*(10/gamma); no expected activity/count/sum/matching/ledger premise. Reserved scalar normalization/table/setup/difference polynomial/global source-worker acceptance/physical refinement/parity remain OPEN. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "4dfa9fb41231de2739c1148edfb5092d674937be",
+      "backport_reuse_path": "Tests/NativeDecoderTableCompletion.lean",
+      "backport_reuse_sha256": "85c8a46640794d5d9182334dc35dc7dd58c56b3b6f795ed3694a51d60f6b1b9c"
+    },
+    {
+      "path": "Tests/NativeScalarPairs.lean",
+      "change": "Join actual four body scalar pairs plus initialization pair and ALL adjacent initialization ordering to SAME inactive request-positive native main/caller/decoder component. Derive actual zero pair inputs/products; construct only typed BASE0..4 products and QUARTIC12/16/20/24/28 accumulators2/gamma, preserving all other observations and all gamma including poles. Derive actual five-pair sum10/gamma and ordinary total8388607*(10/gamma); no expected activity/count/sum/matching/ledger premise. Reserved scalar normalization/table/setup/difference polynomial/global source-worker acceptance/physical refinement/parity remain OPEN. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "4dfa9fb41231de2739c1148edfb5092d674937be",
+      "backport_reuse_path": "Tests/NativeCallerSumCompletion.lean",
+      "backport_reuse_sha256": "43438aa8b62acdc64230c8332b8b03e666646f48a23edfb1ff7b75bdf776b2e6"
     }
   ],
   "setup_artifacts": [

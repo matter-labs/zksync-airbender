@@ -1191,3 +1191,11 @@ FFT refinement, other tables and global source/worker acceptance remain open.
 zero/last polynomial and constructed public setup to the same inactive MAIN/caller
 component, retaining all decoder poles and original observations. Scalar/global
 source/worker acceptance, physical refinement and caller activity remain open.
+
+## Actual scalar pair component
+
+[All five ordinary pairs](ScalarPairsTheorems.lean) and adjacent initialization ordering share
+the complete inactive MAIN/caller/decoder component for every scalar challenge,
+including poles. The five-pair sum and complete ordinary total are derived from
+actual observations. Reserved scalar normalization, scalar table/setup/polynomial,
+global source/worker acceptance and physical caller activity remain open.

@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.ScalarPairs
+import Airbender.Proofs.ReducedMachine.NativeScalarPairs
+import Airbender.Review.Trace.Families.ReducedMachine.ScalarPairsTheorems
+import Tests.NativeScalarPairs
+
 import Airbender.Review.Trace.Families.ReducedMachine.DecoderTableCompletion
 import Airbender.Proofs.ReducedMachine.NativeDecoderTableCompletion
 import Airbender.Review.Trace.Families.ReducedMachine.DecoderTableCompletionTheorems
@@ -8753,3 +8758,46 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeDecoderTableCompletion.actual_old_decoder_columns_zero
 #print axioms Airbender.Tests.NativeDecoderTableCompletion.complete_table_without_decoder_nonpoles
 #print axioms Airbender.Tests.NativeDecoderTableCompletion.full_fixture
+
+#print axioms Airbender.NativeScalarPairsProofs.zero_pair_rational
+#print axioms Airbender.NativeScalarPairsProofs.kept
+#print axioms Airbender.NativeScalarPairsProofs.row
+#print axioms Airbender.NativeScalarPairsProofs.preserves
+#print axioms Airbender.NativeScalarPairsProofs.body_pairs_zero
+#print axioms Airbender.NativeScalarPairsProofs.initialization_zero
+#print axioms Airbender.NativeScalarPairsProofs.body_pair
+#print axioms Airbender.NativeScalarPairsProofs.products_other
+#print axioms Airbender.NativeScalarPairsProofs.initialization_pair
+#print axioms Airbender.NativeScalarPairsProofs.adjacent
+#print axioms Airbender.NativeScalarPairsProofs.body_column
+#print axioms Airbender.NativeScalarPairsProofs.normalized_accumulator
+#print axioms Airbender.NativeScalarPairsProofs.sum_kept
+#print axioms Airbender.NativeScalarPairsProofs.request_sum_kept
+#print axioms Airbender.NativeScalarPairsProofs.observed_pair_sum
+#print axioms Airbender.NativeScalarPairsProofs.observed_pair_total
+#print axioms Airbender.NativeScalarPairsProofs.fixture
+#print axioms Airbender.NativeScalarPairs.native_inactive_scalar_pairs
+#print axioms Airbender.Tests.NativeScalarPairs.actual_five_pair_columns
+#print axioms Airbender.Tests.NativeScalarPairs.all_actual_body_queries
+#print axioms Airbender.Tests.NativeScalarPairs.actual_initialization_queries
+#print axioms Airbender.Tests.NativeScalarPairs.typed_base_four_is_not_execute
+#print axioms Airbender.Tests.NativeScalarPairs.five_products_constructed
+#print axioms Airbender.Tests.NativeScalarPairs.other_base_retained
+#print axioms Airbender.Tests.NativeScalarPairs.caller_aux_retained
+#print axioms Airbender.Tests.NativeScalarPairs.grand_aux_retained
+#print axioms Airbender.Tests.NativeScalarPairs.decoder_access_retained
+#print axioms Airbender.Tests.NativeScalarPairs.decoder_table_retained
+#print axioms Airbender.Tests.NativeScalarPairs.zero_challenge_constructed
+#print axioms Airbender.Tests.NativeScalarPairs.positive_challenge_constructed
+#print axioms Airbender.Tests.NativeScalarPairs.wrong_positive_accumulator_rejected
+#print axioms Airbender.Tests.NativeScalarPairs.zero_challenge_pole_still_free
+#print axioms Airbender.Tests.NativeScalarPairs.all_body_pair_source_equations
+#print axioms Airbender.Tests.NativeScalarPairs.extra_initialization_pair
+#print axioms Airbender.Tests.NativeScalarPairs.actual_adjacent_ordering
+#print axioms Airbender.Tests.NativeScalarPairs.all_five_pair_sum
+#print axioms Airbender.Tests.NativeScalarPairs.positive_complete_pair_sum
+#print axioms Airbender.Tests.NativeScalarPairs.zero_challenge_complete_pair_sum
+#print axioms Airbender.Tests.NativeScalarPairs.caller_sum_retained
+#print axioms Airbender.Tests.NativeScalarPairs.all_old_components_retained
+#print axioms Airbender.Tests.NativeScalarPairs.reserved_pair_is_not_yet_normalized
+#print axioms Airbender.Tests.NativeScalarPairs.full_joint_fixture
