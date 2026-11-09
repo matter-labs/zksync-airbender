@@ -1,5 +1,6 @@
 #include "../gkr/support/kernel_helpers.cuh"
 #include "gkr_ops_helpers.cuh"
+#include "gkr_ops_shared.cuh"
 
 namespace airbender::gkr::ops {
 
@@ -52,40 +53,15 @@ EXTERN __global__ void ab_whir_fold_round_update_kernel(const e4 *reduction_outp
 //   (linear).
 // - `new_claims_out`: `num_addresses` e4 outputs.
 // ---------------------------------------------------------------------------
-DEVICE_FORCEINLINE e4 e4_lerp(const e4 a, const e4 b, const e4 r) {
-  // a + r * (b - a)
-  return e4::add(a, e4::mul(r, e4::sub(b, a)));
-}
 
 EXTERN __global__ void ab_backward_new_claims_two_var_kernel(const e4 *last_evals_packed, const e4 *challenges, e4 *new_claims_out,
                                                              const unsigned num_addresses) {
-  const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= num_addresses)
-    return;
-  const e4 r_before_last = challenges[0];
-  const e4 r_last = challenges[1];
-  const unsigned base = idx * 4u;
-  const e4 v0 = last_evals_packed[base + 0];
-  const e4 v1 = last_evals_packed[base + 1];
-  const e4 v2 = last_evals_packed[base + 2];
-  const e4 v3 = last_evals_packed[base + 3];
-  const e4 low = e4_lerp(v0, v1, r_last);
-  const e4 high = e4_lerp(v2, v3, r_last);
-  new_claims_out[idx] = e4_lerp(low, high, r_before_last);
+  shared::new_claims_two_var(last_evals_packed, challenges, new_claims_out, num_addresses);
 }
-
 EXTERN __global__ void ab_backward_new_claims_linear_kernel(const e4 *last_evals_packed, const e4 *challenges, e4 *new_claims_out,
                                                             const unsigned num_addresses) {
-  const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= num_addresses)
-    return;
-  const e4 r = challenges[0];
-  const unsigned base = idx * 2u;
-  const e4 v0 = last_evals_packed[base + 0];
-  const e4 v1 = last_evals_packed[base + 1];
-  new_claims_out[idx] = e4_lerp(v0, v1, r);
+  shared::new_claims_linear(last_evals_packed, challenges, new_claims_out, num_addresses);
 }
-
 // Dim-reducing final-round LSB-line reduction. The last sumcheck round now
 // emits a univariate monomial and draws `r_before_last` in-loop; the [e4;4] bilinear
 // `last_evals` (over (last-output-coord) x (LSB-coord), packed
@@ -98,19 +74,8 @@ EXTERN __global__ void ab_backward_new_claims_linear_kernel(const e4 *last_evals
 // - `lsb_lines_out`: `num_addresses * 2` e4.
 EXTERN __global__ void ab_backward_dim_reducing_lsb_lines_kernel(const e4 *last_evals_packed, const e4 *challenges, e4 *lsb_lines_out,
                                                                  const unsigned num_addresses) {
-  const unsigned idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx >= num_addresses)
-    return;
-  const e4 r_before_last = challenges[0];
-  const unsigned base = idx * 4u;
-  const e4 v0 = last_evals_packed[base + 0];
-  const e4 v1 = last_evals_packed[base + 1];
-  const e4 v2 = last_evals_packed[base + 2];
-  const e4 v3 = last_evals_packed[base + 3];
-  lsb_lines_out[idx * 2u + 0u] = e4_lerp(v0, v2, r_before_last);
-  lsb_lines_out[idx * 2u + 1u] = e4_lerp(v1, v3, r_before_last);
+  shared::dim_reducing_lsb_lines(last_evals_packed, challenges, lsb_lines_out, num_addresses);
 }
-
 // Mirror of `GpuCombinedClaimDesc` in gpu/circuit_prover/src/ops/blake2s.rs. Holds
 // the per-layer `(exp, claim_idx)` descriptor pairs for `build_combined_claim`
 // inline as kernel-arg data — replaces the prior device-buffer + per-layer H2D.
@@ -127,32 +92,9 @@ static_assert(sizeof(gpu_combined_claim_desc) <= 32u * 1024u, "gpu_combined_clai
 EXTERN __global__ __launch_bounds__(256) void ab_build_combined_claim_kernel(const e4 *claims, const e4 *batching,
                                                                              __grid_constant__ const gpu_combined_claim_desc desc, e4 *claim_out,
                                                                              e4 *eq_prefactor_out) {
-  if (blockDim.x != 256 || gridDim.x != 1)
-    return;
-  const e4 b = *batching;
-  e4 result = e4::ZERO();
-  for (unsigned i = threadIdx.x; i < desc.num_terms; i += 256) {
-    const unsigned exp = desc.entries[2u * i];
-    const unsigned idx = desc.entries[2u * i + 1u];
-    result = e4::add(result, e4::mul(e4::pow(b, exp), claims[idx]));
-  }
-  result = gkr_trace_holder_partials_warp_reduce_sum(result);
   __shared__ e4 warp_sums[8];
-  const unsigned lane = threadIdx.x & 31;
-  const unsigned warp = threadIdx.x >> 5;
-  if (lane == 0)
-    warp_sums[warp] = result;
-  __syncthreads();
-  if (warp == 0) {
-    result = lane < 8 ? warp_sums[lane] : e4::ZERO();
-    result = gkr_trace_holder_partials_warp_reduce_sum(result);
-    if (lane == 0) {
-      *claim_out = result;
-      *eq_prefactor_out = e4::ONE();
-    }
-  }
+  shared::build_combined_claim(claims, batching, desc, claim_out, eq_prefactor_out, warp_sums);
 }
-
 // ---------------------------------------------------------------------------
 // Assemble query indexes from a stream of random u32 words (device-side).
 //
