@@ -46,7 +46,6 @@ pub(crate) use prover::gkr::prover::{GKRProof, WhirSchedule};
 pub(crate) use prover::gkr::prover_config::commitment_geometry::{
     BaseCommitmentGeometry, BaseOracleRole,
 };
-pub(crate) use prover::gkr::prover_config::example_configs::l1_wrap;
 pub(crate) use prover::gkr::prover_config::pow_bits;
 pub(crate) use prover::gkr::prover_config::BaseColumns;
 pub(crate) use prover::gkr::prover_config::{ProofProfile, ProverConfig};
@@ -60,8 +59,6 @@ pub(crate) use prover::merkle_trees::DefaultTreeConstructor;
 
 #[cfg(test)]
 pub(crate) use field::FieldExtension;
-#[cfg(test)]
-pub(crate) use prover::definitions::FinalRegisterValue;
 #[cfg(test)]
 pub(crate) use prover::gkr::prover::backend::NaiveBackend;
 #[cfg(test)]

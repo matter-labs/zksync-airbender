@@ -631,11 +631,6 @@ fn enqueue_phase_two<'a>(
             operation_mode,
             inputs,
             &dr_tail_plan,
-            crate::memory_policy::policy(
-                state.circuit_type,
-                ProofProfile::L1Wrap,
-                context.get_mem_size(),
-            ),
             crate::memory_policy::partial_trees(state.circuit_type, ProofProfile::L1Wrap),
             context,
         )?;
