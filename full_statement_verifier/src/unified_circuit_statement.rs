@@ -27,12 +27,10 @@ use verifier_common::cs::definitions::split_timestamp;
 ///
 /// # Safety
 ///
-/// No extra caller obligations: `unsafe` covers the body's uninitialized `u32` scratch
-/// buffers (every word is written before it is read) and the reinterpretation of the
-/// register buffer as `(value, (ts_low, ts_high))` triples.
-#[allow(invalid_value)]
+/// No extra caller obligations: `unsafe` covers the in-place fill of the register buffer
+/// (every word is written before the buffer is viewed as initialized) and its
+/// reinterpretation as `(value, (ts_low, ts_high))` triples.
 #[inline(never)]
-#[allow(clippy::uninit_assumed_init)]
 #[allow(clippy::manual_memcpy)]
 pub unsafe fn verify_full_statement_for_unified_circuit<
     I: NonDeterminismSource<BabyBearField>,

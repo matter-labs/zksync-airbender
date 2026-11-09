@@ -14,11 +14,13 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
         }
 
         #[inline(always)]
+        #[allow(dead_code)]
         pub fn read_field_el<I: NonDeterminismSource<#field_struct>>(nd_source: &mut I) -> #quartic_struct {
             ext_from_nds::<#field_struct, #quartic_struct, I>(nd_source)
         }
 
         #[inline(always)]
+        #[allow(dead_code)]
         pub fn read_field_els<I: NonDeterminismSource<#field_struct>>(dst: &mut [#quartic_struct], nd_source: &mut I) {
             let mut i = 0;
             while i < dst.len() {
@@ -28,6 +30,7 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
         }
 
         #[inline(always)]
+        #[allow(dead_code)]
         pub fn draw_field_els_into<const BUF_CAP: usize>(
             ts: &mut TranscriptState,
             dst: &mut [#quartic_struct],
@@ -96,6 +99,7 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
         /// re-emits its words. Matches the prover's `draw_fresh_random_field_els` — used for
         /// the packing coordinates drawn right after the GKR phase, which ends with a draw.
         #[inline(always)]
+        #[allow(dead_code)]
         pub fn draw_fresh_field_els_into<const BUF_CAP: usize>(
             ts: &mut TranscriptState,
             dst: &mut [#quartic_struct],

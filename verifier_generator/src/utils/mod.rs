@@ -15,6 +15,16 @@ pub use verifier_common::{
     BATCHING_CHALLENGE_EXTRA, DIM_REDUCE_EVAL_POINTS, STANDARD_EVAL_POINTS, SUMCHECK_POLY_COEFFS,
 };
 
+/// Whether `tokens` mentions the identifier `name` anywhere, including inside groups. Lets a
+/// template emit an import or name a parameter only when the generated body refers to it.
+pub fn contains_ident(tokens: &proc_macro2::TokenStream, name: &str) -> bool {
+    tokens.clone().into_iter().any(|token| match token {
+        proc_macro2::TokenTree::Ident(ident) => ident == name,
+        proc_macro2::TokenTree::Group(group) => contains_ident(&group.stream(), name),
+        _ => false,
+    })
+}
+
 pub fn addr_to_idx(addr: &GKRAddress, sorted: &[GKRAddress]) -> usize {
     sorted
         .binary_search(addr)

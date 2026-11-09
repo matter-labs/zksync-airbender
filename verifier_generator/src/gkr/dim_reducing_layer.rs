@@ -21,7 +21,6 @@ pub fn generate_dim_reducing_compute_claim<MW: FieldWrapper>(
     let quartic_struct = MW::quartic_struct();
     quote! {
         #[inline(always)]
-        #[allow(unused_unsafe)]
         unsafe fn dim_reducing_compute_claim(
             output_claims: &[#quartic_struct; #total_output_polys],
             batch_base: #quartic_struct,
@@ -103,8 +102,11 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: FieldWrapper>(
         }
     }
 
-    let mut body = quote! {
-        let mut acc = #quartic_zero;
+    // The first Horner step assigns `acc` outright, so it starts without a value.
+    let mut body = if blocks.is_empty() {
+        quote! { let acc = #quartic_zero; }
+    } else {
+        quote! { let mut acc: #quartic_struct; }
     };
     for (i, (outs, prefix)) in blocks.into_iter().rev().enumerate() {
         let steps = if i == 0 {
@@ -123,7 +125,6 @@ pub fn generate_dim_reducing_final_step_accumulator<MW: FieldWrapper>(
 
     quote! {
         #[inline(always)]
-        #[allow(unused_unsafe)]
         unsafe fn dim_reducing_final_step_accumulator(
             evals: &[[#quartic_struct; 2]],
             batch_base: #quartic_struct,
