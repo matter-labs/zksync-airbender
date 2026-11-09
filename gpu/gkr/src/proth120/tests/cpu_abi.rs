@@ -129,18 +129,6 @@ fn cpu_pr_complete_launch_argument_abi() {
             crate::proth120::backward::window::PR_R0_ARGUMENT_BYTES,
         ),
         (
-            "ab_pr_gkr_bwd_r0_partition_kernel",
-            crate::proth120::backward::window::PR_R0_PARTITION_ARGUMENT_BYTES,
-        ),
-        (
-            "ab_pr_gkr_bwd_r0_partition_unit_kernel",
-            crate::proth120::backward::window::PR_R0_PARTITION_ARGUMENT_BYTES,
-        ),
-        (
-            "ab_pr_gkr_bwd_r0_partition_tails_kernel",
-            crate::proth120::backward::window::PR_R0_PARTITION_ARGUMENT_BYTES,
-        ),
-        (
             "ab_pr_gkr_bwd_build_fold_weights_kernel",
             crate::proth120::backward::window::PR_FOLD_WEIGHTS_ARGUMENT_BYTES,
         ),

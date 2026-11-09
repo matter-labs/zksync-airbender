@@ -36,7 +36,6 @@ constexpr u32 PR_WINDOW_ROWS_PER_TILE = 32;
 constexpr u32 PR_WINDOW_SELECTOR_PAIRS = 9;
 constexpr u32 PR_WINDOW_TENSOR_CELLS = 27;
 constexpr u32 PR_WINDOW_BLOCK_THREADS = 288;
-constexpr u32 PR_WINDOW_MAX_PARTS = 16;
 constexpr u32 PR_WINDOW_MIN_BLOCKS = 2;
 constexpr u32 PR_WINDOW_SCALAR_SEED_NONE = 0xffffu;
 constexpr u16 PR_WINDOW_SHAPE_GENERAL = 0x7f7;
@@ -66,11 +65,6 @@ struct alignas(16) bwd_window_desc_pr {
   u32 _pad;
 };
 
-struct bwd_window_partition_bounds_pr {
-  u32 parts;
-  u32 ends[PR_WINDOW_MAX_PARTS][PR_WINDOW_SECTION_WORDS];
-};
-
 struct alignas(4) pr_window_instruction {
   u16 opcode;
   u16 factor;
@@ -91,12 +85,9 @@ static_assert(__builtin_offsetof(bwd_window_desc_pr, coefficients) == 19512);
 static_assert(__builtin_offsetof(bwd_window_desc_pr, immediates) == 19520);
 static_assert(__builtin_offsetof(bwd_window_desc_pr, immediate_count) == 19528);
 static_assert(__builtin_offsetof(bwd_window_desc_pr, _pad) == 19532);
-static_assert(sizeof(bwd_window_partition_bounds_pr) == 260 && alignof(bwd_window_partition_bounds_pr) == 4);
-static_assert(__builtin_offsetof(bwd_window_partition_bounds_pr, ends) == 4);
 static_assert(sizeof(pr_window_instruction) == 8 && alignof(pr_window_instruction) == 4);
 static_assert(__builtin_offsetof(bwd_window_desc_pr, program) % alignof(pr_window_instruction) == 0);
 static_assert(PR_WINDOW_PROGRAM_WORD_CAP % 4 == 0);
-static_assert(sizeof(bwd_window_desc_pr) + sizeof(u32) + sizeof(bwd_window_partition_bounds_pr) <= 32764);
 
 DEVICE_FORCEINLINE pr_window_instruction pr_window_read(const u16 *program, const u32 pc) {
   return reinterpret_cast<const pr_window_instruction *>(program)[pc];
@@ -338,9 +329,7 @@ DEVICE_FORCEINLINE void pr_window_publish(pr *partials, const size_t tile_slot, 
     store<pr, st_modifier::cs>(partials, value, tile_slot * PR_WINDOW_TENSOR_CELLS + 9 * lane + 3 * selector.x1 + selector.x0);
 }
 
-template <u16 Shape>
-DEVICE_FORCEINLINE void pr_window_execute(const bwd_window_desc_pr &desc, const u32 scalar_seed, const u32 start, const u32 end, const u32 part,
-                                          pr *equality_by_lane) {
+template <u16 Shape> DEVICE_FORCEINLINE void pr_window_execute(const bwd_window_desc_pr &desc, const u32 scalar_seed, pr *equality_by_lane) {
   static_assert((Shape & ~BWD_WINDOW_SHAPE_DEFINED_BITS) == 0, "undefined shape bits");
   constexpr bool unit_groups = Shape == PR_WINDOW_SHAPE_UNIT;
   constexpr bool linear_tails = (Shape & BWD_WINDOW_SHAPE_BF_LINEAR_TAIL) != 0;
@@ -355,12 +344,12 @@ DEVICE_FORCEINLINE void pr_window_execute(const bwd_window_desc_pr &desc, const 
   const u32 row = active ? global_row : 0;
   PrSum32 outer[3] = {PrSum32::zero(), PrSum32::zero(), PrSum32::zero()};
 #pragma unroll 1
-  for (u32 pc = start; pc < end;) {
+  for (u32 pc = 0; pc < desc.sections[BWD_WINDOW_SECTION_BF];) {
     const pr_window_instruction head = pr_window_read(desc.program, pc++);
     pc = pr_window_execute_atom<may_have_banked, linear_tails, may_negate, pc_end, unit_groups>(desc, head, pc, row, selector, outer);
   }
   pr values[3] = {outer[0].flush(), outer[1].flush(), outer[2].flush()};
-  if (part == 0 && !selector.has_infinity() && scalar_seed != PR_WINDOW_SCALAR_SEED_NONE) {
+  if (!selector.has_infinity() && scalar_seed != PR_WINDOW_SCALAR_SEED_NONE) {
     const pr scalar = pr_window_coefficient(desc, scalar_seed);
     values[0] = pr::add(values[0], scalar);
     values[1] = pr::add(values[1], scalar);
@@ -368,7 +357,7 @@ DEVICE_FORCEINLINE void pr_window_execute(const bwd_window_desc_pr &desc, const 
   if (bwd_window_selector_id() == 0)
     equality_by_lane[lane] = gkr_compute_eq_inline_global<pr>(desc.eq_high, desc.eq_high + GKR_EQ_GROUP_TABLE_LEN, desc.eq_low, desc.eq_sizes, row);
   __syncthreads();
-  pr *partials = desc.partials + static_cast<size_t>(part) * gridDim.x * PR_WINDOW_TENSOR_CELLS;
+  pr *partials = desc.partials;
   pr_window_publish(partials, row_tile, lane, active, selector, equality_by_lane[lane], values);
 }
 

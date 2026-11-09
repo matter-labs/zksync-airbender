@@ -1,6 +1,5 @@
 use core::mem::{align_of, offset_of, size_of};
 
-use gpu_gkr_compiler::window::partition::R0PartitionPlan;
 use gpu_gkr_compiler::{
     WindowProgram, DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES, LEAN_MAX_IMMEDIATES,
     MAX_SOURCE_WINDOWS, SOURCE_WINDOW_COLUMNS, WINDOW_SECTION_WORDS,
@@ -25,7 +24,6 @@ pub(crate) const PR_WINDOW_ADDR_SLOTS: usize = MAX_SOURCE_WINDOWS;
 pub(crate) const PR_WINDOW_SECTION_WORDS: usize = WINDOW_SECTION_WORDS;
 pub(crate) const PR_WINDOW_INSTRUCTION_WORDS: usize = 4;
 pub(crate) const PR_WINDOW_COORDINATES: usize = 3;
-pub(crate) const PR_WINDOW_MAX_PARTS: usize = 16;
 pub(crate) const PR_WINDOW_BF_SHAPE_BITS: u16 = 0x8f;
 pub(crate) use gpu_gkr_compiler::window::WINDOW_PROGRAM_WORD_CAP as PR_WINDOW_PROGRAM_WORD_CAP;
 const PR_WINDOW_MAX_FOLDING_STEPS: usize =
@@ -48,13 +46,6 @@ pub(crate) struct WindowLaunchBindingPr {
     pub _pad: u32,
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-pub(crate) struct PartitionBoundsPr {
-    pub parts: u32,
-    pub ends: [[u32; PR_WINDOW_SECTION_WORDS]; PR_WINDOW_MAX_PARTS],
-}
-
 const _: () = {
     assert!(PR_WINDOW_ADDR_SLOTS == 64);
     assert!(PR_WINDOW_SECTION_WORDS == 4);
@@ -75,13 +66,7 @@ const _: () = {
     assert!(offset_of!(WindowLaunchBindingPr, immediates) == 19_520);
     assert!(offset_of!(WindowLaunchBindingPr, immediate_count) == 19_528);
     assert!(offset_of!(WindowLaunchBindingPr, _pad) == 19_532);
-    assert!(size_of::<PartitionBoundsPr>() == 260);
-    assert!(align_of::<PartitionBoundsPr>() == 4);
-    assert!(offset_of!(PartitionBoundsPr, ends) == 4);
-    assert!(
-        size_of::<WindowLaunchBindingPr>() + size_of::<u32>() + size_of::<PartitionBoundsPr>()
-            <= KERNEL_ARGUMENT_CEILING_BYTES
-    );
+    assert!(size_of::<WindowLaunchBindingPr>() + size_of::<u32>() <= KERNEL_ARGUMENT_CEILING_BYTES);
     assert!(LEAN_MAX_IMMEDIATES == 512);
 };
 
@@ -315,7 +300,7 @@ pub(super) fn build_window_binding_pr(
     Ok(binding)
 }
 
-pub(super) fn bind_window_words_pr(
+fn bind_window_words_pr(
     program: &WindowProgram,
     addressing: &WindowAddressingPr,
     words: &mut [u16],
@@ -344,45 +329,11 @@ pub(super) fn bind_window_words_pr(
 
 pub(super) fn bind_r0_window_pr(
     program: &WindowProgram,
-    plan: Option<&R0PartitionPlan>,
     storage: &GpuGKRStorage<PR, PR>,
     folding_steps: usize,
     scratch: WindowRuntimeScratchPr,
     bank: CoefficientBankViewPr,
-) -> Result<(Box<WindowLaunchBindingPr>, Option<PartitionBoundsPr>), WindowBindError> {
+) -> Result<Box<WindowLaunchBindingPr>, WindowBindError> {
     let addressing = intern_window_addressing_pr(storage, program)?;
-    let mut combined = build_window_binding_pr(program, &addressing, folding_steps, scratch, bank)?;
-    let Some(plan) = plan.filter(|plan| plan.parts.len() > 1) else {
-        return Ok((combined, None));
-    };
-    assert!(
-        plan.parts.len() <= PR_WINDOW_MAX_PARTS,
-        "Proth120 R0 partition plan exceeds {PR_WINDOW_MAX_PARTS} parts"
-    );
-    combined.program.fill(0);
-    let mut bounds = PartitionBoundsPr {
-        parts: plan.parts.len() as u32,
-        ..Default::default()
-    };
-    let mut base = 0usize;
-    for (index, part) in plan.parts.iter().enumerate() {
-        assert_bf_only(part);
-        let count = part.sections[PR_WINDOW_SECTION_WORDS - 1] as usize;
-        bind_window_words_pr(
-            part,
-            &addressing,
-            &mut combined.program
-                [PR_WINDOW_INSTRUCTION_WORDS * base..PR_WINDOW_INSTRUCTION_WORDS * (base + count)],
-        )?;
-        for section in 0..PR_WINDOW_SECTION_WORDS {
-            bounds.ends[index][section] = base as u32 + part.sections[section];
-        }
-        base += count;
-    }
-    assert_eq!(
-        base,
-        program.sections[PR_WINDOW_SECTION_WORDS - 1] as usize,
-        "Proth120 R0 partition parts must cover the program"
-    );
-    Ok((combined, Some(bounds)))
+    build_window_binding_pr(program, &addressing, folding_steps, scratch, bank)
 }
