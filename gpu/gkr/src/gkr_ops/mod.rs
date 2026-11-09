@@ -213,6 +213,27 @@ const _: () = {
     );
 };
 
+impl GpuCombinedClaimDesc {
+    pub(crate) fn from_pairs(desc_pairs: &[u32]) -> Self {
+        assert_eq!(
+            desc_pairs.len() % 2,
+            0,
+            "combined-claim descriptor must be (exponent, claim_idx) pairs"
+        );
+        let num_pairs = desc_pairs.len() / 2;
+        assert!(
+            num_pairs <= GKR_COMBINED_CLAIM_MAX_PAIRS,
+            "combined-claim descriptor has {num_pairs} pairs; exceeds {GKR_COMBINED_CLAIM_MAX_PAIRS}"
+        );
+        let mut desc = Self {
+            num_terms: num_pairs as u32,
+            ..Default::default()
+        };
+        desc.entries[..desc_pairs.len()].copy_from_slice(desc_pairs);
+        desc
+    }
+}
+
 cuda_kernel!(
     BuildCombinedClaim,
     ab_build_combined_claim_kernel(
@@ -239,23 +260,7 @@ pub(crate) fn build_combined_claim(
     assert_eq!(batching.len(), 1);
     assert_eq!(claim_out.len(), 1);
     assert_eq!(eq_prefactor_out.len(), 1);
-    assert_eq!(
-        desc_pairs.len() % 2,
-        0,
-        "combined-claim descriptor must be `(exponent, claim_idx)` pairs",
-    );
-    let num_pairs = desc_pairs.len() / 2;
-    assert!(
-        num_pairs <= GKR_COMBINED_CLAIM_MAX_PAIRS,
-        "combined-claim descriptor has {} pairs; exceeds GKR_COMBINED_CLAIM_MAX_PAIRS = {}",
-        num_pairs,
-        GKR_COMBINED_CLAIM_MAX_PAIRS,
-    );
-    let mut desc = GpuCombinedClaimDesc {
-        num_terms: num_pairs as u32,
-        ..Default::default()
-    };
-    desc.entries[..desc_pairs.len()].copy_from_slice(desc_pairs);
+    let desc = GpuCombinedClaimDesc::from_pairs(desc_pairs);
     // Matches the native block reduction and its 256-thread launch bound.
     let config = CudaLaunchConfig::basic(1u32, 256u32, stream);
     let args = BuildCombinedClaimArguments::new(
