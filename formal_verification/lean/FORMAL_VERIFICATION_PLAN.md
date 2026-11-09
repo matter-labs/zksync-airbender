@@ -1,5 +1,44 @@
 # Circuit formal verification plan
 
+## Complete decoder table on the inactive native MAIN component
+
+[Public completion](Airbender/Review/Trace/Families/ReducedMachine/DecoderTableCompletionTheorems.lean)
+now joins complete decoder table equations and a genuine zero/last difference
+polynomial to the SAME inactive request-positive main/caller component. The old
+nonconstant caller polynomial, derived nonzero claim, full memory component and
+individual decoder access are retained. No expected activity, count, table sum,
+matching or ledger is a premise. The old primitive-domain condition remains explicit.
+
+[Constructor](Airbender/Review/Trace/Families/ReducedMachine/DecoderTableCompletion.lean)
+sets only the separately typed physical decoder multiplicity9 to zero and uses the
+existing public setup constructor for columns6..15. All other physical witness/setup
+observations and the whole main proof remain unchanged. Physical witness9 is not
+BODY logical variable9: the original CSR1991 field remains 1991. This constructs
+source-reference observations; a general body/physical codec, commitment/setup
+binding and Rust/Quartic/FFT refinement are not established.
+
+[Proof](Airbender/Proofs/ReducedMachine/NativeDecoderTableCompletion.lean) derives
+both decoder accumulators zero at EVERY index, including the reserved row, from
+the old auxiliary constructor and caller-only normalization. Generic zero-polynomial
+samples/degree/divisor are proved before native sampling. Every ordinary decoder
+multiplicity equation holds for arbitrary decoder challenges and the constructed
+public setup, including poles; no decoder nonpole condition is added. Holes, the
+physical tail and reserved negative-column-sum normalization remain in the setup.
+[Twenty controls](Tests/NativeDecoderTableCompletion.lean) pass, including typed-column
+separation, retained observations, setup rows/tail/normalization, actual polynomial,
+one/two-point algebraic domains, poles and the full joint component fixture.
+
+This closes the decoder table/polynomial/public-setup construction for THIS
+component. It is not full SourceAccepted or a native-global NONEMPTY source/worker/
+physical accepted witness, discrepancy, attack, native defect or absence-all-other-
+enforcement proof. Scalar sum/setup families, initialization ordering/boundaries/
+windows, complete global memory/delegation statements and nonempty workers remain
+open. Primitive-domain construction, physical caller activity, larger-batch universal
+matching, original CSR/nondeterminism/MOP/worker Sail, scheduled hash, protocol spans,
+padding/terminal/init-teardown, cryptography, completeness and parity remain open.
+No native finding, production change, pin/dependency refresh or heavy replay occurs.
+
+
 ## Checked caller sum completion on the inactive native MAIN fixture
 
 [Public caller completion](Airbender/Review/Trace/Families/ReducedMachine/CallerSumCompletionTheorems.lean)

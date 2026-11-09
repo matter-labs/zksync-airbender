@@ -20442,6 +20442,83 @@
       "backport_reuse_revision": "71cf80179a226dc849df492a504aee70bf839705",
       "backport_reuse_path": "Tests/NativeCallerDelegation.lean",
       "backport_reuse_sha256": "04104f0543a5a92e86cdd441c8d6f14af7b73ddea24ed072965c081310e04d21"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/DecoderTableCompletion.lean",
+      "change": "Complete decoder table multiplicities, genuine zero/last difference polynomial and constructed public setup on SAME inactive request-positive native main/caller component. Set only typed physical multiplicity9 and decoder setup6..15; preserve all other observations, original CSR BODY9, genuine nonconstant caller polynomial/nonzero claim, full memory/decoder access. Derive both decoder auxiliaries zero at every index from OLD actual constructor/caller normalization; no decoder nonpole or expected sum/activity/count/matching/ledger premise. Not general physical codec/Quartic/FFT/setup authentication, scalar/init/global source/worker completion, native defect or parity. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "f5c2658957ea1b5ce299c93383ea166cd3f09a01",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/CallerSumCompletion.lean",
+      "backport_reuse_sha256": "a1598a83b8f6c38b14066e03bf99bb71535529bed78b440ea842693aec9d77ea"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/DecoderTableCompletion.lean",
+      "change": "Complete decoder table multiplicities, genuine zero/last difference polynomial and constructed public setup on SAME inactive request-positive native main/caller component. Set only typed physical multiplicity9 and decoder setup6..15; preserve all other observations, original CSR BODY9, genuine nonconstant caller polynomial/nonzero claim, full memory/decoder access. Derive both decoder auxiliaries zero at every index from OLD actual constructor/caller normalization; no decoder nonpole or expected sum/activity/count/matching/ledger premise. Not general physical codec/Quartic/FFT/setup authentication, scalar/init/global source/worker completion, native defect or parity. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "f5c2658957ea1b5ce299c93383ea166cd3f09a01",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/MainArguments.lean",
+      "backport_reuse_sha256": "d549a16a2679709441fb6507b2741c34eef697d9d3dcc7f7e58bc8b9fe86c151"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/DecoderTableCompletion.lean",
+      "change": "Complete decoder table multiplicities, genuine zero/last difference polynomial and constructed public setup on SAME inactive request-positive native main/caller component. Set only typed physical multiplicity9 and decoder setup6..15; preserve all other observations, original CSR BODY9, genuine nonconstant caller polynomial/nonzero claim, full memory/decoder access. Derive both decoder auxiliaries zero at every index from OLD actual constructor/caller normalization; no decoder nonpole or expected sum/activity/count/matching/ledger premise. Not general physical codec/Quartic/FFT/setup authentication, scalar/init/global source/worker completion, native defect or parity. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "f5c2658957ea1b5ce299c93383ea166cd3f09a01",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/DecoderTableArguments.lean",
+      "backport_reuse_sha256": "a54e75f6454dc63d1d6033d7e954b7e9d79811300f492b5dc621c58d46e802f0"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/DecoderTableCompletion.lean",
+      "change": "Complete decoder table multiplicities, genuine zero/last difference polynomial and constructed public setup on SAME inactive request-positive native main/caller component. Set only typed physical multiplicity9 and decoder setup6..15; preserve all other observations, original CSR BODY9, genuine nonconstant caller polynomial/nonzero claim, full memory/decoder access. Derive both decoder auxiliaries zero at every index from OLD actual constructor/caller normalization; no decoder nonpole or expected sum/activity/count/matching/ledger premise. Not general physical codec/Quartic/FFT/setup authentication, scalar/init/global source/worker completion, native defect or parity. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "f5c2658957ea1b5ce299c93383ea166cd3f09a01",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/PhysicalDecoderSetup.lean",
+      "backport_reuse_sha256": "3eff1d92dcf4898e9a9b9b5841fed3e8fd42c690827072089e50bf8ed1772ad7"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeDecoderTableCompletion.lean",
+      "change": "Complete decoder table multiplicities, genuine zero/last difference polynomial and constructed public setup on SAME inactive request-positive native main/caller component. Set only typed physical multiplicity9 and decoder setup6..15; preserve all other observations, original CSR BODY9, genuine nonconstant caller polynomial/nonzero claim, full memory/decoder access. Derive both decoder auxiliaries zero at every index from OLD actual constructor/caller normalization; no decoder nonpole or expected sum/activity/count/matching/ledger premise. Not general physical codec/Quartic/FFT/setup authentication, scalar/init/global source/worker completion, native defect or parity. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "f5c2658957ea1b5ce299c93383ea166cd3f09a01",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeCallerSumCompletion.lean",
+      "backport_reuse_sha256": "b57d31b849e773dc0ca86748137a271a2c77fb8c53f5e82d5c323b484d11e0ab"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeDecoderTableCompletion.lean",
+      "change": "Complete decoder table multiplicities, genuine zero/last difference polynomial and constructed public setup on SAME inactive request-positive native main/caller component. Set only typed physical multiplicity9 and decoder setup6..15; preserve all other observations, original CSR BODY9, genuine nonconstant caller polynomial/nonzero claim, full memory/decoder access. Derive both decoder auxiliaries zero at every index from OLD actual constructor/caller normalization; no decoder nonpole or expected sum/activity/count/matching/ledger premise. Not general physical codec/Quartic/FFT/setup authentication, scalar/init/global source/worker completion, native defect or parity. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "f5c2658957ea1b5ce299c93383ea166cd3f09a01",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeInactiveMain.lean",
+      "backport_reuse_sha256": "0d1a9fee777a7b429f46d968d51f5f052cd7ee9efa951839c3ea2d431b2eedaa"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeDecoderTableCompletion.lean",
+      "change": "Complete decoder table multiplicities, genuine zero/last difference polynomial and constructed public setup on SAME inactive request-positive native main/caller component. Set only typed physical multiplicity9 and decoder setup6..15; preserve all other observations, original CSR BODY9, genuine nonconstant caller polynomial/nonzero claim, full memory/decoder access. Derive both decoder auxiliaries zero at every index from OLD actual constructor/caller normalization; no decoder nonpole or expected sum/activity/count/matching/ledger premise. Not general physical codec/Quartic/FFT/setup authentication, scalar/init/global source/worker completion, native defect or parity. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "f5c2658957ea1b5ce299c93383ea166cd3f09a01",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeDecoderTableArguments.lean",
+      "backport_reuse_sha256": "3611e26e297f91b1bd6e573ab92e70f39d207509330411f4821fa301eab8cab7"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeDecoderTableCompletion.lean",
+      "change": "Complete decoder table multiplicities, genuine zero/last difference polynomial and constructed public setup on SAME inactive request-positive native main/caller component. Set only typed physical multiplicity9 and decoder setup6..15; preserve all other observations, original CSR BODY9, genuine nonconstant caller polynomial/nonzero claim, full memory/decoder access. Derive both decoder auxiliaries zero at every index from OLD actual constructor/caller normalization; no decoder nonpole or expected sum/activity/count/matching/ledger premise. Not general physical codec/Quartic/FFT/setup authentication, scalar/init/global source/worker completion, native defect or parity. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "f5c2658957ea1b5ce299c93383ea166cd3f09a01",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativePhysicalDecoderSetup.lean",
+      "backport_reuse_sha256": "36e734fe3effbabd907f33c5714b2a22d9f4a0f4a7b90bb92cdf5de66618d22e"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/DecoderTableCompletionTheorems.lean",
+      "change": "Complete decoder table multiplicities, genuine zero/last difference polynomial and constructed public setup on SAME inactive request-positive native main/caller component. Set only typed physical multiplicity9 and decoder setup6..15; preserve all other observations, original CSR BODY9, genuine nonconstant caller polynomial/nonzero claim, full memory/decoder access. Derive both decoder auxiliaries zero at every index from OLD actual constructor/caller normalization; no decoder nonpole or expected sum/activity/count/matching/ledger premise. Not general physical codec/Quartic/FFT/setup authentication, scalar/init/global source/worker completion, native defect or parity. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "f5c2658957ea1b5ce299c93383ea166cd3f09a01",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/CallerSumCompletionTheorems.lean",
+      "backport_reuse_sha256": "e304116ef70f683ab1e44b28df26cc3a9438151f93956544130f784b18a5a8ad"
+    },
+    {
+      "path": "Tests/NativeDecoderTableCompletion.lean",
+      "change": "Complete decoder table multiplicities, genuine zero/last difference polynomial and constructed public setup on SAME inactive request-positive native main/caller component. Set only typed physical multiplicity9 and decoder setup6..15; preserve all other observations, original CSR BODY9, genuine nonconstant caller polynomial/nonzero claim, full memory/decoder access. Derive both decoder auxiliaries zero at every index from OLD actual constructor/caller normalization; no decoder nonpole or expected sum/activity/count/matching/ledger premise. Not general physical codec/Quartic/FFT/setup authentication, scalar/init/global source/worker completion, native defect or parity. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "f5c2658957ea1b5ce299c93383ea166cd3f09a01",
+      "backport_reuse_path": "Tests/NativeCallerSumCompletion.lean",
+      "backport_reuse_sha256": "43438aa8b62acdc64230c8332b8b03e666646f48a23edfb1ff7b75bdf776b2e6"
+    },
+    {
+      "path": "Tests/NativeDecoderTableCompletion.lean",
+      "change": "Complete decoder table multiplicities, genuine zero/last difference polynomial and constructed public setup on SAME inactive request-positive native main/caller component. Set only typed physical multiplicity9 and decoder setup6..15; preserve all other observations, original CSR BODY9, genuine nonconstant caller polynomial/nonzero claim, full memory/decoder access. Derive both decoder auxiliaries zero at every index from OLD actual constructor/caller normalization; no decoder nonpole or expected sum/activity/count/matching/ledger premise. Not general physical codec/Quartic/FFT/setup authentication, scalar/init/global source/worker completion, native defect or parity. No old acceptance/pin/dependency/artifact/heavy replay/v3 refresh change.",
+      "backport_reuse_revision": "f5c2658957ea1b5ce299c93383ea166cd3f09a01",
+      "backport_reuse_path": "Tests/NativeInactiveMain.lean",
+      "backport_reuse_sha256": "38bba659d90224adb57637cfc31cd475a0174620c4f3570ea19786e9f6075d5d"
     }
   ],
   "setup_artifacts": [

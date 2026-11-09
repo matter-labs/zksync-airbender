@@ -1328,3 +1328,10 @@ polynomial with normalized reserved value and nonzero actual claim on the same
 inactive MAIN memory/decoder component. [Generic normalized interpolation](../../Helpers/Memory/DelegationSumCompletionTheorems.lean)
 derives samples, degree and boundary divisor. Primitive-domain construction, physical
 FFT refinement, other tables and global source/worker acceptance remain open.
+
+## Decoder table component completion
+
+[Complete decoder table](../../Trace/Families/ReducedMachine/DecoderTableCompletionTheorems.lean) joins actual multiplicity equations, a genuine
+zero/last polynomial and constructed public setup to the same inactive MAIN/caller
+component, retaining all decoder poles and original observations. Scalar/global
+source/worker acceptance, physical refinement and caller activity remain open.
