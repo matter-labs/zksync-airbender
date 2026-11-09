@@ -1,3 +1,9 @@
+import Airbender.Review.Trace.Families.ReducedMachine.SparseMain
+import Airbender.Proofs.ReducedMachine.NativeSparseMainBody
+import Airbender.Proofs.ReducedMachine.NativeSparseMain
+import Airbender.Review.Trace.Families.ReducedMachine.SparseMainTheorems
+import Tests.NativeSparseMain
+
 import Airbender.Review.Trace.Families.ReducedMachine.InactiveGlobal
 import Airbender.Proofs.ReducedMachine.NativeInactiveGlobal
 import Airbender.Review.Trace.Families.ReducedMachine.InactiveGlobalTheorems
@@ -8939,3 +8945,45 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeInactiveGlobal.original_components_remain
 #print axioms Airbender.Tests.NativeInactiveGlobal.zero_counter_rejected
 #print axioms Airbender.Tests.NativeInactiveGlobal.over_capacity_rejected
+
+#print axioms Airbender.NativeSparseMainProofs.idle_body
+#print axioms Airbender.NativeSparseMainProofs.spike_sum
+#print axioms Airbender.NativeSparseMainProofs.request_row
+#print axioms Airbender.NativeSparseMainProofs.idle_memory
+#print axioms Airbender.NativeSparseMainProofs.idle_pc
+#print axioms Airbender.NativeSparseMainProofs.idle_initialization
+#print axioms Airbender.NativeSparseMainProofs.idle_fields
+#print axioms Airbender.NativeSparseMainProofs.original_padding
+#print axioms Airbender.NativeSparseMainProofs.idle_padding
+#print axioms Airbender.NativeSparseMainProofs.original_row
+#print axioms Airbender.NativeSparseMainProofs.idle_row
+#print axioms Airbender.NativeSparseMainProofs.raw_memory
+#print axioms Airbender.NativeSparseMainProofs.raw_caller
+#print axioms Airbender.NativeSparseMainProofs.raw_decoder
+#print axioms Airbender.NativeSparseMainProofs.request_value
+#print axioms Airbender.NativeSparseMainProofs.request_sum
+#print axioms Airbender.NativeSparseMainProofs.row_request
+#print axioms Airbender.NativeSparseMainProofs.request_total
+#print axioms Airbender.NativeSparseMainProofs.all_inactive
+#print axioms Airbender.NativeSparseMainProofs.nonconstant
+#print axioms Airbender.NativeSparseMainProofs.complete_components
+#print axioms Airbender.NativeSparseMainProofs.complete
+#print axioms Airbender.NativeSparseMain.native_sparse_inactive_main_components
+#print axioms Airbender.Tests.NativeSparseMain.full_idle_body
+#print axioms Airbender.Tests.NativeSparseMain.idle_no_request
+#print axioms Airbender.Tests.NativeSparseMain.csr1984_and_zero_oracle
+#print axioms Airbender.Tests.NativeSparseMain.all_old_memory_tokens_retained
+#print axioms Airbender.Tests.NativeSparseMain.old_raw_alias_times
+#print axioms Airbender.Tests.NativeSparseMain.both_pc_states_retained
+#print axioms Airbender.Tests.NativeSparseMain.all_init_fields_retained
+#print axioms Airbender.Tests.NativeSparseMain.finite_spike_sum
+#print axioms Airbender.Tests.NativeSparseMain.selected_request
+#print axioms Airbender.Tests.NativeSparseMain.other_request_zero
+#print axioms Airbender.Tests.NativeSparseMain.complete_domain_request_sum
+#print axioms Airbender.Tests.NativeSparseMain.nonconstant_ordinary_rows
+#print axioms Airbender.Tests.NativeSparseMain.selected_full_four_field_key
+#print axioms Airbender.Tests.NativeSparseMain.all_execute_zero
+#print axioms Airbender.Tests.NativeSparseMain.idle_caller_pole
+#print axioms Airbender.Tests.NativeSparseMain.raw_padding_aux_zero
+#print axioms Airbender.Tests.NativeSparseMain.actual_reserved_value
+#print axioms Airbender.Tests.NativeSparseMain.memory_columns_unchanged

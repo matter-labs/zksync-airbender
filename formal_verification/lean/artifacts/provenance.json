@@ -20883,6 +20883,83 @@
       "backport_reuse_revision": "a28a2b94c797369419ebfea9adae86109195d63b",
       "backport_reuse_path": "Tests/NativeCallerCount.lean",
       "backport_reuse_sha256": "d21123d22390b71aa87d9013c8e5bcd0bd246deadbb7cda55d3394809a91386a"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/SparseMain.lean",
+      "change": "Construct actual request-free CSR1984 zero-oracle complete BODY117eq22RuntimePoollookups, then nonconstant FULL ordinary main memory/state/mask/init/grand/FIRST-LAST/individualcaller-decoder components with ONEoriginal CSR1991 request at ANY bounded position. Seven logicalBODY coordinate changes checked independently, all raw memory/PC/init keys retained, no equivalence acceptance transfer. Generic normalization/component assembly BEFORE native sampling gives genuine caller polynomial/actual degree-samples-divisor/reserved negative DERIVED single inverse sum; no desired count/activity/sum/samples/matching/ledger/history/result premise/new Accepted/boundary. All rows/AUX/poles/OLDREAD/refreshtimes remain. NOT fullSourceAccepted/globalmatching/nonemptyworker/globalpositive/physicalverifier/originalCSR-NDstream/defect/parity. No pin/native adoption/production/artifact/dependency/heavy replay/v3 refresh.",
+      "backport_reuse_revision": "1747c11420f64ead247c1992beba08bc6044b27e",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/InactiveMain.lean",
+      "backport_reuse_sha256": "2550ae261fcac2f6a52c166893371468b556f14df35aa12a64dc2c5468aea4a1"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/SparseMain.lean",
+      "change": "Construct actual request-free CSR1984 zero-oracle complete BODY117eq22RuntimePoollookups, then nonconstant FULL ordinary main memory/state/mask/init/grand/FIRST-LAST/individualcaller-decoder components with ONEoriginal CSR1991 request at ANY bounded position. Seven logicalBODY coordinate changes checked independently, all raw memory/PC/init keys retained, no equivalence acceptance transfer. Generic normalization/component assembly BEFORE native sampling gives genuine caller polynomial/actual degree-samples-divisor/reserved negative DERIVED single inverse sum; no desired count/activity/sum/samples/matching/ledger/history/result premise/new Accepted/boundary. All rows/AUX/poles/OLDREAD/refreshtimes remain. NOT fullSourceAccepted/globalmatching/nonemptyworker/globalpositive/physicalverifier/originalCSR-NDstream/defect/parity. No pin/native adoption/production/artifact/dependency/heavy replay/v3 refresh.",
+      "backport_reuse_revision": "1747c11420f64ead247c1992beba08bc6044b27e",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Delegation.lean",
+      "backport_reuse_sha256": "a03519392a81a588c06d12549d509ace35d84981e4f3d3ff534f242c144c56d7"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSparseMainBody.lean",
+      "change": "Construct actual request-free CSR1984 zero-oracle complete BODY117eq22RuntimePoollookups, then nonconstant FULL ordinary main memory/state/mask/init/grand/FIRST-LAST/individualcaller-decoder components with ONEoriginal CSR1991 request at ANY bounded position. Seven logicalBODY coordinate changes checked independently, all raw memory/PC/init keys retained, no equivalence acceptance transfer. Generic normalization/component assembly BEFORE native sampling gives genuine caller polynomial/actual degree-samples-divisor/reserved negative DERIVED single inverse sum; no desired count/activity/sum/samples/matching/ledger/history/result premise/new Accepted/boundary. All rows/AUX/poles/OLDREAD/refreshtimes remain. NOT fullSourceAccepted/globalmatching/nonemptyworker/globalpositive/physicalverifier/originalCSR-NDstream/defect/parity. No pin/native adoption/production/artifact/dependency/heavy replay/v3 refresh.",
+      "backport_reuse_revision": "1747c11420f64ead247c1992beba08bc6044b27e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeCSRPositiveWitness.lean",
+      "backport_reuse_sha256": "2165574bf7d7ef453b83b4594fc399971bbeed246110a584b51d90a2f6ff3a7d"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSparseMain.lean",
+      "change": "Construct actual request-free CSR1984 zero-oracle complete BODY117eq22RuntimePoollookups, then nonconstant FULL ordinary main memory/state/mask/init/grand/FIRST-LAST/individualcaller-decoder components with ONEoriginal CSR1991 request at ANY bounded position. Seven logicalBODY coordinate changes checked independently, all raw memory/PC/init keys retained, no equivalence acceptance transfer. Generic normalization/component assembly BEFORE native sampling gives genuine caller polynomial/actual degree-samples-divisor/reserved negative DERIVED single inverse sum; no desired count/activity/sum/samples/matching/ledger/history/result premise/new Accepted/boundary. All rows/AUX/poles/OLDREAD/refreshtimes remain. NOT fullSourceAccepted/globalmatching/nonemptyworker/globalpositive/physicalverifier/originalCSR-NDstream/defect/parity. No pin/native adoption/production/artifact/dependency/heavy replay/v3 refresh.",
+      "backport_reuse_revision": "1747c11420f64ead247c1992beba08bc6044b27e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeInactiveMain.lean",
+      "backport_reuse_sha256": "0d1a9fee777a7b429f46d968d51f5f052cd7ee9efa951839c3ea2d431b2eedaa"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSparseMain.lean",
+      "change": "Construct actual request-free CSR1984 zero-oracle complete BODY117eq22RuntimePoollookups, then nonconstant FULL ordinary main memory/state/mask/init/grand/FIRST-LAST/individualcaller-decoder components with ONEoriginal CSR1991 request at ANY bounded position. Seven logicalBODY coordinate changes checked independently, all raw memory/PC/init keys retained, no equivalence acceptance transfer. Generic normalization/component assembly BEFORE native sampling gives genuine caller polynomial/actual degree-samples-divisor/reserved negative DERIVED single inverse sum; no desired count/activity/sum/samples/matching/ledger/history/result premise/new Accepted/boundary. All rows/AUX/poles/OLDREAD/refreshtimes remain. NOT fullSourceAccepted/globalmatching/nonemptyworker/globalpositive/physicalverifier/originalCSR-NDstream/defect/parity. No pin/native adoption/production/artifact/dependency/heavy replay/v3 refresh.",
+      "backport_reuse_revision": "1747c11420f64ead247c1992beba08bc6044b27e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeScalarPairs.lean",
+      "backport_reuse_sha256": "bf9332f1d348d30b262a9d1c513d74df344f8184bfa53d3ae73197e87ae7cdd7"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSparseMain.lean",
+      "change": "Construct actual request-free CSR1984 zero-oracle complete BODY117eq22RuntimePoollookups, then nonconstant FULL ordinary main memory/state/mask/init/grand/FIRST-LAST/individualcaller-decoder components with ONEoriginal CSR1991 request at ANY bounded position. Seven logicalBODY coordinate changes checked independently, all raw memory/PC/init keys retained, no equivalence acceptance transfer. Generic normalization/component assembly BEFORE native sampling gives genuine caller polynomial/actual degree-samples-divisor/reserved negative DERIVED single inverse sum; no desired count/activity/sum/samples/matching/ledger/history/result premise/new Accepted/boundary. All rows/AUX/poles/OLDREAD/refreshtimes remain. NOT fullSourceAccepted/globalmatching/nonemptyworker/globalpositive/physicalverifier/originalCSR-NDstream/defect/parity. No pin/native adoption/production/artifact/dependency/heavy replay/v3 refresh.",
+      "backport_reuse_revision": "1747c11420f64ead247c1992beba08bc6044b27e",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeCallerSumCompletion.lean",
+      "backport_reuse_sha256": "b57d31b849e773dc0ca86748137a271a2c77fb8c53f5e82d5c323b484d11e0ab"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeSparseMain.lean",
+      "change": "Construct actual request-free CSR1984 zero-oracle complete BODY117eq22RuntimePoollookups, then nonconstant FULL ordinary main memory/state/mask/init/grand/FIRST-LAST/individualcaller-decoder components with ONEoriginal CSR1991 request at ANY bounded position. Seven logicalBODY coordinate changes checked independently, all raw memory/PC/init keys retained, no equivalence acceptance transfer. Generic normalization/component assembly BEFORE native sampling gives genuine caller polynomial/actual degree-samples-divisor/reserved negative DERIVED single inverse sum; no desired count/activity/sum/samples/matching/ledger/history/result premise/new Accepted/boundary. All rows/AUX/poles/OLDREAD/refreshtimes remain. NOT fullSourceAccepted/globalmatching/nonemptyworker/globalpositive/physicalverifier/originalCSR-NDstream/defect/parity. No pin/native adoption/production/artifact/dependency/heavy replay/v3 refresh.",
+      "backport_reuse_revision": "1747c11420f64ead247c1992beba08bc6044b27e",
+      "backport_reuse_path": "Airbender/Proofs/Memory/DelegationSumCompletion.lean",
+      "backport_reuse_sha256": "d349c7309242d13864d091006033c907a524aedaf36c6e1058af48e7efa33197"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/SparseMainTheorems.lean",
+      "change": "Construct actual request-free CSR1984 zero-oracle complete BODY117eq22RuntimePoollookups, then nonconstant FULL ordinary main memory/state/mask/init/grand/FIRST-LAST/individualcaller-decoder components with ONEoriginal CSR1991 request at ANY bounded position. Seven logicalBODY coordinate changes checked independently, all raw memory/PC/init keys retained, no equivalence acceptance transfer. Generic normalization/component assembly BEFORE native sampling gives genuine caller polynomial/actual degree-samples-divisor/reserved negative DERIVED single inverse sum; no desired count/activity/sum/samples/matching/ledger/history/result premise/new Accepted/boundary. All rows/AUX/poles/OLDREAD/refreshtimes remain. NOT fullSourceAccepted/globalmatching/nonemptyworker/globalpositive/physicalverifier/originalCSR-NDstream/defect/parity. No pin/native adoption/production/artifact/dependency/heavy replay/v3 refresh.",
+      "backport_reuse_revision": "1747c11420f64ead247c1992beba08bc6044b27e",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/InactiveMainTheorems.lean",
+      "backport_reuse_sha256": "0f2841798884e164d2a6f994df4ec895af0115281bbb31285f2bfc72ae8a948e"
+    },
+    {
+      "path": "Tests/NativeSparseMain.lean",
+      "change": "Construct actual request-free CSR1984 zero-oracle complete BODY117eq22RuntimePoollookups, then nonconstant FULL ordinary main memory/state/mask/init/grand/FIRST-LAST/individualcaller-decoder components with ONEoriginal CSR1991 request at ANY bounded position. Seven logicalBODY coordinate changes checked independently, all raw memory/PC/init keys retained, no equivalence acceptance transfer. Generic normalization/component assembly BEFORE native sampling gives genuine caller polynomial/actual degree-samples-divisor/reserved negative DERIVED single inverse sum; no desired count/activity/sum/samples/matching/ledger/history/result premise/new Accepted/boundary. All rows/AUX/poles/OLDREAD/refreshtimes remain. NOT fullSourceAccepted/globalmatching/nonemptyworker/globalpositive/physicalverifier/originalCSR-NDstream/defect/parity. No pin/native adoption/production/artifact/dependency/heavy replay/v3 refresh.",
+      "backport_reuse_revision": "1747c11420f64ead247c1992beba08bc6044b27e",
+      "backport_reuse_path": "Tests/NativeInactiveMain.lean",
+      "backport_reuse_sha256": "38bba659d90224adb57637cfc31cd475a0174620c4f3570ea19786e9f6075d5d"
+    },
+    {
+      "path": "Tests/NativeSparseMain.lean",
+      "change": "Construct actual request-free CSR1984 zero-oracle complete BODY117eq22RuntimePoollookups, then nonconstant FULL ordinary main memory/state/mask/init/grand/FIRST-LAST/individualcaller-decoder components with ONEoriginal CSR1991 request at ANY bounded position. Seven logicalBODY coordinate changes checked independently, all raw memory/PC/init keys retained, no equivalence acceptance transfer. Generic normalization/component assembly BEFORE native sampling gives genuine caller polynomial/actual degree-samples-divisor/reserved negative DERIVED single inverse sum; no desired count/activity/sum/samples/matching/ledger/history/result premise/new Accepted/boundary. All rows/AUX/poles/OLDREAD/refreshtimes remain. NOT fullSourceAccepted/globalmatching/nonemptyworker/globalpositive/physicalverifier/originalCSR-NDstream/defect/parity. No pin/native adoption/production/artifact/dependency/heavy replay/v3 refresh.",
+      "backport_reuse_revision": "1747c11420f64ead247c1992beba08bc6044b27e",
+      "backport_reuse_path": "Tests/NativeCSRPositive.lean",
+      "backport_reuse_sha256": "31596ee07218143c910518601aed38c9a7b70eae4076bb1ff95ab0b70aa82914"
+    },
+    {
+      "path": "Tests/NativeSparseMain.lean",
+      "change": "Construct actual request-free CSR1984 zero-oracle complete BODY117eq22RuntimePoollookups, then nonconstant FULL ordinary main memory/state/mask/init/grand/FIRST-LAST/individualcaller-decoder components with ONEoriginal CSR1991 request at ANY bounded position. Seven logicalBODY coordinate changes checked independently, all raw memory/PC/init keys retained, no equivalence acceptance transfer. Generic normalization/component assembly BEFORE native sampling gives genuine caller polynomial/actual degree-samples-divisor/reserved negative DERIVED single inverse sum; no desired count/activity/sum/samples/matching/ledger/history/result premise/new Accepted/boundary. All rows/AUX/poles/OLDREAD/refreshtimes remain. NOT fullSourceAccepted/globalmatching/nonemptyworker/globalpositive/physicalverifier/originalCSR-NDstream/defect/parity. No pin/native adoption/production/artifact/dependency/heavy replay/v3 refresh.",
+      "backport_reuse_revision": "1747c11420f64ead247c1992beba08bc6044b27e",
+      "backport_reuse_path": "Tests/NativeCallerSumCompletion.lean",
+      "backport_reuse_sha256": "43438aa8b62acdc64230c8332b8b03e666646f48a23edfb1ff7b75bdf776b2e6"
     }
   ],
   "setup_artifacts": [

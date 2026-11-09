@@ -1,5 +1,47 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Nonconstant inactive MAIN and sparse caller polynomial
+
+[The sparse component](Airbender/Review/Trace/Families/ReducedMachine/SparseMainTheorems.lean)
+constructs a nonconstant complete ordinary MAIN memory/caller observation with one
+original CSR1991 request at ANY bounded ordinary position and native CSR1984 rows
+elsewhere. The new zero-oracle/request-free row independently passes all117 native
+equations and22 actual RuntimePool lookups. Only seven logical BODY coordinates
+change from the original row; all three complete raw memory keys, both PC states,
+initialization fields, OLDREAD times0/4/5 and refreshes4/5/6 remain. Logical BODY100
+is not typed QUARTIC100. No production circuit, artifact or acceptance changes.
+
+Every original ordinary position remains. Complete memory/state/mask/init/grand
+relations and FIRST-LAST grand boundaries hold on the same nonconstant trace.
+Only the separately typed caller accumulator is replaced by its actual sparse
+value; memory AUX and all inactive factors remain. Every individual caller and
+decoder access relation holds, including zero-request caller/decoder poles. The
+original fixture's memory/PC/positive-caller nonpole scope remains; no nonpole is
+added for the request-free rows. Every execute value is derived0, with one request1
+and all other requests0. The complete domain request sum is derived1; this is a
+source position count, not fetched CSR activity or issued-call accounting.
+
+Generic normalized polynomial/component assembly precedes native sampling. The
+actual ordinary caller auxiliary sum is derived as ONE original denominator
+inverse. The genuine polynomial has actual normalized samples, degree and the
+exact old divisor; its reserved value is the negative actual sum. All other
+columns and rows remain. Native primitive-domain construction/nonemptiness/FFT
+remain separate and the old primitive-root contract stays explicit. All18 controls
+pass. No desired activity/count/sum/samples/matching/ledger/history/result premise,
+new Accepted or crypto boundary is added. The old constant candidate's rejection
+and all previous components remain unchanged.
+
+This is not full SourceAccepted, LogicalMatching/SourceIdentity, decoder/scalar
+setup/table completion, initialization boundary/window acceptance or a NONEMPTY
+global source/worker/physical accepted witness, attack or defect. CSR1984 zero oracle
+is a fixture choice, not authenticated NDstream/original CSR semantics. Assess this
+new trace's global compatibility BEFORE rebuilding its remaining table families;
+nonempty workers, native RAM initialization and actual initialized pointer reads
+must be derived or a precise rejection checked. Do not presume extendability.
+All prior logical/physical/domain/crypto/completeness/parity boundaries and the
+>=257 general alternative remain open; FINDINGS/pins/dependencies stay unchanged.
+
+
 ## Constant inactive component: complete global rejection
 
 [The repeated-source rejection](Airbender/Review/Trace/Families/ReducedMachine/InactiveGlobalTheorems.lean)

@@ -546,3 +546,11 @@ component is rejected by full SourceAccepted plus OLD SourceIdentity/public-imag
 scope. Counter limits and logical decoder lookups are derived; >=257 is covered.
 All local components remain. Nonconstant global source/nonempty workers, physical
 caller activity, cryptography and parity remain open; no native defect is claimed.
+
+## Nonconstant sparse MAIN component
+
+[Native CSR1984 padding and one-position caller](../../Trace/Families/ReducedMachine/SparseMainTheorems.lean) retain all ordinary
+rows, raw accesses and full memory boundaries. Complete BODY and genuine sparse
+caller polynomial/actual inverse claim are checked. Global matching/source
+identities, nonempty workers and setup/init completion for this trace remain open;
+assess compatibility before rebuilding families. No issued-call or parity claim.
