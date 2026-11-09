@@ -68,7 +68,7 @@ struct pr_dr_tail_shared_eq_reader {
   unsigned group_count;
 
   DEVICE_FORCEINLINE pr operator()(const unsigned row) const {
-    pr result = pr_one();
+    pr result = pr::ONE();
     if (sizes.high[0] != 0) {
       const unsigned shift = sizes.high[1] + sizes.low;
       const unsigned index = (row >> shift) & ((1u << sizes.high[0]) - 1u);
@@ -176,10 +176,10 @@ DEVICE_FORCEINLINE void pr_dr_tail_build_eq_group(const pr *claim_point, const u
       const unsigned first_idx = challenge_offset + challenge_count - 1 - (group_start + variable_offset);
       const unsigned first_bit = chunk_size == 2 ? ((chunk_table_idx >> 1) & 1u) : (chunk_table_idx & 1u);
       const pr first_challenge = load<pr, ld_modifier::cs>(claim_point, first_idx);
-      pr value = first_bit ? first_challenge : pr::sub(pr_one(), first_challenge);
+      pr value = first_bit ? first_challenge : pr::sub(pr::ONE(), first_challenge);
       if (chunk_size == 2) {
         const pr second_challenge = load<pr, ld_modifier::cs>(claim_point, first_idx - 1);
-        value = pr::mul(value, (chunk_table_idx & 1u) ? second_challenge : pr::sub(pr_one(), second_challenge));
+        value = pr::mul(value, (chunk_table_idx & 1u) ? second_challenge : pr::sub(pr::ONE(), second_challenge));
       }
       chunk_tables[chunk_idx][chunk_table_idx] = value;
     }
@@ -187,7 +187,7 @@ DEVICE_FORCEINLINE void pr_dr_tail_build_eq_group(const pr *claim_point, const u
   __syncthreads();
   if (tid >= (1u << group_size))
     return;
-  pr acc = pr_one();
+  pr acc = pr::ONE();
   unsigned consumed_bits = 0;
   for (unsigned chunk_idx = 0; chunk_idx < chunk_count; ++chunk_idx) {
     const unsigned remaining = group_size - consumed_bits;
@@ -222,8 +222,8 @@ DEVICE_FORCEINLINE void pr_dr_tail_finalize(pr c0, pr c1, const unsigned active_
   }
   __syncthreads();
   if (warp == 0) {
-    c0 = gkr_trace_holder_partials_warp_reduce_sum(lane < active_warps ? warp_c0[lane] : pr_zero());
-    c1 = gkr_trace_holder_partials_warp_reduce_sum(lane < active_warps ? warp_c1[lane] : pr_zero());
+    c0 = gkr_trace_holder_partials_warp_reduce_sum(lane < active_warps ? warp_c0[lane] : pr::ZERO());
+    c1 = gkr_trace_holder_partials_warp_reduce_sum(lane < active_warps ? warp_c1[lane] : pr::ZERO());
     if (lane < 2)
       inverses[lane] = pr::inv(lane == 0 ? *eq_prefactor_io : *prev_claim_coord);
     __syncwarp();
@@ -257,10 +257,10 @@ DEVICE_FORCEINLINE void pr_dr_tail_inner(const pr_dr_tail_megakernel_desc &desc,
     entry_challenges[tid] = load<pr, ld_modifier::cs>(desc.challenges_out, desc.entry_round - PR_DR_TAIL_ENTRY_CHALLENGES + tid);
   __syncthreads();
   if (tid < 8 && !direct_entry) {
-    pr weight = pr_one();
+    pr weight = pr::ONE();
 #pragma unroll
     for (unsigned bit = 0; bit < PR_DR_TAIL_ENTRY_CHALLENGES; ++bit) {
-      const pr factor = ((tid >> bit) & 1u) != 0 ? entry_challenges[bit] : pr::sub(pr_one(), entry_challenges[bit]);
+      const pr factor = ((tid >> bit) & 1u) != 0 ? entry_challenges[bit] : pr::sub(pr::ONE(), entry_challenges[bit]);
       weight = pr::mul(weight, factor);
     }
     entry_weights[tid] = weight;
@@ -277,7 +277,7 @@ DEVICE_FORCEINLINE void pr_dr_tail_inner(const pr_dr_tail_megakernel_desc &desc,
       const unsigned ancestor = tid & 7;
       for (unsigned base = 0; base < entry_rows; base += PR_DR_TAIL_BLOCK_THREADS / 8) {
         const unsigned row = base + tid / 8;
-        pr_dr_tail_pair folded{{pr_zero(), pr_zero()}};
+        pr_dr_tail_pair folded{{pr::ZERO(), pr::ZERO()}};
         if (row < entry_rows) {
           const auto value = load<pr_dr_tail_pair, ld_modifier::cs>(source, (row << 3) + ancestor);
           folded.cells[0] = pr::mul(entry_weights[ancestor], value.cells[0]);
@@ -323,12 +323,12 @@ DEVICE_FORCEINLINE void pr_dr_tail_inner(const pr_dr_tail_megakernel_desc &desc,
 #pragma unroll 1
   for (unsigned round = desc.entry_round; round < desc.folding_steps; ++round) {
     const unsigned acc_size = current_cells / GKR_DIM_REDUCING_ROW_SPAN;
-    pr thread_partial0 = pr_zero();
-    pr thread_partial1 = pr_zero();
+    pr thread_partial0 = pr::ZERO();
+    pr thread_partial1 = pr::ZERO();
     const pr_dr_tail_shared_eq_reader eq_reader{eq_groups, eq_sizes, eq_group_count};
     for (unsigned row = tid; row < acc_size; row += PR_DR_TAIL_BLOCK_THREADS) {
-      pr row_partial0 = pr_zero();
-      pr row_partial1 = pr_zero();
+      pr row_partial0 = pr::ZERO();
+      pr row_partial1 = pr::ZERO();
 #pragma unroll 1
       for (unsigned slot_idx = 0; slot_idx < GKR_DIM_REDUCING_SLOTS; ++slot_idx) {
         if ((desc.enabled_mask & (1u << slot_idx)) == 0)

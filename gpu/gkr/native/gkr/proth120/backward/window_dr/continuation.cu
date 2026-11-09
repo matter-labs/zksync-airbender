@@ -12,7 +12,7 @@ static_assert(sizeof(pr_dr_window_cell_pair) == 32 && alignof(pr_dr_window_cell_
 
 DEVICE_FORCEINLINE pr_dr_window_cell_pair pr_dr_window_load_pair_guarded(const pr *source, const size_t pair_index, const bool active) {
   if (!active)
-    return {{pr_zero(), pr_zero()}};
+    return {{pr::ZERO(), pr::ZERO()}};
   return load<pr_dr_window_cell_pair, ld_modifier::cs>(reinterpret_cast<const pr_dr_window_cell_pair *>(source) + pair_index);
 }
 
@@ -26,9 +26,9 @@ DEVICE_FORCEINLINE pr_dr_window_cell_pair pr_dr_window_pair_fold(const pr_dr_win
 
 DEVICE_FORCEINLINE pr_dr_window_cell_pair pr_dr_window_fold_depth3_pair(const pr_dr_window_desc &desc, const pr *source, const size_t output_pair,
                                                                         const bool active) {
-  const pr c0 = active ? load<pr, ld_modifier::cs>(desc.claim_point, desc.start_round - 3u) : pr_zero();
-  const pr c1 = active ? load<pr, ld_modifier::cs>(desc.claim_point, desc.start_round - 2u) : pr_zero();
-  const pr c2 = active ? load<pr, ld_modifier::cs>(desc.claim_point, desc.start_round - 1u) : pr_zero();
+  const pr c0 = active ? load<pr, ld_modifier::cs>(desc.claim_point, desc.start_round - 3u) : pr::ZERO();
+  const pr c1 = active ? load<pr, ld_modifier::cs>(desc.claim_point, desc.start_round - 2u) : pr::ZERO();
+  const pr c2 = active ? load<pr, ld_modifier::cs>(desc.claim_point, desc.start_round - 1u) : pr::ZERO();
   pr_dr_window_cell_pair level2[2];
 #pragma unroll
   for (u32 half = 0; half < 2; ++half) {
