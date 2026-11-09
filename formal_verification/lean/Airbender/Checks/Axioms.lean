@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.CallerPosition
+import Airbender.Proofs.ReducedMachine.NativeCallerPosition
+import Airbender.Review.Trace.Families.ReducedMachine.CallerPositionTheorems
+import Tests.NativeCallerPosition
+
 import Airbender.Review.Trace.Families.ReducedMachine.CallerCount
 import Airbender.Proofs.ReducedMachine.NativeCallerCount
 import Airbender.Review.Trace.Families.ReducedMachine.CallerCountTheorems
@@ -8140,3 +8145,28 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeCallerCount.individual_validity_retained
 #print axioms Airbender.Tests.NativeCallerCount.joint_execution_retained
 #print axioms Airbender.Tests.NativeCallerCount.full_counted_source
+
+#print axioms Airbender.NativeCallerPositionProofs.member_positive
+#print axioms Airbender.NativeCallerPositionProofs.one_position
+#print axioms Airbender.NativeCallerPositionProofs.unique_count
+#print axioms Airbender.NativeCallerPositionProofs.matching
+#print axioms Airbender.NativeCallerPositionProofs.from_prior
+#print axioms Airbender.NativeCallerPositionProofs.counted
+#print axioms Airbender.NativeCallerPosition.native_counted_caller_positions
+#print axioms Airbender.Tests.NativeCallerPosition.reversed_order_matches
+#print axioms Airbender.Tests.NativeCallerPosition.duplicate_callers_rejected
+#print axioms Airbender.Tests.NativeCallerPosition.duplicate_workers_rejected
+#print axioms Airbender.Tests.NativeCallerPosition.missing_worker_rejected
+#print axioms Airbender.Tests.NativeCallerPosition.missing_caller_rejected
+#print axioms Airbender.Tests.NativeCallerPosition.wrong_key_rejected
+#print axioms Airbender.Tests.NativeCallerPosition.retained_zero_positions
+#print axioms Airbender.Tests.NativeCallerPosition.empty_positions
+#print axioms Airbender.Tests.NativeCallerPosition.zero_weight_only
+#print axioms Airbender.Tests.NativeCallerPosition.inactive_request_retained
+#print axioms Airbender.Tests.NativeCallerPosition.exact_dichotomy
+#print axioms Airbender.Tests.NativeCallerPosition.small_batch_matching
+#print axioms Airbender.Tests.NativeCallerPosition.caller_unique_partner
+#print axioms Airbender.Tests.NativeCallerPosition.worker_unique_partner
+#print axioms Airbender.Tests.NativeCallerPosition.all_count_results_retained
+#print axioms Airbender.Tests.NativeCallerPosition.joint_execution_retained
+#print axioms Airbender.Tests.NativeCallerPosition.full_counted_source

@@ -1,5 +1,46 @@
 # Verification status
 
+## Native request-position matching (9 November 2026)
+
+[Position matching](Airbender/Review/Trace/Families/ReducedMachine/CallerPosition.lean),
+[proof](Airbender/Proofs/ReducedMachine/NativeCallerPosition.lean) and
+[short root](Airbender/Review/Trace/Families/ReducedMachine/CallerPositionTheorems.lean)
+derive unique partners at ORIGINAL caller and worker list indices in BOTH directions,
+OR at least 257 actual MAIN proofs. Thus batches up to 256 proofs have exact
+position matching between request-one callers and active workers at the complete
+raw four-field key. Equal-valued rows at distinct positions remain distinct.
+No count, no-wrap, activity, matching or fulfilled-ledger premise is added to the
+public root; the small-batch scope follows from the old derived count theorem.
+
+Generic finite-list induction identifies a natural count of one with one unique
+original index. The unchanged derived active-worker key Nodup gives exact natural
+worker counts; old small-batch caller counts then give both directions of matching.
+Acceptance still contains EVERY original ordinary caller/worker position, including
+request-positive inactive callers, all zero-weight rows/AUX/poles and all memory
+ports. No caller list or supplied matching ledger replaces the accepted source.
+This is request-position matching, not physical caller activity or original CSR/
+worker Sail execution. Larger-batch matching, schedules/standard hash, protocol
+spans/padding-terminal/init-teardown, cryptography, completeness and parity remain open.
+
+The SAME counted SourceAccepted/original public image/log20/OLD LogicalLookups/OLD
+explicit SourceIdentity retain all natural-count bounds, individual request validity,
+mixed queries, worker key/clock uniqueness, joint initialized execution, weighted
+worker outputs, word bounds and MAIN partial dependencies. All 43 ports, both raw
+timestamps, aliases, OLDREADs, readonly refreshes, unmasked SW and public x0 times
+remain. Old logical identities are not physical cryptographic enforcement or
+general Rust/JSON/compiler refinement. Zero established native defects; FINDINGS
+unchanged, no issue assumption/fix or production/Sail/old acceptance change.
+
+[17 controls](Tests/NativeCallerPosition.lean) check reversed order, duplicate caller
+and worker rejection, missing partners/wrong keys, retained zero positions, empty
+and zero-weight lists, old LOCAL inactive validity, the exact dichotomy, both unique
+partner directions, small-batch matching, old counts/joint execution and the full
+counted root. These are small pure/old LOCAL/conditional controls, not new nonempty
+native-global/physical accepted witnesses, attacks, defects or absent-enforcement
+evidence. No new source/pin, parser/importer/exporter, artifact/fixture, generation/
+heavy replay, dependency or v3 refresh. Counts are audit counters, not parity.
+
+
 ## Natural native caller counts (9 November 2026)
 
 [Natural counts](Airbender/Review/Trace/Families/ReducedMachine/CallerCount.lean),

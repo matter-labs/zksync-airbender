@@ -628,3 +628,10 @@ no full mask, activity, expected key/range or Boolean weight is supplied.
 over every original caller occurrence. Any deviation requires at least257 MAIN
 proofs; up-to256 batches have exact per-key counts. No no-wrap/count/activity
 premise is added. Universal activity/per-call matching remains open.
+
+## Request-position matching
+
+[Original-index matching](../../Trace/Families/ReducedMachine/CallerPositionTheorems.lean) derives unique partners in both
+directions OR at least 257 MAIN proofs. Request-positive inactive callers remain
+included. No count/activity/matching premise is added; physical activity and
+larger-batch matching remain open.

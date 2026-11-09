@@ -19357,6 +19357,48 @@
       "backport_reuse_revision": "77bcc8838d82504613a66cdbe069f671aae29e32",
       "backport_reuse_path": "Tests/NativeCallerValidity.lean",
       "backport_reuse_sha256": "7df5057a87994673d97bd7728d5b70c395c7daae1df1159dc8bdb0a72be9e46e"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/CallerPosition.lean",
+      "change": "Derive positional request/worker matching OR >=257 actual MAIN proofs on SAME old SourceAccepted/publicimage/log20/LogicalLookups/SourceIdentity. Model quantifies ORIGINAL Fin indices over full callerRows/workerRows; weight1 antecedents only, no source/filter substitution/dedup. Generic natural count1 yields UNIQUE ORIGINAL index even for equal row values/functions; generic worker Natcount uses old DERIVED active-keyNodup. Old DERIVED up-to256 exact counts give unique partner in BOTH directions, exact raw4field key, no expected count/activity/matching/fulfilledledger premise. Universal larger-batch matching/physicalcalleractivity/Sail/physicalcrypto/parity OPEN. All prior CountEffects/individualvalidity/mixedqueries/key-clockNodup/JOINTexecution/weightedworkerresults/wordbounds/43ports/inactiveAUX-poles/BOTHtimes retained. Generic pure finite-list controls and conditional controls only, not global native accepted witnesses/attacks/defects. No source/adoption/pin/parser/artifact/generation/heavyreplay/dependency/v3refresh/production/Sail/oldacceptance/FINDINGS change.",
+      "backport_reuse_revision": "c817b813fdfdb2c57421a8f05a8efc9fe0a8eca8",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/CallerCount.lean",
+      "backport_reuse_sha256": "b62a5f7ba09316ab15d692c198049f119d7a4a9689ee9afc3b2e50e6db9c03f2"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/CallerPosition.lean",
+      "change": "Derive positional request/worker matching OR >=257 actual MAIN proofs on SAME old SourceAccepted/publicimage/log20/LogicalLookups/SourceIdentity. Model quantifies ORIGINAL Fin indices over full callerRows/workerRows; weight1 antecedents only, no source/filter substitution/dedup. Generic natural count1 yields UNIQUE ORIGINAL index even for equal row values/functions; generic worker Natcount uses old DERIVED active-keyNodup. Old DERIVED up-to256 exact counts give unique partner in BOTH directions, exact raw4field key, no expected count/activity/matching/fulfilledledger premise. Universal larger-batch matching/physicalcalleractivity/Sail/physicalcrypto/parity OPEN. All prior CountEffects/individualvalidity/mixedqueries/key-clockNodup/JOINTexecution/weightedworkerresults/wordbounds/43ports/inactiveAUX-poles/BOTHtimes retained. Generic pure finite-list controls and conditional controls only, not global native accepted witnesses/attacks/defects. No source/adoption/pin/parser/artifact/generation/heavyreplay/dependency/v3refresh/production/Sail/oldacceptance/FINDINGS change.",
+      "backport_reuse_revision": "c817b813fdfdb2c57421a8f05a8efc9fe0a8eca8",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/DelegationKeyAccounting.lean",
+      "backport_reuse_sha256": "a25e883e94fc53a293fb7d1f7053f20ffa9537d505c6f247136d06707945c19d"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeCallerPosition.lean",
+      "change": "Derive positional request/worker matching OR >=257 actual MAIN proofs on SAME old SourceAccepted/publicimage/log20/LogicalLookups/SourceIdentity. Model quantifies ORIGINAL Fin indices over full callerRows/workerRows; weight1 antecedents only, no source/filter substitution/dedup. Generic natural count1 yields UNIQUE ORIGINAL index even for equal row values/functions; generic worker Natcount uses old DERIVED active-keyNodup. Old DERIVED up-to256 exact counts give unique partner in BOTH directions, exact raw4field key, no expected count/activity/matching/fulfilledledger premise. Universal larger-batch matching/physicalcalleractivity/Sail/physicalcrypto/parity OPEN. All prior CountEffects/individualvalidity/mixedqueries/key-clockNodup/JOINTexecution/weightedworkerresults/wordbounds/43ports/inactiveAUX-poles/BOTHtimes retained. Generic pure finite-list controls and conditional controls only, not global native accepted witnesses/attacks/defects. No source/adoption/pin/parser/artifact/generation/heavyreplay/dependency/v3refresh/production/Sail/oldacceptance/FINDINGS change.",
+      "backport_reuse_revision": "c817b813fdfdb2c57421a8f05a8efc9fe0a8eca8",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeCallerCount.lean",
+      "backport_reuse_sha256": "4aecf792e1cd73b1197b3742c1718f8f102e18f2b9b51fda64d8ea6737554368"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeCallerPosition.lean",
+      "change": "Derive positional request/worker matching OR >=257 actual MAIN proofs on SAME old SourceAccepted/publicimage/log20/LogicalLookups/SourceIdentity. Model quantifies ORIGINAL Fin indices over full callerRows/workerRows; weight1 antecedents only, no source/filter substitution/dedup. Generic natural count1 yields UNIQUE ORIGINAL index even for equal row values/functions; generic worker Natcount uses old DERIVED active-keyNodup. Old DERIVED up-to256 exact counts give unique partner in BOTH directions, exact raw4field key, no expected count/activity/matching/fulfilledledger premise. Universal larger-batch matching/physicalcalleractivity/Sail/physicalcrypto/parity OPEN. All prior CountEffects/individualvalidity/mixedqueries/key-clockNodup/JOINTexecution/weightedworkerresults/wordbounds/43ports/inactiveAUX-poles/BOTHtimes retained. Generic pure finite-list controls and conditional controls only, not global native accepted witnesses/attacks/defects. No source/adoption/pin/parser/artifact/generation/heavyreplay/dependency/v3refresh/production/Sail/oldacceptance/FINDINGS change.",
+      "backport_reuse_revision": "c817b813fdfdb2c57421a8f05a8efc9fe0a8eca8",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeDelegationKeyAccounting.lean",
+      "backport_reuse_sha256": "b1e2c25da720a3ca9958401dc0fc22925ade8f82e4a94ec0960eb5ec747e7094"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/CallerPositionTheorems.lean",
+      "change": "Derive positional request/worker matching OR >=257 actual MAIN proofs on SAME old SourceAccepted/publicimage/log20/LogicalLookups/SourceIdentity. Model quantifies ORIGINAL Fin indices over full callerRows/workerRows; weight1 antecedents only, no source/filter substitution/dedup. Generic natural count1 yields UNIQUE ORIGINAL index even for equal row values/functions; generic worker Natcount uses old DERIVED active-keyNodup. Old DERIVED up-to256 exact counts give unique partner in BOTH directions, exact raw4field key, no expected count/activity/matching/fulfilledledger premise. Universal larger-batch matching/physicalcalleractivity/Sail/physicalcrypto/parity OPEN. All prior CountEffects/individualvalidity/mixedqueries/key-clockNodup/JOINTexecution/weightedworkerresults/wordbounds/43ports/inactiveAUX-poles/BOTHtimes retained. Generic pure finite-list controls and conditional controls only, not global native accepted witnesses/attacks/defects. No source/adoption/pin/parser/artifact/generation/heavyreplay/dependency/v3refresh/production/Sail/oldacceptance/FINDINGS change.",
+      "backport_reuse_revision": "c817b813fdfdb2c57421a8f05a8efc9fe0a8eca8",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/CallerCountTheorems.lean",
+      "backport_reuse_sha256": "942c58fb7675e2b89634f2f8a3442ad4aca445035cd8bcad7431729c0c47832e"
+    },
+    {
+      "path": "Tests/NativeCallerPosition.lean",
+      "change": "Derive positional request/worker matching OR >=257 actual MAIN proofs on SAME old SourceAccepted/publicimage/log20/LogicalLookups/SourceIdentity. Model quantifies ORIGINAL Fin indices over full callerRows/workerRows; weight1 antecedents only, no source/filter substitution/dedup. Generic natural count1 yields UNIQUE ORIGINAL index even for equal row values/functions; generic worker Natcount uses old DERIVED active-keyNodup. Old DERIVED up-to256 exact counts give unique partner in BOTH directions, exact raw4field key, no expected count/activity/matching/fulfilledledger premise. Universal larger-batch matching/physicalcalleractivity/Sail/physicalcrypto/parity OPEN. All prior CountEffects/individualvalidity/mixedqueries/key-clockNodup/JOINTexecution/weightedworkerresults/wordbounds/43ports/inactiveAUX-poles/BOTHtimes retained. Generic pure finite-list controls and conditional controls only, not global native accepted witnesses/attacks/defects. No source/adoption/pin/parser/artifact/generation/heavyreplay/dependency/v3refresh/production/Sail/oldacceptance/FINDINGS change.",
+      "backport_reuse_revision": "c817b813fdfdb2c57421a8f05a8efc9fe0a8eca8",
+      "backport_reuse_path": "Tests/NativeCallerCount.lean",
+      "backport_reuse_sha256": "d21123d22390b71aa87d9013c8e5bcd0bd246deadbb7cda55d3394809a91386a"
     }
   ],
   "setup_artifacts": [
