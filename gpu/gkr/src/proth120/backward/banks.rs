@@ -16,7 +16,6 @@ use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::transfer::TransferKeepalive;
 use gpu_prover_context::ProverContext;
 
-use super::scheduled_execution::{note_device, resource_ledger_active, ResourceEventPr};
 use crate::backward::window::coefficient_bank::{
     coefficient_bank_challenge_slot, BWD_COEFF_CHALLENGE_CLAIM_BATCHING,
 };
@@ -483,24 +482,7 @@ fn allocate_coefficient_tables_pr(
     let index_host = host.index_words();
     let values = context.alloc(values_host.len(), AllocationPlacement::BestFit)?;
     let index = context.alloc(index_host.len(), AllocationPlacement::BestFit)?;
-    if resource_ledger_active() {
-        note_device(
-            context,
-            "backward",
-            None,
-            ResourceEventPr::Allocated,
-            "bwd.coefficient_tables.values",
-            &values,
-        );
-        note_device(
-            context,
-            "backward",
-            None,
-            ResourceEventPr::Allocated,
-            "bwd.coefficient_tables.index",
-            &index,
-        );
-    }
+
     let tables = CoefficientTablesPr {
         values,
         index,
@@ -606,30 +588,6 @@ pub(crate) struct CoefficientBankViewPr {
 }
 
 impl CoefficientTablesPr {
-    pub(crate) fn note_resources(
-        &self,
-        context: &ProverContext,
-        stage: &'static str,
-        event: ResourceEventPr,
-    ) {
-        note_device(
-            context,
-            stage,
-            None,
-            event,
-            "bwd.coefficient_tables.values",
-            &self.values,
-        );
-        note_device(
-            context,
-            stage,
-            None,
-            event,
-            "bwd.coefficient_tables.index",
-            &self.index,
-        );
-    }
-
     #[cfg(test)]
     pub(crate) fn layers(&self) -> &[CoefficientLayerRangesPr] {
         &self.layers
@@ -665,14 +623,7 @@ impl CoefficientBankPr {
             .get(layer)
             .unwrap_or_else(|| panic!("Proth120 coefficient bank layer {layer} is absent"));
         let values = context.alloc(ranges.len() as usize, AllocationPlacement::BestFit)?;
-        note_device(
-            context,
-            "backward.main",
-            Some(layer),
-            ResourceEventPr::Allocated,
-            "bwd.coefficient_bank",
-            &values,
-        );
+
         Ok(Self {
             values,
             layer,
