@@ -350,7 +350,7 @@ impl AddressSlotTable {
     }
 }
 
-fn pointer_ranges_overlap(
+pub(crate) fn pointer_ranges_overlap(
     first: *const u8,
     first_bytes: usize,
     second: *const u8,

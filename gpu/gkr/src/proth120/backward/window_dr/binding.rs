@@ -1,3 +1,4 @@
+use crate::backward::window_dr::dr_window_row_tiles;
 use core::mem::{align_of, offset_of, size_of};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -27,7 +28,6 @@ use crate::storage_layout::address_storage_layer;
 use crate::upstream::{GKRAddress, PR};
 use crate::{DrWindowLayerProgram, GpuGKRStorage};
 
-const PR_DR_WINDOW_ROWS_PER_TILE: usize = 32;
 const PR_DR_WINDOW_BLOCK_THREADS: u32 = 288;
 const PR_DR_CONTINUATION_FIRST_ACCESS_BIT: u16 = 1 << 15;
 const PR_DR_EQ_TABLE_SLOTS: usize = 3;
@@ -106,16 +106,6 @@ pub(crate) fn schedule_dr_batch_challenge_table_pr(
     let base = unsafe { DeviceVariable::from_raw_parts(batching) };
     gpu_ops::powers::get_powers_by_ref::<PR>(base, 0, table, context.get_exec_stream())?;
     Ok(table.as_ptr())
-}
-
-fn dr_window_row_tiles(folding_steps: usize) -> usize {
-    (1usize << (folding_steps - PR_DR_WINDOW_COORDINATES))
-        .div_ceil(PR_DR_WINDOW_ROWS_PER_TILE)
-        .max(1)
-}
-
-fn dr_window_log_rows(folding_steps: usize) -> u32 {
-    (folding_steps - PR_DR_WINDOW_COORDINATES) as u32
 }
 
 struct ResolvedStoragePr<'a> {
@@ -793,4 +783,8 @@ impl DrWindowLayerHookPr {
             .map(|poly_idx| unsafe { binding.base.cast::<PR>().add(poly_idx * stride) })
             .collect()
     }
+}
+
+fn dr_window_log_rows(folding_steps: usize) -> u32 {
+    (folding_steps - PR_DR_WINDOW_COORDINATES) as u32
 }

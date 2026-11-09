@@ -2,15 +2,17 @@ use core::mem::{align_of, offset_of, size_of};
 
 use gpu_gkr_compiler::{
     WindowProgram, DESCRIPTOR_ALIGNMENT_BYTES, KERNEL_ARGUMENT_CEILING_BYTES, LEAN_MAX_IMMEDIATES,
-    MAX_SOURCE_WINDOWS, SOURCE_WINDOW_COLUMNS, WINDOW_SECTION_WORDS,
+    MAX_SOURCE_WINDOWS, WINDOW_SECTION_WORDS,
 };
 
 use crate::backward::window::bank::family_read_place;
-use crate::backward::window::binding::{window_log_rows, window_partials_len};
+use crate::backward::window::binding::{
+    bind_window_lane, intern_window_slot, rewrite_window_words, window_chunk_address, window_lane,
+    window_log_rows, window_partials_len,
+};
 use crate::backward::window::common::{
     BwdSourceWindow, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
     BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_KINDS, BWD_COEFF_PROCEDURAL_NONE,
-    BWD_SOURCE_LANE_COLUMN_BITS,
 };
 use crate::backward::window::zeroed_box;
 use crate::backward::{make_eq_sizes, GkrEqSizes, GKR_EQ_GROUP_SIZE, GKR_EQ_HIGH_SLOTS};
@@ -85,46 +87,18 @@ pub(super) struct WindowAddressingPr {
 
 impl WindowAddressingPr {
     fn intern(&mut self, slot: BwdSourceWindow) -> usize {
-        if let Some(index) = self.slots.iter().position(|entry| {
-            entry.base == slot.base
-                && entry.log2_stride == slot.log2_stride
-                && entry.r0_stride_bytes == slot.r0_stride_bytes
-                && entry.origin == slot.origin
-                && entry.procedural_kind == slot.procedural_kind
-        }) {
-            return index;
-        }
-        assert!(
-            self.slots.len() != PR_WINDOW_ADDR_SLOTS,
-            "Proth120 binding Capacity: resource={:?}, required={:?}, capacity={:?}",
-            "window address slots",
-            PR_WINDOW_ADDR_SLOTS + 1,
-            PR_WINDOW_ADDR_SLOTS
-        );
-        self.slots.push(slot);
-        self.slots.len() - 1
+        intern_window_slot(&mut self.slots, slot, PR_WINDOW_ADDR_SLOTS).unwrap_or_else(|| {
+            panic!(
+                "Proth120 binding capacity: window address slots {} exceeds {}",
+                PR_WINDOW_ADDR_SLOTS + 1,
+                PR_WINDOW_ADDR_SLOTS
+            )
+        })
     }
 
     fn bind(&mut self, source: u32, lane: u16) {
-        let source = source as usize;
-        if source >= self.lanes.len() {
-            self.lanes.resize(source + 1, None);
-        }
-        self.lanes[source] = Some(lane);
+        bind_window_lane(&mut self.lanes, source, lane);
     }
-}
-
-fn window_lane(slot: usize, column: usize) -> u16 {
-    ((slot << BWD_SOURCE_LANE_COLUMN_BITS) | column) as u16
-}
-
-fn window_chunk_address(matrix: usize, pointer: usize, stride: usize) -> (usize, usize) {
-    let rank = (pointer - matrix) / stride;
-    let chunk = rank / SOURCE_WINDOW_COLUMNS;
-    (
-        matrix + chunk * SOURCE_WINDOW_COLUMNS * stride,
-        rank % SOURCE_WINDOW_COLUMNS,
-    )
 }
 
 pub(super) fn intern_window_addressing_pr(
@@ -320,27 +294,9 @@ fn bind_window_words_pr(
     addressing: &WindowAddressingPr,
     words: &mut [u16],
 ) {
-    words[..program.words.len()].copy_from_slice(&program.words);
-    for lane in &program.source_lanes {
-        let word = lane.word as usize;
-        let runtime = addressing
-            .lanes
-            .get(usize::from(lane.source))
-            .copied()
-            .flatten()
-            .unwrap_or_else(|| {
-                panic!(
-                    "Proth120 binding LaneSourceMissing: word={:?}, source={:?}",
-                    lane.word, lane.source
-                )
-            });
-        *words.get_mut(word).unwrap_or_else(|| {
-            panic!(
-                "Proth120 binding LaneSourceMissing: word={:?}, source={:?}",
-                lane.word, lane.source
-            )
-        }) = runtime;
-    }
+    rewrite_window_words(program, &addressing.lanes, words).unwrap_or_else(|(word, source)| {
+        panic!("Proth120 binding LaneSourceMissing: word={word:?}, source={source:?}")
+    });
 }
 
 pub(super) fn bind_r0_window_pr(

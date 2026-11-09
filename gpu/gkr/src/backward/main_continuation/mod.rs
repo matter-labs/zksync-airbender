@@ -11,3 +11,5 @@ pub(crate) use publication::{
     ContinuationPublishedShape,
 };
 pub(crate) use sequence::MainContinuationWindowSequence;
+
+pub(crate) use binding::pointer_ranges_overlap;

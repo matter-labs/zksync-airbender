@@ -1,3 +1,4 @@
+use crate::backward::main_continuation::pointer_ranges_overlap;
 use core::marker::PhantomData;
 use core::mem::{align_of, offset_of, size_of};
 use era_cudart::result::CudaResult;
@@ -237,23 +238,6 @@ impl AddressSlotTable {
             )
         })
     }
-}
-
-fn pointer_ranges_overlap(
-    first: *const u8,
-    first_bytes: usize,
-    second: *const u8,
-    second_bytes: usize,
-) -> bool {
-    let first_start = first as usize;
-    let second_start = second as usize;
-    let (Some(first_end), Some(second_end)) = (
-        first_start.checked_add(first_bytes),
-        second_start.checked_add(second_bytes),
-    ) else {
-        return true;
-    };
-    first_start < second_end && second_start < first_end
 }
 
 fn checked_pow2(exponent: usize, folding_steps: usize, start_round: usize) -> usize {
