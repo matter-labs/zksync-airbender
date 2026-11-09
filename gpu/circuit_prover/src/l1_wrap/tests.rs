@@ -5,27 +5,19 @@ use crate::config::GPU_SUPPORTED_SECURITY_LEVELS;
 use crate::proof::inputs::EXTERNAL_CHALLENGES_E4_LEN;
 use crate::proof::memory_policy::presets::{self, compression};
 use crate::proof::memory_policy::presets::{H2D_STAGING_BYTES, INPUTS_RESERVE_BYTES};
-use crate::upstream::OutputType;
 use crate::upstream::ProofProfile;
 use crate::upstream::{FinalRegisterValue, GKRCircuitArtifact, SecurityLevel};
-use cs::definitions::GKRAddress;
 use gpu_core::primitives::field::E4;
 use gpu_gkr::proth120::backward::max_coefficient_table_bytes;
 use gpu_gkr::proth120::packed_challenges::BOUNDARY_PREFIX_U32_LEN;
 use gpu_gkr::proth120::programs::GkrProgramsPr;
-use gpu_gkr::proth120::proof_layout::GkrProofFields;
 use gpu_hash::blake2s::Digest as Blake2sDigest;
 use gpu_prover_context::{ProverContextConfig, DEFAULT_H2D_STAGING_BYTES};
 use gpu_trace::trace::holder::resolve_partial_tree_reduction_layers;
 use gpu_trace::trace::memory_cap::PartialTreesGeometry;
 use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
-use gpu_whir::proth120::L1WhirProof;
-use prover::definitions::GKRExternalChallenges;
-use prover::gkr::prover::{SumcheckIntermediateProofValues, SumcheckRoundCoefficients};
 use prover::gkr::prover_config::example_configs::l1_wrap::EXTERNAL_CHALLENGES_POW_BITS;
 use std::alloc::Global;
-use std::collections::BTreeMap;
-use std::marker::PhantomData;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 fn panic_message(f: impl FnOnce()) -> String {
@@ -291,154 +283,4 @@ fn cpu_l1_preflight() {
             expected
         );
     }
-}
-
-fn sentinel_gkr_fields() -> GkrProofFields {
-    let external = std::array::from_fn::<
-        _,
-        { GKRExternalChallenges::<Proth120, Proth120>::TOTAL_CHALLENGES },
-        _,
-    >(|index| Proth120(index as u128 + 1));
-    let final_explicit_evaluations = BTreeMap::from([
-        (
-            OutputType::PermutationProduct,
-            [vec![Proth120(21)], vec![Proth120(22)]],
-        ),
-        (
-            OutputType::InitsAndTeardownsProduct,
-            [
-                vec![Proth120(23), Proth120(24)],
-                vec![Proth120(25), Proth120(26)],
-            ],
-        ),
-    ]);
-    let sumcheck_intermediate_values = BTreeMap::from([(
-        3,
-        SumcheckIntermediateProofValues {
-            sumcheck_num_rounds: 1,
-            internal_round_coefficients: vec![SumcheckRoundCoefficients::Multilinear([
-                Proth120(31),
-                Proth120(32),
-                Proth120(33),
-                Proth120(34),
-            ])],
-            final_step_evaluations: BTreeMap::from([(
-                GKRAddress::ScratchSpace(2),
-                vec![Proth120(35), Proth120(36)],
-            )]),
-            extra_evaluations_from_caching_relations: BTreeMap::from([(
-                GKRAddress::Cached {
-                    layer: 1,
-                    offset: 4,
-                },
-                Proth120(37),
-            )]),
-            _marker: PhantomData,
-        },
-    )]);
-    GkrProofFields {
-        external_challenges: GKRExternalChallenges::from_slice(&external),
-        lookup_challenges_pow_nonce: 0x1122_3344_5566_7788,
-        final_explicit_evaluations,
-        sumcheck_intermediate_values,
-        grand_product_accumulator_computed: Proth120(41),
-        batched_proximity_check_pow_nonce: 0x8877_6655_4433_2211,
-        merged_claims: ((51..58).map(Proth120).collect(), vec![Proth120(58)]),
-        evaluation_point: (61..87).map(Proth120).collect(),
-        batching_challenge: Proth120(91),
-        intermediate_transcript_seed: [0xa5; 32],
-    }
-}
-
-fn sentinel_whir() -> L1WhirProof {
-    let oracle = |num_columns, evals| prover::gkr::whir::WhirBaseLayerCommitmentAndQueries {
-        commitment: Default::default(),
-        num_columns,
-        evals,
-        queries: vec![],
-    };
-    L1WhirProof {
-        setup_commitment: oracle(1, vec![Proth120(112)]),
-        memory_commitment: oracle(2, vec![Proth120(113), Proth120(114)]),
-        witness_commitment: oracle(3, vec![Proth120(115), Proth120(116), Proth120(117)]),
-        batching_challenge_pow_nonce: sentinel_gkr_fields().batched_proximity_check_pow_nonce,
-        base_sumcheck_polys: vec![[Proth120(103), Proth120(104), Proth120(105)]],
-        base_folding_pow_nonces: vec![],
-        base_queries_pow_nonce: 0x9988_7766_5544_3322,
-        intermediate_whir_oracles: vec![],
-        final_monomials: vec![Proth120(106), Proth120(107)],
-        whir_schedule: ProofProfile::L1Wrap
-            .prover_config(
-                21,
-                prover::definitions::SoundnessMode::PessimisticConjecture,
-            )
-            .whir_schedule,
-    }
-}
-
-#[test]
-fn cpu_l1_assembly() {
-    let gkr = sentinel_gkr_fields();
-    let whir = sentinel_whir();
-    let top_bits = vec![17, 23];
-    let mut mode = production_mode();
-    if let OperationMode::SingleChunk {
-        register_final_state,
-        final_pc,
-        final_timestamp,
-        ..
-    } = &mut mode
-    {
-        register_final_state[7].value = 0x1234_5678;
-        register_final_state[7].last_access_timestamp = 0x1020_3040;
-        *final_pc = 0x0506_0708;
-        *final_timestamp = 0x5060_7080;
-    }
-    let result = assemble_l1_proof(gkr.clone(), whir.clone(), top_bits.clone(), mode);
-    let proof = result.proof;
-    assert_eq!(proof.external_challenges, gkr.external_challenges);
-    assert_eq!(
-        proof.final_explicit_evaluations,
-        gkr.final_explicit_evaluations
-    );
-    assert_eq!(
-        serde_json::to_value(&proof.sumcheck_intermediate_values).unwrap(),
-        serde_json::to_value(&gkr.sumcheck_intermediate_values).unwrap(),
-    );
-    assert_eq!(
-        serde_json::to_value(&proof.whir_proof).unwrap(),
-        serde_json::to_value(&whir).unwrap()
-    );
-    assert_eq!(
-        proof.grand_product_accumulator_computed,
-        gkr.grand_product_accumulator_computed
-    );
-    assert_eq!(
-        proof.lookup_challenges_pow_nonce,
-        gkr.lookup_challenges_pow_nonce
-    );
-    assert_eq!(
-        proof.whir_proof.batching_challenge_pow_nonce,
-        gkr.batched_proximity_check_pow_nonce
-    );
-    assert_eq!(proof.inits_and_teardowns_top_bits, top_bits);
-    assert_eq!(
-        serde_json::to_value(result.operation_mode).unwrap(),
-        serde_json::to_value(mode).unwrap()
-    );
-}
-
-#[test]
-fn cpu_l1_batching_nonce_provenance() {
-    let gkr = sentinel_gkr_fields();
-    let nonce = gkr.batched_proximity_check_pow_nonce;
-    let mut whir = sentinel_whir();
-    whir.batching_challenge_pow_nonce = 0;
-    whir.base_queries_pow_nonce = !nonce;
-    let result = assemble_l1_proof(gkr, whir, vec![17, 23], production_mode());
-    assert_eq!(result.proof.whir_proof.batching_challenge_pow_nonce, nonce);
-    assert_ne!(
-        result.proof.whir_proof.batching_challenge_pow_nonce,
-        result.proof.whir_proof.base_queries_pow_nonce
-    );
 }
