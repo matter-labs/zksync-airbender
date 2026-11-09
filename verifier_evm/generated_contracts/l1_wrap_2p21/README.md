@@ -1,8 +1,8 @@
 # 2^21 L1 wrap EVM verifier
 
-The F1 verifier checks the GKR and WHIR parts of the CPU L1 wrap proof in one
+The F1 verifier checks the GKR and WHIR parts of the L1 wrap proof in one
 transaction. The canonical proof and operation mode come from
-`prover_pipeline/fixtures/l1_reference_2p21/l1_bundle.json`. Packing and the WHIR
+the `.l1` bundle of `prover_pipeline/fixtures/l1_reference_2p21/l1.json`. Packing and the WHIR
 schedule come from the wrap's ProverConfig; the expected PC comes from the guest
 binary and must match the bundle.
 
@@ -31,6 +31,5 @@ verifier_evm/generated_contracts/run_merged.sh
 ```
 
 The EVM CI job runs these producers and rejects any changed or new output
-path under verifier_evm. For proof and setup-frontier regeneration, follow
-REGENERATE in prover_pipeline/src/l1_reference.rs and run its ignored
-export_l1_wrap_setup_frontier test before the EVM producers.
+path under verifier_evm. For proof and setup-frontier regeneration, follow the
+[fixture README](../../../prover_pipeline/fixtures/l1_reference_2p21/README.md).

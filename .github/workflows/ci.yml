@@ -219,6 +219,13 @@ jobs:
         with:
           name: fixture-executables
           path: fixture-executables/
+      - name: Verify the committed L1 reference
+        run: |
+          chmod +x fixture-executables/cli
+          for proof in recursion_unified.json l1_feeder.json; do
+            ./fixture-executables/cli verify --proof "prover_pipeline/fixtures/l1_reference_2p21/$proof" \
+              --bin examples/basic_fibonacci/app.bin
+          done
       - name: CPU tests
         run: |
           python3 - <<'PYTHON'

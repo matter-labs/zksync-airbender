@@ -169,18 +169,17 @@ cargo run --release -p cli -- verify \
 ## L1 Feeder Checkpoint
 
 `--target l1-feeder` continues a `recursion-unified` proof with a feeder chain.
-The pipeline selects the proving profile from the verifier execution. The first
-layer verifies the standard unified proof, and later layers verify profile-A proofs.
-
-The chain must converge to a terminal profile-C proof whose verification fits the
-L1 wrap.
+The pipeline requires Compression Blake modes and follows the fixed schedule:
+F1 proves the Standard seed as two A instances, then the A verifier is proved
+as one A instance and finally one C instance. Each proof must match the scheduled
+circuit, instance count, WHIR schedule and setup cap before the chain advances.
 
 Artifacts use schema 5. The optional `l1` bundle is serialized only when present;
 artifacts without it retain the existing schema-5 encoding. The `l1-feeder`
 artifact is the input of the L1 wrap.
 
-For reference regeneration and its resource requirements, follow `REGENERATE` in
-`prover_pipeline/src/l1_reference.rs`.
+Producer commands and the pinned seed environment are in the
+[fixture README](../../prover_pipeline/fixtures/l1_reference_2p21/README.md).
 
 ```bash
 cargo run --release -p cli -- continue-proof \

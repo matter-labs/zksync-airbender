@@ -13,7 +13,7 @@ use trace_and_split::setups::program_setups::find_binary_exit_point;
 pub type Circuit = GKRCircuitArtifact<Proth120>;
 pub type Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 
-pub const BUNDLE: &str = "../prover_pipeline/fixtures/l1_reference_2p21/l1_bundle.json";
+pub const L1_ARTIFACT: &str = "../prover_pipeline/fixtures/l1_reference_2p21/l1.json";
 pub const INITS_TEARDOWNS_TOP_BITS: &[u32] = &[0, 1];
 pub use prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTES as DIGEST_BYTES;
 
@@ -31,7 +31,7 @@ pub fn load() -> (Circuit, Proof, OperationMode) {
         .expect("circuit layout"),
     )
     .expect("deserialize circuit");
-    let bundle = load_bundle(BUNDLE);
+    let bundle = load_bundle(L1_ARTIFACT);
     (circuit, bundle.proof, bundle.operation_mode)
 }
 pub fn final_pc() -> u32 {
@@ -138,8 +138,14 @@ pub struct Bundle {
     pub wrap: String,
 }
 pub fn load_bundle(path: impl AsRef<Path>) -> Bundle {
-    let bundle: Bundle = serde_json::from_reader(std::fs::File::open(path).expect("L1 bundle"))
-        .expect("typed L1 bundle");
+    #[derive(serde::Deserialize)]
+    struct Artifact {
+        l1: Bundle,
+    }
+    let artifact: Artifact =
+        serde_json::from_reader(std::fs::File::open(path).expect("L1 artifact"))
+            .expect("typed L1 artifact");
+    let bundle = artifact.l1;
     assert_eq!(bundle.wrap, "2p21");
     bundle
 }

@@ -9,11 +9,8 @@ usage() {
 Usage: ./recreate_verifiers.sh [--help]
 
 Regenerate circuit layouts, witness evaluators and Rust verifiers.
-For L1 proof references, follow REGENERATE in prover_pipeline/src/l1_reference.rs:
-seed, then fresh-process feeder/wrap.
-Next run that module's ignored l1_reference::export_l1_wrap_setup_frontier test.
-Then run the ignored verifier_evm producers: generate_contracts (also build.sh),
-flatten_calldata write_calldata_into_debug_data.
+For L1 proof references, setup-frontier export and EVM checks, follow
+prover_pipeline/fixtures/l1_reference_2p21/README.md.
 EOF
 }
 

@@ -991,6 +991,8 @@ impl BackendImpl {
     }
 }
 
+/// One unified + one blake delegation proof; `BlakeSpecialOpcodes` hashes with
+/// inline MOPs, so its fixed point has no delegation proof.
 fn unified_recursion_has_converged(proof: &ProgramProof, final_mode: BlakeMode) -> bool {
     let riscv: usize = proof.riscv_proofs.values().map(|v| v.len()).sum();
     let delegation: usize = proof.delegation_proofs.values().map(|v| v.len()).sum();
