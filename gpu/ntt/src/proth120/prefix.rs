@@ -64,7 +64,6 @@ fn dit_scaled_function(pass: &PrefixPass) -> DitScaledFunction {
 #[derive(Clone, Copy)]
 pub enum CosetSource<'a> {
     Constant(u32),
-    Device(&'a DeviceSlice<u32>),
     Batched {
         k0: u32,
     },
@@ -104,7 +103,7 @@ impl ScaleArgs<'_> {
     fn native(&self, column: usize) -> CosetScale {
         let (coset, k0, batched) = match self.coset {
             CosetSource::Constant(k) => (std::ptr::null(), k, 0),
-            CosetSource::Device(slot) | CosetSource::Slot { coset: slot, .. } => {
+            CosetSource::Slot { coset: slot, .. } => {
                 assert_eq!(
                     slot.len(),
                     1,
@@ -323,22 +322,16 @@ pub(crate) fn chunk_plan(
 // or no L2 residency (`*_resident == false`), with identical output.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Dispatch {
-    pub small: bool,
     pub r: u32,
     pub tile_bytes: usize,
     pub tiles_per_coset: usize,
     pub tiles_per_batch: usize,
-    pub prefix: Option<ChunkPlan>,
+    pub prefix: ChunkPlan,
     pub prefix_working_set: usize,
     pub suffix_working_set: usize,
     pub prefix_resident: bool,
     pub suffix_resident: bool,
     pub l2_budget: usize,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DispatchError {
-    Unsupported,
 }
 
 pub(crate) fn twiddle_bytes(log_max_domain: u32) -> usize {
@@ -358,21 +351,6 @@ fn dispatch_with_budget(
     skip_bottom: u32,
     l2_budget: usize,
 ) -> Option<Dispatch> {
-    if log_n <= 12 {
-        return Some(Dispatch {
-            small: true,
-            r: log_n,
-            tile_bytes: columns.checked_mul(size_of::<PR>() << log_n)?,
-            tiles_per_coset: 1,
-            tiles_per_batch: 1,
-            prefix: None,
-            prefix_working_set: 0,
-            suffix_working_set: 0,
-            prefix_resident: true,
-            suffix_resident: true,
-            l2_budget,
-        });
-    }
     let fixed = twiddle_bytes(MAX_LOG_MAX_DOMAIN);
     for r in [8, 7] {
         let a = log_n - r;
@@ -398,14 +376,13 @@ fn dispatch_with_budget(
             continue;
         };
         return Some(Dispatch {
-            small: false,
             r,
             tile_bytes,
             tiles_per_coset,
             tiles_per_batch,
             prefix_working_set: 2 * plan.chunk_bytes() + fixed,
             suffix_working_set: tiles_per_batch * tile_bytes + fixed,
-            prefix: Some(plan),
+            prefix: plan,
             prefix_resident: true,
             suffix_resident: true,
             l2_budget,
@@ -443,12 +420,11 @@ fn dispatch_degraded(
         let prefix_working_set = 2 * plan.chunk_bytes() + fixed;
         let suffix_working_set = tile_bytes + fixed;
         return Some(Dispatch {
-            small: false,
             r,
             tile_bytes,
             tiles_per_coset: 1 << (a - skip_bottom),
             tiles_per_batch: 1,
-            prefix: Some(plan),
+            prefix: plan,
             prefix_working_set,
             suffix_working_set,
             prefix_resident: prefix_working_set <= l2_budget,
@@ -465,22 +441,19 @@ pub fn dispatch(
     log_v: u32,
     skip_bottom: u32,
     l2_cache_size_bytes: usize,
-) -> Result<Dispatch, DispatchError> {
+) -> Dispatch {
     assert!(
         (13..=26).contains(&log_n),
         "Proth120 dispatch requires a non-small wrap shape"
     );
-    if !(8..=26).contains(&log_n)
-        || columns == 0
-        || !(1..=4).contains(&log_v)
-        || skip_bottom > log_n - log_v
-    {
-        return Err(DispatchError::Unsupported);
-    }
+    assert!(
+        columns > 0 && (1..=4).contains(&log_v) && skip_bottom <= log_n - log_v,
+        "Proth120 dispatch requires valid wrap dimensions"
+    );
     let l2_budget = l2_working_set_budget(l2_cache_size_bytes);
     dispatch_with_budget(log_n, columns, log_v, skip_bottom, l2_budget)
         .or_else(|| dispatch_degraded(log_n, columns, log_v, skip_bottom, l2_cache_size_bytes))
-        .ok_or(DispatchError::Unsupported)
+        .expect("Proth120 dispatch requires a supported wrap shape")
 }
 
 pub(crate) fn launch_prefix_chunked<P: TransformPolicy>(
@@ -580,7 +553,7 @@ fn validate_coset(scale: &ScaleArgs, log_n: u32, cosets: usize, log_max_domain: 
             u64::from(k0) + cosets as u64 <= limit,
             "Proth120 prefix: batched cosets out of range"
         ),
-        CosetSource::Device(_) | CosetSource::Slot { .. } => {}
+        CosetSource::Slot { .. } => {}
     }
 }
 
@@ -636,7 +609,7 @@ pub fn lde_coset_slot(
 }
 
 // Reference completion of a prefix output: the remaining stages as one final pass, then the
-// natural-order permutation (the `NaturalEvaluations` layout of `lde_coset`).
+// natural-order permutation as natural coset evaluations.
 pub fn lde_finish_reference(
     ctx: &DeviceContext,
     values: &mut DeviceSlice<PR>,
@@ -707,5 +680,5 @@ pub(crate) fn launch_final_pass<P: TransformPolicy>(
 }
 
 pub fn has_reference_finish(plan: &ChunkPlan) -> bool {
-    [8, 10, 12].contains(&(plan.log_n - plan.stages()))
+    plan.log_n - plan.stages() == 8
 }

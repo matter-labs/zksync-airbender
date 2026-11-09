@@ -253,18 +253,9 @@ impl<'a> PackedSetupSource<'a> {
         Ok(())
     }
 
-    pub fn recompute_coset(
-        &self,
-        coset: u32,
-        dst: &mut DeviceSlice<PR>,
-        context: &ProverContext,
-    ) -> CudaResult<()> {
-        self.oracle.recompute_coset(coset, dst, context)
-    }
-
     pub fn open_queries(
         &self,
-        plan: Option<&CosetQueryPlan>,
+        plan: &CosetQueryPlan,
         queries: &DeviceSlice<u32>,
         leaves: &mut DeviceSlice<PR>,
         paths: &mut DeviceSlice<Digest>,

@@ -344,7 +344,7 @@ pub fn commit_coset(
             monomials,
             prefix,
             shape.columns as usize,
-            plan.prefix.as_ref().expect("commit_coset: no prefix plan"),
+            &plan.prefix,
             ScaleArgs {
                 coset: CosetSource::Constant(coset),
                 log_domain,
@@ -559,9 +559,7 @@ pub fn open_coset_slot(
         monomials,
         prefix,
         shape.columns as usize,
-        plan.prefix
-            .as_ref()
-            .expect("open_coset_slot: no prefix plan"),
+        &plan.prefix,
         ScaleArgs {
             coset: CosetSource::Slot {
                 coset: slot.coset,
@@ -731,9 +729,7 @@ pub fn commit_coefficient_cosets(
             monomials,
             prefix,
             cosets,
-            plan.prefix
-                .as_ref()
-                .expect("commit_coefficient_cosets: no prefix plan"),
+            &plan.prefix,
             ScaleArgs {
                 coset: CosetSource::Batched { k0 },
                 log_domain,

@@ -181,7 +181,7 @@ fn l1_setup_host_round_trip_small() {
         let mut d_indexes = upload(&vec![0xaaaa_aaaa; count], &context);
         source
             .open_queries(
-                Some(&plan),
+                &plan,
                 &d_queries,
                 &mut d_leaves,
                 &mut d_paths,

@@ -139,7 +139,7 @@ fn check_packed(raw_columns: usize, open: bool) {
             memory_copy_async(&mut d_indexes, &indexes, stream).unwrap();
             oracle
                 .open_queries(
-                    Some(&plan),
+                    &plan,
                     &d_queries,
                     &mut d_leaves[1..q * leaf_len + 1],
                     &mut d_paths[1..q * depth + 1],
