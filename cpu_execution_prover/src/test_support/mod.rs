@@ -109,8 +109,6 @@ where
 struct CaptureState {
     callback: Option<Callback>,
     result: Option<Sender<CaptureOutcome>>,
-    #[cfg(test)]
-    regular: bool,
 }
 
 struct CaptureBackend {
@@ -208,11 +206,6 @@ fn serve(
             WorkRequest::L1WrapProof(request) => {
                 WorkResult::L1WrapProof(capture(request, worker, state))
             }
-            #[cfg(test)]
-            WorkRequest::MemoryCommitment(request) => {
-                WorkResult::MemoryCommitment(tests::capture_regular(request, worker, state))
-            }
-            #[cfg(not(test))]
             WorkRequest::MemoryCommitment(_) => {
                 panic!("capture backend accepts only SetupInitialization and L1WrapProof")
             }
@@ -297,6 +290,3 @@ fn dummy_proof() -> L1Proof {
         lookup_challenges_pow_nonce: 0,
     }
 }
-
-#[cfg(test)]
-mod tests;

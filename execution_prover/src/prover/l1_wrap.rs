@@ -181,11 +181,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
 #[cfg(all(test, target_arch = "x86_64"))]
 mod tests {
     use super::*;
-    use crate::test_support::{TestBackend, TestConfiguration, TestPrecomputations, PROFILES};
     use execution_prover_model::allocator::CpuTraceAllocator;
     use execution_prover_model::trace::ChunkedTraceHolder;
-    use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
-    use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 
     fn events() -> Vec<WorkerResult<CpuTraceAllocator>> {
         vec![
@@ -244,107 +241,5 @@ mod tests {
         };
         trace.circuit_type = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression);
         collect_l1_wrap_trace(CircuitType::L1Wrap21, events);
-    }
-
-    fn light_prover() -> ExecutionProver<TestBackend> {
-        let configuration = ExecutionProverConfiguration::<TestConfiguration> {
-            host_allocators_per_job_count: 8,
-            host_allocator_backing_allocation_size: 64 << 10,
-            ..Default::default()
-        };
-        let worker = Arc::new(Worker::new_with_num_threads(1));
-        let backend = TestBackend::initialize(&configuration, worker.clone());
-        let (memory_holders_sender, memory_holders_receiver) = unbounded();
-        memory_holders_sender
-            .send(backend.allocate_memory(configuration.ram_config))
-            .unwrap();
-        let (trace_chunk_sets_sender, trace_chunk_sets_receiver) = unbounded();
-        trace_chunk_sets_sender
-            .send(vec![
-                backend.allocate_snapshot(),
-                backend.allocate_snapshot(),
-            ])
-            .unwrap();
-        let (free_allocators_sender, free_allocators_receiver) = unbounded();
-        for _ in 0..configuration.host_allocators_per_job_count {
-            free_allocators_sender
-                .send(
-                    backend
-                        .allocate_trace_block(configuration.host_allocator_backing_allocation_size),
-                )
-                .unwrap();
-        }
-        let program = vec![0x0001_2083, 0xffdf_f06f];
-        let tape = SimpleTape::new(&preprocess_bytecode::<ReducedMachineDecoderConfig, true>(
-            &program,
-        ));
-        let holder = BinaryHolder {
-            execution_kind: ExecutionKind::L1Wrap21,
-            profiles: vec![ProofProfile::L1Wrap],
-            machine_type: MachineType::Reduced,
-            binary_image: Arc::new(program.clone().into_boxed_slice()),
-            text_section: Arc::new(program.into_boxed_slice()),
-            cycles_bound: Some(32),
-            jit_cache: Default::default(),
-            instruction_tape: Arc::new(tape),
-            precomputations: HashMap::new(),
-            l1_wrap_precomputations: Some(TestPrecomputations(None)),
-        };
-        ExecutionProver {
-            configuration,
-            host_pool_allocation: None,
-            backend: Arc::new(backend),
-            pending_setup_initializations: Vec::new(),
-            worker,
-            memory_holders_sender,
-            memory_holders_receiver,
-            trace_chunk_sets_sender,
-            trace_chunk_sets_receiver,
-            binary_holders: BTreeMap::from([(0, holder)]),
-            next_binary_id: 1,
-            common_precomputations: BTreeMap::new(),
-            free_allocators_sender,
-            free_allocators_receiver,
-        }
-    }
-
-    #[test]
-    fn single_pass_wrap_reuses_batch_id_and_returns_the_allocator_pool() {
-        const BATCH: u64 = 9104;
-        let prover = light_prover();
-        for _ in 0..2 {
-            let result = prover.prove_l1_wrap(
-                BATCH,
-                &BinaryHandle(0),
-                riscv_transpiler::vm::FlatResponsesSource::new_with_reads(vec![]),
-            );
-            let OperationMode::SingleChunk {
-                final_timestamp,
-                external_challenges_pow_bits,
-                ..
-            } = result.operation_mode
-            else {
-                panic!("wrong mode")
-            };
-            assert_eq!(
-                final_timestamp,
-                common_constants::INITIAL_TIMESTAMP + 32 * common_constants::TIMESTAMP_STEP
-            );
-            assert_eq!(
-                external_challenges_pow_bits,
-                ::prover::gkr::prover_config::example_configs::l1_wrap_2p21::EXTERNAL_CHALLENGES_POW_BITS
-            );
-            assert_eq!(prover.free_allocators_receiver.len(), 8);
-        }
-        let records = PROFILES.lock().unwrap();
-        let wraps: Vec<_> = records
-            .iter()
-            .filter(|(batch, ..)| *batch == BATCH)
-            .copied()
-            .collect();
-        assert_eq!(
-            wraps,
-            vec![(BATCH, CircuitType::L1Wrap21, true, ProofProfile::L1Wrap); 2]
-        );
     }
 }

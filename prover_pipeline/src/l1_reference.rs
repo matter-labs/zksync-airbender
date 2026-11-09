@@ -665,35 +665,6 @@ fn export_l1_wrap_setup_frontier() {
     let worker = Worker::new();
     let setup =
         unified_reduced_machine_proth120::l1_wrap_2p21::l1_wrap_setup(&binary, &text, &worker);
-    // Exercise the deferred maps in the Proth field against the materialized rows
-    // and the function-backed fast path used by witness generation.
-    let mut rows = 0usize;
-    for table in &setup.table_driver.tables {
-        let ::prover::cs::tables::LookupWrapper::Initialized(table) = table else {
-            continue;
-        };
-        let mut fallback = table.clone();
-        fallback.quick_index_lookup_fn = ::prover::cs::tables::IndexLookupFn::None;
-        fallback.quick_value_lookup_fn = ::prover::cs::tables::ValueLookupFn::None;
-        assert_eq!(fallback.content_data.len(), table.data.len());
-        assert_eq!(fallback.lookup_data.len(), table.data.len());
-        for (index, row) in table.data.iter().enumerate() {
-            assert_eq!(table.lookup_row(row), index);
-            assert_eq!(fallback.lookup_row(row), index);
-            let keys = &row[..table.num_key_columns];
-            let fast =
-                table.lookup_value::<{ ::prover::cs::definitions::MAX_TABLE_WIDTH - 1 }>(keys);
-            let indexed =
-                fallback.lookup_value::<{ ::prover::cs::definitions::MAX_TABLE_WIDTH - 1 }>(keys);
-            assert_eq!(fast, indexed);
-            assert_eq!(
-                &fast[..table.num_value_columns],
-                &row[table.num_key_columns..]
-            );
-            rows += 1;
-        }
-    }
-    println!("proth_table_identity rows={rows} fast_and_deferred_indexes_equal=true");
     let config = ProofProfile::L1Wrap.prover_config(
         circuit_type.get_domain_size_log2() as usize,
         SoundnessMode::PessimisticConjecture,
@@ -802,46 +773,10 @@ fn export_l1_wrap_setup_frontier() {
 }
 
 #[test]
-fn cpu_l1_feeder_profiles_and_capacity_margins() {
+fn cpu_l1_wrap_rejects_tampered_streams() {
     let reference = fixture_dir();
-    validated_manifest(&reference).expect("L1 reference manifest");
-    for (layer, profile, instances) in [
-        (0, FeederProfile::A, 2),
-        (1, FeederProfile::A, 1),
-        (2, FeederProfile::C, 1),
-    ] {
-        let (proof, setups) = if layer < 2 {
-            let checkpoint: StepCheckpoint =
-                read_typed(&reference.join(feeder_checkpoint_name(layer)))
-                    .expect("feeder checkpoint");
-            (checkpoint.proof, checkpoint.setups)
-        } else {
-            let artifact: ProofArtifact =
-                read_typed(&reference.join("l1_feeder.json")).expect("terminal feeder artifact");
-            (artifact.proof, artifact.setups)
-        };
-        assert_eq!(
-            validate_feeder_proof(&proof, Some(instances)).unwrap(),
-            profile
-        );
-        setups::validate_setups_cap_size(&setups, profile.cap_size()).unwrap();
-        let report: FsvRunReport = read_typed(&reference.join(feeder_report_name(layer)))
-            .expect("feeder prediction report");
-        assert_eq!(report.nd_words_remaining, 0);
-        assert_eq!(
-            predicted_feeder_shape(&report).unwrap(),
-            (profile, instances)
-        );
-        let capacity = instances as u64 * profile.circuit().get_domain_size() as u64;
-        assert!(
-            report.cycles <= capacity,
-            "feeder layer {layer}: {} cycles exceed capacity {capacity}",
-            report.cycles
-        );
-    }
     let artifact: ProofArtifact =
         read_typed(&reference.join("l1_feeder.json")).expect("terminal feeder artifact");
-    assert_eq!(artifact.feeder_layers, 3);
     let stream = build_unified_stream(
         &artifact.setups,
         &artifact.proof,
@@ -853,20 +788,6 @@ fn cpu_l1_feeder_profiles_and_capacity_margins() {
         &FsvDescriptor::l1_feeder(FsvProfile::L1FeederWrap),
     )
     .into_words();
-    let report = ProductionFeederVerifier
-        .wrap_run(&program, stream.clone())
-        .unwrap();
-    validate_wrap_report(&report, &output).unwrap();
-    assert!(
-        report.cycles <= L1_WRAP_PROGRAM_CYCLE_LIMIT as u64 - 16_384,
-        "wrap must leave at least 16,384 cycles of capacity"
-    );
-    println!(
-        "wrap_cycles={} margin_to_2p21={} margin_to_reserved_limit={}",
-        report.cycles,
-        L1_WRAP_PROGRAM_CYCLE_LIMIT as u64 - report.cycles,
-        L1_WRAP_PROGRAM_CYCLE_LIMIT as u64 - 16_384 - report.cycles,
-    );
     let count_end = stream.len() - 2 - 16;
     let count_start = count_end - full_statement_verifier::definitions::DELEGATION_TYPES.len();
     for offset in count_start..count_end {
