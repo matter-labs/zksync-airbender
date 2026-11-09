@@ -16498,7 +16498,7 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
     state: &LayerState<BabyBearExt4, CLAIM_POINT_CAPACITY, GKR_ADDRS>,
 ) -> Result<(), E::Error> {
     unsafe {
-        let pt = state.prev_point.get_unchecked(..22usize);
+        let pt = state.prev_point.as_slice().get_unchecked(..22usize);
         let mut result: BabyBearExt4 = BabyBearExt4::ZERO;
         let mut prefactor: BabyBearField = BabyBearField::ONE;
         let mut k: usize = 0;
@@ -16604,19 +16604,12 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             let claim = dot_eq(vals, eq_arr);
             prev_claims.push(claim);
         }
-        let prev_point = {
-            let mut lv = LazyVec::<BabyBearExt4, CLAIM_POINT_CAPACITY>::new();
-            for i in 0..4usize {
-                lv.push(*all_challenges.get(i));
-            }
-            unsafe {
-                lv.set_len(CLAIM_POINT_CAPACITY);
-            }
-            unsafe { lv.into_array() }
-        };
+        let mut prev_point = LazyVec::<BabyBearExt4, CLAIM_POINT_CAPACITY>::new();
+        for i in 0..4usize {
+            prev_point.push(*all_challenges.get(i));
+        }
         let mut state = LayerState {
             prev_point,
-            prev_point_len: 4usize,
             prev_claims,
             batching_challenge,
         };
@@ -16668,7 +16661,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 4usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     23usize,
                     nd_source,
                 )?;
@@ -16701,10 +16694,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -16720,7 +16714,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 23");
         }
@@ -16733,7 +16727,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 5usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     22usize,
                     nd_source,
                 )?;
@@ -16766,10 +16760,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -16785,7 +16780,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 22");
         }
@@ -16798,7 +16793,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 6usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     21usize,
                     nd_source,
                 )?;
@@ -16831,10 +16826,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -16850,7 +16846,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 21");
         }
@@ -16863,7 +16859,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 7usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     20usize,
                     nd_source,
                 )?;
@@ -16896,10 +16892,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -16915,7 +16912,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 20");
         }
@@ -16928,7 +16925,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 8usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     19usize,
                     nd_source,
                 )?;
@@ -16961,10 +16958,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -16980,7 +16978,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 19");
         }
@@ -16993,7 +16991,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 9usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     18usize,
                     nd_source,
                 )?;
@@ -17026,10 +17024,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -17045,7 +17044,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 18");
         }
@@ -17058,7 +17057,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 10usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     17usize,
                     nd_source,
                 )?;
@@ -17091,10 +17090,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -17110,7 +17110,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 17");
         }
@@ -17123,7 +17123,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 11usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     16usize,
                     nd_source,
                 )?;
@@ -17156,10 +17156,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -17175,7 +17176,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 16");
         }
@@ -17188,7 +17189,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 12usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     15usize,
                     nd_source,
                 )?;
@@ -17221,10 +17222,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -17240,7 +17242,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 15");
         }
@@ -17253,7 +17255,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 13usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     14usize,
                     nd_source,
                 )?;
@@ -17286,10 +17288,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -17305,7 +17308,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 14");
         }
@@ -17318,7 +17321,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 14usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     13usize,
                     nd_source,
                 )?;
@@ -17351,10 +17354,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -17370,7 +17374,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 13");
         }
@@ -17383,7 +17387,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 15usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     12usize,
                     nd_source,
                 )?;
@@ -17416,10 +17420,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -17435,7 +17440,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 12");
         }
@@ -17448,7 +17453,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 16usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     11usize,
                     nd_source,
                 )?;
@@ -17481,10 +17486,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -17500,7 +17506,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 11");
         }
@@ -17513,7 +17519,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 17usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     10usize,
                     nd_source,
                 )?;
@@ -17546,10 +17552,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -17565,7 +17572,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 10");
         }
@@ -17578,7 +17585,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 18usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     9usize,
                     nd_source,
                 )?;
@@ -17611,10 +17618,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -17630,7 +17638,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 9");
         }
@@ -17643,7 +17651,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 19usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     8usize,
                     nd_source,
                 )?;
@@ -17676,10 +17684,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -17695,7 +17704,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 8");
         }
@@ -17708,7 +17717,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 20usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     7usize,
                     nd_source,
                 )?;
@@ -17741,10 +17750,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -17760,7 +17770,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 7");
         }
@@ -17773,7 +17783,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 21usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     6usize,
                     nd_source,
                 )?;
@@ -17806,10 +17816,11 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -17825,7 +17836,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 6");
         }
@@ -17838,7 +17849,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 22usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     5usize,
                     nd_source,
                 )?;
@@ -17873,7 +17884,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 &mut state.prev_claims,
             );
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            debug_assert_eq!(state.prev_point.len(), fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR MAIN LAYER 5");
         }
@@ -17886,7 +17897,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 22usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     4usize,
                     nd_source,
                 )?;
@@ -17921,7 +17932,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 &mut state.prev_claims,
             );
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            debug_assert_eq!(state.prev_point.len(), fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR MAIN LAYER 4");
         }
@@ -17934,7 +17945,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 22usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     3usize,
                     nd_source,
                 )?;
@@ -17969,7 +17980,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 &mut state.prev_claims,
             );
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            debug_assert_eq!(state.prev_point.len(), fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR MAIN LAYER 3");
         }
@@ -17982,7 +17993,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 22usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     2usize,
                     nd_source,
                 )?;
@@ -18017,7 +18028,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 &mut state.prev_claims,
             );
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            debug_assert_eq!(state.prev_point.len(), fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR MAIN LAYER 2");
         }
@@ -18030,7 +18041,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 22usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     1usize,
                     nd_source,
                 )?;
@@ -18065,7 +18076,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 &mut state.prev_claims,
             );
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            debug_assert_eq!(state.prev_point.len(), fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR MAIN LAYER 1");
         }
@@ -18078,7 +18089,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 22usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     0usize,
                     nd_source,
                 )?;
@@ -21059,7 +21070,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             check_virtual_setup_range_check_timestamp::<E>(&state)?;
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            debug_assert_eq!(state.prev_point.len(), fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR MAIN LAYER 0");
         }
@@ -21122,7 +21133,6 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,
             evaluation_point: state.prev_point,
-            evaluation_point_len: state.prev_point_len,
             permutation_read_product,
             permutation_write_product,
             inits_and_teardowns_read_product,

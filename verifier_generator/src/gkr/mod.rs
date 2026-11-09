@@ -381,7 +381,7 @@ fn emit_range_check_eval_check<MW: FieldWrapper>(
                 // The claim point is in plain VARIABLE order (LSB binding):
                 // coordinate `k` is index bit `k`, matching the prover's
                 // `evaluate_virtual_range_check_setup_poly`.
-                let pt = state.prev_point.get_unchecked(..#n);
+                let pt = state.prev_point.as_slice().get_unchecked(..#n);
                 let mut result: #quartic_struct = #quartic_zero;
                 let mut prefactor: #field_struct = #field_one;
                 let mut k: usize = 0;
@@ -449,7 +449,7 @@ fn emit_inits_and_teardowns_eval_check<MW: FieldWrapper>(
                 // The claim point is in plain VARIABLE order (LSB binding):
                 // coordinate `k` is index bit `k`, matching the prover's
                 // `evaluate_virtual_inits_and_teardowns_base_address_setup_polys`.
-                let pt = state.prev_point.get_unchecked(..#n);
+                let pt = state.prev_point.as_slice().get_unchecked(..#n);
 
                 let mut low_eval: #quartic_struct = #quartic_zero;
                 {
@@ -1409,18 +1409,13 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         let mut prev_claims: LazyVec<#quartic_struct, GKR_ADDRS> = LazyVec::new();
         #claim_accum_body
 
-        let prev_point = {
-            let mut lv = LazyVec::<#quartic_struct, CLAIM_POINT_CAPACITY>::new();
-            for i in 0..#evaluation_point_len {
-                lv.push(*all_challenges.get(i));
-            }
-            unsafe { lv.set_len(CLAIM_POINT_CAPACITY); }
-            unsafe { lv.into_array() }
-        };
+        let mut prev_point = LazyVec::<#quartic_struct, CLAIM_POINT_CAPACITY>::new();
+        for i in 0..#evaluation_point_len {
+            prev_point.push(*all_challenges.get(i));
+        }
 
         let mut state = LayerState {
             prev_point,
-            prev_point_len: #evaluation_point_len,
             prev_claims,
             batching_challenge,
         };
@@ -1450,7 +1445,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 let initial_claim = dim_reducing_compute_claim(state.prev_claims.as_array::<#total_output_polys>(), state.batching_challenge);
                 let (final_claim, final_eq_prefactor) =
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
-                        ts, initial_claim, &mut state.prev_point, #config_idx, nd_source)?;
+                        ts, initial_claim, state.prev_point.as_mut_slice(), #config_idx, nd_source)?;
                 let mut fc_len = #num_regular_rounds;
                 // Half the data: the [E;2] line in the remaining LSB coordinate (was [E;4]).
                 let data_words = #num_input_addrs * 2 * EXT_DEGREE;
@@ -1478,13 +1473,16 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 // `r_last` binds bit 0 of the NEXT layer's enumeration, so the new claim
                 // point is `[r_last, r_0, .., r_{n-1}]` in plain variable order: shift the
                 // round challenges up by one and prepend.
+                // The slot at `fc_len` is written here for the first time, so the writes go
+                // through `set_unchecked` and the new length is published below.
                 {
                     let mut i = fc_len;
                     while i > 0 {
-                        *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                        let coordinate = *state.prev_point.get_unchecked(i - 1);
+                        state.prev_point.set_unchecked(i, coordinate);
                         i -= 1;
                     }
-                    *state.prev_point.get_unchecked_mut(0) = r_last;
+                    state.prev_point.set_unchecked(0, r_last);
                 }
                 fc_len += 1;
                 const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -1500,7 +1498,8 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                     state.prev_claims.push(dot_eq(e, eq2_arr));
                 }
                 state.batching_challenge = next_batching;
-                state.prev_point_len = fc_len;
+                // SAFETY: the shift above wrote the coordinates `0..fc_len`
+                state.prev_point.set_len(fc_len);
                 #[cfg(feature = "verifier_stats")]
                     verifier_common::stats::log(#label);
             }
@@ -1842,7 +1841,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 // folding point.
                 let (final_claim, final_eq_prefactor) =
                     verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
-                        ts, initial_claim, &mut state.prev_point, #config_idx, nd_source)?;
+                        ts, initial_claim, state.prev_point.as_mut_slice(), #config_idx, nd_source)?;
                 let fc_len = #num_regular_rounds;
                 // Number of at-point evaluations the prover sends for this layer (one per output
                 // poly). Named for readability; the extra cached-relation evals (if any) are
@@ -1881,7 +1880,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 #cache_check_code
                 #virtual_setup_calls_emit
                 state.batching_challenge = next_batching;
-                state.prev_point_len = fc_len;
+                debug_assert_eq!(state.prev_point.len(), fc_len);
 
                 #[cfg(feature = "verifier_stats")]
                     verifier_common::stats::log(#label);
@@ -1911,12 +1910,12 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                     &extra_coordinates,
                 );
                 debug_assert_eq!(merged_len, TOTAL_ORACLE_COLS);
+                assert!(state.prev_point.len() + PACK_LOG2 <= CLAIM_POINT_CAPACITY);
                 let mut i = 0;
                 while i < PACK_LOG2 {
-                    state.prev_point[state.prev_point_len + i] = extra_coordinates[i];
+                    state.prev_point.push(extra_coordinates[i]);
                     i += 1;
                 }
-                state.prev_point_len += PACK_LOG2;
             }
         }
     } else {
@@ -2043,7 +2042,6 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         Ok(GKRVerifierOutput {
             base_layer_claims: state.prev_claims,
             evaluation_point: state.prev_point,
-            evaluation_point_len: state.prev_point_len,
             permutation_read_product,
             permutation_write_product,
             inits_and_teardowns_read_product,
