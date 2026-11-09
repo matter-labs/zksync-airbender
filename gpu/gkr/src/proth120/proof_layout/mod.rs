@@ -94,8 +94,8 @@ impl ProofLayoutPr {
     pub fn new(programs: &GkrProgramsPr, config: &ProverConfig) -> Self {
         let pack_log2 = config.pack_log2();
         assert!(
-            (1..=4).contains(&pack_log2),
-            "Proth120 proof pack_log2 must be in 1..=4, got {pack_log2}"
+            pack_log2 == 3,
+            "Proth120 proof pack_log2 must be 3, got {pack_log2}"
         );
         let circuit = &programs.runtime_circuit;
         let log = circuit.trace_len.trailing_zeros() as usize;

@@ -145,8 +145,8 @@ impl GkrOutputPr {
 
 fn assert_supported_pack_pr(pack_log2: u32) {
     assert!(
-        (1..=4).contains(&pack_log2),
-        "Proth120 packed merge supports pack_log2 1..=4, got {pack_log2}"
+        pack_log2 == 3,
+        "Proth120 packed merge requires pack_log2 3, got {pack_log2}"
     );
 }
 

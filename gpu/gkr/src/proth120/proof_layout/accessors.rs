@@ -57,23 +57,6 @@ impl ProofLayoutPr {
         values
     }
 
-    fn write_host_fields(&self, bytes: &mut [u8], range: &Range<usize>, values: &[PR]) {
-        self.validate_host_blob(bytes);
-        assert_eq!(
-            range.len(),
-            values.len() * 16,
-            "Proth120 proof field count mismatch"
-        );
-        assert!(
-            values.iter().all(|value| value.0 < PR::ORDER),
-            "Proth120 proof field is noncanonical"
-        );
-        let source = unsafe {
-            std::slice::from_raw_parts(values.as_ptr().cast::<u8>(), std::mem::size_of_val(values))
-        };
-        bytes[range.clone()].copy_from_slice(source);
-    }
-
     pub fn parse_gkr_fields(&self, bytes: &[u8]) -> GkrProofFields {
         self.validate_host_blob(bytes);
         let fields = |range: &Range<usize>| self.host_fields(bytes, range);
@@ -183,98 +166,5 @@ impl ProofLayoutPr {
                 .try_into()
                 .expect("Proth120 proof seed length mismatch"),
         }
-    }
-
-    pub fn write_gkr_fields(
-        &self,
-        bytes: &mut [u8],
-        values: &GkrProofFields,
-        lookup_challenges: [PR; 2],
-    ) {
-        self.validate_host_blob(bytes);
-        bytes[..self.bytes_len()].fill(0);
-        for (kind, ranges) in &self.output_evaluations {
-            let [read, write] = values
-                .final_explicit_evaluations
-                .get(kind)
-                .expect("Proth120 proof output is missing");
-            self.write_host_fields(bytes, &ranges.read_set, read);
-            self.write_host_fields(bytes, &ranges.write_set, write);
-        }
-        assert_eq!(
-            values.sumcheck_intermediate_values.len(),
-            self.backward_layers.len(),
-            "Proth120 proof layer count mismatch"
-        );
-        for layer in &self.backward_layers {
-            let value = values
-                .sumcheck_intermediate_values
-                .get(&layer.layer_idx)
-                .expect("Proth120 proof layer is missing");
-            assert_eq!(
-                value.sumcheck_num_rounds, layer.sumcheck_num_rounds,
-                "Proth120 proof round count mismatch"
-            );
-            let coefficients: Vec<_> = value
-                .internal_round_coefficients
-                .iter()
-                .flat_map(|round| *round.as_multilinear())
-                .collect();
-            self.write_host_fields(bytes, &layer.internal_round_coefficients, &coefficients);
-            let finals: Vec<_> = layer
-                .final_step_eval_addresses
-                .iter()
-                .flat_map(|address| {
-                    value
-                        .final_step_evaluations
-                        .get(address)
-                        .expect("Proth120 proof final address is missing")
-                        .iter()
-                        .copied()
-                })
-                .collect();
-            self.write_host_fields(bytes, &layer.final_step_evaluations, &finals);
-            let extras: Vec<_> = layer
-                .extra_evaluations_addresses
-                .iter()
-                .map(|address| {
-                    *value
-                        .extra_evaluations_from_caching_relations
-                        .get(address)
-                        .expect("Proth120 proof extra address is missing")
-                })
-                .collect();
-            self.write_host_fields(bytes, &layer.extra_evaluations, &extras);
-        }
-        let mut challenges = values
-            .external_challenges
-            .permutation_argument_linearization_challenges
-            .to_vec();
-        challenges.push(
-            values
-                .external_challenges
-                .permutation_argument_additive_part,
-        );
-        challenges.extend(lookup_challenges);
-        self.write_host_fields(bytes, &self.external_challenges, &challenges);
-        self.write_host_fields(
-            bytes,
-            &self.grand_product_accumulator_computed,
-            &[values.grand_product_accumulator_computed],
-        );
-        self.write_host_fields(bytes, &self.memory_claims, &values.merged_claims.0);
-        self.write_host_fields(bytes, &self.setup_claims, &values.merged_claims.1);
-        self.write_host_fields(bytes, &self.evaluation_point, &values.evaluation_point);
-        self.write_host_fields(
-            bytes,
-            &self.batching_challenge,
-            &[values.batching_challenge],
-        );
-        bytes[self.lookup_challenges_pow_nonce.clone()]
-            .copy_from_slice(&values.lookup_challenges_pow_nonce.to_ne_bytes());
-        bytes[self.batched_proximity_check_pow_nonce.clone()]
-            .copy_from_slice(&values.batched_proximity_check_pow_nonce.to_ne_bytes());
-        bytes[self.intermediate_transcript_seed.clone()]
-            .copy_from_slice(&values.intermediate_transcript_seed);
     }
 }
