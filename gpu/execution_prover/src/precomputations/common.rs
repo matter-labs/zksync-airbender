@@ -1,10 +1,9 @@
 use super::CircuitPrecomputations;
-use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
+use gpu_trace::witness::circuit_type::CircuitType;
 
-use crate::upstream::{inits_and_teardowns_circuit_setup, ProofProfile};
+use crate::upstream::ProofProfile;
 use execution_prover::config::SoundnessMode;
-use execution_prover::setup::{build_common_setups, CanonicalCircuitSetup};
-use std::alloc::Global;
+use execution_prover::setup::build_common_setups;
 use std::collections::BTreeMap;
 use worker::Worker;
 
@@ -26,20 +25,4 @@ pub(crate) fn get_common_precomputations_for_all(
             (circuit_type, precomputations)
         })
         .collect()
-}
-
-pub(crate) fn get_inits_and_teardowns_precomputations(
-    worker: &Worker,
-    soundness_mode: SoundnessMode,
-) -> BTreeMap<CircuitType, CircuitPrecomputations> {
-    let circuit_type = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
-    let setup =
-        CanonicalCircuitSetup::Riscv(inits_and_teardowns_circuit_setup::<Global>(true, worker));
-    let precomputations = CircuitPrecomputations::from_canonical(
-        circuit_type,
-        setup,
-        soundness_mode,
-        &[ProofProfile::Standard],
-    );
-    BTreeMap::from([(circuit_type, precomputations)])
 }
