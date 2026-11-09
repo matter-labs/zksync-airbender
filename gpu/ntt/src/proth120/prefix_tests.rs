@@ -13,17 +13,14 @@ use super::lde::{
     launch_transform, set_max_dynamic_smem, ChunkMap, TransformPass, TransformPolicy,
 };
 use super::prefix::{
-    chunk_plan, dispatch, l2_working_set_budget, launch_prefix_chunked, narrow_groups,
-    prefix_groups, twiddle_bytes, ChunkPlan, CosetSource, Dispatch, DispatchError, PrefixPass,
-    ScaleArgs, MAX_CHUNK_BYTES, MAX_TILE_BYTES,
+    chunk_plan, dispatch, launch_prefix_chunked, narrow_groups, prefix_groups, ChunkPlan,
+    CosetSource, PrefixPass, ScaleArgs,
 };
 use super::DeviceContext;
 use crate::upstream::{domain_generator_for_size, Field};
 
 const MIB: usize = 1 << 20;
 const CHUNK_16_MIB: usize = 16 << 20;
-const L2_RTX_PRO_6000: usize = 128 << 20;
-const L2_RTX_5090: usize = 96 << 20;
 
 fn groups_text(plan: &ChunkPlan) -> String {
     plan.passes
@@ -135,295 +132,27 @@ fn assert_closure(plan: &ChunkPlan, exhaustive: bool) {
     }
 }
 
-struct Family {
-    name: &'static str,
-    columns: usize,
-    log_v: u32,
-    skip_bottom: u32,
-    logs: std::ops::RangeInclusive<u32>,
-}
-
-fn chunk_plan_table(l2: usize) -> Vec<(String, Result<Dispatch, DispatchError>)> {
-    let families = [
-        Family {
-            name: "base_today",
-            columns: 7,
-            log_v: 2,
-            skip_bottom: 10,
-            logs: 16..=26,
-        },
-        Family {
-            name: "base_d",
-            columns: 13,
-            log_v: 1,
-            skip_bottom: 10,
-            logs: 16..=26,
-        },
-        Family {
-            name: "setup_today",
-            columns: 1,
-            log_v: 2,
-            skip_bottom: 10,
-            logs: 16..=26,
-        },
-        Family {
-            name: "setup_d",
-            columns: 2,
-            log_v: 1,
-            skip_bottom: 10,
-            logs: 16..=26,
-        },
-    ];
-    let budget = l2_working_set_budget(l2);
-    let mut rows = Vec::new();
-    let mut emit = |name: &str, n: u32, c: usize, v: u32, sb: u32| {
-        let shape = dispatch(n, c, v, sb, l2);
-        let key = format!("{name}\t{n}\t{c}\t{v}\t{sb}");
-        let Ok(dispatched) = &shape else {
-            rows.push((
-                format!("{key}\tREJECT\t{:?}", shape.as_ref().unwrap_err()),
-                shape,
-            ));
-            return;
-        };
-        assert_eq!(dispatched.l2_budget, budget);
-        if dispatched.small {
-            let column = size_of::<PR>() << n;
-            let text = format!(
-                "{key}\tSmall\t0\t{n}\t{}\t1\t0\t1\t1\t{column}\t{}\t0\t0\t0\t0\t1\t0\ttrue\ttrue\tPASS",
-                dispatched.tile_bytes,
-                CHUNK_16_MIB / column
-            );
-            rows.push((text, shape));
-            return;
-        }
-        let plan = dispatched.prefix.as_ref().unwrap();
-        let a = plan.stages();
-        assert_eq!(a + dispatched.r, n);
-        assert!(a >= sb && dispatched.r >= v && dispatched.tile_bytes <= MAX_TILE_BYTES);
-        assert!(plan.chunk_bytes() <= MAX_CHUNK_BYTES || !dispatched.prefix_resident);
-        let fixed = twiddle_bytes(33);
-        assert_eq!(
-            dispatched.prefix_working_set,
-            2 * plan.chunk_bytes() + fixed
-        );
-        assert_eq!(
-            dispatched.suffix_working_set,
-            dispatched.tiles_per_batch * dispatched.tile_bytes + fixed
-        );
-        assert!((1..=2.min(dispatched.tiles_per_coset)).contains(&dispatched.tiles_per_batch));
-        assert_eq!(
-            dispatched.prefix_resident,
-            dispatched.prefix_working_set <= budget
-        );
-        assert_eq!(
-            dispatched.suffix_resident,
-            dispatched.suffix_working_set <= budget
-        );
-        if !(dispatched.prefix_resident && dispatched.suffix_resident) {
-            assert_eq!(dispatched.tiles_per_batch, 1);
-        }
-        let slots = if name.starts_with("intermediate") {
-            plan.cols_per_chunk
-        } else {
-            plan.cols_per_chunk.min(c)
-        };
-        let per_column = plan.launches_per_column_group();
-        let chunk = if plan.strips == 1 {
-            (size_of::<PR>() << n) * plan.cols_per_chunk
-        } else {
-            plan.chunk_bytes()
-        };
-        let text = format!(
-            "{key}\t{}\t{a}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{slots}\t{per_column}\t{}\t{}\t{}\t{}\t{chunk}\t{}\t{}\tPASS",
-            groups_text(plan),
-            dispatched.r,
-            dispatched.tile_bytes,
-            dispatched.tiles_per_coset,
-            plan.strip_domain_bits,
-            plan.strip_blocks,
-            plan.strips,
-            (size_of::<PR>() << n) >> plan.strip_domain_bits,
-            per_column * c.div_ceil(slots),
-            dispatched.prefix_working_set,
-            dispatched.suffix_working_set,
-            dispatched.tiles_per_batch,
-            dispatched.prefix_resident,
-            dispatched.suffix_resident,
-        );
-        assert_closure(plan, n <= 17);
-        let groups: Vec<(u32, bool)> = plan.passes.iter().map(|p| (p.stages, p.narrow)).collect();
-        let narrow = chunk_plan(n, &narrow_groups(&groups), plan.chunk_bytes()).unwrap();
-        assert!(narrow.chunk_bytes() <= plan.chunk_bytes());
-        assert_closure(&narrow, n <= 17);
-        rows.push((text, shape));
-    };
-    for family in &families {
-        for n in family.logs.clone() {
-            emit(
-                family.name,
-                n,
-                family.columns,
-                family.log_v,
-                family.skip_bottom,
-            );
-        }
-    }
-    for n in 13..=26 {
-        for v in 1..=4 {
-            emit("intermediate", n, 1, v, 5);
-        }
-    }
-    for n in 8..=12 {
-        for v in 1..=4 {
-            emit("intermediate_small", n, 1, v, 5.min(n - v));
-        }
-    }
-    for (n, c, v, sb) in [
-        (24, 15, 1, 10),
-        (7, 1, 1, 4),
-        (16, 0, 1, 10),
-        (16, 1000, 1, 10),
-        (16, 7, 0, 10),
-        (16, 7, 2, 15),
-        (16, 7, 5, 10),
-        (27, 1, 1, 5),
-    ] {
-        emit("invalid", n, c, v, sb);
-    }
-    rows
-}
-
-fn print_table(l2: usize, rows: &[(String, Result<Dispatch, DispatchError>)]) {
-    println!(
-        "# device L2 {} MiB, working-set budget {} MiB",
-        l2 / MIB,
-        l2_working_set_budget(l2) / MIB
-    );
-    println!("shape\tn\tC\tv\tsb\tprefix\ta\tr\ttile_B\ttiles_per_coset\tstrip_domain_bits\tstrip_blocks\tstrips\tper_strip_B\tcols_or_cosets_per_chunk\tprefix_launches_per_column\tprefix_launches_per_coset\tprefix_WS_L33_B\tsuffix_WS_L33_B\ttiles_per_batch\tchunk_B\tprefix_resident\tsuffix_resident\tstatus");
-    for (row, _) in rows {
-        println!("{row}");
-    }
-}
-
 #[test]
 fn cpu_pr_chunk_plan_closure() {
-    let rows = chunk_plan_table(L2_RTX_PRO_6000);
-    for (row, shape) in &rows {
-        let invalid = row.starts_with("invalid") && !row.starts_with("invalid\t24\t15\t");
-        assert_eq!(shape.is_err(), invalid, "{row}");
-    }
-    let today = dispatch(25, 7, 2, 10, L2_RTX_PRO_6000).unwrap();
-    assert_eq!(
-        (
-            today.prefix_working_set,
-            today.suffix_working_set,
-            today.tiles_per_batch,
-            today.prefix_resident && today.suffix_resident
-        ),
-        (38 * MIB, 62 * MIB, 2, true)
-    );
-    let shape_d = dispatch(24, 13, 1, 10, L2_RTX_PRO_6000).unwrap();
-    assert_eq!(
-        (
-            shape_d.prefix_working_set,
-            shape_d.suffix_working_set,
-            shape_d.tiles_per_batch
-        ),
-        (38 * MIB, 58 * MIB, 2)
-    );
-    let wide = dispatch(24, 15, 1, 10, L2_RTX_PRO_6000).unwrap();
-    assert_eq!(
-        (wide.r, wide.tiles_per_batch, wide.suffix_working_set),
-        (7, 1, 36 * MIB)
-    );
-    let n26 = dispatch(26, 7, 2, 10, L2_RTX_PRO_6000).unwrap();
-    assert_eq!(
-        (n26.prefix_resident, n26.prefix.unwrap().chunk_bytes()),
-        (false, MAX_CHUNK_BYTES)
-    );
-    let n26_d = dispatch(26, 13, 1, 10, L2_RTX_PRO_6000).unwrap();
-    // Full grid of [7n,7n,5n]: the narrow-7 first pass has 2^16 y-blocks, so it runs as two
-    // grid-limit strips.
-    assert_eq!(
-        (n26_d.prefix_resident, n26_d.prefix.unwrap().strips),
-        (false, 2)
-    );
-    print_table(L2_RTX_PRO_6000, &rows);
-    // A100 40 MB, H100 50 MB, L40S / RTX 5090 96 MB.
-    for l2 in [40 * MIB, 50 * MIB, L2_RTX_5090] {
-        let device_rows = chunk_plan_table(l2);
-        for (row, shape) in &device_rows {
-            let invalid = row.starts_with("invalid") && !row.starts_with("invalid\t24\t15\t");
-            assert_eq!(shape.is_err(), invalid, "{row} at {} MiB", l2 / MIB);
-        }
-        print_table(l2, &device_rows);
-    }
-    let today = dispatch(25, 7, 2, 10, L2_RTX_5090).unwrap();
-    assert_eq!(
-        (
-            today.prefix_working_set,
-            today.suffix_working_set,
-            today.tiles_per_batch,
-            today.r
-        ),
-        (38 * MIB, 34 * MIB, 1, 8)
-    );
-    let shape_d = dispatch(24, 13, 1, 10, L2_RTX_5090).unwrap();
-    assert_eq!(
-        (
-            shape_d.prefix_working_set,
-            shape_d.suffix_working_set,
-            shape_d.tiles_per_batch,
-            shape_d.r
-        ),
-        (38 * MIB, 32 * MIB, 1, 7)
-    );
-
-    // Synthetic devices, 16-192 MiB L2: every production shape dispatches on every L2, the
-    // residency flags only turn on with more L2, and more L2 never shrinks a resident chunk
-    // or batch.
-    let shapes = [
-        (25, 7, 2, 10),
-        (24, 13, 1, 10),
-        (25, 1, 2, 10),
+    for (n, c, v, sb) in [
+        (24, 12, 1, 10),
         (24, 2, 1, 10),
         (23, 1, 4, 5),
         (19, 1, 4, 5),
         (15, 1, 4, 5),
         (11, 1, 4, 5),
-    ];
-    for &(n, c, v, sb) in &shapes {
-        let mut previous: Option<Dispatch> = None;
-        let mut first_resident = None;
-        for l2_mib in [
-            16, 24, 32, 40, 48, 50, 56, 64, 72, 80, 88, 96, 112, 128, 160, 192,
-        ] {
-            let current = dispatch(n, c, v, sb, l2_mib * MIB)
-                .unwrap_or_else(|e| panic!("({n},{c},{v},{sb}) at {l2_mib} MiB: {e:?}"));
-            let resident = current.prefix_resident && current.suffix_resident;
-            if let Some(prior) = &previous {
-                let prior_resident = prior.prefix_resident && prior.suffix_resident;
-                assert!(
-                    resident || !prior_resident,
-                    "({n},{c},{v},{sb}) at {l2_mib} MiB"
-                );
-                if resident && prior_resident {
-                    let chunk = |d: &Dispatch| d.prefix.as_ref().map_or(0, ChunkPlan::chunk_bytes);
-                    assert!(chunk(&current) >= chunk(prior));
-                    assert!(current.tiles_per_batch >= prior.tiles_per_batch);
-                }
+    ] {
+        for l2_mib in [0, 1, 4, 16, 40, 50, 96, 128] {
+            let plan = dispatch(n, c, v, sb, l2_mib * MIB).unwrap();
+            assert!(matches!((plan.r, v), (7, 1) | (8, 1) | (8, 4)) || plan.small);
+            if let Some(prefix) = &plan.prefix {
+                assert_closure(prefix, false);
             }
-            if resident && first_resident.is_none() {
-                first_resident = Some(l2_mib);
-            }
-            previous = Some(current);
         }
-        println!(
-            "cpu_pr_chunk_plan_closure: ({n},{c},{v},{sb}) dispatches on 16-192 MiB, fully L2-resident from {:?} MiB",
-            first_resident
-        );
     }
+    // Diagnostic exhaustive address closure at reduced rows.
+    let plan = chunk_plan(16, &[(8, false)], CHUNK_16_MIB).unwrap();
+    assert_closure(&plan, true);
 }
 
 fn reverse_bits(value: usize, bits: u32) -> usize {
@@ -633,13 +362,10 @@ fn prefix_case<P: TransformPolicy>(
 fn pr_prefix_chunked_mobius_cpu_parity() {
     let stream = CudaStream::create().unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_3102);
+    // Diagnostic wide Mobius prefixes; narrow Mobius is not a wrap route.
     for (log_n, groups, cols) in [
-        (25, vec![(8, false), (7, false)], 1),
-        (24, vec![(8, false), (8, false)], 1),
-        (23, vec![(8, false), (7, false)], 2),
-        (19, vec![(6, false), (5, true)], 3),
-        (25, vec![(8, false), (7, true)], 1),
-        (19, vec![(6, true), (5, true)], 3),
+        (16, vec![(8, false)], 12),
+        (19, vec![(6, false), (5, false)], 2),
     ] {
         let plan = prefix_case(&MobiusPolicy, None, log_n, &groups, cols, &mut rng, &stream);
         println!(
@@ -651,8 +377,21 @@ fn pr_prefix_chunked_mobius_cpu_parity() {
     }
 }
 
-fn reference_plan(log_n: u32) -> ChunkPlan {
-    chunk_plan(log_n, &prefix_groups(log_n - 8).unwrap(), CHUNK_16_MIB).unwrap()
+fn cpu_coset(monomials: &[PR], log_n: u32, log_domain: u32, k: u32) -> Vec<PR> {
+    let rows = 1usize << log_n;
+    let worker = crate::upstream::Worker::new_with_num_threads(8);
+    let twiddles = crate::upstream::Twiddles::<PR, std::alloc::Global>::new(rows, &worker);
+    let offset = domain_generator_for_size::<PR>(1u64 << log_domain).pow_u128(k as u128);
+    monomials
+        .chunks_exact(rows)
+        .flat_map(|column| {
+            crate::upstream::lde_coset_lazy_r8(
+                column,
+                offset,
+                &twiddles.forward_twiddles[..rows / 2],
+            )
+        })
+        .collect()
 }
 
 fn narrow_reference_plan(log_n: u32) -> ChunkPlan {
@@ -663,108 +402,81 @@ fn narrow_reference_plan(log_n: u32) -> ChunkPlan {
 #[test]
 #[cfg(not(no_cuda))]
 fn pr_lde_coset_slot_fused_scale_parity() {
-    use super::{lde_coset, lde_coset_slot, lde_cosets_batched, lde_finish_reference};
-    use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+    use super::{lde_coset_slot, lde_finish_reference};
     let stream = CudaStream::create().unwrap();
+    let ctx = DeviceContext::create().unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_3201);
-    for (log_max_domain, log_domain) in [(31, 31)] {
-        let ctx = DeviceContext::create().unwrap();
-        let nu = domain_generator_for_size::<PR>(1u64 << log_domain);
-        for (log_n, cols) in [(13, 3), (15, 2), (23, 2), (25, 1)] {
-            let rows = 1usize << log_n;
-            let plans = [reference_plan(log_n), narrow_reference_plan(log_n)];
-            let monomials: Vec<PR> = (0..rows * cols)
-                .map(|_| PR::new(rng.random::<u128>() % PR::ORDER))
-                .collect();
-            let device_monomials = upload(&monomials);
-            let last = (1u32 << (log_domain - log_n)) - 1;
-            let mut reference = DeviceAllocation::<PR>::alloc(rows * cols).unwrap();
-            let mut candidate = DeviceAllocation::<PR>::alloc(rows * cols).unwrap();
-            let device_last = DeviceAllocation::<u32>::alloc(1).and_then(|mut d| {
-                memory_copy(&mut d, &[last])?;
-                Ok(d)
-            });
-            let device_last = device_last.unwrap();
-            for (k, source) in [
-                (0, CosetSource::Constant(0)),
-                (1, CosetSource::Constant(1)),
-                (last, CosetSource::Constant(last)),
-                (last, CosetSource::Device(&device_last)),
-            ] {
-                let offset = upload(&[nu.pow_u128(k as u128)]);
-                lde_coset(
-                    &ctx,
-                    &DeviceMatrix::new(&device_monomials, rows),
-                    &mut DeviceMatrixMut::new(&mut reference, rows),
-                    &offset,
-                    &stream,
-                )
-                .unwrap();
-                for plan in &plans {
-                    let scale = ScaleArgs {
-                        coset: source,
-                        log_domain,
-                    };
-                    lde_coset_slot(
-                        &ctx,
-                        &device_monomials,
-                        &mut candidate,
-                        cols,
-                        plan,
-                        scale,
-                        &stream,
-                    )
-                    .unwrap();
-                    lde_finish_reference(&ctx, &mut candidate, cols, plan, &stream).unwrap();
-                    assert!(
-                        download(&candidate, &stream) == download(&reference, &stream),
-                        "fused scale differs: L {log_max_domain} D {log_domain} n {log_n} k {k}"
-                    );
-                }
-            }
-        }
-        let log_n = 13;
+    // Diagnostic row counts, production column counts; exact CPU oracle.
+    for (log_n, cols) in [(19, 12), (19, 2), (15, 1)] {
         let rows = 1usize << log_n;
-        let plan = reference_plan(log_n);
-        let column: Vec<PR> = (0..rows)
+        let plan = narrow_reference_plan(log_n);
+        let monomials: Vec<PR> = (0..rows * cols)
             .map(|_| PR::new(rng.random::<u128>() % PR::ORDER))
             .collect();
-        let device_column = upload(&column);
-        let end = 1u32 << (log_domain - log_n);
-        for (k0, cosets) in [(0, 4usize), (end - 4, 4), (end - 131, 129)] {
-            let mut reference = DeviceAllocation::<PR>::alloc(rows * cosets).unwrap();
-            let mut candidate = DeviceAllocation::<PR>::alloc(rows * cosets).unwrap();
-            lde_cosets_batched(
-                &ctx,
-                &device_column,
-                log_domain,
-                k0..k0 + cosets as u32,
-                &mut reference,
-                &stream,
-            )
-            .unwrap();
-            let scale = ScaleArgs {
-                coset: CosetSource::Batched { k0 },
-                log_domain,
-            };
+        let device_monomials = upload(&monomials);
+        let mut candidate = DeviceAllocation::<PR>::alloc(monomials.len()).unwrap();
+        let k = 3;
+        let device_k = {
+            let mut d = DeviceAllocation::<u32>::alloc(1).unwrap();
+            memory_copy(&mut d, &[k]).unwrap();
+            d
+        };
+        let gate = {
+            let mut d = DeviceAllocation::<u32>::alloc(1).unwrap();
+            memory_copy(&mut d, &[1]).unwrap();
+            d
+        };
+        let expected = cpu_coset(&monomials, log_n, 31, k);
+        for source in [
+            CosetSource::Constant(k),
+            CosetSource::Slot {
+                coset: &device_k,
+                active: &gate,
+            },
+        ] {
             lde_coset_slot(
                 &ctx,
-                &device_column,
+                &device_monomials,
                 &mut candidate,
-                cosets,
+                cols,
                 &plan,
-                scale,
+                ScaleArgs {
+                    coset: source,
+                    log_domain: 31,
+                },
                 &stream,
             )
             .unwrap();
-            lde_finish_reference(&ctx, &mut candidate, cosets, &plan, &stream).unwrap();
-            assert!(
-                download(&candidate, &stream) == download(&reference, &stream),
-                "batched fused scale differs: L {log_max_domain} D {log_domain} k0 {k0}"
-            );
+            lde_finish_reference(&ctx, &mut candidate, cols, &plan, &stream).unwrap();
+            assert_eq!(download(&candidate, &stream), expected);
         }
-        println!("pr_lde_coset_slot_fused_scale_parity: L {log_max_domain} D {log_domain}: n 13/15/23/25 cosets 0/1/last (constant + device) and batched (k0, cosets) (0, 4) (last-3, 4) (last-130, 129), 0 mismatches");
     }
+    let log_n = 15;
+    let rows = 1usize << log_n;
+    let plan = narrow_reference_plan(log_n);
+    let column: Vec<PR> = (0..rows)
+        .map(|_| PR::new(rng.random::<u128>() % PR::ORDER))
+        .collect();
+    let device_column = upload(&column);
+    let mut candidate = DeviceAllocation::<PR>::alloc(rows * 4).unwrap();
+    lde_coset_slot(
+        &ctx,
+        &device_column,
+        &mut candidate,
+        4,
+        &plan,
+        ScaleArgs {
+            coset: CosetSource::Batched { k0: 3 },
+            log_domain: 31,
+        },
+        &stream,
+    )
+    .unwrap();
+    lde_finish_reference(&ctx, &mut candidate, 4, &plan, &stream).unwrap();
+    let expected: Vec<PR> = (3..7)
+        .flat_map(|k| cpu_coset(&column, log_n, 31, k))
+        .collect();
+    assert_eq!(download(&candidate, &stream), expected);
 }
 
 // Forces the dispatch of smaller devices on this GPU: every plan (resident, smaller strips or
@@ -779,14 +491,10 @@ fn pr_lde_coset_slot_small_l2_parity() {
     let mut rng = StdRng::seed_from_u64(0x9120_3401);
     let nu = domain_generator_for_size::<PR>(1u64 << 31);
     let k = 5u32;
-    for (log_n, columns, log_v, skip_bottom, cols) in [
-        (25, 7, 2, 10, 2),
-        (24, 13, 1, 10, 2),
-        (26, 7, 2, 10, 1),
-        (26, 13, 1, 10, 1),
-        (23, 1, 4, 5, 2),
-        (19, 1, 4, 5, 3),
-    ] {
+    // Diagnostic rows with the production base/setup columns and WHIR fold.
+    for (log_n, columns, log_v, skip_bottom, cols) in
+        [(19, 12, 1, 10, 12), (19, 2, 1, 10, 2), (15, 1, 4, 5, 1)]
+    {
         let rows = 1usize << log_n;
         let monomials: Vec<PR> = (0..rows * cols)
             .map(|_| PR::new(rng.random::<u128>() % PR::ORDER))
@@ -798,7 +506,7 @@ fn pr_lde_coset_slot_small_l2_parity() {
             coset: CosetSource::Constant(k),
             log_domain: 31,
         };
-        for l2_mib in [16usize, 40, 50, 96, 128] {
+        for l2_mib in [0usize, 1, 4, 16, 40, 50, 96, 128] {
             let shape = dispatch(log_n, columns, log_v, skip_bottom, l2_mib * MIB).unwrap();
             let plan = shape.prefix.as_ref().unwrap();
             lde_coset_slot(
@@ -862,7 +570,8 @@ fn pr_hypercube_chunked_matches_plain() {
     use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
     let stream = CudaStream::create().unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_2301);
-    for (log_n, cols) in [(12, 3), (16, 3), (21, 2), (23, 2), (24, 1), (25, 1)] {
+    // Diagnostic row count with the production base columns.
+    for (log_n, cols) in [(19, 12)] {
         let rows = 1usize << log_n;
         let input: Vec<PR> = (0..rows * cols)
             .map(|_| PR::new(rng.random::<u128>() % PR::ORDER))

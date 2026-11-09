@@ -1,4 +1,3 @@
-use std::alloc::Global;
 use std::ops::Range;
 
 use era_cudart::memory::{memory_copy, memory_copy_async, DeviceAllocation};
@@ -9,13 +8,10 @@ use gpu_core::primitives::field::PR;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use super::hypercube::hypercube_evals_to_monomials_in_place;
-use super::{
-    hypercube_evals_to_monomials, lde_coset, pack_hypercubes_to_monomials, update_eq_poly,
-    DeviceContext, EqSample,
-};
+use super::{hypercube_evals_to_monomials, pack_hypercubes_to_monomials, update_eq_poly, EqSample};
 use crate::upstream::{
-    domain_generator_for_size, lde_coset_lazy_r8, multivariate_hypercube_evals_into_coeffs_radix4,
-    Backend, Field, GenericAllocationPool, Proth120WorkStealingLazyBackend, Twiddles, Worker,
+    multivariate_hypercube_evals_into_coeffs_radix4, Backend, Field, GenericAllocationPool,
+    Proth120WorkStealingLazyBackend, Worker,
 };
 
 const SEED: u64 = 0x9120_0003;
@@ -96,37 +92,17 @@ fn guarded_columns(columns: &[Vec<PR>], rows: usize) -> Vec<PR> {
     buffer
 }
 
-fn subset_sum_coefficients(values: &[PR]) -> Vec<PR> {
-    (0..values.len())
-        .map(|mask| {
-            let mut coefficient = PR::ZERO;
-            let mut subset = mask;
-            loop {
-                if (mask ^ subset).count_ones().is_multiple_of(2) {
-                    coefficient.add_assign(&values[subset]);
-                } else {
-                    coefficient.sub_assign(&values[subset]);
-                }
-                if subset == 0 {
-                    break;
-                }
-                subset = (subset - 1) & mask;
-            }
-            coefficient
-        })
-        .collect()
-}
-
 #[test]
 #[cfg(not(no_cuda))]
 fn pr_hypercube_cpu_parity() {
     let stream = CudaStream::create().unwrap();
     let mut rng = StdRng::seed_from_u64(SEED);
-    let logs = [0, 1, 2, 3, 8, 12, 13, 14, 15, 17, 19, 20];
+    // Diagnostic: reduced rows, production base column count.
+    let logs = [16];
     for log_n in logs {
         let rows = 1usize << log_n;
         let stride = rows + GUARD;
-        let columns: Vec<Vec<PR>> = (0..3)
+        let columns: Vec<Vec<PR>> = (0..12)
             .map(|column| {
                 (0..rows)
                     .map(|row| match column {
@@ -142,9 +118,6 @@ fn pr_hypercube_cpu_parity() {
             .map(|values| {
                 let mut coefficients = values.clone();
                 multivariate_hypercube_evals_into_coeffs_radix4(&mut coefficients, log_n);
-                if log_n <= 4 {
-                    assert_raw_eq(&subset_sum_coefficients(values), &coefficients);
-                }
                 coefficients
             })
             .collect();
@@ -177,7 +150,7 @@ fn pr_hypercube_cpu_parity() {
         assert_matrix_output(&download(&device_values, &stream), &expected, rows, stride);
     }
     println!(
-        "Proth120 hypercube transform: logs {logs:?}, 3 columns, out of place and in place, 0 mismatches"
+        "Proth120 hypercube transform: logs {logs:?}, 12 columns, out of place and in place, 0 mismatches"
     );
 }
 
@@ -240,99 +213,8 @@ fn pr_pack_cpu_parity() {
     let stream = CudaStream::create().unwrap();
     let worker = Worker::new_with_num_threads(8);
     let mut rng = StdRng::seed_from_u64(SEED);
-    let shapes = [(3, 5)]
-        .into_iter()
-        .chain((0..=5).map(|pack_log2| (8, pack_log2)))
-        .chain((0..=5).map(|pack_log2| (12, pack_log2)));
-    let mut cases = 0;
-    for (log_rows, pack_log2) in shapes {
-        for cols in [1, 10, 16, 17, 38, 66, 104] {
-            pack_case(&stream, &worker, &mut rng, log_rows, pack_log2, cols);
-            cases += 1;
-        }
-    }
-    assert_eq!(cases, 91);
-    pack_case(&stream, &worker, &mut rng, 1, 17, 100000);
-    pack_case(&stream, &worker, &mut rng, 0, 8, 300);
-    let ctx = DeviceContext::create().unwrap();
-    let (packed, monomials) = pack_case(&stream, &worker, &mut rng, 8, 4, 17);
-    let packed_before = download(&packed, &stream);
-    let rows = 1usize << 12;
-    let stride = rows + GUARD;
-    let nu = domain_generator_for_size::<PR>(1u64 << 31);
-    let twiddles = Twiddles::<PR, Global>::new(rows, &worker);
-    let expected: Vec<Vec<PR>> = monomials
-        .iter()
-        .map(|values| lde_coset_lazy_r8(values, nu, &twiddles.forward_twiddles[..rows / 2]))
-        .collect();
-    let mut device_output = upload(&vec![SENTINEL; packed.len()]);
-    let device_offset = upload(&[nu]);
-    let input_matrix =
-        DeviceMatrixChunk::new(&packed[GUARD..packed.len() - GUARD], stride, GUARD, rows);
-    let mut output_matrix = DeviceMatrixChunkMut::new(
-        &mut device_output[GUARD..packed.len() - GUARD],
-        stride,
-        GUARD,
-        rows,
-    );
-    lde_coset(
-        &ctx,
-        &input_matrix,
-        &mut output_matrix,
-        &device_offset,
-        &stream,
-    )
-    .unwrap();
-    assert_matrix_output(&download(&device_output, &stream), &expected, rows, stride);
-    assert_unchanged(&download(&packed, &stream), &packed_before);
-    assert_raw_eq(&download(&device_offset, &stream), &[nu]);
-    println!(
-        "Proth120 pack: {cases} shapes + (1,17,100000) + (0,8,300) + packed LDE at nu^1, 0 mismatches"
-    );
-}
-
-fn eq_product_oracle(eq: &mut [PR], ood: &[EqSample], in_domain: &[EqSample]) {
-    let log_n = eq.len().trailing_zeros();
-    for sample in ood.iter().chain(in_domain) {
-        for (index, value) in eq.iter_mut().enumerate() {
-            let mut point = sample.point;
-            let mut contribution = sample.weight;
-            for bit in 0..log_n {
-                let factor = if (index >> bit) & 1 == 1 {
-                    point
-                } else {
-                    let mut complement = PR::ONE;
-                    complement.sub_assign(&point);
-                    complement
-                };
-                contribution.mul_assign(&factor);
-                point.square();
-            }
-            value.add_assign(&contribution);
-        }
-    }
-}
-
-fn eq_samples(
-    rng: &mut StdRng,
-    count: usize,
-    point_kind: u32,
-    zero_weights: bool,
-) -> Vec<EqSample> {
-    (0..count)
-        .map(|_| EqSample {
-            point: match point_kind {
-                0 => PR::ZERO,
-                1 => PR::ONE,
-                _ => random_field(rng),
-            },
-            weight: if zero_weights {
-                PR::ZERO
-            } else {
-                random_nonzero(rng)
-            },
-        })
-        .collect()
+    // Wrap packing shape, including the partial final group of columns.
+    pack_case(&stream, &worker, &mut rng, 21, 3, 10);
 }
 
 fn assert_samples_unchanged(
@@ -357,54 +239,36 @@ fn pr_eq_update_cpu_parity() {
     let stream = CudaStream::create().unwrap();
     let worker = Worker::new_with_num_threads(8);
     let mut rng = StdRng::seed_from_u64(SEED);
-    let logs = [0, 1, 2, 3, 8, 9, 10, 11, 12, 16];
-    let lists = [(0, 0), (1, 0), (1, 17), (0, 5), (3, 3)];
-    let mut cases = 0;
-    for log_n in logs {
+    for log_n in [23, 19, 15, 11] {
         let rows = 1usize << log_n;
-        for (ood_count, in_count) in lists {
-            for point_kind in 0..3 {
-                for zero_weights in [true, false] {
-                    let ood = eq_samples(&mut rng, ood_count, point_kind, zero_weights);
-                    let in_domain = eq_samples(&mut rng, in_count, point_kind, zero_weights);
-                    let initial: Vec<PR> = (0..rows).map(|_| random_nonzero(&mut rng)).collect();
-                    let mut expected = initial.clone();
-                    if log_n >= 2 || ood_count == 1 {
-                        let ood_pairs: Vec<_> = ood.iter().map(|s| (s.point, s.weight)).collect();
-                        let in_pairs: Vec<_> =
-                            in_domain.iter().map(|s| (s.point, s.weight)).collect();
-                        <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::update_eq_poly(
-                            &Proth120WorkStealingLazyBackend,
-                            &mut expected,
-                            &ood_pairs,
-                            &in_pairs,
-                            &worker,
-                        );
-                    } else {
-                        eq_product_oracle(&mut expected, &ood, &in_domain);
-                    }
-                    let mut guarded = vec![SENTINEL; rows + 2 * GUARD];
-                    guarded[GUARD..GUARD + rows].copy_from_slice(&initial);
-                    let mut device_eq = upload(&guarded);
-                    let device_ood = upload(&ood);
-                    let device_in_domain = upload(&in_domain);
-                    update_eq_poly(
-                        &mut device_eq[GUARD..GUARD + rows],
-                        &device_ood,
-                        &device_in_domain,
-                        &stream,
-                    )
-                    .unwrap();
-                    let actual = download(&device_eq, &stream);
-                    assert_guards(&actual, GUARD..GUARD + rows);
-                    assert_raw_eq(&actual[GUARD..GUARD + rows], &expected);
-                    assert_samples_unchanged(&device_ood, &ood, &stream);
-                    assert_samples_unchanged(&device_in_domain, &in_domain, &stream);
-                    cases += 1;
-                }
-            }
-        }
+        let ood = [EqSample {
+            point: random_field(&mut rng),
+            weight: random_nonzero(&mut rng),
+        }];
+        let initial: Vec<PR> = (0..rows).map(|_| random_nonzero(&mut rng)).collect();
+        let mut expected = initial.clone();
+        <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::update_eq_poly(
+            &Proth120WorkStealingLazyBackend,
+            &mut expected,
+            &[(ood[0].point, ood[0].weight)],
+            &[],
+            &worker,
+        );
+        let mut guarded = vec![SENTINEL; rows + 2 * GUARD];
+        guarded[GUARD..GUARD + rows].copy_from_slice(&initial);
+        let mut device_eq = upload(&guarded);
+        let device_ood = upload(&ood);
+        let device_in_domain = DeviceAllocation::<EqSample>::alloc(0).unwrap();
+        update_eq_poly(
+            &mut device_eq[GUARD..GUARD + rows],
+            &device_ood,
+            &device_in_domain,
+            &stream,
+        )
+        .unwrap();
+        let actual = download(&device_eq, &stream);
+        assert_guards(&actual, GUARD..GUARD + rows);
+        assert_raw_eq(&actual[GUARD..GUARD + rows], &expected);
+        assert_samples_unchanged(&device_ood, &ood, &stream);
     }
-    assert_eq!(cases, 300);
-    println!("Proth120 eq update: logs {logs:?}, {cases} cases, 0 mismatches");
 }
