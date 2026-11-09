@@ -1293,7 +1293,6 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                 }
 
                 let mut f_m_buf = LazyVec::<#quartic_struct, FINAL_MONOMIALS_LEN>::new();
-                f_m_buf.set_len(FINAL_MONOMIALS_LEN);
                 {
                     let mut i = 0;
                     while i < FINAL_MONOMIALS_LEN {
@@ -1301,6 +1300,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                         i += 1;
                     }
                 }
+                f_m_buf.set_len(FINAL_MONOMIALS_LEN);
                 {
                     let mut level = 0;
                     let mut active_len = FINAL_MONOMIALS_LEN;

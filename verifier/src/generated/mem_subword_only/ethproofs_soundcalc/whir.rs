@@ -753,7 +753,6 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
             q += 1;
         }
         let mut f_m_buf = LazyVec::<BabyBearExt4, FINAL_MONOMIALS_LEN>::new();
-        f_m_buf.set_len(FINAL_MONOMIALS_LEN);
         {
             let mut i = 0;
             while i < FINAL_MONOMIALS_LEN {
@@ -761,6 +760,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
                 i += 1;
             }
         }
+        f_m_buf.set_len(FINAL_MONOMIALS_LEN);
         {
             let mut level = 0;
             let mut active_len = FINAL_MONOMIALS_LEN;
