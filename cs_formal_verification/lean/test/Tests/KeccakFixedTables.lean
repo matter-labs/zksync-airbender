@@ -2,8 +2,6 @@ module
 public import Slop.Keccak.FixedTables
 public import Mathlib.Tactic.IntervalCases
 public import Human.Helpers.Core.BabyBearPrime
-import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
-import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
 

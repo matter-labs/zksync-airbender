@@ -2,8 +2,6 @@ module
 public import Human.Circuits.Blake2Round.Finalization
 public import Human.Circuits.Blake2Round.Mixing
 public import Human.Circuits.Blake2Round.Artifact
-import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
-import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
 

@@ -4,7 +4,6 @@ public import Slop.Keccak.Schedule
 public import Slop.Deleg.KeccakClean
 public import Slop.Deleg.KeccakSlots
 public import Slop.Deleg.KeccakCalls
-import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
 

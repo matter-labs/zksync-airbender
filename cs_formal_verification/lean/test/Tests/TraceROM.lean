@@ -16,8 +16,6 @@ public import Human.Circuits.MulDiv.Operation
 public import Slop.MulDiv.Values
 public import Slop.ShiftBinop.Ports
 public import Slop.SubwordMemory.Values
-import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
-import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
 

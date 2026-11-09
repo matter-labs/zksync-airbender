@@ -37,76 +37,29 @@ KEEP: dict[str, str] = {}
 # Init definitions that Init does not expose to modules: each privately imports exactly the Init modules it needs
 # with `import all` (bodies visible to this file's proofs only; importers and statements unchanged). Sets measured
 # per file (elaboration time as the non-module baseline). Module name -> Init modules.
-UNTIL_435 = "-- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)"
 REPR = "-- Init.Data.Repr is not exposed (still true in 4.35)"
 INT_REPR = "-- Int.repr is not exposed"
 RANGE = "-- Init.Data.Range.Basic is not exposed"
-IMPORT_ALL_COMMENT = {"Init.Data.Array.Basic": UNTIL_435, "Init.Data.Array.DecidableEq": UNTIL_435,
-                      "Init.Data.Vector.Basic": UNTIL_435, "Init.Data.Repr": REPR, "Init.Data.String.Defs": REPR,
-                      "Init.Data.Int.Repr": INT_REPR, "Init.Data.Range.Basic": RANGE}
-_A, _D, _V, _R, _S, _I = ("Init.Data.Array.Basic", "Init.Data.Array.DecidableEq", "Init.Data.Vector.Basic",
-                          "Init.Data.Repr", "Init.Data.String.Defs", "Init.Data.Int.Repr")
+ARRAY = "-- Init.Data.Array.Basic is only partly exposed (still true in 4.35)"
+IMPORT_ALL_COMMENT = {"Init.Data.Repr": REPR, "Init.Data.String.Defs": REPR, "Init.Data.Int.Repr": INT_REPR,
+                      "Init.Data.Range.Basic": RANGE, "Init.Data.Array.Basic": ARRAY}
+_R, _S, _I = "Init.Data.Repr", "Init.Data.String.Defs", "Init.Data.Int.Repr"
 IMPORT_ALL: dict[str, tuple[str, ...]] = {
-    "Slop.KeccakSplit.Reference.CallReference": (_A,),
-    "Slop.Lookups": (_A,),
     "Slop.ShiftBinop.ArtifactChecks": (_R,),
-    "Slop.Deleg.Vectors": (_D, _V),
-    "Slop.Blake2G.ArtifactChecks": (_D, _V),
-    "Slop.Keccak.ArtifactChecks": (_D, _V),
-    "Slop.KeccakSplit.Memory.Order": (_D, _V),
-    "Tests.Blake2Compression": (_D, _V),
-    "Tests.KeccakFixedTables": (_D, _V),
-    "Slop.KeccakSplit.Setup.ColumnParity.Rows": (_D,),
-    "Slop.Bigint.ArtifactChecks": (_D, _V, _R),
-    "Slop.Blake2Round.ArtifactChecks": (_D, _V, _R, _S),
-    # found once the files above became modules (smallest passing set, measured the same way)
-    "Slop.Keccak.CallPorts": (_A,),
-    "Slop.KeccakSplit.ThetaRho.Lanes": (_A,),
-    "Slop.UnifiedReduced.RV.ControlLookups": (_A,),
-    "Slop.Delegation.Memory": (_D,),
-    "Slop.KeccakSplit.Memory.History": (_D,),
-    "Slop.Blake2Round.RVSpec": (_D, _V),
-    "Tests.Branch": (_A,),
-    "Tests.Comparison": (_A,),
-    "Tests.Division": (_A,),
-    "Tests.MulDiv": (_A,),
-    "Tests.KeccakController": (_D, _V),
-    "Tests.ShiftBinop": (_D, _V),
-    "Tests.Shifts": (_D, _V),
-    "Tests.TraceROM": (_D, _V),
-    "Slop.Keccak.StateCells": (_A,),
-    "Slop.UnifiedReduced.RV.ControlResolution": (_A,),
-    "Tests.Blake2GMemory": (_A,),
-    "Tests.Bigint": (_D, _V),
-    "Tests.BigintMultiplication": (_D, _V),
-    "Tests.Blake2G": (_D, _V),
-    "Tests.ShiftBinopImmediate": (_D, _V),
-    "Tests.ShiftBinopPorts": (_D, _V),
-    "Slop.Keccak.Phases.Mix": (_A,),
-    "Slop.Keccak.RVSpec": (_A,),
-    "Slop.KeccakSplit.RVStep": (_A,),
-    "Slop.UnifiedReduced.RV.ControlMembership": (_A,),
-    "Slop.KeccakSplit.Reference.CallSteps": (_A,),
-    "Slop.KeccakSplit.Chain.Calls": (_A,),
-    "Tests.DelegationMemory": (_A,),
-    "Tests.KeccakChi": (_A,),
-    "Tests.KeccakIota": (_A,),
-    "Tests.KeccakMix": (_A,),
-    "Tests.KeccakRho": (_A,),
-    "Tests.DelegationROMBoundary": (_D, _V),
-    "Tests.Keccak": (_D, _V),
+    "Slop.Bigint.ArtifactChecks": (_R,),
+    "Tests.DelegationROMBoundary": ("Init.Data.Array.Basic",),
     # the JSON parser's proofs (integers through `Int.repr`) and its kernel-evaluated samples
     "Slop.Import.Json.Lexical": (_I,),
     "Slop.Import.Json.Sample": (_R, _S, _I),
     # the standalone inits/teardowns layout and its bytes parsed and decoded, evaluated by the kernel
-    "Slop.Final.Circuits.InitsTeardowns.Artifact": (_A, "Init.Data.Range.Basic", _R, _S, _I),
+    "Slop.Final.Circuits.InitsTeardowns.Artifact": ("Init.Data.Range.Basic", _R, _S, _I),
     # every other circuit's artifact import, evaluated by the kernel
-    **{f"Slop.Final.Circuits.{c}": (_A, "Init.Data.Range.Basic")
-       for c in ("AddSub.Artifact", "Bigint.Artifact", "Blake2G.Artifact", "Blake2Round.Artifact",
-                 "InitsTeardowns.UnifiedArtifact", "JumpBranchSlt.Artifact", "Keccak.Artifact",
-                 "KeccakSplit.Chi5.Artifact", "KeccakSplit.ColumnParity.Artifact", "KeccakSplit.ThetaRho.Artifact",
-                 "MulDiv.Artifact", "ShiftBinop.Artifact", "SubwordMemory.Artifact", "UnifiedReduced.Artifact",
-                 "WordMemory.Artifact")},
+    **{f"Slop.Final.Circuits.{c}": ("Init.Data.Range.Basic",)
+       for c in ("AddSub.Artifact", "InitsTeardowns.UnifiedArtifact", "JumpBranchSlt.Artifact", "MulDiv.Artifact",
+                 "ShiftBinop.Artifact", "SubwordMemory.Artifact", "UnifiedReduced.Artifact", "WordMemory.Artifact")},
+    **{f"Slop.Final.Circuits.{c}": ("Init.Data.Array.Basic", "Init.Data.Range.Basic")
+       for c in ("Bigint.Artifact", "Blake2G.Artifact", "Blake2Round.Artifact", "Keccak.Artifact",
+                 "KeccakSplit.Chi5.Artifact", "KeccakSplit.ColumnParity.Artifact", "KeccakSplit.ThetaRho.Artifact")},
 }
 # Generated proof families: every file under the prefix gets the same set.
 IMPORT_ALL_PREFIX: dict[str, tuple[str, ...]] = {}

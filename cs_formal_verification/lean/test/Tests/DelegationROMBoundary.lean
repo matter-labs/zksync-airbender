@@ -5,8 +5,7 @@ public import Tests.DelegationOperationEffects
 public import Slop.Delegation.RequestTrace
 public import Human.Helpers.Memory.Native
 public import Slop.Trace.ROMView
-import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
-import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
+import all Init.Data.Array.Basic -- Init.Data.Array.Basic is only partly exposed (still true in 4.35)
 
 @[expose] public section
 

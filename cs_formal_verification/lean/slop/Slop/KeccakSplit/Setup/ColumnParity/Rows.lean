@@ -3,7 +3,6 @@ public import Slop.KeccakSplit.Setup.ColumnParity.ShapesOk
 public import Slop.KeccakSplit.Setup.ColumnParity.Formula
 public import Human.Circuits.KeccakSplit.Tables.Setup
 public import Mathlib.Tactic.IntervalCases
-import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
 

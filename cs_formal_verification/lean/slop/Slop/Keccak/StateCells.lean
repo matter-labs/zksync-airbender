@@ -3,7 +3,6 @@ public import Mathlib.Data.List.OfFn
 public import Slop.Delegation.NativeViews
 public import Slop.Keccak.CallHistory
 public import Slop.Keccak.CallPorts
-import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
 

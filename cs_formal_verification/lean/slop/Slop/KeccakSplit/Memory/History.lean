@@ -4,7 +4,6 @@ public import Slop.Trace.TransferBoundary
 public import Slop.Trace.TransferHistory
 public import Slop.Trace.History
 public import Human.Helpers.Delegation.WorkerContext
-import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
 

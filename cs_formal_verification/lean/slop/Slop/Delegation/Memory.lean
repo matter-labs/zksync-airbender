@@ -9,7 +9,6 @@ public import Slop.Trace.InitialImage
 public import Slop.Trace.OfflineMemory
 public import Slop.Trace.Addresses
 public import Slop.Delegation.BoundaryInputs
-import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
 

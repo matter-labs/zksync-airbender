@@ -14,7 +14,6 @@ public import Slop.Trace.CompositionCore
 public import Slop.Trace.Family.Values
 public import Slop.Trace.Pooled
 public import Slop.Trace.RowContext
-import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
 

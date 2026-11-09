@@ -3,8 +3,6 @@ public import Slop.KeccakSplit.Memory.GroupEquations
 public import Slop.KeccakSplit.Memory.ParityClock
 public import Human.Circuits.KeccakSplit.Native
 public import Slop.Arithmetic.Lemmas
-import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
-import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
 

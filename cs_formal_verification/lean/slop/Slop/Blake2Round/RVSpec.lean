@@ -3,8 +3,6 @@ public import Human.Trace.Workers.Blake2Round.Compression
 public import Slop.Deleg.BlakeCall
 public import Slop.Blake2Round.Schedule
 public import Slop.Arithmetic.Word
-import all Init.Data.Array.DecidableEq -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
-import all Init.Data.Vector.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
 

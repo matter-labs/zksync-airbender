@@ -1,7 +1,6 @@
 module
 public import Slop.KeccakSplit.ThetaRho.Output
 public import Slop.KeccakSplit.ThetaRho.Rotate
-import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
 

@@ -4,7 +4,6 @@ public import Human.Trace.Workers.Blake2G.WorkVector
 public import Slop.Delegation.NativeSegments
 public import Slop.Keccak.CallPermutation
 public import Mathlib.Tactic.IntervalCases
-import all Init.Data.Array.Basic -- until Lean 4.35 exposes Array/Vector ofFn/DecidableEq (lean4#14989, #14988, #14270)
 
 @[expose] public section
 
