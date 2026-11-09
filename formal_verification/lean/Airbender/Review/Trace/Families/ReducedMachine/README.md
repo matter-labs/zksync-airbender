@@ -1117,3 +1117,10 @@ an observation. No reset/schedule premise or original CSR/worker Sail claim.
 values from initialized reads and original PC/immediate, retaining rd/x0 and RV32
 wrap. All rd12 arithmetic/CSR edges share one complete x12 path. Other reset
 profiles, last-reset identification and a standard worker schedule remain open.
+
+## Initialized logic control writes
+
+[Logic control effects](ControlLogicTheorems.lean) derive bitwise/comparison values from actual
+initialized tokens and original immediate selection. Comparison high always clears;
+all rd12 logic/arithmetic/CSR edges share one complete x12 path. Shift/jump/LW
+resets, last-reset identification and standard worker scheduling remain open.

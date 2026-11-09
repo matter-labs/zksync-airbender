@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.ControlLogic
+import Airbender.Proofs.ReducedMachine.NativeControlLogic
+import Airbender.Review.Trace.Families.ReducedMachine.ControlLogicTheorems
+import Tests.NativeControlLogic
+
 import Airbender.Review.Trace.Families.ReducedMachine.ControlArithmetic
 import Airbender.Proofs.ReducedMachine.NativeControlArithmetic
 import Airbender.Review.Trace.Families.ReducedMachine.ControlArithmeticTheorems
@@ -8327,3 +8332,45 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeControlArithmetic.old_counts_retained
 #print axioms Airbender.Tests.NativeControlArithmetic.old_joint_retained
 #print axioms Airbender.Tests.NativeControlArithmetic.full_counted_source
+
+#print axioms Airbender.NativeControlLogicProofs.bitwise_projection
+#print axioms Airbender.NativeControlLogicProofs.comparison_projection
+#print axioms Airbender.NativeControlLogicProofs.bitwise_body
+#print axioms Airbender.NativeControlLogicProofs.comparison_body
+#print axioms Airbender.NativeControlLogicProofs.bitwise_result
+#print axioms Airbender.NativeControlLogicProofs.comparison_result
+#print axioms Airbender.NativeControlLogicProofs.comparison_high
+#print axioms Airbender.NativeControlLogicProofs.on_path
+#print axioms Airbender.NativeControlLogicProofs.from_prior
+#print axioms Airbender.NativeControlLogicProofs.counted
+#print axioms Airbender.NativeControlLogic.native_counted_control_logic
+#print axioms Airbender.Tests.NativeControlLogic.original_bitwise_projection
+#print axioms Airbender.Tests.NativeControlLogic.original_comparison_projection
+#print axioms Airbender.Tests.NativeControlLogic.xor_register
+#print axioms Airbender.Tests.NativeControlLogic.or_register
+#print axioms Airbender.Tests.NativeControlLogic.and_register
+#print axioms Airbender.Tests.NativeControlLogic.xor_immediate
+#print axioms Airbender.Tests.NativeControlLogic.or_immediate
+#print axioms Airbender.Tests.NativeControlLogic.and_immediate
+#print axioms Airbender.Tests.NativeControlLogic.signed_register
+#print axioms Airbender.Tests.NativeControlLogic.unsigned_register
+#print axioms Airbender.Tests.NativeControlLogic.signed_immediate
+#print axioms Airbender.Tests.NativeControlLogic.unsigned_immediate
+#print axioms Airbender.Tests.NativeControlLogic.immediate_retains_unused_read
+#print axioms Airbender.Tests.NativeControlLogic.old_control_ignored
+#print axioms Airbender.Tests.NativeControlLogic.pure_and_write
+#print axioms Airbender.Tests.NativeControlLogic.pure_unsigned_write
+#print axioms Airbender.Tests.NativeControlLogic.wrong_comparison_high_rejected
+#print axioms Airbender.Tests.NativeControlLogic.every_comparison_high_zero
+#print axioms Airbender.Tests.NativeControlLogic.comparison_cannot_seed_high
+#print axioms Airbender.Tests.NativeControlLogic.bitwise_x0
+#print axioms Airbender.Tests.NativeControlLogic.comparison_x0
+#print axioms Airbender.Tests.NativeControlLogic.inactive_CSR_kept
+#print axioms Airbender.Tests.NativeControlLogic.every_actual_bitwise
+#print axioms Airbender.Tests.NativeControlLogic.every_actual_comparison
+#print axioms Airbender.Tests.NativeControlLogic.all_logic_arithmetic_CSR_same_path
+#print axioms Airbender.Tests.NativeControlLogic.nonzero_origins_retained
+#print axioms Airbender.Tests.NativeControlLogic.prior_arithmetic_retained
+#print axioms Airbender.Tests.NativeControlLogic.old_CSR_retained
+#print axioms Airbender.Tests.NativeControlLogic.old_joint_retained
+#print axioms Airbender.Tests.NativeControlLogic.full_counted_source

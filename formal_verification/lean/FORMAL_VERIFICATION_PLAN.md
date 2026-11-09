@@ -1,5 +1,57 @@
 # Circuit formal verification plan
 
+## Initialized bitwise and comparison control writes (9 November 2026)
+
+[Logic control effects](Airbender/Review/Trace/Families/ReducedMachine/ControlLogic.lean),
+[proof](Airbender/Proofs/ReducedMachine/NativeControlLogic.lean) and
+[short root](Airbender/Review/Trace/Families/ReducedMachine/ControlLogicTheorems.lean)
+derive actual XOR/OR/AND and SLT/SLTU/SLTI/SLTIU third-port writes from exact
+initialized read tokens and original decoded immediate selection. Register and
+immediate bitwise forms are covered. The actual rd/x0 mask and full RV32 values
+remain; comparisons always write high limb zero, including nonzero rd.
+
+Original constructor projections change only the family registry tag, preserving
+all ten actual query fields. The old proved source-specific runtime query/BODY
+connection then derives the numerical fixed-table scope. This is no arbitrary
+Runtime-to-Fixed acceptance transfer or table-equivalence assumption. Existing
+bitwise/comparison numerical, operand and masking proofs are reused unchanged.
+The two comparison read bounds are derived from the prior initialized mixed
+history, including actual worker effects; no read bound is supplied publicly.
+
+Every decoded rd12 bitwise/comparison edge occurs on the SAME complete initialized
+x12 path as all prior arithmetic/CSR edges and nonzero public origins. Exact
+OLDREADs, both raw times, readonly refreshes and every positional copy stay.
+Comparison writes cannot introduce nonzero control high. This adds no expected
+reset/read/range/history/result/schedule/activity/count/matching premise, new
+acceptance or cryptographic boundary. Incoming low and zero/multiple masks remain.
+
+The SAME old counted SourceAccepted/public image/log20/OLD LogicalLookups/OLD
+explicit SourceIdentity retain prior arithmetic/CSR effects, origins/history,
+position matching OR >=257 MAIN proofs, natural counts, individual validity,
+mixed queries, aggregate accounting, JOINT43-port execution, weighted outputs,
+word bounds, capacity and MAIN partial dependencies. All inactive requests/AUX/
+m0 poles/inactive D/43ports/BOTH raw times/aliases/refreshes/OLDREADs/unmasked SW/
+public x0 times stay. Rank remains noninjective proof order; logical and physical
+trust boundaries remain separate.
+
+[30 controls](Tests/NativeControlLogic.lean) check all six original bitwise and
+four comparison projections, full-RV32 bitwise values, signed/unsigned comparison,
+sign-extended immediate selection despite the retained second read, old-control
+independence, exact zero-high result, wrong high rejection, x0 masking, old LOCAL
+inactive CSR retention, actual MAIN effects, one common path and prior/full counted
+results. Pure finite reference data, an old LOCAL control and conditional source
+consequences only; no new nonempty native-global/wholeworker/physical witness,
+attack, defect or absence-other-enforcement proof.
+
+Shift/jump/LW reset results and last relevant public MAIN control origins remain
+open, as do physical caller activity, larger-batch no-wrap/matching, standard
+round/hash scheduling, original CSR/MOP/worker Sail, unified protocol spans,
+padding-terminal/init-teardown, physical cryptography, completeness, general
+physical setup and parity. No native adoption/pin/parser/importer/exporter/artifact/
+fixture/generation/heavy replay/dependency/v3 refresh/production/Sail/old acceptance/
+FINDINGS change. Zero established native defects; counts are not parity.
+
+
 ## Initialized arithmetic control writes (9 November 2026)
 
 [Arithmetic control effects](Airbender/Review/Trace/Families/ReducedMachine/ControlArithmetic.lean),
