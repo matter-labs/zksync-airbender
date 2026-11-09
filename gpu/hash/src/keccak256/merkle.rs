@@ -515,44 +515,6 @@ pub fn build_retained_layers(
     )
 }
 
-// The retained trees (layers skip_bottom..=log_leaves, `retained_stride` apart) of `cosets` coset
-// trees whose depth-`node_depth` nodes are in `nodes` (coset-major, 2^(log_leaves - node_depth) per
-// coset): layers node_depth + 1..skip_bottom alternate through `scratch` (at least nodes.len() / 2)
-// and the head of `nodes`, which is overwritten; layer skip_bottom lands in `retained`.
-#[allow(clippy::too_many_arguments)]
-pub fn build_retained_from_nodes(
-    nodes: &mut DeviceSlice<Digest>,
-    node_depth: u32,
-    log_leaves: u32,
-    skip_bottom: u32,
-    cosets: u32,
-    scratch: &mut DeviceSlice<Digest>,
-    retained: &mut DeviceSlice<Digest>,
-    retained_stride: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    build_retained_bottom_from_nodes(
-        nodes,
-        node_depth,
-        log_leaves,
-        skip_bottom,
-        cosets,
-        scratch,
-        retained,
-        retained_stride,
-        stream,
-    )?;
-    retained_layers(
-        "build_retained_from_nodes",
-        log_leaves,
-        skip_bottom,
-        cosets,
-        checked_u64("build_retained_from_nodes", retained_stride),
-        retained.as_mut_ptr(),
-        stream,
-    )
-}
-
 // `build_retained_from_nodes` up to layer skip_bottom; the layers above it are left to
 // `build_retained_layers`.
 #[allow(clippy::too_many_arguments)]
@@ -657,36 +619,6 @@ pub fn reduce_digest_layers(
         launch_nodes(NAME, input, count >> layer, 1, 0, 0, output, stream)?;
     }
     Ok(())
-}
-
-// Roots of every 2^layers consecutive digests of `src` (1 <= layers <= 5), e.g. the depth-10
-// subtree roots of a coset from its depth-8 sub-roots.
-pub fn reduce_digests(
-    src: &DeviceSlice<Digest>,
-    layers: u32,
-    dst: &mut DeviceSlice<Digest>,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    const NAME: &str = "reduce_digests";
-    assert!(
-        (1..=LOG_WARP_SIZE).contains(&layers),
-        "keccak256::{NAME}: 1 <= layers <= 5"
-    );
-    assert_eq!(
-        Some(src.len()),
-        dst.len().checked_mul(1 << layers),
-        "keccak256::{NAME}: src.len() == dst.len() << layers"
-    );
-    assert_no_overlap(NAME, src, dst);
-    let args = ReduceRootsArguments::new(
-        src.as_ptr(),
-        checked_u64(NAME, dst.len()),
-        layers,
-        dst.as_mut_ptr(),
-    );
-    let grid = grid_dim(NAME, src.len(), BLOCK_THREADS);
-    ReduceRootsFunction::default()
-        .launch(&CudaLaunchConfig::basic(grid, BLOCK_THREADS, stream), &args)
 }
 
 pub fn build_top_tree(

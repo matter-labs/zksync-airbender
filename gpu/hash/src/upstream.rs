@@ -32,10 +32,6 @@ pub(crate) use fft::Twiddles;
 #[cfg(test)]
 pub(crate) use field::proth120::Proth120;
 #[cfg(test)]
-pub(crate) use prover::cs::utils::split_timestamp;
-#[cfg(test)]
-pub(crate) use prover::gkr::prover::{GKRProof, OperationMode};
-#[cfg(test)]
 pub(crate) use prover::gkr::whir::coset_commit::{
     CosetByCosetBaseCommitment, CosetByCosetExtCommitment,
 };
