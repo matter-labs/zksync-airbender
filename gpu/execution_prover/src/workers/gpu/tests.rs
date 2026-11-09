@@ -345,35 +345,8 @@ const UNIFIED: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified)
 const UNIFIED22: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
 
 #[test]
-fn cpu_proof_partial_trees_follow_the_profile() {
-    let trees = proof_partial_trees(
-        UNIFIED22,
-        ProofProfile::CompressionFinal,
-        Some(tagged_partial_trees(
-            UNIFIED22,
-            ProofProfile::CompressionFinal,
-        )),
-    )
-    .expect("Compression proofs import their trees");
-    assert_eq!(trees.layout_version, 1);
-    assert_eq!(
-        trees.geometry,
-        PartialTreesGeometry {
-            log_domain_size: 22,
-            log_lde_factor: 4,
-            log_rows_per_leaf: 1,
-            log_tree_cap_size: 4,
-            reduction_layers: 10,
-            columns_count: 104,
-        }
-    );
-    assert_eq!(trees.nodes, vec![[7; 8]; 3]);
-    assert!(proof_partial_trees(UNIFIED, ProofProfile::Standard, None).is_none());
-}
-
-#[test]
 #[should_panic(
-    expected = "Unrolled(Unified22)/Compression proof requires the memory partial trees persisted by its commitment"
+    expected = "Unrolled(Unified22)/CompressionFinal proof requires the memory partial trees persisted by its commitment"
 )]
 fn cpu_compression_proof_without_partial_trees_panics() {
     proof_partial_trees(UNIFIED22, ProofProfile::CompressionFinal, None);

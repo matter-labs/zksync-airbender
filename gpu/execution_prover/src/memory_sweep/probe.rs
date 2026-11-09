@@ -1,6 +1,7 @@
 use super::factory::{stable_external_challenges, PreparedCircuit};
-use crate::upstream::{CommitmentMode, DefaultTreeConstructor, GKRProof, MerkleTreeCapVarLength};
-use crate::workers::gpu::memory_partial_trees_geometry;
+use crate::upstream::{
+    CommitmentMode, DefaultTreeConstructor, GKRProof, MerkleTreeCapVarLength, ProofProfile,
+};
 use crate::A;
 use era_cudart::result::CudaResult;
 use gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer;
@@ -24,19 +25,19 @@ use std::sync::Arc;
 
 const FINAL_TRACE_SIZE_LOG_2: u32 = 4;
 
-pub(crate) fn drain(context: &ProverContext) -> CudaResult<()> {
+pub(super) fn drain(context: &ProverContext) -> CudaResult<()> {
     context.get_h2d_stream().synchronize()?;
     context.get_exec_stream().synchronize()?;
     Ok(())
 }
 
-pub(super) type InputTransfers<'a> = (
+type InputTransfers<'a> = (
     Option<DecoderTableTransfer<'a>>,
     Option<InitsAndTeardownsTransfer<'a, A>>,
     Option<TracingDataTransfer<'a, A>>,
 );
 
-pub(super) fn input_transfers<'a>(
+fn input_transfers<'a>(
     context: &ProverContext,
     circuit: &PreparedCircuit,
 ) -> CudaResult<InputTransfers<'a>> {
@@ -84,19 +85,19 @@ pub(super) fn commit_memory(
         let resolved = circuit
             .precomputations
             .baby_bear()
-            .profile_config(circuit.profile);
+            .profile_config(ProofProfile::Standard);
         let config = &resolved.0;
         let geometry = resolved.1;
         let setup_host = circuit
             .precomputations
             .baby_bear()
             .setup_host
-            .get_initialized(circuit.profile);
+            .get_initialized(ProofProfile::Standard);
         let (decoder, inits, trace) = input_transfers(context, circuit)?;
         let job = if config.commitment_mode == CommitmentMode::MergedMemoryAndWitness {
             let setup = GpuGKRSetupTransfer::new(
                 setup_host.expect("merged setup metadata admitted"),
-                preset_setup_reduction_layers(circuit),
+                PartialTreePolicy::DEFAULT.setup,
                 context,
             )?;
             let mut inputs =
@@ -106,11 +107,14 @@ pub(super) fn commit_memory(
                 &circuit.precomputations.baby_bear().gkr_programs,
                 config,
                 inputs,
-                crate::memory_policy::merged_commit_strategy(circuit.circuit, circuit.profile),
-                crate::memory_policy::partial_trees(circuit.circuit, circuit.profile),
+                crate::memory_policy::merged_commit_strategy(
+                    circuit.circuit,
+                    ProofProfile::Standard,
+                ),
+                crate::memory_policy::partial_trees(circuit.circuit, ProofProfile::Standard),
                 crate::memory_policy::persists_memory_partial_trees(
                     circuit.circuit,
-                    circuit.profile,
+                    ProofProfile::Standard,
                 ),
                 context,
             )?
@@ -126,7 +130,7 @@ pub(super) fn commit_memory(
                     .compiled_circuit(),
                 inputs,
                 geometry,
-                preset_memory_reduction_layers(circuit),
+                PartialTreePolicy::DEFAULT.memory,
                 context,
             )?
         };
@@ -136,67 +140,30 @@ pub(super) fn commit_memory(
     result
 }
 
-pub(super) fn preset_setup_reduction_layers(circuit: &PreparedCircuit) -> u32 {
-    crate::memory_policy::partial_trees(circuit.circuit, circuit.profile).setup
-}
-
-pub(super) fn preset_memory_reduction_layers(circuit: &PreparedCircuit) -> u32 {
-    crate::memory_policy::partial_trees(circuit.circuit, circuit.profile).memory
-}
-
-pub(super) fn schedule_proof_inputs<'a>(
+fn schedule_proof_inputs<'a>(
     context: &ProverContext,
     circuit: &PreparedCircuit,
-    partial_trees: Option<PartialTreePolicy>,
 ) -> CudaResult<GpuGKRProofTransfer<'a, A>> {
     let resolved = circuit
         .precomputations
         .baby_bear()
-        .profile_config(circuit.profile);
+        .profile_config(ProofProfile::Standard);
     let programs = &circuit.precomputations.baby_bear().gkr_programs;
-    let config = &resolved.0;
     let setup_host = circuit
         .precomputations
         .baby_bear()
         .setup_host
-        .get_initialized(circuit.profile);
-    let partial_trees = partial_trees
-        .unwrap_or_else(|| crate::memory_policy::partial_trees(circuit.circuit, circuit.profile));
-    let setup_reduction_layers = partial_trees.setup;
-    let memory_reduction_layers = partial_trees.memory;
+        .get_initialized(ProofProfile::Standard);
     let (decoder, inits, trace) = input_transfers(context, circuit)?;
     let setup = setup_host
-        .map(|host| GpuGKRSetupTransfer::new(host, setup_reduction_layers, context))
+        .map(|host| GpuGKRSetupTransfer::new(host, PartialTreePolicy::DEFAULT.setup, context))
         .transpose()?;
     let memory_caps = circuit
         .memory_caps
         .as_ref()
         .expect("warm memory commitment");
     let memory_host =
-        if crate::memory_policy::persists_memory_partial_trees(circuit.circuit, circuit.profile) {
-            GpuGKRMemoryCapHost::from_per_coset_caps_and_partial_trees(
-                memory_caps,
-                resolved.1,
-                memory_partial_trees_geometry(
-                    programs.compiled_circuit(),
-                    config,
-                    CommitmentMode::MergedMemoryAndWitness,
-                    memory_reduction_layers,
-                ),
-                circuit
-                    .memory_partial_trees
-                    .as_ref()
-                    .expect("proof inputs require the partial trees persisted by the commitment"),
-            )
-        } else {
-            assert!(
-                circuit.memory_partial_trees.is_none(),
-                "{:?}/{:?} proof inputs do not take memory partial trees",
-                circuit.circuit,
-                circuit.profile
-            );
-            GpuGKRMemoryCapHost::from_per_coset_caps_for_geometry(memory_caps, resolved.1)
-        };
+        GpuGKRMemoryCapHost::from_per_coset_caps_for_geometry(memory_caps, resolved.1);
     let memory = GpuGKRMemoryCapTransfer::new(Arc::new(memory_host), context)?;
     let num_teardown_sets = programs
         .compiled_circuit()
@@ -235,7 +202,7 @@ pub(super) fn input_footprint(
     circuit: &PreparedCircuit,
 ) -> CudaResult<usize> {
     let before = context.get_used_mem_current();
-    let inputs = schedule_proof_inputs(context, circuit, None);
+    let inputs = schedule_proof_inputs(context, circuit);
     drain(context)?;
     let inputs = inputs?;
     let bytes = context.get_used_mem_current() - before;
@@ -261,12 +228,16 @@ pub(super) fn run_case(
         AllocationDirection::Descending => AllocationDirection::Ascending,
     };
     let policy = target_override.unwrap_or_else(|| {
-        crate::memory_policy::policy(target.circuit, target.profile, context.get_mem_size())
+        crate::memory_policy::policy(
+            target.circuit,
+            ProofProfile::Standard,
+            context.get_mem_size(),
+        )
     });
     // On pool OOM, queued operations must finish before freed arena ranges can
     // be reused. The runner retains PreparedCircuit host inputs throughout.
     context.set_allocation_mode(AllocationMode::Inputs(direction));
-    let inputs = match schedule_proof_inputs(context, target, None) {
+    let inputs = match schedule_proof_inputs(context, target) {
         Ok(inputs) => inputs,
         Err(error) => {
             drain(context)?;
@@ -277,14 +248,14 @@ pub(super) fn run_case(
     // sources. Follower H2D still overlaps the proof.
     context.get_h2d_stream().synchronize()?;
     context.set_allocation_mode(AllocationMode::Inputs(follower_direction));
-    let follower = schedule_proof_inputs(context, follower, None);
+    let follower = schedule_proof_inputs(context, follower);
     context.set_allocation_mode(AllocationMode::Proof(direction));
     let result = match &follower {
         Ok(_) => {
             let config = &target
                 .precomputations
                 .baby_bear()
-                .profile_config(target.profile)
+                .profile_config(ProofProfile::Standard)
                 .0;
             prove::<A>(
                 &target.precomputations.baby_bear().gkr_programs,
@@ -292,7 +263,7 @@ pub(super) fn run_case(
                 FINAL_TRACE_SIZE_LOG_2,
                 inputs,
                 policy,
-                crate::memory_policy::partial_trees(target.circuit, target.profile),
+                crate::memory_policy::partial_trees(target.circuit, ProofProfile::Standard),
                 context,
             )
             .and_then(|job| job.finish())

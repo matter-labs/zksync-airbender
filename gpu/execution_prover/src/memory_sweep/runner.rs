@@ -47,7 +47,7 @@ struct Arguments {
     /// Print selectors without creating a CUDA context.
     #[arg(long)]
     list: bool,
-    /// Replay production soundness_mode; --configuration asserts the expected policy.
+    /// Replay production selection; --configuration asserts the expected policy.
     #[arg(long, conflicts_with_all = ["fit_only", "generate_policy", "list"])]
     replay_presets: bool,
     /// Soundness mode of the swept proofs (`pessimistic-conjecture` or
@@ -302,7 +302,7 @@ fn sweep_arena(
                 }
                 Some((sample, selected)) => {
                     if selected != policy {
-                        return Err("production soundness_mode changed between proofs".into());
+                        return Err("production selection changed between proofs".into());
                     }
                     let expected = fingerprints.entry(i).or_insert(sample.fingerprint);
                     if *expected != sample.fingerprint {
@@ -360,7 +360,7 @@ fn sweep_arena(
                 let row = &mut rows[row_index];
                 if selected != policy || row.proof_fingerprint != Some(sample.fingerprint) {
                     return Err(format!(
-                        "soundness_mode or proof changed during timing for {}",
+                        "selection or proof changed during timing for {}",
                         row.circuit
                     )
                     .into());

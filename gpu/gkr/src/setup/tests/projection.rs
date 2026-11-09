@@ -10,7 +10,7 @@ fn read_tree(tree: &DeviceSlice<Digest>, context: &ProverContext) -> Vec<Digest>
 
 #[test]
 #[cfg(not(no_cuda))]
-#[ignore = "local GPU gate: setup projection or feeder partial-tree changes"]
+#[ignore = "local GPU gate: setup projection or compression partial-tree changes"]
 fn setup_projection_matches_fresh_trees_and_lazy_openings() {
     let context = make_test_context(1024, 64);
     for (log_rows, log_rows_per_leaf, log_lde, log_cap) in [(20, 1, 4, 4), (18, 1, 4, 4)] {

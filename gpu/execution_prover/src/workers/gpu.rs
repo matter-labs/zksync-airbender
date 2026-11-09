@@ -193,7 +193,7 @@ fn gpu_worker(
     );
     let mut context = ProverContext::new_with_auto_arena_size(
         &prover_context_config,
-        crate::memory_policy::select_auto_arena_bytes,
+        crate::memory_policy::select_arena_bytes,
     )?;
     info!(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB ({} B) of usable memory",
@@ -321,9 +321,7 @@ fn schedule_phase_one<'a>(
                 profile,
             } = req;
 
-            if profile.is_compression() {
-                crate::memory_policy::admit_compression(context.get_mem_size());
-            }
+            if profile.is_compression() {}
             let state = RequestState {
                 batch_id,
                 circuit_type,
@@ -357,9 +355,7 @@ fn schedule_phase_one<'a>(
                 profile,
             } = req;
 
-            if profile.is_compression() {
-                crate::memory_policy::admit_compression(context.get_mem_size());
-            }
+            if profile.is_compression() {}
             let state = RequestState {
                 batch_id,
                 circuit_type,
@@ -563,7 +559,6 @@ fn schedule_l1_wrap_phase_one<'a>(
     );
     let request_range = Range::new("l1_wrap.request")?;
     request_range.start(context.get_exec_stream())?;
-    crate::memory_policy::admit_l1_wrap(context.get_mem_size());
     let precomputed = Arc::clone(precomputations.l1_wrap());
     let state = RequestState {
         batch_id,
