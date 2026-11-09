@@ -74,11 +74,12 @@ def main() -> int:
     for d in ours:
         for p in d.rglob("*.lean"):
             clean.update(i for i in imports(p) if i == "Clean" or i.startswith("Clean."))
+    # `+Mod` names a module (`Qq` and `Aesop` are also library names)
     print("SailRV32")
     for m in sorted(clean):
-        print(m)
+        print(f"+{m}")
     for m in sorted(dep_mods):
-        print(f"{m}:c.o")
+        print(f"+{m}:c.o")
     print(f"dependencies: SailRV32, {len(clean)} Clean imports, {len(dep_mods)} objects", file=sys.stderr)
     return 0
 

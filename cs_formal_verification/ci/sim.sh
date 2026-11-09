@@ -21,9 +21,9 @@ REPO="$(git -C "$HERE" rev-parse --show-toplevel)"
 IMAGE=${FVCI_IMAGE:-fvci:local}
 
 src_tar() { # rev out.tar: what actions/checkout gives the job (only the paths the Lean build reads)
-  local jsons
-  jsons=$(git -C "$REPO" show "$1:cs_formal_verification/lean/lakefile.toml" |
-    grep -oE '"(\.\./)+cs/compiled_circuits/[A-Za-z0-9_.-]+\.json"' | tr -d '"' | sed -E 's|^(\.\./)+||' | sort -u)
+  local jsons  # the circuit JSONs the Lean sources and the lakefile name (the tests also read a cached layout)
+  jsons=$(git -C "$REPO" grep -ohE 'compiled_circuits/[A-Za-z0-9_.-]+\.json' "$1" -- cs_formal_verification/lean |
+    sort -u | sed 's|^|cs/|')
   # shellcheck disable=SC2086
   git -C "$REPO" archive --format=tar -o "$2" "$1" cs_formal_verification $jsons
 }

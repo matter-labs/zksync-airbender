@@ -128,6 +128,7 @@ step_verify() {
 }
 
 step_report() {
+  set +o pipefail  # `| head` closes pipes early; the report must not fail the job
   local since=${1:-}
   cd "$LEAN"
   echo "== report"

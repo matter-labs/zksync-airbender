@@ -2,7 +2,7 @@
 
 `.github/workflows/lean-formal-verification.yml` runs `verify.sh` (build, regressions, axiom audits, the 30 s module
 budget, review check) on pull requests and pushes to `main` that touch `cs_formal_verification/` or the circuit
-JSONs the spec imports (`cs/compiled_circuits/*_layout_no_caches_gkr.json`), and on manual dispatch. It is a
+JSONs the spec imports and the tests read (`cs/compiled_circuits/*_gkr.json`), and on manual dispatch. It is a
 separate workflow: the `Rust CI` jobs and the `pr-checks` gate are unchanged.
 
 Every step is a subcommand of [lean-ci.sh](lean-ci.sh); the workflow and the Docker reproduction call the same

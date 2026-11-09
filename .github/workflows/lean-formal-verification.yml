@@ -20,13 +20,13 @@ on:
       - av_gkr_compiler
     paths:
       - "cs_formal_verification/**"
-      # the circuit JSONs the spec imports (lean/lakefile.toml [[input_file]])
-      - "cs/compiled_circuits/*_layout_no_caches_gkr.json"
+      # the circuit JSONs the spec imports (lean/lakefile.toml [[input_file]]) and the tests read
+      - "cs/compiled_circuits/*_gkr.json"
       - ".github/workflows/lean-formal-verification.yml"
   pull_request:
     paths:
       - "cs_formal_verification/**"
-      - "cs/compiled_circuits/*_layout_no_caches_gkr.json"
+      - "cs/compiled_circuits/*_gkr.json"
       - ".github/workflows/lean-formal-verification.yml"
   # nightly cold run (GitHub runs schedules from the default branch only: inert until this file is on main)
   schedule:
@@ -123,6 +123,15 @@ jobs:
         with:
           path: ~/.cache/mathlib
           key: mathlib-${{ hashFiles('cs_formal_verification/lean/lake-manifest.json') }}
+      # The dependencies' git checkouts (sources and .git, no build outputs; ~0.75 GB, Mathlib's history 0.5 GB of it):
+      # without them Lake clones them on every run (measured 4-7 min of the Mathlib step in the container).
+      - name: Restore the dependency checkouts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.LEAN_DIR }}/.lake/packages
+            !${{ env.LEAN_DIR }}/.lake/packages/*/.lake
+          key: lake-packages-${{ hashFiles('cs_formal_verification/lean/lake-manifest.json') }}
       - name: Mathlib cache (lake exe cache get)
         run: cs_formal_verification/ci/lean-ci.sh time mathlib
 

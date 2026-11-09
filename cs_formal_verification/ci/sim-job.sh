@@ -46,10 +46,15 @@ T lean-sail
 
 echo "== Mathlib cache (downloads cached: mathlib-<manifest hash>)"
 mkey="mathlib-$(sha256sum "$L/lake-manifest.json" | cut -c1-16)"
-mkdir -p /root/.cache/mathlib
+mkdir -p /root/.cache/mathlib "$L/.lake/packages"
 mhit=0; restore "$mkey" /root/.cache/mathlib && mhit=1
+# the dependencies' git checkouts (sources and .git, no build outputs): without them Lake clones Mathlib (0.5 GB of
+# history) and the rest on every run
+pkey="packages-$(sha256sum "$L/lake-manifest.json" | cut -c1-16)"
+phit=0; restore "$pkey" "$L/.lake/packages" && phit=1
 T mathlib
 (( mhit )) || save "$mkey" /root/.cache/mathlib .
+(( phit )) || save "$pkey" "$L/.lake/packages" --exclude='./*/.lake' .
 
 echo "== Lake build cache (restore: $from)"
 [[ "$from" == "-" ]] || restore "build-$from" "$L" || true
