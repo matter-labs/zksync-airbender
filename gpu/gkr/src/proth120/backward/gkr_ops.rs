@@ -135,17 +135,7 @@ pub(crate) fn build_combined_claim(
     assert_eq!(batching.len(), 1);
     assert_eq!(claim_out.len(), 1);
     assert_eq!(eq_prefactor_out.len(), 1);
-    assert_eq!(desc_pairs.len() % 2, 0);
-    let num_pairs = desc_pairs.len() / 2;
-    assert!(
-        num_pairs <= GKR_COMBINED_CLAIM_MAX_PAIRS,
-        "Proth120 combined claim has {num_pairs} pairs; the descriptor holds {GKR_COMBINED_CLAIM_MAX_PAIRS}"
-    );
-    let mut desc = GpuCombinedClaimDesc {
-        num_terms: num_pairs as u32,
-        ..Default::default()
-    };
-    desc.entries[..desc_pairs.len()].copy_from_slice(desc_pairs);
+    let desc = GpuCombinedClaimDesc::from_pairs(desc_pairs);
     let config = CudaLaunchConfig::basic(1u32, 256u32, stream);
     PrBuildCombinedClaimFunction::default().launch(
         &config,
