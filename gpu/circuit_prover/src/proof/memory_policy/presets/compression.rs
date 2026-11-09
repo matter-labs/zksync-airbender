@@ -4,13 +4,9 @@ use super::super::{
     WitnessPostCommitStorage,
 };
 
-/// A 21 GiB arena passes the bounded compression capacity matrix: commitment and proof
-/// stages, both allocation directions, and Standard, compression, and wrap followers
-/// (`gpu/execution_prover/tests/l1_memory.rs`). On the RTX PRO 6000 Blackwell
-/// (sm_120), the worst measured peak is 19,954,401,280 B for the 2^23 `Unified`
-/// Compression profile (LDE 4, cap 4), and 10,829,692,928 B for the 2^22 `Unified22` CompressionFinal profile
-/// (LDE 16, cap 16), both beside a Standard follower. The 21 GiB candidate is the
-/// smallest tested passing arena; no lower failing bracket establishes a minimum.
+/// Arena floor carried from the previously qualified compression source.
+/// Requalification uses A/C, commitment/proof and both allocation directions with `standard_it`.
+/// Other followers and lower arenas remain outside that evidence.
 pub const COMPRESSION_FINAL_FLOOR_BYTES: usize = 21 << 30;
 pub const COMPRESSION_FINAL_FLOOR_SOURCE: &str = "measured";
 
