@@ -75,7 +75,6 @@ pub(crate) fn small_programs() -> (
         )
         .unwrap(),
     );
-    println!("GKR_SMALL_FORWARD log_rows={minimum_log} tables={} search_population=8 search_evaluations=64 budget=4 geometry={}", artifact.total_tables_size, serde_json::to_string(&programs.geometry).unwrap());
     (artifact, programs)
 }
 
@@ -422,15 +421,6 @@ pub(crate) fn forward_fixture_full(context: &ProverContext) -> ForwardFixturePr 
         context,
     )
     .unwrap();
-    assert_eq!(lowered.constant_count, programs.geometry.constants);
-    assert_eq!(
-        lowered.source_window_count,
-        programs.geometry.source_windows
-    );
-    assert_eq!(
-        lowered.destination_slot_count,
-        programs.geometry.destination_slots
-    );
     assert_eq!(
         lowered.desc.layers[..lowered.desc.layer_count as usize]
             .iter()
@@ -442,10 +432,6 @@ pub(crate) fn forward_fixture_full(context: &ProverContext) -> ForwardFixturePr 
             .iter()
             .map(|layer| layer.program.instrs.len())
             .sum::<usize>()
-    );
-    println!(
-        "GKR_BOUND_FORWARD constants={} sources={} destinations={}",
-        lowered.constant_count, lowered.source_window_count, lowered.destination_slot_count
     );
     drop(parity_storage);
     drop(forward_setup);
@@ -905,9 +891,6 @@ fn pr_partial_block_vm_and_tower_are_guarded() {
         desc,
         lookup_additive_slot: None,
         decoder_fill_slot: None,
-        constant_count: 0,
-        source_window_count: 1,
-        destination_slot_count: 1,
     };
     let prepared = PreparedDimensionReductionForward {
         initial_trace_log_2: 8,

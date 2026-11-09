@@ -97,7 +97,7 @@ fn pr_continuation_mask_dispatch_panics_by_name() {
     let tiles: Vec<usize> = [3, 6, 9, 12]
         .into_iter()
         .map(|start| {
-            let (shape, row_tiles) = publication_shape_pr(program, folding_steps, start).unwrap();
+            let (shape, row_tiles) = publication_shape_pr(program, folding_steps, start);
             assert_eq!(shape.columns, program.sources.len());
             assert_eq!(shape.column_elems, 8 << (18 - start));
             row_tiles

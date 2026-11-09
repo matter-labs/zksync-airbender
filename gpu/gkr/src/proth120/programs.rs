@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use gpu_gkr_compiler::geometry::{validate_proth120, BackwardPrograms, GeometryReport};
 use gpu_gkr_compiler::{
     compile_continuations_with_model, compile_forward_with_model, compile_r0_with_model,
     lower_main_continuation_window_program, lower_main_tail_program, parse_forward_artifact,
@@ -27,7 +26,6 @@ pub struct GkrProgramsPr {
     pub continuations: ContinuationProgramBundle,
     pub main_continuation_window: Vec<MainContinuationWindowProgram>,
     pub main_tail: Vec<MainTailProgram>,
-    pub geometry: GeometryReport,
     pub(crate) storage_layout: Arc<GpuGKRStorageLayout>,
     pub(crate) backward_layers: Vec<BackwardLayerPlan>,
 }
@@ -98,18 +96,6 @@ impl GkrProgramsPr {
             .iter()
             .map(lower_main_tail_program)
             .collect();
-        let geometry = validate_proth120(
-            &dag,
-            &forward,
-            &BackwardPrograms {
-                r0: &r0,
-                continuations: &continuations,
-                main_continuation_window: &main_continuation_window,
-                main_tail: &main_tail,
-            },
-            &artifact,
-        )
-        .map_err(|e| format!("Proth120 native geometry: {e}"))?;
         let challenge_plan = ForwardChallengePlan::new(&dag, &forward, &runtime_circuit);
         let backward_layers = backward_layer_plans(&dag, &continuations);
         let storage_layout = Arc::new(GpuGKRStorageLayout::from_artifact_with_tower(
@@ -125,7 +111,6 @@ impl GkrProgramsPr {
             continuations,
             main_continuation_window,
             main_tail,
-            geometry,
             storage_layout,
             backward_layers,
         })

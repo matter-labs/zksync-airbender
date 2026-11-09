@@ -9,8 +9,7 @@ use gpu_prover_context::ProverContext;
 #[cfg(test)]
 pub(crate) use binding::publication_shape_pr;
 pub(crate) use binding::{
-    bind_first_main_continuation_pr, bind_later_main_continuation_pr, MainContinuationBindErrorPr,
-    MainContinuationScratchPr,
+    bind_first_main_continuation_pr, bind_later_main_continuation_pr, MainContinuationScratchPr,
 };
 pub(crate) use dispatch::{launch_main_continuation_pr, resolve_pr_main_continuation_kernel};
 pub(crate) use publication::{ContinuationPublishedLevelPr, PR_MAIN_FINAL_EVALUATIONS_PER_ADDRESS};
@@ -84,20 +83,6 @@ impl MainContinuationSequencePr {
         self.final_eq_boundary
     }
 
-    fn unwrap_binding<T>(
-        result: Result<T, MainContinuationBindErrorPr>,
-        layer_idx: usize,
-        pass_start: usize,
-    ) -> CudaResult<T> {
-        match result {
-            Ok(value) => Ok(value),
-            Err(MainContinuationBindErrorPr::Cuda(error)) => Err(error),
-            Err(error) => panic!(
-                "Proth120 main continuation binding for layer {layer_idx} pass {pass_start}: {error:?}"
-            ),
-        }
-    }
-
     pub(crate) fn schedule_windows(
         &mut self,
         program: &MainContinuationWindowProgram,
@@ -141,17 +126,13 @@ impl MainContinuationSequencePr {
             )?;
             let launched = match self.published.as_ref() {
                 None => {
-                    let launch = Self::unwrap_binding(
-                        bind_first_main_continuation_pr(
-                            program,
-                            self.kernel,
-                            storage,
-                            folding_steps,
-                            scratch,
-                            context,
-                        ),
-                        self.layer_idx,
-                        pass_start,
+                    let launch = bind_first_main_continuation_pr(
+                        program,
+                        self.kernel,
+                        storage,
+                        folding_steps,
+                        scratch,
+                        context,
                     )?;
                     note_device(
                         context,
@@ -164,18 +145,14 @@ impl MainContinuationSequencePr {
                     launch_main_continuation_pr(launch, context)?
                 }
                 Some(prior) => {
-                    let launch = Self::unwrap_binding(
-                        bind_later_main_continuation_pr(
-                            program,
-                            self.kernel,
-                            prior,
-                            folding_steps,
-                            pass_start,
-                            scratch,
-                            context,
-                        ),
-                        self.layer_idx,
+                    let launch = bind_later_main_continuation_pr(
+                        program,
+                        self.kernel,
+                        prior,
+                        folding_steps,
                         pass_start,
+                        scratch,
+                        context,
                     )?;
                     note_device(
                         context,

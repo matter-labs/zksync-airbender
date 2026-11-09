@@ -128,8 +128,7 @@ pub(crate) fn prepare_vm(
     };
     let mut lowered = lower_desc(&programs.forward.layers, &header, &|address| {
         resolve_storage_column(storage, address)
-    })
-    .unwrap_or_else(|e| panic!("Proth120 forward VM lowering failed: {e:?}"));
+    });
     assert_eq!(
         lowered.lookup_additive_slot, programs.challenge_plan.lookup_additive_slot,
         "Proth120 lookup bank slot mismatch"
