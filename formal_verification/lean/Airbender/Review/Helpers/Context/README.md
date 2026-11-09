@@ -700,3 +700,11 @@ update from the last reset over ALL matching worker42 path-edge positions.
 Equal-value/zero-mask updates and MAIN copies remain; count bounds and zero IFF
 no worker are derived. Original worker-source occurrence bijection, issued-call
 counts, physical scheduling and standard hash remain open.
+
+## Original worker-source positions
+
+[Source-position connection](../../Trace/Families/ReducedMachine/ControlSourceTheorems.lean) derives unique partners between actual
+worker42 path positions and ORIGINAL complete workerRows active indices. Every
+segment fold count equals its original source-index cardinality, retaining
+equal-value/zero-mask updates and MAIN copies. Issued-call counts, physical
+scheduling and standard hash remain open.

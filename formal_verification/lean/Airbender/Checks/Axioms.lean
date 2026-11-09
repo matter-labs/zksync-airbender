@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.ControlSource
+import Airbender.Proofs.ReducedMachine.NativeControlSource
+import Airbender.Review.Trace.Families.ReducedMachine.ControlSourceTheorems
+import Tests.NativeControlSource
+
 import Airbender.Review.Trace.Families.ReducedMachine.ControlFold
 import Airbender.Proofs.ReducedMachine.NativeControlFold
 import Airbender.Review.Trace.Families.ReducedMachine.ControlFoldTheorems
@@ -8547,3 +8552,43 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeControlFold.prior_last_reset_retained
 #print axioms Airbender.Tests.NativeControlFold.old_joint_retained
 #print axioms Airbender.Tests.NativeControlFold.full_counted_source
+
+#print axioms Airbender.NativeControlSourceProofs.edge_position
+#print axioms Airbender.NativeControlSourceProofs.edge_injective
+#print axioms Airbender.NativeControlSourceProofs.segment_injective
+#print axioms Airbender.NativeControlSourceProofs.matching_card
+#print axioms Airbender.NativeControlSourceProofs.flags_card
+#print axioms Airbender.NativeControlSourceProofs.source_unique
+#print axioms Airbender.NativeControlSourceProofs.source_member
+#print axioms Airbender.NativeControlSourceProofs.matching
+#print axioms Airbender.NativeControlSourceProofs.segment_position
+#print axioms Airbender.NativeControlSourceProofs.count_source
+#print axioms Airbender.NativeControlSourceProofs.source_count_bound
+#print axioms Airbender.NativeControlSourceProofs.source_fold
+#print axioms Airbender.NativeControlSourceProofs.from_prior
+#print axioms Airbender.NativeControlSourceProofs.counted
+#print axioms Airbender.NativeControlSource.native_counted_control_sources
+#print axioms Airbender.Tests.NativeControlSource.original_active_indices
+#print axioms Airbender.Tests.NativeControlSource.equal_inactive_key_retained
+#print axioms Airbender.Tests.NativeControlSource.complete_source_domain
+#print axioms Airbender.Tests.NativeControlSource.wrong_membership_count_rejected
+#print axioms Airbender.Tests.NativeControlSource.original_partner_cardinality
+#print axioms Airbender.Tests.NativeControlSource.empty_partner_cardinality
+#print axioms Airbender.Tests.NativeControlSource.selected_flags_cardinality
+#print axioms Airbender.Tests.NativeControlSource.selected_count_two
+#print axioms Airbender.Tests.NativeControlSource.every_consecutive_original_position
+#print axioms Airbender.Tests.NativeControlSource.edge_occurrence_position
+#print axioms Airbender.Tests.NativeControlSource.exact_edge_injective
+#print axioms Airbender.Tests.NativeControlSource.segment_indices_injective
+#print axioms Airbender.Tests.NativeControlSource.equal_values_distinct_raw_edges
+#print axioms Airbender.Tests.NativeControlSource.equal_value_workers_still_counted
+#print axioms Airbender.Tests.NativeControlSource.inactive_CSR_kept
+#print axioms Airbender.Tests.NativeControlSource.exact_source_relation
+#print axioms Airbender.Tests.NativeControlSource.every_segment_source_unique
+#print axioms Airbender.Tests.NativeControlSource.source_count_original_bound
+#print axioms Airbender.Tests.NativeControlSource.same_path_positions_and_counts
+#print axioms Airbender.Tests.NativeControlSource.every_target_and_worker_retained
+#print axioms Airbender.Tests.NativeControlSource.all_ordinary_CSR_edges_same_path
+#print axioms Airbender.Tests.NativeControlSource.old_fold_retained
+#print axioms Airbender.Tests.NativeControlSource.old_joint_retained
+#print axioms Airbender.Tests.NativeControlSource.full_counted_source

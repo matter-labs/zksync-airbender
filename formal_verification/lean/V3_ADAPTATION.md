@@ -1,5 +1,56 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Original worker-source positions and control counts (9 November 2026)
+
+[Source observations](Airbender/Review/Trace/Families/ReducedMachine/ControlSource.lean),
+[proof](Airbender/Proofs/ReducedMachine/NativeControlSource.lean) and
+[short root](Airbender/Review/Trace/Families/ReducedMachine/ControlSourceTheorems.lean)
+derive a bijection between ALL actual worker42 path-edge positions and the
+ORIGINAL active workerRows SOURCE indices on ONE SAME complete initialized x12
+path. Both directions identify unique original positions. The source-index domain
+is the COMPLETE original list, including inactive positions; activity selects the
+relation without changing acceptance. Exact full read42/write42 tokens retain
+BOTH raw times and values. Equal-value and zero-mask worker updates still count.
+
+Old active worker raw-clock Nodup, natural unique-count/original-index results,
+actual write-clock identity and full History.ports/worker coverage/path distinctness
+supply the connection. No membership-only deduplication or assumed source count
+is used. Generic bounded edge selection/injectivity, unique-partner cardinality
+and Bool-position counting precede native data. For EVERY original target and
+bounded start, the earlier path workerCount equals the cardinality of ORIGINAL
+source indices whose exact control edge occurs in that segment. This sourceCount
+is bounded by the complete workerRows length; the exact BOTH-limb fold uses the
+same derived count. No source ordering is identified with a physical schedule.
+
+The SAME old counted SourceAccepted/public image/log20/OLD LogicalLookups/OLD
+explicit SourceIdentity derives this result. All prior last-reset/public origins,
+ordinary arithmetic/logic/comparison-high-zero/shift/jump/LW/CSR edges and values,
+every target/active-worker outcome, accounting/JOINT43-port execution/25 weighted
+outputs/word bounds/capacity/MAIN dependencies remain on THIS SAME path. All
+inactive requests/AUX/m0 poles/inactive D/43 ports/OLDREADs/refreshes/aliases/
+unmasked SW/public x0 times remain accepted. Rank is noninjective proof order.
+No desired count/read/range/reset/address/history/result/one-hot/round/schedule/
+activity/matching/fulfilled-ledger premise or new Accepted/crypto boundary is added.
+
+[24 controls](Tests/NativeControlSource.lean) cover original inactive/active indices
+with equal keys, complete source domains, unique partners/cardinality, bounded
+original path/segment positions, equal-value raw edges, inactive CSR retention,
+actual source relations/count bounds and all prior effects on the same path.
+Pure finite labels/tokens, OLD LOCAL and conditional consequences only; no new
+native-global/wholeworker/physical accepted witness, attack, defect or
+absence-all-other-enforcement evidence. Review contains observations/short root;
+calculations and assembly stay under Proofs, with unchanged Import fidelity.
+
+The worker-SOURCE-occurrence connection is now closed; earlier open notes are
+superseded for this connection. Issued-call counts/physical caller activity,
+standard round/hash schedules, larger-batch universal no-wrap/matching, original
+CSR/NDstream/MOP/worker Sail, protocol spans/padding-terminal/init-teardown,
+physical cryptography/completeness/general physical setup/parity remain open.
+No native adoption/pin/parser/importer/exporter/artifact/fixture/generation/heavy
+replay/dependency/v3 refresh/production/Sail/old acceptance/FINDINGS change.
+Zero established native defects; counts are not parity.
+
+
 ## Exact control folds over worker path positions (9 November 2026)
 
 [Control fold observations](Airbender/Review/Trace/Families/ReducedMachine/ControlFold.lean),
