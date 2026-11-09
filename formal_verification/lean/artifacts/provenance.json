@@ -20806,6 +20806,83 @@
       "backport_reuse_revision": "12b8823b04782587efba7e42cbc8ad8e8776ca29",
       "backport_reuse_path": "Tests/NativeInitializationWindow.lean",
       "backport_reuse_sha256": "e13310b8f1cb40bac2eeb07fca5725d981f273577ac00d429cfd576a09f809d5"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/InactiveGlobal.lean",
+      "change": "Precisely reject ANY indexed repetition of SAME constant inactive request-positive original complete main/scalar/decoder/init component under OLD full SourceAccepted plus OLD SourceIdentity/public-image-log20 boundary. Pack actual shared observations unchanged. Generic full-list weights/sampling derive count*8388607 at actual (1991,0,7,0) key; OLD counter derives1..8192; OLD quotient/aggregate Boolean results exclude EVERY allowed count including>=257. Logical decoder lookups DERIVED from inactivity. No smallbatch/activity/count/matching/desired sum/ledger premise or old Accepted/boundary change. Local components retained, not physical activity/verifier/crypto enforcement/native defect/absence-other-enforcement/global positive witness/parity. No native pin/adoption/production/heavy replay/dependency/v3 refresh.",
+      "backport_reuse_revision": "a28a2b94c797369419ebfea9adae86109195d63b",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/InitializationComponent.lean",
+      "backport_reuse_sha256": "9426b3448feca476323ee44d4ce7942dbb34c5ac0421a31bb81381332f00d81c"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/InactiveGlobal.lean",
+      "change": "Precisely reject ANY indexed repetition of SAME constant inactive request-positive original complete main/scalar/decoder/init component under OLD full SourceAccepted plus OLD SourceIdentity/public-image-log20 boundary. Pack actual shared observations unchanged. Generic full-list weights/sampling derive count*8388607 at actual (1991,0,7,0) key; OLD counter derives1..8192; OLD quotient/aggregate Boolean results exclude EVERY allowed count including>=257. Logical decoder lookups DERIVED from inactivity. No smallbatch/activity/count/matching/desired sum/ledger premise or old Accepted/boundary change. Local components retained, not physical activity/verifier/crypto enforcement/native defect/absence-other-enforcement/global positive witness/parity. No native pin/adoption/production/heavy replay/dependency/v3 refresh.",
+      "backport_reuse_revision": "a28a2b94c797369419ebfea9adae86109195d63b",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/MainDecoder.lean",
+      "backport_reuse_sha256": "3d3202efbb3ab831c3ccf18e7cec8d0fdb15c94a2392fb97fbc0b6d99f724b5a"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/InactiveGlobal.lean",
+      "change": "Precisely reject ANY indexed repetition of SAME constant inactive request-positive original complete main/scalar/decoder/init component under OLD full SourceAccepted plus OLD SourceIdentity/public-image-log20 boundary. Pack actual shared observations unchanged. Generic full-list weights/sampling derive count*8388607 at actual (1991,0,7,0) key; OLD counter derives1..8192; OLD quotient/aggregate Boolean results exclude EVERY allowed count including>=257. Logical decoder lookups DERIVED from inactivity. No smallbatch/activity/count/matching/desired sum/ledger premise or old Accepted/boundary change. Local components retained, not physical activity/verifier/crypto enforcement/native defect/absence-other-enforcement/global positive witness/parity. No native pin/adoption/production/heavy replay/dependency/v3 refresh.",
+      "backport_reuse_revision": "a28a2b94c797369419ebfea9adae86109195d63b",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ScalarTableCompletion.lean",
+      "backport_reuse_sha256": "1248845abc5b1d4604c7ba80bae02aee92d1a7789177212e25ad3559c01f69f2"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/InactiveGlobal.lean",
+      "change": "Precisely reject ANY indexed repetition of SAME constant inactive request-positive original complete main/scalar/decoder/init component under OLD full SourceAccepted plus OLD SourceIdentity/public-image-log20 boundary. Pack actual shared observations unchanged. Generic full-list weights/sampling derive count*8388607 at actual (1991,0,7,0) key; OLD counter derives1..8192; OLD quotient/aggregate Boolean results exclude EVERY allowed count including>=257. Logical decoder lookups DERIVED from inactivity. No smallbatch/activity/count/matching/desired sum/ledger premise or old Accepted/boundary change. Local components retained, not physical activity/verifier/crypto enforcement/native defect/absence-other-enforcement/global positive witness/parity. No native pin/adoption/production/heavy replay/dependency/v3 refresh.",
+      "backport_reuse_revision": "a28a2b94c797369419ebfea9adae86109195d63b",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/InitializationBatch.lean",
+      "backport_reuse_sha256": "6b8d9ea269577a16c64decf9037edce987719472150e21c2b3b68499a773fc0b"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeInactiveGlobal.lean",
+      "change": "Precisely reject ANY indexed repetition of SAME constant inactive request-positive original complete main/scalar/decoder/init component under OLD full SourceAccepted plus OLD SourceIdentity/public-image-log20 boundary. Pack actual shared observations unchanged. Generic full-list weights/sampling derive count*8388607 at actual (1991,0,7,0) key; OLD counter derives1..8192; OLD quotient/aggregate Boolean results exclude EVERY allowed count including>=257. Logical decoder lookups DERIVED from inactivity. No smallbatch/activity/count/matching/desired sum/ledger premise or old Accepted/boundary change. Local components retained, not physical activity/verifier/crypto enforcement/native defect/absence-other-enforcement/global positive witness/parity. No native pin/adoption/production/heavy replay/dependency/v3 refresh.",
+      "backport_reuse_revision": "a28a2b94c797369419ebfea9adae86109195d63b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeDelegationKeyAccounting.lean",
+      "backport_reuse_sha256": "b1e2c25da720a3ca9958401dc0fc22925ade8f82e4a94ec0960eb5ec747e7094"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeInactiveGlobal.lean",
+      "change": "Precisely reject ANY indexed repetition of SAME constant inactive request-positive original complete main/scalar/decoder/init component under OLD full SourceAccepted plus OLD SourceIdentity/public-image-log20 boundary. Pack actual shared observations unchanged. Generic full-list weights/sampling derive count*8388607 at actual (1991,0,7,0) key; OLD counter derives1..8192; OLD quotient/aggregate Boolean results exclude EVERY allowed count including>=257. Logical decoder lookups DERIVED from inactivity. No smallbatch/activity/count/matching/desired sum/ledger premise or old Accepted/boundary change. Local components retained, not physical activity/verifier/crypto enforcement/native defect/absence-other-enforcement/global positive witness/parity. No native pin/adoption/production/heavy replay/dependency/v3 refresh.",
+      "backport_reuse_revision": "a28a2b94c797369419ebfea9adae86109195d63b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeCallerCount.lean",
+      "backport_reuse_sha256": "4aecf792e1cd73b1197b3742c1718f8f102e18f2b9b51fda64d8ea6737554368"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeInactiveGlobal.lean",
+      "change": "Precisely reject ANY indexed repetition of SAME constant inactive request-positive original complete main/scalar/decoder/init component under OLD full SourceAccepted plus OLD SourceIdentity/public-image-log20 boundary. Pack actual shared observations unchanged. Generic full-list weights/sampling derive count*8388607 at actual (1991,0,7,0) key; OLD counter derives1..8192; OLD quotient/aggregate Boolean results exclude EVERY allowed count including>=257. Logical decoder lookups DERIVED from inactivity. No smallbatch/activity/count/matching/desired sum/ledger premise or old Accepted/boundary change. Local components retained, not physical activity/verifier/crypto enforcement/native defect/absence-other-enforcement/global positive witness/parity. No native pin/adoption/production/heavy replay/dependency/v3 refresh.",
+      "backport_reuse_revision": "a28a2b94c797369419ebfea9adae86109195d63b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeMainBatch.lean",
+      "backport_reuse_sha256": "6f66ede4dbca4192a5bd6c907f432ad283dc4d0649cf2a1326770b010790b362"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeInactiveGlobal.lean",
+      "change": "Precisely reject ANY indexed repetition of SAME constant inactive request-positive original complete main/scalar/decoder/init component under OLD full SourceAccepted plus OLD SourceIdentity/public-image-log20 boundary. Pack actual shared observations unchanged. Generic full-list weights/sampling derive count*8388607 at actual (1991,0,7,0) key; OLD counter derives1..8192; OLD quotient/aggregate Boolean results exclude EVERY allowed count including>=257. Logical decoder lookups DERIVED from inactivity. No smallbatch/activity/count/matching/desired sum/ledger premise or old Accepted/boundary change. Local components retained, not physical activity/verifier/crypto enforcement/native defect/absence-other-enforcement/global positive witness/parity. No native pin/adoption/production/heavy replay/dependency/v3 refresh.",
+      "backport_reuse_revision": "a28a2b94c797369419ebfea9adae86109195d63b",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeInitializationComponent.lean",
+      "backport_reuse_sha256": "de329148a632208d6d414e648cc83e3c0da4d1010f6ae317cf1216765649043f"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/InactiveGlobalTheorems.lean",
+      "change": "Precisely reject ANY indexed repetition of SAME constant inactive request-positive original complete main/scalar/decoder/init component under OLD full SourceAccepted plus OLD SourceIdentity/public-image-log20 boundary. Pack actual shared observations unchanged. Generic full-list weights/sampling derive count*8388607 at actual (1991,0,7,0) key; OLD counter derives1..8192; OLD quotient/aggregate Boolean results exclude EVERY allowed count including>=257. Logical decoder lookups DERIVED from inactivity. No smallbatch/activity/count/matching/desired sum/ledger premise or old Accepted/boundary change. Local components retained, not physical activity/verifier/crypto enforcement/native defect/absence-other-enforcement/global positive witness/parity. No native pin/adoption/production/heavy replay/dependency/v3 refresh.",
+      "backport_reuse_revision": "a28a2b94c797369419ebfea9adae86109195d63b",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/InitializationComponentTheorems.lean",
+      "backport_reuse_sha256": "a0e3e9635b2db84293800f029d3d8ff70ccf6647f979395f3a80898aaa93fdd8"
+    },
+    {
+      "path": "Tests/NativeInactiveGlobal.lean",
+      "change": "Precisely reject ANY indexed repetition of SAME constant inactive request-positive original complete main/scalar/decoder/init component under OLD full SourceAccepted plus OLD SourceIdentity/public-image-log20 boundary. Pack actual shared observations unchanged. Generic full-list weights/sampling derive count*8388607 at actual (1991,0,7,0) key; OLD counter derives1..8192; OLD quotient/aggregate Boolean results exclude EVERY allowed count including>=257. Logical decoder lookups DERIVED from inactivity. No smallbatch/activity/count/matching/desired sum/ledger premise or old Accepted/boundary change. Local components retained, not physical activity/verifier/crypto enforcement/native defect/absence-other-enforcement/global positive witness/parity. No native pin/adoption/production/heavy replay/dependency/v3 refresh.",
+      "backport_reuse_revision": "a28a2b94c797369419ebfea9adae86109195d63b",
+      "backport_reuse_path": "Tests/NativeInitializationComponent.lean",
+      "backport_reuse_sha256": "65c1da0628c69be92cf0ea4b57e6693d9d7fe331ea003474affcc6a396bc4613"
+    },
+    {
+      "path": "Tests/NativeInactiveGlobal.lean",
+      "change": "Precisely reject ANY indexed repetition of SAME constant inactive request-positive original complete main/scalar/decoder/init component under OLD full SourceAccepted plus OLD SourceIdentity/public-image-log20 boundary. Pack actual shared observations unchanged. Generic full-list weights/sampling derive count*8388607 at actual (1991,0,7,0) key; OLD counter derives1..8192; OLD quotient/aggregate Boolean results exclude EVERY allowed count including>=257. Logical decoder lookups DERIVED from inactivity. No smallbatch/activity/count/matching/desired sum/ledger premise or old Accepted/boundary change. Local components retained, not physical activity/verifier/crypto enforcement/native defect/absence-other-enforcement/global positive witness/parity. No native pin/adoption/production/heavy replay/dependency/v3 refresh.",
+      "backport_reuse_revision": "a28a2b94c797369419ebfea9adae86109195d63b",
+      "backport_reuse_path": "Tests/NativeCallerCount.lean",
+      "backport_reuse_sha256": "d21123d22390b71aa87d9013c8e5bcd0bd246deadbb7cda55d3394809a91386a"
     }
   ],
   "setup_artifacts": [

@@ -1,5 +1,40 @@
 # Trust and review boundaries
 
+## Constant inactive component: complete global rejection
+
+[The repeated-source rejection](Airbender/Review/Trace/Families/ReducedMachine/InactiveGlobalTheorems.lean)
+checks the next global obligation for the existing complete inactive CSR1991/x0
+component. Its actual main, scalar/decoder observations and observed endpoints are
+packed together without changing them. Every position of a u32-indexed batch is
+that same component. Duplicate positions and all request-positive ordinary rows
+remain. This candidate cannot extend to full SourceAccepted plus the OLD explicit
+SourceIdentity boundary, under the original public-image/log20 scope, for ANY
+worker batch or copy count. Decoder logical lookups are derived from inactivity.
+
+The original global accounting result derives caller aggregate 0 or 1 at every
+full four-field key from initialized memory and unique active worker writes. The
+actual original key is (1991,0,7,0), with request1 on all8388607 ordinary rows.
+Generic full-list sampling/weight calculations derive aggregate count*8388607;
+no list occurrence is deduplicated. Native counter acceptance derives 1<=count<=8192.
+Since 2147483647=256*8388607+255, the old Euclidean quotient bound proves that this
+aggregate is neither 0 nor 1 for EVERY allowed count, including >=257. No small-batch,
+activity, count, matching, desired sum or fulfilled-ledger premise is added. All16
+controls pass, including the field-wrap boundary and zero/excess count rejection.
+
+This precisely excludes the constant component's logical global completion. It
+does not reject its already checked local memory/caller/decoder/scalar/window
+components, establish physical caller activity, extract SourceIdentity from fixed
+challenges, or demonstrate a native defect/absence-all-other-enforcement. FINDINGS
+and all native/v3/dependency pins remain unchanged. Primitive-domain construction,
+physical extraction/FFT and the explicitly challenge-dependent scalar gamma0
+fixture scope remain separate. Next assess a NONCONSTANT full native source with
+nonempty workers. General caller activity, larger-batch matching, original CSR/
+NDstream/MOP-worker Sail, schedules/hash, protocol/padding/terminal/init-teardown,
+physical cryptography, completeness and parity remain open. All inactive requests,
+poles, full domains/ports/raw times/OLDREAD/refresh/aliases/unmasked writes/x0 and
+the general >=257 alternative remain; no production fix or heavy replay occurs.
+
+
 ## Observed initialization endpoints and complete window component
 
 [The initialization component](Airbender/Review/Trace/Families/ReducedMachine/InitializationComponentTheorems.lean)

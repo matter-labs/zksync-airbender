@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.InactiveGlobal
+import Airbender.Proofs.ReducedMachine.NativeInactiveGlobal
+import Airbender.Review.Trace.Families.ReducedMachine.InactiveGlobalTheorems
+import Tests.NativeInactiveGlobal
+
 import Airbender.Review.Trace.Families.ReducedMachine.InitializationComponent
 import Airbender.Proofs.ReducedMachine.NativeInitializationComponent
 import Airbender.Review.Trace.Families.ReducedMachine.InitializationComponentTheorems
@@ -8902,3 +8907,35 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeInitializationComponent.all_four_public_address_bounds
 #print axioms Airbender.Tests.NativeInitializationComponent.original_joint_constructor
 #print axioms Airbender.Tests.NativeInitializationComponent.full_joint_fixture
+
+#print axioms Airbender.NativeInactiveGlobalProofs.constant_weight
+#print axioms Airbender.NativeInactiveGlobalProofs.sampled_constant
+#print axioms Airbender.NativeInactiveGlobalProofs.residue_not_bit
+#print axioms Airbender.NativeInactiveGlobalProofs.copy_proofs
+#print axioms Airbender.NativeInactiveGlobalProofs.copy_rows
+#print axioms Airbender.NativeInactiveGlobalProofs.copy_weight
+#print axioms Airbender.NativeInactiveGlobalProofs.inactive_lookups
+#print axioms Airbender.NativeInactiveGlobalProofs.reject_constant
+#print axioms Airbender.NativeInactiveGlobalProofs.packed_main
+#print axioms Airbender.NativeInactiveGlobalProofs.packed_scalar
+#print axioms Airbender.NativeInactiveGlobalProofs.packed_decoder
+#print axioms Airbender.NativeInactiveGlobalProofs.packed_values
+#print axioms Airbender.NativeInactiveGlobalProofs.original_fields
+#print axioms Airbender.NativeInactiveGlobalProofs.reject_completion
+#print axioms Airbender.NativeInactiveGlobal.native_repeated_inactive_source_rejected
+#print axioms Airbender.Tests.NativeInactiveGlobal.characteristic_capacity
+#print axioms Airbender.Tests.NativeInactiveGlobal.original_body
+#print axioms Airbender.Tests.NativeInactiveGlobal.inactive_request_kept
+#print axioms Airbender.Tests.NativeInactiveGlobal.exact_four_field_key
+#print axioms Airbender.Tests.NativeInactiveGlobal.duplicate_positions_count
+#print axioms Airbender.Tests.NativeInactiveGlobal.empty_domain
+#print axioms Airbender.Tests.NativeInactiveGlobal.zero_count_has_zero_weight
+#print axioms Airbender.Tests.NativeInactiveGlobal.one_copy_not_boolean
+#print axioms Airbender.Tests.NativeInactiveGlobal.count256_not_boolean
+#print axioms Airbender.Tests.NativeInactiveGlobal.count257_not_boolean
+#print axioms Airbender.Tests.NativeInactiveGlobal.maximum_count_not_boolean
+#print axioms Airbender.Tests.NativeInactiveGlobal.before_wrap
+#print axioms Airbender.Tests.NativeInactiveGlobal.after_wrap
+#print axioms Airbender.Tests.NativeInactiveGlobal.original_components_remain
+#print axioms Airbender.Tests.NativeInactiveGlobal.zero_counter_rejected
+#print axioms Airbender.Tests.NativeInactiveGlobal.over_capacity_rejected

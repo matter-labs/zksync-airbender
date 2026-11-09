@@ -2096,3 +2096,11 @@ MAIN/caller/decoder/scalar source. All ten logical scalar memberships, actual
 first/N-2 public records, ordinary padding and every indexed repeated window are
 derived. Verifier counters, global memory/delegation, nonempty workers and
 physical refinement remain open; duplicate positions and raw fields remain.
+
+## Constant component global rejection
+
+[Every indexed copy count](Airbender/Review/Trace/Families/ReducedMachine/InactiveGlobalTheorems.lean) of the same inactive request-positive
+component is rejected by full SourceAccepted plus OLD SourceIdentity/public-image
+scope. Counter limits and logical decoder lookups are derived; >=257 is covered.
+All local components remain. Nonconstant global source/nonempty workers, physical
+caller activity, cryptography and parity remain open; no native defect is claimed.
