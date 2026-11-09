@@ -485,12 +485,11 @@ fn pr_lde_coset_slot_fused_scale_parity() {
 #[test]
 #[cfg(not(no_cuda))]
 fn pr_lde_coset_slot_small_l2_parity() {
-    use super::{has_reference_finish, lde_coset, lde_coset_slot, lde_finish_reference};
-    use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
+    use super::{has_reference_finish, lde_coset_slot, lde_finish_reference};
+
     let ctx = DeviceContext::create().unwrap();
     let stream = CudaStream::create().unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_3401);
-    let nu = domain_generator_for_size::<PR>(1u64 << 31);
     let k = 5u32;
     // Diagnostic rows with the production base/setup columns and WHIR fold.
     for (log_n, columns, log_v, skip_bottom, cols) in
@@ -537,18 +536,9 @@ fn pr_lde_coset_slot_small_l2_parity() {
             );
             if has_reference_finish(plan) {
                 lde_finish_reference(&ctx, &mut candidate, cols, plan, &stream).unwrap();
-                let offset = upload(&[nu.pow_u128(k as u128)]);
-                lde_coset(
-                    &ctx,
-                    &DeviceMatrix::new(&device_monomials, rows),
-                    &mut DeviceMatrixMut::new(&mut reference, rows),
-                    &offset,
-                    &stream,
-                )
-                .unwrap();
-                assert!(
-                    download(&candidate, &stream) == download(&reference, &stream),
-                    "({log_n},{columns},{log_v},{skip_bottom}) L2 {l2_mib} MiB: LDE differs"
+                assert_eq!(
+                    download(&candidate, &stream),
+                    cpu_coset(&monomials, log_n, 31, k)
                 );
             }
             println!(

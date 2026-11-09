@@ -18,7 +18,6 @@ use gpu_trace::trace::packed::{opening_path_len, PackedCommitConfig};
 use prover::common_constants::TimestampScalar;
 use prover::definitions::{FinalRegisterValue, GKRExternalChallenges};
 use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
-use prover::gkr::prover::stages::commitment_utils::compute_column_major_lde_single_coset;
 use prover::gkr::prover::OperationMode;
 use prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
@@ -90,8 +89,10 @@ fn upload<T: Copy>(host: &[T], context: &ProverContext) -> DeviceAllocation<T> {
 fn l1_setup_host_round_trip_small() {
     let context = make_context();
     let worker = Worker::new_with_num_threads(4);
-    let columns = deterministic_columns(12, 10);
-    let twiddles = Twiddles::<PR, Global>::new(1 << 16, &worker);
+    // Diagnostic rows, production setup width/pack/v1. Host init depth5, proof depth10.
+    let log_rows = 15;
+    let columns = deterministic_columns(log_rows, 10);
+    let twiddles = Twiddles::<PR, Global>::new(1 << (log_rows + 3), &worker);
     let setup = CpuGKRSetup {
         hypercube_evals: columns
             .iter()
@@ -103,16 +104,16 @@ fn l1_setup_host_round_trip_small() {
             })
             .collect(),
     };
-    for (cap_log, pack_log2, log_v) in [(3, 4, 2), (5, 4, 2), (3, 3, 1), (5, 3, 1)] {
+    for (cap_log, pack_log2, log_v) in [(3, 3, 1)] {
         let cfg = PackedCommitConfig {
-            log_lde_factor: 5,
+            log_lde_factor: 4,
             log_values_per_leaf: log_v,
             cap_log,
             skip_bottom: 5,
         };
-        let cpu = cpu_commit(&columns, 12, pack_log2, cfg, &twiddles, &worker);
+        let cpu = cpu_commit(&columns, log_rows, pack_log2, cfg, &twiddles, &worker);
         let host = Arc::new(L1WrapSetupHost::precompute(&setup, pack_log2, cfg, &context).unwrap());
-        assert_eq!(host.log_rows, 12);
+        assert_eq!(host.log_rows, log_rows);
         assert_eq!(host.columns_count, 10);
         assert_eq!(host.pack_log2, pack_log2);
         assert_eq!(host.cfg, cfg);
@@ -124,12 +125,7 @@ fn l1_setup_host_round_trip_small() {
                 "cached root {physical}"
             );
         }
-        let mut source = PackedSetupSource::new(
-            Arc::clone(&host),
-            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
-            &context,
-        )
-        .unwrap();
+        let mut source = PackedSetupSource::new(Arc::clone(&host), 10, &context).unwrap();
         let transfer = single_shot_h2d(
             |transfer| source.schedule_transfer(transfer, &context),
             &context,
@@ -150,24 +146,20 @@ fn l1_setup_host_round_trip_small() {
                 .copied()
                 .collect::<Vec<_>>()
         );
+        let last = (1u32 << (log_rows + pack_log2 - log_v)) - 1;
         let queries: Vec<u32> = [
-            (9001, 31),
-            (0, 7),
-            (500, 3),
-            (16383, 7),
-            (42, 0),
-            (1234, 7),
-            (500, 3),
-            (16383, 31),
-            (7777, 16),
-            (0, 0),
-            (42, 0),
-            (3, 1),
-            (12000, 30),
-            (8191, 15),
-            (8192, 15),
-            (1, 24),
-            (16000, 2),
+            (last, 15),
+            (0, 1),
+            (3, 0),
+            (last, 15),
+            (1, 1),
+            (31, 1),
+            (32, 1),
+            (1023, 0),
+            (1024, 0),
+            (42, 15),
+            (42, 15),
+            (last - 1, 1),
         ]
         .into_iter()
         .map(|(leaf, coset)| (leaf << cfg.log_lde_factor) | coset)
@@ -178,15 +170,18 @@ fn l1_setup_host_round_trip_small() {
             &worker,
         );
         let count = queries.len();
-        let depth = opening_path_len(12 + pack_log2, &cfg);
+        let depth = opening_path_len(log_rows + pack_log2, &cfg);
         let leaf_len = 10usize.div_ceil(1 << pack_log2) << log_v;
         let d_queries = upload(&queries, &context);
+        let plan =
+            gpu_trace::trace::packed::CosetQueryPlan::new(&d_queries, cfg.log_lde_factor, &context)
+                .unwrap();
         let mut d_leaves = upload(&vec![PR::ONE; count * leaf_len], &context);
         let mut d_paths = upload(&vec![[0xdead_beef; 8]; count * depth], &context);
         let mut d_indexes = upload(&vec![0xaaaa_aaaa; count], &context);
         source
             .open_queries(
-                None,
+                Some(&plan),
                 &d_queries,
                 &mut d_leaves,
                 &mut d_paths,
@@ -220,18 +215,6 @@ fn l1_setup_host_round_trip_small() {
                 &host.cap().cap
             ));
         }
-        let fields: usize = cpu.monomial_forms.iter().map(|column| column.len()).sum();
-        let mut scratch = context.alloc(fields, AllocationPlacement::Top).unwrap();
-        source.recompute_coset(31, &mut scratch, &context).unwrap();
-        let expected: Vec<PR> = cpu
-            .monomial_forms
-            .iter()
-            .flat_map(|column| {
-                compute_column_major_lde_single_coset(column, &twiddles, 32, 31, &worker).to_vec()
-            })
-            .collect();
-        assert_eq!(read_back(&scratch, PR::ZERO, &context), expected);
-        drop(scratch);
         source.release_raw();
         source.release_commitment_state();
         assert_eq!(

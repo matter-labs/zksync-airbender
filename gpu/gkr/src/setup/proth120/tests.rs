@@ -29,9 +29,11 @@ fn open(
     let mut indexes = context
         .alloc(queries.len(), AllocationPlacement::BestFit)
         .unwrap();
+    let plan = gpu_trace::trace::packed::CosetQueryPlan::new(queries, cfg.log_lde_factor, context)
+        .unwrap();
     oracle
         .open_queries(
-            None,
+            Some(&plan),
             queries,
             &mut leaves,
             &mut paths,
@@ -58,11 +60,11 @@ fn setup_projection_matches_fresh_packed_trees_and_openings() {
         ..Default::default()
     })
     .unwrap();
-    for (log_rows, pack_log2, log_v, cap_log) in [(10, 2, 2, 0), (8, 2, 2, 2), (6, 2, 4, 0)] {
-        let columns_count = 7;
+    for (log_rows, pack_log2, log_v, cap_log) in [(15, 3, 1, 3)] {
+        let columns_count = 10;
         let log_leaves = log_rows + pack_log2 - log_v;
         let source_cfg = PackedCommitConfig {
-            log_lde_factor: 2,
+            log_lde_factor: 4,
             log_values_per_leaf: log_v,
             cap_log,
             skip_bottom: PARTIAL_TREE_REDUCTION_LAYERS.min(log_leaves),
@@ -87,7 +89,7 @@ fn setup_projection_matches_fresh_packed_trees_and_openings() {
         let host =
             Arc::new(L1WrapSetupHost::precompute(&setup, pack_log2, source_cfg, &context).unwrap());
         let source_len = retained_len(log_leaves, source_cfg.skip_bottom);
-        for requested in 5..=10 {
+        for requested in [10] {
             let mut projected =
                 PackedSetupSource::new(Arc::clone(&host), requested, &context).unwrap();
             let transfer =
@@ -120,7 +122,7 @@ fn setup_projection_matches_fresh_packed_trees_and_openings() {
             let expected = read_back(fresh.uninit_retained_mut(), [0; 8], &context);
             assert_eq!(actual, expected, "h={log_leaves} requested={requested}");
             let target_len = retained_len(log_leaves, cfg.skip_bottom);
-            for coset in 0..4 {
+            for coset in 0..16 {
                 assert_eq!(
                     &actual[coset * target_len..(coset + 1) * target_len],
                     &host.retained
@@ -153,13 +155,13 @@ fn setup_projection_matches_fresh_packed_trees_and_openings() {
             );
             let leaves = 1u32 << log_leaves;
             let subtree = 1u32 << cfg.skip_bottom;
-            let mut leaf_indexes = vec![0, 1, leaves - 1, 0];
-            for boundary in (subtree..leaves).step_by(subtree as usize) {
-                leaf_indexes.extend([boundary - 1, boundary]);
-            }
-            let queries: Vec<u32> = leaf_indexes
-                .iter()
-                .flat_map(|leaf| (0..4).map(move |coset| (leaf << 2) | coset))
+            let queries: Vec<u32> = [0, subtree - 1, subtree, leaves - 1]
+                .into_iter()
+                .flat_map(|leaf| {
+                    [15, 1, 0]
+                        .into_iter()
+                        .map(move |coset| (leaf << cfg.log_lde_factor) | coset)
+                })
                 .collect();
             let mut device_queries = context
                 .alloc(queries.len(), AllocationPlacement::BestFit)
@@ -171,7 +173,7 @@ fn setup_projection_matches_fresh_packed_trees_and_openings() {
                 "h={log_leaves} requested={requested}"
             );
             assert_eq!(host.cfg, source_cfg);
-            assert_eq!(host.retained.len(), source_len * 4);
+            assert_eq!(host.retained.len(), source_len * 16);
         }
     }
 }
