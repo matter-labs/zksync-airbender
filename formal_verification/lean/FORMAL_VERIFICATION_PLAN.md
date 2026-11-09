@@ -1,5 +1,60 @@
 # Circuit formal verification plan
 
+## Last relevant public control reset and worker suffix (9 November 2026)
+
+[Last reset observations](Airbender/Review/Trace/Families/ReducedMachine/ControlLastReset.lean),
+[proof](Airbender/Proofs/ReducedMachine/NativeControlLastReset.lean) and
+[short root](Airbender/Review/Trace/Families/ReducedMachine/ControlLastResetTheorems.lean)
+derive, for EVERY original target position on ONE complete initialized x12 path,
+either both control limbs zero with no preceding MAIN value change, or the LAST
+actual public MAIN value-changing rd12 third-port write and its following suffix.
+Relevant means full raw value change; readonly refreshes and equal-value third-port
+writes remain full path edges. This is not a claim about the last issued CSR call.
+
+Generic finite last-position selection and bounded prefix induction precede native
+data. Both consecutive getters are bounded original positions; no fallback token,
+row-list equality, deduplication or clock recoding is used. Old exact source/body/
+third-of-change/address routes derive an original fetched public entry, all ten
+query fields and rd12. EVERY subsequent position through the target explicitly
+has no relevant MAIN change and is an actual MAIN value copy or actual active
+worker42 update. All raw tokens and both times remain. No reset, expected read,
+range, address, alignment, history, result, round, one-hot mask, schedule, activity,
+count, matching or fulfilled-ledger premise is added.
+
+Starting from the actual zero seed, the no-reset suffix derives BOTH target limbs
+zero. A zero high cannot become nonzero inside a worker/copy suffix. Therefore a
+nonzero target high derives nonzero high from the last reset and the old source
+scope ordinary seven-profile code OR CSR1984; CSR1991 cannot supply it. Every
+actual active worker's exact read42 is a target on THIS SAME path. Prior arithmetic,
+logic/comparison-high-zero, shift/jump/LW and CSR values and all their same-path
+edges/nonzero origins remain; incoming low and zero/multiple masks stay visible.
+
+The SAME old counted SourceAccepted/public image/log20/OLD LogicalLookups/OLD
+explicit SourceIdentity and prior accounting/JOINT43-port execution/25 weighted
+outputs/word bounds/capacity/MAIN dependencies are retained. All inactive requests,
+AUX/m0 poles/inactive D/43ports/BOTH raw times/OLDREADs/refreshes/aliases/unmasked SW/
+public x0 times stay in acceptance. Only old logical cancellation is reused.
+Rank is noninjective proof order; logical and physical boundaries remain separate.
+
+[22 controls](Tests/NativeControlLastReset.lean) distinguish a first zero-to-nonzero
+origin from a later low-only value change, retain original positions/raw refreshes/
+equal-value workers/incoming low/zero-multiple masks, reject a wrong worker high,
+and check actual suffix edges, seed zero, nonzero last reset, every target/worker
+on the same path, all prior edges/values/JOINT effects and the complete counted
+root. Pure finite tokens/labels, old LOCAL inactive CSR and conditional consequences
+only; no new native-global/wholeworker/physical accepted witness, attack, defect
+or absence-other-enforcement proof. Review has observations/short root; calculations
+and assembly stay under Proofs, with the old separate Import fidelity boundary.
+
+An exact worker-occurrence count/fold and standard scheduled hash remain open,
+as do physical caller activity, larger-batch no-wrap/matching, original CSR/MOP/
+worker Sail, unified protocol spans, padding-terminal/init-teardown, physical
+cryptography, completeness, general physical setup and parity. No native adoption/
+pin/parser/importer/exporter/artifact/fixture/generation/heavy replay/dependency/
+v3 refresh/production/Sail/old acceptance/FINDINGS change. Zero established native
+defects; counts are not parity.
+
+
 ## Initialized LW control writes (9 November 2026)
 
 [LW control effects](Airbender/Review/Trace/Families/ReducedMachine/ControlLoad.lean),

@@ -461,3 +461,10 @@ last-reset identification and standard worker scheduling remain open.
 ROM-or-initialized-RAM writes, retaining distinct ROM shadows. All ordinary rd12
 write families share one complete x12 path; SW remains a memory write. Last-reset
 identification and standard worker scheduling remain open.
+
+## Last relevant control reset
+
+[Last reset and worker suffix](../../Trace/Families/ReducedMachine/ControlLastResetTheorems.lean) derive the last actual public MAIN value
+change before every target/active-worker read, or BOTH seed-derived zero limbs.
+Every following copy/worker edge remains; nonzero high comes from that last reset.
+Exact worker-count folds, physical scheduling and standard hash remain open.

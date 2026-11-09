@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.ControlLastReset
+import Airbender.Proofs.ReducedMachine.NativeControlLastReset
+import Airbender.Review.Trace.Families.ReducedMachine.ControlLastResetTheorems
+import Tests.NativeControlLastReset
+
 import Airbender.Review.Trace.Families.ReducedMachine.ControlLoad
 import Airbender.Proofs.ReducedMachine.NativeControlLoad
 import Airbender.Review.Trace.Families.ReducedMachine.ControlLoadTheorems
@@ -8456,3 +8461,41 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeControlLoad.old_logic_retained
 #print axioms Airbender.Tests.NativeControlLoad.old_joint_retained
 #print axioms Airbender.Tests.NativeControlLoad.full_counted_source
+
+#print axioms Airbender.NativeControlLastResetProofs.last_position
+#print axioms Airbender.NativeControlLastResetProofs.consecutive
+#print axioms Airbender.NativeControlLastResetProofs.edge_member
+#print axioms Airbender.NativeControlLastResetProofs.member_position
+#print axioms Airbender.NativeControlLastResetProofs.prefix_induction
+#print axioms Airbender.NativeControlLastResetProofs.head_position
+#print axioms Airbender.NativeControlLastResetProofs.suffix_classified
+#print axioms Airbender.NativeControlLastResetProofs.seed_suffix_zero
+#print axioms Airbender.NativeControlLastResetProofs.suffix_high_zero
+#print axioms Airbender.NativeControlLastResetProofs.public_write
+#print axioms Airbender.NativeControlLastResetProofs.outcome
+#print axioms Airbender.NativeControlLastResetProofs.nonzero_reset
+#print axioms Airbender.NativeControlLastResetProofs.from_prior
+#print axioms Airbender.NativeControlLastResetProofs.counted
+#print axioms Airbender.NativeControlLastReset.native_counted_last_control_reset
+#print axioms Airbender.Tests.NativeControlLastReset.last_change_after_first_origin
+#print axioms Airbender.Tests.NativeControlLastReset.no_selected_positions
+#print axioms Airbender.Tests.NativeControlLastReset.copy_only_no_change
+#print axioms Airbender.Tests.NativeControlLastReset.original_position_retained
+#print axioms Airbender.Tests.NativeControlLastReset.first_origin_is_earlier
+#print axioms Airbender.Tests.NativeControlLastReset.later_change_keeps_high
+#print axioms Airbender.Tests.NativeControlLastReset.raw_refresh_retained
+#print axioms Airbender.Tests.NativeControlLastReset.equal_value_worker_stays
+#print axioms Airbender.Tests.NativeControlLastReset.worker_clears_incoming_low
+#print axioms Airbender.Tests.NativeControlLastReset.multiple_masks_retained
+#print axioms Airbender.Tests.NativeControlLastReset.zero_masks_retained
+#print axioms Airbender.Tests.NativeControlLastReset.wrong_worker_high_rejected
+#print axioms Airbender.Tests.NativeControlLastReset.inactive_CSR_kept
+#print axioms Airbender.Tests.NativeControlLastReset.every_suffix_edge_actual
+#print axioms Airbender.Tests.NativeControlLastReset.no_reset_both_zero
+#print axioms Airbender.Tests.NativeControlLastReset.nonzero_target_last_reset
+#print axioms Airbender.Tests.NativeControlLastReset.every_target_same_path
+#print axioms Airbender.Tests.NativeControlLastReset.every_actual_worker_same_path
+#print axioms Airbender.Tests.NativeControlLastReset.all_ordinary_CSR_edges_retained
+#print axioms Airbender.Tests.NativeControlLastReset.prior_values_retained
+#print axioms Airbender.Tests.NativeControlLastReset.old_joint_retained
+#print axioms Airbender.Tests.NativeControlLastReset.full_counted_source
