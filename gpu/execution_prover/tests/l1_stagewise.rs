@@ -26,6 +26,7 @@ use gpu_trace::trace::packed::PackedCommitConfig;
 use gpu_trace::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use prover::gkr::prover::transcript_utils::draw_random_field_els;
 use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
+use prover::gkr::prover_config::example_configs::l1_wrap_2p21::EXPLICIT_OUTPUT_LOG2;
 use prover::transcript::{Keccak256Transcript, Transcript};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -152,7 +153,8 @@ fn l1_wrap_stagewise_pessimistic_conjecture() {
             )
             .unwrap();
             inputs.schedule(&context).unwrap();
-            let tail = prepare_dr_tail_resources_pr(&programs, 2, &context);
+            let tail =
+                prepare_dr_tail_resources_pr(&programs, EXPLICIT_OUTPUT_LOG2 as u32, &context);
             let job = prove_stagewise(
                 &programs,
                 &circuit,
