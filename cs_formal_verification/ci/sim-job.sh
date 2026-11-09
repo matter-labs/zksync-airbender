@@ -62,11 +62,17 @@ echo "== Lake build cache (restore: $from)"
 echo "== dependencies (Sail model, Clean imports, the test executable's dependency objects)"
 T lean-deps
 
-echo "== verify.sh (VERIFY_AUDITS=${VERIFY_AUDITS:-fresh})"
-set +e; T verify; rc=$?; set -e
-if [[ "${FVCI_KERNEL:-0}" == 1 && $rc == 0 ]]; then
-  echo "== kernel replay (leanchecker)"
-  set +e; T kernel-check; rc=$?; set -e
+if [[ "${FVCI_JOB:-verify}" == kernel_replay ]]; then
+  # the kernel_replay job (and backup-check.sh): build, then the kernel replay (KERNEL_CHECKER), no verify.sh
+  echo "== build; kernel replay (KERNEL_CHECKER=${KERNEL_CHECKER:-leanchecker})"
+  set +e; T build && "$CI" kernel-deps > /dev/null && T kernel-check; rc=$?; set -e
+else
+  echo "== verify.sh (VERIFY_AUDITS=${VERIFY_AUDITS:-fresh})"
+  set +e; T verify; rc=$?; set -e
+  if [[ "${FVCI_KERNEL:-0}" == 1 && $rc == 0 ]]; then
+    echo "== kernel replay (KERNEL_CHECKER=${KERNEL_CHECKER:-leanchecker})"
+    set +e; "$CI" kernel-deps > /dev/null; T kernel-check; rc=$?; set -e
+  fi
 fi
 "$CI" report "$marker"
 

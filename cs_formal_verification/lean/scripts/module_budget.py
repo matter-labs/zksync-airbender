@@ -23,7 +23,7 @@ is measured once per input hash on this machine. Without the cache (or with the 
 every module once: about a cold build's CPU.
 
 Usage (from cs_formal_verification/lean; verify.sh runs both):
-  scripts/module_budget.py build CleanCore Human Slop
+  scripts/module_budget.py build CleanCore CleanEquivalence Human Slop
   scripts/module_budget.py check [--jobs N] [--table FILE]
   scripts/module_budget.py time <Module>...   (one module alone, no ledger: before/after a change)
 Environment: MODULE_BUDGET_S (default 30), MODULE_BUDGET_LEDGER (ledger path), MODULE_BUDGET_JOBS (default 4).
@@ -52,8 +52,10 @@ BUDGET = float(os.environ.get("MODULE_BUDGET_S", "30"))
 # here / there (scripts/budget_calibration.lean, Lean core only): a machine twice as slow per core gets 60 s.
 CALIBRATION = ROOT / "scripts" / "budget_calibration.lean"
 CALIBRATION_SHA256 = "45aa2de95e7e061ea316fc116e4524448eb8f99c881f36fc4373411f5985781d"
-CALIBRATION_REFERENCE_S = 5.5  # lowest of ~20 runs here (5.4-6.8 s: thermal state, core type)
-CALIBRATION_REFERENCE_MACHINE = "Apple M3 Max, 14 cores, macOS arm64, Lean 4.34.1 (2026-11-09)"
+# Lowest of 20 runs here on Lean 4.35.0 (3.98-4.83 s: thermal state, core type). Toolchain-dependent: the same file
+# took 5.5 s (lowest; 5.4-6.8 s) on 4.34.1, while our modules' total CPU changed by +2%. Re-measure on each upgrade.
+CALIBRATION_REFERENCE_S = 4.0
+CALIBRATION_REFERENCE_MACHINE = "Apple M3 Max, 14 cores, macOS arm64, Lean 4.35.0 (2026-11-09)"
 CALIBRATION_REFERENCE_ID = "Darwin arm64 Apple M3 Max 14"
 CALIBRATION_CLAMP = (0.5, 4.0)
 # On the reference machine itself the factor is 1 by definition; load and thermal throttling inflate the measurement

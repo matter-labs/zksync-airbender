@@ -147,8 +147,8 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.kernel_replay)
     runs-on: [matterlabs-ci-runner-high-performance]
     timeout-minutes: 240
-    container:
-      image: ubuntu:24.04
+    # No container: `lake check` sandboxes its build and export with bwrap, which needs user and mount namespaces that
+    # Docker's default profiles deny; on the host it uses the host's. Packages go in through sudo (ci/lean-ci.sh).
     env:
       LEAN_NUM_THREADS: ${{ inputs.lean_threads || vars.LEAN_CI_THREADS || '8' }}
       # leanchecker's memory grows ~5 GB per concurrent module (ci/lean-ci.sh kernel-check): 2 fit a 16 GB runner
@@ -160,8 +160,8 @@ jobs:
     steps:
       - name: Install git
         run: |
-          apt-get update -q
-          apt-get install -y -q --no-install-recommends ca-certificates git
+          command -v git >/dev/null || { sudo apt-get update -q
+            sudo apt-get install -y -q --no-install-recommends ca-certificates git; }
       - uses: actions/checkout@v4
       - uses: ./.github/actions/lean-fv-setup
       # the newest build of the default branch (seeded by its cold runs); Lake rebuilds what is missing
@@ -181,5 +181,19 @@ jobs:
         run: cs_formal_verification/ci/lean-ci.sh time lean-deps
       - name: Build (spec, proofs, tests)
         run: cs_formal_verification/ci/lean-ci.sh time build
-      - name: Kernel replay of our modules
+      # lake check --paranoid if bwrap can create its sandbox on this host; otherwise an error annotation, the
+      # leanchecker replay, and a failed job (ci/lean-ci.sh kernel-probe)
+      - name: bubblewrap (lake check's sandbox) and a sandbox probe
+        id: probe
+        run: |
+          cs_formal_verification/ci/lean-ci.sh kernel-deps
+          echo "checker=$(cs_formal_verification/ci/lean-ci.sh kernel-probe)" >> "$GITHUB_OUTPUT"
+      - name: Kernel replay (lake check --paranoid, leanchecker on the two Clean-importing modules)
+        env:
+          KERNEL_CHECKER: ${{ steps.probe.outputs.checker }}
         run: cs_formal_verification/ci/lean-ci.sh time kernel-check
+      - name: Fail if lake check could not run
+        if: steps.probe.outputs.checker != 'paranoid'
+        run: |
+          echo "::error::bwrap cannot sandbox on this runner: only the leanchecker fallback ran (see kernel-probe)"
+          exit 1

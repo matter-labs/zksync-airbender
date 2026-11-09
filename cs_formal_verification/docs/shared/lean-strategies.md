@@ -84,26 +84,29 @@ fixed.
 
 `verify.sh` stays the check everywhere (its trust checks included). `lake check --paranoid` (Lean 4.35: kernel replay
 by Lean's kernel and the independent checkers bundled with it, plus an axiom check) runs only in a scheduled CI job,
-every two weeks. Its targets cover every final proof module, not only `human/` (replaying `human/` checks that the
-statements are well-formed, not that they are proven), and leave out the two files that import Clean,
-`human/CleanCore/Equivalence.lean` and `test/Checks/Axioms.lean`: `lake check` rejects a non-standard axiom anywhere in
-the exported environment, and Clean's prime instances use `native_decide`. It needs `bwrap` (Linux).
+every two weeks, and in `backup-check.sh` (1.5). Its targets, the lakefile's default targets, cover every final proof
+module and the tests, not only `human/` (replaying `human/` checks that the statements are well-formed, not that they
+are proven), and leave out the two files that import Clean, `human/CleanCore/Equivalence.lean` and
+`test/Checks/Axioms.lean` (libraries `CleanEquivalence`, `CleanAudit`): `lake check` rejects a non-standard axiom
+anywhere in the exported environment, and Clean's prime instances use `native_decide`. `leanchecker` replays those two
+modules' own constants after it. `lake check` builds and exports in a `bwrap` sandbox (Linux, user and mount
+namespaces), so the CI job runs on the runner host, not in a container; if the host denies the namespaces (e.g.
+Ubuntu 24.04's AppArmor restriction), the job replays with `leanchecker` and fails with an error naming the cause.
 
 ### 1.5 Backup checker: rarely
 
-`backup-check.sh` replays every declaration of `human/` and `slop/` through a second, fresh kernel with `leanchecker`,
-which ships with the pinned toolchain (`--fresh` also replays Mathlib and Sail). It guards against tactics or other
-metaprograms that might add declarations without the kernel. It takes hours (`verify.sh`: about 15 min), so it is
-not part of `verify.sh` and never run per commit: run it by hand every few months at most.
+`backup-check.sh` is the kernel replay job run by hand: `lake check --paranoid` on the default targets, then
+`leanchecker` on the two Clean-importing modules (`ci/lean-ci.sh kernel-check`). It guards against tactics or other
+metaprograms that might add declarations without the kernel. One export and one replay for the whole target set,
+Mathlib and the Sail model included, with nothing cached between runs: hours (`verify.sh`: about 15 min), so it is
+not part of `verify.sh` and never run per commit: run it by hand every few months at most. On Linux it runs on the
+checkout; on macOS in the CI job's Docker image (`ci/sim.sh`), privileged inside Docker Desktop's VM so that `bwrap`
+can create its namespaces (that script only; the CI job runs on the runner host instead, without a container).
 
-`leanchecker` selects modules by name prefix (`Human` means every `Human.*` module) and replays each selected module
-with its own copy of the imported environment, in parallel and without a limit. Given a root module or a batch, it
-can exhaust the machine's memory. So pass it one module at a time, never a module with modules below it unless it is
-small. Bound how many run at once by the memory available, not the core count. A check is mostly the system mapping
-the imported `.olean` files, so a few processes at once are faster than many. `backup-check.sh` does this. The
-scheduled `lake check --paranoid` job (1.4) covers the same ground in CI: one export and one replay for the whole
-target set, with nothing cached between runs, through Lean's kernel and the independent ones (lean4lean, nanoda and
-others).
+`leanchecker` (the pre-4.35 replay, `KERNEL_CHECKER=leanchecker`) selects modules by name prefix (`Human` means every
+`Human.*` module) and replays each selected module with its own copy of the imported environment, in parallel and
+without a limit. Given a root module or a batch, it can exhaust the machine's memory: bound how many run at once
+(`KERNEL_CHECK_THREADS`) by the memory available, not the core count.
 
 ### 1.6 Working with several agents or sessions
 

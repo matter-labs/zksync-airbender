@@ -105,12 +105,13 @@ module's time is the CPU time (user + sys) of its `lean` process compiled alone,
 The 30 s are CPU time on the reference machine, the Apple M3 Max (14 cores) this project is developed on. Before checking,
 the gate compiles a pinned calibration file ([budget_calibration.lean](lean/scripts/budget_calibration.lean), Lean
 core only: kernel reduction, `omega`, `simp`; its sha256 is pinned in the script) and scales the limit by its CPU time
-here / there (`CALIBRATION_REFERENCE_S` = 5.5 s, the lowest of ~20 runs on the reference machine, which ranged
-5.4-6.8 s; lowest of three runs here, run at once; factor clamped to 0.5-4). A runner twice as slow per core gets 60 s. On the
+here / there (`CALIBRATION_REFERENCE_S` = 4.0 s, the lowest of 20 runs on the reference machine with Lean 4.35.0,
+which ranged 3.98-4.83 s; lowest of three runs here, run at once; factor clamped to 0.5-4). A runner twice as slow per core gets 60 s. On the
 reference machine itself (identified by OS, architecture, CPU model and core count) the factor is capped at 1.05:
 there it is 1 by definition, and load or thermal throttling inflated the measurement to as much as 1.23. The
 ledger keeps raw CPU times; the limit and the factor are printed and written at the end of `module-budget.tsv`.
-Changing the calibration file needs a new reference time measured on the reference machine. Wall time is not
+Changing the calibration file or the toolchain needs a new reference time measured on the reference machine (Lean
+4.35 compiles the file in 4.0 s where 4.34.1 took 5.5 s, while our modules' total CPU time rose by 2%). Wall time is not
 used: under parallel load it is off by 2–4×, and a module that elaborates in parallel finishes in less wall time
 than it costs. Load only inflates CPU time (efficiency cores, shared caches), so a module under budget under load
 is under budget alone. Three stages, each paying only for what the one before could not settle:

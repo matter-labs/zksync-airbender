@@ -13,7 +13,10 @@
 #   ci/sim.sh run fvci-small 4 16g 4 HEAD - head  cold.log
 #   ci/sim.sh run fvci-small 4 16g 4 HEAD head - warm.log
 # FVCI_STOP=sail stops after the Sail model step (to seed or time the sail cache alone). VERIFY_AUDITS (fresh|replay)
-# is passed to verify.sh; FVCI_KERNEL=1 adds the kernel replay (the kernel_replay job's check) after verify.sh.
+# is passed to verify.sh; FVCI_KERNEL=1 adds the kernel replay (the kernel_replay job's check) after verify.sh;
+# FVCI_JOB=kernel_replay runs the kernel_replay job instead (build, then the kernel replay; backup-check.sh).
+# KERNEL_CHECKER (paranoid|leanchecker) is passed to ci/lean-ci.sh kernel-check; FVCI_DOCKER_OPTS adds `docker run`
+# options (`lake check`'s bwrap sandbox needs user and mount namespaces, which Docker's default profiles deny).
 # Each run is a build: on the shared machine run it under the build lock (rvlock/lb.sh ci/sim.sh run ...).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -63,7 +66,8 @@ case "${1:-}" in
     set +e
     docker run --name "fvci-run-$$" --cpus "$cpus" --memory "$mem" --memory-swap "$mem" \
       -e LEAN_NUM_THREADS="$threads" -e MODULE_BUDGET_JOBS="${MODULE_BUDGET_JOBS:-4}" -e FVCI_STOP="${FVCI_STOP:-}" \
-      -e VERIFY_AUDITS="${VERIFY_AUDITS:-fresh}" -e FVCI_KERNEL="${FVCI_KERNEL:-0}" \
+      -e VERIFY_AUDITS="${VERIFY_AUDITS:-fresh}" -e FVCI_KERNEL="${FVCI_KERNEL:-0}" -e FVCI_JOB="${FVCI_JOB:-verify}" \
+      -e KERNEL_CHECKER="${KERNEL_CHECKER:-leanchecker}" ${FVCI_DOCKER_OPTS:-} \
       -e KERNEL_CHECK_THREADS="${KERNEL_CHECK_THREADS:-2}" \
       "${mounts[@]}" -v "$tmp:/in:ro" -v "$HERE:/opt/fvci:ro" \
       "$IMAGE" bash /opt/fvci/sim-job.sh "$from" "$to" > "$log" 2>&1
@@ -77,5 +81,5 @@ case "${1:-}" in
   clean)
     shift; docker volume rm "$@" ;;
   *)
-    sed -n 2,15p "$0"; exit 2 ;;
+    sed -n 2,20p "$0"; exit 2 ;;
 esac

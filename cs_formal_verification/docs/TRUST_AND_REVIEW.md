@@ -141,12 +141,14 @@ An incremental run trusts the restored build (produced by an earlier CI run of t
 re-derive everything from source each night and on every push to a protected branch, so a bad cached build cannot
 outlive the next cold run.
 
-**Kernel replay** (job `kernel_replay`, the 1st and 15th of each month, or manually): every constant of our modules
-is added to a fresh kernel environment on top of its imports (`leanchecker`, bundled with the toolchain), which
-catches an `.olean` whose declarations the elaborator accepted but the kernel would not. It does not run on pull
-requests or in the cold runs (~25 min, ~10 GB). After the move to Lean 4.35 it becomes `lake check --paranoid` over
-all targets except `human/CleanCore/Equivalence.lean` and `test/Checks/Axioms.lean`, which import Clean's
-`native_decide` prime instances.
+**Kernel replay** (job `kernel_replay`, the 1st and 15th of each month, or manually; `backup-check.sh` by hand):
+`lake check --paranoid` exports the lakefile's default targets with everything they import and replays every constant
+through Lean's kernel and the independent checkers bundled with the toolchain, then checks that only the standard
+axioms are used; `leanchecker` replays the two modules it leaves out (`human/CleanCore/Equivalence.lean`,
+`test/Checks/Axioms.lean`: they import Clean's `native_decide` prime instances). This catches an `.olean` whose
+declarations the elaborator accepted but a kernel would not. It does not run on pull requests or in the cold runs.
+The job runs on the runner host, where `bwrap` can create `lake check`'s sandbox; if it cannot, the job replays with
+`leanchecker` only and fails.
 
 ## Modeled tables and logical arguments
 

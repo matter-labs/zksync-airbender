@@ -20,10 +20,10 @@ echo "== 1b. The circuit JSONs the spec imports: pinned sha256, no duplicate key
 python3 check_circuit_json.py
 
 echo "== 2. Lean build (spec + proofs), timing each module compiled (full log: lean/.lake/verify-build-*.log)"
-python3 scripts/module_budget.py build CleanCore Human Slop || fail "lake build"
+python3 scripts/module_budget.py build CleanCore CleanEquivalence Human Slop || fail "lake build"
 
 echo "== 3. Regressions; final statements (each slop/Slop/Final theorem proves its human/ ...Claim, test/Checks/Claims.lean); axiom audits"
-python3 scripts/module_budget.py build Test airbender_tests || fail "lake build (tests)"
+python3 scripts/module_budget.py build Test CleanAudit airbender_tests || fail "lake build (tests)"
 lake exe airbender_tests
 # VERIFY_AUDITS=fresh (default): elaborate each audit file again. replay (CI pull requests): read the messages Lake
 # logged for the audit modules in the build above (built now, or replayed from their traces: the same trust as the

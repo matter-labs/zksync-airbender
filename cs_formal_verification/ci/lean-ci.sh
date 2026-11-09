@@ -13,6 +13,8 @@
 #                               objects) apart from our code (ci/dep_targets.py)
 #   ci/lean-ci.sh verify        ./verify.sh, each of its steps timed
 #   ci/lean-ci.sh build         lake build of the spec, proofs and tests (kernel_replay job)
+#   ci/lean-ci.sh kernel-deps   bubblewrap, for `lake check` (kernel_replay job)
+#   ci/lean-ci.sh kernel-probe  prints the KERNEL_CHECKER usable here: paranoid if bwrap can sandbox, else leanchecker
 #   ci/lean-ci.sh kernel-check  replay our modules' constants in the kernel (kernel_replay job; KERNEL_CHECKER)
 #   ci/lean-ci.sh report        what the build did: modules compiled, slowest modules, peak memory
 #   ci/lean-ci.sh time <step>   run a step, then print its wall time, CPU time and peak memory (container cgroup)
@@ -30,6 +32,8 @@ export PATH="$HOME/.elan/bin:$PATH"
 export LAKE_NO_CACHE=${LAKE_NO_CACHE:-1}
 
 log() { echo ">> $*" >&2; }
+# apt-get and system directories: as root in the jobs' containers, through sudo on a host runner (kernel_replay job)
+SUDO=; (( EUID == 0 )) || SUDO="sudo DEBIAN_FRONTEND=noninteractive"
 sub() { awk -v a="$1" -v b="$2" -v d="${3:-1}" 'BEGIN { printf "%.1f", (a - b) / d }'; }
 
 sail_inputs() { # every file sail/regen.sh reads (pins are in regen.sh and fetch-lean-sail.sh)
@@ -39,15 +43,15 @@ sail_inputs() { # every file sail/regen.sh reads (pins are in regen.sh and fetch
 
 step_deps() {
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -q
+  $SUDO apt-get update -q
   # procps: module_budget.py samples `ps` during the build (without it every module is compiled a second time)
-  apt-get install -y -q --no-install-recommends ca-certificates curl git python3 procps zstd xz-utils
+  $SUDO apt-get install -y -q --no-install-recommends ca-certificates curl git python3 procps zstd xz-utils
 }
 
 step_sail_deps() {
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -q
-  apt-get install -y -q --no-install-recommends opam build-essential m4 pkg-config libgmp-dev zlib1g-dev z3 \
+  $SUDO apt-get update -q
+  $SUDO apt-get install -y -q --no-install-recommends opam build-essential m4 pkg-config libgmp-dev zlib1g-dev z3 \
     unzip bzip2 rsync patch
 }
 
@@ -121,25 +125,56 @@ step_lean_deps() { # the dependencies of the build (ci/dep_targets.py), built ap
   return "$rc"
 }
 
-step_build() { (cd "$LEAN" && lake build CleanCore Human Slop Test airbender_tests); }
+# the default targets (what `lake check` checks) and the two Clean-importing libraries
+step_build() { (cd "$LEAN" && lake build && lake build CleanEquivalence CleanAudit); }
 
-# The kernel replay (CI job kernel_replay, every two weeks): every constant of our modules re-added to the kernel.
+step_kernel_deps() { # bubblewrap: `lake check` builds and exports the project in a bwrap sandbox
+  export DEBIAN_FRONTEND=noninteractive
+  $SUDO apt-get update -q
+  $SUDO apt-get install -y -q --no-install-recommends bubblewrap
+  $SUDO mkdir -p /run/user /home   # the sandbox mounts a tmpfs on each; bwrap cannot create them in a read-only root
+}
+
+# kernel-probe: can bwrap create the namespaces `lake check` uses here? Prints the KERNEL_CHECKER to use: paranoid,
+# or leanchecker with a loud warning (e.g. Ubuntu 24.04's AppArmor restriction of unprivileged user namespaces, or a
+# container whose profiles deny them).
+step_kernel_probe() {
+  local err
+  if err=$(bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --unshare-all --die-with-parent true 2>&1); then
+    echo paranoid
+  else
+    log "bwrap cannot create the sandbox lake check needs: $err"
+    [[ -n "${GITHUB_ACTIONS:-}" ]] && echo "::error title=kernel replay::bwrap cannot create a sandbox here ($err); lake check --paranoid skipped, falling back to leanchecker" >&2
+    echo leanchecker
+  fi
+}
+
+# The kernel replay (CI job kernel_replay every two weeks; backup-check.sh): every constant re-added to a kernel.
 # KERNEL_CHECKER selects the tool:
-#   leanchecker (now): the toolchain's leanchecker over our module prefixes. One process replays KERNEL_CHECK_THREADS
-#     (default 2) modules at a time, each on top of its own import of the environment; memory grows fast with that
-#     count (container: 1 -> 1.3 GB, 2 -> 5.8-10.1 GB, 4 -> over 15 GB), so it does not follow LEAN_NUM_THREADS.
-#   paranoid: TODO(P3.5, Lean 4.35): `lake check --paranoid` over all targets except human/CleanCore/Equivalence.lean
-#     and test/Checks/Axioms.lean (they import Clean's native_decide prime instances). P3.5 implements this branch
-#     and makes it the default.
+#   paranoid: `lake check --paranoid` (Lean 4.35) on the default targets (lakefile.toml: everything except
+#     human/CleanCore/Equivalence.lean and test/Checks/Axioms.lean, which import Clean's native_decide prime
+#     instances, and which it would reject: it fails on any non-standard axiom in the exported environment). It
+#     builds and exports them in a bwrap sandbox (Linux, user namespaces), replays the export through Lean's kernel
+#     and the independent checkers bundled with the toolchain (leanchecker-paranoid, lean4lean, nanoda, con-leche,
+#     con-ron), and checks the axioms. Then the two
+#     Clean-importing modules, which it leaves out, are replayed by leanchecker (their own constants only).
+#   leanchecker (default when unset; the fallback where bwrap cannot sandbox, see kernel-probe): the toolchain's
+#     leanchecker over our module prefixes.
+# The kernel_replay job runs on the runner host (no container: Docker's default profiles deny bwrap the user and mount
+# namespaces it needs) and sets KERNEL_CHECKER from kernel-probe; backup-check.sh sets paranoid.
+# leanchecker replays KERNEL_CHECK_THREADS (default 2) modules at a time, each on top of its own import of the
+# environment; memory grows fast with that count (container: 1 -> 1.3 GB, 2 -> 5.8-10.1 GB, 4 -> over 15 GB), so it
+# does not follow LEAN_NUM_THREADS.
 step_kernel_check() {
   cd "$LEAN"
   local t=${KERNEL_CHECK_THREADS:-2}
   case "${KERNEL_CHECKER:-leanchecker}" in
+    paranoid)
+      lake check --paranoid
+      LEAN_NUM_THREADS=$t lake env leanchecker CleanCore.Equivalence Checks.Axioms ;;
     leanchecker)
       if (( $# )); then LEAN_NUM_THREADS=$t lake env leanchecker "$@"
       else LEAN_NUM_THREADS=$t lake env leanchecker CleanCore Human Slop Tests Checks; fi ;;
-    paranoid)
-      echo "KERNEL_CHECKER=paranoid needs Lean 4.35 (P3.5)" >&2; return 2 ;;
     *) echo "unknown KERNEL_CHECKER" >&2; return 2 ;;
   esac
 }
@@ -229,6 +264,8 @@ case "$cmd" in
   lean-deps) step_lean_deps ;;
   kernel-check) step_kernel_check "$@" ;;
   build) step_build ;;
+  kernel-deps) step_kernel_deps ;;
+  kernel-probe) step_kernel_probe ;;
   verify) step_verify ;;
   report) step_report "$@" ;;
   time) step_time "$@" ;;

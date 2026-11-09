@@ -3,7 +3,10 @@
 # and is its own library, so a JSON change rebuilds only its Artifact module and that module's importers.
 name = "airbender_circuits"
 version = "0.1.0"
-defaultTargets = ["CleanCore", "Human", "Slop", "airbender_tests"]
+# The default targets are what `lake check --paranoid` checks (ci/lean-ci.sh kernel-check, backup-check.sh): everything
+# except the two files that import Clean (libraries CleanEquivalence and CleanAudit), whose native_decide prime instances
+# it would reject (docs/shared/lean-strategies.md 1.4).
+defaultTargets = ["CleanCore", "Human", "Slop", "Test", "airbender_tests"]
 # With Lake's shared artifact cache on (LAKE_ARTIFACT_CACHE=true), keep every build product in .lake/build
 # as well (hard links into the cache, no extra disk): `lake env lean` (verify.sh's axiom audits, check_review.py)
 # finds .olean files only there. No effect when the cache is off.
@@ -378,20 +381,24 @@ srcDir = "slop"
 roots = ["Slop"]
 globs = ["Slop.+"]
 
-# our transcription of the part of Clean the spec uses (module files, read by reviewers), and the
-# equivalence of each definition with the pinned Clean (CleanCore.Equivalence, a non-module leaf)
+# our transcription of the part of Clean the spec uses (module files, read by reviewers)
 [[lean_lib]]
 name = "CleanCore"
 srcDir = "human"
 roots = ["CleanCore"]
-globs = ["CleanCore", "CleanCore.+"]
+globs = ["CleanCore", "CleanCore.Circuit.+", "CleanCore.Specs.+", "CleanCore.Utils.+"]
 
-# regressions and the axiom audits (not proofs of the claims)
+# the equivalence of each CleanCore definition with the pinned Clean (a leaf; imports Clean)
+[[lean_lib]]
+name = "CleanEquivalence"
+srcDir = "human"
+roots = ["CleanCore.Equivalence"]
+
+# regressions and the claim and trace axiom audits (not proofs of the claims)
 [[lean_lib]]
 name = "Test"
 srcDir = "test"
 roots = [
-  "Checks.Axioms",
   "Checks.Claims",
   "Checks.TraceAxioms",
   "Tests.ArtifactImport",
@@ -467,6 +474,12 @@ roots = [
   "Tests.UnifiedDelegation",
   "Tests.WordMemory",
 ]
+
+# the axiom audit of everything, including the pinned Clean proofs (imports Clean)
+[[lean_lib]]
+name = "CleanAudit"
+srcDir = "test"
+roots = ["Checks.Axioms"]
 
 [[lean_exe]]
 name = "airbender_tests"

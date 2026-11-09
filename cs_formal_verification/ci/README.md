@@ -13,8 +13,11 @@ budget, review check) when `cs_formal_verification/` or a circuit JSON the spec 
   fresh audits. Its build is saved and seeds the pull requests. The toolchain, the dependency checkouts, Mathlib's
   files and the Sail model are restored in both modes (regenerating the Sail model nightly would add ~10 min);
 - **kernel replay** (job `kernel_replay`: the 1st and 15th of each month, or dispatch with `kernel_replay`): builds,
-  then the kernel re-checks every constant of our modules (`lean-ci.sh kernel-check`: `leanchecker` now; after Lean
-  4.35, `lake check --paranoid`, the hook is `KERNEL_CHECKER`).
+  then the kernel re-checks every constant (`lean-ci.sh kernel-check`, `KERNEL_CHECKER=paranoid`: `lake check
+  --paranoid` on the lakefile's default targets, then `leanchecker` on the two Clean-importing modules). It runs on the
+  runner host, not in a container, so that `lake check`'s `bwrap` sandbox gets user and mount namespaces; `lean-ci.sh
+  kernel-probe` checks that first, and where `bwrap` cannot sandbox the job replays with `leanchecker` and fails.
+  `backup-check.sh` runs the same job by hand.
 
 The setup steps shared by both jobs are the composite action `.github/actions/lean-fv-setup`.
 
