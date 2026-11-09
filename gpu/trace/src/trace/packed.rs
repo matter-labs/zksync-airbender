@@ -443,6 +443,10 @@ impl PackedCosetRecomputeOracle<PR> {
         .ok()
         .and_then(|shape| shape.prefix)
         .filter(has_reference_finish);
+        assert!(
+            plan.is_some(),
+            "PackedCosetRecomputeOracle: setup initialization requires the r8 reference finish"
+        );
         if let Some(plan) = plan {
             let scale = ScaleArgs {
                 coset: CosetSource::Constant(coset),
@@ -520,6 +524,13 @@ impl PackedCosetRecomputeOracle<PR> {
         // Below skip_bottom 8 a batch of two tiles is too small for the sink; those commits keep the
         // reference path until the dispatch batches more tiles.
         .filter(|(_, shape)| shape.skip_bottom >= 8 && has_leaf_sink(shape, &SinkMode::Commit));
+        assert!(
+            sink.is_some()
+                || (self.packed_columns == 2
+                    && cfg.log_values_per_leaf == 1
+                    && cfg.skip_bottom == 5),
+            "PackedCosetRecomputeOracle: proof commitment requires the wrap sink"
+        );
         log::debug!(
             "packed commit 2^{} x {} columns, log_v {}, skip_bottom {}: {}",
             self.log_packed(),
@@ -587,6 +598,10 @@ impl PackedCosetRecomputeOracle<PR> {
             self.log_packed(),
             cfg.log_values_per_leaf,
             cfg.skip_bottom,
+        );
+        assert_eq!(
+            tree_scratch_len, 0,
+            "PackedCosetRecomputeOracle: setup initialization needs no tree scratch"
         );
         let mut tree_scratch: Option<DeviceAllocation<Digest>> = if tree_scratch_len == 0 {
             None
@@ -681,6 +696,10 @@ impl PackedCosetRecomputeOracle<PR> {
         let log_packed = self.log_packed();
         let h = log_packed - cfg.log_values_per_leaf;
         let count = queries.len();
+        assert!(
+            count > 0,
+            "PackedCosetRecomputeOracle: wrap openings require queries"
+        );
         assert_eq!(
             leaves.len(),
             product(
@@ -730,6 +749,10 @@ impl PackedCosetRecomputeOracle<PR> {
                 has_open_sink(&shape).then_some((plan, dispatched, shape))
             });
         let sink_path = sink.is_some();
+        assert!(
+            sink_path,
+            "PackedCosetRecomputeOracle: wrap openings require a touched-coset plan and sink"
+        );
         log::debug!(
             "packed openings 2^{} x {} columns, log_v {}, skip_bottom {}: {}",
             log_packed,

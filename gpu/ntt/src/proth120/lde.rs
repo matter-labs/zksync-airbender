@@ -302,6 +302,10 @@ pub(crate) fn naturalize(
     columns_per_launch: usize,
     stream: &CudaStream,
 ) -> CudaResult<()> {
+    assert!(
+        log_n >= 10,
+        "Proth120 naturalize requires a wrap reference finish"
+    );
     for column in (0..cols).step_by(columns_per_launch) {
         let chunk = (cols - column).min(columns_per_launch);
         let target = MutPtrAndStride::new(
