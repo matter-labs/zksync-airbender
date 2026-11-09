@@ -13,7 +13,7 @@ pub(crate) fn programs() -> GkrProgramsPr {
         "../../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
     ))
     .unwrap();
-    GkrProgramsPr::compile(CircuitType::L1Wrap, Arc::new(artifact)).unwrap()
+    GkrProgramsPr::compile(CircuitType::L1Wrap, Arc::new(artifact))
 }
 
 #[test]

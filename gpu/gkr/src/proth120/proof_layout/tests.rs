@@ -18,7 +18,6 @@ pub(crate) fn programs() -> crate::proth120::programs::GkrProgramsPr {
         gpu_trace::witness::circuit_type::CircuitType::L1Wrap,
         std::sync::Arc::new(artifact),
     )
-    .unwrap()
 }
 
 #[repr(align(32))]

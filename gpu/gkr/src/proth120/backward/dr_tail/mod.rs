@@ -3,7 +3,7 @@ mod resources;
 #[cfg(test)]
 pub(crate) use resources::{cpu_validate_dr_tail_shapes_pr, DrTailLayerPlanPr};
 pub(crate) use resources::{dimension_reducing_slots_pr, DrTailPlanCursorPr};
-pub use resources::{preflight_dr_tail_resources_pr, DrTailProofPlanPr};
+pub use resources::{prepare_dr_tail_resources_pr, DrTailProofPlanPr};
 
 use core::mem::{align_of, offset_of, size_of};
 use std::collections::BTreeMap;

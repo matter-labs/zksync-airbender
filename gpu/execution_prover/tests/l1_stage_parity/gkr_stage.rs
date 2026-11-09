@@ -16,7 +16,7 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 use gpu_gkr::proth120::backward::{
-    preflight_dr_tail_resources_pr, GKRBackwardStageSnapshotPr, GKRBackwardStageSnapshotSinkPr,
+    prepare_dr_tail_resources_pr, GKRBackwardStageSnapshotPr, GKRBackwardStageSnapshotSinkPr,
     ResourceCountsPr, ResourceEventPr, ResourceIdPr, ResourceRecordPr,
 };
 use gpu_gkr::proth120::inputs::Proth120GkrWitnessInputs;
@@ -993,11 +993,11 @@ fn run_stages(
     }
 
     let preparation = Instant::now();
-    let programs = Arc::new(
-        GkrProgramsPr::compile(CircuitType::L1Wrap, Arc::new(circuit.clone()))
-            .unwrap_or_else(|error| panic!("GKR stage parity program compile: {error}")),
-    );
-    let dr_tail_plan = preflight_dr_tail_resources_pr(
+    let programs = Arc::new(GkrProgramsPr::compile(
+        CircuitType::L1Wrap,
+        Arc::new(circuit.clone()),
+    ));
+    let dr_tail_plan = prepare_dr_tail_resources_pr(
         &programs,
         config.sumcheck_explicit_output_size_log_2 as u32,
         &context,
