@@ -37,8 +37,8 @@ SOURCE_NAMES = {
     # the build budget (README): script, environment variables, Lake's input hash, OS tools
     "verify.sh", "MODULE_BUDGET_JOBS", "MODULE_BUDGET_LEDGER", "MODULE_BUDGET_S", "depHash", "ps", "wait4",
     "CALIBRATION_REFERENCE_S",
-    # CI (docs/TRUST_AND_REVIEW.md, What CI re-checks): Lake library and option, verify.sh modes, the kernel checker
-    "ImportNative", "precompileModules", "VERIFY_AUDITS", "fresh", "replay", "leanchecker",
+    # CI (docs/TRUST_AND_REVIEW.md, What CI re-checks): verify.sh's audit modes, the kernel checker
+    "VERIFY_AUDITS", "fresh", "replay", "leanchecker",
 }
 
 

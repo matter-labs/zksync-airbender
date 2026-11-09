@@ -55,7 +55,6 @@ CALIBRATION_SHA256 = "45aa2de95e7e061ea316fc116e4524448eb8f99c881f36fc4373411f59
 CALIBRATION_REFERENCE_S = 5.5  # lowest of ~20 runs here (5.4-6.8 s: thermal state, core type)
 CALIBRATION_REFERENCE_MACHINE = "Apple M-series Mac, 14 cores, macOS arm64, Lean 4.34.1 (2026-11-09)"
 CALIBRATION_CLAMP = (0.5, 4.0)
-NATIVES: list = []  # native_libs(), set by the commands that compile
 
 
 def ledger_path() -> Path:
@@ -166,30 +165,6 @@ def targets() -> list[str]:
     return sorted(closure(seeds))
 
 
-def native_libs() -> list[tuple[set[str], Path | None]]:
-    """The libraries with `precompileModules`: their modules and their shared library (None if not built). Lake
-    loads that library when it compiles an importer (`--load-dynlib`), so its code runs natively, not interpreted."""
-    out = []
-    every = all_modules()
-    for lib in lakefile().get("lean_lib", []):
-        if lib.get("precompileModules"):
-            found = [p for p in (BUILD / "lib").glob(f"lib*_{lib['name']}.*") if p.suffix in (".so", ".dylib", ".dll")]
-            out.append((lib_modules(lib, every), found[0] if found else None))
-    return out
-
-
-def dynlib_args(mod: str, natives: list[tuple[set[str], Path | None]]) -> list[str]:
-    """`--load-dynlib` for each precompiled library that `mod` imports (from outside it), as Lake passes it."""
-    args = []
-    deps = closure([mod]) - {mod}
-    for mods, path in natives:
-        if mod not in mods and deps & mods:
-            if path is None:
-                raise RuntimeError(f"{mod} imports a precompiled library that is not built (lake build first)")
-            args.append(f"--load-dynlib={path}")
-    return args
-
-
 def dep_hash(mod: str) -> str | None:
     t = BUILD / "lib" / "lean" / Path(*mod.split(".")).with_suffix(".trace")
     try:
@@ -270,11 +245,9 @@ def lean_env() -> tuple[str, dict[str, str]]:
 
 
 def compile_alone(mod: str, lean: str, env: dict[str, str], tmp: Path) -> tuple[float, int, str]:
-    """Compile like Lake does (olean, ilean and C outputs, into a scratch dir; the precompiled libraries it imports
-    loaded). Returns (CPU s, exit code, output)."""
+    """Compile like Lake does (olean, ilean and C outputs, into a scratch dir). Returns (CPU s, exit code, output)."""
     o = tmp / mod
-    args = [lean, str(src_of(mod)), "-o", f"{o}.olean", "-i", f"{o}.ilean", "-c", f"{o}.c",
-            *dynlib_args(mod, NATIVES)]
+    args = [lean, str(src_of(mod)), "-o", f"{o}.olean", "-i", f"{o}.ilean", "-c", f"{o}.c"]
     res = run_timed(args, env)
     for ext in (".olean", ".ilean", ".c"):
         try:
@@ -332,7 +305,6 @@ def cmd_check(jobs: int, table: Path | None) -> int:
     led = ledger_read()
     missing = [m for m in mods if (m, hashes[m]) not in led]
     lean, env = lean_env()
-    NATIVES[:] = native_libs()
     tmp = Path(tempfile.mkdtemp(prefix="module-budget-"))
     failed: list[str] = []
     try:
@@ -412,7 +384,6 @@ def cmd_check(jobs: int, table: Path | None) -> int:
 def cmd_time(mods: list[str]) -> int:
     """Time modules alone (imports must be built), without the ledger: for profiling a change."""
     lean, env = lean_env()
-    NATIVES[:] = native_libs()
     tmp = Path(tempfile.mkdtemp(prefix="module-budget-"))
     rc = 0
     try:

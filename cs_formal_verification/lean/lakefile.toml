@@ -110,55 +110,11 @@ globs = [
   "Human.Circuits.WordMemory.Output",
   "Human.Circuits.WordMemory.RVModel",
   "Human.Circuits.WordMemory.RVTheorems",
-  # Human.Helpers.+ and Human.Import.+ except the ImportNative library's modules (one library per module)
-  "Human.Helpers.Context.+",
-  "Human.Helpers.Core.BabyBearPrime",
-  "Human.Helpers.Core.CircuitOutput",
-  "Human.Helpers.Core.Configuration",
-  "Human.Helpers.Core.ExternalStream",
-  "Human.Helpers.Core.Word",
-  "Human.Helpers.Decoder.+",
-  "Human.Helpers.Delegation.+",
-  "Human.Helpers.Memory.+",
-  "Human.Helpers.Properties",
-  "Human.Helpers.Tables.+",
-  "Human.Helpers.UnifiedReduced.+",
+  "Human.Helpers.+",
   "Human.ISA.+",
-  "Human.Import.Coefficients",
-  "Human.Import.Columns",
-  "Human.Import.Exec.Emit",
-  "Human.Import.Exec.FastColumns",
-  "Human.Import.Exec.InitsTeardowns",
-  "Human.Import.InitsTeardownsLayout",
-  "Human.Import.Operations",
-  "Human.Import.Theorems",
-  "Human.Import.Transcribe",
-  "Human.Import.TranscribeCommand",
+  "Human.Import.+",
   "Human.Trace.+",
 ]
-
-# The import's JSON parser and the setup import (`import_setup_blocks`), with their imports (Lean only), run as
-# native code: precompiled into a shared library that Lake loads when elaborating an importer. Same source; without
-# it the IR interpreter runs the parser and the setup check ~10x slower (Chi5 setup: 24 s CPU). Declared after
-# `Human` (Lake resolves an import to the last library that can build it) and kept out of `Human`'s globs, so each
-# module has one library. They are spec files like the rest of `human/`.
-[[lean_lib]]
-name = "ImportNative"
-srcDir = "human"
-roots = ["Human.Import.SetupEmit"]
-globs = [
-  "Human.Helpers.Core.Field",
-  "Human.Import.BabyBear",
-  "Human.Import.Exec.Decode",
-  "Human.Import.Exec.JsonParser",
-  "Human.Import.Json",
-  "Human.Import.JsonGrammar",
-  "Human.Import.Schema",
-  "Human.Import.Serde",
-  "Human.Import.SetupBlocks",
-  "Human.Import.SetupEmit",
-]
-precompileModules = true
 
 # AddSub: rebuilt when add_sub_lui_auipc_mop_layout_no_caches_gkr.json changes
 [[lean_lib]]

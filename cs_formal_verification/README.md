@@ -99,8 +99,7 @@ Representation lemmas live in `Slop/Arithmetic/Word.lean`.
 
 [Lean strategies](docs/shared/lean-strategies.md) section 2 sets the budget: about 10 s per module, 30 s at most.
 `verify.sh` fails any module of the build targets over 30 s ([module_budget.py](lean/scripts/module_budget.py)). A
-module's time is the CPU time (user + sys) of its `lean` process compiled alone, imports built (and the precompiled
-`ImportNative` library loaded, as Lake does).
+module's time is the CPU time (user + sys) of its `lean` process compiled alone, imports built.
 
 The 30 s are CPU time on the reference machine, the Apple M-series Mac this project is developed on. Before checking,
 the gate compiles a pinned calibration file ([budget_calibration.lean](lean/scripts/budget_calibration.lean), Lean

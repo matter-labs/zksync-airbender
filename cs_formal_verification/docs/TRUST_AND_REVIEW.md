@@ -123,34 +123,6 @@ any mismatch fails the import. This comparison is an elaborator responsibility w
 trust as the transcription: it is elaborator code, not kernel-checked, and the kernel proofs
 see only the formula. See [the setup README](../lean/artifacts/setup/README.md).
 
-The parser and the setup import run as native code: the `ImportNative` library of
-[lakefile.toml](../lean/lakefile.toml) (SetupEmit and its imports) is precompiled (`precompileModules`) and Lake loads
-it when it elaborates an importer. The source is the same; executing it trusts Lean's compiler and the bundled C
-compiler where the IR interpreter ran it before (both ship with the pinned toolchain). Every emitted constant of the
-20 artifact and setup modules was compared by type and value hash before and after the switch (identical).
-
-The target remains the richer no-cache representation. Compiled-gate implication,
-witness extension and cached-layout equivalence are unproved. Generic prime-field
-claims retain their stated minimum moduli and inverse compatibility; they do not
-establish import of the native Proth120 artifact with its own coefficients.
-
-The reference is our own RV32 spec ([RV32.lean](../lean/human/Human/ISA/RV32.lean),
-[State.lean](../lean/human/Human/ISA/State.lean), [Delegations.lean](../lean/human/Human/ISA/Delegations.lean)); review
-it as a specification. Its link to the official Sail model is the
-[equivalence leaf](../lean/human/Human/ISA/Sail/Theorems.lean) (`DecodeIsSailClaim`, `StepIsAirbenderClaim`,
-`MachineChecksClaim`; proofs in `slop/Slop/ISA/Equiv/`). Review [regen.sh](../sail/regen.sh),
-[PINS.md](../sail/PINS.md) and the configuration copy only for that leaf: generation fidelity (Sail compiler to
-Lean) is trusted, not proved; the model is the official sail-riscv source compiled without pruning. The equivalence
-is stated against the Airbender machine of [Airbender.lean](../lean/human/Human/ISA/Sail/Airbender.lean) (Sail's execute
-plus the listed changes, on a fixed configuration: misa, memory map, reset state), so what it shows is only as good
-as that list.
-
-Public program tables are built from the ROM image by `RV.read` and `RV.decode`
-([RVProgram](../lean/human/Human/Helpers/Decoder/RVProgram.lean)); the native metadata projection of an `RV.Instr`
-still needs review against Rust (`add_sub_family/decoder.rs`, `riscv_transpiler/src/ir/simple_instruction_set.rs`).
-Custom CSR/Zimop behavior is in the spec: the CSR 0x7C0 input read/write forms and the delegation calls are the
-only CSR forms with a next state.
-
 ## What CI re-checks
 
 `.github/workflows/lean-formal-verification.yml` runs [verify.sh](../verify.sh) in two modes
