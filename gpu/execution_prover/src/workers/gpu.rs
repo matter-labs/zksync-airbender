@@ -15,7 +15,7 @@ use gpu_circuit_prover::proof::GpuGKRProofJob;
 use gpu_core::allocator::tracker::AllocationDirection::{self, Ascending, Descending};
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr::proth120::backward::{preflight_dr_tail_resources_pr, DrTailProofPlanPr};
+use gpu_gkr::proth120::backward::{prepare_dr_tail_resources_pr, DrTailProofPlanPr};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
 use gpu_gkr::stage1::merged_commitment::{
     commit_merged_from_transfers, GpuGKRMergedCommitTransfer,
@@ -577,7 +577,7 @@ fn schedule_l1_wrap_phase_one<'a>(
         follower: None,
     };
     let dr_tail_plan =
-        preflight_dr_tail_resources_pr(&precomputed.programs, WRAP_FINAL_TRACE_SIZE_LOG_2, context);
+        prepare_dr_tail_resources_pr(&precomputed.programs, WRAP_FINAL_TRACE_SIZE_LOG_2, context);
     let mut inputs = L1WrapInputs::new(
         &precomputed.geometry,
         precomputed.decoder_host.clone(),

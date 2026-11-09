@@ -44,8 +44,7 @@ fn l1_wrap_staged_bytes_bound() -> usize {
     ))
     .expect("committed Proth120 layout");
     let num_sets = circuit.memory_layout.teardown_sets.len();
-    let programs = GkrProgramsPr::compile(CircuitType::L1Wrap, std::sync::Arc::new(circuit))
-        .expect("L1Wrap programs");
+    let programs = GkrProgramsPr::compile(CircuitType::L1Wrap, std::sync::Arc::new(circuit));
     (BOUNDARY_PREFIX_U32_LEN + num_sets) * size_of::<u32>() + max_coefficient_table_bytes(&programs)
 }
 

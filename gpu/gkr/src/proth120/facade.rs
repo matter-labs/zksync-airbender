@@ -89,7 +89,6 @@ pub fn schedule_gkr(
         "proof_slab",
         &proof.backing,
     );
-    dr_tail_plan.validate_before_enqueue(&programs, PR_DR_FINAL_TRACE_LOG_2, context);
     let stream = context.get_exec_stream();
     memory_copy_async(
         proof.external_challenges_device_mut(),

@@ -43,10 +43,7 @@ impl L1WrapPrecomputed {
         let geometry = L1WrapGeometry::new(circuit_type, &config, &setup.circuit, &setup);
         let decoder_host = decoder_host(&setup.decoder_table)?;
         let circuit = Arc::new(setup.circuit);
-        let programs = Arc::new(
-            GkrProgramsPr::compile(circuit_type, Arc::clone(&circuit))
-                .unwrap_or_else(|error| panic!("{circuit_type:?} GKR programs: {error}")),
-        );
+        let programs = Arc::new(GkrProgramsPr::compile(circuit_type, Arc::clone(&circuit)));
         Ok(Self {
             circuit_type,
             source: Mutex::new(Some(setup.setup)),

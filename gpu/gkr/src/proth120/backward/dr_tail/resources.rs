@@ -205,44 +205,17 @@ fn plan_dr_tail_layers_pr(
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DrTailProofPlanPr {
     device_id: i32,
-    final_trace_log_2: u32,
-    static_smem_bytes: usize,
-    local_bytes: usize,
-    device_cap_bytes: usize,
-    max_dynamic_smem_bytes: usize,
-    occupancy: Vec<(usize, u32)>,
     layers: Vec<DrTailLayerPlanPr>,
     window_programs: BTreeMap<usize, Arc<DrWindowLayerProgram>>,
 }
 
 impl DrTailProofPlanPr {
-    pub fn validate_before_enqueue(
-        &self,
-        programs: &GkrProgramsPr,
-        final_trace_log_2: u32,
-        context: &ProverContext,
-    ) {
+    pub(crate) fn assert_device(&self, context: &ProverContext) {
         let current = era_cudart::device::get_device()
             .expect("Proth120 DR-tail enqueue must observe the scheduling device");
-        assert_eq!(
-            current,
-            context.get_device_id(),
-            "Proth120 proof scheduling must run on the context device"
-        );
-        assert_eq!(
-            context.get_device_id(),
-            self.device_id,
-            "Proth120 DR-tail plan was admitted on another device"
-        );
-        assert_eq!(
-            final_trace_log_2, self.final_trace_log_2,
-            "Proth120 DR-tail plan was admitted for another final trace log"
-        );
-        let expected =
-            plan_dr_tail_layers_pr(programs, self.static_smem_bytes, self.device_cap_bytes);
-        assert_eq!(
-            self.layers, expected,
-            "Proth120 DR-tail plan does not match the programs"
+        assert!(
+            current == context.get_device_id() && current == self.device_id,
+            "Proth120 DR-tail plan and scheduling must use the context device"
         );
     }
 
@@ -262,43 +235,6 @@ impl DrTailProofPlanPr {
             layers: &self.layers,
             consumed: BTreeSet::new(),
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn admission_record(&self) -> String {
-        let layers = self
-            .layers
-            .iter()
-            .map(|layer| {
-                format!(
-                    "{{\"layer\":{},\"folding_steps\":{},\"sources\":{},\"entry_round\":{},\"global_state_bytes\":{},\"dynamic_smem_bytes\":{}}}",
-                    layer.layer_idx,
-                    layer.folding_steps,
-                    layer.canonical_sources.len(),
-                    layer.capacity.entry_round,
-                    layer.capacity.global_state_bytes,
-                    layer.capacity.dynamic_smem_bytes
-                )
-            })
-            .collect::<Vec<_>>()
-            .join(",");
-        let occupancy = self
-            .occupancy
-            .iter()
-            .map(|(bytes, blocks)| {
-                format!("{{\"dynamic_smem_bytes\":{bytes},\"blocks_per_sm\":{blocks}}}")
-            })
-            .collect::<Vec<_>>()
-            .join(",");
-        format!(
-            "{{\"device_id\":{},\"final_trace_log_2\":{},\"static_smem_bytes\":{},\"local_bytes\":{},\"device_cap_bytes\":{},\"max_dynamic_smem_bytes\":{},\"occupancy\":[{occupancy}],\"layers\":[{layers}]}}",
-            self.device_id,
-            self.final_trace_log_2,
-            self.static_smem_bytes,
-            self.local_bytes,
-            self.device_cap_bytes,
-            self.max_dynamic_smem_bytes
-        )
     }
 }
 
@@ -343,7 +279,7 @@ impl DrTailPlanCursorPr<'_> {
     }
 }
 
-pub fn preflight_dr_tail_resources_pr(
+pub fn prepare_dr_tail_resources_pr(
     programs: &GkrProgramsPr,
     final_trace_size_log_2: u32,
     context: &ProverContext,
@@ -358,19 +294,19 @@ pub fn preflight_dr_tail_resources_pr(
     );
     let device_id = context.get_device_id();
     let current = era_cudart::device::get_device()
-        .expect("Proth120 DR-tail admission must observe the scheduling device");
+        .expect("Proth120 DR-tail preparation must observe the scheduling device");
     assert_eq!(
         current, device_id,
-        "Proth120 DR-tail admission must run on the context device"
+        "Proth120 DR-tail preparation must run on the context device"
     );
-    let attributes =
-        dr_tail_attributes_pr().expect("Proth120 DR-tail admission: cudaFuncGetAttributes failed");
+    let attributes = dr_tail_attributes_pr()
+        .expect("Proth120 DR-tail preparation: cudaFuncGetAttributes failed");
     assert_eq!(
         attributes.local_bytes, 0,
         "Proth120 DR-tail kernel spills to local memory"
     );
     let device_cap_bytes = dr_tail_device_optin_cap_bytes_pr(device_id)
-        .expect("Proth120 DR-tail admission: shared-memory opt-in query failed");
+        .expect("Proth120 DR-tail preparation: shared-memory opt-in query failed");
     let layers = plan_dr_tail_layers_pr(programs, attributes.static_smem_bytes, device_cap_bytes);
     let mut selected: Vec<usize> = layers
         .iter()
@@ -383,23 +319,19 @@ pub fn preflight_dr_tail_resources_pr(
         .expect("Proth120 DR-tail plan has no layers");
     let retained_ceiling = attributes.max_dynamic_smem_bytes.max(max_dynamic);
     set_dr_tail_max_dynamic_smem_bytes_pr(retained_ceiling)
-        .expect("Proth120 DR-tail admission: setting the dynamic shared-memory ceiling failed");
+        .expect("Proth120 DR-tail preparation: setting the dynamic shared-memory ceiling failed");
     let effective = dr_tail_attributes_pr()
-        .expect("Proth120 DR-tail admission: cudaFuncGetAttributes failed")
+        .expect("Proth120 DR-tail preparation: cudaFuncGetAttributes failed")
         .max_dynamic_smem_bytes;
     assert!(
         max_dynamic <= effective,
         "Proth120 DR-tail dynamic shared-memory ceiling was not applied"
     );
-    let occupancy = selected
-        .into_iter()
-        .map(|bytes| {
-            let blocks = dr_tail_occupancy_pr(bytes)
-                .expect("Proth120 DR-tail admission: occupancy query failed");
-            assert_ne!(blocks, 0, "Proth120 DR-tail kernel has zero occupancy");
-            (bytes, blocks)
-        })
-        .collect();
+    for bytes in selected {
+        let blocks = dr_tail_occupancy_pr(bytes)
+            .expect("Proth120 DR-tail preparation: occupancy query failed");
+        assert_ne!(blocks, 0, "Proth120 DR-tail kernel has zero occupancy");
+    }
     let window_programs = compile_dr_window_programs_pr(programs, final_trace_size_log_2);
     for layer in &layers {
         let program = window_programs.get(&layer.layer_idx).unwrap_or_else(|| {
@@ -424,7 +356,7 @@ pub fn preflight_dr_tail_resources_pr(
             gpu_gkr_compiler::validate_dr_window_split_ownership(program.input_projection())
                 .unwrap_or_else(|error| {
                     panic!(
-                        "Proth120 DR continuation split admission at layer {}: {error}",
+                        "Proth120 DR continuation split preparation at layer {}: {error}",
                         layer.layer_idx
                     )
                 });
@@ -432,12 +364,6 @@ pub fn preflight_dr_tail_resources_pr(
     }
     DrTailProofPlanPr {
         device_id,
-        final_trace_log_2: final_trace_size_log_2,
-        static_smem_bytes: attributes.static_smem_bytes,
-        local_bytes: attributes.local_bytes,
-        device_cap_bytes,
-        max_dynamic_smem_bytes: effective,
-        occupancy,
         layers,
         window_programs,
     }

@@ -36,16 +36,14 @@ const SCHEDULE: &[u8] = include_bytes!(
 const _: () = assert!(PR_FWD_VM_BUCKETS == 4);
 
 impl GkrProgramsPr {
-    pub fn compile(
-        circuit_type: CircuitType,
-        artifact: Arc<GKRCircuitArtifact<PR>>,
-    ) -> Result<Self, String> {
+    pub fn compile(circuit_type: CircuitType, artifact: Arc<GKRCircuitArtifact<PR>>) -> Self {
         assert_eq!(
             circuit_type,
             CircuitType::L1Wrap,
             "Proth120 GKR supports CircuitType::L1Wrap only"
         );
         Self::compile_with_schedule(artifact, SCHEDULE)
+            .expect("committed Proth120 GKR programs must compile")
     }
 
     #[allow(clippy::needless_pass_by_value)]
@@ -131,7 +129,7 @@ mod cpu_tests {
             "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
         ))
         .unwrap();
-        let programs = GkrProgramsPr::compile(CircuitType::L1Wrap, Arc::new(artifact)).unwrap();
+        let programs = GkrProgramsPr::compile(CircuitType::L1Wrap, Arc::new(artifact));
         let config = ProofProfile::L1Wrap.prover_config(
             21,
             prover::definitions::SoundnessMode::PessimisticConjecture,

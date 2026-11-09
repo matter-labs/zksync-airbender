@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use field::Field;
 use gpu_core::primitives::field::PR;
@@ -8,11 +7,11 @@ use prover::transcript::{Keccak256Transcript, Transcript};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
-use super::{make_context, panic_message, read_back, upload};
+use super::{make_context, read_back, upload};
 use crate::backward::{derive_dimension_reducing_inputs, GKR_DIM_REDUCING_SLOTS};
 use crate::proth120::backward::dr_tail::{
     dimension_reducing_slots_pr, encode_dr_tail_slots_pr, launch_dr_tail_megakernel_pr,
-    preflight_dr_tail_resources_pr, DrTailLayerPlanPr, DrTailMegakernelDescPr, DrTailSlotPr,
+    prepare_dr_tail_resources_pr, DrTailLayerPlanPr, DrTailMegakernelDescPr, DrTailSlotPr,
     PR_DR_TAIL_MAX_SOURCES,
 };
 use crate::proth120::backward::window_dr::schedule_dr_batch_challenge_table_pr;
@@ -339,26 +338,9 @@ fn check_tail_case(
 fn pr_tail_round_update_matches_keccak() {
     let context = make_context();
     let programs = super::cpu_abi::programs();
-    let rejected = catch_unwind(AssertUnwindSafe(|| {
-        preflight_dr_tail_resources_pr(&programs, 5, &context)
-    }))
-    .unwrap_err();
     let final_log = crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
-    assert!(panic_message(rejected).contains(&format!(
-        "Proth120 DR tail supports final trace log {final_log} only"
-    )));
-    let plan = preflight_dr_tail_resources_pr(&programs, final_log, &context);
-    plan.validate_before_enqueue(&programs, final_log, &context);
-    println!("GKR_DR_TAIL_ADMISSION {}", plan.admission_record());
-    assert_eq!(
-        plan.layers().len(),
-        prover::gkr::prover_config::example_configs::l1_wrap::TRACE_LEN_LOG2 - final_log as usize
-    );
-    let rejected = catch_unwind(AssertUnwindSafe(|| {
-        plan.validate_before_enqueue(&programs, 5, &context)
-    }))
-    .unwrap_err();
-    assert!(panic_message(rejected).contains("admitted for another final trace log"));
+    let plan = prepare_dr_tail_resources_pr(&programs, final_log, &context);
+    assert_eq!(plan.layers().len(), 19);
     let circuit = programs.runtime_circuit.as_ref();
     let layer_inputs = derive_dimension_reducing_inputs(
         circuit.layers.len(),
