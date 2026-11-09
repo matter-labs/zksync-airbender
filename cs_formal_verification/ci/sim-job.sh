@@ -40,7 +40,7 @@ restore "$ekey" / || { T elan; save "$ekey" / root/.elan; }
 
 echo "== sail model (cache: sail-<inputs hash>)"
 skey="sail-$("$CI" sail-key)"
-restore "$skey" "$L/sail-rv32" || { T sail-gen; save "$skey" "$L/sail-rv32" SailRV32 SailRV32.lean; }
+restore "$skey" "$L/sail-rv32" || { T sail-deps; T sail-gen; save "$skey" "$L/sail-rv32" SailRV32 SailRV32.lean; }
 T lean-sail
 [[ "${FVCI_STOP:-}" == sail ]] && { echo "JOB stopped after the sail model (FVCI_STOP=sail)"; exit 0; }
 

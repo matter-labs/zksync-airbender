@@ -50,10 +50,21 @@ step_sail_deps() {
 
 step_elan() {
   if ! command -v elan >/dev/null; then
-    curl -sSfL "https://raw.githubusercontent.com/leanprover/elan/$ELAN_VERSION/elan-init.sh" -o /tmp/elan-init.sh
-    sh /tmp/elan-init.sh -y --no-modify-path --default-toolchain none
+    # the pinned elan release itself (elan-init.sh would fetch "latest"); GitHub's release downloads answered 504 for
+    # minutes at a time here, so retry
+    local d; d=$(mktemp -d)
+    curl -sSfL --retry 8 --retry-all-errors --retry-delay 20 -o "$d/elan.tar.gz" \
+      "https://github.com/leanprover/elan/releases/download/$ELAN_VERSION/elan-$(uname -m)-unknown-linux-gnu.tar.gz"
+    tar -xzf "$d/elan.tar.gz" -C "$d"
+    "$d/elan-init" -y --no-modify-path --default-toolchain none
+    rm -rf "$d"
   fi
-  elan toolchain install "$(cat "$LEAN/lean-toolchain")"
+  local i  # up to six attempts: the release download (GitHub) answered 504 for minutes at a time here
+  for i in 1 2 3 4 5 6; do
+    elan toolchain install "$(cat "$LEAN/lean-toolchain")" && break
+    (( i < 6 )) || return 1
+    log "toolchain download failed (attempt $i)"; sleep 30
+  done
   (cd "$LEAN" && lean --version)
 }
 
