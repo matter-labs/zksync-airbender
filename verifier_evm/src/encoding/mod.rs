@@ -1,19 +1,12 @@
 //! Calldata format F1 for the single-transaction L1 wrap verifier
 //! with transcript-preserving compression. The verifier reconstructs omitted values
 //! before absorbing them. See `verifier_evm/gkr_transcript_reference.md`
-//! for the transcript order and committed encoding checks.
+//! for encoding invariants and verification/producer pointers.
 //!
-//! Single-tx layout: `GKR section ‖ WHIR section`, in transcript order.
-//! - GKR: registers (32 × LE u32), `TS-run` of the 32 register timestamps and the final
-//!   timestamp, top bits (LE u32), memory cap (`DIGEST`s), external PoW nonce (BE u64),
-//!   `FE-run` of the explicit output evaluations, per dimension-reducing layer `FE-run(2k)` of the
-//!   round `(b, c)` pairs (E1) and `FE-run` of the LSB lines, per circuit layer `FE-run(2t)` of
-//!   `(b, c)` and `FE-run` of the at-point evals, WHIR batching PoW nonce (BE u64). The final PC
-//!   and the setup cap are deployment constants.
-//! - WHIR, per round: `FE-run` of the sumcheck `(c0, c2)` pairs (E2); intermediate rounds: cap
-//!   (`DIGEST`s), OOD value (BE16), PoW nonce (BE u64); the final round: `FE-run` of the
-//!   monomials, PoW nonce; then per query in draw order, per opened oracle, the leaf `FE-run`
-//!   and its path `DIGEST`s (round 0: memory then setup).
+//! F1 stores GKR then WHIR. Registers and top bits are LE u32; PoW nonces are
+//! BE u64. Field runs pack canonical 123-bit values MSB-first; digests use the
+//! 25-byte prefix of their big-endian words.
+//! The final PC and setup cap are deployment constants.
 
 mod digest;
 mod gkr;
