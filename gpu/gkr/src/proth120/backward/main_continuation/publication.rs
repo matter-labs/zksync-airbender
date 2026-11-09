@@ -2,9 +2,7 @@ use std::collections::BTreeMap;
 
 use gpu_core::primitives::context::DeviceAllocation;
 
-use crate::backward::main_continuation::{
-    ContinuationPublicationError, ContinuationPublishedShape,
-};
+use crate::backward::main_continuation::ContinuationPublishedShape;
 use crate::upstream::{GKRAddress, PR};
 
 pub(crate) const PR_MAIN_FINAL_EVALUATIONS_PER_ADDRESS: usize = 2;
@@ -15,22 +13,21 @@ pub(crate) struct ContinuationPublishedLevelPr {
 }
 
 impl ContinuationPublishedLevelPr {
-    pub(crate) fn try_new(
-        shape: ContinuationPublishedShape,
-        allocation: DeviceAllocation<PR>,
-    ) -> Result<Self, ContinuationPublicationError> {
-        if shape.columns == 0 || shape.column_elems == 0 {
-            return Err(ContinuationPublicationError::EmptyShape);
-        }
+    pub(crate) fn new(shape: ContinuationPublishedShape, allocation: DeviceAllocation<PR>) -> Self {
+        assert!(
+            shape.columns > 0 && shape.column_elems > 0,
+            "Proth120 continuation publication is empty"
+        );
         let expected = shape
             .columns
             .checked_mul(shape.column_elems)
-            .ok_or(ContinuationPublicationError::ShapeElementCountOverflow)?;
-        let actual = allocation.len();
-        if actual != expected {
-            return Err(ContinuationPublicationError::AllocationLength { expected, actual });
-        }
-        Ok(Self { shape, allocation })
+            .expect("Proth120 continuation publication element count overflow");
+        assert_eq!(
+            allocation.len(),
+            expected,
+            "Proth120 continuation publication allocation length mismatch"
+        );
+        Self { shape, allocation }
     }
 
     pub(crate) fn shape(&self) -> ContinuationPublishedShape {

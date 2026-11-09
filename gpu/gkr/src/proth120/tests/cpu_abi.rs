@@ -57,7 +57,6 @@ fn cpu_pr_complete_launch_argument_abi() {
         .filter(|layer| layer.layer_idx > 1)
         .all(|layer| layer.extra_evaluations_addresses.is_empty()));
     assert_eq!(layout.memory_claims.end, layout.setup_claims.start);
-    assert!(programs.geometry.constants <= super::super::forward::desc::PR_FWD_VM_CONST_CAP);
     let mut rows = vec![
         ("ab_pr_gkr_fwd_vm_kernel", size_of::<FwdVmDesc>()),
         (

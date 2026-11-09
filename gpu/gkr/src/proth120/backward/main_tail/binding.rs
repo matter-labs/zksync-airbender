@@ -357,8 +357,7 @@ pub(crate) fn launch_main_tail_pr(
     let final_elems = launch.final_shape.columns * launch.final_shape.column_elems;
     assert!(final_elems <= final_allocation.len());
     final_allocation.shrink_len_to(final_elems);
-    let final_level = ContinuationPublishedLevelPr::try_new(launch.final_shape, final_allocation)
-        .expect("Proth120 main-tail publication must fit its allocation");
+    let final_level = ContinuationPublishedLevelPr::new(launch.final_shape, final_allocation);
     let config = CudaLaunchConfig::basic(1, PR_MAIN_TAIL_BLOCK_THREADS, context.get_exec_stream());
     PrGkrMainTailFunction::default().launch(
         &config,

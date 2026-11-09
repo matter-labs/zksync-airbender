@@ -1,5 +1,6 @@
 use core::marker::PhantomData;
 use core::mem::{align_of, offset_of, size_of};
+use era_cudart::result::CudaResult;
 
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_gkr_compiler::{
@@ -12,9 +13,7 @@ use gpu_gkr_compiler::{
 use gpu_prover_context::ProverContext;
 
 use super::publication::ContinuationPublishedLevelPr;
-use crate::backward::main_continuation::{
-    ContinuationPublicationError, ContinuationPublishedShape,
-};
+use crate::backward::main_continuation::ContinuationPublishedShape;
 use crate::backward::window::bank::family_read_place;
 use crate::backward::window::common::{
     bwd_source_lane, BwdSourceWindow, BWD_COEFF_NONE, BWD_COEFF_ORIGIN_PROCEDURAL,
@@ -127,89 +126,6 @@ pub(crate) struct MainContinuationScratchPr {
     pub(crate) partials_capacity: usize,
 }
 
-#[allow(dead_code)]
-#[derive(Debug)]
-pub(crate) enum MainContinuationBindErrorPr {
-    Cuda(era_cudart_sys::CudaError),
-    Publication(ContinuationPublicationError),
-    InvalidGeometry {
-        folding_steps: usize,
-        start_round: usize,
-    },
-    Capacity {
-        resource: &'static str,
-        required: usize,
-        capacity: usize,
-    },
-    NullRuntimePointer {
-        resource: &'static str,
-    },
-    ImmediateCountMismatch {
-        program: usize,
-        table: usize,
-    },
-    CoefficientOutOfRange {
-        id: usize,
-        count: usize,
-    },
-    ImmediateOutOfRange {
-        id: usize,
-        count: usize,
-    },
-    TruncatedProgram {
-        word: usize,
-    },
-    UnresolvedRawSource {
-        source: u32,
-    },
-    RawSourceFieldMismatch {
-        source: u32,
-        expect_ext: bool,
-    },
-    RawSourceStrideMismatch {
-        source: u32,
-        stride_bytes: u32,
-    },
-    RawSourceRankMismatch {
-        source: u32,
-    },
-    SourceAlignment {
-        source: u32,
-        address: usize,
-    },
-    ArenaAlignment {
-        address: usize,
-        column_elems: usize,
-    },
-    UnknownProceduralKind {
-        source: u32,
-        kind: u8,
-    },
-    PriorShapeMismatch {
-        expected: ContinuationPublishedShape,
-        actual: ContinuationPublishedShape,
-    },
-    InputOutputAlias,
-    FoldListDuplicate {
-        source: u16,
-    },
-    FoldListMissing {
-        source: u16,
-    },
-}
-
-impl From<era_cudart_sys::CudaError> for MainContinuationBindErrorPr {
-    fn from(error: era_cudart_sys::CudaError) -> Self {
-        Self::Cuda(error)
-    }
-}
-
-impl From<ContinuationPublicationError> for MainContinuationBindErrorPr {
-    fn from(error: ContinuationPublicationError) -> Self {
-        Self::Publication(error)
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum MainContinuationInputKindPr {
     First,
@@ -234,7 +150,7 @@ struct FoldItem {
 fn build_fold_lists(
     items: impl IntoIterator<Item = FoldItem>,
     source_count: usize,
-) -> Result<([u16; PR_MAIN_CONTINUATION_FOLD_LISTS + 1], Vec<u16>), MainContinuationBindErrorPr> {
+) -> ([u16; PR_MAIN_CONTINUATION_FOLD_LISTS + 1], Vec<u16>) {
     let mut items: Vec<_> = items.into_iter().collect();
     items.sort_unstable_by_key(|item| (core::cmp::Reverse(item.byte_weight), item.source));
     let mut loads = [0usize; PR_MAIN_CONTINUATION_FOLD_LISTS];
@@ -251,27 +167,31 @@ fn build_fold_lists(
     let mut flattened = Vec::with_capacity(source_count);
     for (list, sources) in lists.into_iter().enumerate() {
         flattened.extend(sources);
-        offsets[list + 1] =
-            u16::try_from(flattened.len()).map_err(|_| MainContinuationBindErrorPr::Capacity {
-                resource: "fold sources",
-                required: flattened.len(),
-                capacity: u16::MAX as usize,
-            })?;
+        offsets[list + 1] = u16::try_from(flattened.len()).unwrap_or_else(|_| {
+            panic!(
+                "Proth120 continuation capacity (resource={:?}, required={:?}, capacity={:?})",
+                "fold sources",
+                flattened.len(),
+                u16::MAX as usize
+            )
+        });
     }
     let mut seen = vec![false; source_count];
     for &source in &flattened {
         let index = usize::from(source);
-        if index >= source_count || seen[index] {
-            return Err(MainContinuationBindErrorPr::FoldListDuplicate { source });
-        }
+        assert!(
+            index < source_count && !seen[index],
+            "Proth120 continuation fold list duplicate (source={:?})",
+            source
+        );
         seen[index] = true;
     }
-    if let Some(source) = seen.iter().position(|present| !present) {
-        return Err(MainContinuationBindErrorPr::FoldListMissing {
-            source: source as u16,
-        });
-    }
-    Ok((offsets, flattened))
+    let missing = seen.iter().position(|present| !present);
+    assert!(
+        missing.is_none(),
+        "Proth120 continuation fold list is missing source {missing:?}"
+    );
+    (offsets, flattened)
 }
 
 struct AddressSlotTable {
@@ -287,11 +207,7 @@ impl AddressSlotTable {
         }
     }
 
-    fn lane(
-        &mut self,
-        slot: BwdSourceWindow,
-        column: usize,
-    ) -> Result<u16, MainContinuationBindErrorPr> {
+    fn lane(&mut self, slot: BwdSourceWindow, column: usize) -> u16 {
         let index = match self.slots[..self.len].iter().position(|entry| {
             entry.base == slot.base
                 && entry.log2_stride == slot.log2_stride
@@ -300,22 +216,25 @@ impl AddressSlotTable {
         }) {
             Some(index) => index,
             None => {
-                if self.len == self.slots.len() {
-                    return Err(MainContinuationBindErrorPr::Capacity {
-                        resource: "address slots",
-                        required: self.len + 1,
-                        capacity: self.slots.len(),
-                    });
-                }
+                assert!(
+                    self.len != self.slots.len(),
+                    "Proth120 continuation capacity (resource={:?}, required={:?}, capacity={:?})",
+                    "address slots",
+                    self.len + 1,
+                    self.slots.len()
+                );
                 self.slots[self.len] = slot;
                 self.len += 1;
                 self.len - 1
             }
         };
-        bwd_source_lane(index, column).ok_or(MainContinuationBindErrorPr::Capacity {
-            resource: "address lane column",
-            required: column + 1,
-            capacity: SOURCE_WINDOW_COLUMNS,
+        bwd_source_lane(index, column).unwrap_or_else(|| {
+            panic!(
+                "Proth120 continuation capacity (resource={:?}, required={:?}, capacity={:?})",
+                "address lane column",
+                column + 1,
+                SOURCE_WINDOW_COLUMNS
+            )
         })
     }
 }
@@ -337,17 +256,15 @@ fn pointer_ranges_overlap(
     first_start < second_end && second_start < first_end
 }
 
-fn checked_pow2(
-    exponent: usize,
-    folding_steps: usize,
-    start_round: usize,
-) -> Result<usize, MainContinuationBindErrorPr> {
+fn checked_pow2(exponent: usize, folding_steps: usize, start_round: usize) -> usize {
     u32::try_from(exponent)
         .ok()
         .and_then(|exponent| 1usize.checked_shl(exponent))
-        .ok_or(MainContinuationBindErrorPr::InvalidGeometry {
-            folding_steps,
-            start_round,
+        .unwrap_or_else(|| {
+            panic!(
+                "Proth120 continuation invalid geometry (folding_steps={:?}, start_round={:?})",
+                folding_steps, start_round
+            )
         })
 }
 
@@ -355,37 +272,35 @@ pub(crate) fn publication_shape_pr(
     program: &MainContinuationWindowProgram,
     folding_steps: usize,
     start_round: usize,
-) -> Result<(ContinuationPublishedShape, usize), MainContinuationBindErrorPr> {
-    if start_round < PR_MAIN_CONTINUATION_FOLD_COORDINATES
-        || !start_round.is_multiple_of(PR_MAIN_CONTINUATION_FOLD_COORDINATES)
-        || folding_steps < start_round + PR_MAIN_CONTINUATION_FOLD_COORDINATES
-        || start_round > u8::MAX as usize
-    {
-        return Err(MainContinuationBindErrorPr::InvalidGeometry {
-            folding_steps,
-            start_round,
-        });
-    }
+) -> (ContinuationPublishedShape, usize) {
+    assert!(
+        start_round >= PR_MAIN_CONTINUATION_FOLD_COORDINATES
+            && start_round.is_multiple_of(PR_MAIN_CONTINUATION_FOLD_COORDINATES)
+            && folding_steps >= start_round + PR_MAIN_CONTINUATION_FOLD_COORDINATES
+            && start_round <= u8::MAX as usize,
+        "Proth120 continuation invalid geometry (folding_steps={:?}, start_round={:?})",
+        folding_steps,
+        start_round
+    );
     let logical_rows = checked_pow2(
         folding_steps - start_round - PR_MAIN_CONTINUATION_FOLD_COORDINATES,
         folding_steps,
         start_round,
-    )?;
-    let column_elems =
-        logical_rows
-            .checked_mul(8)
-            .ok_or(MainContinuationBindErrorPr::InvalidGeometry {
-                folding_steps,
-                start_round,
-            })?;
-    Ok((
+    );
+    let column_elems = logical_rows.checked_mul(8).unwrap_or_else(|| {
+        panic!(
+            "Proth120 continuation invalid geometry (folding_steps={:?}, start_round={:?})",
+            folding_steps, start_round
+        )
+    });
+    (
         ContinuationPublishedShape {
             depth: start_round as u8,
             columns: program.sources.len(),
             column_elems,
         },
         logical_rows.div_ceil(PR_MAIN_CONTINUATION_ROWS_PER_TILE),
-    ))
+    )
 }
 
 fn append_canonical_arena_slots(
@@ -393,23 +308,26 @@ fn append_canonical_arena_slots(
     base: *const PR,
     column_elems: usize,
     columns: usize,
-) -> Result<Vec<u16>, MainContinuationBindErrorPr> {
-    if !column_elems.is_power_of_two() || !(base as usize).is_multiple_of(32) {
-        return Err(MainContinuationBindErrorPr::ArenaAlignment {
-            address: base as usize,
-            column_elems,
-        });
-    }
+) -> Vec<u16> {
+    assert!(
+        column_elems.is_power_of_two() && (base as usize).is_multiple_of(32),
+        "Proth120 continuation arena alignment (address={:?}, column_elems={:?})",
+        base as usize,
+        column_elems
+    );
     let mut lanes = Vec::with_capacity(columns);
     for source in 0..columns {
         let chunk_elems = (source / SOURCE_WINDOW_COLUMNS)
             .checked_mul(SOURCE_WINDOW_COLUMNS)
             .and_then(|value| value.checked_mul(column_elems))
-            .ok_or(MainContinuationBindErrorPr::Capacity {
-                resource: "canonical arena offset",
-                required: usize::MAX,
-                capacity: usize::MAX - 1,
-            })?;
+            .unwrap_or_else(|| {
+                panic!(
+                    "Proth120 continuation capacity (resource={:?}, required={:?}, capacity={:?})",
+                    "canonical arena offset",
+                    usize::MAX,
+                    usize::MAX - 1
+                )
+            });
         let slot = BwdSourceWindow {
             base: base.wrapping_add(chunk_elems).cast::<u8>(),
             log2_stride: column_elems.trailing_zeros() as u8,
@@ -418,9 +336,9 @@ fn append_canonical_arena_slots(
             reserved: 0,
             r0_stride_bytes: 0,
         };
-        lanes.push(table.lane(slot, source % SOURCE_WINDOW_COLUMNS)?);
+        lanes.push(table.lane(slot, source % SOURCE_WINDOW_COLUMNS));
     }
-    Ok(lanes)
+    lanes
 }
 
 fn raw_input_lanes(
@@ -429,27 +347,27 @@ fn raw_input_lanes(
     folding_steps: usize,
     destination: &ContinuationPublishedLevelPr,
     table: &mut AddressSlotTable,
-) -> Result<(Vec<u16>, Vec<FoldItem>), MainContinuationBindErrorPr> {
+) -> (Vec<u16>, Vec<FoldItem>) {
     let element_bytes = size_of::<PR>();
     let destination_bytes = destination
         .allocation()
         .len()
         .checked_mul(element_bytes)
-        .ok_or(MainContinuationBindErrorPr::InputOutputAlias)?;
-    let input_bytes = checked_pow2(folding_steps, folding_steps, 3)?
+        .unwrap_or_else(|| panic!("Proth120 continuation input output alias"));
+    let input_bytes = checked_pow2(folding_steps, folding_steps, 3)
         .checked_mul(element_bytes)
-        .ok_or(MainContinuationBindErrorPr::InputOutputAlias)?;
+        .unwrap_or_else(|| panic!("Proth120 continuation input output alias"));
     let mut lanes = Vec::with_capacity(program.sources.len());
     let mut folds = Vec::with_capacity(program.sources.len());
     for (source_id, source) in program.sources.iter().enumerate() {
         let source_index = source_id as u32;
         if let WindowFamily::VirtualSetup { kind } = source.raw_family {
-            if usize::from(kind) >= BWD_COEFF_PROCEDURAL_KINDS {
-                return Err(MainContinuationBindErrorPr::UnknownProceduralKind {
-                    source: source_index,
-                    kind,
-                });
-            }
+            assert!(
+                usize::from(kind) < BWD_COEFF_PROCEDURAL_KINDS,
+                "Proth120 continuation unknown procedural kind (source={:?}, kind={:?})",
+                source_index,
+                kind
+            );
             let slot = BwdSourceWindow {
                 base: core::ptr::null(),
                 log2_stride: 0,
@@ -458,65 +376,68 @@ fn raw_input_lanes(
                 reserved: 0,
                 r0_stride_bytes: 0,
             };
-            lanes.push(table.lane(slot, 0)?);
+            lanes.push(table.lane(slot, 0));
             folds.push(FoldItem {
                 source: source_id as u16,
                 byte_weight: 1,
             });
             continue;
         }
-        let place = family_read_place(source.raw_family, source.raw_column).ok_or(
-            MainContinuationBindErrorPr::UnresolvedRawSource {
-                source: source_index,
-            },
-        )?;
-        let resolved = resolve_storage_column(storage, read_place_to_gkr_address(&place)).ok_or(
-            MainContinuationBindErrorPr::UnresolvedRawSource {
-                source: source_index,
-            },
-        )?;
+        let place = family_read_place(source.raw_family, source.raw_column).unwrap_or_else(|| {
+            panic!(
+                "Proth120 continuation unresolved raw source (source={:?})",
+                source_index
+            )
+        });
+        let resolved = resolve_storage_column(storage, read_place_to_gkr_address(&place))
+            .unwrap_or_else(|| {
+                panic!(
+                    "Proth120 continuation unresolved raw source (source={:?})",
+                    source_index
+                )
+            });
         let expect_ext = matches!(
             source.raw_family,
             WindowFamily::LayerOutput { ext: true, .. }
                 | WindowFamily::CacheOutput { ext: true, .. }
         );
-        if resolved.is_e4 != expect_ext {
-            return Err(MainContinuationBindErrorPr::RawSourceFieldMismatch {
-                source: source_index,
-                expect_ext,
-            });
-        }
+        assert!(
+            resolved.is_e4 == expect_ext,
+            "Proth120 continuation raw source field mismatch (source={:?}, expect_ext={:?})",
+            source_index,
+            expect_ext
+        );
         let stride_bytes = resolved.stride_bytes as usize;
-        if !stride_bytes.is_multiple_of(element_bytes)
-            || !(stride_bytes / element_bytes).is_power_of_two()
-        {
-            return Err(MainContinuationBindErrorPr::RawSourceStrideMismatch {
-                source: source_index,
-                stride_bytes: resolved.stride_bytes,
-            });
-        }
+        assert!(
+            stride_bytes.is_multiple_of(element_bytes)
+                && (stride_bytes / element_bytes).is_power_of_two(),
+            "Proth120 continuation raw source stride mismatch (source={:?}, stride_bytes={:?})",
+            source_index,
+            resolved.stride_bytes
+        );
         let pointer = resolved.ptr as usize;
         let matrix = resolved.matrix_base as usize;
-        if !pointer.is_multiple_of(32) {
-            return Err(MainContinuationBindErrorPr::SourceAlignment {
-                source: source_index,
-                address: pointer,
-            });
-        }
-        if pointer < matrix || !(pointer - matrix).is_multiple_of(stride_bytes) {
-            return Err(MainContinuationBindErrorPr::RawSourceRankMismatch {
-                source: source_index,
-            });
-        }
+        assert!(
+            pointer.is_multiple_of(32),
+            "Proth120 continuation source alignment (source={:?}, address={:?})",
+            source_index,
+            pointer
+        );
+        assert!(
+            pointer >= matrix && (pointer - matrix).is_multiple_of(stride_bytes),
+            "Proth120 continuation raw source rank mismatch (source={:?})",
+            source_index
+        );
         let rank = (pointer - matrix) / stride_bytes;
-        if pointer_ranges_overlap(
-            resolved.ptr,
-            input_bytes,
-            destination.as_ptr().cast::<u8>(),
-            destination_bytes,
-        ) {
-            return Err(MainContinuationBindErrorPr::InputOutputAlias);
-        }
+        assert!(
+            !pointer_ranges_overlap(
+                resolved.ptr,
+                input_bytes,
+                destination.as_ptr().cast::<u8>(),
+                destination_bytes,
+            ),
+            "Proth120 continuation input output alias"
+        );
         let slot = BwdSourceWindow {
             base: (matrix + (rank / SOURCE_WINDOW_COLUMNS) * SOURCE_WINDOW_COLUMNS * stride_bytes)
                 as *const u8,
@@ -530,13 +451,13 @@ fn raw_input_lanes(
             reserved: 0,
             r0_stride_bytes: 0,
         };
-        lanes.push(table.lane(slot, rank % SOURCE_WINDOW_COLUMNS)?);
+        lanes.push(table.lane(slot, rank % SOURCE_WINDOW_COLUMNS));
         folds.push(FoldItem {
             source: source_id as u16,
             byte_weight: 4,
         });
     }
-    Ok((lanes, folds))
+    (lanes, folds)
 }
 
 fn prior_input_lanes(
@@ -544,90 +465,89 @@ fn prior_input_lanes(
     expected: ContinuationPublishedShape,
     destination: &ContinuationPublishedLevelPr,
     table: &mut AddressSlotTable,
-) -> Result<(Vec<u16>, Vec<FoldItem>), MainContinuationBindErrorPr> {
-    if prior.shape() != expected {
-        return Err(MainContinuationBindErrorPr::PriorShapeMismatch {
-            expected,
-            actual: prior.shape(),
-        });
-    }
+) -> (Vec<u16>, Vec<FoldItem>) {
+    assert!(
+        prior.shape() == expected,
+        "Proth120 continuation prior shape mismatch (expected={:?}, actual={:?})",
+        expected,
+        prior.shape()
+    );
     let bytes = |level: &ContinuationPublishedLevelPr| {
         level
             .allocation()
             .len()
             .checked_mul(size_of::<PR>())
-            .ok_or(MainContinuationBindErrorPr::InputOutputAlias)
+            .unwrap_or_else(|| panic!("Proth120 continuation input output alias"))
     };
-    if pointer_ranges_overlap(
-        prior.as_ptr().cast::<u8>(),
-        bytes(prior)?,
-        destination.as_ptr().cast::<u8>(),
-        bytes(destination)?,
-    ) {
-        return Err(MainContinuationBindErrorPr::InputOutputAlias);
-    }
+    assert!(
+        !pointer_ranges_overlap(
+            prior.as_ptr().cast::<u8>(),
+            bytes(prior),
+            destination.as_ptr().cast::<u8>(),
+            bytes(destination),
+        ),
+        "Proth120 continuation input output alias"
+    );
     let lanes = append_canonical_arena_slots(
         table,
         prior.as_ptr(),
         prior.shape().column_elems,
         prior.shape().columns,
-    )?;
+    );
     let folds = (0..expected.columns)
         .map(|source| FoldItem {
             source: source as u16,
             byte_weight: 4,
         })
         .collect();
-    Ok((lanes, folds))
+    (lanes, folds)
 }
 
 fn validate_program_ids(
     program: &MainContinuationWindowProgram,
     coefficient_count: usize,
     immediate_count: usize,
-) -> Result<(), MainContinuationBindErrorPr> {
+) {
     let words = &program.program.words;
     let id = |word: u16| usize::from(word & CONTINUATION_ID_MASK);
     let check_coefficient = |coefficient: usize| {
-        if coefficient < coefficient_count {
-            Ok(())
-        } else {
-            Err(MainContinuationBindErrorPr::CoefficientOutOfRange {
-                id: coefficient,
-                count: coefficient_count,
-            })
-        }
+        assert!(
+            coefficient < coefficient_count,
+            "Proth120 coefficient {coefficient} exceeds {coefficient_count}"
+        );
     };
     if let Some(c_init) = program.c_init {
-        check_coefficient(c_init.0 as usize)?;
+        check_coefficient(c_init.0 as usize);
     }
     let mut pc = 0;
     while pc < words.len() {
-        if pc + LEAN_WORDS_PER_TERM > words.len() {
-            return Err(MainContinuationBindErrorPr::TruncatedProgram { word: pc });
-        }
+        assert!(
+            pc + LEAN_WORDS_PER_TERM <= words.len(),
+            "Proth120 continuation truncated program (word={:?})",
+            pc
+        );
         let header = words[pc];
-        check_coefficient(id(header))?;
+        check_coefficient(id(header));
         if header >> LEAN_CLASS_SHIFT == LEAN_CONT_GROUP_HEADER_CLASS {
             for _ in 0..words[pc + 1] {
                 pc += LEAN_WORDS_PER_TERM;
-                if pc + LEAN_WORDS_PER_TERM > words.len() {
-                    return Err(MainContinuationBindErrorPr::TruncatedProgram { word: pc });
-                }
+                assert!(
+                    pc + LEAN_WORDS_PER_TERM <= words.len(),
+                    "Proth120 continuation truncated program (word={:?})",
+                    pc
+                );
                 let immediate = id(words[pc]);
-                if immediate >= PROGRAM_IMMEDIATE_RESERVED
-                    && immediate - PROGRAM_IMMEDIATE_RESERVED >= immediate_count
-                {
-                    return Err(MainContinuationBindErrorPr::ImmediateOutOfRange {
-                        id: immediate,
-                        count: immediate_count,
-                    });
-                }
+                assert!(
+                    immediate < PROGRAM_IMMEDIATE_RESERVED
+                        || immediate - PROGRAM_IMMEDIATE_RESERVED < immediate_count,
+                    "Proth120 continuation immediate out of range (id={:?}, count={:?})",
+                    immediate,
+                    immediate_count
+                );
             }
         }
         pc += LEAN_WORDS_PER_TERM;
     }
-    Ok(())
 }
 
 fn assemble_launch<'input>(
@@ -641,8 +561,8 @@ fn assemble_launch<'input>(
     input_lanes: impl FnOnce(
         &ContinuationPublishedLevelPr,
         &mut AddressSlotTable,
-    ) -> Result<(Vec<u16>, Vec<FoldItem>), MainContinuationBindErrorPr>,
-) -> Result<MainContinuationLaunchPr<'input>, MainContinuationBindErrorPr> {
+    ) -> (Vec<u16>, Vec<FoldItem>),
+) -> CudaResult<MainContinuationLaunchPr<'input>> {
     assert_eq!(
         u16::from(kernel.mask),
         program.shape.bits(),
@@ -658,21 +578,23 @@ fn assemble_launch<'input>(
         ("eq low", scratch.eq_low.cast_const().cast::<u8>()),
         ("partials", scratch.partials.cast_const().cast::<u8>()),
     ] {
-        if pointer.is_null() {
-            return Err(MainContinuationBindErrorPr::NullRuntimePointer { resource });
-        }
+        assert!(
+            !pointer.is_null(),
+            "Proth120 continuation null runtime pointer (resource={:?})",
+            resource
+        );
     }
-    if scratch.immediate_count != 0 && scratch.immediates.is_null() {
-        return Err(MainContinuationBindErrorPr::NullRuntimePointer {
-            resource: "immediates",
-        });
-    }
-    if program.immediates.len() != scratch.immediate_count {
-        return Err(MainContinuationBindErrorPr::ImmediateCountMismatch {
-            program: program.immediates.len(),
-            table: scratch.immediate_count,
-        });
-    }
+    assert!(
+        scratch.immediate_count == 0 || !scratch.immediates.is_null(),
+        "Proth120 continuation null runtime pointer (resource={:?})",
+        "immediates"
+    );
+    assert!(
+        program.immediates.len() == scratch.immediate_count,
+        "Proth120 continuation immediate count mismatch (program={:?}, table={:?})",
+        program.immediates.len(),
+        scratch.immediate_count
+    );
     for (resource, required, capacity) in [
         (
             "program words",
@@ -690,63 +612,69 @@ fn assemble_launch<'input>(
             MAIN_CONTINUATION_WINDOW_IMMEDIATE_CAPACITY,
         ),
     ] {
-        if required > capacity {
-            return Err(MainContinuationBindErrorPr::Capacity {
-                resource,
-                required,
-                capacity,
-            });
-        }
+        assert!(
+            required <= capacity,
+            "Proth120 continuation capacity (resource={:?}, required={:?}, capacity={:?})",
+            resource,
+            required,
+            capacity
+        );
     }
-    validate_program_ids(program, scratch.coefficient_count, scratch.immediate_count)?;
-    let (shape, row_tiles) = publication_shape_pr(program, folding_steps, start_round)?;
+    validate_program_ids(program, scratch.coefficient_count, scratch.immediate_count);
+    let (shape, row_tiles) = publication_shape_pr(program, folding_steps, start_round);
     let required_partials = PR_MAIN_CONTINUATION_TENSOR_CELLS.saturating_mul(row_tiles + 1);
-    if required_partials > scratch.partials_capacity {
-        return Err(MainContinuationBindErrorPr::Capacity {
-            resource: "partials",
-            required: required_partials,
-            capacity: scratch.partials_capacity,
-        });
-    }
-    let row_tiles_u32 =
-        u32::try_from(row_tiles).map_err(|_| MainContinuationBindErrorPr::Capacity {
-            resource: "row tiles",
-            required: row_tiles,
-            capacity: u32::MAX as usize,
-        })?;
+    assert!(
+        required_partials <= scratch.partials_capacity,
+        "Proth120 continuation capacity (resource={:?}, required={:?}, capacity={:?})",
+        "partials",
+        required_partials,
+        scratch.partials_capacity
+    );
+    let row_tiles_u32 = u32::try_from(row_tiles).unwrap_or_else(|_| {
+        panic!(
+            "Proth120 continuation capacity (resource={:?}, required={:?}, capacity={:?})",
+            "row tiles",
+            row_tiles,
+            u32::MAX as usize
+        )
+    });
 
     let allocation = context.alloc(
-        shape.columns.checked_mul(shape.column_elems).ok_or(
-            MainContinuationBindErrorPr::Capacity {
-                resource: "publication elements",
-                required: usize::MAX,
-                capacity: usize::MAX - 1,
-            },
-        )?,
+        shape
+            .columns
+            .checked_mul(shape.column_elems)
+            .unwrap_or_else(|| {
+                panic!(
+                    "Proth120 continuation capacity (resource={:?}, required={:?}, capacity={:?})",
+                    "publication elements",
+                    usize::MAX,
+                    usize::MAX - 1
+                )
+            }),
         AllocationPlacement::Top,
     )?;
-    let published = ContinuationPublishedLevelPr::try_new(shape, allocation)?;
+    let published = ContinuationPublishedLevelPr::new(shape, allocation);
 
     let mut table = AddressSlotTable::new();
-    let (read_lanes, folds) = input_lanes(&published, &mut table)?;
+    let (read_lanes, folds) = input_lanes(&published, &mut table);
     let publish_lanes = append_canonical_arena_slots(
         &mut table,
         published.as_ptr(),
         shape.column_elems,
         shape.columns,
-    )?;
+    );
     let slot_max = match input_kind {
         MainContinuationInputKindPr::First => FIRST_WINDOW_ADDR_SLOT_MAX,
         MainContinuationInputKindPr::Later => LATER_WINDOW_ADDR_SLOT_MAX,
     };
-    if table.len > slot_max {
-        return Err(MainContinuationBindErrorPr::Capacity {
-            resource: "window address slots",
-            required: table.len,
-            capacity: slot_max,
-        });
-    }
-    let (fold_list_offsets, fold_sources) = build_fold_lists(folds, shape.columns)?;
+    assert!(
+        table.len <= slot_max,
+        "Proth120 continuation capacity (resource={:?}, required={:?}, capacity={:?})",
+        "window address slots",
+        table.len,
+        slot_max
+    );
+    let (fold_list_offsets, fold_sources) = build_fold_lists(folds, shape.columns);
 
     let mut binding: Box<MainContinuationWindowLaunchBindingPr> = unsafe { zeroed_box() };
     binding.program[..program.program.words.len()].copy_from_slice(&program.program.words);
@@ -792,7 +720,7 @@ pub(crate) fn bind_first_main_continuation_pr<'input>(
     folding_steps: usize,
     scratch: MainContinuationScratchPr,
     context: &ProverContext,
-) -> Result<MainContinuationLaunchPr<'input>, MainContinuationBindErrorPr> {
+) -> CudaResult<MainContinuationLaunchPr<'input>> {
     assemble_launch(
         program,
         kernel,
@@ -813,14 +741,14 @@ pub(crate) fn bind_later_main_continuation_pr<'input>(
     start_round: usize,
     scratch: MainContinuationScratchPr,
     context: &ProverContext,
-) -> Result<MainContinuationLaunchPr<'input>, MainContinuationBindErrorPr> {
-    let shape = publication_shape_pr(program, folding_steps, start_round)?.0;
-    if shape.depth < 2 * PR_MAIN_CONTINUATION_FOLD_COORDINATES as u8 {
-        return Err(MainContinuationBindErrorPr::InvalidGeometry {
-            folding_steps,
-            start_round,
-        });
-    }
+) -> CudaResult<MainContinuationLaunchPr<'input>> {
+    let shape = publication_shape_pr(program, folding_steps, start_round).0;
+    assert!(
+        shape.depth >= 2 * PR_MAIN_CONTINUATION_FOLD_COORDINATES as u8,
+        "Proth120 continuation invalid geometry (folding_steps={:?}, start_round={:?})",
+        folding_steps,
+        start_round
+    );
     let expected = ContinuationPublishedShape {
         depth: shape.depth - PR_MAIN_CONTINUATION_FOLD_COORDINATES as u8,
         columns: shape.columns,

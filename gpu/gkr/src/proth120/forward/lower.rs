@@ -3,10 +3,10 @@ use std::{collections::BTreeMap, ptr};
 use crate::upstream::PR;
 use gpu_gkr_compiler::{
     encode_forward_runtime_program, virtual_setup_kind_code, CompiledLayer,
-    ForwardDstLine as DstLine, ForwardEncodeError as EncodeError, ForwardInstr as Instr,
-    ForwardLdcSub as LdcSub, ForwardOperandField as OperandField,
-    ForwardOperandLine as OperandLine, ForwardProgram as Program,
-    ForwardSpecialStrategy as SpecialStrategy, FORWARD_MAX_COLS as MAX_COLS,
+    ForwardDstLine as DstLine, ForwardInstr as Instr, ForwardLdcSub as LdcSub,
+    ForwardOperandField as OperandField, ForwardOperandLine as OperandLine,
+    ForwardProgram as Program, ForwardSpecialStrategy as SpecialStrategy,
+    FORWARD_MAX_COLS as MAX_COLS,
 };
 
 use super::desc::{
@@ -34,88 +34,6 @@ pub(crate) struct FwdVmInputs<'a> {
     pub table_len: u32,
     pub count: u32,
     pub inits_and_teardowns_top_bits: &'a [u32],
-}
-
-#[expect(
-    dead_code,
-    reason = "error payloads are emitted by the derived Debug implementation"
-)]
-#[derive(Debug)]
-pub(crate) enum FwdVmLowerError {
-    Encode(EncodeError),
-    ProgramOverflow {
-        lanes: usize,
-    },
-    SourceWindowOverflow {
-        required: usize,
-    },
-    MissingLookupAdditiveSlot,
-    ConstBankOverflow {
-        n: usize,
-    },
-    ArgDerivedE4Overflow {
-        n: usize,
-    },
-    ConstDerivedE4Overflow {
-        n: usize,
-    },
-    DescOverflow {
-        n: usize,
-    },
-    SetIndexOverflow {
-        desc: usize,
-        set_index: usize,
-    },
-    UnresolvedColumn {
-        slot: u8,
-        col: u16,
-        addr: GKRAddress,
-    },
-    SlotFieldMismatch {
-        slot: u8,
-        col: u16,
-        expect_e4: bool,
-        got_e4: bool,
-    },
-    WireSlotOverflow {
-        slot: u8,
-        col: u16,
-    },
-    UnmappedSource {
-        window: u8,
-        column: u16,
-    },
-    SourceFieldMismatch {
-        window: u8,
-        column: u16,
-        expect_e4: bool,
-        got_e4: bool,
-    },
-    SourceColumnOffStride {
-        window: u8,
-        column: u16,
-    },
-    MatrixColOverflow {
-        slot: u8,
-        col: u16,
-        matrix_col: usize,
-    },
-    UnmappedGlobal {
-        slot: u8,
-        col: u16,
-    },
-    MissingMappingArena {
-        arena: u32,
-    },
-    MissingDecoderMappingCol,
-    MissingTable,
-    DecoderPredicateUnresolved {
-        addr: GKRAddress,
-    },
-    DecoderPredicateNotBase {
-        addr: GKRAddress,
-    },
-    DecoderMaskConflict,
 }
 
 pub(crate) fn read_place_to_gkr_address(place: &ReadPlace) -> GKRAddress {
@@ -154,7 +72,7 @@ struct SourceGeometry {
     n_windows: usize,
 }
 
-fn pack_source_geometry(uses: &[PhysicalSourceUse]) -> Result<SourceGeometry, FwdVmLowerError> {
+fn pack_source_geometry(uses: &[PhysicalSourceUse]) -> SourceGeometry {
     let mut sorted = uses.to_vec();
     sorted.sort_by_key(|source| {
         (
@@ -183,20 +101,22 @@ fn pack_source_geometry(uses: &[PhysicalSourceUse]) -> Result<SourceGeometry, Fw
                 (window, first)
             }
             _ => {
-                if geometry.n_windows == SOURCE_WINDOW_COUNT {
-                    return Err(FwdVmLowerError::SourceWindowOverflow {
-                        required: geometry.n_windows + 1,
-                    });
-                }
+                assert!(
+                    geometry.n_windows != SOURCE_WINDOW_COUNT,
+                    "Proth120 forward source window overflow (required={:?})",
+                    geometry.n_windows + 1
+                );
                 let window = geometry.n_windows as u8;
                 let byte_offset = source
                     .matrix_column
                     .checked_mul(source.stride_bytes as usize)
                     .and_then(|offset| (source.matrix_base as usize).checked_add(offset))
-                    .ok_or(FwdVmLowerError::SourceColumnOffStride {
-                        window: source.key.window,
-                        column: source.key.column,
-                    })?;
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Proth120 forward source column off stride (window={:?}, column={:?})",
+                            source.key.window, source.key.column
+                        )
+                    });
                 geometry.base[geometry.n_windows] = byte_offset as *mut u8;
                 geometry.stride_bytes[geometry.n_windows] = source.stride_bytes;
                 geometry.n_windows += 1;
@@ -219,7 +139,7 @@ fn pack_source_geometry(uses: &[PhysicalSourceUse]) -> Result<SourceGeometry, Fw
             assert_eq!(previous, coordinate, "one logical source resolved two ways");
         }
     }
-    Ok(geometry)
+    geometry
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -242,8 +162,8 @@ fn rewrite_operand(
     operand: OperandLine,
     sources: &BTreeMap<SourceUseKey, (u8, u16)>,
     bases: LayerBankBases,
-) -> Result<OperandLine, FwdVmLowerError> {
-    Ok(match operand {
+) -> OperandLine {
+    match operand {
         OperandLine::Source { window, column } => {
             let &(window, column) = sources
                 .get(&SourceUseKey {
@@ -251,7 +171,12 @@ fn rewrite_operand(
                     window,
                     column,
                 })
-                .ok_or(FwdVmLowerError::UnmappedSource { window, column })?;
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Proth120 forward unmapped source (window={:?}, column={:?})",
+                        window, column
+                    )
+                });
             OperandLine::Source { window, column }
         }
         OperandLine::Ldc { sub, idx } => match sub {
@@ -269,7 +194,7 @@ fn rewrite_operand(
                     sub,
                     idx: bases
                         .lookup_additive
-                        .ok_or(FwdVmLowerError::MissingLookupAdditiveSlot)?,
+                        .unwrap_or_else(|| panic!("Proth120 forward missing lookup additive slot")),
                 }
             }
             LdcSub::Special => operand,
@@ -278,15 +203,15 @@ fn rewrite_operand(
             desc: bases.descriptor + desc,
         },
         other => other,
-    })
+    }
 }
 
 fn rewrite_dst(
     layer: usize,
     dst: DstLine,
     destinations: &BTreeMap<DestinationUseKey, (u8, u16)>,
-) -> Result<DstLine, FwdVmLowerError> {
-    Ok(match dst {
+) -> DstLine {
+    match dst {
         DstLine::GlobalMaterialize { slot, col } => {
             let &(slot, col) = destinations
                 .get(&DestinationUseKey {
@@ -294,11 +219,16 @@ fn rewrite_dst(
                     slot,
                     column: col,
                 })
-                .ok_or(FwdVmLowerError::UnmappedGlobal { slot, col })?;
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Proth120 forward unmapped global (slot={:?}, col={:?})",
+                        slot, col
+                    )
+                });
             DstLine::GlobalMaterialize { slot, col }
         }
         other => other,
-    })
+    }
 }
 
 fn rewrite_program(
@@ -307,7 +237,7 @@ fn rewrite_program(
     sources: &BTreeMap<SourceUseKey, (u8, u16)>,
     destinations: &BTreeMap<DestinationUseKey, (u8, u16)>,
     bases: LayerBankBases,
-) -> Result<Program, FwdVmLowerError> {
+) -> Program {
     let mut instrs = Vec::with_capacity(program.instrs.len());
     for instruction in &program.instrs {
         instrs.push(match instruction {
@@ -321,7 +251,7 @@ fn rewrite_program(
                 operands: operands
                     .iter()
                     .map(|operand| rewrite_operand(layer, *operand, sources, bases))
-                    .collect::<Result<_, _>>()?,
+                    .collect(),
             },
             Instr::Mul {
                 field,
@@ -333,7 +263,7 @@ fn rewrite_program(
                 operands: operands
                     .iter()
                     .map(|operand| rewrite_operand(layer, *operand, sources, bases))
-                    .collect::<Result<_, _>>()?,
+                    .collect(),
             },
             Instr::Fma {
                 field_lhs,
@@ -347,12 +277,12 @@ fn rewrite_program(
                 pairs: pairs
                     .iter()
                     .map(|(lhs, rhs)| {
-                        Ok((
-                            rewrite_operand(layer, *lhs, sources, bases)?,
-                            rewrite_operand(layer, *rhs, sources, bases)?,
-                        ))
+                        (
+                            rewrite_operand(layer, *lhs, sources, bases),
+                            rewrite_operand(layer, *rhs, sources, bases),
+                        )
                     })
-                    .collect::<Result<_, FwdVmLowerError>>()?,
+                    .collect(),
             },
             Instr::Mov {
                 dir,
@@ -362,36 +292,30 @@ fn rewrite_program(
             } => Instr::Mov {
                 dir: *dir,
                 field: *field,
-                dst: dst
-                    .map(|dst| rewrite_dst(layer, dst, destinations))
-                    .transpose()?,
-                src: src
-                    .map(|src| rewrite_operand(layer, src, sources, bases))
-                    .transpose()?,
+                dst: dst.map(|dst| rewrite_dst(layer, dst, destinations)),
+                src: src.map(|src| rewrite_operand(layer, src, sources, bases)),
             },
         });
     }
-    Ok(Program { instrs })
+    Program { instrs }
 }
 
 fn empty_desc() -> FwdVmDesc {
     unsafe { core::mem::zeroed() }
 }
 
-fn append_program(
-    desc: &mut FwdVmDesc,
-    next_lane: &mut usize,
-    layer: usize,
-    program: &Program,
-) -> Result<(), FwdVmLowerError> {
+fn append_program(desc: &mut FwdVmDesc, next_lane: &mut usize, layer: usize, program: &Program) {
     assert!(layer < LAYER_CAP);
-    let lanes = encode_forward_runtime_program(program).map_err(FwdVmLowerError::Encode)?;
+    let lanes =
+        encode_forward_runtime_program(program).expect("Proth120 forward program encoding failed");
     let end = next_lane
         .checked_add(lanes.len())
-        .ok_or(FwdVmLowerError::ProgramOverflow { lanes: usize::MAX })?;
-    if end > PROGRAM_CAP {
-        return Err(FwdVmLowerError::ProgramOverflow { lanes: end });
-    }
+        .unwrap_or_else(|| panic!("Proth120 forward program overflow (lanes={:?})", usize::MAX));
+    assert!(
+        end <= PROGRAM_CAP,
+        "Proth120 forward program overflow (lanes={:?})",
+        end
+    );
     desc.layers[layer] = FwdVmLayer {
         program_offset: u16::try_from(*next_lane).expect("PROGRAM_CAP fits u16"),
         instruction_count: u16::try_from(program.instrs.len())
@@ -399,7 +323,6 @@ fn append_program(
     };
     desc.program[*next_lane..end].copy_from_slice(&lanes);
     *next_lane = end;
-    Ok(())
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -417,9 +340,7 @@ struct DestinationGeometry {
     remap: BTreeMap<DestinationUseKey, (u8, u16)>,
 }
 
-fn pack_destination_geometry(
-    uses: &[PhysicalDestinationUse],
-) -> Result<DestinationGeometry, FwdVmLowerError> {
+fn pack_destination_geometry(uses: &[PhysicalDestinationUse]) -> DestinationGeometry {
     let mut sorted = uses.to_vec();
     sorted.sort_by_key(|destination| {
         (
@@ -437,13 +358,13 @@ fn pack_destination_geometry(
     let mut active = None::<(bool, usize, u32, u8)>;
     let mut n_slots = 0usize;
     for destination in sorted {
-        if destination.matrix_column >= MAX_COLS as usize {
-            return Err(FwdVmLowerError::MatrixColOverflow {
-                slot: destination.key.slot,
-                col: destination.key.column,
-                matrix_col: destination.matrix_column,
-            });
-        }
+        assert!(
+            destination.matrix_column < MAX_COLS as usize,
+            "Proth120 forward matrix col overflow (slot={:?}, col={:?}, matrix_col={:?})",
+            destination.key.slot,
+            destination.key.column,
+            destination.matrix_column
+        );
         let slot = match active {
             Some((is_e4, base, stride, slot))
                 if is_e4 == destination.is_e4
@@ -453,12 +374,12 @@ fn pack_destination_geometry(
                 slot
             }
             _ => {
-                if n_slots == DST_SLOT_COUNT {
-                    return Err(FwdVmLowerError::WireSlotOverflow {
-                        slot: destination.key.slot,
-                        col: destination.key.column,
-                    });
-                }
+                assert!(
+                    n_slots != DST_SLOT_COUNT,
+                    "Proth120 forward wire slot overflow (slot={:?}, col={:?})",
+                    destination.key.slot,
+                    destination.key.column
+                );
                 let slot = n_slots as u8;
                 geometry.base[n_slots] = destination.matrix_base;
                 geometry.stride_bytes[n_slots] = destination.stride_bytes;
@@ -480,40 +401,38 @@ fn pack_destination_geometry(
             );
         }
     }
-    Ok(geometry)
+    geometry
 }
 
-fn physical_matrix_column(
-    resolved: ResolvedColumn,
-    slot: u8,
-    column: u16,
-) -> Result<usize, FwdVmLowerError> {
-    if resolved.stride_bytes == 0 {
-        return Err(FwdVmLowerError::SourceColumnOffStride {
-            window: slot,
-            column,
-        });
-    }
+fn physical_matrix_column(resolved: ResolvedColumn, slot: u8, column: u16) -> usize {
+    assert!(
+        resolved.stride_bytes != 0,
+        "Proth120 forward source column off stride (window={:?}, column={:?})",
+        slot,
+        column
+    );
     let offset = (resolved.ptr as usize)
         .checked_sub(resolved.matrix_base as usize)
-        .ok_or(FwdVmLowerError::SourceColumnOffStride {
-            window: slot,
-            column,
-        })?;
-    if offset % resolved.stride_bytes as usize != 0 {
-        return Err(FwdVmLowerError::SourceColumnOffStride {
-            window: slot,
-            column,
+        .unwrap_or_else(|| {
+            panic!(
+                "Proth120 forward source column off stride (window={:?}, column={:?})",
+                slot, column
+            )
         });
-    }
-    Ok(offset / resolved.stride_bytes as usize)
+    assert!(
+        offset % resolved.stride_bytes as usize == 0,
+        "Proth120 forward source column off stride (window={:?}, column={:?})",
+        slot,
+        column
+    );
+    offset / resolved.stride_bytes as usize
 }
 
 fn visit_layer_source_operands(
     layer_index: usize,
     layer: &CompiledLayer,
-    mut visit: impl FnMut(SourceUseKey, OperandField) -> Result<(), FwdVmLowerError>,
-) -> Result<(), FwdVmLowerError> {
+    mut visit: impl FnMut(SourceUseKey, OperandField),
+) {
     let mut record = |operand: &OperandLine, field: OperandField| {
         if let OperandLine::Source { window, column } = *operand {
             visit(
@@ -523,9 +442,8 @@ fn visit_layer_source_operands(
                     column,
                 },
                 field,
-            )?;
+            );
         }
-        Ok(())
     };
     for instruction in &layer.program.instrs {
         match instruction {
@@ -536,7 +454,7 @@ fn visit_layer_source_operands(
                 field, operands, ..
             } => {
                 for operand in operands {
-                    record(operand, *field)?;
+                    record(operand, *field);
                 }
             }
             Instr::Fma {
@@ -546,38 +464,31 @@ fn visit_layer_source_operands(
                 ..
             } => {
                 for (lhs, rhs) in pairs {
-                    record(lhs, *field_lhs)?;
-                    record(rhs, *field_rhs)?;
+                    record(lhs, *field_lhs);
+                    record(rhs, *field_rhs);
                 }
             }
             Instr::Mov {
                 field,
                 src: Some(src),
                 ..
-            } => record(src, *field)?,
+            } => record(src, *field),
             Instr::Mov { src: None, .. } => {}
         }
     }
-    Ok(())
 }
 
 pub(crate) struct LoweredFwdVm {
     pub desc: FwdVmDesc,
     pub lookup_additive_slot: Option<usize>,
     pub decoder_fill_slot: Option<usize>,
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub constant_count: usize,
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub source_window_count: usize,
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub destination_slot_count: usize,
 }
 
 pub(crate) fn lower_desc(
     layers: &[CompiledLayer],
     header: &FwdVmInputs<'_>,
     resolve_column: &dyn Fn(GKRAddress) -> Option<ResolvedColumn>,
-) -> Result<LoweredFwdVm, FwdVmLowerError> {
+) -> LoweredFwdVm {
     assert!(
         !layers.is_empty(),
         "forward VM must have at least one layer"
@@ -592,45 +503,33 @@ pub(crate) fn lower_desc(
                 .source_windows
                 .source_field(key.window)
                 .expect("compiled source window has a field");
-            if source_field != field {
-                return Err(FwdVmLowerError::SourceFieldMismatch {
-                    window: key.window,
-                    column: key.column,
-                    expect_e4: field == OperandField::Ext,
-                    got_e4: source_field == OperandField::Ext,
-                });
-            }
+            assert!(source_field == field, "Proth120 forward source field mismatch (window={:?}, column={:?}, expect_e4={:?}, got_e4={:?})", key.window, key.column, field == OperandField::Ext, source_field == OperandField::Ext);
             let place = layer
                 .source_windows
                 .resolve_read_place(key.window, key.column)
-                .ok_or(FwdVmLowerError::UnmappedSource {
-                    window: key.window,
-                    column: key.column,
-                })?;
-            let address = read_place_to_gkr_address(&place);
-            let resolved = resolve_column(address).ok_or(FwdVmLowerError::UnresolvedColumn {
-                slot: key.window,
-                col: key.column,
-                addr: address,
-            })?;
-            let expect_e4 = field == OperandField::Ext;
-            if resolved.is_e4 != expect_e4 {
-                return Err(FwdVmLowerError::SourceFieldMismatch {
-                    window: key.window,
-                    column: key.column,
-                    expect_e4,
-                    got_e4: resolved.is_e4,
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Proth120 forward unmapped source (window={:?}, column={:?})",
+                        key.window, key.column
+                    )
                 });
-            }
+            let address = read_place_to_gkr_address(&place);
+            let resolved = resolve_column(address).unwrap_or_else(|| {
+                panic!(
+                    "Proth120 forward unresolved column (slot={:?}, col={:?}, addr={:?})",
+                    key.window, key.column, address
+                )
+            });
+            let expect_e4 = field == OperandField::Ext;
+            assert!(resolved.is_e4 == expect_e4, "Proth120 forward source field mismatch (window={:?}, column={:?}, expect_e4={:?}, got_e4={:?})", key.window, key.column, expect_e4, resolved.is_e4);
             physical_sources.push(PhysicalSourceUse {
                 key,
                 is_e4: resolved.is_e4,
                 matrix_base: resolved.matrix_base,
                 stride_bytes: resolved.stride_bytes,
-                matrix_column: physical_matrix_column(resolved, key.window, key.column)?,
+                matrix_column: physical_matrix_column(resolved, key.window, key.column),
             });
-            Ok(())
-        })?;
+        });
 
         for instruction in &layer.program.instrs {
             let Instr::Mov {
@@ -641,27 +540,24 @@ pub(crate) fn lower_desc(
             else {
                 continue;
             };
-            let place = layer.backings.slot_col_to_read_place(*slot, *col).ok_or(
-                FwdVmLowerError::UnmappedGlobal {
-                    slot: *slot,
-                    col: *col,
-                },
-            )?;
-            let address = read_place_to_gkr_address(&place);
-            let resolved = resolve_column(address).ok_or(FwdVmLowerError::UnresolvedColumn {
-                slot: *slot,
-                col: *col,
-                addr: address,
-            })?;
-            let expect_e4 = *field == OperandField::Ext;
-            if resolved.is_e4 != expect_e4 {
-                return Err(FwdVmLowerError::SlotFieldMismatch {
-                    slot: *slot,
-                    col: *col,
-                    expect_e4,
-                    got_e4: resolved.is_e4,
+            let place = layer
+                .backings
+                .slot_col_to_read_place(*slot, *col)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Proth120 forward unmapped global (slot={:?}, col={:?})",
+                        *slot, *col
+                    )
                 });
-            }
+            let address = read_place_to_gkr_address(&place);
+            let resolved = resolve_column(address).unwrap_or_else(|| {
+                panic!(
+                    "Proth120 forward unresolved column (slot={:?}, col={:?}, addr={:?})",
+                    *slot, *col, address
+                )
+            });
+            let expect_e4 = *field == OperandField::Ext;
+            assert!(resolved.is_e4 == expect_e4, "Proth120 forward slot field mismatch (slot={:?}, col={:?}, expect_e4={:?}, got_e4={:?})", *slot, *col, expect_e4, resolved.is_e4);
             physical_destinations.push(PhysicalDestinationUse {
                 key: DestinationUseKey {
                     layer: layer_index,
@@ -671,13 +567,13 @@ pub(crate) fn lower_desc(
                 is_e4: resolved.is_e4,
                 matrix_base: resolved.matrix_base,
                 stride_bytes: resolved.stride_bytes,
-                matrix_column: physical_matrix_column(resolved, *slot, *col)?,
+                matrix_column: physical_matrix_column(resolved, *slot, *col),
             });
         }
     }
 
-    let source_geometry = pack_source_geometry(&physical_sources)?;
-    let destination_geometry = pack_destination_geometry(&physical_destinations)?;
+    let source_geometry = pack_source_geometry(&physical_sources);
+    let destination_geometry = pack_destination_geometry(&physical_destinations);
     let uses_lookup_additive = layers
         .iter()
         .any(|layer| layer.derived_e4.uses_lookup_additive());
@@ -690,9 +586,11 @@ pub(crate) fn lower_desc(
     let lookup_additive_slot = uses_lookup_additive.then_some(0usize);
     let decoder_fill_slot = uses_decoder_fill.then_some(usize::from(uses_lookup_additive));
     let n_const_derived = usize::from(uses_lookup_additive) + usize::from(uses_decoder_fill);
-    if n_const_derived > CONST_DERIVED_E4_CAP {
-        return Err(FwdVmLowerError::ConstDerivedE4Overflow { n: n_const_derived });
-    }
+    assert!(
+        n_const_derived <= CONST_DERIVED_E4_CAP,
+        "Proth120 forward const derived e4Overflow (n={:?})",
+        n_const_derived
+    );
 
     let mut desc = empty_desc();
     desc.source_base = source_geometry.base;
@@ -713,9 +611,11 @@ pub(crate) fn lower_desc(
     for (layer_index, layer) in layers.iter().enumerate() {
         let constant_base = n_consts;
         for &value in layer.consts.values() {
-            if n_consts == CONST_CAP {
-                return Err(FwdVmLowerError::ConstBankOverflow { n: n_consts + 1 });
-            }
+            assert!(
+                n_consts != CONST_CAP,
+                "Proth120 forward const bank overflow (n={:?})",
+                n_consts + 1
+            );
             assert!(
                 value < PR::CHARACTERISTICS_U128,
                 "Proth120 forward constant is not canonical"
@@ -726,55 +626,59 @@ pub(crate) fn lower_desc(
 
         let arg_base = n_args;
         for _reference in layer.derived_e4.arg_refs() {
-            if n_args == ARG_DERIVED_E4_CAP {
-                return Err(FwdVmLowerError::ArgDerivedE4Overflow { n: n_args + 1 });
-            }
+            assert!(
+                n_args != ARG_DERIVED_E4_CAP,
+                "Proth120 forward arg derived e4Overflow (n={:?})",
+                n_args + 1
+            );
             n_args += 1;
         }
 
         let descriptor_base = n_descs;
-        let require_arena = |arena: u32| -> Result<u32, FwdVmLowerError> {
-            if header.mapping_arena[arena as usize].is_null() {
-                Err(FwdVmLowerError::MissingMappingArena { arena })
-            } else {
-                Ok(arena)
-            }
+        let require_arena = |arena: u32| {
+            assert!(
+                !header.mapping_arena[arena as usize].is_null(),
+                "Proth120 mapping arena {arena} is missing"
+            );
+            arena
         };
         for special in layer.specials.iter() {
-            if n_descs == DESC_CAP {
-                return Err(FwdVmLowerError::DescOverflow { n: n_descs + 1 });
-            }
+            assert!(
+                n_descs != DESC_CAP,
+                "Proth120 forward desc overflow (n={:?})",
+                n_descs + 1
+            );
             let local_desc = n_descs - descriptor_base;
             desc.descs[n_descs] = match special {
                 SpecialStrategy::PeekSingleColumn { set_index, width } => {
                     let arena = require_arena(match width {
                         RangeWidth::Bits16 => ARENA_RANGE_CHECK_16,
                         RangeWidth::Timestamp => ARENA_TIMESTAMP,
-                    })?;
+                    });
                     pack_desc(
                         SD_SINGLE_COLUMN,
                         arena,
-                        u16::try_from(*set_index).map_err(|_| {
-                            FwdVmLowerError::SetIndexOverflow {
-                                desc: n_descs,
-                                set_index: *set_index,
-                            }
-                        })?,
+                        u16::try_from(*set_index).unwrap_or_else(|_| {
+                            panic!(
+                                "Proth120 forward set index overflow (desc={:?}, set_index={:?})",
+                                n_descs, *set_index
+                            )
+                        }),
                         0,
                     )
                 }
                 SpecialStrategy::PeekAggregate { set_index } => {
                     uses_table = true;
-                    let arena = require_arena(ARENA_GENERIC_FAMILY)?;
+                    let arena = require_arena(ARENA_GENERIC_FAMILY);
                     pack_desc(
                         SD_AGGREGATE,
                         arena,
-                        u16::try_from(*set_index).map_err(|_| {
-                            FwdVmLowerError::SetIndexOverflow {
-                                desc: n_descs,
-                                set_index: *set_index,
-                            }
-                        })?,
+                        u16::try_from(*set_index).unwrap_or_else(|_| {
+                            panic!(
+                                "Proth120 forward set index overflow (desc={:?}, set_index={:?})",
+                                n_descs, *set_index
+                            )
+                        }),
                         0,
                     )
                 }
@@ -791,18 +695,27 @@ pub(crate) fn lower_desc(
                     );
                     let column = header
                         .decoder_mapping_col
-                        .ok_or(FwdVmLowerError::MissingDecoderMappingCol)?;
+                        .unwrap_or_else(|| panic!("Proth120 forward missing decoder mapping col"));
                     let address = read_place_to_gkr_address(predicate);
-                    let resolved = resolve_column(address)
-                        .ok_or(FwdVmLowerError::DecoderPredicateUnresolved { addr: address })?;
-                    if resolved.is_e4 {
-                        return Err(FwdVmLowerError::DecoderPredicateNotBase { addr: address });
-                    }
+                    let resolved = resolve_column(address).unwrap_or_else(|| {
+                        panic!(
+                            "Proth120 forward decoder predicate unresolved (addr={:?})",
+                            address
+                        )
+                    });
+                    assert!(
+                        !resolved.is_e4,
+                        "Proth120 forward decoder predicate not base (addr={:?})",
+                        address
+                    );
                     let predicate_mask = resolved.ptr as *const PR;
                     if mask.is_null() {
                         mask = predicate_mask;
-                    } else if mask != predicate_mask {
-                        return Err(FwdVmLowerError::DecoderMaskConflict);
+                    } else {
+                        assert!(
+                            mask == predicate_mask,
+                            "Proth120 forward decoder mask conflict"
+                        );
                     }
                     pack_desc(
                         SD_DECODER,
@@ -815,16 +728,20 @@ pub(crate) fn lower_desc(
                     pack_desc(SD_VIRTUAL, 0, 0, virtual_setup_kind_code(kind) + 2)
                 }
                 SpecialStrategy::InitsAndTeardownsTopBits { reference } => {
-                    if n_consts == CONST_CAP {
-                        return Err(FwdVmLowerError::ConstBankOverflow { n: n_consts + 1 });
-                    }
+                    assert!(
+                        n_consts != CONST_CAP,
+                        "Proth120 forward const bank overflow (n={:?})",
+                        n_consts + 1
+                    );
                     let raw = *header
                         .inits_and_teardowns_top_bits
                         .get(reference.set_index)
-                        .ok_or(FwdVmLowerError::SetIndexOverflow {
-                            desc: local_desc,
-                            set_index: reference.set_index,
-                        })?;
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "Proth120 forward set index overflow (desc={:?}, set_index={:?})",
+                                local_desc, reference.set_index
+                            )
+                        });
                     desc.consts[n_consts] = PR::from_u128_with_reduction(
                         u128::from(raw).checked_shl(reference.shift).unwrap_or(0),
                     );
@@ -847,33 +764,20 @@ pub(crate) fn lower_desc(
                 descriptor: descriptor_base as u16,
                 lookup_additive: lookup_additive_slot.map(|slot| slot as u16),
             },
-        )?;
-        append_program(&mut desc, &mut next_lane, layer_index, &rewritten)?;
+        );
+        append_program(&mut desc, &mut next_lane, layer_index, &rewritten);
     }
 
     if uses_table {
-        if header.table.is_null() {
-            return Err(FwdVmLowerError::MissingTable);
-        }
+        assert!(!header.table.is_null(), "Proth120 forward missing table");
         desc.table = header.table;
         desc.table_len = header.table_len;
     }
     desc.mask = mask;
 
-    Ok(LoweredFwdVm {
+    LoweredFwdVm {
         desc,
         lookup_additive_slot,
         decoder_fill_slot,
-        constant_count: n_consts,
-        source_window_count: source_geometry
-            .base
-            .iter()
-            .filter(|pointer| !pointer.is_null())
-            .count(),
-        destination_slot_count: destination_geometry
-            .base
-            .iter()
-            .filter(|pointer| !pointer.is_null())
-            .count(),
-    })
+    }
 }
