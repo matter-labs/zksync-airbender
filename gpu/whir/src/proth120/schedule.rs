@@ -26,9 +26,7 @@ use super::state::{
 };
 use crate::upstream::{domain_generator_for_size, WhirSchedule};
 
-pub(crate) fn query_words(queries: usize, query_domain_log2: u32) -> usize {
-    ((queries * query_domain_log2 as usize).div_ceil(32) + 1).next_multiple_of(8)
-}
+pub(crate) use crate::pow::query_words;
 
 pub(crate) fn schedule_pow_and_query_indexes(
     seed: &mut DeviceSlice<u8>,
@@ -63,14 +61,7 @@ pub(crate) fn schedule_delinearization(
     let stream = context.get_exec_stream();
     let mut delta = context.alloc(1, AllocationPlacement::BestFit)?;
     transcript_draw_fields(seed, &mut delta, stream)?;
-    let mut powers = context.alloc(queries + 1, AllocationPlacement::BestFit)?;
-    get_powers_by_ref(
-        unsafe { DeviceVariable::from_raw_parts(delta.as_ptr()) },
-        1,
-        &mut powers,
-        stream,
-    )?;
-    Ok(powers)
+    crate::pow::schedule_running_powers(&delta[0], queries, context)
 }
 
 pub(crate) fn schedule_eq_update(
