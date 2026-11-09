@@ -110,7 +110,7 @@ DEVICE_FORCEINLINE pr pr_dr_window_quartet_shuffle_add(const pr value, const u32
 DEVICE_FORCEINLINE void pr_dr_window_publish(pr *partials, const size_t tile_slot, const u32 lane, const bool active,
                                              const pr_dr_bwd::bwd_window_selector_pair selector, const pr equality, const pr (&values)[3]) {
   pr sums[3];
-  const pr weight = active ? equality : pr_zero();
+  const pr weight = active ? equality : pr::ZERO();
 #pragma unroll
   for (u32 x2 = 0; x2 < 3; ++x2) {
     sums[x2] = pr::mul(weight, values[x2]);
@@ -118,7 +118,7 @@ DEVICE_FORCEINLINE void pr_dr_window_publish(pr *partials, const size_t tile_slo
     sums[x2] = pr_dr_window_quartet_shuffle_add(sums[x2], 2);
   }
   const u32 role = lane & 3u;
-  pr value = role == 0 ? sums[0] : role == 1 ? sums[1] : role == 2 ? sums[2] : pr_zero();
+  pr value = role == 0 ? sums[0] : role == 1 ? sums[1] : role == 2 ? sums[2] : pr::ZERO();
 #pragma unroll
   for (u32 mask = 4; mask < BWD_WINDOW_WARP_LANES; mask <<= 1)
     value = pr_dr_window_quartet_shuffle_add(value, mask);

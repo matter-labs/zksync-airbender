@@ -23,7 +23,7 @@ EXTERN __global__ __launch_bounds__(PR_EXTRAS_THREADS) void ab_pr_gkr_layer0_ext
   if (column >= column_count || column >= PR_EXTRAS_MAX_COLUMNS || blockDim.x != PR_EXTRAS_THREADS)
     return;
   const pr *values = columns.values[column];
-  pr acc = pr_zero();
+  pr acc = pr::ZERO();
   for (unsigned row = blockIdx.x * PR_EXTRAS_THREADS + threadIdx.x; row < rows; row += gridDim.x * PR_EXTRAS_THREADS) {
     const pr value = load<pr, ld_modifier::cs>(values, row);
     acc = pr::add(acc, eq_low == nullptr ? value : pr::mul(value, gkr_compute_eq_inline_global<pr>(eq_high_0, eq_high_1, eq_low, sizes, row)));

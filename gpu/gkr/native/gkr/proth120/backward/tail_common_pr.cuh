@@ -10,8 +10,8 @@ using pr = ::airbender::primitives::field::proth120;
 
 DEVICE_FORCEINLINE void compute_univariate_coeffs_max_quadratic_pr(const pr prev_challenge, const pr prev_claim, const pr e, const pr c,
                                                                    const pr inv_prev_challenge, pr out[4]) {
-  const pr b = pr::sub(pr_one(), prev_challenge);
-  const pr a = pr::sub(pr::dbl(prev_challenge), pr_one());
+  const pr b = pr::sub(pr::ONE(), prev_challenge);
+  const pr a = pr::sub(pr::dbl(prev_challenge), pr::ONE());
   const pr be = pr::mul(b, e);
   pr d = pr::sub(prev_claim, be);
   d = pr::mul(d, inv_prev_challenge);
@@ -32,7 +32,7 @@ DEVICE_FORCEINLINE pr eval_degree3_poly_pr(const pr coeffs[4], const pr point) {
 }
 
 DEVICE_FORCEINLINE pr eq_poly_pr(const pr x, const pr y) {
-  const pr t = pr::mul(pr::sub(pr_one(), x), pr::sub(pr_one(), y));
+  const pr t = pr::mul(pr::sub(pr::ONE(), x), pr::sub(pr::ONE(), y));
   return pr::add(pr::mul(x, y), t);
 }
 
@@ -67,7 +67,7 @@ template <u32 BLOCK_THREADS> DEVICE_FORCEINLINE void fold_active_eq_slot_pr(pr *
   const u32 tid = threadIdx.x;
   const u32 new_g_len = active_eq_size_before_fold >= 1 ? 1u << (active_eq_size_before_fold - 1) : 0u;
   const bool folds = tid < new_g_len;
-  pr folded = pr_zero();
+  pr folded = pr::ZERO();
   if (folds)
     folded = pr::add(active_eq_slot_base[2 * tid], active_eq_slot_base[2 * tid + 1]);
   __syncthreads();
