@@ -162,10 +162,7 @@ impl L1WrapGeometry {
     }
 }
 
-pub fn l1_wrap_batching_pow_bits(
-    config: &ProverConfig,
-    circuit: &GKRCircuitArtifact<Proth120>,
-) -> u32 {
+fn l1_wrap_batching_pow_bits(config: &ProverConfig, circuit: &GKRCircuitArtifact<Proth120>) -> u32 {
     config.base_round().batching_pow_bits::<Proth120, Proth120>(
         config.security_level.security_bits(),
         config.whir_message_size_log2(),

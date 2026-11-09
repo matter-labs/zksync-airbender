@@ -4,7 +4,7 @@ mod orchestration;
 #[cfg(test)]
 mod tests;
 
-pub use geometry::{l1_wrap_batching_pow_bits, L1WrapGeometry};
+pub use geometry::L1WrapGeometry;
 pub use inputs::L1WrapInputs;
 pub use orchestration::{assemble_l1_proof, prove, GpuL1WrapProofJob};
 
