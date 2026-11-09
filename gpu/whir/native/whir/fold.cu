@@ -59,7 +59,7 @@ EXTERN __global__ void ab_whir_three_point_finalize_e4_kernel(const e4 *__restri
   whir_detail::three_point_finalize<e4>(partials, num_blocks, reduce_out, smem_p0, smem_p1, smem_p2);
 }
 
-// Single-launch path for tiny `half` (<= WHIR_THREE_POINT_BLOCK_THREADS):
+// Single-launch path for tiny `half` (<= 256-thread block):
 // fuses partials + finalize into one block, no partials buffer.
 EXTERN __global__ void ab_whir_three_point_combined_e4_kernel(const e4 *__restrict__ eval, const e4 *__restrict__ eq, e4 *__restrict__ reduce_out,
                                                               const unsigned half) {

@@ -1,5 +1,6 @@
 #include "common.cuh"
 #include "hash.cuh"
+#include "in_domain_shared.cuh"
 #include "ops/gkr_ops_helpers.cuh"
 #include "primitives/field.cuh"
 #include "primitives/memory.cuh"
@@ -11,6 +12,8 @@ using ::airbender::ntt::params_inverse_power_source;
 using ::airbender::ntt::whir_leaf_transform_params;
 
 namespace airbender::whir {
+
+using namespace in_domain_detail;
 
 // Symbolic in-domain query terms over natural-order coefficient leaves
 // c[s] = P_s(rho^V). Per sumcheck step a term with weight w and point rho adds
@@ -24,80 +27,18 @@ constexpr unsigned WHIR_IN_DOMAIN_BLOCK_THREADS = 256;
 
 EXTERN __global__ void ab_whir_in_domain_add_terms_kernel(const unsigned *indexes, const e4 *challenges, const unsigned query_domain_log2, const bf generator,
                                                           e4 *weights, bf *points, unsigned *exponents, const unsigned count) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= count)
-    return;
-  const unsigned index = indexes[gid];
-  weights[gid] = challenges[gid];
-  points[gid] = bf::pow(generator, index);
-  exponents[gid] = query_domain_log2 == 0 ? 0u : index << (32 - query_domain_log2);
+  add_terms(indexes, challenges, query_domain_log2, generator, weights, points, exponents, count);
 }
-
 EXTERN __global__ void ab_whir_in_domain_prepare_indexes_kernel(const unsigned *exponents, const unsigned domain_log2, const unsigned log_v, unsigned *indexes,
                                                                 const unsigned count) {
-  const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (gid >= count)
-    return;
-  const unsigned e = domain_log2 == 0 ? 0u : exponents[gid] >> (32 - domain_log2);
-  const unsigned leaves_log2 = domain_log2 - log_v;
-  const unsigned mask = leaves_log2 >= 32 ? 0xffffffffu : (1u << leaves_log2) - 1u;
-  indexes[gid] = e & mask;
+  prepare_indexes<bf, false>(exponents, nullptr, domain_log2, log_v, indexes, nullptr, count);
 }
-
 // Per-thread grid-stride accumulation of the terms' [h(0), h(1), 4 h(1/2)].
-DEVICE_FORCEINLINE void accumulate_term_corrections(const e4 *leaves, const unsigned leaf_stride, const unsigned leaf_width, const e4 *weights,
-                                                    const bf *points, const unsigned count, e4 &acc0, e4 &acc1, e4 &acc2) {
-  const unsigned pairs = leaf_width >> 1;
-  for (unsigned t = threadIdx.x; t < count; t += WHIR_IN_DOMAIN_BLOCK_THREADS) {
-    const e4 *leaf = leaves + static_cast<size_t>(t) * leaf_stride;
-    const bf rho = points[t];
-    const bf rho_sqr = bf::sqr(rho);
-    e4 even = leaf[2 * (pairs - 1)];
-    e4 odd = leaf[2 * (pairs - 1) + 1];
-    for (unsigned j = pairs - 1; j-- > 0;) {
-      even = e4::fma(even, rho_sqr, leaf[2 * j]);
-      odd = e4::fma(odd, rho_sqr, leaf[2 * j + 1]);
-    }
-    const e4 w = weights[t];
-    acc0 = e4::add(acc0, e4::mul(e4::mul(w, bf::sub(bf::ONE(), rho)), even));
-    acc1 = e4::add(acc1, e4::mul(e4::mul(w, rho), e4::add(even, odd)));
-    acc2 = e4::add(acc2, e4::mul(w, e4::add(e4::dbl(even), odd)));
-  }
-}
 
 // Block tree reduction of three E4 partials; the sums end in slot 0 of each
 // array, visible to every thread after the last barrier.
-DEVICE_FORCEINLINE void block_reduce_corrections(e4 *smem_p0, e4 *smem_p1, e4 *smem_p2, const e4 acc0, const e4 acc1, const e4 acc2) {
-  const unsigned tid = threadIdx.x;
-  smem_p0[tid] = acc0;
-  smem_p1[tid] = acc1;
-  smem_p2[tid] = acc2;
-  __syncthreads();
-#pragma unroll
-  for (unsigned offset = WHIR_IN_DOMAIN_BLOCK_THREADS / 2; offset > 0; offset >>= 1) {
-    if (tid < offset) {
-      smem_p0[tid] = e4::add(smem_p0[tid], smem_p0[tid + offset]);
-      smem_p1[tid] = e4::add(smem_p1[tid], smem_p1[tid + offset]);
-      smem_p2[tid] = e4::add(smem_p2[tid], smem_p2[tid + offset]);
-    }
-    __syncthreads();
-  }
-}
 
 // One term's fold by alpha: coefficient pairs, weight, point and angle.
-DEVICE_FORCEINLINE void fold_term(e4 *leaf, const unsigned leaf_width, e4 &weight, bf &point, unsigned &exponent, const e4 alpha) {
-  const unsigned pairs = leaf_width >> 1;
-  for (unsigned j = 0; j < pairs; j++) {
-    const e4 a = leaf[2 * j];
-    const e4 b = leaf[2 * j + 1];
-    leaf[j] = e4::fma(alpha, b, a);
-  }
-  const bf rho = point;
-  const e4 eq = e4::fma(alpha, bf::sub(bf::dbl(rho), bf::ONE()), bf::sub(bf::ONE(), rho));
-  weight = e4::mul(weight, eq);
-  point = bf::sqr(rho);
-  exponent <<= 1;
-}
 
 // Correct the three reductions, update the transcript on thread 0, then fold
 // every term with the shared challenge. One block handles all active terms.
@@ -113,8 +54,8 @@ EXTERN __launch_bounds__(WHIR_IN_DOMAIN_BLOCK_THREADS) __global__
   e4 acc0 = e4::ZERO();
   e4 acc1 = e4::ZERO();
   e4 acc2 = e4::ZERO();
-  accumulate_term_corrections(leaves, leaf_stride, leaf_width, weights, points, count, acc0, acc1, acc2);
-  block_reduce_corrections(smem_p0, smem_p1, smem_p2, acc0, acc1, acc2);
+  accumulate_term_corrections<e4, bf, WHIR_IN_DOMAIN_BLOCK_THREADS>(leaves, leaf_stride, leaf_width, weights, points, count, acc0, acc1, acc2);
+  block_reduce_corrections<e4, WHIR_IN_DOMAIN_BLOCK_THREADS>(smem_p0, smem_p1, smem_p2, acc0, acc1, acc2);
   if (tid == 0) {
     reductions[0] = e4::add(reductions[0], smem_p0[0]);
     reductions[1] = e4::add(reductions[1], smem_p1[0]);
@@ -140,8 +81,8 @@ EXTERN __launch_bounds__(WHIR_IN_DOMAIN_BLOCK_THREADS) __global__
   e4 acc0 = e4::ZERO();
   e4 acc1 = e4::ZERO();
   e4 acc2 = e4::ZERO();
-  accumulate_term_corrections(leaves, leaf_stride, leaf_width, weights, points, count, acc0, acc1, acc2);
-  block_reduce_corrections(smem_p0, smem_p1, smem_p2, acc0, acc1, acc2);
+  accumulate_term_corrections<e4, bf, WHIR_IN_DOMAIN_BLOCK_THREADS>(leaves, leaf_stride, leaf_width, weights, points, count, acc0, acc1, acc2);
+  block_reduce_corrections<e4, WHIR_IN_DOMAIN_BLOCK_THREADS>(smem_p0, smem_p1, smem_p2, acc0, acc1, acc2);
   if (threadIdx.x == 0) {
     reductions[0] = e4::add(reductions[0], smem_p0[0]);
     reductions[1] = e4::add(reductions[1], smem_p1[0]);
