@@ -1,6 +1,5 @@
 use era_cudart::memory::DeviceAllocation;
 use era_cudart::stream::CudaStream;
-use sha3::Digest as _;
 
 use super::super::{
     transcript_commit_fields, transcript_commit_initial_u32, transcript_commit_u32,
