@@ -27,11 +27,10 @@ use crate::setup::PackedSetupSource;
 use crate::upstream::{ProverConfig, PR};
 
 /// Per-proof GKR inputs the caller uploads ahead of `schedule_gkr`, with its own
-/// input transfer; each `None` is built and copied in during the schedule.
-#[derive(Default)]
+/// input transfer.
 pub struct GkrPreparedInputsPr {
-    pub coefficient_tables: Option<PreparedCoefficientTablesPr>,
-    pub base_claim_indices: Option<BaseClaimIndicesPr>,
+    pub coefficient_tables: PreparedCoefficientTablesPr,
+    pub base_claim_indices: BaseClaimIndicesPr,
 }
 
 #[allow(clippy::too_many_arguments)]

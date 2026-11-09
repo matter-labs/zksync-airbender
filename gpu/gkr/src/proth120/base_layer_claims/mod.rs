@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
@@ -149,14 +148,14 @@ impl BaseClaimIndicesPr {
 }
 
 /// Gathers the dense base claims; `uploaded` indices must equal the ones derived
-/// from `claim_addresses`, which are otherwise copied in on `exec_stream`.
+/// from `claim_addresses` and arrive through the caller's phase-one transfer.
 pub(crate) fn schedule_gather_base_claims_pr(
     claims: &DeviceSlice<PR>,
     claim_addresses: &[GKRAddress],
     memory_columns: usize,
     witness_columns: usize,
     setup_columns: usize,
-    uploaded: Option<BaseClaimIndicesPr>,
+    uploaded: BaseClaimIndicesPr,
     context: &ProverContext,
 ) -> CudaResult<GatheredBaseClaimsPr> {
     assert_eq!(
@@ -172,22 +171,15 @@ pub(crate) fn schedule_gather_base_claims_pr(
     );
     assert!(!indices.is_empty(), "Proth120 dense base claims are empty");
     let count = u32::try_from(indices.len()).expect("Proth120 base claim count exceeds u32");
-    let (indices_host, device_indices) = match uploaded {
-        Some(BaseClaimIndicesPr { host, device }) => {
-            assert_eq!(
-                host[..],
-                indices[..],
-                "Proth120 uploaded base-claim indices differ from the final claim layout"
-            );
-            (host, device)
-        }
-        None => {
-            let host = Arc::new(alloc_static_pinned_box_from_slice(&indices)?);
-            let mut device = context.alloc(indices.len(), AllocationPlacement::BestFit)?;
-            memory_copy_async(&mut device, &host[..], context.get_exec_stream())?;
-            (host, device)
-        }
-    };
+    let BaseClaimIndicesPr {
+        host: indices_host,
+        device: device_indices,
+    } = uploaded;
+    assert_eq!(
+        indices_host[..],
+        indices[..],
+        "Proth120 uploaded base-claim indices differ from the final claim layout"
+    );
     let mut values = context.alloc(indices.len(), AllocationPlacement::BestFit)?;
     note_device(
         context,

@@ -327,8 +327,8 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         dr_tail_plan,
         None,
         GkrPreparedInputsPr {
-            coefficient_tables: Some(coefficient_tables),
-            base_claim_indices: Some(base_claim_indices),
+            coefficient_tables,
+            base_claim_indices,
         },
         &mut callbacks,
         context,

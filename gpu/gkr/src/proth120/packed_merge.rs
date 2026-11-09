@@ -6,7 +6,6 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_hash::keccak256::{keccak256_pow, transcript_draw_fields};
-use gpu_prover_context::transfer::TransferKeepalive;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
 
@@ -46,7 +45,6 @@ pub struct GkrOutputPr {
     seed: DeviceAllocation<u8>,
     _extra: DeviceAllocation<PR>,
     _gathered: GatheredBaseClaimsPr,
-    _coefficient_upload_keepalive: Option<TransferKeepalive<'static>>,
     pub(crate) backward: Option<GpuGKRBackwardScheduledExecutionPr>,
 }
 
@@ -57,7 +55,7 @@ pub fn schedule_base_layer_claims_and_packed_merge_pr(
     setup: &PackedSetupSource<'_>,
     pack_log2: u32,
     batching_pow_bits: u32,
-    base_claim_indices: Option<BaseClaimIndicesPr>,
+    base_claim_indices: BaseClaimIndicesPr,
     proof: &mut ProofSlabPr,
     context: &ProverContext,
 ) -> CudaResult<GkrOutputPr> {
@@ -99,7 +97,7 @@ pub fn schedule_base_layer_claims_and_packed_merge_pr(
         base.log_rows() as usize,
         "Proth120 base claim point log mismatch"
     );
-    let mut output = schedule_packed_merge_pr(
+    schedule_packed_merge_pr(
         gathered,
         seed,
         point,
@@ -107,9 +105,7 @@ pub fn schedule_base_layer_claims_and_packed_merge_pr(
         batching_pow_bits,
         proof,
         context,
-    )?;
-    output._coefficient_upload_keepalive = backward.coefficient_upload_keepalive.take();
-    Ok(output)
+    )
 }
 
 pub struct GkrWhirHandoffPr<'a> {
@@ -337,7 +333,6 @@ where
         seed: output_seed,
         _extra: extra,
         _gathered: gathered,
-        _coefficient_upload_keepalive: None,
         backward: None,
     })
 }

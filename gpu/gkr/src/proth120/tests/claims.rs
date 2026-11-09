@@ -7,7 +7,9 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use prover::transcript::{Keccak256Seed, Keccak256Transcript, Transcript};
 use worker::Worker;
 
-use crate::proth120::base_layer_claims::{dense_claim_indices, schedule_gather_base_claims_pr};
+use crate::proth120::base_layer_claims::{
+    dense_claim_indices, schedule_gather_base_claims_pr, BaseClaimIndicesHostPr, BaseClaimIndicesPr,
+};
 use crate::proth120::packed_challenges::split_challenges;
 use crate::proth120::packed_merge::{
     launch_merge_claims_pr, schedule_packed_merge_pr_with_snapshots,
@@ -164,13 +166,33 @@ fn pr_gather_base_claims_small() {
     let circuit = &programs.runtime_circuit;
     let (addresses, values, map) = claim_map(&programs);
     let d_claims = upload(&values, &context);
+    let config = prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(
+        21,
+        prover::definitions::SoundnessMode::PessimisticConjecture,
+    );
+    let layout = ProofLayoutPr::new(&programs, &config);
+    let indices_host = BaseClaimIndicesHostPr::new(
+        &programs,
+        &layout,
+        circuit.memory_layout.total_width,
+        circuit.witness_layout.total_width,
+        circuit.generic_lookup_tables_width,
+    )
+    .unwrap();
+    let mut indices = BaseClaimIndicesPr::allocate(&indices_host, &context).unwrap();
+    let indices_transfer = gpu_prover_context::transfer::single_shot_h2d(
+        |transfer| indices.schedule_transfer(transfer, &context),
+        &context,
+    )
+    .unwrap();
+    indices_transfer.ensure_transferred(&context).unwrap();
     let gathered = schedule_gather_base_claims_pr(
         &d_claims,
         &addresses,
         circuit.memory_layout.total_width,
         circuit.witness_layout.total_width,
         circuit.generic_lookup_tables_width,
-        None,
+        indices,
         &context,
     )
     .unwrap();
@@ -274,13 +296,28 @@ fn pr_packed_merge_transcript_matches_cpu() {
             let mut expected_point = point.clone();
             expected_point.extend_from_slice(&extra);
             let mut seed = upload(&initial_seed, &context);
+            let indices_host = BaseClaimIndicesHostPr::new(
+                &programs,
+                &layout,
+                circuit.memory_layout.total_width,
+                circuit.witness_layout.total_width,
+                circuit.generic_lookup_tables_width,
+            )
+            .unwrap();
+            let mut indices = BaseClaimIndicesPr::allocate(&indices_host, &context).unwrap();
+            let indices_transfer = gpu_prover_context::transfer::single_shot_h2d(
+                |transfer| indices.schedule_transfer(transfer, &context),
+                &context,
+            )
+            .unwrap();
+            indices_transfer.ensure_transferred(&context).unwrap();
             let gathered = schedule_gather_base_claims_pr(
                 &d_claims,
                 &addresses,
                 circuit.memory_layout.total_width,
                 circuit.witness_layout.total_width,
                 circuit.generic_lookup_tables_width,
-                None,
+                indices,
                 &context,
             )
             .unwrap();
@@ -690,8 +727,14 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
     let mut indices =
         crate::proth120::base_layer_claims::BaseClaimIndicesPr::allocate(&indices_host, context)
             .unwrap();
+    let mut coefficient_tables =
+        crate::proth120::backward::PreparedCoefficientTablesPr::new(&programs, &top_bits, context)
+            .unwrap();
     let indices_transfer = gpu_prover_context::transfer::single_shot_h2d(
-        |transfer| indices.schedule_transfer(transfer, context),
+        |transfer| {
+            coefficient_tables.stage_transfer(transfer);
+            indices.schedule_transfer(transfer, context)
+        },
         context,
     )
     .unwrap();
@@ -730,8 +773,8 @@ fn schedule_fixture_full(context: &gpu_prover_context::ProverContext) -> Schedul
         &dr_tail_plan,
         None,
         crate::proth120::GkrPreparedInputsPr {
-            coefficient_tables: None,
-            base_claim_indices: Some(indices),
+            coefficient_tables,
+            base_claim_indices: indices,
         },
         &mut callbacks,
         context,
