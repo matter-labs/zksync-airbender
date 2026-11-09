@@ -147,7 +147,7 @@ use crate::upstream::{
 };
 pub(crate) use dimension_reducing::{
     prepare_dimension_reduction_forward, schedule_prepared_dimension_reduction_forward,
-    LoweredSlotInitialInput, LoweredSlotOutput, PreparedDimensionReductionForward,
+    PreparedDimensionReductionForward,
 };
 
 // The optional slab target transfers ownership into the scheduled forward pass.

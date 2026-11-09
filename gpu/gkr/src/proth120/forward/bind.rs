@@ -2,9 +2,7 @@ use super::challenge_banks::ForwardChallengeBanks;
 use super::desc::*;
 use super::lower::{lower_desc, FwdVmInputs, LoweredFwdVm, ResolvedColumn};
 use super::setup::GpuGKRForwardSetupPr;
-use crate::forward::{
-    LoweredSlotInitialInput, LoweredSlotOutput, PreparedDimensionReductionForward,
-};
+use crate::forward::PreparedDimensionReductionForward;
 use crate::gkr_address_audit::AddressClass;
 use crate::proth120::inputs::Proth120GkrWitnessInputs;
 use crate::proth120::programs::GkrProgramsPr;
@@ -14,7 +12,6 @@ use crate::{GpuBaseFieldPoly, GpuGKRStorage};
 use era_cudart::result::CudaResult;
 use gpu_core::primitives::device_structures::DeviceMatrixImpl;
 use gpu_prover_context::ProverContext;
-use std::ptr::null_mut;
 use std::sync::Arc;
 
 pub(crate) fn resolve_storage_column(
@@ -165,104 +162,10 @@ fn bind_fused_reduction_prefix(
     desc: &mut FwdVmDesc,
     prepared: &PreparedDimensionReductionForward<PR>,
 ) {
-    assert!(desc.count > 0 && desc.count.is_multiple_of(128));
-    assert_eq!(desc.count.trailing_zeros(), prepared.initial_trace_log_2);
-    assert_eq!(
-        prepared.per_round_slot_outputs.len(),
-        prepared.total_rounds as usize
+    crate::forward::vm::production_bind::write_fused_reduction_prefix(
+        desc.count,
+        &mut desc.reduction_pairs,
+        &mut desc.reduction_pair_count,
+        prepared,
     );
-    assert_eq!(
-        prepared.slot_initial_inputs.len(),
-        prepared.slot_output_types.len()
-    );
-    assert!(!prepared.slot_initial_inputs.is_empty());
-    assert!(
-        prepared
-            .slot_output_types
-            .windows(2)
-            .all(|pair| pair[0] <= pair[1]),
-        "reduction slots must follow OutputType order"
-    );
-    for outputs in &prepared.per_round_slot_outputs {
-        assert_eq!(outputs.len(), prepared.slot_initial_inputs.len());
-    }
-
-    let mut slot = 0usize;
-    let mut pair = 0usize;
-    while slot < prepared.slot_output_types.len() {
-        assert!(pair < REDUCTION_PAIR_CAP);
-        let output_type = prepared.slot_output_types[slot];
-        let range_end = prepared.slot_output_types[slot..]
-            .iter()
-            .position(|kind| *kind != output_type)
-            .map(|offset| slot + offset)
-            .unwrap_or(prepared.slot_output_types.len());
-        let arity = range_end - slot;
-        let record = match output_type {
-            crate::upstream::OutputType::PermutationProduct
-            | crate::upstream::OutputType::InitsAndTeardownsProduct => {
-                assert_eq!(arity, 2);
-                let input = [slot, slot + 1].map(|slot| {
-                    let LoweredSlotInitialInput::PairwiseProduct { input } =
-                        prepared.slot_initial_inputs[slot]
-                    else {
-                        panic!("pairwise reduction input changed kind")
-                    };
-                    assert!(!input.is_null());
-                    input
-                });
-                let mut round_outputs = [[null_mut(); 2]; FUSED_REDUCTION_ROUNDS];
-                for (round, outputs) in round_outputs.iter_mut().enumerate() {
-                    for (output, slot) in outputs.iter_mut().zip([slot, slot + 1]) {
-                        let LoweredSlotOutput::PairwiseProduct { output: pointer } =
-                            prepared.per_round_slot_outputs[round][slot]
-                        else {
-                            panic!("pairwise reduction output changed kind")
-                        };
-                        assert!(!pointer.is_null());
-                        *output = pointer;
-                    }
-                }
-                FwdVmReductionPair {
-                    input,
-                    round_outputs,
-                    kind: REDUCTION_PAIR_PAIRWISE2,
-                    reserved: 0,
-                }
-            }
-            crate::upstream::OutputType::Lookup16Bits
-            | crate::upstream::OutputType::LookupTimestamps
-            | crate::upstream::OutputType::GenericLookup => {
-                assert_eq!(arity, 1);
-                let LoweredSlotInitialInput::LookupPair { num, den } =
-                    prepared.slot_initial_inputs[slot]
-                else {
-                    panic!("lookup reduction input changed kind")
-                };
-                assert!(!num.is_null() && !den.is_null());
-                let mut round_outputs = [[null_mut(); 2]; FUSED_REDUCTION_ROUNDS];
-                for (round, outputs) in round_outputs.iter_mut().enumerate() {
-                    let LoweredSlotOutput::LookupPair {
-                        output_num,
-                        output_den,
-                    } = prepared.per_round_slot_outputs[round][slot]
-                    else {
-                        panic!("lookup reduction output changed kind")
-                    };
-                    assert!(!output_num.is_null() && !output_den.is_null());
-                    *outputs = [output_num, output_den];
-                }
-                FwdVmReductionPair {
-                    input: [num, den],
-                    round_outputs,
-                    kind: REDUCTION_PAIR_LOOKUP,
-                    reserved: 0,
-                }
-            }
-        };
-        desc.reduction_pairs[pair] = record;
-        pair += 1;
-        slot = range_end;
-    }
-    desc.reduction_pair_count = pair as u32;
 }

@@ -9,11 +9,7 @@ use core::mem::{align_of, offset_of, size_of};
 use std::collections::BTreeMap;
 
 use era_cudart::cuda_kernel;
-use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::occupancy::max_active_blocks_per_multiprocessor;
 use era_cudart::result::CudaResult;
-use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
-use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_gkr_compiler::KERNEL_ARGUMENT_CEILING_BYTES;
 use gpu_prover_context::ProverContext;
 
@@ -143,28 +139,14 @@ pub(crate) fn launch_dr_tail_megakernel_pr(
     context: &ProverContext,
 ) -> CudaResult<()> {
     assert_capacity_matches_descriptor(&desc, capacity);
-    let mut state = context.alloc_with_extra_alignment::<PR, 1>(
-        capacity.global_state_bytes / size_of::<PR>(),
-        AllocationPlacement::Top,
-    )?;
-    let state_ptr = state.as_mut_ptr();
-    assert_eq!(
-        state_ptr as usize % 32,
-        0,
-        "Proth120 DR-tail packed working state alignment"
-    );
-    let config = CudaLaunchConfig::builder()
-        .grid_dim(1)
-        .block_dim(PR_DR_TAIL_BLOCK_THREADS)
-        .dynamic_smem_bytes(capacity.dynamic_smem_bytes)
-        .stream(context.get_exec_stream())
-        .build();
-
-    PrDrTailMegakernelFunction::default()
-        .launch(&config, &PrDrTailMegakernelArguments::new(desc, state_ptr))?;
-
-    drop(state);
-    Ok(())
+    crate::backward::launch_dr_tail_state::<PR, _, _>(
+        capacity.global_state_bytes,
+        capacity.dynamic_smem_bytes,
+        PR_DR_TAIL_BLOCK_THREADS,
+        PrDrTailMegakernelFunction::default(),
+        |state| PrDrTailMegakernelArguments::new(desc, state),
+        context,
+    )
 }
 
 pub(crate) fn encode_dr_tail_slots_pr(
@@ -191,58 +173,27 @@ pub(crate) fn encode_dr_tail_slots_pr(
     slots
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct DrTailRawAttributesPr {
-    pub(crate) static_smem_bytes: usize,
-    pub(crate) local_bytes: usize,
-    pub(crate) max_dynamic_smem_bytes: usize,
-}
+pub(crate) use crate::backward::DrTailRawAttributes as DrTailRawAttributesPr;
 
 pub(crate) fn dr_tail_attributes_pr() -> CudaResult<DrTailRawAttributesPr> {
-    let function = PrDrTailMegakernelFunction::default();
-    let mut raw = std::mem::MaybeUninit::<era_cudart_sys::CudaFuncAttributes>::zeroed();
-    let status =
-        unsafe { era_cudart_sys::cudaFuncGetAttributes(raw.as_mut_ptr(), function.as_ptr()) };
-    if status != era_cudart_sys::CudaError::Success {
-        return Err(status);
-    }
-    let raw = unsafe { raw.assume_init() };
-    Ok(DrTailRawAttributesPr {
-        static_smem_bytes: raw.sharedSizeBytes,
-        local_bytes: raw.localSizeBytes,
-        max_dynamic_smem_bytes: raw.maxDynamicSharedSizeBytes.max(0) as usize,
-    })
+    crate::backward::dr_tail_kernel_attributes(&PrDrTailMegakernelFunction::default())
 }
 
 pub(crate) fn dr_tail_device_optin_cap_bytes_pr(device_id: i32) -> CudaResult<usize> {
-    let cap = era_cudart::device::device_get_attribute(
-        era_cudart_sys::CudaDeviceAttr::MaxSharedMemoryPerBlockOptin,
-        device_id,
-    )?;
-    Ok(cap.max(0) as usize)
+    crate::backward::dr_tail_device_optin_cap_bytes(device_id)
 }
 
 pub(crate) fn set_dr_tail_max_dynamic_smem_bytes_pr(bytes: usize) -> CudaResult<()> {
-    let function = PrDrTailMegakernelFunction::default();
-    let status = unsafe {
-        cudaFuncSetAttribute(
-            function.as_ptr(),
-            CudaFuncAttribute::MaxDynamicSharedMemorySize,
-            i32::try_from(bytes).expect("Proth120 DR-tail dynamic shared memory exceeds i32"),
-        )
-    };
-    if status != era_cudart_sys::CudaError::Success {
-        return Err(status);
-    }
-    Ok(())
+    crate::backward::dr_tail_set_kernel_max_dynamic_smem(
+        &PrDrTailMegakernelFunction::default(),
+        bytes,
+    )
 }
 
 pub(crate) fn dr_tail_occupancy_pr(dynamic_smem_bytes: usize) -> CudaResult<u32> {
-    let function = PrDrTailMegakernelFunction::default();
-    max_active_blocks_per_multiprocessor(
-        &function,
-        PR_DR_TAIL_BLOCK_THREADS as i32,
+    crate::backward::dr_tail_kernel_occupancy(
+        &PrDrTailMegakernelFunction::default(),
+        PR_DR_TAIL_BLOCK_THREADS,
         dynamic_smem_bytes,
     )
-    .map(|blocks| blocks.max(0) as u32)
 }

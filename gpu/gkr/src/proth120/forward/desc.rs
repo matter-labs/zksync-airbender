@@ -3,22 +3,14 @@ use crate::upstream::PR;
 pub(crate) use crate::forward::vm::desc::{
     pack_desc, FwdVmLayer, ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP,
     ARG_DERIVED_E4_CAP, CONST_DERIVED_E4_CAP, DESC_CAP, DST_SLOT_COUNT, FUSED_REDUCTION_ROUNDS,
-    LAYER_CAP, MAPPING_ARENA_COUNT, PROGRAM_CAP, REDUCTION_PAIR_CAP, REDUCTION_PAIR_LOOKUP,
-    REDUCTION_PAIR_PAIRWISE2, SD_AGGREGATE, SD_DECODER, SD_INITS_TOP_BITS, SD_SETUP,
-    SD_SINGLE_COLUMN, SD_VIRTUAL, SOURCE_WINDOW_COUNT,
+    LAYER_CAP, MAPPING_ARENA_COUNT, PROGRAM_CAP, REDUCTION_PAIR_CAP, SD_AGGREGATE, SD_DECODER,
+    SD_INITS_TOP_BITS, SD_SETUP, SD_SINGLE_COLUMN, SD_VIRTUAL, SOURCE_WINDOW_COUNT,
 };
 pub const PR_FWD_VM_BUCKETS: u32 = 4;
 pub const PR_FWD_VM_CONST_CAP: usize = 64;
 pub(crate) const CONST_CAP: usize = PR_FWD_VM_CONST_CAP;
 
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub(crate) struct FwdVmReductionPair {
-    pub input: [*const PR; 2],
-    pub round_outputs: [[*mut PR; 2]; FUSED_REDUCTION_ROUNDS],
-    pub kind: u32,
-    pub reserved: u32,
-}
+pub(crate) type FwdVmReductionPair = crate::forward::vm::desc::FwdVmReductionPair<PR>;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
