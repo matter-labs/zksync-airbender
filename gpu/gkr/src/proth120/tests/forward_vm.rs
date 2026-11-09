@@ -13,8 +13,6 @@ use crate::forward::{
     ForwardOutputSlabTarget, GpuGKRForwardOutput, PreparedDimensionReductionForward,
 };
 use crate::gkr_address_audit::AddressClass;
-use crate::proth120::forward::desc::{FwdVmDesc, FwdVmLayer};
-use crate::proth120::forward::lower::LoweredFwdVm;
 use crate::proth120::forward::{prepare_backward_handoff_pr, schedule_forward_challenge_banks};
 use crate::proth120::packed_challenges::split_challenges;
 use crate::storage_layout::GpuGKRStorageLayout;
@@ -314,14 +312,209 @@ fn pr_handoff_transcript_matches_cpu() {
     );
 }
 
+// One committed wrap layer, evaluated independently through the CPU prover.
+// Its row-local program has no lookup or challenge-bank prelude, so a reduced
+// row count exercises the production instructions without a whole-proof fixture.
+struct ProductionVmColumn {
+    address: GKRAddress,
+    field: gpu_gkr_compiler::ForwardOperandField,
+    input: Option<Vec<PR>>,
+    expected: Option<Vec<PR>>,
+}
+
+fn production_vm_fixture() -> (gpu_gkr_compiler::CompiledLayer, Vec<ProductionVmColumn>) {
+    use gpu_gkr_compiler::{ForwardDstLine, ForwardInstr, ForwardOperandField, ForwardOperandLine};
+    use prover::gkr::sumcheck::access_and_fold::BaseFieldPoly;
+    let programs = super::cpu_abi::programs();
+    let layer_index = 2;
+    let layer = programs.forward.layers[layer_index].clone();
+    assert_eq!(layer.specials.len(), 0);
+    assert!(layer.consts.values().is_empty());
+    assert!(layer.derived_e4.arg_refs().is_empty());
+    let mut inputs = BTreeMap::new();
+    let mut outputs = BTreeMap::new();
+    for instruction in &layer.program.instrs {
+        let mut record = |operand: &ForwardOperandLine, field| {
+            if let ForwardOperandLine::Source { window, column } = *operand {
+                let place = layer
+                    .source_windows
+                    .resolve_read_place(window, column)
+                    .unwrap();
+                inputs.insert(
+                    crate::proth120::forward::lower::read_place_to_gkr_address(&place),
+                    field,
+                );
+            }
+        };
+        match instruction {
+            ForwardInstr::Add {
+                field, operands, ..
+            }
+            | ForwardInstr::Mul {
+                field, operands, ..
+            } => {
+                for operand in operands {
+                    record(operand, *field);
+                }
+            }
+            ForwardInstr::Fma {
+                field_lhs,
+                field_rhs,
+                pairs,
+                ..
+            } => {
+                for (lhs, rhs) in pairs {
+                    record(lhs, *field_lhs);
+                    record(rhs, *field_rhs);
+                }
+            }
+            ForwardInstr::Mov {
+                field, src, dst, ..
+            } => {
+                if let Some(src) = src {
+                    record(src, *field);
+                }
+                if let Some(ForwardDstLine::GlobalMaterialize { slot, col }) = dst {
+                    let place = layer.backings.slot_col_to_read_place(*slot, *col).unwrap();
+                    outputs.insert(
+                        crate::proth120::forward::lower::read_place_to_gkr_address(&place),
+                        *field,
+                    );
+                }
+            }
+        }
+    }
+    let mut artifact = (*programs.runtime_circuit).clone();
+    artifact.trace_len = 256;
+    // The compiler eliminates copy-only outputs and resolves their aliases.
+    // They are outside this layer's materialized VM writes and need no CPU
+    // evaluation for this oracle.
+    artifact.layers[layer_index]
+        .gates
+        .retain(|gate| match &gate.enforced_relation {
+            cs::gkr_compiler::GKRRelation::CopyInBaseField { output, .. }
+            | cs::gkr_compiler::GKRRelation::CopyInExtensionField { output, .. } => {
+                outputs.contains_key(output)
+            }
+            _ => true,
+        });
+    let cpu_address = |address| match address {
+        GKRAddress::ScratchSpace(slot) => artifact.scratch_space_mapping_rev[&slot],
+        address => address,
+    };
+    let storage_layer = |address| match address {
+        GKRAddress::InnerLayer { layer, .. } | GKRAddress::Cached { layer, .. } => layer,
+        _ => 0,
+    };
+    let mut cpu = CpuStorage::<PR, PR>::default();
+    cpu.layers
+        .resize_with(artifact.layers.len() + 1, Default::default);
+    let mut columns = BTreeMap::new();
+    let values = deterministic_columns(8, inputs.len());
+    for ((address, field), mut values) in inputs.into_iter().zip(values) {
+        if field == ForwardOperandField::Base {
+            for (row, value) in values.iter_mut().enumerate() {
+                *value = PR::new((row & 1) as u128);
+            }
+        }
+        let cpu_addr = cpu_address(address);
+        let storage = &mut cpu.layers[storage_layer(cpu_addr)];
+        if field == ForwardOperandField::Ext {
+            storage.extension_field_inputs.insert(
+                cpu_addr,
+                ExtensionFieldPoly::new(values.clone().into_boxed_slice()),
+            );
+        } else {
+            storage.base_field_inputs.insert(
+                cpu_addr,
+                BaseFieldPoly::new(values.clone().into_boxed_slice()),
+            );
+        }
+        columns.insert(
+            address,
+            ProductionVmColumn {
+                address,
+                field,
+                input: Some(values),
+                expected: None,
+            },
+        );
+    }
+    // CPU copy relations retain logical aliases; the compiled VM resolves
+    // those aliases directly to the canonical input matrix.
+    for (&alias, &canonical) in &programs.storage_layout.aliases {
+        if storage_layer(alias) > layer_index {
+            continue;
+        }
+        if let Some(column) = columns.get(&canonical) {
+            let values = column.input.as_ref().unwrap().clone().into_boxed_slice();
+            let storage = &mut cpu.layers[storage_layer(alias)];
+            if column.field == ForwardOperandField::Ext {
+                storage
+                    .extension_field_inputs
+                    .insert(alias, ExtensionFieldPoly::new(values));
+            } else {
+                storage
+                    .base_field_inputs
+                    .insert(alias, BaseFieldPoly::new(values));
+            }
+        }
+    }
+    let mut witness = prover::gkr::witness_gen::family_circuits::GKRFullWitnessTrace {
+        column_major_memory_trace: vec![],
+        column_major_witness_trace: vec![],
+        column_major_scratch_space_trace: vec![],
+        generic_lookup_mapping: vec![],
+        range_check_16_lookup_mapping: vec![],
+        timestamp_range_check_lookup_mapping: vec![],
+    };
+    let challenges = std::array::from_fn(|i| PR::new(i as u128 + 3));
+    let (external, [lookup_alpha, lookup_additive]) = split_challenges(&challenges);
+    let pool = prover::allocation_pool::GenericAllocationPool::<PR, PR>::with_retain(false);
+    prover::gkr::prover::forward_loop::evaluate_layer(
+        layer_index,
+        &artifact.layers[layer_index],
+        &mut cpu,
+        &artifact,
+        &external,
+        &mut witness,
+        &[],
+        256,
+        &[],
+        lookup_alpha,
+        lookup_additive,
+        PR::ONE,
+        &pool,
+        &Worker::new_with_num_threads(2),
+    );
+    for (address, field) in outputs {
+        let cpu_addr = cpu_address(address);
+        let expected = if field == ForwardOperandField::Ext {
+            cpu.get_ext_poly(cpu_addr).to_vec()
+        } else {
+            cpu.try_get_base_poly(cpu_addr).unwrap().to_vec()
+        };
+        let column = columns.entry(address).or_insert(ProductionVmColumn {
+            address,
+            field,
+            input: None,
+            expected: None,
+        });
+        assert_eq!(column.field, field);
+        column.expected = Some(expected);
+    }
+    let columns: Vec<_> = columns.into_values().collect();
+    assert!(columns.iter().any(|column| column
+        .expected
+        .as_ref()
+        .is_some_and(|v| v.iter().any(|&v| v != PR::ZERO))));
+    (layer, columns)
+}
+
 #[test]
 #[cfg(not(no_cuda))]
 fn pr_partial_block_vm_and_tower_are_guarded() {
     use era_cudart::execution::KernelFunction;
-    use gpu_gkr_compiler::{
-        encode_forward_runtime_program, ForwardDstLine, ForwardInstr, ForwardMovDir,
-        ForwardOperandField, ForwardOperandLine, ForwardProgram,
-    };
     let context = make_context();
     let function = crate::proth120::forward::kernels::vm_function();
     let mut attributes = std::mem::MaybeUninit::<era_cudart_sys::CudaFuncAttributes>::zeroed();
@@ -336,40 +529,67 @@ fn pr_partial_block_vm_and_tower_are_guarded() {
         era_cudart::occupancy::max_active_blocks_per_multiprocessor(&function, 128, 0).unwrap();
     assert!(blocks > 0);
     assert_eq!(attributes.localSizeBytes, 0);
-    println!("GKR_FWD_ATTRIBUTES registers={} static_smem_bytes={} local_bytes={} blocks_per_sm_128={} binary_version={}", attributes.numRegs, attributes.sharedSizeBytes, attributes.localSizeBytes, blocks, attributes.binaryVersion);
-    let values = deterministic_columns(8, 1).pop().unwrap();
-    let input = upload(&values[..129], &context);
+    let (layer, columns) = production_vm_fixture();
     let sentinel = PR::new(0xfedc_ba98);
-    let mut output = upload(&vec![sentinel; 131], &context);
-    let program = encode_forward_runtime_program(&ForwardProgram {
-        instrs: vec![ForwardInstr::Mov {
-            dir: ForwardMovDir::DstFromSrc,
-            field: ForwardOperandField::Base,
-            dst: Some(ForwardDstLine::GlobalMaterialize { slot: 0, col: 0 }),
-            src: Some(ForwardOperandLine::Source {
-                window: 0,
-                column: 0,
-            }),
-        }],
-    })
-    .unwrap();
-    let mut desc: FwdVmDesc = unsafe { std::mem::zeroed() };
-    desc.source_base[0] = input.as_ptr().cast_mut().cast();
-    desc.source_stride_bytes[0] = 129 * 16;
-    desc.dst_base[0] = unsafe { output.as_mut_ptr().add(1).cast() };
-    desc.dst_stride_bytes[0] = 129 * 16;
-    desc.count = 129;
-    desc.layer_count = 1;
-    desc.layers[0] = FwdVmLayer {
-        program_offset: 0,
-        instruction_count: 1,
+    let stride = 258;
+    // Group the same physical matrices the production lowerer resolves. Each
+    // column has two guards and room for 256 rows; only 129 rows are launched.
+    let group_key = |column: &ProductionVmColumn| {
+        let (kind, index) = match column.address {
+            GKRAddress::BaseLayerMemory(_) => (0, 0),
+            GKRAddress::BaseLayerWitness(_) => (1, 0),
+            GKRAddress::Setup(_) => (2, 0),
+            GKRAddress::ScratchSpace(_) => (3, 0),
+            GKRAddress::InnerLayer { layer, .. } => (4, layer),
+            GKRAddress::Cached { layer, .. } => (5, layer),
+            _ => panic!("unexpected committed VM address {:?}", column.address),
+        };
+        (
+            kind,
+            index,
+            column.field == gpu_gkr_compiler::ForwardOperandField::Ext,
+        )
     };
-    desc.program[..program.len()].copy_from_slice(&program);
-    let mut lowered = LoweredFwdVm {
-        desc,
-        lookup_additive_slot: None,
-        decoder_fill_slot: None,
+    let mut groups = BTreeMap::<_, Vec<usize>>::new();
+    for (i, column) in columns.iter().enumerate() {
+        groups.entry(group_key(column)).or_default().push(i);
+    }
+    let mut buffers = Vec::new();
+    let mut resolved = BTreeMap::new();
+    for indexes in groups.into_values() {
+        let mut values = vec![sentinel; indexes.len() * stride];
+        for (slot, &index) in indexes.iter().enumerate() {
+            if let Some(input) = &columns[index].input {
+                values[slot * stride + 1..slot * stride + 257].copy_from_slice(input);
+            }
+        }
+        let mut device = upload(&values, &context);
+        let base = unsafe { device.as_mut_ptr().add(1) };
+        for (slot, &index) in indexes.iter().enumerate() {
+            resolved.insert(
+                columns[index].address,
+                crate::proth120::forward::lower::ResolvedColumn {
+                    is_e4: columns[index].field == gpu_gkr_compiler::ForwardOperandField::Ext,
+                    ptr: unsafe { base.add(slot * stride) }.cast(),
+                    matrix_base: base.cast(),
+                    stride_bytes: (stride * 16) as u32,
+                },
+            );
+        }
+        buffers.push((device, indexes, values));
+    }
+    let header = crate::proth120::forward::lower::FwdVmInputs {
+        mapping_arena: [std::ptr::null(); 3],
+        decoder_mapping_col: None,
+        table: std::ptr::null(),
+        decoder_mapping: std::ptr::null(),
+        table_len: 0,
+        count: 129,
+        inits_and_teardowns_top_bits: &[],
     };
+    let mut lowered = crate::proth120::forward::lower::lower_desc(&[layer], &header, &|address| {
+        resolved.get(&address).copied()
+    });
     let prepared = PreparedDimensionReductionForward {
         initial_trace_log_2: 8,
         total_rounds: 1,
@@ -384,10 +604,34 @@ fn pr_partial_block_vm_and_tower_are_guarded() {
         0
     );
     assert_eq!(lowered.desc.reduction_pair_count, 0);
-    let actual = read_back(&output, PR::ZERO, &context);
-    assert_eq!(actual[0], sentinel);
-    assert_eq!(actual[130], sentinel);
-    compare(&actual[1..130], &values[..129], "partial VM");
+    for (device, indexes, initial) in &buffers {
+        let actual = read_back(device, PR::ZERO, &context);
+        for (slot, &index) in indexes.iter().enumerate() {
+            let start = slot * stride;
+            assert_eq!(actual[start], sentinel);
+            assert_eq!(actual[start + 257], sentinel);
+            if let Some(expected) = &columns[index].expected {
+                compare(
+                    &actual[start + 1..start + 130],
+                    &expected[..129],
+                    "committed production VM",
+                );
+                compare(
+                    &actual[start + 130..start + 257],
+                    &initial[start + 130..start + 257],
+                    "inactive VM rows",
+                );
+            } else {
+                compare(
+                    &actual[start..start + stride],
+                    &initial[start..start + stride],
+                    "VM input preservation",
+                );
+            }
+        }
+    }
+    let values = deterministic_columns(8, 1).pop().unwrap();
+    let input = upload(&values[..129], &context);
     let mut reduced = upload(&vec![sentinel; 66], &context);
     let mut batch = crate::forward::kernels::GpuGKRDimensionReducingForwardTowerBatch::<PR> {
         pair_count: 1,
