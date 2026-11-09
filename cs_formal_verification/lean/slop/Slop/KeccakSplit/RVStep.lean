@@ -125,7 +125,7 @@ theorem parity_hit (x : Fin 5) (r : Nat) (S : Vector Lane 31) (k : Fin 7) (live 
       (resultOf .columnParity x r (Vector.ofFn fun lane : Fin 7 => S[(slotsOf .columnParity x r)[lane]].toNat))[k] := by
   fin_cases x
   all_goals fin_cases k
-  all_goals first | (simp only [Fin.isValue] at live; omega) | skip
+  all_goals try (simp only [Fin.isValue] at live; omega)
   all_goals simp [slotsOf, resultOf, physical_slot_spec, round_constant_spec, f1600Step, columnParity, set5,
     finRange5_foldl, slot, scratch, lane, Vector.getElem_set, laneSlot_val_eq, BitVec.toNat_xor,
     slot_ne_scratch, scratch_ne_slot, slot_ne_25, ne_slot_25, fin25_val_ne, big_ne_lane]

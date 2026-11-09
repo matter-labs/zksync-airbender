@@ -15,7 +15,7 @@ SAIL_REV=2ba321281cea18485f783da05c8a147a45d6b980      # "Sail 0.20.3 (sail2 @ 2
 SAIL_VERSION=0.20.3
 SAILRISCV_REPO=https://github.com/riscv/sail-riscv.git
 SAILRISCV_REV=6136f84326f41dbaf72daf43a3787195ea3bd1c6  # tag 2026-10-12-6136f84 (master, 2026-10-09)
-LEAN_TOOLCHAIN=leanprover/lean4:v4.34.1
+LEAN_TOOLCHAIN=leanprover/lean4:v4.35.0
 OPAM_SWITCH=sail
 OCAML_VERSION=5.4.1
 
@@ -155,6 +155,13 @@ grep -q 'backward.do.legacy' "$GEN/$LEAN_PKG/$LEAN_PKG/RvfiDii.lean" || { echo "
 perl -pi -e 's/^def main \(_ : List String\)/def sailMainEntry (_ : List String)/' "$GEN/$LEAN_PKG/$LEAN_PKG.lean"
 grep -q '^def sailMainEntry' "$GEN/$LEAN_PKG/$LEAN_PKG.lean" || { echo "main rename failed" >&2; exit 1; }
 
+# Lean 4.35 compat (lean4#8930): since 4.35 declaring an inductive type computes every constructor's runtime layout and
+# rejects a data-carrying constructor whose tag exceeds 243; `instruction` has 361. lean-sail's `skip_inductive_codegen`
+# (sail/patches/lean-sail-skip-inductive-codegen.patch) leaves those constructors without a layout, as 4.34 did (nothing
+# here is compiled: --lean-noncomputable). The declarations sent to the kernel are unchanged. One line before the type.
+perl -0pi -e 's/^(inductive instruction where)$/skip_inductive_codegen\n$1/m' "$GEN/$LEAN_PKG/$LEAN_PKG/Defs.lean"
+[[ "$(grep -c '^skip_inductive_codegen$' "$GEN/$LEAN_PKG/$LEAN_PKG/Defs.lean")" == 1 ]] || { echo "instruction patch failed" >&2; exit 1; }
+
 # ---------------------------------------------------------------- 4. assemble the Lake package
 log "assemble $OUT"
 rm -rf "$OUT"; mkdir -p "$OUT"
@@ -179,7 +186,7 @@ moreLeancArgs = ["-fbracket-depth=500"]
 name = "SailRV32Smoke"
 leanOptions.weak.linter.style.nameCheck = false
 
-# lean-sail v6 @ ${LEANSAIL_REV:0:7}, fetched by sail/fetch-lean-sail.sh with sail/patches/lean-sail-*.patch applied (Lean 4.34 compat)
+# lean-sail v6 @ ${LEANSAIL_REV:0:7}, fetched by sail/fetch-lean-sail.sh with sail/patches/lean-sail-*.patch applied (Lean 4.35 compat)
 [[require]]
 name = "Sail"
 path = "lean-sail"

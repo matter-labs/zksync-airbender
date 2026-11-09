@@ -5,6 +5,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/lean"
 fail() { echo "FAIL: $*"; exit 1; }
+# Clean (v4.35.0) asks Lake to download its GitHub release's prebuilt .olean files; build it from source instead.
+export LAKE_NO_CACHE=${LAKE_NO_CACHE:-1}
 
 echo "== 0. The Sail model: lean-sail (pinned, fetched on demand; not committed), then the generated model"
 ../sail/fetch-lean-sail.sh

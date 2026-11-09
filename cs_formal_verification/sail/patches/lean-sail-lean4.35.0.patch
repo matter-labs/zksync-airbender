@@ -54,10 +54,10 @@ index e57976d..6afdb10 100644
  -- A function to provide a default toplevel for Sail models
  
 diff --git a/lean-toolchain b/lean-toolchain
-index d324cad..ba8ebf2 100644
+index d324cad..a6aff06 100644
 --- a/lean-toolchain
 +++ b/lean-toolchain
 @@ -1 +1 @@
 -leanprover/lean4:v4.29.0
 \ No newline at end of file
-+leanprover/lean4:v4.34.1
++leanprover/lean4:v4.35.0

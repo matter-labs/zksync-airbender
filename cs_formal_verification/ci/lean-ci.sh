@@ -26,6 +26,8 @@ FV="${FV_DIR:-$(cd "$CI_DIR/.." && pwd)}"   # cs_formal_verification (FV_DIR: th
 LEAN="$FV/lean"
 ELAN_VERSION=v4.2.4
 export PATH="$HOME/.elan/bin:$PATH"
+# Clean (v4.35.0) asks Lake to download its GitHub release's prebuilt .olean files; build it from source instead
+export LAKE_NO_CACHE=${LAKE_NO_CACHE:-1}
 
 log() { echo ">> $*" >&2; }
 sub() { awk -v a="$1" -v b="$2" -v d="${3:-1}" 'BEGIN { printf "%.1f", (a - b) / d }'; }

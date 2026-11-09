@@ -71,7 +71,7 @@ theorem mix_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
   all_goals cases second
   all_goals simp only [Bool.false_eq_true, ↓reduceIte] at e64 e65
   all_goals fin_cases operation
-  all_goals first | (exact absurd rotation (by decide)) | skip
+  all_goals try exact absurd rotation (by decide)
   all_goals fin_cases limb
   all_goals op_index at a b c
   all_goals simp only [Expression.eval, Verification.environment, Int.ofNat_eq_natCast, Nat.cast_ofNat,

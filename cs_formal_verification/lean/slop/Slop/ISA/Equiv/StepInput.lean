@@ -21,14 +21,14 @@ theorem decode_csr {w : BitVec 32} {i : RV.Instr} (h : RV.decode w = some i) :
 
 theorem exec_input (σ : SailState) (rd : BitVec 5) (hrd : rd ≠ 0) :
     runSail (Airbender.execute next (Airbender.toSail (.inputRead rd))) σ = .ok RETIRE_SUCCESS (xset σ rd next) := by
-  simp only [Airbender.toSail, Airbender.csrToSail, Airbender.execute, Airbender.nonDeterminism,
+  simp only [Airbender.toSail, Airbender.csrToSail, Airbender.execute.eq_def, Airbender.nonDeterminism,
     show ((0x7c0 : BitVec 12) == 0x7c0) = true from rfl, show (regidx.Regidx 0 == zreg) = true from rfl,
     ite_true, bne, regidx_beq_zreg rd hrd, Bool.not_false, Bool.and_true, Slop.runF_bind, wX_run,
     Slop.runF_pure]
 
 theorem exec_write (σ : SailState) (src : BitVec 5) (hsrc : src ≠ 0) :
     runSail (Airbender.execute next (Airbender.toSail (.inputWrite src))) σ = .ok RETIRE_SUCCESS σ := by
-  simp only [Airbender.toSail, Airbender.csrToSail, Airbender.execute, Airbender.nonDeterminism,
+  simp only [Airbender.toSail, Airbender.csrToSail, Airbender.execute.eq_def, Airbender.nonDeterminism,
     show ((0x7c0 : BitVec 12) == 0x7c0) = true from rfl, show (regidx.Regidx 0 == zreg) = true from rfl,
     regidx_beq_zreg src hsrc, ite_true, ite_false, bne, Bool.not_false, Bool.not_true, Bool.and_true,
     Bool.and_false, Bool.false_eq_true, Slop.runF_pure]

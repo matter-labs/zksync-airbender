@@ -31,7 +31,6 @@ private theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environme
     Verification.environment, Expression.eval, assignment, Tests.BigintMemory.row, Lookup.Contains, Table.toRaw, fromElements]
   repeat' apply And.intro
   all_goals solve
-    | decide +kernel
     | (apply Verification.range16_contains; decide +kernel)
     | (apply Trace.Proofs.range_contains; decide +kernel)
     | (refine ⟨⟨0, by decide⟩, ?_⟩; decide +kernel)

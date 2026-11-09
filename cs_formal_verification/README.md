@@ -16,7 +16,7 @@ checks the review guides).
   `Human/Helpers/Properties.lean`), whole-trace execution contracts (`Human/Trace/`) and the JSON importer that turns
   an artifact into CleanCore constraints (`Human/Import/`), and the RV32 specification (`Human/ISA/`). `human/` is the
   spec (`Human.*`) plus CleanCore, our transcription of Clean. It imports Lean, Mathlib (including Batteries) and itself; the one exception
-  is [CleanCore/Equivalence.lean](lean/human/CleanCore/Equivalence.lean), a non-module leaf that imports Clean to prove
+  is [CleanCore/Equivalence.lean](lean/human/CleanCore/Equivalence.lean), a leaf that imports Clean to prove
   each CleanCore definition equal to Clean's. Nothing in `human/` imports it, so Clean is not in the spec's import
   closure. The Sail model (the generated SailRV32 and lean-sail) is imported only by `Human/ISA/Sail/*` and
   [Configuration.lean](lean/human/Human/Helpers/Core/Configuration.lean). `./verify.sh` step 1 checks that `human/` imports
@@ -29,7 +29,7 @@ checks the review guides).
 - `lean/test/` — regressions and fixtures (`Tests/`), the axiom audits (`Checks/`).
 - `sail/` — the Sail tooling, used only by the equivalence leaf `Human/ISA/Sail/`: `regen.sh` generates the official Sail RISC-V RV32 model (sail-riscv, Sail and lean-sail
   pins in [PINS.md](sail/PINS.md); machine config `config/airbender-base.json`) into the gitignored
-  `lean/sail-rv32/`; `fetch-lean-sail.sh` fetches the pinned lean-sail with our Lean 4.34 patch (no upstream licence,
+  `lean/sail-rv32/`; `fetch-lean-sail.sh` fetches the pinned lean-sail with our Lean 4.35 patches (no upstream licence,
   so never committed).
 - `lean/sail-rv32/` — the Lake package `sail_rv32` (the generated model, not committed; its `lakefile.toml`,
   `PROVENANCE.txt` and config copy are). `lean/check_review.py` — review-guide and audit-coverage check.
@@ -70,8 +70,9 @@ no review: each file names the claims that fix its behaviour.
 
 ## Clean, the RV32 spec and Sail
 
-Lean and Mathlib are `v4.34.1`. Clean is pinned at tag `v4.33.1`
-(`93c9d1ef45be9f687214625d7857889cf2485504`); the modules used here build unchanged on Lean `v4.34.1`.
+Lean and Mathlib are `v4.35.0`. Clean is pinned at tag `v4.35.0`
+(`b41c196b10cf0f389d2badf5e19e1435e78e6d98`), built from source (`LAKE_NO_CACHE=1` in `verify.sh`; Clean would
+otherwise download its release's prebuilt files).
 We use Clean's native `Expression`, `FlatOperation.assert`, `StaticTable`, `FlatOperation.lookup`,
 `Environment` and `ConstraintsHoldFlat`, and its Keccak-f[1600] and BLAKE3 references.
 The witness-generation DSL and full `FormalCircuit` bundle are not used. The spec imports these from

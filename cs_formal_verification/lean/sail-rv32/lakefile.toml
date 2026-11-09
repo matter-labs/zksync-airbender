@@ -13,7 +13,7 @@ moreLeancArgs = ["-fbracket-depth=500"]
 name = "SailRV32Smoke"
 leanOptions.weak.linter.style.nameCheck = false
 
-# lean-sail v6 @ c816ea7, fetched by sail/fetch-lean-sail.sh with sail/patches/lean-sail-*.patch applied (Lean 4.34 compat)
+# lean-sail v6 @ c816ea7, fetched by sail/fetch-lean-sail.sh with sail/patches/lean-sail-*.patch applied (Lean 4.35 compat)
 [[require]]
 name = "Sail"
 path = "lean-sail"

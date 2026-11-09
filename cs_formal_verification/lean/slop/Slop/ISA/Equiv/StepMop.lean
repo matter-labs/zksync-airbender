@@ -18,7 +18,7 @@ theorem mopOfIndex_mopIndex (op : RV.FieldOp) : Airbender.mopOfIndex (Airbender.
 theorem exec_mop (σ : SailState) (op : RV.FieldOp) (rd rs1 rs2 : BitVec 5) :
     runSail (Airbender.execute next (Airbender.toSail (.mop op rd rs1 rs2))) σ =
       .ok RETIRE_SUCCESS (xset σ rd (RV.mopVal op (xget σ rs1) (xget σ rs2) (xget σ rd))) := by
-  simp only [Airbender.toSail, Airbender.execute, mopOfIndex_mopIndex, Slop.runF_bind, rX_run, wX_run, Slop.runF_pure]
+  simp only [Airbender.toSail, Airbender.execute.eq_def, mopOfIndex_mopIndex, Slop.runF_bind, rX_run, wX_run, Slop.runF_pure]
 
 theorem kind_mop (h : Airbender.AgreeSail s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (h2 : (σ.regs .PC).toNat + 4 ≤ Airbender.RAM_START) (op : RV.FieldOp) (rd rs1 rs2 : BitVec 5)
@@ -33,7 +33,7 @@ theorem kind_mop (h : Airbender.AgreeSail s σ) (ha : (σ.regs .PC).toNat % 4 = 
 theorem exec_xorrot (σ : SailState) (n : BitVec 5) (rd rs1 : BitVec 5) :
     runSail (Airbender.execute next (Airbender.toSail (.xorRot n rd rs1))) σ =
       .ok RETIRE_SUCCESS (xset σ rd ((xget σ rd ^^^ xget σ rs1).rotateRight n.toNat)) := by
-  simp only [Airbender.toSail, Airbender.execute, Slop.runF_bind, rX_run, wX_run, Slop.runF_pure]
+  simp only [Airbender.toSail, Airbender.execute.eq_def, Slop.runF_bind, rX_run, wX_run, Slop.runF_pure]
 
 theorem kind_xorrot (h : Airbender.AgreeSail s σ) (ha : (σ.regs .PC).toNat % 4 = 0)
     (h2 : (σ.regs .PC).toNat + 4 ≤ Airbender.RAM_START) (n : BitVec 5) (rd rs1 : BitVec 5)

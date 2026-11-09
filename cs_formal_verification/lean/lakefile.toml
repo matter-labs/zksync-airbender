@@ -18,13 +18,13 @@ path = "sail-rv32"
 [[require]]
 name = "Clean"
 git = "https://github.com/Verified-zkEVM/clean.git"
-rev = "93c9d1ef45be9f687214625d7857889cf2485504"   # tag v4.33.1 (upstream toolchain v4.33.1)
+rev = "b41c196b10cf0f389d2badf5e19e1435e78e6d98"   # tag v4.35.0 (upstream toolchain v4.35.0)
 
 # Keep Mathlib last so its pinned transitive dependencies take precedence.
 [[require]]
 name = "mathlib"
 git = "https://github.com/leanprover-community/mathlib4.git"
-rev = "v4.34.1"
+rev = "v4.35.0"
 
 # what a human reads: every definition a final statement depends on
 # (the Artifact modules are excluded here: each is built by its own library below)

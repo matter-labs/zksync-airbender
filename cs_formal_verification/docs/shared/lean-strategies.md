@@ -74,14 +74,20 @@ deliberate change: bump the toolchain and Mathlib together, update what depends 
 libraries, version-matched tools), fix what breaks, run `verify.sh`, commit. Never mix an upgrade with other work, so
 breakage and timing changes are attributable.
 
-**Current exception: Lean 4.34.1.** Lean 4.35 (2026-10-12) rejects the generated Sail model: its `instruction` type
-has 361 constructors that carry data, above the compiler's limit of 244 (lean4#8930, open; the check is
-unchanged in 4.36.0-rc1). We rejected generating a smaller Sail model to work around it: that changes the
-trusted model and would need its own proof that it agrees with the full one. So we stay on the latest release
-that builds the full model, 4.34.1, which includes the kernel fixes backported from 4.35. Re-check at every new
-stable release and upgrade as soon as one builds the model. When upgrading, adopt `lake check` (kernel replay
-plus an axiom check); its targets must cover every final proof module, not only `human/`. Replaying `human/`
-checks that the statements are well-formed, not that they are proven. Keep `verify.sh`'s trust checks.
+**The Sail model on Lean 4.35.** Since 4.35, declaring an inductive type computes each constructor's runtime layout
+and rejects a data-carrying constructor whose tag exceeds 243 (lean4#8930, open); the generated `instruction` type has
+361. We rejected generating a smaller Sail model: that changes the trusted model and would need its own proof that it
+agrees with the full one. Instead `regen.sh` puts lean-sail's `skip_inductive_codegen` (our patch) before that one
+type: it leaves the rejected constructors without a runtime layout, as 4.34 did. It changes only the compiler (nothing
+in the model is compiled), not the declarations the kernel checks, so it is not trusted. Remove it once lean4#8930 is
+fixed.
+
+`verify.sh` stays the check everywhere (its trust checks included). `lake check --paranoid` (Lean 4.35: kernel replay
+by Lean's kernel and the independent checkers bundled with it, plus an axiom check) runs only in a scheduled CI job,
+every two weeks. Its targets cover every final proof module, not only `human/` (replaying `human/` checks that the
+statements are well-formed, not that they are proven), and leave out the two files that import Clean,
+`human/CleanCore/Equivalence.lean` and `test/Checks/Axioms.lean`: `lake check` rejects a non-standard axiom anywhere in
+the exported environment, and Clean's prime instances use `native_decide`. It needs `bwrap` (Linux).
 
 ### 1.5 Backup checker: rarely
 
@@ -94,9 +100,10 @@ not part of `verify.sh` and never run per commit: run it by hand every few month
 with its own copy of the imported environment, in parallel and without a limit. Given a root module or a batch, it
 can exhaust the machine's memory. So pass it one module at a time, never a module with modules below it unless it is
 small. Bound how many run at once by the memory available, not the core count. A check is mostly the system mapping
-the imported `.olean` files, so a few processes at once are faster than many. `backup-check.sh` does this. Lean 4.35's
-`lake check` replaces this: one export and one replay for the whole package, about 1 h for a Mathlib project, with
-nothing cached between runs. `lake check --paranoid` also runs independent kernels (lean4lean, nanoda and others).
+the imported `.olean` files, so a few processes at once are faster than many. `backup-check.sh` does this. The
+scheduled `lake check --paranoid` job (1.4) covers the same ground in CI: one export and one replay for the whole
+target set, with nothing cached between runs, through Lean's kernel and the independent ones (lean4lean, nanoda and
+others).
 
 ### 1.6 Working with several agents or sessions
 

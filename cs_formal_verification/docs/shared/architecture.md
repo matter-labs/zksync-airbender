@@ -5,7 +5,7 @@
 > are now `human/HumanSail/Checks.lean` (`MachineChecks`), a conjunct of `Airbender.ProgramCorrect`.
 
 ## Trusted surface (what a human audits)
-- `sail/` pins + `sail/config/airbender-rv32im.json` (diff vs stock) + `sail/patches/` (3 trivial externs, lean-sail 4.34 compat).
+- `sail/` pins + `sail/config/airbender-rv32im.json` (diff vs stock) + `sail/patches/` (3 trivial externs, lean-sail 4.35 compat + `skip_inductive_codegen`).
 - `rust/` build flags + `rust/build.sh`; `verify.sh` checks `lean/image/Image.lean` == `build/app.bin`.
 - `lean/human/` (~150 lines total):
   - `Machine.lean`: `SailState` (total-function regs/mem) + `runSail` (25-line interpreter of Sail's effect monad,

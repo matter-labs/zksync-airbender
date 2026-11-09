@@ -11,8 +11,8 @@
 2. shallow-fetches `riscv/sail-riscv` at the pinned commit and applies `patches/sail-riscv-*.patch`;
 3. fetches lean-sail with `fetch-lean-sail.sh` (pinned commit + `patches/lean-sail-*.patch`);
 4. runs `sail --lean` with upstream's flags (taken from sail-riscv's `model/CMakeLists.txt`) and `config/airbender-base.json`;
-5. post-processes (two mechanical edits, see below), assembles the Lake package `lean/sail-rv32/`
-   (`lakefile.toml`, `lean-toolchain` = v4.34.1, `SailRV32/*.lean`, `lean-sail/` (fetched, never committed), `airbender-base.json` (the config the model was generated with),
+5. post-processes (three mechanical edits, see below), assembles the Lake package `lean/sail-rv32/`
+   (`lakefile.toml`, `lean-toolchain` = v4.35.0, `SailRV32/*.lean`, `lean-sail/` (fetched, never committed), `airbender-base.json` (the config the model was generated with),
    `PROVENANCE.txt`, `SailRV32Smoke.lean`).
 
 Cold run: ~3.5 min, 1.3 GB RSS (with the Airbender config: 3:27). The output is byte-identical between runs (checked). `lake build` of the result:
@@ -21,7 +21,7 @@ Cold run: ~3.5 min, 1.3 GB RSS (with the Airbender config: 3:27). The output is 
 lean-sail is NOT committed: upstream has no licence, so this public repo must not carry a copy. `fetch-lean-sail.sh`
 (called by `verify.sh`, `lean/check.sh` and `regen.sh`) fetches the pinned commit into the gitignored
 `lean/sail-rv32/lean-sail/` and applies our patch; it is a no-op when that copy is already current (stamp file
-`.fetched` = commit + patch hash). Not a git `require`, because the Lean 4.34 patch is ours.
+`.fetched` = commit + patch hash). Not a git `require`, because the Lean 4.35 patches are ours.
 
 ## Choices
 
@@ -80,7 +80,15 @@ stock only where Lean cannot help (`diff rv32.json airbender-base.json`, marked 
   `cpp:` extern (`event_csr_write_callback`, `event_callback`, `validate_event_selectors`) and no Sail body, so the
   generated Lean has "Unknown identifier" and does not compile at all, even `--all-modules`. We give them the same trivial
   bodies as the neighbouring `tlb_*_callback`s (`()` / `true`). Report upstream.
-* `patches/lean-sail-lean4.34.1.patch`: Lean 4.29 -> 4.34 (two small fixes in `ArchSem*.lean`, toolchain bump).
+* `patches/lean-sail-lean4.35.0.patch`: Lean 4.29 -> 4.35 (two small fixes in `ArchSem*.lean`, toolchain bump).
+* `patches/lean-sail-skip-inductive-codegen.patch`: adds `Sail/SkipCodegen.lean`, the `skip_inductive_codegen` command
+  wrapper. Since Lean 4.35, declaring an inductive type computes each constructor's runtime layout and rejects a
+  data-carrying constructor whose tag exceeds 243 (lean4#8930); `instruction` has 361. The wrapper runs the compiler's
+  per-type phases but leaves the rejected constructors without a layout (4.34's behaviour). It touches only the
+  compiler: the declarations sent to the kernel are unchanged (all 230 inductive types of `SailRV32.Defs` hash
+  identically on 4.34.1 and 4.35.0), and the kernel and the replay checkers re-check every declaration, so it is not
+  trusted. Remove it once lean4#8930 is fixed.
+* `skip_inductive_codegen` inserted before `inductive instruction where` in `Defs.lean` (one line; see above).
 * `assert c "msg"` -> `«assert» c "msg"` in generated code (Lean 4.34 no longer resolves the bare identifier).
 * `set_option backward.do.legacy true` in `RvfiDii.lean` only: with 4.34's new `do` elaborator `print_rvfi_exec` (an
   RVFI trace printer) needed > 17 min and 13 GB; with the legacy elaborator 1 s. Not used by the ISA semantics.

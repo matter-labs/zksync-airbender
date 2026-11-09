@@ -296,7 +296,7 @@ private theorem iota_operation {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
   by_cases zero : operation.val = 0
   · have same : operation = 0 := Fin.ext zero
     subst operation
-    simpa [rhsLimb] using congrArg (fun n => packed w aColumns[(0 : Fin 5)] ^^^ n)
+    simpa [rhsLimb, packed] using congrArg (fun n => packed w aColumns[(0 : Fin 5)] ^^^ n)
       (constant_assembly round).symm
   · have different : operation ≠ 0 := by
       intro same
@@ -321,7 +321,8 @@ private theorem reference_column (state : Vector Nat 25) (column i : Fin 5) (rou
   fin_cases column <;> fin_cases i <;>
     simp [iotaState, Specs.Keccak256.iota, adjustedConstant ]
   all_goals split_ifs <;> simp_all
-  all_goals have := round.isLt; omega
+  all_goals have := round.isLt
+  all_goals simp only [show (round : Nat) ≤ 24 by omega, ↓reduceDIte]
 
 private theorem reference_parity (state : Vector Nat 25) (column : Fin 5) :
     (Specs.Keccak256.thetaC state)[column] =

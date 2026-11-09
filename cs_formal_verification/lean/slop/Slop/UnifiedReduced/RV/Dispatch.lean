@@ -199,9 +199,7 @@ theorem word_step {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p)
   have fields := word
   unfold rvWordFields at word
   split at word
-  all_goals first
-    | (have d := (Option.some.inj word).symm; rw [d] at small; simp at small; done)
-    | skip
+  all_goals try (have d := (Option.some.inj word).symm; rw [d] at small; simp at small; done)
   · rename_i rd rs1 imm
     have nonzero : rd ≠ 0 := by simpa [rvNopWrite] using nop
     exact lw_step hp facts nonzero (Option.some.inj word).symm
