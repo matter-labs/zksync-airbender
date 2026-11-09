@@ -370,8 +370,7 @@ pub(in crate::forward) fn prepare_vm(
         arg_derived_e4_value(external_challenges, reference)
             .unwrap_or_else(|error| panic!("{error}"))
     };
-    let lowered = lower_desc(compiled_layers, &header, &resolve, &challenge)
-        .unwrap_or_else(|error| panic!("forward VM lowering failed: {error:?}"));
+    let lowered = lower_desc(compiled_layers, &header, &resolve, &challenge);
     assert_eq!(lowered.desc.count, trace_len as u32);
     Ok(lowered)
 }

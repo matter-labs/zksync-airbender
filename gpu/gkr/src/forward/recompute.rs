@@ -294,8 +294,7 @@ impl ForwardReplay {
         let layers = plan.filtered_layers(&programs.forward.layers, &destinations);
         let resolve = |address| workspace.resolve(&plan, storage, address);
         let challenge = |r: &_| arg_derived_e4_value(external, r).unwrap_or_else(|e| panic!("{e}"));
-        let mut lowered = lower_desc(&layers, &inputs, &resolve, &challenge)
-            .unwrap_or_else(|e| panic!("streaming forward binding: {e:?}"));
+        let mut lowered = lower_desc(&layers, &inputs, &resolve, &challenge);
         workspace.mark_descriptor(&mut lowered);
         let replay = Self {
             plan,
@@ -371,8 +370,7 @@ impl ForwardReplay {
         let resolve = |address| workspace.resolve(&self.plan, storage, address);
         let challenge =
             |r: &_| arg_derived_e4_value(&self.external, r).unwrap_or_else(|e| panic!("{e}"));
-        let mut lowered = lower_desc(&layers, &inputs, &resolve, &challenge)
-            .unwrap_or_else(|e| panic!("forward replay binding: {e:?}"));
+        let mut lowered = lower_desc(&layers, &inputs, &resolve, &challenge);
         workspace.mark_descriptor(&mut lowered);
         super::vm::production_bind::stage_derived_e4_slots(
             &lowered,
