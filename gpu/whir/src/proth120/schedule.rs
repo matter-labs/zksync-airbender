@@ -89,7 +89,7 @@ pub(crate) fn schedule_eq_update(
     memory_copy_async(&mut slots[0..1], ood_point, stream)?;
     memory_copy_async(&mut slots[1..2], weight, stream)?;
     let len = state.current_len;
-    update_eq_poly(&mut state.eq[..len], &sample, &sample[..0], stream)
+    update_eq_poly(&mut state.eq[..len], &sample, stream)
 }
 
 pub struct L1WhirInputs<'a> {

@@ -184,13 +184,12 @@ const _: () = {
 };
 
 cuda_kernel!(UpdateEq, ab_pr_update_eq_poly_kernel(
-    eq: *mut PR, log_n: u32, samples: *const EqSample, count: u32,
+    eq: *mut PR, log_n: u32, sample: *const EqSample,
 ));
 
 pub fn update_eq_poly(
     eq: &mut DeviceSlice<PR>,
     ood: &DeviceSlice<EqSample>,
-    in_domain: &DeviceSlice<EqSample>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(
@@ -203,23 +202,17 @@ pub fn update_eq_poly(
         "Proth120 eq update: log_n {log_n} outside 0..=26"
     );
     let eq_range = validate_slice(eq, "Proth120 eq update values");
-    for samples in [ood, in_domain] {
-        let sample_range = validate_slice(samples, "Proth120 eq update samples");
-        validate_disjoint(
-            &eq_range,
-            &sample_range,
-            "Proth120 eq update: values/samples overlap",
-        );
-        let count =
-            u32::try_from(samples.len()).expect("Proth120 eq update: sample count exceeds u32");
-        if count == 0 {
-            continue;
-        }
-        let config = CudaLaunchConfig::basic((eq.len() as u32).div_ceil(4096), 256, stream);
-        UpdateEqFunction::default().launch(
-            &config,
-            &UpdateEqArguments::new(eq.as_mut_ptr(), log_n, samples.as_ptr(), count),
-        )?;
-    }
+    assert_eq!(ood.len(), 1, "Proth120 eq update requires one OOD sample");
+    let sample_range = validate_slice(ood, "Proth120 eq update sample");
+    validate_disjoint(
+        &eq_range,
+        &sample_range,
+        "Proth120 eq update: values/sample overlap",
+    );
+    let config = CudaLaunchConfig::basic((eq.len() as u32).div_ceil(4096), 256, stream);
+    UpdateEqFunction::default().launch(
+        &config,
+        &UpdateEqArguments::new(eq.as_mut_ptr(), log_n, ood.as_ptr()),
+    )?;
     Ok(())
 }
