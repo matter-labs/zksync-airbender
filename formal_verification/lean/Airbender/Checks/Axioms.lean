@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.ControlShiftJump
+import Airbender.Proofs.ReducedMachine.NativeControlShiftJump
+import Airbender.Review.Trace.Families.ReducedMachine.ControlShiftJumpTheorems
+import Tests.NativeControlShiftJump
+
 import Airbender.Review.Trace.Families.ReducedMachine.ControlLogic
 import Airbender.Proofs.ReducedMachine.NativeControlLogic
 import Airbender.Review.Trace.Families.ReducedMachine.ControlLogicTheorems
@@ -8374,3 +8379,40 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeControlLogic.old_CSR_retained
 #print axioms Airbender.Tests.NativeControlLogic.old_joint_retained
 #print axioms Airbender.Tests.NativeControlLogic.full_counted_source
+
+#print axioms Airbender.NativeControlShiftJumpProofs.shift_projection
+#print axioms Airbender.NativeControlShiftJumpProofs.shift_body
+#print axioms Airbender.NativeControlShiftJumpProofs.shift_result
+#print axioms Airbender.NativeControlShiftJumpProofs.jump_result
+#print axioms Airbender.NativeControlShiftJumpProofs.public_alignment
+#print axioms Airbender.NativeControlShiftJumpProofs.from_prior
+#print axioms Airbender.NativeControlShiftJumpProofs.counted
+#print axioms Airbender.NativeControlShiftJump.native_counted_control_shift_jump
+#print axioms Airbender.Tests.NativeControlShiftJump.all_six_original_shift_projections
+#print axioms Airbender.Tests.NativeControlShiftJump.original_jump_projections
+#print axioms Airbender.Tests.NativeControlShiftJump.invalid_immediate_rejected
+#print axioms Airbender.Tests.NativeControlShiftJump.register_left_masks_amount
+#print axioms Airbender.Tests.NativeControlShiftJump.register_right_masks_amount
+#print axioms Airbender.Tests.NativeControlShiftJump.register_arithmetic_masks_amount
+#print axioms Airbender.Tests.NativeControlShiftJump.immediate_left
+#print axioms Airbender.Tests.NativeControlShiftJump.immediate_right
+#print axioms Airbender.Tests.NativeControlShiftJump.immediate_arithmetic
+#print axioms Airbender.Tests.NativeControlShiftJump.encoded_SRAI_1055
+#print axioms Airbender.Tests.NativeControlShiftJump.immediate_retains_irrelevant_rs2
+#print axioms Airbender.Tests.NativeControlShiftJump.old_control_ignored
+#print axioms Airbender.Tests.NativeControlShiftJump.full_RV32_shift_write
+#print axioms Airbender.Tests.NativeControlShiftJump.wrong_shift_high_rejected
+#print axioms Airbender.Tests.NativeControlShiftJump.jump_RV32_wrap
+#print axioms Airbender.Tests.NativeControlShiftJump.jump_full_RV32_link
+#print axioms Airbender.Tests.NativeControlShiftJump.jump_target_not_link
+#print axioms Airbender.Tests.NativeControlShiftJump.shift_x0
+#print axioms Airbender.Tests.NativeControlShiftJump.jump_x0
+#print axioms Airbender.Tests.NativeControlShiftJump.inactive_CSR_kept
+#print axioms Airbender.Tests.NativeControlShiftJump.every_actual_shift
+#print axioms Airbender.Tests.NativeControlShiftJump.every_actual_jump
+#print axioms Airbender.Tests.NativeControlShiftJump.all_control_edges_same_path
+#print axioms Airbender.Tests.NativeControlShiftJump.nonzero_origins_retained
+#print axioms Airbender.Tests.NativeControlShiftJump.old_logic_retained
+#print axioms Airbender.Tests.NativeControlShiftJump.old_arithmetic_retained
+#print axioms Airbender.Tests.NativeControlShiftJump.old_joint_retained
+#print axioms Airbender.Tests.NativeControlShiftJump.full_counted_source

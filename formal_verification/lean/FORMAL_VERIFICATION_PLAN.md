@@ -1,5 +1,52 @@
 # Circuit formal verification plan
 
+## Initialized shift and jump control writes (9 November 2026)
+
+[Shift/jump control effects](Airbender/Review/Trace/Families/ReducedMachine/ControlShiftJump.lean),
+[proof](Airbender/Proofs/ReducedMachine/NativeControlShiftJump.lean) and
+[short root](Airbender/Review/Trace/Families/ReducedMachine/ControlShiftJumpTheorems.lean)
+derive actual SLL/SRL/SRA register/immediate writes and JAL/JALR link writes from
+the SAME old counted SourceAccepted/public image/log20/OLD LogicalLookups/OLD
+explicit SourceIdentity. Shift inputs are exact initialized native read tokens;
+original immediate selection, five-bit amount and SRAI encoding remain. Actual
+rd/x0 masking and full RV32 values, including PC+4 wrap, are preserved.
+
+The shift constructor projection changes only its family tag, retaining all ten
+query fields; the old proved source-specific runtime-to-fixed BODY connection
+supplies the existing numerical theorem. This is no arbitrary acceptance transfer
+or table-equivalence premise. The first-read bound is derived from prior complete
+mixed initialized history. The old jump return theorem applies DIRECTLY to the
+same RuntimePool BODY. Original public-image membership derives PC alignment and
+the actual query binds the public PC; no range/alignment/result premise is added
+to the counted root. Link writes are independent of the selected jump target.
+
+Every actual decoded rd12 shift/jump edge joins the SAME complete initialized x12
+path with all prior logic/arithmetic/CSR edges and public nonzero origins. All
+OLDREADs, both raw times, readonly refreshes and positional copies remain. Prior
+matching/count/validity/mixed/aggregate/JOINT43-port execution/25 weighted outputs/
+word bounds/capacity/MAIN dependencies stay. All inactive requests/AUX/m0 poles/
+inactive D/43ports/aliases/unmasked SW/public x0 times remain in acceptance.
+Incoming low and zero/multiple masks stay visible; rank is proof order only.
+Logical/physical trust boundaries remain separate.
+
+[28 controls](Tests/NativeControlShiftJump.lean) cover all six shift and both jump
+projections, invalid immediate rejection, five-bit amount selection, full-RV32
+logical/arithmetic shifts and SRAI1055, retained irrelevant reads, wrong high
+rejection, jump link/wrap, x0 masking, old LOCAL inactive CSR, actual results,
+same-path membership, nonzero origins and prior/full counted roots. Pure finite
+references with dummy raw instruction bits, an old LOCAL control and conditional
+consequences only; no new native-global/wholeworker/physical accepted witness,
+attack, defect or absence-other-enforcement proof.
+
+LW control-write results and last relevant public MAIN reset origins remain open,
+as do physical caller activity, larger-batch no-wrap/matching, standard round/hash
+scheduling, original CSR/MOP/worker Sail, unified protocol spans, padding-terminal/
+init-teardown, physical cryptography, completeness, general physical setup and
+parity. No native adoption/pin/parser/importer/exporter/artifact/fixture/generation/
+heavy replay/dependency/v3 refresh/production/Sail/old acceptance/FINDINGS change.
+Zero established native defects; counts are not parity.
+
+
 ## Initialized bitwise and comparison control writes (9 November 2026)
 
 [Logic control effects](Airbender/Review/Trace/Families/ReducedMachine/ControlLogic.lean),

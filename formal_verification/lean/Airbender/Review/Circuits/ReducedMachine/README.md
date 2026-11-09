@@ -1268,3 +1268,10 @@ profiles, last-reset identification and a standard worker schedule remain open.
 initialized tokens and original immediate selection. Comparison high always clears;
 all rd12 logic/arithmetic/CSR edges share one complete x12 path. Shift/jump/LW
 resets, last-reset identification and standard worker scheduling remain open.
+
+## Initialized shift and jump control writes
+
+[Shift/jump control effects](../../Trace/Families/ReducedMachine/ControlShiftJumpTheorems.lean) derive actual SLL/SRL/SRA and JAL/JALR
+writes, with input bounds and public PC alignment derived internally. All rd12
+shift/jump/logic/arithmetic/CSR edges share one complete x12 path. LW reset values,
+last-reset identification and standard worker scheduling remain open.
