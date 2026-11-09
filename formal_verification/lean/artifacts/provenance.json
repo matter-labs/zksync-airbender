@@ -19630,6 +19630,76 @@
       "backport_reuse_revision": "2ad3d6fb3d7b394923e57fd6e0a73a8cfe8bbbc4",
       "backport_reuse_path": "Tests/NativeControlOrigin.lean",
       "backport_reuse_sha256": "7c45030b3c3790ed995bcb055488580c76524b4f10d716238ca3cfd6303c98dc"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ControlArithmetic.lean",
+      "change": "Connect actual initialized ADD/ADDI/SUB/LUI/AUIPC results to MAIN third-port writes on SAME old counted source/public image/log20/LogicalLookups/SourceIdentity. Reuse old generic arithmetic numerical result on SAME RuntimePool BODY, deriving both actual read bounds from prior mixed initialized history. Reference uses exact read tokens, original PC/immediate and source-specific register/immediate routing; actual rd/x0 mask and RV32 wrap retained. Every rd12 arithmetic edge and all prior CSR edges/nonzero origins share ONE complete initialized GPR12 path. No desired read/reset/range/history/schedule/result/activity/count/matching premise or new acceptance/crypto boundary. Other ordinary reset profiles, last relevant reset, standard scheduling/hash, caller physical activity, original CSR/MOP/worker Sail, physical crypto/completeness/parity remain open. No native/source adoption/pin/parser/artifact/fixture/generation/heavy replay/dependency/v3 refresh/production/old acceptance/FINDINGS change.",
+      "backport_reuse_revision": "bcc289364642fe9804ee4ce908f69731bb993839",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ControlCSR.lean",
+      "backport_reuse_sha256": "66c8e44cd2219a63f27d5818fdc6a813445acb358ee2245379c5adb37ff84789"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ControlArithmetic.lean",
+      "change": "Connect actual initialized ADD/ADDI/SUB/LUI/AUIPC results to MAIN third-port writes on SAME old counted source/public image/log20/LogicalLookups/SourceIdentity. Reuse old generic arithmetic numerical result on SAME RuntimePool BODY, deriving both actual read bounds from prior mixed initialized history. Reference uses exact read tokens, original PC/immediate and source-specific register/immediate routing; actual rd/x0 mask and RV32 wrap retained. Every rd12 arithmetic edge and all prior CSR edges/nonzero origins share ONE complete initialized GPR12 path. No desired read/reset/range/history/schedule/result/activity/count/matching premise or new acceptance/crypto boundary. Other ordinary reset profiles, last relevant reset, standard scheduling/hash, caller physical activity, original CSR/MOP/worker Sail, physical crypto/completeness/parity remain open. No native/source adoption/pin/parser/artifact/fixture/generation/heavy replay/dependency/v3 refresh/production/old acceptance/FINDINGS change.",
+      "backport_reuse_revision": "bcc289364642fe9804ee4ce908f69731bb993839",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/ArithmeticResult.lean",
+      "backport_reuse_sha256": "c9ad114f1e9e8be0f4f8dcaa4099f9f2dbb0409c04f57a6a16b504b3495b7129"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeControlArithmetic.lean",
+      "change": "Connect actual initialized ADD/ADDI/SUB/LUI/AUIPC results to MAIN third-port writes on SAME old counted source/public image/log20/LogicalLookups/SourceIdentity. Reuse old generic arithmetic numerical result on SAME RuntimePool BODY, deriving both actual read bounds from prior mixed initialized history. Reference uses exact read tokens, original PC/immediate and source-specific register/immediate routing; actual rd/x0 mask and RV32 wrap retained. Every rd12 arithmetic edge and all prior CSR edges/nonzero origins share ONE complete initialized GPR12 path. No desired read/reset/range/history/schedule/result/activity/count/matching premise or new acceptance/crypto boundary. Other ordinary reset profiles, last relevant reset, standard scheduling/hash, caller physical activity, original CSR/MOP/worker Sail, physical crypto/completeness/parity remain open. No native/source adoption/pin/parser/artifact/fixture/generation/heavy replay/dependency/v3 refresh/production/old acceptance/FINDINGS change.",
+      "backport_reuse_revision": "bcc289364642fe9804ee4ce908f69731bb993839",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeControlCSR.lean",
+      "backport_reuse_sha256": "50ec8b7c00448f268a6295450e62b983332da47f0db3c31b17fadb37ef84309e"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeControlArithmetic.lean",
+      "change": "Connect actual initialized ADD/ADDI/SUB/LUI/AUIPC results to MAIN third-port writes on SAME old counted source/public image/log20/LogicalLookups/SourceIdentity. Reuse old generic arithmetic numerical result on SAME RuntimePool BODY, deriving both actual read bounds from prior mixed initialized history. Reference uses exact read tokens, original PC/immediate and source-specific register/immediate routing; actual rd/x0 mask and RV32 wrap retained. Every rd12 arithmetic edge and all prior CSR edges/nonzero origins share ONE complete initialized GPR12 path. No desired read/reset/range/history/schedule/result/activity/count/matching premise or new acceptance/crypto boundary. Other ordinary reset profiles, last relevant reset, standard scheduling/hash, caller physical activity, original CSR/MOP/worker Sail, physical crypto/completeness/parity remain open. No native/source adoption/pin/parser/artifact/fixture/generation/heavy replay/dependency/v3 refresh/production/old acceptance/FINDINGS change.",
+      "backport_reuse_revision": "bcc289364642fe9804ee4ce908f69731bb993839",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticDecodedResult.lean",
+      "backport_reuse_sha256": "75cb9d368a217aec524798e0dc9f39c71fccd276c0e4c855b106a749d0a50893"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeControlArithmetic.lean",
+      "change": "Connect actual initialized ADD/ADDI/SUB/LUI/AUIPC results to MAIN third-port writes on SAME old counted source/public image/log20/LogicalLookups/SourceIdentity. Reuse old generic arithmetic numerical result on SAME RuntimePool BODY, deriving both actual read bounds from prior mixed initialized history. Reference uses exact read tokens, original PC/immediate and source-specific register/immediate routing; actual rd/x0 mask and RV32 wrap retained. Every rd12 arithmetic edge and all prior CSR edges/nonzero origins share ONE complete initialized GPR12 path. No desired read/reset/range/history/schedule/result/activity/count/matching premise or new acceptance/crypto boundary. Other ordinary reset profiles, last relevant reset, standard scheduling/hash, caller physical activity, original CSR/MOP/worker Sail, physical crypto/completeness/parity remain open. No native/source adoption/pin/parser/artifact/fixture/generation/heavy replay/dependency/v3 refresh/production/old acceptance/FINDINGS change.",
+      "backport_reuse_revision": "bcc289364642fe9804ee4ce908f69731bb993839",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticFields.lean",
+      "backport_reuse_sha256": "0b1aea49ce917d89da3b93abf1443917e9c8d4934ccae474d60b5c7dafb2fd95"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeControlArithmetic.lean",
+      "change": "Connect actual initialized ADD/ADDI/SUB/LUI/AUIPC results to MAIN third-port writes on SAME old counted source/public image/log20/LogicalLookups/SourceIdentity. Reuse old generic arithmetic numerical result on SAME RuntimePool BODY, deriving both actual read bounds from prior mixed initialized history. Reference uses exact read tokens, original PC/immediate and source-specific register/immediate routing; actual rd/x0 mask and RV32 wrap retained. Every rd12 arithmetic edge and all prior CSR edges/nonzero origins share ONE complete initialized GPR12 path. No desired read/reset/range/history/schedule/result/activity/count/matching premise or new acceptance/crypto boundary. Other ordinary reset profiles, last relevant reset, standard scheduling/hash, caller physical activity, original CSR/MOP/worker Sail, physical crypto/completeness/parity remain open. No native/source adoption/pin/parser/artifact/fixture/generation/heavy replay/dependency/v3 refresh/production/old acceptance/FINDINGS change.",
+      "backport_reuse_revision": "bcc289364642fe9804ee4ce908f69731bb993839",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeArithmeticPorts.lean",
+      "backport_reuse_sha256": "acc43411c595d3fca570e81ec3ebd28ba2f8dfb478d52201ede8d128bf2dad4a"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeControlArithmetic.lean",
+      "change": "Connect actual initialized ADD/ADDI/SUB/LUI/AUIPC results to MAIN third-port writes on SAME old counted source/public image/log20/LogicalLookups/SourceIdentity. Reuse old generic arithmetic numerical result on SAME RuntimePool BODY, deriving both actual read bounds from prior mixed initialized history. Reference uses exact read tokens, original PC/immediate and source-specific register/immediate routing; actual rd/x0 mask and RV32 wrap retained. Every rd12 arithmetic edge and all prior CSR edges/nonzero origins share ONE complete initialized GPR12 path. No desired read/reset/range/history/schedule/result/activity/count/matching premise or new acceptance/crypto boundary. Other ordinary reset profiles, last relevant reset, standard scheduling/hash, caller physical activity, original CSR/MOP/worker Sail, physical crypto/completeness/parity remain open. No native/source adoption/pin/parser/artifact/fixture/generation/heavy replay/dependency/v3 refresh/production/old acceptance/FINDINGS change.",
+      "backport_reuse_revision": "bcc289364642fe9804ee4ce908f69731bb993839",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeMixedWordBounds.lean",
+      "backport_reuse_sha256": "7067fb685b5f80cf63902a7eba9c522abc1058f79f3740d577042c4575a5ddbd"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/ControlArithmeticTheorems.lean",
+      "change": "Connect actual initialized ADD/ADDI/SUB/LUI/AUIPC results to MAIN third-port writes on SAME old counted source/public image/log20/LogicalLookups/SourceIdentity. Reuse old generic arithmetic numerical result on SAME RuntimePool BODY, deriving both actual read bounds from prior mixed initialized history. Reference uses exact read tokens, original PC/immediate and source-specific register/immediate routing; actual rd/x0 mask and RV32 wrap retained. Every rd12 arithmetic edge and all prior CSR edges/nonzero origins share ONE complete initialized GPR12 path. No desired read/reset/range/history/schedule/result/activity/count/matching premise or new acceptance/crypto boundary. Other ordinary reset profiles, last relevant reset, standard scheduling/hash, caller physical activity, original CSR/MOP/worker Sail, physical crypto/completeness/parity remain open. No native/source adoption/pin/parser/artifact/fixture/generation/heavy replay/dependency/v3 refresh/production/old acceptance/FINDINGS change.",
+      "backport_reuse_revision": "bcc289364642fe9804ee4ce908f69731bb993839",
+      "backport_reuse_path": "Airbender/Review/Trace/Families/ReducedMachine/ControlCSRTheorems.lean",
+      "backport_reuse_sha256": "c993b5f689c32bc196d437d55f3eb1d4597dfd01a962162d140ba5af5ec66d97"
+    },
+    {
+      "path": "Tests/NativeControlArithmetic.lean",
+      "change": "Connect actual initialized ADD/ADDI/SUB/LUI/AUIPC results to MAIN third-port writes on SAME old counted source/public image/log20/LogicalLookups/SourceIdentity. Reuse old generic arithmetic numerical result on SAME RuntimePool BODY, deriving both actual read bounds from prior mixed initialized history. Reference uses exact read tokens, original PC/immediate and source-specific register/immediate routing; actual rd/x0 mask and RV32 wrap retained. Every rd12 arithmetic edge and all prior CSR edges/nonzero origins share ONE complete initialized GPR12 path. No desired read/reset/range/history/schedule/result/activity/count/matching premise or new acceptance/crypto boundary. Other ordinary reset profiles, last relevant reset, standard scheduling/hash, caller physical activity, original CSR/MOP/worker Sail, physical crypto/completeness/parity remain open. No native/source adoption/pin/parser/artifact/fixture/generation/heavy replay/dependency/v3 refresh/production/old acceptance/FINDINGS change.",
+      "backport_reuse_revision": "bcc289364642fe9804ee4ce908f69731bb993839",
+      "backport_reuse_path": "Tests/NativeControlCSR.lean",
+      "backport_reuse_sha256": "c9c37a263398556b2f7d7ceec828c54b4761b8d8c25b597a189218010015988f"
+    },
+    {
+      "path": "Tests/NativeControlArithmetic.lean",
+      "change": "Connect actual initialized ADD/ADDI/SUB/LUI/AUIPC results to MAIN third-port writes on SAME old counted source/public image/log20/LogicalLookups/SourceIdentity. Reuse old generic arithmetic numerical result on SAME RuntimePool BODY, deriving both actual read bounds from prior mixed initialized history. Reference uses exact read tokens, original PC/immediate and source-specific register/immediate routing; actual rd/x0 mask and RV32 wrap retained. Every rd12 arithmetic edge and all prior CSR edges/nonzero origins share ONE complete initialized GPR12 path. No desired read/reset/range/history/schedule/result/activity/count/matching premise or new acceptance/crypto boundary. Other ordinary reset profiles, last relevant reset, standard scheduling/hash, caller physical activity, original CSR/MOP/worker Sail, physical crypto/completeness/parity remain open. No native/source adoption/pin/parser/artifact/fixture/generation/heavy replay/dependency/v3 refresh/production/old acceptance/FINDINGS change.",
+      "backport_reuse_revision": "bcc289364642fe9804ee4ce908f69731bb993839",
+      "backport_reuse_path": "Tests/NativeCSRPositive.lean",
+      "backport_reuse_sha256": "31596ee07218143c910518601aed38c9a7b70eae4076bb1ff95ab0b70aa82914"
     }
   ],
   "setup_artifacts": [

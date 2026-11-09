@@ -1,5 +1,52 @@
 # Trust and review boundaries
 
+## Initialized arithmetic control writes (9 November 2026)
+
+[Arithmetic control effects](Airbender/Review/Trace/Families/ReducedMachine/ControlArithmetic.lean),
+[proof](Airbender/Proofs/ReducedMachine/NativeControlArithmetic.lean) and
+[short root](Airbender/Review/Trace/Families/ReducedMachine/ControlArithmeticTheorems.lean)
+connect actual ADD/ADDI/SUB/LUI/AUIPC third-port writes to their RV32 references.
+Both input bounds are derived from the existing initialized mixed memory history,
+including actual worker effects. The reference samples the actual first read,
+selects the actual second read or original decoded immediate, and uses the
+original public PC. The actual rd/x0 mask, full RV32 values and wraparound remain.
+The old arithmetic result is reused directly on the SAME full RuntimePool BODY;
+no Runtime-to-Fixed transfer or table-equivalence premise is needed.
+
+Every actual decoded rd12 arithmetic edge joins the SAME complete initialized
+x12 raw-token path as all prior decoded rd12 CSR edges and nonzero public origins.
+Exact OLDREADs, both raw times, readonly refreshes and every positional copy remain.
+Both output limbs follow the derived reference when rd12. Incoming low and
+zero/multiple worker masks stay visible. No reset value, range, read, history,
+schedule, result, activity, count, matching or fulfilled-ledger premise is added.
+
+The root keeps the SAME old counted SourceAccepted, original stateful public image
+at log20, OLD LogicalLookups and OLD explicit SourceIdentity. Prior CSR clears,
+public origins/history, position matching OR >=257 MAIN proofs, natural counts,
+individual validity/mixed queries, aggregate accounting, JOINT43-port execution,
+weighted outputs, word bounds, capacity and MAIN partial dependencies are retained.
+All inactive requests/AUX/m0 poles/inactive D, 43ports, both raw times, aliases,
+OLDREADs, refreshes, unmasked SW and public x0 times stay in acceptance. Proof rank
+remains noninjective order only; the old logical/physical trust boundaries remain.
+
+[23 controls](Tests/NativeControlArithmetic.lean) check all five original metadata
+projections, arithmetic wrap/full RV32 values, immediate selection despite the
+retained second read, old-control independence, actual rd12 limbs, x0 masking,
+wrong high rejection, exact read/write ABI, old inactive CSR retention, actual
+MAIN effects, arithmetic/CSR/origins on one path and prior/full counted results.
+Pure finite reference data, an old LOCAL control and conditional consequences
+only; these are not new nonempty native-global/wholeworker/physical accepted
+witnesses, attacks, defects or absent-enforcement evidence.
+
+Other ordinary reset profiles and last relevant control origins remain open,
+as do standard round/hash scheduling, physical caller activity, larger-batch
+no-wrap/matching, original CSR/MOP/worker Sail, protocol spans/padding-terminal/
+init-teardown, physical cryptography, completeness, general physical setup and
+parity. No source adoption/pin/parser/importer/exporter/artifact/fixture/generation/
+heavy replay/dependency/v3 refresh/production/Sail/old acceptance/FINDINGS change.
+Zero established native defects; counts are audit counters, not parity.
+
+
 ## Actual CSR control resets and nonzero origins (9 November 2026)
 
 [Control CSR effects](Airbender/Review/Trace/Families/ReducedMachine/ControlCSR.lean),

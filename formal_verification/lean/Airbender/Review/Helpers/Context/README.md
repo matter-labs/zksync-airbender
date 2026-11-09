@@ -657,3 +657,10 @@ schedule premise; physical activity and standard round/hash sequencing remain op
 CSR1991 and puts all decoded rd12 CSR edges on the same initialized x12 path.
 Nonzero public origins are ordinary code or CSR1984; the bounded oracle remains
 an observation. No reset/schedule premise or original CSR/worker Sail claim.
+
+## Initialized arithmetic control writes
+
+[Arithmetic control effects](../../Trace/Families/ReducedMachine/ControlArithmeticTheorems.lean) derives actual ADD/ADDI/SUB/LUI/AUIPC
+values from initialized reads and original PC/immediate, retaining rd/x0 and RV32
+wrap. All rd12 arithmetic/CSR edges share one complete x12 path. Other reset
+profiles, last-reset identification and a standard worker schedule remain open.

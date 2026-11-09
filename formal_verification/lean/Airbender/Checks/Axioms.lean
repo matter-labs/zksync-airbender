@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.ControlArithmetic
+import Airbender.Proofs.ReducedMachine.NativeControlArithmetic
+import Airbender.Review.Trace.Families.ReducedMachine.ControlArithmeticTheorems
+import Tests.NativeControlArithmetic
+
 import Airbender.Review.Trace.Families.ReducedMachine.ControlCSR
 import Airbender.Proofs.ReducedMachine.NativeControlCSR
 import Airbender.Review.Trace.Families.ReducedMachine.ControlCSRTheorems
@@ -8289,3 +8294,36 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeControlCSR.old_counts_retained
 #print axioms Airbender.Tests.NativeControlCSR.old_joint_retained
 #print axioms Airbender.Tests.NativeControlCSR.full_counted_source
+
+#print axioms Airbender.NativeControlArithmeticProofs.read_words
+#print axioms Airbender.NativeControlArithmeticProofs.write_word
+#print axioms Airbender.NativeControlArithmeticProofs.result
+#print axioms Airbender.NativeControlArithmeticProofs.rd12_limbs
+#print axioms Airbender.NativeControlArithmeticProofs.main_reads
+#print axioms Airbender.NativeControlArithmeticProofs.main_on_path
+#print axioms Airbender.NativeControlArithmeticProofs.from_prior
+#print axioms Airbender.NativeControlArithmeticProofs.counted
+#print axioms Airbender.NativeControlArithmetic.native_counted_control_arithmetic
+#print axioms Airbender.Tests.NativeControlArithmetic.original_projection
+#print axioms Airbender.Tests.NativeControlArithmetic.add_wrap
+#print axioms Airbender.Tests.NativeControlArithmetic.addi_immediate
+#print axioms Airbender.Tests.NativeControlArithmetic.sub_wrap
+#print axioms Airbender.Tests.NativeControlArithmetic.lui_full_RV32
+#print axioms Airbender.Tests.NativeControlArithmetic.auipc_wrap
+#print axioms Airbender.Tests.NativeControlArithmetic.old_control_ignored
+#print axioms Airbender.Tests.NativeControlArithmetic.addi_keeps_unused_second_read
+#print axioms Airbender.Tests.NativeControlArithmetic.x12_write_reference
+#print axioms Airbender.Tests.NativeControlArithmetic.wrong_high_rejected
+#print axioms Airbender.Tests.NativeControlArithmetic.x0_mask
+#print axioms Airbender.Tests.NativeControlArithmetic.rd12_both_limbs
+#print axioms Airbender.Tests.NativeControlArithmetic.actual_read_ABI
+#print axioms Airbender.Tests.NativeControlArithmetic.actual_write_ABI
+#print axioms Airbender.Tests.NativeControlArithmetic.inactive_CSR_kept
+#print axioms Airbender.Tests.NativeControlArithmetic.every_actual_arithmetic
+#print axioms Airbender.Tests.NativeControlArithmetic.arithmetic_CSR_same_path
+#print axioms Airbender.Tests.NativeControlArithmetic.nonzero_origins_same_path
+#print axioms Airbender.Tests.NativeControlArithmetic.prior_CSR_retained
+#print axioms Airbender.Tests.NativeControlArithmetic.old_history_retained
+#print axioms Airbender.Tests.NativeControlArithmetic.old_counts_retained
+#print axioms Airbender.Tests.NativeControlArithmetic.old_joint_retained
+#print axioms Airbender.Tests.NativeControlArithmetic.full_counted_source
