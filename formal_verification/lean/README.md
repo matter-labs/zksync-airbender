@@ -2130,3 +2130,12 @@ each nonzero pointer has an exact value-changing third MAIN write origin, and
 at least one such write exists. Unequal bases alone do not establish all43-port
 separation. No expected pointer/history/activity/ledger premise or issued CSR,
 physical enforcement, global-positive witness or parity claim.
+
+## Active pointer prefix and RAM records
+
+[Actual native BODY and initialization components](Airbender/Review/Trace/Families/ReducedMachine/PointerPrefixTheorems.lean) check all41 active
+rows against the full117 equations/22 runtime lookups, every ordinary adjacent
+initialization relation,40 nonpadding six-field RAM records and all12 actual
+public endpoint relations. RAM0 retains teardown time167. This new program is
+not the old8-word ROM fixture. GPR/PC prefix matching, worker BODY, auxiliaries,
+full global source completion, physical refinement and parity remain open.

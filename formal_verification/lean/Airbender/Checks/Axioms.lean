@@ -1,3 +1,20 @@
+import Airbender.Proofs.ReducedMachine.PointerPrefix.Data
+import Airbender.Proofs.ReducedMachine.PointerPrefix.Block0
+import Airbender.Proofs.ReducedMachine.PointerPrefix.Block1
+import Airbender.Proofs.ReducedMachine.PointerPrefix.Block2
+import Airbender.Proofs.ReducedMachine.PointerPrefix.Block3
+import Airbender.Proofs.ReducedMachine.PointerPrefix.Block4
+import Airbender.Proofs.ReducedMachine.PointerPrefix.Block5
+import Airbender.Proofs.ReducedMachine.PointerPrefix.Block6
+import Airbender.Proofs.ReducedMachine.PointerPrefix.Block7
+import Airbender.Proofs.ReducedMachine.PointerPrefix.Block8
+import Airbender.Proofs.ReducedMachine.PointerPrefix.Block9
+import Airbender.Proofs.ReducedMachine.PointerPrefix.Block10
+import Airbender.Review.Trace.Families.ReducedMachine.PointerPrefix
+import Airbender.Proofs.ReducedMachine.NativePointerPrefix
+import Airbender.Review.Trace.Families.ReducedMachine.PointerPrefixTheorems
+import Tests.NativePointerPrefix
+
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerPointers
 import Airbender.Proofs.ReducedMachine.NativeWorkerPointers
 import Airbender.Review.Trace.Families.ReducedMachine.WorkerPointersTheorems
@@ -9073,3 +9090,58 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeWorkerPointers.unchanged_suffix_retained
 #print axioms Airbender.Tests.NativeWorkerPointers.actual_main_port
 #print axioms Airbender.Tests.NativeWorkerPointers.complete_active_main_origin
+
+#print axioms Airbender.NativePointerPrefixProofs.Block0.body
+#print axioms Airbender.NativePointerPrefixProofs.Block1.body
+#print axioms Airbender.NativePointerPrefixProofs.Block2.body
+#print axioms Airbender.NativePointerPrefixProofs.Block3.body
+#print axioms Airbender.NativePointerPrefixProofs.Block4.body
+#print axioms Airbender.NativePointerPrefixProofs.Block5.body
+#print axioms Airbender.NativePointerPrefixProofs.Block6.body
+#print axioms Airbender.NativePointerPrefixProofs.Block7.body
+#print axioms Airbender.NativePointerPrefixProofs.Block8.body
+#print axioms Airbender.NativePointerPrefixProofs.Block9.body
+#print axioms Airbender.NativePointerPrefixProofs.Block10.body
+#print axioms Airbender.NativePointerPrefixProofs.body
+#print axioms Airbender.NativePointerPrefixProofs.place_at
+#print axioms Airbender.NativePointerPrefixProofs.at_prefix
+#print axioms Airbender.NativePointerPrefixProofs.before_prefix
+#print axioms Airbender.NativePointerPrefixProofs.ordinary_body
+#print axioms Airbender.NativePointerPrefixProofs.finite_adjacent
+#print axioms Airbender.NativePointerPrefixProofs.idle_adjacent
+#print axioms Airbender.NativePointerPrefixProofs.entry_adjacent
+#print axioms Airbender.NativePointerPrefixProofs.ordinary_adjacent
+#print axioms Airbender.NativePointerPrefixProofs.records
+#print axioms Airbender.NativePointerPrefixProofs.nonpadding
+#print axioms Airbender.NativePointerPrefixProofs.first_record
+#print axioms Airbender.NativePointerPrefixProofs.last_record
+#print axioms Airbender.NativePointerPrefixProofs.public_endpoints
+#print axioms Airbender.NativePointerPrefixProofs.active_fields
+#print axioms Airbender.NativePointerPrefixProofs.first_pointer_write
+#print axioms Airbender.NativePointerPrefixProofs.caller_fields
+#print axioms Airbender.NativePointerPrefixProofs.fixed_endpoints
+#print axioms Airbender.NativePointerPrefixProofs.components
+#print axioms Airbender.NativePointerPrefixProofs.fixture
+#print axioms Airbender.NativePointerPrefix.native_pointer_initialization_prefix
+#print axioms Airbender.Tests.NativePointerPrefix.geometry
+#print axioms Airbender.Tests.NativePointerPrefix.first_active
+#print axioms Airbender.Tests.NativePointerPrefix.first_write
+#print axioms Airbender.Tests.NativePointerPrefix.last_pointer_read
+#print axioms Airbender.Tests.NativePointerPrefix.last_pointer_write
+#print axioms Airbender.Tests.NativePointerPrefix.first_x0_old
+#print axioms Airbender.Tests.NativePointerPrefix.csr_x0_old
+#print axioms Airbender.Tests.NativePointerPrefix.actual_caller
+#print axioms Airbender.Tests.NativePointerPrefix.pointer_not_caller
+#print axioms Airbender.Tests.NativePointerPrefix.first_pc
+#print axioms Airbender.Tests.NativePointerPrefix.final_pc
+#print axioms Airbender.Tests.NativePointerPrefix.ram_zero_nonpadding
+#print axioms Airbender.Tests.NativePointerPrefix.state_last
+#print axioms Airbender.Tests.NativePointerPrefix.message_first
+#print axioms Airbender.Tests.NativePointerPrefix.message_last
+#print axioms Airbender.Tests.NativePointerPrefix.gap_remainder
+#print axioms Airbender.Tests.NativePointerPrefix.reversed_order_rejected
+#print axioms Airbender.Tests.NativePointerPrefix.wrong_endpoint_time_rejected
+#print axioms Airbender.Tests.NativePointerPrefix.all_actual_body
+#print axioms Airbender.Tests.NativePointerPrefix.all_ordinary_ordering
+#print axioms Airbender.Tests.NativePointerPrefix.all_public_fields
+#print axioms Airbender.Tests.NativePointerPrefix.full_components

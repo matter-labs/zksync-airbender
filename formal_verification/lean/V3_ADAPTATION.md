@@ -1,5 +1,38 @@
 # V3 adaptation snapshot — 6 November 2026
 
+## Active native pointer prefix and RAM initialization
+
+A concrete family now checks forty active ADDI x11,x0,128 rows followed by an
+active CSR1991/x0 row, independently against all117 native equations and all22
+actual RuntimePool lookups per row. Eleven small proof leaves split finite
+calculations without increasing default proof or memory limits. Earlier ordinary
+positions retain the checked inactive CSR1984 row; all8388607 ordinary positions
+remain. The41 active positions end at the actual N-2 public endpoint.
+
+On this SAME family, every actual adjacent initialization relation is derived.
+Forty original six-field records cover state addresses0,4,..92 and message
+addresses128,132,..188, with zero value and raw teardown time167. RAM0 is
+nonpadding because its teardown timestamp is retained. First/last observations
+and all twelve unit-normalized public endpoint relations are derived at0/N-2;
+the reserved N-1 row is excluded. Actual x11 write128/time6, later OLDREAD128/time158
+and write128/time162, CSR OLDREAD161/164/165 and caller key(1991,0,167,0) remain.
+No expected read/history/seed/activity/count/matching/ledger/result is a premise.
+
+This is BODY and initialization component construction, not full SourceAccepted,
+authenticated/fetched program execution, a worker BODY, memory-auxiliary/grand
+completion, scalar/decoder table completion, global token matching or a physical
+accepted witness. The new41-row program is NOT identified with the existing8-word
+native ROM fixture. The constructed GPR/PC endpoint is explicitly BEFORE a future
+worker; no final full verifier boundary is asserted. Original CSR/NDstream/Sail,
+primitive-domain construction/nonemptiness, physical extraction/FFT/cryptography,
+completeness and parity remain open. Next derive the actual finite GPR/PC prefix
+ledger and check the full352-equation/296-query nonempty worker on shared data;
+never assume its BODY, initialized history, full RAM separation or global completion.
+
+No production/native finding, native pin, artifact, importer, dependency or v3
+reference change. FINDINGS remains unchanged. Counts are not parity.
+
+
 ## Actual worker pointer separation and MAIN origins
 
 [The pointer-origin root](Airbender/Review/Trace/Families/ReducedMachine/WorkerPointersTheorems.lean)
