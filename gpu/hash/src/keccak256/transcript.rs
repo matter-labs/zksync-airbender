@@ -225,7 +225,7 @@ pub fn keccak256_pow(
     pow_finalize(seed, bits, nonce, stream)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "deterministic_pow"))]
 pub(crate) fn pow_search_bounded(
     seed: &DeviceSlice<u8>,
     bits: u32,
