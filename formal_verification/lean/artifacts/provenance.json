@@ -20274,6 +20274,76 @@
       "backport_reuse_revision": "960dc760c793a4df3e4f105123030e769c570599",
       "backport_reuse_path": "Tests/NativeCallerPosition.lean",
       "backport_reuse_sha256": "22054c4dd0090205be963259b46c3a102cd73ee60b93742f453276be1b4f89c6"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/InactiveMain.lean",
+      "change": "Construct a complete ordinary-domain inactive request-positive native MAIN component fixture from OLD complete CSR BODY, with same memory/caller/decoder auxiliaries, all first/last grand boundaries and explicit nonpole challenge domain; retain initialization/decoder poles and demonstrate a nonempty point. Derive exact caller sum 8388607 times denominator inverse and use OLD caller sum to reject every zero-claim completion. Generic chain and finite sum before actual native sampling. Not full caller/table/scalar sum polynomial completion, global SourceAccepted/matching, physical transcript, accepted discrepancy or absence-other-enforcement proof. No native finding, production fix, old acceptance, pins, dependencies, artifact/generation/heavy replay or v3 refresh change.",
+      "backport_reuse_revision": "8d7651e04535d3ca4df01c28a6fc5e73c6d4195c",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/MainAuxiliary.lean",
+      "backport_reuse_sha256": "982c0b189a0c33271ad219b73e1329724cf9cf9ebc383110bdff32fa99552f57"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/InactiveMain.lean",
+      "change": "Construct a complete ordinary-domain inactive request-positive native MAIN component fixture from OLD complete CSR BODY, with same memory/caller/decoder auxiliaries, all first/last grand boundaries and explicit nonpole challenge domain; retain initialization/decoder poles and demonstrate a nonempty point. Derive exact caller sum 8388607 times denominator inverse and use OLD caller sum to reject every zero-claim completion. Generic chain and finite sum before actual native sampling. Not full caller/table/scalar sum polynomial completion, global SourceAccepted/matching, physical transcript, accepted discrepancy or absence-other-enforcement proof. No native finding, production fix, old acceptance, pins, dependencies, artifact/generation/heavy replay or v3 refresh change.",
+      "backport_reuse_revision": "8d7651e04535d3ca4df01c28a6fc5e73c6d4195c",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/DecoderArguments.lean",
+      "backport_reuse_sha256": "c70feb08632dc8408129c93f2b657b9cee3ebe77740416f9dd5d087f66d8f9fc"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/InactiveMain.lean",
+      "change": "Construct a complete ordinary-domain inactive request-positive native MAIN component fixture from OLD complete CSR BODY, with same memory/caller/decoder auxiliaries, all first/last grand boundaries and explicit nonpole challenge domain; retain initialization/decoder poles and demonstrate a nonempty point. Derive exact caller sum 8388607 times denominator inverse and use OLD caller sum to reject every zero-claim completion. Generic chain and finite sum before actual native sampling. Not full caller/table/scalar sum polynomial completion, global SourceAccepted/matching, physical transcript, accepted discrepancy or absence-other-enforcement proof. No native finding, production fix, old acceptance, pins, dependencies, artifact/generation/heavy replay or v3 refresh change.",
+      "backport_reuse_revision": "8d7651e04535d3ca4df01c28a6fc5e73c6d4195c",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/Delegation.lean",
+      "backport_reuse_sha256": "a03519392a81a588c06d12549d509ace35d84981e4f3d3ff534f242c144c56d7"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeInactiveMain.lean",
+      "change": "Construct a complete ordinary-domain inactive request-positive native MAIN component fixture from OLD complete CSR BODY, with same memory/caller/decoder auxiliaries, all first/last grand boundaries and explicit nonpole challenge domain; retain initialization/decoder poles and demonstrate a nonempty point. Derive exact caller sum 8388607 times denominator inverse and use OLD caller sum to reject every zero-claim completion. Generic chain and finite sum before actual native sampling. Not full caller/table/scalar sum polynomial completion, global SourceAccepted/matching, physical transcript, accepted discrepancy or absence-other-enforcement proof. No native finding, production fix, old acceptance, pins, dependencies, artifact/generation/heavy replay or v3 refresh change.",
+      "backport_reuse_revision": "8d7651e04535d3ca4df01c28a6fc5e73c6d4195c",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeCSRPositiveWitness.lean",
+      "backport_reuse_sha256": "2165574bf7d7ef453b83b4594fc399971bbeed246110a584b51d90a2f6ff3a7d"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeInactiveMain.lean",
+      "change": "Construct a complete ordinary-domain inactive request-positive native MAIN component fixture from OLD complete CSR BODY, with same memory/caller/decoder auxiliaries, all first/last grand boundaries and explicit nonpole challenge domain; retain initialization/decoder poles and demonstrate a nonempty point. Derive exact caller sum 8388607 times denominator inverse and use OLD caller sum to reject every zero-claim completion. Generic chain and finite sum before actual native sampling. Not full caller/table/scalar sum polynomial completion, global SourceAccepted/matching, physical transcript, accepted discrepancy or absence-other-enforcement proof. No native finding, production fix, old acceptance, pins, dependencies, artifact/generation/heavy replay or v3 refresh change.",
+      "backport_reuse_revision": "8d7651e04535d3ca4df01c28a6fc5e73c6d4195c",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeCSRBodyPadding.lean",
+      "backport_reuse_sha256": "0d0483b54a8465586b3b56dd5ae75a2ccd35bf10291d01a57e93e3492a7aa796"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeInactiveMain.lean",
+      "change": "Construct a complete ordinary-domain inactive request-positive native MAIN component fixture from OLD complete CSR BODY, with same memory/caller/decoder auxiliaries, all first/last grand boundaries and explicit nonpole challenge domain; retain initialization/decoder poles and demonstrate a nonempty point. Derive exact caller sum 8388607 times denominator inverse and use OLD caller sum to reject every zero-claim completion. Generic chain and finite sum before actual native sampling. Not full caller/table/scalar sum polynomial completion, global SourceAccepted/matching, physical transcript, accepted discrepancy or absence-other-enforcement proof. No native finding, production fix, old acceptance, pins, dependencies, artifact/generation/heavy replay or v3 refresh change.",
+      "backport_reuse_revision": "8d7651e04535d3ca4df01c28a6fc5e73c6d4195c",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeMainAuxiliary.lean",
+      "backport_reuse_sha256": "254ad3e3c587dcb4a3380d3faea00836661eeccf3980716982a0e22d879e6dd6"
+    },
+    {
+      "path": "Airbender/Proofs/ReducedMachine/NativeInactiveMain.lean",
+      "change": "Construct a complete ordinary-domain inactive request-positive native MAIN component fixture from OLD complete CSR BODY, with same memory/caller/decoder auxiliaries, all first/last grand boundaries and explicit nonpole challenge domain; retain initialization/decoder poles and demonstrate a nonempty point. Derive exact caller sum 8388607 times denominator inverse and use OLD caller sum to reject every zero-claim completion. Generic chain and finite sum before actual native sampling. Not full caller/table/scalar sum polynomial completion, global SourceAccepted/matching, physical transcript, accepted discrepancy or absence-other-enforcement proof. No native finding, production fix, old acceptance, pins, dependencies, artifact/generation/heavy replay or v3 refresh change.",
+      "backport_reuse_revision": "8d7651e04535d3ca4df01c28a6fc5e73c6d4195c",
+      "backport_reuse_path": "Airbender/Proofs/ReducedMachine/NativeCallerDelegation.lean",
+      "backport_reuse_sha256": "a2fcd84c90eda45bba1123b773ada5f688124df7a4e090ffce8d683a47d5ecb4"
+    },
+    {
+      "path": "Airbender/Review/Trace/Families/ReducedMachine/InactiveMainTheorems.lean",
+      "change": "Construct a complete ordinary-domain inactive request-positive native MAIN component fixture from OLD complete CSR BODY, with same memory/caller/decoder auxiliaries, all first/last grand boundaries and explicit nonpole challenge domain; retain initialization/decoder poles and demonstrate a nonempty point. Derive exact caller sum 8388607 times denominator inverse and use OLD caller sum to reject every zero-claim completion. Generic chain and finite sum before actual native sampling. Not full caller/table/scalar sum polynomial completion, global SourceAccepted/matching, physical transcript, accepted discrepancy or absence-other-enforcement proof. No native finding, production fix, old acceptance, pins, dependencies, artifact/generation/heavy replay or v3 refresh change.",
+      "backport_reuse_revision": "8d7651e04535d3ca4df01c28a6fc5e73c6d4195c",
+      "backport_reuse_path": "Airbender/Review/Circuits/ReducedMachine/BodyPaddingTheorems.lean",
+      "backport_reuse_sha256": "50e064df46117bf1cd97c85d5fbe40fa7cdc7682bf703e8650337474e84df42c"
+    },
+    {
+      "path": "Tests/NativeInactiveMain.lean",
+      "change": "Construct a complete ordinary-domain inactive request-positive native MAIN component fixture from OLD complete CSR BODY, with same memory/caller/decoder auxiliaries, all first/last grand boundaries and explicit nonpole challenge domain; retain initialization/decoder poles and demonstrate a nonempty point. Derive exact caller sum 8388607 times denominator inverse and use OLD caller sum to reject every zero-claim completion. Generic chain and finite sum before actual native sampling. Not full caller/table/scalar sum polynomial completion, global SourceAccepted/matching, physical transcript, accepted discrepancy or absence-other-enforcement proof. No native finding, production fix, old acceptance, pins, dependencies, artifact/generation/heavy replay or v3 refresh change.",
+      "backport_reuse_revision": "8d7651e04535d3ca4df01c28a6fc5e73c6d4195c",
+      "backport_reuse_path": "Tests/NativeCSRPositive.lean",
+      "backport_reuse_sha256": "31596ee07218143c910518601aed38c9a7b70eae4076bb1ff95ab0b70aa82914"
+    },
+    {
+      "path": "Tests/NativeInactiveMain.lean",
+      "change": "Construct a complete ordinary-domain inactive request-positive native MAIN component fixture from OLD complete CSR BODY, with same memory/caller/decoder auxiliaries, all first/last grand boundaries and explicit nonpole challenge domain; retain initialization/decoder poles and demonstrate a nonempty point. Derive exact caller sum 8388607 times denominator inverse and use OLD caller sum to reject every zero-claim completion. Generic chain and finite sum before actual native sampling. Not full caller/table/scalar sum polynomial completion, global SourceAccepted/matching, physical transcript, accepted discrepancy or absence-other-enforcement proof. No native finding, production fix, old acceptance, pins, dependencies, artifact/generation/heavy replay or v3 refresh change.",
+      "backport_reuse_revision": "8d7651e04535d3ca4df01c28a6fc5e73c6d4195c",
+      "backport_reuse_path": "Tests/NativeCallerDelegation.lean",
+      "backport_reuse_sha256": "04104f0543a5a92e86cdd441c8d6f14af7b73ddea24ed072965c081310e04d21"
     }
   ],
   "setup_artifacts": [

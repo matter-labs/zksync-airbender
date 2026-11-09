@@ -492,3 +492,10 @@ indices at the full raw key. Unique position partners and exact segment caller
 counts hold on the old matching branch, retaining the >=257 MAIN-proof alternative
 and inactive request-positive callers. Physical issuance, standard schedules and
 hash remain open.
+
+## Inactive MAIN component fixture
+
+[Complete component fixture](../../Trace/Families/ReducedMachine/InactiveMainTheorems.lean) retains request-positive inactive CSR
+rows with the full ordinary memory chain and individual caller/decoder equations.
+The derived nonzero caller sum rejects a zero-claim completion. Full global source
+acceptance and physical caller activity remain open.

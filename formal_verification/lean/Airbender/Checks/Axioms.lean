@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.InactiveMain
+import Airbender.Proofs.ReducedMachine.NativeInactiveMain
+import Airbender.Review.Trace.Families.ReducedMachine.InactiveMainTheorems
+import Tests.NativeInactiveMain
+
 import Airbender.Review.Trace.Families.ReducedMachine.ControlCaller
 import Airbender.Proofs.ReducedMachine.NativeControlCaller
 import Airbender.Review.Trace.Families.ReducedMachine.ControlCallerTheorems
@@ -8632,3 +8637,37 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeControlCaller.old_source_indices_retained
 #print axioms Airbender.Tests.NativeControlCaller.old_joint_retained
 #print axioms Airbender.Tests.NativeControlCaller.full_counted_source
+
+#print axioms Airbender.NativeInactiveMainProofs.chain_step
+#print axioms Airbender.NativeInactiveMainProofs.chain_columns
+#print axioms Airbender.NativeInactiveMainProofs.row
+#print axioms Airbender.NativeInactiveMainProofs.realizes
+#print axioms Airbender.NativeInactiveMainProofs.fixture
+#print axioms Airbender.NativeInactiveMainProofs.fixture_registers
+#print axioms Airbender.NativeInactiveMainProofs.sample_nonpoles
+#print axioms Airbender.NativeInactiveMainProofs.sample_realizes
+#print axioms Airbender.NativeInactiveMainProofs.constant_sum
+#print axioms Airbender.NativeInactiveMainProofs.request_sum
+#print axioms Airbender.NativeInactiveMainProofs.request_sum_nonzero
+#print axioms Airbender.NativeInactiveMainProofs.no_zero_claim
+#print axioms Airbender.NativeInactiveMain.native_inactive_main_components
+#print axioms Airbender.Tests.NativeInactiveMain.complete_ordinary_domain
+#print axioms Airbender.Tests.NativeInactiveMain.generic_chain_retains_two_steps
+#print axioms Airbender.Tests.NativeInactiveMain.inactive_request_positive
+#print axioms Airbender.Tests.NativeInactiveMain.complete_body_retained
+#print axioms Airbender.Tests.NativeInactiveMain.raw_alias_timestamps_retained
+#print axioms Airbender.Tests.NativeInactiveMain.sample_domain_nonempty
+#print axioms Airbender.Tests.NativeInactiveMain.all_memory_rows
+#print axioms Airbender.Tests.NativeInactiveMain.same_constant_rows
+#print axioms Airbender.Tests.NativeInactiveMain.grand_claim_one
+#print axioms Airbender.Tests.NativeInactiveMain.all_caller_relations
+#print axioms Airbender.Tests.NativeInactiveMain.all_decoder_relations
+#print axioms Airbender.Tests.NativeInactiveMain.initialization_pole_kept
+#print axioms Airbender.Tests.NativeInactiveMain.decoder_pole_kept
+#print axioms Airbender.Tests.NativeInactiveMain.caller_pole_rejected
+#print axioms Airbender.Tests.NativeInactiveMain.corrupt_inactive_mask_rejected
+#print axioms Airbender.Tests.NativeInactiveMain.corrupt_grand_rejected
+#print axioms Airbender.Tests.NativeInactiveMain.exact_full_request_sum
+#print axioms Airbender.Tests.NativeInactiveMain.request_sum_not_zero
+#print axioms Airbender.Tests.NativeInactiveMain.zero_claim_completion_rejected
+#print axioms Airbender.Tests.NativeInactiveMain.full_fixture

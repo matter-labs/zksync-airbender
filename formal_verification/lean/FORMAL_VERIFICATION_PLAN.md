@@ -1,5 +1,55 @@
 # Circuit formal verification plan
 
+## Inactive native MAIN component fixture (9 November 2026)
+
+[Component observations](Airbender/Review/Trace/Families/ReducedMachine/InactiveMain.lean),
+[construction and sum proof](Airbender/Proofs/ReducedMachine/NativeInactiveMain.lean)
+and [short root](Airbender/Review/Trace/Families/ReducedMachine/InactiveMainTheorems.lean)
+strengthen the existing complete LOCAL CSR1991/x0 BODY fixture. One SAME constant
+MAIN proof and SAME auxiliary observation now satisfy the FULL native memory,
+state, execute masking, initialization and adjacent grand chain at EVERY one of
+8388607 ordinary rows, including first/last grand boundaries and grand claim1.
+Every row has execute0 and request1; original raw OLDREAD times0/4/5 and refresh
+writes4/5/6 remain. The SAME auxiliary also satisfies every individual caller
+relation and decoder access for arbitrary decoder challenges.
+
+The constructor works for arbitrary field embeddings and memory/PC/caller
+challenges on the explicit nonpole domain of the three unmasked memory READ
+factors, incoming PC factor and caller denominator. These conditions construct
+a fixture, not source activity, expected history or a new Accepted boundary.
+A generic cumulative product/division chain precedes native sampling. Exact
+original auxiliary columns are retained. Initialization and decoder poles are
+NOT excluded; an explicit nonempty challenge point retains BOTH of those poles.
+All original BODY117/lookup22 constraints are reused, not replayed or weakened.
+
+The full-domain caller auxiliary sum is DERIVED symbolically as
+8388607 times the actual caller denominator inverse, hence nonzero. The OLD
+caller sum-polynomial law therefore REJECTS ANY zero-claim completion of this
+constant fixture. No polynomial/primitive-root completion is supplied or assumed.
+This prevents treating these complete components as a globally accepted source.
+It is neither a native-global positive witness nor an accepted discrepancy,
+physical transcript or proof that all other enforcement is absent.
+
+[20 controls](Tests/NativeInactiveMain.lean) retain complete BODY, original alias
+times, arbitrary-field nonpole realization, every memory/caller/decoder row,
+shared constant observations, grand claim, initialization/decoder poles, caller
+pole exclusion, corrupt mask/grand rejection, exact nonzero sum and zero-claim
+completion rejection. Kernel decisions concern small finite observations only;
+no eight-million-row evaluation, full BODY/pool evaluation or heavy replay.
+Review contains observables/short root; construction and calculations are under
+Proofs; the separate Import fidelity boundary remains unchanged.
+
+Caller/decoder/scalar sum polynomials and table/setup families, initialization
+ordering/boundary windows, global statement/token matching and any nonempty
+worker completion remain separate. Physical caller activity, larger-batch
+universal matching, original CSR/NDstream/MOP/worker Sail, standard hash schedules,
+protocol spans/padding-terminal/init-teardown, physical crypto/completeness/parity
+remain open. All prior source/path/accounting/worker results stay unchanged.
+No new native pin/adoption/parser/importer/exporter/artifact/fixture data/generation/
+heavy replay/dependency/v3 refresh/production/Sail/old acceptance/FINDINGS change.
+Zero established native defects; counts are not parity.
+
+
 ## Original caller provenance and control-segment accounting (9 November 2026)
 
 [Caller observations](Airbender/Review/Trace/Families/ReducedMachine/ControlCaller.lean),
