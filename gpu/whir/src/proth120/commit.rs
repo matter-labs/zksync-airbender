@@ -3,15 +3,13 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
-use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::nvtx::scoped_range;
 use gpu_hash::keccak256::{
     build_partial_coset_trees_multi_coset, build_top_tree, gather_tree_cap, retained_layer_offset,
     transcript_commit_u32, Digest,
 };
-use gpu_ntt::proth120::{dispatch, lde_coset, lde_cosets_batched, SuffixShape};
-use gpu_ops::powers::get_powers_by_val;
+use gpu_ntt::proth120::{dispatch, lde_cosets_batched, SuffixShape};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::sink::{
     coefficient_tiles_len, commit_coefficient_cosets, commit_residue_cosets, has_leaf_sink,
@@ -20,7 +18,6 @@ use gpu_trace::trace::sink::{
 
 use super::kernels;
 use super::shape::OracleShape;
-use crate::upstream::domain_generator_for_size;
 
 pub(crate) struct IntermediateOracle {
     pub(crate) shape: OracleShape,
@@ -48,51 +45,24 @@ fn validate_oracle_shape(shape: &OracleShape, context: &ProverContext) {
     );
 }
 
-#[allow(dead_code)]
-pub(crate) fn schedule_coset_offsets(
-    shape: &OracleShape,
-    context: &ProverContext,
-) -> CudaResult<DeviceAllocation<PR>> {
-    let mut offsets = context.alloc(1 << shape.log_lde, AllocationPlacement::BestFit)?;
-    get_powers_by_val(
-        domain_generator_for_size::<PR>(1u64 << shape.log_domain),
-        0,
-        &mut offsets,
-        context.get_exec_stream(),
-    )?;
-    Ok(offsets)
-}
-
 pub(crate) fn schedule_lde_convert_pass(
     monomials: &DeviceSlice<PR>,
     shape: &OracleShape,
-    offsets: Option<&DeviceSlice<PR>>,
     k0: u32,
     tile: &mut DeviceSlice<PR>,
     context: &ProverContext,
 ) -> CudaResult<()> {
-    let n = 1usize << shape.log_n;
     let cosets = tile.len() >> shape.log_n;
     let ntt = context.proth120_ntt_device_context();
     let stream = context.get_exec_stream();
-    match offsets {
-        None => lde_cosets_batched(
-            ntt,
-            monomials,
-            shape.log_domain,
-            k0..k0 + cosets as u32,
-            tile,
-            stream,
-        )?,
-        Some(offsets) => {
-            let input = DeviceMatrix::new(monomials, n);
-            for local in 0..cosets {
-                let k = k0 as usize + local;
-                let mut output = DeviceMatrixMut::new(&mut tile[local * n..(local + 1) * n], n);
-                lde_coset(ntt, &input, &mut output, &offsets[k..k + 1], stream)?;
-            }
-        }
-    }
+    lde_cosets_batched(
+        ntt,
+        monomials,
+        shape.log_domain,
+        k0..k0 + cosets as u32,
+        tile,
+        stream,
+    )?;
     kernels::convert_tile_leaves(
         tile,
         shape.log_n,
@@ -260,7 +230,7 @@ fn schedule_commit_retained(
     for k0 in (0..if fused_path { 0 } else { cosets }).step_by(tile_cosets) {
         {
             let _r = scoped_range(Some("ab"), "whir.commit.prefix");
-            schedule_lde_convert_pass(copy, shape, None, k0 as u32, &mut tile, context)?;
+            schedule_lde_convert_pass(copy, shape, k0 as u32, &mut tile, context)?;
         }
         let _r = scoped_range(Some("ab"), "whir.commit.suffix");
         build_partial_coset_trees_multi_coset(

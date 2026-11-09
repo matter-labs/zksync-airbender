@@ -11,7 +11,9 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_gkr_compiler::{
     CoeffProduct, CoefficientRecipeId, NormalizedCoefficientRecipe, WindowCoefficientPlan,
 };
-use gpu_prover_context::transfer::{Transfer, TransferKeepalive};
+use gpu_prover_context::transfer::Transfer;
+#[cfg(test)]
+use gpu_prover_context::transfer::TransferKeepalive;
 use gpu_prover_context::ProverContext;
 
 use super::scheduled_execution::{note_device, resource_ledger_active, ResourceEventPr};
@@ -526,6 +528,7 @@ fn stage_coefficient_tables_pr(
     transfer.stage(index, &mut tables.index);
 }
 
+#[cfg(test)]
 pub(crate) fn schedule_coefficient_tables_upload_pr(
     host: &CoefficientTablesHostPr,
     context: &ProverContext,

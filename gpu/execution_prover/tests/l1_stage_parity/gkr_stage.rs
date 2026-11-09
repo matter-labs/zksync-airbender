@@ -1077,6 +1077,32 @@ fn run_stages(
         Some(ResourceCountsPr::shared(&witness_inputs.scratch, 1)),
     );
     let mut callbacks = Callbacks::new();
+    let mut coefficient_tables = gpu_gkr::proth120::backward::PreparedCoefficientTablesPr::new(
+        &programs,
+        &fixture.inits_and_teardowns.top_bits,
+        &context,
+    )
+    .unwrap();
+    let indices_host = gpu_gkr::proth120::base_layer_claims::BaseClaimIndicesHostPr::new(
+        &programs,
+        &slab.layout,
+        circuit.memory_layout.total_width,
+        circuit.witness_layout.total_width,
+        circuit.generic_lookup_tables_width,
+    )
+    .unwrap();
+    let mut base_claim_indices =
+        gpu_gkr::proth120::base_layer_claims::BaseClaimIndicesPr::allocate(&indices_host, &context)
+            .unwrap();
+    let prepared_transfer = gpu_prover_context::transfer::single_shot_h2d(
+        |transfer| {
+            coefficient_tables.stage_transfer(transfer);
+            base_claim_indices.schedule_transfer(transfer, &context)
+        },
+        &context,
+    )
+    .unwrap();
+    prepared_transfer.ensure_transferred(&context).unwrap();
     let mut output: GkrOutputPr = schedule_gkr(
         Arc::clone(&programs),
         &oracle,
@@ -1090,7 +1116,10 @@ fn run_stages(
         &mut slab,
         &dr_tail_plan,
         Some(UnsafeMutAccessor::new(&mut sink)),
-        Default::default(),
+        gpu_gkr::proth120::GkrPreparedInputsPr {
+            coefficient_tables,
+            base_claim_indices,
+        },
         &mut callbacks,
         &context,
     )

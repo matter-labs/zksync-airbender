@@ -10,13 +10,9 @@ use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::{DeviceAllocation, UnsafeMutAccessor};
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::E4;
-use gpu_prover_context::transfer::TransferKeepalive;
 use gpu_prover_context::ProverContext;
 
-use super::banks::{
-    schedule_coefficient_tables_upload_pr, CoefficientTablesHostPr, CoefficientTablesPr,
-    PreparedCoefficientTablesPr,
-};
+use super::banks::{CoefficientTablesPr, PreparedCoefficientTablesPr};
 use super::dr_tail::DrTailProofPlanPr;
 use super::eq::BackwardScratchPr;
 use crate::backward::ClaimBufferLayout;
@@ -388,8 +384,6 @@ pub struct GpuGKRBackwardScheduledExecutionPr {
     pub(crate) final_device_claims: Option<DeviceAllocation<PR>>,
     pub(crate) final_claim_layout: Option<ClaimBufferLayout>,
     pub(crate) coefficient_tables: Option<CoefficientTablesPr>,
-    #[allow(dead_code)]
-    pub(crate) coefficient_upload_keepalive: Option<TransferKeepalive<'static>>,
     pub(crate) scratch: Option<BackwardScratchPr>,
     pub(crate) _transcript_handoff: Option<GpuGKRTranscriptHandoff<PR>>,
 }
@@ -478,7 +472,7 @@ pub fn schedule_backward_pr(
     challenges: &PackedChallenges,
     proof: &mut ProofSlabPr,
     stage_snapshots: Option<UnsafeMutAccessor<GKRBackwardStageSnapshotSinkPr>>,
-    prepared_coefficient_tables: Option<PreparedCoefficientTablesPr>,
+    prepared_coefficient_tables: PreparedCoefficientTablesPr,
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRBackwardScheduledExecutionPr> {
@@ -509,17 +503,8 @@ pub fn schedule_backward_pr(
     tracing_ranges.push(post_forward_handoff_range);
     let workflow_range = Range::new("gkr.proth120.backward.schedule")?;
     workflow_range.start(stream)?;
-    let (coefficient_tables, coefficient_upload_keepalive) = match prepared_coefficient_tables {
-        Some(prepared) => (
-            prepared.into_tables(&programs, &inits_and_teardowns_top_bits),
-            None,
-        ),
-        None => {
-            let host = CoefficientTablesHostPr::build(&programs, &inits_and_teardowns_top_bits);
-            let (tables, keepalive) = schedule_coefficient_tables_upload_pr(&host, context)?;
-            (tables, Some(keepalive))
-        }
-    };
+    let coefficient_tables =
+        prepared_coefficient_tables.into_tables(&programs, &inits_and_teardowns_top_bits);
     let mut scratch = BackwardScratchPr::new(context)?;
     let mut input = LayerInputPr {
         seed: d_seed,
@@ -646,7 +631,6 @@ pub fn schedule_backward_pr(
         final_device_claims: Some(claims),
         final_claim_layout: Some(claim_layout),
         coefficient_tables: Some(coefficient_tables),
-        coefficient_upload_keepalive,
         scratch: Some(scratch),
         _transcript_handoff: Some(transcript_handoff),
     };

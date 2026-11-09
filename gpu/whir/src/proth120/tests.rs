@@ -33,9 +33,7 @@ use gpu_hash::keccak256::{
 };
 use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
 
-use super::commit::{
-    schedule_commit_intermediate, schedule_coset_offsets, schedule_lde_convert_pass,
-};
+use super::commit::{schedule_commit_intermediate, schedule_lde_convert_pass};
 use super::schedule::{
     query_words, schedule_delinearization, schedule_eq_update, schedule_pow_and_query_indexes,
 };
@@ -759,14 +757,10 @@ fn pr_commit_intermediate_matches_cpu_small() {
         let tile_cosets = 1usize << shape.tile_cosets_log2;
         let k0 = cosets - tile_cosets;
         let monomials_dev = upload(&monomials, stream);
-        let offsets = schedule_coset_offsets(&shape, &ctx).unwrap();
         let expected = cpu_tile_pass(&monomials, log_lde, k0, tile_cosets);
-        for offsets in [Some(&offsets[..]), None] {
-            let mut tile = upload(&vec![PR::ZERO; tile_cosets << log_n], stream);
-            schedule_lde_convert_pass(&monomials_dev, &shape, offsets, k0 as u32, &mut tile, &ctx)
-                .unwrap();
-            assert_fields(&download(&tile, stream), &expected);
-        }
+        let mut tile = upload(&vec![PR::ZERO; tile_cosets << log_n], stream);
+        schedule_lde_convert_pass(&monomials_dev, &shape, k0 as u32, &mut tile, &ctx).unwrap();
+        assert_fields(&download(&tile, stream), &expected);
     }
 }
 

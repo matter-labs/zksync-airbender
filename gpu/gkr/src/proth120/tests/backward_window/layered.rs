@@ -59,6 +59,21 @@ fn pr_backward_layered_small() {
     let dr_tail_plan = preflight_dr_tail_resources_pr(&programs, final_log, &context);
     let mut sink = GKRBackwardStageSnapshotSinkPr::default();
     let mut callbacks = Callbacks::new();
+    let mut coefficient_tables = crate::proth120::backward::PreparedCoefficientTablesPr::new(
+        &programs,
+        &fixture.top_bits,
+        &context,
+    )
+    .unwrap();
+    let prepared_transfer = gpu_prover_context::transfer::single_shot_h2d(
+        |transfer| {
+            coefficient_tables.stage_transfer(transfer);
+            Ok(())
+        },
+        &context,
+    )
+    .unwrap();
+    prepared_transfer.ensure_transferred(&context).unwrap();
     let mut execution = schedule_backward_pr(
         handoff,
         fixture.top_bits.clone(),
@@ -67,12 +82,13 @@ fn pr_backward_layered_small() {
         &fixture.challenges,
         &mut proof,
         Some(UnsafeMutAccessor::new(&mut sink)),
-        None,
+        coefficient_tables,
         &mut callbacks,
         &context,
     )
     .unwrap();
     context.get_exec_stream().synchronize().unwrap();
+    drop(prepared_transfer);
     drop(callbacks);
     let slab = read_back(&proof.backing, PR::ZERO, &context);
     let (device_seed, device_point) = execution.final_device_seed_and_claim_point_mut();
