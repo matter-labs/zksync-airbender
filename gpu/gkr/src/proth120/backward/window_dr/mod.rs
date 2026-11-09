@@ -1,8 +1,8 @@
 mod binding;
 
 pub(crate) use binding::{
-    schedule_dr_batch_challenge_table_pr, unwrap_dr_window_pr, DrLayerTranscriptPr,
-    DrWindowLayerHookPr, DrWindowRawInputKeepalivePr,
+    schedule_dr_batch_challenge_table_pr, DrLayerTranscriptPr, DrWindowLayerHookPr,
+    DrWindowRawInputKeepalivePr,
 };
 
 #[cfg(test)]
@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use gpu_gkr_compiler::{lower_dr_window_program, project_dr_window_inputs};
 
-use crate::backward::window_dr::{validate_dr_window_folding_steps, DrWindowBindError};
+use crate::backward::window_dr::validate_dr_window_folding_steps;
 use crate::backward::{derive_dimension_reducing_inputs, make_eq_sizes, GkrEqSizes};
 use crate::proth120::backward::capacity::dr_tail_entry_round_pr;
 use crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
@@ -123,20 +123,19 @@ pub(crate) struct DrWindowPassGeometryPr {
 }
 
 impl DrWindowPassGeometryPr {
-    pub(crate) fn new(folding_steps: usize, start_round: usize) -> Result<Self, DrWindowBindError> {
-        if start_round < PR_DR_WINDOW_COORDINATES
-            || !start_round.is_multiple_of(PR_DR_WINDOW_COORDINATES)
-            || start_round + PR_DR_WINDOW_COORDINATES >= folding_steps
-        {
-            return Err(DrWindowBindError::InvalidContinuationBoundary {
-                folding_steps,
-                start_round,
-            });
-        }
-        Ok(Self {
+    pub(crate) fn new(folding_steps: usize, start_round: usize) -> Self {
+        assert!(
+            (start_round >= PR_DR_WINDOW_COORDINATES
+                && (start_round.is_multiple_of(PR_DR_WINDOW_COORDINATES)
+                    && start_round + PR_DR_WINDOW_COORDINATES < folding_steps)),
+            "Proth120 binding InvalidContinuationBoundary: folding_steps={:?}, start_round={:?}",
+            folding_steps,
+            start_round
+        );
+        Self {
             folding_steps,
             start_round,
-        })
+        }
     }
 
     fn pass_index(self) -> usize {
@@ -175,13 +174,14 @@ impl DrWindowPassGeometryPr {
 pub(crate) fn plan_dr_window_continuations_pr(
     folding_steps: usize,
     entry_round: usize,
-) -> Result<Vec<DrWindowPassGeometryPr>, DrWindowBindError> {
-    if !(PR_DR_WINDOW_COORDINATES..=PR_DR_MAX_ENTRY_ROUND).contains(&entry_round)
-        || !entry_round.is_multiple_of(PR_DR_WINDOW_COORDINATES)
-        || entry_round >= folding_steps
-    {
-        return Err(DrWindowBindError::InvalidTailEntry { entry_round });
-    }
+) -> Vec<DrWindowPassGeometryPr> {
+    assert!(
+        ((PR_DR_WINDOW_COORDINATES..=PR_DR_MAX_ENTRY_ROUND).contains(&entry_round)
+            && (entry_round.is_multiple_of(PR_DR_WINDOW_COORDINATES)
+                && entry_round < folding_steps)),
+        "Proth120 binding InvalidTailEntry: entry_round={:?}",
+        entry_round
+    );
     (PR_DR_WINDOW_COORDINATES..entry_round)
         .step_by(PR_DR_WINDOW_COORDINATES)
         .map(|start_round| DrWindowPassGeometryPr::new(folding_steps, start_round))

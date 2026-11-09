@@ -18,7 +18,7 @@ use gpu_prover_context::ProverContext;
 
 use super::scheduled_execution::{note_device, resource_ledger_active, ResourceEventPr};
 use crate::backward::window::coefficient_bank::{
-    coefficient_bank_challenge_slot, CoefficientBankError, BWD_COEFF_CHALLENGE_CLAIM_BATCHING,
+    coefficient_bank_challenge_slot, BWD_COEFF_CHALLENGE_CLAIM_BATCHING,
 };
 use crate::proth120::programs::GkrProgramsPr;
 use crate::upstream::{Field, PrimeField, PR};
@@ -185,30 +185,31 @@ fn translate_product(
     product: &CoeffProduct,
     recipe_index: usize,
     product_index: usize,
-) -> Result<CoeffMonomialPr, CoefficientBankError> {
+) -> CoeffMonomialPr {
     let mut exponents: BTreeMap<u8, u32> = BTreeMap::new();
     for challenge in &product.challenges {
-        let (slot, power) = coefficient_bank_challenge_slot(&challenge.0)?;
+        let (slot, power) = coefficient_bank_challenge_slot(&challenge.0)
+            .expect("Proth120 coefficient challenge must be supported");
         *exponents.entry(slot).or_default() += power;
     }
     exponents.retain(|_, exponent| *exponent != 0);
     let batch = exponents
         .remove(&BWD_COEFF_CHALLENGE_CLAIM_BATCHING)
         .unwrap_or(0);
-    if batch > u32::from(u16::MAX) {
-        return Err(CoefficientBankError::BatchPowerOverflow {
-            recipe: recipe_index,
-            product: product_index,
-            power: batch,
-        });
-    }
-    if exponents.len() > 2 {
-        return Err(CoefficientBankError::TooManyDistinctChallenges {
-            recipe: recipe_index,
-            product: product_index,
-            distinct: exponents.len(),
-        });
-    }
+    assert!(
+        batch <= u32::from(u16::MAX),
+        "Proth120 binding BatchPowerOverflow: recipe={:?}, product={:?}, power={:?}",
+        recipe_index,
+        product_index,
+        batch
+    );
+    assert!(
+        exponents.len() <= 2,
+        "Proth120 binding TooManyDistinctChallenges: recipe={:?}, product={:?}, distinct={:?}",
+        recipe_index,
+        product_index,
+        exponents.len()
+    );
     let mut monomial = CoeffMonomialPr {
         batch_power: batch as u16,
         ..CoeffMonomialPr::default()
@@ -218,14 +219,9 @@ fn translate_product(
             usize::from(slot) < PR_COEFF_CHALLENGES,
             "Proth120 coefficient challenge slot {slot} is outside the packed challenges"
         );
-        if exponent > u32::from(u8::MAX) {
-            return Err(CoefficientBankError::ExponentOverflow {
-                recipe: recipe_index,
-                product: product_index,
-                slot,
-                exponent,
-            });
-        }
+        assert!(exponent <= u32::from(u8::MAX),
+            "Proth120 binding ExponentOverflow: recipe={:?}, product={:?}, slot={:?}, exponent={:?}", recipe_index, product_index, slot, exponent
+        );
         if position == 0 {
             monomial.challenge_idx_0 = slot;
             monomial.power_0 = exponent as u8;
@@ -234,7 +230,7 @@ fn translate_product(
             monomial.power_1 = exponent as u8;
         }
     }
-    Ok(monomial)
+    monomial
 }
 
 fn translate_recipe(
@@ -242,20 +238,20 @@ fn translate_recipe(
     recipe_index: usize,
     top_bits: &[u32],
     keep_zeros: bool,
-) -> Result<Vec<(PR, CoeffMonomialPr)>, CoefficientBankError> {
+) -> Vec<(PR, CoeffMonomialPr)> {
     let mut merged: BTreeMap<(u16, u8, u8, u8, u8), PR> = BTreeMap::new();
     for (product_index, product) in recipe.terms.iter().enumerate() {
-        let monomial = translate_product(product, recipe_index, product_index)?;
+        let monomial = translate_product(product, recipe_index, product_index);
         let mut scalar = PR::from_u128_with_reduction(product.scalar);
         for reference in &product.inits_and_teardowns_top_bits {
-            let bits = top_bits.get(reference.set_index).copied().ok_or(
-                CoefficientBankError::MissingTopBits {
-                    recipe: recipe_index,
-                    product: product_index,
-                    set_index: reference.set_index,
-                    available: top_bits.len(),
-                },
-            )?;
+            let bits = top_bits
+                .get(reference.set_index)
+                .copied()
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Proth120 binding MissingTopBits: recipe={:?}, product={:?}, set_index={:?}, available={:?}", recipe_index, product_index, reference.set_index, top_bits.len()
+                    )
+                });
             let shifted = bits.checked_shl(reference.shift).unwrap_or(0);
             scalar.mul_assign(&PR::from_u32_with_reduction(shifted));
         }
@@ -266,11 +262,11 @@ fn translate_recipe(
             })
             .or_insert(scalar);
     }
-    Ok(merged
+    merged
         .into_iter()
         .filter(|(_, scalar)| keep_zeros || !scalar.is_zero())
         .map(|(key, scalar)| (scalar, CoeffMonomialPr::from_key(key)))
-        .collect())
+        .collect()
 }
 
 impl CoefficientTablesHostPr {
@@ -360,13 +356,10 @@ impl CoefficientTablesHostPr {
         index: usize,
         scalar: Option<PR>,
         top_bits: &[u32],
-        layer: usize,
+        _layer: usize,
         keep_zeros: bool,
     ) {
-        let translated =
-            translate_recipe(recipe, index, top_bits, keep_zeros).unwrap_or_else(|error| {
-                panic!("Proth120 coefficient tables layer {layer} recipe {index}: {error:?}")
-            });
+        let translated = translate_recipe(recipe, index, top_bits, keep_zeros);
         self.push_monomials(&translated, scalar);
     }
 
