@@ -1,4 +1,5 @@
 #pragma once
+#include "../../../backward/window_dr/corner_quad.cuh"
 
 #include "../batch_challenges_pr.cuh"
 
@@ -14,32 +15,20 @@ struct pr_dr_window_gate_pairs {
   pr_dr_window_pair gate[2];
 };
 
-DEVICE_FORCEINLINE pr_dr_window_corner_quad pr_dr_window_load_corner_quad(const pr *column, const u32 row, const u32 bit0, const u32 bit1) {
-  return pr_dr_bwd::bwd_window_load<pr, 4>(column, 2u * pr_dr_bwd::bwd_window_corner_index(row, bit0, bit1, 0));
-}
-
-DEVICE_FORCEINLINE pr_dr_window_corner_quad pr_dr_window_quad_sub(const pr_dr_window_corner_quad one, const pr_dr_window_corner_quad zero) {
-  pr_dr_window_corner_quad result;
-#pragma unroll
-  for (u32 index = 0; index < 4; ++index)
-    result.values[index] = pr::sub(one.values[index], zero.values[index]);
-  return result;
-}
-
 DEVICE_FORCEINLINE pr_dr_window_gate_pairs pr_dr_window_packed_gate_pairs(const pr *column, const u32 row, const pr_dr_bwd::bwd_window_selector_pair selector) {
   const u32 bit0_zero = selector.x0_infinity() ? 0 : selector.x0;
   const u32 bit1_zero = selector.x1_infinity() ? 0 : selector.x1;
-  const pr_dr_window_corner_quad corner00 = pr_dr_window_load_corner_quad(column, row, bit0_zero, bit1_zero);
+  const pr_dr_window_corner_quad corner00 = pr_dr_bwd::dr_window_load_corner_quad(column, row, bit0_zero, bit1_zero);
   pr_dr_window_corner_quad at_x1_zero = corner00;
   if (selector.x0_infinity())
-    at_x1_zero = pr_dr_window_quad_sub(pr_dr_window_load_corner_quad(column, row, 1, bit1_zero), corner00);
+    at_x1_zero = pr_dr_bwd::dr_window_quad_sub(pr_dr_bwd::dr_window_load_corner_quad(column, row, 1, bit1_zero), corner00);
   pr_dr_window_corner_quad value = at_x1_zero;
   if (selector.x1_infinity()) {
-    const pr_dr_window_corner_quad corner01 = pr_dr_window_load_corner_quad(column, row, bit0_zero, 1);
+    const pr_dr_window_corner_quad corner01 = pr_dr_bwd::dr_window_load_corner_quad(column, row, bit0_zero, 1);
     pr_dr_window_corner_quad at_x1_one = corner01;
     if (selector.x0_infinity())
-      at_x1_one = pr_dr_window_quad_sub(pr_dr_window_load_corner_quad(column, row, 1, 1), corner01);
-    value = pr_dr_window_quad_sub(at_x1_one, at_x1_zero);
+      at_x1_one = pr_dr_bwd::dr_window_quad_sub(pr_dr_bwd::dr_window_load_corner_quad(column, row, 1, 1), corner01);
+    value = pr_dr_bwd::dr_window_quad_sub(at_x1_one, at_x1_zero);
   }
   pr_dr_window_gate_pairs result;
   result.gate[0] = {{value.values[0], value.values[2]}};
