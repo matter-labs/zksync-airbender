@@ -120,21 +120,6 @@ static_assert(sizeof(field::pr_matrix_getter<>) == 16 && alignof(field::pr_matri
 static_assert(sizeof(field::pr_matrix_setter<>) == 16 && alignof(field::pr_matrix_setter<>) == 8);
 static_assert(sizeof(field::pr_matrix_getter_setter<>) == 16 && alignof(field::pr_matrix_getter_setter<>) == 8);
 
-EXTERN __global__ void ab_inv_pr_kernel(const pr *values, pr *result, const unsigned count) {
-  const u64 i = u64(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (i < count)
-    result[i] = pr::inv(values[i]);
-}
-
-EXTERN __global__ void ab_batch_inverse_pr_kernel(const pr *input, pr *output, pr *prefix, const unsigned count) {
-  const u64 t = u64(blockIdx.x) * blockDim.x + threadIdx.x;
-  const u64 offset = t * 256;
-  if (offset >= count)
-    return;
-  const u32 chunk_count = count - offset < 256 ? u32(count - offset) : 256;
-  pr::batch_inverse(input + offset, output + offset, prefix + offset, chunk_count);
-}
-
 EXTERN __global__ void ab_pr_field_probe_kernel(const pr_probe_input *input, pr_probe_output *output, const u32 count) {
   const u64 i = u64(blockIdx.x) * blockDim.x + threadIdx.x;
   if (i >= count)
