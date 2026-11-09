@@ -5,9 +5,6 @@ mod l1_wrap;
 mod memory;
 mod proof;
 
-#[cfg(any(test, feature = "test-support"))]
-pub(crate) use l1_wrap::evaluate_witness;
-
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
     Backend, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, WhirOracleStorage, BF, E4,

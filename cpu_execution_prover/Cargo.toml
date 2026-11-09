@@ -37,7 +37,6 @@ verifier_common = { workspace = true }
 [features]
 default = ["deterministic_pow"]
 deterministic_pow = ["prover/deterministic_pow"]
-test-support = []
 verifiers = ["full_statement_verifier/verifiers"]
 
 [[test]]

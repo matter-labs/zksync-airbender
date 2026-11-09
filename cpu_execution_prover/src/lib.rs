@@ -8,9 +8,5 @@ mod manager;
 mod precomputations;
 mod upstream;
 
-#[cfg(any(test, feature = "test-support"))]
-#[doc(hidden)]
-pub mod test_support;
-
 pub use backend::{CpuBackend, CpuExecutionProver};
 pub use config::{CpuBackendConfiguration, CpuExecutionProverConfiguration};
