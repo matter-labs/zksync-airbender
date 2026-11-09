@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import struct
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -14,6 +15,169 @@ import urllib.error
 
 from check_program_decoder_rows import SMALL_PROGRAMS, check_group_shapes, checked_rows, csr_word
 import fetch_production_program
+import check_program_decoder_rows as decoder
+
+
+class GuardedDecoderCaseTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.guard = self.root / 'guard.sh'
+        self.guard.write_text('''fv_native() {
+  printf '%s\\n' "$1" >> "$FIXTURE_ROOT/guards"
+  shift
+  test ! -e "$FIXTURE_ROOT/active"
+  touch "$FIXTURE_ROOT/active"
+  trap 'rm -f "$FIXTURE_ROOT/active"' EXIT
+  if [[ "${FIXTURE_GUARD_EXIT:-0}" != 0 ]]; then return "$FIXTURE_GUARD_EXIT"; fi
+  if [[ "${FIXTURE_SKIP_WORKER:-0}" == 1 ]]; then return 0; fi
+  "$@"
+  if [[ "${FIXTURE_INVALID_RESULT:-0}" == 1 ]]; then
+    printf '{"sha256":"invalid"}\\n' > "${@: -1}"
+  fi
+}
+''')
+        self.exporter = self.root / 'exporter'
+        self.exporter.write_text('#!' + sys.executable + '\n' + '''
+import json, os, pathlib, sys
+assert 'CI' not in os.environ and 'RUST_MIN_STACK' not in os.environ
+assert (pathlib.Path(os.environ['FIXTURE_ROOT']) / 'active').exists()
+if os.environ.get('FIXTURE_EXPORT_EXIT'): sys.exit(23)
+family, image, text, output = sys.argv[1:5]
+mask = [True] * 7 + [False, True]
+count = len(pathlib.Path(text).read_bytes()) // 4
+circuit = {'decode_table_columns_mask': mask, 'tables_ids_in_generic_lookups': False,
+           'offset_for_decoder_table': 0, 'total_tables_size': count}
+if os.environ.get('FIXTURE_CONFIG_CHANGE'):
+    circuit['marker'] = int('--reduced' in sys.argv)
+if os.environ.get('FIXTURE_TEXT_CHANGE'):
+    circuit['marker'] = pathlib.Path(text).stem
+first = 8 if os.environ.get('FIXTURE_ROW_CHANGE') else 0
+artifact = {'field_modulus': 2013265921, 'trace_len': count,
+            'program': {'text_words': count}, 'circuit': circuit,
+            'columns': [{'blocks': [{'kind': 'dense',
+                                    'values': [first] + [2013265920] * (count - 1)}]}
+                        for _ in range(sum(mask))]}
+pathlib.Path(output).write_text(json.dumps(artifact))
+''')
+        self.oracle = self.root / 'oracle'
+        self.oracle.write_text('#!' + sys.executable + '\n' + '''
+import os, pathlib, sys
+assert 'CI' not in os.environ and 'RUST_MIN_STACK' not in os.environ
+assert (pathlib.Path(os.environ['FIXTURE_ROOT']) / 'active').exists()
+pathlib.Path(sys.argv[4]).write_text('0,' + ','.join(['0'] * 8) + '\\n')
+''')
+        self.exporter.chmod(0o755)
+        self.oracle.chmod(0o755)
+
+    def run_parent(self, options, **environment):
+        command = [sys.executable, decoder.__file__, '--exporter', str(self.exporter),
+                   '--oracle', str(self.oracle), '--guard-shell', str(self.guard),
+                   '--families', 'add-sub', *options]
+        env = dict(os.environ, FIXTURE_ROOT=str(self.root), CI='true', RUST_MIN_STACK='1',
+                   **environment)
+        return subprocess.run(command, env=env, text=True, capture_output=True)
+
+    def test_each_case_owns_one_serial_guard_and_full_reduced_hashes_are_compared(self):
+        options = ['--small-program', 'one', '--configs', 'full,reduced']
+        result = self.run_parent(options)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('PASS 4 exact decoder row comparisons and circuit-object checks', result.stdout)
+        self.assertEqual((self.root / 'guards').read_text().splitlines(), [
+            f'decoder-one-{cache}-{config}-add-sub'
+            for cache in ('plain', 'cached') for config in ('full', 'reduced')])
+        self.assertFalse((self.root / 'active').exists())
+        result = self.run_parent(options, FIXTURE_CONFIG_CHANGE='1')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('full/reduced circuit differs', result.stderr)
+
+    def test_worker_guard_export_and_row_failures_stop_the_parent(self):
+        for environment, error in [({'FIXTURE_GUARD_EXIT': '125'}, '125'),
+                                   ({'FIXTURE_EXPORT_EXIT': '1'}, 'native export failed'),
+                                   ({'FIXTURE_ROW_CHANGE': '1'}, 'decoder row 0'),
+                                   ({'FIXTURE_SKIP_WORKER': '1'}, 'FileNotFoundError'),
+                                   ({'FIXTURE_INVALID_RESULT': '1'}, 'invalid worker circuit hash')]:
+            with self.subTest(environment=environment):
+                (self.root / 'guards').unlink(missing_ok=True)
+                result = self.run_parent(['--small-program', 'one'], **environment)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(error, result.stderr)
+                self.assertEqual(len((self.root / 'guards').read_text().splitlines()), 1)
+                self.assertNotIn('PASS ', result.stdout)
+                self.assertFalse((self.root / 'active').exists())
+
+    def test_circuit_independence_from_public_text_is_still_enforced(self):
+        options = ['--configs', 'full', '--cache-modes', 'plain']
+        for name in ('one', 'two'):
+            text = self.root / (name + '.text')
+            text.write_bytes(struct.pack('<I', 0x13))
+            text.with_suffix('.bin').write_bytes(text.read_bytes())
+            options += ['--program', str(text)]
+        result = self.run_parent(options, FIXTURE_TEXT_CHANGE='1')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('circuit depends on public text', result.stderr)
+
+    def test_complete_126_case_inventory_is_unchanged(self):
+        cases = []
+        def record(guard, exporter, oracle, directory, text, image, config, family, cache):
+            self.assertEqual(guard, self.guard.resolve())
+            cases.append((text.stem, config, family, cache))
+            return 'a' * 64
+        arguments = ['decoder', '--exporter', str(self.exporter), '--oracle', str(self.oracle),
+                     '--guard-shell', str(self.guard)]
+        with patch.object(sys, 'argv', arguments), patch.object(decoder, 'run_guarded_case', record), \
+                patch('sys.stdout', new_callable=io.StringIO):
+            decoder.main()
+        expected = {(name, config, family, cache)
+                    for name in ('one', 'two', 'muldiv', 'blake-caller')
+                    for config, families in [('full', decoder.POOLED_FAMILIES),
+                                             ('reduced', decoder.REDUCED_FAMILIES),
+                                             ('unified', ('unified',))]
+                    for family in families for cache in ('plain', 'cached')}
+        expected |= {('split-keccak', 'full', 'add-sub', cache) for cache in ('plain', 'cached')}
+        self.assertEqual(set(cases), expected)
+        self.assertEqual(len(cases), 90)
+        cases.clear()
+        with patch.object(sys, 'argv', arguments + ['--committed-verifiers']), \
+                patch.object(decoder, 'run_guarded_case', record), \
+                patch('sys.stdout', new_callable=io.StringIO):
+            decoder.main()
+        repository = Path(__file__).resolve().parents[3]
+        expected = {(text.stem, config, family, cache)
+                    for text in (repository / 'tools/gkr_verifier').glob('fsv_*.text')
+                    for config, families in [('reduced', decoder.REDUCED_FAMILIES)
+                                             if text.name.startswith('fsv_unrolled_')
+                                             else ('unified', ('unified',))]
+                    for family in families for cache in ('plain', 'cached')}
+        self.assertEqual(set(cases), expected)
+        self.assertEqual(len(cases), 22)
+        cases.clear()
+        text = self.root / 'multiblock_batch.text'
+        text.write_bytes(struct.pack('<I', 0x13))
+        text.with_suffix('.bin').write_bytes(text.read_bytes())
+        with patch.object(sys, 'argv', arguments + ['--program', str(text), '--configs', 'full,unified']), \
+                patch.object(decoder, 'run_guarded_case', record), \
+                patch('sys.stdout', new_callable=io.StringIO):
+            decoder.main()
+        self.assertEqual(set(cases), {
+            (text.stem, config, family, cache)
+            for config, families in [('full', decoder.POOLED_FAMILIES), ('unified', ('unified',))]
+            for family in families for cache in ('plain', 'cached')})
+        self.assertEqual(len(cases), 14)
+
+    def test_workflow_uses_guarded_parent_without_wrapping_the_parent_in_a_guard(self):
+        workflow = (Path(__file__).resolve().parents[3] /
+                    '.github/workflows/formal-verification.yml').read_text()
+        block = workflow.split('- name: Public program decoder row differential\n', 1)[1].split(
+            '      - name:', 1)[0]
+        calls = [line.strip() for line in block.splitlines()
+                 if 'scripts/check_program_decoder_rows.py' in line]
+        self.assertEqual(len(calls), 3)
+        for line in calls:
+            self.assertTrue(line.startswith('python3 scripts/check_program_decoder_rows.py --guard-shell '))
+        self.assertIn('fv_stage decoder-differential 4500 ', block)
+        self.assertIn('timeout-minutes: 75', block)
 
 
 class ProductionProgramFetchTest(unittest.TestCase):

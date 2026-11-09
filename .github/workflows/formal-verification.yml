@@ -578,8 +578,10 @@ jobs:
           test -x "$exporter"
           test -x "$oracle"
           python3 scripts/test_program_decoder_rows.py
+          # The parent keeps all circuit-hash comparisons; each complete case
+          # owns one native guard, avoiding a nested or whole-program budget.
           for name in one two muldiv blake-caller split-keccak; do
-            fv_native "decoder-small-$name" env -u CI -u RUST_MIN_STACK python3 scripts/check_program_decoder_rows.py \
+            python3 scripts/check_program_decoder_rows.py --guard-shell "$FV_ROOT/guard.sh" \
               --exporter "$exporter" --oracle "$oracle" --small-program "$name"
           done
           texts=(../../tools/gkr_verifier/fsv_*.text)
@@ -593,13 +595,13 @@ jobs:
               config=unified
               families=unified
             fi
-            fv_native "decoder-$name" env -u CI -u RUST_MIN_STACK python3 scripts/check_program_decoder_rows.py \
+            python3 scripts/check_program_decoder_rows.py --guard-shell "$FV_ROOT/guard.sh" \
               --exporter "$exporter" --oracle "$oracle" --program "$text" \
               --configs "$config" --families "$families"
           done
           production="$FV_ROOT/production-os"
           python3 scripts/fetch_production_program.py --destination "$production"
-          fv_native decoder-production-os env -u CI -u RUST_MIN_STACK python3 scripts/check_program_decoder_rows.py \
+          python3 scripts/check_program_decoder_rows.py --guard-shell "$FV_ROOT/guard.sh" \
             --exporter "$exporter" --oracle "$oracle" \
             --program "$production/multiblock_batch.text" --configs full,unified
           FV_STAGE

@@ -44,6 +44,41 @@ redundant branch-only repair is removed; see [FINDINGS.md](FINDINGS.md).
 
 ## Current checkpoint
 
+Parent full run [42583727889](https://github.com/matter-labs/zksync-airbender/actions/runs/42583727889)
+on signed d2d659b4eba15d4b7f545557c05974225b92ace7 failed the decoder stage at
+10:43:50 UTC on 9 November. Its first small-program worker completed five
+comparisons, then the guard stopped it for exceeding the 900-second wall limit.
+The record reports 904.57 seconds including cleanup, 7,202.47 MiB charged and
+bounded resident, and no remaining owned processes. The log contains no row or
+circuit mismatch. This is partial decoder evidence; production decoding,
+environment audit, complete replay and false-proof controls did not run.
+
+The scheduling repair gives each complete text/configuration/family/cache case
+its own existing native guard. A lightweight serial parent prepares the same
+inputs and retains the full/reduced and public-text circuit-hash comparisons.
+Each worker still performs the native export, Lean oracle, every padded-row and
+mask check, and circuit-object hashing. No comparison is omitted. Native memory
+qualification, the global guard lock, 8,192/12,288 MiB limits, 900-second worker
+limit, 4,500-second decoder-stage deadline and shared work deadline are unchanged.
+The parent is unguarded orchestration; it never holds a guard while launching a
+guarded worker.
+
+Five new lightweight controls exercise the actual parent/worker process path
+with fixture exporters/oracles and guard shells. They check serial case guards,
+failure propagation, changed rows, missing/invalid worker results, full/reduced
+hash differences and circuit dependence on public text. The actual driver still
+enumerates all 126 cases: 90 small-program, 22 committed-verifier and 14
+production configurations. These inventory controls do not execute native or
+Lean project builds. All 65 combined focused controls pass in 19.565 seconds.
+The row-comparison, group-shape, native-export/oracle and circuit-hash functions,
+entire CI guard shell and retained axiom baseline remain byte-identical. YAML,
+decoder shell syntax and guide links pass; actionlint has the same 12 existing
+findings. There is no proof, statement/premise, production, pin, resource-policy,
+baseline or replay-trust change. Fresh qualification and complete full assurance
+on the signed repair remain required after the useful parent cache save.
+
+### Lean cache repair
+
 The [Actions cache review](https://github.com/matter-labs/zksync-airbender/pull/585#issuecomment-6720182712)
 is addressed by the v3 Lean snapshot policy. New snapshots contain the project's
 own build/configuration and the Clean and lean-sail package directories. Mathlib
@@ -91,14 +126,13 @@ requiring fresh native qualification on the published cache repair. Review state
 premises, proof sources, production behavior, payloads/pins, resource caps,
 deadlines, replay-ledger trust and complete assurance coverage remain unchanged.
 
-Useful full run [42583727889](https://github.com/matter-labs/zksync-airbender/actions/runs/42583727889)
-on signed parent d2d659b4eba15d4b7f545557c05974225b92ace7 remains active and is
-preserved. That parent's ordinary CPU/GPU workflows completed successfully:
+The failed parent run's useful Lean cache save is preserved. That parent's
+ordinary CPU/GPU workflows completed successfully:
 CPU attempt 2 passed after the transient Foundry installer retry, and GPU tests
 and aggregate passed at 09:02:25 and 09:02:32 UTC on 9 November. Those results do
-not qualify the cache repair. Its exact-head full run must follow the useful
-active run and its cache save; no duplicate is dispatched. No final assurance
-is claimed.
+not qualify the cache or decoder scheduling repairs. The exact-head full run
+must follow the useful parent cache save; no duplicate is dispatched. No final
+assurance is claimed.
 
 ### Preceding production download repair
 

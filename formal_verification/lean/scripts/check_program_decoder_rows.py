@@ -15,6 +15,7 @@ import json
 import pathlib
 import struct
 import subprocess
+import sys
 import tempfile
 
 POOLED_FAMILIES = ("add-sub", "jump-branch", "shift-binop", "word-memory", "mul-div", "subword-memory")
@@ -190,6 +191,27 @@ def run_case(exporter, oracle, directory, text, image, config, family, cache):
     return hashlib.sha256(circuit_bytes).hexdigest()
 
 
+def run_guarded_case(guard_shell, exporter, oracle, directory, text, image, config, family, cache):
+    """Give one complete row comparison the existing native worker budget."""
+    result = directory / f"{text.stem}-{config}-{family}-{cache}-result.json"
+    result.unlink(missing_ok=True)
+    label = f"decoder-{text.stem}-{cache}-{config}-{family}"
+    subprocess.run([
+        "bash", "-euo", "pipefail", "-c", 'source "$1"\nshift\nfv_native "$@"',
+        "decoder-case", str(guard_shell), label,
+        "env", "-u", "CI", "-u", "RUST_MIN_STACK", sys.executable,
+        str(pathlib.Path(__file__).resolve()), "--exporter", str(exporter),
+        "--oracle", str(oracle), "--work-dir", str(directory),
+        "--worker-case", str(text), str(image), config, family, cache, str(result),
+    ], check=True)
+    digest = json.loads(result.read_text())["sha256"]
+    if not isinstance(digest, str) or len(digest) != 64 or any(
+        character not in "0123456789abcdef" for character in digest
+    ):
+        raise ValueError(f"{label}: invalid worker circuit hash")
+    return digest
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--exporter", required=True, type=pathlib.Path)
@@ -204,7 +226,22 @@ def main():
     parser.add_argument("--configs", default="full,reduced,unified")
     parser.add_argument("--cache-modes", default="plain,cached")
     parser.add_argument("--families", default=",".join(FAMILIES))
+    parser.add_argument("--guard-shell", type=pathlib.Path,
+                        help="source the CI guard shell for each complete decoder case")
+    parser.add_argument("--worker-case", nargs=6, help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.worker_case:
+        if (args.guard_shell or args.program or args.small_program or args.committed_verifiers or
+                args.work_dir is None):
+            parser.error("worker case requires a work directory and no parent program selection")
+        text, image, config, family, cache, result = args.worker_case
+        if (config not in {"full", "reduced", "unified"} or family not in FAMILIES or
+                cache not in {"plain", "cached"}):
+            parser.error("unknown worker configuration, family or cache mode")
+        digest = run_case(args.exporter.resolve(), args.oracle.resolve(), args.work_dir.resolve(),
+                          pathlib.Path(text), pathlib.Path(image), config, family, cache)
+        pathlib.Path(result).write_text(json.dumps({"sha256": digest}) + "\n")
+        return
     configs = args.configs.split(",")
     caches = args.cache_modes.split(",")
     families = args.families.split(",")
@@ -256,8 +293,10 @@ def main():
                            (config == "full" and family not in POOLED_FAMILIES) or \
                            (config == "unified" and family != "unified"):
                             continue
-                        digest = run_case(args.exporter.resolve(), args.oracle.resolve(), directory,
-                                          text.resolve(), image.resolve(), config, family, cache)
+                        case = (args.exporter.resolve(), args.oracle.resolve(), directory,
+                                text.resolve(), image.resolve(), config, family, cache)
+                        digest = (run_guarded_case(args.guard_shell.resolve(), *case)
+                                  if args.guard_shell else run_case(*case))
                         hashes[(text, cache, config, family)] = digest
                         print(f"PASS {text.name} {cache} {config} {family}", flush=True)
         for text, _ in programs:
