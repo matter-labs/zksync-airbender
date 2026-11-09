@@ -130,24 +130,7 @@ fn validate_inputs(
         .oracle()
         .config()
         .expect("Proth120 WHIR: setup oracle has not been committed");
-    let tile_bytes = shape
-        .rounds
-        .iter()
-        .filter_map(|round| round.oracle)
-        .map(|oracle| {
-            16usize
-                .checked_shl(oracle.log_n + oracle.tile_cosets_log2)
-                .expect("Proth120 WHIR: tile length overflow")
-        })
-        .max()
-        .expect("Proth120 WHIR: schedule has no intermediate oracle");
-    let expected = L1WhirShape::from_schedule(
-        schedule,
-        shape.log_message,
-        base_cfg.log_lde_factor,
-        base_cfg.log_values_per_leaf,
-        tile_bytes,
-    );
+    let expected = L1WhirShape::from_schedule(schedule);
     assert!(
         shape.rounds == expected.rounds
             && shape.log_base_lde == expected.log_base_lde

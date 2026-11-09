@@ -1,4 +1,4 @@
-use crate::upstream::WhirSchedule;
+use crate::upstream::{ProofProfile, SoundnessMode, WhirSchedule};
 
 pub const L1_WHIR_TILE_BYTES: usize = 1 << 30;
 
@@ -38,175 +38,52 @@ pub struct L1WhirShape {
 }
 
 impl L1WhirShape {
-    pub fn from_schedule(
-        schedule: &WhirSchedule,
-        log_message: u32,
-        log_base_lde: u32,
-        log_base_values_per_leaf: u32,
-        tile_bytes: usize,
-    ) -> Self {
-        assert!(
-            !schedule.is_virtual_packing(),
-            "Proth120 WHIR: requires explicit packing"
-        );
+    pub fn from_schedule(schedule: &WhirSchedule) -> Self {
+        let config = ProofProfile::L1Wrap.prover_config(21, SoundnessMode::PessimisticConjecture);
         assert_eq!(
-            schedule.base_round.folding_pow_bits, 0,
-            "Proth120 WHIR: does not implement folding PoW"
+            schedule, &config.whir_schedule,
+            "Proth120 WHIR requires the wrap schedule"
         );
-        for round in &schedule.internal_rounds {
-            assert_eq!(
-                round.ood_pow_bits, 0,
-                "Proth120 WHIR: does not implement OOD PoW"
-            );
-            assert_eq!(
-                round.folding_pow_bits, 0,
-                "Proth120 WHIR: does not implement folding PoW"
-            );
-            assert_eq!(
-                round.num_ood_samples, 1,
-                "Proth120 WHIR: requires one OOD sample per oracle"
-            );
-        }
+        let log_message = config.whir_message_size_log2() as u32;
+        let log_base_lde = config.lde_factor().trailing_zeros();
+        let cap_log = config.cap_size.trailing_zeros();
         let fold_steps = schedule.fold_steps();
-        let queries_per_round = schedule.queries_per_round();
-        let query_pow_bits = schedule.queries_pow_bits_per_round();
+        let queries = schedule.queries_per_round();
+        let pow_bits = schedule.queries_pow_bits_per_round();
         let lde_factors = schedule.intermediate_lde_factors();
         let count = schedule.num_rounds();
-        assert!(count >= 2, "Proth120 WHIR: at least two rounds required");
-        assert!(
-            queries_per_round.len() == count
-                && query_pow_bits.len() == count
-                && lde_factors.len() == count - 1,
-            "Proth120 WHIR: schedule lengths differ"
-        );
-        assert!(
-            (1..=26).contains(&log_message),
-            "Proth120 WHIR: log_message outside 1..=26"
-        );
-        let total_folds = fold_steps
-            .iter()
-            .try_fold(0usize, |acc, folds| acc.checked_add(*folds))
-            .expect("Proth120 WHIR: sum of folds overflow");
-        assert!(
-            total_folds <= log_message as usize,
-            "Proth120 WHIR: sum of folds exceeds log_message"
-        );
-        assert!(
-            schedule.cap_size.is_power_of_two(),
-            "Proth120 WHIR: cap_size must be a power of two"
-        );
-        assert!(
-            schedule.base_lde_factor().is_power_of_two(),
-            "Proth120 WHIR: base LDE factor must be a power of two"
-        );
-        assert_eq!(
-            schedule.base_lde_factor().trailing_zeros(),
-            log_base_lde,
-            "Proth120 WHIR: base LDE factor differs"
-        );
-        let cap_log = schedule.cap_size.trailing_zeros();
-        assert!(
-            cap_log <= log_base_lde,
-            "Proth120 WHIR: cap_log exceeds base log_lde"
-        );
-        assert!(
-            log_message + log_base_lde <= 31,
-            "Proth120 WHIR: base log_domain exceeds 31"
-        );
-        assert_eq!(
-            fold_steps[0], log_base_values_per_leaf as usize,
-            "Proth120 WHIR: first folds differ from base values per leaf"
-        );
-        assert!(
-            tile_bytes.is_power_of_two(),
-            "Proth120 WHIR: tile_bytes must be a power of two"
-        );
         let mut rounds: Vec<RoundShape> = Vec::with_capacity(count);
         let mut log_n = log_message;
-        let mut prior_query_domain = 0;
-        let mut term_capacity = 0usize;
-        let mut total_sumcheck_polys = 0usize;
+        let mut term_capacity = 0;
+        let mut total_sumcheck_polys = 0;
         for r in 0..count {
-            let folds = u32::try_from(fold_steps[r]).expect("Proth120 WHIR: folds overflow u32");
-            assert!(
-                (1..=4).contains(&folds),
-                "Proth120 WHIR: folds outside 1..=4"
-            );
-            log_n = log_n
-                .checked_sub(folds)
-                .expect("Proth120 WHIR: sum of folds exceeds log_message");
+            let folds = fold_steps[r] as u32;
+            log_n -= folds;
             total_sumcheck_polys += folds as usize;
-            let queries = queries_per_round[r];
-            assert!(
-                queries >= 1 && queries <= u32::MAX as usize,
-                "Proth120 WHIR: queries outside 1..=u32::MAX"
-            );
-            assert!(
-                query_pow_bits[r] <= 32,
-                "Proth120 WHIR: pow_bits exceeds 32"
-            );
             let query_domain_log2 = if r == 0 {
                 log_message + log_base_lde - folds
             } else {
                 rounds[r - 1].oracle.unwrap().log_domain - folds
             };
-            prior_query_domain = prior_query_domain.max(query_domain_log2);
             let oracle = if r + 1 < count {
-                let factor = lde_factors[r];
-                assert!(
-                    factor.is_power_of_two(),
-                    "Proth120 WHIR: oracle LDE factor must be a power of two"
-                );
-                let log_lde = factor.trailing_zeros();
-                let log_domain = log_n + log_lde;
-                assert!(log_n >= 8, "Proth120 WHIR: oracle log_n below 8");
-                assert!(
-                    log_domain <= 31,
-                    "Proth120 WHIR: oracle log_domain exceeds 31"
-                );
-                assert!(
-                    cap_log <= log_lde,
-                    "Proth120 WHIR: cap_log exceeds oracle log_lde"
-                );
-                assert!(
-                    log_domain >= prior_query_domain,
-                    "Proth120 WHIR: oracle domain below earlier query domain"
-                );
-                let log_v =
-                    u32::try_from(fold_steps[r + 1]).expect("Proth120 WHIR: log_v overflow u32");
-                assert!(
-                    (1..=4).contains(&log_v),
-                    "Proth120 WHIR: log_v outside 1..=4"
-                );
-                let log_leaves = log_n
-                    .checked_sub(log_v)
-                    .expect("Proth120 WHIR: leaf width exceeds oracle length");
-                assert!(
-                    log_leaves >= 1,
-                    "Proth120 WHIR: oracle has no leaf index bits"
-                );
-                let skip_bottom = log_leaves.min(5);
-                assert!(
-                    tile_bytes >= 16usize << log_n,
-                    "Proth120 WHIR: tile_bytes below one coset"
-                );
-                let tile_cosets_log2 = (tile_bytes / 16)
-                    .trailing_zeros()
-                    .saturating_sub(log_n)
-                    .min(log_lde);
-                term_capacity = term_capacity
-                    .checked_add(queries)
-                    .expect("Proth120 WHIR: term_capacity overflow");
+                let log_lde = lde_factors[r].trailing_zeros();
+                let log_v = fold_steps[r + 1] as u32;
+                let log_leaves = log_n - log_v;
+                let skip_bottom = 5;
+                term_capacity += queries[r];
                 Some(OracleShape {
                     log_n,
                     log_lde,
-                    log_domain,
+                    log_domain: log_n + log_lde,
                     log_v,
                     log_leaves,
                     skip_bottom,
                     cap_log,
-                    tile_cosets_log2,
-                    retained_per_coset: 2 * (1usize << (log_leaves - skip_bottom)) - 1,
+                    tile_cosets_log2: (L1_WHIR_TILE_BYTES / 16)
+                        .trailing_zeros()
+                        .saturating_sub(log_n)
+                        .min(log_lde),
+                    retained_per_coset: 2 * (1 << (log_leaves - skip_bottom)) - 1,
                     path_len: (log_leaves + log_lde - cap_log) as usize,
                 })
             } else {
@@ -214,17 +91,13 @@ impl L1WhirShape {
             };
             rounds.push(RoundShape {
                 folds,
-                queries,
-                pow_bits: query_pow_bits[r],
+                queries: queries[r],
+                pow_bits: pow_bits[r],
                 log_poly_after: log_n,
                 query_domain_log2,
                 oracle,
             });
         }
-        assert!(
-            term_capacity <= 256,
-            "Proth120 WHIR: term_capacity exceeds one block"
-        );
         Self {
             log_message,
             log_base_lde,
