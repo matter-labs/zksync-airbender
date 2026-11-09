@@ -71,19 +71,4 @@ EXTERN __global__ void ab_keccak256_pow_finalize_kernel(u8 *seed_io, const u32 b
   store_seed(value, seed_io);
 }
 
-EXTERN __global__ void ab_keccak256_pow_helpers_probe_kernel(const u8 *digests, const u32 *bits, const u64 *candidates, const u64 *strides, const u64 count,
-                                                             u32 *predicates, u64 *next, u32 *can_advance) {
-  const u64 index = static_cast<u64>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (index >= count)
-    return;
-  if (bits[index] > 256)
-    __trap();
-  u8 value[32];
-  load_seed(digests + index * 32, value);
-  predicates[index] = top_bits_are_zero(value, bits[index]);
-  u64 next_nonce;
-  can_advance[index] = advance(candidates[index], strides[index], UINT64_MAX, next_nonce);
-  next[index] = next_nonce;
-}
-
 } // namespace airbender::hash::keccak256

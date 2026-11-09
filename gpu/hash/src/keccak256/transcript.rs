@@ -10,8 +10,8 @@ use era_cudart_sys::CudaDeviceAttr;
 use gpu_core::primitives::field::PR;
 
 use super::{
-    assert_no_overlap, checked_bytes, checked_product, checked_u32, checked_u64, grid_dim,
-    BLOCK_THREADS, SEED_BYTES,
+    assert_no_overlap, checked_bytes, checked_product, checked_u32, checked_u64, BLOCK_THREADS,
+    SEED_BYTES,
 };
 use crate::pow::pow_chunk_steps;
 
@@ -147,20 +147,6 @@ cuda_kernel!(
     ab_keccak256_pow_finalize_kernel(seed_io: *mut u8, bits: u32, nonce: *const u64)
 );
 
-cuda_kernel!(
-    Keccak256PowHelpersProbe,
-    ab_keccak256_pow_helpers_probe_kernel(
-        digests: *const u8,
-        bits: *const u32,
-        candidates: *const u64,
-        strides: *const u64,
-        count: u64,
-        predicates: *mut u32,
-        next: *mut u64,
-        can_advance: *mut u32
-    )
-);
-
 fn pow_shape(name: &str, seed: &DeviceSlice<u8>, bits: u32, nonce: &DeviceVariable<u64>) {
     assert_seed(name, seed);
     assert!(bits <= 256, "keccak256::{name}: bits <= 256");
@@ -267,78 +253,6 @@ pub(super) fn pow_search_bounded(
         nonce.as_mut_ptr(),
     );
     Keccak256PowFunction::default().launch(
-        &CudaLaunchConfig::basic(blocks, BLOCK_THREADS, stream),
-        &args,
-    )
-}
-
-#[doc(hidden)]
-pub fn pow_helpers_probe(
-    digests: &DeviceSlice<u8>,
-    bits: &DeviceSlice<u32>,
-    candidates: &DeviceSlice<u64>,
-    strides: &DeviceSlice<u64>,
-    predicates: &mut DeviceSlice<u32>,
-    next: &mut DeviceSlice<u64>,
-    can_advance: &mut DeviceSlice<u32>,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    const NAME: &str = "pow_helpers_probe";
-    let count = bits.len();
-    assert_eq!(
-        digests.len(),
-        checked_product(NAME, count, SEED_BYTES),
-        "keccak256::{NAME}: digests.len() == 32 * count"
-    );
-    assert_eq!(
-        candidates.len(),
-        count,
-        "keccak256::{NAME}: candidates.len() == count"
-    );
-    assert_eq!(
-        strides.len(),
-        count,
-        "keccak256::{NAME}: strides.len() == count"
-    );
-    assert_eq!(
-        predicates.len(),
-        count,
-        "keccak256::{NAME}: predicates.len() == count"
-    );
-    assert_eq!(next.len(), count, "keccak256::{NAME}: next.len() == count");
-    assert_eq!(
-        can_advance.len(),
-        count,
-        "keccak256::{NAME}: can_advance.len() == count"
-    );
-    for out in [&*predicates, &*can_advance] {
-        assert_no_overlap(NAME, out, digests);
-        assert_no_overlap(NAME, out, bits);
-        assert_no_overlap(NAME, out, candidates);
-        assert_no_overlap(NAME, out, strides);
-        assert_no_overlap(NAME, out, next);
-    }
-    assert_no_overlap(NAME, predicates, can_advance);
-    assert_no_overlap(NAME, next, digests);
-    assert_no_overlap(NAME, next, bits);
-    assert_no_overlap(NAME, next, candidates);
-    assert_no_overlap(NAME, next, strides);
-    let blocks = grid_dim(NAME, count, BLOCK_THREADS);
-    let count = checked_u64(NAME, count);
-    if count == 0 {
-        return Ok(());
-    }
-    let args = Keccak256PowHelpersProbeArguments::new(
-        digests.as_ptr(),
-        bits.as_ptr(),
-        candidates.as_ptr(),
-        strides.as_ptr(),
-        count,
-        predicates.as_mut_ptr(),
-        next.as_mut_ptr(),
-        can_advance.as_mut_ptr(),
-    );
-    Keccak256PowHelpersProbeFunction::default().launch(
         &CudaLaunchConfig::basic(blocks, BLOCK_THREADS, stream),
         &args,
     )
