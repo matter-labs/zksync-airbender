@@ -42,6 +42,15 @@ impl<V: Copy, const N: usize> LazyVec<V, N> {
         unsafe { core::slice::from_raw_parts_mut(self.data.as_mut_ptr().cast::<V>(), self.len) }
     }
 
+    /// The storage past the current length, to be written in place. What was written is
+    /// published with [`Self::set_len`].
+    #[inline(always)]
+    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<V>] {
+        debug_assert!(self.len <= N);
+        // SAFETY: `len <= N` is an invariant of the type
+        unsafe { self.data.get_unchecked_mut(self.len..) }
+    }
+
     #[inline(always)]
     pub const fn clear(&mut self) {
         self.len = 0;
@@ -103,26 +112,28 @@ impl<V: Copy, const N: usize> LazyVec<V, N> {
         unsafe { self.data.map(|el| el.assume_init()) }
     }
 
-    /// Returns a reference to the first M elements as a fixed-size array.
+    /// Returns a reference to the first M elements as a fixed-size array. `M <= N` is checked
+    /// at compile time.
     ///
     /// # Safety
     ///
-    /// `M <= N` and at least `M` elements must have been written.
+    /// At least `M` elements must have been written.
     #[inline(always)]
     pub unsafe fn as_array<const M: usize>(&self) -> &[V; M] {
-        debug_assert!(M <= N);
+        const { assert!(M <= N, "the array is larger than the capacity") };
         debug_assert!(self.len >= M);
         &*self.data.as_ptr().cast::<[V; M]>()
     }
 
-    /// Returns a mutable reference to the first M elements as a fixed-size array.
+    /// Returns a mutable reference to the first M elements as a fixed-size array. `M <= N` is
+    /// checked at compile time.
     ///
     /// # Safety
     ///
-    /// `M <= N` and at least `M` elements must have been written.
+    /// At least `M` elements must have been written.
     #[inline(always)]
     pub unsafe fn as_array_mut<const M: usize>(&mut self) -> &mut [V; M] {
-        debug_assert!(M <= N);
+        const { assert!(M <= N, "the array is larger than the capacity") };
         debug_assert!(self.len >= M);
         &mut *self.data.as_mut_ptr().cast::<[V; M]>()
     }

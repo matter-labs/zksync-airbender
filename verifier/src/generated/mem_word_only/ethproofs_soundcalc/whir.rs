@@ -57,14 +57,16 @@ pub fn read_ood_samples<I: NonDeterminismSource<BabyBearField>>(
 ) {
     let num_ood = WHIR_NUM_OOD_SAMPLES[committed_oracle];
     let ood_pow_bits = WHIR_OOD_POW_BITS[committed_oracle];
-    unsafe {
-        ood_points.set_len(num_ood);
-    }
+    ood_points.clear();
+    let ood_points_dst = &mut ood_points.spare_capacity_mut()[..num_ood];
     if ood_pow_bits > 0 {
         read_and_verify_pow::<I>(ts, ood_pow_bits, nd_source);
-        super::common::draw_field_els_into_after_pow::<OOD_DRAW_BUF>(ts, ood_points.as_mut_slice());
+        super::common::draw_field_els_into_uninit_after_pow::<OOD_DRAW_BUF>(ts, ood_points_dst);
     } else {
-        super::common::draw_field_els_into::<OOD_DRAW_BUF>(ts, ood_points.as_mut_slice());
+        super::common::draw_field_els_into_uninit::<OOD_DRAW_BUF>(ts, ood_points_dst);
+    }
+    unsafe {
+        ood_points.set_len(num_ood);
     }
     let ood_data_words = num_ood * super::common::EXT_DEGREE;
     let mut ood_buf = CommitBuf::<OOD_COMMIT_BUF>::new();
