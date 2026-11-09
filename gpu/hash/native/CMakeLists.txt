@@ -12,6 +12,7 @@ add_library(gpu_hash_native STATIC
         gather.cu
         hash.cu
         hash.cuh
+        pow_search.cuh
         keccak256.cuh
         keccak256_hash.cu
         keccak256_merkle.cu

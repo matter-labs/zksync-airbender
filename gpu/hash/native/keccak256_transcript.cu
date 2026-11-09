@@ -54,7 +54,7 @@ EXTERN __global__ void ab_keccak256_transcript_draw_fields_kernel(u8 *seed_io, p
 }
 
 EXTERN __global__ void ab_keccak256_pow_kernel(const u8 *seed, const u32 bits, const u64 max_nonce, const u32 chunk_steps, u64 *counter, u64 *result) {
-  pow_search_counter(seed, bits, max_nonce, chunk_steps, counter, result);
+  pow_search(seed, bits, max_nonce, chunk_steps, counter, result);
 }
 
 EXTERN __global__ void ab_keccak256_pow_finalize_kernel(u8 *seed_io, const u32 bits, const u64 *nonce) {

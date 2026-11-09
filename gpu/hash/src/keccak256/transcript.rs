@@ -226,7 +226,7 @@ pub fn keccak256_pow(
 }
 
 #[cfg(test)]
-pub(super) fn pow_search_bounded(
+pub(crate) fn pow_search_bounded(
     seed: &DeviceSlice<u8>,
     bits: u32,
     max_nonce: u64,
