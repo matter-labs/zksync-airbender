@@ -13,6 +13,7 @@ target_sources(gpu_trace_native PRIVATE
         mul_div_unsigned.cu
         shift_binary.cu
         unified_reduced_machine.cu
+        unified_reduced_machine_proth120.cu
         template_delegation.cuh
         template_unrolled.cuh
 )

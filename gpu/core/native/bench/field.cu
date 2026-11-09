@@ -1,4 +1,5 @@
 #include "primitives/field.cuh"
+#include "primitives/proth120.cuh"
 
 namespace airbender::primitives::field {
 
@@ -43,5 +44,9 @@ EXTERN __launch_bounds__(1024, 1) __global__ void ab_mul_e4_bench_kernel(bf *val
 EXTERN __launch_bounds__(1024, 1) __global__ void ab_add_e6_bench_kernel(bf *values, const unsigned count) { bench<e6, 1024, 5, 5>(values, count, e6::add); }
 
 EXTERN __launch_bounds__(1024, 1) __global__ void ab_mul_e6_bench_kernel(bf *values, const unsigned count) { bench<e6, 1024, 5, 5>(values, count, e6::mul); }
+
+EXTERN __launch_bounds__(1024, 1) __global__ void ab_add_pr_bench_kernel(bf *values, const unsigned count) { bench<pr, 1024, 8, 8>(values, count, pr::add); }
+
+EXTERN __launch_bounds__(1024, 1) __global__ void ab_mul_pr_bench_kernel(bf *values, const unsigned count) { bench<pr, 1024, 8, 8>(values, count, pr::mul); }
 
 } // namespace airbender::primitives::field

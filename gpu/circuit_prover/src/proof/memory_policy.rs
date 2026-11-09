@@ -2,7 +2,7 @@ pub mod presets;
 
 pub use gpu_gkr::forward::GkrMemoryPolicy;
 pub use gpu_trace::trace::holder::{
-    OpeningStrategy, WitnessCommitmentStrategy, WitnessPostCommitStorage,
+    OpeningStrategy, PartialTreePolicy, WitnessCommitmentStrategy, WitnessPostCommitStorage,
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -10,6 +10,7 @@ pub enum WitnessOpeningStrategy {
     #[default]
     ReuseCosets,
     Recompute(OpeningStrategy),
+    PackedCosetRecompute,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -39,6 +40,10 @@ impl WitnessMemoryPolicy {
                     | (
                         Store::RawEvaluations | Store::RawAndMonomials,
                         WitnessOpeningStrategy::Recompute(_)
+                    )
+                    | (
+                        Store::RawAndMonomials,
+                        WitnessOpeningStrategy::PackedCosetRecompute
                     )
             )
     }

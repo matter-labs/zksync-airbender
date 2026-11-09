@@ -15,8 +15,8 @@ use result::ExecutionProverResult;
 
 use crate::backend::CircuitPrecomputation;
 use crate::messages::{
-    InitsAndTeardownsData, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
-    ProofResult, TracingData,
+    InitsAndTeardownsData, MemoryCommitmentRequest, MemoryCommitmentResult, MemoryPartialTrees,
+    ProofRequest, ProofResult, TracingData,
 };
 use crate::upstream::{
     Blake2sTranscript, FinalRegisterValue, GKRExternalChallenges, MerkleTreeCapVarLength, BF, E4,
@@ -27,5 +27,6 @@ use execution_prover_model::circuit_type::{
     DelegationCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
 };
 use log::debug;
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use verifier_common::MEMORY_DELEGATION_POW_BITS;

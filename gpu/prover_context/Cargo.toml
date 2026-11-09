@@ -16,5 +16,10 @@ era_cudart = "=0.156.0"
 era_cudart_sys = "=0.156.0"
 log = "0.4.29"
 
+[dev-dependencies]
+fft = { workspace = true }
+field = { workspace = true }
+worker = { workspace = true }
+
 [lints]
 workspace = true

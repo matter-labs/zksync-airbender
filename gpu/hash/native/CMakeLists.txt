@@ -12,5 +12,14 @@ add_library(gpu_hash_native STATIC
         gather.cu
         hash.cu
         hash.cuh
+        keccak256.cuh
+        keccak256_hash.cu
+        keccak256_merkle.cu
+        keccak256_gather.cu
+        keccak256_transcript.cu
 )
+option(GPU_HASH_BUILD_BENCH "Compile bench-only Keccak256 kernels into the archive" OFF)
+if (GPU_HASH_BUILD_BENCH)
+    target_sources(gpu_hash_native PRIVATE bench/keccak256_bench.cu bench/pow_bench.cu)
+endif ()
 ab_cuda_configure_target(gpu_hash_native PREFIX GPU_HASH DETERMINISTIC_POW INCLUDE_DIRS ${GPU_CORE_NATIVE_INCLUDE})

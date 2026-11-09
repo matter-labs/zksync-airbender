@@ -211,6 +211,9 @@ pub mod memory_delegation;
 pub mod memory_unrolled;
 pub mod multiplicities;
 mod option;
+// pub: the Proth120 L1 wrap proof job (via `gpu_gkr` stage 1) launches these witness-generation
+// entry points across the crate boundary.
+pub mod proth120;
 mod ram_access;
 pub use execution_prover_model::trace;
 // test-reference readers: apex test suites reach `trace_delegation` across the crate boundary.

@@ -13,6 +13,7 @@ pub(crate) mod source;
 pub(crate) mod source_layout;
 
 pub(crate) type Bf = field::baby_bear::base::BabyBearField;
+#[cfg(test)]
 pub(crate) type Ext = field::baby_bear::ext4::BabyBearExt4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

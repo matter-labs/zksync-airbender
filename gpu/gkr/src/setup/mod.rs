@@ -19,11 +19,31 @@ use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPi
 use gpu_hash::blake2s::Digest;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode, TreesHolder};
+use gpu_trace::trace::holder::{
+    resolve_partial_tree_reduction_layers, TraceHolder, TreesCacheMode, TreesHolder,
+};
 
 pub(crate) mod kernels;
+pub mod proth120;
 pub use kernels::GpuGKRSetupHost;
 pub(crate) use kernels::*;
+pub use proth120::{L1WrapSetupHost, PackedSetupSource};
+
+fn partial_tree_projection_start(
+    name: &str,
+    source_depth: u32,
+    target_depth: u32,
+    source_len: usize,
+    target_len: usize,
+) -> usize {
+    assert!(
+        target_depth >= source_depth,
+        "{name}: target partial-tree depth must be >= source depth"
+    );
+    source_len
+        .checked_sub(target_len)
+        .unwrap_or_else(|| panic!("{name}: target partial tree must fit the source tree"))
+}
 
 /// Device setup with consumable raw backing. The host setup can be reused
 /// to create fresh transfers.
@@ -41,12 +61,29 @@ impl<'a> GpuGKRSetupTransfer<'a> {
 }
 
 impl<'a> GpuGKRSetupTransfer<'a> {
-    pub fn new(host: Arc<GpuGKRSetupHost>, context: &ProverContext) -> CudaResult<Self> {
+    pub fn new(
+        host: Arc<GpuGKRSetupHost>,
+        target_reduction_layers: u32,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
         let geometry = host.base_commitment_geometry();
+        let commitment_domain = geometry.message_size_log2() as u32;
+        let target_depth = resolve_partial_tree_reduction_layers(
+            target_reduction_layers,
+            commitment_domain,
+            host.log_lde_factor,
+            host.log_rows_per_leaf,
+            host.log_tree_cap_size,
+        );
+        assert!(
+            target_depth >= host.partial_tree_reduction_layers,
+            "GpuGKRSetupTransfer: target partial-tree depth must be >= source depth"
+        );
         let mut trace_holder = TraceHolder::<BF>::new_base_without_cosets(
             geometry,
             crate::upstream::BaseOracleRole::Setup,
             TreesCacheMode::CachePartial,
+            target_reduction_layers,
             context,
         )?;
         // Allocate the cap up front so `schedule_transfer` has a stable destination.
@@ -80,12 +117,30 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             1usize << self.host.log_lde_factor,
             "expected one cached partial tree per coset",
         );
+        let source_depth = self.host.partial_tree_reduction_layers;
+        let target_depth = self.trace_holder.partial_tree_reduction_layers();
+        let source_len = 1usize
+            << (self.host.commitment_log_domain_size() + 1
+                - self.host.log_rows_per_leaf
+                - source_depth);
         for (coset_index, src_tree) in self.host.partial_trees.iter().enumerate() {
+            assert_eq!(
+                src_tree.len(),
+                source_len,
+                "GpuGKRSetupTransfer: source tree length mismatch"
+            );
             let dst_tree = self
                 .trace_holder
                 .get_uninit_tree_mut(coset_index)
                 .expect("setup transfers require partial-tree caching");
-            memory_copy_async(dst_tree, &src_tree[..], stream)?;
+            let start = partial_tree_projection_start(
+                "GpuGKRSetupTransfer",
+                source_depth,
+                target_depth,
+                src_tree.len(),
+                dst_tree.len(),
+            );
+            memory_copy_async(dst_tree, &src_tree[start..], stream)?;
         }
         let unified_dst = self
             .trace_holder
@@ -104,7 +159,13 @@ impl<'a> GpuGKRSetupTransfer<'a> {
             1usize << self.trace_holder.log_domain_size,
             self.host.raw_hypercube_evals.len() / self.host.columns_count
         );
-        bind_trace_holder_columns_into_storage(&self.trace_holder, storage, GKRAddress::Setup);
+        bind_trace_holder_column_range_into_storage(
+            &self.trace_holder,
+            0,
+            self.trace_holder.columns_count,
+            storage,
+            GKRAddress::Setup,
+        );
     }
 
     #[cfg(test)]
@@ -138,13 +199,17 @@ impl<'a> GpuGKRSetupTransfer<'a> {
 
         let mut storage = GpuGKRStorage::default();
         self.bind_setup_columns_into_storage(&mut storage);
-        bind_trace_holder_columns_into_storage(
+        bind_trace_holder_column_range_into_storage(
             memory_trace_holder,
+            0,
+            memory_trace_holder.columns_count,
             &mut storage,
             GKRAddress::BaseLayerMemory,
         );
-        bind_trace_holder_columns_into_storage(
+        bind_trace_holder_column_range_into_storage(
             witness_trace_holder,
+            0,
+            witness_trace_holder.columns_count,
             &mut storage,
             GKRAddress::BaseLayerWitness,
         );
@@ -368,7 +433,13 @@ pub(crate) fn bootstrap_storage_from_trace_holders<E>(
 
     let mut storage = GpuGKRStorage::default();
     if let Some(setup_trace_holder) = setup_trace_holder {
-        bind_trace_holder_columns_into_storage(setup_trace_holder, &mut storage, GKRAddress::Setup);
+        bind_trace_holder_column_range_into_storage(
+            setup_trace_holder,
+            0,
+            setup_trace_holder.columns_count,
+            &mut storage,
+            GKRAddress::Setup,
+        );
     }
     let memory_columns = merged_witness_offset.unwrap_or(memory_trace_holder.columns_count);
     bind_trace_holder_column_range_into_storage(

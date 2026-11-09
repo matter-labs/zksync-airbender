@@ -48,9 +48,6 @@ const fn production_fwd_vm_kernel(circuit_type: CircuitType) -> GkrFwdVmReleaseS
             DelegationCircuitType::KeccakThetaRho => ab_gkr_fwd_vm_b8_kernel,
         },
         CircuitType::Unrolled(circuit_type) => match circuit_type {
-            UnrolledCircuitType::Unified22 => {
-                unimplemented!()
-            }
             UnrolledCircuitType::InitsAndTeardowns => ab_gkr_fwd_vm_kernel,
             UnrolledCircuitType::Memory(circuit_type) => match circuit_type {
                 UnrolledMemoryCircuitType::LoadStoreSubwordOnly => ab_gkr_fwd_vm_b8_kernel,
@@ -63,6 +60,7 @@ const fn production_fwd_vm_kernel(circuit_type: CircuitType) -> GkrFwdVmReleaseS
                 UnrolledNonMemoryCircuitType::ShiftBinary => ab_gkr_fwd_vm_b8_kernel,
             },
             UnrolledCircuitType::Unified => ab_gkr_fwd_vm_b8_kernel,
+            UnrolledCircuitType::Unified22 => ab_gkr_fwd_vm_b8_kernel,
         },
     }
 }

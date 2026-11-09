@@ -1,7 +1,7 @@
 use crate::simple::{Add, BinaryOp, Mul, ParametrizedOp, Pow, SetByRef, SetByVal, Sub};
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
-use gpu_core::primitives::field::{BF, E4};
+use gpu_core::primitives::field::{BF, E4, PR};
 
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
@@ -29,6 +29,11 @@ fn set_by_val_e4() {
     set_by_val::<E4, 18>();
 }
 
+#[test]
+fn set_by_val_pr() {
+    set_by_val::<PR, 18>();
+}
+
 fn set_by_ref<T: Field + SetByVal + SetByRef, const LOG_N: u32>() {
     let n = 1 << LOG_N;
     let value = T::ONE;
@@ -52,6 +57,11 @@ fn set_by_ref_bf() {
 #[test]
 fn set_by_ref_e4() {
     set_by_ref::<E4, 18>();
+}
+
+#[test]
+fn set_by_ref_pr() {
+    set_by_ref::<PR, 18>();
 }
 
 fn set_to_zero<T: Field, const LOG_N: u32>() {
@@ -120,6 +130,11 @@ fn pow_e4() {
     pow::<E4, 8>(&E4_VALUES);
 }
 
+#[test]
+fn pow_pr() {
+    pow::<PR, 8>(&PR_VALUES);
+}
+
 fn add<T: Field, const LOG_N: u32>(additional_values: &[T])
 where
     Add: BinaryOp<T, T, T>,
@@ -139,6 +154,11 @@ fn add_e4() {
     add::<E4, 8>(&E4_VALUES);
 }
 
+#[test]
+fn add_pr() {
+    add::<PR, 8>(&PR_VALUES);
+}
+
 fn add_into_x<T: Field, const LOG_N: u32>(additional_values: &[T])
 where
     Add: BinaryOp<T, T, T>,
@@ -151,6 +171,11 @@ where
 #[test]
 fn add_into_x_bf() {
     add_into_x::<BF, 10>(&BF_VALUES);
+}
+
+#[test]
+fn add_into_x_pr() {
+    add_into_x::<PR, 8>(&PR_VALUES);
 }
 
 fn add_into_y<T: Field, const LOG_N: u32>(additional_values: &[T])
@@ -167,6 +192,11 @@ where
 #[test]
 fn add_into_y_bf() {
     add_into_y::<BF, 10>(&BF_VALUES);
+}
+
+#[test]
+fn add_into_y_pr() {
+    add_into_y::<PR, 8>(&PR_VALUES);
 }
 
 fn mul<T: Field, const LOG_N: u32>(additional_values: &[T])
@@ -188,6 +218,11 @@ fn mul_e4() {
     mul::<E4, 8>(&E4_VALUES);
 }
 
+#[test]
+fn mul_pr() {
+    mul::<PR, 8>(&PR_VALUES);
+}
+
 fn mul_into_x<T: Field, const LOG_N: u32>(additional_values: &[T])
 where
     Mul: BinaryOp<T, T, T>,
@@ -200,6 +235,11 @@ where
 #[test]
 fn mul_into_x_bf() {
     mul_into_x::<BF, 10>(&BF_VALUES);
+}
+
+#[test]
+fn mul_into_x_pr() {
+    mul_into_x::<PR, 8>(&PR_VALUES);
 }
 
 fn mul_into_y<T: Field, const LOG_N: u32>(additional_values: &[T])
@@ -216,6 +256,11 @@ where
 #[test]
 fn mul_into_y_bf() {
     mul_into_y::<BF, 10>(&BF_VALUES);
+}
+
+#[test]
+fn mul_into_y_pr() {
+    mul_into_y::<PR, 8>(&PR_VALUES);
 }
 
 fn sub<T: Field, const LOG_N: u32>(additional_values: &[T])
@@ -237,6 +282,11 @@ fn sub_e4() {
     sub::<E4, 8>(&E4_VALUES);
 }
 
+#[test]
+fn sub_pr() {
+    sub::<PR, 8>(&PR_VALUES);
+}
+
 fn sub_into_x<T: Field, const LOG_N: u32>(additional_values: &[T])
 where
     Sub: BinaryOp<T, T, T>,
@@ -249,6 +299,11 @@ where
 #[test]
 fn sub_into_x_bf() {
     sub_into_x::<BF, 10>(&BF_VALUES);
+}
+
+#[test]
+fn sub_into_x_pr() {
+    sub_into_x::<PR, 8>(&PR_VALUES);
 }
 
 fn sub_into_y<T: Field, const LOG_N: u32>(additional_values: &[T])
@@ -265,6 +320,11 @@ where
 #[test]
 fn sub_into_y_bf() {
     sub_into_y::<BF, 10>(&BF_VALUES);
+}
+
+#[test]
+fn sub_into_y_pr() {
+    sub_into_y::<PR, 8>(&PR_VALUES);
 }
 
 #[test]

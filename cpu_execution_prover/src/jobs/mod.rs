@@ -17,6 +17,10 @@ use execution_prover_model::trace::ChunkedTraceHolder;
 use std::borrow::Cow;
 use worker::Worker;
 
+/// CPU production expansion used by `gpu_trace`'s Proth120 parity tests.
+#[cfg(any(test, feature = "test-support"))]
+pub use proth120::expand_inits_and_teardowns;
+
 #[derive(Default)]
 pub(crate) struct CpuJobs {
     baby_bear: baby_bear::BabyBearJobs,

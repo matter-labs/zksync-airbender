@@ -1,7 +1,7 @@
 pub mod inputs;
 pub mod memory_policy;
 
-use memory_policy::ProofMemoryPolicy;
+use memory_policy::{PartialTreePolicy, ProofMemoryPolicy};
 mod orchestration;
 
 use std::sync::Arc;
@@ -38,6 +38,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     memory_policy: ProofMemoryPolicy,
+    partial_trees: PartialTreePolicy,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
     prove_inner(
@@ -46,6 +47,7 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         final_trace_size_log_2,
         inputs,
         memory_policy,
+        partial_trees,
         None,
         context,
     )
@@ -65,6 +67,7 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
         final_trace_size_log_2,
         inputs,
         ProofMemoryPolicy::default(),
+        PartialTreePolicy::DEFAULT,
         Some(Box::default()),
         context,
     )
@@ -76,6 +79,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
     memory_policy: ProofMemoryPolicy,
+    partial_trees: PartialTreePolicy,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
@@ -111,7 +115,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         decoder,
         inits_and_teardowns,
         tracing_data,
-        memory,
+        mut memory,
         top_bits,
         top_bits_host,
         external_challenges,
@@ -155,12 +159,19 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         },
         tracing_data.as_ref(),
         memory_policy.witness,
+        partial_trees,
         context,
     )?;
     // Their final device readers are enqueued; Transfer still owns the H2D sources.
     drop(tracing_data);
     drop(inits_and_teardowns);
     drop(decoder);
+    // Persisted commitment trees replace the openings' per-coset tree rebuild.
+    if let Some((geometry, trees)) = memory.take_partial_trees() {
+        stage1_output
+            .memory_trace_holder
+            .install_transferred_partial_trees(geometry, trees);
+    }
 
     let output_evaluations_slab =
         unsafe { proof_layout.output_evaluations_device_mut(proof_slab.as_ptr() as *mut u8) }.map(

@@ -42,6 +42,7 @@ pub(in crate::jobs) fn run<A: HostTraceAllocator>(
         tracing_data,
         external_challenges,
         memory_caps,
+        memory_partial_trees: _,
         profile,
     } = request;
     let config = precomputations.config(profile);

@@ -66,13 +66,16 @@ fn boundary_queries(log_lde_factor: u32, log_leaves_count: u32) -> Vec<u32> {
     queries
 }
 
-fn upload_u32(values: &[u32], stream: &CudaStream) -> DeviceAllocation<u32> {
+pub(super) fn upload_u32(values: &[u32], stream: &CudaStream) -> DeviceAllocation<u32> {
     let mut device = DeviceAllocation::alloc(values.len()).unwrap();
     memory_copy_async(&mut device, values, stream).unwrap();
     device
 }
 
-fn download<T: Copy + Default>(device: &DeviceAllocation<T>, stream: &CudaStream) -> Vec<T> {
+pub(super) fn download<T: Copy + Default>(
+    device: &DeviceAllocation<T>,
+    stream: &CudaStream,
+) -> Vec<T> {
     let mut host = vec![T::default(); device.len()];
     memory_copy_async(&mut host, device, stream).unwrap();
     host
@@ -91,7 +94,7 @@ fn assert_elementwise_eq<T: Copy + PartialEq + std::fmt::Debug>(
 
 /// Logical leaf digests of one coset, then every node layer above them, so
 /// `tower[layer][i]` is the tree node at height `layer`, index `i`.
-fn host_tower(
+pub(super) fn host_tower(
     natural: &[BF],
     coset_base: usize,
     rows_count: usize,
@@ -324,6 +327,8 @@ fn check_partial_path_gather(
             log_rows_per_hash,
             builder_layers_count,
             cosets_count,
+            LOG_WARP_SIZE,
+            None,
             stream,
         )
         .unwrap();
@@ -384,6 +389,7 @@ fn check_partial_path_gather(
             log_rows_per_hash,
             log_leaves_count,
             layers_count,
+            LOG_WARP_SIZE,
             &queries_device,
             stream,
         )
@@ -595,6 +601,8 @@ fn check_paths_from_rows(
         log_rows_per_hash,
         builder_layers_count,
         1,
+        LOG_WARP_SIZE,
+        None,
         stream,
     )
     .unwrap();
@@ -623,6 +631,7 @@ fn check_paths_from_rows(
         &new_tree,
         &mut new_paths,
         layers_count,
+        LOG_WARP_SIZE,
         stream,
     )
     .unwrap();
@@ -799,6 +808,8 @@ fn single_coset_openings_preserve_query_slots_and_match_cpu() {
                     log_rows,
                     log_leaves + 1 - LOG_WARP_SIZE,
                     1,
+                    LOG_WARP_SIZE,
+                    None,
                     &stream,
                 )
                 .unwrap();
@@ -821,6 +832,7 @@ fn single_coset_openings_preserve_query_slots_and_match_cpu() {
                     log_n,
                     log_rows,
                     layers,
+                    LOG_WARP_SIZE,
                     &d_queries,
                     &mut d_paths,
                     &stream,

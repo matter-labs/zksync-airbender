@@ -1,4 +1,5 @@
 #include "primitives/field.cuh"
+#include "primitives/proth120.cuh"
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;
@@ -19,6 +20,10 @@ using bf_setter = wrapping_matrix_setter<bf_matrix_setter<st_modifier::cs>>;
 using e4_value_getter = value_getter<e4>;
 using e4_getter = wrapping_matrix_getter<e4_matrix_getter<ld_modifier::cs>>;
 using e4_setter = wrapping_matrix_setter<e4_matrix_setter<st_modifier::cs>>;
+
+using pr_value_getter = value_getter<pr>;
+using pr_getter = wrapping_matrix_getter<pr_matrix_getter<ld_modifier::cs>>;
+using pr_setter = wrapping_matrix_setter<pr_matrix_setter<st_modifier::cs>>;
 
 using u32_value_getter = value_getter<u32>;
 using u32_getter = wrapping_matrix_getter<matrix_getter<u32, ld_modifier::cs>>;
@@ -64,6 +69,7 @@ SET_BY_VAL_KERNEL(u32)
 SET_BY_VAL_KERNEL(u64)
 SET_BY_VAL_KERNEL(bf)
 SET_BY_VAL_KERNEL(e4)
+SET_BY_VAL_KERNEL(pr)
 
 #define SET_BY_REF_KERNEL(arg_t)                                                                                                                               \
   EXTERN __global__ void ab_set_by_ref_##arg_t##_kernel(const arg_t##_getter arg, arg_t##_setter result) { unary_op(return_value, arg, result); }
@@ -72,6 +78,7 @@ SET_BY_REF_KERNEL(u32)
 SET_BY_REF_KERNEL(u64)
 SET_BY_REF_KERNEL(bf)
 SET_BY_REF_KERNEL(e4)
+SET_BY_REF_KERNEL(pr)
 
 #define PARAMETRIZED_KERNEL(op, arg_t)                                                                                                                         \
   EXTERN __global__ void ab_##op##_##arg_t##_kernel(const arg_t##_getter arg, const u32_value_getter parameter, arg_t##_setter result) {                       \
@@ -80,6 +87,7 @@ SET_BY_REF_KERNEL(e4)
 
 PARAMETRIZED_KERNEL(pow, bf)
 PARAMETRIZED_KERNEL(pow, e4)
+PARAMETRIZED_KERNEL(pow, pr)
 
 #define BINARY_KERNEL(op, arg0_t, arg1_t, result_t)                                                                                                            \
   EXTERN __global__ void ab_##op##_##arg0_t##_##arg1_t##_kernel(const arg0_t##_getter arg0, const arg1_t##_getter arg1, result_t##_setter result) {            \
@@ -98,5 +106,14 @@ BINARY_KERNEL(sub, bf, bf, bf)
 BINARY_KERNEL(sub, bf, e4, e4)
 BINARY_KERNEL(sub, e4, bf, e4)
 BINARY_KERNEL(sub, e4, e4, e4)
+
+#define BINARY_KERNEL_SINGLE(op, arg_t)                                                                                                                        \
+  EXTERN __global__ void ab_##op##_##arg_t##_kernel(const arg_t##_getter arg0, const arg_t##_getter arg1, arg_t##_setter result) {                             \
+    binary_op(arg_t::op, arg0, arg1, result);                                                                                                                  \
+  }
+
+BINARY_KERNEL_SINGLE(add, pr)
+BINARY_KERNEL_SINGLE(sub, pr)
+BINARY_KERNEL_SINGLE(mul, pr)
 
 } // namespace airbender::ops::simple

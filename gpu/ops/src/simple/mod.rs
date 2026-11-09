@@ -10,7 +10,7 @@ use gpu_core::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, MutPtrAndStrideWrappingMatrix,
     PtrAndStrideWrappingMatrix,
 };
-use gpu_core::primitives::field::{BF, E4};
+use gpu_core::primitives::field::{BF, E4, PR};
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
 
 pub fn set_to_zero<T>(result: &mut DeviceSlice<T>, stream: &CudaStream) -> CudaResult<()> {
@@ -79,6 +79,7 @@ set_by_val_impl!(u32);
 set_by_val_impl!(u64);
 set_by_val_impl!(BF);
 set_by_val_impl!(E4);
+set_by_val_impl!(PR);
 
 // SET_BY_REF_KERNEL
 cuda_kernel_signature_arguments_and_function!(
@@ -136,6 +137,7 @@ set_by_ref_impl!(u32);
 set_by_ref_impl!(u64);
 set_by_ref_impl!(BF);
 set_by_ref_impl!(E4);
+set_by_ref_impl!(PR);
 
 // PARAMETRIZED_KERNEL
 cuda_kernel_signature_arguments_and_function!(
@@ -231,6 +233,7 @@ macro_rules! parametrized_ops_impl {
 
 parametrized_ops_impl!(BF);
 parametrized_ops_impl!(E4);
+parametrized_ops_impl!(PR);
 
 // BINARY_KERNEL
 cuda_kernel_signature_arguments_and_function!(
@@ -384,6 +387,33 @@ binary_ops_impl!(BF, BF, BF);
 binary_ops_impl!(BF, E4, E4);
 binary_ops_impl!(E4, BF, E4);
 binary_ops_impl!(E4, E4, E4);
+
+macro_rules! binary_op_single_impl {
+    ($op:ty, $type:ty) => {
+        paste! {
+            cuda_kernel_declaration!(
+                [<ab_ $op:lower _ $type:lower _kernel>](
+                    x: PtrAndStrideWrappingMatrix<$type>,
+                    y: PtrAndStrideWrappingMatrix<$type>,
+                    result: MutPtrAndStrideWrappingMatrix<$type>,
+                )
+            );
+            impl BinaryOp<$type, $type, $type> for $op {
+                const KERNEL_FUNCTION: BinaryOpSignature<$type, $type, $type> = [<ab_ $op:lower _ $type:lower _kernel>];
+            }
+        }
+    };
+}
+
+macro_rules! binary_ops_single_impl {
+    ($type:ty) => {
+        binary_op_single_impl!(Add, $type);
+        binary_op_single_impl!(Mul, $type);
+        binary_op_single_impl!(Sub, $type);
+    };
+}
+
+binary_ops_single_impl!(PR);
 
 #[cfg(test)]
 mod tests;

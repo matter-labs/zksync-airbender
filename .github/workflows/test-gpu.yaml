@@ -117,6 +117,11 @@ jobs:
           shutil.copy2(executables[0], "artifacts/gpu_circuit_prover_tests")
           PYTHON
 
+      - name: GPU crate CPU tests
+        env:
+          CUDAARCHS: "80;89;90;120"
+        run: cargo +$RUST_TOOLCHAIN test -p gpu_execution_prover -p gpu_circuit_prover --release --target x86_64-unknown-linux-gnu --lib ::cpu_
+
       - name: Record compiler cache statistics
         if: always() && steps.sccache.outcome == 'success'
         run: |
@@ -261,6 +266,18 @@ jobs:
           printf '0000000f00124f80' > "$INPUT_FILE"
           .github/scripts/soundness_mode_smoke.sh zksync-airbender-gpu/cli \
             examples/hashed_fibonacci/app.bin gpu
+
+      - name: L1 proof from the committed seed on GPU
+        shell: bash
+        env:
+          RUST_MIN_STACK: 1073741824
+        run: |
+          dir=prover_pipeline/fixtures/l1_reference_2p21
+          zksync-airbender-gpu/cli continue-proof --proof "$dir/recursion_unified.json" \
+            --bin examples/basic_fibonacci/app.bin --target l1 --backend gpu --gpu-memory-preset 21gib \
+            --output-dir output/l1 --output-file l1.json
+          zksync-airbender-gpu/cli verify --proof output/l1/l1.json --bin examples/basic_fibonacci/app.bin
+          cmp "$dir/l1.json" output/l1/l1.json
 
       - name: Record GPU identity and ECC counters after a failure
         if: failure()

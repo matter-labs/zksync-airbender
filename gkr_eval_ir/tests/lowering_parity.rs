@@ -44,3 +44,30 @@ fn no_cache_layouts_are_rejected() {
         "unexpected error: {error}"
     );
 }
+
+#[test]
+fn proth120_unified_lowers() {
+    use field::proth120::Proth120;
+    use field::PrimeField;
+    use gkr_eval_ir::SourceKind;
+
+    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cs/compiled_circuits");
+    let bytes =
+        std::fs::read(directory.join("unified_reduced_machine_layout_gkr_proth120.json")).unwrap();
+    let artifact: GKRCircuitArtifact<Proth120> = serde_json::from_slice(&bytes).unwrap();
+    let dag = lower_dag(&artifact).unwrap();
+    let modulus = Proth120::CHARACTERISTICS_U128;
+    assert_eq!(dag.modulus, modulus);
+    let constants: Vec<u128> = dag
+        .layers
+        .iter()
+        .flat_map(|layer| &layer.sources)
+        .filter_map(|source| match source {
+            SourceKind::Constant { value } => Some(*value),
+            _ => None,
+        })
+        .collect();
+    assert!(constants.iter().all(|&value| value < modulus));
+    assert!(constants.iter().any(|&value| value >= 1 << 32));
+    assert!(constants.contains(&(modulus - 1)));
+}

@@ -105,3 +105,8 @@ impl ForwardKernels for E4 {
     const DIMENSION_REDUCING_FORWARD_TOWER: GpuGKRDimensionReducingForwardTowerSignature<Self> =
         ab_gkr_dim_reducing_forward_tower_e4_kernel;
 }
+
+impl ForwardKernels for crate::upstream::PR {
+    const DIMENSION_REDUCING_FORWARD_TOWER: GpuGKRDimensionReducingForwardTowerSignature<Self> =
+        crate::proth120::forward::kernels::ab_pr_gkr_dim_reducing_forward_tower_kernel;
+}

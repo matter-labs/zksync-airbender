@@ -11,6 +11,7 @@ include(${AB_CUDA_CMAKE_DIR}/ab_cuda_target.cmake)
 add_library(gpu_ops_native STATIC
         bit_reverse.cu
         powers.cu
+        proth120.cu
         simple.cu
         squaring.cu
         transpose.cu

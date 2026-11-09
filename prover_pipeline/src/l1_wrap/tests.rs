@@ -89,25 +89,3 @@ fn malformed_l1_envelopes_fail_verify_and_continuation_before_loading_programs()
         assert!(error.contains(expected), "{expected}: {error}");
     }
 }
-
-#[test]
-fn l1_activation_rejects_gpu_before_registration() {
-    for target in [ProofTarget::L1, ProofTarget::Compression] {
-        let error = ProgramProver::new(
-            unused_source(),
-            ProgramProverConfig {
-                target,
-                backend: ProverBackend::Gpu,
-                ..Default::default()
-            },
-        )
-        .err()
-        .expect(
-            "GPU L1 targets must be rejected before reading the source or registering binaries",
-        );
-        assert_eq!(
-            error,
-            format!("ProofTarget::{target:?} is not supported by the GPU backend")
-        );
-    }
-}
