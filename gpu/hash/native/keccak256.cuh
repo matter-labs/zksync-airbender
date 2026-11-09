@@ -256,12 +256,6 @@ template <bool ROUND_LOOP = false> struct sponge_impl {
 
 using sponge = sponge_impl<>;
 
-DEVICE_FORCEINLINE void hash_bytes(const u8 *input, u64 len, u8 out[32]) {
-  sponge hash;
-  hash.absorb_bytes(input, len);
-  hash.finalize(out);
-}
-
 DEVICE_FORCEINLINE digest digest_from_bytes(const u8 bytes[32]) {
   digest result;
 #pragma unroll

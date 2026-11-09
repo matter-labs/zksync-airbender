@@ -515,8 +515,7 @@ pub fn build_retained_layers(
     )
 }
 
-// `build_retained_from_nodes` up to layer skip_bottom; the layers above it are left to
-// `build_retained_layers`.
+// Build through layer skip_bottom; `build_retained_layers` handles the layers above it.
 #[allow(clippy::too_many_arguments)]
 pub fn build_retained_bottom_from_nodes(
     nodes: &mut DeviceSlice<Digest>,
