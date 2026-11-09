@@ -118,20 +118,6 @@ pub fn native_verify_unified_l1_feeder(stream: Vec<u32>) -> Result<[u32; 16], St
     )
 }
 
-/// [`native_verify_unified_l1_feeder`] over a proof of the 2^23 feeder
-/// profile A.
-#[cfg(feature = "verifiers")]
-pub fn native_verify_unified_l1_feeder_a(stream: Vec<u32>) -> Result<[u32; 16], String> {
-    native_verify_l1_feeder_statement(
-        stream,
-        crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_l1_feeder_a::<
-            _,
-            verifier_common::errors::DebugErrorCreator,
-            USE_REDUCED_BLAKE2_ROUNDS,
-        >,
-    )
-}
-
 #[cfg(feature = "verifiers")]
 fn native_verify_l1_feeder_statement(
     stream: Vec<u32>,

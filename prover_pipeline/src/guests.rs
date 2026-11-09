@@ -109,7 +109,7 @@ impl FsvPrograms {
                 BlakeMode::BlakeSpecialOpcodes,
             )),
             feeder_wrap: words(load(
-                feeder,
+                target == ProofTarget::L1,
                 FsvProgram::UnifiedRecursionLayer,
                 FsvProfile::L1FeederWrap,
                 BlakeMode::BlakeSpecialOpcodes,

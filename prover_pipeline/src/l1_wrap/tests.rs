@@ -20,7 +20,7 @@ fn result() -> L1WrapResult {
 }
 
 fn wrapped_artifact() -> ProofArtifact {
-    let mut checkpoint = feeder_artifact(ProofTarget::L1Feeder, 5, 2);
+    let mut checkpoint = feeder_artifact(ProofTarget::L1Feeder, 6);
     checkpoint.target = ProofTarget::L1;
     checkpoint.l1 = Some(L1Bundle::from_result(result()));
     checkpoint
@@ -131,7 +131,6 @@ fn l1_bundle_rejects_unknown_wrap_version() {
 #[test]
 fn wrap_circuit_matches_the_guest_geometry() {
     let circuit = L1_WRAP_KIND.unified_circuit().unwrap();
-    assert_eq!(circuit.get_domain_size(), L1_WRAP_PROGRAM_CYCLE_LIMIT);
     assert_eq!(
         circuit.rom(),
         verifier_common::fsv_binaries::FsvProfile::L1FeederWrap.rom()
