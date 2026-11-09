@@ -1247,3 +1247,10 @@ zero-to-nonzero high-field write bound to a fetched public rd12 entry for every
 nonzero control on the initialized path and every nonzero active worker input.
 Readonly refreshes, both raw times and zero/multiple masks remain. No reset or
 schedule premise; physical activity and standard round/hash sequencing remain open.
+
+## Actual CSR control resets
+
+[CSR control effects](../../Trace/Families/ReducedMachine/ControlCSRTheorems.lean) derives BOTH zero output limbs for actual
+CSR1991 and puts all decoded rd12 CSR edges on the same initialized x12 path.
+Nonzero public origins are ordinary code or CSR1984; the bounded oracle remains
+an observation. No reset/schedule premise or original CSR/worker Sail claim.

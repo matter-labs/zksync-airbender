@@ -1,5 +1,55 @@
 # Circuit formal verification plan
 
+## Actual CSR control resets and nonzero origins (9 November 2026)
+
+[Control CSR effects](Airbender/Review/Trace/Families/ReducedMachine/ControlCSR.lean),
+[proof](Airbender/Proofs/ReducedMachine/NativeControlCSR.lean) and
+[short root](Airbender/Review/Trace/Families/ReducedMachine/ControlCSRTheorems.lean)
+derive the actual MAIN third-port CSR write limbs from original decoded sources
+and the complete native runtime BODY. The original CSR key is exactly1984 or1991.
+For CSR1991 BOTH output limbs are zero, regardless of rd masking or the old value.
+For nonzero rd, CSR1984 retains the observed bounded oracle limbs. No expected
+reset value, nondeterminism stream, read value or schedule is supplied.
+
+Every actual decoded rd12 CSR control edge occurs on the SAME complete initialized
+x12 raw-token path. Both raw times, the OLDREAD, readonly refreshes and every
+positional copy remain. Every nonzero high-field origin on this path, and every
+nonzero active worker input high135, is bound to an actual fetched MAIN rd12 entry
+whose original source is ordinary seven-profile code or CSR1984. Delegation
+CSR1991 cannot be such a nonzero origin. This connects existing local oracle-zero
+and masking proofs to the actual initialized control history; no local CSR or
+control-path foundation is reproved. The runtime1991 profile remains distinct
+from the retained1988/1989 fixture.
+
+The SAME old counted SourceAccepted/public image/log20/OLD LogicalLookups/OLD
+explicit SourceIdentity retain prior public control origins, initialized history,
+position matching OR >=257 MAIN proofs, natural counts, individual validity,
+aggregate accounting, JOINT43-port execution, weighted outputs, word bounds,
+capacity and partial MAIN dependencies. All inactive requests/AUX/m0 poles,
+inactive D, 43ports, both raw times, aliases, OLDREADs, refreshes, unmasked SW and
+public x0 times stay in acceptance. No expected reset/history/round/schedule/result/
+activity/count/matching/fulfilled-ledger premise, new acceptance or cryptographic
+boundary. Incoming low and zero/multiple masks remain; rank is still noninjective
+proof order. No original CSR execution, authenticated nondeterminism stream,
+worker Sail, physical caller activity or standard hash schedule is inferred.
+
+[23 controls](Tests/NativeControlCSR.lean) reuse the old complete LOCAL CSR BODY
+with both activity flags; check the actual zero write, wrong nonzero rejection,
+x0 masking, rd12 oracle retention, exact write ABI, runtime delegation flags,
+zero/multiple-mask retention, pure source admission/exclusion, actual MAIN effects,
+all CSR rd12 edges on one path, every nonzero worker origin, prior results and the
+full counted root. Pure/old LOCAL/conditional controls only, not new nonempty
+native-global/wholeworker/physical accepted witnesses, attacks, defects or
+absent-enforcement evidence. Ordinary control reset-operation values, last-reset
+identification, standard round/hash sequencing, larger-batch no-wrap/matching,
+physical caller activity, original CSR/MOP/worker Sail, protocol spans/padding-
+terminal/init-teardown, cryptography, completeness, general physical setup and
+parity remain open. Zero established native defects; FINDINGS/production/Sail/old
+acceptance unchanged. No new source adoption/pin, parser/importer/exporter,
+artifact/fixture, generation/heavy replay, dependency or v3 refresh. Counts are
+audit counters, not parity.
+
+
 ## Public native x12 control origins (9 November 2026)
 
 [Control origins](Airbender/Review/Trace/Families/ReducedMachine/ControlOrigin.lean),

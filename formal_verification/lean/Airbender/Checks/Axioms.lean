@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.ControlCSR
+import Airbender.Proofs.ReducedMachine.NativeControlCSR
+import Airbender.Review.Trace.Families.ReducedMachine.ControlCSRTheorems
+import Tests.NativeControlCSR
+
 import Airbender.Review.Trace.Families.ReducedMachine.ControlOrigin
 import Airbender.Proofs.ReducedMachine.NativeControlOrigin
 import Airbender.Review.Trace.Families.ReducedMachine.ControlOriginTheorems
@@ -8251,3 +8256,36 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeControlOrigin.old_counts_retained
 #print axioms Airbender.Tests.NativeControlOrigin.old_joint_execution_retained
 #print axioms Airbender.Tests.NativeControlOrigin.full_counted_source
+
+#print axioms Airbender.NativeControlCSRProofs.write_limbs
+#print axioms Airbender.NativeControlCSRProofs.key_value
+#print axioms Airbender.NativeControlCSRProofs.result
+#print axioms Airbender.NativeControlCSRProofs.nonzero_source
+#print axioms Airbender.NativeControlCSRProofs.origin
+#print axioms Airbender.NativeControlCSRProofs.main_on_path
+#print axioms Airbender.NativeControlCSRProofs.from_prior
+#print axioms Airbender.NativeControlCSRProofs.counted
+#print axioms Airbender.NativeControlCSR.native_counted_control_csr
+#print axioms Airbender.Tests.NativeControlCSR.local_result
+#print axioms Airbender.Tests.NativeControlCSR.local_delegation_clear
+#print axioms Airbender.Tests.NativeControlCSR.inactive_clear_retained
+#print axioms Airbender.Tests.NativeControlCSR.local_wrong_nonzero_rejected
+#print axioms Airbender.Tests.NativeControlCSR.x0_clear
+#print axioms Airbender.Tests.NativeControlCSR.x12_oracle_preserved
+#print axioms Airbender.Tests.NativeControlCSR.delegation_clear
+#print axioms Airbender.Tests.NativeControlCSR.nonzero_CSR_is_nondeterminism
+#print axioms Airbender.Tests.NativeControlCSR.actual_write_ABI
+#print axioms Airbender.Tests.NativeControlCSR.exact_delegation_flag
+#print axioms Airbender.Tests.NativeControlCSR.nondeterminism_not_delegation
+#print axioms Airbender.Tests.NativeControlCSR.multiple_masks_retained
+#print axioms Airbender.Tests.NativeControlCSR.nondeterminism_is_seed_source
+#print axioms Airbender.Tests.NativeControlCSR.delegation_is_not_seed_source
+#print axioms Airbender.Tests.NativeControlCSR.every_actual_MAIN_CSR
+#print axioms Airbender.Tests.NativeControlCSR.all_control_CSR_edges_on_same_path
+#print axioms Airbender.Tests.NativeControlCSR.every_nonzero_worker_origin
+#print axioms Airbender.Tests.NativeControlCSR.prior_public_origins_retained
+#print axioms Airbender.Tests.NativeControlCSR.old_history_retained
+#print axioms Airbender.Tests.NativeControlCSR.old_position_retained
+#print axioms Airbender.Tests.NativeControlCSR.old_counts_retained
+#print axioms Airbender.Tests.NativeControlCSR.old_joint_retained
+#print axioms Airbender.Tests.NativeControlCSR.full_counted_source
