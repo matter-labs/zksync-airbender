@@ -1,4 +1,5 @@
 #pragma once
+#include "round_update_shared.cuh"
 
 // Backward sumcheck round-update helpers.
 
@@ -16,36 +17,14 @@ DEVICE_FORCEINLINE e4 e4_from_raw_u32x4(const u32 *words) {
 // Port of prover::gkr::sumcheck::output_univariate_monomial_form_max_quadratic.
 DEVICE_FORCEINLINE void compute_univariate_coeffs_max_quadratic(const e4 prev_challenge, const e4 prev_claim, const e4 e, const e4 c,
                                                                 const e4 inv_prev_challenge, e4 out[4]) {
-  const e4 ONE = e4::ONE();
-  const e4 b = e4::sub(ONE, prev_challenge);
-  const e4 a = e4::sub(e4::dbl(prev_challenge), ONE);
-  const e4 be = e4::mul(b, e);
-  e4 d = e4::sub(prev_claim, be);
-  d = e4::mul(d, inv_prev_challenge);
-  d = e4::sub(d, c);
-  d = e4::sub(d, e);
-
-  out[0] = be;
-  out[1] = e4::add(e4::mul(a, e), e4::mul(b, d));
-  out[2] = e4::add(e4::mul(a, d), e4::mul(b, c));
-  out[3] = e4::mul(a, c);
+  shared::compute_univariate_coeffs_max_quadratic(prev_challenge, prev_claim, e, c, inv_prev_challenge, out);
 }
 
 // Horner evaluation of a degree-3 polynomial with 4 coefficients.
-DEVICE_FORCEINLINE e4 eval_degree3_poly(const e4 coeffs[4], const e4 point) {
-  e4 r = coeffs[3];
-  r = e4::add(e4::mul(r, point), coeffs[2]);
-  r = e4::add(e4::mul(r, point), coeffs[1]);
-  r = e4::add(e4::mul(r, point), coeffs[0]);
-  return r;
-}
+DEVICE_FORCEINLINE e4 eval_degree3_poly(const e4 coeffs[4], const e4 point) { return shared::eval_degree3_poly(coeffs, point); }
 
 // eq(x, y) = x*y + (1-x)*(1-y).
-DEVICE_FORCEINLINE e4 eq_poly(const e4 x, const e4 y) {
-  const e4 ONE = e4::ONE();
-  const e4 t = e4::mul(e4::sub(ONE, x), e4::sub(ONE, y));
-  return e4::add(e4::mul(x, y), t);
-}
+DEVICE_FORCEINLINE e4 eq_poly(const e4 x, const e4 y) { return shared::eq_poly(x, y); }
 
 // Blake2s transcript commit of flatten(coeffs) chained from the seed, and
 // folding-challenge extraction. Matches the host `commit_field_els +
@@ -77,28 +56,22 @@ DEVICE_FORCEINLINE e4 commit_quadratic_and_draw_challenge(u32 *seed_io, const e4
   // only 4 — the seed itself is not further hashed for a single draw.
   return e4_from_raw_u32x4(state);
 }
+struct quadratic_round_commit {
+  DEVICE_FORCEINLINE e4 operator()(u32 *seed, const e4 *coeffs) const { return commit_quadratic_and_draw_challenge(seed, coeffs); }
+};
 
 // Called by one thread with device-resident state. The inverses may be
 // computed cooperatively by the caller; the returned value is the new challenge.
 DEVICE_FORCEINLINE e4 run_round_update_with_inverses(const e4 e_partial, const e4 c_partial, const e4 prev_coord, const e4 inv_eq, const e4 inv_prev_coord,
                                                      u32 *seed_io, e4 *claim_io, e4 *eq_prefactor_io, e4 *coeffs_out) {
-  const e4 normalized_claim = e4::mul(*claim_io, inv_eq);
-  e4 coeffs[4];
-  compute_univariate_coeffs_max_quadratic(prev_coord, normalized_claim, e_partial, c_partial, inv_prev_coord, coeffs);
-#pragma unroll
-  for (unsigned i = 0; i < 4; i++)
-    coeffs_out[i] = coeffs[i];
-  const e4 challenge = commit_quadratic_and_draw_challenge(seed_io, coeffs);
-  *claim_io = eval_degree3_poly(coeffs, challenge);
-  *eq_prefactor_io = eq_poly(challenge, prev_coord);
-  return challenge;
+  return ::airbender::gkr::ops::shared::run_round_update_with_inverses(e_partial, c_partial, prev_coord, inv_eq, inv_prev_coord, seed_io, claim_io,
+                                                                       eq_prefactor_io, coeffs_out, quadratic_round_commit{});
 }
 
 DEVICE_FORCEINLINE void run_round_update_single_thread(const e4 e_partial, const e4 c_partial, const e4 prev_coord, u32 *seed_io, e4 *claim_io,
                                                        e4 *eq_prefactor_io, e4 *coeffs_out, e4 *challenge_out) {
-  const e4 inv_eq = e4::inv(*eq_prefactor_io);
-  const e4 inv_prev_coord = e4::inv(prev_coord);
-  *challenge_out = run_round_update_with_inverses(e_partial, c_partial, prev_coord, inv_eq, inv_prev_coord, seed_io, claim_io, eq_prefactor_io, coeffs_out);
+  ::airbender::gkr::ops::shared::run_round_update_single_thread(e_partial, c_partial, prev_coord, seed_io, claim_io, eq_prefactor_io, coeffs_out, challenge_out,
+                                                                quadratic_round_commit{});
 }
 
 // The commit half of a WHIR fold round: one thread consumes the three
