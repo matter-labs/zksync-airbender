@@ -7,5 +7,4 @@ target_sources(gpu_trace_native PRIVATE
         template_unrolled.cuh
         memory_unrolled.cu
         multiplicities.cu
-        probe.cu
 )

@@ -384,19 +384,4 @@ template <class R, class Places> struct WitnessProxy {
 #define CIRCUIT_INCLUDE(NAME) STRINGIFY(PATH_CAT(INCLUDE_PREFIX, NAME, INCLUDE_SUFFIX))
 #define UNROLLED_CIRCUIT_INCLUDE(NAME) STRINGIFY(PATH_CAT(UNROLLED_INCLUDE_PREFIX, NAME, INCLUDE_SUFFIX))
 
-#define KERNEL_NAME(NAME) ab_pr_generate_witness_values_##NAME##_kernel
-#define KERNEL(NAME, ORACLE)                                                                                                                                   \
-  EXTERN __global__ void KERNEL_NAME(NAME)(const __grid_constant__ ORACLE oracle, const wrapped_f *const __restrict__ generic_lookup_tables,                   \
-                                           const wrapped_f *const __restrict__ memory, wrapped_f *const __restrict__ witness,                                  \
-                                           wrapped_f *const __restrict__ scratch_storage, u32 *const __restrict__ lookup_mapping, const unsigned stride,       \
-                                           const unsigned count) {                                                                                             \
-    const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;                                                                                                \
-    if (gid >= count)                                                                                                                                          \
-      return;                                                                                                                                                  \
-    SCRATCH                                                                                                                                                    \
-    const GlobalTraceProvider places = {memory, witness, stride, gid};                                                                                         \
-    const WitnessProxy<ORACLE, GlobalTraceProvider> p = {oracle, generic_lookup_tables, places, lookup_mapping, scratch, stride, gid};                         \
-    FN_CALL(generate)                                                                                                                                          \
-  }
-
 } // namespace airbender::trace::witness::proth120::generation

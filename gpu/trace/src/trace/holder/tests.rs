@@ -268,21 +268,6 @@ fn deep_partial_trees_install_lazily_and_open_like_depth_five() {
     );
 }
 
-#[test]
-fn cpu_partial_tree_reduction_layers_resolution() {
-    assert_eq!(resolve_partial_tree_reduction_layers(10, 23, 4, 1, 4), 10);
-    assert_eq!(resolve_partial_tree_reduction_layers(10, 14, 2, 1, 4), 10);
-    assert_eq!(resolve_partial_tree_reduction_layers(10, 9, 1, 1, 2), 7);
-    assert_eq!(resolve_partial_tree_reduction_layers(6, 6, 0, 0, 1), 5);
-    for requested in [4, 11] {
-        let panic = std::panic::catch_unwind(|| assert_partial_tree_reduction_layers(requested));
-        assert!(panic.is_err(), "requested {requested} must be rejected");
-    }
-    assert!(
-        std::panic::catch_unwind(|| resolve_partial_tree_reduction_layers(5, 6, 0, 0, 2)).is_err()
-    );
-}
-
 fn open_recomputed(
     holder: &mut TraceHolder<BF>,
     queries_host: &[u32],

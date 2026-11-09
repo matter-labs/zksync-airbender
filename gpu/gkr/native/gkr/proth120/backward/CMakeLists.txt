@@ -1,5 +1,4 @@
 target_sources(gpu_gkr_native PRIVATE
-    accumulator_probe.cu
     coefficient_bank_pr.cu
     dr_tail_megakernel.cu
     extras.cu
