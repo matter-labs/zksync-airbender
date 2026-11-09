@@ -52,7 +52,9 @@ fn setup_projection_matches_fresh_packed_trees_and_openings() {
     let context = ProverContext::new(&ProverContextConfig {
         device_allocation_blocks_count: Some(256),
         host_allocator_blocks_count: 64,
-        proth120_ntt_log_max_domain: Some(14),
+        proth120_ntt_log_max_domain: Some(
+            gpu_prover_context::ProverContext::PROTH120_NTT_LOG_MAX_DOMAIN,
+        ),
         ..Default::default()
     })
     .unwrap();

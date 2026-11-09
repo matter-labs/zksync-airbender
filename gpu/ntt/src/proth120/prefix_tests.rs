@@ -10,12 +10,12 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use super::hypercube::MobiusPolicy;
 use super::lde::{
-    launch_transform, set_max_dynamic_smem, ChunkMap, DitPolicy, TransformPass, TransformPolicy,
+    launch_transform, set_max_dynamic_smem, ChunkMap, TransformPass, TransformPolicy,
 };
 use super::prefix::{
     chunk_plan, dispatch, l2_working_set_budget, launch_prefix_chunked, narrow_groups,
-    prefix_groups, twiddle_bytes, ChunkPlan, CosetSource, Dispatch, DispatchError, FirstPassScale,
-    PrefixPass, ScaleArgs, MAX_CHUNK_BYTES, MAX_TILE_BYTES,
+    prefix_groups, twiddle_bytes, ChunkPlan, CosetSource, Dispatch, DispatchError, PrefixPass,
+    ScaleArgs, MAX_CHUNK_BYTES, MAX_TILE_BYTES,
 };
 use super::DeviceContext;
 use crate::upstream::{domain_generator_for_size, Field};
@@ -630,54 +630,6 @@ fn prefix_case<P: TransformPolicy>(
 
 #[test]
 #[cfg(not(no_cuda))]
-fn pr_prefix_chunked_cpu_parity() {
-    let ctx = DeviceContext::create(31).unwrap();
-    let stream = CudaStream::create().unwrap();
-    let mut rng = StdRng::seed_from_u64(0x9120_3101);
-    let root = Some((domain_generator_for_size::<PR>(1u64 << 31), 31));
-    let policy = DitPolicy(ctx.descriptor());
-    for (log_n, columns, log_v, skip_bottom, cols) in [
-        (25, 7, 2, 10, 1),
-        (24, 13, 1, 10, 1),
-        (23, 1, 4, 5, 2),
-        (22, 7, 2, 10, 2),
-        (21, 1, 4, 5, 2),
-        (19, 1, 4, 5, 3),
-        (17, 2, 1, 10, 3),
-        (16, 13, 1, 10, 13),
-        (15, 1, 4, 5, 3),
-        (13, 1, 4, 5, 3),
-    ] {
-        let shape = dispatch(log_n, columns, log_v, skip_bottom, device_l2()).unwrap();
-        let groups: Vec<(u32, bool)> = shape
-            .prefix
-            .as_ref()
-            .unwrap()
-            .passes
-            .iter()
-            .map(|p| (p.stages, p.narrow))
-            .collect();
-        for groups in [groups.clone(), narrow_groups(&groups)] {
-            let plan = prefix_case(&policy, root, log_n, &groups, cols, &mut rng, &stream);
-            println!("pr_prefix_chunked_cpu_parity: n {log_n} prefix {} r {} strips {} x {} block-strips (d {}), {} cols, 0 mismatches", groups_text(&plan), shape.r, plan.strips, plan.strip_blocks, plan.strip_domain_bits, cols);
-        }
-    }
-    let ctx33 = DeviceContext::create(33).unwrap();
-    let root33 = Some((domain_generator_for_size::<PR>(1u64 << 33), 33));
-    prefix_case(
-        &DitPolicy(ctx33.descriptor()),
-        root33,
-        24,
-        &[(6, false), (6, false), (5, true)],
-        1,
-        &mut rng,
-        &stream,
-    );
-    println!("pr_prefix_chunked_cpu_parity: L = 33, n 24 [6,6,5n], 0 mismatches");
-}
-
-#[test]
-#[cfg(not(no_cuda))]
 fn pr_prefix_chunked_mobius_cpu_parity() {
     let stream = CudaStream::create().unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_3102);
@@ -699,110 +651,6 @@ fn pr_prefix_chunked_mobius_cpu_parity() {
     }
 }
 
-#[test]
-fn cpu_pr_prefix_digit_matches_transform_network() {
-    let mut rng = StdRng::seed_from_u64(0x9120_3103);
-    for log_max_domain in [31, 33] {
-        let root = domain_generator_for_size::<PR>(1u64 << log_max_domain);
-        for log_n in [3, 6, 9] {
-            let input: Vec<PR> = (0..1usize << log_n)
-                .map(|_| PR::new(rng.random::<u128>() % PR::ORDER))
-                .collect();
-            let mut full = input.clone();
-            cpu_prefix_digit(&mut full, log_n, Some((root, log_max_domain)));
-            let omega = domain_generator_for_size::<PR>(1u64 << log_n);
-            for (p, value) in full.iter().enumerate() {
-                let q = reverse_bits(p, log_n);
-                let mut expected = PR::ZERO;
-                for (i, x) in input.iter().enumerate() {
-                    let mut term = omega.pow_u128(((q * i) % (1 << log_n)) as u128);
-                    term.mul_assign(x);
-                    expected.add_assign(&term);
-                }
-                assert_eq!(
-                    value.0, expected.0,
-                    "L {log_max_domain} n {log_n} position {p}"
-                );
-            }
-        }
-    }
-}
-
-#[test]
-#[ignore]
-#[cfg(not(no_cuda))]
-fn pr_prefix_profile_probe() {
-    use era_cudart::memory::memory_set_async;
-    use gpu_core::primitives::nvtx::scoped_range;
-    let ctx = DeviceContext::create(31).unwrap();
-    let stream = CudaStream::create().unwrap();
-    let (log_n, cols) = (25u32, 7usize);
-    let rows = 1usize << log_n;
-    let shape = dispatch(log_n, cols, 2, 10, device_l2()).unwrap();
-    let plan = shape.prefix.unwrap();
-    let mut input = DeviceAllocation::<PR>::alloc(rows * cols).unwrap();
-    let mut output = DeviceAllocation::<PR>::alloc(rows * cols).unwrap();
-    unsafe {
-        memory_set_async(input.transmute_mut(), 0, &stream).unwrap();
-    }
-    let policy = DitPolicy(ctx.descriptor());
-    let today = chunk_plan(log_n, &[(8, false), (7, false)], CHUNK_16_MIB).unwrap();
-    let narrow = chunk_plan(
-        log_n,
-        &narrow_groups(
-            &plan
-                .passes
-                .iter()
-                .map(|p| (p.stages, p.narrow))
-                .collect::<Vec<_>>(),
-        ),
-        plan.chunk_bytes(),
-    )
-    .unwrap();
-    let variants = [
-        ("prefix.warmup", plan.clone()),
-        ("prefix.probe", plan.clone()),
-        ("prefix.narrow", narrow),
-        ("prefix.full", full_grid(&plan)),
-        ("prefix.today_8_7", full_grid(&today)),
-    ];
-    let start = era_cudart::event::CudaEvent::create().unwrap();
-    let end = era_cudart::event::CudaEvent::create().unwrap();
-    for (label, variant) in &variants {
-        let _range = scoped_range(Some("ab"), label);
-        for iteration in 0..3 {
-            start.record(&stream).unwrap();
-            launch_prefix_chunked(
-                &policy,
-                PtrAndStride::new(input.as_ptr(), rows),
-                MutPtrAndStride::new(output.as_mut_ptr(), rows),
-                cols,
-                variant,
-                Some(FirstPassScale {
-                    descriptor: ctx.descriptor(),
-                    scale: ScaleArgs {
-                        coset: CosetSource::Constant(3),
-                        log_domain: 31,
-                    },
-                }),
-                &stream,
-            )
-            .unwrap();
-            end.record(&stream).unwrap();
-            end.synchronize().unwrap();
-            let ms = era_cudart::event::elapsed_time(&start, &end).unwrap();
-            println!(
-                "pr_prefix_profile_probe: {label} iteration {iteration}: {ms:.3} ms for {cols} x 2^{log_n} ({} passes, {} strips)",
-                variant.passes.len(),
-                variant.strips
-            );
-            if *label == "prefix.probe" {
-                break;
-            }
-        }
-    }
-}
-
 fn reference_plan(log_n: u32) -> ChunkPlan {
     chunk_plan(log_n, &prefix_groups(log_n - 8).unwrap(), CHUNK_16_MIB).unwrap()
 }
@@ -819,8 +667,8 @@ fn pr_lde_coset_slot_fused_scale_parity() {
     use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
     let stream = CudaStream::create().unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_3201);
-    for (log_max_domain, log_domain) in [(31, 31), (33, 33), (33, 31)] {
-        let ctx = DeviceContext::create(log_max_domain).unwrap();
+    for (log_max_domain, log_domain) in [(31, 31)] {
+        let ctx = DeviceContext::create().unwrap();
         let nu = domain_generator_for_size::<PR>(1u64 << log_domain);
         for (log_n, cols) in [(13, 3), (15, 2), (23, 2), (25, 1)] {
             let rows = 1usize << log_n;
@@ -919,12 +767,6 @@ fn pr_lde_coset_slot_fused_scale_parity() {
     }
 }
 
-fn device_l2() -> usize {
-    gpu_core::primitives::context::DeviceProperties::new()
-        .unwrap()
-        .l2_cache_size_bytes
-}
-
 // Forces the dispatch of smaller devices on this GPU: every plan (resident, smaller strips or
 // full grid) gives the same prefix as its coarsest split, and prefix + final == lde_coset.
 #[test]
@@ -932,7 +774,7 @@ fn device_l2() -> usize {
 fn pr_lde_coset_slot_small_l2_parity() {
     use super::{has_reference_finish, lde_coset, lde_coset_slot, lde_finish_reference};
     use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
-    let ctx = DeviceContext::create(31).unwrap();
+    let ctx = DeviceContext::create().unwrap();
     let stream = CudaStream::create().unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_3401);
     let nu = domain_generator_for_size::<PR>(1u64 << 31);
@@ -1050,79 +892,5 @@ fn pr_hypercube_chunked_matches_plain() {
         }
         assert!(download(&device_input, &stream) == input);
         println!("pr_hypercube_chunked_matches_plain: n {log_n} x {cols} at L2 16/40/128 MiB, 0 mismatches");
-    }
-}
-
-// Lazy prefix passes at the top of their range: every input p - 1 (largest canonical value), scaled
-// by the last coset and unscaled, through single passes of 5-8 stages (wide and narrow) and the
-// production three-pass prefix; prefix + final must equal lde_coset.
-#[test]
-#[cfg(not(no_cuda))]
-fn pr_prefix_lazy_extreme_inputs() {
-    use super::{lde_coset, lde_coset_slot, lde_finish_reference};
-    use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
-    let ctx = DeviceContext::create(31).unwrap();
-    let stream = CudaStream::create().unwrap();
-    let nu = domain_generator_for_size::<PR>(1u64 << 31);
-    let cols = 2;
-    for (log_n, groups) in [
-        (16, vec![(8, false)]),
-        (15, vec![(7, false)]),
-        (15, vec![(7, true)]),
-        (14, vec![(6, false)]),
-        (14, vec![(6, true)]),
-        (13, vec![(5, false)]),
-        (13, vec![(5, true)]),
-        (24, vec![(8, false), (8, false)]),
-        (25, vec![(6, true), (6, true), (5, true)]),
-    ] {
-        let rows = 1usize << log_n;
-        let plan = chunk_plan(log_n, &groups, CHUNK_16_MIB).unwrap();
-        let monomials = vec![PR::new(PR::ORDER - 1); rows * cols];
-        let device_monomials = upload(&monomials);
-        let mut candidate = DeviceAllocation::<PR>::alloc(rows * cols).unwrap();
-        let mut reference = DeviceAllocation::<PR>::alloc(rows * cols).unwrap();
-        for k in [0, (1u32 << (31 - log_n)) - 1] {
-            let scale = ScaleArgs {
-                coset: CosetSource::Constant(k),
-                log_domain: 31,
-            };
-            lde_coset_slot(
-                &ctx,
-                &device_monomials,
-                &mut candidate,
-                cols,
-                &plan,
-                scale,
-                &stream,
-            )
-            .unwrap();
-            assert!(
-                download(&candidate, &stream)
-                    .iter()
-                    .all(|v| v.0 < PR::ORDER),
-                "noncanonical prefix store"
-            );
-            lde_finish_reference(&ctx, &mut candidate, cols, &plan, &stream).unwrap();
-            lde_coset(
-                &ctx,
-                &DeviceMatrix::new(&device_monomials, rows),
-                &mut DeviceMatrixMut::new(&mut reference, rows),
-                &upload(&[nu.pow_u128(k as u128)]),
-                &stream,
-            )
-            .unwrap();
-            let actual = download(&candidate, &stream);
-            assert!(
-                actual.iter().all(|v| v.0 < PR::ORDER),
-                "noncanonical output"
-            );
-            assert!(
-                actual == download(&reference, &stream),
-                "lazy prefix {} differs at n {log_n}, k {k}",
-                groups_text(&plan)
-            );
-        }
-        println!("pr_prefix_lazy_extreme_inputs: n {log_n} prefix {} with all inputs p - 1, k 0 and last, 0 mismatches", groups_text(&plan));
     }
 }

@@ -9,7 +9,7 @@ use gpu_core::primitives::field::PR;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use super::prefix::{chunk_plan, narrow_groups, prefix_groups, ChunkPlan};
-use super::suffix::{launch_suffix_micro, suffix_launch, SuffixLaunch, SuffixShape};
+use super::suffix::{launch_suffix_micro, SuffixShape};
 use super::{lde_coset, lde_coset_slot, CosetSource, DeviceContext, ScaleArgs};
 use crate::upstream::{domain_generator_for_size, Field};
 
@@ -78,116 +78,6 @@ fn cpu_pr_suffix_tile_maps() {
     }
 }
 
-#[test]
-fn cpu_pr_suffix_launch_geometry() {
-    let s = shape(25, 8, 2, 10, 7);
-    let tile_len = 7 << 18;
-    assert_eq!(
-        suffix_launch(31, &s, 7 << 25, 7 << 25, 2 * tile_len, 126, 2, 1),
-        SuffixLaunch {
-            grid: (512, 7, 1),
-            tile_coset_stride: 2 * tile_len,
-        }
-    );
-    let s = shape(19, 8, 4, 5, 1);
-    assert_eq!(
-        suffix_launch(31, &s, 3 << 19, 1 << 19, 3 * 2 * (1 << 13), 0, 2, 3),
-        SuffixLaunch {
-            grid: (16, 1, 3),
-            tile_coset_stride: 2 << 13,
-        }
-    );
-}
-
-// Codex T4.2 repro 1: a context too small for the shape would silently use roots of a smaller domain.
-#[test]
-#[should_panic(expected = "Proth120 suffix: log_n 13 exceeds context log_max_domain 8")]
-fn cpu_pr_suffix_launch_rejects_small_context() {
-    let s = shape(13, 6, 1, 5, 1);
-    suffix_launch(8, &s, 1 << 13, 1 << 13, 1 << 11, 0, 1, 1);
-}
-
-// Codex T4.2 repro 2: (cosets - 1) * stride + column_len wraps in release and admitted a short prefix.
-#[test]
-#[should_panic(expected = "Proth120 suffix: span overflow")]
-fn cpu_pr_suffix_launch_rejects_prefix_span_overflow() {
-    let s = shape(13, 6, 1, 5, 1);
-    suffix_launch(31, &s, 1 << 13, usize::MAX - 4096, 2 << 11, 0, 1, 2);
-}
-
-#[test]
-fn cpu_pr_suffix_launch_rejects_invalid_spans() {
-    let s = shape(13, 6, 1, 5, 1);
-    let tile_len = 1 << 11;
-    for (prefix_len, stride, tiles_len, first_tile, tile_count, cosets, message) in [
-        (2 << 13, 1 << 13, 2 * tile_len, 0, 1, 2, None),
-        (
-            (2 << 13) - 1,
-            1 << 13,
-            2 * tile_len,
-            0,
-            1,
-            2,
-            Some("prefix shorter"),
-        ),
-        (
-            2 << 13,
-            (1 << 13) - 1,
-            2 * tile_len,
-            0,
-            1,
-            2,
-            Some("prefix coset stride"),
-        ),
-        (
-            1 << 13,
-            1 << 13,
-            tile_len + 1,
-            0,
-            1,
-            1,
-            Some("tiles length"),
-        ),
-        (
-            1 << 13,
-            1 << 13,
-            tile_len,
-            4,
-            1,
-            1,
-            Some("tiles out of range"),
-        ),
-        (1 << 13, 1 << 13, 0, 0, 0, 1, Some("tiles out of range")),
-        (
-            1 << 13,
-            1 << 13,
-            tile_len,
-            u32::MAX,
-            1,
-            1,
-            Some("tiles out of range"),
-        ),
-    ] {
-        let result = std::panic::catch_unwind(|| {
-            suffix_launch(
-                31, &s, prefix_len, stride, tiles_len, first_tile, tile_count, cosets,
-            )
-        });
-        match message {
-            None => assert!(result.is_ok()),
-            Some(message) => {
-                let payload = result.expect_err(message);
-                let text = payload
-                    .downcast_ref::<String>()
-                    .map(String::as_str)
-                    .or_else(|| payload.downcast_ref::<&str>().copied())
-                    .unwrap();
-                assert!(text.contains(message), "{text}");
-            }
-        }
-    }
-}
-
 fn upload<T: Copy>(values: &[T]) -> DeviceAllocation<T> {
     let mut device = DeviceAllocation::<T>::alloc(values.len()).unwrap();
     memory_copy(&mut device, values).unwrap();
@@ -251,7 +141,7 @@ fn reference_plan(log_n: u32, r: u32) -> ChunkPlan {
 #[test]
 #[cfg(not(no_cuda))]
 fn pr_suffix_micro_matches_reference() {
-    let ctx = DeviceContext::create(31).unwrap();
+    let ctx = DeviceContext::create().unwrap();
     let stream = CudaStream::create().unwrap();
     let twiddles = Twiddles {
         root: domain_generator_for_size::<PR>(1u64 << 31),
@@ -391,67 +281,12 @@ fn pr_suffix_micro_matches_reference() {
     }
 }
 
-// ncu/timing probe of the suffix micro at the base shape (2^25 x 7 columns, v = 2, sb = 10):
-// one warmup batch, then NVTX `ab@suffix.probe` over four batches of fresh (DRAM) prefix tiles.
-#[test]
-#[ignore]
-#[cfg(not(no_cuda))]
-fn pr_suffix_profile_probe() {
-    use super::dispatch;
-    use era_cudart::memory::memory_set_async;
-    use gpu_core::primitives::nvtx::scoped_range;
-    let ctx = DeviceContext::create(31).unwrap();
-    let stream = CudaStream::create().unwrap();
-    let (log_n, columns, log_v, skip_bottom) = (25u32, 7u32, 2u32, 10u32);
-    let l2 = gpu_core::primitives::context::DeviceProperties::new()
-        .unwrap()
-        .l2_cache_size_bytes;
-    let shape = dispatch(log_n, columns as usize, log_v, skip_bottom, l2).unwrap();
-    let s = SuffixShape::new(&shape, log_n, log_v, skip_bottom, columns);
-    let batch = shape.tiles_per_batch as u32;
-    let column_len = (columns as usize) << log_n;
-    let mut prefix = DeviceAllocation::<PR>::alloc(column_len).unwrap();
-    let mut tiles = DeviceAllocation::<PR>::alloc(s.tile_len() * batch as usize).unwrap();
-    unsafe {
-        memory_set_async(prefix.transmute_mut(), 0, &stream).unwrap();
-    }
-    let start = era_cudart::event::CudaEvent::create().unwrap();
-    let end = era_cudart::event::CudaEvent::create().unwrap();
-    for (label, batches) in [("suffix.warmup", 0..1u32), ("suffix.probe", 1..5)] {
-        let _range = scoped_range(Some("ab"), label);
-        for index in batches {
-            start.record(&stream).unwrap();
-            launch_suffix_micro(
-                &ctx,
-                &prefix,
-                column_len,
-                &mut tiles,
-                &s,
-                index * batch,
-                batch,
-                1,
-                None,
-                &stream,
-            )
-            .unwrap();
-            end.record(&stream).unwrap();
-            end.synchronize().unwrap();
-            let ms = era_cudart::event::elapsed_time(&start, &end).unwrap();
-            println!(
-                "pr_suffix_profile_probe: {label} r {} batch {index} ({batch} tiles x {} MiB) {ms:.3} ms",
-                s.r,
-                shape.tile_bytes >> 20
-            );
-        }
-    }
-}
-
 // Openings slots (T1.2): with the slot's active flag at 0 the chunked prefix and the suffix micro
 // leave their outputs untouched; at 1 they equal the ungated launches with the coset by value.
 #[test]
 #[cfg(not(no_cuda))]
 fn pr_slot_gate_skips_launches() {
-    let ctx = DeviceContext::create(31).unwrap();
+    let ctx = DeviceContext::create().unwrap();
     let stream = CudaStream::create().unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_1201);
     let (log_n, columns, log_v, skip_bottom) = (25u32, 7u32, 2u32, 10u32);

@@ -224,7 +224,7 @@ fn cpu_sink_launch_rejects_invalid_launches() {
 #[test]
 #[cfg(not(no_cuda))]
 fn sink_commit_matches_reference() {
-    let ctx = DeviceContext::create(31).unwrap();
+    let ctx = DeviceContext::create().unwrap();
     let stream = CudaStream::create().unwrap();
     let k = 5u32;
     let nu = domain_generator_for_size::<PR>(1u64 << 31);
@@ -342,7 +342,7 @@ fn coefficient_batches_cover_each_tile_once() {
 #[test]
 #[cfg(not(no_cuda))]
 fn sink_coefficient_tree_matches_reference() {
-    let ctx = DeviceContext::create(31).unwrap();
+    let ctx = DeviceContext::create().unwrap();
     let stream = CudaStream::create().unwrap();
     for (log_n, log_v, log_lde, k0, cosets) in [
         (13, 4, 2, 1, 3),
@@ -465,7 +465,7 @@ fn sink_open_queries_matches_gathers() {
         gather_leaves_for_queries_single_coset,
         gather_merkle_paths_partial_for_queries_single_coset, launch_coset_query_plan,
     };
-    let ctx = DeviceContext::create(31).unwrap();
+    let ctx = DeviceContext::create().unwrap();
     let stream = CudaStream::create().unwrap();
     let mut state = 0x0f0e_0d0c_u64;
     let mut next = move || {
@@ -683,7 +683,7 @@ fn sink_open_queries_matches_gathers() {
 #[cfg(not(no_cuda))]
 fn sink_open_slot_rejects_invalid_cap_before_launch() {
     use super::sink::{open_coset_slot, open_coset_slot_scratch_lens, OpenQueries, OpenSlot};
-    let ctx = DeviceContext::create(31).unwrap();
+    let ctx = DeviceContext::create().unwrap();
     let stream = CudaStream::create().unwrap();
     let (log_n, columns, log_v, skip_bottom, log_lde, cap_log) =
         (18u32, 12u32, 1u32, 8u32, 3u32, 19u32);
