@@ -1976,3 +1976,11 @@ larger-batch matching remain open.
 raw-token path, every actual MAIN control edge and every active worker port42
 update. No path/reset/round/schedule premise; zero/multiple masks and both raw
 times stay. Physical enforcement, caller activity and standard hash remain open.
+
+## Public x12 control origins
+
+[Actual public origins](Airbender/Review/Trace/Families/ReducedMachine/ControlOriginTheorems.lean) derives an executing MAIN third-port
+zero-to-nonzero high-field write bound to a fetched public rd12 entry for every
+nonzero control on the initialized path and every nonzero active worker input.
+Readonly refreshes, both raw times and zero/multiple masks remain. No reset or
+schedule premise; physical activity and standard round/hash sequencing remain open.

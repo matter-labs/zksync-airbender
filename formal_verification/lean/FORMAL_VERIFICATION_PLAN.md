@@ -1,5 +1,51 @@
 # Circuit formal verification plan
 
+## Public native x12 control origins (9 November 2026)
+
+[Control origins](Airbender/Review/Trace/Families/ReducedMachine/ControlOrigin.lean),
+[proof](Airbender/Proofs/ReducedMachine/NativeControlOrigin.lean) and
+[short root](Airbender/Review/Trace/Families/ReducedMachine/ControlOriginTheorems.lean)
+derive an actual MAIN third-port write that changes x12 high from zero to nonzero
+for EVERY nonzero control high field on the same initialized GPR12 path. Its write
+rank is no later than the target rank. The actual executing MAIN row is bound to
+an original fetched public entry with rd12. Every active worker with nonzero
+incoming control high has such an origin; no expected reset or schedule is supplied.
+
+A generic first departure from zero precedes native instantiation. Worker updates
+preserve high zero, so that departure must be MAIN. The actual first two MAIN ports
+are readonly value refreshes; a changed value must use the actual third port.
+Existing public-source extraction and original seven-profile-or-CSR address routes
+then derive rd12. The SW alternative is excluded by its actual RAM destination.
+The ordinary runtime-to-fixed BODY restriction is the existing proved public
+profile transfer; CSR routing uses the original runtime BODY. No arbitrary setup
+or historical/native artifact equivalence is assumed. These source/routing facts
+do not assert original CSR or worker Sail execution.
+
+The SAME counted SourceAccepted/public image/log20/OLD LogicalLookups/OLD explicit
+SourceIdentity retain complete initialized control history, original-position
+matching OR >=257 MAIN proofs, natural counts, individual validity, aggregate
+accounting, JOINT43-port execution, weighted outputs, word bounds and partial MAIN
+dependencies. Every original copy, both raw timestamps, incoming low, zero/multiple
+masks, inactive requests/AUX/poles, OLDREADs, aliases, readonly refreshes, unmasked
+SW and public x0 times remain. No desired read, value, range, history, reset,
+round/schedule, result, activity, count, matching or fulfilled-ledger premise and
+no new acceptance or cryptographic boundary is introduced. The rank remains a
+noninjective proof order, not a physical clock encoding.
+
+[19 controls](Tests/NativeControlOrigin.lean) check pure first departures, retained
+refreshes/final zero/multiple masks, actual readonly/third-port classification,
+the old LOCAL inactive caller, conditional complete origins/every nonzero worker,
+retained prior results and the full counted root. They are pure/old LOCAL/
+conditional controls, not nonempty native-global or physical accepted witnesses,
+attacks, defects or absent-enforcement evidence. Physical caller activity, larger
+batch no-wrap/matching, permitted reset operations, standard round/hash sequencing,
+original CSR/MOP/worker Sail, protocol spans/padding-terminal/init-teardown,
+cryptography, completeness, general physical setup and parity remain open. Zero
+established native defects; FINDINGS/production/Sail/old acceptance unchanged. No
+new native/source adoption/pin, parser/importer/exporter, artifact/fixture,
+generation/heavy replay, dependency or v3 refresh. Counts are audit counters.
+
+
 ## Initialized native x12 control history (9 November 2026)
 
 [Control history](Airbender/Review/Trace/Families/ReducedMachine/ControlHistory.lean),

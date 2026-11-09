@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.ControlOrigin
+import Airbender.Proofs.ReducedMachine.NativeControlOrigin
+import Airbender.Review.Trace.Families.ReducedMachine.ControlOriginTheorems
+import Tests.NativeControlOrigin
+
 import Airbender.Review.Trace.Families.ReducedMachine.ControlHistory
 import Airbender.Proofs.ReducedMachine.NativeControlHistory
 import Airbender.Review.Trace.Families.ReducedMachine.ControlHistoryTheorems
@@ -8210,3 +8215,39 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeControlHistory.control_edges_classified
 #print axioms Airbender.Tests.NativeControlHistory.every_worker_on_same_path
 #print axioms Airbender.Tests.NativeControlHistory.full_counted_source
+
+#print axioms Airbender.NativeControlOriginProofs.sampled_rows
+#print axioms Airbender.NativeControlOriginProofs.zero_origin
+#print axioms Airbender.NativeControlOriginProofs.third_of_change
+#print axioms Airbender.NativeControlOriginProofs.worker_zero
+#print axioms Airbender.NativeControlOriginProofs.main_origin
+#print axioms Airbender.NativeControlOriginProofs.query_rd
+#print axioms Airbender.NativeControlOriginProofs.routed_rd
+#print axioms Airbender.NativeControlOriginProofs.supported_rd
+#print axioms Airbender.NativeControlOriginProofs.unified_rd
+#print axioms Airbender.NativeControlOriginProofs.public_rd
+#print axioms Airbender.NativeControlOriginProofs.zip_members
+#print axioms Airbender.NativeControlOriginProofs.main_sources
+#print axioms Airbender.NativeControlOriginProofs.origin
+#print axioms Airbender.NativeControlOriginProofs.from_prior
+#print axioms Airbender.NativeControlOriginProofs.counted
+#print axioms Airbender.NativeControlOrigin.native_counted_control_origins
+#print axioms Airbender.Tests.NativeControlOrigin.first_nonzero_origin
+#print axioms Airbender.Tests.NativeControlOrigin.exact_first_edge
+#print axioms Airbender.Tests.NativeControlOrigin.refresh_is_not_origin
+#print axioms Airbender.Tests.NativeControlOrigin.later_worker_is_not_first_origin
+#print axioms Airbender.Tests.NativeControlOrigin.final_zero_retained
+#print axioms Airbender.Tests.NativeControlOrigin.duplicate_rank_rejected
+#print axioms Airbender.Tests.NativeControlOrigin.multiple_mask_retained
+#print axioms Airbender.Tests.NativeControlOrigin.last_mask_drops
+#print axioms Airbender.Tests.NativeControlOrigin.zero_worker_cannot_seed_nonzero
+#print axioms Airbender.Tests.NativeControlOrigin.actual_MAIN_change_is_third
+#print axioms Airbender.Tests.NativeControlOrigin.actual_readonly_ports_copy
+#print axioms Airbender.Tests.NativeControlOrigin.inactive_caller_retained
+#print axioms Airbender.Tests.NativeControlOrigin.complete_history_with_origins
+#print axioms Airbender.Tests.NativeControlOrigin.every_nonzero_worker_origin
+#print axioms Airbender.Tests.NativeControlOrigin.old_history_retained
+#print axioms Airbender.Tests.NativeControlOrigin.old_position_matching_retained
+#print axioms Airbender.Tests.NativeControlOrigin.old_counts_retained
+#print axioms Airbender.Tests.NativeControlOrigin.old_joint_execution_retained
+#print axioms Airbender.Tests.NativeControlOrigin.full_counted_source
