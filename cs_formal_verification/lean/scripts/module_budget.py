@@ -53,8 +53,25 @@ BUDGET = float(os.environ.get("MODULE_BUDGET_S", "30"))
 CALIBRATION = ROOT / "scripts" / "budget_calibration.lean"
 CALIBRATION_SHA256 = "45aa2de95e7e061ea316fc116e4524448eb8f99c881f36fc4373411f5985781d"
 CALIBRATION_REFERENCE_S = 5.5  # lowest of ~20 runs here (5.4-6.8 s: thermal state, core type)
-CALIBRATION_REFERENCE_MACHINE = "Apple M-series Mac, 14 cores, macOS arm64, Lean 4.34.1 (2026-11-09)"
+CALIBRATION_REFERENCE_MACHINE = "Apple M3 Max, 14 cores, macOS arm64, Lean 4.34.1 (2026-11-09)"
+CALIBRATION_REFERENCE_ID = "Darwin arm64 Apple M3 Max 14"
 CALIBRATION_CLAMP = (0.5, 4.0)
+# On the reference machine itself the factor is 1 by definition; load and thermal throttling inflate the measurement
+# (seen 1.0-1.23 there), so it is capped at 1.05.
+CALIBRATION_REFERENCE_CAP = 1.05
+
+
+def machine_id() -> str:
+    import platform
+    brand = ""
+    if platform.system() == "Darwin":
+        brand = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True).stdout.strip()
+    else:
+        try:
+            brand = next((l.split(":", 1)[1].strip() for l in open("/proc/cpuinfo") if l.startswith("model name")), "")
+        except OSError:
+            pass
+    return f"{platform.system()} {platform.machine()} {brand} {os.cpu_count()}"
 
 
 def ledger_path() -> Path:
@@ -270,8 +287,8 @@ def run_timed(args: list[str], env: dict[str, str]) -> tuple[float, int, str]:
 
 
 def calibrate(lean: str, env: dict[str, str], tmp: Path) -> tuple[float, float]:
-    """(this machine's calibration CPU time, the limit's scale factor). The lowest of up to three runs (a run can
-    land on an efficiency core); stops after the first run when it is within 5% of the reference."""
+    """(this machine's calibration CPU time, the limit's scale factor). The lowest of three runs (a run can land on an
+    efficiency core or a throttled one); on the reference machine the factor is at most CALIBRATION_REFERENCE_CAP."""
     import hashlib
     if hashlib.sha256(CALIBRATION.read_bytes()).hexdigest() != CALIBRATION_SHA256:
         raise RuntimeError(f"{CALIBRATION.name} changed: measure a new CALIBRATION_REFERENCE_S and pin its sha256")
@@ -282,9 +299,9 @@ def calibrate(lean: str, env: dict[str, str], tmp: Path) -> tuple[float, float]:
         if rc != 0:
             raise RuntimeError(f"calibration failed to compile:\n{out[-2000:]}")
         best = min(best, cpu)
-        if best <= 1.05 * CALIBRATION_REFERENCE_S:
-            break
     lo, hi = CALIBRATION_CLAMP
+    if machine_id() == CALIBRATION_REFERENCE_ID:
+        hi = CALIBRATION_REFERENCE_CAP
     return best, min(hi, max(lo, best / CALIBRATION_REFERENCE_S))
 
 
@@ -310,7 +327,7 @@ def cmd_check(jobs: int, table: Path | None) -> int:
     try:
         cal, scale = calibrate(lean, env, tmp)
         limit = BUDGET * scale
-        print(f"budget: calibration {cal:.1f} s CPU (reference {CALIBRATION_REFERENCE_S:g} s on "
+        print(f"budget: calibration {cal:.1f} s CPU on {machine_id()} (reference {CALIBRATION_REFERENCE_S:g} s on "
               f"{CALIBRATION_REFERENCE_MACHINE}): limit {BUDGET:g} s x {scale:.2f} = {limit:.1f} s", flush=True)
         if missing:
             print(f"budget: measuring {len(missing)} modules not in the ledger ({jobs} at a time)", flush=True)
