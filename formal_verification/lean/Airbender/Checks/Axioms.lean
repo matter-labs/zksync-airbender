@@ -1,3 +1,8 @@
+import Airbender.Review.Trace.Families.ReducedMachine.ControlFold
+import Airbender.Proofs.ReducedMachine.NativeControlFold
+import Airbender.Review.Trace.Families.ReducedMachine.ControlFoldTheorems
+import Tests.NativeControlFold
+
 import Airbender.Review.Trace.Families.ReducedMachine.ControlLastReset
 import Airbender.Proofs.ReducedMachine.NativeControlLastReset
 import Airbender.Review.Trace.Families.ReducedMachine.ControlLastResetTheorems
@@ -8499,3 +8504,46 @@ import Tests.SubwordStoreData
 #print axioms Airbender.Tests.NativeControlLastReset.prior_values_retained
 #print axioms Airbender.Tests.NativeControlLastReset.old_joint_retained
 #print axioms Airbender.Tests.NativeControlLastReset.full_counted_source
+
+#print axioms Airbender.NativeControlFoldProofs.selected_fold
+#print axioms Airbender.NativeControlFoldProofs.count_bound
+#print axioms Airbender.NativeControlFoldProofs.count_none
+#print axioms Airbender.NativeControlFoldProofs.count_all
+#print axioms Airbender.NativeControlFoldProofs.count_zero_iff
+#print axioms Airbender.NativeControlFoldProofs.worker_updated
+#print axioms Airbender.NativeControlFoldProofs.suffix_step
+#print axioms Airbender.NativeControlFoldProofs.suffix_fold
+#print axioms Airbender.NativeControlFoldProofs.flags_match
+#print axioms Airbender.NativeControlFoldProofs.worker_count_bound
+#print axioms Airbender.NativeControlFoldProofs.worker_count_zero_iff
+#print axioms Airbender.NativeControlFoldProofs.no_worker_copy
+#print axioms Airbender.NativeControlFoldProofs.outcome
+#print axioms Airbender.NativeControlFoldProofs.from_prior
+#print axioms Airbender.NativeControlFoldProofs.counted
+#print axioms Airbender.NativeControlFold.native_counted_control_fold
+#print axioms Airbender.Tests.NativeControlFold.two_selected_positions
+#print axioms Airbender.Tests.NativeControlFold.all_equal_value_updates_counted
+#print axioms Airbender.Tests.NativeControlFold.empty_positions
+#print axioms Airbender.Tests.NativeControlFold.no_worker_keeps_low
+#print axioms Airbender.Tests.NativeControlFold.first_worker_clears_low
+#print axioms Airbender.Tests.NativeControlFold.multiple_masks_shift_twice
+#print axioms Airbender.Tests.NativeControlFold.zero_masks_still_update
+#print axioms Airbender.Tests.NativeControlFold.incoming_mode_bits_remain
+#print axioms Airbender.Tests.NativeControlFold.last_mask_exits
+#print axioms Airbender.Tests.NativeControlFold.ten_updates_exhaust_two_masks
+#print axioms Airbender.Tests.NativeControlFold.wrong_count_result_rejected
+#print axioms Airbender.Tests.NativeControlFold.derived_finite_fold
+#print axioms Airbender.Tests.NativeControlFold.bounded_original_positions
+#print axioms Airbender.Tests.NativeControlFold.exact_zero_positions
+#print axioms Airbender.Tests.NativeControlFold.inactive_CSR_kept
+#print axioms Airbender.Tests.NativeControlFold.actual_worker_position_selected
+#print axioms Airbender.Tests.NativeControlFold.actual_count_bound
+#print axioms Airbender.Tests.NativeControlFold.zero_count_exactly_no_workers
+#print axioms Airbender.Tests.NativeControlFold.actual_suffix_fold
+#print axioms Airbender.Tests.NativeControlFold.no_workers_copy_both
+#print axioms Airbender.Tests.NativeControlFold.every_target_same_path
+#print axioms Airbender.Tests.NativeControlFold.every_actual_worker_same_path
+#print axioms Airbender.Tests.NativeControlFold.all_ordinary_CSR_edges_retained
+#print axioms Airbender.Tests.NativeControlFold.prior_last_reset_retained
+#print axioms Airbender.Tests.NativeControlFold.old_joint_retained
+#print axioms Airbender.Tests.NativeControlFold.full_counted_source

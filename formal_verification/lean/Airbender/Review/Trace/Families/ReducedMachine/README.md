@@ -1145,3 +1145,11 @@ identification and standard worker scheduling remain open.
 change before every target/active-worker read, or BOTH seed-derived zero limbs.
 Every following copy/worker edge remains; nonzero high comes from that last reset.
 Exact worker-count folds, physical scheduling and standard hash remain open.
+
+## Control folds over worker path positions
+
+[Exact control folds](ControlFoldTheorems.lean) derive both target limbs by iterating the native
+update from the last reset over ALL matching worker42 path-edge positions.
+Equal-value/zero-mask updates and MAIN copies remain; count bounds and zero IFF
+no worker are derived. Original worker-source occurrence bijection, issued-call
+counts, physical scheduling and standard hash remain open.

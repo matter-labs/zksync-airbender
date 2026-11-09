@@ -1,5 +1,57 @@
 # Circuit formal verification plan
 
+## Exact control folds over worker path positions (9 November 2026)
+
+[Control fold observations](Airbender/Review/Trace/Families/ReducedMachine/ControlFold.lean),
+[proof](Airbender/Proofs/ReducedMachine/NativeControlFold.lean) and
+[short root](Airbender/Review/Trace/Families/ReducedMachine/ControlFoldTheorems.lean)
+derive the exact two-limb control value at EVERY target on ONE complete initialized
+x12 path. After its last relevant public MAIN reset, the target equals the native
+control update iterated by the DERIVED number of matching active worker42 edge
+positions in that suffix. The seed alternative is retained. All prior public
+origins and ordinary arithmetic/logic/comparison-high-zero/shift/jump/LW/CSR values
+and their edges remain on THIS SAME path.
+
+Every original bounded consecutive position is observed. Worker membership matches
+the FULL actual read42/write42 tokens and active original row; equal-value and
+zero-mask updates count. No MAIN-copy or worker edge is removed. Generic bounded
+selection/induction precedes native data: the count is bounded by segment length,
+and is zero IFF no matching worker edge occurs. An unselected edge is derived to
+be an actual MAIN value copy. Old pointwise transition gives every selected edge
+low0/high nextHigh, retaining incoming low before the first worker and every
+zero/multiple mask. No exclusivity, desired count, reset, read, range, address,
+alignment, history, result, one-hot, round, schedule, activity, matching or fulfilled
+ledger premise is supplied.
+
+This closes a PATH-EDGE-POSITION fold. A bijection to original worker-source
+occurrence positions, issued-call counts and standard round/hash schedules remains
+open. Earlier fold-open notes are superseded only for these path positions.
+The SAME old counted SourceAccepted/public image/log20/OLD LogicalLookups/OLD
+explicit SourceIdentity and all prior accounting/JOINT43-port execution/25 weighted
+outputs/word bounds/capacity/MAIN dependencies remain. Inactive requests, AUX/m0
+poles, inactive D, all43 ports, BOTH raw times, OLDREADs, refreshes, aliases,
+unmasked SW and public x0 times remain in acceptance. Rank remains noninjective
+proof order; logical extraction is not physical fixed-challenge/RustJSONFFT/
+transcript/quotient/verifier refinement.
+
+[26 controls](Tests/NativeControlFold.lean) check original-position counts, equal-value
+workers, empty/no-worker cases, incoming low, mode bits, zero/multiple masks,
+finite selected folds, count bounds/zero characterization, wrong-result rejection,
+actual worker selection/suffix folds/every target and active worker on the same
+path, prior edges/values/JOINT and the full counted root. Pure finite reference
+data, OLD LOCAL inactive CSR and conditional consequences only; no new native-
+global/wholeworker/physical accepted witness, attack, defect or absence-all-other-
+enforcement evidence. Review contains observations/short root; calculations and
+assembly stay under Proofs, with separate unchanged Import fidelity.
+
+Physical caller activity, larger-batch universal no-wrap/matching, original CSR/
+NDstream/MOP/worker Sail, protocol spans, padding-terminal/init-teardown, physical
+cryptography, completeness, general physical setup and parity remain open. No
+native adoption/pin/parser/importer/exporter/artifact/fixture/generation/heavy replay/
+dependency/v3 refresh/production/Sail/old acceptance/FINDINGS change. Zero established
+native defects; counts are not parity.
+
+
 ## Last relevant public control reset and worker suffix (9 November 2026)
 
 [Last reset observations](Airbender/Review/Trace/Families/ReducedMachine/ControlLastReset.lean),
