@@ -48,7 +48,9 @@ fn make_context() -> ProverContext {
     ProverContext::new(&ProverContextConfig {
         device_allocation_blocks_count: Some(256),
         host_allocator_blocks_count: 128,
-        proth120_ntt_log_max_domain: Some(21),
+        proth120_ntt_log_max_domain: Some(
+            gpu_prover_context::ProverContext::PROTH120_NTT_LOG_MAX_DOMAIN,
+        ),
         ..Default::default()
     })
     .unwrap()

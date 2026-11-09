@@ -702,7 +702,7 @@ fn cpu_tile_pass(monomials: &[PR], log_lde: u32, k0: usize, cosets: usize) -> Ve
 
 #[test]
 fn pr_commit_intermediate_matches_cpu_small() {
-    let ctx = context(512, Some(19));
+    let ctx = context(512, Some(gpu_ntt::proth120::DeviceContext::LOG_MAX_DOMAIN));
     let stream = ctx.get_exec_stream();
     let worker = worker();
     let mut rng = TestRng::new(0x7201);
@@ -949,7 +949,7 @@ fn assert_l1_2p21_oracle_sampled(round: usize, expected: (u32, u32, u32)) {
     });
     let cpu_seconds = started.elapsed().as_secs_f64();
 
-    let ctx = context(4096, Some(shape.log_domain));
+    let ctx = context(4096, Some(gpu_ntt::proth120::DeviceContext::LOG_MAX_DOMAIN));
     let stream = ctx.get_exec_stream();
     let monomials_dev = upload(&monomials, stream);
     let seed_bytes: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
@@ -1039,7 +1039,7 @@ fn host_sibling_offset(log_leaves: u32, skip_bottom: u32, level: u32, j: u32) ->
 #[test]
 fn pr_open_intermediate_matches_cpu_small() {
     use super::openings::schedule_open_intermediate;
-    let ctx = context(128, Some(19));
+    let ctx = context(128, Some(gpu_ntt::proth120::DeviceContext::LOG_MAX_DOMAIN));
     let stream = ctx.get_exec_stream();
     let worker = worker();
     let mut rng = TestRng::new(0x7130_7eaf);
@@ -1136,7 +1136,7 @@ fn pr_open_intermediate_matches_cpu_small() {
 #[test]
 fn pr_horner_leaves_match_cpu_small() {
     use super::openings::schedule_horner_leaves;
-    let ctx = context(128, Some(19));
+    let ctx = context(128, Some(gpu_ntt::proth120::DeviceContext::LOG_MAX_DOMAIN));
     let stream = ctx.get_exec_stream();
     let worker = worker();
     let mut rng = TestRng::new(0x7130_80a1);
@@ -1172,52 +1172,12 @@ fn pr_horner_leaves_match_cpu_small() {
     }
 }
 
-#[test]
-fn pr_subtree_points_wide_context_match_cpu() {
-    use gpu_ntt::proth120::DeviceContext;
-    let ntt = DeviceContext::create(33).unwrap();
-    let stream = CudaStream::create().unwrap();
-    let mut rng = TestRng::new(0x7133_0d01);
-    for (log_domain, log_v, log_lde, skip_bottom) in [(33, 1, 9, 5), (33, 4, 9, 5), (31, 2, 6, 5)] {
-        let query_domain_log2 = log_domain - log_v;
-        let domain = 1u64 << query_domain_log2;
-        let mut queries = vec![(domain - 1) as u32, 0, (domain >> 1) as u32];
-        queries.extend((0..5).map(|_| (rng.next_u64() % domain) as u32));
-        let queries_dev = upload(&queries, &stream);
-        let mut points = upload(&vec![PR::ZERO; queries.len() << skip_bottom], &stream);
-        super::kernels::subtree_points(
-            &queries_dev,
-            query_domain_log2,
-            log_lde,
-            skip_bottom,
-            ntt.descriptor(),
-            log_domain,
-            &mut points,
-            &stream,
-        )
-        .unwrap();
-        let actual = download(&points, &stream);
-        let generator = fft::domain_generator_for_size::<PR>(1u64 << log_domain);
-        let k = 1u64 << skip_bottom;
-        let expected: Vec<PR> = queries
-            .iter()
-            .flat_map(|&q| {
-                let q = q as u64;
-                let c = q & ((1 << log_lde) - 1);
-                let j = q >> log_lde;
-                (0..k).map(move |t| {
-                    let q_m = c + (((j & !(k - 1)) + t) << log_lde);
-                    generator.pow_u128(((q_m << log_v) as u128) % (1u128 << log_domain))
-                })
-            })
-            .collect();
-        assert_fields(&actual, &expected);
-    }
-}
-
 fn invalid_opening_query_traps(extract: bool) {
     use std::mem::ManuallyDrop;
-    let ctx = ManuallyDrop::new(context(32, Some(19)));
+    let ctx = ManuallyDrop::new(context(
+        32,
+        Some(gpu_ntt::proth120::DeviceContext::LOG_MAX_DOMAIN),
+    ));
     let stream = ctx.get_exec_stream();
     let shape = small_oracle(8, 11, 16 << 16);
     let queries = ManuallyDrop::new(upload(&[1u32 << 15], stream));
@@ -1747,7 +1707,7 @@ fn run_symbolic_group(
 
 #[test]
 fn pr_in_domain_symbolic_matches_dense() {
-    let ctx = context(1024, Some(19));
+    let ctx = context(1024, Some(gpu_ntt::proth120::DeviceContext::LOG_MAX_DOMAIN));
     let stream = ctx.get_exec_stream();
     let mut rng = TestRng::new(0x7401);
     let shape = L1WhirShape::from_schedule(&small_schedule(), 14, 5, 2, 16 << 14);
@@ -2047,7 +2007,7 @@ fn assert_l1_whir_fold_matches_cpu_small(
     use prover::allocation_pool::AllocationType;
     use prover::gkr::prover::setup::GKRSetup;
     use std::sync::Arc;
-    let ctx = context(256, Some(19));
+    let ctx = context(256, Some(gpu_ntt::proth120::DeviceContext::LOG_MAX_DOMAIN));
     let stream = ctx.get_exec_stream();
     let worker = worker();
     let mut rng = TestRng::new(0x7501_5eed);

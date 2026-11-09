@@ -22,20 +22,12 @@ pub(crate) use fft::{
 };
 
 #[cfg(test)]
-pub(crate) use fft::{
-    column_major::naive::serial_ct_ntt_natural_to_bitreversed,
-    precompute_twiddles_for_fft,
-    proth120_lazy::{lde_coset_lazy_r8, lde_coset_lazy_r8_into},
-    Twiddles,
-};
+pub(crate) use fft::{proth120_lazy::lde_coset_lazy_r8, Twiddles};
 #[cfg(test)]
 pub(crate) use prover::{
     allocation_pool::GenericAllocationPool,
-    gkr::prover::backend::{
-        Backend, ExtCoeffConversion, Proth120WorkStealingLazyBackend, StandardExtCoeffConv,
-    },
+    gkr::prover::backend::{Backend, Proth120WorkStealingLazyBackend},
     gkr::whir::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs_radix4,
-    merkle_trees::CosetLeafAccessor,
 };
 #[cfg(test)]
 pub(crate) use worker::Worker;

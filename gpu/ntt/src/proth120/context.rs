@@ -42,11 +42,10 @@ pub struct DeviceContext {
 }
 
 impl DeviceContext {
-    pub fn create(log_max_domain: u32) -> CudaResult<Self> {
-        assert!(
-            (8..=33).contains(&log_max_domain),
-            "Proth120 NTT context: log_max_domain {log_max_domain} outside 8..=33"
-        );
+    pub const LOG_MAX_DOMAIN: u32 = 31;
+
+    pub fn create() -> CudaResult<Self> {
+        let log_max_domain = Self::LOG_MAX_DOMAIN;
         let low_bits = log_max_domain.div_ceil(2);
         let high_bits = log_max_domain - low_bits;
         let w = domain_generator_for_size::<PR>(1u64 << log_max_domain);
@@ -158,18 +157,8 @@ mod tests {
     #[cfg(not(no_cuda))]
     fn pr_context_roots_cpu_parity() {
         let stream = CudaStream::create().unwrap();
-        for log_max_domain in [8, 12, 20, 31, 32, 33] {
-            let context = DeviceContext::create(log_max_domain).unwrap();
-            assert_eq!(context.log_max_domain(), log_max_domain);
-            assert_context_tables(&context, &stream);
-        }
-        let first = DeviceContext::create(8).unwrap();
-        let first_stream = CudaStream::create().unwrap();
-        assert_context_tables(&first, &first_stream);
-        let second = DeviceContext::create(31).unwrap();
-        let second_stream = CudaStream::create().unwrap();
-        assert_context_tables(&second, &second_stream);
-        assert_context_tables(&first, &first_stream);
-        assert_context_tables(&second, &second_stream);
+        let context = DeviceContext::create().unwrap();
+        assert_eq!(context.log_max_domain(), 31);
+        assert_context_tables(&context, &stream);
     }
 }

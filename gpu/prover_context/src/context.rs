@@ -95,6 +95,8 @@ pub struct ProverContext {
 }
 
 impl ProverContext {
+    pub const PROTH120_NTT_LOG_MAX_DOMAIN: u32 = proth120::DeviceContext::LOG_MAX_DOMAIN;
+
     pub fn new(config: &ProverContextConfig) -> CudaResult<Self> {
         Self::new_with_auto_arena_size(config, |available| available)
     }
@@ -145,7 +147,14 @@ impl ProverContext {
         let device_context = DeviceContext::create(config.powers_of_w_coarse_log_count)?;
         let proth120_device_context = config
             .proth120_ntt_log_max_domain
-            .map(proth120::DeviceContext::create)
+            .map(|log_max_domain| {
+                assert_eq!(
+                    log_max_domain,
+                    proth120::DeviceContext::LOG_MAX_DOMAIN,
+                    "Proth120 NTT context is fixed at 2^31"
+                );
+                proth120::DeviceContext::create()
+            })
             .transpose()?;
         let exec_stream = CudaStream::create()?;
         let h2d_stream = CudaStream::create()?;
