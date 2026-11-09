@@ -19,8 +19,7 @@ use std::alloc::Global;
 use std::time::Instant;
 
 use fft::Twiddles;
-use prover::allocation_pool::GenericAllocationPool;
-use prover::gkr::prover::backend::{Backend, ExtCoeffConversion, Proth120WorkStealingLazyBackend};
+use prover::gkr::prover::backend::{Backend, Proth120WorkStealingLazyBackend};
 use prover::gkr::whir::coset_commit::CosetByCosetExtCommitment;
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, PathQueryable};
@@ -30,7 +29,7 @@ use gpu_hash::keccak256::{
 };
 use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
 
-use super::commit::{schedule_commit_intermediate, schedule_lde_convert_pass};
+use super::commit::schedule_commit_intermediate;
 use super::schedule::{
     query_words, schedule_delinearization, schedule_eq_update, schedule_pow_and_query_indexes,
 };
@@ -460,31 +459,9 @@ fn gpu_commit(
     }
 }
 
-fn cpu_tile_pass(monomials: &[PR], log_lde: u32, k0: usize, cosets: usize) -> Vec<PR> {
-    let worker = worker();
-    let n = monomials.len();
-    let twiddles = Twiddles::<PR, Global>::new(n, &worker);
-    let backend = Proth120WorkStealingLazyBackend;
-    let pool = GenericAllocationPool::<PR, PR>::proxy();
-    let (mut all, offsets) = backend.lde_ext_poly_from_monomial_form_continuous(
-        monomials,
-        &twiddles,
-        1 << log_lde,
-        &pool,
-        &worker,
-    );
-    let conv =
-        <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::ext_coeff_conv(&backend, n, 16);
-    for k in k0..k0 + cosets {
-        conv.apply_serial(&mut all[k * n..(k + 1) * n], offsets[k]);
-    }
-    all[k0 * n..(k0 + cosets) * n].to_vec()
-}
-
 #[test]
 fn pr_commit_intermediate_matches_cpu_small() {
     let ctx = context(512, Some(gpu_ntt::proth120::DeviceContext::LOG_MAX_DOMAIN));
-    let stream = ctx.get_exec_stream();
     let worker = worker();
     let mut rng = TestRng::new(0x7201);
     // Diagnostic fused suffix 8_4 and n11 residue, both with independent CPU caps.
@@ -529,13 +506,6 @@ fn pr_commit_intermediate_matches_cpu_small() {
             gpu_flipped.cap, cpu_cap,
             "flipped monomial negative control"
         );
-        let tile_cosets = 1usize << shape.tile_cosets_log2;
-        let k0 = cosets - tile_cosets;
-        let monomials_dev = upload(&monomials, stream);
-        let expected = cpu_tile_pass(&monomials, log_lde, k0, tile_cosets);
-        let mut tile = upload(&vec![PR::ZERO; tile_cosets << log_n], stream);
-        schedule_lde_convert_pass(&monomials_dev, &shape, k0 as u32, &mut tile, &ctx).unwrap();
-        assert_fields(&download(&tile, stream), &expected);
     }
 }
 

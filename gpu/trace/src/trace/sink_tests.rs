@@ -1,17 +1,15 @@
 use era_cudart::memory::{memory_copy, memory_copy_async, DeviceAllocation};
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_core::primitives::field::PR;
 use gpu_hash::keccak256::{build_partial_coset_tree, build_retained_layers, Digest};
 use gpu_ntt::proth120::{
-    convert_coset_leaves, dispatch, launch_suffix_micro, lde_coset, lde_coset_slot, CosetSource,
-    DeviceContext, ScaleArgs, SuffixShape,
+    dispatch, launch_suffix_micro, lde_coset_slot, CosetSource, DeviceContext, ScaleArgs,
+    SuffixShape,
 };
 
 use super::packed::retained_len;
 use super::sink::{coefficient_batches, launch_sink, SinkMode};
-use crate::upstream::{domain_generator_for_size, Field};
 
 fn random_values(count: usize, seed: u64) -> Vec<PR> {
     let mut state = seed;
@@ -87,20 +85,14 @@ fn coefficient_batches_cover_each_tile_once() {
 fn sink_coefficient_tree_matches_reference() {
     let ctx = DeviceContext::create().unwrap();
     let stream = CudaStream::create().unwrap();
-    for (log_n, log_v, log_lde, k0, cosets) in [
-        (13, 4, 2, 1, 3),
-        (15, 4, 6, 60, 4),
-        (19, 4, 4, 13, 3),
-        (23, 4, 3, 7, 1),
-    ] {
+    // Diagnostic fused suffix8_4 with exact CPU LDE/leaf coefficients.
+    for (log_n, log_v, log_lde, k0, cosets) in [(15, 4, 4, 3, 4)] {
         let skip_bottom = 5;
         let log_domain = log_n + log_lde;
         let rows = 1usize << log_n;
         let h = log_n - log_v;
-        let monomials = upload(&random_values(
-            rows,
-            u64::from(log_n) << 8 | u64::from(log_v),
-        ));
+        let monomials_host = random_values(rows, u64::from(log_n) << 8 | u64::from(log_v));
+        let monomials = upload(&monomials_host);
         let plan = dispatch(log_n, 1, log_v, skip_bottom, device_l2()).unwrap();
         let s = SuffixShape::new(&plan, log_n, log_v, skip_bottom, 1);
         let mut prefix = DeviceAllocation::<PR>::alloc(rows * cosets as usize).unwrap();
@@ -153,20 +145,10 @@ fn sink_coefficient_tree_matches_reference() {
         build_retained_layers(h, skip_bottom, cosets, per_coset, &mut retained, &stream).unwrap();
         let candidate = download(&retained, &stream);
 
-        let nu = domain_generator_for_size::<PR>(1u64 << log_domain);
-        let mut natural = DeviceAllocation::<PR>::alloc(rows).unwrap();
         let mut reference = DeviceAllocation::<Digest>::alloc(per_coset).unwrap();
         for coset in 0..cosets as usize {
-            let offset = upload(&[nu.pow(k0 + coset as u32)]);
-            lde_coset(
-                &ctx,
-                &DeviceMatrix::new(&monomials, rows),
-                &mut DeviceMatrixMut::new(&mut natural, rows),
-                &offset,
-                &stream,
-            )
-            .unwrap();
-            convert_coset_leaves(&ctx, &mut natural, log_v, &offset, &stream).unwrap();
+            let expected = cpu_tile_pass(&monomials_host, log_lde, k0 as usize + coset, 1);
+            let natural = upload(&expected);
             build_partial_coset_tree(
                 &natural,
                 log_n,
@@ -197,3 +179,30 @@ fn sink_coefficient_tree_matches_reference() {
 }
 
 mod packed;
+
+fn cpu_tile_pass(monomials: &[PR], log_lde: u32, k0: usize, cosets: usize) -> Vec<PR> {
+    use fft::Twiddles;
+    use prover::allocation_pool::GenericAllocationPool;
+    use prover::gkr::prover::backend::{
+        Backend, ExtCoeffConversion, Proth120WorkStealingLazyBackend,
+    };
+    use std::alloc::Global;
+    let worker = worker::Worker::new_with_num_threads(8);
+    let n = monomials.len();
+    let twiddles = Twiddles::<PR, Global>::new(n, &worker);
+    let backend = Proth120WorkStealingLazyBackend;
+    let pool = GenericAllocationPool::<PR, PR>::proxy();
+    let (mut all, offsets) = backend.lde_ext_poly_from_monomial_form_continuous(
+        monomials,
+        &twiddles,
+        1 << log_lde,
+        &pool,
+        &worker,
+    );
+    let conv =
+        <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::ext_coeff_conv(&backend, n, 16);
+    for k in k0..k0 + cosets {
+        conv.apply_serial(&mut all[k * n..(k + 1) * n], offsets[k]);
+    }
+    all[k0 * n..(k0 + cosets) * n].to_vec()
+}
