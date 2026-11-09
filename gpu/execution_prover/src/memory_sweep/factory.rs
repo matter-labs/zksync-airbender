@@ -236,7 +236,7 @@ fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<Tr
                 },
             )?)),
         )),
-        CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22) => {
+        CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
             Ok(Some(TracingDataHost::Unrolled(
                 UnrolledTracingDataHost::Unified(pinned_filled_trace(
                     rows,
@@ -311,6 +311,7 @@ impl SyntheticInputFactory {
                     &[ProofProfile::Standard],
                 )
             }
+            CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it uses the CompressionFinal profile and presets::compression policy"),
             CircuitType::L1Wrap => panic!(
                 "L1Wrap is not enumerated by the all-circuit sweep; its policy is presets::l1_wrap"
             ),
@@ -320,7 +321,7 @@ impl SyntheticInputFactory {
             }
             CircuitType::Unrolled(unrolled) => {
                 let machine_type = match unrolled {
-                    UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22 => {
+                    UnrolledCircuitType::Unified => {
                         MachineType::Reduced
                     }
                     _ => MachineType::FullUnsigned,
@@ -375,9 +376,7 @@ fn carries_inits_and_teardowns(circuit: CircuitType) -> bool {
     matches!(
         circuit,
         CircuitType::Unrolled(
-            UnrolledCircuitType::InitsAndTeardowns
-                | UnrolledCircuitType::Unified
-                | UnrolledCircuitType::Unified22
+            UnrolledCircuitType::InitsAndTeardowns | UnrolledCircuitType::Unified
         )
     )
 }

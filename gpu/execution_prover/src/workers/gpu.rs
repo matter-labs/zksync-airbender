@@ -321,7 +321,6 @@ fn schedule_phase_one<'a>(
                 profile,
             } = req;
 
-            if profile.is_compression() {}
             let state = RequestState {
                 batch_id,
                 circuit_type,
@@ -355,7 +354,6 @@ fn schedule_phase_one<'a>(
                 profile,
             } = req;
 
-            if profile.is_compression() {}
             let state = RequestState {
                 batch_id,
                 circuit_type,

@@ -93,9 +93,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cpu_memory_preset_rejects_explicit_arena() {
+    fn cpu_memory_preset_configures_exact_arena() {
+        for (preset, bytes) in [
+            (MemoryPreset::Auto, None),
+            (MemoryPreset::GiB21, Some(21usize << 30)),
+            (MemoryPreset::GiB30, Some(30usize << 30)),
+        ] {
+            let config = GpuBackendConfiguration {
+                memory_preset: preset,
+                ..Default::default()
+            }
+            .context_config();
+            assert_eq!(
+                config
+                    .device_allocation_blocks_count
+                    .map(|blocks| blocks << config.allocator_block_log_size),
+                bytes
+            );
+        }
         let mut config = GpuBackendConfiguration::default();
         config.prover_context_config.device_allocation_blocks_count = Some(22 << 10);
+        assert_eq!(
+            config.context_config().device_allocation_blocks_count,
+            Some(22 << 10)
+        );
         config.memory_preset = MemoryPreset::GiB21;
         assert!(std::panic::catch_unwind(|| config.context_config()).is_err());
     }
