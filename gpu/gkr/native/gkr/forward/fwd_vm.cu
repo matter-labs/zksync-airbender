@@ -4,11 +4,18 @@
 #include "../eval_vm_exec.cuh"
 #include "../support/lookup_helpers.cuh"
 #include "fwd_vm.cuh"
+#include "vm_addresses.cuh"
 
 // Runtime-produced derived E4 values and the optional decoder fill.
 __device__ __constant__ e4 ab_gkr_fwd_vm_const_derived_e4[airbender::gkr::FWD_VM_CONST_DERIVED_E4_CAP];
 
 namespace airbender::gkr {
+
+using ::airbender::gkr::forward_vm_detail::dst_col;
+using ::airbender::gkr::forward_vm_detail::fwd_vm_special;
+using ::airbender::gkr::forward_vm_detail::source_col;
+using ::airbender::gkr::forward_vm_detail::special_mapping;
+using ::airbender::gkr::forward_vm_detail::unpack_special;
 
 // --- Ldc sub-source / inline-special payload values ---------------------------
 // Mirrors the Rust LdcSub and Special values.
@@ -89,14 +96,6 @@ DEVICE_FORCEINLINE void smem_st_e4(bf *cells, const u32 bucket, const e4 v) {
       *reinterpret_cast<const uint4 *>(&v);
 }
 
-DEVICE_FORCEINLINE const char *source_col(const fwd_vm_desc &d, const u32 window, const u32 col) {
-  return d.source_base[window] + static_cast<size_t>(col) * d.source_stride_bytes[window];
-}
-
-DEVICE_FORCEINLINE char *dst_col(const fwd_vm_desc &d, const u32 slot, const u32 col) {
-  return d.dst_base[slot] + static_cast<size_t>(col) * d.dst_stride_bytes[slot];
-}
-
 struct fwd_vm_source_coordinate {
   u32 window;
   u32 column;
@@ -104,29 +103,6 @@ struct fwd_vm_source_coordinate {
 
 DEVICE_FORCEINLINE fwd_vm_source_coordinate decode_source(const u16 lane) {
   return {(lane >> FWD_VM_SOURCE_WINDOW_SHIFT) & FWD_VM_SOURCE_WINDOW_MASK, (lane >> FWD_VM_SOURCE_COLUMN_SHIFT) & FWD_VM_SOURCE_COLUMN_MASK};
-}
-
-// --- special descriptors ------------------------------------------------------
-
-struct fwd_vm_special {
-  u32 kind;
-  u32 arena;
-  u32 set_index;
-  u32 vkind;
-};
-
-DEVICE_FORCEINLINE fwd_vm_special unpack_special(const u32 w) {
-  fwd_vm_special s;
-  s.kind = (w >> FWD_VM_DESC_KIND_SHIFT) & FWD_VM_DESC_KIND_MASK;
-  s.arena = (w >> FWD_VM_DESC_ARENA_SHIFT) & FWD_VM_DESC_ARENA_MASK;
-  s.set_index = (w >> FWD_VM_DESC_SET_INDEX_SHIFT) & FWD_VM_DESC_SET_INDEX_MASK;
-  s.vkind = (w >> FWD_VM_DESC_VKIND_SHIFT) & FWD_VM_DESC_VKIND_MASK;
-  return s;
-}
-
-// Mapping = one COLUMN of a contiguous u32 arena (column-major, stride = count).
-DEVICE_FORCEINLINE const u32 *special_mapping(const fwd_vm_desc &d, const fwd_vm_special &s) {
-  return d.mapping_arena[s.arena] + static_cast<size_t>(s.set_index) * d.count;
 }
 
 // `vkind` is the native `gkr_base_source_kind` value.

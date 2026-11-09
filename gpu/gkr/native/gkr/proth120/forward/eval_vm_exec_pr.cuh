@@ -1,6 +1,14 @@
 #pragma once
+#include "../../forward/vm_addresses.cuh"
 #include "fwd_vm.cuh"
 namespace airbender::gkr::proth120::forward {
+
+using ::airbender::gkr::forward_vm_detail::dst_col;
+using ::airbender::gkr::forward_vm_detail::fwd_vm_special;
+using ::airbender::gkr::forward_vm_detail::source_col;
+using ::airbender::gkr::forward_vm_detail::special_mapping;
+using ::airbender::gkr::forward_vm_detail::unpack_special;
+
 constexpr u32 FWD_VM_WARP_LANES = 32;
 constexpr u32 FWD_VM_WARP_SHIFT = 5;
 constexpr u32 FWD_VM_LANE_MASK = FWD_VM_WARP_LANES - 1;
@@ -22,31 +30,6 @@ template <u32 BUCKETS> DEVICE_FORCEINLINE pr smem_ld_pr(const pr *cells, const u
 template <u32 BUCKETS> DEVICE_FORCEINLINE void smem_st_pr(pr *cells, const u32 bucket, const pr v) {
   *reinterpret_cast<uint4 *>(cells + pr_warp_base<BUCKETS>() + bucket * FWD_VM_WARP_LANES + (threadIdx.x & FWD_VM_LANE_MASK)) =
       *reinterpret_cast<const uint4 *>(&v);
-}
-
-DEVICE_FORCEINLINE const char *source_col(const fwd_vm_desc_pr &d, const u32 window, const u32 col) {
-  return d.source_base[window] + static_cast<size_t>(col) * d.source_stride_bytes[window];
-}
-DEVICE_FORCEINLINE char *dst_col(const fwd_vm_desc_pr &d, const u32 slot, const u32 col) {
-  return d.dst_base[slot] + static_cast<size_t>(col) * d.dst_stride_bytes[slot];
-}
-
-struct fwd_vm_special {
-  u32 kind;
-  u32 arena;
-  u32 set_index;
-  u32 vkind;
-};
-DEVICE_FORCEINLINE fwd_vm_special unpack_special(const u32 w) {
-  fwd_vm_special s;
-  s.kind = (w >> FWD_VM_DESC_KIND_SHIFT) & FWD_VM_DESC_KIND_MASK;
-  s.arena = (w >> FWD_VM_DESC_ARENA_SHIFT) & FWD_VM_DESC_ARENA_MASK;
-  s.set_index = (w >> FWD_VM_DESC_SET_INDEX_SHIFT) & FWD_VM_DESC_SET_INDEX_MASK;
-  s.vkind = (w >> FWD_VM_DESC_VKIND_SHIFT) & FWD_VM_DESC_VKIND_MASK;
-  return s;
-}
-DEVICE_FORCEINLINE const u32 *special_mapping(const fwd_vm_desc_pr &d, const fwd_vm_special &s) {
-  return d.mapping_arena[s.arena] + static_cast<size_t>(s.set_index) * d.count;
 }
 
 DEVICE_FORCEINLINE pr pr_from_u32(const u32 v) {
