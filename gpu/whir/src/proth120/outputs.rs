@@ -1,19 +1,16 @@
 use std::marker::PhantomData;
-use std::sync::{Arc, Mutex};
 
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::{DeviceAllocation, HostAllocation, UnsafeAccessor};
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::PR;
 use gpu_hash::keccak256::Digest;
 use gpu_prover_context::ProverContext;
 
-use super::schedule::L1WhirInputs;
 use super::shape::L1WhirShape;
 use crate::upstream::{
     BaseFieldQuery, ExtensionFieldQuery, Keccak256MerkleTreeWithCap, MerkleTreeCapVarLength,
@@ -194,7 +191,7 @@ pub type L1WhirProof = WhirPolyCommitProof<PR, PR, Keccak256MerkleTreeWithCap>;
 
 /// The WHIR fold's GPU work, enqueued without any D2H: the caller reads the proof
 /// back with [`Self::schedule_readback`] and assembles it from [`Self::readback`]
-/// in its own callback, or uses [`Self::schedule_readback_and_assemble`].
+/// in its own callback.
 pub struct L1WhirPendingReadback {
     pub(crate) device: L1WhirProofDevice,
     pub(crate) host: L1WhirProofHost,
@@ -248,47 +245,6 @@ impl L1WhirPendingReadback {
             tracing_ranges: self.tracing_ranges,
         }
     }
-
-    /// Standalone readback: copies the GKR claims carried by the canonical
-    /// WHIR proof and assembles the proof in one terminal callback.
-    #[allow(clippy::needless_pass_by_value)]
-    pub fn schedule_readback_and_assemble(
-        mut self,
-        memory_cap: &DeviceSlice<Digest>,
-        inputs: L1WhirInputs<'_>,
-        batching_challenge_pow_nonce: u64,
-        context: &ProverContext,
-    ) -> CudaResult<L1WhirScheduled> {
-        let stream = context.get_exec_stream();
-        let mut claims = unsafe { context.alloc_host_uninit_slice::<PR>(inputs.claims.len()) };
-        memory_copy_async(&mut claims, inputs.claims, stream)?;
-        self.schedule_readback(memory_cap, context)?;
-        let readback = self.readback();
-        let claims_reader = claims.get_accessor();
-        let memory_columns = self.memory_columns;
-        let result = Arc::new(Mutex::new(None));
-        let destination = Arc::clone(&result);
-        let mut callbacks = Callbacks::new();
-        callbacks.schedule(
-            move || {
-                let claims = unsafe { claims_reader.get() };
-                let (memory_claims, setup_claims) = claims.split_at(memory_columns);
-                let proof = unsafe {
-                    readback.assemble(memory_claims, setup_claims, batching_challenge_pow_nonce)
-                };
-                *destination
-                    .lock()
-                    .expect("Proth120 WHIR: proof result lock poisoned") = Some(proof);
-            },
-            stream,
-        )?;
-        Ok(L1WhirScheduled {
-            _callbacks: callbacks,
-            keepalive: self.into_keepalive(),
-            _inputs_host: claims,
-            result,
-        })
-    }
 }
 
 /// The WHIR proof mirrors and phase ranges, kept until the job completes.
@@ -303,27 +259,6 @@ impl L1WhirKeepalive {
             .iter()
             .map(|(name, range)| Ok((name.clone(), range.elapsed()?)))
             .collect()
-    }
-}
-
-pub struct L1WhirScheduled {
-    _callbacks: Callbacks<'static>,
-    keepalive: L1WhirKeepalive,
-    _inputs_host: HostAllocation<[PR]>,
-    result: Arc<Mutex<Option<L1WhirProof>>>,
-}
-
-impl L1WhirScheduled {
-    pub fn into_proof_after_completion(self) -> L1WhirProof {
-        self.result
-            .lock()
-            .expect("Proth120 WHIR: proof result lock poisoned")
-            .take()
-            .expect("Proth120 WHIR: proof callback has not run")
-    }
-
-    pub fn phase_times_after_completion(&self) -> CudaResult<Vec<(String, f32)>> {
-        self.keepalive.phase_times_after_completion()
     }
 }
 
