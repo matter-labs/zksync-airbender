@@ -9,6 +9,22 @@ use gpu_hash::blake2s::{
 };
 use gpu_prover_context::ProverContext;
 
+/// Transcript words for query bits, including the skipped header and one
+/// complete eight-word squeeze block at a time (Blake2s and Keccak).
+pub(crate) fn query_words(queries: usize, query_domain_log2: u32) -> usize {
+    ((queries * query_domain_log2 as usize).div_ceil(32) + 1).next_multiple_of(8)
+}
+
+pub(crate) fn schedule_running_powers<T: gpu_ops::powers::GetPowersByRef>(
+    base: &DeviceVariable<T>,
+    queries: usize,
+    context: &ProverContext,
+) -> CudaResult<DeviceAllocation<T>> {
+    let mut powers = context.alloc(queries + 1, AllocationPlacement::BestFit)?;
+    gpu_ops::powers::get_powers_by_ref(base, 1, &mut powers, context.get_exec_stream())?;
+    Ok(powers)
+}
+
 /// Device buffers produced by [`schedule_pow_verify_and_query_indexes`]. The
 /// rolling `device_seed` is owned by the WHIR scheduler and threaded in by the
 /// caller; it does not appear here. The PoW nonce is written directly into the
@@ -98,9 +114,7 @@ pub(crate) fn schedule_pow_verify_and_query_indexes(
     // + 1` already lands on a multiple of 8, advancing the transcript past the
     // CPU and diverging every subsequent Fiat-Shamir challenge (e.g. the WHIR
     // delinearization challenge) for that round.
-    let query_bits = num_queries * query_domain_log2 as usize;
-    let required_words = query_bits.div_ceil(32);
-    let padded_words = (required_words + 1).next_multiple_of(STATE_SIZE);
+    let padded_words = query_words(num_queries, query_domain_log2);
     let mut d_raw_bits: DeviceAllocation<u32> =
         context.alloc(padded_words, AllocationPlacement::BestFit)?;
     transcript_squeeze(device_seed, &mut d_raw_bits, stream)?;
