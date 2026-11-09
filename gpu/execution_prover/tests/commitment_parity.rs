@@ -4,6 +4,8 @@
 //! Test names must not start with `cpu_`: nextest treats that prefix as GPU-free
 //! and would disable device serialization.
 
+gpu_core::force_serial_libtest!();
+
 use cpu_execution_prover::{CpuBackend, CpuExecutionProverConfiguration};
 use execution_prover::{
     BinaryHandle, CommitMemoryResult, CommitmentMode, ExecutionKind, ExecutionProver, MachineType,
