@@ -80,7 +80,7 @@ impl MainLayerBackwardStatePr {
         let layer_plan = &programs.backward_layers[layer_idx];
         let eq_low = context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?;
         let mut partials = context.alloc(
-            max_partials_len(self.trace_len / 2).max(r0_partials_len_pr(self.trace_len, 1)),
+            max_partials_len(self.trace_len / 2).max(r0_partials_len_pr(self.trace_len)),
             AllocationPlacement::Top,
         )?;
         note_device(
@@ -102,7 +102,6 @@ impl MainLayerBackwardStatePr {
         let bank = CoefficientBankPr::new(tables, layer_idx, context)?;
         let r0 = bind_r0_pr(
             &programs.r0[layer_idx],
-            None,
             &self.storage,
             folding_steps,
             WindowRuntimeScratchPr {
