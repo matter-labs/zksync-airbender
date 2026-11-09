@@ -6,10 +6,9 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::nvtx::scoped_range;
 use gpu_hash::keccak256::{
-    build_partial_coset_trees_multi_coset, build_top_tree, gather_tree_cap, retained_layer_offset,
-    transcript_commit_u32, Digest,
+    build_top_tree, gather_tree_cap, retained_layer_offset, transcript_commit_u32, Digest,
 };
-use gpu_ntt::proth120::{dispatch, lde_cosets_batched, SuffixShape};
+use gpu_ntt::proth120::{dispatch, SuffixShape};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::sink::{
     coefficient_tiles_len, commit_coefficient_cosets, commit_residue_cosets, has_leaf_sink,
@@ -43,36 +42,6 @@ fn validate_oracle_shape(shape: &OracleShape, context: &ProverContext) {
         retained_layer_offset(shape.log_leaves, shape.skip_bottom, shape.log_leaves) + 1,
         "Proth120 WHIR: retained_per_coset differs from retained_layer_offset(h, s, h) + 1"
     );
-}
-
-pub(crate) fn schedule_lde_convert_pass(
-    monomials: &DeviceSlice<PR>,
-    shape: &OracleShape,
-    k0: u32,
-    tile: &mut DeviceSlice<PR>,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    let cosets = tile.len() >> shape.log_n;
-    let ntt = context.proth120_ntt_device_context();
-    let stream = context.get_exec_stream();
-    lde_cosets_batched(
-        ntt,
-        monomials,
-        shape.log_domain,
-        k0..k0 + cosets as u32,
-        tile,
-        stream,
-    )?;
-    kernels::convert_tile_leaves(
-        tile,
-        shape.log_n,
-        shape.log_v,
-        ntt.descriptor(),
-        shape.log_domain,
-        k0,
-        cosets as u32,
-        stream,
-    )
 }
 
 pub(crate) fn schedule_commit_intermediate(
@@ -169,87 +138,47 @@ fn schedule_commit_retained(
     let r = shape.retained_per_coset;
     let stream = context.get_exec_stream();
     let mut tile = context.alloc(tile_cosets << shape.log_n, AllocationPlacement::Top)?;
-    let fused = dispatch(
+    let plan = dispatch(
         shape.log_n,
         1,
         shape.log_v,
         shape.skip_bottom,
         context.get_device_properties().l2_cache_size_bytes,
-    )
-    .ok()
-    .filter(|plan| !plan.small)
-    .map(|plan| {
-        let suffix = SuffixShape::new(&plan, shape.log_n, shape.log_v, shape.skip_bottom, 1);
-        (plan, suffix)
-    })
-    .filter(|(_, suffix)| {
+    );
+    let suffix = SuffixShape::new(&plan, shape.log_n, shape.log_v, shape.skip_bottom, 1);
+    assert!(
         has_leaf_sink(
-            suffix,
+            &suffix,
             &SinkMode::CoefficientTree {
                 log_domain: shape.log_domain,
-                k0: 0,
-            },
-        )
-    });
-    let fused_path = fused.is_some();
-    assert!(
-        fused_path,
+                k0: 0
+            }
+        ),
         "Proth120 WHIR: retained commitment requires the fused sink"
     );
-    log::debug!(
-        "whir commit 2^{} oracle, log_v {}, log_lde {}, skip_bottom {}: {}",
-        shape.log_n,
-        shape.log_v,
-        shape.log_lde,
-        shape.skip_bottom,
-        if fused_path {
-            "suffix micro + residue-tree sink"
-        } else {
-            "reference path"
-        }
-    );
-    if let Some((plan, suffix)) = fused {
-        let mut tiles = context.alloc(
-            coefficient_tiles_len(&suffix, tile_cosets, plan.l2_budget),
-            AllocationPlacement::Top,
-        )?;
-        for k0 in (0..cosets).step_by(tile_cosets) {
-            commit_coefficient_cosets(
-                context.proth120_ntt_device_context(),
-                copy,
-                &plan,
-                &suffix,
-                shape.log_domain,
-                k0 as u32,
-                tile_cosets,
-                &mut tile,
-                &mut tiles,
-                &mut retained[k0 * r..(k0 + tile_cosets) * r],
-                r,
-                stream,
-            )?;
-        }
-        drop(tiles);
-    }
-    for k0 in (0..if fused_path { 0 } else { cosets }).step_by(tile_cosets) {
-        {
-            let _r = scoped_range(Some("ab"), "whir.commit.prefix");
-            schedule_lde_convert_pass(copy, shape, k0 as u32, &mut tile, context)?;
-        }
-        let _r = scoped_range(Some("ab"), "whir.commit.suffix");
-        build_partial_coset_trees_multi_coset(
-            &tile,
-            shape.log_n,
-            shape.log_v,
-            1,
-            shape.skip_bottom,
-            tile_cosets as u32,
-            1 << shape.log_n,
-            r,
+
+    let mut tiles = context.alloc(
+        coefficient_tiles_len(&suffix, tile_cosets, plan.l2_budget),
+        AllocationPlacement::Top,
+    )?;
+    for k0 in (0..cosets).step_by(tile_cosets) {
+        commit_coefficient_cosets(
+            context.proth120_ntt_device_context(),
+            copy,
+            &plan,
+            &suffix,
+            shape.log_domain,
+            k0 as u32,
+            tile_cosets,
+            &mut tile,
+            &mut tiles,
             &mut retained[k0 * r..(k0 + tile_cosets) * r],
+            r,
             stream,
         )?;
     }
+    drop(tiles);
+
     drop(tile);
     Ok(())
 }

@@ -280,8 +280,8 @@ fn pr_slot_gate_skips_launches() {
     let (log_n, columns, log_v, skip_bottom) = (20u32, 12u32, 1u32, 10u32);
     let rows = 1usize << log_n;
     let len = rows * columns as usize;
-    let plan = super::dispatch(log_n, columns as usize, log_v, skip_bottom, 128 << 20).unwrap();
-    let chunks = plan.prefix.as_ref().unwrap();
+    let plan = super::dispatch(log_n, columns as usize, log_v, skip_bottom, 128 << 20);
+    let chunks = &plan.prefix;
     let s = SuffixShape::new(&plan, log_n, log_v, skip_bottom, columns);
     let monomials: Vec<PR> = (0..len)
         .map(|_| PR::new(rng.random::<u128>() % PR::ORDER))

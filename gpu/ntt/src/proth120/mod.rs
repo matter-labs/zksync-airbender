@@ -9,11 +9,10 @@ pub use context::{DeviceContext, TwiddleDescriptor};
 pub use hypercube::{
     hypercube_evals_to_monomials, hypercube_evals_to_monomials_chunked, update_eq_poly, EqSample,
 };
-pub use lde::{convert_coset_leaves, convert_gathered_leaves, lde_coset, lde_cosets_batched};
 pub use pack::pack_hypercubes_to_monomials;
 pub use prefix::{
     dispatch, has_reference_finish, l2_working_set_budget, lde_coset_slot, lde_finish_reference,
-    twiddle_working_set, ChunkPlan, CosetSource, Dispatch, DispatchError, ScaleArgs,
+    twiddle_working_set, ChunkPlan, CosetSource, Dispatch, ScaleArgs,
 };
 pub use suffix::{launch_suffix_micro, SuffixShape};
 

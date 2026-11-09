@@ -93,7 +93,7 @@ fn sink_coefficient_tree_matches_reference() {
         let h = log_n - log_v;
         let monomials_host = random_values(rows, u64::from(log_n) << 8 | u64::from(log_v));
         let monomials = upload(&monomials_host);
-        let plan = dispatch(log_n, 1, log_v, skip_bottom, device_l2()).unwrap();
+        let plan = dispatch(log_n, 1, log_v, skip_bottom, device_l2());
         let s = SuffixShape::new(&plan, log_n, log_v, skip_bottom, 1);
         let mut prefix = DeviceAllocation::<PR>::alloc(rows * cosets as usize).unwrap();
         lde_coset_slot(
@@ -101,7 +101,7 @@ fn sink_coefficient_tree_matches_reference() {
             &monomials,
             &mut prefix,
             cosets as usize,
-            plan.prefix.as_ref().unwrap(),
+            &plan.prefix,
             ScaleArgs {
                 coset: CosetSource::Batched { k0 },
                 log_domain,

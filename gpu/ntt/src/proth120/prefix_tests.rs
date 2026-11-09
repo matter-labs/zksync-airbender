@@ -149,9 +149,9 @@ fn cpu_pr_chunk_plan_closure() {
         (20, 12, 1, 10),
     ] {
         for l2_mib in 0..=256 {
-            let plan = dispatch(n, c, v, sb, l2_mib * MIB).unwrap();
-            assert!(matches!((plan.r, v), (7, 1) | (8, 1) | (8, 4)) || plan.small);
-            let prefix = plan.prefix.as_ref().unwrap();
+            let plan = dispatch(n, c, v, sb, l2_mib * MIB);
+            assert!(matches!((plan.r, v), (7, 1) | (8, 1) | (8, 4)));
+            let prefix = &plan.prefix;
             if c == 2 && sb == 5 {
                 assert!(super::has_reference_finish(prefix));
             }
@@ -516,8 +516,8 @@ fn pr_lde_coset_slot_small_l2_parity() {
             log_domain: 31,
         };
         for l2_mib in [0usize, 1, 4, 16, 40, 50, 96, 128] {
-            let shape = dispatch(log_n, columns, log_v, skip_bottom, l2_mib * MIB).unwrap();
-            let plan = shape.prefix.as_ref().unwrap();
+            let shape = dispatch(log_n, columns, log_v, skip_bottom, l2_mib * MIB);
+            let plan = &shape.prefix;
             lde_coset_slot(
                 &ctx,
                 &device_monomials,

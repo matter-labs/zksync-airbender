@@ -33,7 +33,7 @@ fn open(
         .unwrap();
     oracle
         .open_queries(
-            Some(&plan),
+            &plan,
             queries,
             &mut leaves,
             &mut paths,

@@ -1,10 +1,8 @@
+use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use era_cudart::{
-    cuda_kernel, cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function,
-};
 use gpu_core::primitives::device_structures::DeviceMatrixChunkImpl;
 use gpu_core::primitives::field::PR;
 use gpu_hash::keccak256::Digest;
@@ -56,33 +54,6 @@ cuda_kernel!(PlaceRoots, ab_pr_whir_place_roots_kernel(retained: *const Digest, 
 cuda_kernel!(SubtreePoints, ab_pr_whir_subtree_points_kernel(queries: *const u32, count: u32, query_domain_log2: u32, log_lde: u32, skip_bottom: u32, descriptor: TwiddleDescriptor, log_domain: u32, points: *mut PR));
 cuda_kernel!(HornerLeaves, ab_pr_whir_horner_leaves_kernel(monomials: *const PR, log_n: u32, log_v: u32, points: *const PR, leaves: *mut PR, count: u32, tower_log_k: u32));
 cuda_kernel!(ExtractPaths, ab_pr_whir_extract_paths_kernel(leaves: *const PR, towers: *const Digest, retained: *const Digest, retained_stride: u64, log_lde: u32, log_leaves: u32, skip_bottom: u32, log_v: u32, queries: *const u32, out_leaves: *mut PR, out_paths: *mut Digest, path_stride: u32, count: u32));
-
-cuda_kernel_signature_arguments_and_function!(
-    ConvertTileLeaves,
-    tile: *mut PR,
-    log_n: u32,
-    descriptor: TwiddleDescriptor,
-    log_domain: u32,
-    k0: u32,
-    cosets: u32,
-);
-
-macro_rules! convert_tile_leaves_kernel {
-    ($name:ident) => {
-        cuda_kernel_declaration!($name(
-            tile: *mut PR,
-            log_n: u32,
-            descriptor: TwiddleDescriptor,
-            log_domain: u32,
-            k0: u32,
-            cosets: u32,
-        ));
-    };
-}
-convert_tile_leaves_kernel!(ab_pr_whir_convert_tile_leaves_1_kernel);
-convert_tile_leaves_kernel!(ab_pr_whir_convert_tile_leaves_2_kernel);
-convert_tile_leaves_kernel!(ab_pr_whir_convert_tile_leaves_3_kernel);
-convert_tile_leaves_kernel!(ab_pr_whir_convert_tile_leaves_4_kernel);
 
 pub(crate) fn launch(count: usize, stream: &CudaStream) -> CudaLaunchConfig<'_> {
     assert!(
@@ -411,44 +382,6 @@ pub(crate) fn round_update(
             seed.as_mut_ptr(),
             coeffs.as_mut_ptr(),
             challenge.as_mut_ptr(),
-        ),
-    )
-}
-
-pub(crate) fn convert_tile_leaves(
-    tile: &mut DeviceSlice<PR>,
-    log_n: u32,
-    log_v: u32,
-    descriptor: TwiddleDescriptor,
-    log_domain: u32,
-    k0: u32,
-    cosets: u32,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert!(
-        (1..=4).contains(&log_v) && log_v < log_n && log_n <= log_domain,
-        "Proth120 WHIR: tile leaf conversion geometry invalid"
-    );
-    assert_eq!(
-        tile.len(),
-        (cosets as usize) << log_n,
-        "Proth120 WHIR: tile length differs from cosets << log_n"
-    );
-    let function = ConvertTileLeavesFunction(match log_v {
-        1 => ab_pr_whir_convert_tile_leaves_1_kernel,
-        2 => ab_pr_whir_convert_tile_leaves_2_kernel,
-        3 => ab_pr_whir_convert_tile_leaves_3_kernel,
-        _ => ab_pr_whir_convert_tile_leaves_4_kernel,
-    });
-    function.launch(
-        &launch((cosets as usize) << (log_n - log_v), stream),
-        &ConvertTileLeavesArguments::new(
-            tile.as_mut_ptr(),
-            log_n,
-            descriptor,
-            log_domain,
-            k0,
-            cosets,
         ),
     )
 }

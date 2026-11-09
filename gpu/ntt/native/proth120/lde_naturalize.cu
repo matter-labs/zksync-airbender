@@ -57,18 +57,4 @@ EXTERN __launch_bounds__(128) __global__
   }
 }
 
-EXTERN __launch_bounds__(256) __global__ void ab_pr_naturalize_naive_kernel(pr_matrix_getter_setter<ld_modifier::cs, st_modifier::cs> values, const u32 log_n) {
-  const u32 i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= (1u << log_n))
-    return;
-  const u32 j = bitreverse_low_bits(i, log_n);
-  if (i >= j)
-    return;
-  values.add_col(blockIdx.y);
-  const pr a = values.get_at_row(i);
-  const pr b = values.get_at_row(j);
-  values.set_at_row(i, b);
-  values.set_at_row(j, a);
-}
-
 } // namespace airbender::ntt

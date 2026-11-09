@@ -305,22 +305,18 @@ pub fn schedule_l1_whir_fold(
         end_phase(phase, &mut ranges, context)?;
         let phase = start_phase(format!("gkr.whir.pr.round.{r}.openings"), context)?;
         if r == 0 {
-            let plan = (round.queries > 0)
-                .then(|| {
-                    let log_lde = base
-                        .config()
-                        .expect("Proth120 WHIR: base opened before commit")
-                        .log_lde_factor;
-                    assert_eq!(
-                        Some(log_lde),
-                        setup.oracle().config().map(|cfg| cfg.log_lde_factor),
-                        "Proth120 WHIR: base and setup log_lde_factor differ"
-                    );
-                    CosetQueryPlan::new(&indexes, log_lde, context)
-                })
-                .transpose()?;
+            let log_lde = base
+                .config()
+                .expect("Proth120 WHIR: base opened before commit")
+                .log_lde_factor;
+            assert_eq!(
+                Some(log_lde),
+                setup.oracle().config().map(|cfg| cfg.log_lde_factor),
+                "Proth120 WHIR: base and setup log_lde_factor differ"
+            );
+            let plan = CosetQueryPlan::new(&indexes, log_lde, context)?;
             base.open_queries(
-                plan.as_ref(),
+                &plan,
                 &indexes,
                 &mut outputs.memory.leaves,
                 &mut outputs.memory.paths,
@@ -328,7 +324,7 @@ pub fn schedule_l1_whir_fold(
                 context,
             )?;
             setup.open_queries(
-                plan.as_ref(),
+                &plan,
                 &indexes,
                 &mut outputs.setup.leaves,
                 &mut outputs.setup.paths,

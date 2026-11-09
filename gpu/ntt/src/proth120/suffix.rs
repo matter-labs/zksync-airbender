@@ -68,10 +68,6 @@ impl SuffixShape {
         skip_bottom: u32,
         columns: u32,
     ) -> Self {
-        assert!(
-            !dispatch.small,
-            "Proth120 suffix: Small shapes have no suffix tiles"
-        );
         let shape = Self {
             log_n,
             r: dispatch.r,
