@@ -16,9 +16,6 @@ pub(crate) use field::{Field, PrimeField};
 // -----------------------------------------------------------------------
 // CPU-reference helper only exercised by `fold::tests`.
 #[cfg(test)]
-pub(crate) use prover::gkr::sumcheck::eq_poly::make_eq_poly_in_full_lsb;
-// CPU-reference helper only exercised by `fold::tests`.
-#[cfg(test)]
 pub(crate) use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
 // `BaseFieldQuery` supplies WHIR proof assembly and test query-parity helpers.
 pub(crate) use prover::gkr::whir::BaseFieldQuery;
