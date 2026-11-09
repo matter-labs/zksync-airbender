@@ -2,8 +2,8 @@ use gpu_trace::witness::circuit_type::CircuitType;
 
 use super::L1_WRAP_NTT_LOG_MAX_DOMAIN;
 use crate::upstream::{
-    l1_wrap, pow_bits, BaseColumns, BaseCommitmentGeometry, BaseOracleRole, GKRCircuitArtifact,
-    L1WrapSetup, ProofProfile, Proth120, ProverConfig, RomGeometry,
+    pow_bits, BaseColumns, BaseCommitmentGeometry, BaseOracleRole, GKRCircuitArtifact, L1WrapSetup,
+    ProofProfile, Proth120, ProverConfig, RomGeometry,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -26,7 +26,6 @@ pub struct L1WrapGeometry {
     pub rom: RomGeometry,
     pub decoder_offset: usize,
     pub decoder_words: usize,
-    pub external_pow_bits: u32,
     pub batching_pow_bits: u32,
 }
 
@@ -77,10 +76,6 @@ impl L1WrapGeometry {
         // The field-free base commitment dimensions; the Proth120 bounds are checked below.
         let base = BaseCommitmentGeometry::from_config(config, BaseColumns::of(circuit));
         let pack_log2 = u32::try_from(base.pack_log2()).expect("L1Wrap pack_log2 exceeds u32");
-        let external_pow_bits = match circuit_type {
-            CircuitType::L1Wrap => l1_wrap::EXTERNAL_CHALLENGES_POW_BITS,
-            _ => unreachable!(),
-        };
         let log_message =
             u32::try_from(base.message_size_log2()).expect("L1Wrap message size exceeds u32");
         let log_base_lde = base.lde_factor().trailing_zeros();
@@ -120,14 +115,13 @@ impl L1WrapGeometry {
             rom,
             decoder_offset: circuit.offset_for_decoder_table,
             decoder_words: rom.word_size(),
-            external_pow_bits,
             batching_pow_bits: l1_wrap_batching_pow_bits(config, circuit),
         };
         geometry.assert_artifact(circuit);
         geometry
     }
 
-    pub fn assert_artifact(&self, circuit: &GKRCircuitArtifact<Proth120>) {
+    fn assert_artifact(&self, circuit: &GKRCircuitArtifact<Proth120>) {
         let circuit_type = self.circuit_type;
         assert!(
             circuit.trace_len == self.rows

@@ -35,11 +35,8 @@ use gpu_whir::proth120::{
     L1_WHIR_TILE_BYTES,
 };
 
-use super::{
-    l1_wrap_batching_pow_bits, validate_l1_wrap_preconditions, L1Proof, L1WrapGeometry,
-    L1WrapInputs,
-};
-use crate::proof::memory_policy::{PartialTreePolicy, ProofMemoryPolicy};
+use super::{L1Proof, L1WrapGeometry, L1WrapInputs};
+use crate::proof::memory_policy::PartialTreePolicy;
 use crate::upstream::{
     GKRCircuitArtifact, L1WrapResult, OperationMode, ProverConfig, TIMESTAMP_COLUMNS_NUM_BITS,
 };
@@ -83,57 +80,16 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     operation_mode: OperationMode,
     inputs: L1WrapInputs<'a, A>,
     dr_tail_plan: &DrTailProofPlanPr,
-    policy: ProofMemoryPolicy,
     partial_trees: PartialTreePolicy,
     context: &ProverContext,
 ) -> CudaResult<GpuL1WrapProofJob<'a>> {
-    partial_trees.assert_valid();
     inputs.transfer.ensure_transferred(context)?;
     context.reset_used_mem_peak();
-    validate_l1_wrap_preconditions(
-        geometry,
-        config,
-        &operation_mode,
-        policy,
-        context.proth120_ntt_device_context().log_max_domain(),
-    );
-    geometry.assert_artifact(circuit);
-    let circuit_type = geometry.circuit_type;
     let batching_pow_bits = geometry.batching_pow_bits;
-    assert_eq!(
-        l1_wrap_batching_pow_bits(config, circuit),
-        batching_pow_bits,
-        "{circuit_type:?} batching PoW bits disagree with the geometry"
-    );
     let cfg = PackedCommitConfig::from_prover_config(config, partial_trees.memory);
     let rows = geometry.rows;
     let memory_columns = geometry.memory_columns;
     let witness_columns = geometry.witness_columns;
-    assert_eq!(
-        inputs.top_bits_host.len(),
-        geometry.num_it_sets,
-        "{circuit_type:?} inits-and-teardowns top bits count mismatch"
-    );
-    assert_eq!(
-        inputs.setup_host.log_rows, geometry.trace_log,
-        "{circuit_type:?} setup trace log mismatch"
-    );
-    assert_eq!(
-        inputs.setup_host.columns_count, geometry.setup_columns,
-        "{circuit_type:?} setup columns mismatch"
-    );
-    assert_eq!(
-        inputs.setup_host.pack_log2, geometry.pack_log2,
-        "{circuit_type:?} setup pack_log2 mismatch"
-    );
-    assert_eq!(
-        inputs.setup_reduction_layers, partial_trees.setup,
-        "{circuit_type:?} phase-one setup partial-tree depth differs from the proof's"
-    );
-    assert!(
-        inputs.setup_host.cfg.same_protocol_geometry(&cfg),
-        "{circuit_type:?} setup commitment config mismatch"
-    );
     let multiplicity_start = circuit
         .witness_layout
         .multiplicities_columns_for_range_check_16
@@ -152,7 +108,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         top_bits_host,
         setup_host,
         mut setup,
-        setup_reduction_layers: _,
         constants: _,
         relations,
         coefficient_tables,
