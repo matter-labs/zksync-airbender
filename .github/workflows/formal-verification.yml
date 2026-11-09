@@ -57,6 +57,11 @@ jobs:
   verification:
     name: ${{ inputs.diagnose_modules && 'scoped Lean diagnosis (partial)' || (github.event_name == 'schedule' || inputs.full_assurance == true) && 'full assurance' || 'iteration validation' }}
     runs-on: [matterlabs-ci-runner-high-performance]
+    permissions:
+      contents: read
+    outputs:
+      lean-cache-key: ${{ steps.lean-snapshot.outputs.key }}
+      lean-cache-save: ${{ steps.lean-cache-save.outcome }}
     # A shared 22-hour work deadline leaves two hours for cleanup, immutable
     # partial-cache snapshots and logs before this runner/job boundary.
     # Each actual worker keeps its existing 900/1800s resource cap.
@@ -132,7 +137,7 @@ jobs:
           python3 -m unittest discover -s scripts -p test_bounded_fv.py -v 2>&1 | tee "$FV_ROOT/guard-controls.log"
           python3 scripts/compilation_pool/test_pool.py --process-tests --process-output "$FV_ROOT/pool-controls"
           PYTHONPATH=scripts python3 -m unittest test_run_lean_diagnosis test_native_cpu_certificates test_check_lean_progress test_check_lean_repair test_check_lean_order test_native_qualification -v
-          PYTHONPATH=scripts python3 -m unittest test_fv_changes test_axiom_reports test_olean_hashes test_replay_cache test_replay_stage_deadline test_proof_boundaries test_native_lookup_bindings test_native_memory_policy -v
+          PYTHONPATH=scripts python3 -m unittest test_fv_changes test_axiom_reports test_olean_hashes test_replay_cache test_replay_stage_deadline test_lean_cache test_proof_boundaries test_native_lookup_bindings test_native_memory_policy -v
           cat > "$FV_ROOT/guard.sh" <<'SH'
           set -euo pipefail
           # Lightweight orchestration only: real children still own their
@@ -228,23 +233,31 @@ jobs:
       - name: Scope immutable cache snapshots to source and toolchain
         id: cache-keys
         env:
-          FV_LEAN_TOOLS: ${{ hashFiles('formal_verification/lean/lean-toolchain', 'formal_verification/lean/lake-manifest.json', '**/lakefile.*') }}
-          FV_LEAN_SOURCE: ${{ hashFiles('formal_verification/lean/**/*.lean', 'formal_verification/lean/scripts/**', 'formal_verification/lean/artifacts/**') }}
+          FV_LEAN_TOOLS: ${{ hashFiles('formal_verification/lean/lean-toolchain', 'formal_verification/lean/lake-manifest.json', '**/lakefile.*', '!**/.lake/**') }}
+          FV_LEAN_SOURCE: ${{ hashFiles('formal_verification/lean/**/*.lean', 'formal_verification/lean/scripts/**', 'formal_verification/lean/artifacts/**', '!**/.lake/**', '!**/__pycache__/**', '!**/*.pyc') }}
           FV_NATIVE_TOOLS: ${{ hashFiles('rust-toolchain.toml', '**/Cargo.toml', 'formal_verification/lean/artifacts/setup/native-cargo.lock', '.cargo/config*') }}
           FV_NATIVE_SOURCE: ${{ hashFiles('**/*.rs', '**/build.rs', 'formal_verification/lean/artifacts/setup/manifest.json', 'cs/compiled_circuits/*layout_no_caches_gkr.json') }}
           FV_REPLAY_TOOLS: ${{ hashFiles('formal_verification/lean/lean-toolchain', 'formal_verification/lean/lake-manifest.json', 'formal_verification/lean/scripts/KernelReplay.lean', 'formal_verification/lean/scripts/check_kernel_replay.py', 'formal_verification/lean/scripts/check_axioms.py', 'formal_verification/lean/scripts/bounded_fv.py') }}
         run: |
-          lean="fv-lean-v2-${{ runner.os }}-${{ runner.arch }}-$FV_LEAN_TOOLS"
+          lean="fv-lean-v3-${{ runner.os }}-${{ runner.arch }}-$FV_LEAN_TOOLS"
           native="fv-native-v3-${{ runner.os }}-${{ runner.arch }}-$FV_NATIVE_TOOLS"
           replay="fv-replay-trusted-v3-${{ runner.os }}-${{ runner.arch }}-$FV_REPLAY_TOOLS"
-          echo "lean-tool-prefix=$lean-" >> "$GITHUB_OUTPUT"
-          echo "lean-source-prefix=$lean-$FV_LEAN_SOURCE-" >> "$GITHUB_OUTPUT"
-          echo "lean=$lean-$FV_LEAN_SOURCE-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
-          echo "native-tool-prefix=$native-" >> "$GITHUB_OUTPUT"
-          echo "native-source-prefix=$native-$FV_NATIVE_SOURCE-" >> "$GITHUB_OUTPUT"
-          echo "native=$native-$FV_NATIVE_SOURCE-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
-          echo "replay-prefix=$replay-" >> "$GITHUB_OUTPUT"
-          echo "replay=$replay-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+          # Restore v2 once if needed, then publish only the smaller path set.
+          legacy="fv-lean-v2-${{ runner.os }}-${{ runner.arch }}-$FV_LEAN_TOOLS"
+          {
+            echo "lean-tool-prefix=$lean-"
+            echo "lean-source-prefix=$lean-$FV_LEAN_SOURCE-"
+            echo "lean-complete=$lean-$FV_LEAN_SOURCE-complete"
+            echo "lean-progress=$lean-$FV_LEAN_SOURCE-${{ github.run_id }}-${{ github.run_attempt }}-progress"
+            echo "lean-legacy=$legacy-$FV_LEAN_SOURCE-${{ github.run_id }}-${{ github.run_attempt }}-build"
+            echo "lean-legacy-source-prefix=$legacy-$FV_LEAN_SOURCE-"
+            echo "lean-legacy-tool-prefix=$legacy-"
+            echo "native-tool-prefix=$native-"
+            echo "native-source-prefix=$native-$FV_NATIVE_SOURCE-"
+            echo "native=$native-$FV_NATIVE_SOURCE-${{ github.run_id }}-${{ github.run_attempt }}"
+            echo "replay-prefix=$replay-"
+            echo "replay=$replay-${{ github.run_id }}-${{ github.run_attempt }}"
+          } >> "$GITHUB_OUTPUT"
       - name: Fingerprint and validate all native qualification inputs
         id: native-inputs
         if: ${{ !inputs.diagnose_modules && inputs.requalify_setups != true }}
@@ -364,11 +377,27 @@ jobs:
           path: |
             formal_verification/lean/.lake/build
             formal_verification/lean/.lake/config
-            formal_verification/lean/.lake/packages
-          key: ${{ steps.cache-keys.outputs.lean }}-build
+            formal_verification/lean/.lake/packages/Clean
+            formal_verification/lean/.lake/packages/lean-sail
+          key: ${{ steps.cache-keys.outputs.lean-complete }}
           restore-keys: |
             ${{ steps.cache-keys.outputs.lean-source-prefix }}
             ${{ steps.cache-keys.outputs.lean-tool-prefix }}
+      - name: Migrate legacy Lean progress only when no smaller snapshot exists
+        uses: actions/cache/restore@v4
+        if: inputs.cold_build != true && steps.lean-cache.outcome == 'success' && steps.lean-cache.outputs.cache-matched-key == ''
+        timeout-minutes: 20
+        with:
+          # Keep v2's exact path set for its archive version. This is restore
+          # only; the replacement below saves just project/Clean/Sail progress.
+          path: |
+            formal_verification/lean/.lake/build
+            formal_verification/lean/.lake/config
+            formal_verification/lean/.lake/packages
+          key: ${{ steps.cache-keys.outputs.lean-legacy }}
+          restore-keys: |
+            ${{ steps.cache-keys.outputs.lean-legacy-source-prefix }}
+            ${{ steps.cache-keys.outputs.lean-legacy-tool-prefix }}
       - uses: actions/cache/restore@v4
         id: replay-cache
         if: env.FV_REPLAY_CACHE_TRUSTED == 'true' && (inputs.full_assurance == true || github.event_name == 'schedule')
@@ -633,7 +662,8 @@ jobs:
           python3 - <<'PY'
           import json, os, subprocess
           from pathlib import Path
-          paths = [Path('.lake/build'), Path('.lake/config'), Path('.lake/packages')]
+          paths = [Path('.lake/build'), Path('.lake/config'), Path('.lake/packages'),
+                   Path('.lake/packages/Clean'), Path('.lake/packages/lean-sail')]
           paths += [Path(os.environ[name]) for name in
                     ('CARGO_TARGET_DIR', 'FV_COMPILER_TARGET_DIR', 'FV_REPLAY_LEDGER')
                     if name in os.environ]
@@ -661,25 +691,47 @@ jobs:
           name: formal-verification-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ env.FV_ROOT }}
           if-no-files-found: warn
-      # Keep large cache uploads off the verification path. A source attempt
-      # already contains bootstrap progress, so save only one Lean snapshot.
-      - name: Save bootstrap progress when no source stage ran
-        if: always() && !inputs.diagnose_modules && steps.cache-keys.outcome == 'success' && steps.bootstrap.outcome != 'skipped' && steps.cold-source-build.outcome == 'skipped' && steps.lean-verification.outcome == 'skipped'
+      # A completed source/runtime/Review build is stored once per content;
+      # interrupted bootstrap/source work keeps a run-specific progress key.
+      - name: Choose the Lean snapshot after verification work
+        id: lean-snapshot
+        if: always() && !inputs.diagnose_modules && steps.cache-keys.outcome == 'success'
+        env:
+          FV_LEAN_COMPLETE_KEY: ${{ steps.cache-keys.outputs.lean-complete }}
+          FV_LEAN_PROGRESS_KEY: ${{ steps.cache-keys.outputs.lean-progress }}
+          FV_LEAN_SOURCE_OUTCOME: ${{ steps.lean-verification.outcome }}
+          FV_LEAN_BOOTSTRAP_OUTCOME: ${{ steps.bootstrap.outcome }}
+          FV_LEAN_EXACT_HIT: ${{ steps.lean-cache.outputs.cache-hit }}
+        run: python3 scripts/lean_cache.py plan
+      - name: Save only project and non-Mathlib dependency progress
+        id: lean-cache-save
+        if: always() && steps.lean-snapshot.outputs.key != ''
         timeout-minutes: 20
         uses: actions/cache/save@v4
         with:
           path: |
             formal_verification/lean/.lake/build
             formal_verification/lean/.lake/config
-            formal_verification/lean/.lake/packages
-          key: ${{ steps.cache-keys.outputs.lean }}-bootstrap
-      - name: Save Lean build progress even after a bounded failure
-        if: always() && !inputs.diagnose_modules && steps.cache-keys.outcome == 'success' && (steps.cold-source-build.outcome != 'skipped' || steps.lean-verification.outcome != 'skipped')
-        timeout-minutes: 20
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            formal_verification/lean/.lake/build
-            formal_verification/lean/.lake/config
-            formal_verification/lean/.lake/packages
-          key: ${{ steps.cache-keys.outputs.lean }}-build
+            formal_verification/lean/.lake/packages/Clean
+            formal_verification/lean/.lake/packages/lean-sail
+          key: ${{ steps.lean-snapshot.outputs.key }}
+
+  lean-cache-retention:
+    name: Retain one published Lean snapshot for this branch
+    needs: verification
+    if: always() && needs.verification.outputs.lean-cache-key != '' && needs.verification.outputs.lean-cache-save == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    # Verification workers retain contents:read. Only this maintenance job can
+    # delete caches, and its script restricts deletion to older FV Lean entries.
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify publication and prune superseded branch snapshots
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FV_LEAN_KEEP_KEY: ${{ needs.verification.outputs.lean-cache-key }}
+        run: python3 formal_verification/lean/scripts/lean_cache.py prune

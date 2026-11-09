@@ -272,6 +272,9 @@ jobs:
 
   formal-verification:
     if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      actions: write # Used only by the reusable workflow's cache retention job.
     uses: ./.github/workflows/formal-verification.yml
     with:
       diagnose_modules: ${{ inputs.diagnose_modules }}

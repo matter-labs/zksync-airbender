@@ -44,6 +44,64 @@ redundant branch-only repair is removed; see [FINDINGS.md](FINDINGS.md).
 
 ## Current checkpoint
 
+The [Actions cache review](https://github.com/matter-labs/zksync-airbender/pull/585#issuecomment-6720182712)
+is addressed by the v3 Lean snapshot policy. New snapshots contain the project's
+own build/configuration and the Clean and lean-sail package directories. Mathlib
+and the dependencies covered by its pinned binary cache are excluded; the
+existing guarded Mathlib cache fetch still runs. A restore-only v2 fallback is
+used when no v3 snapshot exists, retaining useful project progress during the
+migration. Cold builds skip both restores. No new v2 snapshot is saved.
+
+A completed source/runtime/Review build uses a stable OS/architecture, toolchain
+and source-content key. An exact completed-key hit avoids another upload.
+Key hashes exclude restored Lake packages/objects and generated Python bytecode.
+Bootstrap or interrupted source work retains a run/attempt progress key. Later
+decoder, environment-audit or replay failures do not create another copy of an
+already completed build with identical content. These snapshots remain mutable
+build hints; they do not qualify any proof or skip any verification gate.
+
+After a save, a separate maintenance job lists the exact branch's caches and
+confirms a nonempty replacement with the exact key, then confirms its identity
+again before deletion. Only older v2/v3 FV Lean entries on that branch are
+removed. Other branches, native caches, replay ledgers and GPU caches are
+excluded; newer concurrent entries are preserved. Missing/failed publication,
+incomplete listings, a disappearing replacement or missing write permission
+cannot delete the retained snapshot. Maintenance is best effort. Actions write
+permission is confined to that maintenance job; verification workers keep
+contents-read permission. The reusable-workflow caller permits this scoped job.
+
+The inspected parent snapshot is 5,073,028,756 compressed bytes. Its filesystem
+diagnostic records 7,914,488 allocated KiB under all package directories, but
+does not separate Clean/Sail or predict the new archive size. New diagnostics
+measure those retained packages separately. The actual v3 archive size and
+successful cleanup remain unconfirmed until CI publishes and inspects the first
+replacement. No live cache is deleted before that publication.
+
+Twelve focused controls exercise the actual key-generation shell and cache API
+client with isolated fixtures, including content-key deduplication, failed-build
+progress, pagination, branch/family/newer-entry isolation, missing publication,
+replacement disappearance and read/write permission failures. They are included
+in the existing CI control group. All 60 combined focused controls pass in
+13.557 seconds; guide links/anchors, YAML parsing and diff checks pass. Actionlint
+has no new findings and removes one existing shell style finding. No local
+Cargo/Lake/project Lean build runs.
+The stage/worker guard script and retained axiom baseline are byte-identical.
+Of 923 captured native input fingerprints, only the two workflow files differ,
+requiring fresh native qualification on the published cache repair. Review statements,
+premises, proof sources, production behavior, payloads/pins, resource caps,
+deadlines, replay-ledger trust and complete assurance coverage remain unchanged.
+
+Useful full run [42583727889](https://github.com/matter-labs/zksync-airbender/actions/runs/42583727889)
+on signed parent d2d659b4eba15d4b7f545557c05974225b92ace7 remains active and is
+preserved. That parent's ordinary CPU/GPU workflows completed successfully:
+CPU attempt 2 passed after the transient Foundry installer retry, and GPU tests
+and aggregate passed at 09:02:25 and 09:02:32 UTC on 9 November. Those results do
+not qualify the cache repair. Its exact-head full run must follow the useful
+active run and its cache save; no duplicate is dispatched. No final assurance
+is claimed.
+
+### Preceding production download repair
+
 Full run [42574527875](https://github.com/matter-labs/zksync-airbender/actions/runs/42574527875)
 on signed head e9963ba8fc72713414c590729d611f1119a56b05 failed the decoder
 differential at 07:50:39 UTC on 9 November. The completed job log identifies
