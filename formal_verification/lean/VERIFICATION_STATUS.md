@@ -44,6 +44,60 @@ redundant branch-only repair is removed; see [FINDINGS.md](FINDINGS.md).
 
 ## Current checkpoint
 
+Full run [42487784351](https://github.com/matter-labs/zksync-airbender/actions/runs/42487784351)
+on signed head ce40d160b0f25b7325825a85444531456ec74963 failed independent
+kernel replay at 06:26:07 UTC on 9 November, exactly 15 hours after that stage
+started. The replay state records signal 15. There are 8,179 successful guarded
+replays in the 8,381-module compiled DAG before the interrupted UnifiedBranch
+test module, leaving 202 modules without successful replay records. The
+interrupted child ran for 8.51 seconds at 930.37 MiB charged and bounded resident,
+with the 2,048 MiB replay stack and no owned processes left. Its log contains
+only the existing Clean local-changes warning; no kernel rejection was observed.
+There is no complete replay certificate, and false-proof controls were skipped.
+
+The preceding Theta control repair passes actual project replay in 23.90 seconds
+at 1,213.59 MiB charged. The Chi character replay passes in 943.77 seconds at
+920.38 MiB charged. These are successful module results, not complete assurance.
+The last 200 successful replays total 1,235.44 guarded seconds. The replay stage's
+15-hour scheduling ceiling interrupted useful work before all modules finished.
+
+The scheduling repair raises only that stage's orchestration maximum to 18 hours
+and its outer action timeout to 1,090 minutes, retaining cleanup room. The shared
+22-hour work deadline and 24-hour job boundary remain unchanged. Every worker
+keeps its existing memory/time caps, one-worker lock and 2,048 MiB replay stack.
+Complete fresh project replay, dependency coverage, cache trust, axiom policy,
+Review statements/premises, production behavior and the retained baseline are
+unchanged. Of the 923 captured native fingerprint inputs, only the workflow
+changes, so the next run must freshly qualify native artifacts.
+
+Four lightweight controls execute the actual workflow scheduling wrapper with
+isolated clock/timeout fixtures: the longer replay fits inside the existing job
+boundary, the shared deadline still clips it, the cleanup reserve prevents a new
+launch, and timeout failure propagates. All 36 controls in the workflow's updated
+lightweight Python group pass, including scheduling, replay, axiom, native-memory
+and proof-boundary checks. The first local attempt inherited an incompatible
+global signer in an existing temporary-git-history fixture; the successful run
+isolates that fixture from global git configuration. Repository signing settings
+are unchanged. YAML parsing, replay-stage
+bash syntax and baseline/current actionlint comparison pass with no new finding.
+These controls do not run a local Cargo/Lake/project Lean build or establish the
+next CI result. A new full run on the signed scheduling repair is still required.
+
+The failed run's exact diagnostics confirm fresh native qualification on ce40,
+all 12/16/33/11 checks, complete 4,205-module source/runtime gates, 173 actual
+direct axiom reports using only the allowed three axioms, nine actual
+snapshot mutation controls, 170 public Review theorems, 210 contextual guide
+declarations and 1,302 guide links. Runtime passes in 44.34 seconds at 488.50 MiB
+charged; Review passes in 96.95 seconds at 504.93 MiB charged. All 126 exact
+decoder row/circuit comparisons across eleven inputs and all twelve native
+guards pass without owned processes left. The retained-baseline environment
+audit passes with 5,164 protected roots, 229,426 dependencies and no missing roots,
+changed reports, forbidden axioms, unsafe dependencies or undispositioned changes;
+its guarded child uses 247.12 seconds and 1,324.29 MiB charged. The retained
+baseline bytes remain unchanged. No final assurance is claimed.
+
+### Preceding Theta control repair
+
 Full run [42422150221](https://github.com/matter-labs/zksync-airbender/actions/runs/42422150221)
 on signed head 593d068f1d3eede9de2e8717334984fff48cfa9f failed independent
 kernel replay at 13:44:55 UTC on 8 November. ThetaSourceControlSlots exceeded

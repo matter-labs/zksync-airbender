@@ -132,7 +132,7 @@ jobs:
           python3 -m unittest discover -s scripts -p test_bounded_fv.py -v 2>&1 | tee "$FV_ROOT/guard-controls.log"
           python3 scripts/compilation_pool/test_pool.py --process-tests --process-output "$FV_ROOT/pool-controls"
           PYTHONPATH=scripts python3 -m unittest test_run_lean_diagnosis test_native_cpu_certificates test_check_lean_progress test_check_lean_repair test_check_lean_order test_native_qualification -v
-          PYTHONPATH=scripts python3 -m unittest test_fv_changes test_axiom_reports test_olean_hashes test_replay_cache test_proof_boundaries test_native_lookup_bindings test_native_memory_policy -v
+          PYTHONPATH=scripts python3 -m unittest test_fv_changes test_axiom_reports test_olean_hashes test_replay_cache test_replay_stage_deadline test_proof_boundaries test_native_lookup_bindings test_native_memory_policy -v
           cat > "$FV_ROOT/guard.sh" <<'SH'
           set -euo pipefail
           # Lightweight orchestration only: real children still own their
@@ -593,11 +593,13 @@ jobs:
       - name: Independent kernel replay of the complete compiled dependency DAG
         id: kernel-replay
         if: inputs.full_assurance == true || github.event_name == 'schedule'
-        timeout-minutes: 910
+        # The complete fresh DAG exceeded 15h after 8,179 successful replays.
+        # fv_stage still clips to the shared 22h deadline; worker caps stay fixed.
+        timeout-minutes: 1090
         run: |
           source "$FV_ROOT/guard.sh"
           sysroot="$(lean --print-prefix)"
-          fv_stage kernel-replay 54000 python3 scripts/check_kernel_replay.py --guard scripts/bounded_fv.py \
+          fv_stage kernel-replay 64800 python3 scripts/check_kernel_replay.py --guard scripts/bounded_fv.py \
             --sysroot "$sysroot" --output "$FV_ROOT/replay" \
             --ledger "$FV_REPLAY_LEDGER" --fresh-project --stack-mib 2048 \
             --axiom-result "$FV_ROOT/axioms/axiom-result.json"
