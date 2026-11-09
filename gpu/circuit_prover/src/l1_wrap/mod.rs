@@ -18,6 +18,7 @@ use crate::upstream::{
 
 pub type L1Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 
+/// Largest log2 Proth120 evaluation domain used by the wrap NTT.
 pub const L1_WRAP_NTT_LOG_MAX_DOMAIN: u32 = 31;
 
 pub fn validate_l1_wrap_preconditions(
