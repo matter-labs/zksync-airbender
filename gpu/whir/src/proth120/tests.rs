@@ -112,6 +112,7 @@ pub(super) fn small_schedule() -> WhirSchedule {
         &[128, 2048],
         &[4, 0, 3],
     );
+    schedule.base_round.physical_packing_log2 = 4;
     schedule.base_round.batching_pow_bits = Some(0);
     schedule
 }
@@ -126,6 +127,7 @@ fn small_pack3_schedule() -> WhirSchedule {
         &[128, 2048],
         &[4, 0, 3],
     );
+    schedule.base_round.physical_packing_log2 = 3;
     schedule.base_round.batching_pow_bits = Some(0);
     schedule
 }
@@ -2022,47 +2024,6 @@ fn whir_end_seed(proof: &super::L1WhirProof, log_message: u32, initial: [u8; 32]
     replay.seed.0
 }
 
-fn json_difference(
-    expected: &serde_json::Value,
-    actual: &serde_json::Value,
-    path: &str,
-) -> Option<String> {
-    if expected == actual {
-        return None;
-    }
-    match (expected, actual) {
-        (serde_json::Value::Object(expected), serde_json::Value::Object(actual)) => {
-            for (key, value) in expected {
-                match actual.get(key) {
-                    Some(other) => {
-                        if let Some(diff) = json_difference(value, other, &format!("{path}.{key}"))
-                        {
-                            return Some(diff);
-                        }
-                    }
-                    None => return Some(format!("{path}.{key} missing")),
-                }
-            }
-        }
-        (serde_json::Value::Array(expected), serde_json::Value::Array(actual)) => {
-            if expected.len() != actual.len() {
-                return Some(format!(
-                    "{path} length {} != {}",
-                    expected.len(),
-                    actual.len()
-                ));
-            }
-            for (i, (value, other)) in expected.iter().zip(actual).enumerate() {
-                if let Some(diff) = json_difference(value, other, &format!("{path}[{i}]")) {
-                    return Some(diff);
-                }
-            }
-        }
-        _ => {}
-    }
-    Some(format!("{path}: {expected} != {actual}"))
-}
-
 #[test]
 fn pr_l1_whir_fold_matches_cpu_small() {
     assert_l1_whir_fold_matches_cpu_small(4, &small_schedule(), (7, 1), 10);
@@ -2243,22 +2204,10 @@ fn assert_l1_whir_fold_matches_cpu_small(
             let proof = scheduled.into_proof_after_completion();
             let expected_bytes = serde_json::to_vec(expected).unwrap();
             let actual_bytes = serde_json::to_vec(&proof).unwrap();
-            if expected_bytes != actual_bytes {
-                let expected_json = serde_json::to_value(expected).unwrap();
-                let actual_json = serde_json::to_value(&proof).unwrap();
-                let diff = json_difference(&expected_json, &actual_json, "whir_proof").unwrap();
-                std::fs::write(
-                    format!("target/proth120-m7/t5-expected-p{pack_log2}-{tile_bytes}-{job}.json"),
-                    &expected_bytes,
-                )
-                .unwrap();
-                std::fs::write(
-                    format!("target/proth120-m7/t5-actual-p{pack_log2}-{tile_bytes}-{job}.json"),
-                    &actual_bytes,
-                )
-                .unwrap();
-                panic!("pack_log2={pack_log2} tile_bytes={tile_bytes} job={job}: {diff}");
-            }
+            assert_eq!(
+                actual_bytes, expected_bytes,
+                "pack_log2={pack_log2} tile_bytes={tile_bytes} job={job}"
+            );
             assert_eq!(
                 download(&seed_dev, stream),
                 whir_end_seed(expected, log_message, cpu_jobs[job].2)
