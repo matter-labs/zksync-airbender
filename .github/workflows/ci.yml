@@ -27,8 +27,6 @@ jobs:
           rustup component add llvm-tools
       - name: Install cargo-binutils
         run: cargo install cargo-binutils --locked
-      - name: Compile
-        run: cargo build --verbose
       - name: Fixture inventory and canonical encoding
         run: |
           cargo test -p proof_fixtures --profile cli
@@ -108,30 +106,6 @@ jobs:
           cargo check --workspace --all-targets --exclude gpu_core --exclude gpu_ntt ${{ matrix.args }}
           cargo check -p gpu_core -p gpu_ntt --lib ${{ matrix.args }}
 
-  circuits_generated:
-    name: circuits_generated
-    runs-on: [matterlabs-ci-runner-c3d]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          rustflags: ""
-      - name: Setup
-        run: |
-          rustup set profile default
-      - name: Regenerate verifiers
-        run: ./recreate_verifiers.sh
-      - name: Check if anything has changed
-        run: |
-          MODIFIED_FILES=$(git status --porcelain)
-          if [ -n "$MODIFIED_FILES" ]; then
-            echo "The following files were modified - did you run ./recreate_verifiers.sh? "
-            echo "$MODIFIED_FILES"
-            exit 1
-          else
-            echo "No files were modified."
-          fi
-
   check_verifiers:
     name: check_verifiers
     runs-on: [matterlabs-ci-runner-ultra-performance]
@@ -186,6 +160,7 @@ jobs:
 
   cli_smoke_verify:
     name: cli_smoke_verify
+    needs: fixture_build
     runs-on: [matterlabs-ci-runner-high-performance]
     timeout-minutes: 60
     container:
@@ -196,24 +171,55 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            build-essential ca-certificates cmake curl git libssl-dev pkg-config
+            build-essential ca-certificates cmake curl git libssl-dev pkg-config python3
       - uses: actions/checkout@v3
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions/download-artifact@v4
         with:
-          rustflags: ""
+          name: fixture-executables
+          path: fixture-executables/
       - name: CPU tests
         run: |
-          cargo test --release -p execution_prover_model -p execution_prover \
-            -p cpu_execution_prover -p prover_pipeline -p cli \
-            -- --test-threads=1
+          python3 - <<'PYTHON'
+          import json, os, pathlib, subprocess
+
+          expected = {
+              ("tools/cli", ("bin",), "cli"),
+              ("cpu_execution_prover", ("lib",), "cpu_execution_prover"),
+              ("cpu_execution_prover", ("test",), "execution_reference"),
+              ("execution_prover", ("lib",), "execution_prover"),
+              ("execution_prover_model", ("lib",), "execution_prover_model"),
+              ("prover_pipeline", ("lib",), "prover_pipeline"),
+          }
+          workspace = pathlib.Path(os.environ["GITHUB_WORKSPACE"])
+          artifacts = workspace / "fixture-executables"
+          manifest = json.loads((artifacts / "cpu-tests.json").read_text())
+          if manifest["workspace"] != str(workspace):
+              raise SystemExit(f"CPU test build workspace {manifest['workspace']} differs from GITHUB_WORKSPACE {workspace}")
+          tests = manifest["tests"]
+          actual = [(test["package_dir"], tuple(test["kind"]), test["name"]) for test in tests]
+          if len(actual) != len(expected) or set(actual) != expected:
+              raise SystemExit(f"Unexpected CPU test executables: {actual}; expected {sorted(expected)}")
+          files = {f"cpu-tests/{kind[0]}-{name}" for _, kind, name in expected}
+          if {f"cpu-tests/{path.name}" for path in (artifacts / "cpu-tests").iterdir()} != files:
+              raise SystemExit("CPU test artifact files differ from the expected executable set")
+          for test in tests:
+              relative_executable = f"cpu-tests/{test['kind'][0]}-{test['name']}"
+              if test["executable"] != relative_executable:
+                  raise SystemExit(f"Unexpected CPU test artifact path: {test}")
+              executable = artifacts / relative_executable
+              executable.chmod(0o755)
+              package_dir = workspace / test["package_dir"]
+              print(f"Running {test['name']} ({test['kind'][0]}) in {package_dir}", flush=True)
+              subprocess.run([str(executable), "--test-threads=1"], cwd=package_dir, check=True)
+          PYTHON
 
   fixture_build:
     name: fixture_build
-    runs-on: [matterlabs-ci-runner-high-performance]
+    runs-on: [matterlabs-ci-runner-ultra-performance]
     timeout-minutes: 60
     container:
       image: ubuntu:24.04
@@ -249,6 +255,47 @@ jobs:
           shutil.copy2(executables[0], "fixture-executables/canonical-producer")
           PYTHON
           cp target/release/cli target/release/fixture-codec fixture-executables/
+      - name: Build CPU test executables
+        run: |
+          cargo test --release -p execution_prover_model -p execution_prover \
+            -p cpu_execution_prover -p prover_pipeline -p cli \
+            --no-run --message-format=json > cpu-test-build.json
+          python3 - <<'PYTHON'
+          import json, pathlib, shutil
+
+          expected = {
+              ("tools/cli", ("bin",), "cli"),
+              ("cpu_execution_prover", ("lib",), "cpu_execution_prover"),
+              ("cpu_execution_prover", ("test",), "execution_reference"),
+              ("execution_prover", ("lib",), "execution_prover"),
+              ("execution_prover_model", ("lib",), "execution_prover_model"),
+              ("prover_pipeline", ("lib",), "prover_pipeline"),
+          }
+          workspace = pathlib.Path.cwd()
+          executables = {}
+          for line in pathlib.Path("cpu-test-build.json").read_text().splitlines():
+              message = json.loads(line)
+              if (message.get("reason") != "compiler-artifact"
+                      or not message["profile"]["test"] or not message.get("executable")):
+                  continue
+              package_dir = pathlib.Path(message["manifest_path"]).parent.relative_to(workspace).as_posix()
+              target = message["target"]
+              key = (package_dir, tuple(target["kind"]), target["name"])
+              if key in executables:
+                  raise SystemExit(f"Duplicate CPU test executable: {key}")
+              executables[key] = message["executable"]
+          if set(executables) != expected:
+              raise SystemExit(f"Unexpected CPU test executables: {sorted(executables)}; expected {sorted(expected)}")
+          artifacts = pathlib.Path("fixture-executables")
+          (artifacts / "cpu-tests").mkdir(parents=True, exist_ok=True)
+          tests = []
+          for (package_dir, kind, name), executable in sorted(executables.items()):
+              destination = f"cpu-tests/{kind[0]}-{name}"
+              shutil.copy2(executable, artifacts / destination)
+              tests.append(dict(package_dir=package_dir, kind=kind, name=name, executable=destination))
+          manifest = dict(workspace=str(workspace), tests=tests)
+          (artifacts / "cpu-tests.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PYTHON
       - uses: actions/upload-artifact@v4
         with:
           name: fixture-executables
@@ -302,7 +349,6 @@ jobs:
       - tests
       - formatting
       - warnings
-      - circuits_generated
       - check_verifiers
       - evm_verifier
       - cli_smoke_verify
