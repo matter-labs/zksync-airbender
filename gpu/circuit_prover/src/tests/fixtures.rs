@@ -36,7 +36,7 @@ pub(super) fn load_committed_proof(
 ) -> CommittedProof {
     let root = test_artifact_path("");
     let bytes = std::fs::read(circuit.proof_path(&root, mode)).unwrap();
-    let proof = serde_json::from_slice(&bytes).unwrap();
+    let proof = proof_fixtures::decode(&bytes);
     validate_committed_proof(circuit, &circuit.prover_config(&root, mode), &proof);
     CommittedProof { proof, bytes }
 }
@@ -48,7 +48,7 @@ fn cpu_loads_complete_committed_proof_set() {
         for &mode in circuit_common::SoundnessMode::ALL {
             let loaded = load_committed_proof(circuit, mode);
             assert_eq!(
-                serde_json::to_vec_pretty(&loaded.proof).unwrap(),
+                proof_fixtures::encode(&loaded.proof, Vec::new()),
                 loaded.bytes
             );
         }

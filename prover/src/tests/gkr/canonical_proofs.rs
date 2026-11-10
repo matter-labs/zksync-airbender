@@ -345,7 +345,8 @@ fn write(
         "duplicate canonical write: {}",
         path.display()
     );
-    std::fs::write(&path, serde_json::to_vec_pretty(proof).unwrap()).unwrap();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    proof_fixtures::write_file(&path, proof);
 }
 
 fn compression_pair(mode: SoundnessMode, worker: &Worker) -> (Proof, Proof) {
@@ -434,15 +435,12 @@ fn regenerate_canonical_circuit_proofs() {
         .collect();
     assert_eq!(written, expected);
     assert_eq!(written.len(), 28);
-    // A proof that is no longer produced must not stay committed. Generated
-    // `malicious_*` fixtures (gitignored) and one-off prover configs share the
-    // directory and are not canonical proofs.
-    let committed: BTreeSet<_> = std::fs::read_dir(root().join("prover/test_proofs"))
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| {
-            let name = path.file_name().unwrap().to_str().unwrap();
-            name.ends_with("_gkr_proof.json") && !name.starts_with("malicious_")
+    let committed: BTreeSet<_> = SoundnessMode::ALL
+        .iter()
+        .flat_map(|mode| {
+            std::fs::read_dir(root().join("fixtures/circuits").join(mode.file_suffix()))
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
         })
         .collect();
     assert_eq!(committed, expected);

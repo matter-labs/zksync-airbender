@@ -40,8 +40,7 @@ fn root() -> PathBuf {
 fn load_bundle(mode: SoundnessMode) -> CanonicalBundle {
     let root = root();
     let load = |circuit: CanonicalCircuit| -> Proof {
-        let file = std::fs::File::open(circuit.proof_path(&root, mode)).unwrap();
-        let proof: Proof = serde_json::from_reader(std::io::BufReader::new(file)).unwrap();
+        let proof: Proof = proof_fixtures::read_file(circuit.proof_path(&root, mode));
         assert_eq!(
             proof.whir_proof.whir_schedule,
             circuit.prover_config(&root, mode).whir_schedule

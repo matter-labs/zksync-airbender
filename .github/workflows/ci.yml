@@ -43,11 +43,15 @@ jobs:
           awk '/MemTotal:|MemAvailable:/ { print }' /proc/meminfo
           cargo test -p prover --lib --features test --profile cli -- \
             --exact tests::gkr::canonical_proofs::regenerate_canonical_circuit_proofs --nocapture --test-threads=1
-          if [ -n "$(git status --porcelain -- prover/test_proofs)" ]; then
+          if [ -n "$(git status --porcelain -- fixtures/circuits)" ]; then
             echo "Regeneration changed the committed canonical proofs; commit them:" >&2
-            git status --porcelain -- prover/test_proofs >&2
+            git status --porcelain -- fixtures/circuits >&2
             exit 1
           fi
+      - name: Fixture inventory and canonical encoding
+        run: |
+          cargo test -p proof_fixtures --profile cli
+          cargo test -p prover --features test --profile cli --test canonical_fixture_inputs canonical_fixture_encoding
       - name: GKR compiler feature tests
         env:
           RUST_MIN_STACK: 16777216

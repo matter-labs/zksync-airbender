@@ -156,10 +156,7 @@ fn canonical_fixture_inputs_reproduce_compression_memory_transcript() {
     let top_bits = &inputs.inits_and_teardowns.as_ref().unwrap().top_bits;
     for &mode in SoundnessMode::ALL {
         let load = |circuit: CanonicalCircuit| -> Proof {
-            serde_json::from_reader(std::io::BufReader::new(
-                std::fs::File::open(circuit.proof_path(&root, mode)).unwrap(),
-            ))
-            .unwrap()
+            proof_fixtures::read_file(circuit.proof_path(&root, mode))
         };
         let unified = load(CanonicalCircuit::UnifiedReducedMachine);
         let compression = load(CanonicalCircuit::Blake2WithExtendedControl);
@@ -211,5 +208,29 @@ fn canonical_fixture_inputs_reproduce_compression_memory_transcript() {
             serde_json::to_value(wrong.external_challenges).unwrap(),
             serde_json::to_value(challenges.external_challenges).unwrap(),
         );
+    }
+}
+
+#[test]
+fn canonical_fixture_encoding() {
+    type Proof = prover::gkr::prover::GKRProof<
+        field::baby_bear::base::BabyBearField,
+        field::baby_bear::ext4::BabyBearExt4,
+        prover::merkle_trees::DefaultTreeConstructor,
+    >;
+    let root = root();
+    for circuit in CANONICAL_CIRCUITS {
+        for &mode in SoundnessMode::ALL {
+            let path = circuit.proof_path(&root, mode);
+            let proof: Proof = proof_fixtures::read_file(&path);
+            assert_eq!(
+                proof.whir_proof.whir_schedule,
+                circuit.prover_config(&root, mode).whir_schedule
+            );
+            assert_eq!(
+                proof_fixtures::encode(&proof, Vec::new()),
+                std::fs::read(path).unwrap()
+            );
+        }
     }
 }

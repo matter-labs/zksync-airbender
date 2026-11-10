@@ -176,13 +176,7 @@ impl CanonicalCircuit {
     }
 
     pub fn proof_path(self, root: &Path, mode: SoundnessMode) -> PathBuf {
-        let suffix = if mode == SoundnessMode::DEFAULT {
-            "sec_100".to_owned()
-        } else {
-            format!("sec_100_{}", mode.file_suffix())
-        };
-        root.join("prover/test_proofs")
-            .join(format!("{}_{suffix}_gkr_proof.json", self.stem()))
+        proof_fixtures::circuit_proof_in(root, mode.file_suffix(), self.stem())
     }
 
     /// Standalone circuit fixtures have one fixed external input. Compression

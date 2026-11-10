@@ -312,7 +312,7 @@ impl BasicUnrolledProofFixture {
         }
         assert_gkr_proof_eq_for_test(proof, &self.committed_proof);
         assert_eq!(
-            serde_json::to_vec_pretty(proof).unwrap(),
+            proof_fixtures::encode(proof, Vec::new()),
             self.committed_proof_bytes,
             "GPU proof differs from committed file bytes",
         );

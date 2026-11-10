@@ -6,6 +6,7 @@ members = [
     "common_constants",
     "field",
     "experiments_runner",
+    "fixtures",
     "cs",
     "prover",
     "fft",
@@ -149,6 +150,7 @@ keywords = ["blockchain", "zksync", "zk", "risc-v"]
 categories = ["cryptography"]
 
 [workspace.dependencies]
+proof_fixtures = { path = "./fixtures" }
 field = { path = "./field", default-features = false }
 blake2s_u32 = { path = "./blake2s_u32", default-features = false }
 common_constants = { path = "./common_constants" }
