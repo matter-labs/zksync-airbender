@@ -47,6 +47,12 @@ def Native.RVOperationExecutionClaim : Prop :=
     Delegation.RVMemoryExecution data before cells ∧
       ∀ row ∈ data.rows, row.family = .keccak → Native.RowEffects row.assignment
 
+/-- The assumptions of `Native.RVOperationExecutionClaim` can be met by a pool with a Keccak row. -/
+def Native.RVOperationExecutionSatisfiableClaim : Prop :=
+  ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Trace.Cell),
+    Delegation.MemoryAccepted data ∧ Delegation.RVOperationInputs data before cells Controller.rows ∧
+      (∀ cell ∈ cells, cell.Aligned) ∧ ∃ row ∈ data.rows, row.family = .keccak
+
 /-- The first complete special5 span reaches the full reference
     (`RVSpanResult`, delegate link included) on its actual native-clock cut `RV.State`s. -/
 def Native.RVWindowSoundnessClaim : Prop :=

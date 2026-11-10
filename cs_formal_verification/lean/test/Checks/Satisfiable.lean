@@ -9,6 +9,7 @@ import Human.Trace.TeardownBounds
 import Human.Trace.Families.AddSub.RVTheorems
 import Human.Trace.UnifiedReduced.RVTheorems
 import Human.Trace.Workers.Blake2G.RVTheorems
+import Human.Trace.Workers.Keccak.RVTheorems
 
 open Airbender Trace
 
@@ -145,6 +146,14 @@ example (claim : Blake2G.Native.RVOperationExecutionClaim) : Blake2G.Native.RVOp
       Delegation.RVMemoryExecution data before cells ∧ ∃ row ∈ data.rows, row.family = .blakeG ∧
         Blake2G.spec (Blake2G.Native.input row.assignment) (Blake2G.Native.output row.assignment) :=
   fun ⟨data, before, cells, _, accepted, inputs, aligned, row, member, family⟩ =>
+    have result := claim accepted inputs aligned
+    ⟨data, before, cells, result.1, row, member, family, result.2 row member family⟩
+
+example (claim : Keccak.Native.RVOperationExecutionClaim) : Keccak.Native.RVOperationExecutionSatisfiableClaim →
+    ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Cell),
+      Delegation.RVMemoryExecution data before cells ∧ ∃ row ∈ data.rows, row.family = .keccak ∧
+        Keccak.Native.RowEffects row.assignment :=
+  fun ⟨data, before, cells, accepted, inputs, aligned, row, member, family⟩ =>
     have result := claim accepted inputs aligned
     ⟨data, before, cells, result.1, row, member, family, result.2 row member family⟩
 
