@@ -11,13 +11,13 @@ fn concurrent_batches_wait_for_cached_resources() {
     let program = vec![0x0001_2083, 0xffdf_f06f]; // lw x1, 0(x2); jal x0, -4
     let cycles = 4 * riscv_transpiler::jit::TRACE_CHUNK_LEN as u32;
     let mut prover = ExecutionProver::<TestBackend>::new();
-    let handle = prover.add_binary(
-        ExecutionKind::Unrolled,
-        MachineType::FullUnsigned,
+    let handle = prover.add_binary_variants(
         program.clone(),
         program,
+        &[(ExecutionKind::Unrolled, MachineType::FullUnsigned)],
         Some(cycles),
-    );
+    )[0];
+    prover.finalize_setup();
     let expected_final_timestamp =
         common_constants::INITIAL_TIMESTAMP + u64::from(cycles) * common_constants::TIMESTAMP_STEP;
     std::thread::scope(|scope| {

@@ -219,8 +219,26 @@ use stubs::{
     gpu_core_nvtx_registered_range_start,
 };
 
+/// A started NVTX range. NVTX closes a range only with the end call of the
+/// domain it was started in: `nvtxDomainRangeEnd` for a named-domain range,
+/// `nvtxRangeEnd` for a default-domain one. A domain range ended through the
+/// default domain stays open, so tools filtering on it (`ncu --nvtx-include`)
+/// keep selecting work launched after the intended end.
 #[derive(Clone, Copy)]
-pub struct RangeId(u64);
+pub struct RangeId {
+    id: u64,
+    domain: RangeDomain,
+}
+
+/// The domain handle a range was started in; null for the default domain.
+#[derive(Clone, Copy)]
+struct RangeDomain(NvtxDomainHandle);
+
+// SAFETY: same as `DomainEntry`: an NVTX domain handle is an immutable
+// process-global handle after creation, and `RangeDomain` only passes it back
+// to NVTX. This keeps `RangeId` `Send + Sync`, as it was as a plain `u64`.
+unsafe impl Send for RangeDomain {}
+unsafe impl Sync for RangeDomain {}
 
 struct Registration {
     domain_name: Option<String>,
@@ -325,13 +343,19 @@ pub fn start_range(domain: Option<&str>, message: &str) -> RangeId {
         // SAFETY: `message` is NUL-terminated and lives for 'static.
         unsafe { gpu_core_nvtx_ascii_range_start(reg.message.as_ptr()) }
     };
-    RangeId(id)
+    RangeId {
+        id,
+        domain: RangeDomain(reg.domain),
+    }
 }
 
 pub fn end_range(id: RangeId) {
-    // SAFETY: `id` was returned by a matching `start_range` call.
-    unsafe {
-        gpu_core_nvtx_range_end(id.0);
+    if id.domain.0.is_null() {
+        // SAFETY: `id` was returned by a matching default-domain `start_range` call.
+        unsafe { gpu_core_nvtx_range_end(id.id) }
+    } else {
+        // SAFETY: `domain` is the live handle `start_range` opened this range in.
+        unsafe { gpu_core_nvtx_domain_range_end(id.domain.0, id.id) }
     }
 }
 

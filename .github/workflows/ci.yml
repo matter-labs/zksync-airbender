@@ -14,10 +14,10 @@ jobs:
   tests:
     name: tests
     runs-on: [matterlabs-ci-runner-high-performance]
-    # The non-ignored GKR e2e tests (prover tests::gkr::*) run for tens of
-    # minutes under `--profile cli` (opt-level 3 but dev-based, so debug
-    # assertions stay on in the prover hot loops).
-    timeout-minutes: 60
+    # The full 28-proof canonical producer needs the high-performance
+    # runner's cores and memory; the timeout also covers compilation and the
+    # remaining checks.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -32,16 +32,20 @@ jobs:
         run: cargo install cargo-binutils --locked
       - name: Compile
         run: cargo build --verbose
-      - name: Prover smoke test (CI)
+      - name: Canonical proof currency in both soundness modes
+        shell: bash
         env:
           CI: "true"
           RUST_MIN_STACK: 16777216
-        run: cargo test -p prover --profile cli -- --nocapture gkr_run_basic_unrolled_test_sec_100
-      - name: Fail if the smoke test changed the committed test proofs
+          CARGO_BUILD_JOBS: 16
         run: |
+          set -euo pipefail
+          awk '/MemTotal:|MemAvailable:/ { print }' /proc/meminfo
+          cargo test -p prover --lib --features test --profile cli -- \
+            --exact tests::gkr::canonical_proofs::regenerate_canonical_circuit_proofs --nocapture --test-threads=1
           if [ -n "$(git status --porcelain -- prover/test_proofs)" ]; then
-            echo "❌ The smoke test regenerated these test proofs; commit them:"
-            git status --porcelain -- prover/test_proofs
+            echo "Regeneration changed the committed canonical proofs; commit them:" >&2
+            git status --porcelain -- prover/test_proofs >&2
             exit 1
           fi
       - name: GKR compiler feature tests
@@ -52,6 +56,14 @@ jobs:
         env:
           RUST_MIN_STACK: 1073741824
         run: cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --lib --test cost_model_drift
+      - name: Native verifier tests
+        env:
+          RUST_MIN_STACK: 1073741824
+        run: |
+          cargo test -p verifier --profile cli --test native --test mop_montgomery
+          cargo test -p verifier --profile cli --test corruption rejects_corrupted_folding_and_ood_pow_nonces_ethproofs_bigint_with_extended_control
+      - name: Guest memory runtime
+        run: cargo test -p riscv_common
 
   formatting:
     name: cargo fmt
@@ -213,14 +225,8 @@ jobs:
           cargo test --release -p execution_prover_model -p execution_prover \
             -p cpu_execution_prover -p prover_pipeline -p cli \
             -- --test-threads=1
-      - name: Prove base
-        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cycles-bound 16777216 --worker-threads 8 --output-dir output --output-file base.json
-      - name: Verify base
-        run: ./target/release/cli verify --proof output/base.json --bin examples/basic_fibonacci/app.bin
-      - name: Continue to recursion unified
-        run: ./target/release/cli continue-proof --proof output/base.json --bin examples/basic_fibonacci/app.bin --target recursion-unified --cycles-bound 16777216 --worker-threads 8 --output-dir output --output-file recursion_unified.json
-      - name: Verify recursion unified
-        run: ./target/release/cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
+      - name: Prove, continue and verify in every soundness mode
+        run: .github/scripts/soundness_mode_smoke.sh ./target/release/cli examples/basic_fibonacci/app.bin cpu --cycles-bound 16777216 --worker-threads 16
   # Keep branch protection tied to one stable check name even as the
   # underlying CI fan-out changes over time.
   pr-checks:

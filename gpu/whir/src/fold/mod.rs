@@ -167,49 +167,20 @@ pub(super) fn bitreverse_index(index: usize, num_bits: u32) -> usize {
     index.reverse_bits() >> (usize::BITS - num_bits)
 }
 
-/// The WHIR fold only supports batching the base oracles from their hypercube
-/// evaluations. A coset-0 source would also need the natural-order row layout
-/// and a monomial form carrying the multilinear coefficient labeling — the
-/// univariate IFFT of a codeword does not.
-pub(super) fn assert_batching_source_supported(use_hypercube_evals_for_batching: bool) {
-    assert!(
-        use_hypercube_evals_for_batching,
-        "WHIR base batching from coset 0 evaluations is not supported: the committed base \
-         backing is stored in bitreversed row order, but this path requires natural row order"
-    );
-}
-
 pub(super) fn get_base_columns<'a>(
     trace_holder: &'a TraceHolder<BF>,
     rows: usize,
-    use_hypercube_evals: bool,
 ) -> DeviceMatrix<'a, BF> {
-    let values = if use_hypercube_evals {
-        // Use the logical hypercube-evaluation view here. `raw_hypercube_backing`
-        // preserves ownership only; WHIR needs the row-shaped evaluation slice
-        // that `get_hypercube_evals` already exposes.
-        DeviceMatrix::new(trace_holder.get_hypercube_evals(), rows)
-    } else {
-        assert!(
-            trace_holder.are_cosets_materialized(),
-            "{} {}",
-            "Tried to build WHIR initial state from coset 0, ",
-            "but cosets are not materialized",
-        );
-        DeviceMatrix::new(trace_holder.get_evaluations(), rows)
-    };
-    values
+    DeviceMatrix::new(trace_holder.padded_hypercube_evals(), rows)
 }
 
 /// Derives the monomial form from the batched evaluation form.
 pub(super) fn initialize_batched_monomial_form(
     log_domain_size: usize,
-    use_hypercube_evals_for_batching: bool,
     vectorized_scratch: &mut DeviceSlice<BF>,
     state: &mut GpuWhirState,
     context: &ProverContext,
 ) -> CudaResult<()> {
-    assert_batching_source_supported(use_hypercube_evals_for_batching);
     let trace_len = 1 << log_domain_size;
     assert_eq!(vectorized_scratch.len(), trace_len * EXT4_DEGREE);
     let stream = context.get_exec_stream();
@@ -222,7 +193,6 @@ pub(super) fn initialize_batched_monomial_form(
         &vectorized_batched_evals_matrix,
         &mut state.sumchecked_poly_monomial_form,
         log_domain_size,
-        false, // transposed_monomials
         stream,
         context.get_device_properties(),
     )?;
@@ -238,26 +208,27 @@ pub(super) fn schedule_initialize_batched_forms(
     wit_polys_claims_len: usize,
     setup_polys_claims_len: usize,
     batching_challenge_device: &DeviceSlice<E4>,
-    use_hypercube_evals_for_batching: bool,
     state: &mut GpuWhirState,
     context: &ProverContext,
 ) -> CudaResult<()> {
-    assert_batching_source_supported(use_hypercube_evals_for_batching);
     let trace_len = state.current_len;
     assert_eq!(
-        memory_trace_holder.log_domain_size,
-        witness_trace_holder.log_domain_size
+        memory_trace_holder.commitment_log_domain_size(),
+        witness_trace_holder.commitment_log_domain_size()
     );
     assert_eq!(
-        memory_trace_holder.log_domain_size,
-        setup_trace_holder.log_domain_size
+        memory_trace_holder.commitment_log_domain_size(),
+        setup_trace_holder.commitment_log_domain_size()
     );
-    assert_eq!(trace_len, 1usize << memory_trace_holder.log_domain_size);
+    assert_eq!(
+        trace_len,
+        1usize << memory_trace_holder.commitment_log_domain_size()
+    );
     assert!(!batching_challenge_device.is_empty());
 
-    let total_base_oracles = memory_trace_holder.columns_count
-        + witness_trace_holder.columns_count
-        + setup_trace_holder.columns_count;
+    let total_base_oracles = memory_trace_holder.committed_columns_count()
+        + witness_trace_holder.committed_columns_count()
+        + setup_trace_holder.committed_columns_count();
     let stream = context.get_exec_stream();
 
     // Device-native materialization of `[1, x, x^2, ..., x^(total_base_oracles - 1)]`
@@ -283,11 +254,9 @@ pub(super) fn schedule_initialize_batched_forms(
     assert_eq!(device_setup_weights.len(), setup_polys_claims_len);
 
     let rows = state.original_trace_len;
-    let memory_values =
-        get_base_columns(memory_trace_holder, rows, use_hypercube_evals_for_batching);
-    let witness_values =
-        get_base_columns(witness_trace_holder, rows, use_hypercube_evals_for_batching);
-    let setup_values = get_base_columns(setup_trace_holder, rows, use_hypercube_evals_for_batching);
+    let memory_values = get_base_columns(memory_trace_holder, rows);
+    let witness_values = get_base_columns(witness_trace_holder, rows);
+    let setup_values = get_base_columns(setup_trace_holder, rows);
 
     // Pre-allocate the BF column-major scratch the NTT expects, so the fused
     // accumulate kernel can write the serialized form directly and skip the
@@ -307,8 +276,7 @@ pub(super) fn schedule_initialize_batched_forms(
     )?;
 
     initialize_batched_monomial_form(
-        memory_trace_holder.log_domain_size as usize,
-        use_hypercube_evals_for_batching,
+        memory_trace_holder.commitment_log_domain_size() as usize,
         &mut vectorized_scratch[..],
         state,
         context,

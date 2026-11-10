@@ -241,7 +241,8 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
                 let (active_eq_slot_base, active_eq_size_before_fold) =
                     resolve_dr_global_active_eq_slot(&pass.eq_entry);
                 let start_round = pass.geometry.start_round;
-                // SAFETY: the preflighted pass lies within the layer point and slab.
+                // SAFETY: binding validation keeps `start_round + 3 < folding_steps`, so the
+                // offsets stay inside the layer point and the `4 * folding_steps` coefficients.
                 let point = unsafe { device_claim_point_out.as_mut_ptr().add(start_round) };
                 let coeffs_out = unsafe { coeffs_buffer_ptr.add(4 * start_round) };
                 let continuation_tail = WindowTailState {

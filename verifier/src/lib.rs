@@ -7,13 +7,17 @@ pub use verifier_common::gkr;
 pub use verifier_common::prover;
 pub use verifier_common::transcript;
 
+// Generated fixed-shape verifiers retain common arguments and intermediates
+// that a zero-fold base round does not consume. Keep this lint scoped to them.
+#[allow(unused_variables)]
 #[path = "generated"]
 mod __generated {
     macro_rules! declare_gkr_modules {
         ($($name:ident; $prod_path:expr),* $(,)?) => {
             $(
                 pub mod $name {
-                    pub mod sec_100;
+                    pub mod pessimistic_conjecture;
+                    pub mod ethproofs_soundcalc;
                 }
             )*
         };

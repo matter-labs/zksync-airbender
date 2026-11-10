@@ -102,9 +102,12 @@ pub(crate) fn schedule_query_base_trace_holder_for_folded_index(
 ) -> CudaResult<GpuScheduledBaseFieldQuery> {
     let lde_factor = 1usize << trace_holder.log_lde_factor;
     let values_per_leaf = 1usize << trace_holder.log_rows_per_leaf;
-    let coset_tree_size = (1usize << trace_holder.log_domain_size) / values_per_leaf;
+    let coset_tree_size = (1usize << trace_holder.commitment_log_domain_size()) / values_per_leaf;
     assert!(values_per_leaf.is_power_of_two());
-    assert!(index < (1usize << trace_holder.log_domain_size) * lde_factor / values_per_leaf);
+    assert!(
+        index
+            < (1usize << trace_holder.commitment_log_domain_size()) * lde_factor / values_per_leaf
+    );
     let value_coset_index = index & (lde_factor - 1);
     let value_internal_index = index / lde_factor;
     let mut callbacks = Callbacks::new();
@@ -149,7 +152,7 @@ pub(crate) fn schedule_query_base_trace_holder_for_folded_index(
         leafs: value_query,
         merkle_paths: path_query,
         values_per_leaf,
-        columns_count: trace_holder.columns_count,
+        columns_count: trace_holder.committed_columns_count(),
     })
 }
 
@@ -161,25 +164,26 @@ pub(super) fn initialize_batched_forms(
     wit_polys_claims_len: usize,
     setup_polys_claims_len: usize,
     batching_challenge: E4,
-    use_hypercube_evals_for_batching: bool,
     state: &mut GpuWhirState,
     context: &ProverContext,
 ) -> CudaResult<[Vec<E4>; 3]> {
-    assert_batching_source_supported(use_hypercube_evals_for_batching);
     let trace_len = state.current_len;
     assert_eq!(
-        memory_trace_holder.log_domain_size,
-        witness_trace_holder.log_domain_size
+        memory_trace_holder.commitment_log_domain_size(),
+        witness_trace_holder.commitment_log_domain_size()
     );
     assert_eq!(
-        memory_trace_holder.log_domain_size,
-        setup_trace_holder.log_domain_size
+        memory_trace_holder.commitment_log_domain_size(),
+        setup_trace_holder.commitment_log_domain_size()
     );
-    assert_eq!(trace_len, 1usize << memory_trace_holder.log_domain_size);
+    assert_eq!(
+        trace_len,
+        1usize << memory_trace_holder.commitment_log_domain_size()
+    );
 
-    let total_base_oracles = memory_trace_holder.columns_count
-        + witness_trace_holder.columns_count
-        + setup_trace_holder.columns_count;
+    let total_base_oracles = memory_trace_holder.committed_columns_count()
+        + witness_trace_holder.committed_columns_count()
+        + setup_trace_holder.committed_columns_count();
     let challenge_powers = materialize_powers_serial_starting_with_one::<E4, std::alloc::Global>(
         batching_challenge,
         total_base_oracles,
@@ -198,21 +202,9 @@ pub(super) fn initialize_batched_forms(
     copy_small_to_device(&mut device_witness_weights, witness_weights, context)?;
     copy_small_to_device(&mut device_setup_weights, setup_weights, context)?;
 
-    let memory_values = get_base_columns(
-        memory_trace_holder,
-        trace_len,
-        use_hypercube_evals_for_batching,
-    );
-    let witness_values = get_base_columns(
-        witness_trace_holder,
-        trace_len,
-        use_hypercube_evals_for_batching,
-    );
-    let setup_values = get_base_columns(
-        setup_trace_holder,
-        trace_len,
-        use_hypercube_evals_for_batching,
-    );
+    let memory_values = get_base_columns(memory_trace_holder, trace_len);
+    let witness_values = get_base_columns(witness_trace_holder, trace_len);
+    let setup_values = get_base_columns(setup_trace_holder, trace_len);
     let mut vectorized_scratch =
         context.alloc::<BF>(trace_len * EXT4_DEGREE, AllocationPlacement::BestFit)?;
     accumulate_whir_base_columns_with_serialized_bf(
@@ -227,8 +219,7 @@ pub(super) fn initialize_batched_forms(
         context.get_exec_stream(),
     )?;
     initialize_batched_monomial_form(
-        memory_trace_holder.log_domain_size as usize,
-        use_hypercube_evals_for_batching,
+        memory_trace_holder.commitment_log_domain_size() as usize,
         &mut vectorized_scratch[..],
         state,
         context,
@@ -250,7 +241,6 @@ pub(super) fn build_initial_state(
     setup_polys_claims: &[E4],
     original_evaluation_point: &[E4],
     batching_challenge: E4,
-    use_hypercube_evals_for_batching: bool,
     state: &mut GpuWhirState,
     context: &ProverContext,
 ) -> CudaResult<([Vec<E4>; 3], E4)> {
@@ -268,7 +258,6 @@ pub(super) fn build_initial_state(
         wit_polys_claims.len(),
         setup_polys_claims.len(),
         batching_challenge,
-        use_hypercube_evals_for_batching,
         state,
         context,
     )?;

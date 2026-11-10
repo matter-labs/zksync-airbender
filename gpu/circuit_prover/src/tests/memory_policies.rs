@@ -1,201 +1,77 @@
 use super::*;
-use crate::proof::memory_policy::{
-    GkrMemoryPolicy, OpeningStrategy, WitnessCommitmentStrategy, WitnessMemoryPolicy,
-    WitnessOpeningStrategy, WitnessPostCommitStorage,
-};
+use crate::proof::memory_policy::{GkrMemoryPolicy, WitnessMemoryPolicy, WitnessPostCommitStorage};
 
-fn check_policies(
-    fixture: &BasicUnrolledProofFixture,
-    policies: impl IntoIterator<Item = ProofMemoryPolicy>,
-) {
-    let baseline = fixture.base.context.get_used_mem_current();
-    let mut policies = policies.into_iter();
-    while let Some(first_policy) = policies.next() {
-        let second_policy = policies.next().unwrap_or(first_policy);
-        let first = fixture
-            .base
-            .schedule_prove_with_memory_policy(first_policy)
-            .unwrap();
-        let second = fixture
-            .base
-            .schedule_prove_with_memory_policy(second_policy)
-            .unwrap();
-        for job in [first, second] {
+fn check_policies(circuit: CanonicalCircuit, mode: circuit_common::SoundnessMode) {
+    let fixture = prepare_canonical_proof_fixture(circuit, mode);
+    let base = &fixture.base;
+    let preparation_peak = base.context.get_used_mem_peak();
+    let baseline = base.context.get_used_mem_current();
+    base.context.reset_used_mem_peak();
+    let presets =
+        [21usize << 30, 30usize << 30].map(|arena| presets::policy(base.circuit_type, arena));
+    let mut policies = vec![ProofMemoryPolicy::default()];
+    for policy in ProofMemoryPolicy::candidates()
+        .chain(GkrMemoryPolicy::candidates().map(|gkr| ProofMemoryPolicy {
+            gkr,
+            ..Default::default()
+        }))
+        .chain(presets)
+    {
+        if !policies.contains(&policy) {
+            policies.push(policy);
+        }
+    }
+    let mut checked = 0;
+    for pair in policies.chunks(2) {
+        let jobs = [pair[0], *pair.get(1).unwrap_or(&pair[0])]
+            .map(|policy| base.schedule_prove_with_memory_policy(policy).unwrap());
+        for job in jobs {
             let (proof, _) = job.finish().unwrap();
-            assert_gkr_proof_eq_for_test(&proof, &fixture.expected_cpu_proof);
+            fixture.assert_proof(&proof);
+            checked += 1;
+            assert_eq!(
+                base.context.get_used_mem_current(),
+                baseline,
+                "device memory must return to baseline after each policy finish"
+            );
         }
-        assert_eq!(fixture.base.context.get_used_mem_current(), baseline);
     }
+    assert!(checked >= policies.len());
+    record_test_resources(base, preparation_peak, checked);
 }
 
-fn check_opening_policies(fixture: &BasicUnrolledProofFixture) {
-    use crate::proof::memory_policy::OpeningStrategy::{AllCosets, InPlace, PerCoset};
-    let policies = [InPlace, PerCoset, AllCosets];
-    check_policies(
-        fixture,
-        policies.into_iter().flat_map(|setup| {
-            policies.into_iter().map(move |memory| ProofMemoryPolicy {
-                setup,
-                memory,
-                ..Default::default()
-            })
-        }),
-    );
-}
-
-#[test]
-#[ignore]
-fn opening_policies_add_sub_parity_and_reuse() {
-    check_opening_policies(&prepare_basic_unrolled_proof_fixture_sec100());
-}
-
-#[test]
-#[ignore]
-fn opening_policies_unified_parity_and_reuse() {
-    check_opening_policies(&prepare_unified_proof_fixture());
-}
-
-#[test]
-#[ignore]
-fn opening_policies_setup_less_parity_and_reuse() {
-    let (base, expected) =
-        super::inits_and_teardowns::prepare_inits_and_teardowns_proof_fixture(true);
-    use crate::proof::memory_policy::OpeningStrategy::{AllCosets, InPlace, PerCoset};
-    let fixture = BasicUnrolledProofFixture {
-        base,
-        expected_cpu_proof: expected.unwrap(),
-    };
-    check_policies(
-        &fixture,
-        [InPlace, PerCoset, AllCosets].map(|memory| ProofMemoryPolicy {
-            memory,
-            ..Default::default()
-        }),
-    );
-}
-
-fn in_place_policy(gkr: GkrMemoryPolicy) -> ProofMemoryPolicy {
-    ProofMemoryPolicy {
-        gkr,
-        setup: OpeningStrategy::InPlace,
-        memory: OpeningStrategy::InPlace,
-        witness: WitnessMemoryPolicy {
-            commitment: WitnessCommitmentStrategy::InPlace,
-            post_commitment: WitnessPostCommitStorage::RawEvaluations,
-            opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::InPlace),
-        },
-    }
-}
-
-fn check_witness_policies(fixture: &BasicUnrolledProofFixture) {
-    let in_place = in_place_policy(GkrMemoryPolicy::Materialize);
-    check_policies(
-        fixture,
-        std::iter::once(in_place).chain(WitnessMemoryPolicy::candidates().map(|witness| {
-            ProofMemoryPolicy {
-                witness,
-                ..Default::default()
-            }
-        })),
-    );
-}
-
-#[test]
-#[ignore]
-fn witness_policies_add_sub_parity_and_reuse() {
-    check_witness_policies(&prepare_basic_unrolled_proof_fixture_sec100());
-}
-
-#[test]
-#[ignore]
-fn witness_policies_unified_parity_and_reuse() {
-    check_witness_policies(&prepare_unified_proof_fixture());
-}
-
-fn check_gkr_recompute(
-    fixture: &BasicUnrolledProofFixture,
-    candidates: impl Iterator<Item = GkrMemoryPolicy>,
-) {
-    let policy = ProofMemoryPolicy {
-        witness: WitnessMemoryPolicy {
-            post_commitment: WitnessPostCommitStorage::RawEvaluations,
-            opening: WitnessOpeningStrategy::Recompute(OpeningStrategy::AllCosets),
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    let in_place = in_place_policy(GkrMemoryPolicy::Recompute {
-        value_layers: 2,
-        cache_layers: 3,
-    });
-    check_policies(
-        fixture,
-        candidates
-            .map(|gkr| ProofMemoryPolicy { gkr, ..policy })
-            .chain(std::iter::once(in_place)),
-    );
-}
-
-macro_rules! gkr_recompute_test {
-    ($name:ident, $fixture:path) => {
-        gkr_recompute_test!($name, $fixture, GkrMemoryPolicy::candidates());
-    };
-    ($name:ident, $fixture:path, $candidates:expr) => {
+macro_rules! policy_tests {
+    ($(($p:ident, $e:ident, $circuit:ident)),* $(,)?) => { $(
         #[test]
-        #[ignore]
-        fn $name() {
-            check_gkr_recompute(&$fixture(), $candidates);
-        }
-    };
+        #[ignore = "production policy candidates and presets against committed proof bytes"]
+        fn $p() { check_policies(CanonicalCircuit::$circuit, circuit_common::SoundnessMode::PessimisticConjecture); }
+        #[test]
+        #[ignore = "production policy candidates and presets against committed proof bytes"]
+        fn $e() { check_policies(CanonicalCircuit::$circuit, circuit_common::SoundnessMode::EthproofsSoundnessCalc); }
+    )* };
 }
 
-gkr_recompute_test!(
-    gkr_recompute_add_sub_parity_and_reuse,
-    prepare_basic_unrolled_proof_fixture_sec100
-);
-gkr_recompute_test!(
-    gkr_recompute_unified_parity_and_reuse,
-    prepare_unified_proof_fixture
-);
-gkr_recompute_test!(
-    gkr_recompute_shift_binop_parity_and_reuse,
-    super::proof_matrix::prepare_shift_binop_proof_fixture
-);
-gkr_recompute_test!(
-    gkr_recompute_jump_branch_slt_parity_and_reuse,
-    super::proof_matrix::prepare_jump_branch_slt_proof_fixture
-);
-gkr_recompute_test!(
-    gkr_recompute_mul_div_parity_and_reuse,
-    super::proof_matrix::prepare_mul_div_proof_fixture
-);
-gkr_recompute_test!(
-    gkr_recompute_load_store_word_parity_and_reuse,
-    super::proof_matrix::prepare_load_store_word_only_proof_fixture
-);
-gkr_recompute_test!(
-    gkr_recompute_load_store_subword_parity_and_reuse,
-    super::proof_matrix::prepare_load_store_subword_only_proof_fixture
-);
-// Materialize peaks at 35 GiB for bigint, above the 30 GiB preset arena.
-gkr_recompute_test!(
-    gkr_recompute_bigint_parity_and_reuse,
-    super::proof_matrix::prepare_bigint_proof_fixture,
-    GkrMemoryPolicy::candidates().filter(|&gkr| gkr != GkrMemoryPolicy::Materialize)
-);
-gkr_recompute_test!(
-    gkr_recompute_keccak_parity_and_reuse,
-    super::proof_matrix::prepare_keccak_special5_proof_fixture
-);
-gkr_recompute_test!(
-    gkr_recompute_blake2_compression_parity_and_reuse,
-    super::proof_matrix::prepare_blake2_with_compression_proof_fixture
-);
-gkr_recompute_test!(
-    gkr_recompute_blake2_g_parity_and_reuse,
-    super::proof_matrix::prepare_blake2_g_function_proof_fixture
-);
-gkr_recompute_test!(
-    gkr_recompute_inits_and_teardowns_parity_and_reuse,
-    super::proof_matrix::prepare_inits_and_teardowns_matrix_proof_fixture
-);
+policy_tests! {
+    (policies_add_sub_pessimistic_conjecture, policies_add_sub_ethproofs_soundcalc, AddSubLuiAuipcMop),
+    (policies_inits_and_teardowns_pessimistic_conjecture, policies_inits_and_teardowns_ethproofs_soundcalc, InitsAndTeardowns),
+    (policies_keccak_special5_pessimistic_conjecture, policies_keccak_special5_ethproofs_soundcalc, KeccakSpecial5),
+    (policies_blake2_with_compression_pessimistic_conjecture, policies_blake2_with_compression_ethproofs_soundcalc, Blake2WithExtendedControl),
+}
+
+#[test]
+#[should_panic(expected = "invalid witness memory policy")]
+fn invalid_witness_policy_is_refused() {
+    let fixture = prepare_canonical_proof_fixture(
+        CanonicalCircuit::AddSubLuiAuipcMop,
+        circuit_common::SoundnessMode::DEFAULT,
+    );
+    let _ = fixture
+        .base
+        .schedule_prove_with_memory_policy(ProofMemoryPolicy {
+            witness: WitnessMemoryPolicy {
+                post_commitment: WitnessPostCommitStorage::RawEvaluations,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+}

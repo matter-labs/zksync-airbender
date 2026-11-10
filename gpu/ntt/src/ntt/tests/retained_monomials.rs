@@ -55,7 +55,6 @@ fn run(log_n: usize, log_f: usize, force_two_pass: bool) {
         log_n,
         log_f,
         columns,
-        false,
         context.device_context(),
         None,
         stream,

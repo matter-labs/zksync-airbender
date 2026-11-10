@@ -13,11 +13,13 @@ use verifier_common::errors::VerificationError;
 use common::assert_rejects_with_variant;
 use common::{
     assert_rejects_any, assert_rejects_corrupted_nds, assert_rejects_via_panic, SecurityLevel,
-    VerifyRejection,
+    SoundnessMode, VerifyRejection,
 };
 
 fn test_rejects_garbage_proof(name: &str) {
-    let nds_len = common::load_nds(name, SecurityLevel::Sec100).0.len();
+    let nds_len = common::load_nds(name, SecurityLevel::Sec100, verifier_common::BLAKE_MODE)
+        .0
+        .len();
     assert_rejects_corrupted_nds(
         name,
         SecurityLevel::Sec100,
@@ -35,7 +37,9 @@ fn test_rejects_garbage_proof(name: &str) {
 }
 
 fn test_rejects_corruption_at_fractions(name: &str) {
-    let nds_len = common::load_nds(name, SecurityLevel::Sec100).0.len();
+    let nds_len = common::load_nds(name, SecurityLevel::Sec100, verifier_common::BLAKE_MODE)
+        .0
+        .len();
     for fraction in [0.25, 0.50, 0.75] {
         let label = format!("fraction {:.2}", fraction);
         let idx = (nds_len as f64 * fraction) as usize;
@@ -82,7 +86,9 @@ fn test_rejects_corrupted_gkr_region(name: &str) {
 }
 
 fn test_rejects_corrupted_whir_region(name: &str) {
-    let nds_len = common::load_nds(name, SecurityLevel::Sec100).0.len();
+    let nds_len = common::load_nds(name, SecurityLevel::Sec100, verifier_common::BLAKE_MODE)
+        .0
+        .len();
 
     let cases: &[(usize, &str)] = &[
         (nds_len / 2, "whir_early"),
@@ -109,7 +115,9 @@ fn test_rejects_zeroed_regions(name: &str) {
                 - core::mem::offset_of!(InitialTranscript, external_challenges_flattened));
         let gkr_off = initial_transcript_responses_offset / core::mem::size_of::<u32>();
 
-        let nds_len = common::load_nds(name, SecurityLevel::Sec100).0.len();
+        let nds_len = common::load_nds(name, SecurityLevel::Sec100, verifier_common::BLAKE_MODE)
+            .0
+            .len();
 
         let cases: &[(usize, usize, &str)] = &[
             (gkr_off + 200, 32, "sumcheck_chunk"),
@@ -227,7 +235,9 @@ fn test_rejects_corrupted_final_monomials(name: &str) {
         let queries_words = final_num_queries * (leaf_words + path_words);
         let pow_words = 2;
         let monomial_words = m::constants::FINAL_MONOMIALS_LEN * 4;
-        let nds_len = common::load_nds(name, SecurityLevel::Sec100).0.len();
+        let nds_len = common::load_nds(name, SecurityLevel::Sec100, verifier_common::BLAKE_MODE)
+            .0
+            .len();
         let monomials_end = nds_len - queries_words - pow_words;
         let start = monomials_end - monomial_words;
         assert_rejects_corrupted_nds(
@@ -250,7 +260,9 @@ fn test_rejects_cross_circuit_nds(name: &str) {
         .find(|c| c.name != name)
         .expect("need at least two circuits");
 
-    let other_nds = other.load_nds_for(SecurityLevel::Sec100).0;
+    let other_nds = other
+        .load_nds_for(SecurityLevel::Sec100, verifier_common::BLAKE_MODE)
+        .0;
     assert_rejects_corrupted_nds(
         name,
         SecurityLevel::Sec100,
@@ -330,23 +342,21 @@ fn test_rejects_corrupted_ood_sample(name: &str) {
     let circuit_data = common::circuit_by_name(name);
     let mut proof = circuit_data.proof_for(SecurityLevel::Sec100);
     assert!(
-        !proof.whir_proof.ood_samples.is_empty(),
+        !proof.whir_proof.intermediate_whir_oracles[0]
+            .ood_samples
+            .is_empty(),
         "{}: proof must have OOD samples",
         name
     );
-    proof.whir_proof.ood_samples[0].add_assign(&BabyBearExt4::ONE);
+    proof.whir_proof.intermediate_whir_oracles[0].ood_samples[0].add_assign(&BabyBearExt4::ONE);
     assert_rejects_via_panic(name, SecurityLevel::Sec100, "corrupted OOD sample", &proof);
 }
 
 fn test_rejects_corrupted_pow_nonce(name: &str) {
     let circuit_data = common::circuit_by_name(name);
     let mut proof = circuit_data.proof_for(SecurityLevel::Sec100);
-    assert!(
-        !proof.whir_proof.pow_nonces.is_empty(),
-        "{}: proof must have PoW nonces",
-        name
-    );
-    proof.whir_proof.pow_nonces[0] ^= 1;
+    // the round-0 query-draw nonce
+    proof.whir_proof.base_queries_pow_nonce ^= 1;
     assert_rejects_via_panic(name, SecurityLevel::Sec100, "corrupted PoW nonce", &proof);
 }
 
@@ -362,8 +372,42 @@ fn test_rejects_corrupted_lookup_pow_nonce(name: &str, level: SecurityLevel) {
 fn test_rejects_corrupted_batched_proximity_pow_nonce(name: &str, level: SecurityLevel) {
     let circuit_data = common::circuit_by_name(name);
     let mut proof = circuit_data.proof_for(level);
-    proof.batched_proximity_check_pow_nonce ^= 1;
+    proof.whir_proof.batching_challenge_pow_nonce ^= 1;
     assert_rejects_any(name, level, "corrupted batched-proximity PoW nonce", &proof);
+}
+
+/// The ethproofs-soundcalc schedule gates internal folding challenges and OOD draws behind PoW;
+/// a corrupted nonce must fail its own PoW check.
+#[test]
+fn rejects_corrupted_folding_and_ood_pow_nonces_ethproofs_bigint_with_extended_control() {
+    let name = "bigint_with_extended_control";
+    let (level, mode) = (SecurityLevel::Sec100, SoundnessMode::EthproofsSoundnessCalc);
+    let verify = |proof: &_| {
+        let (nds, external_challenges) = common::proof_to_nds(name, level, proof);
+        common::verify_nds(name, level, mode, &external_challenges, nds)
+    };
+    let assert_pow_rejects = |proof: &_, nonce: u64, label: &str| match verify(proof) {
+        Err(VerifyRejection::Panic(msg)) => assert!(
+            msg.contains(&format!("bits of PoW using nonce {nonce},")),
+            "{label}: rejected by another check: {msg}"
+        ),
+        other => panic!("{label}: expected the PoW check to reject, got {other:?}"),
+    };
+    let proof = common::circuit_by_name(name).proof_for_mode(level, mode);
+    assert!(verify(&proof).is_ok(), "the ethproofs fixture must verify");
+    let mut folding = proof.clone();
+    let nonce = &mut folding.whir_proof.intermediate_whir_oracles[0].folding_pow_nonces[0];
+    *nonce ^= 1;
+    let nonce = *nonce;
+    assert_pow_rejects(&folding, nonce, "corrupted folding PoW nonce");
+    let mut ood = proof;
+    let nonce = ood.whir_proof.intermediate_whir_oracles[0]
+        .ood_pow_nonce
+        .as_mut()
+        .expect("the first oracle carries an OOD PoW nonce");
+    *nonce ^= 1;
+    let nonce = *nonce;
+    assert_pow_rejects(&ood, nonce, "corrupted OOD PoW nonce");
 }
 
 #[cfg(not(feature = "no_caches"))]
@@ -530,7 +574,7 @@ macro_rules! generate_corruption_tests {
         )*
     };
 }
-verifier_common::gkr_circuits!(generate_corruption_tests);
+verifier_common::gkr_fixture_circuits!(generate_corruption_tests);
 
 // PoW-nonce corruption: at Sec100 (non-zero PoW bits) these hit `verify_pow`'s
 // threshold-rejection branch directly.
@@ -550,4 +594,4 @@ macro_rules! generate_pow_nonce_corruption_tests {
         )*
     };
 }
-verifier_common::gkr_circuits!(generate_pow_nonce_corruption_tests);
+verifier_common::gkr_fixture_circuits!(generate_pow_nonce_corruption_tests);

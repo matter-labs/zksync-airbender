@@ -18,7 +18,7 @@ mod workers;
 #[cfg(all(test, target_arch = "x86_64"))]
 mod test_support;
 
-pub use config::{prover_config, ExecutionProverConfiguration};
+pub use config::ExecutionProverConfiguration;
 pub use execution_prover_model::MachineType;
 pub use prover::{
     BinaryHandle, CommitMemoryResult, ExecutionKind, ExecutionProver, ProgramArtifacts,

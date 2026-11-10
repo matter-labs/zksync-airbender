@@ -80,7 +80,6 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                     .external_challenges
                     .expect("proof request construction requires external challenges"),
                 memory_caps,
-                security_level: prover.configuration.security_level,
             };
             WorkRequest::Proof(request)
         } else {
@@ -91,7 +90,6 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 precomputations,
                 inits_and_teardowns,
                 tracing_data,
-                security_level: prover.configuration.security_level,
             };
             WorkRequest::MemoryCommitment(request)
         }

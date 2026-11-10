@@ -12,9 +12,7 @@ use crate::precomputations::{
     build_unrolled_circuit_precomputation, get_common_precomputations_for_all,
     CircuitPrecomputations,
 };
-use crate::upstream::{
-    GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel, ROM_WORD_SIZE,
-};
+use crate::upstream::{GKRExternalChallenges, MerkleTreeCapVarLength, ROM_WORD_SIZE};
 use crate::A;
 use common_constants::delegation_types::keccak_f1600::{
     keccak_chi5_lane_read_distance, keccak_f1600_bump_control, keccak_f1600_decode_control,
@@ -33,6 +31,7 @@ use common_constants::{
 };
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
 use era_cudart::result::CudaResult;
+use execution_prover::config::SoundnessMode;
 use execution_prover_model::MachineType;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_trace::trace::tracing_data::{
@@ -117,7 +116,9 @@ fn keccak_sizing_row<const WORDS: usize, const LANES: usize>(
         }
         for (words, distance) in witness
             .indirect_writes
-            .chunks_exact_mut(2)
+            .as_chunks_mut::<2>()
+            .0
+            .iter_mut()
             .zip(lane_read_distances)
         {
             for word in words {
@@ -250,7 +251,6 @@ fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<Tr
 pub(crate) struct PreparedCircuit {
     pub(crate) circuit: CircuitType,
     pub(crate) precomputations: CircuitPrecomputations,
-    pub(super) security_level: SecurityLevel,
     pub(super) inputs: SyntheticInputs,
     pub(super) memory_caps: Option<Vec<MerkleTreeCapVarLength>>,
 }
@@ -263,7 +263,7 @@ impl PreparedCircuit {
 
 pub(crate) struct SyntheticInputFactory {
     worker: Worker,
-    security_level: SecurityLevel,
+    soundness_mode: SoundnessMode,
     /// Zero ROM image and text section at `ROM_WORD_SIZE` words, the padded
     /// size `add_binary` hands to the per-binary precomputation builder.
     binary_image: Vec<u32>,
@@ -272,12 +272,12 @@ pub(crate) struct SyntheticInputFactory {
 }
 
 impl SyntheticInputFactory {
-    pub(crate) fn new(security_level: SecurityLevel) -> Self {
+    pub(crate) fn new(soundness_mode: SoundnessMode) -> Self {
         let worker = Worker::new();
-        let common = get_common_precomputations_for_all(&worker, security_level);
+        let common = get_common_precomputations_for_all(&worker, soundness_mode);
         Self {
             worker,
-            security_level,
+            soundness_mode,
             binary_image: vec![0; ROM_WORD_SIZE],
             text_section: vec![0; ROM_WORD_SIZE],
             common,
@@ -294,8 +294,7 @@ impl SyntheticInputFactory {
                     DelegationCircuitType::Blake2GFunction,
                     &self.worker,
                 );
-                CircuitPrecomputations::from_canonical(circuit, setup, self.security_level)
-                    .expect("Blake2GFunction precomputations must be supported")
+                CircuitPrecomputations::from_canonical(circuit, setup, self.soundness_mode)
             }
             CircuitType::Delegation(_)
             | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
@@ -312,7 +311,7 @@ impl SyntheticInputFactory {
                     &self.binary_image,
                     &self.text_section,
                     &self.worker,
-                    self.security_level,
+                    self.soundness_mode,
                 )
             }
         }
@@ -324,7 +323,6 @@ impl SyntheticInputFactory {
         Ok(PreparedCircuit {
             circuit,
             precomputations,
-            security_level: self.security_level,
             inputs,
             memory_caps: None,
         })

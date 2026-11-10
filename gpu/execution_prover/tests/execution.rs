@@ -4,8 +4,8 @@ use gpu_execution_prover::{
 };
 use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledCircuitType};
 use prover::definitions::SecurityLevel;
+use riscv_transpiler::elf::ProgramSource;
 use riscv_transpiler::vm::FlatResponsesSource;
-use setups::read_binary;
 
 fn test_artifact(relative_path: &str) -> std::path::PathBuf {
     // Workspace-root-relative paths; crate is at gpu/execution_prover/, so two "..".
@@ -41,15 +41,16 @@ fn commit_and_prove_binary(
         ..Default::default()
     };
     let mut prover = ExecutionProver::with_configuration(configuration);
-    let (_, binary_image) = read_binary(&test_artifact(binary_path));
-    let (_, text_section) = read_binary(&test_artifact(text_path));
-    let handle = prover.add_binary(
-        execution_kind,
-        machine_type,
+    let (binary_image, text_section) =
+        ProgramSource::legacy_binaries(test_artifact(binary_path), test_artifact(text_path))
+            .load_unpadded();
+    let handle = prover.add_binary_variants(
         binary_image,
         text_section,
+        &[(execution_kind, machine_type)],
         None,
-    );
+    )[0];
+    prover.finalize_setup();
     let non_determinism_source = FlatResponsesSource::new_with_reads(non_determinism_reads);
     prover.commit_memory_and_prove(0, &handle, non_determinism_source)
 }
@@ -106,15 +107,18 @@ fn test_execution_prover_commit_then_prove() {
     init_test_logger();
     let configuration = ExecutionProverConfiguration::default();
     let mut prover = ExecutionProver::with_configuration(configuration);
-    let (_, binary_image) = read_binary(&test_artifact("examples/hashed_fibonacci/app.bin"));
-    let (_, text_section) = read_binary(&test_artifact("examples/hashed_fibonacci/app.text"));
-    let handle = prover.add_binary(
-        ExecutionKind::Unrolled,
-        MachineType::FullUnsigned,
+    let (binary_image, text_section) = ProgramSource::legacy_binaries(
+        test_artifact("examples/hashed_fibonacci/app.bin"),
+        test_artifact("examples/hashed_fibonacci/app.text"),
+    )
+    .load_unpadded();
+    let handle = prover.add_binary_variants(
         binary_image,
         text_section,
+        &[(ExecutionKind::Unrolled, MachineType::FullUnsigned)],
         None,
-    );
+    )[0];
+    prover.finalize_setup();
     // FlatResponsesSource reads are deterministic — feed the same value sequence
     // to the commit phase and the prove phase. Equivalent results should
     // match `commit_memory_and_prove` on a single source.

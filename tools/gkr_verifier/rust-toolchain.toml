@@ -6,7 +6,7 @@
 # toolchain required.
 #
 # `rust-src` is required by `-Z build-std` (core/alloc are recompiled from
-# source); `llvm-tools` provides the `objcopy` used to extract .bin/.elf/.text.
+# source); `llvm-tools` provides the `objcopy` used to extract the .elf files.
 [toolchain]
 channel = "1.99.1"
 components = ["rust-src", "llvm-tools"]

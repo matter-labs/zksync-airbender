@@ -49,7 +49,7 @@ DEVICE_FORCEINLINE u32 dr_cont_dense_slot(u32 enabled_mask, const u32 dense) {
   return __ffs(enabled_mask) - 1;
 }
 
-// Host preflight rejects cross-slot aliases. Within-slot aliases retain the
+// The compiler rejects cross-slot aliases when it lowers the window. Within-slot aliases retain the
 // first-access guard, so every canonical output pair has exactly one writer.
 DEVICE_FORCEINLINE void dr_cont_selected_slot_prologue(const gkr_dr_cont_window3_desc &desc, const u32 slot) {
   constexpr u32 work_count = GKR_DIM_REDUCING_INPUTS_PER_SLOT * DR_WINDOW_CONT_PAIRS_PER_TILE;

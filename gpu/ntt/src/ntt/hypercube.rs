@@ -52,7 +52,6 @@ cuda_kernel!(
     hypercube_evals_to_monomials_final,
     inputs_matrix: PtrAndStride<BF>,
     outputs_matrix: MutPtrAndStride<BF>,
-    transposed_monomials: bool,
     log_n: i32,
 );
 
@@ -191,7 +190,6 @@ pub(crate) fn hypercube_evals_to_monomials_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let n = 1 << log_n;
@@ -236,7 +234,6 @@ pub(crate) fn hypercube_evals_to_monomials_3_pass(
         let args = EvalsToMonomialsFinalArguments::new(
             output_matrix_const,
             output_matrix_mut,
-            transposed_monomials,
             log_n as i32,
         );
         match log_n {
@@ -267,9 +264,8 @@ pub(crate) fn hypercube_evals_to_monomials_3_pass(
 }
 
 /// [`hypercube_evals_to_monomials_3_pass`] minus the final pass: leaves the
-/// PRE-TAIL intermediate in `outputs_matrix` for the fused LDE boundary kernel
-/// (which applies the final `log_n - 16` stages inline for the first coset,
-/// materializing the monomials in place as it goes).
+/// PRE-TAIL intermediate in `outputs_matrix` for the log_n = 20 commitment
+/// boundary, whose initial kernel applies the final 4 stages inline.
 pub(crate) fn hypercube_evals_to_pre_tail_monomials_3_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
@@ -407,7 +403,6 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let n = 1 << log_n;
@@ -442,7 +437,6 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass(
             output_matrix_const,
             output_matrix_mut,
             log_n,
-            transposed_monomials,
             stream,
         )?;
     }
@@ -451,21 +445,16 @@ pub(crate) fn hypercube_evals_to_monomials_2_pass(
 
 /// Two-pass compact-range Mobius transform: the existing whole-domain
 /// nonfinal8 pass followed by a twiddle-free consecutive-chunk tail of
-/// `log_n - 8` stages. This path is natural-layout only.
+/// `log_n - 8` stages.
 pub(crate) fn hypercube_evals_to_monomials_2_pass_compact(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(
         (TWO_PASS_COMPACT_MIN_LOG_N..TWO_PASS_COMPACT_MAX_LOG_N).contains(&log_n),
         "two-pass compact hypercube path supports log_n in [{TWO_PASS_COMPACT_MIN_LOG_N}, {TWO_PASS_COMPACT_MAX_LOG_N})",
-    );
-    assert!(
-        !transposed_monomials,
-        "compact hypercube path does not support transposed monomials",
     );
     let n = 1usize << log_n;
     assert_eq!(inputs_matrix.rows(), n);
@@ -554,7 +543,6 @@ pub fn hypercube_evals_to_monomials(
     inputs_matrix: &(impl DeviceMatrixChunkImpl<BF> + ?Sized),
     outputs_matrix: &mut (impl DeviceMatrixChunkMutImpl<BF> + ?Sized),
     log_n: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
     device_properties: &DeviceProperties,
 ) -> CudaResult<()> {
@@ -563,10 +551,6 @@ pub fn hypercube_evals_to_monomials(
     match dispatch {
         HypercubeDispatch::OneStagePerVariable { stages } => {
             debug_assert_eq!(stages, log_n);
-            assert!(
-                !transposed_monomials,
-                "fallback path does not support transposed monomials",
-            );
             let cols = inputs_matrix.cols();
             let rows = inputs_matrix.rows();
             assert_eq!(cols, outputs_matrix.cols());
@@ -596,7 +580,6 @@ pub fn hypercube_evals_to_monomials(
                 inputs_matrix,
                 outputs_matrix,
                 log_n,
-                transposed_monomials,
                 stream,
             )?
         }
@@ -607,28 +590,14 @@ pub fn hypercube_evals_to_monomials(
         } => {
             debug_assert_eq!((first_stages, middle_stages, last_stages), (8, 8, 4));
             debug_assert_eq!(first_stages + middle_stages + last_stages, log_n);
-            hypercube_evals_to_monomials_3_pass(
-                inputs_matrix,
-                outputs_matrix,
-                log_n,
-                transposed_monomials,
-                stream,
-            )?
+            hypercube_evals_to_monomials_3_pass(inputs_matrix, outputs_matrix, log_n, stream)?
         }
-        HypercubeDispatch::TwoPass => hypercube_evals_to_monomials_2_pass(
-            inputs_matrix,
-            outputs_matrix,
-            log_n,
-            transposed_monomials,
-            stream,
-        )?,
-        HypercubeDispatch::ThreePass => hypercube_evals_to_monomials_3_pass(
-            inputs_matrix,
-            outputs_matrix,
-            log_n,
-            transposed_monomials,
-            stream,
-        )?,
+        HypercubeDispatch::TwoPass => {
+            hypercube_evals_to_monomials_2_pass(inputs_matrix, outputs_matrix, log_n, stream)?
+        }
+        HypercubeDispatch::ThreePass => {
+            hypercube_evals_to_monomials_3_pass(inputs_matrix, outputs_matrix, log_n, stream)?
+        }
     }
     Ok(())
 }
@@ -652,12 +621,8 @@ pub(crate) fn launch_pre_tail_lsb_column(
     let blocks = n.get_chunks_count(bf_vals_per_block);
     if !finest_already_computed {
         let config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
-        let args = EvalsToMonomialsFinalArguments::new(
-            input_matrix,
-            output_matrix_mut,
-            false,
-            log_n as i32,
-        );
+        let args =
+            EvalsToMonomialsFinalArguments::new(input_matrix, output_matrix_mut, log_n as i32);
         match log_n {
             21 => {
                 EvalsToMonomialsFinalFunction(ab_hypercube_evals_to_monomials_final_5_stages_kernel)
@@ -720,7 +685,6 @@ pub(crate) fn launch_hypercube_two_pass_column(
     output_matrix_const: PtrAndStride<BF>,
     output_matrix_mut: MutPtrAndStride<BF>,
     log_n: usize,
-    transposed_monomials: bool,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let n = 1usize << log_n;
@@ -746,12 +710,8 @@ pub(crate) fn launch_hypercube_two_pass_column(
     let blocks = n.get_chunks_count(bf_vals_per_block);
     let mut config = CudaLaunchConfig::basic(blocks as u32, threads as u32, stream);
     config.dynamic_smem_bytes = smem_bytes;
-    let args = EvalsToMonomialsFinalArguments::new(
-        output_matrix_const,
-        output_matrix_mut,
-        transposed_monomials,
-        log_n as i32,
-    );
+    let args =
+        EvalsToMonomialsFinalArguments::new(output_matrix_const, output_matrix_mut, log_n as i32);
     let function =
         EvalsToMonomialsFinalFunction(ab_hypercube_evals_to_monomials_last_14_stages_kernel);
     shared::set_max_dynamic_smem(&function, smem_bytes)?;
@@ -799,7 +759,7 @@ pub(crate) fn restore_hypercube_in_place(
             )?;
             last.launch(
                 &config,
-                &EvalsToMonomialsFinalArguments::new(input, output, false, log_n as i32),
+                &EvalsToMonomialsFinalArguments::new(input, output, log_n as i32),
             )?;
             continue;
         }
@@ -826,7 +786,7 @@ pub(crate) fn restore_hypercube_in_place(
             _ => unreachable!(),
         });
         let config = CudaLaunchConfig::basic((n / 8192) as u32, 256, stream);
-        let args = EvalsToMonomialsFinalArguments::new(input, output, false, log_n as i32);
+        let args = EvalsToMonomialsFinalArguments::new(input, output, log_n as i32);
         if log_n == 20 {
             coarse(0)?;
             coarse(8)?;

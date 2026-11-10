@@ -53,7 +53,7 @@ pub fn commit_memory_tree_for_unrolled_nonmem_circuits<
 
     let trace_len = 1usize << prover_config.trace_len_log2;
     assert!(
-        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2(),
         "twiddles must cover the (packed) base commitment domain"
     );
     assert!(witness_chunk.len() <= trace_len);
@@ -123,7 +123,7 @@ pub fn commit_memory_tree_for_unrolled_mem_circuits<
 
     let trace_len = 1usize << prover_config.trace_len_log2;
     assert!(
-        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2(),
         "twiddles must cover the (packed) base commitment domain"
     );
     assert!(witness_chunk.len() <= trace_len);
@@ -188,7 +188,7 @@ pub fn commit_memory_tree_for_inits_and_teardowns<
 ) -> MerkleTreeCapVarLength {
     let trace_len = 1usize << prover_config.trace_len_log2;
     assert!(
-        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2(),
         "twiddles must cover the (packed) base commitment domain"
     );
     assert!(trace_len.is_power_of_two());
@@ -256,7 +256,7 @@ pub fn commit_memory_tree_for_unified_circuits<
 
     let trace_len = 1usize << prover_config.trace_len_log2;
     assert!(
-        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2(),
         "twiddles must cover the (packed) base commitment domain"
     );
     assert!(witness_chunk.len() <= trace_len);
@@ -427,7 +427,7 @@ fn commit_merged_tree_and_witness_with_storage<
 
     let trace_len = 1usize << prover_config.trace_len_log2;
     assert!(
-        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2(),
         "twiddles must cover the (packed) base commitment domain"
     );
     assert_eq!(trace_len, unified_setup.trace_len);
@@ -515,7 +515,7 @@ pub fn commit_memory_tree_for_delegation_circuit<
 
     let trace_len = 1usize << prover_config.trace_len_log2;
     assert!(
-        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2,
+        twiddles.plain().domain_size >= trace_len << prover_config.pack_log2(),
         "twiddles must cover the (packed) base commitment domain"
     );
     assert!(trace_len.is_power_of_two());

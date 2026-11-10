@@ -1,14 +1,27 @@
 use super::*;
 
+impl<B: ExecutionBackend> Drop for ExecutionProver<B> {
+    fn drop(&mut self) {
+        if let Some(allocation) = self.host_pool_allocation.take() {
+            allocation.join().expect("host allocator thread panicked");
+        }
+    }
+}
+
 impl<B: ExecutionBackend> ExecutionProver<B> {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self::with_configuration(ExecutionProverConfiguration::default())
     }
 
+    pub fn soundness_mode(&self) -> crate::config::SoundnessMode {
+        self.configuration.soundness_mode
+    }
+
     pub fn with_configuration(
         configuration: ExecutionProverConfiguration<B::Configuration>,
     ) -> Self {
+        let soundness_mode = configuration.soundness_mode;
         let ExecutionProverConfiguration {
             max_thread_pool_threads,
             expected_concurrent_jobs,
@@ -16,7 +29,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             host_allocator_backing_allocation_size,
             host_allocators_per_job_count,
             min_free_host_allocators_per_job: _,
-            security_level,
+            soundness_mode: _,
             ram_config,
             assume_canonical_mop_inputs: _,
             backend: _,
@@ -31,7 +44,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             worker.num_cores
         );
         let worker = Arc::new(worker);
-        let backend = B::initialize(&configuration, Arc::clone(&worker));
+        let backend = Arc::new(B::initialize(&configuration, Arc::clone(&worker)));
         let simulator_cache_entries_count = expected_concurrent_jobs + 1;
         info!("PROVER creating memory holders cache with {simulator_cache_entries_count} entries");
         let (memory_holders_sender, memory_holders_receiver) = unbounded();
@@ -59,6 +72,21 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 .collect();
             trace_chunk_sets_sender.send(chunks).unwrap();
         }
+        let host_allocators_count =
+            expected_concurrent_jobs * host_allocators_per_job_count + backend.extra_trace_blocks();
+        let host_allocation_size = host_allocator_backing_allocation_size;
+        info!("PROVER initializing {host_allocators_count} host buffers with {} MB per buffer in background", host_allocation_size >> 20);
+        let allocation_backend = Arc::clone(&backend);
+        let (free_allocators_sender, free_allocators_receiver) = unbounded();
+        let allocation_sender = free_allocators_sender.clone();
+        let host_pool_allocation = spawn_abort_on_panic("ab-host-allocator".into(), move || {
+            for _ in 0..host_allocators_count {
+                let allocator = allocation_backend.allocate_trace_block(host_allocation_size);
+                if allocation_sender.send(allocator).is_err() {
+                    return;
+                }
+            }
+        });
         let binary_holders = BTreeMap::new();
         info!("PROVER generating common precomputations");
         let common_precomputations: BTreeMap<_, _> = build_common_setups(&worker)
@@ -66,37 +94,24 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .map(|(circuit_type, setup)| {
                 (
                     circuit_type,
-                    backend.prepare(circuit_type, setup, security_level),
+                    backend.prepare(circuit_type, setup, soundness_mode),
                 )
             })
             .collect();
         let pending_setup_initialization = request_setup_initialization(
-            &backend,
-            security_level,
+            backend.as_ref(),
+            0,
             common_precomputations
                 .iter()
                 .map(|(circuit_type, precomputations)| (*circuit_type, precomputations.clone()))
                 .collect(),
         );
-        let host_allocators_count =
-            expected_concurrent_jobs * host_allocators_per_job_count + backend.extra_trace_blocks();
-        let host_allocation_size = host_allocator_backing_allocation_size;
-        info!(
-            "PROVER initializing {} host buffers with {} MB per buffer",
-            host_allocators_count,
-            host_allocation_size >> 20
-        );
-        let (free_allocators_sender, free_allocators_receiver) = unbounded();
-        for _ in 0..host_allocators_count {
-            free_allocators_sender
-                .send(backend.allocate_trace_block(host_allocation_size))
-                .expect("ExecutionProver allocator pool channel closed during initialization");
-        }
-        pending_setup_initialization.wait();
-        info!("PROVER initialized");
+        info!("PROVER setup requested");
         Self {
             configuration,
+            host_pool_allocation: Some(host_pool_allocation),
             backend,
+            pending_setup_initializations: vec![pending_setup_initialization],
             worker,
             memory_holders_sender,
             memory_holders_receiver,
@@ -108,6 +123,31 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             free_allocators_sender,
             free_allocators_receiver,
         }
+    }
+
+    /// Wait for the host-buffer pool and every requested setup initialization.
+    /// Call once after registering every binary and before proving or reading setups.
+    pub fn finalize_setup(&mut self) {
+        assert!(
+            self.host_pool_allocation.is_some(),
+            "setup has already been finalized"
+        );
+        let start = Instant::now();
+        self.host_pool_allocation
+            .take()
+            .unwrap()
+            .join()
+            .expect("host allocator thread panicked");
+        let pool_wait = start.elapsed();
+        let setup_start = Instant::now();
+        for initialization in self.pending_setup_initializations.drain(..) {
+            initialization.wait();
+        }
+        let setup_wait = setup_start.elapsed();
+        info!(
+            "PROVER finalized setup in {:?} (host buffer pool: {pool_wait:?}, setup initialization: {setup_wait:?})",
+            start.elapsed()
+        );
     }
 
     pub(super) fn free_inits_and_teardowns(

@@ -123,7 +123,7 @@ pub fn gkr_calldata(circuit: &Circuit, proof: &Proof, aux: &OperationMode) -> Ve
     cd.extend_from_slice(&output_evals_blob(proof));
     cd.extend_from_slice(&dim_reduce_blob(circuit, proof));
     cd.extend_from_slice(&circuit_blob(circuit, proof));
-    cd.extend_from_slice(&proof.batched_proximity_check_pow_nonce.to_be_bytes());
+    cd.extend_from_slice(&proof.whir_proof.batching_challenge_pow_nonce.to_be_bytes());
     cd
 }
 
@@ -186,11 +186,23 @@ pub fn whir_stream(
             cd.extend_from_slice(&dig32(d));
         }
     };
-    let mut sc = 0usize;
+    let round_sumcheck_polys = |r: usize| -> &[[Proth120; 3]] {
+        if r == 0 {
+            &wp.base_sumcheck_polys
+        } else {
+            &wp.intermediate_whir_oracles[r - 1].sumcheck_polys
+        }
+    };
+    let round_queries_pow_nonce = |r: usize| -> u64 {
+        if r == 0 {
+            wp.base_queries_pow_nonce
+        } else {
+            wp.intermediate_whir_oracles[r - 1].queries_pow_nonce
+        }
+    };
     for r in 0..num_rounds {
-        for _ in 0..folds[r] {
-            let sp = &wp.sumcheck_polys[sc];
-            sc += 1;
+        assert_eq!(round_sumcheck_polys(r).len(), folds[r]);
+        for sp in round_sumcheck_polys(r).iter() {
             cd.extend_from_slice(&be16(sp[0]));
             cd.extend_from_slice(&be16(sp[1]));
             cd.extend_from_slice(&be16(sp[2]));
@@ -199,8 +211,10 @@ pub fn whir_stream(
             for d in wp.intermediate_whir_oracles[r].commitment.cap.cap.iter() {
                 cd.extend_from_slice(&dig32(d));
             }
-            cd.extend_from_slice(&be16(wp.ood_samples[r]));
-            cd.extend_from_slice(&wp.pow_nonces[r].to_be_bytes());
+            let ood = &wp.intermediate_whir_oracles[r].ood_samples;
+            assert_eq!(ood.len(), 1, "whir.sol takes one OOD sample per oracle");
+            cd.extend_from_slice(&be16(ood[0]));
+            cd.extend_from_slice(&round_queries_pow_nonce(r).to_be_bytes());
             for qq in 0..queries[r] {
                 if r == 0 {
                     let mq = &wp.memory_commitment.queries[qq];
@@ -226,7 +240,7 @@ pub fn whir_stream(
             for m in wp.final_monomials.iter() {
                 cd.extend_from_slice(&be16(*m));
             }
-            cd.extend_from_slice(&wp.pow_nonces[r].to_be_bytes());
+            cd.extend_from_slice(&round_queries_pow_nonce(r).to_be_bytes());
             for qq in 0..queries[r] {
                 let q = &wp.intermediate_whir_oracles[num_rounds - 2].queries[qq];
                 push_leaf(&mut cd, &q.leaf_values_concatenated, &q.path);

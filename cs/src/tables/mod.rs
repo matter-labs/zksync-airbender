@@ -90,6 +90,13 @@ impl<F: PrimeField> Clone for IndexLookupFn<F> {
 
 pub const TABLE_TYPES_UPPER_BOUNDS: usize = TOTAL_NUM_OF_TABLES;
 
+type DeferredLookupMap<K, V> =
+    Arc<LazyLock<HashMap<K, V>, Box<dyn FnOnce() -> HashMap<K, V> + Send + Sync>>>;
+type DefaultLookupMaps<F> = (
+    DeferredLookupMap<LookupKey<F>, LookupValue<F>>,
+    DeferredLookupMap<ArrayVec<F, MAX_TABLE_WIDTH>, usize>,
+);
+
 #[derive(Clone)]
 pub struct LookupTable<F: PrimeField> {
     pub name: String,
@@ -98,9 +105,9 @@ pub struct LookupTable<F: PrimeField> {
     // NOTE: for small fields and not too large N hashmaps are the most efficient here
 
     // to lookup value from key
-    pub lookup_data: Arc<HashMap<LookupKey<F>, LookupValue<F>>>,
+    pub lookup_data: DeferredLookupMap<LookupKey<F>, LookupValue<F>>,
     // to lookup table index from full row
-    pub content_data: Arc<HashMap<ArrayVec<F, MAX_TABLE_WIDTH>, usize>>,
+    pub content_data: DeferredLookupMap<ArrayVec<F, MAX_TABLE_WIDTH>, usize>,
     // for setup - plain content of the table
     pub data: Arc<Vec<ArrayVec<F, MAX_TABLE_WIDTH>>>,
     pub quick_value_lookup_fn: ValueLookupFn<F>,
@@ -195,7 +202,7 @@ impl<F: PrimeField> LookupTable<F> {
 
     #[inline]
     pub fn table_size(&self) -> usize {
-        self.content_data.len()
+        self.data.len()
     }
 
     pub(crate) fn create_table_from_key_and_pure_generation_fn<
@@ -240,8 +247,9 @@ impl<F: PrimeField> LookupTable<F> {
                 .collect_into_vec(&mut content);
         }
 
+        let content = Arc::new(content);
         let (lookup_data, content_data) =
-            Self::compute_default_lookup_impls(&content, num_key_columns, num_value_columns);
+            Self::defer_default_lookup_impls(&content, num_key_columns, num_value_columns);
 
         let index_gen_fn = if let Some(index_gen_fn) = index_gen_fn {
             IndexLookupFn::Pure(index_gen_fn)
@@ -251,9 +259,9 @@ impl<F: PrimeField> LookupTable<F> {
 
         Self {
             name,
-            lookup_data: Arc::new(lookup_data),
-            content_data: Arc::new(content_data),
-            data: Arc::new(content),
+            lookup_data,
+            content_data,
+            data: content,
             quick_value_lookup_fn: ValueLookupFn::ReuseGenerationFn(table_gen_func),
             quick_index_lookup_fn: index_gen_fn,
             num_key_columns,
@@ -311,8 +319,9 @@ impl<F: PrimeField> LookupTable<F> {
                 .collect_into_vec(&mut content);
         }
 
+        let content = Arc::new(content);
         let (lookup_data, content_data) =
-            Self::compute_default_lookup_impls(&content, num_key_columns, num_value_columns);
+            Self::defer_default_lookup_impls(&content, num_key_columns, num_value_columns);
 
         let index_gen_fn = if let Some(index_gen_fn) = index_gen_fn {
             IndexLookupFn::Pure(index_gen_fn)
@@ -322,9 +331,9 @@ impl<F: PrimeField> LookupTable<F> {
 
         Self {
             name,
-            lookup_data: Arc::new(lookup_data),
-            content_data: Arc::new(content_data),
-            data: Arc::new(content),
+            lookup_data,
+            content_data,
+            data: content,
             quick_value_lookup_fn: ValueLookupFn::Closure(Arc::new(table_gen_closure)),
             quick_index_lookup_fn: index_gen_fn,
             num_key_columns,
@@ -333,22 +342,28 @@ impl<F: PrimeField> LookupTable<F> {
         }
     }
 
-    fn compute_default_lookup_impls(
-        data: &Vec<ArrayVec<F, MAX_TABLE_WIDTH>>,
+    // Function-backed lookups do not need either index. Preserve the maps
+    // for explicit callers and fallback lookup modes, but build each only when
+    // accessed. Sharing the rows also keeps LookupTable clones inexpensive.
+    // Fill indexes inline: a Worker caller must not await Rayon tasks while
+    // other pool threads are waiting for this same LazyLock.
+    fn defer_default_lookup_impls(
+        data: &Arc<Vec<ArrayVec<F, MAX_TABLE_WIDTH>>>,
         num_key_columns: usize,
         num_value_columns: usize,
-    ) -> (
-        HashMap<LookupKey<F>, LookupValue<F>>,
-        HashMap<ArrayVec<F, MAX_TABLE_WIDTH>, usize>,
-    ) {
-        let lookup_data: HashMap<LookupKey<F>, LookupValue<F>> =
-            Self::compute_lookup_data(data, num_key_columns, num_value_columns);
-        let content_data: HashMap<_, _> = data
-            .par_iter()
-            .enumerate()
-            .map(|(idx, el)| (el.clone(), idx))
-            .collect();
-
+    ) -> DefaultLookupMaps<F> {
+        let lookup_rows = Arc::clone(data);
+        let lookup_data: DeferredLookupMap<_, _> = Arc::new(LazyLock::new(Box::new(move || {
+            Self::compute_lookup_data(&lookup_rows, num_key_columns, num_value_columns)
+        })));
+        let index_rows = Arc::clone(data);
+        let content_data: DeferredLookupMap<_, _> = Arc::new(LazyLock::new(Box::new(move || {
+            index_rows
+                .iter()
+                .enumerate()
+                .map(|(idx, row)| (row.clone(), idx))
+                .collect()
+        })));
         (lookup_data, content_data)
     }
 
@@ -362,7 +377,7 @@ impl<F: PrimeField> LookupTable<F> {
     ) -> HashMap<LookupKey<F>, LookupValue<F>> {
         assert!(num_key_columns + num_value_columns < MAX_TABLE_WIDTH);
         let result: HashMap<_, _> = data
-            .par_iter()
+            .iter()
             .map(|row| {
                 let key = LookupKey::from_keys(&row[..num_key_columns]);
                 let value = LookupValue::from_keys(&row[num_key_columns..]);
@@ -1229,14 +1244,25 @@ impl<F: PrimeField> TableDriver<F> {
 
     pub fn materialize_table<const TOTAL_WIDTH: usize>(&mut self, table_type: TableType) {
         static CACHE: LazyLock<Mutex<TypeMap>> = LazyLock::new(|| Mutex::new(TypeMap::default()));
-        let mut guard = CACHE.lock().unwrap();
-        let map = guard
-            .entry()
-            .or_insert_with(HashMap::<(TableType, usize), LookupWrapper<F>>::new);
-        let wrapper = map
-            .entry((table_type, TOTAL_WIDTH))
-            .or_insert_with(|| table_type.generate_table::<F, TOTAL_WIDTH>());
-        let table = wrapper.clone();
+        let cached = {
+            let mut guard = CACHE.lock().unwrap();
+            let map = guard
+                .entry()
+                .or_insert_with(HashMap::<(TableType, usize), LookupWrapper<F>>::new);
+            map.get(&(table_type, TOTAL_WIDTH)).cloned()
+        };
+        let table = cached.unwrap_or_else(|| {
+            // Table generation uses Rayon. Do not hold the cache mutex across
+            // it: other circuit builds must be able to use the same Worker.
+            let generated = table_type.generate_table::<F, TOTAL_WIDTH>();
+            let mut guard = CACHE.lock().unwrap();
+            let map = guard
+                .entry()
+                .or_insert_with(HashMap::<(TableType, usize), LookupWrapper<F>>::new);
+            map.entry((table_type, TOTAL_WIDTH))
+                .or_insert_with(|| generated.clone())
+                .clone()
+        });
         self.add_table_with_content(table_type, table);
     }
 

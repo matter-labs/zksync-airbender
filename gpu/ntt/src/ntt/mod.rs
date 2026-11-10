@@ -38,37 +38,31 @@ pub(crate) fn hypercube_three_pass(log_n: usize, properties: &DeviceProperties) 
 #[cfg(test)]
 mod tests;
 
-mod dispatch;
 pub(crate) mod dit;
 mod forward;
 mod in_place;
-mod inverse;
 pub use in_place::{
-    coset_to_monomials_in_place, hypercube_to_coset_in_place, monomials_to_coset_in_place,
-    monomials_to_hypercube_in_place,
+    coset_to_monomials_in_place, hypercube_to_coset_in_place, log_size_supports_in_place,
+    monomials_to_coset_in_place, monomials_to_hypercube_in_place,
 };
 mod kernels;
 mod lde;
 mod retained_monomials;
 pub use retained_monomials::{
     hypercube_to_retained_monomials_and_coset, hypercube_to_retained_monomials_and_coset_in_place,
-    retained_monomials_to_coset,
+    log_size_supports_retained_monomials, retained_monomials_to_coset,
 };
 mod shared;
 mod strategy;
-pub use dispatch::natural_evals_to_bitreversed_monomials;
 #[cfg(test)]
 pub(crate) use forward::{monomials_to_evals_2_pass_smem, monomials_to_evals_3_pass};
-#[cfg(test)]
-pub(crate) use inverse::{evals_to_monomials_2_pass, evals_to_monomials_3_pass};
 pub use lde::{
-    bitreversed_monomials_to_natural_evals_multi_coset,
     hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20,
-    hypercube_to_multi_coset_bitrev_evals_fused, hypercube_to_multi_coset_evals_fused,
-    lde_with_coset_range, natural_monomials_to_bitreversed_evals_coset_range,
+    hypercube_to_multi_coset_bitrev_evals_fused, lde_with_coset_range,
+    natural_monomials_to_bitreversed_evals_coset_range,
     natural_monomials_to_bitreversed_evals_multi_coset, MAX_LOG_N_FOR_SINGLE_KERNEL_LDE,
 };
-pub(crate) use strategy::{select_ntt_strategy, NttDirection, NttKernelKind, NttStrategy};
+pub(crate) use strategy::{select_ntt_strategy, NttDirection, NttKernelKind};
 
 mod hypercube;
 pub use hypercube::hypercube_evals_to_monomials;
@@ -89,15 +83,6 @@ cuda_kernel!(
 cuda_kernel!(
     HypercubeForwardStage,
     ab_hypercube_coeffs_natural_to_natural_evals_stage_kernel(
-        values: *mut BF,
-        log_n: u32,
-        stage: u32,
-    )
-);
-
-cuda_kernel!(
-    NaturalEvalsToBitreversedCoeffsNttStage,
-    ab_natural_evals_to_bitreversed_coeffs_ntt_stage_kernel(
         values: *mut BF,
         log_n: u32,
         stage: u32,
@@ -133,23 +118,6 @@ fn launch_hypercube_forward_stage(
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = HypercubeForwardStageArguments::new(values.as_mut_ptr(), log_n as u32, stage as u32);
     HypercubeForwardStageFunction::default().launch(&config, &args)
-}
-
-fn launch_natural_evals_to_bitreversed_coeffs_ntt_stage(
-    values: &mut DeviceSlice<BF>,
-    log_n: usize,
-    stage: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    let pair_count = 1usize << (log_n - 1);
-    let (grid_dim, block_dim) = launch_dims(pair_count);
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = NaturalEvalsToBitreversedCoeffsNttStageArguments::new(
-        values.as_mut_ptr(),
-        log_n as u32,
-        stage as u32,
-    );
-    NaturalEvalsToBitreversedCoeffsNttStageFunction::default().launch(&config, &args)
 }
 
 /// Multilinear hypercube evaluations -> multilinear monomial coefficients, one
@@ -201,32 +169,6 @@ pub fn hypercube_coeffs_to_evals(
         launch_hypercube_forward_stage(dst, log_n, stage, stream)?;
     }
     Ok(())
-}
-
-pub(crate) fn natural_evals_to_bitreversed_coeffs(
-    src: &DeviceSlice<BF>,
-    dst: &mut DeviceSlice<BF>,
-    log_n: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert!(log_n <= OMEGA_LOG_ORDER as usize);
-    assert_eq!(src.len(), 1usize << log_n);
-    assert_eq!(dst.len(), src.len());
-    memory_copy_async(dst, src, stream)?;
-    if log_n == 0 {
-        return Ok(());
-    }
-
-    for stage in 0..log_n {
-        launch_natural_evals_to_bitreversed_coeffs_ntt_stage(dst, log_n, stage, stream)?;
-    }
-    Ok(())
-}
-
-pub const MIN_LOG_N_FOR_MULTISTAGE_KERNELS: usize = 21;
-
-pub fn log_size_supports_transposed_monomials(log_n: usize) -> bool {
-    log_n >= MIN_LOG_N_FOR_MULTISTAGE_KERNELS
 }
 
 /// Smallest `log_n` [`natural_monomials_to_bitreversed_evals_multi_coset`] has a

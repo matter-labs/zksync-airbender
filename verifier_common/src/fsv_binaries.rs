@@ -1,33 +1,11 @@
+//! Exact registry of full-statement verifier guests under
+//! `tools/gkr_verifier/full_statement_verifiers/`.
+
 use crate::prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum BlakeMode {
-    Compression,
-    BlakeSpecialOpcodes,
-}
+pub use crate::prover::definitions::{BlakeMode, SecurityLevel, SoundnessMode};
 
-impl BlakeMode {
-    #[must_use]
-    pub const fn tag(self) -> &'static str {
-        match self {
-            Self::Compression => "blake2_with_compression",
-            Self::BlakeSpecialOpcodes => "special_opcodes_extension",
-        }
-    }
-
-    #[must_use]
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "blake2_with_compression" | "compression" | "round" => Some(Self::Compression),
-            "special_opcodes_extension" | "special_opcodes" | "spec" => {
-                Some(Self::BlakeSpecialOpcodes)
-            }
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum FsvProgram {
     UnrolledBaseLayer,
     UnrolledRecursionLayer,
@@ -37,40 +15,149 @@ pub enum FsvProgram {
 
 impl FsvProgram {
     #[must_use]
-    pub const fn base_name(self) -> &'static str {
-        match self {
-            Self::UnrolledBaseLayer => "fsv_unrolled_base_layer_sec_100",
-            Self::UnrolledRecursionLayer => "fsv_unrolled_recursion_layer_sec_100",
-            Self::UnifiedBaseLayer => "fsv_unified_base_layer_sec_100",
-            Self::UnifiedRecursionLayer => "fsv_unified_recursion_layer_sec_100",
-        }
-    }
-
-    #[must_use]
     pub const fn reduced_rounds(self) -> bool {
         USE_REDUCED_BLAKE2_ROUNDS
     }
+}
 
+/// The statement a guest verifies within its layer.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum FsvProfile {
+    /// The recursion pipeline's statement.
+    Standard,
+    /// Unified recursion verifying the merged-mode L1 feeder schedule.
+    L1Feeder,
+}
+
+/// Exact identity of a full-statement verifier guest.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct FsvDescriptor {
+    pub soundness_mode: SoundnessMode,
+    pub program: FsvProgram,
+    pub profile: FsvProfile,
+    pub blake: BlakeMode,
+}
+
+impl FsvDescriptor {
+    /// A standard-profile descriptor.
     #[must_use]
-    pub const fn supports(self, mode: BlakeMode) -> bool {
-        match (self, mode) {
-            (Self::UnifiedBaseLayer | Self::UnifiedRecursionLayer, _) => true,
-            (_, BlakeMode::BlakeSpecialOpcodes) => false,
-            (_, _) => true,
+    pub const fn new(soundness_mode: SoundnessMode, program: FsvProgram, blake: BlakeMode) -> Self {
+        Self {
+            soundness_mode,
+            program,
+            profile: FsvProfile::Standard,
+            blake,
         }
     }
 
+    /// Path relative to the FSV root. Panics if this descriptor has no built guest.
     #[must_use]
-    pub fn file_stem(self, mode: BlakeMode) -> alloc::string::String {
-        assert!(
-            self.supports(mode),
-            "{} is not built with blake mode {}",
-            self.base_name(),
-            mode.tag()
-        );
-        alloc::format!("{}_{}", self.base_name(), mode.tag())
+    pub fn relative_path(&self) -> &'static str {
+        FSV_REGISTRY
+            .iter()
+            .find(|entry| entry.descriptor == *self)
+            .unwrap_or_else(|| panic!("no full-statement verifier is built for {self:?}"))
+            .relative_path
     }
 }
+
+/// A built guest: its descriptor and its path relative to the FSV root.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct FsvRegistryEntry {
+    pub descriptor: FsvDescriptor,
+    pub relative_path: &'static str,
+}
+
+const fn entry(
+    soundness_mode: SoundnessMode,
+    program: FsvProgram,
+    profile: FsvProfile,
+    blake: BlakeMode,
+    relative_path: &'static str,
+) -> FsvRegistryEntry {
+    FsvRegistryEntry {
+        descriptor: FsvDescriptor {
+            soundness_mode,
+            program,
+            profile,
+            blake,
+        },
+        relative_path,
+    }
+}
+
+/// Every built guest, with ethproofs-soundcalc guests in their mode subdirectory.
+pub const FSV_REGISTRY: &[FsvRegistryEntry] = {
+    use BlakeMode::{BlakeSpecialOpcodes, Compression};
+    use FsvProfile::{L1Feeder, Standard};
+    use FsvProgram::*;
+    use SoundnessMode::{EthproofsSoundnessCalc, PessimisticConjecture};
+    &[
+        entry(
+            PessimisticConjecture,
+            UnrolledBaseLayer,
+            Standard,
+            Compression,
+            "fsv_unrolled_base_layer_sec_100_blake2_with_compression.elf",
+        ),
+        entry(
+            PessimisticConjecture,
+            UnrolledRecursionLayer,
+            Standard,
+            Compression,
+            "fsv_unrolled_recursion_layer_sec_100_blake2_with_compression.elf",
+        ),
+        entry(
+            PessimisticConjecture,
+            UnifiedRecursionLayer,
+            Standard,
+            Compression,
+            "fsv_unified_recursion_layer_sec_100_blake2_with_compression.elf",
+        ),
+        entry(
+            PessimisticConjecture,
+            UnifiedRecursionLayer,
+            Standard,
+            BlakeSpecialOpcodes,
+            "fsv_unified_recursion_layer_sec_100_special_opcodes_extension.elf",
+        ),
+        entry(
+            PessimisticConjecture,
+            UnifiedRecursionLayer,
+            L1Feeder,
+            BlakeSpecialOpcodes,
+            "fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.elf",
+        ),
+        entry(
+            EthproofsSoundnessCalc,
+            UnrolledBaseLayer,
+            Standard,
+            Compression,
+            "ethproofs_soundcalc/fsv_unrolled_base_layer_sec_100_blake2_with_compression.elf",
+        ),
+        entry(
+            EthproofsSoundnessCalc,
+            UnrolledRecursionLayer,
+            Standard,
+            Compression,
+            "ethproofs_soundcalc/fsv_unrolled_recursion_layer_sec_100_blake2_with_compression.elf",
+        ),
+        entry(
+            EthproofsSoundnessCalc,
+            UnifiedRecursionLayer,
+            Standard,
+            Compression,
+            "ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100_blake2_with_compression.elf",
+        ),
+        entry(
+            EthproofsSoundnessCalc,
+            UnifiedRecursionLayer,
+            Standard,
+            BlakeSpecialOpcodes,
+            "ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100_special_opcodes_extension.elf",
+        ),
+    ]
+};
 
 #[cfg(test)]
 mod tests {
@@ -78,41 +165,9 @@ mod tests {
 
     #[test]
     fn tags_roundtrip_through_parse() {
-        for mode in [BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes] {
-            assert_eq!(BlakeMode::parse(mode.tag()), Some(mode));
+        for mode in BlakeMode::ALL {
+            assert_eq!(BlakeMode::parse(mode.tag()), Some(*mode));
         }
         assert_eq!(BlakeMode::parse("nonsense"), None);
-    }
-
-    #[test]
-    fn special_opcodes_is_unified_only() {
-        assert!(FsvProgram::UnifiedRecursionLayer.supports(BlakeMode::BlakeSpecialOpcodes));
-        assert!(!FsvProgram::UnrolledBaseLayer.supports(BlakeMode::BlakeSpecialOpcodes));
-        assert!(!FsvProgram::UnrolledRecursionLayer.supports(BlakeMode::BlakeSpecialOpcodes));
-        assert!(FsvProgram::UnrolledBaseLayer.supports(BlakeMode::Compression));
-    }
-
-    #[test]
-    fn registry_matches_checked_in_binaries() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tools/gkr_verifier");
-        // Blake-suffixed recursion-pipeline variants.
-        for (program, modes) in [
-            (FsvProgram::UnrolledBaseLayer, &[BlakeMode::Compression][..]),
-            (
-                FsvProgram::UnrolledRecursionLayer,
-                &[BlakeMode::Compression][..],
-            ),
-            (
-                FsvProgram::UnifiedRecursionLayer,
-                &[BlakeMode::Compression, BlakeMode::BlakeSpecialOpcodes][..],
-            ),
-        ] {
-            for mode in modes {
-                for ext in ["bin", "text"] {
-                    let path = dir.join(alloc::format!("{}.{ext}", program.file_stem(*mode)));
-                    assert!(path.exists(), "missing fsv binary {}", path.display());
-                }
-            }
-        }
     }
 }

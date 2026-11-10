@@ -12,11 +12,11 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransfer;
-use crate::upstream::{validate_sumcheck_schedule, ProverConfig, SumcheckScheduleClass};
+use crate::upstream::{BaseColumns, BaseCommitmentGeometry, ProverConfig};
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
-use gpu_core::primitives::field::E4;
+use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
 use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget};
 use gpu_gkr::GkrPrograms;
@@ -30,58 +30,6 @@ use orchestration::{
     Stage1AndForwardPreparation, WhirPhaseResult,
 };
 
-pub fn validate_windowed_schedule(gkr_programs: &GkrPrograms, prover_config: &ProverConfig) {
-    assert_eq!(
-        validated_schedule_class(gkr_programs, prover_config),
-        Some(SumcheckScheduleClass::Windowed)
-    );
-}
-
-fn validated_schedule_class(
-    gkr_programs: &GkrPrograms,
-    prover_config: &ProverConfig,
-) -> Option<SumcheckScheduleClass> {
-    validate_sumcheck_schedule(
-        &prover_config.same_size_sumcheck_schedule,
-        main_folding_steps(gkr_programs),
-    )
-    .ok()
-}
-
-fn main_folding_steps(gkr_programs: &GkrPrograms) -> usize {
-    gkr_programs.compiled_circuit().trace_len.trailing_zeros() as usize
-}
-
-/// What the DR preflight boundary needs in order to admit a proof request.
-///
-/// `None` at the boundary means the request is not a proof, so neither the
-/// windowed lowering preflight nor DR-tail resource admission applies.
-#[derive(Clone, Copy)]
-pub struct DrTailPreflightRequest<'a> {
-    pub gkr_programs: &'a GkrPrograms,
-    pub prover_config: &'a ProverConfig,
-    pub final_trace_size_log_2: u32,
-    pub device_id: i32,
-}
-
-/// Preflight before constructing transfers so the plan can be owned by them.
-pub fn admit_dr_tail_before_transfers<T>(
-    request: Option<DrTailPreflightRequest<'_>>,
-    construct_transfers: impl FnOnce(Option<gpu_gkr::DrTailProofPlan>) -> T,
-) -> CudaResult<T> {
-    let Some(request) = request else {
-        return Ok(construct_transfers(None));
-    };
-    gpu_trace::trace::memory::assert_unpacked_prover_config(request.prover_config);
-    validate_windowed_schedule(request.gkr_programs, request.prover_config);
-    let plan = gpu_gkr::preflight_dr_tail_resources(
-        request.gkr_programs,
-        request.final_trace_size_log_2,
-        request.device_id,
-    )?;
-    Ok(construct_transfers(Some(plan)))
-}
-
 /// Enqueue a proof with explicit representation choices. Setup and memory
 /// always defer materialization until their separate query phases.
 pub fn prove<'a, A: GoodAllocator + 'a>(
@@ -89,7 +37,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
-    dr_tail_plan: &gpu_gkr::DrTailProofPlan,
     memory_policy: ProofMemoryPolicy,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
@@ -98,7 +45,6 @@ pub fn prove<'a, A: GoodAllocator + 'a>(
         prover_config,
         final_trace_size_log_2,
         inputs,
-        dr_tail_plan,
         memory_policy,
         None,
         context,
@@ -113,17 +59,11 @@ pub(crate) fn prove_stagewise<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRProofTransfer<'a, A>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
-    let dr_tail_plan = gpu_gkr::preflight_dr_tail_resources(
-        gkr_programs,
-        final_trace_size_log_2,
-        era_cudart::device::get_device()?,
-    )?;
     prove_inner(
         gkr_programs,
         prover_config,
         final_trace_size_log_2,
         inputs,
-        &dr_tail_plan,
         ProofMemoryPolicy::default(),
         Some(Box::default()),
         context,
@@ -135,24 +75,33 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     prover_config: &ProverConfig,
     final_trace_size_log_2: u32,
     inputs: GpuGKRProofTransfer<'a, A>,
-    dr_tail_plan: &gpu_gkr::DrTailProofPlan,
     memory_policy: ProofMemoryPolicy,
     mut stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRProofJob<'a>> {
-    assert!(
-        memory_policy.witness.is_valid(),
-        "invalid witness memory policy"
-    );
-    // the GPU prover implements only the unpacked base commitment; fail closed
-    // before enqueuing any proof kernel on a packed `ProverConfig`
-    gpu_trace::trace::memory::assert_unpacked_prover_config(prover_config);
-    dr_tail_plan.validate_before_enqueue(gkr_programs, final_trace_size_log_2, context);
-    let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
-    validate_windowed_schedule(gkr_programs, prover_config);
     assert_eq!(
-        prover_config.base_oracles_values_per_leaf.trailing_zeros() as usize,
-        prover_config.whir_schedule.whir_steps_schedule[0]
+        prover_config.trace_len_log2,
+        gkr_programs.compiled_circuit().trace_len.trailing_zeros() as usize,
+        "proof config trace length differs from compiled circuit"
+    );
+    assert_eq!(
+        final_trace_size_log_2 as usize, prover_config.sumcheck_explicit_output_size_log_2,
+        "GKR final trace size differs from configured explicit output size"
+    );
+    assert!(
+        (final_trace_size_log_2 as usize) < prover_config.trace_len_log2,
+        "GPU forward transcript handoff requires at least one dimension-reduction layer"
+    );
+    let base_geometry = BaseCommitmentGeometry::from_config(
+        prover_config,
+        BaseColumns::of(gkr_programs.compiled_circuit()),
+    );
+    let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
+    assert_eq!(
+        prover_config
+            .base_oracles_values_per_leaf()
+            .trailing_zeros() as usize,
+        prover_config.whir_schedule.base_folding_log2()
     );
     let whir_schedule = &prover_config.whir_schedule;
 
@@ -167,20 +116,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         top_bits_host,
         external_challenges,
     } = inputs;
-    if let Some(setup_transfer) = setup.as_ref() {
-        assert_eq!(
-            setup_transfer.trace_holder.log_lde_factor,
-            prover_config.lde_factor.trailing_zeros()
-        );
-        assert_eq!(
-            setup_transfer.trace_holder.log_rows_per_leaf,
-            prover_config.base_oracles_values_per_leaf.trailing_zeros()
-        );
-        assert_eq!(
-            setup_transfer.trace_holder.log_tree_cap_size,
-            prover_config.cap_size.trailing_zeros()
-        );
-    }
 
     // Single fork/join from h2d_stream → exec_stream covering every pre-prove
     // H2D bundled by `inputs` (setup, decoder, inits_and_teardowns, tracing_data,
@@ -207,6 +142,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     } = prepare_stage1_and_forward_setup::<A>(
         gkr_programs,
         prover_config,
+        base_geometry,
         final_trace_size_log_2,
         whir_schedule,
         BundleDeviceRefs {
@@ -279,7 +215,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         backward_state,
         top_bits_host.clone(),
         Arc::clone(gkr_programs),
-        dr_tail_plan,
         external_challenges.device.as_ptr(),
         d_seed,
         d_evaluation_point_and_batching,
@@ -292,14 +227,18 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         &mut callbacks,
         context,
     )?;
-    let batching_pow_bits =
-        crate::config::batched_proximity_check_pow_bits(prover_config, compiled_circuit);
+    let batching_pow_bits = prover_config.base_round().batching_pow_bits::<BF, E4>(
+        prover_config.security_level.security_bits(),
+        base_geometry.message_size_log2(),
+        base_geometry.total_physical_columns(),
+    );
     let WhirPhaseResult {
         mut base_layer_claims_scheduled,
         base_layer_claims_shared_state,
         whir_scheduled,
     } = schedule_whir_phase(
         compiled_circuit,
+        base_geometry,
         whir_schedule,
         &mut setup,
         &mut synthetic_setup_trace_holder,

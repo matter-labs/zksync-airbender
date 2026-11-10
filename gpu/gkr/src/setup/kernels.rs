@@ -3,17 +3,13 @@ use std::ptr::{null, null_mut};
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::{CudaResult, CudaResultWrap};
-#[cfg(test)]
-use era_cudart::slice::CudaSlice;
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 
 use super::super::{GpuBaseFieldPoly, GpuGKRStorage};
-use super::{flatten_setup_columns_into_pinned_buffer, precompute_partial_tree_cache};
-use crate::upstream::{CpuGKRSetup, Field, GKRAddress};
-#[cfg(test)]
-use gpu_core::primitives::context::DeviceAllocation;
+use super::{flatten_setup_columns_into_pinned_buffer, precompute_partial_tree_cache_in_holder};
+use crate::upstream::{BaseCommitmentGeometry, BaseOracleRole, CpuGKRSetup, Field, GKRAddress};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_core::primitives::static_host::StaticPinnedBox;
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
@@ -88,65 +84,103 @@ pub struct GpuGKRSetupHost {
     pub log_lde_factor: u32,
     pub log_rows_per_leaf: u32,
     pub log_tree_cap_size: u32,
+    base_geometry: BaseCommitmentGeometry,
 }
 
 impl GpuGKRSetupHost {
-    pub fn unified_tree_cap(&self) -> &[Digest] {
-        &self.unified_tree_cap
+    pub fn base_commitment_geometry(&self) -> BaseCommitmentGeometry {
+        self.base_geometry
     }
 
-    pub fn precompute_from_cpu_setup(
+    pub fn commitment_log_domain_size(&self) -> u32 {
+        u32::try_from(self.base_geometry.message_size_log2()).expect("message log2 exceeds u32")
+    }
+
+    pub fn validate_base_geometry(setup: &CpuGKRSetup<BF>, geometry: &BaseCommitmentGeometry) {
+        assert!(
+            !setup.hypercube_evals.is_empty(),
+            "empty setup has no setup host"
+        );
+        assert_eq!(
+            geometry.logical_columns().setup,
+            setup.hypercube_evals.len(),
+            "setup geometry column mismatch"
+        );
+        for column in &setup.hypercube_evals {
+            assert_eq!(
+                column.len(),
+                1usize << geometry.trace_len_log2(),
+                "setup geometry trace length mismatch"
+            );
+        }
+    }
+
+    /// Adapt the existing BF setup producer: pinned GKR columns stay logical,
+    /// while its device trees and cap carry the producing commitment geometry.
+    pub fn precompute_for_geometry(
         setup: &CpuGKRSetup<BF>,
-        log_lde_factor: u32,
-        log_rows_per_leaf: u32,
-        log_tree_cap_size: u32,
+        geometry: BaseCommitmentGeometry,
         context: &ProverContext,
     ) -> CudaResult<Self> {
+        Self::validate_base_geometry(setup, &geometry);
         let columns_count = setup.hypercube_evals.len();
-        assert!(columns_count > 0, "setup must contain at least one column");
-        let trace_len = setup.hypercube_evals[0].len();
-        assert!(
-            trace_len.is_power_of_two(),
-            "trace len must be a power of two"
-        );
-        let log_domain_size = trace_len.trailing_zeros();
-        for column in setup.hypercube_evals.iter() {
-            assert_eq!(column.len(), trace_len, "all setup columns must match");
-        }
-
+        let trace_len = 1usize << geometry.trace_len_log2();
         let raw_hypercube_evals =
             flatten_setup_columns_into_pinned_buffer(setup, columns_count, trace_len)?;
-        let (partial_trees, unified_tree_cap) = precompute_partial_tree_cache(
-            &raw_hypercube_evals,
-            log_domain_size,
-            log_lde_factor,
-            log_rows_per_leaf,
-            log_tree_cap_size,
-            columns_count,
+        let holder = TraceHolder::<BF>::new_base(
+            geometry,
+            BaseOracleRole::Setup,
+            gpu_trace::trace::holder::TreesCacheMode::CachePartial,
             context,
         )?;
-
+        let (partial_trees, unified_tree_cap) =
+            precompute_partial_tree_cache_in_holder(&raw_hypercube_evals, holder, context)?;
         Ok(Self {
             raw_hypercube_evals,
             partial_trees,
             unified_tree_cap,
-            log_domain_size,
+            log_domain_size: u32::try_from(geometry.trace_len_log2())
+                .expect("trace log2 exceeds u32"),
             columns_count,
-            log_lde_factor,
-            log_rows_per_leaf,
-            log_tree_cap_size,
+            log_lde_factor: geometry.lde_factor().trailing_zeros(),
+            log_rows_per_leaf: geometry.values_per_leaf().trailing_zeros(),
+            log_tree_cap_size: geometry.cap_size().trailing_zeros(),
+            base_geometry: geometry,
         })
     }
 
-    #[cfg(test)]
-    pub(crate) fn column_offset(&self, column: usize) -> usize {
-        assert!(column < self.columns_count);
-        column * (self.raw_hypercube_evals.len() / self.columns_count)
+    /// A cached setup serves only proofs of the geometry it was produced for (including mode and
+    /// counts); setup bytes alone do not depend on the memory/witness commitment mode.
+    pub fn validate_for_geometry(&self, geometry: &BaseCommitmentGeometry) {
+        assert_eq!(
+            self.base_geometry, *geometry,
+            "setup producing geometry mismatch"
+        );
+    }
+
+    pub fn unified_tree_cap(&self) -> &[Digest] {
+        &self.unified_tree_cap
     }
 }
 
 pub(super) fn bind_trace_holder_columns_into_storage<E>(
     trace_holder: &TraceHolder<BF>,
+    storage: &mut GpuGKRStorage<BF, E>,
+    make_address: impl Fn(usize) -> GKRAddress,
+) {
+    bind_trace_holder_column_range_into_storage(
+        trace_holder,
+        0,
+        trace_holder.columns_count,
+        storage,
+        make_address,
+    );
+}
+
+pub(super) fn bind_trace_holder_column_range_into_storage<E>(
+    trace_holder: &TraceHolder<BF>,
+    first_column: usize,
+    columns_count: usize,
     storage: &mut GpuGKRStorage<BF, E>,
     make_address: impl Fn(usize) -> GKRAddress,
 ) {
@@ -157,12 +191,22 @@ pub(super) fn bind_trace_holder_columns_into_storage<E>(
         "trace holder backing must be laid out as flat column-major hypercube evals",
     );
 
+    assert!(first_column
+        .checked_add(columns_count)
+        .is_some_and(|end| end <= trace_holder.columns_count));
+    let class_offset = first_column
+        .checked_mul(trace_len)
+        .expect("class backing offset overflow");
     let backing = trace_holder.raw_hypercube_backing();
-    for column in 0..trace_holder.columns_count {
+    for column in 0..columns_count {
         storage.insert_base_field_at_layer(
             0,
             make_address(column),
-            GpuBaseFieldPoly::from_arc(backing.clone(), column * trace_len, trace_len),
+            GpuBaseFieldPoly::from_arc(
+                backing.clone(),
+                class_offset + column * trace_len,
+                trace_len,
+            ),
         );
     }
     // Register the trace holder Arc as the consolidated per-class backing for
@@ -172,14 +216,20 @@ pub(super) fn bind_trace_holder_columns_into_storage<E>(
     // pointer that the per-poly views above hand out. Layout-aware consumers
     // (compact kernel encoding, `allocate_base_view`) read the trace holder
     // backing through the unified `base_class_backings` path.
-    if trace_holder.columns_count > 0 {
+    if columns_count > 0 {
         let class = crate::gkr_address_audit::classify(&make_address(0), 0);
         if storage.layers.is_empty() {
             storage
                 .layers
                 .resize_with(1, crate::GpuGKRLayerSource::default);
         }
-        let prev = storage.layers[0].base_class_backings.insert(class, backing);
+        let prev = storage.layers[0].base_class_backings.insert(
+            class,
+            crate::ClassBacking {
+                backing,
+                offset: class_offset,
+            },
+        );
         assert!(
             prev.is_none(),
             "trace holder backing already registered for layer 0 class {class:?}"
@@ -290,37 +340,6 @@ pub(super) fn pack_forward_setup_generic_lookup_batch<E>(
     }
 
     batch
-}
-
-#[cfg(test)]
-pub(super) fn lower_forward_setup_generic_lookup_batch<E>(
-    host: &GpuGKRSetupHost,
-    raw: &(impl CudaSlice<BF> + ?Sized),
-    generic_lookup_width: usize,
-    generic_lookup: &mut DeviceAllocation<E>,
-) -> GpuGKRForwardSetupGenericLookupBatch<E> {
-    assert!(
-        generic_lookup_width <= GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS,
-        "generic lookup setup width {} exceeds the fused setup cap of {}",
-        generic_lookup_width,
-        GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS
-    );
-    assert!(
-        generic_lookup_width > 0,
-        "generic lookup setup expects at least one setup column when total_tables_size > 0",
-    );
-
-    let setup_columns = (0..generic_lookup_width)
-        .map(|column_idx| unsafe { raw.as_ptr().add(host.column_offset(column_idx)) })
-        .collect::<Vec<_>>();
-    pack_forward_setup_generic_lookup_batch(
-        &setup_columns,
-        generic_lookup.as_mut_ptr(),
-        null_mut(),
-        null_mut(),
-        0,
-        BF::ZERO,
-    )
 }
 
 pub(super) fn gkr_forward_setup_generic_lookup_launch_config(

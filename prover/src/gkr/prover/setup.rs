@@ -2,12 +2,12 @@ use super::*;
 use crate::gkr::sumcheck::access_and_fold::BaseFieldPoly;
 use crate::utils::compute_aggregated_key_value_dyn;
 use cs::definitions::GKRAddress;
-use cs::gkr_circuits::materialize_flattened_decoder_table_with_bitmask;
 use cs::gkr_circuits::DecoderTableEntry;
 use cs::gkr_circuits::ExecutorFamilyDecoderData;
-use cs::tables::{TableDriver, TableType};
+use cs::tables::{LookupWrapper, TableDriver, TableType};
 use fft::{materialize_powers_serial_starting_with_one, GoodAllocator};
 use std::sync::Arc;
+use worker::rayon::prelude::*;
 
 pub struct GKRSetup<F: PrimeField + TwoAdicField> {
     pub hypercube_evals: Vec<Arc<crate::allocation_pool::AllocationType<F>>>,
@@ -19,103 +19,123 @@ impl<F: PrimeField + TwoAdicField> GKRSetup<F> {
         decoder_table: &[Option<ExecutorFamilyDecoderData>],
         trace_len: usize,
         compiled_circuit: &GKRCircuitArtifact<F>,
+        worker: &Worker,
     ) -> Self {
-        // we always have range-check 16 bits and timestamp limbs
         let total_width = compiled_circuit.generic_lookup_tables_width;
-
-        // println!(
-        //     "Creating setup with {} columns in total ({} generic lookup tables width)",
-        //     total_width, compiled_circuit.generic_lookup_tables_width
-        // );
-
-        let mut result = Vec::with_capacity(total_width);
-
-        for _ in 0..compiled_circuit.generic_lookup_tables_width {
-            result.push(vec![F::ZERO; trace_len].into_boxed_slice());
-        }
-
-        let table_encoding_capacity_per_tuple = trace_len;
         let total_tables_size = table_driver.total_tables_len + decoder_table.len();
-
         assert_eq!(total_tables_size, compiled_circuit.total_tables_size);
-
-        let mut num_table_subsets = total_tables_size / table_encoding_capacity_per_tuple;
-        if !total_tables_size.is_multiple_of(table_encoding_capacity_per_tuple) {
-            num_table_subsets += 1;
-        }
         assert!(
-            num_table_subsets <= 1,
-            "lookup tables must be packed into single multiple of trace len, instead got {}",
-            num_table_subsets
+            total_tables_size <= trace_len,
+            "lookup tables must fit in the trace"
         );
-
-        // dump tables
-        let all_generic_tables = if compiled_circuit.total_tables_size == 0 {
-            Vec::new()
-        } else {
-            table_driver.dump_tables(compiled_circuit.generic_lookup_tables_width)
-        };
-
         assert_eq!(
-            all_generic_tables.len(),
-            compiled_circuit.offset_for_decoder_table,
+            table_driver.total_tables_len,
+            compiled_circuit.offset_for_decoder_table
         );
-
-        // no parallelism for now
-
         if !compiled_circuit.tables_ids_in_generic_lookups {
-            assert!(all_generic_tables.is_empty() || decoder_table.is_empty());
+            assert!(table_driver.total_tables_len == 0 || decoder_table.is_empty());
         }
-
-        for row_idx in 0..all_generic_tables.len() {
-            let row = &all_generic_tables[row_idx];
-            assert_eq!(
-                row.len(),
-                compiled_circuit.generic_lookup_tables_width,
-                "padded table row from the driver is {}, but setup has {} columns for it",
-                row.len(),
-                compiled_circuit.generic_lookup_tables_width
-            );
-            for column in 0..compiled_circuit.generic_lookup_tables_width {
-                result[column][row_idx] = all_generic_tables[row_idx][column];
-            }
+        let mut result: Vec<Box<[F]>> = worker.pool.install(|| {
+            (0..total_width)
+                .into_par_iter()
+                .map(|_| vec![F::ZERO; trace_len].into_boxed_slice())
+                .collect()
+        });
+        // Read the driver's existing rows directly into the columns. Table order,
+        // zero padding and the final table-ID column match dump_tables exactly.
+        if total_tables_size != 0 {
+            assert!(table_driver.max_table_width() < total_width);
         }
-        let offset = compiled_circuit.offset_for_decoder_table;
-
+        worker.pool.install(|| {
+            result
+                .par_iter_mut()
+                .enumerate()
+                .for_each(|(column_idx, column)| {
+                    let mut offset = 0;
+                    for table in &table_driver.tables {
+                        let LookupWrapper::Initialized(table) = table else {
+                            continue;
+                        };
+                        let width = table.width();
+                        let id = F::from_u32_unchecked(table.id);
+                        for (dst, row) in column[offset..offset + table.table_size()]
+                            .iter_mut()
+                            .zip(table.data.iter())
+                        {
+                            assert_eq!(row.len(), width);
+                            *dst = if column_idx == total_width - 1 {
+                                id
+                            } else {
+                                row.get(column_idx).copied().unwrap_or(F::ZERO)
+                            };
+                        }
+                        offset += table.table_size();
+                    }
+                    assert_eq!(offset, table_driver.total_tables_len);
+                });
+        });
         if !decoder_table.is_empty() {
-            let table = materialize_flattened_decoder_table_with_bitmask(
-                decoder_table,
-                &compiled_circuit.decode_table_columns_mask,
+            assert!(decoder_table.len().is_power_of_two());
+            let mask = &compiled_circuit.decode_table_columns_mask;
+            assert_eq!(
+                mask.len(),
+                cs::definitions::EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH
             );
-            let width = table[0].len();
-            let padding_len = if compiled_circuit.tables_ids_in_generic_lookups {
-                compiled_circuit.generic_lookup_tables_width - 1
-            } else {
-                compiled_circuit.generic_lookup_tables_width
-            };
-            for row_idx in 0..decoder_table.len() {
-                let row = &table[row_idx];
-                assert_eq!(row.len(), width);
-                assert!(row.len() <= padding_len);
-
-                for column in 0..width {
-                    result[column][row_idx + offset] = table[row_idx][column];
+            assert!(mask[0] && mask[1]);
+            let width = mask.iter().filter(|selected| **selected).count();
+            let padding_width =
+                total_width - usize::from(compiled_circuit.tables_ids_in_generic_lookups);
+            assert!(width <= padding_width);
+            let offset = table_driver.total_tables_len;
+            let mut tails: Vec<_> = result
+                .iter_mut()
+                .map(|column| &mut column[offset..offset + decoder_table.len()])
+                .collect();
+            worker.scope(decoder_table.len(), |scope, geometry| {
+                for thread_idx in 0..geometry.len() {
+                    let start = geometry.get_chunk_start_pos(thread_idx);
+                    let len = geometry.get_chunk_size(thread_idx);
+                    let mut columns: Vec<_> = tails
+                        .iter_mut()
+                        .map(|tail| {
+                            let (chunk, rest) = std::mem::take(tail).split_at_mut(len);
+                            *tail = rest;
+                            chunk
+                        })
+                        .collect();
+                    Worker::smart_spawn(scope, thread_idx == geometry.len() - 1, move |_| {
+                        for (i, entry) in decoder_table[start..start + len].iter().enumerate() {
+                            let row = entry.map(|entry| {
+                                DecoderTableEntry::<F>::from_executor_family_data(
+                                    ((start + i) * core::mem::size_of::<u32>()) as u32,
+                                    &entry,
+                                )
+                                .flatten()
+                            });
+                            for (dst_idx, src_idx) in mask
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(i, selected)| selected.then_some(i))
+                                .enumerate()
+                            {
+                                columns[dst_idx][i] =
+                                    row.as_ref().map_or(F::MINUS_ONE, |row| row[src_idx]);
+                            }
+                            if compiled_circuit.tables_ids_in_generic_lookups {
+                                columns.last_mut().unwrap()[i] =
+                                    F::from_u32_unchecked(TableType::Decoder as u32);
+                            }
+                        }
+                    });
                 }
-                for column in width..padding_len {
-                    result[column][row_idx + offset] = F::ZERO;
-                }
-                if compiled_circuit.tables_ids_in_generic_lookups {
-                    assert!(result.last().unwrap()[row_idx + offset].is_zero());
-                    result.last_mut().unwrap()[row_idx + offset] =
-                        F::from_u32_unchecked(TableType::Decoder as u32);
-                }
-            }
+            });
         }
-
         if let Some(padding) = compiled_circuit.generic_lookup_padding {
-            for column in &mut result {
-                column[total_tables_size..].fill(padding);
-            }
+            worker.pool.install(|| {
+                result
+                    .par_iter_mut()
+                    .for_each(|column| column[total_tables_size..].fill(padding))
+            });
         }
 
         Self {

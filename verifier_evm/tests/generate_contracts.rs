@@ -29,22 +29,15 @@ const INITS_TEARDOWNS_TOP_BITS: &[u32] = &[0, 1];
 // L1-feeder full-statement verifier whose execution the L1 proof attests (it verifies the final
 // BabyBear recursion artifact).
 const FEEDER_BINARY: &str =
-    "../tools/gkr_verifier/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.bin";
+    "../tools/gkr_verifier/full_statement_verifiers/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.elf";
 
 fn feeder_exit_pc() -> u32 {
-    let bytes = std::fs::read(FEEDER_BINARY).unwrap_or_else(|_| {
-        panic!("Missing {FEEDER_BINARY} — run reproducible build script first");
-    });
+    let path = std::path::Path::new(FEEDER_BINARY);
     assert!(
-        bytes.len().is_multiple_of(4),
-        "binary section not word-aligned"
+        path.exists(),
+        "Missing {FEEDER_BINARY} — run reproducible build script first"
     );
-    let binary: Vec<u32> = bytes
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect();
+    let (binary, _text) = riscv_transpiler::elf::load_legacy_program(path);
     find_binary_exit_point(&binary)
 }
 

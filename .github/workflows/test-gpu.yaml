@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   zksync-airbender-build:
-    runs-on: [ matterlabs-ci-runner-highmem ]
+    runs-on: [ matterlabs-ci-runner-high-performance ]
     strategy:
       fail-fast: false
       matrix:
@@ -23,7 +23,6 @@ jobs:
     container:
       image: nvidia/cuda:${{ matrix.cuda }}-devel-${{ matrix.ubuntu }}
     env:
-      CARGO_BUILD_JOBS: 8
       RUST_TOOLCHAIN: nightly-2026-08-09
       RUST_MIN_STACK: 16777216
       RUSTFLAGS: "-D warnings"
@@ -90,20 +89,20 @@ jobs:
           } | tee build-diagnostics/environment.txt
 
       - name: GPU test serialization drift guard
-        run: cargo +"$RUST_TOOLCHAIN" test -p gpu_core --release --target x86_64-unknown-linux-gnu cpu_nextest_config_covers_all_gpu_crates
+        run: cargo +"$RUST_TOOLCHAIN" test -p gpu_core --profile release-thin --target x86_64-unknown-linux-gnu cpu_nextest_config_covers_all_gpu_crates
 
       - name: Build CLI
         shell: bash
         run: |
           mkdir artifacts
           # Build for A100 (sm_80), L4 (sm_89), H100 (sm_90), and RTX PRO 6000 Blackwell (sm_120).
-          cargo +"$RUST_TOOLCHAIN" build -p cli --features gpu --release --target x86_64-unknown-linux-gnu --timings
-          cp target/x86_64-unknown-linux-gnu/release/cli artifacts/cli
+          cargo +"$RUST_TOOLCHAIN" build -p cli --features gpu --profile release-thin --target x86_64-unknown-linux-gnu --timings
+          cp target/x86_64-unknown-linux-gnu/release-thin/cli artifacts/cli
 
       - name: Compile GPU tests
         shell: bash
         run: |
-          cargo +"$RUST_TOOLCHAIN" test -p gpu_circuit_prover --release --target x86_64-unknown-linux-gnu --no-run --timings --message-format=json > test-build.json
+          cargo +"$RUST_TOOLCHAIN" test -p gpu_circuit_prover --profile release-thin --target x86_64-unknown-linux-gnu --no-run --timings --message-format=json > test-build.json
           python3 - <<'PYTHON'
           import json, shutil
           with open("test-build.json") as source:
@@ -178,7 +177,7 @@ jobs:
           name: zksync-airbender-${{ matrix.cuda }}-${{ matrix.ubuntu }}-gpu
           path: zksync-airbender-gpu/
 
-      - name: Circuit proof parity with multiple scheduled proofs
+      - name: Canonical circuit proof parity in both soundness modes
         shell: bash
         env:
           RUST_MIN_STACK: 1073741824
@@ -186,34 +185,35 @@ jobs:
           export AB_TEST_ARTIFACT_ROOT="$GITHUB_WORKSPACE"
           binary=./zksync-airbender-gpu/gpu_circuit_prover_tests
           chmod +x "$binary"
-          "$binary" --list --ignored multi_schedule --skip run_mixed_circuit_multi_schedule_test > proof-tests.txt
+          "$binary" --exact tests::proof_matrix::cpu_canonical_matrix_inventory --test-threads=1 > inventory.txt
+          grep -q "test result: ok. 1 passed" inventory.txt
+          "$binary" --list --ignored tests::proof_matrix::canonical_ > proof-tests.txt
           mapfile -t tests < <(sed -n 's/: test$//p' proof-tests.txt)
-          if [[ "${#tests[@]}" -ne 15 ]]; then
-            echo "Expected all 15 circuit tests, found ${#tests[@]}" >&2
+          if [[ "${#tests[@]}" -ne 28 ]]; then
+            echo "Expected all 28 canonical circuit/mode tests, found ${#tests[@]}" >&2
             exit 1
           fi
           failed=0
           for test in "${tests[@]}"; do
-            timeout 20m "$binary" --exact --ignored "$test" --nocapture || failed=1
+            timeout 20m "$binary" --exact "$test" --ignored --nocapture --test-threads=1 || failed=1
           done
           exit "$failed"
 
-      - name: Prove recursion unified on GPU
+      - name: Prove, continue and verify on GPU in every soundness mode
+        env:
+          # The lowest allowed switch threshold (MIN_UNIFIED_SWITCH_CYCLES): unrolled recursion runs while
+          # the estimated verifier cost stays at or above it. EXPECT_UNROLLED checks that this workload
+          # proves an unrolled layer in every mode.
+          RECURSION_UNIFIED_SWITCH_CYCLES: "16777216"
+          INPUT_FILE: output/hashed_fibonacci_input.txt
+          DIRECT: "1"
+          EXPECT_UNROLLED: "1"
         run: |
           chmod +x zksync-airbender-gpu/cli
-          zksync-airbender-gpu/cli prove \
-            --bin examples/hashed_fibonacci/app.bin \
-            --input-file examples/hashed_fibonacci/input.txt \
-            --target recursion-unified \
-            --backend gpu \
-            --output-dir output \
-            --output-file proof.json
-
-      - name: Verify recursion unified proof
-        run: |
-          zksync-airbender-gpu/cli verify \
-            --proof output/proof.json \
-            --bin examples/hashed_fibonacci/app.bin
+          mkdir -p output
+          printf '0000000f00124f80' > "$INPUT_FILE"
+          .github/scripts/soundness_mode_smoke.sh zksync-airbender-gpu/cli \
+            examples/hashed_fibonacci/app.bin gpu
 
   # Keep branch protection tied to one stable GPU check name even if we
   # split GPU coverage across multiple jobs or matrix entries later on.

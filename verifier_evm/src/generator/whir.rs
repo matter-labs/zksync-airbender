@@ -44,11 +44,11 @@ impl WhirGenConfig {
     /// (both pre-packing column counts, from the artifact).
     pub fn derive(prover_config: &ProverConfig, num_memwit: usize, num_setup: usize) -> Self {
         let schedule = &prover_config.whir_schedule;
-        let pack_log2 = prover_config.pack_log2;
+        let pack_log2 = prover_config.pack_log2();
         let trace_len_log2 = prover_config.trace_len_log2;
-        let folds = schedule.whir_steps_schedule.clone();
-        let queries = schedule.whir_queries_schedule.clone();
-        let pow_bits = schedule.whir_pow_schedule.clone();
+        let folds = schedule.fold_steps();
+        let queries = schedule.queries_per_round();
+        let pow_bits = schedule.queries_pow_bits_per_round();
         let num_rounds = folds.len();
         assert!(num_rounds >= 2, "WHIR schedule needs at least 2 rounds");
         assert_eq!(
@@ -71,13 +71,13 @@ impl WhirGenConfig {
             schedule.cap_size
         );
         assert!(
-            schedule.base_lde_factor.is_power_of_two() && schedule.base_lde_factor > 0,
+            schedule.base_lde_factor().is_power_of_two() && schedule.base_lde_factor() > 0,
             "WHIR base_lde_factor {} is not a power of two",
-            schedule.base_lde_factor
+            schedule.base_lde_factor()
         );
 
         let cap_log2 = schedule.cap_size.trailing_zeros() as usize;
-        let base_lde_bits = schedule.base_lde_factor.trailing_zeros() as usize;
+        let base_lde_bits = schedule.base_lde_factor_log2();
         let message_log2 = trace_len_log2 + pack_log2;
         let codeword_log2 = message_log2 + base_lde_bits;
         let total_folds: usize = folds.iter().sum();

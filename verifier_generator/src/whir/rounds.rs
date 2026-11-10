@@ -34,18 +34,18 @@ fn round_params(
     poly_size_log2: usize,
     lde_factor: usize,
 ) -> RoundParams {
-    let fold_steps = whir_schedule.whir_steps_schedule[round_idx];
+    let fold_steps = whir_schedule.fold_steps()[round_idx];
     let values_per_leaf = 1usize << fold_steps;
     let lde_factor_log2 = lde_factor.trailing_zeros() as usize;
     let rs_domain_log2 = poly_size_log2 + lde_factor_log2;
     let query_index_bits = rs_domain_log2 - fold_steps;
-    let num_queries = whir_schedule.whir_queries_schedule[round_idx];
+    let num_queries = whir_schedule.queries_per_round()[round_idx];
     let coset_tree_size = (1usize << poly_size_log2) / values_per_leaf;
     RoundParams {
         fold_steps,
         values_per_leaf,
         num_queries,
-        pow_bits: whir_schedule.whir_pow_schedule[round_idx],
+        pow_bits: whir_schedule.queries_pow_bits_per_round()[round_idx],
         query_index_bits,
         rs_domain_log2,
         num_cosets: lde_factor,
@@ -62,8 +62,7 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
     hash_buf_size_const: TokenStream,
     values_per_leaf_expr: TokenStream,
     fold_steps_expr: TokenStream,
-    oracle_depth_expr: TokenStream,
-    oracle_cap_expr: TokenStream,
+    merkle_verify: TokenStream,
 ) -> TokenStream {
     let quartic_struct = MW::quartic_struct();
 
@@ -106,16 +105,99 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
 
         let init_buf = hash_buf.assume_init_subarray::<#hash_buf_size_const>();
         hash_leaf_data_into_state(&mut ts.hasher, init_buf, #leaf_ext_words_expr);
-        if !verify_merkle_path::<I>(
-            &mut ts.hasher, tree_index, #oracle_depth_expr, #oracle_cap_expr, nd_source,
-        ) {
-            return Err(E::whir_merkle_path_failed(q));
-        }
+        #merkle_verify
 
         // The leaf words were read as reduced field elements: they are the leaf values as is.
         let leaf: &[#quartic_struct] = unsafe { init_buf.transmute_subslice(0, #values_per_leaf_expr) };
 
         #fold_computation
+    }
+}
+
+/// The Merkle step of a single-oracle query body. The loop runs over the
+/// queries in tree order (`tree_index`, `prev_index_equal`, `next_index` set
+/// per sorted query, `q` the draw position); `multiproof_const` (a compile-
+/// time bool, the build's `BLAKE_MODE` policy for the round) picks the
+/// pruned-multiproof walk with its `multiproof_stack` of `max_depth_const`
+/// capacity, or the plain path.
+fn merkle_verify(
+    multiproof_const: TokenStream,
+    oracle_depth_expr: TokenStream,
+    oracle_cap_expr: TokenStream,
+    max_depth_const: TokenStream,
+) -> TokenStream {
+    quote! {
+        let merkle_ok = if #multiproof_const {
+            verify_merkle_multiproof_leaf::<I, #max_depth_const>(
+                &mut ts.hasher, &mut multiproof_stack, tree_index, prev_index_equal, next_index,
+                #oracle_depth_expr, #oracle_cap_expr, nd_source,
+            )
+        } else {
+            verify_merkle_path::<I>(
+                &mut ts.hasher, tree_index, #oracle_depth_expr, #oracle_cap_expr, nd_source,
+            )
+        };
+        if !merkle_ok {
+            return Err(E::whir_merkle_path_failed(q));
+        }
+    }
+}
+
+/// The prologue of a round's query loop: the queries' tree indices in draw
+/// order, their sorting (`perm`, with the tree indices along it in
+/// `sorted`), and the delinearization power of every draw position
+/// (`delin_powers`, the running product a draw-order loop would advance per
+/// query), so the loop processes the queries in tree order, the order the
+/// proof ships them in, and still weighs each by its draw position (the
+/// sums are order-independent).
+fn sorted_loop_prologue(
+    num_queries_expr: TokenStream,
+    capacity_const: TokenStream,
+    tree_index_expr: TokenStream,
+    index_bits_expr: TokenStream,
+    advance_current_delin: &TokenStream,
+    quartic_struct: &TokenStream,
+) -> TokenStream {
+    quote! {
+        let mut tree_indices: LazyVec<usize, #capacity_const> = LazyVec::new();
+        {
+            let mut q = 0;
+            while q < #num_queries_expr {
+                let query_index = *query_indices.get(q);
+                tree_indices.push(#tree_index_expr);
+                q += 1;
+            }
+        }
+        let mut perm: LazyVec<usize, #capacity_const> = LazyVec::new();
+        let mut sorted: LazyVec<usize, #capacity_const> = LazyVec::new();
+        sort_queries_by_tree_index::<#capacity_const>(
+            &tree_indices, #index_bits_expr, &mut perm, &mut sorted,
+        );
+        let mut delin_powers: LazyVec<#quartic_struct, #capacity_const> = LazyVec::new();
+        {
+            let mut q = 0;
+            while q < #num_queries_expr {
+                #advance_current_delin;
+                delin_powers.push(current_delinearization_challenge);
+                q += 1;
+            }
+        }
+    }
+}
+
+/// The per-iteration head of a sorted query loop over `j` (sorted
+/// position): the draw position `q`, the tree index and its neighbours.
+fn sorted_loop_head(num_queries_expr: TokenStream) -> TokenStream {
+    quote! {
+        let q = *perm.get(j);
+        let tree_index = *sorted.get(j);
+        let prev_index_equal = j > 0 && *sorted.get(j - 1) == tree_index;
+        let next_index = if j + 1 < #num_queries_expr {
+            *sorted.get(j + 1)
+        } else {
+            NO_NEXT_INDEX
+        };
+        let query_index = *query_indices.get(q);
     }
 }
 
@@ -135,20 +217,28 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
         whir_schedule,
         0,
         message_size_log2,
-        whir_schedule.base_lde_factor,
+        whir_schedule.base_lde_factor(),
     );
 
-    // The initial round only supports single-step folding (fold_steps == 1).
-    // `read_and_batch_leaf` accumulates each base-layer leaf into exactly two
-    // values (acc0, acc1), so the k=1 butterfly below is the only correct fold;
-    // supporting k > 1 here would require reworking that batching to produce
-    // `values_per_leaf` accumulators. Fail loudly at generation time rather than
-    // emit a verifier with an incorrect fold.
-    assert_eq!(
-        params.fold_steps, 1,
-        "WHIR initial-round fold_steps must be 1 (got {}); k>1 initial folding is unsupported",
+    // The initial round supports a round-0 fold of 1 (two values per column per
+    // base leaf: `read_and_batch_leaf` accumulates each leaf into exactly two
+    // values, acc0 / acc1, and the k=1 butterfly below folds them) and of 0
+    // (VIRTUAL packing: one value per column per leaf, no round-0 sumcheck,
+    // the batched leaf value IS the folded value). Supporting k > 1 would
+    // require reworking the batching to produce `values_per_leaf` accumulators;
+    // fail loudly at generation time rather than emit an incorrect fold.
+    assert!(
+        params.fold_steps <= 1,
+        "WHIR initial-round fold_steps must be 0 or 1 (got {}); k>1 initial folding is unsupported",
         params.fold_steps,
     );
+    let virtual_packing = params.fold_steps == 0;
+    let max_ood_samples = whir_schedule
+        .internal_rounds
+        .iter()
+        .map(|r| r.num_ood_samples)
+        .max()
+        .unwrap_or(1);
 
     let query_index_bits = params.query_index_bits;
     let initial_num_queries = params.num_queries;
@@ -163,10 +253,6 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
 
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
-    let mul_ood_delin = MW::mul_assign(
-        quote! { claim_correction },
-        quote! { delinearization_challenge },
-    );
     let advance_current_delin = MW::mul_assign(
         quote! { current_delinearization_challenge },
         quote! { delinearization_challenge },
@@ -180,22 +266,33 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
     let mul_scaled_diff = MW::mul_assign(quote! { scaled_diff }, quote! { alpha_r });
     let add_folded = MW::add_assign(quote! { folded }, quote! { scaled_diff });
     let mul_folded_half = MW::mul_assign_by_base(quote! { folded }, quote! { #field_struct::HALF });
-    let fold_computation = quote! {
-        let mut sum = acc0;
-        #add_sum_b;
-        let mut diff = acc0;
-        #sub_diff_b;
-        let mut alpha_r = unsafe { *folding_challenges.get_unchecked(0) };
-        #mul_alpha_r;
-        let mut scaled_diff = diff;
-        #mul_scaled_diff;
-        let mut folded = sum;
-        #add_folded;
-        #mul_folded_half;
+    let fold_computation = if virtual_packing {
+        // one value per column per leaf: the batched leaf value is the fold
+        quote! {
+            let folded = acc0;
+        }
+    } else {
+        quote! {
+            let mut sum = acc0;
+            #add_sum_b;
+            let mut diff = acc0;
+            #sub_diff_b;
+            let mut alpha_r = unsafe { *folding_challenges.get_unchecked(0) };
+            #mul_alpha_r;
+            let mut scaled_diff = diff;
+            #mul_scaled_diff;
+            let mut folded = sum;
+            #add_folded;
+            #mul_folded_half;
+        }
     };
 
-    // Build unrolled per-oracle query calls with const-generic LEAF_WORDS
+    // Build unrolled per-oracle query calls with const-generic LEAF_WORDS:
+    // the pruned-multiproof walk (one stack per oracle) or the plain path,
+    // picked at compile time by `INITIAL_MERKLE_MULTIPROOF`.
     let mut unrolled_oracle_queries = TokenStream::new();
+    let mut unrolled_multiproof_oracle_queries = TokenStream::new();
+    let mut multiproof_stacks = TokenStream::new();
     {
         let mut gamma_offset_acc = 0usize;
         for (oracle_type, oracle_info) in oracles.iter() {
@@ -205,21 +302,323 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             let depth = oracle_info.depth;
 
             if num_cols > 0 {
-                unrolled_oracle_queries.extend(quote! {
-                    process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, #leaf_words>(
-                        &mut ts.hasher, hash_buf,
-                        #num_cols, tree_index,
-                        #depth,
-                        initial_transcript. #oracle_type (),
-                        &gamma_powers[..], #gamma_off,
-                        &mut acc0, &mut acc1, q,
-                        nd_source,
-                    )?;
+                let stack =
+                    quote::format_ident!("multiproof_stack_{}", oracle_type.clone() as usize);
+                multiproof_stacks.extend(quote! {
+                    let mut #stack = MerkleMultiproofStack::<#depth>::new();
                 });
+                if virtual_packing {
+                    unrolled_multiproof_oracle_queries.extend(quote! {
+                        process_oracle_query_single_value_multiproof::<I, E, WHIR_HASH_BUF_SIZE, #leaf_words, #depth>(
+                            &mut ts.hasher, hash_buf,
+                            #num_cols, &mut #stack, tree_index, prev_index_equal, next_index,
+                            #depth,
+                            initial_transcript. #oracle_type (),
+                            &gamma_powers[..], #gamma_off,
+                            &mut acc0, q,
+                            nd_source,
+                        )?;
+                    });
+                } else {
+                    unrolled_multiproof_oracle_queries.extend(quote! {
+                        process_oracle_query_multiproof::<I, E, WHIR_HASH_BUF_SIZE, #leaf_words, #depth>(
+                            &mut ts.hasher, hash_buf,
+                            #num_cols, &mut #stack, tree_index, prev_index_equal, next_index,
+                            #depth,
+                            initial_transcript. #oracle_type (),
+                            &gamma_powers[..], #gamma_off,
+                            &mut acc0, &mut acc1, q,
+                            nd_source,
+                        )?;
+                    });
+                }
+            }
+
+            if num_cols > 0 {
+                if virtual_packing {
+                    unrolled_oracle_queries.extend(quote! {
+                        process_oracle_query_single_value::<I, E, WHIR_HASH_BUF_SIZE, #leaf_words>(
+                            &mut ts.hasher, hash_buf,
+                            #num_cols, tree_index,
+                            #depth,
+                            initial_transcript. #oracle_type (),
+                            &gamma_powers[..], #gamma_off,
+                            &mut acc0, q,
+                            nd_source,
+                        )?;
+                    });
+                } else {
+                    unrolled_oracle_queries.extend(quote! {
+                        process_oracle_query::<I, E, WHIR_HASH_BUF_SIZE, #leaf_words>(
+                            &mut ts.hasher, hash_buf,
+                            #num_cols, tree_index,
+                            #depth,
+                            initial_transcript. #oracle_type (),
+                            &gamma_powers[..], #gamma_off,
+                            &mut acc0, &mut acc1, q,
+                            nd_source,
+                        )?;
+                    });
+                }
             }
             gamma_offset_acc += num_cols;
         }
     }
+
+    // Round-0 sumcheck: one step under a fold of 1, none under virtual packing.
+    let initial_sumcheck = if virtual_packing {
+        TokenStream::new()
+    } else {
+        quote! {
+            let mut folding_challenges: LazyVec<#quartic_struct, { WHIR_FOLD_STEPS[0] }> =
+                LazyVec::new();
+            let mut round_idx = 0;
+            while round_idx < WHIR_FOLD_STEPS[0] {
+                let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
+                    ts, claim, round_idx, WHIR_FOLDING_POW_BITS[0], nd_source,
+                )?;
+                claim = new_claim;
+                folding_challenges.push(alpha);
+                fold_whir_accumulator(accumulator, alpha, z_initial);
+                round_idx += 1;
+            }
+        }
+    };
+    let acc1_decl = if virtual_packing {
+        TokenStream::new()
+    } else {
+        quote! { let mut acc1 = #quartic_zero; }
+    };
+
+    // Virtual packing reads one value per column per base leaf: the per-oracle
+    // query helper that batches that single value into one accumulator.
+    let fma_into_acc =
+        MW::add_assign_product_with_base(quote! { *acc }, quote! { gamma }, quote! { base_val });
+    let single_value_query_helper = if virtual_packing {
+        quote! {
+            #[inline(always)]
+            #[allow(clippy::too_many_arguments)]
+            pub unsafe fn process_oracle_query_single_value<I: NonDeterminismSource<#field_struct>, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize>(
+                hasher: &mut ::verifier_common::blake2s_u32::DelegatedBlake2sState,
+                hash_buf: &mut AlignedArray64<MaybeUninit<u32>, BUF_SIZE>,
+                num_columns: usize,
+                query_index: usize,
+                depth: usize,
+                cap: &[u32],
+                gamma_powers: &[#quartic_struct],
+                gamma_offset: usize,
+                acc: &mut #quartic_struct,
+                query: usize,
+                nd_source: &mut I,
+            ) -> Result<(), E::Error> {
+                use ::verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
+
+                let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
+                let mut col = 0;
+                while col < num_columns {
+                    let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
+                    let raw = read_reduced_field_el::<I>(nd_source);
+                    *buf.get_unchecked_mut(col) = raw.as_u32_raw_repr();
+                    let base_val = raw;
+                    #fma_into_acc;
+                    col += 1;
+                }
+
+                let block_end = LEAF_WORDS.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
+                if block_end > LEAF_WORDS {
+                    hash_buf.zero_range(LEAF_WORDS, block_end);
+                }
+                let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+                hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
+                if !verify_merkle_path::<I>(hasher, query_index, depth, cap, nd_source) {
+                    return Err(E::whir_merkle_path_failed(query));
+                }
+                Ok(())
+            }
+
+            /// [`process_oracle_query_single_value`] under a pruned Merkle
+            /// multiproof (see `process_oracle_query_multiproof`).
+            #[inline(always)]
+            #[allow(clippy::too_many_arguments)]
+            pub unsafe fn process_oracle_query_single_value_multiproof<I: NonDeterminismSource<#field_struct>, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize, const MAX_DEPTH: usize>(
+                hasher: &mut ::verifier_common::blake2s_u32::DelegatedBlake2sState,
+                hash_buf: &mut AlignedArray64<MaybeUninit<u32>, BUF_SIZE>,
+                num_columns: usize,
+                stack: &mut MerkleMultiproofStack<MAX_DEPTH>,
+                tree_index: usize,
+                prev_index_equal: bool,
+                next_index: usize,
+                depth: usize,
+                cap: &[u32],
+                gamma_powers: &[#quartic_struct],
+                gamma_offset: usize,
+                acc: &mut #quartic_struct,
+                query: usize,
+                nd_source: &mut I,
+            ) -> Result<(), E::Error> {
+                use ::verifier_common::whir::hash_leaf_data_into_state;
+
+                let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
+                let mut col = 0;
+                while col < num_columns {
+                    let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
+                    let raw = read_reduced_field_el::<I>(nd_source);
+                    *buf.get_unchecked_mut(col) = raw.as_u32_raw_repr();
+                    let base_val = raw;
+                    #fma_into_acc;
+                    col += 1;
+                }
+
+                let block_end = LEAF_WORDS.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
+                if block_end > LEAF_WORDS {
+                    hash_buf.zero_range(LEAF_WORDS, block_end);
+                }
+                let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+                hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
+                if !verify_merkle_multiproof_leaf::<I, MAX_DEPTH>(
+                    hasher, stack, tree_index, prev_index_equal, next_index, depth, cap, nd_source,
+                ) {
+                    return Err(E::whir_merkle_path_failed(query));
+                }
+                Ok(())
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+
+    // The base query loop, over the queries in tree order.
+    let query_loop = {
+        let prologue = sorted_loop_prologue(
+            quote! { INITIAL_NUM_QUERIES },
+            quote! { INITIAL_NUM_QUERIES },
+            quote! { compute_tree_index(query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE) },
+            quote! { INITIAL_QUERY_INDEX_BITS },
+            &advance_current_delin,
+            &quartic_struct,
+        );
+        let head = sorted_loop_head(quote! { INITIAL_NUM_QUERIES });
+        quote! {
+            #prologue
+            #multiproof_stacks
+
+            let mut j = 0;
+            while j < INITIAL_NUM_QUERIES {
+                #head
+                let current_delinearization_challenge = *delin_powers.get(q);
+                let base_root_inv = extended_generator_inv.pow(query_index as u32);
+
+                let mut acc0 = #quartic_zero;
+                #acc1_decl
+
+                if INITIAL_MERKLE_MULTIPROOF {
+                    #unrolled_multiproof_oracle_queries
+                } else {
+                    #unrolled_oracle_queries
+                }
+
+                #fold_computation
+
+                let mut query_point_base = extended_generator.pow(query_index as u32);
+                query_point_base.exp_power_of_2(WHIR_FOLD_STEPS[0]);
+                push_whir_base_pow_entry(
+                    accumulator,
+                    query_point_base,
+                    current_delinearization_challenge,
+                );
+
+                let mut t = folded;
+                #mul_delin;
+                #add_correction;
+
+                j += 1;
+            }
+        }
+    };
+
+    // The OOD sampling shared by every round (emitted once, into the whir.rs
+    // the three round modules are merged into): draw the committed oracle's
+    // `WHIR_NUM_OOD_SAMPLES` points (after a PoW when gated), read and commit
+    // the claimed values; then fold the samples into the accumulator and the
+    // claim, the j-th sample weighted by the delinearization challenge to the
+    // power j + 1 (the queries continue the powers).
+    let mul_t_current = MW::mul_assign(quote! { t }, quote! { current });
+    let add_correction_t = MW::add_assign(quote! { claim_correction }, quote! { t });
+    let advance_current = MW::mul_assign(quote! { current }, quote! { delinearization_challenge });
+    let ood_helpers = quote! {
+        pub const MAX_OOD_SAMPLES: usize = #max_ood_samples;
+        const OOD_DRAW_BUF: usize =
+            (MAX_OOD_SAMPLES * super::common::EXT_DEGREE + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
+        const OOD_COMMIT_BUF: usize = {
+            let total = MAX_OOD_SAMPLES * super::common::EXT_DEGREE;
+            (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
+                / BLAKE2S_BLOCK_SIZE_U32_WORDS
+                * BLAKE2S_BLOCK_SIZE_U32_WORDS
+        };
+
+        #[inline(always)]
+        pub fn read_ood_samples<I: NonDeterminismSource<#field_struct>>(
+            ts: &mut TranscriptState,
+            committed_oracle: usize,
+            ood_points: &mut LazyVec<#quartic_struct, MAX_OOD_SAMPLES>,
+            ood_values: &mut LazyVec<#quartic_struct, MAX_OOD_SAMPLES>,
+            nd_source: &mut I,
+        ) {
+            let num_ood = WHIR_NUM_OOD_SAMPLES[committed_oracle];
+            let ood_pow_bits = WHIR_OOD_POW_BITS[committed_oracle];
+            unsafe {
+                ood_points.set_len(num_ood);
+            }
+            if ood_pow_bits > 0 {
+                read_and_verify_pow::<I>(ts, ood_pow_bits, nd_source);
+                super::common::draw_field_els_into_after_pow::<OOD_DRAW_BUF>(ts, ood_points.as_mut_slice());
+            } else {
+                super::common::draw_field_els_into::<OOD_DRAW_BUF>(ts, ood_points.as_mut_slice());
+            }
+            let ood_data_words = num_ood * super::common::EXT_DEGREE;
+            let mut ood_buf = CommitBuf::<OOD_COMMIT_BUF>::new();
+            let mut i = 0;
+            while i < ood_data_words {
+                ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
+                i += 1;
+            }
+            unsafe {
+                let values: &[#quartic_struct] = ood_buf.data_as::<#quartic_struct>(num_ood);
+                let mut j = 0;
+                while j < num_ood {
+                    ood_values.push(*values.get_unchecked(j));
+                    j += 1;
+                }
+            }
+            ts.commit(&mut ood_buf, ood_data_words);
+        }
+
+        #[inline(always)]
+        pub fn accumulate_ood_samples<const MAX_POW: usize, const MAX_OOD: usize>(
+            accumulator: &mut ::verifier_common::whir::WhirAccumulator<
+                #field_struct, #quartic_struct, MAX_POW, MAX_OOD,
+            >,
+            ood_points: &LazyVec<#quartic_struct, MAX_OOD_SAMPLES>,
+            ood_values: &LazyVec<#quartic_struct, MAX_OOD_SAMPLES>,
+            delinearization_challenge: #quartic_struct,
+        ) -> (#quartic_struct, #quartic_struct) {
+            let mut claim_correction = #quartic_zero;
+            let mut current = delinearization_challenge;
+            let num_ood = ood_points.len();
+            let mut j = 0;
+            while j < num_ood {
+                if j > 0 {
+                    #advance_current;
+                }
+                push_whir_pow_entry(accumulator, *ood_points.get(j), current);
+                let mut t = *ood_values.get(j);
+                #mul_t_current;
+                #add_correction_t;
+                j += 1;
+            }
+            (claim_correction, current)
+        }
+    };
 
     // Fold-helper imports differ by encoding. These `use` items merge across the
     // round modules emitted into the generated `whir.rs`, so importing the active
@@ -249,20 +648,35 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             read_and_verify_pow,
             draw_query_indices,
         };
+        #[allow(unused_imports)]
+        use ::verifier_common::whir::multiproof::{
+            MerkleMultiproofStack, sort_queries_by_tree_index, verify_merkle_multiproof_leaf,
+            NO_NEXT_INDEX,
+        };
+        #[allow(unused_imports)]
         use super::common::{
             verify_whir_sumcheck_step, materialize_gamma_powers,
             #fold_fn_imports
-            read_reduced_field_el, draw_single_field_el, draw_fresh_single_field_el,
+            read_reduced_field_el, draw_fresh_single_field_el,
             compute_tree_index,
-            process_oracle_query,
+            process_oracle_query, process_oracle_query_multiproof,
             fold_whir_accumulator, push_whir_base_pow_entry, push_whir_pow_entry,
         };
         use ::verifier_common::errors::ErrorCreator;
         use ::verifier_common::structs::{CommitBuf, TranscriptState};
         use super::constants::*;
 
+        #single_value_query_helper
+
+        #ood_helpers
+
         const INITIAL_QUERY_INDEX_BITS: usize = #query_index_bits;
         const INITIAL_NUM_QUERIES: usize = #initial_num_queries;
+        /// Whether this build opens the base queries as a pruned Merkle
+        /// multiproof (`BlakeMode::merkle_multiproofs`, decided at compile
+        /// time for the build's blake implementation).
+        const INITIAL_MERKLE_MULTIPROOF: bool =
+            ::verifier_common::BLAKE_MODE.merkle_multiproofs(INITIAL_NUM_QUERIES, WHIR_CAP_SIZE);
         const INITIAL_POW_BITS: u32 = #initial_pow_bits;
         const INITIAL_DRAW_WORDS: usize = #draw_words;
         const INITIAL_RS_DOMAIN_LOG2: usize = #rs_domain_log2;
@@ -278,7 +692,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             base_layer_claims: &[#quartic_struct],
             z_initial: &[#quartic_struct],
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
-                #field_struct, #quartic_struct, MAX_POW_ENTRIES, { WHIR_FOLD_STEPS.len() },
+                #field_struct, #quartic_struct, MAX_POW_ENTRIES, WHIR_OOD_ENTRIES,
             >,
             nd_source: &mut I,
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
@@ -297,18 +711,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                     }
                 }
 
-                let mut folding_challenges: LazyVec<#quartic_struct, { WHIR_FOLD_STEPS[0] }> =
-                    LazyVec::new();
-                let mut round_idx = 0;
-                while round_idx < WHIR_FOLD_STEPS[0] {
-                    let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
-                        ts, claim, round_idx, nd_source,
-                    )?;
-                    claim = new_claim;
-                    folding_challenges.push(alpha);
-                    fold_whir_accumulator(accumulator, alpha, z_initial);
-                    round_idx += 1;
-                }
+                #initial_sumcheck
 
                 const CAP_COMMIT_BUF: usize = {
                     let total = WHIR_CAP_WORDS;
@@ -319,27 +722,10 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 let intermediate_cap =
                     read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts, nd_source);
 
-                let ood_point = draw_single_field_el(ts);
-
-                const OOD_DATA_WORDS: usize = super::common::EXT_DEGREE;
-                const OOD_COMMIT_BUF: usize = {
-                    let total = OOD_DATA_WORDS;
-                    (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
-                        / BLAKE2S_BLOCK_SIZE_U32_WORDS
-                        * BLAKE2S_BLOCK_SIZE_U32_WORDS
-                };
-                let mut ood_buf = CommitBuf::<OOD_COMMIT_BUF>::new();
-                {
-                    let mut i = 0;
-                    while i < OOD_DATA_WORDS {
-                        ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
-                        i += 1;
-                    }
-                }
-                let ood_value: #quartic_struct = unsafe {
-                    *ood_buf.data_as::<#quartic_struct>(1).as_ptr()
-                };
-                ts.commit(&mut ood_buf, OOD_DATA_WORDS);
+                // intermediate oracle 0 was just committed: its OOD sampling
+                let mut ood_points: LazyVec<#quartic_struct, MAX_OOD_SAMPLES> = LazyVec::new();
+                let mut ood_values: LazyVec<#quartic_struct, MAX_OOD_SAMPLES> = LazyVec::new();
+                read_ood_samples::<I>(ts, 0, &mut ood_points, &mut ood_values, nd_source);
 
                 read_and_verify_pow::<I>(ts, INITIAL_POW_BITS, nd_source);
                 let query_indices = draw_query_indices::<INITIAL_NUM_QUERIES, INITIAL_DRAW_WORDS>(
@@ -349,47 +735,13 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
 
                 let delinearization_challenge = draw_fresh_single_field_el(ts);
 
-                push_whir_pow_entry(accumulator, ood_point, delinearization_challenge);
-
-                let mut claim_correction = ood_value;
-                #mul_ood_delin;
-
-                let mut current_delinearization_challenge = delinearization_challenge;
+                let (mut claim_correction, mut current_delinearization_challenge) =
+                    accumulate_ood_samples(accumulator, &ood_points, &ood_values, delinearization_challenge);
 
                 let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
                 let extended_generator_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
 
-                let mut q = 0;
-                while q < INITIAL_NUM_QUERIES {
-                    #advance_current_delin;
-
-                    let query_index = *query_indices.get(q);
-                    let base_root_inv = extended_generator_inv.pow(query_index as u32);
-                    let tree_index = compute_tree_index(
-                        query_index, NUM_COSETS, NUM_COSETS_LOG2, COSET_TREE_SIZE,
-                    );
-
-                    let mut acc0 = #quartic_zero;
-                    let mut acc1 = #quartic_zero;
-
-                    #unrolled_oracle_queries
-
-                    #fold_computation
-
-                    let mut query_point_base = extended_generator.pow(query_index as u32);
-                    query_point_base.exp_power_of_2(WHIR_FOLD_STEPS[0]);
-                    push_whir_base_pow_entry(
-                        accumulator,
-                        query_point_base,
-                        current_delinearization_challenge,
-                    );
-
-                    let mut t = folded;
-                    #mul_delin;
-                    #add_correction;
-
-                    q += 1;
-                }
+                #query_loop
 
                 #add_claim;
 
@@ -408,23 +760,25 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
 
-    let num_rounds = whir_schedule.whir_steps_schedule.len();
+    let num_rounds = whir_schedule.num_rounds();
     let num_internal_rounds = num_rounds - 2;
+    let fold_steps = whir_schedule.fold_steps();
+    let intermediate_lde_factors = whir_schedule.intermediate_lde_factors();
 
     let mut poly_size_log2 = message_size_log2;
-    poly_size_log2 -= whir_schedule.whir_steps_schedule[0];
+    poly_size_log2 -= fold_steps[0];
 
     let mut internal_params: Vec<RoundParams> = Vec::new();
     for i in 0..num_internal_rounds {
         let round_idx = i + 1;
-        let lde_factor = whir_schedule.whir_steps_lde_factors[round_idx - 1];
+        let lde_factor = intermediate_lde_factors[round_idx - 1];
         internal_params.push(round_params(
             whir_schedule,
             round_idx,
             poly_size_log2,
             lde_factor,
         ));
-        poly_size_log2 -= whir_schedule.whir_steps_schedule[round_idx];
+        poly_size_log2 -= fold_steps[round_idx];
     }
 
     let internal_query_index_bits_vec: Vec<usize> =
@@ -459,10 +813,6 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
     let add_correction = MW::add_assign(quote! { claim_correction }, quote! { t });
     let add_claim = MW::add_assign(quote! { claim }, quote! { claim_correction });
 
-    let mul_ood_delin = MW::mul_assign(
-        quote! { claim_correction },
-        quote! { delinearization_challenge },
-    );
     let advance_current_delin = MW::mul_assign(
         quote! { current_delinearization_challenge },
         quote! { delinearization_challenge },
@@ -473,9 +823,22 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
         quote! { INTERNAL_HASH_BUF_SIZE },
         quote! { values_per_leaf },
         quote! { fold_steps },
-        quote! { oracle_depth },
-        quote! { prev_oracle_cap },
+        merkle_verify(
+            quote! { (INTERNAL_MERKLE_MULTIPROOF_MASK >> ir) & 1 == 1 },
+            quote! { oracle_depth },
+            quote! { prev_oracle_cap },
+            quote! { MAX_INTERNAL_ORACLE_DEPTH },
+        ),
     );
+    let loop_prologue = sorted_loop_prologue(
+        quote! { num_queries },
+        quote! { MAX_INTERNAL_NUM_QUERIES },
+        quote! { compute_tree_index(query_index, num_cosets, num_cosets_log2, coset_tree_size) },
+        quote! { query_index_bits },
+        &advance_current_delin,
+        &quartic_struct,
+    );
+    let loop_head = sorted_loop_head(quote! { num_queries });
 
     // Per-round fold setup: coefficient form precomputes the monomial tensor;
     // evaluation form precomputes the high-power offsets and fold scratch buffers.
@@ -541,6 +904,33 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
         const INTERNAL_HASH_BUF_SIZE: usize = MAX_INTERNAL_LEAF_EXT_WORDS.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
         const MAX_INTERNAL_NUM_QUERIES: usize = #max_internal_num_queries;
         const MAX_INTERNAL_DRAW_WORDS: usize = #max_internal_draw_words;
+        /// Bit `ir` set: this build opens internal round `ir + 1`'s queries
+        /// as a pruned Merkle multiproof (`BlakeMode::merkle_multiproofs`,
+        /// decided at compile time for the build's blake implementation).
+        /// A bitmask, not a `[bool; N]`: a runtime-indexed byte array would
+        /// need a byte load, which the reduced machine has not.
+        const INTERNAL_MERKLE_MULTIPROOF_MASK: usize = {
+            let mut mask = 0;
+            let mut ir = 0;
+            while ir < NUM_INTERNAL_ROUNDS {
+                if ::verifier_common::BLAKE_MODE.merkle_multiproofs(WHIR_QUERIES[ir + 1], WHIR_CAP_SIZE) {
+                    mask |= 1 << ir;
+                }
+                ir += 1;
+            }
+            mask
+        };
+        const MAX_INTERNAL_ORACLE_DEPTH: usize = {
+            let mut max = 0;
+            let mut i = 0;
+            while i < NUM_INTERNAL_ROUNDS {
+                if WHIR_ORACLE_DEPTHS[i] > max {
+                    max = WHIR_ORACLE_DEPTHS[i];
+                }
+                i += 1;
+            }
+            max
+        };
         const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] =
             [#(#internal_draw_words_vec),*];
 
@@ -552,7 +942,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
             round_idx: usize,
             z_initial: &[#quartic_struct],
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
-                #field_struct, #quartic_struct, MAX_POW_ENTRIES, { WHIR_FOLD_STEPS.len() },
+                #field_struct, #quartic_struct, MAX_POW_ENTRIES, WHIR_OOD_ENTRIES,
             >,
             nd_source: &mut I,
         ) -> Result<(#quartic_struct, [u32; WHIR_CAP_WORDS]), E::Error> {
@@ -569,7 +959,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                 let mut round = 0;
                 while round < fold_steps {
                     let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
-                        ts, claim, round, nd_source,
+                        ts, claim, round, WHIR_FOLDING_POW_BITS[round_idx], nd_source,
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
@@ -586,27 +976,10 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                 let intermediate_cap =
                     read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts, nd_source);
 
-                let ood_point = draw_single_field_el(ts);
-
-                const OOD_DATA_WORDS: usize = EXT_DEGREE;
-                const OOD_COMMIT_BUF: usize = {
-                    let total = OOD_DATA_WORDS;
-                    (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
-                        / BLAKE2S_BLOCK_SIZE_U32_WORDS
-                        * BLAKE2S_BLOCK_SIZE_U32_WORDS
-                };
-                let mut ood_buf = CommitBuf::<OOD_COMMIT_BUF>::new();
-                {
-                    let mut i = 0;
-                    while i < OOD_DATA_WORDS {
-                        ood_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
-                        i += 1;
-                    }
-                }
-                let ood_value: #quartic_struct = unsafe {
-                    *ood_buf.data_as::<#quartic_struct>(1).as_ptr()
-                };
-                ts.commit(&mut ood_buf, OOD_DATA_WORDS);
+                // intermediate oracle `round_idx` was just committed: its OOD sampling
+                let mut ood_points: LazyVec<#quartic_struct, MAX_OOD_SAMPLES> = LazyVec::new();
+                let mut ood_values: LazyVec<#quartic_struct, MAX_OOD_SAMPLES> = LazyVec::new();
+                read_ood_samples::<I>(ts, round_idx, &mut ood_points, &mut ood_values, nd_source);
 
                 read_and_verify_pow::<I>(ts, WHIR_POW_BITS[round_idx], nd_source);
                 let query_index_bits = INTERNAL_QUERY_INDEX_BITS[ir];
@@ -618,12 +991,8 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
 
                 let delinearization_challenge = draw_fresh_single_field_el(ts);
 
-                push_whir_pow_entry(accumulator, ood_point, delinearization_challenge);
-
-                let mut claim_correction = ood_value;
-                #mul_ood_delin;
-
-                let mut current_delinearization_challenge = delinearization_challenge;
+                let (mut claim_correction, mut current_delinearization_challenge) =
+                    accumulate_ood_samples(accumulator, &ood_points, &ood_values, delinearization_challenge);
 
                 let rs_domain_log2 = INTERNAL_RS_DOMAIN_LOG2[ir];
                 let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[rs_domain_log2];
@@ -634,14 +1003,13 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
 
                 #internal_fold_setup
 
-                let mut q = 0;
-                while q < num_queries {
-                    #advance_current_delin;
+                #loop_prologue
+                let mut multiproof_stack = MerkleMultiproofStack::<MAX_INTERNAL_ORACLE_DEPTH>::new();
 
-                    let query_index = *query_indices.get(q);
-                    let tree_index = compute_tree_index(
-                        query_index, num_cosets, num_cosets_log2, coset_tree_size,
-                    );
+                let mut j = 0;
+                while j < num_queries {
+                    #loop_head
+                    let current_delinearization_challenge = *delin_powers.get(q);
 
                     #query_body
 
@@ -657,7 +1025,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                     #mul_delin;
                     #add_correction;
 
-                    q += 1;
+                    j += 1;
                 }
 
                 #add_claim;
@@ -690,14 +1058,17 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
     let horner_fma_base_s =
         MW::add_assign_product_with_base(quote! { t }, quote! { eval }, quote! { s });
 
-    let num_rounds = whir_schedule.whir_steps_schedule.len();
+    let num_rounds = whir_schedule.num_rounds();
     let final_round_idx = num_rounds - 1;
+    let fold_steps_per_round = whir_schedule.fold_steps();
 
     let mut poly_size_log2 = message_size_log2;
     for i in 0..final_round_idx {
-        poly_size_log2 -= whir_schedule.whir_steps_schedule[i];
+        poly_size_log2 -= fold_steps_per_round[i];
     }
-    let lde_factor = whir_schedule.whir_steps_lde_factors[final_round_idx - 1];
+    let lde_factor = whir_schedule.intermediate_lde_factors()[final_round_idx - 1];
+    let final_folding_pow_bits =
+        whir_schedule.internal_rounds[final_round_idx - 1].folding_pow_bits;
     let params = round_params(whir_schedule, final_round_idx, poly_size_log2, lde_factor);
 
     let fold_steps = params.fold_steps;
@@ -717,9 +1088,58 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
         quote! { FINAL_HASH_BUF_SIZE },
         quote! { FINAL_VALUES_PER_LEAF },
         quote! { FINAL_FOLD_STEPS },
-        quote! { oracle_depth },
-        quote! { prev_oracle_cap },
+        merkle_verify(
+            quote! { FINAL_MERKLE_MULTIPROOF },
+            quote! { oracle_depth },
+            quote! { prev_oracle_cap },
+            quote! { FINAL_ORACLE_DEPTH },
+        ),
     );
+    // The final round has no delinearization: the sorted loop only needs
+    // the sorting (the fold agreement check below is per query, in
+    // whichever order the folded values were stored).
+    let final_query_loop = {
+        quote! {
+            let mut tree_indices: LazyVec<usize, FINAL_NUM_QUERIES> = LazyVec::new();
+            {
+                let mut q = 0;
+                while q < FINAL_NUM_QUERIES {
+                    let query_index = *query_indices.get(q);
+                    tree_indices.push(compute_tree_index(
+                        query_index, FINAL_NUM_COSETS, FINAL_NUM_COSETS_LOG2, FINAL_COSET_TREE_SIZE,
+                    ));
+                    q += 1;
+                }
+            }
+            let mut perm: LazyVec<usize, FINAL_NUM_QUERIES> = LazyVec::new();
+            let mut sorted: LazyVec<usize, FINAL_NUM_QUERIES> = LazyVec::new();
+            sort_queries_by_tree_index::<FINAL_NUM_QUERIES>(
+                &tree_indices, FINAL_QUERY_INDEX_BITS, &mut perm, &mut sorted,
+            );
+            let mut multiproof_stack = MerkleMultiproofStack::<FINAL_ORACLE_DEPTH>::new();
+
+            let mut j = 0;
+            while j < FINAL_NUM_QUERIES {
+                let q = *perm.get(j);
+                let tree_index = *sorted.get(j);
+                let prev_index_equal = j > 0 && *sorted.get(j - 1) == tree_index;
+                let next_index = if j + 1 < FINAL_NUM_QUERIES {
+                    *sorted.get(j + 1)
+                } else {
+                    NO_NEXT_INDEX
+                };
+                let query_index = *query_indices.get(q);
+                let base_root = extended_generator.pow(query_index as u32);
+
+                #query_body
+
+                folded_values.push(folded);
+                query_base_roots.push(base_root);
+
+                j += 1;
+            }
+        }
+    };
 
     // Per-round fold setup (final round): coefficient form precomputes the monomial
     // tensor; evaluation form precomputes high-power offsets and fold scratch.
@@ -759,7 +1179,14 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
         const FINAL_COSET_TREE_SIZE: usize = #coset_tree_size;
         const FINAL_DRAW_WORDS: usize = #draw_words;
         const FINAL_POW_BITS: u32 = #pow_bits;
+        const FINAL_FOLDING_POW_BITS: u32 = #final_folding_pow_bits;
         const FINAL_ORACLE_DEPTH_IDX: usize = #last_oracle_depth_idx;
+        const FINAL_ORACLE_DEPTH: usize = WHIR_ORACLE_DEPTHS[FINAL_ORACLE_DEPTH_IDX];
+        /// Whether this build opens the final queries as a pruned Merkle
+        /// multiproof (`BlakeMode::merkle_multiproofs`, decided at compile
+        /// time for the build's blake implementation).
+        const FINAL_MERKLE_MULTIPROOF: bool =
+            ::verifier_common::BLAKE_MODE.merkle_multiproofs(FINAL_NUM_QUERIES, WHIR_CAP_SIZE);
 
         pub fn verify_final_whir_round<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
             ts: &mut TranscriptState,
@@ -768,7 +1195,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
             prev_oracle_cap: &[u32; WHIR_CAP_WORDS],
             z_initial: &[#quartic_struct],
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
-                #field_struct, #quartic_struct, MAX_POW_ENTRIES, { WHIR_FOLD_STEPS.len() },
+                #field_struct, #quartic_struct, MAX_POW_ENTRIES, WHIR_OOD_ENTRIES,
             >,
             nd_source: &mut I,
         ) -> Result<(), E::Error> {
@@ -779,7 +1206,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                 let mut round = 0;
                 while round < FINAL_FOLD_STEPS {
                     let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
-                        ts, claim, round, nd_source,
+                        ts, claim, round, FINAL_FOLDING_POW_BITS, nd_source,
                     )?;
                     claim = new_claim;
                     folding_challenges.push(alpha);
@@ -830,22 +1257,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                 let mut query_base_roots: LazyVec<#field_struct, FINAL_NUM_QUERIES> =
                     LazyVec::new();
 
-                let mut q = 0;
-                while q < FINAL_NUM_QUERIES {
-                    let query_index = *query_indices.get(q);
-                    let base_root = extended_generator.pow(query_index as u32);
-
-                    let tree_index = compute_tree_index(
-                        query_index, FINAL_NUM_COSETS, FINAL_NUM_COSETS_LOG2, FINAL_COSET_TREE_SIZE,
-                    );
-
-                    #query_body
-
-                    folded_values.push(folded);
-                    query_base_roots.push(base_root);
-
-                    q += 1;
-                }
+                #final_query_loop
 
 
                 let mut q = 0;

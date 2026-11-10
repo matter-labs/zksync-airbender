@@ -527,10 +527,14 @@ pub fn compute_tree_index(
     }
 }
 #[inline(always)]
+#[doc = r" One WHIR sumcheck step: read and check the round polynomial, commit it,"]
+#[doc = r" draw the folding challenge (after a `folding_pow_bits`-bit proof of work"]
+#[doc = r" when the round gates its folding draws)."]
 pub fn verify_whir_sumcheck_step<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     ts: &mut TranscriptState,
     claim: BabyBearExt4,
     round: usize,
+    folding_pow_bits: u32,
     nd_source: &mut I,
 ) -> Result<(BabyBearExt4, BabyBearExt4), E::Error> {
     const WHIR_SC_DATA_WORDS: usize = 3 * EXT_DEGREE;
@@ -560,7 +564,12 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource<BabyBearField>, E: Erro
         return Err(E::whir_sumcheck_failed(round));
     }
     ts.commit(&mut buf, WHIR_SC_DATA_WORDS);
-    let alpha = draw_single_field_el(ts);
+    let alpha = if folding_pow_bits > 0 {
+        ::verifier_common::whir::read_and_verify_pow::<I>(ts, folding_pow_bits, nd_source);
+        draw_single_field_el_after_pow(ts)
+    } else {
+        draw_single_field_el(ts)
+    };
     let mut new_claim = c2;
     field_ops::mul_assign(&mut new_claim, &alpha);
     field_ops::add_assign(&mut new_claim, &c1);
@@ -632,7 +641,7 @@ pub fn eval_multilinear_with_monomial_tensor(
     }
     result
 }
-pub const MAX_HIGH_POWERS: usize = 16usize;
+pub const MAX_HIGH_POWERS: usize = 32usize;
 #[inline(always)]
 pub fn bitreverse_inplace<T: Copy>(arr: &mut [T]) {
     let n = arr.len();
@@ -788,6 +797,46 @@ pub fn push_whir_base_pow_entry<const MAX_POW: usize, const MAX_OOD: usize>(
             coefficient,
         });
 }
+#[doc = r" Read one base leaf (two values per column), batch it into"]
+#[doc = r" `acc0` / `acc1` and leave its hash in the hasher state."]
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn read_and_hash_oracle_leaf<
+    I: NonDeterminismSource<BabyBearField>,
+    const BUF_SIZE: usize,
+    const LEAF_WORDS: usize,
+>(
+    hasher: &mut DelegatedBlake2sState,
+    hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<
+        core::mem::MaybeUninit<u32>,
+        BUF_SIZE,
+    >,
+    num_columns: usize,
+    gamma_powers: &[BabyBearExt4],
+    gamma_offset: usize,
+    acc0: &mut BabyBearExt4,
+    acc1: &mut BabyBearExt4,
+    nd_source: &mut I,
+) {
+    use verifier_common::whir::hash_leaf_data_into_state;
+    let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
+    read_and_batch_leaf::<I>(
+        &mut buf[..LEAF_WORDS],
+        num_columns,
+        gamma_powers,
+        gamma_offset,
+        acc0,
+        acc1,
+        nd_source,
+    );
+    let block_end =
+        LEAF_WORDS.next_multiple_of(::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS);
+    if block_end > LEAF_WORDS {
+        hash_buf.zero_range(LEAF_WORDS, block_end);
+    }
+    let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+    hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
+}
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn process_oracle_query<
@@ -812,10 +861,10 @@ pub unsafe fn process_oracle_query<
     query: usize,
     nd_source: &mut I,
 ) -> Result<(), E::Error> {
-    use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
-    let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
-    read_and_batch_leaf::<I>(
-        &mut buf[..LEAF_WORDS],
+    use verifier_common::whir::verify_merkle_path;
+    read_and_hash_oracle_leaf::<I, BUF_SIZE, LEAF_WORDS>(
+        hasher,
+        hash_buf,
         num_columns,
         gamma_powers,
         gamma_offset,
@@ -823,14 +872,64 @@ pub unsafe fn process_oracle_query<
         acc1,
         nd_source,
     );
-    let block_end =
-        LEAF_WORDS.next_multiple_of(::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS);
-    if block_end > LEAF_WORDS {
-        hash_buf.zero_range(LEAF_WORDS, block_end);
-    }
-    let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
-    hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
     if !verify_merkle_path::<I>(hasher, query_index, depth, cap, nd_source) {
+        return Err(E::whir_merkle_path_failed(query));
+    }
+    Ok(())
+}
+#[doc = r" [`process_oracle_query`] for a round opened as a pruned Merkle"]
+#[doc = r" multiproof: the queries come in tree order, and the leaf's path is"]
+#[doc = r" walked only up to the first ancestor a later query shares (see"]
+#[doc = r" `verifier_common::whir::multiproof`)."]
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn process_oracle_query_multiproof<
+    I: NonDeterminismSource<BabyBearField>,
+    E: ErrorCreator,
+    const BUF_SIZE: usize,
+    const LEAF_WORDS: usize,
+    const MAX_DEPTH: usize,
+>(
+    hasher: &mut DelegatedBlake2sState,
+    hash_buf: &mut ::verifier_common::blake2s_u32::AlignedArray64<
+        core::mem::MaybeUninit<u32>,
+        BUF_SIZE,
+    >,
+    num_columns: usize,
+    stack: &mut ::verifier_common::whir::multiproof::MerkleMultiproofStack<MAX_DEPTH>,
+    tree_index: usize,
+    prev_index_equal: bool,
+    next_index: usize,
+    depth: usize,
+    cap: &[u32],
+    gamma_powers: &[BabyBearExt4],
+    gamma_offset: usize,
+    acc0: &mut BabyBearExt4,
+    acc1: &mut BabyBearExt4,
+    query: usize,
+    nd_source: &mut I,
+) -> Result<(), E::Error> {
+    use verifier_common::whir::multiproof::verify_merkle_multiproof_leaf;
+    read_and_hash_oracle_leaf::<I, BUF_SIZE, LEAF_WORDS>(
+        hasher,
+        hash_buf,
+        num_columns,
+        gamma_powers,
+        gamma_offset,
+        acc0,
+        acc1,
+        nd_source,
+    );
+    if !verify_merkle_multiproof_leaf::<I, MAX_DEPTH>(
+        hasher,
+        stack,
+        tree_index,
+        prev_index_equal,
+        next_index,
+        depth,
+        cap,
+        nd_source,
+    ) {
         return Err(E::whir_merkle_path_failed(query));
     }
     Ok(())

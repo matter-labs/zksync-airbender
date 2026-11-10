@@ -17,7 +17,9 @@ DELEGATIONS=(
   blake2_with_extended_control
   bigint_with_extended_control
   keccak_special5
-  blake2_g_function
+  keccak_column_parity
+  keccak_theta_rho
+  keccak_chi5
 )
 # In per_family mode the pipeline exercises the per-family circuits + delegations.
 # In unified mode it exercises unified_reduced_machine + the same delegations.
@@ -122,30 +124,29 @@ usage() {
   cat <<EOF
 Usage: $0 <subcommand> [options] [steps...]
 
-Runs the GKR pipeline. Subcommand picks the circuit set + RISC-V program; steps
+Runs the GKR pipeline. Subcommand picks downstream circuits and diagnostics; steps
 execute in dependency order (topologically sorted from STEP_GRAPH), regardless of
 the order given on the cmdline.
 
 Subcommands:
-  per_family    Per-family circuits + delegations (program: keccak_f1600 default,
-                hashed_fibonacci via GKR_PROGRAM env var)
-  unified       Unified-reduced-machine + delegations (program: multi_family_smoke)
+  per_family    Per-family circuits + production delegations
+  unified       Unified-reduced-machine + production delegations
   recursion     End-to-end recursion pipeline (base -> unrolled -> bridge -> final);
                 configurable for strategy sweeps. See: $0 recursion --help
 
 Options:
   --blake V             blake2_with_compression (default) | blake2_g_function | special_opcodes_extension
-                        Propagated to prover-side program selection via GKR_BLAKE.
-  --variant V           caches (default) | no_caches
+                        Used by verifier binaries and malicious diagnostics.
+  --variant V           caches (the canonical production configuration)
   --security-level L    Security level (currently: 100)
   --prove-empty         Prove every applicable circuit even if program made 0 calls.
-                        Forwarded via GKR_PROVE_EMPTY.
+                        Used only by malicious diagnostics.
   --no-self-checks      Disable in-prove sumcheck/cache/at-point-eval checks.
                         Drops the gkr_self_checks feature; default ON.
   --check-satisfied     Enable the heavyweight constraint-satisfaction check.
                         Adds gkr_check_satisfied feature; default OFF (slow).
   --circuits A,B,...    Subcommand-aware filter; must be a subset of the
-                        subcommand's circuit set. Forwarded via GKR_CIRCUITS.
+                        subcommand's circuit set. Canonical proving always emits all 28 proofs.
   --from STEP           Run STEP plus every step that (transitively) depends on it.
   --warnings            Show compiler warnings (suppressed by default).
   --dry-run             Print what would run without executing.
@@ -154,15 +155,15 @@ Options:
 Steps (run in dependency order, not the order listed here):
   circuits        Compile GKR circuits
   witness_gen     Generate witness evaluation functions
-  build_program   Rebuild the RISC-V example program the prover reads
+  build_program   Rebuild the diagnostic program selected by the subcommand
   generator       Regenerate inlined verifier
-  prover          Generate proof (the slow one)
+  prover          Regenerate all 28 canonical proofs from the shared input recipe
   native          Run native verifier tests
   corruption      Run corruption tests
   binaries        Build RISC-V binaries
   transpiler      Run transpiler tests (writes flamegraphs)
   fsv             Full statement verifier — unified base-layer happy path +
-                  corruption (reads the fixture written by the prover step).
+                  corruption (assembles the committed canonical pair).
                   Unified mode + blake2_with_compression only; no-op otherwise.
 
 Extra step (opt-in, runs last when invoked):
@@ -296,10 +297,10 @@ run_recursion() {
   case "$from" in circuits|generator|binaries) cstage="base" ;; esac
   # clears the named stage AND everything downstream (explicit cascade; no bash-4 `;&`)
   clear_caches() {
-    local base="$pe/base_proofs.bin $pe/base_setups.bin"
-    local unrolled="$pe/recursion_layer_*.bin"
-    local bridge="$pe/bridge_proof*.bin $pe/bridge_setups*.bin"
-    local final="$pe/final_proof*.bin $pe/final_setups*.bin"
+    local base="$pe/base_proofs.json.zlib $pe/base_setups.json.zlib"
+    local unrolled="$pe/recursion_layer_*.json.zlib"
+    local bridge="$pe/bridge_proof*.json.zlib $pe/bridge_setups*.json.zlib"
+    local final="$pe/final_layer_*.json.zlib"
     case "$1" in
       base)     $runner "rm -f $base $unrolled $bridge $final" ;;
       unrolled) $runner "rm -f $unrolled $bridge $final" ;;
@@ -337,8 +338,8 @@ case "$1" in
   *) die "first arg must be 'per_family', 'unified', or 'recursion'. Got: $1 (run with --help)" ;;
 esac
 
-[[ -f Cargo.toml && -d tools/gkr_verifier/src/bin ]] \
-  || die "must run from airbender repo root (Cargo.toml + tools/gkr_verifier/src/bin not found)"
+[[ -f Cargo.toml && -d tools/gkr_verifier/src/bin/circuit_verifiers ]] \
+  || die "must run from airbender repo root (Cargo.toml + tools/gkr_verifier/src/bin/circuit_verifiers not found)"
 
 # Recursion is a self-contained path (its own options + cache-driven stages); it
 # does not use the per_family/unified circuit-set + step machinery below.
@@ -376,8 +377,8 @@ case "$BLAKE" in
 esac
 
 case "$VARIANT" in
-  caches|no_caches) ;;
-  *) die "--variant must be caches or no_caches. Got: $VARIANT" ;;
+  caches) ;;
+  *) die "--variant must be caches for canonical proofs. Got: $VARIANT" ;;
 esac
 
 case "$SECURITY_LEVEL" in
@@ -408,15 +409,16 @@ case "$SECURITY_LEVEL" in
   100)  LEVELS=(sec_100) ;;
 esac
 
-# Single supported level, so a level test-filter is always set.
-LEVEL_TEST_FILTER="_${LEVELS[0]}"
+# The verifier binaries / native and transpiler tests are per soundness mode; the pipeline
+# exercises the production (pessimistic-conjecture) mode.
+SOUNDNESS_MODE="pessimistic_conjecture"
+MODE_TEST_FILTER="_${SOUNDNESS_MODE}"
 
-# CIRCUITS = (base × level), filtered by which bin files actually exist.
+# CIRCUITS = base circuits of the mode (cargo bin names `<base>_<mode>`), filtered by which
+# bin files actually exist.
 CIRCUITS=()
 for base in "${BASE_CIRCUITS[@]}"; do
-  for lvl in "${LEVELS[@]}"; do
-    [[ -f "tools/gkr_verifier/src/bin/${base}_${lvl}.rs" ]] && CIRCUITS+=("${base}_${lvl}")
-  done
+  [[ -f "tools/gkr_verifier/src/bin/circuit_verifiers/${SOUNDNESS_MODE}/${base}.rs" ]] && CIRCUITS+=("${base}_${SOUNDNESS_MODE}")
 done
 
 # ============================================================================
@@ -458,13 +460,6 @@ fi
 # Feature flags + cargo test filter assembly
 # ============================================================================
 FEATURES="${BLAKE}"
-GENERATOR_FEATURES=""
-VARIANT_FEATURES=()
-if [[ "$VARIANT" = "no_caches" ]]; then
-  FEATURES="${FEATURES},no_caches"
-  GENERATOR_FEATURES="${GENERATOR_FEATURES},no_caches"
-  VARIANT_FEATURES=(--features no_caches)
-fi
 
 # Prover-crate additive features. Neither gkr_self_checks nor gkr_check_satisfied
 # is in the prover crate's defaults; each is opt-in via --features.
@@ -482,14 +477,15 @@ fi
 # single "foo|bar" arg matches "|" literally, so each circuit needs its own arg.
 #
 # All four filters derive from BASE_CIRCUITS so the verifier-side test steps
-# stay in sync with what the prover step just generated. Without this, running
+# stay in sync with the requested consumer set. Canonical proving emits the whole set.
+# Without this, running
 # `unified` would still execute every per-family verifier test (against stale
 # per-family proofs) because cargo's substring filter doesn't know about modes.
 GENERATOR_FILTERS=("${BASE_CIRCUITS[@]}")
 CORRUPTION_FILTERS=("${BASE_CIRCUITS[@]}")
 TEST_FILTERS=()
-if [[ -n "$LEVEL_TEST_FILTER" ]]; then
-  for c in "${BASE_CIRCUITS[@]}"; do TEST_FILTERS+=("${c}${LEVEL_TEST_FILTER}"); done
+if [[ -n "$MODE_TEST_FILTER" ]]; then
+  for c in "${BASE_CIRCUITS[@]}"; do TEST_FILTERS+=("${c}${MODE_TEST_FILTER}"); done
 else
   TEST_FILTERS=("${BASE_CIRCUITS[@]}")
 fi
@@ -502,7 +498,7 @@ $SHOW_WARNINGS && DUMP_BIN_WARN_FLAGS=(--warnings)
 # Memory-heavy invocations pin libtest to one thread so N full unified-trace builds
 # don't run concurrently and OOM. Applied only to the two prover-side test SETS that
 # fan out: unified_negative (~26 proptest harnesses) and the 3 per-family malicious
-# generators. (step_prover's gkr_run_unified_test is a single test — no cap needed.)
+# generators. The canonical producer is separately pinned to one test thread.
 HEAVY_TEST_THREADS=(--test-threads=1)
 
 # Common verifier-crate cargo-test prefix (folds the repeated env + features
@@ -534,9 +530,8 @@ run_step() {
   printf "    [%ds] %s\n" "$((SECONDS - start))" "$label"
 }
 
-# Prover-side cargo invocations need RUST_MIN_STACK=100M because deep
-# sumcheck/folding frames overflow the default 8M. GKR_* env vars cascade to
-# the orchestration runtime config (see prover/src/tests/gkr/mod.rs).
+# Malicious diagnostic invocations retain their explicit runtime selectors.
+# The canonical producer below uses only the shared deterministic recipe.
 run_prover_cargo() {
   local circuits_csv=""
   if [[ ${#SELECTED_CIRCUITS[@]} -gt 0 ]]; then
@@ -566,7 +561,9 @@ step_witness_gen() {
       cargo test -p witness_eval_generator -- gen_for_gkr
 }
 
-# Each mode reads a different program. Unified loads
+# Diagnostic workloads remain separate from canonical input selection.
+# Canonical proving reads all workloads named by canonical_fixtures.rs.
+# Unified diagnostics load
 # examples/multi_family_smoke/app_blake2_*.bin (variant picked by GKR_BLAKE).
 # Per-family defaults to riscv_transpiler/examples/keccak_f1600/app.bin (a
 # pre-built artifact — no build step needed). To run per-family with the
@@ -592,19 +589,18 @@ step_build_program() {
 step_generator() {
   run_step "Regenerate verifier (variant=${VARIANT})" \
     env RUSTFLAGS="$WARN_FLAGS" cargo test -p verifier_generator \
-      --no-default-features --features "$GENERATOR_FEATURES" \
+      --no-default-features \
       --test generate_verifiers \
       -- "${GENERATOR_FILTERS[@]+"${GENERATOR_FILTERS[@]}"}"
 }
 
 step_prover() {
-  local filter="gkr_run_basic_unrolled_test${LEVEL_TEST_FILTER}"
-  [[ "$MODE" = "unified" ]] && filter="gkr_run_unified_test${LEVEL_TEST_FILTER}"
-  run_step "Generate proof (mode=${MODE}, self_checks=${SELF_CHECKS}, check_satisfied=${CHECK_SATISFIED})" \
-    run_prover_cargo \
+  run_step "Regenerate all 28 canonical circuit proofs" \
+    in_dir prover env RUST_MIN_STACK=100000000 RUSTFLAGS="$WARN_FLAGS" \
+      cargo test -p prover --profile cli --lib \
       "${PROVER_CARGO_FEATURE_ARGS[@]+"${PROVER_CARGO_FEATURE_ARGS[@]}"}" \
-      "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
-      -- --nocapture "$filter"
+      -- --exact tests::gkr::canonical_proofs::regenerate_canonical_circuit_proofs \
+      --nocapture --test-threads=1
 }
 
 step_native() {
@@ -625,7 +621,7 @@ step_corruption() {
 step_binaries() {
   if [[ ${#CIRCUITS[@]} -eq 0 ]]; then
     echo "ERROR: no bin files found for security-level=${SECURITY_LEVEL}, circuits=${SELECTED_CIRCUITS[*]:-all in $MODE}" >&2
-    echo "  expected tools/gkr_verifier/src/bin/<base>_<level>.rs for level(s): ${LEVELS[*]}" >&2
+    echo "  expected tools/gkr_verifier/src/bin/circuit_verifiers/${SOUNDNESS_MODE}/<base>.rs" >&2
     exit 3
   fi
   run_step "Build RISC-V binaries (blake=${BLAKE}, variant=${VARIANT})" \
@@ -641,12 +637,9 @@ step_transpiler() {
       -- "${TEST_FILTERS[@]+"${TEST_FILTERS[@]}"}" --include-ignored
 }
 
-# Full statement verifier: unified base-layer happy path + corruption. Reads the
-# component bundle written by step_prover's gkr_run_unified_test (Option B; the FSV
-# crate can't depend on the prover). Unified mode only (no per-family FSV base-layer
-# test) and blake2_with_compression only (the only blake variant the FSV crate's
-# Cargo features expose). The fixture's bundled compiled circuits make it variant-
-# agnostic, so no caches/no_caches feature is needed here.
+# Full statement verifier tests assemble the committed compression/unified pair
+# and replay boundary metadata. Native checks cover both soundness modes; the
+# RISC-V binary below uses the default mode and compression Blake implementation.
 step_fsv() {
   if [[ "$MODE" != "unified" ]]; then
     echo "  [fsv] skipped (unified mode only)"
@@ -664,7 +657,8 @@ step_fsv() {
       --blake "$BLAKE" --variant "$VARIANT" fsv_unified_base_layer_sec_100
   run_step "Full statement verifier (unified base layer: native + transpiler)" \
     env RUSTFLAGS="$WARN_FLAGS" cargo test -p full_statement_verifier \
-      --features blake2_with_compression --test unified -- --include-ignored
+      --profile cli --features host_utils,verifiers,blake2_with_compression \
+      --test unified -- --include-ignored --test-threads=1
 }
 
 # per_family: malicious_proof test (#[ignore]) writes corrupted proofs with
@@ -695,7 +689,6 @@ step_malicious() {
       run_step "Generate malicious proofs (corrupt witness, no self-checks)" \
         run_prover_cargo \
           --no-default-features --features prover,bincode,gkr_test_forge \
-          "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
           -- --ignored --nocapture "${HEAVY_TEST_THREADS[@]}" \
           generate_malicious_proofs generate_subword_regression_proof generate_memtuple_regression_proofs
       # --skip rejects_malicious_unified: the unified reject-tests read malicious_unified_*
@@ -709,12 +702,10 @@ step_malicious() {
       run_step "Unified negative tests (constraint + range-lookup layer)" \
         run_prover_cargo \
           "${PROVER_CARGO_FEATURE_ARGS[@]+"${PROVER_CARGO_FEATURE_ARGS[@]}"}" \
-          "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
           -- --nocapture "${HEAVY_TEST_THREADS[@]}" unified_negative
       run_step "Two-field mop single-cycle tests (Proth120 constraint layer)" \
         run_prover_cargo \
           "${PROVER_CARGO_FEATURE_ARGS[@]+"${PROVER_CARGO_FEATURE_ARGS[@]}"}" \
-          "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
           -- --nocapture two_field_mop_tests
       # Proof layer: corrupt the witness and PROVE it. Default features (no
       # PROVER_CARGO_FEATURE_ARGS) ⇒ no gkr_self_checks (the bad witness reaches
@@ -725,7 +716,6 @@ step_malicious() {
       # matching program variant so the proof lines up with the verifier below.
       run_step "Generate malicious unified proofs (corrupt witness, no self-checks)" \
         run_prover_cargo \
-          "${VARIANT_FEATURES[@]+"${VARIANT_FEATURES[@]}"}" \
           -- --ignored --nocapture generate_malicious_unified_proofs
       run_step "Verify malicious unified proofs rejected (soundness gap tests)" \
         "${VERIFIER_TEST[@]}" --test malicious \

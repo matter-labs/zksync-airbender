@@ -29,7 +29,7 @@ pub use execution_prover::{
     RiscvFamilyArtifact,
 };
 pub use execution_prover_model::MachineType;
-pub use gpu_circuit_prover::{UnsupportedGpuSecurityLevel, GPU_SUPPORTED_SECURITY_LEVELS};
+pub use gpu_circuit_prover::GPU_SUPPORTED_SECURITY_LEVELS;
 
 #[cfg(test)]
 gpu_core::force_serial_libtest!();

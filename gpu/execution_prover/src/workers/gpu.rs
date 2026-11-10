@@ -8,22 +8,23 @@ use execution_prover::messages::{
     MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult,
     SetupInitializationRequest, SetupInitializationResult,
 };
-use gpu_circuit_prover::proof::{
-    admit_dr_tail_before_transfers, DrTailPreflightRequest, GpuGKRProofJob,
-};
+use gpu_circuit_prover::proof::GpuGKRProofJob;
 use gpu_core::allocator::tracker::AllocationDirection::{Ascending, Descending};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::GpuGKRSetupTransfer;
+use gpu_gkr::stage1::merged_commitment::{
+    commit_merged_from_transfers, GpuGKRMergedCommitTransfer,
+};
 use gpu_prover_context::{AllocationMode, ProverContext, ProverContextConfig};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
-use gpu_trace::trace::memory::{commit_memory_from_transfers, MemoryCommitmentJob};
-use gpu_trace::trace::memory_transfer::{GpuGKRMemoryTransfer, GpuGKRMemoryTransferHost};
+use gpu_trace::trace::memory::{commit_memory_from_transfers_for_geometry, MemoryCommitmentJob};
+use gpu_trace::trace::memory_cap::{GpuGKRMemoryCapHost, GpuGKRMemoryCapTransfer};
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use log::{debug, error, info, trace};
 
-use crate::upstream::{GKRExternalChallenges, MerkleTreeCapVarLength, SecurityLevel};
+use crate::upstream::{CommitmentMode, GKRExternalChallenges, MerkleTreeCapVarLength};
 use std::ffi::CStr;
 use std::mem;
 use std::process::exit;
@@ -79,7 +80,6 @@ struct RequestState {
     /// completes so their allocators return to the pool.
     inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost<A>>,
     tracing_data_result: Option<gpu_trace::trace::tracing_data::TracingDataHost<A>>,
-    security_level: SecurityLevel,
 }
 
 /// Phase-1 state: H2D transfers scheduled, no GPU job enqueued yet.
@@ -96,11 +96,9 @@ struct PhaseOne<'a> {
 // for no steady-state benefit.
 #[allow(clippy::large_enum_variant)]
 enum PhaseOneInputs<'a> {
-    Proof(
-        gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer<'a, A>,
-        gpu_gkr::DrTailProofPlan,
-    ),
-    MemoryCommitment(gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer<'a, A>),
+    Proof(gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer<'a, A>),
+    MemoryCommitment(gpu_trace::trace::memory::GpuGKRCommitMemoryTransfer<'a, A>),
+    MergedMemoryCommitment(GpuGKRMergedCommitTransfer<'a, A>),
     SetupInitialization,
 }
 
@@ -142,7 +140,6 @@ fn gpu_worker(
         &prover_context_config,
         crate::memory_policy::select_arena_bytes,
     )?;
-    crate::memory_policy::select_arena_bytes(context.get_mem_size());
     info!(
         "GPU_WORKER[{device_id}] initialized the GPU memory allocator with {:.3} GB of usable memory",
         context.get_mem_size() as f64 / 1024.0 / 1024.0 / 1024.0
@@ -201,7 +198,6 @@ fn schedule_phase_one<'a>(
             circuit_type,
             sequence_id,
             precomputations,
-            security_level,
         } = request;
         trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] initializing setup for circuit {circuit_type:?}[{sequence_id}]"
@@ -222,7 +218,6 @@ fn schedule_phase_one<'a>(
             memory_caps: None,
             inits_and_teardowns_result: None,
             tracing_data_result: None,
-            security_level,
         };
         return Ok(PhaseOne {
             state,
@@ -240,7 +235,6 @@ fn schedule_phase_one<'a>(
                 precomputations,
                 inits_and_teardowns,
                 tracing_data,
-                security_level,
             } = req;
             let state = RequestState {
                 batch_id,
@@ -252,7 +246,6 @@ fn schedule_phase_one<'a>(
                 memory_caps: None,
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
-                security_level,
             };
             (state, inits_and_teardowns, tracing_data)
         }
@@ -266,7 +259,6 @@ fn schedule_phase_one<'a>(
                 tracing_data,
                 external_challenges,
                 memory_caps,
-                security_level,
             } = req;
             let state = RequestState {
                 batch_id,
@@ -278,7 +270,6 @@ fn schedule_phase_one<'a>(
                 memory_caps: Some(memory_caps),
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
-                security_level,
             };
             (state, inits_and_teardowns, tracing_data)
         }
@@ -291,139 +282,121 @@ fn schedule_phase_one<'a>(
     let sequence_id = state.sequence_id;
     let is_proof = matches!(state.kind, RequestKind::Proof);
 
-    let proof_prover_config = is_proof.then(|| {
-        gpu_circuit_prover::config::prover_config(circuit_type, state.security_level)
-            .expect("ExecutionProverConfiguration validated GPU security level before GPU work")
+    let config = &state.precomputations.config;
+    let setup_host = state.precomputations.setup_host.get_initialized();
+    let geometry = state.precomputations.geometry;
+    let memory_host = state.memory_caps.as_deref().map(|caps| {
+        let host = GpuGKRMemoryCapHost::from_per_coset_caps_for_geometry(caps, geometry);
+        Arc::new(host)
     });
-    let preflight_request =
-        proof_prover_config
+    let decoder_transfer = if let Some(host) = state.precomputations.decoder_host.as_ref() {
+        Some(DecoderTableTransfer::new(Arc::clone(host), context)?)
+    } else {
+        None
+    };
+
+    // Captured before the host buffer is consumed below. `None` covers both
+    // circuits that carry no i&t at all and the TRIVIAL (dummy) leading unified
+    // chunks — only a unified execution's trailing circuits hold real i&t data.
+    let carried_top_bits = inits_and_teardowns_host
+        .as_ref()
+        .map(|host| host.top_bits.clone());
+
+    let num_teardown_sets = state
+        .precomputations
+        .gkr_programs
+        .compiled_circuit()
+        .memory_layout
+        .teardown_sets
+        .len();
+    let trace_len = circuit_type.get_domain_size();
+    let inits_and_teardowns_transfer = if num_teardown_sets > 0 {
+        Some(InitsAndTeardownsTransfer::new(
+            inits_and_teardowns_host,
+            num_teardown_sets,
+            trace_len,
+            context,
+        )?)
+    } else {
+        None
+    };
+
+    let tracing_data_transfer = if let Some(tracing_data_host) = tracing_data_host {
+        Some(TracingDataTransfer::new(
+            tracing_data_host,
+            trace_len,
+            context,
+        )?)
+    } else {
+        None
+    };
+
+    let inputs: PhaseOneInputs<'a> = if is_proof {
+        let setup_transfer = setup_host
             .as_ref()
-            .map(|prover_config| DrTailPreflightRequest {
-                gkr_programs: &state.precomputations.gkr_programs,
-                prover_config,
-                final_trace_size_log_2: FINAL_TRACE_SIZE_LOG_2,
-                device_id,
-            });
-
-    let inputs = admit_dr_tail_before_transfers(
-        preflight_request,
-        |dr_tail_plan| -> CudaResult<PhaseOneInputs<'a>> {
-            let decoder_transfer = if let Some(host) = state.precomputations.decoder_host.as_ref() {
-                Some(DecoderTableTransfer::new(Arc::clone(host), context)?)
-            } else {
-                None
-            };
-
-            // Captured before the host buffer is consumed below. `None` covers both
-            // circuits that carry no i&t at all and the TRIVIAL (dummy) leading unified
-            // chunks — only a unified execution's trailing circuits hold real i&t data.
-            let carried_top_bits = inits_and_teardowns_host
-                .as_ref()
-                .map(|host| host.top_bits.clone());
-
-            let num_teardown_sets = state
-                .precomputations
-                .gkr_programs
-                .compiled_circuit()
-                .memory_layout
-                .teardown_sets
-                .len();
-            let trace_len = circuit_type.get_domain_size();
-            let inits_and_teardowns_transfer = if num_teardown_sets > 0 {
-                Some(InitsAndTeardownsTransfer::new(
-                    inits_and_teardowns_host,
-                    num_teardown_sets,
-                    trace_len,
-                    context,
-                )?)
-            } else {
-                None
-            };
-
-            let tracing_data_transfer = if let Some(tracing_data_host) = tracing_data_host {
-                Some(TracingDataTransfer::new(
-                    tracing_data_host,
-                    trace_len,
-                    context,
-                )?)
-            } else {
-                None
-            };
-
-            let inputs: PhaseOneInputs<'a> = if is_proof {
-                let setup_transfer =
-                    if let Some(setup_host) = state.precomputations.setup_host.get_initialized() {
-                        Some(GpuGKRSetupTransfer::new(setup_host, context)?)
-                    } else {
-                        None
-                    };
-                // Geometry must match the configuration used to commit the caps.
-                // `circuit_type.get_lde_factor()` / `get_tree_cap_size()` are derived
-                // from `OPTIMAL_FOLDING_PROPERTIES` and can disagree with the
-                // `prover_config` the commit phase actually used, so use the
-                // prover_config geometry directly here.
-                let prover_config = proof_prover_config
-                    .as_ref()
-                    .expect("proof requests construct their prover config before transfers");
-                let log_lde_factor = prover_config.lde_factor.trailing_zeros();
-                let log_tree_cap_size = prover_config.cap_size.trailing_zeros();
-                let memory_caps = state
-                    .memory_caps
-                    .as_ref()
-                    .expect("Proof requires memory_caps");
-                let memory_host = GpuGKRMemoryTransferHost::from_per_coset_caps(
-                    memory_caps,
-                    log_lde_factor,
-                    log_tree_cap_size,
-                );
-                let memory_transfer = GpuGKRMemoryTransfer::new(Arc::new(memory_host), context)?;
-                let external_challenges_value = state
-                    .external_challenges
-                    .expect("Proof requires external_challenges");
-                // Without i&t data the windows are all zero, which is what the unified
-                // verifier requires of its leading instances.
-                let top_bits = carried_top_bits.unwrap_or_else(|| vec![0u32; num_teardown_sets]);
-                assert_eq!(
-                top_bits.len(),
-                num_teardown_sets,
-                "inits-and-teardowns top bits must cover every teardown set of {circuit_type:?}"
-            );
-                let mut bundle =
-                    gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer::<'_, A>::new(
-                        setup_transfer,
-                        decoder_transfer,
-                        inits_and_teardowns_transfer,
-                        tracing_data_transfer,
-                        memory_transfer,
-                        &top_bits,
-                        external_challenges_value,
-                        context,
-                    )?;
-                trace!(
+            .map(|host| GpuGKRSetupTransfer::new(Arc::clone(host), context))
+            .transpose()?;
+        let memory_transfer = GpuGKRMemoryCapTransfer::new(
+            Arc::clone(memory_host.as_ref().expect("proof requires memory caps")),
+            context,
+        )?;
+        let external_challenges_value = state
+            .external_challenges
+            .expect("Proof requires external_challenges");
+        // Without i&t data the windows are all zero, which is what the unified
+        // verifier requires of its leading instances.
+        let top_bits = carried_top_bits.unwrap_or_else(|| vec![0u32; num_teardown_sets]);
+        assert_eq!(
+            top_bits.len(),
+            num_teardown_sets,
+            "inits-and-teardowns top bits must cover every teardown set of {circuit_type:?}"
+        );
+        let mut bundle = gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer::<'_, A>::new(
+            setup_transfer,
+            decoder_transfer,
+            inits_and_teardowns_transfer,
+            tracing_data_transfer,
+            memory_transfer,
+            &top_bits,
+            external_challenges_value,
+            context,
+        )?;
+        trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling proof H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
-                bundle.schedule(context)?;
-                PhaseOneInputs::Proof(
-                    bundle,
-                    dr_tail_plan.expect("proof preflight must return a DR-tail plan"),
-                )
-            } else {
-                let mut bundle =
-                    gpu_trace::trace::memory_transfer::GpuGKRCommitMemoryTransfer::<'_, A>::new(
-                        decoder_transfer,
-                        inits_and_teardowns_transfer,
-                        tracing_data_transfer,
-                        context,
-                    )?;
-                trace!(
+        bundle.schedule(context)?;
+        PhaseOneInputs::Proof(bundle)
+    } else if config.commitment_mode == CommitmentMode::MergedMemoryAndWitness {
+        let setup_transfer = GpuGKRSetupTransfer::new(
+            Arc::clone(
+                setup_host
+                    .as_ref()
+                    .expect("merged commitment requires setup"),
+            ),
+            context,
+        )?;
+        let mut bundle = GpuGKRMergedCommitTransfer::new(
+            setup_transfer,
+            decoder_transfer,
+            inits_and_teardowns_transfer,
+            tracing_data_transfer,
+            context,
+        )?;
+        bundle.schedule(context)?;
+        PhaseOneInputs::MergedMemoryCommitment(bundle)
+    } else {
+        let mut bundle = gpu_trace::trace::memory::GpuGKRCommitMemoryTransfer::<'_, A>::new(
+            decoder_transfer,
+            inits_and_teardowns_transfer,
+            tracing_data_transfer,
+            context,
+        )?;
+        trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling commit-memory H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
-                bundle.schedule(context)?;
-                PhaseOneInputs::MemoryCommitment(bundle)
-            };
-            Ok(inputs)
-        },
-    )??;
+        bundle.schedule(context)?;
+        PhaseOneInputs::MemoryCommitment(bundle)
+    };
 
     Ok(PhaseOne { state, inputs })
 }
@@ -437,23 +410,20 @@ fn enqueue_phase_two<'a>(
     let batch_id = state.batch_id;
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
-    let prover_config =
-        gpu_circuit_prover::config::prover_config(circuit_type, state.security_level)
-            .expect("ExecutionProverConfiguration validated GPU security level before GPU work");
+    let prover_config = &state.precomputations.config;
     let final_trace_size_log_2 = FINAL_TRACE_SIZE_LOG_2;
     let compiled_circuit_arc = Arc::clone(state.precomputations.gkr_programs.compiled_circuit());
 
     let job = match inputs {
-        PhaseOneInputs::Proof(bundle, dr_tail_plan) => {
+        PhaseOneInputs::Proof(bundle) => {
             trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
             );
             let job = gpu_circuit_prover::proof::prove::<A>(
                 &state.precomputations.gkr_programs,
-                &prover_config,
+                prover_config,
                 final_trace_size_log_2,
                 bundle,
-                &dr_tail_plan,
                 crate::memory_policy::policy(circuit_type, context.get_mem_size()),
                 context,
             )?;
@@ -463,11 +433,20 @@ fn enqueue_phase_two<'a>(
             trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing memory commitment for circuit {circuit_type:?}[{sequence_id}]"
             );
-            let job = commit_memory_from_transfers::<A>(
+            let job = commit_memory_from_transfers_for_geometry::<A>(
                 circuit_type,
                 &compiled_circuit_arc,
                 bundle,
-                &prover_config,
+                state.precomputations.geometry,
+                context,
+            )?;
+            JobType::MemoryCommitment(job)
+        }
+        PhaseOneInputs::MergedMemoryCommitment(bundle) => {
+            let job = commit_merged_from_transfers::<A>(
+                &state.precomputations.gkr_programs,
+                prover_config,
+                bundle,
                 context,
             )?;
             JobType::MemoryCommitment(job)

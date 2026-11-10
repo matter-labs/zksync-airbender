@@ -121,6 +121,14 @@ cargo run --release -p cli -- verify \
   --bin examples/basic_fibonacci/app.bin
 ```
 
+## Soundness Mode
+
+`prove`, `prove-batch`, `continue-proof` and `verify` take
+`--soundness-mode pessimistic-conjecture|ethproofs-soundcalc` (default
+`pessimistic-conjecture`). Artifacts record their mode; `continue-proof` and `verify`
+refuse an artifact recorded in another mode and use that mode's own verifier guests.
+The L1 feeder/wrap/EVM profile exists only in `pessimistic-conjecture`.
+
 ## Prove Batch
 
 ```bash
@@ -157,6 +165,7 @@ cargo run --release -p cli -- run --bin examples/basic_fibonacci/app.bin --expec
 
 - `schema_version`
 - `security_level`
+- `soundness_mode`
 - `target`
 - `backend`
 - `batch_id`

@@ -72,19 +72,13 @@ summary — the contract document is the source of truth.
   `gpu_trace`/`gpu_gkr`/`gpu_whir`.
 - `src/lib.rs`: crate root; declares `config`, `proof`, `upstream` (+
   `#[cfg(test)]` `test_utils`/`tests`).
-- `src/config.rs`: prover configuration policy — maps a `CircuitType` +
-  `SecurityLevel` to the canonical upstream `ProverConfig`, and owns
-  `GPU_SUPPORTED_SECURITY_LEVELS` / `UnsupportedGpuSecurityLevel`. The GPU
-  prover implements only the unpacked base commitment: `prove()`, its DR
-  preflight and `gpu_trace`'s memory commitments reject
-  `ProverConfig::pack_log2 != 0` via
-  `gpu_trace::trace::memory::assert_unpacked_prover_config` before enqueuing
-  any commitment or proof kernel (the preflight before constructing transfers).
+- `src/config.rs`: owns `GPU_SUPPORTED_SECURITY_LEVELS`. Circuit types resolve
+  their canonical upstream `ProverConfig` directly.
 - `src/proof/`:
   - `inputs.rs`: the consolidated H2D transfer bundle
     (`GpuGKRProofTransfer`) — one shared `Transfer` (from `gpu_prover_context`)
     for every pre-prove H2D piece.
-  - `orchestration/` (private, selectively re-exported): `backward.rs`,
+  - `orchestration/`: `backward.rs`,
     `stage1_forward.rs`, `terminal.rs`, `whir.rs` — the phases of the
     `prove()` pipeline. `proof::prove()` (in `proof/mod.rs`) is the sole
     production entry point; it dispatches on `CircuitType` +
@@ -119,8 +113,9 @@ clearly-marked `#[cfg(test)]` section of the same manifest file.
 
 This crate's own module DAG is small: `config` and `proof::inputs` are leaves;
 `proof::orchestration` drives `gpu_trace`/`gpu_gkr`/`gpu_whir` directly.
-`proof::prove()` is the only production entry point exposed upward to
-`gpu_execution_prover`.
+`proof::prove()` is the proof entry point exposed upward to
+`gpu_execution_prover`; merged memory jobs use
+`gpu_gkr::stage1::merged_commitment::commit_merged_from_transfers`.
 
 The crate stack itself — which modules became `gpu_core` / `gpu_ntt` /
 `gpu_ops` / `gpu_hash` / `gpu_prover_context` / `gpu_trace` /

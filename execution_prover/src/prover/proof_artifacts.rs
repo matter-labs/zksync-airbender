@@ -145,6 +145,10 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
     ) -> CommitMemoryResult {
+        assert!(
+            self.host_pool_allocation.is_none() && self.pending_setup_initializations.is_empty(),
+            "setup must be finalized before proving or reading artifacts"
+        );
         let non_determinism_source = Arc::new(Mutex::new(Some(non_determinism_source)));
         self.commit_memory_inner(&mut None, batch_id, *handle, non_determinism_source)
     }
@@ -155,6 +159,10 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         commit_ticket: CommitMemoryResult,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
     ) -> ProveResult {
+        assert!(
+            self.host_pool_allocation.is_none() && self.pending_setup_initializations.is_empty(),
+            "setup must be finalized before proving or reading artifacts"
+        );
         let binary_key = commit_ticket.binary_handle.0;
         let (pow_challenge, external_challenges, proof_caps) =
             self.derive_proof_artifacts(binary_key, &commit_ticket);
@@ -177,6 +185,10 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
     ) -> ProveResult {
+        assert!(
+            self.host_pool_allocation.is_none() && self.pending_setup_initializations.is_empty(),
+            "setup must be finalized before proving or reading artifacts"
+        );
         let binary_key = handle.0;
         let nd_wrapper = NonDeterminismWrapper::new(non_determinism_source);
         let non_determinism_source = Arc::new(Mutex::new(Some(nd_wrapper)));
