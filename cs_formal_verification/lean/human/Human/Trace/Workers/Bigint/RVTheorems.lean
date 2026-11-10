@@ -22,4 +22,10 @@ def RVOperationExecutionClaim : Prop :=
       (∀ row ∈ data.rows, row.family = .bigint → ArithmeticEffects row.assignment) ∧
       RVCalls data before cells
 
+/-- The assumptions of `RVOperationExecutionClaim` can be met by a pool with a bigint row. -/
+def RVOperationExecutionSatisfiableClaim : Prop :=
+  ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Trace.Cell),
+    Delegation.MemoryAccepted data ∧ Delegation.RVMemoryInputs data before cells ∧ (∀ cell ∈ cells, cell.Aligned) ∧
+      data.setup.bigint = setupTable ∧ ∃ row ∈ data.rows, row.family = .bigint
+
 end Airbender.Bigint.Native

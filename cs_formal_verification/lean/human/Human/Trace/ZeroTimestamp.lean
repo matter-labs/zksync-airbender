@@ -56,6 +56,13 @@ def NoZeroTimestampWritesClaim : Prop :=
       (decodeTimestamp row.assignment row.columns.invocation).hi < timestampBase),
     ∀ row ∈ data.rows, ∀ port ∈ row.ports, 2 ≤ (timeOfPair (row.writeToken port).time).value
 
+/-- The assumptions of `NoZeroTimestampWritesClaim` can be met by a pool with a row that has a port. -/
+def NoZeroTimestampWritesSatisfiableClaim : Prop :=
+  ∃ data : MemoryData babyBearModulus,
+    (∀ row ∈ data.rows, (decodeTimestamp row.assignment row.columns.invocation).lo + 2 < timestampBase) ∧
+    (∀ row ∈ data.rows, (decodeTimestamp row.assignment row.columns.invocation).hi < timestampBase) ∧
+    ∃ row ∈ data.rows, ∃ port, port ∈ row.ports
+
 end Airbender.Delegation
 
 namespace Airbender.Keccak.Split.Native
@@ -69,5 +76,12 @@ def NoZeroTimestampWritesClaim : Prop :=
     (_invocationHigh : ∀ row ∈ data.rows,
       (decodeTimestamp row.assignment row.columns.invocation).hi < timestampBase),
     ∀ row ∈ data.rows, ∀ port ∈ row.ports, 2 ≤ (timeOfPair (row.writeToken port).time).value
+
+/-- The assumptions of `NoZeroTimestampWritesClaim` can be met by a pool with a row that has a port. -/
+def NoZeroTimestampWritesSatisfiableClaim : Prop :=
+  ∃ data : MemoryData babyBearModulus,
+    (∀ row ∈ data.rows, (decodeTimestamp row.assignment row.columns.invocation).lo + 2 < timestampBase) ∧
+    (∀ row ∈ data.rows, (decodeTimestamp row.assignment row.columns.invocation).hi < timestampBase) ∧
+    ∃ row ∈ data.rows, ∃ port, port ∈ row.ports
 
 end Airbender.Keccak.Split.Native

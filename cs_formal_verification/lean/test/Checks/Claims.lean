@@ -76,6 +76,8 @@ import Slop.Final.Circuits.WordMemory.Artifact
 import Slop.Final.Import.Columns
 import Slop.Final.Import.Theorems
 import Human.Import.Theorems
+-- P4.2 non-vacuity: the claims' assumptions can be met
+import Slop.Final.Trace.Satisfiable.Pools
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
@@ -324,3 +326,20 @@ example : Airbender.ConstantsClaim := @Airbender.constants_claim
 #print axioms Airbender.Json.text_unique
 #print axioms Airbender.decode_claim
 #print axioms Airbender.constants_claim
+-- P4.2 non-vacuity (statements)
+example : Airbender.Delegation.RVNativeMemoryExecutionSatisfiableClaim := @Airbender.Delegation.rv_native_memory_execution_satisfiable
+#print axioms Airbender.Delegation.rv_native_memory_execution_satisfiable
+example : Airbender.Delegation.RVOperationMemorySoundnessSatisfiableClaim := @Airbender.Delegation.rv_operation_memory_soundness_satisfiable
+#print axioms Airbender.Delegation.rv_operation_memory_soundness_satisfiable
+example : Airbender.Delegation.RVMemorySoundnessSatisfiableClaim := @Airbender.Delegation.rv_memory_soundness_satisfiable
+#print axioms Airbender.Delegation.rv_memory_soundness_satisfiable
+example : Airbender.Delegation.NoZeroTimestampWritesSatisfiableClaim := @Airbender.Delegation.no_zero_timestamp_writes_satisfiable
+#print axioms Airbender.Delegation.no_zero_timestamp_writes_satisfiable
+example : Airbender.Keccak.Split.Native.NoZeroTimestampWritesSatisfiableClaim := @Airbender.Keccak.Split.Native.no_zero_timestamp_writes_satisfiable
+#print axioms Airbender.Keccak.Split.Native.no_zero_timestamp_writes_satisfiable
+example : Airbender.Delegation.WritesRangeCheckedSatisfiableClaim := @Airbender.Delegation.writes_range_checked_satisfiable
+#print axioms Airbender.Delegation.writes_range_checked_satisfiable
+example : Airbender.InitsTeardowns.WritesRangeCheckedSatisfiableClaim := @Airbender.InitsTeardowns.writes_range_checked_satisfiable
+#print axioms Airbender.InitsTeardowns.writes_range_checked_satisfiable
+example : Airbender.Bigint.Native.RVOperationExecutionSatisfiableClaim := @Airbender.Bigint.Native.rv_operation_execution_satisfiable
+#print axioms Airbender.Bigint.Native.rv_operation_execution_satisfiable

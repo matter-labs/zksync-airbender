@@ -56,6 +56,15 @@ def WritesRangeCheckedClaim : Prop :=
   ∀ {data : MemoryData babyBearModulus} {control : Fin 4096 → Vector Nat 6} (_accepted : MemoryAccepted data) (_tables : data.setup = modeledSetup control) (_rounds : ∀ row ∈ data.rows, row.family = .blakeRound → ∃ round, Blake2Round.Memory.RoundMask row.assignment round) (_keccakActive : ∀ row ∈ data.rows, row.family = .keccak → row.assignment Keccak.Variables.execute = 1),
     ∀ row ∈ data.rows, WritesRangeChecked row.memorySteps
 
+/-- The assumptions of `WritesRangeCheckedClaim` can be met by a pool with a row that has ports, all of whose reads
+    are bounded (so the conclusion's premise holds too). -/
+def WritesRangeCheckedSatisfiableClaim : Prop :=
+  ∃ (data : MemoryData babyBearModulus) (control : Fin 4096 → Vector Nat 6), MemoryAccepted data ∧
+    data.setup = modeledSetup control ∧
+    (∀ row ∈ data.rows, row.family = .blakeRound → ∃ round, Blake2Round.Memory.RoundMask row.assignment round) ∧
+    (∀ row ∈ data.rows, row.family = .keccak → row.assignment Keccak.Variables.execute = 1) ∧
+    ∃ row ∈ data.rows, row.memorySteps ≠ [] ∧ ∀ step ∈ row.memorySteps, step.1.word.Bounded
+
 end Airbender.Delegation
 
 namespace Airbender.Keccak.Split.Native
@@ -74,5 +83,9 @@ open Trace
 /-- The inits/teardowns sets, any layout: every `Init` tuple writes the zero word. -/
 def WritesRangeCheckedClaim : Prop :=
   ∀ {p : Nat} {layout : Layout} (w : Witness p layout), ∀ token ∈ w.initTokens, token.word.Bounded
+
+/-- `WritesRangeCheckedClaim` is about some `Init` tuple: an instance of the standalone circuit has one. -/
+def WritesRangeCheckedSatisfiableClaim : Prop :=
+  ∃ w : Witness babyBearModulus importedLayout, ∃ token, token ∈ w.initTokens
 
 end Airbender.InitsTeardowns

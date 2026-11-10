@@ -399,6 +399,7 @@ srcDir = "test"
 roots = [
   "Checks.Claims",
   "Checks.TraceAxioms",
+  "Checks.Satisfiable",
   "Tests.ArtifactImport",
   "Tests.Bigint",
   "Tests.BigintAbi",

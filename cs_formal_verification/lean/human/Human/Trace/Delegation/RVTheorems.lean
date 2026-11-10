@@ -34,4 +34,22 @@ def RVMemorySoundnessClaim : Prop :=
   ∀ {p : Nat} [Fact p.Prime] (_hp : 2 * Trace.timestampBase + 4 < p) {data : MemoryData p} (_accepted : MemoryAccepted data) {before : RV.State} {cells : List Trace.Cell} (_inputs : RVMemoryInputs data before cells),
     MemorySoundness data
 
+/-- The assumptions of `RVNativeMemoryExecutionClaim` can be met (at BabyBear) by a pool with a row. -/
+def RVNativeMemoryExecutionSatisfiableClaim : Prop :=
+  ∃ (data : MemoryData babyBearModulus) (before : RV.State) (cells : List Trace.Cell),
+    2 * Trace.timestampBase + 4 < babyBearModulus ∧ MemoryAccepted data ∧ RVMemoryInputs data before cells ∧
+      (∀ cell ∈ cells, cell.Aligned) ∧ data.rows ≠ []
+
+/-- The assumptions of `RVOperationMemorySoundnessClaim` can be met by a pool with a row. -/
+def RVOperationMemorySoundnessSatisfiableClaim : Prop :=
+  ∃ (data : MemoryData babyBearModulus) (before : RV.State) (cells : List Trace.Cell)
+    (control : Fin 4096 → Vector Nat 6),
+    MemoryAccepted data ∧ RVOperationInputs data before cells control ∧ data.rows ≠ []
+
+/-- The assumptions of `RVMemorySoundnessClaim` can be met (at BabyBear) by a pool with a row. -/
+def RVMemorySoundnessSatisfiableClaim : Prop :=
+  ∃ (data : MemoryData babyBearModulus) (before : RV.State) (cells : List Trace.Cell),
+    2 * Trace.timestampBase + 4 < babyBearModulus ∧ MemoryAccepted data ∧ RVMemoryInputs data before cells ∧
+      data.rows ≠ []
+
 end Airbender.Delegation

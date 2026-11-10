@@ -141,6 +141,8 @@ import Slop.Final.Circuits.WordMemory.Artifact
 import Slop.Final.Import.Columns
 import Slop.Final.Import.Theorems
 import Slop.Final.Trace.UnifiedReduced.RVChainOfSequence
+-- P4.2 non-vacuity: the claims' assumptions can be met
+import Slop.Final.Trace.Satisfiable.Pools
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -1182,3 +1184,12 @@ import Slop.Final.Trace.UnifiedReduced.RVChainOfSequence
 #print axioms Airbender.constants_claim
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.chain_of_sequence
 #print axioms Airbender.UnifiedReduced.Caller.Proofs.prepared_hash_chain_of_sequence
+-- P4.2 non-vacuity (statements)
+#print axioms Airbender.Delegation.rv_native_memory_execution_satisfiable
+#print axioms Airbender.Delegation.rv_operation_memory_soundness_satisfiable
+#print axioms Airbender.Delegation.rv_memory_soundness_satisfiable
+#print axioms Airbender.Delegation.no_zero_timestamp_writes_satisfiable
+#print axioms Airbender.Keccak.Split.Native.no_zero_timestamp_writes_satisfiable
+#print axioms Airbender.Delegation.writes_range_checked_satisfiable
+#print axioms Airbender.InitsTeardowns.writes_range_checked_satisfiable
+#print axioms Airbender.Bigint.Native.rv_operation_execution_satisfiable
