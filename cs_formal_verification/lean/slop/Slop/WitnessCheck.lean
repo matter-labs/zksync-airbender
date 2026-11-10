@@ -109,6 +109,26 @@ def staticChecked {n : Nat} (T : Table F (fields n)) {S : StaticTable F (fields 
       · simp only [Bool.false_eq_true] at hc
     · simp only [Bool.false_eq_true] at hc
 
+/-- `staticChecked` for a static table of any row type (pairs, triples), given that reading a row back from its
+    elements gives the row. -/
+def staticRowChecked {Row : TypeMap} [ProvableType Row] (T : Table F Row) {S : StaticTable F Row}
+    (h : T = Table.fromStatic S) (roundtrip : ∀ r : Row F, fromElements (toElements r) = r) : CheckedTable F where
+  table := T.toRaw
+  check xs := if hn : xs.length = size Row then
+      if hi : S.index (fromElements ⟨⟨xs⟩, hn⟩) < S.length then listEq (toElements (S.row ⟨_, hi⟩)).toList xs
+      else false
+    else false
+  sound row hc := by
+    subst h
+    split at hc
+    · split at hc
+      · rename_i hi
+        generalize (⟨_, hi⟩ : Fin S.length) = k at hc
+        have equal : toElements (S.row k) = row := Vector.toList_inj.mp (eq_of_listEq hc)
+        exact ⟨k, by rw [← equal, roundtrip]⟩
+      · simp only [Bool.false_eq_true] at hc
+    · simp only [Bool.false_eq_true] at hc
+
 end Airbender.Verification
 
 namespace Airbender.Verification

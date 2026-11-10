@@ -16,9 +16,10 @@ namespace Airbender.JumpBranchSlt
 namespace Comparison
 
 /-- Every accepted SLT/SLTI/SLTU/SLTIU row is one step of our spec from the row's pre-state: `rd` := the row's result,
-    PC := the row's final PC, nothing else changed. -/
+    PC := the row's final PC, nothing else changed. The assumptions can be met: some accepted, decoded trace meeting
+    them has such a row (`Trace.RVRowClaim`). -/
 def RVSoundnessClaim : Prop :=
-  Trace.RVRowSoundness .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs fun input output =>
+  Trace.RVRowClaim .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs fun input output =>
     ∃ s', RV.step input.before = some s' ∧
       RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
 
@@ -27,9 +28,10 @@ end Comparison
 namespace Branch
 
 /-- Every accepted BEQ/BNE/BLT/BGE/BLTU/BGEU row is one step of our spec from the row's pre-state: PC := the row's
-    final PC (the taken target or PC + 4), nothing else changed (the row's destination goes to x0). -/
+    final PC (the taken target or PC + 4), nothing else changed (the row's destination goes to x0). The assumptions can
+    be met: some accepted, decoded trace meeting them has a branch row (`Trace.RVRowClaim`). -/
 def RVSoundnessClaim : Prop :=
-  Trace.RVRowSoundness .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs fun input output =>
+  Trace.RVRowClaim .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs fun input output =>
     ∃ s', RV.step input.before = some s' ∧ RV.Same s' (input.before.setPC output.pc.toBitVec)
 
 end Branch
@@ -37,9 +39,10 @@ end Branch
 namespace Jump
 
 /-- Every accepted JAL/JALR row is one step of our spec from the row's pre-state: `rd` := the row's link value
-    (x0: discarded), PC := the row's final PC (the jump target), nothing else changed. -/
+    (x0: discarded), PC := the row's final PC (the jump target), nothing else changed. The assumptions can be met: some
+    accepted, decoded trace meeting them has a jump row (`Trace.RVRowClaim`). -/
 def RVSoundnessClaim : Prop :=
-  Trace.RVRowSoundness .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs fun input output =>
+  Trace.RVRowClaim .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs fun input output =>
     ∃ s', RV.step input.before = some s' ∧
       RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
 
