@@ -18,9 +18,10 @@ open Reference.RiscV Trace
 
 /-- Every accepted ADD/ADDI/SUB/LUI/AUIPC row is one step of our spec: from the row's pre-state (`input.before`), the
     step exists and gives the row's post-state: `rd` := the row's result (x0: discarded), PC := the row's final PC,
-    nothing else changed. -/
+    nothing else changed. Its assumptions can be met: some accepted, decoded trace meeting `RVInterfaceAssumptions`
+    has such a row (`Trace.RVRowClaim`). -/
 def RVSoundnessClaim : Prop :=
-  Trace.RVRowSoundness .addSub RVInput.before rvInstruction RVWordMapping RVInterfaceAssumptions fun input output =>
+  Trace.RVRowClaim .addSub RVInput.before rvInstruction RVWordMapping RVInterfaceAssumptions fun input output =>
     ∃ s', RV.step input.before = some s' ∧
       RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
 
