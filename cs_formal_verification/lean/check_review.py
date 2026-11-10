@@ -83,6 +83,10 @@ def check_links():
 
 
 def inventory(modules, references):
+    """Run Lean on the claim modules: `DOC_DECL ref` for each guide name that resolves to a public declaration (the
+    name itself or a dotted suffix of one), `REVIEW_THEOREM` for each public theorem of a claim module. Only the claim
+    modules' own declarations are visited for theorems, and only names not found exactly are matched against every
+    declaration (visiting all ~540k imported declarations for theorems cost ~25 s)."""
     imports = ["Checks.Axioms", *modules, "Lean"]
     names = ", ".join('"' + name + '"' for name in sorted(references))
     code = "\n".join("import " + module for module in imports) + f'''
@@ -91,18 +95,25 @@ run_cmd do
   let env ← getEnv
   let mut refs : Std.HashMap String (List String) := {{}}
   for ref in ([{names}] : List String) do
-    let last := (ref.splitOn ".").getLast!
-    refs := refs.insert last (ref :: refs[last]?.getD [])
-  for (name, info) in env.constants.toList do
-    if !isPrivateName name then
-      if let .str _ last := name then
-        for ref in refs[last]?.getD [] do
-          if name.toString == ref || name.toString.endsWith ("." ++ ref) then
-            logInfo m!"DOC_DECL {{ref}}"
-      if let .thmInfo _ := info then
-        if let some idx := env.getModuleIdxFor? name then
-          let mod := env.header.moduleNames[idx]!
-          if mod.toString.startsWith "Human." || mod.toString.startsWith "Slop.Final." then
+    let name := ref.toName
+    if env.contains name && !isPrivateName name && name.toString == ref then
+      logInfo m!"DOC_DECL {{ref}}"
+    else
+      let last := (ref.splitOn ".").getLast!
+      refs := refs.insert last (ref :: refs[last]?.getD [])
+  if !refs.isEmpty then
+    for (name, _) in env.constants.toList do
+      if !isPrivateName name then
+        if let .str _ last := name then
+          for ref in refs[last]?.getD [] do
+            if name.toString == ref || name.toString.endsWith ("." ++ ref) then
+              logInfo m!"DOC_DECL {{ref}}"
+  for h : idx in [0:env.header.moduleNames.size] do
+    let mod := env.header.moduleNames[idx]
+    if mod.toString.startsWith "Human." || mod.toString.startsWith "Slop.Final." then
+      for name in env.header.moduleData[idx]!.constNames do
+        if !isPrivateName name then
+          if let some (.thmInfo _) := env.find? name then
             if let some ranges ← findDeclarationRanges? name then
               let start := ranges.range.pos
               let finish := ranges.selectionRange.endPos
@@ -179,12 +190,15 @@ def inputs_key(modules):
 
 def main():
     import sys
-    # --key FILE: record the inputs of a passing run; --reuse: skip the Lean part when FILE records these inputs
+    # --key FILE: record the inputs of a passing run; --reuse: skip the Lean part when FILE records these inputs;
+    # --built: do not build the claim modules first
     key_file = Path(sys.argv[sys.argv.index("--key") + 1]) if "--key" in sys.argv else None
     reuse = "--reuse" in sys.argv
     modules = claim_modules()
-    # Build first so the compiler inventory describes the current source tree.
-    subprocess.run(["lake", "build", "Checks.Axioms", *modules], cwd=ROOT, check=True)
+    # Build first so the compiler inventory describes the current source tree (--built: the caller just built them,
+    # as verify.sh does; a second `lake build` would only re-check the whole build graph).
+    if "--built" not in sys.argv:
+        subprocess.run(["lake", "build", "Checks.Axioms", *modules], cwd=ROOT, check=True)
     references = guide_names()
     key = inputs_key(modules) if key_file else None
     if reuse and key_file and key_file.exists() and key_file.read_text().strip() == key:

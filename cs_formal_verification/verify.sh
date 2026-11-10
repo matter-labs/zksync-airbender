@@ -58,7 +58,8 @@ python3 scripts/no_warnings.py .lake/verify-build-CleanCore.log .lake/verify-bui
 echo "== 5. Review guides: every public claim theorem is audited, guide names and links resolve"
 # replay (CI pull requests): the Lean part is skipped when its inputs (guides, audit file, the claim modules' Lake input
 # hashes) equal those of the last passing check, recorded in the build directory; links and layers are always checked
-if [[ $audits == replay ]]; then python3 check_review.py --key .lake/build/review-pass.key --reuse
-else python3 check_review.py --key .lake/build/review-pass.key; fi
+# --built: steps 2 and 3 built every claim module and the audit module it imports
+if [[ $audits == replay ]]; then python3 check_review.py --built --key .lake/build/review-pass.key --reuse
+else python3 check_review.py --built --key .lake/build/review-pass.key; fi
 
 echo "OK"
