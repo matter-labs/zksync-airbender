@@ -98,6 +98,7 @@ the original committed bytes. Both modes retain the
 allocator-baseline, nonce-shape and standalone i/t checks.
 Native FSV tests verify both unified chain artifacts in each soundness mode. Whole-program `*_cpu_gpu_proof_diff` diagnostics
 remain outside this canonical circuit set.
+The GPU workflow also byte-compares the `base_unified` and `unrolled` stages in both modes with the committed CPU artifacts using `FIXTURE_BACKEND=gpu`.
 
 ## Chain artifacts
 

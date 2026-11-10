@@ -11,7 +11,12 @@ fn executable(path: &Path, body: &str) {
 }
 
 fn run(root: &Path, arguments: &[&str]) -> Output {
-    Command::new("bash")
+    run_with_backend(root, arguments, None)
+}
+
+fn run_with_backend(root: &Path, arguments: &[&str], backend: Option<&str>) -> Output {
+    let mut command = Command::new("bash");
+    command
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("regenerate.sh"))
         .args(arguments)
         .env("AB_TEST_ARTIFACT_ROOT", root)
@@ -20,8 +25,14 @@ fn run(root: &Path, arguments: &[&str]) -> Output {
         .env("FIXTURE_CANONICAL_PRODUCER", root.join("producer"))
         .env("TMPDIR", root)
         .env("CI", "true")
-        .output()
-        .unwrap()
+        .env_remove("FIXTURE_BACKEND")
+        .env_remove("EXPECTED_FIXTURE_BACKEND");
+    if let Some(backend) = backend {
+        command
+            .env("FIXTURE_BACKEND", backend)
+            .env("EXPECTED_FIXTURE_BACKEND", backend);
+    }
+    command.output().unwrap()
 }
 
 #[test]
@@ -34,16 +45,19 @@ fn checks_read_committed_parents_and_compare_only_their_stage() {
         r##"#!/usr/bin/env bash
 set -euo pipefail
 action=$1; shift
-proof= output_dir= output_file=
+proof= output_dir= output_file= backend=
 while (($#)); do
   case $1 in
     --proof) proof=$2 ;;
     --output-dir) output_dir=$2 ;;
     --output-file) output_file=$2 ;;
+    --backend) backend=$2 ;;
+    --gpu-memory-preset) exit 1 ;;
   esac
   shift 2
 done
 if [[ $action == verify ]]; then [[ -f $proof ]]; exit; fi
+[[ $backend == "${EXPECTED_FIXTURE_BACKEND:-cpu}" ]]
 if [[ $action == continue-proof ]]; then
   [[ $proof == "$AB_TEST_ARTIFACT_ROOT/fixtures/chains/pessimistic_conjecture/base.json.zlib" ||
      $proof == "$AB_TEST_ARTIFACT_ROOT/fixtures/chains/pessimistic_conjecture/unrolled.json.zlib" ]]
@@ -70,23 +84,36 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
         )
         .unwrap();
     }
-    for stage in ["base_unified", "unrolled"] {
-        let result = run(
-            &root,
-            &[
-                "--check",
-                "--mode",
-                "pessimistic_conjecture",
-                "--stage",
-                stage,
-            ],
-        );
-        assert!(
-            result.status.success(),
-            "{}",
-            String::from_utf8_lossy(&result.stderr)
-        );
+    for backend in [None, Some("cpu"), Some("gpu")] {
+        for stage in ["base_unified", "unrolled"] {
+            let result = run_with_backend(
+                &root,
+                &[
+                    "--check",
+                    "--mode",
+                    "pessimistic_conjecture",
+                    "--stage",
+                    stage,
+                ],
+                backend,
+            );
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+        }
     }
+    for arguments in [vec!["--check"], vec!["--check", "--stage", "circuits"]] {
+        let result = run_with_backend(&root, &arguments, Some("gpu"));
+        assert!(!result.status.success());
+        let error = String::from_utf8_lossy(&result.stderr);
+        assert!(error.contains("FIXTURE_BACKEND=gpu"), "{error}");
+        assert!(error.contains("circuits"), "{error}");
+    }
+    let result = run_with_backend(&root, &["--check", "--stage", "unrolled"], Some("invalid"));
+    assert!(!result.status.success());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("unknown FIXTURE_BACKEND: invalid"));
     // A check owns only its stage; an unrelated stale artifact is not compared.
     let unified = root.join("fixtures/chains/pessimistic_conjecture/unified.json.zlib");
     fs::write(&unified, "stale").unwrap();

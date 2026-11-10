@@ -22,6 +22,15 @@ case $stage_filter in
   ''|circuits|base_unified|unrolled) ;;
   *) echo "unknown stage: $stage_filter" >&2; exit 1 ;;
 esac
+backend=${FIXTURE_BACKEND:-cpu}
+case $backend in
+  cpu|gpu) ;;
+  *) echo "unknown FIXTURE_BACKEND: $backend" >&2; exit 1 ;;
+esac
+if [[ $backend == gpu && ( -z $stage_filter || $stage_filter == circuits ) ]]; then
+  echo "FIXTURE_BACKEND=gpu does not support the circuits stage; use the canonical GPU matrix" >&2
+  exit 1
+fi
 if (( !check )) && [[ -n $stage_filter && $stage_filter != circuits ]]; then
   echo "selecting a chain stage is --check-only; write mode regenerates the whole chain" >&2
   exit 1
@@ -75,7 +84,11 @@ fi
 if [[ $stage_filter != circuits ]]; then
   if [[ -z $cli ]]; then
     [[ ${CI:-} != true ]] || { echo "CI needs FIXTURE_CLI" >&2; exit 1; }
-    cargo build --release -p cli
+    if [[ $backend == gpu ]]; then
+      cargo build --release -p cli --features gpu
+    else
+      cargo build --release -p cli
+    fi
     cli="$repo/target/release/cli"
   fi
   if [[ -z $codec ]]; then
@@ -106,7 +119,7 @@ for mode in "${modes[@]}"; do
   bin="$repo/examples/basic_fibonacci/app.bin"
   chain_out="$out_repo/fixtures/chains/$mode"
   chain_parent="$repo/fixtures/chains/$mode"
-  common=(--bin "$bin" --backend cpu --soundness-mode "$cli_mode" --output-dir "$chain_out" --worker-threads 16)
+  common=(--bin "$bin" --backend "$backend" --soundness-mode "$cli_mode" --output-dir "$chain_out" --worker-threads 16)
   stages=(circuits base_unified unrolled)
   [[ -z $stage_filter ]] || stages=("$stage_filter")
   for stage in "${stages[@]}"; do
@@ -138,7 +151,7 @@ for mode in "${modes[@]}"; do
         if ((check)); then
           FIXTURE_CHAIN_ROOT="$repo/fixtures/chains" FIXTURE_CODEC="$codec" \
             SOUNDNESS_MODE="$cli_mode" SMOKE_OUTPUT_DIR="$out_repo/smoke/$mode" \
-            "$repo/.github/scripts/soundness_mode_smoke.sh" "$cli" "$bin" cpu
+            "$repo/.github/scripts/soundness_mode_smoke.sh" "$cli" "$bin" "$backend"
         fi ;;
       unrolled)
         RECURSION_UNROLLED_LAYERS=1 "$cli" continue-proof "${common[@]}" \

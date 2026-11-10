@@ -97,7 +97,9 @@ jobs:
           mkdir artifacts
           # Build for A100 (sm_80), L4 (sm_89), H100 (sm_90), and RTX PRO 6000 Blackwell (sm_120).
           cargo +"$RUST_TOOLCHAIN" build -p cli --features gpu --profile release-thin --target x86_64-unknown-linux-gnu --timings
+          cargo +"$RUST_TOOLCHAIN" build -p proof_fixtures --bin fixture-codec --profile release-thin --target x86_64-unknown-linux-gnu --timings
           cp target/x86_64-unknown-linux-gnu/release-thin/cli artifacts/cli
+          cp target/x86_64-unknown-linux-gnu/release-thin/fixture-codec artifacts/fixture-codec
 
       - name: Compile GPU tests
         shell: bash
@@ -196,6 +198,25 @@ jobs:
           failed=0
           for test in "${tests[@]}"; do
             timeout 20m "$binary" --exact "$test" --ignored --nocapture --test-threads=1 || failed=1
+          done
+          exit "$failed"
+
+      - name: Program-proof chain parity in both soundness modes
+        shell: bash
+        env:
+          CI: "true"
+          FIXTURE_BACKEND: gpu
+          RUST_MIN_STACK: 1073741824
+        run: |
+          export AB_TEST_ARTIFACT_ROOT="$GITHUB_WORKSPACE"
+          export FIXTURE_CLI="$GITHUB_WORKSPACE/zksync-airbender-gpu/cli"
+          export FIXTURE_CODEC="$GITHUB_WORKSPACE/zksync-airbender-gpu/fixture-codec"
+          chmod +x "$FIXTURE_CLI" "$FIXTURE_CODEC"
+          failed=0
+          for mode in pessimistic_conjecture ethproofs_soundcalc; do
+            for stage in base_unified unrolled; do
+              fixtures/regenerate.sh --check --mode "$mode" --stage "$stage" || failed=1
+            done
           done
           exit "$failed"
 
