@@ -21,6 +21,7 @@ prover = { workspace = true, features = ["prover"] }
 execution_prover = { workspace = true }
 # GPU crates orchestrated by the apex prover.
 gpu_core = { workspace = true }
+gpu_ntt = { workspace = true }
 gpu_hash = { workspace = true }
 gpu_prover_context = { workspace = true }
 gpu_trace = { workspace = true }
@@ -48,12 +49,9 @@ proof_fixtures = { workspace = true }
 gpu_hash = { workspace = true, features = ["deterministic_pow"] }
 prover = { workspace = true, features = ["test", "bincode", "deterministic_pow"] }
 # The e2e suite (tests/) needs more upstream surface than production: it drives
-# fixtures through cs/prover/riscv_transpiler and hashes via gpu_ops. The
-# composed commitment-pipeline test additionally drives gpu_ntt's Mobius / LDE
-# entries directly.
+# fixtures through cs/prover/riscv_transpiler and hashes via gpu_ops.
 circuit_common = { workspace = true }
 common_constants = { workspace = true }
-gpu_ntt = { workspace = true }
 gpu_ops = { workspace = true }
 itertools = "0.14"
 riscv_transpiler = { workspace = true, features = ["jit"] }

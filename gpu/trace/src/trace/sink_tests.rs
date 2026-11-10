@@ -3,9 +3,9 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use gpu_core::primitives::field::PR;
 use gpu_hash::keccak256::{build_retained_layers, Digest};
+use gpu_ntt::proth120::context as pr_twiddles;
 use gpu_ntt::proth120::{
-    dispatch, launch_suffix_micro, lde_coset_slot, CosetSource, DeviceContext, ScaleArgs,
-    SuffixShape,
+    dispatch, launch_suffix_micro, lde_coset_slot, CosetSource, ScaleArgs, SuffixShape,
 };
 
 use super::packed::retained_len;
@@ -83,8 +83,12 @@ fn coefficient_batches_cover_each_tile_once() {
 #[test]
 #[cfg(not(no_cuda))]
 fn sink_coefficient_tree_matches_reference() {
-    let ctx = DeviceContext::create().unwrap();
     let stream = CudaStream::create().unwrap();
+    let mut twiddle_tables = DeviceAllocation::<PR>::alloc(pr_twiddles::TABLE_LEN).unwrap();
+    let mut twiddle_factors = DeviceAllocation::<PR>::alloc(pr_twiddles::FACTOR_LEN).unwrap();
+    let proof_twiddles =
+        pr_twiddles::prepare_proof_twiddles(&mut twiddle_tables, &mut twiddle_factors, &stream)
+            .unwrap();
     // Diagnostic fused suffix8_4 with exact CPU LDE/leaf coefficients.
     for (log_n, log_v, log_lde, k0, cosets) in [(15, 4, 4, 3, 4)] {
         let skip_bottom = 5;
@@ -97,7 +101,7 @@ fn sink_coefficient_tree_matches_reference() {
         let s = SuffixShape::new(&plan, log_n, log_v, skip_bottom, 1);
         let mut prefix = DeviceAllocation::<PR>::alloc(rows * cosets as usize).unwrap();
         lde_coset_slot(
-            &ctx,
+            proof_twiddles,
             &monomials,
             &mut prefix,
             cosets as usize,
@@ -115,7 +119,7 @@ fn sink_coefficient_tree_matches_reference() {
         )
         .unwrap();
         launch_suffix_micro(
-            &ctx,
+            proof_twiddles,
             &prefix,
             rows,
             &mut tiles,
@@ -130,7 +134,7 @@ fn sink_coefficient_tree_matches_reference() {
         let per_coset = retained_len(h, skip_bottom);
         let mut retained = DeviceAllocation::<Digest>::alloc(cosets as usize * per_coset).unwrap();
         launch_sink(
-            &ctx,
+            proof_twiddles,
             &tiles,
             &s,
             0,

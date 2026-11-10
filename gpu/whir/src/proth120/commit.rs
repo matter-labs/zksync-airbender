@@ -8,7 +8,7 @@ use gpu_core::primitives::nvtx::scoped_range;
 use gpu_hash::keccak256::{
     build_top_tree, gather_tree_cap, retained_layer_offset, transcript_commit_u32, Digest,
 };
-use gpu_ntt::proth120::{dispatch, SuffixShape};
+use gpu_ntt::proth120::{dispatch, SuffixShape, TwiddleDescriptor};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::sink::{
     coefficient_tiles_len, commit_coefficient_cosets, commit_residue_cosets, has_leaf_sink,
@@ -27,11 +27,11 @@ pub(crate) struct IntermediateOracle {
     pub(crate) cap: DeviceAllocation<Digest>,
 }
 
-fn validate_oracle_shape(shape: &OracleShape, context: &ProverContext) {
-    let log_max_domain = context.proth120_ntt_device_context().log_max_domain();
+fn validate_oracle_shape(shape: &OracleShape) {
+    let log_max_domain = gpu_ntt::proth120::LOG_MAX_DOMAIN;
     assert!(
         shape.log_domain <= log_max_domain,
-        "Proth120 WHIR: oracle log_domain exceeds the Proth120 context log_max_domain"
+        "Proth120 WHIR: oracle log_domain exceeds the Proth120 NTT domain"
     );
     assert!(
         shape.tile_cosets_log2 <= shape.log_lde,
@@ -49,9 +49,10 @@ pub(crate) fn schedule_commit_intermediate(
     shape: &OracleShape,
     cap_dst: &mut DeviceSlice<Digest>,
     seed: &mut DeviceSlice<u8>,
+    twiddles: TwiddleDescriptor,
     context: &ProverContext,
 ) -> CudaResult<IntermediateOracle> {
-    validate_oracle_shape(shape, context);
+    validate_oracle_shape(shape);
     assert_eq!(
         monomials.len(),
         1 << shape.log_n,
@@ -91,7 +92,7 @@ pub(crate) fn schedule_commit_intermediate(
         )?;
         for k0 in (0..cosets).step_by(tile_cosets) {
             commit_residue_cosets(
-                context.proth120_ntt_device_context(),
+                twiddles,
                 &copy,
                 shape.log_n,
                 shape.log_v,
@@ -106,7 +107,7 @@ pub(crate) fn schedule_commit_intermediate(
             )?;
         }
     } else {
-        schedule_commit_retained(&copy, shape, &mut retained, context)?;
+        schedule_commit_retained(&copy, shape, &mut retained, twiddles, context)?;
     }
     let _r = scoped_range(Some("ab"), "whir.commit.top");
     kernels::place_roots(&retained, r, shape.log_lde, &mut roots, stream)?;
@@ -131,6 +132,7 @@ fn schedule_commit_retained(
     copy: &DeviceSlice<PR>,
     shape: &OracleShape,
     retained: &mut DeviceSlice<Digest>,
+    twiddles: TwiddleDescriptor,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let cosets = 1usize << shape.log_lde;
@@ -163,7 +165,7 @@ fn schedule_commit_retained(
     )?;
     for k0 in (0..cosets).step_by(tile_cosets) {
         commit_coefficient_cosets(
-            context.proth120_ntt_device_context(),
+            twiddles,
             copy,
             &plan,
             &suffix,

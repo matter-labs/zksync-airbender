@@ -6,12 +6,12 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use gpu_core::primitives::device_structures::{MutPtrAndStride, PtrAndStride};
 use gpu_core::primitives::field::PR;
 
-use super::context::{DeviceContext, TwiddleDescriptor};
+use super::context::TwiddleDescriptor;
 use super::lde::{
     set_max_dynamic_smem, ChunkMap, DitPolicy, TransformPass, TransformPolicy,
     MAX_COLUMNS_PER_LAUNCH,
 };
-use super::{validate_context_log, validate_disjoint, validate_slice};
+use super::{validate_disjoint, validate_domain_log, validate_slice};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -561,7 +561,7 @@ fn validate_coset(scale: &ScaleArgs, log_n: u32, cosets: usize, log_max_domain: 
 // coefficient i scaled by offset_k^i in the first pass; output stays in the network's order.
 // With `CosetSource::Batched` the output columns are cosets k0.. of one monomial column.
 pub fn lde_coset_slot(
-    ctx: &DeviceContext,
+    ctx: TwiddleDescriptor,
     monomials: &DeviceSlice<PR>,
     prefix_out: &mut DeviceSlice<PR>,
     cols: usize,
@@ -587,7 +587,7 @@ pub fn lde_coset_slot(
         &output_range,
         "Proth120 prefix: input/output overlap",
     );
-    validate_context_log(ctx, plan.log_n);
+    validate_domain_log(ctx, plan.log_n);
     validate_coset(
         &scale,
         plan.log_n,
@@ -595,13 +595,13 @@ pub fn lde_coset_slot(
         ctx.log_max_domain(),
     );
     launch_prefix_chunked(
-        &DitPolicy(ctx.descriptor()),
+        &DitPolicy(ctx),
         PtrAndStride::new(monomials.as_ptr(), if batched { 0 } else { rows }),
         MutPtrAndStride::new(prefix_out.as_mut_ptr(), rows),
         cols,
         plan,
         Some(FirstPassScale {
-            descriptor: ctx.descriptor(),
+            descriptor: ctx,
             scale,
         }),
         stream,

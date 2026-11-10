@@ -8,6 +8,7 @@ use gpu_core::primitives::device_structures::{MutPtrAndStride, PtrAndStride};
 use gpu_core::primitives::field::PR;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
+use super::context as pr_twiddles;
 use super::hypercube::MobiusPolicy;
 use super::lde::{
     launch_transform, set_max_dynamic_smem, ChunkMap, TransformPass, TransformPolicy,
@@ -16,7 +17,6 @@ use super::prefix::{
     chunk_plan, dispatch, launch_prefix_chunked, narrow_groups, prefix_groups, ChunkPlan,
     CosetSource, PrefixPass, ScaleArgs,
 };
-use super::DeviceContext;
 use crate::upstream::{domain_generator_for_size, Field};
 
 const MIB: usize = 1 << 20;
@@ -417,7 +417,11 @@ fn scaled_prefix_plan(log_n: u32) -> ChunkPlan {
 fn pr_lde_coset_slot_fused_scale_parity() {
     use super::lde_coset_slot;
     let stream = CudaStream::create().unwrap();
-    let ctx = DeviceContext::create().unwrap();
+    let mut twiddle_tables = DeviceAllocation::<PR>::alloc(pr_twiddles::TABLE_LEN).unwrap();
+    let mut twiddle_factors = DeviceAllocation::<PR>::alloc(pr_twiddles::FACTOR_LEN).unwrap();
+    let proof_twiddles =
+        pr_twiddles::prepare_proof_twiddles(&mut twiddle_tables, &mut twiddle_factors, &stream)
+            .unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_3201);
     // Diagnostic row counts, production column counts; exact CPU oracle.
     for (log_n, cols) in [(19, 12), (19, 2), (15, 1)] {
@@ -448,7 +452,7 @@ fn pr_lde_coset_slot_fused_scale_parity() {
             },
         ] {
             lde_coset_slot(
-                &ctx,
+                proof_twiddles,
                 &device_monomials,
                 &mut candidate,
                 cols,
@@ -472,7 +476,7 @@ fn pr_lde_coset_slot_fused_scale_parity() {
     let device_column = upload(&column);
     let mut candidate = DeviceAllocation::<PR>::alloc(rows * 4).unwrap();
     lde_coset_slot(
-        &ctx,
+        proof_twiddles,
         &device_column,
         &mut candidate,
         4,
@@ -497,8 +501,12 @@ fn pr_lde_coset_slot_fused_scale_parity() {
 fn pr_lde_coset_slot_small_l2_parity() {
     use super::lde_coset_slot;
 
-    let ctx = DeviceContext::create().unwrap();
     let stream = CudaStream::create().unwrap();
+    let mut twiddle_tables = DeviceAllocation::<PR>::alloc(pr_twiddles::TABLE_LEN).unwrap();
+    let mut twiddle_factors = DeviceAllocation::<PR>::alloc(pr_twiddles::FACTOR_LEN).unwrap();
+    let proof_twiddles =
+        pr_twiddles::prepare_proof_twiddles(&mut twiddle_tables, &mut twiddle_factors, &stream)
+            .unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_3401);
     let k = 5u32;
     // Diagnostic rows with the production base/setup columns and WHIR fold.
@@ -520,7 +528,7 @@ fn pr_lde_coset_slot_small_l2_parity() {
             let shape = dispatch(log_n, columns, log_v, skip_bottom, l2_mib * MIB);
             let plan = &shape.prefix;
             lde_coset_slot(
-                &ctx,
+                proof_twiddles,
                 &device_monomials,
                 &mut candidate,
                 cols,
@@ -530,7 +538,7 @@ fn pr_lde_coset_slot_small_l2_parity() {
             )
             .unwrap();
             lde_coset_slot(
-                &ctx,
+                proof_twiddles,
                 &device_monomials,
                 &mut reference,
                 cols,

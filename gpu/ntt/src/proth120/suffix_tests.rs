@@ -1,3 +1,4 @@
+use super::context as pr_twiddles;
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -9,7 +10,7 @@ use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use super::prefix::{chunk_plan, narrow_groups, prefix_groups, ChunkPlan};
 use super::suffix::{launch_suffix_micro, SuffixShape};
-use super::{lde_coset_slot, CosetSource, DeviceContext, ScaleArgs};
+use super::{lde_coset_slot, CosetSource, ScaleArgs};
 use crate::upstream::{domain_generator_for_size, Field};
 
 fn reverse_bits(value: usize, bits: u32) -> usize {
@@ -130,8 +131,12 @@ fn reference_plan(log_n: u32, r: u32) -> ChunkPlan {
 #[test]
 #[cfg(not(no_cuda))]
 fn pr_suffix_micro_matches_reference() {
-    let ctx = DeviceContext::create().unwrap();
     let stream = CudaStream::create().unwrap();
+    let mut twiddle_tables = DeviceAllocation::<PR>::alloc(pr_twiddles::TABLE_LEN).unwrap();
+    let mut twiddle_factors = DeviceAllocation::<PR>::alloc(pr_twiddles::FACTOR_LEN).unwrap();
+    let proof_twiddles =
+        pr_twiddles::prepare_proof_twiddles(&mut twiddle_tables, &mut twiddle_factors, &stream)
+            .unwrap();
     let twiddles = Twiddles {
         root: domain_generator_for_size::<PR>(1u64 << 31),
         log_max_domain: 31,
@@ -170,7 +175,7 @@ fn pr_suffix_micro_matches_reference() {
             CosetSource::Constant(k0)
         };
         lde_coset_slot(
-            &ctx,
+            proof_twiddles,
             &device_monomials,
             &mut prefix,
             if batched {
@@ -209,7 +214,7 @@ fn pr_suffix_micro_matches_reference() {
             let mut tile_buffer =
                 DeviceAllocation::<PR>::alloc(tile_coset_stride * cosets as usize).unwrap();
             launch_suffix_micro(
-                &ctx,
+                proof_twiddles,
                 &prefix,
                 rows * columns as usize,
                 &mut tile_buffer,
@@ -273,8 +278,12 @@ fn pr_suffix_micro_matches_reference() {
 #[test]
 #[cfg(not(no_cuda))]
 fn pr_slot_gate_skips_launches() {
-    let ctx = DeviceContext::create().unwrap();
     let stream = CudaStream::create().unwrap();
+    let mut twiddle_tables = DeviceAllocation::<PR>::alloc(pr_twiddles::TABLE_LEN).unwrap();
+    let mut twiddle_factors = DeviceAllocation::<PR>::alloc(pr_twiddles::FACTOR_LEN).unwrap();
+    let proof_twiddles =
+        pr_twiddles::prepare_proof_twiddles(&mut twiddle_tables, &mut twiddle_factors, &stream)
+            .unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_1201);
     // Diagnostic rows with the production base columns and suffix.
     let (log_n, columns, log_v, skip_bottom) = (20u32, 12u32, 1u32, 10u32);
@@ -292,7 +301,7 @@ fn pr_slot_gate_skips_launches() {
     let sentinel = vec![PR::new(5); len];
     let mut reference = DeviceAllocation::<PR>::alloc(len).unwrap();
     lde_coset_slot(
-        &ctx,
+        proof_twiddles,
         &monomials,
         &mut reference,
         columns as usize,
@@ -306,7 +315,7 @@ fn pr_slot_gate_skips_launches() {
     .unwrap();
     let mut reference_tiles = DeviceAllocation::<PR>::alloc(2 * s.tile_len()).unwrap();
     launch_suffix_micro(
-        &ctx,
+        proof_twiddles,
         &reference,
         len,
         &mut reference_tiles,
@@ -324,7 +333,7 @@ fn pr_slot_gate_skips_launches() {
         let gate = upload(&[active]);
         let mut prefix = upload(&sentinel);
         lde_coset_slot(
-            &ctx,
+            proof_twiddles,
             &monomials,
             &mut prefix,
             columns as usize,
@@ -341,7 +350,7 @@ fn pr_slot_gate_skips_launches() {
         .unwrap();
         let mut tiles = upload(&vec![PR::new(5); 2 * s.tile_len()]);
         launch_suffix_micro(
-            &ctx,
+            proof_twiddles,
             &prefix,
             len,
             &mut tiles,
