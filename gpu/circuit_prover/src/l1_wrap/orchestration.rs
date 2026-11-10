@@ -29,7 +29,7 @@ use gpu_trace::trace::packed::{PackedCommitConfig, PackedCosetRecomputeOracle};
 use gpu_trace::trace::tracing_data::{TracingDataDevice, UnrolledTracingDataDevice};
 use gpu_trace::witness::proth120::{
     generate_fused_values, generate_inits_and_teardowns, generate_lookup_multiplicities,
-    Proth120LookupRelations, Proth120WitnessBuffers,
+    Proth120WitnessBuffers,
 };
 use gpu_trace::witness::trace_unrolled::PAGE_SIZE_LOG2;
 use gpu_whir::proth120::{
@@ -54,7 +54,6 @@ pub struct GpuL1WrapProofJob<'a> {
 pub(crate) struct GpuL1WrapProofJobKeepalive<'a> {
     _setup_host: Arc<L1WrapSetupHost>,
     _input_transfer: TransferKeepalive<'a>,
-    _relations: Proth120LookupRelations,
     _challenges: PackedChallenges,
     _gkr: GkrOutputPr,
     _whir: L1WhirKeepalive,
@@ -164,10 +163,8 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         top_bits_host,
         setup_host,
         mut setup,
-        constants: _,
-        relations,
+        constants,
         coefficient_tables,
-        base_claim_indices,
         request_range,
     } = inputs;
     let decoder = decoder.expect("L1Wrap requires a decoder table");
@@ -237,7 +234,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
             &decoder.data_device,
             trace,
             &DeviceMatrix::new(setup.raw().get_hypercube_evals(), rows),
-            &relations,
+            &constants.relations,
             &mut buffers,
             stream,
         )?;
@@ -339,7 +336,7 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         stage_snapshots.as_deref_mut().map(UnsafeMutAccessor::new),
         GkrPreparedInputsPr {
             coefficient_tables,
-            base_claim_indices,
+            base_claim_indices: constants.base_claim_indices,
         },
         &mut callbacks,
         context,
@@ -418,7 +415,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         keepalive: GpuL1WrapProofJobKeepalive {
             _setup_host: setup_host,
             _input_transfer: transfer.into_keepalive(),
-            _relations: relations,
             _challenges: challenges,
             _gkr: gkr,
             _whir: whir.into_keepalive(),

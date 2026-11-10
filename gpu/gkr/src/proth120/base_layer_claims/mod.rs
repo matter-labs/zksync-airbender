@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
 
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
@@ -7,8 +6,6 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
-use gpu_core::primitives::static_host::{alloc_static_pinned_box_from_slice, StaticPinnedBox};
-use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 
 use crate::proth120::programs::GkrProgramsPr;
@@ -16,27 +13,35 @@ use crate::proth120::proof_layout::ProofLayoutPr;
 use crate::transform::logical_protocol_address;
 use crate::upstream::{GKRAddress, PR};
 
-cuda_kernel_signature_arguments_and_function!(pub(crate) PrGatherBaseClaims, claims: *const PR, indices: *const u32, out: *mut PR, count: u32);
-cuda_kernel_declaration!(pub(crate) ab_pr_gkr_gather_base_claims_kernel(claims: *const PR, indices: *const u32, out: *mut PR, count: u32));
+const BASE_CLAIM_COUNT: usize = 106;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(crate) struct DenseClaimIndicesPr {
+    indices: [u32; BASE_CLAIM_COUNT],
+}
+
+cuda_kernel_signature_arguments_and_function!(pub(crate) PrGatherBaseClaims, claims: *const PR, indices: DenseClaimIndicesPr, out: *mut PR, count: u32);
+cuda_kernel_declaration!(pub(crate) ab_pr_gkr_gather_base_claims_kernel(claims: *const PR, indices: DenseClaimIndicesPr, out: *mut PR, count: u32));
 
 #[repr(C)]
 struct GatherArgumentsLayout {
     claims: *const PR,
-    indices: *const u32,
+    indices: DenseClaimIndicesPr,
     out: *mut PR,
     count: u32,
 }
 #[allow(dead_code)]
 pub(crate) const PR_GATHER_ARGUMENT_BYTES: usize = size_of::<GatherArgumentsLayout>();
 const _: () = {
-    assert!(size_of::<GatherArgumentsLayout>() == 32);
-    assert!(std::mem::offset_of!(GatherArgumentsLayout, count) == 24);
+    assert!(size_of::<DenseClaimIndicesPr>() == 424);
+    assert!(size_of::<GatherArgumentsLayout>() == 448);
+    assert!(size_of::<GatherArgumentsLayout>() <= 32764);
+    assert!(std::mem::offset_of!(GatherArgumentsLayout, count) == 440);
 };
 
 pub(crate) struct GatheredBaseClaimsPr {
     pub(crate) values: DeviceAllocation<PR>,
-    _indices: DeviceAllocation<u32>,
-    _indices_host: Arc<StaticPinnedBox<u32>>,
     pub(crate) memory_witness_count: usize,
     pub(crate) setup_count: usize,
 }
@@ -95,106 +100,68 @@ pub(crate) fn final_claim_addresses_pr(
     sources.into_iter().chain(extras.iter().copied()).collect()
 }
 
-/// A circuit's dense base-claim gather indices, built once from its programs and
-/// proof layout; the pinned buffer is the H2D source of every proof's copy.
-pub struct BaseClaimIndicesHostPr {
-    indices: Arc<StaticPinnedBox<u32>>,
+/// Construction-built gather layout for the unified Proth120 circuit.
+#[derive(Clone, Copy)]
+pub struct BaseClaimGatherPr {
+    indices: DenseClaimIndicesPr,
+    claim_count: usize,
+    pub(crate) memory_witness_count: usize,
+    setup_count: usize,
 }
 
-impl BaseClaimIndicesHostPr {
+impl BaseClaimGatherPr {
     pub fn new(
         programs: &GkrProgramsPr,
         layout: &ProofLayoutPr,
         memory_columns: usize,
         witness_columns: usize,
         setup_columns: usize,
-    ) -> CudaResult<Self> {
-        let indices = dense_claim_indices(
-            &final_claim_addresses_pr(programs, layout),
-            memory_columns,
-            witness_columns,
-            setup_columns,
+    ) -> Self {
+        assert_eq!(
+            (memory_columns, witness_columns, setup_columns),
+            (38, 58, 10),
+            "Proth120 unified gather requires 38 memory, 58 witness and 10 setup columns ({BASE_CLAIM_COUNT} total)"
         );
-        Ok(Self {
-            indices: Arc::new(alloc_static_pinned_box_from_slice(&indices)?),
-        })
+        let addresses = final_claim_addresses_pr(programs, layout);
+        let indices =
+            dense_claim_indices(&addresses, memory_columns, witness_columns, setup_columns);
+        Self {
+            indices: DenseClaimIndicesPr {
+                indices: indices
+                    .try_into()
+                    .expect("Proth120 unified base claim count"),
+            },
+            claim_count: addresses.len(),
+            memory_witness_count: memory_columns + witness_columns,
+            setup_count: setup_columns,
+        }
     }
 }
 
-/// A proof's device copy of [`BaseClaimIndicesHostPr`], uploaded with its inputs.
-pub struct BaseClaimIndicesPr {
-    host: Arc<StaticPinnedBox<u32>>,
-    device: DeviceAllocation<u32>,
-}
-
-impl BaseClaimIndicesPr {
-    pub fn allocate(host: &BaseClaimIndicesHostPr, context: &ProverContext) -> CudaResult<Self> {
-        Ok(Self {
-            host: Arc::clone(&host.indices),
-            device: context.alloc(host.indices.len(), AllocationPlacement::BestFit)?,
-        })
-    }
-
-    pub fn schedule_transfer<'a>(
-        &mut self,
-        transfer: &mut Transfer<'a>,
-        context: &ProverContext,
-    ) -> CudaResult<()> {
-        transfer.schedule(Arc::clone(&self.host), &mut self.device, context)
-    }
-}
-
-/// Gathers the dense base claims; `uploaded` indices must equal the ones derived
-/// from `claim_addresses` and arrive through the caller's phase-one transfer.
 pub(crate) fn schedule_gather_base_claims_pr(
     claims: &DeviceSlice<PR>,
-    claim_addresses: &[GKRAddress],
-    memory_columns: usize,
-    witness_columns: usize,
-    setup_columns: usize,
-    uploaded: BaseClaimIndicesPr,
+    gather: BaseClaimGatherPr,
     context: &ProverContext,
 ) -> CudaResult<GatheredBaseClaimsPr> {
     assert_eq!(
         claims.len(),
-        claim_addresses.len(),
+        gather.claim_count,
         "Proth120 claim map length mismatch"
     );
-    let indices = dense_claim_indices(
-        claim_addresses,
-        memory_columns,
-        witness_columns,
-        setup_columns,
-    );
-    assert!(!indices.is_empty(), "Proth120 dense base claims are empty");
-    let count = u32::try_from(indices.len()).expect("Proth120 base claim count exceeds u32");
-    let BaseClaimIndicesPr {
-        host: indices_host,
-        device: device_indices,
-    } = uploaded;
-    assert_eq!(
-        indices_host[..],
-        indices[..],
-        "Proth120 uploaded base-claim indices differ from the final claim layout"
-    );
-    let mut values = context.alloc(indices.len(), AllocationPlacement::BestFit)?;
-
+    let count = BASE_CLAIM_COUNT as u32;
+    let mut values = context.alloc(BASE_CLAIM_COUNT, AllocationPlacement::BestFit)?;
     PrGatherBaseClaimsFunction(ab_pr_gkr_gather_base_claims_kernel).launch(
         &CudaLaunchConfig::basic(count.div_ceil(128), 128, context.get_exec_stream()),
         &PrGatherBaseClaimsArguments::new(
             claims.as_ptr(),
-            device_indices.as_ptr(),
+            gather.indices,
             values.as_mut_ptr(),
             count,
         ),
     )?;
     Ok(GatheredBaseClaimsPr {
         values,
-        _indices: device_indices,
-        _indices_host: indices_host,
-        memory_witness_count: memory_columns
-            .checked_add(witness_columns)
-            .expect("Proth120 raw claim count overflow"),
-        setup_count: setup_columns,
+        memory_witness_count: gather.memory_witness_count,
+        setup_count: gather.setup_count,
     })
 }

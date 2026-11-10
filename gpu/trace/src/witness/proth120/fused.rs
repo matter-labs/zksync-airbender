@@ -1,4 +1,6 @@
-use super::relations::{Proth120LookupExpressions, Proth120LookupRelations};
+use super::relations::{
+    LookupRelationsPr, Proth120LookupExpressions, RANGE_CHECK_16_RELATIONS, TIMESTAMP_RELATIONS,
+};
 use super::Proth120WitnessBuffers;
 use crate::upstream::GKRCircuitArtifact;
 use crate::witness::memory_unrolled::{AuxLayoutData, UnrolledMemoryLayout};
@@ -26,34 +28,46 @@ cuda_kernel!(GenerateFusedProth120Unified,
         scratch: *mut PR,
         generic_lookup_mapping: *mut u32,
         decoder_lookup_mapping: *mut u32,
-        range_check_16_lookup_expressions: Proth120LookupExpressions,
+        range_check_16_lookup_expressions: Proth120LookupExpressions<RANGE_CHECK_16_RELATIONS>,
         range_check_16_lookup_mapping: *mut u32,
-        range_check_timestamp_lookup_expressions: Proth120LookupExpressions,
+        range_check_timestamp_lookup_expressions: Proth120LookupExpressions<TIMESTAMP_RELATIONS>,
         range_check_timestamp_lookup_mapping: *mut u32,
         stride: u32,
         count: u32,
     )
 );
 
+#[repr(C)]
+struct FusedArgumentsLayout {
+    layout: UnrolledMemoryLayout,
+    aux_layout_data: AuxLayoutData,
+    oracle: UnrolledUnifiedOracle,
+    generic_lookup_tables: *const PR,
+    memory: *mut PR,
+    witness: *mut PR,
+    scratch: *mut PR,
+    generic_lookup_mapping: *mut u32,
+    decoder_lookup_mapping: *mut u32,
+    range_check_16: Proth120LookupExpressions<RANGE_CHECK_16_RELATIONS>,
+    range_check_16_mapping: *mut u32,
+    timestamp: Proth120LookupExpressions<TIMESTAMP_RELATIONS>,
+    timestamp_mapping: *mut u32,
+    stride: u32,
+    count: u32,
+}
+const _: () = assert!(size_of::<FusedArgumentsLayout>() <= 32764);
+
 pub fn generate_fused_values(
     circuit: &GKRCircuitArtifact<PR>,
     decoder_table: &DeviceSlice<ExecutorFamilyDecoderData>,
     trace: &UnrolledUnifiedTraceDevice,
     generic_lookup_tables: &impl DeviceMatrixImpl<PR>,
-    relations: &Proth120LookupRelations,
+    relations: &LookupRelationsPr,
     outputs: &mut Proth120WitnessBuffers<'_>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let count = circuit.trace_len;
-    let (range_check_16_count, timestamp_count) = relations.counts();
-    assert_eq!(
-        range_check_16_count,
-        circuit.range_check_16_lookup_expressions.len()
-    );
-    assert_eq!(
-        timestamp_count,
-        circuit.timestamp_range_check_lookup_expressions.len()
-    );
+    let (range_check_16_count, timestamp_count) = (RANGE_CHECK_16_RELATIONS, TIMESTAMP_RELATIONS);
     let Proth120WitnessBuffers {
         memory,
         witness,
@@ -99,7 +113,7 @@ pub fn generate_fused_values(
         decoder_table: decoder_table.as_ptr(),
     };
     let (range_check_16_lookup_expressions, range_check_timestamp_lookup_expressions) =
-        relations.expressions();
+        (relations.range_check_16, relations.timestamp);
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
     let args = GenerateFusedProth120UnifiedArguments::new(

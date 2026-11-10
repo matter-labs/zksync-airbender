@@ -10,7 +10,7 @@ use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
 use super::backward::banks::PreparedCoefficientTablesPr;
 use super::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
 use super::backward::{schedule_backward_pr, DrTailProofPlanPr, GKRBackwardStageSnapshotSinkPr};
-use super::base_layer_claims::BaseClaimIndicesPr;
+use super::base_layer_claims::BaseClaimGatherPr;
 use super::forward::{
     prepare_backward_handoff_pr, schedule_forward_challenge_banks, schedule_forward_pass_pr,
 };
@@ -26,7 +26,7 @@ use crate::upstream::{ProverConfig, PR};
 /// input transfer.
 pub struct GkrPreparedInputsPr {
     pub coefficient_tables: PreparedCoefficientTablesPr,
-    pub base_claim_indices: BaseClaimIndicesPr,
+    pub base_claim_indices: BaseClaimGatherPr,
 }
 
 #[allow(clippy::too_many_arguments)]

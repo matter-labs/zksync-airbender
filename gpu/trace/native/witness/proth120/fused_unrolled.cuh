@@ -2,14 +2,33 @@
 
 using FusedUnrolledOracle = std::conditional_t<std::is_same_v<ORACLE, UnrolledMemoryTrace>, UnrolledMemoryOracle, ORACLE>;
 
+struct FusedArgumentsLayout {
+  UnrolledMemoryLayout layout;
+  AuxLayoutData aux_layout_data;
+  FusedUnrolledOracle oracle;
+  const wrapped_f *generic_lookup_tables;
+  pr *memory_storage;
+  pr *witness_storage;
+  wrapped_f *scratch_storage;
+  u32 *generic_lookup_mapping;
+  u32 *decoder_lookup_mapping;
+  Proth120LookupExpressions<15> range_check_16;
+  u32 *range_check_16_mapping;
+  Proth120LookupExpressions<8> timestamp;
+  u32 *timestamp_mapping;
+  unsigned stride;
+  unsigned count;
+};
+static_assert(sizeof(FusedArgumentsLayout) <= 32764);
+
 #define FUSED_KERNEL_NAME(NAME) ab_pr_generate_fused_##NAME##_kernel
 #define FUSED_KERNEL(NAME)                                                                                                                                     \
   EXTERN __global__ void FUSED_KERNEL_NAME(NAME)(                                                                                                              \
       const __grid_constant__ UnrolledMemoryLayout layout, const __grid_constant__ AuxLayoutData aux_layout_data,                                              \
       const __grid_constant__ FusedUnrolledOracle oracle, const wrapped_f *const __restrict__ generic_lookup_tables, pr *memory_storage, pr *witness_storage,  \
       wrapped_f *scratch_storage, u32 *const __restrict__ generic_lookup_mapping, u32 *const __restrict__ decoder_lookup_mapping,                              \
-      const __grid_constant__ Proth120LookupExpressions range_check_16_lookup_expressions, u32 *range_check_16_lookup_mapping,                                 \
-      const __grid_constant__ Proth120LookupExpressions range_check_timestamp_lookup_expressions, u32 *range_check_timestamp_lookup_mapping,                   \
+      const __grid_constant__ Proth120LookupExpressions<15> range_check_16_lookup_expressions, u32 *range_check_16_lookup_mapping,                             \
+      const __grid_constant__ Proth120LookupExpressions<8> range_check_timestamp_lookup_expressions, u32 *range_check_timestamp_lookup_mapping,                \
       const unsigned stride, const unsigned count) {                                                                                                           \
     const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;                                                                                                \
     if (gid >= count)                                                                                                                                          \

@@ -9,7 +9,6 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::static_host::StaticPinnedBox;
 use gpu_gkr::proth120::backward::PreparedCoefficientTablesPr;
-use gpu_gkr::proth120::base_layer_claims::BaseClaimIndicesPr;
 use gpu_gkr::proth120::packed_challenges::{transcript_prefix_words, BOUNDARY_PREFIX_U32_LEN};
 use gpu_gkr::setup::{L1WrapSetupHost, PackedSetupSource};
 use gpu_hash::keccak256::Digest;
@@ -20,7 +19,6 @@ use gpu_trace::trace::packed::retained_len;
 use gpu_trace::trace::tracing_data::{
     InitsAndTeardownsTransfer, TracingDataHost, TracingDataTransfer, UnrolledTracingDataHost,
 };
-use gpu_trace::witness::proth120::Proth120LookupRelations;
 use gpu_trace::witness::trace_unrolled::{
     ExecutorFamilyDecoderData, InitsAndTeardownsTraceHost, UnifiedOpcodeTracingDataWithTimestamp,
     UnrolledUnifiedTraceHost, PAGE_SIZE_LOG2,
@@ -43,9 +41,7 @@ pub struct L1WrapInputs<'a, A: GoodAllocator> {
     pub(crate) setup_host: Arc<L1WrapSetupHost>,
     pub(crate) setup: PackedSetupSource<'a>,
     pub(crate) constants: Arc<L1WrapConstantsHost>,
-    pub(crate) relations: Proth120LookupRelations,
     pub(crate) coefficient_tables: PreparedCoefficientTablesPr,
-    pub(crate) base_claim_indices: BaseClaimIndicesPr,
     pub(crate) request_range: Option<Range>,
 }
 
@@ -96,11 +92,8 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
         let transcript_prefix_host = transcript_prefix_words(operation_mode, &top_bits_host);
         let transcript_prefix =
             context.alloc::<u32>(transcript_prefix_host.len(), AllocationPlacement::BestFit)?;
-        let relations = Proth120LookupRelations::allocate(&constants.relations, context)?;
         let coefficient_tables =
             PreparedCoefficientTablesPr::new(&constants.programs, &top_bits_host, context)?;
-        let base_claim_indices =
-            BaseClaimIndicesPr::allocate(&constants.base_claim_indices, context)?;
         let setup =
             PackedSetupSource::new(Arc::clone(&setup_host), setup_reduction_layers, context)?;
         let transfer = Transfer::new()?;
@@ -116,9 +109,7 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             setup_host,
             setup,
             constants,
-            relations,
             coefficient_tables,
-            base_claim_indices,
             request_range: None,
         })
     }
@@ -139,10 +130,6 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
         self.inits_and_teardowns
             .schedule_transfer(&mut self.transfer, context)?;
         self.tracing_data
-            .schedule_transfer(&mut self.transfer, context)?;
-        self.relations
-            .schedule_transfer(&self.constants.relations, &mut self.transfer, context)?;
-        self.base_claim_indices
             .schedule_transfer(&mut self.transfer, context)?;
         self.setup.schedule_transfer(&mut self.transfer, context)?;
         self.transfer.record_transferred(context)
