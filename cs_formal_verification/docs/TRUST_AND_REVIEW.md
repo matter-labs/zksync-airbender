@@ -106,7 +106,7 @@ CleanCore (Clean's definitions, transcribed) supplies `Expression`, `FlatOperati
   query profiles; `PlacementsClaim` states the placement index), [Operations](../lean/human/Human/Import/Operations.lean)
   (equations and lookups as Clean operations) and
   [InitsTeardownsLayout](../lean/human/Human/Import/InitsTeardownsLayout.lean); the schema with its serde JSON and
-  [Coefficients](../lean/human/Human/Import/Coefficients.lean) (coefficient cast equivalence proved).
+  [Coefficients](../lean/human/Human/Import/Coefficients.lean) (the coefficient cast equivalence and the field constants are `ConstantsClaim`).
 - **Not reviewed:** `Human/Import/Exec/` (the parser, the decoder, the emitters of the literal terms, and FastColumns, which
   derives copies of the [Columns](../lean/human/Human/Import/Columns.lean) functions with the placement map passed in, for the emitter's speed); each file names
   the claims that fix its behaviour.

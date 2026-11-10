@@ -457,7 +457,6 @@ import Slop.Final.Import.Theorems
 #print axioms Airbender.Verification.lookup_of_holds
 #print axioms Airbender.Verification.range16Table
 #print axioms Airbender.Verification.range16_bound
-#print axioms Airbender.Artifact.signedCoefficient_cast
 
 #print axioms Airbender.JumpBranchSlt.Proofs.local_flags
 #print axioms Airbender.JumpBranchSlt.Proofs.local_ranges
@@ -936,12 +935,6 @@ import Slop.Final.Import.Theorems
 
 #print axioms Airbender.UnifiedReduced.Caller.RoundRegion
 
--- the importer's own facts (human/Human/Import)
-#print axioms Airbender.Artifact.signedCoefficient_mod
-#print axioms Airbender.montgomery_inverse_correct
-#print axioms Airbender.serialized_one_correct
-#print axioms Airbender.serialized_neg_one_correct
-
 #print axioms Airbender.AddSub.Proofs.rv_trace_soundness
 #print axioms Airbender.Trace.RVValues.rv_pooled_value_bounds
 #print axioms Airbender.AddSub.rv_soundness
@@ -961,7 +954,6 @@ import Slop.Final.Import.Theorems
 #print axioms RV.keccak_special5_run
 #print axioms RV.keccak_f1600_run
 #print axioms RV.standard_vectors
-#print axioms RV.RINV_spec
 #print axioms Airbender.MulDiv.rv_soundness
 #print axioms Airbender.MulDiv.Proofs.rv_trace_soundness
 #print axioms Airbender.MulDiv.Proofs.rv_row_result
@@ -1188,3 +1180,4 @@ import Slop.Final.Import.Theorems
 #print axioms Airbender.Json.parse_sound
 #print axioms Airbender.Json.text_unique
 #print axioms Airbender.decode_claim
+#print axioms Airbender.constants_claim

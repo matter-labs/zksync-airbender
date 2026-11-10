@@ -201,6 +201,7 @@ example : Airbender.PlacementsClaim := @Airbender.placements_claim
 example : Airbender.Json.ParseSoundClaim := @Airbender.Json.parse_sound
 example : Airbender.Json.TextUniqueClaim := @Airbender.Json.text_unique
 example : Airbender.DecodeClaim := @Airbender.decode_claim
+example : Airbender.ConstantsClaim := @Airbender.constants_claim
 
 #print axioms Airbender.AddSub.rv_soundness
 #print axioms Airbender.Bigint.Memory.rv_addresses_soundness
@@ -326,3 +327,4 @@ example : Airbender.DecodeClaim := @Airbender.decode_claim
 #print axioms Airbender.Json.parse_sound
 #print axioms Airbender.Json.text_unique
 #print axioms Airbender.decode_claim
+#print axioms Airbender.constants_claim

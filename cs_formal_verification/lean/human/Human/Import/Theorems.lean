@@ -2,6 +2,7 @@ module
 public import Human.Import.JsonGrammar
 public import Human.Import.Exec.JsonParser
 public import Human.Import.Exec.Decode
+public import Human.Import.Coefficients
 
 @[expose] public section
 
@@ -43,5 +44,15 @@ namespace Airbender
 /-- The decoder returns `c` from a JSON value exactly when the value is the one serde writes for `c`. So a value
     decodes to at most one circuit (`encode` is injective), and every value serde writes for a circuit decodes. -/
 def DecodeClaim : Prop := ∀ (v : Json.Value) (c : Circuit), Circuit.decode v = .ok c ↔ Serde.encode c = v
+
+/-- The field constants of the spec and the importer: `montgomeryInverse` (`RV.RINV`) is `2^-32` mod BabyBear, the
+    serialized coefficients of 1 and -1 decode to 1 and -1, and a coefficient's small signed representative
+    (`Artifact.signedCoefficient`) is its canonical residue in every ring of characteristic BabyBear. -/
+def ConstantsClaim : Prop :=
+  2 ^ 32 * montgomeryInverse % babyBearModulus = 1 ∧
+  (Coefficient.mk ⟨268435454, by decide⟩).canonical = Fp.one ∧
+  (Coefficient.mk ⟨1744830467, by decide⟩).canonical.val = babyBearModulus - 1 ∧
+  ∀ {F : Type} [CommRing F] [CharP F babyBearModulus] (c : Coefficient),
+    (Artifact.signedCoefficient c : F) = (c.canonical.val : F)
 
 end Airbender

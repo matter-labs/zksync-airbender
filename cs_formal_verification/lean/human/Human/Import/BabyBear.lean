@@ -21,13 +21,4 @@ structure Coefficient where
 def Coefficient.canonical (c : Coefficient) : Fp :=
   Fp.ofNat (c.raw.val * montgomeryInverse)
 
-theorem montgomery_inverse_correct :
-    ((2 ^ 32 % babyBearModulus) * montgomeryInverse) % babyBearModulus = 1 := by decide
-
-theorem serialized_one_correct :
-    (Coefficient.mk ⟨268435454, by decide⟩).canonical = Fp.one := by decide
-
-theorem serialized_neg_one_correct :
-    (Coefficient.mk ⟨1744830467, by decide⟩).canonical.val = babyBearModulus - 1 := by decide
-
 end Airbender

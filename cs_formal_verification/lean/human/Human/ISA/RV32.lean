@@ -56,7 +56,6 @@ abbrev BabyBearP : Nat := Airbender.babyBearModulus        -- BabyBear: 2^31 - 2
 
 /-- `2^-32 mod BabyBearP` (0x38400000): field values are kept in Montgomery form (`x` held as `x · 2^32 mod BabyBearP`). -/
 abbrev RINV : Nat := Airbender.montgomeryInverse
-theorem RINV_spec : RINV * 2 ^ 32 % BabyBearP = 1 := by decide
 
 /-- `mul` is the Montgomery product: if `a`, `b` hold `x · 2^32`, `y · 2^32` (mod `BabyBearP`), the result holds
 `x · y · 2^32`. -/
