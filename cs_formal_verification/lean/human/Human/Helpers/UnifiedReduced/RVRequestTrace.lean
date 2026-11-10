@@ -3,6 +3,8 @@ public import Human.Helpers.UnifiedReduced.RequestTrace
 public import Human.Helpers.UnifiedReduced.RVProgram
 public import Human.Helpers.Delegation.RVDecoder
 public import Human.Helpers.Context.RVRowContext
+public import Human.Circuits.UnifiedReduced.Delegation
+public import Human.Helpers.Delegation.Schedule
 
 @[expose] public section
 

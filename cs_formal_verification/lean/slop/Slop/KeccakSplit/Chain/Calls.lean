@@ -1,7 +1,9 @@
 module
 public import Slop.KeccakSplit.Chain.Paths
-public import Slop.KeccakSplit.Chain.Atomic
-public import Slop.KeccakSplit.Reference.Executions
+public import Slop.Blake2Round.DiagonalG
+public import Slop.Blake2Round.FinalXor
+public import Slop.KeccakSplit.Memory.History
+public import Mathlib.Tactic
 
 @[expose] public section
 

@@ -2,7 +2,7 @@ module
 public import Slop.KeccakSplit.Reference.ParityAll
 public import Slop.KeccakSplit.Reference.ThetaRhoAll
 public import Slop.KeccakSplit.Reference.ChiAll
-public import Slop.Keccak.RoundTrace
+public import Slop.Keccak.DeferredIota
 
 @[expose] public section
 

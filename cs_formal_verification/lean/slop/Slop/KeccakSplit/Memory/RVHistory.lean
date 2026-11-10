@@ -6,6 +6,8 @@ public import Slop.Trace.RVTransfer
 public import Slop.Trace.RVHistoryFrame
 public import Slop.Trace.SeedTransfer
 public import Slop.Trace.TransferBounds
+public import Slop.KeccakSplit.Interface
+public import Slop.KeccakSplit.Memory.Order
 
 @[expose] public section
 

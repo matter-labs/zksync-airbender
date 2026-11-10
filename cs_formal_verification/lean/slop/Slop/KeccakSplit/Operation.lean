@@ -1,7 +1,12 @@
 module
-public import Slop.KeccakSplit.Memory.History
-public import Slop.KeccakSplit.Interface
-public import Slop.Trace.TransferBounds
+public import Human.Helpers.Context.Timestamps
+public import Human.Helpers.Core.Field
+public import Slop.KernelRfl
+public import Mathlib.Control.Monad.Writer
+public import Mathlib.Data.Nat.Bitwise
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.LinearCombination
+public import Mathlib.Tactic.NormNum.Prime
 
 @[expose] public section
 
@@ -9,7 +14,7 @@ public import Slop.Trace.TransferBounds
    schedule, given the per-row circuit contract. -/
 
 namespace Airbender.Keccak.Split.Native.Proofs
-open Trace Trace.Proofs
+open Trace
 set_option warningAsError true
 
 theorem babyBear_clock : 2 * timestampBase + 4 < babyBearModulus := by

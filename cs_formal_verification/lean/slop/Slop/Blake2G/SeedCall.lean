@@ -4,6 +4,12 @@ public import Slop.Blake2G.StateCells
 public import Slop.Blake2G.BlockFrame
 public import Slop.Delegation.RVCallHistory
 public import Slop.Delegation.SeedOperations
+public import Human.Circuits.Keccak.Tables.Controller
+public import Slop.Blake2G.CallControl
+public import Slop.Blake2G.PhysicalPorts
+public import Slop.Delegation.CallPaths
+public import Slop.Delegation.IndexedPaths
+public import Slop.Delegation.NativeViews
 
 @[expose] public section
 

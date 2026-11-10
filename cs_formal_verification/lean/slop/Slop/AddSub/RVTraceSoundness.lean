@@ -3,10 +3,7 @@ public import Slop.Trace.RVFamilySelectors
 public import Human.Circuits.AddSub.RVTheorems
 public import Slop.AddSub.RVDecoder
 public import Slop.AddSub.RVRowPosition
-public import Slop.AddSub.PC
 public import Slop.AddSub
-public import Slop.Trace.RVValues
-public import Slop.Trace.RVPooledRow
 
 @[expose] public section
 

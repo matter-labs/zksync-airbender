@@ -1,6 +1,10 @@
 module
 public import Human.Helpers.Delegation.Schedule
-public import Slop.Delegation.RequestTrace
+public import Human.Helpers.Delegation.CallerRequests
+public import Slop.Blake2Round.DiagonalG
+public import Slop.Blake2Round.FinalXor
+public import Slop.Delegation.Memory
+public import Slop.Trace.History
 
 @[expose] public section
 

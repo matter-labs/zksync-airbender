@@ -1,5 +1,4 @@
 module
-public import Human.Trace.RVSoundness
 public import Slop.Trace.RVPooled.Soundness
 public import Slop.Trace.RVPooled.OracleSoundness
 public import Slop.Trace.RVPooledLawsProof

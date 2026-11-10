@@ -1,5 +1,4 @@
 module
-public import Human.Circuits.Blake2Round.SetupArtifact
 public import Slop.Setup.Blocks
 
 @[expose] public section

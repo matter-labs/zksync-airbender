@@ -1,6 +1,5 @@
 module
-public import Human.Circuits.UnifiedReduced.Delegation
-public import Human.Helpers.Delegation.Schedule
+public import Human.Circuits.UnifiedReduced.Artifact
 
 @[expose] public section
 

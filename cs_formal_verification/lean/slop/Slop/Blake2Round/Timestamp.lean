@@ -7,9 +7,8 @@ public import Slop.Blake2Round.Timestamp.Part4
 public import Slop.Blake2Round.Timestamp.Part5
 public import Slop.Blake2Round.Timestamp.Part6
 public import Slop.Blake2Round.Timestamp.Part7
-public import Human.Circuits.Blake2Round.Artifact
-public import Slop.Blake2Round.ArtifactChecks
 public import Slop.Delegation.ClockFacts
+public import Mathlib.Data.Nat.Bitwise
 
 @[expose] public section
 

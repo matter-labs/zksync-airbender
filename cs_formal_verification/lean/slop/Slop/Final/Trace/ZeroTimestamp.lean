@@ -1,10 +1,10 @@
 module
-public import Human.Trace.ZeroTimestamp
 public import Slop.Trace.ZeroTimestamp
 public import Slop.Trace.Pooled
 public import Slop.UnifiedReduced.Trace
 public import Slop.Delegation.Memory
 public import Slop.KeccakSplit.Memory.History
+public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section
 

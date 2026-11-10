@@ -1,5 +1,4 @@
 module
-public import Slop.Trace.Values
 public import Slop.Trace.RVZero
 
 @[expose] public section

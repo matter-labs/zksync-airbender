@@ -1,8 +1,9 @@
 module
-public import Human.Helpers.UnifiedReduced.RVRequestTrace
 public import Slop.UnifiedReduced.RVCaller.Binding
 public import Slop.UnifiedReduced.Trace
 public import Slop.Delegation.Schedule
+public import Slop.Delegation.RequestTrace
+public import Slop.Trace.Slots
 
 @[expose] public section
 

@@ -1,7 +1,7 @@
 module
-public import Human.Helpers.Delegation.WorkerProjection
-public import Slop.Delegation.RequestTrace
-public import Slop.Trace.TransferValues
+public import Slop.Blake2Round.DiagonalG
+public import Slop.Blake2Round.FinalXor
+public import Slop.Delegation.PortEvents
 
 @[expose] public section
 

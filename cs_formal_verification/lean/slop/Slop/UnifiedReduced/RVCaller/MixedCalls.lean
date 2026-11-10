@@ -1,8 +1,10 @@
 module
 public import Slop.UnifiedReduced.RVCaller.MixedMemoryClocks
-public import Slop.Delegation.RVCallHistory
 public import Slop.Delegation.RVRowCalls
 public import Slop.UnifiedReduced.RVCaller.Transfer
+public import Slop.Delegation.Requests
+public import Slop.Trace.SeedAddressClocks
+public import Batteries.Data.Fin.Fold
 
 @[expose] public section
 

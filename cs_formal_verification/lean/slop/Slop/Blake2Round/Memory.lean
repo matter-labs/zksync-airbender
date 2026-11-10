@@ -2,6 +2,7 @@ module
 public import Slop.Delegation.Values
 public import Slop.Blake2Round.Row
 public import Human.Circuits.Blake2Round.Memory
+public import Slop.Trace.Values
 
 @[expose] public section
 

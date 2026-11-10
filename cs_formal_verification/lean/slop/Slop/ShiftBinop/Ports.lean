@@ -2,6 +2,7 @@ module
 public import Slop.ShiftBinop.Soundness
 public import Slop.Trace.BytePorts
 public import Slop.Arithmetic.SignExtend
+public import Slop.ShiftBinop.Shifts
 
 @[expose] public section
 

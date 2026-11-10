@@ -1,11 +1,12 @@
 module
-public import Human.Trace.Workers.Keccak.Permutation
-public import Slop.Keccak.StateCells
+public import Slop.Blake2Round.DiagonalG
+public import Slop.Blake2Round.FinalXor
+public import Slop.KernelRfl
 
 @[expose] public section
 
 namespace Airbender.Keccak.Proofs
-open Trace Trace.Proofs Delegation.Proofs Arithmetic
+open Trace Trace.Proofs Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 

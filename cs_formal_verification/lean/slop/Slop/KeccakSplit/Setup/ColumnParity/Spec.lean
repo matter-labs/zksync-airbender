@@ -1,5 +1,4 @@
 module
-public import Human.Circuits.KeccakSplit.ColumnParity.SetupArtifact
 public import Slop.KeccakSplit.Setup.Common
 
 @[expose] public section

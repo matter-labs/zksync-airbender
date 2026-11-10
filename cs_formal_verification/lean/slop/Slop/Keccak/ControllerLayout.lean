@@ -1,6 +1,7 @@
 module
 public import Human.Circuits.Keccak.Tables.Controller
-public import Slop.Keccak.Controller
+public import Slop.OpIndex
+public import Mathlib.Tactic.LinearCombination
 
 @[expose] public section
 

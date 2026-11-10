@@ -1,7 +1,11 @@
 module
-public import Slop.KeccakSplit.Reference.Chain
-public import Slop.KeccakSplit.Reference.Permutation
 public import Human.Trace.Workers.Keccak.Permutation
+public import Human.Circuits.KeccakSplit.Call
+public import Slop.Blake2Round.DiagonalG
+public import Slop.Blake2Round.FinalXor
+public import Slop.Keccak.ControllerLayout
+public import Slop.KernelRfl
+public import Mathlib.Tactic
 
 @[expose] public section
 

@@ -1,7 +1,10 @@
 module
-public import Slop.JumpBranchSlt
 public import Mathlib.Tactic.LinearCombination
-public import Human.Circuits.JumpBranchSlt.Model
+public import Human.Helpers.Properties
+public import Slop.Arithmetic.Lemmas
+public import Slop.Constraints
+public import Slop.JumpBranchSlt.ArtifactChecks
+public import Slop.JumpBranchSlt.OpIndex
 
 @[expose] public section
 

@@ -1,6 +1,8 @@
 module
-public import Slop.Arithmetic.Word
-public import Slop.Delegation.CallGroups
+public import Slop.KernelRfl
+public import Slop.OpIndex
+public import Slop.Trace.Addresses
+public import Mathlib.Data.Nat.Bitwise
 
 @[expose] public section
 

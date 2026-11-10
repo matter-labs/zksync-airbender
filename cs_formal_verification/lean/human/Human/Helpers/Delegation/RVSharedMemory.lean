@@ -2,6 +2,7 @@ module
 public import Human.Helpers.Delegation.WorkerProjection
 public import Human.Helpers.Delegation.RVRequestTrace
 public import Human.Helpers.Delegation.RequestEffects
+public import Human.Helpers.Delegation.SharedMemory
 
 @[expose] public section
 

@@ -4,6 +4,8 @@ public import Human.Helpers.UnifiedReduced.MixedMemory
 public import Human.Helpers.UnifiedReduced.RVProgram
 public import Human.Helpers.Memory.RVHistory
 public import Human.Circuits.UnifiedReduced.Tables.SetupRV
+public import Human.Circuits.Keccak.Tables.Controller
+public import Human.Helpers.Delegation.Operations
 
 @[expose] public section
 

@@ -3,6 +3,10 @@ public import Slop.KeccakSplit.Reference.Executions
 public import Slop.KeccakSplit.Trace.RVAtomicWrites
 public import Human.Trace.Workers.KeccakSplit.RVCall
 public import Human.Trace.Workers.Keccak.RVCall
+public import Slop.KeccakSplit.Reference.CallMemoryProjection
+public import Slop.KeccakSplit.Reference.Chain
+public import Slop.KeccakSplit.Reference.Permutation
+public import Slop.KeccakSplit.Reference.SnapshotStep
 
 @[expose] public section
 

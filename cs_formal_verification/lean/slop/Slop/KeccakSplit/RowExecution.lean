@@ -1,10 +1,9 @@
 module
-public import Slop.KeccakSplit.RowCommon
 public import Slop.Arithmetic.Word
 public import Mathlib.Tactic.FinCases
-public import Slop.Arithmetic.Bytes
 public import Slop.KernelRfl
-public import Slop.Trace.InitialImage
+public import Slop.KeccakSplit.Setup.Facts
+public import Mathlib.Tactic.IntervalCases
 
 @[expose] public section
 
@@ -13,7 +12,7 @@ public import Slop.Trace.InitialImage
    *_call_executes). -/
 
 namespace Airbender.Keccak.Split.RowProofs
-open Airbender.Trace Airbender.Trace.Proofs Airbender.Arithmetic
+open Airbender.Trace Airbender.Arithmetic
 set_option warningAsError true
 
 /-- Two bounded words split a lane into its halves. -/

@@ -1,6 +1,9 @@
 module
 public import Slop.Keccak.RVPhysical
 public import Slop.Keccak.RVSpec
+public import Slop.Delegation.RVCallLink
+public import Slop.Keccak.RVStateTrace
+public import Batteries.Data.Fin.Fold
 
 @[expose] public section
 

@@ -3,6 +3,7 @@ public import Slop.Delegation.Values
 public import Slop.Blake2G.Soundness
 public import Slop.Blake2G.Control
 public import Mathlib.Tactic.IntervalCases
+public import Slop.Trace.Values
 
 @[expose] public section
 

@@ -1,8 +1,12 @@
 module
-public import Slop.KeccakSplit.Reference.PermutationDefinitions
 public import Slop.Deleg.KeccakF1600
-public import Slop.Deleg.KeccakClean
-public import Slop.Deleg.KeccakCalls
+public import Human.Circuits.KeccakSplit.Call
+public import Human.ISA.DelegationRuns
+public import Slop.Blake2Round.DiagonalG
+public import Slop.Blake2Round.FinalXor
+public import Slop.ISA.RV.Attr
+public import Slop.KernelRfl
+public import Batteries.Data.Fin.Fold
 
 @[expose] public section
 

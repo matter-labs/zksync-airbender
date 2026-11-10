@@ -1,5 +1,9 @@
 module
 public import Slop.Blake2Round.PreparationBase
+public import Slop.Blake2Round.ArtifactChecks
+public import Slop.Blake2Round.OpIndex
+public import Slop.Constraints
+public import Mathlib.Tactic.LinearCombination
 
 @[expose] public section
 

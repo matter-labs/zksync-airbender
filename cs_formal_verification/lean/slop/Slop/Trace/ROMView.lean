@@ -1,8 +1,8 @@
 module
-public import Slop.WordMemory
-public import Slop.Trace.Addresses
 public import Human.Helpers.Memory.Native
-public import Slop.Trace.Family.History
+public import Slop.OpIndex
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.LinearCombination
 
 @[expose] public section
 

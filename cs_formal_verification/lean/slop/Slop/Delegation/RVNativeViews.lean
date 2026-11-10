@@ -1,6 +1,7 @@
 module
 public import Slop.Delegation.NativeViews
 public import Slop.Trace.RVCells
+public import Human.Helpers.Memory.RowEvents
 
 @[expose] public section
 

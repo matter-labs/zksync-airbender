@@ -3,6 +3,9 @@ public import Slop.UnifiedReduced.RVCaller.MixedCycles
 public import Slop.UnifiedReduced.RV.Laws
 public import Slop.UnifiedReduced.RVCaller.Transfer
 public import Slop.Delegation.SharedOperations
+public import Human.Trace.UnifiedReduced.RVMixedMemory
+public import Slop.Trace.TransferValues
+public import Slop.UnifiedReduced.RVCaller.RequestTrace
 
 @[expose] public section
 

@@ -1,9 +1,5 @@
 module
-public import Slop.Trace.ZeroValues
-public import Slop.Trace.RVProgram
 public import Slop.Trace.RVHistory
-public import Slop.Trace.RVFetch
-public import Human.Helpers.Context.Registries.Pooled
 
 @[expose] public section
 

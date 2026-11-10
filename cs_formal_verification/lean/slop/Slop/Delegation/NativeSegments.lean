@@ -1,8 +1,8 @@
 module
 public import Human.Helpers.Delegation.NativeWindows
-public import Slop.Delegation.Values
-public import Slop.Delegation.PortEvents
 public import Slop.Trace.TransferBoundary
+public import Slop.Delegation.BoundaryInputs
+public import Slop.Delegation.Memory
 
 @[expose] public section
 

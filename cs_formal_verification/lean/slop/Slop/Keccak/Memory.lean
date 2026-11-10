@@ -1,10 +1,11 @@
 module
-public import Slop.Delegation.Values
-public import Slop.Keccak.Theta
 public import Slop.Keccak.Chi
 public import Slop.Keccak.Iota
 public import Slop.Keccak.Mix
 public import Slop.Keccak.Rho
+public import Human.Helpers.Delegation.Memory
+public import Slop.KernelRfl
+public import Slop.Trace.Values
 
 @[expose] public section
 

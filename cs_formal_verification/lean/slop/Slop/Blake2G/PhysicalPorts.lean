@@ -1,12 +1,12 @@
 module
 public import Slop.Blake2G.Addresses
 public import Human.Circuits.Blake2G.Execution
-public import Slop.Delegation.NativeViews
+public import Slop.KernelRfl
 
 @[expose] public section
 
 namespace Airbender.Blake2G.Proofs
-open Trace Trace.Proofs Delegation.Proofs Arithmetic
+open Trace Trace.Proofs Arithmetic
 set_option warningAsError true
 
 def wordIndex (index : Fin 6) : Fin 9 :=

@@ -1,8 +1,5 @@
 module
 public import Human.Helpers.Delegation.RequestEffects
-public import Human.Helpers.Delegation.SharedMemory
-public import Slop.Delegation.RequestTrace
-public import Slop.Trace.TransferValues
 public import Slop.Bigint.NativeExecution
 public import Slop.Blake2G.NativeExecution
 public import Slop.Blake2Round.NativeExecution

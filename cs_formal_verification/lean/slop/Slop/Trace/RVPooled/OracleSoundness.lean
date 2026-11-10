@@ -1,8 +1,9 @@
 module
 public import Slop.Trace.RVPooled.Oracle
-public import Slop.Trace.RVPooled.Soundness
 public import Slop.Trace.RVRealizesInput
 public import Human.Trace.RVSoundness
+public import Slop.Trace.RVPooled.Row
+public import Slop.Trace.RVPooledBoot
 
 @[expose] public section
 

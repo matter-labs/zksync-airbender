@@ -1,5 +1,7 @@
 module
 public import Slop.KeccakSplit.Reference.CallSteps
+public import Slop.Keccak.ReferenceLemmas
+public import Batteries.Data.Fin.Fold
 
 @[expose] public section
 

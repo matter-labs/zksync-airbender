@@ -1,6 +1,6 @@
 module
 public import Slop.KeccakSplit.Memory.History
-public import Slop.Delegation.CallGroups
+public import Slop.OpIndex
 
 @[expose] public section
 

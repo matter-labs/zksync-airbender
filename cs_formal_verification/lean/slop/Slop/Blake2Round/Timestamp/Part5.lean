@@ -1,8 +1,9 @@
 module
-public import Human.Circuits.Blake2Round.Artifact
 public import Slop.Blake2Round.ArtifactChecks
-public import Slop.Delegation.ClockFacts
 public import Slop.Blake2Round.OpIndex
+public import Slop.Constraints
+public import Slop.Trace.Timestamps
+public import Mathlib.Data.Nat.Bitwise
 
 @[expose] public section
 

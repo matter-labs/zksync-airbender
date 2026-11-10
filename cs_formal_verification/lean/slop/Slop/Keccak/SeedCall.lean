@@ -4,6 +4,7 @@ public import Slop.Keccak.PointerHistory
 public import Slop.Keccak.StateCells
 public import Slop.Delegation.RVCallHistory
 public import Slop.Delegation.SeedOperations
+public import Slop.Delegation.CallPaths
 
 @[expose] public section
 

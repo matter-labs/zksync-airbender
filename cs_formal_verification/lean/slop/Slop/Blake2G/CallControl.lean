@@ -1,8 +1,6 @@
 module
 public import Slop.Blake2G.Control
-public import Human.Circuits.Blake2G.Execution
 public import Human.Circuits.Blake2G.Protocol
-public import Human.Circuits.Keccak.Tables.Controller
 
 @[expose] public section
 

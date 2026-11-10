@@ -4,6 +4,7 @@ public import Slop.Delegation.RVCallerDecoder
 public import Slop.Delegation.RequestTrace
 public import Slop.Final.Trace.Delegation.RVTheorems
 public import Slop.Delegation.RVRequestAccepted
+public import Slop.Trace.Pooled
 
 @[expose] public section
 

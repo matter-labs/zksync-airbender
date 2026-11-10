@@ -1,5 +1,6 @@
 module
 public import Slop.JumpBranchSlt.PC
+public import Slop.JumpBranchSlt
 
 @[expose] public section
 

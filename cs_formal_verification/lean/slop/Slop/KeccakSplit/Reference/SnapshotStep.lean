@@ -1,5 +1,7 @@
 module
 public import Slop.KeccakSplit.Reference.PhysicalSnapshot
+public import Slop.KeccakSplit.Reference.CallReference
+public import Batteries.Data.Fin.Fold
 
 @[expose] public section
 

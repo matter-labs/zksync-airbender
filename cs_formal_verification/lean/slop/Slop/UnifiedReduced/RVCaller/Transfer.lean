@@ -1,8 +1,7 @@
 module
 public import Slop.Trace.RVTransferWindow
-public import Slop.Trace.SeedAddressClocks
-public import Slop.Trace.TransferBounds
 public import Slop.Delegation.RVSharedImage
+public import Slop.Trace.RVValues
 
 @[expose] public section
 

@@ -1,5 +1,6 @@
 module
-public import Slop.KeccakSplit.Reference.SnapshotStep
+public import Slop.KeccakSplit.Reference.PermutationDefinitions
+public import Batteries.Data.Fin.Fold
 
 @[expose] public section
 

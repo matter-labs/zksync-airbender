@@ -1,7 +1,7 @@
 module
-public import Slop.Delegation.History
 public import Slop.Trace.TransferBounds
-public import Slop.Trace.Values
+public import Slop.Delegation.BoundaryInputs
+public import Slop.Delegation.Memory
 
 @[expose] public section
 

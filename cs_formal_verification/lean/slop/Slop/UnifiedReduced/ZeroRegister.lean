@@ -1,10 +1,8 @@
 module
-public import Slop.UnifiedReduced.Trace
-public import Slop.Trace.RowHistory
-public import Human.Circuits.UnifiedReduced.Decoder
-public import Slop.JumpBranchSlt
-public import Slop.ShiftBinop
 public import Slop.UnifiedReduced
+public import Slop.KernelRfl
+public import Mathlib.Data.Nat.Bitwise
+public import Mathlib.Tactic.IntervalCases
 
 @[expose] public section
 

@@ -1,5 +1,6 @@
 module
 public import Human.Helpers.UnifiedReduced.RVMixedMemory
+public import Human.Helpers.Delegation.RequestEffects
 
 @[expose] public section
 

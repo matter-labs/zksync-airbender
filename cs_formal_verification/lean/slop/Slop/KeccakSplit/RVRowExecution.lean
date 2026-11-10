@@ -1,7 +1,8 @@
 module
-public import Slop.KeccakSplit.RowExecution
 public import Slop.KeccakSplit.Trace.RVAtomicWrites
 public import Human.Trace.Workers.KeccakSplit.RVCall
+public import Human.Circuits.KeccakSplit.Native
+public import Slop.KeccakSplit.Setup.Facts
 
 @[expose] public section
 

@@ -1,14 +1,14 @@
 module
-public import Slop.Blake2G.State
-public import Slop.Blake2G.NativeExecution
-public import Slop.Blake2G.BlockFrame
-public import Slop.Blake2Round.Compression
-public import Slop.Blake2Round.StateTransport
+public import Slop.Blake2G.Control
+public import Slop.Blake2Round.DiagonalG
+public import Slop.Blake2Round.FinalXor
+public import Slop.KernelRfl
+public import Batteries.Data.Fin.Fold
 
 @[expose] public section
 
 namespace Airbender.Blake2G.Proofs
-open Trace Trace.Proofs Delegation.Proofs Arithmetic
+open Trace Trace.Proofs Arithmetic
 set_option warningAsError true
 set_option backward.isDefEq.respectTransparency false
 

@@ -1,9 +1,6 @@
 module
-public import Slop.KeccakSplit.Memory.Order
-public import Slop.Trace.TransferBoundary
 public import Slop.Trace.TransferHistory
-public import Slop.Trace.History
-public import Human.Helpers.Delegation.WorkerContext
+public import Human.Circuits.KeccakSplit.Native
 
 @[expose] public section
 

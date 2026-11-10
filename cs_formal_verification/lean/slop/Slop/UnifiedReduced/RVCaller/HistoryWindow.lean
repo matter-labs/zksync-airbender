@@ -1,8 +1,6 @@
 module
 public import Slop.Delegation.CallGroups
-public import Slop.Trace.RowHistory
 public import Slop.Trace.RVHistory
-public import Slop.Trace.RVCells
 
 @[expose] public section
 

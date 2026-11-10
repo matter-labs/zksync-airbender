@@ -1,5 +1,5 @@
 module
-public import Human.Helpers.Delegation.SharedMemory
+public import Human.Helpers.Delegation.Memory
 
 @[expose] public section
 

@@ -1,12 +1,13 @@
 module
-public import Slop.Blake2G.PhysicalPorts
-public import Slop.Delegation.Operations
-public import Slop.Blake2G.ControlPool
+public import Human.Circuits.Blake2G.Protocol
+public import Slop.Blake2Round.DiagonalG
+public import Slop.Blake2Round.FinalXor
+public import Slop.KernelRfl
 
 @[expose] public section
 
 namespace Airbender.Blake2G.Proofs
-open Trace Trace.Proofs Delegation.Proofs Arithmetic
+open Trace Trace.Proofs Arithmetic
 set_option warningAsError true
 
 abbrev scheduledController (reduced : Bool) (i : Nat) (_bound : i < callCount reduced) : Control.Input :=

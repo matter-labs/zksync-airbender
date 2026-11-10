@@ -1,8 +1,9 @@
 module
 public import Human.Trace.Workers.Keccak.Call
-public import Slop.Keccak.ControllerLayout
 public import Human.Circuits.Keccak.Execution
 public import Mathlib.Data.List.Nodup
+public import Slop.OpIndex
+public import Mathlib.Tactic.LinearCombination
 
 @[expose] public section
 

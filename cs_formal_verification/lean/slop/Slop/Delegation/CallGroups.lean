@@ -1,11 +1,14 @@
 module
-public import Human.Helpers.Delegation.WorkerContext
-public import Slop.Delegation.PortEvents
+public import CleanCore.Utils.OfflineMemory
+public import Slop.KernelRfl
+public import Slop.OpIndex
+public import Mathlib.Data.Nat.Bitwise
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.LinearCombination
 
 @[expose] public section
 
 namespace Airbender.Delegation.Proofs
-open Trace
 set_option warningAsError true
 
 theorem split_clock (events : List MemoryAccess)

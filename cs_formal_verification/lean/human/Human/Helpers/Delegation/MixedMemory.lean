@@ -4,6 +4,7 @@ public import Human.Helpers.Memory.ROM
 public import Human.Helpers.Tables.Subword
 public import Human.Helpers.Delegation.RequestEffects
 public import Human.Helpers.Delegation.SharedMemory
+public import Human.Helpers.Delegation.CallerRequests
 
 @[expose] public section
 

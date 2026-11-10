@@ -1,5 +1,7 @@
 module
-public import Slop.Keccak.ControllerLayout
+public import Human.Circuits.Keccak.Controller
+public import Slop.OpIndex
+public import Mathlib.Tactic.LinearCombination
 
 @[expose] public section
 namespace Airbender.Keccak.Proofs

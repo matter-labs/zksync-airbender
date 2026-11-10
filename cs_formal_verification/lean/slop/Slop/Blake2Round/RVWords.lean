@@ -1,7 +1,6 @@
 module
 public import Human.Trace.Workers.Blake2Round.RVCompression
 public import Slop.Delegation.RVNativeViews
-public import Slop.ISA.RV.Same
 
 @[expose] public section
 

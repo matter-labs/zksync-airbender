@@ -1,5 +1,4 @@
 module
-public import Human.Trace.Workers.Keccak.RVTheorems
 public import Slop.Keccak.RVWindows
 public import Slop.Keccak.RVNativeExecution
 

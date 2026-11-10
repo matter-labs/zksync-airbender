@@ -1,8 +1,6 @@
 module
 public import Slop.Blake2Round.ArtifactChecks
 public import Slop.Blake2Round.OpIndex
-public import Human.Circuits.Blake2Round.Artifact
-public import Human.Helpers.Properties
 public import Slop.Constraints
 public import Slop.Arithmetic.Chunks
 public import Slop.Trace.Timestamps

@@ -5,9 +5,6 @@ public import Human.Helpers.Properties
 @[expose] public section
 
 namespace Airbender.JumpBranchSlt.Jump
-open Airbender.Arithmetic
-open Variables
-open Trace
 
 inductive Instruction where
   | jal (offset : BitVec 21)

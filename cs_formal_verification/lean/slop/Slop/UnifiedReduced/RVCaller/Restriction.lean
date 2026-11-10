@@ -1,7 +1,6 @@
 module
 public import Slop.UnifiedReduced.RVCaller.HistoryWindow
 public import Human.Helpers.Delegation.RVBoundaryMemory
-public import Slop.Delegation.RVSharedImage
 
 @[expose] public section
 

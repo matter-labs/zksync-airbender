@@ -6,6 +6,7 @@ public import Slop.Blake2Round.Compression
 public import Slop.Blake2Round.StateTransport
 public import Slop.Delegation.NativeSegments
 public import Slop.Delegation.ReverseFold
+public import Slop.Blake2Round.ExclusiveMask
 
 @[expose] public section
 

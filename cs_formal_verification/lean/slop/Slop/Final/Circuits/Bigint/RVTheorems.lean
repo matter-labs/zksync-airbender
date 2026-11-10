@@ -1,7 +1,6 @@
 module
 public import Slop.Bigint.RVMemorySoundness
 public import Slop.Blake2G.Soundness
-public import Human.Circuits.Bigint.RVTheorems
 
 @[expose] public section
 

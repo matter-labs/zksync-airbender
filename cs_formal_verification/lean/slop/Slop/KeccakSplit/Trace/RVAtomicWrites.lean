@@ -1,6 +1,5 @@
 module
 public import Human.Helpers.Memory.RVAtomicWrites
-public import Slop.Trace.RVHistoryFrame
 public import Slop.Delegation.RVCallHistory
 
 @[expose] public section

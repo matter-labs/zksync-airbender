@@ -1,6 +1,7 @@
 module
 public import Slop.OpIndex
-public import Slop.Blake2Round.ArtifactChecks
+public import Human.Circuits.Blake2Round.Artifact
+public import Mathlib.Data.Nat.Bitwise
 
 @[expose] public section
 

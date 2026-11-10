@@ -5,6 +5,7 @@ public import Slop.Blake2Round.OpIndex
 public import Slop.Eval
 public import Slop.Templates
 public import Mathlib.Tactic.ReduceModChar
+public import Slop.Blake2Round.ArtifactChecks
 
 @[expose] public section
 

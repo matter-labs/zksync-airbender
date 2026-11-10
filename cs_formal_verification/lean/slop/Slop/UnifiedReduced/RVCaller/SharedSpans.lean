@@ -2,6 +2,8 @@ module
 public import Human.Trace.UnifiedReduced.RVMixedMemory
 public import Slop.UnifiedReduced.RVCaller.WorkerProjection
 public import Slop.Delegation.RVSharedSpans
+public import Slop.UnifiedReduced.RVCaller.RequestTrace
+public import Slop.UnifiedReduced.RVCaller.Transfer
 
 @[expose] public section
 

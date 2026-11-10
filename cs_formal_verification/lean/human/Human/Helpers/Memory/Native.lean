@@ -1,6 +1,5 @@
 module
-public import Human.Helpers.Decoder.Program
-public import Human.Helpers.Context.FamilyLayout
+public import Human.Helpers.Memory.InitialImage
 
 @[expose] public section
 

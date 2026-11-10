@@ -1,7 +1,4 @@
 module
-public import Human.Circuits.KeccakSplit.Native
-public import Human.Helpers.Core.BabyBearPrime
-public import Human.Helpers.Memory.InitialImage
 public import Slop.KeccakSplit.Setup.Facts
 public import Slop.Arithmetic.ByteAssembly
 public import Mathlib.Tactic.LinearCombination

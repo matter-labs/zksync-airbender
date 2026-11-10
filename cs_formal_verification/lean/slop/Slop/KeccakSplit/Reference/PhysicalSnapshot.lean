@@ -1,6 +1,9 @@
 module
-public import Slop.KeccakSplit.Reference.CallMemoryProjection
-public import Slop.KeccakSplit.Reference.PermutationDefinitions
+public import Human.Circuits.KeccakSplit.Call
+public import Slop.Blake2Round.DiagonalG
+public import Slop.Blake2Round.FinalXor
+public import Slop.KernelRfl
+public import Batteries.Data.Fin.Fold
 
 @[expose] public section
 

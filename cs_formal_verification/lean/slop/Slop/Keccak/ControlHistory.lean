@@ -1,8 +1,6 @@
 module
-public import Human.Trace.Workers.Keccak.Call
 public import Slop.Keccak.Schedule
-public import Slop.Delegation.Memory
-public import Slop.Delegation.CallPaths
+public import Slop.KernelRfl
 
 @[expose] public section
 

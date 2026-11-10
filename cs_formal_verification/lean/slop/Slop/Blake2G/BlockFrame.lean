@@ -1,10 +1,12 @@
 module
-public import Slop.Blake2G.StateCells
+public import Slop.Blake2Round.DiagonalG
+public import Slop.Blake2Round.FinalXor
+public import Slop.KernelRfl
 
 @[expose] public section
 
 namespace Airbender.Blake2G.Proofs
-open Trace Trace.Proofs Delegation.Proofs Arithmetic
+open Trace Trace.Proofs Arithmetic
 set_option warningAsError true
 
 theorem block_word_injective (pointer : BitVec 32) (a b : Fin 16)

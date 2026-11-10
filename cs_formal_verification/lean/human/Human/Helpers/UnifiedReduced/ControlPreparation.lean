@@ -1,11 +1,8 @@
 module
-public import Human.Helpers.Delegation.RequestWindows
-public import Human.Helpers.UnifiedReduced.MixedMemory
 
 @[expose] public section
 
 namespace Airbender.UnifiedReduced.Caller
-open Trace
 
 /-- Instructions that write a public constant from x0 or a U-immediate. -/
 inductive ControlLiteral where

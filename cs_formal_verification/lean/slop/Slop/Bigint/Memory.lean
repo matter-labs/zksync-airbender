@@ -5,6 +5,7 @@ public import Slop.Bigint.AdditiveGates
 public import Slop.Bigint.MultiplicationFields
 public import Slop.Bigint.MultiplicationWriteback
 public import Mathlib.Tactic.IntervalCases
+public import Slop.Trace.Values
 
 @[expose] public section
 

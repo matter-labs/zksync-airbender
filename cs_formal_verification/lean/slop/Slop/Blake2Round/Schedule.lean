@@ -1,11 +1,8 @@
 module
 public import Slop.Blake2Round.ArtifactChecks
 public import Slop.Blake2Round.OpIndex
-public import Slop.Blake2G.OpIndex
 public import Human.Circuits.Blake2Round.Schedule
-public import Slop.Constraints
 public import Slop.Templates
-public import Slop.Arithmetic.Lemmas
 public import Mathlib.Tactic.FinCases
 
 @[expose] public section

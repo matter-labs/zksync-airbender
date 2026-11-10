@@ -1,6 +1,10 @@
 module
-public import Slop.Blake2G.CallControl
-public import Slop.Delegation.IndexedPaths
+public import Human.Helpers.Delegation.Memory
+public import Slop.KernelRfl
+public import Slop.OpIndex
+public import Mathlib.Data.Nat.Bitwise
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.LinearCombination
 
 @[expose] public section
 

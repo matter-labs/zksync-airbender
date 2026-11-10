@@ -1,5 +1,4 @@
 module
-public import Human.Circuits.InitsTeardowns.Theorems
 public import Slop.InitsTeardowns.Claims
 
 @[expose] public section

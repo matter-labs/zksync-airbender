@@ -3,10 +3,10 @@ public import Slop.Delegation.RVBoundaryInputs
 public import Slop.Delegation.CallGroups
 public import Slop.Delegation.PortEvents
 public import Slop.Delegation.Readonly
-public import Slop.Trace.RVHistory
 public import Slop.Trace.RVHistoryFrame
 public import Human.Helpers.Delegation.RVBoundaryMemory
 public import Human.Trace.Delegation.RVExecution
+public import Slop.Delegation.History
 
 @[expose] public section
 

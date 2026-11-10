@@ -1,17 +1,17 @@
 module
-public import Slop.ShiftBinop
-public import Slop.ShiftBinop.Shifts
 public import Slop.ByteTables
-public import Slop.Arithmetic.Bytes
-public import Human.Helpers.Context.RowContext
-public import Human.Helpers.Decoder.PooledProgram
-public import Human.Circuits.AddSub.RowInput
+public import Human.Helpers.Properties
+public import Slop.Constraints
+public import Slop.OpIndex
+public import Slop.ShiftBinop.ArtifactChecks
+public import Mathlib.Data.Nat.Bitwise
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.LinearCombination
 
 @[expose] public section
 
 namespace Airbender.ShiftBinop.Proofs
 open Airbender.Arithmetic
-open Airbender.Reference.RiscV
 
 private theorem wiring {p : Nat} [Fact p.Prime] {w : Nat → ZMod p}
     (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) importedConstraints)

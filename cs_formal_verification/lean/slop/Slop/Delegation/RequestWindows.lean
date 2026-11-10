@@ -2,6 +2,7 @@ module
 public import Human.Helpers.Delegation.RequestWindows
 public import Human.Helpers.Delegation.SpanABI
 public import Slop.Delegation.Schedule
+public import Slop.Delegation.Requests
 
 @[expose] public section
 

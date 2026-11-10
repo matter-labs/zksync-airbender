@@ -2,6 +2,7 @@ module
 public import Slop.KeccakSplit.Reference.RoundAssembly
 public import Slop.KeccakSplit.Reference.FinalIota
 public import Slop.Delegation.IntervalFold
+public import Slop.Keccak.RoundTrace
 
 @[expose] public section
 

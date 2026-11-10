@@ -1,7 +1,8 @@
 module
-public import Slop.JumpBranchSlt.Signed
 public import Slop.JumpBranchSlt.PC
 public import Mathlib.Tactic.IntervalCases
+public import Slop.Arithmetic.Comparison
+public import Slop.JumpBranchSlt
 
 @[expose] public section
 

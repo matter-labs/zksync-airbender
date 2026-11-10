@@ -1,11 +1,11 @@
 module
-public import Human.Circuits.UnifiedReduced.Delegation
-public import Slop.JumpBranchSlt
-public import Slop.ShiftBinop
-public import Slop.Trace.Program
-public import Slop.UnifiedReduced
-public import Slop.AddSub.PC
-public import Slop.Delegation.CallerRequests
+public import Human.Helpers.Properties
+public import Slop.Constraints
+public import Slop.KernelRfl
+public import Slop.UnifiedReduced.ArtifactChecks
+public import Slop.UnifiedReduced.OpIndex
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.LinearCombination
 
 @[expose] public section
 

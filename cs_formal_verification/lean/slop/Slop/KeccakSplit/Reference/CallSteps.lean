@@ -1,7 +1,7 @@
 module
 public import Slop.KeccakSplit.Reference.PermutationDefinitions
-public import Slop.Keccak.ReferenceLemmas
 public import Mathlib.Tactic.IntervalCases
+public import Batteries.Data.Fin.Fold
 
 @[expose] public section
 

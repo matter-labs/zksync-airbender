@@ -1,5 +1,4 @@
 module
-public import Slop.Trace.RVValues
 public import Slop.JumpBranchSlt.RVDecoder
 public import Slop.JumpBranchSlt.Branch
 public import Slop.JumpBranchSlt.Jump

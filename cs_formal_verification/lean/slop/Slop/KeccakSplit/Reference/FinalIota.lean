@@ -1,7 +1,7 @@
 module
 public import Slop.KeccakSplit.Reference.CallSteps
-public import Slop.Keccak.DeferredIota
 public import Slop.Keccak.LayoutReduction
+public import Batteries.Data.Fin.Fold
 
 @[expose] public section
 

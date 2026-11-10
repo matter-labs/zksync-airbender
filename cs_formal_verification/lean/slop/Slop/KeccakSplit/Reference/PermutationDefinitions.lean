@@ -1,6 +1,10 @@
 module
 public import Slop.KeccakSplit.Reference.CallReference
-public import Slop.Keccak.PermutationSchedule
+public import Slop.Blake2Round.DiagonalG
+public import Slop.Blake2Round.FinalXor
+public import Slop.Keccak.ControllerLayout
+public import Slop.KernelRfl
+public import Batteries.Data.Fin.Fold
 
 @[expose] public section
 

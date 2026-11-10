@@ -1,5 +1,4 @@
 module
-public import Human.Circuits.AddSub.RVTheorems
 public import Slop.AddSub.RVTraceSoundness
 public import Slop.Trace.RVPooledLawsProof
 

@@ -1,6 +1,10 @@
 module
-public import Slop.Delegation.Readonly
-public import Human.Trace.Workers.Keccak.Call
+public import Human.Helpers.Delegation.Memory
+public import Slop.KernelRfl
+public import Slop.OpIndex
+public import Mathlib.Data.Nat.Bitwise
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.LinearCombination
 
 @[expose] public section
 

@@ -2,8 +2,7 @@ module
 public import Human.Helpers.UnifiedReduced.RVWindows
 public import Slop.UnifiedReduced.RVCaller.MixedMemoryClocks
 public import Slop.Delegation.WorkerProjection
-public import Slop.UnifiedReduced.RVCaller.Restriction
-public import Slop.UnifiedReduced.RVCaller.Transfer
+public import Batteries.Data.Fin.Fold
 
 @[expose] public section
 

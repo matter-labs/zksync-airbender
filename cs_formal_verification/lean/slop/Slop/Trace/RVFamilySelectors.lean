@@ -1,8 +1,10 @@
 module
-public import Slop.Trace.RVProgram
-public import Slop.Trace.Family.Timestamps
 public import Slop.AddSub.Selectors
 public import Slop.WordMemory
+public import Human.Helpers.Context.FamilyLayout
+public import Human.Helpers.Decoder.RVProgram
+public import Slop.KernelRfl
+public import Slop.Trace.DecoderBits
 
 @[expose] public section
 

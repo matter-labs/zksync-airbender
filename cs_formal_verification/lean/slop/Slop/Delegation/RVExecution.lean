@@ -3,6 +3,7 @@ public import Human.Trace.Delegation.RVExecution
 public import Slop.Delegation.RVBoundaryInputs
 public import Slop.Delegation.PortEvents
 public import Slop.Trace.RVHistoryFrame
+public import Slop.Delegation.History
 
 @[expose] public section
 

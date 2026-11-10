@@ -1,5 +1,4 @@
 module
-public import Slop.Trace.RVValues
 public import Slop.ShiftBinop.RVDecoder
 public import Slop.ShiftBinop.Ports
 public import Slop.ShiftBinop.Trace

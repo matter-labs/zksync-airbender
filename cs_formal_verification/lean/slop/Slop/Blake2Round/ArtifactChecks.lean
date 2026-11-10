@@ -1,7 +1,6 @@
 module
-public import Human.Circuits.Blake2Round.Finalization
-public import Human.Circuits.Blake2Round.Mixing
 public import Human.Circuits.Blake2Round.Artifact
+public import Mathlib.Data.Nat.Bitwise
 
 @[expose] public section
 

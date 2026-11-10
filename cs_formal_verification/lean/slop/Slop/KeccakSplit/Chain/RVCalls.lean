@@ -5,8 +5,9 @@ public import Slop.KeccakSplit.Reference.RVExecutions
 public import Slop.KeccakSplit.ColumnParity.RVExecution
 public import Slop.KeccakSplit.ThetaRho.RVExecution
 public import Slop.KeccakSplit.Chi5.RVExecution
-public import Slop.Delegation.RVCallHistory
 public import Slop.Trace.SeedAddressClocks
+public import Slop.Delegation.CallPaths
+public import Slop.KeccakSplit.Chain.Atomic
 
 @[expose] public section
 

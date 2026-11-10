@@ -3,7 +3,6 @@ public import Slop.KeccakSplit.RVStep
 public import Slop.KeccakSplit.Setup.Facts
 public import Slop.KeccakSplit.Reference.RVExecutions
 public import Slop.Keccak.RVCallSteps
-public import Slop.Delegation.RVCallListLink
 
 @[expose] public section
 

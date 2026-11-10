@@ -1,10 +1,15 @@
 module
-public import Slop.Delegation.History
+public import Human.Helpers.Delegation.Memory
+public import Slop.KernelRfl
+public import Slop.OpIndex
+public import Mathlib.Data.Nat.Bitwise
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.LinearCombination
 
 @[expose] public section
 
 namespace Airbender.Delegation.Proofs
-open Trace Trace.Proofs
+open Trace
 set_option warningAsError true
 set_option maxRecDepth 16384
 

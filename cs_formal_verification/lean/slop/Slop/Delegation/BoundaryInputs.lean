@@ -1,7 +1,6 @@
 module
 public import Human.Helpers.Delegation.Memory
-public import Human.Helpers.Delegation.Operations
-public import Slop.Trace.TransferBoundary
+public import Slop.Trace.TransferHistory
 
 @[expose] public section
 

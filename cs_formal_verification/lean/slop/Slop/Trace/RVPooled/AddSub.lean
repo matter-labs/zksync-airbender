@@ -1,9 +1,10 @@
 module
-public import Slop.Trace.RVPooledStep
-public import Slop.Trace.RVPooledRow
 public import Slop.Trace.RVPooled.Arithmetic
-public import Slop.AddSub.RVTraceSoundness
 public import Slop.ISA.RV.DecodeShape
+public import Slop.AddSub
+public import Slop.AddSub.RVDecoder
+public import Slop.Trace.RVFamilySelectors
+public import Mathlib.Tactic.NormNum.Prime
 
 @[expose] public section
 

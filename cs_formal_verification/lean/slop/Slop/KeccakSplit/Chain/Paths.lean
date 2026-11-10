@@ -1,7 +1,10 @@
 module
-public import Slop.KeccakSplit.Operation
-public import Slop.Delegation.CallPaths
-public import Slop.Trace.MemoryPaths
+public import Human.Circuits.KeccakSplit.Native
+public import Slop.KernelRfl
+public import Slop.OpIndex
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.LinearCombination
+public import Mathlib.Tactic.NormNum.Prime
 
 @[expose] public section
 
@@ -11,7 +14,7 @@ public import Slop.Trace.MemoryPaths
    and orders the rows. -/
 
 namespace Airbender.Keccak.Split.Native.Proofs
-open Trace Trace.Proofs Arithmetic
+open Trace Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
 

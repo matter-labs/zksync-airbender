@@ -1,8 +1,10 @@
 module
-public import Slop.AddSub.ArtifactChecks
-public import Human.Helpers.Properties
 public import Human.Circuits.AddSub.RowInput
 public import Human.Helpers.Core.CircuitOutput
+public import Mathlib.Algebra.Field.ZMod
+public import Mathlib.Analysis.Normed.Ring.Lemmas
+public import Mathlib.Combinatorics.Enumerative.Composition
+public import Mathlib.Control.Monad.Writer
 
 @[expose] public section
 

@@ -5,6 +5,8 @@ public import Slop.Arithmetic.Lemmas
 public import Slop.Arithmetic.Word
 public import Slop.Constraints
 public import Mathlib.Tactic.LinearCombination
+public import Human.Helpers.Properties
+public import Slop.AddSub.ArtifactChecks
 
 @[expose] public section
 

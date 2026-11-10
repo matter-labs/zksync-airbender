@@ -1,8 +1,10 @@
 module
-public import Slop.Keccak.RVStateTrace
 public import Slop.Keccak.PhysicalStep
 public import Slop.Delegation.RVNativeViews
-public import Slop.Delegation.RVCallLink
+public import Slop.ISA.RV.Attr
+public import Slop.Keccak.CallPorts
+public import Slop.Trace.RVHistoryFrame
+public import Batteries.Data.Fin.Fold
 
 @[expose] public section
 

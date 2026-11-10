@@ -5,6 +5,8 @@ public import Slop.MulDiv.Values
 public import Slop.SubwordMemory.Values
 public import Slop.Trace.Family.Values
 public import Slop.Trace.Pooled
+public import Slop.Trace.RVProgram
+public import Slop.Trace.RVValues
 
 @[expose] public section
 

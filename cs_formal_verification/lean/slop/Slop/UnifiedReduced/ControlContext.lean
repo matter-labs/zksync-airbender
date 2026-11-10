@@ -1,15 +1,18 @@
 module
-public import Human.Circuits.JumpBranchSlt.Model
 public import Mathlib.Logic.Relation
-public import Slop.Trace.RowContext
-public import Slop.UnifiedReduced.Values
-public import Slop.UnifiedReduced.ZeroRegister
-public import Slop.UnifiedReduced.ControlProjection
+public import Human.Helpers.Properties
+public import Slop.Constraints
+public import Slop.KernelRfl
+public import Slop.UnifiedReduced.ArtifactChecks
+public import Slop.UnifiedReduced.OpIndex
+public import Mathlib.Data.Nat.Bitwise
+public import Mathlib.Tactic.IntervalCases
+public import Mathlib.Tactic.LinearCombination
 
 @[expose] public section
 
 namespace Airbender.UnifiedReduced.Control.Proofs
-open Arithmetic Reference.RiscV Trace Trace.Proofs
+open Arithmetic Trace
 set_option warningAsError true
 set_option maxRecDepth 16384
 
