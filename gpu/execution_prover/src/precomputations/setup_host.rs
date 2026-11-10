@@ -13,10 +13,9 @@ use crate::upstream::{
     BaseColumns, BaseCommitmentGeometry, CpuGKRSetup, ProofProfile, ProverConfig,
     UnrolledCircuitWitnessEvalFn,
 };
-use execution_prover::config::SoundnessMode;
+use execution_prover::config::{assert_profiles_for_circuit, SoundnessMode};
 use execution_prover::setup::CanonicalCircuitSetup;
-use gpu_trace::witness::circuit_type::UnrolledCircuitType;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 pub struct LazyGpuGKRSetupHost {
@@ -99,64 +98,6 @@ impl LazyGpuGKRSetupHost {
     }
 }
 
-fn validate_profiles(
-    circuit_type: CircuitType,
-    setup: &CanonicalCircuitSetup,
-    profiles: &[ProofProfile],
-) -> BTreeSet<ProofProfile> {
-    validate_profile_set(
-        circuit_type,
-        matches!(setup, CanonicalCircuitSetup::L1Wrap(_)),
-        profiles,
-    )
-}
-
-fn validate_profile_set(
-    circuit_type: CircuitType,
-    is_l1_wrap_setup: bool,
-    profiles: &[ProofProfile],
-) -> BTreeSet<ProofProfile> {
-    let profiles: BTreeSet<ProofProfile> = profiles.iter().copied().collect();
-    assert!(
-        !profiles.is_empty(),
-        "prepare needs at least one ProofProfile"
-    );
-    assert!(
-        !is_l1_wrap_setup || circuit_type == CircuitType::L1Wrap,
-        "CanonicalCircuitSetup::L1Wrap requires CircuitType::L1Wrap, got {circuit_type:?}"
-    );
-    if circuit_type == CircuitType::L1Wrap {
-        assert!(
-            is_l1_wrap_setup,
-            "CircuitType::L1Wrap requires CanonicalCircuitSetup::L1Wrap"
-        );
-        assert!(
-            profiles.iter().eq([ProofProfile::L1Wrap].iter()),
-            "CircuitType::L1Wrap requires exactly ProofProfile::L1Wrap, got {profiles:?}"
-        );
-        return profiles;
-    }
-    assert!(
-        !profiles.contains(&ProofProfile::L1Wrap),
-        "ProofProfile::L1Wrap requires CircuitType::L1Wrap, got {circuit_type:?}"
-    );
-    const UNIFIED22: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
-    assert!(
-        !profiles.contains(&ProofProfile::CompressionFinal) || circuit_type == UNIFIED22,
-        "ProofProfile::CompressionFinal requires CircuitType::Unrolled(UnrolledCircuitType::Unified22), got {circuit_type:?}"
-    );
-    assert!(
-        circuit_type != UNIFIED22 || profiles.iter().eq([ProofProfile::CompressionFinal].iter()),
-        "CircuitType::Unrolled(UnrolledCircuitType::Unified22) requires exactly ProofProfile::CompressionFinal, got {profiles:?}"
-    );
-    assert!(
-        !profiles.contains(&ProofProfile::Compression)
-            || circuit_type == CircuitType::Unrolled(UnrolledCircuitType::Unified),
-        "ProofProfile::Compression requires CircuitType::Unrolled(UnrolledCircuitType::Unified), got {circuit_type:?}"
-    );
-    profiles
-}
-
 pub(crate) fn decoder_host<D: Copy + Default + Into<ExecutorFamilyDecoderData>>(
     rows: &[Option<D>],
 ) -> CudaResult<Option<Arc<StaticPinnedBox<ExecutorFamilyDecoderData>>>> {
@@ -216,7 +157,12 @@ impl CircuitPrecomputations {
         soundness_mode: SoundnessMode,
         profiles: &[ProofProfile],
     ) -> Self {
-        let profiles = validate_profiles(circuit_type, &setup, profiles);
+        assert_profiles_for_circuit(circuit_type, profiles);
+        assert_eq!(
+            matches!(setup, CanonicalCircuitSetup::L1Wrap(_)),
+            circuit_type == CircuitType::L1Wrap,
+            "canonical setup variant disagrees with {circuit_type:?}"
+        );
         let (compiled_circuit, cpu_setup, decoder_table) = match setup {
             CanonicalCircuitSetup::L1Wrap(setup) => {
                 // The wrap exists only under PessimisticConjecture (deferred product scope):
@@ -288,12 +234,8 @@ impl CircuitPrecomputations {
 #[cfg(test)]
 mod cpu_tests {
     use super::*;
-    use gpu_trace::witness::circuit_type::{DelegationCircuitType, UnrolledMemoryCircuitType};
     use std::panic::{catch_unwind, AssertUnwindSafe};
-    use ProofProfile::{Compression, L1Wrap, Standard};
-
-    const UNIFIED: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified);
-    const UNIFIED22: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
+    use ProofProfile::L1Wrap;
 
     fn panic_message(f: impl FnOnce()) -> String {
         let payload = catch_unwind(AssertUnwindSafe(f)).expect_err("expected a named panic");
@@ -306,154 +248,6 @@ mod cpu_tests {
                     .map(|message| message.to_string())
             })
             .expect("panic payload is a message")
-    }
-
-    fn set(profiles: &[ProofProfile]) -> BTreeSet<ProofProfile> {
-        profiles.iter().copied().collect()
-    }
-
-    #[test]
-    fn cpu_l1_validate_profiles() {
-        let inits_and_teardowns = CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns);
-        let memory = CircuitType::Unrolled(UnrolledCircuitType::Memory(
-            UnrolledMemoryCircuitType::LoadStoreWordOnly,
-        ));
-        let delegation = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression);
-        assert_eq!(
-            validate_profile_set(UNIFIED, false, &[Standard, Standard]),
-            set(&[Standard])
-        );
-        assert_eq!(
-            validate_profile_set(UNIFIED, false, &[Standard]),
-            set(&[Standard])
-        );
-        assert_eq!(
-            validate_profile_set(UNIFIED, false, &[Compression, Standard, Compression]),
-            set(&[Standard, Compression])
-        );
-        for circuit in [inits_and_teardowns, memory, delegation, UNIFIED22] {
-            assert!(catch_unwind(|| validate_profile_set(circuit, false, &[Compression])).is_err());
-        }
-        for circuit in [inits_and_teardowns, memory, delegation] {
-            assert_eq!(
-                validate_profile_set(circuit, false, &[Standard, Standard]),
-                set(&[Standard])
-            );
-        }
-        assert_eq!(
-            validate_profile_set(CircuitType::L1Wrap, true, &[L1Wrap, L1Wrap]),
-            set(&[L1Wrap])
-        );
-        assert_eq!(
-            validate_profile_set(UNIFIED22, false, &[Compression, Compression]),
-            set(&[Compression])
-        );
-        let compression_message = |circuit: CircuitType| {
-            format!("ProofProfile::CompressionFinal requires CircuitType::Unrolled(UnrolledCircuitType::Unified22), got {circuit:?}")
-        };
-        let unified22_message = |profiles: &[ProofProfile]| {
-            format!(
-                "CircuitType::Unrolled(UnrolledCircuitType::Unified22) requires exactly ProofProfile::CompressionFinal, got {:?}",
-                set(profiles)
-            )
-        };
-        let cases: [(CircuitType, bool, &[ProofProfile], String); 14] = [
-            (
-                UNIFIED,
-                false,
-                &[],
-                "prepare needs at least one ProofProfile".to_string(),
-            ),
-            (
-                CircuitType::L1Wrap,
-                true,
-                &[],
-                "prepare needs at least one ProofProfile".to_string(),
-            ),
-            (
-                UNIFIED,
-                true,
-                &[Standard],
-                format!(
-                    "CanonicalCircuitSetup::L1Wrap requires CircuitType::L1Wrap, got {UNIFIED:?}"
-                ),
-            ),
-            (
-                CircuitType::L1Wrap,
-                false,
-                &[L1Wrap],
-                "CircuitType::L1Wrap requires CanonicalCircuitSetup::L1Wrap".to_string(),
-            ),
-            (
-                CircuitType::L1Wrap,
-                true,
-                &[Standard],
-                format!(
-                    "CircuitType::L1Wrap requires exactly ProofProfile::L1Wrap, got {:?}",
-                    set(&[Standard])
-                ),
-            ),
-            (
-                CircuitType::L1Wrap,
-                true,
-                &[L1Wrap, Compression],
-                format!(
-                    "CircuitType::L1Wrap requires exactly ProofProfile::L1Wrap, got {:?}",
-                    set(&[Compression, L1Wrap])
-                ),
-            ),
-            (
-                UNIFIED,
-                false,
-                &[Standard, L1Wrap],
-                format!("ProofProfile::L1Wrap requires CircuitType::L1Wrap, got {UNIFIED:?}"),
-            ),
-            (
-                inits_and_teardowns,
-                false,
-                &[Compression],
-                compression_message(inits_and_teardowns),
-            ),
-            (
-                memory,
-                false,
-                &[Standard, Compression],
-                compression_message(memory),
-            ),
-            (
-                delegation,
-                false,
-                &[Compression],
-                compression_message(delegation),
-            ),
-            (
-                UNIFIED,
-                false,
-                &[Compression, Standard, Compression],
-                compression_message(UNIFIED),
-            ),
-            (UNIFIED, false, &[Compression], compression_message(UNIFIED)),
-            (
-                UNIFIED22,
-                false,
-                &[Standard],
-                unified22_message(&[Standard]),
-            ),
-            (
-                UNIFIED22,
-                false,
-                &[Standard, Compression],
-                unified22_message(&[Standard, Compression]),
-            ),
-        ];
-        for (circuit, is_l1_wrap_setup, profiles, expected) in cases {
-            assert_eq!(
-                panic_message(|| {
-                    validate_profile_set(circuit, is_l1_wrap_setup, profiles);
-                }),
-                expected
-            );
-        }
     }
 
     /// The GPU L1 wrap precomputation refuses ethproofs with the profile's mode assert before its
