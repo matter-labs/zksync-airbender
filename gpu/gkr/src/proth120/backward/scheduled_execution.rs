@@ -9,7 +9,6 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::E4;
 use gpu_prover_context::ProverContext;
 
-use super::banks::{CoefficientTablesPr, PreparedCoefficientTablesPr};
 use super::dr_tail::DrTailProofPlanPr;
 use super::eq::BackwardScratchPr;
 use crate::backward::ClaimBufferLayout;
@@ -90,7 +89,6 @@ pub struct GpuGKRBackwardScheduledExecutionPr {
     pub(crate) final_device_claim_point_and_batching: Option<DeviceAllocation<PR>>,
     pub(crate) final_device_claims: Option<DeviceAllocation<PR>>,
     pub(crate) final_claim_layout: Option<ClaimBufferLayout>,
-    pub(crate) coefficient_tables: Option<CoefficientTablesPr>,
     pub(crate) scratch: Option<BackwardScratchPr>,
     pub(crate) _transcript_handoff: Option<GpuGKRTranscriptHandoff<PR>>,
 }
@@ -132,7 +130,6 @@ impl GpuGKRBackwardScheduledExecutionPr {
         self.final_device_seed = None;
         self.final_device_claim_point_and_batching = None;
         self.final_device_claims = None;
-        self.coefficient_tables = None;
         self.scratch = None;
         for layer in self
             .dimension_reducing_layers
@@ -153,7 +150,6 @@ pub fn schedule_backward_pr(
     challenges: &PackedChallenges,
     proof: &mut ProofSlabPr,
     stage_snapshots: Option<UnsafeMutAccessor<GKRBackwardStageSnapshotSinkPr>>,
-    prepared_coefficient_tables: PreparedCoefficientTablesPr,
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
 ) -> CudaResult<GpuGKRBackwardScheduledExecutionPr> {
@@ -173,8 +169,6 @@ pub fn schedule_backward_pr(
     tracing_ranges.push(post_forward_handoff_range);
     let workflow_range = Range::new("gkr.proth120.backward.schedule")?;
     workflow_range.start(stream)?;
-    let coefficient_tables =
-        prepared_coefficient_tables.into_tables(&programs, &inits_and_teardowns_top_bits);
     let mut scratch = BackwardScratchPr::new(context)?;
     let mut input = LayerInputPr {
         seed: d_seed,
@@ -224,12 +218,11 @@ pub fn schedule_backward_pr(
     main_range.start(stream)?;
     let mut main_layers = Vec::new();
     while let Some(mut plan) =
-        main_state.prepare_next_layer_pr(&coefficient_tables, &mut scratch, context)?
+        main_state.prepare_next_layer_pr(&inits_and_teardowns_top_bits, &mut scratch, context)?
     {
         let release_scratch = main_state.scratch_last_reader == Some(plan.layer_idx);
         let mut execution = plan.schedule_execute_pr(
             input,
-            &coefficient_tables,
             challenges,
             &mut main_state.storage,
             proof,
@@ -266,7 +259,6 @@ pub fn schedule_backward_pr(
         final_device_claim_point_and_batching: Some(point_and_batching),
         final_device_claims: Some(claims),
         final_claim_layout: Some(claim_layout),
-        coefficient_tables: Some(coefficient_tables),
         scratch: Some(scratch),
         _transcript_handoff: Some(transcript_handoff),
     };

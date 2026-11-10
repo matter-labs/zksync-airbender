@@ -637,47 +637,38 @@ impl CoefficientBankChunks {
     /// chunk carries exactly its recipes' monomials, rebased to chunk-local
     /// offsets. Fails closed on any hole or overlap.
     pub(crate) fn build(blob: &CoefficientBankBlob) -> Self {
-        let mut chunks: Vec<Box<CoefficientBankChunkDesc>> = Vec::new();
-        let mut chunk = Box::new(CoefficientBankChunkDesc::default());
-        let mut chunk_monomial_base = 0usize;
-        let mut consumed_monomials = 0usize;
-        for (slot, recipe) in blob.recipes.iter().enumerate() {
-            assert_eq!(
-                usize::from(recipe.monomial_offset),
-                consumed_monomials,
-                "recipe {slot} does not extend the blob's contiguous monomial run"
-            );
-            let count = usize::from(recipe.monomial_count);
-            assert!(
-                count <= BWD_COEFF_CHUNK_MONOMIALS,
-                "recipe {slot} carries {count} monomials, above the chunk capacity"
-            );
-            let full = usize::try_from(chunk.bank_count).expect("chunk recipe count fits usize")
-                == BWD_COEFF_CHUNK_RECIPES
-                || consumed_monomials - chunk_monomial_base + count > BWD_COEFF_CHUNK_MONOMIALS;
-            if full {
-                chunks.push(std::mem::take(&mut chunk));
-                chunk.bank_first = slot as u32;
-                chunk_monomial_base = consumed_monomials;
-            }
-            let local = usize::try_from(chunk.bank_count).expect("chunk recipe count fits usize");
-            chunk.recipes[local] = BankRecipe {
-                monomial_offset: u16::try_from(consumed_monomials - chunk_monomial_base)
-                    .expect("a chunk-local monomial offset fits u16"),
-                ..*recipe
-            };
-            let local_monomials =
-                usize::try_from(chunk.monomial_count).expect("chunk monomial count fits usize");
-            chunk.monomials[local_monomials..local_monomials + count]
-                .copy_from_slice(&blob.monomials[consumed_monomials..consumed_monomials + count]);
-            chunk.bank_count += 1;
-            chunk.monomial_count += count as u32;
-            consumed_monomials += count;
-        }
-        assert_eq!(consumed_monomials, blob.monomials.len());
-        if chunk.bank_count > 0 || chunks.is_empty() {
-            chunks.push(chunk);
-        }
+        let ranges = crate::backward::coefficient_chunks::coefficient_chunk_ranges(
+            blob.recipes.iter().map(|recipe| {
+                (
+                    usize::from(recipe.monomial_offset),
+                    usize::from(recipe.monomial_count),
+                )
+            }),
+            blob.monomials.len(),
+            BWD_COEFF_CHUNK_RECIPES,
+            BWD_COEFF_CHUNK_MONOMIALS,
+        );
+        let chunks = ranges
+            .into_iter()
+            .map(|range| {
+                let mut chunk = Box::new(CoefficientBankChunkDesc::default());
+                chunk.bank_first = range.recipes.start as u32;
+                chunk.bank_count = range.recipes.len() as u32;
+                chunk.monomial_count = range.monomials.len() as u32;
+                for (dst, recipe) in chunk.recipes.iter_mut().zip(&blob.recipes[range.recipes]) {
+                    *dst = BankRecipe {
+                        monomial_offset: u16::try_from(
+                            usize::from(recipe.monomial_offset) - range.monomials.start,
+                        )
+                        .expect("a chunk-local monomial offset fits u16"),
+                        ..*recipe
+                    };
+                }
+                chunk.monomials[..range.monomials.len()]
+                    .copy_from_slice(&blob.monomials[range.monomials]);
+                chunk
+            })
+            .collect();
         let built = Self {
             chunks,
             num_coefficients: blob.recipes.len() as u32,

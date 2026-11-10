@@ -7,7 +7,6 @@ use gpu_core::primitives::context::{DeviceAllocation, UnsafeMutAccessor};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
 
-use super::backward::banks::PreparedCoefficientTablesPr;
 use super::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
 use super::backward::{schedule_backward_pr, DrTailProofPlanPr, GKRBackwardStageSnapshotSinkPr};
 use super::base_layer_claims::BaseClaimGatherPr;
@@ -22,10 +21,8 @@ use super::proof_layout::ProofSlabPr;
 use crate::setup::PackedSetupSource;
 use crate::upstream::{ProverConfig, PR};
 
-/// Per-proof GKR inputs the caller uploads ahead of `schedule_gkr`, with its own
-/// input transfer.
+/// Per-proof GKR launch constants, passed by value.
 pub struct GkrPreparedInputsPr {
-    pub coefficient_tables: PreparedCoefficientTablesPr,
     pub base_claim_indices: BaseClaimGatherPr,
 }
 
@@ -47,10 +44,7 @@ pub fn schedule_gkr(
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
 ) -> CudaResult<GkrOutputPr> {
-    let GkrPreparedInputsPr {
-        coefficient_tables,
-        base_claim_indices,
-    } = prepared;
+    let GkrPreparedInputsPr { base_claim_indices } = prepared;
     assert_eq!(
         config.trace_len_log2,
         base.log_rows() as usize,
@@ -109,7 +103,6 @@ pub fn schedule_gkr(
         challenges,
         proof,
         stage_snapshots,
-        coefficient_tables,
         callbacks,
         context,
     )?;

@@ -15,7 +15,6 @@ pub(crate) mod window;
 pub(crate) mod window_dr;
 
 pub(crate) use crate::proth120::forward::GpuGKRDimensionReducingBackwardStatePr;
-pub use banks::{max_coefficient_table_bytes, PreparedCoefficientTablesPr};
 pub use dr_tail::{prepare_dr_tail_resources_pr, DrTailProofPlanPr};
 pub use scheduled_execution::{schedule_backward_pr, GpuGKRBackwardScheduledExecutionPr};
 #[doc(hidden)]

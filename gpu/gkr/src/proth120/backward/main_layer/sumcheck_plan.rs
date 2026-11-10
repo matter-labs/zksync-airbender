@@ -20,9 +20,7 @@ use crate::backward::{
     GKR_EQ_GROUP_TABLE_LEN,
 };
 use crate::forward::vm::lower::read_place_to_gkr_address;
-use crate::proth120::backward::banks::{
-    schedule_coefficient_bank_fill_pr, CoefficientBankPr, CoefficientTablesPr,
-};
+use crate::proth120::backward::banks::{schedule_coefficient_bank_fill_pr, CoefficientBankPr};
 use crate::proth120::backward::eq::{
     launch_eq_high_low_pr, resolve_active_eq_slot_pr, BackwardScratchPr,
 };
@@ -63,7 +61,7 @@ pub(crate) struct MainLayerPlanPr {
 impl MainLayerBackwardStatePr {
     pub(crate) fn prepare_next_layer_pr(
         &mut self,
-        tables: &CoefficientTablesPr,
+        top_bits: &[u32],
         scratch: &mut BackwardScratchPr,
         context: &ProverContext,
     ) -> CudaResult<Option<MainLayerPlanPr>> {
@@ -84,7 +82,7 @@ impl MainLayerBackwardStatePr {
             AllocationPlacement::Top,
         )?;
 
-        let bank = CoefficientBankPr::new(tables, layer_idx, context)?;
+        let bank = CoefficientBankPr::new(&programs, layer_idx, top_bits, context)?;
         let r0 = bind_r0_pr(
             &programs.r0[layer_idx],
             &self.storage,
@@ -151,7 +149,6 @@ impl MainLayerPlanPr {
     pub(crate) fn schedule_execute_pr(
         &mut self,
         input: LayerInputPr,
-        tables: &CoefficientTablesPr,
         challenges: &PackedChallenges,
         storage: &mut GpuGKRStorage<PR, PR>,
         proof: &mut ProofSlabPr,
@@ -225,7 +222,6 @@ impl MainLayerPlanPr {
         drop(claims_in);
         let mut point_out = context.alloc(n + 1, AllocationPlacement::Top)?;
         schedule_coefficient_bank_fill_pr(
-            tables,
             &mut self.bank,
             challenges.challenges().as_ptr(),
             point_in[n..].as_ptr(),

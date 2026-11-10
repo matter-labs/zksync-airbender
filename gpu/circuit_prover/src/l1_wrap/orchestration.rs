@@ -164,7 +164,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         setup_host,
         mut setup,
         constants,
-        coefficient_tables,
         request_range,
     } = inputs;
     let decoder = decoder.expect("L1Wrap requires a decoder table");
@@ -335,7 +334,6 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
         dr_tail_plan,
         stage_snapshots.as_deref_mut().map(UnsafeMutAccessor::new),
         GkrPreparedInputsPr {
-            coefficient_tables,
             base_claim_indices: constants.base_claim_indices,
         },
         &mut callbacks,

@@ -1,3 +1,4 @@
+pub(crate) mod coefficient_chunks;
 use crate::upstream::PrimeField;
 use std::collections::BTreeMap;
 
