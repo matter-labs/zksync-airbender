@@ -62,7 +62,7 @@ check_modes() {
     fi
     echo "== $proof relabeled as $other must fail"
     relabeled="$proof.relabeled-$other.json"
-    sed "s/\"soundness_mode\": \"$(label "$mode")\"/\"soundness_mode\": \"$(label "$other")\"/" \
+    sed "s/\"soundness_mode\":[[:space:]]*\"$(label "$mode")\"/\"soundness_mode\": \"$(label "$other")\"/" \
       "$proof" >"$relabeled"
     if cmp -s "$proof" "$relabeled"; then
       echo "$proof has no soundness_mode $(label "$mode") to relabel" >&2
@@ -82,9 +82,10 @@ check_modes() {
 check_unified() {
   local proof=$1 mode=$2
   check_modes "$proof" "$mode" "chain_end_params do not match the trusted per-layer end-params"
-  # -z reads the file as one record, so the match spans the pretty-printed lines.
+  # A verified unified chain has base, bridge, final and one entry per unrolled layer.
+  # -z lets the check accept both compact and pretty JSON.
   if [[ "${EXPECT_UNROLLED:-0}" == 1 ]] &&
-    ! grep -zqE '"unrolled_recursion_ms":[[:space:]]*\[[[:space:]]*[0-9]' "$proof"; then
+    ! grep -zqE '"chain_end_params":[[:space:]]*\[([[:space:]]*\[[0-9,[:space:]]*\],){3}[[:space:]]*\[' "$proof"; then
     echo "$proof has no unrolled recursion layer" >&2
     exit 1
   fi

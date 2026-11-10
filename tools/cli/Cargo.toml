@@ -14,6 +14,7 @@ name = "cli"
 path = "src/main.rs"
 
 [dependencies]
+proof_fixtures = { workspace = true }
 prover = { workspace = true, features = ["prover"] }
 setups = { workspace = true }
 common_constants = { workspace = true }
