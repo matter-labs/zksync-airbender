@@ -46,7 +46,7 @@ theorem rom_lookup [Fact p.Prime] (hp : 4194304 ≤ p)
     {env : Environment (ZMod p)}
     (holds : (Lookup.mk (tableWith words).toRaw entry).Contains env)
     (selected : entry[9].eval env = 34) :
-    (entry[0].eval env).val < ROM.limit ∧ (entry[0].eval env).val % 4 = 0 ∧
+    (entry[0].eval env).val < RV.ROM_END ∧ (entry[0].eval env).val % 4 = 0 ∧
       (Word.mk (entry[1].eval env).val (entry[2].eval env).val).toBitVec =
         words ((entry[0].eval env).val / 4) ∧
       ∀ j : Fin 6, entry[j.val + 3].eval env = 0 := by
@@ -69,7 +69,7 @@ theorem rom_lookup [Fact p.Prime] (hp : 4194304 ≤ p)
       rw [layout] at equation
       change (entry[2].eval env).val = ((Word.ofBitVec (words key.val)).hi : ZMod p).val at equation
       exact equation.trans (ZMod.val_natCast_of_lt (lt_trans bounds.2 (by dsimp [limbBase]; omega)))
-  refine ⟨by rw [address]; dsimp [ROM.limit]; have := key.isLt; omega,
+  refine ⟨by rw [address]; dsimp [RV.ROM_END]; have := key.isLt; omega,
     by rw [address]; omega, ?_, ?_⟩
   · rw [address, values]
     simpa using Word.ofBitVec_roundtrip (words key.val)

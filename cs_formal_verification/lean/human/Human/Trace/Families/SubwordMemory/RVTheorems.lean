@@ -26,7 +26,7 @@ structure RVRAMInputs {p : Nat} [Fact p.Prime] (trace : NativeTrace p) (initial 
     (cells : List Cell) (program : List RVProgramEntry) : Prop
     extends RVNativeInputs rvDecoderFields trace initial cells program where
   /-- RAM only: every tracked RAM cell lies at or above the ROM region, so no row loads from ROM. -/
-  ramDomain : ∀ address, Cell.ram address ∈ cells → ROM.limit ≤ address.toNat
+  ramDomain : ∀ address, Cell.ram address ∈ cells → RV.ROM_END ≤ address.toNat
   /-- The modeled subword ROM table has the subword-table shape (its values are never read: rows load RAM). -/
   setup : ∃ values, trace.rom = Verification.subwordTable values
 

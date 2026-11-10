@@ -1,5 +1,6 @@
 module
 public import Human.ISA.Delegations
+public import Human.Helpers.Core.Field
 
 @[expose] public section
 
@@ -51,10 +52,10 @@ BabyBear prime `BabyBearP` (semantics as Airbender's VM, riscv_transpiler
 `< BabyBearP` (except `triAdd`, a plain 32-bit sum). `fma` and `triAdd` also read `rd`. -/
 inductive FieldOp | add | sub | mul | fma | triAdd
 
-def BabyBearP : Nat := 0x78000001        -- BabyBear: 2^31 - 2^27 + 1
+abbrev BabyBearP : Nat := Airbender.babyBearModulus        -- BabyBear: 2^31 - 2^27 + 1 = 0x78000001
 
-/-- `2^-32 mod BabyBearP`: field values are kept in Montgomery form (`x` held as `x · 2^32 mod BabyBearP`). -/
-def RINV : Nat := 0x38400000
+/-- `2^-32 mod BabyBearP` (0x38400000): field values are kept in Montgomery form (`x` held as `x · 2^32 mod BabyBearP`). -/
+abbrev RINV : Nat := Airbender.montgomeryInverse
 theorem RINV_spec : RINV * 2 ^ 32 % BabyBearP = 1 := by decide
 
 /-- `mul` is the Montgomery product: if `a`, `b` hold `x · 2^32`, `y · 2^32` (mod `BabyBearP`), the result holds

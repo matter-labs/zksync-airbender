@@ -7,9 +7,6 @@ public import Human.ISA.State
 namespace Airbender.Trace.ROM
 open Arithmetic
 
-/-- Airbender's ROM/RAM split, used by the native word-memory lookup. -/
-def limit : Nat := 4194304
-
 /-- The word at byte address `4 * index` of the RV ROM image, read little-endian. Zero
     when the word lies past the RAM address range (`RV.RAM_END`), the same fallback as `words`. -/
 def wordsRV (before : RV.State) (index : Nat) : BitVec 32 :=
@@ -26,7 +23,7 @@ def rows {p : Nat} (cells : List Cell) (tokens : List (MemoryToken p)) :
   Vector.replicate 9 0 :: (cells.zip tokens).filterMap fun (cell, token) =>
     match cell with
     | .register _ => none
-    | .ram address => if address.toNat < limit then some (row address token.word) else none
+    | .ram address => if address.toNat < RV.ROM_END then some (row address token.word) else none
 
 /-- The current modeled ROM format, instantiated with the public ROM image.
     The image equality binds the zipped cells/values; the zero row is the disabled

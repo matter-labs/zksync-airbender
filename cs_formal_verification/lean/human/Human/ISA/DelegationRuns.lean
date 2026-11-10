@@ -21,20 +21,17 @@ runs: one call is the whole 256-bit operation (`bigintOp`). Proven in `slop/Slop
 namespace Spec
 open RV (Word)
 
-/-- The compression of the 16-word block `m` into the state `h`, the counter `t` already including this block. -/
-def compress (h : Vector Word 8) (m : Vector Word 16) (t : Word) (last : Bool) : Vector Word 8 :=
-  let v₀ : Vector Word 16 := #v[h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], IV 0, IV 1, IV 2, IV 3,
-    t ^^^ IV 4, IV 5, (if last then 0xFFFFFFFF#32 else 0#32) ^^^ IV 6, IV 7]
-  let v := round m (SIGMA 6) <| round m (SIGMA 5) <| round m (SIGMA 4) <| round m (SIGMA 3) <|
-    round m (SIGMA 2) <| round m (SIGMA 1) <| round m (SIGMA 0) v₀
-  Vector.ofFn fun i => h[i] ^^^ v[i] ^^^ v[i.val + 8]
-
 /-- The compression with `n` rounds (round `r` uses `SIGMA (r mod 10)`): RFC 7693's `F` is `compressRounds 10`. -/
 def compressRounds (n : Nat) (h : Vector Word 8) (m : Vector Word 16) (t : Word) (last : Bool) : Vector Word 8 :=
   let v₀ : Vector Word 16 := #v[h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], IV 0, IV 1, IV 2, IV 3,
     t ^^^ IV 4, IV 5, (if last then 0xFFFFFFFF#32 else 0#32) ^^^ IV 6, IV 7]
   let v := (List.range n).foldl (fun v r => round m (SIGMA ⟨r % 10, Nat.mod_lt _ (by decide)⟩) v) v₀
   Vector.ofFn fun i => h[i] ^^^ v[i] ^^^ v[i.val + 8]
+
+/-- The compression of the 16-word block `m` into the state `h`, the counter `t` already including this block:
+    Airbender's Blake2s, 7 rounds. -/
+def compress (h : Vector Word 8) (m : Vector Word 16) (t : Word) (last : Bool) : Vector Word 8 :=
+  compressRounds 7 h m t last
 
 /-- The two-to-one hash: Blake2s (7 rounds) of the 64-byte block `l ‖ r`, the last and only block (what the round
 delegation computes in compression mode). -/

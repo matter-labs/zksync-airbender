@@ -42,10 +42,10 @@ private theorem rv_rom_zip {p : Nat} {before : RV.State} {cells : List Cell} {ce
       exact ⟨List.mem_cons_of_mem _ present, word⟩
 
 /-- RV twin of `ROM.Proofs.member`: a word-ROM row is the padding row or the ROM image's word at a public RAM cell
-    below `ROM.limit`. -/
+    below `RV.ROM_END`. -/
 theorem rv_rom_member {p : Nat} [Fact p.Prime] {before : RV.State} {cells : List Cell}
     {query : Vector (ZMod p) 9} (contains : (ROM.table cells (romImageRV before cells)).Contains #[] query) :
-    query = Vector.replicate 9 0 ∨ ∃ address, Cell.ram address ∈ cells ∧ address.toNat < ROM.limit ∧
+    query = Vector.replicate 9 0 ∨ ∃ address, Cell.ram address ∈ cells ∧ address.toNat < RV.ROM_END ∧
       query = ROM.row address (Word.ofBitVec (RV.read before.rom address 4)) := by
   obtain ⟨i, equal⟩ := contains
   have present : query ∈ ROM.rows cells (romImageRV before cells) := equal ▸ List.get_mem _ i
@@ -56,7 +56,7 @@ theorem rv_rom_member {p : Nat} [Fact p.Prime] {before : RV.State} {cells : List
     cases cell with
     | register index => simp at mapped
     | ram address =>
-      by_cases low : address.toNat < ROM.limit
+      by_cases low : address.toNat < RV.ROM_END
       · simp only [low, ite_true, Option.some.injEq] at mapped
         right
         refine ⟨address, member, low, ?_⟩

@@ -1,4 +1,5 @@
 import SailRV32
+import Human.ISA.State
 
 /-! # The Airbender machine's public configuration
 
@@ -79,11 +80,9 @@ def region (base size : Nat) (readable writable executable : Bool) : PMA_Region 
 /-- Memory map: ROM `[0, 2^22)` holds the program (`common_constants/src/rom.rs`), RAM `[2^22, 2^32)` (the
     verifier initialises `MAX_NUM_INIT_WORDS = 2^30` words, `full_statement_verifier/src/unrolled_circuit_params.rs`).
     Nothing else. -/
-def ROM_END : Nat := 0x400000
-def RAM_END : Nat := 0x100000000
 def memoryMap : List PMA_Region :=
-  [ region 0       ROM_END             (readable := true) (writable := false) (executable := true),
-    region ROM_END (RAM_END - ROM_END) (readable := true) (writable := true)  (executable := false) ]
+  [ region 0       RV.ROM_END                (readable := true) (writable := false) (executable := true),
+    region RV.ROM_END (RV.RAM_END - RV.ROM_END) (readable := true) (writable := true)  (executable := false) ]
 
 /-- Sail's own initialisation and reset (all registers at their defaults, memory 0). -/
 noncomputable def sailResetRun :=

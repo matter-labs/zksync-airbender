@@ -54,7 +54,7 @@ theorem native_constraints : FlatOperation.ConstraintsHoldFlat
     | (change ∃ i : Fin 2, _
        refine ⟨1, ?_⟩
        simp [ROM.rows, cells, physical, Tests.TraceExecution.cells, ROMView.nativeBootImage,
-         ROM.row, Cell.initialToken, MemoryToken.word, Word.ofBitVec, ROM.limit, limbBase]
+         ROM.row, Cell.initialToken, MemoryToken.word, Word.ofBitVec, RV.ROM_END, limbBase]
        with_unfolding_all rfl)
 
 theorem native_accepted : Accepted trace := by

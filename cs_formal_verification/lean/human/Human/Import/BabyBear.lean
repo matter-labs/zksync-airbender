@@ -18,9 +18,6 @@ structure Coefficient where
   raw : BoundedNat babyBearModulus
   deriving Repr
 
-/-- Inverse of R = 2^32 modulo the BabyBear prime. See field/src/baby_bear/base.rs. -/
-def montgomeryInverse : Nat := 943718400
-
 def Coefficient.canonical (c : Coefficient) : Fp :=
   Fp.ofNat (c.raw.val * montgomeryInverse)
 

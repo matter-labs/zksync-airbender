@@ -149,7 +149,7 @@ theorem rv_word_row_step {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p)
       · have flag : w 35 = 1 := by simpa [inROM] using classified.1
         have lookup := rom_data core selected facts.active flag
         rw [facts.wordTable] at lookup
-        have rom := Trace.RVValues.rv_rom_read (by dsimp [ROM.limit]; omega)
+        have rom := Trace.RVValues.rv_rom_read (by dsimp [RV.ROM_END]; omega)
           ⟨(w 19).val, (w 20).val⟩ (w 31) (w 32) addressBound inROM
           (by simpa only [ZMod.natCast_zmod_val] using lookup)
         rw [cellWord, Word.ofBitVec_roundtrip] at rom

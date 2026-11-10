@@ -18,7 +18,7 @@ public import Slop.Defs.Helpers.Core.Word
 /-! One word-memory row of the two-family (ADD/SUB + word memory) trace on the RV route: one `RV.exec` of its entry's
     instruction (LW to a register other than x0, or SW), agreeing with the row's RV history and final PC
     (`rv_row_step`). The per-row proof of `RVTraceSoundness.lean`, with the row's ports read from its RV history: LW
-    reads RAM (the read word) or, below `ROM.limit`, the word-ROM table, which holds the ROM image (`rv_rom_read`);
+    reads RAM (the read word) or, below `RV.ROM_END`, the word-ROM table, which holds the ROM image (`rv_rom_read`);
     SW stores rs2 in RAM (`word_store_ram_writable`). -/
 
 namespace Airbender.WordMemory.Proofs
@@ -188,7 +188,7 @@ theorem rv_row_step {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (
       by_cases inROM : (w 20).val < 64
       · have flag : w 35 = 1 := by simpa [inROM] using classified.1
         have lookup := rom_data core selected active flag
-        have rom := Trace.RVValues.rv_rom_read (by dsimp [ROM.limit]; omega)
+        have rom := Trace.RVValues.rv_rom_read (by dsimp [RV.ROM_END]; omega)
           ⟨(w 19).val, (w 20).val⟩ (w 31) (w 32) addressBound inROM
           (by simpa only [ZMod.natCast_zmod_val] using lookup)
         rw [cellWord, Word.ofBitVec_roundtrip] at rom

@@ -136,7 +136,7 @@ theorem rv_row_step {p : Nat} [Fact p.Prime] (hp : 33554432 < p) (inverse : (-38
     (sourceBound : (Word.mk (w 19).val (w 20).val).Bounded) (readBound : (Word.mk (w 25).val (w 26).val).Bounded)
     (oldBound : (Word.mk (w 31).val (w 32).val).Bounded)
     {cells : List Cell} (aligned : ∀ cell ∈ cells, cell.Aligned)
-    (ramDomain : ∀ address, Cell.ram address ∈ cells → ROM.limit ≤ address.toNat)
+    (ramDomain : ∀ address, Cell.ram address ∈ cells → RV.ROM_END ≤ address.toNat)
     (epoch : Nat) {before after : RV.State} (pc : before.pc = entry.pc)
     (history : RVHistory cells (rowEvents epoch (⟨.subwordMemory, w⟩ : Row p TraceKind)).reverse before after) :
     ∃ next, RV.exec before i = some next ∧
@@ -273,7 +273,7 @@ theorem rv_row_step {p : Nat} [Fact p.Prime] (hp : 33554432 < p) (inverse : (-38
     have high : RV.ROM_END ≤ a.toNat := by
       have outside := ramDomain a secondMember
       unfold RV.ROM_END
-      unfold ROM.limit at outside
+      unfold RV.ROM_END at outside
       omega
     have inRAM : ¬ (w 22).val < 64 := by
       intro low

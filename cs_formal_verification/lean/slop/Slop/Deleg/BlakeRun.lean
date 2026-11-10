@@ -85,21 +85,12 @@ theorem compressRounds_eq (n : Nat) (h : Vector Word 8) (m : Vector Word 16) (t 
 
 theorem compress_eq (h : Vector Word 8) (m : Vector Word 16) (t : Word) (last : Bool) (e : Vector Word 16)
     (h12 : e[12] = t ^^^ IV 4) (h14 : e[14] = (if last then 0xFFFFFFFF#32 else 0#32) ^^^ IV 6) :
-    compress h m t last = blakeFinal h (blakeVs m (blakeV0 h e) 7) := by
-  have hv : blakeV0 h e = #v[h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], IV 0, IV 1, IV 2, IV 3,
-      t ^^^ IV 4, IV 5, (if last then 0xFFFFFFFF#32 else 0#32) ^^^ IV 6, IV 7] := by
-    rw [blakeV0, h12, h14]
-  rw [hv]
-  rfl
+    compress h m t last = blakeFinal h (blakeVs m (blakeV0 h e) 7) :=
+  compressRounds_eq 7 h m t last e h12 h14
 
 /-- The 7-round `compress` is `compressRounds 7`. -/
 theorem compress_rounds (h : Vector Word 8) (m : Vector Word 16) (t : Word) (last : Bool) :
-    compress h m t last = compressRounds 7 h m t last := by
-  let e : Vector Word 16 := Vector.ofFn fun i =>
-    if i.val = 12 then t ^^^ IV 4 else (if last then 0xFFFFFFFF#32 else 0#32) ^^^ IV 6
-  have e12 : e[12] = t ^^^ IV 4 := by simp [e]
-  have e14 : e[14] = (if last then 0xFFFFFFFF#32 else 0#32) ^^^ IV 6 := by simp [e]
-  rw [compress_eq h m t last e e12 e14, compressRounds_eq 7 h m t last e e12 e14]
+    compress h m t last = compressRounds 7 h m t last := rfl
 
 theorem blake_compress_gen (red : Bool) (s : State) (p q t : Word) (last : Bool) (hp : Buffer p 96 128)
     (hq : Buffer q 64 64) (hpq : Apart p 96 q 64) (h10 : s.getReg 10 = p) (h11 : s.getReg 11 = q)
