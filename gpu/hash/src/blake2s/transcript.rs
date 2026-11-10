@@ -307,7 +307,7 @@ pub fn blake2s_pow(
     kernel_function.launch(&config, &args)
 }
 
-#[cfg(all(test, not(no_cuda), feature = "deterministic_pow"))]
+#[cfg(all(test, not(no_cuda)))]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn blake2s_pow_search_bounded(
     seed: &DeviceSlice<u32>,

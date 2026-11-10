@@ -7,7 +7,6 @@ use super::Digest;
 use crate::upstream::{ColumnMajorMerkleTreeConstructor, Keccak256MerkleTreeWithCap, Proth120};
 
 mod merkle_tests;
-#[cfg(feature = "deterministic_pow")]
 mod pow_tests;
 mod query_plan_tests;
 mod transcript_tests;

@@ -6,5 +6,5 @@ pub fn pow_chunk_steps(bits: u32, blocks: u32) -> u32 {
     (expected_per_thread / 32).clamp(1, 32) as u32
 }
 
-#[cfg(all(test, feature = "deterministic_pow", not(no_cuda)))]
+#[cfg(all(test, not(no_cuda)))]
 mod tests;
