@@ -22,7 +22,7 @@ namespace Airbender.Trace
     program table): if each teardown value of `inits` is the value of an `Init` tuple or of a write of the trace's
     rows, every teardown tuple carries a bounded word. -/
 def TeardownsBoundedClaim : Prop :=
-  ∀ {trace : PooledTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} {projection : RV.Instr → Option (DecoderData PooledFamily)} (table : projection = rvPooledDecoderFields ∨ projection = NonDeterminism.Pooled.rvDecoderFields) (inputs : RVPooledBootInputs trace initial cells program inits projection) (accepted : Accepted trace) (decoded : RVPooledDecoded trace program) (reads : InitsTeardowns.MemoryArgumentReadsBounded inits (trace.rows.flatMap Row.writes)),
+  ∀ {trace : PooledTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} {projection : RV.Instr → Option (DecoderData PooledFamily)} (_table : projection = rvPooledDecoderFields ∨ projection = NonDeterminism.Pooled.rvDecoderFields) (_inputs : RVPooledBootInputs trace initial cells program inits projection) (_accepted : Accepted trace) (_decoded : RVPooledDecoded trace program) (_reads : InitsTeardowns.MemoryArgumentReadsBounded inits (trace.rows.flatMap Row.writes)),
     ∀ w ∈ inits, ∀ token ∈ w.teardownTokens, token.word.Bounded
 
 end Airbender.Trace
@@ -34,7 +34,7 @@ open Trace
     `inits` is the value of an `Init` tuple or of a write of the trace's rows, every teardown tuple carries a bounded
     word. -/
 def TeardownsBoundedClaim : Prop :=
-  ∀ {trace : UnifiedTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)} (inputs : RVBootInputs trace initial cells program inits) (accepted : Accepted trace) (reads : InitsTeardowns.MemoryArgumentReadsBounded inits (trace.rows.flatMap Row.writes)),
+  ∀ {trace : UnifiedTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)} (_inputs : RVBootInputs trace initial cells program inits) (_accepted : Accepted trace) (_reads : InitsTeardowns.MemoryArgumentReadsBounded inits (trace.rows.flatMap Row.writes)),
     ∀ w ∈ inits, ∀ token ∈ w.teardownTokens, token.word.Bounded
 
 end Airbender.UnifiedReduced

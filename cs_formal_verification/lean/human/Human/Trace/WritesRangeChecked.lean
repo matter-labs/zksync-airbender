@@ -31,7 +31,7 @@ def WritesRangeChecked {p : Nat} (steps : List (MemoryToken p × MemoryToken p))
     decoded trace has range-checked writes. The boot inputs supply the modeled word-ROM and subword tables and the
     program table. -/
 def WritesRangeCheckedClaim : Prop :=
-  ∀ {trace : PooledTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} {projection : RV.Instr → Option (DecoderData PooledFamily)} (table : projection = rvPooledDecoderFields ∨ projection = NonDeterminism.Pooled.rvDecoderFields) (inputs : RVPooledBootInputs trace initial cells program inits projection) (accepted : Accepted trace) (decoded : RVPooledDecoded trace program),
+  ∀ {trace : PooledTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} {projection : RV.Instr → Option (DecoderData PooledFamily)} (_table : projection = rvPooledDecoderFields ∨ projection = NonDeterminism.Pooled.rvDecoderFields) (_inputs : RVPooledBootInputs trace initial cells program inits projection) (_accepted : Accepted trace) (_decoded : RVPooledDecoded trace program),
     ∀ row ∈ trace.rows, WritesRangeChecked row.memorySteps
 
 end Airbender.Trace
@@ -41,7 +41,7 @@ open Trace
 
 /-- The unified reduced machine: every row of an accepted trace has range-checked writes (its own constraints). -/
 def WritesRangeCheckedClaim : Prop :=
-  ∀ {trace : UnifiedTrace babyBearModulus} (accepted : Accepted trace),
+  ∀ {trace : UnifiedTrace babyBearModulus} (_accepted : Accepted trace),
     ∀ row ∈ trace.rows, WritesRangeChecked row.memorySteps
 
 end Airbender.UnifiedReduced
@@ -53,7 +53,7 @@ open Trace
     `keccakActive` are the fields of `RVOperationInputs` (the modeled tables; the Blake2s round's round mask and the
     Keccak row's execute flag, caller/padding conditions awaiting request binding). -/
 def WritesRangeCheckedClaim : Prop :=
-  ∀ {data : MemoryData babyBearModulus} {control : Fin 4096 → Vector Nat 6} (accepted : MemoryAccepted data) (tables : data.setup = modeledSetup control) (rounds : ∀ row ∈ data.rows, row.family = .blakeRound → ∃ round, Blake2Round.Memory.RoundMask row.assignment round) (keccakActive : ∀ row ∈ data.rows, row.family = .keccak → row.assignment Keccak.Variables.execute = 1),
+  ∀ {data : MemoryData babyBearModulus} {control : Fin 4096 → Vector Nat 6} (_accepted : MemoryAccepted data) (_tables : data.setup = modeledSetup control) (_rounds : ∀ row ∈ data.rows, row.family = .blakeRound → ∃ round, Blake2Round.Memory.RoundMask row.assignment round) (_keccakActive : ∀ row ∈ data.rows, row.family = .keccak → row.assignment Keccak.Variables.execute = 1),
     ∀ row ∈ data.rows, WritesRangeChecked row.memorySteps
 
 end Airbender.Delegation
@@ -63,7 +63,7 @@ open Trace
 
 /-- The split Keccak workers: every active row of an accepted pool has range-checked writes. -/
 def WritesRangeCheckedClaim : Prop :=
-  ∀ {data : MemoryData babyBearModulus} (accepted : MemoryAccepted data) (active : ∀ row ∈ data.rows, row.assignment row.columns.execute = 1),
+  ∀ {data : MemoryData babyBearModulus} (_accepted : MemoryAccepted data) (_active : ∀ row ∈ data.rows, row.assignment row.columns.execute = 1),
     ∀ row ∈ data.rows, WritesRangeChecked row.memorySteps
 
 end Airbender.Keccak.Split.Native

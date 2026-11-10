@@ -16,7 +16,7 @@ namespace Airbender.Keccak.Split.Native
 /-- In an initialized pool of split workers from an `RV.State`, every access
     executes as RV cell reads/writes (`RVMemoryExecution`) and every row is a call of the documented schedule. -/
 def RVOperationExecutionClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (inverse : 256 * (-7864320 : ZMod p) = 1) {data : MemoryData p} {before : RV.State} {cells : List Trace.Cell} (accepted : MemoryAccepted data) (inputs : RVOperationInputs data before cells) (aligned : ∀ cell ∈ cells, cell.Aligned),
+  ∀ {p : Nat} [Fact p.Prime] (_inverse : 256 * (-7864320 : ZMod p) = 1) {data : MemoryData p} {before : RV.State} {cells : List Trace.Cell} (_accepted : MemoryAccepted data) (_inputs : RVOperationInputs data before cells) (_aligned : ∀ cell ∈ cells, cell.Aligned),
     RVMemoryExecution data before cells ∧ ∀ row ∈ data.rows, RowEffects row
 
 /-- A complete initialized split request on `RV.State`s: its 361 calls
@@ -24,7 +24,7 @@ def RVOperationExecutionClaim : Prop :=
     permutation of the block at the public x11 pointer, and the final state is the spec's run of the 361
     Keccak-f1600 calls `RV.f1600Calls` from `initial` (memory and registers; the PC advance is the spec's). -/
 def RVPermutationSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (inverse : 256 * (-7864320 : ZMod p) = 1) {data : MemoryData p} {initial : RV.State} {cells : List Trace.Cell} (accepted : MemoryAccepted data) (inputs : RVCallInputs data initial cells) (aligned : ∀ cell ∈ cells, cell.Aligned),
+  ∀ {p : Nat} [Fact p.Prime] (_inverse : 256 * (-7864320 : ZMod p) = 1) {data : MemoryData p} {initial : RV.State} {cells : List Trace.Cell} (_accepted : MemoryAccepted data) (_inputs : RVCallInputs data initial cells) (_aligned : ∀ cell ∈ cells, cell.Aligned),
     ∃ (states : Fin 362 → RV.State) (pointer : BitVec 32) (input output : Vector Nat 25),
       states 0 = initial ∧ (∀ index : Fin 361, Call.RVExecutesAt index (states index.castSucc) (states index.succ)) ∧
       Keccak.Permutation.RVWordMapping initial (states 361) pointer input output ∧

@@ -21,7 +21,7 @@ namespace Airbender.Trace
     state/memory matching, `decoded` decoder-table membership; cryptographic enforcement and import/table-generation
     fidelity remain external. -/
 def RVPooledNativeSoundnessClaim : Prop :=
-  ∀ {trace : PooledTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} (inputs : RVPooledBootInputs trace initial cells program inits) (accepted : Accepted trace) (decoded : RVPooledDecoded trace program),
+  ∀ {trace : PooledTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} (_inputs : RVPooledBootInputs trace initial cells program inits) (_accepted : Accepted trace) (_decoded : RVPooledDecoded trace program),
     RVRealizes trace initial cells
 
 /-- How Airbender's zero starting RAM (`Human/ISA/State.lean`) is justified by the inits/teardowns circuit: under the
@@ -31,7 +31,7 @@ def RVPooledNativeSoundnessClaim : Prop :=
     public state, zero for the first chunk), RAM coverage (only the cells of initialised windows are tracked, so only
     they are reachable) and cross-chunk clock chaining (no other circuit writes at timestamp 0). -/
 def BootRamZeroClaim : Prop :=
-  ∀ {trace : PooledTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} {projection : RV.Instr → Option (DecoderData PooledFamily)} (inputs : RVPooledBootInputs trace initial cells program inits projection),
+  ∀ {trace : PooledTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} {projection : RV.Instr → Option (DecoderData PooledFamily)} (_inputs : RVPooledBootInputs trace initial cells program inits projection),
     ∀ address, Cell.ram address ∈ cells → (Cell.ram address).readRV initial = some 0
 
 namespace NonDeterminism.Pooled
@@ -47,7 +47,7 @@ def RVRealizes {p : Nat} [Fact p.Prime] (trace : PooledTrace p) (initial : RV.St
     a read row writes an unconstrained value to `rd` in the circuit, and `ports` binds the read rows' values to the
     stream in clock order (`StreamPorts`); the run consumes exactly the trace's reads. -/
 def RVNativeSoundnessClaim : Prop :=
-  ∀ {trace : PooledTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} (inputs : RVPooledBootInputs trace initial cells program inits rvDecoderFields) (accepted : Accepted trace) (decoded : RVPooledDecoded trace program) (ports : StreamPorts trace initial.input),
+  ∀ {trace : PooledTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} (_inputs : RVPooledBootInputs trace initial cells program inits rvDecoderFields) (_accepted : Accepted trace) (_decoded : RVPooledDecoded trace program) (_ports : StreamPorts trace initial.input),
     RVRealizes trace initial cells
 
 end NonDeterminism.Pooled

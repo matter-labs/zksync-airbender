@@ -31,7 +31,7 @@ structure RVExecutionInputs {p : Nat} [Fact p.Prime] (trace : NativeTrace p) (in
     the terminal PC and register/cell values. Public initialization, canonical termination and logical
     matching/membership are the explicit boundaries in `RVExecutionInputs`, `Accepted` and `RVDecoded`. -/
 def RVTraceSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 4194304 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : NativeTrace p} {initial : RV.State} {cells : List Trace.Cell} {program : List RVProgramEntry} (inputs : RVExecutionInputs trace initial cells program) (accepted : Trace.Accepted trace) (decoded : RVDecoded trace program),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 4194304 ≤ p) (_inverse : (-3840 : ZMod p) * 524288 = 1) {trace : NativeTrace p} {initial : RV.State} {cells : List Trace.Cell} {program : List RVProgramEntry} (_inputs : RVExecutionInputs trace initial cells program) (_accepted : Trace.Accepted trace) (_decoded : RVDecoded trace program),
     Trace.RVRealizes trace initial cells
 
 end Airbender.JumpBranchSlt

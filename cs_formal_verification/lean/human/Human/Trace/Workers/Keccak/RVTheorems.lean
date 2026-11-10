@@ -18,7 +18,7 @@ namespace Airbender.Keccak
     `RV.State`s, retaining seed timestamps, with the delegate link: the final state is the spec's run of the 649
     special5 calls from `initial` (memory and registers; the PC advance is the spec's). -/
 def Native.RVPermutationBoundarySoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p) (inverse : 256 * (-7864320 : ZMod p) = 1) {data : Delegation.MemoryData p} {initial : RV.State} {cells : List Trace.Cell} (accepted : Delegation.MemoryAccepted data) (inputs : RVNativeCallInputs data initial cells) (tables : data.setup = Delegation.modeledSetup Controller.rows) (aligned : ∀ cell ∈ cells, cell.Aligned),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 16777216 ≤ p) (_inverse : 256 * (-7864320 : ZMod p) = 1) {data : Delegation.MemoryData p} {initial : RV.State} {cells : List Trace.Cell} (_accepted : Delegation.MemoryAccepted data) (_inputs : RVNativeCallInputs data initial cells) (_tables : data.setup = Delegation.modeledSetup Controller.rows) (_aligned : ∀ cell ∈ cells, cell.Aligned),
     ∃ (after : RV.State) (pointer : BitVec 32) (input output : Vector Nat 25),
       Permutation.RVWordMapping initial after pointer input output ∧
         Delegation.RVTraceMapping data initial after cells ∧ output = Specs.Keccak256.keccakPermutation input ∧
@@ -31,7 +31,7 @@ def Native.RVPermutationBoundarySoundnessClaim : Prop :=
     from `initial` (memory and registers; the PC advance is the spec's). Caller request matching and modeled-table
     fidelity remain explicit boundaries of `RVCallInputs` and `tables`. -/
 def Native.RVPermutationSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p) (inverse : 256 * (-7864320 : ZMod p) = 1) {data : Delegation.MemoryData p} {initial : RV.State} {cells : List Trace.Cell} (accepted : Delegation.MemoryAccepted data) (inputs : RVCallInputs data initial cells) (tables : data.setup = Delegation.modeledSetup Controller.rows) (aligned : ∀ cell ∈ cells, cell.Aligned),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 16777216 ≤ p) (_inverse : 256 * (-7864320 : ZMod p) = 1) {data : Delegation.MemoryData p} {initial : RV.State} {cells : List Trace.Cell} (_accepted : Delegation.MemoryAccepted data) (_inputs : RVCallInputs data initial cells) (_tables : data.setup = Delegation.modeledSetup Controller.rows) (_aligned : ∀ cell ∈ cells, cell.Aligned),
     ∃ (after : RV.State) (pointer : BitVec 32) (input output : Vector Nat 25),
       Permutation.RVWordMapping initial after pointer input output ∧
         Delegation.RVTraceMapping data initial after cells ∧ output = Specs.Keccak256.keccakPermutation input ∧
@@ -42,14 +42,14 @@ def Native.RVPermutationSoundnessClaim : Prop :=
     controls actual initialized RV transfers in a mixed delegation pool (`RVMemoryExecution`; RAM cells include the
     shadow RAM below `ROM_END`); all seven lane modes use the existing Clean references on native observations. -/
 def Native.RVOperationExecutionClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p) (inverse : 256 * (-7864320 : ZMod p) = 1) {data : Delegation.MemoryData p} {before : RV.State} {cells : List Trace.Cell} (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.RVOperationInputs data before cells Controller.rows) (aligned : ∀ cell ∈ cells, cell.Aligned),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 16777216 ≤ p) (_inverse : 256 * (-7864320 : ZMod p) = 1) {data : Delegation.MemoryData p} {before : RV.State} {cells : List Trace.Cell} (_accepted : Delegation.MemoryAccepted data) (_inputs : Delegation.RVOperationInputs data before cells Controller.rows) (_aligned : ∀ cell ∈ cells, cell.Aligned),
     Delegation.RVMemoryExecution data before cells ∧
       ∀ row ∈ data.rows, row.family = .keccak → Native.RowEffects row.assignment
 
 /-- The first complete special5 span reaches the full reference
     (`RVSpanResult`, delegate link included) on its actual native-clock cut `RV.State`s. -/
 def Native.RVWindowSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 16777216 ≤ p) (inverse : 256 * (-7864320 : ZMod p) = 1) {data : Delegation.MemoryData p} {before : RV.State} {cells : List Trace.Cell} {lower upper : Nat} (accepted : Delegation.MemoryAccepted data) (inputs : RVWindowInputs data before cells lower upper) (aligned : ∀ cell ∈ cells, cell.Aligned),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 16777216 ≤ p) (_inverse : 256 * (-7864320 : ZMod p) = 1) {data : Delegation.MemoryData p} {before : RV.State} {cells : List Trace.Cell} {lower upper : Nat} (_accepted : Delegation.MemoryAccepted data) (_inputs : RVWindowInputs data before cells lower upper) (_aligned : ∀ cell ∈ cells, cell.Aligned),
     Delegation.Caller.RVWindowResult RVSpanResult data before cells lower upper
 
 end Airbender.Keccak

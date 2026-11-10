@@ -17,7 +17,7 @@ open Trace
     circuit's merged word at the cell (the old word with the stored byte or halfword replaced), loads write the
     circuit's extended byte or halfword to `rd`; PC := the row's final PC; nothing else changed. -/
 def RVSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (clockInverse : (-3840 : ZMod p) * 524288 = 1) (trace : PooledTrace p) (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 536870912 ≤ p) (_clockInverse : (-3840 : ZMod p) * 524288 = 1) (trace : PooledTrace p) (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry),
     RVInterfaceAssumptions trace initial cells program →
     ∀ input output w, (rvCircuitModel trace initial cells program).relation input output w →
       output.cell.toBitVec.toNat = (input.source.toBitVec + input.immediate.toBitVec).toNat / 4 * 4 ∧

@@ -12,14 +12,14 @@ namespace Airbender.Delegation.Caller
     then prove its virtual CSR read/write tokens, real x0 addresses and state-preserving RV x0 effects. No selected
     opcode, expected request or expected output is assumed. -/
 def RVSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 65536 < p) {before : RV.State} {addresses : List (BitVec 32)} {program : List RVProgramEntry} {w : Nat → ZMod p} (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints) (image : rvProgramImage before addresses = some program) (member : (rvDecoderTable program).Contains #[] (nativeQuery w)),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 65536 < p) {before : RV.State} {addresses : List (BitVec 32)} {program : List RVProgramEntry} {w : Nat → ZMod p} (_constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints) (_image : rvProgramImage before addresses = some program) (_member : (rvDecoderTable program).Contains #[] (nativeQuery w)),
     RVBinding w before program
 
 /-- Imported caller PCs match the RV retirement path. Public decoding supplies the
     initial word; imported range queries supply the final bounds. The inverse condition names the serialized field
     constant. No per-row PC range or expected next-PC premise is needed. -/
 def RVPcSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 196608 < p) (inverse : (-30720 : ZMod p) * 65536 = 1) {before : RV.State} {addresses : List (BitVec 32)} {program : List RVProgramEntry} {w : Nat → ZMod p} (constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints) (image : rvProgramImage before addresses = some program) (member : (rvDecoderTable program).Contains #[] (nativeQuery w)),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 196608 < p) (_inverse : (-30720 : ZMod p) * 65536 = 1) {before : RV.State} {addresses : List (BitVec 32)} {program : List RVProgramEntry} {w : Nat → ZMod p} (_constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints) (_image : rvProgramImage before addresses = some program) (_member : (rvDecoderTable program).Contains #[] (nativeQuery w)),
     RVPCBinding w before program
 
 end Airbender.Delegation.Caller

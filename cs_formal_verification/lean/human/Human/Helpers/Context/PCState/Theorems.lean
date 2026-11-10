@@ -11,7 +11,7 @@ namespace Airbender.PCState
     final low-limb bound; the logical global interface supplies the high bound.
     Both decoder inputs and the terminal-state boundary are covered. -/
 def OutgoingBoundsClaim : Prop :=
-  ∀ {p n : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p) {context : Context p n} (interface : Interface context) {pc : ZMod p × ZMod p} (outgoing : Outgoing context pc) (lowBound : pc.1.val < Arithmetic.limbBase),
+  ∀ {p n : Nat} [Fact p.Prime] (_hp : Arithmetic.limbBase < p) {context : Context p n} (_interface : Interface context) {pc : ZMod p × ZMod p} (_outgoing : Outgoing context pc) (_lowBound : pc.1.val < Arithmetic.limbBase),
     pc.1.val < Arithmetic.limbBase ∧ pc.2.val < Arithmetic.limbBase
 
 end Airbender.PCState

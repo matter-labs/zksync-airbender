@@ -15,14 +15,14 @@ namespace Airbender.Delegation
     to be at or above `ROM_END`. `aligned` is physical word alignment of the public cell domain. No read, result or
     range premise is supplied. -/
 def RVNativeMemoryExecutionClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p) {data : MemoryData p} (accepted : MemoryAccepted data) {before : RV.State} {cells : List Trace.Cell} (inputs : RVMemoryInputs data before cells) (aligned : ∀ cell ∈ cells, cell.Aligned),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 2 * Trace.timestampBase + 4 < p) {data : MemoryData p} (_accepted : MemoryAccepted data) {before : RV.State} {cells : List Trace.Cell} (_inputs : RVMemoryInputs data before cells) (_aligned : ∀ cell ∈ cells, cell.Aligned),
     RVMemoryExecution data before cells
 
 /-- All four families can share one pool initialized from an
     `RV.State`. Imported writes preserve canonical RV32 words, and logical matching supplies every later read. No
     family restriction, read-value or limb-range premise is supplied. -/
 def RVOperationMemorySoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1) {data : MemoryData p} {before : RV.State} {cells : List Trace.Cell} {control : Fin 4096 → Vector Nat 6} (accepted : MemoryAccepted data) (inputs : RVOperationInputs data before cells control),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 8388608 ≤ p) (_inverse : 64 * (-31457280 : ZMod p) = 1) {data : MemoryData p} {before : RV.State} {cells : List Trace.Cell} {control : Fin 4096 → Vector Nat 6} (_accepted : MemoryAccepted data) (_inputs : RVOperationInputs data before cells control),
     MemorySoundness data ∧ WordBounds data
 
 /-- Imported delegation constraints and initialized token matching imply native
@@ -30,7 +30,7 @@ def RVOperationMemorySoundnessClaim : Prop :=
     initialization (`initialImageRV`), a distinct cell domain and native timestamp-offset room. No prior-clock,
     read-value or address-range premise. -/
 def RVMemorySoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p) {data : MemoryData p} (accepted : MemoryAccepted data) {before : RV.State} {cells : List Trace.Cell} (inputs : RVMemoryInputs data before cells),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 2 * Trace.timestampBase + 4 < p) {data : MemoryData p} (_accepted : MemoryAccepted data) {before : RV.State} {cells : List Trace.Cell} (_inputs : RVMemoryInputs data before cells),
     MemorySoundness data
 
 end Airbender.Delegation

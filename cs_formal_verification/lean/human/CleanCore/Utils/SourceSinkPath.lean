@@ -66,6 +66,8 @@ theorem finset_ssubset_univ_of_not_mem {α : Type*} [Fintype α] (s : Finset α)
   rw [← h_eq_univ] at this
   exact h this
 
+-- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
+set_option linter.unusedSectionVars false in
 /-- If a path is contained in a run and uses a transition, that transition has positive capacity. -/
 theorem containsPath_has_positive_transition (R : Run S) (path : List S)
     (h_contains : R.containsPath path) (t : Transition S)
@@ -77,6 +79,8 @@ theorem containsPath_has_positive_transition (R : Run S) (path : List S)
   have h_bound := h_contains t
   omega
 
+-- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
+set_option linter.unusedSectionVars false in
 /-- Zipping drops of consecutive indices produces a sublist of zipping a list with its tail. -/
 theorem zip_drop_sublist (l : List S) (n : ℕ) :
     ((l.drop n).zip (l.drop (n + 1))).Sublist (l.zip l.tail) := by
@@ -110,6 +114,8 @@ theorem containsPath_drop (R : Run S) (path : List S) (n : ℕ)
   have h_original := h_contains t
   omega
 
+-- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
+set_option linter.unusedSectionVars false in
 /-- Zipping takes of two lists produces a sublist of zipping the original lists. -/
 theorem zip_take_sublist (l1 l2 : List S) (n m : ℕ) :
     ((l1.take n).zip (l2.take m)).Sublist (l1.zip l2) := by
@@ -184,6 +190,8 @@ theorem getLast_drop_take {α : Type*} (path : List α) (n k : ℕ)
   have : n + (k - 1) = n + k - 1 := by omega
   rw [this]
 
+-- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
+set_option linter.unusedSectionVars false in
 /-- If path[n] = path[m] = x, then the sublist from n to m forms a cycle starting and ending with x. -/
 theorem drop_take_cycle_same_endpoints (path : List S) (x : S) (n m : Fin path.length)
     (h_n_lt_m : n < m)
@@ -196,7 +204,7 @@ theorem drop_take_cycle_same_endpoints (path : List S) (x : S) (n m : Fin path.l
   have h_head : ((path.drop n.val).take (m.val - n.val + 1)).head? = some x := by
     rw [List.head?_take]
     have h_take_nonzero : m.val - n.val + 1 ≠ 0 := by omega
-    simp only [if_neg h_take_nonzero]
+    simp only [ite_eq_right h_take_nonzero]
     rw [List.head?_drop]
     have h_n_in_bounds : n.val < path.length := h_n_lt_len
     aesop
@@ -245,6 +253,8 @@ theorem acyclic_containsPath_nodup (R : Run S) (path : List S)
   push Not at h_acyclic
   apply h_acyclic cycle h_cycle_len h_cycle_starts_ends_with_x h_cycle_contained
 
+-- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
+set_option linter.unusedSectionVars false in
 /-- Appending an element to a non-empty path adds exactly one transition from the last element. -/
 theorem countTransitionInPath_append_singleton (path : List S) (x y : S)
     (h_nonempty : path ≠ [])
@@ -271,6 +281,8 @@ theorem countTransitionInPath_append_singleton (path : List S) (x y : S)
       · rw [List.tail_cons, List.zip_cons_cons] at h_not_in
         aesop
 
+-- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
+set_option linter.unusedSectionVars false in
 /-- Appending an element doesn't add a transition that's different from (last, new). -/
 theorem countTransitionInPath_append_singleton_other (path : List S) (x y : S) (t : Transition S)
     (h_nonempty : path ≠ [])
@@ -301,6 +313,8 @@ def countAsFirst (xs : List S) (x : S) : ℕ :=
 def countAsSecond (xs : List S) (x : S) : ℕ :=
   (xs.zip xs.tail).countP (fun p => p.2 = x)
 
+-- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
+set_option linter.unusedSectionVars false in
 /-- Helper: cons adds a pair that contributes to first count if head matches -/
 theorem countAsFirst_cons (hd : S) (tl : List S) (x : S) :
     countAsFirst (hd :: tl) x = (if hd = x ∧ tl ≠ [] then 1 else 0) + countAsFirst tl x := by
@@ -318,6 +332,8 @@ theorem countAsFirst_cons (hd : S) (tl : List S) (x : S) :
     by_cases h : hd = x <;> simp only [h, ↓reduceIte, add_zero, zero_add]
     omega
 
+-- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
+set_option linter.unusedSectionVars false in
 /-- Helper: cons adds a pair that contributes to second count if head of tail matches -/
 theorem countAsSecond_cons (hd : S) (tl : List S) (x : S) :
     countAsSecond (hd :: tl) x = (if tl.head? = some x then 1 else 0) + countAsSecond tl x := by
@@ -434,6 +450,8 @@ theorem netFlow_sub (R R' : Run S) (x : S)
   rw [h_out, h_in]
   omega
 
+-- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
+set_option linter.unusedSectionVars false in
 /-- If a run has a self-loop, it contradicts acyclicity. -/
 theorem acyclic_no_self_loop (R : Run S) (s : S) (h_acyclic : R.isAcyclic) (h_edge : R (s, s) > 0) : False := by
   unfold Run.isAcyclic Run.hasCycle at h_acyclic

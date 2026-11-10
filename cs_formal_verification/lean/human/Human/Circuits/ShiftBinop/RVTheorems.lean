@@ -15,7 +15,7 @@ open Trace
 /-- Every accepted shift/binop row is one step of our spec: from the row's pre-state (`input.before`), the step
     exists and gives the row's post-state: `rd` := the row's result, PC := the row's final PC, nothing else changed. -/
 def RVSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1) (trace : PooledTrace p) (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 536870912 ≤ p) (_inverse : (-3840 : ZMod p) * 524288 = 1) (trace : PooledTrace p) (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry),
     RVInterfaceAssumptions trace initial cells program →
     ∀ input output w, (rvCircuitModel trace initial cells program).relation input output w →
       ∃ s', RV.step input.before = some s' ∧

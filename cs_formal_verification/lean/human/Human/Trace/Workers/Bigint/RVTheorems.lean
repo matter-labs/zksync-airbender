@@ -17,7 +17,7 @@ namespace Airbender.Bigint.Native
     hold) and applying it gives the call's post-state, up to the spec's PC advance. Other delegation families may share
     the history. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 def RVOperationExecutionClaim : Prop :=
-  ∀ {data : Delegation.MemoryData babyBearModulus} {before : RV.State} {cells : List Trace.Cell} (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.RVMemoryInputs data before cells) (aligned : ∀ cell ∈ cells, cell.Aligned) (table : data.setup.bigint = setupTable),
+  ∀ {data : Delegation.MemoryData babyBearModulus} {before : RV.State} {cells : List Trace.Cell} (_accepted : Delegation.MemoryAccepted data) (_inputs : Delegation.RVMemoryInputs data before cells) (_aligned : ∀ cell ∈ cells, cell.Aligned) (_table : data.setup.bigint = setupTable),
     Delegation.RVMemoryExecution data before cells ∧
       (∀ row ∈ data.rows, row.family = .bigint → ArithmeticEffects row.assignment) ∧
       RVCalls data before cells

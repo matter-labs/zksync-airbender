@@ -55,7 +55,7 @@ structure RVRequestAccepted [Fact p.Prime] (data : RVRequestTrace p) : Prop exte
   workerMemory : (data.workers.initial ++ data.workers.steps.map Prod.snd).Perm
     (data.workers.terminal ++ data.workers.steps.map Prod.fst)
 
-def RVRequestAccepted.workers [Fact p.Prime] {data : RVRequestTrace p}
+theorem RVRequestAccepted.workers [Fact p.Prime] {data : RVRequestTrace p}
     (accepted : RVRequestAccepted data) : MemoryAccepted data.workers :=
   ⟨accepted.workerConstraints, accepted.workerMemory⟩
 

@@ -13,7 +13,7 @@ namespace Airbender.Bigint.Memory
     blocks; pointer bounds come from the public `RV.State` initialization and accepted writes/reads. RAM cells include
     READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 def RVAddressesSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 2097152 ≤ p) (inverse : 32 * (-62914560 : ZMod p) = 1) (data : Delegation.MemoryData p) (before : RV.State) (cells : List Trace.Cell),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 2097152 ≤ p) (_inverse : 32 * (-62914560 : ZMod p) = 1) (data : Delegation.MemoryData p) (before : RV.State) (cells : List Trace.Cell),
     (circuitModel data).SoundnessUnder (RVInterfaceAssumptions data before cells) Addresses.spec
 
 end Airbender.Bigint.Memory

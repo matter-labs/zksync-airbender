@@ -18,7 +18,7 @@ namespace Airbender.Blake2Round.Native
     include the shadow RAM below `ROM_END`). The exclusive round mask remains the visible caller condition in
     `RVOperationInputs`. -/
 def RVOperationExecutionClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {before : RV.State} {cells : List Trace.Cell} {control : Fin 4096 → Vector Nat 6} (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.RVOperationInputs data before cells control) (aligned : ∀ cell ∈ cells, cell.Aligned),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 8388608 ≤ p) (_inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {before : RV.State} {cells : List Trace.Cell} {control : Fin 4096 → Vector Nat 6} (_accepted : Delegation.MemoryAccepted data) (_inputs : Delegation.RVOperationInputs data before cells control) (_aligned : ∀ cell ∈ cells, cell.Aligned),
     Delegation.RVMemoryExecution data before cells ∧
       ∀ row ∈ data.rows, row.family = .blakeRound →
         ∃ round, Memory.RoundMask row.assignment round ∧ Row.spec (input round row.assignment) (output row.assignment)
@@ -29,7 +29,7 @@ def RVOperationExecutionClaim : Prop :=
     round delegation calls from `initial` (memory and registers; the PC advance is the spec's):
     `RV.calls (rvCalls flags) initial`. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 def RVCompressionSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {initial : RV.State} {cells : List Trace.Cell} {flags : Fin 8} (accepted : Delegation.MemoryAccepted data) (inputs : RVCallInputs data initial cells flags) (aligned : ∀ cell ∈ cells, cell.Aligned),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 8388608 ≤ p) (_inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {initial : RV.State} {cells : List Trace.Cell} {flags : Fin 8} (_accepted : Delegation.MemoryAccepted data) (_inputs : RVCallInputs data initial cells flags) (_aligned : ∀ cell ∈ cells, cell.Aligned),
     ∃ (after : RV.State) (statePointer messagePointer : BitVec 32)
       (input : Compression.State) (message : Vector Arithmetic.Word 16) (output : Compression.State),
       Compression.RVWordMapping initial after statePointer messagePointer input output message ∧
@@ -41,7 +41,7 @@ def RVCompressionSoundnessClaim : Prop :=
 /-- The complete extended-BLAKE reference binds actual boundary RV
     reads and the final `RV.State` with retained seed timestamps, with the same delegate link. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 def RVCompressionBoundarySoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {initial : RV.State} {cells : List Trace.Cell} {flags : Fin 8} (accepted : Delegation.MemoryAccepted data) (inputs : RVNativeCallInputs data initial cells flags) (aligned : ∀ cell ∈ cells, cell.Aligned),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 8388608 ≤ p) (_inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {initial : RV.State} {cells : List Trace.Cell} {flags : Fin 8} (_accepted : Delegation.MemoryAccepted data) (_inputs : RVNativeCallInputs data initial cells flags) (_aligned : ∀ cell ∈ cells, cell.Aligned),
     ∃ (after : RV.State) (statePointer messagePointer : BitVec 32)
       (input : Compression.State) (message : Vector Arithmetic.Word 16) (output : Compression.State),
       Compression.RVWordMapping initial after statePointer messagePointer input output message ∧
@@ -53,7 +53,7 @@ def RVCompressionBoundarySoundnessClaim : Prop :=
 /-- The first complete compression reaches its reference (`RVSpanResult`,
     delegate link included) on actual cut `RV.State`s from a retained native boundary. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 def RVWindowSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (hp : 8388608 ≤ p) (inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {before : RV.State} {cells : List Trace.Cell} {flags : Fin 8} {lower upper : Nat} (accepted : Delegation.MemoryAccepted data) (inputs : RVWindowInputs data before cells flags lower upper) (aligned : ∀ cell ∈ cells, cell.Aligned),
+  ∀ {p : Nat} [Fact p.Prime] (_hp : 8388608 ≤ p) (_inverse : 64 * (-31457280 : ZMod p) = 1) {data : Delegation.MemoryData p} {before : RV.State} {cells : List Trace.Cell} {flags : Fin 8} {lower upper : Nat} (_accepted : Delegation.MemoryAccepted data) (_inputs : RVWindowInputs data before cells flags lower upper) (_aligned : ∀ cell ∈ cells, cell.Aligned),
     Delegation.Caller.RVWindowResult (RVSpanResult flags) data before cells lower upper
 
 end Airbender.Blake2Round.Native
