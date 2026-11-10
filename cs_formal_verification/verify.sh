@@ -19,12 +19,14 @@ if grep -rnE '^\s*(public\s+)?import\s+(Slop|Tests|Checks)(\.|$)' human; then fa
 echo "== 1b. The circuit JSONs the spec imports: pinned sha256, no duplicate keys, no duplicate circuits"
 python3 check_circuit_json.py
 
-echo "== 2. Lean build (spec + proofs), timing each module compiled (full log: lean/.lake/verify-build-*.log)"
-python3 scripts/module_budget.py build CleanCore CleanEquivalence Human Slop || fail "lake build"
+echo "== 2. Lean build: spec, proofs, regressions and the axiom audit modules in one lake build (test modules start as"
+echo "   soon as their imports are built), timing each module compiled (full log: lean/.lake/verify-build-CleanCore.log)"
+python3 scripts/module_budget.py build CleanCore CleanEquivalence Human Slop Test CleanAudit airbender_tests ||
+  fail "lake build"
 
 echo "== 3. Regressions; final statements (each slop/Slop/Final theorem proves its human/ ...Claim, test/Checks/Claims.lean); axiom audits"
-python3 scripts/module_budget.py build Test CleanAudit airbender_tests || fail "lake build (tests)"
-lake exe airbender_tests
+# the executable step 2 built (`lake exe` would check the whole build graph again)
+.lake/build/bin/airbender_tests
 # VERIFY_AUDITS=fresh (default): elaborate each audit file again. replay (CI pull requests): read the messages Lake
 # logged for the audit modules in the build above (built now, or replayed from their traces: the same trust as the
 # cached .olean files they import). Either way every `#print axioms` must be answered.
@@ -32,7 +34,7 @@ audits=${VERIFY_AUDITS:-fresh}
 [[ $audits == fresh || $audits == replay ]] || fail "VERIFY_AUDITS must be fresh or replay"
 for audit in Claims Axioms TraceAxioms; do
   if [[ $audits == replay ]]; then
-    out=$(python3 scripts/audit_log.py .lake/verify-build-Test.log "test/Checks/$audit.lean")
+    out=$(python3 scripts/audit_log.py .lake/verify-build-CleanCore.log "test/Checks/$audit.lean")
   else
     out=$(lake env lean "test/Checks/$audit.lean")
   fi
@@ -53,12 +55,12 @@ python3 scripts/module_budget.py check || fail "module budget"
 
 echo "== 4b. No warnings: Lean and Lake report no warning for any module of ours (human/, slop/, test/;"
 echo "   scripts/no_warnings.py, README \"No warnings\"); dependencies and the generated Sail model are not ours"
-python3 scripts/no_warnings.py .lake/verify-build-CleanCore.log .lake/verify-build-Test.log || fail "warnings in our code"
+python3 scripts/no_warnings.py .lake/verify-build-CleanCore.log || fail "warnings in our code"
 
 echo "== 5. Review guides: every public claim theorem is audited, guide names and links resolve"
 # replay (CI pull requests): the Lean part is skipped when its inputs (guides, audit file, the claim modules' Lake input
 # hashes) equal those of the last passing check, recorded in the build directory; links and layers are always checked
-# --built: steps 2 and 3 built every claim module and the audit module it imports
+# --built: step 2 built every claim module and the audit module it imports
 if [[ $audits == replay ]]; then python3 check_review.py --built --key .lake/build/review-pass.key --reuse
 else python3 check_review.py --built --key .lake/build/review-pass.key; fi
 

@@ -80,6 +80,9 @@ prints the modules compiled, the slowest ones and the container's peak memory.
 
 ## Measurements (2026-11-09)
 
+(Since 2026-11-10 `verify.sh` builds spec, proofs and tests in one `lake build` (step 2) and step 3 only runs the test
+executable and the audits; the step 2 / step 3 split below is the earlier layout.)
+
 Docker on an Apple M3 Max (linux/arm64, `ci/sim.sh`, the workflow's steps; `--cpus`/`--memory 15g`, no swap; never
 OOM-killed). The self-hosted runners are probably x86_64: expect roughly 1.25x these times per core (an estimate,
 not measured). "PR" = a realistic pull request on top of a warm cache of the previous commit: three circuit JSONs
