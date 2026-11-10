@@ -313,8 +313,8 @@ fn pr_handoff_transcript_matches_cpu() {
 }
 
 // One committed wrap layer, evaluated independently through the CPU prover.
-// Its row-local program has no lookup or challenge-bank prelude, so a reduced
-// row count exercises the production instructions without a whole-proof fixture.
+// The row-local program reads the lookup-additive constant, but needs no table
+// lookup or argument-derived challenges at this reduced row count.
 struct ProductionVmColumn {
     address: GKRAddress,
     field: gpu_gkr_compiler::ForwardOperandField,
@@ -322,7 +322,7 @@ struct ProductionVmColumn {
     expected: Option<Vec<PR>>,
 }
 
-fn production_vm_fixture() -> (gpu_gkr_compiler::CompiledLayer, Vec<ProductionVmColumn>) {
+fn production_vm_fixture() -> (gpu_gkr_compiler::CompiledLayer, Vec<ProductionVmColumn>, PR) {
     use gpu_gkr_compiler::{ForwardDstLine, ForwardInstr, ForwardOperandField, ForwardOperandLine};
     use prover::gkr::sumcheck::access_and_fold::BaseFieldPoly;
     let programs = super::cpu_abi::programs();
@@ -331,6 +331,7 @@ fn production_vm_fixture() -> (gpu_gkr_compiler::CompiledLayer, Vec<ProductionVm
     assert_eq!(layer.specials.len(), 0);
     assert!(layer.consts.values().is_empty());
     assert!(layer.derived_e4.arg_refs().is_empty());
+    assert!(layer.derived_e4.uses_lookup_additive());
     let mut inputs = BTreeMap::new();
     let mut outputs = BTreeMap::new();
     for instruction in &layer.program.instrs {
@@ -508,7 +509,7 @@ fn production_vm_fixture() -> (gpu_gkr_compiler::CompiledLayer, Vec<ProductionVm
         .expected
         .as_ref()
         .is_some_and(|v| v.iter().any(|&v| v != PR::ZERO))));
-    (layer, columns)
+    (layer, columns, lookup_additive)
 }
 
 #[test]
@@ -529,7 +530,8 @@ fn pr_partial_block_vm_and_tower_are_guarded() {
         era_cudart::occupancy::max_active_blocks_per_multiprocessor(&function, 128, 0).unwrap();
     assert!(blocks > 0);
     assert_eq!(attributes.localSizeBytes, 0);
-    let (layer, columns) = production_vm_fixture();
+    let (layer, columns, lookup_additive) = production_vm_fixture();
+    let const_derived = upload(&[lookup_additive], &context);
     let sentinel = PR::new(0xfedc_ba98);
     let stride = 258;
     // Group the same physical matrices the production lowerer resolves. Each
@@ -590,6 +592,10 @@ fn pr_partial_block_vm_and_tower_are_guarded() {
     let mut lowered = crate::proth120::forward::lower::lower_desc(&[layer], &header, &|address| {
         resolved.get(&address).copied()
     });
+    lowered.desc.const_derived = const_derived.as_ptr();
+    assert_eq!(lowered.lookup_additive_slot, Some(0));
+    assert!(lowered.decoder_fill_slot.is_none());
+    assert!(!lowered.desc.const_derived.is_null());
     let prepared = PreparedDimensionReductionForward {
         initial_trace_log_2: 8,
         total_rounds: 1,
