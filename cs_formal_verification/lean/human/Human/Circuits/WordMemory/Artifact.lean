@@ -32,13 +32,11 @@ def clockConstraints {p : Nat} [Fact p.Prime] (rom : Table (ZMod p) (fields 9)) 
 namespace Variables
 abbrev initialPCLo := 0
 abbrev initialPCHi := 1
-abbrev execute := 4
 abbrev rs1Index := 5
 abbrev rs2Index := 6
 abbrev rdIndex := 7
 abbrev immediateLo := 8
 abbrev immediateHi := 9
-abbrev storeSelector := 10
 abbrev finalPCLo := 11
 abbrev finalPCHi := 12
 abbrev sourceLo := 17
@@ -51,7 +49,6 @@ abbrev writeAddressLo := 25
 abbrev writeAddressHi := 26
 abbrev writeDataLo := 31
 abbrev writeDataHi := 32
-abbrev romSelector := 35
 end Variables
 
 end Airbender.WordMemory

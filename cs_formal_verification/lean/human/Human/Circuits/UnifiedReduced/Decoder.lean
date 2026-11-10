@@ -8,14 +8,6 @@ public import Human.Circuits.ShiftBinop.Decoder
 
 namespace Airbender.UnifiedReduced
 
-/-- Reuse arithmetic/LW/SW metadata. Unified LW/SW use bits 17/18;
-    arithmetic keeps bits 0–2, including the existing x0 NOP preprocessing. -/
-def arithmeticFields (data : Trace.DecoderData) : Trace.DecoderData Trace.UnifiedFamily :=
-  { data.mapFamily (fun _ => .machine) with
-    mask := match data.family with
-      | .addSub => data.mask
-      | .wordMemory => if data.mask = 0 then 131072 else 262144 }
-
 /-- Jump/branch/comparison occupies bits 10–14 of the unified mask. -/
 def jumpFields (data : Trace.DecoderData Unit) : Trace.DecoderData Trace.UnifiedFamily :=
   { data.mapFamily (fun _ => .machine) with mask := 1024 * data.mask }

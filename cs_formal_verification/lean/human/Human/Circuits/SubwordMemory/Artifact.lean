@@ -30,14 +30,6 @@ def clockConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 9)
   importedConstraints setup ++ importedConstraintsTimestampLookups
 
 namespace Variables
-abbrev initialPCLo := 0
-abbrev initialPCHi := 1
-abbrev execute := 4
-abbrev storeSelector := 10
-abbrev byteSelector := 11
-abbrev signedSelector := 12
-abbrev finalPCLo := 13
-abbrev finalPCHi := 14
 end Variables
 
 end Airbender.SubwordMemory

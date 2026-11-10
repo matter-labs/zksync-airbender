@@ -47,8 +47,4 @@ def nativeDecoderQuery {p : Nat} (columns : TraceColumns) (c : DecoderColumns)
 noncomputable abbrev Row.decoderQuery {Kind : Type} [CircuitLayout Kind] (row : Row p Kind) : Vector (ZMod p) 9 :=
   nativeDecoderQuery row.columns row.decoderColumns row.assignment
 
-def Row.decoderImmediate {Kind : Type} [CircuitLayout Kind] (row : Row p Kind) : Word :=
-  ⟨(row.assignment row.decoderColumns.immediate[0]).val,
-    (row.assignment row.decoderColumns.immediate[1]).val⟩
-
 end Airbender.Trace

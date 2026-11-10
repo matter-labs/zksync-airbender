@@ -33,7 +33,6 @@ def clockConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)
   importedConstraints setup ++ importedConstraintsTimestampLookups
 
 namespace Variables
-abbrev execute := 0
 abbrev controlBits := #v[139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151]
 abbrev roundBits := #v[142, 143, 144, 145, 146, 147, 148, 149, 150, 151]
 end Variables

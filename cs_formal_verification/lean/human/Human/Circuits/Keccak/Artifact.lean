@@ -34,8 +34,6 @@ def clockConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8)
 
 namespace Variables
 abbrev execute := 0
-abbrev statePointerLo := 13
-abbrev statePointerHi := 14
 end Variables
 
 end Airbender.Keccak

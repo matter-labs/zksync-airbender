@@ -26,7 +26,7 @@ def rvNopWrite : RV.Instr → Bool
 def rvNopFields : DecoderData UnifiedFamily := ⟨.machine, 0, 0, 0, ⟨0, 0⟩, 1, 0⟩
 
 /-- ADD/SUB/ADDI/LUI/AUIPC and LW/SW (`add_sub_family`, `mem_word_only` decoders; the destination is not x0), with the
-    unified LW/SW bits 17/18 (as `arithmeticFields`). LUI is ADD of x0 and the immediate. -/
+    unified LW/SW bits 17/18. LUI is ADD of x0 and the immediate. -/
 def rvWordFields : RV.Instr → Option (DecoderData UnifiedFamily)
   | .op .add rd rs1 rs2 => some ⟨.machine, rs1, rs2, rd, ⟨0, 0⟩, 1, 0⟩
   | .op .sub rd rs1 rs2 => some ⟨.machine, rs1, rs2, rd, ⟨0, 0⟩, 2, 0⟩

@@ -19,10 +19,6 @@ structure WordMapping {p : Nat} (input : Input) (output : Output) (w : Nat → Z
     output bounds follow from the imported queries. -/
 structure InterfaceAssumptions {p : Nat} (input : Input) (_output : Output) (w : Nat → ZMod p) : Prop where
   roundMask : Control.RoundMask w input.round
-/-- Non-final preservation also holds without serialized-inverse compatibility. -/
-structure NonFinalAssumptions {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop
-    extends InterfaceAssumptions input output w where
-  nonFinal : input.round.val ≠ 9 ∧ (input.reducedRounds = true → input.round.val ≠ 6)
 def circuitModel {p : Nat} [Fact p.Prime] :
     Verification.CircuitModel Input Output (Nat → ZMod p) where
   satisfies := fun w => FlatOperation.ConstraintsHoldFlat

@@ -297,38 +297,3 @@ def effect : DelegationKind → (x10 x11 x12 : Word) → (Word → BitVec 8) →
 end Delegation
 
 end RV
-
-namespace RV
-
-/-- How many delegation calls in a row the decoder accepts (ISA table: "only exact runs of"), by instruction word:
-`csrrw x0, 0x7c7, x0` 7 or 10, `0x7c8` 56 or 80, `0x7cb` 649 (`0x7ca`: any). -/
-def callRun (w : Word) : Option (List Nat) :=
-  if w = 0x7c701073 then some [7, 10] else if w = 0x7c801073 then some [56, 80]
-  else if w = 0x7cb01073 then some [649] else none
-
-/-- The words of a flat binary (little-endian). -/
-def imageWords : List (BitVec 8) → List Word
-  | b0 :: b1 :: b2 :: b3 :: rest => (b3 ++ b2 ++ b1 ++ b0) :: imageWords rest
-  | _ => []
-
-/-- The Keccak-f1600 words (`csrrw x0, 0x7cc … 0x7ce, x0`). -/
-def isF1600Word (w : Word) : Bool := w == 0x7cc01073 || w == 0x7cd01073 || w == 0x7ce01073
-
-/-- A Keccak-f1600 run (ISA table: "exact runs of 361 consecutive calls"): 24 × (5 parity `0x7cd`, 5 θ+ρ `0x7cc`,
-5 χ `0x7ce`), then 1 parity. -/
-def f1600Run : List Word :=
-  (List.replicate 24
-    (List.replicate 5 0x7cd01073 ++ List.replicate 5 0x7cc01073 ++ List.replicate 5 0x7ce01073)).flatten ++
-  [0x7cd01073]
-
-/-- The decoder accepts the binary: every maximal run of one delegation word has an accepted length, and every
-maximal run of Keccak-f1600 words is one Keccak-f1600 run. -/
-def Accepted (bytes : Array (BitVec 8)) : Prop :=
-  (∀ run ∈ (imageWords bytes.toList).splitBy (· == ·),
-    ∀ lengths ∈ run.head?.bind callRun, run.length ∈ lengths) ∧
-  ∀ run ∈ (imageWords bytes.toList).splitBy (fun a b => isF1600Word a && isF1600Word b),
-    run.head?.any isF1600Word → run = f1600Run
-
-instance : DecidablePred Accepted := fun _ => by unfold Accepted; infer_instance
-
-end RV

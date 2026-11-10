@@ -16,21 +16,6 @@ def Kind.mode : Kind → Nat
   | .thetaRho => 3
   | .chi5 => 5
 
-/-- Delegation CSRs (`common_constants/src/delegation_types`): 0x7CD, 0x7CC, 0x7CE. -/
-def Kind.csr : Kind → Nat
-  | .columnParity => 0x7CD
-  | .thetaRho => 0x7CC
-  | .chi5 => 0x7CE
-
-/-- One round: five parity calls, five theta+rho calls, five chi calls. -/
-def roundPattern : List Kind :=
-  List.replicate 5 .columnParity ++ List.replicate 5 .thetaRho ++ List.replicate 5 .chi5
-
-/-- The documented call sequence: twenty-four rounds, then one final parity call
-    (each round's iota is applied by the next round's first parity call). -/
-def schedule : List Kind :=
-  (List.replicate 24 roundPattern).flatten ++ [.columnParity]
-
 /-- The x10 control word: 3 mode bits, 3 iteration bits, the round from bit six. -/
 def encode (kind : Kind) (iteration round : Nat) : Nat :=
   kind.mode + 8 * iteration + 64 * round

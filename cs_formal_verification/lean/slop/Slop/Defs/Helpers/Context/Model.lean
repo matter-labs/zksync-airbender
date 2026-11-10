@@ -43,13 +43,4 @@ def CellHistory [Fact p.Prime] (trace : Data p Kind) (source : MemoryToken p)
 def Data.accessTimes [Fact p.Prime] (trace : Data p Kind) : List Nat :=
   trace.rows.flatMap fun row => row.ports.toList.map fun port =>
     (decodeTimestamp row.assignment row.columns.initialTime).value + port.clock.offset
-/-- A native read uses the newest preceding cell at its address, drawn from the
-    initial image or a native write. This is a conclusion, not an interface premise. -/
-def LatestRead [Fact p.Prime] (trace : Data p Kind) (row : Row p Kind) (port : MemoryPort) : Prop :=
-  let previous := readToken row.assignment port
-  let time := (port.event row.columns row.assignment).1
-  let cells := trace.initialMemory ++ trace.rows.flatMap Row.writes
-  previous ∈ cells ∧ (timeOfPair previous.time).value < time ∧
-    ∀ cell ∈ cells, cell.address = previous.address → (timeOfPair cell.time).value < time →
-      (timeOfPair cell.time).value ≤ (timeOfPair previous.time).value
 end Airbender.Trace

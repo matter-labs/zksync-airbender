@@ -10,11 +10,6 @@ def Soundness {Input Output Witness : Type} (circuit : Input → Output → Witn
     (spec : Input → Output → Prop) : Prop :=
   ∀ input output witness, circuit input output witness → spec input output
 
-/-- Every permitted transition has a satisfying witness. -/
-def Completeness {Input Output Witness : Type} (circuit : Input → Output → Witness → Prop)
-    (spec : Input → Output → Prop) : Prop :=
-  ∀ input output, spec input output → ∃ witness, circuit input output witness
-
 end Airbender.Properties
 
 namespace Airbender.Verification

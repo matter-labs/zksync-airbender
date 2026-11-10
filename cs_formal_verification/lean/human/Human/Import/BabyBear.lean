@@ -10,10 +10,7 @@ namespace Airbender
 abbrev Fp := Fin babyBearModulus
 
 def Fp.ofNat (n : Nat) : Fp := ⟨n % babyBearModulus, Nat.mod_lt _ (by decide)⟩
-def Fp.zero : Fp := Fp.ofNat 0
 def Fp.one : Fp := Fp.ofNat 1
-def Fp.add (a b : Fp) : Fp := Fp.ofNat (a.val + b.val)
-def Fp.mul (a b : Fp) : Fp := Fp.ofNat (a.val * b.val)
 
 /-- Serialized `BabyBearField.0` is a Montgomery residue, not a canonical residue.
     Preserve the source representation for exact JSON round trips. -/
