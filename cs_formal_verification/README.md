@@ -89,6 +89,8 @@ stream), [RV32.lean](lean/human/Human/ISA/RV32.lean) (`RV.step`, `RV.run`) and
 [Delegations.lean](lean/human/Human/ISA/Delegations.lean) (the precompiles); each difference from standard RV32IM is marked
 `-- Airbender:` there. [Vectors.lean](lean/human/Human/ISA/Vectors.lean) checks the BLAKE2s and Keccak-f[1600] published
 test vectors, and [DelegationRuns.lean](lean/human/Human/ISA/DelegationRuns.lean) states what the delegation call runs compute.
+The run claims, the Sail equivalence claims and the per-row circuit claims (`Trace.RVRowClaim`) also state that their
+assumptions can be met (non-vacuity, [Lean strategies](docs/shared/lean-strategies.md) 3.3); the witnesses are in `slop/`.
 
 The official Sail RISC-V model (pins in [PINS.md](sail/PINS.md)), generated to Lean by [regen.sh](sail/regen.sh) into
 `lean/sail-rv32/SailRV32/`, is used only to justify the spec. The [equivalence leaf](lean/human/Human/ISA/Sail/Theorems.lean)
