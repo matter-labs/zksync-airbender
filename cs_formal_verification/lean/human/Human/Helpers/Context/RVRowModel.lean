@@ -47,4 +47,22 @@ def RVRowSoundness {Input Output : Type} (family : PooledFamily) (before : Input
     ∀ input output w, (rvRowModel family before instruction words trace initial cells program).relation input output w →
       conclusion input output
 
+/-- The assumptions of a per-row RV claim can be met (lean-strategies 3.3): some public setup meeting `assumptions`
+    has a row of `family` that the model relates to some input and output. -/
+def RVRowSatisfiable {Input Output : Type} (family : PooledFamily) (before : Input → RV.State)
+    (instruction : Input → RV.Instr) (words : Input → Output → (Nat → ZMod babyBearModulus) → Prop)
+    (assumptions : PooledTrace babyBearModulus → RV.State → List Cell → List RVPooledProgramEntry → Prop) : Prop :=
+  ∃ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell)
+    (program : List RVPooledProgramEntry) (input : Input) (output : Output) (w : Nat → ZMod babyBearModulus),
+    assumptions trace initial cells program ∧
+      (rvRowModel family before instruction words trace initial cells program).relation input output w
+
+/-- A per-row RV claim: `RVRowSoundness`, and its assumptions can be met (`RVRowSatisfiable`). -/
+def RVRowClaim {Input Output : Type} (family : PooledFamily) (before : Input → RV.State)
+    (instruction : Input → RV.Instr) (words : Input → Output → (Nat → ZMod babyBearModulus) → Prop)
+    (assumptions : PooledTrace babyBearModulus → RV.State → List Cell → List RVPooledProgramEntry → Prop)
+    (conclusion : Input → Output → Prop) : Prop :=
+  RVRowSoundness family before instruction words assumptions conclusion ∧
+    RVRowSatisfiable family before instruction words assumptions
+
 end Airbender.Trace
