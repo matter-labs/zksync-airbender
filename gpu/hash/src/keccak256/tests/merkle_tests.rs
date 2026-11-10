@@ -2,9 +2,8 @@ use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::stream::CudaStream;
 
 use super::super::{
-    build_partial_coset_tree, build_partial_coset_trees_multi_coset, build_top_tree,
-    gather_tree_cap, hash_leaves, hash_leaves_multi_coset, retained_layer_offset,
-    top_nodes_layer_offset, Digest,
+    build_partial_coset_trees_multi_coset, build_top_tree, gather_tree_cap, hash_leaves,
+    hash_leaves_multi_coset, retained_layer_offset, top_nodes_layer_offset, Digest,
 };
 use super::{
     bitreverse_index, column_slices, cpu_layer, cpu_tree, download, random_columns, test_worker,
@@ -49,33 +48,6 @@ fn sentinel_buffer(len: usize, stream: &CudaStream) -> DeviceAllocation<Digest> 
     upload(&vec![SENTINEL; len], stream)
 }
 
-fn gpu_partial_tree(
-    values: &[Proth120],
-    log_domain: u32,
-    log_v: u32,
-    columns: usize,
-    skip_bottom: u32,
-    stream: &CudaStream,
-) -> Vec<Digest> {
-    let retained_len = 2 * ((1usize << (log_domain - log_v)) >> skip_bottom) - 1;
-    let d_values = upload(values, stream);
-    let mut d_retained = sentinel_buffer(retained_len + 2, stream);
-
-    build_partial_coset_tree(
-        &d_values,
-        log_domain,
-        log_v,
-        columns as u32,
-        skip_bottom,
-        &mut d_retained[..retained_len],
-        stream,
-    )
-    .unwrap();
-    let retained = download(&d_retained, SENTINEL, stream);
-    assert_eq!(&retained[retained_len..], &[SENTINEL; 2]);
-    retained[..retained_len].to_vec()
-}
-
 #[test]
 fn keccak256_leaf_parity() {
     let stream = CudaStream::default();
@@ -117,36 +89,6 @@ fn keccak256_leaf_parity() {
 }
 
 #[test]
-fn keccak256_partial_tree_parity() {
-    let stream = CudaStream::default();
-    let mut rng = TestRng::new(0x7472_6565);
-    for (log_domain, log_v, columns, skip_bottom) in [(18u32, 1u32, 2usize, 5u32), (11, 4, 1, 5)] {
-        let log_leaves = log_domain - log_v;
-        let values = random_columns(&mut rng, columns, 1 << log_domain);
-        let tree = cpu_tree(std::slice::from_ref(&values), columns, log_v, 1);
-
-        let label = format!(
-            "log_domain={log_domain} log_v={log_v} columns={columns} skip_bottom={skip_bottom}"
-        );
-        let retained = gpu_partial_tree(&values, log_domain, log_v, columns, skip_bottom, &stream);
-        for layer in skip_bottom..=log_leaves {
-            let offset = retained_layer_offset(log_leaves, skip_bottom, layer);
-            let len = (1usize << log_leaves) >> layer;
-            assert_eq!(
-                &retained[offset..offset + len],
-                cpu_layer(&tree, layer),
-                "{label} layer={layer}"
-            );
-        }
-        assert_eq!(
-            retained[retained.len() - 1],
-            tree.get_cap().cap[0],
-            "{label} root"
-        );
-    }
-}
-
-#[test]
 fn keccak256_top_tree_cap_parity() {
     let stream = CudaStream::default();
     let mut rng = TestRng::new(0x746f_7074);
@@ -162,12 +104,15 @@ fn keccak256_top_tree_cap_parity() {
         for (coset, values) in cosets.iter().enumerate() {
             let d_values = upload(values, &stream);
             let mut d_retained = sentinel_buffer(retained_len, &stream);
-            build_partial_coset_tree(
+            build_partial_coset_trees_multi_coset(
                 &d_values,
                 log_domain,
                 log_v,
                 columns as u32,
                 skip_bottom,
+                1,
+                values.len(),
+                retained_len,
                 &mut d_retained,
                 &stream,
             )
@@ -291,21 +236,18 @@ fn keccak256_multi_coset_tile_parity() {
                     &expected_leaves[..],
                     "{label} coset={coset} leaves"
                 );
-                let single =
-                    gpu_partial_tree(values, log_domain, log_v, columns, skip_bottom, &stream);
                 let retained_window =
                     &retained[coset * retained_stride..coset * retained_stride + retained_len];
-                assert_eq!(
-                    retained_window,
-                    &single[..],
-                    "{label} coset={coset} retained"
-                );
                 let tree = cpu_tree(&[values.to_vec()], columns, log_v, 1);
-                assert_eq!(
-                    retained_window[retained_len - 1],
-                    tree.get_cap().cap[0],
-                    "{label} coset={coset} root"
-                );
+                for layer in skip_bottom..=log_domain - log_v {
+                    let offset = retained_layer_offset(log_domain - log_v, skip_bottom, layer);
+                    let expected = cpu_layer(&tree, layer);
+                    assert_eq!(
+                        &retained_window[offset..offset + expected.len()],
+                        expected,
+                        "{label} coset={coset} layer={layer}"
+                    );
+                }
                 let out_gap_end = if coset + 1 == cosets_count {
                     out_len
                 } else {

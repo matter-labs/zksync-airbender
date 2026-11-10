@@ -1,5 +1,4 @@
 #![allow(incomplete_features)]
-#![cfg_attr(test, feature(allocator_api))]
 #![warn(clippy::manual_div_ceil)]
 #![warn(clippy::needless_pass_by_value)]
 // `UnsafeMutAccessor::get_mut(&self) -> &mut T` is the documented contract

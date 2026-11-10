@@ -11,8 +11,8 @@ pub use hypercube::{
 };
 pub use pack::pack_hypercubes_to_monomials;
 pub use prefix::{
-    dispatch, has_reference_finish, l2_working_set_budget, lde_coset_slot, lde_finish_reference,
-    twiddle_working_set, ChunkPlan, CosetSource, Dispatch, ScaleArgs,
+    dispatch, l2_working_set_budget, lde_coset_slot, twiddle_working_set, ChunkPlan, CosetSource,
+    Dispatch, ScaleArgs,
 };
 pub use suffix::{launch_suffix_micro, SuffixShape};
 

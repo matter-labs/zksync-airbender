@@ -189,68 +189,6 @@ fn launch_nodes(
     NodesFunction::default().launch(&config, &args)
 }
 
-pub fn build_partial_coset_tree(
-    values: &DeviceSlice<PR>,
-    log_domain: u32,
-    log_values_per_leaf: u32,
-    columns: u32,
-    skip_bottom: u32,
-    retained: &mut DeviceSlice<Digest>,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    const NAME: &str = "build_partial_coset_tree";
-    assert!(
-        skip_bottom <= DIRECT_SKIP_BOTTOM,
-        "keccak256::{NAME}: skip_bottom <= 8"
-    );
-    build_partial_coset_tree_impl(
-        NAME,
-        values,
-        log_domain,
-        log_values_per_leaf,
-        columns,
-        skip_bottom,
-        retained,
-        stream,
-    )
-}
-
-fn build_partial_coset_tree_impl(
-    name: &str,
-    values: &DeviceSlice<PR>,
-    log_domain: u32,
-    log_values_per_leaf: u32,
-    columns: u32,
-    skip_bottom: u32,
-    retained: &mut DeviceSlice<Digest>,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    let shape = partial_tree_shape(name, log_domain, log_values_per_leaf, columns, skip_bottom);
-    assert_eq!(
-        values.len(),
-        shape.leaves.coset_values,
-        "keccak256::{name}: values.len() == columns << log_domain"
-    );
-    assert_eq!(
-        retained.len(),
-        shape.retained_per_coset,
-        "keccak256::{name}: retained.len() == 2 * (leaves >> skip_bottom) - 1"
-    );
-    build_partial_coset_trees_impl(
-        name,
-        values,
-        log_domain,
-        log_values_per_leaf,
-        columns,
-        skip_bottom,
-        1,
-        values.len(),
-        retained.len(),
-        retained,
-        stream,
-    )
-}
-
 pub fn build_partial_coset_trees_multi_coset(
     values: &DeviceSlice<PR>,
     log_domain: u32,

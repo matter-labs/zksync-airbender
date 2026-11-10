@@ -1,8 +1,5 @@
 use super::*;
-use crate::upstream::{lde_coset_lazy_r8, precompute_twiddles_for_fft, Field, Worker};
-use era_cudart::memory::memory_copy_async;
 use era_cudart_sys::CudaError;
-use gpu_core::primitives::field::PR;
 
 fn small_context_config() -> ProverContextConfig {
     ProverContextConfig {
@@ -99,51 +96,6 @@ fn assert_proth120_context(context: &ProverContext) {
             .omega_log_order,
         27
     );
-    // Diagnostic setup shape: the live 8_1 reference finish inside context31.
-    let n = 1usize << 18;
-    let columns = 2;
-    let input: Vec<PR> = (0..n * columns)
-        .map(|i| PR::new(7 * i as u128 + 1))
-        .collect();
-    let worker = Worker::new_with_num_threads(1);
-    let twiddles = precompute_twiddles_for_fft::<PR, std::alloc::Global, false>(n, &worker);
-    let expected: Vec<PR> = input
-        .chunks_exact(n)
-        .flat_map(|column| lde_coset_lazy_r8(column, PR::ONE, &twiddles))
-        .collect();
-    let stream = context.get_exec_stream();
-    let mut device_input = era_cudart::memory::DeviceAllocation::<PR>::alloc(n * columns).unwrap();
-    let mut device_output = era_cudart::memory::DeviceAllocation::<PR>::alloc(n * columns).unwrap();
-    memory_copy_async(&mut device_input, &input, stream).unwrap();
-    let dispatch = gpu_ntt::proth120::dispatch(18, columns, 1, 5, 64 << 20);
-    assert!(gpu_ntt::proth120::has_reference_finish(&dispatch.prefix));
-    gpu_ntt::proth120::lde_coset_slot(
-        proth120_context,
-        &device_input,
-        &mut device_output,
-        columns,
-        &dispatch.prefix,
-        gpu_ntt::proth120::ScaleArgs {
-            coset: gpu_ntt::proth120::CosetSource::Constant(0),
-            log_domain: 22,
-        },
-        stream,
-    )
-    .unwrap();
-    gpu_ntt::proth120::lde_finish_reference(
-        proth120_context,
-        &mut device_output,
-        columns,
-        &dispatch.prefix,
-        stream,
-    )
-    .unwrap();
-    let mut actual = vec![PR::ZERO; n * columns];
-    memory_copy_async(&mut actual, &device_output, stream).unwrap();
-    stream.synchronize().unwrap();
-    let actual: Vec<u128> = actual.iter().map(|value| value.0).collect();
-    let expected: Vec<u128> = expected.iter().map(|value| value.0).collect();
-    assert_eq!(actual, expected);
 }
 
 #[test]
