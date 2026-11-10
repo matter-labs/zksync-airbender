@@ -25,6 +25,17 @@ def TeardownsBoundedClaim : Prop :=
   ∀ {trace : PooledTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} {projection : RV.Instr → Option (DecoderData PooledFamily)} (_table : projection = rvPooledDecoderFields ∨ projection = NonDeterminism.Pooled.rvDecoderFields) (_inputs : RVPooledBootInputs trace initial cells program inits projection) (_accepted : Accepted trace) (_decoded : RVPooledDecoded trace program) (_reads : InitsTeardowns.MemoryArgumentReadsBounded inits (trace.rows.flatMap Row.writes)),
     ∀ w ∈ inits, ∀ token ∈ w.teardownTokens, token.word.Bounded
 
+/-- The assumptions of `TeardownsBoundedClaim` can be met, with a teardown tuple. -/
+def TeardownsBoundedSatisfiableClaim : Prop :=
+  ∃ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell)
+    (program : List RVPooledProgramEntry) (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout))
+    (projection : RV.Instr → Option (DecoderData PooledFamily)),
+    (projection = rvPooledDecoderFields ∨ projection = NonDeterminism.Pooled.rvDecoderFields) ∧
+    RVPooledBootInputs trace initial cells program inits projection ∧ Accepted trace ∧
+    RVPooledDecoded trace program ∧
+    InitsTeardowns.MemoryArgumentReadsBounded inits (trace.rows.flatMap Row.writes) ∧
+    ∃ w ∈ inits, ∃ token, token ∈ w.teardownTokens
+
 end Airbender.Trace
 
 namespace Airbender.UnifiedReduced

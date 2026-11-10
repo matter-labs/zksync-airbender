@@ -78,6 +78,7 @@ import Slop.Final.Import.Theorems
 import Human.Import.Theorems
 -- P4.2 non-vacuity: the claims' assumptions can be met
 import Slop.Final.Trace.Satisfiable.Pools
+import Slop.Final.Trace.Satisfiable.Pooled
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
@@ -343,3 +344,15 @@ example : Airbender.InitsTeardowns.WritesRangeCheckedSatisfiableClaim := @Airben
 #print axioms Airbender.InitsTeardowns.writes_range_checked_satisfiable
 example : Airbender.Bigint.Native.RVOperationExecutionSatisfiableClaim := @Airbender.Bigint.Native.rv_operation_execution_satisfiable
 #print axioms Airbender.Bigint.Native.rv_operation_execution_satisfiable
+example : Airbender.Trace.RVPooledNativeSoundnessSatisfiableClaim := @Airbender.Trace.rv_pooled_native_soundness_satisfiable
+#print axioms Airbender.Trace.rv_pooled_native_soundness_satisfiable
+example : Airbender.Trace.BootRamZeroSatisfiableClaim := @Airbender.Trace.boot_ram_zero_satisfiable
+#print axioms Airbender.Trace.boot_ram_zero_satisfiable
+example : Airbender.Trace.NonDeterminism.Pooled.RVNativeSoundnessSatisfiableClaim := @Airbender.Trace.NonDeterminism.Pooled.rv_native_soundness_satisfiable
+#print axioms Airbender.Trace.NonDeterminism.Pooled.rv_native_soundness_satisfiable
+example : Airbender.Trace.NoZeroTimestampWritesSatisfiableClaim := @Airbender.Trace.no_zero_timestamp_writes_satisfiable
+#print axioms Airbender.Trace.no_zero_timestamp_writes_satisfiable
+example : Airbender.Trace.WritesRangeCheckedSatisfiableClaim := @Airbender.Trace.writes_range_checked_satisfiable
+#print axioms Airbender.Trace.writes_range_checked_satisfiable
+example : Airbender.Trace.TeardownsBoundedSatisfiableClaim := @Airbender.Trace.teardowns_bounded_satisfiable
+#print axioms Airbender.Trace.teardowns_bounded_satisfiable

@@ -34,6 +34,20 @@ def BootRamZeroClaim : Prop :=
   ∀ {trace : PooledTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} {projection : RV.Instr → Option (DecoderData PooledFamily)} (_inputs : RVPooledBootInputs trace initial cells program inits projection),
     ∀ address, Cell.ram address ∈ cells → (Cell.ram address).readRV initial = some 0
 
+/-- The assumptions of `RVPooledNativeSoundnessClaim` can be met, by a trace with a row. -/
+def RVPooledNativeSoundnessSatisfiableClaim : Prop :=
+  ∃ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell)
+    (program : List RVPooledProgramEntry) (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    RVPooledBootInputs trace initial cells program inits ∧ Accepted trace ∧ RVPooledDecoded trace program ∧
+      trace.rows ≠ []
+
+/-- The assumptions of `BootRamZeroClaim` can be met, with a tracked RAM cell. -/
+def BootRamZeroSatisfiableClaim : Prop :=
+  ∃ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell)
+    (program : List RVPooledProgramEntry) (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout))
+    (projection : RV.Instr → Option (DecoderData PooledFamily)),
+    RVPooledBootInputs trace initial cells program inits projection ∧ ∃ address, Cell.ram address ∈ cells
+
 namespace NonDeterminism.Pooled
 
 /-- A run of our spec as in `RVRealizes` that consumed exactly the trace's `readCount` words of the input stream. -/
@@ -49,6 +63,13 @@ def RVRealizes {p : Nat} [Fact p.Prime] (trace : PooledTrace p) (initial : RV.St
 def RVNativeSoundnessClaim : Prop :=
   ∀ {trace : PooledTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} (_inputs : RVPooledBootInputs trace initial cells program inits rvDecoderFields) (_accepted : Accepted trace) (_decoded : RVPooledDecoded trace program) (_ports : StreamPorts trace initial.input),
     RVRealizes trace initial cells
+
+/-- The assumptions of `RVNativeSoundnessClaim` can be met, by a trace with a row. -/
+def RVNativeSoundnessSatisfiableClaim : Prop :=
+  ∃ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell)
+    (program : List RVPooledProgramEntry) (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    RVPooledBootInputs trace initial cells program inits rvDecoderFields ∧ Accepted trace ∧
+      RVPooledDecoded trace program ∧ StreamPorts trace initial.input ∧ trace.rows ≠ []
 
 end NonDeterminism.Pooled
 

@@ -34,6 +34,17 @@ def WritesRangeCheckedClaim : Prop :=
   ∀ {trace : PooledTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} {projection : RV.Instr → Option (DecoderData PooledFamily)} (_table : projection = rvPooledDecoderFields ∨ projection = NonDeterminism.Pooled.rvDecoderFields) (_inputs : RVPooledBootInputs trace initial cells program inits projection) (_accepted : Accepted trace) (_decoded : RVPooledDecoded trace program),
     ∀ row ∈ trace.rows, WritesRangeChecked row.memorySteps
 
+/-- The assumptions of `WritesRangeCheckedClaim` can be met, by a trace with a row that has ports, all of whose reads
+    are bounded (so the conclusion's premise holds too). -/
+def WritesRangeCheckedSatisfiableClaim : Prop :=
+  ∃ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell)
+    (program : List RVPooledProgramEntry) (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout))
+    (projection : RV.Instr → Option (DecoderData PooledFamily)),
+    (projection = rvPooledDecoderFields ∨ projection = NonDeterminism.Pooled.rvDecoderFields) ∧
+    RVPooledBootInputs trace initial cells program inits projection ∧ Accepted trace ∧
+    RVPooledDecoded trace program ∧
+    ∃ row ∈ trace.rows, row.memorySteps ≠ [] ∧ ∀ step ∈ row.memorySteps, step.1.word.Bounded
+
 end Airbender.Trace
 
 namespace Airbender.UnifiedReduced

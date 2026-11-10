@@ -4,6 +4,8 @@ import Human.Trace.Delegation.RVTheorems
 import Human.Trace.ZeroTimestamp
 import Human.Trace.WritesRangeChecked
 import Human.Trace.Workers.Bigint.RVTheorems
+import Human.Trace.RVSoundness
+import Human.Trace.TeardownBounds
 
 open Airbender Trace
 
@@ -56,5 +58,42 @@ example (claim : Bigint.Native.RVOperationExecutionClaim) : Bigint.Native.RVOper
   fun ⟨data, before, cells, accepted, inputs, aligned, table, row, member, family⟩ =>
     have result := claim accepted inputs aligned table
     ⟨data, before, cells, result.1, row, member, family, result.2.1 row member family⟩
+
+example (claim : RVPooledNativeSoundnessClaim) : RVPooledNativeSoundnessSatisfiableClaim →
+    ∃ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell),
+      RVRealizes trace initial cells ∧ trace.rows ≠ [] :=
+  fun ⟨trace, initial, cells, _, _, inputs, accepted, decoded, rows⟩ =>
+    ⟨trace, initial, cells, claim inputs accepted decoded, rows⟩
+
+example (claim : BootRamZeroClaim) : BootRamZeroSatisfiableClaim →
+    ∃ (initial : RV.State) (cells : List Cell) (address : BitVec 32),
+      Cell.ram address ∈ cells ∧ (Cell.ram address).readRV initial = some 0 :=
+  fun ⟨_, initial, cells, _, _, _, inputs, address, member⟩ =>
+    ⟨initial, cells, address, member, claim inputs address member⟩
+
+example (claim : NonDeterminism.Pooled.RVNativeSoundnessClaim) :
+    NonDeterminism.Pooled.RVNativeSoundnessSatisfiableClaim →
+    ∃ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell),
+      NonDeterminism.Pooled.RVRealizes trace initial cells ∧ trace.rows ≠ [] :=
+  fun ⟨trace, initial, cells, _, _, inputs, accepted, decoded, ports, rows⟩ =>
+    ⟨trace, initial, cells, claim inputs accepted decoded ports, rows⟩
+
+example (claim : NoZeroTimestampWritesClaim) : NoZeroTimestampWritesSatisfiableClaim →
+    ∃ trace : PooledTrace babyBearModulus, ∃ row ∈ trace.rows, ∃ token ∈ row.writes,
+      4 ≤ (timeOfPair token.time).value :=
+  fun ⟨trace, accepted, boot, row, member, token, present⟩ =>
+    ⟨trace, row, member, token, present, claim accepted boot row member token present⟩
+
+example (claim : WritesRangeCheckedClaim) : WritesRangeCheckedSatisfiableClaim →
+    ∃ trace : PooledTrace babyBearModulus, ∃ row ∈ trace.rows, row.memorySteps ≠ [] ∧
+      ∀ step ∈ row.memorySteps, step.2.word.Bounded :=
+  fun ⟨trace, _, _, _, _, _, table, inputs, accepted, decoded, row, member, steps, reads⟩ =>
+    ⟨trace, row, member, steps, claim table inputs accepted decoded row member reads⟩
+
+example (claim : TeardownsBoundedClaim) : TeardownsBoundedSatisfiableClaim →
+    ∃ inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout),
+      ∃ w ∈ inits, ∃ token ∈ w.teardownTokens, token.word.Bounded :=
+  fun ⟨_, _, _, _, inits, _, table, inputs, accepted, decoded, reads, w, present, token, member⟩ =>
+    ⟨inits, w, present, token, member, claim table inputs accepted decoded reads w present token member⟩
 
 end Checks.Satisfiable
