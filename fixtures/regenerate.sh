@@ -44,7 +44,6 @@ if ((check)); then
   temporary=$(mktemp -d)
   out_repo=$temporary
 fi
-build_messages=
 producer_log=
 cleanup() {
   local result=$?
@@ -58,7 +57,6 @@ cleanup() {
   if ((result)) && [[ -n $producer_log && -f $producer_log ]]; then
     echo "Producer log retained at $producer_log" >&2
   fi
-  [[ -z $build_messages ]] || rm -f "$build_messages"
 }
 trap cleanup EXIT
 
@@ -66,23 +64,13 @@ producer=${FIXTURE_CANONICAL_PRODUCER:-}
 cli=${FIXTURE_CLI:-}
 codec=${FIXTURE_CODEC:-}
 if [[ -z $stage_filter || $stage_filter == circuits ]]; then
-  if [[ -z $producer ]]; then
+  if [[ -n $producer ]]; then
+    [[ -x $producer ]]
+    producer_command=("$producer")
+  else
     [[ ${CI:-} != true ]] || { echo "CI needs FIXTURE_CANONICAL_PRODUCER" >&2; exit 1; }
-    build_messages=$(mktemp)
-    cargo test -p prover --lib --features test --profile cli --no-run --message-format=json >"$build_messages"
-    producer=$(python3 - "$build_messages" <<'PY'
-import json, sys
-messages = [json.loads(line) for line in open(sys.argv[1])]
-executables = [message["executable"] for message in messages
-               if message.get("reason") == "compiler-artifact"
-               and message["target"]["name"] == "prover"
-               and message["profile"]["test"] and message.get("executable")]
-assert len(executables) == 1, executables
-print(executables[0])
-PY
-)
+    producer_command=(cargo test -p prover --lib --features test --profile cli --)
   fi
-  [[ -x $producer ]]
 fi
 if [[ $stage_filter != circuits ]]; then
   if [[ -z $cli ]]; then
@@ -130,7 +118,7 @@ for mode in "${modes[@]}"; do
         else
           producer_log=$(mktemp)
         fi
-        PROOF_FIXTURES_OUTPUT_ROOT="$out_repo" "$producer" \
+        PROOF_FIXTURES_OUTPUT_ROOT="$out_repo" "${producer_command[@]}" \
           --exact "tests::gkr::canonical_proofs::regenerate_canonical_circuit_proofs_$mode" \
           --nocapture --test-threads=1 | tee "$producer_log"
         grep -q 'test result: ok. 1 passed; 0 failed' "$producer_log"

@@ -21,7 +21,8 @@ may select one mode in either operation.
 
 The two canonical producer tests share one body and fix their mode in code:
 `tests::gkr::canonical_proofs::regenerate_canonical_circuit_proofs_<mode>`.
-The script builds and invokes their test executable with `--exact`.
+Locally the script runs them through `cargo test` with `--exact`; with
+`FIXTURE_CANONICAL_PRODUCER` set it invokes that prebuilt test executable instead.
 
 Use the default features, including `deterministic_pow`, and the regular
 generated layouts. The producer reads each circuit's generated Sec100 config
