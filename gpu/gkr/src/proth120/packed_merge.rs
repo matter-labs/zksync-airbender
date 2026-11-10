@@ -11,7 +11,7 @@ use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
 
 use crate::proth120::backward::GpuGKRBackwardScheduledExecutionPr;
 use crate::proth120::base_layer_claims::{
-    schedule_gather_base_claims_pr, BaseClaimIndicesPr, GatheredBaseClaimsPr,
+    schedule_gather_base_claims_pr, BaseClaimGatherPr, GatheredBaseClaimsPr,
 };
 use crate::proth120::proof_layout::ProofSlabPr;
 use crate::setup::PackedSetupSource;
@@ -54,7 +54,7 @@ pub fn schedule_base_layer_claims_and_packed_merge_pr(
     setup: &PackedSetupSource<'_>,
     pack_log2: u32,
     batching_pow_bits: u32,
-    base_claim_indices: BaseClaimIndicesPr,
+    base_claim_indices: BaseClaimGatherPr,
     proof: &mut ProofSlabPr,
     context: &ProverContext,
 ) -> CudaResult<GkrOutputPr> {
@@ -67,29 +67,13 @@ pub fn schedule_base_layer_claims_and_packed_merge_pr(
         pack_log2, setup.host.pack_log2,
         "Proth120 setup packing mismatch"
     );
-    let addresses = backward.final_claim_addresses();
-    let memory_columns = addresses
-        .iter()
-        .filter(|address| matches!(address, crate::upstream::GKRAddress::BaseLayerMemory(_)))
-        .count();
-    let witness_columns = addresses
-        .iter()
-        .filter(|address| matches!(address, crate::upstream::GKRAddress::BaseLayerWitness(_)))
-        .count();
     assert_eq!(
-        memory_columns + witness_columns,
+        base_claim_indices.memory_witness_count,
         base.columns(),
         "Proth120 raw claim columns mismatch"
     );
-    let gathered = schedule_gather_base_claims_pr(
-        backward.final_claims(),
-        addresses,
-        memory_columns,
-        witness_columns,
-        setup.raw().columns_count,
-        base_claim_indices,
-        context,
-    )?;
+    let gathered =
+        schedule_gather_base_claims_pr(backward.final_claims(), base_claim_indices, context)?;
     let (seed, point) = backward.final_device_seed_and_claim_point_mut();
     assert_eq!(
         point.len(),

@@ -56,6 +56,11 @@ fn random_word(state: &mut u64) -> u32 {
 
 #[test]
 fn cpu_relations_abi_pins() {
+    let circuit = serde_json::from_slice(include_bytes!(
+        "../../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json"
+    ))
+    .unwrap();
+    let _relations = super::LookupRelationsPr::new(&circuit);
     assert_eq!((size_of::<Address>(), align_of::<Address>()), (12, 4));
     assert_eq!(
         (
@@ -73,11 +78,13 @@ fn cpu_relations_abi_pins() {
     );
     assert_eq!(
         (
-            size_of::<Proth120LookupExpressions>(),
-            align_of::<Proth120LookupExpressions>()
+            size_of::<Proth120LookupExpressions<15>>(),
+            align_of::<Proth120LookupExpressions<15>>()
         ),
-        (16, 8)
+        (2400, 16)
     );
+    assert_eq!(size_of::<Proth120LookupExpressions<8>>(), 1280);
+    assert_eq!(size_of::<super::LookupRelationsPr>(), 3680);
     let address = Address::InnerLayer {
         offset: 0x12345678,
         layer: 0x87654321,

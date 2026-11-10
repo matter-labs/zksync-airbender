@@ -14,10 +14,10 @@ use std::sync::Arc;
 
 use era_cudart::result::CudaResult;
 use gpu_core::primitives::field::PR;
-use gpu_gkr::proth120::base_layer_claims::BaseClaimIndicesHostPr;
+use gpu_gkr::proth120::base_layer_claims::BaseClaimGatherPr;
 use gpu_gkr::proth120::programs::GkrProgramsPr;
 use gpu_gkr::proth120::proof_layout::ProofLayoutPr;
-use gpu_trace::witness::proth120::Proth120LookupRelationsHost;
+use gpu_trace::witness::proth120::LookupRelationsPr;
 
 use crate::upstream::{
     GKRCircuitArtifact, GKRProof, Keccak256MerkleTreeWithCap, Proth120, ProverConfig,
@@ -29,11 +29,11 @@ pub type L1Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 pub const L1_WRAP_NTT_LOG_MAX_DOMAIN: u32 =
     gpu_prover_context::ProverContext::PROTH120_NTT_LOG_MAX_DOMAIN;
 
-/// Per-circuit constants every wrap proof uploads with its phase-one inputs.
+/// Per-circuit wrap constants, built once; relations and claim indices are passed by value.
 pub struct L1WrapConstantsHost {
     pub(crate) programs: Arc<GkrProgramsPr>,
-    pub(crate) relations: Proth120LookupRelationsHost,
-    pub(crate) base_claim_indices: BaseClaimIndicesHostPr,
+    pub(crate) relations: LookupRelationsPr,
+    pub(crate) base_claim_indices: BaseClaimGatherPr,
 }
 
 impl L1WrapConstantsHost {
@@ -46,14 +46,14 @@ impl L1WrapConstantsHost {
         let layout = ProofLayoutPr::new(programs, config);
         Ok(Self {
             programs: Arc::clone(programs),
-            relations: Proth120LookupRelationsHost::new(circuit)?,
-            base_claim_indices: BaseClaimIndicesHostPr::new(
+            relations: LookupRelationsPr::new(circuit),
+            base_claim_indices: BaseClaimGatherPr::new(
                 programs,
                 &layout,
                 geometry.memory_columns,
                 geometry.witness_columns,
                 geometry.setup_columns,
-            )?,
+            ),
         })
     }
 }

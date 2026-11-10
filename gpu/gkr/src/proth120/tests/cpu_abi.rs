@@ -24,6 +24,14 @@ fn cpu_pr_complete_launch_argument_abi() {
         prover::definitions::SoundnessMode::PessimisticConjecture,
     );
     let layout = ProofLayoutPr::new(&programs, &config);
+    let circuit = &programs.runtime_circuit;
+    let _gather = crate::proth120::base_layer_claims::BaseClaimGatherPr::new(
+        &programs,
+        &layout,
+        circuit.memory_layout.total_width,
+        circuit.witness_layout.total_width,
+        circuit.generic_lookup_tables_width,
+    );
     layout.validate_geometry(
         &programs.runtime_circuit,
         config.sumcheck_explicit_output_size_log_2,

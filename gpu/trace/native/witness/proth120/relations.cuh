@@ -18,10 +18,9 @@ struct __align__(16) Proth120LinearRelation {
   u32 padding[3];
 };
 
-struct Proth120LookupExpressions {
-  const Proth120LinearRelation *relations;
-  u32 count;
-  u32 padding;
+template <unsigned N> struct Proth120LookupExpressions {
+  static constexpr u32 count = N;
+  Proth120LinearRelation relations[N];
 };
 
 static_assert(sizeof(Address) == 12 && alignof(Address) == 4);
@@ -31,9 +30,8 @@ static_assert(offsetof(Proth120LinearTerm, coefficient) == 0 && offsetof(Proth12
 static_assert(sizeof(Proth120LinearRelation) == 160 && alignof(Proth120LinearRelation) == 16);
 static_assert(offsetof(Proth120LinearRelation, constant) == 0 && offsetof(Proth120LinearRelation, terms) == 16);
 static_assert(offsetof(Proth120LinearRelation, terms_count) == 144 && offsetof(Proth120LinearRelation, padding) == 148);
-static_assert(sizeof(Proth120LookupExpressions) == 16 && alignof(Proth120LookupExpressions) == 8);
-static_assert(offsetof(Proth120LookupExpressions, relations) == 0 && offsetof(Proth120LookupExpressions, count) == 8 &&
-              offsetof(Proth120LookupExpressions, padding) == 12);
+static_assert(sizeof(Proth120LookupExpressions<15>) == 2400 && alignof(Proth120LookupExpressions<15>) == 16);
+static_assert(sizeof(Proth120LookupExpressions<8>) == 1280 && alignof(Proth120LookupExpressions<8>) == 16);
 
 template <typename Memory, typename Witness, typename Scratch>
 DEVICE_FORCEINLINE pr evaluate_linear_relation(const Memory &memory, const Witness &witness, const Scratch &scratch, const Proth120LinearRelation &relation) {
@@ -66,9 +64,9 @@ DEVICE_FORCEINLINE pr evaluate_linear_relation(const Memory &memory, const Witne
   return result;
 }
 
-template <typename Memory, typename Witness, typename Scratch, typename Mapping>
+template <typename Memory, typename Witness, typename Scratch, typename Mapping, unsigned N>
 DEVICE_FORCEINLINE void process_lookup_expressions(const Memory &memory, const Witness &witness, const Scratch &scratch,
-                                                   const Proth120LookupExpressions expressions, Mapping &mapping) {
+                                                   const Proth120LookupExpressions<N> expressions, Mapping &mapping) {
   for (u32 i = 0; i < expressions.count; i++) {
     const pr field_value = evaluate_linear_relation(memory, witness, scratch, expressions.relations[i]);
     mapping.set(pr_to_u32_bounded(field_value));

@@ -7,9 +7,7 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use prover::transcript::{Keccak256Seed, Keccak256Transcript, Transcript};
 use worker::Worker;
 
-use crate::proth120::base_layer_claims::{
-    schedule_gather_base_claims_pr, BaseClaimIndicesHostPr, BaseClaimIndicesPr,
-};
+use crate::proth120::base_layer_claims::{schedule_gather_base_claims_pr, BaseClaimGatherPr};
 use crate::proth120::packed_merge::{
     launch_merge_claims_pr, schedule_packed_merge_pr_with_snapshots,
 };
@@ -204,31 +202,14 @@ fn pr_packed_merge_transcript_matches_cpu() {
             let mut expected_point = point.clone();
             expected_point.extend_from_slice(&extra);
             let mut seed = upload(&initial_seed, &context);
-            let indices_host = BaseClaimIndicesHostPr::new(
+            let indices = BaseClaimGatherPr::new(
                 &programs,
                 &layout,
                 circuit.memory_layout.total_width,
                 circuit.witness_layout.total_width,
                 circuit.generic_lookup_tables_width,
-            )
-            .unwrap();
-            let mut indices = BaseClaimIndicesPr::allocate(&indices_host, &context).unwrap();
-            let indices_transfer = gpu_prover_context::transfer::single_shot_h2d(
-                |transfer| indices.schedule_transfer(transfer, &context),
-                &context,
-            )
-            .unwrap();
-            indices_transfer.ensure_transferred(&context).unwrap();
-            let gathered = schedule_gather_base_claims_pr(
-                &d_claims,
-                &addresses,
-                circuit.memory_layout.total_width,
-                circuit.witness_layout.total_width,
-                circuit.generic_lookup_tables_width,
-                indices,
-                &context,
-            )
-            .unwrap();
+            );
+            let gathered = schedule_gather_base_claims_pr(&d_claims, indices, &context).unwrap();
             let mut proof = ProofSlabPr::new(Arc::clone(&layout), &context).unwrap();
             let mut snapshots: Vec<_> = (0..3)
                 .map(|_| {
