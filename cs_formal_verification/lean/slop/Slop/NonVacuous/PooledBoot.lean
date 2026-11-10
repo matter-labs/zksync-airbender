@@ -98,6 +98,19 @@ noncomputable def trace : PooledTrace babyBearModulus where
 theorem registers_perm : (registerSeeds ++ row.writes).Perm (registerTerminal ++ row.reads) := by
   decide +kernel
 
+/-- The memory matching of the row with any further seeds `rest` (the RAM seeds) passed through unchanged. -/
+theorem memory_perm (rest : List (MemoryToken babyBearModulus)) :
+    ((registerSeeds ++ rest) ++ (row.writes ++ [])).Perm ((registerTerminal ++ rest) ++ (row.reads ++ [])) := by
+  simp only [List.append_nil, List.append_assoc]
+  calc registerSeeds ++ (rest ++ row.writes)
+      _ ~ registerSeeds ++ (row.writes ++ rest) := List.perm_append_comm.append_left _
+      _ = (registerSeeds ++ row.writes) ++ rest := (List.append_assoc ..).symm
+      _ ~ (registerTerminal ++ row.reads) ++ rest := registers_perm.append_right _
+      _ = registerTerminal ++ (row.reads ++ rest) := List.append_assoc ..
+      _ ~ registerTerminal ++ (rest ++ row.reads) := List.perm_append_comm.append_left _
+
+theorem start : row.start = PCState.boundary 0 (4, 0) := by kernel_rfl
+
 theorem accepted : Accepted trace := by
   constructor
   · intro current member
@@ -109,17 +122,9 @@ theorem accepted : Accepted trace := by
     subst current
     rfl
   · change [PCState.boundary 0 (4, 0), row.finish].Perm [row.finish, row.start]
-    have start : row.start = PCState.boundary 0 (4, 0) := by kernel_rfl
     rw [start]
     exact List.Perm.swap _ _ []
-  · change ((registerSeeds ++ _) ++ (row.writes ++ [])).Perm ((registerTerminal ++ _) ++ (row.reads ++ []))
-    simp only [List.append_nil, List.append_assoc]
-    calc registerSeeds ++ (_ ++ row.writes)
-        _ ~ registerSeeds ++ (row.writes ++ _) := List.perm_append_comm.append_left _
-        _ = (registerSeeds ++ row.writes) ++ _ := (List.append_assoc ..).symm
-        _ ~ (registerTerminal ++ row.reads) ++ _ := registers_perm.append_right _
-        _ = registerTerminal ++ (row.reads ++ _) := List.append_assoc ..
-        _ ~ registerTerminal ++ (_ ++ row.reads) := List.perm_append_comm.append_left _
+  · exact memory_perm _
 
 theorem shape : InitsTeardowns.Proofs.Shape InitsTeardowns.importedLayout := ⟨rfl, Or.inr rfl⟩
 

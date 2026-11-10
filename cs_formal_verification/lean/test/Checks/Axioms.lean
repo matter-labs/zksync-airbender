@@ -144,6 +144,7 @@ import Slop.Final.Trace.UnifiedReduced.RVChainOfSequence
 -- P4.2 non-vacuity: the claims' assumptions can be met
 import Slop.Final.Trace.Satisfiable.Pools
 import Slop.Final.Trace.Satisfiable.Pooled
+import Slop.Final.Trace.Satisfiable.Families
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -1200,3 +1201,5 @@ import Slop.Final.Trace.Satisfiable.Pooled
 #print axioms Airbender.Trace.no_zero_timestamp_writes_satisfiable
 #print axioms Airbender.Trace.writes_range_checked_satisfiable
 #print axioms Airbender.Trace.teardowns_bounded_satisfiable
+#print axioms Airbender.Trace.rv_airbender_soundness_satisfiable
+#print axioms Airbender.Trace.rv_native_boot_soundness_satisfiable

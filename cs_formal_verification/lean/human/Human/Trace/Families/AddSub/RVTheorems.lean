@@ -72,4 +72,14 @@ def RVNativeBootSoundnessClaim : Prop :=
   ∀ {trace : Data babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)} (_inputs : RVNativeBootBoundary trace initial cells program inits) (_accepted : Accepted trace) (_decoded : RVDecoded trace program),
     RVRealizes trace initial cells
 
+/-- The assumptions of `RVAirbenderSoundnessClaim` can be met, by a trace with a row. -/
+def RVAirbenderSoundnessSatisfiableClaim : Prop := RVTraceSatisfiable RVExecutionBoundary RVDecoded
+
+/-- The assumptions of `RVNativeBootSoundnessClaim` can be met, by a trace with a row. -/
+def RVNativeBootSoundnessSatisfiableClaim : Prop :=
+  ∃ (trace : Data babyBearModulus) (initial : RV.State) (cells : List Cell) (program : List RVProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    RVNativeBootBoundary trace initial cells program inits ∧ Accepted trace ∧ RVDecoded trace program ∧
+      trace.rows ≠ []
+
 end Airbender.Trace

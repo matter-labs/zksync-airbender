@@ -6,6 +6,7 @@ import Human.Trace.WritesRangeChecked
 import Human.Trace.Workers.Bigint.RVTheorems
 import Human.Trace.RVSoundness
 import Human.Trace.TeardownBounds
+import Human.Trace.Families.AddSub.RVTheorems
 
 open Airbender Trace
 
@@ -95,5 +96,17 @@ example (claim : TeardownsBoundedClaim) : TeardownsBoundedSatisfiableClaim →
       ∃ w ∈ inits, ∃ token ∈ w.teardownTokens, token.word.Bounded :=
   fun ⟨_, _, _, _, inits, _, table, inputs, accepted, decoded, reads, w, present, token, member⟩ =>
     ⟨inits, w, present, token, member, claim table inputs accepted decoded reads w present token member⟩
+
+example (claim : RVAirbenderSoundnessClaim) : RVAirbenderSoundnessSatisfiableClaim →
+    ∃ (trace : Data babyBearModulus) (initial : RV.State) (cells : List Cell),
+      RVRealizes trace initial cells ∧ trace.rows ≠ [] :=
+  fun ⟨trace, initial, cells, _, inputs, accepted, decoded, rows⟩ =>
+    ⟨trace, initial, cells, claim inputs accepted decoded, rows⟩
+
+example (claim : RVNativeBootSoundnessClaim) : RVNativeBootSoundnessSatisfiableClaim →
+    ∃ (trace : Data babyBearModulus) (initial : RV.State) (cells : List Cell),
+      RVRealizes trace initial cells ∧ trace.rows ≠ [] :=
+  fun ⟨trace, initial, cells, _, _, inputs, accepted, decoded, rows⟩ =>
+    ⟨trace, initial, cells, claim inputs accepted decoded, rows⟩
 
 end Checks.Satisfiable

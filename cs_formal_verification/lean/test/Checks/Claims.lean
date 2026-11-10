@@ -79,6 +79,7 @@ import Human.Import.Theorems
 -- P4.2 non-vacuity: the claims' assumptions can be met
 import Slop.Final.Trace.Satisfiable.Pools
 import Slop.Final.Trace.Satisfiable.Pooled
+import Slop.Final.Trace.Satisfiable.Families
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
@@ -356,3 +357,7 @@ example : Airbender.Trace.WritesRangeCheckedSatisfiableClaim := @Airbender.Trace
 #print axioms Airbender.Trace.writes_range_checked_satisfiable
 example : Airbender.Trace.TeardownsBoundedSatisfiableClaim := @Airbender.Trace.teardowns_bounded_satisfiable
 #print axioms Airbender.Trace.teardowns_bounded_satisfiable
+example : Airbender.Trace.RVAirbenderSoundnessSatisfiableClaim := @Airbender.Trace.rv_airbender_soundness_satisfiable
+#print axioms Airbender.Trace.rv_airbender_soundness_satisfiable
+example : Airbender.Trace.RVNativeBootSoundnessSatisfiableClaim := @Airbender.Trace.rv_native_boot_soundness_satisfiable
+#print axioms Airbender.Trace.rv_native_boot_soundness_satisfiable
