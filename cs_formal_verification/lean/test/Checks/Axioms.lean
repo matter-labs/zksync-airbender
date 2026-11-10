@@ -793,6 +793,7 @@ import Slop.Final.Import.Theorems
 #print axioms Airbender.Delegation.Caller.Proofs.csr_injective
 
 #print axioms Airbender.Delegation.Caller.WorkerEffect
+#print axioms Airbender.Delegation.Caller.RVRequestAccepted.workers
 
 #print axioms Airbender.Arithmetic.rotateRight_and
 #print axioms Airbender.Arithmetic.rotateRight_or
