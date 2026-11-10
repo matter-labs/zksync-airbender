@@ -2,6 +2,7 @@ module
 public import Slop.Deleg.Calls
 public import Slop.Deleg.BlakeRoundG
 public import Mathlib.Tactic.IntervalCases
+public import Slop.Deleg.NonVacuous
 
 @[expose] public section
 
@@ -126,12 +127,14 @@ theorem blake_g_gen (red : Bool) (s : State) (p q : Word) (hp : Buffer p 64 64) 
   exact ⟨t, h1, h2, by rw [h3, Nat.mod_self], h4⟩
 
 theorem Deleg.blake_g_run : BlakeGRun := by
-  intro s p q hp hq hpq h10 h11 h12
+  refine ⟨?_, _, _, _, Deleg.NonVacuous.g_assumptions _⟩
+  rintro s p q ⟨hp, hq, hpq, h10, h11, h12⟩
   obtain ⟨t, h1, h2, h3, h4⟩ := blake_g_gen true s p q hp hq hpq h10 h11 h12
   exact ⟨t, h1, h2, h3, by rw [h4]; exact gs_56 _ _⟩
 
 theorem Deleg.blake_g_run10 : BlakeGRun10 := by
-  intro s p q hp hq hpq h10 h11 h12
+  refine ⟨?_, _, _, _, Deleg.NonVacuous.g_assumptions _⟩
+  rintro s p q ⟨hp, hq, hpq, h10, h11, h12⟩
   obtain ⟨t, h1, h2, h3, h4⟩ := blake_g_gen false s p q hp hq hpq h10 h11 h12
   exact ⟨t, h1, h2, h3, by rw [h4]; exact gs_80 _ _⟩
 

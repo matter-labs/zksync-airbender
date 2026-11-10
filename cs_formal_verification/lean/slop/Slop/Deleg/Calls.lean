@@ -67,7 +67,10 @@ theorem readWords_writesAt {n : Nat} (s : State) (a : Word) (v : Vector Word n) 
     RV.readWords (s.storeAll (writesAt a v)).mem a n = v := by
   simpa using readWords_storeAll s [] [] a v ha (by simp)
 
-theorem Deleg.calls_run : CallsRun := by
+theorem Deleg.calls_run_curried : ∀ (ks : List DelegationKind) (s t : State), s.pc.toNat % 4 = 0 →
+    s.pc.toNat + 4 * ks.length ≤ ROM_END →
+    (∀ i (h : i < ks.length), decode (read s.rom (s.pc + BitVec.ofNat 32 (4 * i)) 4) = some (.delegate ks[i])) →
+    calls ks s = some t → run ks.length s = some t := by
   intro ks
   induction ks with
   | nil => intro s t _ _ _ h; exact h

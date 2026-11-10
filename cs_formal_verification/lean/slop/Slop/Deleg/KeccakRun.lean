@@ -1,6 +1,7 @@
 module
 public import Slop.Deleg.KeccakRound
 public import Slop.Deleg.KeccakCalls
+public import Slop.Deleg.NonVacuous
 
 @[expose] public section
 
@@ -69,7 +70,8 @@ theorem lanes_final (B : Vector Lane 25) (W : Fin 6 → Lane) (mem : Word → Bi
       show 0 ≠ i by omega]
 
 theorem Deleg.keccak_special5_run : KeccakSpecial5Run := by
-  intro s p hp h10 h11
+  refine ⟨?_, _, _, Deleg.NonVacuous.keccak_assumptions⟩
+  rintro s p ⟨hp, h10, h11⟩
   obtain ⟨t, h1, ⟨W, hW⟩, t10, ch⟩ := s5_rounds s p hp h10 h11 24 le_rfl
   obtain ⟨u, h2, hl, -, ch'⟩ := oneCall _ _ _ _ s5_effect 0 0 24 (by omega) (by omega) (by omega) t p hp t10
     ((ch.2 11 (by decide)).trans h11)

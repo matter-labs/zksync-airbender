@@ -1,3 +1,4 @@
+import Slop.ISA.Equiv.NonVacuous
 import Slop.ISA.Equiv.StepMem
 import Slop.ISA.Equiv.StepMop
 import Slop.ISA.Equiv.StepInput
@@ -61,6 +62,7 @@ theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s �
     exact ⟨σ', true, e, a, w, rfl⟩
 
 theorem step_is_airbender : Airbender.StepIsAirbenderClaim := by
+  refine ⟨?_, NonVacuous.step_assumptions⟩
   intro s t m ⟨hA, hsh, hin⟩ ht
   have ht' := ht
   unfold RV.step at ht'

@@ -1,4 +1,5 @@
 import Slop.Field.BabyBearInstance
+import Human.ISA.Sail.Theorems
 import Slop.Defs.Circuits.WordMemory.RVModel
 import Slop.Defs.Circuits.SubwordMemory.RVModel
 import Slop.Defs.Circuits.ShiftBinop.RVModel
@@ -641,3 +642,88 @@ example (h : Vector Word 8) (m : Vector Word 16) (t : Word) (last : Bool) :
   rw [old_compress_eq h m t last e e12 e14, RV.compress_eq h m t last e e12 e14]
 
 end Spec
+
+/-! E1: the delegation-run and Sail claims now also state that their assumptions can be met; each implies its
+previous statement (verbatim below). -/
+namespace RV
+open Spec
+
+example : CallsRun → (
+  ∀ (ks : List DelegationKind) (s t : State), s.pc.toNat % 4 = 0 → s.pc.toNat + 4 * ks.length ≤ ROM_END →
+    (∀ i (h : i < ks.length), decode (read s.rom (s.pc + BitVec.ofNat 32 (4 * i)) 4) = some (.delegate ks[i])) →
+    calls ks s = some t → run ks.length s = some t) :=
+  fun h ks s t a b c d => h.1 ks s t ⟨a, b, c, d⟩
+
+example : BlakeCompressRun → (
+  ∀ (s : State) (p q t : Word) (last : Bool), Buffer p 96 128 → Buffer q 64 64 → Apart p 96 q 64 →
+    s.getReg 10 = p → s.getReg 11 = q → s.getReg 12 = 0x90000#32 →
+    (readWords s.mem (p + 32) 16)[12] = t ^^^ IV 4 →
+    (readWords s.mem (p + 32) 16)[14] = (if last then 0xFFFFFFFF#32 else 0#32) ^^^ IV 6 →
+    ∃ s', calls (.replicate 7 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compress (readWords s.mem p 8) (readWords s.mem q 16) t last) :=
+  fun h s p q t last a b c d e f g k => h.1 s p q t last ⟨a, b, c, d, e, f, g, k⟩
+
+example : BlakeHashRun → (
+  ∀ (s : State) (p q : Word) (right : Bool), Buffer p 96 128 → Buffer q 64 64 → Apart p 96 q 64 →
+    s.getReg 10 = p → s.getReg 11 = q → s.getReg 12 = (if right then 0xf0000#32 else 0xd0000#32) →
+    ∃ s', calls (.replicate 7 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 =
+        if right then hash2 (readWords s.mem q 8) (readWords s.mem p 8) else hash2 (readWords s.mem p 8) (readWords s.mem q 8)) :=
+  fun h s p q right a b c d e f => h.1 s p q right ⟨a, b, c, d, e, f⟩
+
+example : BlakeCompressRun10 → (
+  ∀ (s : State) (p q t : Word) (last : Bool), Buffer p 96 128 → Buffer q 64 64 → Apart p 96 q 64 →
+    s.getReg 10 = p → s.getReg 11 = q → s.getReg 12 = 0x80000#32 →
+    (readWords s.mem (p + 32) 16)[12] = t ^^^ IV 4 →
+    (readWords s.mem (p + 32) 16)[14] = (if last then 0xFFFFFFFF#32 else 0#32) ^^^ IV 6 →
+    ∃ s', calls (.replicate 10 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compressRounds 10 (readWords s.mem p 8) (readWords s.mem q 16) t last) :=
+  fun h s p q t last a b c d e f g k => h.1 s p q t last ⟨a, b, c, d, e, f, g, k⟩
+
+example : BlakeHashRun10 → (
+  ∀ (s : State) (p q : Word) (right : Bool), Buffer p 96 128 → Buffer q 64 64 → Apart p 96 q 64 →
+    s.getReg 10 = p → s.getReg 11 = q → s.getReg 12 = (if right then 0xe0000#32 else 0xc0000#32) →
+    ∃ s', calls (.replicate 10 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compressRounds 10 (Vector.ofFn configuredIV)
+        (if right then readWords s.mem q 8 ++ readWords s.mem p 8 else readWords s.mem p 8 ++ readWords s.mem q 8)
+        64#32 true) :=
+  fun h s p q right a b c d e f => h.1 s p q right ⟨a, b, c, d, e, f⟩
+
+example : BlakeGRun → (
+  ∀ (s : State) (p q : Word), Buffer p 64 64 → Buffer q 64 64 → p ≠ q →
+    s.getReg 10 = p → s.getReg 11 = q → s.getReg 12 = 0x80#32 →
+    ∃ s', calls (.replicate 56 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0x80#32 ∧
+      readWords s'.mem p 16 = (List.finRange 7).foldl
+        (fun v r => round (readWords s.mem q 16) (SIGMA (r.castLE (by decide))) v) (readWords s.mem p 16)) :=
+  fun h s p q a b c d e f => h.1 s p q ⟨a, b, c, d, e, f⟩
+
+example : BlakeGRun10 → (
+  ∀ (s : State) (p q : Word), Buffer p 64 64 → Buffer q 64 64 → p ≠ q →
+    s.getReg 10 = p → s.getReg 11 = q → s.getReg 12 = 0#32 →
+    ∃ s', calls (.replicate 80 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0#32 ∧
+      readWords s'.mem p 16 = (List.finRange 10).foldl
+        (fun v r => round (readWords s.mem q 16) (SIGMA r) v) (readWords s.mem p 16)) :=
+  fun h s p q a b c d e f => h.1 s p q ⟨a, b, c, d, e, f⟩
+
+example : KeccakSpecial5Run → (
+  ∀ (s : State) (p : Word), Buffer p 248 256 → s.getReg 10 = 0 → s.getReg 11 = p →
+    ∃ s', calls (.replicate 649 .keccak) s = some s' ∧ ChangesOnly s s' p 248 10 ∧
+      readLanes s'.mem p 25 = keccakF (readLanes s.mem p 25)) :=
+  fun h s p a b c => h.1 s p ⟨a, b, c⟩
+
+example : KeccakF1600Run → (
+  ∀ (s : State) (p : Word), Buffer p 248 256 → s.getReg 10 = 0 → s.getReg 11 = p →
+    ∃ s', calls f1600Calls s = some s' ∧ ChangesOnly s s' p 248 10 ∧
+      readLanes s'.mem p 25 = keccakF (readLanes s.mem p 25)) :=
+  fun h s p a b c => h.1 s p ⟨a, b, c⟩
+
+end RV
+
+namespace Airbender
+open Sail SailRV32 SailRV32.Functions Human
+example : DecodeIsSailClaim → (
+  ∀ word instr σ, RV.decode word = some instr → Configured σ →
+    runSail (ext_decode word) σ = .ok (toSail instr) σ) := fun h => h.1
+example : StepIsAirbenderClaim → (
+  ∀ s s' m, Agree s m → RV.step s = some s' → ∃ m', step m = some m' ∧ Agree s' m') := fun h => h.1
+end Airbender

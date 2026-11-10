@@ -1,6 +1,7 @@
 module
 public import Slop.Deleg.KeccakF1600
 public import Slop.Deleg.KeccakRun
+public import Slop.Deleg.NonVacuous
 
 @[expose] public section
 
@@ -63,7 +64,8 @@ theorem f1600_rounds (s : State) (p : Word) (hp : Buffer p 248 256) (h10 : s.get
     · rw [hl]; exact hW'
 
 theorem Deleg.keccak_f1600_run : KeccakF1600Run := by
-  intro s p hp h10 h11
+  refine ⟨?_, _, _, Deleg.NonVacuous.keccak_assumptions⟩
+  rintro s p ⟨hp, h10, h11⟩
   obtain ⟨t, h1, ⟨W, hW⟩, t10, ch⟩ := f1600_rounds s p hp h10 h11 24 le_rfl
   obtain ⟨u, h2, hl, -, ch'⟩ := oneCall _ _ _ _ (f1600_effect 0 .keccakParity fun _ _ _ _ => rfl) 0 0 24 (by omega)
     (by omega) ⟨rfl, Or.inr ⟨rfl, rfl, rfl⟩⟩ t p hp t10 ((ch.2 11 (by decide)).trans h11)

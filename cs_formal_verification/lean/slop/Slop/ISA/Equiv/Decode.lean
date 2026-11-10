@@ -1,3 +1,4 @@
+import Slop.ISA.Equiv.NonVacuous
 import Slop.ISA.Equiv.DecUpper
 import Slop.ISA.Equiv.DecBranch
 import Slop.ISA.Equiv.DecLoad
@@ -51,6 +52,7 @@ elab "mk_bits" : tactic => withMainContext do
 
 set_option maxHeartbeats 400000 in
 theorem decode_is_sail : Airbender.DecodeIsSailClaim := by
+  refine ⟨?_, NonVacuous.decode_assumptions⟩
   intro w i σ h hs
   unfold RV.decode at h
   dsimp only at h
