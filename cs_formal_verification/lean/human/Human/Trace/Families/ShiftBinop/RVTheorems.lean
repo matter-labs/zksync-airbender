@@ -28,4 +28,7 @@ abbrev RVExecutionInputs {p : Nat} [Fact p.Prime] (trace : NativeTrace p) (initi
     the terminal PC and cell values. Public initialization and logical matching/membership remain explicit. -/
 def RVTraceSoundnessClaim : Prop := Trace.RVTraceSoundness RVExecutionInputs RVDecoded
 
+/-- The assumptions of `RVTraceSoundnessClaim` can be met, by a trace with a row. -/
+def RVTraceSoundnessSatisfiableClaim : Prop := Trace.RVTraceSatisfiable RVExecutionInputs RVDecoded
+
 end Airbender.ShiftBinop

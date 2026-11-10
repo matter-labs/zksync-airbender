@@ -13,6 +13,10 @@ import Human.Trace.Workers.Blake2G.RVTheorems
 import Human.Trace.Workers.Blake2Round.RVTheorems
 import Human.Trace.Workers.Keccak.RVTheorems
 import Human.Trace.Workers.KeccakSplit.RVTheorems
+import Human.Trace.Families.JumpBranchSlt.RVTheorems
+import Human.Trace.Families.MulDiv.RVTheorems
+import Human.Trace.Families.ShiftBinop.RVTheorems
+import Human.Trace.Families.SubwordMemory.RVTheorems
 
 open Airbender Trace
 
@@ -264,5 +268,29 @@ example (claim : RVControlPreparationWindowSoundnessClaim) : RVControlPreparatio
       claim accepted inputs firstScope lastScope rn sn first last ordered, callers, window⟩
 
 end UnifiedCallers
+
+example (claim : JumpBranchSlt.RVTraceSoundnessClaim) : JumpBranchSlt.RVTraceSoundnessSatisfiableClaim →
+    ∃ (trace : JumpBranchSlt.NativeTrace babyBearModulus) (initial : RV.State) (cells : List Cell),
+      RVRealizes trace initial cells ∧ trace.rows ≠ [] :=
+  fun ⟨trace, initial, cells, _, inputs, accepted, decoded, rows⟩ =>
+    ⟨trace, initial, cells, claim inputs accepted decoded, rows⟩
+
+example (claim : MulDiv.RVTraceSoundnessClaim) : MulDiv.RVTraceSoundnessSatisfiableClaim →
+    ∃ (trace : MulDiv.NativeTrace babyBearModulus) (initial : RV.State) (cells : List Cell),
+      RVRealizes trace initial cells ∧ trace.rows ≠ [] :=
+  fun ⟨trace, initial, cells, _, inputs, accepted, decoded, rows⟩ =>
+    ⟨trace, initial, cells, claim inputs accepted decoded, rows⟩
+
+example (claim : ShiftBinop.RVTraceSoundnessClaim) : ShiftBinop.RVTraceSoundnessSatisfiableClaim →
+    ∃ (trace : ShiftBinop.NativeTrace babyBearModulus) (initial : RV.State) (cells : List Cell),
+      RVRealizes trace initial cells ∧ trace.rows ≠ [] :=
+  fun ⟨trace, initial, cells, _, inputs, accepted, decoded, rows⟩ =>
+    ⟨trace, initial, cells, claim inputs accepted decoded, rows⟩
+
+example (claim : SubwordMemory.RVRamTraceSoundnessClaim) : SubwordMemory.RVRamTraceSoundnessSatisfiableClaim →
+    ∃ (trace : SubwordMemory.NativeTrace babyBearModulus) (initial : RV.State) (cells : List Cell),
+      RVRealizes trace initial cells ∧ trace.rows ≠ [] :=
+  fun ⟨trace, initial, cells, _, inputs, accepted, decoded, rows⟩ =>
+    ⟨trace, initial, cells, claim inputs accepted decoded, rows⟩
 
 end Checks.Satisfiable

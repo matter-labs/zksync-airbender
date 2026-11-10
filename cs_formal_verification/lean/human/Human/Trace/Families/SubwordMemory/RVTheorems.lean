@@ -35,4 +35,7 @@ structure RVRAMInputs {p : Nat} [Fact p.Prime] (trace : NativeTrace p) (initial 
     PC and cell values. Global history supplies all input bounds and reads; the boundary has no per-row assumptions. -/
 def RVRamTraceSoundnessClaim : Prop := Trace.RVTraceSoundness RVRAMInputs RVDecoded
 
+/-- The assumptions of `RVRamTraceSoundnessClaim` can be met, by a trace with a row. -/
+def RVRamTraceSoundnessSatisfiableClaim : Prop := Trace.RVTraceSatisfiable RVRAMInputs RVDecoded
+
 end Airbender.SubwordMemory

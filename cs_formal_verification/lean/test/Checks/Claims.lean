@@ -408,3 +408,12 @@ example : Airbender.UnifiedReduced.Caller.RVControlPreparationSoundnessSatisfiab
 #print axioms Airbender.UnifiedReduced.Caller.rv_control_preparation_soundness_satisfiable
 example : Airbender.UnifiedReduced.Caller.RVControlPreparationWindowSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_control_preparation_window_soundness_satisfiable
 #print axioms Airbender.UnifiedReduced.Caller.rv_control_preparation_window_soundness_satisfiable
+
+example : Airbender.JumpBranchSlt.RVTraceSoundnessSatisfiableClaim := @Airbender.JumpBranchSlt.rv_trace_soundness_satisfiable
+#print axioms Airbender.JumpBranchSlt.rv_trace_soundness_satisfiable
+example : Airbender.MulDiv.RVTraceSoundnessSatisfiableClaim := @Airbender.MulDiv.rv_trace_soundness_satisfiable
+#print axioms Airbender.MulDiv.rv_trace_soundness_satisfiable
+example : Airbender.ShiftBinop.RVTraceSoundnessSatisfiableClaim := @Airbender.ShiftBinop.rv_trace_soundness_satisfiable
+#print axioms Airbender.ShiftBinop.rv_trace_soundness_satisfiable
+example : Airbender.SubwordMemory.RVRamTraceSoundnessSatisfiableClaim := @Airbender.SubwordMemory.rv_ram_trace_soundness_satisfiable
+#print axioms Airbender.SubwordMemory.rv_ram_trace_soundness_satisfiable

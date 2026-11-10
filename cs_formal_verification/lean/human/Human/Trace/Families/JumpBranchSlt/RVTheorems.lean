@@ -33,4 +33,7 @@ structure RVExecutionInputs {p : Nat} [Fact p.Prime] (trace : NativeTrace p) (in
     matching/membership are the explicit boundaries in `RVExecutionInputs`, `Accepted` and `RVDecoded`. -/
 def RVTraceSoundnessClaim : Prop := Trace.RVTraceSoundness RVExecutionInputs RVDecoded
 
+/-- The assumptions of `RVTraceSoundnessClaim` can be met, by a trace with a row. -/
+def RVTraceSoundnessSatisfiableClaim : Prop := Trace.RVTraceSatisfiable RVExecutionInputs RVDecoded
+
 end Airbender.JumpBranchSlt

@@ -1230,3 +1230,7 @@ import Slop.Final.Trace.Satisfiable.UnifiedPreparedCallers
 #print axioms Airbender.UnifiedReduced.Caller.rv_caller_cycles_soundness_satisfiable
 #print axioms Airbender.UnifiedReduced.Caller.rv_control_preparation_soundness_satisfiable
 #print axioms Airbender.UnifiedReduced.Caller.rv_control_preparation_window_soundness_satisfiable
+#print axioms Airbender.JumpBranchSlt.rv_trace_soundness_satisfiable
+#print axioms Airbender.MulDiv.rv_trace_soundness_satisfiable
+#print axioms Airbender.ShiftBinop.rv_trace_soundness_satisfiable
+#print axioms Airbender.SubwordMemory.rv_ram_trace_soundness_satisfiable
