@@ -380,6 +380,9 @@ name = "Slop"
 srcDir = "slop"
 roots = ["Slop"]
 globs = ["Slop.+"]
+# Files that reach the Sail model (not a module) stay non-modules (scripts/modulize.py converts every other file);
+# some import Mathlib directly, which Lake warns about unless the library declares the mix.
+allowNonModules = true
 
 # our transcription of the part of Clean the spec uses (module files, read by reviewers)
 [[lean_lib]]
@@ -480,6 +483,8 @@ roots = [
 name = "CleanAudit"
 srcDir = "test"
 roots = ["Checks.Axioms"]
+# imports the Sail model's proofs (not modules) and Clean, which Lake would warn about (see Slop above)
+allowNonModules = true
 
 [[lean_exe]]
 name = "airbender_tests"

@@ -7,7 +7,7 @@ RISC-V model by a separate equivalence ([Sail leaf](lean/human/Human/ISA/Sail/Th
 
 **Check everything:** `./verify.sh` (prepares the pinned Clean, builds the spec and all proofs, checks that the spec
 does not import the proofs, runs the regressions and the axiom audits, checks every module's [build budget](#build-budget),
-checks the review guides).
+checks that our code builds [without warnings](#no-warnings), checks the review guides).
 
 ## Layout
 
@@ -129,6 +129,26 @@ worktrees sharing the cache measure each module once per input hash; without the
 about one cold build of CPU. `lean/.lake/module-budget.tsv` lists every module's time after a run, slowest first. The script needs Python 3.11 or
 later (it reads the lakefile with tomllib).
 Fix a module over budget by restructuring its proof (lean-strategies 2.1), never by raising the limit.
+
+## No warnings
+
+`verify.sh` fails on any warning that Lean or Lake reports for a module of ours (`human/`, `slop/`, `test/`: the
+modules of the build targets; [no_warnings.py](lean/scripts/no_warnings.py)). Lean's messages for a module are kept in
+its Lake trace (`.lake/build/lib/lean/<Module>.trace`), also when Lake only replays it, so a module compiled by an
+earlier build is checked too. A module restored from Lake's artifact cache has no messages in its trace: it passes if
+the ledger beside the budget ledger (`<LAKE_CACHE_DIR>.module-warnings.tsv`, else `lean/.lake/module-warnings.tsv`)
+records its input hash as compiled without warnings, else it is compiled again outside Lake (the budget check records
+the modules it compiles). Lake's own warnings about our files (they are in no trace) are read from the build logs.
+Warnings in the dependencies (Mathlib, Clean, lean-sail) and in the generated Sail model are not ours and not checked.
+
+Fix a warning; do not disable a linter. Where a fix is impossible or would change a statement, a
+`set_option linter.<name> false in` on that one declaration, with the reason in a comment above it, is the exception.
+The ones in use: `linter.unusedSectionVars` on nine CleanCore lemmas in
+[SourceSinkPath.lean](lean/human/CleanCore/Utils/SourceSinkPath.lean) (dropping the unused `[Fintype S]` changes
+their statements), and `linter.unusedSimpArgs` in the three generated `slop/Slop/KeccakSplit/Setup/*/ShapesOk.lean`
+(one simp set for every generated block). The libraries `Slop` and `CleanAudit` set Lake's `allowNonModules`: their
+files that reach the Sail model or Clean cannot be modules ([modulize.py](lean/scripts/modulize.py) converts every
+other file).
 
 ## Reproduce
 

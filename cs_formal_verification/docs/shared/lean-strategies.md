@@ -10,9 +10,8 @@ proves it. The trusted base is the Lean kernel, Lean's standard axioms (`propext
 `Quot.sound`), the official Sail RISC-V model, and what `human/` states.
 
 **No `sorry`, anywhere.** Not in `human/`, not in `slop/`, not in tests or helpers, not temporarily in a commit. Work
-in progress stays uncommitted until it is proven. This is enforced, not just a convention: every library is built
-with `-E hasSorry`, which turns Lean's "declaration uses `sorry`" warning into an error (Lean's analogue of
-`#![forbid(unsafe_code)]`).
+in progress stays uncommitted until it is proven. This is enforced, not just a convention: the axiom audits reject
+`sorryAx`, and `verify.sh` fails on any warning in our code, "declaration uses `sorry`" included (1.1).
 
 ---
 
@@ -27,6 +26,9 @@ runs the images and the delegations on sample inputs: a test, not needed for the
 
 - **Every final theorem is in its check list.** A theorem that exists but is not listed is not verified. When you
   add a statement to `human/`, add it to the list in the same change.
+- **No warnings.** Our code builds without a single warning (deprecations, linters, unused variables, simp
+  arguments or tactics). Fix the cause; a linter is disabled only on one declaration (`set_option … in`), with the
+  reason beside it, where a fix is impossible or would change a statement.
 - **Axioms are checked exactly.** Only the three standard axioms. No `sorry`, no `bv_decide` or `native_decide`
   (they add axioms). `omega`, `bv_omega`, `decide`, `decide +kernel` are fine.
 - **Generated files are compared to the git index.** Stage (`git add`) regenerated files before running, or the

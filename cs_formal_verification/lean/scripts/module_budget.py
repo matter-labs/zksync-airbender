@@ -18,6 +18,9 @@ Three stages, each paying only for what the previous one could not settle:
      with exact CPU from wait4.
   3. A module over budget in 1 or 2 is compiled again alone, up to twice; the minimum is its time. Over budget
      alone fails the check.
+Stage 1 and stage 2 times of a short module are not comparable: a statement-only module costs ~3 s of CPU in stage 2
+(two thirds sys time, mapping its ~4200 imported .olean files) where stage 1's sampling read ~2 s (same on Lean 4.34.1
+and 4.35.0, measured alone).
 The ledger is shared by the worktrees that share Lake's artifact cache (next to it, never inside), so a module
 is measured once per input hash on this machine. Without the cache (or with the ledger lost) stage 2 measures
 every module once: about a cold build's CPU.
@@ -249,6 +252,48 @@ def cmd_build(args: list[str]) -> int:
     return rc
 
 
+# ---------------------------------------------------------------- warnings (scripts/no_warnings.py)
+
+# a message in `lean`'s output: `<file>:<line>:<col>: warning: ...` (the first line of the message)
+MESSAGE = re.compile(r"^(\S+?\.lean):(\d+):(\d+): (warning|error): (.*)$", re.M)
+
+
+def output_warnings(out: str) -> list[str]:
+    """The warnings and errors in `lean`'s output, as `<file relative to lean/>:<line>:<col>: <message>`."""
+    msgs = []
+    for f, line, col, _, msg in MESSAGE.findall(out):
+        try:
+            f = str(Path(f).resolve().relative_to(ROOT))
+        except ValueError:
+            pass
+        msgs.append(f"{f}:{line}:{col}: {msg}")
+    return msgs
+
+
+def warnings_ledger_path() -> Path:
+    """Beside the CPU ledger: the (module, Lake input hash) pairs compiled without any warning."""
+    p = ledger_path()
+    return p.with_name(p.name.replace("module-cpu", "module-warnings"))
+
+
+def warnings_ledger_read() -> set[tuple[str, str]]:
+    p = warnings_ledger_path()
+    if not p.exists():
+        return set()
+    return {(f[0], f[1]) for line in p.read_text().splitlines() if len(f := line.split("\t")) >= 2}
+
+
+def warnings_ledger_append(rows: list[tuple[str, str]]) -> None:
+    p = warnings_ledger_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(p, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    try:
+        for mod, h in rows:
+            os.write(fd, f"{mod}\t{h}\t{int(time.time())}\n".encode())
+    finally:
+        os.close(fd)
+
+
 # ---------------------------------------------------------------- stages 2 and 3: measure outside Lake
 
 
@@ -360,6 +405,8 @@ def cmd_check(jobs: int, table: Path | None) -> int:
                             print(f"budget: {m} failed to compile:\n{out[-2000:]}", flush=True)
                             continue
                         ledger_append([(m, hashes[m], cpu, "par" if jobs > 1 else "alone")])
+                        if not output_warnings(out):  # spares no_warnings.py compiling it again
+                            warnings_ledger_append([(m, hashes[m])])
                         led.setdefault((m, hashes[m]), {}).setdefault("par" if jobs > 1 else "alone", []).append(cpu)
                         if done[0] % 50 == 0:
                             print(f"budget: {done[0]}/{len(missing)}", flush=True)

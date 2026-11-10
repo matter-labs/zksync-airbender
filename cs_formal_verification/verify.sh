@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-command check: fetch the pinned lean-sail, require the generated Sail model, build the spec and every proof,
 # check that the spec does not depend on the proofs, run the regressions and the axiom audits (standard axioms only),
-# check every module's build budget (30 s of CPU), check the review guides.
+# check every module's build budget (30 s of CPU), check that our code builds without warnings, check the review guides.
 set -euo pipefail
 cd "$(dirname "$0")/lean"
 fail() { echo "FAIL: $*"; exit 1; }
@@ -50,6 +50,10 @@ done
 echo "== 4. Module budget: every module compiles in at most 30 s of CPU, alone (scripts/module_budget.py;"
 echo "   docs/shared/lean-strategies.md 2). Table: lean/.lake/module-budget.tsv"
 python3 scripts/module_budget.py check || fail "module budget"
+
+echo "== 4b. No warnings: Lean and Lake report no warning for any module of ours (human/, slop/, test/;"
+echo "   scripts/no_warnings.py, README \"No warnings\"); dependencies and the generated Sail model are not ours"
+python3 scripts/no_warnings.py .lake/verify-build-CleanCore.log .lake/verify-build-Test.log || fail "warnings in our code"
 
 echo "== 5. Review guides: every public claim theorem is audited, guide names and links resolve"
 # replay (CI pull requests): the Lean part is skipped when its inputs (guides, audit file, the claim modules' Lake input
