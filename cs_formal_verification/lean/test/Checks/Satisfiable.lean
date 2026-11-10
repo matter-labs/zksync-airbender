@@ -8,6 +8,7 @@ import Human.Trace.RVSoundness
 import Human.Trace.TeardownBounds
 import Human.Trace.Families.AddSub.RVTheorems
 import Human.Trace.UnifiedReduced.RVTheorems
+import Human.Trace.UnifiedReduced.RVCallerTheorems
 import Human.Trace.Workers.Blake2G.RVTheorems
 import Human.Trace.Workers.Blake2Round.RVTheorems
 import Human.Trace.Workers.Keccak.RVTheorems
@@ -185,5 +186,66 @@ example (claim : Blake2Round.Native.RVOperationExecutionClaim) :
   fun ⟨data, before, cells, _, accepted, inputs, aligned, row, member, family⟩ =>
     have result := claim accepted inputs aligned
     ⟨data, before, cells, result.1, row, member, family, result.2 row member family⟩
+
+section UnifiedCallers
+open UnifiedReduced.Caller
+
+example (claim : RVMixedMemorySoundnessClaim) : RVMixedMemorySoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell),
+      RVMixedMemoryEffects data before cells ∧ data.callers ≠ [] :=
+  fun ⟨data, _, before, _, _, cells, accepted, inputs, callers⟩ =>
+    ⟨data, before, cells, claim accepted inputs, callers⟩
+
+example (claim : RVRequestWindowSoundnessClaim) : RVRequestWindowSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (lower upper : Nat),
+      Delegation.Caller.RequestWindowBinding data.callers data.workers lower upper ∧ data.callers ≠ [] ∧
+        data.workers.windowRows lower upper ≠ [] :=
+  fun ⟨data, _, _, lower, upper, checks, inputs, first, last, past, callers, window⟩ =>
+    ⟨data, lower, upper, claim checks inputs first last past, callers, window⟩
+
+example (claim : RVMixedWindowSoundnessClaim) : RVMixedWindowSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell) (lower upper : Nat),
+      RVMixedWindowExecution data before cells lower upper ∧ data.callers ≠ [] ∧
+        data.workers.windowRows lower upper ≠ [] :=
+  fun ⟨data, _, before, _, _, cells, lower, upper, accepted, inputs, first, last, past, ordered, callers, window⟩ =>
+    ⟨data, before, cells, lower, upper, claim accepted inputs first last past ordered, callers, window⟩
+
+example (claim : RVWindowProjectionSoundnessClaim) : RVWindowProjectionSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell) (lower upper : Nat),
+      RVProjectedWindowExecution data before cells lower upper ∧ data.callers ≠ [] ∧
+        data.workers.windowRows lower upper ≠ [] :=
+  fun ⟨data, before, _, _, cells, lower, upper, accepted, inputs, first, last, past, ordered, callers, window⟩ =>
+    ⟨data, before, cells, lower, upper, claim accepted inputs first last past ordered, callers, window⟩
+
+example (claim : RVWindowScheduleSoundnessClaim) : RVWindowScheduleSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (lower upper : Nat),
+      RVCallerWindowSchedule data lower upper ∧ data.callers ≠ [] ∧ data.workers.windowRows lower upper ≠ [] :=
+  fun ⟨data, _, _, lower, upper, checks, inputs, first, last, past, ordered, after, before, duration, callers,
+      window⟩ =>
+    ⟨data, lower, upper, claim checks inputs first last past ordered after before duration, callers, window⟩
+
+example (claim : RVMixedWindowProjectionSoundnessClaim) : RVMixedWindowProjectionSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell) (lower upper : Nat),
+      RVMixedProjectedWindowExecution data before cells lower upper ∧ data.callers ≠ [] ∧
+        data.workers.windowRows lower upper ≠ [] :=
+  fun ⟨data, _, before, _, _, cells, lower, upper, accepted, inputs, first, last, past, ordered, after, beforeT,
+      duration, callers, window⟩ =>
+    ⟨data, before, cells, lower, upper,
+      claim accepted inputs first last past ordered after beforeT duration, callers, window⟩
+
+example (claim : RVMixedWindowSequenceSoundnessClaim) : RVMixedWindowSequenceSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell) (cut : Nat) (windows : List (Nat × Nat)),
+      RVMixedWindowSequenceExecution data before cells cut windows ∧ data.callers ≠ [] ∧
+        ∃ window ∈ windows, data.workers.windowRows window.1 window.2 ≠ [] :=
+  fun ⟨data, _, before, _, _, cells, cut, windows, accepted, inputs, first, positive, ordered, callers, window⟩ =>
+    ⟨data, before, cells, cut, windows, claim accepted inputs first positive ordered, callers, window⟩
+
+example (claim : RVCallerCyclesSoundnessClaim) : RVCallerCyclesSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (program : List UnifiedReduced.RVProgramEntry) (initial : RV.State) (cells : List Cell),
+      RVCallerCycleEffects data program initial cells ∧ data.callers ≠ [] :=
+  fun ⟨data, program, initial, _, _, cells, accepted, inputs, started, callers⟩ =>
+    ⟨data, program, initial, cells, claim accepted inputs started, callers⟩
+
+end UnifiedCallers
 
 end Checks.Satisfiable

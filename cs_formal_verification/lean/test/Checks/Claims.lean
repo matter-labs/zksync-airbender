@@ -85,6 +85,7 @@ import Slop.Final.Trace.Satisfiable.Blake2G
 import Slop.Final.Trace.Satisfiable.Keccak
 import Slop.Final.Trace.Satisfiable.KeccakSplit
 import Slop.Final.Trace.Satisfiable.Blake2Round
+import Slop.Final.Trace.Satisfiable.UnifiedCallers
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
@@ -386,3 +387,19 @@ example : Airbender.Keccak.Split.Native.WritesRangeCheckedSatisfiableClaim := @A
 #print axioms Airbender.Keccak.Split.Native.writes_range_checked_satisfiable
 example : Airbender.Blake2Round.Native.RVOperationExecutionSatisfiableClaim := @Airbender.Blake2Round.Native.rv_operation_execution_satisfiable
 #print axioms Airbender.Blake2Round.Native.rv_operation_execution_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVMixedMemorySoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_mixed_memory_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_mixed_memory_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVRequestWindowSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_request_window_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_request_window_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVMixedWindowSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_mixed_window_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_mixed_window_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVWindowProjectionSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_window_projection_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_window_projection_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVWindowScheduleSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_window_schedule_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_window_schedule_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVMixedWindowProjectionSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_mixed_window_projection_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_mixed_window_projection_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVMixedWindowSequenceSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_mixed_window_sequence_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_mixed_window_sequence_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVCallerCyclesSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_caller_cycles_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_caller_cycles_soundness_satisfiable
