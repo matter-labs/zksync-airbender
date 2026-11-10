@@ -38,6 +38,7 @@ itertools = "0.14"
 gpu_native_build = { workspace = true }
 
 [dev-dependencies]
+crossbeam-channel = "0.5"
 worker = { workspace = true }
 cpu_execution_prover = { workspace = true, features = ["test-support"] }
 unified_reduced_machine_proth120 = { workspace = true }

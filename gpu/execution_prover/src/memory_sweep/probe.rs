@@ -112,10 +112,7 @@ pub(super) fn commit_memory(
                     ProofProfile::Standard,
                 ),
                 crate::memory_policy::partial_trees(circuit.circuit, ProofProfile::Standard),
-                crate::memory_policy::persists_memory_partial_trees(
-                    circuit.circuit,
-                    ProofProfile::Standard,
-                ),
+                None,
                 context,
             )?
         } else {

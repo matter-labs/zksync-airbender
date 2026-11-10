@@ -110,6 +110,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             non_determinism,
             &sender,
             &Arc::new(AtomicBool::new(false)),
+            false,
         );
         drop(sender);
         let trace =
@@ -192,6 +193,7 @@ mod tests {
     fn events() -> Vec<WorkerResult<CpuTraceAllocator>> {
         vec![
             WorkerResult::TracingData(TracingData {
+                partial_tree_buffer: None,
                 circuit_type: CircuitType::L1Wrap,
                 sequence_id: 0,
                 tracing_data: TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(
@@ -200,6 +202,7 @@ mod tests {
                 participating_snapshot_indexes: BTreeSet::from([0, 2]),
             }),
             WorkerResult::InitsAndTeardownsData(InitsAndTeardownsData {
+                partial_tree_buffer: None,
                 circuit_type: CircuitType::L1Wrap,
                 sequence_id: 0,
                 inits_and_teardowns: Some(InitsAndTeardownsTraceHost {

@@ -46,7 +46,7 @@ pub(super) fn gpu_memory_caps(
             inputs,
             gpu_gkr::stage1::merged_commitment::MergedCommitStrategy::AllCosets,
             gpu_trace::trace::holder::PartialTreePolicy::DEFAULT,
-            false,
+            None,
             context,
         )
         .unwrap()

@@ -9,7 +9,7 @@ use crate::messages::{
 use crate::setup::CanonicalCircuitSetup;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, BF};
 use crate::ProofProfile;
-use execution_prover_model::allocator::CpuTraceAllocator;
+use execution_prover_model::allocator::{CpuTraceAllocator, PooledHostBuffer};
 use execution_prover_model::circuit_type::CircuitType;
 use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, TraceChunk};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -31,7 +31,9 @@ fn tagged_partial_trees(
     circuit_type: CircuitType,
     profile: ProofProfile,
     sequence_id: usize,
-) -> MemoryPartialTrees {
+    mut nodes: PooledHostBuffer<[u32; 8], CpuTraceAllocator>,
+) -> MemoryPartialTrees<CpuTraceAllocator> {
+    nodes.resize(1, [sequence_id as u32; 8]);
     MemoryPartialTrees {
         layout_version: 0,
         circuit_type,
@@ -42,7 +44,7 @@ fn tagged_partial_trees(
         log_tree_cap_size: 0,
         reduction_layers: 0,
         columns_count: 0,
-        nodes: vec![[sequence_id as u32; 8]],
+        nodes,
     }
 }
 
@@ -117,6 +119,10 @@ impl ExecutionBackend for TestBackend {
 
     fn allocate_trace_block(&self, bytes: usize) -> CpuTraceAllocator {
         CpuTraceAllocator::new(bytes)
+    }
+
+    fn persists_memory_partial_trees(&self, _profile: ProofProfile) -> bool {
+        true
     }
 
     fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory {
@@ -204,6 +210,7 @@ impl ExecutionBackend for TestBackend {
                                     request.circuit_type,
                                     request.profile,
                                     request.sequence_id,
+                                    request.partial_tree_buffer.expect("mock commitment buffer"),
                                 )),
                             })
                         }

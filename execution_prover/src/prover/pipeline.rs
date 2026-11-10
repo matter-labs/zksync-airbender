@@ -19,9 +19,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         pow_challenge: u64,
         external_challenges: Option<GKRExternalChallenges<BF, E4>>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
-        mut proof_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees>,
+        mut proof_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees<B::Allocator>>,
         profile: ProofProfile,
-    ) -> (ExecutionProverResult, ND) {
+    ) -> (ExecutionProverResult<B::Allocator>, ND) {
         if let Some(cache) = cache.as_ref() {
             if proving {
                 assert!(cache.simulation_result.is_some());
@@ -103,6 +103,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 non_determinism_source,
                 &work_results_sender,
                 &abort,
+                !proving && self.backend.persists_memory_partial_trees(profile),
             )
         };
         drop(work_results_sender);
@@ -125,6 +126,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     .expect("trivial unified inits-and-teardowns belong to a unified execution"),
                 sequence_id,
                 inits_and_teardowns: None,
+                partial_tree_buffer: None,
             };
             acc.unpaired_unified_inits_and_teardowns
                 .insert(sequence_id, data);
@@ -238,6 +240,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         non_determinism_source: ND,
         work_results_sender: &Sender<WorkerResult<B::Allocator>>,
         abort: &Arc<AtomicBool>,
+        persist_partial_trees: bool,
     ) -> Receiver<ND> {
         let (non_determinism_sender, non_determinism_receiver) = crossbeam_channel::bounded(1);
         let unified_circuit = binary_holder
@@ -258,6 +261,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let trace_chunk_sets_receiver = self.trace_chunk_sets_receiver.clone();
             let free_trace_chunks_sender = free_trace_chunks_sender.clone();
             let free_allocators_receiver = self.free_allocators_receiver.clone();
+            let partial_tree_pool =
+                persist_partial_trees.then(|| self.free_allocators_sender.clone());
             let binary_image = binary_holder.binary_image.clone();
             let text_section = binary_holder.text_section.clone();
             let cycles_bound = if binary_holder.execution_kind.is_l1_wrap() {
@@ -303,6 +308,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         split_snapshot_sender,
                         work_results_sender,
                         free_allocators_receiver,
+                        partial_tree_pool,
                         abort,
                         &worker,
                         ram_config,
@@ -325,6 +331,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                             unified_snapshot_sender,
                             work_results_sender,
                             free_allocators_receiver,
+                            partial_tree_pool,
                             abort,
                             &worker,
                             ram_config,
@@ -388,7 +395,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         handle: BinaryHandle,
         non_determinism_source: ND,
         profile: ProofProfile,
-    ) -> (CommitMemoryResult, ND) {
+    ) -> (CommitMemoryResult<B::Allocator>, ND) {
         let binary_key = handle.0;
         info!(
             "BATCH[{batch_id}] PROVER producing memory commitments for binary with key {binary_key:?}"
@@ -424,7 +431,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         pow_challenge: u64,
         external_challenges: GKRExternalChallenges<BF, E4>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
-        proof_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees>,
+        proof_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees<B::Allocator>>,
         profile: ProofProfile,
     ) -> ProveResult {
         info!("BATCH[{batch_id}] PROVER producing proofs for binary with key {binary_key:?}");
@@ -460,7 +467,7 @@ fn assemble_result<A: fft::GoodAllocator>(
     pow_challenge: u64,
     binary_key: usize,
     profile: ProofProfile,
-) -> ExecutionProverResult {
+) -> ExecutionProverResult<A> {
     let ResultAccumulator {
         trivial_unified_inits_and_teardowns_count,
         inits_and_teardowns_top_bits,
@@ -590,6 +597,7 @@ mod tests {
                 circuit_type: CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
                 sequence_id: 0,
                 inits_and_teardowns: None,
+                partial_tree_buffer: None,
             }),
             None,
         );

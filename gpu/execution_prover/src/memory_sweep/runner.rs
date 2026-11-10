@@ -138,7 +138,6 @@ fn prepare_arena(
             arena_bytes >> ProverContextConfig::default().allocator_block_log_size,
         ),
         inputs_reserve_bytes: crate::memory_policy::INPUTS_RESERVE_BYTES,
-        h2d_staging_bytes: crate::memory_policy::H2D_STAGING_BYTES,
         ..Default::default()
     })?;
     assert_empty(&context);

@@ -13,7 +13,8 @@ pub(super) struct RequestContext<'a, B: ExecutionBackend> {
     pub(super) proof_caps: &'a BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
     /// Taken by the first proof request built for each instance; a later
     /// duplicate of a cache-served request gets `None` and is never dispatched.
-    pub(super) proof_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees>,
+    pub(super) proof_partial_trees:
+        BTreeMap<(CircuitType, usize), MemoryPartialTrees<B::Allocator>>,
 }
 
 impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
@@ -23,6 +24,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
         inits_and_teardowns: Option<InitsAndTeardownsData<B::Allocator>>,
         tracing_data: Option<TracingData<B::Allocator>>,
     ) -> WorkRequest<B::Allocator, B::Precomputations> {
+        let mut partial_tree_buffer = None;
         let mut circuit_type_value = None;
         let mut sequence_id_value = None;
         let inits_and_teardowns = if let Some(inits_and_teardowns) = inits_and_teardowns {
@@ -30,7 +32,9 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 circuit_type,
                 sequence_id,
                 inits_and_teardowns,
+                partial_tree_buffer: inits_partial_tree_buffer,
             } = inits_and_teardowns;
+            partial_tree_buffer = inits_partial_tree_buffer;
             circuit_type_value = Some(circuit_type);
             sequence_id_value = Some(sequence_id);
             inits_and_teardowns
@@ -42,8 +46,10 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 circuit_type,
                 sequence_id,
                 tracing_data,
+                partial_tree_buffer: tracing_partial_tree_buffer,
                 ..
             } = tracing_data;
+            partial_tree_buffer = tracing_partial_tree_buffer.or(partial_tree_buffer);
             assert_eq!(
                 circuit_type_value.get_or_insert(circuit_type),
                 &circuit_type
@@ -116,6 +122,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 inits_and_teardowns,
                 tracing_data,
                 profile,
+                partial_tree_buffer,
             };
             WorkRequest::MemoryCommitment(request)
         }
@@ -184,7 +191,7 @@ pub(super) struct ResultAccumulator<A: GoodAllocator> {
     pub(super) inits_and_teardowns_memory_caps: BTreeMap<usize, Vec<MerkleTreeCapVarLength>>,
     pub(super) delegation_circuits_memory_caps:
         BTreeMap<u32, BTreeMap<usize, Vec<MerkleTreeCapVarLength>>>,
-    pub(super) memory_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees>,
+    pub(super) memory_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees<A>>,
     pub(super) circuit_families_proofs: BTreeMap<u8, BTreeMap<usize, ScheduledProof>>,
     pub(super) inits_and_teardowns_proofs: BTreeMap<usize, ScheduledProof>,
     pub(super) delegation_circuits_proofs: BTreeMap<u32, BTreeMap<usize, ScheduledProof>>,

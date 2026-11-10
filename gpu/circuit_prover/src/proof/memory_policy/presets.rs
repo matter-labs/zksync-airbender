@@ -11,11 +11,6 @@ pub mod l1_wrap;
 /// the largest full-capacity input bundle of any supported circuit, rounded up.
 pub const INPUTS_RESERVE_BYTES: usize = 1537 << 20;
 
-/// `ProverContextConfig::h2d_staging_bytes`: the largest total any request
-/// bundle stages through `Transfer::stage`, an compression proof's persisted
-/// memory partial trees (2 MiB) plus the default capacity for small values.
-pub const H2D_STAGING_BYTES: usize = (2 << 20) + gpu_prover_context::DEFAULT_H2D_STAGING_BYTES;
-
 pub fn select_arena_bytes(available: usize) -> usize {
     generated::PRESET_ARENA_BYTES
         .iter()
