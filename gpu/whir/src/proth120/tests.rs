@@ -700,9 +700,12 @@ fn pr_transcript_phases_match_reference() {
     let directory = std::env::var_os("AB_PROTH120_REFERENCE_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| root.join("prover_pipeline/fixtures/l1_reference_2p21"));
-    let bundle: Bundle =
-        serde_json::from_reader(std::fs::File::open(directory.join("l1_bundle.json")).unwrap())
-            .unwrap();
+    #[derive(serde::Deserialize)]
+    struct Artifact {
+        l1: Bundle,
+    }
+    let Artifact { l1: bundle } =
+        serde_json::from_reader(std::fs::File::open(directory.join("l1.json")).unwrap()).unwrap();
     let circuit: verifier_evm::seed::Circuit = serde_json::from_reader(
         std::fs::File::open(
             root.join("cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"),
