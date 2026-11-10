@@ -162,8 +162,8 @@ Steps (run in dependency order, not the order listed here):
   corruption      Run corruption tests
   binaries        Build RISC-V binaries
   transpiler      Run transpiler tests (writes flamegraphs)
-  fsv             Full statement verifier — unified base-layer happy path +
-                  corruption (assembles the committed canonical pair).
+  fsv             Full statement verifier — unified recursion-layer acceptance +
+                  corruption on both committed unified chains in both modes.
                   Unified mode + blake2_with_compression only; no-op otherwise.
 
 Extra step (opt-in, runs last when invoked):
@@ -655,25 +655,18 @@ step_transpiler() {
       -- "${TEST_FILTERS[@]+"${TEST_FILTERS[@]}"}" --include-ignored
 }
 
-# Full statement verifier tests assemble the committed compression/unified pair
-# and replay boundary metadata. Native checks cover both soundness modes; the
-# RISC-V binary below uses the default mode and compression Blake implementation.
+# Full statement verifier tests use both committed unified chains in both modes,
+# natively and through the registered Compression recursion guests.
 step_fsv() {
   if [[ "$MODE" != "unified" ]]; then
     echo "  [fsv] skipped (unified mode only)"
     return 0
   fi
   if [[ "$BLAKE" != "blake2_with_compression" ]]; then
-    echo "  [fsv] skipped (FSV base-layer test runs under blake2_with_compression only; BLAKE=$BLAKE)"
+    echo "  [fsv] skipped (FSV recursion-layer test runs under blake2_with_compression only; BLAKE=$BLAKE)"
     return 0
   fi
-  # The FSV RISC-V binary (fsv_unified_base_layer_sec_100) is NOT in the per-circuit set the
-  # `binaries` step builds, so build it here for the transpiler test. dump_bin.sh auto-discovers
-  # it; the blake variant comes from verifier_common's unified features (the FSV pins no blake).
-  run_step "Build FSV unified base-layer RISC-V binary" \
-    in_dir tools/gkr_verifier ./dump_bin.sh \
-      --blake "$BLAKE" --variant "$VARIANT" fsv_unified_base_layer_sec_100
-  run_step "Full statement verifier (unified base layer: native + transpiler)" \
+  run_step "Full statement verifier (unified recursion layer: native + transpiler)" \
     env RUSTFLAGS="$WARN_FLAGS" cargo test -p full_statement_verifier \
       --profile cli --features host_utils,verifiers,blake2_with_compression \
       --test unified -- --include-ignored --test-threads=1

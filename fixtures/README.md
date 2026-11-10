@@ -57,11 +57,9 @@ The recipe checks replayed final state, nonempty selected rows and single-instan
 capacity. It checks MOP/byte-swap execution and the three new Keccak row counts.
 It collects sparse final RAM before expanding the selected inits/teardowns sets.
 
-Compression and unified form one statement. Their challenges come from the
-shared memory transcript, final registers/PC/timestamp and sorted RAM top bits,
-with deterministic 19-bit memory/delegation PoW. The producer checks that their
-memory commitments match the transcript and that the combined permutation
-product is ONE. The other circuits use the recipe's fixed external challenges.
+Every circuit uses the recipe's fixed external challenges. The compression
+and unified circuit proofs keep the shared `CompressionSmoke` workload and are
+independent circuit fixtures. Whole-statement FSV tests use the chain artifacts.
 No environment filter, suffix or packing override selects canonical inputs.
 
 The gitignored `prover/test_proofs/malicious_*` files serve verifier rejection
@@ -96,9 +94,8 @@ test registry against the same circuit/mode registry, then runs the 28 listed
 `canonical_*` tests. Each case rebuilds the raw recipe, checks the current
 circuit's memory caps independently, and compares two queued GPU proofs with
 the original committed bytes. Both modes retain the
-allocator-baseline, nonce-shape, standalone i/t and unified closure checks.
-Native FSV tests assemble the canonical compression/unified pair with freshly
-replayed boundary metadata. Whole-program `*_cpu_gpu_proof_diff` diagnostics
+allocator-baseline, nonce-shape and standalone i/t checks.
+Native FSV tests verify both unified chain artifacts in each soundness mode. Whole-program `*_cpu_gpu_proof_diff` diagnostics
 remain outside this canonical circuit set.
 
 ## Chain artifacts
@@ -125,5 +122,7 @@ bypass that threshold for the chain continuations.
 | Fixture | Consumers |
 | --- | --- |
 | `circuits/<mode>/*` | native, corruption, transpiler, GPU canonical matrix, cost-model drift checks |
-| `chains/<mode>/{base,unified}` | CLI verification, currency and soundness smoke checks, typed encoding test |
-| `chains/<mode>/{unrolled,unrolled_unified}` | CLI verification, currency and typed encoding test |
+| `chains/<mode>/base` | CLI verification, currency, soundness smoke checks, typed encoding |
+| `chains/<mode>/unified` | CLI verification, currency, soundness smoke checks, typed encoding; unified FSV acceptance and rejection |
+| `chains/<mode>/unrolled` | CLI verification, currency, typed encoding |
+| `chains/<mode>/unrolled_unified` | CLI verification, currency, typed encoding; unified FSV acceptance and rejection |

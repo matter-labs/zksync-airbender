@@ -8,10 +8,9 @@
 use super::common::{
     hardcoded_external_challenges, run_vm_and_capture, ProgramConfig, VmRunOutput,
 };
-use crate::definitions::{FinalRegisterValue, GKRExternalChallenges, SecurityLevel, SoundnessMode};
+use crate::definitions::{FinalRegisterValue, GKRExternalChallenges, SoundnessMode};
 use crate::gkr::prover_config::ProverConfig;
 use crate::gkr::witness_gen::family_circuits::build_unified_table_driver;
-use crate::merkle_trees::MerkleTreeCapVarLength;
 use common_constants::circuit_families::*;
 use common_constants::keccak_f1600::*;
 use common_constants::{bigint_with_control::*, blake2s_with_control::*, keccak_special5::*};
@@ -46,7 +45,6 @@ use riscv_transpiler::witness::{
 use std::alloc::Global;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use transcript::Blake2sTranscript;
 use worker::Worker;
 
 /// Exactly one ordinary proof per entry and soundness mode. G-function is not
@@ -179,13 +177,7 @@ impl CanonicalCircuit {
         proof_fixtures::circuit_proof_in(root, mode.file_suffix(), self.stem())
     }
 
-    /// Standalone circuit fixtures have one fixed external input. Compression
-    /// and unified instead share the production memory transcript below.
     pub fn fixed_external_challenges(self) -> GKRExternalChallenges<BF, E4> {
-        assert!(!matches!(
-            self,
-            Self::Blake2WithExtendedControl | Self::UnifiedReducedMachine
-        ));
         hardcoded_external_challenges()
     }
 }
@@ -697,46 +689,6 @@ fn table_driver(circuit: CanonicalCircuit, binary: &[u32]) -> TableDriver<BF> {
         CanonicalCircuit::InitsAndTeardowns => {}
     }
     tables
-}
-
-pub struct CompressionPairChallenges {
-    pub external_challenges: GKRExternalChallenges<BF, E4>,
-    pub pow_bits: u32,
-    pub pow_challenge: u64,
-}
-
-/// Pure host transcript replay plus deterministic 19-bit memory PoW. Caps are
-/// supplied by the CPU producer or loaded from its committed proofs; the GPU
-/// consumer independently checks the cap of the circuit it is proving.
-pub fn compression_pair_external_challenges(
-    boundary: &CanonicalBoundary,
-    top_bits: &[u32],
-    unified_memory_cap: &MerkleTreeCapVarLength,
-    compression_memory_cap: &MerkleTreeCapVarLength,
-    worker: &Worker,
-) -> CompressionPairChallenges {
-    let seed = super::unified::fs_transform_for_unified_circuit(
-        &boundary.registers,
-        boundary.final_pc,
-        boundary.final_timestamp,
-        unified_memory_cap,
-        top_bits,
-        &[(
-            BLAKE2S_DELEGATION_CSR_REGISTER,
-            compression_memory_cap.clone(),
-        )],
-    );
-    let pow_bits = super::unified::memory_delegation_pow_bits(SecurityLevel::Sec100);
-    let pow_challenge = Blake2sTranscript::<true>::search_pow(&seed, pow_bits, worker).1;
-    CompressionPairChallenges {
-        external_challenges: GKRExternalChallenges::draw_from_blake_transcript_seed(
-            seed,
-            pow_bits as usize,
-            pow_challenge,
-        ),
-        pow_bits,
-        pow_challenge,
-    }
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> T {

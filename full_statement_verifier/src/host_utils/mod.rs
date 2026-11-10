@@ -1,4 +1,5 @@
 pub mod cost_model;
+pub mod fixture_artifact;
 pub mod fixture_codec;
 mod fsv;
 #[cfg(test)]

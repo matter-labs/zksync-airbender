@@ -1,15 +1,11 @@
 //! The sole writer of ordinary committed Sec100 circuit proofs.
 
 use super::orchestration::canonical_fixtures::{
-    capture_canonical_inputs, compression_pair_external_challenges, CanonicalBoundary,
-    CanonicalCircuit, CanonicalInputs, CanonicalTrace, SparseInitsAndTeardowns, CANONICAL_CIRCUITS,
+    capture_canonical_inputs, CanonicalCircuit, CanonicalInputs, CanonicalTrace,
+    SparseInitsAndTeardowns, CANONICAL_CIRCUITS,
 };
-use crate::allocation_pool::GenericAllocationPool;
-use crate::definitions::{
-    produce_initial_permutation_product_contribution, GKRExternalChallenges, SoundnessMode,
-};
+use crate::definitions::{GKRExternalChallenges, SoundnessMode};
 use crate::gkr::prover::setup::GKRSetup;
-use crate::gkr::prover::stages::commitment_utils::commit_trace_part_for_config;
 use crate::gkr::prover::{
     prove_configured_with_gkr_with_storage_and_backend, DefaultBabyBearGKRBackend, GKRProof,
     OperationMode, WhirOracleStorage, WorkStealingBackend,
@@ -24,7 +20,7 @@ use crate::gkr::witness_gen::family_circuits::{
 use crate::gkr::witness_gen::oracles::{
     MemoryCircuitOracle, NonMemoryCircuitOracle, UnifiedRiscvCircuitOracle,
 };
-use crate::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
+use crate::merkle_trees::DefaultTreeConstructor;
 use crate::tracers::oracles::transpiler_oracles::delegation::{
     BigintDelegationOracle, Blake2sDelegationOracle, KeccakChi5DelegationOracle,
     KeccakColumnParityDelegationOracle, KeccakDelegationOracle, KeccakThetaRhoDelegationOracle,
@@ -53,7 +49,6 @@ struct Prepared {
     witness: Trace,
     setup: GKRSetup<BF>,
     top_bits: Vec<u32>,
-    boundary: CanonicalBoundary,
 }
 
 fn root() -> PathBuf {
@@ -95,7 +90,6 @@ fn prepare(circuit: CanonicalCircuit, mode: SoundnessMode, worker: &Worker) -> P
         decoder_table,
         trace,
         inits_and_teardowns,
-        boundary,
         ..
     } = capture_canonical_inputs(&root, circuit, worker);
     let config = circuit.prover_config(&root, mode);
@@ -255,28 +249,7 @@ fn prepare(circuit: CanonicalCircuit, mode: SoundnessMode, worker: &Worker) -> P
         witness,
         setup,
         top_bits,
-        boundary,
     }
-}
-
-fn memory_cap(prepared: &Prepared, worker: &Worker) -> MerkleTreeCapVarLength {
-    let twiddles =
-        Twiddles::<BF, Global>::new(1 << prepared.config.whir_message_size_log2(), worker);
-    let columns: Vec<&[BF]> = prepared
-        .witness
-        .column_major_memory_trace
-        .iter()
-        .map(|column| &column[..])
-        .collect();
-    commit_trace_part_for_config::<BF, BF, DefaultTreeConstructor, _>(
-        &WorkStealingBackend,
-        &columns,
-        &twiddles,
-        &prepared.config,
-        &GenericAllocationPool::proxy(),
-        worker,
-    )
-    .get_cap()
 }
 
 fn prove(prepared: Prepared, challenges: &GKRExternalChallenges<BF, E4>, worker: &Worker) -> Proof {
@@ -346,57 +319,6 @@ fn write(
     proof_fixtures::write_file(&path, proof);
 }
 
-fn compression_pair(mode: SoundnessMode, worker: &Worker) -> (Proof, Proof) {
-    let unified = prepare(CanonicalCircuit::UnifiedReducedMachine, mode, worker);
-    let compression = prepare(CanonicalCircuit::Blake2WithExtendedControl, mode, worker);
-    assert_eq!(unified.boundary, compression.boundary);
-    let unified_cap = memory_cap(&unified, worker);
-    let compression_cap = memory_cap(&compression, worker);
-    let challenges = compression_pair_external_challenges(
-        &unified.boundary,
-        &unified.top_bits,
-        &unified_cap,
-        &compression_cap,
-        worker,
-    );
-    let boundary = unified.boundary.clone();
-    let unified_proof = prove(unified, &challenges.external_challenges, worker);
-    let compression_proof = prove(compression, &challenges.external_challenges, worker);
-    assert_eq!(
-        unified_proof
-            .whir_proof
-            .memory_commitment
-            .commitment
-            .cap
-            .cap,
-        unified_cap.cap
-    );
-    assert_eq!(
-        compression_proof
-            .whir_proof
-            .memory_commitment
-            .commitment
-            .cap
-            .cap,
-        compression_cap.cap
-    );
-    let registers = boundary
-        .registers
-        .map(|r| (r.value, split_timestamp(r.last_access_timestamp)));
-    let mut product = produce_initial_permutation_product_contribution::<BF, E4>(
-        &registers,
-        common_constants::INITIAL_PC,
-        split_timestamp(cs::definitions::INITIAL_TIMESTAMP),
-        boundary.final_pc,
-        split_timestamp(boundary.final_timestamp),
-        &challenges.external_challenges,
-    );
-    product.mul_assign(&unified_proof.grand_product_accumulator_computed);
-    product.mul_assign(&compression_proof.grand_product_accumulator_computed);
-    assert_eq!(product, E4::ONE);
-    (unified_proof, compression_proof)
-}
-
 #[test]
 fn regenerate_canonical_circuit_proofs_pessimistic_conjecture() {
     regenerate_canonical_circuit_proofs(SoundnessMode::PessimisticConjecture);
@@ -411,23 +333,9 @@ fn regenerate_canonical_circuit_proofs(mode: SoundnessMode) {
     let worker = Worker::new();
     let mut written = BTreeSet::new();
     for circuit in CANONICAL_CIRCUITS {
-        if circuit == CanonicalCircuit::Blake2WithExtendedControl {
-            continue;
-        }
-        if circuit == CanonicalCircuit::UnifiedReducedMachine {
-            let (unified, compression) = compression_pair(mode, &worker);
-            write(circuit, mode, &unified, &mut written);
-            write(
-                CanonicalCircuit::Blake2WithExtendedControl,
-                mode,
-                &compression,
-                &mut written,
-            );
-        } else {
-            let prepared = prepare(circuit, mode, &worker);
-            let proof = prove(prepared, &circuit.fixed_external_challenges(), &worker);
-            write(circuit, mode, &proof, &mut written);
-        }
+        let prepared = prepare(circuit, mode, &worker);
+        let proof = prove(prepared, &circuit.fixed_external_challenges(), &worker);
+        write(circuit, mode, &proof, &mut written);
     }
     let output_root = proof_fixtures::output_root();
     let expected: BTreeSet<_> = CANONICAL_CIRCUITS

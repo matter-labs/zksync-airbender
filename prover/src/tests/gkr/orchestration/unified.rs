@@ -33,12 +33,13 @@ use worker::Worker;
 /// Memory/delegation PoW bits the FSV expects: `verifier_common::memory_delegation_pow_bits`
 /// = `security_bits - (BABYBEAR_EXT4_SIZE_LOG2 - MAX_PERMUTATION_ELEMENTS_LOG2 - 2)`
 /// = `security_bits - (123 - 40 - 2)`. `prover` cannot depend on `verifier_common` (it is the
-/// other way round), so this mirrors the derivation; the FSV test asserts the fixture's bits
-/// equal `MEMORY_DELEGATION_POW_BITS`, so drift fails loudly there.
+/// other way round), so this mirrors the derivation.
+#[allow(dead_code)]
 pub(super) const fn memory_delegation_pow_bits(level: SecurityLevel) -> u32 {
     level.security_bits().saturating_sub(123 - 40 - 2) as u32
 }
 
+#[allow(dead_code)]
 fn flatten_merkle_cap(cap: &MerkleTreeCapVarLength) -> Vec<u32> {
     let mut result = Vec::new();
     for cap_element in cap.cap.iter() {
@@ -50,6 +51,7 @@ fn flatten_merkle_cap(cap: &MerkleTreeCapVarLength) -> Vec<u32> {
 /// Memory-transcript seed for the unified circuit. Must match
 /// `verify_full_statement_for_unified_circuit`'s absorb order exactly (and the
 /// `Blake2sBufferingTranscript::<true>` reduced-rounds setting it uses).
+#[allow(dead_code)]
 pub(super) fn fs_transform_for_unified_circuit(
     register_final_values: &[FinalRegisterValue],
     final_pc: u32,

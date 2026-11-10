@@ -1,7 +1,6 @@
 use super::*;
 use prover::tests::gkr::orchestration::canonical_fixtures::{
-    capture_canonical_inputs, compression_pair_external_challenges, CanonicalCircuit,
-    CanonicalInputs, CanonicalTrace,
+    capture_canonical_inputs, CanonicalCircuit, CanonicalInputs, CanonicalTrace,
 };
 
 pub(super) fn default_fixture_device_allocator_block_log_size() -> u32 {
@@ -60,7 +59,6 @@ fn assert_external_challenges_eq(
 
 fn build_input_fixture(
     circuit: CanonicalCircuit,
-    mode: circuit_common::SoundnessMode,
     prover_config: ProverConfig,
     committed: &GKRProof<BF, E4, DefaultTreeConstructor>,
 ) -> BasicUnrolledFixture {
@@ -72,7 +70,6 @@ fn build_input_fixture(
         decoder_table,
         trace,
         inits_and_teardowns,
-        boundary,
         ..
     } = capture_canonical_inputs(&root, circuit, &worker);
     let circuit_type = canonical_circuit_type(circuit);
@@ -86,36 +83,7 @@ fn build_input_fixture(
         .map(|ram| ram.top_bits.clone())
         .unwrap_or_default();
     assert_eq!(top_bits, committed.inits_and_teardowns_top_bits);
-    let external_challenges = if matches!(
-        circuit,
-        CanonicalCircuit::UnifiedReducedMachine | CanonicalCircuit::Blake2WithExtendedControl
-    ) {
-        let unified = load_committed_proof(CanonicalCircuit::UnifiedReducedMachine, mode);
-        let compression = load_committed_proof(CanonicalCircuit::Blake2WithExtendedControl, mode);
-        let derived = compression_pair_external_challenges(
-            &boundary,
-            &unified.proof.inits_and_teardowns_top_bits,
-            &unified.proof.whir_proof.memory_commitment.commitment.cap,
-            &compression
-                .proof
-                .whir_proof
-                .memory_commitment
-                .commitment
-                .cap,
-            &worker,
-        );
-        assert_external_challenges_eq(
-            &derived.external_challenges,
-            &unified.proof.external_challenges,
-        );
-        assert_external_challenges_eq(
-            &derived.external_challenges,
-            &compression.proof.external_challenges,
-        );
-        derived.external_challenges
-    } else {
-        circuit.fixed_external_challenges()
-    };
+    let external_challenges = circuit.fixed_external_challenges();
     assert_external_challenges_eq(&external_challenges, &committed.external_challenges);
 
     // Construct raw setup columns only. Their LDE and commitment run on the GPU.
@@ -191,15 +159,6 @@ fn build_input_fixture(
             &ram.top_bits,
         )
     });
-    let delegation_grand_product_factors = if circuit == CanonicalCircuit::UnifiedReducedMachine {
-        vec![
-            load_committed_proof(CanonicalCircuit::Blake2WithExtendedControl, mode)
-                .proof
-                .grand_product_accumulator_computed,
-        ]
-    } else {
-        Vec::new()
-    };
     BasicUnrolledFixture {
         context,
         circuit_type,
@@ -216,12 +175,6 @@ fn build_input_fixture(
         memory_tree_caps: Vec::new(),
         inits_and_teardowns_host,
         inits_and_teardowns_top_bits: Some(top_bits),
-        unified_register_final_state: boundary
-            .registers
-            .map(|r| (r.value, split_timestamp(r.last_access_timestamp))),
-        unified_final_pc: boundary.final_pc,
-        unified_final_timestamp: boundary.final_timestamp,
-        delegation_grand_product_factors,
     }
 }
 
@@ -245,7 +198,7 @@ pub(super) fn prepare_canonical_proof_fixture(
 ) -> BasicUnrolledProofFixture {
     let committed = load_committed_proof(circuit, mode);
     let config = circuit.prover_config(&test_artifact_path(""), mode);
-    let mut base = build_input_fixture(circuit, mode, config, &committed.proof);
+    let mut base = build_input_fixture(circuit, config, &committed.proof);
     let geometry = BaseCommitmentGeometry::from_config(
         &base.prover_config,
         BaseColumns::of(&base.compiled_circuit),
