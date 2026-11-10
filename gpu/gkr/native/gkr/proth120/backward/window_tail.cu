@@ -94,7 +94,7 @@ EXTERN __global__ __launch_bounds__(PR_WINDOW_TAIL_BLOCK_THREADS) void ab_pr_gkr
       __syncwarp();
     }
   }
-  fold_active_eq_slot_pr<PR_WINDOW_TAIL_BLOCK_THREADS>(active_eq_slot_base, active_eq_size_before_fold);
+  ::airbender::gkr::backward::fold_active_eq_slot<PR_WINDOW_TAIL_BLOCK_THREADS>(active_eq_slot_base, active_eq_size_before_fold);
 }
 
 } // namespace airbender::gkr::proth120::backward

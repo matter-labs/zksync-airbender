@@ -214,14 +214,8 @@ template <class Policy> DEVICE_FORCEINLINE void inner(const typename Policy::Des
     __syncthreads();
   }
   if (tid == 0) {
-    if constexpr (Policy::EXPLICIT_EQ_INIT) {
-      eq_sizes_shared.high[0] = 0;
-      eq_sizes_shared.high[1] = 0;
-      eq_sizes_shared.low = 0;
-    } else {
-      eq_sizes_shared = {};
-    }
-    const unsigned groups = Policy::EXPLICIT_EQ_INIT ? eq_group_count : gkr_eq_group_count(eq_challenge_count);
+    eq_sizes_shared = {};
+    const unsigned groups = gkr_eq_group_count(eq_challenge_count);
     unsigned consumed = 0;
     unsigned high_idx = 0;
     for (unsigned group = 0; group < groups; ++group) {

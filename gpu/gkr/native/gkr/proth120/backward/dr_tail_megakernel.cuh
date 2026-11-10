@@ -64,49 +64,6 @@ struct __align__(32) pr_dr_tail_pair {
 static_assert(sizeof(pr_dr_tail_pair) == 32 && alignof(pr_dr_tail_pair) == 32, "Proth120 DR-tail pair ABI drift");
 static_assert(sizeof(pr_dr_tail_pair) == GKR_DIM_REDUCING_PAIR_STRIDE * sizeof(pr), "Proth120 DR-tail pair indexing assumes the pair stride");
 
-DEVICE_FORCEINLINE void pr_dr_tail_build_eq_group(const pr *claim_point, const unsigned challenge_offset, const unsigned challenge_count,
-                                                  const unsigned group_idx, pr *destination) {
-  const unsigned group_size = gkr_eq_group_size(challenge_count, group_idx);
-  if (group_size == 0)
-    return;
-  const unsigned tid = threadIdx.x;
-  const unsigned chunk_count = (group_size + GKR_EQ_CHUNK_SIZE - 1) / GKR_EQ_CHUNK_SIZE;
-  const unsigned group_start = group_idx * GKR_EQ_GROUP_SIZE;
-  __shared__ pr chunk_tables[GKR_EQ_MAX_CHUNKS_PER_GROUP][GKR_EQ_CHUNK_TABLE_LEN];
-  if (tid < chunk_count * GKR_EQ_CHUNK_TABLE_LEN) {
-    const unsigned chunk_idx = tid / GKR_EQ_CHUNK_TABLE_LEN;
-    const unsigned chunk_table_idx = tid % GKR_EQ_CHUNK_TABLE_LEN;
-    const unsigned variable_offset = chunk_idx * GKR_EQ_CHUNK_SIZE;
-    const unsigned remaining = group_size - variable_offset;
-    const unsigned chunk_size = remaining < GKR_EQ_CHUNK_SIZE ? remaining : GKR_EQ_CHUNK_SIZE;
-    if (chunk_table_idx < (1u << chunk_size)) {
-      const unsigned first_idx = challenge_offset + challenge_count - 1 - (group_start + variable_offset);
-      const unsigned first_bit = chunk_size == 2 ? ((chunk_table_idx >> 1) & 1u) : (chunk_table_idx & 1u);
-      const pr first_challenge = load<pr, ld_modifier::cs>(claim_point, first_idx);
-      pr value = first_bit ? first_challenge : pr::sub(pr::ONE(), first_challenge);
-      if (chunk_size == 2) {
-        const pr second_challenge = load<pr, ld_modifier::cs>(claim_point, first_idx - 1);
-        value = pr::mul(value, (chunk_table_idx & 1u) ? second_challenge : pr::sub(pr::ONE(), second_challenge));
-      }
-      chunk_tables[chunk_idx][chunk_table_idx] = value;
-    }
-  }
-  __syncthreads();
-  if (tid >= (1u << group_size))
-    return;
-  pr acc = pr::ONE();
-  unsigned consumed_bits = 0;
-  for (unsigned chunk_idx = 0; chunk_idx < chunk_count; ++chunk_idx) {
-    const unsigned remaining = group_size - consumed_bits;
-    const unsigned chunk_size = remaining < GKR_EQ_CHUNK_SIZE ? remaining : GKR_EQ_CHUNK_SIZE;
-    const unsigned shift = group_size - consumed_bits - chunk_size;
-    const pr factor = chunk_tables[chunk_idx][(tid >> shift) & ((1u << chunk_size) - 1u)];
-    acc = chunk_idx == 0 ? factor : pr::mul(acc, factor);
-    consumed_bits += chunk_size;
-  }
-  destination[group_idx * GKR_EQ_GROUP_TABLE_LEN + tid] = acc;
-}
-
 struct dr_tail_policy {
   using Field = pr;
   using Desc = pr_dr_tail_megakernel_desc;
@@ -115,17 +72,17 @@ struct dr_tail_policy {
   using SeedWord = u8;
   static constexpr unsigned THREADS = 256;
   static constexpr unsigned ENTRY_CHALLENGES = 3;
-  static constexpr bool EXPLICIT_EQ_INIT = true;
   static DEVICE_FORCEINLINE Field batch(const Desc &desc, unsigned exp) { return ::ab_pr_gkr_dim_reducing_batch_challenge_table[exp]; }
   static DEVICE_FORCEINLINE Field shuffle_value(Field value, unsigned offset) { return shfl_xor(0xffffffffu, value, offset, 8); }
   static DEVICE_FORCEINLINE void build_eq_group(const Field *point, unsigned offset, unsigned count, unsigned group, Field *groups) {
-    pr_dr_tail_build_eq_group(point, offset, count, group, groups);
+    const gkr_shared_eq_group_table_writer<Field> writer{groups};
+    gkr_build_eq_group_table_from_point<Field>(point, offset, count, group, writer);
   }
   static DEVICE_FORCEINLINE Field round_update(Field c0, Field c1, Field prev, Field inv_eq, Field inv_prev, SeedWord *seed, Field *claim, Field *eq,
                                                Field *coeffs) {
     return run_round_update_with_inverses_pr(c0, c1, prev, inv_eq, inv_prev, seed, claim, eq, coeffs);
   }
-  static DEVICE_FORCEINLINE void fold_eq(Field *slot, unsigned size) { fold_active_eq_slot_pr<THREADS>(slot, size); }
+  static DEVICE_FORCEINLINE void fold_eq(Field *slot, unsigned size) { ::airbender::gkr::backward::fold_active_eq_slot<THREADS>(slot, size); }
 };
 
 DEVICE_FORCEINLINE void pr_dr_tail_inner(const pr_dr_tail_megakernel_desc &desc, pr *global_state) {

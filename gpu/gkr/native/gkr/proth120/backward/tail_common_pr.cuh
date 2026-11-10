@@ -1,5 +1,6 @@
 #pragma once
 #include "../../../ops/round_update_shared.cuh"
+#include "../../backward/tail_common.cuh"
 #include "../../support/descriptors.cuh"
 #include "accumulator_pr.cuh"
 #include "keccak256.cuh"
@@ -36,19 +37,6 @@ DEVICE_FORCEINLINE void run_round_update_single_thread_pr(const pr e_partial, co
                                                           pr *eq_prefactor_io, pr *coeffs_out, pr *challenge_out) {
   ::airbender::gkr::ops::shared::run_round_update_single_thread(e_partial, c_partial, prev_coord, seed, claim_io, eq_prefactor_io, coeffs_out, challenge_out,
                                                                 quadratic_round_commit{});
-}
-
-template <u32 BLOCK_THREADS> DEVICE_FORCEINLINE void fold_active_eq_slot_pr(pr *__restrict__ active_eq_slot_base, const u32 active_eq_size_before_fold) {
-  static_assert(BLOCK_THREADS >= ::airbender::gkr::GKR_EQ_GROUP_TABLE_LEN / 2);
-  const u32 tid = threadIdx.x;
-  const u32 new_g_len = active_eq_size_before_fold >= 1 ? 1u << (active_eq_size_before_fold - 1) : 0u;
-  const bool folds = tid < new_g_len;
-  pr folded = pr::ZERO();
-  if (folds)
-    folded = pr::add(active_eq_slot_base[2 * tid], active_eq_slot_base[2 * tid + 1]);
-  __syncthreads();
-  if (folds)
-    active_eq_slot_base[tid] = folded;
 }
 
 } // namespace airbender::gkr::proth120::backward

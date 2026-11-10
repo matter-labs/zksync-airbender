@@ -78,7 +78,6 @@ struct dr_tail_policy {
   using SeedWord = u32;
   static constexpr unsigned THREADS = 256;
   static constexpr unsigned ENTRY_CHALLENGES = 3;
-  static constexpr bool EXPLICIT_EQ_INIT = false;
   static DEVICE_FORCEINLINE Field batch(const Desc &desc, unsigned exp) { return ::ab_gkr_dim_reducing_batch_challenge_table[exp]; }
   static DEVICE_FORCEINLINE Field shuffle_value(Field value, unsigned offset) {
     e4 other;
