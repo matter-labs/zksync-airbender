@@ -35,3 +35,16 @@ template <> struct witness_table_key<pr> {
 };
 
 } // namespace airbender::trace::witness::tables
+
+namespace airbender::trace::witness {
+template <> struct witness_field<pr> {
+  static DEVICE_FORCEINLINE pr from_u32(u32 value) { return proth120::pr_from_u32(value); }
+  static DEVICE_FORCEINLINE pr from_raw(u32 value) { return proth120::pr_from_u32(value); }
+  static DEVICE_FORCEINLINE u32 to_integer(pr value) { return proth120::pr_to_u32_or_zero(value); }
+  static DEVICE_FORCEINLINE u32 to_raw(pr value) { return proth120::pr_to_u32_or_zero(value); }
+  static DEVICE_FORCEINLINE u32 to_bounded(pr value) { return proth120::pr_to_u32_bounded(value); }
+  static DEVICE_FORCEINLINE bool to_mask(pr value) { return proth120::pr_to_mask(value); }
+  static DEVICE_FORCEINLINE bool equal(pr lhs, pr rhs) { return pr::eq(lhs, rhs); }
+  static DEVICE_FORCEINLINE void print(pr value) { printf("[%u, %u, %u, %u]", value.limbs[0], value.limbs[1], value.limbs[2], value.limbs[3]); }
+};
+} // namespace airbender::trace::witness

@@ -5,9 +5,10 @@
   EXTERN __global__ void FUSED_KERNEL_NAME(NAME)(                                                                                                              \
       const __grid_constant__ DelegationMemoryLayout layout, const __grid_constant__ DelegationAuxLayoutData aux_layout_data,                                  \
       const __grid_constant__ ORACLE oracle, const wrapped_f *const __restrict__ generic_lookup_tables, bf *memory_storage, bf *witness_storage,               \
-      wrapped_f *scratch_storage, u32 *const __restrict__ generic_lookup_mapping, const __grid_constant__ LookupExpressions range_check_16_lookup_expressions, \
-      u32 *range_check_16_lookup_mapping, const __grid_constant__ LookupExpressions range_check_timestamp_lookup_expressions,                                  \
-      u32 *range_check_timestamp_lookup_mapping, const unsigned stride, const unsigned count) {                                                                \
+      wrapped_f *scratch_storage, u32 *const __restrict__ generic_lookup_mapping,                                                                              \
+      const __grid_constant__ LookupExpressionsBf range_check_16_lookup_expressions, u32 *range_check_16_lookup_mapping,                                       \
+      const __grid_constant__ LookupExpressionsBf range_check_timestamp_lookup_expressions, u32 *range_check_timestamp_lookup_mapping, const unsigned stride,  \
+      const unsigned count) {                                                                                                                                  \
     const unsigned gid = blockIdx.x * blockDim.x + threadIdx.x;                                                                                                \
     if (gid >= count)                                                                                                                                          \
       return;                                                                                                                                                  \

@@ -1,4 +1,5 @@
-use field::Proth120;
+use field::{PrimeField, Proth120};
+use gpu_core::primitives::field::BF;
 
 use super::relations::{Proth120LinearRelation, Proth120LinearTerm, Proth120LookupExpressions};
 use crate::witness::Address;
@@ -64,6 +65,20 @@ fn cpu_relations_abi_pins() {
     assert_eq!((size_of::<Address>(), align_of::<Address>()), (12, 4));
     assert_eq!(
         (
+            size_of::<crate::witness::LinearTerm>(),
+            align_of::<crate::witness::LinearTerm>()
+        ),
+        (16, 4)
+    );
+    assert_eq!(
+        (
+            size_of::<crate::witness::LinearRelation>(),
+            align_of::<crate::witness::LinearRelation>()
+        ),
+        (72, 4)
+    );
+    assert_eq!(
+        (
             size_of::<Proth120LinearTerm>(),
             align_of::<Proth120LinearTerm>()
         ),
@@ -124,12 +139,57 @@ fn cpu_relations_abi_pins() {
     }
 }
 
+trait MultiplicityField: Copy + Default + Send + Sync + std::fmt::Debug + PartialEq + 'static {
+    fn count(value: u32) -> Self;
+    fn generate(
+        mapping: &mut DeviceMatrixMut<'_, u32>,
+        counts: &mut DeviceMatrixMut<'_, Self>,
+        active: usize,
+        context: &ProverContext,
+    );
+}
+impl MultiplicityField for Proth120 {
+    fn count(value: u32) -> Self {
+        Proth120::new(value as u128)
+    }
+    fn generate(
+        mapping: &mut DeviceMatrixMut<'_, u32>,
+        counts: &mut DeviceMatrixMut<'_, Self>,
+        active: usize,
+        context: &ProverContext,
+    ) {
+        super::generate_lookup_multiplicities(mapping, counts, active, context).unwrap();
+    }
+}
+impl MultiplicityField for BF {
+    fn count(value: u32) -> Self {
+        BF::from_u32_unchecked(value)
+    }
+    fn generate(
+        mapping: &mut DeviceMatrixMut<'_, u32>,
+        counts: &mut DeviceMatrixMut<'_, Self>,
+        active: usize,
+        context: &ProverContext,
+    ) {
+        crate::witness::multiplicities::generate_lookup_multiplicities(
+            mapping, counts, active, context,
+        )
+        .unwrap();
+    }
+}
 #[test]
 #[cfg(not(no_cuda))]
 fn multiplicity_contract() {
+    // Preserve the BF alias/transient fixtures, including a multi-column output.
+    for (rows, columns, active) in [(512, 1, 64), (64, 2, 96), (2048, 1, 257)] {
+        assert_multiplicity_contract::<BF>(rows, columns, active);
+        assert_multiplicity_contract::<Proth120>(rows, columns, active);
+    }
+}
+
+#[cfg(not(no_cuda))]
+fn assert_multiplicity_contract<F: MultiplicityField>(rows: usize, columns: usize, active: usize) {
     let context = runtime_context();
-    let rows = 2048usize;
-    let active = 257;
     let mut state = 0x1205_0006_0002u64;
     let random: Vec<_> = (0..3 * rows)
         .map(|i| {
@@ -164,16 +224,15 @@ fn multiplicity_contract() {
         ("empty", Vec::new()),
     ] {
         let mut mapping = upload_slice(&values, &context);
-        let mut counts = upload_slice(&vec![Proth120::new(17); rows], &context);
-        super::generate_lookup_multiplicities(
+        let mut counts = upload_slice(&vec![F::count(17); rows * columns], &context);
+        F::generate(
             &mut DeviceMatrixMut::new(&mut mapping, rows),
             &mut DeviceMatrixMut::new(&mut counts, rows),
             active,
             &context,
-        )
-        .unwrap();
+        );
         context.get_exec_stream().synchronize().unwrap();
-        let mut histogram = vec![0u32; rows];
+        let mut histogram = vec![0u32; rows * columns];
         for &index in &values {
             if index != u32::MAX {
                 histogram[index as usize] += 1;
@@ -181,11 +240,9 @@ fn multiplicity_contract() {
         }
         assert_eq!(
             read_slice(&counts, &context),
-            histogram
-                .into_iter()
-                .map(|count| Proth120::new(count as u128))
-                .collect::<Vec<_>>(),
-            "Proth120 multiplicities {name}"
+            histogram.into_iter().map(F::count).collect::<Vec<_>>(),
+            "{} multiplicities {name}",
+            std::any::type_name::<F>()
         );
         assert_eq!(
             read_slice(&mapping, &context),
@@ -193,7 +250,8 @@ fn multiplicity_contract() {
                 .into_iter()
                 .map(|index| if index == u32::MAX { 0 } else { index })
                 .collect::<Vec<_>>(),
-            "Proth120 normalized holes {name}"
+            "{} normalized holes {name}",
+            std::any::type_name::<F>()
         );
     }
 }
