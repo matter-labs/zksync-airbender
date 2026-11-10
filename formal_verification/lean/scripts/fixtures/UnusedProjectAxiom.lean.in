@@ -1,0 +1,5 @@
+-- Isolated unused project-axiom control. Never a product import.
+import Lean
+namespace Tests.AssuranceUnusedAxiom
+axiom unused : False
+end Tests.AssuranceUnusedAxiom

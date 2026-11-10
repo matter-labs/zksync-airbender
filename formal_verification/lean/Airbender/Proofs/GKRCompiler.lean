@@ -1,0 +1,11 @@
+import Airbender.Proofs.GKRCompiler.WiringNative.AddSubCached
+import Airbender.Proofs.GKRCompiler.WiringNative.JumpBranchCached
+import Airbender.Proofs.GKRCompiler.WiringNative.MulDivCached
+import Airbender.Proofs.GKRCompiler.WiringNative.ShiftBinopCached
+import Airbender.Proofs.GKRCompiler.WiringNative.WordMemoryCached
+import Airbender.Proofs.GKRCompiler.WiringNative.SubwordMemoryCached
+import Airbender.Proofs.GKRCompiler.WiringNative.UnifiedCached
+import Airbender.Proofs.GKRCompiler.WiringNative.BigintCached
+import Airbender.Proofs.GKRCompiler.WiringNative.BlakeGCached
+import Airbender.Proofs.GKRCompiler.WiringNative.BlakeRoundCached
+import Airbender.Proofs.GKRCompiler.WiringNative.KeccakCached

@@ -1,0 +1,435 @@
+import Airbender.Proofs.GKRProtocol.StatefulDecode
+import Airbender.Review.Helpers.Decoder.ProgramRows
+import Airbender.Proofs.GKRProtocol.TextImage
+import Airbender.Proofs.GKRProtocol.PublicProgramImage
+
+namespace Airbender.Trace.NativeDecoder.ProgramRows.Proofs
+open Airbender.Trace.NativeDecoder.ProgramRows
+
+/-- Every ordinary entry projected from admitted public text has its actual
+bytes and successful Sail decoding in the supplied initial state.
+The decoder frame theorem proves that its state queries preserve that state. -/
+theorem program_sources (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4) :
+    ∀ entry ∈ programOf config initial text,
+      entry.SourceWith initial config.fields := by
+  intro entry member
+  obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
+  have found : text[index]? = some bits := List.mk_mem_zipIdx_iff_getElem?.mp inText
+  have indexBound : index < text.length := by
+    by_contra notBound
+    have : text[index]? = none := by simp [Nat.le_of_not_gt notBound]
+    rw [this] at found
+    contradiction
+  have value : text[index] = bits := by
+    have : text[index]? = some text[index] := by simp [indexBound]
+    rw [this] at found
+    exact Option.some.inj found
+  have bytes : (Trace.Cell.ram (BitVec.ofNat 32 (4 * index))).read initial =
+      .ok bits initial := by
+    simpa only [value] using ROM.Proofs.bytes_of_text_image initial text image size
+      ⟨index, indexBound⟩
+  unfold wordEntry at selected
+  cases decoded : decodeWord initial bits with
+  | none => simp [decoded] at selected
+  | some instruction =>
+    cases fields : config.fields instruction with
+    | none => simp [decoded, fields] at selected
+    | some data =>
+      simp only [decoded, fields, bind, Option.bind] at selected
+      change (some ⟨BitVec.ofNat 32 (4 * index), bits, instruction, data⟩ :
+        Option PooledProgramEntry) = some entry at selected
+      cases selected
+      exact ⟨bytes, decode_word_sound decoded, fields⟩
+
+/-- The whole ordinary program image is reconstructed by stateful Sail reads
+from public text. Unsupported words stay absent from the logical program. -/
+theorem program_image (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4) :
+    programImageRunWith config.fields initial
+      ((programOf config initial text).map ProgramEntry.pc) =
+        some (programOf config initial text) :=
+  Airbender.Compiler.PublicProgram.image_run _
+    (program_sources config initial text image size)
+
+/-- The public word index gives an aligned PC in the readonly text region.
+The result applies to stateful and pure successful decoders alike. -/
+theorem program_code (config : Config) (initial : Reference.RiscV.Sail.State)
+    (text : List (BitVec 32)) (size : text.length ≤ ROM.limit / 4) :
+    ∀ entry ∈ programOf config initial text,
+      entry.pc.toNat < ROM.limit ∧ entry.pc.toNat % 4 = 0 := by
+  intro entry member
+  obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
+  have found : text[index]? = some bits := List.mk_mem_zipIdx_iff_getElem?.mp inText
+  have indexBound : index < text.length := by
+    by_contra notBound
+    have : text[index]? = none := by simp [Nat.le_of_not_gt notBound]
+    rw [this] at found
+    contradiction
+  have pcBound : 4 * index < ROM.limit := by omega
+  unfold wordEntry at selected
+  cases decoded : decodeWord initial bits with
+  | none => simp [decoded] at selected
+  | some instruction =>
+    cases fields : config.fields instruction with
+    | none => simp [decoded, fields] at selected
+    | some data =>
+      simp only [decoded, fields, bind, Option.bind] at selected
+      change (some ⟨BitVec.ofNat 32 (4 * index), bits, instruction, data⟩ :
+        Option PooledProgramEntry) = some entry at selected
+      cases selected
+      have wordBound : 4 * index < 2 ^ 32 :=
+        Nat.lt_trans pcBound (by decide +kernel)
+      simpa only [BitVec.toNat_ofNat, Nat.mod_eq_of_lt wordBound,
+        Nat.mul_mod_right] using And.intro pcBound (Nat.mul_mod_right 4 index)
+
+/-- The virtual CSR caller entries also come from actual public bytes and a
+pure Sail decode. Their complete call-group syntax and worker semantics are
+separate obligations. -/
+theorem caller_sources_with (allowed : Nat → Bool)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4) :
+    ∀ caller ∈ text.zipIdx.filterMap (fun (bits, index) =>
+      callerEntryWith allowed initial bits index),
+      caller.Source initial allowed := by
+  intro caller member
+  obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
+  have found : text[index]? = some bits := List.mk_mem_zipIdx_iff_getElem?.mp inText
+  have indexBound : index < text.length := by
+    by_contra notBound
+    have : text[index]? = none := by simp [Nat.le_of_not_gt notBound]
+    rw [this] at found
+    contradiction
+  have value : text[index] = bits := by
+    have : text[index]? = some text[index] := by simp [indexBound]
+    rw [this] at found
+    exact Option.some.inj found
+  have bytes : (Trace.Cell.ram (BitVec.ofNat 32 (4 * index))).read initial =
+      .ok bits initial := by
+    simpa only [value] using ROM.Proofs.bytes_of_text_image initial text image size
+      ⟨index, indexBound⟩
+  unfold callerEntryWith at selected
+  cases decoded : SailRV32.Functions.encdec_backwards bits with
+  | impure call continuation => simp [decoded] at selected
+  | pure instruction =>
+    simp only [decoded, bind, Option.bind] at selected
+    split at selected
+    next address source destination =>
+      split at selected
+      next admitted =>
+        cases selected
+        simp only [Bool.and_eq_true, beq_iff_eq] at admitted
+        have sourceZero : source = 0 := admitted.1.1
+        have destinationZero : destination = 0 := admitted.1.2
+        refine ⟨bytes, by rw [decoded]; rfl, ⟨address, ?_, rfl⟩, admitted.2⟩
+        rw [sourceZero, destinationZero]
+      next rejected => simp at selected
+    next => simp at selected
+
+theorem caller_sources (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4) :
+    ∀ caller ∈ callerProgramOf config initial text,
+      caller.Source initial config.delegationCSR :=
+  caller_sources_with config.delegationCSR initial text image size
+
+/-- The separate caller registry is exactly the right branch of the native
+decoder program. This connects the public source result to an active native
+caller lookup without assuming a caller entry as a fresh private input. -/
+theorem native_caller_iff (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (caller : CallerEntry) :
+    Sum.inr caller ∈ nativeProgramOf config initial text ↔
+      caller ∈ callerProgramOf config initial text := by
+  constructor
+  · intro member
+    obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
+    cases decoded : callerEntry config initial bits index with
+    | none =>
+      simp only [nativeEntry, decoded, Option.map_none] at selected
+      cases ordinary : wordEntry config initial bits index with
+      | none => simp [ordinary] at selected
+      | some entry => simp [ordinary] at selected
+    | some entry =>
+      have equal : entry = caller := by
+        simpa [nativeEntry, decoded] using selected
+      subst entry
+      exact List.mem_filterMap.mpr ⟨(bits, index), inText, decoded⟩
+  · intro member
+    obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
+    apply List.mem_filterMap.mpr
+    refine ⟨(bits, index), inText, ?_⟩
+    simp [nativeEntry, selected]
+
+theorem native_caller_source (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4)
+    (caller : CallerEntry) (member : Sum.inr caller ∈ nativeProgramOf config initial text) :
+    caller.Source initial config.delegationCSR :=
+  caller_sources config initial text image size caller
+    ((native_caller_iff config initial text caller).mp member)
+
+/-- Every modeled native decoder row, ordinary or virtual, is sourced from
+the same public text and initial state. This does not prove the Rust setup
+equals the modeled rows or that a worker computes its reference operation. -/
+theorem native_sources (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4) :
+    ∀ item ∈ nativeProgramOf config initial text,
+      item.Source config initial := by
+  intro item member
+  cases item with
+  | inr caller =>
+    exact native_caller_source config initial text image size caller member
+  | inl ordinary =>
+    obtain ⟨⟨bits, index⟩, inText, selected⟩ := List.mem_filterMap.mp member
+    cases caller : callerEntry config initial bits index with
+    | some found => simp [nativeEntry, caller] at selected
+    | none =>
+      have source : wordEntry config initial bits index = some ordinary := by
+        cases decoded : wordEntry config initial bits index with
+        | none => simp [nativeEntry, caller, decoded] at selected
+        | some found =>
+          have equal : found = ordinary := by
+            simpa [nativeEntry, caller, decoded] using selected
+          subst found
+          rfl
+      have ordinaryMember : ordinary ∈ programOf config initial text :=
+        List.mem_filterMap.mpr ⟨(bits, index), inText, source⟩
+      exact program_sources config initial text image size ordinary ordinaryMember
+
+/-- Native preprocessing rejects a text longer than the ROM capacity. For an
+admitted text, the modeled decoder has exactly one row per padded word. -/
+theorem rows_length {p : Nat} (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (capacity : Nat) (fits : text.length ≤ capacity) (family : PooledFamily) :
+    (rows (p := p) config initial text capacity fits family).length = capacity := by
+  simp [rows]
+  omega
+
+theorem native_decoder_rows_length {p : Nat} (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (capacity : Nat) (fits : text.length ≤ capacity) (family : PooledFamily)
+    (mask : Mask) :
+    (nativeDecoderRows (p := p) config initial text capacity fits family mask).length =
+      capacity := by
+  simp [nativeDecoderRows, nativeRows]
+  omega
+
+/-- A non-sentinel row of the program-derived decoder model has an actual
+Sail-decoded public entry of the selected native family. This is a logical
+fact about the Lean model; the Rust differential binding remains open. -/
+theorem active_member {p : Nat} (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (capacity : Nat) (fits : text.length ≤ capacity)
+    (family : PooledFamily) (query : Vector (ZMod p) 9)
+    (member : query ∈ rows config initial text capacity fits family)
+    (active : query ≠ sentinel) :
+    ∃ entry ∈ programOf config initial text,
+      entry.data.family = family ∧ query = entry.query := by
+  rcases List.mem_append.mp member with source | padding
+  · rcases List.mem_map.mp source with ⟨pair, inText, rowEq⟩
+    rcases pair with ⟨bits, index⟩
+    cases entryEq : wordEntry config initial bits index with
+    | none =>
+        have hs : query = sentinel := by simpa [familyRow, entryEq] using rowEq.symm
+        exact (active hs).elim
+    | some entry =>
+        by_cases selected : entry.data.family = family
+        · have inProgram : entry ∈ programOf config initial text := by
+            exact List.mem_filterMap.mpr ⟨(bits, index), inText, entryEq⟩
+          have hq : query = entry.query := by
+            simpa [familyRow, entryEq, selected] using rowEq.symm
+          exact ⟨entry, inProgram, selected, hq⟩
+        · have hs : query = sentinel := by
+            simpa [familyRow, entryEq, selected] using rowEq.symm
+          exact (active hs).elim
+  · have hs : query = sentinel := (List.mem_replicate.mp padding).2
+    exact (active hs).elim
+
+/-- Native rows include public delegation calls, whose virtual CSR cannot be
+represented by the ordinary five-bit rs2 metadata. -/
+theorem native_active_member {p : Nat} (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (capacity : Nat) (fits : text.length ≤ capacity)
+    (family : PooledFamily) (query : Vector (ZMod p) 9)
+    (member : query ∈ nativeRows config initial text capacity fits family)
+    (active : query ≠ sentinel) :
+    ∃ entry ∈ nativeProgramOf config initial text,
+      entry.family = family ∧ query = entry.query := by
+  rcases List.mem_append.mp member with source | padding
+  · rcases List.mem_map.mp source with ⟨pair, inText, rowEq⟩
+    rcases pair with ⟨bits, index⟩
+    cases entryEq : nativeEntry config initial bits index with
+    | none =>
+        have hs : query = sentinel := by simpa [nativeFamilyRow, entryEq] using rowEq.symm
+        exact (active hs).elim
+    | some entry =>
+        by_cases selected : entry.family = family
+        · have inProgram : entry ∈ nativeProgramOf config initial text := by
+            exact List.mem_filterMap.mpr ⟨(bits, index), inText, entryEq⟩
+          have hq : query = entry.query := by
+            simpa [nativeFamilyRow, entryEq, selected] using rowEq.symm
+          exact ⟨entry, inProgram, selected, hq⟩
+        · have hs : query = sentinel := by
+            simpa [nativeFamilyRow, entryEq, selected] using rowEq.symm
+          exact (active hs).elim
+  · have hs : query = sentinel := (List.mem_replicate.mp padding).2
+    exact (active hs).elim
+
+/-- A selected masked row comes from a Sail-decoded public entry whenever it
+is not the masked unsupported sentinel. This is independent of the text and
+mask values; equality to native setup columns remains a separate premise. -/
+theorem active_masked_member {p : Nat} (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (capacity : Nat) (fits : text.length ≤ capacity)
+    (family : PooledFamily) (mask : Mask) (query : List (ZMod p))
+    (member : query ∈ nativeDecoderRows config initial text capacity fits family mask)
+    (active : query ≠ maskRow mask sentinel) :
+    ∃ entry ∈ nativeProgramOf config initial text,
+      entry.family = family ∧ query = maskRow mask entry.query := by
+  obtain ⟨row, rowMember, rowEq⟩ := List.mem_map.mp member
+  have nonSentinel : row ≠ sentinel := by
+    intro equal
+    exact active (rowEq.symm.trans (congrArg (maskRow mask) equal))
+  obtain ⟨entry, inProgram, selected, fullEq⟩ :=
+    native_active_member config initial text capacity fits family row rowMember nonSentinel
+  exact ⟨entry, inProgram, selected,
+    rowEq.symm.trans (congrArg (maskRow mask) fullEq)⟩
+
+/-- The generic row lemma gives the existing logical decoder-table membership.
+It does not claim that a Rust setup column equals this modeled row list. -/
+theorem active_decoded {p : Nat} [Fact p.Prime] (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (capacity : Nat) (fits : text.length ≤ capacity)
+    (family : PooledFamily) (query : Vector (ZMod p) 9)
+    (member : query ∈ rows config initial text capacity fits family)
+    (active : query ≠ sentinel) :
+    (decoderTable (programOf config initial text) family).Contains #[] query := by
+  obtain ⟨entry, inProgram, selected, hq⟩ :=
+    active_member config initial text capacity fits family query member active
+  apply (decoderTable (programOf config initial text) family).implied_by_completeness #[] query
+  change ∃ entry ∈ programOf config initial text,
+    entry.data.family = family ∧ query = entry.query
+  exact ⟨entry, inProgram, selected, hq⟩
+
+/-- The complete native row model admits ordinary instructions and public
+delegation callers. Equality to Rust setup columns remains a separate premise. -/
+theorem native_active_decoded {p : Nat} [Fact p.Prime] (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (capacity : Nat) (fits : text.length ≤ capacity)
+    (family : PooledFamily) (query : Vector (ZMod p) 9)
+    (member : query ∈ nativeRows config initial text capacity fits family)
+    (active : query ≠ sentinel) :
+    (nativeDecoderTable (nativeProgramOf config initial text) family).Contains #[] query := by
+  obtain ⟨entry, inProgram, selected, hq⟩ :=
+    native_active_member config initial text capacity fits family query member active
+  apply (nativeDecoderTable (nativeProgramOf config initial text) family).implied_by_completeness #[] query
+  change ∃ entry ∈ nativeProgramOf config initial text,
+    entry.family = family ∧ query = entry.query
+  exact ⟨entry, inProgram, selected, hq⟩
+
+/-- The native 16-bit PC-limb range excludes the unsupported minus-one row
+in the BabyBear field. -/
+theorem bounded_pc_not_sentinel (query : Vector (ZMod babyBearModulus) 9)
+    (bounded : query[0].val < 65536) : query ≠ sentinel := by
+  intro equal
+  have first := congrArg (fun row : Vector (ZMod babyBearModulus) 9 => row[0].val) equal
+  have low : query[0].val = (-1 : ZMod babyBearModulus).val := by
+    simpa [sentinel] using first
+  have minusOne : (-1 : ZMod babyBearModulus).val = 2013265920 := by
+    change (-1 : ZMod 2013265921).val = 2013265920
+    exact ZMod.val_neg_one 2013265920
+  have high : query[0].val = 2013265920 := by
+    exact low.trans minusOne
+  omega
+
+/-- The first selected native column is the low PC limb, so the same native
+range check excludes the masked unsupported row. -/
+theorem bounded_masked_pc_not_sentinel (mask : Mask)
+    (query : List (ZMod babyBearModulus))
+    (bounded : (query.head?.getD 0).val < 65536) :
+    query ≠ maskRow mask sentinel := by
+  intro equal
+  have first := congrArg
+    (fun row : List (ZMod babyBearModulus) => (row.head?.getD 0).val) equal
+  have low : (query.head?.getD 0).val = (-1 : ZMod babyBearModulus).val := by
+    simpa [maskRow, sentinel] using first
+  have minusOne : (-1 : ZMod babyBearModulus).val = 2013265920 := by
+    change (-1 : ZMod 2013265921).val = 2013265920
+    exact ZMod.val_neg_one 2013265920
+  omega
+
+/-- One public-text membership result for a range-checked active query after
+applying its captured family mask. The native setup equality is still required
+at the caller before this result can interpret an imported lookup row. -/
+theorem bounded_masked_pc_decoded (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (capacity : Nat) (fits : text.length ≤ capacity) (family : PooledFamily)
+    (mask : Mask) (query : List (ZMod babyBearModulus))
+    (member : query ∈ nativeDecoderRows config initial text capacity fits family mask)
+    (bounded : (query.head?.getD 0).val < 65536) :
+    ∃ entry ∈ nativeProgramOf config initial text,
+      entry.family = family ∧ query = maskRow mask entry.query :=
+  active_masked_member config initial text capacity fits family mask query member
+    (bounded_masked_pc_not_sentinel mask query bounded)
+
+/-- One program-independent membership result for every selected active
+decoder row of the modeled full or reduced setup. -/
+theorem bounded_pc_decoded [Fact babyBearModulus.Prime] (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (capacity : Nat) (fits : text.length ≤ capacity) (family : PooledFamily)
+    (query : Vector (ZMod babyBearModulus) 9)
+    (member : query ∈ rows config initial text capacity fits family)
+    (bounded : query[0].val < 65536) :
+    (decoderTable (programOf config initial text) family).Contains #[] query :=
+  active_decoded config initial text capacity fits family query member
+    (bounded_pc_not_sentinel query bounded)
+
+theorem bounded_native_pc_decoded [Fact babyBearModulus.Prime] (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (capacity : Nat) (fits : text.length ≤ capacity) (family : PooledFamily)
+    (query : Vector (ZMod babyBearModulus) 9)
+    (member : query ∈ nativeRows config initial text capacity fits family)
+    (bounded : query[0].val < 65536) :
+    (nativeDecoderTable (nativeProgramOf config initial text) family).Contains #[] query :=
+  native_active_decoded config initial text capacity fits family query member
+    (bounded_pc_not_sentinel query bounded)
+
+/-- One range-checked native decoder row identifies an instruction or virtual
+caller sourced from the public initial image. Exact lookup matching and native
+setup equality remain the caller's explicit premises. -/
+theorem native_active_source (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4)
+    (capacity : Nat) (fits : text.length ≤ capacity)
+    (family : PooledFamily) (query : Vector (ZMod babyBearModulus) 9)
+    (member : query ∈ nativeRows config initial text capacity fits family)
+    (bounded : query[0].val < 65536) :
+    ∃ item ∈ nativeProgramOf config initial text,
+      item.Source config initial ∧ item.family = family ∧ query = item.query := by
+  obtain ⟨item, inProgram, selected, equal⟩ :=
+    native_active_member config initial text capacity fits family query member
+      (bounded_pc_not_sentinel query bounded)
+  exact ⟨item, inProgram, native_sources config initial text image size item inProgram,
+    selected, equal⟩
+
+theorem native_active_masked_source (config : Config)
+    (initial : Reference.RiscV.Sail.State) (text : List (BitVec 32))
+    (image : ROM.TextImage initial text) (size : text.length ≤ ROM.limit / 4)
+    (capacity : Nat) (fits : text.length ≤ capacity) (family : PooledFamily)
+    (mask : Mask) (query : List (ZMod babyBearModulus))
+    (member : query ∈ nativeDecoderRows config initial text capacity fits family mask)
+    (bounded : (query.head?.getD 0).val < 65536) :
+    ∃ item ∈ nativeProgramOf config initial text,
+      item.Source config initial ∧ item.family = family ∧
+        query = maskRow mask item.query := by
+  obtain ⟨item, inProgram, selected, equal⟩ :=
+    bounded_masked_pc_decoded config initial text capacity fits family mask query
+      member bounded
+  exact ⟨item, inProgram, native_sources config initial text image size item inProgram,
+    selected, equal⟩
+
+end Airbender.Trace.NativeDecoder.ProgramRows.Proofs

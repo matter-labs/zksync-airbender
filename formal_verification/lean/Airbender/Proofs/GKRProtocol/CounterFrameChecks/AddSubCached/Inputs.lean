@@ -1,0 +1,16 @@
+import Airbender.Import.GKRProtocol.CounterFrameImport
+import Airbender.Proofs.GKRProtocol.HelperValidityNative.AddSubCached
+import Airbender.Proofs.GKRProtocol.TableNative.AddSubCached
+
+namespace Airbender.Compiler.CounterFrameNative.AddSubCached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 32768
+
+import_counter_frame native from "artifacts/compiler/add-sub-cached.json"
+  base_model Airbender.Compiler.FullArithmeticNative.AddSubCached.native
+  table_model Airbender.Compiler.TableNative.AddSubCached.native
+  helper_model Airbender.Compiler.HelperNative.AddSubCached.native inputs 48 phase 0
+
+end Airbender.Compiler.CounterFrameNative.AddSubCached

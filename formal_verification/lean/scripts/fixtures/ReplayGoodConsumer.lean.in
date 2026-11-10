@@ -1,0 +1,2 @@
+import ReplayGoodBase
+theorem AssuranceNegative.goodConsumer : True := AssuranceNegative.good

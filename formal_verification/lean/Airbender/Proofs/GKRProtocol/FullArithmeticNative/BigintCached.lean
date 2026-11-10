@@ -1,0 +1,15 @@
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BigintCachedFoundation
+import Airbender.Proofs.GKRProtocol.FullArithmeticNative.BigintCachedNumericCertificate
+import Airbender.Import.GKRProtocol.FullArithmeticCheckImport
+
+namespace Airbender.Compiler.FullArithmeticNative.BigintCached
+open Airbender Airbender.Compiler
+set_option warningAsError true
+set_option Elab.async false
+set_option maxRecDepth 32768
+
+certify_full_compiler_arithmetic native inputs 276 variables 323 sources 135 gates 182 using numericFullChecked
+
+finalize_checked_full_compiler_arithmetic native inputs 276 variables 323
+
+end Airbender.Compiler.FullArithmeticNative.BigintCached
