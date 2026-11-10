@@ -3,6 +3,7 @@ public import Human.Trace.Delegation.RVSharedMemory
 public import Human.Trace.Delegation.RVRequestEffects
 public import Slop.Delegation.RVSharedMemory
 public import Slop.Delegation.SharedOperations
+public import Slop.Delegation.RVRequestAccepted
 
 @[expose] public section
 

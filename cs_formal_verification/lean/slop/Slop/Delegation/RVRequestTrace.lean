@@ -3,6 +3,7 @@ public import Human.Trace.Delegation.RVRequestTrace
 public import Slop.Delegation.RVCallerDecoder
 public import Slop.Delegation.RequestTrace
 public import Slop.Final.Trace.Delegation.RVTheorems
+public import Slop.Delegation.RVRequestAccepted
 
 @[expose] public section
 

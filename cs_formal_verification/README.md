@@ -143,10 +143,8 @@ Warnings in the dependencies (Mathlib, Clean, lean-sail) and in the generated Sa
 
 Fix a warning; do not disable a linter. Where a fix is impossible or would change a statement, a
 `set_option linter.<name> false in` on that one declaration, with the reason in a comment above it, is the exception.
-The ones in use: `linter.unusedSectionVars` on nine CleanCore lemmas in
-[SourceSinkPath.lean](lean/human/CleanCore/Utils/SourceSinkPath.lean) (dropping the unused `[Fintype S]` changes
-their statements), and `linter.unusedSimpArgs` in the three generated `slop/Slop/KeccakSplit/Setup/*/ShapesOk.lean`
-(one simp set for every generated block). The libraries `Slop` and `CleanAudit` set Lake's `allowNonModules`: their
+The one in use: `linter.unusedSimpArgs` in the three generated
+`slop/Slop/KeccakSplit/Setup/*/ShapesOk.lean` (one simp set for every generated block). The libraries `Slop` and `CleanAudit` set Lake's `allowNonModules`: their
 files that reach the Sail model or Clean cannot be modules ([modulize.py](lean/scripts/modulize.py) converts every
 other file).
 

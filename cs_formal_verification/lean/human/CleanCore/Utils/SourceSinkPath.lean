@@ -66,8 +66,7 @@ theorem finset_ssubset_univ_of_not_mem {α : Type*} [Fintype α] (s : Finset α)
   rw [← h_eq_univ] at this
   exact h this
 
--- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
-set_option linter.unusedSectionVars false in
+omit [Fintype S] in
 /-- If a path is contained in a run and uses a transition, that transition has positive capacity. -/
 theorem containsPath_has_positive_transition (R : Run S) (path : List S)
     (h_contains : R.containsPath path) (t : Transition S)
@@ -79,8 +78,7 @@ theorem containsPath_has_positive_transition (R : Run S) (path : List S)
   have h_bound := h_contains t
   omega
 
--- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
-set_option linter.unusedSectionVars false in
+omit [Fintype S] [DecidableEq S] in
 /-- Zipping drops of consecutive indices produces a sublist of zipping a list with its tail. -/
 theorem zip_drop_sublist (l : List S) (n : ℕ) :
     ((l.drop n).zip (l.drop (n + 1))).Sublist (l.zip l.tail) := by
@@ -100,6 +98,7 @@ theorem zip_drop_sublist (l : List S) (n : ℕ) :
         rw [List.tail_cons]
         simp [List.zip_cons_cons]
 
+omit [Fintype S] in
 /-- If a path is contained in a run, dropping elements preserves containment. -/
 theorem containsPath_drop (R : Run S) (path : List S) (n : ℕ)
     (h_contains : R.containsPath path) :
@@ -114,8 +113,7 @@ theorem containsPath_drop (R : Run S) (path : List S) (n : ℕ)
   have h_original := h_contains t
   omega
 
--- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
-set_option linter.unusedSectionVars false in
+omit [Fintype S] [DecidableEq S] in
 /-- Zipping takes of two lists produces a sublist of zipping the original lists. -/
 theorem zip_take_sublist (l1 l2 : List S) (n m : ℕ) :
     ((l1.take n).zip (l2.take m)).Sublist (l1.zip l2) := by
@@ -145,6 +143,7 @@ theorem tail_take {α : Type*} (l : List α) (n : ℕ) :
     | cons hd tl =>
       simp [List.take, List.tail]
 
+omit [Fintype S] in
 /-- If a path is contained in a run, taking elements preserves containment. -/
 theorem containsPath_take (R : Run S) (path : List S) (n : ℕ)
     (h_contains : R.containsPath path) :
@@ -190,8 +189,7 @@ theorem getLast_drop_take {α : Type*} (path : List α) (n k : ℕ)
   have : n + (k - 1) = n + k - 1 := by omega
   rw [this]
 
--- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
-set_option linter.unusedSectionVars false in
+omit [Fintype S] [DecidableEq S] in
 /-- If path[n] = path[m] = x, then the sublist from n to m forms a cycle starting and ending with x. -/
 theorem drop_take_cycle_same_endpoints (path : List S) (x : S) (n m : Fin path.length)
     (h_n_lt_m : n < m)
@@ -215,6 +213,7 @@ theorem drop_take_cycle_same_endpoints (path : List S) (x : S) (n m : Fin path.l
     aesop
   rw [h_head, h_last]
 
+omit [Fintype S] in
 /-- If a run contains a path, then any subpath obtained by dropping and taking is also contained. -/
 theorem containsPath_drop_take (R : Run S) (path : List S) (n m : ℕ)
     (h_contains : R.containsPath path) :
@@ -223,6 +222,7 @@ theorem containsPath_drop_take (R : Run S) (path : List S) (n m : ℕ)
     containsPath_drop R path n h_contains
   exact containsPath_take R (path.drop n) m h_after_drop
 
+omit [Fintype S] in
 /-- If a run is acyclic and contains a path, the path has no duplicate vertices. -/
 theorem acyclic_containsPath_nodup (R : Run S) (path : List S)
     (h_acyclic : R.isAcyclic)
@@ -253,8 +253,7 @@ theorem acyclic_containsPath_nodup (R : Run S) (path : List S)
   push Not at h_acyclic
   apply h_acyclic cycle h_cycle_len h_cycle_starts_ends_with_x h_cycle_contained
 
--- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
-set_option linter.unusedSectionVars false in
+omit [Fintype S] in
 /-- Appending an element to a non-empty path adds exactly one transition from the last element. -/
 theorem countTransitionInPath_append_singleton (path : List S) (x y : S)
     (h_nonempty : path ≠ [])
@@ -281,8 +280,7 @@ theorem countTransitionInPath_append_singleton (path : List S) (x y : S)
       · rw [List.tail_cons, List.zip_cons_cons] at h_not_in
         aesop
 
--- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
-set_option linter.unusedSectionVars false in
+omit [Fintype S] in
 /-- Appending an element doesn't add a transition that's different from (last, new). -/
 theorem countTransitionInPath_append_singleton_other (path : List S) (x y : S) (t : Transition S)
     (h_nonempty : path ≠ [])
@@ -313,8 +311,7 @@ def countAsFirst (xs : List S) (x : S) : ℕ :=
 def countAsSecond (xs : List S) (x : S) : ℕ :=
   (xs.zip xs.tail).countP (fun p => p.2 = x)
 
--- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
-set_option linter.unusedSectionVars false in
+omit [Fintype S] in
 /-- Helper: cons adds a pair that contributes to first count if head matches -/
 theorem countAsFirst_cons (hd : S) (tl : List S) (x : S) :
     countAsFirst (hd :: tl) x = (if hd = x ∧ tl ≠ [] then 1 else 0) + countAsFirst tl x := by
@@ -332,8 +329,7 @@ theorem countAsFirst_cons (hd : S) (tl : List S) (x : S) :
     by_cases h : hd = x <;> simp only [h, ↓reduceIte, add_zero, zero_add]
     omega
 
--- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
-set_option linter.unusedSectionVars false in
+omit [Fintype S] in
 /-- Helper: cons adds a pair that contributes to second count if head of tail matches -/
 theorem countAsSecond_cons (hd : S) (tl : List S) (x : S) :
     countAsSecond (hd :: tl) x = (if tl.head? = some x then 1 else 0) + countAsSecond tl x := by
@@ -348,6 +344,7 @@ theorem countAsSecond_cons (hd : S) (tl : List S) (x : S) :
     by_cases h : hd2 = x <;> simp only [h, ↓reduceIte, add_zero, zero_add]
     omega
 
+omit [Fintype S] in
 /-- General lemma: countAsFirst + last = countAsSecond + head -/
 theorem countAsFirst_add_last_eq_countAsSecond_add_head (xs : List S) (x : S) :
     countAsFirst xs x + (if xs.getLast? = some x then 1 else 0) =
@@ -450,8 +447,7 @@ theorem netFlow_sub (R R' : Run S) (x : S)
   rw [h_out, h_in]
   omega
 
--- `[Fintype S]` is unused here; omitting it would change this theorem's type (human/: queued, P3.6)
-set_option linter.unusedSectionVars false in
+omit [Fintype S] in
 /-- If a run has a self-loop, it contradicts acyclicity. -/
 theorem acyclic_no_self_loop (R : Run S) (s : S) (h_acyclic : R.isAcyclic) (h_edge : R (s, s) > 0) : False := by
   unfold Run.isAcyclic Run.hasCycle at h_acyclic
@@ -519,6 +515,7 @@ theorem drop_of_lt_length_nonempty {α : Type*} (path : List α) (i : ℕ)
   rw [List.length_drop] at this
   omega
 
+omit [Fintype S] in
 /-- Appending an element to a suffix to form a cycle preserves containsPath property. -/
 theorem cycle_from_suffix_contains (R : Run S) (suffix : List S) (current y : S)
     (h_suffix_nodup : suffix.Nodup)
@@ -540,6 +537,7 @@ theorem cycle_from_suffix_contains (R : Run S) (suffix : List S) (current y : S)
     rw [h_count_same]
     exact h_contains_suffix t
 
+omit [Fintype S] in
 /-- If a run contains an acyclic path and has an edge from the end back into the path,
     then the run has a cycle. -/
 theorem path_with_back_edge_creates_cycle (R : Run S) (path : List S) (current y : S)
@@ -573,6 +571,7 @@ theorem path_with_back_edge_creates_cycle (R : Run S) (path : List S) (current y
     have h_suffix_nodup : suffix.Nodup := by grind
     exact cycle_from_suffix_contains R suffix current y h_suffix_nodup h_suffix_contains h_suffix_nonempty h_suffix_last h_edge
 
+omit [Fintype S] in
 /-- If there's an edge from current to y, and y is in the path from root to current,
     then we can construct a cycle, contradicting acyclicity. -/
 theorem acyclic_edge_not_in_path (R : Run S) (path : List S) (current y : S)
@@ -596,6 +595,7 @@ theorem not_mem_implies_transition_not_in_zip_tail {α : Type*} (path : List α)
   have h_y_in_path : y ∈ path := List.mem_of_mem_tail h_y_in_tail
   exact h_y_not_in h_y_in_path
 
+omit [Fintype S] in
 /-- Extending a path that satisfies containsPath preserves the property when there's an edge. -/
 theorem containsPath_append_singleton (R : Run S) (path : List S) (x y : S)
     (h_nonempty : path ≠ [])
@@ -863,6 +863,7 @@ theorem path_distinct_head_last_length_ge_two {α : Type*} (path : List α) (x y
       simp only [List.length] at h_not
       omega
 
+omit [Fintype S] in
 /-- A leaf reachable from a root (with root ≠ leaf) must have an incoming edge. -/
 theorem reachable_leaf_has_incoming_edge (R : Run S) (root leaf : S)
     (h_leaf : R.isLeaf root leaf)
