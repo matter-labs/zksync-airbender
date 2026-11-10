@@ -186,6 +186,30 @@ theorem seed_bounded (cell : Cell) (value : BitVec 32) : (cell.initialToken valu
   simp only [Cell.initialToken, MemoryToken.word, Nat.unpair_pair, Word.ofBitVec, Word.Bounded, limbBase]
   omega
 
+/-- A delegation port reads `tok` when its address, previous clock and read limbs are `tok`'s. -/
+theorem read_eq [NeZero p] (room : 65536 ≤ p) {w : Nat → ZMod p} {port : MemoryPort} {tok : MemoryToken p} {c0 c1 r0 r1 hi : Nat}
+    (previous : port.clock.previous = #v[c0, c1]) (readValue : port.readValue = .u16 #v[r0, r1])
+    (address : port.address.code w = tok.address) (time0 : w c0 = ((tok.time.1.val : Nat) : ZMod p))
+    (time1 : w c1 = ((0 : Nat) : ZMod p)) (low : w r0 = ((tok.word.lo : Nat) : ZMod p))
+    (upper : w r1 = ((hi : Nat) : ZMod p)) (same : hi = tok.word.hi) (high : tok.time.2 = 0)
+    (bounded : tok.word.Bounded) : readToken w port = tok := by
+  obtain ⟨code, ⟨first, second⟩, value⟩ := tok
+  simp only [Word.Bounded, limbBase, MemoryToken.word] at bounded same low upper time0
+  simp only at high
+  subst high same
+  simp only [readToken, rawPair, MemoryPort.readCode, WordColumns.code, WordColumns.evaluate, previous, readValue,
+    address, Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ, time0, time1,
+    low, upper, ZMod.natCast_zmod_val, Nat.cast_zero, MemoryToken.mk.injEq, true_and]
+  rw [ZMod.val_natCast_of_lt (by omega), ZMod.val_natCast_of_lt
+    (by omega), Nat.pair_unpair]
+
+/-- A token whose value pairs two small field limbs. -/
+theorem token_word (room : 65536 ≤ p) {tok : MemoryToken p} {a b : Nat}
+    (value : tok.value = Nat.pair ((a : Nat) : ZMod p).val ((b : Nat) : ZMod p).val) (ha : a < 65536)
+    (hb : b < 65536) : tok.word = ⟨a, b⟩ := by
+  rw [MemoryToken.word, value, ZMod.val_natCast_of_lt (by omega),
+    ZMod.val_natCast_of_lt (by omega), Nat.unpair_pair]
+
 /-- RV memory inputs at a seed cut give the boundary inputs there (seed clocks are zero). -/
 theorem boundary_inputs {data : Delegation.MemoryData p} {before : RV.State} {cells : List Cell}
     (inputs : Delegation.RVMemoryInputs data before cells) : Delegation.RVBoundaryMemoryInputs data before cells :=

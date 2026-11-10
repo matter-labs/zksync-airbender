@@ -32,7 +32,7 @@ local macro "result" : tactic => `(tactic| (
   rfl))
 
 /-- A quotient entry `inverse * (sum - low)`, from the natural identity `sum = low + 2^k * quotient`. -/
-local macro "quotient " inverse:term:max e:term : tactic => `(tactic| (
+macro "quotient " inverse:term:max e:term : tactic => `(tactic| (
   simp only [Expression.eval, Verification.environment, honest_column]
   have identity := congrArg (Nat.cast : Nat → ZMod 2013265921) ($e)
   push_cast at identity ⊢

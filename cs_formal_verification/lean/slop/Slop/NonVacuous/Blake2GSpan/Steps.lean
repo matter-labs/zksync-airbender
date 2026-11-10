@@ -12,23 +12,6 @@ open Arithmetic Trace
 
 local notation "P" => babyBearModulus
 
-/-- A port reads `tok` when its address, previous clock and read limbs are `tok`'s. -/
-theorem read_eq {w : Nat → ZMod P} {port : MemoryPort} {tok : MemoryToken P} {c0 c1 r0 r1 hi : Nat}
-    (previous : port.clock.previous = #v[c0, c1]) (readValue : port.readValue = .u16 #v[r0, r1])
-    (address : port.address.code w = tok.address) (time0 : w c0 = ((tok.time.1.val : Nat) : ZMod P))
-    (time1 : w c1 = ((0 : Nat) : ZMod P)) (low : w r0 = ((tok.word.lo : Nat) : ZMod P))
-    (upper : w r1 = ((hi : Nat) : ZMod P)) (same : hi = tok.word.hi) (high : tok.time.2 = 0)
-    (bounded : tok.word.Bounded) : readToken w port = tok := by
-  obtain ⟨code, ⟨first, second⟩, value⟩ := tok
-  simp only [Word.Bounded, limbBase, MemoryToken.word] at bounded same low upper time0
-  simp only at high
-  subst high same
-  simp only [readToken, rawPair, MemoryPort.readCode, WordColumns.code, WordColumns.evaluate, previous, readValue,
-    address, Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ, time0, time1,
-    low, upper, ZMod.natCast_zmod_val, Nat.cast_zero, MemoryToken.mk.injEq, true_and]
-  rw [ZMod.val_natCast_of_lt (by unfold babyBearModulus; omega), ZMod.val_natCast_of_lt
-    (by unfold babyBearModulus; omega), Nat.pair_unpair]
-
 /-- An indirect port at `base + 4 * offset` addresses that RAM cell. -/
 theorem indirect_code {w : Nat → ZMod P} {port : Verification.IndirectPort} {base : Word} {offset : Nat}
     (bounded : base.Bounded) (room : base.lo + 4 * offset < 65536)
@@ -58,41 +41,44 @@ theorem read (inv : Inv mem t) (n : Nat) (h : n < 9) :
   have state : (mem (.register 10)).word.lo = 0 := by rw [inv.state]; rfl
   have message : (mem (.register 11)).word.lo = 64 := by rw [inv.message]; rfl
   interval_cases n
-  · exact read_eq (tok := mem (mem.ports[0]'h)) rfl rfl ((rfl : _ = mem.ports[(0 : Fin 9)].addressCode).trans (inv.address _ (cell 0)).symm) rfl rfl rfl rfl rfl
+  · exact read_eq (by decide) (tok := mem (mem.ports[0]'h)) rfl rfl
+      ((rfl : _ = mem.ports[(0 : Fin 9)].addressCode).trans (inv.address _ (cell 0)).symm) rfl rfl rfl rfl rfl
       (inv.high _ (cell 0)) (inv.words _ (cell 0))
-  · exact read_eq (tok := mem (mem.ports[1]'h)) rfl rfl
+  · exact read_eq (by decide) (tok := mem (mem.ports[1]'h)) rfl rfl
       (by
         refine Eq.trans ?_ (inv.address _ (cell 1)).symm
         exact indirect_code (offset := mem.controls[1]) x10 (by omega) rfl) rfl rfl rfl rfl rfl
       (inv.high _ (cell 1)) (inv.words _ (cell 1))
-  · exact read_eq (tok := mem (mem.ports[2]'h)) rfl rfl
+  · exact read_eq (by decide) (tok := mem (mem.ports[2]'h)) rfl rfl
       (by
         refine Eq.trans ?_ (inv.address _ (cell 2)).symm
         exact indirect_code (offset := mem.controls[2]) x10 (by omega) rfl) rfl rfl rfl rfl rfl
       (inv.high _ (cell 2)) (inv.words _ (cell 2))
-  · exact read_eq (tok := mem (mem.ports[3]'h)) rfl rfl
+  · exact read_eq (by decide) (tok := mem (mem.ports[3]'h)) rfl rfl
       (by
         refine Eq.trans ?_ (inv.address _ (cell 3)).symm
         exact indirect_code (offset := mem.controls[3]) x10 (by omega) rfl) rfl rfl rfl rfl rfl
       (inv.high _ (cell 3)) (inv.words _ (cell 3))
-  · exact read_eq (tok := mem (mem.ports[4]'h)) rfl rfl
+  · exact read_eq (by decide) (tok := mem (mem.ports[4]'h)) rfl rfl
       (by
         refine Eq.trans ?_ (inv.address _ (cell 4)).symm
         exact indirect_code (offset := mem.controls[4]) x10 (by omega) rfl) rfl rfl rfl rfl rfl
       (inv.high _ (cell 4)) (inv.words _ (cell 4))
-  · exact read_eq (tok := mem (mem.ports[5]'h)) rfl rfl ((rfl : _ = mem.ports[(5 : Fin 9)].addressCode).trans (inv.address _ (cell 5)).symm) rfl rfl rfl rfl rfl
+  · exact read_eq (by decide) (tok := mem (mem.ports[5]'h)) rfl rfl
+      ((rfl : _ = mem.ports[(5 : Fin 9)].addressCode).trans (inv.address _ (cell 5)).symm) rfl rfl rfl rfl rfl
       (inv.high _ (cell 5)) (inv.words _ (cell 5))
-  · exact read_eq (tok := mem (mem.ports[6]'h)) rfl rfl
+  · exact read_eq (by decide) (tok := mem (mem.ports[6]'h)) rfl rfl
       (by
         refine Eq.trans ?_ (inv.address _ (cell 6)).symm
         exact indirect_code (offset := mem.controls[5]) x11 (by omega) rfl) rfl rfl rfl rfl rfl
       (inv.high _ (cell 6)) (inv.words _ (cell 6))
-  · exact read_eq (tok := mem (mem.ports[7]'h)) rfl rfl
+  · exact read_eq (by decide) (tok := mem (mem.ports[7]'h)) rfl rfl
       (by
         refine Eq.trans ?_ (inv.address _ (cell 7)).symm
         exact indirect_code (offset := mem.controls[6]) x11 (by omega) rfl) rfl rfl rfl rfl rfl
       (inv.high _ (cell 7)) (inv.words _ (cell 7))
-  · exact read_eq (tok := mem (mem.ports[8]'h)) rfl rfl ((rfl : _ = mem.ports[(8 : Fin 9)].addressCode).trans (inv.address _ (cell 8)).symm) rfl rfl rfl rfl
+  · exact read_eq (by decide) (tok := mem (mem.ports[8]'h)) rfl rfl
+      ((rfl : _ = mem.ports[(8 : Fin 9)].addressCode).trans (inv.address _ (cell 8)).symm) rfl rfl rfl rfl
       inv.control.1.symm (inv.high _ (cell 8)) (inv.words _ (cell 8))
 
 theorem keys (mem : Memory) (t : Nat) : (mem.steps t).map Prod.fst = mem.ports.toList :=
@@ -111,13 +97,6 @@ theorem edges (inv : Inv mem t) : (mem.row t).memorySteps = runEdges mem (mem.st
     simp only [Delegation.Row.memorySteps, Memory.steps, List.getElem_map, List.getElem_zip, Vector.getElem_toList,
       Array.getElem_toList]
     exact Prod.ext (read inv n bound) rfl
-
-/-- A token whose value pairs two small field limbs. -/
-theorem token_word {tok : MemoryToken P} {a b : Nat}
-    (value : tok.value = Nat.pair ((a : Nat) : ZMod P).val ((b : Nat) : ZMod P).val) (ha : a < 65536)
-    (hb : b < 65536) : tok.word = ⟨a, b⟩ := by
-  rw [MemoryToken.word, value, ZMod.val_natCast_of_lt (by unfold babyBearModulus; omega),
-    ZMod.val_natCast_of_lt (by unfold babyBearModulus; omega), Nat.unpair_pair]
 
 /-- Each port's write: at its cell, at the write clock `t + 2`, a canonical word; x10 and x11 keep the pointers
     and x12 gets the controller's next eight-bit control word. -/
@@ -155,40 +134,49 @@ theorem write (inv : Inv mem t) (step : t % 4 = 1) (room : t + 2 < timestampBase
   have state : (mem (.register 10)).word = stateBase := inv.state
   have message : (mem (.register 11)).word = messageBase := inv.message
   interval_cases n
-  · have word := token_word (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[0]'(by decide)))
+  · have word := token_word (by decide)
+      (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[0]'(by decide)))
       rfl sp.1.1 sp.1.2
     refine ⟨⟨by rw [word]; exact sp.1.1, by rw [word]; exact sp.1.2⟩, fun _ => word.trans state, by omega, by omega⟩
-  · have word := token_word (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[1]'(by decide)))
+  · have word := token_word (by decide)
+      (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[1]'(by decide)))
       rfl (a := (mem.input t).a2lo) (b := (mem.input t).a2hi) (by simp only [RowInput.a2lo]; omega)
       (by simp only [RowInput.a2hi]; omega)
     refine ⟨by rw [word]; simp only [Word.Bounded, limbBase, RowInput.a2lo, RowInput.a2hi]; omega,
       by omega, by omega, by omega⟩
-  · have word := token_word (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[2]'(by decide)))
+  · have word := token_word (by decide)
+      (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[2]'(by decide)))
       rfl (a := (mem.input t).b2lo) (b := (mem.input t).b2hi) (by simp only [RowInput.b2lo]; omega)
       (by simp only [RowInput.b2hi]; omega)
     refine ⟨by rw [word]; simp only [Word.Bounded, limbBase, RowInput.b2lo, RowInput.b2hi]; omega,
       by omega, by omega, by omega⟩
-  · have word := token_word (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[3]'(by decide)))
+  · have word := token_word (by decide)
+      (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[3]'(by decide)))
       rfl (a := (mem.input t).c2lo) (b := (mem.input t).c2hi) (by simp only [RowInput.c2lo]; omega)
       (by simp only [RowInput.c2hi]; omega)
     refine ⟨by rw [word]; simp only [Word.Bounded, limbBase, RowInput.c2lo, RowInput.c2hi]; omega,
       by omega, by omega, by omega⟩
-  · have word := token_word (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[4]'(by decide)))
+  · have word := token_word (by decide)
+      (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[4]'(by decide)))
       rfl (a := (mem.input t).d2lo) (b := (mem.input t).d2hi) (by simp only [RowInput.d2lo]; omega)
       (by simp only [RowInput.d2hi]; omega)
     refine ⟨by rw [word]; simp only [Word.Bounded, limbBase, RowInput.d2lo, RowInput.d2hi]; omega,
       by omega, by omega, by omega⟩
-  · have word := token_word (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[5]'(by decide)))
+  · have word := token_word (by decide)
+      (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[5]'(by decide)))
       rfl mp.1.1 mp.1.2
     refine ⟨⟨by rw [word]; exact mp.1.1, by rw [word]; exact mp.1.2⟩, by omega, fun _ => word.trans message,
       by omega⟩
-  · have word := token_word (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[6]'(by decide)))
+  · have word := token_word (by decide)
+      (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[6]'(by decide)))
       rfl mx.1 mx.2
     refine ⟨⟨by rw [word]; exact mx.1, by rw [word]; exact mx.2⟩, by omega, by omega, by omega⟩
-  · have word := token_word (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[7]'(by decide)))
+  · have word := token_word (by decide)
+      (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[7]'(by decide)))
       rfl my.1 my.2
     refine ⟨⟨by rw [word]; exact my.1, by rw [word]; exact my.2⟩, by omega, by omega, by omega⟩
-  · have word := token_word (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[8]'(by decide)))
+  · have word := token_word (by decide)
+      (tok := (mem.row t).writeToken (Blake2G.importedConstraintsMemoryPorts[8]'(by decide)))
       rfl (a := mem.controls[0]) (b := 0) (by omega) (by omega)
     refine ⟨⟨by rw [word]; show mem.controls[0] < 65536; omega, by rw [word]; show 0 < 65536; omega⟩, by omega,
       by omega,
