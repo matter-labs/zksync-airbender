@@ -6,9 +6,7 @@ mod tests;
 
 pub use geometry::L1WrapGeometry;
 pub use inputs::L1WrapInputs;
-#[doc(hidden)]
-pub use orchestration::prove_stagewise;
-pub use orchestration::{assemble_l1_proof, prove, GpuL1WrapProofJob};
+pub use orchestration::{assemble_l1_proof, GpuL1WrapProofJob, L1WrapProofRequest};
 
 use std::sync::Arc;
 

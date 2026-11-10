@@ -618,103 +618,112 @@ fn enqueue_phase_two<'a>(
             job: JobType::SetupInitialization,
         });
     }
-    if let PhaseOneInputs::L1Wrap(inputs, dr_tail_plan, operation_mode) = inputs {
-        let precomputed = Arc::clone(state.precomputations.l1_wrap());
-        trace!(
-            "BATCH[{}] GPU_WORKER[{device_id}] producing L1 wrap proof",
-            state.batch_id
-        );
-        state.direction = Some(direction);
-        context.reset_used_mem_peak();
-        let job = gpu_circuit_prover::l1_wrap::prove::<A>(
-            &precomputed.programs,
-            &precomputed.circuit,
-            &precomputed.geometry,
-            &precomputed.config,
-            operation_mode,
-            inputs,
-            &dr_tail_plan,
-            crate::memory_policy::partial_trees(state.circuit_type, ProofProfile::L1Wrap),
-            context,
-        )?;
-        state.device_peak_bytes = Some(context.get_used_mem_peak());
-        return Ok(PhaseTwo {
-            state,
-            job: JobType::L1Wrap(job),
-        });
-    }
     let batch_id = state.batch_id;
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
-    let resolved = state
-        .precomputations
-        .baby_bear()
-        .profile_config(state.profile);
-    let prover_config = &resolved.0;
-    let final_trace_size_log_2 = FINAL_TRACE_SIZE_LOG_2;
-    let compiled_circuit_arc = Arc::clone(
-        state
-            .precomputations
-            .baby_bear()
-            .gkr_programs
-            .compiled_circuit(),
-    );
-
     state.direction = Some(direction);
     let job = match inputs {
-        PhaseOneInputs::Proof(bundle) => {
+        PhaseOneInputs::L1Wrap(inputs, dr_tail_plan, operation_mode) => {
+            let precomputed = Arc::clone(state.precomputations.l1_wrap());
             trace!(
+                "BATCH[{}] GPU_WORKER[{device_id}] producing L1 wrap proof",
+                state.batch_id
+            );
+            context.reset_used_mem_peak();
+            let job = gpu_circuit_prover::proof::prove(
+                gpu_circuit_prover::l1_wrap::L1WrapProofRequest::new(
+                    &precomputed.programs,
+                    &precomputed.circuit,
+                    &precomputed.geometry,
+                    &precomputed.config,
+                    operation_mode,
+                    inputs,
+                    &dr_tail_plan,
+                    crate::memory_policy::partial_trees(state.circuit_type, ProofProfile::L1Wrap),
+                ),
+                context,
+            )?;
+            state.device_peak_bytes = Some(context.get_used_mem_peak());
+            JobType::L1Wrap(job)
+        }
+        inputs => {
+            let resolved = state
+                .precomputations
+                .baby_bear()
+                .profile_config(state.profile);
+            let prover_config = &resolved.0;
+            let final_trace_size_log_2 = FINAL_TRACE_SIZE_LOG_2;
+            let compiled_circuit_arc = Arc::clone(
+                state
+                    .precomputations
+                    .baby_bear()
+                    .gkr_programs
+                    .compiled_circuit(),
+            );
+            match inputs {
+                PhaseOneInputs::Proof(bundle) => {
+                    trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
             );
-            context.reset_used_mem_peak();
-            let job = gpu_circuit_prover::proof::prove::<A>(
-                &state.precomputations.baby_bear().gkr_programs,
-                prover_config,
-                final_trace_size_log_2,
-                bundle,
-                crate::memory_policy::policy(circuit_type, state.profile, context.get_mem_size()),
-                crate::memory_policy::partial_trees(circuit_type, state.profile),
-                context,
-            )?;
-            state.device_peak_bytes = Some(context.get_used_mem_peak());
-            JobType::Proof(job)
-        }
-        PhaseOneInputs::MemoryCommitment(bundle) => {
-            trace!(
+                    context.reset_used_mem_peak();
+                    let job = gpu_circuit_prover::proof::prove(
+                        gpu_circuit_prover::proof::BabyBearProofRequest::new(
+                            &state.precomputations.baby_bear().gkr_programs,
+                            prover_config,
+                            final_trace_size_log_2,
+                            bundle,
+                            crate::memory_policy::policy(
+                                circuit_type,
+                                state.profile,
+                                context.get_mem_size(),
+                            ),
+                            crate::memory_policy::partial_trees(circuit_type, state.profile),
+                        ),
+                        context,
+                    )?;
+                    state.device_peak_bytes = Some(context.get_used_mem_peak());
+                    JobType::Proof(job)
+                }
+                PhaseOneInputs::MemoryCommitment(bundle) => {
+                    trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing memory commitment for circuit {circuit_type:?}[{sequence_id}]"
             );
-            context.reset_used_mem_peak();
-            let job = commit_memory_from_transfers_for_geometry::<A>(
-                circuit_type,
-                &compiled_circuit_arc,
-                bundle,
-                resolved.1,
-                crate::memory_policy::partial_trees(circuit_type, state.profile).memory,
-                context,
-            )?;
-            state.device_peak_bytes = Some(context.get_used_mem_peak());
-            JobType::MemoryCommitment(job)
-        }
-        PhaseOneInputs::MergedCommitment(bundle) => {
-            trace!(
+                    context.reset_used_mem_peak();
+                    let job = commit_memory_from_transfers_for_geometry::<A>(
+                        circuit_type,
+                        &compiled_circuit_arc,
+                        bundle,
+                        resolved.1,
+                        crate::memory_policy::partial_trees(circuit_type, state.profile).memory,
+                        context,
+                    )?;
+                    state.device_peak_bytes = Some(context.get_used_mem_peak());
+                    JobType::MemoryCommitment(job)
+                }
+                PhaseOneInputs::MergedCommitment(bundle) => {
+                    trace!(
                 "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing merged memory+witness commitment for circuit {circuit_type:?}[{sequence_id}]"
             );
-            context.reset_used_mem_peak();
-            let job = commit_merged_from_transfers::<A>(
-                &state.precomputations.baby_bear().gkr_programs,
-                prover_config,
-                bundle,
-                crate::memory_policy::merged_commit_strategy(circuit_type, state.profile),
-                crate::memory_policy::partial_trees(circuit_type, state.profile),
-                state.partial_tree_buffer.take(),
-                context,
-            )?;
-            state.device_peak_bytes = Some(context.get_used_mem_peak());
-            JobType::MemoryCommitment(job)
-        }
-        PhaseOneInputs::L1Wrap(..) => unreachable!("L1Wrap proofs return early above"),
-        PhaseOneInputs::SetupInitialization => {
-            unreachable!("setup initialization returns early above")
+                    context.reset_used_mem_peak();
+                    let job = commit_merged_from_transfers::<A>(
+                        &state.precomputations.baby_bear().gkr_programs,
+                        prover_config,
+                        bundle,
+                        crate::memory_policy::merged_commit_strategy(circuit_type, state.profile),
+                        crate::memory_policy::partial_trees(circuit_type, state.profile),
+                        state.partial_tree_buffer.take(),
+                        context,
+                    )?;
+                    state.device_peak_bytes = Some(context.get_used_mem_peak());
+                    JobType::MemoryCommitment(job)
+                }
+                PhaseOneInputs::SetupInitialization => {
+                    unreachable!("setup initialization returns early above")
+                }
+                PhaseOneInputs::L1Wrap(..) => {
+                    unreachable!("wrap inputs are handled by the outer dispatch")
+                }
+            }
         }
     };
 

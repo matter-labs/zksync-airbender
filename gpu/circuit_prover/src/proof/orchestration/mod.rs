@@ -1,21 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use era_cudart::event::CudaEvent;
-use era_cudart::result::CudaResult;
-
 use crate::proof::inputs::GpuGKRProofTransferKeepalive;
-use crate::upstream::{
-    DefaultTreeConstructor, DimensionReducingInputOutput, Field, GKRProof, OutputType,
-};
-use gpu_core::primitives::callbacks::Callbacks;
+use crate::upstream::{DimensionReducingInputOutput, Field, OutputType};
 use gpu_core::primitives::context::HostAllocation;
-use gpu_core::primitives::device_tracing::Range;
-use gpu_core::primitives::field::{BF, E4};
-#[cfg(test)]
-use gpu_gkr::backward::GKRBackwardStageSnapshot;
-use gpu_gkr::backward::{
-    ClaimBufferLayout, GKRBackwardStageSnapshotSink, GpuGKRBackwardScheduledExecution,
-};
+use gpu_core::primitives::field::E4;
+use gpu_gkr::backward::{ClaimBufferLayout, GpuGKRBackwardScheduledExecution};
 use gpu_gkr::base_layer_claims::GpuGKRBaseLayerClaimsScheduledExecution;
 use gpu_gkr::setup::GpuGKRForwardSetupHostKeepalive;
 use gpu_gkr::stage1::GpuGKRStage1Keepalive;
@@ -30,11 +19,14 @@ pub(super) use backward::{
     prepare_backward_handoff, schedule_backward_phase, BackwardPhaseResult,
     ForwardToBackwardHandoff,
 };
-pub(super) use stage1_forward::{prepare_stage1_and_forward_setup, Stage1AndForwardPreparation};
+pub(super) use stage1_forward::{
+    prepare_challenges_and_forward_setup, prepare_witness_and_commitment,
+    ForwardChallengePreparation, Stage1WitnessPreparation,
+};
 pub(super) use terminal::schedule_terminal_proof_assembly;
 pub(super) use whir::{schedule_whir_phase, WhirPhaseResult};
 
-pub(super) struct GpuGKRProofJobKeepalive<'a> {
+pub struct GpuGKRProofJobKeepalive<'a> {
     pub(super) _stage1: GpuGKRStage1Keepalive,
     /// Host sources and shared Transfer callbacks; device inputs are retired
     /// after their last readers are enqueued, before the job is returned.
@@ -50,66 +42,6 @@ pub(super) struct GpuGKRProofJobKeepalive<'a> {
     /// challenge, backward handoff buffers) are released stream-ordered at the
     /// end of `prove()`.
     pub(super) _proof_host_mirror: Option<HostAllocation<[u8]>>,
-}
-
-type FinishedProof = GKRProof<BF, E4, DefaultTreeConstructor>;
-type FinishedProofWithSnapshots = (
-    FinishedProof,
-    Option<Box<GKRBackwardStageSnapshotSink>>,
-    f32,
-);
-#[cfg(test)]
-type StagewiseFinishedProof = (FinishedProof, Vec<GKRBackwardStageSnapshot>, f32);
-
-pub struct GpuGKRProofJob<'a> {
-    pub(crate) is_finished_event: CudaEvent,
-    pub(crate) callbacks: Callbacks<'a>,
-    pub(crate) proof: Box<Option<GKRProof<BF, E4, DefaultTreeConstructor>>>,
-    pub(crate) ranges: Vec<Range>,
-    pub(crate) stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
-    pub(super) keepalive: GpuGKRProofJobKeepalive<'a>,
-}
-
-impl<'a> GpuGKRProofJob<'a> {
-    fn finish_inner(self) -> CudaResult<FinishedProofWithSnapshots> {
-        let Self {
-            is_finished_event,
-            callbacks,
-            mut proof,
-            ranges,
-            stage_snapshots,
-            keepalive,
-        } = self;
-        is_finished_event.synchronize()?;
-        drop(callbacks);
-        drop(keepalive);
-        let proof = proof
-            .take()
-            .expect("proof must be materialized before finish");
-        let proof_time_ms = ranges
-            .last()
-            .expect("proof job must keep the top-level range")
-            .elapsed()?;
-
-        Ok((proof, stage_snapshots, proof_time_ms))
-    }
-
-    pub fn finish(self) -> CudaResult<(GKRProof<BF, E4, DefaultTreeConstructor>, f32)> {
-        let (proof, _, proof_time_ms) = self.finish_inner()?;
-        Ok((proof, proof_time_ms))
-    }
-
-    #[cfg(test)]
-    pub(crate) fn finish_stagewise(self) -> CudaResult<StagewiseFinishedProof> {
-        let (proof, snapshots, proof_time_ms) = self.finish_inner()?;
-        Ok((
-            proof,
-            snapshots
-                .expect("stagewise proof job must collect snapshots")
-                .into_snapshots(),
-            proof_time_ms,
-        ))
-    }
 }
 
 pub(crate) fn top_layer_claim_layout(

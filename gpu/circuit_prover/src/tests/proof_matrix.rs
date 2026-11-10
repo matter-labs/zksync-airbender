@@ -137,13 +137,15 @@ fn run_mixed_circuit_multi_schedule_test() {
         let mut transfers = base.create_transfers_for_context(context).unwrap();
         transfers.schedule(context).unwrap();
         jobs.push(
-            prove::<Global>(
-                &base.gkr_programs,
-                &base.prover_config,
-                base.final_trace_size_log_2,
-                transfers,
-                ProofMemoryPolicy::default(),
-                crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
+            prove(
+                crate::proof::BabyBearProofRequest::new(
+                    &base.gkr_programs,
+                    &base.prover_config,
+                    base.final_trace_size_log_2,
+                    transfers,
+                    ProofMemoryPolicy::default(),
+                    crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
+                ),
                 context,
             )
             .unwrap(),
