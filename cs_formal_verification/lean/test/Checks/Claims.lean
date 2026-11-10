@@ -162,7 +162,6 @@ example : Airbender.UnifiedReduced.Caller.RVSharedSpanSoundnessClaim := @Airbend
 example : Airbender.UnifiedReduced.Caller.RVRequestHashWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_request_hash_window_soundness
 example : Airbender.UnifiedReduced.Caller.RVMixedWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_mixed_window_soundness
 example : Airbender.UnifiedReduced.Caller.RVWindowProjectionSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_window_projection_soundness
-example : Airbender.UnifiedReduced.Caller.RVMixedWindowChainSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_mixed_window_chain_soundness
 example : Airbender.UnifiedReduced.Caller.RVMixedWindowSequenceSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_mixed_window_sequence_soundness
 example : Airbender.UnifiedReduced.Caller.RVJointHashWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_joint_hash_window_soundness
 example : Airbender.UnifiedReduced.Caller.RVWindowScheduleSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_window_schedule_soundness
@@ -171,7 +170,6 @@ example : Airbender.UnifiedReduced.Caller.RVControlPreparationSoundnessClaim := 
 example : Airbender.UnifiedReduced.Caller.RVControlPreparationWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_control_preparation_window_soundness
 example : Airbender.UnifiedReduced.Caller.RVProgramWindowScheduleSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_program_window_schedule_soundness
 example : Airbender.UnifiedReduced.Caller.RVPreparedHashWindowSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_prepared_hash_window_soundness
-example : Airbender.UnifiedReduced.Caller.RVPreparedHashChainSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_prepared_hash_chain_soundness
 example : Airbender.UnifiedReduced.Caller.RVPreparedHashSequenceSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_prepared_hash_sequence_soundness
 example : Airbender.UnifiedReduced.Caller.RVPreparedRoundRegionMasksSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_prepared_round_region_masks_soundness
 example : Airbender.UnifiedReduced.Caller.RVPreparedProtocolSequenceSoundnessClaim := @Airbender.UnifiedReduced.Caller.rv_prepared_protocol_sequence_soundness
@@ -288,7 +286,6 @@ example : Airbender.ConstantsClaim := @Airbender.constants_claim
 #print axioms Airbender.UnifiedReduced.Caller.rv_request_hash_window_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_mixed_window_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_window_projection_soundness
-#print axioms Airbender.UnifiedReduced.Caller.rv_mixed_window_chain_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_mixed_window_sequence_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_joint_hash_window_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_window_schedule_soundness
@@ -297,7 +294,6 @@ example : Airbender.ConstantsClaim := @Airbender.constants_claim
 #print axioms Airbender.UnifiedReduced.Caller.rv_control_preparation_window_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_program_window_schedule_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_hash_window_soundness
-#print axioms Airbender.UnifiedReduced.Caller.rv_prepared_hash_chain_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_hash_sequence_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_region_masks_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_protocol_sequence_soundness

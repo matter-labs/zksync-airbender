@@ -1141,7 +1141,6 @@ import Slop.Final.Import.Theorems
 #print axioms Airbender.UnifiedReduced.Caller.rv_request_hash_window_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_mixed_window_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_window_projection_soundness
-#print axioms Airbender.UnifiedReduced.Caller.rv_mixed_window_chain_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_mixed_window_sequence_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_joint_hash_window_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_window_schedule_soundness
@@ -1150,7 +1149,6 @@ import Slop.Final.Import.Theorems
 #print axioms Airbender.UnifiedReduced.Caller.rv_control_preparation_window_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_program_window_schedule_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_hash_window_soundness
-#print axioms Airbender.UnifiedReduced.Caller.rv_prepared_hash_chain_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_hash_sequence_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_region_masks_soundness
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_protocol_sequence_soundness

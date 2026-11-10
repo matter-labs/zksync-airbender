@@ -68,14 +68,6 @@ private theorem Caller.rv_window_projection_soundness_generic : Caller.RVWindowP
 
 theorem Caller.rv_window_projection_soundness : Caller.RVWindowProjectionSoundnessClaim := by babybear_instance Caller.rv_window_projection_soundness_generic
 
-/-- Two native windows and their gap form one actual RV memory execution from public initialization. -/
-private theorem Caller.rv_mixed_window_chain_soundness_generic : Caller.RVMixedWindowChainSoundnessClaimGeneric := by
-  intro p _ hp clockInverse rotationInverse data program before ca oa cells a b c d accepted inputs aa ba ca' da
-    positive ab bc cd
-  exact Caller.Proofs.rv_mixed_window_chain hp clockInverse rotationInverse accepted inputs aa ba ca' da positive ab bc cd
-
-theorem Caller.rv_mixed_window_chain_soundness : Caller.RVMixedWindowChainSoundnessClaim := by babybear_instance Caller.rv_mixed_window_chain_soundness_generic
-
 /-- An ordered finite list of native windows and gaps executes continuously in one RV history. -/
 private theorem Caller.rv_mixed_window_sequence_soundness_generic : Caller.RVMixedWindowSequenceSoundnessClaimGeneric := by
   intro p _ hp clockInverse rotationInverse data program before ca oa cells cut windows accepted inputs first positive
@@ -146,14 +138,6 @@ private theorem Caller.rv_prepared_hash_window_soundness_generic : Caller.RVPrep
   exact Caller.Proofs.rv_prepared_hash_window hp clockInverse accepted inputs first last
 
 theorem Caller.rv_prepared_hash_window_soundness : Caller.RVPreparedHashWindowSoundnessClaim := by babybear_instance Caller.rv_prepared_hash_window_soundness_generic
-
-/-- Two complete prepared G/Keccak RV references compose through one continuous RV history. -/
-private theorem Caller.rv_prepared_hash_chain_soundness_generic : Caller.RVPreparedHashChainSoundnessClaimGeneric := by
-  intro p _ hp clockInverse data before ca oa cells program firstSpan secondSpan a b c d accepted firstInputs
-    secondInputs aa ba ca' da gap
-  exact Caller.Proofs.rv_prepared_hash_chain hp clockInverse accepted firstInputs secondInputs aa ba ca' da gap
-
-theorem Caller.rv_prepared_hash_chain_soundness : Caller.RVPreparedHashChainSoundnessClaim := by babybear_instance Caller.rv_prepared_hash_chain_soundness_generic
 
 /-- A nonempty ordered list of complete prepared G/Keccak RV references shares one continuous RV history. -/
 private theorem Caller.rv_prepared_hash_sequence_soundness_generic : Caller.RVPreparedHashSequenceSoundnessClaimGeneric := by

@@ -101,36 +101,6 @@ theorem rv_prepared_hash_reference_at_states [Fact p.Prime] (hp : 16777216 ≤ p
     (fun row member => accepted.workerActive row (List.mem_of_mem_filter member))
     (fun cell member => inputs.aligned cell (List.mem_of_mem_filter member)) target terminal.1.addresses
 
-theorem rv_prepared_hash_chain [Fact p.Prime] (hp : 16777216 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1)
-    {data : RVRequestTrace p} {before : RV.State} {ca oa : List (BitVec 32)} {cells : List Cell}
-    {program : List UnifiedReduced.RVProgramEntry} {firstSpan secondSpan : Delegation.Caller.HashSpan}
-    {a b c d : Nat}
-    (accepted : RVMixedMemoryAccepted data program)
-    (firstInputs : RVPreparedHashWindowInputs data before ca oa cells program firstSpan a b)
-    (secondInputs : RVPreparedHashWindowInputs data before ca oa cells program secondSpan c d)
-    (aa : a % 4 = 0) (ba : b % 4 = 0) (ca' : c % 4 = 0) (da : d % 4 = 0) (gap : b ≤ c) :
-    RVPreparedHashChainResult data before cells firstSpan secondSpan a b c d := by
-  have rotationInverse : 64 * (-31457280 : ZMod p) = 1 := by linear_combination clockInverse
-  have floor := firstInputs.preparation.afterInitial
-  have firstDuration := firstInputs.duration
-  have secondDuration := secondInputs.duration
-  obtain ⟨chain, history⟩ := rv_mixed_window_chain (by omega) clockInverse rotationInverse accepted
-    (rv_prepared_hash_memory_inputs firstInputs) aa ba ca' da (by omega) (by omega) gap (by omega)
-  have firstResult := rv_prepared_hash_reference_at_states hp clockInverse accepted firstInputs aa ba
-    history.firstPrefixMatching history.firstMatching history.firstStartBoundary history.firstFinishBoundary
-    history.firstPerm history.firstHistory
-  have secondResult := rv_prepared_hash_reference_at_states hp clockInverse accepted secondInputs ca' da
-    history.secondPrefixMatching history.secondMatching history.secondStartBoundary history.secondFinishBoundary
-    history.secondPerm history.secondHistory
-  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  have firstRequests := rv_request_windows size clockInverse accepted.toRVRequestChecks firstInputs.publicProgram aa ba (by omega)
-  have secondRequests := rv_request_windows size clockInverse accepted.toRVRequestChecks secondInputs.publicProgram ca' da (by omega)
-  exact ⟨firstRequests, secondRequests,
-    (Delegation.Caller.Proofs.window_call_count firstRequests).trans firstInputs.calls,
-    (Delegation.Caller.Proofs.window_call_count secondRequests).trans secondInputs.calls,
-    chain, history, firstResult, secondResult⟩
-
 theorem rv_prepared_hash_sequence_at_segments [Fact p.Prime] (hp : 16777216 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RVRequestTrace p} {before : RV.State} {ca oa : List (BitVec 32)} {cells : List Cell}

@@ -266,52 +266,6 @@ theorem rv_matching_at_next_cut [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   exact ((partition.map Prod.snd).symm.append_left _).trans
     (joined.trans ((partition.map Prod.fst).append_left _))
 
-theorem rv_mixed_window_chain [Fact p.Prime] (hp : 8388608 ≤ p)
-    (clockInverse : (-3840 : ZMod p) * 524288 = 1) (rotationInverse : 64 * (-31457280 : ZMod p) = 1)
-    {data : RVRequestTrace p} {program : List UnifiedReduced.RVProgramEntry} {before : RV.State}
-    {ca oa : List (BitVec 32)} {cells : List Cell} {a b c d : Nat}
-    (accepted : RVMixedMemoryAccepted data program) (inputs : RVMixedMemoryInputs data program before ca oa cells)
-    (aa : a % 4 = 0) (ba : b % 4 = 0) (ca' : c % 4 = 0) (da : d % 4 = 0)
-    (positive : 2 ≤ a) (ab : a ≤ b) (bc : b ≤ c) (cd : c ≤ d) :
-    RVMixedWindowChainExecution data before cells a b c d := by
-  have size : 2 * timestampBase + 4 < p := by norm_num [timestampBase]; omega
-  have requests := rv_request_binding size clockInverse accepted.toRVRequestChecks inputs.publicProgram
-  have facts := rv_mixed_memory_facts size clockInverse accepted inputs.publicProgram inputs.initialization requests
-  have initialized : Transfer.RVInputs (rv_mixedData data) before cells := ⟨inputs.initialization, inputs.distinct⟩
-  have rules := rv_mixed_write_rules hp rotationInverse accepted inputs
-  have bounds : ∀ edge ∈ (rv_mixedData data).steps, edge.2.word.Bounded := by
-    intro edge member
-    exact Transfer.rv_produced_bounds facts initialized rules edge.2
-      (List.mem_append.mpr (Or.inr (List.mem_map.mpr ⟨edge, member, rfl⟩)))
-  have clocks := rv_mixed_write_clocks size clockInverse accepted inputs.publicProgram requests
-  have zeroRules := rv_mixed_zero_rules size clockInverse accepted inputs requests
-  have zeroReads := Transfer.read_cell_values_of_rules facts (Cell.register 0).addressCode 0
-    (Transfer.rv_initial_zero inputs.initialization) zeroRules
-  have zero : ∀ edge ∈ (rv_mixedData data).steps, edge.1.address = (Cell.register 0).addressCode → memoryWord edge.2.value = 0 := by
-    intro edge member same
-    have value := zeroRules edge member same (fun previous present _ address => zeroReads previous present address)
-    rw [value]
-    rfl
-  obtain ⟨s1, ep, st1, prefixFacts, tail1, pp, _, hp1, n1⟩ :=
-    Transfer.rv_split_native_state facts initialized.toRVNativeInputs rules clocks inputs.aligned zero (a - 1)
-  obtain ⟨f1, e1, sf1, firstFacts, tail2, p1, h1, n2⟩ :=
-    rv_native_suffix_split (by omega : a - 1 ≤ b - 1) tail1 n1 bounds clocks inputs.aligned zero
-  obtain ⟨s2, eg, st2, gapFacts, tail3, pg, hg, n3⟩ :=
-    rv_native_suffix_split (by omega : b - 1 ≤ c - 1) tail2 n2 bounds clocks inputs.aligned zero
-  obtain ⟨f2, e2, sf2, secondFacts, _, p2, h2, n4⟩ :=
-    rv_native_suffix_split (by omega : c - 1 ≤ d - 1) tail3 n3 bounds clocks inputs.aligned zero
-  rw [rv_mixed_prefix_steps data (by omega)] at prefixFacts pp
-  rw [← rv_mixed_window_steps size clockInverse accepted.toRVRequestChecks inputs.publicProgram aa ba positive ab] at firstFacts p1
-  rw [← rv_mixed_window_steps size clockInverse accepted.toRVRequestChecks inputs.publicProgram ba ca' (by omega) bc] at gapFacts pg
-  rw [← rv_mixed_window_steps size clockInverse accepted.toRVRequestChecks inputs.publicProgram ca' da (by omega) cd] at secondFacts p2
-  have prefixAtB := rv_matching_at_next_cut size clockInverse accepted.toRVRequestChecks inputs.publicProgram
-    aa ba positive ab prefixFacts.matching firstFacts.matching
-  have prefixAtC := rv_matching_at_next_cut size clockInverse accepted.toRVRequestChecks inputs.publicProgram
-    ba ca' (by omega) bc prefixAtB gapFacts.matching
-  let chain : RVWindowChain p := ⟨s1, f1, s2, f2, ep, e1, eg, e2, st1, sf1, st2, sf2⟩
-  exact ⟨chain, ⟨pp, p1, pg, p2, hp1, h1, hg, h2, prefixFacts.matching, firstFacts.matching,
-    prefixAtC, secondFacts.matching, rv_native_boundary n1, rv_native_boundary n2, rv_native_boundary n3, rv_native_boundary n4⟩⟩
-
 theorem rv_native_window_segments [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RVRequestTrace p} {before : RV.State} {ca : List (BitVec 32)} {cells : List Cell}

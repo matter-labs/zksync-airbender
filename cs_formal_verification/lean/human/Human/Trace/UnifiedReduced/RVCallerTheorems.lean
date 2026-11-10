@@ -103,12 +103,6 @@ def Caller.RVControlPreparationWindowSoundnessClaim : Prop :=
   ∀ {data : Caller.RVRequestTrace babyBearModulus} {program : List UnifiedReduced.RVProgramEntry} {before : RV.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {lower upper : Nat} {firstRegister lastRegister : BitVec 5} {firstLiteral lastLiteral : Caller.ControlLiteral} (_accepted : Caller.RVMixedMemoryAccepted data program) (_inputs : Caller.RVMixedMemoryInputs data program before ca oa cells) (_firstScope : Caller.RVControlPreparation data program lower firstRegister firstLiteral) (_lastScope : Caller.RVControlPreparation data program upper lastRegister lastLiteral) (_firstNonzero : firstRegister ≠ 0) (_lastNonzero : lastRegister ≠ 0) (_first : lower % 4 = 0) (_last : upper % 4 = 0) (_ordered : lower ≤ upper),
     Caller.RVPreparedControlWindow data before cells lower upper firstRegister firstLiteral lastRegister lastLiteral
 
-/-- Two native windows and their intervening gap form one actual memory execution
-    from public initialization. Every cut state and retained boundary is derived. -/
-def Caller.RVMixedWindowChainSoundnessClaim : Prop :=
-  ∀ {data : Caller.RVRequestTrace babyBearModulus} {program : List UnifiedReduced.RVProgramEntry} {before : RV.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {a b c d : Nat} (_accepted : Caller.RVMixedMemoryAccepted data program) (_inputs : Caller.RVMixedMemoryInputs data program before ca oa cells) (_aa : a % 4 = 0) (_ba : b % 4 = 0) (_ca' : c % 4 = 0) (_da : d % 4 = 0) (_positive : 2 ≤ a) (_ab : a ≤ b) (_bc : b ≤ c) (_cd : c ≤ d),
-    Caller.RVMixedWindowChainExecution data before cells a b c d
-
 /-- An ordered finite list of native windows and gaps executes continuously
     from public initialization. Matching derives every actual boundary and clock;
     instruction retirement and protocol shape remain separate. -/
@@ -124,13 +118,6 @@ def Caller.RVMixedWindowSequenceSoundnessClaim : Prop :=
 def Caller.RVPreparedHashWindowSoundnessClaim : Prop :=
   ∀ {data : Caller.RVRequestTrace babyBearModulus} {before : RV.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.RVProgramEntry} {span : Delegation.Caller.HashSpan} {lower upper : Nat} (_accepted : Caller.RVMixedMemoryAccepted data program) (_inputs : Caller.RVPreparedHashWindowInputs data before ca oa cells program span lower upper) (_first : lower % 4 = 0) (_last : upper % 4 = 0),
     Caller.RVJointHashWindowResult data before cells span lower upper
-
-/-- Two complete prepared G/Keccak references compose through one continuous
-    history, including the intervening preparation and other worker effects.
-    Public mode/count/duration and nonround worker scope remain explicit. -/
-def Caller.RVPreparedHashChainSoundnessClaim : Prop :=
-  ∀ {data : Caller.RVRequestTrace babyBearModulus} {before : RV.State} {ca oa : List (BitVec 32)} {cells : List Trace.Cell} {program : List UnifiedReduced.RVProgramEntry} {firstSpan secondSpan : Delegation.Caller.HashSpan} {a b c d : Nat} (_accepted : Caller.RVMixedMemoryAccepted data program) (_firstInputs : Caller.RVPreparedHashWindowInputs data before ca oa cells program firstSpan a b) (_secondInputs : Caller.RVPreparedHashWindowInputs data before ca oa cells program secondSpan c d) (_aa : a % 4 = 0) (_ba : b % 4 = 0) (_ca' : c % 4 = 0) (_da : d % 4 = 0) (_gap : b ≤ c),
-    Caller.RVPreparedHashChainResult data before cells firstSpan secondSpan a b c d
 
 /-- A nonempty ordered list of complete prepared G/Keccak references shares one
     continuous actual memory history. Each span retains its public preparation,

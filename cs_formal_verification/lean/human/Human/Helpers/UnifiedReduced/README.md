@@ -64,7 +64,7 @@ connects two prepared controls through the same actual intervening history, keep
 all ordinary and worker accesses. Both controls follow from the public registry
 and joint prefix/window matching.
 
-The native window chain and sequence ([RVMixedWindows](../../Trace/UnifiedReduced/RVMixedWindows.lean)) execute
+The native window sequence ([RVMixedWindows](../../Trace/UnifiedReduced/RVMixedWindows.lean)) executes
 any ordered finite list of windows and their gaps continuously from the retained boundaries;
 complete [prepared G/Keccak references](../../Trace/UnifiedReduced/RVPreparedHashWindows.lean) use
 those exact segment states and derive their references without supplied intermediate states.

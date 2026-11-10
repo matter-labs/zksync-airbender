@@ -20,11 +20,9 @@ The ordinary claim is [RVTheorems](RVTheorems.lean); the `Caller.*` claims are i
 | Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.rv_mixed_window_soundness` and `Caller.rv_mixed_window_projection_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
 | Public ADDI-from-x0/LUI preparation yields actual controls after literal or sequential ordinary/custom prefixes; native PC/clock matching derives each preparation address. | [`Caller.rv_control_preparation_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
 | Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.rv_control_preparation_window_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| Two native windows and their gap execute continuously from one initialization with retained tokens and clocks. | [`Caller.rv_mixed_window_chain_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| An arbitrary ordered finite list of native windows and gaps shares that continuous execution. | [`Caller.rv_mixed_window_sequence_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
+| An arbitrary ordered finite list of native windows and their gaps executes continuously from one initialization with retained tokens and clocks. | [`Caller.rv_mixed_window_sequence_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
 | Complete prepared G/Keccak and extended-BLAKE references reach the selected actual cut states; masks are derived. | [`Caller.rv_prepared_hash_window_soundness` and `Caller.rv_prepared_round_window_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| Two complete prepared G/Keccak references use the same continuously executed states across the intervening preparation and other effects. | [`Caller.rv_prepared_hash_chain_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| A nonempty ordered list of complete prepared G/Keccak references binds every span to that same continuous execution. | [`Caller.rv_prepared_hash_sequence_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
+| A nonempty ordered list of complete prepared G/Keccak references uses the same continuously executed states across the intervening preparation and other effects. | [`Caller.rv_prepared_hash_sequence_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
 | Public LUI preparation and raw matching derive exclusive masks inside each selected extended-BLAKE caller region, retaining earlier workers. | [`Caller.rv_prepared_round_region_masks_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
 | Ordered complete G/extended-BLAKE/Keccak lists share one execution when prepared controller regions cover every extended-round worker. | [`Caller.rv_prepared_protocol_sequence_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
 | Public caller regions derive each selected span's worker family/count before all three references compose continuously. | [`Caller.rv_program_prepared_protocol_sequence_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
@@ -54,9 +52,9 @@ unissued effects; only the last preparation cycle is worker-free. The original
 first-span extended-BLAKE entry retains its empty prefix. Public preparation/count/duration and these restrictions
 remain explicit; cuts do not reset clocks or supply intermediate states.
 Completion of a protocol alone does not restart it: G/Keccak require their own family only inside the
-selected span, and Bigint, G and Keccak workers outside it remain in joint history. The window-chain and
-window-sequence realizations (`RVWindowChain.Realizes`, `RVWindowSequence.Realizes` in
-[RVMixedWindows](RVMixedWindows.lean)) name the retained tokens, actual states and complete
+selected span, and Bigint, G and Keccak workers outside it remain in joint history. The window-sequence
+realization (`RVWindowSequence.Realizes` in
+[RVMixedWindows](RVMixedWindows.lean)) names the retained tokens, actual states and complete
 prefix/span/gap transfers: each segment executes its gap from the preceding actual finish, then its complete
 window; `WindowsOrdered` ([MixedWindows](MixedWindows.lean)) makes cut order and alignment explicit and permits empty windows and gaps
 ([overlapping or unaligned sequences are rejected](../../../../test/Tests/ControlPreparation.lean)).
