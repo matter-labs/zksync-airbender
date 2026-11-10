@@ -9,6 +9,7 @@ import Human.Trace.TeardownBounds
 import Human.Trace.Families.AddSub.RVTheorems
 import Human.Trace.UnifiedReduced.RVTheorems
 import Human.Trace.Workers.Blake2G.RVTheorems
+import Human.Trace.Workers.Blake2Round.RVTheorems
 import Human.Trace.Workers.Keccak.RVTheorems
 import Human.Trace.Workers.KeccakSplit.RVTheorems
 
@@ -173,5 +174,16 @@ example (claim : Keccak.Split.Native.WritesRangeCheckedClaim) :
       ∀ step ∈ row.memorySteps, step.2.word.Bounded :=
   fun ⟨data, accepted, active, row, member, steps, reads⟩ =>
     ⟨data, row, member, steps, claim accepted active row member reads⟩
+
+example (claim : Blake2Round.Native.RVOperationExecutionClaim) :
+    Blake2Round.Native.RVOperationExecutionSatisfiableClaim →
+    ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Cell),
+      Delegation.RVMemoryExecution data before cells ∧ ∃ row ∈ data.rows, row.family = .blakeRound ∧
+        ∃ round, Blake2Round.Memory.RoundMask row.assignment round ∧
+          Blake2Round.Row.spec (Blake2Round.Native.input round row.assignment)
+            (Blake2Round.Native.output row.assignment) :=
+  fun ⟨data, before, cells, _, accepted, inputs, aligned, row, member, family⟩ =>
+    have result := claim accepted inputs aligned
+    ⟨data, before, cells, result.1, row, member, family, result.2 row member family⟩
 
 end Checks.Satisfiable

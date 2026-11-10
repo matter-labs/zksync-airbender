@@ -84,6 +84,7 @@ import Slop.Final.Trace.Satisfiable.Unified
 import Slop.Final.Trace.Satisfiable.Blake2G
 import Slop.Final.Trace.Satisfiable.Keccak
 import Slop.Final.Trace.Satisfiable.KeccakSplit
+import Slop.Final.Trace.Satisfiable.Blake2Round
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
@@ -383,3 +384,5 @@ example : Airbender.Keccak.Split.Native.RVOperationExecutionSatisfiableClaim := 
 #print axioms Airbender.Keccak.Split.Native.rv_operation_execution_satisfiable
 example : Airbender.Keccak.Split.Native.WritesRangeCheckedSatisfiableClaim := @Airbender.Keccak.Split.Native.writes_range_checked_satisfiable
 #print axioms Airbender.Keccak.Split.Native.writes_range_checked_satisfiable
+example : Airbender.Blake2Round.Native.RVOperationExecutionSatisfiableClaim := @Airbender.Blake2Round.Native.rv_operation_execution_satisfiable
+#print axioms Airbender.Blake2Round.Native.rv_operation_execution_satisfiable

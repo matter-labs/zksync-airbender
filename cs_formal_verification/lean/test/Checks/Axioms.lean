@@ -149,6 +149,7 @@ import Slop.Final.Trace.Satisfiable.Unified
 import Slop.Final.Trace.Satisfiable.Blake2G
 import Slop.Final.Trace.Satisfiable.Keccak
 import Slop.Final.Trace.Satisfiable.KeccakSplit
+import Slop.Final.Trace.Satisfiable.Blake2Round
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -1216,3 +1217,4 @@ import Slop.Final.Trace.Satisfiable.KeccakSplit
 #print axioms Airbender.Keccak.Native.rv_operation_execution_satisfiable
 #print axioms Airbender.Keccak.Split.Native.rv_operation_execution_satisfiable
 #print axioms Airbender.Keccak.Split.Native.writes_range_checked_satisfiable
+#print axioms Airbender.Blake2Round.Native.rv_operation_execution_satisfiable

@@ -24,6 +24,13 @@ def RVOperationExecutionClaim : Prop :=
       ∀ row ∈ data.rows, row.family = .blakeRound →
         ∃ round, Memory.RoundMask row.assignment round ∧ Row.spec (input round row.assignment) (output row.assignment)
 
+/-- The assumptions of `RVOperationExecutionClaim` can be met by a pool with a round row. -/
+def RVOperationExecutionSatisfiableClaim : Prop :=
+  ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Trace.Cell)
+    (control : Fin 4096 → Vector Nat 6),
+    Delegation.MemoryAccepted data ∧ Delegation.RVOperationInputs data before cells control ∧
+      (∀ cell ∈ cells, cell.Aligned) ∧ ∃ row ∈ data.rows, row.family = .blakeRound
+
 /-- The complete seven or ten round compression reaches its reference
     output in actual RV RAM. `RVWordMapping` identifies successful initial/final block reads; `RVTraceMapping` binds
     the same final state to every native access and terminal token. The final state is the spec's run of the 7/10
