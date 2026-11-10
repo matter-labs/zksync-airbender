@@ -26,7 +26,7 @@ pub const L1_WRAP_POLICY: ProofMemoryPolicy = ProofMemoryPolicy {
 };
 
 pub const PARTIAL_TREES: PartialTreePolicy = PartialTreePolicy {
-    setup: 10,
+    setup: gpu_gkr::setup::L1WrapSetupHost::PARTIAL_TREE_REDUCTION_LAYERS,
     memory: 10,
     ..PartialTreePolicy::DEFAULT
 };

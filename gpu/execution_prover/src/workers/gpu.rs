@@ -589,7 +589,6 @@ fn schedule_l1_wrap_phase_one<'a>(
         inits_and_teardowns,
         tracing_data,
         precomputed.host(),
-        crate::memory_policy::partial_trees(circuit_type, ProofProfile::L1Wrap).setup,
         precomputed.constants(),
         &operation_mode,
         context,

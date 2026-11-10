@@ -89,7 +89,7 @@ fn upload<T: Copy>(host: &[T], context: &ProverContext) -> DeviceAllocation<T> {
 fn l1_setup_host_round_trip_small() {
     let context = make_context();
     let worker = Worker::new_with_num_threads(4);
-    // Diagnostic rows, production setup width/pack/v1. Host init depth5, proof depth10.
+    // Diagnostic rows, production setup width/pack/v1. Host init and proof both retain depth10.
     let log_rows = 15;
     let columns = deterministic_columns(log_rows, 10);
     let twiddles = Twiddles::<PR, Global>::new(1 << (log_rows + 3), &worker);
@@ -109,7 +109,7 @@ fn l1_setup_host_round_trip_small() {
             log_lde_factor: 4,
             log_values_per_leaf: log_v,
             cap_log,
-            skip_bottom: 5,
+            skip_bottom: L1WrapSetupHost::PARTIAL_TREE_REDUCTION_LAYERS,
         };
         let cpu = cpu_commit(&columns, log_rows, pack_log2, cfg, &twiddles, &worker);
         let host = Arc::new(L1WrapSetupHost::precompute(&setup, pack_log2, cfg, &context).unwrap());
@@ -125,7 +125,7 @@ fn l1_setup_host_round_trip_small() {
                 "cached root {physical}"
             );
         }
-        let mut source = PackedSetupSource::new(Arc::clone(&host), 10, &context).unwrap();
+        let mut source = PackedSetupSource::new(Arc::clone(&host), &context).unwrap();
         let transfer = single_shot_h2d(
             |transfer| source.schedule_transfer(transfer, &context),
             &context,

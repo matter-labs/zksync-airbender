@@ -10,19 +10,10 @@ use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPi
 use gpu_hash::keccak256::Digest;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::holder::{
-    assert_partial_tree_reduction_layers, TraceHolder, TreesCacheMode,
-    PARTIAL_TREE_REDUCTION_LAYERS,
-};
-use gpu_trace::trace::packed::{
-    retained_len, CosetQueryPlan, PackedCommitConfig, PackedCosetRecomputeOracle,
-};
+use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
+use gpu_trace::trace::packed::{CosetQueryPlan, PackedCommitConfig, PackedCosetRecomputeOracle};
 
-use super::partial_tree_projection_start;
 use crate::upstream::{CpuGKRSetup, MerkleTreeCapVarLength};
-
-#[cfg(test)]
-mod tests;
 
 pub struct L1WrapSetupHost {
     pub log_rows: u32,
@@ -53,6 +44,8 @@ fn copy_to_pinned<T: Copy>(
 }
 
 impl L1WrapSetupHost {
+    pub const PARTIAL_TREE_REDUCTION_LAYERS: u32 = 10;
+
     pub fn precompute(
         setup: &CpuGKRSetup<PR>,
         pack_log2: u32,
@@ -79,7 +72,7 @@ impl L1WrapSetupHost {
             .expect("L1WrapSetupHost: log_values_per_leaf exceeds log_packed");
         assert_eq!(
             cfg.skip_bottom,
-            PARTIAL_TREE_REDUCTION_LAYERS.min(log_leaves),
+            Self::PARTIAL_TREE_REDUCTION_LAYERS.min(log_leaves),
             "L1WrapSetupHost: host partial-tree depth must be canonical"
         );
         let len = columns_count
@@ -105,7 +98,7 @@ impl L1WrapSetupHost {
             cfg.cap_log,
             columns_count,
             TreesCacheMode::CacheNone,
-            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+            Self::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )?;
         memory_copy_async(
@@ -150,23 +143,8 @@ pub struct PackedSetupSource<'a> {
 }
 
 impl<'a> PackedSetupSource<'a> {
-    pub fn new(
-        host: Arc<L1WrapSetupHost>,
-        target_reduction_layers: u32,
-        context: &ProverContext,
-    ) -> CudaResult<Self> {
-        assert_partial_tree_reduction_layers(target_reduction_layers);
-        let log_leaves = (host.log_rows + host.pack_log2)
-            .checked_sub(host.cfg.log_values_per_leaf)
-            .expect("PackedSetupSource: log_values_per_leaf exceeds log_packed");
-        let cfg = PackedCommitConfig {
-            skip_bottom: target_reduction_layers.min(log_leaves),
-            ..host.cfg
-        };
-        assert!(
-            cfg.skip_bottom >= host.cfg.skip_bottom,
-            "PackedSetupSource: target partial-tree depth must be >= source depth"
-        );
+    pub fn new(host: Arc<L1WrapSetupHost>, context: &ProverContext) -> CudaResult<Self> {
+        let cfg = host.cfg;
         let raw = TraceHolder::new_without_cosets(
             host.log_rows,
             host.cfg.log_lde_factor,
@@ -174,7 +152,7 @@ impl<'a> PackedSetupSource<'a> {
             host.cfg.cap_log,
             host.columns_count,
             TreesCacheMode::CacheNone,
-            target_reduction_layers,
+            L1WrapSetupHost::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )?;
         let oracle = PackedCosetRecomputeOracle::from_uploaded(raw, host.pack_log2, cfg, context)?;
@@ -204,43 +182,11 @@ impl<'a> PackedSetupSource<'a> {
             &self.host.packed_monomials[..],
             stream,
         )?;
-        let cfg = self
-            .oracle
-            .config()
-            .expect("PackedSetupSource: target config missing");
-        assert!(
-            self.host.cfg.same_protocol_geometry(&cfg),
-            "PackedSetupSource: protocol geometry mismatch"
-        );
-        let log_leaves = self.host.log_rows + self.host.pack_log2 - cfg.log_values_per_leaf;
-        let source_len = retained_len(log_leaves, self.host.cfg.skip_bottom);
-        let target_len = retained_len(log_leaves, cfg.skip_bottom);
-        let cosets = 1usize << cfg.log_lde_factor;
-        assert_eq!(
-            self.host.retained.len(),
-            cosets * source_len,
-            "PackedSetupSource: source tree length mismatch"
-        );
-        let start = partial_tree_projection_start(
-            "PackedSetupSource",
-            self.host.cfg.skip_bottom,
-            cfg.skip_bottom,
-            source_len,
-            target_len,
-        );
-        let retained = self.oracle.uninit_retained_mut();
-        assert_eq!(
-            retained.len(),
-            cosets * target_len,
-            "PackedSetupSource: target tree length mismatch"
-        );
-        for coset in 0..cosets {
-            memory_copy_async(
-                &mut retained[coset * target_len..(coset + 1) * target_len],
-                &self.host.retained[coset * source_len + start..(coset + 1) * source_len],
-                stream,
-            )?;
-        }
+        memory_copy_async(
+            self.oracle.uninit_retained_mut(),
+            &self.host.retained[..],
+            stream,
+        )?;
         memory_copy_async(self.oracle.uninit_roots_mut(), &self.host.roots[..], stream)?;
         if !self.host.top_nodes.is_empty() {
             memory_copy_async(
