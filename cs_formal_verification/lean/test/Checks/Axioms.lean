@@ -140,6 +140,7 @@ import Slop.Final.Circuits.UnifiedReduced.Artifact
 import Slop.Final.Circuits.WordMemory.Artifact
 import Slop.Final.Import.Columns
 import Slop.Final.Import.Theorems
+import Slop.Final.Trace.UnifiedReduced.RVChainOfSequence
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -1179,3 +1180,5 @@ import Slop.Final.Import.Theorems
 #print axioms Airbender.Json.text_unique
 #print axioms Airbender.decode_claim
 #print axioms Airbender.constants_claim
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.chain_of_sequence
+#print axioms Airbender.UnifiedReduced.Caller.Proofs.prepared_hash_chain_of_sequence
