@@ -119,7 +119,7 @@ for mode in "${modes[@]}"; do
   bin="$repo/examples/basic_fibonacci/app.bin"
   chain_out="$out_repo/fixtures/chains/$mode"
   chain_parent="$repo/fixtures/chains/$mode"
-  common=(--bin "$bin" --backend "$backend" --soundness-mode "$cli_mode" --output-dir "$chain_out" --worker-threads 16)
+  common=(--bin "$bin" --backend "$backend" --soundness-mode "$cli_mode" --output-dir "$chain_out")
   stages=(circuits base_unified unrolled)
   [[ -z $stage_filter ]] || stages=("$stage_filter")
   for stage in "${stages[@]}"; do

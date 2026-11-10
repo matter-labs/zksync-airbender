@@ -258,7 +258,7 @@ jobs:
   fixture_currency:
     name: fixture_currency (${{ matrix.mode }}, ${{ matrix.stage }})
     needs: fixture_build
-    runs-on: [matterlabs-ci-runner-high-performance]
+    runs-on: [matterlabs-ci-runner-ultra-performance]
     timeout-minutes: 180
     container:
       image: ubuntu:24.04

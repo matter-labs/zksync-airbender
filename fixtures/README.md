@@ -103,7 +103,7 @@ The GPU workflow also byte-compares the `base_unified` and `unrolled` stages in 
 ## Chain artifacts
 
 Each mode has four schema 5 CLI artifacts under `chains/<mode>/`. They use the
-tracked `examples/basic_fibonacci/app.bin`, CPU backend, 16 worker threads, and
+tracked `examples/basic_fibonacci/app.bin`, CPU backend on every available core, and
 Compression guests for unrolled, bridge, and final layers. Every artifact has
 `program_cycles = 97`; the recipe verifies every proof and rejects absolute
 paths inside `Variable at ...` labels.
