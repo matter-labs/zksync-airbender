@@ -12,6 +12,7 @@ use gpu_hash::keccak256::{
 };
 use gpu_ntt::proth120::{
     dispatch, hypercube_evals_to_monomials_chunked, pack_hypercubes_to_monomials, SuffixShape,
+    TwiddleDescriptor,
 };
 use gpu_prover_context::ProverContext;
 
@@ -320,8 +321,8 @@ impl PackedCosetRecomputeOracle<PR> {
             .checked_add(cfg.log_lde_factor)
             .expect("PackedCosetRecomputeOracle: domain log overflow");
         assert!(
-            log_domain <= context.proth120_ntt_device_context().log_max_domain(),
-            "PackedCosetRecomputeOracle: packed LDE domain exceeds context.log_max_domain()"
+            log_domain <= gpu_ntt::proth120::LOG_MAX_DOMAIN,
+            "PackedCosetRecomputeOracle: packed LDE domain exceeds the Proth120 NTT domain"
         );
         assert!(
             cfg.cap_log <= cfg.log_lde_factor,
@@ -391,7 +392,12 @@ impl PackedCosetRecomputeOracle<PR> {
             .cap
     }
 
-    pub fn commit(&mut self, cfg: &PackedCommitConfig, context: &ProverContext) -> CudaResult<()> {
+    pub fn commit(
+        &mut self,
+        cfg: &PackedCommitConfig,
+        twiddles: TwiddleDescriptor,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
         assert!(
             self.committed.is_none(),
             "PackedCosetRecomputeOracle: already committed"
@@ -427,7 +433,7 @@ impl PackedCosetRecomputeOracle<PR> {
         for k in 0..pow2(cfg.log_lde_factor) {
             let base = product(k, per_coset);
             commit_coset(
-                context.proth120_ntt_device_context(),
+                twiddles,
                 self.monomials(),
                 &plan,
                 &shape,
@@ -477,6 +483,7 @@ impl PackedCosetRecomputeOracle<PR> {
         leaves: &mut DeviceSlice<PR>,
         paths: &mut DeviceSlice<Digest>,
         tree_indexes: &mut DeviceSlice<u32>,
+        twiddles: TwiddleDescriptor,
         context: &ProverContext,
     ) -> CudaResult<()> {
         let state = self
@@ -561,7 +568,7 @@ impl PackedCosetRecomputeOracle<PR> {
         for s in 0..plan.slots() {
             let _r = scoped_range(Some("ab"), "packed.open.slot");
             open_coset_slot(
-                context.proth120_ntt_device_context(),
+                twiddles,
                 self.monomials(),
                 &dispatched,
                 &shape,
@@ -646,7 +653,6 @@ mod tests {
         let context = ProverContext::new(&ProverContextConfig {
             device_allocation_blocks_count: Some(256),
             host_allocator_blocks_count: 256,
-            proth120_ntt_log_max_domain: Some(31),
             ..Default::default()
         })
         .unwrap();

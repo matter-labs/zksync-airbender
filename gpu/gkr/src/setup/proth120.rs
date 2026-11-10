@@ -4,10 +4,12 @@ use std::sync::Arc;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
+use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::nvtx::scoped_range;
 use gpu_core::primitives::static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox};
 use gpu_hash::keccak256::Digest;
+use gpu_ntt::proth120::TwiddleDescriptor;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
@@ -107,7 +109,17 @@ impl L1WrapSetupHost {
             context.get_exec_stream(),
         )?;
         let mut oracle = PackedCosetRecomputeOracle::pack_from_columns(raw, pack_log2, context)?;
-        oracle.commit(&cfg, context)?;
+        let mut twiddle_tables =
+            context.alloc::<PR>(gpu_ntt::proth120::TABLE_LEN, AllocationPlacement::Bottom)?;
+        let mut twiddle_factors =
+            context.alloc::<PR>(gpu_ntt::proth120::FACTOR_LEN, AllocationPlacement::BestFit)?;
+        let twiddles = gpu_ntt::proth120::prepare_proof_twiddles(
+            &mut twiddle_tables,
+            &mut twiddle_factors,
+            context.get_exec_stream(),
+        )?;
+        drop(twiddle_factors);
+        oracle.commit(&cfg, twiddles, context)?;
         let packed_monomials = copy_to_pinned(oracle.monomials(), context)?;
         let retained = copy_to_pinned(oracle.uninit_retained_mut(), context)?;
         let roots = copy_to_pinned(oracle.uninit_roots_mut(), context)?;
@@ -206,10 +218,18 @@ impl<'a> PackedSetupSource<'a> {
         leaves: &mut DeviceSlice<PR>,
         paths: &mut DeviceSlice<Digest>,
         tree_indexes: &mut DeviceSlice<u32>,
+        twiddles: TwiddleDescriptor,
         context: &ProverContext,
     ) -> CudaResult<()> {
-        self.oracle
-            .open_queries(plan, queries, leaves, paths, tree_indexes, context)
+        self.oracle.open_queries(
+            plan,
+            queries,
+            leaves,
+            paths,
+            tree_indexes,
+            twiddles,
+            context,
+        )
     }
 
     pub fn cap(&self) -> &DeviceSlice<u32> {

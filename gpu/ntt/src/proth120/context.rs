@@ -1,16 +1,17 @@
-use era_cudart::memory::{memory_copy, DeviceAllocation};
+use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
-
-use crate::upstream::{distribute_powers_serial, domain_generator_for_size, Field};
+use era_cudart::slice::DeviceSlice;
+use era_cudart::stream::CudaStream;
 use gpu_core::primitives::field::PR;
+
+// Matches the literal in twiddle_build.cu; no runtime host table generation/upload.
+const _: () = assert!(PR::TWO_ADICITY_GENERATORS[31].0 == 0x00c1d7c223510c85e4a2ec2eeea02be9);
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct TwiddleDescriptor {
     forward_low: *const PR,
     forward_high: *const PR,
-    inverse_low: *const PR,
-    inverse_high: *const PR,
     log_max_domain: u32,
     low_bits: u32,
 }
@@ -22,90 +23,60 @@ impl TwiddleDescriptor {
 }
 
 const _: () = {
-    assert!(core::mem::size_of::<TwiddleDescriptor>() == 40);
+    assert!(core::mem::size_of::<TwiddleDescriptor>() == 24);
     assert!(core::mem::align_of::<TwiddleDescriptor>() == 8);
     assert!(core::mem::offset_of!(TwiddleDescriptor, forward_low) == 0);
     assert!(core::mem::offset_of!(TwiddleDescriptor, forward_high) == 8);
-    assert!(core::mem::offset_of!(TwiddleDescriptor, inverse_low) == 16);
-    assert!(core::mem::offset_of!(TwiddleDescriptor, inverse_high) == 24);
-    assert!(core::mem::offset_of!(TwiddleDescriptor, log_max_domain) == 32);
-    assert!(core::mem::offset_of!(TwiddleDescriptor, low_bits) == 36);
+    assert!(core::mem::offset_of!(TwiddleDescriptor, log_max_domain) == 16);
+    assert!(core::mem::offset_of!(TwiddleDescriptor, low_bits) == 20);
 };
 
-pub struct DeviceContext {
-    forward_low: DeviceAllocation<PR>,
-    forward_high: DeviceAllocation<PR>,
-    inverse_low: DeviceAllocation<PR>,
-    inverse_high: DeviceAllocation<PR>,
-    log_max_domain: u32,
-    low_bits: u32,
-}
+era_cudart::cuda_kernel!(BuildFactors, ab_pr_ntt_build_factors_kernel(factors: *mut PR));
+era_cudart::cuda_kernel!(BuildTables, ab_pr_ntt_build_tables_kernel(factors: *const PR, output: *mut PR));
 
-impl DeviceContext {
-    pub const LOG_MAX_DOMAIN: u32 = 31;
+pub const LOG_MAX_DOMAIN: u32 = 31;
+pub const LOW_TABLE_LEN: usize = 1 << 16;
+pub const TABLE_LEN: usize = LOW_TABLE_LEN + (1 << 15);
+const FACTOR_BITS: u32 = 4;
+const FACTOR_COUNT: usize = 32 / FACTOR_BITS as usize;
+// The final 3-bit factor is padded to 16 entries.
+pub const FACTOR_LEN: usize = FACTOR_COUNT * (1 << FACTOR_BITS);
 
-    pub fn create() -> CudaResult<Self> {
-        let log_max_domain = Self::LOG_MAX_DOMAIN;
-        let low_bits = log_max_domain.div_ceil(2);
-        let high_bits = log_max_domain - low_bits;
-        let w = domain_generator_for_size::<PR>(1u64 << log_max_domain);
-        let w_inv = w
-            .inverse()
-            .expect("Proth120 root of unity must be invertible");
-        let mut w_high = w;
-        w_high.exp_power_of_2(low_bits as usize);
-        let mut w_inv_high = w_inv;
-        w_inv_high.exp_power_of_2(low_bits as usize);
-        Ok(Self {
-            forward_low: upload_powers(w, low_bits)?,
-            forward_high: upload_powers(w_high, high_bits)?,
-            inverse_low: upload_powers(w_inv, low_bits)?,
-            inverse_high: upload_powers(w_inv_high, high_bits)?,
-            log_max_domain,
-            low_bits,
-        })
-    }
-
-    pub fn log_max_domain(&self) -> u32 {
-        self.log_max_domain
-    }
-
-    pub fn descriptor(&self) -> TwiddleDescriptor {
-        TwiddleDescriptor {
-            forward_low: self.forward_low.as_ptr(),
-            forward_high: self.forward_high.as_ptr(),
-            inverse_low: self.inverse_low.as_ptr(),
-            inverse_high: self.inverse_high.as_ptr(),
-            log_max_domain: self.log_max_domain,
-            low_bits: self.low_bits,
-        }
-    }
-}
-
-fn upload_powers(base: PR, log_count: u32) -> CudaResult<DeviceAllocation<PR>> {
-    let mut powers_host = vec![PR::ONE; 1 << log_count];
-    distribute_powers_serial::<PR, PR>(&mut powers_host, PR::ONE, base);
-    let mut powers_dev = DeviceAllocation::<PR>::alloc(powers_host.len())?;
-    memory_copy(&mut powers_dev, &powers_host)?;
-    Ok(powers_dev)
+/// Build both forward tables once for a proof or an explicit setup/test scope.
+/// Scratch can retire after this call; tables must cover all scheduled descriptor uses.
+pub fn prepare_proof_twiddles(
+    tables: &mut DeviceSlice<PR>,
+    factors: &mut DeviceSlice<PR>,
+    stream: &CudaStream,
+) -> CudaResult<TwiddleDescriptor> {
+    assert_eq!(tables.len(), TABLE_LEN, "Proth120 twiddle table length");
+    assert_eq!(factors.len(), FACTOR_LEN, "Proth120 twiddle factor length");
+    let config = CudaLaunchConfig::basic(FACTOR_COUNT as u32, 1u32 << FACTOR_BITS.max(5), stream);
+    BuildFactorsFunction::default()
+        .launch(&config, &BuildFactorsArguments::new(factors.as_mut_ptr()))?;
+    let config = CudaLaunchConfig::basic((TABLE_LEN / 256) as u32, 256u32, stream);
+    BuildTablesFunction::default().launch(
+        &config,
+        &BuildTablesArguments::new(factors.as_ptr(), tables.as_mut_ptr()),
+    )?;
+    Ok(TwiddleDescriptor {
+        forward_low: tables.as_ptr(),
+        forward_high: tables[LOW_TABLE_LEN..].as_ptr(),
+        log_max_domain: LOG_MAX_DOMAIN,
+        low_bits: 16,
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use era_cudart::memory::memory_copy_async;
-    use era_cudart::slice::DeviceSlice;
-    use era_cudart::stream::CudaStream;
-
-    use super::DeviceContext;
+    use super::{
+        prepare_proof_twiddles, FACTOR_BITS, FACTOR_COUNT, FACTOR_LEN, LOG_MAX_DOMAIN,
+        LOW_TABLE_LEN, TABLE_LEN,
+    };
     use crate::upstream::{domain_generator_for_size, Field, PrimeField};
+    use era_cudart::memory::{memory_copy_async, DeviceAllocation};
+    use era_cudart::stream::CudaStream;
     use gpu_core::primitives::field::PR;
-
-    fn read_back(table: &DeviceSlice<PR>, stream: &CudaStream) -> Vec<PR> {
-        let mut host = vec![PR::ZERO; table.len()];
-        memory_copy_async(&mut host, table, stream).unwrap();
-        stream.synchronize().unwrap();
-        host
-    }
 
     fn assert_powers(table: &[PR], base: PR, step_log: u32) {
         let mut step = base;
@@ -117,48 +88,40 @@ mod tests {
         }
     }
 
-    fn assert_context_tables(context: &DeviceContext, stream: &CudaStream) {
-        let log_max_domain = context.log_max_domain();
-        let low_bits = log_max_domain.div_ceil(2);
-        assert_eq!(context.low_bits, low_bits);
-        let descriptor = context.descriptor();
-        assert_eq!(descriptor.forward_low, context.forward_low.as_ptr());
-        assert_eq!(descriptor.forward_high, context.forward_high.as_ptr());
-        assert_eq!(descriptor.inverse_low, context.inverse_low.as_ptr());
-        assert_eq!(descriptor.inverse_high, context.inverse_high.as_ptr());
-        assert_eq!(descriptor.log_max_domain, log_max_domain);
-        assert_eq!(descriptor.low_bits, low_bits);
-        let forward_low = read_back(&context.forward_low, stream);
-        let forward_high = read_back(&context.forward_high, stream);
-        let inverse_low = read_back(&context.inverse_low, stream);
-        let inverse_high = read_back(&context.inverse_high, stream);
-        assert_eq!(forward_low.len(), 1 << low_bits);
-        assert_eq!(inverse_low.len(), 1 << low_bits);
-        assert_eq!(forward_high.len(), 1 << (log_max_domain - low_bits));
-        assert_eq!(inverse_high.len(), 1 << (log_max_domain - low_bits));
-        let w = domain_generator_for_size::<PR>(1u64 << log_max_domain);
-        let w_inv = w.inverse().unwrap();
-        assert_powers(&forward_low, w, 0);
-        assert_powers(&forward_high, w, low_bits);
-        assert_powers(&inverse_low, w_inv, 0);
-        assert_powers(&inverse_high, w_inv, low_bits);
-        for (forward, inverse) in forward_low
-            .iter()
-            .zip(inverse_low.iter())
-            .chain(forward_high.iter().zip(inverse_high.iter()))
-        {
-            let mut product = *forward;
-            product.mul_assign(inverse);
-            assert_eq!(product, PR::ONE);
-        }
-    }
-
     #[test]
     #[cfg(not(no_cuda))]
     fn pr_context_roots_cpu_parity() {
         let stream = CudaStream::create().unwrap();
-        let context = DeviceContext::create().unwrap();
-        assert_eq!(context.log_max_domain(), 31);
-        assert_context_tables(&context, &stream);
+        let mut tables = DeviceAllocation::<PR>::alloc(TABLE_LEN).unwrap();
+        let mut factors = DeviceAllocation::<PR>::alloc(FACTOR_LEN).unwrap();
+        let descriptor = prepare_proof_twiddles(&mut tables, &mut factors, &stream).unwrap();
+        assert_eq!(descriptor.forward_low, tables.as_ptr());
+        assert_eq!(descriptor.forward_high, tables[LOW_TABLE_LEN..].as_ptr());
+        assert_eq!(descriptor.log_max_domain, 31);
+        assert_eq!(descriptor.low_bits, 16);
+        let mut host = vec![PR::ZERO; TABLE_LEN];
+        let mut factor_host = vec![PR::ZERO; FACTOR_LEN];
+        memory_copy_async(&mut host, &tables, &stream).unwrap();
+        memory_copy_async(&mut factor_host, &factors, &stream).unwrap();
+        stream.synchronize().unwrap();
+        let (forward_low, forward_high) = host.split_at(LOW_TABLE_LEN);
+        let omega = domain_generator_for_size::<PR>(1u64 << LOG_MAX_DOMAIN);
+        assert_powers(forward_low, omega, 0);
+        assert_powers(forward_high, omega, 16);
+        for exponent in [0u32, 1, 255, 256, 65535, 65536, 1 << 24, 0x7fffffff] {
+            let reflected = 0u32.wrapping_sub(exponent) & 0x7fffffff;
+            let mut value = forward_low[(reflected & 65535) as usize];
+            value.mul_assign(&forward_high[(reflected >> 16) as usize]);
+            assert_eq!(value, omega.inverse().unwrap().pow(exponent));
+        }
+        for factor in 0..FACTOR_COUNT {
+            let start = factor * (1 << FACTOR_BITS);
+            let len = 1 << FACTOR_BITS;
+            assert_powers(
+                &factor_host[start..start + len],
+                omega,
+                FACTOR_BITS * factor as u32,
+            );
+        }
     }
 }

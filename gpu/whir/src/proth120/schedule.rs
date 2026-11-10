@@ -11,7 +11,7 @@ use gpu_gkr::setup::proth120::PackedSetupSource;
 use gpu_hash::keccak256::{
     keccak256_pow, transcript_commit_fields, transcript_draw_fields, transcript_draw_u32,
 };
-use gpu_ntt::proth120::{update_eq_poly, EqSample};
+use gpu_ntt::proth120::{update_eq_poly, EqSample, TwiddleDescriptor};
 use gpu_ops::powers::get_powers_by_ref;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::packed::{CosetQueryPlan, PackedCosetRecomputeOracle};
@@ -86,6 +86,7 @@ pub(crate) fn schedule_eq_update(
 }
 
 pub struct L1WhirInputs<'a> {
+    pub twiddles: TwiddleDescriptor,
     pub claims: &'a DeviceSlice<PR>,
     pub base_layer_point: &'a DeviceSlice<PR>,
     pub batching_challenge: &'a DeviceSlice<PR>,
@@ -114,7 +115,6 @@ fn validate_inputs(
     inputs: &L1WhirInputs<'_>,
     schedule: &WhirSchedule,
     shape: &L1WhirShape,
-    context: &ProverContext,
 ) {
     let base_cfg = base
         .config()
@@ -163,10 +163,10 @@ fn validate_inputs(
         .map(|o| o.log_domain)
         .max()
         .unwrap();
-    let context_log = context.proth120_ntt_device_context().log_max_domain();
+    let ntt_domain_log = gpu_ntt::proth120::LOG_MAX_DOMAIN;
     assert!(
-        context_log >= max_domain,
-        "Proth120 WHIR: context log_max_domain below oracle domain"
+        ntt_domain_log >= max_domain,
+        "Proth120 WHIR: NTT domain below oracle domain"
     );
 }
 
@@ -181,7 +181,7 @@ pub fn schedule_l1_whir_fold(
     target: WhirProofTargetPr,
     context: &ProverContext,
 ) -> CudaResult<L1WhirPendingReadback> {
-    validate_inputs(base, setup, seed, &inputs, schedule, shape, context);
+    validate_inputs(base, setup, seed, &inputs, schedule, shape);
     let stream = context.get_exec_stream();
     let mut ranges = Vec::new();
     let mut outputs = L1WhirProofDevice::new(&target);
@@ -243,6 +243,7 @@ pub fn schedule_l1_whir_fold(
                 &oracle_shape,
                 &mut outputs.intermediate[r].cap,
                 seed,
+                inputs.twiddles,
                 context,
             )?)
         } else {
@@ -295,6 +296,7 @@ pub fn schedule_l1_whir_fold(
                 &mut outputs.memory.leaves,
                 &mut outputs.memory.paths,
                 &mut outputs.memory.tree_indexes,
+                inputs.twiddles,
                 context,
             )?;
             setup.open_queries(
@@ -303,6 +305,7 @@ pub fn schedule_l1_whir_fold(
                 &mut outputs.setup.leaves,
                 &mut outputs.setup.paths,
                 &mut outputs.setup.tree_indexes,
+                inputs.twiddles,
                 context,
             )?;
             base.release_commitment_state();
@@ -315,6 +318,7 @@ pub fn schedule_l1_whir_fold(
                 &indexes,
                 round.query_domain_log2,
                 &mut outputs.intermediate[r - 1],
+                inputs.twiddles,
                 context,
             )?;
             drop(previous.take());

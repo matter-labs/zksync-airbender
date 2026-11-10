@@ -5,7 +5,9 @@ pub mod pack;
 pub mod prefix;
 pub mod suffix;
 
-pub use context::{DeviceContext, TwiddleDescriptor};
+pub use context::{
+    prepare_proof_twiddles, TwiddleDescriptor, FACTOR_LEN, LOG_MAX_DOMAIN, TABLE_LEN,
+};
 pub use hypercube::{
     hypercube_evals_to_monomials, hypercube_evals_to_monomials_chunked, update_eq_poly, EqSample,
 };
@@ -105,11 +107,11 @@ pub(crate) fn validate_disjoint(left: &Range<usize>, right: &Range<usize>, messa
     );
 }
 
-pub(crate) fn validate_context_log(context: &DeviceContext, log_n: u32) {
-    let domain_log = context.log_max_domain();
+pub(crate) fn validate_domain_log(twiddles: TwiddleDescriptor, log_n: u32) {
+    let domain_log = twiddles.log_max_domain();
     assert!(
         log_n <= domain_log,
-        "Proth120 NTT: log_n {log_n} exceeds context log_max_domain {domain_log}"
+        "Proth120 NTT: log_n {log_n} exceeds twiddle domain log {domain_log}"
     );
 }
 

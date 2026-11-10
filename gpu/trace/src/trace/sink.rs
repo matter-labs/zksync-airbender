@@ -10,8 +10,8 @@ use gpu_hash::keccak256::{
     reduce_digest_layers, retained_layer_offset, Digest,
 };
 use gpu_ntt::proth120::{
-    launch_suffix_micro, lde_coset_slot, twiddle_working_set, CosetSource, DeviceContext, Dispatch,
-    ScaleArgs, SuffixShape, TwiddleDescriptor,
+    launch_suffix_micro, lde_coset_slot, twiddle_working_set, CosetSource, Dispatch, ScaleArgs,
+    SuffixShape, TwiddleDescriptor,
 };
 
 #[repr(C)]
@@ -244,7 +244,7 @@ pub(crate) fn sink_launch(
 
 #[allow(clippy::too_many_arguments)]
 pub fn launch_sink(
-    ctx: &DeviceContext,
+    ctx: TwiddleDescriptor,
     tiles: &DeviceSlice<PR>,
     shape: &SuffixShape,
     first_tile: u32,
@@ -295,7 +295,7 @@ pub fn launch_sink(
         leaf_sink_function(shape.columns, shape.log_v, launch.tree_depth, &mode).unwrap();
     function.launch(
         &CudaLaunchConfig::basic(launch.grid, 256, stream),
-        &LeafSinkArguments::new(args, ctx.descriptor()),
+        &LeafSinkArguments::new(args, ctx),
     )
 }
 
@@ -312,7 +312,7 @@ pub fn commit_coset_scratch_lens(plan: &Dispatch, shape: &SuffixShape) -> (usize
 // per batch of tiles the suffix micro and the Commit sink, then the node layers up to the top.
 #[allow(clippy::too_many_arguments)]
 pub fn commit_coset(
-    ctx: &DeviceContext,
+    ctx: TwiddleDescriptor,
     monomials: &DeviceSlice<PR>,
     plan: &Dispatch,
     shape: &SuffixShape,
@@ -423,7 +423,7 @@ pub fn has_open_sink(shape: &SuffixShape) -> bool {
 // queried leaves and path layers 0..2; the others return.
 #[allow(clippy::too_many_arguments)]
 fn launch_open_sink(
-    ctx: &DeviceContext,
+    ctx: TwiddleDescriptor,
     tiles: &DeviceSlice<PR>,
     shape: &SuffixShape,
     first_tile: u32,
@@ -505,7 +505,7 @@ fn launch_open_sink(
         .unwrap()
         .launch(
             &CudaLaunchConfig::basic(launch.grid, 256, stream),
-            &LeafOpenArguments::new(args, open_args, ctx.descriptor()),
+            &LeafOpenArguments::new(args, open_args, ctx),
         )
 }
 
@@ -524,7 +524,7 @@ pub fn open_coset_slot_scratch_lens(plan: &Dispatch, shape: &SuffixShape) -> (us
 // (`retained_all`, `retained_stride` per coset).
 #[allow(clippy::too_many_arguments)]
 pub fn open_coset_slot(
-    ctx: &DeviceContext,
+    ctx: TwiddleDescriptor,
     monomials: &DeviceSlice<PR>,
     plan: &Dispatch,
     shape: &SuffixShape,
@@ -683,7 +683,7 @@ pub fn coefficient_tiles_len(shape: &SuffixShape, cosets: usize, l2_budget: usiz
 // `coefficient_batch` the suffix micro and the CoefficientTree sink, then the layers above.
 #[allow(clippy::too_many_arguments)]
 pub fn commit_coefficient_cosets(
-    ctx: &DeviceContext,
+    ctx: TwiddleDescriptor,
     monomials: &DeviceSlice<PR>,
     plan: &Dispatch,
     shape: &SuffixShape,
@@ -854,7 +854,7 @@ pub fn residue_scratch_len(log_n: u32, log_v: u32, skip_bottom: u32, cosets: usi
 // per L2-sized chunk, node launches build the layers above.
 #[allow(clippy::too_many_arguments)]
 pub fn commit_residue_cosets(
-    ctx: &DeviceContext,
+    ctx: TwiddleDescriptor,
     monomials: &DeviceSlice<PR>,
     log_n: u32,
     log_v: u32,
@@ -925,7 +925,7 @@ pub fn commit_residue_cosets(
                 k0 + c0 as u32,
                 count as u32,
                 log_domain,
-                ctx.descriptor(),
+                ctx,
             ),
         )?;
         build_retained_bottom_from_nodes(

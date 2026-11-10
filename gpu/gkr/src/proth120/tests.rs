@@ -39,9 +39,6 @@ fn make_context() -> ProverContext {
     ProverContext::new(&ProverContextConfig {
         device_allocation_blocks_count: Some(256),
         host_allocator_blocks_count: 128,
-        proth120_ntt_log_max_domain: Some(
-            gpu_prover_context::ProverContext::PROTH120_NTT_LOG_MAX_DOMAIN,
-        ),
         ..Default::default()
     })
     .unwrap()
@@ -88,6 +85,19 @@ fn upload<T: Copy>(host: &[T], context: &ProverContext) -> DeviceAllocation<T> {
 #[cfg(not(no_cuda))]
 fn l1_setup_host_round_trip_small() {
     let context = make_context();
+    let mut twiddle_tables = context
+        .alloc::<PR>(gpu_ntt::proth120::TABLE_LEN, AllocationPlacement::Bottom)
+        .unwrap();
+    let mut twiddle_factors = context
+        .alloc::<PR>(gpu_ntt::proth120::FACTOR_LEN, AllocationPlacement::BestFit)
+        .unwrap();
+    let proof_twiddles = gpu_ntt::proth120::prepare_proof_twiddles(
+        &mut twiddle_tables,
+        &mut twiddle_factors,
+        context.get_exec_stream(),
+    )
+    .unwrap();
+    drop(twiddle_factors);
     let worker = Worker::new_with_num_threads(4);
     // Diagnostic rows, production setup width/pack/v1. Host init and proof both retain depth10.
     let log_rows = 15;
@@ -186,6 +196,7 @@ fn l1_setup_host_round_trip_small() {
                 &mut d_leaves,
                 &mut d_paths,
                 &mut d_indexes,
+                proof_twiddles,
                 &context,
             )
             .unwrap();

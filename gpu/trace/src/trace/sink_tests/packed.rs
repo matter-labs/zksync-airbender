@@ -20,7 +20,6 @@ fn check_packed(raw_columns: usize, open: bool) {
     let context = ProverContext::new(&ProverContextConfig {
         device_allocation_blocks_count: Some(512),
         host_allocator_blocks_count: 256,
-        proth120_ntt_log_max_domain: Some(ProverContext::PROTH120_NTT_LOG_MAX_DOMAIN),
         ..Default::default()
     })
     .unwrap();
@@ -68,7 +67,20 @@ fn check_packed(raw_columns: usize, open: bool) {
         memory_copy_async(raw.get_uninit_hypercube_evals_mut(), &flat, stream).unwrap();
         let mut oracle =
             PackedCosetRecomputeOracle::pack_from_columns(raw, pack_log2, &context).unwrap();
-        oracle.commit(&cfg, &context).unwrap();
+        let mut twiddle_tables = context
+            .alloc::<PR>(gpu_ntt::proth120::TABLE_LEN, AllocationPlacement::Bottom)
+            .unwrap();
+        let mut twiddle_factors = context
+            .alloc::<PR>(gpu_ntt::proth120::FACTOR_LEN, AllocationPlacement::BestFit)
+            .unwrap();
+        let proof_twiddles = gpu_ntt::proth120::prepare_proof_twiddles(
+            &mut twiddle_tables,
+            &mut twiddle_factors,
+            context.get_exec_stream(),
+        )
+        .unwrap();
+        drop(twiddle_factors);
+        oracle.commit(&cfg, proof_twiddles, &context).unwrap();
         let mut cap = vec![[0; 8]; 1 << cfg.cap_log];
         memory_copy_async(&mut cap, oracle.cap_digests(), stream).unwrap();
         let monomials = super::download(oracle.monomials(), stream);
@@ -144,6 +156,7 @@ fn check_packed(raw_columns: usize, open: bool) {
                     &mut d_leaves[1..q * leaf_len + 1],
                     &mut d_paths[1..q * depth + 1],
                     &mut d_indexes[1..q + 1],
+                    proof_twiddles,
                     &context,
                 )
                 .unwrap();

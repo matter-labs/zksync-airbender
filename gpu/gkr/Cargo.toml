@@ -13,6 +13,7 @@ links = "gpu_gkr_native"
 
 [dependencies]
 gpu_core = { workspace = true }
+gpu_ntt = { workspace = true }
 gpu_ops = { workspace = true }
 gpu_hash = { workspace = true }
 gpu_prover_context = { workspace = true }

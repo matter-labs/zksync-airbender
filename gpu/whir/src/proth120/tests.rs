@@ -3,6 +3,7 @@ use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use era_cudart::stream::CudaStream;
 use field::Field;
+use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::field::PR;
 use gpu_prover_context::{ProverContext, ProverContextConfig};
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
@@ -67,11 +68,10 @@ impl TestRng {
     }
 }
 
-pub(super) fn context(arena_mb: usize, log_domain: Option<u32>) -> ProverContext {
+pub(super) fn context(arena_mb: usize) -> ProverContext {
     ProverContext::new(&ProverContextConfig {
         device_allocation_blocks_count: Some(arena_mb),
         host_allocator_blocks_count: 2048,
-        proth120_ntt_log_max_domain: log_domain,
         ..Default::default()
     })
     .unwrap()
@@ -140,7 +140,7 @@ fn accumulate_reference(
 
 #[test]
 fn pr_accumulate_base_matches_cpu() {
-    let ctx = context(512, None);
+    let ctx = context(512);
     let stream = ctx.get_exec_stream();
     let mut rng = TestRng::new(0x7101);
     // Diagnostic row count, production packing and column counts.
@@ -257,7 +257,7 @@ fn pr_accumulate_base_matches_cpu() {
 
 #[test]
 fn pr_eq_from_point_matches_cpu() {
-    let ctx = context(6144, None);
+    let ctx = context(6144);
     for log_n in [1, 8, 13, 14, 20, 26] {
         crate::primitive_tests::eq_case::<PR>(log_n, &ctx);
     }
@@ -265,13 +265,13 @@ fn pr_eq_from_point_matches_cpu() {
 
 #[test]
 fn pr_fold_state_matches_cpu() {
-    let ctx = context(256, None);
+    let ctx = context(256);
     crate::primitive_tests::fold_case::<PR>(12, 5, &ctx);
 }
 
 #[test]
 fn pr_three_point_matches_cpu() {
-    let ctx = context(256, None);
+    let ctx = context(256);
     for log_n in [1, 4, 9, 14, 20] {
         crate::primitive_tests::three_point_case::<PR>(log_n, &ctx);
     }
@@ -279,7 +279,7 @@ fn pr_three_point_matches_cpu() {
 
 #[test]
 fn pr_monomial_eval_matches_cpu() {
-    let ctx = context(256, None);
+    let ctx = context(256);
     for log_n in [1, 4, 9, 14, 20] {
         crate::primitive_tests::monomial_case::<PR>(log_n, &ctx);
     }
@@ -287,7 +287,7 @@ fn pr_monomial_eval_matches_cpu() {
 
 #[test]
 fn pr_round_update_matches_cpu() {
-    let ctx = context(256, None);
+    let ctx = context(256);
     let stream = ctx.get_exec_stream();
     let mut rng = TestRng::new(0x7106);
     for _ in 0..16 {
@@ -370,12 +370,31 @@ fn gpu_commit(
     ctx: &ProverContext,
 ) -> GpuCommit {
     let stream = ctx.get_exec_stream();
+    let mut twiddle_tables = ctx
+        .alloc::<PR>(gpu_ntt::proth120::TABLE_LEN, AllocationPlacement::Bottom)
+        .unwrap();
+    let mut twiddle_factors = ctx
+        .alloc::<PR>(gpu_ntt::proth120::FACTOR_LEN, AllocationPlacement::BestFit)
+        .unwrap();
+    let proof_twiddles = gpu_ntt::proth120::prepare_proof_twiddles(
+        &mut twiddle_tables,
+        &mut twiddle_factors,
+        ctx.get_exec_stream(),
+    )
+    .unwrap();
+    drop(twiddle_factors);
     let monomials_dev = upload(monomials, stream);
     let mut cap_dst = upload(&[[0u32; 8]; 8], stream);
     let mut seed_dev = upload(&seed, stream);
-    let oracle =
-        schedule_commit_intermediate(&monomials_dev, shape, &mut cap_dst, &mut seed_dev, ctx)
-            .unwrap();
+    let oracle = schedule_commit_intermediate(
+        &monomials_dev,
+        shape,
+        &mut cap_dst,
+        &mut seed_dev,
+        proof_twiddles,
+        ctx,
+    )
+    .unwrap();
     let r = shape.retained_per_coset;
     assert_eq!(oracle.retained.len(), (1 << shape.log_lde) * r);
     assert_eq!(oracle.roots.len(), 1 << shape.log_lde);
@@ -392,7 +411,7 @@ fn gpu_commit(
 
 #[test]
 fn pr_commit_intermediate_matches_cpu_small() {
-    let ctx = context(512, Some(gpu_ntt::proth120::DeviceContext::LOG_MAX_DOMAIN));
+    let ctx = context(512);
     let worker = worker();
     let mut rng = TestRng::new(0x7201);
     // Diagnostic fused suffix 8_4 and n11 residue, both with independent CPU caps.
@@ -576,8 +595,21 @@ fn host_sibling_offset(log_leaves: u32, skip_bottom: u32, level: u32, j: u32) ->
 #[test]
 fn pr_open_intermediate_matches_cpu_small() {
     use super::openings::schedule_open_intermediate;
-    let ctx = context(128, Some(gpu_ntt::proth120::DeviceContext::LOG_MAX_DOMAIN));
+    let ctx = context(128);
     let stream = ctx.get_exec_stream();
+    let mut twiddle_tables = ctx
+        .alloc::<PR>(gpu_ntt::proth120::TABLE_LEN, AllocationPlacement::Bottom)
+        .unwrap();
+    let mut twiddle_factors = ctx
+        .alloc::<PR>(gpu_ntt::proth120::FACTOR_LEN, AllocationPlacement::BestFit)
+        .unwrap();
+    let proof_twiddles = gpu_ntt::proth120::prepare_proof_twiddles(
+        &mut twiddle_tables,
+        &mut twiddle_factors,
+        ctx.get_exec_stream(),
+    )
+    .unwrap();
+    drop(twiddle_factors);
     let worker = worker();
     let mut rng = TestRng::new(0x7130_7eaf);
     // Diagnostic fused suffix 8_4 and n11 residue; includes all top-path levels.
@@ -593,9 +625,15 @@ fn pr_open_intermediate_matches_cpu_small() {
         memory_copy_async(&mut state.eq, &monomials, stream).unwrap();
         let mut cap = upload(&[[0u32; 8]; 8], stream);
         let mut seed = upload(&[0u8; 32], stream);
-        let oracle =
-            schedule_commit_intermediate(&state.monomials, &shape, &mut cap, &mut seed, &ctx)
-                .unwrap();
+        let oracle = schedule_commit_intermediate(
+            &state.monomials,
+            &shape,
+            &mut cap,
+            &mut seed,
+            proof_twiddles,
+            &ctx,
+        )
+        .unwrap();
         let challenge = upload(&[rng.field()], stream);
         schedule_fold_state(&mut state, &challenge, &ctx).unwrap();
         schedule_fold_state(&mut state, &challenge, &ctx).unwrap();
@@ -615,6 +653,7 @@ fn pr_open_intermediate_matches_cpu_small() {
                 &queries_dev,
                 shape.log_domain - shape.log_v,
                 &mut out,
+                proof_twiddles,
                 &ctx,
             )
             .unwrap();
@@ -637,7 +676,7 @@ fn pr_open_intermediate_matches_cpu_small() {
 #[test]
 fn pr_horner_leaves_match_cpu_small() {
     use super::openings::schedule_horner_leaves;
-    let ctx = context(128, Some(gpu_ntt::proth120::DeviceContext::LOG_MAX_DOMAIN));
+    let ctx = context(128);
     let stream = ctx.get_exec_stream();
     let worker = worker();
     let mut rng = TestRng::new(0x7130_80a1);
@@ -759,7 +798,7 @@ fn assert_whir_transcript_phases(
     initial: [u8; 32],
     shape: &L1WhirShape,
 ) {
-    let ctx = context(256, None);
+    let ctx = context(256);
     let stream = ctx.get_exec_stream();
     let whir_polys: Vec<_> = whir.all_sumcheck_polys().copied().collect();
     let whir_ood: Vec<_> = whir.all_ood_samples().copied().collect();
@@ -1014,8 +1053,21 @@ fn run_symbolic_group(
 
 #[test]
 fn pr_in_domain_symbolic_matches_dense() {
-    let ctx = context(1024, Some(gpu_ntt::proth120::DeviceContext::LOG_MAX_DOMAIN));
+    let ctx = context(1024);
     let stream = ctx.get_exec_stream();
+    let mut twiddle_tables = ctx
+        .alloc::<PR>(gpu_ntt::proth120::TABLE_LEN, AllocationPlacement::Bottom)
+        .unwrap();
+    let mut twiddle_factors = ctx
+        .alloc::<PR>(gpu_ntt::proth120::FACTOR_LEN, AllocationPlacement::BestFit)
+        .unwrap();
+    let proof_twiddles = gpu_ntt::proth120::prepare_proof_twiddles(
+        &mut twiddle_tables,
+        &mut twiddle_factors,
+        ctx.get_exec_stream(),
+    )
+    .unwrap();
+    drop(twiddle_factors);
     let mut rng = TestRng::new(0x7401);
     // Diagnostic: two production v4/depth5 routes reduced to n15 and n11.
     let oracle0 = small_oracle(15, 4, 16 << 17);
@@ -1039,9 +1091,15 @@ fn pr_in_domain_symbolic_matches_dense() {
     let mut seed = upload(&seed_bytes, stream);
     let mut cap = upload(&[[0u32; 8]; 8], stream);
     let mut commit_seed = upload(&[0u8; 32], stream);
-    let oracle_a =
-        schedule_commit_intermediate(&state.monomials, &oracle0, &mut cap, &mut commit_seed, &ctx)
-            .unwrap();
+    let oracle_a = schedule_commit_intermediate(
+        &state.monomials,
+        &oracle0,
+        &mut cap,
+        &mut commit_seed,
+        proof_twiddles,
+        &ctx,
+    )
+    .unwrap();
     let qlog0 = 18;
     let first: Vec<u32> = [
         0,
@@ -1059,9 +1117,15 @@ fn pr_in_domain_symbolic_matches_dense() {
         .unwrap();
     run_symbolic_group(&mut state, &mut model, &mut seed, oracle0.log_v, &ctx);
     drop(oracle_a);
-    let oracle_b =
-        schedule_commit_intermediate(&state.monomials, &oracle1, &mut cap, &mut commit_seed, &ctx)
-            .unwrap();
+    let oracle_b = schedule_commit_intermediate(
+        &state.monomials,
+        &oracle1,
+        &mut cap,
+        &mut commit_seed,
+        proof_twiddles,
+        &ctx,
+    )
+    .unwrap();
     let qlog1 = 15;
     let second: Vec<u32> = (0..4)
         .map(|_| (rng.next_u64() as u32) & ((1 << qlog1) - 1))

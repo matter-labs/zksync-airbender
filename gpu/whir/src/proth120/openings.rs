@@ -5,6 +5,7 @@ use gpu_core::primitives::field::PR;
 use gpu_hash::keccak256::{
     append_top_paths, build_partial_coset_trees_multi_coset, retained_layer_offset,
 };
+use gpu_ntt::proth120::TwiddleDescriptor;
 use gpu_prover_context::ProverContext;
 
 use super::commit::IntermediateOracle;
@@ -36,6 +37,7 @@ pub(crate) fn schedule_open_intermediate(
     queries: &DeviceSlice<u32>,
     query_domain_log2: u32,
     out: &mut IntermediateProofDevice,
+    twiddles: TwiddleDescriptor,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let shape = &oracle.shape;
@@ -81,10 +83,9 @@ pub(crate) fn schedule_open_intermediate(
             && out.tree_indexes.len() == queries.len(),
         "Proth120 WHIR: opening output lengths invalid"
     );
-    let ntt = context.proth120_ntt_device_context();
     assert!(
-        shape.log_domain <= ntt.log_max_domain(),
-        "Proth120 WHIR: opening domain exceeds Proth120 context log_max_domain"
+        shape.log_domain <= twiddles.log_max_domain(),
+        "Proth120 WHIR: opening domain exceeds the Proth120 NTT domain"
     );
     assert!(
         queries.len() <= u32::MAX as usize,
@@ -106,7 +107,7 @@ pub(crate) fn schedule_open_intermediate(
         query_domain_log2,
         shape.log_lde,
         shape.skip_bottom,
-        ntt.descriptor(),
+        twiddles,
         shape.log_domain,
         &mut points,
         stream,

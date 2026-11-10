@@ -5,7 +5,7 @@ use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use gpu_core::primitives::field::PR;
 
-use super::context::{DeviceContext, TwiddleDescriptor};
+use super::context::TwiddleDescriptor;
 use super::prefix::Dispatch;
 use super::{validate_disjoint, validate_slice};
 
@@ -187,7 +187,7 @@ pub(crate) fn suffix_launch(
 // u32 on the device) at 0 makes the launch a no-op.
 #[allow(clippy::too_many_arguments)]
 pub fn launch_suffix_micro(
-    ctx: &DeviceContext,
+    ctx: TwiddleDescriptor,
     prefix: &DeviceSlice<PR>,
     prefix_coset_stride: usize,
     tiles: &mut DeviceSlice<PR>,
@@ -232,5 +232,5 @@ pub fn launch_suffix_micro(
         columns: shape.columns,
     };
     suffix_micro_function(shape.r, shape.log_v)
-        .launch(&config, &SuffixMicroArguments::new(args, ctx.descriptor()))
+        .launch(&config, &SuffixMicroArguments::new(args, ctx))
 }

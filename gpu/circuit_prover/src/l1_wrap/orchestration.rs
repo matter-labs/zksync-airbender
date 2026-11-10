@@ -19,6 +19,7 @@ use gpu_gkr::proth120::programs::GkrProgramsPr;
 use gpu_gkr::proth120::proof_layout::{GkrProofFields, ProofLayoutPr, ProofSlabPr};
 use gpu_gkr::proth120::{schedule_gkr, GkrOutputPr, GkrPreparedInputsPr};
 use gpu_gkr::setup::{L1WrapSetupHost, PackedSetupSource};
+use gpu_ntt::proth120::TwiddleDescriptor;
 use gpu_prover_context::transfer::{Transfer, TransferKeepalive};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
@@ -50,6 +51,7 @@ pub struct GpuL1WrapProofJobKeepalive<'a> {
     _gkr: GkrOutputPr,
     _whir: L1WhirKeepalive,
     _proof_host_mirror: HostAllocation<[u8]>,
+    _twiddle_tables: DeviceAllocation<PR>,
 }
 
 fn phase(name: &str, context: &ProverContext) -> CudaResult<Range> {
@@ -134,6 +136,8 @@ struct State<'r, 'a> {
     setup_host: Arc<L1WrapSetupHost>,
     setup: PackedSetupSource<'a>,
     constants: Arc<L1WrapConstantsHost>,
+    twiddle_tables: DeviceAllocation<PR>,
+    twiddles: TwiddleDescriptor,
     request_range: Option<Range>,
     stage_snapshots: Option<Box<GKRBackwardStageSnapshotSinkPr>>,
 }
@@ -339,7 +343,18 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
             PackedCosetRecomputeOracle::pack_from_columns(raw, geometry.pack_log2, context)?;
         end_phase(p, &mut work.ranges, context)?;
         let p = phase("l1_wrap.commit", context)?;
-        base.commit(&cfg, context)?;
+        // Build one pair of forward tables for this proof's commitments and openings.
+        let mut twiddle_tables =
+            context.alloc::<PR>(gpu_ntt::proth120::TABLE_LEN, AllocationPlacement::Bottom)?;
+        let mut twiddle_factors =
+            context.alloc::<PR>(gpu_ntt::proth120::FACTOR_LEN, AllocationPlacement::BestFit)?;
+        let twiddles = gpu_ntt::proth120::prepare_proof_twiddles(
+            &mut twiddle_tables,
+            &mut twiddle_factors,
+            context.get_exec_stream(),
+        )?;
+        drop(twiddle_factors);
+        base.commit(&cfg, twiddles, context)?;
         end_phase(p, &mut work.ranges, context)?;
         Ok(Committed {
             state: State {
@@ -350,6 +365,8 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
                 setup_host,
                 setup,
                 constants,
+                twiddle_tables,
+                twiddles,
                 request_range,
                 stage_snapshots,
             },
@@ -499,6 +516,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
             &mut gkr.state.setup,
             handoff.seed,
             L1WhirInputs {
+                twiddles: gkr.state.twiddles,
                 claims: handoff.claims,
                 base_layer_point: handoff.base_layer_point,
                 batching_challenge: handoff.batching_challenge,
@@ -525,6 +543,8 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
                             setup_host,
                             setup,
                             constants: _,
+                            twiddle_tables,
+                            twiddles: _,
                             request_range,
                             stage_snapshots,
                         },
@@ -591,6 +611,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
                 _gkr: gkr,
                 _whir: whir.into_keepalive(),
                 _proof_host_mirror: mirror,
+                _twiddle_tables: twiddle_tables,
             },
         };
         drop(base);

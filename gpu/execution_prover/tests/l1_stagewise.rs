@@ -11,7 +11,6 @@ use full_statement_verifier::host_utils::{build_unified_stream, load_fsv_exact};
 use full_statement_verifier::program_proof::ProgramProof;
 use gpu_circuit_prover::l1_wrap::{
     L1Proof, L1WrapConstantsHost, L1WrapGeometry, L1WrapInputs, L1WrapProofRequest,
-    L1_WRAP_NTT_LOG_MAX_DOMAIN,
 };
 use gpu_circuit_prover::proof::memory_policy::presets;
 use gpu_core::primitives::field::PR;
@@ -116,7 +115,6 @@ fn l1_wrap_stagewise_pessimistic_conjecture() {
                 host_allocator_blocks_count: (256usize << 20)
                     >> ProverContextConfig::default().host_allocator_block_log_size,
                 inputs_reserve_bytes: presets::INPUTS_RESERVE_BYTES,
-                proth120_ntt_log_max_domain: Some(L1_WRAP_NTT_LOG_MAX_DOMAIN),
                 ..Default::default()
             };
             let context = ProverContext::new(&context_config).unwrap();
