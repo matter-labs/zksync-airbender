@@ -34,41 +34,17 @@ fn upload_slice<T: Copy>(values: &[T], context: &ProverContext) -> DeviceAllocat
     device
 }
 
-fn read_slice<T: Copy + Default + Send + Sync + 'static>(
-    device: &DeviceSlice<T>,
-    context: &ProverContext,
-) -> Vec<T> {
+fn read_slice<T: Copy + Default>(device: &DeviceSlice<T>, context: &ProverContext) -> Vec<T> {
     assert!(
         size_of::<T>() * device.len() <= 64 << 20,
         "Proth120 runtime bounded host copy"
     );
-    if device.is_empty() {
-        return Vec::new();
+    let mut result = vec![T::default(); device.len()];
+    if !result.is_empty() {
+        memory_copy_async(result.as_mut_slice(), device, context.get_exec_stream()).unwrap();
+        context.get_exec_stream().synchronize().unwrap();
     }
-    let mut staging = unsafe { context.alloc_host_uninit_slice::<T>(device.len()) };
-    memory_copy_async(&mut staging, device, context.get_exec_stream()).unwrap();
-    let accessor = staging.get_accessor();
-    let owned = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let output = std::sync::Arc::clone(&owned);
-    let mut callbacks = gpu_core::primitives::callbacks::Callbacks::new();
-    callbacks
-        .schedule(
-            move || {
-                output
-                    .lock()
-                    .unwrap()
-                    .extend_from_slice(unsafe { accessor.get() });
-            },
-            context.get_exec_stream(),
-        )
-        .unwrap();
-    drop(staging);
-    context.get_exec_stream().synchronize().unwrap();
-    drop(callbacks);
-    std::sync::Arc::try_unwrap(owned)
-        .unwrap_or_else(|_| panic!("Proth120 runtime callback ownership"))
-        .into_inner()
-        .unwrap()
+    result
 }
 
 fn random_word(state: &mut u64) -> u32 {

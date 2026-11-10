@@ -65,7 +65,6 @@ use crate::upstream::{
     Blake2sTranscript, FinalRegisterValue, GKRExternalChallenges, MerkleTreeCapVarLength,
 };
 use riscv_transpiler::vm::{NonDeterminismCSRSource, SimpleTape};
-use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};

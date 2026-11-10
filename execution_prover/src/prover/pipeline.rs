@@ -107,7 +107,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         };
         drop(work_results_sender);
 
-        let request_context = RequestContext {
+        let mut request_context = RequestContext {
             proving,
             commitment_mode,
             profile,
@@ -115,7 +115,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             binary_holder,
             external_challenges: external_challenges.as_ref(),
             proof_caps: &proof_caps,
-            proof_partial_trees: RefCell::new(proof_partial_trees),
+            proof_partial_trees,
         };
         for sequence_id in trivial_unified_inits_and_teardowns {
             let data = InitsAndTeardownsData {
@@ -159,7 +159,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         }
 
         for work_result in work_results_receiver {
-            let work_requests = acc.handle_work_result(self, cache, work_result, &request_context);
+            let work_requests =
+                acc.handle_work_result(self, cache, work_result, &mut request_context);
             dispatch_backend_requests(
                 self,
                 &requests_served_from_cache,
@@ -568,7 +569,7 @@ mod tests {
         )[0];
         prover.finalize_setup();
         let proof_caps = BTreeMap::new();
-        let context = RequestContext {
+        let mut context = RequestContext {
             proving: false,
             commitment_mode: crate::config::execution_commitment_mode(
                 kind,
