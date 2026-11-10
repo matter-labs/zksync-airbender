@@ -12,6 +12,7 @@
 #include "witness_generation.cuh"
 
 using namespace ::airbender::trace::witness::proth120::generation;
+using namespace ::airbender::trace::witness::multiplicities;
 using namespace ::airbender::trace::witness::memory::unrolled;
 using namespace ::airbender::trace::witness::trace::unrolled;
 

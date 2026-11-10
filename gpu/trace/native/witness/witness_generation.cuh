@@ -1,44 +1,56 @@
 #pragma once
+// Each circuit translation unit instantiates one witness field. Select WITNESS_VALUE
+// and WITNESS_GENERATION_NAMESPACE before this header's first inclusion.
 #include "placeholder.cuh"
 #include "tables.cuh"
 
 using namespace ::airbender::trace::witness::placeholder;
 using namespace ::airbender::trace::witness::tables;
 
-namespace airbender::trace::witness::generation {
+#ifndef WITNESS_GENERATION_NAMESPACE
+#define WITNESS_GENERATION_NAMESPACE generation
+#define WITNESS_VALUE bf
+#endif
+namespace airbender::trace::witness::WITNESS_GENERATION_NAMESPACE {
+using witness_value = WITNESS_VALUE;
 
 using namespace ::airbender::primitives::field;
 
-struct wrapped_f {
-  bf inner;
+template <typename F> struct wrapped_field {
+  F inner;
 
-  static constexpr DEVICE_FORCEINLINE wrapped_f new_(const bf value) { return {value}; }
+  static constexpr DEVICE_FORCEINLINE wrapped_field new_(const F value) { return {value}; }
 
-  static consteval DEVICE_FORCEINLINE wrapped_f new_const(const u32 value) { return {bf::const_into_mont(value)}; }
+  static consteval DEVICE_FORCEINLINE wrapped_field new_const(const u32 value) { return {witness_field<F>::constant(value)}; }
 
-  template <typename T> static DEVICE_FORCEINLINE wrapped_f from(const T &value) { return wrapped_f(bf::from_u32_unchecked(value.inner)); }
+  static constexpr DEVICE_FORCEINLINE wrapped_field zero() { return {F::ZERO()}; }
+  static constexpr DEVICE_FORCEINLINE wrapped_field new_const_limbs(u32 a, u32 b, u32 c, u32 d) { return {F{{a, b, c, d}}}; }
 
-  static DEVICE_FORCEINLINE wrapped_f from(const wrapped_f &value) { return value; }
+  template <typename T> static DEVICE_FORCEINLINE wrapped_field from(const T &value) { return wrapped_field(witness_field<F>::from_u32(value.inner)); }
 
-  // Mirrors host `WitnessComputationalField::from_raw_repr_with_reduction`: reduce the
-  // integer mod ORDER and store it AS the raw Montgomery limb (NO into_mont), unlike
-  // `from` which Montgomery-encodes.
-  template <typename U> static DEVICE_FORCEINLINE wrapped_f from_raw_repr_with_reduction(const U &value) {
-    return wrapped_f(bf::from_raw_repr_with_reduction(value.inner));
+  static DEVICE_FORCEINLINE wrapped_field from(const wrapped_field &value) { return value; }
+
+  // Match the selected host field's raw-representation conversion policy.
+  template <typename U> static DEVICE_FORCEINLINE wrapped_field from_raw_repr_with_reduction(const U &value) {
+    return wrapped_field(witness_field<F>::from_raw(value.inner));
   }
 
-  static DEVICE_FORCEINLINE wrapped_f add(const wrapped_f &lhs, const wrapped_f &rhs) { return wrapped_f(bf::add(lhs.inner, rhs.inner)); }
+  static DEVICE_FORCEINLINE wrapped_field add(const wrapped_field &lhs, const wrapped_field &rhs) { return wrapped_field(F::add(lhs.inner, rhs.inner)); }
 
-  static DEVICE_FORCEINLINE wrapped_f sub(const wrapped_f &lhs, const wrapped_f &rhs) { return wrapped_f(bf::sub(lhs.inner, rhs.inner)); }
+  static DEVICE_FORCEINLINE wrapped_field sub(const wrapped_field &lhs, const wrapped_field &rhs) { return wrapped_field(F::sub(lhs.inner, rhs.inner)); }
 
-  static DEVICE_FORCEINLINE wrapped_f mul(const wrapped_f &lhs, const wrapped_f &rhs) { return wrapped_f(bf::mul(lhs.inner, rhs.inner)); }
+  static DEVICE_FORCEINLINE wrapped_field mul(const wrapped_field &lhs, const wrapped_field &rhs) { return wrapped_field(F::mul(lhs.inner, rhs.inner)); }
 
-  static DEVICE_FORCEINLINE wrapped_f mul_add(const wrapped_f &mul_0, const wrapped_f &mul_1, const wrapped_f &add) {
-    return wrapped_f(bf::fma(mul_0.inner, mul_1.inner, add.inner));
+  static DEVICE_FORCEINLINE wrapped_field mul_add(const wrapped_field &mul_0, const wrapped_field &mul_1, const wrapped_field &add) {
+    return wrapped_field(F::fma(mul_0.inner, mul_1.inner, add.inner));
   }
 
-  static DEVICE_FORCEINLINE wrapped_f inv(const wrapped_f &value) { return wrapped_f(bf::inv(value.inner)); }
+  static DEVICE_FORCEINLINE wrapped_field inv(const wrapped_field &value) { return wrapped_field(F::inv(value.inner)); }
 };
+
+using wrapped_f = wrapped_field<witness_value>;
+static_assert(sizeof(wrapped_f) == sizeof(witness_value) && alignof(wrapped_f) == alignof(witness_value));
+static_assert(offsetof(wrapped_f, inner) == 0);
 
 struct wrapped_b {
   bool inner;
@@ -47,7 +59,7 @@ struct wrapped_b {
 
   template <typename T> static DEVICE_FORCEINLINE wrapped_b from(const T &value) { return wrapped_b(value.inner); }
 
-  static DEVICE_FORCEINLINE wrapped_b from(const wrapped_f &value) { return wrapped_b{static_cast<bool>(bf::into_canonical_u32(value.inner))}; }
+  static DEVICE_FORCEINLINE wrapped_b from(const wrapped_f &value) { return wrapped_b{witness_field<witness_value>::to_mask(value.inner)}; }
 
   template <typename T> static DEVICE_FORCEINLINE wrapped_b from_integer_equality(const T &lhs, const T &rhs) { return wrapped_b{lhs.inner == rhs.inner}; }
 
@@ -55,7 +67,9 @@ struct wrapped_b {
 
   template <typename T> static DEVICE_FORCEINLINE wrapped_b from_integer_borrow(const T &lhs, const T &rhs) { return wrapped_b{T::sub_borrow(lhs, rhs)}; }
 
-  static DEVICE_FORCEINLINE wrapped_b from_field_equality(const wrapped_f &lhs, const wrapped_f &rhs) { return wrapped_b{lhs.inner.limb == rhs.inner.limb}; }
+  static DEVICE_FORCEINLINE wrapped_b from_field_equality(const wrapped_f &lhs, const wrapped_f &rhs) {
+    return wrapped_b{witness_field<witness_value>::equal(lhs.inner, rhs.inner)};
+  }
 
   static DEVICE_FORCEINLINE wrapped_b and_(const wrapped_b &lhs, const wrapped_b &rhs) { return wrapped_b{lhs.inner && rhs.inner}; }
 
@@ -77,13 +91,13 @@ template <typename T, typename W> struct wrapped_integer {
 
   template <typename U> static DEVICE_FORCEINLINE wrapped_integer from(const U &value) { return wrapped_integer{static_cast<T>(value.inner)}; }
 
-  static DEVICE_FORCEINLINE wrapped_integer from(const wrapped_f &value) { return wrapped_integer{static_cast<T>(bf::into_canonical_u32(value.inner))}; }
+  static DEVICE_FORCEINLINE wrapped_integer from(const wrapped_f &value) {
+    return wrapped_integer{static_cast<T>(witness_field<witness_value>::to_integer(value.inner))};
+  }
 
-  // Mirrors host `field.into_raw_repr_reduced()`: extract the RAW Montgomery limb (NO
-  // from_mont / canonicalization), unlike `from(wrapped_f)` which returns the canonical
-  // value.
+  // Raw representation and integer conversion follow separate field policies.
   static DEVICE_FORCEINLINE wrapped_integer raw_repr_reduced_from_field(const wrapped_f &value) {
-    return wrapped_integer{static_cast<T>(bf::into_raw_u32(value.inner))};
+    return wrapped_integer{static_cast<T>(witness_field<witness_value>::to_raw(value.inner))};
   }
 
   static DEVICE_FORCEINLINE wrapped_integer add(const wrapped_integer &lhs, const wrapped_integer &rhs) { return wrapped_integer(lhs.inner + rhs.inner); }
@@ -165,8 +179,11 @@ struct GlobalTraceProvider {
   template <typename T, unsigned IDX> DEVICE_FORCEINLINE T get_memory() const {
     const auto value = memory[IDX * stride + offset];
 #ifdef PRINT_THREAD_IDX
-    if (offset == PRINT_THREAD_IDX)
-      printf("M[%u] -> %u\n", IDX, value.inner.limb);
+    if (offset == PRINT_THREAD_IDX) {
+      printf("M[%u] -> ", IDX);
+      witness_field<witness_value>::print(value.inner);
+      printf("\n");
+    }
 #endif
     return T::from(value);
   }
@@ -174,8 +191,11 @@ struct GlobalTraceProvider {
   template <typename T, unsigned IDX> DEVICE_FORCEINLINE T get_witness() const {
     const auto value = witness[IDX * stride + offset];
 #ifdef PRINT_THREAD_IDX
-    if (offset == PRINT_THREAD_IDX)
-      printf("W[%u] -> %u\n", IDX, value.inner.limb);
+    if (offset == PRINT_THREAD_IDX) {
+      printf("W[%u] -> ", IDX);
+      witness_field<witness_value>::print(value.inner);
+      printf("\n");
+    }
 #endif
     return T::from(value);
   }
@@ -183,8 +203,11 @@ struct GlobalTraceProvider {
   template <unsigned IDX, typename T> DEVICE_FORCEINLINE void set_memory(const T &value) const {
     const auto f = wrapped_f::from(value);
 #ifdef PRINT_THREAD_IDX
-    if (offset == PRINT_THREAD_IDX)
-      printf("M[%u] <- %u\n", IDX, f.inner.limb);
+    if (offset == PRINT_THREAD_IDX) {
+      printf("M[%u] <- ", IDX);
+      witness_field<witness_value>::print(f.inner);
+      printf("\n");
+    }
 #endif
     memory[IDX * stride + offset] = f;
   }
@@ -192,8 +215,11 @@ struct GlobalTraceProvider {
   template <unsigned IDX, typename T> DEVICE_FORCEINLINE void set_witness(const T &value) const {
     const auto f = wrapped_f::from(value);
 #ifdef PRINT_THREAD_IDX
-    if (offset == PRINT_THREAD_IDX)
-      printf("W[%u] <- %u\n", IDX, f.inner.limb);
+    if (offset == PRINT_THREAD_IDX) {
+      printf("W[%u] <- ", IDX);
+      witness_field<witness_value>::print(f.inner);
+      printf("\n");
+    }
 #endif
     witness[IDX * stride + offset] = f;
   }
@@ -228,8 +254,11 @@ template <class R, class Places> struct WitnessProxy {
   template <typename T, unsigned IDX> DEVICE_FORCEINLINE T get_scratch_place() const {
     const auto value = scratch[IDX * stride];
 #ifdef PRINT_THREAD_IDX
-    if (offset == PRINT_THREAD_IDX)
-      printf("S[%u] -> %u\n", IDX, value.inner.limb);
+    if (offset == PRINT_THREAD_IDX) {
+      printf("S[%u] -> ", IDX);
+      witness_field<witness_value>::print(value.inner);
+      printf("\n");
+    }
 #endif
     return T::from(value);
   }
@@ -250,32 +279,39 @@ template <class R, class Places> struct WitnessProxy {
   template <unsigned IDX, typename T> DEVICE_FORCEINLINE void set_scratch_place(const T &value) const {
     const auto f = wrapped_f::from(value);
 #ifdef PRINT_THREAD_IDX
-    if (offset == PRINT_THREAD_IDX)
-      printf("S[%u] <- %u\n", IDX, f.inner.limb);
+    if (offset == PRINT_THREAD_IDX) {
+      printf("S[%u] <- ", IDX);
+      witness_field<witness_value>::print(f.inner);
+      printf("\n");
+    }
 #endif
     scratch[IDX * stride] = f;
   }
 
   template <unsigned I, unsigned O>
   DEVICE_FORCEINLINE u32 get_lookup_index_and_value(const wrapped_f *inputs, const wrapped_u16 table_id, wrapped_f *outputs, const u32 *offsets) const {
-    const auto tables = reinterpret_cast<const bf *>(generic_lookup_tables);
-    const TableDriver<I, O> table_driver{
+    const auto tables = reinterpret_cast<const witness_value *>(generic_lookup_tables);
+    const TableDriver<I, O, witness_value> table_driver{
         tables,
         stride,
         offsets,
     };
     const auto table_type = static_cast<TableType>(table_id.inner);
-    const auto keys = reinterpret_cast<const bf *>(inputs);
-    const auto values = reinterpret_cast<bf *>(outputs);
+    const auto keys = reinterpret_cast<const witness_value *>(inputs);
+    const auto values = reinterpret_cast<witness_value *>(outputs);
     const u32 index = table_driver.get_index_and_set_values(table_type, keys, values);
 #ifdef PRINT_THREAD_IDX
     if (offset == PRINT_THREAD_IDX) {
       printf("L[%u] -> %u [", table_id.inner, index);
-      for (unsigned i = 0; i < I; ++i)
-        printf("%s%u", i == 0 ? "" : ", ", keys[i].limb);
+      for (unsigned i = 0; i < I; ++i) {
+        printf("%s", i == 0 ? "" : ", ");
+        witness_field<witness_value>::print(keys[i]);
+      }
       printf("] -> [");
-      for (unsigned i = 0; i < O; ++i)
-        printf("%s%u", i == 0 ? "" : ", ", values[i].limb);
+      for (unsigned i = 0; i < O; ++i) {
+        printf("%s", i == 0 ? "" : ", ");
+        witness_field<witness_value>::print(values[i]);
+      }
       printf("]\n");
     }
 #endif
@@ -371,8 +407,7 @@ template <class R, class Places> struct WitnessProxy {
 // the write as a branchless select, so rows whose guard is false get a definite
 // zero without a separate prologue pass. Only valid when the column has no
 // unconditional write (else the `: 0` could clobber it).
-#define SET_WITNESS_PLACE_OR_ZERO(IDX, COND, V)                                                                                                                \
-  p.template set_witness_place<IDX>(wrapped_b::select(VAR(COND), wrapped_f::from(VAR(V)), wrapped_f::new_const(0)));
+#define SET_WITNESS_PLACE_OR_ZERO(IDX, COND, V) p.template set_witness_place<IDX>(wrapped_b::select(VAR(COND), wrapped_f::from(VAR(V)), wrapped_f::zero()));
 #define SET_SCRATCH_PLACE(IDX, V) p.template set_scratch_place<IDX>(VAR(V));
 
 #define FN_BEGIN(N) template <class R, class Places> DEVICE_FORCEINLINE void fn_##N(const WitnessProxy<R, Places> p) {
@@ -411,4 +446,6 @@ template <class R, class Places> struct WitnessProxy {
     FN_CALL(generate)                                                                                                                                          \
   }
 
-} // namespace airbender::trace::witness::generation
+} // namespace airbender::trace::witness::WITNESS_GENERATION_NAMESPACE
+#undef WITNESS_GENERATION_NAMESPACE
+#undef WITNESS_VALUE
