@@ -131,9 +131,9 @@ fn l1_wrap_stagewise_pessimistic_conjecture() {
                 )
                 .unwrap(),
             );
-            let constants = Arc::new(
-                L1WrapConstantsHost::new(&programs, &circuit, &config, &geometry).unwrap(),
-            );
+            let constants = Arc::new(L1WrapConstantsHost::new(
+                &programs, &circuit, &config, &geometry,
+            ));
             let decoder: Vec<ExecutorFamilyDecoderData> = fixture
                 .setup
                 .decoder_table
