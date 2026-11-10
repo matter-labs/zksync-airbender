@@ -44,7 +44,9 @@ gpu_native_build = { workspace = true }
 
 [dev-dependencies]
 proof_fixtures = { workspace = true }
-prover = { workspace = true, features = ["test", "bincode"] }
+# CPU/proof byte parity requires the minimum nonce in test builds.
+gpu_hash = { workspace = true, features = ["deterministic_pow"] }
+prover = { workspace = true, features = ["test", "bincode", "deterministic_pow"] }
 # The e2e suite (tests/) needs more upstream surface than production: it drives
 # fixtures through cs/prover/riscv_transpiler and hashes via gpu_ops. The
 # composed commitment-pipeline test additionally drives gpu_ntt's Mobius / LDE
