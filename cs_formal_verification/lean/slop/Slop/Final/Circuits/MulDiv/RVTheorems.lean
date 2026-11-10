@@ -1,6 +1,7 @@
 module
 public import Human.Circuits.MulDiv.RVTheorems
 public import Slop.MulDiv.RVTraceSoundness
+public import Slop.MulDiv.RVNonVacuous
 public import Slop.Trace.RVPooledLawsProof
 public import Slop.Final.Generic.Circuits.MulDiv.RVTheorems
 public import Slop.Field.BabyBearInstance
@@ -14,6 +15,7 @@ namespace Airbender.MulDiv
 private theorem rv_soundness_generic : RVSoundnessClaimGeneric := Proofs.rv_trace_soundness Trace.Proofs.rvPooledLaws
 
 theorem rv_soundness : RVSoundnessClaim := by
+  refine ⟨?_, Witness.satisfiable⟩
   intro trace initial cells program assumptions input output w ⟨⟨accepted, decoded, member⟩, ⟨words, state, instruction⟩⟩
   exact rv_soundness_generic (p := babyBearModulus) (by decide) (by decide) trace initial cells program assumptions input output w
     ⟨⟨accepted, decoded, member⟩, ⟨words, state, instruction⟩⟩

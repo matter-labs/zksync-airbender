@@ -119,17 +119,15 @@ example : Airbender.JumpBranchSlt.Jump.RVSoundnessClaimGeneric ↔ Airbender.Jum
       obtain rfl : inst = Airbender.babyBearPrime := rfl
       intro trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
       exact h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
-example : Airbender.MulDiv.RVSoundnessClaimGeneric ↔ Airbender.MulDiv.RVSoundnessClaim :=
-  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ =>
-      h (p := Airbender.babyBearModulus) (by decide) (by decide) trace initial cells program a input output w
-        ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+-- E2: the claim now also states that its assumptions can be met (`Trace.RVRowClaim`); it implies the previous text.
+example : Airbender.MulDiv.RVSoundnessClaim → Airbender.MulDiv.RVSoundnessClaimGeneric :=
     fun h => by
       intro p inst hp inv
       obtain rfl : p = Airbender.babyBearModulus := Airbender.Field.eq_babyBear_of_cast_eq_zero (by
         rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv)
       obtain rfl : inst = Airbender.babyBearPrime := rfl
       intro trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
-      exact h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
+      exact h.1 trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
 example : Airbender.ShiftBinop.RVSoundnessClaimGeneric ↔ Airbender.ShiftBinop.RVSoundnessClaim :=
   ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ =>
       h (p := Airbender.babyBearModulus) (by decide) (by decide) trace initial cells program a input output w
@@ -535,13 +533,13 @@ end Airbender.JumpBranchSlt.Jump
 namespace Airbender.MulDiv
 open Trace
 -- The deleted `BabyBearRVSoundnessClaim`, verbatim.
-example : (∀ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry),
+example : RVSoundnessClaim → (∀ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry),
     RVInterfaceAssumptions trace initial cells program →
     ∀ input output w, (rvCircuitModel trace initial cells program).relation input output w →
       ∃ s', RV.step input.before = some s' ∧
-        RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim :=
-  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
-    fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
+        RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)) :=
+  -- E2: the claim now also states that its assumptions can be met; it implies the deleted text.
+  fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h.1 trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
 end Airbender.MulDiv
 
 namespace Airbender.ShiftBinop
