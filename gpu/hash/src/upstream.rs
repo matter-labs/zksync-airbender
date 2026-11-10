@@ -34,7 +34,7 @@ pub(crate) use prover::merkle_trees::{
     keccak256_for_everything_tree::Keccak256MerkleTreeWithCap, ColumnMajorMerkleTreeConstructor,
     MerkleTreeCapVarLength, PathQueryable, PlainCosetLeaves,
 };
-#[cfg(all(test, feature = "deterministic_pow"))]
+#[cfg(test)]
 pub(crate) use prover::query_utils::{assemble_query_index, BitSource};
 #[cfg(test)]
 pub(crate) use transcript::Transcript;

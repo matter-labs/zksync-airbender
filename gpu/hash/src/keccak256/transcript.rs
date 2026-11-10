@@ -180,7 +180,8 @@ pub(crate) fn pow_finalize(
     Keccak256PowFinalizeFunction::default().launch(&single_thread(stream), &args)
 }
 
-/// Writes the minimum valid nonce in every build; `counter` is one-word scratch.
+/// Writes the minimum valid nonce with `deterministic_pow`, or the first found otherwise.
+/// `counter` is one-word scratch.
 pub fn keccak256_pow(
     seed: &mut DeviceSlice<u8>,
     bits: u32,
@@ -225,7 +226,7 @@ pub fn keccak256_pow(
     pow_finalize(seed, bits, nonce, stream)
 }
 
-#[cfg(all(test, feature = "deterministic_pow"))]
+#[cfg(test)]
 pub(crate) fn pow_search_bounded(
     seed: &DeviceSlice<u8>,
     bits: u32,

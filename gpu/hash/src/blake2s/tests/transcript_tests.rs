@@ -2,7 +2,6 @@ use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::stream::CudaStream;
 use gpu_core::primitives::field::{BF, E4};
 use rand::Rng;
-#[cfg(feature = "deterministic_pow")]
 use worker::Worker;
 
 use super::super::*;
@@ -43,11 +42,7 @@ fn pow() {
     assert!(digest[0].leading_zeros() >= BITS_COUNT);
 }
 
-// Feature-gated: run with `--features deterministic_pow` (not part of the
-// default suite). The CPU reference is kept deterministic via the dev-dep
-// `transcript/deterministic_pow` feature; without it both sides return
-// first-found nonces and the comparison is meaningless.
-#[cfg(feature = "deterministic_pow")]
+// Dev dependencies keep both the native search and CPU reference deterministic in test builds.
 #[test]
 fn pow_deterministic_matches_cpu_baseline() {
     let seeds = [
