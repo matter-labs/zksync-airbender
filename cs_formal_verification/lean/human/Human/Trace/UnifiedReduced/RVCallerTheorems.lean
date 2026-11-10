@@ -250,4 +250,22 @@ def Caller.RVCallerCyclesSoundnessSatisfiableClaim : Prop :=
     Caller.RVMixedMemoryAccepted data program ∧ Caller.RVMixedMemoryInputs data program initial ca oa cells ∧
       0 < (Trace.timeOfPair data.machine.initial.timestamp).value ∧ data.callers ≠ []
 
+/-- The assumptions of `Caller.RVControlPreparationSoundnessClaim` can be met, with a caller. -/
+def Caller.RVControlPreparationSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Caller.RVRequestTrace babyBearModulus) (program : List UnifiedReduced.RVProgramEntry) (before : RV.State) (ca oa : List (BitVec 32)) (cells : List Trace.Cell) (cut : Nat) (register : BitVec 5) (literal : Caller.ControlLiteral),
+    Caller.RVMixedMemoryAccepted data program ∧ Caller.RVMixedMemoryInputs data program before ca oa cells ∧
+      Caller.RVControlPreparation data program cut register literal ∧ register ≠ 0 ∧ cut % 4 = 0 ∧
+      data.callers ≠ []
+
+/-- The assumptions of `Caller.RVControlPreparationWindowSoundnessClaim` can be met, with a caller and a worker row
+    in the window. -/
+def Caller.RVControlPreparationWindowSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Caller.RVRequestTrace babyBearModulus) (program : List UnifiedReduced.RVProgramEntry) (before : RV.State) (ca oa : List (BitVec 32)) (cells : List Trace.Cell) (lower upper : Nat) (firstRegister lastRegister : BitVec 5)
+    (firstLiteral lastLiteral : Caller.ControlLiteral),
+    Caller.RVMixedMemoryAccepted data program ∧ Caller.RVMixedMemoryInputs data program before ca oa cells ∧
+      Caller.RVControlPreparation data program lower firstRegister firstLiteral ∧
+      Caller.RVControlPreparation data program upper lastRegister lastLiteral ∧ firstRegister ≠ 0 ∧
+      lastRegister ≠ 0 ∧ lower % 4 = 0 ∧ upper % 4 = 0 ∧ lower ≤ upper ∧ data.callers ≠ [] ∧
+      data.workers.windowRows lower upper ≠ []
+
 end Airbender.UnifiedReduced

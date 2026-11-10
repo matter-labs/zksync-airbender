@@ -86,6 +86,7 @@ import Slop.Final.Trace.Satisfiable.Keccak
 import Slop.Final.Trace.Satisfiable.KeccakSplit
 import Slop.Final.Trace.Satisfiable.Blake2Round
 import Slop.Final.Trace.Satisfiable.UnifiedCallers
+import Slop.Final.Trace.Satisfiable.UnifiedPreparedCallers
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
@@ -403,3 +404,7 @@ example : Airbender.UnifiedReduced.Caller.RVMixedWindowSequenceSoundnessSatisfia
 #print axioms Airbender.UnifiedReduced.Caller.rv_mixed_window_sequence_soundness_satisfiable
 example : Airbender.UnifiedReduced.Caller.RVCallerCyclesSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_caller_cycles_soundness_satisfiable
 #print axioms Airbender.UnifiedReduced.Caller.rv_caller_cycles_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVControlPreparationSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_control_preparation_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_control_preparation_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVControlPreparationWindowSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_control_preparation_window_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_control_preparation_window_soundness_satisfiable

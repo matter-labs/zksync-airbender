@@ -246,6 +246,23 @@ example (claim : RVCallerCyclesSoundnessClaim) : RVCallerCyclesSoundnessSatisfia
   fun ⟨data, program, initial, _, _, cells, accepted, inputs, started, callers⟩ =>
     ⟨data, program, initial, cells, claim accepted inputs started, callers⟩
 
+example (claim : RVControlPreparationSoundnessClaim) : RVControlPreparationSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell) (cut : Nat) (register : BitVec 5)
+      (literal : ControlLiteral),
+      RVPreparedBoundaryExecution data before cells cut register literal ∧ data.callers ≠ [] :=
+  fun ⟨data, _, before, _, _, cells, cut, register, literal, accepted, inputs, scope, nonzero, aligned, callers⟩ =>
+    ⟨data, before, cells, cut, register, literal, claim accepted inputs scope nonzero aligned, callers⟩
+
+example (claim : RVControlPreparationWindowSoundnessClaim) : RVControlPreparationWindowSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell) (lower upper : Nat) (r s : BitVec 5)
+      (a b : ControlLiteral),
+      RVPreparedControlWindow data before cells lower upper r a s b ∧ data.callers ≠ [] ∧
+        data.workers.windowRows lower upper ≠ [] :=
+  fun ⟨data, _, before, _, _, cells, lower, upper, r, s, a, b, accepted, inputs, firstScope, lastScope, rn, sn,
+      first, last, ordered, callers, window⟩ =>
+    ⟨data, before, cells, lower, upper, r, s, a, b,
+      claim accepted inputs firstScope lastScope rn sn first last ordered, callers, window⟩
+
 end UnifiedCallers
 
 end Checks.Satisfiable

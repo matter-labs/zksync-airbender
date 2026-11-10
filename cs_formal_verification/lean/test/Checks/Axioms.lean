@@ -151,6 +151,7 @@ import Slop.Final.Trace.Satisfiable.Keccak
 import Slop.Final.Trace.Satisfiable.KeccakSplit
 import Slop.Final.Trace.Satisfiable.Blake2Round
 import Slop.Final.Trace.Satisfiable.UnifiedCallers
+import Slop.Final.Trace.Satisfiable.UnifiedPreparedCallers
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -1227,3 +1228,5 @@ import Slop.Final.Trace.Satisfiable.UnifiedCallers
 #print axioms Airbender.UnifiedReduced.Caller.rv_mixed_window_projection_soundness_satisfiable
 #print axioms Airbender.UnifiedReduced.Caller.rv_mixed_window_sequence_soundness_satisfiable
 #print axioms Airbender.UnifiedReduced.Caller.rv_caller_cycles_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_control_preparation_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_control_preparation_window_soundness_satisfiable
