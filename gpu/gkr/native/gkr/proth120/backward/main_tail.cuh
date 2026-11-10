@@ -300,7 +300,7 @@ DEVICE_FORCEINLINE void bwd_pr_main_tail_execute(const bwd_pr_main_tail_desc &de
     __syncthreads();
 
     if (iteration + 1 < tail_rounds) {
-      fold_active_eq_slot_pr<BWD_PR_MAIN_TAIL_BLOCK_THREADS>(desc.eq_low, eq_sizes.low);
+      ::airbender::gkr::backward::fold_active_eq_slot<BWD_PR_MAIN_TAIL_BLOCK_THREADS>(desc.eq_low, eq_sizes.low);
       if (threadIdx.x == 0)
         --eq_sizes.low;
       __syncthreads();
