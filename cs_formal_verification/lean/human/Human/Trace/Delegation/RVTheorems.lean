@@ -1,6 +1,7 @@
 module
 public import Human.Helpers.Delegation.RVOperations
 public import Human.Trace.Delegation.RVExecution
+public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section
 
@@ -22,7 +23,7 @@ def RVNativeMemoryExecutionClaim : Prop :=
     `RV.State`. Imported writes preserve canonical RV32 words, and logical matching supplies every later read. No
     family restriction, read-value or limb-range premise is supplied. -/
 def RVOperationMemorySoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (_hp : 8388608 ≤ p) (_inverse : 64 * (-31457280 : ZMod p) = 1) {data : MemoryData p} {before : RV.State} {cells : List Trace.Cell} {control : Fin 4096 → Vector Nat 6} (_accepted : MemoryAccepted data) (_inputs : RVOperationInputs data before cells control),
+  ∀ {data : MemoryData babyBearModulus} {before : RV.State} {cells : List Trace.Cell} {control : Fin 4096 → Vector Nat 6} (_accepted : MemoryAccepted data) (_inputs : RVOperationInputs data before cells control),
     MemorySoundness data ∧ WordBounds data
 
 /-- Imported delegation constraints and initialized token matching imply native

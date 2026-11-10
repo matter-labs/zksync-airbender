@@ -5,6 +5,8 @@ public import Slop.KeccakSplit.Chain.RVCalls
 public import Slop.KeccakSplit.RVLink
 public import Slop.KeccakSplit.Field
 public import Slop.Delegation.RVCallListLink
+public import Slop.Final.Generic.Trace.Workers.KeccakSplit.RVTheorems
+public import Slop.Field.BabyBearInstance
 
 @[expose] public section
 
@@ -12,7 +14,7 @@ namespace Airbender.Keccak.Split.Native
 open _root_.Airbender.Keccak.Split.Native.Proofs
 
 /-- RV sibling of `operation_execution`. -/
-theorem rv_operation_execution [Fact p.Prime] (inverse : 256 * (-7864320 : ZMod p) = 1)
+private theorem rv_operation_execution_generic [Fact p.Prime] (inverse : 256 * (-7864320 : ZMod p) = 1)
     {data : MemoryData p} {before : RV.State} {cells : List Trace.Cell}
     (accepted : MemoryAccepted data) (inputs : RVOperationInputs data before cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
@@ -20,8 +22,10 @@ theorem rv_operation_execution [Fact p.Prime] (inverse : 256 * (-7864320 : ZMod 
   obtain rfl := scale256_field inverse
   exact Proofs.rv_operation_execution row_facts Split.Proofs.control_facts accepted inputs aligned
 
+theorem rv_operation_execution : Airbender.Keccak.Split.Native.RVOperationExecutionClaim := by babybear_instance rv_operation_execution_generic
+
 /-- RV sibling of `permutation_soundness`, with the delegate link to `RV.calls RV.f1600Calls`. -/
-theorem rv_permutation_soundness [Fact p.Prime] (inverse : 256 * (-7864320 : ZMod p) = 1)
+private theorem rv_permutation_soundness_generic [Fact p.Prime] (inverse : 256 * (-7864320 : ZMod p) = 1)
     {data : MemoryData p} {initial : RV.State} {cells : List Trace.Cell}
     (accepted : MemoryAccepted data) (inputs : RVCallInputs data initial cells)
     (aligned : ∀ cell ∈ cells, cell.Aligned) :
@@ -55,5 +59,7 @@ theorem rv_permutation_soundness [Fact p.Prime] (inverse : 256 * (-7864320 : ZMo
   rw [first, final] at link
   subst start
   exact ⟨states, pointer, input, output, rfl, executes, mapping, trace, result, link⟩
+
+theorem rv_permutation_soundness : Airbender.Keccak.Split.Native.RVPermutationSoundnessClaim := by babybear_instance rv_permutation_soundness_generic
 
 end Airbender.Keccak.Split.Native

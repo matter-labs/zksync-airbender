@@ -5,6 +5,7 @@ public import Human.Helpers.Context.Registries.SubwordMemory
 public import Human.Circuits.SubwordMemory.RVDecoder
 public import Human.Helpers.Memory.ROM
 public import Human.Helpers.Tables.Subword
+public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section
 
@@ -33,7 +34,7 @@ structure RVRAMInputs {p : Nat} [Fact p.Prime] (trace : NativeTrace p) (initial 
 /-- RAM LB/LBU/LH/LHU/SB/SH rows, in native time order, are a run of `RV.step` from `initial` reaching the terminal
     PC and cell values. Global history supplies all input bounds and reads; the boundary has no per-row assumptions. -/
 def RVRamTraceSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (_hp : 33554432 < p) (_inverse : (-3840 : ZMod p) * 524288 = 1) {trace : NativeTrace p} {initial : RV.State} {cells : List Trace.Cell} {program : List RVProgramEntry} (_inputs : RVRAMInputs trace initial cells program) (_accepted : Trace.Accepted trace) (_decoded : RVDecoded trace program),
+  ∀ {trace : NativeTrace babyBearModulus} {initial : RV.State} {cells : List Trace.Cell} {program : List RVProgramEntry} (_inputs : RVRAMInputs trace initial cells program) (_accepted : Trace.Accepted trace) (_decoded : RVDecoded trace program),
     Trace.RVRealizes trace initial cells
 
 end Airbender.SubwordMemory

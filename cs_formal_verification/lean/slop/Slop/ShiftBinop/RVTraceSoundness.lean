@@ -6,6 +6,7 @@ public import Slop.Trace.RVPooledRow
 public import Slop.Trace.RVZero
 public import Slop.Trace.RVRowGlue
 public import Slop.Defs.Helpers.Core.Word
+public import Slop.Final.Generic.Circuits.ShiftBinop.RVTheorems
 
 @[expose] public section
 
@@ -85,7 +86,7 @@ theorem rv_exec_row (s : RV.State) (input : RVInput) :
   cases operation <;> cases immediate <;>
     simp [rvInstruction, RV.exec, rvValue, rvOperand, Operation.rvOp, Operation.isShift]
 
-theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
+theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaimGeneric := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
@@ -142,10 +143,5 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
       · contradiction
       · rfl
   refine ⟨_, step.trans (rv_exec_row _ _), rv_same_of_write _ _ _ _ _ (fun _ => value) hpc⟩
-
-theorem babyBear_rv_trace_soundness (laws : RVPooledLaws) : BabyBearRVSoundnessClaim := by
-  intro trace initial cells program assumptions input output w relation
-  exact rv_trace_soundness laws (p := babyBearModulus) (by decide) (by decide) trace initial cells program
-    assumptions input output w relation
 
 end Airbender.ShiftBinop.Proofs

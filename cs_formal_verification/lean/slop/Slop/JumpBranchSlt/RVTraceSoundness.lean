@@ -6,6 +6,7 @@ public import Slop.Trace.RVValues
 public import Slop.Trace.PC
 public import Slop.Trace.RVRowGlue
 public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Final.Generic.Circuits.JumpBranchSlt.RVTheorems
 
 @[expose] public section
 
@@ -137,7 +138,7 @@ theorem rv_row_facts (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 536870
   have flag := flags k
   fin_cases k <;> simpa [importedConstraintsDecoderColumns] using flag
 
-theorem rv_comparison_trace_soundness (laws : RVPooledLaws) : Comparison.RVSoundnessClaim := by
+theorem rv_comparison_trace_soundness (laws : RVPooledLaws) : Comparison.RVSoundnessClaimGeneric := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
   obtain ⟨entry, present, family, query, decodes⟩ := mapping.instruction
@@ -148,7 +149,7 @@ theorem rv_comparison_trace_soundness (laws : RVPooledLaws) : Comparison.RVSound
     mapping.words.finalPCLo mapping.words.finalPCHi
   exact ⟨s', step.trans exec, same⟩
 
-theorem rv_branch_trace_soundness (laws : RVPooledLaws) : Branch.RVSoundnessClaim := by
+theorem rv_branch_trace_soundness (laws : RVPooledLaws) : Branch.RVSoundnessClaimGeneric := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
   obtain ⟨entry, present, family, query, decodes⟩ := mapping.instruction
@@ -158,7 +159,7 @@ theorem rv_branch_trace_soundness (laws : RVPooledLaws) : Branch.RVSoundnessClai
     mapping.words.finalPCLo mapping.words.finalPCHi
   exact ⟨s', step.trans exec, same⟩
 
-theorem rv_jump_trace_soundness (laws : RVPooledLaws) : Jump.RVSoundnessClaim := by
+theorem rv_jump_trace_soundness (laws : RVPooledLaws) : Jump.RVSoundnessClaimGeneric := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
   obtain ⟨entry, present, family, query, decodes⟩ := mapping.instruction
@@ -173,20 +174,5 @@ theorem rv_jump_trace_soundness (laws : RVPooledLaws) : Jump.RVSoundnessClaim :=
   obtain ⟨s', exec, same⟩ := rv_jump_exec (by omega) facts even mapping.words.outputLo mapping.words.outputHi
     mapping.words.finalPCLo mapping.words.finalPCHi
   exact ⟨s', step.trans exec, same⟩
-
-theorem babyBear_rv_comparison_trace_soundness (laws : RVPooledLaws) : Comparison.BabyBearRVSoundnessClaim := by
-  intro trace initial cells program assumptions input output w relation
-  exact rv_comparison_trace_soundness laws (p := babyBearModulus) (by decide) (by decide) trace initial cells program
-    assumptions input output w relation
-
-theorem babyBear_rv_branch_trace_soundness (laws : RVPooledLaws) : Branch.BabyBearRVSoundnessClaim := by
-  intro trace initial cells program assumptions input output w relation
-  exact rv_branch_trace_soundness laws (p := babyBearModulus) (by decide) (by decide) trace initial cells program
-    assumptions input output w relation
-
-theorem babyBear_rv_jump_trace_soundness (laws : RVPooledLaws) : Jump.BabyBearRVSoundnessClaim := by
-  intro trace initial cells program assumptions input output w relation
-  exact rv_jump_trace_soundness laws (p := babyBearModulus) (by decide) (by decide) trace initial cells program
-    assumptions input output w relation
 
 end Airbender.JumpBranchSlt.Proofs

@@ -78,24 +78,15 @@ import Slop.Final.Import.Theorems
 import Human.Import.Theorems
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
-example : Airbender.AddSub.BabyBearRVSoundnessClaim := @Airbender.AddSub.babyBear_rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
 example : Airbender.Blake2G.SoundnessClaim := @Airbender.Blake2G.soundness
-example : Airbender.Blake2G.BabyBearSoundnessClaim := @Airbender.Blake2G.babyBear_soundness
 example : Airbender.JumpBranchSlt.Comparison.RVSoundnessClaim := @Airbender.JumpBranchSlt.Comparison.rv_soundness
-example : Airbender.JumpBranchSlt.Comparison.BabyBearRVSoundnessClaim := @Airbender.JumpBranchSlt.Comparison.babyBear_rv_soundness
 example : Airbender.JumpBranchSlt.Branch.RVSoundnessClaim := @Airbender.JumpBranchSlt.Branch.rv_soundness
-example : Airbender.JumpBranchSlt.Branch.BabyBearRVSoundnessClaim := @Airbender.JumpBranchSlt.Branch.babyBear_rv_soundness
 example : Airbender.JumpBranchSlt.Jump.RVSoundnessClaim := @Airbender.JumpBranchSlt.Jump.rv_soundness
-example : Airbender.JumpBranchSlt.Jump.BabyBearRVSoundnessClaim := @Airbender.JumpBranchSlt.Jump.babyBear_rv_soundness
 example : Airbender.MulDiv.RVSoundnessClaim := @Airbender.MulDiv.rv_soundness
-example : Airbender.MulDiv.BabyBearRVSoundnessClaim := @Airbender.MulDiv.babyBear_rv_soundness
 example : Airbender.ShiftBinop.RVSoundnessClaim := @Airbender.ShiftBinop.rv_soundness
-example : Airbender.ShiftBinop.BabyBearRVSoundnessClaim := @Airbender.ShiftBinop.babyBear_rv_soundness
 example : Airbender.SubwordMemory.RVSoundnessClaim := @Airbender.SubwordMemory.rv_soundness
-example : Airbender.SubwordMemory.BabyBearRVSoundnessClaim := @Airbender.SubwordMemory.babyBear_rv_soundness
 example : Airbender.WordMemory.RVSoundnessClaim := @Airbender.WordMemory.rv_soundness
-example : Airbender.WordMemory.BabyBearRVSoundnessClaim := @Airbender.WordMemory.babyBear_rv_soundness
 example : Airbender.PCState.OutgoingBoundsClaim := @Airbender.PCState.outgoing_bounds
 example : Airbender.DecodeIsSailClaim := @Airbender.decode_is_sail
 example : Airbender.StepIsAirbenderClaim := @Airbender.step_is_airbender
@@ -212,24 +203,15 @@ example : Airbender.Json.TextUniqueClaim := @Airbender.Json.text_unique
 example : Airbender.DecodeClaim := @Airbender.decode_claim
 
 #print axioms Airbender.AddSub.rv_soundness
-#print axioms Airbender.AddSub.babyBear_rv_soundness
 #print axioms Airbender.Bigint.Memory.rv_addresses_soundness
 #print axioms Airbender.Blake2G.soundness
-#print axioms Airbender.Blake2G.babyBear_soundness
 #print axioms Airbender.JumpBranchSlt.Comparison.rv_soundness
-#print axioms Airbender.JumpBranchSlt.Comparison.babyBear_rv_soundness
 #print axioms Airbender.JumpBranchSlt.Branch.rv_soundness
-#print axioms Airbender.JumpBranchSlt.Branch.babyBear_rv_soundness
 #print axioms Airbender.JumpBranchSlt.Jump.rv_soundness
-#print axioms Airbender.JumpBranchSlt.Jump.babyBear_rv_soundness
 #print axioms Airbender.MulDiv.rv_soundness
-#print axioms Airbender.MulDiv.babyBear_rv_soundness
 #print axioms Airbender.ShiftBinop.rv_soundness
-#print axioms Airbender.ShiftBinop.babyBear_rv_soundness
 #print axioms Airbender.SubwordMemory.rv_soundness
-#print axioms Airbender.SubwordMemory.babyBear_rv_soundness
 #print axioms Airbender.WordMemory.rv_soundness
-#print axioms Airbender.WordMemory.babyBear_rv_soundness
 #print axioms Airbender.PCState.outgoing_bounds
 #print axioms Airbender.decode_is_sail
 #print axioms Airbender.step_is_airbender

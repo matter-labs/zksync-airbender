@@ -120,7 +120,7 @@ theorem rv_request_operation_effects
       rw [Delegation.Row.columns, family] at active
       change row.assignment 0 = 1 at active ⊢
       exact active }
-  have words := Delegation.rv_operation_memory_soundness (by decide) (by decide) accepted.workers operation
+  have words := Delegation.rv_operation_memory_soundness accepted.workers operation
   exact ⟨execution, words.2, worker_effects_of_reads accepted.workerConstraints inputs.tables inputs.rounds
     accepted.workerActive words.2.reads⟩
 

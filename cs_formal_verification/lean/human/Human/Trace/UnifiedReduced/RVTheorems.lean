@@ -15,7 +15,7 @@ namespace Airbender.UnifiedReduced
     match the trace's terminal tokens. `RVExecutionInputs` lists only public boot conditions; row reads, bounds and
     results are derived. -/
 def RVExecutionSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (_hp : 4194304 ≤ p) (_clockInverse : (-3840 : ZMod p) * 524288 = 1) (_byteInverse : 256 * (-7864320 : ZMod p) = 1) {trace : Trace.UnifiedTrace p} {initial : RV.State} {cells : List Trace.Cell} {program : List RVProgramEntry} {inits : List (InitsTeardowns.Witness p InitsTeardowns.unifiedLayout)} (_inputs : RVExecutionInputs trace initial cells program inits) (_accepted : Trace.Accepted trace) (_decoded : RVDecoded trace program),
+  ∀ {trace : Trace.UnifiedTrace babyBearModulus} {initial : RV.State} {cells : List Trace.Cell} {program : List RVProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)} (_inputs : RVExecutionInputs trace initial cells program inits) (_accepted : Trace.Accepted trace) (_decoded : RVDecoded trace program),
     Trace.RVRealizes trace initial cells
 
 /-- `Trace.BootRamZeroClaim` for the unified machine: under the boot inputs, every tracked RAM cell of the starting

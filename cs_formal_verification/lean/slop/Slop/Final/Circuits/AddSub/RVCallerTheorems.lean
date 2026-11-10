@@ -1,6 +1,8 @@
 module
 public import Human.Circuits.AddSub.RVCallerTheorems
 public import Slop.Delegation.RVCallerDecoder
+public import Slop.Final.Generic.Circuits.AddSub.RVCallerTheorems
+public import Slop.Field.BabyBearInstance
 
 @[expose] public section
 
@@ -18,7 +20,7 @@ theorem rv_soundness [Fact p.Prime] (hp : 65536 < p)
   Proofs.rv_caller_binding hp constraints image member
 
 /-- RV sibling of `pc_soundness`: imported caller PCs match the RV retirement path. -/
-theorem rv_pc_soundness [Fact p.Prime] (hp : 196608 < p)
+private theorem rv_pc_soundness_generic [Fact p.Prime] (hp : 196608 < p)
     (inverse : (-30720 : ZMod p) * 65536 = 1)
     {before : RV.State} {addresses : List (BitVec 32)}
     {program : List RVProgramEntry} {w : Nat → ZMod p}
@@ -27,5 +29,7 @@ theorem rv_pc_soundness [Fact p.Prime] (hp : 196608 < p)
     (member : (rvDecoderTable program).Contains #[] (nativeQuery w)) :
     RVPCBinding w before program :=
   Proofs.rv_pc_binding hp inverse constraints image member
+
+theorem rv_pc_soundness : Airbender.Delegation.Caller.RVPcSoundnessClaim := by babybear_instance rv_pc_soundness_generic
 
 end Airbender.Delegation.Caller

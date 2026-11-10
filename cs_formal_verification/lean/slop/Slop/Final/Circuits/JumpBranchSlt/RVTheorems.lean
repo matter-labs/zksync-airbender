@@ -2,25 +2,26 @@ module
 public import Human.Circuits.JumpBranchSlt.RVTheorems
 public import Slop.JumpBranchSlt.RVTraceSoundness
 public import Slop.Trace.RVPooledLawsProof
+public import Slop.Final.Generic.Circuits.JumpBranchSlt.RVTheorems
+public import Slop.Field.BabyBearInstance
 
 @[expose] public section
 
 namespace Airbender.JumpBranchSlt
 
 /-- Every accepted SLT/SLTI/SLTU/SLTIU row is one `RV.step` of our spec from the row's RV pre-state. -/
-theorem Comparison.rv_soundness : Comparison.RVSoundnessClaim := Proofs.rv_comparison_trace_soundness Trace.Proofs.rvPooledLaws
+private theorem Comparison.rv_soundness_generic : Comparison.RVSoundnessClaimGeneric := Proofs.rv_comparison_trace_soundness Trace.Proofs.rvPooledLaws
 
-theorem Comparison.babyBear_rv_soundness : Comparison.BabyBearRVSoundnessClaim :=
-  Proofs.babyBear_rv_comparison_trace_soundness Trace.Proofs.rvPooledLaws
+theorem Comparison.rv_soundness : Comparison.RVSoundnessClaim := by babybear_instance Comparison.rv_soundness_generic
 
 /-- Every accepted branch row is one `RV.step` of our spec from the row's RV pre-state. -/
-theorem Branch.rv_soundness : Branch.RVSoundnessClaim := Proofs.rv_branch_trace_soundness Trace.Proofs.rvPooledLaws
+private theorem Branch.rv_soundness_generic : Branch.RVSoundnessClaimGeneric := Proofs.rv_branch_trace_soundness Trace.Proofs.rvPooledLaws
 
-theorem Branch.babyBear_rv_soundness : Branch.BabyBearRVSoundnessClaim := Proofs.babyBear_rv_branch_trace_soundness Trace.Proofs.rvPooledLaws
+theorem Branch.rv_soundness : Branch.RVSoundnessClaim := by babybear_instance Branch.rv_soundness_generic
 
 /-- Every accepted JAL/JALR row is one `RV.step` of our spec from the row's RV pre-state. -/
-theorem Jump.rv_soundness : Jump.RVSoundnessClaim := Proofs.rv_jump_trace_soundness Trace.Proofs.rvPooledLaws
+private theorem Jump.rv_soundness_generic : Jump.RVSoundnessClaimGeneric := Proofs.rv_jump_trace_soundness Trace.Proofs.rvPooledLaws
 
-theorem Jump.babyBear_rv_soundness : Jump.BabyBearRVSoundnessClaim := Proofs.babyBear_rv_jump_trace_soundness Trace.Proofs.rvPooledLaws
+theorem Jump.rv_soundness : Jump.RVSoundnessClaim := by babybear_instance Jump.rv_soundness_generic
 
 end Airbender.JumpBranchSlt

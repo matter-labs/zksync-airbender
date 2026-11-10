@@ -35,8 +35,8 @@ theorem rv_bind_hash_window [Fact p.Prime] (hp : 16777216 ≤ p)
   have callers := window_hash_calls binding family calls
   refine ⟨binding, ?_, callers.1, callers.2⟩
   cases span with
-  | blakeG reduced => exact Blake2G.Native.rv_window_soundness (by omega) wordInverse accepted inputs aligned
-  | blakeRound flags => exact Blake2Round.Native.rv_window_soundness (by omega) wordInverse accepted inputs aligned
-  | keccak => exact Keccak.Native.rv_window_soundness hp byteInverse accepted inputs aligned
+  | blakeG reduced => exact Blake2G.Native.rv_window_soundness_generic (by omega) wordInverse accepted inputs aligned
+  | blakeRound flags => exact Blake2Round.Native.rv_window_soundness_generic (by omega) wordInverse accepted inputs aligned
+  | keccak => exact Keccak.Native.rv_window_soundness_generic hp byteInverse accepted inputs aligned
 
 end Airbender.Delegation.Caller.Proofs

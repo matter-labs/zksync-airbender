@@ -7,6 +7,7 @@ public import Slop.AddSub
 public import Slop.Defs.Helpers.Memory.Ports
 public import Slop.Defs.Circuits.AddSub.Artifact
 public import Slop.Defs.Helpers.Core.Word
+public import Slop.Final.Generic.Circuits.AddSub.RVTheorems
 
 @[expose] public section
 
@@ -23,7 +24,7 @@ public import Slop.Defs.Helpers.Core.Word
 namespace Airbender.AddSub.Proofs
 open Arithmetic Trace Trace.Proofs
 
-theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
+theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaimGeneric := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
@@ -219,10 +220,5 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
     have nz : rd ≠ 0#5 := hz
     simp only [rvData, arithmeticFields, hz, ↓reduceIte] at immediateValue
     rw [result hz, immediateValue, Word.ofBitVec_roundtrip, rowPCBits, beforePC]
-
-theorem babyBear_rv_trace_soundness (laws : RVPooledLaws) : BabyBearRVSoundnessClaim := by
-  intro trace initial cells program assumptions input output w relation
-  exact rv_trace_soundness laws (p := babyBearModulus) (by decide) (by decide) trace initial cells program
-    assumptions input output w relation
 
 end Airbender.AddSub.Proofs

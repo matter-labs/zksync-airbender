@@ -11,6 +11,7 @@ public import Slop.Defs.Helpers.Memory.Ports
 public import Slop.Defs.Helpers.Memory.RowEvents
 public import Slop.Defs.Helpers.Memory.History
 public import Slop.Defs.Helpers.Core.Word
+public import Slop.Final.Generic.Circuits.SubwordMemory.RVTheorems
 
 @[expose] public section
 
@@ -34,7 +35,7 @@ public import Slop.Defs.Helpers.Core.Word
 namespace Airbender.SubwordMemory.Proofs
 open Arithmetic Trace Trace.Proofs
 
-theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
+theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaimGeneric := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   have : ClockLaws PooledFamily p := laws.clockLaws
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
@@ -317,10 +318,5 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
     simp only [rvInstruction, hs, ite_true]
     rw [exec, cellIsA, dataWord]
     exact ⟨_, rfl, rv_same_of_store _ _ _ _ _ rfl hpc⟩
-
-theorem babyBear_rv_trace_soundness (laws : RVPooledLaws) : BabyBearRVSoundnessClaim := by
-  intro trace initial cells program assumptions input output w relation
-  exact rv_trace_soundness laws (p := babyBearModulus) (by decide) (by decide) trace initial cells program
-    assumptions input output w relation
 
 end Airbender.SubwordMemory.Proofs

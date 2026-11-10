@@ -8,6 +8,7 @@ public import Slop.Trace.RVRowGlue
 public import Slop.Defs.Helpers.Memory.Ports
 public import Slop.Defs.Circuits.MulDiv.Operation
 public import Slop.Defs.Helpers.Core.Word
+public import Slop.Final.Generic.Circuits.MulDiv.RVTheorems
 
 @[expose] public section
 
@@ -54,7 +55,7 @@ theorem rv_muldiv_row_operands (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (h
     simp [importedConstraintsMemoryPorts, MemoryPort.readCode, pairCode, memoryWord]
   exact ⟨operands.1.trans leftWord, operands.2.trans rightWord⟩
 
-theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
+theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaimGeneric := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
   have core := Verification.holds_of_sublist (accepted.constraints _ member)
@@ -111,10 +112,5 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
     ?_, rv_same_of_write _ _ _ _ _ (fun _ => value) hpc⟩
   rw [step]
   cases hop : input.operation <;> simp [rvInstruction, hop, Operation.rvOp, RV.exec]
-
-theorem babyBear_rv_trace_soundness (laws : RVPooledLaws) : BabyBearRVSoundnessClaim := by
-  intro trace initial cells program assumptions input output w relation
-  exact rv_trace_soundness laws (p := babyBearModulus) (by decide) (by decide) trace initial cells program
-    assumptions input output w relation
 
 end Airbender.MulDiv.Proofs

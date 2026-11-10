@@ -1,5 +1,6 @@
 module
 public import Human.Helpers.Delegation.RVDecoder
+public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section
 
@@ -19,7 +20,7 @@ def RVSoundnessClaim : Prop :=
     initial word; imported range queries supply the final bounds. The inverse condition names the serialized field
     constant. No per-row PC range or expected next-PC premise is needed. -/
 def RVPcSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (_hp : 196608 < p) (_inverse : (-30720 : ZMod p) * 65536 = 1) {before : RV.State} {addresses : List (BitVec 32)} {program : List RVProgramEntry} {w : Nat → ZMod p} (_constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints) (_image : rvProgramImage before addresses = some program) (_member : (rvDecoderTable program).Contains #[] (nativeQuery w)),
+  ∀ {before : RV.State} {addresses : List (BitVec 32)} {program : List RVProgramEntry} {w : Nat → ZMod babyBearModulus} (_constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints) (_image : rvProgramImage before addresses = some program) (_member : (rvDecoderTable program).Contains #[] (nativeQuery w)),
     RVPCBinding w before program
 
 end Airbender.Delegation.Caller

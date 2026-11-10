@@ -5,13 +5,15 @@ public import Slop.Delegation.RVSharedOperations
 public import Slop.Delegation.RVSharedSpans
 public import Slop.Delegation.RVMixedMemory
 public import Slop.Delegation.RVRequestHashWindows
+public import Slop.Final.Generic.Trace.Delegation.RVCallerTheorems
+public import Slop.Field.BabyBearInstance
 
 @[expose] public section
 
 namespace Airbender.Delegation.Caller
 
 /-- RV sibling of `requests_soundness`. -/
-theorem rv_requests_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+private theorem rv_requests_soundness_generic [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     (pcInverse : (-30720 : ZMod p) * 65536 = 1)
     {data : RVRequestTrace p} {before : RV.State}
@@ -19,8 +21,10 @@ theorem rv_requests_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 <
     (inputs : RVRequestInputs data before addresses) : RVRequestBinding data before :=
   Proofs.rv_request_binding hp clockInverse pcInverse accepted inputs
 
+theorem rv_requests_soundness : Airbender.Delegation.Caller.RVRequestsSoundnessClaim := by babybear_instance rv_requests_soundness_generic
+
 /-- RV sibling of `request_memory_soundness`. -/
-theorem rv_request_memory_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+private theorem rv_request_memory_soundness_generic [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     (pcInverse : (-30720 : ZMod p) * 65536 = 1)
     {data : RVRequestTrace p} {before : RV.State}
@@ -28,6 +32,8 @@ theorem rv_request_memory_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase
     (accepted : RVRequestAccepted data) (inputs : RVRequestMemoryInputs data before addresses cells) :
     RVRequestExecution data before cells :=
   Proofs.rv_request_memory_execution hp clockInverse pcInverse accepted inputs
+
+theorem rv_request_memory_soundness : Airbender.Delegation.Caller.RVRequestMemorySoundnessClaim := by babybear_instance rv_request_memory_soundness_generic
 
 /-- RV sibling of `operation_soundness`. -/
 theorem rv_operation_soundness
@@ -39,7 +45,7 @@ theorem rv_operation_soundness
   Proofs.rv_request_operation_effects accepted inputs
 
 /-- RV sibling of `shared_memory_soundness`. -/
-theorem rv_shared_memory_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+private theorem rv_shared_memory_soundness_generic [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     (pcInverse : (-30720 : ZMod p) * 65536 = 1)
     {data : RVRequestTrace p} {before : RV.State}
@@ -47,6 +53,8 @@ theorem rv_shared_memory_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase 
     (accepted : RVSharedMemoryAccepted data) (inputs : RVSharedMemoryInputs data before addresses cells) :
     RVSharedMemoryEffects data before cells :=
   Proofs.rv_shared_memory_execution hp clockInverse pcInverse accepted inputs
+
+theorem rv_shared_memory_soundness : Airbender.Delegation.Caller.RVSharedMemorySoundnessClaim := by babybear_instance rv_shared_memory_soundness_generic
 
 /-- RV sibling of `shared_operation_soundness`. -/
 theorem rv_shared_operation_soundness
@@ -57,13 +65,15 @@ theorem rv_shared_operation_soundness
   Proofs.rv_shared_operation_effects accepted inputs
 
 /-- RV sibling of `shared_span_soundness`, with the delegate link in `HashSpan.RVResult`. -/
-theorem rv_shared_span_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+private theorem rv_shared_span_soundness_generic [Fact p.Prime] (hp : 16777216 ≤ p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RVRequestTrace p} {before : RV.State}
     {addresses : List (BitVec 32)} {cells : List Trace.Cell} {span : HashSpan}
     (accepted : RVSharedMemoryAccepted data) (inputs : RVSharedSpanInputs data before addresses cells span) :
     RVSharedSpanEffects data before cells span :=
   Proofs.rv_shared_span_effects hp inverse accepted inputs
+
+theorem rv_shared_span_soundness : Airbender.Delegation.Caller.RVSharedSpanSoundnessClaim := by babybear_instance rv_shared_span_soundness_generic
 
 /-- RV sibling of `mixed_memory_soundness`. -/
 theorem rv_mixed_memory_soundness
@@ -75,7 +85,7 @@ theorem rv_mixed_memory_soundness
   Proofs.rv_mixed_memory_effects accepted inputs
 
 /-- RV sibling of `worker_schedule_soundness`. -/
-theorem rv_worker_schedule_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+private theorem rv_worker_schedule_soundness_generic [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     (pcInverse : (-30720 : ZMod p) * 65536 = 1)
     {data : RVRequestTrace p} {before : RV.State}
@@ -84,8 +94,10 @@ theorem rv_worker_schedule_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBas
   Proofs.rv_worker_schedule hp clockInverse accepted inputs
     (Proofs.rv_request_binding_checks hp clockInverse pcInverse accepted inputs)
 
+theorem rv_worker_schedule_soundness : Airbender.Delegation.Caller.RVWorkerScheduleSoundnessClaim := by babybear_instance rv_worker_schedule_soundness_generic
+
 /-- RV sibling of `request_window_soundness`. -/
-theorem rv_request_window_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
+private theorem rv_request_window_soundness_generic [Fact p.Prime] (hp : 2 * Trace.timestampBase + 4 < p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     (pcInverse : (-30720 : ZMod p) * 65536 = 1)
     {data : RVRequestTrace p} {before : RV.State} {addresses : List (BitVec 32)}
@@ -94,8 +106,10 @@ theorem rv_request_window_soundness [Fact p.Prime] (hp : 2 * Trace.timestampBase
     RequestWindowBinding data.callers data.workers lower upper :=
   Proofs.rv_request_windows hp clockInverse pcInverse accepted inputs first last pastZero
 
+theorem rv_request_window_soundness : Airbender.Delegation.Caller.RVRequestWindowSoundnessClaim := by babybear_instance rv_request_window_soundness_generic
+
 /-- RV sibling of `request_hash_window_soundness`, with the delegate link in `HashSpan.RVResult`. -/
-theorem rv_request_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
+private theorem rv_request_hash_window_soundness_generic [Fact p.Prime] (hp : 16777216 ≤ p)
     (clockInverse : (-3840 : ZMod p) * 524288 = 1)
     (pcInverse : (-30720 : ZMod p) * 65536 = 1)
     (wordInverse : 64 * (-31457280 : ZMod p) = 1)
@@ -110,5 +124,7 @@ theorem rv_request_hash_window_soundness [Fact p.Prime] (hp : 16777216 ≤ p)
   Proofs.rv_bind_hash_window hp wordInverse byteInverse accepted.workers inputs aligned
     (Proofs.rv_request_windows (by norm_num [Trace.timestampBase]; omega) clockInverse pcInverse
       accepted.toRVRequestChecks program first last pastZero)
+
+theorem rv_request_hash_window_soundness : Airbender.Delegation.Caller.RVRequestHashWindowSoundnessClaim := by babybear_instance rv_request_hash_window_soundness_generic
 
 end Airbender.Delegation.Caller

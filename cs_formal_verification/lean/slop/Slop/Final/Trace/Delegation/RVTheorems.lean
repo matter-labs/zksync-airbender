@@ -2,6 +2,8 @@ module
 public import Slop.Delegation.RVExecution
 public import Slop.Delegation.SeedOperations
 public import Human.Trace.Delegation.RVTheorems
+public import Slop.Final.Generic.Trace.Delegation.RVTheorems
+public import Slop.Field.BabyBearInstance
 
 @[expose] public section
 
@@ -20,7 +22,7 @@ theorem rv_native_memory_execution [Fact p.Prime] (hp : 2 * Trace.timestampBase 
 
 /-- RV sibling of `operation_memory_soundness`: all four families can share one pool initialized from an
     `RV.State`. Imported writes preserve canonical RV32 words, and logical matching supplies every later read. -/
-theorem rv_operation_memory_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
+private theorem rv_operation_memory_soundness_generic [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {data : MemoryData p} {before : RV.State} {cells : List Trace.Cell}
     {control : Fin 4096 → Vector Nat 6}
@@ -29,6 +31,8 @@ theorem rv_operation_memory_soundness [Fact p.Prime] (hp : 8388608 ≤ p)
   have seed := inputs.publicState.toRVBoundaryInputs.toSeed
   ⟨SeedProofs.memory_soundness (by norm_num [Trace.timestampBase]; omega) accepted seed,
     SeedProofs.operation_word_bounds hp inverse accepted seed inputs.tables inputs.rounds inputs.keccakActive⟩
+
+theorem rv_operation_memory_soundness : Airbender.Delegation.RVOperationMemorySoundnessClaim := by babybear_instance rv_operation_memory_soundness_generic
 
 /-- RV sibling of `memory_soundness`: imported delegation constraints and initialized token matching imply native
     clock/address bounds, strict per-cell order and Clean memory consistency, from an RV initialization. -/

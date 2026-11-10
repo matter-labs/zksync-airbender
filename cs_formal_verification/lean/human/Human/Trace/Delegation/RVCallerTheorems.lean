@@ -21,14 +21,14 @@ namespace Airbender.Delegation.Caller
     worker rows of the decoded family through the native request permutation; initialized machine clocks prove
     invocation bounds and write-offset room for the whole worker pool. Zero-clock workers remain an explicit gap. -/
 def RVRequestsSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (_hp : 2 * Trace.timestampBase + 4 < p) (_clockInverse : (-3840 : ZMod p) * 524288 = 1) (_pcInverse : (-30720 : ZMod p) * 65536 = 1) {data : RVRequestTrace p} {before : RV.State} {addresses : List (BitVec 32)} (_accepted : RVRequestAccepted data) (_inputs : RVRequestInputs data before addresses),
+  ∀ {data : RVRequestTrace babyBearModulus} {before : RV.State} {addresses : List (BitVec 32)} (_accepted : RVRequestAccepted data) (_inputs : RVRequestInputs data before addresses),
     RVRequestBinding data before
 
 /-- Caller requests and the worker pool's actual RV memory effects
     (`RVMemoryExecution` from the `initialImageRV` seeds; RAM cells include read-write access to the shadow RAM below
     `ROM_END`). No whole-machine execution or zero-clock fulfillment claim. -/
 def RVRequestMemorySoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (_hp : 2 * Trace.timestampBase + 4 < p) (_clockInverse : (-3840 : ZMod p) * 524288 = 1) (_pcInverse : (-30720 : ZMod p) * 65536 = 1) {data : RVRequestTrace p} {before : RV.State} {addresses : List (BitVec 32)} {cells : List Trace.Cell} (_accepted : RVRequestAccepted data) (_inputs : RVRequestMemoryInputs data before addresses cells),
+  ∀ {data : RVRequestTrace babyBearModulus} {before : RV.State} {addresses : List (BitVec 32)} {cells : List Trace.Cell} (_accepted : RVRequestAccepted data) (_inputs : RVRequestMemoryInputs data before addresses cells),
     RVRequestExecution data before cells
 
 /-- Decoded RV callers are linked to actual initialized workers whose native
@@ -41,7 +41,7 @@ def RVOperationSoundnessClaim : Prop :=
     history (`RVHistory` from `initialImageRV`; RAM cells include read-write access to the shadow RAM below
     `ROM_END`). Shared matching proves the caller's x0 source and every worker address bound. -/
 def RVSharedMemorySoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (_hp : 2 * Trace.timestampBase + 4 < p) (_clockInverse : (-3840 : ZMod p) * 524288 = 1) (_pcInverse : (-30720 : ZMod p) * 65536 = 1) {data : RVRequestTrace p} {before : RV.State} {addresses : List (BitVec 32)} {cells : List Trace.Cell} (_accepted : RVSharedMemoryAccepted data) (_inputs : RVSharedMemoryInputs data before addresses cells),
+  ∀ {data : RVRequestTrace babyBearModulus} {before : RV.State} {addresses : List (BitVec 32)} {cells : List Trace.Cell} (_accepted : RVSharedMemoryAccepted data) (_inputs : RVSharedMemoryInputs data before addresses cells),
     RVSharedMemoryEffects data before cells
 
 /-- Shared RV initialization, memory matching and RV transfers derive
@@ -55,7 +55,7 @@ def RVSharedOperationSoundnessClaim : Prop :=
     calls from `before` (`HashSpan.RVResult`, up to the spec's PC advance). Only public mode/control and the span-size
     ABI remain. -/
 def RVSharedSpanSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (_hp : 16777216 ≤ p) (_inverse : (-3840 : ZMod p) * 524288 = 1) {data : RVRequestTrace p} {before : RV.State} {addresses : List (BitVec 32)} {cells : List Trace.Cell} {span : HashSpan} (_accepted : RVSharedMemoryAccepted data) (_inputs : RVSharedSpanInputs data before addresses cells span),
+  ∀ {data : RVRequestTrace babyBearModulus} {before : RV.State} {addresses : List (BitVec 32)} {cells : List Trace.Cell} {span : HashSpan} (_accepted : RVSharedMemoryAccepted data) (_inputs : RVSharedSpanInputs data before addresses cells span),
     RVSharedSpanEffects data before cells span
 
 /-- Ordinary six-family instructions (RV table) and delegation workers share
@@ -68,20 +68,20 @@ def RVMixedMemorySoundnessClaim : Prop :=
 /-- State-free conclusion over RV public inputs: request matching places
     exactly one worker inside each caller's native four-tick cycle; zero-clock workers are classified as unissued. -/
 def RVWorkerScheduleSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (_hp : 2 * Trace.timestampBase + 4 < p) (_clockInverse : (-3840 : ZMod p) * 524288 = 1) (_pcInverse : (-30720 : ZMod p) * 65536 = 1) {data : RVRequestTrace p} {before : RV.State} {addresses : List (BitVec 32)} (_accepted : RVRequestChecks data) (_inputs : RVRequestInputs data before addresses),
+  ∀ {data : RVRequestTrace babyBearModulus} {before : RV.State} {addresses : List (BitVec 32)} (_accepted : RVRequestChecks data) (_inputs : RVRequestInputs data before addresses),
     RVWorkerSchedule data
 
 /-- State-free conclusion over RV public inputs: instruction-boundary cuts
     select exactly the callers issuing the native worker window. -/
 def RVRequestWindowSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (_hp : 2 * Trace.timestampBase + 4 < p) (_clockInverse : (-3840 : ZMod p) * 524288 = 1) (_pcInverse : (-30720 : ZMod p) * 65536 = 1) {data : RVRequestTrace p} {before : RV.State} {addresses : List (BitVec 32)} (_accepted : RVRequestChecks data) (_inputs : RVRequestInputs data before addresses) {lower upper : Nat} (_first : lower % 4 = 0) (_last : upper % 4 = 0) (_pastZero : 2 ≤ lower),
+  ∀ {data : RVRequestTrace babyBearModulus} {before : RV.State} {addresses : List (BitVec 32)} (_accepted : RVRequestChecks data) (_inputs : RVRequestInputs data before addresses) {lower upper : Nat} (_first : lower % 4 = 0) (_last : upper % 4 = 0) (_pastZero : 2 ≤ lower),
     RequestWindowBinding data.callers data.workers lower upper
 
 /-- The same selected workers bind actual RV caller requests and a
     complete pinned hash reference at derived RV cut states, whose final state IS the spec's run of the span's
     delegation calls (`HashSpan.RVResult`). The public worker-window ABI and worker-only matching remain explicit. -/
 def RVRequestHashWindowSoundnessClaim : Prop :=
-  ∀ {p : Nat} [Fact p.Prime] (_hp : 16777216 ≤ p) (_clockInverse : (-3840 : ZMod p) * 524288 = 1) (_pcInverse : (-30720 : ZMod p) * 65536 = 1) (_wordInverse : 64 * (-31457280 : ZMod p) = 1) (_byteInverse : 256 * (-7864320 : ZMod p) = 1) {data : RVRequestTrace p} {before : RV.State} {addresses : List (BitVec 32)} {cells : List Trace.Cell} {span : HashSpan} {lower upper : Nat} (_accepted : RVRequestAccepted data) (_program : RVRequestInputs data before addresses) (_inputs : span.RVRequestWindowInputs data.workers before cells lower upper) (_aligned : ∀ cell ∈ cells, cell.Aligned) (_first : lower % 4 = 0) (_last : upper % 4 = 0) (_pastZero : 2 ≤ lower),
+  ∀    {data : RVRequestTrace babyBearModulus} {before : RV.State} {addresses : List (BitVec 32)} {cells : List Trace.Cell} {span : HashSpan} {lower upper : Nat} (_accepted : RVRequestAccepted data) (_program : RVRequestInputs data before addresses) (_inputs : span.RVRequestWindowInputs data.workers before cells lower upper) (_aligned : ∀ cell ∈ cells, cell.Aligned) (_first : lower % 4 = 0) (_last : upper % 4 = 0) (_pastZero : 2 ≤ lower),
     span.RVRequestWindowResult data.callers data.workers before cells lower upper
 
 end Airbender.Delegation.Caller

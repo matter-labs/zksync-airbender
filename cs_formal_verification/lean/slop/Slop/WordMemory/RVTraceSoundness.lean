@@ -11,6 +11,7 @@ public import Slop.Defs.Helpers.Memory.Ports
 public import Slop.Defs.Helpers.Memory.RowEvents
 public import Slop.Defs.Helpers.Memory.History
 public import Slop.Defs.Helpers.Core.Word
+public import Slop.Final.Generic.Circuits.WordMemory.RVTheorems
 
 @[expose] public section
 
@@ -69,7 +70,7 @@ private theorem rom_address (a : BitVec 32) (high : (Word.ofBitVec a).hi < 64) :
   dsimp [Word.ofBitVec, limbBase] at high
   omega
 
-theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
+theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaimGeneric := by
   intro p _ hp inverse trace initial cells program assumptions input output w relation
   have : ClockLaws PooledFamily p := laws.clockLaws
   obtain ⟨⟨accepted, decoded, member⟩, mapping⟩ := relation
@@ -280,10 +281,5 @@ theorem rv_trace_soundness (laws : RVPooledLaws) : RVSoundnessClaim := by
       rw [ite_eq_left ⟨aligned, writable⟩]
     · rw [dataWord, addressWord, cellWord, Word.ofBitVec_roundtrip]
       exact rv_same_of_store _ _ _ _ _ value hpc
-
-theorem babyBear_rv_trace_soundness (laws : RVPooledLaws) : BabyBearRVSoundnessClaim := by
-  intro trace initial cells program assumptions input output w relation
-  exact rv_trace_soundness laws (p := babyBearModulus) (by decide) (by decide) trace initial cells program
-    assumptions input output w relation
 
 end Airbender.WordMemory.Proofs

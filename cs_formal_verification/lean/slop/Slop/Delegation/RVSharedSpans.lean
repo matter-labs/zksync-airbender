@@ -110,11 +110,11 @@ theorem rv_hash_span_binding [Fact p.Prime] (hp : 16777216 ≤ p)
       have execution := active row member
       simpa [Row.columns, HashSpan.family, family, Blake2G.importedConstraintsDelegationColumns,
         Blake2G.Variables.execute] using execution
-    exact Blake2G.Native.rv_workvector_soundness (by omega) rotationInverse accepted abi aligned
+    exact Blake2G.Native.rv_workvector_soundness_generic (by omega) rotationInverse accepted abi aligned
   | blakeRound flags =>
     have abi : Blake2Round.RVCallInputs workers before cells flags :=
       ⟨inputs, protocol.tables, protocol.family, protocol.controlStart, protocol.calls⟩
-    exact Blake2Round.Native.rv_compression_soundness (by omega) rotationInverse accepted abi aligned
+    exact Blake2Round.Native.rv_compression_soundness_generic (by omega) rotationInverse accepted abi aligned
   | keccak =>
     have abi : Keccak.RVCallInputs workers before cells := by
       refine ⟨inputs, rv_span_keccak_control_cell (by norm_num [timestampBase]; omega) accepted inputs protocol,
@@ -124,7 +124,7 @@ theorem rv_hash_span_binding [Fact p.Prime] (hp : 16777216 ≤ p)
       have execution := active row member
       simpa [Row.columns, HashSpan.family, family, Keccak.importedConstraintsDelegationColumns,
         Keccak.Variables.execute] using execution
-    exact Keccak.Native.rv_permutation_soundness hp byteInverse accepted abi protocol.tables aligned
+    exact Keccak.Native.rv_permutation_soundness_generic hp byteInverse accepted abi protocol.tables aligned
 
 theorem rv_hash_span_result_mapping [Fact p.Prime]
     {workers : MemoryData p} {before after : RV.State} {cells : List Cell} {span : HashSpan}
