@@ -2,7 +2,7 @@ use era_cudart::memory::{memory_copy, memory_copy_async, DeviceAllocation};
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use gpu_core::primitives::field::PR;
-use gpu_hash::keccak256::{build_partial_coset_tree, build_retained_layers, Digest};
+use gpu_hash::keccak256::{build_retained_layers, Digest};
 use gpu_ntt::proth120::{
     dispatch, launch_suffix_micro, lde_coset_slot, CosetSource, DeviceContext, ScaleArgs,
     SuffixShape,
@@ -145,29 +145,24 @@ fn sink_coefficient_tree_matches_reference() {
         build_retained_layers(h, skip_bottom, cosets, per_coset, &mut retained, &stream).unwrap();
         let candidate = download(&retained, &stream);
 
-        let mut reference = DeviceAllocation::<Digest>::alloc(per_coset).unwrap();
+        use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
+        use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
+        let worker = worker::Worker::new_with_num_threads(8);
         for coset in 0..cosets as usize {
             let expected = cpu_tile_pass(&monomials_host, log_lde, k0 as usize + coset, 1);
-            let natural = upload(&expected);
-            build_partial_coset_tree(
-                &natural,
-                log_n,
-                log_v,
-                1,
-                skip_bottom,
-                &mut reference,
-                &stream,
-            )
-            .unwrap();
-            let reference = download(&reference, &stream);
-            let candidate = &candidate[coset * per_coset..(coset + 1) * per_coset];
-            let mismatches = (0..per_coset)
-                .filter(|&i| candidate[i] != reference[i])
-                .count();
+            let columns = [expected.as_slice()];
+            let tree = <Keccak256MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<PR>>::construct_from_cosets::<PR, &[PR]>(
+                &[&columns], 1 << log_v, 1, true, false, false, &worker,
+            );
+            let reference: Vec<Digest> = tree.node_hashes_enumerated_from_leafs
+                [skip_bottom as usize - 1..]
+                .iter()
+                .flat_map(|layer| layer.iter().copied())
+                .collect();
+            assert_eq!(reference.len(), per_coset);
             assert_eq!(
-                mismatches, 0,
-                "({log_n},{log_v},D {log_domain}) coset {}: {mismatches} of {per_coset} retained digests differ",
-                k0 as usize + coset
+                &candidate[coset * per_coset..(coset + 1) * per_coset],
+                reference
             );
         }
         println!(

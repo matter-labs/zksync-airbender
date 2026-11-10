@@ -8,7 +8,7 @@ use gpu_core::primitives::field::PR;
 
 use super::context::{DeviceContext, TwiddleDescriptor};
 use super::lde::{
-    naturalize, set_max_dynamic_smem, ChunkMap, DitPolicy, TransformPass, TransformPolicy,
+    set_max_dynamic_smem, ChunkMap, DitPolicy, TransformPass, TransformPolicy,
     MAX_COLUMNS_PER_LAUNCH,
 };
 use super::{validate_context_log, validate_disjoint, validate_slice};
@@ -608,42 +608,7 @@ pub fn lde_coset_slot(
     )
 }
 
-// Reference completion of a prefix output: the remaining stages as one final pass, then the
-// natural-order permutation as natural coset evaluations.
-pub fn lde_finish_reference(
-    ctx: &DeviceContext,
-    values: &mut DeviceSlice<PR>,
-    cols: usize,
-    plan: &ChunkPlan,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    let log_n = plan.log_n;
-    let start = plan.stages();
-    let stages = log_n - start;
-    assert!(
-        has_reference_finish(plan),
-        "Proth120 prefix: no final kernel for {stages} stages"
-    );
-    let rows = 1usize << log_n;
-    let len = cols
-        .checked_mul(rows)
-        .expect("Proth120 prefix: length overflow");
-    assert_eq!(values.len(), len, "Proth120 prefix: finish length");
-    validate_slice(values, "Proth120 prefix finish values");
-    validate_context_log(ctx, log_n);
-    let target = MutPtrAndStride::new(values.as_mut_ptr(), rows);
-    launch_final_pass(
-        &DitPolicy(ctx.descriptor()),
-        target,
-        log_n,
-        start,
-        cols,
-        stream,
-    )?;
-    naturalize(target, log_n, cols, MAX_COLUMNS_PER_LAUNCH, stream)
-}
-
-// The last `log_n - start` stages (8, 10 or 12) of `cols` columns in place.
+// The last Mobius stages of `cols` columns in place.
 pub(crate) fn launch_final_pass<P: TransformPolicy>(
     policy: &P,
     target: MutPtrAndStride<PR>,
@@ -677,8 +642,4 @@ pub(crate) fn launch_final_pass<P: TransformPolicy>(
         )?;
     }
     Ok(())
-}
-
-pub fn has_reference_finish(plan: &ChunkPlan) -> bool {
-    plan.log_n - plan.stages() == 8
 }

@@ -1,9 +1,7 @@
 use era_cudart::execution::{CudaLaunchConfig, KernelArguments, KernelFunction};
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart::stream::CudaStream;
-use era_cudart::{
-    cuda_kernel, cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function,
-};
+use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
 use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 use gpu_core::primitives::device_structures::{MutPtrAndStride, PtrAndStride};
 use gpu_core::primitives::field::PR;
@@ -51,11 +49,7 @@ dit_kernel!(ab_pr_dit_nonfinal_5_stages_narrow_kernel);
 dit_kernel!(ab_pr_dit_nonfinal_6_stages_narrow_kernel);
 dit_kernel!(ab_pr_dit_nonfinal_7_stages_narrow_kernel);
 dit_kernel!(ab_pr_dit_nonfinal_8_stages_kernel);
-dit_kernel!(ab_pr_dit_final_8_stages_kernel);
 
-cuda_kernel!(Naturalize, ab_pr_naturalize_kernel(
-    inputs: PtrAndStride<PR>, outputs: MutPtrAndStride<PR>, log_n: u32,
-));
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum TransformPass {
     Small,
@@ -88,7 +82,6 @@ impl TransformPolicy for DitPolicy {
             TransformPass::NonfinalNarrow(6) => ab_pr_dit_nonfinal_6_stages_narrow_kernel,
             TransformPass::NonfinalNarrow(7) => ab_pr_dit_nonfinal_7_stages_narrow_kernel,
             TransformPass::Nonfinal(8) => ab_pr_dit_nonfinal_8_stages_kernel,
-            TransformPass::Final(8) => ab_pr_dit_final_8_stages_kernel,
             _ => panic!("Proth120 NTT: unsupported transform pass {pass:?}"),
         })
     }
@@ -263,43 +256,6 @@ fn launch_transform_chunked<P: TransformPolicy>(
             )?;
         }
         start_stage += stages;
-    }
-    Ok(())
-}
-
-pub(crate) fn naturalize(
-    values: MutPtrAndStride<PR>,
-    log_n: u32,
-    cols: usize,
-    columns_per_launch: usize,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert!(
-        log_n >= 10,
-        "Proth120 naturalize requires a wrap reference finish"
-    );
-    for column in (0..cols).step_by(columns_per_launch) {
-        let chunk = (cols - column).min(columns_per_launch);
-        let target = MutPtrAndStride::new(
-            unsafe {
-                values.ptr.add(
-                    column
-                        .checked_mul(values.stride)
-                        .expect("Proth120 NTT: naturalize column offset overflow"),
-                )
-            },
-            values.stride,
-        );
-
-        let m = 1u32 << (log_n / 2 - 5);
-        let config = CudaLaunchConfig::basic(
-            (m * (m + 1) / 2, 1u32 << (log_n & 1), chunk as u32),
-            (32, 2, 2),
-            stream,
-        );
-        let source = PtrAndStride::new(target.ptr as *const PR, target.stride);
-        NaturalizeFunction::default()
-            .launch(&config, &NaturalizeArguments::new(source, target, log_n))?;
     }
     Ok(())
 }

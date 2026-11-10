@@ -137,13 +137,11 @@ fn cpu_pr_chunk_plan_closure() {
     for (n, c, v, sb) in [
         (24, 12, 1, 10),
         (24, 2, 1, 10),
-        (24, 2, 1, 5),
         (23, 1, 4, 5),
         (19, 1, 4, 5),
         (15, 1, 4, 5),
         (18, 12, 1, 10),
         (18, 2, 1, 10),
-        (18, 2, 1, 5),
         (19, 12, 1, 10),
         (19, 2, 1, 10),
         (20, 12, 1, 10),
@@ -152,9 +150,6 @@ fn cpu_pr_chunk_plan_closure() {
             let plan = dispatch(n, c, v, sb, l2_mib * MIB);
             assert!(matches!((plan.r, v), (7, 1) | (8, 1) | (8, 4)));
             let prefix = &plan.prefix;
-            if c == 2 && sb == 5 {
-                assert!(super::has_reference_finish(prefix));
-            }
             if [0, 1, 4, 16, 40, 50, 96, 128].contains(&l2_mib) {
                 assert_closure(prefix, false);
             }
@@ -387,24 +382,32 @@ fn pr_prefix_chunked_mobius_cpu_parity() {
     }
 }
 
-fn cpu_coset(monomials: &[PR], log_n: u32, log_domain: u32, k: u32) -> Vec<PR> {
+fn cpu_coset_prefix(monomials: &[PR], log_n: u32, log_domain: u32, k: u32, stages: u32) -> Vec<PR> {
     let rows = 1usize << log_n;
-    let worker = crate::upstream::Worker::new_with_num_threads(8);
-    let twiddles = crate::upstream::Twiddles::<PR, std::alloc::Global>::new(rows, &worker);
+    let r = log_n - stages;
     let offset = domain_generator_for_size::<PR>(1u64 << log_domain).pow_u128(k as u128);
-    monomials
-        .chunks_exact(rows)
-        .flat_map(|column| {
-            crate::upstream::lde_coset_lazy_r8(
-                column,
-                offset,
-                &twiddles.forward_twiddles[..rows / 2],
-            )
-        })
-        .collect()
+    let root = domain_generator_for_size::<PR>(1u64 << log_n);
+    let mut result = monomials.to_vec();
+    for column in result.chunks_exact_mut(rows) {
+        let mut power = PR::ONE;
+        for value in column.iter_mut() {
+            value.mul_assign(&power);
+            power.mul_assign(&offset);
+        }
+        for digit in 0..1usize << r {
+            let mut values: Vec<PR> = (0..1usize << stages)
+                .map(|block| column[(block << r) + digit])
+                .collect();
+            cpu_prefix_digit(&mut values, stages, Some((root, log_n)));
+            for (block, value) in values.into_iter().enumerate() {
+                column[(block << r) + digit] = value;
+            }
+        }
+    }
+    result
 }
 
-fn narrow_reference_plan(log_n: u32) -> ChunkPlan {
+fn scaled_prefix_plan(log_n: u32) -> ChunkPlan {
     let groups = narrow_groups(&prefix_groups(log_n - 8).unwrap());
     chunk_plan(log_n, &groups, CHUNK_16_MIB).unwrap()
 }
@@ -412,14 +415,14 @@ fn narrow_reference_plan(log_n: u32) -> ChunkPlan {
 #[test]
 #[cfg(not(no_cuda))]
 fn pr_lde_coset_slot_fused_scale_parity() {
-    use super::{lde_coset_slot, lde_finish_reference};
+    use super::lde_coset_slot;
     let stream = CudaStream::create().unwrap();
     let ctx = DeviceContext::create().unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_3201);
     // Diagnostic row counts, production column counts; exact CPU oracle.
     for (log_n, cols) in [(19, 12), (19, 2), (15, 1)] {
         let rows = 1usize << log_n;
-        let plan = narrow_reference_plan(log_n);
+        let plan = scaled_prefix_plan(log_n);
         let monomials: Vec<PR> = (0..rows * cols)
             .map(|_| PR::new(rng.random::<u128>() % PR::ORDER))
             .collect();
@@ -436,7 +439,7 @@ fn pr_lde_coset_slot_fused_scale_parity() {
             memory_copy(&mut d, &[1]).unwrap();
             d
         };
-        let expected = cpu_coset(&monomials, log_n, 31, k);
+        let expected = cpu_coset_prefix(&monomials, log_n, 31, k, plan.stages());
         for source in [
             CosetSource::Constant(k),
             CosetSource::Slot {
@@ -457,13 +460,12 @@ fn pr_lde_coset_slot_fused_scale_parity() {
                 &stream,
             )
             .unwrap();
-            lde_finish_reference(&ctx, &mut candidate, cols, &plan, &stream).unwrap();
             assert_eq!(download(&candidate, &stream), expected);
         }
     }
     let log_n = 15;
     let rows = 1usize << log_n;
-    let plan = narrow_reference_plan(log_n);
+    let plan = scaled_prefix_plan(log_n);
     let column: Vec<PR> = (0..rows)
         .map(|_| PR::new(rng.random::<u128>() % PR::ORDER))
         .collect();
@@ -482,19 +484,18 @@ fn pr_lde_coset_slot_fused_scale_parity() {
         &stream,
     )
     .unwrap();
-    lde_finish_reference(&ctx, &mut candidate, 4, &plan, &stream).unwrap();
     let expected: Vec<PR> = (3..7)
-        .flat_map(|k| cpu_coset(&column, log_n, 31, k))
+        .flat_map(|k| cpu_coset_prefix(&column, log_n, 31, k, plan.stages()))
         .collect();
     assert_eq!(download(&candidate, &stream), expected);
 }
 
 // Forces the dispatch of smaller devices on this GPU: every plan (resident, smaller strips or
-// full grid) gives the same prefix as its coarsest split, and prefix + final == lde_coset.
+// full grid) gives the same prefix as its coarsest split and the independent CPU network.
 #[test]
 #[cfg(not(no_cuda))]
 fn pr_lde_coset_slot_small_l2_parity() {
-    use super::{has_reference_finish, lde_coset_slot, lde_finish_reference};
+    use super::lde_coset_slot;
 
     let ctx = DeviceContext::create().unwrap();
     let stream = CudaStream::create().unwrap();
@@ -543,21 +544,17 @@ fn pr_lde_coset_slot_small_l2_parity() {
                 prefix == download(&reference, &stream),
                 "({log_n},{columns},{log_v},{skip_bottom}) L2 {l2_mib} MiB: prefix differs from its full grid"
             );
-            if has_reference_finish(plan) {
-                lde_finish_reference(&ctx, &mut candidate, cols, plan, &stream).unwrap();
-                assert_eq!(
-                    download(&candidate, &stream),
-                    cpu_coset(&monomials, log_n, 31, k)
-                );
-            }
+            assert_eq!(
+                prefix,
+                cpu_coset_prefix(&monomials, log_n, 31, k, plan.stages())
+            );
             println!(
-                "pr_lde_coset_slot_small_l2_parity: ({log_n},{columns},{log_v},{skip_bottom}) L2 {l2_mib} MiB: prefix {} chunk {} MiB resident prefix/suffix {}/{} tiles/batch {} finish {}, 0 mismatches",
+                "pr_lde_coset_slot_small_l2_parity: ({log_n},{columns},{log_v},{skip_bottom}) L2 {l2_mib} MiB: prefix {} chunk {} MiB resident prefix/suffix {}/{} tiles/batch {}, 0 mismatches",
                 groups_text(plan),
                 plan.chunk_bytes() / MIB,
                 shape.prefix_resident,
                 shape.suffix_resident,
-                shape.tiles_per_batch,
-                has_reference_finish(plan)
+                shape.tiles_per_batch
             );
         }
     }

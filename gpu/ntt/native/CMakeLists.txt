@@ -31,7 +31,6 @@ add_library(gpu_ntt_native STATIC
         proth120/context.cu
         proth120/transform.cuh
         proth120/lde_dit.cu
-        proth120/lde_naturalize.cu
         proth120/hypercube_mobius.cu
         proth120/pack.cu
         proth120/hypercube_eq.cu

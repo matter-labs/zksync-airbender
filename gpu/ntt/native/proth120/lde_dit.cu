@@ -26,12 +26,6 @@ EXTERN __launch_bounds__(512, 3) __global__
   nonfinal<8, false, lazy_dit_policy>(in, out, lazy_dit_policy{{d}}, log_n, start_stage, map);
 }
 
-EXTERN __launch_bounds__(64, 16) __global__
-    void ab_pr_dit_final_8_stages_kernel(pr_matrix_getter<ld_modifier::cg> in, pr_matrix_setter<st_modifier::cg> out, const proth120_twiddle_descriptor d,
-                                         const u32 log_n, const u32 start_stage, const chunk_map) {
-  final<6, 8, dit_policy>(in, out, dit_policy{d}, log_n, start_stage);
-}
-
 EXTERN __launch_bounds__(512, 3) __global__
     void ab_pr_dit_nonfinal_8_stages_scaled_kernel(pr_matrix_getter<ld_modifier::cg> in, pr_matrix_setter<st_modifier::cg> out,
                                                    const proth120_twiddle_descriptor d, const u32 log_n, const u32 start_stage, const chunk_map map,
