@@ -17,7 +17,10 @@ budget, review check) when `cs_formal_verification/` or a circuit JSON the spec 
   --paranoid` on the lakefile's default targets, then `leanchecker` on the two Clean-importing modules). It runs on the
   runner host, not in a container, so that `lake check`'s `bwrap` sandbox gets user and mount namespaces; `lean-ci.sh
   kernel-probe` checks that first, and where `bwrap` cannot sandbox the job replays with `leanchecker` and fails.
-  `backup-check.sh` runs the same job by hand.
+  `backup-check.sh` runs the same job by hand. Host prerequisites: passwordless `sudo` that allows the
+  `DEBIAN_FRONTEND=noninteractive` assignment (for `apt-get`), or git, curl, python3, procps, zstd, xz-utils and
+  bubblewrap preinstalled; user namespaces for unprivileged processes (Ubuntu 24.04's AppArmor restriction off, or a
+  bwrap profile allowing them).
 
 The setup steps shared by both jobs are the composite action `.github/actions/lean-fv-setup`.
 

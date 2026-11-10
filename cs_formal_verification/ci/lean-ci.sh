@@ -160,6 +160,8 @@ step_kernel_probe() {
 #     Clean-importing modules, which it leaves out, are replayed by leanchecker (their own constants only).
 #   leanchecker (default when unset; the fallback where bwrap cannot sandbox, see kernel-probe): the toolchain's
 #     leanchecker over our module prefixes.
+# lake check's sandbox clears the environment (LAKE_NO_CACHE does not reach it) and can write only lean/.lake: build
+# first (step_build), so Clean is already built from source and sail-rv32/.lake and lean-sail/.lake are up to date.
 # The kernel_replay job runs on the runner host (no container: Docker's default profiles deny bwrap the user and mount
 # namespaces it needs) and sets KERNEL_CHECKER from kernel-probe; backup-check.sh sets paranoid.
 # leanchecker replays KERNEL_CHECK_THREADS (default 2) modules at a time, each on top of its own import of the
