@@ -16,6 +16,7 @@ pub enum Section {
     Delegation,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct RegionPlan {
     pub circuit: CircuitId,
     pub section: Section,
@@ -25,6 +26,7 @@ pub struct RegionPlan {
     pub closes_at_epilogue: bool,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub struct StreamPlan {
     pub regions: Vec<RegionPlan>,
     pub inits_count_word: usize,

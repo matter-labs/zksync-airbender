@@ -9,9 +9,10 @@
 //! its own rows; a descriptor without a row panics, never another row's
 //! coefficients. The rows cover the guests the unrolled-to-unified switch
 //! prices: the Sec100 standard unrolled base and recursion verifiers, built
-//! with `Compression`, in every soundness mode. Regenerate them locally via
-//! `emit_census_tables` when a guest changes; see that test for fixture
-//! generation. blake2 g-function is unpriced → `UnpricedCircuit`.
+//! with `Compression`, in every soundness mode. `build.sh` emits all four tables
+//! from canonical circuit proofs and committed CPU chains. See `cost_model_trace`
+//! for the prefix tracing, intercept fit and acceptance limits.
+//! blake2 g-function is unpriced → `UnpricedCircuit`.
 
 use super::{proof_counts, CircuitId, EstimateError};
 use crate::program_proof::ProgramProof;

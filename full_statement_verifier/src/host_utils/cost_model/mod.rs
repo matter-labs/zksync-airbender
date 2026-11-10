@@ -23,8 +23,8 @@ impl core::fmt::Display for EstimateError {
                 f,
                 "no per-proof cost for {circuit:?}; it was absent from every calibration \
                  fixture. Recalibrate against a fixture set that exercises it with \
-                 `cargo test -p full_statement_verifier --features host_utils,verifiers \
-                 --test cost_model_trace -- --ignored`"
+                 `cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers \
+                 --test cost_model_trace emit_census_tables -- --exact --ignored`"
             ),
             Self::UnexpectedInitsAndTeardowns { found } => {
                 write!(

@@ -1,8 +1,8 @@
 #![cfg(all(feature = "host_utils", feature = "verifiers"))]
 
-//! Proof fixtures must use the current schedule; a clean `git status` after
-//! `tools/reproduce/reproduce.sh` ensures their standalone verifier guests also
-//! match the generated code.
+//! Fixture codec round trip and a print-only per-circuit cycle diagnostic.
+//! Census accuracy is checked on committed chains in `cost_model_trace`;
+//! `build.sh` regenerates the guest-bound census tables.
 
 #[allow(dead_code)]
 mod trace;
@@ -12,38 +12,6 @@ use verifier_common::field::baby_bear::ext4::BabyBearExt4;
 use verifier_common::fsv_binaries::SoundnessMode;
 use verifier_common::prover::gkr::prover::GKRProof;
 use verifier_common::prover::merkle_trees::DefaultTreeConstructor;
-
-const EXPECTED: &[(&str, u64)] = &[
-    ("add_sub_lui_auipc_mop", 810262),
-    ("jump_branch_slt", 837887),
-    ("shift_binop", 850085),
-    ("unsigned_mul_div", 787494),
-    ("mem_word_only", 797450),
-    ("mem_subword_only", 815854),
-    ("inits_and_teardowns", 582418),
-    ("blake2_with_extended_control", 1339947),
-    ("bigint_with_extended_control", 1174124),
-    ("keccak_special5", 1160615),
-    ("keccak_column_parity", 942580),
-    ("keccak_theta_rho", 1033332),
-    ("keccak_chi5", 971596),
-];
-
-const EXPECTED_ETHPROOFS: &[(&str, u64)] = &[
-    ("add_sub_lui_auipc_mop", 1509276),
-    ("jump_branch_slt", 1565504),
-    ("shift_binop", 1584078),
-    ("unsigned_mul_div", 1365975),
-    ("mem_word_only", 1487190),
-    ("mem_subword_only", 1514341),
-    ("inits_and_teardowns", 1105507),
-    ("blake2_with_extended_control", 2135890),
-    ("bigint_with_extended_control", 2056727),
-    ("keccak_special5", 2058545),
-    ("keccak_column_parity", 1710487),
-    ("keccak_theta_rho", 1845701),
-    ("keccak_chi5", 1773376),
-];
 
 fn repo_root() -> String {
     format!("{}/..", env!("CARGO_MANIFEST_DIR"))
@@ -94,30 +62,6 @@ fn guest_cycles(circuit: &str, mode: SoundnessMode) -> u64 {
     trace::measure_verifier_cycles(&bin, &text, stream)
 }
 
-fn assert_costs_have_not_drifted(mode: SoundnessMode, expected_costs: &[(&str, u64)]) {
-    for (circuit, expected) in expected_costs {
-        let actual = guest_cycles(circuit, mode);
-        let tolerance = expected / 1000;
-        assert!(
-            actual.abs_diff(*expected) <= tolerance,
-            "{circuit} ({mode:?}): {actual} vs expected {expected} (tolerance {tolerance}). The generated \
-             verifier changed; recalibrate the cost tables. This guard is a proxy: the guest \
-             runs only verify(), so it detects codegen drift but cannot validate the cost \
-             table's numbers"
-        );
-    }
-}
-
-#[test]
-fn per_circuit_verifier_cost_has_not_drifted() {
-    assert_costs_have_not_drifted(SoundnessMode::PessimisticConjecture, EXPECTED);
-}
-
-#[test]
-fn ethproofs_per_circuit_verifier_cost_has_not_drifted() {
-    assert_costs_have_not_drifted(SoundnessMode::EthproofsSoundnessCalc, EXPECTED_ETHPROOFS);
-}
-
 #[test]
 #[ignore = "regenerate the Sec100 proof fixtures and verifier binaries (tools/reproduce/reproduce.sh) first"]
 fn emit_per_circuit_verifier_costs() {
@@ -126,8 +70,9 @@ fn emit_per_circuit_verifier_costs() {
         SoundnessMode::EthproofsSoundnessCalc,
     ] {
         println!("// {mode:?}");
-        for (circuit, _) in EXPECTED {
-            println!("(\"{circuit}\", {}),", guest_cycles(circuit, mode));
+        for circuit in verifier_common::test_circuits::CIRCUITS.iter() {
+            let name = circuit.name;
+            println!("(\"{name}\", {}),", guest_cycles(name, mode));
         }
     }
 }

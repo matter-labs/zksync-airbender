@@ -121,8 +121,41 @@ bypass that threshold for the chain continuations.
 
 | Fixture | Consumers |
 | --- | --- |
-| `circuits/<mode>/*` | native, corruption, transpiler, GPU canonical matrix, cost-model drift checks |
-| `chains/<mode>/base` | CLI verification, currency, soundness smoke checks, typed encoding |
+| `circuits/<mode>/*` | native, corruption, transpiler, GPU canonical matrix, census price inputs |
+| `chains/<mode>/base` | CLI verification, currency, soundness smoke checks, typed encoding; census base guest fit and gates |
 | `chains/<mode>/unified` | CLI verification, currency, soundness smoke checks, typed encoding; unified FSV acceptance and rejection |
-| `chains/<mode>/unrolled` | CLI verification, currency, typed encoding |
+| `chains/<mode>/unrolled` | CLI verification, currency, typed encoding; census recursion guest fit and gates |
 | `chains/<mode>/unrolled_unified` | CLI verification, currency, typed encoding; unified FSV acceptance and rejection |
+
+## Census tables
+
+`build.sh` rebuilds the registered guests and emits all four census tables from
+committed CPU fixtures. Emission proves nothing and requires no GPU or local
+corpus. To emit again after refreshing chains:
+
+```sh
+RUST_MIN_STACK=16777216 cargo test -p full_statement_verifier --profile cli \
+  --features host_utils,verifiers --test cost_model_trace emit_census_tables -- --exact --ignored
+```
+
+After a guest change, run `build.sh`, `fixtures/regenerate.sh`, then emission
+again. The first emission requires the rebuilt guest to accept the old chain.
+If it rejects it, regenerate the chains before emitting; failed traces never
+supply a table. The table's guest digest remains pinned.
+
+Canonical circuit proofs determine per-proof prices through transient prefix
+streams stopped at the first PoW read. Each guest's accepted `base` or `unrolled`
+chain supplies its complete tail and observed spread. The intercept fit uses
+only the main three-copy prefix and chain rows; one-copy, RISC-V-only and
+delegation-only streams are additional checks. A singleton chain span is
+excluded only when its region ends at PoW, not when it is the last active
+proof. Multi-proof regions contribute only interior spans.
+
+The existing family, delegation and total acceptance budgets are unchanged.
+Chain totals participate in fitting the intercept, so the chains are not fully
+held out. The canonical i&t price includes its region's post-loop constant;
+multiple-i&t workloads are not reproduced by these fixtures. Retained corpora
+remain optional acceptance inputs through `COST_MODEL_FIXTURE_DIR`; emission
+never reads that variable. The recursion fixed-point test still needs such a
+corpus and stays ignored. The empirical envelope does not guarantee accuracy
+on unseen workloads.

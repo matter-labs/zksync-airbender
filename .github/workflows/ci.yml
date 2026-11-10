@@ -38,10 +38,10 @@ jobs:
         env:
           RUST_MIN_STACK: 16777216
         run: cargo test -p gpu_gkr_compiler --profile cli --features search --test forward_corpus --test forward_search --bin gkr-forward-artifact
-      - name: Verifier cost-model drift guard
+      - name: Verifier census and fixture gates
         env:
           RUST_MIN_STACK: 1073741824
-        run: cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --lib --test cost_model_drift --test unified
+        run: cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --lib --test cost_model_drift --test cost_model_trace --test unified
       - name: Native verifier tests
         env:
           RUST_MIN_STACK: 1073741824
@@ -139,6 +139,7 @@ jobs:
       - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          components: rustfmt
           rustflags: ""
       - name: Setup
         run: |
