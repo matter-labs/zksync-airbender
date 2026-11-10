@@ -5,6 +5,7 @@ public import Slop.Blake2G.Fragment
 public import Slop.Blake2G.OpIndex
 public import Human.Helpers.Properties
 public import Slop.Constraints
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

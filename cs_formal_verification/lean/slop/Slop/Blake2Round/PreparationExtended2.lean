@@ -4,6 +4,9 @@ public import Slop.Blake2Round.ArtifactChecks
 public import Slop.Blake2Round.OpIndex
 public import Slop.Constraints
 public import Mathlib.Tactic.LinearCombination
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Blake2Round.Artifact
+public import Slop.Defs.Circuits.Blake2Round.Preparation
 
 @[expose] public section
 

@@ -1,6 +1,8 @@
 module
 public import CleanCore.Circuit.Operations
 public import Human.Helpers.Tables.Range
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.CleanCore.Circuit.Lookup
 
 @[expose] public section
 

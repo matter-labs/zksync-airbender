@@ -2,6 +2,7 @@ module
 public import Slop.Constraints
 public import Human.Helpers.Properties
 public import Mathlib.Tactic.LinearCombination
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

@@ -1,6 +1,8 @@
 module
 public import Slop.UnifiedReduced.WordROM
 public import Slop.UnifiedReduced.RV.ROMLookups
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.UnifiedReduced.Artifact
 
 @[expose] public section
 

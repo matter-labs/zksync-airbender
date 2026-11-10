@@ -2,6 +2,7 @@ module
 public import Human.Circuits.Blake2Round.Addresses
 public import Slop.Blake2Round.Addresses
 public import Slop.MemoryPorts
+public import Slop.Defs.Circuits.Blake2Round.Addresses
 
 @[expose] public section
 

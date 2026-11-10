@@ -6,6 +6,8 @@ public import Slop.Trace.RVFetch
 public import Slop.Trace.RVProgram
 public import Slop.Trace.RVZero
 public import Slop.Trace.RVRom
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

@@ -2,6 +2,11 @@ module
 public import Slop.Trace.Program
 public import Slop.Trace.Values
 public import Slop.Trace.ZeroValues
+public import Slop.Defs.Helpers.Context.Columns
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Context.Model
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

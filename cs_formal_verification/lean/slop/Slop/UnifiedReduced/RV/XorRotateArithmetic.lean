@@ -3,6 +3,7 @@ public import Slop.UnifiedReduced.RV.XorRotateQueries
 public import Slop.UnifiedReduced.RV.BinaryOperands
 public import Slop.Arithmetic.WordRotation
 public import Slop.Arithmetic.ShiftAssembly
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

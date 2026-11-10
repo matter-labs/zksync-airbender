@@ -3,6 +3,7 @@ public import Human.Helpers.Delegation.WorkerContext
 public import Slop.Delegation.Operations
 public import Slop.Delegation.Requests
 public import Slop.Delegation.PortEvents
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

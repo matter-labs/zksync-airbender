@@ -23,7 +23,7 @@ The local model explicitly retains four input-word bounds. Integrated worker
 history derives the operation bounds (in the worker claims, from the initialized
 history); keep those two interfaces distinct.
 
-[Artifact](Artifact.lean), [Addresses](Addresses.lean) and
+[Artifact](Artifact.lean) and
 [Execution](Execution.lean) name imported controls, ports and effects.
 [Controller](Controller.lean) describes behavior;
 [controller rows](Tables/Controller.lean) and [`setup`](Tables/Setup.lean) are modeled tables.

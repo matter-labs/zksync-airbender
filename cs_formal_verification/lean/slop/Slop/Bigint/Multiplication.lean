@@ -2,6 +2,7 @@ module
 public import Slop.Bigint.MultiplicationProduct
 public import Slop.Bigint.MultiplicationWriteback
 public import Slop.Arithmetic.Digits
+public import Slop.Defs.Circuits.Bigint.Multiplication
 
 @[expose] public section
 

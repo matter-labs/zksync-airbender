@@ -1,5 +1,6 @@
 module
 public import Slop.Trace.SeedTransfer
+public import Slop.CleanCore.Utils.OfflineMemory
 
 @[expose] public section
 

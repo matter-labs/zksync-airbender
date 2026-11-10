@@ -11,6 +11,9 @@ public import Slop.Trace.DecoderBits
 public import Slop.UnifiedReduced
 public import Slop.JumpBranchSlt.RVDecoder
 public import Slop.ShiftBinop.RVDecoder
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Memory.RowEvents
 
 @[expose] public section
 

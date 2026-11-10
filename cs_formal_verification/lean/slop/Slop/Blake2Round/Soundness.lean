@@ -2,6 +2,8 @@ module
 public import Human.Circuits.Blake2Round.Mixing
 public import Slop.Blake2Round.Diagonal
 public import Slop.Blake2Round.Reference
+public import Slop.Defs.Circuits.Blake2Round.Mixing
+public import Slop.Defs.Circuits.Blake2Round.Preparation
 
 public import Slop.Blake2Round.Soundness.ColumnMapping
 public import Slop.Blake2Round.Soundness.DiagonalMapping

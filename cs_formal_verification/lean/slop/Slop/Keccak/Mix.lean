@@ -3,6 +3,9 @@ public import Slop.Keccak.Lanes
 public import Slop.Keccak.MixRotation
 public import Slop.Keccak.OpIndex
 public import Mathlib.Tactic.IntervalCases
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Keccak.Artifact
+public import Slop.Defs.Circuits.Keccak.Mix
 
 @[expose] public section
 

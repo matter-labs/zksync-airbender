@@ -16,7 +16,7 @@ bind the reference output and terminal tokens for the 649-call protocol;
 invalid-control fallback is outside that complete protocol.
 
 Start with [Artifact](Artifact.lean) and [Execution](Execution.lean) for the seven native modes.
-[Theta](Theta.lean), [Rho](Rho.lean), [Mix](Mix.lean) and [Iota](Iota.lean)
+[Theta](Theta.lean), [Rho](Rho.lean) and [Iota](Iota.lean)
 select the original Clean operations and the circuit's phased lane effects.
 
 [Controller](Controller.lean) describes physical lane selection;

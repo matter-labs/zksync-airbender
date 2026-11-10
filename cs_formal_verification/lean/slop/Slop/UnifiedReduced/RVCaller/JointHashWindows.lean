@@ -4,6 +4,7 @@ public import Slop.UnifiedReduced.RVCaller.WindowProjection
 public import Slop.UnifiedReduced.RVCaller.SpanTarget
 public import Slop.Blake2G.RVWindows
 public import Slop.Blake2Round.RVWindows
+public import Slop.Defs.Trace.Workers.Blake2Round.Call
 
 @[expose] public section
 

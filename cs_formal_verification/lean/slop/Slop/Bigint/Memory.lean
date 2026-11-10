@@ -6,6 +6,7 @@ public import Slop.Bigint.MultiplicationFields
 public import Slop.Bigint.MultiplicationWriteback
 public import Mathlib.Tactic.IntervalCases
 public import Slop.Trace.Values
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

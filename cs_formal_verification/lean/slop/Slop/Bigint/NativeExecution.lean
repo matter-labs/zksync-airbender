@@ -5,6 +5,11 @@ public import Slop.Bigint.Multiplication
 public import Slop.Delegation.Operations
 public import Slop.Delegation.Requests
 public import Slop.Delegation.PortEvents
+public import Slop.Defs.Circuits.Bigint.Equality
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Circuits.Bigint.Additive
+public import Slop.Defs.Circuits.Bigint.Artifact
+public import Slop.Defs.Circuits.Bigint.Multiplication
 
 @[expose] public section
 

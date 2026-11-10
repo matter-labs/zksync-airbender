@@ -1,6 +1,6 @@
 module
 public import Human.Helpers.Context.RVInterfaces
-public import Human.Helpers.Memory.History
+public import Slop.Defs.Helpers.Memory.History
 public import Slop.Trace.ZeroValues
 public import Slop.Trace.History
 

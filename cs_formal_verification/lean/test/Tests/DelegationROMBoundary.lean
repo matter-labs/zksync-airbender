@@ -6,6 +6,8 @@ public import Slop.Delegation.RequestTrace
 public import Human.Helpers.Memory.Native
 public import Slop.Trace.ROMView
 import all Init.Data.Array.Basic -- Init.Data.Array.Basic is only partly exposed (still true in 4.35)
+public import Slop.Defs.Helpers.Memory.Native
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

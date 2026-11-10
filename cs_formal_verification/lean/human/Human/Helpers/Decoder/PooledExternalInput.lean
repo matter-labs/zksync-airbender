@@ -21,10 +21,6 @@ def isRead (row : Row p PooledFamily) : Bool :=
 def response (row : Row p PooledFamily) : BitVec 32 :=
   NonDeterminism.response ⟨.addSub, row.assignment⟩
 
-/-- Count earlier external reads by native clock across the entire pool. -/
-def readIndex (trace : PooledTrace p) (row : Row p PooledFamily) : Nat :=
-  ExternalStream.index Row.clock isRead trace.rows row
-
 /-- Total external-read count; all standard pooled rows consume zero words. -/
 def readCount (trace : PooledTrace p) : Nat := ExternalStream.count isRead trace.rows
 
@@ -32,9 +28,5 @@ def readCount (trace : PooledTrace p) : Nat := ExternalStream.count isRead trace
     interpretation. This supplies input values, not successful ISA execution. -/
 def StreamPorts (trace : PooledTrace p) (stream : List (BitVec 32)) : Prop :=
   ExternalStream.Ports Row.clock isRead response trace.rows stream
-
-/-- Responses in the chronological order derived from native matching. -/
-def consumed (rows : List (Row p PooledFamily)) : List (BitVec 32) :=
-  ExternalStream.consumed isRead response rows
 
 end Airbender.Trace.NonDeterminism.Pooled

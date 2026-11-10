@@ -3,6 +3,7 @@ public import Slop.Trace.RowHistory
 public import Slop.Trace.Terminal
 public import Mathlib.Data.List.Chain
 public import Mathlib.Logic.Relation
+public import Slop.Defs.Helpers.Context.Model
 
 @[expose] public section
 

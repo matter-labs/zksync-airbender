@@ -1,6 +1,6 @@
 module
 public import Human.ISA.Blake2s
-public import CleanCore.Utils.Rotation
+public import Slop.CleanCore.Utils.Rotation
 
 @[expose] public section
 

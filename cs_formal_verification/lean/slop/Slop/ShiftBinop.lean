@@ -5,6 +5,8 @@ public import Human.Helpers.Properties
 public import Slop.Arithmetic.Word
 public import Slop.Constraints
 public import Mathlib.Tactic.FinCases
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

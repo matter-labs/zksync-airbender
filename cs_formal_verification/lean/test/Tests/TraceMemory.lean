@@ -18,6 +18,9 @@ public import Slop.ShiftBinop.Ports
 public import Slop.SubwordMemory.Values
 public import Slop.Trace.RowHistory
 public import Slop.Trace.Family.Timestamps
+public import Slop.Defs.Helpers.Context.Model
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

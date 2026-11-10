@@ -5,6 +5,10 @@ public import Slop.Trace.RowHistory
 public import Slop.Trace.LastWrite
 public import Slop.Trace.RowContext
 public import Slop.Trace.Addresses
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Context.Model
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

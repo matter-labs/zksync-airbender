@@ -3,6 +3,8 @@ public import Human.Circuits.Keccak.Theta
 public import Slop.Keccak.ByteFacts
 public import Slop.Keccak.XorRoutes
 public import Slop.Arithmetic.ByteAssembly
+public import Slop.Defs.Circuits.Keccak.Theta
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

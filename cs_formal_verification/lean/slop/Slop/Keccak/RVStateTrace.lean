@@ -2,6 +2,8 @@ module
 public import Slop.Keccak.SeedCall
 public import Slop.Delegation.RVExecution
 public import Batteries.Data.Fin.Fold
+public import Slop.Defs.Circuits.Keccak.Artifact
+public import Slop.Defs.Trace.Workers.Keccak.Call
 
 @[expose] public section
 

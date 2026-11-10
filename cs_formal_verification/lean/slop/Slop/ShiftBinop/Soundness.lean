@@ -7,6 +7,7 @@ public import Slop.ShiftBinop.ArtifactChecks
 public import Mathlib.Data.Nat.Bitwise
 public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.LinearCombination
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

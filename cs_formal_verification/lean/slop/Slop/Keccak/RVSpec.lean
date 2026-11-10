@@ -4,6 +4,7 @@ public import Slop.Keccak.Schedule
 public import Slop.Deleg.KeccakClean
 public import Slop.Deleg.KeccakSlots
 public import Slop.Deleg.KeccakCalls
+public import Slop.Defs.Trace.Workers.Keccak.Call
 
 @[expose] public section
 

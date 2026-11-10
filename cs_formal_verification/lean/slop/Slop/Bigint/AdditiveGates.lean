@@ -1,6 +1,7 @@
 module
 public import Slop.Bigint.AdditiveFields
 public import Slop.Bigint.OpIndex
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

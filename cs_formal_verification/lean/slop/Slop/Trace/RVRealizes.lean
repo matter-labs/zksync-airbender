@@ -6,6 +6,9 @@ public import Slop.Trace.CompositionCore
 public import Slop.Trace.Terminal
 public import Slop.ISA.RV.Step
 public import Slop.ISA.RV.Same
+public import Slop.Defs.Helpers.Context.Model
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

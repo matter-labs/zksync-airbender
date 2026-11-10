@@ -4,6 +4,7 @@ public import Slop.UnifiedReduced
 public import Slop.Trace.Values
 public import Slop.Trace.InitialImage
 public import Slop.Trace.MemoryHistory
+public import Slop.Defs.Helpers.Memory.Ports
 
 @[expose] public section
 

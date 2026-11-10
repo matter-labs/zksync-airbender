@@ -2,6 +2,11 @@ module
 public import Slop.Trace.RVPooledStep
 public import Slop.Trace.RVPooledRow
 public import Slop.MulDiv.RVQuery
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Circuits.MulDiv.Operation
+public import Slop.Defs.Helpers.Memory.History
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

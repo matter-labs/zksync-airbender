@@ -37,11 +37,6 @@ structure Output where
   messageOffsets : Vector Nat 2
   deriving DecidableEq
 
-def Input.key (input : Input) : Fin 512 :=
-  ⟨input.register.val + if input.active then 256 else 0, by
-    have bound := input.register.isLt
-    cases input.active <;> simp only [Bool.false_eq_true, ↓reduceIte] <;> omega⟩
-
 /-- Active rows increment the seven-bit counter, wrapping after 56 or 80 calls.
     Out-of-schedule counters select call zero and reset, matching Rust's fallback.
     Inactive rows clear all seven outputs. Indices are in words, not bytes. -/
@@ -58,8 +53,5 @@ def step (input : Input) : Output :=
     let next := if counter + 1 < limit then counter + 1 else 0
     ⟨⟨mode * 128 + next, 0⟩, stateLanes[mixing],
       #v[messageSchedule[round][2 * mixing.val], messageSchedule[round][2 * mixing.val + 1]]⟩
-
-def spec (input : Input) (output : Output) : Prop := output = step input
-
 
 end Airbender.Blake2G.Control

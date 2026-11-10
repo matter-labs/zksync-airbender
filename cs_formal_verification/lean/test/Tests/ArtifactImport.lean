@@ -56,6 +56,7 @@ public import Tests.ShiftBinop
 public import Tests.Shifts
 public import Tests.TraceImport
 public import Human.Helpers.Core.BabyBearPrime
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

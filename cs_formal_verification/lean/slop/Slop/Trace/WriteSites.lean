@@ -2,6 +2,7 @@ module
 public import Human.Trace.WritesRangeChecked
 public import Human.Circuits.InitsTeardowns.Theorems
 public import Slop.Trace.Values
+public import Slop.Defs.Helpers.Memory.Ports
 
 @[expose] public section
 

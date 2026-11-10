@@ -1,5 +1,6 @@
 module
 public import Human.Circuits.Blake2Round.Preparation
+public import Slop.Defs.Circuits.Blake2Round.Preparation
 
 @[expose] public section
 

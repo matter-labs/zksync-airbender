@@ -15,7 +15,7 @@ agreement. [`Native.rv_window_soundness`](../../../../../slop/Slop/Final/Trace/W
 at retained cut states; later workers may remain outside the window.
 Public protocol/domain/alignment/table conditions remain inputs.
 
-Read [RVTheorems](RVTheorems.lean), [Call](Call.lean) and
+Read [RVTheorems](RVTheorems.lean) and
 [RVCall](RVCall.lean) (`RVCallInputs`, `RVNativeCallInputs`, `RVWindowInputs`). [Permutation](Permutation.lean) binds
 the original complete reference to actual initial/final lane reads.
 

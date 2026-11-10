@@ -6,6 +6,8 @@ public import Slop.UnifiedReduced.Trace
 public import Slop.Trace.RVZero
 public import Slop.Trace.RVValues
 public import Slop.Trace.RVProgram
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Memory.Ports
 
 @[expose] public section
 

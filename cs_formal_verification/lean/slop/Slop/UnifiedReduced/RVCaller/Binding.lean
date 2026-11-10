@@ -3,6 +3,8 @@ public import Human.Helpers.UnifiedReduced.RVRequestTrace
 public import Slop.UnifiedReduced.Delegation
 public import Slop.Delegation.RVCallerDecoder
 public import Slop.UnifiedReduced
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

@@ -3,6 +3,9 @@ public import Slop.Blake2Round.SeedCall
 public import Slop.Blake2Round.CallGroups
 public import Slop.Delegation.RVExecution
 public import Human.Trace.Workers.Blake2Round.RVCall
+public import Slop.Defs.Circuits.Blake2Round.Artifact
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Trace.Workers.Blake2Round.Call
 
 @[expose] public section
 

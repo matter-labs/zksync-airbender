@@ -1,5 +1,6 @@
 module
 public import Slop.KeccakSplit.ThetaRho.Shift
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

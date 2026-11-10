@@ -32,20 +32,10 @@ def clockConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8)
     List (FlatOperation (ZMod p)) :=
   importedConstraints setup ++ importedConstraintsTimestampLookups
 
-theorem lookup_count {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 8)) :
-    (FlatOperation.lookups (importedConstraints setup)).length = 42 := by rfl
-
 namespace Variables
 abbrev execute := 0
-abbrev controlReadLo := 3
-abbrev controlReadHi := 4
-abbrev controlWriteLo := 5
-abbrev controlWriteHi := 6
 abbrev statePointerLo := 13
 abbrev statePointerHi := 14
-abbrev modeColumns := #v[63, 64, 65, 66, 67, 68, 69]
-abbrev iterationColumns := #v[70, 71, 72, 73, 74]
-abbrev roundColumns := #v[75, 76, 77, 78, 79]
 end Variables
 
 end Airbender.Keccak

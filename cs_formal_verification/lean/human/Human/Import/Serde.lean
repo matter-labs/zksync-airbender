@@ -31,7 +31,6 @@ instance : Serde Nat := ⟨fun n => .int n⟩
 instance : Serde Bool := ⟨.bool⟩
 instance : Serde String := ⟨.str⟩
 instance [Serde α] : Serde (Option α) := ⟨fun | none => .null | some a => encode a⟩
-instance [Serde α] : Serde (List α) := ⟨fun l => .arr (l.map encode)⟩
 instance [Serde α] : Serde (Array α) := ⟨fun a => .arr (a.toList.map encode)⟩
 instance [Serde α] [Serde β] : Serde (α × β) := ⟨fun (a, b) => .arr [encode a, encode b]⟩
 

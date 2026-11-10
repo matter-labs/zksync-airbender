@@ -33,7 +33,6 @@ def clockConstraints {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 3)
   importedConstraints setup ++ importedConstraintsTimestampLookups
 
 namespace Variables
-abbrev controlBits := #v[59, 60, 61, 62, 63, 64, 65, 66]
 -- Same order as common_constants/src/delegation_types/bigint_with_control.rs;
 -- carry is bit six and is excluded from opcode exclusivity.
 abbrev operations := #v[59, 60, 61, 62, 63, 64, 66]

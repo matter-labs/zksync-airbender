@@ -1,7 +1,7 @@
 module
 public import Slop.Keccak.LaneFrame
 public import Slop.Keccak.MicroValue
-public import Human.Trace.Workers.Keccak.Call
+public import Slop.Defs.Trace.Workers.Keccak.Call
 
 @[expose] public section
 

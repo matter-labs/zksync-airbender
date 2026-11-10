@@ -7,6 +7,7 @@ public import Slop.Trace.RVHistoryFrame
 public import Human.Helpers.Delegation.RVBoundaryMemory
 public import Human.Trace.Delegation.RVExecution
 public import Slop.Delegation.History
+public import Slop.CleanCore.Utils.OfflineMemory
 
 @[expose] public section
 

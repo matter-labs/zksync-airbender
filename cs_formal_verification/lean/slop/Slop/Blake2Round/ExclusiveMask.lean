@@ -1,6 +1,8 @@
 module
 public import Slop.Blake2Round.Control
 public import Human.Circuits.Blake2Round.Memory
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Blake2Round.Artifact
 
 @[expose] public section
 

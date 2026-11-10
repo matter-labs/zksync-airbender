@@ -35,19 +35,4 @@ def spec (input : Input) (output : Output) : Prop :=
       | .low => if 2 ^ 256 ≤ product then 1 else 0
       | .high => 0, 0⟩
 
-structure Mapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod p) : Prop where
-  selected : w Variables.operations[input.operation.index] = 1
-  left : ∀ i : Fin 16, input.left[i] = (w Variables.leftLimbs[i]).val
-  right : ∀ i : Fin 16, input.right[i] = (w Variables.rightLimbs[i]).val
-  result : ∀ i : Fin 16, output.result[i] = (w Variables.writtenLimbs[i]).val
-  control : output.control = ⟨(w 57).val, (w 58).val⟩
-
-/-- All ranges come from native queries against the modeled production setup.
-    Its connection to Rust generation remains the shared provenance gap. -/
-def circuitModel {p : Nat} [Fact p.Prime] :
-    Verification.CircuitModel Input Output (Nat → ZMod p) where
-  satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-    (importedConstraints setupTable)
-  represents := Mapping
-
 end Airbender.Bigint.Multiplication

@@ -1,6 +1,7 @@
 module
 public import Slop.UnifiedReduced.RV.ShiftLookups
 public import Slop.Lookups
+public import Slop.CleanCore.Circuit.Lookup
 
 @[expose] public section
 

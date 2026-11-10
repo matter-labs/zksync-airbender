@@ -7,6 +7,7 @@ public import Slop.Blake2Round.StateTransport
 public import Slop.Delegation.NativeSegments
 public import Slop.Delegation.ReverseFold
 public import Slop.Blake2Round.ExclusiveMask
+public import Slop.Defs.Circuits.Blake2Round.Artifact
 
 @[expose] public section
 

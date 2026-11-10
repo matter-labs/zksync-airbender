@@ -5,6 +5,8 @@ public import Slop.Trace.RVCells
 public import Slop.Trace.RVRowGlue
 public import Slop.Trace.InitialImage
 public import Slop.ISA.RV.Same
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

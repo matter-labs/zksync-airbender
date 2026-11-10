@@ -16,6 +16,8 @@ public import Human.Circuits.MulDiv.Operation
 public import Slop.MulDiv.Values
 public import Slop.ShiftBinop.Ports
 public import Slop.SubwordMemory.Values
+public import Slop.Defs.Helpers.Decoder.PooledExternalInput
+public import Slop.Defs.Helpers.Decoder.ExternalInput
 
 @[expose] public section
 

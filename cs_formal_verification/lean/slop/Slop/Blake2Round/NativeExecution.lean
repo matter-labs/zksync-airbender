@@ -4,6 +4,13 @@ public import Slop.Blake2Round.Row
 public import Slop.Delegation.Operations
 public import Slop.Delegation.Requests
 public import Slop.Delegation.PortEvents
+public import Slop.Defs.Circuits.Blake2Round.Row
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Circuits.Blake2Round.Artifact
+public import Slop.Defs.Circuits.Blake2Round.Preparation
+public import Slop.Defs.Circuits.Blake2Round.Control
+public import Slop.Defs.Circuits.Blake2Round.Mixing
+public import Slop.Defs.Circuits.Blake2Round.Finalization
 
 @[expose] public section
 

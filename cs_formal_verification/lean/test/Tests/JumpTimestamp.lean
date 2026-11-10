@@ -14,6 +14,8 @@ public import Slop.Trace.CompositionCore
 public import Slop.Trace.Family.Values
 public import Slop.Trace.Pooled
 public import Slop.Trace.RowContext
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

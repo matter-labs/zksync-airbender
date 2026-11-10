@@ -8,6 +8,9 @@ public import Human.Trace.UnifiedReduced.RVTheorems
 public import Slop.Trace.RVBootSeed
 public import Slop.KeccakSplit.Field
 public import Slop.Final.Circuits.InitsTeardowns.Theorems
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

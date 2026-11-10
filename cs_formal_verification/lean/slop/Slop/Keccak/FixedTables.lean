@@ -1,5 +1,6 @@
 module
 public import Slop.Keccak.Tables
+public import Slop.Defs.Circuits.Keccak.Tables.Setup
 
 @[expose] public section
 

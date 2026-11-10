@@ -1,5 +1,5 @@
 module
-public import Human.Circuits.Blake2G.Control
+public import Human.Circuits.Blake2G.Tables.Controller
 
 @[expose] public section
 

@@ -1,6 +1,11 @@
 module
 public import Slop.Blake2Round.FinalXor
 public import Slop.Blake2Round.OpIndex
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Blake2Round.Artifact
+public import Slop.Defs.Circuits.Blake2Round.Preparation
+public import Slop.Defs.Circuits.Blake2Round.Mixing
+public import Slop.Defs.Circuits.Blake2Round.Finalization
 
 @[expose] public section
 

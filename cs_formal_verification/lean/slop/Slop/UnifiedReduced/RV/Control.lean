@@ -4,6 +4,7 @@ public import Slop.UnifiedReduced.RV.ControlMembership
 public import Slop.UnifiedReduced.RV.JumpArithmetic
 public import Slop.UnifiedReduced.ControlContext
 public import Slop.JumpBranchSlt.RVRow
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

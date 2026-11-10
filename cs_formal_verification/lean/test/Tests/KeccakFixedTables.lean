@@ -2,6 +2,7 @@ module
 public import Slop.Keccak.FixedTables
 public import Mathlib.Tactic.IntervalCases
 public import Human.Helpers.Core.BabyBearPrime
+public import Slop.Defs.Circuits.Keccak.Tables.Setup
 
 @[expose] public section
 

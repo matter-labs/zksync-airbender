@@ -4,6 +4,7 @@ public import Slop.AddSub.OpIndex
 public import Human.Helpers.Properties
 public import Slop.Arithmetic.Lemmas
 public import Slop.Constraints
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

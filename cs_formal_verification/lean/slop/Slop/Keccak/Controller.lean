@@ -1,6 +1,8 @@
 module
 public import Slop.Keccak.Tables
 public import Slop.Keccak.Controls
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Keccak.Artifact
 
 @[expose] public section
 

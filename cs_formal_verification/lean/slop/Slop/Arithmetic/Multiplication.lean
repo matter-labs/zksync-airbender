@@ -2,6 +2,7 @@ module
 public import Slop.Arithmetic.Word
 public import Mathlib.Tactic.Linarith
 public import Mathlib.Tactic.FinCases
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

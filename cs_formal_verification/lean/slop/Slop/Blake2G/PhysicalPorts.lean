@@ -2,6 +2,10 @@ module
 public import Slop.Blake2G.Addresses
 public import Human.Circuits.Blake2G.Execution
 public import Slop.KernelRfl
+public import Slop.Defs.Circuits.Blake2G.Execution
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Circuits.Blake2G.Artifact
+public import Slop.Defs.Circuits.Blake2G.Addresses
 
 @[expose] public section
 

@@ -1,6 +1,6 @@
 module
 public import Slop.Deleg.KeccakFips
-public import CleanCore.Utils.Rotation
+public import Slop.CleanCore.Utils.Rotation
 public import Mathlib.Tactic.IntervalCases
 
 @[expose] public section

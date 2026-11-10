@@ -1,6 +1,7 @@
 module
 public import Slop.OpIndex
 public import Slop.Blake2G.Fragment
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

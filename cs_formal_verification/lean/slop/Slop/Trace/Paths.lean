@@ -1,6 +1,7 @@
 module
-public import CleanCore.Utils.SourceSinkPath
+public import Slop.CleanCore.Utils.SourceSinkPath
 public import Slop.Trace.StateClocks
+public import Slop.Defs.Helpers.Context.Model
 
 @[expose] public section
 

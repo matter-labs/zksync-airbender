@@ -12,6 +12,11 @@ public import Slop.Keccak.DecodeControl
 public import Slop.Delegation.Operations
 public import Slop.Delegation.Requests
 public import Slop.Delegation.PortEvents
+public import Slop.Defs.Circuits.Keccak.Iota
+public import Slop.Defs.Circuits.Keccak.Artifact
+public import Slop.Defs.Circuits.Keccak.Theta
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Circuits.Keccak.Mix
 
 @[expose] public section
 

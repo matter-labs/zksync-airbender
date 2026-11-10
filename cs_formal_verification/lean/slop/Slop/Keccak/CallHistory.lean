@@ -3,6 +3,7 @@ public import Slop.Keccak.ControlHistory
 public import Slop.Keccak.NativeExecution
 public import Slop.Keccak.PointerHistory
 public import Slop.Delegation.CallGroups
+public import Slop.Defs.Trace.Workers.Keccak.Call
 
 @[expose] public section
 

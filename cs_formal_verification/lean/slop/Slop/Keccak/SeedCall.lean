@@ -5,6 +5,9 @@ public import Slop.Keccak.StateCells
 public import Slop.Delegation.RVCallHistory
 public import Slop.Delegation.SeedOperations
 public import Slop.Delegation.CallPaths
+public import Slop.Defs.Circuits.Keccak.Artifact
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Trace.Workers.Keccak.Call
 
 @[expose] public section
 

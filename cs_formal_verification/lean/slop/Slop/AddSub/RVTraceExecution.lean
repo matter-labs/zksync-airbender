@@ -6,6 +6,10 @@ public import Slop.AddSub
 public import Slop.Trace.RVFamilyTrace
 public import Slop.ISA.RV.DecodeShape
 public import Slop.ISA.RV.Step
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Circuits.AddSub.Artifact
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

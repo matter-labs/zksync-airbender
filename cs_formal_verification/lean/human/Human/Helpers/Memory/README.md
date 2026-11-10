@@ -53,8 +53,7 @@ in [Context](../Context/README.md); there is no machine-configuration or Sail me
 
 [Ports](Ports.lean) and [IndirectPorts](IndirectPorts.lean) interpret imported
 addresses, timestamps and values. [Values](Values.lean) gives the word view.
-[History](History.lean) states logical native events and matching; its rows and
-tokens come from the shared [Model](../Context/Model.lean).
+Native rows and tokens come from the shared [Model](../Context/Model.lean).
 
 [RowEvents](RowEvents.lean) defines the native row events (ports with their shifted clocks);
 [RVHistory](RVHistory.lean) and [RVAtomicWrites](RVAtomicWrites.lean) execute them on an `RV.State`.

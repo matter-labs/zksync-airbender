@@ -3,6 +3,9 @@ public import Slop.Trace.RVPooledStep
 public import Slop.Trace.RVPooledRow
 public import Slop.JumpBranchSlt.RVTraceSoundness
 public import Slop.ISA.RV.DecodeShape
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

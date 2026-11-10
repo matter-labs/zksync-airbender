@@ -1,6 +1,8 @@
 module
 public import Slop.UnifiedReduced.RV.Step
 public import Slop.UnifiedReduced.RV.ROMValue
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Memory.RowEvents
 
 @[expose] public section
 

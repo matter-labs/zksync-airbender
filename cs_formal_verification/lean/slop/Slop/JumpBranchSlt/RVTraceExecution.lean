@@ -8,6 +8,9 @@ public import Slop.Trace.RVValues
 public import Slop.Trace.RVZeroRows
 public import Slop.Trace.PC
 public import Slop.ISA.RV.DecodeShape
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

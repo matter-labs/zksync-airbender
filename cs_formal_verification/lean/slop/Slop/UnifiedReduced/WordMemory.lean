@@ -1,6 +1,7 @@
 module
 public import Slop.UnifiedReduced
 public import Slop.Lookups
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

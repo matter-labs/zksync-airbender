@@ -7,6 +7,14 @@ public import Slop.Blake2Round.Schedule
 public import Slop.Blake2Round.Soundness
 public import Slop.Blake2Round.Finalization
 public import Slop.Blake2Round.PortAddresses
+public import Slop.Defs.Circuits.Blake2Round.Row
+public import Slop.Defs.Circuits.Blake2Round.Artifact
+public import Slop.Defs.Circuits.Blake2Round.Schedule
+public import Slop.Defs.Circuits.Blake2Round.Preparation
+public import Slop.Defs.Circuits.Blake2Round.Mixing
+public import Slop.Defs.Circuits.Blake2Round.Control
+public import Slop.Defs.Circuits.Blake2Round.Finalization
+public import Slop.Defs.Circuits.Blake2Round.Addresses
 
 @[expose] public section
 

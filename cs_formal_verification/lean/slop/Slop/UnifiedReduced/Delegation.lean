@@ -6,6 +6,7 @@ public import Slop.UnifiedReduced.ArtifactChecks
 public import Slop.UnifiedReduced.OpIndex
 public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.LinearCombination
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

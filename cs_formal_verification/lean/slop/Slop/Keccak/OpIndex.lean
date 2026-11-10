@@ -1,6 +1,7 @@
 module
 public import Slop.OpIndex
 public import Human.Circuits.Keccak.Artifact
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

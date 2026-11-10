@@ -5,6 +5,7 @@ public import Slop.Delegation.NativeSegments
 public import Slop.Keccak.CallPermutation
 public import Slop.Keccak.Lookups
 public import Mathlib.Tactic.IntervalCases
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

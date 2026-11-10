@@ -2,6 +2,8 @@ module
 public import Slop.Keccak.Tags
 public import Slop.Eval
 public import Human.Circuits.Keccak.Theta
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Keccak.Artifact
 
 @[expose] public section
 

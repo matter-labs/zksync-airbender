@@ -1,8 +1,10 @@
 module
 public import Slop.Bigint.Shapes
 public import Slop.Eval
-public import Human.Circuits.Bigint.Control
+public import Slop.Defs.Circuits.Bigint.Control
 public import Slop.Arithmetic.Lemmas
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Bigint.Artifact
 
 @[expose] public section
 

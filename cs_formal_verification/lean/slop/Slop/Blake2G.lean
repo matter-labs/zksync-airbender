@@ -8,6 +8,8 @@ public import Slop.Blake2G.Lookups
 public import Slop.Templates
 public import Mathlib.Tactic.FinCases
 public import Mathlib.Tactic.LinearCombination
+public import Slop.Defs.Circuits.Blake2G.Artifact
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

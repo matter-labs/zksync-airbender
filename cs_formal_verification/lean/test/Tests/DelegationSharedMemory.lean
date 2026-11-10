@@ -4,6 +4,7 @@ public import Tests.DelegationMemory
 public import Human.Helpers.Delegation.SharedMemory
 public import Slop.Delegation.RequestTrace
 public import Slop.Trace.TransferValues
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

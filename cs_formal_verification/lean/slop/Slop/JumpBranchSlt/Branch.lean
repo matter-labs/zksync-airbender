@@ -3,6 +3,7 @@ public import Slop.JumpBranchSlt.PC
 public import Mathlib.Tactic.IntervalCases
 public import Slop.Arithmetic.Comparison
 public import Slop.JumpBranchSlt
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

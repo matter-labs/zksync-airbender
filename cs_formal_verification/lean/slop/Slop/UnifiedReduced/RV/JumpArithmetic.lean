@@ -1,5 +1,6 @@
 module
 public import Slop.UnifiedReduced.RV.ControlQueries
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

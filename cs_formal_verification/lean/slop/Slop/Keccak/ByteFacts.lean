@@ -2,6 +2,9 @@ module
 public import Slop.Keccak.FixedLookups
 public import Slop.Keccak.OpIndex
 public import Slop.Eval
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Keccak.Artifact
+public import Slop.Defs.Circuits.Keccak.Tables.Setup
 
 @[expose] public section
 

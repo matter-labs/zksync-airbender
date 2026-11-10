@@ -1,6 +1,7 @@
 module
 public import Slop.Keccak.Schedule
 public import Slop.KernelRfl
+public import Slop.Defs.Trace.Workers.Keccak.Call
 
 @[expose] public section
 

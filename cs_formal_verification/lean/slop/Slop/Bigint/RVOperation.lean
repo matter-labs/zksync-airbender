@@ -3,6 +3,8 @@ public import Slop.Bigint.NativeExecution
 public import Slop.Bigint.Memory
 public import Slop.Bigint.Control
 public import Slop.Bigint.RVSpec
+public import Slop.Defs.Circuits.Bigint.Control
+public import Slop.Defs.Circuits.Bigint.Artifact
 
 @[expose] public section
 

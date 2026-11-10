@@ -2,6 +2,11 @@ module
 public import Slop.Blake2G.RVStateTrace
 public import Slop.Delegation.RVNativeViews
 public import Slop.Blake2G.PhysicalWords
+public import Slop.Defs.Circuits.Blake2G.Artifact
+public import Slop.Defs.Circuits.Blake2G.State
+public import Slop.Defs.Circuits.Blake2G.Control
+public import Slop.Defs.Circuits.Blake2G.Controller
+public import Slop.Defs.Circuits.Blake2G.Addresses
 
 @[expose] public section
 

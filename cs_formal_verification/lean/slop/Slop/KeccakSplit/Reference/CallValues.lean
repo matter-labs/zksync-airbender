@@ -1,6 +1,6 @@
 module
 public import Slop.KeccakSplit.Reference.CallReference
-public import CleanCore.Utils.Rotation
+public import Slop.CleanCore.Utils.Rotation
 
 @[expose] public section
 

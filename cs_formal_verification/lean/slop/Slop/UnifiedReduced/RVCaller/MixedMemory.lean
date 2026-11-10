@@ -6,6 +6,7 @@ public import Slop.Delegation.SharedOperations
 public import Human.Trace.UnifiedReduced.RVMixedMemory
 public import Slop.Trace.TransferValues
 public import Slop.UnifiedReduced.RVCaller.RequestTrace
+public import Slop.Defs.Helpers.Memory.Ports
 
 @[expose] public section
 

@@ -1,6 +1,7 @@
 module
 public import Human.Helpers.Tables.Lookups
 public import Human.Circuits.JumpBranchSlt.Tables.Control
+public import Slop.CleanCore.Circuit.Lookup
 
 @[expose] public section
 

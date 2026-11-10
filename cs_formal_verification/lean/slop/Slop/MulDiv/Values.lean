@@ -1,6 +1,7 @@
 module
 public import Slop.MulDiv.Trace
 public import Slop.Trace.Values
+public import Slop.Defs.Helpers.Memory.Ports
 
 @[expose] public section
 

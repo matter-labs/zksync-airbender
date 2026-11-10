@@ -2,6 +2,7 @@ module
 public import CleanCore.Specs.BLAKE3
 public import Slop.Arithmetic.Lemmas
 public import Slop.Arithmetic.Word
+public import Slop.CleanCore.Utils.Bitwise
 
 @[expose] public section
 

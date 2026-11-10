@@ -3,6 +3,7 @@ public import Slop.Blake2Round.RVCallSteps
 public import Slop.Blake2Round.RVSpec
 public import Slop.Blake2Round.RVWords
 public import Slop.Delegation.ReverseFold
+public import Slop.Defs.Trace.Workers.Blake2Round.Call
 
 @[expose] public section
 

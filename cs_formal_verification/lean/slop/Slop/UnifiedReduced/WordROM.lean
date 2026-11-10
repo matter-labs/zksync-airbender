@@ -2,6 +2,7 @@ module
 public import Slop.UnifiedReduced.WordMemory
 public import Human.Circuits.UnifiedReduced.Tables.Setup
 public import Slop.ByteTables
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

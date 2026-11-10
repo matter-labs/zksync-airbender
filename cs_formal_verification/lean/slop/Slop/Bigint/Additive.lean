@@ -1,6 +1,7 @@
 module
 public import Slop.Bigint.AdditiveGates
 public import Slop.Arithmetic.CarryChain
+public import Slop.Defs.Circuits.Bigint.Additive
 
 @[expose] public section
 

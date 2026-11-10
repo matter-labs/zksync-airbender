@@ -1,6 +1,9 @@
 module
-public import Human.Helpers.Memory.History
+public import Slop.Defs.Helpers.Memory.History
 public import Slop.Trace.OfflineMemory
+public import Slop.CleanCore.Utils.OfflineMemory
+public import Slop.Defs.Helpers.Context.Columns
+public import Slop.Defs.Helpers.Context.Model
 
 @[expose] public section
 

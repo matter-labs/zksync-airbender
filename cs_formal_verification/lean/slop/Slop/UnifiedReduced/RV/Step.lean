@@ -2,6 +2,9 @@ module
 public import Slop.UnifiedReduced.RV.Row
 public import Slop.ISA.RV.Step
 public import Human.Circuits.UnifiedReduced.Tables.SetupRV
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

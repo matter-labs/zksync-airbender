@@ -3,6 +3,7 @@ public import Slop.UnifiedReduced.RV.Binary
 public import Slop.Arithmetic.WordBytes
 public import Slop.Trace.BytePorts
 public import Slop.Arithmetic.SignExtend
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

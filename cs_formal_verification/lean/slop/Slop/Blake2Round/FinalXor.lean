@@ -6,6 +6,7 @@ public import Slop.Blake2Round.OpIndex
 public import Slop.Blake2G.Soundness
 public import Slop.Arithmetic.FieldChunks
 public import Mathlib.Tactic.ReduceModChar
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

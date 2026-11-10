@@ -1,5 +1,7 @@
 module
 public import Slop.Trace.RVPooledRow
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

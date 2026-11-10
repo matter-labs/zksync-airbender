@@ -1,6 +1,7 @@
 module
 public import Human.Import.Exec.Decode
 public import Slop.Import.Json.Lexical
+public import Slop.Defs.Import.Serde
 
 @[expose] public section
 

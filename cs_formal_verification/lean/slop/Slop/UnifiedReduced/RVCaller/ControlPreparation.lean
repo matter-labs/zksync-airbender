@@ -5,6 +5,10 @@ public import Slop.UnifiedReduced.ZeroRegister
 public import Slop.Arithmetic.Word
 public import Slop.UnifiedReduced.RV.Row
 public import Slop.Trace.RVFetch
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.UnifiedReduced.Artifact
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

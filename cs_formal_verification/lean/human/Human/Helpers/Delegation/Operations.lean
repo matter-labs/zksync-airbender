@@ -1,7 +1,7 @@
 module
 public import Human.Helpers.Delegation.Memory
 public import Human.Circuits.Bigint.Tables.Setup
-public import Human.Circuits.Blake2G.Control
+public import Human.Circuits.Blake2G.Tables.Controller
 public import Human.Circuits.Blake2Round.Memory
 public import Human.Circuits.Keccak.Tables.Setup
 

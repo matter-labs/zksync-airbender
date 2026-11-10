@@ -3,6 +3,10 @@ public import Slop.Blake2Round.ControlPool
 public import Slop.Blake2Round.NativeExecution
 public import Slop.Delegation.RVCallHistory
 public import Slop.Delegation.SeedOperations
+public import Slop.Defs.Circuits.Blake2Round.Artifact
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Circuits.Blake2Round.Control
+public import Slop.Defs.Trace.Workers.Blake2Round.Call
 
 @[expose] public section
 

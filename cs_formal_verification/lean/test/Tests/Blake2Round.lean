@@ -8,6 +8,11 @@ public import Slop.Delegation.NativeSegments
 public import Slop.Delegation.ReverseFold
 public import Slop.Blake2Round.Diagonal
 public import Slop.Blake2Round.Finalization
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Blake2Round.Artifact
+public import Slop.Defs.Circuits.Blake2Round.Preparation
+public import Slop.Defs.Circuits.Blake2Round.Mixing
+public import Slop.Defs.Circuits.Blake2Round.Finalization
 
 @[expose] public section
 

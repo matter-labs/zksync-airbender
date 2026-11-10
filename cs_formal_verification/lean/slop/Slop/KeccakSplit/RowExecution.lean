@@ -4,6 +4,7 @@ public import Mathlib.Tactic.FinCases
 public import Slop.KernelRfl
 public import Slop.KeccakSplit.Setup.Facts
 public import Mathlib.Tactic.IntervalCases
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

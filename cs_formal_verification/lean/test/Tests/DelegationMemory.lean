@@ -5,6 +5,8 @@ public import Slop.Delegation.NativeSegments
 public import Mathlib.Data.List.OfFn
 public import Slop.Delegation.NativeViews
 public import Slop.Keccak.CallPorts
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Keccak.Artifact
 
 @[expose] public section
 

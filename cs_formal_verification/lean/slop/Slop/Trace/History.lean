@@ -1,6 +1,7 @@
 module
 public import Human.Helpers.Context.Model
 public import Slop.Trace.ClockHistory
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 namespace Airbender.Trace.Proofs

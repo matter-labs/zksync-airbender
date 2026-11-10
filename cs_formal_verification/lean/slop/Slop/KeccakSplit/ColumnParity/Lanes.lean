@@ -1,5 +1,6 @@
 module
 public import Slop.KeccakSplit.ColumnParity.Queries
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

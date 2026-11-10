@@ -3,6 +3,8 @@ public import Slop.JumpBranchSlt.RVDecoder
 public import Slop.JumpBranchSlt.Branch
 public import Slop.JumpBranchSlt.Jump
 public import Slop.JumpBranchSlt.Trace
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Memory.Ports
 
 @[expose] public section
 

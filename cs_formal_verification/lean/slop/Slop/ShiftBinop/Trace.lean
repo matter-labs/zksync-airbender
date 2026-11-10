@@ -3,6 +3,7 @@ public import Human.Helpers.Context.Registries.ShiftBinop
 public import Slop.ShiftBinop.Timestamp
 public import Slop.Trace.RowHistory
 public import Slop.ShiftBinop
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

@@ -2,6 +2,8 @@ module
 public import Human.Circuits.MulDiv.Operation
 public import Human.ISA.RV32
 public import Slop.MulDiv.Product
+public import Slop.Defs.Circuits.MulDiv.Operation
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

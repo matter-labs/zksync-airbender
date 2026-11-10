@@ -3,6 +3,7 @@ public import Slop.Bigint.MultiplicationRanges
 public import Slop.Bigint.Shapes
 public import Slop.Arithmetic.Convolution
 public import Human.Helpers.Core.BabyBearPrime
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

@@ -5,6 +5,8 @@ public import Slop.ISA.RV.Attr
 public import Slop.Keccak.CallPorts
 public import Slop.Trace.RVHistoryFrame
 public import Batteries.Data.Fin.Fold
+public import Slop.Defs.Circuits.Keccak.Artifact
+public import Slop.Defs.Trace.Workers.Keccak.Call
 
 @[expose] public section
 

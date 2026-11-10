@@ -1,6 +1,8 @@
 module
 public import Human.Helpers.Context.Model
 public import Slop.Arithmetic.Lemmas
+public import Slop.Defs.Helpers.Context.Columns
+public import Slop.CleanCore.Circuit.Lookup
 
 @[expose] public section
 

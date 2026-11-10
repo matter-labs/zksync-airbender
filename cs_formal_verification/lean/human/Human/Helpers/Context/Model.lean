@@ -120,9 +120,6 @@ structure Data (p : Nat) (Kind : Type := Family) [CircuitLayout Kind] [Fact p.Pr
   /-- Final tokens whose register/RAM values must match the resulting RV state. -/
   terminalMemory : List (MemoryToken p)
 
-def Data.memorySteps [Fact p.Prime] (trace : Data p Kind) : List (MemoryToken p × MemoryToken p) :=
-  trace.rows.flatMap Row.memorySteps
-
 /-- Check the imported constraints and logical state/memory matching for
     `trace`. Every listed row is active. Matching uses the actual imported
     tokens; no expected read, decoded instruction or execution result is given.
@@ -154,51 +151,9 @@ structure ClockBoundary [Fact p.Prime] (trace : Data p Kind) : Prop where
   /-- Both prior-clock limbs of every seed token are below the 19-bit base. -/
   memory : ∀ token ∈ trace.initialMemory, (timeOfPair token.time).Bounded
 
-/-- A complete PC/timestamp path from `trace.initial` to `trace.terminal`.
-    Its edges are exactly the imported row transitions, and its clock values
-    are distinct. This is proved from matching and clock advancement. -/
-def StatePath [Fact p.Prime] (trace : Data p Kind) (path : List (PCState.State p)) : Prop :=
-  path.head? = some trace.initial ∧ path.getLast? = some trace.terminal ∧
-    (path.zip path.tail).Perm (trace.rows.map fun row => (row.start, row.finish)) ∧
-    (path.map fun state => (timeOfPair state.timestamp).value).Nodup
-
-/-- Follow one initialized cell `source` through every native access at its
-    address to a terminal token. Clocks strictly increase; adjacent edges share
-    the exact address/time/value token. This forces each read to use the previous
-    write. The memory-path theorem constructs this path from logical matching. -/
-def MemoryPath [Fact p.Prime] (trace : Data p Kind) (source : MemoryToken p)
-    (path : List (MemoryToken p)) : Prop :=
-  path.head? = some source ∧
-    (∃ sink ∈ trace.terminalMemory, path.getLast? = some sink ∧ sink.address = source.address) ∧
-    (path.map fun token => (timeOfPair token.time).value).Pairwise (· < ·) ∧
-    (path.zip path.tail).Perm (trace.memorySteps.filter fun edge => edge.1.address = source.address)
-
-/-- A native read uses the newest preceding cell at its address, drawn from the
-    initial image or a native write. This is a conclusion, not an interface premise. -/
-def LatestRead [Fact p.Prime] (trace : Data p Kind) (row : Row p Kind) (port : MemoryPort) : Prop :=
-  let previous := readToken row.assignment port
-  let time := (port.event row.columns row.assignment).1
-  let cells := trace.initialMemory ++ trace.rows.flatMap Row.writes
-  previous ∈ cells ∧ (timeOfPair previous.time).value < time ∧
-    ∀ cell ∈ cells, cell.address = previous.address → (timeOfPair cell.time).value < time →
-      (timeOfPair cell.time).value ≤ (timeOfPair previous.time).value
-
 /-- The native transfer as a Clean access. Times are shifted by one so an
     explicit initialization write can precede all real accesses at time zero. -/
 def transferEvent (edge : MemoryToken p × MemoryToken p) : MemoryAccess :=
   ((timeOfPair edge.2.time).value + 1, edge.1.address, edge.1.value, edge.2.value)
-
-/-- Clean's chronological memory semantics for one address, with its public
-    initial value written first. The history contains every native access. -/
-def CellHistory [Fact p.Prime] (trace : Data p Kind) (source : MemoryToken p)
-    (history : TimestampSortedMemoryAccessList) : Prop :=
-  List.Perm history.val ((0, source.address, 0, source.value) ::
-    (trace.memorySteps.filter fun edge => edge.1.address = source.address).map transferEvent) ∧
-    MemoryAccessList.isConsistentOnline history.val history.property
-
-/-- Write times of all imported memory ports, including readonly clock refreshes. -/
-def Data.accessTimes [Fact p.Prime] (trace : Data p Kind) : List Nat :=
-  trace.rows.flatMap fun row => row.ports.toList.map fun port =>
-    (decodeTimestamp row.assignment row.columns.initialTime).value + port.clock.offset
 
 end Airbender.Trace

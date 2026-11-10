@@ -11,6 +11,8 @@ public import Slop.MulDiv.RVDecoder
 public import Slop.ShiftBinop.RVDecoder
 public import Slop.SubwordMemory.RVDecoder
 public import Slop.AddSub
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Memory.Ports
 
 @[expose] public section
 

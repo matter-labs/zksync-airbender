@@ -2,6 +2,7 @@ module
 public import Human.Circuits.Blake2G.Model
 public import Slop.Constraints
 public import Mathlib.Tactic.FinCases
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

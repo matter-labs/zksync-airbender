@@ -1,5 +1,8 @@
 module
 public import Slop.Keccak.RhoOperations
+public import Slop.Defs.Circuits.Keccak.Artifact
+public import Slop.Defs.Circuits.Keccak.Theta
+public import Slop.Defs.Circuits.Keccak.Mix
 
 @[expose] public section
 

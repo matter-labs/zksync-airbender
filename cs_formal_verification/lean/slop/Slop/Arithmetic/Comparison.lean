@@ -1,5 +1,6 @@
 module
 public import Slop.Arithmetic.Word
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

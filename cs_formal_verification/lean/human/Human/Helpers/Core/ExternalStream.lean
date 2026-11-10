@@ -23,10 +23,4 @@ def Ports {Row : Type} (clock : Row → Nat) (read : Row → Bool)
     (response : Row → BitVec 32) (rows : List Row) (stream : List (BitVec 32)) : Prop :=
   ∀ row ∈ rows, read row = true → stream[index clock read rows row]? = some (response row)
 
-/-- Responses in execution order when rows have descending native clocks,
-    as supplied by the shared native-history proof. -/
-def consumed {Row : Type} (read : Row → Bool) (response : Row → BitVec 32)
-    (rows : List Row) : List (BitVec 32) :=
-  rows.reverse.filterMap fun row => if read row then some (response row) else none
-
 end Airbender.Trace.ExternalStream

@@ -1,6 +1,7 @@
 module
 public import Human.Circuits.Bigint.Additive
 public import Slop.Bigint.Control
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

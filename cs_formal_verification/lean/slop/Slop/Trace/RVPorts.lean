@@ -2,6 +2,8 @@ module
 public import Slop.Trace.RVHistory
 public import Slop.ISA.RV.Mem
 public import Mathlib.Tactic.IntervalCases
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Memory.RowEvents
 
 @[expose] public section
 

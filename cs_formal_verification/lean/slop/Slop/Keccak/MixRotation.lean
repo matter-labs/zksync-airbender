@@ -1,6 +1,8 @@
 module
 public import Slop.Keccak.MixOperations
 public import Slop.Arithmetic.RotationAssembly
+public import Slop.Defs.Circuits.Keccak.Artifact
+public import Slop.Defs.Circuits.Keccak.Tables.Setup
 
 @[expose] public section
 

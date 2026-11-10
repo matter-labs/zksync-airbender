@@ -1,6 +1,6 @@
 module
-public import CleanCore.Utils.Fin
-public import CleanCore.Utils.Vector
+public import Slop.CleanCore.Utils.Fin
+public import Slop.CleanCore.Utils.Vector
 public import Mathlib.Data.ZMod.Basic
 public import Mathlib.Tactic.Linarith
 -- Clean's Mathlib/Lean imports for this file, re-exported so importers see what they saw through Clean

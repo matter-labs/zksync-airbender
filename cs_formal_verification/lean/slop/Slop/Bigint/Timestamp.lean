@@ -3,6 +3,7 @@ public import Human.Circuits.Bigint.Artifact
 public import Slop.Bigint.ArtifactChecks
 public import Slop.Delegation.ClockShapes
 public import Slop.Bigint.Shapes
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

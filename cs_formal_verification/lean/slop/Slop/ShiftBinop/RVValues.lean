@@ -2,6 +2,7 @@ module
 public import Slop.ShiftBinop.RVDecoder
 public import Slop.ShiftBinop.Ports
 public import Slop.ShiftBinop.Trace
+public import Slop.Defs.Helpers.Memory.Ports
 
 @[expose] public section
 

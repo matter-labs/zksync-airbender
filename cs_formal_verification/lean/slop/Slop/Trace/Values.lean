@@ -1,6 +1,7 @@
 module
 public import Human.Helpers.Memory.Values
 public import Slop.Trace.MemoryOrigins
+public import Slop.Defs.Helpers.Memory.Ports
 
 @[expose] public section
 namespace Airbender.Trace.Proofs

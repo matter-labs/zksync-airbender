@@ -3,6 +3,7 @@ public import Human.Circuits.Bigint.RVMemory
 public import Slop.Bigint.Memory
 public import Slop.Bigint.Addresses
 public import Slop.Delegation.RVBoundaryInputs
+public import Slop.Defs.Circuits.Bigint.Addresses
 
 @[expose] public section
 

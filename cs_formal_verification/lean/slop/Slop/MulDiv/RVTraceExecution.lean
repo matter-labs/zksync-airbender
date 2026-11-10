@@ -6,6 +6,12 @@ public import Slop.MulDiv.Values
 public import Slop.Trace.RVFamilyTrace
 public import Slop.Trace.RVValues
 public import Slop.Trace.RVZeroRows
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Decoder.RVProgram
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
+public import Slop.Defs.Circuits.MulDiv.Operation
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

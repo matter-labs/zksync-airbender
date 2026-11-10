@@ -7,7 +7,6 @@ public import Clean.Utils.Bits
 public import Clean.Utils.Field
 public import Clean.Utils.OfflineMemory
 public import Clean.Utils.Rotation
-public import Clean.Utils.SourceSinkPath
 
 @[expose] public section
 
@@ -21,8 +20,8 @@ What it shows, per transcribed definition:
 * constraint semantics: our expressions, environments, tables, lookups and flat operations translate one to
   one into Clean's (`toClean`), and evaluation, lookup containment and `ConstraintsHoldFlat` agree on the
   translation;
-* specifications and utilities (Keccak-f[1600], BLAKE3, bit decompositions, rotations, offline memory,
-  source–sink paths): each is equal to Clean's definition.
+* specifications and utilities (Keccak-f[1600], BLAKE3, rotations, byte splitting, offline memory): each is equal to
+  Clean's definition.
 
 Deviations (by design; each is visible in the statements below):
 1. `Airbender.FlatOperation` has only `assert` and `lookup`. Clean's `witness` (witness generation) and
@@ -35,8 +34,9 @@ Deviations (by design; each is visible in the statements below):
 3. Omitted: prover-only data (`ProverEnvironment`, hints), Clean's circuit/gadget layer, the BLAKE3
    compression/chunking and the Keccak sponge, and lemmas our proofs do not cite.
 
-Theorems transcribed into CleanCore (e.g. `constraintsHoldFlat_iff_forall_mem`) need no correspondence: they
-are proved facts about these definitions. -/
+Clean definitions and lemmas only the proofs use (bit decompositions, source–sink paths, per-address memory
+filtering, the constraint and lookup lists) are transcribed in `slop/Slop/CleanCore/` and need no correspondence:
+no claim mentions them. -/
 
 namespace Airbender.CleanEquivalence
 
@@ -102,24 +102,6 @@ theorem constraintsHoldFlat_iff (env : Airbender.Environment F) (ops : List (Air
 
 end
 
-theorem constraints_toClean (ops : List (Airbender.FlatOperation F)) :
-    (Airbender.FlatOperation.constraints ops).map Expression.toClean =
-      _root_.FlatOperation.constraints (ops.map FlatOperation.toClean) := by
-  induction ops with
-  | nil => rfl
-  | cons op ops ih =>
-    cases op <;> simp [Airbender.FlatOperation.constraints, _root_.FlatOperation.constraints,
-      FlatOperation.toClean, ih]
-
-theorem lookups_toClean (ops : List (Airbender.FlatOperation F)) :
-    (Airbender.FlatOperation.lookups ops).map Lookup.toClean =
-      _root_.FlatOperation.lookups (ops.map FlatOperation.toClean) := by
-  induction ops with
-  | nil => rfl
-  | cons op ops ih =>
-    cases op <;> simp [Airbender.FlatOperation.lookups, _root_.FlatOperation.lookups,
-      FlatOperation.toClean, ih]
-
 /-! ## Tables: the four row types we use flatten as in Clean -/
 
 /-- A table over one of our row types, as Clean's table over the same row type. -/
@@ -170,21 +152,6 @@ theorem add32_eq : Airbender.add32 = _root_.add32 := by rfl
 theorem rotRight64_eq : Airbender.rotRight64 = _root_.rotRight64 := by rfl
 theorem rotRight32_eq : Airbender.rotRight32 = _root_.rotRight32 := by rfl
 theorem rotLeft64_eq : Airbender.rotLeft64 = _root_.rotLeft64 := by rfl
-theorem mapRange_eq {α : Type} : @Airbender.Vector.mapRange α = @_root_.Vector.mapRange α := by
-  funext n create
-  induction n with
-  | zero => rfl
-  | succ n ih => rw [Airbender.Vector.mapRange_succ, _root_.Vector.mapRange_succ, ih]
-theorem toBits_eq : Airbender.Utils.Bits.toBits = _root_.Utils.Bits.toBits := by
-  funext n x
-  simp only [Airbender.Utils.Bits.toBits, _root_.Utils.Bits.toBits, mapRange_eq]
-theorem fromBits_eq {n : ℕ} : @Airbender.Utils.Bits.fromBits n = @_root_.Utils.Bits.fromBits n := by rfl
-theorem fieldToBits_eq {p : ℕ} [Fact p.Prime] :
-    @Airbender.Utils.Bits.fieldToBits p _ = @_root_.Utils.Bits.fieldToBits p _ := by
-  funext n x
-  simp only [Airbender.Utils.Bits.fieldToBits, _root_.Utils.Bits.fieldToBits, toBits_eq]
-theorem fieldFromBits_eq {p n : ℕ} [Fact p.Prime] :
-    @Airbender.Utils.Bits.fieldFromBits p _ n = @_root_.Utils.Bits.fieldFromBits p _ n := by rfl
 theorem splitTwoBytes_eq : Airbender.ByteUtils.splitTwoBytes = _root_.ByteUtils.splitTwoBytes := by rfl
 
 theorem memoryAccess_eq : Airbender.MemoryAccess = _root_.MemoryAccess := by rfl
@@ -210,32 +177,6 @@ theorem isConsistentOnline_eq :
     obtain ⟨t, a', r, w⟩ := a
     simp only [Airbender.MemoryAccessList.isConsistentOnline, _root_.MemoryAccessList.isConsistentOnline]
     rw [ih, lastWriteValue_eq]
-theorem filterAddress_eq :
-    Airbender.MemoryAccessList.filterAddress = _root_.MemoryAccessList.filterAddress := by rfl
-theorem isConsistentSingleAddress_eq :
-    Airbender.MemoryAccessList.isConsistentSingleAddress =
-      _root_.MemoryAccessList.isConsistentSingleAddress := by
-  funext accesses
-  induction accesses with
-  | nil => rfl
-  | cons a rest ih =>
-    funext h
-    cases rest with
-    | nil => rfl
-    | cons b rest' =>
-      simp only [Airbender.MemoryAccessList.isConsistentSingleAddress,
-        _root_.MemoryAccessList.isConsistentSingleAddress]
-      rw [ih]
-
-theorem run_eq (S : Type) : Airbender.Utils.StateTransition.Run S = _root_.Utils.StateTransition.Run S := by rfl
-theorem netFlow_eq (S : Type) [Fintype S] [DecidableEq S] :
-    @Airbender.Utils.StateTransition.Run.netFlow S _ _ = @_root_.Utils.StateTransition.Run.netFlow S _ _ := by rfl
-theorem isAcyclic_eq (S : Type) [DecidableEq S] :
-    @Airbender.Utils.StateTransition.Run.isAcyclic S _ = @_root_.Utils.StateTransition.Run.isAcyclic S _ := by rfl
-theorem countTransitionInPath_eq (S : Type) [DecidableEq S] :
-    @Airbender.Utils.StateTransition.countTransitionInPath S _ =
-      @_root_.Utils.StateTransition.countTransitionInPath S _ := by rfl
-
 /-! ## Axioms: the correspondence uses only Lean's standard axioms -/
 
 /-- info: 'Airbender.CleanEquivalence.constraintsHoldFlat_iff' depends on axioms: [propext, Quot.sound] -/

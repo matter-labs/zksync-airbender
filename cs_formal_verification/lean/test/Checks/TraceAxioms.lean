@@ -1,6 +1,7 @@
 module
 public import Tests.PooledHistory
 public import Tests.PooledROM
+public import Slop.Defs.Helpers.Memory.Native
 
 public import Tests.SubwordMemoryTimestamp
 public import Tests.ShiftBinopTimestamp

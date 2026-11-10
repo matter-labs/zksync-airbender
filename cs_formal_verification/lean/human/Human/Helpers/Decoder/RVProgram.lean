@@ -21,11 +21,6 @@ structure RVProgramEntry (Kind : Type := Family) where
   bits : BitVec 32
   data : DecoderData Kind
 
-/-- Change only the circuit registry tag. -/
-def RVProgramEntry.mapFamily {Kind Target : Type} (f : Kind → Target)
-    (entry : RVProgramEntry Kind) : RVProgramEntry Target :=
-  ⟨entry.pc, entry.bits, entry.data.mapFamily f⟩
-
 /-- Rust's nine-column decoder row (as `ProgramEntry.query`); omitted funct3 is zero. -/
 def RVProgramEntry.query {Kind : Type} {p : Nat} (entry : RVProgramEntry Kind) : Vector (ZMod p) 9 :=
   let pc := Word.ofBitVec entry.pc

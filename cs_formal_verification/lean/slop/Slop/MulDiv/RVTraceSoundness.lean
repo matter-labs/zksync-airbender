@@ -5,6 +5,9 @@ public import Slop.MulDiv.RVResult
 public import Slop.Trace.RVValues
 public import Slop.Trace.RVPooledRow
 public import Slop.Trace.RVRowGlue
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Circuits.MulDiv.Operation
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

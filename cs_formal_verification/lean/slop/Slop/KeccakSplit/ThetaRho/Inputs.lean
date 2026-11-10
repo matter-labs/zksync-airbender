@@ -2,6 +2,7 @@ module
 public import Slop.KeccakSplit.ThetaRho.Bytes
 public import Slop.Arithmetic.LaneRotation
 public import Mathlib.Tactic.IntervalCases
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

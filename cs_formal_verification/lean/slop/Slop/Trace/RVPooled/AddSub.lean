@@ -5,6 +5,11 @@ public import Slop.AddSub
 public import Slop.AddSub.RVDecoder
 public import Slop.Trace.RVFamilySelectors
 public import Mathlib.Tactic.NormNum.Prime
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Circuits.AddSub.Artifact
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

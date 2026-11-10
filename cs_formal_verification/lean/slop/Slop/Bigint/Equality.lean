@@ -1,6 +1,7 @@
 module
 public import Slop.Bigint.EqualityGates
 public import Slop.Arithmetic.Digits
+public import Slop.Defs.Circuits.Bigint.Equality
 
 @[expose] public section
 

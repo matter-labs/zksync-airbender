@@ -21,16 +21,7 @@ def next (input : Word) : Word :=
 
 def spec (input output : Word) : Prop := input.hi < 8192 ∧ output = next input
 
-structure Mapping {p : Nat} (input output : Word) (w : Nat → ZMod p) : Prop where
-  inputWord : input = ⟨(w Variables.controlReadLo).val, (w Variables.controlReadHi).val⟩
-  outputWord : output = ⟨(w Variables.controlWriteLo).val, (w Variables.controlWriteHi).val⟩
-
 -- The control claim holds for any supplied XOR setup. Its behavior does not
 -- depend on lookup-table contents; the whole round will use concrete XOR semantics.
-def circuitModel {p : Nat} [Fact p.Prime] (setup : Table (ZMod p) (fields 6)) :
-    Verification.CircuitModel Word Word (Nat → ZMod p) where
-  satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-    (importedConstraints setup)
-  represents := Mapping
 
 end Airbender.Blake2Round.Control

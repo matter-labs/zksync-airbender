@@ -5,6 +5,8 @@ public import Slop.Trace.RVHistory
 public import Slop.Trace.RVRom
 public import Slop.Trace.RVZero
 public import Slop.Trace.RVPooledLaws
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

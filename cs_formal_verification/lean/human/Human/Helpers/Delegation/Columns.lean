@@ -25,7 +25,4 @@ structure GroupedTimestamp where
   members : Array Nat
   deriving DecidableEq
 
-def GroupedTimestamp.borrowValue {F : Type} [Sub F] (group : GroupedTimestamp) (w : Nat → F) : F :=
-  w group.invocationHigh - w group.previous[1]
-
 end Airbender.Delegation

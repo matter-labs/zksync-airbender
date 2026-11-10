@@ -5,6 +5,7 @@ public import Slop.Arithmetic.Lemmas
 public import Slop.Constraints
 public import Slop.JumpBranchSlt.ArtifactChecks
 public import Slop.JumpBranchSlt.OpIndex
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

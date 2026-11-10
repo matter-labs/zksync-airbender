@@ -3,6 +3,7 @@ public import Human.Circuits.MulDiv.RVModel
 public import Slop.Trace.DecoderBits
 public import Slop.MulDiv
 public import Slop.MulDiv.RVResult
+public import Slop.Defs.Circuits.MulDiv.Operation
 
 @[expose] public section
 

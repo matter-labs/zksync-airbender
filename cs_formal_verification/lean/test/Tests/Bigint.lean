@@ -4,6 +4,7 @@ public import Slop.Bigint.Addresses
 public import Slop.Bigint.NativeExecution
 public import Slop.Bigint.WitnessCheck
 public import Slop.KernelRfl
+public import Slop.Defs.Circuits.Bigint.Additive
 
 @[expose] public section
 

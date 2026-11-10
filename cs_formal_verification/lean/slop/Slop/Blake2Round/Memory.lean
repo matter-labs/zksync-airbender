@@ -3,6 +3,12 @@ public import Slop.Delegation.Values
 public import Slop.Blake2Round.Row
 public import Human.Circuits.Blake2Round.Memory
 public import Slop.Trace.Values
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Blake2Round.Artifact
+public import Slop.Defs.Circuits.Blake2Round.Preparation
+public import Slop.Defs.Circuits.Blake2Round.Mixing
+public import Slop.Defs.Circuits.Blake2Round.Control
+public import Slop.Defs.Circuits.Blake2Round.Finalization
 
 @[expose] public section
 

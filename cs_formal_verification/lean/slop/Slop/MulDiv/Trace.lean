@@ -3,6 +3,7 @@ public import Human.Helpers.Context.Registries.MulDiv
 public import Slop.MulDiv.Timestamp
 public import Slop.Trace.RowHistory
 public import Slop.MulDiv
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

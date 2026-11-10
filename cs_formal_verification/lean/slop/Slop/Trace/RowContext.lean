@@ -1,6 +1,8 @@
 module
 public import Human.Helpers.Context.RowContext
 public import Slop.Trace.RowHistory
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Memory.RowEvents
 
 @[expose] public section
 namespace Airbender.Trace.Proofs

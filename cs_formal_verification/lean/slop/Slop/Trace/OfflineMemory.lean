@@ -1,6 +1,7 @@
 module
 public import Slop.Trace.MemoryPaths
 public import Slop.Trace.MemoryOrigins
+public import Slop.Defs.Helpers.Context.Model
 
 @[expose] public section
 

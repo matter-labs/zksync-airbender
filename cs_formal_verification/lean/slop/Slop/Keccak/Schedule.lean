@@ -1,6 +1,6 @@
 module
 public import Slop.Keccak.ControlUpdate
-public import Human.Trace.Workers.Keccak.Call
+public import Slop.Defs.Trace.Workers.Keccak.Call
 public import Mathlib.Tactic.IntervalCases
 
 @[expose] public section

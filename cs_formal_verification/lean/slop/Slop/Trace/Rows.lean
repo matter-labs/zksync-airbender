@@ -5,6 +5,8 @@ public import Slop.WordMemory.ArtifactChecks
 public import Slop.WordMemory.OpIndex
 public import Slop.AddSub.Timestamp
 public import Slop.Trace.Timestamps
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

@@ -16,7 +16,7 @@ does so at selected first-span cut states within the ten-position controller.
 Reads, ranges and intermediate states are derived. Unrestricted restart/chaining and
 full mixed caller retirement remain separate.
 
-Read [RVTheorems](RVTheorems.lean), [Call](Call.lean) and
+Read [RVTheorems](RVTheorems.lean) and
 [RVCall](RVCall.lean) (`RVCallInputs`, `RVNativeCallInputs`, `RVWindowInputs`). [Compression](Compression.lean) names
 the complete seven-/ten-round reference and actual initial/final block reads.
 

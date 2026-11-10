@@ -4,6 +4,8 @@ public import Human.Trace.Workers.Blake2G.WorkVector
 public import Slop.Delegation.NativeSegments
 public import Slop.Keccak.CallPermutation
 public import Mathlib.Tactic.IntervalCases
+public import Slop.Defs.Circuits.Keccak.Artifact
+public import Slop.Defs.Circuits.Keccak.Theta
 
 @[expose] public section
 

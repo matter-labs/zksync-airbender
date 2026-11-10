@@ -1,6 +1,9 @@
 module
 public import Slop.Keccak.FixedTables
 public import Slop.Keccak.Lookups
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Keccak.Artifact
+public import Slop.Defs.Circuits.Keccak.Tables.Setup
 
 @[expose] public section
 

@@ -1,5 +1,8 @@
 module
 public import Slop.Trace.RVHistory
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Context.Model
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

@@ -4,6 +4,7 @@ public import Slop.Trace.Values
 public import Slop.AddSub
 public import Slop.Trace.Family.History
 public import Slop.WordMemory
+public import Slop.Defs.Helpers.Memory.Ports
 
 @[expose] public section
 

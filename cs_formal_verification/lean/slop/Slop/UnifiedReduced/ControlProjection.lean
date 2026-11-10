@@ -5,6 +5,7 @@ public import Slop.JumpBranchSlt.OpIndex
 public import Slop.ShiftBinop.Lookups
 public import Slop.UnifiedReduced
 public import Slop.UnifiedReduced.ControlKey
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

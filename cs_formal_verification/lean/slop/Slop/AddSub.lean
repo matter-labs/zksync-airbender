@@ -5,6 +5,7 @@ public import Slop.Arithmetic.Word
 public import Slop.AddSub.PC
 public import Slop.Constraints
 public import Mathlib.Tactic.IntervalCases
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

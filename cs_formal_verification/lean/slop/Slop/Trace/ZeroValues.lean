@@ -1,5 +1,6 @@
 module
 public import Slop.Trace.HistorySplit
+public import Slop.Defs.Helpers.Memory.Ports
 
 @[expose] public section
 

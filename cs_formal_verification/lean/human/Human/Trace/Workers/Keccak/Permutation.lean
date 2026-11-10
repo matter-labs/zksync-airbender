@@ -1,5 +1,7 @@
 module
-public import Human.Trace.Workers.Keccak.Call
+public import Human.Helpers.Delegation.Memory
+public import Human.Circuits.Keccak.Addresses
+public import Human.Circuits.Keccak.ControlUpdate
 public import CleanCore.Specs.Keccak256
 public import Human.Helpers.Delegation.WorkerContext
 

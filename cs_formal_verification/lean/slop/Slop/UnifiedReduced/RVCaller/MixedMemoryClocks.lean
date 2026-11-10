@@ -7,6 +7,7 @@ public import Slop.Delegation.Memory
 public import Slop.ISA.RV.Attr
 public import Slop.UnifiedReduced.Trace
 public import Batteries.Data.Fin.Fold
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

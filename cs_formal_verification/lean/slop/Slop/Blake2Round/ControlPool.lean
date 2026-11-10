@@ -1,8 +1,11 @@
 module
 public import Slop.Blake2Round.ExclusiveMask
 public import Slop.Delegation.CallPaths
-public import Human.Trace.Workers.Blake2Round.Call
+public import Slop.Defs.Trace.Workers.Blake2Round.Call
 public import Slop.Delegation.BoundaryInputs
+public import Slop.Defs.Circuits.Blake2Round.Artifact
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Circuits.Blake2Round.Control
 
 @[expose] public section
 

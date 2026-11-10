@@ -6,6 +6,7 @@ public import Slop.Eval
 public import Slop.Templates
 public import Mathlib.Tactic.ReduceModChar
 public import Slop.Blake2Round.ArtifactChecks
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

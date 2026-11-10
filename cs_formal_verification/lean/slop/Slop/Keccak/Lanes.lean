@@ -1,5 +1,6 @@
 module
-public import Human.Circuits.Keccak.Mix
+public import Slop.Defs.Circuits.Keccak.Mix
+public import Slop.Defs.Circuits.Keccak.Theta
 
 @[expose] public section
 

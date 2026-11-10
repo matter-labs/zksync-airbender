@@ -10,6 +10,9 @@ public import Slop.Trace.RVValues
 public import Slop.Trace.ROMView
 public import Slop.Trace.RVBootSeed
 public import Slop.Final.Circuits.InitsTeardowns.Theorems
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

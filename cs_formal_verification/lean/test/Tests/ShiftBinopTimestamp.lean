@@ -1,6 +1,7 @@
 module
 public import Tests.ShiftBinop
 public import Slop.ShiftBinop.Trace
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

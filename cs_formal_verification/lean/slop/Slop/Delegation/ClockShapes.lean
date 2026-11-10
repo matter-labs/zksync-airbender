@@ -1,6 +1,7 @@
 module
 public import Slop.Templates
 public import Slop.Delegation.ClockFacts
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

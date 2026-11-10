@@ -2,6 +2,7 @@ module
 public import Human.Helpers.Core.Word
 public import Slop.Arithmetic.Lemmas
 public import Mathlib.Data.Nat.Basic
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

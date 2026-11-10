@@ -2,6 +2,7 @@ module
 public import Slop.UnifiedReduced.RV.Step
 public import Slop.UnifiedReduced.RV.JumpArithmetic
 public import Slop.JumpBranchSlt.RVData
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

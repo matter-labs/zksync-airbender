@@ -3,6 +3,7 @@ public import Human.Helpers.UnifiedReduced.Registry
 public import Slop.UnifiedReduced.ArtifactChecks
 public import Slop.UnifiedReduced.Timestamp
 public import Slop.Trace.History
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

@@ -1,6 +1,8 @@
 module
 public import Slop.Keccak.Tags
 public import Slop.Keccak.ControlUpdate
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Keccak.Artifact
 
 @[expose] public section
 

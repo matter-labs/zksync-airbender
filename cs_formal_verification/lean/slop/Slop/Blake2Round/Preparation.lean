@@ -6,6 +6,9 @@ public import Slop.Blake2Round.PreparationExtended3
 public import Mathlib.Tactic.FinCases
 public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.LinearCombination
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Blake2Round.Artifact
+public import Slop.Defs.Circuits.Blake2Round.Preparation
 
 @[expose] public section
 

@@ -3,6 +3,8 @@ public import Human.Circuits.Keccak.ControlUpdate
 public import Slop.Keccak.Controls
 public import Slop.Keccak.OpIndex
 public import Slop.Arithmetic.OneHot
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Keccak.Artifact
 
 @[expose] public section
 

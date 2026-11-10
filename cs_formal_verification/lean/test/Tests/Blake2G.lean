@@ -10,6 +10,9 @@ public import Slop.Blake2G.PhysicalWords
 public import Slop.Delegation.NativeSegments
 public import Slop.Delegation.ReverseFold
 public import Mathlib.Tactic.IntervalCases
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Blake2G.State
+public import Slop.Defs.Circuits.Blake2G.Artifact
 
 @[expose] public section
 

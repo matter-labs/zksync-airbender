@@ -6,6 +6,7 @@ public import Slop.KeccakSplit.RowCommon
 public import Slop.Constraints
 public import Slop.Trace.Timestamps
 public import Slop.Arithmetic.Chunks
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

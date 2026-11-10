@@ -1,6 +1,7 @@
 module
 public import Slop.UnifiedReduced.RV.ControlQueries
 public import Slop.UnifiedReduced.ControlKey
+public import Slop.CleanCore.Circuit.Lookup
 
 @[expose] public section
 

@@ -1,7 +1,10 @@
 module
-public import Human.Circuits.Blake2G.Control
+public import Slop.Defs.Circuits.Blake2G.Control
 public import Slop.Blake2G
 public import Mathlib.Tactic.IntervalCases
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Blake2G.Artifact
+public import Slop.Defs.Circuits.Blake2G.Controller
 
 @[expose] public section
 

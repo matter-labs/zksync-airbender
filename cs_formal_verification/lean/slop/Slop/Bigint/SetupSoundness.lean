@@ -2,6 +2,8 @@ module
 public import Slop.Bigint.Lookups
 public import Slop.Bigint.Additive
 public import Slop.Bigint.Equality
+public import Slop.Defs.Circuits.Bigint.Equality
+public import Slop.Defs.Circuits.Bigint.Additive
 
 @[expose] public section
 

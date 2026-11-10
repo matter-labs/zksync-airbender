@@ -5,6 +5,8 @@ public import Slop.UnifiedReduced.OpIndex
 public import Human.Helpers.Properties
 public import Slop.Constraints
 public import Slop.Trace.Timestamps
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

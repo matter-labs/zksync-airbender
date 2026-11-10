@@ -1,6 +1,7 @@
 module
 public import Slop.JumpBranchSlt
 public import Slop.Arithmetic.Comparison
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

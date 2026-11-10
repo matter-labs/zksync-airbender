@@ -1,6 +1,7 @@
 module
 public import Human.Trace.UnifiedReduced.RVPreparedRoundWindows
 public import Slop.UnifiedReduced.RVCaller.PreparedHashWindows
+public import Slop.Defs.Trace.Workers.Blake2Round.Call
 
 @[expose] public section
 

@@ -4,6 +4,8 @@ public import Slop.ShiftBinop.OpIndex
 public import Human.Helpers.Properties
 public import Slop.ShiftBinop.Arithmetic
 public import Slop.Constraints
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

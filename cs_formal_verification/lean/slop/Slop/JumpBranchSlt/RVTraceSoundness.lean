@@ -5,6 +5,7 @@ public import Slop.Trace.RVPooledRow
 public import Slop.Trace.RVValues
 public import Slop.Trace.PC
 public import Slop.Trace.RVRowGlue
+public import Slop.Defs.Helpers.Memory.Ports
 
 @[expose] public section
 

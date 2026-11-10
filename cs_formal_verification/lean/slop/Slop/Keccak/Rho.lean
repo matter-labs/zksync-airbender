@@ -2,6 +2,9 @@ module
 public import Slop.Keccak.RhoRotation
 public import Slop.Keccak.Theta
 public import Slop.Keccak.Lanes
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Keccak.Artifact
+public import Slop.Defs.Circuits.Keccak.Mix
 
 @[expose] public section
 

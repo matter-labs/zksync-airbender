@@ -2,6 +2,7 @@ module
 public import Slop.Bigint.OpIndex
 public import Slop.Templates
 public import Mathlib.Tactic.FinCases
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

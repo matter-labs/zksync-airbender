@@ -3,6 +3,7 @@ public import Human.Trace.Workers.Blake2Round.Compression
 public import Slop.Deleg.BlakeCall
 public import Slop.Blake2Round.Schedule
 public import Slop.Arithmetic.Word
+public import Slop.Defs.Trace.Workers.Blake2Round.Call
 
 @[expose] public section
 

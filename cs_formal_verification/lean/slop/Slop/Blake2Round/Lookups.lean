@@ -5,6 +5,7 @@ public import Human.Helpers.Properties
 public import Slop.Blake2Round.Setup.Rows
 public import Slop.Constraints
 public import Mathlib.Tactic.IntervalCases
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

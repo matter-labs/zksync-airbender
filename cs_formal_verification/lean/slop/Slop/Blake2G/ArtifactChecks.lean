@@ -1,5 +1,6 @@
 module
 public import Human.Circuits.Blake2G.Artifact
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

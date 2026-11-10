@@ -17,6 +17,7 @@ public import Slop.MulDiv.Values
 public import Slop.ShiftBinop.Ports
 public import Slop.SubwordMemory.Values
 public import Slop.Trace.Rows
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

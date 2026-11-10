@@ -3,6 +3,7 @@ public import Mathlib.Data.List.OfFn
 public import Slop.Delegation.NativeViews
 public import Slop.Keccak.CallHistory
 public import Slop.Keccak.CallPorts
+public import Slop.Defs.Trace.Workers.Keccak.Call
 
 @[expose] public section
 

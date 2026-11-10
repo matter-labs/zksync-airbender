@@ -4,6 +4,8 @@ public import Mathlib.Tactic.FinCases
 public import Mathlib.Tactic.IntervalCases
 public import Slop.OpIndex
 public import Mathlib.Tactic.LinearCombination
+public import Slop.Defs.Circuits.Blake2Round.Preparation
+public import Slop.Defs.Circuits.Blake2Round.Artifact
 
 @[expose] public section
 

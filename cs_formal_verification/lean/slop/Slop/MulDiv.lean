@@ -7,6 +7,8 @@ public import Slop.Constraints
 public import Slop.Lookups
 public import Mathlib.Tactic.FinCases
 public import Mathlib.Tactic.LinearCombination
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

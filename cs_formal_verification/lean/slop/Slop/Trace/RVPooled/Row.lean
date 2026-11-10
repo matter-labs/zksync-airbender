@@ -5,6 +5,8 @@ public import Slop.Trace.RVPooled.JumpBranchSlt
 public import Slop.Trace.RVPooled.MulDiv
 public import Slop.Trace.RVPooled.ShiftBinop
 public import Slop.Trace.RVPooled.SubwordMemory
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

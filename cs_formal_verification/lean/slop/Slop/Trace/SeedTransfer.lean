@@ -1,6 +1,7 @@
 module
 public import Slop.Trace.Terminal
 public import Slop.Trace.TransferHistory
+public import Slop.CleanCore.Utils.OfflineMemory
 
 @[expose] public section
 

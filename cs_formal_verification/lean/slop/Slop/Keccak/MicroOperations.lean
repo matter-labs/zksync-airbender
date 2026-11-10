@@ -1,5 +1,6 @@
 module
 public import Slop.Keccak.NativeExecution
+public import Slop.Defs.Circuits.Keccak.Theta
 
 @[expose] public section
 

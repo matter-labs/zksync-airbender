@@ -10,6 +10,10 @@ public import Slop.Blake2G.PhysicalPorts
 public import Slop.Delegation.CallPaths
 public import Slop.Delegation.IndexedPaths
 public import Slop.Delegation.NativeViews
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Circuits.Blake2G.Artifact
+public import Slop.Defs.Circuits.Blake2G.Execution
+public import Slop.Defs.Circuits.Blake2G.Addresses
 
 @[expose] public section
 

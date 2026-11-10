@@ -4,6 +4,8 @@ public import Slop.UnifiedReduced.RV.ControlResolution
 public import Slop.JumpBranchSlt.ArtifactChecks
 public import Slop.JumpBranchSlt.OpIndex
 public import Mathlib.Tactic.IntervalCases
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.CleanCore.Circuit.Lookup
 
 @[expose] public section
 

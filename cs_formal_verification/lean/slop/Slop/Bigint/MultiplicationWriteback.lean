@@ -2,6 +2,7 @@ module
 public import Human.Circuits.Bigint.Multiplication
 public import Slop.Bigint.EqualityGates
 public import Slop.Bigint.OpIndex
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

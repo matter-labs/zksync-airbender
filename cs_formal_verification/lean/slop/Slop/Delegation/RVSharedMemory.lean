@@ -3,6 +3,7 @@ public import Human.Trace.Delegation.RVSharedMemory
 public import Slop.Delegation.RVRequestTrace
 public import Slop.Delegation.RVSharedImage
 public import Slop.Trace.TransferValues
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

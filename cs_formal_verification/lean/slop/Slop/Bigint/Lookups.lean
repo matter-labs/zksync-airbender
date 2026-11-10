@@ -6,6 +6,7 @@ public import Slop.Lookups
 public import Slop.Constraints
 public import Slop.Arithmetic.Lemmas
 public import Human.Helpers.Properties
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

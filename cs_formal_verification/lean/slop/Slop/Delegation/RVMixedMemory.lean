@@ -4,6 +4,8 @@ public import Slop.Delegation.RVSharedOperations
 public import Slop.Delegation.MixedClocks
 public import Slop.Trace.RVValuesPooled
 public import Slop.Trace.RVZeroPooled
+public import Slop.Defs.Helpers.Context.Columns
+public import Slop.Defs.Helpers.Memory.Ports
 
 @[expose] public section
 

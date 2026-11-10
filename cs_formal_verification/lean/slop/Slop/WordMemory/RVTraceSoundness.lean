@@ -7,6 +7,10 @@ public import Slop.Trace.RVRomRead
 public import Slop.Trace.RVPooledRow
 public import Slop.Trace.RVRowGlue
 public import Slop.WordMemory.RVWritable
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

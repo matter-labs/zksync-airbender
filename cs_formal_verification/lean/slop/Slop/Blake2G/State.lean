@@ -1,7 +1,10 @@
 module
-public import Human.Circuits.Blake2G.State
+public import Slop.Defs.Circuits.Blake2G.State
 public import Slop.Blake2G.Soundness
 public import Slop.Blake2G.Control
+public import Slop.Defs.Circuits.Blake2G.Artifact
+public import Slop.Defs.Circuits.Blake2G.Control
+public import Slop.Defs.Circuits.Blake2G.Controller
 
 @[expose] public section
 

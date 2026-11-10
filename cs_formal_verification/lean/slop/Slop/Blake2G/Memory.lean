@@ -4,6 +4,7 @@ public import Slop.Blake2G.Soundness
 public import Slop.Blake2G.Control
 public import Mathlib.Tactic.IntervalCases
 public import Slop.Trace.Values
+public import Slop.Defs.Circuits.Blake2G.Artifact
 
 @[expose] public section
 

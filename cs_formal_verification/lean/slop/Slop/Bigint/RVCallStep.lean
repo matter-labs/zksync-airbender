@@ -4,6 +4,7 @@ public import Slop.Bigint.Addresses
 public import Slop.Delegation.RVCallLink
 public import Slop.Delegation.RVCallHistory
 public import Slop.Delegation.RVNativeViews
+public import Slop.Defs.Circuits.Bigint.Addresses
 
 @[expose] public section
 

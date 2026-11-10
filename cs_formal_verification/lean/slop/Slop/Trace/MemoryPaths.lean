@@ -1,6 +1,8 @@
 module
 public import Slop.Trace.Paths
 public import Mathlib.Data.List.Nodup
+public import Slop.Defs.Helpers.Context.Columns
+public import Slop.Defs.Helpers.Context.Model
 
 @[expose] public section
 

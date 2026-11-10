@@ -3,6 +3,7 @@ public import Human.Circuits.Blake2G.Artifact
 public import Slop.Blake2G.ArtifactChecks
 public import Slop.Delegation.ClockShapes
 public import Slop.Blake2G.OpIndex
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

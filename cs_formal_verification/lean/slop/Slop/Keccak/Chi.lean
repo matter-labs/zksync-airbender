@@ -2,6 +2,10 @@ module
 public import Slop.Keccak.XorRoutes
 public import Slop.Keccak.ByteFacts
 public import Slop.Arithmetic.BitwiseAssembly
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Keccak.Artifact
+public import Slop.Defs.Circuits.Keccak.Theta
+public import Slop.Defs.Circuits.Keccak.Tables.Setup
 
 @[expose] public section
 

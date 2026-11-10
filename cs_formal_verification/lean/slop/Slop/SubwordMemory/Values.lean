@@ -3,6 +3,8 @@ public import Slop.SubwordMemory.Trace
 public import Slop.SubwordMemory.Stores
 public import Slop.SubwordMemory.ROM
 public import Slop.Trace.Values
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Memory.Ports
 
 @[expose] public section
 

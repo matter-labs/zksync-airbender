@@ -1,6 +1,9 @@
 module
 public import Slop.Blake2G
 public import Slop.Arithmetic.Word
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Blake2G.Artifact
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

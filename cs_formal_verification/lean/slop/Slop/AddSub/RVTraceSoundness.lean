@@ -4,6 +4,9 @@ public import Human.Circuits.AddSub.RVTheorems
 public import Slop.AddSub.RVDecoder
 public import Slop.AddSub.RVRowPosition
 public import Slop.AddSub
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Circuits.AddSub.Artifact
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

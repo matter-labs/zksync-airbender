@@ -4,6 +4,7 @@ public import Slop.AddSub.OpIndex
 public import Human.Helpers.Properties
 public import Slop.Constraints
 public import Mathlib.Tactic.FinCases
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

@@ -2,6 +2,7 @@ module
 public import Human.ISA.RV32
 public import Slop.ShiftBinop.Ports
 public import Slop.ShiftBinop.RVQuery
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

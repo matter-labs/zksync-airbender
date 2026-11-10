@@ -4,6 +4,11 @@ public import Slop.Constraints
 public import Slop.Blake2Round.FinalWriteback
 public import Slop.Blake2Round.OpIndex
 public import Mathlib.Tactic.LinearCombination
+public import Slop.Defs.Circuits.Blake2Round.Finalization
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Blake2Round.Artifact
+public import Slop.Defs.Circuits.Blake2Round.Preparation
+public import Slop.Defs.Circuits.Blake2Round.Mixing
 
 @[expose] public section
 

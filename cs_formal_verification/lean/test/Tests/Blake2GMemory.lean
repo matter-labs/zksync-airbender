@@ -8,6 +8,7 @@ public import Slop.Blake2G.PhysicalWords
 public import Slop.Delegation.NativeSegments
 public import Slop.Delegation.ReverseFold
 public import Mathlib.Tactic.IntervalCases
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

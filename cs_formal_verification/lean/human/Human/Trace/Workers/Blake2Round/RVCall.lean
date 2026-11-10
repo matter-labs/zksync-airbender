@@ -1,5 +1,6 @@
 module
-public import Human.Trace.Workers.Blake2Round.Call
+public import Human.Circuits.Blake2Round.Execution
+public import Human.Circuits.Keccak.Tables.Controller
 public import Human.Trace.Workers.Blake2Round.RVCompression
 public import Human.Helpers.Delegation.RVBoundaryMemory
 public import Human.Trace.Delegation.RVExecution

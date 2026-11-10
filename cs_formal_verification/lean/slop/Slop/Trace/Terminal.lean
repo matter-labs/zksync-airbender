@@ -1,5 +1,7 @@
 module
 public import Slop.Trace.HistorySplit
+public import Slop.Defs.Helpers.Context.Model
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

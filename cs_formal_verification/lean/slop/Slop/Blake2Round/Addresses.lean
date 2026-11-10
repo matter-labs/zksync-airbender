@@ -5,6 +5,7 @@ public import Slop.Constraints
 public import Slop.Arithmetic.Chunks
 public import Slop.Trace.Timestamps
 public import Human.Helpers.Core.BabyBearPrime
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

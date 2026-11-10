@@ -2,6 +2,7 @@ module
 public import Slop.Keccak.RVCallSteps
 public import Slop.Keccak.CallPermutation
 public import Human.Trace.Workers.Keccak.RVCall
+public import Slop.Defs.Trace.Workers.Keccak.Call
 
 @[expose] public section
 

@@ -1,5 +1,7 @@
 module
 public import Slop.Blake2Round.RVPhysical
+public import Slop.Defs.Circuits.Blake2Round.Row
+public import Slop.Defs.Trace.Workers.Blake2Round.Call
 
 @[expose] public section
 

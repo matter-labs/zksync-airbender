@@ -1,6 +1,7 @@
 module
 public import Slop.KeccakSplit.Chi5.Queries
 public import Slop.KeccakSplit.RowCommon
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

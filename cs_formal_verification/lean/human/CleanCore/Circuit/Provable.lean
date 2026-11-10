@@ -54,9 +54,4 @@ instance (priority := high) {n : ℕ} : ProvableType (fields n) where
   toElements x := x
   fromElements v := v
 
-/-- Evaluate every entry of a row of expressions (Clean's `ProvableType.eval`). -/
-def ProvableType.eval {F : Type} [Field F] {M : TypeMap} [ProvableType M] (env : Environment F)
-    (x : M (Expression F)) : M F :=
-  fromElements ((toElements x).map (Expression.eval env))
-
 end Airbender

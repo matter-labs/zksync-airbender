@@ -2,6 +2,8 @@ module
 public import Slop.Trace.LastWrite
 public import Slop.Trace.MemoryHistory
 public import Slop.Trace.Addresses
+public import Slop.Defs.Helpers.Context.Model
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

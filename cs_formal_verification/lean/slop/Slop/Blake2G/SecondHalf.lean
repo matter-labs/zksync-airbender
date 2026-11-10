@@ -1,5 +1,8 @@
 module
 public import Slop.Blake2G.Mixing
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Blake2G.Artifact
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

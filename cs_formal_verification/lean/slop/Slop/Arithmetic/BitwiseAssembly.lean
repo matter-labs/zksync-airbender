@@ -1,5 +1,6 @@
 module
 public import Slop.Arithmetic.ByteAssembly
+public import Slop.CleanCore.Utils.Bitwise
 
 @[expose] public section
 

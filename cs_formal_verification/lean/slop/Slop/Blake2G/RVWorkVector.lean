@@ -3,6 +3,7 @@ public import Slop.Blake2G.RVCallSteps
 public import Slop.Blake2G.RVSpec
 public import Slop.Delegation.ReverseFold
 public import Slop.Blake2Round.RVWords
+public import Slop.Defs.Circuits.Blake2G.State
 
 @[expose] public section
 

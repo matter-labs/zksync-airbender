@@ -4,6 +4,8 @@ public import Human.Circuits.KeccakSplit.Chi5.Artifact
 public import Slop.Constraints
 public import Human.Helpers.Properties
 public import Mathlib.Tactic.LinearCombination
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Delegation.Columns
 
 @[expose] public section
 

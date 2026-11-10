@@ -5,6 +5,7 @@ public import Slop.Trace.RowHistory
 public import Slop.Trace.PC
 public import Slop.Trace.MemoryHistory
 public import Slop.JumpBranchSlt
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

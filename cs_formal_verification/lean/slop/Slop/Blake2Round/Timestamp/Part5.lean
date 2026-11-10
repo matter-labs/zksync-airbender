@@ -4,6 +4,7 @@ public import Slop.Blake2Round.OpIndex
 public import Slop.Constraints
 public import Slop.Trace.Timestamps
 public import Mathlib.Data.Nat.Bitwise
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

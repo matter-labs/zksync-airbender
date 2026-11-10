@@ -4,7 +4,6 @@ module
 namespace Airbender.Arithmetic
 
 def limbBase : Nat := 65536
-def wordModulus : Nat := 4294967296
 
 /-- Airbender's two-limb representation, shared across circuit families. -/
 structure Word where

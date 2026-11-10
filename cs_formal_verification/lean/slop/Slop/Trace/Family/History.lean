@@ -5,6 +5,7 @@ public import Slop.AddSub.ArtifactChecks
 public import Slop.Trace.Rows
 public import Slop.WordMemory.ArtifactChecks
 public import Human.Helpers.Context.FamilyLayout
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

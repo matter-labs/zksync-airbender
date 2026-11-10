@@ -1,5 +1,6 @@
 module
 public import Slop.KeccakSplit.ThetaRho.Queries
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

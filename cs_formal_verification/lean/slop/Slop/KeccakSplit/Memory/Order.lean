@@ -3,6 +3,8 @@ public import Slop.KeccakSplit.Memory.GroupEquations
 public import Slop.KeccakSplit.Memory.ParityClock
 public import Human.Circuits.KeccakSplit.Native
 public import Slop.Arithmetic.Lemmas
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Delegation.Columns
 
 @[expose] public section
 

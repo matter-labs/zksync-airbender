@@ -1,5 +1,6 @@
 module
 public import Slop.ShiftBinop.Arithmetic
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

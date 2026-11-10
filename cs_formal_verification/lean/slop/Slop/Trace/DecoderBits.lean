@@ -1,6 +1,6 @@
 module
 public import Human.Helpers.Properties
-public import CleanCore.Utils.Bits
+public import Slop.CleanCore.Utils.Bits
 public import Mathlib.Tactic.FinCases
 public import Mathlib.Tactic.IntervalCases
 

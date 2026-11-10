@@ -42,7 +42,6 @@ abbrev branchSelector := 24
 abbrev finalPCLo := 30
 abbrev finalPCHi := 31
 abbrev pcCarry := 122
-abbrev dispatchColumns := #v[11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26, 27, 28, 29]
 end Variables
 
 end Airbender.UnifiedReduced

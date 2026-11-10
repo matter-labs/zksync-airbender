@@ -1,6 +1,8 @@
 module
 public import Slop.Trace.RVRealizes
 public import Slop.ISA.RV.Input
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

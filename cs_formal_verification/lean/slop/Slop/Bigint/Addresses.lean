@@ -6,6 +6,8 @@ public import Slop.Constraints
 public import Slop.Trace.Timestamps
 public import Slop.Lookups
 public import Slop.Arithmetic.Chunks
+public import Slop.Defs.Circuits.Bigint.Addresses
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

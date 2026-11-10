@@ -4,6 +4,9 @@ public import Slop.Keccak.RVSpec
 public import Slop.Delegation.RVCallLink
 public import Slop.Keccak.RVStateTrace
 public import Batteries.Data.Fin.Fold
+public import Slop.Defs.Circuits.Keccak.Artifact
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Trace.Workers.Keccak.Call
 
 @[expose] public section
 

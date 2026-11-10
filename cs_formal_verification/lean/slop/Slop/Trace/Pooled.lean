@@ -5,6 +5,7 @@ public import Slop.MulDiv.Trace
 public import Slop.ShiftBinop.Trace
 public import Slop.SubwordMemory.Trace
 public import Slop.Trace.Family.History
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

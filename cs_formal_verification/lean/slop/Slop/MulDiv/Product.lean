@@ -2,6 +2,8 @@ module
 public import Slop.MulDiv
 public import Slop.MulDiv.OpIndex
 public import Slop.Arithmetic.Multiplication
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

@@ -3,6 +3,7 @@ public import Human.Helpers.Context.Registries.SubwordMemory
 public import Slop.SubwordMemory.Timestamp
 public import Slop.Trace.RowHistory
 public import Slop.SubwordMemory
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

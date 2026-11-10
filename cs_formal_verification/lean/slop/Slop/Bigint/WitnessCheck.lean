@@ -2,6 +2,7 @@ module
 public import Slop.WitnessCheck
 public import Human.Circuits.Bigint.Artifact
 public import Human.Circuits.Bigint.Tables.Setup
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

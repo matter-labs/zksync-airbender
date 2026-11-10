@@ -5,6 +5,7 @@ public import Slop.ShiftBinop.RVResult
 public import Slop.Trace.RVPooledRow
 public import Slop.Trace.RVZero
 public import Slop.Trace.RVRowGlue
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

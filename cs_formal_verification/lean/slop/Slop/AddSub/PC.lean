@@ -7,6 +7,9 @@ public import Slop.Constraints
 public import Mathlib.Tactic.LinearCombination
 public import Human.Helpers.Properties
 public import Slop.AddSub.ArtifactChecks
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.AddSub.Artifact
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

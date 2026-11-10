@@ -19,7 +19,7 @@ Start with [RVTheorems](RVTheorems.lean) for native indirect-address soundness a
 [RVMemory](RVMemory.lean) (with [Memory](Memory.lean)) for its model and public-history assumptions.
 [Addresses](Addresses.lean) names the sixteen indirect addresses.
 
-[Control](Control.lean), [Additive](Additive.lean), [Equality](Equality.lean),
+[Additive](Additive.lean), [Equality](Equality.lean),
 [Multiplication](Multiplication.lean) and [Execution](Execution.lean) select
 the seven operation references. [Artifact](Artifact.lean) and [`setup`](Tables/Setup.lean)
 bind imported equations and modeled lookup rows.

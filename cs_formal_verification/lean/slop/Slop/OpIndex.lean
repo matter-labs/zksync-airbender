@@ -1,8 +1,10 @@
 module
 public import CleanCore.Circuit.Operations
 public meta import CleanCore.Circuit.Operations
+public meta import Slop.CleanCore.Circuit.Operations
 public import Slop.OpIndexAttr
 public meta import Slop.OpIndexAttr
+public import Slop.CleanCore.Circuit.Operations
 
 public meta section
 

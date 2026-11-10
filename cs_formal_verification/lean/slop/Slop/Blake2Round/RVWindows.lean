@@ -3,6 +3,7 @@ public import Slop.Blake2Round.RVCompression
 public import Slop.Blake2Round.Memory
 public import Slop.Delegation.RVNativeSegments
 public import Human.Trace.Delegation.RVHashWindows
+public import Slop.Defs.Trace.Workers.Blake2Round.Call
 
 @[expose] public section
 

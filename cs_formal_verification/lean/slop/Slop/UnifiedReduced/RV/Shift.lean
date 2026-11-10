@@ -2,6 +2,7 @@ module
 public import Slop.UnifiedReduced.RV.Binary
 public import Slop.Arithmetic.WordBytes
 public import Slop.Arithmetic.ShiftAssembly
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

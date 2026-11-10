@@ -3,6 +3,7 @@ public import Tests.DelegationCaller
 public import Tests.BigintMemory
 public import Slop.KernelRfl
 public import Slop.Trace.InitialImage
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

@@ -6,6 +6,7 @@ public import Slop.UnifiedReduced.RV.ShiftLookups
 public import Human.Circuits.UnifiedReduced.Artifact
 public import Slop.Constraints
 public import Slop.Arithmetic.Bytes
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

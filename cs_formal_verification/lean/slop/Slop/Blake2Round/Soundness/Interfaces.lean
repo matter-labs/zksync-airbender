@@ -1,5 +1,6 @@
 module
 public import Slop.Blake2Round.Soundness.Outputs
+public import Slop.Defs.Circuits.Blake2Round.Mixing
 
 @[expose] public section
 

@@ -4,6 +4,10 @@ public import Slop.Trace.RVPooledRow
 public import Slop.WordMemory.RVTraceSoundness
 public import Slop.ISA.RV.DecodeShape
 public import Slop.Trace.RVPooled.Arithmetic
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Memory.History
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

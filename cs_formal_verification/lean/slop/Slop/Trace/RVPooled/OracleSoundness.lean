@@ -4,6 +4,9 @@ public import Slop.Trace.RVRealizesInput
 public import Human.Trace.RVSoundness
 public import Slop.Trace.RVPooled.Row
 public import Slop.Trace.RVPooledBoot
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Decoder.PooledExternalInput
+public import Slop.Defs.Helpers.Memory.History
 
 @[expose] public section
 

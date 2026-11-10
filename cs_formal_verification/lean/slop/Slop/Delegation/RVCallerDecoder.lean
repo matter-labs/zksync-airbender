@@ -7,6 +7,8 @@ public import Slop.AddSub.Selectors
 public import Slop.AddSub.PC
 public import Slop.Delegation.CallerRequests
 public import Slop.Deleg.Effect
+public import Slop.Defs.Circuits.AddSub.Artifact
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

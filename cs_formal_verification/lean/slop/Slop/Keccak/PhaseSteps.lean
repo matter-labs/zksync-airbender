@@ -1,6 +1,7 @@
 module
 public import Slop.Keccak.PhaseDefinitions
 public import Slop.Keccak.ReferenceLemmas
+public import Slop.Defs.Trace.Workers.Keccak.Call
 
 @[expose] public section
 

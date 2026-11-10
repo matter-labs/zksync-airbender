@@ -8,6 +8,7 @@ public import Slop.Arithmetic.Word
 public import Slop.Constraints
 public import Slop.Lookups
 public import Mathlib.Tactic.FinCases
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

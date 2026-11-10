@@ -7,6 +7,9 @@ public import Slop.Arithmetic.Word
 public import Slop.Constraints
 public import Mathlib.Tactic.FinCases
 public import Mathlib.Tactic.LinearCombination
+public import Slop.Defs.Circuits.UnifiedReduced.Artifact
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

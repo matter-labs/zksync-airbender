@@ -6,6 +6,9 @@ public import Slop.Constraints
 public import Slop.Arithmetic.Lemmas
 public import Mathlib.Tactic.FinCases
 public import Mathlib.Data.Nat.Bitwise
+public import Slop.Defs.Circuits.Blake2Round.Control
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Blake2Round.Artifact
 
 @[expose] public section
 

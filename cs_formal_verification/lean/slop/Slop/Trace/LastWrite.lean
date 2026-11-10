@@ -1,6 +1,6 @@
 module
 public import Human.Helpers.Memory.RowEvents
-public import Human.Helpers.Memory.History
+public import Slop.Defs.Helpers.Memory.History
 public import Slop.Trace.MemoryHistory
 public import Mathlib.Tactic.FinCases
 public import Slop.Arithmetic.Bytes

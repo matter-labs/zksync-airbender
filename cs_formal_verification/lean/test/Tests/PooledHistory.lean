@@ -8,6 +8,7 @@ public import Slop.ShiftBinop.Ports
 public import Slop.SubwordMemory.Values
 public import Slop.Trace.Family.Values
 public import Slop.Trace.Pooled
+public import Slop.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

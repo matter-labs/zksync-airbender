@@ -1,6 +1,7 @@
 module
 public import Human.Circuits.Blake2Round.Artifact
 public import Mathlib.Data.Nat.Bitwise
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

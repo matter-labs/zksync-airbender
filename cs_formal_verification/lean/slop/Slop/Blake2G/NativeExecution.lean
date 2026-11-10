@@ -4,6 +4,8 @@ public import Slop.Blake2G.Soundness
 public import Slop.Delegation.Operations
 public import Slop.Delegation.Requests
 public import Slop.Delegation.PortEvents
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Circuits.Blake2G.Execution
 
 @[expose] public section
 

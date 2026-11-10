@@ -7,6 +7,8 @@ public import Slop.Arithmetic.Chunks
 public import Slop.Arithmetic.OneHot
 public import Mathlib.Tactic.FinCases
 public import Mathlib.Tactic.LinearCombination
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Keccak.Artifact
 
 @[expose] public section
 

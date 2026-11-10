@@ -1,6 +1,10 @@
 module
 public import Slop.Blake2G.RVPhysical
 public import Slop.Delegation.RVCallLink
+public import Slop.Defs.Circuits.Blake2G.Artifact
+public import Slop.Defs.Circuits.Blake2G.State
+public import Slop.Defs.Circuits.Blake2G.Execution
+public import Slop.Defs.Circuits.Blake2G.Addresses
 
 @[expose] public section
 

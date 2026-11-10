@@ -2,6 +2,7 @@ module
 public import CleanCore.Circuit.Operations
 public import Human.Helpers.Properties
 public import Human.Helpers.Context.Timestamps
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 

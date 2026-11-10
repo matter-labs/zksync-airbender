@@ -40,9 +40,6 @@ def WordColumns.evaluate {p : Nat} (columns : WordColumns) (w : Nat → ZMod p) 
   | .u16 c => #v[w c[0], w c[1]]
   | .u8 c => #v[w c[0] + 256 * w c[1], w c[2] + 256 * w c[3]]
 
-@[simp] theorem WordColumns.evaluate_u16 {p : Nat} (c : Vector Nat 2) (w : Nat → ZMod p) :
-    (WordColumns.u16 c).evaluate w = #v[w c[0], w c[1]] := by rfl
-
 def WordColumns.code {p : Nat} (columns : WordColumns) (w : Nat → ZMod p) : Nat :=
   Nat.pair (columns.evaluate w)[0].val (columns.evaluate w)[1].val
 
@@ -66,9 +63,6 @@ structure MemoryPort where
 def pairCode {p : Nat} (w : Nat → ZMod p) (columns : Vector Nat 2) : Nat :=
   Nat.pair (w columns[0]).val (w columns[1]).val
 
-@[simp] theorem WordColumns.code_u16 {p : Nat} (columns : Vector Nat 2) (w : Nat → ZMod p) :
-    (WordColumns.u16 columns).code w = pairCode w columns := by rfl
-
 /-- Encode address space and raw limbs injectively for Clean's memory model.
     Space zero means register; space one means RAM. Bounds/Boolean selectors
     are proved separately, so this encoding does not silently truncate them. -/
@@ -90,12 +84,5 @@ def MemoryPort.readCode {p : Nat} (port : MemoryPort) (w : Nat → ZMod p) : Nat
     This is the exact value passed to logical memory matching. -/
 def MemoryPort.writeCode {p : Nat} (port : MemoryPort) (w : Nat → ZMod p) : Nat :=
   (port.writeValue.getD port.readValue).code w
-
-/-- The actual port projected into Clean's memory-access object. The timestamp
-    is the row's initial clock plus the imported in-cycle offset. -/
-def MemoryPort.event {p : Nat} (port : MemoryPort) (columns : TraceColumns)
-    (w : Nat → ZMod p) : MemoryAccess :=
-  ((decodeTimestamp w columns.initialTime).value + port.clock.offset,
-    port.address.code w, port.readCode w, port.writeCode w)
 
 end Airbender.Trace

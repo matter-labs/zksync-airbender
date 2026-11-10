@@ -4,6 +4,10 @@ public import Slop.Blake2Round.OpIndex
 public import Human.Circuits.Blake2Round.Schedule
 public import Slop.Templates
 public import Mathlib.Tactic.FinCases
+public import Slop.Defs.Circuits.Blake2Round.Schedule
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Blake2Round.Artifact
+public import Slop.Defs.Circuits.Blake2Round.Preparation
 
 @[expose] public section
 

@@ -29,15 +29,4 @@ structure Mapping {p : Nat} (input : Input) (output : Output) (w : Nat → ZMod 
   right : input.right = ⟨(w 37).val, (w 38).val⟩
   addresses : output = importedConstraintsIndirectPorts.map (fun port => port.address w)
 
-/-- Canonical pointer limbs remain a register-interface obligation. Distinct
-    pointers and RAM-only access belong to the full call, not this projection. -/
-def InterfaceAssumptions (input : Input) (_output : Output) (_w : Nat → ZMod p) : Prop :=
-  input.left.Bounded ∧ input.right.Bounded
-
-def circuitModel {p : Nat} [Fact p.Prime] :
-    Verification.CircuitModel Input Output (Nat → ZMod p) where
-  satisfies := fun w => FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-    (importedConstraints setupTable)
-  represents := Mapping
-
 end Airbender.Bigint.Addresses

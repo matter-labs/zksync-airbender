@@ -8,6 +8,10 @@ public import Slop.Trace.RVRomRead
 public import Slop.Trace.RVFamilyTrace
 public import Slop.Trace.RVWritable
 public import Slop.ISA.RV.DecodeShape
+public import Slop.Defs.Helpers.Memory.Ports
+public import Slop.Defs.Helpers.Decoder.RVProgram
+public import Slop.Defs.Helpers.Memory.RowEvents
+public import Slop.Defs.Helpers.Core.Word
 
 @[expose] public section
 

@@ -6,6 +6,7 @@ public import Slop.Keccak.Rho
 public import Human.Helpers.Delegation.Memory
 public import Slop.KernelRfl
 public import Slop.Trace.Values
+public import Slop.Defs.Circuits.Keccak.Artifact
 
 @[expose] public section
 

@@ -2,6 +2,7 @@ module
 public import Slop.WitnessCheck
 public import Human.Circuits.SubwordMemory.Artifact
 public import Human.Helpers.Tables.Subword
+public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section
 
