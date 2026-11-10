@@ -146,6 +146,7 @@ import Slop.Final.Trace.Satisfiable.Pools
 import Slop.Final.Trace.Satisfiable.Pooled
 import Slop.Final.Trace.Satisfiable.Families
 import Slop.Final.Trace.Satisfiable.Unified
+import Slop.Final.Trace.Satisfiable.Blake2G
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -1209,3 +1210,4 @@ import Slop.Final.Trace.Satisfiable.Unified
 #print axioms Airbender.UnifiedReduced.no_zero_timestamp_writes_satisfiable
 #print axioms Airbender.UnifiedReduced.writes_range_checked_satisfiable
 #print axioms Airbender.UnifiedReduced.teardowns_bounded_satisfiable
+#print axioms Airbender.Blake2G.Native.rv_operation_execution_satisfiable

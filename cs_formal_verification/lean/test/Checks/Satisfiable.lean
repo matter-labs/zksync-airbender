@@ -8,6 +8,7 @@ import Human.Trace.RVSoundness
 import Human.Trace.TeardownBounds
 import Human.Trace.Families.AddSub.RVTheorems
 import Human.Trace.UnifiedReduced.RVTheorems
+import Human.Trace.Workers.Blake2G.RVTheorems
 
 open Airbender Trace
 
@@ -138,5 +139,13 @@ example (claim : UnifiedReduced.TeardownsBoundedClaim) : UnifiedReduced.Teardown
       ∃ w ∈ inits, ∃ token ∈ w.teardownTokens, token.word.Bounded :=
   fun ⟨_, _, _, _, inits, inputs, accepted, reads, w, present, token, member⟩ =>
     ⟨inits, w, present, token, member, claim inputs accepted reads w present token member⟩
+
+example (claim : Blake2G.Native.RVOperationExecutionClaim) : Blake2G.Native.RVOperationExecutionSatisfiableClaim →
+    ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Cell),
+      Delegation.RVMemoryExecution data before cells ∧ ∃ row ∈ data.rows, row.family = .blakeG ∧
+        Blake2G.spec (Blake2G.Native.input row.assignment) (Blake2G.Native.output row.assignment) :=
+  fun ⟨data, before, cells, _, accepted, inputs, aligned, row, member, family⟩ =>
+    have result := claim accepted inputs aligned
+    ⟨data, before, cells, result.1, row, member, family, result.2 row member family⟩
 
 end Checks.Satisfiable

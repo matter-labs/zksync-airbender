@@ -81,6 +81,7 @@ import Slop.Final.Trace.Satisfiable.Pools
 import Slop.Final.Trace.Satisfiable.Pooled
 import Slop.Final.Trace.Satisfiable.Families
 import Slop.Final.Trace.Satisfiable.Unified
+import Slop.Final.Trace.Satisfiable.Blake2G
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
@@ -372,3 +373,5 @@ example : Airbender.UnifiedReduced.WritesRangeCheckedSatisfiableClaim := @Airben
 #print axioms Airbender.UnifiedReduced.writes_range_checked_satisfiable
 example : Airbender.UnifiedReduced.TeardownsBoundedSatisfiableClaim := @Airbender.UnifiedReduced.teardowns_bounded_satisfiable
 #print axioms Airbender.UnifiedReduced.teardowns_bounded_satisfiable
+example : Airbender.Blake2G.Native.RVOperationExecutionSatisfiableClaim := @Airbender.Blake2G.Native.rv_operation_execution_satisfiable
+#print axioms Airbender.Blake2G.Native.rv_operation_execution_satisfiable

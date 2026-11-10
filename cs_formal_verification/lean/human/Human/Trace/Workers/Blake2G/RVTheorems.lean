@@ -58,4 +58,11 @@ def RVOperationExecutionClaim : Prop :=
     Delegation.RVMemoryExecution data before cells ∧
       ∀ row ∈ data.rows, row.family = .blakeG → Blake2G.spec (input row.assignment) (output row.assignment)
 
+/-- The assumptions of `RVOperationExecutionClaim` can be met by a pool with a G row. -/
+def RVOperationExecutionSatisfiableClaim : Prop :=
+  ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Trace.Cell)
+    (control : Fin 4096 → Vector Nat 6),
+    Delegation.MemoryAccepted data ∧ Delegation.RVOperationInputs data before cells control ∧
+      (∀ cell ∈ cells, cell.Aligned) ∧ ∃ row ∈ data.rows, row.family = .blakeG
+
 end Airbender.Blake2G.Native
