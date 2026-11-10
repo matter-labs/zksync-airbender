@@ -22,7 +22,9 @@ checks that our code builds [without warnings](#no-warnings), checks the review 
   [Configuration.lean](lean/human/Human/Helpers/Core/Configuration.lean). `./verify.sh` step 1 checks that `human/` imports
   neither `slop/` nor `test/`. Its directory READMEs are the review guide.
   The final statements are `def …Claim : Prop` in the RVTheorems, RVCallerTheorems and Theorems modules under `Human/`
-  (and `Human/Trace/RVSoundness.lean`), imported by `lean/human/Human.lean`.
+  (and `Human/Trace/RVSoundness.lean`), imported by `lean/human/Human.lean`. `human/` holds only what a claim
+  states (P4 shrink): definitions only proofs use are in `slop/Slop/Defs/` and `slop/Slop/CleanCore/`. The executable
+  importer code in `Human/Import/Exec/` is pinned by the import claims and is not part of the reviewed spec.
 - `lean/slop/` — everything else (kernel-checked, not meant to be read): supporting calculations, proof assembly and
   artifact guards (`Slop/`), and the proofs of the final statements (`Slop/Final/`, laid out like `Human/`;
   `test/Checks/Claims.lean` checks each theorem against its `…Claim` by name and type, and its axioms).
