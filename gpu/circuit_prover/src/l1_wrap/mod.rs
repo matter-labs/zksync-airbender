@@ -31,7 +31,6 @@ pub const L1_WRAP_NTT_LOG_MAX_DOMAIN: u32 =
 
 /// Per-circuit wrap constants, built once; relations and claim indices are passed by value.
 pub struct L1WrapConstantsHost {
-    pub(crate) programs: Arc<GkrProgramsPr>,
     pub(crate) relations: LookupRelationsPr,
     pub(crate) base_claim_indices: BaseClaimGatherPr,
 }
@@ -45,7 +44,6 @@ impl L1WrapConstantsHost {
     ) -> CudaResult<Self> {
         let layout = ProofLayoutPr::new(programs, config);
         Ok(Self {
-            programs: Arc::clone(programs),
             relations: LookupRelationsPr::new(circuit),
             base_claim_indices: BaseClaimGatherPr::new(
                 programs,

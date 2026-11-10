@@ -8,7 +8,6 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::static_host::StaticPinnedBox;
-use gpu_gkr::proth120::backward::PreparedCoefficientTablesPr;
 use gpu_gkr::proth120::packed_challenges::{transcript_prefix_words, BOUNDARY_PREFIX_U32_LEN};
 use gpu_gkr::setup::{L1WrapSetupHost, PackedSetupSource};
 use gpu_hash::keccak256::Digest;
@@ -41,7 +40,6 @@ pub struct L1WrapInputs<'a, A: GoodAllocator> {
     pub(crate) setup_host: Arc<L1WrapSetupHost>,
     pub(crate) setup: PackedSetupSource<'a>,
     pub(crate) constants: Arc<L1WrapConstantsHost>,
-    pub(crate) coefficient_tables: PreparedCoefficientTablesPr,
     pub(crate) request_range: Option<Range>,
 }
 
@@ -92,8 +90,6 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
         let transcript_prefix_host = transcript_prefix_words(operation_mode, &top_bits_host);
         let transcript_prefix =
             context.alloc::<u32>(transcript_prefix_host.len(), AllocationPlacement::BestFit)?;
-        let coefficient_tables =
-            PreparedCoefficientTablesPr::new(&constants.programs, &top_bits_host, context)?;
         let setup =
             PackedSetupSource::new(Arc::clone(&setup_host), setup_reduction_layers, context)?;
         let transfer = Transfer::new()?;
@@ -109,7 +105,6 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             setup_host,
             setup,
             constants,
-            coefficient_tables,
             request_range: None,
         })
     }
@@ -123,7 +118,6 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
     pub fn schedule(&mut self, context: &ProverContext) -> CudaResult<()> {
         self.transfer
             .stage(&self.transcript_prefix_host, &mut self.transcript_prefix);
-        self.coefficient_tables.stage_transfer(&mut self.transfer);
         if let Some(decoder) = self.decoder.as_mut() {
             decoder.schedule_transfer(&mut self.transfer, context)?;
         }

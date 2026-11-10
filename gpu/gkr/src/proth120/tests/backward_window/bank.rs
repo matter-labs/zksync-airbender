@@ -9,8 +9,8 @@ use super::super::cpu_abi::programs;
 use super::super::{make_context, read_back, upload};
 use super::random_canonical;
 use crate::proth120::backward::banks::{
-    schedule_coefficient_bank_fill_pr, schedule_coefficient_tables_upload_pr, CoefficientBankPr,
-    CoefficientTablesHostPr, PR_COEFF_CHALLENGES, PR_COEFF_CHALLENGE_ABSENT,
+    schedule_coefficient_bank_fill_pr, CoefficientBankHostPr, CoefficientBankPr,
+    PR_COEFF_CHALLENGES, PR_COEFF_CHALLENGE_ABSENT,
 };
 use crate::proth120::programs::GkrProgramsPr;
 
@@ -108,79 +108,84 @@ fn fixture_top_bits(programs: &GkrProgramsPr) -> Vec<u32> {
         .collect()
 }
 
+fn evaluate_bank(host: &CoefficientBankHostPr, challenges: &[PR], batching: PR) -> Vec<PR> {
+    host.recipes
+        .iter()
+        .map(|recipe| {
+            let mut sum = PR::ZERO;
+            let first = recipe.monomial_offset as usize;
+            for (monomial, coefficient) in host.monomials
+                [first..first + recipe.monomial_count as usize]
+                .iter()
+                .zip(&host.monomial_coeffs[first..])
+            {
+                let mut term = *coefficient;
+                term.mul_assign(&batching.pow(u32::from(monomial.batch_power)));
+                for (slot, power) in [
+                    (monomial.challenge_idx_0, monomial.power_0),
+                    (monomial.challenge_idx_1, monomial.power_1),
+                ] {
+                    if slot != PR_COEFF_CHALLENGE_ABSENT {
+                        term.mul_assign(&challenges[usize::from(slot)].pow(u32::from(power)));
+                    }
+                }
+                sum.add_assign(&term);
+            }
+            sum
+        })
+        .collect()
+}
+
 #[test]
 fn cpu_pr_coefficient_tables_cover_programs() {
     let programs = programs();
-    let top_bits = fixture_top_bits(&programs);
-    let tables = CoefficientTablesHostPr::build(&programs, &top_bits);
-    assert_eq!(tables.layers.len(), 5);
-    let mut r0_plans = Vec::new();
-    let mut continuation_recipes = Vec::new();
-    let mut immediates = Vec::new();
-    for (layer, ranges) in tables.layers.iter().enumerate() {
-        assert_eq!(
-            ranges.r0_len as usize,
-            programs.r0[layer].window.coefficient_plans.len() + 2
-        );
-        assert_eq!(
-            ranges.continuation_len as usize,
-            programs.continuations.layers[layer]
-                .coefficients
-                .coefficients
-                .len()
-                + 2
-        );
-        r0_plans.push(ranges.r0_len - 2);
-        continuation_recipes.push(ranges.continuation_len - 2);
-        immediates.push((
-            ranges.r0_immediates.len(),
-            ranges.continuation_immediates.len(),
-        ));
-    }
-    assert_eq!(r0_plans, [276, 32, 21, 11, 9]);
-    assert_eq!(continuation_recipes, [265, 32, 21, 11, 9]);
-    assert_eq!(immediates, [(17, 17), (0, 0), (0, 0), (0, 0), (0, 0)]);
-    let r0_terms: usize = programs
-        .r0
-        .iter()
-        .flat_map(|layer| &layer.window.coefficient_plans)
-        .map(|plan| match plan {
-            WindowCoefficientPlan::Direct(recipe) => recipe.terms.len(),
-            _ => {
-                panic!("Proth120 coefficient tables require Direct plans")
+    let mut rng = StdRng::seed_from_u64(0xba4c);
+    let sets = programs.runtime_circuit.memory_layout.teardown_sets.len();
+    for top_bits in [
+        vec![0; sets],
+        vec![1; sets],
+        vec![u32::MAX; sets],
+        fixture_top_bits(&programs),
+    ] {
+        for case in 0..3 {
+            let challenges: Vec<PR> = (0..PR_COEFF_CHALLENGES)
+                .map(|_| match case {
+                    0 => PR::ZERO,
+                    1 => PR::ONE,
+                    _ => random_canonical(&mut rng),
+                })
+                .collect();
+            let batching = match case {
+                0 => PR::ZERO,
+                1 => PR::ONE,
+                _ => random_canonical(&mut rng),
+            };
+            for layer in 0..programs.r0.len() {
+                let mut actual = Vec::new();
+                for r0 in [true, false] {
+                    let host = CoefficientBankHostPr::build(&programs, layer, &top_bits, r0);
+                    let chunks = host.chunks();
+                    assert_eq!(chunks.len(), 1, "wrap layer {layer}, r0={r0}");
+                    let chunk = &chunks[0];
+                    assert_eq!(chunk.bank_first, 0);
+                    assert_eq!(chunk.bank_count as usize, host.recipes.len());
+                    assert_eq!(&chunk.recipes[..host.recipes.len()], host.recipes);
+                    assert_eq!(&chunk.monomials[..host.monomials.len()], host.monomials);
+                    assert_eq!(
+                        &chunk.monomial_coeffs[..host.monomial_coeffs.len()],
+                        host.monomial_coeffs
+                    );
+                    assert_eq!(&chunk.immediates[..host.immediates.len()], host.immediates);
+                    actual.extend(evaluate_bank(&host, &challenges, batching));
+                }
+                assert_eq!(
+                    actual,
+                    expected_layer(&programs, layer, &challenges, batching, &top_bits),
+                    "layer {layer}, case {case}, top_bits={top_bits:?}"
+                );
             }
-        })
-        .sum();
-    let continuation_terms: usize = programs
-        .continuations
-        .layers
-        .iter()
-        .flat_map(|layer| &layer.coefficients.coefficients)
-        .map(|recipe| recipe.terms.len())
-        .sum();
-    assert!(tables.monomials.len() <= r0_terms + continuation_terms + 4 * tables.layers.len());
-    for monomial in &tables.monomials {
-        for index in [monomial.challenge_idx_0, monomial.challenge_idx_1] {
-            assert!(index == PR_COEFF_CHALLENGE_ABSENT || usize::from(index) < PR_COEFF_CHALLENGES);
         }
     }
-    let top_bit_products = programs
-        .continuations
-        .layers
-        .iter()
-        .flat_map(|layer| &layer.coefficients.coefficients)
-        .flat_map(|recipe| &recipe.terms)
-        .filter(|product| !product.inits_and_teardowns_top_bits.is_empty())
-        .count();
-    println!(
-        "GKR_T5_BANK recipes={} monomials={} immediates={} r0_plans={:?} continuation_recipes={:?} top_bit_products={}",
-        tables.recipes.len(),
-        tables.monomials.len(),
-        tables.immediates.len(),
-        r0_plans,
-        continuation_recipes,
-        top_bit_products
-    );
 }
 
 #[test]
@@ -189,8 +194,6 @@ fn pr_eval_coefficients_matches_host() {
     let context = make_context();
     let programs = programs();
     let top_bits = fixture_top_bits(&programs);
-    let host = CoefficientTablesHostPr::build(&programs, &top_bits);
-    let (tables, keepalive) = schedule_coefficient_tables_upload_pr(&host, &context).unwrap();
     let mut rng = StdRng::seed_from_u64(0xba4c);
     let poison = PR::from_u128_with_reduction(0x0bad_cafe);
     for case in 0..3 {
@@ -201,7 +204,7 @@ fn pr_eval_coefficients_matches_host() {
                 _ => random_canonical(&mut rng),
             })
             .collect();
-        let batchings: Vec<PR> = (0..tables.layers().len())
+        let batchings: Vec<PR> = (0..programs.r0.len())
             .map(|_| match case {
                 0 => PR::ZERO,
                 1 => PR::ONE,
@@ -210,60 +213,53 @@ fn pr_eval_coefficients_matches_host() {
             .collect();
         let d_challenges = upload(&challenges, &context);
         let d_batchings = upload(&batchings, &context);
-        for layer in (0..tables.layers().len()).rev() {
-            let mut bank = CoefficientBankPr::new(&tables, layer, &context).unwrap();
-            let poisoned = vec![poison; bank.len()];
-            let poisoned = upload(&poisoned, &context);
-            unsafe {
-                era_cudart::memory::memory_copy_async(
-                    era_cudart::slice::DeviceSlice::from_raw_parts_mut(
-                        bank.values().cast_mut(),
-                        bank.len(),
-                    ),
-                    &poisoned,
-                    context.get_exec_stream(),
-                )
-                .unwrap();
+        for layer in (0..programs.r0.len()).rev() {
+            let mut bank = CoefficientBankPr::new(&programs, layer, &top_bits, &context).unwrap();
+            for view in [bank.r0(), bank.continuation()] {
+                let len = view.coefficient_count + view.immediate_count;
+                let poisoned = upload(&vec![poison; len], &context);
+                unsafe {
+                    era_cudart::memory::memory_copy_async(
+                        era_cudart::slice::DeviceSlice::from_raw_parts_mut(
+                            view.coefficients.cast_mut(),
+                            len,
+                        ),
+                        &poisoned,
+                        context.get_exec_stream(),
+                    )
+                    .unwrap();
+                }
             }
             schedule_coefficient_bank_fill_pr(
-                &tables,
                 &mut bank,
                 d_challenges.as_ptr(),
                 unsafe { d_batchings.as_ptr().add(layer) },
                 &context,
             )
             .unwrap();
-            let actual = read_back(
-                unsafe {
-                    era_cudart::slice::DeviceSlice::from_raw_parts(bank.values(), bank.len())
-                },
-                PR::ZERO,
-                &context,
-            );
-            let expected =
-                expected_layer(&programs, layer, &challenges, batchings[layer], &top_bits);
-            assert_eq!(actual.len(), expected.len());
-            for (slot, (actual, expected)) in actual.iter().zip(&expected).enumerate() {
-                assert_eq!(actual, expected, "case {case} layer {layer} slot {slot}");
+            let mut actual = Vec::new();
+            for view in [bank.r0(), bank.continuation()] {
+                actual.extend(read_back(
+                    unsafe {
+                        era_cudart::slice::DeviceSlice::from_raw_parts(
+                            view.coefficients,
+                            view.coefficient_count,
+                        )
+                    },
+                    PR::ZERO,
+                    &context,
+                ));
             }
-            let r0 = bank.r0();
-            let continuation = bank.continuation();
             assert_eq!(
-                r0.coefficient_count + continuation.coefficient_count,
-                bank.len()
-            );
-            assert_eq!(
-                r0.immediate_count,
-                programs.r0[layer].window.immediates.len()
-            );
-            assert_eq!(
-                continuation.immediate_count,
-                programs.main_tail[layer].immediates.len()
+                actual,
+                expected_layer(&programs, layer, &challenges, batchings[layer], &top_bits),
+                "case {case}, layer {layer}"
             );
             for (view, source) in [
-                (r0, &programs.r0[layer].window.immediates),
-                (continuation, &programs.main_tail[layer].immediates),
+                (bank.r0(), &programs.r0[layer].window.immediates),
+                (bank.continuation(), &programs.main_tail[layer].immediates),
             ] {
+                assert_eq!(view.immediate_count, source.len());
                 if view.immediate_count == 0 {
                     assert!(view.immediates.is_null());
                     continue;
@@ -280,7 +276,7 @@ fn pr_eval_coefficients_matches_host() {
                 );
                 let expected: Vec<PR> = source
                     .iter()
-                    .map(|&value| PR::from_u128_with_reduction(value))
+                    .map(|&v| PR::from_u128_with_reduction(v))
                     .collect();
                 assert_eq!(actual, expected, "layer {layer} immediates");
             }
@@ -288,5 +284,4 @@ fn pr_eval_coefficients_matches_host() {
         assert_eq!(read_back(&d_challenges, PR::ZERO, &context), challenges);
     }
     context.get_exec_stream().synchronize().unwrap();
-    drop(keepalive);
 }
