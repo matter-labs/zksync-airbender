@@ -17,6 +17,8 @@ import Human.Trace.Families.JumpBranchSlt.RVTheorems
 import Human.Trace.Families.MulDiv.RVTheorems
 import Human.Trace.Families.ShiftBinop.RVTheorems
 import Human.Trace.Families.SubwordMemory.RVTheorems
+import Human.Circuits.AddSub.RVCallerTheorems
+import Human.Trace.Delegation.RVCallerTheorems
 
 open Airbender Trace
 
@@ -292,5 +294,62 @@ example (claim : SubwordMemory.RVRamTraceSoundnessClaim) : SubwordMemory.RVRamTr
       RVRealizes trace initial cells ∧ trace.rows ≠ [] :=
   fun ⟨trace, initial, cells, _, inputs, accepted, decoded, rows⟩ =>
     ⟨trace, initial, cells, claim inputs accepted decoded, rows⟩
+
+section Callers
+open Delegation.Caller
+
+example (claim : RVSoundnessClaim) : RVSoundnessSatisfiableClaim →
+    ∃ (before : RV.State) (program : List Delegation.Caller.RVProgramEntry) (w : Nat → ZMod babyBearModulus),
+      RVBinding w before program ∧ Delegation.Requests.Selected w :=
+  fun ⟨before, _, program, w, hp, constraints, image, member, selected⟩ =>
+    ⟨before, program, w, claim hp constraints image member, selected⟩
+
+example (claim : RVPcSoundnessClaim) : RVPcSoundnessSatisfiableClaim →
+    ∃ (before : RV.State) (program : List Delegation.Caller.RVProgramEntry) (w : Nat → ZMod babyBearModulus),
+      RVPCBinding w before program ∧ Delegation.Requests.Selected w :=
+  fun ⟨before, _, program, w, constraints, image, member, selected⟩ =>
+    ⟨before, program, w, claim constraints image member, selected⟩
+
+example (claim : RVRequestsSoundnessClaim) : RVRequestsSoundnessSatisfiableClaim →
+    ∃ (data : RVRequestTrace babyBearModulus) (before : RV.State), RVRequestBinding data before ∧ data.callers ≠ [] :=
+  fun ⟨data, before, _, accepted, inputs, callers⟩ => ⟨data, before, claim accepted inputs, callers⟩
+
+example (claim : RVRequestMemorySoundnessClaim) : RVRequestMemorySoundnessSatisfiableClaim →
+    ∃ (data : RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell),
+      RVRequestExecution data before cells ∧ data.callers ≠ [] :=
+  fun ⟨data, before, _, cells, accepted, inputs, callers⟩ => ⟨data, before, cells, claim accepted inputs, callers⟩
+
+example (claim : RVOperationSoundnessClaim) : RVOperationSoundnessSatisfiableClaim →
+    ∃ (data : RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell),
+      RVRequestOperationEffects data before cells ∧ data.callers ≠ [] :=
+  fun ⟨data, before, _, cells, accepted, inputs, callers⟩ => ⟨data, before, cells, claim accepted inputs, callers⟩
+
+example (claim : RVSharedMemorySoundnessClaim) : RVSharedMemorySoundnessSatisfiableClaim →
+    ∃ (data : RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell),
+      RVSharedMemoryEffects data before cells ∧ data.callers ≠ [] :=
+  fun ⟨data, before, _, cells, accepted, inputs, callers⟩ => ⟨data, before, cells, claim accepted inputs, callers⟩
+
+example (claim : RVSharedOperationSoundnessClaim) : RVSharedOperationSoundnessSatisfiableClaim →
+    ∃ (data : RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell),
+      RVSharedOperationEffects data before cells ∧ data.callers ≠ [] :=
+  fun ⟨data, before, _, cells, accepted, inputs, callers⟩ => ⟨data, before, cells, claim accepted inputs, callers⟩
+
+example (claim : RVMixedMemorySoundnessClaim) : RVMixedMemorySoundnessSatisfiableClaim →
+    ∃ (data : RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell),
+      RVMixedMemoryEffects data before cells ∧ data.callers ≠ [] :=
+  fun ⟨data, _, before, _, _, cells, accepted, inputs, callers⟩ =>
+    ⟨data, before, cells, claim accepted inputs, callers⟩
+
+example (claim : RVWorkerScheduleSoundnessClaim) : RVWorkerScheduleSoundnessSatisfiableClaim →
+    ∃ data : RVRequestTrace babyBearModulus, RVWorkerSchedule data ∧ data.callers ≠ [] :=
+  fun ⟨data, _, _, accepted, inputs, callers⟩ => ⟨data, claim accepted inputs, callers⟩
+
+example (claim : RVRequestWindowSoundnessClaim) : RVRequestWindowSoundnessSatisfiableClaim →
+    ∃ (data : RVRequestTrace babyBearModulus) (lower upper : Nat),
+      RequestWindowBinding data.callers data.workers lower upper ∧ windowCallers data.callers lower upper ≠ [] :=
+  fun ⟨data, _, _, lower, upper, accepted, inputs, first, last, pastZero, window⟩ =>
+    ⟨data, lower, upper, claim accepted inputs first last pastZero, window⟩
+
+end Callers
 
 end Checks.Satisfiable

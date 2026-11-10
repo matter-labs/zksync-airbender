@@ -152,6 +152,7 @@ import Slop.Final.Trace.Satisfiable.KeccakSplit
 import Slop.Final.Trace.Satisfiable.Blake2Round
 import Slop.Final.Trace.Satisfiable.UnifiedCallers
 import Slop.Final.Trace.Satisfiable.UnifiedPreparedCallers
+import Slop.Final.Trace.Satisfiable.Callers
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -1234,3 +1235,13 @@ import Slop.Final.Trace.Satisfiable.UnifiedPreparedCallers
 #print axioms Airbender.MulDiv.rv_trace_soundness_satisfiable
 #print axioms Airbender.ShiftBinop.rv_trace_soundness_satisfiable
 #print axioms Airbender.SubwordMemory.rv_ram_trace_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_pc_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_requests_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_request_memory_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_operation_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_shared_memory_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_shared_operation_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_mixed_memory_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_worker_schedule_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_request_window_soundness_satisfiable

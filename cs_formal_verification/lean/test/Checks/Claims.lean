@@ -87,6 +87,7 @@ import Slop.Final.Trace.Satisfiable.KeccakSplit
 import Slop.Final.Trace.Satisfiable.Blake2Round
 import Slop.Final.Trace.Satisfiable.UnifiedCallers
 import Slop.Final.Trace.Satisfiable.UnifiedPreparedCallers
+import Slop.Final.Trace.Satisfiable.Callers
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
@@ -417,3 +418,24 @@ example : Airbender.ShiftBinop.RVTraceSoundnessSatisfiableClaim := @Airbender.Sh
 #print axioms Airbender.ShiftBinop.rv_trace_soundness_satisfiable
 example : Airbender.SubwordMemory.RVRamTraceSoundnessSatisfiableClaim := @Airbender.SubwordMemory.rv_ram_trace_soundness_satisfiable
 #print axioms Airbender.SubwordMemory.rv_ram_trace_soundness_satisfiable
+
+example : Airbender.Delegation.Caller.RVSoundnessSatisfiableClaim := @Airbender.Delegation.Caller.rv_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_soundness_satisfiable
+example : Airbender.Delegation.Caller.RVPcSoundnessSatisfiableClaim := @Airbender.Delegation.Caller.rv_pc_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_pc_soundness_satisfiable
+example : Airbender.Delegation.Caller.RVRequestsSoundnessSatisfiableClaim := @Airbender.Delegation.Caller.rv_requests_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_requests_soundness_satisfiable
+example : Airbender.Delegation.Caller.RVRequestMemorySoundnessSatisfiableClaim := @Airbender.Delegation.Caller.rv_request_memory_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_request_memory_soundness_satisfiable
+example : Airbender.Delegation.Caller.RVOperationSoundnessSatisfiableClaim := @Airbender.Delegation.Caller.rv_operation_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_operation_soundness_satisfiable
+example : Airbender.Delegation.Caller.RVSharedMemorySoundnessSatisfiableClaim := @Airbender.Delegation.Caller.rv_shared_memory_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_shared_memory_soundness_satisfiable
+example : Airbender.Delegation.Caller.RVSharedOperationSoundnessSatisfiableClaim := @Airbender.Delegation.Caller.rv_shared_operation_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_shared_operation_soundness_satisfiable
+example : Airbender.Delegation.Caller.RVMixedMemorySoundnessSatisfiableClaim := @Airbender.Delegation.Caller.rv_mixed_memory_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_mixed_memory_soundness_satisfiable
+example : Airbender.Delegation.Caller.RVWorkerScheduleSoundnessSatisfiableClaim := @Airbender.Delegation.Caller.rv_worker_schedule_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_worker_schedule_soundness_satisfiable
+example : Airbender.Delegation.Caller.RVRequestWindowSoundnessSatisfiableClaim := @Airbender.Delegation.Caller.rv_request_window_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_request_window_soundness_satisfiable

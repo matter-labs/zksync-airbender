@@ -23,4 +23,21 @@ def RVPcSoundnessClaim : Prop :=
   ∀ {before : RV.State} {addresses : List (BitVec 32)} {program : List RVProgramEntry} {w : Nat → ZMod babyBearModulus} (_constraints : FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints) (_image : rvProgramImage before addresses = some program) (_member : (rvDecoderTable program).Contains #[] (nativeQuery w)),
     RVPCBinding w before program
 
+/-- The assumptions of `RVSoundnessClaim` can be met (at BabyBear) by a selected caller row. -/
+def RVSoundnessSatisfiableClaim : Prop :=
+  ∃ (before : RV.State) (addresses : List (BitVec 32)) (program : List RVProgramEntry)
+    (w : Nat → ZMod babyBearModulus),
+    65536 < babyBearModulus ∧
+      FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints ∧
+      rvProgramImage before addresses = some program ∧ (rvDecoderTable program).Contains #[] (nativeQuery w) ∧
+      Requests.Selected w
+
+/-- The assumptions of `RVPcSoundnessClaim` can be met by a selected caller row. -/
+def RVPcSoundnessSatisfiableClaim : Prop :=
+  ∃ (before : RV.State) (addresses : List (BitVec 32)) (program : List RVProgramEntry)
+    (w : Nat → ZMod babyBearModulus),
+    FlatOperation.ConstraintsHoldFlat (Verification.environment w) AddSub.importedConstraints ∧
+      rvProgramImage before addresses = some program ∧ (rvDecoderTable program).Contains #[] (nativeQuery w) ∧
+      Requests.Selected w
+
 end Airbender.Delegation.Caller

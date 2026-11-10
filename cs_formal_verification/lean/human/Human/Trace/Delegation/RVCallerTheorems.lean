@@ -84,4 +84,52 @@ def RVRequestHashWindowSoundnessClaim : Prop :=
   ∀    {data : RVRequestTrace babyBearModulus} {before : RV.State} {addresses : List (BitVec 32)} {cells : List Trace.Cell} {span : HashSpan} {lower upper : Nat} (_accepted : RVRequestAccepted data) (_program : RVRequestInputs data before addresses) (_inputs : span.RVRequestWindowInputs data.workers before cells lower upper) (_aligned : ∀ cell ∈ cells, cell.Aligned) (_first : lower % 4 = 0) (_last : upper % 4 = 0) (_pastZero : 2 ≤ lower),
     span.RVRequestWindowResult data.callers data.workers before cells lower upper
 
+/-- The assumptions of `RVRequestsSoundnessClaim` can be met by a trace with a selected caller. -/
+def RVRequestsSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : RVRequestTrace babyBearModulus) (before : RV.State) (addresses : List (BitVec 32)),
+    RVRequestAccepted data ∧ RVRequestInputs data before addresses ∧ data.callers ≠ []
+
+/-- The assumptions of `RVRequestMemorySoundnessClaim` can be met by a trace with a selected caller. -/
+def RVRequestMemorySoundnessSatisfiableClaim : Prop :=
+  ∃ (data : RVRequestTrace babyBearModulus) (before : RV.State) (addresses : List (BitVec 32))
+    (cells : List Trace.Cell),
+    RVRequestAccepted data ∧ RVRequestMemoryInputs data before addresses cells ∧ data.callers ≠ []
+
+/-- The assumptions of `RVOperationSoundnessClaim` can be met by a trace with a selected caller. -/
+def RVOperationSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : RVRequestTrace babyBearModulus) (before : RV.State) (addresses : List (BitVec 32))
+    (cells : List Trace.Cell),
+    RVRequestAccepted data ∧ RVRequestOperationInputs data before addresses cells ∧ data.callers ≠ []
+
+/-- The assumptions of `RVSharedMemorySoundnessClaim` can be met by a trace with a selected caller. -/
+def RVSharedMemorySoundnessSatisfiableClaim : Prop :=
+  ∃ (data : RVRequestTrace babyBearModulus) (before : RV.State) (addresses : List (BitVec 32))
+    (cells : List Trace.Cell),
+    RVSharedMemoryAccepted data ∧ RVSharedMemoryInputs data before addresses cells ∧ data.callers ≠ []
+
+/-- The assumptions of `RVSharedOperationSoundnessClaim` can be met by a trace with a selected caller. -/
+def RVSharedOperationSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : RVRequestTrace babyBearModulus) (before : RV.State) (addresses : List (BitVec 32))
+    (cells : List Trace.Cell),
+    RVSharedMemoryAccepted data ∧ RVSharedOperationInputs data before addresses cells ∧ data.callers ≠ []
+
+/-- The assumptions of `RVMixedMemorySoundnessClaim` can be met by a trace with a selected caller. -/
+def RVMixedMemorySoundnessSatisfiableClaim : Prop :=
+  ∃ (data : RVRequestTrace babyBearModulus) (program : List Trace.RVPooledProgramEntry) (before : RV.State)
+    (callerAddresses ordinaryAddresses : List (BitVec 32)) (cells : List Trace.Cell),
+    RVMixedMemoryAccepted data program ∧
+      RVMixedMemoryInputs data program before callerAddresses ordinaryAddresses cells ∧ data.callers ≠ []
+
+/-- The assumptions of `RVWorkerScheduleSoundnessClaim` can be met by a trace with a selected caller. -/
+def RVWorkerScheduleSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : RVRequestTrace babyBearModulus) (before : RV.State) (addresses : List (BitVec 32)),
+    RVRequestChecks data ∧ RVRequestInputs data before addresses ∧ data.callers ≠ []
+
+/-- The assumptions of `RVRequestWindowSoundnessClaim` can be met by a trace with a selected caller inside the
+    window. -/
+def RVRequestWindowSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : RVRequestTrace babyBearModulus) (before : RV.State) (addresses : List (BitVec 32)) (lower upper : Nat),
+    RVRequestChecks data ∧ RVRequestInputs data before addresses ∧ lower % 4 = 0 ∧ upper % 4 = 0 ∧ 2 ≤ lower ∧
+      windowCallers data.callers lower upper ≠ []
+
 end Airbender.Delegation.Caller
