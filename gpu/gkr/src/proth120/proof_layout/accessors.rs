@@ -24,6 +24,11 @@ pub struct GkrProofFields {
 }
 
 impl ProofLayoutPr {
+    pub fn parse_whir_fields<'a>(&self, bytes: &'a [u8]) -> super::WhirProofFieldsPr<'a> {
+        self.validate_host_blob(bytes);
+        self.whir.parse(bytes)
+    }
+
     fn validate_host_blob(&self, bytes: &[u8]) {
         assert!(
             bytes.len() >= self.bytes_len(),

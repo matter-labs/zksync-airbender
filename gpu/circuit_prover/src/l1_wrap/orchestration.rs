@@ -505,6 +505,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
             },
             &config.whir_schedule,
             &shape,
+            gkr.slab.whir_target(),
             context,
         )?;
         end_phase(p, &mut gkr.state.work.ranges, context)?;
@@ -533,7 +534,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
                     challenges,
                     gkr,
                 },
-            output: mut whir,
+            output: whir,
         } = state;
         let operation_mode = params.operation_mode;
         let stream = context.get_exec_stream();
@@ -543,22 +544,21 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
             DeviceSlice::from_raw_parts(slab.backing.as_ptr().cast::<u8>(), layout.bytes_len())
         };
         memory_copy_async(&mut mirror, slab_bytes, stream)?;
-        whir.schedule_readback(base.cap_digests(), context)?;
         let mirror_accessor = mirror.get_accessor();
         let whir_readback = whir.readback();
         let result_accessor = UnsafeMutAccessor::new(work.result.as_mut());
         work.callbacks.schedule(
             move || {
                 let _range = scoped_range(Some("ab"), "l1_wrap.assembly");
-                let fields = layout.parse_gkr_fields(unsafe { mirror_accessor.get() });
+                let bytes = unsafe { mirror_accessor.get() };
+                let fields = layout.parse_gkr_fields(bytes);
                 let (memory_claims, setup_claims) = &fields.merged_claims;
-                let whir = unsafe {
-                    whir_readback.assemble(
-                        memory_claims,
-                        setup_claims,
-                        fields.batched_proximity_check_pow_nonce,
-                    )
-                };
+                let whir = whir_readback.assemble(
+                    bytes,
+                    memory_claims,
+                    setup_claims,
+                    fields.batched_proximity_check_pow_nonce,
+                );
                 let proof = assemble_l1_proof(fields, whir, top_bits_host.clone(), operation_mode);
                 unsafe { result_accessor.get_mut() }.replace(proof);
             },
