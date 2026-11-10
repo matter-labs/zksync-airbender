@@ -12,7 +12,7 @@ constexpr bool COUNTER_SEARCH = false;
 
 constexpr u64 STOP = u64{1} << 63;
 
-// FULL_CHUNK retains Blake2s's existing fast arm; Keccak keeps its bounded loop.
+// FULL_CHUNK skips per-nonce bounds checks for complete counter-search chunks.
 // CHECKED_GRID retains the hashes' existing advance and publication policies.
 template <bool COUNTER, bool FULL_CHUNK, bool CHECKED_GRID, typename Predicate, typename Published>
 DEVICE_FORCEINLINE void search(const u64 max_nonce, const u32 chunk_steps, u64 *counter, u64 *result, Predicate predicate, Published published) {

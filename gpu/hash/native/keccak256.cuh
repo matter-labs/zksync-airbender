@@ -523,7 +523,7 @@ DEVICE_FORCEINLINE void pow_search(const u8 *seed, const u32 bits, const u64 max
   auto *result_ptr = reinterpret_cast<unsigned long long *>(result);
   cuda::atomic_ref<unsigned long long, cuda::thread_scope_device> found(*result_ptr);
   const auto published = [&]() { return found.load(cuda::memory_order_relaxed); };
-  pow_search_detail::search<pow_search_detail::COUNTER_SEARCH, false, true>(max_nonce, chunk_steps, counter, result, predicate, published);
+  pow_search_detail::search<pow_search_detail::COUNTER_SEARCH, true, true>(max_nonce, chunk_steps, counter, result, predicate, published);
 }
 
 } // namespace airbender::hash::keccak256
