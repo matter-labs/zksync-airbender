@@ -36,7 +36,7 @@ use log::{debug, error, info, trace};
 
 use crate::upstream::{
     CommitmentMode, GKRCircuitArtifact, GKRExternalChallenges, MerkleTreeCapVarLength,
-    OperationMode, ProverConfig, SecurityLevel, L1_WRAP_EXPLICIT_OUTPUT_LOG2,
+    OperationMode, ProverConfig, L1_WRAP_EXPLICIT_OUTPUT_LOG2,
 };
 use std::ffi::CStr;
 use std::mem;
@@ -258,7 +258,6 @@ fn schedule_phase_one<'a>(
             precomputations,
         } = request;
 
-        let security_level = SecurityLevel::Sec100;
         trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] initializing setup for circuit {circuit_type:?}[{sequence_id}]"
         );
@@ -267,9 +266,7 @@ fn schedule_phase_one<'a>(
             CircuitPrecomputations::BabyBear(precomputations) => {
                 precomputations.setup_host.get_or_init(context)?
             }
-            CircuitPrecomputations::L1Wrap(precomputed) => {
-                precomputed.initialize(security_level, context)?
-            }
+            CircuitPrecomputations::L1Wrap(precomputed) => precomputed.initialize(context)?,
         }
         debug!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] initialized setup for circuit {circuit_type:?}[{sequence_id}] in {:.3} ms",

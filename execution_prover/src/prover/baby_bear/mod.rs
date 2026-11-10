@@ -27,6 +27,5 @@ use execution_prover_model::circuit_type::{
     DelegationCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
 };
 use log::debug;
-use std::cell::RefCell;
 use std::collections::VecDeque;
 use verifier_common::MEMORY_DELEGATION_POW_BITS;

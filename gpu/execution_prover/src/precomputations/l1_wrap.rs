@@ -14,7 +14,7 @@ use gpu_trace::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use super::decoder_host;
 use crate::upstream::{
     CpuGKRSetup, GKRCircuitArtifact, L1WrapSetup, MerkleTreeCapVarLength, ProofProfile,
-    ProverConfig, SecurityLevel,
+    ProverConfig,
 };
 use execution_prover::config::SoundnessMode;
 
@@ -24,7 +24,6 @@ pub struct L1WrapPrecomputed {
     pub circuit: Arc<GKRCircuitArtifact<PR>>,
     pub programs: Arc<GkrProgramsPr>,
     pub decoder_host: Option<Arc<StaticPinnedBox<ExecutorFamilyDecoderData>>>,
-    pub security: SecurityLevel,
     pub config: ProverConfig,
     pub geometry: L1WrapGeometry,
     host: OnceLock<Arc<L1WrapSetupHost>>,
@@ -37,7 +36,6 @@ impl L1WrapPrecomputed {
         setup: L1WrapSetup,
         soundness_mode: SoundnessMode,
     ) -> CudaResult<Self> {
-        let security = SecurityLevel::Sec100;
         let config = ProofProfile::L1Wrap
             .prover_config(circuit_type.get_domain_size_log2() as usize, soundness_mode);
         let geometry = L1WrapGeometry::new(circuit_type, &config, &setup.circuit, &setup);
@@ -50,7 +48,6 @@ impl L1WrapPrecomputed {
             circuit,
             programs,
             decoder_host,
-            security,
             config,
             geometry,
             host: OnceLock::new(),
@@ -58,12 +55,7 @@ impl L1WrapPrecomputed {
         })
     }
 
-    pub fn initialize(&self, security: SecurityLevel, context: &ProverContext) -> CudaResult<()> {
-        let circuit_type = self.circuit_type;
-        assert_eq!(
-            security, self.security,
-            "{circuit_type:?} setup initialization security level differs from the precomputation"
-        );
+    pub fn initialize(&self, context: &ProverContext) -> CudaResult<()> {
         self.host.get_or_try_init(|| {
             let source = self
                 .source

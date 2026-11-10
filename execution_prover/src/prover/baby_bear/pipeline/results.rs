@@ -13,12 +13,12 @@ pub(super) struct RequestContext<'a, B: ExecutionBackend> {
     pub(super) proof_caps: &'a BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
     /// Taken by the first proof request built for each instance; a later
     /// duplicate of a cache-served request gets `None` and is never dispatched.
-    pub(super) proof_partial_trees: RefCell<BTreeMap<(CircuitType, usize), MemoryPartialTrees>>,
+    pub(super) proof_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees>,
 }
 
 impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
     pub(super) fn build_work_request(
-        &self,
+        &mut self,
         prover: &ExecutionProver<B>,
         inits_and_teardowns: Option<InitsAndTeardownsData<B::Allocator>>,
         tracing_data: Option<TracingData<B::Allocator>>,
@@ -102,7 +102,6 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 memory_caps,
                 memory_partial_trees: self
                     .proof_partial_trees
-                    .borrow_mut()
                     .remove(&(circuit_type, sequence_id)),
 
                 profile,
@@ -125,7 +124,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
 
 fn enqueue_ready_tracing_data<B: ExecutionBackend>(
     prover: &ExecutionProver<B>,
-    request_context: &RequestContext<'_, B>,
+    request_context: &mut RequestContext<'_, B>,
     data: TracingData<B::Allocator>,
     work_requests: &mut VecDeque<WorkRequest<B::Allocator, B::Precomputations>>,
     unpaired_unified_inits_and_teardowns: &mut BTreeMap<usize, InitsAndTeardownsData<B::Allocator>>,
@@ -201,7 +200,7 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
         prover: &ExecutionProver<B>,
         cache: &mut Option<TraceCache<B::Allocator>>,
         work_result: WorkerResult<B::Allocator>,
-        request_context: &RequestContext<'_, B>,
+        request_context: &mut RequestContext<'_, B>,
     ) -> VecDeque<WorkRequest<B::Allocator, B::Precomputations>> {
         let mut work_requests = VecDeque::new();
         match work_result {
