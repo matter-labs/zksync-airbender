@@ -1,7 +1,6 @@
+use super::shared::{self, DrCompactSourceTable};
 use core::mem::{align_of, offset_of, size_of};
-use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
-use std::sync::Arc;
 
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
@@ -14,12 +13,9 @@ use gpu_prover_context::ProverContext;
 
 use crate::backward::kernels::{
     get_eq_high_constant_device_ptr, launch_build_eq_high_and_low_groups_from_point,
-    launch_build_eq_independent_groups_from_point, make_eq_sizes, pack_source_u16,
-    FoldingArenaBinding, GpuGKRDimensionReducingBatch, GpuGKRDimensionReducingSlot,
-    GpuGKRDimensionReducingTables, GpuGKRSourceRecord, GKR_BACKWARD_MAX_TRACE_LEN_LOG2,
-    GKR_DIM_REDUCING_BASE_SLOTS, GKR_DIM_REDUCING_POLY_CAPACITY,
+    launch_build_eq_independent_groups_from_point, make_eq_sizes, FoldingArenaBinding,
+    GpuGKRDimensionReducingBatch, GKR_BACKWARD_MAX_TRACE_LEN_LOG2,
 };
-use crate::storage_layout::address_storage_layer;
 use crate::upstream::GKRAddress;
 use crate::{DrWindowLayerProgram, GpuGKRStorage};
 
@@ -34,7 +30,6 @@ const DR_WINDOW_ROWS_PER_TILE: usize = 32;
 const DR_WINDOW_TENSOR_CELLS: usize = 27;
 const DR_WINDOW_MIN_FOLDING_STEPS: usize = 4;
 const DR_WINDOW_MAX_FOLDING_STEPS: usize = GKR_BACKWARD_MAX_TRACE_LEN_LOG2;
-const DR_CONTINUATION_FIRST_ACCESS_BIT: u16 = 1 << 15;
 const DR_WINDOW_BLOCK_THREADS: u32 = 288;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -404,132 +399,6 @@ impl core::fmt::Display for DrWindowBindError {
 
 impl std::error::Error for DrWindowBindError {}
 
-pub(super) struct ResolvedStorageE4<'a> {
-    pub(super) backing: &'a Arc<DeviceAllocation<E4>>,
-    pub(super) log2_stride: u32,
-    pub(super) poly_index: usize,
-}
-
-pub(super) fn resolve_storage_e4<'a, B>(
-    storage: &'a GpuGKRStorage<B, E4>,
-    address: GKRAddress,
-) -> Result<ResolvedStorageE4<'a>, DrWindowBindError> {
-    let poly =
-        storage
-            .get_ext_poly_for_address(address)
-            .ok_or(DrWindowBindError::MissingSource {
-                address,
-                logical_layer: address_storage_layer(address),
-            })?;
-    assert_eq!(
-        poly.offset % poly.len,
-        0,
-        "DR source must start at a column boundary"
-    );
-    Ok(ResolvedStorageE4 {
-        backing: &poly.backing,
-        log2_stride: poly.len.ilog2(),
-        poly_index: poly.offset / poly.len,
-    })
-}
-
-/// Per-launch compact pointer table shared by DR R0 and its continuations.
-/// Backing slots are assigned in order of first use.
-pub(crate) struct DrCompactSourceTableBuilder {
-    tables: GpuGKRDimensionReducingTables,
-    by_backing: BTreeMap<usize, usize>,
-    slot_count: usize,
-}
-
-impl DrCompactSourceTableBuilder {
-    pub(crate) fn new() -> Self {
-        Self {
-            tables: GpuGKRDimensionReducingTables::default(),
-            by_backing: BTreeMap::new(),
-            slot_count: 0,
-        }
-    }
-
-    /// Returns the bit-15-clear slot/poly wire base for an E4 storage source.
-    /// Continuation assembly sets the first-access bit after deduplication.
-    pub(crate) fn intern_storage_e4<B>(
-        &mut self,
-        storage: &GpuGKRStorage<B, E4>,
-        address: GKRAddress,
-    ) -> Result<u16, DrWindowBindError> {
-        let resolved = resolve_storage_e4(storage, address)?;
-        self.intern_resolved(
-            resolved.backing.as_ptr().cast(),
-            resolved.log2_stride,
-            resolved.poly_index,
-        )
-    }
-
-    /// Returns the bit-15-clear slot/poly wire base for an E4 folding arena.
-    /// D1/DR-cont record assembly owns the first-access bit and must OR bit 15
-    /// onto this base after per-launch canonical-folding-index dedup, without
-    /// rederiving the slot or poly.
-    pub(crate) fn intern_arena_e4(
-        &mut self,
-        arena: FoldingArenaBinding,
-        poly_index: usize,
-    ) -> Result<u16, DrWindowBindError> {
-        self.intern_resolved(arena.base, arena.log2_stride, poly_index)
-    }
-
-    pub(crate) fn finish(self) -> GpuGKRDimensionReducingTables {
-        self.tables
-    }
-
-    fn intern_resolved(
-        &mut self,
-        backing: *const u8,
-        log2_stride: u32,
-        poly_index: usize,
-    ) -> Result<u16, DrWindowBindError> {
-        if poly_index >= GKR_DIM_REDUCING_POLY_CAPACITY {
-            return Err(DrWindowBindError::PolyIndexOverflow {
-                poly_index,
-                capacity: GKR_DIM_REDUCING_POLY_CAPACITY,
-            });
-        }
-
-        let backing_key = backing as usize;
-        let slot = if let Some(&slot) = self.by_backing.get(&backing_key) {
-            let expected_log2_stride = self.tables.log2_stride[slot];
-            if expected_log2_stride != log2_stride {
-                return Err(DrWindowBindError::StrideMismatch {
-                    backing: backing_key,
-                    expected_log2_stride,
-                    observed_log2_stride: log2_stride,
-                });
-            }
-            slot
-        } else {
-            if self.slot_count == GKR_DIM_REDUCING_BASE_SLOTS {
-                return Err(DrWindowBindError::BaseSlotOverflow {
-                    required: self.slot_count + 1,
-                    capacity: GKR_DIM_REDUCING_BASE_SLOTS,
-                });
-            }
-            let slot = self.slot_count;
-            self.tables.bases[slot] = backing;
-            self.tables.log2_stride[slot] = log2_stride;
-            self.by_backing.insert(backing_key, slot);
-            self.slot_count += 1;
-            slot
-        };
-
-        Ok(pack_source_u16(false, slot as u8, poly_index as u16))
-    }
-}
-
-impl Default for DrCompactSourceTableBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Runtime allocation bound by the producer. The first `27 * row_tiles` cells
 /// are row-tile-major partials; the final 27 cells are reserved for the split
 /// tensor tail.
@@ -623,66 +492,20 @@ pub(super) fn assemble_dr_window_continuation_batch(
     projection: &DrWindowInputProjection,
     eq: DrContinuationFactoredEqView,
     destination: FoldingArenaBinding,
-    mut intern_source: impl FnMut(
-        &mut DrCompactSourceTableBuilder,
+    intern_source: impl FnMut(
+        &mut DrCompactSourceTable,
         GKRAddress,
         u16,
     ) -> Result<u16, DrWindowBindError>,
 ) -> Result<GpuGKRDimensionReducingBatch<E4>, DrWindowBindError> {
-    let mut batch = GpuGKRDimensionReducingBatch::<E4> {
-        enabled_mask: program.enabled_mask(),
-        eq_low: eq.low.cast_const(),
-        eq_sizes: eq.sizes,
-        ..Default::default()
-    };
-    let mut table_builder = DrCompactSourceTableBuilder::new();
-    let mut first_access_seen = BTreeSet::<u16>::new();
-    for (dense_slot, slot) in program.slots().iter().enumerate() {
-        let mut inputs = [GpuGKRSourceRecord::default(); 2];
-        for (input_operand, record) in inputs.iter_mut().enumerate() {
-            let publication_index = projection
-                .publication_index(dense_slot, input_operand)
-                .ok_or(DrWindowBindError::MissingPublicationIndex {
-                    dense_slot,
-                    input_operand,
-                })?;
-            let publication = usize::from(publication_index);
-            if publication >= projection.canonical_sources().len() {
-                return Err(DrWindowBindError::PublicationIndexOverflow {
-                    publication_index: publication,
-                    canonical_source_count: projection.canonical_sources().len(),
-                });
-            }
-            let source_id = slot.source_ids()[input_operand];
-            let address = program.sources()[usize::from(source_id)];
-            let source_base = intern_source(&mut table_builder, address, publication_index)?;
-            assert_eq!(
-                source_base & DR_CONTINUATION_FIRST_ACCESS_BIT,
-                0,
-                "compact source-table builders must return a clear first-access bit",
-            );
-            let cache_base = table_builder.intern_arena_e4(destination, publication)?;
-            assert_eq!(
-                cache_base & DR_CONTINUATION_FIRST_ACCESS_BIT,
-                0,
-                "compact destination-table builders must return a clear first-access bit",
-            );
-            let first_access = first_access_seen.insert(publication_index);
-            let source = source_base
-                | if first_access {
-                    DR_CONTINUATION_FIRST_ACCESS_BIT
-                } else {
-                    0
-                };
-            *record = GpuGKRSourceRecord::new(source, cache_base);
-        }
-        batch.slots[slot.slot()] = GpuGKRDimensionReducingSlot {
-            inputs,
-            batch_exp: *slot.batch_exponents(),
-        };
-    }
-    batch.tables = table_builder.finish();
-    Ok(batch)
+    shared::assemble_continuation_batch(
+        program,
+        projection,
+        eq.low,
+        eq.sizes,
+        destination,
+        intern_source,
+    )
 }
 
 pub(crate) fn build_dr_window_continuation_batch<B>(
@@ -704,7 +527,7 @@ pub(crate) fn build_dr_window_continuation_batch<B>(
             projection,
             eq,
             destination.binding(),
-            |builder, address, _| builder.intern_storage_e4(storage, address),
+            |builder, address, _| builder.intern_storage(storage, address),
         ),
         DrWindowContinuationSource::Arena(arena) => {
             if arena.poly_count() < projection.canonical_sources().len() {
@@ -719,7 +542,7 @@ pub(crate) fn build_dr_window_continuation_batch<B>(
                 eq,
                 destination.binding(),
                 |builder, _, publication_index| {
-                    builder.intern_arena_e4(arena.binding(), usize::from(publication_index))
+                    builder.intern_arena(arena.binding(), usize::from(publication_index))
                 },
             )
         }
@@ -873,27 +696,9 @@ fn build_dr_window_batch<B>(
     storage: &GpuGKRStorage<B, E4>,
     eq: DrWindowPassEqView,
 ) -> Result<GpuGKRDimensionReducingBatch<E4>, DrWindowBindError> {
-    let mut batch = GpuGKRDimensionReducingBatch::<E4> {
-        enabled_mask: program.enabled_mask(),
-        eq_low: eq.eq_low,
-        eq_sizes: eq.eq_sizes,
-        ..Default::default()
-    };
-    let mut table_builder = DrCompactSourceTableBuilder::new();
-    for slot in program.slots() {
-        let mut inputs = [GpuGKRSourceRecord::default(); 2];
-        for (operand, source_id) in slot.source_ids().iter().copied().enumerate() {
-            let address = program.sources()[usize::from(source_id)];
-            inputs[operand] =
-                GpuGKRSourceRecord::source_only(table_builder.intern_storage_e4(storage, address)?);
-        }
-        batch.slots[slot.slot()] = GpuGKRDimensionReducingSlot {
-            inputs,
-            batch_exp: *slot.batch_exponents(),
-        };
-    }
-    batch.tables = table_builder.finish();
-    Ok(batch)
+    shared::assemble_r0_batch(program, eq.eq_low, eq.eq_sizes, |table, address| {
+        table.intern_storage(storage, address)
+    })
 }
 
 /// Allocate and bind the exact continuation prefix already selected by the
