@@ -145,6 +145,7 @@ import Slop.Final.Trace.UnifiedReduced.RVChainOfSequence
 import Slop.Final.Trace.Satisfiable.Pools
 import Slop.Final.Trace.Satisfiable.Pooled
 import Slop.Final.Trace.Satisfiable.Families
+import Slop.Final.Trace.Satisfiable.Unified
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -1203,3 +1204,8 @@ import Slop.Final.Trace.Satisfiable.Families
 #print axioms Airbender.Trace.teardowns_bounded_satisfiable
 #print axioms Airbender.Trace.rv_airbender_soundness_satisfiable
 #print axioms Airbender.Trace.rv_native_boot_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.rv_execution_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.boot_ram_zero_satisfiable
+#print axioms Airbender.UnifiedReduced.no_zero_timestamp_writes_satisfiable
+#print axioms Airbender.UnifiedReduced.writes_range_checked_satisfiable
+#print axioms Airbender.UnifiedReduced.teardowns_bounded_satisfiable

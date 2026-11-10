@@ -48,4 +48,12 @@ def TeardownsBoundedClaim : Prop :=
   ∀ {trace : UnifiedTrace babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)} (_inputs : RVBootInputs trace initial cells program inits) (_accepted : Accepted trace) (_reads : InitsTeardowns.MemoryArgumentReadsBounded inits (trace.rows.flatMap Row.writes)),
     ∀ w ∈ inits, ∀ token ∈ w.teardownTokens, token.word.Bounded
 
+/-- The assumptions of `TeardownsBoundedClaim` can be met, with a teardown tuple. -/
+def TeardownsBoundedSatisfiableClaim : Prop :=
+  ∃ (trace : UnifiedTrace babyBearModulus) (initial : RV.State) (cells : List Cell) (program : List RVProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)),
+    RVBootInputs trace initial cells program inits ∧ Accepted trace ∧
+    InitsTeardowns.MemoryArgumentReadsBounded inits (trace.rows.flatMap Row.writes) ∧
+    ∃ w ∈ inits, ∃ token, token ∈ w.teardownTokens
+
 end Airbender.UnifiedReduced

@@ -7,6 +7,7 @@ import Human.Trace.Workers.Bigint.RVTheorems
 import Human.Trace.RVSoundness
 import Human.Trace.TeardownBounds
 import Human.Trace.Families.AddSub.RVTheorems
+import Human.Trace.UnifiedReduced.RVTheorems
 
 open Airbender Trace
 
@@ -108,5 +109,34 @@ example (claim : RVNativeBootSoundnessClaim) : RVNativeBootSoundnessSatisfiableC
       RVRealizes trace initial cells ∧ trace.rows ≠ [] :=
   fun ⟨trace, initial, cells, _, _, inputs, accepted, decoded, rows⟩ =>
     ⟨trace, initial, cells, claim inputs accepted decoded, rows⟩
+
+example (claim : UnifiedReduced.RVExecutionSoundnessClaim) : UnifiedReduced.RVExecutionSoundnessSatisfiableClaim →
+    ∃ (trace : UnifiedTrace babyBearModulus) (initial : RV.State) (cells : List Cell),
+      RVRealizes trace initial cells ∧ trace.rows ≠ [] :=
+  fun ⟨trace, initial, cells, _, _, inputs, accepted, decoded, rows⟩ =>
+    ⟨trace, initial, cells, claim inputs accepted decoded, rows⟩
+
+example (claim : UnifiedReduced.BootRamZeroClaim) : UnifiedReduced.BootRamZeroSatisfiableClaim →
+    ∃ (initial : RV.State) (cells : List Cell) (address : BitVec 32),
+      Cell.ram address ∈ cells ∧ (Cell.ram address).readRV initial = some 0 :=
+  fun ⟨_, initial, cells, _, _, inputs, address, member⟩ =>
+    ⟨initial, cells, address, member, claim inputs address member⟩
+
+example (claim : UnifiedReduced.NoZeroTimestampWritesClaim) : UnifiedReduced.NoZeroTimestampWritesSatisfiableClaim →
+    ∃ trace : UnifiedTrace babyBearModulus, ∃ row ∈ trace.rows, ∃ token ∈ row.writes,
+      4 ≤ (timeOfPair token.time).value :=
+  fun ⟨trace, accepted, boot, row, member, token, present⟩ =>
+    ⟨trace, row, member, token, present, claim accepted boot row member token present⟩
+
+example (claim : UnifiedReduced.WritesRangeCheckedClaim) : UnifiedReduced.WritesRangeCheckedSatisfiableClaim →
+    ∃ trace : UnifiedTrace babyBearModulus, ∃ row ∈ trace.rows, row.memorySteps ≠ [] ∧
+      ∀ step ∈ row.memorySteps, step.2.word.Bounded :=
+  fun ⟨trace, accepted, row, member, steps, reads⟩ => ⟨trace, row, member, steps, claim accepted row member reads⟩
+
+example (claim : UnifiedReduced.TeardownsBoundedClaim) : UnifiedReduced.TeardownsBoundedSatisfiableClaim →
+    ∃ inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout),
+      ∃ w ∈ inits, ∃ token ∈ w.teardownTokens, token.word.Bounded :=
+  fun ⟨_, _, _, _, inits, inputs, accepted, reads, w, present, token, member⟩ =>
+    ⟨inits, w, present, token, member, claim inputs accepted reads w present token member⟩
 
 end Checks.Satisfiable

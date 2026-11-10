@@ -45,6 +45,11 @@ def NoZeroTimestampWritesClaim : Prop :=
     (_boot : trace.initial = PCState.boundary 0 (4, 0)),
     ∀ row ∈ trace.rows, ∀ token ∈ row.writes, 4 ≤ (timeOfPair token.time).value
 
+/-- The assumptions of `NoZeroTimestampWritesClaim` can be met, by a trace with a row that writes. -/
+def NoZeroTimestampWritesSatisfiableClaim : Prop :=
+  ∃ trace : UnifiedTrace babyBearModulus, Accepted trace ∧ trace.initial = PCState.boundary 0 (4, 0) ∧
+    ∃ row ∈ trace.rows, ∃ token, token ∈ row.writes
+
 end Airbender.UnifiedReduced
 
 namespace Airbender.Delegation

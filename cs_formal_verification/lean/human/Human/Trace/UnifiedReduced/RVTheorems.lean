@@ -28,4 +28,17 @@ def BootRamZeroClaim : Prop :=
   ∀ {trace : Trace.UnifiedTrace babyBearModulus} {initial : RV.State} {cells : List Trace.Cell} {program : List RVProgramEntry} {inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)} (_inputs : RVBootInputs trace initial cells program inits),
     ∀ address, Trace.Cell.ram address ∈ cells → (Trace.Cell.ram address).readRV initial = some 0
 
+/-- The assumptions of `RVExecutionSoundnessClaim` can be met, by a trace with a row. -/
+def RVExecutionSoundnessSatisfiableClaim : Prop :=
+  ∃ (trace : Trace.UnifiedTrace babyBearModulus) (initial : RV.State) (cells : List Trace.Cell)
+    (program : List RVProgramEntry) (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)),
+    RVExecutionInputs trace initial cells program inits ∧ Trace.Accepted trace ∧ RVDecoded trace program ∧
+      trace.rows ≠ []
+
+/-- The assumptions of `BootRamZeroClaim` can be met, with a tracked RAM cell. -/
+def BootRamZeroSatisfiableClaim : Prop :=
+  ∃ (trace : Trace.UnifiedTrace babyBearModulus) (initial : RV.State) (cells : List Trace.Cell)
+    (program : List RVProgramEntry) (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)),
+    RVBootInputs trace initial cells program inits ∧ ∃ address, Trace.Cell.ram address ∈ cells
+
 end Airbender.UnifiedReduced

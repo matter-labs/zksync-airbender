@@ -80,6 +80,7 @@ import Human.Import.Theorems
 import Slop.Final.Trace.Satisfiable.Pools
 import Slop.Final.Trace.Satisfiable.Pooled
 import Slop.Final.Trace.Satisfiable.Families
+import Slop.Final.Trace.Satisfiable.Unified
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
@@ -361,3 +362,13 @@ example : Airbender.Trace.RVAirbenderSoundnessSatisfiableClaim := @Airbender.Tra
 #print axioms Airbender.Trace.rv_airbender_soundness_satisfiable
 example : Airbender.Trace.RVNativeBootSoundnessSatisfiableClaim := @Airbender.Trace.rv_native_boot_soundness_satisfiable
 #print axioms Airbender.Trace.rv_native_boot_soundness_satisfiable
+example : Airbender.UnifiedReduced.RVExecutionSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.rv_execution_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.rv_execution_soundness_satisfiable
+example : Airbender.UnifiedReduced.BootRamZeroSatisfiableClaim := @Airbender.UnifiedReduced.boot_ram_zero_satisfiable
+#print axioms Airbender.UnifiedReduced.boot_ram_zero_satisfiable
+example : Airbender.UnifiedReduced.NoZeroTimestampWritesSatisfiableClaim := @Airbender.UnifiedReduced.no_zero_timestamp_writes_satisfiable
+#print axioms Airbender.UnifiedReduced.no_zero_timestamp_writes_satisfiable
+example : Airbender.UnifiedReduced.WritesRangeCheckedSatisfiableClaim := @Airbender.UnifiedReduced.writes_range_checked_satisfiable
+#print axioms Airbender.UnifiedReduced.writes_range_checked_satisfiable
+example : Airbender.UnifiedReduced.TeardownsBoundedSatisfiableClaim := @Airbender.UnifiedReduced.teardowns_bounded_satisfiable
+#print axioms Airbender.UnifiedReduced.teardowns_bounded_satisfiable

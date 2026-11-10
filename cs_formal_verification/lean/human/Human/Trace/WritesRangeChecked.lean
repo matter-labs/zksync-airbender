@@ -55,6 +55,12 @@ def WritesRangeCheckedClaim : Prop :=
   ∀ {trace : UnifiedTrace babyBearModulus} (_accepted : Accepted trace),
     ∀ row ∈ trace.rows, WritesRangeChecked row.memorySteps
 
+/-- The assumption of `WritesRangeCheckedClaim` can be met, by a trace with a row that has ports, all of whose reads
+    are bounded. -/
+def WritesRangeCheckedSatisfiableClaim : Prop :=
+  ∃ trace : UnifiedTrace babyBearModulus, Accepted trace ∧
+    ∃ row ∈ trace.rows, row.memorySteps ≠ [] ∧ ∀ step ∈ row.memorySteps, step.1.word.Bounded
+
 end Airbender.UnifiedReduced
 
 namespace Airbender.Delegation
