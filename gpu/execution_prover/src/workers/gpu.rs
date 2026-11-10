@@ -23,7 +23,9 @@ use gpu_gkr::stage1::merged_commitment::{
 use gpu_prover_context::{AllocationMode, ProverContext, ProverContextConfig};
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::holder::resolve_partial_tree_reduction_layers;
-use gpu_trace::trace::memory::{commit_memory_from_transfers_for_geometry, MemoryCommitmentJob};
+use gpu_trace::trace::memory::{
+    commit_memory_from_transfers_for_geometry, MemoryCommitmentJob, PartialTreeBuffer,
+};
 use gpu_trace::trace::memory_cap::{
     GpuGKRMemoryCapHost, GpuGKRMemoryCapTransfer, PartialTrees, PartialTreesGeometry,
 };
@@ -94,7 +96,8 @@ struct RequestState {
     memory_caps: Option<Vec<MerkleTreeCapVarLength>>,
     /// The partial trees its commitment persisted; only for Proof requests
     /// whose profile persists them, consumed in Phase 1 with the caps.
-    memory_partial_trees: Option<MemoryPartialTrees>,
+    memory_partial_trees: Option<MemoryPartialTrees<A>>,
+    partial_tree_buffer: Option<PartialTreeBuffer<A>>,
     /// Original host witnesses returned to the orchestrator after the GPU work
     /// completes so their allocators return to the pool.
     inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost<A>>,
@@ -168,7 +171,7 @@ struct PhaseTwo<'a> {
 // collection.
 #[allow(clippy::large_enum_variant)]
 enum JobType<'a> {
-    MemoryCommitment(MemoryCommitmentJob<'a>),
+    MemoryCommitment(MemoryCommitmentJob<'a, A>),
     Proof(GpuGKRProofJob<'a>),
     L1Wrap(GpuL1WrapProofJob<'a>),
     SetupInitialization,
@@ -281,6 +284,7 @@ fn schedule_phase_one<'a>(
             external_challenges: None,
             memory_caps: None,
             memory_partial_trees: None,
+            partial_tree_buffer: None,
             inits_and_teardowns_result: None,
             tracing_data_result: None,
 
@@ -316,6 +320,7 @@ fn schedule_phase_one<'a>(
                 inits_and_teardowns,
                 tracing_data,
                 profile,
+                partial_tree_buffer,
             } = req;
 
             let state = RequestState {
@@ -327,6 +332,7 @@ fn schedule_phase_one<'a>(
                 external_challenges: None,
                 memory_caps: None,
                 memory_partial_trees: None,
+                partial_tree_buffer,
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
 
@@ -360,6 +366,7 @@ fn schedule_phase_one<'a>(
                 external_challenges: Some(external_challenges),
                 memory_caps: Some(memory_caps),
                 memory_partial_trees,
+                partial_tree_buffer: None,
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
 
@@ -469,7 +476,7 @@ fn schedule_phase_one<'a>(
                             config.commitment_mode,
                             crate::memory_policy::partial_trees(circuit_type, state.profile).memory,
                         ),
-                        &trees,
+                        trees,
                     );
                     Arc::new(host)
                 }
@@ -564,6 +571,7 @@ fn schedule_l1_wrap_phase_one<'a>(
         external_challenges: None,
         memory_caps: None,
         memory_partial_trees: None,
+        partial_tree_buffer: None,
         inits_and_teardowns_result: Some(inits_and_teardowns.clone()),
         tracing_data_result: Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(
             tracing_data.clone(),
@@ -698,7 +706,7 @@ fn enqueue_phase_two<'a>(
                 bundle,
                 crate::memory_policy::merged_commit_strategy(circuit_type, state.profile),
                 crate::memory_policy::partial_trees(circuit_type, state.profile),
-                crate::memory_policy::persists_memory_partial_trees(circuit_type, state.profile),
+                state.partial_tree_buffer.take(),
                 context,
             )?;
             state.device_peak_bytes = Some(context.get_used_mem_peak());
@@ -843,11 +851,11 @@ pub(crate) fn memory_partial_trees_geometry(
 
 /// The trees a proof request carries: required exactly when its profile
 /// persists them, and only those of its own circuit and profile.
-pub(crate) fn proof_partial_trees(
+pub(crate) fn proof_partial_trees<T: fft::GoodAllocator>(
     circuit_type: CircuitType,
     profile: ProofProfile,
-    trees: Option<MemoryPartialTrees>,
-) -> Option<PartialTrees> {
+    trees: Option<MemoryPartialTrees<T>>,
+) -> Option<PartialTrees<T>> {
     let required = crate::memory_policy::persists_memory_partial_trees(circuit_type, profile);
     let trees = match (required, trees) {
         (true, Some(trees)) => trees,
@@ -893,8 +901,8 @@ pub(crate) fn proof_partial_trees(
 fn persisted_partial_trees(
     circuit_type: CircuitType,
     profile: ProofProfile,
-    trees: PartialTrees,
-) -> MemoryPartialTrees {
+    trees: PartialTrees<A>,
+) -> MemoryPartialTrees<A> {
     let PartialTrees {
         layout_version,
         geometry,

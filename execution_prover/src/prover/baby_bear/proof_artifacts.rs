@@ -13,7 +13,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     #[doc(hidden)]
     pub fn external_challenges(
         &self,
-        commitment: &CommitMemoryResult,
+        commitment: &CommitMemoryResult<B::Allocator>,
     ) -> GKRExternalChallenges<BF, E4> {
         assert!(
             self.host_pool_allocation.is_none() && self.pending_setup_initializations.is_empty(),
@@ -26,7 +26,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     fn derive_proof_artifacts(
         &self,
         binary_key: usize,
-        memory_commitment: &CommitMemoryResult,
+        memory_commitment: &CommitMemoryResult<B::Allocator>,
     ) -> ProofArtifacts {
         let CommitMemoryResult {
             profile: _,
@@ -170,7 +170,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         handle: &BinaryHandle,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
         profile: ProofProfile,
-    ) -> CommitMemoryResult {
+    ) -> CommitMemoryResult<B::Allocator> {
         assert!(
             self.host_pool_allocation.is_none() && self.pending_setup_initializations.is_empty(),
             "setup must be finalized before proving or reading artifacts"
@@ -188,7 +188,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     pub fn prove(
         &self,
         batch_id: u64,
-        mut commit_ticket: CommitMemoryResult,
+        mut commit_ticket: CommitMemoryResult<B::Allocator>,
         non_determinism_source: impl NonDeterminismCSRSource + Send + 'static,
     ) -> ProveResult {
         assert!(
@@ -436,11 +436,14 @@ mod tests {
             Some(cycles),
         )[0];
         prover.finalize_setup();
+        let free_buffers = prover.free_allocators_sender.len();
         let source = || QuasiUARTSource::new_with_reads(vec![]);
         let mut cache = Some(TraceCache::new());
         let (mut commitment, _) =
             prover.commit_memory_inner(&mut cache, BATCH, handle, source(), ProofProfile::Standard);
         let instances: BTreeSet<_> = commitment.memory_partial_trees.keys().copied().collect();
+        assert!(!instances.is_empty());
+        assert!(prover.free_allocators_sender.len() <= free_buffers - instances.len());
         let entries = &mut cache.as_mut().unwrap().entries;
         assert!(
             entries.len() > CACHE_CAPACITY,
@@ -490,6 +493,11 @@ mod tests {
             proof_caps,
             proof_partial_trees,
             ProofProfile::Standard,
+        );
+        assert_eq!(
+            prover.free_allocators_sender.len(),
+            free_buffers,
+            "cached/replayed proof completion must return every trace and partial-tree buffer"
         );
         let dispatched: Vec<_> = PROOF_PARTIAL_TREES
             .lock()

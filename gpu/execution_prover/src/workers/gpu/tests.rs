@@ -273,7 +273,7 @@ fn l1_wrap_followed_worker_parity() {
 
 fn tagged_partial_trees(circuit_type: CircuitType, profile: ProofProfile) -> MemoryPartialTrees {
     MemoryPartialTrees {
-        layout_version: 1,
+        layout_version: gpu_trace::trace::memory_cap::PARTIAL_TREES_LAYOUT_VERSION,
         circuit_type,
         profile,
         log_domain_size: 22,
@@ -282,7 +282,10 @@ fn tagged_partial_trees(circuit_type: CircuitType, profile: ProofProfile) -> Mem
         log_tree_cap_size: 4,
         reduction_layers: 10,
         columns_count: 104,
-        nodes: vec![[7; 8]; 3],
+        nodes: execution_prover_model::allocator::PooledHostBuffer::new(
+            vec![[7; 8]; 3],
+            crossbeam_channel::unbounded().0,
+        ),
     }
 }
 
@@ -294,7 +297,7 @@ const UNIFIED22: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unifie
     expected = "Unrolled(Unified22)/CompressionFinal proof requires the memory partial trees persisted by its commitment"
 )]
 fn cpu_compression_proof_without_partial_trees_panics() {
-    proof_partial_trees(UNIFIED22, ProofProfile::CompressionFinal, None);
+    proof_partial_trees::<std::alloc::Global>(UNIFIED22, ProofProfile::CompressionFinal, None);
 }
 
 #[test]

@@ -58,7 +58,7 @@ fn random_word(state: &mut u64) -> u32 {
 #[test]
 fn cpu_relations_abi_pins() {
     let circuit = serde_json::from_slice(include_bytes!(
-        "../../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json"
+        "../../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
     ))
     .unwrap();
     let _relations = super::LookupRelationsPr::new(&circuit);

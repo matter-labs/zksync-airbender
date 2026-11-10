@@ -15,6 +15,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         non_determinism_source: ND,
         work_results_sender: &Sender<WorkerResult<B::Allocator>>,
         abort: &Arc<AtomicBool>,
+        persist_partial_trees: bool,
     ) -> Receiver<ND> {
         let (non_determinism_sender, non_determinism_receiver) = crossbeam_channel::bounded(1);
         let unified_circuit = binary_holder
@@ -35,6 +36,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             let trace_chunk_sets_receiver = self.trace_chunk_sets_receiver.clone();
             let free_trace_chunks_sender = free_trace_chunks_sender.clone();
             let free_allocators_receiver = self.free_allocators_receiver.clone();
+            let partial_tree_pool =
+                persist_partial_trees.then(|| self.free_allocators_sender.clone());
             let binary_image = binary_holder.binary_image.clone();
             let text_section = binary_holder.text_section.clone();
             let cycles_bound = if binary_holder.execution_kind.is_l1_wrap() {
@@ -80,6 +83,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         split_snapshot_sender,
                         work_results_sender,
                         free_allocators_receiver,
+                        partial_tree_pool,
                         abort,
                         &worker,
                         ram_config,
@@ -102,6 +106,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                             unified_snapshot_sender,
                             work_results_sender,
                             free_allocators_receiver,
+                            partial_tree_pool,
                             abort,
                             &worker,
                             ram_config,

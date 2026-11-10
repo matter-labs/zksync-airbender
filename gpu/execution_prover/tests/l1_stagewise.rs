@@ -115,7 +115,6 @@ fn l1_wrap_stagewise_pessimistic_conjecture() {
                 host_allocator_blocks_count: (256usize << 20)
                     >> ProverContextConfig::default().host_allocator_block_log_size,
                 inputs_reserve_bytes: presets::INPUTS_RESERVE_BYTES,
-                h2d_staging_bytes: presets::H2D_STAGING_BYTES,
                 proth120_ntt_log_max_domain: Some(L1_WRAP_NTT_LOG_MAX_DOMAIN),
                 ..Default::default()
             };

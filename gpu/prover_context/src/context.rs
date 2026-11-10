@@ -21,8 +21,8 @@ use std::ops::Range;
 /// depend on the device.
 pub const MAX_SM_COUNT: usize = 256;
 
-/// Default capacity of the pinned staging buffer behind `Transfer::stage`.
-pub const DEFAULT_H2D_STAGING_BYTES: usize = 1 << 16;
+/// Capacity of the pinned staging buffer behind `Transfer::stage`.
+pub(crate) const H2D_STAGING_BYTES: usize = 1 << 16;
 
 #[derive(Copy, Clone, Debug)]
 pub struct ProverContextConfig {
@@ -40,9 +40,6 @@ pub struct ProverContextConfig {
     /// See [`AllocationMode`].
     pub inputs_reserve_bytes: usize,
     pub proth120_ntt_log_max_domain: Option<u32>,
-    /// Capacity of the pinned staging buffer behind `Transfer::stage`: the
-    /// largest total staged by one bundle.
-    pub h2d_staging_bytes: usize,
 }
 
 /// `Ascending` works from the low arena end and `Descending` mirrors it from
@@ -69,7 +66,6 @@ impl Default for ProverContextConfig {
             small_allocator_pool_blocks: 16, // 16 blocks × 1 MB = 16 MB per small allocation pool
             inputs_reserve_bytes: 0,
             proth120_ntt_log_max_domain: None,
-            h2d_staging_bytes: DEFAULT_H2D_STAGING_BYTES,
         }
     }
 }
@@ -227,12 +223,8 @@ impl ProverContext {
         )?;
         let host_allocator =
             NonConcurrentStaticHostAllocator::new([host_allocation], host_block_log_size);
-        assert!(
-            config.h2d_staging_bytes > 0,
-            "the H2D staging buffer must not be empty"
-        );
         let mut h2d_staging = era_cudart::memory::HostAllocation::alloc(
-            config.h2d_staging_bytes,
+            H2D_STAGING_BYTES,
             CudaHostAllocFlags::DEFAULT,
         )?;
         let h2d_staging_fill_target = UnsafeMutAccessor::new(&mut h2d_staging[..]);

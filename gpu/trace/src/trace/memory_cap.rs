@@ -1,8 +1,12 @@
 //! H2D transfer of a memory Merkle cap. Per-coset host caps are packed into a
 //! contiguous host buffer in bit-reversed coset order and staged into a
 //! matching device allocation on `h2d_stream`. A commitment's persisted
-//! partial trees are staged the same way, in natural coset order.
+//! partial trees use their own pooled pinned source in natural coset order.
 
+use era_cudart::slice::CudaSlice;
+use execution_prover_model::allocator::PooledHostBuffer;
+use fft::GoodAllocator;
+use std::alloc::Global;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -16,10 +20,9 @@ use gpu_hash::blake2s::Digest;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
 
-/// The only partial-tree layout: natural coset order; per coset its live nodes
-/// in builder order, the bottom stored level first and the coset's cap slots
-/// last. The cap-sized unwritten suffix of each device stride is not part of it.
-pub const PARTIAL_TREES_LAYOUT_VERSION: u32 = 1;
+/// Natural coset order and the device stride: live nodes in builder order,
+/// followed by a zeroed cap-sized unwritten suffix.
+pub const PARTIAL_TREES_LAYOUT_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PartialTreesGeometry {
@@ -64,16 +67,16 @@ impl PartialTreesGeometry {
 }
 
 /// Host copy of a commitment's partial trees in `PARTIAL_TREES_LAYOUT_VERSION`.
-pub struct PartialTrees {
+pub struct PartialTrees<A: GoodAllocator = Global> {
     pub layout_version: u32,
     pub geometry: PartialTreesGeometry,
-    pub nodes: Vec<Digest>,
+    pub nodes: PooledHostBuffer<Digest, A>,
 }
 
 /// Rejects persisted trees that do not belong to a commitment of `expected`
 /// geometry with these natural-order per-coset caps.
-pub fn validate_partial_trees(
-    trees: &PartialTrees,
+pub fn validate_partial_trees<A: GoodAllocator>(
+    trees: &PartialTrees<A>,
     expected: &PartialTreesGeometry,
     memory_tree_caps: &[MerkleTreeCapVarLength],
 ) {
@@ -88,7 +91,7 @@ pub fn validate_partial_trees(
     let live = expected.coset_live_len();
     assert_eq!(
         trees.nodes.len(),
-        expected.cosets_count() * live,
+        expected.cosets_count() * expected.coset_stride(),
         "partial-tree payload length mismatch"
     );
     assert_eq!(
@@ -99,12 +102,12 @@ pub fn validate_partial_trees(
     let cap_len = expected.coset_cap_len();
     for (coset, (nodes, cap)) in trees
         .nodes
-        .chunks_exact(live)
+        .chunks_exact(expected.coset_stride())
         .zip(memory_tree_caps)
         .enumerate()
     {
         assert!(
-            nodes[live - cap_len..] == cap.cap[..],
+            nodes[live - cap_len..live] == cap.cap[..],
             "partial tree of coset {coset} does not end in that coset's cap"
         );
     }
@@ -119,7 +122,10 @@ pub struct GpuGKRMemoryCapHost {
     pub(crate) unified_tree_cap: Vec<Digest>,
     /// Persisted partial trees in the device layout: natural coset order,
     /// `coset_stride` digests per coset, the unwritten suffix zeroed.
-    pub(crate) partial_trees: Option<(PartialTreesGeometry, Vec<Digest>)>,
+    pub(crate) partial_trees: Option<(
+        PartialTreesGeometry,
+        Arc<dyn CudaSlice<Digest> + Send + Sync>,
+    )>,
 }
 
 impl GpuGKRMemoryCapHost {
@@ -171,13 +177,13 @@ impl GpuGKRMemoryCapHost {
 
     /// `from_per_coset_caps` plus the commitment's persisted partial trees,
     /// validated against `expected` and the caps before anything is allocated.
-    pub fn from_per_coset_caps_and_partial_trees(
+    pub fn from_per_coset_caps_and_partial_trees<A: GoodAllocator + 'static>(
         memory_tree_caps: &[MerkleTreeCapVarLength],
         geometry: BaseCommitmentGeometry,
         expected: PartialTreesGeometry,
-        trees: &PartialTrees,
+        trees: PartialTrees<A>,
     ) -> Self {
-        validate_partial_trees(trees, &expected, memory_tree_caps);
+        validate_partial_trees(&trees, &expected, memory_tree_caps);
         let mut host = Self::from_per_coset_caps_for_geometry(memory_tree_caps, geometry);
         assert_eq!(
             expected.log_domain_size,
@@ -199,22 +205,8 @@ impl GpuGKRMemoryCapHost {
             expected.columns_count,
             geometry.oracle(BaseOracleRole::Memory).physical_columns()
         );
-        let mut slab = vec![Digest::default(); expected.cosets_count() * expected.coset_stride()];
-        write_device_layout(&expected, &trees.nodes, &mut slab);
-        host.partial_trees = Some((expected, slab));
+        host.partial_trees = Some((expected, Arc::new(trees.nodes)));
         host
-    }
-}
-
-/// Spreads the live nodes over the device stride and zeroes every unwritten slot.
-fn write_device_layout(geometry: &PartialTreesGeometry, nodes: &[Digest], dst: &mut [Digest]) {
-    let live = geometry.coset_live_len();
-    for (dst, src) in dst
-        .chunks_exact_mut(geometry.coset_stride())
-        .zip(nodes.chunks_exact(live))
-    {
-        dst[..live].copy_from_slice(src);
-        dst[live..].fill(Digest::default());
     }
 }
 
@@ -242,13 +234,22 @@ impl<'a> GpuGKRMemoryCapTransfer<'a> {
         })
     }
 
-    /// Stages the unified cap and the persisted partial trees, if any.
+    /// Stages the small unified cap.
     pub fn stage_transfer(&mut self, transfer: &mut Transfer<'a>) {
         transfer.stage(&self.host.unified_tree_cap, &mut self.unified_device_cap);
+    }
+
+    /// Submit after all small values are staged; the source survives through finish().
+    pub fn schedule_partial_tree_transfer(
+        &mut self,
+        transfer: &mut Transfer<'a>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
         if let Some(device) = self.partial_trees.as_mut() {
-            let (_, slab) = self.host.partial_trees.as_ref().unwrap();
-            transfer.stage(slab, device);
+            let (_, source) = self.host.partial_trees.as_ref().unwrap();
+            transfer.schedule(Arc::clone(source), device, context)?;
         }
+        Ok(())
     }
 
     pub fn unified_device_cap(&self) -> &DeviceAllocation<Digest> {
@@ -280,15 +281,20 @@ mod cpu_tests {
 
     fn trees_and_caps() -> (PartialTrees, Vec<MerkleTreeCapVarLength>) {
         let live = GEOMETRY.coset_live_len();
-        let nodes: Vec<Digest> = (0..GEOMETRY.cosets_count() * live)
-            .map(|i| [i as u32 + 1; 8])
-            .collect();
+        let stride = GEOMETRY.coset_stride();
+        let mut nodes = vec![Digest::default(); GEOMETRY.cosets_count() * stride];
+        for (coset, dst) in nodes.chunks_exact_mut(stride).enumerate() {
+            for (i, value) in dst[..live].iter_mut().enumerate() {
+                *value = [(coset * live + i) as u32 + 1; 8];
+            }
+        }
         let caps = nodes
-            .chunks_exact(live)
+            .chunks_exact(stride)
             .map(|coset| MerkleTreeCapVarLength {
-                cap: coset[live - GEOMETRY.coset_cap_len()..].to_vec(),
+                cap: coset[live - GEOMETRY.coset_cap_len()..live].to_vec(),
             })
             .collect();
+        let nodes = PooledHostBuffer::new(nodes, crossbeam_channel::unbounded().0);
         let trees = PartialTrees {
             layout_version: PARTIAL_TREES_LAYOUT_VERSION,
             geometry: GEOMETRY,
@@ -298,19 +304,16 @@ mod cpu_tests {
     }
 
     #[test]
-    fn cpu_partial_trees_validate_and_spread_over_the_device_stride() {
+    fn cpu_partial_trees_validate_the_device_stride() {
         assert_eq!((GEOMETRY.coset_stride(), GEOMETRY.coset_live_len()), (8, 6));
         let (trees, caps) = trees_and_caps();
         validate_partial_trees(&trees, &GEOMETRY, &caps);
         let (stride, live) = (GEOMETRY.coset_stride(), GEOMETRY.coset_live_len());
-        let mut device = vec![[u32::MAX; 8]; GEOMETRY.cosets_count() * stride];
-        write_device_layout(&GEOMETRY, &trees.nodes, &mut device);
-        for (coset, (dst, src)) in device
-            .chunks_exact(stride)
-            .zip(trees.nodes.chunks_exact(live))
-            .enumerate()
-        {
-            assert_eq!(&dst[..live], src, "coset {coset} live nodes");
+        for (coset, dst) in trees.nodes.chunks_exact(stride).enumerate() {
+            let expected: Vec<_> = (0..live)
+                .map(|i| [(coset * live + i) as u32 + 1; 8])
+                .collect();
+            assert_eq!(&dst[..live], &expected, "coset {coset} live nodes");
             assert!(
                 dst[live..]
                     .iter()

@@ -1,3 +1,4 @@
+use gpu_trace::trace::memory::PartialTreeBuffer;
 use std::sync::Arc;
 
 use era_cudart::result::CudaResult;
@@ -79,9 +80,9 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRMergedCommitTransfer<'a, A>,
     strategy: MergedCommitStrategy,
     partial_trees: PartialTreePolicy,
-    persist_partial_trees: bool,
+    partial_tree_buffer: Option<PartialTreeBuffer<A>>,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a>> {
+) -> CudaResult<MemoryCommitmentJob<'a, A>> {
     assert_eq!(
         config.commitment_mode,
         CommitmentMode::MergedMemoryAndWitness,
@@ -168,7 +169,7 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
             callbacks,
             inputs,
             range,
-            persist_partial_trees,
+            partial_tree_buffer,
             context,
         ),
     }

@@ -71,6 +71,7 @@ fn prove(
             inits_and_teardowns: None,
             tracing_data: Some(empty_trace()),
             profile: ProofProfile::Standard,
+            partial_tree_buffer: None,
         }),
         &worker,
     ) else {

@@ -33,19 +33,23 @@ use crate::upstream::{
 use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
-use era_cudart::slice::{CudaSliceMut, DeviceSlice};
+use era_cudart::slice::DeviceSlice;
+use execution_prover_model::allocator::PooledHostBuffer;
 use fft::GoodAllocator;
+use std::alloc::Global;
 
-pub struct MemoryCommitmentJob<'a> {
+pub type PartialTreeBuffer<A> = PooledHostBuffer<Digest, A>;
+
+pub struct MemoryCommitmentJob<'a, A: GoodAllocator = Global> {
     is_finished_event: CudaEvent,
     callbacks: Callbacks<'a>,
     inputs: Option<TransferKeepalive<'a>>,
     tree_caps: Box<Option<Vec<MerkleTreeCapVarLength>>>,
-    partial_trees: Option<(PartialTreesGeometry, Box<Option<Vec<Digest>>>)>,
+    partial_trees: Option<PartialTrees<A>>,
     range: Range,
 }
 
-impl<'a> MemoryCommitmentJob<'a> {
+impl<'a, A: GoodAllocator> MemoryCommitmentJob<'a, A> {
     pub fn finish(self) -> CudaResult<(Vec<MerkleTreeCapVarLength>, f32)> {
         let (tree_caps, partial_trees, commitment_time_ms) = self.finish_with_partial_trees()?;
         assert!(
@@ -58,7 +62,7 @@ impl<'a> MemoryCommitmentJob<'a> {
     /// The per-coset caps plus the partial trees, if this commitment exported them.
     pub fn finish_with_partial_trees(
         self,
-    ) -> CudaResult<(Vec<MerkleTreeCapVarLength>, Option<PartialTrees>, f32)> {
+    ) -> CudaResult<(Vec<MerkleTreeCapVarLength>, Option<PartialTrees<A>>, f32)> {
         let Self {
             is_finished_event,
             callbacks,
@@ -71,15 +75,9 @@ impl<'a> MemoryCommitmentJob<'a> {
         drop(callbacks);
         drop(inputs);
         let tree_caps = tree_caps.unwrap();
-        let partial_trees = partial_trees.map(|(geometry, nodes)| {
-            let trees = PartialTrees {
-                layout_version: PARTIAL_TREES_LAYOUT_VERSION,
-                geometry,
-                nodes: nodes.unwrap(),
-            };
-            validate_partial_trees(&trees, &geometry, &tree_caps);
-            trees
-        });
+        if let Some(trees) = &partial_trees {
+            validate_partial_trees(trees, &trees.geometry, &tree_caps);
+        }
         let commitment_time_ms = range.elapsed()?;
         Ok((tree_caps, partial_trees, commitment_time_ms))
     }
@@ -102,7 +100,7 @@ pub fn validate_stage1_commitment_geometry<F: crate::upstream::PrimeField>(
     );
 }
 
-fn commit_memory_inner<'a>(
+fn commit_memory_inner<'a, A: GoodAllocator>(
     circuit_type: CircuitType,
     compiled_circuit: &GKRCircuitArtifact<BF>,
     decoder_table: Option<&DeviceSlice<ExecutorFamilyDecoderData>>,
@@ -112,7 +110,7 @@ fn commit_memory_inner<'a>(
     partial_tree_reduction_layers: u32,
     inputs: Option<TransferKeepalive<'a>>,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a>> {
+) -> CudaResult<MemoryCommitmentJob<'a, A>> {
     let trace_len = compiled_circuit.trace_len;
     assert!(trace_len.is_power_of_two());
     let log_domain_size = trace_len.trailing_zeros();
@@ -325,39 +323,39 @@ fn commit_memory_inner<'a>(
 
 /// Commits `holder` (already holding its hypercube evals) and returns the job
 /// whose `finish` yields the per-coset caps in natural coset order.
-pub fn schedule_memory_commitment_job<'a>(
+pub fn schedule_memory_commitment_job<'a, A: GoodAllocator>(
     holder: &mut TraceHolder<BF>,
     callbacks: Callbacks<'a>,
     inputs: Option<TransferKeepalive<'a>>,
     range: Range,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a>> {
+) -> CudaResult<MemoryCommitmentJob<'a, A>> {
     holder.commit_all(context)?;
-    schedule_memory_cap_readback(holder, callbacks, inputs, range, false, context)
+    schedule_memory_cap_readback(holder, callbacks, inputs, range, None, context)
 }
 
-pub fn schedule_memory_commitment_job_in_place<'a>(
+pub fn schedule_memory_commitment_job_in_place<'a, A: GoodAllocator>(
     holder: &mut TraceHolder<BF>,
     callbacks: Callbacks<'a>,
     inputs: Option<TransferKeepalive<'a>>,
     range: Range,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a>> {
+) -> CudaResult<MemoryCommitmentJob<'a, A>> {
     holder.install_partial_trees(context)?;
     holder.commit_in_place(None, context)?;
-    schedule_memory_cap_readback(holder, callbacks, inputs, range, false, context)
+    schedule_memory_cap_readback(holder, callbacks, inputs, range, None, context)
 }
 
-/// With `persist_partial_trees`, the job also exports the partial trees for
+/// With a request buffer, the job also exports the partial trees for
 /// the proof to open instead of rebuilding them.
-pub fn schedule_memory_commitment_job_with_monomials<'a>(
+pub fn schedule_memory_commitment_job_with_monomials<'a, A: GoodAllocator>(
     holder: &mut TraceHolder<BF>,
     callbacks: Callbacks<'a>,
     inputs: Option<TransferKeepalive<'a>>,
     range: Range,
-    persist_partial_trees: bool,
+    partial_tree_buffer: Option<PooledHostBuffer<Digest, A>>,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a>> {
+) -> CudaResult<MemoryCommitmentJob<'a, A>> {
     holder.install_partial_trees(context)?;
     holder.commit_with_monomials(None, context)?;
     holder.retain_after_commitment(WitnessPostCommitStorage::RawAndMonomials);
@@ -366,60 +364,56 @@ pub fn schedule_memory_commitment_job_with_monomials<'a>(
         callbacks,
         inputs,
         range,
-        persist_partial_trees,
+        partial_tree_buffer,
         context,
     )
 }
 
-/// Copies only the nodes the builder wrote (`PARTIAL_TREES_LAYOUT_VERSION`)
-/// into one compact readback buffer, then into the returned host vector.
-fn schedule_partial_trees_readback<'a>(
+/// D2H writes the live nodes directly into the request's buffer in device stride.
+fn schedule_partial_trees_readback<A: GoodAllocator>(
     holder: &TraceHolder<BF>,
-    callbacks: &mut Callbacks<'a>,
+    mut nodes: PooledHostBuffer<Digest, A>,
     context: &ProverContext,
-) -> CudaResult<(PartialTreesGeometry, Box<Option<Vec<Digest>>>)> {
+) -> CudaResult<PartialTrees<A>> {
     assert!(
         matches!(holder.trees, TreesHolder::Partial(_)),
         "partial-tree export requires cached partial trees"
     );
     let geometry = PartialTreesGeometry::of_holder(holder);
     let live = geometry.coset_live_len();
-    let stream = context.get_exec_stream();
-    let mut nodes_host =
-        unsafe { context.alloc_host_uninit_slice::<Digest>(geometry.cosets_count() * live) };
+    let stride = geometry.coset_stride();
+    let required = geometry.cosets_count() * stride;
+    assert!(
+        required <= nodes.capacity(),
+        "partial trees need {required} digests, host pool buffer has {}",
+        nodes.capacity()
+    );
+    nodes.resize(required, Digest::default());
     for coset in 0..geometry.cosets_count() {
         let tree = holder
             .get_tree_slice(coset)
             .expect("partial trees are cached");
-        // SAFETY: an in-bounds subrange of the readback buffer, written only by
-        // this copy and read only by the callback scheduled after it.
-        let dst = unsafe { &mut nodes_host.as_mut_slice()[coset * live..(coset + 1) * live] };
-        memory_copy_async(dst, &tree[..live], stream)?;
+        memory_copy_async(
+            &mut nodes[coset * stride..coset * stride + live],
+            &tree[..live],
+            context.get_exec_stream(),
+        )?;
     }
-    let nodes_host_accessor = nodes_host.get_accessor();
-    let mut nodes = Box::new(None);
-    let dst_nodes_accessor = UnsafeMutAccessor::new(nodes.as_mut());
-    callbacks.schedule(
-        move || unsafe {
-            assert!(dst_nodes_accessor
-                .get_mut()
-                .replace(nodes_host_accessor.get().to_vec())
-                .is_none());
-        },
-        stream,
-    )?;
-    drop(nodes_host);
-    Ok((geometry, nodes))
+    Ok(PartialTrees {
+        layout_version: PARTIAL_TREES_LAYOUT_VERSION,
+        geometry,
+        nodes,
+    })
 }
 
-pub fn schedule_memory_cap_readback<'a>(
+pub fn schedule_memory_cap_readback<'a, A: GoodAllocator>(
     holder: &TraceHolder<BF>,
     mut callbacks: Callbacks<'a>,
     inputs: Option<TransferKeepalive<'a>>,
     range: Range,
-    persist_partial_trees: bool,
+    partial_tree_buffer: Option<PooledHostBuffer<Digest, A>>,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a>> {
+) -> CudaResult<MemoryCommitmentJob<'a, A>> {
     let stream = context.get_exec_stream();
     let unified_cap = holder.unified_device_cap();
     let log_lde = holder.log_lde_factor;
@@ -458,15 +452,9 @@ pub fn schedule_memory_cap_readback<'a>(
     // the callback above has already been scheduled, so the contract's
     // scheduled-not-completed lifetime rule is satisfied.
     drop(cap_host);
-    let partial_trees = if persist_partial_trees {
-        Some(schedule_partial_trees_readback(
-            holder,
-            &mut callbacks,
-            context,
-        )?)
-    } else {
-        None
-    };
+    let partial_trees = partial_tree_buffer
+        .map(|buffer| schedule_partial_trees_readback(holder, buffer, context))
+        .transpose()?;
     range.end(stream)?;
     let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
     is_finished_event.record(stream)?;
@@ -558,7 +546,7 @@ pub fn commit_memory_from_transfers_for_geometry<'a, A: GoodAllocator + 'a>(
     geometry: BaseCommitmentGeometry,
     partial_tree_reduction_layers: u32,
     context: &ProverContext,
-) -> CudaResult<MemoryCommitmentJob<'a>> {
+) -> CudaResult<MemoryCommitmentJob<'a, A>> {
     // One exec-stream wait covers every H2D bundled by `inputs` (decoder,
     // inits_and_teardowns, tracing_data).
     inputs.ensure_transferred(context)?;

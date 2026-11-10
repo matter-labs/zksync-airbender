@@ -67,6 +67,10 @@ impl ExecutionBackend for GpuBackend {
         A::new([allocation], bytes.trailing_zeros())
     }
 
+    fn persists_memory_partial_trees(&self, profile: ProofProfile) -> bool {
+        profile.is_compression()
+    }
+
     fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory {
         LockedBoxedMemoryHolder::new(ram)
     }
