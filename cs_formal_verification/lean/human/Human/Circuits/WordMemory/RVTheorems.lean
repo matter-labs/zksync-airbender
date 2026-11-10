@@ -15,9 +15,10 @@ open Trace
 
 /-- Every accepted LW/SW row computes the effective address `rs1 + immediate`, and is one step of our spec: from the
     row's pre-state (`input.before`), the step exists and gives the row's post-state: SW stores the row's word at the
-    row's address, LW writes the row's word to `rd`; PC := the row's final PC; nothing else changed. -/
+    row's address, LW writes the row's word to `rd`; PC := the row's final PC; nothing else changed. The assumptions
+    can be met: some accepted, decoded trace meeting them has an LW/SW row (`Trace.RVRowClaim`). -/
 def RVSoundnessClaim : Prop :=
-  Trace.RVRowSoundness .wordMemory RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs fun input output =>
+  Trace.RVRowClaim .wordMemory RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs fun input output =>
     output.address.toBitVec = input.source.toBitVec + input.immediate.toBitVec ∧
     ∃ s', RV.step input.before = some s' ∧
       RV.Same s' (if input.store then
