@@ -2,7 +2,7 @@ module
 public import Human.Circuits.WordMemory.RVTheorems
 public import Slop.Constraints
 public import Slop.KernelRfl
-public import Slop.Trace.RVSingleRow
+public import Slop.Trace.RVRowWitness
 public import Slop.WitnessCheck
 
 @[expose] public section
@@ -118,9 +118,9 @@ theorem query : row.decoderQuery = entry.query := by kernel_rfl
 theorem satisfiable : Trace.RVRowSatisfiable .wordMemory RVInput.before rvInstruction RVWordMapping
     Trace.RVPooledHistoryInputs :=
   ⟨trace, initial, cells, [entry], input, output, assignment, inputs,
-    ⟨accepted, Proofs.rv_pooled_decoded_single rfl rfl query, List.mem_singleton_self _⟩,
+    ⟨accepted, Witness.decoded rfl (List.mem_singleton_self _) rfl query, List.mem_singleton_self _⟩,
     { words := by constructor <;> kernel_rfl
-      state := Proofs.rv_row_position_single rfl initial cells
+      state := Witness.row_position rfl initial cells
       instruction := ⟨entry, List.mem_singleton_self _, rfl, query, by kernel_rfl⟩ }⟩
 
 end Airbender.WordMemory.NonVacuous
