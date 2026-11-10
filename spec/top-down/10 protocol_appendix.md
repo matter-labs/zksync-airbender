@@ -211,7 +211,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 >    1. Prover sends $s$ claimed output tables $A_0,\ldots,A_{s-1}$ of $C$, each containing sixteen elements of $E$, with $s$ and the table order specified by $C$'s output layout in Algorithm 12. Both parties absorb the tables into $T_{\mathrm{chunk}}$ as one concatenated message in that order, then sample the GKR evaluation point $\mathbf{z}_{\mathrm{gkr}}=(z_{\mathrm{gkr},0},\ldots,z_{\mathrm{gkr},3})\in E^4$ and batching challenge $r_{\mathrm{batch},\mathrm{gkr}}\in E$.
 >    2. Initialize $\mathbf{a}_{\mathrm{gkr}}\leftarrow(\operatorname{MLE}(A_0)(\mathbf{z}_{\mathrm{gkr}}),\ldots,\operatorname{MLE}(A_{s-1})(\mathbf{z}_{\mathrm{gkr}}))$, where $\operatorname{MLE}(A)$ is $A$'s multilinear extension.
->    3. Let $2^n$ be $C$'s trace row count from Algorithm 12. Process $C$'s compression layers for $k=4,\ldots,n-1$, followed by its main layers from outputs towards inputs. For each layer $C_{\mathrm{layer}}$, update using Algorithm 5:
+>    3. Let $2^n$ be $C$'s trace row count from Algorithm 12. Process $C$'s compression layers for $k=4,\ldots,n-1$, followed by its main layers from outputs towards inputs. For each layer $C_{\mathrm{layer}}$, update using Algorithm 4:
 >
 >       $$
 >       (\mathbf{z}_{\mathrm{gkr}},\mathbf{a}_{\mathrm{gkr}},r_{\mathrm{batch},\mathrm{gkr}})\leftarrow\operatorname{GKRLayer}(C_{\mathrm{layer}},(\mathbf{z}_{\mathrm{gkr}},\mathbf{a}_{\mathrm{gkr}}),r_{\mathrm{batch},\mathrm{gkr}},\mathbf{r}_{\mathrm{mem}},\mathbf{r}_{\mathrm{lookup}},b,T_{\mathrm{chunk}}).
@@ -239,7 +239,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > 9. Return $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$, the additional pair $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$ when present, `MemoryCaps`, `SetupCaps` and $b$.
 >
-> **Soundness — local composition (adapted, conditional).** Fix the circuit, layout and shared memory challenges. Assume binding commitments, the layer-reduction premises of Algorithm 5 and the opening guarantee of Algorithm 7. Lookup tuples, selectors, tables and multiplicities must be determined by committed columns or public data before $\mathbf{r}_{\mathrm{lookup}}$ is sampled. Outside the GKR and PCS failure events, the supplied output tables are the circuit's actual outputs and its zero constraints hold. Algorithm 6 then establishes lookup membership, except with error $\varepsilon_{\mathrm{lookup}}$, and returns the selected memory products. Hence
+> **Soundness — local composition (adapted, conditional).** Fix the circuit, layout and shared memory challenges. Assume binding commitments, the layer-reduction premises of Algorithm 4 and the opening guarantee of Algorithm 7. Lookup tuples, selectors, tables and multiplicities must be determined by committed columns or public data before $\mathbf{r}_{\mathrm{lookup}}$ is sampled. Outside the GKR and PCS failure events, the supplied output tables are the circuit's actual outputs and its zero constraints hold. Algorithm 6 then establishes lookup membership, except with error $\varepsilon_{\mathrm{lookup}}$, and returns the selected memory products. Hence
 >
 > $$
 > \varepsilon_{\mathrm{chunk}}\le\varepsilon_{\mathrm{GKR}}+\varepsilon_{\mathrm{PCS}}+\varepsilon_{\mathrm{lookup}}.
@@ -247,11 +247,48 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > **Memory-table binding export (conditional).** For Algorithm 2, additionally import Algorithm 7's memory-table binding guarantee below: outside the accounted commitment/PCS failures, the memory columns used by the accepted local relations are fixed by the memory precommitment before $\mathbf r_{\mathrm{mem}}$ is sampled. The local correctness argument must use those same columns. Establishing this timing and consistency remains a proof obligation in Algorithm 7; any candidate-list alternative and its losses must be carried through to Algorithm 2's memory analysis.
 >
-> Algorithm 5 owns the algebraic verification of the product/rational compression trees; Algorithm 6 owns the lookup fingerprint error; Algorithm 7 owns base-claim batching and opening verification. Algorithm 1a uses the resulting local relation with Algorithm 2's event binding and Algorithm 9's reconstruction premises. The displayed bound covers the unpacked BabyBear path; packed variants require an additional reduction for the pack-coordinate claim merge.
+> Algorithm 4 owns the algebraic verification of the product/rational compression trees; Algorithm 6 owns the lookup fingerprint error; Algorithm 7 owns base-claim batching and opening verification. Algorithm 1a uses the resulting local relation with Algorithm 2's event binding and Algorithm 9's reconstruction premises. The displayed bound covers the unpacked BabyBear path; packed variants require an additional reduction for the pack-coordinate claim merge.
 
 ---
 
-> **Algorithm 4 — EQSumcheck**
+> **Algorithm 4 — GKRLayer**
+>
+> **Input:** fixed circuit layer $C_{\mathrm{layer}}$, output claims $(u,a)$, batching challenge $\lambda$, shared memory challenges $\mathbf{r}_{\mathrm{mem}}$, lookup challenges $\mathbf{r}_{\mathrm{lookup}}=(\alpha,\beta)$, window identifiers $b$ and the running chunk transcript $T$. **Output:** preceding-layer point $u'$, claims $a'$ and next batching challenge $\lambda'$; the call updates $T$.
+>
+> **Notation:** `Batch` uses $C_{\mathrm{layer}}$'s power order in $\lambda$ and includes claim $0$ for every zero constraint. $\operatorname{Gate}_{C_{\mathrm{layer}}}$ is the same batched gate expression, evaluated by the Verifier with public parameters $(\mathbf{r}_{\mathrm{mem}},\alpha,\beta,b)$.
+>
+> 1. Set $v\leftarrow\operatorname{Batch}(a\text{ and zero claims};\lambda)$; obtain $(r,v,e)\leftarrow\operatorname{EQSumcheck}(u,v,T)$ (Algorithm 5) for the batched gate polynomial.
+> 2. **Compression layer:**
+>    1. Prover sends $h_j(0,r),h_j(1,r)$ for every required input.
+>    2. Verifier requires $v=e\,\operatorname{Gate}_{C_{\mathrm{layer}}}(\text{endpoint values};\lambda,\mathbf{r}_{\mathrm{mem}},\alpha,\beta,b)$; both parties absorb all endpoints and draw $(t,\lambda')$.
+>    3. For each $j$, set:
+>
+>       $$
+>       a'_j\leftarrow(1-t)h_j(0,r)+t\,h_j(1,r)
+>       $$
+>
+>    4. Return $((t,r),a',\lambda')$.
+> 3. **Otherwise, main layer:**
+>    1. Prover sends the required input evaluations at $r$.
+>    2. Verifier requires $v=e\,\operatorname{Gate}_{C_{\mathrm{layer}}}(\text{input values};\lambda,\mathbf{r}_{\mathrm{mem}},\alpha,\beta,b)$.
+>    3. Prover sends the additional evaluations required by $C_{\mathrm{layer}}$'s auxiliary polynomial relations. Both parties absorb these together with the input evaluations and draw $\lambda'$.
+>    4. Check $C_{\mathrm{layer}}$'s auxiliary relations and publicly evaluable setup polynomials with the supplied public parameters. For the final main-layer call (the layer with base-polynomial inputs), return $r$, the committed-column claims in memory/witness/setup order and increasing column-index order within each group, and $\lambda'$. Otherwise return $r$, the preceding-layer claims in $C_{\mathrm{layer}}$'s fixed input-polynomial order, and $\lambda'$.
+>
+> Compression gates: product $h_0h_1$; rational sum $(n_0d_1+n_1d_0,d_0d_1)$. The Verifier evaluates public setup polynomials directly, including those for virtual setup tables; committed setup polynomials become WHIR opening claims.
+>
+> **Soundness — layer reduction and GKR budget (adapted, conditional).** Assume the fixed layer wiring and auxiliary identities implement the claimed gate relation, its batched gate polynomial satisfies Algorithm 5's degree bound, and each claimed value is fixed before the challenge testing it. Algorithm 5 reduces a false batched output claim to a false gate evaluation. The gate check then forces a false preceding-layer claim; auxiliary and public-polynomial checks must establish the identities used in this implication. In a compression layer, fixed endpoint discrepancies define a nonzero linear polynomial in $t$, so interpolation hides them with probability at most $\mu$. Induction through the layers terminates at the base openings established by Algorithm 7.
+>
+> For the complete GKR path in Algorithm 3, a false sixteen-entry output table survives evaluation at $u\in E^4$ with probability at most $4\mu$; batching $b$ fixed scalar claims costs at most $(b-1)\mu$. Let $B$ be the sum of all power-batching degrees, including the initial output batch; $R$ the total number of EQSumcheck rounds; $Z\le R$ the charged EQ-zero events; and $S$ the sum of the remaining point/line-test degrees, including endpoint interpolation. Then
+>
+> $$
+> \varepsilon_{\mathrm{GKR}}\le\min(1,\mu(4+B+3R+Z+S)).
+> $$
+>
+> For $L$ main layers each using $n$ rounds, $R=\sum_{k=4}^{n-1}k+Ln$. These are proof-accounting quantities determined by the selected circuit. Completing the bound requires the layer/auxiliary-relation induction and explicit $B,R,Z,S$ counts for that circuit; lookup fingerprinting and base-opening errors are composed in Algorithm 3.
+
+---
+
+> **Algorithm 5 — EQSumcheck**
 >
 > **Input:** incoming point $u \in E^k$, batched claim $v$ for gate polynomial $G$ of individual degree $\le 2$, and the running chunk transcript $T$. **Output:** point $r$, scalar $v$ and last EQ factor $e$; the call updates $T$.
 >
@@ -277,44 +314,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > **Soundness — Sumcheck and EQ factoring (adapted).** Assume $u$ and the polynomial $G$ are fixed before this call's challenges, $G$ has individual degree at most two, and every round polynomial is fixed before its evaluation challenge. For a false incoming claim and a nonzero carried EQ factor $e$, the endpoint check forces the sent cubic to differ from the honest round polynomial. That discrepancy vanishes at $r_j$ with probability at most $3\mu$. The new EQ factor is $1-u_j+(2u_j-1)r_j$: it is $1/2$ if $u_j=1/2$, and otherwise vanishes with probability at most $\mu$.
 >
-> Charging each potentially vanishing factor as an exceptional event, a false incoming sum reduces to a false final claim $v=eG(r)$ except with probability at most $\min(1,(3k+Z)\mu)$, where $Z\le k$. Algorithm 5 must establish the final gate evaluation through its input claims. It counts this reduction error once in its layer budget.
-
----
-
-> **Algorithm 5 — GKRLayer**
->
-> **Input:** fixed circuit layer $C_{\mathrm{layer}}$, output claims $(u,a)$, batching challenge $\lambda$, shared memory challenges $\mathbf{r}_{\mathrm{mem}}$, lookup challenges $\mathbf{r}_{\mathrm{lookup}}=(\alpha,\beta)$, window identifiers $b$ and the running chunk transcript $T$. **Output:** preceding-layer point $u'$, claims $a'$ and next batching challenge $\lambda'$; the call updates $T$.
->
-> **Notation:** `Batch` uses $C_{\mathrm{layer}}$'s power order in $\lambda$ and includes claim $0$ for every zero constraint. $\operatorname{Gate}_{C_{\mathrm{layer}}}$ is the same batched gate expression, evaluated by the Verifier with public parameters $(\mathbf{r}_{\mathrm{mem}},\alpha,\beta,b)$.
->
-> 1. Set $v\leftarrow\operatorname{Batch}(a\text{ and zero claims};\lambda)$; obtain $(r,v,e)\leftarrow\operatorname{EQSumcheck}(u,v,T)$ (Algorithm 4) for the batched gate polynomial.
-> 2. **Compression layer:**
->    1. Prover sends $h_j(0,r),h_j(1,r)$ for every required input.
->    2. Verifier requires $v=e\,\operatorname{Gate}_{C_{\mathrm{layer}}}(\text{endpoint values};\lambda,\mathbf{r}_{\mathrm{mem}},\alpha,\beta,b)$; both parties absorb all endpoints and draw $(t,\lambda')$.
->    3. For each $j$, set:
->
->       $$
->       a'_j\leftarrow(1-t)h_j(0,r)+t\,h_j(1,r)
->       $$
->
->    4. Return $((t,r),a',\lambda')$.
-> 3. **Otherwise, main layer:**
->    1. Prover sends the required input evaluations at $r$.
->    2. Verifier requires $v=e\,\operatorname{Gate}_{C_{\mathrm{layer}}}(\text{input values};\lambda,\mathbf{r}_{\mathrm{mem}},\alpha,\beta,b)$.
->    3. Prover sends the additional evaluations required by $C_{\mathrm{layer}}$'s auxiliary polynomial relations. Both parties absorb these together with the input evaluations and draw $\lambda'$.
->    4. Check $C_{\mathrm{layer}}$'s auxiliary relations and publicly evaluable setup polynomials with the supplied public parameters. For the final main-layer call (the layer with base-polynomial inputs), return $r$, the committed-column claims in memory/witness/setup order and increasing column-index order within each group, and $\lambda'$. Otherwise return $r$, the preceding-layer claims in $C_{\mathrm{layer}}$'s fixed input-polynomial order, and $\lambda'$.
->
-> Compression gates: product $h_0h_1$; rational sum $(n_0d_1+n_1d_0,d_0d_1)$. The Verifier evaluates public setup polynomials directly, including those for virtual setup tables; committed setup polynomials become WHIR opening claims.
->
-> **Soundness — layer reduction and GKR budget (adapted, conditional).** Assume the fixed layer wiring and auxiliary identities implement the claimed gate relation, its batched gate polynomial satisfies Algorithm 4's degree bound, and each claimed value is fixed before the challenge testing it. Algorithm 4 reduces a false batched output claim to a false gate evaluation. The gate check then forces a false preceding-layer claim; auxiliary and public-polynomial checks must establish the identities used in this implication. In a compression layer, fixed endpoint discrepancies define a nonzero linear polynomial in $t$, so interpolation hides them with probability at most $\mu$. Induction through the layers terminates at the base openings established by Algorithm 7.
->
-> For the complete GKR path in Algorithm 3, a false sixteen-entry output table survives evaluation at $u\in E^4$ with probability at most $4\mu$; batching $b$ fixed scalar claims costs at most $(b-1)\mu$. Let $B$ be the sum of all power-batching degrees, including the initial output batch; $R$ the total number of EQSumcheck rounds; $Z\le R$ the charged EQ-zero events; and $S$ the sum of the remaining point/line-test degrees, including endpoint interpolation. Then
->
-> $$
-> \varepsilon_{\mathrm{GKR}}\le\min(1,\mu(4+B+3R+Z+S)).
-> $$
->
-> For $L$ main layers each using $n$ rounds, $R=\sum_{k=4}^{n-1}k+Ln$. These are proof-accounting quantities determined by the selected circuit. Completing the bound requires the layer/auxiliary-relation induction and explicit $B,R,Z,S$ counts for that circuit; lookup fingerprinting and base-opening errors are composed in Algorithm 3.
+> Charging each potentially vanishing factor as an exceptional event, a false incoming sum reduces to a false final claim $v=eG(r)$ except with probability at most $\min(1,(3k+Z)\mu)$, where $Z\le k$. Algorithm 4 must establish the final gate evaluation through its input claims. It counts this reduction error once in its layer budget.
 
 ---
 
@@ -352,7 +352,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 > \varepsilon_{\mathrm{lookup}}\le\min\!\left(1,\mu\sum_a D_a\right).
 > $$
 >
-> This sum covers all categories sharing $\alpha,\beta$. Fewer than $p$ query occurrences per category suffices for the nonzero-count premise; the actual per-circuit query bounds and numerator degrees remain to be established. The returned memory products are exact products of the authenticated output entries; Algorithm 9 tests their global equality. Compression-tree verification is charged to Algorithm 5.
+> This sum covers all categories sharing $\alpha,\beta$. Fewer than $p$ query occurrences per category suffices for the nonzero-count premise; the actual per-circuit query bounds and numerator degrees remain to be established. The returned memory products are exact products of the authenticated output entries; Algorithm 9 tests their global equality. Compression-tree verification is charged to Algorithm 4.
 
 ---
 
@@ -596,7 +596,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > Output tables follow `global_output_map` in `OutputType` order: `PermutationProduct`, `Lookup16Bits`, `LookupTimestamps`, `GenericLookup`, `InitsAndTeardownsProduct`, omitting absent categories and preserving the address order within each category.
 >
-> For the sixteen-entry output tables used here, Algorithm 3 makes $n-4$ compression-layer calls and $L_{\mathrm{main}}$ main-layer calls to Algorithm 5, for $L_{\mathrm{main}}+n-4$ GKR layers in total. The main layers are stored in `layers`; the compression layers are derived from the output map and the output dimension $4$, fixed by `sumcheck_explicit_output_size_log_2` in the selected prover configuration.
+> For the sixteen-entry output tables used here, Algorithm 3 makes $n-4$ compression-layer calls and $L_{\mathrm{main}}$ main-layer calls to Algorithm 4, for $L_{\mathrm{main}}+n-4$ GKR layers in total. The main layers are stored in `layers`; the compression layers are derived from the output map and the output dimension $4$, fixed by `sumcheck_explicit_output_size_log_2` in the selected prover configuration.
 >
 > **Circuit artifacts and GKR dimensions:**
 >
@@ -672,7 +672,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > Terminal sources: [terminal parameter configuration](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/prover/src/gkr/prover_config/example_configs.rs#L227), [terminal prover selection](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/program_prover/src/l1.rs#L77), [Keccak Merkle hashing](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/prover/src/merkle_trees/keccak256_for_everything_tree.rs#L1), [operation modes](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/prover/src/gkr/prover/mod.rs#L72), [standalone transcript seed](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/verifier_evm/src/seed.rs#L22), [Proth120 field](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/field/src/proth120.rs#L4), [Keccak transcript](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/transcript/src/keccak256.rs#L64).
 
-**Soundness — parameter instantiation (conditional).** Algorithm 12 fixes the circuit and commitment layout, field domains and challenge/query schedule to which the preceding bounds apply. For each selected circuit, instantiate Algorithm 5's batching/round/test counts, Algorithm 6's occurrence and numerator-degree bounds, and Algorithm 7's proximity/list and agreement bounds. The lookup charge $D_{\mathrm{lookup}}$ must dominate the degree sum actually proved in Algorithm 6. The PoW thresholds enter the computational accounting of the protected tests; their instantiation must use the challenge-distribution bound $\mu$ and the corresponding algebraic degrees. In particular, the BabyBear value $F=123$ in step 5 must be reconciled with $-\log_2\mu\approx121.66$ for the stated sampling rule. These per-configuration checks remain proof obligations.
+**Soundness — parameter instantiation (conditional).** Algorithm 12 fixes the circuit and commitment layout, field domains and challenge/query schedule to which the preceding bounds apply. For each selected circuit, instantiate Algorithm 4's batching/round/test counts, Algorithm 6's occurrence and numerator-degree bounds, and Algorithm 7's proximity/list and agreement bounds. The lookup charge $D_{\mathrm{lookup}}$ must dominate the degree sum actually proved in Algorithm 6. The PoW thresholds enter the computational accounting of the protected tests; their instantiation must use the challenge-distribution bound $\mu$ and the corresponding algebraic degrees. In particular, the BabyBear value $F=123$ in step 5 must be reconciled with $-\log_2\mu\approx121.66$ for the stated sampling rule. These per-configuration checks remain proof obligations.
 
 For unrolled memory, let $n_f$ count chunks of instruction family $f$, let $2^{\ell_f}$ be its trace rows per chunk, and let $n_d$ count chunks of delegation type $d$. Let $A_d$ be that delegation type's per-chunk term count listed above, and let $n_{\mathrm{IT}}$ count standalone IT chunks. If Algorithm 2's charges bound all selected instruction/delegation events and each IT proof contributes at most $8\cdot2^{24}$ events on each side, then
 
