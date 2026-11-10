@@ -7,6 +7,7 @@ public import Slop.Trace.RVZero
 public import Slop.Trace.RVRowGlue
 public import Slop.Defs.Helpers.Core.Word
 public import Slop.Final.Generic.Circuits.ShiftBinop.RVTheorems
+public import Slop.Defs.Circuits.ShiftBinop.RVModel
 
 @[expose] public section
 

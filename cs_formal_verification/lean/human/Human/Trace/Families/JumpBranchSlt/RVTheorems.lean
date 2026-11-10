@@ -31,8 +31,6 @@ structure RVExecutionInputs {p : Nat} [Fact p.Prime] (trace : NativeTrace p) (in
 /-- Accepted comparison, branch and jump rows, in native time order, are a run of `RV.step` from `initial` reaching
     the terminal PC and register/cell values. Public initialization, canonical termination and logical
     matching/membership are the explicit boundaries in `RVExecutionInputs`, `Accepted` and `RVDecoded`. -/
-def RVTraceSoundnessClaim : Prop :=
-  ∀ {trace : NativeTrace babyBearModulus} {initial : RV.State} {cells : List Trace.Cell} {program : List RVProgramEntry} (_inputs : RVExecutionInputs trace initial cells program) (_accepted : Trace.Accepted trace) (_decoded : RVDecoded trace program),
-    Trace.RVRealizes trace initial cells
+def RVTraceSoundnessClaim : Prop := Trace.RVTraceSoundness RVExecutionInputs RVDecoded
 
 end Airbender.JumpBranchSlt

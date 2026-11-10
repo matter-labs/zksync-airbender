@@ -8,6 +8,7 @@ public import Slop.Defs.Helpers.Memory.Ports
 public import Slop.Defs.Circuits.AddSub.Artifact
 public import Slop.Defs.Helpers.Core.Word
 public import Slop.Final.Generic.Circuits.AddSub.RVTheorems
+public import Slop.Defs.Circuits.AddSub.RVModel
 
 @[expose] public section
 

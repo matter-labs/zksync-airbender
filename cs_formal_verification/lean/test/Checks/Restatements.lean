@@ -1,4 +1,10 @@
 import Slop.Field.BabyBearInstance
+import Slop.Defs.Circuits.WordMemory.RVModel
+import Slop.Defs.Circuits.SubwordMemory.RVModel
+import Slop.Defs.Circuits.ShiftBinop.RVModel
+import Slop.Defs.Circuits.MulDiv.RVModel
+import Slop.Defs.Circuits.JumpBranchSlt.RVModel
+import Slop.Defs.Circuits.AddSub.RVModel
 import Slop.Deleg.BlakeRun
 import Slop.Final.Generic.Circuits.AddSub.RVCallerTheorems
 import Slop.Final.Generic.Circuits.AddSub.RVTheorems
@@ -57,12 +63,16 @@ example : Airbender.Delegation.Caller.RVPcSoundnessClaimGeneric ↔ Airbender.De
     obtain rfl := Airbender.Field.eq_babyBear_of_cast_eq_zero hb
     exact @h⟩
 example : Airbender.AddSub.RVSoundnessClaimGeneric ↔ Airbender.AddSub.RVSoundnessClaim :=
-  ⟨fun h => by babybear_instance h, fun h => by
-    intro p _ _ inv
-    have hb : ((Airbender.babyBearModulus : Nat) : ZMod p) = 0 := by
-      rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv
-    obtain rfl := Airbender.Field.eq_babyBear_of_cast_eq_zero hb
-    exact @h⟩
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ =>
+      h (p := Airbender.babyBearModulus) (by decide) (by decide) trace initial cells program a input output w
+        ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h => by
+      intro p inst hp inv
+      obtain rfl : p = Airbender.babyBearModulus := Airbender.Field.eq_babyBear_of_cast_eq_zero (by
+        rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv)
+      obtain rfl : inst = Airbender.babyBearPrime := rfl
+      intro trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
+      exact h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaimGeneric ↔ Airbender.Bigint.Memory.RVAddressesSoundnessClaim :=
   ⟨fun h => by babybear_instance h, fun h => by
     intro p _ _ inv
@@ -78,54 +88,82 @@ example : Airbender.Blake2G.SoundnessClaimGeneric ↔ Airbender.Blake2G.Soundnes
     obtain rfl := Airbender.Field.eq_babyBear_of_cast_eq_zero hb
     exact @h⟩
 example : Airbender.JumpBranchSlt.Comparison.RVSoundnessClaimGeneric ↔ Airbender.JumpBranchSlt.Comparison.RVSoundnessClaim :=
-  ⟨fun h => by babybear_instance h, fun h => by
-    intro p _ _ inv
-    have hb : ((Airbender.babyBearModulus : Nat) : ZMod p) = 0 := by
-      rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv
-    obtain rfl := Airbender.Field.eq_babyBear_of_cast_eq_zero hb
-    exact @h⟩
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ =>
+      h (p := Airbender.babyBearModulus) (by decide) (by decide) trace initial cells program a input output w
+        ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h => by
+      intro p inst hp inv
+      obtain rfl : p = Airbender.babyBearModulus := Airbender.Field.eq_babyBear_of_cast_eq_zero (by
+        rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv)
+      obtain rfl : inst = Airbender.babyBearPrime := rfl
+      intro trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
+      exact h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 example : Airbender.JumpBranchSlt.Branch.RVSoundnessClaimGeneric ↔ Airbender.JumpBranchSlt.Branch.RVSoundnessClaim :=
-  ⟨fun h => by babybear_instance h, fun h => by
-    intro p _ _ inv
-    have hb : ((Airbender.babyBearModulus : Nat) : ZMod p) = 0 := by
-      rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv
-    obtain rfl := Airbender.Field.eq_babyBear_of_cast_eq_zero hb
-    exact @h⟩
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ =>
+      h (p := Airbender.babyBearModulus) (by decide) (by decide) trace initial cells program a input output w
+        ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h => by
+      intro p inst hp inv
+      obtain rfl : p = Airbender.babyBearModulus := Airbender.Field.eq_babyBear_of_cast_eq_zero (by
+        rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv)
+      obtain rfl : inst = Airbender.babyBearPrime := rfl
+      intro trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
+      exact h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 example : Airbender.JumpBranchSlt.Jump.RVSoundnessClaimGeneric ↔ Airbender.JumpBranchSlt.Jump.RVSoundnessClaim :=
-  ⟨fun h => by babybear_instance h, fun h => by
-    intro p _ _ inv
-    have hb : ((Airbender.babyBearModulus : Nat) : ZMod p) = 0 := by
-      rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv
-    obtain rfl := Airbender.Field.eq_babyBear_of_cast_eq_zero hb
-    exact @h⟩
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ =>
+      h (p := Airbender.babyBearModulus) (by decide) (by decide) trace initial cells program a input output w
+        ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h => by
+      intro p inst hp inv
+      obtain rfl : p = Airbender.babyBearModulus := Airbender.Field.eq_babyBear_of_cast_eq_zero (by
+        rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv)
+      obtain rfl : inst = Airbender.babyBearPrime := rfl
+      intro trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
+      exact h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 example : Airbender.MulDiv.RVSoundnessClaimGeneric ↔ Airbender.MulDiv.RVSoundnessClaim :=
-  ⟨fun h => by babybear_instance h, fun h => by
-    intro p _ _ inv
-    have hb : ((Airbender.babyBearModulus : Nat) : ZMod p) = 0 := by
-      rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv
-    obtain rfl := Airbender.Field.eq_babyBear_of_cast_eq_zero hb
-    exact @h⟩
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ =>
+      h (p := Airbender.babyBearModulus) (by decide) (by decide) trace initial cells program a input output w
+        ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h => by
+      intro p inst hp inv
+      obtain rfl : p = Airbender.babyBearModulus := Airbender.Field.eq_babyBear_of_cast_eq_zero (by
+        rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv)
+      obtain rfl : inst = Airbender.babyBearPrime := rfl
+      intro trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
+      exact h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 example : Airbender.ShiftBinop.RVSoundnessClaimGeneric ↔ Airbender.ShiftBinop.RVSoundnessClaim :=
-  ⟨fun h => by babybear_instance h, fun h => by
-    intro p _ _ inv
-    have hb : ((Airbender.babyBearModulus : Nat) : ZMod p) = 0 := by
-      rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv
-    obtain rfl := Airbender.Field.eq_babyBear_of_cast_eq_zero hb
-    exact @h⟩
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ =>
+      h (p := Airbender.babyBearModulus) (by decide) (by decide) trace initial cells program a input output w
+        ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h => by
+      intro p inst hp inv
+      obtain rfl : p = Airbender.babyBearModulus := Airbender.Field.eq_babyBear_of_cast_eq_zero (by
+        rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv)
+      obtain rfl : inst = Airbender.babyBearPrime := rfl
+      intro trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
+      exact h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 example : Airbender.SubwordMemory.RVSoundnessClaimGeneric ↔ Airbender.SubwordMemory.RVSoundnessClaim :=
-  ⟨fun h => by babybear_instance h, fun h => by
-    intro p _ _ inv
-    have hb : ((Airbender.babyBearModulus : Nat) : ZMod p) = 0 := by
-      rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv
-    obtain rfl := Airbender.Field.eq_babyBear_of_cast_eq_zero hb
-    exact @h⟩
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ =>
+      h (p := Airbender.babyBearModulus) (by decide) (by decide) trace initial cells program a input output w
+        ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h => by
+      intro p inst hp inv
+      obtain rfl : p = Airbender.babyBearModulus := Airbender.Field.eq_babyBear_of_cast_eq_zero (by
+        rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv)
+      obtain rfl : inst = Airbender.babyBearPrime := rfl
+      intro trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
+      exact h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 example : Airbender.WordMemory.RVSoundnessClaimGeneric ↔ Airbender.WordMemory.RVSoundnessClaim :=
-  ⟨fun h => by babybear_instance h, fun h => by
-    intro p _ _ inv
-    have hb : ((Airbender.babyBearModulus : Nat) : ZMod p) = 0 := by
-      rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv
-    obtain rfl := Airbender.Field.eq_babyBear_of_cast_eq_zero hb
-    exact @h⟩
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ =>
+      h (p := Airbender.babyBearModulus) (by decide) (by decide) trace initial cells program a input output w
+        ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h => by
+      intro p inst hp inv
+      obtain rfl : p = Airbender.babyBearModulus := Airbender.Field.eq_babyBear_of_cast_eq_zero (by
+        rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv)
+      obtain rfl : inst = Airbender.babyBearPrime := rfl
+      intro trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
+      exact h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 example : Airbender.Delegation.Caller.RVRequestsSoundnessClaimGeneric ↔ Airbender.Delegation.Caller.RVRequestsSoundnessClaim :=
   ⟨fun h => by babybear_instance h, fun h => by
     intro p _ _ inv _
@@ -470,7 +508,9 @@ example : (∀ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells
     RVInterfaceAssumptions trace initial cells program →
     ∀ input output w, (rvCircuitModel trace initial cells program).relation input output w →
       ∃ s', RV.step input.before = some s' ∧
-        RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim := Iff.rfl
+        RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim :=
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 end Airbender.AddSub
 
 namespace Airbender.Blake2G
@@ -485,7 +525,9 @@ example : (∀ (trace : Trace.PooledTrace babyBearModulus) (initial : RV.State) 
     RVInterfaceAssumptions trace initial cells program →
     ∀ input output w, (rvCircuitModel trace initial cells program).relation input output w →
       ∃ s', RV.step input.before = some s' ∧
-        RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim := Iff.rfl
+        RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim :=
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 end Airbender.JumpBranchSlt.Comparison
 
 namespace Airbender.JumpBranchSlt.Branch
@@ -493,7 +535,9 @@ namespace Airbender.JumpBranchSlt.Branch
 example : (∀ (trace : Trace.PooledTrace babyBearModulus) (initial : RV.State) (cells : List Trace.Cell) (program : List Trace.RVPooledProgramEntry),
     RVInterfaceAssumptions trace initial cells program →
     ∀ input output w, (rvCircuitModel trace initial cells program).relation input output w →
-      ∃ s', RV.step input.before = some s' ∧ RV.Same s' (input.before.setPC output.pc.toBitVec)) ↔ RVSoundnessClaim := Iff.rfl
+      ∃ s', RV.step input.before = some s' ∧ RV.Same s' (input.before.setPC output.pc.toBitVec)) ↔ RVSoundnessClaim :=
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 end Airbender.JumpBranchSlt.Branch
 
 namespace Airbender.JumpBranchSlt.Jump
@@ -502,7 +546,9 @@ example : (∀ (trace : Trace.PooledTrace babyBearModulus) (initial : RV.State) 
     RVInterfaceAssumptions trace initial cells program →
     ∀ input output w, (rvCircuitModel trace initial cells program).relation input output w →
       ∃ s', RV.step input.before = some s' ∧
-        RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim := Iff.rfl
+        RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim :=
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 end Airbender.JumpBranchSlt.Jump
 
 namespace Airbender.MulDiv
@@ -512,7 +558,9 @@ example : (∀ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells
     RVInterfaceAssumptions trace initial cells program →
     ∀ input output w, (rvCircuitModel trace initial cells program).relation input output w →
       ∃ s', RV.step input.before = some s' ∧
-        RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim := Iff.rfl
+        RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim :=
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 end Airbender.MulDiv
 
 namespace Airbender.ShiftBinop
@@ -522,7 +570,9 @@ example : (∀ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells
     RVInterfaceAssumptions trace initial cells program →
     ∀ input output w, (rvCircuitModel trace initial cells program).relation input output w →
       ∃ s', RV.step input.before = some s' ∧
-        RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim := Iff.rfl
+        RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim :=
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 end Airbender.ShiftBinop
 
 namespace Airbender.SubwordMemory
@@ -535,7 +585,9 @@ example : (∀ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells
       ∃ s', RV.step input.before = some s' ∧
         RV.Same s' (if input.store then
             (input.before.store output.cell.toBitVec output.data.toBitVec 4).setPC output.pc.toBitVec
-          else (input.before.setReg input.rd output.data.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim := Iff.rfl
+          else (input.before.setReg input.rd output.data.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim :=
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 end Airbender.SubwordMemory
 
 namespace Airbender.WordMemory
@@ -548,7 +600,9 @@ example : (∀ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells
       ∃ s', RV.step input.before = some s' ∧
         RV.Same s' (if input.store then
             (input.before.store output.address.toBitVec output.data.toBitVec 4).setPC output.pc.toBitVec
-          else (input.before.setReg input.rd output.data.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim := Iff.rfl
+          else (input.before.setReg input.rd output.data.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim :=
+  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
+    fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
 end Airbender.WordMemory
 
 /-! C1: the merged constants have the deleted definitions' values. -/

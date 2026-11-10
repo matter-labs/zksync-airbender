@@ -68,34 +68,6 @@ structure RVWordMapping {p : Nat} (input : RVInput) (output : Circuit.Output) (w
   finalPCLo : output.pc.lo = (w finalPCLo).val
   finalPCHi : output.pc.hi = (w finalPCHi).val
 
-/-- Trace mapping in RV32 terms: the row's pre-state is the RV state at its clock position, and its decoder entry in
-    the public program is `RV.decode` of the entry's encoding, equal to the input's instruction. -/
-structure RVTraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry)
-    (input : RVInput) (output : Circuit.Output) (w : Nat → ZMod p) : Prop where
-  /-- Name the imported operand, register, destination and PC variables. -/
-  words : RVWordMapping input output w
-  /-- Locate this row in clock order and obtain `input.before` from the starting state. -/
-  state : RVRowPosition trace initial cells ⟨.jumpBranchSlt, w⟩ input.before
-  /-- The row's family and decoder query match a public program entry whose encoding decodes to the row's
-      instruction. -/
-  instruction : ∃ entry ∈ program,
-    entry.data.family = .jumpBranchSlt ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
-    RV.decode entry.bits = some (rvInstruction input)
-
-/-- The comparison's per-row model in RV32 terms (`circuitModel` with `RVTraceMapping`). -/
-def rvCircuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) :
-    Verification.CircuitModel RVInput Circuit.Output (Nat → ZMod p) where
-  satisfies := fun w =>
-    Accepted trace ∧ RVPooledDecoded trace program ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows
-  represents := RVTraceMapping trace initial cells program
-
-/-- Assumptions of the RV statements: `RVTraceInputs`. No code-alignment premise is needed. -/
-abbrev RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
-  RVTraceInputs trace initial cells program
-
 end Airbender.JumpBranchSlt.Comparison
 
 namespace Airbender.JumpBranchSlt.Branch
@@ -134,33 +106,6 @@ structure RVWordMapping {p : Nat} (input : RVInput) (output : Circuit.Output) (w
   finalPCHi : output.pc.hi = (w finalPCHi).val
   rs1Index : w Variables.rs1Index = (input.rs1.toNat : ZMod p)
   rs2Index : w Variables.rs2Index = (input.rs2.toNat : ZMod p)
-
-/-- Trace mapping in RV32 terms, as `Comparison.RVTraceMapping`. -/
-structure RVTraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry)
-    (input : RVInput) (output : Circuit.Output) (w : Nat → ZMod p) : Prop where
-  /-- Name the imported operand, register, destination and PC variables. -/
-  words : RVWordMapping input output w
-  /-- Locate this row in clock order and obtain `input.before` from the starting state. -/
-  state : RVRowPosition trace initial cells ⟨.jumpBranchSlt, w⟩ input.before
-  /-- The row's family and decoder query match a public program entry whose encoding decodes to the row's
-      instruction. -/
-  instruction : ∃ entry ∈ program,
-    entry.data.family = .jumpBranchSlt ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
-    RV.decode entry.bits = some (rvInstruction input)
-
-/-- The branch's per-row model in RV32 terms (`circuitModel` with `RVTraceMapping`). -/
-def rvCircuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) :
-    Verification.CircuitModel RVInput Circuit.Output (Nat → ZMod p) where
-  satisfies := fun w =>
-    Accepted trace ∧ RVPooledDecoded trace program ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows
-  represents := RVTraceMapping trace initial cells program
-
-/-- Assumptions of the RV statements: `RVTraceInputs`. No code-alignment premise is needed. -/
-abbrev RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
-  RVTraceInputs trace initial cells program
 
 end Airbender.JumpBranchSlt.Branch
 
@@ -202,32 +147,5 @@ structure RVWordMapping {p : Nat} (input : RVInput) (output : Circuit.Output) (w
   finalPCHi : output.pc.hi = (w finalPCHi).val
   rs1Index : input.instruction.indirect = true → w Variables.rs1Index = (input.rs1.toNat : ZMod p)
   rdIndex : w Variables.rdIndex = (input.rd.toNat : ZMod p)
-
-/-- Trace mapping in RV32 terms, as `Comparison.RVTraceMapping`. -/
-structure RVTraceMapping {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry)
-    (input : RVInput) (output : Circuit.Output) (w : Nat → ZMod p) : Prop where
-  /-- Name the imported operand, register, destination and PC variables. -/
-  words : RVWordMapping input output w
-  /-- Locate this row in clock order and obtain `input.before` from the starting state. -/
-  state : RVRowPosition trace initial cells ⟨.jumpBranchSlt, w⟩ input.before
-  /-- The row's family and decoder query match a public program entry whose encoding decodes to the row's
-      instruction. -/
-  instruction : ∃ entry ∈ program,
-    entry.data.family = .jumpBranchSlt ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily).decoderQuery = entry.query ∧
-    RV.decode entry.bits = some (rvInstruction input)
-
-/-- The jump's per-row model in RV32 terms (`circuitModel` with `RVTraceMapping`). -/
-def rvCircuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) :
-    Verification.CircuitModel RVInput Circuit.Output (Nat → ZMod p) where
-  satisfies := fun w =>
-    Accepted trace ∧ RVPooledDecoded trace program ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows
-  represents := RVTraceMapping trace initial cells program
-
-/-- Assumptions of the RV statements: `RVTraceInputs`. No code-alignment premise is needed. -/
-abbrev RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
-  RVTraceInputs trace initial cells program
 
 end Airbender.JumpBranchSlt.Jump

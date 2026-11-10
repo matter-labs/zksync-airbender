@@ -1,6 +1,7 @@
 module
 public import Human.Circuits.ShiftBinop.RVModel
 public import Human.Helpers.Core.BabyBearPrime
+public import Human.Helpers.Context.RVRowModel
 
 @[expose] public section
 
@@ -15,10 +16,8 @@ open Trace
 /-- Every accepted shift/binop row is one step of our spec: from the row's pre-state (`input.before`), the step
     exists and gives the row's post-state: `rd` := the row's result, PC := the row's final PC, nothing else changed. -/
 def RVSoundnessClaim : Prop :=
-  ∀ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry),
-    RVInterfaceAssumptions trace initial cells program →
-    ∀ input output w, (rvCircuitModel trace initial cells program).relation input output w →
-      ∃ s', RV.step input.before = some s' ∧
-        RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
+  Trace.RVRowSoundness .shiftBinop RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs fun input output =>
+    ∃ s', RV.step input.before = some s' ∧
+      RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
 
 end Airbender.ShiftBinop

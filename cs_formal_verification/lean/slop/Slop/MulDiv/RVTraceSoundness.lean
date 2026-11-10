@@ -9,6 +9,7 @@ public import Slop.Defs.Helpers.Memory.Ports
 public import Slop.Defs.Circuits.MulDiv.Operation
 public import Slop.Defs.Helpers.Core.Word
 public import Slop.Final.Generic.Circuits.MulDiv.RVTheorems
+public import Slop.Defs.Circuits.MulDiv.RVModel
 
 @[expose] public section
 

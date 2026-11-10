@@ -1,5 +1,6 @@
 module
 public import Human.Circuits.AddSub.RVTheorems
+public import Slop.Defs.Circuits.AddSub.RVModel
 
 /-! The generic-prime forms of the claims of `human/Human/Circuits/AddSub/RVTheorems.lean`, as stated before they were stated at BabyBear
 (each premise set forces `p = babyBearModulus`). The slop proofs prove these and instantiate them. -/

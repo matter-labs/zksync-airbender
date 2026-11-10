@@ -26,8 +26,6 @@ abbrev RVExecutionInputs {p : Nat} [Fact p.Prime] (trace : NativeTrace p) (initi
 
 /-- Publicly fetched MUL/MULHU/DIVU/REMU rows, in native time order, are a run of `RV.step` from `initial` reaching
     the terminal PC and cell values. Public initialization and logical matching/membership remain explicit. -/
-def RVTraceSoundnessClaim : Prop :=
-  ∀ {trace : NativeTrace babyBearModulus} {initial : RV.State} {cells : List Trace.Cell} {program : List RVProgramEntry} (_inputs : RVExecutionInputs trace initial cells program) (_accepted : Trace.Accepted trace) (_decoded : RVDecoded trace program),
-    Trace.RVRealizes trace initial cells
+def RVTraceSoundnessClaim : Prop := Trace.RVTraceSoundness RVExecutionInputs RVDecoded
 
 end Airbender.MulDiv

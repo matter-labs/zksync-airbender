@@ -4,6 +4,7 @@ public import Slop.WordMemory.RVTraceSoundness
 public import Slop.Trace.RVPooledLawsProof
 public import Slop.Final.Generic.Circuits.WordMemory.RVTheorems
 public import Slop.Field.BabyBearInstance
+public import Slop.Defs.Circuits.WordMemory.RVModel
 
 @[expose] public section
 
@@ -13,6 +14,9 @@ namespace Airbender.WordMemory
     pre-state. -/
 private theorem rv_soundness_generic : RVSoundnessClaimGeneric := Proofs.rv_trace_soundness Trace.Proofs.rvPooledLaws
 
-theorem rv_soundness : RVSoundnessClaim := by babybear_instance rv_soundness_generic
+theorem rv_soundness : RVSoundnessClaim := by
+  intro trace initial cells program assumptions input output w ⟨⟨accepted, decoded, member⟩, ⟨words, state, instruction⟩⟩
+  exact rv_soundness_generic (p := babyBearModulus) (by decide) (by decide) trace initial cells program assumptions input output w
+    ⟨⟨accepted, decoded, member⟩, ⟨words, state, instruction⟩⟩
 
 end Airbender.WordMemory

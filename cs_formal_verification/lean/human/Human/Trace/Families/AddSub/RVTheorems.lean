@@ -64,9 +64,7 @@ structure RVNativeBootBoundary {p : Nat} [Fact p.Prime] (trace : Data p) (initia
 
 /-- ADD/SUB and word-memory rows, in native time order, are a run of `RV.step` from `initial` reaching the terminal
     PC and cell values (LW to x0 is a no-op in our spec: the Airbender profile). -/
-def RVAirbenderSoundnessClaim : Prop :=
-  ∀ {trace : Data babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVProgramEntry} (_inputs : RVExecutionBoundary trace initial cells program) (_accepted : Accepted trace) (_decoded : RVDecoded trace program),
-    RVRealizes trace initial cells
+def RVAirbenderSoundnessClaim : Prop := RVTraceSoundness RVExecutionBoundary RVDecoded
 
 /-- The same rows from native boot (RAM seeded by the inits/teardowns instances `inits`). No ROM view: ROM-range RAM
     tokens are the shadow RAM, zero at boot. -/

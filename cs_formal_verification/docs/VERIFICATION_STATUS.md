@@ -13,9 +13,10 @@ these trace claims.
 ## Circuit families
 
 Each local claim says: every accepted row (arbitrary witness) is one `RV.step` from the row's pre-state, with the
-stated register/memory and PC effects. Its premises are the field bound, the public initialization and modeled
-tables (`RVInterfaceAssumptions`: starting `RV.State`, tracked cells, RV program table, ROM tables built from the ROM
-image, registers initialized) and logical matching/decoder membership; reads, operand bounds and preprocessing are
+stated register/memory and PC effects. All six pooled families share one statement shape (`Trace.RVRowSoundness`, the
+row read by `Trace.RVRowMapping`; claims at BabyBear). Its premises are the public initialization and modeled
+tables (`RVPooledHistoryInputs`: starting `RV.State`, tracked cells, RV program table, ROM tables built from the ROM
+image; AddSub adds registers initialized, JumpBranchSlt a canonical terminal PC) and logical matching/decoder membership; reads, operand bounds and preprocessing are
 derived from the initialized history. A step exists only for aligned accesses, stores into RAM and aligned jump targets.
 
 | Circuit | Checked coverage | Remaining work |
@@ -55,7 +56,7 @@ derived from the initialized history. A step exists only for aligned accesses, s
 | Task | State |
 | --- | --- |
 | Review organization | `Human/Circuits/` contains row contracts, references, named mappings and circuit tables. `Human/Helpers/` contains shared initialized history, matching, public boundaries and row pre-states; shared tables are in `Helpers/Tables/`. `Human/Trace/` contains execution, terminal realization and delegation/hash composition. `Human/ISA/` is the RV32 spec and its Sail equivalence leaf. The helper and circuit graphs have no whole-execution dependency. `Slop/` and `Import/` keep their organization. |
-| Per-circuit review assumptions | Checked for all six pooled families: visible per-circuit models (`rvCircuitModel`), separate word mapping and documented `RVTraceMapping`. `RVInterfaceAssumptions` (initialization and table context) imply shared `Properties.Soundness`. Initialized history derives operand/address bounds, actual reads and decoder preprocessing. Jump/comparison adds only the canonical terminal PC. |
+| Per-circuit review assumptions | Checked for all six pooled families: one shared per-row model (`Trace.rvRowModel`), per-family word mapping (`RVWordMapping`) and instruction, documented `Trace.RVRowMapping`. The public initialization and table context is `RVPooledHistoryInputs`. Initialized history derives operand/address bounds, actual reads and decoder preprocessing. Jump/comparison adds only the canonical terminal PC. |
 | Integrated review contract | Checked: [primary standard and mixed claims](../lean/human/Human/Trace/RVSoundness.lean) (`rv_pooled_native_soundness`) compose all six families through one initialized register/RAM history, including zero native ROM slots and actual public ROM bytes. `RVPooledBootInputs` lists public initialization, modeled table bindings and the terminal-PC condition; the RAM seeds are the inits/teardowns Init tokens. The conclusion `RVRealizes` is a run of `RV.run` reaching the terminal PC and tracked cells. No per-row range/read/result assumptions. |
 | Family traces | Checked in `Human/Trace/Families/`: the ADD/SUB + word-memory subset (`rv_airbender_soundness`, `rv_native_boot_soundness`), jump/branch/SLT, MUL/DIV, shift/binop and RAM subword memory (`rv_ram_trace_soundness`). Their conclusions are the same `RVRealizes`. |
 | [External nondeterminism](../lean/human/Human/Helpers/Decoder/RVExternalInput.lean) | Checked: whole mixed execution with the CSR 0x7C0 read/write forms (`NonDeterminism.Pooled.rv_native_soundness`) takes the stream from `RV.State.input` and an explicit port connection, and concludes the exact consumed count. Witness choices do not define the oracle; the stream is not authenticated by the circuit. |

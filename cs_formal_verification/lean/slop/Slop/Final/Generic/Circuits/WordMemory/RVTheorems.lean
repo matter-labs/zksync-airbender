@@ -1,5 +1,6 @@
 module
 public import Human.Circuits.WordMemory.RVTheorems
+public import Slop.Defs.Circuits.WordMemory.RVModel
 
 /-! The generic-prime forms of the claims of `human/Human/Circuits/WordMemory/RVTheorems.lean`, as stated before they were stated at BabyBear
 (each premise set forces `p = babyBearModulus`). The slop proofs prove these and instantiate them. -/

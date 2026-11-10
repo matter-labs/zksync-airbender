@@ -2,6 +2,7 @@ module
 public import Human.Circuits.AddSub.RVModel
 public import Slop.Trace.RVPooledRow
 public import Slop.Trace.RVRowGlue
+public import Slop.Defs.Circuits.AddSub.RVModel
 
 @[expose] public section
 

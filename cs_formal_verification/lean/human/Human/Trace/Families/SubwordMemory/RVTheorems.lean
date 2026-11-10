@@ -33,8 +33,6 @@ structure RVRAMInputs {p : Nat} [Fact p.Prime] (trace : NativeTrace p) (initial 
 
 /-- RAM LB/LBU/LH/LHU/SB/SH rows, in native time order, are a run of `RV.step` from `initial` reaching the terminal
     PC and cell values. Global history supplies all input bounds and reads; the boundary has no per-row assumptions. -/
-def RVRamTraceSoundnessClaim : Prop :=
-  ∀ {trace : NativeTrace babyBearModulus} {initial : RV.State} {cells : List Trace.Cell} {program : List RVProgramEntry} (_inputs : RVRAMInputs trace initial cells program) (_accepted : Trace.Accepted trace) (_decoded : RVDecoded trace program),
-    Trace.RVRealizes trace initial cells
+def RVRamTraceSoundnessClaim : Prop := Trace.RVTraceSoundness RVRAMInputs RVDecoded
 
 end Airbender.SubwordMemory
