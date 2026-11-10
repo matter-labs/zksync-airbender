@@ -9,7 +9,6 @@ Keccak-f[1600] (`keccak_f1600_run`). -/
 
 namespace RV
 open Spec Delegation
-set_option linter.unusedSimpArgs false
 
 /-- Round `r`'s calls with their kind. -/
 def fRound : List (DelegationKind × Nat × Fin 5) :=

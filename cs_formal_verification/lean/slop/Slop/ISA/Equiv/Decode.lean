@@ -57,8 +57,8 @@ theorem decode_is_sail : Airbender.DecodeIsSailClaim := by
   split at h
   all_goals (try simp only [RV.decodeCsr] at h)
   all_goals (try split_ifs at h)
-  all_goals first | (cases h; done) | skip
-  all_goals first | obtain rfl := Option.some.inj h | obtain ⟨_, _, rfl⟩ := Option.map_eq_some_iff.mp h | skip
+  all_goals try (cases h; done)
+  all_goals try first | obtain rfl := Option.some.inj h | obtain ⟨_, _, rfl⟩ := Option.map_eq_some_iff.mp h
   all_goals mk_bits
   all_goals first
     | exact dec_mopr w σ hs (by assumption) (by assumption) h

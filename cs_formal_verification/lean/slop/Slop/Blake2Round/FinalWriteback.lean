@@ -5,8 +5,6 @@ public import Slop.Blake2Round.OpIndex
 @[expose] public section
 
 set_option warningAsError true
--- one call's goals may not use every lemma of the shared simp set
-set_option linter.unusedSimpArgs false
 
 namespace Airbender.Blake2Round.Proofs
 
@@ -27,8 +25,8 @@ theorem final_write {p : Nat} [Fact p.Prime] (limb : Fin 16) {w : Nat → ZMod p
     ⟨108 + limb.val, by rw [constraint_count]; have := limb.isLt; omega⟩
   clear h
   fin_cases limb
-  all_goals simp only [finalColumn, finalQuery, Fin.isValue, Fin.val_zero, Fin.val_one,
-    Fin.val_two, Fin.val_mk, Fin.coe_ofNat_eq_mod, Nat.reduceMod, Nat.reduceMul, Nat.reduceAdd,
+  all_goals simp only [finalColumn, finalQuery, Fin.isValue,
+    Fin.val_mk, Fin.coe_ofNat_eq_mod, Nat.reduceMod, Nat.reduceMul, Nat.reduceAdd,
     Nat.reduceDiv] at equation ⊢
   all_goals op_index at equation ⊢
   all_goals simp [Expression.eval, Verification.environment, enabled] at equation ⊢

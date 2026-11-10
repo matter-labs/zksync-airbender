@@ -23,7 +23,6 @@ theorem dec_mopr (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ)
   have t28 : (w.extractLsb' 28 2).toNat = 0 := by rw [c28]; rfl
   simp only [BitVec.extractLsb'_toNat, Nat.shiftRight_eq_div_pow] at t31 t28
   have hk : Bits w 26 6 (w.toNat / 2 ^ 26 % 64) := by unfold Bits; rw [Nat.shiftRight_eq_div_pow]; rfl
-  have hl : Bits w 20 2 (w.toNat / 2 ^ 20 % 4) := by unfold Bits; rw [Nat.shiftRight_eq_div_pow]; rfl
   -- `N` = 28 … 31 only with `rd = x0`
   have h5 : w.toNat / 2 ^ 26 % 64 = 51 → Bits w 7 5 0 := by
     intro e
@@ -49,13 +48,6 @@ theorem dec_mopr (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ)
   · exact dec_mopr_4 w σ hs h0 h1 hk h4
   · exact dec_mopr_5 w σ hs h0 h1 hk h4
   · exact dec_mopr_6 w σ hs h0 h1 hk h4
-  · have hrd0 := h5 e
-    rcases (by omega : w.toNat / 2 ^ 20 % 4 = 0 ∨ w.toNat / 2 ^ 20 % 4 = 1 ∨ w.toNat / 2 ^ 20 % 4 = 2 ∨
-      w.toNat / 2 ^ 20 % 4 = 3) with f | f | f | f
-    all_goals rw [f] at hl
-    · exact dec_mopr_7_0 w σ hs h0 h1 hk hl h4 hrd0
-    · exact dec_mopr_7_1 w σ hs h0 h1 hk hl h4 hrd0
-    · exact dec_mopr_7_2 w σ hs h0 h1 hk hl h4 hrd0
-    · exact dec_mopr_7_3 w σ hs h0 h1 hk hl h4 hrd0
+  · exact dec_mopr_7 w σ hs h0 h1 hk h4 (h5 e)
 
 end Slop.Equiv

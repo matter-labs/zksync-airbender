@@ -38,7 +38,7 @@ for c in range(F['ncol']):
 sh.append(f"\nend {ns}\n")
 open(L+F['dir']+"/Shapes.lean","w").write("".join(sh))
 # ShapesOk
-ok=[f"import Slop.KeccakSplit.Setup.{F['dir']}.Shapes\n\n/- Agreement of every listed long block with its row formula, by formula: grid blocks by\n   their digits (`digits_eq`), affine runs by `omega`. -/\n\nnamespace {ns}\n\nopen Airbender.Import.Setup Airbender.Import.Setup.Proofs Airbender.Keccak.Split.SetupProofs\n\nset_option warningAsError true\nset_option linter.unusedSimpArgs false\n"]
+ok=[f"import Slop.KeccakSplit.Setup.{F['dir']}.Shapes\n\n/- Agreement of every listed long block with its row formula, by formula: grid blocks by\n   their digits (`digits_eq`), affine runs by `omega`. -/\n\nnamespace {ns}\n\nopen Airbender.Import.Setup Airbender.Import.Setup.Proofs Airbender.Keccak.Split.SetupProofs\n\nset_option warningAsError true\n-- generated (gen/setup/genk.py): every block gets the same simp set, which a block need not use in full\nset_option linter.unusedSimpArgs false\n"]
 if table:
     ok.append("\ntheorem iotaTable_eq : ∀ b < 256, iotaTable.getD b 0 = rcByte b := by decide +kernel\n")
 for c in range(F['ncol']):

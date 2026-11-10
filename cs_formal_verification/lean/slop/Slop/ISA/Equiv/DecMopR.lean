@@ -98,40 +98,9 @@ theorem dec_mopr_6 (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured �
   walk_decoder hs
   mopr_row
 
-/-- `mop.r.N`, N = 28. -/
-theorem dec_mopr_7_0 (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 115)
-    (h1 : Bits w 12 3 4) (h2 : Bits w 26 6 51) (h3 : Bits w 20 2 0) (h4 : Bits w 22 4 7)
-    (h5 : Bits w 7 5 0) :
-    runSail (ext_decode w) σ = .ok (Airbender.toSail (.xorRot (w.extractLsb' 30 1 ++ w.extractLsb' 26 2 ++
-      w.extractLsb' 20 2) (w.extractLsb' 7 5) (w.extractLsb' 15 5))) σ := by
-  refine (dec_sys4 w σ hs h0 h1).trans ?_
-  walk_decoder hs
-  mopr_row
-
-/-- `mop.r.N`, N = 29. -/
-theorem dec_mopr_7_1 (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 115)
-    (h1 : Bits w 12 3 4) (h2 : Bits w 26 6 51) (h3 : Bits w 20 2 1) (h4 : Bits w 22 4 7)
-    (h5 : Bits w 7 5 0) :
-    runSail (ext_decode w) σ = .ok (Airbender.toSail (.xorRot (w.extractLsb' 30 1 ++ w.extractLsb' 26 2 ++
-      w.extractLsb' 20 2) (w.extractLsb' 7 5) (w.extractLsb' 15 5))) σ := by
-  refine (dec_sys4 w σ hs h0 h1).trans ?_
-  walk_decoder hs
-  mopr_row
-
-/-- `mop.r.N`, N = 30. -/
-theorem dec_mopr_7_2 (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 115)
-    (h1 : Bits w 12 3 4) (h2 : Bits w 26 6 51) (h3 : Bits w 20 2 2) (h4 : Bits w 22 4 7)
-    (h5 : Bits w 7 5 0) :
-    runSail (ext_decode w) σ = .ok (Airbender.toSail (.xorRot (w.extractLsb' 30 1 ++ w.extractLsb' 26 2 ++
-      w.extractLsb' 20 2) (w.extractLsb' 7 5) (w.extractLsb' 15 5))) σ := by
-  refine (dec_sys4 w σ hs h0 h1).trans ?_
-  walk_decoder hs
-  mopr_row
-
-/-- `mop.r.N`, N = 31. -/
-theorem dec_mopr_7_3 (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 115)
-    (h1 : Bits w 12 3 4) (h2 : Bits w 26 6 51) (h3 : Bits w 20 2 3) (h4 : Bits w 22 4 7)
-    (h5 : Bits w 7 5 0) :
+/-- `mop.r.N`, N = 28 … 31 (bits 20–21 are part of the operands, not of the case). -/
+theorem dec_mopr_7 (w : BitVec 32) (σ : SailState) (hs : Airbender.Configured σ) (h0 : Bits w 0 7 115)
+    (h1 : Bits w 12 3 4) (h2 : Bits w 26 6 51) (h4 : Bits w 22 4 7) (h5 : Bits w 7 5 0) :
     runSail (ext_decode w) σ = .ok (Airbender.toSail (.xorRot (w.extractLsb' 30 1 ++ w.extractLsb' 26 2 ++
       w.extractLsb' 20 2) (w.extractLsb' 7 5) (w.extractLsb' 15 5))) σ := by
   refine (dec_sys4 w σ hs h0 h1).trans ?_

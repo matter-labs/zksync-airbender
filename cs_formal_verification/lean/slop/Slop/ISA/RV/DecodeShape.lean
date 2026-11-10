@@ -33,14 +33,12 @@ theorem decode_shape {w : Word} {i : Instr} (h : decode w = some i) : Shape i :=
   split at h
   all_goals (try simp only [decodeCsr, decodeMopR] at h)
   all_goals (try split_ifs at h)
-  all_goals first
+  all_goals try first
     | (cases h; done)
     | (obtain ⟨_, _, rfl⟩ := Option.map_eq_some_iff.mp h; trivial)
-    | skip
   all_goals obtain rfl := Option.some.inj h
   all_goals simp only [Shape]
   all_goals first
-    | trivial
     | exact ⟨_, rfl⟩
     | exact ⟨by simp, _, rfl⟩
     | (left; exact ⟨by simp, _, rfl⟩)

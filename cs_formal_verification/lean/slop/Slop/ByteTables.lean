@@ -54,7 +54,7 @@ theorem binary_row_shape (index : Fin 524545) (tag : Nat)
     ∃ key, shiftBinopRow index = binaryByteRow tag key := by
   unfold shiftBinopRow at selected ⊢
   dsimp only at selected ⊢
-  split_ifs at selected ⊢ <;> try dsimp only at selected ⊢
+  split_ifs at selected ⊢
   all_goals simp [binaryByteRow] at selected
   all_goals solve
     | (rcases valid with rfl | rfl | rfl <;> omega)

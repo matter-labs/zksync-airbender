@@ -14,7 +14,6 @@ namespace Airbender.Blake2Round.Proofs
 open Arithmetic
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option linter.unusedSimpArgs false
 
 /-- The flags of a request as the spec's three mode bits. -/
 abbrev reducedOf (flags : Fin 8) : Bool := decide (flags.val % 2 = 1)
@@ -136,11 +135,10 @@ theorem prepared_message (comp right first : Bool) (h : Vector Word 8) (e m : Ve
       rw [Vector.getElem_append]
       split
       · rename_i inside
-        simp only [show i < 8 by omega, ↓reduceIte, Nat.mod_eq_of_lt (show i < 8 by omega)]
+        simp only [Nat.mod_eq_of_lt (show i < 8 by omega)]
       · rename_i outside
         rw [Vector.getElem_take]
-        simp only [show ¬ i < 8 by omega, ↓reduceIte, Nat.mod_eq_of_lt (show i - 8 < 16 by omega),
-          show i - min 8 16 = i - 8 from rfl]
+        simp only [Nat.mod_eq_of_lt (show i - 8 < 16 by omega)]
     · simp only [Preparation.step, Bool.not_true, Bool.false_eq_true, ↓reduceIte, RV.bMsg, Vector.getElem_map,
         Vector.getElem_ofFn]
       rw [Vector.getElem_append]
@@ -222,7 +220,7 @@ theorem step_effect (flags : Fin 8) {r : Nat} (bound : r < RV.nR (reducedOf flag
       apply Vector.ext
       intro i hi
       have index := schedule_sigma ⟨r, r10⟩ ⟨i, hi⟩
-      have round : (Fin.ofNat 10 r) = ⟨r, r10⟩ := Fin.ext (by simp [Fin.val_ofNat, Nat.mod_eq_of_lt r10])
+      have round : (Fin.ofNat 10 r) = ⟨r, r10⟩ := Fin.ext (by simp [Nat.mod_eq_of_lt r10])
       simp only [Schedule.step, Vector.getElem_map, Vector.getElem_ofFn, round]
       have general : ∀ (s : Fin 16) (k : Nat), Fin.ofNat 16 k = s →
           (prep.message.map Word.toBitVec)[s].toNat = prep.message[Fin.ofNat 16 k].value := by

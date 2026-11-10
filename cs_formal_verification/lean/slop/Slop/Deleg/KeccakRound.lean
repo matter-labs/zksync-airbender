@@ -9,7 +9,6 @@ column parities (`stageA`), θ's `D` (`stageB`), θ (`stageC`), ρ (`stageD`), �
 
 namespace RV.Delegation
 open Spec
-set_option linter.unusedSimpArgs false
 
 def iota' (r : Nat) (B : Vector Lane 25) : Vector Lane 25 := B.set 0 (B[0] ^^^ delayedRC r)
 
@@ -30,8 +29,8 @@ theorem stageA (r : Nat) (hr : r < 24) (B : Vector Lane 25) (W : Fin 6 → Lane)
   have h4 := op0_rep r (by omega) 3 _ _ _ h3 _ rfl
   have h5 := op0_rep r (by omega) 4 _ _ _ h4 _ rfl
   refine h5.congr ?_ ?_
-  · funext p; fin_cases p <;> simp [Function.update_apply, A, iota', lane, Vector.getElem_set]
-  · funext i; fin_cases i <;> simp [Function.update_apply, A, iota', lane, parity, Vector.getElem_set]
+  · funext p; fin_cases p <;> simp [A, iota', lane]
+  · funext i; fin_cases i <;> simp [A, iota', lane, parity]
 
 /-- θ's `D` from the parities. -/
 theorem stageB (r : Nat) (hr : r < 24) (V : Fin 25 → Lane) (c : Fin 5 → Lane) (w : Lane) (S : Vector Lane 31)

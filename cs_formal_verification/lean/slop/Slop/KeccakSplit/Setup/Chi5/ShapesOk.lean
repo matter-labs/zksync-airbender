@@ -11,6 +11,7 @@ namespace Airbender.Keccak.Split.Chi5.SetupProofs
 open Airbender.Import.Setup Airbender.Import.Setup.Proofs Airbender.Keccak.Split.SetupProofs
 
 set_option warningAsError true
+-- generated (gen/setup/genk.py): every block gets the same simp set, which a block need not use in full
 set_option linter.unusedSimpArgs false
 
 theorem col0_longs : ∀ p ∈ col0Longs, p.2.Ok col0Spec p.1 := by

@@ -8,7 +8,6 @@ step's result, `x10` advances; a run of calls along a chain of control words (`c
 
 namespace RV
 open Spec Delegation
-set_option linter.unusedSimpArgs false
 
 theorem control_toNat (op x r : Nat) (h : op + 8 * x + 64 * r < 2 ^ 32) : (control op x r).toNat = op + 8 * x + 64 * r := by
   simp only [Delegation.control, BitVec.toNat_ofNat]; omega

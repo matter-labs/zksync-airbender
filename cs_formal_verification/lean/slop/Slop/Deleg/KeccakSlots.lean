@@ -12,7 +12,6 @@ operations does to that view (`op0_rep` … `op6_rep`). -/
 
 namespace RV.Delegation
 open Spec
-set_option linter.unusedSimpArgs false
 
 theorem piSrc_inj : Function.Injective piSrc := by decide
 
@@ -24,7 +23,7 @@ theorem laneSlot_val_eq (r : Nat) (a b : Fin 25) : ((laneSlot r a).val = (laneSl
   ⟨fun h => laneSlot_inj r (Fin.ext h), fun h => h ▸ rfl⟩
 
 theorem lane_eq_iff (x y x' y' : Fin 5) : lane x y = lane x' y' ↔ x = x' ∧ y = y' := by
-  simp only [lane, Fin.ext_iff, Fin.mk.injEq]; omega
+  simp only [lane, Fin.ext_iff]; omega
 
 theorem slot_ne_scratch (a : Fin 25) (k : Nat) : (a.val = 25 + k) ↔ False := ⟨fun e => by omega, False.elim⟩
 theorem scratch_ne_slot (a : Fin 25) (k : Nat) : (25 + k = a.val) ↔ False := ⟨fun e => by omega, False.elim⟩
@@ -59,14 +58,14 @@ theorem op0_rep (r : Nat) (hr : r ≤ 24) (x : Fin 5) (V : Fin 25 → Lane) (W :
   · intro p
     simp only [special5Step, special5Slots, hr, and_self, true_or, ↓reduceIte, slot, scratch, special5Op,
       finRange6_foldl, Vector.getElem_set, Fin.getElem_fin, Fin.val_castLE, Fin.val_castSucc, laneSlot_val_eq,
-      slot_ne_scratch, scratch_ne_slot, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val, hl,
+      scratch_ne_slot, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val, hl,
       Function.update_apply]
     clear hl hs
     split_ifs <;> subst_vars <;> simp_all [lane_eq_iff]
   · intro i
     simp only [special5Step, special5Slots, hr, and_self, true_or, ↓reduceIte, slot, scratch, special5Op,
-      finRange6_foldl, Vector.getElem_set, Fin.getElem_fin, Fin.val_castLE, Fin.val_castSucc, laneSlot_val_eq,
-      slot_ne_scratch, scratch_ne_slot, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val, hl, hs,
+      finRange6_foldl, Vector.getElem_set, Fin.getElem_fin, Fin.val_castLE, Fin.val_castSucc,
+      slot_ne_scratch, Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val, hl, hs,
       Function.update_apply, Nat.add_left_cancel_iff]
     by_cases hx : x.val = i.val
     · rw [ite_eq_left hx, ite_eq_left (show i = x.castSucc from Fin.ext (by rw [Fin.val_castSucc]; exact hx.symm))]
@@ -92,8 +91,7 @@ theorem op1_rep (r : Nat) (hr : r < 24) (V : Fin 25 → Lane) (W : Fin 6 → Lan
   obtain ⟨hl, hs⟩ := h
   constructor
   · intro p; kread [hr, hl]
-  · intro i; fin_cases i <;> simp [special5Step, special5Slots, special5Op, finRange6_foldl, scratch, hr, w0, w1, w2, w3, w4, w5,
-      Vector.getElem_set]
+  · intro i; fin_cases i <;> simp [special5Step, special5Slots, special5Op, finRange6_foldl, scratch, hr, w0, w1, w2, w3, w4]
 
 theorem op2_rep (r : Nat) (hr : r < 24) (V : Fin 25 → Lane) (W : Fin 6 → Lane) (S : Vector Lane 31)
     (h : Rep r V W S) :
@@ -104,7 +102,7 @@ theorem op2_rep (r : Nat) (hr : r < 24) (V : Fin 25 → Lane) (W : Fin 6 → Lan
   constructor
   · intro p; kread [hr, hl]
   · intro i; fin_cases i <;> simp [special5Step, special5Slots, special5Op, finRange6_foldl, scratch, hr, w0, w1, w2,
-      w3, w4, w5, Vector.getElem_set]
+      w3, w4, w5]
 
 /-- Column `x` set to `g`. -/
 def setCol (V : Fin 25 → Lane) (x : Fin 5) (g : Fin 5 → Lane) : Fin 25 → Lane :=
@@ -119,12 +117,12 @@ theorem laneY_lane (x y : Fin 5) : laneY (lane x y) = y := by ext; simp only [la
 
 theorem setCol_same (V : Fin 25 → Lane) (x : Fin 5) (g : Fin 5 → Lane) (y : Fin 5) :
     setCol V x g (lane x y) = g y := by
-  fin_cases y <;> simp [setCol, Function.update_apply, lane_eq_iff]
+  fin_cases y <;> simp [setCol, lane_eq_iff]
 
 theorem setCol_other (V : Fin 25 → Lane) (x : Fin 5) (g : Fin 5 → Lane) (p : Fin 25) (h : laneX p ≠ x) :
     setCol V x g p = V p := by
   have : ∀ y, p ≠ lane x y := fun y e => h (e ▸ laneX_lane x y)
-  simp [setCol, Function.update_apply, this]
+  simp [setCol, this]
 
 /-- Column `x`'s lanes `(x, y)` mapped by `h x y`. -/
 def colStep (h : Fin 5 → Fin 5 → Lane → Lane) (V : Fin 25 → Lane) (x : Fin 5) : Fin 25 → Lane :=
@@ -143,12 +141,12 @@ def setRow (V : Fin 25 → Lane) (x : Fin 5) (g : Fin 5 → Lane) : Fin 25 → L
 
 theorem setRow_same (V : Fin 25 → Lane) (x : Fin 5) (g : Fin 5 → Lane) (k : Fin 5) :
     setRow V x g (piSrc (lane k x)) = g k := by
-  fin_cases k <;> simp [setRow, Function.update_apply, piSrc_lane_eq]
+  fin_cases k <;> simp [setRow, piSrc_lane_eq]
 
 theorem setRow_other (V : Fin 25 → Lane) (x : Fin 5) (g : Fin 5 → Lane) (p : Fin 25) (h : laneY p ≠ x) :
     setRow V x g (piSrc p) = V (piSrc p) := by
   have : ∀ k, piSrc p ≠ piSrc (lane k x) := fun k e => h (by rw [piSrc_inj e, laneY_lane])
-  simp [setRow, Function.update_apply, this]
+  simp [setRow, this]
 
 /-- Row `x` after π set to `h x` of its old values. -/
 def rowStep (h : Fin 5 → (Fin 5 → Lane) → Fin 5 → Lane) (V : Fin 25 → Lane) (x : Fin 5) : Fin 25 → Lane :=
@@ -205,8 +203,8 @@ theorem op5_rep (r : Nat) (hr : r < 24) (x : Fin 5) (V : Fin 25 → Lane) (W : F
   · intro p; kread [hr, hl]
     clear hl hs w0 w1 w2 w3 w4 w5
     split_ifs <;> subst_vars <;> simp_all [A, piSrc_lane_eq]
-  · intro i; fin_cases i <;> simp [special5Step, special5Slots, special5Op, finRange6_foldl, scratch, slot, hr, w0,
-      w1, w2, w3, w4, w5, Vector.getElem_set, laneSlot_succ, hl, A, Function.update_apply, fin25_val_ne]
+  · intro i; fin_cases i <;> simp [special5Step, special5Slots, special5Op, finRange6_foldl, scratch, slot, hr,
+      w2, w3, w4, w5, laneSlot_succ, hl, A, fin25_val_ne]
 
 theorem op6_rep (r : Nat) (hr : r < 24) (x : Fin 5) (V : Fin 25 → Lane) (W : Fin 6 → Lane) (S : Vector Lane 31)
     (h : Rep r V W S) :
@@ -222,7 +220,7 @@ theorem op6_rep (r : Nat) (hr : r < 24) (x : Fin 5) (V : Fin 25 → Lane) (W : F
     clear hl hs w2 w3 w4 w5
     split_ifs <;> subst_vars <;> simp_all [A, piSrc_lane_eq]
   · intro i; fin_cases i <;> simp [special5Step, special5Slots, special5Op, finRange6_foldl, scratch, slot, hr, w0,
-      w1, w2, w3, w4, w5, Vector.getElem_set, laneSlot_succ, hl, A, Function.update_apply, fin25_val_ne]
+      w1, w2, w3, w4, w5, laneSlot_succ, hl, fin25_val_ne]
 
 theorem piSrc_surj : Function.Surjective piSrc := by decide
 
@@ -235,7 +233,7 @@ theorem op56_rep (r : Nat) (hr : r < 24) (x : Fin 5) (V : Fin 25 → Lane) (W : 
   obtain ⟨p, rfl⟩ := piSrc_surj q
   obtain ⟨k, y, rfl⟩ : ∃ k y, p = lane k y := ⟨_, _, (lane_laneX_laneY p).symm⟩
   by_cases hy : y = x
-  · subst hy; fin_cases k <;> simp [rowStep, setRow_same, chiRow, Function.update_apply, piSrc_lane_eq]
-  · simp [rowStep, setRow_other, laneY_lane, hy, Function.update_apply, piSrc_lane_eq]
+  · subst hy; fin_cases k <;> simp [rowStep, setRow_same, chiRow, piSrc_lane_eq]
+  · simp [rowStep, setRow_other, laneY_lane, hy, piSrc_lane_eq]
 
 end RV.Delegation

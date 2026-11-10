@@ -60,8 +60,8 @@ theorem writeRV_readback (cell : Cell) (value : BitVec 32) (before : RV.State)
     refine ⟨before.setReg index value, writeRV_register index value before, ?_⟩
     rw [readRV_register, getReg_setReg_same]
     by_cases zeroIndex : index = 0
-    · rw [if_pos zeroIndex, zero (by rw [zeroIndex])]
-    · rw [if_neg zeroIndex]
+    · rw [ite_eq_left zeroIndex, zero (by rw [zeroIndex])]
+    · rw [ite_eq_right zeroIndex]
   | ram address =>
     refine ⟨before.store address value 4, writeRV_ram value before, ?_⟩
     rw [readRV_ram _ (readable_of_aligned aligned)]
@@ -143,7 +143,7 @@ theorem writeRV_self_same_register {before after : RV.State} {index : BitVec 5} 
     rw [getReg_setReg_same]
     by_cases zeroIndex : j = 0
     · simp [zeroIndex, RV.State.getReg]
-    · rw [if_neg zeroIndex, getEq]
+    · rw [ite_eq_right zeroIndex, getEq]
   · exact getReg_setReg_other before different value
 
 end Airbender.Trace.Proofs

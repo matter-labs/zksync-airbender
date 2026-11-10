@@ -11,7 +11,6 @@ namespace Airbender.Keccak.Split.ColumnParity.SetupProofs
 open Airbender.Keccak.Split.SetupProofs
 
 set_option warningAsError true
-set_option linter.unusedSimpArgs false
 
 /-- The row formulas, one per column. -/
 def formulaRow (n : Nat) : Vector Nat 8 :=

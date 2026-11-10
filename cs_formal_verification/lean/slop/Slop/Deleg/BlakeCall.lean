@@ -8,7 +8,6 @@ public import Mathlib.Tactic.IntervalCases
 
 namespace RV
 open Spec
-set_option linter.unusedSimpArgs false
 
 /-- The working vector round 0 starts from: the state, the IV, the counter and last-block words of the extended
 state. -/
@@ -69,7 +68,7 @@ theorem blakeRound_mode_call (mem : Word → BitVec 8) (p q : Word) (hp : Buffer
     simp (config := { decide := true }) only [ite_true, ite_false]
   all_goals
     simp only [v', h, e, bV0, bMsg, bH0, blakeV0, blakeFinal, Option.some.injEq, Effect.mk.injEq, ite_true,
-      ite_false, and_true, show (p + 32 : Word) = p + 32#32 from rfl, Bool.false_eq_true]
+      ite_false, show (p + 32 : Word) = p + 32#32 from rfl, Bool.false_eq_true]
     refine ⟨?_, by decide⟩
     congr
 

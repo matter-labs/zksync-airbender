@@ -11,7 +11,6 @@ namespace Airbender.Keccak.Split.Chi5.SetupProofs
 open Airbender.Keccak.Split.SetupProofs
 
 set_option warningAsError true
-set_option linter.unusedSimpArgs false
 
 /-- The row formulas, one per column. -/
 def formulaRow (n : Nat) : Vector Nat 11 :=
@@ -110,26 +109,26 @@ theorem control_facts {row : Vector (ZMod babyBearModulus) 11} (h : IsFormulaRow
   have nz : n ≠ 1048576 := by
     rintro rfl
     rw [Vector.getElem_map, get1] at active
-    have : spec1 1048576 = 0 := by simp (disch := omega) only [spec1, ctl, ite_eq_left, ite_eq_right, ite_true, ite_false]
+    have : spec1 1048576 = 0 := by simp (disch := omega) only [spec1, ctl, ite_eq_left, ite_eq_right, ite_true]
     rw [this, Nat.cast_zero] at active
     exact zero_ne_one active
   have j : callAt (n - 1048576) < 361 := callIndex_lt (by omega) (by omega) (by omega)
   have e0 : spec0 n = controlAt (callAt (n - 1048576)) := by
-    simp (disch := omega) only [spec0, ctl, ite_eq_left, ite_eq_right, ite_true, ite_false]
+    simp (disch := omega) only [spec0, ctl, ite_eq_left, ite_eq_right]
   have e2 : spec2 n = bump (controlAt (callAt (n - 1048576))) := by
-    simp (disch := omega) only [spec2, ctl, ite_eq_left, ite_eq_right, ite_true, ite_false]
+    simp (disch := omega) only [spec2, ctl, ite_eq_left, ite_eq_right]
   have e3 : spec3 n = slotNat (callAt (n - 1048576)) 0 := by
-    simp (disch := omega) only [spec3, ctl, ite_eq_left, ite_eq_right, ite_true, ite_false]
+    simp (disch := omega) only [spec3, ctl, ite_eq_left, ite_eq_right]
   have e4 : spec4 n = slotNat (callAt (n - 1048576)) 1 := by
-    simp (disch := omega) only [spec4, ctl, ite_eq_left, ite_eq_right, ite_true, ite_false]
+    simp (disch := omega) only [spec4, ctl, ite_eq_left, ite_eq_right]
   have e5 : spec5 n = slotNat (callAt (n - 1048576)) 2 := by
-    simp (disch := omega) only [spec5, ctl, ite_eq_left, ite_eq_right, ite_true, ite_false]
+    simp (disch := omega) only [spec5, ctl, ite_eq_left, ite_eq_right]
   have e6 : spec6 n = slotNat (callAt (n - 1048576)) 3 := by
-    simp (disch := omega) only [spec6, ctl, ite_eq_left, ite_eq_right, ite_true, ite_false]
+    simp (disch := omega) only [spec6, ctl, ite_eq_left, ite_eq_right]
   have e7 : spec7 n = slotNat (callAt (n - 1048576)) 4 := by
-    simp (disch := omega) only [spec7, ctl, ite_eq_left, ite_eq_right, ite_true, ite_false]
+    simp (disch := omega) only [spec7, ctl, ite_eq_left, ite_eq_right]
   have e8 : spec8 n = callAt (n - 1048576) % 5 := by
-    simp (disch := omega) only [spec8, ctl, ite_eq_left, ite_eq_right, ite_true, ite_false]
+    simp (disch := omega) only [spec8, ctl, ite_eq_left, ite_eq_right]
   refine ⟨⟨callAt (n - 1048576), j⟩, chi5_kindAt _, ?_, ?_, ?_, ?_⟩
   · rw [Vector.getElem_map, get0, e0]
   · rw [Vector.getElem_map, get2, e2]

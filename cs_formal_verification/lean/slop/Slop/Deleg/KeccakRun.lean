@@ -9,7 +9,6 @@ public import Slop.Deleg.KeccakCalls
 
 namespace RV
 open Spec Delegation
-set_option linter.unusedSimpArgs false
 
 theorem getElem_eq_of_eq {α : Type} {n : Nat} (v : Vector α n) {i j : Nat} (h : i = j) (hi : i < n) :
     v[i] = v[j]'(h ▸ hi) := by subst h; rfl
@@ -28,7 +27,7 @@ theorem s5_effect : ∀ x10 x11 x12 mem, effect .keccak x10 x11 x12 mem =
 theorem s5Round_calls (r : Nat) (hr : r < 24) : ∀ q ∈ s5Round, OneCall special5Step special5Next q.1 q.2.1 q.2.2 r := by
   intro q hq
   have hop : q.2.1 < 7 ∧ q.1 = .keccak := by
-    simp only [s5Round, roundCalls, List.map_append, List.map_cons, List.map_nil, List.cons_append,
+    simp only [s5Round, roundCalls, List.map_cons, List.map_nil, List.cons_append,
       List.nil_append, List.mem_cons, List.not_mem_nil, or_false] at hq
     rcases hq with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h |
       h | h <;> subst h <;> exact ⟨by decide, rfl⟩
@@ -65,8 +64,8 @@ theorem lanes_final (B : Vector Lane 25) (W : Fin 6 → Lane) (mem : Word → Bi
   have e1 : (readLanes mem p 25)[i] = (readLanes mem p 31)[i] := by simp only [readLanes, Vector.getElem_ofFn]
   refine e1.trans ((getElem_eq_of_eq _ e0 (by omega)).trans ((h.1 ⟨i, hi⟩).trans ?_))
   rcases Nat.eq_zero_or_pos i with rfl | hpos
-  · simp [Function.update_apply, iota', lane]
-  · simp [Function.update_apply, iota', lane, Fin.ext_iff, Vector.getElem_set, show i ≠ 0 by omega,
+  · simp [iota', lane]
+  · simp [iota', lane, Fin.ext_iff, show i ≠ 0 by omega,
       show 0 ≠ i by omega]
 
 theorem Deleg.keccak_special5_run : KeccakSpecial5Run := by

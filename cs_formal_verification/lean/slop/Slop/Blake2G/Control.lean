@@ -73,7 +73,7 @@ theorem controller_input (input : Input) : controllerRows input.key = (step inpu
       all_goals congr 1
       all_goals first
         | (apply Fin.ext; simp [Input.key, Nat.mod_eq_of_lt register.isLt])
-        | (simp [Input.key]; try omega)
+        | simp [Input.key]
   exact congrArg (fun i => (step i).row) original
 
 theorem state_offsets_bounded (input : Input) (i : Fin 4) : (step input).stateOffsets[i] < 16 := by

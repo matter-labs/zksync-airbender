@@ -11,6 +11,7 @@ namespace Airbender.Keccak.Split.ColumnParity.SetupProofs
 open Airbender.Import.Setup Airbender.Import.Setup.Proofs Airbender.Keccak.Split.SetupProofs
 
 set_option warningAsError true
+-- generated (gen/setup/genk.py): every block gets the same simp set, which a block need not use in full
 set_option linter.unusedSimpArgs false
 
 theorem iotaTable_eq : ∀ b < 256, iotaTable.getD b 0 = rcByte b := by decide +kernel

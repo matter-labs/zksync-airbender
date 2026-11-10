@@ -62,7 +62,7 @@ theorem Same.jumpAligned {s t : State} (h : Same s t) (pc : Word) :
 
 theorem SameOpt.map {a b : Option State} (h : SameOpt a b) {f g : State → State}
     (hf : ∀ s t, Same s t → Same (f s) (g t)) : SameOpt (a.map f) (b.map g) := by
-  cases a <;> cases b <;> first | trivial | exact h.elim | exact hf _ _ h
+  cases a <;> cases b <;> first | trivial | exact hf _ _ h
 
 theorem Same.applyEffect {s t : State} (h : Same s t) (e : Effect) :
     SameOpt (s.applyEffect e) (t.applyEffect e) := by

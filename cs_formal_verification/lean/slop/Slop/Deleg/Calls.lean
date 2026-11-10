@@ -7,7 +7,6 @@ public import Human.ISA.DelegationRuns
 /-! Runs of delegation calls (`calls`): one call writing inside a buffer, composing runs, reading what they wrote. -/
 
 namespace RV
-set_option linter.unusedSimpArgs false
 
 theorem calls_append (ks ks' : List DelegationKind) (s : State) :
     calls (ks ++ ks') s = (calls ks s).bind (calls ks') := by

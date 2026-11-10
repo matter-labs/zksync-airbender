@@ -10,8 +10,6 @@ public import Mathlib.Tactic.ReduceModChar
 @[expose] public section
 
 set_option warningAsError true
--- one call's goals may not use every lemma of the shared simp set
-set_option linter.unusedSimpArgs false
 
 namespace Airbender.Blake2Round.Proofs
 
@@ -82,8 +80,7 @@ theorem final_query {p : Nat} [Fact p.Prime] (hp : 512 ≤ p)
     (finalColumn w limb stage 2).val (finalColumn w limb stage 3).val
     (finalColumn w limb stage 4).val at facts
   fin_cases kind
-  all_goals simp only [RowFacts, Fin.zero_eta, Fin.isValue, Fin.mk_one, Fin.reduceFinMk,
-    Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_zero, List.getElem_cons_succ]
+  all_goals simp only [RowFacts, Fin.zero_eta, Fin.isValue, Fin.mk_one, Fin.reduceFinMk]
     at facts ⊢
   all_goals obtain ⟨x, y, z, -, -⟩ := facts
   all_goals refine ⟨by norm_num; omega, by norm_num; omega, ?_, z⟩
@@ -126,7 +123,7 @@ theorem ac_shape {p : Nat} [Fact p.Prime] (field : p = 2013265921) (limb : Fin 8
   subst field
   fin_cases limb
   all_goals simp only [finalColumn, finalQuery, Fin.val_castLE, Fin.coe_ofNat_eq_mod,
-    Nat.reduceMod, Fin.isValue, Fin.val_zero, Fin.val_one, Fin.val_two, Fin.val_mk,
+    Nat.reduceMod, Fin.isValue, Fin.val_mk,
     Nat.reduceMul, Nat.reduceAdd]
   all_goals op_index
   all_goals simp [Expression.eval, Verification.environment, acInitial, acA, acC]
@@ -162,7 +159,7 @@ theorem bd_shape {p : Nat} [Fact p.Prime] (field : p = 2013265921) (limb : Fin 8
   subst field
   fin_cases limb
   all_goals simp only [finalColumn, finalQuery, Fin.coe_ofNat_eq_mod,
-    Nat.reduceMod, Fin.isValue, Fin.val_zero, Fin.val_one, Fin.val_two, Fin.val_mk,
+    Nat.reduceMod, Fin.isValue, Fin.val_mk,
     Nat.reduceMul, Nat.reduceAdd]
   all_goals op_index
   all_goals simp [Expression.eval, Verification.environment, bdInitial, bdB, bdD]

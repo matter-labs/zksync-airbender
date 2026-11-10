@@ -73,10 +73,9 @@ theorem decode_jal_even {bits : RV.Word} {rd : RV.Reg} {offset : RV.Word}
   split at h
   all_goals (try simp only [RV.decodeCsr, RV.decodeMopR] at h)
   all_goals (try split_ifs at h)
-  all_goals first
+  all_goals try first
     | (cases h; done)
     | (obtain ⟨_, _, h⟩ := Option.map_eq_some_iff.mp h; cases h; done)
-    | skip
   all_goals obtain ⟨rfl, rfl⟩ := RV.Instr.jal.inj (Option.some.inj h)
   exact low_bit_even _
 
@@ -88,10 +87,9 @@ theorem decode_branch_even {bits : RV.Word} {cond : RV.Cond} {rs1 rs2 : RV.Reg} 
   split at h
   all_goals (try simp only [RV.decodeCsr, RV.decodeMopR] at h)
   all_goals (try split_ifs at h)
-  all_goals first
+  all_goals try first
     | (cases h; done)
     | (obtain ⟨_, _, h⟩ := Option.map_eq_some_iff.mp h; cases h; done)
-    | skip
   all_goals obtain ⟨rfl, rfl, rfl, rfl⟩ := RV.Instr.branch.inj (Option.some.inj h)
   all_goals exact low_bit_even _
 

@@ -15,7 +15,6 @@ namespace Airbender.Keccak.Split.Call.Proofs
 open Spec RV.Delegation
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option linter.unusedSimpArgs false
 
 theorem pi_source_spec : ∀ p : Fin 25, piSource p = piSrc p := by decide
 

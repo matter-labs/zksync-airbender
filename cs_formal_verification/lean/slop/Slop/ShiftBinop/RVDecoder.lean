@@ -22,7 +22,8 @@ theorem rv_decoder_field_bounds {i : RV.Instr} {data : Trace.DecoderData Unit}
     | (solve | cases fields)
     | (simp only [Option.some.injEq] at fields
        subst data
-       simp [Operation.isShift, Operation.tag, Word.Bounded, limbBase, binaryImmediate] <;> omega)
+       simp [Operation.isShift, Operation.tag, Word.Bounded, limbBase, binaryImmediate]
+       all_goals omega)
 
 /-- Public decoding admits exactly the native binary or shift operation tags. -/
 theorem rv_decoder_operation_tags {i : RV.Instr} {data : Trace.DecoderData Unit}

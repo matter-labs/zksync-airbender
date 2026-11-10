@@ -5,8 +5,6 @@ public import Human.ISA.RV32
 
 /-! Byte-memory lemmas for `RV.read` / `RV.write`. -/
 
-set_option linter.unusedSimpArgs false
-
 namespace RV
 
 theorem write_other (m : Word → BitVec 8) (a v : Word) (n : Nat) (b : Word)
@@ -97,13 +95,13 @@ theorem read_write_same4 (m : Word → BitVec 8) (a v : Word) : read (write m a 
   rcases (by omega : i < 8 ∨ (8 ≤ i ∧ i < 16) ∨ (16 ≤ i ∧ i < 24) ∨ (24 ≤ i ∧ i < 32)) with h | h | h | h
   · simp [h, BitVec.getLsbD_eq_getElem hi]
   · have e : 8 + (i - 8) = i := by omega
-    simp [h, show ¬ i < 8 by omega, show i - 8 < 8 by omega, e, BitVec.getLsbD_eq_getElem hi]
+    simp [show ¬ i < 8 by omega, show i - 8 < 8 by omega, e, BitVec.getLsbD_eq_getElem hi]
   · have e : 16 + (i - 8 - 8) = i := by omega
-    simp [h, show ¬ i < 8 by omega, show ¬ i - 8 < 8 by omega, show i - 8 - 8 < 8 by omega, e,
+    simp [show ¬ i < 8 by omega, show ¬ i - 8 < 8 by omega, show i - 8 - 8 < 8 by omega, e,
       BitVec.getLsbD_eq_getElem hi]
   · have e : 24 + (i - 8 - 8 - 8) = i := by omega
     simp [h, show ¬ i < 8 by omega, show ¬ i - 8 < 8 by omega, show ¬ i - 8 - 8 < 8 by omega,
-      show i - 8 - 8 - 8 < 8 by omega, e, BitVec.getLsbD_eq_getElem hi]
+      show i - 8 - 8 - 8 < 8 by omega, e]
 
 /-! ROM image and RAM (`State.loadView`): a LOAD reads `rom` below `ROM_END`, `mem` from `ROM_END` on. -/
 

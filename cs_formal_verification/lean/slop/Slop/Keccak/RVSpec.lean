@@ -17,7 +17,6 @@ namespace Airbender.Keccak.Proofs
 open Spec RV.Delegation
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option linter.unusedSimpArgs false
 
 /-- Clean's lane `5x + y` is the spec's lane `(x, y)`. -/
 def specLane (i : Fin 25) : Fin 25 := lane ⟨i.val / 5, by omega⟩ ⟨i.val % 5, by omega⟩
@@ -56,23 +55,22 @@ theorem rows_slots (mode : Fin 7) (x : Fin 5) (r : Nat)
   simp only [Controller.rows, key, m8, x8, r64, hx, ↓reduceIte]
   fin_cases mode
   · have h24 : r ≤ 24 := by omega
-    simp only [Fin.zero_eta, Fin.isValue, Fin.val_zero, true_and, h24, big, and_self, ↓reduceIte]
+    simp only [h24, big, and_self, ↓reduceIte]
     fin_cases k
-    all_goals simp only [special5Slots, h24, true_and, true_or, ↓reduceIte, Vector.getElem_ofFn, Fin.isValue,
-      Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val, slot, scratch, Fin.val_castLE, Fin.val_castSucc]
+    all_goals simp only [special5Slots, h24, true_and, true_or, ↓reduceIte, Fin.isValue,
+      slot, scratch, Fin.val_castSucc]
     all_goals first
       | rfl
-      | (apply physical_lane_xy; simp only [Fin.val_natCast, Fin.val_ofNat, Fin.isValue]; omega)
+      | (apply physical_lane_xy; simp only [Fin.val_ofNat, Fin.isValue]; omega)
   all_goals have h24 : r < 24 := by simp at valid; omega
-  all_goals simp only [Fin.isValue, Fin.reduceFinMk, Fin.val_succ, h24, and_true, ↓reduceIte]
+  all_goals simp only [h24, and_true, ↓reduceIte]
   all_goals fin_cases k
-  all_goals simp only [special5Slots, h24, true_and, or_true, ↓reduceIte, Vector.getElem_ofFn, Fin.isValue,
-    Matrix.cons_val_zero, Matrix.cons_val_one, Matrix.cons_val, slot, scratch, Fin.val_castLE, Fin.val_castSucc,
-    Nat.reduceAdd, Nat.one_lt_ofNat, Nat.ofNat_pos, Nat.lt_irrefl, OfNat.ofNat_ne_zero, false_and, false_or,
-    and_false, or_false, Vector.getElem_mk]
+  all_goals simp only [special5Slots, h24, true_and, or_true, ↓reduceIte, Fin.isValue,
+    slot, scratch, Fin.val_castSucc,
+    Nat.reduceAdd, Nat.ofNat_pos, OfNat.ofNat_ne_zero, false_and]
   all_goals first
     | rfl
-    | (apply physical_lane_xy; simp only [Fin.val_natCast, Fin.val_ofNat, Fin.isValue]; omega)
+    | (apply physical_lane_xy; simp only [Fin.val_ofNat, Fin.isValue]; omega)
     | (fin_cases x <;> rfl)
 
 theorem big_ne_fin25 (a : Fin 25) {k : Nat} (h : 25 ≤ k) : (k = a.val) ↔ False := ⟨fun e => by omega, False.elim⟩
@@ -87,26 +85,26 @@ theorem special5_slots_injective (mode : Fin 7) (x : Fin 5) (r : Nat)
   fin_cases mode
   · have h24 : r ≤ 24 := by omega
     fin_cases a <;> fin_cases b
-    all_goals simp [special5Slots, slot, scratch, h24, laneSlot_val_eq, lane_eq_iff, slot_ne_scratch,
-      scratch_ne_slot, slot_ne_25, ne_slot_25, fin25_val_ne, big_ne_fin25]
+    all_goals simp [special5Slots, slot, scratch, h24, laneSlot_val_eq, lane_eq_iff,
+      fin25_val_ne, big_ne_fin25]
   all_goals have h24 : r < 24 := by simp at valid; omega
   all_goals fin_cases a <;> fin_cases b
-  all_goals simp [special5Slots, slot, scratch, h24, laneSlot_val_eq, lane_eq_iff, slot_ne_scratch,
-    scratch_ne_slot, slot_ne_25, ne_slot_25, fin25_val_ne, big_ne_fin25]
+  all_goals simp [special5Slots, slot, scratch, h24, laneSlot_val_eq, lane_eq_iff,
+    fin25_val_ne, big_ne_fin25]
 
 theorem foldl_set_hit (sl : Fin 6 → Fin 31) (out : Fin 6 → Lane) (S : Vector Lane 31)
     (injective : Function.Injective sl) (k : Fin 6) :
     ((List.finRange 6).foldl (fun S i => S.set (sl i) (out i)) S)[sl k] = out k := by
   have ne (a b : Fin 6) (different : a ≠ b) : (sl a).val ≠ (sl b).val := fun h => different (injective (Fin.ext h))
   rw [finRange6_foldl]
-  fin_cases k <;> simp [Vector.getElem_set, ne]
+  fin_cases k <;> simp [ne]
 
 theorem foldl_set_miss (sl : Fin 6 → Fin 31) (out : Fin 6 → Lane) (S : Vector Lane 31) (j : Fin 31)
     (miss : ∀ k, sl k ≠ j) :
     ((List.finRange 6).foldl (fun S i => S.set (sl i) (out i)) S)[j] = S[j] := by
   have ne (k : Fin 6) : (sl k).val ≠ j.val := fun h => miss k (Fin.ext h)
   rw [finRange6_foldl]
-  simp [Vector.getElem_set, ne]
+  simp [ne]
 
 theorem round_constant_nat : ∀ k : Fin 24, (Specs.Keccak256.roundConstants[k.val]).toNat = (RC k).toNat := by
   decide
@@ -141,7 +139,7 @@ theorem micro_value_spec (mode : Fin 7) (x : Fin 5) (round : Fin 32) (bound : ro
     have r2 := rho_rotation_val x ⟨2, by decide⟩
     have r3 := rho_rotation_val x ⟨3, by decide⟩
     have r4 := rho_rotation_val x ⟨4, by decide⟩
-    simp only [Fin.isValue] at r0 r1 r2 r3 r4
+    simp only at r0 r1 r2 r3 r4
     fin_cases k
     all_goals simp [microValue, special5Op, rotLeft64_toNat, r0, r1, r2, r3, r4, -BitVec.toNat_rotateLeft]
   all_goals fin_cases k

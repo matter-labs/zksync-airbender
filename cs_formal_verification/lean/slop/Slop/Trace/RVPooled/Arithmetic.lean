@@ -50,9 +50,7 @@ theorem rv_nop_exec (s : RV.State) {i : RV.Instr} (fields : Trace.rvDecoderField
   all_goals first
     | (cases fields; done)
     | (simp only [Option.some.injEq, DecoderData.mk.injEq] at fields
-       first
-         | (obtain ⟨-, -, -, h, -⟩ := fields; contradiction)
-         | skip)
+       try (obtain ⟨-, -, -, h, -⟩ := fields; contradiction))
   all_goals (obtain rfl : _ = (0 : BitVec 5) := by assumption)
   all_goals first
     | exact ⟨_, rfl, (rv_same_set_zero s _).nextInstr⟩

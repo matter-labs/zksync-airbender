@@ -53,7 +53,8 @@ theorem rv_decoder_zero_discarded {i : RV.Instr} {data : Trace.DecoderData Unit}
   all_goals try (simp only [Option.some.injEq] at fields; subst data)
   all_goals first
     | (solve | cases fields)
-    | ((try simp_all) <;> decide)
+    | (solve | simp_all)
+    | ((try simp_all); decide)
 
 theorem rv_decoder_selectors {p : Nat} [Fact p.Prime] (hp : limbBase < p)
     {w : Nat → ZMod p} {entry : RVProgramEntry}

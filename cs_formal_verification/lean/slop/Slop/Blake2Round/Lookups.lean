@@ -72,7 +72,7 @@ theorem formula_bound (n : Nat) (c : Fin 6) : (formulaRow n)[c] < 512 := by
 private theorem formula_facts (n : Nat) (hn : n < 606208) :
     RowFacts (spec5 n) (spec0 n) (spec1 n) (spec2 n) (spec3 n) (spec4 n) := by
   simp only [spec0, spec1, spec2, spec3, spec4, spec5]
-  split_ifs <;> simp only [RowFacts] <;> refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;> first | omega | rfl | trivial
+  split_ifs <;> simp only [RowFacts] <;> refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;> first | omega | trivial
 
 private theorem cast_inj {p : Nat} [Fact p.Prime] (hp : 512 ≤ p) {a b : Nat} (ha : a < 512)
     (hb : b < 512) (h : (a : ZMod p) = (b : ZMod p)) : a = b := by

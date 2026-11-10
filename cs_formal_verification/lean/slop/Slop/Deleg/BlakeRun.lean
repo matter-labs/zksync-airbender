@@ -8,7 +8,6 @@ public import Slop.Deleg.BlakeCall
 
 namespace RV
 open Spec
-set_option linter.unusedSimpArgs false
 
 theorem blake_mode_run (s : State) (p q : Word) (hp : Buffer p 96 128) (hq : Buffer q 64 64) (hpq : Apart p 96 q 64)
     (red right comp : Bool) (h10 : s.getReg 10 = p) (h11 : s.getReg 11 = q)
@@ -144,7 +143,7 @@ theorem blake_hash_gen (red : Bool) (s : State) (p q : Word) (right : Bool) (hp 
     simp only [bV0, ite_true]; exact BitVec.xor_comm _ _
   have ml : bMsg false true (readWords s.mem p 8) (readWords s.mem q 16) = readWords s.mem p 8 ++ readWords s.mem q 8 := by
     apply Vector.ext; intro i hi
-    simp only [bMsg, Bool.false_eq_true, ↓reduceIte, Vector.getElem_ofFn, Vector.getElem_append]
+    simp only [bMsg, Bool.false_eq_true, ↓reduceIte, Vector.getElem_ofFn]
     by_cases h8 : i < 8
     · simp only [h8, ↓reduceIte, Nat.mod_eq_of_lt h8, Vector.getElem_append_left h8]
     · have e : (i - 8) % 16 = i - 8 := Nat.mod_eq_of_lt (by omega)
@@ -152,7 +151,7 @@ theorem blake_hash_gen (red : Bool) (s : State) (p q : Word) (right : Bool) (hp 
         readWords, Vector.getElem_ofFn]
   have mr : bMsg true true (readWords s.mem p 8) (readWords s.mem q 16) = readWords s.mem q 8 ++ readWords s.mem p 8 := by
     apply Vector.ext; intro i hi
-    simp only [bMsg, ↓reduceIte, Vector.getElem_ofFn, Vector.getElem_append]
+    simp only [bMsg, ↓reduceIte, Vector.getElem_ofFn]
     by_cases h8 : i < 8
     · have e : i % 16 = i := Nat.mod_eq_of_lt (by omega)
       simp only [h8, ↓reduceIte, e, Vector.getElem_append_left h8, readWords, Vector.getElem_ofFn]

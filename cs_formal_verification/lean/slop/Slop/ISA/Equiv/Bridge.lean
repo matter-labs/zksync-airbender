@@ -38,7 +38,6 @@ theorem read_eq1 (σm : Nat → BitVec 8) (sm : BitVec 32 → BitVec 8) (hm : �
   have z : readBytes σm (a.toNat + 1) 0 = 0#0 := rfl
   simp only [RV.read, readBytes_succ, z]
   simp only [Nat.reduceAdd, e0]
-  try simp only [BitVec.reduceAdd]
   generalize sm a = b0
   apply BitVec.eq_of_getLsbD_eq; intro j hj
   interval_cases j <;> simp only [BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, BitVec.zeroExtend_eq_setWidth,
@@ -72,7 +71,6 @@ theorem read_eq2 (σm : Nat → BitVec 8) (sm : BitVec 32 → BitVec 8) (hm : �
   have z : readBytes σm (a.toNat + 2) 0 = 0#0 := rfl
   simp only [RV.read, readBytes_succ, z]
   simp only [Nat.reduceAdd, e0, e1]
-  try simp only [BitVec.reduceAdd]
   generalize sm a = b0; generalize sm (a + 1#32) = b1
   apply BitVec.eq_of_getLsbD_eq; intro j hj
   interval_cases j <;> simp only [BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, BitVec.zeroExtend_eq_setWidth,
@@ -96,7 +94,6 @@ theorem write_eq2 (σm : Nat → BitVec 8) (sm : BitVec 32 → BitVec 8) (hm : �
     writeBytes σm a.toNat 2 (v.setWidth (8 * 2)) b.toNat = RV.write sm a v 2 b := by
   rw [writeBytes2, rvwrite2]
   have i1 := idx a b 1 (by omega)
-  try simp only [BitVec.ofNat_eq_ofNat] at i1
   beta_reduce
   simp only [BitVec.toNat_inj, i1, hm]
   by_cases h0 : b = a <;> by_cases h1 : b = a + 1 <;> simp_all
@@ -133,7 +130,6 @@ theorem write_eq4 (σm : Nat → BitVec 8) (sm : BitVec 32 → BitVec 8) (hm : �
     writeBytes σm a.toNat 4 (v.setWidth (8 * 4)) b.toNat = RV.write sm a v 4 b := by
   rw [writeBytes4, rvwrite4]
   have i1 := idx a b 1 (by omega); have i2 := idx a b 2 (by omega); have i3 := idx a b 3 (by omega)
-  try simp only [BitVec.ofNat_eq_ofNat] at i1 i2 i3
   beta_reduce
   simp only [BitVec.toNat_inj, i1, i2, i3, hm]
   by_cases h0 : b = a <;> by_cases h1 : b = a + 1 <;> by_cases h2 : b = a + 2 <;> by_cases h3 : b = a + 3 <;> simp_all

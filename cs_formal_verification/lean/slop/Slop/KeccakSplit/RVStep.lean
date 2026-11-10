@@ -11,7 +11,6 @@ namespace Airbender.Keccak.Split.Call.Proofs
 open Spec RV.Delegation
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option linter.unusedSimpArgs false
 
 theorem live_slots_injective (i : Fin 361) {a b : Fin 7} (liveA : a.val < slotCount (kindAt i.val))
     (liveB : b.val < slotCount (kindAt i.val)) (same : (slots i)[a] = (slots i)[b]) : a = b := by
@@ -66,7 +65,6 @@ namespace Airbender.Keccak.Split.Call.Proofs
 open Spec RV.Delegation
 set_option warningAsError true
 set_option maxRecDepth 16384
-set_option linter.unusedSimpArgs false
 
 theorem round_constant_spec (r : Nat) : roundConstant r = (delayedRC r).toNat := by
   unfold roundConstant delayedRC
@@ -124,22 +122,22 @@ theorem parity_hit (x : Fin 5) (r : Nat) (S : Vector Lane 31) (k : Fin 7) (live 
       (resultOf .columnParity x r (Vector.ofFn fun lane : Fin 7 => S[(slotsOf .columnParity x r)[lane]].toNat))[k] := by
   fin_cases x
   all_goals fin_cases k
-  all_goals try (simp only [Fin.isValue] at live; omega)
-  all_goals simp [slotsOf, resultOf, physical_slot_spec, round_constant_spec, f1600Step, columnParity, set5,
-    finRange5_foldl, slot, scratch, lane, Vector.getElem_set, laneSlot_val_eq, BitVec.toNat_xor,
-    slot_ne_scratch, scratch_ne_slot, slot_ne_25, ne_slot_25, fin25_val_ne, big_ne_lane]
+  all_goals try (simp only at live; omega)
+  all_goals simp [slotsOf, resultOf, physical_slot_spec, round_constant_spec, f1600Step, columnParity,
+    slot, scratch, lane, laneSlot_val_eq, BitVec.toNat_xor,
+    big_ne_lane]
 
 theorem set5_hit (f : Fin 5 → Fin 31) (g : Fin 5 → Lane) (S : Vector Lane 31)
     (injective : Function.Injective f) (y : Fin 5) : (set5 S f g)[f y] = g y := by
   have ne (a b : Fin 5) (different : a ≠ b) : (f a).val ≠ (f b).val := fun h => different (injective (Fin.ext h))
   simp only [set5, finRange5_foldl]
-  fin_cases y <;> simp [Vector.getElem_set, ne]
+  fin_cases y <;> simp [ne]
 
 theorem set5_miss (f : Fin 5 → Fin 31) (g : Fin 5 → Lane) (S : Vector Lane 31) (l : Fin 31)
     (miss : ∀ y, f y ≠ l) : (set5 S f g)[l] = S[l] := by
   have ne (y : Fin 5) : (f y).val ≠ l.val := fun h => miss y (Fin.ext h)
   simp only [set5, finRange5_foldl]
-  simp [Vector.getElem_set, ne]
+  simp [ne]
 
 theorem column_injective (r : Nat) (x : Fin 5) : Function.Injective (slot r x) := by
   intro a b same
@@ -179,11 +177,11 @@ theorem theta_hit (x : Fin 5) (r : Nat) (S : Vector Lane 31) (k : Fin 7) (live :
       (resultOf .thetaRho x r (Vector.ofFn fun lane : Fin 7 => S[(slotsOf .thetaRho x r)[lane]].toNat))[k] := by
   have scratchLow : (slotsOf .thetaRho x r)[5]'(by decide) = scratch (x - 1).castSucc := by
     apply Fin.ext
-    simp only [slotsOf, scratch, Fin.getElem_fin, Vector.getElem_ofFn]
+    simp only [slotsOf, scratch, Vector.getElem_ofFn]
     fin_cases x <;> rfl
   have scratchHigh : (slotsOf .thetaRho x r)[6]'(by decide) = scratch (x + 1).castSucc := by
     apply Fin.ext
-    simp only [slotsOf, scratch, Fin.getElem_fin, Vector.getElem_ofFn]
+    simp only [slotsOf, scratch, Vector.getElem_ofFn]
     fin_cases x <;> rfl
   by_cases small : k.val < 5
   · obtain ⟨y, rfl⟩ : ∃ y : Fin 5, k = Fin.castLE (by decide : 5 ≤ 7) y := ⟨⟨k.val, small⟩, rfl⟩
@@ -218,7 +216,7 @@ def chiColumn (x q : Fin 5) : Fin 5 := ⟨(q.val + 2 * x.val) % 5, Nat.mod_lt _ 
 theorem chi_slot (x : Fin 5) (r : Nat) (q : Fin 5) :
     (slotsOf .chi5 x r)[q.val]'(by omega) = slot (r + 1) (chiColumn x q) x := by
   apply Fin.ext
-  simp only [slotsOf, slot, Fin.getElem_fin, Vector.getElem_ofFn, q.isLt, ↓reduceDIte, ↓reduceIte,
+  simp only [slotsOf, slot, Vector.getElem_ofFn, q.isLt, ↓reduceDIte, ↓reduceIte,
     physical_slot_spec, Fin.val_castLE]
   congr 2
   apply Fin.ext
@@ -252,7 +250,7 @@ theorem parity_slots (x : Fin 5) (r : Nat) :
       (slotsOf .columnParity x r)[5]'(by decide) = scratch x.castSucc := by
   constructor
   all_goals apply Fin.ext
-  all_goals simp only [slotsOf, slot, scratch, Fin.getElem_fin, Vector.getElem_ofFn, physical_slot_spec,
+  all_goals simp only [slotsOf, slot, scratch, Vector.getElem_ofFn, physical_slot_spec,
     Fin.val_castLE, Fin.val_castSucc]
   · rfl
   · simp
@@ -264,7 +262,7 @@ theorem spec_miss (kind : Kind) (x : Fin 5) (r : Nat) (S : Vector Lane 31) (l : 
   | columnParity =>
     have low := miss 0 (by decide)
     have high := miss 5 (by decide)
-    simp only [Fin.getElem_fin, Fin.isValue, Fin.val_zero, (parity_slots x r).1, (parity_slots x r).2] at low high
+    simp only [Fin.getElem_fin, Fin.isValue, Fin.val_zero, (parity_slots x r).1] at low high
     have low' : (slot r x 0).val ≠ l.val := fun h => low (Fin.ext h)
     have high' : (scratch x.castSucc).val ≠ l.val := fun h => high (Fin.ext h)
     simp only [f1600Step, Kind.mode, columnParity]

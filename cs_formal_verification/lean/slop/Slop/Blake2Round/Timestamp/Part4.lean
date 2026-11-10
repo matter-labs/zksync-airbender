@@ -11,8 +11,6 @@ open Trace
 set_option warningAsError true
 set_option maxRecDepth 16384
 set_option maxHeartbeats 12000000
--- a port range's goals may not use every lemma of the shared simp set
-set_option linter.unusedSimpArgs false
 
 /-- Delegation clock comparisons for timestamp ports 24 to 29. -/
 theorem clock_ports_4 {p : Nat} [Fact p.Prime] {setup : Table (ZMod p) (fields 6)}

@@ -24,9 +24,7 @@ theorem rv_fields_input {i : RV.Instr} {d : DecoderData Unit} (fields : rvDecode
   unfold rvDecoderFields at fields
   split at fields
   all_goals rename_i rd rs1 rs2
-  all_goals first
-    | cases fields
-    | skip
+  all_goals try cases fields
   all_goals by_cases hz : rd = 0
   all_goals simp only [hz, ite_true, ite_false, reduceCtorEq] at fields
   case neg =>

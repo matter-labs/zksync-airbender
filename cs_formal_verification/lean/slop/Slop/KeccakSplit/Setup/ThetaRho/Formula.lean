@@ -11,7 +11,6 @@ namespace Airbender.Keccak.Split.ThetaRho.SetupProofs
 open Airbender.Keccak.Split.SetupProofs
 
 set_option warningAsError true
-set_option linter.unusedSimpArgs false
 
 /-- The row formulas, one per column. -/
 def formulaRow (n : Nat) : Vector Nat 9 :=
@@ -47,14 +46,14 @@ theorem xor_facts {row : Vector (ZMod babyBearModulus) 9} (h : IsFormulaRow row)
   obtain ⟨n, -, rfl⟩ := h
   have t := tag_of (t := 4) (by omega) (tag.trans (Nat.cast_ofNat).symm)
   have r : n < 65536 := by unfold spec8 at t; split_ifs at t <;> omega
-  have e0 : spec0 n = n / 256 := by simp (disch := omega) only [spec0, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e1 : spec1 n = n % 256 := by simp (disch := omega) only [spec1, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e2 : spec2 n = n / 256 ^^^ n % 256 := by simp (disch := omega) only [spec2, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e3 : spec3 n = 0 := by simp (disch := omega) only [spec3, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e4 : spec4 n = 0 := by simp (disch := omega) only [spec4, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e5 : spec5 n = 0 := by simp (disch := omega) only [spec5, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e6 : spec6 n = 0 := by simp (disch := omega) only [spec6, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e7 : spec7 n = 0 := by simp (disch := omega) only [spec7, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
+  have e0 : spec0 n = n / 256 := by simp (disch := omega) only [spec0, ctl, slt, ite_eq_left]
+  have e1 : spec1 n = n % 256 := by simp (disch := omega) only [spec1, ctl, slt, ite_eq_left]
+  have e2 : spec2 n = n / 256 ^^^ n % 256 := by simp (disch := omega) only [spec2, ctl, slt, ite_eq_left]
+  have e3 : spec3 n = 0 := by simp (disch := omega) only [spec3, ctl, slt, ite_eq_left]
+  have e4 : spec4 n = 0 := by simp (disch := omega) only [spec4, ctl, slt, ite_eq_left]
+  have e5 : spec5 n = 0 := by simp (disch := omega) only [spec5, ctl, slt, ite_eq_left]
+  have e6 : spec6 n = 0 := by simp (disch := omega) only [spec6, ctl, slt, ite_eq_left]
+  have e7 : spec7 n = 0 := by simp (disch := omega) only [spec7, ctl, slt, ite_eq_left]
   have b0 : n / 256 < 256 := by omega
   have b1 : n % 256 < 256 := Nat.mod_lt _ (by decide)
   have b2 : n / 256 ^^^ n % 256 < 256 := Nat.xor_lt_two_pow (n := 8) b0 b1
@@ -74,14 +73,14 @@ theorem split_facts {row : Vector (ZMod babyBearModulus) 9} (h : IsFormulaRow ro
   obtain ⟨n, -, rfl⟩ := h
   have t := tag_of (t := 58) (by omega) (tag.trans (Nat.cast_ofNat).symm)
   have r : 65536 ≤ n ∧ n < 589824 := by unfold spec8 at t; split_ifs at t <;> omega
-  have e0 : spec0 n = splitA n := by simp (disch := omega) only [spec0, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e1 : spec1 n = splitB n := by simp (disch := omega) only [spec1, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e2 : spec2 n = splitS n := by simp (disch := omega) only [spec2, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e3 : spec3 n = (splitA n ^^^ splitB n) * 2 ^ splitS n % 256 := by simp (disch := omega) only [spec3, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e4 : spec4 n = (splitA n ^^^ splitB n) / 2 ^ (8 - splitS n) := by simp (disch := omega) only [spec4, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e5 : spec5 n = 0 := by simp (disch := omega) only [spec5, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e6 : spec6 n = 0 := by simp (disch := omega) only [spec6, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e7 : spec7 n = 0 := by simp (disch := omega) only [spec7, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
+  have e0 : spec0 n = splitA n := by simp (disch := omega) only [spec0, ctl, slt, ite_eq_left, ite_eq_right]
+  have e1 : spec1 n = splitB n := by simp (disch := omega) only [spec1, ctl, slt, ite_eq_left, ite_eq_right]
+  have e2 : spec2 n = splitS n := by simp (disch := omega) only [spec2, ctl, slt, ite_eq_left, ite_eq_right]
+  have e3 : spec3 n = (splitA n ^^^ splitB n) * 2 ^ splitS n % 256 := by simp (disch := omega) only [spec3, ctl, slt, ite_eq_left, ite_eq_right]
+  have e4 : spec4 n = (splitA n ^^^ splitB n) / 2 ^ (8 - splitS n) := by simp (disch := omega) only [spec4, ctl, slt, ite_eq_left, ite_eq_right]
+  have e5 : spec5 n = 0 := by simp (disch := omega) only [spec5, ctl, slt, ite_eq_left]
+  have e6 : spec6 n = 0 := by simp (disch := omega) only [spec6, ctl, slt, ite_eq_left]
+  have e7 : spec7 n = 0 := by simp (disch := omega) only [spec7, ctl, slt, ite_eq_left]
   have b0 : splitA n < 256 := Nat.mod_lt _ (by decide)
   have b1 : splitB n < 256 := Nat.mod_lt _ (by decide)
   have b2 : splitS n < 8 := by simp only [splitS]; omega
@@ -124,17 +123,17 @@ theorem control_facts {row : Vector (ZMod babyBearModulus) 9} (h : IsFormulaRow 
   have nz : n ≠ 589824 := by
     rintro rfl
     rw [Vector.getElem_map, get1] at active
-    have : spec1 589824 = 0 := by simp (disch := omega) only [spec1, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
+    have : spec1 589824 = 0 := by simp (disch := omega) only [spec1, ctl, slt, ite_eq_left, ite_eq_right, ite_true]
     rw [this, Nat.cast_zero] at active
     exact zero_ne_one active
   have j : callAt (n - 589824) < 361 := callIndex_lt (by omega) (by omega) (by omega)
-  have e0 : spec0 n = controlAt (callAt (n - 589824)) := by simp (disch := omega) only [spec0, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e2 : spec2 n = bump (controlAt (callAt (n - 589824))) := by simp (disch := omega) only [spec2, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e3 : spec3 n = flag 0 (callAt (n - 589824)) := by simp (disch := omega) only [spec3, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e4 : spec4 n = flag 1 (callAt (n - 589824)) := by simp (disch := omega) only [spec4, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e5 : spec5 n = flag 2 (callAt (n - 589824)) := by simp (disch := omega) only [spec5, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e6 : spec6 n = flag 3 (callAt (n - 589824)) := by simp (disch := omega) only [spec6, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e7 : spec7 n = flag 4 (callAt (n - 589824)) := by simp (disch := omega) only [spec7, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
+  have e0 : spec0 n = controlAt (callAt (n - 589824)) := by simp (disch := omega) only [spec0, ctl, slt, ite_eq_left, ite_eq_right]
+  have e2 : spec2 n = bump (controlAt (callAt (n - 589824))) := by simp (disch := omega) only [spec2, ctl, slt, ite_eq_left, ite_eq_right]
+  have e3 : spec3 n = flag 0 (callAt (n - 589824)) := by simp (disch := omega) only [spec3, ctl, slt, ite_eq_left, ite_eq_right]
+  have e4 : spec4 n = flag 1 (callAt (n - 589824)) := by simp (disch := omega) only [spec4, ctl, slt, ite_eq_left, ite_eq_right]
+  have e5 : spec5 n = flag 2 (callAt (n - 589824)) := by simp (disch := omega) only [spec5, ctl, slt, ite_eq_left, ite_eq_right]
+  have e6 : spec6 n = flag 3 (callAt (n - 589824)) := by simp (disch := omega) only [spec6, ctl, slt, ite_eq_left, ite_eq_right]
+  have e7 : spec7 n = flag 4 (callAt (n - 589824)) := by simp (disch := omega) only [spec7, ctl, slt, ite_eq_left, ite_eq_right]
   refine ⟨⟨callAt (n - 589824), j⟩, thetaRho_kindAt _, ?_, ?_, ?_⟩
   · rw [Vector.getElem_map, get0, e0]
   · rw [Vector.getElem_map, get2, e2]
@@ -159,12 +158,12 @@ theorem slot_facts {row : Vector (ZMod babyBearModulus) 9} (h : IsFormulaRow row
   rw [Vector.getElem_map, get0] at key
   by_cases z : n = 589945
   · exfalso
-    have : spec0 n = 0 := by simp (disch := omega) only [spec0, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
+    have : spec0 n = 0 := by simp (disch := omega) only [spec0, ctl, slt, ite_eq_left, ite_eq_right]
     rw [this] at key
     have := cast_inj (by omega) (by omega) key
     omega
   have j : callAt (n - 589945) < 361 := callIndex_lt (by omega) (by omega) (by omega)
-  have e0 : spec0 n = controlAt (callAt (n - 589945)) + 2048 := by simp (disch := omega) only [spec0, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
+  have e0 : spec0 n = controlAt (callAt (n - 589945)) + 2048 := by simp (disch := omega) only [spec0, ctl, slt, ite_eq_left, ite_eq_right]
   rw [e0] at key
   have same : callAt (n - 589945) = index.val :=
     controlAt_inj j index.isLt (by have := controlAt_lt j; have := cast_inj (by omega) (by omega) key; omega)
@@ -172,13 +171,13 @@ theorem slot_facts {row : Vector (ZMod babyBearModulus) 9} (h : IsFormulaRow row
   have slot (lane : Nat) (hl : lane < 7) :
       slotNat (callAt (n - 589945)) lane = ((Call.slots index)[lane]).val := by
     rw [slotNat_eq j hl, hidx]
-  have e1 : spec1 n = slotNat (callAt (n - 589945)) 0 := by simp (disch := omega) only [spec1, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e2 : spec2 n = slotNat (callAt (n - 589945)) 1 := by simp (disch := omega) only [spec2, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e3 : spec3 n = slotNat (callAt (n - 589945)) 2 := by simp (disch := omega) only [spec3, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e4 : spec4 n = slotNat (callAt (n - 589945)) 3 := by simp (disch := omega) only [spec4, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e5 : spec5 n = slotNat (callAt (n - 589945)) 4 := by simp (disch := omega) only [spec5, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e6 : spec6 n = slotNat (callAt (n - 589945)) 5 := by simp (disch := omega) only [spec6, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
-  have e7 : spec7 n = slotNat (callAt (n - 589945)) 6 := by simp (disch := omega) only [spec7, ctl, slt, ite_eq_left, ite_eq_right, ite_true, ite_false]
+  have e1 : spec1 n = slotNat (callAt (n - 589945)) 0 := by simp (disch := omega) only [spec1, ctl, slt, ite_eq_left, ite_eq_right]
+  have e2 : spec2 n = slotNat (callAt (n - 589945)) 1 := by simp (disch := omega) only [spec2, ctl, slt, ite_eq_left, ite_eq_right]
+  have e3 : spec3 n = slotNat (callAt (n - 589945)) 2 := by simp (disch := omega) only [spec3, ctl, slt, ite_eq_left, ite_eq_right]
+  have e4 : spec4 n = slotNat (callAt (n - 589945)) 3 := by simp (disch := omega) only [spec4, ctl, slt, ite_eq_left, ite_eq_right]
+  have e5 : spec5 n = slotNat (callAt (n - 589945)) 4 := by simp (disch := omega) only [spec5, ctl, slt, ite_eq_left, ite_eq_right]
+  have e6 : spec6 n = slotNat (callAt (n - 589945)) 5 := by simp (disch := omega) only [spec6, ctl, slt, ite_eq_left, ite_eq_right]
+  have e7 : spec7 n = slotNat (callAt (n - 589945)) 6 := by simp (disch := omega) only [spec7, ctl, slt, ite_eq_left, ite_eq_right]
   simp only [Vector.getElem_map, get1, get2, get3, get4, get5, get6, get7, e1, e2, e3, e4, e5,
     e6, e7, slot 0 (by omega), slot 1 (by omega), slot 2 (by omega), slot 3 (by omega),
     slot 4 (by omega), slot 5 (by omega), slot 6 (by omega)]

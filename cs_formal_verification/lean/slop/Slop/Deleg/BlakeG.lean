@@ -10,7 +10,6 @@ public import Mathlib.Tactic.IntervalCases
 
 namespace RV
 open Spec Delegation
-set_option linter.unusedSimpArgs false
 
 /-- The control word before call `k`: 7 rounds (`red`, bit 7) or 10. -/
 def gCtl (red : Bool) (k : Nat) : Word := BitVec.ofNat 32 ((if red then 0x80 else 0) + k)
@@ -61,11 +60,11 @@ theorem gStep_eq (m v : Vector Word 16) (r j : Nat) (hr : r < 10) (hj : j < 8) :
   have e1 : (⟨(8 * r + j) / 8 % 10, Nat.mod_lt _ (by decide)⟩ : Fin 10) = ⟨r, hr⟩ := Fin.ext (by simp; omega)
   have e2 : (⟨(8 * r + j) % 8, Nat.mod_lt _ (by decide)⟩ : Fin 8) = ⟨j, hj⟩ := Fin.ext (by simp; omega)
   have e3 : (8 * r + j) % 8 = j := by omega
-  simp only [gStep, e1, e2, e3]
+  simp only [gStep, e1, e3]
 
 theorem gs_round (m v : Vector Word 16) (r : Nat) (hr : r < 10) :
     gs m v (8 * r + 8) = round m (SIGMA ⟨r, hr⟩) (gs m v (8 * r)) := by
-  simp only [gs, show 8 * r + 7 = 8 * r + 7 from rfl]
+  simp only [gs]
   rw [gStep_eq m _ r 7 hr (by decide), gStep_eq m _ r 6 hr (by decide), gStep_eq m _ r 5 hr (by decide),
     gStep_eq m _ r 4 hr (by decide), gStep_eq m _ r 3 hr (by decide), gStep_eq m _ r 2 hr (by decide),
     gStep_eq m _ r 1 hr (by decide), show 8 * r = 8 * r + 0 from rfl, gStep_eq m _ r 0 hr (by decide), round_G]

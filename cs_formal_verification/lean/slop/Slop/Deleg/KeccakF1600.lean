@@ -8,7 +8,6 @@ of each (`par_rep`, `thetaRho_rep`, `chi_rep`), and a round of 15 calls is a Kec
 
 namespace RV.Delegation
 open Spec
-set_option linter.unusedSimpArgs false
 
 theorem finRange5_foldl {α} (f : α → Fin 5 → α) (a : α) :
     (List.finRange 5).foldl f a = f (f (f (f (f a 0) 1) 2) 3) 4 := by rfl
@@ -32,7 +31,7 @@ theorem par_rep (r : Nat) (x : Fin 5) (V : Fin 25 → Lane) (W : Fin 6 → Lane)
     constructor
     · intro p; fread [hl]
       clear hl hs
-      split_ifs <;> subst_vars <;> simp_all [lane_eq_iff]
+      split_ifs <;> subst_vars <;> simp_all
     · intro i; fread [hl, hs, lane_eq_iff]
       by_cases hi : i.val = 0
       · rw [ite_eq_left (by omega), ite_eq_left (show i = Fin.castSucc 0 from Fin.ext hi)]; simp
@@ -91,8 +90,8 @@ theorem fstageP (r : Nat) (B : Vector Lane 25) (W : Fin 6 → Lane) (S : Vector 
   have h4 := par_rep r 3 _ _ _ h3 _ rfl
   have h5 := par_rep r 4 _ _ _ h4 _ rfl
   refine h5.congr ?_ ?_
-  · funext p; fin_cases p <;> simp [Function.update_apply, A, iota', lane, Vector.getElem_set]
-  · funext i; fin_cases i <;> simp [Function.update_apply, A, iota', lane, parity, Vector.getElem_set]
+  · funext p; fin_cases p <;> simp [A, iota', lane]
+  · funext i; fin_cases i <;> simp [A, iota', lane, parity]
 
 theorem fstageT (r : Nat) (A : Vector Lane 25) (w : Lane) (S : Vector Lane 31)
     (h : Rep r (fun p => A[p]) ![parity A 0, parity A 1, parity A 2, parity A 3, parity A 4, w] S) :

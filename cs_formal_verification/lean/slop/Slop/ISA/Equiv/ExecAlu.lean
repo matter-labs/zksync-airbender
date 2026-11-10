@@ -69,8 +69,10 @@ theorem exec_mext (σ : SailState) (rs2 rs1 rd : BitVec 5) (o : RV.Op) (ho : o =
   all_goals
     simp only [execute_MUL, execute_DIV, execute_REM, Slop.runF_bind,
       rX_run, Slop.runF_pure, RV.alu, mult_to_bits_half, Functions.xlen, ite_true, SailRV32.not,
-      Bool.not_true, Bool.false_and, Bool.false_eq_true, ite_false] <;> simp only [wX_run] <;>
-    congr 2 <;> apply BitVec.eq_of_toNat_eq <;>
+      Bool.not_true, Bool.false_and, Bool.false_eq_true, ite_false]
+    simp only [wX_run]
+    congr 2
+    apply BitVec.eq_of_toNat_eq
     simp [to_bits_truncate, get_slice_int, Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.toNatInt,
       mul_int, mulhu_nat, divu_nat, remu_nat]
 
