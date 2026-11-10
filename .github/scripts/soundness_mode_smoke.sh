@@ -6,6 +6,10 @@
 #   INPUT_FILE        the program's input, passed to `prove` (optional)
 #   DIRECT=1          also prove recursion-unified directly from the input
 #   EXPECT_UNROLLED=1 require every recursion-unified proof to include an unrolled recursion layer
+#   FIXTURE_CHAIN_ROOT verify existing <mode>/{base,unified}.json.zlib instead of proving
+#   FIXTURE_CODEC      prebuilt fixture-codec for existing artifacts
+#   SOUNDNESS_MODE     check only this mode's artifacts (wrong-mode checks still cover both)
+#   SMOKE_OUTPUT_DIR   temporary outputs and logs
 set -euo pipefail
 
 cli=$1
@@ -17,10 +21,15 @@ input=()
 if [[ -n "${INPUT_FILE:-}" ]]; then
   input=(--input-file "$INPUT_FILE")
 fi
-modes=(pessimistic-conjecture ethproofs-soundcalc)
-out=output/soundness-mode-smoke
+all_modes=(pessimistic-conjecture ethproofs-soundcalc)
+modes=("${all_modes[@]}")
+if [[ -n ${SOUNDNESS_MODE:-} ]]; then
+  [[ $SOUNDNESS_MODE == pessimistic-conjecture || $SOUNDNESS_MODE == ethproofs-soundcalc ]]
+  modes=("$SOUNDNESS_MODE")
+fi
+out=${SMOKE_OUTPUT_DIR:-output/soundness-mode-smoke}
 mkdir -p "$out"
-for mode in "${modes[@]}"; do
+for mode in "${all_modes[@]}"; do
   "$cli" trusted-params --bin "$bin" --soundness-mode "$mode" \
     --output "$out/$mode-trusted-params.json"
 done
@@ -49,7 +58,7 @@ check_modes() {
   local proof=$1 mode=$2 relabel_error=$3 other log relabeled
   "$cli" verify --proof "$proof" --bin "$bin" --soundness-mode "$mode" \
     --trusted-params "$out/$mode-trusted-params.json"
-  for other in "${modes[@]}"; do
+  for other in "${all_modes[@]}"; do
     [[ "$other" == "$mode" ]] && continue
     echo "== $proof verified as $other must fail"
     log="$proof.as-$other.log"
@@ -90,6 +99,18 @@ check_unified() {
     exit 1
   fi
 }
+
+if [[ -n ${FIXTURE_CHAIN_ROOT:-} ]]; then
+  [[ -x ${FIXTURE_CODEC:-} ]]
+  for mode in "${modes[@]}"; do
+    directory="$FIXTURE_CHAIN_ROOT/${mode//-/_}"
+    "$FIXTURE_CODEC" decode "$directory/base.json.zlib" >"$out/$mode-base.json"
+    "$FIXTURE_CODEC" decode "$directory/unified.json.zlib" >"$out/$mode-unified.json"
+    check_modes "$out/$mode-base.json" "$mode" NativeVerificationFailed
+    check_unified "$out/$mode-unified.json" "$mode"
+  done
+  exit 0
+fi
 
 for mode in "${modes[@]}"; do
   echo "== $mode: prove base"

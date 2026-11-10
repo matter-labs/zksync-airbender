@@ -36,7 +36,7 @@ use field::baby_bear::{base::BabyBearField as BF, ext4::BabyBearExt4 as E4};
 use field::{Field, PrimeField};
 use std::alloc::Global;
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Instant;
 use transcript::Blake2sTranscript;
 use worker::Worker;
@@ -57,10 +57,7 @@ struct Prepared {
 }
 
 fn root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .to_owned()
+    proof_fixtures::root()
 }
 
 fn dense_ram(sparse: &SparseInitsAndTeardowns, rows: usize) -> Vec<([Vec<BF>; 2], [Vec<BF>; 2])> {
@@ -339,7 +336,7 @@ fn write(
     proof: &Proof,
     written: &mut BTreeSet<PathBuf>,
 ) {
-    let path = circuit.proof_path(&root(), mode);
+    let path = circuit.proof_path(&proof_fixtures::output_root(), mode);
     assert!(
         written.insert(path.clone()),
         "duplicate canonical write: {}",
@@ -401,49 +398,53 @@ fn compression_pair(mode: SoundnessMode, worker: &Worker) -> (Proof, Proof) {
 }
 
 #[test]
-fn regenerate_canonical_circuit_proofs() {
+fn regenerate_canonical_circuit_proofs_pessimistic_conjecture() {
+    regenerate_canonical_circuit_proofs(SoundnessMode::PessimisticConjecture);
+}
+
+#[test]
+fn regenerate_canonical_circuit_proofs_ethproofs_soundcalc() {
+    regenerate_canonical_circuit_proofs(SoundnessMode::EthproofsSoundnessCalc);
+}
+
+fn regenerate_canonical_circuit_proofs(mode: SoundnessMode) {
     let worker = Worker::new();
     let mut written = BTreeSet::new();
-    for &mode in SoundnessMode::ALL {
-        for circuit in CANONICAL_CIRCUITS {
-            if circuit == CanonicalCircuit::Blake2WithExtendedControl {
-                continue;
-            }
-            if circuit == CanonicalCircuit::UnifiedReducedMachine {
-                let (unified, compression) = compression_pair(mode, &worker);
-                write(circuit, mode, &unified, &mut written);
-                write(
-                    CanonicalCircuit::Blake2WithExtendedControl,
-                    mode,
-                    &compression,
-                    &mut written,
-                );
-            } else {
-                let prepared = prepare(circuit, mode, &worker);
-                let proof = prove(prepared, &circuit.fixed_external_challenges(), &worker);
-                write(circuit, mode, &proof, &mut written);
-            }
+    for circuit in CANONICAL_CIRCUITS {
+        if circuit == CanonicalCircuit::Blake2WithExtendedControl {
+            continue;
+        }
+        if circuit == CanonicalCircuit::UnifiedReducedMachine {
+            let (unified, compression) = compression_pair(mode, &worker);
+            write(circuit, mode, &unified, &mut written);
+            write(
+                CanonicalCircuit::Blake2WithExtendedControl,
+                mode,
+                &compression,
+                &mut written,
+            );
+        } else {
+            let prepared = prepare(circuit, mode, &worker);
+            let proof = prove(prepared, &circuit.fixed_external_challenges(), &worker);
+            write(circuit, mode, &proof, &mut written);
         }
     }
+    let output_root = proof_fixtures::output_root();
     let expected: BTreeSet<_> = CANONICAL_CIRCUITS
         .into_iter()
-        .flat_map(|circuit| {
-            SoundnessMode::ALL
-                .iter()
-                .map(move |&mode| circuit.proof_path(&root(), mode))
-        })
+        .map(|circuit| circuit.proof_path(&output_root, mode))
         .collect();
     assert_eq!(written, expected);
-    assert_eq!(written.len(), 28);
-    let committed: BTreeSet<_> = SoundnessMode::ALL
-        .iter()
-        .flat_map(|mode| {
-            std::fs::read_dir(root().join("fixtures/circuits").join(mode.file_suffix()))
-                .unwrap()
-                .map(|entry| entry.unwrap().path())
-        })
-        .collect();
-    assert_eq!(committed, expected);
+    assert_eq!(written.len(), 14);
+    let produced: BTreeSet<_> = std::fs::read_dir(
+        output_root
+            .join("fixtures/circuits")
+            .join(mode.file_suffix()),
+    )
+    .unwrap()
+    .map(|entry| entry.unwrap().path())
+    .collect();
+    assert_eq!(expected, produced);
 }
 
 fn pilot(circuit: CanonicalCircuit) {

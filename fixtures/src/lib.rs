@@ -24,10 +24,20 @@ pub const CHAINS: [&str; 4] = ["base", "unified", "unrolled", "unrolled_unified"
 
 /// Repository root containing fixture data and its producer inputs.
 pub fn root() -> PathBuf {
+    if let Some(root) = std::env::var_os("AB_TEST_ARTIFACT_ROOT") {
+        return root.into();
+    }
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
         .to_owned()
+}
+
+/// Separate repository-shaped output root used by fixture regeneration checks.
+pub fn output_root() -> PathBuf {
+    std::env::var_os("PROOF_FIXTURES_OUTPUT_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(root)
 }
 
 pub fn circuit_proof(mode_dir: &str, circuit: &str) -> PathBuf {
@@ -47,12 +57,16 @@ pub fn circuit_proof_in(repository_root: &Path, mode_dir: &str, circuit: &str) -
 }
 
 pub fn chain_artifact(mode_dir: &str, chain: &str) -> PathBuf {
+    chain_artifact_in(&root(), mode_dir, chain)
+}
+
+pub fn chain_artifact_in(repository_root: &Path, mode_dir: &str, chain: &str) -> PathBuf {
     assert!(
         MODES.contains(&mode_dir),
         "unknown soundness mode: {mode_dir}"
     );
     assert!(CHAINS.contains(&chain), "unknown chain: {chain}");
-    root()
+    repository_root
         .join("fixtures/chains")
         .join(mode_dir)
         .join(format!("{chain}.json.zlib"))
@@ -67,12 +81,17 @@ pub fn encode<T: serde::Serialize, W: Write>(value: &T, output: W) -> W {
 
 /// Decode a fixture written by [`encode`].
 pub fn decode<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> T {
+    serde_json::from_slice(&decode_json(bytes)).expect("deserialize fixture")
+}
+
+/// Decompress the original JSON bytes without changing their field order or formatting.
+pub fn decode_json(bytes: &[u8]) -> Vec<u8> {
     let mut decoder = flate2::read::ZlibDecoder::new(bytes);
     let mut unpacked = Vec::new();
     decoder
         .read_to_end(&mut unpacked)
         .expect("decompress fixture");
-    serde_json::from_slice(&unpacked).expect("deserialize fixture")
+    unpacked
 }
 
 pub fn write_file<T: serde::Serialize>(path: impl AsRef<Path>, value: &T) {
@@ -89,10 +108,8 @@ mod tests {
     use super::*;
     use std::collections::BTreeSet;
 
-    #[test]
-    fn committed_circuit_inventory() {
-        let directory = root().join("fixtures/circuits");
-        let modes: BTreeSet<_> = std::fs::read_dir(&directory)
+    fn assert_inventory(directory: &Path, stems: &[&str]) {
+        let modes: BTreeSet<_> = std::fs::read_dir(directory)
             .unwrap()
             .map(|entry| entry.unwrap().file_name().into_string().unwrap())
             .collect();
@@ -102,11 +119,20 @@ mod tests {
                 .unwrap()
                 .map(|entry| entry.unwrap().path())
                 .collect();
-            let expected = CIRCUITS.map(|circuit| circuit_proof(mode, circuit)).into();
+            let expected: BTreeSet<_> = stems
+                .iter()
+                .map(|stem| directory.join(mode).join(format!("{stem}.json.zlib")))
+                .collect();
             assert_eq!(actual, expected);
             for path in actual {
                 let _: serde_json::Value = read_file(path);
             }
         }
+    }
+
+    #[test]
+    fn committed_fixture_inventory() {
+        assert_inventory(&root().join("fixtures/circuits"), &CIRCUITS);
+        assert_inventory(&root().join("fixtures/chains"), &CHAINS);
     }
 }

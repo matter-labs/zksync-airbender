@@ -594,13 +594,31 @@ step_generator() {
       -- "${GENERATOR_FILTERS[@]+"${GENERATOR_FILTERS[@]}"}"
 }
 
-step_prover() {
-  run_step "Regenerate all 28 canonical circuit proofs" \
-    in_dir prover env RUST_MIN_STACK=100000000 RUSTFLAGS="$WARN_FLAGS" \
-      cargo test -p prover --profile cli --lib \
+regenerate_canonical_proofs() {
+  local build_messages producer
+  build_messages=$(mktemp)
+  env RUST_MIN_STACK=100000000 RUSTFLAGS="$WARN_FLAGS" \
+    cargo test -p prover --profile cli --lib --features test \
       "${PROVER_CARGO_FEATURE_ARGS[@]+"${PROVER_CARGO_FEATURE_ARGS[@]}"}" \
-      -- --exact tests::gkr::canonical_proofs::regenerate_canonical_circuit_proofs \
-      --nocapture --test-threads=1
+      --no-run --message-format=json >"$build_messages"
+  producer=$(python3 - "$build_messages" <<'PYTHON'
+import json, sys
+messages = [json.loads(line) for line in open(sys.argv[1])]
+executables = [message["executable"] for message in messages
+               if message.get("reason") == "compiler-artifact"
+               and message["target"]["name"] == "prover"
+               and message["profile"]["test"] and message.get("executable")]
+assert len(executables) == 1, executables
+print(executables[0])
+PYTHON
+)
+  rm -f "$build_messages"
+  FIXTURE_CANONICAL_PRODUCER="$producer" RUST_MIN_STACK=100000000 \
+    ./fixtures/regenerate.sh --stage circuits
+}
+
+step_prover() {
+  run_step "Regenerate all 28 canonical circuit proofs" regenerate_canonical_proofs
 }
 
 step_native() {

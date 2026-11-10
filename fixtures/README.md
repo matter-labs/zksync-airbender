@@ -6,20 +6,29 @@ Proofs live in `circuits/<mode>/<circuit>.json.zlib` under this directory.
 The mode directories are `pessimistic_conjecture` and `ethproofs_soundcalc`.
 G-function has no canonical fixture. Legacy `keccak_special5` remains covered.
 
-Run the sole producer from the repository root:
+The producer recipe runs from the repository root:
 
 ```sh
-RUST_MIN_STACK=16777216 cargo test -p prover --lib --features test --profile cli -- \
-  --exact tests::gkr::canonical_proofs::regenerate_canonical_circuit_proofs \
-  --nocapture --test-threads=1
+fixtures/regenerate.sh                    # both modes, circuits and chains in order
+fixtures/regenerate.sh --stage circuits   # only the 28 circuit proofs
+fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage base_unified
 ```
+
+Modes are `pessimistic_conjecture` and `ethproofs_soundcalc`. Stages are
+`circuits`, `base_unified`, and `unrolled`. A selected chain stage requires
+`--check`; write mode always refreshes a mode's whole chain in order. `--mode`
+may select one mode in either operation.
+
+The two canonical producer tests share one body and fix their mode in code:
+`tests::gkr::canonical_proofs::regenerate_canonical_circuit_proofs_<mode>`.
+The script builds and invokes their test executable with `--exact`.
 
 Use the default features, including `deterministic_pow`, and the regular
 generated layouts. The producer reads each circuit's generated Sec100 config
 for its mode, uses every available core with in-memory WHIR oracles, and
 writes one zlib stream of typed compact JSON without a trailing newline.
 Proof bytes depend on neither the thread count nor the oracle storage mode.
-It regenerates all 28 files and rejects duplicate writes.
+Each mode emits exactly 14 files and rejects duplicate writes.
 
 `proof_fixtures` pins `flate2` and its `miniz_oxide` compressor because the
 currency gates compare complete compressed files. Bumping either version is a
@@ -60,10 +69,27 @@ tests and have separate forge producers. The canonical producer does not refresh
 
 ## Currency and GPU agreement
 
-The `Rust CI / tests` job runs the producer command above in the checkout and
-fails if `git status` then reports any change under `fixtures/circuits`: a
-changed byte, including JSON formatting, or a new file. The producer itself
-rejects a committed proof file that it does not write.
+`fixture_build` builds the CLI, canonical producer test executable, and
+`fixture-codec` once. `fixture_currency` runs six independent CPU jobs over
+(mode, stage). Each runs the script with `--check`, writes into a temporary root,
+and compares complete compressed files with the committed outputs. Every child
+reads its committed parent, including when several stages are checked in one
+invocation. A stale parent's own stage fails even when a dependent stage passes.
+Failed checks retain their temporary outputs and logs and print their location.
+The `tests` job checks the exact file inventory, decoding and typed byte
+round-trips, then runs native verifier tests.
+
+For downloaded executables, set `FIXTURE_CLI`, `FIXTURE_CANONICAL_PRODUCER`, and
+`FIXTURE_CODEC` to their paths. CI requires the executables needed by the selected
+stage and invokes no Cargo commands during a currency check. Developers may omit
+them to build locally.
+
+`AB_TEST_ARTIFACT_ROOT` selects the repository containing layouts, configs,
+workloads, committed parents, and expected outputs. `PROOF_FIXTURES_OUTPUT_ROOT`
+is a separate repository-shaped root used only by the canonical producer's
+writes. The recipe sets it for `--check` and sets `FSV_DIR` to the selected
+repository's tracked guests; neither input location is inferred from the output
+root.
 
 The GPU workflow runs `cpu_canonical_matrix_inventory`, which checks the GPU
 test registry against the same circuit/mode registry, then runs the 28 listed
@@ -75,8 +101,29 @@ Native FSV tests assemble the canonical compression/unified pair with freshly
 replayed boundary metadata. Whole-program `*_cpu_gpu_proof_diff` diagnostics
 remain outside this canonical circuit set.
 
-The [CI job](../.github/workflows/ci.yml) uses runner label
-`matterlabs-ci-runner-high-performance` and a 90-minute timeout for proving,
-compilation and the remaining checks. The step logs `MemTotal` and
-`MemAvailable`; the workflow specifies a runner label rather than a guaranteed
-memory capacity.
+## Chain artifacts
+
+Each mode has four schema 5 CLI artifacts under `chains/<mode>/`. They use the
+tracked `examples/basic_fibonacci/app.bin`, CPU backend, 16 worker threads, and
+Compression guests for unrolled, bridge, and final layers. Every artifact has
+`program_cycles = 97`; the recipe verifies every proof and rejects absolute
+paths inside `Variable at ...` labels.
+
+| Artifact | Input | Additional unrolled layers | Chain entries |
+| --- | --- | --- | --- |
+| `base` | program | unset | 1 |
+| `unified` | `base` | 0 | 3 |
+| `unrolled` | `base` | 1 | 2 |
+| `unrolled_unified` | `unrolled` | 0 | 4 |
+
+Write mode publishes each parent before its child. Check mode always reads the
+committed parents and compares only its own stage's outputs. `base_unified` also
+runs the smoke script's wrong-mode and relabel checks on the existing artifacts.
+The recipe sets `RECURSION_UNIFIED_SWITCH_CYCLES=52000000`; forced layer counts
+bypass that threshold for the chain continuations.
+
+| Fixture | Consumers |
+| --- | --- |
+| `circuits/<mode>/*` | native, corruption, transpiler, GPU canonical matrix, cost-model drift checks |
+| `chains/<mode>/{base,unified}` | CLI verification, currency and soundness smoke checks, typed encoding test |
+| `chains/<mode>/{unrolled,unrolled_unified}` | CLI verification, currency and typed encoding test |

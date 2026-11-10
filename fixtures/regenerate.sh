@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+check=0
+mode_filter=
+stage_filter=
+while (($#)); do
+  case $1 in
+    --check) check=1; shift ;;
+    --mode|--stage)
+      (($# >= 2)) || { echo "$1 needs a value" >&2; exit 1; }
+      if [[ $1 == --mode ]]; then mode_filter=$2; else stage_filter=$2; fi
+      shift 2 ;;
+    *) echo "unknown argument: $1" >&2; exit 1 ;;
+  esac
+done
+case $mode_filter in
+  ''|pessimistic_conjecture|ethproofs_soundcalc) ;;
+  *) echo "unknown mode: $mode_filter" >&2; exit 1 ;;
+esac
+case $stage_filter in
+  ''|circuits|base_unified|unrolled) ;;
+  *) echo "unknown stage: $stage_filter" >&2; exit 1 ;;
+esac
+if (( !check )) && [[ -n $stage_filter && $stage_filter != circuits ]]; then
+  echo "selecting a chain stage is --check-only; write mode regenerates the whole chain" >&2
+  exit 1
+fi
+
+script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+repo=$(cd "${AB_TEST_ARTIFACT_ROOT:-$script_root}" && pwd)
+export AB_TEST_ARTIFACT_ROOT=$repo
+export FSV_DIR="$repo/tools/gkr_verifier/full_statement_verifiers"
+export RECURSION_UNROLLED_BLAKE=blake2_with_compression
+export RECURSION_BRIDGE_BLAKE=blake2_with_compression
+export RECURSION_FINAL_BLAKE=blake2_with_compression
+export RECURSION_UNIFIED_SWITCH_CYCLES=52000000
+export RUST_MIN_STACK=${RUST_MIN_STACK:-16777216}
+cd "$repo"
+
+out_repo=$repo
+temporary=
+if ((check)); then
+  temporary=$(mktemp -d)
+  out_repo=$temporary
+fi
+build_messages=
+producer_log=
+cleanup() {
+  local result=$?
+  if [[ -n $temporary ]]; then
+    if ((result)); then
+      echo "Fixture check outputs retained at $temporary" >&2
+    else
+      rm -rf "$temporary"
+    fi
+  fi
+  if ((result)) && [[ -n $producer_log && -f $producer_log ]]; then
+    echo "Producer log retained at $producer_log" >&2
+  fi
+  [[ -z $build_messages ]] || rm -f "$build_messages"
+}
+trap cleanup EXIT
+
+producer=${FIXTURE_CANONICAL_PRODUCER:-}
+cli=${FIXTURE_CLI:-}
+codec=${FIXTURE_CODEC:-}
+if [[ -z $stage_filter || $stage_filter == circuits ]]; then
+  if [[ -z $producer ]]; then
+    [[ ${CI:-} != true ]] || { echo "CI needs FIXTURE_CANONICAL_PRODUCER" >&2; exit 1; }
+    build_messages=$(mktemp)
+    cargo test -p prover --lib --features test --profile cli --no-run --message-format=json >"$build_messages"
+    producer=$(python3 - "$build_messages" <<'PY'
+import json, sys
+messages = [json.loads(line) for line in open(sys.argv[1])]
+executables = [message["executable"] for message in messages
+               if message.get("reason") == "compiler-artifact"
+               and message["target"]["name"] == "prover"
+               and message["profile"]["test"] and message.get("executable")]
+assert len(executables) == 1, executables
+print(executables[0])
+PY
+)
+  fi
+  [[ -x $producer ]]
+fi
+if [[ $stage_filter != circuits ]]; then
+  if [[ -z $cli ]]; then
+    [[ ${CI:-} != true ]] || { echo "CI needs FIXTURE_CLI" >&2; exit 1; }
+    cargo build --release -p cli
+    cli="$repo/target/release/cli"
+  fi
+  if [[ -z $codec ]]; then
+    [[ ${CI:-} != true ]] || { echo "CI needs FIXTURE_CODEC" >&2; exit 1; }
+    cargo build --release -p proof_fixtures --bin fixture-codec
+    codec="$repo/target/release/fixture-codec"
+  fi
+  [[ -x $cli && -x $codec ]]
+fi
+
+compare_file() {
+  if ((check)); then
+    cmp "$1" "$repo/${1#"$out_repo/"}"
+  fi
+}
+check_artifact() {
+  local name=$1
+  local file="$chain_out/$name.json.zlib"
+  "$codec" check "$file" "$mode" "$name"
+  "$cli" verify --proof "$file" --bin "$bin" --soundness-mode "$cli_mode"
+  compare_file "$file"
+}
+
+modes=(pessimistic_conjecture ethproofs_soundcalc)
+[[ -z $mode_filter ]] || modes=("$mode_filter")
+for mode in "${modes[@]}"; do
+  cli_mode=${mode//_/-}
+  bin="$repo/examples/basic_fibonacci/app.bin"
+  chain_out="$out_repo/fixtures/chains/$mode"
+  chain_parent="$repo/fixtures/chains/$mode"
+  common=(--bin "$bin" --backend cpu --soundness-mode "$cli_mode" --output-dir "$chain_out" --worker-threads 16)
+  stages=(circuits base_unified unrolled)
+  [[ -z $stage_filter ]] || stages=("$stage_filter")
+  for stage in "${stages[@]}"; do
+    echo "== $mode / $stage"
+    case $stage in
+      circuits)
+        if ((check)); then
+          producer_log="$temporary/producer-$mode.log"
+        else
+          producer_log=$(mktemp)
+        fi
+        PROOF_FIXTURES_OUTPUT_ROOT="$out_repo" "$producer" \
+          --exact "tests::gkr::canonical_proofs::regenerate_canonical_circuit_proofs_$mode" \
+          --nocapture --test-threads=1 | tee "$producer_log"
+        grep -q 'test result: ok. 1 passed; 0 failed' "$producer_log"
+        if ((!check)); then
+          rm -f "$producer_log"
+          producer_log=
+        fi
+        for file in "$out_repo/fixtures/circuits/$mode/"*.json.zlib; do
+          compare_file "$file"
+        done ;;
+      base_unified)
+        env -u RECURSION_UNROLLED_LAYERS "$cli" prove "${common[@]}" --target base --output-file base.json.zlib
+        check_artifact base
+        RECURSION_UNROLLED_LAYERS=0 "$cli" continue-proof "${common[@]}" \
+          --proof "$chain_parent/base.json.zlib" --target recursion-unified --output-file unified.json.zlib
+        check_artifact unified
+        if ((check)); then
+          FIXTURE_CHAIN_ROOT="$repo/fixtures/chains" FIXTURE_CODEC="$codec" \
+            SOUNDNESS_MODE="$cli_mode" SMOKE_OUTPUT_DIR="$out_repo/smoke/$mode" \
+            "$repo/.github/scripts/soundness_mode_smoke.sh" "$cli" "$bin" cpu
+        fi ;;
+      unrolled)
+        RECURSION_UNROLLED_LAYERS=1 "$cli" continue-proof "${common[@]}" \
+          --proof "$chain_parent/base.json.zlib" --target recursion-unrolled --output-file unrolled.json.zlib
+        check_artifact unrolled
+        RECURSION_UNROLLED_LAYERS=0 "$cli" continue-proof "${common[@]}" \
+          --proof "$chain_parent/unrolled.json.zlib" --target recursion-unified --output-file unrolled_unified.json.zlib
+        check_artifact unrolled_unified ;;
+    esac
+  done
+done

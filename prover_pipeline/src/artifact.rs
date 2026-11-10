@@ -136,4 +136,30 @@ mod tests {
             assert_eq!(decoded.is_ok(), version == ARTIFACT_SCHEMA_VERSION);
         }
     }
+
+    #[test]
+    fn committed_chain_encoding() {
+        for &mode in SoundnessMode::ALL {
+            for chain in proof_fixtures::CHAINS {
+                let path = proof_fixtures::chain_artifact(mode.file_suffix(), chain);
+                let artifact: ProofArtifact = proof_fixtures::read_file(&path);
+                let (target, entries) = match chain {
+                    "base" => (ProofTarget::Base, 1),
+                    "unified" => (ProofTarget::RecursionUnified, 3),
+                    "unrolled" => (ProofTarget::RecursionUnrolled, 2),
+                    "unrolled_unified" => (ProofTarget::RecursionUnified, 4),
+                    _ => unreachable!(),
+                };
+                assert_eq!(artifact.soundness_mode, mode);
+                assert_eq!(artifact.security_level, SecurityLevel::Sec100);
+                assert_eq!(artifact.target, target);
+                assert_eq!(artifact.program_cycles, 97);
+                assert_eq!(artifact.chain_end_params.len(), entries);
+                assert_eq!(
+                    proof_fixtures::encode(&artifact, Vec::new()),
+                    std::fs::read(path).unwrap()
+                );
+            }
+        }
+    }
 }
