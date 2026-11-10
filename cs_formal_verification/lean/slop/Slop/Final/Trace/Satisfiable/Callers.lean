@@ -1,5 +1,6 @@
 module
 public import Slop.NonVacuous.CallerPool
+public import Slop.NonVacuous.CallerPrepared
 public import Human.Circuits.AddSub.RVCallerTheorems
 public import Human.Trace.Delegation.RVCallerTheorems
 
@@ -34,8 +35,11 @@ theorem rv_shared_memory_soundness_satisfiable : RVSharedMemorySoundnessSatisfia
 theorem rv_shared_operation_soundness_satisfiable : RVSharedOperationSoundnessSatisfiableClaim :=
   ⟨data, before, [0], cells, shared_accepted, shared_operation_inputs, callers_ne⟩
 
+/-- With an ordinary row: `Slop/NonVacuous/CallerPrepared.lean` (an LUI preparing the worker's pointer). -/
 theorem rv_mixed_memory_soundness_satisfiable : RVMixedMemorySoundnessSatisfiableClaim :=
-  ⟨data, [], before, [0], [], cells, mixed_accepted, mixed_inputs, callers_ne⟩
+  ⟨NonVacuous.CallerPrepared.data, NonVacuous.CallerPrepared.program, NonVacuous.CallerPrepared.before, [4], [0],
+    NonVacuous.CallerPrepared.cells, NonVacuous.CallerPrepared.mixed_accepted,
+    NonVacuous.CallerPrepared.mixed_inputs, NonVacuous.CallerPrepared.callers_ne⟩
 
 theorem rv_worker_schedule_soundness_satisfiable : RVWorkerScheduleSoundnessSatisfiableClaim :=
   ⟨data, before, [0], checks, inputs, callers_ne⟩

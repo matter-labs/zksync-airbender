@@ -209,27 +209,6 @@ theorem shared_operation_inputs : RVSharedOperationInputs data before [0] cells 
   tables := rfl
   rounds := rounds
 
-theorem mixed_steps : data.mixedSteps = data.sharedSteps := by
-  have ports : machinePorts row = architecturalPorts := ite_eq_left (by decide +kernel)
-  simp only [RVRequestTrace.mixedSteps, RVRequestTrace.sharedSteps, data, machine, List.flatMap_cons,
-    List.flatMap_nil, ports]
-  rfl
-
-theorem mixed_accepted : RVMixedMemoryAccepted data [] where
-  toRVRequestChecks := checks
-  ordinaryDecoded current member notCaller := (notCaller (by rw [callers]; exact member)).elim
-  memory := by
-    rw [mixed_steps]
-    exact shared_accepted.memory
-
-theorem mixed_inputs : RVMixedMemoryInputs data [] before [0] [] cells where
-  toRVSharedMemoryInputs := shared_inputs
-  ordinaryProgram := rfl
-  wordTable := rfl
-  subwordTable := rfl
-  tables := rfl
-  rounds := rounds
-
 theorem window : windowCallers data.callers 4 8 ≠ [] := by
   rw [callers]
   decide +kernel
