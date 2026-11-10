@@ -14,9 +14,11 @@ namespace Airbender.ShiftBinop
 open Trace
 
 /-- Every accepted shift/binop row is one step of our spec: from the row's pre-state (`input.before`), the step
-    exists and gives the row's post-state: `rd` := the row's result, PC := the row's final PC, nothing else changed. -/
+    exists and gives the row's post-state: `rd` := the row's result, PC := the row's final PC, nothing else changed.
+    Its assumptions can be met: some accepted, decoded trace meeting `Trace.RVPooledHistoryInputs` has such a row
+    (`Trace.RVRowClaim`). -/
 def RVSoundnessClaim : Prop :=
-  Trace.RVRowSoundness .shiftBinop RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs fun input output =>
+  Trace.RVRowClaim .shiftBinop RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs fun input output =>
     ∃ s', RV.step input.before = some s' ∧
       RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
 
