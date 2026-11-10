@@ -92,6 +92,13 @@ def WritesRangeCheckedClaim : Prop :=
   ∀ {data : MemoryData babyBearModulus} (_accepted : MemoryAccepted data) (_active : ∀ row ∈ data.rows, row.assignment row.columns.execute = 1),
     ∀ row ∈ data.rows, WritesRangeChecked row.memorySteps
 
+/-- The assumptions of `WritesRangeCheckedClaim` can be met by a pool with a row that has ports, all of whose reads
+    are bounded (so the conclusion's premise holds too). -/
+def WritesRangeCheckedSatisfiableClaim : Prop :=
+  ∃ data : MemoryData babyBearModulus, MemoryAccepted data ∧
+    (∀ row ∈ data.rows, row.assignment row.columns.execute = 1) ∧
+    ∃ row ∈ data.rows, row.memorySteps ≠ [] ∧ ∀ step ∈ row.memorySteps, step.1.word.Bounded
+
 end Airbender.Keccak.Split.Native
 
 namespace Airbender.InitsTeardowns

@@ -20,6 +20,12 @@ def RVOperationExecutionClaim : Prop :=
   ∀ {data : MemoryData babyBearModulus} {before : RV.State} {cells : List Trace.Cell} (_accepted : MemoryAccepted data) (_inputs : RVOperationInputs data before cells) (_aligned : ∀ cell ∈ cells, cell.Aligned),
     RVMemoryExecution data before cells ∧ ∀ row ∈ data.rows, RowEffects row
 
+/-- The assumptions of `RVOperationExecutionClaim` can be met by a pool with a row. -/
+def RVOperationExecutionSatisfiableClaim : Prop :=
+  ∃ (data : MemoryData babyBearModulus) (before : RV.State) (cells : List Trace.Cell),
+    MemoryAccepted data ∧ RVOperationInputs data before cells ∧ (∀ cell ∈ cells, cell.Aligned) ∧
+      ∃ row, row ∈ data.rows
+
 /-- A complete initialized split request on `RV.State`s: its 361 calls
     execute in schedule order, one documented call each (`Call.RVExecutesAt`), together write Clean's Keccak-f[1600]
     permutation of the block at the public x11 pointer, and the final state is the spec's run of the 361

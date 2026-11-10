@@ -10,6 +10,7 @@ import Human.Trace.Families.AddSub.RVTheorems
 import Human.Trace.UnifiedReduced.RVTheorems
 import Human.Trace.Workers.Blake2G.RVTheorems
 import Human.Trace.Workers.Keccak.RVTheorems
+import Human.Trace.Workers.KeccakSplit.RVTheorems
 
 open Airbender Trace
 
@@ -156,5 +157,21 @@ example (claim : Keccak.Native.RVOperationExecutionClaim) : Keccak.Native.RVOper
   fun ⟨data, before, cells, accepted, inputs, aligned, row, member, family⟩ =>
     have result := claim accepted inputs aligned
     ⟨data, before, cells, result.1, row, member, family, result.2 row member family⟩
+
+example (claim : Keccak.Split.Native.RVOperationExecutionClaim) :
+    Keccak.Split.Native.RVOperationExecutionSatisfiableClaim →
+    ∃ (data : Keccak.Split.Native.MemoryData babyBearModulus) (before : RV.State) (cells : List Cell),
+      Keccak.Split.Native.RVMemoryExecution data before cells ∧
+        ∃ row ∈ data.rows, Keccak.Split.Native.RowEffects row :=
+  fun ⟨data, before, cells, accepted, inputs, aligned, row, member⟩ =>
+    have result := claim accepted inputs aligned
+    ⟨data, before, cells, result.1, row, member, result.2 row member⟩
+
+example (claim : Keccak.Split.Native.WritesRangeCheckedClaim) :
+    Keccak.Split.Native.WritesRangeCheckedSatisfiableClaim →
+    ∃ data : Keccak.Split.Native.MemoryData babyBearModulus, ∃ row ∈ data.rows, row.memorySteps ≠ [] ∧
+      ∀ step ∈ row.memorySteps, step.2.word.Bounded :=
+  fun ⟨data, accepted, active, row, member, steps, reads⟩ =>
+    ⟨data, row, member, steps, claim accepted active row member reads⟩
 
 end Checks.Satisfiable
