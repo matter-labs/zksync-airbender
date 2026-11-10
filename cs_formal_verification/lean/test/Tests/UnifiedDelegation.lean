@@ -33,7 +33,7 @@ private theorem endpoint_permutation {start finish target : List (MemoryToken ba
 private def abiAssignment (highControl : Bool) (column : Nat) : ZMod babyBearModulus :=
   if column = 55 ∨ column = 56 ∨ column = 59 then (if highControl then 1 else 0)
   else if column = 66 then 0
-  else if column = 1 then 5 else Tests.BigintMemory.row column
+  else if column = 1 then 5 else NonVacuous.Bigint.row column
 private theorem abiCore (highControl : Bool) : FlatOperation.ConstraintsHoldFlat
     (Verification.environment (abiAssignment highControl))
     (Bigint.importedConstraints Bigint.setupTable) := by

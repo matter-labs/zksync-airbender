@@ -14,8 +14,8 @@ set_option warningAsError true
 set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
--- `Tests.BigintMemory.row` already carries the active invocation clock 5.
-def assignment (i : Nat) : ZMod babyBearModulus := Tests.BigintMemory.row i
+-- `NonVacuous.Bigint.row` already carries the active invocation clock 5.
+def assignment (i : Nat) : ZMod babyBearModulus := NonVacuous.Bigint.row i
 def worker : Delegation.Row babyBearModulus := ⟨.bigint, assignment⟩
 def workers : MemoryData babyBearModulus where
   setup := modeledSetup Keccak.Controller.rows
@@ -25,16 +25,16 @@ def workers : MemoryData babyBearModulus where
 private theorem worker_constraints : FlatOperation.ConstraintsHoldFlat
     (Verification.environment assignment) (worker.constraints workers.setup) := by
   apply Verification.holds_append
-  · exact Tests.BigintMemory.core
+  · exact NonVacuous.Bigint.core
   · simp [Bigint.importedConstraintsTimestampLookups, FlatOperation.ConstraintsHoldFlat]
     repeat' apply And.intro
     all_goals apply Trace.Proofs.range_contains
-    all_goals simp [Expression.eval, Verification.environment, assignment, Tests.BigintMemory.row]
+    all_goals simp [Expression.eval, Verification.environment, assignment, NonVacuous.Bigint.row]
     all_goals decide
 
 private def sharedAssignment (i : Nat) : ZMod babyBearModulus :=
   if i = 35 then 4 else Tests.DelegationCaller.assignment .bigint i
-def sharedCells : List Cell := .register 0 :: Tests.BigintMemory.cells
+def sharedCells : List Cell := .register 0 :: NonVacuous.Bigint.cells
 private theorem sharedCallerConstraints : FlatOperation.ConstraintsHoldFlat
     (Verification.environment sharedAssignment) AddSub.clockConstraints := by
   apply Verification.holds_append

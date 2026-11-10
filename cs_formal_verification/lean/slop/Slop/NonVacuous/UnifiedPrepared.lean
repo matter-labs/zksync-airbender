@@ -1,6 +1,7 @@
 module
 public import Slop.NonVacuous.UnifiedCaller
 public import Human.Helpers.UnifiedReduced.RVControlPreparation
+public import Human.Helpers.UnifiedReduced.RVWindows
 
 @[expose] public section
 
@@ -241,5 +242,28 @@ theorem preparation_again : RVControlPreparation data program 16 10 (.lui 0x400)
   beforeTerminal := by decide +kernel
 
 theorem callers_ne : data.callers ≠ [] := by rw [callers]; exact List.cons_ne_nil _ _
+
+/-- The worker writes at clock eleven, inside the call's window `(8, 12]`. -/
+theorem call_window : data.workers.windowRows 8 12 = [worker] := by
+  simp only [data, workers, Delegation.MemoryData.windowRows]
+  rw [List.filter_cons_of_pos (by decide +kernel), List.filter_nil]
+
+theorem call_window_ne : data.workers.windowRows 8 12 ≠ [] := by rw [call_window]; exact List.cons_ne_nil _ _
+
+/-- Both preparations are sequential (LUI) instructions. -/
+theorem sequential : RVSequentialProgram program := by
+  intro entry member instruction decoded
+  rw [uniform entry member] at decoded
+  cases decoded
+  exact .arithmetic (.lui _ _)
+
+/-- The window `(8, 12]` holds the caller's entry (PC 4) and neither preparation (PC 0 and 8). -/
+theorem caller_region : RVProgramCallerRegion data program .bigint 8 12 := by
+  refine ⟨fun entry member => ?_, fun entry member _ => ?_⟩
+  · simp only [program, List.mem_cons, List.not_mem_nil, or_false] at member
+    rcases member with rfl | rfl <;> decide +kernel
+  · simp only [data, callerProgram, List.mem_singleton] at member
+    subst entry
+    rfl
 
 end Airbender.NonVacuous.UnifiedPrepared

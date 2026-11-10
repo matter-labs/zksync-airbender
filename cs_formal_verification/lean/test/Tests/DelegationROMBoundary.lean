@@ -19,7 +19,7 @@ set_option maxRecDepth 32768
 set_option maxHeartbeats 4000000
 
 def assignment (column : Nat) : ZMod babyBearModulus :=
-  if column = 1 then 5 else if column = 4 ∨ column = 38 then 0 else Tests.BigintMemory.row column
+  if column = 1 then 5 else if column = 4 ∨ column = 38 then 0 else NonVacuous.Bigint.row column
 def worker : Delegation.Row babyBearModulus := ⟨.bigint, assignment⟩
 def workers : MemoryData babyBearModulus where
   setup := modeledSetup Keccak.Controller.rows
@@ -29,7 +29,7 @@ def workers : MemoryData babyBearModulus where
 private theorem core : FlatOperation.ConstraintsHoldFlat (Verification.environment assignment)
     (Bigint.importedConstraints Bigint.setupTable) := by
   simp [Bigint.importedConstraints, FlatOperation.ConstraintsHoldFlat,
-    Verification.environment, Expression.eval, assignment, Tests.BigintMemory.row, Lookup.Contains, Table.toRaw, fromElements]
+    Verification.environment, Expression.eval, assignment, NonVacuous.Bigint.row, Lookup.Contains, Table.toRaw, fromElements]
   repeat' apply And.intro
   all_goals solve
     | (apply Verification.range16_contains; decide +kernel)
