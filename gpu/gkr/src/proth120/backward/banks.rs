@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::ffi::c_void;
 use std::mem::{align_of, offset_of, size_of};
 
@@ -6,20 +5,20 @@ use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::{CudaResult, CudaResultWrap};
 use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
-use gpu_gkr_compiler::{
-    CoeffProduct, CoefficientRecipeId, NormalizedCoefficientRecipe, WindowCoefficientPlan,
-};
+use gpu_gkr_compiler::{CoefficientRecipeId, NormalizedCoefficientRecipe, WindowCoefficientPlan};
 use gpu_prover_context::ProverContext;
 
 use crate::backward::coefficient_chunks::coefficient_chunk_ranges;
 use crate::backward::window::coefficient_bank::{
-    coefficient_bank_challenge_slot, BWD_COEFF_CHALLENGE_CLAIM_BATCHING,
+    translate_coefficient_recipe, BWD_COEFF_CHALLENGE_CLAIM_BATCHING,
+    BWD_COEFF_CHALLENGE_LOOKUP_ADDITIVE,
 };
 use crate::proth120::programs::GkrProgramsPr;
-use crate::upstream::{Field, PrimeField, PR};
+use crate::upstream::{Field, PR};
 
 pub(crate) const PR_COEFF_CHALLENGES: usize = 9;
-pub(crate) const PR_COEFF_CHALLENGE_ABSENT: u8 = 0xff;
+pub(crate) const PR_COEFF_CHALLENGE_ABSENT: u8 =
+    crate::backward::window::coefficient_bank::BWD_COEFF_CHALLENGE_ABSENT;
 const PR_COEFF_CHUNK_RECIPES: usize = 278;
 const PR_COEFF_CHUNK_MONOMIALS: usize = 577;
 const PR_COEFF_CHUNK_IMMEDIATES: usize = 17;
@@ -77,16 +76,6 @@ impl Default for CoeffMonomialPr {
 }
 
 impl CoeffMonomialPr {
-    fn key(&self) -> (u16, u8, u8, u8, u8) {
-        (
-            self.batch_power,
-            self.challenge_idx_0,
-            self.power_0,
-            self.challenge_idx_1,
-            self.power_1,
-        )
-    }
-
     fn from_key(key: (u16, u8, u8, u8, u8)) -> Self {
         let (batch_power, challenge_idx_0, power_0, challenge_idx_1, power_1) = key;
         Self {
@@ -146,6 +135,8 @@ const _: () = {
     assert!(PR_EVAL_COEFFICIENTS_ARGUMENT_BYTES == 16392);
     assert!(PR_EVAL_COEFFICIENTS_ARGUMENT_BYTES <= PR_COEFF_ARGUMENT_LIMIT);
     assert!(BWD_COEFF_CHALLENGE_CLAIM_BATCHING as usize == PR_COEFF_CHALLENGES);
+    // Lookup additive is the highest non-batching slot in the shared layout.
+    assert!((BWD_COEFF_CHALLENGE_LOOKUP_ADDITIVE as usize) < PR_COEFF_CHALLENGES);
 };
 
 cuda_kernel!(PrEvalCoefficients, ab_pr_gkr_bwd_eval_coefficients_kernel(
@@ -161,90 +152,14 @@ pub(crate) struct CoefficientBankHostPr {
     pub immediates: Vec<PR>,
 }
 
-fn translate_product(
-    product: &CoeffProduct,
-    recipe_index: usize,
-    product_index: usize,
-) -> CoeffMonomialPr {
-    let mut exponents: BTreeMap<u8, u32> = BTreeMap::new();
-    for challenge in &product.challenges {
-        let (slot, power) = coefficient_bank_challenge_slot(&challenge.0)
-            .expect("Proth120 coefficient challenge must be supported");
-        *exponents.entry(slot).or_default() += power;
-    }
-    exponents.retain(|_, exponent| *exponent != 0);
-    let batch = exponents
-        .remove(&BWD_COEFF_CHALLENGE_CLAIM_BATCHING)
-        .unwrap_or(0);
-    assert!(
-        batch <= u32::from(u16::MAX),
-        "Proth120 binding BatchPowerOverflow: recipe={:?}, product={:?}, power={:?}",
-        recipe_index,
-        product_index,
-        batch
-    );
-    assert!(
-        exponents.len() <= 2,
-        "Proth120 binding TooManyDistinctChallenges: recipe={:?}, product={:?}, distinct={:?}",
-        recipe_index,
-        product_index,
-        exponents.len()
-    );
-    let mut monomial = CoeffMonomialPr {
-        batch_power: batch as u16,
-        ..CoeffMonomialPr::default()
-    };
-    for (position, (slot, exponent)) in exponents.into_iter().enumerate() {
-        assert!(
-            usize::from(slot) < PR_COEFF_CHALLENGES,
-            "Proth120 coefficient challenge slot {slot} is outside the packed challenges"
-        );
-        assert!(exponent <= u32::from(u8::MAX),
-            "Proth120 binding ExponentOverflow: recipe={:?}, product={:?}, slot={:?}, exponent={:?}", recipe_index, product_index, slot, exponent
-        );
-        if position == 0 {
-            monomial.challenge_idx_0 = slot;
-            monomial.power_0 = exponent as u8;
-        } else {
-            monomial.challenge_idx_1 = slot;
-            monomial.power_1 = exponent as u8;
-        }
-    }
-    monomial
-}
-
 fn translate_recipe(
     recipe: &NormalizedCoefficientRecipe,
     recipe_index: usize,
     top_bits: &[u32],
 ) -> Vec<(PR, CoeffMonomialPr)> {
-    let mut merged: BTreeMap<(u16, u8, u8, u8, u8), PR> = BTreeMap::new();
-    for (product_index, product) in recipe.terms.iter().enumerate() {
-        let monomial = translate_product(product, recipe_index, product_index);
-        let mut scalar = PR::from_u128_with_reduction(product.scalar);
-        for reference in &product.inits_and_teardowns_top_bits {
-            let bits = top_bits
-                .get(reference.set_index)
-                .copied()
-                .unwrap_or_else(|| {
-                    panic!(
-                        "Proth120 binding MissingTopBits: recipe={:?}, product={:?}, set_index={:?}, available={:?}", recipe_index, product_index, reference.set_index, top_bits.len()
-                    )
-                });
-            let shifted = bits.checked_shl(reference.shift).unwrap_or(0);
-            scalar.mul_assign(&PR::from_u32_with_reduction(shifted));
-        }
-        merged
-            .entry(monomial.key())
-            .and_modify(|value| {
-                value.add_assign(&scalar);
-            })
-            .or_insert(scalar);
-    }
-    merged
-        .into_iter()
-        .filter(|(_, scalar)| !scalar.is_zero())
-        .map(|(key, scalar)| (scalar, CoeffMonomialPr::from_key(key)))
+    translate_coefficient_recipe(recipe, recipe_index, top_bits, PR::from_u128_with_reduction)
+        .unwrap_or_else(|error| panic!("Proth120 coefficient binding: {error:?}"))
+        .map(|(scalar, key)| (scalar, CoeffMonomialPr::from_key(key)))
         .collect()
 }
 

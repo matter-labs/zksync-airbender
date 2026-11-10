@@ -167,20 +167,6 @@ const _: () = {
     assert!(std::mem::offset_of!(BankMonomial, power_0) == 8);
 };
 
-impl BankMonomial {
-    /// The canonicalization key: everything except the scalar. Two monomials with
-    /// the same key are the same product and their scalars merge.
-    fn key(&self) -> (u16, u8, u8, u8, u8) {
-        (
-            self.batch_power,
-            self.challenge_idx_0,
-            self.power_0,
-            self.challenge_idx_1,
-            self.power_1,
-        )
-    }
-}
-
 // ── Errors ───────────────────────────────────────────────────────────────────
 
 /// Why a recipe (or a bank of them) does not fit the device evaluator's format.
@@ -239,48 +225,24 @@ fn translate_recipe_inner(
     recipe_index: usize,
     runtime_top_bits: &[u32],
 ) -> Result<Vec<BankMonomial>, CoefficientBankError> {
-    let mut merged: BTreeMap<(u16, u8, u8, u8, u8), BF> = BTreeMap::new();
-
-    for (product_index, product) in recipe.terms.iter().enumerate() {
-        let monomial = translate_product(product, recipe_index, product_index)?;
-        let mut scalar = crate::backward::babybear_from_canonical(product.scalar);
-        for reference in &product.inits_and_teardowns_top_bits {
-            let top_bits = runtime_top_bits.get(reference.set_index).copied().ok_or(
-                CoefficientBankError::MissingTopBits {
-                    recipe: recipe_index,
-                    product: product_index,
-                    set_index: reference.set_index,
-                    available: runtime_top_bits.len(),
-                },
-            )?;
-            let shifted = top_bits.checked_shl(reference.shift).unwrap_or(0);
-            scalar.mul_assign(&BF::from_u32_with_reduction(shifted));
-        }
-        merged
-            .entry(monomial.key())
-            .and_modify(|value| {
-                value.add_assign(&scalar);
-            })
-            .or_insert(scalar);
-    }
-
-    let monomials = merged
-        .into_iter()
-        .filter(|(_, scalar)| !scalar.is_zero())
-        .map(
-            |((batch_power, challenge_idx_0, power_0, challenge_idx_1, power_1), coeff)| {
-                BankMonomial {
-                    coeff,
-                    batch_power,
-                    challenge_idx_0,
-                    challenge_idx_1,
-                    power_0,
-                    power_1,
-                    _pad: [0; 2],
-                }
-            },
-        )
-        .collect::<Vec<_>>();
+    let monomials = translate_coefficient_recipe(
+        recipe,
+        recipe_index,
+        runtime_top_bits,
+        crate::backward::babybear_from_canonical,
+    )?
+    .map(
+        |(coeff, (batch_power, challenge_idx_0, power_0, challenge_idx_1, power_1))| BankMonomial {
+            coeff,
+            batch_power,
+            challenge_idx_0,
+            challenge_idx_1,
+            power_0,
+            power_1,
+            _pad: [0; 2],
+        },
+    )
+    .collect::<Vec<_>>();
     if monomials.len() > BWD_COEFF_CHUNK_MONOMIALS {
         return Err(CoefficientBankError::MonomialTableOverflow {
             monomials: monomials.len(),
@@ -290,24 +252,59 @@ fn translate_recipe_inner(
     Ok(monomials)
 }
 
-/// One product as one monomial: the batching exponent to its own field, the other
-/// challenges to the two factor slots.
-fn translate_product(
+/// Everything except the scalar: equal products merge under this ordered key.
+pub(crate) type CoefficientMonomialKey = (u16, u8, u8, u8, u8);
+
+/// Field-neutral recipe normalization; scalar conversion is the only field policy.
+/// The BabyBear caller retains its per-recipe capacity check; Proth120 asserts errors at its boundary.
+pub(crate) fn translate_coefficient_recipe<F: PrimeField>(
+    recipe: &NormalizedCoefficientRecipe,
+    recipe_index: usize,
+    runtime_top_bits: &[u32],
+    convert_scalar: impl Fn(u128) -> F,
+) -> Result<impl Iterator<Item = (F, CoefficientMonomialKey)>, CoefficientBankError> {
+    let mut merged: BTreeMap<CoefficientMonomialKey, F> = BTreeMap::new();
+    for (product_index, product) in recipe.terms.iter().enumerate() {
+        let (mut scalar, key) =
+            translate_coefficient_product(product, recipe_index, product_index, &convert_scalar)?;
+        for reference in &product.inits_and_teardowns_top_bits {
+            let bits = runtime_top_bits.get(reference.set_index).copied().ok_or(
+                CoefficientBankError::MissingTopBits {
+                    recipe: recipe_index,
+                    product: product_index,
+                    set_index: reference.set_index,
+                    available: runtime_top_bits.len(),
+                },
+            )?;
+            let shifted = bits.checked_shl(reference.shift).unwrap_or(0);
+            scalar.mul_assign(&F::from_u32_with_reduction(shifted));
+        }
+        merged
+            .entry(key)
+            .and_modify(|value| {
+                value.add_assign(&scalar);
+            })
+            .or_insert(scalar);
+    }
+    Ok(merged
+        .into_iter()
+        .filter(|(_, scalar)| !scalar.is_zero())
+        .map(|(key, scalar)| (scalar, key)))
+}
+
+fn translate_coefficient_product<F: PrimeField>(
     product: &CoeffProduct,
     recipe_index: usize,
     product_index: usize,
-) -> Result<BankMonomial, CoefficientBankError> {
+    convert_scalar: &impl Fn(u128) -> F,
+) -> Result<(F, CoefficientMonomialKey), CoefficientBankError> {
     let mut exponents: BTreeMap<u8, u32> = BTreeMap::new();
     for challenge in &product.challenges {
         let (slot, power) = coefficient_bank_challenge_slot(&challenge.0)?;
         *exponents.entry(slot).or_default() += power;
     }
-    // A zero total exponent is the multiplicative identity, so the factor is dropped
-    // rather than emitted — and, more importantly, it must not consume one of the two
-    // factor slots. Only reachable through an explicit `Static(0)` spelling on a
-    // power-honouring key.
+    // Zero powers are identities and do not consume either factor slot.
     exponents.retain(|_, exponent| *exponent != 0);
-
     let batch = exponents
         .remove(&BWD_COEFF_CHALLENGE_CLAIM_BATCHING)
         .unwrap_or(0);
@@ -325,14 +322,15 @@ fn translate_product(
             distinct: exponents.len(),
         });
     }
-
-    let mut monomial = BankMonomial {
-        coeff: crate::backward::babybear_from_canonical(product.scalar),
-        batch_power: batch as u16,
-        ..BankMonomial::default()
-    };
-    // Ascending slot order, so two products with the same factor multiset always
-    // produce the same key and merge.
+    // Keep BabyBear's canonical-scalar validation before the exponent checks.
+    let scalar = convert_scalar(product.scalar);
+    let mut key = (
+        batch as u16,
+        BWD_COEFF_CHALLENGE_ABSENT,
+        0,
+        BWD_COEFF_CHALLENGE_ABSENT,
+        0,
+    );
     for (position, (slot, exponent)) in exponents.into_iter().enumerate() {
         if exponent > u32::from(u8::MAX) {
             return Err(CoefficientBankError::ExponentOverflow {
@@ -343,14 +341,14 @@ fn translate_product(
             });
         }
         if position == 0 {
-            monomial.challenge_idx_0 = slot;
-            monomial.power_0 = exponent as u8;
+            key.1 = slot;
+            key.2 = exponent as u8;
         } else {
-            monomial.challenge_idx_1 = slot;
-            monomial.power_1 = exponent as u8;
+            key.3 = slot;
+            key.4 = exponent as u8;
         }
     }
-    Ok(monomial)
+    Ok((scalar, key))
 }
 
 // ── The bank's tables ────────────────────────────────────────────────────────
