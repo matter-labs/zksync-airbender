@@ -6,7 +6,7 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use gpu_core::primitives::device_structures::{MutPtrAndStride, PtrAndStride};
 use gpu_core::primitives::field::PR;
 
-use super::context::TwiddleDescriptor;
+use super::context::{TwiddleDescriptor, TABLE_BYTES};
 use super::lde::{
     set_max_dynamic_smem, ChunkMap, DitPolicy, TransformPass, TransformPolicy,
     MAX_COLUMNS_PER_LAUNCH,
@@ -131,7 +131,6 @@ impl ScaleArgs<'_> {
 pub(crate) const MAX_CHUNK_BYTES: usize = 32 << 20;
 pub(crate) const MIN_CHUNK_BYTES: usize = 1 << 20;
 pub(crate) const MAX_TILE_BYTES: usize = 32 << 20;
-pub(crate) const MAX_LOG_MAX_DOMAIN: u32 = 33;
 
 // Half of the device L2: the working set at which the BabyBear NTT's measured per-NTT cost
 // minimum landed on both the 96 MiB and the 128 MiB parts (`ntt::strategy`).
@@ -334,16 +333,6 @@ pub struct Dispatch {
     pub l2_budget: usize,
 }
 
-pub(crate) fn twiddle_bytes(log_max_domain: u32) -> usize {
-    let low = log_max_domain.div_ceil(2);
-    2 * size_of::<PR>() * ((1 << low) + (1 << (log_max_domain - low)))
-}
-
-// The twiddle tables every dispatch working set reserves in the L2 budget next to its data.
-pub fn twiddle_working_set() -> usize {
-    twiddle_bytes(MAX_LOG_MAX_DOMAIN)
-}
-
 fn dispatch_with_budget(
     log_n: u32,
     columns: usize,
@@ -351,7 +340,7 @@ fn dispatch_with_budget(
     skip_bottom: u32,
     l2_budget: usize,
 ) -> Option<Dispatch> {
-    let fixed = twiddle_bytes(MAX_LOG_MAX_DOMAIN);
+    let fixed = TABLE_BYTES;
     for r in [8, 7] {
         let a = log_n - r;
         let tile_bytes = columns.checked_mul(size_of::<PR>() << (skip_bottom + r))?;
@@ -401,7 +390,7 @@ fn dispatch_degraded(
     l2_cache_size_bytes: usize,
 ) -> Option<Dispatch> {
     let l2_budget = l2_working_set_budget(l2_cache_size_bytes);
-    let fixed = twiddle_bytes(MAX_LOG_MAX_DOMAIN);
+    let fixed = TABLE_BYTES;
     let column = size_of::<PR>() << log_n;
     for r in [8, 7] {
         let a = log_n - r;

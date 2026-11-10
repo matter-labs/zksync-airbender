@@ -37,6 +37,7 @@ era_cudart::cuda_kernel!(BuildTables, ab_pr_ntt_build_tables_kernel(factors: *co
 pub const LOG_MAX_DOMAIN: u32 = 31;
 pub const LOW_TABLE_LEN: usize = 1 << 16;
 pub const TABLE_LEN: usize = LOW_TABLE_LEN + (1 << 15);
+pub(crate) const TABLE_BYTES: usize = TABLE_LEN * size_of::<PR>();
 const FACTOR_BITS: u32 = 4;
 const FACTOR_COUNT: usize = 32 / FACTOR_BITS as usize;
 // The final 3-bit factor is padded to 16 entries.

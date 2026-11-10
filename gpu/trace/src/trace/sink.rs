@@ -10,8 +10,8 @@ use gpu_hash::keccak256::{
     reduce_digest_layers, retained_layer_offset, Digest,
 };
 use gpu_ntt::proth120::{
-    launch_suffix_micro, lde_coset_slot, twiddle_working_set, CosetSource, Dispatch, ScaleArgs,
-    SuffixShape, TwiddleDescriptor,
+    launch_suffix_micro, lde_coset_slot, CosetSource, Dispatch, ScaleArgs, SuffixShape,
+    TwiddleDescriptor,
 };
 
 #[repr(C)]
@@ -614,10 +614,11 @@ pub fn open_coset_slot(
     )
 }
 
-// The L2-resident tiles of one suffix batch of a coefficient tree: the L2 budget less the twiddle
-// tables (the dispatch working-set rule).
+// L2 working-set budget a coefficient-tree suffix batch leaves free; larger batches measured slower on the wrap.
+const COEFFICIENT_BATCH_L2_HEADROOM_BYTES: usize = 6 << 20;
+
 pub fn coefficient_batch_bytes(l2_budget: usize) -> usize {
-    l2_budget.saturating_sub(twiddle_working_set())
+    l2_budget.saturating_sub(COEFFICIENT_BATCH_L2_HEADROOM_BYTES)
 }
 
 // (cosets, tiles per coset) of one suffix batch of a coefficient tree: whole cosets while a coset's
