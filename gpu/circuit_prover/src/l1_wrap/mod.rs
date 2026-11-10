@@ -12,7 +12,6 @@ pub use orchestration::{assemble_l1_proof, prove, GpuL1WrapProofJob};
 
 use std::sync::Arc;
 
-use era_cudart::result::CudaResult;
 use gpu_core::primitives::field::PR;
 use gpu_gkr::proth120::base_layer_claims::BaseClaimGatherPr;
 use gpu_gkr::proth120::programs::GkrProgramsPr;
@@ -41,9 +40,9 @@ impl L1WrapConstantsHost {
         circuit: &GKRCircuitArtifact<PR>,
         config: &ProverConfig,
         geometry: &L1WrapGeometry,
-    ) -> CudaResult<Self> {
+    ) -> Self {
         let layout = ProofLayoutPr::new(programs, config);
-        Ok(Self {
+        Self {
             relations: LookupRelationsPr::new(circuit),
             base_claim_indices: BaseClaimGatherPr::new(
                 programs,
@@ -52,6 +51,6 @@ impl L1WrapConstantsHost {
                 geometry.witness_columns,
                 geometry.setup_columns,
             ),
-        })
+        }
     }
 }

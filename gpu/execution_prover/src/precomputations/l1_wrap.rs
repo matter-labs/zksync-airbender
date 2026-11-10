@@ -27,7 +27,7 @@ pub struct L1WrapPrecomputed {
     pub config: ProverConfig,
     pub geometry: L1WrapGeometry,
     host: OnceLock<Arc<L1WrapSetupHost>>,
-    constants: OnceLock<Arc<L1WrapConstantsHost>>,
+    constants: Arc<L1WrapConstantsHost>,
 }
 
 impl L1WrapPrecomputed {
@@ -42,6 +42,9 @@ impl L1WrapPrecomputed {
         let decoder_host = decoder_host(&setup.decoder_table)?;
         let circuit = Arc::new(setup.circuit);
         let programs = Arc::new(GkrProgramsPr::compile(circuit_type, Arc::clone(&circuit)));
+        let constants = Arc::new(L1WrapConstantsHost::new(
+            &programs, &circuit, &config, &geometry,
+        ));
         Ok(Self {
             circuit_type,
             source: Mutex::new(Some(setup.setup)),
@@ -51,34 +54,25 @@ impl L1WrapPrecomputed {
             config,
             geometry,
             host: OnceLock::new(),
-            constants: OnceLock::new(),
+            constants,
         })
     }
 
     pub fn initialize(&self, context: &ProverContext) -> CudaResult<()> {
-        self.host.get_or_try_init(|| {
-            let source = self
-                .source
-                .lock()
-                .unwrap()
-                .take()
-                .expect("L1Wrap CPU setup is consumed once during initialization");
-            let cfg = PackedCommitConfig::from_prover_config(
-                &self.config,
-                gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
-            );
-            L1WrapSetupHost::precompute(&source, self.geometry.pack_log2, cfg, context)
-                .map(Arc::new)
-        })?;
-        self.constants
+        self.host
             .get_or_try_init(|| {
-                L1WrapConstantsHost::new(
-                    &self.programs,
-                    &self.circuit,
+                let source = self
+                    .source
+                    .lock()
+                    .unwrap()
+                    .take()
+                    .expect("L1Wrap CPU setup is consumed once during initialization");
+                let cfg = PackedCommitConfig::from_prover_config(
                     &self.config,
-                    &self.geometry,
-                )
-                .map(Arc::new)
+                    gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                );
+                L1WrapSetupHost::precompute(&source, self.geometry.pack_log2, cfg, context)
+                    .map(Arc::new)
             })
             .map(|_| ())
     }
@@ -92,11 +86,7 @@ impl L1WrapPrecomputed {
     }
 
     pub fn constants(&self) -> Arc<L1WrapConstantsHost> {
-        Arc::clone(
-            self.constants
-                .get()
-                .expect("L1Wrap setup initialization must run before proving"),
-        )
+        Arc::clone(&self.constants)
     }
 
     pub fn setup_cap(&self) -> MerkleTreeCapVarLength {
