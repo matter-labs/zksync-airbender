@@ -16,9 +16,10 @@ open Trace
 /-- Every accepted subword row computes the aligned cell `(rs1 + immediate) / 4 * 4`, and is one step of our spec:
     from the row's pre-state (`input.before`), the step exists and gives the row's post-state: SB/SH store the
     circuit's merged word at the cell (the old word with the stored byte or halfword replaced), loads write the
-    circuit's extended byte or halfword to `rd`; PC := the row's final PC; nothing else changed. -/
+    circuit's extended byte or halfword to `rd`; PC := the row's final PC; nothing else changed. The assumptions can
+    be met: some accepted, decoded trace meeting them has a subword row (`Trace.RVRowClaim`). -/
 def RVSoundnessClaim : Prop :=
-  Trace.RVRowSoundness .subwordMemory RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs fun input output =>
+  Trace.RVRowClaim .subwordMemory RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs fun input output =>
     output.cell.toBitVec.toNat = (input.source.toBitVec + input.immediate.toBitVec).toNat / 4 * 4 ∧
     ∃ s', RV.step input.before = some s' ∧
       RV.Same s' (if input.store then

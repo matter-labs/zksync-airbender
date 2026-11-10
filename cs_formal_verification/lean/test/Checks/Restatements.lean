@@ -143,17 +143,15 @@ example : Airbender.ShiftBinop.RVSoundnessClaimGeneric ↔ Airbender.ShiftBinop.
       obtain rfl : inst = Airbender.babyBearPrime := rfl
       intro trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
       exact h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
-example : Airbender.SubwordMemory.RVSoundnessClaimGeneric ↔ Airbender.SubwordMemory.RVSoundnessClaim :=
-  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ =>
-      h (p := Airbender.babyBearModulus) (by decide) (by decide) trace initial cells program a input output w
-        ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
-    fun h => by
-      intro p inst hp inv
-      obtain rfl : p = Airbender.babyBearModulus := Airbender.Field.eq_babyBear_of_cast_eq_zero (by
-        rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv)
-      obtain rfl : inst = Airbender.babyBearPrime := rfl
-      intro trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
-      exact h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
+-- The claim now also states that its assumptions can be met (`Trace.RVRowClaim`): only new → old.
+example : Airbender.SubwordMemory.RVSoundnessClaim → Airbender.SubwordMemory.RVSoundnessClaimGeneric :=
+  fun h => by
+    intro p inst hp inv
+    obtain rfl : p = Airbender.babyBearModulus := Airbender.Field.eq_babyBear_of_cast_eq_zero (by
+      rw [show Airbender.babyBearModulus = 2013265921 from rfl]; push_cast; linear_combination (-1 : ZMod p) * inv)
+    obtain rfl : inst = Airbender.babyBearPrime := rfl
+    intro trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
+    exact h.1 trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
 -- The claim now also states that its assumptions can be met (`Trace.RVRowClaim`): only new → old.
 example : Airbender.WordMemory.RVSoundnessClaim → Airbender.WordMemory.RVSoundnessClaimGeneric :=
   fun h => by
@@ -562,17 +560,16 @@ end Airbender.ShiftBinop
 
 namespace Airbender.SubwordMemory
 open Trace
--- The deleted `BabyBearRVSoundnessClaim`, verbatim.
-example : (∀ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry),
+-- The deleted `BabyBearRVSoundnessClaim`, verbatim; the claim now also states that its assumptions can be met.
+example : RVSoundnessClaim → (∀ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry),
     RVInterfaceAssumptions trace initial cells program →
     ∀ input output w, (rvCircuitModel trace initial cells program).relation input output w →
       output.cell.toBitVec.toNat = (input.source.toBitVec + input.immediate.toBitVec).toNat / 4 * 4 ∧
       ∃ s', RV.step input.before = some s' ∧
         RV.Same s' (if input.store then
             (input.before.store output.cell.toBitVec output.data.toBitVec 4).setPC output.pc.toBitVec
-          else (input.before.setReg input.rd output.data.toBitVec).setPC output.pc.toBitVec)) ↔ RVSoundnessClaim :=
-  ⟨fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩,
-    fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩⟩
+          else (input.before.setReg input.rd output.data.toBitVec).setPC output.pc.toBitVec)) :=
+  fun h trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩ => h.1 trace initial cells program a input output w ⟨⟨x, y, z⟩, ⟨u, v, r⟩⟩
 end Airbender.SubwordMemory
 
 namespace Airbender.WordMemory
