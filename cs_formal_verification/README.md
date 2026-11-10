@@ -25,6 +25,8 @@ checks that our code builds [without warnings](#no-warnings), checks the review 
   (and `Human/Trace/RVSoundness.lean`), imported by `lean/human/Human.lean`. `human/` holds only what a claim
   states (P4 shrink): definitions only proofs use are in `slop/Slop/Defs/` and `slop/Slop/CleanCore/`. The executable
   importer code in `Human/Import/Exec/` is pinned by the import claims and is not part of the reviewed spec.
+  Each claim restated by that shrink was checked once against its previous text (old ↔ new, or new → old where
+  the claim got stronger) in `test/Checks/Restatements.lean`, kept in git history up to commit d8cb7e2d8.
 - `lean/slop/` — everything else (kernel-checked, not meant to be read): supporting calculations, proof assembly and
   artifact guards (`Slop/`), and the proofs of the final statements (`Slop/Final/`, laid out like `Human/`;
   `test/Checks/Claims.lean` checks each theorem against its `…Claim` by name and type, and its axioms).
