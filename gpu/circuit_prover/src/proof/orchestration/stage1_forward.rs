@@ -22,11 +22,15 @@ use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
 use gpu_trace::trace::memory_cap::GpuGKRMemoryCapTransfer;
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 
-pub(in crate::proof) struct Stage1AndForwardPreparation {
+pub(in crate::proof) struct Stage1WitnessPreparation {
     pub(in crate::proof) stage1_output: GpuGKRStage1Output,
     pub(in crate::proof) synthetic_setup_trace_holder: Option<TraceHolder<BF>>,
     pub(in crate::proof) proof_layout: ProofLayout,
     pub(in crate::proof) proof_slab: Arc<DeviceAllocation<E4>>,
+    initial_chunks: Vec<(*const u32, u32)>,
+}
+
+pub(in crate::proof) struct ForwardChallengePreparation {
     pub(in crate::proof) forward_setup: GpuGKRForwardSetup,
     pub(in crate::proof) d_seed: DeviceAllocation<u32>,
 }
@@ -66,7 +70,7 @@ fn allocate_proof_slab(
     Ok(slab)
 }
 
-pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 'a>(
+pub(in crate::proof) fn prepare_witness_and_commitment<'a, A: GoodAllocator + 'a>(
     gkr_programs: &gpu_gkr::GkrPrograms,
     prover_config: &ProverConfig,
     base_geometry: BaseCommitmentGeometry,
@@ -77,7 +81,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     witness_policy: WitnessMemoryPolicy,
     partial_trees: PartialTreePolicy,
     context: &ProverContext,
-) -> CudaResult<Stage1AndForwardPreparation> {
+) -> CudaResult<Stage1WitnessPreparation> {
     let circuit_type = gkr_programs.circuit_type();
     let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
     let stream = context.get_exec_stream();
@@ -221,6 +225,27 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
     if witness_cap_len_u32 > 0 {
         chunks.push((witness_cap_ptr as *const u32, witness_cap_len_u32 as u32));
     }
+    Ok(Stage1WitnessPreparation {
+        stage1_output,
+        synthetic_setup_trace_holder,
+        proof_layout,
+        proof_slab,
+        initial_chunks: chunks,
+    })
+}
+
+pub(in crate::proof) fn prepare_challenges_and_forward_setup<'a, A: GoodAllocator + 'a>(
+    gkr_programs: &gpu_gkr::GkrPrograms,
+    prover_config: &ProverConfig,
+    bundle: BundleDeviceRefs<'_, 'a, A>,
+    preparation: &Stage1WitnessPreparation,
+    context: &ProverContext,
+) -> CudaResult<ForwardChallengePreparation> {
+    let compiled_circuit = gkr_programs.compiled_circuit().as_ref();
+    let stream = context.get_exec_stream();
+    let proof_layout = &preparation.proof_layout;
+    let slab_base = preparation.proof_slab.as_ptr() as *mut u8;
+    let chunks = &preparation.initial_chunks;
     let mut d_seed: DeviceAllocation<u32> =
         context.alloc(STATE_SIZE, AllocationPlacement::BestFit)?;
     gpu_hash::blake2s::transcript_commit_initial_chunked(&mut d_seed, &chunks, stream)?;
@@ -259,11 +284,7 @@ pub(in crate::proof) fn prepare_stage1_and_forward_setup<'a, A: GoodAllocator + 
         )?
     };
 
-    Ok(Stage1AndForwardPreparation {
-        stage1_output,
-        synthetic_setup_trace_holder,
-        proof_layout,
-        proof_slab,
+    Ok(ForwardChallengePreparation {
         forward_setup,
         d_seed,
     })

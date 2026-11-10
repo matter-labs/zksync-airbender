@@ -254,13 +254,15 @@ pub(super) fn run_case(
                 .baby_bear()
                 .profile_config(ProofProfile::Standard)
                 .0;
-            prove::<A>(
-                &target.precomputations.baby_bear().gkr_programs,
-                config,
-                FINAL_TRACE_SIZE_LOG_2,
-                inputs,
-                policy,
-                crate::memory_policy::partial_trees(target.circuit, ProofProfile::Standard),
+            prove(
+                gpu_circuit_prover::proof::BabyBearProofRequest::new(
+                    &target.precomputations.baby_bear().gkr_programs,
+                    config,
+                    FINAL_TRACE_SIZE_LOG_2,
+                    inputs,
+                    policy,
+                    crate::memory_policy::partial_trees(target.circuit, ProofProfile::Standard),
+                ),
                 context,
             )
             .and_then(|job| job.finish())

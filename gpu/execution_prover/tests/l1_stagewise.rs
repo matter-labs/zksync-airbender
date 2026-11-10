@@ -1,6 +1,7 @@
 #![cfg(all(not(no_cuda), feature = "deterministic_pow"))]
 
 gpu_core::force_serial_libtest!();
+use gpu_circuit_prover::proof::prove_stagewise;
 
 use cpu_execution_prover::test_support::with_l1_wrap_fixture;
 use cpu_execution_prover::CpuExecutionProverConfiguration;
@@ -9,7 +10,7 @@ use execution_prover::{OperationMode, ProofProfile};
 use full_statement_verifier::host_utils::{build_unified_stream, load_fsv_exact};
 use full_statement_verifier::program_proof::ProgramProof;
 use gpu_circuit_prover::l1_wrap::{
-    prove_stagewise, L1Proof, L1WrapConstantsHost, L1WrapGeometry, L1WrapInputs,
+    L1Proof, L1WrapConstantsHost, L1WrapGeometry, L1WrapInputs, L1WrapProofRequest,
     L1_WRAP_NTT_LOG_MAX_DOMAIN,
 };
 use gpu_circuit_prover::proof::memory_policy::presets;
@@ -160,14 +161,16 @@ fn l1_wrap_stagewise_pessimistic_conjecture() {
             let tail =
                 prepare_dr_tail_resources_pr(&programs, EXPLICIT_OUTPUT_LOG2 as u32, &context);
             let job = prove_stagewise(
-                &programs,
-                &circuit,
-                &geometry,
-                &config,
-                fixture.operation_mode.clone(),
-                inputs,
-                &tail,
-                partial_trees,
+                L1WrapProofRequest::new(
+                    &programs,
+                    &circuit,
+                    &geometry,
+                    &config,
+                    fixture.operation_mode.clone(),
+                    inputs,
+                    &tail,
+                    partial_trees,
+                ),
                 &context,
             )
             .unwrap();

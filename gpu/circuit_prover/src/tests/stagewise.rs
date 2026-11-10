@@ -53,10 +53,14 @@ fn run_stagewise_parity(fixture: &BasicUnrolledProofFixture) {
     let mut transfers = fixture.base.create_transfers().unwrap();
     transfers.schedule(&fixture.base.context).unwrap();
     let job = crate::proof::prove_stagewise(
-        &fixture.base.gkr_programs,
-        &fixture.base.prover_config,
-        fixture.base.final_trace_size_log_2,
-        transfers,
+        crate::proof::BabyBearProofRequest::new(
+            &fixture.base.gkr_programs,
+            &fixture.base.prover_config,
+            fixture.base.final_trace_size_log_2,
+            transfers,
+            ProofMemoryPolicy::default(),
+            crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
+        ),
         &fixture.base.context,
     )
     .unwrap();

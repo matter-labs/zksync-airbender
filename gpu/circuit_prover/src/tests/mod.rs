@@ -253,13 +253,15 @@ impl BasicUnrolledFixture {
         &self,
         transfers: BasicUnrolledTransfers<'static>,
     ) -> CudaResult<GpuGKRProofJob<'static>> {
-        prove::<Global>(
-            &self.gkr_programs,
-            &self.prover_config,
-            self.final_trace_size_log_2,
-            transfers,
-            self.memory_policy(),
-            crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
+        prove(
+            crate::proof::BabyBearProofRequest::new(
+                &self.gkr_programs,
+                &self.prover_config,
+                self.final_trace_size_log_2,
+                transfers,
+                self.memory_policy(),
+                crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
+            ),
             &self.context,
         )
     }
@@ -289,13 +291,15 @@ impl BasicUnrolledFixture {
         transfers.schedule(&self.context)?;
         transfer_range.end(h2d_stream)?;
 
-        let mut proof_job = crate::proof::prove::<Global>(
-            &self.gkr_programs,
-            &self.prover_config,
-            self.final_trace_size_log_2,
-            transfers,
-            policy,
-            crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
+        let mut proof_job = crate::proof::prove(
+            crate::proof::BabyBearProofRequest::new(
+                &self.gkr_programs,
+                &self.prover_config,
+                self.final_trace_size_log_2,
+                transfers,
+                policy,
+                crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
+            ),
             &self.context,
         )?;
         let mem_after_prove = self.context.get_used_mem_current();
