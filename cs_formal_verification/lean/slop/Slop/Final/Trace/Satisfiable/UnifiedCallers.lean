@@ -42,4 +42,14 @@ theorem rv_mixed_window_sequence_soundness_satisfiable : RVMixedWindowSequenceSo
 theorem rv_caller_cycles_soundness_satisfiable : RVCallerCyclesSoundnessSatisfiableClaim :=
   ⟨data, [], before, [0], [], cells, accepted, inputs, by decide +kernel, callers_ne⟩
 
+theorem rv_program_window_schedule_soundness_satisfiable : RVProgramWindowScheduleSoundnessSatisfiableClaim := by
+  have registry : RVSequentialProgram [] := fun _ member => nomatch member
+  have region : RVProgramCallerRegion data [] .bigint 4 8 := by
+    refine ⟨fun _ member => (nomatch member), fun entry member _ => ?_⟩
+    simp only [data, program, List.mem_singleton] at member
+    subst entry
+    rfl
+  exact ⟨data, [], before, [0], [], .bigint, 4, 8, accepted, request_inputs, rfl, registry, region, rfl, rfl,
+    by decide, by decide, by decide +kernel, by decide +kernel, callers_ne, window_ne⟩
+
 end Airbender.UnifiedReduced.Caller

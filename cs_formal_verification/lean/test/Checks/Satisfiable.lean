@@ -269,6 +269,15 @@ example (claim : RVControlPreparationWindowSoundnessClaim) : RVControlPreparatio
     ⟨data, before, cells, lower, upper, r, s, a, b,
       claim accepted inputs firstScope lastScope rn sn first last ordered, callers, window⟩
 
+example (claim : RVProgramWindowScheduleSoundnessClaim) : RVProgramWindowScheduleSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (family : Delegation.Family) (lower upper : Nat),
+      RVProgramCallerWindow data family lower upper ∧ data.callers ≠ [] ∧
+        data.workers.windowRows lower upper ≠ [] :=
+  fun ⟨data, _, _, _, _, family, lower, upper, accepted, publicProgram, ordinary, registry, region, first, last, positive,
+      ordered, after, beforeT, callers, window⟩ =>
+    ⟨data, family, lower, upper,
+      claim accepted publicProgram ordinary registry region first last positive ordered after beforeT, callers, window⟩
+
 end UnifiedCallers
 
 example (claim : JumpBranchSlt.RVTraceSoundnessClaim) : JumpBranchSlt.RVTraceSoundnessSatisfiableClaim →

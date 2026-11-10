@@ -268,4 +268,17 @@ def Caller.RVControlPreparationWindowSoundnessSatisfiableClaim : Prop :=
       lastRegister ≠ 0 ∧ lower % 4 = 0 ∧ upper % 4 = 0 ∧ lower ≤ upper ∧ data.callers ≠ [] ∧
       data.workers.windowRows lower upper ≠ []
 
+/-- The assumptions of `Caller.RVProgramWindowScheduleSoundnessClaim` can be met, with a caller and a worker row in
+    the window. -/
+def Caller.RVProgramWindowScheduleSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Caller.RVRequestTrace babyBearModulus) (program : List UnifiedReduced.RVProgramEntry) (before : RV.State)
+    (ca oa : List (BitVec 32)) (family : Delegation.Family) (lower upper : Nat),
+    Caller.RVMixedMemoryAccepted data program ∧ Caller.RVRequestInputs data before ca ∧
+      Trace.rvProgramImageWith UnifiedReduced.rvDecoderFields before oa = some program ∧
+      Caller.RVSequentialProgram program ∧ Caller.RVProgramCallerRegion data program family lower upper ∧
+      lower % 4 = 0 ∧ upper % 4 = 0 ∧ 2 ≤ lower ∧ lower ≤ upper ∧
+      (Trace.timeOfPair data.machine.initial.timestamp).value ≤ lower ∧
+      upper ≤ (Trace.timeOfPair data.machine.terminal.timestamp).value ∧ data.callers ≠ [] ∧
+      data.workers.windowRows lower upper ≠ []
+
 end Airbender.UnifiedReduced
