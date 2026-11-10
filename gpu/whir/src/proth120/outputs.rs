@@ -1,258 +1,140 @@
-use std::marker::PhantomData;
-
-use era_cudart::memory::memory_copy_async;
-use era_cudart::result::CudaResult;
-use era_cudart::slice::DeviceSlice;
-use era_cudart::stream::CudaStream;
-use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::context::{DeviceAllocation, HostAllocation, UnsafeAccessor};
-use gpu_core::primitives::device_tracing::Range;
-use gpu_core::primitives::field::PR;
-use gpu_hash::keccak256::Digest;
-use gpu_prover_context::ProverContext;
-
-use super::shape::L1WhirShape;
 use crate::upstream::{
     BaseFieldQuery, ExtensionFieldQuery, Keccak256MerkleTreeWithCap, MerkleTreeCapVarLength,
     WhirBaseLayerCommitmentAndQueries, WhirCommitment, WhirIntermediateCommitmentAndQueries,
     WhirPolyCommitProof, WhirSchedule,
 };
+use era_cudart::result::CudaResult;
+use gpu_core::primitives::device_tracing::Range;
+use gpu_core::primitives::field::PR;
+use gpu_gkr::proth120::proof_layout::{
+    ProofLayoutPr, ProofSlabSlicePr, WhirBaseOpeningsFieldsPr, WhirProofTargetPr,
+};
+use gpu_hash::keccak256::Digest;
+use std::marker::PhantomData;
+use std::sync::Arc;
 
 pub(crate) struct BaseOpeningsDevice {
-    pub(crate) leaves: DeviceAllocation<PR>,
-    pub(crate) paths: DeviceAllocation<Digest>,
-    pub(crate) tree_indexes: DeviceAllocation<u32>,
+    pub(crate) leaves: ProofSlabSlicePr<PR>,
+    pub(crate) paths: ProofSlabSlicePr<Digest>,
+    pub(crate) tree_indexes: ProofSlabSlicePr<u32>,
 }
 
 pub(crate) struct IntermediateProofDevice {
-    pub(crate) cap: DeviceAllocation<Digest>,
-    pub(crate) leaves: DeviceAllocation<PR>,
-    pub(crate) paths: DeviceAllocation<Digest>,
-    pub(crate) tree_indexes: DeviceAllocation<u32>,
+    pub(crate) cap: ProofSlabSlicePr<Digest>,
+    pub(crate) leaves: ProofSlabSlicePr<PR>,
+    pub(crate) paths: ProofSlabSlicePr<Digest>,
+    pub(crate) tree_indexes: ProofSlabSlicePr<u32>,
 }
 
 pub(crate) struct L1WhirProofDevice {
     pub(crate) memory: BaseOpeningsDevice,
     pub(crate) setup: BaseOpeningsDevice,
     pub(crate) intermediate: Vec<IntermediateProofDevice>,
-    pub(crate) ood_samples: DeviceAllocation<PR>,
-    pub(crate) sumcheck_polys: DeviceAllocation<PR>,
-    pub(crate) pow_nonces: DeviceAllocation<u64>,
-    pub(crate) final_monomials: DeviceAllocation<PR>,
-    pub(crate) batched_opening: DeviceAllocation<PR>,
-}
-
-fn product(a: usize, b: usize) -> usize {
-    a.checked_mul(b)
-        .expect("Proth120 WHIR: proof buffer length overflow")
+    pub(crate) memory_cap: ProofSlabSlicePr<Digest>,
+    pub(crate) ood_samples: ProofSlabSlicePr<PR>,
+    pub(crate) sumcheck_polys: ProofSlabSlicePr<PR>,
+    pub(crate) pow_nonces: ProofSlabSlicePr<u64>,
+    pub(crate) final_monomials: ProofSlabSlicePr<PR>,
+    pub(crate) batched_opening: ProofSlabSlicePr<PR>,
 }
 
 impl BaseOpeningsDevice {
     fn new(
-        queries: usize,
-        values: usize,
-        columns: usize,
-        path_len: usize,
-        context: &ProverContext,
-    ) -> CudaResult<Self> {
-        Ok(Self {
-            leaves: context.alloc(
-                product(product(queries, values), columns),
-                AllocationPlacement::BestFit,
-            )?,
-            paths: context.alloc(product(queries, path_len), AllocationPlacement::BestFit)?,
-            tree_indexes: context.alloc(queries, AllocationPlacement::BestFit)?,
-        })
-    }
-}
-
-impl L1WhirProofDevice {
-    pub(crate) fn new(
-        shape: &L1WhirShape,
-        memory_columns: usize,
-        setup_columns: usize,
-        context: &ProverContext,
-    ) -> CudaResult<Self> {
-        assert!(
-            memory_columns > 0 && setup_columns > 0,
-            "Proth120 WHIR: packed column counts must be nonzero"
-        );
-        let first = shape.rounds[0];
-        let base_path = (first.query_domain_log2 - shape.cap_log) as usize;
-        let mut intermediate = Vec::with_capacity(shape.rounds.len() - 1);
-        for (r, round) in shape.rounds.iter().enumerate().take(shape.rounds.len() - 1) {
-            let oracle = round
-                .oracle
-                .expect("Proth120 WHIR: intermediate oracle missing");
-            let q = shape.rounds[r + 1].queries;
-            intermediate.push(IntermediateProofDevice {
-                cap: context.alloc(1 << shape.cap_log, AllocationPlacement::BestFit)?,
-                leaves: context
-                    .alloc(product(q, 1 << oracle.log_v), AllocationPlacement::BestFit)?,
-                paths: context.alloc(product(q, oracle.path_len), AllocationPlacement::BestFit)?,
-                tree_indexes: context.alloc(q, AllocationPlacement::BestFit)?,
-            });
-        }
-        Ok(Self {
-            memory: BaseOpeningsDevice::new(
-                first.queries,
-                1 << first.folds,
-                memory_columns,
-                base_path,
-                context,
-            )?,
-            setup: BaseOpeningsDevice::new(
-                first.queries,
-                1 << first.folds,
-                setup_columns,
-                base_path,
-                context,
-            )?,
-            intermediate,
-            ood_samples: context.alloc(shape.rounds.len() - 1, AllocationPlacement::BestFit)?,
-            sumcheck_polys: context.alloc(
-                product(shape.total_sumcheck_polys, 3),
-                AllocationPlacement::BestFit,
-            )?,
-            pow_nonces: context.alloc(shape.rounds.len(), AllocationPlacement::BestFit)?,
-            final_monomials: context.alloc(1 << shape.log_final, AllocationPlacement::BestFit)?,
-            batched_opening: context.alloc(1, AllocationPlacement::BestFit)?,
-        })
-    }
-}
-
-pub(crate) struct BaseOpeningsHost {
-    pub(crate) leaves: HostAllocation<[PR]>,
-    pub(crate) paths: HostAllocation<[Digest]>,
-    pub(crate) tree_indexes: HostAllocation<[u32]>,
-}
-
-pub(crate) struct IntermediateProofHost {
-    pub(crate) cap: HostAllocation<[Digest]>,
-    pub(crate) leaves: HostAllocation<[PR]>,
-    pub(crate) paths: HostAllocation<[Digest]>,
-    pub(crate) tree_indexes: HostAllocation<[u32]>,
-}
-
-pub(crate) struct L1WhirProofHost {
-    pub(crate) memory: BaseOpeningsHost,
-    pub(crate) setup: BaseOpeningsHost,
-    pub(crate) intermediate: Vec<IntermediateProofHost>,
-    pub(crate) memory_cap: HostAllocation<[Digest]>,
-    pub(crate) ood_samples: HostAllocation<[PR]>,
-    pub(crate) sumcheck_polys: HostAllocation<[PR]>,
-    pub(crate) pow_nonces: HostAllocation<[u64]>,
-    pub(crate) final_monomials: HostAllocation<[PR]>,
-}
-
-impl BaseOpeningsHost {
-    fn new(device: &BaseOpeningsDevice, context: &ProverContext) -> Self {
-        unsafe {
-            Self {
-                leaves: context.alloc_host_uninit_slice(device.leaves.len()),
-                paths: context.alloc_host_uninit_slice(device.paths.len()),
-                tree_indexes: context.alloc_host_uninit_slice(device.tree_indexes.len()),
-            }
-        }
-    }
-}
-
-impl L1WhirProofHost {
-    pub(crate) fn new(
-        shape: &L1WhirShape,
-        device: &L1WhirProofDevice,
-        context: &ProverContext,
+        target: &WhirProofTargetPr,
+        layout: &gpu_gkr::proth120::proof_layout::WhirBaseOpeningsLayoutPr,
     ) -> Self {
-        unsafe {
-            Self {
-                memory: BaseOpeningsHost::new(&device.memory, context),
-                setup: BaseOpeningsHost::new(&device.setup, context),
-                intermediate: device
-                    .intermediate
-                    .iter()
-                    .map(|d| IntermediateProofHost {
-                        cap: context.alloc_host_uninit_slice(d.cap.len()),
-                        leaves: context.alloc_host_uninit_slice(d.leaves.len()),
-                        paths: context.alloc_host_uninit_slice(d.paths.len()),
-                        tree_indexes: context.alloc_host_uninit_slice(d.tree_indexes.len()),
-                    })
-                    .collect(),
-                memory_cap: context.alloc_host_uninit_slice(1 << shape.cap_log),
-                ood_samples: context.alloc_host_uninit_slice(device.ood_samples.len()),
-                sumcheck_polys: context.alloc_host_uninit_slice(device.sumcheck_polys.len()),
-                pow_nonces: context.alloc_host_uninit_slice(device.pow_nonces.len()),
-                final_monomials: context.alloc_host_uninit_slice(device.final_monomials.len()),
-            }
+        Self {
+            leaves: ProofSlabSlicePr::new(Arc::clone(&target.backing), layout.leaves.clone()),
+            paths: ProofSlabSlicePr::new(Arc::clone(&target.backing), layout.paths.clone()),
+            tree_indexes: ProofSlabSlicePr::new(
+                Arc::clone(&target.backing),
+                layout.tree_indexes.clone(),
+            ),
+        }
+    }
+}
+impl L1WhirProofDevice {
+    pub(crate) fn new(target: &WhirProofTargetPr) -> Self {
+        let layout = &target.layout.whir;
+        Self {
+            memory: BaseOpeningsDevice::new(target, &layout.memory),
+            setup: BaseOpeningsDevice::new(target, &layout.setup),
+            intermediate: layout
+                .intermediate
+                .iter()
+                .map(|o| IntermediateProofDevice {
+                    cap: ProofSlabSlicePr::new(Arc::clone(&target.backing), o.cap.clone()),
+                    leaves: ProofSlabSlicePr::new(
+                        Arc::clone(&target.backing),
+                        o.openings.leaves.clone(),
+                    ),
+                    paths: ProofSlabSlicePr::new(
+                        Arc::clone(&target.backing),
+                        o.openings.paths.clone(),
+                    ),
+                    tree_indexes: ProofSlabSlicePr::new(
+                        Arc::clone(&target.backing),
+                        o.openings.tree_indexes.clone(),
+                    ),
+                })
+                .collect(),
+            memory_cap: ProofSlabSlicePr::new(
+                Arc::clone(&target.backing),
+                layout.memory_cap.clone(),
+            ),
+            ood_samples: ProofSlabSlicePr::new(
+                Arc::clone(&target.backing),
+                layout.ood_samples.clone(),
+            ),
+            sumcheck_polys: ProofSlabSlicePr::new(
+                Arc::clone(&target.backing),
+                layout.sumcheck_polys.clone(),
+            ),
+            pow_nonces: ProofSlabSlicePr::new(
+                Arc::clone(&target.backing),
+                layout.pow_nonces.clone(),
+            ),
+            final_monomials: ProofSlabSlicePr::new(
+                Arc::clone(&target.backing),
+                layout.final_monomials.clone(),
+            ),
+            batched_opening: ProofSlabSlicePr::new(
+                Arc::clone(&target.backing),
+                layout.batched_opening.clone(),
+            ),
         }
     }
 }
 
 pub type L1WhirProof = WhirPolyCommitProof<PR, PR, Keccak256MerkleTreeWithCap>;
 
-/// The WHIR fold's GPU work, enqueued without any D2H: the caller reads the proof
-/// back with [`Self::schedule_readback`] and assembles it from [`Self::readback`]
-/// in its own callback.
+/// Enqueued WHIR work; the caller copies its proof slab and assembles in one callback.
+/// All device output views retire at schedule-end, while the caller still owns the slab.
 pub struct L1WhirPendingReadback {
-    pub(crate) device: L1WhirProofDevice,
-    pub(crate) host: L1WhirProofHost,
+    pub(crate) layout: Arc<ProofLayoutPr>,
     pub(crate) schedule: WhirSchedule,
-    pub(crate) memory_columns: usize,
-    pub(crate) setup_columns: usize,
     pub(crate) setup_cap: Vec<Digest>,
     pub(crate) tracing_ranges: Vec<(String, Range)>,
 }
-
 impl L1WhirPendingReadback {
-    /// Enqueues the proof's D2H copies on `exec_stream`, back to back;
-    /// `memory_cap` is the cap of the base oracle the fold opened.
-    pub fn schedule_readback(
-        &mut self,
-        memory_cap: &DeviceSlice<Digest>,
-        context: &ProverContext,
-    ) -> CudaResult<()> {
-        let stream = context.get_exec_stream();
-        let (host, device) = (&mut self.host, &self.device);
-        copy_base_openings(&mut host.memory, &device.memory, stream)?;
-        copy_base_openings(&mut host.setup, &device.setup, stream)?;
-        for (host, device) in host.intermediate.iter_mut().zip(&device.intermediate) {
-            memory_copy_async(&mut host.cap, &device.cap, stream)?;
-            memory_copy_async(&mut host.leaves, &device.leaves, stream)?;
-            memory_copy_async(&mut host.paths, &device.paths, stream)?;
-            memory_copy_async(&mut host.tree_indexes, &device.tree_indexes, stream)?;
-        }
-        memory_copy_async(&mut host.memory_cap, memory_cap, stream)?;
-        memory_copy_async(&mut host.ood_samples, &device.ood_samples, stream)?;
-        memory_copy_async(&mut host.sumcheck_polys, &device.sumcheck_polys, stream)?;
-        memory_copy_async(&mut host.pow_nonces, &device.pow_nonces, stream)?;
-        memory_copy_async(&mut host.final_monomials, &device.final_monomials, stream)
-    }
-
-    /// Readers of the mirrors `schedule_readback` fills, for a callback enqueued after it.
     pub fn readback(&self) -> L1WhirReadback {
-        L1WhirReadback {
-            host: self.host.readback(),
-            schedule: self.schedule.clone(),
-            memory_columns: self.memory_columns,
-            setup_columns: self.setup_columns,
-            setup_cap: self.setup_cap.clone(),
-        }
+        L1WhirReadback::new(
+            Arc::clone(&self.layout),
+            self.schedule.clone(),
+            self.setup_cap.clone(),
+        )
     }
-
-    /// Owns the mirrors until the job's completion; the device outputs are released.
     pub fn into_keepalive(self) -> L1WhirKeepalive {
         L1WhirKeepalive {
-            _host: self.host,
             tracing_ranges: self.tracing_ranges,
         }
     }
 }
 
-/// The WHIR proof mirrors and phase ranges, kept until the job completes.
+/// Phase ranges retained until completion; WHIR owns no readback mirrors.
 pub struct L1WhirKeepalive {
-    _host: L1WhirProofHost,
     tracing_ranges: Vec<(String, Range)>,
 }
-
 impl L1WhirKeepalive {
     pub fn phase_times_after_completion(&self) -> CudaResult<Vec<(String, f32)>> {
         self.tracing_ranges
@@ -262,80 +144,12 @@ impl L1WhirKeepalive {
     }
 }
 
-struct BaseOpeningsReadback {
-    leaves: UnsafeAccessor<[PR]>,
-    paths: UnsafeAccessor<[Digest]>,
-    tree_indexes: UnsafeAccessor<[u32]>,
-}
-
-struct IntermediateReadback {
-    cap: UnsafeAccessor<[Digest]>,
-    openings: BaseOpeningsReadback,
-}
-
-struct L1WhirMirrorReaders {
-    memory: BaseOpeningsReadback,
-    setup: BaseOpeningsReadback,
-    intermediate: Vec<IntermediateReadback>,
-    memory_cap: UnsafeAccessor<[Digest]>,
-    ood_samples: UnsafeAccessor<[PR]>,
-    sumcheck_polys: UnsafeAccessor<[PR]>,
-    pow_nonces: UnsafeAccessor<[u64]>,
-    final_monomials: UnsafeAccessor<[PR]>,
-}
-
-impl BaseOpeningsHost {
-    fn readback(&self) -> BaseOpeningsReadback {
-        BaseOpeningsReadback {
-            leaves: self.leaves.get_accessor(),
-            paths: self.paths.get_accessor(),
-            tree_indexes: self.tree_indexes.get_accessor(),
-        }
-    }
-}
-
-impl L1WhirProofHost {
-    fn readback(&self) -> L1WhirMirrorReaders {
-        L1WhirMirrorReaders {
-            memory: self.memory.readback(),
-            setup: self.setup.readback(),
-            intermediate: self
-                .intermediate
-                .iter()
-                .map(|host| IntermediateReadback {
-                    cap: host.cap.get_accessor(),
-                    openings: BaseOpeningsReadback {
-                        leaves: host.leaves.get_accessor(),
-                        paths: host.paths.get_accessor(),
-                        tree_indexes: host.tree_indexes.get_accessor(),
-                    },
-                })
-                .collect(),
-            memory_cap: self.memory_cap.get_accessor(),
-            ood_samples: self.ood_samples.get_accessor(),
-            sumcheck_polys: self.sumcheck_polys.get_accessor(),
-            pow_nonces: self.pow_nonces.get_accessor(),
-            final_monomials: self.final_monomials.get_accessor(),
-        }
-    }
-}
-
-fn copy_base_openings(
-    host: &mut BaseOpeningsHost,
-    device: &BaseOpeningsDevice,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    memory_copy_async(&mut host.leaves, &device.leaves, stream)?;
-    memory_copy_async(&mut host.paths, &device.paths, stream)?;
-    memory_copy_async(&mut host.tree_indexes, &device.tree_indexes, stream)
-}
-
-unsafe fn assemble_base_queries(
-    host: &BaseOpeningsReadback,
+fn assemble_base_queries(
+    host: &WhirBaseOpeningsFieldsPr<'_>,
 ) -> Vec<BaseFieldQuery<PR, Keccak256MerkleTreeWithCap>> {
-    let indexes = host.tree_indexes.get();
-    let leaves = host.leaves.get();
-    let paths = host.paths.get();
+    let indexes = host.tree_indexes;
+    let leaves = host.leaves;
+    let paths = host.paths;
     let leaf_width = leaves.len() / indexes.len();
     let depth = paths.len() / indexes.len();
     indexes
@@ -350,9 +164,8 @@ unsafe fn assemble_base_queries(
         .collect()
 }
 
-/// Readers of a pending readback's mirrors plus what the proof needs besides them.
 pub struct L1WhirReadback {
-    host: L1WhirMirrorReaders,
+    layout: Arc<ProofLayoutPr>,
     schedule: WhirSchedule,
     memory_columns: usize,
     setup_columns: usize,
@@ -360,20 +173,31 @@ pub struct L1WhirReadback {
 }
 
 impl L1WhirReadback {
+    pub fn new(layout: Arc<ProofLayoutPr>, schedule: WhirSchedule, setup_cap: Vec<Digest>) -> Self {
+        let memory_columns = layout.memory_claims.len() / size_of::<PR>();
+        let setup_columns = layout.setup_claims.len() / size_of::<PR>();
+        Self {
+            layout,
+            schedule,
+            memory_columns,
+            setup_columns,
+            setup_cap,
+        }
+    }
+
     /// Assembles the WHIR proof with the GKR claims consumed by the fold and
     /// the batching PoW nonce produced before the WHIR handoff.
     ///
-    /// # Safety
-    ///
-    /// Only inside a stream callback enqueued after the readback's copies, while
-    /// the pending readback or its [`L1WhirKeepalive`] is still alive.
-    pub unsafe fn assemble(
+    /// `bytes` is the completed, aligned proof-slab readback. The caller owns
+    /// its mirror until the assembly callback has run.
+    pub fn assemble(
         &self,
+        bytes: &[u8],
         memory_claims: &[PR],
         setup_claims: &[PR],
         batching_challenge_pow_nonce: u64,
     ) -> L1WhirProof {
-        let host = &self.host;
+        let host = self.layout.parse_whir_fields(bytes);
         assert_eq!(
             memory_claims.len(),
             self.memory_columns,
@@ -388,14 +212,14 @@ impl L1WhirReadback {
             .intermediate
             .iter()
             .map(|oracle| {
-                let indexes = oracle.openings.tree_indexes.get();
-                let leaves = oracle.openings.leaves.get();
-                let paths = oracle.openings.paths.get();
+                let indexes = oracle.openings.tree_indexes;
+                let leaves = oracle.openings.leaves;
+                let paths = oracle.openings.paths;
                 let width = leaves.len() / indexes.len();
                 let depth = paths.len() / indexes.len();
                 let mut result =
                     WhirIntermediateCommitmentAndQueries::with_commitment(MerkleTreeCapVarLength {
-                        cap: oracle.cap.get().to_vec(),
+                        cap: oracle.cap.to_vec(),
                     });
                 result.queries = indexes
                     .iter()
@@ -411,9 +235,9 @@ impl L1WhirReadback {
             })
             .collect();
         let fold_steps = self.schedule.fold_steps();
-        let sumcheck_polys = host.sumcheck_polys.get().as_chunks::<3>().0;
-        let ood_samples = host.ood_samples.get();
-        let pow_nonces = host.pow_nonces.get();
+        let sumcheck_polys = host.sumcheck_polys.as_chunks::<3>().0;
+        let ood_samples = host.ood_samples;
+        let pow_nonces = host.pow_nonces;
         assert_eq!(fold_steps.len(), intermediate_whir_oracles.len() + 1);
         assert_eq!(ood_samples.len(), intermediate_whir_oracles.len());
         assert_eq!(pow_nonces.len(), fold_steps.len());
@@ -440,7 +264,7 @@ impl L1WhirReadback {
             memory_commitment: WhirBaseLayerCommitmentAndQueries {
                 commitment: WhirCommitment {
                     cap: MerkleTreeCapVarLength {
-                        cap: host.memory_cap.get().to_vec(),
+                        cap: host.memory_cap.to_vec(),
                     },
                     _marker: PhantomData,
                 },
@@ -459,7 +283,7 @@ impl L1WhirReadback {
             base_sumcheck_polys,
             base_folding_pow_nonces: vec![],
             base_queries_pow_nonce: pow_nonces[0],
-            final_monomials: host.final_monomials.get().to_vec(),
+            final_monomials: host.final_monomials.to_vec(),
             whir_schedule: self.schedule.clone(),
         }
     }

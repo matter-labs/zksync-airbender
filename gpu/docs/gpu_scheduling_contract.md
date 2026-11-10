@@ -250,7 +250,7 @@ arguments by value. Between `prove()`'s
 `ensure_transferred` and the readback phase nothing crosses to the host: no
 copy to or from it, no callback, no host synchronization; kernels, D2D copies,
 memsets and device-side event waits stay on the device. The readback phase
-copies the proof slab and the WHIR proof fields back to back, then schedules
+copies the single proof slab, including its WHIR output regions, then schedules
 one callback that assembles the `L1WrapResult`. A host hop in between would
 stall the stream, and a small exec-stream H2D can queue behind the next
 request's phase-one copies on the copy engine.

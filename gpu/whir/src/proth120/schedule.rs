@@ -6,6 +6,7 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::PR;
 use gpu_gkr::gkr_ops::assemble_query_indexes;
+use gpu_gkr::proth120::proof_layout::WhirProofTargetPr;
 use gpu_gkr::setup::proth120::PackedSetupSource;
 use gpu_hash::keccak256::{
     keccak256_pow, transcript_commit_fields, transcript_draw_fields, transcript_draw_u32,
@@ -14,10 +15,11 @@ use gpu_ntt::proth120::{update_eq_poly, EqSample};
 use gpu_ops::powers::get_powers_by_ref;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::packed::{CosetQueryPlan, PackedCosetRecomputeOracle};
+use std::sync::Arc;
 
 use super::commit::{schedule_commit_intermediate, IntermediateOracle};
 use super::openings::schedule_open_intermediate;
-use super::outputs::{L1WhirPendingReadback, L1WhirProofDevice, L1WhirProofHost};
+use super::outputs::{L1WhirPendingReadback, L1WhirProofDevice};
 use super::shape::L1WhirShape;
 use super::state::{
     schedule_accumulate_base, schedule_batched_opening, schedule_eq_from_point,
@@ -176,15 +178,13 @@ pub fn schedule_l1_whir_fold(
     inputs: L1WhirInputs<'_>,
     schedule: &WhirSchedule,
     shape: &L1WhirShape,
+    target: WhirProofTargetPr,
     context: &ProverContext,
 ) -> CudaResult<L1WhirPendingReadback> {
     validate_inputs(base, setup, seed, &inputs, schedule, shape, context);
     let stream = context.get_exec_stream();
     let mut ranges = Vec::new();
-    let memory_columns = base.packed_columns();
-    let setup_columns = setup.oracle().packed_columns();
-    let mut outputs = L1WhirProofDevice::new(shape, memory_columns, setup_columns, context)?;
-    let host = L1WhirProofHost::new(shape, &outputs, context);
+    let mut outputs = L1WhirProofDevice::new(&target);
     let phase = start_phase("gkr.whir.pr.accumulate".to_owned(), context)?;
     let mut state = L1WhirState::new(shape.log_message, shape.term_capacity, context)?;
     let mut powers = context.alloc(inputs.claims.len(), AllocationPlacement::BestFit)?;
@@ -340,12 +340,11 @@ pub fn schedule_l1_whir_fold(
     );
     drop(state);
     drop(challenge);
+    memory_copy_async(&mut outputs.memory_cap, base.cap_digests(), stream)?;
+    drop(outputs);
     Ok(L1WhirPendingReadback {
-        device: outputs,
-        host,
+        layout: Arc::clone(&target.layout),
         schedule: schedule.clone(),
-        memory_columns,
-        setup_columns,
         setup_cap: setup.host.cap().cap,
         tracing_ranges: ranges,
     })

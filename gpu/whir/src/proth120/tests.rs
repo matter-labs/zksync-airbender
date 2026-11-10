@@ -451,11 +451,26 @@ fn opening_output(
     ctx: &ProverContext,
 ) -> super::outputs::IntermediateProofDevice {
     use gpu_core::allocator::tracker::AllocationPlacement::BestFit;
+    use gpu_gkr::proth120::proof_layout::ProofSlabSlicePr;
+    use gpu_hash::keccak256::Digest;
+    use std::sync::Arc;
+    fn region<T>(cursor: &mut usize, count: usize) -> std::ops::Range<usize> {
+        let start = cursor.next_multiple_of(32);
+        *cursor = start + count * size_of::<T>();
+        start..*cursor
+    }
+    let mut cursor = 0;
+    let cap = region::<Digest>(&mut cursor, 1 << shape.cap_log);
+    let leaves = region::<PR>(&mut cursor, queries << shape.log_v);
+    let paths = region::<Digest>(&mut cursor, queries * shape.path_len);
+    let indexes = region::<u32>(&mut cursor, queries);
+    #[allow(clippy::arc_with_non_send_sync)]
+    let backing = Arc::new(ctx.alloc::<PR>(cursor.div_ceil(16), BestFit).unwrap());
     super::outputs::IntermediateProofDevice {
-        cap: ctx.alloc(1 << shape.cap_log, BestFit).unwrap(),
-        leaves: ctx.alloc(queries << shape.log_v, BestFit).unwrap(),
-        paths: ctx.alloc(queries * shape.path_len, BestFit).unwrap(),
-        tree_indexes: ctx.alloc(queries, BestFit).unwrap(),
+        cap: ProofSlabSlicePr::new(Arc::clone(&backing), cap),
+        leaves: ProofSlabSlicePr::new(Arc::clone(&backing), leaves),
+        paths: ProofSlabSlicePr::new(Arc::clone(&backing), paths),
+        tree_indexes: ProofSlabSlicePr::new(backing, indexes),
     }
 }
 

@@ -15,7 +15,12 @@ use crate::upstream::{GKRAddress, GKRCircuitArtifact, OutputType, ProverConfig, 
 
 mod accessors;
 mod build_inputs;
+mod whir;
 pub use accessors::GkrProofFields;
+pub use whir::{
+    ProofSlabSlicePr, WhirBaseOpeningsFieldsPr, WhirBaseOpeningsLayoutPr, WhirProofFieldsPr,
+    WhirProofLayoutPr, WhirProofTargetPr,
+};
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -65,6 +70,7 @@ pub struct ProofLayoutPr {
     pub batching_challenge: Range<usize>,
     pub batched_proximity_check_pow_nonce: Range<usize>,
     pub intermediate_transcript_seed: Range<usize>,
+    pub whir: WhirProofLayoutPr,
     pack_log2: usize,
     bytes_len: usize,
 }
@@ -180,6 +186,8 @@ impl ProofLayoutPr {
         let batching_challenge = fields(&mut cursor, 1);
         let batched_proximity_check_pow_nonce = section(&mut cursor, 8);
         let intermediate_transcript_seed = section(&mut cursor, 32);
+        let whir =
+            WhirProofLayoutPr::new(&mut cursor, config, memory_claim_count, setup_claim_count);
         let bytes_len = cursor
             .checked_add(31)
             .expect("Proth120 proof size overflow")
@@ -197,6 +205,7 @@ impl ProofLayoutPr {
             batching_challenge,
             batched_proximity_check_pow_nonce,
             intermediate_transcript_seed,
+            whir,
             pack_log2,
             bytes_len,
         };
@@ -260,6 +269,7 @@ impl ProofLayoutPr {
             self.batched_proximity_check_pow_nonce.clone(),
             self.intermediate_transcript_seed.clone(),
         ]);
+        ranges.extend(self.whir.ranges());
         let mut end = 0;
         assert_eq!(
             self.memory_claims.end, self.setup_claims.start,
