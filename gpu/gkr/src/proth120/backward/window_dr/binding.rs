@@ -1,7 +1,7 @@
-use crate::backward::window_dr::dr_window_row_tiles;
+use crate::backward::window_dr::shared::{self, DrCompactSourceTable};
+use crate::backward::window_dr::DrWindowBindError;
+use crate::backward::window_dr::{dr_window_log_rows, dr_window_row_tiles};
 use core::mem::{align_of, offset_of, size_of};
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
 
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
@@ -17,19 +17,15 @@ use std::ffi::c_void;
 use super::{plan_dr_window_continuations_pr, DrWindowPassGeometryPr, PR_DR_WINDOW_COORDINATES};
 use crate::backward::window_dr::{dr_window_partials_len, validate_dr_window_folding_steps};
 use crate::backward::{
-    make_eq_sizes, pack_source_u16, FoldingArenaBinding, GkrEqSizes, GpuGKRDimensionReducingBatch,
-    GpuGKRDimensionReducingSlot, GpuGKRDimensionReducingTables, GpuGKRSourceRecord,
-    GKR_DIM_REDUCING_BASE_SLOTS, GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN,
-    GKR_DIM_REDUCING_POLY_CAPACITY, GKR_EQ_GROUP_TABLE_LEN,
+    make_eq_sizes, FoldingArenaBinding, GkrEqSizes, GpuGKRDimensionReducingBatch,
+    GKR_DIM_REDUCING_BATCH_CHALLENGE_TABLE_LEN, GKR_EQ_GROUP_TABLE_LEN,
 };
 use crate::proth120::backward::eq::{launch_eq_high_low_pr, resolve_active_eq_slot_pr};
 use crate::proth120::backward::window::{WindowTailStatePr, PR_WINDOW_TAIL_TENSOR_CELLS};
-use crate::storage_layout::address_storage_layer;
 use crate::upstream::{GKRAddress, PR};
 use crate::{DrWindowLayerProgram, GpuGKRStorage};
 
 const PR_DR_WINDOW_BLOCK_THREADS: u32 = 288;
-const PR_DR_CONTINUATION_FIRST_ACCESS_BIT: u16 = 1 << 15;
 const PR_DR_EQ_TABLE_SLOTS: usize = 3;
 
 const _: () = assert!(PR_WINDOW_TAIL_TENSOR_CELLS == 27);
@@ -108,156 +104,10 @@ pub(crate) fn schedule_dr_batch_challenge_table_pr(
     Ok(table.as_ptr())
 }
 
-struct ResolvedStoragePr<'a> {
-    backing: &'a Arc<DeviceAllocation<PR>>,
-    log2_stride: u32,
-    poly_index: usize,
-}
+pub(crate) type DrWindowRawInputKeepalivePr = shared::DrRawInputKeepalive<PR>;
 
-fn resolve_storage_pr(
-    storage: &GpuGKRStorage<PR, PR>,
-    address: GKRAddress,
-) -> ResolvedStoragePr<'_> {
-    let poly = storage
-        .get_ext_poly_for_address(address)
-        .unwrap_or_else(|| {
-            panic!(
-                "Proth120 binding MissingSource: address={:?}, logical_layer={:?}",
-                address,
-                address_storage_layer(address)
-            )
-        });
-    assert_eq!(
-        poly.offset % poly.len,
-        0,
-        "Proth120 DR source must start at a column boundary"
-    );
-    ResolvedStoragePr {
-        backing: &poly.backing,
-        log2_stride: poly.len.ilog2(),
-        poly_index: poly.offset / poly.len,
-    }
-}
-
-pub(crate) struct DrWindowRawInputKeepalivePr {
-    backings: Vec<Arc<DeviceAllocation<PR>>>,
-}
-
-impl DrWindowRawInputKeepalivePr {
-    pub(crate) fn from_projection(
-        storage: &GpuGKRStorage<PR, PR>,
-        projection: &DrWindowInputProjection,
-    ) -> Self {
-        let mut seen = BTreeSet::new();
-        let mut backings = Vec::new();
-        for &address in projection.canonical_sources() {
-            let backing = Arc::clone(resolve_storage_pr(storage, address).backing);
-            if seen.insert(Arc::as_ptr(&backing) as usize) {
-                backings.push(backing);
-            }
-        }
-        Self { backings }
-    }
-
-    pub(crate) fn canonical_source_pointers(
-        &self,
-        storage: &GpuGKRStorage<PR, PR>,
-        projection: &DrWindowInputProjection,
-    ) -> Vec<*const PR> {
-        projection
-            .canonical_sources()
-            .iter()
-            .copied()
-            .map(|address| {
-                let resolved = resolve_storage_pr(storage, address);
-                assert!(
-                    self.backings
-                        .iter()
-                        .any(|backing| Arc::ptr_eq(backing, resolved.backing)),
-                    "Proth120 DR raw-input keepalive must own the resolved backing"
-                );
-                let stride = 1usize.checked_shl(resolved.log2_stride).unwrap_or_else(|| {
-                    panic!(
-                        "Proth120 binding ArenaGeometryOverflow: log2_stride={:?}, poly_count={:?}",
-                        resolved.log2_stride,
-                        resolved.poly_index + 1
-                    )
-                });
-                let offset = resolved.poly_index.checked_mul(stride).unwrap_or_else(|| {
-                    panic!(
-                        "Proth120 binding ArenaGeometryOverflow: log2_stride={:?}, poly_count={:?}",
-                        resolved.log2_stride,
-                        resolved.poly_index + 1
-                    )
-                });
-                unsafe { resolved.backing.as_ptr().add(offset) }
-            })
-            .collect()
-    }
-}
-
-struct DrCompactSourceTablePr {
-    tables: GpuGKRDimensionReducingTables,
-    by_backing: BTreeMap<usize, usize>,
-    slot_count: usize,
-}
-
-impl DrCompactSourceTablePr {
-    fn new() -> Self {
-        Self {
-            tables: GpuGKRDimensionReducingTables::default(),
-            by_backing: BTreeMap::new(),
-            slot_count: 0,
-        }
-    }
-
-    fn intern_storage(&mut self, storage: &GpuGKRStorage<PR, PR>, address: GKRAddress) -> u16 {
-        let resolved = resolve_storage_pr(storage, address);
-        self.intern(
-            resolved.backing.as_ptr().cast(),
-            resolved.log2_stride,
-            resolved.poly_index,
-        )
-    }
-
-    fn intern_arena(&mut self, arena: FoldingArenaBinding, poly_index: usize) -> u16 {
-        self.intern(arena.base, arena.log2_stride, poly_index)
-    }
-
-    fn finish(self) -> GpuGKRDimensionReducingTables {
-        self.tables
-    }
-
-    fn intern(&mut self, backing: *const u8, log2_stride: u32, poly_index: usize) -> u16 {
-        assert!(
-            poly_index < GKR_DIM_REDUCING_POLY_CAPACITY,
-            "Proth120 binding PolyIndexOverflow: poly_index={:?}, capacity={:?}",
-            poly_index,
-            GKR_DIM_REDUCING_POLY_CAPACITY
-        );
-        let backing_key = backing as usize;
-        let slot = if let Some(&slot) = self.by_backing.get(&backing_key) {
-            let expected_log2_stride = self.tables.log2_stride[slot];
-            assert!(expected_log2_stride == log2_stride,
-                "Proth120 binding StrideMismatch: backing={:?}, expected_log2_stride={:?}, observed_log2_stride={:?}", backing_key, expected_log2_stride, log2_stride
-            );
-            slot
-        } else {
-            assert!(
-                self.slot_count != GKR_DIM_REDUCING_BASE_SLOTS,
-                "Proth120 binding BaseSlotOverflow: required={:?}, capacity={:?}",
-                self.slot_count + 1,
-                GKR_DIM_REDUCING_BASE_SLOTS
-            );
-            let slot = self.slot_count;
-            self.tables.bases[slot] = backing;
-            self.tables.log2_stride[slot] = log2_stride;
-            self.by_backing.insert(backing_key, slot);
-            self.slot_count += 1;
-            slot
-        };
-        pack_source_u16(false, slot as u8, poly_index as u16)
-    }
+pub(in crate::proth120::backward) fn assert_binding<T>(result: Result<T, DrWindowBindError>) -> T {
+    result.unwrap_or_else(|error| panic!("Proth120 binding {error}"))
 }
 
 struct DrEqCellsPr {
@@ -421,27 +271,12 @@ fn build_r0_batch(
     eq_low: *const PR,
     eq_sizes: GkrEqSizes,
 ) -> GpuGKRDimensionReducingBatch<PR> {
-    let mut batch = GpuGKRDimensionReducingBatch::<PR> {
-        enabled_mask: program.enabled_mask(),
+    assert_binding(shared::assemble_r0_batch(
+        program,
         eq_low,
         eq_sizes,
-        ..Default::default()
-    };
-    let mut table = DrCompactSourceTablePr::new();
-    for slot in program.slots() {
-        let mut inputs = [GpuGKRSourceRecord::default(); 2];
-        for (operand, source_id) in slot.source_ids().iter().copied().enumerate() {
-            let address = program.sources()[usize::from(source_id)];
-            inputs[operand] =
-                GpuGKRSourceRecord::source_only(table.intern_storage(storage, address));
-        }
-        batch.slots[slot.slot()] = GpuGKRDimensionReducingSlot {
-            inputs,
-            batch_exp: *slot.batch_exponents(),
-        };
-    }
-    batch.tables = table.finish();
-    batch
+        |table, address| table.intern_storage(storage, address),
+    ))
 }
 
 fn assemble_continuation_batch(
@@ -450,57 +285,20 @@ fn assemble_continuation_batch(
     eq_low: *const PR,
     eq_sizes: GkrEqSizes,
     destination: FoldingArenaBinding,
-    mut intern_source: impl FnMut(&mut DrCompactSourceTablePr, GKRAddress, u16) -> u16,
+    intern_source: impl FnMut(
+        &mut DrCompactSourceTable,
+        GKRAddress,
+        u16,
+    ) -> Result<u16, DrWindowBindError>,
 ) -> GpuGKRDimensionReducingBatch<PR> {
-    let mut batch = GpuGKRDimensionReducingBatch::<PR> {
-        enabled_mask: program.enabled_mask(),
+    assert_binding(shared::assemble_continuation_batch(
+        program,
+        projection,
         eq_low,
         eq_sizes,
-        ..Default::default()
-    };
-    let mut table = DrCompactSourceTablePr::new();
-    let mut first_access_seen = BTreeSet::<u16>::new();
-    for (dense_slot, slot) in program.slots().iter().enumerate() {
-        let mut inputs = [GpuGKRSourceRecord::default(); 2];
-        for (input_operand, record) in inputs.iter_mut().enumerate() {
-            let publication_index = projection
-                .publication_index(dense_slot, input_operand)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "Proth120 binding MissingPublicationIndex: dense_slot={:?}, input_operand={:?}", dense_slot, input_operand
-                    )
-                });
-            let publication = usize::from(publication_index);
-            assert!(publication < projection.canonical_sources().len(),
-                "Proth120 binding PublicationIndexOverflow: publication_index={:?}, canonical_source_count={:?}", publication, projection.canonical_sources().len()
-            );
-            let address = program.sources()[usize::from(slot.source_ids()[input_operand])];
-            let source_base = intern_source(&mut table, address, publication_index);
-            assert_eq!(
-                source_base & PR_DR_CONTINUATION_FIRST_ACCESS_BIT,
-                0,
-                "Proth120 compact source tables must return a clear first-access bit"
-            );
-            let cache_base = table.intern_arena(destination, publication);
-            assert_eq!(
-                cache_base & PR_DR_CONTINUATION_FIRST_ACCESS_BIT,
-                0,
-                "Proth120 compact destination tables must return a clear first-access bit"
-            );
-            let source = if first_access_seen.insert(publication_index) {
-                source_base | PR_DR_CONTINUATION_FIRST_ACCESS_BIT
-            } else {
-                source_base
-            };
-            *record = GpuGKRSourceRecord::new(source, cache_base);
-        }
-        batch.slots[slot.slot()] = GpuGKRDimensionReducingSlot {
-            inputs,
-            batch_exp: *slot.batch_exponents(),
-        };
-    }
-    batch.tables = table.finish();
-    batch
+        destination,
+        intern_source,
+    ))
 }
 
 fn validate_continuation_table_bases(batch: &GpuGKRDimensionReducingBatch<PR>) {
@@ -567,7 +365,9 @@ impl DrWindowLayerHookPr {
 
         let projection = program.input_projection();
         let poly_count = projection.canonical_sources().len();
-        let raw_inputs = DrWindowRawInputKeepalivePr::from_projection(storage, projection);
+        let raw_inputs = assert_binding(DrWindowRawInputKeepalivePr::from_projection(
+            storage, projection,
+        ));
 
         let r0_row_tiles = dr_window_row_tiles(folding_steps);
         let slot_count = program.program().enabled_mask().count_ones() as usize;
@@ -769,9 +569,10 @@ impl DrWindowLayerHookPr {
         let projection = program.input_projection();
         let canonical_count = projection.canonical_sources().len();
         let Some(last) = self.continuations.last() else {
-            return self
-                .raw_inputs
-                .canonical_source_pointers(storage, projection);
+            return assert_binding(
+                self.raw_inputs
+                    .canonical_source_pointers(storage, projection),
+            );
         };
         let arena = self.arenas[last.geometry.destination().index()]
             .as_ref()
@@ -779,12 +580,6 @@ impl DrWindowLayerHookPr {
         assert_eq!(arena.poly_count, canonical_count);
         let binding = arena.binding(last.geometry.log2_stride());
         let stride = 1usize << binding.log2_stride;
-        (0..canonical_count)
-            .map(|poly_idx| unsafe { binding.base.cast::<PR>().add(poly_idx * stride) })
-            .collect()
+        shared::source_column_pointers(binding.base.cast::<PR>(), stride, canonical_count)
     }
-}
-
-fn dr_window_log_rows(folding_steps: usize) -> u32 {
-    (folding_steps - PR_DR_WINDOW_COORDINATES) as u32
 }

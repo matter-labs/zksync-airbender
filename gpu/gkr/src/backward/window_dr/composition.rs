@@ -1,18 +1,13 @@
-use std::collections::BTreeSet;
-use std::sync::Arc;
-
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::E4;
-use gpu_gkr_compiler::DrWindowInputProjection;
 use gpu_prover_context::ProverContext;
 
 use crate::backward::{make_eq_sizes, GkrEqSizes};
 use crate::{DrWindowLayerProgram, GpuGKRStorage};
 
 use super::binding::{
-    bind_dr_window_continuations, resolve_storage_e4, DrContinuationFactoredEqScratch,
-    DrContinuationFactoredEqView, DrWindowBindError, DrWindowContinuationArena,
-    DrWindowContinuationLaunch, DrWindowLaunch,
+    bind_dr_window_continuations, DrContinuationFactoredEqScratch, DrContinuationFactoredEqView,
+    DrWindowBindError, DrWindowContinuationArena, DrWindowContinuationLaunch, DrWindowLaunch,
 };
 
 #[derive(Clone, Copy)]
@@ -44,65 +39,7 @@ impl DrWindowPassEqState {
     }
 }
 
-/// Keeps every raw canonical input backing alive until its last queued reader
-/// has been enqueued. The canonical source list itself is the layer program's
-/// input projection.
-pub(crate) struct DrWindowRawInputKeepalive {
-    backings: Vec<Arc<DeviceAllocation<E4>>>,
-}
-
-impl DrWindowRawInputKeepalive {
-    pub(crate) fn from_projection<B>(
-        storage: &GpuGKRStorage<B, E4>,
-        projection: &DrWindowInputProjection,
-    ) -> Result<Self, DrWindowBindError> {
-        let mut seen = BTreeSet::new();
-        let mut backings = Vec::new();
-        for &address in projection.canonical_sources() {
-            let backing = Arc::clone(resolve_storage_e4(storage, address)?.backing);
-            if seen.insert(Arc::as_ptr(&backing) as usize) {
-                backings.push(backing);
-            }
-        }
-        Ok(Self { backings })
-    }
-
-    pub(crate) fn canonical_source_pointers<B>(
-        &self,
-        storage: &GpuGKRStorage<B, E4>,
-        projection: &DrWindowInputProjection,
-    ) -> Result<Vec<*const E4>, DrWindowBindError> {
-        projection
-            .canonical_sources()
-            .iter()
-            .copied()
-            .map(|address| {
-                let resolved = resolve_storage_e4(storage, address)?;
-                assert!(
-                    self.backings
-                        .iter()
-                        .any(|backing| Arc::ptr_eq(backing, resolved.backing)),
-                    "the prepared raw-input keepalive must own the resolved backing",
-                );
-                let stride = 1usize.checked_shl(resolved.log2_stride).ok_or(
-                    DrWindowBindError::ArenaGeometryOverflow {
-                        log2_stride: resolved.log2_stride,
-                        poly_count: resolved.poly_index + 1,
-                    },
-                )?;
-                let offset = resolved.poly_index.checked_mul(stride).ok_or(
-                    DrWindowBindError::ArenaGeometryOverflow {
-                        log2_stride: resolved.log2_stride,
-                        poly_count: resolved.poly_index + 1,
-                    },
-                )?;
-                // SAFETY: `resolve_storage_e4` returns the exact live backing,
-                // stride, and polynomial index retained by this keepalive.
-                Ok(unsafe { resolved.backing.as_ptr().add(offset) })
-            })
-            .collect()
-    }
-}
+pub(crate) type DrWindowRawInputKeepalive = super::shared::DrRawInputKeepalive<E4>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DrWindowContinuationParity {
@@ -323,13 +260,11 @@ impl DrWindowLayerCompositionHook {
                 binding.log2_stride,
                 last.geometry.log2_stride(),
             )?;
-            Ok((0..canonical_count)
-                .map(|poly_idx| {
-                    // SAFETY: the arena owns `canonical_count * stride` E4
-                    // cells and remains live through every queued consumer.
-                    unsafe { binding.base.cast::<E4>().add(poly_idx * stride) }
-                })
-                .collect())
+            Ok(super::shared::source_column_pointers(
+                binding.base.cast::<E4>(),
+                stride,
+                canonical_count,
+            ))
         } else {
             self.prepared
                 .raw_inputs

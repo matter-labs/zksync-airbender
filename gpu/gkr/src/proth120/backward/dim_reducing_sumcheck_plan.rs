@@ -16,7 +16,7 @@ use super::gkr_ops;
 use super::scheduled_execution::{gather_pr, LayerInputPr, ScheduledLayerExecutionPr};
 use super::window::launch_window_tail_pr;
 use super::window_dr::{
-    schedule_dr_batch_challenge_table_pr, DrLayerTranscriptPr, DrWindowLayerHookPr,
+    assert_binding, schedule_dr_batch_challenge_table_pr, DrLayerTranscriptPr, DrWindowLayerHookPr,
     DrWindowRawInputKeepalivePr,
 };
 use super::GpuGKRDimensionReducingBackwardStatePr;
@@ -153,8 +153,10 @@ impl DimensionReducingLayerPlanPr {
             point_out: point_out.as_mut_ptr(),
         };
         let (hook, direct_inputs) = if entry_round == 0 {
-            let inputs =
-                DrWindowRawInputKeepalivePr::from_projection(storage, program.input_projection());
+            let inputs = assert_binding(DrWindowRawInputKeepalivePr::from_projection(
+                storage,
+                program.input_projection(),
+            ));
             (None, Some(inputs))
         } else {
             let hook = DrWindowLayerHookPr::bind(
@@ -176,9 +178,9 @@ impl DimensionReducingLayerPlanPr {
         };
         let sources = match (&hook, &direct_inputs) {
             (Some(hook), _) => hook.megakernel_source_pointers(program, storage),
-            (None, Some(inputs)) => {
-                inputs.canonical_source_pointers(storage, program.input_projection())
-            }
+            (None, Some(inputs)) => assert_binding(
+                inputs.canonical_source_pointers(storage, program.input_projection()),
+            ),
             (None, None) => unreachable!(),
         };
         let source_count = self.folding_addresses.len();

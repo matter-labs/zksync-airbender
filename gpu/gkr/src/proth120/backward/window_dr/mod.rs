@@ -1,4 +1,5 @@
 mod binding;
+pub(super) use binding::assert_binding;
 
 pub(crate) use binding::{
     schedule_dr_batch_challenge_table_pr, DrLayerTranscriptPr, DrWindowLayerHookPr,
