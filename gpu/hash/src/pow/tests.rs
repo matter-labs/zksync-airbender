@@ -1,3 +1,5 @@
+mod bench;
+
 use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
