@@ -47,6 +47,11 @@ struct ReferenceBundle {
 }
 
 #[derive(Deserialize)]
+struct ReferenceArtifact {
+    l1: ReferenceBundle,
+}
+
+#[derive(Deserialize)]
 struct CompressionCheckpoint {
     proof: ProgramProof,
     setups: Setups,
@@ -65,7 +70,7 @@ fn l1_wrap_stagewise_pessimistic_conjecture() {
     let references = std::env::var_os("AB_PROTH120_REFERENCE_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| root.join("../../prover_pipeline/fixtures/l1_reference_2p21"));
-    let reference: ReferenceBundle = read_typed(&references.join("l1_bundle.json"));
+    let ReferenceArtifact { l1: reference } = read_typed(&references.join("l1.json"));
     let compression: CompressionCheckpoint = read_typed(&references.join("compression.json"));
     let nd_words = build_unified_stream(
         &compression.setups,

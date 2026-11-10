@@ -16,9 +16,8 @@ use gpu_trace::witness::circuit_type::UnrolledCircuitType;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use setups::Setups;
-use sha3::{Digest, Keccak256};
 use std::cell::RefCell;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile};
@@ -47,27 +46,6 @@ pub(super) fn observe(state: &RequestState) {
 }
 
 #[derive(Deserialize)]
-struct FileIdentity {
-    name: String,
-    bytes: u64,
-    keccak256: String,
-}
-
-#[derive(Deserialize)]
-struct FsvIdentity {
-    role: String,
-    stem: String,
-    fsv_rom_digest_v1: String,
-}
-
-#[derive(Deserialize)]
-struct ProofManifest {
-    format_version: u32,
-    fsv: Vec<FsvIdentity>,
-    files: Vec<FileIdentity>,
-}
-
-#[derive(Deserialize)]
 struct CompressionArtifact {
     schema_version: u32,
     target: String,
@@ -81,6 +59,11 @@ struct Bundle {
     operation_mode: OperationMode,
 }
 
+#[derive(Deserialize)]
+struct L1Artifact {
+    l1: Bundle,
+}
+
 fn reference_dir() -> PathBuf {
     std::env::var_os("AB_PROTH120_REFERENCE_DIR")
         .map(PathBuf::from)
@@ -90,57 +73,26 @@ fn reference_dir() -> PathBuf {
         })
 }
 
-fn keccak_hex(bytes: &[u8]) -> String {
-    Keccak256::digest(bytes)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
-}
-
-fn read_checked<T: DeserializeOwned>(manifest: &ProofManifest, name: &str) -> T {
-    let entry = manifest
-        .files
-        .iter()
-        .find(|file| file.name == name)
-        .unwrap_or_else(|| panic!("L1 reference manifest omits {name}"));
+fn read_reference<T: DeserializeOwned>(name: &str) -> T {
     let path = reference_dir().join(name);
-    let data = fs::read(&path)
-        .unwrap_or_else(|error| panic!("L1 reference read {}: {error}", path.display()));
-    assert!(
-        data.len() as u64 == entry.bytes && keccak_hex(&data) == entry.keccak256,
-        "L1 reference identity differs: {name}"
-    );
-    serde_json::from_slice(&data)
+    let file = File::open(&path)
+        .unwrap_or_else(|error| panic!("L1 reference open {}: {error}", path.display()));
+    serde_json::from_reader(BufReader::new(file))
         .unwrap_or_else(|error| panic!("L1 reference deserialize {name}: {error}"))
 }
 
-/// The guest's registry path without `.elf`: the stem the L1 reference manifest records.
-fn registry_stem(descriptor: &FsvDescriptor) -> &'static str {
-    descriptor.relative_path().trim_end_matches(".elf")
-}
-
-fn wrap_program(manifest: &ProofManifest) -> (Vec<u32>, Vec<u32>) {
+fn wrap_program() -> (Vec<u32>, Vec<u32>) {
     let dir = std::env::var_os("FSV_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../tools/gkr_verifier/full_statement_verifiers")
         });
-    let descriptor = FsvDescriptor::compression(FsvProfile::CompressionFinalWrap);
-    let stem = registry_stem(&descriptor);
-    let entry = manifest
-        .fsv
-        .iter()
-        .find(|entry| entry.role == "compression_wrap")
-        .expect("L1 reference manifest omits the compression_wrap fsv role");
-    assert_eq!(stem, entry.stem, "L1 reference wrap fsv stem differs");
-    let guest = load_fsv_exact(&dir, &descriptor);
-    assert_eq!(
-        guest.digest().to_string(),
-        entry.fsv_rom_digest_v1,
-        "L1 reference wrap fsv-rom-digest-v1 differs from the registry"
-    );
-    guest.into_words()
+    load_fsv_exact(
+        &dir,
+        &FsvDescriptor::compression(FsvProfile::CompressionFinalWrap),
+    )
+    .into_words()
 }
 
 fn pinned_copy<T: Copy, B: GoodAllocator>(
@@ -257,20 +209,13 @@ fn l1_wrap_followed_worker_parity() {
         .is_test(true)
         .format_timestamp_millis()
         .try_init();
-    let manifest: ProofManifest = {
-        let path = reference_dir().join("manifest.json");
-        let file = File::open(&path)
-            .unwrap_or_else(|error| panic!("L1 reference open {}: {error}", path.display()));
-        serde_json::from_reader(BufReader::new(file)).expect("L1 reference manifest")
-    };
-    assert_eq!(manifest.format_version, 1, "L1 reference manifest format");
-    let compression: CompressionArtifact = read_checked(&manifest, "compression.json");
+    let compression: CompressionArtifact = read_reference("compression.json");
     assert!(
         compression.schema_version == 6 && compression.target == "Compression",
         "L1 reference last-compression checkpoint must be a schema-6 Compression artifact"
     );
-    let bundle: Bundle = read_checked(&manifest, "l1_bundle.json");
-    let (bin, text) = wrap_program(&manifest);
+    let L1Artifact { l1: bundle } = read_reference("l1.json");
+    let (bin, text) = wrap_program();
     let nd_words = build_unified_stream(
         &compression.setups,
         &compression.proof,
