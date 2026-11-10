@@ -69,7 +69,7 @@ impl L1WrapPrecomputed {
                     .expect("L1Wrap CPU setup is consumed once during initialization");
                 let cfg = PackedCommitConfig::from_prover_config(
                     &self.config,
-                    gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                    L1WrapSetupHost::PARTIAL_TREE_REDUCTION_LAYERS,
                 );
                 L1WrapSetupHost::precompute(&source, self.geometry.pack_log2, cfg, context)
                     .map(Arc::new)

@@ -13,10 +13,7 @@ fn cpu_l1_inputs_fit_reserve() {
         1 << ProverContextConfig::default().allocator_block_log_size
     );
     let (geometry, _) = wrap_geometry(CircuitType::L1Wrap);
-    let bytes = L1WrapInputs::<'static, Global>::phase_one_capacity_bytes(
-        &geometry,
-        crate::proof::memory_policy::presets::l1_wrap::PARTIAL_TREES.setup,
-    );
+    let bytes = L1WrapInputs::<'static, Global>::phase_one_capacity_bytes(&geometry);
     let mib = 1 << 20;
     // Tracing data, I&T pages/values/timestamps, decoder, transcript prefix,
     // then the setup's raw evaluations, packed monomials and depth-10 trees.
@@ -47,11 +44,11 @@ fn cpu_l1_whir_slab_preserves_the_committed_proof() {
         .join("../../prover_pipeline/fixtures/l1_reference_2p21/l1.json");
     let reference: Reference = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     let expected = &reference.l1.proof.whir_proof;
-    let (_, config) = wrap_geometry(CircuitType::L1Wrap21);
+    let (_, config) = wrap_geometry(CircuitType::L1Wrap);
     let programs = GkrProgramsPr::compile(
-        CircuitType::L1Wrap21,
+        CircuitType::L1Wrap,
         Arc::new(super::geometry::cpu_tests::committed_layout(
-            CircuitType::L1Wrap21,
+            CircuitType::L1Wrap,
         )),
     );
     let layout = Arc::new(ProofLayoutPr::new(&programs, &config));

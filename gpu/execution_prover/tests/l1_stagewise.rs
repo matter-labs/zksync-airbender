@@ -126,7 +126,7 @@ fn l1_wrap_stagewise_pessimistic_conjecture() {
                     geometry.pack_log2,
                     PackedCommitConfig::from_prover_config(
                         &config,
-                        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+                        L1WrapSetupHost::PARTIAL_TREE_REDUCTION_LAYERS,
                     ),
                     &context,
                 )
@@ -151,7 +151,6 @@ fn l1_wrap_stagewise_pessimistic_conjecture() {
                 fixture.inits_and_teardowns.clone(),
                 fixture.tracing_data.clone(),
                 setup_host,
-                partial_trees.setup,
                 constants,
                 &fixture.operation_mode,
                 &context,

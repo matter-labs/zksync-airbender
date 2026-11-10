@@ -59,7 +59,6 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
         inits_and_teardowns: InitsAndTeardownsTraceHost<A>,
         tracing_data: UnrolledUnifiedTraceHost<A>,
         setup_host: Arc<L1WrapSetupHost>,
-        setup_reduction_layers: u32,
         constants: Arc<L1WrapConstantsHost>,
         operation_mode: &OperationMode,
         context: &ProverContext,
@@ -90,8 +89,7 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
         let transcript_prefix_host = transcript_prefix_words(operation_mode, &top_bits_host);
         let transcript_prefix =
             context.alloc::<u32>(transcript_prefix_host.len(), AllocationPlacement::BestFit)?;
-        let setup =
-            PackedSetupSource::new(Arc::clone(&setup_host), setup_reduction_layers, context)?;
+        let setup = PackedSetupSource::new(Arc::clone(&setup_host), context)?;
         let transfer = Transfer::new()?;
         transfer.record_allocated(context)?;
         Ok(Self {
@@ -131,10 +129,7 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
 
     /// Bytes the phase-one inputs take in the inputs reserve: every part rounded up
     /// to an allocator block.
-    pub fn phase_one_capacity_bytes(
-        geometry: &L1WrapGeometry,
-        setup_reduction_layers: u32,
-    ) -> usize {
+    pub fn phase_one_capacity_bytes(geometry: &L1WrapGeometry) -> usize {
         let circuit_type = geometry.circuit_type;
         assert!(
             circuit_type.is_l1_wrap(),
@@ -165,7 +160,10 @@ impl<'a, A: GoodAllocator + 'a> L1WrapInputs<'a, A> {
             ),
             bytes(
                 (1 << geometry.log_base_lde)
-                    * retained_len(log_leaves, setup_reduction_layers.min(log_leaves)),
+                    * retained_len(
+                        log_leaves,
+                        L1WrapSetupHost::PARTIAL_TREE_REDUCTION_LAYERS.min(log_leaves),
+                    ),
                 size_of::<Digest>(),
             ),
         ];
