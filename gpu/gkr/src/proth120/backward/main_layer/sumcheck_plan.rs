@@ -82,7 +82,7 @@ impl MainLayerBackwardStatePr {
             AllocationPlacement::Top,
         )?;
 
-        let bank = CoefficientBankPr::new(&programs, layer_idx, top_bits, context)?;
+        let bank = CoefficientBankPr::new(&programs, layer_idx, top_bits)?;
         let r0 = bind_r0_pr(
             &programs.r0[layer_idx],
             &self.storage,
@@ -266,9 +266,9 @@ impl MainLayerPlanPr {
             &programs.main_continuation_window[layer],
             storage,
             MainContinuationScratchPr {
-                coefficients: continuation.coefficients,
+                coefficient_offset: continuation.coefficient_offset,
                 coefficient_count: continuation.coefficient_count,
-                immediates: continuation.immediates,
+                immediate_offset: continuation.immediate_offset,
                 immediate_count: continuation.immediate_count,
                 fold_weights: scratch.fold_weights.as_mut_ptr(),
                 eq_high: eq_high_0,
@@ -315,9 +315,9 @@ impl MainLayerPlanPr {
                 eq_prefactor: eq_prefactor.as_mut_ptr(),
                 coefficients_out: coeffs,
                 challenges_out: point_out.as_mut_ptr(),
-                coefficients: main_tail.coefficients,
+                coefficient_offset: main_tail.coefficient_offset,
                 coefficient_count: main_tail.coefficient_count,
-                immediates: main_tail.immediates,
+                immediate_offset: main_tail.immediate_offset,
                 immediate_count: main_tail.immediate_count,
             },
             context,

@@ -1,4 +1,5 @@
 #pragma once
+#include "coefficient_storage_pr.cuh"
 
 #include "../../backward/window/common.cuh"
 #include "tail_common_pr.cuh"
@@ -35,8 +36,8 @@ struct __align__(16) bwd_pr_main_tail_desc {
   pr *eq_prefactor;
   pr *coefficients_out;
   pr *challenges_out;
-  const pr *coefficients;
-  const pr *immediates;
+  u32 coefficient_offset;
+  u32 immediate_offset;
   gkr_eq_sizes eq_sizes;
   u32 entry_column_elems;
   u16 source_count;
@@ -66,17 +67,17 @@ static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, claim) == 64, "claim ABI
 static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, eq_prefactor) == 72, "eq_prefactor ABI offset drift");
 static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, coefficients_out) == 80, "coefficients_out ABI offset drift");
 static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, challenges_out) == 88, "challenges_out ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, coefficients) == 96, "coefficients ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, immediates) == 104, "immediates ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, eq_sizes) == 112, "eq_sizes ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, entry_column_elems) == 124, "entry_column_elems ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, source_count) == 128, "source_count ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, program_words) == 130, "program_words ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, immediate_count) == 132, "immediate_count ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, c_init_coeff_id) == 134, "c_init_coeff_id ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, tail_start) == 136, "tail_start ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, folding_steps) == 137, "folding_steps ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, tail_padding) == 138, "tail_padding ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, coefficient_offset) == 96, "coefficient_offset ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, immediate_offset) == 100, "immediate_offset ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, eq_sizes) == 104, "eq_sizes ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, entry_column_elems) == 116, "entry_column_elems ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, source_count) == 120, "source_count ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, program_words) == 122, "program_words ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, immediate_count) == 124, "immediate_count ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, c_init_coeff_id) == 126, "c_init_coeff_id ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, tail_start) == 128, "tail_start ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, folding_steps) == 129, "folding_steps ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_tail_desc, tail_padding) == 130, "tail_padding ABI offset drift");
 static_assert(sizeof(bwd_pr_main_tail_program_blob) == BWD_PR_MAIN_TAIL_BLOB_BYTES, "pr main-tail program blob size drift");
 static_assert(alignof(bwd_pr_main_tail_program_blob) == 16, "pr main-tail program blob alignment drift");
 static_assert(sizeof(bwd_pr_main_tail_desc) + sizeof(bwd_pr_main_tail_program_blob) == 16560, "pr main-tail argument size drift");
@@ -143,13 +144,13 @@ DEVICE_FORCEINLINE bwd_pr_main_tail_pair bwd_pr_main_tail_resolve(const pr *colu
   return bwd_pr_main_tail_pair{endpoint0, pr::sub(values[1], endpoint0)};
 }
 
-DEVICE_FORCEINLINE void bwd_pr_main_tail_apply_immediate(const pr *immediates, const u16 immediate_id, const pr &value, pr &sum) {
+DEVICE_FORCEINLINE void bwd_pr_main_tail_apply_immediate(const u32 immediate_offset, const u16 immediate_id, const pr &value, pr &sum) {
   if (immediate_id == BWD_PROGRAM_IMMEDIATE_ONE) {
     sum = pr::add(sum, value);
   } else if (immediate_id == BWD_PROGRAM_IMMEDIATE_NEG_ONE) {
     sum = pr::sub(sum, value);
   } else {
-    sum = pr::fma(value, immediates[immediate_id - BWD_PROGRAM_IMMEDIATE_RESERVED], sum);
+    sum = pr::fma(value, coefficient_from_bank(immediate_offset, immediate_id - BWD_PROGRAM_IMMEDIATE_RESERVED), sum);
   }
 }
 
@@ -158,7 +159,7 @@ DEVICE_FORCEINLINE void bwd_pr_main_tail_evaluate_list(const bwd_pr_main_tail_de
   acc_c0 = pr::ZERO();
   acc_c2 = pr::ZERO();
   if (apply_c_init && desc.c_init_coeff_id != BWD_PR_MAIN_TAIL_C_INIT_NONE)
-    acc_c0 = desc.coefficients[desc.c_init_coeff_id];
+    acc_c0 = coefficient_from_bank(desc.coefficient_offset, desc.c_init_coeff_id);
 
 #pragma unroll 1
   for (; pc < pc_end; pc += BWD_CONTINUATION_WORDS_PER_TERM) {
@@ -181,15 +182,15 @@ DEVICE_FORCEINLINE void bwd_pr_main_tail_evaluate_list(const bwd_pr_main_tail_de
         const u16 immediate_id = (member_header >> BWD_CONTINUATION_COEFFICIENT_SHIFT) & BWD_CONTINUATION_COEFFICIENT_MASK;
         if (member_class == BWD_CONTINUATION_CLASS_C0_LINEAR_E4) {
           const bwd_pr_main_tail_pair a = bwd_pr_main_tail_resolve(columns, stride, row, program[pc + 1], false);
-          bwd_pr_main_tail_apply_immediate(desc.immediates, immediate_id, a.endpoint0, sum_c0);
+          bwd_pr_main_tail_apply_immediate(desc.immediate_offset, immediate_id, a.endpoint0, sum_c0);
         } else if (member_class == BWD_CONTINUATION_CLASS_DUAL_PRODUCT_E4) {
           const bwd_pr_main_tail_pair a = bwd_pr_main_tail_resolve(columns, stride, row, program[pc + 1], true);
           const bwd_pr_main_tail_pair b = bwd_pr_main_tail_resolve(columns, stride, row, program[pc + 2], true);
-          bwd_pr_main_tail_apply_immediate(desc.immediates, immediate_id, pr::mul(a.endpoint0, b.endpoint0), sum_c0);
-          bwd_pr_main_tail_apply_immediate(desc.immediates, immediate_id, pr::mul(a.delta, b.delta), sum_c2);
+          bwd_pr_main_tail_apply_immediate(desc.immediate_offset, immediate_id, pr::mul(a.endpoint0, b.endpoint0), sum_c0);
+          bwd_pr_main_tail_apply_immediate(desc.immediate_offset, immediate_id, pr::mul(a.delta, b.delta), sum_c2);
         }
       }
-      const pr core = desc.coefficients[coefficient_index];
+      const pr core = coefficient_from_bank(desc.coefficient_offset, coefficient_index);
       if ((flags & BWD_CONTINUATION_GROUP_FLAG_C0) != 0)
         acc_c0 = pr::fma(core, sum_c0, acc_c0);
       if ((flags & BWD_CONTINUATION_GROUP_FLAG_C2) != 0)
@@ -197,7 +198,7 @@ DEVICE_FORCEINLINE void bwd_pr_main_tail_evaluate_list(const bwd_pr_main_tail_de
       continue;
     }
 
-    const pr coefficient = desc.coefficients[coefficient_index];
+    const pr coefficient = coefficient_from_bank(desc.coefficient_offset, coefficient_index);
     if (term_class == BWD_CONTINUATION_CLASS_C0_LINEAR_E4) {
       const bwd_pr_main_tail_pair a = bwd_pr_main_tail_resolve(columns, stride, row, source_a, false);
       acc_c0 = pr::fma(coefficient, a.endpoint0, acc_c0);
@@ -257,9 +258,8 @@ DEVICE_FORCEINLINE bool bwd_pr_main_tail_valid(const bwd_pr_main_tail_desc &desc
   const u32 tail_rounds = u32{desc.folding_steps} - u32{desc.tail_start};
   return blockDim.x == BWD_PR_MAIN_TAIL_BLOCK_THREADS && gridDim.x == 1 && desc.source_count != 0 && desc.source_count <= BWD_PR_MAIN_TAIL_SOURCE_CAP &&
          desc.program_words <= BWD_PR_MAIN_TAIL_PROGRAM_WORD_CAP && desc.program_words % BWD_CONTINUATION_WORDS_PER_TERM == 0 &&
-         desc.immediate_count <= BWD_PR_MAIN_TAIL_IMMEDIATE_CAP && (desc.immediate_count == 0 || desc.immediates != nullptr) && desc.tail_start >= 3 &&
-         desc.folding_steps > desc.tail_start && tail_rounds <= 6 && desc.entry_column_elems == (8u << tail_rounds) && desc.eq_sizes.high[0] == 0 &&
-         desc.eq_sizes.high[1] == 0 && desc.eq_sizes.low == tail_rounds - 1 &&
+         desc.immediate_count <= BWD_PR_MAIN_TAIL_IMMEDIATE_CAP && desc.tail_start >= 3 && desc.folding_steps > desc.tail_start && tail_rounds <= 6 &&
+         desc.entry_column_elems == (8u << tail_rounds) && desc.eq_sizes.high[0] == 0 && desc.eq_sizes.high[1] == 0 && desc.eq_sizes.low == tail_rounds - 1 &&
          bwd_pr_main_tail_list_offsets(program_blob)[BWD_PR_MAIN_TAIL_K] == desc.program_words;
 }
 

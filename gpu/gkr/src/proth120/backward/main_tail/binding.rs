@@ -50,8 +50,8 @@ pub(crate) struct MainTailDescPr {
     pub(crate) eq_prefactor: *mut PR,
     pub(crate) coefficients_out: *mut PR,
     pub(crate) challenges_out: *mut PR,
-    pub(crate) coefficients: *const PR,
-    pub(crate) immediates: *const PR,
+    pub(crate) coefficient_offset: u32,
+    pub(crate) immediate_offset: u32,
     pub(crate) eq_sizes: GkrEqSizes,
     pub(crate) entry_column_elems: u32,
     pub(crate) source_count: u16,
@@ -88,17 +88,17 @@ const _: () = {
     assert!(offset_of!(MainTailDescPr, eq_prefactor) == 72);
     assert!(offset_of!(MainTailDescPr, coefficients_out) == 80);
     assert!(offset_of!(MainTailDescPr, challenges_out) == 88);
-    assert!(offset_of!(MainTailDescPr, coefficients) == 96);
-    assert!(offset_of!(MainTailDescPr, immediates) == 104);
-    assert!(offset_of!(MainTailDescPr, eq_sizes) == 112);
-    assert!(offset_of!(MainTailDescPr, entry_column_elems) == 124);
-    assert!(offset_of!(MainTailDescPr, source_count) == 128);
-    assert!(offset_of!(MainTailDescPr, program_words) == 130);
-    assert!(offset_of!(MainTailDescPr, immediate_count) == 132);
-    assert!(offset_of!(MainTailDescPr, c_init_coeff_id) == 134);
-    assert!(offset_of!(MainTailDescPr, tail_start) == 136);
-    assert!(offset_of!(MainTailDescPr, folding_steps) == 137);
-    assert!(offset_of!(MainTailDescPr, tail_padding) == 138);
+    assert!(offset_of!(MainTailDescPr, coefficient_offset) == 96);
+    assert!(offset_of!(MainTailDescPr, immediate_offset) == 100);
+    assert!(offset_of!(MainTailDescPr, eq_sizes) == 104);
+    assert!(offset_of!(MainTailDescPr, entry_column_elems) == 116);
+    assert!(offset_of!(MainTailDescPr, source_count) == 120);
+    assert!(offset_of!(MainTailDescPr, program_words) == 122);
+    assert!(offset_of!(MainTailDescPr, immediate_count) == 124);
+    assert!(offset_of!(MainTailDescPr, c_init_coeff_id) == 126);
+    assert!(offset_of!(MainTailDescPr, tail_start) == 128);
+    assert!(offset_of!(MainTailDescPr, folding_steps) == 129);
+    assert!(offset_of!(MainTailDescPr, tail_padding) == 130);
     assert!(size_of::<MainTailProgramBlobPr>() == PR_MAIN_TAIL_BLOB_BYTES);
     assert!(align_of::<MainTailProgramBlobPr>() == 16);
     assert!(PR_MAIN_TAIL_KERNEL_ARGUMENT_BYTES == 16_560);
@@ -120,9 +120,9 @@ pub(crate) struct MainTailRuntimePr {
     pub(crate) eq_prefactor: *mut PR,
     pub(crate) coefficients_out: *mut PR,
     pub(crate) challenges_out: *mut PR,
-    pub(crate) coefficients: *const PR,
+    pub(crate) coefficient_offset: u32,
     pub(crate) coefficient_count: usize,
-    pub(crate) immediates: *const PR,
+    pub(crate) immediate_offset: u32,
     pub(crate) immediate_count: usize,
 }
 
@@ -277,17 +277,12 @@ pub(crate) fn bind_main_tail_pr(
             "challenges out",
             runtime.challenges_out.cast_const().cast::<u8>(),
         ),
-        ("coefficients", runtime.coefficients.cast::<u8>()),
     ] {
         assert!(
             !pointer.is_null(),
             "Proth120 main tail {name} pointer is null"
         );
     }
-    assert!(
-        runtime.immediate_count == 0 || !runtime.immediates.is_null(),
-        "Proth120 main tail immediates pointer is null"
-    );
     let ping_pong_elems = columns
         .checked_mul(entry_column_elems >> 3)
         .expect("Proth120 main tail allocation size overflow");
@@ -312,8 +307,8 @@ pub(crate) fn bind_main_tail_pr(
         eq_prefactor: runtime.eq_prefactor,
         coefficients_out: runtime.coefficients_out,
         challenges_out: runtime.challenges_out,
-        coefficients: runtime.coefficients,
-        immediates: runtime.immediates,
+        coefficient_offset: runtime.coefficient_offset,
+        immediate_offset: runtime.immediate_offset,
         eq_sizes: eq_boundary.eq_sizes,
         entry_column_elems: entry_column_elems as u32,
         source_count: program.source_count,
@@ -374,14 +369,14 @@ mod cpu_pr_main_tail_abi {
             ("entry", 8),
             ("eq_high", 40),
             ("seed", 56),
-            ("coefficients", 96),
-            ("immediates", 104),
-            ("eq_sizes", 112),
-            ("entry_column_elems", 124),
-            ("source_count", 128),
-            ("c_init_coeff_id", 134),
-            ("tail_start", 136),
-            ("folding_steps", 137),
+            ("coefficient_offset", 96),
+            ("immediate_offset", 100),
+            ("eq_sizes", 104),
+            ("entry_column_elems", 116),
+            ("source_count", 120),
+            ("c_init_coeff_id", 126),
+            ("tail_start", 128),
+            ("folding_steps", 129),
         ] {
             let assertion =
                 format!("__builtin_offsetof(bwd_pr_main_tail_desc, {field}) == {offset}");
