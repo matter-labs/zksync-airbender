@@ -361,4 +361,35 @@ example (claim : RVRequestWindowSoundnessClaim) : RVRequestWindowSoundnessSatisf
 
 end Callers
 
+example (claim : Blake2G.Native.RVWorkvectorSoundnessClaim) : Blake2G.Native.RVWorkvectorSoundnessSatisfiableClaim →
+    ∃ (data : Delegation.MemoryData babyBearModulus) (initial after : RV.State) (cells : List Cell),
+      Delegation.RVTraceMapping data initial after cells ∧ data.rows ≠ [] :=
+  fun ⟨data, initial, cells, reduced, accepted, inputs, aligned⟩ =>
+    have ⟨after, _, _, _, _, _, _, trace, _⟩ := claim accepted inputs aligned
+    ⟨data, initial, after, cells, trace, fun empty => by
+      have calls := inputs.calls
+      rw [empty] at calls
+      cases reduced <;> simp [Blake2G.callCount] at calls⟩
+
+example (claim : Blake2G.Native.RVWorkvectorBoundarySoundnessClaim) :
+    Blake2G.Native.RVWorkvectorBoundarySoundnessSatisfiableClaim →
+    ∃ (data : Delegation.MemoryData babyBearModulus) (initial after : RV.State) (cells : List Cell),
+      Delegation.RVTraceMapping data initial after cells ∧ data.rows ≠ [] :=
+  fun ⟨data, initial, cells, reduced, accepted, inputs, aligned⟩ =>
+    have ⟨after, _, _, _, _, _, _, trace, _⟩ := claim accepted inputs aligned
+    ⟨data, initial, after, cells, trace, fun empty => by
+      have calls := inputs.calls
+      rw [empty] at calls
+      cases reduced <;> simp [Blake2G.callCount] at calls⟩
+
+example (claim : Blake2G.Native.RVWindowSoundnessClaim) : Blake2G.Native.RVWindowSoundnessSatisfiableClaim →
+    ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Cell) (reduced : Bool)
+      (lower upper : Nat), Delegation.Caller.RVWindowResult (Blake2G.RVSpanResult reduced) data before cells lower upper ∧
+        data.windowRows lower upper ≠ [] :=
+  fun ⟨data, before, cells, reduced, lower, upper, accepted, inputs, aligned⟩ =>
+    ⟨data, before, cells, reduced, lower, upper, claim accepted inputs aligned, fun empty => by
+      have calls := inputs.calls
+      rw [empty] at calls
+      cases reduced <;> simp [Blake2G.callCount] at calls⟩
+
 end Checks.Satisfiable

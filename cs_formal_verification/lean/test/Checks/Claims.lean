@@ -441,3 +441,9 @@ example : Airbender.Delegation.Caller.RVRequestWindowSoundnessSatisfiableClaim :
 #print axioms Airbender.Delegation.Caller.rv_request_window_soundness_satisfiable
 example : Airbender.UnifiedReduced.Caller.RVProgramWindowScheduleSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_program_window_schedule_soundness_satisfiable
 #print axioms Airbender.UnifiedReduced.Caller.rv_program_window_schedule_soundness_satisfiable
+example : Airbender.Blake2G.Native.RVWorkvectorSoundnessSatisfiableClaim := @Airbender.Blake2G.Native.rv_workvector_soundness_satisfiable
+#print axioms Airbender.Blake2G.Native.rv_workvector_soundness_satisfiable
+example : Airbender.Blake2G.Native.RVWorkvectorBoundarySoundnessSatisfiableClaim := @Airbender.Blake2G.Native.rv_workvector_boundary_soundness_satisfiable
+#print axioms Airbender.Blake2G.Native.rv_workvector_boundary_soundness_satisfiable
+example : Airbender.Blake2G.Native.RVWindowSoundnessSatisfiableClaim := @Airbender.Blake2G.Native.rv_window_soundness_satisfiable
+#print axioms Airbender.Blake2G.Native.rv_window_soundness_satisfiable
