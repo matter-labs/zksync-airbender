@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../support/kernel_helpers.cuh"
+#include "coefficient_storage_pr.cuh"
 #include "primitives/proth120.cuh"
 
 namespace airbender::gkr::proth120::backward {
@@ -29,6 +30,7 @@ struct bwd_coeff_monomial_pr {
 constexpr u32 PR_COEFF_CHUNK_RECIPES = 278;
 constexpr u32 PR_COEFF_CHUNK_MONOMIALS = 577;
 constexpr u32 PR_COEFF_CHUNK_IMMEDIATES = 17;
+static_assert(PR_COEFF_BANK_STRIDE == PR_COEFF_CHUNK_RECIPES + PR_COEFF_CHUNK_IMMEDIATES);
 
 struct alignas(16) bwd_coeff_chunk_desc_pr {
   u32 bank_first;

@@ -83,7 +83,7 @@ DEVICE_FORCEINLINE void bwd_pr_main_cont_apply_immediate(const bwd_pr_main_cont_
     }
   }
   if constexpr ((Shape & BWD_PR_MAIN_CONT_SHAPE_BANKED_GROUP_IMMEDIATE) != 0) {
-    const pr immediate = load<pr, ld_modifier::ca>(desc.immediates, immediate_id - BWD_PROGRAM_IMMEDIATE_RESERVED);
+    const pr immediate = coefficient_from_bank(desc.immediate_offset, immediate_id - BWD_PROGRAM_IMMEDIATE_RESERVED);
 #pragma unroll
     for (u32 x2 = 0; x2 < 3; x2++)
       sum[x2] = pr::fma(value.value[x2], immediate, sum[x2]);
@@ -91,7 +91,7 @@ DEVICE_FORCEINLINE void bwd_pr_main_cont_apply_immediate(const bwd_pr_main_cont_
 }
 
 DEVICE_FORCEINLINE pr bwd_pr_main_cont_coefficient(const bwd_pr_main_cont_desc &desc, const u32 coefficient_id) {
-  return load<pr, ld_modifier::ca>(desc.coefficients, coefficient_id);
+  return coefficient_from_bank(desc.coefficient_offset, coefficient_id);
 }
 
 template <u16 Shape, u32 X1, u32 X0>

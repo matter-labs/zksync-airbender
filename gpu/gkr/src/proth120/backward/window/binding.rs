@@ -42,8 +42,8 @@ pub(crate) struct WindowLaunchBindingPr {
     pub sections: [u32; PR_WINDOW_SECTION_WORDS],
     pub program: [u16; PR_WINDOW_PROGRAM_WORD_CAP],
     pub eq_high: *const PR,
-    pub coefficients: *const PR,
-    pub immediates: *const PR,
+    pub coefficient_offset: u32,
+    pub immediate_offset: u32,
     pub immediate_count: u32,
     pub _pad: u32,
 }
@@ -64,10 +64,10 @@ const _: () = {
     assert!(offset_of!(WindowLaunchBindingPr, sections) == 1_056);
     assert!(offset_of!(WindowLaunchBindingPr, program) == 1_072);
     assert!(offset_of!(WindowLaunchBindingPr, eq_high) == 19_504);
-    assert!(offset_of!(WindowLaunchBindingPr, coefficients) == 19_512);
-    assert!(offset_of!(WindowLaunchBindingPr, immediates) == 19_520);
-    assert!(offset_of!(WindowLaunchBindingPr, immediate_count) == 19_528);
-    assert!(offset_of!(WindowLaunchBindingPr, _pad) == 19_532);
+    assert!(offset_of!(WindowLaunchBindingPr, coefficient_offset) == 19_512);
+    assert!(offset_of!(WindowLaunchBindingPr, immediate_offset) == 19_516);
+    assert!(offset_of!(WindowLaunchBindingPr, immediate_count) == 19_520);
+    assert!(offset_of!(WindowLaunchBindingPr, _pad) == 19_524);
     assert!(size_of::<WindowLaunchBindingPr>() + size_of::<u32>() <= KERNEL_ARGUMENT_CEILING_BYTES);
     assert!(LEAN_MAX_IMMEDIATES == 512);
 };
@@ -225,18 +225,10 @@ pub(super) fn build_window_binding_pr(
         !scratch.eq_high.is_null() && !scratch.eq_low.is_null() && !scratch.partials.is_null(),
         "Proth120 R0 scratch pointers must be bound"
     );
-    assert!(
-        !bank.coefficients.is_null(),
-        "Proth120 R0 coefficient bank must be bound"
-    );
     assert_eq!(
         program.immediates.len(),
         bank.immediate_count,
         "Proth120 R0 immediates table length mismatch"
-    );
-    assert!(
-        bank.immediate_count == 0 || !bank.immediates.is_null(),
-        "Proth120 R0 immediates table must be bound"
     );
     assert_eq!(
         program.coefficient_plans.len() + 2,
@@ -283,8 +275,8 @@ pub(super) fn build_window_binding_pr(
     binding.sections = program.sections;
     bind_window_words_pr(program, addressing, &mut binding.program);
     binding.eq_high = scratch.eq_high;
-    binding.coefficients = bank.coefficients;
-    binding.immediates = bank.immediates;
+    binding.coefficient_offset = bank.coefficient_offset;
+    binding.immediate_offset = bank.immediate_offset;
     binding.immediate_count = bank.immediate_count as u32;
     binding
 }

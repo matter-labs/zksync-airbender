@@ -1,4 +1,5 @@
 #pragma once
+#include "../coefficient_storage_pr.cuh"
 
 #include "../../../backward/window/window_geometry.cuh"
 #include "../accumulator_pr.cuh"
@@ -59,8 +60,8 @@ struct alignas(16) bwd_window_desc_pr {
   u32 sections[PR_WINDOW_SECTION_WORDS];
   u16 program[PR_WINDOW_PROGRAM_WORD_CAP];
   const pr *eq_high;
-  const pr *coefficients;
-  const pr *immediates;
+  u32 coefficient_offset;
+  u32 immediate_offset;
   u32 immediate_count;
   u32 _pad;
 };
@@ -81,10 +82,10 @@ static_assert(__builtin_offsetof(bwd_window_desc_pr, eq_sizes) == 1044);
 static_assert(__builtin_offsetof(bwd_window_desc_pr, sections) == 1056);
 static_assert(__builtin_offsetof(bwd_window_desc_pr, program) == 1072);
 static_assert(__builtin_offsetof(bwd_window_desc_pr, eq_high) == 19504);
-static_assert(__builtin_offsetof(bwd_window_desc_pr, coefficients) == 19512);
-static_assert(__builtin_offsetof(bwd_window_desc_pr, immediates) == 19520);
-static_assert(__builtin_offsetof(bwd_window_desc_pr, immediate_count) == 19528);
-static_assert(__builtin_offsetof(bwd_window_desc_pr, _pad) == 19532);
+static_assert(__builtin_offsetof(bwd_window_desc_pr, coefficient_offset) == 19512);
+static_assert(__builtin_offsetof(bwd_window_desc_pr, immediate_offset) == 19516);
+static_assert(__builtin_offsetof(bwd_window_desc_pr, immediate_count) == 19520);
+static_assert(__builtin_offsetof(bwd_window_desc_pr, _pad) == 19524);
 static_assert(sizeof(pr_window_instruction) == 8 && alignof(pr_window_instruction) == 4);
 static_assert(__builtin_offsetof(bwd_window_desc_pr, program) % alignof(pr_window_instruction) == 0);
 static_assert(PR_WINDOW_PROGRAM_WORD_CAP % 4 == 0);
@@ -194,7 +195,7 @@ DEVICE_FORCEINLINE bool pr_window_procedural_b(const u16 opcode) {
   return opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B || opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB;
 }
 
-DEVICE_FORCEINLINE pr pr_window_coefficient(const bwd_window_desc_pr &desc, const u32 id) { return load<pr, ld_modifier::ca>(desc.coefficients, id); }
+DEVICE_FORCEINLINE pr pr_window_coefficient(const bwd_window_desc_pr &desc, const u32 id) { return coefficient_from_bank(desc.coefficient_offset, id); }
 
 template <bool MayNegate> DEVICE_FORCEINLINE pr pr_window_signed_coefficient(const bwd_window_desc_pr &desc, const u16 encoded) {
   const pr value = pr_window_coefficient(desc, encoded & BWD_WINDOW_ID_MASK);
@@ -213,7 +214,7 @@ DEVICE_FORCEINLINE bwd_window_pair<pr> pr_window_scaled_endpoints(const bwd_wind
       return {{pr::neg(a.values[0]), pr::neg(a.values[1])}};
   }
   if constexpr (MayHaveBanked) {
-    const pr f = load<pr, ld_modifier::ca>(desc.immediates, id - BWD_PROGRAM_IMMEDIATE_RESERVED);
+    const pr f = coefficient_from_bank(desc.immediate_offset, id - BWD_PROGRAM_IMMEDIATE_RESERVED);
     return {{pr::mul(f, a.values[0]), pr::mul(f, a.values[1])}};
   }
   return a;

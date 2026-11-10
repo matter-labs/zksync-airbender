@@ -1,4 +1,5 @@
 #pragma once
+#include "coefficient_storage_pr.cuh"
 
 #include "../../backward/window/common.cuh"
 #include "primitives/proth120.cuh"
@@ -35,8 +36,8 @@ struct alignas(16) bwd_pr_main_cont_desc {
   bwd_pr_main_cont_source_record source[BWD_PR_MAIN_CONT_MAX_SOURCES];
   u16 reserved0[2];
   bwd_source_window slot[BWD_PR_MAIN_CONT_ADDR_SLOTS];
-  const pr *coefficients;
-  const pr *immediates;
+  u32 coefficient_offset;
+  u32 immediate_offset;
   const pr *fold_weights;
   const pr *eq_high;
   const pr *eq_low;
@@ -83,16 +84,16 @@ static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, fold_sources) == 16396, 
 static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, source) == 18540, "source ABI offset drift");
 static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, reserved0) == 22828, "reserved0 ABI offset drift");
 static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, slot) == 22832, "slot ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, coefficients) == 23856, "coefficients ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, immediates) == 23864, "immediates ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, fold_weights) == 23872, "fold_weights ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, eq_high) == 23880, "eq_high ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, eq_low) == 23888, "eq_low ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, partials) == 23896, "partials ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, c_init_coeff) == 23904, "c_init_coeff ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, row_tiles) == 23908, "row_tiles ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, eq_sizes) == 23912, "eq_sizes ABI offset drift");
-static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, reserved1) == 23924, "reserved1 ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, coefficient_offset) == 23856, "coefficient_offset ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, immediate_offset) == 23860, "immediate_offset ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, fold_weights) == 23864, "fold_weights ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, eq_high) == 23872, "eq_high ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, eq_low) == 23880, "eq_low ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, partials) == 23888, "partials ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, c_init_coeff) == 23896, "c_init_coeff ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, row_tiles) == 23900, "row_tiles ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, eq_sizes) == 23904, "eq_sizes ABI offset drift");
+static_assert(__builtin_offsetof(bwd_pr_main_cont_desc, reserved1) == 23916, "reserved1 ABI offset drift");
 
 DEVICE_FORCEINLINE const pr *bwd_pr_main_cont_column(const bwd_pr_main_cont_desc &desc, const u16 lane) {
   const bwd_source_window &slot = desc.slot[bwd_source_lane_slot(lane)];

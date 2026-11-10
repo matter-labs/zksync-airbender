@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
+use std::ffi::c_void;
 use std::mem::{align_of, offset_of, size_of};
 
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::result::CudaResult;
-use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::context::DeviceAllocation;
+use era_cudart::result::{CudaResult, CudaResultWrap};
+use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
 use gpu_gkr_compiler::{
     CoeffProduct, CoefficientRecipeId, NormalizedCoefficientRecipe, WindowCoefficientPlan,
 };
@@ -23,6 +23,22 @@ pub(crate) const PR_COEFF_CHALLENGE_ABSENT: u8 = 0xff;
 const PR_COEFF_CHUNK_RECIPES: usize = 278;
 const PR_COEFF_CHUNK_MONOMIALS: usize = 577;
 const PR_COEFF_CHUNK_IMMEDIATES: usize = 17;
+const PR_COEFF_BANK_STRIDE: usize = PR_COEFF_CHUNK_RECIPES + PR_COEFF_CHUNK_IMMEDIATES;
+const PR_COEFF_BANK_CAPACITY: usize = 2 * PR_COEFF_BANK_STRIDE;
+const _: () = assert!(PR_COEFF_BANK_CAPACITY * size_of::<PR>() == 9440);
+cuda_struct_and_stub! { static ab_pr_gkr_bwd_coeff_bank: [PR; PR_COEFF_BANK_CAPACITY]; }
+pub(crate) fn coefficient_bank_device_ptr_pr() -> CudaResult<*mut PR> {
+    let mut pointer: *mut c_void = std::ptr::null_mut();
+    // SAFETY: this Rust stub names the matching CUDA constant symbol in gpu_gkr_native.
+    unsafe {
+        cudaGetSymbolAddress(
+            &mut pointer,
+            &ab_pr_gkr_bwd_coeff_bank as *const _ as *const c_void,
+        )
+    }
+    .wrap()?;
+    Ok(pointer.cast())
+}
 const PR_COEFF_FILL_BLOCK_THREADS: u32 = 128;
 const PR_COEFF_FILL_WARPS: u32 = 4;
 const PR_COEFF_ARGUMENT_LIMIT: usize = 32764;
@@ -343,42 +359,42 @@ impl CoefficientBankHostPr {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CoefficientBankViewPr {
-    pub coefficients: *const PR,
+    pub coefficient_offset: u32,
     pub coefficient_count: usize,
-    pub immediates: *const PR,
+    pub immediate_offset: u32,
     pub immediate_count: usize,
 }
 
 struct EvaluatedCoefficientBankPr {
-    values: DeviceAllocation<PR>,
+    destination: *mut PR,
+    offset: u32,
     coefficient_count: usize,
+    immediate_count: usize,
     chunks: Vec<Box<CoeffChunkDescPr>>,
 }
 
 impl EvaluatedCoefficientBankPr {
-    fn new(host: CoefficientBankHostPr, context: &ProverContext) -> CudaResult<Self> {
-        let chunks = host.chunks();
-        Ok(Self {
-            values: context.alloc(
-                host.recipes.len() + host.immediates.len(),
-                AllocationPlacement::BestFit,
-            )?,
+    fn new(host: CoefficientBankHostPr, offset: usize, symbol: *mut PR) -> Self {
+        assert!(
+            host.recipes.len() + host.immediates.len() <= PR_COEFF_BANK_STRIDE,
+            "Proth120 evaluated coefficient bank exceeds its constant range"
+        );
+        Self {
+            // SAFETY: each of the two ranges fits the fixed-size constant symbol.
+            destination: unsafe { symbol.add(offset) },
+            offset: offset as u32,
             coefficient_count: host.recipes.len(),
-            chunks,
-        })
+            immediate_count: host.immediates.len(),
+            chunks: host.chunks(),
+        }
     }
 
     fn view(&self) -> CoefficientBankViewPr {
-        let immediate_count = self.values.len() - self.coefficient_count;
         CoefficientBankViewPr {
-            coefficients: self.values.as_ptr(),
+            coefficient_offset: self.offset,
             coefficient_count: self.coefficient_count,
-            immediates: if immediate_count == 0 {
-                std::ptr::null()
-            } else {
-                unsafe { self.values.as_ptr().add(self.coefficient_count) }
-            },
-            immediate_count,
+            immediate_offset: self.offset + self.coefficient_count as u32,
+            immediate_count: self.immediate_count,
         }
     }
 
@@ -400,7 +416,7 @@ impl EvaluatedCoefficientBankPr {
                     (**desc).clone(),
                     challenges,
                     claim_batching,
-                    self.values.as_mut_ptr(),
+                    self.destination,
                 ),
             )?;
         }
@@ -419,17 +435,19 @@ impl CoefficientBankPr {
         programs: &GkrProgramsPr,
         layer: usize,
         top_bits: &[u32],
-        context: &ProverContext,
     ) -> CudaResult<Self> {
+        let symbol = coefficient_bank_device_ptr_pr()?;
         Ok(Self {
             r0: EvaluatedCoefficientBankPr::new(
                 CoefficientBankHostPr::build(programs, layer, top_bits, true),
-                context,
-            )?,
+                0,
+                symbol,
+            ),
             continuation: EvaluatedCoefficientBankPr::new(
                 CoefficientBankHostPr::build(programs, layer, top_bits, false),
-                context,
-            )?,
+                PR_COEFF_BANK_STRIDE,
+                symbol,
+            ),
         })
     }
 

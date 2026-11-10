@@ -9,8 +9,8 @@ use super::super::cpu_abi::programs;
 use super::super::{make_context, read_back, upload};
 use super::random_canonical;
 use crate::proth120::backward::banks::{
-    schedule_coefficient_bank_fill_pr, CoefficientBankHostPr, CoefficientBankPr,
-    PR_COEFF_CHALLENGES, PR_COEFF_CHALLENGE_ABSENT,
+    coefficient_bank_device_ptr_pr, schedule_coefficient_bank_fill_pr, CoefficientBankHostPr,
+    CoefficientBankPr, PR_COEFF_CHALLENGES, PR_COEFF_CHALLENGE_ABSENT,
 };
 use crate::proth120::programs::GkrProgramsPr;
 
@@ -196,6 +196,7 @@ fn pr_eval_coefficients_matches_host() {
     let top_bits = fixture_top_bits(&programs);
     let mut rng = StdRng::seed_from_u64(0xba4c);
     let poison = PR::from_u128_with_reduction(0x0bad_cafe);
+    let symbol = coefficient_bank_device_ptr_pr().unwrap();
     for case in 0..3 {
         let challenges: Vec<PR> = (0..PR_COEFF_CHALLENGES)
             .map(|_| match case {
@@ -214,14 +215,14 @@ fn pr_eval_coefficients_matches_host() {
         let d_challenges = upload(&challenges, &context);
         let d_batchings = upload(&batchings, &context);
         for layer in (0..programs.r0.len()).rev() {
-            let mut bank = CoefficientBankPr::new(&programs, layer, &top_bits, &context).unwrap();
+            let mut bank = CoefficientBankPr::new(&programs, layer, &top_bits).unwrap();
             for view in [bank.r0(), bank.continuation()] {
                 let len = view.coefficient_count + view.immediate_count;
                 let poisoned = upload(&vec![poison; len], &context);
                 unsafe {
                     era_cudart::memory::memory_copy_async(
                         era_cudart::slice::DeviceSlice::from_raw_parts_mut(
-                            view.coefficients.cast_mut(),
+                            symbol.add(view.coefficient_offset as usize),
                             len,
                         ),
                         &poisoned,
@@ -242,7 +243,7 @@ fn pr_eval_coefficients_matches_host() {
                 actual.extend(read_back(
                     unsafe {
                         era_cudart::slice::DeviceSlice::from_raw_parts(
-                            view.coefficients,
+                            symbol.add(view.coefficient_offset as usize),
                             view.coefficient_count,
                         )
                     },
@@ -261,13 +262,12 @@ fn pr_eval_coefficients_matches_host() {
             ] {
                 assert_eq!(view.immediate_count, source.len());
                 if view.immediate_count == 0 {
-                    assert!(view.immediates.is_null());
                     continue;
                 }
                 let actual = read_back(
                     unsafe {
                         era_cudart::slice::DeviceSlice::from_raw_parts(
-                            view.immediates,
+                            symbol.add(view.immediate_offset as usize),
                             view.immediate_count,
                         )
                     },

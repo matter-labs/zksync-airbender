@@ -58,8 +58,8 @@ pub(crate) struct MainContinuationWindowLaunchBindingPr {
     pub(crate) source: [MainContinuationSourceRecordPr; MAIN_CONTINUATION_WINDOW_SOURCE_CAPACITY],
     pub(crate) reserved0: [u16; 2],
     pub(crate) slot: [BwdSourceWindow; MAIN_CONTINUATION_WINDOW_SOURCE_WINDOW_CAPACITY],
-    pub(crate) coefficients: *const PR,
-    pub(crate) immediates: *const PR,
+    pub(crate) coefficient_offset: u32,
+    pub(crate) immediate_offset: u32,
     pub(crate) fold_weights: *const PR,
     pub(crate) eq_high: *const PR,
     pub(crate) eq_low: *const PR,
@@ -101,24 +101,24 @@ const _: () = {
     assert!(offset_of!(MainContinuationWindowLaunchBindingPr, source) == 18_540);
     assert!(offset_of!(MainContinuationWindowLaunchBindingPr, reserved0) == 22_828);
     assert!(offset_of!(MainContinuationWindowLaunchBindingPr, slot) == 22_832);
-    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, coefficients) == 23_856);
-    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, immediates) == 23_864);
-    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, fold_weights) == 23_872);
-    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, eq_high) == 23_880);
-    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, eq_low) == 23_888);
-    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, partials) == 23_896);
-    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, c_init_coeff) == 23_904);
-    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, row_tiles) == 23_908);
-    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, eq_sizes) == 23_912);
-    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, reserved1) == 23_924);
+    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, coefficient_offset) == 23_856);
+    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, immediate_offset) == 23_860);
+    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, fold_weights) == 23_864);
+    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, eq_high) == 23_872);
+    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, eq_low) == 23_880);
+    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, partials) == 23_888);
+    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, c_init_coeff) == 23_896);
+    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, row_tiles) == 23_900);
+    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, eq_sizes) == 23_904);
+    assert!(offset_of!(MainContinuationWindowLaunchBindingPr, reserved1) == 23_916);
     assert!(BWD_COEFF_NONE == u32::MAX);
 };
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct MainContinuationScratchPr {
-    pub(crate) coefficients: *const PR,
+    pub(crate) coefficient_offset: u32,
     pub(crate) coefficient_count: usize,
-    pub(crate) immediates: *const PR,
+    pub(crate) immediate_offset: u32,
     pub(crate) immediate_count: usize,
     pub(crate) fold_weights: *mut PR,
     pub(crate) eq_high: *mut PR,
@@ -553,7 +553,6 @@ fn assemble_launch<'input>(
         "Proth120 main continuation kernel mask differs from the program shape"
     );
     for (resource, pointer) in [
-        ("coefficients", scratch.coefficients.cast::<u8>()),
         (
             "fold weights",
             scratch.fold_weights.cast_const().cast::<u8>(),
@@ -568,11 +567,6 @@ fn assemble_launch<'input>(
             resource
         );
     }
-    assert!(
-        scratch.immediate_count == 0 || !scratch.immediates.is_null(),
-        "Proth120 continuation null runtime pointer (resource={:?})",
-        "immediates"
-    );
     assert!(
         program.immediates.len() == scratch.immediate_count,
         "Proth120 continuation immediate count mismatch (program={:?}, table={:?})",
@@ -673,8 +667,8 @@ fn assemble_launch<'input>(
         };
     }
     binding.slot[..table.len].copy_from_slice(&table.slots[..table.len]);
-    binding.coefficients = scratch.coefficients;
-    binding.immediates = scratch.immediates;
+    binding.coefficient_offset = scratch.coefficient_offset;
+    binding.immediate_offset = scratch.immediate_offset;
     binding.fold_weights = scratch.fold_weights.cast_const();
     binding.eq_high = scratch.eq_high.cast_const();
     binding.eq_low = scratch.eq_low.cast_const();
@@ -771,16 +765,16 @@ mod cpu_pr_main_continuation_abi {
             ("source", 18_540),
             ("reserved0", 22_828),
             ("slot", 22_832),
-            ("coefficients", 23_856),
-            ("immediates", 23_864),
-            ("fold_weights", 23_872),
-            ("eq_high", 23_880),
-            ("eq_low", 23_888),
-            ("partials", 23_896),
-            ("c_init_coeff", 23_904),
-            ("row_tiles", 23_908),
-            ("eq_sizes", 23_912),
-            ("reserved1", 23_924),
+            ("coefficient_offset", 23_856),
+            ("immediate_offset", 23_860),
+            ("fold_weights", 23_864),
+            ("eq_high", 23_872),
+            ("eq_low", 23_880),
+            ("partials", 23_888),
+            ("c_init_coeff", 23_896),
+            ("row_tiles", 23_900),
+            ("eq_sizes", 23_904),
+            ("reserved1", 23_916),
         ] {
             let assertion =
                 format!("__builtin_offsetof(bwd_pr_main_cont_desc, {field}) == {offset}");
@@ -792,7 +786,7 @@ mod cpu_pr_main_continuation_abi {
         assert!(CUDA_ABI.contains("sizeof(bwd_pr_main_cont_desc) == 23936"));
         assert_eq!(
             offset_of!(MainContinuationWindowLaunchBindingPr, partials),
-            23_896
+            23_888
         );
     }
 }
