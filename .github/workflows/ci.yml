@@ -124,12 +124,39 @@ jobs:
 
       - name: Build fresh verifiers
         run: |
-          ./build.sh
+          ./build.sh --skip-circuit-verifiers
 
       - name: Fail if any files were modified
         run: |
           if [ -n "$(git status --porcelain)" ]; then
             echo "❌ The following files were modified or added. Did you run build.sh?:"
+            git status --porcelain
+            exit 1
+          fi
+
+  check_circuit_verifiers:
+    name: check_circuit_verifiers
+    runs-on: [matterlabs-ci-runner-ultra-performance]
+    steps:
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+      - name: Setup
+        run: |
+          rustup set profile default
+          # `cargo objcopy` for the guest dumps (tools/gkr_verifier/dump_bin.sh); the guest
+          # toolchain itself is installed on demand from tools/gkr_verifier/rust-toolchain.toml.
+          cargo install cargo-binutils --version '=0.4.0' --locked
+
+      - name: Build the per-circuit verifiers
+        run: |
+          ./tools/reproduce/reproduce.sh --only-circuit-verifiers
+
+      - name: Fail if any files were modified
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "❌ The following files were modified or added. Did you run tools/reproduce/reproduce.sh?:"
             git status --porcelain
             exit 1
           fi
@@ -351,6 +378,7 @@ jobs:
       - formatting
       - warnings
       - check_verifiers
+      - check_circuit_verifiers
       - evm_verifier
       - cli_smoke_verify
       - fixture_build

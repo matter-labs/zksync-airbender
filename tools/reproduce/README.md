@@ -17,7 +17,10 @@ and `ethproofs_soundcalc`): the delegation circuits' setup parameters
 modes (`full_statement_verifiers/` and `full_statement_verifiers/ethproofs_soundcalc/`, the set
 `verifier_common::fsv_binaries::FSV_REGISTRY` names) and the per-circuit verifiers.
 `--skip-generate-verifiers` keeps the circuit verifiers already in the tree; `build.sh` passes it
-because `recreate_verifiers.sh` has just regenerated them.
+because `recreate_verifiers.sh` has just regenerated them. `--skip-circuit-verifiers` builds
+only the full-statement verifiers; `--only-circuit-verifiers` builds only the per-circuit
+verifiers, from the generated sources already in the tree. CI checks the two sets in separate
+jobs. `build.sh` passes its arguments on to the script.
 
 The build uses the native toolchain pinned by `tools/gkr_verifier/rust-toolchain.toml` (rustup
 installs it on first use, including the `rust-src` / `llvm-tools` components and the
