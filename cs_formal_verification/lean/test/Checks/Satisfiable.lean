@@ -303,6 +303,40 @@ example (claim : RVJointHashWindowSoundnessClaim) : RVJointHashWindowSoundnessSa
       window⟩ =>
     ⟨data, before, cells, span, lower, upper, claim accepted inputs first last positive ordered, callers, window⟩
 
+example (claim : RVPreparedHashWindowSoundnessClaim) : RVPreparedHashWindowSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell)
+      (span : Delegation.Caller.HashSpan) (lower upper : Nat),
+      RVJointHashWindowResult data before cells span lower upper ∧ data.callers ≠ [] ∧
+        data.workers.windowRows lower upper ≠ [] :=
+  fun ⟨data, before, _, _, cells, _, span, lower, upper, accepted, inputs, first, last, callers, window⟩ =>
+    ⟨data, before, cells, span, lower, upper, claim accepted inputs first last, callers, window⟩
+
+example (claim : RVPreparedHashSequenceSoundnessClaim) : RVPreparedHashSequenceSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell)
+      (first : HashWindow) (rest : List HashWindow),
+      RVPreparedHashSequenceResult data before cells first rest ∧ data.callers ≠ [] ∧
+        data.workers.windowRows first.lower first.upper ≠ [] :=
+  fun ⟨data, before, _, _, cells, _, first, rest, accepted, firstInputs, restInputs, ordered, callers, window⟩ =>
+    ⟨data, before, cells, first, rest, claim accepted firstInputs restInputs ordered, callers, window⟩
+
+example (claim : RVPreparedProtocolSequenceSoundnessClaim) : RVPreparedProtocolSequenceSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell)
+      (first : HashWindow) (rest : List HashWindow),
+      RVPreparedHashSequenceResult data before cells first rest ∧ data.callers ≠ [] ∧
+        data.workers.windowRows first.lower first.upper ≠ [] :=
+  fun ⟨data, before, _, _, cells, _, _, first, rest, accepted, inputs, scopes, ordered, callers, window⟩ =>
+    ⟨data, before, cells, first, rest, claim accepted inputs scopes ordered, callers, window⟩
+
+example (claim : RVProgramPreparedProtocolSequenceSoundnessClaim) :
+    RVProgramPreparedProtocolSequenceSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell)
+      (first : HashWindow) (rest : List HashWindow),
+      RVPreparedHashSequenceResult data before cells first rest ∧ data.callers ≠ [] ∧
+        data.workers.windowRows first.lower first.upper ≠ [] :=
+  fun ⟨data, before, _, _, cells, _, _, first, rest, accepted, inputs, registry, scopes, ordered, callers,
+      window⟩ =>
+    ⟨data, before, cells, first, rest, claim accepted inputs registry scopes ordered, callers, window⟩
+
 end UnifiedCallers
 
 example (claim : JumpBranchSlt.RVTraceSoundnessClaim) : JumpBranchSlt.RVTraceSoundnessSatisfiableClaim →

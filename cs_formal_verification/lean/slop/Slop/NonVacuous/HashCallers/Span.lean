@@ -62,6 +62,32 @@ theorem inv_mono {mem : Memory} {t t' : Nat} (inv : Inv mem t) (later : t ≤ t'
   message := inv.message
   control := inv.control
 
+/-- The invariant survives a new x12 token: at x12's address, with a low clock and an eight-bit control word. -/
+theorem inv_control {mem : Memory} {t : Nat} (inv : Inv mem t) {token : MemoryToken P}
+    (address : token.address = (Cell.register 12).addressCode) (high : token.time.2 = 0) (time : token.time.1.val ≤ t)
+    (control : token.word.hi = 0 ∧ token.word.lo < 256) : Inv (Function.update mem (.register 12) token) t := by
+  have bounded : token.word.Bounded := by
+    simp only [Arithmetic.Word.Bounded, Arithmetic.limbBase]
+    omega
+  have other {c : Cell} (h : c ≠ .register 12) : Function.update mem (.register 12) token c = mem c :=
+    Function.update_of_ne h ..
+  refine ⟨fun c member => ?_, fun c member => ?_, fun c member => ?_, fun c member => ?_, ?_, ?_, ?_⟩
+  · by_cases same : c = .register 12
+    · subst same; rw [Function.update_self]; exact address
+    · rw [other same]; exact inv.address c member
+  · by_cases same : c = .register 12
+    · subst same; rw [Function.update_self]; exact high
+    · rw [other same]; exact inv.high c member
+  · by_cases same : c = .register 12
+    · subst same; rw [Function.update_self]; exact time
+    · rw [other same]; exact inv.time c member
+  · by_cases same : c = .register 12
+    · subst same; rw [Function.update_self]; exact bounded
+    · rw [other same]; exact inv.words c member
+  · rw [other (by decide)]; exact inv.state
+  · rw [other (by decide)]; exact inv.message
+  · rw [Function.update_self]; exact control
+
 variable {m0 : Memory} {t0 : Nat}
 
 theorem inv_from (start : Start m0 t0) (k : Nat) (small : k ≤ 56) : Inv (memFrom m0 t0 k) (t0 + 4 * k) := by

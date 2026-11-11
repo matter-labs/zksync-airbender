@@ -310,4 +310,52 @@ def Caller.RVJointHashWindowSoundnessSatisfiableClaim : Prop :=
       lower % 4 = 0 ∧ upper % 4 = 0 ∧ 2 ≤ lower ∧ lower ≤ upper ∧ data.callers ≠ [] ∧
       data.workers.windowRows lower upper ≠ []
 
+/-- The assumptions of `Caller.RVPreparedHashWindowSoundnessClaim` can be met, with a caller and worker rows in the
+    window. -/
+def Caller.RVPreparedHashWindowSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Caller.RVRequestTrace babyBearModulus) (before : RV.State) (ca oa : List (BitVec 32))
+    (cells : List Trace.Cell) (program : List UnifiedReduced.RVProgramEntry) (span : Delegation.Caller.HashSpan)
+    (lower upper : Nat),
+    Caller.RVMixedMemoryAccepted data program ∧
+      Caller.RVPreparedHashWindowInputs data before ca oa cells program span lower upper ∧ lower % 4 = 0 ∧
+      upper % 4 = 0 ∧ data.callers ≠ [] ∧ data.workers.windowRows lower upper ≠ []
+
+/-- The assumptions of `Caller.RVPreparedHashSequenceSoundnessClaim` can be met, with a caller and worker rows in
+    the first window. -/
+def Caller.RVPreparedHashSequenceSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Caller.RVRequestTrace babyBearModulus) (before : RV.State) (ca oa : List (BitVec 32))
+    (cells : List Trace.Cell) (program : List UnifiedReduced.RVProgramEntry) (first : Caller.HashWindow)
+    (rest : List Caller.HashWindow),
+    Caller.RVMixedMemoryAccepted data program ∧
+      Caller.RVPreparedHashWindowInputs data before ca oa cells program first.span first.lower first.upper ∧
+      (∀ window ∈ rest, Caller.RVPreparedHashWindowInputs data before ca oa cells program
+        window.span window.lower window.upper) ∧
+      Caller.WindowsOrdered first.lower ((first :: rest).map Caller.HashWindow.interval) ∧ data.callers ≠ [] ∧
+      data.workers.windowRows first.lower first.upper ≠ []
+
+/-- The assumptions of `Caller.RVPreparedProtocolSequenceSoundnessClaim` can be met, with a caller and worker rows
+    in the first window. -/
+def Caller.RVPreparedProtocolSequenceSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Caller.RVRequestTrace babyBearModulus) (before : RV.State) (ca oa : List (BitVec 32))
+    (cells : List Trace.Cell) (program : List UnifiedReduced.RVProgramEntry) (regions : List Caller.RoundRegion)
+    (first : Caller.HashWindow) (rest : List Caller.HashWindow),
+    Caller.RVMixedMemoryAccepted data program ∧
+      Caller.RVPreparedProtocolInputs data before ca oa cells program regions ∧
+      (∀ window ∈ first :: rest, Caller.RVPreparedProtocolWindowInputs data program window) ∧
+      Caller.WindowsOrdered first.lower ((first :: rest).map Caller.HashWindow.interval) ∧ data.callers ≠ [] ∧
+      data.workers.windowRows first.lower first.upper ≠ []
+
+/-- The assumptions of `Caller.RVProgramPreparedProtocolSequenceSoundnessClaim` can be met, with a caller and
+    worker rows in the first window. -/
+def Caller.RVProgramPreparedProtocolSequenceSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Caller.RVRequestTrace babyBearModulus) (before : RV.State) (ca oa : List (BitVec 32))
+    (cells : List Trace.Cell) (program : List UnifiedReduced.RVProgramEntry) (regions : List Caller.RoundRegion)
+    (first : Caller.HashWindow) (rest : List Caller.HashWindow),
+    Caller.RVMixedMemoryAccepted data program ∧
+      Caller.RVPreparedProtocolInputs data before ca oa cells program regions ∧
+      Caller.RVSequentialProgram program ∧
+      (∀ window ∈ first :: rest, Caller.RVProgramProtocolWindowInputs data program window) ∧
+      Caller.WindowsOrdered first.lower ((first :: rest).map Caller.HashWindow.interval) ∧ data.callers ≠ [] ∧
+      data.workers.windowRows first.lower first.upper ≠ []
+
 end Airbender.UnifiedReduced
