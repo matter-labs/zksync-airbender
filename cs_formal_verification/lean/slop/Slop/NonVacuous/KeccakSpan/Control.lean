@@ -188,35 +188,35 @@ theorem control_9 (x : RowInput) (setup : Table (ZMod p) (fields 8))
     ((FlatOperation.constraints (Keccak.importedConstraints setup)).get ⟨9, h⟩).eval
       (Verification.environment x.assignment) = 0 := by
   op_index
-  control
+  by_mode
 
 theorem control_10 (x : RowInput) (setup : Table (ZMod p) (fields 8))
     (h : 10 < (FlatOperation.constraints (Keccak.importedConstraints setup)).length) :
     ((FlatOperation.constraints (Keccak.importedConstraints setup)).get ⟨10, h⟩).eval
       (Verification.environment x.assignment) = 0 := by
   op_index
-  control
+  by_mode
 
 theorem control_11 (x : RowInput) (setup : Table (ZMod p) (fields 8))
     (h : 11 < (FlatOperation.constraints (Keccak.importedConstraints setup)).length) :
     ((FlatOperation.constraints (Keccak.importedConstraints setup)).get ⟨11, h⟩).eval
       (Verification.environment x.assignment) = 0 := by
   op_index
-  control
+  by_mode
 
 theorem control_12 (x : RowInput) (setup : Table (ZMod p) (fields 8))
     (h : 12 < (FlatOperation.constraints (Keccak.importedConstraints setup)).length) :
     ((FlatOperation.constraints (Keccak.importedConstraints setup)).get ⟨12, h⟩).eval
       (Verification.environment x.assignment) = 0 := by
   op_index
-  control
+  by_mode
 
 theorem control_13 (x : RowInput) (setup : Table (ZMod p) (fields 8))
     (h : 13 < (FlatOperation.constraints (Keccak.importedConstraints setup)).length) :
     ((FlatOperation.constraints (Keccak.importedConstraints setup)).get ⟨13, h⟩).eval
       (Verification.environment x.assignment) = 0 := by
   op_index
-  control
+  by_mode
 
 theorem control_14 (x : RowInput) (setup : Table (ZMod p) (fields 8))
     (h : 14 < (FlatOperation.constraints (Keccak.importedConstraints setup)).length) :
