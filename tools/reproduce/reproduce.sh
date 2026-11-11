@@ -14,6 +14,13 @@
 # .elf files; compare with `git status` / `git diff --stat` afterwards.
 set -eu
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+GENERATE_VERIFIERS=1
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --skip-generate-verifiers) GENERATE_VERIFIERS=0; shift ;;
+        *) echo "unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
 
 # The guest sources are generated: regenerate them first, for BOTH soundness modes
 # (pessimistic_conjecture and ethproofs_soundcalc), so the binaries below are built from
@@ -32,8 +39,10 @@ cd "$REPO_ROOT"
 unset CI
 echo "==> regenerating the delegation parameters (both soundness modes)"
 cargo test --release -p setups generate_delegation_circuits_artifacts
-echo "==> regenerating the circuit verifiers (both soundness modes)"
-cargo test --release -p verifier_generator --test generate_verifiers
+if [ "$GENERATE_VERIFIERS" = 1 ]; then
+    echo "==> regenerating the circuit verifiers (both soundness modes)"
+    cargo test --release -p verifier_generator --test generate_verifiers
+fi
 
 cd "$REPO_ROOT/tools/gkr_verifier"
 
