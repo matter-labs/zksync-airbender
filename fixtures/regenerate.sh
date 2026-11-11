@@ -54,6 +54,8 @@ if ((check)); then
   out_repo=$temporary
 fi
 producer_log=
+trusted_params=${FIXTURE_TRUSTED_PARAMS:-}
+[[ -z $trusted_params ]] || mkdir -p "$trusted_params"
 cleanup() {
   local result=$?
   if [[ -n $temporary ]]; then
@@ -104,11 +106,20 @@ compare_file() {
     cmp "$1" "$repo/${1#"$out_repo/"}"
   fi
 }
+trusted_params_for() {
+  local file="$trusted_params/$1-trusted-params.json"
+  [[ -f $file ]] || "$cli" trusted-params --bin "$bin" --soundness-mode "$1" --output "$file"
+}
 check_artifact() {
   local name=$1
   local file="$chain_out/$name.json.zlib"
   "$codec" check "$file" "$mode" "$name"
-  "$cli" verify --proof "$file" --bin "$bin" --soundness-mode "$cli_mode"
+  local trusted=()
+  if [[ -n $trusted_params ]]; then
+    trusted_params_for "$cli_mode"
+    trusted=(--trusted-params "$trusted_params/$cli_mode-trusted-params.json")
+  fi
+  "$cli" verify --proof "$file" --bin "$bin" --soundness-mode "$cli_mode" "${trusted[@]}"
   compare_file "$file"
 }
 
@@ -149,8 +160,13 @@ for mode in "${modes[@]}"; do
           --proof "$chain_parent/base.json.zlib" --target recursion-unified --output-file unified.json.zlib
         check_artifact unified
         if ((check)); then
+          if [[ -n $trusted_params ]]; then
+            trusted_params_for pessimistic-conjecture
+            trusted_params_for ethproofs-soundcalc
+          fi
           FIXTURE_CHAIN_ROOT="$repo/fixtures/chains" FIXTURE_CODEC="$codec" \
             SOUNDNESS_MODE="$cli_mode" SMOKE_OUTPUT_DIR="$out_repo/smoke/$mode" \
+            TRUSTED_PARAMS_DIR="$trusted_params" \
             "$repo/.github/scripts/soundness_mode_smoke.sh" "$cli" "$bin" "$backend"
         fi ;;
       unrolled)

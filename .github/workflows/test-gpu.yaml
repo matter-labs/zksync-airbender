@@ -211,6 +211,7 @@ jobs:
           export AB_TEST_ARTIFACT_ROOT="$GITHUB_WORKSPACE"
           export FIXTURE_CLI="$GITHUB_WORKSPACE/zksync-airbender-gpu/cli"
           export FIXTURE_CODEC="$GITHUB_WORKSPACE/zksync-airbender-gpu/fixture-codec"
+          export FIXTURE_TRUSTED_PARAMS="$GITHUB_WORKSPACE/trusted-params"
           chmod +x "$FIXTURE_CLI" "$FIXTURE_CODEC"
           failed=0
           for mode in pessimistic_conjecture ethproofs_soundcalc; do

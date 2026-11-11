@@ -82,6 +82,10 @@ For downloaded executables, set `FIXTURE_CLI`, `FIXTURE_CANONICAL_PRODUCER`, and
 `FIXTURE_CODEC` to their paths. CI requires the executables needed by the selected
 stage and invokes no Cargo commands during a currency check. Developers may omit
 them to build locally.
+With `FIXTURE_TRUSTED_PARAMS` set to a directory, every `verify`, including the
+smoke checks, passes the trusted params kept there and computes missing ones
+once. Without it, `verify` derives them from the program, the path the CPU
+currency jobs cover.
 
 `AB_TEST_ARTIFACT_ROOT` selects the repository containing layouts, configs,
 workloads, committed parents, and expected outputs. `PROOF_FIXTURES_OUTPUT_ROOT`

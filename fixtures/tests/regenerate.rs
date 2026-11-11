@@ -15,6 +15,10 @@ fn run(root: &Path, arguments: &[&str]) -> Output {
 }
 
 fn run_with_backend(root: &Path, arguments: &[&str], backend: Option<&str>) -> Output {
+    command(root, arguments, backend).output().unwrap()
+}
+
+fn command(root: &Path, arguments: &[&str], backend: Option<&str>) -> Command {
     let mut command = Command::new("bash");
     command
         .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("regenerate.sh"))
@@ -26,13 +30,14 @@ fn run_with_backend(root: &Path, arguments: &[&str], backend: Option<&str>) -> O
         .env("TMPDIR", root)
         .env("CI", "true")
         .env_remove("FIXTURE_BACKEND")
-        .env_remove("EXPECTED_FIXTURE_BACKEND");
+        .env_remove("EXPECTED_FIXTURE_BACKEND")
+        .env_remove("FIXTURE_TRUSTED_PARAMS");
     if let Some(backend) = backend {
         command
             .env("FIXTURE_BACKEND", backend)
             .env("EXPECTED_FIXTURE_BACKEND", backend);
     }
-    command.output().unwrap()
+    command
 }
 
 #[test]
@@ -45,10 +50,12 @@ fn checks_read_committed_parents_and_compare_only_their_stage() {
         r##"#!/usr/bin/env bash
 set -euo pipefail
 action=$1; shift
-proof= output_dir= output_file= backend=
+proof= output_dir= output_file= backend= trusted= output=
 while (($#)); do
   case $1 in
     --proof) proof=$2 ;;
+    --trusted-params) trusted=$2 ;;
+    --output) output=$2 ;;
     --output-dir) output_dir=$2 ;;
     --output-file) output_file=$2 ;;
     --backend) backend=$2 ;;
@@ -56,7 +63,12 @@ while (($#)); do
   esac
   shift 2
 done
-if [[ $action == verify ]]; then [[ -f $proof ]]; exit; fi
+if [[ $action == trusted-params ]]; then printf params >"$output"; exit; fi
+if [[ $action == verify ]]; then
+  [[ -f $proof ]]
+  if [[ -n ${FIXTURE_TRUSTED_PARAMS:-} ]]; then [[ -f $trusted ]]; else [[ -z $trusted ]]; fi
+  exit
+fi
 [[ $backend == "${EXPECTED_FIXTURE_BACKEND:-cpu}" ]]
 if [[ $action == continue-proof ]]; then
   [[ $proof == "$AB_TEST_ARTIFACT_ROOT/fixtures/chains/pessimistic_conjecture/base.json.zlib" ||
@@ -73,7 +85,7 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
     );
     executable(
         &root.join(".github/scripts/soundness_mode_smoke.sh"),
-        "#!/bin/sh\ntest -n \"$FIXTURE_CHAIN_ROOT\"\ntest -n \"$SMOKE_OUTPUT_DIR\"\n",
+        "#!/bin/sh\ntest -n \"$FIXTURE_CHAIN_ROOT\"\ntest -n \"$SMOKE_OUTPUT_DIR\"\nif [ -n \"$TRUSTED_PARAMS_DIR\" ]; then\n  test -f \"$TRUSTED_PARAMS_DIR/pessimistic-conjecture-trusted-params.json\"\n  test -f \"$TRUSTED_PARAMS_DIR/ethproofs-soundcalc-trusted-params.json\"\nfi\n",
     );
     for chain in proof_fixtures::CHAINS {
         let name = format!("{chain}.json.zlib");
@@ -103,6 +115,31 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
                 String::from_utf8_lossy(&result.stderr)
             );
         }
+    }
+    let trusted_params = root.join("trusted-params");
+    let result = command(
+        &root,
+        &[
+            "--check",
+            "--mode",
+            "pessimistic_conjecture",
+            "--stage",
+            "base_unified",
+        ],
+        None,
+    )
+    .env("FIXTURE_TRUSTED_PARAMS", &trusted_params)
+    .output()
+    .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    for mode in ["pessimistic-conjecture", "ethproofs-soundcalc"] {
+        assert!(trusted_params
+            .join(format!("{mode}-trusted-params.json"))
+            .is_file());
     }
     for arguments in [vec!["--check"], vec!["--check", "--stage", "circuits"]] {
         let result = run_with_backend(&root, &arguments, Some("gpu"));
