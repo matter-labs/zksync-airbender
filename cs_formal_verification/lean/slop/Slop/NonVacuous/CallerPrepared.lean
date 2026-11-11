@@ -61,11 +61,8 @@ theorem program_image : rvProgramImageWith rvPooledDecoderFields before [0] = so
 
 theorem caller_image : rvProgramImage before [4] = some callerProgram := by kernel_rfl
 
-/-- x0 and x10 as the last machine row leaves them. -/
+/-- x0 as the last machine row leaves it. -/
 def x0Final : MemoryToken babyBearModulus := destinationToken callerAssignment
-
-def x10Final : MemoryToken babyBearModulus :=
-  writeToken prep.columns prepAssignment AddSub.importedConstraintsMemoryPorts[2]
 
 noncomputable def machine : PooledTrace babyBearModulus where
   rows := [prep, caller]

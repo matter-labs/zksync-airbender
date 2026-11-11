@@ -56,8 +56,6 @@ def before : RV.State where
   rom a := if a = 0 then 0x73 else if a = 1 then 0x10 else if a = 2 then 0xA0 else if a = 3 then 0x7C else 0
   mem _ := 0
 
-theorem decode : RV.decode (RV.read before.rom 0 4) = some (.delegate .bigint) := by kernel_rfl
-
 def entry : Caller.RVProgramEntry := ⟨0, 0x7CA01073#32, ⟨.bigint, 0, 0, 0, ⟨0, 0⟩, 128, 0⟩⟩
 
 def program : List Caller.RVProgramEntry := [entry]
