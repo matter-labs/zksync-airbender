@@ -34,7 +34,9 @@ pub(crate) use field::Field;
 pub(crate) use field::PrimeField;
 
 // `prover` — CPU prover types the GPU prover mirrors / interoperates with.
-pub(crate) use prover::definitions::{GKRExternalChallenges, SecurityLevel};
+pub(crate) use prover::definitions::{
+    GKRExternalChallenges, SecurityLevel, SumcheckCoefficientsStrategy,
+};
 pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 pub(crate) use prover::gkr::prover::{GKRProof, WhirSchedule};
 pub(crate) use prover::gkr::prover_config::commitment_geometry::{

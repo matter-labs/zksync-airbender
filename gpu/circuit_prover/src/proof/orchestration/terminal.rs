@@ -4,7 +4,10 @@ use std::sync::Arc;
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 
-use crate::upstream::{DefaultTreeConstructor, GKRExternalChallenges, GKRProof, WhirSchedule};
+use crate::upstream::{
+    DefaultTreeConstructor, GKRExternalChallenges, GKRProof, SumcheckCoefficientsStrategy,
+    WhirSchedule,
+};
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::{
     DeviceAllocation, HostAllocation, UnsafeAccessor, UnsafeMutAccessor,
@@ -87,6 +90,10 @@ pub(in crate::proof) fn schedule_terminal_proof_assembly(
                     // draw and read back from the slab.
                     lookup_challenges_pow_nonce: proof_layout_for_parse
                         .lookup_pow_nonce_host(slab_bytes),
+                    // The device kernels emit every monomial coefficient
+                    // of a sumcheck round; the proof entry rejects any
+                    // other configured strategy.
+                    sumcheck_coefficients_strategy: SumcheckCoefficientsStrategy::Plain,
                 });
             }
         },

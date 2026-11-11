@@ -270,6 +270,71 @@ pub fn verify_final_step_check<E: ErrorCreator>(
     }
     Ok(())
 }
+#[doc = r" The sumcheck rounds of a `SumcheckCoefficientsStrategy::Minimal` proof. Every"]
+#[doc = r" round polynomial is `eq(tau, X) * h(X)` with `tau` the round's coordinate of"]
+#[doc = r" the previous claim point and `h(X) = e + d * X + c * X^2`; the running claim is"]
+#[doc = r" kept free of the eq factors, `claim = (1 - tau) * h(0) + tau * h(1)`. The prover"]
+#[doc = r" sends only `[d, c]`: the claim fixes `e = claim - tau * (d + c)`, so the round"]
+#[doc = r" has nothing to check and the next claim is `h(r)`. A wrong message surfaces in"]
+#[doc = r" the layer's final step check (`verify_final_step_check_minimal`)."]
+#[inline(always)]
+pub fn verify_sumcheck_rounds_minimal<
+    I: NonDeterminismSource<BabyBearField>,
+    const NUM_ROUNDS: usize,
+    const COMMIT_BUF: usize,
+>(
+    ts: &mut TranscriptState,
+    initial_claim: BabyBearExt4,
+    challenges: &mut [BabyBearExt4],
+    nd_source: &mut I,
+) -> BabyBearExt4 {
+    let mut claim = initial_claim;
+    let coeff_data_words = 2usize * EXT_DEGREE;
+    let mut commit_buf = CommitBuf::<COMMIT_BUF>::new();
+    for round in 0..NUM_ROUNDS {
+        {
+            let mut i = 0;
+            while i < coeff_data_words {
+                commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
+                i += 1;
+            }
+        }
+        ts.commit(&mut commit_buf, coeff_data_words);
+        let coeffs: [BabyBearExt4; 2usize] =
+            unsafe { commit_buf.read_one::<[BabyBearExt4; 2usize]>() };
+        let r_k = {
+            let raw = unsafe {
+                (ts.draw_digest().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked()
+            };
+            ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw)
+        };
+        {
+            let tau = unsafe { *challenges.get_unchecked(round) };
+            let mut t = coeffs[0];
+            field_ops::add_assign(&mut t, &coeffs[1]);
+            field_ops::mul_assign(&mut t, &tau);
+            let mut e = claim;
+            field_ops::sub_assign(&mut e, &t);
+            let mut h1 = coeffs[0];
+            field_ops::add_assign_product(&mut h1, &coeffs[1], &r_k);
+            field_ops::add_assign_product(&mut e, &h1, &r_k);
+            claim = e;
+        }
+        unsafe { *challenges.get_unchecked_mut(round) = r_k };
+    }
+    claim
+}
+#[inline(always)]
+pub fn verify_final_step_check_minimal<E: ErrorCreator>(
+    g: BabyBearExt4,
+    final_claim: BabyBearExt4,
+    layer_idx: usize,
+) -> Result<(), E::Error> {
+    if g != final_claim {
+        return Err(E::gkr_final_step_check_failed(layer_idx));
+    }
+    Ok(())
+}
 #[inline(always)]
 pub fn fold_standard_claims<const NUM_ADDRS: usize, const ADDRS: usize, const BUF: usize>(
     eval_buf: &CommitBuf<BUF>,
@@ -576,6 +641,54 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource<BabyBearField>, E: Erro
     field_ops::mul_assign(&mut new_claim, &alpha);
     field_ops::add_assign(&mut new_claim, &c0);
     Ok((new_claim, alpha))
+}
+#[inline(always)]
+#[doc = r" One WHIR sumcheck step of a `SumcheckCoefficientsStrategy::Minimal` proof: the"]
+#[doc = r" prover sends `[c0, c2]` of the round polynomial `c0 + c1 * X + c2 * X^2`, whose"]
+#[doc = r" sum over `{0, 1}` is the claim, so `c1 = claim - 2 * c0 - c2` and the step has"]
+#[doc = r" nothing to check. Commits the message and draws the folding challenge (after a"]
+#[doc = r" `folding_pow_bits`-bit proof of work when the round gates its folding draws)."]
+pub fn verify_whir_sumcheck_step_minimal<I: NonDeterminismSource<BabyBearField>>(
+    ts: &mut TranscriptState,
+    claim: BabyBearExt4,
+    folding_pow_bits: u32,
+    nd_source: &mut I,
+) -> (BabyBearExt4, BabyBearExt4) {
+    const WHIR_SC_DATA_WORDS: usize = 2usize * EXT_DEGREE;
+    const WHIR_SC_COMMIT_BUF: usize = {
+        let total = WHIR_SC_DATA_WORDS;
+        (total + ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
+            / ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
+            * ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
+    };
+    let mut buf = CommitBuf::<WHIR_SC_COMMIT_BUF>::new();
+    {
+        let mut i = 0;
+        while i < WHIR_SC_DATA_WORDS {
+            buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
+            i += 1;
+        }
+    }
+    let coeffs: [BabyBearExt4; 2usize] =
+        unsafe { *buf.data_as::<[BabyBearExt4; 2usize]>(1).as_ptr() };
+    let (c0, c2) = (coeffs[0], coeffs[1]);
+    ts.commit(&mut buf, WHIR_SC_DATA_WORDS);
+    let alpha = if folding_pow_bits > 0 {
+        ::verifier_common::whir::read_and_verify_pow::<I>(ts, folding_pow_bits, nd_source);
+        draw_single_field_el_after_pow(ts)
+    } else {
+        draw_single_field_el(ts)
+    };
+    let mut c1 = claim;
+    field_ops::sub_assign(&mut c1, &c0);
+    field_ops::sub_assign(&mut c1, &c0);
+    field_ops::sub_assign(&mut c1, &c2);
+    let mut new_claim = c2;
+    field_ops::mul_assign(&mut new_claim, &alpha);
+    field_ops::add_assign(&mut new_claim, &c1);
+    field_ops::mul_assign(&mut new_claim, &alpha);
+    field_ops::add_assign(&mut new_claim, &c0);
+    (new_claim, alpha)
 }
 #[inline(always)]
 pub fn materialize_gamma_powers<const N: usize>(gamma: BabyBearExt4) -> [BabyBearExt4; N] {

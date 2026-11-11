@@ -148,8 +148,8 @@ pub(super) fn assert_whir_proof_eq_for_test(
     let mut round_idx = 0usize;
     let fold_steps = expected.whir_schedule.fold_steps();
     let group_count = fold_steps.len();
-    let actual_polys: Vec<[E4; 3]> = actual.all_sumcheck_polys().copied().collect();
-    let expected_polys: Vec<[E4; 3]> = expected.all_sumcheck_polys().copied().collect();
+    let actual_polys: Vec<_> = actual.all_sumcheck_polys().cloned().collect();
+    let expected_polys: Vec<_> = expected.all_sumcheck_polys().cloned().collect();
     let actual_nonces = actual.queries_pow_nonces();
     let expected_nonces = expected.queries_pow_nonces();
     for (group_idx, &steps) in fold_steps.iter().enumerate() {

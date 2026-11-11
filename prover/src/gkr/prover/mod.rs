@@ -10,6 +10,7 @@ use worker::WorkerGeometry;
 
 use super::*;
 pub use crate::definitions::GKRExternalChallenges;
+pub use crate::definitions::SumcheckCoefficientsStrategy;
 use crate::fft::Twiddles;
 #[cfg(target_arch = "aarch64")]
 pub use crate::gkr::prover::backend::BabyBearNeonWorkStealingBackend;
@@ -381,22 +382,35 @@ impl<E: Field> EvaluationPointEntry<E> {
     }
 }
 
+/// The coefficients one GKR layer sumcheck round puts into the proof and the
+/// transcript: 4 under [`SumcheckCoefficientsStrategy::Plain`], 2 under
+/// [`SumcheckCoefficientsStrategy::Minimal`].
+pub type GKRSumcheckRoundMessage<E> =
+    arrayvec::ArrayVec<E, { SumcheckCoefficientsStrategy::MAX_GKR_ROUND_COEFFICIENTS }>;
+
 /// One transcript message of a sumcheck: either the classic per-variable
-/// multilinear round (degree <= 3 round polynomial, 4 coefficients) or a
-/// univariate-skip round (monomial coefficients of the packed q -- for a
-/// window of k variables, `2^(k+1)` coefficients of degree `< 2^(k+1)`).
+/// multilinear round (degree <= 3 round polynomial: its 4 monomial
+/// coefficients, or the 2 coefficients of
+/// [`SumcheckCoefficientsStrategy::Minimal`]) or a univariate-skip round
+/// (monomial coefficients of the packed q -- for a window of k variables,
+/// `2^(k+1)` coefficients of degree `< 2^(k+1)`).
+///
+/// A `Multilinear` round serializes as the sequence of its coefficients, so
+/// a JSON proof written when it was a plain `[E; 4]` still deserializes.
 #[derive(Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(bound = "E: serde::Serialize + serde::de::DeserializeOwned")]
 pub enum SumcheckRoundCoefficients<E: Field> {
-    Multilinear([E; 4]),
+    Multilinear(GKRSumcheckRoundMessage<E>),
     Uniskip(Vec<E>),
 }
 
 impl<E: Field> SumcheckRoundCoefficients<E> {
+    /// The coefficients of a multilinear round, as many as the proof's
+    /// [`SumcheckCoefficientsStrategy`] sends.
     #[track_caller]
-    pub fn as_multilinear(&self) -> &[E; 4] {
+    pub fn as_multilinear(&self) -> &[E] {
         match self {
-            SumcheckRoundCoefficients::Multilinear(c) => c,
+            SumcheckRoundCoefficients::Multilinear(c) => c.as_slice(),
             SumcheckRoundCoefficients::Uniskip(_) => {
                 panic!("expected a multilinear round, found a uniskip round")
             }
@@ -405,7 +419,7 @@ impl<E: Field> SumcheckRoundCoefficients<E> {
 
     pub fn num_values(&self) -> usize {
         match self {
-            SumcheckRoundCoefficients::Multilinear(_) => 4,
+            SumcheckRoundCoefficients::Multilinear(c) => c.len(),
             SumcheckRoundCoefficients::Uniskip(v) => v.len(),
         }
     }
@@ -449,6 +463,13 @@ pub struct GKRProof<
     pub grand_product_accumulator_computed: E,
     pub inits_and_teardowns_top_bits: Vec<u32>,
     pub lookup_challenges_pow_nonce: u64,
+    /// How many coefficients every sumcheck round of this proof (GKR layers
+    /// and WHIR) carries; the
+    /// [`ProverConfig::sumcheck_coefficients_strategy`] it was proved with.
+    /// Absent from proofs written before the strategy existed, which are all
+    /// [`SumcheckCoefficientsStrategy::Plain`].
+    #[serde(default)]
+    pub sumcheck_coefficients_strategy: SumcheckCoefficientsStrategy,
 }
 
 impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstructor<F>>
@@ -1753,6 +1774,7 @@ fn prove_configured_with_gkr_from_forward_eval<
         };
         let proof = gkr_backend.dimension_reducing_sumcheck_for_layer::<TR>(
             dr_schedule,
+            prover_config.sumcheck_coefficients_strategy,
             layer_idx,
             &layer,
             &mut claim_point_entries,
@@ -2072,6 +2094,7 @@ fn prove_configured_with_gkr_from_forward_eval<
         grand_product_accumulator_computed,
         inits_and_teardowns_top_bits: inits_and_teardowns_top_bits.to_vec(),
         lookup_challenges_pow_nonce,
+        sumcheck_coefficients_strategy: prover_config.sumcheck_coefficients_strategy,
     }
 }
 

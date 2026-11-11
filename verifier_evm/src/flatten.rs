@@ -6,7 +6,9 @@
 //! the reference assembler in `prover/src/tests/gkr/large_field.rs`.
 
 use field::{Field, Proth120};
+use prover::definitions::SumcheckCoefficientsStrategy;
 use prover::gkr::prover::OperationMode;
+use prover::gkr::whir::WhirSumcheckRoundMessage;
 
 use crate::seed::{Circuit, Proof};
 
@@ -113,10 +115,22 @@ fn circuit_blob(circuit: &Circuit, proof: &Proof) -> Vec<u8> {
     blob
 }
 
+/// The Solidity verifier reads every monomial coefficient of a sumcheck round (4 per GKR round,
+/// 3 per WHIR round) and checks the round sum itself; a proof carrying
+/// [`SumcheckCoefficientsStrategy::Minimal`] rounds has a different stream and transcript.
+fn assert_plain_sumcheck_coefficients(proof: &Proof) {
+    assert_eq!(
+        proof.sumcheck_coefficients_strategy,
+        SumcheckCoefficientsStrategy::Plain,
+        "the EVM verifier supports only SumcheckCoefficientsStrategy::Plain proofs"
+    );
+}
+
 /// Assemble the full GKR-verifier calldata (gkr.sol stream order):
 ///   preimage ‖ external-challenge PoW nonce (BE8) ‖ output-evals ‖ dim-reduce blob
 ///   ‖ circuit-layer blob ‖ WHIR-batching PoW nonce (BE8).
 pub fn gkr_calldata(circuit: &Circuit, proof: &Proof, aux: &OperationMode) -> Vec<u8> {
+    assert_plain_sumcheck_coefficients(proof);
     let mut cd: Vec<u8> = Vec::new();
     cd.extend_from_slice(&crate::seed::commit_seed_preimage(circuit, proof, aux));
     cd.extend_from_slice(&proof.lookup_challenges_pow_nonce.to_be_bytes());
@@ -186,7 +200,8 @@ pub fn whir_stream(
             cd.extend_from_slice(&dig32(d));
         }
     };
-    let round_sumcheck_polys = |r: usize| -> &[[Proth120; 3]] {
+    assert_plain_sumcheck_coefficients(proof);
+    let round_sumcheck_polys = |r: usize| -> &[WhirSumcheckRoundMessage<Proth120>] {
         if r == 0 {
             &wp.base_sumcheck_polys
         } else {

@@ -295,6 +295,11 @@ pub fn generate_verifier(
         prover_config.merged_memory_and_witness(),
         "the EVM verifier serves the single merged memory+witness commitment"
     );
+    assert_eq!(
+        prover_config.sumcheck_coefficients_strategy,
+        prover::definitions::SumcheckCoefficientsStrategy::Plain,
+        "the EVM verifier reads every monomial coefficient of a sumcheck round"
+    );
     let d = Derived::from(circuit, pack_log2);
     assert_eq!(
         prover_config.trace_len_log2, d.rounds,

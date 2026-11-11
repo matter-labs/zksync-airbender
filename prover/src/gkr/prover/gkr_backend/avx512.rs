@@ -541,6 +541,7 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for X86GKRBackend {
     fn dimension_reducing_sumcheck_for_layer<TR: Transcript<BabyBearField, BabyBearExt4>>(
         &self,
         schedule: &[crate::gkr::prover_config::SumcheckStep],
+        coefficients_strategy: crate::definitions::SumcheckCoefficientsStrategy,
         layer_idx: usize,
         layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
         claim_points: &mut BTreeMap<usize, Vec<EvaluationPointEntry<BabyBearExt4>>>,
@@ -581,6 +582,7 @@ impl GKRBackend<BabyBearField, BabyBearExt4> for X86GKRBackend {
                 }
             },
             schedule,
+            coefficients_strategy,
             layer_idx,
             layer,
             claim_points,

@@ -102,6 +102,65 @@ impl SoundnessMode {
     }
 }
 
+/// How many coefficients of a sumcheck round polynomial the prover sends (and
+/// both sides absorb into the transcript). Every round polynomial is subject
+/// to one linear constraint — its sum over `{0, 1}` is the running claim — so
+/// part of a full coefficient list is redundant.
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+pub enum SumcheckCoefficientsStrategy {
+    /// Only the coefficients the running claim does not determine, picked so
+    /// that the verifier recovers the rest without a field inversion:
+    ///
+    /// * GKR layer sumcheck — the round polynomial is `eq(tau, X) * h(X)`
+    ///   with a quadratic `h(X) = e + d * X + c * X^2` and a claim-point
+    ///   coordinate `tau` both sides know, and the running claim `H` is kept
+    ///   free of the eq factors (`H = (1 - tau) * h(0) + tau * h(1)`). The
+    ///   message is `[d, c]`; the verifier takes `e = H - tau * (c + d)` and
+    ///   the next claim is `h(r)`.
+    /// * WHIR sumcheck — the round polynomial is a plain quadratic
+    ///   `c0 + c1 * X + c2 * X^2` with `2 * c0 + c1 + c2` equal to the claim.
+    ///   The message is `[c0, c2]`; the verifier takes
+    ///   `c1 = claim - 2 * c0 - c2`.
+    Minimal,
+    /// Every monomial coefficient of the round polynomial (4 for the cubic
+    /// GKR rounds, 3 for the quadratic WHIR rounds); the verifier checks the
+    /// sum against the running claim.
+    #[default]
+    Plain,
+}
+
+impl SumcheckCoefficientsStrategy {
+    pub const ALL: &'static [SumcheckCoefficientsStrategy] = &[
+        SumcheckCoefficientsStrategy::Minimal,
+        SumcheckCoefficientsStrategy::Plain,
+    ];
+
+    /// Largest number of coefficients a GKR layer sumcheck round can carry.
+    pub const MAX_GKR_ROUND_COEFFICIENTS: usize = 4;
+    /// Largest number of coefficients a WHIR sumcheck round can carry.
+    pub const MAX_WHIR_ROUND_COEFFICIENTS: usize = 3;
+
+    /// Number of field elements one GKR layer sumcheck round puts into the
+    /// proof and the transcript.
+    pub const fn gkr_round_coefficients(self) -> usize {
+        match self {
+            Self::Minimal => 2,
+            Self::Plain => Self::MAX_GKR_ROUND_COEFFICIENTS,
+        }
+    }
+
+    /// Number of field elements one WHIR sumcheck round puts into the proof
+    /// and the transcript.
+    pub const fn whir_round_coefficients(self) -> usize {
+        match self {
+            Self::Minimal => 2,
+            Self::Plain => Self::MAX_WHIR_ROUND_COEFFICIENTS,
+        }
+    }
+}
+
 /// Provenance of a named configuration; special profiles have separate soundness analyses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ProverConfigProfile {

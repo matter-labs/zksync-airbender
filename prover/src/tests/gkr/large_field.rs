@@ -1313,7 +1313,10 @@ fn verify_dim_reduce_layers() {
         let mut eq_prefactor = E::ONE;
         let mut new_point: Vec<E> = Vec::with_capacity(folding_steps + 1);
         for round in 0..folding_steps {
-            let c = *siv.internal_round_coefficients[round].as_multilinear();
+            let c: [E; 4] = siv.internal_round_coefficients[round]
+                .as_multilinear()
+                .try_into()
+                .expect("the EVM verifier reads every monomial coefficient of a sumcheck round (SumcheckCoefficientsStrategy::Plain)");
             let mut s = sum01(&c);
             s.mul_assign(&eq_prefactor);
             assert_eq!(s, claim, "dim layer {layer} round {round} sumcheck check");
@@ -1577,7 +1580,10 @@ fn verify_dim_reduce_layers() {
         let mut eq_prefactor = E::ONE;
         let mut new_point: Vec<E> = Vec::with_capacity(folding_steps);
         for round in 0..folding_steps {
-            let c = *siv.internal_round_coefficients[round].as_multilinear();
+            let c: [E; 4] = siv.internal_round_coefficients[round]
+                .as_multilinear()
+                .try_into()
+                .expect("the EVM verifier reads every monomial coefficient of a sumcheck round (SumcheckCoefficientsStrategy::Plain)");
             let mut s = sum01(&c);
             s.mul_assign(&eq_prefactor);
             assert_eq!(
@@ -2053,13 +2059,14 @@ fn verify_dim_reduce_layers() {
                     cd.extend_from_slice(&dig32(d));
                 }
             };
-            let round_sumcheck_polys = |r: usize| -> &[[E; 3]] {
-                if r == 0 {
-                    &wp.base_sumcheck_polys
-                } else {
-                    &wp.intermediate_whir_oracles[r - 1].sumcheck_polys
-                }
-            };
+            let round_sumcheck_polys =
+                |r: usize| -> &[crate::gkr::whir::WhirSumcheckRoundMessage<E>] {
+                    if r == 0 {
+                        &wp.base_sumcheck_polys
+                    } else {
+                        &wp.intermediate_whir_oracles[r - 1].sumcheck_polys
+                    }
+                };
             let round_queries_pow_nonce = |r: usize| -> u64 {
                 if r == 0 {
                     wp.base_queries_pow_nonce
@@ -2070,6 +2077,11 @@ fn verify_dim_reduce_layers() {
             for r in 0..num_rounds {
                 assert_eq!(round_sumcheck_polys(r).len(), folds[r]);
                 for sp in round_sumcheck_polys(r).iter() {
+                    assert_eq!(
+                        sp.len(),
+                        3,
+                        "the EVM verifier reads every monomial coefficient of a sumcheck round (SumcheckCoefficientsStrategy::Plain)"
+                    );
                     cd.extend_from_slice(&be16(sp[0]));
                     cd.extend_from_slice(&be16(sp[1]));
                     cd.extend_from_slice(&be16(sp[2]));

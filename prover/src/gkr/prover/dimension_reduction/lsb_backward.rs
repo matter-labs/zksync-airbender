@@ -51,6 +51,13 @@
 //! `claim == eqw_last(r_last) * gate(final values)` — so the generated
 //! verifier checks every layer type with ONE round routine.
 //!
+//! That is the message of [`SumcheckCoefficientsStrategy::Plain`]. Under
+//! [`SumcheckCoefficientsStrategy::Minimal`] the same round sends only the
+//! linear and quadratic coefficients of `h_s`, the chaining runs on the
+//! claim free of eq factors (`claim_{s+1} = h_s(r_s)`, the constant term of
+//! `h_s` being `claim_s - tau_s * (linear + quadratic)`), and the final
+//! identity is `claim == gate(final values)`.
+//!
 //! # Production shape
 //!
 //! The production path is split around the transcript interaction of round 0:
@@ -64,7 +71,8 @@
 
 use std::collections::BTreeMap;
 
-use crate::gkr::prover::{SendConstPtr, SendPtr};
+use crate::definitions::SumcheckCoefficientsStrategy;
+use crate::gkr::prover::{GKRSumcheckRoundMessage, SendConstPtr, SendPtr};
 use cs::definitions::GKRAddress;
 use field::{Field, FieldExtension, PrimeField};
 
@@ -249,11 +257,13 @@ fn gate_batch<E: Field>(
     acc
 }
 
-/// Result of one LSB dimension-reducing sumcheck: the per-round cubic
-/// coefficients, the final claim, and the final (fully folded) two values
-/// `[p(., 0), p(., 1)]` of every input poly, keyed by its address.
+/// Result of one LSB dimension-reducing sumcheck: the per-round messages
+/// (the cubic's 4 coefficients, or the 2 of
+/// [`SumcheckCoefficientsStrategy::Minimal`]), the final claim, and the
+/// final (fully folded) two values `[p(., 0), p(., 1)]` of every input
+/// poly, keyed by its address.
 pub struct LsbDimReducingSumcheckOutput<E> {
-    pub round_coefficients: Vec<[E; 4]>,
+    pub round_coefficients: Vec<GKRSumcheckRoundMessage<E>>,
     pub final_claim: E,
     pub final_values: BTreeMap<GKRAddress, [E; 2]>,
     /// `eqw_last(r_last)` -- the LAST round's eq factor (normalized
@@ -452,7 +462,7 @@ pub fn lsb_dim_reducing_sumcheck_prove<F: PrimeField, E: FieldExtension<F> + Fie
             t_table.contract(worker);
         }
 
-        round_coefficients.push(coeffs);
+        round_coefficients.push(coeffs.into());
     }
 
     let final_values: BTreeMap<GKRAddress, [E; 2]> = buffers
@@ -1030,7 +1040,8 @@ impl<E> FoldBufferTracker<E> {
 /// `X = 0` are read straight from the OUTPUT layer polys (they hold exactly
 /// `gate(inputs)` pointwise), `X = inf` from the input differences; nothing
 /// is folded — so the polys come in as plain BORROWED slices. Returns the
-/// round's cubic coefficients AND its suffix eq table (over `tau[1..]`) so
+/// round's message (as many coefficients as `coefficients_strategy` sends)
+/// AND its suffix eq table (over `tau[1..]`) so
 /// [`lsb_dim_reducing_sumcheck_continue`] can contract it instead of
 /// re-materializing. After absorbing the coefficients and drawing `r_0` the
 /// caller's borrows have ended: it can purge the output layer from storage
@@ -1059,10 +1070,11 @@ pub fn lsb_dim_reducing_sumcheck_initial_round<
     relations: &[LsbDimReducingRelation<E>],
     tau: &[E],
     claim: E,
+    coefficients_strategy: SumcheckCoefficientsStrategy,
     worker: &worker::Worker,
     tri_scratch: &mut [Box<[core::mem::MaybeUninit<S>]>],
     chunk_kernel: CKI,
-) -> ([E; 4], SuffixEqTable<E>) {
+) -> (GKRSumcheckRoundMessage<E>, SuffixEqTable<E>) {
     let rounds = tau.len();
     let m = 1usize << rounds;
     for p in inputs.values() {
@@ -1086,8 +1098,12 @@ pub fn lsb_dim_reducing_sumcheck_initial_round<
     // round 0 has no previous eq factor, so the claim is already normalized;
     // the message comes from the SAME builder as the same-size scalar rounds
     // (the unified wire format -- see the `GKRBackend` trait docs)
-    let coefficients = crate::gkr::sumcheck::output_univariate_monomial_form_max_quadratic::<F, E>(
-        tau[0], claim, h0, hinf,
+    let coefficients = crate::gkr::sumcheck::output_sumcheck_round_message_max_quadratic::<F, E>(
+        coefficients_strategy,
+        tau[0],
+        claim,
+        h0,
+        hinf,
     );
     (coefficients, t_table)
 }
@@ -1099,18 +1115,21 @@ pub fn lsb_dim_reducing_sumcheck_initial_round<
 ///    input regions that folds `folding_challenge` on read, writes the
 ///    folded polys to the trackers' output regions, and returns the
 ///    T-weighted `[h0, hinf]`;
-/// 2. emits the cubic round message (h(1) derived from the running claim)
-///    and draws the next challenge through `draw_challenge`;
+/// 2. emits the round message (h(1) derived from the running claim; as many
+///    coefficients as `coefficients_strategy` sends) and draws the next
+///    challenge through `draw_challenge`;
 /// 3. steps every [`FoldBufferTracker`]: the just-written output becomes the
 ///    next input and the next output is carved for the halved size.
 ///
 /// `inputs` holds the BORROWED original polys round 1 reads (re-selected
 /// from storage after the caller purged the output layer);
-/// `round_0_coefficients`/`r_0`/`t_table` are the initial round's message,
-/// drawn challenge, and suffix eq table (over `tau[1..]`, see
-/// [`lsb_dim_reducing_sumcheck_initial_round`]) — the table is contracted
-/// here instead of re-materialized. The returned coefficients/challenges
-/// cover rounds `1..` only.
+/// `claim` is the layer's claim (the one the initial round was given: a
+/// [`SumcheckCoefficientsStrategy::Minimal`] message opens only against the
+/// claim it was built from); `round_0_coefficients`/`r_0`/`t_table` are the
+/// initial round's message, drawn challenge, and suffix eq table (over
+/// `tau[1..]`, see [`lsb_dim_reducing_sumcheck_initial_round`]) — the table
+/// is contracted here instead of re-materialized. The returned
+/// coefficients/challenges cover rounds `1..` only.
 #[allow(private_bounds)]
 pub fn lsb_dim_reducing_sumcheck_continue<
     F: PrimeField,
@@ -1133,13 +1152,15 @@ pub fn lsb_dim_reducing_sumcheck_continue<
     buffers: &mut BTreeMap<GKRAddress, FoldBufferTracker<E>>,
     relations: &[LsbDimReducingRelation<E>],
     tau: &[E],
-    round_0_coefficients: &[E; 4],
+    claim: E,
+    coefficients_strategy: SumcheckCoefficientsStrategy,
+    round_0_coefficients: &GKRSumcheckRoundMessage<E>,
     r_0: E,
     mut t_table: SuffixEqTable<E>,
     worker: &worker::Worker,
     tri_scratch: &mut [Box<[core::mem::MaybeUninit<S>]>],
     chunk_kernel: CK,
-    mut draw_challenge: impl FnMut(&[E; 4]) -> E,
+    mut draw_challenge: impl FnMut(&[E]) -> E,
 ) -> (LsbDimReducingSumcheckOutput<E>, Vec<E>) {
     let rounds = tau.len();
     assert!(rounds >= 2);
@@ -1158,8 +1179,16 @@ pub fn lsb_dim_reducing_sumcheck_continue<
 
     let mut round_coefficients = Vec::with_capacity(rounds - 1);
     let mut challenges = Vec::with_capacity(rounds - 1);
-    let mut claim = horner4(round_0_coefficients, &r_0);
-    // the PREVIOUS round's single eq factor (normalized wire convention)
+    // the running claim in the normalized wire convention: every bound
+    // round's eq factor is divided out as soon as its challenge is drawn
+    let mut normalized_claim = crate::gkr::sumcheck::next_normalized_sumcheck_claim::<F, E>(
+        coefficients_strategy,
+        round_0_coefficients,
+        tau[0],
+        claim,
+        &r_0,
+    );
+    // the LAST bound round's single eq factor
     let mut eq_prev = eq_weight(&tau[0], &r_0);
     let mut folding_challenge = r_0;
 
@@ -1189,21 +1218,26 @@ pub fn lsb_dim_reducing_sumcheck_continue<
             )
         });
 
-        // normalized wire convention: divide the claim by the previous
-        // round's single eq factor and build the message with the SAME
-        // builder as the same-size scalar rounds
-        let mut normalized_claim = claim;
-        normalized_claim.mul_assign(&eq_prev.inverse().expect("eq factor non-zero"));
-        let coeffs = crate::gkr::sumcheck::output_univariate_monomial_form_max_quadratic::<F, E>(
+        // normalized wire convention: the message is built from the claim
+        // free of eq factors, with the SAME builder as the same-size
+        // scalar rounds
+        let coeffs = crate::gkr::sumcheck::output_sumcheck_round_message_max_quadratic::<F, E>(
+            coefficients_strategy,
             tau[s],
             normalized_claim,
             h0,
             hinf,
         );
         let r = draw_challenge(&coeffs);
+        normalized_claim = crate::gkr::sumcheck::next_normalized_sumcheck_claim::<F, E>(
+            coefficients_strategy,
+            &coeffs,
+            tau[s],
+            normalized_claim,
+            &r,
+        );
         round_coefficients.push(coeffs);
         challenges.push(r);
-        claim = horner4(&coeffs, &r);
         eq_prev = eq_weight(&tau[s], &r);
 
         // pointer adjustment for the next round: every tracker promotes its
@@ -1239,15 +1273,18 @@ pub fn lsb_dim_reducing_sumcheck_continue<
         })
         .collect();
 
-    // final identity: the claim after all rounds equals the batched gate on
-    // the fully folded values times the LAST round's eq factor
+    // final identity: the normalized claim after all rounds equals the
+    // batched gate on the fully folded values
     #[cfg(feature = "gkr_self_checks")]
     {
         let fv = &final_values;
-        let mut g = gate_batch(relations, |a, b| fv[&a][b]);
-        g.mul_assign(&eq_prev);
-        assert_eq!(g, claim, "LSB dim-reducing final gate identity");
+        let g = gate_batch(relations, |a, b| fv[&a][b]);
+        assert_eq!(g, normalized_claim, "LSB dim-reducing final gate identity");
     }
+
+    // the output keeps the un-normalized convention of the reference engine
+    let mut claim = normalized_claim;
+    claim.mul_assign(&eq_prev);
 
     (
         LsbDimReducingSumcheckOutput {
@@ -1355,6 +1392,7 @@ mod tests {
         let mut c = claim;
         let mut eq_prev = E::ONE;
         for (s, coeffs) in out.round_coefficients.iter().enumerate() {
+            let coeffs: &[E; 4] = coeffs.as_slice().try_into().unwrap();
             let [c0, c1, c2, c3] = *coeffs;
             let mut q01 = c0;
             q01.add_assign(&c0);
@@ -1371,5 +1409,191 @@ mod tests {
         let mut g = gate_batch(&relations, |a, b| out.final_values[&a][b]);
         g.mul_assign(&out.eq_factor);
         assert_eq!(g, out.final_claim, "final folded gate identity");
+    }
+
+    /// The PRODUCTION pair (initial round + continuing rounds) under both
+    /// coefficient strategies, each replayed in the generated verifier's
+    /// round shape of that strategy: `verify_sumcheck_rounds` +
+    /// `verify_final_step_check` for `Plain`, their `_minimal` twins (no
+    /// per-round check, the constant term derived from the running claim,
+    /// no eq factor in the final identity) for `Minimal`.
+    #[test]
+    fn lsb_dim_reducing_production_rounds_verify_under_both_strategies() {
+        let mut seed = 11u64;
+        let rounds = 6usize;
+        let m = 1usize << rounds;
+        let polys: Vec<Vec<E>> = (0..3)
+            .map(|_| (0..2 * m).map(|_| pseudo(&mut seed)).collect())
+            .collect();
+        let inputs: BTreeMap<GKRAddress, &[E]> = polys
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (addr(i), &p[..]))
+            .collect();
+        let relations = [
+            LsbDimReducingRelation::PairwiseProduct {
+                input: addr(0),
+                output: addr(16),
+                alpha: pseudo(&mut seed),
+            },
+            LsbDimReducingRelation::LogupPair {
+                num: addr(1),
+                den: addr(2),
+                num_output: addr(17),
+                den_output: addr(18),
+                alpha_num: pseudo(&mut seed),
+                alpha_den: pseudo(&mut seed),
+            },
+        ];
+        // the output layer holds the gates pointwise
+        let mut product = Vec::with_capacity(m);
+        let mut num_out = Vec::with_capacity(m);
+        let mut den_out = Vec::with_capacity(m);
+        for y in 0..m {
+            let mut t = polys[0][2 * y];
+            t.mul_assign(&polys[0][2 * y + 1]);
+            product.push(t);
+            let (n0, n1) = (polys[1][2 * y], polys[1][2 * y + 1]);
+            let (d0, d1) = (polys[2][2 * y], polys[2][2 * y + 1]);
+            let mut nn = n0;
+            nn.mul_assign(&d1);
+            let mut t = n1;
+            t.mul_assign(&d0);
+            nn.add_assign(&t);
+            num_out.push(nn);
+            let mut dd = d0;
+            dd.mul_assign(&d1);
+            den_out.push(dd);
+        }
+        let outputs: BTreeMap<GKRAddress, &[E]> = [
+            (addr(16), &product[..]),
+            (addr(17), &num_out[..]),
+            (addr(18), &den_out[..]),
+        ]
+        .into_iter()
+        .collect();
+
+        let tau: Vec<E> = (0..rounds).map(|_| pseudo(&mut seed)).collect();
+        let challenges: Vec<E> = (0..rounds).map(|_| pseudo(&mut seed)).collect();
+
+        let mut eq = vec![E::ONE; m];
+        for b in 0..rounds {
+            let half = 1usize << b;
+            let c = tau[b];
+            let mut om = E::ONE;
+            om.sub_assign(&c);
+            for i in 0..half {
+                let mut hi = eq[i];
+                hi.mul_assign(&c);
+                eq[i + half] = hi;
+                eq[i].mul_assign(&om);
+            }
+        }
+        let mut claim = E::ZERO;
+        for y in 0..m {
+            let mut t = gate_batch(&relations, |a, b| inputs[&a][2 * y + b]);
+            t.mul_assign(&eq[y]);
+            claim.add_assign(&t);
+        }
+
+        let worker = worker::Worker::new_with_num_threads(2);
+        for &strategy in SumcheckCoefficientsStrategy::ALL {
+            let mut tri: Vec<Box<[core::mem::MaybeUninit<[E; 2]>]>> = (0..worker.num_cores)
+                .map(|_| Box::new_uninit_slice(m))
+                .collect();
+            let mut pools: BTreeMap<GKRAddress, Box<[core::mem::MaybeUninit<E>]>> = inputs
+                .keys()
+                .map(|a| (*a, Box::new_uninit_slice(m + m / 2)))
+                .collect();
+            let mut buffers: BTreeMap<GKRAddress, FoldBufferTracker<E>> = pools
+                .iter_mut()
+                .map(|(a, pool)| {
+                    (*a, unsafe {
+                        FoldBufferTracker::new(pool.as_mut_ptr() as *mut E, pool.len(), 2 * m)
+                    })
+                })
+                .collect();
+
+            let (round_0, t_table) = lsb_dim_reducing_sumcheck_initial_round::<F, E, [E; 2], _>(
+                &inputs,
+                &outputs,
+                &relations,
+                &tau,
+                claim,
+                strategy,
+                &worker,
+                &mut tri[..],
+                |inputs, outputs, rels, tp, cs, cl, sp| unsafe {
+                    scalar_initial_chunk::<E>(inputs, outputs, rels, tp, cs, cl, sp)
+                },
+            );
+            let mut next_challenge = challenges[1..].iter();
+            let (out, drawn) = lsb_dim_reducing_sumcheck_continue::<F, E, [E; 2], _>(
+                &inputs,
+                &mut buffers,
+                &relations,
+                &tau,
+                claim,
+                strategy,
+                &round_0,
+                challenges[0],
+                t_table,
+                &worker,
+                &mut tri[..],
+                |buffers, rels, r, tp, cs, cl, sp| unsafe {
+                    scalar_continuing_chunk::<E>(buffers, rels, r, tp, cs, cl, sp)
+                },
+                |_| *next_challenge.next().unwrap(),
+            );
+            assert_eq!(&drawn[..], &challenges[1..]);
+
+            let messages: Vec<&GKRSumcheckRoundMessage<E>> = core::iter::once(&round_0)
+                .chain(out.round_coefficients.iter())
+                .collect();
+            assert_eq!(messages.len(), rounds);
+            let g = gate_batch(&relations, |a, b| out.final_values[&a][b]);
+            let mut c = claim;
+            match strategy {
+                SumcheckCoefficientsStrategy::Plain => {
+                    let mut eq_prev = E::ONE;
+                    for (s, coeffs) in messages.iter().enumerate() {
+                        let coeffs: &[E; 4] = coeffs.as_slice().try_into().unwrap();
+                        let [c0, c1, c2, c3] = *coeffs;
+                        let mut q01 = c0;
+                        q01.add_assign(&c0);
+                        q01.add_assign(&c1);
+                        q01.add_assign(&c2);
+                        q01.add_assign(&c3);
+                        q01.mul_assign(&eq_prev);
+                        assert_eq!(q01, c, "round {} chaining", s);
+                        c = horner4(coeffs, &challenges[s]);
+                        eq_prev = eq_weight(&tau[s], &challenges[s]);
+                    }
+                    let mut rhs = g;
+                    rhs.mul_assign(&eq_prev);
+                    assert_eq!(rhs, c, "plain final step check");
+                }
+                SumcheckCoefficientsStrategy::Minimal => {
+                    for (s, coeffs) in messages.iter().enumerate() {
+                        let coeffs: &[E; 2] = coeffs.as_slice().try_into().unwrap();
+                        let [d, quad] = *coeffs;
+                        // e = claim - tau * (d + c)
+                        let mut t = d;
+                        t.add_assign(&quad);
+                        t.mul_assign(&tau[s]);
+                        let mut e = c;
+                        e.sub_assign(&t);
+                        // h(r) = e + r * (d + r * c)
+                        let mut h = quad;
+                        h.mul_assign(&challenges[s]);
+                        h.add_assign(&d);
+                        h.mul_assign(&challenges[s]);
+                        h.add_assign(&e);
+                        c = h;
+                    }
+                    assert_eq!(g, c, "minimal final step check");
+                }
+            }
+        }
     }
 }

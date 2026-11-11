@@ -25,7 +25,7 @@ fn push_nonce(nonce: u64, dst: &mut Vec<u32>) {
 /// followed by its folding-challenge PoW nonce when the round's folding draws
 /// are gated (`nonces` is then one per polynomial, empty otherwise).
 fn flatten_sumcheck<F: PrimeField, E: FieldExtension<F>>(
-    polys: &[[E; 3]],
+    polys: &[prover::gkr::whir::WhirSumcheckRoundMessage<E>],
     nonces: &[u64],
     dst: &mut Vec<u32>,
 ) {

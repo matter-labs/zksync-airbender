@@ -5,7 +5,29 @@ use quote::quote;
 
 use crate::field_wrapper::FieldWrapper;
 use crate::gkr::{OracleInfo, OracleType};
+use prover::definitions::SumcheckCoefficientsStrategy;
 use prover::gkr::prover::WhirSchedule;
+
+/// The expression verifying one WHIR sumcheck step with the step routine of
+/// `strategy`; evaluates to `(new_claim, alpha)`.
+fn whir_sumcheck_step_call(
+    strategy: SumcheckCoefficientsStrategy,
+    round: TokenStream,
+    folding_pow_bits: TokenStream,
+) -> TokenStream {
+    match strategy {
+        SumcheckCoefficientsStrategy::Plain => quote! {
+            verify_whir_sumcheck_step::<I, E>(
+                ts, claim, #round, #folding_pow_bits, nd_source,
+            )?
+        },
+        SumcheckCoefficientsStrategy::Minimal => quote! {
+            verify_whir_sumcheck_step_minimal::<I>(
+                ts, claim, #folding_pow_bits, nd_source,
+            )
+        },
+    }
+}
 
 /// Compute draw_words for a given number of queries and query index bits.
 fn compute_draw_words(num_queries: usize, query_index_bits: usize) -> usize {
@@ -205,6 +227,7 @@ fn sorted_loop_head(num_queries_expr: TokenStream) -> TokenStream {
 
 pub fn generate_whir_initial_round<MW: FieldWrapper>(
     whir_schedule: &WhirSchedule,
+    sumcheck_coefficients_strategy: SumcheckCoefficientsStrategy,
     oracles: &BTreeMap<OracleType, OracleInfo>,
     message_size_log2: usize,
 ) -> TokenStream {
@@ -366,6 +389,15 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
     }
 
     // Round-0 sumcheck: one step under a fold of 1, none under virtual packing.
+    let sumcheck_step = whir_sumcheck_step_call(
+        sumcheck_coefficients_strategy,
+        quote! { round_idx },
+        quote! { WHIR_FOLDING_POW_BITS[0] },
+    );
+    let sumcheck_step_fn = match sumcheck_coefficients_strategy {
+        SumcheckCoefficientsStrategy::Plain => quote! { verify_whir_sumcheck_step },
+        SumcheckCoefficientsStrategy::Minimal => quote! { verify_whir_sumcheck_step_minimal },
+    };
     let initial_sumcheck = if virtual_packing {
         TokenStream::new()
     } else {
@@ -374,9 +406,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 LazyVec::new();
             let mut round_idx = 0;
             while round_idx < WHIR_FOLD_STEPS[0] {
-                let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
-                    ts, claim, round_idx, WHIR_FOLDING_POW_BITS[0], nd_source,
-                )?;
+                let (new_claim, alpha) = #sumcheck_step;
                 claim = new_claim;
                 folding_challenges.push(alpha);
                 fold_whir_accumulator(accumulator, alpha, z_initial);
@@ -655,7 +685,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
         };
         #[allow(unused_imports)]
         use super::common::{
-            verify_whir_sumcheck_step, materialize_gamma_powers,
+            #sumcheck_step_fn, materialize_gamma_powers,
             #fold_fn_imports
             read_reduced_field_el, draw_fresh_single_field_el,
             compute_tree_index,
@@ -755,8 +785,14 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
 
 pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
     whir_schedule: &WhirSchedule,
+    sumcheck_coefficients_strategy: SumcheckCoefficientsStrategy,
     message_size_log2: usize,
 ) -> TokenStream {
+    let sumcheck_step = whir_sumcheck_step_call(
+        sumcheck_coefficients_strategy,
+        quote! { round },
+        quote! { WHIR_FOLDING_POW_BITS[round_idx] },
+    );
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
 
@@ -958,9 +994,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                     LazyVec::new();
                 let mut round = 0;
                 while round < fold_steps {
-                    let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
-                        ts, claim, round, WHIR_FOLDING_POW_BITS[round_idx], nd_source,
-                    )?;
+                    let (new_claim, alpha) = #sumcheck_step;
                     claim = new_claim;
                     folding_challenges.push(alpha);
                     fold_whir_accumulator(accumulator, alpha, z_initial);
@@ -1040,8 +1074,14 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
 
 pub fn generate_whir_final_round<MW: FieldWrapper>(
     whir_schedule: &WhirSchedule,
+    sumcheck_coefficients_strategy: SumcheckCoefficientsStrategy,
     message_size_log2: usize,
 ) -> TokenStream {
+    let sumcheck_step = whir_sumcheck_step_call(
+        sumcheck_coefficients_strategy,
+        quote! { round },
+        quote! { FINAL_FOLDING_POW_BITS },
+    );
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
 
@@ -1205,9 +1245,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                     LazyVec::new();
                 let mut round = 0;
                 while round < FINAL_FOLD_STEPS {
-                    let (new_claim, alpha) = verify_whir_sumcheck_step::<I, E>(
-                        ts, claim, round, FINAL_FOLDING_POW_BITS, nd_source,
-                    )?;
+                    let (new_claim, alpha) = #sumcheck_step;
                     claim = new_claim;
                     folding_challenges.push(alpha);
                     fold_whir_accumulator(accumulator, alpha, z_initial);

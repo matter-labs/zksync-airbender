@@ -81,16 +81,23 @@ pub type DefaultBabyBearGKRBackend = NaiveGKRBackend;
 ///
 /// Every scalar sumcheck round emitted through this trait — the same-size
 /// layers AND the dimension-reducing layers alike — uses the SAME normalized
-/// single-eq-factor cubic form: the message is the 4 monomial coefficients
-/// of `q_s(X) = eq(tau_s, X) * h_s(X)` (the LOCAL eq factor only, built by
-/// `output_univariate_monomial_form_max_quadratic` from the claim divided by
-/// the PREVIOUS round's factor), the chaining is
-/// `eq(tau_{s-1}, r_{s-1}) * (q_s(0) + q_s(1)) == claim_s` with
+/// single-eq-factor cubic form, built by
+/// `output_sumcheck_round_message_max_quadratic` from the claim free of the
+/// earlier rounds' eq factors. Under
+/// [`SumcheckCoefficientsStrategy::Plain`](crate::definitions::SumcheckCoefficientsStrategy::Plain)
+/// the message is the 4 monomial coefficients of
+/// `q_s(X) = eq(tau_s, X) * h_s(X)` (the LOCAL eq factor only), the chaining
+/// is `eq(tau_{s-1}, r_{s-1}) * (q_s(0) + q_s(1)) == claim_s` with
 /// `claim_{s+1} = q_s(r_s)`, and the layer's final identity is
-/// `claim == eq(tau_last, r_last) * gate(final values)`. The generated
-/// verifier checks every layer type with the ONE shared round routine
-/// (`verify_sumcheck_rounds`); verifier bytecode size matters, so do not
-/// introduce a second wire format.
+/// `claim == eq(tau_last, r_last) * gate(final values)`. Under
+/// [`SumcheckCoefficientsStrategy::Minimal`](crate::definitions::SumcheckCoefficientsStrategy::Minimal)
+/// the message is the linear and quadratic coefficients of `h_s`, the
+/// chaining is `claim_{s+1} = h_s(r_s)` with the constant term of `h_s`
+/// derived from `claim_s`, and the final identity is
+/// `claim == gate(final values)`. The generated verifier checks every layer
+/// type with the ONE shared round routine of the config's strategy
+/// (`verify_sumcheck_rounds` / `verify_sumcheck_rounds_minimal`); verifier
+/// bytecode size matters, so do not introduce a further wire format.
 pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
     /// Forward (output-construction) evaluation of ALL dimension-reducing
     /// layers, mirroring
@@ -177,6 +184,7 @@ pub trait GKRBackend<F: PrimeField, E: FieldExtension<F> + Field>: Send + Sync {
     fn dimension_reducing_sumcheck_for_layer<TR: Transcript<F, E>>(
         &self,
         schedule: &[crate::gkr::prover_config::SumcheckStep],
+        coefficients_strategy: crate::definitions::SumcheckCoefficientsStrategy,
         layer_idx: usize,
         layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
         claim_points: &mut BTreeMap<usize, Vec<EvaluationPointEntry<E>>>,

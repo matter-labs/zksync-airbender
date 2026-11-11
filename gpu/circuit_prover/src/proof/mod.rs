@@ -12,7 +12,9 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
 
 use crate::proof::inputs::GpuGKRProofTransfer;
-use crate::upstream::{BaseColumns, BaseCommitmentGeometry, ProverConfig};
+use crate::upstream::{
+    BaseColumns, BaseCommitmentGeometry, ProverConfig, SumcheckCoefficientsStrategy,
+};
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
@@ -91,6 +93,12 @@ fn prove_inner<'a, A: GoodAllocator + 'a>(
     assert!(
         (final_trace_size_log_2 as usize) < prover_config.trace_len_log2,
         "GPU forward transcript handoff requires at least one dimension-reduction layer"
+    );
+    assert_eq!(
+        prover_config.sumcheck_coefficients_strategy,
+        SumcheckCoefficientsStrategy::Plain,
+        "the GPU prover emits every monomial coefficient of a sumcheck round; \
+         SumcheckCoefficientsStrategy::Minimal is CPU-only"
     );
     let base_geometry = BaseCommitmentGeometry::from_config(
         prover_config,

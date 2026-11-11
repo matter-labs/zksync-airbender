@@ -1,7 +1,17 @@
 use super::queries::*;
 use super::*;
+use crate::definitions::SumcheckCoefficientsStrategy;
 use crate::gkr::prover_config::WhirSchedule;
 use crate::merkle_trees::MerkleTreeCapVarLength;
+
+/// The coefficients one WHIR sumcheck round puts into the proof and the
+/// transcript: the 3 monomial coefficients of the quadratic round polynomial
+/// under [`SumcheckCoefficientsStrategy::Plain`], `[c0, c2]` under
+/// [`SumcheckCoefficientsStrategy::Minimal`]. Serializes as the sequence of
+/// its coefficients, so a JSON proof written when it was a plain `[E; 3]`
+/// still deserializes.
+pub type WhirSumcheckRoundMessage<E> =
+    arrayvec::ArrayVec<E, { SumcheckCoefficientsStrategy::MAX_WHIR_ROUND_COEFFICIENTS }>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(bound = "")]
@@ -85,10 +95,11 @@ pub struct WhirIntermediateCommitmentAndQueries<
     #[serde(default)]
     pub ood_samples: Vec<E>,
     /// The `folding_log2` degree-2 sumcheck round polynomials (as `[s(0),
-    /// s(1), s(1/2)]`-interpolated monomial coefficients) folding this
+    /// s(1), s(1/2)]`-interpolated monomial coefficients, as many of them
+    /// as the proof's [`SumcheckCoefficientsStrategy`] sends) folding this
     /// oracle's polynomial.
     #[serde(default)]
-    pub sumcheck_polys: Vec<[E; 3]>,
+    pub sumcheck_polys: Vec<WhirSumcheckRoundMessage<E>>,
     /// One PoW nonce per folding-challenge draw iff the round's
     /// `folding_pow_bits > 0`; empty otherwise.
     #[serde(default)]
@@ -125,7 +136,9 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
                 .ood_pow_nonce
                 .map_or(0, |_| core::mem::size_of::<u64>())
             + self.ood_samples.len() * E::DEGREE * core::mem::size_of::<u32>()
-            + self.sumcheck_polys.len() * 3 * E::DEGREE * core::mem::size_of::<u32>()
+            + self.sumcheck_polys.iter().map(|p| p.len()).sum::<usize>()
+                * E::DEGREE
+                * core::mem::size_of::<u32>()
             + self.folding_pow_nonces.len() * core::mem::size_of::<u64>()
             + core::mem::size_of::<u64>()
             + self.queries.len()
@@ -161,8 +174,9 @@ pub struct WhirPolyCommitProof<
     /// virtual packed polynomial).
     pub batching_challenge_pow_nonce: u64,
     /// Round-0 sumcheck polynomials: `folding_log2` of them under explicit
-    /// packing, none under virtual packing.
-    pub base_sumcheck_polys: Vec<[E; 3]>,
+    /// packing, none under virtual packing; each carries as many
+    /// coefficients as the proof's [`SumcheckCoefficientsStrategy`] sends.
+    pub base_sumcheck_polys: Vec<WhirSumcheckRoundMessage<E>>,
     /// One PoW nonce per round-0 folding-challenge draw iff the base round's
     /// `folding_pow_bits > 0`; empty otherwise.
     pub base_folding_pow_nonces: Vec<u64>,
@@ -181,7 +195,13 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
             + self.memory_commitment.estimate_size()
             + self.witness_commitment.estimate_size()
             + core::mem::size_of::<u64>()
-            + self.base_sumcheck_polys.len() * 3 * E::DEGREE * core::mem::size_of::<u32>()
+            + self
+                .base_sumcheck_polys
+                .iter()
+                .map(|p| p.len())
+                .sum::<usize>()
+                * E::DEGREE
+                * core::mem::size_of::<u32>()
             + self.base_folding_pow_nonces.len() * core::mem::size_of::<u64>()
             + core::mem::size_of::<u64>()
             + self
@@ -194,7 +214,7 @@ impl<F: PrimeField, E: FieldExtension<F> + Field, T: ColumnMajorMerkleTreeConstr
 
     /// Every sumcheck round polynomial in transcript order: the base round's,
     /// then each intermediate oracle's.
-    pub fn all_sumcheck_polys(&self) -> impl Iterator<Item = &[E; 3]> {
+    pub fn all_sumcheck_polys(&self) -> impl Iterator<Item = &WhirSumcheckRoundMessage<E>> {
         self.base_sumcheck_polys.iter().chain(
             self.intermediate_whir_oracles
                 .iter()

@@ -2,7 +2,12 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 use crate::field_wrapper::FieldWrapper;
+use prover::definitions::SumcheckCoefficientsStrategy;
 
+/// The shared WHIR routines, with the sumcheck step of every
+/// [`SumcheckCoefficientsStrategy`]: the `common` module is one file for all
+/// circuits and configs, and each circuit's verifier calls the step of its
+/// own config's strategy.
 pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStream {
     let quartic_struct = MW::quartic_struct();
     let quartic_one = MW::quartic_one();
@@ -28,6 +33,11 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
     let mul_claim_alpha = MW::mul_assign(quote! { new_claim }, quote! { alpha });
     let add_claim_c1 = MW::add_assign(quote! { new_claim }, quote! { c1 });
     let add_claim_c0 = MW::add_assign(quote! { new_claim }, quote! { c0 });
+
+    // `SumcheckCoefficientsStrategy::Minimal` step: the message is `[c0, c2]`
+    let minimal_coeffs = SumcheckCoefficientsStrategy::Minimal.whir_round_coefficients();
+    let minimal_sub_c1_c0 = MW::sub_assign(quote! { c1 }, quote! { c0 });
+    let minimal_sub_c1_c2 = MW::sub_assign(quote! { c1 }, quote! { c2 });
 
     // gamma power ops (shared by both encodings: used by materialize_gamma_powers
     // and compute_high_powers_offsets).
@@ -131,6 +141,64 @@ pub fn generate_whir_common<MW: FieldWrapper>(max_fold_steps: usize) -> TokenStr
             #add_claim_c0;
 
             Ok((new_claim, alpha))
+        }
+
+        #[inline(always)]
+        /// One WHIR sumcheck step of a `SumcheckCoefficientsStrategy::Minimal` proof: the
+        /// prover sends `[c0, c2]` of the round polynomial `c0 + c1 * X + c2 * X^2`, whose
+        /// sum over `{0, 1}` is the claim, so `c1 = claim - 2 * c0 - c2` and the step has
+        /// nothing to check. Commits the message and draws the folding challenge (after a
+        /// `folding_pow_bits`-bit proof of work when the round gates its folding draws).
+        pub fn verify_whir_sumcheck_step_minimal<I: NonDeterminismSource<#field_struct>>(
+            ts: &mut TranscriptState,
+            claim: #quartic_struct,
+            folding_pow_bits: u32,
+            nd_source: &mut I,
+        ) -> (#quartic_struct, #quartic_struct) {
+            const WHIR_SC_DATA_WORDS: usize = #minimal_coeffs * EXT_DEGREE;
+            const WHIR_SC_COMMIT_BUF: usize = {
+                let total = WHIR_SC_DATA_WORDS;
+                (total + ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
+                    / ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
+                    * ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
+            };
+
+            let mut buf = CommitBuf::<WHIR_SC_COMMIT_BUF>::new();
+            {
+                let mut i = 0;
+                while i < WHIR_SC_DATA_WORDS {
+                    buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
+                    i += 1;
+                }
+            }
+
+            let coeffs: [#quartic_struct; #minimal_coeffs] = unsafe {
+                *buf.data_as::<[#quartic_struct; #minimal_coeffs]>(1).as_ptr()
+            };
+            let (c0, c2) = (coeffs[0], coeffs[1]);
+
+            ts.commit(&mut buf, WHIR_SC_DATA_WORDS);
+
+            let alpha = if folding_pow_bits > 0 {
+                ::verifier_common::whir::read_and_verify_pow::<I>(ts, folding_pow_bits, nd_source);
+                draw_single_field_el_after_pow(ts)
+            } else {
+                draw_single_field_el(ts)
+            };
+
+            // c1 = claim - 2 * c0 - c2
+            let mut c1 = claim;
+            #minimal_sub_c1_c0;
+            #minimal_sub_c1_c0;
+            #minimal_sub_c1_c2;
+
+            let mut new_claim = c2;
+            #mul_claim_alpha;
+            #add_claim_c1;
+            #mul_claim_alpha;
+            #add_claim_c0;
+
+            (new_claim, alpha)
         }
 
         #[inline(always)]

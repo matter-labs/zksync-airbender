@@ -319,7 +319,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
     }
     let plen = cd.len();
 
-    let round_sumcheck_polys = |r: usize| -> &[[Proth120; 3]] {
+    let round_sumcheck_polys = |r: usize| -> &[WhirSumcheckRoundMessage<Proth120>] {
         if r == 0 {
             &proof.base_sumcheck_polys
         } else {
@@ -336,6 +336,11 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
     for r in 0..num_rounds {
         assert_eq!(round_sumcheck_polys(r).len(), cfg.folds[r]);
         for sp in round_sumcheck_polys(r).iter() {
+            assert_eq!(
+                sp.len(),
+                3,
+                "the EVM verifier reads every monomial coefficient of a sumcheck round (SumcheckCoefficientsStrategy::Plain)"
+            );
             cd.extend_from_slice(&be16(sp[0]));
             cd.extend_from_slice(&be16(sp[1]));
             cd.extend_from_slice(&be16(sp[2]));

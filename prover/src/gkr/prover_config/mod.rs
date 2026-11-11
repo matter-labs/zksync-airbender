@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::definitions::SecurityLevel;
+pub use crate::definitions::SumcheckCoefficientsStrategy;
 use crate::gkr::whir::proximity_testing_modes::ProximityTestingMode;
 
 pub mod commitment_geometry;
@@ -38,7 +39,7 @@ pub use whir_schedule::{WhirBaseRoundSchedule, WhirInternalRound, WhirSchedule};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SumcheckStep {
     /// The classic mode: fold exactly one variable with the per-round batched
-    /// evaluator (one `[E; 4]` message per round; the fold is lazy, merged
+    /// evaluator (one round message per round; the fold is lazy, merged
     /// into the next round's evaluation).
     NaiveSumcheck,
     /// Univariate-skip pass over the ORIGINAL layer inputs: `window`
@@ -279,6 +280,13 @@ pub struct ProverConfig {
     /// merged oracle (see [`CommitmentMode`]). Decides the transcript layout,
     /// the committed (packed) column grouping and thus the generated verifier.
     pub commitment_mode: CommitmentMode,
+    /// How many coefficients every sumcheck round (GKR layers and WHIR)
+    /// puts into the proof and the transcript; decides the generated
+    /// verifier's round routines. Absent from configs serialized before the
+    /// strategy existed, which are all
+    /// [`SumcheckCoefficientsStrategy::Plain`] (the default).
+    #[serde(default)]
+    pub sumcheck_coefficients_strategy: SumcheckCoefficientsStrategy,
 }
 
 impl ProverConfig {
@@ -302,6 +310,7 @@ impl ProverConfig {
             same_size_sumcheck_schedule: naive_same_size_schedule(),
             dimension_reducing_sumcheck_schedule: Default::default(),
             commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
+            sumcheck_coefficients_strategy: SumcheckCoefficientsStrategy::default(),
         }
     }
 

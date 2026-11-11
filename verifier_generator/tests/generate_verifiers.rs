@@ -104,17 +104,27 @@ fn generate_whir_verifier<MW: FieldWrapper>(
     gkr_files: &GKRGeneratedFiles,
 ) {
     let whir_schedule = &prover_config.whir_schedule;
+    let coefficients_strategy = prover_config.sumcheck_coefficients_strategy;
 
     // Every WHIR-side size derives from the committed (packed) column length,
     // `trace_len_log2 + pack_log2`.
     let message_size_log2 = gkr_files.whir_message_size_log2;
     let whir_initial = whir::generate_whir_initial_round::<MW>(
         whir_schedule,
+        coefficients_strategy,
         &gkr_files.oracles,
         message_size_log2,
     );
-    let whir_internal = whir::generate_whir_internal_rounds::<MW>(whir_schedule, message_size_log2);
-    let whir_final = whir::generate_whir_final_round::<MW>(whir_schedule, message_size_log2);
+    let whir_internal = whir::generate_whir_internal_rounds::<MW>(
+        whir_schedule,
+        coefficients_strategy,
+        message_size_log2,
+    );
+    let whir_final = whir::generate_whir_final_round::<MW>(
+        whir_schedule,
+        coefficients_strategy,
+        message_size_log2,
+    );
 
     // Compute max hash buf size across all WHIR rounds (padded to 16-word boundary)
     let initial_vpf = whir_schedule.base_values_per_leaf();

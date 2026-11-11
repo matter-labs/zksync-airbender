@@ -47,6 +47,7 @@ pub fn l1_feeder_config_for_2_23() -> ProverConfig {
         trace_len_log2: 23,
         // the L1 feeder flow commits the single merged memory+witness tree
         commitment_mode: CommitmentMode::MergedMemoryAndWitness,
+        sumcheck_coefficients_strategy: SumcheckCoefficientsStrategy::default(),
         same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(23),
         dimension_reducing_sumcheck_schedule: Default::default(),
         cap_size: DEFAULT_CAP_SIZE,
@@ -96,6 +97,9 @@ pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig
         // circuit trace length; the WHIR message is 2^(22 + pack_log2) = 2^26
         trace_len_log2: EVM_PRODUCTION_TRACE_LEN_LOG2,
         commitment_mode: CommitmentMode::MergedMemoryAndWitness,
+        // the EVM verifier (gkr.sol / whir.sol) reads every monomial
+        // coefficient of a sumcheck round
+        sumcheck_coefficients_strategy: SumcheckCoefficientsStrategy::Plain,
         // the EVM verifier (gkr.sol) consumes monomial [c0..c3] rounds;
         // keep these proofs on the windowed schedule (transcript-identical
         // to naive)

@@ -276,6 +276,7 @@ pub fn standard_config(
     let config = ProverConfig {
         trace_len_log2,
         commitment_mode: CommitmentMode::SeparateMemoryAndWitness,
+        sumcheck_coefficients_strategy: SumcheckCoefficientsStrategy::default(),
         same_size_sumcheck_schedule: windowed_same_size_schedule(trace_len_log2),
         dimension_reducing_sumcheck_schedule: Default::default(),
         cap_size: whir_schedule.cap_size,

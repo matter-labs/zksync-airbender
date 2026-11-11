@@ -33,6 +33,7 @@ serde_with = { version = "*", optional = true }
 sha3 = { workspace = true, optional = true }
 mmap-io = { workspace = true, optional = true }
 cfg-if = { workspace = true, optional = true }
+arrayvec = { workspace = true, features = ["serde"], optional = true }
 
 [dev-dependencies]
 test_utils = { workspace = true }
@@ -53,7 +54,7 @@ harness = false
 required-features = ["prover"]
 
 [features]
-prover = ["worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "riscv_transpiler", "proc-macro2", "quote", "serde_json", "serde_with", "itertools", "sha3", "mmap-io", "cfg-if"]
+prover = ["worker", "seq-macro", "fft", "cs/compiler", "transcript/pow", "riscv_transpiler", "proc-macro2", "quote", "serde_json", "serde_with", "itertools", "sha3", "mmap-io", "cfg-if", "arrayvec"]
 deterministic_pow = ["transcript/deterministic_pow"]
 # Print logs related to timings only.
 timing_logs = []

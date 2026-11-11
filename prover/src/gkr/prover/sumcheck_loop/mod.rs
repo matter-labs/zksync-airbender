@@ -1,7 +1,9 @@
 use crate::gkr::prover::SumcheckIntermediateProofValues;
 use std::collections::BTreeMap;
 
+use crate::definitions::SumcheckCoefficientsStrategy;
 use crate::gkr::prover::GKRExternalChallenges;
+use crate::gkr::prover::GKRSumcheckRoundMessage;
 #[cfg(feature = "gkr_self_checks")]
 use crate::gkr::sumcheck::eq_poly::{
     evaluate_with_precomputed_eq, evaluate_with_precomputed_eq_ext,
@@ -14,8 +16,7 @@ use crate::gkr::{
         eq_poly::{
             evaluate_constant_and_quadratic_coeffs_with_precomputed_eq, make_eq_poly_in_full_lsb,
         },
-        evaluate_eq_poly, evaluate_small_univariate_poly,
-        output_univariate_monomial_form_max_quadratic,
+        next_normalized_sumcheck_claim, output_sumcheck_round_message_max_quadratic,
     },
 };
 use crate::worker::Worker;
@@ -107,6 +108,7 @@ pub fn evaluate_dimension_reducing_sumcheck_for_layer_lsb<
     initial_chunk_kernel: CKI,
     continuing_chunk_kernel: CK,
     schedule: &[crate::gkr::prover_config::SumcheckStep],
+    coefficients_strategy: SumcheckCoefficientsStrategy,
     layer_idx: usize,
     layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
     claim_points: &mut BTreeMap<usize, Vec<EvaluationPointEntry<E>>>,
@@ -255,6 +257,7 @@ pub fn evaluate_dimension_reducing_sumcheck_for_layer_lsb<
             &relations,
             tau,
             claim,
+            coefficients_strategy,
             worker,
             &mut tri[..],
             initial_chunk_kernel,
@@ -276,6 +279,8 @@ pub fn evaluate_dimension_reducing_sumcheck_for_layer_lsb<
         &mut fold_buffers,
         &relations,
         tau,
+        claim,
+        coefficients_strategy,
         &round_0_coefficients,
         r_0,
         t_table,
@@ -492,6 +497,7 @@ pub fn evaluate_sumcheck_for_layer<
         SumcheckScheduleClass::Naive => same_size_naive_sumcheck::<F, E, TR>(
             &collector,
             &challenge_constants,
+            prover_config.sumcheck_coefficients_strategy,
             claim,
             &prev_entries,
             folding_steps,
@@ -531,6 +537,7 @@ pub fn evaluate_sumcheck_for_layer<
             times.program = chain_timer.elapsed();
             let outcome = same_size_chain_sumcheck::<F, E, TR, C>(
                 schedule,
+                prover_config.sumcheck_coefficients_strategy,
                 &chain,
                 &chain_base_addrs,
                 &chain_ext_addrs,
@@ -592,6 +599,7 @@ pub fn evaluate_sumcheck_for_layer<
 fn same_size_naive_sumcheck<F: PrimeField, E: FieldExtension<F> + Field, TR: Transcript<F, E>>(
     collector: &KernelCollector<F, E>,
     challenge_constants: &BatchedGKRTermDescriptionConstants<F, E>,
+    coefficients_strategy: SumcheckCoefficientsStrategy,
     claim: E,
     prev_entries: &[EvaluationPointEntry<E>],
     folding_steps: usize,
@@ -615,6 +623,7 @@ fn same_size_naive_sumcheck<F: PrimeField, E: FieldExtension<F> + Field, TR: Tra
     let (folding_challenges, internal_round_coefficients, last_evaluations, _final_claim) =
         run_sumcheck_loop::<F, E, TR, 2, true>(
             collector,
+            coefficients_strategy,
             claim,
             &prev_challenges,
             &eq_polys,
@@ -665,11 +674,13 @@ fn same_size_naive_sumcheck<F: PrimeField, E: FieldExtension<F> + Field, TR: Tra
 
 /// Running transcript/claim state of a chain (uniskip or windowed) case.
 struct ChainState<E: Field> {
+    /// the running claim in the NORMALIZED scalar-round convention: the eq
+    /// factor of every bound scalar round is divided out as soon as its
+    /// challenge is drawn (uniskip rounds carry no such factor: they consume
+    /// and leave the claim raw)
     running_claim: E,
-    /// the single last-round eq factor of the scalar-round convention,
-    /// REPLACED per scalar round (uniskip rounds consume raw claims and
-    /// never touch it)
-    eq_prefactor: E,
+    /// how many coefficients a scalar round sends
+    coefficients_strategy: SumcheckCoefficientsStrategy,
     rounds: Vec<crate::gkr::prover::SumcheckRoundCoefficients<E>>,
     entries: Vec<EvaluationPointEntry<E>>,
     vars_bound: usize,
@@ -720,7 +731,8 @@ fn scalar_coord<E: Field>(var: usize, spans: &[(usize, usize)], prev_blocks: &[V
 
 /// One scalar chain round (a window-pass round or a tail round) binding the
 /// current variable, in the SAME single-eq-factor form as the naive
-/// per-round loop (byte-identical message for identical inputs).
+/// per-round loop (byte-identical message for identical inputs and
+/// coefficients strategy).
 fn scalar_chain_round<F: PrimeField, E: FieldExtension<F> + Field, TR: Transcript<F, E>>(
     st: &mut ChainState<E>,
     tau: E,
@@ -728,18 +740,26 @@ fn scalar_chain_round<F: PrimeField, E: FieldExtension<F> + Field, TR: Transcrip
     hinf: E,
     seed: &mut TR::Seed,
 ) -> E {
-    let mut normalized_claim = st.running_claim;
-    normalized_claim.mul_assign(&st.eq_prefactor.inverse().expect("eq prefactor non-zero"));
-    let coeffs =
-        output_univariate_monomial_form_max_quadratic::<F, E>(tau, normalized_claim, h0, hinf);
+    let coeffs = output_sumcheck_round_message_max_quadratic::<F, E>(
+        st.coefficients_strategy,
+        tau,
+        st.running_claim,
+        h0,
+        hinf,
+    );
     commit_field_els::<F, E, TR>(seed, &coeffs);
+    let r = draw_random_field_els::<F, E, TR>(seed, 1)[0];
+    st.running_claim = next_normalized_sumcheck_claim::<F, E>(
+        st.coefficients_strategy,
+        &coeffs,
+        tau,
+        st.running_claim,
+        &r,
+    );
     st.rounds
         .push(crate::gkr::prover::SumcheckRoundCoefficients::Multilinear(
             coeffs,
         ));
-    let r = draw_random_field_els::<F, E, TR>(seed, 1)[0];
-    st.running_claim = evaluate_small_univariate_poly::<F, E, _>(&coeffs, &r);
-    st.eq_prefactor = evaluate_eq_poly::<F, E>(&r, &tau);
     st.entries
         .push(EvaluationPointEntry::Coordinate { point: r });
     st.vars_bound += 1;
@@ -899,6 +919,7 @@ fn same_size_chain_sumcheck<
     C: SameSizeChainOps<F, E>,
 >(
     schedule: &[crate::gkr::prover_config::SumcheckStep],
+    coefficients_strategy: SumcheckCoefficientsStrategy,
     chain: &C,
     base_addrs: &[GKRAddress],
     ext_addrs: &[GKRAddress],
@@ -992,7 +1013,7 @@ fn same_size_chain_sumcheck<
 
     let mut st = ChainState {
         running_claim: claim,
-        eq_prefactor: E::ONE,
+        coefficients_strategy,
         rounds: Vec::new(),
         entries: Vec::new(),
         vars_bound: 0,
@@ -1400,6 +1421,7 @@ fn run_sumcheck_loop<
     const USE_BATCHING: bool,
 >(
     collector: &KernelCollector<F, E>,
+    coefficients_strategy: SumcheckCoefficientsStrategy,
     initial_claim: E,
     prev_challenges: &[E],
     eq_poly: &[Box<[E]>],
@@ -1408,7 +1430,12 @@ fn run_sumcheck_loop<
     folding_steps: usize,
     worker: &Worker,
     seed: &mut TR::Seed,
-) -> (Vec<E>, Vec<[E; 4]>, BTreeMap<GKRAddress, [E; N]>, E) {
+) -> (
+    Vec<E>,
+    Vec<GKRSumcheckRoundMessage<E>>,
+    BTreeMap<GKRAddress, [E; N]>,
+    E,
+) {
     let use_batching = USE_BATCHING;
     if use_batching {
         println!("Running sumcheck loop in batched naive (LSB) mode");
@@ -1416,11 +1443,11 @@ fn run_sumcheck_loop<
         println!("Running sumcheck loop in individual kernel (gate expression) mode");
     }
 
-    let mut claim = initial_claim;
+    // the running claim, NORMALIZED: the eq factor of every bound round is
+    // divided out as soon as its challenge is drawn
+    let mut normalized_claim = initial_claim;
     let mut folding_challenges = Vec::with_capacity(folding_steps);
     let mut last_evaluations: BTreeMap<GKRAddress, [E; N]> = BTreeMap::new();
-
-    let mut eq_prefactor = E::ONE;
 
     let max_acc_size = 1 << (folding_steps - 1);
     let mut accumulator_buffer = vec![[E::ZERO; 2]; max_acc_size];
@@ -1478,10 +1505,8 @@ fn run_sumcheck_loop<
             worker,
         );
 
-        let mut normalized_claim = claim;
-        normalized_claim.mul_assign(&eq_prefactor.inverse().expect("eq prefactor non-zero"));
-
-        let coeffs = output_univariate_monomial_form_max_quadratic::<F, E>(
+        let coeffs = output_sumcheck_round_message_max_quadratic::<F, E>(
+            coefficients_strategy,
             prev_challenges[step],
             normalized_claim,
             c0,
@@ -1489,34 +1514,48 @@ fn run_sumcheck_loop<
         );
 
         #[cfg(feature = "gkr_self_checks")]
-        {
-            let s0 = evaluate_small_univariate_poly::<F, E, _>(&coeffs, &E::ZERO);
-            let s1 = evaluate_small_univariate_poly::<F, E, _>(&coeffs, &E::ONE);
-            let mut sum = s0;
-            sum.add_assign(&s1);
-            sum.mul_assign(&eq_prefactor);
-            assert_eq!(
-                sum, claim,
-                "s(0) + s(1) != claim / eq_prefactor at folding step {}",
-                step
-            );
+        match coefficients_strategy {
+            SumcheckCoefficientsStrategy::Plain => {
+                // s(0) + s(1) = 2 * c0 + c1 + c2 + c3
+                let mut sum = coeffs[0];
+                sum.double();
+                sum.add_assign(&coeffs[1]);
+                sum.add_assign(&coeffs[2]);
+                sum.add_assign(&coeffs[3]);
+                assert_eq!(
+                    sum, normalized_claim,
+                    "s(0) + s(1) != claim / eq_prefactor at folding step {}",
+                    step
+                );
+            }
+            SumcheckCoefficientsStrategy::Minimal => {
+                // the constant term a verifier derives from the claim
+                let mut derived = coeffs[0];
+                derived.add_assign(&coeffs[1]);
+                derived.mul_assign(&prev_challenges[step]);
+                derived.add_assign(&c0);
+                assert_eq!(
+                    derived, normalized_claim,
+                    "h(0) + tau * (h(1) - h(0)) != claim / eq_prefactor at folding step {}",
+                    step
+                );
+            }
         }
 
         commit_field_els::<F, E, TR>(seed, &coeffs);
-        intermediate_coeffs.push(coeffs);
         let folding_challenge = draw_random_field_els::<F, E, TR>(seed, 1)[0];
 
-        let new_claim = evaluate_small_univariate_poly::<F, E, _>(&coeffs, &folding_challenge);
-
-        claim = new_claim;
-        eq_prefactor = evaluate_eq_poly::<F, E>(&folding_challenge, &prev_challenges[step]);
+        normalized_claim = next_normalized_sumcheck_claim::<F, E>(
+            coefficients_strategy,
+            &coeffs,
+            prev_challenges[step],
+            normalized_claim,
+            &folding_challenge,
+        );
+        intermediate_coeffs.push(coeffs);
 
         folding_challenges.push(folding_challenge);
     }
-
-    // normalize the claim to avoid prefactors sneaking in for our self-check outside
-    let mut normalized_claim = claim;
-    normalized_claim.mul_assign(&eq_prefactor.inverse().expect("eq prefactor non-zero"));
 
     (
         folding_challenges,

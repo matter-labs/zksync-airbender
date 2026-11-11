@@ -1,4 +1,5 @@
 use proc_macro2::TokenStream;
+use prover::definitions::SumcheckCoefficientsStrategy;
 use prover::field::PrimeField;
 use prover::gkr::prover_config::ProverConfig;
 use quote::quote;
@@ -88,6 +89,50 @@ pub struct GKROutputGroupInfo {
     pub num_addresses: usize,
 }
 
+/// The statement verifying one layer's sumcheck rounds with the round routine
+/// of `strategy`. Binds `final_claim` (and, under
+/// [`SumcheckCoefficientsStrategy::Plain`], `final_eq_prefactor`) for
+/// [`final_step_check_call`].
+fn sumcheck_rounds_call(
+    strategy: SumcheckCoefficientsStrategy,
+    num_rounds: usize,
+    config_idx: usize,
+) -> TokenStream {
+    match strategy {
+        SumcheckCoefficientsStrategy::Plain => quote! {
+            let (final_claim, final_eq_prefactor) =
+                verify_sumcheck_rounds::<I, E, #num_rounds, GKR_COMMIT_BUF>(
+                    ts, initial_claim, &mut state.prev_point, #config_idx, nd_source)?;
+        },
+        SumcheckCoefficientsStrategy::Minimal => quote! {
+            let final_claim =
+                verify_sumcheck_rounds_minimal::<I, #num_rounds, GKR_COMMIT_BUF>(
+                    ts, initial_claim, &mut state.prev_point, nd_source);
+        },
+    }
+}
+
+/// The statement checking a layer's final claim (bound by
+/// [`sumcheck_rounds_call`]) against the kernels' value `g`.
+fn final_step_check_call(
+    strategy: SumcheckCoefficientsStrategy,
+    g: TokenStream,
+    config_idx: usize,
+) -> TokenStream {
+    match strategy {
+        SumcheckCoefficientsStrategy::Plain => quote! {
+            verify_final_step_check::<E>(#g,
+                final_eq_prefactor, final_claim, #config_idx)?;
+        },
+        SumcheckCoefficientsStrategy::Minimal => quote! {
+            verify_final_step_check_minimal::<E>(#g, final_claim, #config_idx)?;
+        },
+    }
+}
+
+/// The shared round routines, for every [`SumcheckCoefficientsStrategy`]: the
+/// `common` module is one file for all circuits and configs, and each
+/// circuit's verifier calls the routines of its own config's strategy.
 pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
@@ -110,6 +155,16 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
 
     // final step check operations
     let mul_rhs_eq = MW::mul_assign(quote! { rhs }, quote! { final_eq_prefactor });
+
+    // `SumcheckCoefficientsStrategy::Minimal` round operations: the message
+    // is `[d, c]` of `h(X) = e + d * X + c * X^2`
+    let minimal_coeffs = SumcheckCoefficientsStrategy::Minimal.gkr_round_coefficients();
+    let minimal_add_t_c = MW::add_assign(quote! { t }, quote! { coeffs[1] });
+    let minimal_mul_t_tau = MW::mul_assign(quote! { t }, quote! { tau });
+    let minimal_sub_e_t = MW::sub_assign(quote! { e }, quote! { t });
+    let minimal_horner_d =
+        MW::add_assign_product(quote! { h1 }, quote! { coeffs[1] }, quote! { r_k });
+    let minimal_horner_e = MW::add_assign_product(quote! { e }, quote! { h1 }, quote! { r_k });
 
     let common_fns = quote! {
         #[inline(always)]
@@ -209,6 +264,85 @@ pub fn generate_gkr_common<MW: FieldWrapper>() -> TokenStream {
             let mut rhs = g;
             #mul_rhs_eq;
             if rhs != final_claim {
+                return Err(E::gkr_final_step_check_failed(layer_idx));
+            }
+            Ok(())
+        }
+
+        /// The sumcheck rounds of a `SumcheckCoefficientsStrategy::Minimal` proof. Every
+        /// round polynomial is `eq(tau, X) * h(X)` with `tau` the round's coordinate of
+        /// the previous claim point and `h(X) = e + d * X + c * X^2`; the running claim is
+        /// kept free of the eq factors, `claim = (1 - tau) * h(0) + tau * h(1)`. The prover
+        /// sends only `[d, c]`: the claim fixes `e = claim - tau * (d + c)`, so the round
+        /// has nothing to check and the next claim is `h(r)`. A wrong message surfaces in
+        /// the layer's final step check (`verify_final_step_check_minimal`).
+        #[inline(always)]
+        pub fn verify_sumcheck_rounds_minimal<
+            I: NonDeterminismSource<#field_struct>,
+            const NUM_ROUNDS: usize,
+            const COMMIT_BUF: usize,
+        >(
+            ts: &mut TranscriptState,
+            initial_claim: #quartic_struct,
+            challenges: &mut [#quartic_struct],
+            nd_source: &mut I,
+        ) -> #quartic_struct {
+            let mut claim = initial_claim;
+
+            let coeff_data_words = #minimal_coeffs * EXT_DEGREE;
+
+            let mut commit_buf = CommitBuf::<COMMIT_BUF>::new();
+
+            for round in 0..NUM_ROUNDS {
+                {
+                    let mut i = 0;
+                    while i < coeff_data_words {
+                        commit_buf.data_write(i, read_reduced_field_el::<I>(nd_source).as_u32_raw_repr());
+                        i += 1;
+                    }
+                }
+
+                ts.commit(&mut commit_buf, coeff_data_words);
+
+                // SAFETY: `CommitBuf::commit` writes only the zero padding past `coeff_data_words`,
+                // so the buffer still holds the coefficients read from `nd_source` above.
+                let coeffs: [#quartic_struct; #minimal_coeffs] =
+                    unsafe { commit_buf.read_one::<[#quartic_struct; #minimal_coeffs]>() };
+                let r_k = {
+                    let raw = unsafe { (ts.draw_digest().as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
+                    ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw)
+                };
+
+                {
+                    let tau = unsafe { *challenges.get_unchecked(round) };
+                    // e = claim - tau * (d + c)
+                    let mut t = coeffs[0];
+                    #minimal_add_t_c;
+                    #minimal_mul_t_tau;
+                    let mut e = claim;
+                    #minimal_sub_e_t;
+                    // h(r) = e + r * (d + r * c)
+                    let mut h1 = coeffs[0];
+                    #minimal_horner_d;
+                    #minimal_horner_e;
+                    claim = e;
+                }
+
+                unsafe { *challenges.get_unchecked_mut(round) = r_k };
+            }
+
+            claim
+        }
+
+        // Final step of a `SumcheckCoefficientsStrategy::Minimal` layer: the running claim
+        // carries no eq factor, so it must equal the kernels' value `g = G(point)` itself.
+        #[inline(always)]
+        pub fn verify_final_step_check_minimal<E: ErrorCreator>(
+            g: #quartic_struct,
+            final_claim: #quartic_struct,
+            layer_idx: usize,
+        ) -> Result<(), E::Error> {
+            if g != final_claim {
                 return Err(E::gkr_final_step_check_failed(layer_idx));
             }
             Ok(())
@@ -1091,6 +1225,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         "the prover config was computed for another trace length than the circuit's"
     );
     let sumcheck_output_size_log_2 = prover_config.sumcheck_explicit_output_size_log_2;
+    let coefficients_strategy = prover_config.sumcheck_coefficients_strategy;
     let whir_schedule = &prover_config.whir_schedule;
     let security_bits = prover_config.security_level.security_bits() as u32;
     let pack_log2 = prover_config.pack_log2();
@@ -1445,13 +1580,16 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         // coordinate remains to be fixed in the open via `r_last`.
         let num_regular_rounds = num_sumcheck_rounds;
 
+        let sumcheck_rounds =
+            sumcheck_rounds_call(coefficients_strategy, num_regular_rounds, config_idx);
+        let final_step_check =
+            final_step_check_call(coefficients_strategy, quote! { f }, config_idx);
+
         let label = &format!("GKR COMPRESSION LAYER {config_idx}");
         main_body.extend(quote! {
             {
                 let initial_claim = dim_reducing_compute_claim(state.prev_claims.as_array::<#total_output_polys>(), state.batching_challenge);
-                let (final_claim, final_eq_prefactor) =
-                    verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
-                        ts, initial_claim, &mut state.prev_point, #config_idx, nd_source)?;
+                #sumcheck_rounds
                 let mut fc_len = #num_regular_rounds;
                 // Half the data: the [E;2] line in the remaining LSB coordinate (was [E;4]).
                 let data_words = #num_input_addrs * 2 * EXT_DEGREE;
@@ -1466,8 +1604,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                     let evals: &[[#quartic_struct; 2]] = eval_buf.data_as(#num_input_addrs);
                     // Half the work: evaluate the dimension-reducing kernels over a single LSB pair.
                     let f = dim_reducing_final_step_accumulator(evals, state.batching_challenge, &#indices_name);
-                    verify_final_step_check::<E>(f,
-                        final_eq_prefactor, final_claim, #config_idx)?;
+                    #final_step_check
                 }
                 ts.commit(&mut eval_buf, data_words);
                 let mut draw_buf = LazyVec::<#quartic_struct, 2>::new();
@@ -1833,6 +1970,11 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 (pre_draw, post_draw, cache_check, TokenStream::new())
             };
 
+        let sumcheck_rounds =
+            sumcheck_rounds_call(coefficients_strategy, num_regular_rounds, config_idx);
+        let final_step_check =
+            final_step_check_call(coefficients_strategy, quote! { f[0] }, config_idx);
+
         let label = &format!("GKR MAIN LAYER {config_idx}");
         main_body.extend(quote! {
             {
@@ -1840,9 +1982,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                 // All folding rounds (incl. the last) are verified here; `final_claim` is the
                 // running claim after the last challenge and `state.prev_point` holds the full
                 // folding point.
-                let (final_claim, final_eq_prefactor) =
-                    verify_sumcheck_rounds::<I, E, #num_regular_rounds, GKR_COMMIT_BUF>(
-                        ts, initial_claim, &mut state.prev_point, #config_idx, nd_source)?;
+                #sumcheck_rounds
                 let fc_len = #num_regular_rounds;
                 // Number of at-point evaluations the prover sends for this layer (one per output
                 // poly). Named for readability; the extra cached-relation evals (if any) are
@@ -1866,8 +2006,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
                         external_challenges.permutation_argument_additive_part,
                         address_high_bits_shift,
                         &initial_transcript.inits_and_teardowns_top_bits);
-                    verify_final_step_check::<E>(f[0],
-                        final_eq_prefactor, final_claim, #config_idx)?;
+                    #final_step_check
                 }
                 // Commit the at-point evals TOGETHER with the extra cached-relation evals in a
                 // SINGLE transcript commit, BEFORE drawing the batching challenge — mirroring the
@@ -2336,6 +2475,15 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
 
     };
 
+    let sumcheck_round_fn_imports = match coefficients_strategy {
+        SumcheckCoefficientsStrategy::Plain => {
+            quote! { verify_sumcheck_rounds, verify_final_step_check }
+        }
+        SumcheckCoefficientsStrategy::Minimal => {
+            quote! { verify_sumcheck_rounds_minimal, verify_final_step_check_minimal }
+        }
+    };
+
     let gkr = quote! {
         #field_use_stmts
         use ::verifier_common::gkr::{
@@ -2348,7 +2496,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
             BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS,
         };
         use super::common::{
-            verify_sumcheck_rounds, verify_final_step_check, fold_standard_claims,
+            #sumcheck_round_fn_imports, fold_standard_claims,
             make_eq_poly, dot_eq, draw_field_els_into, draw_fresh_field_els_into, draw_single_field_el,
             draw_field_els_into_after_pow, draw_single_field_el_after_pow,
             read_field_el, read_reduced_field_el,

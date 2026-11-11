@@ -28,6 +28,7 @@ fn test_prover_config() -> prover_config::ProverConfig {
         // drives `evaluate_sumcheck_for_layer` directly, not a prove entry
         trace_len_log2: 4,
         commitment_mode: prover_config::CommitmentMode::SeparateMemoryAndWitness,
+        sumcheck_coefficients_strategy: Default::default(),
         cap_size: 64,
         sumcheck_explicit_output_size_log_2: 4,
         security_level: crate::definitions::SecurityLevel::Sec100,
@@ -425,4 +426,168 @@ fn test_sumcheck_loop_multiple_gates() {
     assert_eq!(layer_0_claims.get(&addr_copy_in).unwrap(), &expected_copy);
     assert_eq!(layer_0_claims.get(&addr_prod_a).unwrap(), &expected_a);
     assert_eq!(layer_0_claims.get(&addr_prod_b).unwrap(), &expected_b);
+}
+
+/// The same-size engines (the naive loop and the windowed chain) on a
+/// product gate under both coefficient strategies, with the emitted round
+/// messages replayed in the generated verifier's round shape of each
+/// strategy and closed against the gate on the at-point claims.
+#[test]
+fn test_sumcheck_loop_round_messages_under_both_strategies() {
+    use crate::definitions::SumcheckCoefficientsStrategy;
+    use crate::gkr::prover::{GKRBackend, NaiveGKRBackend};
+    use field::Field;
+
+    const FOLDING_STEPS: usize = 6;
+    const POLY_SIZE: usize = 1 << FOLDING_STEPS;
+
+    let worker = Worker::new_with_num_threads(1);
+
+    let a = random_poly_in_ext::<F, E>(POLY_SIZE);
+    let b = random_poly_in_ext::<F, E>(POLY_SIZE);
+    let output = compute_product::<F, E>(&a, &b);
+
+    let addr_a = GKRAddress::InnerLayer {
+        layer: 0,
+        offset: 0,
+    };
+    let addr_b = GKRAddress::InnerLayer {
+        layer: 0,
+        offset: 1,
+    };
+    let addr_out = GKRAddress::InnerLayer {
+        layer: 1,
+        offset: 0,
+    };
+    let layer = GKRLayerDescription {
+        layer: 0,
+        gates: vec![GateArtifacts {
+            output_layer: 1,
+            enforced_relation: GKRRelation::TrivialProduct {
+                input: [addr_a, addr_b],
+                output: addr_out,
+            },
+        }],
+        gates_with_external_connections: vec![],
+        cached_relations: BTreeMap::new(),
+        intermediate_layer_width: None,
+    };
+
+    let tau: Vec<E> = random_poly_in_ext::<F, E>(FOLDING_STEPS);
+    let eq_precomputed = make_eq_poly_in_full_lsb::<E>(&tau, &worker);
+    let output_claim =
+        evaluate_with_precomputed_eq_ext::<E>(&output, eq_precomputed.last().unwrap());
+
+    let schedules = [
+        prover_config::naive_same_size_schedule(),
+        prover_config::windowed_same_size_schedule(FOLDING_STEPS),
+    ];
+    for (strategy, schedule) in SumcheckCoefficientsStrategy::ALL
+        .iter()
+        .flat_map(|strategy| schedules.iter().map(move |schedule| (*strategy, schedule)))
+    {
+        let mut storage = setup_storage::<F, E>(
+            vec![(addr_a, a.clone()), (addr_b, b.clone())],
+            vec![(addr_out, output.clone())],
+        );
+        let mut claims_storage: BTreeMap<usize, BTreeMap<GKRAddress, E>> = BTreeMap::new();
+        claims_storage.insert(1, [(addr_out, output_claim)].into_iter().collect());
+        let mut claim_point_entries: BTreeMap<
+            usize,
+            Vec<crate::gkr::prover::EvaluationPointEntry<E>>,
+        > = Default::default();
+        claim_point_entries.insert(
+            1,
+            tau.iter()
+                .map(|point| crate::gkr::prover::EvaluationPointEntry::Coordinate { point: *point })
+                .collect(),
+        );
+
+        let mut batching_challenge = E::from_base(F::from_u32_with_reduction(0xff));
+        let mut seed = Seed::default();
+        let config = prover_config::ProverConfig {
+            sumcheck_coefficients_strategy: strategy,
+            same_size_sumcheck_schedule: schedule.clone(),
+            ..test_prover_config()
+        };
+
+        let proof = GKRBackend::<F, E>::evaluate_same_size_sumcheck_for_layer::<TestTranscript>(
+            &NaiveGKRBackend,
+            0,
+            &layer,
+            &mut claim_point_entries,
+            &mut claims_storage,
+            &mut storage,
+            &mut batching_challenge,
+            POLY_SIZE,
+            E::from_base(F::from_u32_with_reduction(0xff)),
+            E::from_base(F::from_u32_with_reduction(42)),
+            &[],
+            0,
+            &GKRExternalChallenges::default(),
+            &config,
+            &mut seed,
+            &crate::allocation_pool::GenericAllocationPool::proxy(),
+            &worker,
+        );
+
+        let challenges: Vec<E> = claim_point_entries[&0]
+            .iter()
+            .map(|e| match e {
+                crate::gkr::prover::EvaluationPointEntry::Coordinate { point } => *point,
+                other => panic!("naive schedule emits scalar coordinates, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(challenges.len(), FOLDING_STEPS);
+        assert_eq!(proof.internal_round_coefficients.len(), FOLDING_STEPS);
+
+        // the gate on the at-point claims (a single gate: batching power one)
+        let mut g = claims_storage[&0][&addr_a];
+        g.mul_assign(&claims_storage[&0][&addr_b]);
+
+        let mut claim = output_claim;
+        match strategy {
+            SumcheckCoefficientsStrategy::Plain => {
+                let mut eq_prefactor = E::ONE;
+                for (round, message) in proof.internal_round_coefficients.iter().enumerate() {
+                    let coeffs: &[E; 4] = message.as_multilinear().try_into().unwrap();
+                    let mut sum = coeffs[0];
+                    sum.double();
+                    sum.add_assign(&coeffs[1]);
+                    sum.add_assign(&coeffs[2]);
+                    sum.add_assign(&coeffs[3]);
+                    sum.mul_assign(&eq_prefactor);
+                    assert_eq!(sum, claim, "plain round {round}");
+                    let r = challenges[round];
+                    claim =
+                        crate::gkr::sumcheck::evaluate_small_univariate_poly::<F, E, 4>(coeffs, &r);
+                    eq_prefactor = crate::gkr::sumcheck::evaluate_eq_poly::<F, E>(&r, &tau[round]);
+                }
+                let mut rhs = g;
+                rhs.mul_assign(&eq_prefactor);
+                assert_eq!(rhs, claim, "plain final step check");
+            }
+            SumcheckCoefficientsStrategy::Minimal => {
+                for (round, message) in proof.internal_round_coefficients.iter().enumerate() {
+                    let coeffs: &[E; 2] = message.as_multilinear().try_into().unwrap();
+                    let [d, c] = *coeffs;
+                    let r = challenges[round];
+                    // e = claim - tau * (d + c)
+                    let mut t = d;
+                    t.add_assign(&c);
+                    t.mul_assign(&tau[round]);
+                    let mut e = claim;
+                    e.sub_assign(&t);
+                    // h(r) = e + r * (d + r * c)
+                    let mut h = c;
+                    h.mul_assign(&r);
+                    h.add_assign(&d);
+                    h.mul_assign(&r);
+                    h.add_assign(&e);
+                    claim = h;
+                }
+                assert_eq!(g, claim, "minimal final step check");
+            }
+        }
+    }
 }

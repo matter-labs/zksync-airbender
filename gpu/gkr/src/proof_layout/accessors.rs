@@ -555,7 +555,10 @@ impl ProofLayout {
         assert_eq!(sumcheck_polys.len(), fold_steps.iter().sum::<usize>());
         assert_eq!(folding_pow_nonces.len(), sumcheck_polys.len());
         let mut polys = sumcheck_polys.into_iter();
-        let base_sumcheck_polys: Vec<[E4; 3]> = polys.by_ref().take(fold_steps[0]).collect();
+        // the device writes all 3 monomial coefficients of every round
+        // (`SumcheckCoefficientsStrategy::Plain`)
+        let base_sumcheck_polys: Vec<_> =
+            polys.by_ref().take(fold_steps[0]).map(Into::into).collect();
         let mut step = fold_steps[0];
         for (i, (oracle, round)) in intermediate_whir_oracles
             .iter_mut()
@@ -567,7 +570,7 @@ impl ProofLayout {
                 oracle.ood_pow_nonce = Some(ood_pow_nonces[i]);
             }
             oracle.ood_samples = vec![ood_samples[i]];
-            oracle.sumcheck_polys = polys.by_ref().take(steps).collect();
+            oracle.sumcheck_polys = polys.by_ref().take(steps).map(Into::into).collect();
             if round.folding_pow_bits > 0 {
                 oracle.folding_pow_nonces = folding_pow_nonces[step..step + steps].to_vec();
             }
@@ -615,7 +618,9 @@ impl ProofLayout {
                 .0
                 .iter()
                 .copied()
-                .map(SumcheckRoundCoefficients::Multilinear)
+                // the device writes all 4 monomial coefficients of every
+                // round (`SumcheckCoefficientsStrategy::Plain`)
+                .map(|coeffs| SumcheckRoundCoefficients::Multilinear(coeffs.into()))
                 .collect();
             let finals_flat = self.backward_final_step_evals_host(slab, layer_slot);
             debug_assert_eq!(

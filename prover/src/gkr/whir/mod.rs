@@ -1151,6 +1151,7 @@ pub fn whir_fold<
     let whir_schedule = &prover_config.whir_schedule;
     let pack_log2 = prover_config.pack_log2();
     let merged_memory_and_witness = prover_config.merged_memory_and_witness();
+    let coefficients_strategy = prover_config.sumcheck_coefficients_strategy;
     let tree_cap_size = whir_schedule.cap_size;
     let trace_len_log2 = prover_config.whir_message_size_log2();
     let security_bits = prover_config.security_level.security_bits();
@@ -1509,9 +1510,12 @@ pub fn whir_fold<
                 special_three_point_eval(evals_pp.as_slice(), eq_pp.as_slice(), worker);
             let evaluation_point = E::from_base(two_inv);
             let univariate_coeffs = special_lagrange_interpolate(f0, f1, f_half, evaluation_point);
-            // commit
-            proof.base_sumcheck_polys.push(univariate_coeffs);
-            commit_field_els::<F, E, TR>(&mut transcript_seed, &univariate_coeffs);
+            // commit: only the coefficients the strategy sends; the folding
+            // below keeps the full polynomial
+            let round_message =
+                whir_sumcheck_round_message(coefficients_strategy, &univariate_coeffs);
+            commit_field_els::<F, E, TR>(&mut transcript_seed, &round_message);
+            proof.base_sumcheck_polys.push(round_message);
 
             #[cfg(feature = "gkr_self_checks")]
             {
@@ -1901,11 +1905,14 @@ pub fn whir_fold<
             for (c, d) in univariate_coeffs.iter_mut().zip(in_domain_coeffs.iter()) {
                 c.add_assign(d);
             }
-            // commit
+            // commit: only the coefficients the strategy sends; the folding
+            // below keeps the full polynomial
+            let round_message =
+                whir_sumcheck_round_message(coefficients_strategy, &univariate_coeffs);
+            commit_field_els::<F, E, TR>(&mut transcript_seed, &round_message);
             proof.intermediate_whir_oracles[internal_round]
                 .sumcheck_polys
-                .push(univariate_coeffs);
-            commit_field_els::<F, E, TR>(&mut transcript_seed, &univariate_coeffs);
+                .push(round_message);
 
             #[cfg(feature = "gkr_self_checks")]
             {
@@ -2202,14 +2209,17 @@ pub fn whir_fold<
             for (c, d) in univariate_coeffs.iter_mut().zip(in_domain_coeffs.iter()) {
                 c.add_assign(d);
             }
-            // commit
+            // commit: only the coefficients the strategy sends; the folding
+            // below keeps the full polynomial
+            let round_message =
+                whir_sumcheck_round_message(coefficients_strategy, &univariate_coeffs);
+            commit_field_els::<F, E, TR>(&mut transcript_seed, &round_message);
             proof
                 .intermediate_whir_oracles
                 .last_mut()
                 .unwrap()
                 .sumcheck_polys
-                .push(univariate_coeffs);
-            commit_field_els::<F, E, TR>(&mut transcript_seed, &univariate_coeffs);
+                .push(round_message);
 
             #[cfg(feature = "gkr_self_checks")]
             {
