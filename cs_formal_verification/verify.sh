@@ -16,7 +16,8 @@ echo "== 0. The Sail model: lean-sail (pinned, fetched on demand; not committed)
 echo "== 1. The spec (human/) imports nothing from the proofs (slop/) or the tests (test/)"
 if grep -rnE '^\s*(public\s+)?import\s+(Slop|Tests|Checks)(\.|$)' human; then fail "human/ imports slop/ or test/"; fi
 
-echo "== 1b. The circuit JSONs the spec imports: pinned sha256, no duplicate keys, no duplicate circuits"
+echo "== 1b. The circuit and setup JSONs the spec imports: pinned sha256, no duplicate keys, no duplicate circuits,"
+echo "   canonical form (setup JSONs compact)"
 python3 check_circuit_json.py
 
 echo "== 2. Lean build: spec, proofs, regressions and the axiom audit modules in one lake build (test modules start as"

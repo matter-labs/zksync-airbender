@@ -92,8 +92,9 @@ CleanCore (Clean's definitions, transcribed) supplies `Expression`, `FlatOperati
   reads a circuit JSON, parses it with `Json.parse`, decodes the value with `Circuit.decode` and reflects the result as
   `importedCircuit` (derived `ToExpr`), next to the file's text `importedCircuitSourceBytes`. Trusted: the file read,
   the composition and the reflection. For the standalone inits/teardowns artifact, `StandaloneBytesClaim` has the
-  kernel parse and decode the file's bytes, so only the file read stays trusted. The sha256 pins of the JSON files are
-  checked by [check_circuit_json.py](../lean/check_circuit_json.py) (verify.sh step 1b).
+  kernel parse and decode the file's bytes, so only the file read stays trusted. The sha256 pins of the JSON files, and
+  that each circuit and setup JSON is in its canonical form, are checked by
+  [check_circuit_json.py](../lean/check_circuit_json.py) (verify.sh step 1b).
 - **Proved:** the parser accepts exactly the JSON texts without duplicate member names, and a text has one value
   (`ParseSoundClaim`, `TextUniqueClaim`, [Theorems](../lean/human/Human/Import/Theorems.lean), against the byte-level
   grammar of [JsonGrammar](../lean/human/Human/Import/JsonGrammar.lean): RFC 8259 restricted to integers and to `\u`

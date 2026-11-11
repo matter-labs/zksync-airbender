@@ -1,5 +1,12 @@
 # Setup data
 
+Format: every setup JSON here is committed in its canonical compact form, the exporter's
+output: `json.dumps(v, separators=(",", ":"))` of its own value, byte for byte, without a
+trailing newline. `check_circuit_json.py` (verify.sh step 1b) checks it and, on a mismatch,
+prints the one-line command that canonicalizes the file. The importer parses every byte in the
+interpreter, so whitespace costs build time (a re-save with indent 25 once nearly doubled
+`Chi5.SetupArtifact`); never commit a re-indented copy.
+
 `blake-round.json`: native setup of the six-column BLAKE2 round circuit
 (192 generic lookups, 6 table regions, trace length 1048576). Source of truth
 for `Human.Circuits.Blake2Round.Tables.Setup`.
