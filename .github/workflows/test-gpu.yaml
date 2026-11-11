@@ -173,6 +173,10 @@ jobs:
         run: |
           nvidia-smi
 
+      - name: Record GPU identity and ECC counters
+        continue-on-error: true
+        run: nvidia-smi --query-gpu=index,uuid,serial,pci.bus_id,ecc.errors.corrected.volatile.total,ecc.errors.uncorrected.volatile.total,ecc.errors.uncorrected.aggregate.total --format=csv
+
       - name: Download GPU artifacts
         uses: actions/download-artifact@v4
         with:
@@ -252,6 +256,11 @@ jobs:
           printf '0000000f00124f80' > "$INPUT_FILE"
           .github/scripts/soundness_mode_smoke.sh zksync-airbender-gpu/cli \
             examples/hashed_fibonacci/app.bin gpu
+
+      - name: Record GPU identity and ECC counters after a failure
+        if: failure()
+        continue-on-error: true
+        run: nvidia-smi --query-gpu=index,uuid,serial,pci.bus_id,ecc.errors.corrected.volatile.total,ecc.errors.uncorrected.volatile.total,ecc.errors.uncorrected.aggregate.total --format=csv
 
   # Keep branch protection tied to one stable GPU check name even if we
   # split GPU coverage across multiple jobs or matrix entries later on.
