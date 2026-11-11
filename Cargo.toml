@@ -6,6 +6,7 @@ members = [
     "common_constants",
     "field",
     "experiments_runner",
+    "fixtures",
     "cs",
     "prover",
     "fft",
@@ -149,6 +150,7 @@ keywords = ["blockchain", "zksync", "zk", "risc-v"]
 categories = ["cryptography"]
 
 [workspace.dependencies]
+proof_fixtures = { path = "./fixtures" }
 field = { path = "./field", default-features = false }
 blake2s_u32 = { path = "./blake2s_u32", default-features = false }
 common_constants = { path = "./common_constants" }
@@ -249,6 +251,13 @@ lto = "fat"
 codegen-units = 1
 debug = false
 strip = true
+
+# Release semantics (no debug assertions or overflow checks) with cheaper codegen than
+# `release`: thin LTO and 16 codegen units.
+[profile.release-thin]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
 
 [profile.verifier]
 inherits = "release"

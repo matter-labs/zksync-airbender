@@ -305,7 +305,7 @@ circuit layers finish (base-layer claims + point z at 22 coords, seed = post-GKR
 4. **extend point**: base_layer_z = extra_coordinates (PREPENDED) || old base_layer_z → 26 coords
    (trace_len_log2_for_whir = 22+4 = 26).
 5. **draw whir_batching_challenge**: `draw_random_field_els_with_pow(seed, 1, batched_proximity_pow_bits)`
-   → 1 el (+ PoW nonce = proof.batched_proximity_check_pow_nonce, validate against it).
+   → 1 el (+ PoW nonce = proof.whir_proof.batching_challenge_pow_nonce, validate against it).
 6. **batched opening value**: whir_fold batches the merged columns with whir_batching_challenge:
    batched_claim = Σ_i claim_i · batching^i over (mem_merged ++ wit_merged(empty) ++ setup_merged)
    [confirm exact order/inclusion of setup from whir_fold before finalizing]. This is the single value
@@ -322,7 +322,7 @@ Validate end-to-end: gkr.sol run reproduces post-GKR seed 0xf3b9657c then the me
 
 ### STEP 4 — VALIDATED (Rust mirror, real proof)
 `verify_dim_reduce_layers` now continues through the GKR→WHIR handoff; the WHIR-batching PoW nonce
-matches `proof.batched_proximity_check_pow_nonce` (=0), which validates the whole handoff transcript
+matches `proof.whir_proof.batching_challenge_pow_nonce` (=0), which validates the whole handoff transcript
 (post-GKR seed → 4 extra-coord draws → merge → batching draw). Reference values (this proof):
 - pack_log2 = 4; base_layer_z = 22 coords → whir_point = 26 coords (extra || base_layer_z).
 - merge: mem+wit = 106 claims → 7 merged (chunks of 16); setup = 10 → 1 merged.

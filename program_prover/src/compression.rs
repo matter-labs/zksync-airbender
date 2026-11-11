@@ -10,10 +10,11 @@
 //!
 //! 1. The STANDARD special-opcodes unified fsv
 //!    (`fsv_unified_recursion_layer_sec_100_special_opcodes_extension`)
-//!    verifies the input pair; proving that run takes THREE 2^23 feeder chunks.
-//! 2. The MERGED-mode feeder fsv
-//!    (`fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension`)
-//!    verifies those three feeder proofs; proving it fits ONE feeder chunk.
+//!    verifies the input pair; proving that run takes one or more 2^23 feeder
+//!    chunks.
+//! 2. The MERGED-mode feeder fsv (the `FsvProfile::L1Feeder` guest of
+//!    the unified recursion layer, special opcodes) verifies those feeder
+//!    proofs; proving it must fit ONE feeder chunk.
 //! 3. The same feeder fsv verifies that single proof in <= 2^22 cycles;
 //!    proving THAT run with the EVM-production Proth120 packed parameters
 //!    ([`crate::l1::prove_l1_wrap_in_memory`], all oracles in memory) yields
@@ -29,20 +30,19 @@ use crate::unified_transition::{
     prove_unified_transition_with_replayer_timed, UnifiedTransitionTimings,
 };
 use full_statement_verifier::host_utils::{
-    build_unified_stream, compute_end_params, load_fsv_program, load_program, FsvRecursionChain,
+    build_unified_stream, compute_end_params, load_fsv_exact, FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
-use prover::definitions::SecurityLevel;
+use prover::definitions::{SecurityLevel, SoundnessMode};
 use prover::gkr::prover::{
     DefaultBabyBearBackend, DefaultBabyBearGKRBackend, OperationMode, RsCodewordSource,
     WhirOracleStorage,
 };
-use prover::tests::gkr::orchestration::common::ProgramConfig;
 use prover::worker::Worker;
 use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 use setups::Setups;
 use std::path::Path;
-use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
+use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile, FsvProgram};
 
 /// Cycle/RAM bounds of the BabyBear feeder stages (mirrors the research test).
 const UNIFIED_CYCLES_BOUND: usize = 1 << 27;
@@ -50,10 +50,16 @@ const RAM_BOUND: usize = 1 << 30;
 /// The final verifier run must fit the single 2^22 Proth120 unified chunk.
 const L1_CYCLES_BOUND: usize = 1 << 22;
 
-/// File stem of the MERGED-mode L1-feeder special-opcodes fsv binary (it has
-/// no `FsvProgram` variant — the research test loads it by explicit path too).
-const FEEDER_FSV_STEM: &str =
-    "fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension";
+/// The MERGED-mode L1-feeder guest: the unified recursion layer with special
+/// opcodes, under the `L1Feeder` profile.
+const L1_FEEDER_GUEST: FsvDescriptor = FsvDescriptor {
+    profile: FsvProfile::L1Feeder,
+    ..FsvDescriptor::new(
+        SoundnessMode::PessimisticConjecture,
+        FsvProgram::UnifiedRecursionLayer,
+        BlakeMode::BlakeSpecialOpcodes,
+    )
+};
 
 /// Everything [`compress_fixed_point_to_l1`] produces: the L1 proof + its
 /// commitment-mode aux data (the fixture pair the EVM tooling consumes) and
@@ -72,14 +78,14 @@ pub struct L1CompressionResult {
 ///
 /// * `input_proof` / `input_setups` — the converged pipeline artifact (must
 ///   carry a recursion chain; must be exactly 1 unified + 1 delegation proof).
-/// * `fsv_dir` — the checked-in verifier programs, `tools/gkr_verifier`.
+/// * `fsv_dir` — the checked-in verifier programs, `tools/gkr_verifier/full_statement_verifiers`.
 /// * `proth120_circuit_layout_path` — the compiled
 ///   `unified_reduced_machine_layout_gkr_proth120.json`.
 /// * `feeder_storage` — the WHIR oracle storage policy of the BabyBear feeder
 ///   stages 1-2: `fully_in_memory_continuous()` on large machines (oracle
 ///   recompute otherwise dominates the chunk proving time),
 ///   `fully_recompute()` where the feeder-LDE codewords don't fit RAM. Stage
-///   3 is always in-memory-continuous ([`prove_l1_wrap_in_memory`]).
+///   3 is always in-memory-continuous ([`crate::l1::prove_l1_wrap_in_memory`]).
 pub fn compress_fixed_point_to_l1(
     input_proof: &ProgramProof,
     input_setups: &Setups,
@@ -118,24 +124,26 @@ pub fn compress_fixed_point_to_l1(
 
     // Stage-1 verifier: the STANDARD special-opcodes unified fsv (verifies
     // separate-commitment proofs). Stages 2/3: the MERGED-mode feeder fsv.
-    let (std_bin, std_text) = load_fsv_program(
+    let (std_bin, std_text) = load_fsv_exact(
         fsv_dir,
-        FsvProgram::UnifiedRecursionLayer,
-        BlakeMode::BlakeSpecialOpcodes,
-    );
-    let (feeder_bin, feeder_text) = load_program(
-        &fsv_dir.join(format!("{FEEDER_FSV_STEM}.bin")),
-        &fsv_dir.join(format!("{FEEDER_FSV_STEM}.text")),
-    );
+        &FsvDescriptor::new(
+            SoundnessMode::PessimisticConjecture,
+            FsvProgram::UnifiedRecursionLayer,
+            BlakeMode::BlakeSpecialOpcodes,
+        ),
+    )
+    .into_words();
+    // Padded words for the BabyBear stages, unpadded for the Proth120 stage.
+    let feeder = load_fsv_exact(fsv_dir, &L1_FEEDER_GUEST);
 
     let feeder_config = prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23();
     println!(
         "[l1-compression] feeder config: base lde {}, whir steps {:?}, queries {:?}, pow {:?}; \
          feeder oracle storage: {feeder_storage:?}",
-        feeder_config.lde_factor,
-        feeder_config.whir_schedule.whir_steps_schedule,
-        feeder_config.whir_schedule.whir_queries_schedule,
-        feeder_config.whir_schedule.whir_pow_schedule,
+        feeder_config.lde_factor(),
+        feeder_config.whir_schedule.fold_steps(),
+        feeder_config.whir_schedule.queries_per_round(),
+        feeder_config.whir_schedule.queries_pow_bits_per_round(),
     );
 
     // ── Stages 1 and 2: BabyBear feeder layers (merged commitments). ──
@@ -145,9 +153,9 @@ pub fn compress_fixed_point_to_l1(
 
     for (stage, stage_timing) in stage_timings.iter_mut().enumerate() {
         let (run_bin, run_text) = if stage == 0 {
-            (&std_bin, &std_text)
+            (std_bin.as_slice(), std_text.as_slice())
         } else {
-            (&feeder_bin, &feeder_text)
+            (feeder.bin(), feeder.text())
         };
         println!(
             "[l1-compression] stage {}: proving the {} verifier over the current proof",
@@ -159,7 +167,7 @@ pub fn compress_fixed_point_to_l1(
             },
         );
 
-        let stream = build_unified_stream(&setups, &proof);
+        let stream = build_unified_stream(&setups, &proof, BlakeMode::BlakeSpecialOpcodes);
         // An in-memory base source takes the precommitted single-pass path:
         // witness evaluation and the merged commitment happen once per chunk,
         // and the proofs consume the pre-committed oracles (the
@@ -207,17 +215,17 @@ pub fn compress_fixed_point_to_l1(
             delegations, 0,
             "feeder layers are delegation-free by construction"
         );
-        // The standard special-opcodes fsv run over the stable point costs
-        // ~19.7M cycles = 3 feeder chunks; the feeder fsv over those 3 proofs
-        // must contract to a single chunk for the L1 wrap.
-        let expected_chunks = if stage == 0 { 3 } else { 1 };
-        assert_eq!(
-            chunks,
-            expected_chunks,
-            "stage {} must produce {expected_chunks} feeder chunk(s), got {chunks} — the \
-             verifier cost / feeder schedule drifted",
-            stage + 1,
-        );
+        // The standard special-opcodes fsv run over the stable point may take
+        // several feeder chunks; the feeder fsv over them must contract to a
+        // single chunk for the L1 wrap.
+        assert!(chunks > 0, "stage {} produced no feeder chunk", stage + 1);
+        if stage == 1 {
+            assert_eq!(
+                chunks, 1,
+                "stage 2 must contract to one feeder chunk for the L1 wrap, got {chunks} — the \
+                 verifier cost / feeder schedule drifted"
+            );
+        }
         println!(
             "[l1-compression] stage {}: {} cycles proven as {chunks} feeder chunk(s)",
             stage + 1,
@@ -234,22 +242,16 @@ pub fn compress_fixed_point_to_l1(
     println!(
         "[l1-compression] stage 3: proving the feeder verifier with the L1 (Proth120) parameters"
     );
-    let stream = build_unified_stream(&setups, &proof);
-    let program = ProgramConfig {
-        binary_path: fsv_dir
-            .join(format!("{FEEDER_FSV_STEM}.bin"))
-            .to_string_lossy()
-            .into_owned(),
-        text_section_path: fsv_dir
-            .join(format!("{FEEDER_FSV_STEM}.text"))
-            .to_string_lossy()
-            .into_owned(),
-        non_determinism_reads: stream,
-        cycles_bound: L1_CYCLES_BOUND,
-        ram_bound_bytes: RAM_BOUND,
-    };
-    let (l1_proof, l1_operation_mode, l1_timings) =
-        prove_l1_wrap_in_memory(&program, proth120_circuit_layout_path, worker);
+    let stream = build_unified_stream(&setups, &proof, BlakeMode::BlakeSpecialOpcodes);
+    let (l1_proof, l1_operation_mode, l1_timings) = prove_l1_wrap_in_memory(
+        feeder.unpadded_bin().to_vec(),
+        feeder.unpadded_text().to_vec(),
+        &stream,
+        L1_CYCLES_BOUND,
+        RAM_BOUND,
+        proth120_circuit_layout_path,
+        worker,
+    );
 
     // ── Timing marks: setup-commitment work vs proving work, per stage and
     //    in total. ──
@@ -292,116 +294,5 @@ pub fn compress_fixed_point_to_l1(
         l1_operation_mode,
         stage_timings,
         l1_timings,
-    }
-}
-
-#[cfg(test)]
-mod diagnostics {
-    use super::*;
-    use crate::unified::replay_unified_circuit;
-    use crate::unrolled::run_unrolled_machine_in_full;
-    use common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
-    use riscv_transpiler::cycle::ReducedMachineWithDelegation;
-    use riscv_transpiler::vm::{Counters, DelegationsAndUnifiedCounters};
-
-    fn deserialize_compressed_from_file<T: serde::de::DeserializeOwned>(path: &str) -> T {
-        use flate2::read::ZlibDecoder;
-        use std::io::Read;
-        let mut src = std::fs::File::open(path).unwrap_or_else(|e| panic!("open {path}: {e}"));
-        let mut buffer = vec![];
-        src.read_to_end(&mut buffer).unwrap();
-        let mut decoder = ZlibDecoder::new(&buffer[..]);
-        let mut unpacked: Vec<u8> = vec![];
-        decoder.read_to_end(&mut unpacked).unwrap();
-        bincode::deserialize_from(&unpacked[..]).unwrap()
-    }
-
-    /// Diagnostic: replay the stage-1 (standard special-opcodes fsv over the
-    /// final_layer_0 stable point) tracer buffers and dump the rows around a
-    /// failing chunk row together with the instruction words at their PCs.
-    /// Row/chunk via `PROBE_ROW` / `PROBE_CHUNK` (defaults: the
-    /// `EnforceSingleMaxQuadraticConstraintGKRKernel` divergence at row
-    /// 7694852 of chunk 0). Run from the crate dir:
-    /// `cargo test -p program_prover --features l1 --release probe_failing_cycle -- --ignored --nocapture`
-    #[test]
-    #[ignore = "diagnostic replay of the stage-1 trace around a failing row"]
-    fn probe_failing_cycle() {
-        let row: usize = std::env::var("PROBE_ROW")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(7_694_852);
-        let chunk: usize = std::env::var("PROBE_CHUNK")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
-
-        let tags = "blake2_with_compression_blake2_with_compression_blake2_with_compression";
-        let proof: ProgramProof = deserialize_compressed_from_file(&format!(
-            "../circuit_defs/prover_examples/final_layer_0_proof_{tags}.bin"
-        ));
-        let setups: Setups = deserialize_compressed_from_file(&format!(
-            "../circuit_defs/prover_examples/final_layer_0_setups_{tags}.bin"
-        ));
-        let stream = build_unified_stream(&setups, &proof);
-        let (bin, text) = load_fsv_program(
-            "../tools/gkr_verifier",
-            FsvProgram::UnifiedRecursionLayer,
-            BlakeMode::BlakeSpecialOpcodes,
-        );
-
-        let (
-            (final_pc, final_timestamp),
-            snapshotter,
-            counters,
-            _ram,
-            _registers,
-            tape,
-            expected_final_state,
-        ) = run_unrolled_machine_in_full::<
-            ReducedMachineWithDelegation,
-            DelegationsAndUnifiedCounters,
-        >(
-            UNIFIED_CYCLES_BOUND,
-            &bin,
-            &text,
-            RAM_BOUND,
-            DelegationsAndUnifiedCounters::default(),
-            riscv_transpiler::abstractions::non_determinism::QuasiUARTSource::new_with_reads(
-                stream,
-            ),
-        );
-        println!("execution ended at PC = 0x{final_pc:08x}, timestamp {final_timestamp}");
-
-        let num_calls =
-            counters.get_calls_to_circuit_family::<REDUCED_MACHINE_CIRCUIT_FAMILY_IDX>();
-        let buffers = replay_unified_circuit::<DelegationsAndUnifiedCounters>(
-            DelegationsAndUnifiedCounters::default(),
-            &snapshotter,
-            &tape,
-            UNIFIED_CYCLES_BOUND,
-            1 << 23,
-            &expected_final_state,
-            num_calls,
-        );
-        let buf = &buffers[chunk];
-        println!("chunk {chunk}: {} tracer rows", buf.len());
-
-        let lo = row.saturating_sub(4);
-        let hi = (row + 4).min(buf.len().saturating_sub(1));
-        for (r, el) in buf.iter().enumerate().take(hi + 1).skip(lo) {
-            let pc = el.initial_pc();
-            let word = text.get((pc / 4) as usize).copied().unwrap_or(u32::MAX);
-            let marker = if r == row { "  <<< FAILING ROW" } else { "" };
-            println!(
-                "row {r}: pc=0x{pc:08x} word=0x{word:08x} (opcode=0x{:02x} rd={} funct3={} rs1={} rs2={} funct7=0x{:02x}){marker}",
-                word & 0x7f,
-                (word >> 7) & 0x1f,
-                (word >> 12) & 0x7,
-                (word >> 15) & 0x1f,
-                (word >> 20) & 0x1f,
-                (word >> 25) & 0x7f,
-            );
-            println!("        {el:?}");
-        }
     }
 }

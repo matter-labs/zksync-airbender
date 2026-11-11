@@ -296,7 +296,9 @@ mod tests {
         for step in 2..POLY_SIZE.ilog2() as usize {
             let challenge = P::from_u32_with_reduction(step as u32 + 11);
             expected = expected
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|pair| {
                     let mut value = pair[1];
                     value.sub_assign(&pair[0]);

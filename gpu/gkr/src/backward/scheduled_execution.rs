@@ -1,6 +1,6 @@
 use era_cudart::slice::CudaSlice;
 
-use super::dr_tail::resources::DrTailPlanCursor;
+use super::dr_tail::resources::DrTailResources;
 use super::kernels::*;
 use crate::proof_layout::ProofLayout;
 use crate::upstream::GKRAddress;
@@ -78,7 +78,6 @@ impl GpuGKRDimensionReducingBackwardState {
         // zeros for trivial (dummy) unified chunks (CPU-reference parity).
         inits_and_teardowns_top_bits: Vec<u32>,
         programs: std::sync::Arc<crate::GkrPrograms>,
-        dr_tail_plan: &crate::DrTailProofPlan,
         device_external_challenges_ptr: *const E4,
         initial_d_seed: DeviceAllocation<u32>,
         initial_d_claim_point_and_batching: DeviceAllocation<E4>,
@@ -99,7 +98,7 @@ impl GpuGKRDimensionReducingBackwardState {
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution> {
         let stream = context.get_exec_stream();
-        let mut dr_tail_plan_cursor = DrTailPlanCursor::new(dr_tail_plan.layers());
+        let mut dr_tail_resources = DrTailResources::new(context)?;
         let device_lookup_challenges_ptr = device_lookup_challenges.as_ptr();
         let mut tracing_ranges = Vec::new();
         let workflow_range = Range::new("gkr.backward.schedule")?;
@@ -112,7 +111,8 @@ impl GpuGKRDimensionReducingBackwardState {
             DeviceClaimPointAndBatching::from_allocation(initial_d_claim_point_and_batching);
         let mut shared_device_claims = initial_d_claims;
         let mut shared_claim_layout = initial_claim_layout;
-        let dr_window_programs = dr_tail_plan.window_programs();
+        let dr_window_programs = programs
+            .compile_dr_window_programs(self.next_trace_len_after_reduction.trailing_zeros());
         if let Some(output) = stage_snapshots {
             let initial_layer_idx = self
                 .pending_layers
@@ -132,7 +132,7 @@ impl GpuGKRDimensionReducingBackwardState {
         }
         let mut backward_layer_slot: usize = 0;
         while let Some(mut prepared_layer) =
-            self.prepare_next_layer_static(dr_window_programs, &mut dr_tail_plan_cursor, context)?
+            self.prepare_next_layer_static(&dr_window_programs, &mut dr_tail_resources, context)?
         {
             let layer_idx = prepared_layer.layer_idx;
             let mut execution = prepared_layer.schedule_execute_dimension_reducing_layer(
@@ -185,7 +185,6 @@ impl GpuGKRDimensionReducingBackwardState {
             dimension_reducing_layers.push(execution);
             backward_layer_slot += 1;
         }
-        dr_tail_plan_cursor.finish();
         dimension_reducing_layers_range.end(stream)?;
         tracing_ranges.push(dimension_reducing_layers_range);
 

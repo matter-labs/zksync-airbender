@@ -1,7 +1,7 @@
 pub mod census;
 
 use crate::program_proof::ProgramProof;
-use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
+use verifier_common::fsv_binaries::{FsvDescriptor, FsvProgram};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum CircuitId {
@@ -12,34 +12,19 @@ pub enum CircuitId {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EstimateError {
-    UnknownBinary {
-        program: FsvProgram,
-        mode: BlakeMode,
-    },
-    UnpricedCircuit {
-        circuit: CircuitId,
-    },
-    UnexpectedInitsAndTeardowns {
-        found: usize,
-    },
+    UnpricedCircuit { circuit: CircuitId },
+    UnexpectedInitsAndTeardowns { found: usize },
 }
 
 impl core::fmt::Display for EstimateError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::UnknownBinary { program, mode } => write!(
-                f,
-                "no census table for {program:?}/{}; recalibrate with \
-                 `cargo test -p full_statement_verifier --features host_utils,verifiers \
-                 --test cost_model_trace -- --ignored`",
-                mode.tag()
-            ),
             Self::UnpricedCircuit { circuit } => write!(
                 f,
                 "no per-proof cost for {circuit:?}; it was absent from every calibration \
                  fixture. Recalibrate against a fixture set that exercises it with \
-                 `cargo test -p full_statement_verifier --features host_utils,verifiers \
-                 --test cost_model_trace -- --ignored`"
+                 `cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers \
+                 --test cost_model_trace emit_census_tables -- --exact --ignored`"
             ),
             Self::UnexpectedInitsAndTeardowns { found } => {
                 write!(
@@ -51,16 +36,16 @@ impl core::fmt::Display for EstimateError {
     }
 }
 
-/// Estimated cycles for verifying `proof` with the given fsv binary. Valid
-/// canonical proofs only (the verifier returns early on content checks).
-/// Held to 0.05% of measurement on every calibration fixture.
-pub fn estimate_verifier_cycles(
+/// Estimated cycles for verifying `proof` with the guest of `descriptor`, from that
+/// guest's own table. Valid canonical proofs only (the verifier returns early on
+/// content checks). Held to the calibrated acceptance budget on every calibration
+/// fixture. A descriptor without a table panics.
+pub fn estimate_verifier_cycles_for(
     proof: &ProgramProof,
-    program: FsvProgram,
-    mode: BlakeMode,
+    descriptor: &FsvDescriptor,
 ) -> Result<u64, EstimateError> {
     // Family dims partition the cycle count (census_family_cycles_sum_to_total).
-    let totals = census::census_totals(proof, program, mode)?;
+    let totals = census::census_totals(proof, descriptor)?;
     Ok(totals[..census::NUM_FAMILY_DIMS].iter().sum())
 }
 
@@ -136,59 +121,99 @@ mod order_tests {
 
     #[test]
     fn base_layer_riscv_order_matches_verifier_list() {
-        let actual: Vec<u32> =
-            crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_base_layer_sec_100::<I, E>(
-            )
-            .iter()
-            .map(|(k, _, _)| *k)
-            .collect();
-        assert_eq!(
-            riscv_order(FsvProgram::UnrolledBaseLayer),
-            actual.as_slice()
-        );
+        macro_rules! check_mode {
+            ($mode:ident) => {{
+                let actual: Vec<u32> =
+                    crate::unrolled_circuit_params::$mode::unrolled_circuit_verifiers_for_base_layer::<
+                        I,
+                        E,
+                    >()
+                    .iter()
+                    .map(|(k, _, _)| *k)
+                    .collect();
+                assert_eq!(
+                    riscv_order(FsvProgram::UnrolledBaseLayer),
+                    actual.as_slice()
+                );
+            }};
+        }
+        check_mode!(pessimistic_conjecture);
+        check_mode!(ethproofs_soundcalc);
     }
 
     #[test]
     fn recursion_layer_riscv_order_matches_verifier_list() {
-        let actual: Vec<u32> =
-            crate::unrolled_circuit_params::unrolled_circuit_verifiers_for_recursion_layer_sec_100::<
-                I,
-                E,
-            >()
-            .iter()
-            .map(|(k, _, _)| *k)
-            .collect();
-        assert_eq!(
-            riscv_order(FsvProgram::UnrolledRecursionLayer),
-            actual.as_slice()
-        );
+        macro_rules! check_mode {
+            ($mode:ident) => {{
+                let actual: Vec<u32> =
+                    crate::unrolled_circuit_params::$mode::unrolled_circuit_verifiers_for_recursion_layer::<
+                        I,
+                        E,
+                    >()
+                    .iter()
+                    .map(|(k, _, _)| *k)
+                    .collect();
+                assert_eq!(
+                    riscv_order(FsvProgram::UnrolledRecursionLayer),
+                    actual.as_slice()
+                );
+            }};
+        }
+        check_mode!(pessimistic_conjecture);
+        check_mode!(ethproofs_soundcalc);
     }
 
     #[test]
     fn delegation_order_matches_verifier_functions() {
-        let actual = crate::delegation_params::all_delegation_circuit_verifiers_sec_100::<I, E>();
-        let expected: [DelegVerifier; 6] = [
-            imports::blake2_with_extended_control_sec_100::verify::<I, E>,
-            imports::bigint_with_extended_control_sec_100::verify::<I, E>,
-            imports::keccak_special5_sec_100::verify::<I, E>,
-            imports::keccak_theta_rho_sec_100::verify::<I, E>,
-            imports::keccak_column_parity_sec_100::verify::<I, E>,
-            imports::keccak_chi5_sec_100::verify::<I, E>,
-        ];
-        for (i, (a, b)) in actual.iter().zip(expected.iter()).enumerate() {
-            assert_eq!(
-                *a as usize, *b as usize,
-                "delegation verifier {i} out of order"
-            );
+        macro_rules! check_mode {
+            ($mode:ident) => {{
+                let actual =
+                    crate::delegation_params::$mode::all_delegation_circuit_verifiers::<I, E>();
+                let expected: [DelegVerifier; 6] = [
+                    imports::$mode::blake2_with_extended_control::verify::<I, E>,
+                    imports::$mode::bigint_with_extended_control::verify::<I, E>,
+                    imports::$mode::keccak_special5::verify::<I, E>,
+                    imports::$mode::keccak_theta_rho::verify::<I, E>,
+                    imports::$mode::keccak_column_parity::verify::<I, E>,
+                    imports::$mode::keccak_chi5::verify::<I, E>,
+                ];
+                for (i, (a, b)) in actual.iter().zip(expected.iter()).enumerate() {
+                    assert_eq!(
+                        *a as usize,
+                        *b as usize,
+                        "{} delegation verifier {i} out of order",
+                        stringify!($mode)
+                    );
+                }
+                // the recursion table keeps blake2s only
+                let reduced =
+                    crate::delegation_params::$mode::reduced_machine_delegation_circuit_verifiers::<
+                        I,
+                        E,
+                    >();
+                assert_eq!(reduced[0] as usize, expected[0] as usize);
+                for (i, f) in reduced.iter().enumerate().skip(1) {
+                    assert_ne!(
+                        *f as usize,
+                        expected[i] as usize,
+                        "{} entry {i} must be the stub",
+                        stringify!($mode)
+                    );
+                }
+            }};
         }
+        check_mode!(pessimistic_conjecture);
+        check_mode!(ethproofs_soundcalc);
     }
 
     #[test]
     fn delegation_metadata_matches_setup_param_order() {
-        let actual: Vec<u32> = crate::constants::DELEGATION_CIRCUITS_SETUP_PARAMS
-            .iter()
-            .map(|p| p.delegation_type)
-            .collect();
-        assert_eq!(DELEGATION_TYPES, actual.as_slice());
+        for params in [
+            &crate::delegation_circuits_setups::pessimistic_conjecture::DELEGATION_CIRCUITS_SETUP_PARAMS,
+            &crate::delegation_circuits_setups::ethproofs_soundcalc::DELEGATION_CIRCUITS_SETUP_PARAMS,
+        ] {
+            let actual: Vec<u32> = params.iter().map(|p| p.delegation_type).collect();
+            assert_eq!(DELEGATION_TYPES, actual.as_slice());
+        }
     }
 }

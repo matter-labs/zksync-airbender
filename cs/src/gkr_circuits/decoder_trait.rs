@@ -197,13 +197,37 @@ pub fn process_binary_into_separate_tables_ext<
     bytecode_size_words: usize,
     supported_csrs: &[u16],
 ) -> HashMap<u8, Vec<Option<ExecutorFamilyDecoderData>, A>> {
-    assert!(binary.len() <= bytecode_size_words, "bytecode is too long");
+    let instructions =
+        riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode::<OPT, false>(binary);
+    process_predecoded_into_separate_tables::<ALLOW_UNSUPPORTED, A>(
+        &instructions,
+        families,
+        bytecode_size_words,
+        supported_csrs,
+    )
+}
+
+/// Project one decoded program into the distinct lookup masks of its circuit families.
+pub fn process_predecoded_into_separate_tables<const ALLOW_UNSUPPORTED: bool, A: GoodAllocator>(
+    instructions: &[Instruction],
+    families: &[Box<dyn OpcodeFamilyDecoder>],
+    bytecode_size_words: usize,
+    supported_csrs: &[u16],
+) -> HashMap<u8, Vec<Option<ExecutorFamilyDecoderData>, A>> {
+    assert!(
+        instructions.len() <= bytecode_size_words,
+        "bytecode is too long"
+    );
     let mut pc_set = BTreeSet::new();
     let mut result = HashMap::with_capacity(families.len());
     for family in families.iter() {
         let family_type = family.instruction_family_index();
-        let witness_eval_data =
-            preprocess_bytecode::<F, OPT, A>(binary, bytecode_size_words, family, supported_csrs);
+        let witness_eval_data = project_decoder_family::<A>(
+            instructions,
+            bytecode_size_words,
+            family.as_ref(),
+            supported_csrs,
+        );
         assert_eq!(witness_eval_data.len(), bytecode_size_words);
         for (idx, entry) in witness_eval_data.iter().enumerate() {
             if entry.is_some() {
@@ -215,13 +239,13 @@ pub fn process_binary_into_separate_tables_ext<
         result.insert(family_type, witness_eval_data);
     }
 
-    if !ALLOW_UNSUPPORTED && pc_set.len() != binary.len() {
-        for i in 0..binary.len() {
+    if !ALLOW_UNSUPPORTED && pc_set.len() != instructions.len() {
+        for i in 0..instructions.len() {
             if !pc_set.contains(&i) {
                 println!(
-                    "PC = 0x{:08x}, opcode = 0x{:08x} is not supported",
+                    "PC = 0x{:08x}, instruction = {:?} is not supported",
                     i << 2,
-                    binary[i]
+                    instructions[i]
                 );
             }
         }
@@ -285,14 +309,27 @@ pub fn preprocess_bytecode<F: PrimeField, OPT: DecodingOptions, A: GoodAllocator
     family: &Box<dyn OpcodeFamilyDecoder>,
     supported_csrs: &[u16],
 ) -> Vec<Option<ExecutorFamilyDecoderData>, A> {
-    assert!(binary.len() <= bytecode_size_words);
-
-    let preprocessed_bytecode =
+    let instructions =
         riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode::<OPT, false>(binary);
+    project_decoder_family::<A>(
+        &instructions,
+        bytecode_size_words,
+        family.as_ref(),
+        supported_csrs,
+    )
+}
+
+fn project_decoder_family<A: GoodAllocator>(
+    instructions: &[Instruction],
+    bytecode_size_words: usize,
+    family: &dyn OpcodeFamilyDecoder,
+    supported_csrs: &[u16],
+) -> Vec<Option<ExecutorFamilyDecoderData>, A> {
+    assert!(instructions.len() <= bytecode_size_words);
     let mut witness_eval_decoder_data = Vec::with_capacity_in(bytecode_size_words, A::default());
     witness_eval_decoder_data.resize(bytecode_size_words, None);
 
-    for (i, opcode) in preprocessed_bytecode.iter().copied().enumerate() {
+    for (i, opcode) in instructions.iter().copied().enumerate() {
         let Ok(data) = family.define_decoder_subspace(opcode) else {
             continue;
         };

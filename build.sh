@@ -4,7 +4,10 @@ set -e
 
 wait
 
-./tools/reproduce/reproduce.sh
+./tools/reproduce/reproduce.sh --skip-generate-verifiers "$@"
+
+RUST_MIN_STACK=16777216 cargo test -p full_statement_verifier --profile cli \
+  --features host_utils,verifiers --test cost_model_trace emit_census_tables -- --exact --ignored
 
 wait
 

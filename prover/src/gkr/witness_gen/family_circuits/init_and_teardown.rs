@@ -60,7 +60,16 @@ pub(crate) fn populate_inline_inits_and_teardowns_columns<F: PrimeField, A>(
                     dest
                 );
             } else {
-                debug_assert!(column_major_trace[dest].iter().all(|v| v.is_zero()),);
+                // The caller allocated the destination at trace length but no
+                // evaluator writes it, so its content is unspecified (the
+                // memory-only trace is not zero-initialized); the move below
+                // replaces it whole.
+                assert_eq!(
+                    src.len(),
+                    column_major_trace[dest].len(),
+                    "inline i/t population: source length differs from destination column {}",
+                    dest
+                );
             }
             let _prev = core::mem::replace(&mut column_major_trace[dest], src);
         }

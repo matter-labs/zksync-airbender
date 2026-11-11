@@ -125,7 +125,7 @@ EXTERN __launch_bounds__(512, 1) __global__
 
 template <bool RESTORE = false>
 DEVICE_FORCEINLINE void hypercube_evals_to_monomials_last_14_stages_body(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                                         const bool transposed_monomials, const int log_n) {
+                                                                         const int log_n) {
   using namespace pass_config::two_pass_phase_c;
 
   const int lane_id = threadIdx.x & 31;
@@ -179,29 +179,22 @@ DEVICE_FORCEINLINE void hypercube_evals_to_monomials_last_14_stages_body(bf_matr
   reg_exchg_hypercube_inv<2, 4, 8, RESTORE>(vals);
   reg_exchg_hypercube_inv<1, 2, 16, RESTORE>(vals);
 
-  if (transposed_monomials) {
+  // un-swizzling + coalesced stores performs better on 5090
+  __syncwarp();
+  warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 #pragma unroll
-    for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
-      gmem_out.set_at_row(row, vals[i]);
-  } else {
-    // un-swizzling + coalesced stores performs better on 5090
-    __syncwarp();
-    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
-#pragma unroll
-    for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
-      gmem_out.set_at_row(row, vals[i]);
-  }
+  for (int i{0}, row{lane_id}; i < VALS_PER_THREAD; i++, row += WARP_SIZE)
+    gmem_out.set_at_row(row, vals[i]);
 }
 
 EXTERN __launch_bounds__(512, 1) __global__
     void ab_hypercube_evals_to_monomials_last_14_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                               const bool transposed_monomials, const int log_n) {
-  hypercube_evals_to_monomials_last_14_stages_body(gmem_in, gmem_out, transposed_monomials, log_n);
+                                                               const int log_n) {
+  hypercube_evals_to_monomials_last_14_stages_body(gmem_in, gmem_out, log_n);
 }
-EXTERN __launch_bounds__(512, 1) __global__
-    void ab_monomials_to_hypercube_last_14_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                         const bool transposed_monomials, const int log_n) {
-  hypercube_evals_to_monomials_last_14_stages_body<true>(gmem_in, gmem_out, transposed_monomials, log_n);
+EXTERN __launch_bounds__(512, 1) __global__ void ab_monomials_to_hypercube_last_14_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in,
+                                                                                                 bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n) {
+  hypercube_evals_to_monomials_last_14_stages_body<true>(gmem_in, gmem_out, log_n);
 }
 
 } // namespace airbender::ntt

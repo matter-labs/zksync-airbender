@@ -41,6 +41,8 @@ test_no_inline = ["field/no_inline"]
 gpu_native_build = { workspace = true }
 
 [dev-dependencies]
+proof_fixtures = { workspace = true }
+prover = { workspace = true, features = ["test", "bincode"] }
 # The e2e suite (tests/) needs more upstream surface than production: it drives
 # fixtures through cs/prover/riscv_transpiler and hashes via gpu_ops. The
 # composed commitment-pipeline test additionally drives gpu_ntt's Mobius / LDE

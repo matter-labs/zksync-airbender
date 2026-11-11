@@ -19,7 +19,7 @@ pub use config::ExecutionKind;
 pub use result::{CommitMemoryResult, ProveResult};
 
 /// Opaque handle to a binary registered with the `ExecutionProver`. Returned by
-/// [`ExecutionProver::add_binary`]; required to identify the binary in
+/// [`ExecutionProver::add_binary_variants`]; required to identify the binary in
 /// `commit_memory` / `commit_memory_and_prove`. Cannot be fabricated by
 /// callers, which converts what was previously a runtime
 /// "binary key not found" panic into a compile-time guarantee.
@@ -30,7 +30,7 @@ use cache::{TraceCache, TraceCacheEntry};
 use config::BinaryHolder;
 use non_determinism_wrapper::NonDeterminismWrapper;
 use result::ExecutionProverResult;
-use setup_init::request_setup_initialization;
+use setup_init::{request_setup_initialization, PendingSetupInitialization};
 
 use crate::backend::{CircuitPrecomputation, ExecutionBackend};
 use crate::config::ExecutionProverConfiguration;
@@ -38,7 +38,9 @@ use crate::messages::{
     InitsAndTeardownsData, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
     ProofResult, SimulationResult, TracingData, WorkBatch, WorkRequest, WorkResult, WorkerResult,
 };
-use crate::setup::{build_common_setups, build_unrolled_setup};
+use crate::setup::{
+    build_common_setups, build_unrolled_setup_with_preprocessing, preprocess_binary,
+};
 use crate::tracing::{SplitTracingType, UnifiedTracingType};
 use crate::upstream::{BF, E4};
 use crate::workers::simulation::{run_replayer, run_simulator};
@@ -58,14 +60,11 @@ use log::{debug, info, trace};
 use crate::upstream::{
     Blake2sTranscript, FinalRegisterValue, GKRExternalChallenges, MerkleTreeCapVarLength,
 };
-use riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode;
-use riscv_transpiler::ir::{
-    FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
-};
 use riscv_transpiler::vm::{NonDeterminismCSRSource, SimpleTape};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 use std::time::Instant;
 use type_map::concurrent::TypeMap;
 use verifier_common::MEMORY_DELEGATION_POW_BITS;
@@ -73,10 +72,10 @@ use worker::Worker;
 
 pub struct ExecutionProver<B: ExecutionBackend> {
     configuration: ExecutionProverConfiguration<B::Configuration>,
-    // Field order is load-bearing: `backend` must be declared (and thus
-    // dropped) before the precomputation maps so workers finish before the
-    // setup hosts drop.
-    backend: B,
+    host_pool_allocation: Option<JoinHandle<()>>,
+    // Drain the backend before dropping pending setup result receivers.
+    backend: Arc<B>,
+    pending_setup_initializations: Vec<PendingSetupInitialization<B::Allocator>>,
     worker: Arc<Worker>,
     memory_holders_sender: Sender<B::Memory>,
     memory_holders_receiver: Receiver<B::Memory>,

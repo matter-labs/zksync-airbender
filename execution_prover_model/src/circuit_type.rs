@@ -7,7 +7,11 @@ use crate::upstream::{
     UnsignedMulDivCircuit,
 };
 use crate::MachineType;
-use circuit_common::{DelegationCircuit, ProverConfig, RiscVCycleCircuit, SecurityLevel};
+use circuit_common::GKRCircuitArtifact;
+use circuit_common::{
+    CircuitGeometry, DelegationCircuit, ProverConfig, RiscVCycleCircuit, SecurityLevel,
+    SoundnessMode,
+};
 use common_constants::circuit_families::{
     ADD_SUB_LUI_AUIPC_MOP_CIRCUIT_FAMILY_IDX, INITS_AND_TEARDOWNS_FORMAL_CIRCUIT_FAMILY_IDX,
     JUMP_BRANCH_SLT_CIRCUIT_FAMILY_IDX, LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX,
@@ -51,14 +55,26 @@ pub enum CircuitType {
 }
 
 impl CircuitType {
-    /// The prover config of this circuit at `level`, straight from the circuit
-    /// definition (`DelegationCircuit::prover_config` /
-    /// `RiscVCycleCircuit::prover_config`): the single source of the proving
-    /// and verification geometry (trace length, schedules, packing).
+    /// This circuit's config under `soundness_mode`, from its actual compiled columns.
+    pub fn prover_config_in_mode(
+        &self,
+        compiled: &GKRCircuitArtifact<BabyBearField>,
+        soundness_mode: SoundnessMode,
+    ) -> ProverConfig {
+        self.geometry()
+            .prover_config(compiled, SecurityLevel::Sec100, soundness_mode)
+    }
+
+    /// This circuit's default-mode config at `level`, from its geometry alone.
     pub fn prover_config(&self, level: SecurityLevel) -> ProverConfig {
+        self.geometry().default_mode_prover_config(level)
+    }
+
+    /// Geometry declared by the circuit definition.
+    pub fn geometry(&self) -> CircuitGeometry {
         match self {
-            Self::Delegation(delegation_type) => delegation_type.prover_config(level),
-            Self::Unrolled(unrolled_type) => unrolled_type.prover_config(level),
+            Self::Delegation(delegation_type) => delegation_type.geometry(),
+            Self::Unrolled(unrolled_type) => unrolled_type.geometry(),
         }
     }
 
@@ -120,29 +136,29 @@ impl DelegationCircuitType {
         }
     }
 
-    /// See [`CircuitType::prover_config`].
-    pub fn prover_config(&self, level: SecurityLevel) -> ProverConfig {
+    /// Geometry declared by the circuit definition.
+    pub fn geometry(&self) -> CircuitGeometry {
         match self {
             Self::BigIntWithControl => {
-                <BigIntDelegationCircuit as DelegationCircuit<BabyBearField>>::prover_config(level)
+                <BigIntDelegationCircuit as DelegationCircuit<BabyBearField>>::geometry()
             }
             Self::Blake2WithCompression => {
-                <Blake2sWithCompressionDelegationCircuit as DelegationCircuit<BabyBearField>>::prover_config(level)
+                <Blake2sWithCompressionDelegationCircuit as DelegationCircuit<BabyBearField>>::geometry()
             }
             Self::Blake2GFunction => {
-                <Blake2sGFunctionDelegationCircuit as DelegationCircuit<BabyBearField>>::prover_config(level)
+                <Blake2sGFunctionDelegationCircuit as DelegationCircuit<BabyBearField>>::geometry()
             }
             Self::KeccakSpecial5 => {
-                <KeccakSpecial5DelegationCircuit as DelegationCircuit<BabyBearField>>::prover_config(level)
+                <KeccakSpecial5DelegationCircuit as DelegationCircuit<BabyBearField>>::geometry()
             }
             Self::KeccakColumnParity => {
-                <KeccakColumnParityDelegationCircuit as DelegationCircuit<BabyBearField>>::prover_config(level)
+                <KeccakColumnParityDelegationCircuit as DelegationCircuit<BabyBearField>>::geometry()
             }
             Self::KeccakThetaRho => {
-                <KeccakThetaRhoDelegationCircuit as DelegationCircuit<BabyBearField>>::prover_config(level)
+                <KeccakThetaRhoDelegationCircuit as DelegationCircuit<BabyBearField>>::geometry()
             }
             Self::KeccakChi5 => {
-                <KeccakChi5DelegationCircuit as DelegationCircuit<BabyBearField>>::prover_config(level)
+                <KeccakChi5DelegationCircuit as DelegationCircuit<BabyBearField>>::geometry()
             }
         }
     }
@@ -223,16 +239,15 @@ pub enum UnrolledCircuitType {
 }
 
 impl UnrolledCircuitType {
-    /// See [`CircuitType::prover_config`].
-    pub fn prover_config(&self, level: SecurityLevel) -> ProverConfig {
+    /// Geometry declared by the circuit definition.
+    pub fn geometry(&self) -> CircuitGeometry {
         match self {
-            Self::InitsAndTeardowns => inits_and_teardowns::prover_config(level),
-            Self::Memory(circuit_type) => circuit_type.prover_config(level),
-            Self::NonMemory(circuit_type) => circuit_type.prover_config(level),
-            Self::Unified => <UnifiedReducedMachineCircuit as RiscVCycleCircuit<
-                BabyBearField,
-                true,
-            >>::prover_config(level),
+            Self::InitsAndTeardowns => inits_and_teardowns::geometry(),
+            Self::Memory(circuit_type) => circuit_type.geometry(),
+            Self::NonMemory(circuit_type) => circuit_type.geometry(),
+            Self::Unified => {
+                <UnifiedReducedMachineCircuit as RiscVCycleCircuit<BabyBearField, true>>::geometry()
+            }
         }
     }
 
@@ -281,17 +296,15 @@ pub enum UnrolledMemoryCircuitType {
 }
 
 impl UnrolledMemoryCircuitType {
-    /// See [`CircuitType::prover_config`].
-    pub fn prover_config(&self, level: SecurityLevel) -> ProverConfig {
+    /// Geometry declared by the circuit definition.
+    pub fn geometry(&self) -> CircuitGeometry {
         match self {
-            Self::LoadStoreSubwordOnly => <LoadStoreSubwordOnlyCircuit as RiscVCycleCircuit<
-                BabyBearField,
-                true,
-            >>::prover_config(level),
-            Self::LoadStoreWordOnly => <LoadStoreWordOnlyCircuit as RiscVCycleCircuit<
-                BabyBearField,
-                true,
-            >>::prover_config(level),
+            Self::LoadStoreSubwordOnly => {
+                <LoadStoreSubwordOnlyCircuit as RiscVCycleCircuit<BabyBearField, true>>::geometry()
+            }
+            Self::LoadStoreWordOnly => {
+                <LoadStoreWordOnlyCircuit as RiscVCycleCircuit<BabyBearField, true>>::geometry()
+            }
         }
     }
 
@@ -337,25 +350,20 @@ pub enum UnrolledNonMemoryCircuitType {
 }
 
 impl UnrolledNonMemoryCircuitType {
-    /// See [`CircuitType::prover_config`].
-    pub fn prover_config(&self, level: SecurityLevel) -> ProverConfig {
+    /// Geometry declared by the circuit definition.
+    pub fn geometry(&self) -> CircuitGeometry {
         match self {
-            Self::AddSubLuiAuipcMop => <AddSubLuiAuipcMopCircuit as RiscVCycleCircuit<
-                BabyBearField,
-                false,
-            >>::prover_config(level),
-            Self::JumpBranchSlt => <JumpBranchSltCircuit as RiscVCycleCircuit<
-                BabyBearField,
-                false,
-            >>::prover_config(level),
-            Self::MulDivUnsigned => <UnsignedMulDivCircuit as RiscVCycleCircuit<
-                BabyBearField,
-                false,
-            >>::prover_config(level),
+            Self::AddSubLuiAuipcMop => {
+                <AddSubLuiAuipcMopCircuit as RiscVCycleCircuit<BabyBearField, false>>::geometry()
+            }
+            Self::JumpBranchSlt => {
+                <JumpBranchSltCircuit as RiscVCycleCircuit<BabyBearField, false>>::geometry()
+            }
+            Self::MulDivUnsigned => {
+                <UnsignedMulDivCircuit as RiscVCycleCircuit<BabyBearField, false>>::geometry()
+            }
             Self::ShiftBinary => {
-                <ShiftBinaryCircuit as RiscVCycleCircuit<BabyBearField, false>>::prover_config(
-                    level,
-                )
+                <ShiftBinaryCircuit as RiscVCycleCircuit<BabyBearField, false>>::geometry()
             }
         }
     }

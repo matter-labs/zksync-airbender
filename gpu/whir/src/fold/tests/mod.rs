@@ -8,13 +8,16 @@ use fft::{bitreverse_enumeration_inplace, Twiddles};
 use crate::e4_coeffs_to_vectorized;
 use crate::test_utils::make_test_context;
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_ntt::ntt::{MIN_LOG_N_FOR_MULTISTAGE_KERNELS, MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE};
+use gpu_ntt::ntt::MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
 use gpu_trace::trace::holder::TreesCacheMode;
 
 use crate::upstream::{
     make_eq_poly_in_full_lsb, multivariate_coeffs_into_hypercube_evals, PrimeField,
 };
 use worker::Worker;
+
+/// Size of the large initial-state cases: 2^22 rows.
+const LARGE_LOG_COUNT: usize = 22;
 
 fn sample_ext(seed: u32) -> E4 {
     E4::from_array_of_base([
@@ -399,11 +402,7 @@ fn scheduled_whir_evaluate_monomial_matches_cpu_large() {
 }
 
 #[cfg(not(no_cuda))]
-fn run_whir_initial_state_matches_cpu(
-    log_count: usize,
-    use_hypercube_evals_for_batching: bool,
-    is_large: bool,
-) {
+fn run_whir_initial_state_matches_cpu(log_count: usize, is_large: bool) {
     let context = if is_large {
         make_test_context(64 * 1024, 1024)
     } else {
@@ -461,7 +460,6 @@ fn run_whir_initial_state_matches_cpu(
         &setup_polys_claims,
         &original_evaluation_point,
         batching_challenge,
-        use_hypercube_evals_for_batching,
         &mut state,
         &context,
     )
@@ -514,14 +512,9 @@ fn run_whir_initial_state_matches_cpu(
     }
     bitreverse_enumeration_inplace(&mut expected_monomials);
 
-    let natural_to_bitrev = log_count >= MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
-
-    // The eval-form chain consumes the MSB-labeled coefficient array, which only
-    // the sub-floor arm's codeword already carries.
+    // The eval-form chain consumes the MSB-labeled coefficient array.
     let mut expected_eval_form = expected_monomials.clone();
-    if natural_to_bitrev {
-        bitreverse_enumeration_inplace(&mut expected_eval_form);
-    }
+    bitreverse_enumeration_inplace(&mut expected_eval_form);
     let expected_eval_log_n = expected_eval_form.len().trailing_zeros();
     multivariate_coeffs_into_hypercube_evals(&mut expected_eval_form, expected_eval_log_n);
     bitreverse_enumeration_inplace(&mut expected_eval_form);
@@ -541,18 +534,11 @@ fn run_whir_initial_state_matches_cpu(
 
     assert_eq!(claim, expected_claim);
     let monomial_vectorized = copy_back(state.sumchecked_poly_monomial_form.slice(), &context);
-    let mut monomial_from_gpu = vectorized_to_e4_coeffs(
+    let monomial_from_gpu = vectorized_to_e4_coeffs(
         &monomial_vectorized,
         state.original_trace_len,
         state.current_len,
     );
-    // Arm split: only the sub-floor compat arm labels the shared Mobius
-    // coefficient array bitreversed, so only there does the reconstructed
-    // expectation need the GPU array relabeled — see the compat-arm note in
-    // `gpu/trace/src/trace/holder/mod.rs::materialize_cosets_from_owned_hypercube`.
-    if !natural_to_bitrev {
-        bitreverse_enumeration_inplace(&mut monomial_from_gpu);
-    }
     assert_eq!(monomial_from_gpu, expected_monomials);
     assert_eq!(
         copy_back(&state.sumchecked_poly_evaluation_form[..count], &context),
@@ -594,7 +580,6 @@ fn run_whir_fold_keeps_monomial_labeling(log_count: usize, rounds: usize, is_lar
         &[sample_ext(40)],
         &original_evaluation_point,
         sample_ext(500),
-        true,
         &mut state,
         &context,
     )
@@ -635,26 +620,14 @@ fn run_whir_fold_keeps_monomial_labeling(log_count: usize, rounds: usize, is_lar
 
 #[test]
 #[cfg(not(no_cuda))]
-fn whir_fold_keeps_monomial_labeling_small() {
-    run_whir_fold_keeps_monomial_labeling(6, 4, false);
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn whir_fold_keeps_monomial_labeling_above_lde_floor() {
-    run_whir_fold_keeps_monomial_labeling(MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE + 1, 1, false);
-}
-
-#[test]
-#[cfg(not(no_cuda))]
-fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_small() {
-    run_whir_initial_state_matches_cpu(3, true, false);
+fn whir_fold_keeps_monomial_labeling() {
+    run_whir_fold_keeps_monomial_labeling(MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE + 1, 4, false);
 }
 
 #[test]
 #[cfg(not(no_cuda))]
 fn whir_initial_state_matches_cpu_use_hypercube_evals_for_batching_large() {
-    run_whir_initial_state_matches_cpu(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true, true);
+    run_whir_initial_state_matches_cpu(LARGE_LOG_COUNT, true);
 }
 
 #[cfg(not(no_cuda))]
@@ -702,7 +675,7 @@ fn whir_initial_state_eq_matches_cpu_lsb_small() {
 #[test]
 #[cfg(not(no_cuda))]
 fn whir_initial_state_eq_matches_cpu_lsb_large() {
-    run_whir_initial_state_eq_matches_cpu_lsb(MIN_LOG_N_FOR_MULTISTAGE_KERNELS + 1, true);
+    run_whir_initial_state_eq_matches_cpu_lsb(LARGE_LOG_COUNT, true);
 }
 
 use crate::fold::debug::{

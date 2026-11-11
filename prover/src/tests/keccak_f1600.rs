@@ -70,20 +70,12 @@ impl WitnessTracer for Collector {
     }
 }
 
-fn words(path: &str) -> Vec<u32> {
-    let bytes = std::fs::read(path).unwrap();
-    assert!(bytes.len().is_multiple_of(4));
-    bytes
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|word| u32::from_le_bytes(*word))
-        .collect()
-}
-
 fn replay_example() -> Collector {
-    let binary = words("../examples/keccak/app.bin");
-    let text = words("../examples/keccak/app.text");
+    let (binary, text) = riscv_transpiler::elf::ProgramSource::legacy_binaries(
+        "../examples/keccak/app.bin",
+        "../examples/keccak/app.text",
+    )
+    .load_unpadded();
     let instructions: Vec<Instruction> =
         preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text);
     let tape = SimpleTape::new(&instructions);

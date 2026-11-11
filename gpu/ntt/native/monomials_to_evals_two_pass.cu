@@ -165,7 +165,7 @@ EXTERN __launch_bounds__(512, 1) __global__
 
 template <bool INVERSE = false>
 DEVICE_FORCEINLINE void monomials_to_evals_first_14_stages_body(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                                const bool transposed_monomials, const int log_n, const int coset_factor_power) {
+                                                                const int log_n, const int coset_factor_power) {
   using namespace pass_config::two_pass_phase_c;
 
   // Flat-blockIdx.x: gridDim.x = blocks_per_ntt * cols_per_launch where
@@ -207,16 +207,13 @@ DEVICE_FORCEINLINE void monomials_to_evals_first_14_stages_body(bf_matrix_getter
   if (!INVERSE && coset_factor_power > 0) {
 #pragma unroll
     for (int i{0}, global_row{lane_id + gmem_block_offset + warp_id * 1024}; i < VALS_PER_THREAD; i++, global_row += WARP_SIZE) {
-      const int effective_row = transposed_monomials ? transposed_row_to_effective_row(global_row) : global_row;
-      const bf coset_offset = get_power_from_layers(::ab_ntt_forward_powers, bitrev(effective_row, log_n) * coset_factor_power);
+      const bf coset_offset = get_power_from_layers(::ab_ntt_forward_powers, bitrev(global_row, log_n) * coset_factor_power);
       vals[i] = bf::mul(vals[i], coset_offset);
     }
   }
 
-  if (!transposed_monomials) {
-    // transpose coalesced loads into registers
-    warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
-  }
+  // transpose coalesced loads into registers
+  warp_transpose_swizzled<VALS_PER_THREAD>(smem_warp, vals, lane_id);
 
   __pipeline_wait_prior(0); // Unfortunately we use all the coarse twiddles in the first exchange, so we can't overlap this with compute.
   __syncthreads();
@@ -275,14 +272,14 @@ DEVICE_FORCEINLINE void monomials_to_evals_first_14_stages_body(bf_matrix_getter
 }
 
 EXTERN __launch_bounds__(512, 1) __global__
-    void ab_monomials_to_evals_first_14_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                      const bool transposed_monomials, const int log_n, const int coset_factor_power) {
-  monomials_to_evals_first_14_stages_body(gmem_in, gmem_out, transposed_monomials, log_n, coset_factor_power);
+    void ab_monomials_to_evals_first_14_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n,
+                                                      const int coset_factor_power) {
+  monomials_to_evals_first_14_stages_body(gmem_in, gmem_out, log_n, coset_factor_power);
 }
 EXTERN __launch_bounds__(512, 1) __global__
-    void ab_coset_to_monomials_first_14_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out,
-                                                      const bool transposed_monomials, const int log_n, const int coset_factor_power) {
-  monomials_to_evals_first_14_stages_body<true>(gmem_in, gmem_out, transposed_monomials, log_n, coset_factor_power);
+    void ab_coset_to_monomials_first_14_stages_kernel(bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n,
+                                                      const int coset_factor_power) {
+  monomials_to_evals_first_14_stages_body<true>(gmem_in, gmem_out, log_n, coset_factor_power);
 }
 
 } // namespace airbender::ntt

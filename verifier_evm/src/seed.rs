@@ -68,16 +68,6 @@ pub fn commit_seed_preimage(_circuit: &Circuit, proof: &Proof, aux: &OperationMo
     ti.iter().flat_map(|w| w.to_le_bytes()).collect()
 }
 
-/// The seed WHIR verification starts from — the GKR verifier's transcript state at the
-/// packed-commitment handoff. Reads the value the prover stashed in the proof
-/// (`intermediate_transcript_seed`); the transcript is NOT replayed here.
-pub fn gkr_whir_handoff_seed(proof: &Proof) -> [u8; 32] {
-    proof.intermediate_transcript_seed.expect(
-        "proof.intermediate_transcript_seed is not set — regenerate the proof with a prover \
-         that records it",
-    )
-}
-
 /// The `(publicInput, auxInput, setupCommitment)` tuple the on-chain verifier reports to its
 /// registry (`IVerificationRegistry.markVerified`) for this proof, each as a bytes32:
 ///  * `public_input` = final registers x10..x17, `aux_input` = x18..x25 — each register's

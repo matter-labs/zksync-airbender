@@ -35,10 +35,10 @@ use prover::definitions::SecurityLevel;
 pub struct DelegationCircuitSetup {
     pub delegation_type: u16,
     pub trace_len: usize,
-    /// The circuit's prover config per security level
-    /// ([`circuit_common::prover_configs_for_all_levels`]): the geometry every
-    /// commitment and proof made from this setup must use.
-    pub prover_configs: Vec<prover::gkr::prover_config::ProverConfig>,
+    /// The circuit definition's geometry (trace length, base packing): with
+    /// [`Self::compiled_circuit`] it yields the config of any soundness mode
+    /// ([`Self::prover_config_in_mode`]).
+    pub geometry: circuit_common::CircuitGeometry,
     pub compiled_circuit: GKRCircuitArtifact<BabyBearField>,
     pub table_driver: TableDriver<BabyBearField>,
     pub setup: GKRSetup<BabyBearField>,
@@ -48,26 +48,36 @@ pub struct DelegationCircuitSetup {
 }
 
 impl DelegationCircuitSetup {
-    /// The circuit's prover config at `level` — the single source of its
-    /// proving geometry (trace length, schedules, packing).
-    pub fn prover_config(&self, level: SecurityLevel) -> &prover::gkr::prover_config::ProverConfig {
-        let config = circuit_common::prover_config_at(&self.prover_configs, level);
-        assert_eq!(1usize << config.trace_len_log2, self.trace_len);
-        config
+    /// The circuit's config under `mode` at `level`, from its geometry and
+    /// compiled circuit.
+    pub fn prover_config_in_mode(
+        &self,
+        level: SecurityLevel,
+        mode: circuit_common::SoundnessMode,
+    ) -> prover::gkr::prover_config::ProverConfig {
+        self.geometry
+            .prover_config(&self.compiled_circuit, level, mode)
     }
 }
 
 pub fn make_setup_for_delegation_circuit<C: circuit_common::DelegationCircuit<BabyBearField>>(
     use_caches: bool,
+    worker: &Worker,
 ) -> DelegationCircuitSetup {
     let circuit = C::get_circuit(use_caches);
     let table_driver = C::get_table_driver();
-    let setup = GKRSetup::construct(&table_driver, &[], 1 << C::trace_len_log2(), &circuit);
+    let setup = GKRSetup::construct(
+        &table_driver,
+        &[],
+        1 << C::trace_len_log2(),
+        &circuit,
+        worker,
+    );
 
     DelegationCircuitSetup {
         delegation_type: C::DELEGATION_TYPE_ID,
         trace_len: 1 << C::trace_len_log2(),
-        prover_configs: circuit_common::prover_configs_for_all_levels(C::prover_config),
+        geometry: C::geometry(),
         compiled_circuit: circuit,
         table_driver,
         setup,
@@ -77,46 +87,49 @@ pub fn make_setup_for_delegation_circuit<C: circuit_common::DelegationCircuit<Ba
 pub fn produce_verifier_setup_for_all_delegations(
     use_caches: bool,
     security_level: SecurityLevel,
+    mode: circuit_common::SoundnessMode,
 ) -> Vec<verifier_common::DelegationCircuitSetupData<{ prover::definitions::DEFAULT_CAP_SIZE }>> {
     let worker = Worker::new();
     let mut result = vec![];
     {
         let setup = make_setup_for_delegation_circuit::<Blake2sWithCompressionDelegationCircuit>(
-            use_caches,
+            use_caches, &worker,
         );
-        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, &worker);
-        result.push(setup_data);
-    }
-    {
-        let setup = make_setup_for_delegation_circuit::<BigIntDelegationCircuit>(use_caches);
-        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, &worker);
+        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, mode, &worker);
         result.push(setup_data);
     }
     {
         let setup =
-            make_setup_for_delegation_circuit::<KeccakSpecial5DelegationCircuit>(use_caches);
-        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, &worker);
+            make_setup_for_delegation_circuit::<BigIntDelegationCircuit>(use_caches, &worker);
+        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, mode, &worker);
+        result.push(setup_data);
+    }
+    {
+        let setup = make_setup_for_delegation_circuit::<KeccakSpecial5DelegationCircuit>(
+            use_caches, &worker,
+        );
+        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, mode, &worker);
         result.push(setup_data);
     }
     {
         let setup = make_setup_for_delegation_circuit::<
             ::keccak_theta_rho::KeccakThetaRhoDelegationCircuit,
-        >(use_caches);
-        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, &worker);
+        >(use_caches, &worker);
+        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, mode, &worker);
         result.push(setup_data);
     }
     {
         let setup = make_setup_for_delegation_circuit::<
             ::keccak_column_parity::KeccakColumnParityDelegationCircuit,
-        >(use_caches);
-        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, &worker);
+        >(use_caches, &worker);
+        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, mode, &worker);
         result.push(setup_data);
     }
     {
         let setup = make_setup_for_delegation_circuit::<::keccak_chi5::KeccakChi5DelegationCircuit>(
-            use_caches,
+            use_caches, &worker,
         );
-        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, &worker);
+        let setup_data = produce_verifier_setup_for_circuit(&setup, security_level, mode, &worker);
         result.push(setup_data);
     }
     result
@@ -125,17 +138,17 @@ pub fn produce_verifier_setup_for_all_delegations(
 fn produce_verifier_setup_for_circuit(
     circuit: &DelegationCircuitSetup,
     security_level: SecurityLevel,
+    mode: circuit_common::SoundnessMode,
     worker: &Worker,
 ) -> verifier_common::DelegationCircuitSetupData<{ prover::definitions::DEFAULT_CAP_SIZE }> {
-    // the circuit's own config: the geometry the prover commits the setup with
-    let prover_config = circuit.prover_config(security_level);
+    // the circuit's own config under `mode`: the geometry the prover commits the setup with
+    let prover_config = &circuit.prover_config_in_mode(security_level, mode);
     let twiddles: Twiddles<BabyBearField, Global> =
-        Twiddles::new(circuit.trace_len << prover_config.pack_log2, worker);
-    let setup_commitment = circuit.setup.commit_for_config::<DefaultTreeConstructor>(
-        &twiddles,
-        &prover_config,
-        worker,
-    );
+        Twiddles::new(circuit.trace_len << prover_config.pack_log2(), worker);
+    let setup_commitment =
+        circuit
+            .setup
+            .commit_for_config::<DefaultTreeConstructor>(&twiddles, prover_config, worker);
 
     let cap = setup_commitment.get_cap();
     let mut num_permutation_terms_per_cycle = 1; // delegation itself
@@ -151,11 +164,18 @@ fn produce_verifier_setup_for_circuit(
     }
 }
 
-pub fn dump_delegation_setups_for_verifier(use_caches: bool, security_level: SecurityLevel) {
+/// Serialize the delegation circuits' setup parameters (setup caps committed
+/// with the config of `mode`) to `generated/delegation_parameters_<mode>.rs`,
+/// included by `full_statement_verifier::delegation_circuits_setups::<mode>`.
+pub fn dump_delegation_setups_for_verifier(
+    use_caches: bool,
+    security_level: SecurityLevel,
+    mode: circuit_common::SoundnessMode,
+) {
     use quote::quote;
     use quote::TokenStreamExt;
 
-    let all_params = produce_verifier_setup_for_all_delegations(use_caches, security_level);
+    let all_params = produce_verifier_setup_for_all_delegations(use_caches, security_level, mode);
     let mut streams = Vec::with_capacity(all_params.len());
     let num_circuits = all_params.len();
 
@@ -179,12 +199,13 @@ pub fn dump_delegation_setups_for_verifier(use_caches: bool, security_level: Sec
         pub const DELEGATION_CIRCUITS_SETUP_PARAMS: [::verifier_common::DelegationCircuitSetupData<#cap_size>; #num_circuits] = [#full_stream];
     };
 
-    let suffix = match security_level {
-        SecurityLevel::Sec100 => "100",
-    };
-
+    assert_eq!(
+        security_level,
+        SecurityLevel::Sec100,
+        "the delegation parameters are generated for 100 bits"
+    );
     write_and_fmt(
-        &format!("generated/delegation_parameters_{}.rs", suffix),
+        &format!("generated/delegation_parameters_{}.rs", mode.file_suffix()),
         &description,
     );
 }
@@ -209,6 +230,8 @@ mod test {
     fn generate_delegation_circuits_artifacts() {
         skip_if_ci!();
 
-        dump_delegation_setups_for_verifier(true, SecurityLevel::Sec100);
+        for &mode in circuit_common::SoundnessMode::ALL {
+            dump_delegation_setups_for_verifier(true, SecurityLevel::Sec100, mode);
+        }
     }
 }

@@ -38,6 +38,12 @@ pub(super) struct PreparedDimensionReductionForward<E> {
     pub(super) per_round_slot_outputs: Vec<Vec<LoweredSlotOutput<E>>>,
 }
 
+impl<E> PreparedDimensionReductionForward<E> {
+    pub(super) fn fused_prefix_rounds(&self) -> u32 {
+        vm::desc::FUSED_REDUCTION_ROUNDS as u32
+    }
+}
+
 pub(super) fn prepare_dimension_reduction_forward<E>(
     storage: &mut GpuGKRStorage<BF, E>,
     initial_layer_idx: usize,
@@ -53,7 +59,10 @@ where
     let total_rounds = initial_trace_log_2
         .checked_sub(final_trace_log_2)
         .expect("final trace size must not exceed the initial trace size");
-    assert!(total_rounds >= vm::desc::FUSED_REDUCTION_ROUNDS as u32);
+    assert!(
+        total_rounds >= vm::desc::FUSED_REDUCTION_ROUNDS as u32,
+        "GPU forward requires the fused dimension-reduction prefix"
+    );
     let mut dimension_reduction_description = BTreeMap::new();
     let mut per_round_slot_outputs = Vec::with_capacity(total_rounds as usize);
     let mut slot_initial_inputs = None;

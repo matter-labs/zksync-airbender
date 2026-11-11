@@ -884,7 +884,6 @@ pub(crate) fn monomials_to_evals_dit(
     coset_factor_shift: u32,
     num_cosets: usize,
     num_cols_per_coset: usize,
-    transposed_monomials: bool,
     ctx: &crate::ntt_twiddles::DeviceContext,
     d_table_scratch: &mut DeviceSlice<BF>,
     stream: &CudaStream,
@@ -901,10 +900,6 @@ pub(crate) fn monomials_to_evals_dit(
     assert!(
         log_n >= log_vpt,
         "log_n ({log_n}) must be >= log_vpt ({log_vpt})"
-    );
-    assert!(
-        !transposed_monomials,
-        "DIT NTT does not support transposed monomials"
     );
     assert!(
         num_cosets.is_power_of_two(),

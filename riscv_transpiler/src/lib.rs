@@ -17,6 +17,7 @@ pub mod abstractions;
 pub mod analysis;
 pub mod control_flow_artifact;
 pub mod cycle;
+pub mod elf;
 pub mod ir;
 pub mod jit;
 pub mod replayer;

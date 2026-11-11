@@ -1176,6 +1176,32 @@ pub trait GKRGate<F: PrimeField> {
     ) -> (Self::Output, GKRRelation<F>);
 }
 
+/// Compile a family and retain its already materialized lookup tables for setup.
+pub fn compile_unrolled_circuit_with_table_driver<F: PrimeField>(
+    table_addition_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>),
+    circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>),
+    max_bytecode_size_in_words: usize,
+    trace_len_log2: usize,
+    num_init_and_teardown_pairs: usize,
+    use_caches: bool,
+) -> (GKRCircuitArtifact<F>, crate::tables::TableDriver<F>) {
+    use crate::cs::circuit_impl::BasicAssembly;
+    use crate::cs::circuit_trait::Circuit;
+    let mut cs = BasicAssembly::<F>::new();
+    table_addition_fn(&mut cs);
+    circuit_fn(&mut cs);
+    let (cs_output, _) = cs.finalize();
+    let table_driver = cs_output.table_driver.clone();
+    let circuit = GKRCompiler::default().compile_family_circuit(
+        cs_output,
+        max_bytecode_size_in_words,
+        num_init_and_teardown_pairs,
+        trace_len_log2,
+        use_caches,
+    );
+    (circuit, table_driver)
+}
+
 pub fn compile_unrolled_circuit_state_transition_into_gkr<F: PrimeField>(
     table_addition_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>),
     circuit_fn: &dyn Fn(&mut crate::cs::circuit_impl::BasicAssembly<F>),
@@ -1183,25 +1209,15 @@ pub fn compile_unrolled_circuit_state_transition_into_gkr<F: PrimeField>(
     trace_len_log2: usize,
     num_init_and_teardown_pairs: usize,
 ) -> GKRCircuitArtifact<F> {
-    use crate::cs::circuit_impl::BasicAssembly;
-    use crate::cs::circuit_trait::Circuit;
-    use crate::gkr_compiler::GKRCompiler;
-
-    let mut cs = BasicAssembly::<F>::new();
-    (table_addition_fn)(&mut cs);
-    (circuit_fn)(&mut cs);
-
-    let (cs_output, _) = cs.finalize();
-
-    let compiler = GKRCompiler::default();
-
-    compiler.compile_family_circuit(
-        cs_output,
+    compile_unrolled_circuit_with_table_driver(
+        table_addition_fn,
+        circuit_fn,
         max_bytecode_size_in_words,
-        num_init_and_teardown_pairs,
         trace_len_log2,
+        num_init_and_teardown_pairs,
         true,
     )
+    .0
 }
 
 pub fn compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_caches<F: PrimeField>(
@@ -1211,25 +1227,15 @@ pub fn compile_unrolled_circuit_state_transition_into_unrolled_gkr_without_cache
     trace_len_log2: usize,
     num_init_and_teardown_pairs: usize,
 ) -> GKRCircuitArtifact<F> {
-    use crate::cs::circuit_impl::BasicAssembly;
-    use crate::cs::circuit_trait::Circuit;
-    use crate::gkr_compiler::GKRCompiler;
-
-    let mut cs = BasicAssembly::<F>::new();
-    (table_addition_fn)(&mut cs);
-    (circuit_fn)(&mut cs);
-
-    let (cs_output, _) = cs.finalize();
-
-    let compiler = GKRCompiler::default();
-
-    compiler.compile_family_circuit(
-        cs_output,
+    compile_unrolled_circuit_with_table_driver(
+        table_addition_fn,
+        circuit_fn,
         max_bytecode_size_in_words,
-        num_init_and_teardown_pairs,
         trace_len_log2,
+        num_init_and_teardown_pairs,
         false,
     )
+    .0
 }
 
 pub fn compile_delegation_circuit_into_gkr<F: PrimeField>(

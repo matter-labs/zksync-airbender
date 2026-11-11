@@ -4,10 +4,10 @@ use super::model::{
     policy_fields, stable_name, write_csv, SweepRow, TimingSummary,
 };
 use super::probe::{commit_memory, drain, input_footprint, run_case};
-use crate::upstream::SecurityLevel;
 use clap::Parser;
 use era_cudart::device::set_device;
 use era_cudart_sys::CudaError;
+use execution_prover::config::SoundnessMode;
 use gpu_circuit_prover::proof::memory_policy::ProofMemoryPolicy as MemoryPolicy;
 use gpu_core::allocator::tracker::AllocationDirection;
 use gpu_prover_context::{ProverContext, ProverContextConfig};
@@ -50,6 +50,10 @@ struct Arguments {
     /// Replay production selection; --configuration asserts the expected policy.
     #[arg(long, conflicts_with_all = ["fit_only", "generate_policy", "list"])]
     replay_presets: bool,
+    /// Soundness mode of the swept proofs (`pessimistic-conjecture` or
+    /// `ethproofs-soundcalc`). The presets are sized for the default mode.
+    #[arg(long, value_parser = |value: &str| SoundnessMode::from_cli_name(value).ok_or("unknown soundness mode"), default_value = SoundnessMode::DEFAULT.cli_name())]
+    soundness_mode: SoundnessMode,
 }
 
 pub(super) fn main_entry() -> Result<(), Box<dyn Error>> {
@@ -136,12 +140,8 @@ fn prepare_arena(
         inputs_reserve_bytes: crate::memory_policy::INPUTS_RESERVE_BYTES,
         ..Default::default()
     })?;
-    if a.replay_presets {
-        // Use the same arena admission as the production worker.
-        crate::memory_policy::select_arena_bytes(context.get_mem_size());
-    }
     assert_empty(&context);
-    let factory = SyntheticInputFactory::new(SecurityLevel::Sec100);
+    let factory = SyntheticInputFactory::new(a.soundness_mode);
     let mut prepared = Vec::new();
     for circuit in all_circuits() {
         eprintln!(

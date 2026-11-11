@@ -14,9 +14,10 @@ use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
 fn workload(directory: &str, stem: &str) -> (Vec<u32>, Vec<u32>) {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     let base = root.join("examples").join(directory);
-    let (_, binary) = setups::read_and_pad_binary(&base.join(format!("{stem}.bin")));
-    let (_, text) = setups::read_and_pad_binary(&base.join(format!("{stem}.text")));
-    (binary, text)
+    riscv_transpiler::elf::load_legacy_binaries(
+        &base.join(format!("{stem}.bin")),
+        &base.join(format!("{stem}.text")),
+    )
 }
 
 fn prove(
@@ -28,7 +29,9 @@ fn prove(
     let mut prover =
         CpuExecutionProver::with_configuration(CpuExecutionProverConfiguration::default());
     let (binary, text) = workload;
-    let handle = prover.add_binary(execution_kind, machine_type, binary, text, None);
+    let handle =
+        prover.add_binary_variants(binary, text, &[(execution_kind, machine_type)], None)[0];
+    prover.finalize_setup();
     let result =
         prover.commit_memory_and_prove(1, &handle, QuasiUARTSource::new_with_reads(inputs));
     let artifacts = prover.program_artifacts(&handle);
@@ -36,8 +39,17 @@ fn prove(
 }
 
 fn assert_verifies_unrolled(proof: &ProgramProof, setups: &setups::Setups) {
-    let stream = full_statement_verifier::host_utils::build_unrolled_stream(setups, proof);
-    let output = full_statement_verifier::host_utils::native_verify_unrolled(stream, true);
+    let stream = full_statement_verifier::host_utils::build_unrolled_stream(
+        setups,
+        proof,
+        verifier_common::BLAKE_MODE,
+    );
+    let output = full_statement_verifier::host_utils::native_verify_unrolled_in_mode(
+        stream,
+        true,
+        prover::definitions::SoundnessMode::PessimisticConjecture,
+    )
+    .expect("unrolled proof must verify");
     assert_ne!(
         output, [0u32; 16],
         "native verification produced an empty output"
@@ -106,7 +118,7 @@ fn a_keccak_workload_delegates_and_verifies() {
 fn legacy_prover_keccak_f1600_workload_delegates_and_verifies() {
     let (binary, text) = workload("keccak", "app");
     let worker = worker::Worker::new();
-    let (proof, setups) = program_prover::unrolled::prove_unrolled_execution_with_replayer::<
+    let (proof, setups) = program_prover::unrolled::prove_unrolled_execution_with_replayer_in_mode::<
         riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly,
         std::alloc::Global,
         _,
@@ -120,6 +132,7 @@ fn legacy_prover_keccak_f1600_workload_delegates_and_verifies() {
         1 << 30,
         &worker,
         prover::definitions::SecurityLevel::Sec100,
+        prover::definitions::SoundnessMode::PessimisticConjecture,
         verifier_common::MEMORY_DELEGATION_POW_BITS as u32,
         &prover::gkr::prover::DefaultBabyBearBackend::default(),
         &prover::gkr::prover::DefaultBabyBearGKRBackend::default(),
@@ -145,8 +158,17 @@ fn a_unified_execution_proves_and_natively_verifies() {
         proof.num_it_circuits.is_some(),
         "a unified proof carries its inits-and-teardowns circuit count"
     );
-    let stream = full_statement_verifier::host_utils::build_unified_stream(&setups, &proof);
-    let output = full_statement_verifier::host_utils::native_verify_unified(stream, true);
+    let stream = full_statement_verifier::host_utils::build_unified_stream(
+        &setups,
+        &proof,
+        verifier_common::BLAKE_MODE,
+    );
+    let output = full_statement_verifier::host_utils::native_verify_unified_in_mode(
+        stream,
+        true,
+        prover::definitions::SoundnessMode::PessimisticConjecture,
+    )
+    .expect("unified proof must verify");
     assert_ne!(
         output, [0u32; 16],
         "native verification produced an empty output"

@@ -1,0 +1,19 @@
+[package]
+name = "proof_fixtures"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = "*"
+flate2 = { version = "=1.1.11", default-features = false, features = ["rust_backend"] }
+miniz_oxide = "=0.9.1"
+
+[lints]
+workspace = true

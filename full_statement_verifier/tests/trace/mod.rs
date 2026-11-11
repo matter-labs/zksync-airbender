@@ -17,6 +17,7 @@ use setups::Setups;
 use verifier_common::field::baby_bear::base::BabyBearField;
 
 pub mod calibrate;
+pub mod canonical;
 pub mod fixtures;
 pub mod plan;
 
@@ -92,11 +93,15 @@ impl Snapshotter<CensusCounters> for MarkingSnapshotter {
     }
 }
 
+#[derive(Debug)]
+struct PrefixStop;
+
 struct StampingSource<S> {
     inner: S,
     cell: Rc<Cell<(TimestampScalar, CensusCounters)>>,
     marks: Vec<TimestampScalar>,
     census_marks: Vec<CensusVec>,
+    stop_before_word: Option<usize>,
 }
 
 impl<S: NonDeterminismCSRSource> NonDeterminismCSRSource for StampingSource<S> {
@@ -104,6 +109,9 @@ impl<S: NonDeterminismCSRSource> NonDeterminismCSRSource for StampingSource<S> {
         let (timestamp, counters) = self.cell.get();
         self.marks.push(timestamp);
         self.census_marks.push(census_of(&counters));
+        if self.stop_before_word == Some(self.marks.len() - 1) {
+            std::panic::resume_unwind(Box::new(PrefixStop));
+        }
         self.inner.read()
     }
     fn write_with_memory_access<R: RamPeek + ?Sized>(&mut self, ram: &R, value: u32) {
@@ -152,6 +160,7 @@ pub fn trace_verifier(bin: &[u32], text: &[u32], stream: Vec<u32>) -> Trace {
         cell: Rc::clone(&cell),
         marks: Vec::new(),
         census_marks: Vec::new(),
+        stop_before_word: None,
     };
 
     let finished = VM::<CensusCounters>::run_basic_unrolled::<_, _, _, BabyBearField>(
@@ -169,6 +178,53 @@ pub fn trace_verifier(bin: &[u32], text: &[u32], stream: Vec<u32>) -> Trace {
         census_marks: nd.census_marks,
         total_cycles: to_cycles(state.timestamp),
         total_census: census_of(&state.counters),
+    }
+}
+
+pub fn trace_verifier_prefix(
+    bin: &[u32],
+    text: &[u32],
+    stream: Vec<u32>,
+    stop_before_word: usize,
+) -> Trace {
+    assert!(stop_before_word < stream.len());
+    let (instructions, mut ram) = prepare(bin, text);
+    let tape = SimpleTape::new(&instructions);
+    let mut state = State::initial_with_counters(CensusCounters::default());
+    let cell = Rc::new(Cell::new((state.timestamp, state.counters)));
+    let mut snapshotter = MarkingSnapshotter {
+        cell: Rc::clone(&cell),
+    };
+    let mut nd = StampingSource {
+        inner: QuasiUARTSource::new_with_reads(stream),
+        cell,
+        marks: Vec::new(),
+        census_marks: Vec::new(),
+        stop_before_word: Some(stop_before_word),
+    };
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        VM::<CensusCounters>::run_basic_unrolled::<_, _, _, BabyBearField>(
+            &mut state,
+            &mut ram,
+            &mut snapshotter,
+            &tape,
+            UNROLLED_RECURSION_CYCLES_BOUND,
+            &mut nd,
+        )
+    }));
+    match result {
+        Err(payload) if payload.is::<PrefixStop>() => {}
+        Err(payload) => std::panic::resume_unwind(payload),
+        Ok(_) => panic!("prefix verifier must reach its first PoW read"),
+    }
+    assert_eq!(nd.marks.len(), stop_before_word + 1);
+    let total_cycles = to_cycles(*nd.marks.last().unwrap());
+    let total_census = *nd.census_marks.last().unwrap();
+    Trace {
+        marks: nd.marks.into_iter().map(to_cycles).collect(),
+        census_marks: nd.census_marks,
+        total_cycles,
+        total_census,
     }
 }
 
@@ -195,7 +251,10 @@ pub fn measure_verifier_cycles(bin: &[u32], text: &[u32], stream: Vec<u32>) -> u
 }
 
 pub fn fsv_dir() -> String {
-    format!("{}/../tools/gkr_verifier", env!("CARGO_MANIFEST_DIR"))
+    format!(
+        "{}/../tools/gkr_verifier/full_statement_verifiers",
+        env!("CARGO_MANIFEST_DIR")
+    )
 }
 
 fn read_compressed<T: serde::de::DeserializeOwned>(path: &str) -> T {
@@ -204,6 +263,15 @@ fn read_compressed<T: serde::de::DeserializeOwned>(path: &str) -> T {
 }
 
 pub fn load_calibration_proof(name: &str) -> (Setups, ProgramProof) {
+    if let Some((mode_name, chain)) = name.split_once('/') {
+        let mode = *verifier_common::fsv_binaries::SoundnessMode::ALL
+            .iter()
+            .find(|mode| mode.file_suffix() == mode_name)
+            .unwrap();
+        let artifact =
+            full_statement_verifier::host_utils::fixture_artifact::ChainArtifact::load(mode, chain);
+        return (artifact.setups, artifact.proof);
+    }
     let directory = std::env::var("COST_MODEL_FIXTURE_DIR").expect("set COST_MODEL_FIXTURE_DIR");
     let proof = read_compressed(&format!("{directory}/{name}_proof.bin"));
     let setups = read_compressed(&format!("{directory}/{name}_setups.bin"));

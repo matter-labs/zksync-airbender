@@ -1,3 +1,4 @@
+use super::fixtures::Fixture;
 use super::plan::{plan_unrolled_stream, StreamPlan};
 use super::{fsv_dir, load_calibration_proof, trace_verifier, Trace};
 use full_statement_verifier::host_utils::cost_model::census::{
@@ -5,21 +6,25 @@ use full_statement_verifier::host_utils::cost_model::census::{
 };
 use full_statement_verifier::host_utils::cost_model::{compiled_circuits, CircuitId};
 use std::collections::BTreeMap;
-use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
+use verifier_common::fsv_binaries::{FsvDescriptor, FsvProfile};
 
-pub fn trace_fixture(name: &str, program: FsvProgram) -> (Trace, StreamPlan) {
-    let (bin, text) = full_statement_verifier::host_utils::load_fsv_program(
-        fsv_dir(),
-        program,
-        BlakeMode::Compression,
-    );
-    let (setups, proof) = load_calibration_proof(name);
-    let stream = full_statement_verifier::host_utils::build_unrolled_stream(&setups, &proof);
-    let plan = plan_unrolled_stream(&setups, &proof, program);
+/// The guest of `descriptor`, decoded like the prover loads it.
+pub fn load_guest(descriptor: &FsvDescriptor) -> (Vec<u32>, Vec<u32>) {
+    let guest = full_statement_verifier::host_utils::load_fsv_exact(fsv_dir(), descriptor);
+    (guest.bin().to_vec(), guest.text().to_vec())
+}
+
+pub fn trace_fixture(fixture: &Fixture) -> (Trace, StreamPlan) {
+    let (bin, text) = load_guest(&fixture.descriptor);
+    let (setups, proof) = load_calibration_proof(&fixture.name);
+    let stream =
+        full_statement_verifier::host_utils::fsv_stream(&setups, &proof, &fixture.descriptor);
+    let plan = plan_unrolled_stream(&setups, &proof, fixture.program);
     assert_eq!(
         plan.total_words,
         stream.len(),
-        "{name}: stream plan disagrees with the stream"
+        "{}: stream plan disagrees with the stream",
+        fixture.name
     );
     let t = trace_verifier(&bin, &text, stream);
     (t, plan)
@@ -36,29 +41,40 @@ pub struct CensusCalibration {
     pub regions: Vec<RegionCensus>,
 }
 
-pub fn calibrate_census_fixture(name: &str, program: FsvProgram) -> CensusCalibration {
-    let (trace, plan) = trace_fixture(name, program);
+pub fn calibrate_trace(trace: &Trace, plan: &StreamPlan) -> CensusCalibration {
     let regions = plan
         .regions
         .iter()
-        .map(|region| RegionCensus {
-            circuit: region.circuit,
-            count: region.proof_first_words.len(),
-            spans: region
-                .proof_first_words
-                .windows(2)
-                .map(|words| {
-                    core::array::from_fn(|d| {
-                        trace.census_marks[words[1]][d] - trace.census_marks[words[0]][d]
+        .map(|region| {
+            let words = &region.proof_first_words;
+            let ranges: Vec<_> = if words.len() == 1 && !region.closes_at_epilogue {
+                vec![(words[0], region.end_word)]
+            } else {
+                words.windows(2).map(|pair| (pair[0], pair[1])).collect()
+            };
+            RegionCensus {
+                circuit: region.circuit,
+                count: words.len(),
+                spans: ranges
+                    .into_iter()
+                    .map(|(first, last)| {
+                        core::array::from_fn(|d| {
+                            trace.census_marks[last][d] - trace.census_marks[first][d]
+                        })
                     })
-                })
-                .collect(),
+                    .collect(),
+            }
         })
         .collect();
     CensusCalibration {
         total: trace.total_census,
         regions,
     }
+}
+
+pub fn calibrate_census_fixture(fixture: &Fixture) -> CensusCalibration {
+    let (trace, plan) = trace_fixture(fixture);
+    calibrate_trace(&trace, &plan)
 }
 
 pub fn pooled_prices<'a>(
@@ -101,7 +117,7 @@ pub fn gate_budget(row: usize, measured: u64, proofs: u64, delta: u64) -> u64 {
 
 /// Centre spans on each circuit's rounded mean. Measure total deviations
 /// separately: per-dimension maxima can occur in different proofs.
-fn observed_spread(
+pub fn observed_spread(
     cals: &[CensusCalibration],
     prices: &BTreeMap<CircuitId, CensusVec>,
 ) -> [u64; NUM_ROWS] {
@@ -128,10 +144,12 @@ pub struct PooledCensus {
     pub spread: [u64; NUM_ROWS],
 }
 
-pub fn pool_census(cals: &[CensusCalibration]) -> PooledCensus {
+pub fn pool_census(
+    cals: &[CensusCalibration],
+    prices: BTreeMap<CircuitId, CensusVec>,
+    spread: [u64; NUM_ROWS],
+) -> PooledCensus {
     assert!(!cals.is_empty(), "need at least one calibration fixture");
-    let prices = pooled_prices(cals);
-    let spread = observed_spread(cals, &prices);
     let rows: Vec<[(i64, i64); NUM_ROWS]> = cals
         .iter()
         .map(|cal| {
@@ -186,26 +204,35 @@ pub fn pool_census(cals: &[CensusCalibration]) -> PooledCensus {
     }
 }
 
-pub fn render_census_tables(program: FsvProgram, pooled: &PooledCensus) -> String {
+pub fn render_census_tables(descriptor: &FsvDescriptor, pooled: &PooledCensus) -> String {
     let fmt_vec = |v: &CensusVec| {
         let inner: Vec<String> = v.iter().map(|x| x.to_string()).collect();
         format!("[{}]", inner.join(", "))
     };
+    assert_eq!(descriptor.profile, FsvProfile::Standard);
     let mut out = String::new();
     let c0 = &pooled.c0;
     out.push_str(&format!(
         "    (
-        FsvProgram::{program:?},
-        BlakeMode::Compression,
+        FsvDescriptor::new(
+            SoundnessMode::{:?},
+            FsvProgram::{:?},
+            BlakeMode::{:?},
+        ),
         CensusTable {{
+            guest_digest: \"{}\",
             c0: {},
             per_proof_spread: {:?},
             v: &[
 ",
+        descriptor.soundness_mode,
+        descriptor.program,
+        descriptor.blake,
+        full_statement_verifier::host_utils::load_fsv_exact(fsv_dir(), descriptor).digest(),
         fmt_vec(c0),
         pooled.spread,
     ));
-    for circuit in compiled_circuits(program) {
+    for circuit in compiled_circuits(descriptor.program) {
         if let Some(cost) = pooled.v.get(&circuit) {
             let id = match circuit {
                 CircuitId::Riscv(k) => format!("CircuitId::Riscv({k})"),
@@ -226,4 +253,21 @@ pub fn render_census_tables(program: FsvProgram, pooled: &PooledCensus) -> Strin
 ",
     );
     out
+}
+
+pub fn write_census_tables(mode: verifier_common::fsv_binaries::SoundnessMode, rows: &str) {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/host_utils/cost_model/census_tables");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("{}.rs", mode.file_suffix()));
+    std::fs::write(
+        &path,
+        format!("// Generated by emit_census_tables; do not edit by hand.\npub const TABLES: [(FsvDescriptor, CensusTable); 2] = [\n{rows}];\n"),
+    ).unwrap();
+    assert!(std::process::Command::new("rustfmt")
+        .arg("--edition=2021")
+        .arg(&path)
+        .status()
+        .expect("run rustfmt on census tables")
+        .success());
 }

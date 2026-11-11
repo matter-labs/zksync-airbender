@@ -43,6 +43,10 @@ pub struct ProgramArtifacts {
 impl<B: ExecutionBackend> ExecutionProver<B> {
     /// Snapshot the compiled-circuit artifacts for a registered binary.
     pub fn program_artifacts(&self, handle: &BinaryHandle) -> ProgramArtifacts {
+        assert!(
+            self.host_pool_allocation.is_none() && self.pending_setup_initializations.is_empty(),
+            "setup must be finalized before proving or reading artifacts"
+        );
         let holder = &self.binary_holders[&handle.0];
         let riscv_families = holder
             .precomputations

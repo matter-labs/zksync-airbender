@@ -4,7 +4,7 @@ pub fn load_store_word_only_circuit_setup<A: GoodAllocator>(
     decoder_table_data: &[Option<ExecutorFamilyDecoderData>],
     bytecode: &[u32],
     use_caches: bool,
-    _worker: &Worker,
+    worker: &Worker,
 ) -> CircuitSetup<A> {
     type C = ::load_store_word_only::LoadStoreWordOnlyCircuit;
 
@@ -21,5 +21,6 @@ pub fn load_store_word_only_circuit_setup<A: GoodAllocator>(
         bytecode,
         decoder_table_data,
         use_caches,
+        worker,
     )
 }

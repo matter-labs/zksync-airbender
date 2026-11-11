@@ -14,10 +14,7 @@ jobs:
   tests:
     name: tests
     runs-on: [matterlabs-ci-runner-high-performance]
-    # The non-ignored GKR e2e tests (prover tests::gkr::*) run for tens of
-    # minutes under `--profile cli` (opt-level 3 but dev-based, so debug
-    # assertions stay on in the prover hot loops).
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -30,28 +27,26 @@ jobs:
           rustup component add llvm-tools
       - name: Install cargo-binutils
         run: cargo install cargo-binutils --locked
-      - name: Compile
-        run: cargo build --verbose
-      - name: Prover smoke test (CI)
-        env:
-          CI: "true"
-          RUST_MIN_STACK: 16777216
-        run: cargo test -p prover --profile cli -- --nocapture gkr_run_basic_unrolled_test_sec_100
-      - name: Fail if the smoke test changed the committed test proofs
+      - name: Fixture inventory and canonical encoding
         run: |
-          if [ -n "$(git status --porcelain -- prover/test_proofs)" ]; then
-            echo "❌ The smoke test regenerated these test proofs; commit them:"
-            git status --porcelain -- prover/test_proofs
-            exit 1
-          fi
+          cargo test -p proof_fixtures --profile cli
+          cargo test -p prover --features test --profile cli --test canonical_fixture_inputs canonical_fixture_encoding
       - name: GKR compiler feature tests
         env:
           RUST_MIN_STACK: 16777216
         run: cargo test -p gpu_gkr_compiler --profile cli --features search --test forward_corpus --test forward_search --bin gkr-forward-artifact
-      - name: Verifier cost-model drift guard
+      - name: Verifier census and fixture gates
         env:
           RUST_MIN_STACK: 1073741824
-        run: cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --lib --test cost_model_drift
+        run: cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --lib --test cost_model_trace --test unified
+      - name: Native verifier tests
+        env:
+          RUST_MIN_STACK: 1073741824
+        run: |
+          cargo test -p verifier --profile cli --test native --test mop_montgomery
+          cargo test -p verifier --profile cli --test corruption rejects_corrupted_folding_and_ood_pow_nonces_ethproofs_bigint_with_extended_control
+      - name: Guest memory runtime
+        run: cargo test -p riscv_common
 
   formatting:
     name: cargo fmt
@@ -110,33 +105,37 @@ jobs:
           cargo check --workspace --all-targets --exclude gpu_core --exclude gpu_ntt ${{ matrix.args }}
           cargo check -p gpu_core -p gpu_ntt --lib ${{ matrix.args }}
 
-  circuits_generated:
-    name: circuits_generated
-    runs-on: [matterlabs-ci-runner-c3d]
+  check_verifiers:
+    name: check_verifiers
+    runs-on: [matterlabs-ci-runner-ultra-performance]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          components: rustfmt
           rustflags: ""
       - name: Setup
         run: |
           rustup set profile default
-      - name: Regenerate verifiers
-        run: ./recreate_verifiers.sh
-      - name: Check if anything has changed
+          # `cargo objcopy` for the guest dumps (tools/gkr_verifier/dump_bin.sh); the guest
+          # toolchain itself is installed on demand from tools/gkr_verifier/rust-toolchain.toml.
+          cargo install cargo-binutils --version '=0.4.0' --locked
+
+      - name: Build fresh verifiers
         run: |
-          MODIFIED_FILES=$(git status --porcelain)
-          if [ -n "$MODIFIED_FILES" ]; then
-            echo "The following files were modified - did you run ./recreate_verifiers.sh? "
-            echo "$MODIFIED_FILES"
+          ./build.sh --skip-circuit-verifiers
+
+      - name: Fail if any files were modified
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "❌ The following files were modified or added. Did you run build.sh?:"
+            git status --porcelain
             exit 1
-          else
-            echo "No files were modified."
           fi
 
-  check_verifiers:
-    name: check_verifiers
-    runs-on: [matterlabs-ci-runner-c3d]
+  check_circuit_verifiers:
+    name: check_circuit_verifiers
+    runs-on: [matterlabs-ci-runner-ultra-performance]
     steps:
       - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -149,14 +148,14 @@ jobs:
           # toolchain itself is installed on demand from tools/gkr_verifier/rust-toolchain.toml.
           cargo install cargo-binutils --version '=0.4.0' --locked
 
-      - name: Build fresh verifiers
+      - name: Build the per-circuit verifiers
         run: |
-          ./build.sh
+          ./tools/reproduce/reproduce.sh --only-circuit-verifiers
 
       - name: Fail if any files were modified
         run: |
           if [ -n "$(git status --porcelain)" ]; then
-            echo "❌ The following files were modified or added. Did you run build.sh?:"
+            echo "❌ The following files were modified or added. Did you run tools/reproduce/reproduce.sh?:"
             git status --porcelain
             exit 1
           fi
@@ -187,8 +186,9 @@ jobs:
 
   cli_smoke_verify:
     name: cli_smoke_verify
+    needs: fixture_build
     runs-on: [matterlabs-ci-runner-high-performance]
-    timeout-minutes: 180
+    timeout-minutes: 60
     container:
       image: ubuntu:24.04
     env:
@@ -197,30 +197,154 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Install dependencies
+        run: |
+          apt-get update
+          # ca-certificates brings libssl3, which the CLI test executable loads.
+          apt-get install -y --no-install-recommends ca-certificates git python3
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v4
+        with:
+          name: fixture-executables
+          path: fixture-executables/
+      - name: CPU tests
+        run: |
+          python3 - <<'PYTHON'
+          import json, os, pathlib, subprocess
+
+          workspace = pathlib.Path(os.environ["GITHUB_WORKSPACE"])
+          artifacts = workspace / "fixture-executables"
+          manifest = json.loads((artifacts / "cpu-tests.json").read_text())
+          if manifest["workspace"] != str(workspace):
+              raise SystemExit(f"CPU test build workspace {manifest['workspace']} differs from GITHUB_WORKSPACE {workspace}")
+          for test in manifest["tests"]:
+              executable = artifacts / test["executable"]
+              executable.chmod(0o755)
+              package_dir = workspace / test["package_dir"]
+              print(f"Running {test['name']} ({test['kind'][0]}) in {package_dir}", flush=True)
+              subprocess.run([str(executable), "--test-threads=1"], cwd=package_dir, check=True)
+          PYTHON
+
+  fixture_build:
+    name: fixture_build
+    runs-on: [matterlabs-ci-runner-ultra-performance]
+    timeout-minutes: 60
+    container:
+      image: ubuntu:24.04
+    env:
+      RUST_MIN_STACK: 16777216
+    defaults:
+      run:
+        shell: bash
+    steps:
       - name: Install build dependencies
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            build-essential ca-certificates cmake curl git libssl-dev pkg-config
+            build-essential ca-certificates cmake curl git libssl-dev pkg-config python3
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
-      - name: Build CPU CLI
-        run: cargo build --release -p cli
-      - name: CPU tests
+          cache-key: release-thin
+      - name: Build fixture executables
         run: |
-          cargo test --release -p execution_prover_model -p execution_prover \
+          mkdir -p fixture-executables
+          cargo build --profile release-thin -p cli
+          cargo build --profile release-thin -p proof_fixtures --bin fixture-codec
+          cargo test -p prover --lib --features test --profile cli --no-run --message-format=json > fixture-build.json
+          python3 - <<'PYTHON'
+          import json, shutil
+          messages = [json.loads(line) for line in open("fixture-build.json")]
+          executables = [message["executable"] for message in messages
+                         if message.get("reason") == "compiler-artifact"
+                         and message["target"]["name"] == "prover"
+                         and message["profile"]["test"] and message.get("executable")]
+          assert len(executables) == 1, executables
+          shutil.copy2(executables[0], "fixture-executables/canonical-producer")
+          PYTHON
+          cp target/release-thin/cli target/release-thin/fixture-codec fixture-executables/
+      - name: Build CPU test executables
+        run: |
+          cargo test --profile release-thin -p execution_prover_model -p execution_prover \
             -p cpu_execution_prover -p prover_pipeline -p cli \
-            -- --test-threads=1
-      - name: Prove base
-        run: ./target/release/cli prove --bin examples/basic_fibonacci/app.bin --target base --backend cpu --cycles-bound 16777216 --worker-threads 8 --output-dir output --output-file base.json
-      - name: Verify base
-        run: ./target/release/cli verify --proof output/base.json --bin examples/basic_fibonacci/app.bin
-      - name: Continue to recursion unified
-        run: ./target/release/cli continue-proof --proof output/base.json --bin examples/basic_fibonacci/app.bin --target recursion-unified --cycles-bound 16777216 --worker-threads 8 --output-dir output --output-file recursion_unified.json
-      - name: Verify recursion unified
-        run: ./target/release/cli verify --proof output/recursion_unified.json --bin examples/basic_fibonacci/app.bin
+            --no-run --message-format=json > cpu-test-build.json
+          python3 - <<'PYTHON'
+          import json, pathlib, shutil
+
+          expected = {
+              ("tools/cli", ("bin",), "cli"),
+              ("cpu_execution_prover", ("lib",), "cpu_execution_prover"),
+              ("cpu_execution_prover", ("test",), "execution_reference"),
+              ("execution_prover", ("lib",), "execution_prover"),
+              ("execution_prover_model", ("lib",), "execution_prover_model"),
+              ("prover_pipeline", ("lib",), "prover_pipeline"),
+          }
+          workspace = pathlib.Path.cwd()
+          executables = {}
+          for line in pathlib.Path("cpu-test-build.json").read_text().splitlines():
+              message = json.loads(line)
+              if (message.get("reason") != "compiler-artifact"
+                      or not message["profile"]["test"] or not message.get("executable")):
+                  continue
+              package_dir = pathlib.Path(message["manifest_path"]).parent.relative_to(workspace).as_posix()
+              target = message["target"]
+              key = (package_dir, tuple(target["kind"]), target["name"])
+              if key in executables:
+                  raise SystemExit(f"Duplicate CPU test executable: {key}")
+              executables[key] = message["executable"]
+          if set(executables) != expected:
+              raise SystemExit(f"Unexpected CPU test executables: {sorted(executables)}; expected {sorted(expected)}")
+          artifacts = pathlib.Path("fixture-executables")
+          (artifacts / "cpu-tests").mkdir(parents=True, exist_ok=True)
+          tests = []
+          for (package_dir, kind, name), executable in sorted(executables.items()):
+              destination = f"cpu-tests/{kind[0]}-{name}"
+              shutil.copy2(executable, artifacts / destination)
+              tests.append(dict(package_dir=package_dir, kind=kind, name=name, executable=destination))
+          manifest = dict(workspace=str(workspace), tests=tests)
+          (artifacts / "cpu-tests.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PYTHON
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fixture-executables
+          path: fixture-executables/
+          if-no-files-found: error
+
+  fixture_currency:
+    name: fixture_currency (${{ matrix.mode }}, ${{ matrix.stage }})
+    needs: fixture_build
+    runs-on: [matterlabs-ci-runner-ultra-performance]
+    timeout-minutes: 180
+    container:
+      image: ubuntu:24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [pessimistic_conjecture, ethproofs_soundcalc]
+        stage: [circuits, base_unified, unrolled]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install runtime dependencies
+        run: |
+          apt-get update
+          # ca-certificates brings libssl3, which the CLI loads.
+          apt-get install -y --no-install-recommends ca-certificates git
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v4
+        with:
+          name: fixture-executables
+          path: fixture-executables/
+      - name: Check fixture currency
+        run: |
+          export FIXTURE_CLI="$GITHUB_WORKSPACE/fixture-executables/cli"
+          export FIXTURE_CANONICAL_PRODUCER="$GITHUB_WORKSPACE/fixture-executables/canonical-producer"
+          export FIXTURE_CODEC="$GITHUB_WORKSPACE/fixture-executables/fixture-codec"
+          chmod +x fixture-executables/*
+          fixtures/regenerate.sh --check --mode "${{ matrix.mode }}" --stage "${{ matrix.stage }}"
+
   # Keep branch protection tied to one stable check name even as the
   # underlying CI fan-out changes over time.
   pr-checks:
@@ -231,10 +355,12 @@ jobs:
       - tests
       - formatting
       - warnings
-      - circuits_generated
       - check_verifiers
+      - check_circuit_verifiers
       - evm_verifier
       - cli_smoke_verify
+      - fixture_build
+      - fixture_currency
     steps:
       - name: Decide on PR checks
         uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2

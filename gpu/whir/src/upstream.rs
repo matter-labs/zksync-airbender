@@ -34,3 +34,6 @@ pub(crate) use prover::merkle_trees::PathQueryable;
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 #[cfg(test)]
 pub(crate) use prover::utils::extension_field_from_base_coeffs;
+
+// The WHIR schedule the fold executes.
+pub(crate) use prover::gkr::prover::WhirSchedule;

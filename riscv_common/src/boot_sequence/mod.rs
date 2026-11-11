@@ -12,7 +12,7 @@ mod memset;
 pub use ::common_constants;
 
 #[export_name = "_setup_interrupts"]
-pub unsafe fn custom_setup_interrupts() {
+pub fn custom_setup_interrupts() {
     extern "C" {
         fn _machine_start_trap();
     }

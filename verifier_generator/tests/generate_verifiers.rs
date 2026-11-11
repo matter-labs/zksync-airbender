@@ -1,7 +1,8 @@
 use std::io::Write;
 
 use prover::field::baby_bear::base::BabyBearField;
-use verifier_common::test_circuits::{CircuitData, SecurityLevel, CIRCUITS};
+use prover::gkr::prover_config::SoundnessMode;
+use verifier_common::test_circuits::{verifier_dir_name, CircuitData, SecurityLevel, ALL_CIRCUITS};
 use verifier_generator::field_wrapper::FieldWrapper;
 use verifier_generator::gkr::GKRGeneratedFiles;
 use verifier_generator::{gkr, utils, whir, DefaultBabyBearField};
@@ -36,14 +37,15 @@ fn write_and_fmt(path: &str, content: &proc_macro2::TokenStream) {
 }
 
 fn generate_common<MW: FieldWrapper>() {
-    let max_fold_steps = CIRCUITS
+    let max_fold_steps = ALL_CIRCUITS
         .iter()
         .flat_map(|c| {
-            LEVELS_TO_GENERATE
-                .iter()
-                .flat_map(move |&level| c.whir_schedule_for(level).whir_steps_schedule.iter())
+            LEVELS_TO_GENERATE.iter().flat_map(move |&level| {
+                SoundnessMode::ALL
+                    .iter()
+                    .flat_map(move |&mode| c.whir_schedule_for_mode(level, mode).fold_steps())
+            })
         })
-        .copied()
         .max()
         .unwrap();
 
@@ -92,7 +94,6 @@ fn generate_gkr_verifier<MW: FieldWrapper<BaseField = BabyBearField>>(
     let files = gkr::generate_gkr_inlined::<MW>(&compiled_circuit, prover_config);
 
     write_and_fmt(&format!("{}/constants.rs", dir), &files.constants);
-    write_and_fmt(&format!("{}/gkr.rs", dir), &files.gkr);
 
     files
 }
@@ -116,7 +117,7 @@ fn generate_whir_verifier<MW: FieldWrapper>(
     let whir_final = whir::generate_whir_final_round::<MW>(whir_schedule, message_size_log2);
 
     // Compute max hash buf size across all WHIR rounds (padded to 16-word boundary)
-    let initial_vpf = 1usize << whir_schedule.whir_steps_schedule[0];
+    let initial_vpf = whir_schedule.base_values_per_leaf();
     let initial_hbs = gkr_files
         .oracles
         .values()
@@ -125,18 +126,15 @@ fn generate_whir_verifier<MW: FieldWrapper>(
         .unwrap_or(0)
         .div_ceil(16)
         * 16;
-    let num_whir_rounds = whir_schedule.whir_steps_schedule.len();
+    let fold_steps = whir_schedule.fold_steps();
+    let num_whir_rounds = fold_steps.len();
     let internal_hbs = if num_whir_rounds > 2 {
-        let max_fold = *whir_schedule.whir_steps_schedule[1..num_whir_rounds - 1]
-            .iter()
-            .max()
-            .unwrap();
+        let max_fold = *fold_steps[1..num_whir_rounds - 1].iter().max().unwrap();
         ((1usize << max_fold) * 4).div_ceil(16) * 16
     } else {
         0
     };
-    let final_hbs =
-        ((1usize << whir_schedule.whir_steps_schedule[num_whir_rounds - 1]) * 4).div_ceil(16) * 16;
+    let final_hbs = ((1usize << fold_steps[num_whir_rounds - 1]) * 4).div_ceil(16) * 16;
     let whir_hash_buf_size = initial_hbs.max(internal_hbs).max(final_hbs);
 
     let whir_verify = whir::generate_whir_verify::<MW>(whir_hash_buf_size);
@@ -157,40 +155,81 @@ fn ensure_common() {
     });
 }
 
-fn generate_verifier_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
+/// The verifiers of `circuit` for every soundness mode at `level`, generated into
+/// `verifier/src/generated/<circuit>/<mode>/`. Their GKR verifier must be identical in every
+/// mode; it is written once, to `<circuit>/gkr.rs`, before the `mod.rs` files that include it.
+fn generate_standard_verifiers_for_circuit<MW: FieldWrapper<BaseField = BabyBearField>>(
     circuit: &CircuitData,
     level: SecurityLevel,
 ) {
-    let prover_config = circuit.prover_config_for(level);
-    generate_verifier_for_circuit_with_config::<MW>(circuit, prover_config, level.dir_suffix());
+    let parts: Vec<_> = SoundnessMode::ALL
+        .iter()
+        .map(|&mode| {
+            let prover_config = circuit.prover_config_for_mode(level, mode);
+            let (dir, gkr) =
+                generate_verifier_parts::<MW>(circuit, prover_config, verifier_dir_name(mode));
+            (mode, dir, gkr)
+        })
+        .collect();
+    let (first_mode, _, gkr) = &parts[0];
+    for (mode, _, other) in &parts[1..] {
+        assert!(
+            other.to_string() == gkr.to_string(),
+            "{}: the {mode:?} GKR verifier differs from the {first_mode:?} one and cannot be shared",
+            circuit.name
+        );
+    }
+    write_and_fmt(&format!("{}/gkr.rs", circuit.generated_dir()), gkr);
+    for (_, dir, _) in &parts {
+        write_mod_rs::<MW>(
+            dir,
+            quote::quote! {
+                #[path = "../gkr.rs"]
+                pub mod gkr;
+            },
+        );
+    }
 }
 
-/// Like [`generate_verifier_for_circuit`] but with an EXPLICIT prover config,
-/// output dir suffix — for special-purpose
-/// verifier variants whose LDE factor / WHIR schedule / base-commitment shape
-/// differ from the standard per-level configs (e.g. the high-LDE, merged-tree
-/// "L1 feeder" unified verifier).
-///
+/// The verifier of `circuit` for an EXPLICIT prover config with its own GKR verifier, generated
+/// into `verifier/src/generated/<circuit>/<dir_suffix>/`.
 fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBearField>>(
     circuit: &CircuitData,
     prover_config: &prover::gkr::prover_config::ProverConfig,
     dir_suffix: &str,
 ) {
-    ensure_common();
+    let (dir, gkr) = generate_verifier_parts::<MW>(circuit, prover_config, dir_suffix);
+    write_and_fmt(&format!("{dir}/gkr.rs"), &gkr);
+    write_mod_rs::<MW>(&dir, quote::quote! { pub mod gkr; });
+}
 
+/// Writes the constants and WHIR verifier of `circuit` for `prover_config` into
+/// `verifier/src/generated/<circuit>/<dir_suffix>/` and returns that directory and the GKR
+/// verifier, which the caller places.
+fn generate_verifier_parts<MW: FieldWrapper<BaseField = BabyBearField>>(
+    circuit: &CircuitData,
+    prover_config: &prover::gkr::prover_config::ProverConfig,
+    dir_suffix: &str,
+) -> (String, proc_macro2::TokenStream) {
+    ensure_common();
+    let dir = format!("{}/{}", circuit.generated_dir(), dir_suffix);
+    std::fs::create_dir_all(&dir).unwrap();
+    let gkr_files = generate_gkr_verifier::<MW>(circuit, prover_config, &dir);
+    generate_whir_verifier::<MW>(prover_config, &dir, &gkr_files);
+    (dir, gkr_files.gkr)
+}
+
+fn write_mod_rs<MW: FieldWrapper<BaseField = BabyBearField>>(
+    dir: &str,
+    gkr_mod: proc_macro2::TokenStream,
+) {
     let field_struct = MW::field_struct();
     let quartic_struct = MW::quartic_struct();
     let field_use_stmts = MW::field_use_statements();
 
-    let dir = format!("{}/{}", circuit.generated_dir(), dir_suffix);
-    std::fs::create_dir_all(&dir).unwrap();
-
-    let gkr_files = generate_gkr_verifier::<MW>(circuit, prover_config, &dir);
-    generate_whir_verifier::<MW>(prover_config, &dir, &gkr_files);
-
     let mod_rs = quote::quote! {
         pub mod constants;
-        pub mod gkr;
+        #gkr_mod
         pub mod whir;
         #[path = "../../common/mod.rs"]
         pub mod common;
@@ -230,10 +269,11 @@ fn generate_verifier_for_circuit_with_config<MW: FieldWrapper<BaseField = BabyBe
 /// BabyBear's two-adicity cap (base LDE 16; round-0 queries 87 -> 21), the
 /// schedule terminates at a plain-text 2^3 tail, and the base commitment is
 /// the MERGED memory+witness tree (one Merkle path per round-0 query instead
-/// of two). Generated into `.../unified_reduced_machine/sec_100_l1_feeder`.
+/// of two). Generated into `.../unified_reduced_machine/pessimistic_conjecture_l1_feeder`
+/// (a pessimistic-conjecture variant; no soundcalc twin has been designed).
 #[test]
 fn unified_reduced_machine_l1_feeder() {
-    let circuit = CIRCUITS
+    let circuit = ALL_CIRCUITS
         .iter()
         .find(|c| c.name == "unified_reduced_machine")
         .unwrap();
@@ -246,27 +286,7 @@ fn unified_reduced_machine_l1_feeder() {
     generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
         circuit,
         &prover_config,
-        "sec_100_l1_feeder",
-    );
-}
-
-/// Packed base commitment: the `blake2_with_extended_control` 2^20 circuit
-/// with `pack_log2 = 4` (2^24 WHIR message, the 2^24 WHIR schedule). Generated
-/// into `.../blake2_with_extended_control/sec_100_pack4`; the proof fixture
-/// is verified by `tests/packed_verify.rs`.
-#[test]
-fn blake2_with_extended_control_pack4() {
-    use verifier_common::test_circuits::packed_fixture;
-    let circuit = packed_fixture::circuit();
-    let prover_config = packed_fixture::prover_config();
-    assert_eq!(
-        circuit.compiled_circuit().trace_len.trailing_zeros() as usize,
-        prover_config.trace_len_log2,
-    );
-    generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
-        circuit,
-        &prover_config,
-        packed_fixture::DIR_SUFFIX,
+        "pessimistic_conjecture_l1_feeder",
     );
 }
 
@@ -275,9 +295,9 @@ macro_rules! generate_circuit_tests {
         $(
             #[test]
             fn $name() {
-                let circuit = CIRCUITS.iter().find(|c| c.name == stringify!($name)).unwrap();
+                let circuit = ALL_CIRCUITS.iter().find(|c| c.name == stringify!($name)).unwrap();
                 for level in LEVELS_TO_GENERATE {
-                    generate_verifier_for_circuit::<DefaultBabyBearField>(circuit, *level);
+                    generate_standard_verifiers_for_circuit::<DefaultBabyBearField>(circuit, *level);
                 }
             }
         )*

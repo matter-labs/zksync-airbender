@@ -4,6 +4,7 @@
 /// enforce it. The mismatched path keeps it by `copy_merge`'s invariant. The
 /// `memcpy_via_precompile` path keeps it too: both pointers are 32-byte aligned
 /// there, so overlapping ranges are at least 32 bytes apart.
+#[cfg(not(feature = "checked_word_memory"))]
 #[allow(dead_code)]
 #[inline(always)]
 pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
@@ -82,10 +83,18 @@ pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mu
     return_value
 }
 
+/// Copies `n` bytes by words in ascending address order, loading each source word before storing
+/// the destination word at the same index. The `n % 4` tail bytes follow the words (not compiled
+/// in the checked word-memory runtime, whose `n` is a word multiple).
+///
 /// # Safety
-/// `memcpy` contract for `n` bytes, and `n == 0 || (dest and src are both 4-aligned)`.
+/// `dest` and `src` are valid for `n` bytes of writes and reads, `n == 0 || (dest and src are both
+/// 4-aligned)`, and the ranges are disjoint, equal, or overlap with `dest` below `src`. The
+/// ascending order makes that last case correct: the checked `memmove` uses this function for it,
+/// and `memmove_impl` relies on the same order when it forwards through `memcpy_impl`.
 #[inline(always)]
-unsafe fn copy_aligned_words(dest: *mut u8, src: *const u8, mut n: usize) {
+#[cfg_attr(feature = "checked_word_memory", allow(unused_assignments))]
+pub(crate) unsafe fn copy_aligned_words(dest: *mut u8, src: *const u8, mut n: usize) {
     const WORD_SIZE: usize = const { core::mem::size_of::<u32>() };
     // start via unrolling. Unroll size choice is somewhat arbitrary, but 16 as the maximum seems the best as:
     // - copy is done as mem -> reg -> mem, so we need 16 available registers + values of source, dest and n itself
@@ -193,32 +202,36 @@ unsafe fn copy_aligned_words(dest: *mut u8, src: *const u8, mut n: usize) {
         }
     }
 
-    // and copy the tail - by by u16 and by byte
-    let mut src = src.cast::<u16>();
-    let mut dest = dest.cast::<u16>();
+    // The u16/u8 tail; the checked runtime's lengths are word multiples.
+    #[cfg(not(feature = "checked_word_memory"))]
     {
-        const BYTE_COPY_SIZE: usize = 2;
+        let mut src = src.cast::<u16>();
+        let mut dest = dest.cast::<u16>();
+        {
+            const BYTE_COPY_SIZE: usize = 2;
 
-        if n & BYTE_COPY_SIZE > 0 {
-            debug_assert_eq!(src.addr() % core::mem::size_of::<u16>(), 0);
-            debug_assert_eq!(dest.addr() % core::mem::size_of::<u16>(), 0);
+            if n & BYTE_COPY_SIZE > 0 {
+                debug_assert_eq!(src.addr() % core::mem::size_of::<u16>(), 0);
+                debug_assert_eq!(dest.addr() % core::mem::size_of::<u16>(), 0);
 
-            dest.write(src.read());
+                dest.write(src.read());
 
-            src = src.add(1);
-            dest = dest.add(1);
+                src = src.add(1);
+                dest = dest.add(1);
+            }
         }
-    }
 
-    let src = src.cast::<u8>();
-    let dest = dest.cast::<u8>();
-    if n & 1 > 0 {
-        dest.write(src.read());
+        let src = src.cast::<u8>();
+        let dest = dest.cast::<u8>();
+        if n & 1 > 0 {
+            dest.write(src.read());
+        }
     }
 }
 
 /// # Safety
 /// `memcpy` contract for `n` bytes, and `(dest ^ src) % 4 != 0`.
+#[cfg(not(feature = "checked_word_memory"))]
 #[inline(always)]
 unsafe fn copy_mismatched(mut dest: *mut u8, mut src: *const u8, mut n: usize) {
     debug_assert!(!(dest.addr() ^ src.addr()).is_multiple_of(4));
@@ -292,6 +305,7 @@ unsafe fn copy_mismatched(mut dest: *mut u8, mut src: *const u8, mut n: usize) {
 ///
 /// # Safety
 /// `memcpy` contract for `n` bytes, `d % 4 == 0`, `s % 4 == R` and `n >= L`.
+#[cfg(not(feature = "checked_word_memory"))]
 #[inline(always)]
 unsafe fn copy_merge<const R: usize>(d: *mut u8, s: *const u8, n: usize) {
     const { assert!(1 <= R && R <= 3) };
@@ -316,6 +330,7 @@ unsafe fn copy_merge<const R: usize>(d: *mut u8, s: *const u8, n: usize) {
 ///
 /// # Safety
 /// `memcpy` contract for the `L + q` bytes from `p - L` to `d`, `d % 4 == 0`, `p % 4 == 0`.
+#[cfg(not(feature = "checked_word_memory"))]
 #[inline(always)]
 unsafe fn merge_words<const R: usize>(
     mut d: *mut u8,
@@ -396,6 +411,7 @@ unsafe fn merge_words<const R: usize>(
 
 /// # Safety
 /// `memcpy` contract for `n < 32` bytes.
+#[cfg(not(feature = "checked_word_memory"))]
 #[inline(always)]
 unsafe fn copy_bytes(mut dest: *mut u8, mut src: *const u8, n: usize) {
     debug_assert!(n < 32);
@@ -434,6 +450,7 @@ unsafe fn copy_bytes(mut dest: *mut u8, mut src: *const u8, n: usize) {
 
 /// # Safety
 /// `memcpy` contract for `n < 4` bytes.
+#[cfg(not(feature = "checked_word_memory"))]
 #[inline(always)]
 unsafe fn copy_bytes_lt4(dest: *mut u8, src: *const u8, n: usize) {
     debug_assert!(n < 4);
@@ -445,4 +462,22 @@ unsafe fn copy_bytes_lt4(dest: *mut u8, src: *const u8, n: usize) {
     if n & 1 != 0 {
         dest.add(n & 2).write(src.add(n & 2).read());
     }
+}
+
+/// `checked_word_memory` `memcpy`: for nonzero `n`, traps unless `dest`, `src` and `n` are word
+/// multiples; `n == 0` returns with no memory access whatever the pointers.
+///
+/// # Safety
+/// For nonzero `n`, the `memcpy` contract: valid, non-wrapping ranges, equal or disjoint.
+#[cfg(feature = "checked_word_memory")]
+#[allow(dead_code)]
+#[inline(always)]
+pub(crate) unsafe fn memcpy_impl(dest: *mut u8, src: *const u8, n: usize) -> *mut u8 {
+    if n != 0 {
+        if !(dest.addr() | src.addr() | n).is_multiple_of(4) {
+            crate::checked_word::refuse();
+        }
+        copy_aligned_words(dest, src, n);
+    }
+    dest
 }

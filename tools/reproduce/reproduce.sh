@@ -1,5 +1,6 @@
 #!/bin/sh
-# Rebuild every committed verifier guest binary with the native toolchain.
+# Regenerate the verifier guest sources (both soundness modes) and rebuild every
+# committed verifier guest binary with the native toolchain.
 # Run from any directory; no Docker, no emulation.
 #
 # Reproducibility comes from the guest build setup itself (tools/gkr_verifier):
@@ -10,24 +11,65 @@
 #   - dump_bin.sh remaps the checkout root, sysroot and cargo registry in DWARF and drops
 #     the toolchain's `.comment` strings from the .elf files.
 # The same commit built on x86-64 Linux, x86-64 macOS and arm64 macOS gives byte-identical
-# .bin / .text / .elf files; compare with `git status` / `git diff --stat` afterwards.
+# .elf files; compare with `git status` / `git diff --stat` afterwards.
 set -eu
-cd "$(dirname "$0")/../gkr_verifier"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+GENERATE_SOURCES=1
+GENERATE_VERIFIERS=1
+FULL_STATEMENT_VERIFIERS=1
+CIRCUIT_VERIFIERS=1
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --skip-generate-verifiers) GENERATE_VERIFIERS=0; shift ;;
+        --skip-circuit-verifiers) CIRCUIT_VERIFIERS=0; shift ;;
+        --only-circuit-verifiers) GENERATE_SOURCES=0; FULL_STATEMENT_VERIFIERS=0; shift ;;
+        *) echo "unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
 
-# Full-statement verifiers in every blake variant the recursion pipeline can select.
-./dump_recursive_verifiers.sh
+# The guest sources are generated: regenerate them first, for BOTH soundness modes
+# (pessimistic_conjecture and ethproofs_soundcalc), so the binaries below are built from
+# the current circuits, configs and generator.
+#
+# 1. The delegation circuits' setup parameters (setup caps committed with each mode's
+#    config): circuit_defs/setups/generated/delegation_parameters_<mode>.rs, included by
+#    full_statement_verifier::delegation_circuits_setups::<mode>.
+# 2. Every circuit's verifier in each mode: verifier/src/generated/<circuit>/<mode>/, plus
+#    the shared verifier/src/generated/common/ module. These are what the per-circuit
+#    verifiers and (through full_statement_verifier::imports::<mode>) the full-statement
+#    verifiers compile.
+# Both run from the workspace (its own toolchain); the generators skip themselves under
+# CI=1, so make sure it is unset here.
+cd "$REPO_ROOT"
+unset CI
+if [ "$GENERATE_SOURCES" = 1 ]; then
+    echo "==> regenerating the delegation parameters (both soundness modes)"
+    cargo test --release -p setups generate_delegation_circuits_artifacts
+    if [ "$GENERATE_VERIFIERS" = 1 ]; then
+        echo "==> regenerating the circuit verifiers (both soundness modes)"
+        cargo test --release -p verifier_generator --test generate_verifiers
+    fi
+fi
 
-# Standalone circuit verifiers consumed by the cost-model drift guard. Keep this list in
-# sync with the generated Rust code.
-./dump_bin.sh --sec 100 \
-    add_sub_lui_auipc_mop_sec_100 jump_branch_slt_sec_100 shift_binop_sec_100 \
-    unsigned_mul_div_sec_100 mem_word_only_sec_100 mem_subword_only_sec_100 \
-    inits_and_teardowns_sec_100 blake2_with_extended_control_sec_100 \
-    bigint_with_extended_control_sec_100 keccak_special5_sec_100 keccak_column_parity_sec_100 \
-    keccak_theta_rho_sec_100 keccak_chi5_sec_100 blake2_g_function_sec_100 \
-    blake2_with_extended_control_sec_100_pack4
+cd "$REPO_ROOT/tools/gkr_verifier"
+
+# Full-statement verifiers in both soundness modes and every recursive Blake variant.
+if [ "$FULL_STATEMENT_VERIFIERS" = 1 ]; then
+    ./dump_recursive_verifiers.sh
+fi
+
+# Standalone per-circuit verifiers (both soundness modes): every binary under src/bin/circuit_verifiers/.
+if [ "$CIRCUIT_VERIFIERS" = 1 ]; then
+    PER_CIRCUIT=""
+    for m in src/bin/circuit_verifiers/*/; do
+        m=$(basename "$m")
+        PER_CIRCUIT="$PER_CIRCUIT $(ls "src/bin/circuit_verifiers/$m"/*.rs | sed "s|.*/||;s|\.rs||;s|\$|_$m|")"
+    done
+    # shellcheck disable=SC2086
+    ./dump_bin.sh --sec 100 $PER_CIRCUIT
+fi
 
 echo "==> checksums"
-for f in fsv_*_sec_100_*.bin fsv_*_sec_100_*.elf fsv_*_sec_100_*.text *_sec_100.bin *_sec_100.elf *_sec_100.text *_sec_100_pack4.bin *_sec_100_pack4.elf *_sec_100_pack4.text; do
+for f in full_statement_verifiers/*.elf full_statement_verifiers/*/*.elf circuit_verifiers/*/*.elf; do
     [ -f "$f" ] && shasum -a 256 "$f"
 done | sort -k2 -u

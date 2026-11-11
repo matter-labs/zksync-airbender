@@ -1,7 +1,7 @@
-use crate::config::{BackendConfiguration, ExecutionProverConfiguration};
+use crate::config::{BackendConfiguration, ExecutionProverConfiguration, SoundnessMode};
 use crate::messages::WorkBatch;
 use crate::setup::CanonicalCircuitSetup;
-use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, SecurityLevel, BF};
+use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, BF};
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
 use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, TraceChunk};
@@ -41,12 +41,13 @@ pub trait ExecutionBackend: Send + Sync + Sized + 'static {
         0
     }
 
-    /// Must assert that compiled circuit geometry agrees with `circuit`.
+    /// The circuit's prepared state under `soundness_mode`. Must assert that compiled circuit
+    /// geometry agrees with `circuit`.
     fn prepare(
         &self,
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
-        security: SecurityLevel,
+        soundness_mode: SoundnessMode,
     ) -> Self::Precomputations;
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>);

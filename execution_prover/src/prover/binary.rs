@@ -1,102 +1,110 @@
 use super::*;
 
 impl<B: ExecutionBackend> ExecutionProver<B> {
-    pub fn add_binary(
+    /// Register the requested execution variants of one binary at initialization.
+    /// Padding, instruction decoding and family projections are shared across variants.
+    pub fn add_binary_variants(
         &mut self,
-        execution_kind: ExecutionKind,
-        machine_type: MachineType,
         binary_image: Vec<u32>,
         text_section: Vec<u32>,
+        variants: &[(ExecutionKind, MachineType)],
         cycles_bound: Option<u32>,
-    ) -> BinaryHandle {
-        let key = self.next_binary_id;
-        self.next_binary_id += 1;
-        info!("PROVER inserting binary with key {key:?}");
-        let preprocessed_bytecode = match machine_type {
-            MachineType::Full => {
-                preprocess_bytecode::<FullMachineDecoderConfig, true>(&text_section)
-            }
-            MachineType::FullUnsigned => {
-                preprocess_bytecode::<FullUnsignedMachineDecoderConfig, true>(&text_section)
-            }
-            MachineType::Reduced => {
-                preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text_section)
-            }
-        };
-        let instruction_tape = Arc::new(SimpleTape::new(&preprocessed_bytecode));
-        let circuit_types = match execution_kind {
-            ExecutionKind::Unrolled => {
-                let memory =
-                    UnrolledMemoryCircuitType::get_circuit_types_for_machine_type(machine_type)
-                        .iter()
-                        .copied()
-                        .map(UnrolledCircuitType::Memory);
-                let non_memory =
-                    UnrolledNonMemoryCircuitType::get_circuit_types_for_machine_type(machine_type)
-                        .iter()
-                        .copied()
-                        .map(UnrolledCircuitType::NonMemory);
-                memory.chain(non_memory).collect_vec()
-            }
-            ExecutionKind::Unified => {
-                assert_eq!(
-                    machine_type,
-                    MachineType::Reduced,
-                    "Unified execution kind is only supported for Reduced machine type"
-                );
-                vec![UnrolledCircuitType::Unified]
-            }
-        };
+    ) -> Vec<BinaryHandle> {
+        assert!(
+            self.host_pool_allocation.is_some(),
+            "cannot register binary variants after finalizing setup"
+        );
+        assert!(
+            !variants.is_empty(),
+            "at least one binary variant is required"
+        );
+        for (i, variant) in variants.iter().enumerate() {
+            assert!(!variants[..i].contains(variant), "duplicate binary variant");
+        }
+        let decode_start = Instant::now();
         let mut padded_binary_image = binary_image.clone();
         crate::upstream::pad_bytecode_for_proving(&mut padded_binary_image);
-        let mut padded_text_section = text_section.clone();
-        crate::upstream::pad_bytecode_for_proving(&mut padded_text_section);
-        let precomputations: HashMap<_, _> = circuit_types
-            .into_iter()
-            .map(|circuit_type| {
-                debug!(
-                    "PROVER producing precomputations for circuit {circuit_type:?} and binary with key {key:?}"
-                );
-                let setup = build_unrolled_setup(
-                    machine_type,
-                    circuit_type,
-                    &padded_binary_image,
-                    &padded_text_section,
-                    &self.worker,
-                );
-                let precomp = self.backend.prepare(
-                    CircuitType::Unrolled(circuit_type),
-                    setup,
-                    self.configuration.security_level,
-                );
-                (circuit_type, precomp)
-            })
-            .collect();
-        let pending_setup_initialization = request_setup_initialization(
-            &self.backend,
-            self.configuration.security_level,
-            precomputations
+        let mut machines = Vec::new();
+        for &(_, machine) in variants {
+            if machines
                 .iter()
-                .map(|(circuit_type, precomp)| {
-                    (CircuitType::Unrolled(*circuit_type), precomp.clone())
-                })
-                .collect(),
+                .any(|(prepared_machine, _, _)| *prepared_machine == machine)
+            {
+                continue;
+            }
+            let kinds: Vec<_> = variants
+                .iter()
+                .filter_map(|&(kind, m)| (m == machine).then_some(kind))
+                .collect();
+            let preprocessing = preprocess_binary(machine, &kinds, &text_section);
+            let tape = Arc::new(SimpleTape::new(&preprocessing.execution_instructions));
+            machines.push((machine, preprocessing, tape));
+        }
+        info!(
+            "PROVER decoded and padded binary for {} variants on {} machines in {:?}",
+            variants.len(),
+            machines.len(),
+            decode_start.elapsed()
         );
-        pending_setup_initialization.wait();
         let binary_image = Arc::new(binary_image.into_boxed_slice());
         let text_section = Arc::new(text_section.into_boxed_slice());
-        let jit_cache = Arc::new(Mutex::new(TypeMap::new()));
-        let holder = BinaryHolder {
-            execution_kind,
-            machine_type,
-            binary_image,
-            text_section,
-            cycles_bound,
-            instruction_tape,
-            jit_cache,
-            precomputations,
-        };
-        assert!(self.binary_holders.insert(key, holder).is_none());
-        BinaryHandle(key)
+        let mut handles = Vec::with_capacity(variants.len());
+        for &(execution_kind, machine_type) in variants {
+            let key = self.next_binary_id;
+            info!(
+                "PROVER inserting binary with key {key:?} ({execution_kind:?}, {machine_type:?})"
+            );
+            let (_, preprocessing, instruction_tape) = machines
+                .iter()
+                .find(|(machine, _, _)| *machine == machine_type)
+                .unwrap();
+            let circuit_types =
+                crate::setup::circuit_types_for_variant(execution_kind, machine_type);
+            let mut setup_time = std::time::Duration::ZERO;
+            let mut preparation_time = std::time::Duration::ZERO;
+            let precomputations: HashMap<_, _> = circuit_types.into_iter().map(|circuit_type| {
+                debug!("PROVER producing precomputations for circuit {circuit_type:?} and binary with key {key:?}");
+                let start = Instant::now();
+                let setup = build_unrolled_setup_with_preprocessing(circuit_type, &padded_binary_image, preprocessing, &self.worker);
+                setup_time += start.elapsed();
+                let start = Instant::now();
+                let precomp = self.backend.prepare(CircuitType::Unrolled(circuit_type), setup, self.configuration.soundness_mode);
+                preparation_time += start.elapsed();
+                (circuit_type, precomp)
+            }).collect();
+            let start = Instant::now();
+            // Common setup uses 0; each variant needs a distinct batch while
+            // earlier setup requests can still be running in the backend.
+            let setup_batch_id = u64::try_from(key)
+                .unwrap()
+                .checked_add(1)
+                .expect("setup batch id overflow");
+            let pending = request_setup_initialization(
+                self.backend.as_ref(),
+                setup_batch_id,
+                precomputations
+                    .iter()
+                    .map(|(circuit_type, precomp)| {
+                        (CircuitType::Unrolled(*circuit_type), precomp.clone())
+                    })
+                    .collect(),
+            );
+            self.pending_setup_initializations.push(pending);
+            info!("PROVER inserted binary with key {key:?}: CPU setup construction {setup_time:?}, backend preparation {preparation_time:?}, setup initialization request {:?}", start.elapsed());
+            let holder = BinaryHolder {
+                execution_kind,
+                machine_type,
+                binary_image: Arc::clone(&binary_image),
+                text_section: Arc::clone(&text_section),
+                cycles_bound,
+                instruction_tape: Arc::clone(instruction_tape),
+                jit_cache: Arc::new(Mutex::new(TypeMap::new())),
+                precomputations,
+            };
+            assert!(self.binary_holders.insert(key, holder).is_none());
+            self.next_binary_id += 1;
+            handles.push(BinaryHandle(key));
+        }
+        handles
     }
 }

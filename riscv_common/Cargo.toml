@@ -26,6 +26,9 @@ no_memcpy_override = []
 no_memmove_override = []
 no_memset_override = []
 memcpy_via_precompile = []
+# Verifier guests: memcpy/memmove/memset trap unless every pointer and the length are word
+# multiples (zero length touches nothing). General programs keep the default runtime.
+checked_word_memory = []
 ram_32mb_no_heap = ["boot_sequence"]
 ram_1gb = ["boot_sequence"]
 ram_4gb = ["boot_sequence"]

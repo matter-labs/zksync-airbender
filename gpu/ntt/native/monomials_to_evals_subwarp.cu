@@ -95,9 +95,8 @@ DEVICE_FORCEINLINE void monomials_to_evals_subwarp_impl(bf_matrix_getter<ld_modi
 // per SM is a safe occupancy target on every supported architecture.
 #define DEFINE_SUBWARP_KERNEL(LOG_N, LOG_IPB)                                                                                                                  \
   EXTERN __launch_bounds__((1 << LOG_N) << LOG_IPB, 4) __global__ void ab_monomials_to_evals_subwarp_##LOG_N##_stages_ipb##LOG_IPB##_kernel(                   \
-      bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const bool transposed_monomials, const int log_n,                 \
-      const int coset_index_base, const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {                                  \
-    (void)transposed_monomials;                                                                                                                                \
+      bf_matrix_getter<ld_modifier::cg> gmem_in, bf_matrix_setter<st_modifier::cg> gmem_out, const int log_n, const int coset_index_base,                      \
+      const int coset_factor_shift, const int num_cols_per_coset, const int log_cosets_in_tile) {                                                              \
     (void)log_n;                                                                                                                                               \
     monomials_to_evals_subwarp_impl<LOG_N, LOG_IPB>(gmem_in, gmem_out, coset_index_base, coset_factor_shift, num_cols_per_coset, log_cosets_in_tile);          \
   }

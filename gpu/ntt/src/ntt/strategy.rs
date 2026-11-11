@@ -2,9 +2,8 @@
 //!
 //! `select_ntt_strategy` returns an `NttStrategy` describing how a given
 //! `(log_n, num_columns, num_cosets)` NTT should be executed on the active
-//! device. It routes the multi-coset entry
-//! `bitreversed_monomials_to_natural_evals_multi_coset` through this
-//! selector, and compact kernels extend the supported `log_n` range.
+//! device. The multi-coset LDE entries route through this selector, and
+//! compact kernels extend the supported `log_n` range.
 
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::field::BF;
@@ -17,12 +16,11 @@ pub(crate) struct NttPass {
 }
 
 /// Direction the NTT plan runs in. Forward = bitreversed monomials → natural
-/// evals; Inverse = natural evals → bitreversed monomials; NaturalToBitrev =
-/// natural monomials → bitreversed evals (the LSB commitment layer's LDE).
+/// evals; NaturalToBitrev = natural monomials → bitreversed evals (the LSB
+/// commitment layer's LDE).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NttDirection {
     Forward,
-    Inverse,
     NaturalToBitrev,
 }
 
@@ -73,20 +71,6 @@ pub(crate) enum NttKernelKind {
     MonomialsToEvalsLast {
         stages: usize,
     },
-    /// Inverse 3-pass nonfinal: 8 stages of bitreversed-evals exchange via
-    /// `ab_evals_to_monomials_nonfinal_8_stages_kernel`.
-    EvalsToMonomialsNonInitial {
-        stages: usize,
-    },
-    /// Inverse 2-pass first kernel: `ab_evals_to_monomials_first_{9,10}_stages_kernel`
-    /// (one block does 9 or 10 stages of natural-evals exchange).
-    EvalsToMonomialsFirst {
-        stages: usize,
-    },
-    /// Inverse final pass: `ab_evals_to_monomials_{final_K,last_14}_stages_kernel`.
-    EvalsToMonomialsFinal {
-        stages: usize,
-    },
     /// -> `ab_natural_monomials_to_bitrev_evals_initial_8_stages_kernel`
     NaturalToBitrevInitial {
         stages: usize,
@@ -133,7 +117,7 @@ pub(crate) enum NttStrategyError {
 /// smem-packed kernels handling log_n in [6, 8]. The 2-pass
 /// first-K-stages-compact + noninitial_8 kernels cover
 /// `[TWO_PASS_COMPACT_MIN_LOG_N, TWO_PASS_COMPACT_MAX_LOG_N]`, and the existing
-/// 2-/3-pass kernels cover `[MULTIPASS_MIN_LOG_N, ..]`. Selector returns
+/// 2-/3-pass kernels cover the sizes above it. Selector returns
 /// `Err(LogNBelowSupported)` for `log_n = 0` only (identity NTT = host memcpy).
 // Documentation-only: the actual floor check in `select_forward_strategy`
 // matches against `COMPACT_MIN_LOG_N` (same value) directly, so this named
@@ -148,7 +132,6 @@ pub(crate) const COMPACT_MIN_LOG_N: usize = 1;
 pub(crate) const COMPACT_MAX_LOG_N: usize = 12;
 pub(crate) const TWO_PASS_COMPACT_MIN_LOG_N: usize = 13;
 pub(crate) const TWO_PASS_COMPACT_MAX_LOG_N: usize = 20;
-pub(crate) const MULTIPASS_MIN_LOG_N: usize = 21;
 /// Largest `log_n` the natural→bitrev kernel family is generated for (the
 /// three-pass final kernels cover `log_n - 16` in [5, 8]).
 pub(crate) const NATURAL_TO_BITREV_MAX_LOG_N: usize = 24;
@@ -163,9 +146,6 @@ pub(crate) fn select_ntt_strategy(
     match direction {
         NttDirection::Forward => {
             select_forward_strategy(log_n, num_columns, num_cosets, device_props)
-        }
-        NttDirection::Inverse => {
-            select_inverse_strategy(log_n, num_columns, num_cosets, device_props)
         }
         NttDirection::NaturalToBitrev => {
             select_natural_to_bitrev_strategy(log_n, num_columns, num_cosets, device_props)
@@ -461,24 +441,6 @@ fn pick_cols_and_cosets_per_launch(
     (best_cols, best_k)
 }
 
-/// Single-coset column-clamping for the inverse NTT (cosets_per_launch is
-/// always 1 -- inverse is a per-column evals -> monomials transform with no
-/// coset axis). With K = 1 the joint formula `(K + 1) * cols * col_bytes <= L2`
-/// reduces to `cols * col_bytes <= L2/2`. See `pick_cols_and_cosets_per_launch`
-/// for the multi-coset forward analog.
-fn l2_clamped_columns_per_launch(
-    log_n: usize,
-    num_columns: usize,
-    device_props: &DeviceProperties,
-) -> usize {
-    let column_bytes = (1usize << log_n) * size_of::<BF>();
-    let half_l2 = device_props.l2_cache_size_bytes / 2;
-    let columns_per_launch_l2 = half_l2
-        .checked_div(column_bytes)
-        .map_or(num_columns, |cols| cols.max(1));
-    num_columns.min(columns_per_launch_l2)
-}
-
 fn select_forward_strategy(
     log_n: usize,
     num_columns: usize,
@@ -653,8 +615,7 @@ fn select_forward_strategy(
 
 /// Natural-order monomials → bitreversed-order evals. Uses the FORWARD
 /// selector's joint `(columns_per_launch, cosets_per_launch)` tiling: the
-/// multi-coset input column is re-read once per coset, so the L2 budget is the
-/// forward one, not the inverse's single-coset one.
+/// multi-coset input column is re-read once per coset.
 ///
 /// Below the multipass floor only the TWO_PASS_COMPACT range is covered; the
 /// other small-size families are unreachable from a production base size.
@@ -749,68 +710,6 @@ fn select_natural_to_bitrev_strategy(
         passes,
         columns_per_launch,
         cosets_per_launch,
-    })
-}
-
-/// Inverse strategy: only the multi-pass range (`log_n >= 21`) goes through
-/// here; callers handle the per-stage fallback for `log_n < 21` themselves.
-fn select_inverse_strategy(
-    log_n: usize,
-    num_columns: usize,
-    num_cosets: usize,
-    device_props: &DeviceProperties,
-) -> Result<NttStrategy, NttStrategyError> {
-    let _ = num_cosets;
-    if log_n < MULTIPASS_MIN_LOG_N {
-        return Err(NttStrategyError::LogNBelowSupported {
-            log_n,
-            min_supported: MULTIPASS_MIN_LOG_N,
-        });
-    }
-    let column_bytes = (1usize << log_n) * size_of::<BF>();
-    let use_two_pass = column_bytes >= device_props.l2_cache_size_bytes && log_n >= 23;
-    let passes = if use_two_pass {
-        let first_stages = log_n - 14;
-        vec![
-            NttPass {
-                start_stage: 0,
-                stage_count: first_stages,
-                kernel: NttKernelKind::EvalsToMonomialsFirst {
-                    stages: first_stages,
-                },
-            },
-            NttPass {
-                start_stage: first_stages,
-                stage_count: 14,
-                kernel: NttKernelKind::EvalsToMonomialsFinal { stages: 14 },
-            },
-        ]
-    } else {
-        let final_stages = log_n - 16;
-        vec![
-            NttPass {
-                start_stage: 0,
-                stage_count: 8,
-                kernel: NttKernelKind::EvalsToMonomialsNonInitial { stages: 8 },
-            },
-            NttPass {
-                start_stage: 8,
-                stage_count: 8,
-                kernel: NttKernelKind::EvalsToMonomialsNonInitial { stages: 8 },
-            },
-            NttPass {
-                start_stage: 16,
-                stage_count: final_stages,
-                kernel: NttKernelKind::EvalsToMonomialsFinal {
-                    stages: final_stages,
-                },
-            },
-        ]
-    };
-    Ok(NttStrategy {
-        passes,
-        columns_per_launch: l2_clamped_columns_per_launch(log_n, num_columns, device_props),
-        cosets_per_launch: 1,
     })
 }
 
@@ -1316,7 +1215,7 @@ mod cpu_tests {
             "log_n=24 should drop to 1 (column exceeds budget)",
         );
         // num_columns=1 always returns 1.
-        for log_n in MULTIPASS_MIN_LOG_N..=24 {
+        for log_n in 21..=24 {
             assert_eq!(
                 select_ntt_strategy(NttDirection::Forward, log_n, 1, 1, &l4)
                     .unwrap()
@@ -1350,98 +1249,6 @@ mod cpu_tests {
             assert_eq!(
                 s.cosets_per_launch, expected_cosets,
                 "log_n={log_n} (num_cosets=64): cosets mismatch",
-            );
-        }
-    }
-
-    #[test]
-    fn inverse_below_multipass_min_returns_below_supported() {
-        // Inverse only supports log_n >= 21 (the multistage range); callers
-        // handle the per-stage fallback for smaller log_n.
-        for log_n in 0..MULTIPASS_MIN_LOG_N {
-            let err =
-                select_ntt_strategy(NttDirection::Inverse, log_n, 1, 1, &l4_like()).unwrap_err();
-            assert_eq!(
-                err,
-                NttStrategyError::LogNBelowSupported {
-                    log_n,
-                    min_supported: MULTIPASS_MIN_LOG_N,
-                },
-                "log_n={log_n}",
-            );
-        }
-    }
-
-    #[test]
-    fn inverse_log_n_24_picks_two_pass_when_column_exceeds_l2() {
-        // 2^24 * 4 bytes = 64 MB; > L4's 48 MB L2 -> inverse 2-pass:
-        // EvalsToMonomialsFirst(10) + EvalsToMonomialsFinal(14).
-        let s = select_ntt_strategy(NttDirection::Inverse, 24, 1, 1, &l4_like()).unwrap();
-        assert_eq!(s.passes.len(), 2);
-        assert!(matches!(
-            s.passes[0].kernel,
-            NttKernelKind::EvalsToMonomialsFirst { stages: 10 }
-        ));
-        assert_eq!(s.passes[0].start_stage, 0);
-        assert!(matches!(
-            s.passes[1].kernel,
-            NttKernelKind::EvalsToMonomialsFinal { stages: 14 }
-        ));
-        assert_eq!(s.passes[1].start_stage, 10);
-        assert_eq!(s.passes.iter().map(|p| p.stage_count).sum::<usize>(), 24);
-    }
-
-    #[test]
-    fn inverse_log_n_24_picks_three_pass_when_column_fits_l2() {
-        // 64 MB fits in RTX 5090's 96 MB L2 -> inverse 3-pass.
-        let s = select_ntt_strategy(NttDirection::Inverse, 24, 1, 1, &rtx_5090_like()).unwrap();
-        assert_eq!(s.passes.len(), 3);
-        assert!(matches!(
-            s.passes[0].kernel,
-            NttKernelKind::EvalsToMonomialsNonInitial { stages: 8 }
-        ));
-        assert!(matches!(
-            s.passes[1].kernel,
-            NttKernelKind::EvalsToMonomialsNonInitial { stages: 8 }
-        ));
-        assert!(matches!(
-            s.passes[2].kernel,
-            NttKernelKind::EvalsToMonomialsFinal { stages: 8 }
-        ));
-        assert_eq!(s.passes.iter().map(|p| p.stage_count).sum::<usize>(), 24);
-    }
-
-    #[test]
-    fn inverse_log_n_21_picks_three_pass_with_final_5_stages() {
-        let s = select_ntt_strategy(NttDirection::Inverse, 21, 1, 1, &l4_like()).unwrap();
-        assert_eq!(s.passes.len(), 3);
-        assert!(matches!(
-            s.passes[0].kernel,
-            NttKernelKind::EvalsToMonomialsNonInitial { stages: 8 }
-        ));
-        assert!(matches!(
-            s.passes[1].kernel,
-            NttKernelKind::EvalsToMonomialsNonInitial { stages: 8 }
-        ));
-        assert!(matches!(
-            s.passes[2].kernel,
-            NttKernelKind::EvalsToMonomialsFinal { stages: 5 }
-        ));
-        assert_eq!(s.passes.iter().map(|p| p.stage_count).sum::<usize>(), 21);
-    }
-
-    #[test]
-    fn inverse_columns_per_launch_matches_forward_l2_clamp() {
-        // The L2 clamp is direction-independent: pass-1 output is what we want
-        // resident across passes. Inverse should hit the same per-`log_n`
-        // numbers as forward on an L4-like device (with the 50% L2 budget).
-        let l4 = l4_like();
-        let cases = [(21, 3), (22, 1), (23, 1), (24, 1)];
-        for (log_n, expected) in cases {
-            let s = select_ntt_strategy(NttDirection::Inverse, log_n, 4, 1, &l4).unwrap();
-            assert_eq!(
-                s.columns_per_launch, expected,
-                "inverse columns_per_launch mismatch at log_n={log_n}",
             );
         }
     }

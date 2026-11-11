@@ -3,7 +3,11 @@
 #[macro_export]
 macro_rules! gkr_circuits {
     ($callback:ident) => {
-        $callback! {
+        $crate::gkr_circuits! { $callback; }
+    };
+    ($($callback:ident)::+; $($prefix:tt)*) => {
+        $($callback)::+! {
+            $($prefix)*
             add_sub_lui_auipc_mop; "../circuit_defs/unrolled_circuits/add_sub_lui_auipc_mop",
             bigint_with_extended_control; "../circuit_defs/bigint_with_control",
             blake2_g_function; "../circuit_defs/blake2_g_function",
@@ -20,6 +24,24 @@ macro_rules! gkr_circuits {
             unified_reduced_machine; "../circuit_defs/unrolled_circuits/unified_reduced_machine",
             unsigned_mul_div; "../circuit_defs/unrolled_circuits/mul_div_unsigned",
         }
+    };
+}
+
+/// Circuits with canonical committed proofs. Keep legacy G-function verifier
+/// support in `gkr_circuits!`, without requiring a fixture for that circuit.
+#[macro_export]
+macro_rules! gkr_fixture_circuits {
+    ($callback:ident) => {
+        $crate::gkr_circuits! { $crate::gkr_fixture_circuits; @filter $callback [] }
+    };
+    (@filter $callback:ident [$($out:tt)*] blake2_g_function; $path:expr, $($rest:tt)*) => {
+        $crate::gkr_fixture_circuits! { @filter $callback [$($out)*] $($rest)* }
+    };
+    (@filter $callback:ident [$($out:tt)*] $name:ident; $path:expr, $($rest:tt)*) => {
+        $crate::gkr_fixture_circuits! { @filter $callback [$($out)* $name; $path,] $($rest)* }
+    };
+    (@filter $callback:ident [$($out:tt)*]) => {
+        $callback! { $($out)* }
     };
 }
 
@@ -171,7 +193,38 @@ pub mod no_inline_ops;
 pub mod stats;
 
 pub use self::gkr::{GKRVerifierOutput, InitialGKRTranscript};
-pub use ::prover::definitions::{GKRExternalChallenges, USE_REDUCED_BLAKE2_ROUNDS};
+pub use ::prover::definitions::{BlakeMode, GKRExternalChallenges, USE_REDUCED_BLAKE2_ROUNDS};
+
+/// The blake2s implementation of THIS build of the verifier (the `blake2s_u32`
+/// implementation the cargo features and target select): what the generated
+/// verifiers decide their proof layout from at compile time, and what a host
+/// must flatten proofs with for a verifier of the same build (a RISC-V
+/// program's mode is its `BlakeMode::tag()` build feature).
+pub const BLAKE_MODE: BlakeMode = {
+    #[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
+    {
+        BlakeMode::Compression
+    }
+    #[cfg(all(target_arch = "riscv32", feature = "blake2_g_function"))]
+    {
+        BlakeMode::GFunction
+    }
+    #[cfg(all(target_arch = "riscv32", feature = "special_opcodes_extension"))]
+    {
+        BlakeMode::BlakeSpecialOpcodes
+    }
+    #[cfg(not(all(
+        target_arch = "riscv32",
+        any(
+            feature = "blake2_with_compression",
+            feature = "blake2_g_function",
+            feature = "special_opcodes_extension"
+        )
+    )))]
+    {
+        BlakeMode::Software
+    }
+};
 
 /// Wrappers for common field operations used by the verifier.
 /// We use inline operations when compiling to RISC-V to maximize performance,

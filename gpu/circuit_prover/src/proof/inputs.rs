@@ -1,4 +1,4 @@
-// Consolidated H2D bundle for prove() and commit_memory_from_transfers():
+// Consolidated H2D bundle for prove():
 // one shared Transfer for every pre-prove H2D piece (setup, decoder,
 // inits_and_teardowns, tracing_data, memory caps, top_bits,
 // external_challenges), so prove() does a single ensure_transferred.
@@ -17,7 +17,7 @@ use gpu_gkr::setup::{GpuGKRSetupHost, GpuGKRSetupTransfer};
 use gpu_prover_context::transfer::{Transfer, TransferKeepalive};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
-use gpu_trace::trace::memory_transfer::GpuGKRMemoryTransfer;
+use gpu_trace::trace::memory_cap::GpuGKRMemoryCapTransfer;
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 
 /// Number of `E4` slots needed to hold a `GKRExternalChallenges` value
@@ -83,7 +83,7 @@ pub struct GpuGKRProofTransfer<'a, A: GoodAllocator> {
     pub(crate) decoder: Option<DecoderTableTransfer<'a>>,
     pub(crate) inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a, A>>,
     pub(crate) tracing_data: Option<TracingDataTransfer<'a, A>>,
-    pub(crate) memory: GpuGKRMemoryTransfer<'a>,
+    pub(crate) memory: GpuGKRMemoryCapTransfer<'a>,
     /// Device copy of `top_bits_host`; absent when the circuit has no
     /// teardown sets.
     pub(crate) top_bits: Option<DeviceAllocation<u32>>,
@@ -109,7 +109,7 @@ impl<'a, A: GoodAllocator + 'a> GpuGKRProofTransfer<'a, A> {
         decoder: Option<DecoderTableTransfer<'a>>,
         inits_and_teardowns: Option<InitsAndTeardownsTransfer<'a, A>>,
         tracing_data: Option<TracingDataTransfer<'a, A>>,
-        memory: GpuGKRMemoryTransfer<'a>,
+        memory: GpuGKRMemoryCapTransfer<'a>,
         top_bits_source: &[u32],
         external_challenges_value: GKRExternalChallenges<BF, E4>,
         context: &ProverContext,

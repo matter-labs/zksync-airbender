@@ -11,6 +11,10 @@ use crate::test_utils::make_test_context;
 use gpu_core::allocator::tracker::AllocationPlacement;
 
 use super::make_lde_trace_holder;
+use gpu_ntt::ntt::MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
+
+/// The smallest base trace the natural-to-bitreversed commit admits.
+const BASE_ROWS: usize = 1 << MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
 use crate::fold::debug::{
     copy_back, copy_small_to_device, query_base_trace_holder_for_folded_index,
 };
@@ -24,10 +28,10 @@ fn base_query_paths_match_cpu_tree() {
     let context = make_test_context(256, 32);
     let worker = Worker::new();
     let columns: Vec<Vec<BF>> = vec![
-        (0..8)
+        (0..BASE_ROWS)
             .map(|i| BF::from_u32_unchecked(10 + i as u32))
             .collect(),
-        (0..8)
+        (0..BASE_ROWS)
             .map(|i| BF::from_u32_unchecked(30 + i as u32))
             .collect(),
     ];
@@ -84,7 +88,11 @@ fn base_query_paths_match_cpu_tree() {
     );
 
     let total_queries = (rows << log_lde_factor) >> log_rows_per_leaf;
-    for query_index in 0..total_queries {
+    // Both ends of the index range and a stride through the middle.
+    let sampled = (0..64)
+        .chain(total_queries - 64..total_queries)
+        .chain((64..total_queries - 64).step_by(509));
+    for query_index in sampled {
         let (_, _, gpu_query) =
             query_base_trace_holder_for_folded_index(&mut trace_holder, query_index, &context)
                 .unwrap();
@@ -98,10 +106,10 @@ fn base_query_paths_match_cpu_tree() {
 fn base_query_leaf_and_path_helpers_match_combined_queries() {
     let context = make_test_context(256, 32);
     let columns: Vec<Vec<BF>> = vec![
-        (0..8)
+        (0..BASE_ROWS)
             .map(|i| BF::from_u32_unchecked(10 + i as u32))
             .collect(),
-        (0..8)
+        (0..BASE_ROWS)
             .map(|i| BF::from_u32_unchecked(30 + i as u32))
             .collect(),
     ];

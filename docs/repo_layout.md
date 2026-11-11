@@ -27,10 +27,10 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - verifier_generator/ - serialisation code to generate constant parameters/constraints for verifier
 - witness_eval_generator/ - code that assists in serialising witness generation closures for gpu passover
 - worker/ - cpu prover's parallelisation utilities implementation
-- build.sh - high-level script to help build all needed tools and files
-- profile.sh - high-level script to profile witness generation
-- recreate_verifiers.sh - high-level script to help generate verifier parameters
-- recursion.sh - high-level script to test more complicated cpu proving pattern which includes some layers of recursion
+- build.sh - regenerates the circuit artifacts and verifier sources, rebuilds every committed verifier guest, and emits the census tables and EVM verifier stubs; CI (`check_verifiers`, `check_circuit_verifiers`) fails if rebuilding changes a committed file
+- gkr_test.sh - local GKR pipeline: regenerates circuits and verifiers, proves the canonical circuits, and runs the native, corruption, transpiler (flamegraph), full-statement and malicious-proof tests step by step
+- profile.sh - flamegraph of the unified witness generation test (`cargo flamegraph`; perf runs under sudo)
+- recreate_verifiers.sh - regenerates the compiled circuit layouts, witness functions, circuit and delegation artifacts, GKR schedules and verifier sources
 
 
 ## Prover Implementations

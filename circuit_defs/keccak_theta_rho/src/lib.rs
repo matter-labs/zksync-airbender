@@ -14,9 +14,13 @@ pub struct KeccakThetaRhoDelegationCircuit;
 impl<F: PrimeField> circuit_common::DelegationCircuit<F> for KeccakThetaRhoDelegationCircuit {
     const DELEGATION_TYPE_ID: u16 =
         common_constants::delegation_types::keccak_f1600::KECCAK_THETA_RHO_CSR_REGISTER as u16;
-    fn prover_config(level: circuit_common::SecurityLevel) -> circuit_common::ProverConfig {
-        circuit_common::default_prover_config(22, level)
-    }
+    // the LOGICAL trace length for the purposes of GKR (rows of the circuit
+    // trace); the polynomials WHIR commits may be larger when the base
+    // commitment packs columns (`BASE_PACKING`)
+    const TRACE_LEN_LOG2: u32 = 22;
+    // virtual packing: one value per column per base leaf, the batched
+    // polynomial re-committed as intermediate oracle 0
+    const BASE_PACKING: circuit_common::BasePacking = circuit_common::BasePacking::VIRTUAL;
 
     fn circuit_fn<CS: cs::cs::circuit_trait::Circuit<F>>(cs: &mut CS) {
         define_keccak_theta_rho_delegation_circuit(cs);

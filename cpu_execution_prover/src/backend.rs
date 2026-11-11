@@ -1,9 +1,9 @@
 use crate::config::CpuBackendConfiguration;
 use crate::manager::CpuManager;
 use crate::precomputations::CpuCircuitPrecomputations;
-use crate::upstream::SecurityLevel;
 use execution_prover::backend::ExecutionBackend;
 use execution_prover::config::ExecutionProverConfiguration;
+use execution_prover::config::SoundnessMode;
 use execution_prover::messages::WorkBatch;
 use execution_prover::setup::CanonicalCircuitSetup;
 use execution_prover_model::allocator::CpuTraceAllocator;
@@ -51,9 +51,9 @@ impl ExecutionBackend for CpuBackend {
         &self,
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
-        _security: SecurityLevel,
+        soundness_mode: SoundnessMode,
     ) -> Self::Precomputations {
-        CpuCircuitPrecomputations::from_canonical(circuit, setup)
+        CpuCircuitPrecomputations::from_canonical(circuit, setup, soundness_mode)
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {

@@ -2,25 +2,21 @@ use crate::backend::ExecutionBackend;
 use crate::messages::{
     SetupInitializationRequest, WorkBatch, WorkRequest, WorkResult, WorkerResult,
 };
-use crate::upstream::SecurityLevel;
 use crossbeam_channel::{unbounded, Receiver};
 use execution_prover_model::circuit_type::CircuitType;
 use fft::GoodAllocator;
 
-/// Collision with caller-chosen batch ids is structurally impossible: setup
-/// batches are fully drained before the constructor / `add_binary` returns
-/// (`add_binary` is `&mut self`), and user batches are retired from the
-/// backend before `commit_memory`/`prove` return.
-pub(super) const SETUP_BATCH_ID: u64 = 0;
-
 pub(super) struct PendingSetupInitialization<A: GoodAllocator> {
+    batch_id: u64,
     expected_circuit_types: Vec<CircuitType>,
     result_receiver: Receiver<WorkerResult<A>>,
 }
 
 pub(super) fn request_setup_initialization<B: ExecutionBackend>(
     backend: &B,
-    security_level: SecurityLevel,
+    // Setup batches use distinct ids until finalize_setup drains them all.
+    // Proving finalizes first, so caller-chosen batch ids cannot collide.
+    batch_id: u64,
     precomputations: Vec<(CircuitType, B::Precomputations)>,
 ) -> PendingSetupInitialization<B::Allocator> {
     assert!(
@@ -30,7 +26,7 @@ pub(super) fn request_setup_initialization<B: ExecutionBackend>(
     let (request_sender, request_receiver) = unbounded();
     let (result_sender, result_receiver) = unbounded();
     backend.submit(WorkBatch {
-        batch_id: SETUP_BATCH_ID,
+        batch_id,
         receiver: request_receiver,
         sender: result_sender,
     });
@@ -42,16 +38,16 @@ pub(super) fn request_setup_initialization<B: ExecutionBackend>(
         request_sender
             .send(WorkRequest::SetupInitialization(
                 SetupInitializationRequest {
-                    batch_id: SETUP_BATCH_ID,
+                    batch_id,
                     circuit_type,
                     sequence_id,
                     precomputations,
-                    security_level,
                 },
             ))
             .expect("backend batch channel closed before setup initialization was submitted");
     }
     PendingSetupInitialization {
+        batch_id,
         expected_circuit_types,
         result_receiver,
     }
@@ -63,7 +59,7 @@ impl<A: GoodAllocator> PendingSetupInitialization<A> {
         for result in self.result_receiver {
             match result {
                 WorkerResult::BackendWorkResult(WorkResult::SetupInitialization(result)) => {
-                    assert_eq!(result.batch_id, SETUP_BATCH_ID);
+                    assert_eq!(result.batch_id, self.batch_id);
                     let expected_circuit_type = *self
                         .expected_circuit_types
                         .get(result.sequence_id)

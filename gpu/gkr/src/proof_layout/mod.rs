@@ -48,9 +48,7 @@ fn align_up(offset: usize, align: usize) -> usize {
     (offset + align - 1) & !(align - 1)
 }
 
-/// Trace-holder geometry subset needed to size WHIR base-layer fields in the
-/// slab. POD captured by the forward pass / stage-1 trace holders; the
-/// gkr-side builder converts these into [`ProofLayoutBaseLayerGeometry`].
+/// Logical trace geometry captured by the forward pass and stage1 producers.
 #[derive(Clone, Copy, Debug)]
 pub struct GpuGKRTraceGeometry {
     pub log_domain_size: u32,
@@ -89,6 +87,8 @@ pub struct BackwardLayerDims {
 pub struct WhirBaseLayerDims {
     /// Number of trace columns (= `evals.len()`).
     pub num_columns: usize,
+    /// Original dense GKR claim count, before packing.
+    pub logical_num_columns: usize,
     /// Number of digests in the Merkle cap for this base layer.
     pub cap_digest_count: usize,
     /// Number of queries against this base layer.
@@ -114,6 +114,7 @@ pub struct WhirIntermediateDims {
 /// WHIR-side dimensions for the proof image.
 #[derive(Debug, Clone)]
 pub struct WhirDims {
+    pub pack_log2: usize,
     /// Length of the GKR final claim point handed to WHIR.
     pub original_evaluation_point_len: usize,
     pub setup: WhirBaseLayerDims,
@@ -187,6 +188,8 @@ pub(crate) struct WhirBaseLayerByteLayout {
     pub cap: Range<usize>,
     /// `evals` — `num_columns` `E4` values.
     pub evals: Range<usize>,
+    /// Dense original claims retained for terminal cached extras.
+    pub logical_evals: Range<usize>,
     /// `queries[i].leaf_values_concatenated` — `query_count * leaf_values_len`
     /// `BF` values, flat.
     pub query_leaves: Range<usize>,
@@ -231,6 +234,14 @@ pub(crate) struct WhirLayout {
     pub sumcheck_polys: Range<usize>,
     /// `pow_nonces` — `pow_rounds` `u64` values.
     pub pow_nonces: Range<usize>,
+    /// Folding-challenge PoW nonces — one `u64` slot per folding step,
+    /// parallel to `sumcheck_polys`. Only the steps of rounds with
+    /// `folding_pow_bits > 0` are written and assembled.
+    pub folding_pow_nonces: Range<usize>,
+    /// OOD-draw PoW nonces — one `u64` slot per intermediate oracle, parallel
+    /// to `ood_samples`. Only oracles with `ood_pow_bits > 0` are written and
+    /// assembled.
+    pub ood_pow_nonces: Range<usize>,
     /// `final_monomials` — `final_monomials_len` `E4` values.
     pub final_monomials: Range<usize>,
 }
@@ -249,8 +260,8 @@ pub struct ProofLayout {
     /// `GKRProof::lookup_challenges_pow_nonce` — a single `u64` ground by the
     /// pow-aware lookup-challenge draw.
     pub lookup_pow_nonce: Range<usize>,
-    /// `GKRProof::batched_proximity_check_pow_nonce` — a single `u64` ground by
-    /// the pow-aware WHIR batching-challenge draw.
+    /// `WhirPolyCommitProof::batching_challenge_pow_nonce` — a single `u64`
+    /// ground by the pow-aware WHIR batching-challenge draw.
     pub batched_proximity_pow_nonce: Range<usize>,
     pub total_bytes: usize,
 }
@@ -258,29 +269,7 @@ pub struct ProofLayout {
 mod accessors;
 mod build_inputs;
 pub use accessors::WhirBaseLayerKind; // pinned public API (apex whir/proof)
-pub use build_inputs::build_proof_layout_inputs;
-
-/// Trace-holder geometry subset needed to size WHIR base-layer fields in the slab.
-#[derive(Clone, Copy, Debug)]
-pub struct ProofLayoutBaseLayerGeometry {
-    pub columns_count: usize,
-    pub log_domain_size: u32,
-    pub log_lde_factor: u32,
-    pub log_rows_per_leaf: u32,
-    pub log_tree_cap_size: u32,
-}
-
-impl ProofLayoutBaseLayerGeometry {
-    pub fn from_geometry(geometry: GpuGKRTraceGeometry, columns_count: usize) -> Self {
-        Self {
-            columns_count,
-            log_domain_size: geometry.log_domain_size,
-            log_lde_factor: geometry.log_lde_factor,
-            log_rows_per_leaf: geometry.log_rows_per_leaf,
-            log_tree_cap_size: geometry.log_tree_cap_size,
-        }
-    }
-}
+pub use build_inputs::build_proof_layout_inputs_for_geometry;
 
 impl ProofLayout {
     pub fn new(inputs: &ProofLayoutInputs) -> Self {
@@ -288,6 +277,10 @@ impl ProofLayout {
 
         let alloc = |cur: &mut usize, count: usize, elem_size: usize| -> Range<usize> {
             let start = align_up(*cur, FIELD_ALIGN);
+            assert!(
+                start.is_multiple_of(32),
+                "proof slab ranges must be 32-byte aligned"
+            );
             let end = start + count * elem_size;
             *cur = end;
             start..end
@@ -387,6 +380,10 @@ impl ProofLayout {
     fn lay_whir(cur: &mut usize, dims: &WhirDims) -> WhirLayout {
         let alloc = |cur: &mut usize, count: usize, elem_size: usize| -> Range<usize> {
             let start = align_up(*cur, FIELD_ALIGN);
+            assert!(
+                start.is_multiple_of(32),
+                "proof slab ranges must be 32-byte aligned"
+            );
             let end = start + count * elem_size;
             *cur = end;
             start..end
@@ -394,7 +391,13 @@ impl ProofLayout {
 
         let lay_base = |cur: &mut usize, d: &WhirBaseLayerDims| -> WhirBaseLayerByteLayout {
             let cap = alloc(cur, d.cap_digest_count * DIGEST_U32_WORDS, size_of::<u32>());
-            let evals = alloc(cur, d.num_columns, size_of::<E4>());
+            let logical_evals = alloc(cur, d.logical_num_columns, size_of::<E4>());
+            let evals = if dims.pack_log2 == 0 {
+                assert_eq!(d.logical_num_columns, d.num_columns);
+                logical_evals.clone()
+            } else {
+                alloc(cur, d.num_columns, size_of::<E4>())
+            };
             let query_leaves = alloc(cur, d.query_count * d.leaf_values_len, size_of::<BF>());
             let query_paths = alloc(
                 cur,
@@ -405,6 +408,7 @@ impl ProofLayout {
                 num_columns: d.num_columns,
                 cap,
                 evals,
+                logical_evals,
                 query_leaves,
                 query_paths,
                 query_count: d.query_count,
@@ -458,6 +462,8 @@ impl ProofLayout {
         // sumcheck_polys entries are `[E4; 3]` = 3 * E4.
         let sumcheck_polys = alloc(cur, dims.total_sumcheck_polys * 3, size_of::<E4>());
         let pow_nonces = alloc(cur, dims.pow_rounds, size_of::<u64>());
+        let folding_pow_nonces = alloc(cur, dims.total_sumcheck_polys, size_of::<u64>());
+        let ood_pow_nonces = alloc(cur, dims.intermediate.len(), size_of::<u64>());
         let final_monomials = alloc(cur, dims.final_monomials_len, size_of::<E4>());
 
         WhirLayout {
@@ -471,6 +477,8 @@ impl ProofLayout {
             ood_samples,
             sumcheck_polys,
             pow_nonces,
+            folding_pow_nonces,
+            ood_pow_nonces,
             final_monomials,
         }
     }
@@ -479,6 +487,3 @@ impl ProofLayout {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests;

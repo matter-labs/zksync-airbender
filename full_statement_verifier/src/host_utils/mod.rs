@@ -1,12 +1,20 @@
 pub mod cost_model;
+pub mod fixture_artifact;
 pub mod fixture_codec;
+mod fsv;
+#[cfg(test)]
+mod reduced_isa_gate;
+
+pub use fsv::{canonical_fsv_dir, fsv_digest, load_fsv_exact, FsvDigest, VerifiedFsvProgram};
 
 use crate::program_proof::ProgramProof;
 use crate::recursion_chain::{self, RecursionChain};
 use setups::Setups;
 use std::path::Path;
-use verifier_common::fsv_binaries::{BlakeMode, FsvProgram};
+use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProgram};
 use verifier_common::prover::definitions::MerkleTreeCap;
+#[cfg(feature = "verifiers")]
+use verifier_common::prover::definitions::{SecurityLevel, SoundnessMode};
 use verifier_common::USE_REDUCED_BLAKE2_ROUNDS;
 
 /// The recursion chain as hashed by the deployed fsv binaries.
@@ -22,14 +30,31 @@ pub fn compute_end_params(setups: &Setups, final_pc: u32) -> [u32; 8] {
     )
 }
 
+/// The ND stream of an unrolled proof for a full-statement verifier built
+/// with `blake` (the mode its guest was loaded for, or
+/// `verifier_common::BLAKE_MODE` for the native verifier of this process).
 #[must_use]
-pub fn build_unrolled_stream(setups: &Setups, proof: &ProgramProof) -> Vec<u32> {
-    proof.build_unrolled_stream(flattened_caps(setups))
+pub fn build_unrolled_stream(setups: &Setups, proof: &ProgramProof, blake: BlakeMode) -> Vec<u32> {
+    proof.build_unrolled_stream(flattened_caps(setups), blake)
 }
 
+/// [`build_unrolled_stream`] of a unified proof.
 #[must_use]
-pub fn build_unified_stream(setups: &Setups, proof: &ProgramProof) -> Vec<u32> {
-    proof.build_unified_stream(flattened_caps(setups))
+pub fn build_unified_stream(setups: &Setups, proof: &ProgramProof, blake: BlakeMode) -> Vec<u32> {
+    proof.build_unified_stream(flattened_caps(setups), blake)
+}
+
+/// The ND stream the guest of `descriptor` reads for `proof`: the unrolled layers verify an
+/// unrolled proof, the unified layers a unified one, flattened for `descriptor.blake`.
+pub fn fsv_stream(setups: &Setups, proof: &ProgramProof, descriptor: &FsvDescriptor) -> Vec<u32> {
+    match descriptor.program {
+        FsvProgram::UnrolledBaseLayer | FsvProgram::UnrolledRecursionLayer => {
+            build_unrolled_stream(setups, proof, descriptor.blake)
+        }
+        FsvProgram::UnifiedBaseLayer | FsvProgram::UnifiedRecursionLayer => {
+            build_unified_stream(setups, proof, descriptor.blake)
+        }
+    }
 }
 
 fn flattened_caps(setups: &Setups) -> impl Iterator<Item = &[u32]> {
@@ -39,122 +64,85 @@ fn flattened_caps(setups: &Setups) -> impl Iterator<Item = &[u32]> {
 }
 
 #[cfg(feature = "verifiers")]
-pub fn native_verify_unrolled(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
-    use verifier_common::errors::DebugErrorCreator;
+fn run_native_verifier(
+    name: &str,
+    verify: impl FnOnce() -> Result<[u32; 16], String> + Send + 'static,
+) -> Result<[u32; 16], String> {
     std::thread::Builder::new()
-        .name("unrolled verifier".to_string())
+        .name(name.to_owned())
         .stack_size(1 << 27)
-        .spawn(move || {
-            let mut it = stream.into_iter();
-            let result = if is_base {
-                crate::unrolled_proof_statement::verify_unrolled_base_layer_sec_100::<
-                    _,
-                    DebugErrorCreator,
-                    USE_REDUCED_BLAKE2_ROUNDS,
-                >(&mut it)
-            } else {
-                crate::unrolled_proof_statement::verify_unrolled_recursion_layer_sec_100::<
-                    _,
-                    DebugErrorCreator,
-                    USE_REDUCED_BLAKE2_ROUNDS,
-                >(&mut it)
-            };
-            result.expect("unrolled proof must verify")
-        })
-        .expect("spawn verifier thread")
+        .spawn(verify)
+        .map_err(|error| format!("cannot start native verifier: {error}"))?
         .join()
-        .expect("verifier thread must not panic")
+        .map_err(|_| "native verifier rejected input with a panic".to_owned())?
 }
 
+/// Verify under the caller-selected schedule, returning malformed/invalid proof errors.
 #[cfg(feature = "verifiers")]
-pub fn native_verify_unified(stream: Vec<u32>, is_base: bool) -> [u32; 16] {
+pub fn native_verify_unrolled_in_mode(
+    stream: Vec<u32>,
+    is_base: bool,
+    mode: SoundnessMode,
+) -> Result<[u32; 16], String> {
     use verifier_common::errors::DebugErrorCreator;
-    std::thread::Builder::new()
-        .name("unified verifier".to_string())
-        .stack_size(1 << 27)
-        .spawn(move || {
-            let mut it = stream.into_iter();
-            let result = if is_base {
-                crate::unified_circuit_statement::verify_unified_circuit_base_layer_sec_100::<
-                    _,
-                    DebugErrorCreator,
-                    USE_REDUCED_BLAKE2_ROUNDS,
-                >(&mut it)
-            } else {
-                crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100::<
-                    _,
-                    DebugErrorCreator,
-                    USE_REDUCED_BLAKE2_ROUNDS,
-                >(&mut it)
-            };
-            result.expect("unified proof must verify")
-        })
-        .expect("spawn verifier thread")
-        .join()
-        .expect("verifier thread must not panic")
+    run_native_verifier("unrolled verifier", move || {
+        let mut it = stream.into_iter();
+        let result = if is_base {
+            crate::unrolled_proof_statement::verify_unrolled_base_layer::<
+                _,
+                DebugErrorCreator,
+                USE_REDUCED_BLAKE2_ROUNDS,
+            >(&mut it, SecurityLevel::Sec100, mode)
+        } else {
+            crate::unrolled_proof_statement::verify_unrolled_recursion_layer::<
+                _,
+                DebugErrorCreator,
+                USE_REDUCED_BLAKE2_ROUNDS,
+            >(&mut it, SecurityLevel::Sec100, mode)
+        };
+        result.map_err(|error| format!("{error:?}"))
+    })
 }
 
+/// Verify under the caller-selected schedule, returning malformed/invalid proof errors.
+#[cfg(feature = "verifiers")]
+pub fn native_verify_unified_in_mode(
+    stream: Vec<u32>,
+    is_base: bool,
+    mode: SoundnessMode,
+) -> Result<[u32; 16], String> {
+    use verifier_common::errors::DebugErrorCreator;
+    run_native_verifier("unified verifier", move || {
+        let mut it = stream.into_iter();
+        let result = if is_base {
+            crate::unified_circuit_statement::verify_unified_circuit_base_layer::<
+                _,
+                DebugErrorCreator,
+                USE_REDUCED_BLAKE2_ROUNDS,
+            >(&mut it, SecurityLevel::Sec100, mode)
+        } else {
+            crate::unified_circuit_statement::verify_unified_circuit_recursion_layer::<
+                _,
+                DebugErrorCreator,
+                USE_REDUCED_BLAKE2_ROUNDS,
+            >(&mut it, SecurityLevel::Sec100, mode)
+        };
+        result.map_err(|error| format!("{error:?}"))
+    })
+}
+
+/// Load a guest from its linked ELF (legacy read mode: `.text` followed in ROM by the
+/// `.rodata`/`.data` init images): `(flat ROM image, text section)`, both padded to the ROM
+/// size for proving.
 #[must_use]
-pub fn load_program(bin_path: &Path, text_path: &Path) -> (Vec<u32>, Vec<u32>) {
-    let (_, binary_image) = setups::read_and_pad_binary(bin_path);
-    let (_, text_section) = setups::read_and_pad_binary(text_path);
-    (binary_image, text_section)
+pub fn load_program(elf_path: &Path) -> (Vec<u32>, Vec<u32>) {
+    riscv_transpiler::elf::load_legacy_program(elf_path)
 }
 
-#[must_use]
-pub fn load_fsv_program(
-    dir: impl AsRef<Path>,
-    program: FsvProgram,
-    blake: BlakeMode,
-) -> (Vec<u32>, Vec<u32>) {
-    let dir = dir.as_ref();
-    let stem = program.file_stem(blake);
-    println!("Trying to load `{}` verifier", stem);
-    let bin_path = dir.join(format!("{stem}.bin"));
-    let exists = match bin_path.try_exists() {
-        Ok(res) => res,
-        Err(err) => {
-            if let Some(err) = err.get_ref() {
-                println!("Failed to probe path `{}`: {}", bin_path.display(), err);
-            } else {
-                println!("Failed to probe path `{}`", bin_path.display());
-            }
-            false
-        }
-    };
-    if exists {
-        load_program(
-            &dir.join(format!("{stem}.bin")),
-            &dir.join(format!("{stem}.text")),
-        )
-    } else {
-        println!(
-            "Verifier binary `{}` doesn't exist at path {}, using fallback naming mode",
-            stem,
-            bin_path.display(),
-        );
-        assert!(
-            blake == BlakeMode::Compression,
-            "missing variant binary {} — run `cd tools/gkr_verifier && ./dump_recursive_verifiers.sh`",
-            dir.join(format!("{stem}.bin")).display()
-        );
-        let base = program.base_name();
-        load_program(
-            &dir.join(format!("{base}.bin")),
-            &dir.join(format!("{base}.text")),
-        )
-    }
-}
-
-fn blake_mode_from_env(vars: &[&str], program: FsvProgram, default: BlakeMode) -> BlakeMode {
+fn blake_mode_from_env(vars: &[&str], default: BlakeMode) -> BlakeMode {
     for var in vars {
         if let Ok(v) = std::env::var(var) {
             let mode = BlakeMode::parse(&v).unwrap_or_else(|| panic!("invalid {var}={v}"));
-            assert!(
-                program.supports(mode),
-                "{var}={v}: {} is not built with this blake mode",
-                program.base_name()
-            );
             return mode;
         }
     }
@@ -163,27 +151,18 @@ fn blake_mode_from_env(vars: &[&str], program: FsvProgram, default: BlakeMode) -
 
 #[must_use]
 pub fn unrolled_blake_mode() -> BlakeMode {
-    blake_mode_from_env(
-        &["RECURSION_UNROLLED_BLAKE"],
-        FsvProgram::UnrolledRecursionLayer,
-        BlakeMode::Compression,
-    )
+    blake_mode_from_env(&["RECURSION_UNROLLED_BLAKE"], BlakeMode::Compression)
 }
 
 #[must_use]
 pub fn bridge_blake_mode() -> BlakeMode {
-    blake_mode_from_env(
-        &["RECURSION_BRIDGE_BLAKE"],
-        FsvProgram::UnrolledRecursionLayer,
-        unrolled_blake_mode(),
-    )
+    blake_mode_from_env(&["RECURSION_BRIDGE_BLAKE"], unrolled_blake_mode())
 }
 
 #[must_use]
 pub fn final_blake_mode() -> BlakeMode {
     blake_mode_from_env(
         &["RECURSION_FINAL_BLAKE", "RECURSION_UNIFIED_BLAKE"],
-        FsvProgram::UnifiedRecursionLayer,
         BlakeMode::Compression,
     )
 }
@@ -195,15 +174,24 @@ pub fn final_blake_mode() -> BlakeMode {
 /// protocol constant — drivers may pick their own, and
 /// `RECURSION_UNIFIED_SWITCH_CYCLES` overrides it.
 ///
-/// Rounded heavy-block calibration for the Sec100 verifier.
+/// Rounded heavy-block calibration for the Sec100 verifier, shared by every soundness mode.
 /// Circuit-count boundaries make the crossover workload-dependent.
 pub const DEFAULT_UNIFIED_SWITCH_CYCLES: u64 = 52_000_000;
 
-/// The estimated verifier cost never drops below ~6.55M cycles (past the first
-/// layer, each unrolled recursion layer verifies another such layer), so lower
-/// thresholds never stop the unrolled recursion loop. 16Mi leaves
-/// recalibration margin.
+/// Lower bound on the switch threshold to ensure unrolled recursion can converge.
 pub const MIN_UNIFIED_SWITCH_CYCLES: u64 = 16 * 1024 * 1024;
+
+/// Override the number of unrolled layers proved in one pipeline invocation.
+#[must_use]
+pub fn recursion_unrolled_layers() -> Option<usize> {
+    std::env::var_os("RECURSION_UNROLLED_LAYERS").map(|value| {
+        value
+            .to_str()
+            .expect("RECURSION_UNROLLED_LAYERS must be a usize")
+            .parse()
+            .expect("RECURSION_UNROLLED_LAYERS must be a usize")
+    })
+}
 
 #[must_use]
 pub fn unified_switch_cycles() -> u64 {
@@ -214,9 +202,22 @@ pub fn unified_switch_cycles() -> u64 {
     assert!(
         cycles >= MIN_UNIFIED_SWITCH_CYCLES,
         "unified switch threshold {cycles} is below the convergence floor \
-         {MIN_UNIFIED_SWITCH_CYCLES}: the estimated verifier cost never drops \
-         below ~6.55M cycles, so lower thresholds never stop the unrolled \
-         recursion loop"
+         {MIN_UNIFIED_SWITCH_CYCLES}; lower thresholds may never stop unrolled recursion"
     );
     cycles
+}
+
+#[cfg(all(test, feature = "verifiers"))]
+mod native_mode_tests {
+    use super::*;
+
+    #[test]
+    fn malformed_native_proofs_return_errors_in_each_mode() {
+        for &mode in SoundnessMode::ALL {
+            for is_base in [true, false] {
+                assert!(native_verify_unrolled_in_mode(Vec::new(), is_base, mode).is_err());
+                assert!(native_verify_unified_in_mode(Vec::new(), is_base, mode).is_err());
+            }
+        }
+    }
 }

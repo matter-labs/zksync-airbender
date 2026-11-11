@@ -19,8 +19,10 @@ mod test {
         use riscv_transpiler::vm::{Counters, DelegationsAndUnifiedCounters};
 
         let config = ProgramConfig {
-            binary_path: "../examples/basic_fibonacci/app.bin".to_owned(),
-            text_section_path: "../examples/basic_fibonacci/app.text".to_owned(),
+            program: riscv_transpiler::elf::ProgramSource::legacy_binaries(
+                "../examples/basic_fibonacci/app.bin",
+                "../examples/basic_fibonacci/app.text",
+            ),
             non_determinism_reads: vec![],
             cycles_bound: 1 << 20,
             ram_bound_bytes: 1 << 30,

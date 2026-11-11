@@ -62,11 +62,16 @@ pub(in crate::proof) fn schedule_terminal_proof_assembly(
                 }
                 let sumcheck_intermediate_values = proof_layout_for_parse
                     .parse_sumcheck_intermediate_values(slab_bytes, extra_by_layer);
-                let mut whir_proof = proof_layout_for_parse.parse_whir_proof(slab_bytes);
                 // `parse_whir_proof` populates every device-produced field
-                // from the slab; `whir_schedule` is plain scheduling-time
-                // metadata that the caller threads through directly.
-                whir_proof.whir_schedule = whir_schedule.clone();
+                // from the slab against the schedule's round shape;
+                // `whir_schedule` is plain scheduling-time metadata that the
+                // caller threads through directly.
+                let mut whir_proof =
+                    proof_layout_for_parse.parse_whir_proof(slab_bytes, &whir_schedule);
+                // Ground on device by the configured pow-aware batching draw
+                // and read back from the slab.
+                whir_proof.batching_challenge_pow_nonce =
+                    proof_layout_for_parse.batched_proximity_pow_nonce_host(slab_bytes);
                 let grand_product_accumulator_computed =
                     grand_product_accumulator_from_explicit_evaluations(
                         &final_explicit_evaluations,
@@ -78,15 +83,10 @@ pub(in crate::proof) fn schedule_terminal_proof_assembly(
                     whir_proof,
                     grand_product_accumulator_computed,
                     inits_and_teardowns_top_bits: inits_and_teardowns_top_bits.clone(),
-                    // The GPU prover follows the CPU Blake2sTranscript path,
-                    // which does not synthesize an intermediate Keccak seed.
-                    intermediate_transcript_seed: None,
                     // Ground on device by the configured pow-aware challenge
-                    // draws and read back from the slab.
+                    // draw and read back from the slab.
                     lookup_challenges_pow_nonce: proof_layout_for_parse
                         .lookup_pow_nonce_host(slab_bytes),
-                    batched_proximity_check_pow_nonce: proof_layout_for_parse
-                        .batched_proximity_pow_nonce_host(slab_bytes),
                 });
             }
         },

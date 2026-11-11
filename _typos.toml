@@ -3,6 +3,7 @@ extend-exclude = [
     "*.json",
     "*.lock",
     "*.bin",
+    "*.zlib",
     "*.elf",
     "*.pdf",
     "*.png",
@@ -14,6 +15,7 @@ extend-exclude = [
 ]
 
 [default.extend-words]
+flate = "flate"
 ND = "ND"
 nd = "nd"
 ba = "ba"

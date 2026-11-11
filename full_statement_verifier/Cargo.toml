@@ -16,12 +16,16 @@ serde = { workspace = true, default-features = false, features = ["derive", "all
 
 # Host-only (pulls the full prover stack) — gated behind `host_utils`, never in RISC-V builds.
 setups = { workspace = true, optional = true }
-flate2 = { version = "*", optional = true }
+proof_fixtures = { workspace = true, optional = true }
 serde_json = { version = "*", optional = true }
+riscv_transpiler = { workspace = true, optional = true }
+sha3 = { workspace = true, optional = true }
 
 [dev-dependencies]
+prover = { workspace = true, features = ["test", "bincode", "deterministic_pow"] }
 serde_json = "*"
 riscv_transpiler = { workspace = true }
+object = { workspace = true }
 
 [features]
 verifiers = []
@@ -38,9 +42,9 @@ verifier_program = ["modular_ops"]
 proof_utils = ["verifier_common/proof_utils"]
 verifier_stats = ["verifier_common/verifier_stats"]
 # Host-side recursion-driver helpers (setup-map streams, native verification,
-# fsv binary loading). Implies `proof_utils` (std build + `ProgramProof`); the
-# native_verify_* wrappers additionally need `verifiers` + a security level.
-host_utils = ["proof_utils", "dep:setups", "dep:flate2", "dep:serde_json"]
+# FSV binary loading). Implies `proof_utils` (std build + `ProgramProof`); the
+# native_verify_* wrappers additionally need `verifiers`.
+host_utils = ["proof_utils", "dep:setups", "dep:proof_fixtures", "dep:serde_json", "dep:riscv_transpiler", "dep:sha3"]
 default = ["verifiers", "proof_utils"]
 
 [lints]
