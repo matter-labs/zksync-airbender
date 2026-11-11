@@ -74,8 +74,8 @@ pub const TABLES: [(FsvDescriptor, CensusTable); 2] = [
         ),
         CensusTable {
             guest_digest: "979007b197ba0b538c1c414083d07b1bd25c0c9844bee2649010e6b4d3ec2b64",
-            c0: [14115, 3146, 460, 0, 46062, 0, 364, 0, 0, 0],
-            per_proof_spread: [134, 152, 130, 0, 171, 0, 0, 0, 0, 0, 464],
+            c0: [13979, 2993, 574, 0, 46091, 0, 364, 0, 0, 0],
+            per_proof_spread: [210, 194, 193, 0, 166, 0, 0, 0, 0, 0, 653],
             v: &[
                 (
                     CircuitId::Riscv(1),
