@@ -207,6 +207,10 @@ enum Commands {
         soundness: SoundnessArgs,
         #[arg(short, long)]
         output: String,
+        /// Trusted parameters of another program in the same soundness mode; their matching
+        /// verifier-guest records are copied instead of recomputed.
+        #[arg(long)]
+        reuse: Option<String>,
     },
     /// Run binary via the transpiler VM.
     Run {
@@ -504,10 +508,17 @@ fn run_cli() {
             elf,
             soundness: SoundnessArgs { soundness_mode },
             output,
+            reuse,
         } => {
             let source = program_source(bin, text, elf);
-            let params = prover_pipeline::compute_trusted_params(&source, soundness_mode)
-                .unwrap_or_else(|error| panic!("Trusted parameter construction failed: {error}"));
+            let reuse: Option<prover_pipeline::TrustedParams> =
+                reuse.as_ref().map(|path| deserialize_from_file(path));
+            let params = prover_pipeline::compute_trusted_params_with_reuse(
+                &source,
+                soundness_mode,
+                reuse.as_ref(),
+            )
+            .unwrap_or_else(|error| panic!("Trusted parameter construction failed: {error}"));
             prover_pipeline::serialize_to_file(&params, &output);
         }
         Commands::Run {

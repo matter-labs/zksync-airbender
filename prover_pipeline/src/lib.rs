@@ -978,15 +978,53 @@ fn compute_trusted_program_params(
     })
 }
 
+fn reused_or_computed_program_params(
+    reuse: Option<&TrustedParams>,
+    bin: &[u32],
+    text: &[u32],
+    machine: SetupMachine,
+    mode: SoundnessMode,
+    worker: &worker::Worker,
+) -> Result<TrustedProgramParams, String> {
+    let program_hash = fsv_digest(bin, text).0;
+    let reused = reuse
+        .into_iter()
+        .flat_map(|reuse| &reuse.programs)
+        .find(|record| record.program_hash == program_hash && record.machine == machine);
+    if let Some(record) = reused {
+        log::info!("reused trusted {machine:?} params");
+        return Ok(record.clone());
+    }
+    compute_trusted_program_params(bin, text, machine, mode, worker)
+}
+
 /// Compute complete records for every standard chain program the pipeline can select.
 pub fn compute_trusted_params(
     source: &ProgramSource,
     soundness_mode: SoundnessMode,
 ) -> Result<TrustedParams, String> {
+    compute_trusted_params_with_reuse(source, soundness_mode, None)
+}
+
+/// [`compute_trusted_params`], copying every record of `reuse` (trusted params of any program in
+/// the same mode) whose program hash and machine match instead of recomputing it.
+pub fn compute_trusted_params_with_reuse(
+    source: &ProgramSource,
+    soundness_mode: SoundnessMode,
+    reuse: Option<&TrustedParams>,
+) -> Result<TrustedParams, String> {
     use verifier_common::fsv_binaries::{FsvProfile, FSV_REGISTRY};
+    if let Some(reuse) = reuse {
+        assert_eq!(reuse.schema_version, 1, "unsupported trusted params schema");
+        assert_eq!(
+            reuse.soundness_mode, soundness_mode,
+            "reused trusted params soundness mode does not match the requested mode"
+        );
+    }
     let loaded = load_program(source)?;
     let worker = worker::Worker::new();
-    let mut programs = vec![compute_trusted_program_params(
+    let mut programs = vec![reused_or_computed_program_params(
+        reuse,
         &loaded.bin_u32,
         &loaded.text_u32,
         SetupMachine::UnrolledFullUnsigned,
@@ -1017,7 +1055,8 @@ pub fn compute_trusted_params(
             {
                 continue;
             }
-            programs.push(compute_trusted_program_params(
+            programs.push(reused_or_computed_program_params(
+                reuse,
                 guest.bin(),
                 guest.text(),
                 machine,
