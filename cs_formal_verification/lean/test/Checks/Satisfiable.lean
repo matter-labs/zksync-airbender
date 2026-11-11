@@ -480,4 +480,35 @@ example (claim : Keccak.Split.Native.RVPermutationSoundnessClaim) :
       rw [empty] at calls
       simp at calls⟩
 
+example (claim : Keccak.Native.RVPermutationSoundnessClaim) : Keccak.Native.RVPermutationSoundnessSatisfiableClaim →
+    ∃ (data : Delegation.MemoryData babyBearModulus) (initial after : RV.State) (cells : List Cell),
+      Delegation.RVTraceMapping data initial after cells ∧ data.rows ≠ [] :=
+  fun ⟨data, initial, cells, accepted, inputs, tables, aligned⟩ =>
+    have ⟨after, _, _, _, _, trace, _⟩ := claim accepted inputs tables aligned
+    ⟨data, initial, after, cells, trace, fun empty => by
+      have calls := inputs.calls
+      rw [empty] at calls
+      simp at calls⟩
+
+example (claim : Keccak.Native.RVPermutationBoundarySoundnessClaim) :
+    Keccak.Native.RVPermutationBoundarySoundnessSatisfiableClaim →
+    ∃ (data : Delegation.MemoryData babyBearModulus) (initial after : RV.State) (cells : List Cell),
+      Delegation.RVTraceMapping data initial after cells ∧ data.rows ≠ [] :=
+  fun ⟨data, initial, cells, accepted, inputs, tables, aligned⟩ =>
+    have ⟨after, _, _, _, _, trace, _⟩ := claim accepted inputs tables aligned
+    ⟨data, initial, after, cells, trace, fun empty => by
+      have calls := inputs.calls
+      rw [empty] at calls
+      simp at calls⟩
+
+example (claim : Keccak.Native.RVWindowSoundnessClaim) : Keccak.Native.RVWindowSoundnessSatisfiableClaim →
+    ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Cell) (lower upper : Nat),
+      Delegation.Caller.RVWindowResult Keccak.RVSpanResult data before cells lower upper ∧
+        data.windowRows lower upper ≠ [] :=
+  fun ⟨data, before, cells, lower, upper, accepted, inputs, aligned⟩ =>
+    ⟨data, before, cells, lower, upper, claim accepted inputs aligned, fun empty => by
+      have calls := inputs.calls
+      rw [empty] at calls
+      simp at calls⟩
+
 end Checks.Satisfiable

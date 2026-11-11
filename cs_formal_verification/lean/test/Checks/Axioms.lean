@@ -1261,3 +1261,6 @@ import Slop.Final.Trace.Satisfiable.DelegationHashCallers
 #print axioms Airbender.Delegation.Caller.rv_shared_span_soundness_satisfiable
 #print axioms Airbender.Delegation.Caller.rv_request_hash_window_soundness_satisfiable
 #print axioms Airbender.Keccak.Split.Native.rv_permutation_soundness_satisfiable
+#print axioms Airbender.Keccak.Native.rv_permutation_soundness_satisfiable
+#print axioms Airbender.Keccak.Native.rv_permutation_boundary_soundness_satisfiable
+#print axioms Airbender.Keccak.Native.rv_window_soundness_satisfiable

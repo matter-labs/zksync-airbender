@@ -26,6 +26,12 @@ def Native.RVPermutationBoundarySoundnessClaim : Prop :=
         ∃ s', RV.calls rvCalls initial = some s' ∧
           RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * rvCalls.length)))
 
+/-- The assumptions of `Native.RVPermutationBoundarySoundnessClaim` can be met (`calls` makes the span non-empty). -/
+def Native.RVPermutationBoundarySoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Delegation.MemoryData babyBearModulus) (initial : RV.State) (cells : List Trace.Cell),
+    Delegation.MemoryAccepted data ∧ RVNativeCallInputs data initial cells ∧
+      data.setup = Delegation.modeledSetup Controller.rows ∧ ∀ cell ∈ cells, cell.Aligned
+
 /-- A complete initialized special5 request writes Clean's original
     Keccak permutation into actual RV RAM (`RVWordMapping`: public x11, successful initial/final lane reads), the same
     final state executes every native access (`RVTraceMapping`), and it is the spec's run of the 649 special5 calls
@@ -38,6 +44,12 @@ def Native.RVPermutationSoundnessClaim : Prop :=
         Delegation.RVTraceMapping data initial after cells ∧ output = Specs.Keccak256.keccakPermutation input ∧
         ∃ s', RV.calls rvCalls initial = some s' ∧
           RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * rvCalls.length)))
+
+/-- The assumptions of `Native.RVPermutationSoundnessClaim` can be met (`calls` makes the span non-empty). -/
+def Native.RVPermutationSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Delegation.MemoryData babyBearModulus) (initial : RV.State) (cells : List Trace.Cell),
+    Delegation.MemoryAccepted data ∧ RVCallInputs data initial cells ∧
+      data.setup = Delegation.modeledSetup Controller.rows ∧ ∀ cell ∈ cells, cell.Aligned
 
 /-- Keccak's modeled controller selects physical lane addresses and
     controls actual initialized RV transfers in a mixed delegation pool (`RVMemoryExecution`; RAM cells include the
@@ -58,5 +70,10 @@ def Native.RVOperationExecutionSatisfiableClaim : Prop :=
 def Native.RVWindowSoundnessClaim : Prop :=
   ∀ {data : Delegation.MemoryData babyBearModulus} {before : RV.State} {cells : List Trace.Cell} {lower upper : Nat} (_accepted : Delegation.MemoryAccepted data) (_inputs : RVWindowInputs data before cells lower upper) (_aligned : ∀ cell ∈ cells, cell.Aligned),
     Delegation.Caller.RVWindowResult RVSpanResult data before cells lower upper
+
+/-- The assumptions of `Native.RVWindowSoundnessClaim` can be met (`calls` makes the window non-empty). -/
+def Native.RVWindowSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Trace.Cell) (lower upper : Nat),
+    Delegation.MemoryAccepted data ∧ RVWindowInputs data before cells lower upper ∧ ∀ cell ∈ cells, cell.Aligned
 
 end Airbender.Keccak

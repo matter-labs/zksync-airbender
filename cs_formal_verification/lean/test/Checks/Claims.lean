@@ -470,3 +470,10 @@ example : Airbender.Delegation.Caller.RVRequestHashWindowSoundnessSatisfiableCla
 
 example : Airbender.Keccak.Split.Native.RVPermutationSoundnessSatisfiableClaim := @Airbender.Keccak.Split.Native.rv_permutation_soundness_satisfiable
 #print axioms Airbender.Keccak.Split.Native.rv_permutation_soundness_satisfiable
+
+example : Airbender.Keccak.Native.RVPermutationSoundnessSatisfiableClaim := @Airbender.Keccak.Native.rv_permutation_soundness_satisfiable
+#print axioms Airbender.Keccak.Native.rv_permutation_soundness_satisfiable
+example : Airbender.Keccak.Native.RVPermutationBoundarySoundnessSatisfiableClaim := @Airbender.Keccak.Native.rv_permutation_boundary_soundness_satisfiable
+#print axioms Airbender.Keccak.Native.rv_permutation_boundary_soundness_satisfiable
+example : Airbender.Keccak.Native.RVWindowSoundnessSatisfiableClaim := @Airbender.Keccak.Native.rv_window_soundness_satisfiable
+#print axioms Airbender.Keccak.Native.rv_window_soundness_satisfiable
