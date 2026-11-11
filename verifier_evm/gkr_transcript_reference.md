@@ -28,7 +28,7 @@ factorization, including exceptional challenges. Run Rust checks with
 controls require [run_merged.sh](generated_contracts/run_merged.sh).
 
 Proof and setup-frontier producer commands are in the
-[fixture README](../prover_pipeline/fixtures/l1_reference_2p21/README.md).
+[fixture README](../fixtures/README.md).
 The EVM producers read `.l1` from the CLI `l1.json` artifact. The
 [contract harness README](generated_contracts/l1_wrap_2p21/README.md) gives contract
 and calldata producer commands. `checked_in_contracts_are_current` checks

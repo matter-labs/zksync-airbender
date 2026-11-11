@@ -1,20 +1,5 @@
 use super::*;
-use serde::de::DeserializeOwned;
-use std::fs::{self, File};
-use std::io::BufReader;
-
-fn fixture_dir() -> PathBuf {
-    std::env::var_os("AB_PROTH120_REFERENCE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/l1_reference_2p21"))
-}
-
-fn read_typed<T: DeserializeOwned>(path: &Path) -> Result<T, String> {
-    let file = File::open(path)
-        .map_err(|error| format!("L1 reference open {}: {error}", path.display()))?;
-    serde_json::from_reader(BufReader::new(file))
-        .map_err(|error| format!("L1 reference deserialize {}: {error}", path.display()))
-}
+use std::fs;
 
 fn source() -> ProgramSource {
     ProgramSource::legacy_binaries_from_bin(
@@ -37,8 +22,10 @@ fn export_l1_wrap_setup_frontier() {
     use ::prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, PathQueryable};
     use ::prover::worker::Worker;
 
-    let artifact: ProofArtifact =
-        read_typed(&fixture_dir().join("l1.json")).expect("committed CLI L1 artifact");
+    let artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
+        "pessimistic_conjecture",
+        "l1",
+    ));
     let bundle = artifact.l1.expect("L1 artifact contains the wrap bundle");
     bundle.validate().expect("committed L1 wrap bundle");
     let setup_commitment = &bundle.proof.whir_proof.setup_commitment;
@@ -163,8 +150,10 @@ fn export_l1_wrap_setup_frontier() {
 
 #[test]
 fn cpu_l1_feeder_rejects_tampered_streams() {
-    let artifact: ProofArtifact =
-        read_typed(&fixture_dir().join("l1_feeder.json")).expect("terminal feeder artifact");
+    let artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
+        "pessimistic_conjecture",
+        "l1_feeder",
+    ));
     let stream = build_unified_stream(
         &artifact.setups,
         &artifact.proof,
@@ -195,7 +184,10 @@ fn cpu_l1_feeder_rejects_tampered_streams() {
 
 #[test]
 fn supplied_standard_records_refuse_an_l1_chain_without_recomputation() {
-    let artifact: ProofArtifact = read_typed(&fixture_dir().join("l1_feeder.json")).unwrap();
+    let artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
+        "pessimistic_conjecture",
+        "l1_feeder",
+    ));
     let source = source();
     let loaded = load_and_validate_program(&source, &artifact).unwrap();
     let mut trusted = TrustedParams {

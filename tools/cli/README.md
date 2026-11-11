@@ -179,7 +179,7 @@ artifacts without it retain the existing schema-5 encoding. The `l1-feeder`
 artifact is the input of the L1 wrap.
 
 Producer commands and the pinned seed environment are in the
-[fixture README](../../prover_pipeline/fixtures/l1_reference_2p21/README.md).
+[fixture README](../../fixtures/README.md).
 
 ```bash
 cargo run --release -p cli -- continue-proof \

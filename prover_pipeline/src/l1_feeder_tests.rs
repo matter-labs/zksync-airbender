@@ -251,13 +251,10 @@ fn feeder_continuation_requires_the_trusted_chain() {
     let source = ProgramSource::legacy_binaries_from_bin(
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/basic_fibonacci/app.bin"),
     );
-    let mut artifact: ProofArtifact = serde_json::from_reader(
-        std::fs::File::open(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/l1_reference_2p21/l1_feeder.json"),
-        )
-        .unwrap(),
-    )
-    .unwrap();
+    let mut artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
+        "pessimistic_conjecture",
+        "l1_feeder",
+    ));
     artifact.chain_end_params[0][0] ^= 1;
     let chain = rebuild_chain(&artifact.chain_end_params).unwrap();
     artifact.chain_hash = chain.hash();

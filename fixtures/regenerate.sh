@@ -19,8 +19,15 @@ case $mode_filter in
   *) echo "unknown mode: $mode_filter" >&2; exit 1 ;;
 esac
 case $stage_filter in
-  ''|circuits|base_unified|unrolled) ;;
+  ''|circuits|base_unified|unrolled|l1_feeder|l1) ;;
   *) echo "unknown stage: $stage_filter" >&2; exit 1 ;;
+esac
+case $stage_filter in
+  l1_feeder|l1)
+    [[ $mode_filter != ethproofs_soundcalc ]] || {
+      echo "L1 stages support only pessimistic_conjecture" >&2; exit 1;
+    }
+    mode_filter=pessimistic_conjecture ;;
 esac
 backend=${FIXTURE_BACKEND:-cpu}
 case $backend in
@@ -31,7 +38,7 @@ if [[ $backend == gpu && ( -z $stage_filter || $stage_filter == circuits ) ]]; t
   echo "FIXTURE_BACKEND=gpu does not support the circuits stage; use the canonical GPU matrix" >&2
   exit 1
 fi
-if (( !check )) && [[ -n $stage_filter && $stage_filter != circuits ]]; then
+if (( !check )) && [[ $stage_filter == base_unified || $stage_filter == unrolled ]]; then
   echo "selecting a chain stage is --check-only; write mode regenerates the whole chain" >&2
   exit 1
 fi
@@ -107,7 +114,9 @@ check_artifact() {
   local file="$chain_out/$name.json.zlib"
   "$codec" check "$file"
   local trusted=()
-  if [[ -n $trusted_params ]]; then
+  # The shared cache contains Standard records only; L1 verification derives
+  # its profile-specific trusted parameters from the program.
+  if [[ -n $trusted_params && $name != l1_feeder && $name != l1 ]]; then
     local params="$trusted_params/$cli_mode-trusted-params.json"
     [[ -f $params ]] || "$cli" trusted-params --bin "$bin" --soundness-mode "$cli_mode" --output "$params"
     trusted=(--trusted-params "$params")
@@ -125,6 +134,7 @@ for mode in "${modes[@]}"; do
   chain_parent="$repo/fixtures/chains/$mode"
   common=(--bin "$bin" --backend "$backend" --soundness-mode "$cli_mode" --output-dir "$chain_out")
   stages=(circuits base_unified unrolled)
+  [[ $mode != pessimistic_conjecture ]] || stages+=(l1_feeder l1)
   [[ -z $stage_filter ]] || stages=("$stage_filter")
   for stage in "${stages[@]}"; do
     echo "== $mode / $stage"
@@ -164,6 +174,14 @@ for mode in "${modes[@]}"; do
         RECURSION_UNROLLED_LAYERS=0 "$cli" continue-proof "${common[@]}" \
           --proof "$chain_parent/unrolled.json.zlib" --target recursion-unified --output-file unrolled_unified.json.zlib
         check_artifact unrolled_unified ;;
+      l1_feeder)
+        "$cli" continue-proof "${common[@]}" \
+          --proof "$chain_parent/unified.json.zlib" --target l1-feeder --output-file l1_feeder.json.zlib
+        check_artifact l1_feeder ;;
+      l1)
+        "$cli" continue-proof "${common[@]}" \
+          --proof "$chain_parent/l1_feeder.json.zlib" --target l1 --output-file l1.json.zlib
+        check_artifact l1 ;;
     esac
   done
 done

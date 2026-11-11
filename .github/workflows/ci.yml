@@ -222,8 +222,8 @@ jobs:
       - name: Verify the committed L1 reference
         run: |
           chmod +x fixture-executables/cli
-          for proof in recursion_unified.json l1_feeder.json; do
-            ./fixture-executables/cli verify --proof "prover_pipeline/fixtures/l1_reference_2p21/$proof" \
+          for proof in unified l1_feeder; do
+            ./fixture-executables/cli verify --proof "fixtures/chains/pessimistic_conjecture/$proof.json.zlib" \
               --bin examples/basic_fibonacci/app.bin
           done
       - name: CPU tests
@@ -342,6 +342,9 @@ jobs:
       matrix:
         mode: [pessimistic_conjecture, ethproofs_soundcalc]
         stage: [circuits, base_unified, unrolled]
+        include:
+          - mode: pessimistic_conjecture
+            stage: l1_feeder
     defaults:
       run:
         shell: bash

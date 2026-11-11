@@ -10,7 +10,7 @@ Usage: ./recreate_verifiers.sh [--help]
 
 Regenerate circuit layouts, witness evaluators and Rust verifiers.
 For L1 proof references, setup-frontier export and EVM checks, follow
-prover_pipeline/fixtures/l1_reference_2p21/README.md.
+fixtures/README.md.
 EOF
 }
 
