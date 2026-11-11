@@ -1,0 +1,152 @@
+module
+public import Slop.NonVacuous.Blake2RoundSpan.Queries
+public import Slop.Blake2Round.ColumnG
+
+@[expose] public section
+
+/-! The sixteen fixed-table queries of column G call 2 (imported lookups 34 to 49) hold over BabyBear
+    when its trace's table facts do (`Blake2Round.Proofs.GTrace.Rows`), for any assignment: one lemma per query,
+    whose entries evaluate to the trace's fields (`column_eq`). -/
+
+namespace Airbender.NonVacuous.Blake2RoundSpan
+open Blake2Round.Proofs
+
+variable {p : Nat} [Fact p.Prime] (hp : p = 2013265921) (w : Nat → ZMod p) (rows : (columnTrace 2 w).Rows)
+include hp rows
+
+private theorem column_lookup_34 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 34) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_carry hL (Blake2Round.importedConstraints.lookup_34 _ (query_lt (by decide))) index (Or.inl ⟨rfl, rfl⟩) rows.q0 rows.ka0 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+private theorem column_lookup_35 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 35) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_35 _ (query_lt (by decide))) index (Or.inl ⟨rfl, rfl⟩) rows.q1 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+private theorem column_lookup_36 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 36) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_carry hL (Blake2Round.importedConstraints.lookup_36 _ (query_lt (by decide))) index (Or.inl ⟨rfl, rfl⟩) rows.q2 rows.ka1 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+private theorem column_lookup_37 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 37) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_37 _ (query_lt (by decide))) index (Or.inl ⟨rfl, rfl⟩) rows.q3 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+private theorem column_lookup_38 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 38) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_38 _ (query_lt (by decide))) index (Or.inr (Or.inr ⟨rfl, rfl⟩)) rows.q4 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+private theorem column_lookup_39 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 39) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_39 _ (query_lt (by decide))) index (Or.inr (Or.inr ⟨rfl, rfl⟩)) rows.q5 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+private theorem column_lookup_40 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 40) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_split hL (Blake2Round.importedConstraints.lookup_40 _ (query_lt (by decide))) index rows.q6 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+private theorem column_lookup_41 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 41) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_split hL (Blake2Round.importedConstraints.lookup_41 _ (query_lt (by decide))) index rows.q7 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+private theorem column_lookup_42 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 42) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_42 _ (query_lt (by decide))) index (Or.inl ⟨rfl, rfl⟩) rows.q8 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+private theorem column_lookup_43 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 43) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_43 _ (query_lt (by decide))) index (Or.inl ⟨rfl, rfl⟩) rows.q9 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+private theorem column_lookup_44 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 44) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_carry hL (Blake2Round.importedConstraints.lookup_44 _ (query_lt (by decide))) index (Or.inl ⟨rfl, rfl⟩) rows.q10 rows.kb0 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+private theorem column_lookup_45 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 45) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_carry hL (Blake2Round.importedConstraints.lookup_45 _ (query_lt (by decide))) index (Or.inl ⟨rfl, rfl⟩) rows.q11 rows.kb1 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+private theorem column_lookup_46 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 46) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_46 _ (query_lt (by decide))) index (Or.inr (Or.inr ⟨rfl, rfl⟩)) rows.q12 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+private theorem column_lookup_47 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 47) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_47 _ (query_lt (by decide))) index (Or.inr (Or.inr ⟨rfl, rfl⟩)) rows.q13 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+private theorem column_lookup_48 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 48) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_48 _ (query_lt (by decide))) index (Or.inr (Or.inl ⟨rfl, rfl⟩)) rows.q14 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+private theorem column_lookup_49 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 49) : (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  subst hp
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_49 _ (query_lt (by decide))) index (Or.inr (Or.inl ⟨rfl, rfl⟩)) rows.q15 ?_ ?_ ?_ ?_ ?_ ?_
+  all_goals column_eq
+
+theorem column_lookups_2 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) (n : Nat)
+    (hn : n < L.length) (lower : 34 ≤ n) (upper : n < 50) :
+    (L.get ⟨n, hn⟩).Contains (Verification.environment w) := by
+  rcases (by omega : n = 34 ∨ n = 35 ∨ n = 36 ∨ n = 37 ∨ n = 38 ∨ n = 39 ∨ n = 40 ∨ n = 41 ∨ n = 42 ∨ n = 43 ∨ n = 44 ∨ n = 45 ∨ n = 46 ∨ n = 47 ∨ n = 48 ∨ n = 49) with
+    index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index
+  · exact column_lookup_34 hp w rows hL index
+  · exact column_lookup_35 hp w rows hL index
+  · exact column_lookup_36 hp w rows hL index
+  · exact column_lookup_37 hp w rows hL index
+  · exact column_lookup_38 hp w rows hL index
+  · exact column_lookup_39 hp w rows hL index
+  · exact column_lookup_40 hp w rows hL index
+  · exact column_lookup_41 hp w rows hL index
+  · exact column_lookup_42 hp w rows hL index
+  · exact column_lookup_43 hp w rows hL index
+  · exact column_lookup_44 hp w rows hL index
+  · exact column_lookup_45 hp w rows hL index
+  · exact column_lookup_46 hp w rows hL index
+  · exact column_lookup_47 hp w rows hL index
+  · exact column_lookup_48 hp w rows hL index
+  · exact column_lookup_49 hp w rows hL index
+
+end Airbender.NonVacuous.Blake2RoundSpan

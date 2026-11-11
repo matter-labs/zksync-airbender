@@ -1,0 +1,159 @@
+module
+public import Slop.NonVacuous.Blake2RoundSpan.FinalEval
+
+@[expose] public section
+
+/-! The final-XOR queries of chaining word 3 (imported lookups 154 to 161) hold for the
+    honest assignment of valid inputs over BabyBear: four per limb, each a plain XOR of chunks of the chaining limb
+    and the two extended words (`RowInput.finalSlot`). -/
+
+namespace Airbender.NonVacuous.Blake2RoundSpan
+open Blake2Round.Proofs
+
+variable {p : Nat} [Fact p.Prime] (hp : p = 2013265921) {x : RowInput} (valid : x.Valid)
+include hp valid
+
+private theorem final_lookup_154 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 154) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp
+  final_bounds_low valid 3 0 1 3
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_154 _ (query_lt (by decide))) index (Or.inr (Or.inl ⟨rfl, rfl⟩))
+    (chunkXor_cast (w := 7) (m := x.finalSlot 3 0 0) (n := (x.diagCall 1).c2lo % 128) (k := x.finalSlot 3 0 1) (by final_unfold) (by final_unfold) (by final_unfold) (by decide)
+      (by final_unfold)) ?_ ?_ ?_ ?_ ?_ ?_
+  · honest_entry
+  · honest_entry
+  · honest_entry
+  · honest_entry
+  · honest_entry
+  · honest_entry
+
+private theorem final_lookup_155 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 155) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp
+  final_bounds_low valid 3 0 1 3
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_155 _ (query_lt (by decide))) index (Or.inr (Or.inr ⟨rfl, rfl⟩))
+    (chunkXor_cast (w := 9) (m := (x.state 3).lo / 128) (n := (x.diagCall 1).c2lo / 128) (k := x.finalSlot 3 0 2) (by final_unfold) (by final_unfold) (by final_unfold) (by decide)
+      (by final_unfold)) ?_ ?_ ?_ ?_ ?_ ?_
+  · honest_entry
+  · honest_entry
+    field_identity (-15728640) (show (x.state 3).lo = x.finalSlot 3 0 0 + 128 * ((x.state 3).lo / 128) by final_unfold)
+  · honest_entry
+    field_identity (-15728640) (show (x.diagCall 1).c2lo = (x.diagCall 1).c2lo % 128 + 128 * ((x.diagCall 1).c2lo / 128) by final_unfold)
+  · honest_entry
+  · honest_entry
+  · honest_entry
+
+private theorem final_lookup_156 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 156) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp
+  final_bounds_low valid 3 0 1 3
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_156 _ (query_lt (by decide))) index (Or.inr (Or.inl ⟨rfl, rfl⟩))
+    (chunkXor_cast (w := 7) (m := x.finalSlot 3 0 1) (n := (x.diagCall 3).a2lo % 128) (k := x.finalSlot 3 0 4) (by final_unfold) (by final_unfold) (by final_unfold) (by decide)
+      (by final_unfold)) ?_ ?_ ?_ ?_ ?_ ?_
+  · honest_entry
+  · honest_entry
+  · honest_entry
+    field_identity 1 (show (x.diagCall 3).a2lo % 256 = (x.diagCall 3).a2lo % 128 + 128 * x.finalSlot 3 0 3 by final_unfold)
+  · honest_entry
+  · honest_entry
+  · honest_entry
+
+private theorem final_lookup_157 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 157) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp
+  final_bounds_low valid 3 0 1 3
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_157 _ (query_lt (by decide))) index (Or.inr (Or.inr ⟨rfl, rfl⟩))
+    (chunkXor_cast (w := 9) (m := x.finalSlot 3 0 2) (n := (x.diagCall 3).a2lo / 128) (k := x.finalSlot 3 0 5) (by final_unfold) (by final_unfold) (by final_unfold) (by decide)
+      (by final_unfold)) ?_ ?_ ?_ ?_ ?_ ?_
+  · honest_entry
+  · honest_entry
+  · honest_entry
+    field_identity (-15728640) (show (x.diagCall 3).a2lo + 128 * x.finalSlot 3 0 3 = (x.diagCall 3).a2lo % 256 + 128 * ((x.diagCall 3).a2lo / 128) by final_unfold)
+  · honest_entry
+  · honest_entry
+  · honest_entry
+
+private theorem final_lookup_158 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 158) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp
+  final_bounds_low valid 3 1 1 3
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_158 _ (query_lt (by decide))) index (Or.inr (Or.inl ⟨rfl, rfl⟩))
+    (chunkXor_cast (w := 7) (m := x.finalSlot 3 1 0) (n := (x.diagCall 1).c2hi % 128) (k := x.finalSlot 3 1 1) (by final_unfold) (by final_unfold) (by final_unfold) (by decide)
+      (by final_unfold)) ?_ ?_ ?_ ?_ ?_ ?_
+  · honest_entry
+  · honest_entry
+  · honest_entry
+  · honest_entry
+  · honest_entry
+  · honest_entry
+
+private theorem final_lookup_159 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 159) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp
+  final_bounds_low valid 3 1 1 3
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_159 _ (query_lt (by decide))) index (Or.inr (Or.inr ⟨rfl, rfl⟩))
+    (chunkXor_cast (w := 9) (m := (x.state 3).hi / 128) (n := (x.diagCall 1).c2hi / 128) (k := x.finalSlot 3 1 2) (by final_unfold) (by final_unfold) (by final_unfold) (by decide)
+      (by final_unfold)) ?_ ?_ ?_ ?_ ?_ ?_
+  · honest_entry
+  · honest_entry
+    field_identity (-15728640) (show (x.state 3).hi = x.finalSlot 3 1 0 + 128 * ((x.state 3).hi / 128) by final_unfold)
+  · honest_entry
+    field_identity (-15728640) (show (x.diagCall 1).c2hi = (x.diagCall 1).c2hi % 128 + 128 * ((x.diagCall 1).c2hi / 128) by final_unfold)
+  · honest_entry
+  · honest_entry
+  · honest_entry
+
+private theorem final_lookup_160 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 160) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp
+  final_bounds_low valid 3 1 1 3
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_160 _ (query_lt (by decide))) index (Or.inr (Or.inl ⟨rfl, rfl⟩))
+    (chunkXor_cast (w := 7) (m := x.finalSlot 3 1 1) (n := (x.diagCall 3).a2hi % 128) (k := x.finalSlot 3 1 4) (by final_unfold) (by final_unfold) (by final_unfold) (by decide)
+      (by final_unfold)) ?_ ?_ ?_ ?_ ?_ ?_
+  · honest_entry
+  · honest_entry
+  · honest_entry
+    field_identity 1 (show (x.diagCall 3).a2hi % 256 = (x.diagCall 3).a2hi % 128 + 128 * x.finalSlot 3 1 3 by final_unfold)
+  · honest_entry
+  · honest_entry
+  · honest_entry
+
+private theorem final_lookup_161 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 161) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp
+  final_bounds_low valid 3 1 1 3
+  refine contains_xor hL (Blake2Round.importedConstraints.lookup_161 _ (query_lt (by decide))) index (Or.inr (Or.inr ⟨rfl, rfl⟩))
+    (chunkXor_cast (w := 9) (m := x.finalSlot 3 1 2) (n := (x.diagCall 3).a2hi / 128) (k := x.finalSlot 3 1 5) (by final_unfold) (by final_unfold) (by final_unfold) (by decide)
+      (by final_unfold)) ?_ ?_ ?_ ?_ ?_ ?_
+  · honest_entry
+  · honest_entry
+  · honest_entry
+    field_identity (-15728640) (show (x.diagCall 3).a2hi + 128 * x.finalSlot 3 1 3 = (x.diagCall 3).a2hi % 256 + 128 * ((x.diagCall 3).a2hi / 128) by final_unfold)
+  · honest_entry
+  · honest_entry
+  · honest_entry
+
+theorem final_lookups_3 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraints Blake2Round.setupTable) = L) (n : Nat)
+    (hn : n < L.length) (lower : 154 ≤ n) (upper : n < 162) :
+    (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  rcases (by omega : n = 154 ∨ n = 155 ∨ n = 156 ∨ n = 157 ∨ n = 158 ∨ n = 159 ∨ n = 160 ∨ n = 161) with
+    index | index | index | index | index | index | index | index
+  · exact final_lookup_154 hp valid hL index
+  · exact final_lookup_155 hp valid hL index
+  · exact final_lookup_156 hp valid hL index
+  · exact final_lookup_157 hp valid hL index
+  · exact final_lookup_158 hp valid hL index
+  · exact final_lookup_159 hp valid hL index
+  · exact final_lookup_160 hp valid hL index
+  · exact final_lookup_161 hp valid hL index
+
+end Airbender.NonVacuous.Blake2RoundSpan

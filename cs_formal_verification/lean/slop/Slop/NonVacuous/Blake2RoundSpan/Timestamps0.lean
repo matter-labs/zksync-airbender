@@ -1,0 +1,606 @@
+module
+public import Slop.NonVacuous.Blake2RoundSpan.AssertEval
+
+@[expose] public section
+
+/-! The timestamp queries 0 to 44 of an honest round row hold over BabyBear: the invocation clock (1 mod 4) and the two clock queries of each port (`port_clock_contains`). -/
+
+namespace Airbender.NonVacuous.Blake2RoundSpan
+
+variable {p : Nat} [Fact p.Prime] (hp : p = 2013265921) {x : RowInput} (valid : x.Valid)
+include hp valid
+
+private theorem timestamp_0 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 0) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_0]
+  have step := valid.invocation
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  refine range_of_eval (n := (x.invocation - 1) / 4) ?_ (by simp only [Trace.timestampBase]; omega) (by decide)
+  honest_entry
+  honest_value
+  field_identity (-503316480) (show x.invocation = 1 + 4 * ((x.invocation - 1) / 4) by omega)
+
+private theorem timestamp_1 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 1) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_1]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 0, 633 + 3 * 0]) (borrow := 634 + 3 * 0)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 0 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_2 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 2) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_2]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 0, 633 + 3 * 0]) (borrow := 634 + 3 * 0)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 0 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_3 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 3) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_3]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 1, 633 + 3 * 1]) (borrow := 634 + 3 * 1)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 1 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_4 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 4) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_4]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 1, 633 + 3 * 1]) (borrow := 634 + 3 * 1)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 1 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_5 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 5) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_5]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 2, 633 + 3 * 2]) (borrow := 634 + 3 * 2)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 2 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_6 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 6) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_6]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 2, 633 + 3 * 2]) (borrow := 634 + 3 * 2)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 2 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_7 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 7) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_7]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 3, 633 + 3 * 3]) (borrow := 634 + 3 * 3)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 3 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_8 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 8) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_8]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 3, 633 + 3 * 3]) (borrow := 634 + 3 * 3)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 3 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_9 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 9) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_9]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 4, 633 + 3 * 4]) (borrow := 634 + 3 * 4)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 4 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_10 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 10) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_10]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 4, 633 + 3 * 4]) (borrow := 634 + 3 * 4)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 4 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_11 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 11) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_11]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 5, 633 + 3 * 5]) (borrow := 634 + 3 * 5)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 5 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_12 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 12) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_12]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 5, 633 + 3 * 5]) (borrow := 634 + 3 * 5)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 5 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_13 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 13) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_13]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 6, 633 + 3 * 6]) (borrow := 634 + 3 * 6)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 6 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_14 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 14) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_14]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 6, 633 + 3 * 6]) (borrow := 634 + 3 * 6)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 6 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_15 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 15) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_15]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 7, 633 + 3 * 7]) (borrow := 634 + 3 * 7)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 7 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_16 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 16) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_16]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 7, 633 + 3 * 7]) (borrow := 634 + 3 * 7)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 7 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_17 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 17) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_17]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 8, 633 + 3 * 8]) (borrow := 634 + 3 * 8)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 8 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_18 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 18) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_18]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 8, 633 + 3 * 8]) (borrow := 634 + 3 * 8)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 8 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_19 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 19) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_19]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 9, 633 + 3 * 9]) (borrow := 634 + 3 * 9)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 9 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_20 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 20) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_20]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 9, 633 + 3 * 9]) (borrow := 634 + 3 * 9)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 9 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_21 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 21) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_21]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 10, 633 + 3 * 10]) (borrow := 634 + 3 * 10)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 10 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_22 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 22) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_22]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 10, 633 + 3 * 10]) (borrow := 634 + 3 * 10)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 10 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_23 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 23) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_23]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 11, 633 + 3 * 11]) (borrow := 634 + 3 * 11)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 11 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_24 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 24) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_24]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 11, 633 + 3 * 11]) (borrow := 634 + 3 * 11)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 11 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_25 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 25) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_25]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 12, 633 + 3 * 12]) (borrow := 634 + 3 * 12)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 12 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_26 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 26) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_26]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 12, 633 + 3 * 12]) (borrow := 634 + 3 * 12)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 12 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_27 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 27) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_27]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 13, 633 + 3 * 13]) (borrow := 634 + 3 * 13)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 13 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_28 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 28) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_28]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 13, 633 + 3 * 13]) (borrow := 634 + 3 * 13)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 13 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_29 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 29) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_29]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 14, 633 + 3 * 14]) (borrow := 634 + 3 * 14)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 14 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_30 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 30) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_30]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 14, 633 + 3 * 14]) (borrow := 634 + 3 * 14)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 14 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_31 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 31) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_31]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 15, 633 + 3 * 15]) (borrow := 634 + 3 * 15)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 15 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_32 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 32) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_32]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 15, 633 + 3 * 15]) (borrow := 634 + 3 * 15)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 15 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_33 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 33) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_33]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 16, 633 + 3 * 16]) (borrow := 634 + 3 * 16)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 16 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_34 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 34) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_34]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 16, 633 + 3 * 16]) (borrow := 634 + 3 * 16)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 16 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_35 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 35) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_35]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 17, 633 + 3 * 17]) (borrow := 634 + 3 * 17)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 17 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_36 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 36) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_36]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 17, 633 + 3 * 17]) (borrow := 634 + 3 * 17)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 17 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_37 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 37) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_37]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 18, 633 + 3 * 18]) (borrow := 634 + 3 * 18)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 18 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_38 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 38) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_38]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 18, 633 + 3 * 18]) (borrow := 634 + 3 * 18)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 18 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_39 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 39) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_39]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 19, 633 + 3 * 19]) (borrow := 634 + 3 * 19)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 19 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_40 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 40) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_40]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 19, 633 + 3 * 19]) (borrow := 634 + 3 * 19)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 19 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_41 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 41) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_41]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 20, 633 + 3 * 20]) (borrow := 634 + 3 * 20)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 20 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_42 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 42) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_42]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 20, 633 + 3 * 20]) (borrow := 634 + 3 * 20)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 20 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+private theorem timestamp_43 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 43) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_43]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 21, 633 + 3 * 21]) (borrow := 634 + 3 * 21)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 21 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).1
+
+private theorem timestamp_44 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 44) : (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  subst hp hL index
+  rw [Blake2Round.importedConstraintsTimestampLookups.lookup_44]
+  have room := valid.room
+  simp only [Trace.timestampBase] at room
+  exact (port_clock_contains (by decide) (columns := #v[632 + 3 * 21, 633 + 3 * 21]) (borrow := 634 + 3 * 21)
+    x.assignment_invocation x.assignment_invocationHigh (x.assignment_previous (by decide))
+    (x.assignment_previousHigh (by decide)) (x.assignment_borrow (by decide)) (valid.previous 21 (by decide))
+    (by simp only [Trace.timestampBase]; omega)).2
+
+theorem timestamps_0 {L : List (Lookup (ZMod p))}
+    (hL : FlatOperation.lookups (Blake2Round.importedConstraintsTimestampLookups (p := p)) = L) (n : Nat) (hn : n < L.length)
+    (upper : n ≤ 44) :
+    (L.get ⟨n, hn⟩).Contains (Verification.environment x.assignment) := by
+  rcases (by omega : n = 0 ∨ n = 1 ∨ n = 2 ∨ n = 3 ∨ n = 4 ∨ n = 5 ∨ n = 6 ∨ n = 7 ∨ n = 8 ∨ n = 9 ∨ n = 10 ∨ n = 11 ∨ n = 12 ∨ n = 13 ∨ n = 14 ∨ n = 15 ∨ n = 16 ∨ n = 17 ∨ n = 18 ∨ n = 19 ∨ n = 20 ∨ n = 21 ∨ n = 22 ∨ n = 23 ∨ n = 24 ∨ n = 25 ∨ n = 26 ∨ n = 27 ∨ n = 28 ∨ n = 29 ∨ n = 30 ∨ n = 31 ∨ n = 32 ∨ n = 33 ∨ n = 34 ∨ n = 35 ∨ n = 36 ∨ n = 37 ∨ n = 38 ∨ n = 39 ∨ n = 40 ∨ n = 41 ∨ n = 42 ∨ n = 43 ∨ n = 44) with
+    index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index
+  · exact timestamp_0 hp valid hL index
+  · exact timestamp_1 hp valid hL index
+  · exact timestamp_2 hp valid hL index
+  · exact timestamp_3 hp valid hL index
+  · exact timestamp_4 hp valid hL index
+  · exact timestamp_5 hp valid hL index
+  · exact timestamp_6 hp valid hL index
+  · exact timestamp_7 hp valid hL index
+  · exact timestamp_8 hp valid hL index
+  · exact timestamp_9 hp valid hL index
+  · exact timestamp_10 hp valid hL index
+  · exact timestamp_11 hp valid hL index
+  · exact timestamp_12 hp valid hL index
+  · exact timestamp_13 hp valid hL index
+  · exact timestamp_14 hp valid hL index
+  · exact timestamp_15 hp valid hL index
+  · exact timestamp_16 hp valid hL index
+  · exact timestamp_17 hp valid hL index
+  · exact timestamp_18 hp valid hL index
+  · exact timestamp_19 hp valid hL index
+  · exact timestamp_20 hp valid hL index
+  · exact timestamp_21 hp valid hL index
+  · exact timestamp_22 hp valid hL index
+  · exact timestamp_23 hp valid hL index
+  · exact timestamp_24 hp valid hL index
+  · exact timestamp_25 hp valid hL index
+  · exact timestamp_26 hp valid hL index
+  · exact timestamp_27 hp valid hL index
+  · exact timestamp_28 hp valid hL index
+  · exact timestamp_29 hp valid hL index
+  · exact timestamp_30 hp valid hL index
+  · exact timestamp_31 hp valid hL index
+  · exact timestamp_32 hp valid hL index
+  · exact timestamp_33 hp valid hL index
+  · exact timestamp_34 hp valid hL index
+  · exact timestamp_35 hp valid hL index
+  · exact timestamp_36 hp valid hL index
+  · exact timestamp_37 hp valid hL index
+  · exact timestamp_38 hp valid hL index
+  · exact timestamp_39 hp valid hL index
+  · exact timestamp_40 hp valid hL index
+  · exact timestamp_41 hp valid hL index
+  · exact timestamp_42 hp valid hL index
+  · exact timestamp_43 hp valid hL index
+  · exact timestamp_44 hp valid hL index
+
+end Airbender.NonVacuous.Blake2RoundSpan

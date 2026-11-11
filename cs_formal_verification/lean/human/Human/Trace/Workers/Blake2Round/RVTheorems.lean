@@ -46,6 +46,11 @@ def RVCompressionSoundnessClaim : Prop :=
         ∃ s', RV.calls (rvCalls flags) initial = some s' ∧
           RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * (rvCalls flags).length)))
 
+/-- The assumptions of `RVCompressionSoundnessClaim` can be met (`calls` makes the span non-empty). -/
+def RVCompressionSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Delegation.MemoryData babyBearModulus) (initial : RV.State) (cells : List Trace.Cell) (flags : Fin 8),
+    Delegation.MemoryAccepted data ∧ RVCallInputs data initial cells flags ∧ ∀ cell ∈ cells, cell.Aligned
+
 /-- The complete extended-BLAKE reference binds actual boundary RV
     reads and the final `RV.State` with retained seed timestamps, with the same delegate link. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 def RVCompressionBoundarySoundnessClaim : Prop :=
@@ -58,10 +63,22 @@ def RVCompressionBoundarySoundnessClaim : Prop :=
         ∃ s', RV.calls (rvCalls flags) initial = some s' ∧
           RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * (rvCalls flags).length)))
 
+/-- The assumptions of `RVCompressionBoundarySoundnessClaim` can be met (`calls` makes the span non-empty). -/
+def RVCompressionBoundarySoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Delegation.MemoryData babyBearModulus) (initial : RV.State) (cells : List Trace.Cell) (flags : Fin 8),
+    Delegation.MemoryAccepted data ∧ RVNativeCallInputs data initial cells flags ∧ ∀ cell ∈ cells, cell.Aligned
+
 /-- The first complete compression reaches its reference (`RVSpanResult`,
     delegate link included) on actual cut `RV.State`s from a retained native boundary. RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 def RVWindowSoundnessClaim : Prop :=
   ∀ {data : Delegation.MemoryData babyBearModulus} {before : RV.State} {cells : List Trace.Cell} {flags : Fin 8} {lower upper : Nat} (_accepted : Delegation.MemoryAccepted data) (_inputs : RVWindowInputs data before cells flags lower upper) (_aligned : ∀ cell ∈ cells, cell.Aligned),
     Delegation.Caller.RVWindowResult (RVSpanResult flags) data before cells lower upper
+
+/-- The assumptions of `RVWindowSoundnessClaim` can be met (`calls` makes the window non-empty). -/
+def RVWindowSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Trace.Cell) (flags : Fin 8)
+    (lower upper : Nat),
+    Delegation.MemoryAccepted data ∧ RVWindowInputs data before cells flags lower upper ∧
+      ∀ cell ∈ cells, cell.Aligned
 
 end Airbender.Blake2Round.Native

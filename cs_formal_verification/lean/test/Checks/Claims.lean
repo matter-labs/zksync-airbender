@@ -477,3 +477,10 @@ example : Airbender.Keccak.Native.RVPermutationBoundarySoundnessSatisfiableClaim
 #print axioms Airbender.Keccak.Native.rv_permutation_boundary_soundness_satisfiable
 example : Airbender.Keccak.Native.RVWindowSoundnessSatisfiableClaim := @Airbender.Keccak.Native.rv_window_soundness_satisfiable
 #print axioms Airbender.Keccak.Native.rv_window_soundness_satisfiable
+
+example : Airbender.Blake2Round.Native.RVCompressionSoundnessSatisfiableClaim := @Airbender.Blake2Round.Native.rv_compression_soundness_satisfiable
+#print axioms Airbender.Blake2Round.Native.rv_compression_soundness_satisfiable
+example : Airbender.Blake2Round.Native.RVCompressionBoundarySoundnessSatisfiableClaim := @Airbender.Blake2Round.Native.rv_compression_boundary_soundness_satisfiable
+#print axioms Airbender.Blake2Round.Native.rv_compression_boundary_soundness_satisfiable
+example : Airbender.Blake2Round.Native.RVWindowSoundnessSatisfiableClaim := @Airbender.Blake2Round.Native.rv_window_soundness_satisfiable
+#print axioms Airbender.Blake2Round.Native.rv_window_soundness_satisfiable

@@ -511,4 +511,37 @@ example (claim : Keccak.Native.RVWindowSoundnessClaim) : Keccak.Native.RVWindowS
       rw [empty] at calls
       simp at calls⟩
 
+example (claim : Blake2Round.Native.RVCompressionSoundnessClaim) :
+    Blake2Round.Native.RVCompressionSoundnessSatisfiableClaim →
+    ∃ (data : Delegation.MemoryData babyBearModulus) (initial after : RV.State) (cells : List Cell),
+      Delegation.RVTraceMapping data initial after cells ∧ data.rows ≠ [] :=
+  fun ⟨data, initial, cells, flags, accepted, inputs, aligned⟩ =>
+    have ⟨after, _, _, _, _, _, _, trace, _⟩ := claim accepted inputs aligned
+    ⟨data, initial, after, cells, trace, fun empty => by
+      have calls := inputs.calls
+      rw [empty] at calls
+      split at calls <;> simp at calls⟩
+
+example (claim : Blake2Round.Native.RVCompressionBoundarySoundnessClaim) :
+    Blake2Round.Native.RVCompressionBoundarySoundnessSatisfiableClaim →
+    ∃ (data : Delegation.MemoryData babyBearModulus) (initial after : RV.State) (cells : List Cell),
+      Delegation.RVTraceMapping data initial after cells ∧ data.rows ≠ [] :=
+  fun ⟨data, initial, cells, flags, accepted, inputs, aligned⟩ =>
+    have ⟨after, _, _, _, _, _, _, trace, _⟩ := claim accepted inputs aligned
+    ⟨data, initial, after, cells, trace, fun empty => by
+      have calls := inputs.calls
+      rw [empty] at calls
+      split at calls <;> simp at calls⟩
+
+example (claim : Blake2Round.Native.RVWindowSoundnessClaim) : Blake2Round.Native.RVWindowSoundnessSatisfiableClaim →
+    ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Cell) (flags : Fin 8)
+      (lower upper : Nat),
+      Delegation.Caller.RVWindowResult (Blake2Round.RVSpanResult flags) data before cells lower upper ∧
+        data.windowRows lower upper ≠ [] :=
+  fun ⟨data, before, cells, flags, lower, upper, accepted, inputs, aligned⟩ =>
+    ⟨data, before, cells, flags, lower, upper, claim accepted inputs aligned, fun empty => by
+      have calls := inputs.calls
+      rw [empty] at calls
+      split at calls <;> simp at calls⟩
+
 end Checks.Satisfiable

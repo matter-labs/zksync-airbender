@@ -1,0 +1,283 @@
+module
+public import Slop.NonVacuous.Blake2RoundSpan.AssertEval
+
+@[expose] public section
+
+/-! Imported constraints of an honest round row (the 24 Boolean carries of the G calls): each holds for the honest assignment of valid inputs. -/
+
+namespace Airbender.NonVacuous.Blake2RoundSpan
+
+variable {p : Nat} [Fact p.Prime] {x : RowInput}
+
+private theorem assert_137 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 137) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_137]
+  have carries := (valid.colCall (k := 0) (by decide)).carries
+  have bit : x.column 268 = 0 ∨ x.column 268 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_138 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 138) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_138]
+  have carries := (valid.colCall (k := 0) (by decide)).carries
+  have bit : x.column 271 = 0 ∨ x.column 271 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_139 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 139) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_139]
+  have carries := (valid.colCall (k := 0) (by decide)).carries
+  have bit : x.column 289 = 0 ∨ x.column 289 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_140 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 140) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_140]
+  have carries := (valid.colCall (k := 0) (by decide)).carries
+  have bit : x.column 291 = 0 ∨ x.column 291 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_141 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 141) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_141]
+  have carries := (valid.colCall (k := 1) (by decide)).carries
+  have bit : x.column 308 = 0 ∨ x.column 308 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_142 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 142) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_142]
+  have carries := (valid.colCall (k := 1) (by decide)).carries
+  have bit : x.column 311 = 0 ∨ x.column 311 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_143 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 143) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_143]
+  have carries := (valid.colCall (k := 1) (by decide)).carries
+  have bit : x.column 329 = 0 ∨ x.column 329 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_144 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 144) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_144]
+  have carries := (valid.colCall (k := 1) (by decide)).carries
+  have bit : x.column 331 = 0 ∨ x.column 331 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_145 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 145) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_145]
+  have carries := (valid.colCall (k := 2) (by decide)).carries
+  have bit : x.column 348 = 0 ∨ x.column 348 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_146 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 146) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_146]
+  have carries := (valid.colCall (k := 2) (by decide)).carries
+  have bit : x.column 351 = 0 ∨ x.column 351 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_147 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 147) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_147]
+  have carries := (valid.colCall (k := 2) (by decide)).carries
+  have bit : x.column 369 = 0 ∨ x.column 369 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_148 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 148) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_148]
+  have carries := (valid.colCall (k := 2) (by decide)).carries
+  have bit : x.column 371 = 0 ∨ x.column 371 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_149 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 149) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_149]
+  have carries := (valid.colCall (k := 3) (by decide)).carries
+  have bit : x.column 388 = 0 ∨ x.column 388 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_150 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 150) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_150]
+  have carries := (valid.colCall (k := 3) (by decide)).carries
+  have bit : x.column 391 = 0 ∨ x.column 391 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_151 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 151) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_151]
+  have carries := (valid.colCall (k := 3) (by decide)).carries
+  have bit : x.column 409 = 0 ∨ x.column 409 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_152 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 152) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_152]
+  have carries := (valid.colCall (k := 3) (by decide)).carries
+  have bit : x.column 411 = 0 ∨ x.column 411 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_153 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 153) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_153]
+  have carries := (valid.diagCall (k := 0) (by decide)).carries
+  have bit : x.column 426 = 0 ∨ x.column 426 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_154 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 154) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_154]
+  have carries := (valid.diagCall (k := 0) (by decide)).carries
+  have bit : x.column 429 = 0 ∨ x.column 429 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_155 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 155) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_155]
+  have carries := (valid.diagCall (k := 1) (by decide)).carries
+  have bit : x.column 456 = 0 ∨ x.column 456 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_156 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 156) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_156]
+  have carries := (valid.diagCall (k := 1) (by decide)).carries
+  have bit : x.column 459 = 0 ∨ x.column 459 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_157 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 157) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_157]
+  have carries := (valid.diagCall (k := 2) (by decide)).carries
+  have bit : x.column 486 = 0 ∨ x.column 486 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_158 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 158) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_158]
+  have carries := (valid.diagCall (k := 2) (by decide)).carries
+  have bit : x.column 489 = 0 ∨ x.column 489 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_159 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 159) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_159]
+  have carries := (valid.diagCall (k := 3) (by decide)).carries
+  have bit : x.column 516 = 0 ∨ x.column 516 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+private theorem assert_160 (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) {n : Nat}
+    {hn : n < L.length} (index : n = 160) : (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  subst hL index
+  rw [Blake2Round.importedConstraints.constraint_160]
+  have carries := (valid.diagCall (k := 3) (by decide)).carries
+  have bit : x.column 519 = 0 ∨ x.column 519 = 1 := by bit_value
+  simp only [Expression.eval, Verification.environment, RowInput.assignment]
+  rcases bit with bit | bit <;> rw [bit] <;> push_cast <;> ring
+
+theorem asserts_Carries (valid : x.Valid) {L : List (Expression (ZMod p))}
+    (hL : FlatOperation.constraints (Blake2Round.importedConstraints (p := p) Blake2Round.setupTable) = L) (n : Nat)
+    (hn : n < L.length) (range : (137 ≤ n ∧ n ≤ 160)) :
+    (L.get ⟨n, hn⟩).eval (Verification.environment x.assignment) = 0 := by
+  rcases (by omega : n = 137 ∨ n = 138 ∨ n = 139 ∨ n = 140 ∨ n = 141 ∨ n = 142 ∨ n = 143 ∨ n = 144 ∨ n = 145 ∨ n = 146 ∨ n = 147 ∨ n = 148 ∨ n = 149 ∨ n = 150 ∨ n = 151 ∨ n = 152 ∨ n = 153 ∨ n = 154 ∨ n = 155 ∨ n = 156 ∨ n = 157 ∨ n = 158 ∨ n = 159 ∨ n = 160) with
+    index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index | index
+  · exact assert_137 valid hL index
+  · exact assert_138 valid hL index
+  · exact assert_139 valid hL index
+  · exact assert_140 valid hL index
+  · exact assert_141 valid hL index
+  · exact assert_142 valid hL index
+  · exact assert_143 valid hL index
+  · exact assert_144 valid hL index
+  · exact assert_145 valid hL index
+  · exact assert_146 valid hL index
+  · exact assert_147 valid hL index
+  · exact assert_148 valid hL index
+  · exact assert_149 valid hL index
+  · exact assert_150 valid hL index
+  · exact assert_151 valid hL index
+  · exact assert_152 valid hL index
+  · exact assert_153 valid hL index
+  · exact assert_154 valid hL index
+  · exact assert_155 valid hL index
+  · exact assert_156 valid hL index
+  · exact assert_157 valid hL index
+  · exact assert_158 valid hL index
+  · exact assert_159 valid hL index
+  · exact assert_160 valid hL index
+
+end Airbender.NonVacuous.Blake2RoundSpan
