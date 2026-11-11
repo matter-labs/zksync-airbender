@@ -238,11 +238,12 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
+          cache-key: release-thin
       - name: Build fixture executables
         run: |
           mkdir -p fixture-executables
-          cargo build --release -p cli
-          cargo build --release -p proof_fixtures --bin fixture-codec
+          cargo build --profile release-thin -p cli
+          cargo build --profile release-thin -p proof_fixtures --bin fixture-codec
           cargo test -p prover --lib --features test --profile cli --no-run --message-format=json > fixture-build.json
           python3 - <<'PYTHON'
           import json, shutil
@@ -254,10 +255,10 @@ jobs:
           assert len(executables) == 1, executables
           shutil.copy2(executables[0], "fixture-executables/canonical-producer")
           PYTHON
-          cp target/release/cli target/release/fixture-codec fixture-executables/
+          cp target/release-thin/cli target/release-thin/fixture-codec fixture-executables/
       - name: Build CPU test executables
         run: |
-          cargo test --release -p execution_prover_model -p execution_prover \
+          cargo test --profile release-thin -p execution_prover_model -p execution_prover \
             -p cpu_execution_prover -p prover_pipeline -p cli \
             --no-run --message-format=json > cpu-test-build.json
           python3 - <<'PYTHON'
