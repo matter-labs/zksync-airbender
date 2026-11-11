@@ -1,5 +1,5 @@
 module
-public import Slop.NonVacuous.HashCallers.Span
+public import Slop.NonVacuous.Blake2GSpan.From
 public import Slop.Constraints
 public import Human.Helpers.Delegation.Requests
 

@@ -8,8 +8,8 @@ public import Human.Trace.UnifiedReduced.RVJointHashWindows
 @[expose] public section
 
 /-! A caller-only unified trace issuing a complete reduced G span: 56 callers `csrrw x0, 0x7C8, x0` at PC `4 k` and
-    clock `4 + 4 k`, fulfilled by the span of `Span.lean` from the seed of `before` at invocation clocks `5 + 4 k`
-    (x10 = 0x400000, x11 = 0x400040, x12 = 128, RAM a byte pattern; ROM the caller instruction). One joint memory
+    clock `4 + 4 k`, fulfilled by the span of `Blake2GSpan/From.lean` from the seed of `before` at invocation clocks
+    `5 + 4 k` (x10 = 0x400000, x11 = 0x400040, x12 = 128, RAM a byte pattern; ROM the caller instruction). One joint memory
     permutation over x0 and the span's cells. The witness that the assumptions of the unified complete-span caller
     claims (`Human/Trace/UnifiedReduced/RVCallerTheorems.lean`) can be met, with the window `(4, 228]`. -/
 

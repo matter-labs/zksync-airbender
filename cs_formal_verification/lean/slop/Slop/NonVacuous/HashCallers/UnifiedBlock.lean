@@ -1,6 +1,6 @@
 module
 public import Slop.NonVacuous.HashCallers.UnifiedRow
-public import Slop.NonVacuous.HashCallers.Span
+public import Slop.NonVacuous.Blake2GSpan.From
 
 @[expose] public section
 

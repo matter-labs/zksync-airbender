@@ -12,11 +12,11 @@ public import Human.Trace.UnifiedReduced.RVPreparedRoundWindows
 
 /-! A prepared unified caller trace issuing a complete reduced G span: `addi x12, x0, 128` at PC 0 (clock 4, the
     preparation `hashPreparation (.blakeG true)`), then 56 callers `csrrw x0, 0x7C8, x0` at PC `4 + 4 k` and clock
-    `8 + 4 k`, fulfilled by the span of `Span.lean` invoked at `9 + 4 k`, which reads x12 as the preparation wrote it.
+    `8 + 4 k`, fulfilled by the span of `Blake2GSpan/From.lean` invoked at `9 + 4 k`, which reads x12 as the preparation wrote it.
     One joint memory permutation over x0 and the span's cells. The witness that the assumptions of the prepared
     G-span caller claims (`Human/Trace/UnifiedReduced/RVCallerTheorems.lean`) can be met, with the window `(8, 232]`.
     The one preparation row is checked by one kernel evaluation (`Slop/WitnessCheck.lean`); the callers and the
-    span are generic (`UnifiedBlock.lean`, `Span.lean`). -/
+    span are generic (`UnifiedBlock.lean`, `Blake2GSpan/From.lean`). -/
 
 namespace Airbender.NonVacuous.HashCallers.Prepared
 open Trace NonVacuous.Blake2GSpan UnifiedReduced.Caller UnifiedBlock Verification

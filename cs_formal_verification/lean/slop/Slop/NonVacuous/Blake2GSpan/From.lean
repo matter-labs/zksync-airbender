@@ -1,6 +1,6 @@
 module
 public import Slop.NonVacuous.Blake2GSpan.Steps
-public import Slop.NonVacuous.HashCallers.Run
+public import Slop.NonVacuous.SequentialBlocks
 public import Human.Helpers.Delegation.Operations
 public import Human.Helpers.Delegation.NativeWindows
 public import Human.Circuits.Keccak.Tables.Controller
@@ -10,11 +10,11 @@ public import Human.Circuits.Keccak.Tables.Controller
 /-! A complete reduced G span (56 rows) from any start memory `m0` at any first invocation clock `t0 ≡ 1 (mod 4)`
     satisfying the span invariant (`Start`). Row `k` is the honest row (`Row.lean`) read from the memory after rows
     `0 … k-1` at invocation clock `t0 + 4 k`; the rows are a recursion over `k`, and every fact is proven by induction
-    from the one-row lemmas (`Blake2GSpan/Block.lean`, `Blake2GSpan/Steps.lean`), as in `Blake2GSpan/Span.lean` (the
-    seed at clock 1); the caller traces start later, after their first caller (and preparation) rows. -/
+    from the one-row lemmas (`Block.lean`, `Steps.lean`). The pilot witness (`Span.lean`) is the span from the seed at
+    clock 1; the caller traces start later, after their first caller (and preparation) rows. -/
 
-namespace Airbender.NonVacuous.HashCallers
-open Arithmetic Trace NonVacuous.Blake2GSpan
+namespace Airbender.NonVacuous.Blake2GSpan
+open Arithmetic Trace
 
 local notation "P" => babyBearModulus
 
@@ -212,4 +212,4 @@ theorem window_from (start : Start m0 t0) {lower upper : Nat} (below : lower < t
   simp only [decide_eq_true_eq]
   omega
 
-end Airbender.NonVacuous.HashCallers
+end Airbender.NonVacuous.Blake2GSpan

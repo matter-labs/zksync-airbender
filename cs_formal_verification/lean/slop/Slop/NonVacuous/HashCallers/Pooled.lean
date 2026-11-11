@@ -10,7 +10,7 @@ public import Human.Trace.Delegation.RVRequestHashWindows
 
 /-! A six-family caller trace issuing a complete reduced G span: 56 ADD/SUB callers `csrrw x0, 0x7C8, x0` at PC
     `4 k` and clock `4 + 4 k` (the block of `PooledRow.lean` rows, facts stated once over the block), fulfilled by the
-    span of `Span.lean` from the seed of `before` at invocation clocks `5 + 4 k`; one shared memory permutation over
+    span of `Blake2GSpan/From.lean` from the seed of `before` at invocation clocks `5 + 4 k`; one shared memory permutation over
     x0 and the span's cells. The witness that the assumptions of the delegation complete-span caller claims
     (`Human/Trace/Delegation/RVCallerTheorems.lean`) can be met, with the window `(4, 228]`. -/
 

@@ -1,6 +1,6 @@
 module
 public import Slop.NonVacuous.Blake2RoundSpan.Span
-public import Slop.NonVacuous.HashCallers.Run
+public import Slop.NonVacuous.SequentialBlocks
 
 @[expose] public section
 
