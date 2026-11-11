@@ -1,17 +1,19 @@
 module
-public import Slop.NonVacuous.Blake2GSpan.From
+public import Slop.NonVacuous.SequentialBlocks
 public import Slop.Constraints
 public import Human.Helpers.Delegation.Requests
+public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section
 
 /-! A chain of delegation caller rows over the shared memory: each caller reads x0 at its clock `c` (last written at
     its `previous` clock) and writes it at `c` and `c + 2`; the next caller's previous clock is `c + 2`. The x0 tokens
     of the chain are the edges of a sequential run that touches only x0 (`x0_run`), and the rows' PC/clock states
-    chain from the first row's start to the last row's finish (`chain_perm`). -/
+    chain from the first row's start to the last row's finish (`chain_perm`). Worker rows invoked one clock after the
+    callers fulfill exactly the callers' requests (`fulfillments`). -/
 
 namespace Airbender.NonVacuous.HashCallers
-open Trace NonVacuous.Blake2GSpan
+open Trace
 
 local notation "P" => babyBearModulus
 
@@ -27,7 +29,7 @@ def x0Edges (previous c : Nat) : List (MemoryToken P × MemoryToken P) :=
 
 /-- The x0 chain of `n` callers is a run from any memory holding x0's token of the first previous clock; it touches
     only x0. -/
-theorem x0_run {base : Memory} {clock previous : Nat → Nat} (n : Nat)
+theorem x0_run {base : Cell → MemoryToken P} {clock previous : Nat → Nat} (n : Nat)
     (first : base (.register 0) = x0Token (previous 0)) (chain : ∀ k < n, previous (k + 1) = clock k + 2) :
     (List.range n).flatMap (fun k => x0Edges (previous k) (clock k)) =
         runEdges base ((List.range n).flatMap fun k => x0Steps (clock k)) ∧
@@ -72,17 +74,19 @@ theorem previous_chain {p0 c0 n : Nat} : ∀ k < n, previousOf p0 c0 (k + 1) = c
   rw [previousOf, ite_eq_right (Nat.succ_ne_zero k)]
   omega
 
-/-- The G request of caller `k`. -/
-def requestAt (c0 k : Nat) : Delegation.Requests.Request P :=
-  ⟨Delegation.Requests.csr .blakeG, (((c0 + 1 + 4 * k : Nat) : ZMod P), ((0 : Nat) : ZMod P))⟩
+/-- The request of caller `k` of a block of family `g` callers at clocks `c0 + 4 k`. -/
+def requestAt (g : Delegation.Family) (c0 k : Nat) : Delegation.Requests.Request P :=
+  ⟨Delegation.Requests.csr g, (((c0 + 1 + 4 * k : Nat) : ZMod P), ((0 : Nat) : ZMod P))⟩
 
-/-- The span from `c0 + 1` fulfills exactly the block's requests, in order. -/
-theorem fulfillments {c0 : Nat} (m0 : Memory) : (workersFrom m0 (c0 + 1)).rows.map Delegation.Requests.fulfillment =
-    (List.range 56).map (requestAt c0) := by
-  simp only [workersFrom, rowsFrom, List.map_map]
+/-- Family `g` worker rows invoked at `c0 + 1 + 4 k` fulfill exactly the requests of the callers at `c0 + 4 k`, in
+    order. -/
+theorem fulfillments {g : Delegation.Family} {c0 n : Nat} {row : Nat → Delegation.Row P}
+    (family : ∀ k, (row k).family = g)
+    (invocation : ∀ k, rawPair (row k).assignment (row k).columns.invocation =
+      (((c0 + 1 + 4 * k : Nat) : ZMod P), ((0 : Nat) : ZMod P))) :
+    ((List.range n).map row).map Delegation.Requests.fulfillment = (List.range n).map (requestAt g c0) := by
+  rw [List.map_map]
   refine List.map_congr_left fun k _ => ?_
-  simp only [Function.comp, Delegation.Requests.fulfillment, requestAt]
-  rw [invocation_raw]
-  rfl
+  simp only [Function.comp, Delegation.Requests.fulfillment, requestAt, family k, invocation k]
 
 end Airbender.NonVacuous.HashCallers

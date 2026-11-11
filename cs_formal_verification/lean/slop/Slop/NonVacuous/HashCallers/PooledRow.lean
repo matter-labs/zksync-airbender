@@ -1,6 +1,6 @@
 module
 public import Slop.NonVacuous.HashCallers.Chain
-public import Slop.NonVacuous.HashCallers.Program
+public import Slop.NonVacuous.FamilyCallers.Program
 public import Slop.NonVacuous.ClockCompleteness
 public import Slop.AddSub.OpIndex
 public import Slop.AddSub.ArtifactChecks
@@ -12,7 +12,7 @@ public import Mathlib.Tactic.Ring
 @[expose] public section
 
 /-! The honest ADD/SUB caller row of `csrrw x0, 0x7C8, x0` (six-family machine) at a PC and clock, x0 last written
-    at a previous clock: as `UnifiedRow.lean` for the ADD/SUB circuit — it satisfies the equations, range queries and
+    at a previous clock: as `FamilyCallers/Row.lean` for the ADD/SUB circuit — it satisfies the equations, range queries and
     clock queries for every PC, clock and previous clock in range (`satisfies`, proven once by constraint index), it
     is a selected caller issuing `(0x7C8, c + 1)`, its x0 ports are the chain's edges (`steps`), and its decoder query
     is the caller table's row of its PC. -/
@@ -160,12 +160,12 @@ theorem flag_sum : (∑ i : Fin AddSub.importedConstraintsDecoderColumns.flags.s
 /-- The caller's decoder query is the caller table's row of its PC. -/
 theorem query (pc clock previous : Nat) (small : pc < 65536) :
     Delegation.Caller.nativeQuery (row pc clock previous).assignment =
-      Delegation.Caller.rvQuery (callerEntry (BitVec.ofNat 32 pc)) := by
+      Delegation.Caller.rvQuery (FamilyCallers.callerEntry .blakeG (BitVec.ofNat 32 pc)) := by
   have lo : (Arithmetic.Word.ofBitVec (BitVec.ofNat 32 pc)).lo = pc := by
     simp only [Arithmetic.Word.ofBitVec, BitVec.toNat_ofNat, Arithmetic.limbBase, Nat.reducePow]; omega
   have hi : (Arithmetic.Word.ofBitVec (BitVec.ofNat 32 pc)).hi = 0 := by
     simp only [Arithmetic.Word.ofBitVec, BitVec.toNat_ofNat, Arithmetic.limbBase, Nat.reducePow]; omega
-  simp only [Delegation.Caller.rvQuery, callerEntry, lo, hi]
+  simp only [Delegation.Caller.rvQuery, FamilyCallers.callerEntry, lo, hi]
   have flags : (∑ i : Fin AddSub.importedConstraintsDecoderColumns.flags.size,
       ((2 ^ i.val : Nat) : ZMod P) * (row pc clock previous).assignment
         AddSub.importedConstraintsDecoderColumns.flags[i]) = 128 := by

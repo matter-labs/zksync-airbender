@@ -1,5 +1,5 @@
 module
-public import Slop.NonVacuous.HashCallers.UnifiedBlock
+public import Slop.NonVacuous.FamilyCallers.Block
 public import Slop.NonVacuous.HashCallers.Joint
 public import Slop.NonVacuous.Blake2GSpan.Span
 public import Slop.NonVacuous.Basic
@@ -12,14 +12,15 @@ public import Human.Trace.UnifiedReduced.RVPreparedRoundWindows
 
 /-! A prepared unified caller trace issuing a complete reduced G span: `addi x12, x0, 128` at PC 0 (clock 4, the
     preparation `hashPreparation (.blakeG true)`), then 56 callers `csrrw x0, 0x7C8, x0` at PC `4 + 4 k` and clock
-    `8 + 4 k`, fulfilled by the span of `Blake2GSpan/From.lean` invoked at `9 + 4 k`, which reads x12 as the preparation wrote it.
-    One joint memory permutation over x0 and the span's cells. The witness that the assumptions of the prepared
-    G-span caller claims (`Human/Trace/UnifiedReduced/RVCallerTheorems.lean`) can be met, with the window `(8, 232]`.
-    The one preparation row is checked by one kernel evaluation (`Slop/WitnessCheck.lean`); the callers and the
-    span are generic (`UnifiedBlock.lean`, `Blake2GSpan/From.lean`). -/
+    `8 + 4 k`, fulfilled by the span of `Blake2GSpan/From.lean` invoked at `9 + 4 k`, which reads x12 as the
+    preparation wrote it. One joint memory permutation over x0 and the span's cells. The witness that the assumptions
+    of the prepared G-span caller claims (`Human/Trace/UnifiedReduced/RVCallerTheorems.lean`) can be met, with the
+    window `(8, 232]`. The one preparation row is checked by one kernel evaluation (`Slop/WitnessCheck.lean`); the
+    callers and the span are generic (`FamilyCallers/Block.lean`, `Blake2GSpan/From.lean`). -/
 
 namespace Airbender.NonVacuous.HashCallers.Prepared
-open Trace NonVacuous.Blake2GSpan UnifiedReduced.Caller UnifiedBlock Verification
+open Trace NonVacuous.Blake2GSpan UnifiedReduced.Caller FamilyCallers.Block Verification
+open FamilyCallers (callerPCs)
 
 local notation "P" => babyBearModulus
 
@@ -27,7 +28,7 @@ local notation "P" => babyBearModulus
 def prepBytes (a : Nat) : BitVec 8 := if a = 0 then 0x13 else if a = 1 then 0x06 else if a = 2 then 0x00 else 0x08
 
 /-- The span's starting state with the preparation at ROM address 0 and the callers after it. -/
-def before : RV.State := { Blake2GSpan.before with rom := rom 4 prepBytes }
+def before : RV.State := { Blake2GSpan.before with rom := FamilyCallers.rom .blakeG 4 prepBytes }
 
 /-- The preparation row at PC 0 and clock 4: rd = x12 (columns 7, 44), immediate 128 (8) and result 128 (50), the
     ADD selector (11); the second port reads x0 as the first left it (clock 4, column 40); the destination port reads
@@ -82,19 +83,19 @@ def machineSteps : List (Cell × MemoryToken P) := prepSteps ++ (List.range 56).
 noncomputable def workers : Delegation.MemoryData P := workersFrom m0 9
 
 noncomputable def machine : UnifiedTrace P where
-  rows := prep :: callerRows 4 8 5 56
+  rows := prep :: callerRows .blakeG 4 8 5 56
   rom := UnifiedReduced.Setup.tableRV before
   initial := prep.start
-  terminal := (callerRow 4 8 5 55).finish
+  terminal := (callerRow .blakeG 4 8 5 55).finish
   initialMemory := keys.map seed
   terminalMemory := keys.map (runFinal (runFinal seed machineSteps) (spanSteps m0 9))
 
 /-- The ordinary program: the preparation. -/
 def ordinary : List UnifiedReduced.RVProgramEntry := [⟨0, 0x08000613#32, ⟨.machine, 0, 0, 12, ⟨128, 0⟩, 1, 0⟩⟩]
 
-noncomputable def data : RVRequestTrace P := ⟨machine, workers, program 4 56⟩
+noncomputable def data : RVRequestTrace P := ⟨machine, workers, FamilyCallers.program .blakeG 4 56⟩
 
-theorem callers : data.callers = callerRows 4 8 5 56 := by
+theorem callers : data.callers = callerRows .blakeG 4 8 5 56 := by
   simp only [RVRequestTrace.callers, data, machine]
   rw [List.filter_cons_of_neg (by decide +kernel)]
   exact filter_selected
@@ -113,9 +114,9 @@ theorem checks : RVRequestChecks data where
     · exact Nat.cast_one
     · exact active row caller
   states := by
-    have first : prep.finish = (callerRow 4 8 5 0).start := by kernel_rfl
-    change (prep.start :: prep.finish :: (callerRows 4 8 5 56).map Row.finish).Perm
-      ((callerRow 4 8 5 55).finish :: prep.start :: (callerRows 4 8 5 56).map Row.start)
+    have first : prep.finish = (callerRow .blakeG 4 8 5 0).start := by kernel_rfl
+    change (prep.start :: prep.finish :: (callerRows .blakeG 4 8 5 56).map Row.finish).Perm
+      ((callerRow .blakeG 4 8 5 55).finish :: prep.start :: (callerRows .blakeG 4 8 5 56).map Row.start)
     rw [first]
     exact ((states 55).cons _).trans (List.Perm.swap _ _ _)
   decoded row member := decoded room row (by rw [callers] at member; exact member)
@@ -123,9 +124,9 @@ theorem checks : RVRequestChecks data where
   workerActive := execute_from
   requests := by
     rw [Delegation.Requests.Matching, RVRequestTrace.calls, RVRequestTrace.fulfillments, callers]
-    change Delegation.Requests.Matching ((callerRows 4 8 5 56).map fun row => request row.assignment)
-      ((workersFrom m0 (8 + 1)).rows.map Delegation.Requests.fulfillment)
-    rw [requests, fulfillments]
+    change Delegation.Requests.Matching ((callerRows .blakeG 4 8 5 56).map fun row => request row.assignment)
+      (((List.range 56).map (rowFrom m0 (8 + 1))).map Delegation.Requests.fulfillment)
+    rw [requests, fulfillments (row := rowFrom m0 (8 + 1)) (fun _ => rfl) (invocation_raw m0 (8 + 1))]
     exact List.perm_append_comm
 
 /-- The machine's edges are the run of its steps from the seed; the run leaves the span's cells as `m0`. -/
@@ -155,10 +156,11 @@ theorem accepted : RVMixedMemoryAccepted data ordinary where
   memory := by
     obtain ⟨run, agree⟩ := machine_run
     rw [RVRequestTrace.mixedSteps]
-    change (keys.map seed ++ ((prep :: callerRows 4 8 5 56).flatMap _ ++ (workersFrom m0 9).steps).map Prod.snd).Perm
-      (keys.map _ ++ ((prep :: callerRows 4 8 5 56).flatMap _ ++ (workersFrom m0 9).steps).map Prod.fst)
-    rw [List.flatMap_cons, prep_edges, UnifiedBlock.edges]
-    refine joint_matching run.symm (fun step member => ?_) agree start
+    change (keys.map seed ++ ((prep :: callerRows .blakeG 4 8 5 56).flatMap _ ++ (workersFrom m0 9).steps).map Prod.snd).Perm
+      (keys.map _ ++ ((prep :: callerRows .blakeG 4 8 5 56).flatMap _ ++ (workersFrom m0 9).steps).map Prod.fst)
+    rw [List.flatMap_cons, prep_edges, FamilyCallers.Block.edges]
+    refine joint_matching keys_nodup (fun _ => List.mem_cons_of_mem _) run.symm (fun step member => ?_) agree
+      (inside_from start) (blocks_from start).1
     rcases List.mem_append.mp member with early | late
     · simp only [prepSteps, List.mem_cons, List.not_mem_nil, or_false] at early
       rcases early with rfl | rfl | rfl <;> decide +kernel
@@ -171,7 +173,7 @@ theorem readable : ∀ cell ∈ keys, (cell.readRV before).isSome := by decide +
 theorem initialization : initialImageRV before keys = some data.machine.initialMemory := initial_image readable
 
 theorem request_inputs : RVRequestInputs data before (callerPCs 4 56) where
-  image := program_image (prefixBytes := prepBytes) rfl rfl (by decide)
+  image := FamilyCallers.program_image (prefixBytes := prepBytes) rfl rfl (by decide)
   initialClock := by decide +kernel
   initialAligned := by decide +kernel
 

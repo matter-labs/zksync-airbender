@@ -7,7 +7,7 @@ public import Slop.NonVacuous.FamilyCallers.Row
     the previous caller left it (the first caller: as written at `p0`). Every fact is one statement over the block,
     from the one-row lemmas of `Row.lean`: the rows satisfy the unified constraints, are the selected callers, issue
     the family's requests at `c0 + 4 k + 1`, decode in the caller table of `program g f n`, chain their PC/clock
-    states, and their x0 ports are the x0 chain's edges. `HashCallers/UnifiedBlock.lean` is the G instance. -/
+    states, and their x0 ports are the x0 chain's edges. -/
 
 namespace Airbender.NonVacuous.FamilyCallers.Block
 open Trace HashCallers
@@ -19,10 +19,6 @@ def callerRow (g : Delegation.Family) (f c0 p0 k : Nat) : Row P UnifiedFamily :=
 
 def callerRows (g : Delegation.Family) (f c0 p0 n : Nat) : List (Row P UnifiedFamily) :=
   (List.range n).map (callerRow g f c0 p0)
-
-/-- The request of caller `k`. -/
-def requestAt (g : Delegation.Family) (c0 k : Nat) : Delegation.Requests.Request P :=
-  ⟨Delegation.Requests.csr g, (((c0 + 1 + 4 * k : Nat) : ZMod P), ((0 : Nat) : ZMod P))⟩
 
 /-- Room for the block's PCs and clocks; the first caller's x0 was written before its clock. -/
 structure Room (f c0 p0 n : Nat) : Prop where

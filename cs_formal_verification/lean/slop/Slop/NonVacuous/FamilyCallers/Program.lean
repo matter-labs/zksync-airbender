@@ -1,16 +1,17 @@
 module
-public import Slop.NonVacuous.HashCallers.Program
+public import Human.Helpers.Delegation.RVDecoder
+public import Slop.KernelRfl
 
 @[expose] public section
 
 /-! The caller program of a caller witness of any delegation family `f`: `n` copies of `csrrw x0, csr f, x0` at the
     aligned ROM addresses `first, first + 4, …`. The ROM below `first` holds a concrete prefix (an ordinary
     preparation instruction, or nothing); from `first` on every byte is the caller instruction's byte at its address
-    modulo four. As `HashCallers/Program.lean` (the G instance, kept for its witnesses), the image is built by one
-    lemma over the address list (`image_map`) and one ROM read per address (`read_caller`). -/
+    modulo four. The program image is built by one lemma over the address list (`image_map`) and one ROM read per
+    address (`read_caller`), never by evaluating the entries. -/
 
 namespace Airbender.NonVacuous.FamilyCallers
-open Trace HashCallers
+open Trace
 
 /-- `csrrw x0, csr f, x0`. -/
 def callerBits (f : Delegation.Family) : BitVec 32 := BitVec.ofNat 32 (Delegation.Requests.csr f * 2 ^ 20 + 0x1073)
@@ -26,8 +27,28 @@ def rom (f : Delegation.Family) (first : Nat) (prefixBytes : Nat → BitVec 8) (
 def callerEntry (f : Delegation.Family) (pc : BitVec 32) : Delegation.Caller.RVProgramEntry :=
   ⟨pc, callerBits f, ⟨f, 0, 0, 0, ⟨0, 0⟩, 128, 0⟩⟩
 
+/-- The caller addresses `first + 4 k`, `k < n`. -/
+def callerPCs (first n : Nat) : List (BitVec 32) := (List.range n).map fun k => BitVec.ofNat 32 (first + 4 * k)
+
 def program (f : Delegation.Family) (first n : Nat) : List Delegation.Caller.RVProgramEntry :=
   (callerPCs first n).map (callerEntry f)
+
+/-- An image whose every address gives its entry. -/
+theorem image_map {Kind : Type} {projection : RV.Instr → Option (DecoderData Kind)} {before : RV.State}
+    {addresses : List (BitVec 32)} {entry : BitVec 32 → RVProgramEntry Kind}
+    (each : ∀ a ∈ addresses, rvProgramEntryWith projection before a = some (entry a)) :
+    rvProgramImageWith projection before addresses = some (addresses.map entry) := by
+  induction addresses with
+  | nil => rfl
+  | cons a rest ih =>
+    simp only [rvProgramImageWith, List.mapM_cons, each a (List.mem_cons_self ..), List.map_cons] at ih ⊢
+    rw [ih fun b member => each b (List.mem_cons_of_mem _ member)]
+    rfl
+
+theorem succ_toNat (a : BitVec 32) (h : a.toNat + 1 < 2 ^ 32) : (a + 1).toNat = a.toNat + 1 := by
+  rw [BitVec.toNat_add]
+  simp only [BitVec.ofNat_eq_ofNat, BitVec.toNat_ofNat, Nat.reducePow, Nat.one_mod]
+  omega
 
 theorem decode_caller (f : Delegation.Family) : RV.decode (callerBits f) = some (.delegate f.rvKind) := by
   cases f <;> kernel_rfl

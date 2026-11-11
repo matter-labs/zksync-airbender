@@ -10,6 +10,7 @@ public import Human.Trace.Delegation.RVCallerTheorems
 
 namespace Airbender.Delegation.Caller
 open NonVacuous.HashCallers NonVacuous.HashCallers.Pooled
+open NonVacuous.FamilyCallers (callerPCs)
 
 theorem rv_shared_span_soundness_satisfiable : RVSharedSpanSoundnessSatisfiableClaim :=
   ⟨data, before, callerPCs 0 56, keys, .blakeG true, shared_accepted, shared_span_inputs, callers_ne⟩

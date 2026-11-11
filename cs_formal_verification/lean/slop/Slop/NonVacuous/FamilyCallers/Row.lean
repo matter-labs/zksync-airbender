@@ -17,7 +17,7 @@ public import Mathlib.Tactic.FinCases
     written at a previous clock: it satisfies the unified equations, range and setup queries and clock queries for
     every family, PC, clock and previous clock in range (`satisfies`, proven once by constraint index), it is a
     selected caller issuing `(csr f, c + 1)`, its x0 ports are the chain's edges (`steps`), and its decoder query is
-    the caller table's row of its PC. `HashCallers/UnifiedRow.lean` is the G instance, kept for its witnesses. -/
+    the caller table's row of its PC. -/
 
 namespace Airbender.NonVacuous.FamilyCallers.CallerRow
 open Trace HashCallers

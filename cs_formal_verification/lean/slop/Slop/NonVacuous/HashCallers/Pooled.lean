@@ -10,12 +10,13 @@ public import Human.Trace.Delegation.RVRequestHashWindows
 
 /-! A six-family caller trace issuing a complete reduced G span: 56 ADD/SUB callers `csrrw x0, 0x7C8, x0` at PC
     `4 k` and clock `4 + 4 k` (the block of `PooledRow.lean` rows, facts stated once over the block), fulfilled by the
-    span of `Blake2GSpan/From.lean` from the seed of `before` at invocation clocks `5 + 4 k`; one shared memory permutation over
-    x0 and the span's cells. The witness that the assumptions of the delegation complete-span caller claims
+    span of `Blake2GSpan/From.lean` from the seed of `before` at invocation clocks `5 + 4 k`; one shared memory
+    permutation over x0 and the span's cells. The witness that the assumptions of the delegation complete-span caller claims
     (`Human/Trace/Delegation/RVCallerTheorems.lean`) can be met, with the window `(4, 228]`. -/
 
 namespace Airbender.NonVacuous.HashCallers.Pooled
 open Trace NonVacuous.Blake2GSpan Delegation.Caller
+open FamilyCallers (callerPCs)
 
 local notation "P" => babyBearModulus
 
@@ -33,7 +34,7 @@ theorem valid {k : Nat} (small : k < 56) : PooledRow.Valid (4 * k) (4 + 4 * k) (
   split <;> omega
 
 /-- The span's starting state with the caller program in ROM. -/
-def before : RV.State := { Blake2GSpan.before with rom := rom 0 fun _ => 0 }
+def before : RV.State := { Blake2GSpan.before with rom := FamilyCallers.rom .blakeG 0 fun _ => 0 }
 
 theorem start : Start seed 5 := ⟨inv_mono seed_inv (by omega), rfl, by decide⟩
 
@@ -49,7 +50,7 @@ noncomputable def machine : PooledTrace P where
   initialMemory := keys.map seed
   terminalMemory := keys.map (runFinal (runFinal seed machineSteps) (spanSteps seed 5))
 
-noncomputable def data : RVRequestTrace P := ⟨machine, workers, program 0 56⟩
+noncomputable def data : RVRequestTrace P := ⟨machine, workers, FamilyCallers.program .blakeG 0 56⟩
 
 theorem callers : data.callers = data.machine.rows :=
   List.filter_eq_self.mpr fun row member => by
@@ -61,7 +62,7 @@ theorem callers_ne : data.callers ≠ [] := by
   rw [callers]
   exact List.ne_nil_of_mem (List.mem_map_of_mem (List.mem_range.mpr (by decide : 0 < 56)))
 
-theorem calls : data.calls = (List.range 56).map (requestAt 4) := by
+theorem calls : data.calls = (List.range 56).map (requestAt .blakeG 4) := by
   rw [RVRequestTrace.calls, callers]
   change callerRows.map _ = _
   rw [callerRows, List.map_map]
@@ -89,16 +90,17 @@ theorem checks : RVRequestChecks data where
   decoded row member := by
     rw [callers] at member
     obtain ⟨k, small, rfl⟩ := mem_rows member
-    refine ⟨⟨k, by simpa [data, program, callerPCs] using small⟩, ?_⟩
-    simp only [data, program, callerPCs, List.get_eq_getElem, List.getElem_map, List.getElem_range]
+    refine ⟨⟨k, by simpa [data, FamilyCallers.program, callerPCs] using small⟩, ?_⟩
+    simp only [data, FamilyCallers.program, callerPCs, List.get_eq_getElem, List.getElem_map, List.getElem_range]
     rw [Nat.zero_add]
     exact PooledRow.query (4 * k) (4 + 4 * k) (previousOf 0 4 k) (by omega)
   workerConstraints := (accepted_from start).constraints
   workerActive := execute_from
   requests := by
     rw [Delegation.Requests.Matching, calls, RVRequestTrace.fulfillments]
-    change Delegation.Requests.Matching _ ((workersFrom seed (4 + 1)).rows.map Delegation.Requests.fulfillment)
-    rw [fulfillments]
+    change Delegation.Requests.Matching _
+      (((List.range 56).map (rowFrom seed (4 + 1))).map Delegation.Requests.fulfillment)
+    rw [fulfillments (row := rowFrom seed (4 + 1)) (fun _ => rfl) (invocation_raw seed (4 + 1))]
     exact List.perm_append_comm
 
 theorem accepted : RVRequestAccepted data where
@@ -119,7 +121,8 @@ theorem shared_accepted : RVSharedMemoryAccepted data where
     change (keys.map seed ++ (callerRows.flatMap _ ++ (workersFrom seed 5).steps).map Prod.snd).Perm
       (keys.map _ ++ (callerRows.flatMap _ ++ (workersFrom seed 5).steps).map Prod.fst)
     rw [edges]
-    refine joint_matching run (fun step member => ?_) (fun c member => untouched c ?_) start
+    refine joint_matching keys_nodup (fun _ => List.mem_cons_of_mem _) run (fun step member => ?_)
+      (fun c member => untouched c ?_) (inside_from start) (blocks_from start).1
     · obtain ⟨k, -, present⟩ := List.mem_flatMap.mp member
       simp only [x0Steps, List.mem_cons, List.not_mem_nil, or_false] at present
       rcases present with rfl | rfl <;> exact List.mem_cons_self ..
@@ -129,7 +132,7 @@ theorem shared_accepted : RVSharedMemoryAccepted data where
 theorem readable : ∀ cell ∈ keys, (cell.readRV before).isSome := by decide +kernel
 
 theorem request_inputs : RVRequestInputs data before (callerPCs 0 56) where
-  image := program_image (prefixBytes := fun _ => 0) rfl rfl (by decide)
+  image := FamilyCallers.program_image (prefixBytes := fun _ => 0) rfl rfl (by decide)
   initialClock := by decide +kernel
   initialAligned := by decide +kernel
 

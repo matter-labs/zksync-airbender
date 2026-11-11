@@ -1,5 +1,6 @@
 module
 public import Slop.NonVacuous.RoundCallers.Joint
+public import Slop.NonVacuous.FamilyCallers.Block
 public import Slop.NonVacuous.Basic
 public import Slop.WitnessCheck
 public import Slop.KernelRfl
@@ -18,9 +19,10 @@ public import Human.Trace.UnifiedReduced.RVPreparedRoundWindows
 
 namespace Airbender.NonVacuous.RoundCallers.Prepared
 open Trace UnifiedReduced.Caller Verification FamilyCallers.Block
-open HashCallers (x0Token x0Steps x0Edges x0_run previousOf previous_chain callerPCs)
-open Blake2RoundSpan (Start inv_mono inv_control workersFrom spanSteps row_mem_from write_time_from accepted_from
-  execute_from family_from calls_from prefix_from window_from)
+open HashCallers (x0Token x0Steps x0Edges x0_run previousOf previous_chain fulfillments)
+open FamilyCallers (callerPCs)
+open Blake2RoundSpan (Start inv_mono inv_control workersFrom rowFrom spanSteps inside_from blocks_from invocation_raw
+  row_mem_from write_time_from accepted_from execute_from family_from calls_from prefix_from window_from)
 
 local notation "P" => babyBearModulus
 
@@ -126,8 +128,8 @@ theorem checks : RVRequestChecks data where
   requests := by
     rw [Delegation.Requests.Matching, RVRequestTrace.calls, RVRequestTrace.fulfillments, callers]
     change Delegation.Requests.Matching ((callerRows .blakeRound 4 8 5 10).map fun row => request row.assignment)
-      ((workersFrom m0 (8 + 1)).rows.map Delegation.Requests.fulfillment)
-    rw [requests, fulfillments]
+      (((List.range 10).map (rowFrom m0 (8 + 1))).map Delegation.Requests.fulfillment)
+    rw [requests, fulfillments (row := rowFrom m0 (8 + 1)) (fun _ => rfl) (invocation_raw m0 (8 + 1))]
     exact List.perm_append_comm
 
 /-- The machine's edges are the run of its steps from the seed; the run leaves the span's cells as `m0`. -/
@@ -164,7 +166,8 @@ theorem accepted : RVMixedMemoryAccepted data ordinary where
         ((prep :: callerRows .blakeRound 4 8 5 10).flatMap _ ++ (workersFrom m0 9).steps).map Prod.snd).Perm
       (keys.map _ ++ ((prep :: callerRows .blakeRound 4 8 5 10).flatMap _ ++ (workersFrom m0 9).steps).map Prod.fst)
     rw [List.flatMap_cons, prep_edges, edges]
-    refine joint_matching run.symm (fun step member => ?_) agree start
+    refine joint_matching keys_nodup (fun _ => List.mem_cons_of_mem _) run.symm (fun step member => ?_) agree
+      inside_from (blocks_from start).1
     rcases List.mem_append.mp member with early | late
     · simp only [prepSteps, List.mem_cons, List.not_mem_nil, or_false] at early
       rcases early with rfl | rfl | rfl <;> decide +kernel

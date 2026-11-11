@@ -13,19 +13,19 @@ namespace Airbender.UnifiedReduced.Caller
 open NonVacuous.RoundCallers NonVacuous.RoundCallers.Prepared
 
 theorem rv_prepared_round_region_masks_soundness_satisfiable : RVPreparedRoundRegionMasksSoundnessSatisfiableClaim :=
-  ⟨data, before, NonVacuous.HashCallers.callerPCs 4 10, [0], keys, ordinary, [region], region, accepted,
+  ⟨data, before, NonVacuous.FamilyCallers.callerPCs 4 10, [0], keys, ordinary, [region], region, accepted,
     protocol_inputs, region_inputs, callers_ne, region_ne⟩
 
 theorem rv_prepared_round_masks_soundness_satisfiable : RVPreparedRoundMasksSoundnessSatisfiableClaim :=
-  ⟨data, before, NonVacuous.HashCallers.callerPCs 4 10, [0], keys, ordinary, 0, 8, accepted, round_inputs, rfl,
+  ⟨data, before, NonVacuous.FamilyCallers.callerPCs 4 10, [0], keys, ordinary, 0, 8, accepted, round_inputs, rfl,
     callers_ne, rows_ne⟩
 
 theorem rv_prepared_round_window_soundness_satisfiable : RVPreparedRoundWindowSoundnessSatisfiableClaim :=
-  ⟨data, before, NonVacuous.HashCallers.callerPCs 4 10, [0], keys, ordinary, 0, 8, 48, accepted, window_inputs, rfl,
+  ⟨data, before, NonVacuous.FamilyCallers.callerPCs 4 10, [0], keys, ordinary, 0, 8, 48, accepted, window_inputs, rfl,
     rfl, callers_ne, window_ne⟩
 
 theorem rv_prepared_round_cycles_soundness_satisfiable : RVPreparedRoundCyclesSoundnessSatisfiableClaim :=
-  ⟨data, ordinary, before, NonVacuous.HashCallers.callerPCs 4 10, [0], keys, 0, 8, accepted, round_inputs, rfl,
+  ⟨data, ordinary, before, NonVacuous.FamilyCallers.callerPCs 4 10, [0], keys, 0, 8, accepted, round_inputs, rfl,
     started, callers_ne, rows_ne⟩
 
 end Airbender.UnifiedReduced.Caller

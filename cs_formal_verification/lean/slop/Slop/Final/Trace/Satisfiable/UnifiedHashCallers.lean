@@ -13,6 +13,7 @@ public import Human.Trace.UnifiedReduced.RVCallerTheorems
 
 namespace Airbender.UnifiedReduced.Caller
 open NonVacuous.HashCallers NonVacuous.HashCallers.Unified
+open NonVacuous.FamilyCallers (callerPCs)
 
 theorem rv_shared_span_soundness_satisfiable : RVSharedSpanSoundnessSatisfiableClaim :=
   ⟨data, before, callerPCs 0 56, keys, .blakeG true, accepted, shared_span_inputs, callers_ne⟩
