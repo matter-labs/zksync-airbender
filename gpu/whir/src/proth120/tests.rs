@@ -751,15 +751,14 @@ fn pr_transcript_phases_match_reference() {
         operation_mode: prover::gkr::prover::OperationMode,
     }
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let directory = std::env::var_os("AB_PROTH120_REFERENCE_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| root.join("prover_pipeline/fixtures/l1_reference_2p21"));
     #[derive(serde::Deserialize)]
     struct Artifact {
         l1: Bundle,
     }
-    let Artifact { l1: bundle } =
-        serde_json::from_reader(std::fs::File::open(directory.join("l1.json")).unwrap()).unwrap();
+    let Artifact { l1: bundle } = proof_fixtures::read_file(proof_fixtures::chain_artifact(
+        "pessimistic_conjecture",
+        "l1",
+    ));
     let circuit: verifier_evm::seed::Circuit = serde_json::from_reader(
         std::fs::File::open(
             root.join("cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"),

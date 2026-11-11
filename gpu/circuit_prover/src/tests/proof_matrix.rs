@@ -111,6 +111,28 @@ fn cpu_canonical_matrix_inventory() {
         registered, expected,
         "GPU matrix differs from canonical input registry"
     );
+
+    // The two compression profiles have byte parity in the compression chain
+    // recipe. They are separate from this 28-case Standard-profile matrix.
+    for mode in proof_fixtures::MODES {
+        let mut expected: BTreeSet<_> = CANONICAL_CIRCUITS
+            .iter()
+            .map(|circuit| format!("{}.json.zlib", circuit.stem()))
+            .collect();
+        if mode == "pessimistic_conjecture" {
+            expected.extend(
+                proof_fixtures::PESSIMISTIC_CIRCUITS
+                    .iter()
+                    .map(|circuit| format!("{circuit}.json.zlib")),
+            );
+        }
+        let actual: BTreeSet<_> =
+            std::fs::read_dir(proof_fixtures::root().join("fixtures/circuits").join(mode))
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+                .collect();
+        assert_eq!(actual, expected, "uncovered circuit fixture in {mode}");
+    }
 }
 
 #[test]
