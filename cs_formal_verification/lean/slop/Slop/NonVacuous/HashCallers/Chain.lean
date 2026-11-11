@@ -1,6 +1,7 @@
 module
 public import Slop.NonVacuous.HashCallers.Span
 public import Slop.Constraints
+public import Human.Helpers.Delegation.Requests
 
 @[expose] public section
 
@@ -16,9 +17,6 @@ local notation "P" => babyBearModulus
 
 /-- The x0 token last written at clock `t` (x0 holds zero). -/
 def x0Token (t : Nat) : MemoryToken P := ⟨(Cell.register 0).addressCode, ((t : ZMod P), ((0 : Nat) : ZMod P)), Nat.pair 0 0⟩
-
-/-- The seed of x0 is the token written at clock zero. -/
-theorem x0_seed : ((Cell.register 0).initialToken 0 : MemoryToken P) = x0Token 0 := rfl
 
 /-- One caller's x0 steps: the source port's write at `c`, the destination port's write at `c + 2`. -/
 def x0Steps (c : Nat) : List (Cell × MemoryToken P) := [(.register 0, x0Token c), (.register 0, x0Token (c + 2))]
@@ -65,5 +63,26 @@ theorem range16_of_eval {e : Expression (ZMod P)} {env : Environment (ZMod P)} {
   Verification.range16_contains (by
     rw [value, ZMod.val_natCast_of_lt (by unfold babyBearModulus; omega)]
     exact bound)
+
+/-- The clock at which caller `k`'s source port finds x0 last written. -/
+def previousOf (p0 c0 k : Nat) : Nat := if k = 0 then p0 else c0 + 4 * k - 2
+
+theorem previous_chain {p0 c0 n : Nat} : ∀ k < n, previousOf p0 c0 (k + 1) = c0 + 4 * k + 2 := by
+  intro k _
+  rw [previousOf, ite_eq_right (Nat.succ_ne_zero k)]
+  omega
+
+/-- The G request of caller `k`. -/
+def requestAt (c0 k : Nat) : Delegation.Requests.Request P :=
+  ⟨Delegation.Requests.csr .blakeG, (((c0 + 1 + 4 * k : Nat) : ZMod P), ((0 : Nat) : ZMod P))⟩
+
+/-- The span from `c0 + 1` fulfills exactly the block's requests, in order. -/
+theorem fulfillments {c0 : Nat} (m0 : Memory) : (workersFrom m0 (c0 + 1)).rows.map Delegation.Requests.fulfillment =
+    (List.range 56).map (requestAt c0) := by
+  simp only [workersFrom, rowsFrom, List.map_map]
+  refine List.map_congr_left fun k _ => ?_
+  simp only [Function.comp, Delegation.Requests.fulfillment, requestAt]
+  rw [invocation_raw]
+  rfl
 
 end Airbender.NonVacuous.HashCallers

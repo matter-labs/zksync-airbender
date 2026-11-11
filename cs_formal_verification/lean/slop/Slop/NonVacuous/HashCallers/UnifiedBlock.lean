@@ -15,9 +15,6 @@ open Trace NonVacuous.Blake2GSpan
 
 local notation "P" => babyBearModulus
 
-/-- The clock at which caller `k`'s source port finds x0 last written. -/
-def previousOf (p0 c0 k : Nat) : Nat := if k = 0 then p0 else c0 + 4 * k - 2
-
 def callerRow (f c0 p0 k : Nat) : Row P UnifiedFamily := UnifiedRow.row (f + 4 * k) (c0 + 4 * k) (previousOf p0 c0 k)
 
 def callerRows (f c0 p0 n : Nat) : List (Row P UnifiedFamily) := (List.range n).map (callerRow f c0 p0)
@@ -67,10 +64,6 @@ theorem filter_selected :
       callerRows f c0 p0 n :=
   List.filter_eq_self.mpr fun row member => decide_eq_true (selected row member)
 
-/-- The G request of caller `k`. -/
-def requestAt (c0 k : Nat) : Delegation.Requests.Request P :=
-  ⟨Delegation.Requests.csr .blakeG, (((c0 + 1 + 4 * k : Nat) : ZMod P), ((0 : Nat) : ZMod P))⟩
-
 theorem requests : (callerRows f c0 p0 n).map (fun row => UnifiedReduced.Caller.request row.assignment) =
     (List.range n).map (requestAt c0) := by
   rw [callerRows, List.map_map]
@@ -79,25 +72,11 @@ theorem requests : (callerRows f c0 p0 n).map (fun row => UnifiedReduced.Caller.
   congr 3
   omega
 
-/-- The span from `c0 + 1` fulfills exactly the block's requests, in order. -/
-theorem fulfillments (m0 : Memory) : (workersFrom m0 (c0 + 1)).rows.map Delegation.Requests.fulfillment =
-    (List.range 56).map (requestAt c0) := by
-  simp only [workersFrom, rowsFrom, List.map_map]
-  refine List.map_congr_left fun k _ => ?_
-  simp only [Function.comp, Delegation.Requests.fulfillment, requestAt]
-  rw [invocation_raw]
-  rfl
-
 theorem edges : (callerRows f c0 p0 n).flatMap (fun row => (UnifiedReduced.Caller.machinePorts row).toList.map
       (fun port => (readToken row.assignment port, writeToken row.columns row.assignment port))) =
     (List.range n).flatMap (fun k => x0Edges (previousOf p0 c0 k) (c0 + 4 * k)) := by
   rw [callerRows, List.flatMap_map]
   exact List.flatMap_congr fun k _ => UnifiedRow.steps ..
-
-theorem chain : ∀ k < n, previousOf p0 c0 (k + 1) = c0 + 4 * k + 2 := by
-  intro k _
-  rw [previousOf, ite_eq_right (Nat.succ_ne_zero k)]
-  omega
 
 /-- The block's PC/clock states chain from its first start to its last finish. -/
 theorem states (m : Nat) :

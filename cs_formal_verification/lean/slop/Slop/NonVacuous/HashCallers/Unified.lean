@@ -66,7 +66,7 @@ theorem accepted : RVMixedMemoryAccepted data [] where
   toRVRequestChecks := checks
   ordinaryDecoded row member notCaller := absurd (by rw [callers]; exact member) notCaller
   memory := by
-    obtain ⟨run, untouched⟩ := x0_run (base := seed) (clock := fun k => 4 + 4 * k) 56 x0_run_seed chain
+    obtain ⟨run, untouched⟩ := x0_run (base := seed) (clock := fun k => 4 + 4 * k) 56 x0_run_seed previous_chain
     rw [RVRequestTrace.mixedSteps]
     change (keys.map seed ++ ((callerRows 0 4 0 56).flatMap _ ++ (workersFrom seed 5).steps).map Prod.snd).Perm
       (keys.map _ ++ ((callerRows 0 4 0 56).flatMap _ ++ (workersFrom seed 5).steps).map Prod.fst)

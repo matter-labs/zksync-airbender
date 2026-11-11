@@ -133,7 +133,7 @@ theorem machine_run :
     runEdges seed prepSteps ++ (List.range 56).flatMap (fun k => x0Edges (previousOf 5 8 k) (8 + 4 * k)) =
       runEdges seed machineSteps ∧ ∀ c ∈ cells, runFinal seed machineSteps c = m0 c := by
   have first : runFinal seed prepSteps (.register 0) = x0Token (previousOf 5 8 0) := by decide +kernel
-  obtain ⟨run, untouched⟩ := x0_run (base := runFinal seed prepSteps) (clock := fun k => 8 + 4 * k) 56 first chain
+  obtain ⟨run, untouched⟩ := x0_run (base := runFinal seed prepSteps) (clock := fun k => 8 + 4 * k) 56 first previous_chain
   refine ⟨by rw [machineSteps, runEdges_append, run], fun c member => ?_⟩
   have x0 : c ≠ .register 0 := by
     rintro rfl

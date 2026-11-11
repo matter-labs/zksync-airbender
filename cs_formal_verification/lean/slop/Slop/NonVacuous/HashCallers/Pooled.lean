@@ -19,10 +19,7 @@ open Trace NonVacuous.Blake2GSpan Delegation.Caller
 
 local notation "P" => babyBearModulus
 
-/-- The clock at which caller `k`'s source port finds x0 last written (the seed for the first caller). -/
-def previousOf (k : Nat) : Nat := if k = 0 then 0 else 4 * k + 2
-
-def callerRow (k : Nat) : Row P PooledFamily := PooledRow.row (4 * k) (4 + 4 * k) (previousOf k)
+def callerRow (k : Nat) : Row P PooledFamily := PooledRow.row (4 * k) (4 + 4 * k) (previousOf 0 4 k)
 
 def callerRows : List (Row P PooledFamily) := (List.range 56).map callerRow
 
@@ -30,7 +27,7 @@ theorem mem_rows {row : Row P PooledFamily} (member : row ∈ callerRows) : ∃ 
   obtain ⟨k, present, rfl⟩ := List.mem_map.mp member
   exact ⟨k, List.mem_range.mp present, rfl⟩
 
-theorem valid {k : Nat} (small : k < 56) : PooledRow.Valid (4 * k) (4 + 4 * k) (previousOf k) := by
+theorem valid {k : Nat} (small : k < 56) : PooledRow.Valid (4 * k) (4 + 4 * k) (previousOf 0 4 k) := by
   refine ⟨by omega, by simp only [timestampBase]; omega, ?_⟩
   unfold previousOf
   split <;> omega
@@ -64,11 +61,7 @@ theorem callers_ne : data.callers ≠ [] := by
   rw [callers]
   exact List.ne_nil_of_mem (List.mem_map_of_mem (List.mem_range.mpr (by decide : 0 < 56)))
 
-/-- The G request of caller `k`, fulfilled by the span's row `k`. -/
-def requestAt (k : Nat) : Delegation.Requests.Request P :=
-  ⟨Delegation.Requests.csr .blakeG, (((5 + 4 * k : Nat) : ZMod P), ((0 : Nat) : ZMod P))⟩
-
-theorem calls : data.calls = (List.range 56).map requestAt := by
+theorem calls : data.calls = (List.range 56).map (requestAt 4) := by
   rw [RVRequestTrace.calls, callers]
   change callerRows.map _ = _
   rw [callerRows, List.map_map]
@@ -76,14 +69,6 @@ theorem calls : data.calls = (List.range 56).map requestAt := by
   simp only [Function.comp, callerRow, PooledRow.request, requestAt]
   congr 3
   omega
-
-theorem fulfillments : data.fulfillments = (List.range 56).map requestAt := by
-  change (workersFrom seed 5).rows.map Delegation.Requests.fulfillment = _
-  simp only [workersFrom, rowsFrom, List.map_map]
-  refine List.map_congr_left fun k _ => ?_
-  simp only [Function.comp, Delegation.Requests.fulfillment, requestAt]
-  rw [invocation_raw]
-  rfl
 
 theorem checks : RVRequestChecks data where
   constraints row member := by
@@ -99,7 +84,7 @@ theorem checks : RVRequestChecks data where
     exact chain_perm (start := fun k => (callerRow k).start) (finish := fun k => (callerRow k).finish) 55
       fun k _ => by
         simp only [callerRow]
-        rw [PooledRow.finish_start _ _ _ (previousOf (k + 1))]
+        rw [PooledRow.finish_start _ _ _ (previousOf 0 4 (k + 1))]
         congr 2
   decoded row member := by
     rw [callers] at member
@@ -107,11 +92,13 @@ theorem checks : RVRequestChecks data where
     refine ⟨⟨k, by simpa [data, program, callerPCs] using small⟩, ?_⟩
     simp only [data, program, callerPCs, List.get_eq_getElem, List.getElem_map, List.getElem_range]
     rw [Nat.zero_add]
-    exact PooledRow.query (4 * k) (4 + 4 * k) (previousOf k) (by omega)
+    exact PooledRow.query (4 * k) (4 + 4 * k) (previousOf 0 4 k) (by omega)
   workerConstraints := (accepted_from start).constraints
   workerActive := execute_from
   requests := by
-    rw [Delegation.Requests.Matching, calls, fulfillments]
+    rw [Delegation.Requests.Matching, calls, RVRequestTrace.fulfillments]
+    change Delegation.Requests.Matching _ ((workersFrom seed (4 + 1)).rows.map Delegation.Requests.fulfillment)
+    rw [fulfillments]
     exact List.perm_append_comm
 
 theorem accepted : RVRequestAccepted data where
@@ -122,14 +109,10 @@ theorem shared_accepted : RVSharedMemoryAccepted data where
   toRVRequestChecks := checks
   callerRows := callers
   memory := by
-    have first : seed (.register 0) = x0Token (previousOf 0) := rfl
-    have chain : ∀ k < 56, previousOf (k + 1) = 4 + 4 * k + 2 := by
-      intro k _
-      rw [previousOf, ite_eq_right (Nat.succ_ne_zero k)]
-      omega
-    obtain ⟨run, untouched⟩ := x0_run (base := seed) (clock := fun k => 4 + 4 * k) 56 first chain
+    have first : seed (.register 0) = x0Token (previousOf 0 4 0) := rfl
+    obtain ⟨run, untouched⟩ := x0_run (base := seed) (clock := fun k => 4 + 4 * k) 56 first previous_chain
     have edges : callerRows.flatMap (fun row => architecturalSteps row.assignment) =
-        (List.range 56).flatMap fun k => x0Edges (previousOf k) (4 + 4 * k) := by
+        (List.range 56).flatMap fun k => x0Edges (previousOf 0 4 k) (4 + 4 * k) := by
       rw [callerRows, List.flatMap_map]
       exact List.flatMap_congr fun k _ => PooledRow.steps ..
     rw [RVRequestTrace.sharedSteps]
