@@ -68,8 +68,9 @@ tests and have separate forge producers. The canonical producer does not refresh
 
 ## Currency and GPU agreement
 
-`fixture_build` builds the CLI, canonical producer test executable, and
-`fixture-codec` once. `fixture_currency` runs six independent CPU jobs over
+`fixture_build` builds the canonical producer test executable and, with the
+`release-thin` profile, the CLI, `fixture-codec` and the `cli_smoke_verify` test
+executables once. `fixture_currency` runs six independent CPU jobs over
 (mode, stage). Each runs the script with `--check`, writes into a temporary root,
 and compares complete compressed files with the committed outputs. Every child
 reads its committed parent, including when several stages are checked in one
