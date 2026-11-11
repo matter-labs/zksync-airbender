@@ -1,5 +1,6 @@
 module
 public import Slop.NonVacuous.KeccakSpan.Honest
+public import Slop.NonVacuous.StaticTables
 public import Mathlib.Data.Nat.Bitwise
 public import Mathlib.Tactic.IntervalCases
 
@@ -13,18 +14,6 @@ public import Mathlib.Tactic.IntervalCases
 namespace Airbender.NonVacuous.KeccakSpan
 
 variable {p : Nat} [Fact p.Prime]
-
-/-- A query whose entries evaluate to setup row `i`. -/
-private theorem contains_of_row {control : Fin 4096 → Vector Nat 6} {entry : Vector (Expression (ZMod p)) 8}
-    {env : Environment (ZMod p)} {i : Fin 1249281} {row : Vector Nat 8}
-    (selected : Keccak.setupRow control i = row) (values : ∀ j : Fin 8, entry[j].eval env = (row[j] : ZMod p)) :
-    (Lookup.mk (Keccak.setupTable control).toRaw entry).Contains env := by
-  refine ⟨i, ?_⟩
-  change entry.map (Expression.eval env) = (Keccak.setupRow control i).map (fun (n : Nat) => (n : ZMod p))
-  apply Vector.ext
-  intro j hj
-  rw [Vector.getElem_map, Vector.getElem_map, selected]
-  exact values ⟨j, hj⟩
 
 /-- Setup rows by region: the XOR rows (tag 4), Iota XOR (38), ANDN (39), rotations (40). -/
 private theorem xor_region {control : Fin 4096 → Vector Nat 6} (i : Fin 1249281) (low : 1 ≤ i.val)
@@ -95,7 +84,7 @@ private theorem rotation_contains {control : Fin 4096 → Vector Nat 6} {entry :
       #v[word + 65536 * shift, word / 2 ^ (16 - shift), word * 2 ^ shift % 65536, 0, 0, 0, 0, 40] := by
     rw [rotation_region i (by omega), rotation_key (n := i.val - 200705) (word := word) (shift := shift)
       (by omega) (by omega), show i.val - 200705 = word + 65536 * shift by omega]
-  exact contains_of_row row values
+  exact static_contains (fun _ => rfl) row values
 
 /-- An operation's operands are 16-bit limbs, and a byte operation's tag is a byte table's. -/
 structure Op.Valid (o : Op) : Prop where
@@ -130,9 +119,9 @@ theorem Op.Valid.contains {o : Op} (valid : o.Valid) {control : Fin 4096 → Vec
     have tag : o.tagValue = o.tag := by simp only [Op.tagValue, rot, Bool.false_eq_true, ↓reduceIte]
     rw [c, tag] at values
     rcases valid.tag rot with known | known | known <;> rw [known] at values
-    · exact contains_of_row (xor_row ha hb) values
-    · exact contains_of_row (iota_row ha hb) values
-    · exact contains_of_row (andn_row ha hb) values
+    · exact static_contains (fun _ => rfl) (xor_row ha hb) values
+    · exact static_contains (fun _ => rfl) (iota_row ha hb) values
+    · exact static_contains (fun _ => rfl) (andn_row ha hb) values
   · have tag : o.tagValue = 40 := by simp only [Op.tagValue, rot, ↓reduceIte]
     have shift : o.shift < 16 := Nat.mod_lt _ (by decide)
     by_cases low : i < 4
@@ -187,7 +176,7 @@ theorem control_contains {control : Fin 4096 → Vector Nat 6} {entry : Vector (
     (Lookup.mk (Keccak.setupTable control).toRaw entry).Contains env := by
   obtain ⟨i, index⟩ : ∃ i : Fin 1249281, i.val = 65537 + key.val := ⟨⟨_, by omega⟩, rfl⟩
   have selected : (⟨i.val - 65537, by omega⟩ : Fin 4096) = key := Fin.ext (by simp only [index]; omega)
-  refine contains_of_row (i := i) ?_ values
+  refine static_contains (fun _ => rfl) (i := i) ?_ values
   rw [control_region i (by omega) (by omega), selected, show i.val - 65537 = key.val by omega]
 
 end Airbender.NonVacuous.KeccakSpan

@@ -35,16 +35,6 @@ theorem iota_at {e0 e1 e2 e3 e4 e5 e6 e7 : Expression (ZMod p)} {a b : Nat} (ha 
   · intro j
     fin_cases j <;> simp [v0, v1, v2, v3, v4, v5, v6, v7]
 
-/-- Nibble `i` of five packed nibbles. -/
-theorem nib_pack {a0 a1 a2 a3 a4 : Nat} (h0 : a0 < 16) (h1 : a1 < 16) (h2 : a2 < 16) (h3 : a3 < 16) (h4 : a4 < 16) :
-    nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 0 = a0 ∧
-      nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 1 = a1 ∧
-      nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 2 = a2 ∧
-      nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 3 = a3 ∧
-      nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 4 = a4 := by
-  simp only [nib, Nat.reducePow]
-  omega
-
 /-- The five-nibble XOR query (tag 64). -/
 theorem xor5_at {e0 e1 e2 e3 e4 e5 e6 e7 : Expression (ZMod p)} {a0 a1 a2 a3 a4 : Nat} (h0 : a0 < 16)
     (h1 : a1 < 16) (h2 : a2 < 16) (h3 : a3 < 16) (h4 : a4 < 16)

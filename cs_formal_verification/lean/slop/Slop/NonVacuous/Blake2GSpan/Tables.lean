@@ -1,5 +1,6 @@
 module
 public import Human.Circuits.Blake2G.Tables.Setup
+public import Slop.NonVacuous.StaticTables
 
 @[expose] public section
 
@@ -8,18 +9,6 @@ public import Human.Circuits.Blake2G.Tables.Setup
     controller query is the row at its key. -/
 
 namespace Airbender.NonVacuous.Blake2GSpan
-
-/-- A query whose entries evaluate to setup row `i`. -/
-private theorem contains_of_row {p : Nat} [Fact p.Prime] {control : Fin 512 → Vector Nat 7}
-    {entry : Vector (Expression (ZMod p)) 9} {env : Environment (ZMod p)} {i : Fin 344896} {row : Vector Nat 9}
-    (selected : Blake2G.setupRow control i = row) (values : ∀ j : Fin 9, entry[j].eval env = (row[j] : ZMod p)) :
-    (Lookup.mk (Blake2G.setupTable control).toRaw entry).Contains env := by
-  refine ⟨i, ?_⟩
-  change entry.map (Expression.eval env) = (Blake2G.setupRow control i).map (fun (n : Nat) => (n : ZMod p))
-  apply Vector.ext
-  intro j hj
-  rw [Vector.getElem_map, Vector.getElem_map, selected]
-  exact values ⟨j, hj⟩
 
 theorem xor_row {width tag n a b : Nat} (high : n / 2 ^ width = a) (low : n % 2 ^ width = b) :
     Blake2G.xorRow width tag n = #v[a, b, a ^^^ b, 0, 0, 0, 0, 0, tag] := by
@@ -37,7 +26,7 @@ theorem xor8_contains {p : Nat} [Fact p.Prime] {control : Fin 512 → Vector Nat
     {entry : Vector (Expression (ZMod p)) 9} {env : Environment (ZMod p)} {a b : Nat} (ha : a < 256) (hb : b < 256)
     (values : ∀ j : Fin 9, entry[j].eval env = ((#v[a, b, a ^^^ b, 0, 0, 0, 0, 0, 4][j] : Nat) : ZMod p)) :
     (Lookup.mk (Blake2G.setupTable control).toRaw entry).Contains env :=
-  contains_of_row ((xor8_region ⟨a * 256 + b, by omega⟩ (by dsimp only; omega)).trans
+  static_contains (fun _ => rfl) ((xor8_region ⟨a * 256 + b, by omega⟩ (by dsimp only; omega)).trans
     (xor_row (by dsimp only; omega) (by dsimp only; omega))) values
 
 /-- Setup rows 65536 to 65599: the 3-bit XOR region. -/
@@ -52,7 +41,7 @@ theorem xor3_contains {p : Nat} [Fact p.Prime] {control : Fin 512 → Vector Nat
     {entry : Vector (Expression (ZMod p)) 9} {env : Environment (ZMod p)} {a b : Nat} (ha : a < 8) (hb : b < 8)
     (values : ∀ j : Fin 9, entry[j].eval env = ((#v[a, b, a ^^^ b, 0, 0, 0, 0, 0, 17][j] : Nat) : ZMod p)) :
     (Lookup.mk (Blake2G.setupTable control).toRaw entry).Contains env :=
-  contains_of_row ((xor3_region ⟨65536 + (a * 8 + b), by omega⟩ (by dsimp only; omega) (by dsimp only; omega)).trans
+  static_contains (fun _ => rfl) ((xor3_region ⟨65536 + (a * 8 + b), by omega⟩ (by dsimp only; omega) (by dsimp only; omega)).trans
     (xor_row (by dsimp only; omega) (by dsimp only; omega))) values
 
 /-- Setup rows 65600 to 65855: the 4-bit XOR region. -/
@@ -67,7 +56,7 @@ theorem xor4_contains {p : Nat} [Fact p.Prime] {control : Fin 512 → Vector Nat
     {entry : Vector (Expression (ZMod p)) 9} {env : Environment (ZMod p)} {a b : Nat} (ha : a < 16) (hb : b < 16)
     (values : ∀ j : Fin 9, entry[j].eval env = ((#v[a, b, a ^^^ b, 0, 0, 0, 0, 0, 18][j] : Nat) : ZMod p)) :
     (Lookup.mk (Blake2G.setupTable control).toRaw entry).Contains env :=
-  contains_of_row ((xor4_region ⟨65600 + (a * 16 + b), by omega⟩ (by dsimp only; omega) (by dsimp only; omega)).trans
+  static_contains (fun _ => rfl) ((xor4_region ⟨65600 + (a * 16 + b), by omega⟩ (by dsimp only; omega) (by dsimp only; omega)).trans
     (xor_row (by dsimp only; omega) (by dsimp only; omega))) values
 
 /-- Setup rows 65856 to 82239: the 7-bit XOR region. -/
@@ -82,7 +71,7 @@ theorem xor7_contains {p : Nat} [Fact p.Prime] {control : Fin 512 → Vector Nat
     {entry : Vector (Expression (ZMod p)) 9} {env : Environment (ZMod p)} {a b : Nat} (ha : a < 128) (hb : b < 128)
     (values : ∀ j : Fin 9, entry[j].eval env = ((#v[a, b, a ^^^ b, 0, 0, 0, 0, 0, 19][j] : Nat) : ZMod p)) :
     (Lookup.mk (Blake2G.setupTable control).toRaw entry).Contains env :=
-  contains_of_row ((xor7_region ⟨65856 + (a * 128 + b), by omega⟩ (by dsimp only; omega) (by dsimp only; omega)).trans
+  static_contains (fun _ => rfl) ((xor7_region ⟨65856 + (a * 128 + b), by omega⟩ (by dsimp only; omega) (by dsimp only; omega)).trans
     (xor_row (by dsimp only; omega) (by dsimp only; omega))) values
 
 /-- Setup rows 82240 to 344383: the 9-bit XOR region. -/
@@ -97,7 +86,7 @@ theorem xor9_contains {p : Nat} [Fact p.Prime] {control : Fin 512 → Vector Nat
     {entry : Vector (Expression (ZMod p)) 9} {env : Environment (ZMod p)} {a b : Nat} (ha : a < 512) (hb : b < 512)
     (values : ∀ j : Fin 9, entry[j].eval env = ((#v[a, b, a ^^^ b, 0, 0, 0, 0, 0, 20][j] : Nat) : ZMod p)) :
     (Lookup.mk (Blake2G.setupTable control).toRaw entry).Contains env :=
-  contains_of_row ((xor9_region ⟨82240 + (a * 512 + b), by omega⟩ (by dsimp only; omega) (by dsimp only; omega)).trans
+  static_contains (fun _ => rfl) ((xor9_region ⟨82240 + (a * 512 + b), by omega⟩ (by dsimp only; omega) (by dsimp only; omega)).trans
     (xor_row (by dsimp only; omega) (by dsimp only; omega))) values
 
 /-- Setup rows 344384 onwards: the controller region, keyed by the row offset. -/
@@ -119,7 +108,7 @@ theorem control_contains {p : Nat} [Fact p.Prime] {control : Fin 512 → Vector 
     (Lookup.mk (Blake2G.setupTable control).toRaw entry).Contains env := by
   obtain ⟨i, index⟩ : ∃ i : Fin 344896, i.val = 344384 + key.val := ⟨⟨344384 + key.val, by omega⟩, rfl⟩
   have selected : (⟨i.val - 344384, by omega⟩ : Fin 512) = key := Fin.ext (by simp only [index]; omega)
-  refine contains_of_row (i := i) ?_ values
+  refine static_contains (fun _ => rfl) (i := i) ?_ values
   rw [control_region i (by omega), selected, show i.val - 344384 = key.val by omega]
 
 end Airbender.NonVacuous.Blake2GSpan

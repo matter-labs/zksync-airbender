@@ -1,6 +1,7 @@
 module
-public import Slop.NonVacuous.KeccakSplitSpan.Parity.Tables
+public import Slop.NonVacuous.KeccakSplitSpan.Tables
 public import Slop.KeccakSplit.Setup.Chi5.Rows
+public import Mathlib.Tactic.FinCases
 
 @[expose] public section
 
@@ -34,7 +35,7 @@ theorem chi_at {e0 e1 e2 e3 e4 e5 e6 e7 e8 e9 e10 : Expression (ZMod p)} {a0 a1 
   refine formula_contains (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) (by omega)
     (row := #v[a0, a1, a2, a3, a4, chi4 a0 a1 a2, chi4 a1 a2 a3, chi4 a2 a3 a4, chi4 a3 a4 a0, chi4 a4 a0 a1, 65])
     ?_ ?_
-  · obtain ⟨n0, n1, n2, n3, n4⟩ := Parity.nib_pack h0 h1 h2 h3 h4
+  · obtain ⟨n0, n1, n2, n3, n4⟩ := nib_pack h0 h1 h2 h3 h4
     simp (disch := omega) only [formulaRow, spec0, spec1, spec2, spec3, spec4, spec5, spec6, spec7, spec8, spec9,
       spec10, chiOut, ite_eq_left, n0, n1, n2, n3, n4, Nat.reduceAdd, Nat.reduceMod]
   · intro j

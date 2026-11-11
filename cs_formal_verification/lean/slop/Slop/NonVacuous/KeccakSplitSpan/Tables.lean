@@ -6,7 +6,8 @@ public import Slop.KeccakSplit.Setup.Facts
 
 /-! Membership in an exported split-Keccak setup table (the converse of the setup row proofs): a query whose
     entries evaluate to formula row `n` is the table's row `n`, given that every exported row is its formula row
-    (`SetupProofs.setupRow_eq`), so no proof decodes the exported blocks. Also the control-row number of a call. -/
+    (`SetupProofs.setupRow_eq`), so no proof decodes the exported blocks. Also the nibbles of five packed nibbles and
+    the control-row number of a call. -/
 
 namespace Airbender.NonVacuous.KeccakSplitSpan
 open Keccak.Split
@@ -25,6 +26,16 @@ theorem setup_contains {p : Nat} [Fact p.Prime] {data : Import.Setup.SetupData} 
   ext j hj
   simp only [Vector.getElem_map, Int.ofNat_eq_natCast, Int.cast_natCast]
   exact values ⟨j, hj⟩
+
+/-- Nibble `i` of five packed nibbles. -/
+theorem nib_pack {a0 a1 a2 a3 a4 : Nat} (h0 : a0 < 16) (h1 : a1 < 16) (h2 : a2 < 16) (h3 : a3 < 16) (h4 : a4 < 16) :
+    SetupProofs.nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 0 = a0 ∧
+      SetupProofs.nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 1 = a1 ∧
+      SetupProofs.nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 2 = a2 ∧
+      SetupProofs.nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 3 = a3 ∧
+      SetupProofs.nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 4 = a4 := by
+  simp only [SetupProofs.nib, Nat.reducePow]
+  omega
 
 /-- The controller row of call `k` (`callIndex offset` inverted): one past its round's five calls before it. -/
 def ctlRow (offset k : Nat) : Nat := 1 + 5 * (k / 15) + (k % 15 - offset)

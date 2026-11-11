@@ -20,8 +20,8 @@ theorem rv_shared_span_soundness_satisfiable : RVSharedSpanSoundnessSatisfiableC
 
 theorem rv_request_hash_window_soundness_satisfiable : RVRequestHashWindowSoundnessSatisfiableClaim :=
   ⟨data, before, callerPCs 0 56, NonVacuous.Blake2GSpan.cells, .blakeG true, 4, 228, checks,
-    NonVacuous.Blake2GSpan.accepted_from start, request_inputs, window_inputs, NonVacuous.Blake2GSpan.aligned, rfl, rfl, by decide,
-    callers_ne, window_ne⟩
+    NonVacuous.Blake2GSpan.accepted_from start, request_inputs, window_inputs, NonVacuous.Blake2GSpan.aligned, rfl,
+    rfl, by decide, callers_ne, window_ne⟩
 
 theorem rv_joint_hash_window_soundness_satisfiable : RVJointHashWindowSoundnessSatisfiableClaim :=
   ⟨data, before, callerPCs 0 56, keys, .blakeG true, 4, 228, accepted, joint_inputs, rfl, rfl, by decide, by decide,
