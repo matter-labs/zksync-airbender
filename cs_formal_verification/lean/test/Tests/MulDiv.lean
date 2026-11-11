@@ -8,12 +8,10 @@ public import Slop.AddSub.Selectors
 public import Slop.JumpBranchSlt.Branch
 public import Slop.JumpBranchSlt.Jump
 public import Slop.MulDiv.Values
-public import Slop.ShiftBinop.Ports
 public import Slop.SubwordMemory.Values
 public import Slop.Trace.CompositionCore
-public import Slop.Trace.Family.Values
-public import Slop.Trace.Pooled
 public import Slop.Trace.RowContext
+public import Slop.UnifiedReduced.RV.ControlMembership
 
 @[expose] public section
 

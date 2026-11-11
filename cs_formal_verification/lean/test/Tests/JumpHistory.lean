@@ -1,6 +1,5 @@
 module
 public import Slop.Trace.ROMView
-public import Human.Helpers.Decoder.PooledExternalInput
 public import Human.Circuits.WordMemory.Output
 public import Human.Circuits.SubwordMemory.Output
 public import Slop.JumpBranchSlt.Trace

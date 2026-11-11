@@ -1,15 +1,12 @@
 module
 public import Tests.DelegationOperationEffects
-public import Slop.Delegation.MixedClocks
 public import Slop.Delegation.RequestWindows
 public import Slop.Delegation.SharedOperations
 public import Slop.Delegation.WorkerProjection
 public import Slop.JumpBranchSlt.Branch
 public import Slop.JumpBranchSlt.Jump
 public import Slop.MulDiv.Values
-public import Slop.ShiftBinop.Ports
 public import Slop.SubwordMemory.Values
-public import Slop.Trace.Family.Values
 public import Slop.CleanCore.Circuit.Operations
 
 @[expose] public section

@@ -8,7 +8,6 @@ public import Human.Trace.Workers.Blake2G.WorkVector
 public import Slop.Blake2G.CallGroups
 public import Slop.Blake2G.PhysicalWords
 public import Slop.Delegation.NativeSegments
-public import Slop.Delegation.MixedClocks
 public import Slop.Delegation.RequestWindows
 public import Slop.Delegation.SharedOperations
 public import Slop.Delegation.WorkerProjection
@@ -16,10 +15,9 @@ public import Slop.JumpBranchSlt.Branch
 public import Slop.JumpBranchSlt.Jump
 public import Slop.Keccak.CallPermutation
 public import Slop.MulDiv.Values
-public import Slop.ShiftBinop.Ports
 public import Slop.SubwordMemory.Values
-public import Slop.Trace.Family.Values
 public import Slop.CleanCore.Circuit.Operations
+public import Slop.AddSub.ArtifactChecks
 
 @[expose] public section
 

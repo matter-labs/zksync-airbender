@@ -128,7 +128,7 @@ than it costs. Load only inflates CPU time (efficiency cores, shared caches), so
 is under budget alone. Three stages, each paying only for what the one before could not settle:
 1. During `verify.sh`'s `lake build` a sampler reads each compiling module's CPU time from `ps` every 0.5 s and
    records it with Lake's input hash once Lake has written the module's trace (a failed compile records nothing).
-   `module_budget.py watch` runs the same sampler beside any other `lake build` (a development wrapper around `lake`
+   `module_budget.py watch` runs the same sampler beside any other `lake build` (a development wrapper around Lake
    starts it; CI does not), so modules compiled by narrow builds need no second compile in stage 2.
 2. Every target module is looked up in a ledger keyed by module and Lake's input hash (`depHash`, which covers the
    source and every import): an entry is valid exactly as long as Lake would not rebuild the module. A module with

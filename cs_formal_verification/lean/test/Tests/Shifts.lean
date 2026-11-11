@@ -7,21 +7,17 @@ public import Slop.JumpBranchSlt.Jump
 public import Slop.MulDiv.Product
 public import Human.Circuits.MulDiv.Operation
 public import Slop.MulDiv.Values
-public import Slop.ShiftBinop.Ports
 public import Slop.SubwordMemory.Values
 public import Slop.Trace.CompositionCore
-public import Slop.Trace.Family.Values
-public import Slop.Trace.Pooled
 public import Slop.Trace.RowContext
-public import Slop.ShiftBinop.Shifts
 public import Slop.Eval
 public import Mathlib.Tactic.IntervalCases
+public import Slop.ShiftBinop.Arithmetic
 
 @[expose] public section
 
 namespace Tests.Shifts
 open Airbender
-open Airbender.ShiftBinop
 
 -- Three shifts and REV8, amounts 0/31, immediate/register preprocessing, a negative
 -- source and PC carry. Register amounts 32/63 exercise low-five-bit truncation.
