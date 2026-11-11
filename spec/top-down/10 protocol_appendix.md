@@ -282,7 +282,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > 1. Both parties batch the incoming claims $\mathbf{a}_{\mathrm{gkr}}$ via RLC using powers of $r_{\mathrm{batch},\mathrm{gkr}}$ in the order specified by $C_{\mathrm{layer}}$, obtaining the initial sumcheck claim $v_{\mathrm{batch}}$.
 >
-> 2. Run $\mathrm{EQSumcheck}((\mathbf{z}_{\mathrm{gkr}},v_{\mathrm{batch}}),T_{\mathrm{chunk}})$ (Algorithm 5) for the layer's batched gate polynomial, obtaining the sumcheck evaluation point $\mathbf{z}_{\mathrm{sumcheck}}$, scalar residual claim $v_{\mathrm{sumcheck}}$, final-coordinate EQ factor $e$ and updated transcript $T_{\mathrm{chunk}}$.
+> 2. Run $\mathrm{EQSumcheck}(C_{\mathrm{layer}},(\mathbf{z}_{\mathrm{gkr}},v_{\mathrm{batch}}),T_{\mathrm{chunk}})$ (Algorithm 5) for the layer's batched gate polynomial, obtaining the sumcheck evaluation point $\mathbf{z}_{\mathrm{sumcheck}}$, scalar residual claim $v_{\mathrm{sumcheck}}$, final-coordinate EQ factor $e$ and updated transcript $T_{\mathrm{chunk}}$.
 >
 > 3. Prover sends $\mathbf{a}_{\mathrm{sumcheck}}$: claimed evaluations of all input polynomials required by $C_{\mathrm{layer}}$ and, for main layers only, cached relation outputs (including claimed virtual-setup polynomial evaluations), in $C_{\mathrm{layer}}$'s prescribed evaluation order.
 >
@@ -323,33 +323,43 @@ Recursive step: prove the execution of FullStatement; repeat.
 
 > **Algorithm 5 — EQSumcheck**
 >
-> **Configuration:** polynomial $G$ of individual degree $\le 2$, available to Prover.
+> **Input:** fixed circuit layer $C_{\mathrm{layer}}$ of degree at most 2, incoming point $\mathbf{z}_{\mathrm{gkr}}$, batched claim $v_{\mathrm{batch}}$ and the running chunk transcript $T_{\mathrm{chunk}}$. **Output:** point $\mathbf{z}_{\mathrm{sumcheck}}$, scalar residual claim $v_{\mathrm{sumcheck}}$, final-coordinate EQ factor $e$, and the updated transcript $T_{\mathrm{chunk}}$.
 >
-> **Input:** incoming point $\mathbf{z}_{\mathrm{gkr}}\in E^k$, batched claim $v_{\mathrm{batch}}$ and the running chunk transcript $T_{\mathrm{chunk}}$. **Output:** point $\mathbf{z}_{\mathrm{sumcheck}}\in E^k$, scalar residual claim $v_{\mathrm{sumcheck}}$, final-coordinate EQ factor $e$, and the updated transcript $T_{\mathrm{chunk}}$.
->
-> **Notation:** The Boolean-cube interpolation kernel is $\mathrm{eq}(\mathbf{u},\mathbf{x})=\prod_j((1-u_j)(1-x_j)+u_jx_j)$. The incoming claim is $v_{\mathrm{batch}}=\sum_{\mathbf{x}\in\{0,1\}^k}\mathrm{eq}(\mathbf{z}_{\mathrm{gkr}},\mathbf{x})G(\mathbf{x})$.
->
+>> This algorithm reduces the weighted sum claim below to a polynomial evaluation claim. Here $m$ is the number of coordinates of $\mathbf{z}_{\mathrm{gkr}}$, $G$ is the batched gate polynomial computed in step 2, and $\mathrm{eq}$ is the Boolean-cube interpolation kernel:
+>>
+>> $$
+>> \begin{aligned}
+>> v_{\mathrm{batch}}&=\sum_{\mathbf{x}\in\{0,1\}^m}\mathrm{eq}(\mathbf{z}_{\mathrm{gkr}},\mathbf{x})G(\mathbf{x}),\\
+>> \mathrm{eq}(\mathbf{u},\mathbf{x})&=\prod_j((1-u_j)(1-x_j)+u_jx_j).
+>> \end{aligned}
+>> $$
+>>
 > 1. Both parties initialize $e\leftarrow1$ and $v_{\mathrm{sumcheck}}\leftarrow v_{\mathrm{batch}}$.
-> 2. Both parties run the following rounds for $j=0,\ldots,k-1$:
->    1. Prover sends the coefficients of $g_j(X)$, with $\deg g_j\le3$.
+> 2. Prover computes $G\in E^{\le2}[X_0,\ldots,X_{m-1}]$ (degree at most two in each variable) by batching the layer gate expressions from Algorithm 4, step 4, with the same powers of $r_{\mathrm{batch},\mathrm{gkr}}$ and ordering as in Algorithm 4, step 1.
+> 3. Both parties run the following rounds for $j=0,\ldots,m-1$:
+>    1. Prover computes the univariate round polynomial
+>
+>       $$
+>       g_j(X)=\mathrm{eq}(z_{\mathrm{gkr},j},X)\sum_{\mathbf{x}'\in\{0,1\}^{m-j-1}}\mathrm{eq}(\mathbf{z}_{\mathrm{gkr},>j},\mathbf{x}')G(\mathbf{z}_{\mathrm{sumcheck},<j},X,\mathbf{x}')
+>       $$
+>
+>       and sends its coefficients, with $\deg g_j\le3$.
 >    2. Verifier requires $e\,(g_j(0)+g_j(1))=v_{\mathrm{sumcheck}}$.
->    3. Both parties absorb the coefficients into $T_{\mathrm{chunk}}$, then derive $z_{\mathrm{sumcheck},j}\in E$.
+>    3. Both parties absorb the coefficients of $g_j$ into $T_{\mathrm{chunk}}$, then draw $z_{\mathrm{sumcheck},j}\in E$.
 >    4. Both parties update:
 >
 >       $$
 >       \begin{aligned}
 >       v_{\mathrm{sumcheck}} &\leftarrow g_j(z_{\mathrm{sumcheck},j}) \\
->       e &\leftarrow (1-z_{\mathrm{sumcheck},j})(1-z_{\mathrm{gkr},j})+z_{\mathrm{sumcheck},j}z_{\mathrm{gkr},j}
+>       e &\leftarrow \mathrm{eq}(z_{\mathrm{gkr},j},z_{\mathrm{sumcheck},j})
 >       \end{aligned}
 >       $$
 >
-> 3. Both parties return $(\mathbf{z}_{\mathrm{sumcheck}},v_{\mathrm{sumcheck}},e,T_{\mathrm{chunk}})$.
->
-> Honest $g_j(X)=\mathrm{eq}(z_{\mathrm{gkr},j},X)\sum_{\mathbf{x}'\in\{0,1\}^{k-j-1}}\mathrm{eq}(\mathbf{z}_{\mathrm{gkr},>j},\mathbf{x}')G(\mathbf{z}_{\mathrm{sumcheck},<j},X,\mathbf{x}')$. The residual claim is $v_{\mathrm{sumcheck}}=e\,G(\mathbf{z}_{\mathrm{sumcheck}})$, where $e$ is the final coordinate's EQ factor (or $1$ if $k=0$); the caller checks it using the input evaluations.
+> 4. Both parties return $(\mathbf{z}_{\mathrm{sumcheck}},v_{\mathrm{sumcheck}},e,T_{\mathrm{chunk}})$, leaving the residual claim $v_{\mathrm{sumcheck}}=e\,G(\mathbf{z}_{\mathrm{sumcheck}})$ to be checked by the caller algorithm.
 >
 > **Soundness — Sumcheck and EQ factoring (adapted).** Assume $\mathbf{z}_{\mathrm{gkr}}$ and the polynomial $G$ are fixed before this call's challenges, $G$ has individual degree at most two, and every round polynomial is fixed before its evaluation challenge. For a false incoming claim and a nonzero carried EQ factor $e$, the endpoint check forces the sent cubic to differ from the honest round polynomial. That discrepancy vanishes at $z_{\mathrm{sumcheck},j}$ with probability at most $3\mu$. The new EQ factor is $1-z_{\mathrm{gkr},j}+(2z_{\mathrm{gkr},j}-1)z_{\mathrm{sumcheck},j}$: it is $1/2$ if $z_{\mathrm{gkr},j}=1/2$, and otherwise vanishes with probability at most $\mu$.
 >
-> Charging each potentially vanishing factor as an exceptional event, a false incoming sum reduces to a false final claim $v_{\mathrm{sumcheck}}=eG(\mathbf{z}_{\mathrm{sumcheck}})$ except with probability at most $\min(1,(3k+Z)\mu)$, where $Z\le k$. Algorithm 4 receives the input evaluations and checks the final gate evaluation against this residual claim; its auxiliary checks and layer-reduction premises remain necessary. Algorithm 4 counts this reduction error once in its layer budget.
+> Charging each potentially vanishing factor as an exceptional event, a false incoming sum reduces to a false final claim $v_{\mathrm{sumcheck}}=eG(\mathbf{z}_{\mathrm{sumcheck}})$ except with probability at most $\min(1,(3m+Z)\mu)$, where $Z\le m$. Algorithm 4 receives the input evaluations and checks the final gate evaluation against this residual claim; its auxiliary checks and layer-reduction premises remain necessary. Algorithm 4 counts this reduction error once in its layer budget.
 
 ---
 
