@@ -157,6 +157,8 @@ jobs:
       matrix:
         cuda: [ "13.3.1" ]
         ubuntu: [ "ubuntu26.04" ]
+        # Each shard is one GPU runner; the shards run in parallel.
+        shard: [ chains, smoke ]
     container:
       image: nvidia/cuda:${{ matrix.cuda }}-runtime-${{ matrix.ubuntu }}
       options: --gpus all
@@ -184,6 +186,7 @@ jobs:
           path: zksync-airbender-gpu/
 
       - name: Canonical circuit proof parity in both soundness modes
+        if: matrix.shard == 'chains'
         shell: bash
         env:
           RUST_MIN_STACK: 1073741824
@@ -205,22 +208,24 @@ jobs:
           done
           exit "$failed"
 
-      - name: Trusted params of the fixture and smoke programs
+      - name: Trusted params of the shard's program
         shell: bash
         run: |
           export FSV_DIR="$GITHUB_WORKSPACE/tools/gkr_verifier/full_statement_verifiers"
           cli=./zksync-airbender-gpu/cli
           chmod +x "$cli"
-          mkdir -p trusted-params/basic_fibonacci trusted-params/hashed_fibonacci
+          case "${{ matrix.shard }}" in
+            chains) program=basic_fibonacci ;;
+            smoke) program=hashed_fibonacci ;;
+          esac
+          mkdir -p "trusted-params/$program"
           for mode in pessimistic-conjecture ethproofs-soundcalc; do
-            "$cli" trusted-params --bin examples/basic_fibonacci/app.bin --soundness-mode "$mode" \
-              --output "trusted-params/basic_fibonacci/$mode-trusted-params.json"
-            "$cli" trusted-params --bin examples/hashed_fibonacci/app.bin --soundness-mode "$mode" \
-              --reuse "trusted-params/basic_fibonacci/$mode-trusted-params.json" \
-              --output "trusted-params/hashed_fibonacci/$mode-trusted-params.json"
+            "$cli" trusted-params --bin "examples/$program/app.bin" --soundness-mode "$mode" \
+              --output "trusted-params/$program/$mode-trusted-params.json"
           done
 
       - name: Program-proof chain parity in both soundness modes
+        if: matrix.shard == 'chains'
         shell: bash
         env:
           CI: "true"
@@ -241,6 +246,7 @@ jobs:
           exit "$failed"
 
       - name: Prove, continue and verify on GPU in every soundness mode
+        if: matrix.shard == 'smoke'
         env:
           # The lowest allowed switch threshold (MIN_UNIFIED_SWITCH_CYCLES): unrolled recursion runs while
           # the estimated verifier cost stays at or above it. EXPECT_UNROLLED checks that this workload
