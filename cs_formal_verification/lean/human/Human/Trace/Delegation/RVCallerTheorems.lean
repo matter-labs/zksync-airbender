@@ -132,4 +132,19 @@ def RVRequestWindowSoundnessSatisfiableClaim : Prop :=
     RVRequestChecks data ∧ RVRequestInputs data before addresses ∧ lower % 4 = 0 ∧ upper % 4 = 0 ∧ 2 ≤ lower ∧
       windowCallers data.callers lower upper ≠ []
 
+/-- The assumptions of `RVSharedSpanSoundnessClaim` can be met (with the reduced G span), with a caller. -/
+def RVSharedSpanSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : RVRequestTrace babyBearModulus) (before : RV.State) (addresses : List (BitVec 32))
+    (cells : List Trace.Cell) (span : HashSpan),
+    RVSharedMemoryAccepted data ∧ RVSharedSpanInputs data before addresses cells span ∧ data.callers ≠ []
+
+/-- The assumptions of `RVRequestHashWindowSoundnessClaim` can be met (with the reduced G span), with a caller and
+    worker rows in the window. -/
+def RVRequestHashWindowSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : RVRequestTrace babyBearModulus) (before : RV.State) (addresses : List (BitVec 32))
+    (cells : List Trace.Cell) (span : HashSpan) (lower upper : Nat),
+    RVRequestAccepted data ∧ RVRequestInputs data before addresses ∧
+      span.RVRequestWindowInputs data.workers before cells lower upper ∧ (∀ cell ∈ cells, cell.Aligned) ∧
+      lower % 4 = 0 ∧ upper % 4 = 0 ∧ 2 ≤ lower ∧ data.callers ≠ [] ∧ data.workers.windowRows lower upper ≠ []
+
 end Airbender.Delegation.Caller

@@ -154,6 +154,7 @@ import Slop.Final.Trace.Satisfiable.UnifiedCallers
 import Slop.Final.Trace.Satisfiable.UnifiedPreparedCallers
 import Slop.Final.Trace.Satisfiable.Callers
 import Slop.Final.Trace.Satisfiable.UnifiedHashCallers
+import Slop.Final.Trace.Satisfiable.DelegationHashCallers
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -1257,3 +1258,5 @@ import Slop.Final.Trace.Satisfiable.UnifiedHashCallers
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_hash_sequence_soundness_satisfiable
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_protocol_sequence_soundness_satisfiable
 #print axioms Airbender.UnifiedReduced.Caller.rv_program_prepared_protocol_sequence_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_shared_span_soundness_satisfiable
+#print axioms Airbender.Delegation.Caller.rv_request_hash_window_soundness_satisfiable

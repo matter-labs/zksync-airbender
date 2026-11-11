@@ -1,5 +1,6 @@
 module
 public import Slop.NonVacuous.HashCallers.Span
+public import Slop.Constraints
 
 @[expose] public section
 
@@ -57,5 +58,12 @@ theorem chain_perm {α : Type} {start finish : Nat → α} (n : Nat) (chain : �
       simp
   rw [shape]
   exact List.perm_append_comm
+
+/-- A range query whose entry evaluates to a natural number below `2^16`. -/
+theorem range16_of_eval {e : Expression (ZMod P)} {env : Environment (ZMod P)} {n : Nat}
+    (value : e.eval env = (n : ZMod P)) (bound : n < 65536) : (Verification.range16 e).Contains env :=
+  Verification.range16_contains (by
+    rw [value, ZMod.val_natCast_of_lt (by unfold babyBearModulus; omega)]
+    exact bound)
 
 end Airbender.NonVacuous.HashCallers

@@ -418,6 +418,24 @@ example (claim : RVRequestWindowSoundnessClaim) : RVRequestWindowSoundnessSatisf
   fun ⟨data, _, _, lower, upper, accepted, inputs, first, last, pastZero, window⟩ =>
     ⟨data, lower, upper, claim accepted inputs first last pastZero, window⟩
 
+example (claim : Delegation.Caller.RVSharedSpanSoundnessClaim) :
+    Delegation.Caller.RVSharedSpanSoundnessSatisfiableClaim →
+    ∃ (data : Delegation.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell)
+      (span : Delegation.Caller.HashSpan),
+      Delegation.Caller.RVSharedSpanEffects data before cells span ∧ data.callers ≠ [] :=
+  fun ⟨data, before, _, cells, span, accepted, inputs, callers⟩ =>
+    ⟨data, before, cells, span, claim accepted inputs, callers⟩
+
+example (claim : Delegation.Caller.RVRequestHashWindowSoundnessClaim) :
+    Delegation.Caller.RVRequestHashWindowSoundnessSatisfiableClaim →
+    ∃ (data : Delegation.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell)
+      (span : Delegation.Caller.HashSpan) (lower upper : Nat),
+      span.RVRequestWindowResult data.callers data.workers before cells lower upper ∧ data.callers ≠ [] ∧
+        data.workers.windowRows lower upper ≠ [] :=
+  fun ⟨data, before, _, cells, span, lower, upper, accepted, program, inputs, aligned, first, last, past, callers,
+      window⟩ =>
+    ⟨data, before, cells, span, lower, upper, claim accepted program inputs aligned first last past, callers, window⟩
+
 end Callers
 
 example (claim : Blake2G.Native.RVWorkvectorSoundnessClaim) : Blake2G.Native.RVWorkvectorSoundnessSatisfiableClaim →

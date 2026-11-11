@@ -71,13 +71,6 @@ theorem zero_contains {words : Nat → BitVec 32} {entry : Vector (Expression (Z
   rw [Vector.getElem_map, Vector.getElem_map, value]
   interval_cases j <;> simp
 
-/-- A range query whose entry evaluates to a natural number below `2^16`. -/
-theorem range16_of_eval {e : Expression (ZMod P)} {env : Environment (ZMod P)} {n : Nat}
-    (value : e.eval env = (n : ZMod P)) (bound : n < 65536) : (Verification.range16 e).Contains env :=
-  Verification.range16_contains (by
-    rw [value, ZMod.val_natCast_of_lt (by unfold babyBearModulus; omega)]
-    exact bound)
-
 theorem lookups {pc clock previous : Nat} (valid : Valid pc clock previous) (before : RV.State) :
     ∀ i (h : i < (FlatOperation.lookups (UnifiedReduced.importedConstraints
         (UnifiedReduced.Setup.tableRV (p := P) before))).length),
