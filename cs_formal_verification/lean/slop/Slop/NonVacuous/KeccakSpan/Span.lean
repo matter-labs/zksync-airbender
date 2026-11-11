@@ -1,6 +1,7 @@
 module
 public import Slop.NonVacuous.KeccakSpan.Next
 public import Slop.NonVacuous.Basic
+public import Slop.NonVacuous.SequentialBlocks
 public import Human.Trace.Workers.Keccak.RVCall
 public import Human.Helpers.Delegation.Operations
 
@@ -10,8 +11,8 @@ public import Human.Helpers.Delegation.Operations
     Keccak permutation, boundary and window claims can be met. x10 = 0 (the first control word), x11 = 0x400000
     (the 31 lanes: 25 state lanes and 6 scratch lanes), RAM zero. Call `k` is the honest row (`Row.lean`) read
     from the memory after calls `0 … k-1` at invocation clock `1 + 4 k`, with the scheduled control word; the
-    rows are a recursion over `k`, and every fact is proven by induction from the one-call lemmas (`Block.lean`,
-    `Steps.lean`, `Next.lean`). -/
+    rows are a recursion over `k`, a run of consecutive blocks (`SequentialBlocks.run_blocks`), and every fact is
+    proven by induction from the one-call lemmas (`Block.lean`, `Steps.lean`, `Next.lean`). -/
 
 namespace Airbender.NonVacuous.KeccakSpan
 open Arithmetic Trace
@@ -36,10 +37,8 @@ def memAt : Nat → Memory
 /-- Call `k`, at invocation clock `1 + 4 k`. -/
 def rowAt (k : Nat) : Delegation.Row P := (memAt k).row k (1 + 4 * k)
 
-/-- The run's steps of calls `0 … n-1`. -/
-def stepsUpTo : Nat → List (Cell × MemoryToken P)
-  | 0 => []
-  | k + 1 => stepsUpTo k ++ (memAt k).steps k (1 + 4 * k)
+/-- The run's steps of call `k`. -/
+def stepsOf (k : Nat) : List (Cell × MemoryToken P) := (memAt k).steps k (1 + 4 * k)
 
 /-- The first `n` calls (irreducible: elaboration never evaluates the 649-element list). -/
 @[irreducible] def rows (n : Nat) : List (Delegation.Row P) := (List.range n).map rowAt
@@ -57,33 +56,19 @@ theorem inv_at (k : Nat) (small : k ≤ 649) : Inv (memAt k) k := by
   | zero => exact seed_inv
   | succ k ih => exact next (ih (by omega)) (by omega)
 
-theorem final_at (n : Nat) : runFinal seed (stepsUpTo n) = memAt n := by
-  induction n with
-  | zero => rfl
-  | succ n ih => rw [stepsUpTo, runFinal_append, ih, memAt]
+/-- The rows' memory steps are the run's edges from the seed, and the run ends at the memory after the calls. -/
+theorem blocks : (rows 649).flatMap Delegation.Row.memorySteps = runEdges seed ((List.range 649).flatMap stepsOf) ∧
+    runFinal seed ((List.range 649).flatMap stepsOf) = memAt 649 := by
+  rw [rows, List.flatMap_map]
+  exact run_blocks (mem := memAt) 649 (fun k _ => rfl) (fun k small => edges (inv_at k (by omega)) small)
 
-theorem edges_at (n : Nat) (small : n ≤ 649) :
-    (rows n).flatMap Delegation.Row.memorySteps = runEdges seed (stepsUpTo n) := by
-  induction n with
-  | zero => simp only [rows, List.range_zero, List.map_nil, List.flatMap_nil, stepsUpTo, runEdges]
-  | succ n ih =>
-    rw [rows, List.range_succ, List.map_append, List.flatMap_append, ← rows, ih (by omega), stepsUpTo,
-      runEdges_append, final_at]
-    simp only [List.map_cons, List.map_nil, List.flatMap_cons, List.flatMap_nil, List.append_nil, rowAt]
-    rw [edges (inv_at n (by omega)) (by omega)]
-
-theorem inside (n : Nat) : ∀ step ∈ stepsUpTo n, step.1 ∈ cells := by
-  induction n with
-  | zero => intro _ member; cases member
-  | succ n ih =>
-    intro step member
-    rcases List.mem_append.mp member with earlier | current
-    · exact ih step earlier
-    · have key : step.1 ∈ (List.range 14).map (portCell n) :=
-        keys (memAt n) n (1 + 4 * n) ▸ List.mem_map_of_mem current
-      obtain ⟨m, -, same⟩ := List.mem_map.mp key
-      rw [← same]
-      exact portCell_mem n m
+theorem inside : ∀ step ∈ (List.range 649).flatMap stepsOf, step.1 ∈ cells := by
+  intro step member
+  obtain ⟨n, -, current⟩ := List.mem_flatMap.mp member
+  have key : step.1 ∈ (List.range 14).map (portCell n) := keys (memAt n) n (1 + 4 * n) ▸ List.mem_map_of_mem current
+  obtain ⟨m, -, same⟩ := List.mem_map.mp key
+  rw [← same]
+  exact portCell_mem n m
 
 theorem row_mem {n : Nat} {row : Delegation.Row P} (member : row ∈ rows n) : ∃ k < n, row = rowAt k := by
   rw [rows] at member
@@ -113,9 +98,9 @@ theorem accepted : Delegation.MemoryAccepted data where
     obtain ⟨k, small, rfl⟩ := row_mem (n := 649) member
     exact holds ((memAt k).input k (1 + 4 * k)) (valid (inv_at k (by omega)) small) rfl
   matching := by
-    have run := run_matching (by decide +kernel : cells.Nodup) seed (inside 649)
-    rw [final_at] at run
-    simp only [Delegation.MemoryData.steps, data, edges_at 649 le_rfl]
+    have run := run_matching (by decide +kernel : cells.Nodup) seed inside
+    rw [blocks.2] at run
+    simp only [Delegation.MemoryData.steps, data, blocks.1]
     exact run
 
 theorem readable : ∀ cell ∈ cells, (cell.readRV before).isSome := by decide +kernel

@@ -2,14 +2,16 @@ module
 public import Slop.NonVacuous.KeccakSplitSpan.Calls
 public import Human.Trace.Workers.KeccakSplit.RVInputs
 public import Slop.NonVacuous.Basic
+public import Slop.NonVacuous.SequentialBlocks
 
 @[expose] public section
 
 /-! A complete split Keccak-f[1600] request (361 calls) from an `RV.State`: the witness that the assumptions of the
     split permutation claim can be met. x10 = 0 (call 0's control word), x11 = 0x400000 (the 31-slot state), RAM a
     byte pattern. Call `k`'s row is its worker's honest row read from the memory after calls `0 … k-1` at invocation
-    clock `1 + 4 k`; the rows are a recursion over `k`, and every fact is proven by induction from the one-call
-    lemmas (`Steps.lean`, `Calls.lean`), with no evaluation of the trace. -/
+    clock `1 + 4 k`; the rows are a recursion over `k`, a run of consecutive blocks (`SequentialBlocks.run_blocks`), and
+    every fact is proven by induction from the one-call lemmas (`Steps.lean`, `Calls.lean`), with no evaluation of the
+    trace. -/
 
 namespace Airbender.NonVacuous.KeccakSplitSpan
 open Arithmetic Trace Keccak.Split Keccak.Split.Native
@@ -34,10 +36,8 @@ def memAt : Nat → Memory
 /-- Call `k`'s row. -/
 def rowAt (k : Nat) : Native.Row P := (memAt k).row k
 
-/-- The run's steps of calls `0 … n-1`. -/
-def stepsUpTo : Nat → List (Nat × MemoryToken P)
-  | 0 => []
-  | k + 1 => stepsUpTo k ++ (memAt k).steps k
+/-- The run's steps of call `k`. -/
+def stepsOf (k : Nat) : List (Nat × MemoryToken P) := (memAt k).steps k
 
 def rows (n : Nat) : List (Native.Row P) := (List.range n).map rowAt
 
@@ -56,32 +56,20 @@ theorem inv_at (k : Nat) (small : k ≤ 361) : Inv (memAt k) k := by
     have inv := ih (by omega)
     exact next inv (facts inv (by omega)) (by omega)
 
-theorem final_at (n : Nat) : runFinal seed (stepsUpTo n) = memAt n := by
-  induction n with
-  | zero => rfl
-  | succ n ih => rw [stepsUpTo, runFinal_append, ih, memAt]
+/-- The rows' memory steps are the run's edges from the seed, and the run ends at the memory after the calls. -/
+theorem blocks : (rows 361).flatMap Native.Row.memorySteps = runEdges seed ((List.range 361).flatMap stepsOf) ∧
+    runFinal seed ((List.range 361).flatMap stepsOf) = memAt 361 := by
+  rw [rows, List.flatMap_map]
+  exact run_blocks (mem := memAt) 361 (fun k _ => rfl) (fun k small => edges (facts (inv_at k (by omega)) small))
 
-theorem edges_at (n : Nat) (small : n ≤ 361) :
-    (rows n).flatMap Native.Row.memorySteps = runEdges seed (stepsUpTo n) := by
-  induction n with
-  | zero => rfl
-  | succ n ih =>
-    rw [rows, List.range_succ, List.map_append, List.flatMap_append, ← rows, ih (by omega), stepsUpTo,
-      runEdges_append, final_at]
-    simp only [List.map_cons, List.map_nil, List.flatMap_cons, List.flatMap_nil, List.append_nil, rowAt]
-    rw [edges (facts (inv_at n (by omega)) (by omega))]
-
-theorem inside (n : Nat) (small : n ≤ 361) : ∀ step ∈ stepsUpTo n, step.1 ∈ keys := by
-  induction n with
-  | zero => intro _ member; cases member
-  | succ n ih =>
-    intro step member
-    rcases List.mem_append.mp member with earlier | current
-    · exact ih (by omega) step earlier
-    · have key : step.1 ∈ portKeys n := by
-        rw [← step_keys (memAt n) n (facts (inv_at n (by omega)) (by omega))]
-        exact List.mem_map_of_mem current
-      exact List.mem_range.mpr (portKeys_lt key)
+theorem inside : ∀ step ∈ (List.range 361).flatMap stepsOf, step.1 ∈ keys := by
+  intro step member
+  obtain ⟨n, present, current⟩ := List.mem_flatMap.mp member
+  have small := List.mem_range.mp present
+  have key : step.1 ∈ portKeys n := by
+    rw [← step_keys (memAt n) n (facts (inv_at n (by omega)) small)]
+    exact List.mem_map_of_mem current
+  exact List.mem_range.mpr (portKeys_lt key)
 
 theorem row_mem {n : Nat} {row : Native.Row P} (member : row ∈ rows n) : ∃ k < n, row = rowAt k := by
   obtain ⟨k, present, rfl⟩ := List.mem_map.mp member
@@ -118,9 +106,9 @@ theorem accepted : MemoryAccepted data where
     obtain ⟨k, small, rfl⟩ := row_mem member
     exact holds (inv_at k (by omega)) small
   matching := by
-    have run := run_matching List.nodup_range seed (inside 361 le_rfl)
-    rw [final_at] at run
-    simp only [MemoryData.steps, data, edges_at 361 le_rfl]
+    have run := run_matching List.nodup_range seed inside
+    rw [blocks.2] at run
+    simp only [MemoryData.steps, data, blocks.1]
     exact run
 
 theorem readable : ∀ cell ∈ cells, (cell.readRV before).isSome := by decide +kernel
