@@ -43,7 +43,6 @@ export FSV_DIR="$repo/tools/gkr_verifier/full_statement_verifiers"
 export RECURSION_UNROLLED_BLAKE=blake2_with_compression
 export RECURSION_BRIDGE_BLAKE=blake2_with_compression
 export RECURSION_FINAL_BLAKE=blake2_with_compression
-export RECURSION_UNIFIED_SWITCH_CYCLES=52000000
 export RUST_MIN_STACK=${RUST_MIN_STACK:-16777216}
 cd "$repo"
 
@@ -79,13 +78,11 @@ if [[ -z $stage_filter || $stage_filter == circuits ]]; then
     [[ -x $producer ]]
     producer_command=("$producer")
   else
-    [[ ${CI:-} != true ]] || { echo "CI needs FIXTURE_CANONICAL_PRODUCER" >&2; exit 1; }
     producer_command=(cargo test -p prover --lib --features test --profile cli --)
   fi
 fi
 if [[ $stage_filter != circuits ]]; then
   if [[ -z $cli ]]; then
-    [[ ${CI:-} != true ]] || { echo "CI needs FIXTURE_CLI" >&2; exit 1; }
     if [[ $backend == gpu ]]; then
       cargo build --release -p cli --features gpu
     else
@@ -94,7 +91,6 @@ if [[ $stage_filter != circuits ]]; then
     cli="$repo/target/release/cli"
   fi
   if [[ -z $codec ]]; then
-    [[ ${CI:-} != true ]] || { echo "CI needs FIXTURE_CODEC" >&2; exit 1; }
     cargo build --release -p proof_fixtures --bin fixture-codec
     codec="$repo/target/release/fixture-codec"
   fi
@@ -106,18 +102,15 @@ compare_file() {
     cmp "$1" "$repo/${1#"$out_repo/"}"
   fi
 }
-trusted_params_for() {
-  local file="$trusted_params/$1-trusted-params.json"
-  [[ -f $file ]] || "$cli" trusted-params --bin "$bin" --soundness-mode "$1" --output "$file"
-}
 check_artifact() {
   local name=$1
   local file="$chain_out/$name.json.zlib"
-  "$codec" check "$file" "$mode" "$name"
+  "$codec" check "$file"
   local trusted=()
   if [[ -n $trusted_params ]]; then
-    trusted_params_for "$cli_mode"
-    trusted=(--trusted-params "$trusted_params/$cli_mode-trusted-params.json")
+    local params="$trusted_params/$cli_mode-trusted-params.json"
+    [[ -f $params ]] || "$cli" trusted-params --bin "$bin" --soundness-mode "$cli_mode" --output "$params"
+    trusted=(--trusted-params "$params")
   fi
   "$cli" verify --proof "$file" --bin "$bin" --soundness-mode "$cli_mode" "${trusted[@]}"
   compare_file "$file"
@@ -154,19 +147,14 @@ for mode in "${modes[@]}"; do
           compare_file "$file"
         done ;;
       base_unified)
-        env -u RECURSION_UNROLLED_LAYERS "$cli" prove "${common[@]}" --target base --output-file base.json.zlib
+        "$cli" prove "${common[@]}" --target base --output-file base.json.zlib
         check_artifact base
         RECURSION_UNROLLED_LAYERS=0 "$cli" continue-proof "${common[@]}" \
           --proof "$chain_parent/base.json.zlib" --target recursion-unified --output-file unified.json.zlib
         check_artifact unified
-        if ((check)); then
-          if [[ -n $trusted_params ]]; then
-            trusted_params_for pessimistic-conjecture
-            trusted_params_for ethproofs-soundcalc
-          fi
+        if ((check)) && [[ $backend == cpu ]]; then
           FIXTURE_CHAIN_ROOT="$repo/fixtures/chains" FIXTURE_CODEC="$codec" \
             SOUNDNESS_MODE="$cli_mode" SMOKE_OUTPUT_DIR="$out_repo/smoke/$mode" \
-            TRUSTED_PARAMS_DIR="$trusted_params" \
             "$repo/.github/scripts/soundness_mode_smoke.sh" "$cli" "$bin" "$backend"
         fi ;;
       unrolled)

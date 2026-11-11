@@ -7,6 +7,7 @@ use full_statement_verifier::program_proof::ProgramProof;
 use prover::gkr::prover::GKRProof;
 use prover::merkle_trees::DefaultTreeConstructor;
 use prover::tests::gkr::orchestration::canonical_fixtures::CanonicalCircuit;
+use prover::tests::gkr::orchestration::common::hardcoded_external_challenges;
 use setups::{Setups, UnrolledCircuitSetupParams};
 use std::collections::BTreeMap;
 use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
@@ -62,7 +63,7 @@ fn load(mode: SoundnessMode, id: CircuitId) -> (Proof, GKRCircuitArtifact<BF>) {
         proof.whir_proof.whir_schedule,
         circuit.prover_config(&root, mode).whir_schedule
     );
-    let external = circuit.fixed_external_challenges();
+    let external = hardcoded_external_challenges();
     assert_eq!(
         proof
             .external_challenges
@@ -223,9 +224,7 @@ pub fn stream(mode: SoundnessMode, program: FsvProgram, counts: Counts) -> (Vec<
     }
     let (low, high) = split_timestamp(proof.final_timestamp);
     stream.extend([proof.final_pc, low, high]);
-    CanonicalCircuit::AddSubLuiAuipcMop
-        .fixed_external_challenges()
-        .flatten_into_buffer(&mut stream);
+    hardcoded_external_challenges().flatten_into_buffer(&mut stream);
     let mut regions = Vec::new();
     for &family in riscv_order(program) {
         append_region(

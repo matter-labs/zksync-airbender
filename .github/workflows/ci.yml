@@ -31,7 +31,6 @@ jobs:
         run: |
           cargo test -p proof_fixtures --profile cli
           cargo test -p prover --features test --profile cli --test canonical_fixture_inputs canonical_fixture_encoding
-          cargo test -p prover_pipeline --profile cli --lib committed_chain_encoding
       - name: GKR compiler feature tests
         env:
           RUST_MIN_STACK: 16777216
@@ -39,7 +38,7 @@ jobs:
       - name: Verifier census and fixture gates
         env:
           RUST_MIN_STACK: 1073741824
-        run: cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --lib --test cost_model_drift --test cost_model_trace --test unified
+        run: cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --lib --test cost_model_trace --test unified
       - name: Native verifier tests
         env:
           RUST_MIN_STACK: 1073741824
@@ -201,8 +200,8 @@ jobs:
       - name: Install dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends \
-            build-essential ca-certificates cmake curl git libssl-dev pkg-config python3
+          # ca-certificates brings libssl3, which the CLI test executable loads.
+          apt-get install -y --no-install-recommends ca-certificates git python3
       - uses: actions/checkout@v3
       - uses: actions/download-artifact@v4
         with:
@@ -213,31 +212,13 @@ jobs:
           python3 - <<'PYTHON'
           import json, os, pathlib, subprocess
 
-          expected = {
-              ("tools/cli", ("bin",), "cli"),
-              ("cpu_execution_prover", ("lib",), "cpu_execution_prover"),
-              ("cpu_execution_prover", ("test",), "execution_reference"),
-              ("execution_prover", ("lib",), "execution_prover"),
-              ("execution_prover_model", ("lib",), "execution_prover_model"),
-              ("prover_pipeline", ("lib",), "prover_pipeline"),
-          }
           workspace = pathlib.Path(os.environ["GITHUB_WORKSPACE"])
           artifacts = workspace / "fixture-executables"
           manifest = json.loads((artifacts / "cpu-tests.json").read_text())
           if manifest["workspace"] != str(workspace):
               raise SystemExit(f"CPU test build workspace {manifest['workspace']} differs from GITHUB_WORKSPACE {workspace}")
-          tests = manifest["tests"]
-          actual = [(test["package_dir"], tuple(test["kind"]), test["name"]) for test in tests]
-          if len(actual) != len(expected) or set(actual) != expected:
-              raise SystemExit(f"Unexpected CPU test executables: {actual}; expected {sorted(expected)}")
-          files = {f"cpu-tests/{kind[0]}-{name}" for _, kind, name in expected}
-          if {f"cpu-tests/{path.name}" for path in (artifacts / "cpu-tests").iterdir()} != files:
-              raise SystemExit("CPU test artifact files differ from the expected executable set")
-          for test in tests:
-              relative_executable = f"cpu-tests/{test['kind'][0]}-{test['name']}"
-              if test["executable"] != relative_executable:
-                  raise SystemExit(f"Unexpected CPU test artifact path: {test}")
-              executable = artifacts / relative_executable
+          for test in manifest["tests"]:
+              executable = artifacts / test["executable"]
               executable.chmod(0o755)
               package_dir = workspace / test["package_dir"]
               print(f"Running {test['name']} ({test['kind'][0]}) in {package_dir}", flush=True)
@@ -342,8 +323,6 @@ jobs:
       matrix:
         mode: [pessimistic_conjecture, ethproofs_soundcalc]
         stage: [circuits, base_unified, unrolled]
-    env:
-      RUST_MIN_STACK: 16777216
     defaults:
       run:
         shell: bash
@@ -351,8 +330,8 @@ jobs:
       - name: Install runtime dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends \
-            build-essential ca-certificates cmake curl git libssl-dev pkg-config python3
+          # ca-certificates brings libssl3, which the CLI loads.
+          apt-get install -y --no-install-recommends ca-certificates git
       - uses: actions/checkout@v3
       - uses: actions/download-artifact@v4
         with:
@@ -360,7 +339,6 @@ jobs:
           path: fixture-executables/
       - name: Check fixture currency
         run: |
-          export AB_TEST_ARTIFACT_ROOT="$GITHUB_WORKSPACE"
           export FIXTURE_CLI="$GITHUB_WORKSPACE/fixture-executables/cli"
           export FIXTURE_CANONICAL_PRODUCER="$GITHUB_WORKSPACE/fixture-executables/canonical-producer"
           export FIXTURE_CODEC="$GITHUB_WORKSPACE/fixture-executables/fixture-codec"

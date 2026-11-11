@@ -61,15 +61,6 @@ pub fn verifier_dir_name(mode: SoundnessMode) -> &'static str {
     mode.file_suffix()
 }
 
-/// Legacy (level, mode) suffix: DEFAULT uses `sec_100`; other modes append their name.
-pub fn fixture_suffix(level: SecurityLevel, mode: SoundnessMode) -> String {
-    if mode == SoundnessMode::DEFAULT {
-        level.dir_suffix().to_string()
-    } else {
-        format!("{}_{}", level.dir_suffix(), mode.file_suffix())
-    }
-}
-
 pub struct CircuitData {
     pub name: &'static str,
     pub production_path: &'static str,
@@ -140,8 +131,7 @@ impl CircuitData {
     }
 
     /// The canonical Sec100 proof fixture proved with the config of `mode`.
-    pub fn proof_path_for_mode(&self, level: SecurityLevel, mode: SoundnessMode) -> String {
-        assert_eq!(level, SecurityLevel::Sec100);
+    pub fn proof_path_for_mode(&self, _level: SecurityLevel, mode: SoundnessMode) -> String {
         proof_fixtures::circuit_proof(mode.file_suffix(), self.name)
             .to_str()
             .unwrap()

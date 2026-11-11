@@ -134,8 +134,6 @@ The L1 feeder/wrap/EVM profile exists only in `pessimistic-conjecture`.
 
 `trusted-params` writes the trusted verification parameters of one program and soundness
 mode; `verify --trusted-params <file>` uses them instead of recomputing the setups.
-`--reuse <file>` copies the verifier-guest records of another program's parameters in the
-same mode instead of recomputing them.
 
 ## Prove Batch
 

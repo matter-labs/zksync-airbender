@@ -28,7 +28,6 @@ fn command(root: &Path, arguments: &[&str], backend: Option<&str>) -> Command {
         .env("FIXTURE_CODEC", root.join("codec"))
         .env("FIXTURE_CANONICAL_PRODUCER", root.join("producer"))
         .env("TMPDIR", root)
-        .env("CI", "true")
         .env_remove("FIXTURE_BACKEND")
         .env_remove("EXPECTED_FIXTURE_BACKEND")
         .env_remove("FIXTURE_TRUSTED_PARAMS");
@@ -85,7 +84,7 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
     );
     executable(
         &root.join(".github/scripts/soundness_mode_smoke.sh"),
-        "#!/bin/sh\ntest -n \"$FIXTURE_CHAIN_ROOT\"\ntest -n \"$SMOKE_OUTPUT_DIR\"\nif [ -n \"$TRUSTED_PARAMS_DIR\" ]; then\n  test -f \"$TRUSTED_PARAMS_DIR/pessimistic-conjecture-trusted-params.json\"\n  test -f \"$TRUSTED_PARAMS_DIR/ethproofs-soundcalc-trusted-params.json\"\nfi\n",
+        "#!/bin/sh\ntest -n \"$FIXTURE_CHAIN_ROOT\"\ntest -n \"$SMOKE_OUTPUT_DIR\"\ntest \"$3\" = cpu\n",
     );
     for chain in proof_fixtures::CHAINS {
         let name = format!("{chain}.json.zlib");
@@ -136,11 +135,12 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
         "{}",
         String::from_utf8_lossy(&result.stderr)
     );
-    for mode in ["pessimistic-conjecture", "ethproofs-soundcalc"] {
-        assert!(trusted_params
-            .join(format!("{mode}-trusted-params.json"))
-            .is_file());
-    }
+    assert!(trusted_params
+        .join("pessimistic-conjecture-trusted-params.json")
+        .is_file());
+    assert!(!trusted_params
+        .join("ethproofs-soundcalc-trusted-params.json")
+        .exists());
     for arguments in [vec!["--check"], vec!["--check", "--stage", "circuits"]] {
         let result = run_with_backend(&root, &arguments, Some("gpu"));
         assert!(!result.status.success());

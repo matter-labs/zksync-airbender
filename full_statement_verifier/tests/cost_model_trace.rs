@@ -23,9 +23,9 @@
 //! 15 proofs per family and several i&t proofs. Optional acceptance fixtures in
 //! `$COST_MODEL_FIXTURE_DIR` use `<name>_proof.bin` / `<name>_setups.bin` and a
 //! `soundness_mode` file; they are never used for fitting. Names containing
-//! `recursion` select the recursion guest. The recursion fixed-point test still
-//! requires that corpus and stays ignored. The empirical envelope does not
-//! guarantee accuracy on unseen proofs.
+//! `recursion` select the recursion guest. The recursion fixed-point and per-proof
+//! span agreement tests still require that corpus and stay ignored. The empirical
+//! envelope does not guarantee accuracy on unseen proofs.
 
 mod trace;
 
@@ -361,6 +361,7 @@ fn census_estimate_matches_measurement_on_every_fixture() {
 }
 
 #[test]
+#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn per_proof_census_spans_agree_within_a_circuit() {
     use full_statement_verifier::host_utils::cost_model::census::NUM_CENSUS_DIMS;
 
@@ -412,4 +413,31 @@ fn recursion_fixed_point_is_below_the_switch_floor() {
         checked += 1;
     }
     assert!(checked > 0, "no recursion1 fixture");
+}
+
+#[test]
+fn calibration_fixture_encoding_round_trips_every_compiled_circuit() {
+    use full_statement_verifier::host_utils::fixture_codec;
+    use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
+    use verifier_common::field::baby_bear::base::BabyBearField;
+
+    let dir = format!("{}/../cs/compiled_circuits", env!("CARGO_MANIFEST_DIR"));
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        if !path.to_string_lossy().ends_with("_layout_gkr.json") {
+            continue;
+        }
+        let artifact: GKRCircuitArtifact<BabyBearField> =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let decoded: GKRCircuitArtifact<BabyBearField> =
+            fixture_codec::decode(&fixture_codec::encode(&artifact, Vec::new()));
+        assert!(
+            decoded == artifact,
+            "{} changed in the fixture encoding",
+            path.display()
+        );
+        checked += 1;
+    }
+    assert!(checked > 0);
 }

@@ -5,10 +5,8 @@
 //! Paths are relative to an explicit workspace root; environment filters and
 //! experiment configuration overrides do not select canonical inputs.
 
-use super::common::{
-    hardcoded_external_challenges, run_vm_and_capture, ProgramConfig, VmRunOutput,
-};
-use crate::definitions::{FinalRegisterValue, GKRExternalChallenges, SoundnessMode};
+use super::common::{run_vm_and_capture, ProgramConfig, VmRunOutput};
+use crate::definitions::{FinalRegisterValue, SoundnessMode};
 use crate::gkr::prover_config::ProverConfig;
 use crate::gkr::witness_gen::family_circuits::build_unified_table_driver;
 use common_constants::circuit_families::*;
@@ -22,7 +20,7 @@ use cs::gkr_circuits::{
 };
 use cs::gkr_compiler::GKRCircuitArtifact;
 use cs::tables::TableDriver;
-use field::baby_bear::{base::BabyBearField as BF, ext4::BabyBearExt4 as E4};
+use field::baby_bear::base::BabyBearField as BF;
 use riscv_transpiler::ir::simple_instruction_set::InstructionName;
 use riscv_transpiler::ir::{FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig};
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
@@ -175,10 +173,6 @@ impl CanonicalCircuit {
 
     pub fn proof_path(self, root: &Path, mode: SoundnessMode) -> PathBuf {
         proof_fixtures::circuit_proof_in(root, mode.file_suffix(), self.stem())
-    }
-
-    pub fn fixed_external_challenges(self) -> GKRExternalChallenges<BF, E4> {
-        hardcoded_external_challenges()
     }
 }
 

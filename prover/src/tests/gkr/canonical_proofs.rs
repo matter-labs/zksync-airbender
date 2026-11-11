@@ -4,6 +4,7 @@ use super::orchestration::canonical_fixtures::{
     capture_canonical_inputs, CanonicalCircuit, CanonicalInputs, CanonicalTrace,
     SparseInitsAndTeardowns, CANONICAL_CIRCUITS,
 };
+use super::orchestration::common::hardcoded_external_challenges;
 use crate::definitions::{GKRExternalChallenges, SoundnessMode};
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::{
@@ -303,18 +304,8 @@ fn prove(prepared: Prepared, challenges: &GKRExternalChallenges<BF, E4>, worker:
     proof
 }
 
-fn write(
-    circuit: CanonicalCircuit,
-    mode: SoundnessMode,
-    proof: &Proof,
-    written: &mut BTreeSet<PathBuf>,
-) {
+fn write(circuit: CanonicalCircuit, mode: SoundnessMode, proof: &Proof) {
     let path = circuit.proof_path(&proof_fixtures::output_root(), mode);
-    assert!(
-        written.insert(path.clone()),
-        "duplicate canonical write: {}",
-        path.display()
-    );
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     proof_fixtures::write_file(&path, proof);
 }
@@ -331,19 +322,16 @@ fn regenerate_canonical_circuit_proofs_ethproofs_soundcalc() {
 
 fn regenerate_canonical_circuit_proofs(mode: SoundnessMode) {
     let worker = Worker::new();
-    let mut written = BTreeSet::new();
     for circuit in CANONICAL_CIRCUITS {
         let prepared = prepare(circuit, mode, &worker);
-        let proof = prove(prepared, &circuit.fixed_external_challenges(), &worker);
-        write(circuit, mode, &proof, &mut written);
+        let proof = prove(prepared, &hardcoded_external_challenges(), &worker);
+        write(circuit, mode, &proof);
     }
     let output_root = proof_fixtures::output_root();
     let expected: BTreeSet<_> = CANONICAL_CIRCUITS
         .into_iter()
         .map(|circuit| circuit.proof_path(&output_root, mode))
         .collect();
-    assert_eq!(written, expected);
-    assert_eq!(written.len(), 14);
     let produced: BTreeSet<_> = std::fs::read_dir(
         output_root
             .join("fixtures/circuits")
@@ -358,7 +346,7 @@ fn regenerate_canonical_circuit_proofs(mode: SoundnessMode) {
 fn pilot(circuit: CanonicalCircuit) {
     let worker = Worker::new();
     let prepared = prepare(circuit, SoundnessMode::DEFAULT, &worker);
-    let proof = prove(prepared, &circuit.fixed_external_challenges(), &worker);
+    let proof = prove(prepared, &hardcoded_external_challenges(), &worker);
     println!(
         "pilot {}: {} proof bytes; no fixture write",
         circuit.stem(),

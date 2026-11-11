@@ -10,7 +10,6 @@
 #   FIXTURE_CODEC      prebuilt fixture-codec for existing artifacts
 #   SOUNDNESS_MODE     check only this mode's artifacts (wrong-mode checks still cover both)
 #   SMOKE_OUTPUT_DIR   temporary outputs and logs
-#   TRUSTED_PARAMS_DIR existing <mode>-trusted-params.json files for BIN, instead of computing them
 set -euo pipefail
 
 cli=$1
@@ -30,14 +29,10 @@ if [[ -n ${SOUNDNESS_MODE:-} ]]; then
 fi
 out=${SMOKE_OUTPUT_DIR:-output/soundness-mode-smoke}
 mkdir -p "$out"
-params=${TRUSTED_PARAMS_DIR:-}
-if [[ -z $params ]]; then
-  params=$out
-  for mode in "${all_modes[@]}"; do
-    "$cli" trusted-params --bin "$bin" --soundness-mode "$mode" \
-      --output "$params/$mode-trusted-params.json"
-  done
-fi
+for mode in "${all_modes[@]}"; do
+  "$cli" trusted-params --bin "$bin" --soundness-mode "$mode" \
+    --output "$out/$mode-trusted-params.json"
+done
 
 # The artifact's JSON name of a CLI soundness mode.
 label() {
@@ -62,13 +57,13 @@ fails() {
 check_modes() {
   local proof=$1 mode=$2 relabel_error=$3 other log relabeled
   "$cli" verify --proof "$proof" --bin "$bin" --soundness-mode "$mode" \
-    --trusted-params "$params/$mode-trusted-params.json"
+    --trusted-params "$out/$mode-trusted-params.json"
   for other in "${all_modes[@]}"; do
     [[ "$other" == "$mode" ]] && continue
     echo "== $proof verified as $other must fail"
     log="$proof.as-$other.log"
     fails "$log" "$cli" verify --proof "$proof" --bin "$bin" --soundness-mode "$other" \
-      --trusted-params "$params/$other-trusted-params.json"
+      --trusted-params "$out/$other-trusted-params.json"
     if ! grep -q SoundnessModeMismatch "$log"; then
       cat "$log" >&2
       echo "$proof failed as $other without SoundnessModeMismatch" >&2
@@ -84,7 +79,7 @@ check_modes() {
     fi
     log="$relabeled.log"
     fails "$log" "$cli" verify --proof "$relabeled" --bin "$bin" --soundness-mode "$other" \
-      --trusted-params "$params/$other-trusted-params.json"
+      --trusted-params "$out/$other-trusted-params.json"
     if ! grep -q "$relabel_error" "$log"; then
       cat "$log" >&2
       echo "$relabeled failed without $relabel_error" >&2

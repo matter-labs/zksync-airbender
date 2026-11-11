@@ -2,6 +2,7 @@ use super::*;
 use prover::tests::gkr::orchestration::canonical_fixtures::{
     capture_canonical_inputs, CanonicalCircuit, CanonicalInputs, CanonicalTrace,
 };
+use prover::tests::gkr::orchestration::common::hardcoded_external_challenges;
 
 pub(super) fn default_fixture_device_allocator_block_log_size() -> u32 {
     gpu_prover_context::ProverContextConfig::default().allocator_block_log_size
@@ -83,7 +84,7 @@ fn build_input_fixture(
         .map(|ram| ram.top_bits.clone())
         .unwrap_or_default();
     assert_eq!(top_bits, committed.inits_and_teardowns_top_bits);
-    let external_challenges = circuit.fixed_external_challenges();
+    let external_challenges = hardcoded_external_challenges();
     assert_external_challenges_eq(&external_challenges, &committed.external_challenges);
 
     // Construct raw setup columns only. Their LDE and commitment run on the GPU.

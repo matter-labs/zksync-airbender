@@ -1,7 +1,6 @@
 use super::common::*;
-use crate::cs::definitions::TimestampScalar;
 use crate::cs::gkr_compiler::GKRCircuitArtifact;
-use crate::definitions::{FinalRegisterValue, MerkleTreeCap, SecurityLevel, DEFAULT_CAP_SIZE};
+use crate::definitions::{MerkleTreeCap, SecurityLevel, DEFAULT_CAP_SIZE};
 use crate::gkr::prover::prove_configured_with_gkr_with_backends;
 use crate::gkr::prover::setup::GKRSetup;
 use crate::gkr::prover::OperationMode;
@@ -12,13 +11,10 @@ use crate::gkr::witness_gen::family_circuits::{
 };
 use crate::gkr::witness_gen::oracles::UnifiedRiscvCircuitOracle;
 use crate::merkle_trees::DefaultTreeConstructor;
-use crate::merkle_trees::MerkleTreeCapVarLength;
 use crate::tests::gkr::GKRFullWitnessTrace;
 use ::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
-use common_constants::circuit_families::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use cs::gkr_circuits::ExecutorFamilyDecoderData;
 use cs::tables::TableDriver;
-use cs::utils::split_timestamp;
 use fft::Twiddles;
 use riscv_transpiler::ir::ReducedMachineDecoderConfig;
 use riscv_transpiler::replayer::{ReplayerRam, ReplayerVM};
@@ -26,93 +22,8 @@ use riscv_transpiler::vm::{Counters, ReplayBuffer};
 use riscv_transpiler::witness::data_structs::UnifiedOpcodeTracingDataWithTimestamp;
 use riscv_transpiler::witness::UnifiedDestinationHolder;
 use std::alloc::Global;
-use transcript::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
-use transcript::{Blake2sBufferingTranscript, Blake2sTranscript, Seed};
+use transcript::Blake2sTranscript;
 use worker::Worker;
-
-/// Memory/delegation PoW bits the FSV expects: `verifier_common::memory_delegation_pow_bits`
-/// = `security_bits - (BABYBEAR_EXT4_SIZE_LOG2 - MAX_PERMUTATION_ELEMENTS_LOG2 - 2)`
-/// = `security_bits - (123 - 40 - 2)`. `prover` cannot depend on `verifier_common` (it is the
-/// other way round), so this mirrors the derivation.
-#[allow(dead_code)]
-pub(super) const fn memory_delegation_pow_bits(level: SecurityLevel) -> u32 {
-    level.security_bits().saturating_sub(123 - 40 - 2) as u32
-}
-
-#[allow(dead_code)]
-fn flatten_merkle_cap(cap: &MerkleTreeCapVarLength) -> Vec<u32> {
-    let mut result = Vec::new();
-    for cap_element in cap.cap.iter() {
-        result.extend_from_slice(cap_element);
-    }
-    result
-}
-
-/// Memory-transcript seed for the unified circuit. Must match
-/// `verify_full_statement_for_unified_circuit`'s absorb order exactly (and the
-/// `Blake2sBufferingTranscript::<true>` reduced-rounds setting it uses).
-#[allow(dead_code)]
-pub(super) fn fs_transform_for_unified_circuit(
-    register_final_values: &[FinalRegisterValue],
-    final_pc: u32,
-    final_timestamp: TimestampScalar,
-    unified_memory_cap: &MerkleTreeCapVarLength,
-    inits_and_teardowns_top_bits: &[u32],
-    delegation_memory_caps: &[(u32, MerkleTreeCapVarLength)],
-) -> Seed {
-    let mut transcript = Blake2sBufferingTranscript::<true>::new();
-
-    // registers
-    let mut registers = Vec::with_capacity(32 + 32 * 2);
-    for register in register_final_values.iter() {
-        registers.push(register.value);
-        let (low, high) = split_timestamp(register.last_access_timestamp);
-        registers.push(low);
-        registers.push(high);
-    }
-    transcript.absorb(&registers);
-
-    // final pc + timestamp
-    let (ts_low, ts_high) = split_timestamp(final_timestamp);
-    let mut final_pc_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
-    final_pc_buffer[0] = final_pc;
-    final_pc_buffer[1] = ts_low;
-    final_pc_buffer[2] = ts_high;
-    transcript.absorb(&final_pc_buffer);
-
-    // single reduced-machine family with one instance (no separate inits/teardowns section —
-    // it is folded into the unified circuit). Per instance the FSV absorbs a block holding the
-    // family idx + this instance's inits/teardowns `top_bits`, then the memory caps — mirroring
-    // `trace_and_split::fs_transform_unified_for_permutation_argument`. Binding `top_bits` into
-    // the seed (not just the memory columns) is the soundness fix for multi-instance.
-    let mut family_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
-    family_buffer[0] = REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32;
-    assert!(inits_and_teardowns_top_bits.len() < BLAKE2S_BLOCK_SIZE_U32_WORDS);
-    family_buffer[1..][..inits_and_teardowns_top_bits.len()]
-        .copy_from_slice(inits_and_teardowns_top_bits);
-    transcript.absorb(&family_buffer);
-    transcript.absorb(&flatten_merkle_cap(unified_memory_cap));
-
-    assert_eq!(
-        transcript.get_current_buffer_offset(),
-        BLAKE2S_BLOCK_SIZE_U32_WORDS
-    );
-
-    // delegations, in the FSV's DELEGATION_CIRCUITS_SETUP_PARAMS order (the caller already
-    // collected them in that order).
-    for (delegation_type, cap) in delegation_memory_caps.iter() {
-        let mut buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
-        buffer[0] = *delegation_type;
-        transcript.absorb(&buffer);
-        transcript.absorb(&flatten_merkle_cap(cap));
-        assert_eq!(
-            transcript.get_current_buffer_offset(),
-            BLAKE2S_BLOCK_SIZE_U32_WORDS
-        );
-    }
-
-    transcript.finalize()
-}
 
 /// Inits/teardowns columns of the unified circuit, one `(top_bits, columns)` group.
 pub type UnifiedInitsAndTeardowns = (

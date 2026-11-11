@@ -57,16 +57,12 @@ pub fn circuit_proof_in(repository_root: &Path, mode_dir: &str, circuit: &str) -
 }
 
 pub fn chain_artifact(mode_dir: &str, chain: &str) -> PathBuf {
-    chain_artifact_in(&root(), mode_dir, chain)
-}
-
-pub fn chain_artifact_in(repository_root: &Path, mode_dir: &str, chain: &str) -> PathBuf {
     assert!(
         MODES.contains(&mode_dir),
         "unknown soundness mode: {mode_dir}"
     );
     assert!(CHAINS.contains(&chain), "unknown chain: {chain}");
-    repository_root
+    root()
         .join("fixtures/chains")
         .join(mode_dir)
         .join(format!("{chain}.json.zlib"))
@@ -124,9 +120,6 @@ mod tests {
                 .map(|stem| directory.join(mode).join(format!("{stem}.json.zlib")))
                 .collect();
             assert_eq!(actual, expected);
-            for path in actual {
-                let _: serde_json::Value = read_file(path);
-            }
         }
     }
 

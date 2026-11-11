@@ -72,11 +72,3 @@ pub fn all_fixtures() -> Vec<Fixture> {
     fixtures.extend(retained_fixtures());
     fixtures
 }
-
-#[allow(dead_code)]
-pub fn fixture(name: &str) -> Fixture {
-    all_fixtures()
-        .into_iter()
-        .find(|fixture| fixture.name == name)
-        .unwrap_or_else(|| panic!("no calibration fixture {name}"))
-}

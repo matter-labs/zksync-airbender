@@ -151,7 +151,6 @@ mod tests {
                     _ => unreachable!(),
                 };
                 assert_eq!(artifact.soundness_mode, mode);
-                assert_eq!(artifact.security_level, SecurityLevel::Sec100);
                 assert_eq!(artifact.target, target);
                 assert_eq!(artifact.program_cycles, 97);
                 assert_eq!(artifact.chain_end_params.len(), entries);

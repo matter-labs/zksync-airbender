@@ -29,7 +29,7 @@ generated layouts. The producer reads each circuit's generated Sec100 config
 for its mode, uses every available core with in-memory WHIR oracles, and
 writes one zlib stream of typed compact JSON without a trailing newline.
 Proof bytes depend on neither the thread count nor the oracle storage mode.
-Each mode emits exactly 14 files and rejects duplicate writes.
+Each mode emits exactly 14 files.
 
 `proof_fixtures` pins `flate2` and its `miniz_oxide` compressor because the
 currency gates compare complete compressed files. Bumping either version is a
@@ -68,25 +68,23 @@ tests and have separate forge producers. The canonical producer does not refresh
 
 ## Currency and GPU agreement
 
-`fixture_build` builds the canonical producer test executable and, with the
-`release-thin` profile, the CLI, `fixture-codec` and the `cli_smoke_verify` test
-executables once. `fixture_currency` runs six independent CPU jobs over
-(mode, stage). Each runs the script with `--check`, writes into a temporary root,
-and compares complete compressed files with the committed outputs. Every child
-reads its committed parent, including when several stages are checked in one
-invocation. A stale parent's own stage fails even when a dependent stage passes.
-Failed checks retain their temporary outputs and logs and print their location.
-The `tests` job checks the exact file inventory, decoding and typed byte
-round-trips, then runs native verifier tests.
+`fixtures/regenerate.sh --check` writes into a temporary root and compares
+complete compressed files with the committed outputs. Every child reads its
+committed parent, including when several stages are checked in one invocation.
+A stale parent's own stage fails even when a dependent stage passes. Failed
+checks retain their temporary outputs and logs and print their location.
+With `FIXTURE_BACKEND=gpu` the chain stages are proved on GPU and compared with
+the same committed CPU artifacts; the GPU `canonical_*` tests compare GPU
+circuit proofs with the committed bytes. Whole-program `*_cpu_gpu_proof_diff`
+diagnostics remain outside this canonical circuit set. CI runs the CPU checks
+in `fixture_currency` and the GPU checks in the GPU workflow's `chains` shard.
 
-For downloaded executables, set `FIXTURE_CLI`, `FIXTURE_CANONICAL_PRODUCER`, and
-`FIXTURE_CODEC` to their paths. CI requires the executables needed by the selected
-stage and invokes no Cargo commands during a currency check. Developers may omit
-them to build locally.
-With `FIXTURE_TRUSTED_PARAMS` set to a directory, every `verify`, including the
-smoke checks, passes the trusted params kept there and computes missing ones
-once. Without it, `verify` derives them from the program, the path the CPU
-currency jobs cover.
+For prebuilt executables, set `FIXTURE_CLI`, `FIXTURE_CANONICAL_PRODUCER`, and
+`FIXTURE_CODEC` to their paths; the script builds any that are unset with Cargo.
+With `FIXTURE_TRUSTED_PARAMS` set to a directory, the recipe's `verify` of each
+artifact passes the trusted params kept there and computes a missing file once.
+Without it, as in the CPU currency jobs, that `verify` derives them from the
+program. The smoke checks compute their own trusted params and always pass them.
 
 `AB_TEST_ARTIFACT_ROOT` selects the repository containing layouts, configs,
 workloads, committed parents, and expected outputs. `PROOF_FIXTURES_OUTPUT_ROOT`
@@ -94,16 +92,6 @@ is a separate repository-shaped root used only by the canonical producer's
 writes. The recipe sets it for `--check` and sets `FSV_DIR` to the selected
 repository's tracked guests; neither input location is inferred from the output
 root.
-
-The GPU workflow runs `cpu_canonical_matrix_inventory`, which checks the GPU
-test registry against the same circuit/mode registry, then runs the 28 listed
-`canonical_*` tests. Each case rebuilds the raw recipe, checks the current
-circuit's memory caps independently, and compares two queued GPU proofs with
-the original committed bytes. Both modes retain the
-allocator-baseline, nonce-shape and standalone i/t checks.
-Native FSV tests verify both unified chain artifacts in each soundness mode. Whole-program `*_cpu_gpu_proof_diff` diagnostics
-remain outside this canonical circuit set.
-The GPU workflow also byte-compares the `base_unified` and `unrolled` stages in both modes with the committed CPU artifacts using `FIXTURE_BACKEND=gpu`.
 
 ## Chain artifacts
 
@@ -115,16 +103,18 @@ paths inside `Variable at ...` labels.
 
 | Artifact | Input | Additional unrolled layers | Chain entries |
 | --- | --- | --- | --- |
-| `base` | program | unset | 1 |
+| `base` | program | not read | 1 |
 | `unified` | `base` | 0 | 3 |
 | `unrolled` | `base` | 1 | 2 |
 | `unrolled_unified` | `unrolled` | 0 | 4 |
 
+The `prover_pipeline` test `committed_chain_encoding` checks each committed
+artifact's target, chain entries and `program_cycles`.
+
 Write mode publishes each parent before its child. Check mode always reads the
-committed parents and compares only its own stage's outputs. `base_unified` also
-runs the smoke script's wrong-mode and relabel checks on the existing artifacts.
-The recipe sets `RECURSION_UNIFIED_SWITCH_CYCLES=52000000`; forced layer counts
-bypass that threshold for the chain continuations.
+committed parents and compares only its own stage's outputs. On the CPU backend
+`base_unified` also runs the smoke script's wrong-mode and relabel checks on the
+existing artifacts.
 
 | Fixture | Consumers |
 | --- | --- |
@@ -150,19 +140,5 @@ again. The first emission requires the rebuilt guest to accept the old chain.
 If it rejects it, regenerate the chains before emitting; failed traces never
 supply a table. The table's guest digest remains pinned.
 
-Canonical circuit proofs determine per-proof prices through transient prefix
-streams stopped at the first PoW read. Each guest's accepted `base` or `unrolled`
-chain supplies its complete tail and observed spread. The intercept fit uses
-only the main three-copy prefix and chain rows; one-copy, RISC-V-only and
-delegation-only streams are additional checks. A singleton chain span is
-excluded only when its region ends at PoW, not when it is the last active
-proof. Multi-proof regions contribute only interior spans.
-
-The existing family, delegation and total acceptance budgets are unchanged.
-Chain totals participate in fitting the intercept, so the chains are not fully
-held out. The canonical i&t price includes its region's post-loop constant;
-multiple-i&t workloads are not reproduced by these fixtures. Retained corpora
-remain optional acceptance inputs through `COST_MODEL_FIXTURE_DIR`; emission
-never reads that variable. The recursion fixed-point test still needs such a
-corpus and stays ignored. The empirical envelope does not guarantee accuracy
-on unseen workloads.
+The prefix tracing, intercept fit and acceptance limits are described in
+[`cost_model_trace.rs`](../full_statement_verifier/tests/cost_model_trace.rs).

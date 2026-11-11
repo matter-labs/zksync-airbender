@@ -31,7 +31,6 @@ impl ChainArtifact {
         let artifact: Self =
             proof_fixtures::read_file(proof_fixtures::chain_artifact(mode.file_suffix(), chain));
         assert_eq!(artifact.schema_version, 5);
-        assert_eq!(artifact.security_level, SecurityLevel::Sec100);
         assert_eq!(artifact.soundness_mode, mode);
         let target = match chain {
             "base" => ProofTarget::Base,

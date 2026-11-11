@@ -208,31 +208,13 @@ jobs:
           done
           exit "$failed"
 
-      - name: Trusted params of the shard's program
-        shell: bash
-        run: |
-          export FSV_DIR="$GITHUB_WORKSPACE/tools/gkr_verifier/full_statement_verifiers"
-          cli=./zksync-airbender-gpu/cli
-          chmod +x "$cli"
-          case "${{ matrix.shard }}" in
-            chains) program=basic_fibonacci ;;
-            smoke) program=hashed_fibonacci ;;
-          esac
-          mkdir -p "trusted-params/$program"
-          for mode in pessimistic-conjecture ethproofs-soundcalc; do
-            "$cli" trusted-params --bin "examples/$program/app.bin" --soundness-mode "$mode" \
-              --output "trusted-params/$program/$mode-trusted-params.json"
-          done
-
       - name: Program-proof chain parity in both soundness modes
         if: matrix.shard == 'chains'
         shell: bash
         env:
-          CI: "true"
           FIXTURE_BACKEND: gpu
           RUST_MIN_STACK: 1073741824
         run: |
-          export AB_TEST_ARTIFACT_ROOT="$GITHUB_WORKSPACE"
           export FIXTURE_CLI="$GITHUB_WORKSPACE/zksync-airbender-gpu/cli"
           export FIXTURE_CODEC="$GITHUB_WORKSPACE/zksync-airbender-gpu/fixture-codec"
           export FIXTURE_TRUSTED_PARAMS="$GITHUB_WORKSPACE/trusted-params/basic_fibonacci"
@@ -255,7 +237,6 @@ jobs:
           INPUT_FILE: output/hashed_fibonacci_input.txt
           DIRECT: "1"
           EXPECT_UNROLLED: "1"
-          TRUSTED_PARAMS_DIR: trusted-params/hashed_fibonacci
         run: |
           chmod +x zksync-airbender-gpu/cli
           mkdir -p output
@@ -268,8 +249,8 @@ jobs:
         continue-on-error: true
         run: nvidia-smi --query-gpu=index,uuid,serial,pci.bus_id,ecc.errors.corrected.volatile.total,ecc.errors.uncorrected.volatile.total,ecc.errors.uncorrected.aggregate.total --format=csv
 
-  # Keep branch protection tied to one stable GPU check name even if we
-  # split GPU coverage across multiple jobs or matrix entries later on.
+  # Keep branch protection tied to one stable GPU check name while GPU
+  # coverage spans several jobs and matrix shards.
   gpu-checks:
     name: gpu-checks
     runs-on: ubuntu-latest
