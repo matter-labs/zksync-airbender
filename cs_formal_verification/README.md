@@ -126,7 +126,10 @@ Changing the calibration file or the toolchain needs a new reference time measur
 used: under parallel load it is off by 2–4×, and a module that elaborates in parallel finishes in less wall time
 than it costs. Load only inflates CPU time (efficiency cores, shared caches), so a module under budget under load
 is under budget alone. Three stages, each paying only for what the one before could not settle:
-1. During `verify.sh`'s `lake build` a sampler reads each compiling module's CPU time from `ps` every 0.5 s.
+1. During `verify.sh`'s `lake build` a sampler reads each compiling module's CPU time from `ps` every 0.5 s and
+   records it with Lake's input hash once Lake has written the module's trace (a failed compile records nothing).
+   `module_budget.py watch` runs the same sampler beside any other `lake build` (a development wrapper around `lake`
+   starts it; CI does not), so modules compiled by narrow builds need no second compile in stage 2.
 2. Every target module is looked up in a ledger keyed by module and Lake's input hash (`depHash`, which covers the
    source and every import): an entry is valid exactly as long as Lake would not rebuild the module. A module with
    no entry (restored from Lake's artifact cache, or built outside `verify.sh`) is compiled again outside Lake,
@@ -149,7 +152,7 @@ its Lake trace (`.lake/build/lib/lean/<Module>.trace`), also when Lake only repl
 earlier build is checked too. A module restored from Lake's artifact cache has no messages in its trace: it passes if
 the ledger beside the budget ledger (`<LAKE_CACHE_DIR>.module-warnings.tsv`, else `lean/.lake/module-warnings.tsv`)
 records its input hash as compiled without warnings, else it is compiled again outside Lake (the budget check records
-the modules it compiles). Lake's own warnings about our files (they are in no trace) are read from the build logs.
+the modules it compiles; its stage-1 sampler records, from the fresh trace, the modules Lake compiled without warnings). Lake's own warnings about our files (they are in no trace) are read from the build logs.
 Warnings in the dependencies (Mathlib, Clean, lean-sail) and in the generated Sail model are not ours and not checked.
 
 Fix a warning; do not disable a linter. Where a fix is impossible or would change a statement, a

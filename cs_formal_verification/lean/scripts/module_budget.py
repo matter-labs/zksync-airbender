@@ -10,7 +10,9 @@ caches) only inflates it, so a module under budget under load is under budget al
 
 Three stages, each paying only for what the previous one could not settle:
   1. `build <lake build args>`: runs `lake build` while sampling (ps, every 0.5 s) the CPU time of each `lean`
-     process compiling one of our files. Free: the build runs anyway.
+     process compiling one of our files. Free: the build runs anyway. `watch` samples the same way beside a `lake
+     build` started by someone else (a development wrapper around `lake`; not CI), so narrow builds fill the ledger.
+     A row is written only for a module whose trace Lake rewrote after its process was first seen.
   2. `check`: every module of the verify.sh targets (import closure of the lakefile's libraries) is looked up in
      a ledger keyed by (module, Lake input hash `depHash`). The input hash covers the source and every import, so
      an entry is valid exactly as long as Lake would not rebuild the module. A module without an entry (restored
@@ -29,6 +31,7 @@ Usage (from cs_formal_verification/lean; verify.sh runs both):
   scripts/module_budget.py build CleanCore CleanEquivalence Human Slop
   scripts/module_budget.py check [--jobs N] [--table FILE]
   scripts/module_budget.py time <Module>...   (one module alone, no ledger: before/after a change)
+  scripts/module_budget.py watch <stop file> <pid>   (beside a `lake build`: until the file exists or pid exits)
 Environment: MODULE_BUDGET_S (default 30), MODULE_BUDGET_LEDGER (ledger path), MODULE_BUDGET_JOBS (default 4).
 """
 
@@ -209,9 +212,12 @@ def cpu_secs(t: str) -> float:
     return d * 86400 + s
 
 
-def sample(stop: threading.Event, seen: dict[str, float]) -> None:
+def sample(stop: threading.Event, seen: dict[str, float], first: dict[str, float]) -> None:
+    """Every 0.5 s: the CPU time (`ps` TIME: user + sys, all threads) of each `lean` process compiling one of our
+    files, the largest value read per file, and when the process was first seen."""
     roots = tuple(str(ROOT / d) + "/" for d in SRC_DIRS)
     while not stop.is_set():
+        now = time.time()
         try:
             ps = subprocess.run(["ps", "-axo", "time=,command="], capture_output=True, text=True).stdout
         except OSError:
@@ -223,33 +229,89 @@ def sample(stop: threading.Event, seen: dict[str, float]) -> None:
             src = next((a for a in f[2:] if a.endswith(".lean")), None)
             if src and src.startswith(roots):
                 seen[src] = max(seen.get(src, 0.0), cpu_secs(f[0]))
+                first.setdefault(src, now)
         stop.wait(0.5)
+
+
+def record_compiled(seen: dict[str, float], first: dict[str, float]) -> int:
+    """Ledger rows for the modules sampled while Lake compiled them: CPU rows (kind `build`) and, when Lean reported no
+    warning or error, warnings-ledger rows (scripts/no_warnings.py reads those for modules other worktrees restore from
+    the artifact cache). Only a module whose trace Lake wrote after its `lean` process was first seen counts: a compile
+    that failed or was interrupted leaves the previous trace, whose input hash is not the one compiled."""
+    rows, clean = [], []
+    for src, cpu in seen.items():
+        mod = mod_of(Path(src))
+        if not mod:
+            continue
+        t = BUILD / "lib" / "lean" / Path(*mod.split(".")).with_suffix(".trace")
+        try:
+            written = t.stat().st_mtime
+            d = json.loads(t.read_text())
+        except (OSError, ValueError):
+            continue
+        h = d.get("depHash")
+        if not h or d.get("synthetic") or written < first[src]:
+            continue
+        rows.append((mod, h, cpu, "build"))
+        if not any(e.get("level") in ("warning", "error") for e in d.get("log") or []):
+            clean.append((mod, h))
+    if rows:
+        ledger_append(rows)
+    if clean:
+        warnings_ledger_append(clean)
+    return len(rows)
 
 
 def cmd_build(args: list[str]) -> int:
     seen: dict[str, float] = {}
+    first: dict[str, float] = {}
     stop = threading.Event()
-    th = threading.Thread(target=sample, args=(stop, seen), daemon=True)
+    th = threading.Thread(target=sample, args=(stop, seen, first), daemon=True)
     th.start()
     log = ROOT / ".lake" / f"verify-build-{args[0] if args else 'default'}.log"
+    # MODULE_BUDGET_SAMPLING: a development `lake` wrapper that samples builds itself (`watch`) leaves this one alone
+    env = dict(os.environ, MODULE_BUDGET_SAMPLING="1")
     with open(log, "w") as f:
-        rc = subprocess.run(["lake", "build", *args], stdout=f, stderr=subprocess.STDOUT, cwd=ROOT).returncode
+        rc = subprocess.run(["lake", "build", *args], stdout=f, stderr=subprocess.STDOUT, cwd=ROOT, env=env).returncode
     stop.set()
     th.join()
-    rows = []
-    for src, cpu in seen.items():
-        mod = mod_of(Path(src))
-        h = dep_hash(mod) if mod else None
-        if mod and h:
-            rows.append((mod, h, cpu, "build"))
-    if rows:
-        ledger_append(rows)
+    n = record_compiled(seen, first)
     tail = log.read_text().splitlines()[-1:] or [""]
     print(tail[0])
-    print(f"budget: {len(rows)} modules compiled and timed (log: {log.relative_to(ROOT)})")
+    print(f"budget: {n} modules compiled and timed (log: {log.relative_to(ROOT)})")
     if rc != 0:
         print("\n".join(l for l in log.read_text().splitlines() if "error" in l)[-4000:])
     return rc
+
+
+def cmd_watch(stop_file: str, pid: int) -> int:
+    """Stage 1 for a `lake build` run outside verify.sh: a development wrapper around `lake` starts this beside the
+    build (never in CI). Samples like `build` until `stop_file` exists or process `pid` (the wrapper) is gone, then
+    records what Lake compiled. Never fails the build: errors are reported and ignored."""
+    seen: dict[str, float] = {}
+    first: dict[str, float] = {}
+    stop = threading.Event()
+    th = threading.Thread(target=sample, args=(stop, seen, first), daemon=True)
+    th.start()
+
+    def running() -> bool:
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return False
+        return not os.path.exists(stop_file)
+
+    try:
+        while running():
+            time.sleep(0.5)
+        stop.set()
+        th.join()
+        n = record_compiled(seen, first)
+        if n:
+            print(f"budget: {n} modules compiled and timed (ledger {ledger_path()})", file=sys.stderr)
+    except Exception as e:  # noqa: BLE001
+        print(f"budget: not recorded: {e!r}", file=sys.stderr)
+    return 0
 
 
 # ---------------------------------------------------------------- warnings (scripts/no_warnings.py)
@@ -480,6 +542,8 @@ def cmd_time(mods: list[str]) -> int:
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "build":
         return cmd_build(sys.argv[2:])
+    if len(sys.argv) > 1 and sys.argv[1] == "watch":
+        return cmd_watch(sys.argv[2], int(sys.argv[3]))
     if len(sys.argv) > 1 and sys.argv[1] == "time":
         return cmd_time(sys.argv[2:])
     ap = argparse.ArgumentParser()
