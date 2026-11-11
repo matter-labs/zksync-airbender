@@ -1,20 +1,29 @@
 module
-public import Slop.NonVacuous.Blake2RoundSpan.Span
+public import Slop.NonVacuous.Blake2RoundSpan.Steps
+public import Slop.NonVacuous.Blake2RoundSpan.Row
 public import Slop.NonVacuous.SequentialBlocks
+public import Human.Helpers.Delegation.NativeWindows
+public import Human.Helpers.Delegation.Operations
+public import Human.Circuits.Keccak.Tables.Controller
 
 @[expose] public section
 
 /-! A complete ten-round extended-control Blake2s span (flags 0) from any start memory `m0` at any first invocation
     clock `t0 ≡ 1 (mod 4)` satisfying the span invariant before round 0 (`Start`). Row `k` is the honest round-`k` row
-    (`Blake2RoundSpan/Block.lean`) read from the memory after rows `0 … k-1` at invocation clock `t0 + 4 k`; the rows
-    are a recursion over `k`, and every fact is proven by induction from the one-row lemmas (`Blake2RoundSpan/Steps.lean`),
-    as in `Blake2RoundSpan/Span.lean` (the seed at clock 1) and as `HashCallers/Span.lean` shifts the G span; the
-    caller trace starts later, after its preparation row. -/
+    (`Block.lean`) read from the memory after rows `0 … k-1` at invocation clock `t0 + 4 k`; the rows are a recursion
+    over `k`, and every fact is proven by induction from the one-row lemmas (`Steps.lean`), as `Blake2GSpan/From.lean`
+    for the G span. The pilot witness (`Span.lean`) is the span from the seed at clock 1; the caller trace starts
+    later, after its preparation row. -/
 
-namespace Airbender.NonVacuous.RoundCallers
-open Arithmetic Trace Blake2GSpan Blake2RoundSpan
+namespace Airbender.NonVacuous.Blake2RoundSpan
+open Arithmetic Trace Blake2GSpan
 
 local notation "P" => babyBearModulus
+
+/-- The round of span position `k`. -/
+def roundOf (k : Nat) : Fin 10 := ⟨k % 10, Nat.mod_lt _ (by decide)⟩
+
+theorem roundOf_eq {k : Nat} (hk : k < 10) : roundOf k = ⟨k, hk⟩ := Fin.ext (Nat.mod_eq_of_lt hk)
 
 section
 variable (m0 : Memory) (t0 : Nat)
@@ -39,8 +48,8 @@ def rowsFrom (n : Nat) : List (Delegation.Row P) := (List.range n).map (rowFrom 
 noncomputable def workersFrom : Delegation.MemoryData P where
   setup := Delegation.modeledSetup Keccak.Controller.rows
   rows := rowsFrom m0 t0 10
-  initial := Blake2RoundSpan.cells.map m0
-  terminal := Blake2RoundSpan.cells.map (memFrom m0 t0 10)
+  initial := cells.map m0
+  terminal := cells.map (memFrom m0 t0 10)
 
 end
 
@@ -111,7 +120,7 @@ theorem blocks_from (start : Start m0 t0) :
   rw [roundOf_eq small]
   exact edges (inv_from start k (by omega)) small
 
-theorem inside_from : ∀ step ∈ spanSteps m0 t0, step.1 ∈ Blake2RoundSpan.cells := by
+theorem inside_from : ∀ step ∈ spanSteps m0 t0, step.1 ∈ cells := by
   intro step member
   obtain ⟨k, -, current⟩ := List.mem_flatMap.mp member
   rw [← keys (memFrom m0 t0 k) (t0 + 4 * k) (roundOf k)]
@@ -126,6 +135,14 @@ theorem row_mem_from {n : Nat} {row : Delegation.Row P} (member : row ∈ rowsFr
 theorem invocation_raw (m0 : Memory) (t0 k : Nat) :
     rawPair (rowFrom m0 t0 k).assignment (rowFrom m0 t0 k).columns.invocation =
       (((t0 + 4 * k : Nat) : ZMod P), ((0 : Nat) : ZMod P)) := rfl
+
+/-- The invocation clock of row `k`. -/
+theorem invocation_from (start : Start m0 t0) (k : Nat) (small : k ≤ 10) :
+    decodeTimestamp (rowFrom m0 t0 k).assignment (rowFrom m0 t0 k).columns.invocation = ⟨t0 + 4 * k, 0⟩ := by
+  have room := start.room
+  show (⟨(((t0 + 4 * k : Nat) : ZMod P)).val, (((0 : Nat) : ZMod P)).val⟩ : Timestamp) = _
+  rw [ZMod.val_natCast_of_lt (by simp only [timestampBase] at room; unfold babyBearModulus; omega), Nat.cast_zero,
+    ZMod.val_zero]
 
 theorem write_time_from (start : Start m0 t0) (k : Nat) (small : k ≤ 10) :
     (rowFrom m0 t0 k).writeTime = t0 + 4 * k + 2 := by
@@ -162,6 +179,23 @@ theorem execute_from : ∀ row ∈ (workersFrom m0 t0).rows, row.assignment row.
 
 theorem calls_from : (workersFrom m0 t0).rows.length = 10 := by simp [workersFrom, rowsFrom]
 
+theorem clock_room_from (start : Start m0 t0) : ∀ row ∈ (workersFrom m0 t0).rows,
+    (decodeTimestamp row.assignment row.columns.invocation).lo + 2 < timestampBase := by
+  intro row member
+  obtain ⟨k, small, rfl⟩ := row_mem_from member
+  have room := start.room
+  rw [invocation_from start k (by omega)]
+  show t0 + 4 * k + 2 < timestampBase
+  omega
+
+theorem invocation_high_from (start : Start m0 t0) : ∀ row ∈ (workersFrom m0 t0).rows,
+    (decodeTimestamp row.assignment row.columns.invocation).hi < timestampBase := by
+  intro row member
+  obtain ⟨k, small, rfl⟩ := row_mem_from member
+  rw [invocation_from start k (by omega)]
+  show 0 < timestampBase
+  decide
+
 /-- No row writes at or before a cut below the first write. -/
 theorem prefix_from (start : Start m0 t0) {lower : Nat} (below : lower < t0 + 2) :
     (workersFrom m0 t0).prefixRows lower = [] := by
@@ -182,4 +216,4 @@ theorem window_from (start : Start m0 t0) {lower upper : Nat} (below : lower < t
   simp only [decide_eq_true_eq]
   omega
 
-end Airbender.NonVacuous.RoundCallers
+end Airbender.NonVacuous.Blake2RoundSpan

@@ -9,16 +9,18 @@ public import Human.Trace.UnifiedReduced.RVPreparedRoundWindows
 
 /-! A prepared unified caller trace issuing a complete extended-round span (flags 0): `lui x12, 0x80` at PC 0 (clock
     4, the preparation `hashPreparation (.blakeRound 0)`, x12 = 0x80000), then ten callers `csrrw x0, 0x7C7, x0` at
-    PC `4 + 4 k` and clock `8 + 4 k`, fulfilled by the ten-round span of `Span.lean` invoked at `9 + 4 k`, whose first
-    round reads x12 as the preparation wrote it. One joint memory permutation over x0 and the span's cells. The witness
-    that the assumptions of the prepared extended-round caller claims (`Human/Trace/UnifiedReduced/RVCallerTheorems.lean`)
-    can be met, with the window and controller region `(8, 48]`. The one preparation row is checked by one kernel
+    PC `4 + 4 k` and clock `8 + 4 k`, fulfilled by the ten-round span of `Blake2RoundSpan/From.lean` invoked at
+    `9 + 4 k`, whose first round reads x12 as the preparation wrote it. One joint memory permutation over x0 and the
+    span's cells. The witness that the assumptions of the prepared extended-round caller claims
+    (`Human/Trace/UnifiedReduced/RVCallerTheorems.lean`) can be met, with the window and controller region `(8, 48]`. The one preparation row is checked by one kernel
     evaluation (`Slop/WitnessCheck.lean`); the callers and the span are generic (`FamilyCallers/Block.lean`,
-    `Span.lean`). -/
+    `Blake2RoundSpan/From.lean`). -/
 
 namespace Airbender.NonVacuous.RoundCallers.Prepared
 open Trace UnifiedReduced.Caller Verification FamilyCallers.Block
 open HashCallers (x0Token x0Steps x0Edges x0_run previousOf previous_chain callerPCs)
+open Blake2RoundSpan (Start inv_mono inv_control workersFrom spanSteps row_mem_from write_time_from accepted_from
+  execute_from family_from calls_from prefix_from window_from)
 
 local notation "P" => babyBearModulus
 

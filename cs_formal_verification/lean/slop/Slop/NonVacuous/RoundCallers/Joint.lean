@@ -1,5 +1,5 @@
 module
-public import Slop.NonVacuous.RoundCallers.Span
+public import Slop.NonVacuous.Blake2RoundSpan.Span
 public import Slop.NonVacuous.FamilyCallers.Block
 
 @[expose] public section
@@ -12,6 +12,7 @@ public import Slop.NonVacuous.FamilyCallers.Block
 
 namespace Airbender.NonVacuous.RoundCallers
 open Trace
+open Blake2RoundSpan (Start workersFrom spanSteps rowsFrom inside_from blocks_from invocation_raw)
 
 local notation "P" => babyBearModulus
 
