@@ -9,6 +9,11 @@ admitted.
 
 ## Checked results
 
+Every claim here also has a `…SatisfiableClaim` beside it: its premises, restated, can be met with the conclusion's
+domain non-empty (a row, a tracked RAM cell, a teardown tuple); the whole-trace shape's is `Trace.RVTraceSatisfiable`.
+Witnesses: [Satisfiable/Pooled](../../../slop/Slop/Final/Trace/Satisfiable/Pooled.lean) (booted pooled and unified traces seeded by an inits/teardowns
+instance, one-row family traces).
+
 [`rv_pooled_native_soundness`](../../../slop/Slop/Final/Trace/RVSoundness.lean) proves that the six admitted ordinary
 families, booted from the public `RV.State`, are a run of `RV.run` reaching the native final PC and
 tracked cells. The RAM seeds are the inits/teardowns Init tokens (`RVPooledBootInputs`), the modeled

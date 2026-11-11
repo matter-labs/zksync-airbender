@@ -8,6 +8,9 @@ establish full mixed instruction retirement.
 
 ## Checked results
 
+Every caller claim also has a `…SatisfiableClaim` beside it, witnessed by caller traces with matched workers (a bigint
+call, an ordinary preparation row, a complete 56-call G span) in [Satisfiable/Callers](../../../../slop/Slop/Final/Trace/Satisfiable/Callers.lean).
+
 [`rv_requests_soundness` and `rv_worker_schedule_soundness`](../../../../slop/Slop/Final/Trace/Delegation/RVCallerTheorems.lean) bind
 public caller decoding (`RV.decode` to `.delegate k`) to the request permutation and derive unique
 issued-worker placement inside the caller's four-tick cycle. Zero-clock workers

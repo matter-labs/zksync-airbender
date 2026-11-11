@@ -8,6 +8,10 @@ instruction or validating its full CSR ABI.
 
 ## Checked results
 
+Every worker claim also has a `…SatisfiableClaim` beside it, witnessed by a one-row pool (operation claims) or a complete
+span (the 56-call G, 10-round extended BLAKE, 649-call Keccak special5 and 361-call split Keccak requests), whose honest
+rows are proven to satisfy every constraint generically ([Satisfiable/Blake2G](../../../../slop/Slop/Final/Trace/Satisfiable/Blake2G.lean)).
+
 All four native worker families have selected reference effects on actual RV
 port reads/writes in initialized shared memory (RAM at every address, shadow RAM below `ROM_END` included); operand/address bounds are derived.
 The hash results additionally bind complete initial/final blocks or lanes and

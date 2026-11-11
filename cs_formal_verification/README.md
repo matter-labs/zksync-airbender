@@ -91,6 +91,11 @@ stream), [RV32.lean](lean/human/Human/ISA/RV32.lean) (`RV.step`, `RV.run`) and
 test vectors, and [DelegationRuns.lean](lean/human/Human/ISA/DelegationRuns.lean) states what the delegation call runs compute.
 The run claims, the Sail equivalence claims and the per-row circuit claims (`Trace.RVRowClaim`) also state that their
 assumptions can be met (non-vacuity, [Lean strategies](docs/shared/lean-strategies.md) 3.3); the witnesses are in `slop/`.
+Every other trace, worker and caller claim has a separate statement `…SatisfiableClaim` next to it: the claim's premises,
+restated, hold jointly for some data with the conclusion's domain non-empty (a row, a caller, a worker row in the window,
+a complete hash span). Witnesses in `slop/Slop/NonVacuous/`, final theorems in `slop/Slop/Final/Trace/Satisfiable/`;
+[Satisfiable.lean](lean/test/Checks/Satisfiable.lean) applies each claim to its witness, which type-checks only if the
+restated premises are exactly the claim's.
 
 The official Sail RISC-V model (pins in [PINS.md](sail/PINS.md)), generated to Lean by [regen.sh](sail/regen.sh) into
 `lean/sail-rv32/SailRV32/`, is used only to justify the spec. The [equivalence leaf](lean/human/Human/ISA/Sail/Theorems.lean)

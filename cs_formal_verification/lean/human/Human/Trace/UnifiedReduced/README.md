@@ -8,6 +8,9 @@ mixed execution with delegation callers remains a separate obligation.
 
 ## Checked results
 
+Every unified claim also has a `…SatisfiableClaim` beside it: booted traces, caller traces with LUI/ADDI preparation
+rows and complete hash spans in [Satisfiable/UnifiedCallers](../../../../slop/Slop/Final/Trace/Satisfiable/UnifiedCallers.lean).
+
 The ordinary claim is [RVTheorems](RVTheorems.lean); the `Caller.*` claims are in
 [RVCallerTheorems](RVCallerTheorems.lean). Proofs are in `slop/Slop/Final/Trace/UnifiedReduced/`.
 
