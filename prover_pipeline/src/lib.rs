@@ -14,7 +14,8 @@
 //!
 //!   base (unrolled, full-unsigned ISA)
 //!   → unrolled recursion layers (reduced ISA, fsv verifier binaries) while the
-//!     estimated verifier cost stays at/above `unified_switch_cycles()`
+//!     estimated verifier cost stays at/above `unified_switch_cycles()`, or exactly
+//!     `RECURSION_UNROLLED_LAYERS` additional layers per invocation when set
 //!   → bridge (the unrolled verifier proved in UNIFIED machine mode)
 //!   → final (fsv_unified_recursion_layer, unified mode), repeated until the
 //!     proof converges to one unified + one delegation proof
@@ -31,7 +32,8 @@ use execution_prover::BinaryHandle;
 use full_statement_verifier::host_utils::{
     bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
     final_blake_mode, fsv_digest, load_fsv_exact, native_verify_unified_in_mode,
-    native_verify_unrolled_in_mode, unified_switch_cycles, unrolled_blake_mode, FsvRecursionChain,
+    native_verify_unrolled_in_mode, recursion_unrolled_layers, unified_switch_cycles,
+    unrolled_blake_mode, FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
 use riscv_transpiler::vm::FlatResponsesSource;
@@ -414,31 +416,40 @@ fn advance_to_target(
 
     let mut chain =
         rebuild_chain(&state.chain_end_params).expect("recursion state has a base layer");
-    let switch_cycles = unified_switch_cycles();
+    let unrolled_layers = recursion_unrolled_layers();
+    let switch_cycles = unrolled_layers.is_none().then(unified_switch_cycles);
 
     // === Unrolled recursion layers. ===
     let mut previous_cycles = None;
+    let mut layers_proved = 0;
     loop {
+        if unrolled_layers == Some(layers_proved) {
+            break;
+        }
         let program = if state.input_is_base {
             FsvProgram::UnrolledBaseLayer
         } else {
             FsvProgram::UnrolledRecursionLayer
         };
         let guest = fsv.get(program, SetupMachine::UnrolledReduced);
-        let cycles = unrolled_verifier_cost(guest, &state.proof);
-        log::debug!("selected verifier cost {cycles} cycles vs switch threshold {switch_cycles}");
-        if cycles < switch_cycles {
-            break;
-        }
-        if let Some(previous) = previous_cycles {
-            assert!(
-                cycles < previous,
-                "unrolled recursion did not lower the estimated verifier cost \
-                 ({previous} -> {cycles} cycles) while at or above the switch threshold \
-                 {switch_cycles}"
+        if let Some(switch_cycles) = switch_cycles {
+            let cycles = unrolled_verifier_cost(guest, &state.proof);
+            log::debug!(
+                "selected verifier cost {cycles} cycles vs switch threshold {switch_cycles}"
             );
+            if cycles < switch_cycles {
+                break;
+            }
+            if let Some(previous) = previous_cycles {
+                assert!(
+                    cycles < previous,
+                    "unrolled recursion did not lower the estimated verifier cost \
+                     ({previous} -> {cycles} cycles) while at or above the switch threshold \
+                     {switch_cycles}"
+                );
+            }
+            previous_cycles = Some(cycles);
         }
-        previous_cycles = Some(cycles);
         let nd_words = fsv_input(guest, &state.setups, &state.proof);
         let start = Instant::now();
         let (mut new_proof, new_setups) = backend.prove(ProveRequest {
@@ -450,6 +461,7 @@ fn advance_to_target(
             nd_words,
         });
         state.timings.unrolled_recursion_ms.push(elapsed_ms(start));
+        layers_proved += 1;
         new_proof.set_recursion_chain(&chain);
 
         let end_params = compute_end_params(&new_setups, new_proof.final_pc);
@@ -872,7 +884,6 @@ fn finalize_artifact(
         security_level: COMPILED_SECURITY_LEVEL,
         soundness_mode: config.soundness_mode,
         target: config.target,
-        backend: config.backend,
         batch_id,
         cycles: state.proof.executed_cycles(),
         program_cycles: state.program_cycles,

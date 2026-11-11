@@ -59,3 +59,6 @@ riscv_transpiler = { path = "../riscv_transpiler", features = ["jit"] }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+proof_fixtures = { workspace = true }

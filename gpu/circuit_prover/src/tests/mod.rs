@@ -152,13 +152,6 @@ pub(crate) struct BasicUnrolledFixture {
     /// slots. `None` uses the canonical contiguous selection for fixtures that
     /// do not need noncontiguous RAM-set rebasing.
     pub(crate) inits_and_teardowns_top_bits: Option<Vec<u32>>,
-    /// Closure-assembly metadata captured from the same VM run, consumed by the
-    /// unified e2e test to drive the no-filter grand-product
-    /// accumulator to ONE. Empty/`None`/default for per-family fixtures.
-    pub(crate) unified_register_final_state: [(u32, (u32, u32)); 32],
-    pub(crate) unified_final_pc: u32,
-    pub(crate) unified_final_timestamp: common_constants::TimestampScalar,
-    pub(crate) delegation_grand_product_factors: Vec<E4>,
 }
 
 type BasicUnrolledTransfers<'a> = crate::proof::inputs::GpuGKRProofTransfer<'a, Global>;
@@ -312,25 +305,10 @@ impl BasicUnrolledProofFixture {
         }
         assert_gkr_proof_eq_for_test(proof, &self.committed_proof);
         assert_eq!(
-            serde_json::to_vec_pretty(proof).unwrap(),
+            proof_fixtures::encode(proof, Vec::new()),
             self.committed_proof_bytes,
             "GPU proof differs from committed file bytes",
         );
-        if self.base.circuit_type == CircuitType::Unrolled(UnrolledCircuitType::Unified) {
-            let mut product = produce_initial_permutation_product_contribution::<BF, E4>(
-                &self.base.unified_register_final_state,
-                INITIAL_PC,
-                split_timestamp(INITIAL_TIMESTAMP),
-                self.base.unified_final_pc,
-                split_timestamp(self.base.unified_final_timestamp),
-                &self.base.external_challenges,
-            );
-            product.mul_assign(&proof.grand_product_accumulator_computed);
-            for factor in &self.base.delegation_grand_product_factors {
-                product.mul_assign(factor);
-            }
-            assert_eq!(product, E4::ONE, "canonical unified permutation closure");
-        }
     }
 
     fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static>> {

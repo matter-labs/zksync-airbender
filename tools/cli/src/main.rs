@@ -13,6 +13,7 @@ use riscv_transpiler::ir::{
 use riscv_transpiler::vm::{DelegationsCounters, RamWithRomRegion, SimpleTape, State, VM};
 use serde::Serialize;
 use serde_json::Value;
+use std::io::{BufWriter, Write};
 use std::path::Path;
 use std::{fs, iter};
 
@@ -322,8 +323,29 @@ fn write_artifact(artifact: &ProofArtifact, output_dir: &str, output_file: &str)
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent).expect("Failed to create output directory");
     }
-    serialize_to_file(artifact, &output_path);
+    if output_path
+        .extension()
+        .is_some_and(|extension| extension == "zlib")
+    {
+        proof_fixtures::write_file(&output_path, artifact);
+    } else {
+        let file = fs::File::create(&output_path).expect("Failed to create proof artifact");
+        let mut writer = BufWriter::new(file);
+        serde_json::to_writer(&mut writer, artifact).expect("Failed to serialize proof artifact");
+        writer.flush().expect("Failed to write proof artifact");
+    }
     println!("Proof artifact written to {}", output_path.display());
+}
+
+fn read_artifact(path: &str) -> ProofArtifact {
+    if Path::new(path)
+        .extension()
+        .is_some_and(|extension| extension == "zlib")
+    {
+        proof_fixtures::read_file(path)
+    } else {
+        deserialize_from_file(path)
+    }
 }
 
 fn main() {
@@ -416,8 +438,7 @@ fn run_cli() {
                     .unwrap_or_else(|e| panic!("Proving failed for {}: {}", input_path, e));
 
                 let output_file = format!("proof_{}.json", idx);
-                let output_path = Path::new(&output_dir).join(&output_file);
-                serialize_to_file(&artifact, &output_path);
+                write_artifact(&artifact, &output_dir, &output_file);
 
                 summary.items.push(BatchSummaryItem {
                     input_file: input_path.clone(),
@@ -443,7 +464,7 @@ fn run_cli() {
             soundness: SoundnessArgs { soundness_mode },
             settings,
         } => {
-            let input_artifact: ProofArtifact = deserialize_from_file(&proof);
+            let input_artifact = read_artifact(&proof);
             let source = program_source(bin, text, elf);
             let prover_config = make_prover_config(soundness_mode, target, backend, settings);
 
@@ -463,7 +484,7 @@ fn run_cli() {
             soundness: SoundnessArgs { soundness_mode },
             trusted_params,
         } => {
-            let artifact: ProofArtifact = deserialize_from_file(&proof);
+            let artifact = read_artifact(&proof);
             let source = program_source(bin, text, elf);
             let trusted: Option<prover_pipeline::TrustedParams> = trusted_params
                 .as_ref()

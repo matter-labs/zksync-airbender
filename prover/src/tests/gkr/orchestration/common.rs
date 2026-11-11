@@ -387,7 +387,7 @@ pub fn soundness_mode() -> crate::definitions::SoundnessMode {
 
 /// The proof-file suffix of `level` in the current [`soundness_mode`]:
 /// `sec_100` for the default mode (the production fixtures keep their names),
-/// `sec_100_<mode>` otherwise (`verifier_common::test_circuits::fixture_suffix`).
+/// `sec_100_<mode>` otherwise.
 pub fn proof_suffix(level: crate::definitions::SecurityLevel) -> String {
     let mode = soundness_mode();
     if mode == crate::definitions::SoundnessMode::DEFAULT {

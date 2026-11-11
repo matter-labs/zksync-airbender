@@ -36,6 +36,7 @@ cargo build --release -p cli --no-default-features \
 - `prove-batch`
 - `continue-proof`
 - `verify`
+- `trusted-params`
 - `run`
 
 ## Program Input Files
@@ -129,6 +130,11 @@ cargo run --release -p cli -- verify \
 refuse an artifact recorded in another mode and use that mode's own verifier guests.
 The L1 feeder/wrap/EVM profile exists only in `pessimistic-conjecture`.
 
+## Trusted Params
+
+`trusted-params` writes the trusted verification parameters of one program and soundness
+mode; `verify --trusted-params <file>` uses them instead of recomputing the setups.
+
 ## Prove Batch
 
 ```bash
@@ -161,18 +167,29 @@ cargo run --release -p cli -- run --bin examples/basic_fibonacci/app.bin --expec
 
 ## Proof Artifact Format
 
-`prove` writes a JSON artifact with:
+`prove`, `prove-batch` and `continue-proof` write a schema 5 artifact as compact JSON without a
+trailing newline. An output filename ending in `.zlib` uses zlib-compressed JSON;
+`verify` and `continue-proof` select the decoder by the input filename's extension.
+A malformed compressed artifact fails decoding without a JSON fallback.
+
+The stored fields include:
 
 - `schema_version`
 - `security_level`
 - `soundness_mode`
 - `target`
-- `backend`
 - `batch_id`
 - `cycles`
 - `program_cycles` (cycles of the base layer, the program's own count)
 - `program_bin_keccak`
 - `program_text_keccak`
-- `timings_ms`
 - `proof_counts`
 - `proof` (`ProgramProof`)
+
+Proving timings remain available in logs and the batch summary; they are not
+stored in proof artifacts.
+
+`RECURSION_UNROLLED_LAYERS=N` makes a recursion invocation prove exactly `N`
+additional unrolled layers, bypassing the cost model, switch threshold and
+monotonic-decrease check. A present value must parse as a `usize`. When unset,
+the existing threshold policy applies. Bridge and final rounds are unchanged.

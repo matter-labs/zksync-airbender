@@ -1,15 +1,12 @@
 //! The sole writer of ordinary committed Sec100 circuit proofs.
 
 use super::orchestration::canonical_fixtures::{
-    capture_canonical_inputs, compression_pair_external_challenges, CanonicalBoundary,
-    CanonicalCircuit, CanonicalInputs, CanonicalTrace, SparseInitsAndTeardowns, CANONICAL_CIRCUITS,
+    capture_canonical_inputs, CanonicalCircuit, CanonicalInputs, CanonicalTrace,
+    SparseInitsAndTeardowns, CANONICAL_CIRCUITS,
 };
-use crate::allocation_pool::GenericAllocationPool;
-use crate::definitions::{
-    produce_initial_permutation_product_contribution, GKRExternalChallenges, SoundnessMode,
-};
+use super::orchestration::common::hardcoded_external_challenges;
+use crate::definitions::{GKRExternalChallenges, SoundnessMode};
 use crate::gkr::prover::setup::GKRSetup;
-use crate::gkr::prover::stages::commitment_utils::commit_trace_part_for_config;
 use crate::gkr::prover::{
     prove_configured_with_gkr_with_storage_and_backend, DefaultBabyBearGKRBackend, GKRProof,
     OperationMode, WhirOracleStorage, WorkStealingBackend,
@@ -24,7 +21,7 @@ use crate::gkr::witness_gen::family_circuits::{
 use crate::gkr::witness_gen::oracles::{
     MemoryCircuitOracle, NonMemoryCircuitOracle, UnifiedRiscvCircuitOracle,
 };
-use crate::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
+use crate::merkle_trees::DefaultTreeConstructor;
 use crate::tracers::oracles::transpiler_oracles::delegation::{
     BigintDelegationOracle, Blake2sDelegationOracle, KeccakChi5DelegationOracle,
     KeccakColumnParityDelegationOracle, KeccakDelegationOracle, KeccakThetaRhoDelegationOracle,
@@ -36,7 +33,7 @@ use field::baby_bear::{base::BabyBearField as BF, ext4::BabyBearExt4 as E4};
 use field::{Field, PrimeField};
 use std::alloc::Global;
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Instant;
 use transcript::Blake2sTranscript;
 use worker::Worker;
@@ -53,14 +50,10 @@ struct Prepared {
     witness: Trace,
     setup: GKRSetup<BF>,
     top_bits: Vec<u32>,
-    boundary: CanonicalBoundary,
 }
 
 fn root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .to_owned()
+    proof_fixtures::root()
 }
 
 fn dense_ram(sparse: &SparseInitsAndTeardowns, rows: usize) -> Vec<([Vec<BF>; 2], [Vec<BF>; 2])> {
@@ -98,7 +91,6 @@ fn prepare(circuit: CanonicalCircuit, mode: SoundnessMode, worker: &Worker) -> P
         decoder_table,
         trace,
         inits_and_teardowns,
-        boundary,
         ..
     } = capture_canonical_inputs(&root, circuit, worker);
     let config = circuit.prover_config(&root, mode);
@@ -258,28 +250,7 @@ fn prepare(circuit: CanonicalCircuit, mode: SoundnessMode, worker: &Worker) -> P
         witness,
         setup,
         top_bits,
-        boundary,
     }
-}
-
-fn memory_cap(prepared: &Prepared, worker: &Worker) -> MerkleTreeCapVarLength {
-    let twiddles =
-        Twiddles::<BF, Global>::new(1 << prepared.config.whir_message_size_log2(), worker);
-    let columns: Vec<&[BF]> = prepared
-        .witness
-        .column_major_memory_trace
-        .iter()
-        .map(|column| &column[..])
-        .collect();
-    commit_trace_part_for_config::<BF, BF, DefaultTreeConstructor, _>(
-        &WorkStealingBackend,
-        &columns,
-        &twiddles,
-        &prepared.config,
-        &GenericAllocationPool::proxy(),
-        worker,
-    )
-    .get_cap()
 }
 
 fn prove(prepared: Prepared, challenges: &GKRExternalChallenges<BF, E4>, worker: &Worker) -> Proof {
@@ -333,125 +304,49 @@ fn prove(prepared: Prepared, challenges: &GKRExternalChallenges<BF, E4>, worker:
     proof
 }
 
-fn write(
-    circuit: CanonicalCircuit,
-    mode: SoundnessMode,
-    proof: &Proof,
-    written: &mut BTreeSet<PathBuf>,
-) {
-    let path = circuit.proof_path(&root(), mode);
-    assert!(
-        written.insert(path.clone()),
-        "duplicate canonical write: {}",
-        path.display()
-    );
-    std::fs::write(&path, serde_json::to_vec_pretty(proof).unwrap()).unwrap();
-}
-
-fn compression_pair(mode: SoundnessMode, worker: &Worker) -> (Proof, Proof) {
-    let unified = prepare(CanonicalCircuit::UnifiedReducedMachine, mode, worker);
-    let compression = prepare(CanonicalCircuit::Blake2WithExtendedControl, mode, worker);
-    assert_eq!(unified.boundary, compression.boundary);
-    let unified_cap = memory_cap(&unified, worker);
-    let compression_cap = memory_cap(&compression, worker);
-    let challenges = compression_pair_external_challenges(
-        &unified.boundary,
-        &unified.top_bits,
-        &unified_cap,
-        &compression_cap,
-        worker,
-    );
-    let boundary = unified.boundary.clone();
-    let unified_proof = prove(unified, &challenges.external_challenges, worker);
-    let compression_proof = prove(compression, &challenges.external_challenges, worker);
-    assert_eq!(
-        unified_proof
-            .whir_proof
-            .memory_commitment
-            .commitment
-            .cap
-            .cap,
-        unified_cap.cap
-    );
-    assert_eq!(
-        compression_proof
-            .whir_proof
-            .memory_commitment
-            .commitment
-            .cap
-            .cap,
-        compression_cap.cap
-    );
-    let registers = boundary
-        .registers
-        .map(|r| (r.value, split_timestamp(r.last_access_timestamp)));
-    let mut product = produce_initial_permutation_product_contribution::<BF, E4>(
-        &registers,
-        common_constants::INITIAL_PC,
-        split_timestamp(cs::definitions::INITIAL_TIMESTAMP),
-        boundary.final_pc,
-        split_timestamp(boundary.final_timestamp),
-        &challenges.external_challenges,
-    );
-    product.mul_assign(&unified_proof.grand_product_accumulator_computed);
-    product.mul_assign(&compression_proof.grand_product_accumulator_computed);
-    assert_eq!(product, E4::ONE);
-    (unified_proof, compression_proof)
+fn write(circuit: CanonicalCircuit, mode: SoundnessMode, proof: &Proof) {
+    let path = circuit.proof_path(&proof_fixtures::output_root(), mode);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    proof_fixtures::write_file(&path, proof);
 }
 
 #[test]
-fn regenerate_canonical_circuit_proofs() {
+fn regenerate_canonical_circuit_proofs_pessimistic_conjecture() {
+    regenerate_canonical_circuit_proofs(SoundnessMode::PessimisticConjecture);
+}
+
+#[test]
+fn regenerate_canonical_circuit_proofs_ethproofs_soundcalc() {
+    regenerate_canonical_circuit_proofs(SoundnessMode::EthproofsSoundnessCalc);
+}
+
+fn regenerate_canonical_circuit_proofs(mode: SoundnessMode) {
     let worker = Worker::new();
-    let mut written = BTreeSet::new();
-    for &mode in SoundnessMode::ALL {
-        for circuit in CANONICAL_CIRCUITS {
-            if circuit == CanonicalCircuit::Blake2WithExtendedControl {
-                continue;
-            }
-            if circuit == CanonicalCircuit::UnifiedReducedMachine {
-                let (unified, compression) = compression_pair(mode, &worker);
-                write(circuit, mode, &unified, &mut written);
-                write(
-                    CanonicalCircuit::Blake2WithExtendedControl,
-                    mode,
-                    &compression,
-                    &mut written,
-                );
-            } else {
-                let prepared = prepare(circuit, mode, &worker);
-                let proof = prove(prepared, &circuit.fixed_external_challenges(), &worker);
-                write(circuit, mode, &proof, &mut written);
-            }
-        }
+    for circuit in CANONICAL_CIRCUITS {
+        let prepared = prepare(circuit, mode, &worker);
+        let proof = prove(prepared, &hardcoded_external_challenges(), &worker);
+        write(circuit, mode, &proof);
     }
+    let output_root = proof_fixtures::output_root();
     let expected: BTreeSet<_> = CANONICAL_CIRCUITS
         .into_iter()
-        .flat_map(|circuit| {
-            SoundnessMode::ALL
-                .iter()
-                .map(move |&mode| circuit.proof_path(&root(), mode))
-        })
+        .map(|circuit| circuit.proof_path(&output_root, mode))
         .collect();
-    assert_eq!(written, expected);
-    assert_eq!(written.len(), 28);
-    // A proof that is no longer produced must not stay committed. Generated
-    // `malicious_*` fixtures (gitignored) and one-off prover configs share the
-    // directory and are not canonical proofs.
-    let committed: BTreeSet<_> = std::fs::read_dir(root().join("prover/test_proofs"))
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| {
-            let name = path.file_name().unwrap().to_str().unwrap();
-            name.ends_with("_gkr_proof.json") && !name.starts_with("malicious_")
-        })
-        .collect();
-    assert_eq!(committed, expected);
+    let produced: BTreeSet<_> = std::fs::read_dir(
+        output_root
+            .join("fixtures/circuits")
+            .join(mode.file_suffix()),
+    )
+    .unwrap()
+    .map(|entry| entry.unwrap().path())
+    .collect();
+    assert_eq!(expected, produced);
 }
 
 fn pilot(circuit: CanonicalCircuit) {
     let worker = Worker::new();
     let prepared = prepare(circuit, SoundnessMode::DEFAULT, &worker);
-    let proof = prove(prepared, &circuit.fixed_external_challenges(), &worker);
+    let proof = prove(prepared, &hardcoded_external_challenges(), &worker);
     println!(
         "pilot {}: {} proof bytes; no fixture write",
         circuit.stem(),

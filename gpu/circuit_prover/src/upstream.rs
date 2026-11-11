@@ -53,13 +53,7 @@ pub(crate) use prover::merkle_trees::DefaultTreeConstructor;
 // -----------------------------------------------------------------------
 
 #[cfg(test)]
-pub(crate) use common_constants::{INITIAL_PC, INITIAL_TIMESTAMP};
-#[cfg(test)]
-pub(crate) use cs::utils::split_timestamp;
-#[cfg(test)]
 pub(crate) use field::FieldExtension;
-#[cfg(test)]
-pub(crate) use prover::definitions::produce_initial_permutation_product_contribution;
 #[cfg(test)]
 pub(crate) use prover::gkr::prover::backend::NaiveBackend;
 #[cfg(test)]

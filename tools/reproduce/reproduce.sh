@@ -14,6 +14,18 @@
 # .elf files; compare with `git status` / `git diff --stat` afterwards.
 set -eu
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+GENERATE_SOURCES=1
+GENERATE_VERIFIERS=1
+FULL_STATEMENT_VERIFIERS=1
+CIRCUIT_VERIFIERS=1
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --skip-generate-verifiers) GENERATE_VERIFIERS=0; shift ;;
+        --skip-circuit-verifiers) CIRCUIT_VERIFIERS=0; shift ;;
+        --only-circuit-verifiers) GENERATE_SOURCES=0; FULL_STATEMENT_VERIFIERS=0; shift ;;
+        *) echo "unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
 
 # The guest sources are generated: regenerate them first, for BOTH soundness modes
 # (pessimistic_conjecture and ethproofs_soundcalc), so the binaries below are built from
@@ -30,24 +42,32 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 # CI=1, so make sure it is unset here.
 cd "$REPO_ROOT"
 unset CI
-echo "==> regenerating the delegation parameters (both soundness modes)"
-cargo test --release -p setups generate_delegation_circuits_artifacts
-echo "==> regenerating the circuit verifiers (both soundness modes)"
-cargo test --release -p verifier_generator --test generate_verifiers
+if [ "$GENERATE_SOURCES" = 1 ]; then
+    echo "==> regenerating the delegation parameters (both soundness modes)"
+    cargo test --release -p setups generate_delegation_circuits_artifacts
+    if [ "$GENERATE_VERIFIERS" = 1 ]; then
+        echo "==> regenerating the circuit verifiers (both soundness modes)"
+        cargo test --release -p verifier_generator --test generate_verifiers
+    fi
+fi
 
 cd "$REPO_ROOT/tools/gkr_verifier"
 
 # Full-statement verifiers in both soundness modes and every recursive Blake variant.
-./dump_recursive_verifiers.sh
+if [ "$FULL_STATEMENT_VERIFIERS" = 1 ]; then
+    ./dump_recursive_verifiers.sh
+fi
 
 # Standalone per-circuit verifiers (both soundness modes): every binary under src/bin/circuit_verifiers/.
-PER_CIRCUIT=""
-for m in src/bin/circuit_verifiers/*/; do
-    m=$(basename "$m")
-    PER_CIRCUIT="$PER_CIRCUIT $(ls "src/bin/circuit_verifiers/$m"/*.rs | sed "s|.*/||;s|\.rs||;s|\$|_$m|")"
-done
-# shellcheck disable=SC2086
-./dump_bin.sh --sec 100 $PER_CIRCUIT
+if [ "$CIRCUIT_VERIFIERS" = 1 ]; then
+    PER_CIRCUIT=""
+    for m in src/bin/circuit_verifiers/*/; do
+        m=$(basename "$m")
+        PER_CIRCUIT="$PER_CIRCUIT $(ls "src/bin/circuit_verifiers/$m"/*.rs | sed "s|.*/||;s|\.rs||;s|\$|_$m|")"
+    done
+    # shellcheck disable=SC2086
+    ./dump_bin.sh --sec 100 $PER_CIRCUIT
+fi
 
 echo "==> checksums"
 for f in full_statement_verifiers/*.elf full_statement_verifiers/*/*.elf circuit_verifiers/*/*.elf; do

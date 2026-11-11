@@ -1,53 +1,31 @@
 #![cfg(all(feature = "host_utils", feature = "verifiers"))]
 
-//! Manual calibration harness for `src/host_utils/cost_model/census.rs`. Every
-//! test here needs freshly generated local recursion proofs, so all of them are
-//! `#[ignore]`d. CI runs only `cost_model_drift.rs`; that detects verifier
-//! codegen drift but does not validate the committed model's accuracy.
+//! Census emission and acceptance gates on committed CPU fixtures.
 //!
-//! Fixtures live in `$COST_MODEL_FIXTURE_DIR` as `<fixture>_proof.bin` /
-//! `<fixture>_setups.bin`: zlib-compressed JSON of `ProgramProof` and `Setups`.
-//! One directory holds one soundness mode's proofs, named by its `soundness_mode`
-//! file (`SoundnessMode::cli_name`, required).
-//! Every test uses that mode's Sec100 Compression guests and census tables.
-//! Generate the fixtures with the ignored GPU test
-//! `test_generate_sec100_cost_model_fixtures` in
-//! `gpu/execution_prover/tests/program.rs`, once per mode
-//! (`COST_MODEL_SOUNDNESS_MODE`, default `pessimistic-conjecture`). It
-//! proves the recursion layers explicitly instead of depending on the production
-//! scheduling threshold. From the repository root:
+//! `emit_census_tables` traces the registered Compression guests in both modes.
+//! Per-proof prices come only from transient streams of canonical circuit proofs,
+//! stopped at the first PoW read. The two interior spans of each three-copy region
+//! must be equal; i&t uses its single proof's region-end span. These streams are
+//! never valid whole-program proofs and are never persisted.
 //!
-//! ```text
-//! cargo nextest run -p gpu_execution_prover --release --features verifiers --no-run
-//! COST_MODEL_SOUNDNESS_MODE=ethproofs-soundcalc \
-//! COST_MODEL_FIXTURE_DIR="$PWD/target/cost-model-fixtures/sec100-ethproofs" \
-//!   .agents/bin/with_gpu_lock.sh cargo nextest run -p gpu_execution_prover \
-//!   --release --features verifiers \
-//!   -E 'test(=test_generate_sec100_cost_model_fixtures)' \
-//!   --run-ignored only --no-capture
-//! ```
+//! Full runs of `base` and `unrolled` supply each guest's tail, chain spread and
+//! an intercept row. Prefix rows add that guest's complete tail census. The
+//! interval solver fits c0 with prices frozen. Chain totals participate in the
+//! intercept fit, so these are not fully held-out accuracy measurements.
+//! Singleton chain spans end at their region end, excluding a singleton only
+//! when its region ends at PoW (`closes_at_epilogue`). Regions with multiple
+//! proofs contribute interior first-word-to-first-word spans only.
 //!
-//! By default `base` is zkSync OS block 23620012; `base_alt` is hashed Fibonacci with
-//! `(n=15, h=1_200_000)`; `recursion0` and `recursion1` explicitly prove the
-//! Sec100 unrolled base and recursion verifiers. The synthetic `memory_windows`
-//! (every base-machine family), `memory_windows_recursion` (every reduced-machine
-//! family, for the recursion verifier) and `keccak_f1600` (each Keccak-f1600
-//! circuit) repeat each circuit they run, so prices come from repeated proofs,
-//! and touch enough address windows for two i&t proofs. The files are
-//! non-authoritative local calibration inputs and must not be committed or
-//! consumed by CI.
-//! Optional local block corpora are described in the generator's doc comment.
-//! Set `COST_MODEL_FIXTURE_DIR` to one generated output directory. The loader
-//! discovers every `*_proof.bin` and its matching `*_setups.bin`; fixture names
-//! containing `recursion` select the recursion verifier.
-//!
-//! `emit_census_tables` writes the fitted per-mode table included by `census.rs`. The total and
-//! census acceptance gates allow the original 0.1% family / 0.05% delegation
-//! and total budget on max(measured - V, 0), plus V = proof count times the
-//! largest measured per-proof deviation from its circuit mean. The total row
-//! measures deviations separately. The envelope is frozen in the table;
-//! acceptance inputs do not set their own allowance. This empirical envelope
-//! does not guarantee accuracy on unseen proofs.
+//! The original 0.1% family / 0.05% delegation and total budgets stay unchanged.
+//! One-copy, RISC-V-only and delegation-only prefix streams exercise header and
+//! empty-region accounting, retaining exactly one i&t proof in each stream.
+//! This does not reproduce the retained held-out workloads, which include up to
+//! 15 proofs per family and several i&t proofs. Optional acceptance fixtures in
+//! `$COST_MODEL_FIXTURE_DIR` use `<name>_proof.bin` / `<name>_setups.bin` and a
+//! `soundness_mode` file; they are never used for fitting. Names containing
+//! `recursion` select the recursion guest. The recursion fixed-point and per-proof
+//! span agreement tests still require that corpus and stay ignored. The empirical
+//! envelope does not guarantee accuracy on unseen proofs.
 
 mod trace;
 
@@ -58,14 +36,16 @@ use verifier_common::fsv_binaries::FsvProgram;
 
 /// The `base` fixture's guest and stream.
 fn load_base_layer() -> ((Vec<u32>, Vec<u32>), Vec<u32>) {
-    let base = trace::fixtures::fixture("base");
+    let base = trace::fixtures::chain_fixture(
+        verifier_common::fsv_binaries::SoundnessMode::DEFAULT,
+        FsvProgram::UnrolledBaseLayer,
+    );
     let (setups, proof) = trace::load_calibration_proof(&base.name);
     let stream = fsv_stream(&setups, &proof, &base.descriptor);
     (load_guest(&base.descriptor), stream)
 }
 
 #[test]
-#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn marks_are_monotonic_and_one_per_stream_word() {
     let ((bin, text), stream) = load_base_layer();
     let expected_reads = stream.len();
@@ -85,7 +65,6 @@ fn marks_are_monotonic_and_one_per_stream_word() {
 }
 
 #[test]
-#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn total_cycles_matches_the_uninstrumented_measurement() {
     let ((bin, text), stream) = load_base_layer();
 
@@ -99,7 +78,6 @@ fn total_cycles_matches_the_uninstrumented_measurement() {
 }
 
 #[test]
-#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn stream_plan_matches_the_actual_stream() {
     for Fixture {
         name: fixture,
@@ -164,7 +142,6 @@ fn stream_plan_matches_the_actual_stream() {
 }
 
 #[test]
-#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn proof_counts_matches_the_planned_regions() {
     use full_statement_verifier::host_utils::cost_model::proof_counts;
     for Fixture {
@@ -195,7 +172,6 @@ fn proof_counts_matches_the_planned_regions() {
 }
 
 #[test]
-#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn every_fixture_verifies_natively() {
     for Fixture {
         name,
@@ -234,7 +210,6 @@ fn acceptance_budget(
 /// decisions. Fails on an error above the calibrated budget, or on a switch decision that differs
 /// from the measured one while the measurement is farther than the budget from the threshold.
 #[test]
-#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn estimate_matches_measurement_on_every_fixture() {
     use full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles_for;
     use full_statement_verifier::host_utils::unified_switch_cycles;
@@ -271,34 +246,80 @@ fn estimate_matches_measurement_on_every_fixture() {
 }
 
 #[test]
-#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
+#[ignore = "writes the committed census tables; invoked by build.sh"]
 fn emit_census_tables() {
-    let mut rows = String::new();
-    // Sharing a WHIR schedule does not guarantee identical per-proof
-    // instruction counts across verifier programs. Fit each program separately.
-    for program in [
-        FsvProgram::UnrolledBaseLayer,
-        FsvProgram::UnrolledRecursionLayer,
-    ] {
-        let fixtures: Vec<_> = all_fixtures()
-            .into_iter()
-            .filter(|f| f.program == program)
-            .collect();
-        let cals: Vec<_> = fixtures
-            .iter()
-            .map(trace::calibrate::calibrate_census_fixture)
-            .collect();
-        let pooled = trace::calibrate::pool_census(&cals);
-        rows.push_str(&trace::calibrate::render_census_tables(
-            &fixtures[0].descriptor,
-            &pooled,
-        ));
+    for &mode in verifier_common::fsv_binaries::SoundnessMode::ALL {
+        let mut rows = String::new();
+        for program in [
+            FsvProgram::UnrolledBaseLayer,
+            FsvProgram::UnrolledRecursionLayer,
+        ] {
+            let fixture = trace::fixtures::chain_fixture(mode, program);
+            let pooled = trace::canonical::fit(&fixture);
+            rows.push_str(&trace::calibrate::render_census_tables(
+                &fixture.descriptor,
+                &pooled,
+            ));
+        }
+        trace::calibrate::write_census_tables(mode, &rows);
     }
-    trace::calibrate::write_census_tables(trace::fixtures::fixture_soundness_mode(), &rows);
 }
 
 #[test]
-#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
+fn canonical_prefix_counts_match_the_census() {
+    use full_statement_verifier::host_utils::cost_model::census::{
+        census_table, NUM_CENSUS_DIMS, NUM_FAMILY_DIMS,
+    };
+    use trace::calibrate::{gate_budget, TOTAL_ROW};
+    use trace::canonical::Counts;
+    for &mode in verifier_common::fsv_binaries::SoundnessMode::ALL {
+        for program in [
+            FsvProgram::UnrolledBaseLayer,
+            FsvProgram::UnrolledRecursionLayer,
+        ] {
+            let fixture = trace::fixtures::chain_fixture(mode, program);
+            let (chain, plan) = trace::calibrate::trace_fixture(&fixture);
+            let tail = core::array::from_fn(|d| {
+                chain.total_census[d] - chain.census_marks[plan.pow_word][d]
+            });
+            let table = census_table(&fixture.descriptor);
+            for counts in [Counts::One, Counts::RiscvOnly, Counts::DelegationsOnly] {
+                let mut cal = trace::canonical::calibration(&fixture.descriptor, counts);
+                trace::canonical::add_tail(&mut cal, &tail);
+                let mut estimate = [0u64; NUM_CENSUS_DIMS + 1];
+                estimate[..NUM_CENSUS_DIMS].copy_from_slice(&table.c0);
+                let proofs = cal.regions.iter().map(|region| region.count as u64).sum();
+                for region in cal.regions.iter().filter(|region| region.count > 0) {
+                    let price = &table
+                        .v
+                        .iter()
+                        .find(|(id, _)| *id == region.circuit)
+                        .unwrap()
+                        .1;
+                    for d in 0..NUM_CENSUS_DIMS {
+                        estimate[d] += region.count as u64 * price[d];
+                    }
+                }
+                estimate[TOTAL_ROW] = estimate[..NUM_FAMILY_DIMS].iter().sum();
+                let mut measured = [0; NUM_CENSUS_DIMS + 1];
+                measured[..NUM_CENSUS_DIMS].copy_from_slice(&cal.total);
+                measured[TOTAL_ROW] = cal.total[..NUM_FAMILY_DIMS].iter().sum();
+                for d in 0..=NUM_CENSUS_DIMS {
+                    let budget = gate_budget(d, measured[d], proofs, table.per_proof_spread[d]);
+                    assert!(
+                        estimate[d].abs_diff(measured[d]) <= budget,
+                        "{:?} {counts:?} dim {d}: estimate {} measured {} budget {budget}",
+                        fixture.descriptor,
+                        estimate[d],
+                        measured[d]
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn census_family_cycles_sum_to_total() {
     for fixture in &all_fixtures() {
         let name = &fixture.name;
@@ -315,7 +336,6 @@ fn census_family_cycles_sum_to_total() {
 }
 
 #[test]
-#[ignore = "needs calibration fixtures in $COST_MODEL_FIXTURE_DIR; see this file's module docs"]
 fn census_estimate_matches_measurement_on_every_fixture() {
     use full_statement_verifier::host_utils::cost_model::census::{
         estimate_verifier_census_for, CENSUS_DIMS, NUM_CENSUS_DIMS,
@@ -393,4 +413,31 @@ fn recursion_fixed_point_is_below_the_switch_floor() {
         checked += 1;
     }
     assert!(checked > 0, "no recursion1 fixture");
+}
+
+#[test]
+fn calibration_fixture_encoding_round_trips_every_compiled_circuit() {
+    use full_statement_verifier::host_utils::fixture_codec;
+    use verifier_common::cs::gkr_compiler::GKRCircuitArtifact;
+    use verifier_common::field::baby_bear::base::BabyBearField;
+
+    let dir = format!("{}/../cs/compiled_circuits", env!("CARGO_MANIFEST_DIR"));
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        if !path.to_string_lossy().ends_with("_layout_gkr.json") {
+            continue;
+        }
+        let artifact: GKRCircuitArtifact<BabyBearField> =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let decoded: GKRCircuitArtifact<BabyBearField> =
+            fixture_codec::decode(&fixture_codec::encode(&artifact, Vec::new()));
+        assert!(
+            decoded == artifact,
+            "{} changed in the fixture encoding",
+            path.display()
+        );
+        checked += 1;
+    }
+    assert!(checked > 0);
 }

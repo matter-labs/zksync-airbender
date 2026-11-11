@@ -41,29 +41,40 @@ pub struct CensusCalibration {
     pub regions: Vec<RegionCensus>,
 }
 
-pub fn calibrate_census_fixture(fixture: &Fixture) -> CensusCalibration {
-    let (trace, plan) = trace_fixture(fixture);
+pub fn calibrate_trace(trace: &Trace, plan: &StreamPlan) -> CensusCalibration {
     let regions = plan
         .regions
         .iter()
-        .map(|region| RegionCensus {
-            circuit: region.circuit,
-            count: region.proof_first_words.len(),
-            spans: region
-                .proof_first_words
-                .windows(2)
-                .map(|words| {
-                    core::array::from_fn(|d| {
-                        trace.census_marks[words[1]][d] - trace.census_marks[words[0]][d]
+        .map(|region| {
+            let words = &region.proof_first_words;
+            let ranges: Vec<_> = if words.len() == 1 && !region.closes_at_epilogue {
+                vec![(words[0], region.end_word)]
+            } else {
+                words.windows(2).map(|pair| (pair[0], pair[1])).collect()
+            };
+            RegionCensus {
+                circuit: region.circuit,
+                count: words.len(),
+                spans: ranges
+                    .into_iter()
+                    .map(|(first, last)| {
+                        core::array::from_fn(|d| {
+                            trace.census_marks[last][d] - trace.census_marks[first][d]
+                        })
                     })
-                })
-                .collect(),
+                    .collect(),
+            }
         })
         .collect();
     CensusCalibration {
         total: trace.total_census,
         regions,
     }
+}
+
+pub fn calibrate_census_fixture(fixture: &Fixture) -> CensusCalibration {
+    let (trace, plan) = trace_fixture(fixture);
+    calibrate_trace(&trace, &plan)
 }
 
 pub fn pooled_prices<'a>(
@@ -106,7 +117,7 @@ pub fn gate_budget(row: usize, measured: u64, proofs: u64, delta: u64) -> u64 {
 
 /// Centre spans on each circuit's rounded mean. Measure total deviations
 /// separately: per-dimension maxima can occur in different proofs.
-fn observed_spread(
+pub fn observed_spread(
     cals: &[CensusCalibration],
     prices: &BTreeMap<CircuitId, CensusVec>,
 ) -> [u64; NUM_ROWS] {
@@ -133,10 +144,12 @@ pub struct PooledCensus {
     pub spread: [u64; NUM_ROWS],
 }
 
-pub fn pool_census(cals: &[CensusCalibration]) -> PooledCensus {
+pub fn pool_census(
+    cals: &[CensusCalibration],
+    prices: BTreeMap<CircuitId, CensusVec>,
+    spread: [u64; NUM_ROWS],
+) -> PooledCensus {
     assert!(!cals.is_empty(), "need at least one calibration fixture");
-    let prices = pooled_prices(cals);
-    let spread = observed_spread(cals, &prices);
     let rows: Vec<[(i64, i64); NUM_ROWS]> = cals
         .iter()
         .map(|cal| {

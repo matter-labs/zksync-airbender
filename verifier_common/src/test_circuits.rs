@@ -61,17 +61,6 @@ pub fn verifier_dir_name(mode: SoundnessMode) -> &'static str {
     mode.file_suffix()
 }
 
-/// Suffix of the (level, mode) fixtures that predate the soundness modes —
-/// proof files and flamegraphs: the DEFAULT mode keeps the plain `sec_100`
-/// names of the production artifacts, every other mode appends its name.
-pub fn fixture_suffix(level: SecurityLevel, mode: SoundnessMode) -> String {
-    if mode == SoundnessMode::DEFAULT {
-        level.dir_suffix().to_string()
-    } else {
-        format!("{}_{}", level.dir_suffix(), mode.file_suffix())
-    }
-}
-
 pub struct CircuitData {
     pub name: &'static str,
     pub production_path: &'static str,
@@ -141,16 +130,12 @@ impl CircuitData {
         self.proof_path_for_mode(level, SoundnessMode::DEFAULT)
     }
 
-    /// The proof fixture proved with the config of `mode`
-    /// (`prover/test_proofs/<name>_<fixture_suffix>_gkr_proof.json`, see
-    /// [`fixture_suffix`]).
-    pub fn proof_path_for_mode(&self, level: SecurityLevel, mode: SoundnessMode) -> String {
-        format!(
-            "{}/prover/test_proofs/{}_{}_gkr_proof.json",
-            REPO_ROOT,
-            self.name,
-            fixture_suffix(level, mode)
-        )
+    /// The canonical Sec100 proof fixture proved with the config of `mode`.
+    pub fn proof_path_for_mode(&self, _level: SecurityLevel, mode: SoundnessMode) -> String {
+        proof_fixtures::circuit_proof(mode.file_suffix(), self.name)
+            .to_str()
+            .unwrap()
+            .to_owned()
     }
 
     pub fn circuit_path(&self) -> String {
@@ -222,7 +207,7 @@ impl CircuitData {
     ) -> GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> {
         let path = self.proof_path_for_mode(level, mode);
         let proof: GKRProof<BabyBearField, BabyBearExt4, DefaultTreeConstructor> =
-            deserialize_from_file(&path);
+            proof_fixtures::read_file(&path);
         // A stale proof and stale verifier can agree while both lag behind the
         // current config. Check before either native or transpiled verification.
         assert_eq!(

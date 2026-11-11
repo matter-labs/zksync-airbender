@@ -1,4 +1,5 @@
 pub mod cost_model;
+pub mod fixture_artifact;
 pub mod fixture_codec;
 mod fsv;
 #[cfg(test)]
@@ -179,6 +180,18 @@ pub const DEFAULT_UNIFIED_SWITCH_CYCLES: u64 = 52_000_000;
 
 /// Lower bound on the switch threshold to ensure unrolled recursion can converge.
 pub const MIN_UNIFIED_SWITCH_CYCLES: u64 = 16 * 1024 * 1024;
+
+/// Override the number of unrolled layers proved in one pipeline invocation.
+#[must_use]
+pub fn recursion_unrolled_layers() -> Option<usize> {
+    std::env::var_os("RECURSION_UNROLLED_LAYERS").map(|value| {
+        value
+            .to_str()
+            .expect("RECURSION_UNROLLED_LAYERS must be a usize")
+            .parse()
+            .expect("RECURSION_UNROLLED_LAYERS must be a usize")
+    })
+}
 
 #[must_use]
 pub fn unified_switch_cycles() -> u64 {
