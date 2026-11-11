@@ -1,5 +1,5 @@
 module
-public import Human.Import.Exec.JsonParser
+public import Slop.Import.Json.ListParser
 import all Init.Data.Int.Repr -- Int.repr is not exposed
 
 @[expose] public section

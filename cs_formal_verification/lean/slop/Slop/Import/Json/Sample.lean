@@ -1,12 +1,13 @@
 module
 public import Human.Import.Theorems
+public import Slop.Import.Json.Index
 import all Init.Data.Repr -- Init.Data.Repr is not exposed (still true in 4.35)
 import all Init.Data.String.Defs -- Init.Data.Repr is not exposed (still true in 4.35)
 import all Init.Data.Int.Repr -- Int.repr is not exposed
 
 @[expose] public section
 
-/-! The parser on the two sample texts, evaluated by the kernel. `Value` has no `DecidableEq`, so the result is
+/-! The parser on the two sample texts, evaluated by the kernel (through the list parser, `parse_eq`). `Value` has no `DecidableEq`, so the result is
 compared with a Boolean equality proven sound here. -/
 
 namespace Airbender.Json.Parser
@@ -60,15 +61,16 @@ theorem membersBeq_sound : ∀ as bs : List (String × Value), membersBeq as bs 
 end
 
 theorem parse_sample : parse sample.toUTF8 = .ok sampleValue := by
-  have h : (match parse sample.toUTF8 with
+  rw [parse_eq]
+  have h : (match parseReference sample.toUTF8 with
     | .ok v => valueBeq v sampleValue
     | .error _ => false) = true := by decide +kernel
   revert h
-  generalize parse sample.toUTF8 = r
+  generalize parseReference sample.toUTF8 = r
   cases r with
   | ok v => intro h; rw [valueBeq_sound v sampleValue h]
   | error e => intro h; simp at h
 
-theorem parse_duplicate : (parse duplicate.toUTF8).toBool = false := by decide +kernel
+theorem parse_duplicate : (parse duplicate.toUTF8).toBool = false := by rw [parse_eq]; decide +kernel
 
 end Airbender.Json.Parser

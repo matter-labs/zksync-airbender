@@ -1,5 +1,6 @@
 module
 public import Slop.Import.Json.Strings
+public import Slop.Import.Json.Index
 
 @[expose] public section
 
@@ -240,7 +241,8 @@ end
 
 theorem parse_sound' {bytes : ByteArray} {v : Value} (h : parse bytes = .ok v) :
     Text bytes.toList v ∧ NoDuplicateKeys v := by
-  simp only [parse] at h
+  rw [parse_eq] at h
+  simp only [parseReference] at h
   split at h
   · rename_i v' hp
     split at h

@@ -20,4 +20,6 @@ so the code itself needs no review.
 
 `Exec/` holds the executable code: the JSON parser, the decoder, the emitters of the literal terms and FastColumns (copies of
 the [Columns](Columns.lean) functions the emitter runs, derived by a command). No need to review it:
-each file names the claims that fix its behaviour.
+each file names the claims that fix its behaviour. The parser reads the bytes by index and skips whitespace runs in
+chunks (the interpreter runs it at import); the claims are proved for a list-based copy the kernel can evaluate
+(`slop/Slop/Import/Json/ListParser.lean`), which returns the same result (`parse_eq`).
