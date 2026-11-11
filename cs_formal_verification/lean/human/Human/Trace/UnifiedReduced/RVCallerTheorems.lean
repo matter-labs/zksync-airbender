@@ -358,4 +358,44 @@ def Caller.RVProgramPreparedProtocolSequenceSoundnessSatisfiableClaim : Prop :=
       Caller.WindowsOrdered first.lower ((first :: rest).map Caller.HashWindow.interval) ∧ data.callers ≠ [] ∧
       data.workers.windowRows first.lower first.upper ≠ []
 
+/-! Non-vacuity of the prepared extended-round caller claims: their assumptions can be met (with a ten-round span,
+    flags 0), with a selected caller and worker rows in the window or region (the whole worker pool for the claims
+    without a window). -/
+
+/-- The assumptions of `Caller.RVPreparedRoundRegionMasksSoundnessClaim` can be met, with a caller and worker rows in
+    the region. -/
+def Caller.RVPreparedRoundRegionMasksSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Caller.RVRequestTrace babyBearModulus) (before : RV.State) (ca oa : List (BitVec 32))
+    (cells : List Trace.Cell) (program : List UnifiedReduced.RVProgramEntry) (regions : List Caller.RoundRegion)
+    (region : Caller.RoundRegion),
+    Caller.RVMixedMemoryAccepted data program ∧
+      Caller.RVPreparedProtocolInputs data before ca oa cells program regions ∧
+      Caller.RVRoundRegionInputs data program region ∧ data.callers ≠ [] ∧
+      data.workers.windowRows region.lower region.upper ≠ []
+
+/-- The assumptions of `Caller.RVPreparedRoundMasksSoundnessClaim` can be met, with a caller and worker rows. -/
+def Caller.RVPreparedRoundMasksSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Caller.RVRequestTrace babyBearModulus) (before : RV.State) (ca oa : List (BitVec 32))
+    (cells : List Trace.Cell) (program : List UnifiedReduced.RVProgramEntry) (flags : Fin 8) (lower : Nat),
+    Caller.RVMixedMemoryAccepted data program ∧
+      Caller.RVPreparedRoundInputs data before ca oa cells program flags lower ∧ lower % 4 = 0 ∧
+      data.callers ≠ [] ∧ data.workers.rows ≠ []
+
+/-- The assumptions of `Caller.RVPreparedRoundWindowSoundnessClaim` can be met, with a caller and worker rows in the
+    window. -/
+def Caller.RVPreparedRoundWindowSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Caller.RVRequestTrace babyBearModulus) (before : RV.State) (ca oa : List (BitVec 32))
+    (cells : List Trace.Cell) (program : List UnifiedReduced.RVProgramEntry) (flags : Fin 8) (lower upper : Nat),
+    Caller.RVMixedMemoryAccepted data program ∧
+      Caller.RVPreparedRoundWindowInputs data before ca oa cells program flags lower upper ∧ lower % 4 = 0 ∧
+      upper % 4 = 0 ∧ data.callers ≠ [] ∧ data.workers.windowRows lower upper ≠ []
+
+/-- The assumptions of `Caller.RVPreparedRoundCyclesSoundnessClaim` can be met, with a caller and worker rows. -/
+def Caller.RVPreparedRoundCyclesSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Caller.RVRequestTrace babyBearModulus) (program : List UnifiedReduced.RVProgramEntry) (initial : RV.State)
+    (ca oa : List (BitVec 32)) (cells : List Trace.Cell) (flags : Fin 8) (lower : Nat),
+    Caller.RVMixedMemoryAccepted data program ∧
+      Caller.RVPreparedRoundInputs data initial ca oa cells program flags lower ∧ lower % 4 = 0 ∧
+      0 < (Trace.timeOfPair data.machine.initial.timestamp).value ∧ data.callers ≠ [] ∧ data.workers.rows ≠ []
+
 end Airbender.UnifiedReduced

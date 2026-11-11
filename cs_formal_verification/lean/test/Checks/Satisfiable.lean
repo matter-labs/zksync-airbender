@@ -337,6 +337,36 @@ example (claim : RVProgramPreparedProtocolSequenceSoundnessClaim) :
       window⟩ =>
     ⟨data, before, cells, first, rest, claim accepted inputs registry scopes ordered, callers, window⟩
 
+example (claim : RVPreparedRoundRegionMasksSoundnessClaim) : RVPreparedRoundRegionMasksSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (region : RoundRegion),
+      (∀ row ∈ data.workers.windowRows region.lower region.upper,
+        ∃ round, Blake2Round.Memory.RoundMask row.assignment round) ∧ data.callers ≠ [] ∧
+        data.workers.windowRows region.lower region.upper ≠ [] :=
+  fun ⟨data, _, _, _, _, _, _, region, accepted, inputs, scope, callers, window⟩ =>
+    ⟨data, region, claim accepted inputs scope, callers, window⟩
+
+example (claim : RVPreparedRoundMasksSoundnessClaim) : RVPreparedRoundMasksSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus),
+      (∀ row ∈ data.workers.rows, ∃ round, Blake2Round.Memory.RoundMask row.assignment round) ∧
+        data.callers ≠ [] ∧ data.workers.rows ≠ [] :=
+  fun ⟨data, _, _, _, _, _, _, _, accepted, inputs, first, callers, rows⟩ =>
+    ⟨data, claim accepted inputs first, callers, rows⟩
+
+example (claim : RVPreparedRoundWindowSoundnessClaim) : RVPreparedRoundWindowSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell)
+      (flags : Fin 8) (lower upper : Nat),
+      RVJointHashWindowResult data before cells (.blakeRound flags) lower upper ∧ data.callers ≠ [] ∧
+        data.workers.windowRows lower upper ≠ [] :=
+  fun ⟨data, before, _, _, cells, _, flags, lower, upper, accepted, inputs, first, last, callers, window⟩ =>
+    ⟨data, before, cells, flags, lower, upper, claim accepted inputs first last, callers, window⟩
+
+example (claim : RVPreparedRoundCyclesSoundnessClaim) : RVPreparedRoundCyclesSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (program : List UnifiedReduced.RVProgramEntry)
+      (initial : RV.State) (cells : List Cell),
+      RVCallerCycleEffects data program initial cells ∧ data.callers ≠ [] ∧ data.workers.rows ≠ [] :=
+  fun ⟨data, program, initial, _, _, cells, _, _, accepted, inputs, first, started, callers, rows⟩ =>
+    ⟨data, program, initial, cells, claim accepted inputs first started, callers, rows⟩
+
 end UnifiedCallers
 
 example (claim : JumpBranchSlt.RVTraceSoundnessClaim) : JumpBranchSlt.RVTraceSoundnessSatisfiableClaim →

@@ -90,6 +90,7 @@ import Slop.Final.Trace.Satisfiable.UnifiedPreparedCallers
 import Slop.Final.Trace.Satisfiable.Callers
 import Slop.Final.Trace.Satisfiable.UnifiedHashCallers
 import Slop.Final.Trace.Satisfiable.DelegationHashCallers
+import Slop.Final.Trace.Satisfiable.UnifiedRoundCallers
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
@@ -484,3 +485,11 @@ example : Airbender.Blake2Round.Native.RVCompressionBoundarySoundnessSatisfiable
 #print axioms Airbender.Blake2Round.Native.rv_compression_boundary_soundness_satisfiable
 example : Airbender.Blake2Round.Native.RVWindowSoundnessSatisfiableClaim := @Airbender.Blake2Round.Native.rv_window_soundness_satisfiable
 #print axioms Airbender.Blake2Round.Native.rv_window_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVPreparedRoundRegionMasksSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_prepared_round_region_masks_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_region_masks_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVPreparedRoundMasksSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_prepared_round_masks_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_masks_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVPreparedRoundWindowSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_prepared_round_window_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_window_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVPreparedRoundCyclesSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_prepared_round_cycles_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_cycles_soundness_satisfiable
