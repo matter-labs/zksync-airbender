@@ -1,6 +1,6 @@
 module
 public import Slop.NonVacuous.KeccakSplitSpan.ThetaRho.Honest
-public import Slop.NonVacuous.KeccakSplitSpan.Tactics
+public import Slop.NonVacuous.SpanTactics
 public import Slop.KeccakSplit.ThetaRho.OpIndex
 
 @[expose] public section

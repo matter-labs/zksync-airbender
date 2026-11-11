@@ -35,7 +35,7 @@ theorem lookup_32 (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .thet
   op_index
   exact split_at (a := inByte x 2 5) (b := d x 5) (s := shift x 2) (inByte_lt valid kind (by decide) 5)
       (d_lt valid kind 5)
-    (shift_lt x 2) (by quotient_entry (-7864320) (show x.limb 2 2 = x.limb 2 2 % 256 + 256 * inByte x 2 5 by
+    (shift_lt x 2) (by quotient (-7864320) (show x.limb 2 2 = x.limb 2 2 % 256 + 256 * inByte x 2 5 by
       simp only [inByte, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]; omega))
     (by theta_direct) (by cast_identity 2013265921 (shift_2 x)) (by theta_result) (by theta_result)
     (by theta_direct) (by theta_direct) (by theta_direct) (by theta_direct)
@@ -64,7 +64,7 @@ theorem lookup_34 (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .thet
   op_index
   exact split_at (a := inByte x 2 7) (b := d x 7) (s := shift x 2) (inByte_lt valid kind (by decide) 7)
       (d_lt valid kind 7)
-    (shift_lt x 2) (by quotient_entry (-7864320) (show x.limb 2 3 = x.limb 2 3 % 256 + 256 * inByte x 2 7 by
+    (shift_lt x 2) (by quotient (-7864320) (show x.limb 2 3 = x.limb 2 3 % 256 + 256 * inByte x 2 7 by
       simp only [inByte, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]; omega))
     (by theta_direct) (by cast_identity 2013265921 (shift_2 x)) (by theta_result) (by theta_result)
     (by theta_direct) (by theta_direct) (by theta_direct) (by theta_direct)
@@ -93,7 +93,7 @@ theorem lookup_36 (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .thet
   op_index
   exact split_at (a := inByte x 3 1) (b := d x 1) (s := shift x 3) (inByte_lt valid kind (by decide) 1)
       (d_lt valid kind 1)
-    (shift_lt x 3) (by quotient_entry (-7864320) (show x.limb 3 0 = x.limb 3 0 % 256 + 256 * inByte x 3 1 by
+    (shift_lt x 3) (by quotient (-7864320) (show x.limb 3 0 = x.limb 3 0 % 256 + 256 * inByte x 3 1 by
       simp only [inByte, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]; omega))
     (by theta_direct) (by cast_identity 2013265921 (shift_3 x)) (by theta_result) (by theta_result)
     (by theta_direct) (by theta_direct) (by theta_direct) (by theta_direct)
@@ -122,7 +122,7 @@ theorem lookup_38 (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .thet
   op_index
   exact split_at (a := inByte x 3 3) (b := d x 3) (s := shift x 3) (inByte_lt valid kind (by decide) 3)
       (d_lt valid kind 3)
-    (shift_lt x 3) (by quotient_entry (-7864320) (show x.limb 3 1 = x.limb 3 1 % 256 + 256 * inByte x 3 3 by
+    (shift_lt x 3) (by quotient (-7864320) (show x.limb 3 1 = x.limb 3 1 % 256 + 256 * inByte x 3 3 by
       simp only [inByte, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]; omega))
     (by theta_direct) (by cast_identity 2013265921 (shift_3 x)) (by theta_result) (by theta_result)
     (by theta_direct) (by theta_direct) (by theta_direct) (by theta_direct)
@@ -151,7 +151,7 @@ theorem lookup_40 (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .thet
   op_index
   exact split_at (a := inByte x 3 5) (b := d x 5) (s := shift x 3) (inByte_lt valid kind (by decide) 5)
       (d_lt valid kind 5)
-    (shift_lt x 3) (by quotient_entry (-7864320) (show x.limb 3 2 = x.limb 3 2 % 256 + 256 * inByte x 3 5 by
+    (shift_lt x 3) (by quotient (-7864320) (show x.limb 3 2 = x.limb 3 2 % 256 + 256 * inByte x 3 5 by
       simp only [inByte, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]; omega))
     (by theta_direct) (by cast_identity 2013265921 (shift_3 x)) (by theta_result) (by theta_result)
     (by theta_direct) (by theta_direct) (by theta_direct) (by theta_direct)
@@ -180,7 +180,7 @@ theorem lookup_42 (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .thet
   op_index
   exact split_at (a := inByte x 3 7) (b := d x 7) (s := shift x 3) (inByte_lt valid kind (by decide) 7)
       (d_lt valid kind 7)
-    (shift_lt x 3) (by quotient_entry (-7864320) (show x.limb 3 3 = x.limb 3 3 % 256 + 256 * inByte x 3 7 by
+    (shift_lt x 3) (by quotient (-7864320) (show x.limb 3 3 = x.limb 3 3 % 256 + 256 * inByte x 3 7 by
       simp only [inByte, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]; omega))
     (by theta_direct) (by cast_identity 2013265921 (shift_3 x)) (by theta_result) (by theta_result)
     (by theta_direct) (by theta_direct) (by theta_direct) (by theta_direct)
@@ -209,7 +209,7 @@ theorem lookup_44 (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .thet
   op_index
   exact split_at (a := inByte x 4 1) (b := d x 1) (s := shift x 4) (inByte_lt valid kind (by decide) 1)
       (d_lt valid kind 1)
-    (shift_lt x 4) (by quotient_entry (-7864320) (show x.limb 4 0 = x.limb 4 0 % 256 + 256 * inByte x 4 1 by
+    (shift_lt x 4) (by quotient (-7864320) (show x.limb 4 0 = x.limb 4 0 % 256 + 256 * inByte x 4 1 by
       simp only [inByte, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]; omega))
     (by theta_direct) (by cast_identity 2013265921 (shift_4 x)) (by theta_result) (by theta_result)
     (by theta_direct) (by theta_direct) (by theta_direct) (by theta_direct)
@@ -238,7 +238,7 @@ theorem lookup_46 (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .thet
   op_index
   exact split_at (a := inByte x 4 3) (b := d x 3) (s := shift x 4) (inByte_lt valid kind (by decide) 3)
       (d_lt valid kind 3)
-    (shift_lt x 4) (by quotient_entry (-7864320) (show x.limb 4 1 = x.limb 4 1 % 256 + 256 * inByte x 4 3 by
+    (shift_lt x 4) (by quotient (-7864320) (show x.limb 4 1 = x.limb 4 1 % 256 + 256 * inByte x 4 3 by
       simp only [inByte, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]; omega))
     (by theta_direct) (by cast_identity 2013265921 (shift_4 x)) (by theta_result) (by theta_result)
     (by theta_direct) (by theta_direct) (by theta_direct) (by theta_direct)
@@ -267,7 +267,7 @@ theorem lookup_48 (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .thet
   op_index
   exact split_at (a := inByte x 4 5) (b := d x 5) (s := shift x 4) (inByte_lt valid kind (by decide) 5)
       (d_lt valid kind 5)
-    (shift_lt x 4) (by quotient_entry (-7864320) (show x.limb 4 2 = x.limb 4 2 % 256 + 256 * inByte x 4 5 by
+    (shift_lt x 4) (by quotient (-7864320) (show x.limb 4 2 = x.limb 4 2 % 256 + 256 * inByte x 4 5 by
       simp only [inByte, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]; omega))
     (by theta_direct) (by cast_identity 2013265921 (shift_4 x)) (by theta_result) (by theta_result)
     (by theta_direct) (by theta_direct) (by theta_direct) (by theta_direct)
@@ -296,7 +296,7 @@ theorem lookup_50 (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .thet
   op_index
   exact split_at (a := inByte x 4 7) (b := d x 7) (s := shift x 4) (inByte_lt valid kind (by decide) 7)
       (d_lt valid kind 7)
-    (shift_lt x 4) (by quotient_entry (-7864320) (show x.limb 4 3 = x.limb 4 3 % 256 + 256 * inByte x 4 7 by
+    (shift_lt x 4) (by quotient (-7864320) (show x.limb 4 3 = x.limb 4 3 % 256 + 256 * inByte x 4 7 by
       simp only [inByte, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]; omega))
     (by theta_direct) (by cast_identity 2013265921 (shift_4 x)) (by theta_result) (by theta_result)
     (by theta_direct) (by theta_direct) (by theta_direct) (by theta_direct)

@@ -74,7 +74,7 @@ theorem timestamps (x : RowInput) (valid : x.Valid) (previous : ∀ j < 14, x.pr
     omega
   interval_cases i <;> op_index
   · refine range_of_eval (n := x.invocation / 4) ?_ (by simp only [Trace.timestampBase]; omega) (by decide)
-    quotient_entry 1509949441 (show x.invocation = 1 + 4 * (x.invocation / 4) by omega)
+    quotient 1509949441 (show x.invocation = 1 + 4 * (x.invocation / 4) by omega)
   · exact port0.1
   · exact port0.2
   · exact port1.1
@@ -104,7 +104,7 @@ theorem timestamps (x : RowInput) (valid : x.Valid) (previous : ∀ j < 14, x.pr
   · exact port13.1
   · exact port13.2
   · refine range_of_eval (n := (x.read 1).lo / 256) ?_ (by simp only [Trace.timestampBase]; omega) (by decide)
-    quotient_entry (-7864320) (show (x.read 1).lo = 256 * ((x.read 1).lo / 256) by omega)
+    quotient (-7864320) (show (x.read 1).lo = 256 * ((x.read 1).lo / 256) by omega)
 
 /-- The honest assignment of valid inputs satisfies the column-parity row's clock constraints. -/
 theorem holds (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .columnParity)

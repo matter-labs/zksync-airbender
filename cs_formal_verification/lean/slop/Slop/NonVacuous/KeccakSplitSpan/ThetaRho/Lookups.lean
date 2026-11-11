@@ -35,7 +35,7 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .thetaR
   interval_cases i
   · op_index
     refine range_of_eval (n := (x.read 1).lo / 256) ?_ (by simp only [Trace.timestampBase]; omega) (by decide)
-    quotient_entry (-7864320) (show (x.read 1).lo = 256 * ((x.read 1).lo / 256) by omega)
+    quotient (-7864320) (show (x.read 1).lo = 256 * ((x.read 1).lo / 256) by omega)
   · op_index
     exact slots_at valid.call kind (by theta_direct) (by theta_direct) (by theta_direct) (by theta_direct)
       (by theta_direct) (by theta_direct) (by theta_direct) (by theta_direct) (by theta_direct)
@@ -47,9 +47,9 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .thetaR
         (by theta_direct)
   · op_index
     exact byte_xor_at (a := cByte x 1) (b := rByte x 1) (cByte_lt valid kind 1) (rByte_lt valid kind 1)
-        (by quotient_entry (-7864320) (show x.limb 5 0 = x.limb 5 0 % 256 + 256 * cByte x 1 by
+        (by quotient (-7864320) (show x.limb 5 0 = x.limb 5 0 % 256 + 256 * cByte x 1 by
           simp only [cByte, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]; omega))
-        (by quotient_entry (-7864320) (show 2 * x.limb 6 0 + top x 3 = 65536 * top x 0 + rotLimb x 0 % 256 +
+        (by quotient (-7864320) (show 2 * x.limb 6 0 + top x 3 = 65536 * top x 0 + rotLimb x 0 % 256 +
           256 * rByte x 1 by
           simp only [rByte, rotLimb, top, Nat.reduceAdd, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]
           omega))
@@ -63,9 +63,9 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .thetaR
         (by theta_direct)
   · op_index
     exact byte_xor_at (a := cByte x 3) (b := rByte x 3) (cByte_lt valid kind 3) (rByte_lt valid kind 3)
-        (by quotient_entry (-7864320) (show x.limb 5 1 = x.limb 5 1 % 256 + 256 * cByte x 3 by
+        (by quotient (-7864320) (show x.limb 5 1 = x.limb 5 1 % 256 + 256 * cByte x 3 by
           simp only [cByte, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]; omega))
-        (by quotient_entry (-7864320) (show 2 * x.limb 6 1 + top x 0 = 65536 * top x 1 + rotLimb x 1 % 256 +
+        (by quotient (-7864320) (show 2 * x.limb 6 1 + top x 0 = 65536 * top x 1 + rotLimb x 1 % 256 +
           256 * rByte x 3 by
           simp only [rByte, rotLimb, top, Nat.reduceAdd, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]
           omega))
@@ -79,9 +79,9 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .thetaR
         (by theta_direct)
   · op_index
     exact byte_xor_at (a := cByte x 5) (b := rByte x 5) (cByte_lt valid kind 5) (rByte_lt valid kind 5)
-        (by quotient_entry (-7864320) (show x.limb 5 2 = x.limb 5 2 % 256 + 256 * cByte x 5 by
+        (by quotient (-7864320) (show x.limb 5 2 = x.limb 5 2 % 256 + 256 * cByte x 5 by
           simp only [cByte, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]; omega))
-        (by quotient_entry (-7864320) (show 2 * x.limb 6 2 + top x 1 = 65536 * top x 2 + rotLimb x 2 % 256 +
+        (by quotient (-7864320) (show 2 * x.limb 6 2 + top x 1 = 65536 * top x 2 + rotLimb x 2 % 256 +
           256 * rByte x 5 by
           simp only [rByte, rotLimb, top, Nat.reduceAdd, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]
           omega))
@@ -95,9 +95,9 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .thetaR
         (by theta_direct)
   · op_index
     exact byte_xor_at (a := cByte x 7) (b := rByte x 7) (cByte_lt valid kind 7) (rByte_lt valid kind 7)
-        (by quotient_entry (-7864320) (show x.limb 5 3 = x.limb 5 3 % 256 + 256 * cByte x 7 by
+        (by quotient (-7864320) (show x.limb 5 3 = x.limb 5 3 % 256 + 256 * cByte x 7 by
           simp only [cByte, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]; omega))
-        (by quotient_entry (-7864320) (show 2 * x.limb 6 3 + top x 2 = 65536 * top x 3 + rotLimb x 3 % 256 +
+        (by quotient (-7864320) (show 2 * x.limb 6 3 + top x 2 = 65536 * top x 3 + rotLimb x 3 % 256 +
           256 * rByte x 7 by
           simp only [rByte, rotLimb, top, Nat.reduceAdd, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte]
           omega))

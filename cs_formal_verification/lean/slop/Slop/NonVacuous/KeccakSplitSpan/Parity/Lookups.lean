@@ -1,7 +1,7 @@
 module
 public import Slop.NonVacuous.KeccakSplitSpan.Parity.Honest
 public import Slop.NonVacuous.KeccakSplitSpan.Parity.Tables
-public import Slop.NonVacuous.KeccakSplitSpan.Tactics
+public import Slop.NonVacuous.SpanTactics
 public import Slop.KeccakSplit.ColumnParity.OpIndex
 
 @[expose] public section
@@ -85,7 +85,7 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .column
     omega
   interval_cases i <;> op_index
   · refine range_of_eval (n := (x.read 1).lo / 256) ?_ (by simp only [Trace.timestampBase]; omega) (by decide)
-    quotient_entry (-7864320) (show (x.read 1).lo = 256 * ((x.read 1).lo / 256) by omega)
+    quotient (-7864320) (show (x.read 1).lo = 256 * ((x.read 1).lo / 256) by omega)
   · exact slots_at valid.call kind (by direct) (by direct) (by direct) (by direct) (by direct) (by direct)
       (by direct) (by direct)
   · exact control_at valid.call kind (by direct) (by direct) (by direct) (by direct) (by direct) (by direct)
@@ -95,21 +95,21 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .column
         (x.limb 0 0 % 256 ^^^ rcByte (Parity.round x)) by simp only [out, nib, Nat.reducePow]; omega))
       (by direct) (by direct) (by direct) (by direct) (by direct)
   · exact iota_at (a := x.limb 0 0 / 256) (b := Parity.round x + 32) (by omega) (by omega)
-      (by quotient_entry (-7864320) (show x.limb 0 0 = x.limb 0 0 % 256 + 256 * (x.limb 0 0 / 256) by omega))
+      (by quotient (-7864320) (show x.limb 0 0 = x.limb 0 0 % 256 + 256 * (x.limb 0 0 / 256) by omega))
       (by direct)
-      (by quotient_entry (-7864320) (show out x 0 = nib (out x 0) 0 + 16 * nib (out x 0) 1 +
+      (by quotient (-7864320) (show out x 0 = nib (out x 0) 0 + 16 * nib (out x 0) 1 +
         256 * (x.limb 0 0 / 256 ^^^ rcByte (Parity.round x + 32)) by simp only [out, nib, Nat.reducePow]; omega))
       (by direct) (by direct) (by direct) (by direct) (by direct)
   · exact iota_at (a := x.limb 0 1 / 256) (b := Parity.round x + 96) (by omega) (by omega)
-      (by quotient_entry (-7864320) (show x.limb 0 1 = x.limb 0 1 % 256 + 256 * (x.limb 0 1 / 256) by omega))
+      (by quotient (-7864320) (show x.limb 0 1 = x.limb 0 1 % 256 + 256 * (x.limb 0 1 / 256) by omega))
       (by direct)
-      (by quotient_entry (-7864320) (show out x 1 = nib (out x 1) 0 + 16 * nib (out x 1) 1 +
+      (by quotient (-7864320) (show out x 1 = nib (out x 1) 0 + 16 * nib (out x 1) 1 +
         256 * (x.limb 0 1 / 256 ^^^ rcByte (Parity.round x + 96)) by simp only [out, nib, Nat.reducePow]; omega))
       (by direct) (by direct) (by direct) (by direct) (by direct)
   · exact iota_at (a := x.limb 0 3 / 256) (b := Parity.round x + 224) (by omega) (by omega)
-      (by quotient_entry (-7864320) (show x.limb 0 3 = x.limb 0 3 % 256 + 256 * (x.limb 0 3 / 256) by omega))
+      (by quotient (-7864320) (show x.limb 0 3 = x.limb 0 3 % 256 + 256 * (x.limb 0 3 / 256) by omega))
       (by direct)
-      (by quotient_entry (-7864320) (show out x 3 = nib (out x 3) 0 + 16 * nib (out x 3) 1 +
+      (by quotient (-7864320) (show out x 3 = nib (out x 3) 0 + 16 * nib (out x 3) 1 +
         256 * (x.limb 0 3 / 256 ^^^ rcByte (Parity.round x + 224)) by simp only [out, nib, Nat.reducePow]; omega))
       (by direct) (by direct) (by direct) (by direct) (by direct)
   · exact xor5_at (a0 := nib (out x 0) 0) (a1 := nib (x.limb 1 0) 0) (a2 := nib (x.limb 2 0) 0)
@@ -127,12 +127,12 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .column
   · exact xor5_at (a0 := nib (out x 0) 3) (a1 := nib (x.limb 1 0) 3) (a2 := nib (x.limb 2 0) 3)
       (a3 := nib (x.limb 3 0) 3) (a4 := nib (x.limb 4 0) 3)
       (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _)
-      (by quotient_entry (-491520) (nib_limb (out_lt valid kind 0)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 1 0)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 2 0)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 3 0)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 4 0)).1)
-      (by quotient_entry (-491520) (show parity x 0 = parityNib x 0 0 + 16 * parityNib x 0 1 + 256 * parityNib x 0 2 +
+      (by quotient (-491520) (nib_limb (out_lt valid kind 0)).1)
+      (by quotient (-491520) (nib_limb (lane 1 0)).1)
+      (by quotient (-491520) (nib_limb (lane 2 0)).1)
+      (by quotient (-491520) (nib_limb (lane 3 0)).1)
+      (by quotient (-491520) (nib_limb (lane 4 0)).1)
+      (by quotient (-491520) (show parity x 0 = parityNib x 0 0 + 16 * parityNib x 0 1 + 256 * parityNib x 0 2 +
         4096 * (nib (out x 0) 3 ^^^ nib (x.limb 1 0) 3 ^^^ nib (x.limb 2 0) 3 ^^^ nib (x.limb 3 0) 3 ^^^
           nib (x.limb 4 0) 3) from rfl))
       (by direct) (by direct)
@@ -151,12 +151,12 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .column
   · exact xor5_at (a0 := nib (out x 1) 3) (a1 := nib (x.limb 1 1) 3) (a2 := nib (x.limb 2 1) 3)
       (a3 := nib (x.limb 3 1) 3) (a4 := nib (x.limb 4 1) 3)
       (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _)
-      (by quotient_entry (-491520) (nib_limb (out_lt valid kind 1)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 1 1)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 2 1)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 3 1)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 4 1)).1)
-      (by quotient_entry (-491520) (show parity x 1 = parityNib x 1 0 + 16 * parityNib x 1 1 + 256 * parityNib x 1 2 +
+      (by quotient (-491520) (nib_limb (out_lt valid kind 1)).1)
+      (by quotient (-491520) (nib_limb (lane 1 1)).1)
+      (by quotient (-491520) (nib_limb (lane 2 1)).1)
+      (by quotient (-491520) (nib_limb (lane 3 1)).1)
+      (by quotient (-491520) (nib_limb (lane 4 1)).1)
+      (by quotient (-491520) (show parity x 1 = parityNib x 1 0 + 16 * parityNib x 1 1 + 256 * parityNib x 1 2 +
         4096 * (nib (out x 1) 3 ^^^ nib (x.limb 1 1) 3 ^^^ nib (x.limb 2 1) 3 ^^^ nib (x.limb 3 1) 3 ^^^
           nib (x.limb 4 1) 3) from rfl))
       (by direct) (by direct)
@@ -175,12 +175,12 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .column
   · exact xor5_at (a0 := nib (out x 2) 3) (a1 := nib (x.limb 1 2) 3) (a2 := nib (x.limb 2 2) 3)
       (a3 := nib (x.limb 3 2) 3) (a4 := nib (x.limb 4 2) 3)
       (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _)
-      (by quotient_entry (-491520) (nib_limb (out_lt valid kind 2)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 1 2)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 2 2)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 3 2)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 4 2)).1)
-      (by quotient_entry (-491520) (show parity x 2 = parityNib x 2 0 + 16 * parityNib x 2 1 + 256 * parityNib x 2 2 +
+      (by quotient (-491520) (nib_limb (out_lt valid kind 2)).1)
+      (by quotient (-491520) (nib_limb (lane 1 2)).1)
+      (by quotient (-491520) (nib_limb (lane 2 2)).1)
+      (by quotient (-491520) (nib_limb (lane 3 2)).1)
+      (by quotient (-491520) (nib_limb (lane 4 2)).1)
+      (by quotient (-491520) (show parity x 2 = parityNib x 2 0 + 16 * parityNib x 2 1 + 256 * parityNib x 2 2 +
         4096 * (nib (out x 2) 3 ^^^ nib (x.limb 1 2) 3 ^^^ nib (x.limb 2 2) 3 ^^^ nib (x.limb 3 2) 3 ^^^
           nib (x.limb 4 2) 3) from rfl))
       (by direct) (by direct)
@@ -199,12 +199,12 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .column
   · exact xor5_at (a0 := nib (out x 3) 3) (a1 := nib (x.limb 1 3) 3) (a2 := nib (x.limb 2 3) 3)
       (a3 := nib (x.limb 3 3) 3) (a4 := nib (x.limb 4 3) 3)
       (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _)
-      (by quotient_entry (-491520) (nib_limb (out_lt valid kind 3)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 1 3)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 2 3)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 3 3)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 4 3)).1)
-      (by quotient_entry (-491520) (show parity x 3 = parityNib x 3 0 + 16 * parityNib x 3 1 + 256 * parityNib x 3 2 +
+      (by quotient (-491520) (nib_limb (out_lt valid kind 3)).1)
+      (by quotient (-491520) (nib_limb (lane 1 3)).1)
+      (by quotient (-491520) (nib_limb (lane 2 3)).1)
+      (by quotient (-491520) (nib_limb (lane 3 3)).1)
+      (by quotient (-491520) (nib_limb (lane 4 3)).1)
+      (by quotient (-491520) (show parity x 3 = parityNib x 3 0 + 16 * parityNib x 3 1 + 256 * parityNib x 3 2 +
         4096 * (nib (out x 3) 3 ^^^ nib (x.limb 1 3) 3 ^^^ nib (x.limb 2 3) 3 ^^^ nib (x.limb 3 3) 3 ^^^
           nib (x.limb 4 3) 3) from rfl))
       (by direct) (by direct)

@@ -1,5 +1,6 @@
 module
 public import Slop.NonVacuous.KeccakSpan.Asserts
+public import Slop.NonVacuous.SpanTactics
 public import Slop.NonVacuous.KeccakSpan.Queries
 public import Mathlib.Tactic.ReduceModChar
 public import Slop.Defs.Circuits.Keccak.Artifact
@@ -16,14 +17,6 @@ namespace Airbender.NonVacuous.KeccakSpan
 open Templates
 
 variable {p : Nat} [Fact p.Prime]
-
-/-- A quotient entry `inverse * (sum - low)`, from the natural identity `sum = low + 2^k * quotient`. -/
-local macro "quotient " inverse:term:max e:term : tactic => `(tactic| (
-  simp only [Expression.eval, Verification.environment, honest_column]
-  have identity := congrArg (Nat.cast : Nat → ZMod 2013265921) ($e)
-  push_cast at identity ⊢
-  linear_combination (norm := ring_nf) ($inverse : ZMod 2013265921) * identity
-  reduce_mod_char))
 
 set_option hygiene false in
 /-- The pointer alignment query: the low limb is 256 times a timestamp-range quotient. -/

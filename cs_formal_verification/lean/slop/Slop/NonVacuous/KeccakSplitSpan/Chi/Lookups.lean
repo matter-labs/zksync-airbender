@@ -1,7 +1,7 @@
 module
 public import Slop.NonVacuous.KeccakSplitSpan.Chi.Honest
 public import Slop.NonVacuous.KeccakSplitSpan.Chi.Tables
-public import Slop.NonVacuous.KeccakSplitSpan.Tactics
+public import Slop.NonVacuous.SpanTactics
 public import Slop.KeccakSplit.Chi5.OpIndex
 
 @[expose] public section
@@ -42,7 +42,7 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .chi5) 
     omega
   interval_cases i <;> op_index
   · refine range_of_eval (n := (x.read 1).lo / 256) ?_ (by simp only [Trace.timestampBase]; omega) (by decide)
-    quotient_entry (-7864320) (show (x.read 1).lo = 256 * ((x.read 1).lo / 256) by omega)
+    quotient (-7864320) (show (x.read 1).lo = 256 * ((x.read 1).lo / 256) by omega)
   · exact control_at valid.call kind (by chi_direct) (by chi_direct) (by chi_direct) (by chi_direct)
       (by chi_direct) (by chi_direct) (by chi_direct) (by chi_direct) (by chi_direct) (by chi_direct)
       (by chi_direct)
@@ -67,24 +67,24 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .chi5) 
   · exact chi_at (a0 := nib (x.limb 0 0) 3) (a1 := nib (x.limb 1 0) 3) (a2 := nib (x.limb 2 0) 3)
       (a3 := nib (x.limb 3 0) 3) (a4 := nib (x.limb 4 0) 3)
       (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _)
-      (by quotient_entry (-491520) (nib_limb (lane 0 0)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 1 0)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 2 0)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 3 0)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 4 0)).1)
-      (by quotient_entry (-491520) (show out x 0 0 = chiNib x 0 0 + 16 * chiNib x 0 1 +
+      (by quotient (-491520) (nib_limb (lane 0 0)).1)
+      (by quotient (-491520) (nib_limb (lane 1 0)).1)
+      (by quotient (-491520) (nib_limb (lane 2 0)).1)
+      (by quotient (-491520) (nib_limb (lane 3 0)).1)
+      (by quotient (-491520) (nib_limb (lane 4 0)).1)
+      (by quotient (-491520) (show out x 0 0 = chiNib x 0 0 + 16 * chiNib x 0 1 +
         256 * chiNib x 0 2 + 4096 * chi4 (nib (x.limb 0 0) 3) (nib (x.limb 1 0) 3) (nib (x.limb 2 0) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 1 0 = chiNib x 1 0 + 16 * chiNib x 1 1 +
+      (by quotient (-491520) (show out x 1 0 = chiNib x 1 0 + 16 * chiNib x 1 1 +
         256 * chiNib x 1 2 + 4096 * chi4 (nib (x.limb 1 0) 3) (nib (x.limb 2 0) 3) (nib (x.limb 3 0) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 2 0 = chiNib x 2 0 + 16 * chiNib x 2 1 +
+      (by quotient (-491520) (show out x 2 0 = chiNib x 2 0 + 16 * chiNib x 2 1 +
         256 * chiNib x 2 2 + 4096 * chi4 (nib (x.limb 2 0) 3) (nib (x.limb 3 0) 3) (nib (x.limb 4 0) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 3 0 = chiNib x 3 0 + 16 * chiNib x 3 1 +
+      (by quotient (-491520) (show out x 3 0 = chiNib x 3 0 + 16 * chiNib x 3 1 +
         256 * chiNib x 3 2 + 4096 * chi4 (nib (x.limb 3 0) 3) (nib (x.limb 4 0) 3) (nib (x.limb 0 0) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 4 0 = chiNib x 4 0 + 16 * chiNib x 4 1 +
+      (by quotient (-491520) (show out x 4 0 = chiNib x 4 0 + 16 * chiNib x 4 1 +
         256 * chiNib x 4 2 + 4096 * chi4 (nib (x.limb 4 0) 3) (nib (x.limb 0 0) 3) (nib (x.limb 1 0) 3)
         from rfl))
       (by chi_direct)
@@ -109,24 +109,24 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .chi5) 
   · exact chi_at (a0 := nib (x.limb 0 1) 3) (a1 := nib (x.limb 1 1) 3) (a2 := nib (x.limb 2 1) 3)
       (a3 := nib (x.limb 3 1) 3) (a4 := nib (x.limb 4 1) 3)
       (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _)
-      (by quotient_entry (-491520) (nib_limb (lane 0 1)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 1 1)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 2 1)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 3 1)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 4 1)).1)
-      (by quotient_entry (-491520) (show out x 0 1 = chiNib x 0 4 + 16 * chiNib x 0 5 +
+      (by quotient (-491520) (nib_limb (lane 0 1)).1)
+      (by quotient (-491520) (nib_limb (lane 1 1)).1)
+      (by quotient (-491520) (nib_limb (lane 2 1)).1)
+      (by quotient (-491520) (nib_limb (lane 3 1)).1)
+      (by quotient (-491520) (nib_limb (lane 4 1)).1)
+      (by quotient (-491520) (show out x 0 1 = chiNib x 0 4 + 16 * chiNib x 0 5 +
         256 * chiNib x 0 6 + 4096 * chi4 (nib (x.limb 0 1) 3) (nib (x.limb 1 1) 3) (nib (x.limb 2 1) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 1 1 = chiNib x 1 4 + 16 * chiNib x 1 5 +
+      (by quotient (-491520) (show out x 1 1 = chiNib x 1 4 + 16 * chiNib x 1 5 +
         256 * chiNib x 1 6 + 4096 * chi4 (nib (x.limb 1 1) 3) (nib (x.limb 2 1) 3) (nib (x.limb 3 1) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 2 1 = chiNib x 2 4 + 16 * chiNib x 2 5 +
+      (by quotient (-491520) (show out x 2 1 = chiNib x 2 4 + 16 * chiNib x 2 5 +
         256 * chiNib x 2 6 + 4096 * chi4 (nib (x.limb 2 1) 3) (nib (x.limb 3 1) 3) (nib (x.limb 4 1) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 3 1 = chiNib x 3 4 + 16 * chiNib x 3 5 +
+      (by quotient (-491520) (show out x 3 1 = chiNib x 3 4 + 16 * chiNib x 3 5 +
         256 * chiNib x 3 6 + 4096 * chi4 (nib (x.limb 3 1) 3) (nib (x.limb 4 1) 3) (nib (x.limb 0 1) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 4 1 = chiNib x 4 4 + 16 * chiNib x 4 5 +
+      (by quotient (-491520) (show out x 4 1 = chiNib x 4 4 + 16 * chiNib x 4 5 +
         256 * chiNib x 4 6 + 4096 * chi4 (nib (x.limb 4 1) 3) (nib (x.limb 0 1) 3) (nib (x.limb 1 1) 3)
         from rfl))
       (by chi_direct)
@@ -151,24 +151,24 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .chi5) 
   · exact chi_at (a0 := nib (x.limb 0 2) 3) (a1 := nib (x.limb 1 2) 3) (a2 := nib (x.limb 2 2) 3)
       (a3 := nib (x.limb 3 2) 3) (a4 := nib (x.limb 4 2) 3)
       (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _)
-      (by quotient_entry (-491520) (nib_limb (lane 0 2)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 1 2)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 2 2)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 3 2)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 4 2)).1)
-      (by quotient_entry (-491520) (show out x 0 2 = chiNib x 0 8 + 16 * chiNib x 0 9 +
+      (by quotient (-491520) (nib_limb (lane 0 2)).1)
+      (by quotient (-491520) (nib_limb (lane 1 2)).1)
+      (by quotient (-491520) (nib_limb (lane 2 2)).1)
+      (by quotient (-491520) (nib_limb (lane 3 2)).1)
+      (by quotient (-491520) (nib_limb (lane 4 2)).1)
+      (by quotient (-491520) (show out x 0 2 = chiNib x 0 8 + 16 * chiNib x 0 9 +
         256 * chiNib x 0 10 + 4096 * chi4 (nib (x.limb 0 2) 3) (nib (x.limb 1 2) 3) (nib (x.limb 2 2) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 1 2 = chiNib x 1 8 + 16 * chiNib x 1 9 +
+      (by quotient (-491520) (show out x 1 2 = chiNib x 1 8 + 16 * chiNib x 1 9 +
         256 * chiNib x 1 10 + 4096 * chi4 (nib (x.limb 1 2) 3) (nib (x.limb 2 2) 3) (nib (x.limb 3 2) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 2 2 = chiNib x 2 8 + 16 * chiNib x 2 9 +
+      (by quotient (-491520) (show out x 2 2 = chiNib x 2 8 + 16 * chiNib x 2 9 +
         256 * chiNib x 2 10 + 4096 * chi4 (nib (x.limb 2 2) 3) (nib (x.limb 3 2) 3) (nib (x.limb 4 2) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 3 2 = chiNib x 3 8 + 16 * chiNib x 3 9 +
+      (by quotient (-491520) (show out x 3 2 = chiNib x 3 8 + 16 * chiNib x 3 9 +
         256 * chiNib x 3 10 + 4096 * chi4 (nib (x.limb 3 2) 3) (nib (x.limb 4 2) 3) (nib (x.limb 0 2) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 4 2 = chiNib x 4 8 + 16 * chiNib x 4 9 +
+      (by quotient (-491520) (show out x 4 2 = chiNib x 4 8 + 16 * chiNib x 4 9 +
         256 * chiNib x 4 10 + 4096 * chi4 (nib (x.limb 4 2) 3) (nib (x.limb 0 2) 3) (nib (x.limb 1 2) 3)
         from rfl))
       (by chi_direct)
@@ -193,24 +193,24 @@ theorem lookups (x : RowInput) (valid : x.Valid) (kind : kindAt x.call = .chi5) 
   · exact chi_at (a0 := nib (x.limb 0 3) 3) (a1 := nib (x.limb 1 3) 3) (a2 := nib (x.limb 2 3) 3)
       (a3 := nib (x.limb 3 3) 3) (a4 := nib (x.limb 4 3) 3)
       (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _) (nib_lt _ _)
-      (by quotient_entry (-491520) (nib_limb (lane 0 3)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 1 3)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 2 3)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 3 3)).1)
-      (by quotient_entry (-491520) (nib_limb (lane 4 3)).1)
-      (by quotient_entry (-491520) (show out x 0 3 = chiNib x 0 12 + 16 * chiNib x 0 13 +
+      (by quotient (-491520) (nib_limb (lane 0 3)).1)
+      (by quotient (-491520) (nib_limb (lane 1 3)).1)
+      (by quotient (-491520) (nib_limb (lane 2 3)).1)
+      (by quotient (-491520) (nib_limb (lane 3 3)).1)
+      (by quotient (-491520) (nib_limb (lane 4 3)).1)
+      (by quotient (-491520) (show out x 0 3 = chiNib x 0 12 + 16 * chiNib x 0 13 +
         256 * chiNib x 0 14 + 4096 * chi4 (nib (x.limb 0 3) 3) (nib (x.limb 1 3) 3) (nib (x.limb 2 3) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 1 3 = chiNib x 1 12 + 16 * chiNib x 1 13 +
+      (by quotient (-491520) (show out x 1 3 = chiNib x 1 12 + 16 * chiNib x 1 13 +
         256 * chiNib x 1 14 + 4096 * chi4 (nib (x.limb 1 3) 3) (nib (x.limb 2 3) 3) (nib (x.limb 3 3) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 2 3 = chiNib x 2 12 + 16 * chiNib x 2 13 +
+      (by quotient (-491520) (show out x 2 3 = chiNib x 2 12 + 16 * chiNib x 2 13 +
         256 * chiNib x 2 14 + 4096 * chi4 (nib (x.limb 2 3) 3) (nib (x.limb 3 3) 3) (nib (x.limb 4 3) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 3 3 = chiNib x 3 12 + 16 * chiNib x 3 13 +
+      (by quotient (-491520) (show out x 3 3 = chiNib x 3 12 + 16 * chiNib x 3 13 +
         256 * chiNib x 3 14 + 4096 * chi4 (nib (x.limb 3 3) 3) (nib (x.limb 4 3) 3) (nib (x.limb 0 3) 3)
         from rfl))
-      (by quotient_entry (-491520) (show out x 4 3 = chiNib x 4 12 + 16 * chiNib x 4 13 +
+      (by quotient (-491520) (show out x 4 3 = chiNib x 4 12 + 16 * chiNib x 4 13 +
         256 * chiNib x 4 14 + 4096 * chi4 (nib (x.limb 4 3) 3) (nib (x.limb 0 3) 3) (nib (x.limb 1 3) 3)
         from rfl))
       (by chi_direct)

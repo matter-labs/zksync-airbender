@@ -4,22 +4,16 @@ public import Slop.NonVacuous.ClockCompleteness
 public import Slop.Blake2G.OpIndex
 public import Slop.Blake2G.ArtifactChecks
 public import Mathlib.Tactic.LinearCombination
+public import Slop.NonVacuous.SpanTactics
 
 @[expose] public section
 
 /-! The 32 imported assertions of a G row hold for the honest assignment of valid inputs: the active flag, the zero
     high limbs of x12, the four addition equations and four rotated-word equations, and the twelve carry and nine
-    borrow flags. Each equation is the cast of a natural-number identity of the honest values (`omega`). -/
+    borrow flags. Each cast_identity is the cast of a natural-number identity of the honest values (`omega`). -/
 
 namespace Airbender.NonVacuous.Blake2GSpan
 open Arithmetic
-
-/-- An equation whose evaluation is, up to `ring`, the cast of a natural identity. -/
-local macro "equation " q:ident e:term : tactic => `(tactic| (
-  simp only [Expression.eval, Verification.environment, honest_column]
-  have identity := congrArg (Nat.cast : Nat → ZMod $q) ($e)
-  push_cast at identity ⊢
-  linear_combination identity))
 
 variable {p : Nat} [Fact p.Prime]
 
@@ -45,33 +39,33 @@ theorem asserts (x : RowInput) (valid : x.Valid) (setup : Table (ZMod p) (fields
     ring
   · simp only [Expression.eval, Verification.environment, honest_column, Nat.cast_zero]
   · simp only [Expression.eval, Verification.environment, honest_column, Nat.cast_zero]
-  · equation p (show x.a.lo + x.b.lo + x.mx.lo + x.xb2 + 16 * x.xb3 + 128 * x.xb4 + x.my.lo =
+  · cast_identity p (show x.a.lo + x.b.lo + x.mx.lo + x.xb2 + 16 * x.xb3 + 128 * x.xb4 + x.my.lo =
       65536 * (x.carryA0 % 2) + 131072 * (x.carryA0 / 2) + 65536 * (x.carryA2 % 2) + 131072 * (x.carryA2 / 2) +
         x.a2lo by
       simp only [RowInput.carryA0, RowInput.carryA2, RowInput.a2lo, RowInput.sumA2, RowInput.b1lo, RowInput.sumA0,
         RowInput.a1lo]
       omega)
-  · equation p (show x.a.hi + x.b.hi + x.mx.hi + x.carryA0 % 2 + 2 * (x.carryA0 / 2) + x.xb5 + 16 * x.xb0 +
+  · cast_identity p (show x.a.hi + x.b.hi + x.mx.hi + x.carryA0 % 2 + 2 * (x.carryA0 / 2) + x.xb5 + 16 * x.xb0 +
       128 * x.xb1 + x.my.hi + x.carryA2 % 2 + 2 * (x.carryA2 / 2) =
       65536 * (x.carryA1 % 2) + 131072 * (x.carryA1 / 2) + 65536 * (x.carryA3 % 2) + 131072 * (x.carryA3 / 2) +
         x.a2hi by
       simp only [RowInput.carryA1, RowInput.carryA3, RowInput.a2hi, RowInput.sumA3, RowInput.b1hi, RowInput.sumA1,
         RowInput.a1hi]
       omega)
-  · equation p (show x.xf1 + 512 * x.xf2 = x.b2lo from rfl)
-  · equation p (show x.xf3 + 512 * x.xf0 = x.b2hi from rfl)
-  · equation p (show x.c.lo + x.xd2 + 256 * x.xd3 + x.xe1 + 256 * x.xe2 =
+  · cast_identity p (show x.xf1 + 512 * x.xf2 = x.b2lo from rfl)
+  · cast_identity p (show x.xf3 + 512 * x.xf0 = x.b2hi from rfl)
+  · cast_identity p (show x.c.lo + x.xd2 + 256 * x.xd3 + x.xe1 + 256 * x.xe2 =
       65536 * x.carryC0 + 65536 * x.carryC2 + x.c2lo by
       simp only [RowInput.carryC0, RowInput.carryC2, RowInput.c2lo, RowInput.sumC2, RowInput.d2lo, RowInput.sumC0,
         RowInput.c1lo, RowInput.d1lo]
       omega)
-  · equation p (show x.c.hi + x.xd0 + 256 * x.xd1 + x.carryC0 + x.xe3 + 256 * x.xe0 + x.carryC2 =
+  · cast_identity p (show x.c.hi + x.xd0 + 256 * x.xd1 + x.carryC0 + x.xe3 + 256 * x.xe0 + x.carryC2 =
       65536 * x.carryC1 + 65536 * x.carryC3 + x.c2hi by
       simp only [RowInput.carryC1, RowInput.carryC3, RowInput.c2hi, RowInput.sumC3, RowInput.d2hi, RowInput.sumC1,
         RowInput.c1hi, RowInput.d1hi]
       omega)
-  · equation p (show x.xe1 + 256 * x.xe2 = x.d2lo from rfl)
-  · equation p (show x.xe3 + 256 * x.xe0 = x.d2hi from rfl)
+  · cast_identity p (show x.xe1 + 256 * x.xe2 = x.d2lo from rfl)
+  · cast_identity p (show x.xe3 + 256 * x.xe0 = x.d2hi from rfl)
   · exact bit (RowInput.assignment_37 x) (by omega)
   · exact bit (RowInput.assignment_38 x) (by simp only [RowInput.carryA0, RowInput.sumA0]; omega)
   · exact bit (RowInput.assignment_39 x) (by omega)

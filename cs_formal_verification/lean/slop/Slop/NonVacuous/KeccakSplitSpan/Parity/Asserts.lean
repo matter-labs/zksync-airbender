@@ -1,6 +1,6 @@
 module
 public import Slop.NonVacuous.KeccakSplitSpan.Parity.Honest
-public import Slop.NonVacuous.KeccakSplitSpan.Tactics
+public import Slop.NonVacuous.SpanTactics
 public import Slop.KeccakSplit.ColumnParity.OpIndex
 
 @[expose] public section

@@ -2,6 +2,7 @@ module
 public import Slop.NonVacuous.Blake2GSpan.Honest
 public import Slop.NonVacuous.Blake2GSpan.Tables
 public import Slop.NonVacuous.ClockCompleteness
+public import Slop.NonVacuous.SpanTactics
 public import Slop.Blake2G.OpIndex
 public import Slop.Blake2G.ArtifactChecks
 public import Mathlib.Tactic.LinearCombination
@@ -30,14 +31,6 @@ local macro "result" : tactic => `(tactic| (
   push_cast
   simp only [zero_add, one_mul]
   rfl))
-
-/-- A quotient entry `inverse * (sum - low)`, from the natural identity `sum = low + 2^k * quotient`. -/
-macro "quotient " inverse:term:max e:term : tactic => `(tactic| (
-  simp only [Expression.eval, Verification.environment, honest_column]
-  have identity := congrArg (Nat.cast : Nat → ZMod 2013265921) ($e)
-  push_cast at identity ⊢
-  linear_combination (norm := ring_nf) ($inverse : ZMod 2013265921) * identity
-  reduce_mod_char))
 
 variable {p : Nat} [Fact p.Prime]
 
