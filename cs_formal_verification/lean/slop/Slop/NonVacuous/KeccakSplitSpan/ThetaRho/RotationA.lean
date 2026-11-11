@@ -18,7 +18,7 @@ theorem column_cases (x : RowInput) :
 
 /-- A theta+rho rotation equation in one column: the flags are 0 or 1 and the written limb unfolds at the column's
     rho. -/
-macro "rotation_column " h:ident : tactic => `(tactic| (
+scoped macro "rotation_column " h:ident : tactic => `(tactic| (
   simp only [Expression.eval, Verification.environment, honest_column, flag, out, outByte, $h:ident, rho,
     List.getD_cons_zero, List.getD_cons_succ, Nat.reduceDiv, Nat.reduceMod, Nat.reduceAdd, Nat.reduceSub,
     Nat.reduceMul, Nat.reduceEqDiff, ↓reduceIte, OfNat.ofNat_ne_zero, zero_ne_one, one_ne_zero]

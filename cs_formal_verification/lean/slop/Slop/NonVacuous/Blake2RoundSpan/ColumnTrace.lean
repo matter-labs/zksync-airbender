@@ -15,14 +15,14 @@ namespace Airbender.NonVacuous.Blake2RoundSpan
 open Arithmetic Blake2Round.Proofs
 
 /-- A computed field: the cast of the natural identity `e`, scaled by `C` (the inverse of the power of two). -/
-macro "field_identity " C:term:max e:term : tactic => `(tactic| (
+scoped macro "field_identity " C:term:max e:term : tactic => `(tactic| (
   have identity := congrArg (Nat.cast : Nat → ZMod 2013265921) ($e)
   push_cast at identity ⊢
   linear_combination (norm := ring_nf) ($C : ZMod 2013265921) * identity
   try reduce_mod_char))
 
 /-- A natural identity of a G row's values, from their definitions. -/
-macro "g_identity" : tactic => `(tactic| (
+scoped macro "g_identity" : tactic => `(tactic| (
   simp only [Blake2GSpan.RowInput.carryA0, Blake2GSpan.RowInput.carryA1, Blake2GSpan.RowInput.carryA2,
     Blake2GSpan.RowInput.carryA3, Blake2GSpan.RowInput.carryC0, Blake2GSpan.RowInput.carryC1,
     Blake2GSpan.RowInput.carryC2, Blake2GSpan.RowInput.carryC3, Blake2GSpan.RowInput.sumA0,

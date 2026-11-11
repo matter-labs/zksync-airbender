@@ -24,8 +24,10 @@ theorem ivWord_7 : ivWord 7 = ⟨52505, 23520⟩ := by decide +kernel
 
 end Airbender.NonVacuous.Blake2RoundSpan.RowInput
 
+namespace Airbender.NonVacuous.Blake2RoundSpan
+
 /-- A column of the honest round row at a literal index: its range lemma (`RowInput.column_*`), then its definition. -/
-macro "honest_value" : tactic => `(tactic| (
+scoped macro "honest_value" : tactic => `(tactic| (
   simp (disch := decide) only [Airbender.NonVacuous.Blake2RoundSpan.RowInput.column_head,
     Airbender.NonVacuous.Blake2RoundSpan.RowInput.column_port,
     Airbender.NonVacuous.Blake2RoundSpan.RowInput.column_messagePointer,
@@ -49,7 +51,7 @@ macro "honest_value" : tactic => `(tactic| (
     Nat.reduceMod]))
 
 /-- An equation that depends only on whether the round is the first one. -/
-macro "first_round_cases " x:term:max : tactic => `(tactic| (
+scoped macro "first_round_cases " x:term:max : tactic => `(tactic| (
   by_cases first : ($x).round.val = 0 <;>
     (try simp only [Airbender.NonVacuous.Blake2RoundSpan.RowInput.lane, first, Nat.left_eq_add, ↓reduceIte,
       Nat.reduceAdd, Nat.reduceSub, Nat.reduceLT, Nat.reduceEqDiff, or_self, or_false, false_or,
@@ -60,12 +62,12 @@ macro "first_round_cases " x:term:max : tactic => `(tactic| (
     push_cast <;> ring))
 
 /-- An equation that depends only on whether the round is the final one. -/
-macro "final_cases " x:term:max : tactic => `(tactic| (
+scoped macro "final_cases " x:term:max : tactic => `(tactic| (
   by_cases final : ($x).final = true <;> (try simp only [final, ↓reduceIte, Bool.false_eq_true]) <;> push_cast <;>
     ring))
 
 /-- An equation of the control word: by cases on the round. -/
-macro "round_cases " x:ident : tactic => `(tactic| (
+scoped macro "round_cases " x:ident : tactic => `(tactic| (
   try simp only [Airbender.NonVacuous.Blake2RoundSpan.RowInput.control,
     Airbender.NonVacuous.Blake2RoundSpan.RowInput.final]
   obtain ⟨⟨r, bound⟩, _, _, _, _, _, _, _⟩ := $x
@@ -73,6 +75,8 @@ macro "round_cases " x:ident : tactic => `(tactic| (
   interval_cases r <;> norm_num))
 
 /-- A Boolean honest column: its unfolded value is 0 or 1. -/
-macro "bit_value" : tactic => `(tactic| (
+scoped macro "bit_value" : tactic => `(tactic| (
   honest_value
   first | omega | (split <;> omega) | simp))
+
+end Airbender.NonVacuous.Blake2RoundSpan

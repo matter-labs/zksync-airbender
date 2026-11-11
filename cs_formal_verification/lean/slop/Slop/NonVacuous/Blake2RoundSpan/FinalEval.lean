@@ -60,9 +60,11 @@ theorem Valid.finalSlot_bounds {x : RowInput} (valid : x.Valid) {i h : Nat} (hi 
 
 end Airbender.NonVacuous.Blake2RoundSpan.RowInput
 
+namespace Airbender.NonVacuous.Blake2RoundSpan
+
 /-- Evaluate an entry of the honest round row: each column by its range (`RowInput.column_*`), the ports and the
     diagonal slots by definition. -/
-macro "honest_entry" : tactic => `(tactic| (
+scoped macro "honest_entry" : tactic => `(tactic| (
   eval_entry [Airbender.NonVacuous.Blake2RoundSpan.RowInput.assignment]
   try simp (disch := decide) only [Airbender.NonVacuous.Blake2RoundSpan.RowInput.column_prepared,
     Airbender.NonVacuous.Blake2RoundSpan.RowInput.column_port,
@@ -77,14 +79,14 @@ macro "honest_entry" : tactic => `(tactic| (
 
 /-- A bound or identity of the final-XOR slots at literal indices: from the slot bounds in context, else by unfolding
     the slots, then arithmetic. -/
-macro "final_unfold" : tactic => `(tactic| first | omega | (
+scoped macro "final_unfold" : tactic => `(tactic| first | omega | (
   (try simp only [Airbender.NonVacuous.Blake2RoundSpan.RowInput.finalSlot,
     Airbender.NonVacuous.Blake2RoundSpan.RowInput.limb, ↓reduceIte, Nat.reduceLT, Nat.reduceEqDiff, Nat.reduceAdd,
     Nat.reduceMod]) <;> omega))
 
 /-- The bounds of a final-XOR limb of chaining word `i < 4`: its slots, its chaining word and the outputs of the two
     diagonal calls it reads. -/
-macro "final_bounds_low " valid:term:max i:num h:num a:num b:num : tactic => `(tactic| (
+scoped macro "final_bounds_low " valid:term:max i:num h:num a:num b:num : tactic => `(tactic| (
   have slots := (Airbender.NonVacuous.Blake2RoundSpan.RowInput.Valid.finalSlot_bounds $valid (i := $i) (h := $h)
     (by decide)).1 (by decide)
   have state := ($valid).state $i (by decide)
@@ -94,10 +96,12 @@ macro "final_bounds_low " valid:term:max i:num h:num a:num b:num : tactic => `(t
 
 /-- The bounds of a final-XOR limb of chaining word `i ≥ 4`: its slots, its chaining word and the XOR chunks of the
     two diagonal calls it reads. -/
-macro "final_bounds_high " valid:term:max i:num h:num a:num b:num : tactic => `(tactic| (
+scoped macro "final_bounds_high " valid:term:max i:num h:num a:num b:num : tactic => `(tactic| (
   have slots := (Airbender.NonVacuous.Blake2RoundSpan.RowInput.Valid.finalSlot_bounds $valid (i := $i) (h := $h)
     (by decide)).2 (by decide)
   have state := ($valid).state $i (by decide)
   simp only [Airbender.Arithmetic.Word.Bounded, Airbender.Arithmetic.limbBase] at state
   have xorsA := (($valid).diagCall (k := $a) (by decide)).xors
   have xorsB := (($valid).diagCall (k := $b) (by decide)).xors))
+
+end Airbender.NonVacuous.Blake2RoundSpan

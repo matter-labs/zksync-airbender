@@ -12,7 +12,7 @@ namespace Airbender.NonVacuous.Blake2RoundSpan
 open Arithmetic Blake2Round.Proofs
 
 /-- A computed field from two natural identities, scaled by `C₁` and `C₂`. -/
-macro "field_identity2 " C1:term:max e1:term:max C2:term:max e2:term : tactic => `(tactic| (
+scoped macro "field_identity2 " C1:term:max e1:term:max C2:term:max e2:term : tactic => `(tactic| (
   have first := congrArg (Nat.cast : Nat → ZMod 2013265921) ($e1)
   have second := congrArg (Nat.cast : Nat → ZMod 2013265921) ($e2)
   push_cast at first second ⊢
@@ -20,7 +20,7 @@ macro "field_identity2 " C1:term:max e1:term:max C2:term:max e2:term : tactic =>
   try reduce_mod_char))
 
 /-- A computed field from four natural identities. -/
-macro "field_identity4 " C1:term:max e1:term:max C2:term:max e2:term:max C3:term:max e3:term:max C4:term:max
+scoped macro "field_identity4 " C1:term:max e1:term:max C2:term:max e2:term:max C3:term:max e3:term:max C4:term:max
     e4:term : tactic => `(tactic| (
   have first := congrArg (Nat.cast : Nat → ZMod 2013265921) ($e1)
   have second := congrArg (Nat.cast : Nat → ZMod 2013265921) ($e2)

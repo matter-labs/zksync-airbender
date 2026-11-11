@@ -32,7 +32,7 @@ theorem RowInput.cases (x : RowInput) :
 
 set_option hygiene false in
 /-- Close a routing assertion of operation `k` (`RowInput.opk`) for the row `x`, case by case. -/
-macro "route " k:ident : tactic => `(tactic| (
+scoped macro "route " k:ident : tactic => `(tactic| (
   rcases RowInput.cases x with
     hm | hm | hm | hm | ⟨hm, ht⟩ | ⟨hm, ht⟩ | ⟨hm, ht⟩ | ⟨hm, ht⟩ | ⟨hm, ht⟩ | hm | hm <;>
   simp only [Expression.eval, Verification.environment, honest_column, $k:ident, RowInput.written, RowInput.temp,
@@ -57,7 +57,7 @@ theorem RowInput.modes (x : RowInput) :
 set_option hygiene false in
 /-- Close a gated copy assertion `(read - written) * flag` of the row `x`, mode by mode: the flag's mode writes
     the lane back unchanged, every other mode zeroes the flag. -/
-macro "copy" : tactic => `(tactic| (
+scoped macro "copy" : tactic => `(tactic| (
   rcases RowInput.modes x with hm | hm | hm | hm | hm | hm | hm <;>
   simp only [Expression.eval, Verification.environment, honest_column, RowInput.written, ↓reduceIte, reduceIte,
     Nat.reduceEqDiff, Nat.cast_zero, Nat.cast_one, mul_zero, mul_one, false_or, or_false, or_self, true_or,

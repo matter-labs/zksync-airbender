@@ -23,20 +23,20 @@ theorem query_at {o : Op} (valid : o.Valid) {control : Fin 4096 → Vector Nat 6
 
 set_option hygiene false in
 /-- A lookup entry that is one column. -/
-macro "direct" : tactic => `(tactic| (
+scoped macro "direct" : tactic => `(tactic| (
   simp only [Expression.eval, Verification.environment, honest_column]
   push_cast
   ring))
 
 /-- The four zero entries. -/
-macro "zeros" : tactic => `(tactic| (
+scoped macro "zeros" : tactic => `(tactic| (
   simp only [Expression.eval]
   push_cast
   simp only [add_zero, and_self]))
 
 set_option hygiene false in
 /-- The tag entry of operation `k` (`RowInput.opk`), mode by mode. -/
-macro "tag " k:ident : tactic => `(tactic| (
+scoped macro "tag " k:ident : tactic => `(tactic| (
   rcases RowInput.modes x with hm | hm | hm | hm | hm | hm | hm <;>
   simp only [Expression.eval, Verification.environment, honest_column, $k:ident, hm, ↓reduceIte,
     Nat.reduceEqDiff, Op.byte_tag, Op.rotate_tag] <;>

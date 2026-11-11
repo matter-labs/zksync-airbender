@@ -11,7 +11,7 @@ namespace Airbender.NonVacuous.KeccakSplitSpan.ThetaRho
 open Arithmetic Keccak.Split Keccak.Split.SetupProofs
 
 /-- A theta+rho entry whose evaluation is the honest value. -/
-macro "theta_direct" : tactic => `(tactic| (
+scoped macro "theta_direct" : tactic => `(tactic| (
   simp only [Expression.eval, Verification.environment, honest_column, RowInput.control, flag, cByte, rByte,
     inByte, Nat.reduceMod, Nat.reduceDiv, Nat.reduceEqDiff, ↓reduceIte, OfNat.ofNat_ne_zero, zero_ne_one,
     one_ne_zero]
@@ -19,7 +19,7 @@ macro "theta_direct" : tactic => `(tactic| (
   try ring))
 
 /-- A theta+rho XOR or fragment entry: the honest column is the table's value by definition. -/
-macro "theta_result" : tactic => `(tactic| (
+scoped macro "theta_result" : tactic => `(tactic| (
   simp only [Expression.eval, Verification.environment, honest_column]
   push_cast
   simp only [zero_add, one_mul]
