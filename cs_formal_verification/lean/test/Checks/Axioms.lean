@@ -153,6 +153,7 @@ import Slop.Final.Trace.Satisfiable.Blake2Round
 import Slop.Final.Trace.Satisfiable.UnifiedCallers
 import Slop.Final.Trace.Satisfiable.UnifiedPreparedCallers
 import Slop.Final.Trace.Satisfiable.Callers
+import Slop.Final.Trace.Satisfiable.UnifiedHashCallers
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -1249,3 +1250,6 @@ import Slop.Final.Trace.Satisfiable.Callers
 #print axioms Airbender.Blake2G.Native.rv_workvector_soundness_satisfiable
 #print axioms Airbender.Blake2G.Native.rv_workvector_boundary_soundness_satisfiable
 #print axioms Airbender.Blake2G.Native.rv_window_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_shared_span_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_request_hash_window_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_joint_hash_window_soundness_satisfiable

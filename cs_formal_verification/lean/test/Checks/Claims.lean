@@ -88,6 +88,7 @@ import Slop.Final.Trace.Satisfiable.Blake2Round
 import Slop.Final.Trace.Satisfiable.UnifiedCallers
 import Slop.Final.Trace.Satisfiable.UnifiedPreparedCallers
 import Slop.Final.Trace.Satisfiable.Callers
+import Slop.Final.Trace.Satisfiable.UnifiedHashCallers
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
@@ -447,3 +448,9 @@ example : Airbender.Blake2G.Native.RVWorkvectorBoundarySoundnessSatisfiableClaim
 #print axioms Airbender.Blake2G.Native.rv_workvector_boundary_soundness_satisfiable
 example : Airbender.Blake2G.Native.RVWindowSoundnessSatisfiableClaim := @Airbender.Blake2G.Native.rv_window_soundness_satisfiable
 #print axioms Airbender.Blake2G.Native.rv_window_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVSharedSpanSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_shared_span_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_shared_span_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVRequestHashWindowSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_request_hash_window_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_request_hash_window_soundness_satisfiable
+example : Airbender.UnifiedReduced.Caller.RVJointHashWindowSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_joint_hash_window_soundness_satisfiable
+#print axioms Airbender.UnifiedReduced.Caller.rv_joint_hash_window_soundness_satisfiable

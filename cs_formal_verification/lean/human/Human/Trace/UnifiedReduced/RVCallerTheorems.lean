@@ -281,4 +281,33 @@ def Caller.RVProgramWindowScheduleSoundnessSatisfiableClaim : Prop :=
       upper ≤ (Trace.timeOfPair data.machine.terminal.timestamp).value ∧ data.callers ≠ [] ∧
       data.workers.windowRows lower upper ≠ []
 
+/-! Non-vacuity of the complete-span caller claims: their assumptions can be met (with the reduced G span), with a
+    selected caller and, for the window claims, worker rows in the window. -/
+
+/-- The assumptions of `Caller.RVSharedSpanSoundnessClaim` can be met, with a caller. -/
+def Caller.RVSharedSpanSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Caller.RVRequestTrace babyBearModulus) (before : RV.State) (addresses : List (BitVec 32))
+    (cells : List Trace.Cell) (span : Delegation.Caller.HashSpan),
+    Caller.RVMixedMemoryAccepted data [] ∧ Caller.RVSharedSpanInputs data before addresses cells span ∧
+      data.callers ≠ []
+
+/-- The assumptions of `Caller.RVRequestHashWindowSoundnessClaim` can be met, with a caller and worker rows in the
+    window. -/
+def Caller.RVRequestHashWindowSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Caller.RVRequestTrace babyBearModulus) (before : RV.State) (addresses : List (BitVec 32))
+    (cells : List Trace.Cell) (span : Delegation.Caller.HashSpan) (lower upper : Nat),
+    Caller.RVRequestChecks data ∧ Delegation.MemoryAccepted data.workers ∧ Caller.RVRequestInputs data before addresses ∧
+      Delegation.Caller.HashSpan.RVRequestWindowInputs span data.workers before cells lower upper ∧
+      (∀ cell ∈ cells, cell.Aligned) ∧ lower % 4 = 0 ∧ upper % 4 = 0 ∧ 2 ≤ lower ∧ data.callers ≠ [] ∧
+      data.workers.windowRows lower upper ≠ []
+
+/-- The assumptions of `Caller.RVJointHashWindowSoundnessClaim` can be met, with a caller and worker rows in the
+    window. -/
+def Caller.RVJointHashWindowSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Caller.RVRequestTrace babyBearModulus) (before : RV.State) (addresses : List (BitVec 32))
+    (cells : List Trace.Cell) (span : Delegation.Caller.HashSpan) (lower upper : Nat),
+    Caller.RVMixedMemoryAccepted data [] ∧ Caller.RVJointHashWindowInputs data before addresses cells span lower upper ∧
+      lower % 4 = 0 ∧ upper % 4 = 0 ∧ 2 ≤ lower ∧ lower ≤ upper ∧ data.callers ≠ [] ∧
+      data.workers.windowRows lower upper ≠ []
+
 end Airbender.UnifiedReduced

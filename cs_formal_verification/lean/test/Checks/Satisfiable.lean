@@ -278,6 +278,31 @@ example (claim : RVProgramWindowScheduleSoundnessClaim) : RVProgramWindowSchedul
     ⟨data, family, lower, upper,
       claim accepted publicProgram ordinary registry region first last positive ordered after beforeT, callers, window⟩
 
+example (claim : RVSharedSpanSoundnessClaim) : RVSharedSpanSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell)
+      (span : Delegation.Caller.HashSpan), RVSharedSpanEffects data before cells span ∧ data.callers ≠ [] :=
+  fun ⟨data, before, _, cells, span, accepted, inputs, callers⟩ =>
+    ⟨data, before, cells, span, claim accepted inputs, callers⟩
+
+example (claim : RVRequestHashWindowSoundnessClaim) : RVRequestHashWindowSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell)
+      (span : Delegation.Caller.HashSpan) (lower upper : Nat),
+      span.RVRequestWindowResult data.callers data.workers before cells lower upper ∧ data.callers ≠ [] ∧
+        data.workers.windowRows lower upper ≠ [] :=
+  fun ⟨data, before, _, cells, span, lower, upper, checks, workers, program, inputs, aligned, first, last, past,
+      callers, window⟩ =>
+    ⟨data, before, cells, span, lower, upper, claim checks workers program inputs aligned first last past, callers,
+      window⟩
+
+example (claim : RVJointHashWindowSoundnessClaim) : RVJointHashWindowSoundnessSatisfiableClaim →
+    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell)
+      (span : Delegation.Caller.HashSpan) (lower upper : Nat),
+      RVJointHashWindowResult data before cells span lower upper ∧ data.callers ≠ [] ∧
+        data.workers.windowRows lower upper ≠ [] :=
+  fun ⟨data, before, _, cells, span, lower, upper, accepted, inputs, first, last, positive, ordered, callers,
+      window⟩ =>
+    ⟨data, before, cells, span, lower, upper, claim accepted inputs first last positive ordered, callers, window⟩
+
 end UnifiedCallers
 
 example (claim : JumpBranchSlt.RVTraceSoundnessClaim) : JumpBranchSlt.RVTraceSoundnessSatisfiableClaim →
