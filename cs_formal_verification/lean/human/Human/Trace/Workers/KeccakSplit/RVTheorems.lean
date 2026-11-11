@@ -39,4 +39,9 @@ def RVPermutationSoundnessClaim : Prop :=
       ∃ s', RV.calls RV.f1600Calls initial = some s' ∧
         RV.Same s' ((states 361).setPC (initial.pc + BitVec.ofNat 32 (4 * RV.f1600Calls.length)))
 
+/-- The assumptions of `RVPermutationSoundnessClaim` can be met (`calls` makes the request non-empty). -/
+def RVPermutationSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : MemoryData babyBearModulus) (initial : RV.State) (cells : List Trace.Cell),
+    MemoryAccepted data ∧ RVCallInputs data initial cells ∧ ∀ cell ∈ cells, cell.Aligned
+
 end Airbender.Keccak.Split.Native

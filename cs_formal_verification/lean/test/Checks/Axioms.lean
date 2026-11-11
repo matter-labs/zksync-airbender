@@ -1260,3 +1260,4 @@ import Slop.Final.Trace.Satisfiable.DelegationHashCallers
 #print axioms Airbender.UnifiedReduced.Caller.rv_program_prepared_protocol_sequence_soundness_satisfiable
 #print axioms Airbender.Delegation.Caller.rv_shared_span_soundness_satisfiable
 #print axioms Airbender.Delegation.Caller.rv_request_hash_window_soundness_satisfiable
+#print axioms Airbender.Keccak.Split.Native.rv_permutation_soundness_satisfiable

@@ -469,4 +469,15 @@ example (claim : Blake2G.Native.RVWindowSoundnessClaim) : Blake2G.Native.RVWindo
       rw [empty] at calls
       cases reduced <;> simp [Blake2G.callCount] at calls⟩
 
+example (claim : Keccak.Split.Native.RVPermutationSoundnessClaim) :
+    Keccak.Split.Native.RVPermutationSoundnessSatisfiableClaim →
+    ∃ (data : Keccak.Split.Native.MemoryData babyBearModulus) (initial after : RV.State) (cells : List Cell),
+      Keccak.Split.Native.RVTraceMapping data initial after cells ∧ data.rows ≠ [] :=
+  fun ⟨data, initial, cells, accepted, inputs, aligned⟩ =>
+    have ⟨states, _, _, _, _, _, _, trace, _⟩ := claim accepted inputs aligned
+    ⟨data, initial, states 361, cells, trace, fun empty => by
+      have calls := inputs.calls
+      rw [empty] at calls
+      simp at calls⟩
+
 end Checks.Satisfiable

@@ -467,3 +467,6 @@ example : Airbender.Delegation.Caller.RVSharedSpanSoundnessSatisfiableClaim := @
 #print axioms Airbender.Delegation.Caller.rv_shared_span_soundness_satisfiable
 example : Airbender.Delegation.Caller.RVRequestHashWindowSoundnessSatisfiableClaim := @Airbender.Delegation.Caller.rv_request_hash_window_soundness_satisfiable
 #print axioms Airbender.Delegation.Caller.rv_request_hash_window_soundness_satisfiable
+
+example : Airbender.Keccak.Split.Native.RVPermutationSoundnessSatisfiableClaim := @Airbender.Keccak.Split.Native.rv_permutation_soundness_satisfiable
+#print axioms Airbender.Keccak.Split.Native.rv_permutation_soundness_satisfiable
