@@ -17,8 +17,6 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use setups::Setups;
 use std::cell::RefCell;
-use std::fs::File;
-use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile};
 
@@ -64,21 +62,11 @@ struct L1Artifact {
     l1: Bundle,
 }
 
-fn reference_dir() -> PathBuf {
-    std::env::var_os("AB_PROTH120_REFERENCE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../prover_pipeline/fixtures/l1_reference_2p21")
-        })
-}
-
-fn read_reference<T: DeserializeOwned>(name: &str) -> T {
-    let path = reference_dir().join(name);
-    let file = File::open(&path)
-        .unwrap_or_else(|error| panic!("L1 reference open {}: {error}", path.display()));
-    serde_json::from_reader(BufReader::new(file))
-        .unwrap_or_else(|error| panic!("L1 reference deserialize {name}: {error}"))
+fn read_reference<T: DeserializeOwned>(chain: &str) -> T {
+    proof_fixtures::read_file(proof_fixtures::chain_artifact(
+        "pessimistic_conjecture",
+        chain,
+    ))
 }
 
 fn wrap_program() -> (Vec<u32>, Vec<u32>) {
@@ -209,12 +197,12 @@ fn l1_wrap_followed_worker_parity() {
         .is_test(true)
         .format_timestamp_millis()
         .try_init();
-    let compression: CompressionArtifact = read_reference("compression.json");
+    let compression: CompressionArtifact = read_reference("compression");
     assert!(
-        compression.schema_version == 6 && compression.target == "Compression",
-        "L1 reference last-compression checkpoint must be a schema-6 Compression artifact"
+        compression.schema_version == 5 && compression.target == "Compression",
+        "L1 reference last-compression checkpoint must be a schema-5 Compression artifact"
     );
-    let L1Artifact { l1: bundle } = read_reference("l1.json");
+    let L1Artifact { l1: bundle } = read_reference("l1");
     let (bin, text) = wrap_program();
     let nd_words = build_unified_stream(
         &compression.setups,

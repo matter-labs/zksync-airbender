@@ -28,11 +28,8 @@ use prover::gkr::prover::transcript_utils::draw_random_field_els;
 use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
 use prover::gkr::prover_config::example_configs::l1_wrap::EXPLICIT_OUTPUT_LOG2;
 use prover::transcript::{Keccak256Transcript, Transcript};
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use setups::Setups;
-use std::fs::File;
-use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile};
@@ -57,21 +54,18 @@ struct CompressionCheckpoint {
     setups: Setups,
 }
 
-fn read_typed<T: DeserializeOwned>(filename: &Path) -> T {
-    serde_json::from_reader(BufReader::new(File::open(filename).unwrap())).unwrap()
-}
-
 /// Local gate after wrap scheduling or GKR transcript changes:
 /// `cargo test -p gpu_execution_prover --test l1_stagewise --release -- --ignored --exact l1_wrap_stagewise_pessimistic_conjecture`
 #[test]
 #[ignore]
 fn l1_wrap_stagewise_pessimistic_conjecture() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let references = std::env::var_os("AB_PROTH120_REFERENCE_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| root.join("../../prover_pipeline/fixtures/l1_reference_2p21"));
-    let ReferenceArtifact { l1: reference } = read_typed(&references.join("l1.json"));
-    let compression: CompressionCheckpoint = read_typed(&references.join("compression.json"));
+    let ReferenceArtifact { l1: reference } = proof_fixtures::read_file(
+        proof_fixtures::chain_artifact("pessimistic_conjecture", "l1"),
+    );
+    let compression: CompressionCheckpoint = proof_fixtures::read_file(
+        proof_fixtures::chain_artifact("pessimistic_conjecture", "compression"),
+    );
     let nd_words = build_unified_stream(
         &compression.setups,
         &compression.proof,

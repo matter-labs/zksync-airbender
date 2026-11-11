@@ -39,6 +39,7 @@ deterministic_pow = ["prover/deterministic_pow", "gpu_hash/deterministic_pow"]
 gpu_native_build = { workspace = true }
 
 [dev-dependencies]
+proof_fixtures = { workspace = true }
 # CPU/proof byte parity requires the minimum nonce in test builds.
 gpu_hash = { workspace = true, features = ["deterministic_pow"] }
 verifier_evm = { path = "../../verifier_evm" }

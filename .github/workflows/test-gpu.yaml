@@ -244,7 +244,11 @@ jobs:
           chmod +x "$FIXTURE_CLI" "$FIXTURE_CODEC"
           failed=0
           for mode in pessimistic_conjecture ethproofs_soundcalc; do
-            for stage in base_unified unrolled; do
+            stages=(base_unified unrolled)
+            if [[ $mode == pessimistic_conjecture ]]; then
+              stages+=(compression l1)
+            fi
+            for stage in "${stages[@]}"; do
               fixtures/regenerate.sh --check --mode "$mode" --stage "$stage" || failed=1
             done
           done
@@ -266,18 +270,6 @@ jobs:
           printf '0000000f00124f80' > "$INPUT_FILE"
           .github/scripts/soundness_mode_smoke.sh zksync-airbender-gpu/cli \
             examples/hashed_fibonacci/app.bin gpu
-
-      - name: L1 proof from the committed seed on GPU
-        shell: bash
-        env:
-          RUST_MIN_STACK: 1073741824
-        run: |
-          dir=prover_pipeline/fixtures/l1_reference_2p21
-          zksync-airbender-gpu/cli continue-proof --proof "$dir/recursion_unified.json" \
-            --bin examples/basic_fibonacci/app.bin --target l1 --backend gpu --gpu-memory-preset 21gib \
-            --output-dir output/l1 --output-file l1.json
-          zksync-airbender-gpu/cli verify --proof output/l1/l1.json --bin examples/basic_fibonacci/app.bin
-          cmp "$dir/l1.json" output/l1/l1.json
 
       - name: Record GPU identity and ECC counters after a failure
         if: failure()

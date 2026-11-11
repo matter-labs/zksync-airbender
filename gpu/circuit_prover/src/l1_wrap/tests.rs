@@ -40,9 +40,10 @@ fn cpu_l1_whir_slab_preserves_the_committed_proof() {
     struct Bundle {
         proof: L1Proof,
     }
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../prover_pipeline/fixtures/l1_reference_2p21/l1.json");
-    let reference: Reference = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let reference: Reference = proof_fixtures::read_file(proof_fixtures::chain_artifact(
+        "pessimistic_conjecture",
+        "l1",
+    ));
     let expected = &reference.l1.proof.whir_proof;
     let (_, config) = wrap_geometry(CircuitType::L1Wrap);
     let programs = GkrProgramsPr::compile(
