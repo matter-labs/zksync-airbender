@@ -23,7 +23,7 @@ python3 check_circuit_json.py
 
 echo "== 2. Lean build: spec, proofs, regressions and the axiom audit modules in one lake build (test modules start as"
 echo "   soon as their imports are built), timing each module compiled (full log: lean/.lake/verify-build-CleanCore.log)"
-python3 scripts/module_budget.py build CleanCore CleanEquivalence Human Proven Test CleanAudit airbender_tests ||
+python3 scripts/module_budget.py build CleanCore CleanEquivalence Human Proven Test CleanAudit airbender_tests program_rows_oracle ||
   fail "lake build"
 
 echo "== 3. Regressions; final statements (each proven/Proven/Final theorem proves its human/ ...Claim, test/Checks/Claims.lean); axiom audits"

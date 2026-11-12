@@ -2,6 +2,12 @@
 import copy
 import struct
 import unittest
+import io
+import sys
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+import check_program_decoder_rows as decoder
 from check_program_decoder_rows import checked_rows, SMALL_PROGRAMS, check_group_shapes, csr_word
 
 class ProgramDecoderRowsTest(unittest.TestCase):
@@ -61,5 +67,27 @@ class ProgramDecoderRowsTest(unittest.TestCase):
                                "full", "broken split")
 
 
-if __name__ == "__main__":
+class DecoderFixtureInventoryTest(unittest.TestCase):
+    def test_all_126_cases_are_retained(self):
+        cases = []
+        def record(exporter, oracle, directory, text, image, config, family, cache):
+            cases.append((text.stem, config, family, cache))
+            return 'a' * 64
+        arguments = ['decoder', '--exporter', '/unused/exporter', '--oracle', '/unused/oracle']
+        def run(extra):
+            cases.clear()
+            with patch.object(sys, 'argv', arguments + extra), patch.object(decoder, 'run_case', record), \
+                    patch('sys.stdout', new_callable=io.StringIO):
+                decoder.main()
+            return len(cases)
+        self.assertEqual(run([]), 90)
+        self.assertEqual(run(['--committed-verifiers']), 22)
+        with tempfile.TemporaryDirectory() as directory:
+            text = Path(directory) / 'multiblock_batch.text'
+            text.write_bytes(struct.pack('<I', 0x13))
+            text.with_suffix('.bin').write_bytes(text.read_bytes())
+            self.assertEqual(run(['--program', str(text), '--configs', 'full,unified']), 14)
+
+
+if __name__ == '__main__':
     unittest.main()

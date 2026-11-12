@@ -1,5 +1,4 @@
-import Human.Helpers.Decoder.RVPooledProgram
-import Human.Helpers.UnifiedReduced.RVProgram
+import Human.Helpers.Decoder.RVMachineProgram
 
 open Airbender Airbender.Trace
 
@@ -19,10 +18,6 @@ private def wordAt (bytes : ByteArray) (index : Nat) : BitVec 32 :=
     65536 * (bytes[4 * index + 2]?.getD 0).toNat +
     16777216 * (bytes[4 * index + 3]?.getD 0).toNat
 
-private def row {Kind : Type} (index : Nat) (data : DecoderData Kind) : List Nat :=
-  [4 * index % 65536, 4 * index / 65536, data.rs1.toNat, data.rs2.toNat, data.rd.toNat,
-    data.immediate.lo, data.immediate.hi, data.funct3, data.mask]
-
 /-- Emit the active rows of the reviewed RV decoder projections. The checker validates all other native rows. -/
 def main (args : List String) : IO Unit := do
   let [config, familyName, input, output] := args
@@ -35,11 +30,15 @@ def main (args : List String) : IO Unit := do
   IO.FS.withFile output .write fun handle => do
     for index in [:bytes.size / 4] do
       let some instruction := RV.decode (wordAt bytes index) | continue
-      let values ← if config == "unified" then do
+      let profile := if config == "full" then RVMachineConfig.unrolledFullUnsigned
+        else if config == "reduced" then .unrolledReduced else .unified
+      let selected ← if config == "unified" then do
         unless familyName == "unified" do throw (IO.userError "Expected the unified family")
-        pure ((UnifiedReduced.rvDecoderFields instruction).map (row index))
+        pure RVMachineDecoderFamily.unified
       else do
         let some family := parseFamily familyName | throw (IO.userError "Unknown decoder family")
-        pure ((rvPooledDecoderFields instruction).filter (·.family == family) |>.map (row index))
+        pure (RVMachineDecoderFamily.pooled family)
+      let values := (rvMachineDecoderFields profile instruction).filter (·.family == selected) |>.map
+        (fun data => (data.row (BitVec.ofNat 32 (4 * index))).toList)
       if let some values := values then
         handle.putStrLn (String.intercalate "," (toString index :: values.map toString))
