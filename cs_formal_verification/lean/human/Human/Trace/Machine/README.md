@@ -42,3 +42,8 @@ The native acceptance interface is explicit. The [run composition](../../../../p
 uses one shared history and permits loops. The [padded targets](Padding.lean) use the native contribution mask
 for CPU, worker, state, request and memory tuples. Their [proofs](../../../../proven/Proven/Final/Trace/Machine/Padding.lean)
 erase identity factors and retain full occurrence counts. Cached GKR preservation remains open.
+
+[Hash segmentation](Segmentation.lean) partitions complete G, round and split Keccak windows by native occurrence clocks.
+Its public window interface supplies caller coverage, protocol counts and CSR families.
+The [proof](../../../../proven/Proven/Final/Trace/Machine/Segmentation.lean) derives worker coverage, unique assignment,
+full request multiplicity and the total call count. Active zero-clock workers are rejected.

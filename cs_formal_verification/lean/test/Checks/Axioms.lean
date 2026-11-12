@@ -1,3 +1,5 @@
+import Proven.Final.ISA.ValidUse
+import Proven.Final.Trace.Machine.Segmentation
 import Proven.Final.Helpers.Context.PaddingBoundary
 import Proven.Final.Trace.Machine.Padding
 import Proven.Final.Trace.Machine.Unrolled
@@ -1384,3 +1386,19 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.PaddingBoundary.product_soundness
 
 #print axioms Airbender.PaddingBoundary.projection
+
+#print axioms RV.ValidUse.bigint_reference
+
+#print axioms RV.ValidUse.g_reference
+
+#print axioms RV.ValidUse.round_reference
+
+#print axioms RV.ValidUse.hash_reference
+
+#print axioms RV.ValidUse.split_keccak_reference
+
+#print axioms RV.ValidUse.special5_reference
+
+#print axioms Airbender.Trace.Machine.unrolled_hash_segmentation
+
+#print axioms Airbender.Trace.Machine.unified_hash_segmentation

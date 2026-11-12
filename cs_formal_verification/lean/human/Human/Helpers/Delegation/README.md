@@ -42,3 +42,6 @@ Keep zero-clock surplus-worker effects and the issued bigint invalid-control fix
 at their actual logical scope. They remain admitted by
 the relevant input relations; no assumed ABI validity closes them.
 [Trace/Delegation](../../Trace/Delegation/README.md) owns execution and composition.
+
+The machine targets use the delegation spec for undefined controls and worker pointer use, without a validity premise.
+The [valid-use claims](../../ISA/ValidUse/Theorems.lean) give the independent BLAKE2s, Keccak and bigint references for aligned, distinct RAM buffers and valid controls.

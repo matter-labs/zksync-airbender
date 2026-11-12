@@ -1,3 +1,5 @@
+import Proven.Final.ISA.ValidUse
+import Proven.Final.Trace.Machine.Segmentation
 import Proven.Final.Helpers.Context.PaddingBoundary
 import Proven.Final.Trace.Machine.Padding
 import Proven.Final.Trace.Machine.Unrolled
@@ -678,3 +680,35 @@ example : Airbender.PaddingBoundary.ProductSoundnessClaim := Airbender.PaddingBo
 example : Airbender.PaddingBoundary.ProjectionClaim := Airbender.PaddingBoundary.projection
 
 #print axioms Airbender.PaddingBoundary.projection
+
+example : RV.ValidUse.BigintReferenceClaim := RV.ValidUse.bigint_reference
+
+#print axioms RV.ValidUse.bigint_reference
+
+example : RV.ValidUse.GReferenceClaim := RV.ValidUse.g_reference
+
+#print axioms RV.ValidUse.g_reference
+
+example : RV.ValidUse.RoundReferenceClaim := RV.ValidUse.round_reference
+
+#print axioms RV.ValidUse.round_reference
+
+example : RV.ValidUse.HashReferenceClaim := RV.ValidUse.hash_reference
+
+#print axioms RV.ValidUse.hash_reference
+
+example : RV.ValidUse.SplitKeccakReferenceClaim := RV.ValidUse.split_keccak_reference
+
+#print axioms RV.ValidUse.split_keccak_reference
+
+example : RV.ValidUse.Special5ReferenceClaim := RV.ValidUse.special5_reference
+
+#print axioms RV.ValidUse.special5_reference
+
+example : Airbender.Trace.Machine.UnrolledHashSegmentationClaim := Airbender.Trace.Machine.unrolled_hash_segmentation
+
+#print axioms Airbender.Trace.Machine.unrolled_hash_segmentation
+
+example : Airbender.Trace.Machine.UnifiedHashSegmentationClaim := Airbender.Trace.Machine.unified_hash_segmentation
+
+#print axioms Airbender.Trace.Machine.unified_hash_segmentation
