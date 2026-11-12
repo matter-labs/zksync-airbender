@@ -178,7 +178,6 @@ cargo run --release -p cli --features gpu -- continue-proof \
   --bin examples/basic_fibonacci/app.bin \
   --target l1 \
   --backend gpu \
-  \
   --output-dir output \
   --output-file l1.json
 
