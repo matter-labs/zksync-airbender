@@ -3,7 +3,8 @@ import Human.ISA.Sail.Checks
 
 /-! # What ties our fast spec to Sail (statements only)
 
-Two facts make our own spec `RV.step` (`Human/ISA/RV32.lean`) trustworthy without reviewing it line by line:
+Two claims connect `RV.step` (`Human/ISA/RV32.lean`) to the configured Airbender machine.
+Review the machine overrides and agreement relation as part of the specification:
 1. `DecodeIsSailClaim`: for every word in our encoding table, Sail's own decoder gives the same instruction.
 2. `StepIsAirbenderClaim`: our step does exactly what the Airbender machine (`Human/ISA/Sail/Airbender.lean`: Sail's
    `execute` plus the listed changes) does, on everything a program can see.

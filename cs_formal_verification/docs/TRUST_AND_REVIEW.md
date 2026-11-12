@@ -80,11 +80,11 @@ when reviewing or strengthening a theorem.
 | Lean kernel and standard axioms | Accepted proof-checking foundation. The [axiom audit](../lean/test/Checks/Axioms.lean) records actual dependencies. |
 | Lean / Mathlib | `v4.35.0`, pinned in `lean-toolchain` and [lakefile.toml](../lean/lakefile.toml). |
 | Clean | tag `v4.35.0`, `b41c196b10cf0f389d2badf5e19e1435e78e6d98`, built from source (`LAKE_NO_CACHE=1`); upstream definitions in `lean/.lake/packages/Clean`. [CleanCore](../lean/human/CleanCore.lean) transcribes the definitions the spec uses, and [its equivalence with Clean](../lean/human/CleanCore/Equivalence.lean) (built by [verify.sh](../verify.sh)) proves each equal to Clean's and lists the deviations. Review the transcription and the deviations; Lean checks proof terms. Within `human/` only that equivalence leaf imports Clean, so Clean, and with it its native_decide prime instances in Clean's Utils/Primes.lean (`lean/.lake/packages/Clean/Clean/Utils/Primes.lean`), is not in the spec's import closure. The proofs in `proven/` do not import Clean either; outside the spec only the audit file [Axioms.lean](../lean/test/Checks/Axioms.lean) imports it (Clean.Specs.Keccak256). |
-| Sail model/compiler (equivalence leaf only) | The official sail-riscv model `6136f84` (tag `2026-10-12-6136f84`) compiled by Sail `2ba3212` (0.20.3) with the [airbender-base config](../sail/config/airbender-base.json); pins and their rationale in [PINS.md](../sail/PINS.md), generation in [regen.sh](../sail/regen.sh). The generated model is not committed. Only [Human/ISA/Sail](../lean/human/Human/ISA/Sail/Theorems.lean) and [Configuration.lean](../lean/human/Human/Helpers/Core/Configuration.lean) import it; no circuit claim does. |
+| Sail model/compiler (equivalence leaf only) | The official sail-riscv model `6136f84` (tag `2026-10-12-6136f84`) compiled by Sail `2ba3212` (0.20.3) with the [airbender-base config](../sail/config/airbender-base.json); pins and their rationale in [PINS.md](../sail/PINS.md), generation in [regen.sh](../sail/regen.sh). The generated model is committed with provenance and BSD licence notices. CI regenerates it and checks the diff. Only [Human/ISA/Sail](../lean/human/Human/ISA/Sail/Theorems.lean) and [Configuration.lean](../lean/human/Human/Helpers/Core/Configuration.lean) import it; no circuit claim does. |
 | Sail runtime | `lean-sail` revision `c816ea7ad03cce98d51acee252540fd4215fede8`, fetched by [fetch-lean-sail.sh](../sail/fetch-lean-sail.sh) with the Lean 4.35 [patch](../sail/patches/lean-sail-lean4.35.0.patch) and the [`skip_inductive_codegen` patch](../sail/patches/lean-sail-skip-inductive-codegen.patch): a command wrapper, put before the generated `instruction` type by `regen.sh`, that skips the runtime layout of constructors whose tag exceeds Lean 4.35's limit (lean4#8930). It changes only the compiler; the declarations the kernel checks are unchanged. |
 | Platform support | The full model implements the platform hooks concretely; three upstream hooks without a Lean body get trivial bodies in [sail-riscv-lean-missing-externs.patch](../sail/patches/sail-riscv-lean-missing-externs.patch). Experimental extensions and CLINT/interrupt devices are off in [airbender-base.json](../sail/config/airbender-base.json). |
 | Project profile/custom reference | Unmodified [00-master.md](airbender/00-master.md) at `2331d1c511f26c17be85879fbab02ab109aefd05`, with [hash/provenance](airbender/provenance.json); the spec's ISA table and decoder pins are named in [RV32.lean](../lean/human/Human/ISA/RV32.lean). Applicability to the circuit revision remains a review obligation. |
-| Base ADD/SUB artifact | `av_gkr_compiler` revision `28ffe3ff0353edd9051485c2974b28b52b495dc4`; [retained no-cache JSON](../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json), SHA-256 `084a58f08dd122160b548689383f74d4a790c782046f8a5bf43f9f287c22a620`. Other family JSON paths remain in their reviewed artifact declarations. |
+| Base ADD/SUB artifact | `av_gkr_compiler` revision `9501f1f45f075b61389bb301de697514bb61bed8`; [retained no-cache JSON](../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json), SHA-256 `e5aadac65c19335d5adf39b24afad8fca54ca404305058a190004177b325fc49`. Other family JSON paths remain in their reviewed artifact declarations. |
 
 ## Import and generation fidelity
 
@@ -130,7 +130,11 @@ see only the formula. See [the setup README](../lean/artifacts/setup/README.md).
 
 ## What CI re-checks
 
-`.github/workflows/lean-formal-verification.yml` runs [verify.sh](../verify.sh) in two modes, and separately a
+`.github/workflows/ci.yml` calls the reusable `.github/workflows/lean-formal-verification.yml`.
+The `pr-checks` job requires its result. The Lean job starts for every PR. It exits with success when no input changed.
+Manual dispatch of `ci.yml` selects incremental, cold or kernel replay on the selected branch.
+Schedules start from the default branch after the workflow is merged.
+The reusable workflow runs [verify.sh](../verify.sh) in two modes, and separately a
 kernel replay ([ci/README.md](../ci/README.md)). A local `./verify.sh` is the cold mode.
 
 | | incremental (pull requests) | cold (pushes to protected branches, nightly) |
@@ -142,9 +146,7 @@ kernel replay ([ci/README.md](../ci/README.md)). A local `./verify.sh` is the co
 | review check's Lean inventory (audit roots, guide names) | skipped when its inputs (guides, audit file, Lake input hashes of the claim modules) equal those of a passing check recorded in the build | yes |
 | module budget | ledger of earlier measurements by input hash, plus the modules built now | every module measured in this run |
 
-An incremental run trusts the restored build (produced by an earlier CI run of this repository). The cold runs
-re-derive everything from source each night and on every push to a protected branch, so a bad cached build cannot
-outlive the next cold run.
+An incremental run trusts the restored build (produced by an earlier CI run of this repository). Cold runs re-derive the project modules from source. Schedules are active only after the workflow reaches the default branch.
 
 **Kernel replay** (job `kernel_replay`, the 1st and 15th of each month, or manually; `backup-check.sh` by hand):
 `lake check --paranoid` exports the lakefile's default targets with everything they import and replays every constant

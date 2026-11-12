@@ -8,9 +8,10 @@ The Sail model is riscv/sail-riscv, turned into Lean by `sail/regen.sh` (pins: `
 extensions off that change how base RV32I behaves (`sail/README.md`). The other extensions stay on, but Airbender's
 decoder (`RV.decode`, below) rejects their instructions. Everything Airbender does differently from that model is in
 this file, marked `-- Airbender:`, following Airbender's ISA table and decoder (as cited in `Human/ISA/RV32.lean`).
-Airbender's instruction formats are our own table `RV.decode`; their effect is Sail's `execute`. The machine adds one
-thing Sail does not have: the program's input (Airbender's non-determinism source, CSR `0x7c0`): the words not yet read
-(a list; a read with none left has no next state).
+The instruction formats use `RV.decode`. Standard instruction effects use Sail's `execute`.
+Loads into x0, field operations, xor-rotates, CSR `0x7c0` and delegations use the definitions in this model.
+Sail implements Zimop as a write of zero. Airbender assigns different effects to these instructions.
+The input list supplies CSR `0x7c0` reads. A read with no input has no next state.
 
 Our own fast spec `RV.step` (`Human/ISA/RV32.lean`), which the circuit claims are to be stated against, follows this machine:
 stated in `Human/ISA/Sail/Theorems.lean`, proven in `proven/Proven/ISA/Equiv/`. -/

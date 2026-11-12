@@ -2,7 +2,7 @@
 
 `sail/regen.sh` rebuilds `lean/sail-rv32/` from scratch from pinned sources (see `PINS.md`):
 
-1. (optional `--bootstrap-sail`) builds the pinned Sail compiler in an opam switch (`opam install . --deps-only`,
+1. (optional `--bootstrap-sail`) builds the pinned Sail compiler in an opam switch (the exact versions in `opam-packages.txt`,
    `make install`). Without the flag it only checks that `sail` on PATH (or `~/.opam/sail/bin`) is exactly
    `Sail 0.20.3 (sail2 @ 2ba3212...)` and that `z3` is on PATH. The bootstrap runs end to end in the CI container
    (ubuntu:24.04, apt `opam` 2.1.5 and `z3` 4.8.12; `ci/lean-ci.sh sail-gen`): the generated `SailRV32` tree is
@@ -72,7 +72,7 @@ stock only where Lean cannot help (`diff rv32.json airbender-base.json`, marked 
   `ori x0, rs1, imm` -> PREFETCH). Whether an extension is on is a compile-time constant (`hartSupports`), so Lean
   cannot switch it off. Zicfilp, Zicfiss off: landing-pad / shadow-stack checks in JALR and the step. Zca (and Zcb,
   Zcf, Zcd, Zcmop, which need it) off: no compressed instructions, so 2-byte-aligned jump targets trap, as in Airbender.
-  Other extensions stay as stock: `HumanSail/Airbender.lean`'s `Supported` rejects their instructions. (Switching
+  Other extensions stay as stock: `Human/ISA/Sail/Airbender.lean`'s `Supported` rejects their instructions. (Switching
   every extension off fails `config_is_valid`: PMA attributes, `physaddr_bits`, FS/vector settings depend on them.)
 
 ### Patches and mechanical edits
@@ -99,4 +99,24 @@ stock only where Lean cannot help (`diff rv32.json airbender-base.json`, marked 
 ### Smoke test
 `cd lean/sail-rv32 && lake build SailRV32Smoke`: config-independent checks with `decide +kernel` from Sail's reset state
 (decode ADD/MUL, one `try_step` running ADD in the stock main memory at 0x80000000). The Airbender machine's checks are in
-`lean/human/Human/Config.lean`.
+`lean/human/Human/ISA/Sail/Checks.lean`.
+
+## Claims and licences
+
+The generated model is committed with `PROVENANCE.txt`, `SAIL_COMPILER_LICENSE` and `SAIL_RISCV_LICENSE`.
+CI regenerates it and checks the diff before it restores the Lake manifest.
+The lean-sail runtime is fetched. Its upstream repository has no licence.
+The existing `patches/lean-sail-*.patch` files contain upstream source lines.
+The owner must refer these patches to Legal. Do not add source lines from lean-sail.
+
+[Final ISA claims](../lean/proven/Proven/Final/ISA/) include the following results.
+[Claims.lean](../lean/test/Checks/Claims.lean) records the type checks and axiom roots for all circuit and trace claims.
+
+| Group | Final theorems |
+| --- | --- |
+| [DelegationRuns](../lean/proven/Proven/Final/ISA/DelegationRuns.lean) | `calls_run`, `blake_compress_run`, `blake_hash_run`, `blake_compress_run10`, `blake_hash_run10`, `blake_g_run`, `blake_g_run10`, `keccak_special5_run`, `keccak_f1600_run` |
+| [Theorems](../lean/proven/Proven/Final/ISA/Theorems.lean) | `decode_is_sail`, `step_is_airbender`, `machine_checks_claim` |
+| [Vectors](../lean/proven/Proven/Final/ISA/Vectors.lean) | `standard_vectors` |
+
+The Airbender machine uses its own definitions for loads into x0, `mop.rr.N`, `mop.r.N`, CSR `0x7c0` and delegations.
+These effects are not Sail instruction effects.

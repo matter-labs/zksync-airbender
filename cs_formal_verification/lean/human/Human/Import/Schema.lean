@@ -3,7 +3,7 @@ public import Human.Import.Serde
 
 @[expose] public section
 
-/- Native mirror of the v3 Rust serde schema at commit 28ffe3ff0353edd9051485c2974b28b52b495dc4.
+/- Native mirror of the v3 Rust serde schema at commit 9501f1f45f075b61389bb301de697514bb61bed8.
    Coefficients are fixed to BabyBear Montgomery encoding. No fields are opaque JSON. -/
 namespace Airbender
 open Serde (encode)

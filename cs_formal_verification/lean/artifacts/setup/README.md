@@ -13,20 +13,11 @@ for `Human.Circuits.Blake2Round.Tables.Setup`.
 
 Provenance:
 
-- Generator: `execution_prover/examples/export_setup_json.rs` and
-  `prover/src/gkr/prover/setup_artifact.rs`, commit `9241b4aca` on `mb_fvc_antonio`
-  (ported from `origin/codex/lean-circuit-verification`, unchanged logic).
-- Command: `cargo run --release -p execution_prover --example export_setup_json -- blake-round - - blake-round.json`
-- Source tree: `c1a662222` (`origin/av_gkr_compiler`, the PR base), run from a
-  detached worktree. The generator at HEAD `cs/src` produces the legacy 208-query
-  round (4 columns, 55 regions) and so cannot produce this file.
-- `circuit` equals `cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json`
-  at HEAD (the circuit Lean imports): checked with `==`.
-- sha256 `333f3d6334e077a39cac5bc562bc98ac6b2ec95163d0cc0375e7206929259909`,
-  identical to Antonio's `formal_verification/lean/artifacts/setup/blake-round.json`
-  and to the manifest value.
-- Cargo: no tracked `Cargo.lock` at HEAD, so `--locked` pins nothing here; the
-  output depends on the cs/setups source, not dependency versions.
+- Generator: `execution_prover/examples/export_setup_json.rs` and `prover/src/gkr/prover/setup_artifact.rs`.
+- Source: frozen Rust tree `9501f1f45f075b61389bb301de697514bb61bed8`.
+- Command: `cargo run -p execution_prover --example export_setup_json -- blake-round - - blake-round.json`.
+- The exporter output is canonicalized to compact JSON. The complete bytes must equal the imported file.
+- `scripts/check_setup_freshness.py` checks every setup named in the Lake inputs against the current Rust exporter.
 
 Row meaning (proven/Proven/Blake2Round/Setup/): `Rows.setupRow_eq` proves that every
 one of the 2^20 decoded rows equals the region formula (`Spec.spec0`..`spec5`):
@@ -62,16 +53,8 @@ three split Keccak-f[1600] workers (CSRs 0x7CD, 0x7CC, 0x7CE; 8/9/11 columns, tr
 | `keccak-theta-rho.json` | `66d98adf0070f516b1b5c299ed5b5a2f935819a83bfe6191a3f3ed24033b04d1` |
 | `keccak-chi5.json` | `3908223fc7221242c3004e472d63950440cfbbec4ad9f88e1842d6a45fe92710` |
 
-All three are identical to Antonio's `formal_verification/lean/artifacts/setup/` files and
-manifest values (`origin/codex/lean-circuit-verification`), and each file's `circuit` equals
-the imported `cs/compiled_circuits/keccak_*_layout_no_caches_gkr.json` (checked with `==`).
-Command: `cargo run --release -p execution_prover --example export_setup_json -- keccak-column-parity - - keccak-column-parity.json`
-(likewise `keccak-theta-rho`, `keccak-chi5`), run at this branch after the upstream merge
-`049f2aa24` (sources = `c1a662222`) with the split-Keccak arms of the exporter restored
-(the commit that adds this paragraph); `cargo check -p execution_prover --examples` passes.
-Output byte-identical to the committed files (and to a first export from a detached
-`c1a662222` tree). The same exporter at this tree also reproduces `blake-round.json`
-(sha256 `333f3d63…`), so the detached-tree step above is no longer needed.
+The same exporter produces the three split files. Select `keccak-column-parity`, `keccak-theta-rho`
+or `keccak-chi5`. The native freshness check compares every column, table and circuit field.
 
 Row meaning (proven/Proven/KeccakSplit/Setup/{ColumnParity,ThetaRho,Chi5}/): `Rows.setupRow_eq`
 proves that each of the 2^22 decoded rows equals the region formula (`Spec.spec*`; controller

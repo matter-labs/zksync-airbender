@@ -1,6 +1,6 @@
 // AIRBENDER BASE CONFIG = sail-riscv's stock rv32 config with ONLY the changes that cannot be made from Lean
 // (they are compile-time constants of the generated model). Everything else Airbender-specific (misa = I+M,
-// memory map, supported instructions/CSRs, alignment) is set and filtered in lean/human/Human/Airbender.lean.
+// memory map, supported instructions/CSRs, alignment) is set and filtered in lean/human/Human/ISA/Sail/Airbender.lean.
 // Changes vs rv32.json are marked // AIRBENDER.
 // This is a configuration file for the Sail RISC-V emulator.
 //

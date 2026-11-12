@@ -59,6 +59,8 @@ shared constraint description → CleanCore constraints → RV.step / RV.run
 
 Claims use explicit interface assumptions. They cover the imported constraint description.
 Compiled GKR layer preservation and cryptographic argument soundness remain open.
+The setup grid comparison is trusted compiled code. It compares each grid formula with the exported JSON rows.
+The kernel checks proofs about the emitted formulas.
 
 ## Read these first
 
