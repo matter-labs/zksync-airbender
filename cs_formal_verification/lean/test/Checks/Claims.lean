@@ -1,3 +1,4 @@
+import Proven.Final.Circuits.Blake2Round.Mask
 import Proven.Final.Circuits.InitsTeardowns.NativeProducts
 import Proven.Final.Compiler.Theorems
 import Proven.Final.Helpers.Context.VerifierBoundary.Theorems
@@ -629,3 +630,11 @@ example : Airbender.InitsTeardowns.Native.UnifiedSoundnessClaim := Airbender.Ini
 example : Airbender.InitsTeardowns.Native.UnifiedSatisfiableClaim := Airbender.InitsTeardowns.Native.unified_satisfiable
 
 #print axioms Airbender.InitsTeardowns.Native.unified_satisfiable
+
+example : Airbender.Blake2Round.Mask.SoundnessClaim := Airbender.Blake2Round.Mask.soundness
+
+#print axioms Airbender.Blake2Round.Mask.soundness
+
+example : Airbender.Blake2Round.Mask.SatisfiableClaim := Airbender.Blake2Round.Mask.satisfiable
+
+#print axioms Airbender.Blake2Round.Mask.satisfiable

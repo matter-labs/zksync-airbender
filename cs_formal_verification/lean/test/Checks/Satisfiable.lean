@@ -1,3 +1,4 @@
+import Human.Circuits.Blake2Round.Mask
 import Human.Circuits.InitsTeardowns.Native.Standalone
 import Human.Circuits.InitsTeardowns.Native.Unified
 import Human.Helpers.Context.VerifierBoundary.Theorems
@@ -676,3 +677,12 @@ example (claim : Airbender.InitsTeardowns.Native.UnifiedSoundnessClaim)
           parameters raw .terminal).map parameters.encode).prod := by
   obtain ⟨parameters, raw, wires, accepted⟩ := satisfiable
   exact ⟨parameters, raw, wires, accepted, (claim parameters raw wires accepted).1⟩
+
+example (claim : Airbender.Blake2Round.Mask.SoundnessClaim)
+    (witness : Airbender.Blake2Round.Mask.SatisfiableClaim) :
+    ∃ (input : Airbender.Blake2Round.Mask.Input) (output : Airbender.Blake2Round.Mask.Output)
+      (w : Nat → ZMod Airbender.babyBearModulus),
+      Airbender.Blake2Round.Mask.Assumptions input ∧ Airbender.Blake2Round.Mask.Mapping input output w ∧
+      Airbender.Blake2Round.Mask.spec input output := by
+  obtain ⟨input, output, w, assumptions, constraints, mapping⟩ := witness
+  exact ⟨input, output, w, assumptions, mapping, claim input output w assumptions constraints mapping⟩

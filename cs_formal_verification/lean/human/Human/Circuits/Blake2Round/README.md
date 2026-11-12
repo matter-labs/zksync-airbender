@@ -31,3 +31,9 @@ public flags, seven-/ten-round scope, fixed pointers, actual reads and terminal 
 The completion control does not automatically restart a new protocol.
 [Delegation context](../../Helpers/Delegation/README.md) and selected unified
 windows retain their own matching, table and prefix conditions.
+
+[Mask.lean](Mask.lean) states the full native Boolean-mask behavior.
+`Airbender.Blake2Round.Mask.SoundnessClaim` covers zero and multiple selected rounds.
+`Airbender.Blake2Round.Mask.SatisfiableClaim` gives a separate assignment witness.
+The [final proofs](../../../../proven/Proven/Final/Circuits/Blake2Round/Mask.lean) reuse the existing indexed arithmetic, XOR and address lemmas.
+The message limbs can contain sums of ten source limbs.

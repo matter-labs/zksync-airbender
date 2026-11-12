@@ -1,4 +1,5 @@
 module
+public import Proven.Blake2Round.Mask.Native
 public import Proven.Trace.Machine.Requests
 public import Proven.Trace.Machine.UnifiedRequests
 public import Tests.VerifierBoundary
@@ -294,3 +295,5 @@ public import Proven.Trace.MemoryPorts
 #print axioms Airbender.Trace.Machine.Proofs.unrolled_worker_clocks
 
 #print axioms Airbender.Trace.Machine.Proofs.unified_requests_complete
+
+#print axioms Airbender.Blake2Round.Mask.Proofs.native_effect

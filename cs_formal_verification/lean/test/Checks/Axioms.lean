@@ -1,3 +1,4 @@
+import Proven.Final.Circuits.Blake2Round.Mask
 import Proven.Final.Circuits.InitsTeardowns.NativeProducts
 import Proven.Final.Compiler.Theorems
 import Proven.AddSub.Modular.RVArithmetic
@@ -1357,3 +1358,7 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.InitsTeardowns.Native.unified_soundness
 
 #print axioms Airbender.InitsTeardowns.Native.unified_satisfiable
+
+#print axioms Airbender.Blake2Round.Mask.soundness
+
+#print axioms Airbender.Blake2Round.Mask.satisfiable
