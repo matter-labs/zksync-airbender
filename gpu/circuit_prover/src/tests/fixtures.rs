@@ -43,9 +43,9 @@ pub(super) fn load_committed_proof(
 
 #[test]
 fn cpu_loads_complete_committed_proof_set() {
-    use prover::tests::gkr::orchestration::canonical_fixtures::CANONICAL_CIRCUITS;
-    for circuit in CANONICAL_CIRCUITS {
-        for &mode in circuit_common::SoundnessMode::ALL {
+    use prover::tests::gkr::orchestration::canonical_fixtures::canonical_circuits;
+    for &mode in circuit_common::SoundnessMode::ALL {
+        for circuit in canonical_circuits(mode) {
             let loaded = load_committed_proof(circuit, mode);
             assert_eq!(
                 proof_fixtures::encode(&loaded.proof, Vec::new()),

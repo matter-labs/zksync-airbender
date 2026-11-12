@@ -33,7 +33,7 @@ pub(super) fn gpu_memory_caps(
         };
         let setup = gpu_gkr::setup::GpuGKRSetupTransfer::new(
             Arc::clone(base.gpu_setup_host.as_ref().unwrap()),
-            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+            base.partial_trees().setup,
             context,
         )
         .unwrap();
@@ -44,8 +44,8 @@ pub(super) fn gpu_memory_caps(
             &base.gkr_programs,
             &base.prover_config,
             inputs,
-            gpu_gkr::stage1::merged_commitment::MergedCommitStrategy::AllCosets,
-            gpu_trace::trace::holder::PartialTreePolicy::DEFAULT,
+            presets::merged_commit_strategy(base.circuit_type, base.profile),
+            base.partial_trees(),
             None,
             context,
         )
