@@ -153,9 +153,10 @@ def check_theorems(output, audit):
 
 
 def check_layers():
-    graph = {".".join(path.relative_to(ROOT / src).with_suffix("").parts):
-             re.findall(r"^(?:public\s+)?(?:meta\s+)?import\s+(?:all\s+)?(\S+)$", path.read_text(), re.M)
-             for src in ("human", "proven") for path in (ROOT / src).rglob("*.lean")}
+    from scripts.check_import_closure import load_graph
+    roots = [".".join(path.relative_to(ROOT / src).with_suffix("").parts)
+             for src in ("human", "proven") for path in (ROOT / src).rglob("*.lean")]
+    graph = load_graph(roots)
     for module, dependencies in graph.items():
         for dependency in dependencies:
             if dependency.startswith(CLAIM_PREFIXES) and dependency not in graph:

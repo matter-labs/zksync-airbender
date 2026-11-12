@@ -14,7 +14,8 @@ echo "== 0. The Sail model: lean-sail (pinned, fetched on demand; not committed)
   fail "the generated Sail model is absent: run sail/regen.sh (needs the pinned Sail compiler; see sail/PINS.md)"
 
 echo "== 1. The spec (human/) imports nothing from the proofs (proven/) or the tests (test/)"
-if grep -rnE '^\s*(public\s+)?import\s+(Proven|Tests|Checks)(\.|$)' human; then fail "human/ imports proven/ or test/"; fi
+python3 scripts/test_import_closure.py
+python3 scripts/check_import_closure.py
 
 echo "== 1b. The circuit and setup JSONs the spec imports: pinned sha256, no duplicate keys, no duplicate circuits,"
 echo "   canonical form (setup JSONs compact)"
