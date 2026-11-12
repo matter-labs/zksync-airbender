@@ -125,13 +125,13 @@ elab_rules : command
       match wholeChecks with
       | some owner => pure (mkIdent (owner.getId ++ Name.mkSimple stem))
       | none => `(by decide +kernel)
-    let pair ← match Json.parse (← IO.FS.readFile pairPath.getString) >>= (fromJson? (α := Import.Pair)) with
+    let pair ← match Lean.Json.parse (← IO.FS.readFile pairPath.getString) >>= (fromJson? (α := Import.Pair)) with
       | .ok pair => pure pair
       | .error error => throwError "invalid actual source-lookup pair: {error}"
-    let previous ← match Json.parse (← IO.FS.readFile oldPath.getString) >>= (fromJson? (α := LookupImport.LookupCertificate)) with
+    let previous ← match Lean.Json.parse (← IO.FS.readFile oldPath.getString) >>= (fromJson? (α := LookupImport.LookupCertificate)) with
       | .ok previous => pure previous
       | .error error => throwError "invalid original source-column certificate: {error}"
-    let cert ← match Json.parse selectorText.getString >>= (fromJson? (α := Certificate)) with
+    let cert ← match Lean.Json.parse selectorText.getString >>= (fromJson? (α := Certificate)) with
       | .ok parsed => pure parsed
       | .error error => throwError "invalid source-operand selectors: {error}"
     unless pair.format_version == 1 && previous.format_version == 1 && cert.format_version == 1 do

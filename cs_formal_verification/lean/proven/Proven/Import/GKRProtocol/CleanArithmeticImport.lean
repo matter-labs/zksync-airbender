@@ -78,9 +78,9 @@ syntax (name := importCleanArithmetic) "import_clean_arithmetic " ident " from "
 elab_rules : command
   | `(import_clean_arithmetic $name:ident from $path:str selectors $selectorText:str
       base_model $baseName:ident variables $arityNumber:num $[using $provided:ident]? $[ideal_checks $ideals:ident]?) => do
-    let pair ← match Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
+    let pair ← match Lean.Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
       | .ok pair => pure pair | .error error => throwError "{error}"
-    let certificateData ← match Json.parse selectorText.getString >>= (fromJson? (α := Selectors)) with
+    let certificateData ← match Lean.Json.parse selectorText.getString >>= (fromJson? (α := Selectors)) with
       | .ok decoded => pure decoded | .error error => throwError "{error}"
     unless pair.format_version == 1 && certificateData.format_version == 1 &&
         certificateData.witnesses.size == pair.circuit.structured_statements.size do

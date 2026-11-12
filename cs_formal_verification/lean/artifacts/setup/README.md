@@ -25,7 +25,7 @@ rows 0..606207 are the six XOR regions, rows 606208.. are all zero (tag 0).
 The padding rows cannot satisfy a query: `Circuit.blakeRoundQueries` (human/Human/Import/Columns.lean)
 requires every query's tag column to be a constant in {4, 19, 20, 55, 56, 57}.
 
-## How the import structures the columns (all four files)
+## How the import structures all 16 setups
 
 `import_setup_blocks` (human/Human/Import/SetupEmit.lean) cuts each column's JSON blocks at
 every table edge and replaces column `c < width` of every table whose id is in
@@ -68,3 +68,26 @@ its zero key (zeros but the tag); all later rows are padding (tag 0). The table 
 are grid blocks (see above; the iota constants of `XorSpecialIota` are taken from the data
 and proved equal to `rcByte` in `ColumnParity.ShapesOk`); the controller regions keep their
 JSON blocks and are checked row by row in `Rows`.
+
+## Additional native inputs and model comparisons
+
+The other 12 files are `add-sub`, `bigint`, `blake-g`, `decoder-smoke`,
+`inits-and-teardowns`, `jump-branch`, `keccak`, `mul-div`, `shift-binop`,
+`subword-memory`, `unified` and `word-memory` (each with the `.json` suffix).
+`Human.Compiler.NativeSetups` imports them with the same fast block importer.
+The freshness check exports and compares all 16 complete files.
+CPU exports use the four-word fixture `[0x13, 0x00408093, 0x6f, 0x007181b3]`
+for both program inputs. The decoder smoke fixture comes from the existing
+`setup_json_roundtrip_preserves_materialized_columns_and_program` Rust test.
+
+`Human.Import.NativeGrid` compares the retained bigint rows, both G tables,
+both special5 Keccak tables and the complete CPU shift table with every native
+row. Each setup also checks its complete 16-bit and 19-bit virtual range columns,
+including zero padding. The range leaf checks all native RangeCheck13 rows.
+These comparisons are trusted compiled code. The regression module rejects a
+wrong formula, a changed native row and changed range padding. No kernel setup
+certificate is added.
+
+The raw ROM and decoder columns are imported. Their public-program composition
+with native CPU certificates remains Phase 3 work. A fixed fixture does not
+prove the Rust setup generator for every program.

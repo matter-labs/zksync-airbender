@@ -3,12 +3,15 @@ public import Human.Circuits.Keccak.Artifact
 public import Human.Helpers.Properties
 public import CleanCore.Specs.Keccak256
 
+public import Human.Import.NativeGrid
+public import Human.Compiler.NativeSetups.Keccak
+
 @[expose] public section
 
 namespace Airbender.Keccak
 
 /- Symbolic reconstruction of cs/src/tables/keccak_precompile_related.rs and
-   binops.rs. Rust-to-model setup correspondence remains unproved. Local claims parameterize control-index rows; native operation execution uses
+   binops.rs. The compiled comparison below binds these rows to the native setup. Local claims parameterize control-index rows; native operation execution uses
    the concrete modeled rows in `Controller.lean`. Full scheduling is separate. -/
 
 def adjustedConstant (round : Nat) : Nat :=

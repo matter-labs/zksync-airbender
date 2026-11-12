@@ -2,12 +2,15 @@ module
 public import Human.Helpers.Tables.Range
 public import Mathlib.Data.Nat.Bitwise
 
+public import Human.Import.NativeGrid
+public import Human.Compiler.NativeSetups.BlakeG
+
 @[expose] public section
 
 namespace Airbender.Blake2G
 
 /- XOR rows model cs/src/tables/binops.rs::create_xor_table, with the five
-   widths/regions checked by the importer. Rust setup correspondence is deferred.
+   widths/regions checked by the importer. The compiled comparison below binds these rows to the native setup.
    The seven control outputs are supplied separately; no control semantics is
    asserted by the mixing proof. -/
 

@@ -12,7 +12,7 @@ namespace Airbender.Compiler.NumericArithmeticDataImport
 open Lean Elab Command
 
 private def readEntry (path entry : String) : CommandElabM Json := do
-  let json ← match Json.parse (← IO.FS.readFile path) with
+  let json ← match Lean.Json.parse (← IO.FS.readFile path) with
     | .ok value => pure value
     | .error message => throwError "{message}"
   match json.getObjVal? entry with

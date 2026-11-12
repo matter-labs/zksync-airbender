@@ -165,15 +165,15 @@ syntax (name := importLookupFields) "import_compiler_lookup_fields " ident " fro
 
 elab_rules : command
   | `(import_compiler_lookup_fields $name:ident from $pairPath:str source $sourcePath:str certificate $certificatePath:str) => do
-    let .ok pairJson := Json.parse (← IO.FS.readFile pairPath.getString) | throwError "invalid native pair JSON"
-    let .ok sourceJson := Json.parse (← IO.FS.readFile sourcePath.getString) | throwError "invalid native source JSON"
+    let .ok pairJson := Lean.Json.parse (← IO.FS.readFile pairPath.getString) | throwError "invalid native pair JSON"
+    let .ok sourceJson := Lean.Json.parse (← IO.FS.readFile sourcePath.getString) | throwError "invalid native source JSON"
     let pair ← match fromJson? (α := Airbender.Compiler.Import.Pair) pairJson with
       | .ok pair => pure pair
       | .error error => throwError "invalid native pair: {error}"
     let snapshot ← match fromJson? (α := Source.Snapshot) sourceJson with
       | .ok captured => pure captured
       | .error error => throwError "invalid native source capture: {error}"
-    let cert ← match Json.parse (← IO.FS.readFile certificatePath.getString) >>= (fromJson? (α := LookupCertificate)) with
+    let cert ← match Lean.Json.parse (← IO.FS.readFile certificatePath.getString) >>= (fromJson? (α := LookupCertificate)) with
       | .ok cert => pure cert
       | .error error => throwError "invalid lookup certificate: {error}"
     unless pair.format_version == 1 && snapshot.format_version == 1 && cert.format_version == 1 do

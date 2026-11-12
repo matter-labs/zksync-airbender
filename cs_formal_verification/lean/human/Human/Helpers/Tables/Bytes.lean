@@ -3,6 +3,13 @@ public import Human.Helpers.Tables.Lookups
 public import Human.Circuits.JumpBranchSlt.Tables.Control
 public import CleanCore.Utils.Field
 
+public import Human.Import.NativeGrid
+public import Human.Compiler.NativeSetups.ShiftBinop
+public import CleanCore.Utils.Field
+public meta import CleanCore.Utils.Field
+public meta import Human.Helpers.Tables.Lookups
+public meta import Human.Circuits.JumpBranchSlt.Tables.Control
+
 @[expose] public section
 
 namespace Airbender.Verification
@@ -10,7 +17,7 @@ namespace Airbender.Verification
 /- Fixed-table reconstruction for `shift_binop_tables` in
    cs/src/gkr_circuits/binary_shifts_family/circuit.rs. Row generators are in
    cs/src/tables/{binops,shift_opcode_related}.rs; IDs in definitions/table_type.rs.
-   These rows are modeled, not extracted. Rust setup correspondence is unproved.
+   The compiled comparison below binds every fixed row to the native setup.
    Clean supplies static-table membership and byte-pair decomposition. -/
 
 /-- Native 32-bit contribution of one source byte, as in Rust's shift table. -/
@@ -73,5 +80,8 @@ def shiftBinopLookup {p : Nat} [Fact p.Prime] (entry : Vector (Expression (ZMod 
     Lookup (ZMod p) where
   table := shiftBinopTable.toRaw
   entry := entry
+
+/- Compare every fixed row with the native export in trusted compiled code. -/
+check_native_grid "artifacts/setup/shift-binop.json" [0, 524545] ([0,1,2,3,4,5,6,7,8,9]) => (shiftBinopRow)
 
 end Airbender.Verification

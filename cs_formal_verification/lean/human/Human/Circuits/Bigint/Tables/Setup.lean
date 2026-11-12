@@ -2,13 +2,15 @@ module
 public import Human.Helpers.Tables.Lookups
 public import Human.Circuits.JumpBranchSlt.Tables.Control
 
+public import Human.Import.NativeGrid
+public import Human.Compiler.NativeSetups.Bigint
+public meta import Human.Compiler.NativeSetups.Bigint
+
 @[expose] public section
 
 namespace Airbender.Bigint
 
-/-- Modeled fixed rows from `cs/src/tables/integer_ops.rs`: two-tuple ranges,
-    single-entry ranges and U16GetLowByte. Regions follow this artifact's
-    `table_offsets`. Rust extraction/binding remains a separate deferred gap. -/
+/-- Native fixed rows. The compiled comparison below binds all six tagged regions. -/
 def setupRow (index : Fin 1390592) : Nat × Nat × Nat :=
   let n := index.val
   if n < 262144 then (n / 512, n % 512, 22)
@@ -33,5 +35,8 @@ def setupTable {p : Nat} [Fact p.Prime] : Table (ZMod p) (fields 3) := .fromStat
   Spec x := ∃ i : Fin 1390592, x = #v[((setupRow i).1 : ZMod p), ((setupRow i).2.1 : ZMod p), ((setupRow i).2.2 : ZMod p)]
   contains_iff _ := Iff.rfl
 }
+
+/- Bind this row formula to every native row. The comparison runs as trusted compiled code. -/
+check_native_grid "artifacts/setup/bigint.json" [0, 1390592] ([0, 1, 2]) => (fun i => #v[(setupRow i).1, (setupRow i).2.1, (setupRow i).2.2])
 
 end Airbender.Bigint

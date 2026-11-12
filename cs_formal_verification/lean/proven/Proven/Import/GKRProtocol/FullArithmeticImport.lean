@@ -203,15 +203,15 @@ syntax (name := importFullArithmetic) "import_full_compiler_arithmetic " ident "
 
 elab_rules : command
   | `(import_full_compiler_arithmetic $name:ident from $pairPath:str source $sourcePath:str selectors $selectorText:str) => do
-    let pairJson ← match Json.parse (← IO.FS.readFile pairPath.getString) with
+    let pairJson ← match Lean.Json.parse (← IO.FS.readFile pairPath.getString) with
       | .ok value => pure value | .error error => throwError "{error}"
-    let sourceJson ← match Json.parse (← IO.FS.readFile sourcePath.getString) with
+    let sourceJson ← match Lean.Json.parse (← IO.FS.readFile sourcePath.getString) with
       | .ok value => pure value | .error error => throwError "{error}"
     let pair ← match fromJson? (α := Import.Pair) pairJson with
       | .ok value => pure value | .error error => throwError "{error}"
     let snapshot ← match fromJson? (α := Source.Snapshot) sourceJson with
       | .ok value => pure value | .error error => throwError "{error}"
-    let cert ← match Json.parse selectorText.getString >>= (fromJson? (α := Selectors)) with
+    let cert ← match Lean.Json.parse selectorText.getString >>= (fromJson? (α := Selectors)) with
       | .ok value => pure value | .error error => throwError "{error}"
     let .ok originalSource := pairJson.getObjVal? "source" | throwError "missing original source"
     let .ok retainedSource := sourceJson.getObjVal? "source" | throwError "missing retained source"

@@ -109,7 +109,7 @@ syntax (name := importConsumerTyping) "import_compiler_typing " ident " from " s
 
 elab_rules : command
   | `(import_compiler_typing $name:ident from $path:str wiring $wiringName:ident) => do
-    let pair ← match Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
+    let pair ← match Lean.Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
       | .ok pair => pure pair
       | .error error => throwError "invalid compiler artifact for consumer typing: {error}"
     let graphName := mkIdent (wiringName.getId ++ `graph)

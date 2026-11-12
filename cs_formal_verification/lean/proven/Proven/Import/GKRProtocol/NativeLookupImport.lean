@@ -159,7 +159,7 @@ syntax (name := importNativeLookups) "import_native_lookups " ident " from " str
 
 elab_rules : command
   | `(import_native_lookups $name:ident from $path:str) => do
-    let pair ← match Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
+    let pair ← match Lean.Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
       | .ok pair => pure pair
       | .error error => throwError "invalid compiler pair for native lookup reduction: {error}"
     unless pair.format_version == 1 do throwError "unsupported compiler pair format"

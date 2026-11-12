@@ -43,7 +43,7 @@ private partial def expressionTerm (owner : Name) (counter : IO.Ref Nat) (value 
 syntax "numeric_expressions " ident " from " str " [" str "]" : command
 elab_rules : command
   | `(numeric_expressions $name:ident from $path:str [$entry:str]) => do
-    let json ← match Json.parse (← IO.FS.readFile path.getString) with
+    let json ← match Lean.Json.parse (← IO.FS.readFile path.getString) with
       | .ok json => pure json
       | .error message => throwError "{message}"
     let payload ← match json.getObjVal? entry.getString >>= Json.getArr? with

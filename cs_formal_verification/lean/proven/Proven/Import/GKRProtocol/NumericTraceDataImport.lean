@@ -40,7 +40,7 @@ private def rowTerm (value : Json) : CommandElabM (TSyntax `term) := do
 syntax "packed_normalization_rows " ident " from " str " [" str "]" : command
 elab_rules : command
   | `(packed_normalization_rows $name:ident from $path:str [$entry:str]) => do
-    let json ← match Json.parse (← IO.FS.readFile path.getString) with
+    let json ← match Lean.Json.parse (← IO.FS.readFile path.getString) with
       | .ok value => pure value
       | .error message => throwError "{message}"
     let values ← match (← readField json entry.getString).getArr? with

@@ -26,8 +26,8 @@ def decodeTimestamp {p : Nat} (w : Nat → ZMod p) (columns : Vector Nat 2) : Ti
   ⟨(w columns[0]).val, (w columns[1]).val⟩
 
 /-- Rust's `TIMESTAMP_COLUMNS_NUM_BITS` in `common_constants/src/timestamps.rs`;
-    `VirtualSetupPoly::RangeCheckTimestamp` uses the virtual range setup. As with
-    the other range tables, correspondence to that Rust setup remains unproved. -/
+    `VirtualSetupPoly::RangeCheckTimestamp` uses the virtual range setup. Each
+    imported setup checks the full native prefix and its zero padding. -/
 def timestampTable {p : Nat} [Fact p.Prime] : Table (ZMod p) field :=
   Verification.rangeTable "Airbender.Timestamp19" timestampBase
 
