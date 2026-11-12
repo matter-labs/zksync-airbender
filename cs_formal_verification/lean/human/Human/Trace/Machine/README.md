@@ -23,6 +23,9 @@ The [unrolled](../../../../proven/Proven/Trace/Machine/UnrolledStandardCycle.lea
 [unified](../../../../proven/Proven/Trace/Machine/UnifiedStandardCycle.lean) caller proofs give actual fetched RV steps
 for bigint, G and round cycles. They derive reads, write values and distinct worker addresses from shared matching.
 The round proof accepts every native Boolean mask.
+The ordinary [unrolled](../../../../proven/Proven/Trace/Machine/UnrolledOrdinaryCycle.lean) and
+[unified](../../../../proven/Proven/Trace/Machine/UnifiedOrdinaryCycle.lean) cycles reuse the existing family proofs
+with actual shared-history reads, including branches and jumps.
 The [unrolled](../../../../proven/Proven/Trace/Machine/UnrolledModularStep.lean) and
 [unified](../../../../proven/Proven/Trace/Machine/UnifiedModularStep.lean) modular row proofs give RV instruction steps
 for all four field operations. The [discarded-destination proofs](../../../../proven/Proven/Trace/Machine/ModularZeroStep.lean)
