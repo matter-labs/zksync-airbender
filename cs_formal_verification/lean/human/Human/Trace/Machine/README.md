@@ -47,3 +47,7 @@ erase identity factors and retain full occurrence counts. Cached GKR preservatio
 Its public window interface supplies caller coverage, protocol counts and CSR families.
 The [proof](../../../../proven/Proven/Final/Trace/Machine/Segmentation.lean) derives worker coverage, unique assignment,
 full request multiplicity and the total call count. Active zero-clock workers are rejected.
+
+The [code-bound segmentation claims](CodeWindows.lean) derive caller counts and CSR families from public decoded entries,
+native clock density and the protocol duration. Their [proofs](../../../../proven/Proven/Final/Trace/Machine/CodeWindows.lean)
+need no worker count or expected output. Occurrence coverage and ordered public intervals remain explicit.

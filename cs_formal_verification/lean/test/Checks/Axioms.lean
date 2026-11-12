@@ -1,3 +1,4 @@
+import Proven.Final.Trace.Machine.CodeWindows
 import Proven.Final.ISA.ValidUse
 import Proven.Final.Trace.Machine.Segmentation
 import Proven.Final.Helpers.Context.PaddingBoundary
@@ -1402,3 +1403,7 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.Trace.Machine.unrolled_hash_segmentation
 
 #print axioms Airbender.Trace.Machine.unified_hash_segmentation
+
+#print axioms Airbender.Trace.Machine.unrolled_code_hash_segmentation
+
+#print axioms Airbender.Trace.Machine.unified_code_hash_segmentation
