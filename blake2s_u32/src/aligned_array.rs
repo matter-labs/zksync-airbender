@@ -100,14 +100,8 @@ impl<T, A> AlignedSlice<T, A> {
 }
 
 impl<T, A, const N: usize> AlignedArray<MaybeUninit<T>, A, N> {
-    #[inline(always)]
-    pub unsafe fn assume_init_ref(&self) -> &AlignedArray<T, A, N> {
-        &*(self as *const Self).cast::<AlignedArray<T, A, N>>()
-    }
-
-    /// The first `len` elements as an initialized aligned slice. Unlike
-    /// [`Self::assume_init_subarray`] with the full capacity, the elements past `len` stay out
-    /// of the view and may be unwritten.
+    /// The first `len` elements as an initialized aligned slice. Elements past
+    /// `len` stay out of the view and may be unwritten.
     ///
     /// # Safety
     /// `len <= N` and the elements `0..len` must have been initialized.
@@ -147,28 +141,6 @@ impl<T, A, const N: usize> AlignedArray<MaybeUninit<T>, A, N> {
             core::ptr::write_volatile(ptr.add(i), MaybeUninit::zeroed());
             i += 1;
         }
-    }
-
-    /// Reinterpret the first `M` elements as an initialized `AlignedArray<T, A, M>`.
-    ///
-    /// # Safety
-    /// The caller must ensure that elements `0..M` have been initialized.
-    #[inline(always)]
-    pub unsafe fn assume_init_subarray<const M: usize>(&self) -> &AlignedArray<T, A, M> {
-        debug_assert!(M <= N);
-        &*(self as *const Self).cast::<AlignedArray<T, A, M>>()
-    }
-
-    /// Mutable version of `assume_init_subarray`.
-    ///
-    /// # Safety
-    /// The caller must ensure that elements `0..M` have been initialized.
-    #[inline(always)]
-    pub unsafe fn assume_init_subarray_mut<const M: usize>(
-        &mut self,
-    ) -> &mut AlignedArray<T, A, M> {
-        debug_assert!(M <= N);
-        &mut *(self as *mut Self).cast::<AlignedArray<T, A, M>>()
     }
 }
 

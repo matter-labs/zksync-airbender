@@ -15,6 +15,8 @@ unroll = { workspace = true }
 verifier_common = { workspace = true , default-features = false }
 
 [features]
+# Static canonical proof tests use the production Compression wire layout.
+miri_circuits = ["verifier_common/test_compression"]
 blake2_with_compression = ["verifier_common/blake2_with_compression"]
 blake2_g_function = ["verifier_common/blake2_g_function"]
 mop_extension = ["verifier_common/mop_extension"]
@@ -40,6 +42,14 @@ common_constants = { workspace = true }
 verifier_generator = { workspace = true }
 rayon = "1.11.0"
 paste = "1"
+
+[[test]]
+name = "miri_circuits"
+required-features = ["miri_circuits"]
+
+[[example]]
+name = "miri_circuit_input"
+required-features = ["miri_circuits"]
 
 [lints]
 workspace = true

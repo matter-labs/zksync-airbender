@@ -254,14 +254,8 @@ impl<const REDUCED_ROUNDS: bool> Blake2sTranscript<REDUCED_ROUNDS> {
         Self::draw_randomness_into_uninit_using_hasher(hasher, seed, dst);
     }
 
-    /// Like [`Self::draw_randomness`], for a destination that is not initialized yet: every
-    /// word of `dst` is written. Same length requirements, checked before anything is written.
-    pub fn draw_randomness_into_uninit(seed: &mut Seed, dst: &mut [MaybeUninit<u32>]) {
-        let mut hasher = blake2s_u32::DelegatedBlake2sState::new();
-        Self::draw_randomness_into_uninit_using_hasher(&mut hasher, seed, dst);
-    }
-
-    /// Like [`Self::draw_randomness_into_uninit`], reusing the supplied hasher.
+    /// Like [`Self::draw_randomness_using_hasher`], for an uninitialized destination.
+    /// Every word is written, with the same length requirements checked first.
     pub fn draw_randomness_into_uninit_using_hasher(
         hasher: &mut blake2s_u32::DelegatedBlake2sState,
         seed: &mut Seed,

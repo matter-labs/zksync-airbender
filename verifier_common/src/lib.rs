@@ -195,35 +195,28 @@ pub mod stats;
 pub use self::gkr::{GKRVerifierOutput, InitialGKRTranscript};
 pub use ::prover::definitions::{BlakeMode, GKRExternalChallenges, USE_REDUCED_BLAKE2_ROUNDS};
 
-/// The blake2s implementation of THIS build of the verifier (the `blake2s_u32`
-/// implementation the cargo features and target select): what the generated
-/// verifiers decide their proof layout from at compile time, and what a host
-/// must flatten proofs with for a verifier of the same build (a RISC-V
-/// program's mode is its `BlakeMode::tag()` build feature).
-pub const BLAKE_MODE: BlakeMode = {
-    #[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
-    {
-        BlakeMode::Compression
-    }
-    #[cfg(all(target_arch = "riscv32", feature = "blake2_g_function"))]
-    {
-        BlakeMode::GFunction
-    }
-    #[cfg(all(target_arch = "riscv32", feature = "special_opcodes_extension"))]
-    {
-        BlakeMode::BlakeSpecialOpcodes
-    }
-    #[cfg(not(all(
-        target_arch = "riscv32",
-        any(
-            feature = "blake2_with_compression",
-            feature = "blake2_g_function",
-            feature = "special_opcodes_extension"
-        )
-    )))]
-    {
-        BlakeMode::Software
-    }
+/// The Blake2s mode that selects the generated verifier's proof layout and the
+/// mode a host must use to flatten proofs for the same build. Normally this is
+/// the implementation selected by the target and cargo features (a RISC-V
+/// program's mode is its `BlakeMode::tag()` build feature). The host-only
+/// `test_compression` feature selects the Compression layout while hashing in Rust.
+pub const BLAKE_MODE: BlakeMode = if cfg!(all(
+    not(target_arch = "riscv32"),
+    feature = "test_compression"
+)) || cfg!(all(
+    target_arch = "riscv32",
+    feature = "blake2_with_compression"
+)) {
+    BlakeMode::Compression
+} else if cfg!(all(target_arch = "riscv32", feature = "blake2_g_function")) {
+    BlakeMode::GFunction
+} else if cfg!(all(
+    target_arch = "riscv32",
+    feature = "special_opcodes_extension"
+)) {
+    BlakeMode::BlakeSpecialOpcodes
+} else {
+    BlakeMode::Software
 };
 
 /// Wrappers for common field operations used by the verifier.
