@@ -1,3 +1,4 @@
+import Proven.Final.Compiler.Theorems
 import Proven.AddSub.Modular.RVArithmetic
 import Proven.Final.Helpers.Context.VerifierBoundary.Theorems
 import Checks.Restatements
@@ -1321,3 +1322,25 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.AddSub.Proofs.modular_result
 
 #print axioms Airbender.AddSub.Modular.arithmeticResult_rv
+
+#print axioms Airbender.Compiler.addSub_cached_description
+
+#print axioms Airbender.Compiler.bigint_cached_description
+
+#print axioms Airbender.Compiler.blakeG_cached_description
+
+#print axioms Airbender.Compiler.blakeRound_cached_description
+
+#print axioms Airbender.Compiler.jumpBranch_cached_description
+
+#print axioms Airbender.Compiler.keccak_cached_description
+
+#print axioms Airbender.Compiler.mulDiv_cached_description
+
+#print axioms Airbender.Compiler.shiftBinop_cached_description
+
+#print axioms Airbender.Compiler.subwordMemory_cached_description
+
+#print axioms Airbender.Compiler.unified_cached_description
+
+#print axioms Airbender.Compiler.wordMemory_cached_description

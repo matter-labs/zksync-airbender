@@ -1,3 +1,4 @@
+import Proven.Final.Compiler.Theorems
 import Proven.Final.Helpers.Context.VerifierBoundary.Theorems
 import Checks.Restatements
 -- Each final theorem (proven/Proven/Final) proves the statement of the same name in human/ (UpperCamelCase).
@@ -559,3 +560,47 @@ example : Airbender.VerifierBoundary.TerminalStateSatisfiableClaim := @Airbender
 
 example : Airbender.VerifierBoundary.TerminalBoundSatisfiableClaim := @Airbender.VerifierBoundary.terminal_bound_satisfiable
 #print axioms Airbender.VerifierBoundary.terminal_bound_satisfiable
+
+example : Airbender.Compiler.AddSubCachedDescriptionClaim := Airbender.Compiler.addSub_cached_description
+
+#print axioms Airbender.Compiler.addSub_cached_description
+
+example : Airbender.Compiler.BigintCachedDescriptionClaim := Airbender.Compiler.bigint_cached_description
+
+#print axioms Airbender.Compiler.bigint_cached_description
+
+example : Airbender.Compiler.BlakeGCachedDescriptionClaim := Airbender.Compiler.blakeG_cached_description
+
+#print axioms Airbender.Compiler.blakeG_cached_description
+
+example : Airbender.Compiler.BlakeRoundCachedDescriptionClaim := Airbender.Compiler.blakeRound_cached_description
+
+#print axioms Airbender.Compiler.blakeRound_cached_description
+
+example : Airbender.Compiler.JumpBranchCachedDescriptionClaim := Airbender.Compiler.jumpBranch_cached_description
+
+#print axioms Airbender.Compiler.jumpBranch_cached_description
+
+example : Airbender.Compiler.KeccakCachedDescriptionClaim := Airbender.Compiler.keccak_cached_description
+
+#print axioms Airbender.Compiler.keccak_cached_description
+
+example : Airbender.Compiler.MulDivCachedDescriptionClaim := Airbender.Compiler.mulDiv_cached_description
+
+#print axioms Airbender.Compiler.mulDiv_cached_description
+
+example : Airbender.Compiler.ShiftBinopCachedDescriptionClaim := Airbender.Compiler.shiftBinop_cached_description
+
+#print axioms Airbender.Compiler.shiftBinop_cached_description
+
+example : Airbender.Compiler.SubwordMemoryCachedDescriptionClaim := Airbender.Compiler.subwordMemory_cached_description
+
+#print axioms Airbender.Compiler.subwordMemory_cached_description
+
+example : Airbender.Compiler.UnifiedCachedDescriptionClaim := Airbender.Compiler.unified_cached_description
+
+#print axioms Airbender.Compiler.unified_cached_description
+
+example : Airbender.Compiler.WordMemoryCachedDescriptionClaim := Airbender.Compiler.wordMemory_cached_description
+
+#print axioms Airbender.Compiler.wordMemory_cached_description

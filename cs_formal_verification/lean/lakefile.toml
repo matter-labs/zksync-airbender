@@ -38,6 +38,7 @@ roots = ["Human"]
 globs = [
   "Human",
   "Human.Compiler.Capture",
+  "Human.Compiler.NativeArithmetic",
   "Human.Compiler.Theorems",
   "Human.Import.CompilerJson",
   "Human.Import.CompilerCapture",

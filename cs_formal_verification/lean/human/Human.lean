@@ -35,3 +35,5 @@ import Human.Trace.UnifiedReduced.RVCallerTheorems
 import Human.Import.Theorems
 
 import Human.Trace.Machine.Theorems
+
+import Human.Compiler.Theorems

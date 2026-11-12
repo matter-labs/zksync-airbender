@@ -33,3 +33,5 @@ import Proven.Final.Trace.WritesRangeChecked
 import Proven.Final.Trace.ZeroTimestamp
 
 import Proven.Final.Helpers.Context.VerifierBoundary.Theorems
+
+import Proven.Final.Compiler.Theorems
