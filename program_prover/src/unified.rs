@@ -101,53 +101,6 @@ pub(crate) fn replay_unified_circuit<C: Counters>(
     buffers
 }
 
-/// Low-level concrete-config API with pessimistic delegation schedules. It does not
-/// certify a named profile; mode-aware production callers use
-/// [`prove_unified_execution_with_replayer_in_profile`].
-///
-/// The proving flow of [`prove_unified_execution_with_replayer_in_profile`] under Pessimistic
-/// Conjecture with an explicit prover config for the UNIFIED circuit (delegation circuits keep
-/// their standard per-level configs). Used to prove final recursion layers under special
-/// commitment parameters (e.g. the high-LDE "compression" config) — the corresponding generated
-/// verifier must be used to verify the result, since the LDE factor and WHIR schedule are baked
-/// into the verify function.
-pub fn prove_unified_execution_with_replayer_with_unified_config<
-    B: Backend<BabyBearField, BabyBearExt4>,
-    GB: GKRBackend<BabyBearField, BabyBearExt4>,
->(
-    cycles_bound: usize,
-    binary_image: &[u32],
-    text_section: &[u32],
-    use_caches: bool,
-    non_determinism: impl riscv_transpiler::vm::NonDeterminismCSRSource,
-    ram_bound: usize,
-    worker: &worker::Worker,
-    security_level: SecurityLevel,
-    permutation_argument_pow_bits: u32,
-    unified_prover_config: &prover::gkr::prover_config::ProverConfig,
-    backend: &B,
-    gkr_backend: &GB,
-) -> (
-    full_statement_verifier::program_proof::ProgramProof,
-    BTreeMap<u32, UnrolledCircuitSetupParams>,
-) {
-    prove_unified_execution_with_replayer_impl::<B, GB>(
-        cycles_bound,
-        binary_image,
-        text_section,
-        use_caches,
-        non_determinism,
-        ram_bound,
-        worker,
-        security_level,
-        prover::definitions::SoundnessMode::PessimisticConjecture,
-        permutation_argument_pow_bits,
-        Some(unified_prover_config),
-        backend,
-        gkr_backend,
-    )
-}
-
 /// Prove an execution with the *unified* reduced-machine circuit under one explicit soundness
 /// mode and prover-config profile, rejecting a mode the profile does not certify before
 /// execution.
@@ -203,7 +156,6 @@ pub fn prove_unified_execution_with_replayer_in_profile<
             security_level,
             soundness_mode,
             permutation_argument_pow_bits,
-            None,
             backend,
             gkr_backend,
         ),
@@ -228,7 +180,6 @@ fn prove_unified_execution_with_replayer_impl<
     security_level: SecurityLevel,
     soundness_mode: prover::definitions::SoundnessMode,
     permutation_argument_pow_bits: u32,
-    unified_prover_config_override: Option<&prover::gkr::prover_config::ProverConfig>,
     backend: &B,
     gkr_backend: &GB,
 ) -> (
@@ -465,24 +416,7 @@ fn prove_unified_execution_with_replayer_impl<
     program_proof.final_pc = final_pc;
     program_proof.final_timestamp = final_timestamp;
 
-    // The UNIFIED circuit's commitment parameters: its own config from the
-    // setup unless overridden; delegation circuits below always use their own
-    // setups' configs.
-    let prover_config = match unified_prover_config_override {
-        Some(config) => {
-            assert_eq!(
-                config.security_level, security_level,
-                "override config must match the requested security level"
-            );
-            assert_eq!(
-                1usize << config.trace_len_log2,
-                trace_len,
-                "override config must match the unified trace length"
-            );
-            config.clone()
-        }
-        None => unified_setup.prover_config_in_mode(security_level, soundness_mode),
-    };
+    let prover_config = unified_setup.prover_config_in_mode(security_level, soundness_mode);
 
     let mut twiddles = HashMap::new();
     let mut twiddles_for = |config: &prover::gkr::prover_config::ProverConfig| {
@@ -819,15 +753,7 @@ fn prove_unified_execution_with_replayer_impl<
             );
 
             let now = std::time::Instant::now();
-            // With an override config (e.g. the high-LDE compression) the
-            // materialized RS codewords would not fit in memory — serve base
-            // codewords and trees by RECOMPUTATION instead. The default path
-            // keeps the historical fully-in-memory policy.
-            let storage = if unified_prover_config_override.is_some() {
-                WhirOracleStorage::fully_recompute()
-            } else {
-                WhirOracleStorage::fully_in_memory()
-            };
+            let storage = WhirOracleStorage::fully_in_memory();
             let proof = prove_configured_with_gkr_with_storage_and_backend::<
                 BabyBearField,
                 BabyBearExt4,
