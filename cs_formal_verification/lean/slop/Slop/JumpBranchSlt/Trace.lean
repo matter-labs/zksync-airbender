@@ -1,0 +1,43 @@
+module
+public import Human.Helpers.Context.Registries.JumpBranchSlt
+public import Slop.JumpBranchSlt.Timestamp
+public import Slop.Trace.RowHistory
+public import Slop.Trace.PC
+public import Slop.Trace.MemoryHistory
+public import Slop.JumpBranchSlt
+public import Slop.Defs.Helpers.Context.Columns
+
+@[expose] public section
+
+namespace Airbender.JumpBranchSlt
+
+@[simp] theorem trace_columns (kind : TraceKind) :
+    Trace.CircuitLayout.columns kind = importedConstraintsTraceColumns := by rfl
+
+@[simp] theorem trace_ports (kind : TraceKind) :
+    Trace.CircuitLayout.ports kind = importedConstraintsMemoryPorts := by rfl
+
+end Airbender.JumpBranchSlt
+
+namespace Airbender.JumpBranchSlt.Proofs
+open Trace
+
+/-- The shared complete-path/latest-read proofs use these checked local laws;
+    no jump-specific state or memory consistency premise is added. -/
+instance [Fact p.Prime] : Trace.Proofs.ClockLaws TraceKind p where
+  finalBound _ row h := final_clock_bound h
+  advance hp inverse _ row h bound := by
+    have core := Verification.holds_of_sublist h
+      (List.sublist_append_left importedConstraints importedConstraintsTimestampLookups)
+    obtain ⟨carry, bit, low, high⟩ := timestamp_equations inverse core
+    have final := final_clock_bound h
+    apply Trace.Proofs.increment hp bound final bit
+    · simpa [Row.columns, importedConstraintsTraceColumns, decodeTimestamp, timestampBase,
+        ZMod.natCast_zmod_val] using low
+    · simpa [Row.columns, importedConstraintsTraceColumns, decodeTimestamp, timestampBase,
+        ZMod.natCast_zmod_val] using high
+  portsClocks _ := memory_clocks
+  offsets _ := rfl
+  effects hp inverse _ _ h inputs := clocks hp inverse h inputs
+
+end Airbender.JumpBranchSlt.Proofs

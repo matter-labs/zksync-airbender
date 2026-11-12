@@ -1,0 +1,21 @@
+module
+public import Slop.Blake2Round.ControlPool
+public import Slop.Blake2Round.NativeExecution
+public import Slop.Delegation.CallGroups
+
+@[expose] public section
+
+namespace Airbender.Blake2Round.Proofs
+open Trace Trace.Proofs Delegation.Proofs
+set_option warningAsError true
+
+theorem call_event_time (row : Delegation.Row p) {port : MemoryPort} (present : port ∈ row.ports) :
+    (transferEvent (readToken row.assignment port, row.writeToken port)).1 =
+      (timeOfPair (row.writeToken importedConstraintsMemoryPorts[42]).time).value + 1 := by
+  have same : (row.writeToken port).time = (row.writeToken importedConstraintsMemoryPorts[42]).time := by
+    change (_, _) = (_, _)
+    rw [port_offset row present]
+    rfl
+  simp only [transferEvent, same]
+
+end Airbender.Blake2Round.Proofs

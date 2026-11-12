@@ -1,0 +1,162 @@
+# Context: Modular formal verification of compiled RV32 Rust using Lean
+
+## Goal
+
+Develop a proof of concept (PoC) for verifying the *actual RISC-V 32-bit machine instructions* generated from small Rust `no_std` functions, rather than merely proving properties of Rust source code. The longer-term goal is a reusable, gradually growing library of machine-code-verified Rust functions that can be assembled into a recursive zero-knowledge proof (ZKP) verifier. The verifier should ultimately be proven equivalent to a small, human-readable mathematical specification in Lean inspired by the ZKP paper/protocol.
+
+The intended workflow is highly AI-automated: an AI agent may propose definitions, specifications for intermediate routines, abstraction relations, contracts, loop invariants, proof scripts, and composition proofs. The user wants to keep the *human-maintained* Lean specification minimal, particularly the top-level cryptographic meaning. Any AI-generated proof must be checked by the Lean kernel; no proof may be accepted just because an AI or an external test says so.
+
+## Fundamental architecture
+
+1. Write a small, simple, modular function in Rust (`#![no_std]` when appropriate).
+2. Compile it using a pinned Rust/LLVM toolchain, target, flags, and linking policy to RV32 machine code.
+3. Treat the *compiled instruction bytes* as the thing being verified. Embed or import the exact bytes (and relevant ROM constants) into the Lean development in a way the kernel can check.
+4. Give the machine code instruction semantics, ideally by reusing the official RISC-V Sail model or its Lean-generated semantics rather than inventing an unreviewed instruction interpreter.
+5. Prove a function-level contract: for all machine states satisfying a precondition (PC at function entry, valid stack/memory, ABI assumptions, encoded arguments), execution reaches an allowed exit with the result specified by an abstract Lean function; no unintended traps or invalid memory accesses occur; termination should be proven where required.
+6. Compose independently proven contracts for called functions into proofs of callers and then into proofs of the whole verifier. The caller should reason from a callee's abstract contract, not repeatedly re-execute its internal instruction sequence.
+7. Finally, prove the top-level verifier contract implements the mathematical ZKP verification specification.
+
+Conceptually:
+
+  paper/protocol definition
+          | (human-reviewed, concise Lean specification)
+          v
+  Lean high-level VerifySpec
+          ^ (refinement theorem)
+  verified composed verifier functions
+          ^ (contract composition)
+  verified arithmetic / hash / transcript / PCS primitives
+          ^ (per-function binary refinement)
+  actual RV32 executable instruction bytes
+
+There is no requirement for machine instructions to correspond one-to-one with steps in the paper. Proofs should instead use Hoare-style contracts, simulation/refinement relations, and suitable abstraction boundaries.
+
+## Small-block and function contracts
+
+A block with one entry and multiple exits can have a theorem of the form:
+
+  Pre(s) -> pc(s) = entry ->
+    exists s', RunsUntilExit(code, s, s') /\ AllowedExit(s') /\ Post(s, s')
+
+For a function, a more useful theorem states that its concrete execution implements an abstract operation on encoded arguments and returns under the target ABI, including memory footprint / preserved registers / stack discipline. Prefer stronger notions than mere existential termination if the machine semantics are deterministic: specify the actual execution outcome, absence of traps, and permitted effects.
+
+A proof can be decomposed as:
+
+  instructions -> basic blocks -> loops/functions -> reusable primitives
+               -> composed verifier -> top-level ZKP contract
+
+Composition obligations include matching call/return control flow, ABI correctness, disjoint memory regions or separation-style frame properties, caller/callee-saved registers, pointer validity, aliasing assumptions, and compatibility of pre/postconditions. For loops, synthesize and prove invariants and ranking/termination arguments.
+
+Examples of abstract meaning:
+- RV32 words encode bounded integers or field elements.
+- A memory range encodes a field-element array or polynomial.
+- A compiled arithmetic routine implements addition/multiplication modulo p.
+- A compiled transcript routine implements the abstract transcript update.
+
+## Preserve modular binary output for incremental verification
+
+A key objective is that adding a new Rust function should *not* force reproving old functions whose actual machine code has not changed. Aim to verify one independently compiled object/function at a time, and treat the complete linked image as a separately checked assembly of those proved components.
+
+Useful Rust/build controls (not, individually, formal guarantees):
+- Mark exported functions `#[inline(never)]`.
+- Give them stable externally visible symbols with `#[unsafe(no_mangle)]` on Rust 2024 edition (or the syntax appropriate to the chosen edition).
+- Use a stable ABI such as `pub extern "C" fn ...` for exported functions.
+- Use `-C lto=off`; avoid other cross-module whole-program optimizations when they interfere with modularity.
+- Pin compiler version, target triple/ISA features, optimization level, panic strategy, codegen units, and all relevant build tools and flags.
+- Avoid dynamic linking and runtime/allocator dependencies where feasible; use `no_std` and a small explicit runtime/entry convention.
+- Configure linking to avoid RISC-V relaxation (`--no-relax`, with toolchain-specific spelling), since linker relaxation can rewrite instructions, shrink call sequences, and change boundaries.
+- Optionally use `#[unsafe(link_section = ".text.name")]` and a linker script to give each function a distinct section/location.
+
+Important: `#[inline(never)]`, `no_mangle`, and LTO controls **do not by themselves prove** that the linker leaves code unchanged. Check the actual object and final linked binary, including function identity, exact code bytes or validated relocation transformations, instruction boundaries, calls, and ROM references. Compiler-produced symbols/metadata can be used as hints, not trusted semantics. Ensure verified code/data and address assignment are consistent with final execution.
+
+## Two possible memory/address strategies
+
+**Option A: Fixed addresses (simplest PoC).** Place each function/ROM region at an explicit address through linker sections and a custom linker script. Prove each function for that concrete location. Check the released binary has the expected bytes at those addresses. This avoids symbolic relocation reasoning initially, but maintaining a growing library can become awkward if assignments collide, layouts change, or branch/call ranges are exceeded.
+
+**Option B: Symbolic, non-overlapping addresses (better eventual library design).** Compile separately into relocatable `.o` objects; model each function's code base and referenced symbol addresses as symbolic parameters with alignment, non-overlap, reachability, and memory-permission conditions. Prove the function's behavior independent of a particular absolute placement. At link time, assign concrete addresses and have a small Lean-verified (or Lean-checked) relocation/layout validator instantiate the symbolic theorems against the final image, checking every patch, call target, and relevant constant. Some instruction sequences use PC-relative addressing; the proof must model those exact relocation calculations and range constraints, and the checker must account for any veneers/trampolines or disallow their creation. Avoid unsupported claims that ELF/linker relocations automatically preserve behavior.
+
+**Recommendation:** Start the PoC with fixed placement if it substantially simplifies delivering the first end-to-end kernel-checked proof; design theorem statements with an address parameter so they can be generalized to symbolic non-overlapping layouts soon afterward. For the ultimate reusable verified-function library, prefer symbolic placement plus a proved linker-output checker. No need to trust an ELF loader when verification can operate on the raw code+ROM image and an explicit memory map.
+
+## Machine model and raw image
+
+We do **not** require ELF as a verified runtime format. The verifier's code is a contiguous range of raw executable instruction bytes, and nearby ROM can be another explicit read-only memory range. ELF/object files may still be convenient *build artifacts* for symbol tables, relocations, and section layout, but the verified release artifact can be a flat code+ROM image.
+
+Define or derive a machine state in Lean with at least: PC, 32-bit registers, memory, code/ROM mapping, instruction fetch/decode, and execution/step relation for the enabled RV32 ISA subset. Establish an explicit initial machine-state contract. Standard Sail-derived RISC-V semantics are a promising starting point; investigate the Lean backend and its model scope, and avoid silently confusing modeled ISA behavior with the behavior of the actual zkVM.
+
+If the eventual zkVM has custom instructions, host calls, precompiles, traps, unusual memory rules, or recursion-specific features, those semantics must be modeled and reconciled with the actual proving/execution system; plain RV32 ISA refinement is insufficient by itself.
+
+Small proof kernels are attractive, but the trust boundary still includes the mathematical specification, axioms/imports, Lean kernel, the chosen machine semantics, and the relationship between the instruction semantics and actual zkVM execution. Do not use `sorry`, nonconstructive axioms introduced for the target theorem, or untrusted external oracle results as substitutes for verified reasoning.
+
+## Concrete PoC request for an AI implementation agent
+
+Build the *smallest genuine end-to-end demonstration* using a real Rust compiler and real RV32 machine code, for instance:
+
+- `fn inc(x: u32) -> u32` or a simple bounded modular arithmetic primitive;
+- a second independently compiled function (e.g. `double(x)`);
+- a third Rust function that invokes both and combines their results.
+
+The agent should:
+
+1. Set up a pinned toolchain, `no_std` project, target, linker script if needed, and reproducible commands that generate a minimal raw RV32 image plus disassembly/map.
+2. Make external function boundaries and the ABI explicit; keep functions from being inlined, disable LTO and linker relaxation as appropriate, and check the final linked code against the individually proved code.
+3. Express the high-level meaning of each leaf function in Lean, along with a model of machine state and its instruction bytes.
+4. **Actually prove** that stepping the concrete compiled RV32 instructions refines each abstract function for all applicable inputs (not merely several concrete test vectors). Handle RV32 wraparound explicitly.
+5. Prove the composed caller using the leaf contracts rather than reproving their internals; check its compiled instructions, calls, returns, and memory effects as well.
+6. Demonstrate incremental verification: add an unrelated function, relink/rebuild, show which proof artifacts remain valid, and prove/check that the unchanged linked functions still match their certificates.
+7. If feasible, generalize one leaf theorem to a symbolic code base and verify two distinct placements of the same object without rerunning its internal correctness proof.
+8. Deliver sources, Lean proofs, build steps, pinned versions, binary digest(s), and a one-command CI-style verification procedure; explain every admitted axiom or remaining trusted boundary.
+
+A good demonstration should fail verification if any relevant instruction byte, relocation, call target, relevant ROM byte, or semantic assumption is changed. An honest small successful theorem is preferred to a large-looking implementation that relies on `sorry`, sample-based testing, assumed compiler correctness, or unverified claims about linking.
+
+## Longer-term ZKP target
+
+Build a library of independently certified functions for word/field arithmetic, memory layouts, hash/transcript state, Merkle/FRI or other PCS operations, and recursive verifier logic, composing verified binaries as reusable modules. Keep the human-specified Lean theorem focused on what constitutes accepting/rejecting a proof in the formal protocol; the implementation-level intermediate abstractions and proofs can be generated by AI but must all be mechanically checked. Account for input parsing, invalid encodings, malformed proofs, out-of-bounds accesses, traps, nontermination, and any protocol-specific soundness assumptions explicitly rather than silently excluding them.
+
+Core principle: **Theorems must apply to the exact shipped RV32 bytes, yet be modular enough that unchanged functions retain their proofs across new programs and link layouts.**
+
+## Recommended concrete PoC: evaluate a 100-coefficient polynomial over a prime field
+
+Use this as the main domain-specific PoC once the tiny `inc`/`double` call-composition test works. It offers a succinct, standard mathematical specification alongside a deliberately low-level, aggressively optimized and modular Rust implementation, with a fixed-size array that exercises real memory operations and loops. It is not meant to prove a ZKP yet; it is a replaceable test case for the same binary-verification architecture.
+
+### Human-authored high-level Lean specification
+
+Fix the Mersenne prime `p = 2^31 - 1 = 2147483647`, and define the polynomial
+
+    P(X) = a₀ + a₁ X + a₂ X² + ... + a₉₉ X⁹⁹  over 𝔽ₚ.
+
+The mathematical theorem to prove is that the compiled program returns `P(x)` for every input `x` and every 100-element array of coefficients, under an explicit canonical-input contract (`0 ≤ x < p` and `0 ≤ aᵢ < p`), with the output encoded as the canonical `u32` representative in `[0,p)`. Express the spec in Lean using `ZMod p`, `Polynomial.eval`, or an equivalent finite sum; prefer the standard mathlib formulation so the *meaning* does not depend on the implementation algorithm. The distinction between mathematical field elements and concrete RV32 `u32` word encodings must be an explicit proved relation.
+
+For example, at the specification level:
+
+    spec(a, x) = ∑ i ∈ Finset.range 100, (a[i] : ZMod p) * (x : ZMod p)^i
+
+No Horner loop or Mersenne bit trick needs to appear in the human-authored spec.
+
+### Suggested Rust structure (`no_std`, RV32, ABI-stable boundaries)
+
+- `field_add(a: u32, b: u32) -> u32`: canonical addition modulo `p`, optimized with bounded arithmetic and conditional subtraction or a suitable Mersenne fold.
+- `field_mul(a: u32, b: u32) -> u32`: canonical multiplication modulo `p`, optimized by exploiting `2^31 ≡ 1 (mod p)` rather than general division. Use a mathematically justified `u64` intermediate or an RV32-specific limb implementation; examine emitted instructions for calls to runtime helper routines and either verify those helpers or avoid them.
+- `poly_step(acc: u32, x: u32, coeff: u32) -> u32`: computes `field_add(field_mul(acc, x), coeff)` by calling the separately verified leaf operations.
+- `poly_eval(coeffs: *const u32, x: u32) -> u32`: reads exactly 100 `u32` coefficients from a validated, aligned, readable memory range and folds them by Horner's rule from `a[99]` down to `a[0]`. An `extern "C"` ABI may be useful for machine-level contracts; make unsafe pointer preconditions explicit, or use a safe fixed-array interface with a carefully characterized compiled ABI.
+- Optionally `poly_eval_batch` / a simple composition function to demonstrate reuse of the same verified leaf functions under more than one caller.
+
+A fixed `[u32; 100]` input is the core benchmark. Keep code sections and read-only constants explicit; any stack, memory, ABI, and helper-function dependencies are part of each proof contract. Ensure the build actually emits separately callable functions (e.g. `#[inline(never)]`, `#[unsafe(no_mangle)]`, `extern "C"`, `-C lto=off`, with compatible compiler/edition settings); inspect object files and linked instructions rather than assuming these hints force any particular machine code.
+
+### Modular proof obligations
+
+1. Prove the exact compiled RV32 body of `field_add` implements addition in `ZMod p` on canonical inputs, returns a canonical result, preserves all non-clobbered registers/memory, and returns normally.
+2. Prove the exact compiled RV32 body of `field_mul` implements multiplication in `ZMod p`, including every shift, mask, carry, wraparound, or runtime helper used by the code.
+3. Prove `poly_step` using the previous two contracts and a checked call/return ABI, *without symbolically re-executing the leaf functions*.
+4. State and prove the Horner loop invariant for `poly_eval`: after processing a suffix of coefficients, the accumulator equals that suffix's polynomial value in `ZMod p`.
+5. Use that invariant, pointer-range/alignment/memory assumptions, and `poly_step` to prove the compiled `poly_eval` matches the one-line finite-sum/`Polynomial.eval` spec for **all** valid arrays and evaluation points, with total termination and no unintended traps or out-of-bounds reads.
+6. Demonstrate incremental growth: add a new independently compiled Rust function and prove/check that the old library's contracts still apply to the unchanged code in the final raw code+ROM image.
+
+For reproducibility, pin Rust compiler, ISA target/features (prefer a minimal explicit RV32IM target if multiplication is needed), codegen flags, linker, linker script, and binary inputs; disable relaxation and other transformations that would otherwise require extra proof obligations. Verify the final *raw instruction/data image* and all instantiated symbol/relocation targets. Start with fixed placement if that is the shortest path to a genuine end-to-end demonstration, then generalize function proofs to symbolic, non-overlapping code/data bases for reusable linked libraries.
+
+### Why this PoC is a good fit
+
+The mathematical spec is short and recognizable; the concrete implementation has meaningful optimization opportunities (Horner evaluation, Mersenne modular reduction, specialized arithmetic), control flow, array reads, and function-call composition, but avoids the major proof complexity of a complete cryptographic verifier. Most importantly, the same theorem-and-contract mechanism can later swap in hash, finite-field, Merkle, transcript, PCS, and ZKP-verifier routines without changing the basic proof architecture.
+
+**Optional next benchmark:** a 128-element number-theoretic transform (NTT), specified mathematically as a finite-field discrete transform and implemented with a modular in-place butterfly algorithm. Its data permutations, nested loops, and many reusable arithmetic calls make it a stronger test of compositional proof automation after polynomial evaluation succeeds. Select a suitable modulus/root of unity and prove their required algebraic properties; `2^31 - 1` is *not* suitable for a 128-point radix-2 NTT because `128` does not divide `p - 1`.
+
+**Success criterion:** Lean's kernel checks the binary-to-mathematics theorem for the exact final RV32 code+ROM bytes; AI may create contracts, invariants, and tactic proofs, but no trusted Rust compiler, unverified linking assumption, `sorry`, or specimen-only tests may substitute for the proof.

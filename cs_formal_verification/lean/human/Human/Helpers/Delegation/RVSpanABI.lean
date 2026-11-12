@@ -1,0 +1,19 @@
+module
+public import Human.Helpers.Delegation.SpanABI
+public import Human.Helpers.Memory.InitialImageRV
+
+@[expose] public section
+
+namespace Airbender.Delegation.Caller
+open Trace
+
+/-- The same modeled tables, homogeneous family and span-size ABI; the public
+    mode/control register is read from an `RV.State` (`Cell.readRV`). -/
+structure HashSpan.RVProtocol [Fact p.Prime] (workers : MemoryData p)
+    (before : RV.State) (span : HashSpan) : Prop where
+  tables : workers.setup = modeledSetup Keccak.Controller.rows
+  family : ∀ row ∈ workers.rows, row.family = span.family
+  controlStart : (Cell.register span.controlRegister).readRV before = some span.controlStart
+  calls : workers.rows.length = span.callCount
+
+end Airbender.Delegation.Caller

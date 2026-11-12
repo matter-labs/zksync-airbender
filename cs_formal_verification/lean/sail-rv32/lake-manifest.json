@@ -1,0 +1,13 @@
+{"version": "1.2.0",
+ "packagesDir": ".lake/packages",
+ "packages":
+ [{"type": "path",
+   "scope": "",
+   "name": "Sail",
+   "manifestFile": "lake-manifest.json",
+   "inherited": false,
+   "dir": "lean-sail",
+   "configFile": "lakefile.toml"}],
+ "name": "sail_rv32",
+ "lakeDir": ".lake",
+ "fixedToolchain": false}

@@ -1,3 +1,0 @@
-import ReplayBadBase
-theorem AssuranceNegative.badConsumer : False := AssuranceNegative.bad
-#print axioms AssuranceNegative.badConsumer

@@ -12,7 +12,7 @@ extend-exclude = [
     ".git/",
     "SECURITY.md",
     # Keep the pinned upstream document unchanged.
-    "formal_verification/lean/vendor/airbender/00-master.md"
+    "cs_formal_verification/docs/airbender/00-master.md"
 ]
 
 [default.extend-words]

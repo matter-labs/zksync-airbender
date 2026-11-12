@@ -1,0 +1,245 @@
+module
+public import Human.Helpers.Tables.Subword
+public import Slop.Arithmetic.Word
+public import Slop.ISA.RV.MemSubword
+public import Human.Circuits.AddSub.RowInput
+public import Human.Helpers.Core.CircuitOutput
+public import Mathlib.Tactic.IntervalCases
+
+@[expose] public section
+
+namespace Airbender.Verification
+open Airbender.Arithmetic
+
+-- Keep symbolic offsets opaque during reduction; omega handles their arithmetic.
+attribute [local irreducible] Nat.sub
+
+theorem subwordDataRow_key (key lo hi tag : Nat) :
+    (subwordDataRow key lo hi tag)[0] = key := by rfl
+theorem subwordDataRow_low (key lo hi tag : Nat) :
+    (subwordDataRow key lo hi tag)[1] = lo := by rfl
+theorem subwordDataRow_high (key lo hi tag : Nat) :
+    (subwordDataRow key lo hi tag)[2] = hi := by rfl
+
+theorem subwordDataRow_tag (key lo hi tag : Nat) :
+    (subwordDataRow key lo hi tag)[8] = tag := by rfl
+
+/-- The setup rows by region, proven once: the zero row, the two store regions and the two RAM-load regions
+    are data rows; the two ROM regions carry tags 44 and 45. -/
+theorem subwordRow_regions (program : Nat → BitVec 32) (i : Fin 13238273) :
+    subwordRow program i = subwordDataRow 0 0 0 0 ∨
+    (1 ≤ i.val ∧ i.val < 131073 ∧ subwordRow program i =
+      subwordDataRow (i.val - 1) (subwordStoreContribution false (i.val - 1)) 0 29) ∨
+    (131073 ≤ i.val ∧ i.val < 262145 ∧ subwordRow program i =
+      subwordDataRow (i.val - 131073) (subwordStoreContribution true (i.val - 131073)) 0 30) ∨
+    (262145 ≤ i.val ∧ i.val < 393217 ∧ subwordRow program i =
+      subwordDataRow (i.val - 262145) (subwordLoadLimbs false (i.val - 262145)).1
+        (subwordLoadLimbs false (i.val - 262145)).2 42) ∨
+    (393217 ≤ i.val ∧ i.val < 655361 ∧ subwordRow program i =
+      subwordDataRow (i.val - 393217) (subwordLoadLimbs true (i.val - 393217)).1
+        (subwordLoadLimbs true (i.val - 393217)).2 43) ∨
+    (655361 ≤ i.val ∧ i.val < 4849665 ∧ (subwordRow program i)[8] = 44) ∨
+    (4849665 ≤ i.val ∧ (subwordRow program i)[8] = 45) := by
+  unfold subwordRow
+  dsimp only
+  -- `split_ifs` also splits the ROM regions' inner conditionals; their tags do not depend on them.
+  split_ifs <;> first
+    | exact Or.inl rfl
+    | exact Or.inr (Or.inl ⟨by omega, by omega, rfl⟩)
+    | exact Or.inr (Or.inr (Or.inl ⟨by omega, by omega, rfl⟩))
+    | exact Or.inr (Or.inr (Or.inr (Or.inl ⟨by omega, by omega, rfl⟩)))
+    | exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨by omega, by omega, rfl⟩))))
+    | exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨by omega, by omega, rfl⟩)))))
+    | exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨by omega, rfl⟩)))))
+
+/-- The tag of a setup row as a natural number, read back from a field element. -/
+theorem subwordRow_tag {p : Nat} [Fact p.Prime] (hp : 262144 < p) {program : Nat → BitVec 32}
+    {i : Fin 13238273} {tag : Nat} (bound : tag < p)
+    (selected : ((subwordRow program i).map (fun (n : Nat) => (n : ZMod p)))[8] = (tag : ZMod p)) :
+    (subwordRow program i)[8] = tag := by
+  have tagBound : (subwordRow program i)[8] < p := by
+    rcases subwordRow_regions program i with row | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, row⟩
+    all_goals first | (rw [row]; omega) | (rw [row, subwordDataRow_tag]; omega)
+  exact bounded_nat_eq (F := ZMod p) (p := p) tagBound bound
+    (by simpa only [Vector.getElem_map] using selected)
+
+/-- Read the fixed RAM-load regions of the native Clean setup table. Other
+    regions, including caller-selected ROM words, cannot satisfy these tags. -/
+theorem subword_ram_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+    {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (byte : Bool)
+    (h : (subwordTable program).Contains #[] entry)
+    (selected : entry[8] = ((if byte then 43 else 42 : Nat) : ZMod p)) :
+    ∃ key : Nat, key < (if byte then 262144 else 131072) ∧ entry[0] = (key : ZMod p) ∧
+      entry[1] = ((subwordLoadLimbs byte key).1 : ZMod p) ∧
+      entry[2] = ((subwordLoadLimbs byte key).2 : ZMod p) := by
+  change ∃ i : Fin 13238273, entry = (subwordRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
+  obtain ⟨i, rfl⟩ := h
+  have natural := subwordRow_tag hp (by cases byte <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega)
+    selected
+  have indexBound := i.isLt
+  cases byte <;> simp only [Bool.false_eq_true, ite_false, ite_true] at natural ⊢
+  all_goals
+    rcases subwordRow_regions program i with row | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, row⟩
+  all_goals first
+    | (rw [row] at natural; omega)
+    | (rw [row, subwordDataRow_tag] at natural; omega)
+    | (rw [row]
+       first
+         | exact ⟨i.val - 262145, by omega, by rw [Vector.getElem_map, subwordDataRow_key],
+             by rw [Vector.getElem_map, subwordDataRow_low], by rw [Vector.getElem_map, subwordDataRow_high]⟩
+         | exact ⟨i.val - 393217, by omega, by rw [Vector.getElem_map, subwordDataRow_key],
+             by rw [Vector.getElem_map, subwordDataRow_low], by rw [Vector.getElem_map, subwordDataRow_high]⟩)
+
+/-- Read the fixed byte-store regions of the native Clean setup table. Other
+    regions, including caller-selected ROM words, cannot satisfy these tags. -/
+theorem subword_store_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+    {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (clear : Bool)
+    (h : (subwordTable program).Contains #[] entry)
+    (selected : entry[8] = ((if clear then 30 else 29 : Nat) : ZMod p)) :
+    ∃ key : Nat, key < 131072 ∧ entry[0] = (key : ZMod p) ∧
+      entry[1] = (subwordStoreContribution clear key : ZMod p) ∧
+      entry[2] = 0 := by
+  change ∃ i : Fin 13238273, entry = (subwordRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
+  obtain ⟨i, rfl⟩ := h
+  have natural := subwordRow_tag hp (by cases clear <;> simp only [Bool.false_eq_true, ite_false, ite_true] <;> omega)
+    selected
+  have indexBound := i.isLt
+  cases clear <;> simp only [Bool.false_eq_true, ite_false, ite_true] at natural ⊢
+  all_goals
+    rcases subwordRow_regions program i with row | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, row⟩
+  all_goals first
+    | (rw [row] at natural; omega)
+    | (rw [row, subwordDataRow_tag] at natural; omega)
+    | (rw [row]
+       first
+         | exact ⟨i.val - 1, by omega, by rw [Vector.getElem_map, subwordDataRow_key],
+             by rw [Vector.getElem_map, subwordDataRow_low],
+             by rw [Vector.getElem_map, subwordDataRow_high]; exact Nat.cast_zero⟩
+         | exact ⟨i.val - 131073, by omega, by rw [Vector.getElem_map, subwordDataRow_key],
+             by rw [Vector.getElem_map, subwordDataRow_low],
+             by rw [Vector.getElem_map, subwordDataRow_high]; exact Nat.cast_zero⟩)
+
+/-- The disabled store query has a unique zero row in this setup. -/
+theorem subword_zero_values {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+    {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9}
+    (h : (subwordTable program).Contains #[] entry) (selected : entry[8] = 0) :
+    entry[0] = 0 ∧ entry[1] = 0 ∧ entry[2] = 0 := by
+  change ∃ i : Fin 13238273, entry = (subwordRow program i).map (fun (n : Nat) => (n : ZMod p)) at h
+  obtain ⟨i, rfl⟩ := h
+  have natural := subwordRow_tag (tag := 0) hp (by omega) (by simpa only [Nat.cast_zero] using selected)
+  rcases subwordRow_regions program i with row | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, _, row⟩ | ⟨_, row⟩
+  all_goals first
+    | (rw [row] at natural; omega)
+    | (rw [row, subwordDataRow_tag] at natural; omega)
+    | (rw [row]; simp [subwordDataRow])
+
+/-- A bounded packed input selects the unique fixed store-table contribution. -/
+theorem subword_store_entry {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+    {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (clear : Bool) (key : Nat)
+    (bound : key < 131072) (h : (subwordTable program).Contains #[] entry)
+    (tag : entry[8] = ((if clear then 30 else 29 : Nat) : ZMod p))
+    (input : entry[0] = (key : ZMod p)) :
+    entry[1] = (subwordStoreContribution clear key : ZMod p) ∧ entry[2] = 0 := by
+  obtain ⟨actual, actualBound, actualEq, low, high⟩ := subword_store_values hp clear h tag
+  have equal : key = actual := bounded_nat_eq (F := ZMod p) (p := p)
+    (by omega) (by omega) (input.symm.trans actualEq)
+  subst actual
+  exact ⟨low, high⟩
+
+theorem subword_store_packed (clear highByte : Bool) (half : Nat) (bound : half < 65536) :
+    subwordStoreContribution clear (half + 65536 * (if highByte then 1 else 0)) =
+    if clear then (if highByte then half % 256 else half - half % 256)
+    else (half % 256) * (if highByte then 256 else 1) := by
+  have low : (half + 65536 * (if highByte then 1 else 0)) % 65536 = half := by
+    cases highByte <;> simp <;> omega
+  have bit : ((half + 65536 * (if highByte then 1 else 0)) / 65536 % 2 = 1) ↔ highByte = true := by
+    cases highByte <;> simp <;> omega
+  have byte : (half + 65536 * (if highByte then 1 else 0)) % 256 = half % 256 := by
+    cases highByte <;> simp
+    omega
+  simp only [subwordStoreContribution, low, bit, byte]
+
+-- Encoding lemma: the reference operation here is Sail's own extend_value.
+
+/-- The table's extended-limb encoding is `RV.extendLoad` (twin of `extend_subword_limbs`). -/
+theorem rv_extend_subword_limbs (byte signed : Bool) (value : Nat)
+    (bound : value < (if byte then 256 else 65536)) :
+    let negative := signed = true ∧ (if byte then 128 else 32768) ≤ value
+    let result := Word.mk (value + if byte && negative then 65280 else 0)
+      (if negative then 65535 else 0)
+    result.Bounded ∧ result.toBitVec =
+      if byte then RV.extendLoad signed (BitVec.ofNat 8 value) else RV.extendLoad signed (BitVec.ofNat 16 value) := by
+  dsimp only
+  cases byte <;> cases signed
+  all_goals
+    simp at bound ⊢
+    constructor
+    · simp [Word.Bounded, limbBase]
+      first | omega | (split_ifs <;> omega)
+    · apply BitVec.eq_of_toNat_eq
+      simp only [Word.toBitVec, Word.value, limbBase, RV.extendLoad, Bool.false_eq_true, ite_false, ite_true,
+        BitVec.toNat_signExtend, BitVec.msb_eq_decide, BitVec.toNat_setWidth, BitVec.toNat_ofNat]
+      norm_num only [Nat.reducePow, Nat.reduceSub, Nat.reduceMul, Nat.reduceAdd, Bool.false_and,
+        Bool.true_and, Bool.and_true, Bool.and_false, Bool.decide_coe]
+      have canonical : value % 65536 = value := Nat.mod_eq_of_lt (by omega)
+      try rw [canonical]
+      first | omega | (split_ifs <;> norm_num at * <;> omega)
+
+/-- Twin of `subword_load_extension`. -/
+theorem rv_subword_load_extension (byte : Bool) (key : Nat) :
+    let value := if byte then (key % 65536) / (if key / 131072 % 2 = 1 then 256 else 1) % 256
+      else key % 65536
+    let data := subwordLoadLimbs byte key
+    (Word.mk data.1 data.2).Bounded ∧ (Word.mk data.1 data.2).toBitVec =
+      if byte then RV.extendLoad (decide (key / 65536 % 2 = 1)) (BitVec.ofNat 8 value)
+      else RV.extendLoad (decide (key / 65536 % 2 = 1)) (BitVec.ofNat 16 value) := by
+  let value := if byte then (key % 65536) / (if key / 131072 % 2 = 1 then 256 else 1) % 256
+    else key % 65536
+  have bound : value < (if byte then 256 else 65536) := by
+    cases byte <;> dsimp [value] <;> exact Nat.mod_lt _ (by decide)
+  have result := rv_extend_subword_limbs byte (decide (key / 65536 % 2 = 1)) value bound
+  simpa [subwordLoadLimbs, value] using result
+
+/-- RAM-load membership forces bounded output limbs. The key is read canonically from the imported lookup. -/
+theorem subword_ram_bounds {p : Nat} [Fact p.Prime] (hp : 262144 < p)
+    {program : Nat → BitVec 32} {entry : Vector (ZMod p) 9} (byte : Bool)
+    (h : (subwordTable program).Contains #[] entry)
+    (selected : entry[8] = ((if byte then 43 else 42 : Nat) : ZMod p)) :
+    (Word.mk entry[1].val entry[2].val).Bounded := by
+  obtain ⟨key, _, _, lo, hi⟩ := subword_ram_values hp byte h selected
+  have bounded := (rv_subword_load_extension byte key).1
+  have lowBound : (subwordLoadLimbs byte key).1 < p := by
+    have low := bounded.1
+    change (subwordLoadLimbs byte key).1 < limbBase at low
+    unfold limbBase at low
+    omega
+  have highBound : (subwordLoadLimbs byte key).2 < p := by
+    have high := bounded.2
+    change (subwordLoadLimbs byte key).2 < limbBase at high
+    unfold limbBase at high
+    omega
+  simp only [lo, hi, ZMod.val_natCast, Nat.mod_eq_of_lt lowBound, Nat.mod_eq_of_lt highBound]
+  exact bounded
+
+theorem subword_extract (byte highHalf highByte : Bool) (word : Word) (bound : word.Bounded)
+    (aligned : byte = false → highByte = false) :
+    let offset := (if highByte then 1 else 0) + 2 * (if highHalf then 1 else 0)
+    let half := if highHalf then word.hi else word.lo
+    if byte then
+      (word.toBitVec >>> (8 * offset)).setWidth 8 = BitVec.ofNat 8 (half / (if highByte then 256 else 1))
+    else (word.toBitVec >>> (8 * offset)).setWidth 16 = BitVec.ofNat 16 half := by
+  have canonical := Word.toBitVec_toNat bound
+  have lo := bound.1
+  have hi := bound.2
+  unfold limbBase at lo hi
+  cases byte <;> cases highHalf <;> cases highByte
+  all_goals first
+    | (have := aligned rfl; contradiction)
+    | (simp only [Bool.false_eq_true, ite_false, ite_true]
+       apply BitVec.eq_of_toNat_eq
+       simp only [BitVec.toNat_setWidth, BitVec.toNat_ushiftRight, BitVec.toNat_ofNat, canonical]
+       norm_num only [Nat.reducePow, Nat.reduceMul, Nat.reduceAdd, Nat.div_one, Nat.shiftRight_eq_div_pow]
+       unfold Word.value limbBase
+       omega)
+
+end Airbender.Verification

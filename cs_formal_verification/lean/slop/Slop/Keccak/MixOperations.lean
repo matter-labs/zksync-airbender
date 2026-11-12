@@ -1,0 +1,161 @@
+module
+public import Slop.Defs.Circuits.Keccak.Mix
+public import Slop.Keccak.DecodeControl
+public import Slop.Keccak.ByteFacts
+public import Slop.Keccak.XorRoutes
+public import Slop.Arithmetic.ByteAssembly
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Keccak.Artifact
+public import Slop.Defs.Circuits.Keccak.Tables.Setup
+
+@[expose] public section
+
+namespace Airbender.Keccak.Proofs.Mix
+open Arithmetic
+set_option warningAsError true
+
+def nativeLimbs (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 4, start + 5]
+def temporary (start : Nat) : Vector Nat 4 := #v[start, start + 1, start + 2, start + 3]
+def mixMode (second : Bool) : Fin 7 := if second then 2 else 1
+def aColumns (second : Bool) : Vector (Vector Nat 4) 5 :=
+  if second then #v[nativeLimbs 23, nativeLimbs 47, nativeLimbs 39, nativeLimbs 23, nativeLimbs 39]
+  else #v[nativeLimbs 15, nativeLimbs 31, nativeLimbs 15, nativeLimbs 47, nativeLimbs 31]
+def bColumns (second : Bool) : Vector (Vector Nat 4) 5 :=
+  if second then #v[temporary 90, temporary 90, temporary 94, temporary 94, nativeLimbs 55]
+  else #v[nativeLimbs 57, temporary 90, temporary 90, temporary 94, temporary 94]
+def cColumns (second : Bool) : Vector (Vector Nat 4) 5 :=
+  if second then #v[temporary 90, nativeLimbs 49, temporary 94, nativeLimbs 25, nativeLimbs 41]
+  else #v[nativeLimbs 57, temporary 90, nativeLimbs 17, temporary 94, nativeLimbs 33]
+def isRotation (second : Bool) (operation : Fin 5) : Bool :=
+  if second then operation.val = 0 || operation.val = 2
+  else operation.val = 0 || operation.val = 1 || operation.val = 3
+def previous (i : Fin 4) : Fin 4 := ⟨(i.val + 3) % 4, by omega⟩
+def packed {p : Nat} (w : Nat → ZMod p) (columns : Vector Nat 4) : Nat :=
+  (w columns[0]).val + 65536 * ((w columns[1]).val +
+    65536 * ((w columns[2]).val + 65536 * (w columns[3]).val))
+
+theorem mix_routes {p : Nat} [Fact p.Prime] (hp : 7 < p)
+    {setup : Table (ZMod p) (fields 8)} {w : Nat → ZMod p} (second : Bool)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (active : w 0 = 1) (selected : w Variables.modeColumns[mixMode second] = 1)
+    (operation : Fin 5) (limb : Fin 4) :
+    if isRotation second operation then
+      w (102 + 24 * operation.val + limb.val) = w (aColumns second)[operation][limb] + 65536 ∧
+      w (118 + 24 * operation.val + limb.val) +
+        w (110 + 24 * operation.val + (previous limb).val) = w (cColumns second)[operation][limb]
+    else
+      w (102 + 24 * operation.val + 2 * limb.val) +
+        256 * w (103 + 24 * operation.val + 2 * limb.val) = w (aColumns second)[operation][limb] ∧
+      w (110 + 24 * operation.val + 2 * limb.val) +
+        256 * w (111 + 24 * operation.val + 2 * limb.val) = w (bColumns second)[operation][limb] ∧
+      w (118 + 24 * operation.val + 2 * limb.val) +
+        256 * w (119 + 24 * operation.val + 2 * limb.val) = w (cColumns second)[operation][limb] := by
+  have modes := selected_modes hp h active (mixMode second) selected
+  have z63 : w 63 = 0 := by cases second <;> exact modes 0
+  have z66 : w 66 = 0 := by cases second <;> exact modes 3
+  have z67 : w 67 = 0 := by cases second <;> exact modes 4
+  have z68 : w 68 = 0 := by cases second <;> exact modes 5
+  have z69 : w 69 = 0 := by cases second <;> exact modes 6
+  have r0 : w 80 = 0 := rotation_flags_zero h z67 0
+  have r1 : w 81 = 0 := rotation_flags_zero h z67 1
+  have r2 : w 82 = 0 := rotation_flags_zero h z67 2
+  have r3 : w 83 = 0 := rotation_flags_zero h z67 3
+  have r4 : w 84 = 0 := rotation_flags_zero h z67 4
+  have a := Verification.assertion_of_holds h
+    ⟨20 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
+  have b := Verification.assertion_of_holds h
+    ⟨21 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
+  have c := Verification.assertion_of_holds h
+    ⟨22 + 13 * operation.val + 3 * limb.val, by rw [constraint_count]; omega⟩
+  have e64 : w 64 = if second then 0 else 1 := by cases second <;> exact modes 1
+  have e65 : w 65 = if second then 1 else 0 := by cases second <;> exact modes 2
+  cases rotation : isRotation second operation
+  all_goals simp only [Bool.false_eq_true, ↓reduceIte]
+  all_goals cases second
+  all_goals simp only [Bool.false_eq_true, ↓reduceIte] at e64 e65
+  all_goals fin_cases operation
+  all_goals try exact absurd rotation (by decide)
+  all_goals fin_cases limb
+  all_goals op_index at a b c
+  all_goals simp only [Expression.eval, Verification.environment, Int.ofNat_eq_natCast, Nat.cast_ofNat,
+    Nat.cast_one, Nat.cast_zero, Int.cast_negSucc, Int.cast_one, Int.cast_ofNat, Int.cast_zero,
+    z63, z66, z67, z68, z69, r0, r1, r2, r3, r4, e64, e65] at a b c
+  -- `ring1!` reads the column tables up to unfolding
+  all_goals first
+    | exact ⟨by linear_combination (norm := ring1!) a, by linear_combination (norm := ring1!) c⟩
+    | exact ⟨by linear_combination (norm := ring1!) a, by linear_combination (norm := ring1!) b,
+        by linear_combination (norm := ring1!) c⟩
+
+theorem mix_xor_bytes {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+    {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control)))
+    (active : w 0 = 1) (selected : w Variables.modeColumns[mixMode second] = 1)
+    (operation : Fin 5) (xor : isRotation second operation = false) (byte : Fin 8) :
+    (w (102 + 24 * operation.val + byte.val)).val < 256 ∧
+    (w (110 + 24 * operation.val + byte.val)).val < 256 ∧
+    (w (118 + 24 * operation.val + byte.val)).val < 256 ∧
+    (w (118 + 24 * operation.val + byte.val)).val =
+      (w (102 + 24 * operation.val + byte.val)).val ^^^
+        (w (110 + 24 * operation.val + byte.val)).val := by
+  have tag : operationTags[mixMode second][operation.val] = 4 := by
+    cases second <;> fin_cases operation <;> first | rfl | simp [isRotation] at xor
+  have facts := selected_byte_facts hp h active (mixMode second) selected operation byte
+  rw [tag] at facts
+  exact xor_byte_facts facts
+
+theorem mix_xor_limb {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+    {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control)))
+    (active : w 0 = 1) (selected : w Variables.modeColumns[mixMode second] = 1)
+    (operation : Fin 5) (xor : isRotation second operation = false) (limb : Fin 4) :
+    (w (aColumns second)[operation][limb]).val < 65536 ∧
+    (w (bColumns second)[operation][limb]).val < 65536 ∧
+    (w (cColumns second)[operation][limb]).val < 65536 ∧
+    (w (cColumns second)[operation][limb]).val =
+      (w (aColumns second)[operation][limb]).val ^^^
+        (w (bColumns second)[operation][limb]).val := by
+  have low := mix_xor_bytes hp second h active selected operation xor ⟨2 * limb.val, by omega⟩
+  have high := mix_xor_bytes hp second h active selected operation xor ⟨2 * limb.val + 1, by omega⟩
+  have routes := mix_routes (by omega) second h active selected operation limb
+  simp only [xor, Bool.false_eq_true, ite_false] at routes
+  have ia : 103 + 24 * operation.val + 2 * limb.val =
+      102 + 24 * operation.val + (2 * limb.val + 1) := by omega
+  have ib : 111 + 24 * operation.val + 2 * limb.val =
+      110 + 24 * operation.val + (2 * limb.val + 1) := by omega
+  have ic : 119 + 24 * operation.val + 2 * limb.val =
+      118 + 24 * operation.val + (2 * limb.val + 1) := by omega
+  rw [ia, ib, ic] at routes
+  have a := value_of_bounded_pair (radix := 256) (capacity := 256) (by omega) low.1 high.1 routes.1
+  have b := value_of_bounded_pair (radix := 256) (capacity := 256) (by omega) low.2.1 high.2.1 routes.2.1
+  have c := value_of_bounded_pair (radix := 256) (capacity := 256) (by omega) low.2.2.1 high.2.2.1 routes.2.2
+  refine ⟨by rw [a]; omega, by rw [b]; omega, by rw [c]; omega, ?_⟩
+  rw [a, b, c, low.2.2.2, high.2.2.2]
+  have value := xor_of_chunks (width := 8) low.1 low.2.1
+    (a₁ := (w (102 + 24 * operation.val + (2 * limb.val + 1))).val)
+    (b₁ := (w (110 + 24 * operation.val + (2 * limb.val + 1))).val)
+  norm_num only [Nat.reducePow] at value
+  exact value.symm
+
+theorem mix_xor_operation {p : Nat} [Fact p.Prime] (hp : 1048576 ≤ p)
+    {control : Fin 4096 → Vector Nat 6} {w : Nat → ZMod p} (second : Bool)
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable control)))
+    (active : w 0 = 1) (selected : w Variables.modeColumns[mixMode second] = 1)
+    (operation : Fin 5) (xor : isRotation second operation = false) :
+    packed w (cColumns second)[operation] =
+      packed w (aColumns second)[operation] ^^^ packed w (bColumns second)[operation] := by
+  have l0 := mix_xor_limb hp second h active selected operation xor (0 : Fin 4)
+  have l1 := mix_xor_limb hp second h active selected operation xor (1 : Fin 4)
+  have l2 := mix_xor_limb hp second h active selected operation xor (2 : Fin 4)
+  have l3 := mix_xor_limb hp second h active selected operation xor (3 : Fin 4)
+  simp [packed] at l0 l1 l2 l3 ⊢
+  rw [l0.2.2.2, l1.2.2.2, l2.2.2.2, l3.2.2.2]
+  have value := xor_of_four_chunks (width := 16) l0.1 l1.1 l2.1 l0.2.1 l1.2.1 l2.2.1
+    (a₃ := (w (aColumns second)[operation][3]).val)
+    (b₃ := (w (bColumns second)[operation][3]).val)
+  norm_num only [Nat.reducePow] at value
+  exact value.symm
+
+end Airbender.Keccak.Proofs.Mix

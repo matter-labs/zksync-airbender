@@ -1,0 +1,83 @@
+module
+public import Human.Circuits.Blake2Round.Finalization
+public import Slop.Constraints
+public import Slop.Blake2Round.FinalWriteback
+public import Slop.Blake2Round.OpIndex
+public import Mathlib.Tactic.LinearCombination
+public import Slop.Defs.Circuits.Blake2Round.Finalization
+public import Slop.CleanCore.Circuit.Operations
+public import Slop.Defs.Circuits.Blake2Round.Artifact
+public import Slop.Defs.Circuits.Blake2Round.Preparation
+public import Slop.Defs.Circuits.Blake2Round.Mixing
+
+@[expose] public section
+
+set_option warningAsError true
+
+namespace Airbender.Blake2Round.Proofs
+
+set_option maxRecDepth 16384
+set_option maxHeartbeats 2000000
+
+/-- The actual selector equation agrees with the final-round rule for all
+    twenty round/mode combinations under the exclusive caller mask. -/
+theorem finalization_flag {p : Nat} [Fact p.Prime]
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
+    {input : Finalization.Input} {output : Finalization.Output}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (mapping : Finalization.WordMapping input output w)
+    (roundMask : ∀ i : Fin 10, w Variables.roundBits[i] = if i = input.round then 1 else 0) :
+    w 152 = if Finalization.isFinal input then 1 else 0 := by
+  have flag := Verification.assertion_of_holds h ⟨2, by rw [constraint_count]; decide⟩
+  op_index at flag
+  simp [Expression.eval, Verification.environment] at flag
+  have equation : w 152 = w 151 + w 148 * (w 139 - w 151) := by linear_combination -flag
+  have mask6 := roundMask 6
+  have mask9 := roundMask 9
+  have reduced := mapping.reduced
+  simp [Variables.roundBits, Variables.controlBits] at mask6 mask9 reduced
+  rw [equation, mask6, mask9, reduced]
+  rcases input with ⟨round, mode, state, chaining, extended⟩
+  cases mode <;> fin_cases round <;> norm_num [Finalization.isFinal, Fin.ext_iff]
+
+/-- Every chaining-state limb is preserved by its actual write equation when
+    final XOR is disabled. No range or XOR-table assumptions are needed. -/
+theorem chaining_preserved {p : Nat} [Fact p.Prime]
+    {setup : Table (ZMod p) (fields 6)} {w : Nat → ZMod p}
+    (h : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setup))
+    (disabled : w 152 = 0) :
+    Preparation.words w Finalization.stateWrites = Preparation.words w Variables.stateReads := by
+  have limbs (i : Fin 8) : w (7 + 4 * i.val) = w (5 + 4 * i.val) ∧
+      w (8 + 4 * i.val) = w (6 + 4 * i.val) := by
+    have low := Verification.assertion_of_holds h
+      ⟨108 + 2 * i.val, by rw [constraint_count]; have size := i.isLt; omega⟩
+    have high := Verification.assertion_of_holds h
+      ⟨109 + 2 * i.val, by rw [constraint_count]; have size := i.isLt; omega⟩
+    clear h
+    fin_cases i
+    all_goals op_index at low high
+    all_goals simp [Expression.eval, Verification.environment, disabled] at low high
+    all_goals constructor
+    all_goals solve | linear_combination -low | linear_combination -high
+  apply Vector.ext
+  intro i hi
+  have equal := limbs ⟨i, hi⟩
+  simp [Preparation.words, Finalization.stateWrites, Variables.stateReads, equal.1, equal.2]
+
+/-- One shared soundness claim covers all full/reduced final and non-final rounds. -/
+theorem finalization_soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
+    (compatible : 64 * (-31457280 : ZMod p) = 1) :
+    (Finalization.circuitModel (p := p)).SoundnessUnder (Finalization.InterfaceAssumptions (p := p))
+      Finalization.spec := by
+  intro input output w ⟨interface, holds, mapping⟩
+  have flag := finalization_flag holds mapping interface.roundMask
+  unfold Finalization.spec
+  split_ifs with final
+  · have enabled : w 152 = 1 := by simpa only [ite_eq_left final] using flag
+    rw [mapping.output, mapping.chaining, mapping.extended]
+    exact final_xor_writes hp compatible holds enabled
+  · have disabled : w 152 = 0 := by simpa only [ite_eq_right final] using flag
+    rw [mapping.output, mapping.state]
+    exact chaining_preserved holds disabled
+
+end Airbender.Blake2Round.Proofs

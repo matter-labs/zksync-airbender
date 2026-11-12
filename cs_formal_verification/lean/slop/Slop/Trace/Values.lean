@@ -1,0 +1,129 @@
+module
+public import Human.Helpers.Memory.Values
+public import Slop.Trace.MemoryOrigins
+public import Slop.Defs.Helpers.Memory.Ports
+
+@[expose] public section
+namespace Airbender.Trace.Proofs
+open Arithmetic
+
+theorem read_word (w : Nat → ZMod p) (port : MemoryPort) :
+    (readToken w port).word = ⟨(port.readValue.evaluate w)[0].val, (port.readValue.evaluate w)[1].val⟩ := by
+  simp [readToken, MemoryToken.word, MemoryPort.readCode, WordColumns.code]
+
+theorem write_word (columns : TraceColumns) (w : Nat → ZMod p) (port : MemoryPort) :
+    (writeToken columns w port).word =
+      ⟨((port.writeValue.getD port.readValue).evaluate w)[0].val,
+        ((port.writeValue.getD port.readValue).evaluate w)[1].val⟩ := by
+  simp [writeToken, MemoryToken.word, MemoryPort.writeCode, WordColumns.code]
+
+/-- Local artifact laws used by the shared history induction. They do not
+    assert operand bounds; the induction supplies bounds of earlier reads. -/
+def RowWriteSources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    (row : Row p Kind) : Prop :=
+  ∀ port ∈ row.ports,
+    (writeToken row.columns row.assignment port).word.Bounded ∨
+      ∃ source ∈ row.ports,
+        (writeToken row.columns row.assignment port).value = (readToken row.assignment source).value ∧
+        (source.event row.columns row.assignment).1 ≤ (port.event row.columns row.assignment).1
+
+def RowWriteBoundsFromReads {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    (row : Row p Kind) : Prop :=
+  ∀ port ∈ row.ports,
+    (∀ source ∈ row.ports,
+      (source.event row.columns row.assignment).1 ≤ (port.event row.columns row.assignment).1 →
+      (readToken row.assignment source).word.Bounded) →
+    (writeToken row.columns row.assignment port).word.Bounded
+
+def WriteSources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    (trace : Data p Kind) : Prop := ∀ row ∈ trace.rows, RowWriteSources row
+
+def WriteBoundsFromReads {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    (trace : Data p Kind) : Prop := ∀ row ∈ trace.rows, RowWriteBoundsFromReads row
+
+/-- Copy/local-bound rules instantiate the same preservation rule. -/
+theorem row_write_rule_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    {row : Row p Kind} (sources : RowWriteSources row) : RowWriteBoundsFromReads row := by
+  intro port present reads
+  rcases sources port present with bound | copied
+  · exact bound
+  · obtain ⟨source, sourceMember, copied, order⟩ := copied
+    have previous := reads source sourceMember order
+    simpa only [MemoryToken.word, copied] using previous
+
+theorem write_rules_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    {trace : Data p Kind} (sources : WriteSources trace) : WriteBoundsFromReads trace :=
+  fun row member => row_write_rule_of_sources (sources row member)
+
+/-- Shared time induction derives read bounds from public seeds and proved
+    local write preservation. Every dependency precedes the current read. -/
+theorem read_bounds_of_rules {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    (accepted : Accepted trace) (clocks : ClockBoundary trace)
+    (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded)
+    (rules : WriteBoundsFromReads trace) :
+    ∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded := by
+  have bounded : ∀ time : Nat, ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
+      (port.event row.columns row.assignment).1 = time → (readToken row.assignment port).word.Bounded := by
+    intro time
+    induction time using Nat.strong_induction_on with
+    | h time ih =>
+      intro row member port portMember clock
+      rcases earlier_write hp inverse accepted clocks row member port portMember with seed | prior
+      · exact initial _ seed
+      · obtain ⟨writer, writerMember, source, sourceMember, same, earlier⟩ := prior
+        have bounds := rules writer writerMember source sourceMember (by
+          intro read readMember order
+          have before : (read.event writer.columns writer.assignment).1 < time := by omega
+          exact ih _ before writer writerMember read readMember rfl)
+        exact same ▸ bounds
+  intro row member port portMember
+  exact bounded _ row member port portMember rfl
+
+theorem write_bounds_of_rules {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    (accepted : Accepted trace) (clocks : ClockBoundary trace)
+    (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded)
+    (rules : WriteBoundsFromReads trace) :
+    ∀ row ∈ trace.rows, ∀ port ∈ row.ports,
+      (writeToken row.columns row.assignment port).word.Bounded := by
+  intro row member port present
+  exact rules row member port present (fun read readMember _ =>
+    read_bounds_of_rules hp inverse accepted clocks initial rules row member read readMember)
+
+theorem terminal_bounds_of_rules {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    (accepted : Accepted trace) (clocks : ClockBoundary trace)
+    (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded)
+    (rules : WriteBoundsFromReads trace) :
+    ∀ token ∈ trace.terminalMemory, token.word.Bounded := by
+  intro token member
+  have matched := accepted.memory.mem_iff.mpr (List.mem_append_left _ member)
+  rcases List.mem_append.mp matched with seed | written
+  · exact initial _ seed
+  · obtain ⟨row, rowMember, tokenMember⟩ := List.mem_flatMap.mp written
+    obtain ⟨port, portMember, rfl⟩ := List.mem_map.mp tokenMember
+    exact write_bounds_of_rules hp inverse accepted clocks initial rules row rowMember port
+      (by simpa using portMember)
+
+-- Compatibility with existing family proofs; the induction above is shared.
+theorem read_bounds_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    (accepted : Accepted trace) (clocks : ClockBoundary trace)
+    (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded) (sources : WriteSources trace) :
+    ∀ row ∈ trace.rows, ∀ port ∈ row.ports, (readToken row.assignment port).word.Bounded :=
+  read_bounds_of_rules hp inverse accepted clocks initial (write_rules_of_sources sources)
+
+theorem terminal_bounds_of_sources {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
+    [ClockLaws Kind p] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1) {trace : Data p Kind}
+    (accepted : Accepted trace) (clocks : ClockBoundary trace)
+    (initial : ∀ token ∈ trace.initialMemory, token.word.Bounded) (sources : WriteSources trace) :
+    ∀ token ∈ trace.terminalMemory, token.word.Bounded :=
+  terminal_bounds_of_rules hp inverse accepted clocks initial (write_rules_of_sources sources)
+
+end Airbender.Trace.Proofs

@@ -1,0 +1,26 @@
+module
+public import Slop.Blake2Round.DiagonalG
+public import Slop.Blake2Round.FinalXor
+public import Slop.KernelRfl
+
+@[expose] public section
+
+namespace Airbender.Keccak.Proofs
+open Trace Trace.Proofs Arithmetic
+set_option warningAsError true
+set_option maxRecDepth 16384
+
+theorem lane_half_address_injective (pointer : BitVec 32) (a b : Fin 31) (h k : Fin 2)
+    (same : pointer + BitVec.ofNat 32 (8 * a.val + 4 * h.val) =
+      pointer + BitVec.ofNat 32 (8 * b.val + 4 * k.val)) : a = b ∧ h = k := by
+  have bits := (BitVec.add_right_inj pointer).mp same
+  have values := congrArg BitVec.toNat bits
+  have ab := a.isLt
+  have bb := b.isLt
+  have hb := h.isLt
+  have kb := k.isLt
+  simp only [BitVec.toNat_ofNat] at values
+  rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)] at values
+  exact ⟨Fin.ext (by omega), Fin.ext (by omega)⟩
+
+end Airbender.Keccak.Proofs

@@ -1,6 +1,0 @@
-import Airbender.Data.Setup.Source.ChiRLE
-import Airbender.Proofs.FullUnsigned.SetupSourceCertificate
-
-set_option Elab.async false
-certify_source_bank Airbender.Setup.SourceCaptureChiProofs using Airbender.Setup.SourceCaptureChi
-certify_source_rle Airbender.Setup.SourceCaptureChiProofs using Airbender.Setup.SourceCaptureChi

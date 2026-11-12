@@ -1,0 +1,199 @@
+name: "Lean formal verification"
+# cs_formal_verification/verify.sh: the Lean spec and proofs build, the regressions, the axiom audits, the 30 s
+# per-module budget and the review check. Separate from "Rust CI": runs only when its inputs change.
+# The steps are cs_formal_verification/ci/lean-ci.sh; ci/sim.sh runs the same steps in Docker (see ci/README.md).
+#
+# Job lean_verify runs verify.sh in two modes (docs/TRUST_AND_REVIEW.md, "What CI re-checks"):
+#   incremental (pull requests, manual runs): restores the newest Lake build, rebuilds what changed, reads the axiom
+#     audits from Lake's (replayed) build log;
+#   cold (pushes to the branches below, nightly, manual with `cold`): no build cache (toolchain, dependency checkouts,
+#     Mathlib's files and the Sail model are still restored), everything elaborated again, fresh audits. Its build
+#     seeds the pull requests' cache.
+# Job kernel_replay (1st and 15th of each month, manual with `kernel_replay`): the kernel re-checks every constant of
+#   our modules (ci/lean-ci.sh kernel-check).
+on:
+  # pushes to the branches Rust CI runs on: their caches seed the pull requests that target them (a pull request
+  # can restore caches of its base branch and of the default branch only)
+  push:
+    branches:
+      - main
+      - stable
+      - dev
+      - av_gkr_compiler
+    paths:
+      - "cs_formal_verification/**"
+      # the circuit JSONs the spec imports (lean/lakefile.toml [[input_file]]) and the tests read
+      - "cs/compiled_circuits/*_gkr.json"
+      - ".github/workflows/lean-formal-verification.yml"
+      - ".github/actions/lean-fv-setup/**"
+  pull_request:
+    paths:
+      - "cs_formal_verification/**"
+      - "cs/compiled_circuits/*_gkr.json"
+      - ".github/workflows/lean-formal-verification.yml"
+      - ".github/actions/lean-fv-setup/**"
+  # nightly cold run (GitHub runs schedules from the default branch only: inert until this file is on main)
+  schedule:
+    - cron: "17 2 * * *"      # lean_verify, cold
+    - cron: "43 4 1,15 * *"   # kernel_replay
+  workflow_dispatch:
+    inputs:
+      lean_threads:
+        description: "LEAN_NUM_THREADS (threads per Lean process and modules compiled at once; memory scales with it)"
+        required: false
+        default: ""
+      cold:
+        description: "Cold mode: no build cache, fresh audits"
+        type: boolean
+        default: false
+      kernel_replay:
+        description: "Run the kernel replay job instead of verify.sh"
+        type: boolean
+        default: false
+
+permissions: read-all
+
+concurrency:
+  group: lean-fv-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lean_verify:
+    name: lean_verify
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '17 2 * * *') ||
+      (github.event_name == 'workflow_dispatch' && !inputs.kernel_replay) ||
+      github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: [matterlabs-ci-runner-high-performance]
+    timeout-minutes: 360
+    container:
+      image: ubuntu:24.04
+    env:
+      # Peak memory grows with LEAN_NUM_THREADS (ci/README.md has the measured table); the repository variable
+      # LEAN_CI_THREADS overrides the default for the runner class.
+      LEAN_NUM_THREADS: ${{ inputs.lean_threads || vars.LEAN_CI_THREADS || '8' }}
+      MODULE_BUDGET_JOBS: ${{ vars.LEAN_CI_BUDGET_JOBS || '4' }}
+      LEAN_DIR: cs_formal_verification/lean
+      CI_MODE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.cold)) && 'incremental' || 'cold' }}
+      VERIFY_AUDITS: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.cold)) && 'replay' || 'fresh' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install git
+        run: |
+          apt-get update -q
+          apt-get install -y -q --no-install-recommends ca-certificates git
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/lean-fv-setup
+
+      # Lake's build outputs of this project, the Sail model and Clean; the dependencies' C objects (the test
+      # executable links every imported module and Mathlib's cache has no objects: ~3100 files, ~6 min of clang CPU,
+      # 40 MB); the module budget ledger (keyed by each module's Lake input hash, so entries from older commits stay
+      # valid exactly as long as the module would not be rebuilt). Lake rebuilds what changed; restore the newest
+      # cache of the same toolchain and dependencies.
+      - name: Restore the Lake build
+        id: build-cache
+        if: env.CI_MODE == 'incremental'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ env.LEAN_DIR }}/.lake/build
+            ${{ env.LEAN_DIR }}/.lake/module-cpu.tsv
+            ${{ env.LEAN_DIR }}/sail-rv32/.lake
+            ${{ env.LEAN_DIR }}/.lake/packages/Clean/.lake
+            ${{ env.LEAN_DIR }}/.lake/packages/*/.lake/build/ir/**/*.c.o*
+          key: lean-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-${{ github.sha }}
+          restore-keys: |
+            lean-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-
+
+      - name: Dependencies (Sail model, Clean imports, the test executable's dependency objects)
+        run: |
+          touch /tmp/job-start
+          cs_formal_verification/ci/lean-ci.sh time lean-deps
+      - name: verify.sh
+        run: cs_formal_verification/ci/lean-ci.sh time verify
+      - name: Build report
+        if: ${{ !cancelled() }}
+        run: cs_formal_verification/ci/lean-ci.sh report /tmp/job-start
+
+      # Saved in both modes (a cold run seeds the pull requests), even when verify.sh fails: the modules that did
+      # build are reused by the next run.
+      - name: Save the Lake build
+        if: ${{ !cancelled() && steps.build-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ env.LEAN_DIR }}/.lake/build
+            ${{ env.LEAN_DIR }}/.lake/module-cpu.tsv
+            ${{ env.LEAN_DIR }}/sail-rv32/.lake
+            ${{ env.LEAN_DIR }}/.lake/packages/Clean/.lake
+            ${{ env.LEAN_DIR }}/.lake/packages/*/.lake/build/ir/**/*.c.o*
+          key: lean-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-${{ github.sha }}
+      - name: Upload the build logs and the budget table
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lean-verify-logs
+          path: |
+            ${{ env.LEAN_DIR }}/.lake/verify-build-*.log
+            ${{ env.LEAN_DIR }}/.lake/module-budget.tsv
+          if-no-files-found: ignore
+
+  kernel_replay:
+    name: kernel_replay
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '43 4 1,15 * *') ||
+      (github.event_name == 'workflow_dispatch' && inputs.kernel_replay)
+    runs-on: [matterlabs-ci-runner-high-performance]
+    timeout-minutes: 240
+    # No container: `lake check` sandboxes its build and export with bwrap, which needs user and mount namespaces that
+    # Docker's default profiles deny; on the host it uses the host's. Packages go in through sudo (ci/lean-ci.sh).
+    env:
+      LEAN_NUM_THREADS: ${{ inputs.lean_threads || vars.LEAN_CI_THREADS || '8' }}
+      # leanchecker's memory grows ~5 GB per concurrent module (ci/lean-ci.sh kernel-check): 2 fit a 16 GB runner
+      KERNEL_CHECK_THREADS: ${{ vars.LEAN_CI_KERNEL_THREADS || '2' }}
+      LEAN_DIR: cs_formal_verification/lean
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install git
+        run: |
+          command -v git >/dev/null || { sudo apt-get update -q
+            sudo apt-get install -y -q --no-install-recommends ca-certificates git; }
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/lean-fv-setup
+      # the newest build of the default branch (seeded by its cold runs); Lake rebuilds what is missing
+      - name: Restore the Lake build
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ env.LEAN_DIR }}/.lake/build
+            ${{ env.LEAN_DIR }}/.lake/module-cpu.tsv
+            ${{ env.LEAN_DIR }}/sail-rv32/.lake
+            ${{ env.LEAN_DIR }}/.lake/packages/Clean/.lake
+            ${{ env.LEAN_DIR }}/.lake/packages/*/.lake/build/ir/**/*.c.o*
+          key: lean-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-${{ github.sha }}
+          restore-keys: |
+            lean-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-
+      - name: Dependencies
+        run: cs_formal_verification/ci/lean-ci.sh time lean-deps
+      - name: Build (spec, proofs, tests)
+        run: cs_formal_verification/ci/lean-ci.sh time build
+      # lake check --paranoid if bwrap can create its sandbox on this host; otherwise an error annotation, the
+      # leanchecker replay, and a failed job (ci/lean-ci.sh kernel-probe)
+      - name: bubblewrap (lake check's sandbox) and a sandbox probe
+        id: probe
+        run: |
+          cs_formal_verification/ci/lean-ci.sh kernel-deps
+          echo "checker=$(cs_formal_verification/ci/lean-ci.sh kernel-probe)" >> "$GITHUB_OUTPUT"
+      - name: Kernel replay (lake check --paranoid, leanchecker on the two Clean-importing modules)
+        env:
+          KERNEL_CHECKER: ${{ steps.probe.outputs.checker }}
+        run: cs_formal_verification/ci/lean-ci.sh time kernel-check
+      - name: Fail if lake check could not run
+        if: steps.probe.outputs.checker != 'paranoid'
+        run: |
+          echo "::error::bwrap cannot sandbox on this runner: only the leanchecker fallback ran (see kernel-probe)"
+          exit 1

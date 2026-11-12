@@ -1,0 +1,167 @@
+module
+public import Human.ISA.RV32
+
+@[expose] public section
+
+/-! # Runs of delegation calls (statements only)
+
+`Delegations.lean` says what one call does. A call is a piece of an operation and means something only inside a run
+of calls with the layout and control word the run expects (its ABI); calls used any other way (another control word,
+overlapping buffers, a run cut short or mixed with other code) are undefined behaviour: the spec still says what each
+such call does, or that it has no next state, and nothing more is claimed. These are the runs and what they compute
+(as the verifier branch states them):
+* 7 Blake2s round calls: the (7-round) Blake2s compression function, or in compression mode the two-to-one hash
+  `hash2`; 10 calls in the 10-round schedule: RFC 7693's compression `compressRounds 10`, in either mode;
+* 56 Blake2s `G` calls: 7 Blake2s rounds; 80 calls: 10 rounds;
+* 649 Keccak special5 calls, and 361 calls of the three Keccak-f1600 circuits: Keccak-f[1600] (`keccakF`, Clean's
+  `keccakPermutation`).
+`CallsRun`: `calls` is what the machine's `run` does on consecutive `csrrw` delegation words in ROM. bigint has no
+runs: one call is the whole 256-bit operation (`bigintOp`). Proven in `slop/Slop/Deleg/`. -/
+
+namespace Spec
+open RV (Word)
+
+/-- The compression with `n` rounds (round `r` uses `SIGMA (r mod 10)`): RFC 7693's `F` is `compressRounds 10`. -/
+def compressRounds (n : Nat) (h : Vector Word 8) (m : Vector Word 16) (t : Word) (last : Bool) : Vector Word 8 :=
+  let v₀ : Vector Word 16 := #v[h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], IV 0, IV 1, IV 2, IV 3,
+    t ^^^ IV 4, IV 5, (if last then 0xFFFFFFFF#32 else 0#32) ^^^ IV 6, IV 7]
+  let v := (List.range n).foldl (fun v r => round m (SIGMA ⟨r % 10, Nat.mod_lt _ (by decide)⟩) v) v₀
+  Vector.ofFn fun i => h[i] ^^^ v[i] ^^^ v[i.val + 8]
+
+/-- The compression of the 16-word block `m` into the state `h`, the counter `t` already including this block:
+    Airbender's Blake2s, 7 rounds. -/
+def compress (h : Vector Word 8) (m : Vector Word 16) (t : Word) (last : Bool) : Vector Word 8 :=
+  compressRounds 7 h m t last
+
+/-- The two-to-one hash: Blake2s (7 rounds) of the 64-byte block `l ‖ r`, the last and only block (what the round
+delegation computes in compression mode). -/
+def hash2 (l r : Vector Word 8) : Vector Word 8 :=
+  compress (Vector.ofFn configuredIV) (l ++ r) 64#32 true
+
+end Spec
+
+namespace RV
+open Spec
+
+/-- The delegation calls `ks`, one after another from `s`: each call's effect applied. -/
+def calls : List DelegationKind → State → Option State
+  | [], s => some s
+  | k :: ks, s => ((Delegation.effect k (s.getReg 10) (s.getReg 11) (s.getReg 12) s.delegationRAM).bind s.applyEffect).bind
+      (calls ks)
+
+/-- What `CallsRun` assumes: delegation instructions of the kinds `ks` in ROM from the (aligned) pc, and the calls
+`ks` from `s` reaching `t`. -/
+def CallsAssumptions (ks : List DelegationKind) (s t : State) : Prop :=
+  s.pc.toNat % 4 = 0 ∧ s.pc.toNat + 4 * ks.length ≤ ROM_END ∧
+    (∀ i (h : i < ks.length), decode (read s.rom (s.pc + BitVec.ofNat 32 (4 * i)) 4) = some (.delegate ks[i])) ∧
+    calls ks s = some t
+
+/-- Delegation instructions of the kinds `ks`, in ROM from the pc, run as the calls `ks`; some nonempty run meets the
+assumptions (not vacuous). -/
+def CallsRun : Prop :=
+  (∀ (ks : List DelegationKind) (s t : State), CallsAssumptions ks s t → run ks.length s = some t) ∧
+  ∃ (ks : List DelegationKind) (s t : State), ks ≠ [] ∧ CallsAssumptions ks s t
+
+/-- `n` bytes at `a`, `al`-aligned, within the address space (RAM; below `ROM_END` shadow RAM). -/
+def Buffer (a : Word) (n al : Nat) : Prop := a.toNat % al = 0 ∧ a.toNat + n ≤ RAM_END
+
+/-- `[a, a + n)` and `[b, b + m)` do not overlap. -/
+def Apart (a : Word) (n : Nat) (b : Word) (m : Nat) : Prop := a.toNat + n ≤ b.toNat ∨ b.toNat + m ≤ a.toNat
+
+/-- From `s` to `s'` only the bytes `[a, a + n)` and register `r` changed. -/
+def ChangesOnly (s s' : State) (a : Word) (n : Nat) (r : Reg) : Prop :=
+  (∀ b : Word, b.toNat < a.toNat ∨ a.toNat + n ≤ b.toNat → s'.mem b = s.mem b) ∧ ∀ i, i ≠ r → s'.getReg i = s.getReg i
+
+/-- Blake2s compression: 7 round calls (CSR `0x7c7`) from `x12 = 0x90000` (7 rounds, round 0). At `x10 = p` the
+state `h` (8 words), then the work vector (16 words; words 12 and 14 hold the counter `t` and the last-block flag
+as Blake2s mixes them in); the block `m` at `x11 = q`. The state becomes `compress h m t last`. -/
+def BlakeCompressAssumptions (control : Word) (s : State) (p q t : Word) (last : Bool) : Prop :=
+  Buffer p 96 128 ∧ Buffer q 64 64 ∧ Apart p 96 q 64 ∧ s.getReg 10 = p ∧ s.getReg 11 = q ∧ s.getReg 12 = control ∧
+    (readWords s.mem (p + 32) 16)[12] = t ^^^ IV 4 ∧
+    (readWords s.mem (p + 32) 16)[14] = (if last then 0xFFFFFFFF#32 else 0#32) ^^^ IV 6
+
+/-- The 7-round compression (above); its assumptions can be met. -/
+def BlakeCompressRun : Prop :=
+  (∀ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x90000#32 s p q t last →
+    ∃ s', calls (.replicate 7 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compress (readWords s.mem p 8) (readWords s.mem q 16) t last) ∧
+  ∃ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x90000#32 s p q t last
+
+/-- The two-to-one hash: 7 round calls in compression mode, `x12 = 0xd0000` (the node `h` at `x10 = p` is the left
+input) or `0xf0000` (the right one), the sibling `n` in the first 8 words at `x11 = q`. The words at `p` become
+`hash2 h n` (or `hash2 n h`). -/
+def BlakeHashAssumptions (control : Word) (s : State) (p q : Word) : Prop :=
+  Buffer p 96 128 ∧ Buffer q 64 64 ∧ Apart p 96 q 64 ∧ s.getReg 10 = p ∧ s.getReg 11 = q ∧ s.getReg 12 = control
+
+/-- The two-to-one hash (above); its assumptions can be met. -/
+def BlakeHashRun : Prop :=
+  (∀ (s : State) (p q : Word) (right : Bool),
+    BlakeHashAssumptions (if right then 0xf0000#32 else 0xd0000#32) s p q →
+    ∃ s', calls (.replicate 7 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 =
+        if right then hash2 (readWords s.mem q 8) (readWords s.mem p 8) else hash2 (readWords s.mem p 8) (readWords s.mem q 8)) ∧
+  ∃ (s : State) (p q : Word) (right : Bool), BlakeHashAssumptions (if right then 0xf0000#32 else 0xd0000#32) s p q
+
+/-- Blake2s compression, 10 rounds (RFC 7693): 10 round calls from `x12 = 0x80000` (10 rounds, round 0), layout as
+for 7. -/
+def BlakeCompressRun10 : Prop :=
+  (∀ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x80000#32 s p q t last →
+    ∃ s', calls (.replicate 10 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compressRounds 10 (readWords s.mem p 8) (readWords s.mem q 16) t last) ∧
+  ∃ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x80000#32 s p q t last
+
+/-- The two-to-one hash with 10 rounds: 10 round calls from `x12 = 0xc0000` (left) or `0xe0000` (right). -/
+def BlakeHashRun10 : Prop :=
+  (∀ (s : State) (p q : Word) (right : Bool),
+    BlakeHashAssumptions (if right then 0xe0000#32 else 0xc0000#32) s p q →
+    ∃ s', calls (.replicate 10 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compressRounds 10 (Vector.ofFn configuredIV)
+        (if right then readWords s.mem q 8 ++ readWords s.mem p 8 else readWords s.mem p 8 ++ readWords s.mem q 8)
+        64#32 true) ∧
+  ∃ (s : State) (p q : Word) (right : Bool), BlakeHashAssumptions (if right then 0xe0000#32 else 0xc0000#32) s p q
+
+/-- 7 Blake2s rounds: 56 `G` calls (CSR `0x7c8`) from `x12 = 0x80` on the work vector `v` at `x10 = p` with the
+block `m` at `x11 = q`; `x12` is `0x80` again. -/
+def BlakeGAssumptions (control : Word) (s : State) (p q : Word) : Prop :=
+  Buffer p 64 64 ∧ Buffer q 64 64 ∧ p ≠ q ∧ s.getReg 10 = p ∧ s.getReg 11 = q ∧ s.getReg 12 = control
+
+/-- 7 Blake2s rounds by `G` calls (above); its assumptions can be met. -/
+def BlakeGRun : Prop :=
+  (∀ (s : State) (p q : Word), BlakeGAssumptions 0x80#32 s p q →
+    ∃ s', calls (.replicate 56 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0x80#32 ∧
+      readWords s'.mem p 16 = (List.finRange 7).foldl
+        (fun v r => round (readWords s.mem q 16) (SIGMA (r.castLE (by decide))) v) (readWords s.mem p 16)) ∧
+  ∃ (s : State) (p q : Word), BlakeGAssumptions 0x80#32 s p q
+
+/-- 10 Blake2s rounds: 80 `G` calls from `x12 = 0`; `x12` is `0` again. -/
+def BlakeGRun10 : Prop :=
+  (∀ (s : State) (p q : Word), BlakeGAssumptions 0#32 s p q →
+    ∃ s', calls (.replicate 80 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0#32 ∧
+      readWords s'.mem p 16 = (List.finRange 10).foldl
+        (fun v r => round (readWords s.mem q 16) (SIGMA r) v) (readWords s.mem p 16)) ∧
+  ∃ (s : State) (p q : Word), BlakeGAssumptions 0#32 s p q
+
+/-- Keccak-f[1600]: 649 special5 calls (CSR `0x7cb`) from `x10 = 0` on the 25 lanes at `x11 = p` (6 scratch lanes
+after them). -/
+def KeccakAssumptions (s : State) (p : Word) : Prop := Buffer p 248 256 ∧ s.getReg 10 = 0 ∧ s.getReg 11 = p
+
+/-- Keccak-f[1600] by special5 calls (above); its assumptions can be met. -/
+def KeccakSpecial5Run : Prop :=
+  (∀ (s : State) (p : Word), KeccakAssumptions s p →
+    ∃ s', calls (.replicate 649 .keccak) s = some s' ∧ ChangesOnly s s' p 248 10 ∧
+      readLanes s'.mem p 25 = keccakF (readLanes s.mem p 25)) ∧
+  ∃ (s : State) (p : Word), KeccakAssumptions s p
+
+/-- The order of the Keccak-f1600 calls: per round 5 column parity, 5 θ+ρ, 5 χ calls; then one column parity. -/
+def f1600Calls : List DelegationKind :=
+  (List.replicate 24 (.replicate 5 .keccakParity ++ .replicate 5 .keccakThetaRho ++ .replicate 5 .keccakChi5)).flatten ++
+    [.keccakParity]
+
+/-- Keccak-f[1600] in the three circuits (CSRs `0x7cc` … `0x7ce`): 361 calls from `x10 = 0`, as for special5. -/
+def KeccakF1600Run : Prop :=
+  (∀ (s : State) (p : Word), KeccakAssumptions s p →
+    ∃ s', calls f1600Calls s = some s' ∧ ChangesOnly s s' p 248 10 ∧
+      readLanes s'.mem p 25 = keccakF (readLanes s.mem p 25)) ∧
+  ∃ (s : State) (p : Word), KeccakAssumptions s p
+
+end RV
