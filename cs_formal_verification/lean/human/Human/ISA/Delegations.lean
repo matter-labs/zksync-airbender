@@ -23,7 +23,8 @@ model follows the circuit: pointers may point anywhere in RAM, including the sha
 (`State.lean`): no delegation circuit checks a pointer against `ROM_END`, and a delegation never reads or writes the
 ROM image, so what it does there cannot change what a LOAD returns. (Upstream note: an in-circuit check
 `pointer ≥ ROM_END` would remove shadow-RAM access altogether; a possible circuit improvement, not needed for
-soundness.) Alignment and distinct pointers are checked by the circuits. The round spec follows the native Boolean
+soundness.) The circuits check pointer alignment and distinct accessed addresses. The G spec also covers equal block bases.
+The round spec follows the native Boolean
 round mask, including zero and multiple selected rounds. Its valid one-hot branch keeps the reference schedule. -/
 
 namespace RV
@@ -136,6 +137,21 @@ def gIndices : Fin 8 → Fin 4 → Fin 16 :=
   ![![0, 4, 8, 12], ![1, 5, 9, 13], ![2, 6, 10, 14], ![3, 7, 11, 15],
     ![0, 5, 10, 15], ![1, 6, 11, 12], ![2, 7, 8, 13], ![3, 4, 9, 14]]
 
+/-- Native G behavior reads both input blocks before it writes the state block.
+    Equal bases are part of the undefined-use domain. -/
+def blakeGNative (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Effect :=
+  let k := x12.toNat % 128
+  let n := if x12.getLsbD 7 then 56 else 80
+  let i := if k < n then k else 0
+  let v := readWords mem x10 16
+  let m := readWords mem x11 16
+  let r : Fin 10 := ⟨i / 8 % 10, Nat.mod_lt _ (by decide)⟩
+  let j : Fin 8 := ⟨i % 8, Nat.mod_lt _ (by decide)⟩
+  let g := gIndices j
+  let v' := G v (g 0) (g 1) (g 2) (g 3) m[SIGMA r ⟨2 * j.val, by omega⟩] m[SIGMA r ⟨2 * j.val + 1, by omega⟩]
+  { writes := writesAt x10 v', reg := 12,
+    val := (x12 &&& 0x80#32) ||| BitVec.ofNat 32 (if k + 1 < n then k + 1 else 0) }
+
 /-- BLAKE2s `G` function (CSR `0x7c8`; table: "x10 → 64-aligned v[0..15], x11 → 64-aligned m[0..15]; each
 instruction performs one G; runs of 56 or 80").
 From source (`riscv_transpiler/src/replayer/delegations/blake2_g_function.rs`): `x12 < 256`, bits 0 … 6 = the counter
@@ -156,6 +172,9 @@ def blakeG (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Option Effect :=
     let v' := G v (g 0) (g 1) (g 2) (g 3) m[SIGMA r ⟨2 * j.val, by omega⟩] m[SIGMA r ⟨2 * j.val + 1, by omega⟩]
     some { writes := writesAt x10 v', reg := 12,
            val := (x12 &&& 0x80#32) ||| BitVec.ofNat 32 (if k + 1 < n then k + 1 else 0) }
+  else if x10.toNat % 64 = 0 ∧ x11.toNat + 64 ≤ RAM_END ∧
+      x11.toNat % 64 = 0 ∧ x12.toNat < 256 then
+    some (blakeGNative x10 x11 x12 mem)
   else none
 
 /-- The 256-bit number with the 8 words `ws` (least significant first), and back. -/
