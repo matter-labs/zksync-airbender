@@ -93,8 +93,8 @@ stream), [RV32.lean](lean/human/Human/ISA/RV32.lean) (`RV.step`, `RV.run`) and
 [Delegations.lean](lean/human/Human/ISA/Delegations.lean) (the precompiles); each difference from standard RV32IM is marked
 `-- Airbender:` there. [Vectors.lean](lean/human/Human/ISA/Vectors.lean) checks the BLAKE2s and Keccak-f[1600] published
 test vectors, and [DelegationRuns.lean](lean/human/Human/ISA/DelegationRuns.lean) states what the delegation call runs compute.
-The run claims, the Sail equivalence claims and the per-row circuit claims (`Trace.RVRowClaim`) also state that their
-assumptions can be met (non-vacuity, [Lean strategies](docs/lean-strategies.md) 3.3); the witnesses are in `proven/`.
+The run and Sail equivalence claims state that their assumptions can be met. Each row soundness claim has a separate
+`RVSatisfiableClaim` for this condition ([Lean strategies](docs/lean-strategies.md) 3.3). The witnesses are in `proven/`.
 Every other trace, worker and caller claim has a separate statement `…SatisfiableClaim` next to it: the claim's premises,
 restated, hold jointly for some data with the conclusion's domain non-empty (a row, a caller, a worker row in the window,
 a complete hash span). Witnesses in `proven/Proven/NonVacuous/`, final theorems in `proven/Proven/Final/Trace/Satisfiable/`;

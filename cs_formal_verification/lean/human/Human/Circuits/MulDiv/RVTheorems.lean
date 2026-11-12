@@ -1,24 +1,22 @@
 module
 public import Human.Circuits.MulDiv.RVModel
-public import Human.Helpers.Core.BabyBearPrime
-public import Human.Helpers.Context.RVRowModel
 
 @[expose] public section
 
-/-! RV32 claims for MUL/MULHU/DIVU/REMU, stated against our spec (`RV.step`, `Human/ISA/RV32.lean`), not Sail:
-    the row's pre-state is `input.before : RV.State`. `RV.alu` gives DIVU by zero = all ones and REMU by zero = the
-    dividend. Proven in `proven/Proven/Final/Circuits/MulDiv/RVTheorems.lean` (checked in `test/Checks/Claims.lean`). -/
+/-! Row soundness and non-vacuity for the RV32 specification. -/
 
 namespace Airbender.MulDiv
-open Trace
 
-/-- Every accepted MUL/MULHU/DIVU/REMU row is one step of our spec: from the row's pre-state (`input.before`), the
-    step exists and gives the row's post-state: `rd` := the row's result, PC := the row's final PC, nothing else
-    changed. Its assumptions can be met: some accepted, decoded trace meeting `Trace.RVPooledHistoryInputs` has such
-    a row (`Trace.RVRowClaim`). -/
+/-- Every accepted row of this family is one step of the RV32 specification. -/
 def RVSoundnessClaim : Prop :=
-  Trace.RVRowClaim .mulDiv RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs fun input output =>
-    ∃ s', RV.step input.before = some s' ∧
-      RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
+  ∀ trace initial cells program,
+    RVAssumptions trace initial cells program →
+    Properties.Soundness (rvModel trace initial cells program).relation rvSpec
+
+/-- The soundness assumptions hold for a trace with a row of this family. -/
+def RVSatisfiableClaim : Prop :=
+  ∃ trace initial cells program input output w,
+    RVAssumptions trace initial cells program ∧
+      (rvModel trace initial cells program).relation input output w
 
 end Airbender.MulDiv

@@ -1,5 +1,8 @@
 # MUL/DIV circuit review
 
+Read `rvModel` and `rvSpec` in [RVModel.lean](RVModel.lean).
+`RVSoundnessClaim` states row soundness. The separate `RVSatisfiableClaim` states non-vacuity.
+
 This directory models MUL, MULHU, DIVU and REMU rows as two operand words, a
 selected operation of `RV.alu`, and destination/PC effects. The local relation
 combines imported constraints with public instruction binding and shared-history

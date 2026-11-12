@@ -1,3 +1,9 @@
+import Human.Circuits.AddSub.RVTheorems
+import Human.Circuits.JumpBranchSlt.RVTheorems
+import Human.Circuits.MulDiv.RVTheorems
+import Human.Circuits.ShiftBinop.RVTheorems
+import Human.Circuits.SubwordMemory.RVTheorems
+import Human.Circuits.WordMemory.RVTheorems
 -- Each `…SatisfiableClaim` restates the premises of its claim. Applying the claim to the satisfying data
 -- type-checks only if they are exactly the claim's premises; the result is the claim's conclusion on that data.
 import Human.Trace.Delegation.RVTheorems
@@ -573,5 +579,49 @@ example (claim : Blake2Round.Native.RVWindowSoundnessClaim) : Blake2Round.Native
       have calls := inputs.calls
       rw [empty] at calls
       split at calls <;> simp at calls⟩
+
+end Checks.Satisfiable
+
+namespace Checks.Satisfiable
+
+example (claim : Airbender.AddSub.RVSoundnessClaim) : Airbender.AddSub.RVSatisfiableClaim →
+    ∃ input output, Airbender.AddSub.rvSpec input output :=
+  fun ⟨trace, initial, cells, program, input, output, w, assumptions, relation⟩ =>
+    ⟨input, output, claim trace initial cells program assumptions input output w relation⟩
+
+example (claim : Airbender.MulDiv.RVSoundnessClaim) : Airbender.MulDiv.RVSatisfiableClaim →
+    ∃ input output, Airbender.MulDiv.rvSpec input output :=
+  fun ⟨trace, initial, cells, program, input, output, w, assumptions, relation⟩ =>
+    ⟨input, output, claim trace initial cells program assumptions input output w relation⟩
+
+example (claim : Airbender.ShiftBinop.RVSoundnessClaim) : Airbender.ShiftBinop.RVSatisfiableClaim →
+    ∃ input output, Airbender.ShiftBinop.rvSpec input output :=
+  fun ⟨trace, initial, cells, program, input, output, w, assumptions, relation⟩ =>
+    ⟨input, output, claim trace initial cells program assumptions input output w relation⟩
+
+example (claim : Airbender.SubwordMemory.RVSoundnessClaim) : Airbender.SubwordMemory.RVSatisfiableClaim →
+    ∃ input output, Airbender.SubwordMemory.rvSpec input output :=
+  fun ⟨trace, initial, cells, program, input, output, w, assumptions, relation⟩ =>
+    ⟨input, output, claim trace initial cells program assumptions input output w relation⟩
+
+example (claim : Airbender.WordMemory.RVSoundnessClaim) : Airbender.WordMemory.RVSatisfiableClaim →
+    ∃ input output, Airbender.WordMemory.rvSpec input output :=
+  fun ⟨trace, initial, cells, program, input, output, w, assumptions, relation⟩ =>
+    ⟨input, output, claim trace initial cells program assumptions input output w relation⟩
+
+example (claim : Airbender.JumpBranchSlt.Comparison.RVSoundnessClaim) : Airbender.JumpBranchSlt.Comparison.RVSatisfiableClaim →
+    ∃ input output, Airbender.JumpBranchSlt.Comparison.rvSpec input output :=
+  fun ⟨trace, initial, cells, program, input, output, w, assumptions, relation⟩ =>
+    ⟨input, output, claim trace initial cells program assumptions input output w relation⟩
+
+example (claim : Airbender.JumpBranchSlt.Branch.RVSoundnessClaim) : Airbender.JumpBranchSlt.Branch.RVSatisfiableClaim →
+    ∃ input output, Airbender.JumpBranchSlt.Branch.rvSpec input output :=
+  fun ⟨trace, initial, cells, program, input, output, w, assumptions, relation⟩ =>
+    ⟨input, output, claim trace initial cells program assumptions input output w relation⟩
+
+example (claim : Airbender.JumpBranchSlt.Jump.RVSoundnessClaim) : Airbender.JumpBranchSlt.Jump.RVSatisfiableClaim →
+    ∃ input output, Airbender.JumpBranchSlt.Jump.rvSpec input output :=
+  fun ⟨trace, initial, cells, program, input, output, w, assumptions, relation⟩ =>
+    ⟨input, output, claim trace initial cells program assumptions input output w relation⟩
 
 end Checks.Satisfiable

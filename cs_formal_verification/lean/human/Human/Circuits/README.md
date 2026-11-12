@@ -11,7 +11,8 @@ claims and complete instruction or worker execution have distinct scopes.
 The six ordinary-family local claims prove every accepted row is one `RV.step` of our spec
 with the row's mapped register/memory and PC effects (a step exists only for aligned accesses,
 RAM stores and aligned jump targets), under public initialization/table conditions
-(`RVPooledHistoryInputs`; the shared shape is `Trace.RVRowSoundness`) and logical matching/membership. Their histories derive reads, operand
+(`RVPooledHistoryInputs`) and logical matching/membership. Each row claim names its model and spec.
+Its separate `RVSatisfiableClaim` states that its assumptions hold for an accepted row. Their histories derive reads, operand
 bounds and preprocessing. A standalone local G claim retains explicit operand
 bounds; its integrated worker connection derives them from initialized history.
 

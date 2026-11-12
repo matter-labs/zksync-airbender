@@ -1,5 +1,8 @@
 # Shift/binop circuit review
 
+Read `rvModel` and `rvSpec` in [RVModel.lean](RVModel.lean).
+`RVSoundnessClaim` states row soundness. The separate `RVSatisfiableClaim` states non-vacuity.
+
 This directory models register/immediate shifts, bitwise operations and REV8 using
 native byte/limb encodings and the spec's `RV.alu` and `rev8`. Its mappings identify source
 words, decoder-selected preprocessing and destination/PC effects. Initialized

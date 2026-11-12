@@ -1,3 +1,4 @@
+import Checks.Restatements
 -- Each final theorem (proven/Proven/Final) proves the statement of the same name in human/ (UpperCamelCase).
 import Proven.Final.Circuits.AddSub.RVTheorems
 import Proven.Final.Circuits.Bigint.RVTheorems
@@ -493,3 +494,21 @@ example : Airbender.UnifiedReduced.Caller.RVPreparedRoundWindowSoundnessSatisfia
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_window_soundness_satisfiable
 example : Airbender.UnifiedReduced.Caller.RVPreparedRoundCyclesSoundnessSatisfiableClaim := @Airbender.UnifiedReduced.Caller.rv_prepared_round_cycles_soundness_satisfiable
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_cycles_soundness_satisfiable
+
+-- Each row soundness claim has a separate proved witness condition.
+example : Airbender.AddSub.RVSatisfiableClaim := @Airbender.AddSub.rv_satisfiable
+#print axioms Airbender.AddSub.rv_satisfiable
+example : Airbender.MulDiv.RVSatisfiableClaim := @Airbender.MulDiv.rv_satisfiable
+#print axioms Airbender.MulDiv.rv_satisfiable
+example : Airbender.ShiftBinop.RVSatisfiableClaim := @Airbender.ShiftBinop.rv_satisfiable
+#print axioms Airbender.ShiftBinop.rv_satisfiable
+example : Airbender.SubwordMemory.RVSatisfiableClaim := @Airbender.SubwordMemory.rv_satisfiable
+#print axioms Airbender.SubwordMemory.rv_satisfiable
+example : Airbender.WordMemory.RVSatisfiableClaim := @Airbender.WordMemory.rv_satisfiable
+#print axioms Airbender.WordMemory.rv_satisfiable
+example : Airbender.JumpBranchSlt.Comparison.RVSatisfiableClaim := @Airbender.JumpBranchSlt.Comparison.rv_satisfiable
+#print axioms Airbender.JumpBranchSlt.Comparison.rv_satisfiable
+example : Airbender.JumpBranchSlt.Branch.RVSatisfiableClaim := @Airbender.JumpBranchSlt.Branch.rv_satisfiable
+#print axioms Airbender.JumpBranchSlt.Branch.rv_satisfiable
+example : Airbender.JumpBranchSlt.Jump.RVSatisfiableClaim := @Airbender.JumpBranchSlt.Jump.rv_satisfiable
+#print axioms Airbender.JumpBranchSlt.Jump.rv_satisfiable

@@ -1,5 +1,8 @@
 # ADD/SUB circuit review
 
+Read `rvModel` and `rvSpec` in [RVModel.lean](RVModel.lean).
+`RVSoundnessClaim` states row soundness. The separate `RVSatisfiableClaim` states non-vacuity.
+
 This directory models ADD, ADDI, SUB, LUI and AUIPC rows as operand/result and
 architectural PC transitions. Named mappings connect imported limb/register
 columns to a selected pre-state and public instruction; the local soundness claim

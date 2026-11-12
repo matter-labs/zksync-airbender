@@ -1272,3 +1272,13 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_masks_soundness_satisfiable
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_window_soundness_satisfiable
 #print axioms Airbender.UnifiedReduced.Caller.rv_prepared_round_cycles_soundness_satisfiable
+
+-- Separate witness conditions for the reviewed row claims.
+#print axioms Airbender.AddSub.rv_satisfiable
+#print axioms Airbender.MulDiv.rv_satisfiable
+#print axioms Airbender.ShiftBinop.rv_satisfiable
+#print axioms Airbender.SubwordMemory.rv_satisfiable
+#print axioms Airbender.WordMemory.rv_satisfiable
+#print axioms Airbender.JumpBranchSlt.Comparison.rv_satisfiable
+#print axioms Airbender.JumpBranchSlt.Branch.rv_satisfiable
+#print axioms Airbender.JumpBranchSlt.Jump.rv_satisfiable

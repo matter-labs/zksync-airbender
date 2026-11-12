@@ -1,5 +1,9 @@
 # Jump/branch/SLT circuit review
 
+The comparison, branch, and jump namespaces each define `rvModel` and `rvSpec` in
+[RVModel.lean](RVModel.lean). Their `RVSoundnessClaim` statements give row soundness.
+Their separate `RVSatisfiableClaim` statements give non-vacuity.
+
 This directory models JAL/JALR, conditional branches and signed/unsigned
 comparisons against our RV32 spec. The mappings identify operands,
 decoded operations and destination/PC effects. The canonical terminal PC

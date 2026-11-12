@@ -16,9 +16,11 @@ namespace Airbender.ShiftBinop
 private theorem rv_soundness_generic : RVSoundnessClaimGeneric := Proofs.rv_trace_soundness Trace.Proofs.rvPooledLaws
 
 theorem rv_soundness : RVSoundnessClaim := by
-  refine ⟨?_, Witness.satisfiable⟩
   intro trace initial cells program assumptions input output w ⟨⟨accepted, decoded, member⟩, ⟨words, state, instruction⟩⟩
   exact rv_soundness_generic (p := babyBearModulus) (by decide) (by decide) trace initial cells program assumptions input output w
     ⟨⟨accepted, decoded, member⟩, ⟨words, state, instruction⟩⟩
+
+/-- The assumptions hold for an accepted row of this family. -/
+theorem rv_satisfiable : RVSatisfiableClaim := Witness.satisfiable
 
 end Airbender.ShiftBinop

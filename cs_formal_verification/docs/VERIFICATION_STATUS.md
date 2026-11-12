@@ -13,14 +13,13 @@ these trace claims.
 ## Circuit families
 
 Each local claim says: every accepted row (arbitrary witness) is one `RV.step` from the row's pre-state, with the
-stated register/memory and PC effects. All six pooled families share one statement shape (`Trace.RVRowSoundness`, the
+stated register/memory and PC effects. All six pooled families share one statement shape (`Properties.Soundness`, the
 row read by `Trace.RVRowMapping`; claims at BabyBear). Its premises are the public initialization and modeled
 tables (`RVPooledHistoryInputs`: starting `RV.State`, tracked cells, RV program table, ROM tables built from the ROM
 image; AddSub adds registers initialized, JumpBranchSlt a canonical terminal PC) and logical matching/decoder membership; reads, operand bounds and preprocessing are
 derived from the initialized history. A step exists only for aligned accesses, stores into RAM and aligned jump targets.
-Each of these claims is a `Trace.RVRowClaim`: it also states that its assumptions can be met (`Trace.RVRowSatisfiable`:
-an accepted, decoded one-row trace of the family, with a public program, meets them; witnesses in
-`proven/Proven/<family>/RVNonVacuous.lean`), so it is not vacuous.
+Each family has a separate `RVSatisfiableClaim`. An accepted, decoded trace with a row of that family meets its assumptions.
+The witnesses are in `proven/Proven/<family>/RVNonVacuous.lean`.
 
 | Circuit | Checked coverage | Remaining work |
 | --- | --- | --- |

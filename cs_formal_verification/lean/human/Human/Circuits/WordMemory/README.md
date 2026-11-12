@@ -1,5 +1,8 @@
 # Word memory circuit review
 
+Read `rvModel` and `rvSpec` in [RVModel.lean](RVModel.lean).
+`RVSoundnessClaim` states row soundness. The separate `RVSatisfiableClaim` states non-vacuity.
+
 This directory models supported LW/SW rows: effective address, transferred word,
 register or memory update, and PC retirement. Its mappings distinguish load/store
 observables and interpret them through the spec's LW/SW clauses (`RV.exec`: aligned accesses, SW only in RAM).

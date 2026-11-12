@@ -1,5 +1,8 @@
 # Subword memory circuit review
 
+Read `rvModel` and `rvSpec` in [RVModel.lean](RVModel.lean).
+`RVSoundnessClaim` states row soundness. The separate `RVSatisfiableClaim` states non-vacuity.
+
 This directory models byte/halfword loads and stores through their containing
 aligned word cells. The observable relation includes selected data, signed
 extension, merged store contents and PC effects, with old-cell and
