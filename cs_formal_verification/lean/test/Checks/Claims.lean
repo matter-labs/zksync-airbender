@@ -1,3 +1,4 @@
+import Proven.Final.Compiler.LookupSelectors
 import Proven.Final.Compiler.Arithmetic
 import Proven.Final.Trace.Machine.CodeWindows
 import Proven.Final.ISA.ValidUse
@@ -766,3 +767,10 @@ example : Airbender.Compiler.UnifiedCachedArithmeticClaim := Airbender.Compiler.
 example : Airbender.Compiler.WordMemoryCachedArithmeticClaim := Airbender.Compiler.wordMemory_cached_arithmetic
 
 #print axioms Airbender.Compiler.wordMemory_cached_arithmetic
+
+example : Airbender.Compiler.NativeLookups.CachedLookupSelectorsClaim := Airbender.Compiler.NativeLookups.cached_lookup_selectors
+
+example : Airbender.Compiler.NativeLookups.CachedLookupSelectorsSatisfiableClaim := Airbender.Compiler.NativeLookups.cached_lookup_selectors_satisfiable
+
+#print axioms Airbender.Compiler.NativeLookups.cached_lookup_selectors
+#print axioms Airbender.Compiler.NativeLookups.cached_lookup_selectors_satisfiable

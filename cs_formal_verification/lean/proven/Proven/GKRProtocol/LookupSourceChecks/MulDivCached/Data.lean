@@ -1,0 +1,170 @@
+module
+import all Mathlib.Data.List.Sort
+public import Proven.GKRProtocol.LookupSourceChecks.MulDivCached.Typed
+public import Proven.Import.GKRProtocol.NumericFunctionalBaseImport
+
+@[expose] public section
+set_option warningAsError true
+
+namespace Airbender.Compiler.LookupSourceChecks.MulDivCached
+open Airbender.Compiler
+set_option maxRecDepth 8192
+
+numeric_functional_base_capture data0 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding0.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field0_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding1.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding2.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field2_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding3.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field3_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding4.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing))]
+
+numeric_functional_base_capture data8 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field4_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding5.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field5_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding6.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field6_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding7.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field7_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding8.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing))]
+
+numeric_functional_base_capture data16 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding9.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding10.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding11.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding12.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding13.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding14.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding15.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding16.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing))]
+
+numeric_functional_base_capture data24 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field16_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field16_1 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field16_2 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field16_3 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field16_4 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field16_5 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field16_6 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field16_7 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank)]
+
+numeric_functional_base_capture data32 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field16_8 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field16_9 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.ConsumerNative.MulDivCached.native.typing.compatible ((Airbender.Compiler.LookupSourceNative.MulDivCached.native.recipe16_0.inputs.headD (.BaseLayerWitness 0)), .base))),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding17.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding18.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field18_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field18_1 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field18_2 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank)]
+
+numeric_functional_base_capture data40 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field18_3 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field18_4 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field18_5 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field18_6 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field18_7 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field18_8 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding19.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field19_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank)]
+
+numeric_functional_base_capture data48 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field19_1 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field19_2 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field19_3 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field19_4 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field19_5 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field19_6 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field19_7 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field19_8 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank)]
+
+numeric_functional_base_capture data56 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding20.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field20_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field20_1 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field20_2 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field20_3 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field20_4 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field20_5 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field20_6 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank)]
+
+numeric_functional_base_capture data64 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field20_7 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field20_8 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding21.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field21_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field21_1 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field21_2 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field21_3 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field21_4 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank)]
+
+numeric_functional_base_capture data72 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field21_5 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field21_6 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field21_7 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field21_8 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding22.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field22_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field22_1 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field22_2 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank)]
+
+numeric_functional_base_capture data80 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field22_3 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field22_4 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field22_5 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field22_6 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field22_7 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field22_8 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding23.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field23_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank)]
+
+numeric_functional_base_capture data88 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field23_1 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field23_2 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field23_3 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field23_4 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field23_5 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field23_6 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field23_7 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field23_8 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank)]
+
+numeric_functional_base_capture data96 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding24.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field24_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding25.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding26.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field26_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field26_1 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field26_2 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field26_3 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank)]
+
+numeric_functional_base_capture data104 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field26_4 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field26_5 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field26_6 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field26_7 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field26_8 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.encoding27.baseCheck Airbender.Compiler.ConsumerNative.MulDivCached.native.typing)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field27_0 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field27_1 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank)]
+
+numeric_functional_base_capture data112 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field27_2 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field27_3 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field27_4 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field27_5 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field27_6 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field27_7 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofAgreement Airbender.Compiler.LookupSourceNative.MulDivCached.native.field27_8 Airbender.Compiler.LookupNative.MulDivCached.native.sourcePlacement Airbender.Compiler.LookupSourceNative.MulDivCached.native.bank),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.leaf17.isSetup))]
+
+numeric_functional_base_capture data120 := [
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (decide (((Airbender.Compiler.LookupNative.MulDivCached.native.genericTree).leaves.map Airbender.Compiler.LookupSourceNative.MulDivCached.native.genericLabel).Perm (List.range (Airbender.Compiler.LookupSourceNative.MulDivCached.native.genericQueries.length + 1))))),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (Airbender.Compiler.LookupSourceNative.MulDivCached.native.leaf1.isSetup)),
+  NumericFunctionalBaseChecks.encode (NumericLookupSourceChecks.ofFlag (n := 70) (decide (((Airbender.Compiler.LookupNative.MulDivCached.native.range16Tree).leaves.map Airbender.Compiler.LookupSourceNative.MulDivCached.native.range16Label).Perm (List.range (Airbender.Compiler.LookupSourceNative.MulDivCached.native.range16Queries.length + 1)))))]
+
+noncomputable def data : List NumericFunctionalBaseChecks.Data := ((((data0 ++ data8) ++ (data16 ++ data24)) ++ ((data32 ++ data40) ++ (data48 ++ data56))) ++ (((data64 ++ data72) ++ (data80 ++ data88)) ++ ((data96 ++ data104) ++ (data112 ++ data120))))
+
+end Airbender.Compiler.LookupSourceChecks.MulDivCached

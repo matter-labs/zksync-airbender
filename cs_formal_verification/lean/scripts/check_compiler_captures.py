@@ -58,17 +58,17 @@ def check():
             raise ValueError(f'Compiler capture differs from the production cached artifact: {family}')
     sys.set_int_max_str_digits(100000)
     certificate_pins = read(ROOT / 'compiler_certificate_pins.json')
+    certificate_root = ROOT / 'artifacts/compiler'
     certificate_paths = {str(path.relative_to(ROOT))
-                         for directory in ('numeric-arithmetic', 'numeric-clean')
-                         for path in (ROOT / 'artifacts/compiler' / directory).glob('*.json')}
+                         for path in certificate_root.rglob('*.json') if path.parent != certificate_root}
     if set(certificate_pins) != certificate_paths:
-        raise ValueError('Compiler certificate pins do not cover every numeric payload')
+        raise ValueError('Compiler certificate pins do not cover every arithmetic and lookup payload')
     for name, digest in certificate_pins.items():
         path = ROOT / name
         if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             raise ValueError(f'Compiler certificate bytes changed: {name}')
         read(path)
-    print('PASS 11 pinned cached compiler captures, source sidecars and numeric certificates')
+    print('PASS 11 pinned cached compiler captures, source sidecars and arithmetic/lookup certificates')
 
 
 def fresh(exporter):

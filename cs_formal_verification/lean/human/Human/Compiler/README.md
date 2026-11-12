@@ -5,7 +5,7 @@ The [ADD/SUB capture](Captures/AddSub.lean) and ten other capture modules read n
 [Theorems.lean](Theorems.lean) states that each capture has the existing circuit's constraint description.
 Only the compiled layers differ. Each capture also has a cached arithmetic preservation claim.
 The proof binds every scalar cache, native sparse gate and logical placement to the checked arithmetic model.
-Lookup and native machine acceptance remain separate obligations.
+Native machine acceptance and public setup composition remain separate obligations.
 
 The [import command](../Import/CompilerCapture.lean) performs trusted transcription. Its native JSON conversion uses the current schema.
 It checks scalar bounds and fixed array lengths. It orders map entries as Rust BTree maps.
@@ -16,3 +16,11 @@ The [drift check](../../../scripts/check_compiler_captures.py) checks every inpu
 compiled artifact with the production cached JSON. It also checks the complete source sidecar.
 CI regenerates all eleven source/compiler pairs and compares their bytes.
 The source counts retain lookup, range, memory and executor interfaces. Arithmetic preservation alone does not cover them.
+
+The native lookup selectors cover every primitive query once. Each cache or copy expansion follows actual compiled definitions.
+[NativeLookups.lean](NativeLookups.lean) states the expanded tuple interface.
+[LookupArgument.lean](LookupArgument.lean) states exact matching with public setup rows and natural multiplicities.
+A sampled rational equation does not supply this matching. The kernel binds these tuples to the checked native leaf encodings.
+
+The proof wrappers use the kernel_exact tactic when elaborator conversion repeats a large artifact reduction.
+The enclosing theorem receives the complete kernel type check. A regression rejects a proof with the wrong type.

@@ -1,3 +1,4 @@
+import Proven.Final.Compiler.LookupSelectors
 import Proven.Final.Compiler.Arithmetic
 import Proven.Final.Trace.Machine.CodeWindows
 import Proven.Final.ISA.ValidUse
@@ -1430,3 +1431,6 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.Compiler.unified_cached_arithmetic
 
 #print axioms Airbender.Compiler.wordMemory_cached_arithmetic
+
+#print axioms Airbender.Compiler.NativeLookups.cached_lookup_selectors
+#print axioms Airbender.Compiler.NativeLookups.cached_lookup_selectors_satisfiable

@@ -1,3 +1,4 @@
+import Proven.Final.Compiler.LookupSelectors
 import Human.Circuits.Blake2Round.Mask
 import Human.Circuits.InitsTeardowns.Native.Standalone
 import Human.Circuits.InitsTeardowns.Native.Unified
@@ -686,3 +687,5 @@ example (claim : Airbender.Blake2Round.Mask.SoundnessClaim)
       Airbender.Blake2Round.Mask.spec input output := by
   obtain ⟨input, output, w, assumptions, constraints, mapping⟩ := witness
   exact ⟨input, output, w, assumptions, mapping, claim input output w assumptions constraints mapping⟩
+
+example : Airbender.Compiler.NativeLookups.CachedLookupSelectorsSatisfiableClaim := Airbender.Compiler.NativeLookups.cached_lookup_selectors_satisfiable
