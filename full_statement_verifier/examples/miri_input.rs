@@ -1,4 +1,4 @@
-//! Prepare a committed chain artifact outside Miri and verify the selected entry point.
+//! Verify a committed chain natively and record inner outputs for statement-only Miri.
 //! Usage: miri_input OUTPUT CHAIN ENTRY
 //! CHAIN / ENTRY: base / unrolled_base, unrolled / unrolled_recursion,
 //! unified / recursion_dispatch. Uses pessimistic_conjecture.
@@ -46,10 +46,14 @@ fn main() {
         .spawn(move || {
             let expected = selection.verify(&mut nds.iter().copied());
             assert_eq!(expected[8..16], artifact.chain_hash);
-            let input = miri_stream::encode(&expected, &nds);
+            let (recorded_output, statement) = selection.record(nds.iter().copied());
+            assert_eq!(recorded_output, expected);
+            assert_eq!(selection.verify_mocked(statement.iter().copied()), expected);
+            let input = miri_stream::encode(&expected, &statement);
             println!(
-                "verified full FSV output and {} NDS words; wrote {} bytes",
+                "verified {} NDS words; recorded {} statement words; wrote {} bytes",
                 nds.len(),
+                statement.len(),
                 input.len()
             );
             input

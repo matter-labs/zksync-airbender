@@ -6,4 +6,4 @@
 
 ### Miri CI
 
-The [Miri verifier workflow](../.github/workflows/miri.yml) runs the canonical circuit pool in both soundness modes and the pessimistic base, unrolled-recursion and dispatcher statements. It prepares and verifies static inputs natively before embedding them in the Miri tests, and checks `verifier_common` and generated helpers. See the workflow for the commands and features.
+The [Miri verifier workflow](../.github/workflows/miri.yml) runs the canonical circuit pool in both soundness modes and the pessimistic base, unrolled-recursion and dispatcher statements. The statement inputs are verified natively with the real inner circuit verifiers, which records each inner verifier's challenges and output; under Miri the statement code runs with mocks that check those challenges and return the recorded outputs, so the inner verifiers are interpreted only in the circuit pool. The workflow also checks `verifier_common` and generated helpers. See the workflow for the commands and features.

@@ -1,6 +1,9 @@
 // The native input producer and interpreted verifier share this byte format.
 #![allow(dead_code)]
 
+#[path = "miri_mock.rs"]
+mod miri_mock;
+
 #[derive(Clone, Copy)]
 pub enum Selection {
     UnrolledBase,

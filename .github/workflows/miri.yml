@@ -118,7 +118,7 @@ jobs:
         run: cargo miri setup
       - name: Build the native input producer once
         run: cargo build -p full_statement_verifier --no-default-features --features host_utils,miri_fsv --example miri_input
-      - name: Prepare and verify B, R and D natively
+      - name: Verify B, R and D natively and record inner verifier outputs
         run: |
           mkdir -p "$AIRBENDER_MIRI_FSV_INPUT_DIR"
           "$CARGO_TARGET_DIR/debug/examples/miri_input" "$AIRBENDER_MIRI_FSV_INPUT_DIR/B.bin" base unrolled_base

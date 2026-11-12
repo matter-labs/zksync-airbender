@@ -1,4 +1,4 @@
-//! Pessimistic base, unrolled-recursion and dispatcher statements over static inputs.
+//! Pessimistic statements with recorded inner verifier outputs over static inputs.
 #[path = "common/miri_stream.rs"]
 mod miri_stream;
 
@@ -7,7 +7,7 @@ use full_statement_verifier::verifier_common::{self, BlakeMode};
 fn check(input: &[u8], selection: miri_stream::Selection) {
     assert_eq!(verifier_common::BLAKE_MODE, BlakeMode::Compression);
     let (expected, mut nds) = miri_stream::decode(input);
-    let output = selection.verify(&mut nds);
+    let output = selection.verify_mocked(&mut nds);
     assert_eq!(output, expected);
 }
 
