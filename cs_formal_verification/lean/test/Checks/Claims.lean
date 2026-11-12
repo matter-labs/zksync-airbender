@@ -1,3 +1,4 @@
+import Proven.Final.Compiler.NativeMachine
 import Proven.Final.Compiler.LookupSelectors
 import Proven.Final.Compiler.Arithmetic
 import Proven.Final.Trace.Machine.CodeWindows
@@ -774,3 +775,15 @@ example : Airbender.Compiler.NativeLookups.CachedLookupSelectorsSatisfiableClaim
 
 #print axioms Airbender.Compiler.NativeLookups.cached_lookup_selectors
 #print axioms Airbender.Compiler.NativeLookups.cached_lookup_selectors_satisfiable
+
+example : Airbender.Trace.Machine.Native.UnrolledFullFromNative := Airbender.Trace.Machine.Native.unrolled_full_from_native
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_full_from_native
+
+example : Airbender.Trace.Machine.Native.UnrolledReducedFromNative := Airbender.Trace.Machine.Native.unrolled_reduced_from_native
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_reduced_from_native
+
+example : Airbender.Trace.Machine.Native.UnifiedFromNative := Airbender.Trace.Machine.Native.unified_from_native
+
+#print axioms Airbender.Trace.Machine.Native.unified_from_native

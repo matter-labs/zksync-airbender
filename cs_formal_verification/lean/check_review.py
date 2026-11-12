@@ -115,9 +115,9 @@ run_cmd do
         if !isPrivateName name then
           if let some (.thmInfo _) := env.find? name then
             if let some ranges ← findDeclarationRanges? name then
-              let start := ranges.range.pos
+              let declarationStart := ranges.range.pos
               let finish := ranges.selectionRange.endPos
-              logInfo m!"REVIEW_THEOREM {{mod}} {{name}} {{start.line}} {{start.column}} {{finish.line}} {{finish.column}}"
+              logInfo m!"REVIEW_THEOREM {{mod}} {{name}} {{declarationStart.line}} {{declarationStart.column}} {{finish.line}} {{finish.column}}"
 '''
     with tempfile.TemporaryDirectory(prefix="airbender-review-") as directory:
         path = Path(directory) / "Inventory.lean"

@@ -1,4 +1,5 @@
 module
+public import Proven.Final.Compiler.NativeMachine
 public import Proven.UnifiedReduced.RVCaller.BigintStep
 public import Proven.Trace.Machine.Boot
 public import Proven.Blake2Round.Mask.Native
@@ -307,3 +308,9 @@ public import Proven.Trace.MemoryPorts
 #print axioms Airbender.Trace.Machine.Proofs.boot_terminal_bound
 
 #print axioms Airbender.Blake2Round.Mask.Proofs.native_effect
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_full_from_native
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_reduced_from_native
+
+#print axioms Airbender.Trace.Machine.Native.unified_from_native

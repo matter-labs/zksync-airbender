@@ -40,3 +40,5 @@ import Human.Import.Theorems
 import Human.Trace.Machine.Theorems
 
 import Human.Compiler.Theorems
+
+import Human.Compiler.NativeTargets

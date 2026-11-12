@@ -37,3 +37,5 @@ import Proven.Final.Trace.ZeroTimestamp
 import Proven.Final.Helpers.Context.VerifierBoundary.Theorems
 
 import Proven.Final.Compiler.Theorems
+
+import Proven.Final.Compiler.NativeMachine
