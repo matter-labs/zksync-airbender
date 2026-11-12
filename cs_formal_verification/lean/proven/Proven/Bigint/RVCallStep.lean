@@ -205,27 +205,18 @@ theorem row_address_codes {p : Nat} (w : Nat → ZMod p) (k : Nat) (hk : k < 19)
   simp only [Delegation.Row.memorySteps, Delegation.Row.ports, List.getElem_map, Array.getElem_toList, readToken]
   rfl
 
-/-- The delegate link of one bigint row: from the call's pre-state `start`, the spec's bigint call
-    (`RV.Delegation.effect .bigint`) has an effect, and applying it gives the call's post-state `finish` up to the
-    spec's PC advance. -/
-theorem rv_bigint_call {data : Delegation.MemoryData babyBearModulus} {cells : List Cell}
-    (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.SeedProofs.SeedInputs data cells)
-    (table : data.setup.bigint = setupTable) (aligned : ∀ cell ∈ cells, cell.Aligned)
-    {w : Nat → ZMod babyBearModulus} (member : (⟨.bigint, w⟩ : Delegation.Row babyBearModulus) ∈ data.rows)
-    {events : List MemoryAccess} {start finish : RV.State} (history : RVHistory cells events start finish)
-    (permutation : events.Perm ((Delegation.Row.mk .bigint w).memorySteps.map transferEvent)) :
-    ∃ s', (RV.Delegation.effect .bigint (start.getReg 10) (start.getReg 11) (start.getReg 12)
-        start.delegationRAM).bind start.applyEffect = some s' ∧ RV.Same s' (finish.setPC (start.pc + 4)) := by
-  have hp : 2 * timestampBase + 4 < babyBearModulus := by norm_num [timestampBase, babyBearModulus]
-  have ports : ∀ port ∈ importedConstraintsMemoryPorts, ∃ cell ∈ cells,
+/-- One native bigint call implements the RV step from its actual local port observations. -/
+theorem rv_bigint_call_local {cells : List Cell} {w : Nat → ZMod babyBearModulus}
+    {events : List MemoryAccess} {start finish : RV.State}
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setupTable))
+    (ports : ∀ port ∈ importedConstraintsMemoryPorts, ∃ cell ∈ cells,
       cell.addressCode = port.address.code w ∧ cell.readRV start = some (memoryWord (port.readCode w)) ∧
-      cell.readRV finish = some (memoryWord (port.writeCode w)) :=
-    rv_row_atomic_observations hp accepted inputs member history permutation aligned
-  have holds := accepted.constraints _ member
-  change FlatOperation.ConstraintsHoldFlat (Verification.environment w) (clockConstraints data.setup.bigint) at holds
-  rw [table] at holds
-  have core := Verification.holds_of_sublist holds
-    (List.sublist_append_left (importedConstraints setupTable) importedConstraintsTimestampLookups)
+      cell.readRV finish = some (memoryWord (port.writeCode w)))
+    (addressUnique : ((Delegation.Row.mk .bigint w).memorySteps.map fun edge => edge.1.address).Nodup)
+    (aligned : ∀ cell ∈ cells, cell.Aligned) (history : RVHistory cells events start finish)
+    (permutation : events.Perm ((Delegation.Row.mk .bigint w).memorySteps.map transferEvent)) :
+    ∃ next, RV.exec start (.delegate .bigint) = some next ∧
+      RV.Same next (finish.setPC (start.pc + 4)) := by
   obtain ⟨_, _, _, shapes⟩ := port_shapes
   obtain ⟨readonly0, readonly9, readonlyBlock⟩ := readonly_ports w
   obtain ⟨value0, value9, value18, written18⟩ := port_values w
@@ -286,7 +277,7 @@ theorem rv_bigint_call {data : Delegation.MemoryData babyBearModulus} {cells : L
   -- distinct pointers: the first words of the two blocks are different native addresses of one row
   have distinct : x10 ≠ x11 := by
     intro same
-    have codes := seed_row_addresses_distinct hp accepted inputs member
+    have codes := addressUnique
     obtain ⟨cell1, _, code1, _⟩ := ports _ (Array.getElem_mem (by decide) : importedConstraintsMemoryPorts[1] ∈ _)
     obtain ⟨cell10, _, code10, _⟩ := ports _ (Array.getElem_mem (by decide) : importedConstraintsMemoryPorts[10] ∈ _)
     have code1' : cell1.addressCode = (MemoryAddress.indirect (importedConstraintsIndirectPorts[0]'(by decide))).code w :=
@@ -398,5 +389,27 @@ theorem rv_bigint_call {data : Delegation.MemoryData babyBearModulus} {cells : L
   have bindSome : ∀ o : Option RV.State, (o.bind fun x => some x) = o := fun o => by cases o <;> rfl
   simp only [RV.calls, RV.State.delegationRAM, bindSome] at call
   exact ⟨U, call, same⟩
+
+/-- An initialized worker pool supplies the local observations of the bigint call. -/
+theorem rv_bigint_call {data : Delegation.MemoryData babyBearModulus} {cells : List Cell}
+    (accepted : Delegation.MemoryAccepted data) (inputs : Delegation.SeedProofs.SeedInputs data cells)
+    (table : data.setup.bigint = setupTable) (aligned : ∀ cell ∈ cells, cell.Aligned)
+    {w : Nat → ZMod babyBearModulus} (member : (⟨.bigint, w⟩ : Delegation.Row babyBearModulus) ∈ data.rows)
+    {events : List MemoryAccess} {start finish : RV.State} (history : RVHistory cells events start finish)
+    (permutation : events.Perm ((Delegation.Row.mk .bigint w).memorySteps.map transferEvent)) :
+    ∃ s', (RV.Delegation.effect .bigint (start.getReg 10) (start.getReg 11) (start.getReg 12)
+        start.delegationRAM).bind start.applyEffect = some s' ∧ RV.Same s' (finish.setPC (start.pc + 4)) := by
+  have hp : 2 * timestampBase + 4 < babyBearModulus := by norm_num [timestampBase, babyBearModulus]
+  have ports : ∀ port ∈ importedConstraintsMemoryPorts, ∃ cell ∈ cells,
+      cell.addressCode = port.address.code w ∧ cell.readRV start = some (memoryWord (port.readCode w)) ∧
+      cell.readRV finish = some (memoryWord (port.writeCode w)) :=
+    rv_row_atomic_observations hp accepted inputs member history permutation aligned
+  have holds := accepted.constraints _ member
+  change FlatOperation.ConstraintsHoldFlat (Verification.environment w) (clockConstraints data.setup.bigint) at holds
+  rw [table] at holds
+  have core := Verification.holds_of_sublist holds
+    (List.sublist_append_left (importedConstraints setupTable) importedConstraintsTimestampLookups)
+  exact rv_bigint_call_local core ports (seed_row_addresses_distinct hp accepted inputs member)
+    aligned history permutation
 
 end Airbender.Bigint.Proofs

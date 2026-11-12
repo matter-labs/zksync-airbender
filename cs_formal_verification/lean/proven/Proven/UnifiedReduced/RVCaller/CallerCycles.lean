@@ -99,7 +99,7 @@ theorem rv_caller_pc_retirement [Fact p.Prime] {data : RVRequestTrace p} {initia
     rw [advance]
     rfl
 
-theorem rv_caller_cycle_observations [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+theorem rv_caller_cycle_observations_and_history [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
     (inverse : (-3840 : ZMod p) * 524288 = 1)
     {data : RVRequestTrace p} {program : List UnifiedReduced.RVProgramEntry} {initial before after : RV.State}
     {ca oa : List (BitVec 32)} {cells : List Cell}
@@ -110,6 +110,9 @@ theorem rv_caller_cycle_observations [Fact p.Prime] (hp : 2 * timestampBase + 4 
     (current : RVHistory cells events before after)
     (zero : ∀ event ∈ events, event.2.1 = (Cell.register 0).addressCode → memoryWord event.2.2.2 = 0) :
     ∃ worker ∈ data.workers.rows, Delegation.Requests.fulfillment worker = request row.assignment ∧
+      (events.filter fun event => decide (event.2.1 ≠ (Cell.register 0).addressCode)).Perm
+        (worker.memorySteps.map transferEvent) ∧
+      RVHistory cells (events.filter fun event => decide (event.2.1 ≠ (Cell.register 0).addressCode)) before after ∧
       ∀ port ∈ worker.ports, ∃ cell ∈ cells,
         cell.addressCode = port.address.code worker.assignment ∧
         cell.readRV before = some (readToken worker.assignment port).word.toBitVec ∧
@@ -125,12 +128,31 @@ theorem rv_caller_cycle_observations [Fact p.Prime] (hp : 2 * timestampBase + 4 
     simpa only [List.map_map, Function.comp_def, transferEvent] using
       rv_worker_addresses_distinct hp inverse accepted inputs requests present)
   have actual := Delegation.Proofs.rv_atomic_observations history inputs.aligned noZero unique
-  refine ⟨worker, present, same, ?_⟩
+  refine ⟨worker, present, same, grouped, history, ?_⟩
   intro port included
   have event := grouped.mem_iff.mpr (List.mem_map.mpr ⟨_, List.mem_map.mpr
     ⟨port, by simpa using included, rfl⟩, rfl⟩)
   obtain ⟨cell, cellMember, address, read, written⟩ := actual _ event
   exact ⟨cell, cellMember, address, read, written⟩
+
+theorem rv_caller_cycle_observations [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
+    (inverse : (-3840 : ZMod p) * 524288 = 1)
+    {data : RVRequestTrace p} {program : List UnifiedReduced.RVProgramEntry} {initial before after : RV.State}
+    {ca oa : List (BitVec 32)} {cells : List Cell}
+    (accepted : RVMixedMemoryAccepted data program) (inputs : RVMixedMemoryInputs data program initial ca oa cells)
+    (requests : RVRequestBinding data initial)
+    {row : Trace.Row p UnifiedFamily} (member : row ∈ data.callers)
+    {events : List MemoryAccess} (permutation : events.Perm (data.cycleSteps row |>.map transferEvent))
+    (current : RVHistory cells events before after)
+    (zero : ∀ event ∈ events, event.2.1 = (Cell.register 0).addressCode → memoryWord event.2.2.2 = 0) :
+    ∃ worker ∈ data.workers.rows, Delegation.Requests.fulfillment worker = request row.assignment ∧
+      ∀ port ∈ worker.ports, ∃ cell ∈ cells,
+        cell.addressCode = port.address.code worker.assignment ∧
+        cell.readRV before = some (readToken worker.assignment port).word.toBitVec ∧
+        cell.readRV after = some (worker.writeToken port).word.toBitVec := by
+  obtain ⟨worker, present, same, _, _, observations⟩ :=
+    rv_caller_cycle_observations_and_history hp inverse accepted inputs requests member permutation current zero
+  exact ⟨worker, present, same, observations⟩
 
 theorem rv_caller_cycles
     {data : RVRequestTrace babyBearModulus} {program : List UnifiedReduced.RVProgramEntry} {initial : RV.State}
