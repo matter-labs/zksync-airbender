@@ -1,3 +1,4 @@
+import Proven.AddSub.Modular.RVArithmetic
 import Proven.Final.Helpers.Context.VerifierBoundary.Theorems
 import Checks.Restatements
 import Proven.AddSub.RVTraceSoundness
@@ -1312,3 +1313,11 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.VerifierBoundary.terminal_state_satisfiable
 
 #print axioms Airbender.VerifierBoundary.terminal_bound_satisfiable
+
+#print axioms Airbender.AddSub.Proofs.modular_canonical_output
+
+#print axioms Airbender.AddSub.Proofs.modular_result_of_equations
+
+#print axioms Airbender.AddSub.Proofs.modular_result
+
+#print axioms Airbender.AddSub.Modular.arithmeticResult_rv

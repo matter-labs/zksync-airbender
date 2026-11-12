@@ -1,5 +1,7 @@
 module
 public import Human.Circuits.AddSub.Artifact
+public import Human.Helpers.Properties
+public import Human.Helpers.Core.BabyBearPrime
 public import Human.Helpers.Core.CircuitOutput
 public import Human.Helpers.Core.Word
 public import Human.ISA.RV32

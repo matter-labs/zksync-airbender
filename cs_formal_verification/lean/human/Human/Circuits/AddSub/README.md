@@ -41,3 +41,7 @@ row). See [trust and review](../../../../../docs/TRUST_AND_REVIEW.md#modeled-tab
 
 [Family execution](../../Trace/Families/AddSub/RVTheorems.lean) is a separate whole-trace claim.
 [Pooled execution](../../Trace/RVSoundness.lean) composes the six ordinary families.
+
+The [field-operation model](Modular/Model.lean) names the four Montgomery operations.
+The supporting arithmetic proofs derive canonical output and its field value from the imported constraints.
+`arithmeticResult_rv` identifies that value with `RV.mopVal`. Whole-run modular integration remains open.
