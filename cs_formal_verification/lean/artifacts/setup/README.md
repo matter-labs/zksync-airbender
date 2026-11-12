@@ -88,6 +88,16 @@ These comparisons are trusted compiled code. The regression module rejects a
 wrong formula, a changed native row and changed range padding. No kernel setup
 certificate is added.
 
-The raw ROM and decoder columns are imported. Their public-program composition
-with native CPU certificates remains Phase 3 work. A fixed fixture does not
-prove the Rust setup generator for every program.
+The complete jump/branch, multiply/divide, word, subword and unified fixed regions
+also have bounded compiled comparisons in
+[NativeFixedRows/Bindings.lean](../../human/Human/Compiler/NativeFixedRows/Bindings.lean).
+Each comparison checks at most 262144 rows. The ROM fixture is checked in full.
+The unified view only reorders the retained table indices.
+
+[NativePublicSetup.lean](../../human/Human/Compiler/NativePublicSetup.lean) states
+the public data binding for arbitrary ROM bytes and native decoder projections.
+The native machine corollaries use this binding to derive CPU constraints and
+public decoder membership. Capacity, nonzero masks and omitted zero coordinates
+are explicit public setup properties. A fixed fixture does not prove the Rust
+setup generator for every program. All compiled comparisons remain trusted code;
+no large kernel setup certificate is added.
