@@ -14,8 +14,6 @@ use cs::{
         SpecialMemoryContributionRelation,
     },
 };
-// use cs::gkr_compiler::StructuredExpression;
-use field::baby_bear::base::BabyBearField;
 use field::Proth120;
 
 /// Proth120 modulus P = 7*2^120 + 1 (same as gkr.sol / whir.sol once migrated).
@@ -209,38 +207,15 @@ fn superscript(idx: usize) -> String {
         })
         .collect()
 }
-#[allow(dead_code)]
-fn const_to_evm(c: &u32) -> Dual {
-    assert!(
-        *c < BabyBearField::ORDER,
-        "we don't expect circuits with unreduced constants"
-    );
-    // first check if negative
-    let (sign, modc, yul) = if *c > BabyBearField::ORDER / 2 {
-        let modc = BabyBearField::ORDER - c;
-        ("-", modc, yul_format!("sub(P, {modc})"))
-    } else {
-        ("", *c, yul_format!("{c}"))
-    };
-    let normal = match modc {
-        modc if modc.is_power_of_two() && !(0..=2).contains(&modc) => {
-            let power = modc.trailing_zeros();
-            format!("{sign}2^{power}")
-        }
-        _ => format!("{sign}{modc}"),
-    };
-    Dual(normal, yul)
-}
 fn u128_to_neg(Dual(input, yul): &Dual) -> Dual {
     Dual(format!("-{input}"), yul_format!("sub(mul(2, P), {yul:x})"))
 }
 
-/// Proth120-aware constant emitter (replaces `const_to_evm` for the Proth120 target).
+/// Emit a Proth120 constant.
 /// Field elements are < P < 2^123 (one uint128). Emit small positives as literals,
 /// small negatives (near P) as `sub(P, n)`, and anything else as a full 128-bit literal.
 /// The Yul consumer must funnel every product through `mulmod` before adding to a
-/// reduced value (non-canonical arithmetic, per HEURISTICS.md).
-#[allow(dead_code)]
+/// reduced value: both addends are then below P, so their sum is below 2P < 2^124.
 fn proth120_const_to_evm(c: &Proth120) -> Dual {
     let v = c.to_u128();
     if v == 0 {
@@ -269,7 +244,6 @@ fn proth120_const_to_evm(c: &Proth120) -> Dual {
 
 /// Emit a small non-negative integer constant (memory address / offset / timestamp offset)
 /// as a Proth120 field literal. These are genuine small integers (< 2^32), never field-negative.
-#[allow(dead_code)]
 fn u32_lit(c: u32) -> Dual {
     Dual(format!("{c}"), yul_format!("{c}"))
 }
@@ -711,7 +685,6 @@ pub fn emit_circuit_yul_with_stats(
             gates
         };
 
-        // println!("{i}:");
         yul_println!("
         function sumcheck_circuit_layer{i}(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {{
             // INITIAL CLAIM: batch the previous layer's claims (heap array) in gate/slot order
@@ -859,24 +832,7 @@ pub fn emit_circuit_yul_with_stats(
                     _ => todo!("unexpected address {address:?} for layer {expected_layer}"),
                 }
             }
-            // fn linrel_to_calldata(inputs: &LinearRelation<BabyBearField>, expected_layer: usize) -> String {
-            //     let LinearRelation { linear_terms, constant } = inputs;
-            //     let linear = linear_terms.iter().map(|(c, addr)| {
-            //         let input = gkraddress_to_calldata(addr, expected_layer);
-            //         format!("{c}{input}")
-            //     }).collect::<Vec<_>>().join(" + ");
-            //     format!("({constant} + {linear})")
-            // }
-
             match cached_relation {
-                // GKRCacheRelation::VectorizedLookup(VectorLookupRelation{ columns, lookup_set_index: _}) => {
-                //     let term = columns.iter().enumerate().map(|(j, column)| {
-                //         let linear = linrel_to_calldata(column, i);
-                //         let beta_j = "β".to_string() + &superscript(j);
-                //         format!("{beta_j}{linear}")
-                //     }).collect::<Vec<_>>().join(" + ");
-                //     println!("{relation_name}: {term} = {output}");
-                // }
                 GKRCacheRelation::VectorizedLookupSetup(terms) => {
                     let logup_alpha = Dual("β".to_string(), Yul::logup_alpha());
                     let setup = {
@@ -900,7 +856,6 @@ pub fn emit_circuit_yul_with_stats(
                             yul_format!("{}", lookrel_horner(&sets)),
                         )
                     };
-                    // println!("{relation_name}: {setup} = {output}");
                     yul_println!(
                         "
                     \t{{  // {relation_name}: {setup} = {output}
@@ -1029,7 +984,6 @@ pub fn emit_circuit_yul_with_stats(
                 match virtualpoly_relation {
                     VirtualSetupPoly::RangeCheck16Bits => {
                         assert!(16 <= circuit_rounds);
-                        // println!("{relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}");
                         yul_println!("
                         \t{{  // {relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}
                         \t    let gate := gkr_virtual_poly_rangecheck(16)
@@ -1039,7 +993,6 @@ pub fn emit_circuit_yul_with_stats(
                     VirtualSetupPoly::RangeCheckTimestamp => {
                         let timestamp_range_bits = cs::definitions::TIMESTAMP_COLUMNS_NUM_BITS;
                         assert!(timestamp_range_bits <= circuit_rounds);
-                        // println!("{relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8] + 2^16 r[7] + 2^17 r[6] + 2^18 r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}");
                         yul_println!("
                         \t{{  // {relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8] + 2^16 r[7] + 2^17 r[6] + 2^18 r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}
                         \t    let gate := gkr_virtual_poly_rangecheck({timestamp_range_bits})
@@ -1054,7 +1007,6 @@ pub fn emit_circuit_yul_with_stats(
                         );
                         let low_bits = 16 - 2;
                         assert!(low_bits <= circuit_rounds);
-                        // println!("{relation_name}: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = {output}");
                         yul_println!("
                         \t{{  // {relation_name}: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = {output}
                         \t    let gate := mul(4, gkr_virtual_poly_compose_vars({low_bits}, 0)) // u32 word-aligned
@@ -1076,7 +1028,6 @@ pub fn emit_circuit_yul_with_stats(
                                 circuit.trace_len
                             )
                         );
-                        // println!("{relation_name}: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = {output}");
                         yul_println!("
                         \t{{  // {relation_name}: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = {output}
                         \t    let gate := gkr_virtual_poly_compose_vars({high_bits}, {low_bits})
@@ -1598,30 +1549,6 @@ pub fn emit_circuit_yul_with_stats(
                     yul_format!("add(add({constant:x}, {linear:x}), {quadratic:x})"),
                 )
             }
-            // fn expression_to_calldata(expression: &StructuredExpression, expected_layer: usize, layer0_group_widths: (usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize)) -> String {
-            //    match expression {
-            //         StructuredExpression::Constant(c) => proth120_const_to_evm(c),
-            //         StructuredExpression::Place(address) => gkraddress_to_calldata(address, expected_layer, layer0_group_widths, running_max_group_offsets),
-            //         StructuredExpression::Sum(terms) => {
-            //             let term = terms.iter().map(|expression| {
-            //                 expression_to_calldata(expression, expected_layer, layer0_group_widths, running_max_group_offsets)
-            //             }).collect::<Vec<_>>().join(" + ");
-            //             format!("({term})")
-            //         }
-            //         StructuredExpression::Product(terms) => {
-            //             // assert!(terms.len() <= 2, "we dont tolerate degree > 2 expressions");
-            //             let num_constants = terms.iter().filter(|term| {
-            //                 matches!(term, StructuredExpression::Constant(_))
-            //             }).count();
-            //             assert!(num_constants <= 1); // makes rendering faulty if more
-            //             let term = terms.iter().map(|expression| {
-            //                 expression_to_calldata(expression, expected_layer, layer0_group_widths, running_max_group_offsets)
-            //             }).collect::<Vec<_>>().join("");
-            //             term
-            //         }
-            //    }
-            // }
-
             match enforced_relation {
                 // 3
                 GKRRelation::AggregateLookupRationalPair { input, output } => {
@@ -1640,7 +1567,6 @@ pub fn emit_circuit_yul_with_stats(
                     });
                     claim_slots.push(Some(den_out));
                     claim_slots.push(Some(num_out));
-                    // println!("{relation_name}: {num1}/{den1} + {num2}/{den2} = {num_out}/{den_out}");
                     yul_println!("
                     \t// {relation_name}: {num1}/{den1} + {num2}/{den2} = {num_out}/{den_out}
                     \tacc := gate_aggregatelookuprationalpair(alpha, acc, {num1:o}, {num2:o}, {den1:o}, {den2:o})
@@ -1656,7 +1582,6 @@ pub fn emit_circuit_yul_with_stats(
                     let output =
                         gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
                     claim_slots.push(Some(output));
-                    // println!("{relation_name}: {input} = {output}");
                     yul_println!(
                         "
                     \t// {relation_name}: {input} = {output}
@@ -1686,7 +1611,6 @@ pub fn emit_circuit_yul_with_stats(
                     let output =
                         gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
                     claim_slots.push(Some(output));
-                    // println!("{relation_name}: {input}*{mask} + (1-{mask}) = {output}");
                     yul_println!(
                         "
                     \t// {relation_name}: {input}*{mask} + (1-{mask}) = {output}
@@ -1706,7 +1630,6 @@ pub fn emit_circuit_yul_with_stats(
                     let output =
                         gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
                     claim_slots.push(Some(output));
-                    // println!("{relation_name}: {input} = {output}");
                     yul_println!(
                         "
                     \t{{  // {relation_name}: {input} = {output}
@@ -1728,7 +1651,6 @@ pub fn emit_circuit_yul_with_stats(
                     let output =
                         gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
                     claim_slots.push(Some(output));
-                    // println!("{relation_name}: {lhs}*{rhs} = {output}");
                     yul_println!(
                         "
                     \t{{  // {relation_name}: {lhs}*{rhs} = {output}
@@ -1767,7 +1689,6 @@ pub fn emit_circuit_yul_with_stats(
                     claim_slots.push(Some(den_out));
                     claim_slots.push(Some(num_out));
                     let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
-                    // println!("{relation_name}: {num}/{den} + 1/({logup_gamma} + {remainder}) = {num_out}/{den_out}");
                     yul_println!("
                     \t{{  // {relation_name}: {num}/{den} + 1/({logup_gamma} + {remainder}) = {num_out}/{den_out}
                     \t    let den_out := mulmod({den:x}, add({logup_gamma:x}, {remainder:x}), P)
@@ -1793,7 +1714,6 @@ pub fn emit_circuit_yul_with_stats(
                     });
                     claim_slots.push(Some(den_out));
                     claim_slots.push(Some(num_out));
-                    // println!("{relation_name}: 1/{den1} + 1/{den2} = {num_out}/{den_out}");
                     yul_println!(
                         "
                     \t{{  // {relation_name}: 1/{den1} + 1/{den2} = {num_out}/{den_out}
@@ -1832,7 +1752,6 @@ pub fn emit_circuit_yul_with_stats(
                     });
                     claim_slots.push(Some(den_out));
                     claim_slots.push(Some(num_out));
-                    // println!("{relation_name}: {num1}/{den1} + 1/{den2} = {num_out}/{den_out}")
                     yul_println!(
                         "
                     \t{{  // {relation_name}: {num1}/{den1} + 1/{den2} = {num_out}/{den_out}
@@ -1855,7 +1774,6 @@ pub fn emit_circuit_yul_with_stats(
                     let output =
                         gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
                     claim_slots.push(Some(output));
-                    // println!("{relation_name}: {lhs}*{rhs} = {output}");
                     yul_println!(
                         "
                     \t{{  // {relation_name}: {lhs}*{rhs} = {output}
@@ -1891,7 +1809,6 @@ pub fn emit_circuit_yul_with_stats(
                     claim_slots.push(Some(den_out));
                     claim_slots.push(Some(num_out));
                     let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
-                    // println!("{relation_name}: 1/({logup_gamma} + {input}) - {multiplicity}/({logup_gamma} + {setup}) = {num_out}/{den_out}");
                     yul_println!("
                     \t{{  // {relation_name}: 1/({logup_gamma} + {input}) - {multiplicity}/({logup_gamma} + {setup}) = {num_out}/{den_out}
                     \t    let den_out := mulmod(add({logup_gamma:x}, {input:x}), add({logup_gamma:x}, {setup:x}), P)
@@ -1920,7 +1837,6 @@ pub fn emit_circuit_yul_with_stats(
                     });
                     claim_slots.push(Some(den_out));
                     claim_slots.push(Some(num_out));
-                    // println!("{relation_name}: 1/{den1} + 1/{den2} = {num_out}/{den_out}");
                     // TODO: THIS ADDS A LOT OF BYTECODE (+10%)
                     yul_println!(
                         "
@@ -1952,7 +1868,6 @@ pub fn emit_circuit_yul_with_stats(
                     let output =
                         gkraddress_to_outputvar(output, i + 1, &mut running_output_counter);
                     claim_slots.push(Some(output));
-                    // println!("{relation_name}: {compressed_tuple} = {output}");
                     yul_println!(
                         "
                     \t{{  // {relation_name}: {compressed_tuple} = {output}
@@ -2015,7 +1930,6 @@ pub fn emit_circuit_yul_with_stats(
                     claim_slots.push(Some(den_out));
                     claim_slots.push(Some(num_out));
                     let logup_gamma = Dual("δ".to_string(), Yul::logup_gamma());
-                    // println!("{relation_name}: {input_mask}/{input_den} - {setup_multiplicity}/({logup_gamma} + {setup}) = {num_out}/{den_out}");
                     yul_println!("
                     \t{{  // {relation_name}: {input_mask}/{input_den} - {setup_multiplicity}/({logup_gamma} + {setup}) = {num_out}/{den_out}
                     \t    let input_den := {input_den:x} // for generic lookups we collect
@@ -2126,7 +2040,6 @@ pub fn emit_circuit_yul_with_stats(
                         let memory_alpha1 = Dual("α".to_string(), Yul::memory_alpha(0));
                         Dual(format!("{memory_gamma} + {address_space} + {memory_alpha1}{setup_low}"), yul_format!("add(add({memory_gamma:x}, {address_space}), mulmod({memory_alpha1:x}, {setup_low:x}, P))"))
                     };
-                    // println!("{relation_name}: ({shared} + {lhs_addr_high} + {lhs_timestamp_and_value}) * ({shared} + {rhs_addr_high} + {rhs_timestamp_and_value}) = {output}");
                     yul_println!("
                     \t{{  // {relation_name}: ({shared} + {lhs_addr_high} + {lhs_timestamp_and_value}) * ({shared} + {rhs_addr_high} + {rhs_timestamp_and_value}) = {output}
                     \t    let shared := {shared:x}
