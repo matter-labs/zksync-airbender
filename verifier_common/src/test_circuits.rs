@@ -29,7 +29,7 @@ macro_rules! make_circuits {
 pub static CIRCUITS: LazyLock<Vec<CircuitData>> =
     LazyLock::new(|| gkr_fixture_circuits!(make_circuits));
 
-/// The last repeatable 2^23 compression-step profile, exported from the compression chain.
+/// The canonical fixed-workload 2^23 Compression circuit fixture.
 /// It has a fixture only in pessimistic-conjecture mode and is outside the
 /// Standard-profile circuit catalogue.
 pub static COMPRESSION: LazyLock<CircuitData> = LazyLock::new(|| {

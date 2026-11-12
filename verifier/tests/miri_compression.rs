@@ -1,4 +1,4 @@
-//! The last repeatable compression-step proof in the Software Blake multiproof layout.
+//! The canonical fixed-workload compression fixture in the Software Blake multiproof layout.
 #[path = "common/miri_circuit_stream.rs"]
 mod miri_circuit_stream;
 
