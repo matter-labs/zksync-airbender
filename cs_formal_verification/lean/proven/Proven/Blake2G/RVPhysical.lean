@@ -78,17 +78,17 @@ theorem rv_physical_mixing_words {p : Nat} {w : Nat → ZMod p} {before after : 
     rw [a.2, b.2, c.2, d.2]
     rfl
 
-theorem rv_native_block_frame {p : Nat} {w : Nat → ZMod p}
+theorem rv_native_block_frame_if {p : Nat} {w : Nat → ZMod p}
     {state message : BitVec 32} {before after : RV.State} {cells : List Cell} {events : List MemoryAccess}
     (controller : Control.Input)
     (addresses : Addresses.spec ⟨controller, Word.ofBitVec state, Word.ofBitVec message⟩
       (importedConstraintsIndirectPorts.map (fun port => port.address w)))
     (stateAligned : state.toNat % 64 = 0) (messageAligned : message.toNat % 64 = 0)
-    (distinct : state ≠ message)
+    (block : Bool) (distinct : block = false → state ≠ message)
     (history : RVHistory cells events before after)
     (permutation : events.Perm ((Delegation.Row.mk .blakeG w).memorySteps.map transferEvent))
     (aligned : ∀ cell ∈ cells, cell.Aligned)
-    (block : Bool) (word : Fin 16)
+    (word : Fin 16)
     (untouched : block = true → ∀ lane : Fin 4,
       (Control.step controller).stateOffsets[lane] ≠ word.val) :
     rvRamEncoding after ((if block then state else message) + BitVec.ofNat 32 (4 * word.val)) =
@@ -118,7 +118,7 @@ theorem rv_native_block_frame {p : Nat} {w : Nat → ZMod p}
       Control.Proofs.state_offsets_bounded controller lane⟩
     cases block with
     | false =>
-      exact aligned_block_words_distinct state message stateAligned messageAligned distinct selected word address.symm
+      exact aligned_block_words_distinct state message stateAligned messageAligned (distinct rfl) selected word address.symm
     | true =>
       have equal := block_word_injective state word selected address
       exact untouched rfl lane (congrArg Fin.val equal).symm
@@ -151,6 +151,89 @@ theorem rv_native_block_frame {p : Nat} {w : Nat → ZMod p}
   rw [rv_ram_encoding_read written]
   exact word_of_toBitVec (Word.ofBitVec_bound _)
 
+theorem rv_native_block_frame {p : Nat} {w : Nat → ZMod p}
+    {state message : BitVec 32} {before after : RV.State} {cells : List Cell} {events : List MemoryAccess}
+    (controller : Control.Input)
+    (addresses : Addresses.spec ⟨controller, Word.ofBitVec state, Word.ofBitVec message⟩
+      (importedConstraintsIndirectPorts.map (fun port => port.address w)))
+    (stateAligned : state.toNat % 64 = 0) (messageAligned : message.toNat % 64 = 0)
+    (distinct : state ≠ message)
+    (history : RVHistory cells events before after)
+    (permutation : events.Perm ((Delegation.Row.mk .blakeG w).memorySteps.map transferEvent))
+    (aligned : ∀ cell ∈ cells, cell.Aligned)
+    (block : Bool) (word : Fin 16)
+    (untouched : block = true → ∀ lane : Fin 4,
+      (Control.step controller).stateOffsets[lane] ≠ word.val) :
+    rvRamEncoding after ((if block then state else message) + BitVec.ofNat 32 (4 * word.val)) =
+      rvRamEncoding before ((if block then state else message) + BitVec.ofNat 32 (4 * word.val)) := by
+  exact rv_native_block_frame_if controller addresses stateAligned messageAligned block
+    (fun _ => distinct) history permutation aligned word untouched
+
+theorem rv_physical_state_result [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1)
+    {w : Nat → ZMod p} {state message : BitVec 32} {before after : RV.State}
+    {cells : List Cell} {events : List MemoryAccess}
+    (core : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints (setupTable Control.controllerRows)))
+    (active : w Variables.execute = 1) (controlBound : (w Variables.controlReadLo).val < 256)
+    (addresses : Addresses.spec
+      ⟨⟨⟨(w Variables.controlReadLo).val, controlBound⟩, true⟩,
+        Word.ofBitVec state, Word.ofBitVec message⟩
+      (importedConstraintsIndirectPorts.map (fun port => port.address w)))
+    (reads : ∀ port ∈ (⟨.blakeG, w⟩ : Delegation.Row p).ports, (readToken w port).word.Bounded)
+    (writes : ∀ port ∈ (⟨.blakeG, w⟩ : Delegation.Row p).ports,
+      ((⟨.blakeG, w⟩ : Delegation.Row p).writeToken port).word.Bounded)
+    (observed : ∀ port ∈ (⟨.blakeG, w⟩ : Delegation.Row p).ports,
+      ∃ cell : Cell, cell.addressCode = port.address.code w ∧
+        cell.readRV before = some (memoryWord (port.readCode w)) ∧
+        cell.readRV after = some (memoryWord (port.writeCode w)))
+    (stateAligned : state.toNat % 64 = 0) (messageAligned : message.toNat % 64 = 0)
+    (history : RVHistory cells events before after)
+    (permutation : events.Perm ((Delegation.Row.mk .blakeG w).memorySteps.map transferEvent))
+    (aligned : ∀ cell ∈ cells, cell.Aligned) :
+    let controller : Control.Input := ⟨⟨(w Variables.controlReadLo).val, controlBound⟩, true⟩
+    Blake2G.State.spec (rvPhysicalInput controller before state message) (rvPhysicalWords after state) := by
+  let controller : Control.Input := ⟨⟨(w Variables.controlReadLo).val, controlBound⟩, true⟩
+  have encoded := rv_native_encoded_words controller addresses reads writes observed
+  obtain ⟨inputWords, outputWords⟩ := rv_physical_mixing_words controller encoded
+  let input := rvPhysicalInput controller before state message
+  let output := rvPhysicalWords after state
+  have mapping : Blake2G.State.Mapping input output w := by
+    constructor
+    · change WordMapping (Blake2G.State.mixingInput (rvPhysicalInput controller before state message))
+        (Blake2G.State.mixingOutput (rvPhysicalInput controller before state message) (rvPhysicalWords after state)) w
+      rw [inputWords, outputWords]
+      exact Native.Proofs.native_mapping w
+    · intro index
+      let controlOutput : Control.Output :=
+        ⟨⟨(w Variables.controlWriteLo).val, (w Variables.controlWriteHi).val⟩,
+          Variables.stateOffsetColumns.map (fun column => (w column).val),
+          Variables.messageOffsetColumns.map (fun column => (w column).val)⟩
+      have controlMapping : Control.Mapping controller controlOutput w := ⟨rfl, active, rfl⟩
+      have enforced := Control.Proofs.soundness (by omega) controller controlOutput w ⟨core, controlMapping⟩
+      have equal := congrArg (fun value : Control.Output => value.stateOffsets[index]) enforced
+      fin_cases index <;> simpa [input, rvPhysicalInput, stateLanes, controlOutput] using equal
+  have frame (word : Fin 16)
+      (untouched : ∀ lane : Fin 4,
+        (Control.step controller).stateOffsets[lane] ≠ word.val) :=
+    rv_native_block_frame_if controller addresses stateAligned messageAligned true
+      (fun impossible => by cases impossible) history permutation aligned word (fun _ => untouched)
+  have interfaces : Blake2G.State.InterfaceAssumptions input output w := by
+    refine ⟨active, controlBound, ?_, ?_⟩
+    · constructor
+      all_goals simp only [input, rvPhysicalInput, Blake2G.State.mixingInput, stateLanes,
+        rvPhysicalWords, rvBlockWords, Fin.getElem_fin, Vector.getElem_ofFn, rvRamEncoding]
+      all_goals exact Word.ofBitVec_bound _
+    · intro word untouched
+      have absent : ∀ lane : Fin 4, (Control.step controller).stateOffsets[lane] ≠ word.val := by
+        intro lane equal
+        apply untouched lane
+        apply Fin.ext
+        simpa [input, rvPhysicalInput, stateLanes] using equal.symm
+      simpa [input, output, rvPhysicalInput, rvPhysicalWords, rvBlockWords] using
+        frame word absent
+  exact Blake2G.State.Proofs.soundness (by omega) inverse input output w ⟨interfaces, core, mapping⟩
+
 theorem rv_physical_state_step [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1)
     {w : Nat → ZMod p} {state message : BitVec 32} {before after : RV.State}
@@ -177,49 +260,12 @@ theorem rv_physical_state_step [Fact p.Prime] (hp : 8388608 ≤ p)
     let controller : Control.Input := ⟨⟨(w Variables.controlReadLo).val, controlBound⟩, true⟩
     Blake2G.State.spec (rvPhysicalInput controller before state message) (rvPhysicalWords after state) ∧
       rvPhysicalWords after message = rvPhysicalWords before message := by
-  let controller : Control.Input := ⟨⟨(w Variables.controlReadLo).val, controlBound⟩, true⟩
-  have encoded := rv_native_encoded_words controller addresses reads writes observed
-  obtain ⟨inputWords, outputWords⟩ := rv_physical_mixing_words controller encoded
-  let input := rvPhysicalInput controller before state message
-  let output := rvPhysicalWords after state
-  have mapping : Blake2G.State.Mapping input output w := by
-    constructor
-    · change WordMapping (Blake2G.State.mixingInput (rvPhysicalInput controller before state message))
-        (Blake2G.State.mixingOutput (rvPhysicalInput controller before state message) (rvPhysicalWords after state)) w
-      rw [inputWords, outputWords]
-      exact Native.Proofs.native_mapping w
-    · intro index
-      let controlOutput : Control.Output :=
-        ⟨⟨(w Variables.controlWriteLo).val, (w Variables.controlWriteHi).val⟩,
-          Variables.stateOffsetColumns.map (fun column => (w column).val),
-          Variables.messageOffsetColumns.map (fun column => (w column).val)⟩
-      have controlMapping : Control.Mapping controller controlOutput w := ⟨rfl, active, rfl⟩
-      have enforced := Control.Proofs.soundness (by omega) controller controlOutput w ⟨core, controlMapping⟩
-      have equal := congrArg (fun value : Control.Output => value.stateOffsets[index]) enforced
-      fin_cases index <;> simpa [input, rvPhysicalInput, stateLanes, controlOutput] using equal
-  have frame (block : Bool) (word : Fin 16)
-      (untouched : block = true → ∀ lane : Fin 4,
-        (Control.step controller).stateOffsets[lane] ≠ word.val) :=
-    rv_native_block_frame controller addresses stateAligned messageAligned distinct history permutation
-      aligned block word untouched
-  have interfaces : Blake2G.State.InterfaceAssumptions input output w := by
-    refine ⟨active, controlBound, ?_, ?_⟩
-    · constructor
-      all_goals simp only [input, rvPhysicalInput, Blake2G.State.mixingInput, stateLanes,
-        rvPhysicalWords, rvBlockWords, Fin.getElem_fin, Vector.getElem_ofFn, rvRamEncoding]
-      all_goals exact Word.ofBitVec_bound _
-    · intro word untouched
-      have absent : ∀ lane : Fin 4, (Control.step controller).stateOffsets[lane] ≠ word.val := by
-        intro lane equal
-        apply untouched lane
-        apply Fin.ext
-        simpa [input, rvPhysicalInput, stateLanes] using equal.symm
-      simpa [input, output, rvPhysicalInput, rvPhysicalWords, rvBlockWords] using
-        frame true word (fun _ => absent)
-  refine ⟨Blake2G.State.Proofs.soundness (by omega) inverse input output w ⟨interfaces, core, mapping⟩, ?_⟩
+  refine ⟨rv_physical_state_result hp inverse core active controlBound addresses reads writes observed
+    stateAligned messageAligned history permutation aligned, ?_⟩
   apply Vector.ext
   intro i bound
   simpa [rvPhysicalWords, rvBlockWords] using
-    frame false ⟨i, bound⟩ (fun equal => by cases equal)
+    rv_native_block_frame _ addresses stateAligned messageAligned distinct history permutation
+      aligned false ⟨i, bound⟩ (fun equal => by cases equal)
 
 end Airbender.Blake2G.Proofs
