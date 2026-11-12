@@ -57,6 +57,13 @@ impl<T, A, const N: usize> AlignedArray<T, A, N> {
         &mut self.data
     }
 
+    /// The whole array as an aligned slice.
+    #[inline(always)]
+    pub const fn as_aligned_slice(&self) -> &AlignedSlice<T, A> {
+        // SAFETY: the data is `N` initialized elements, aligned for `A`
+        unsafe { AlignedSlice::from_raw_parts(self.data.as_ptr(), N) }
+    }
+
     /// Reinterpret a region of the buffer starting at element `offset` as a
     /// slice of `count` elements of type `U`.
     ///
@@ -93,9 +100,15 @@ impl<T, A> AlignedSlice<T, A> {
 }
 
 impl<T, A, const N: usize> AlignedArray<MaybeUninit<T>, A, N> {
+    /// The first `len` elements as an initialized aligned slice. Elements past
+    /// `len` stay out of the view and may be unwritten.
+    ///
+    /// # Safety
+    /// `len <= N` and the elements `0..len` must have been initialized.
     #[inline(always)]
-    pub unsafe fn assume_init_ref(&self) -> &AlignedArray<T, A, N> {
-        &*(self as *const Self).cast::<AlignedArray<T, A, N>>()
+    pub unsafe fn assume_init_prefix(&self, len: usize) -> &AlignedSlice<T, A> {
+        debug_assert!(len <= N);
+        AlignedSlice::from_raw_parts(self.data.as_ptr().cast::<T>(), len)
     }
 
     #[inline(always)]
@@ -128,28 +141,6 @@ impl<T, A, const N: usize> AlignedArray<MaybeUninit<T>, A, N> {
             core::ptr::write_volatile(ptr.add(i), MaybeUninit::zeroed());
             i += 1;
         }
-    }
-
-    /// Reinterpret the first `M` elements as an initialized `AlignedArray<T, A, M>`.
-    ///
-    /// # Safety
-    /// The caller must ensure that elements `0..M` have been initialized.
-    #[inline(always)]
-    pub unsafe fn assume_init_subarray<const M: usize>(&self) -> &AlignedArray<T, A, M> {
-        debug_assert!(M <= N);
-        &*(self as *const Self).cast::<AlignedArray<T, A, M>>()
-    }
-
-    /// Mutable version of `assume_init_subarray`.
-    ///
-    /// # Safety
-    /// The caller must ensure that elements `0..M` have been initialized.
-    #[inline(always)]
-    pub unsafe fn assume_init_subarray_mut<const M: usize>(
-        &mut self,
-    ) -> &mut AlignedArray<T, A, M> {
-        debug_assert!(M <= N);
-        &mut *(self as *mut Self).cast::<AlignedArray<T, A, M>>()
     }
 }
 

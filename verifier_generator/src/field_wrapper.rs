@@ -53,8 +53,23 @@ pub trait FieldWrapper {
     fn proof_aux_values_struct() -> TokenStream;
     fn aux_arguments_boundary_values_struct() -> TokenStream;
 
+    /// `a -= *b_ref`, for a `b_ref` that already is a reference: it is passed on as is.
+    fn sub_assign_ref(a: TokenStream, b_ref: TokenStream) -> TokenStream {
+        quote! { field_ops::sub_assign(&mut #a, #b_ref) }
+    }
+
+    /// `a *= *b_ref`, for a `b_ref` that already is a reference: it is passed on as is.
+    fn mul_assign_ref(a: TokenStream, b_ref: TokenStream) -> TokenStream {
+        quote! { field_ops::mul_assign(&mut #a, #b_ref) }
+    }
+
     /// Generate use statements for the field types (base + extension).
     fn field_use_statements() -> TokenStream {
+        quote! {}
+    }
+
+    /// Generate the use statement for the extension field type alone.
+    fn quartic_use_statement() -> TokenStream {
         quote! {}
     }
 }
@@ -170,8 +185,15 @@ impl FieldWrapper for DefaultBabyBearField {
     }
 
     fn field_use_statements() -> TokenStream {
+        let quartic_use_stmt = Self::quartic_use_statement();
         quote! {
             use ::verifier_common::field::baby_bear::base::BabyBearField;
+            #quartic_use_stmt
+        }
+    }
+
+    fn quartic_use_statement() -> TokenStream {
+        quote! {
             use ::verifier_common::field::baby_bear::ext4::BabyBearExt4;
         }
     }

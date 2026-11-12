@@ -59,7 +59,6 @@ fn round_params(
 /// merkle path, extracting evals, and folding. Used by both internal and final rounds.
 fn generate_single_oracle_query_body<MW: FieldWrapper>(
     leaf_ext_words_expr: TokenStream,
-    hash_buf_size_const: TokenStream,
     values_per_leaf_expr: TokenStream,
     fold_steps_expr: TokenStream,
     merkle_verify: TokenStream,
@@ -103,12 +102,13 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
         let block_end = (#leaf_ext_words_expr).next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
         hash_buf.zero_range(#leaf_ext_words_expr, block_end);
 
-        let init_buf = hash_buf.assume_init_subarray::<#hash_buf_size_const>();
+        // SAFETY: the leaf words and their zero padding up to `block_end` were written above
+        let init_buf = hash_buf.assume_init_prefix(block_end);
         hash_leaf_data_into_state(&mut ts.hasher, init_buf, #leaf_ext_words_expr);
         #merkle_verify
 
         // The leaf words were read as reduced field elements: they are the leaf values as is.
-        let leaf: &[#quartic_struct] = unsafe { init_buf.transmute_subslice(0, #values_per_leaf_expr) };
+        let leaf: &[#quartic_struct] = unsafe { hash_buf.transmute_subslice(0, #values_per_leaf_expr) };
 
         #fold_computation
     }
@@ -384,10 +384,32 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             }
         }
     };
+    // The claim point only enters this round through its fold, so a base round that does not
+    // fold leaves the parameter unread.
+    let z_initial_param = if virtual_packing {
+        quote! { _z_initial }
+    } else {
+        quote! { z_initial }
+    };
     let acc1_decl = if virtual_packing {
         TokenStream::new()
     } else {
         quote! { let mut acc1 = #quartic_zero; }
+    };
+    // The coset root power only enters the fold of the two leaf values, so a base round
+    // that does not fold (virtual packing) neither computes it per query nor needs the
+    // generator it is a power of.
+    let (extended_generator_inv_decl, base_root_inv_decl) = if virtual_packing {
+        (TokenStream::new(), TokenStream::new())
+    } else {
+        (
+            quote! {
+                let extended_generator_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
+            },
+            quote! {
+                let base_root_inv = extended_generator_inv.pow(query_index as u32);
+            },
+        )
     };
 
     // Virtual packing reads one value per column per base leaf: the per-oracle
@@ -397,7 +419,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
     let single_value_query_helper = if virtual_packing {
         quote! {
             #[inline(always)]
-            #[allow(clippy::too_many_arguments)]
+            #[allow(clippy::too_many_arguments, clippy::missing_safety_doc)]
             pub unsafe fn process_oracle_query_single_value<I: NonDeterminismSource<#field_struct>, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize>(
                 hasher: &mut ::verifier_common::blake2s_u32::DelegatedBlake2sState,
                 hash_buf: &mut AlignedArray64<MaybeUninit<u32>, BUF_SIZE>,
@@ -413,12 +435,11 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             ) -> Result<(), E::Error> {
                 use ::verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
 
-                let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
                 let mut col = 0;
                 while col < num_columns {
                     let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
                     let raw = read_reduced_field_el::<I>(nd_source);
-                    *buf.get_unchecked_mut(col) = raw.as_u32_raw_repr();
+                    hash_buf.get_unchecked_mut(col).write(raw.as_u32_raw_repr());
                     let base_val = raw;
                     #fma_into_acc;
                     col += 1;
@@ -428,7 +449,8 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 if block_end > LEAF_WORDS {
                     hash_buf.zero_range(LEAF_WORDS, block_end);
                 }
-                let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+                // SAFETY: the leaf words and their zero padding up to `block_end` were written above
+                let buf = hash_buf.assume_init_prefix(block_end);
                 hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
                 if !verify_merkle_path::<I>(hasher, query_index, depth, cap, nd_source) {
                     return Err(E::whir_merkle_path_failed(query));
@@ -439,7 +461,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             /// [`process_oracle_query_single_value`] under a pruned Merkle
             /// multiproof (see `process_oracle_query_multiproof`).
             #[inline(always)]
-            #[allow(clippy::too_many_arguments)]
+            #[allow(clippy::too_many_arguments, clippy::missing_safety_doc)]
             pub unsafe fn process_oracle_query_single_value_multiproof<I: NonDeterminismSource<#field_struct>, E: ErrorCreator, const BUF_SIZE: usize, const LEAF_WORDS: usize, const MAX_DEPTH: usize>(
                 hasher: &mut ::verifier_common::blake2s_u32::DelegatedBlake2sState,
                 hash_buf: &mut AlignedArray64<MaybeUninit<u32>, BUF_SIZE>,
@@ -458,12 +480,11 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             ) -> Result<(), E::Error> {
                 use ::verifier_common::whir::hash_leaf_data_into_state;
 
-                let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
                 let mut col = 0;
                 while col < num_columns {
                     let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
                     let raw = read_reduced_field_el::<I>(nd_source);
-                    *buf.get_unchecked_mut(col) = raw.as_u32_raw_repr();
+                    hash_buf.get_unchecked_mut(col).write(raw.as_u32_raw_repr());
                     let base_val = raw;
                     #fma_into_acc;
                     col += 1;
@@ -473,7 +494,8 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 if block_end > LEAF_WORDS {
                     hash_buf.zero_range(LEAF_WORDS, block_end);
                 }
-                let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+                // SAFETY: the leaf words and their zero padding up to `block_end` were written above
+                let buf = hash_buf.assume_init_prefix(block_end);
                 hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
                 if !verify_merkle_multiproof_leaf::<I, MAX_DEPTH>(
                     hasher, stack, tree_index, prev_index_equal, next_index, depth, cap, nd_source,
@@ -506,7 +528,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             while j < INITIAL_NUM_QUERIES {
                 #head
                 let current_delinearization_challenge = *delin_powers.get(q);
-                let base_root_inv = extended_generator_inv.pow(query_index as u32);
+                #base_root_inv_decl
 
                 let mut acc0 = #quartic_zero;
                 #acc1_decl
@@ -549,12 +571,8 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
         pub const MAX_OOD_SAMPLES: usize = #max_ood_samples;
         const OOD_DRAW_BUF: usize =
             (MAX_OOD_SAMPLES * super::common::EXT_DEGREE + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-        const OOD_COMMIT_BUF: usize = {
-            let total = MAX_OOD_SAMPLES * super::common::EXT_DEGREE;
-            (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
-                / BLAKE2S_BLOCK_SIZE_U32_WORDS
-                * BLAKE2S_BLOCK_SIZE_U32_WORDS
-        };
+        const OOD_COMMIT_BUF: usize =
+            (MAX_OOD_SAMPLES * super::common::EXT_DEGREE).next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
 
         #[inline(always)]
         pub fn read_ood_samples<I: NonDeterminismSource<#field_struct>>(
@@ -566,14 +584,17 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
         ) {
             let num_ood = WHIR_NUM_OOD_SAMPLES[committed_oracle];
             let ood_pow_bits = WHIR_OOD_POW_BITS[committed_oracle];
-            unsafe {
-                ood_points.set_len(num_ood);
-            }
+            ood_points.clear();
+            let ood_points_dst = &mut ood_points.spare_capacity_mut()[..num_ood];
             if ood_pow_bits > 0 {
                 read_and_verify_pow::<I>(ts, ood_pow_bits, nd_source);
-                super::common::draw_field_els_into_after_pow::<OOD_DRAW_BUF>(ts, ood_points.as_mut_slice());
+                super::common::draw_field_els_into_uninit_after_pow::<OOD_DRAW_BUF>(ts, ood_points_dst);
             } else {
-                super::common::draw_field_els_into::<OOD_DRAW_BUF>(ts, ood_points.as_mut_slice());
+                super::common::draw_field_els_into_uninit::<OOD_DRAW_BUF>(ts, ood_points_dst);
+            }
+            // SAFETY: either draw wrote the first `num_ood` points
+            unsafe {
+                ood_points.set_len(num_ood);
             }
             let ood_data_words = num_ood * super::common::EXT_DEGREE;
             let mut ood_buf = CommitBuf::<OOD_COMMIT_BUF>::new();
@@ -632,10 +653,17 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
         }
     };
 
+    // under virtual packing the base round reads single values through its own helpers
+    let base_query_imports = if virtual_packing {
+        TokenStream::new()
+    } else {
+        quote! { process_oracle_query, process_oracle_query_multiproof, }
+    };
+
     quote! {
         #field_use_stmts
         use core::mem::MaybeUninit;
-        use ::verifier_common::field::{Field, FieldExtension, PrimeField};
+        use ::verifier_common::field::{Field, PrimeField};
         use ::verifier_common::field_ops;
         use ::verifier_common::blake2s_u32::{
             AlignedArray64, BLAKE2S_BLOCK_SIZE_U32_WORDS,
@@ -648,18 +676,16 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
             read_and_verify_pow,
             draw_query_indices,
         };
-        #[allow(unused_imports)]
         use ::verifier_common::whir::multiproof::{
             MerkleMultiproofStack, sort_queries_by_tree_index, verify_merkle_multiproof_leaf,
             NO_NEXT_INDEX,
         };
-        #[allow(unused_imports)]
         use super::common::{
             verify_whir_sumcheck_step, materialize_gamma_powers,
             #fold_fn_imports
             read_reduced_field_el, draw_fresh_single_field_el,
             compute_tree_index,
-            process_oracle_query, process_oracle_query_multiproof,
+            #base_query_imports
             fold_whir_accumulator, push_whir_base_pow_entry, push_whir_pow_entry,
         };
         use ::verifier_common::errors::ErrorCreator;
@@ -684,13 +710,14 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
         const NUM_COSETS_LOG2: usize = #num_cosets_log2;
         const COSET_TREE_SIZE: usize = #coset_tree_size;
 
+        #[allow(unused_unsafe, clippy::too_many_arguments)]
         pub fn verify_initial_whir_round<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
             initial_transcript: &ConcreteInitialTranscript,
             ts: &mut TranscriptState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
             batching_challenge: #quartic_struct,
             base_layer_claims: &[#quartic_struct],
-            z_initial: &[#quartic_struct],
+            #z_initial_param: &[#quartic_struct],
             accumulator: &mut ::verifier_common::whir::WhirAccumulator<
                 #field_struct, #quartic_struct, MAX_POW_ENTRIES, WHIR_OOD_ENTRIES,
             >,
@@ -713,12 +740,8 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
 
                 #initial_sumcheck
 
-                const CAP_COMMIT_BUF: usize = {
-                    let total = WHIR_CAP_WORDS;
-                    (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
-                        / BLAKE2S_BLOCK_SIZE_U32_WORDS
-                        * BLAKE2S_BLOCK_SIZE_U32_WORDS
-                };
+                const CAP_COMMIT_BUF: usize =
+                    WHIR_CAP_WORDS.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
                 let intermediate_cap =
                     read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts, nd_source);
 
@@ -739,7 +762,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                     accumulate_ood_samples(accumulator, &ood_points, &ood_values, delinearization_challenge);
 
                 let extended_generator = #field_struct::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
-                let extended_generator_inv = #field_struct::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
+                #extended_generator_inv_decl
 
                 #query_loop
 
@@ -820,7 +843,6 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
 
     let query_body = generate_single_oracle_query_body::<MW>(
         quote! { leaf_ext_words },
-        quote! { INTERNAL_HASH_BUF_SIZE },
         quote! { values_per_leaf },
         quote! { fold_steps },
         merkle_verify(
@@ -900,8 +922,6 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
             [#(#internal_rs_domain_log2_vec),*];
         const MAX_INTERNAL_FOLD_STEPS: usize = #max_internal_fold_steps;
         const MAX_INTERNAL_VALUES_PER_LEAF: usize = #max_internal_values_per_leaf;
-        const MAX_INTERNAL_LEAF_EXT_WORDS: usize = MAX_INTERNAL_VALUES_PER_LEAF * EXT_DEGREE;
-        const INTERNAL_HASH_BUF_SIZE: usize = MAX_INTERNAL_LEAF_EXT_WORDS.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
         const MAX_INTERNAL_NUM_QUERIES: usize = #max_internal_num_queries;
         const MAX_INTERNAL_DRAW_WORDS: usize = #max_internal_draw_words;
         /// Bit `ir` set: this build opens internal round `ir + 1`'s queries
@@ -934,6 +954,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
         const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] =
             [#(#internal_draw_words_vec),*];
 
+        #[allow(unused_unsafe, clippy::too_many_arguments)]
         pub fn verify_internal_whir_round<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
             ts: &mut TranscriptState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -967,12 +988,8 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
                     round += 1;
                 }
 
-                const CAP_COMMIT_BUF: usize = {
-                    let total = WHIR_CAP_WORDS;
-                    (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
-                        / BLAKE2S_BLOCK_SIZE_U32_WORDS
-                        * BLAKE2S_BLOCK_SIZE_U32_WORDS
-                };
+                const CAP_COMMIT_BUF: usize =
+                    WHIR_CAP_WORDS.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
                 let intermediate_cap =
                     read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts, nd_source);
 
@@ -1085,7 +1102,6 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
 
     let query_body = generate_single_oracle_query_body::<MW>(
         quote! { FINAL_LEAF_EXT_WORDS },
-        quote! { FINAL_HASH_BUF_SIZE },
         quote! { FINAL_VALUES_PER_LEAF },
         quote! { FINAL_FOLD_STEPS },
         merkle_verify(
@@ -1171,7 +1187,6 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
         const FINAL_NUM_QUERIES: usize = #num_queries;
         const FINAL_VALUES_PER_LEAF: usize = #values_per_leaf;
         const FINAL_LEAF_EXT_WORDS: usize = FINAL_VALUES_PER_LEAF * EXT_DEGREE;
-        const FINAL_HASH_BUF_SIZE: usize = FINAL_LEAF_EXT_WORDS.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
         const FINAL_QUERY_INDEX_BITS: usize = #query_index_bits;
         const FINAL_RS_DOMAIN_LOG2: usize = #rs_domain_log2;
         const FINAL_NUM_COSETS: usize = #num_cosets;
@@ -1188,6 +1203,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
         const FINAL_MERKLE_MULTIPROOF: bool =
             ::verifier_common::BLAKE_MODE.merkle_multiproofs(FINAL_NUM_QUERIES, WHIR_CAP_SIZE);
 
+        #[allow(unused_unsafe)]
         pub fn verify_final_whir_round<I: NonDeterminismSource<#field_struct>, E: ErrorCreator>(
             ts: &mut TranscriptState,
             hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -1224,12 +1240,8 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                 );
 
                 const FINAL_MONOMIALS_DATA_WORDS: usize = FINAL_MONOMIALS_LEN * EXT_DEGREE;
-                const FINAL_MONOMIALS_COMMIT_BUF: usize = {
-                    let total = FINAL_MONOMIALS_DATA_WORDS;
-                    (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
-                        / BLAKE2S_BLOCK_SIZE_U32_WORDS
-                        * BLAKE2S_BLOCK_SIZE_U32_WORDS
-                };
+                const FINAL_MONOMIALS_COMMIT_BUF: usize =
+                    FINAL_MONOMIALS_DATA_WORDS.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
                 let mut monomials_buf = CommitBuf::<FINAL_MONOMIALS_COMMIT_BUF>::new();
                 {
                     let mut i = 0;
@@ -1281,7 +1293,6 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                 }
 
                 let mut f_m_buf = LazyVec::<#quartic_struct, FINAL_MONOMIALS_LEN>::new();
-                f_m_buf.set_len(FINAL_MONOMIALS_LEN);
                 {
                     let mut i = 0;
                     while i < FINAL_MONOMIALS_LEN {
@@ -1289,6 +1300,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
                         i += 1;
                     }
                 }
+                f_m_buf.set_len(FINAL_MONOMIALS_LEN);
                 {
                     let mut level = 0;
                     let mut active_len = FINAL_MONOMIALS_LEN;

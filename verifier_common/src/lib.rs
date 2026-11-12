@@ -195,35 +195,28 @@ pub mod stats;
 pub use self::gkr::{GKRVerifierOutput, InitialGKRTranscript};
 pub use ::prover::definitions::{BlakeMode, GKRExternalChallenges, USE_REDUCED_BLAKE2_ROUNDS};
 
-/// The blake2s implementation of THIS build of the verifier (the `blake2s_u32`
-/// implementation the cargo features and target select): what the generated
-/// verifiers decide their proof layout from at compile time, and what a host
-/// must flatten proofs with for a verifier of the same build (a RISC-V
-/// program's mode is its `BlakeMode::tag()` build feature).
-pub const BLAKE_MODE: BlakeMode = {
-    #[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
-    {
-        BlakeMode::Compression
-    }
-    #[cfg(all(target_arch = "riscv32", feature = "blake2_g_function"))]
-    {
-        BlakeMode::GFunction
-    }
-    #[cfg(all(target_arch = "riscv32", feature = "special_opcodes_extension"))]
-    {
-        BlakeMode::BlakeSpecialOpcodes
-    }
-    #[cfg(not(all(
-        target_arch = "riscv32",
-        any(
-            feature = "blake2_with_compression",
-            feature = "blake2_g_function",
-            feature = "special_opcodes_extension"
-        )
-    )))]
-    {
-        BlakeMode::Software
-    }
+/// The Blake2s mode that selects the generated verifier's proof layout and the
+/// mode a host must use to flatten proofs for the same build. Normally this is
+/// the implementation selected by the target and cargo features (a RISC-V
+/// program's mode is its `BlakeMode::tag()` build feature). The host-only
+/// `test_compression` feature selects the Compression layout while hashing in Rust.
+pub const BLAKE_MODE: BlakeMode = if cfg!(all(
+    not(target_arch = "riscv32"),
+    feature = "test_compression"
+)) || cfg!(all(
+    target_arch = "riscv32",
+    feature = "blake2_with_compression"
+)) {
+    BlakeMode::Compression
+} else if cfg!(all(target_arch = "riscv32", feature = "blake2_g_function")) {
+    BlakeMode::GFunction
+} else if cfg!(all(
+    target_arch = "riscv32",
+    feature = "special_opcodes_extension"
+)) {
+    BlakeMode::BlakeSpecialOpcodes
+} else {
+    BlakeMode::Software
 };
 
 /// Wrappers for common field operations used by the verifier.
@@ -330,7 +323,9 @@ pub trait ConcreteVerifierImpl<
         >,
         transcript_state: &mut ::transcript::TranscriptState,
         nd_source: &mut I,
-    ) -> Result<GKRVerifierOutput<EE, ROUNDS, ADDRS>, E::Error>;
+        claim_point: &mut lazy_vec::LazyVec<EE, ROUNDS>,
+        base_layer_claims: &mut lazy_vec::LazyVec<EE, ADDRS>,
+    ) -> Result<GKRVerifierOutput<EE>, E::Error>;
     fn verify_whir<I: NonDeterminismSource<F>, E: ErrorCreator>(
         initial_transcript: &InitialGKRTranscript<
             EE,
@@ -397,18 +392,24 @@ pub fn verify_impl<
         NUM_SETUP_COMMITS,
         PADDING_WORDS,
     >(external_challenges, nd_source);
+    // The GKR verifier builds its claim point and the base-layer claims directly in these
+    // buffers: they are too large to be returned by value.
+    let mut claim_point = lazy_vec::LazyVec::<EE, ROUNDS>::new();
+    let mut base_layer_claims = lazy_vec::LazyVec::<EE, ADDRS>::new();
     let gkr_output = V::verify_gkr::<I, E>(
         external_challenges,
         &initial_transcript_values,
         &mut ts,
         nd_source,
+        &mut claim_point,
+        &mut base_layer_claims,
     )?;
     V::verify_whir::<I, E>(
         &initial_transcript_values,
         &mut ts,
         gkr_output.whir_batching_challenge,
-        gkr_output.base_layer_claims.as_slice(),
-        &gkr_output.evaluation_point[..gkr_output.evaluation_point_len],
+        base_layer_claims.as_slice(),
+        claim_point.as_slice(),
         nd_source,
     )?;
 

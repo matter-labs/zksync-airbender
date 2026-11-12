@@ -8,7 +8,7 @@ pub fn generate_sumcheck_helpers<MW: FieldWrapper>() -> TokenStream {
     let quartic_zero = MW::quartic_zero();
     let quartic_one = MW::quartic_one();
 
-    let mul_t_eq = MW::mul_assign(quote! { t }, quote! { *unsafe { eq.get_unchecked(i) } });
+    let mul_t_eq = MW::mul_assign_ref(quote! { t }, quote! { unsafe { eq.get_unchecked(i) } });
     let add_result_t = MW::add_assign(quote! { result }, quote! { t });
 
     let sub_f0_c = MW::sub_assign(quote! { f0 }, quote! { c });

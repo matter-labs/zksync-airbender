@@ -1,39 +1,23 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_unsafe,
-    unused_assignments,
-    clippy::needless_range_loop,
-    clippy::too_many_arguments,
-    clippy::manual_div_ceil,
-    clippy::borrow_deref_ref,
-    clippy::identity_op,
-    clippy::missing_safety_doc,
-    clippy::duplicate_mod,
-    clippy::large_const_arrays
-)]
 use super::common::{
-    dot_eq, draw_field_els_into, draw_field_els_into_after_pow, draw_fresh_field_els_into,
-    draw_single_field_el, draw_single_field_el_after_pow, ext_from_nds, ext_from_raw_words,
-    fold_standard_claims, make_eq_poly, read_field_el, read_reduced_field_el,
+    dot_eq, draw_field_els_into_after_pow, draw_field_els_into_uninit, draw_single_field_el,
+    draw_single_field_el_after_pow, fold_standard_claims, make_eq_poly, read_reduced_field_el,
     verify_final_step_check, verify_sumcheck_rounds, EXT_DEGREE,
 };
 use super::constants::*;
-use verifier_common::blake2s_u32::{BLAKE2S_BLOCK_SIZE_U32_WORDS, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
-use verifier_common::field::{Field, FieldExtension, PrimeField};
+use verifier_common::field::FieldExtension;
+use verifier_common::field::{Field, PrimeField};
 use verifier_common::field_ops;
 use verifier_common::gkr::SimpleGateType;
 use verifier_common::gkr::{GKRVerifierOutput, LayerState};
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
-use verifier_common::structs::{CommitBuf, TranscriptState};
+use verifier_common::structs::CommitBuf;
 use verifier_common::whir::read_and_verify_pow;
 use verifier_common::GKRExternalChallenges;
 #[inline(always)]
-#[allow(unused_variables)]
 unsafe fn layer_0_compute_claim(
     output_claims: &[BabyBearExt4; 77usize],
     batch_base: BabyBearExt4,
@@ -104,12 +88,13 @@ unsafe fn layer_0_compute_claim(
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
 #[inline(always)]
-#[allow(unused_variables, unused_mut, unused_unsafe)]
+#[allow(unused_mut)]
+#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 unsafe fn layer_0_final_step_accumulator(
     evals: &[[BabyBearExt4; 1]],
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
-    lookup_alpha: BabyBearExt4,
+    _lookup_alpha: BabyBearExt4,
     linearization_challenges: &[BabyBearExt4],
     permutation_argument_additive_part: BabyBearExt4,
     address_high_bits_shift: u32,
@@ -5777,7 +5762,6 @@ unsafe fn layer_0_final_step_accumulator(
     acc
 }
 #[inline(always)]
-#[allow(unused_variables)]
 unsafe fn layer_1_compute_claim(
     output_claims: &[BabyBearExt4; 25usize],
     batch_base: BabyBearExt4,
@@ -5803,16 +5787,17 @@ unsafe fn layer_1_compute_claim(
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
 #[inline(always)]
-#[allow(unused_variables, unused_mut, unused_unsafe)]
+#[allow(unused_mut)]
+#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 unsafe fn layer_1_final_step_accumulator(
     evals: &[[BabyBearExt4; 1]],
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
-    lookup_alpha: BabyBearExt4,
-    linearization_challenges: &[BabyBearExt4],
-    permutation_argument_additive_part: BabyBearExt4,
-    address_high_bits_shift: u32,
-    inits_and_teardowns_top_bits: &[u32],
+    _lookup_alpha: BabyBearExt4,
+    _linearization_challenges: &[BabyBearExt4],
+    _permutation_argument_additive_part: BabyBearExt4,
+    _address_high_bits_shift: u32,
+    _inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     {
@@ -6051,7 +6036,6 @@ unsafe fn layer_1_final_step_accumulator(
     acc
 }
 #[inline(always)]
-#[allow(unused_variables)]
 unsafe fn layer_2_compute_claim(
     output_claims: &[BabyBearExt4; 16usize],
     batch_base: BabyBearExt4,
@@ -6073,16 +6057,17 @@ unsafe fn layer_2_compute_claim(
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
 #[inline(always)]
-#[allow(unused_variables, unused_mut, unused_unsafe)]
+#[allow(unused_mut)]
+#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 unsafe fn layer_2_final_step_accumulator(
     evals: &[[BabyBearExt4; 1]],
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
-    lookup_alpha: BabyBearExt4,
-    linearization_challenges: &[BabyBearExt4],
-    permutation_argument_additive_part: BabyBearExt4,
-    address_high_bits_shift: u32,
-    inits_and_teardowns_top_bits: &[u32],
+    _lookup_alpha: BabyBearExt4,
+    _linearization_challenges: &[BabyBearExt4],
+    _permutation_argument_additive_part: BabyBearExt4,
+    _address_high_bits_shift: u32,
+    _inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     {
@@ -6308,7 +6293,6 @@ unsafe fn layer_2_final_step_accumulator(
     acc
 }
 #[inline(always)]
-#[allow(unused_variables)]
 unsafe fn layer_3_compute_claim(
     output_claims: &[BabyBearExt4; 10usize],
     batch_base: BabyBearExt4,
@@ -6325,16 +6309,17 @@ unsafe fn layer_3_compute_claim(
     super::common::compute_claim(output_claims, &DESCS, batch_base)
 }
 #[inline(always)]
-#[allow(unused_variables, unused_mut, unused_unsafe)]
+#[allow(unused_mut)]
+#[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 unsafe fn layer_3_final_step_accumulator(
     evals: &[[BabyBearExt4; 1]],
     batch_base: BabyBearExt4,
     lookup_additive_challenge: BabyBearExt4,
-    lookup_alpha: BabyBearExt4,
-    linearization_challenges: &[BabyBearExt4],
-    permutation_argument_additive_part: BabyBearExt4,
-    address_high_bits_shift: u32,
-    inits_and_teardowns_top_bits: &[u32],
+    _lookup_alpha: BabyBearExt4,
+    _linearization_challenges: &[BabyBearExt4],
+    _permutation_argument_additive_part: BabyBearExt4,
+    _address_high_bits_shift: u32,
+    _inits_and_teardowns_top_bits: &[u32],
 ) -> [BabyBearExt4; 2] {
     let mut acc = [BabyBearExt4::ZERO; 2];
     {
@@ -6546,7 +6531,6 @@ unsafe fn layer_3_final_step_accumulator(
     acc
 }
 #[inline(always)]
-#[allow(unused_unsafe)]
 unsafe fn dim_reducing_compute_claim(
     output_claims: &[BabyBearExt4; 10usize],
     batch_base: BabyBearExt4,
@@ -6600,13 +6584,12 @@ unsafe fn dim_reducing_compute_claim(
     combined
 }
 #[inline(always)]
-#[allow(unused_unsafe)]
 unsafe fn dim_reducing_final_step_accumulator(
     evals: &[[BabyBearExt4; 2]],
     batch_base: BabyBearExt4,
     indices: &[usize],
 ) -> BabyBearExt4 {
-    let mut acc = BabyBearExt4::ZERO;
+    let mut acc: BabyBearExt4;
     {
         let si = unsafe { *indices.get_unchecked(9usize) };
         let es = unsafe { evals.get_unchecked(si) };
@@ -6747,7 +6730,7 @@ fn check_virtual_setup_range_check_16bits<E: ErrorCreator>(
     state: &LayerState<BabyBearExt4, CLAIM_POINT_CAPACITY, GKR_ADDRS>,
 ) -> Result<(), E::Error> {
     unsafe {
-        let pt = state.prev_point.get_unchecked(..23usize);
+        let pt = state.prev_point.as_slice().get_unchecked(..23usize);
         let mut result: BabyBearExt4 = BabyBearExt4::ZERO;
         let mut prefactor: BabyBearField = BabyBearField::ONE;
         let mut k: usize = 0;
@@ -6761,7 +6744,7 @@ fn check_virtual_setup_range_check_16bits<E: ErrorCreator>(
         while k < 23usize {
             let mut t: BabyBearExt4 = BabyBearExt4::ONE;
             let p = pt.get_unchecked(k);
-            field_ops::sub_assign(&mut t, &*p);
+            field_ops::sub_assign(&mut t, p);
             field_ops::mul_assign(&mut result, &t);
             k += 1;
         }
@@ -6780,7 +6763,7 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
     state: &LayerState<BabyBearExt4, CLAIM_POINT_CAPACITY, GKR_ADDRS>,
 ) -> Result<(), E::Error> {
     unsafe {
-        let pt = state.prev_point.get_unchecked(..23usize);
+        let pt = state.prev_point.as_slice().get_unchecked(..23usize);
         let mut result: BabyBearExt4 = BabyBearExt4::ZERO;
         let mut prefactor: BabyBearField = BabyBearField::ONE;
         let mut k: usize = 0;
@@ -6794,7 +6777,7 @@ fn check_virtual_setup_range_check_timestamp<E: ErrorCreator>(
         while k < 23usize {
             let mut t: BabyBearExt4 = BabyBearExt4::ONE;
             let p = pt.get_unchecked(k);
-            field_ops::sub_assign(&mut t, &*p);
+            field_ops::sub_assign(&mut t, p);
             field_ops::mul_assign(&mut result, &t);
             k += 1;
         }
@@ -6814,7 +6797,7 @@ fn check_virtual_setup_inits_and_teardowns<E: ErrorCreator>(
     state: &LayerState<BabyBearExt4, CLAIM_POINT_CAPACITY, GKR_ADDRS>,
 ) -> Result<(), E::Error> {
     unsafe {
-        let pt = state.prev_point.get_unchecked(..23usize);
+        let pt = state.prev_point.as_slice().get_unchecked(..23usize);
         let mut low_eval: BabyBearExt4 = BabyBearExt4::ZERO;
         {
             let mut prefactor: BabyBearField = BabyBearField::ONE;
@@ -6853,22 +6836,20 @@ fn check_virtual_setup_inits_and_teardowns<E: ErrorCreator>(
     }
     Ok(())
 }
-#[allow(unused_variables, unused_mut, unused_unsafe)]
+#[allow(unused_unsafe)]
 pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     external_challenges: &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
     initial_transcript: &ConcreteInitialTranscript,
     ts: &mut ::verifier_common::structs::TranscriptState,
     nd_source: &mut I,
+    claim_point: &mut LazyVec<BabyBearExt4, CLAIM_POINT_CAPACITY>,
+    base_layer_claims: &mut LazyVec<BabyBearExt4, GKR_ADDRS>,
 ) -> Result<ConcreteGKRVerifierOutput, E::Error> {
     unsafe {
-        let mut init_challenges = LazyVec::<BabyBearExt4, 2>::new();
-        unsafe {
-            init_challenges.set_len(2);
-        }
+        let mut init_challenges = [BabyBearExt4::ZERO; 2];
         read_and_verify_pow::<I>(ts, LOOKUP_CHALLENGES_POW_BITS, nd_source);
-        draw_field_els_into_after_pow::<DRAW_BUF_CAPACITY>(ts, init_challenges.as_mut_slice());
-        let lookup_alpha = *init_challenges.get(0);
-        let lookup_additive_challenge = *init_challenges.get(1);
+        draw_field_els_into_after_pow::<DRAW_BUF_CAPACITY>(ts, &mut init_challenges);
+        let [lookup_alpha, lookup_additive_challenge] = init_challenges;
         let address_high_bits_shift: u32 = 9u32;
         let mut evals_commit_buf = CommitBuf::<GKR_EVALS_COMMIT_BUF>::new();
         let evals_data_words = 160usize * EXT_DEGREE;
@@ -6883,17 +6864,21 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         ts.commit(&mut evals_commit_buf, evals_data_words);
         let evals_slice: &[BabyBearExt4] = unsafe { evals_commit_buf.data_as(160usize) };
         let mut all_challenges = LazyVec::<BabyBearExt4, { CLAIM_POINT_CAPACITY + 1 }>::new();
+        draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(
+            ts,
+            &mut all_challenges.spare_capacity_mut()[..5usize],
+        );
         unsafe {
             all_challenges.set_len(5usize);
         }
-        draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, all_challenges.as_mut_slice());
         let batching_challenge = *all_challenges.get(5usize - 1);
         let mut eq_buf = LazyVec::<BabyBearExt4, 16usize>::new();
         let eq_challenges: &[BabyBearExt4; 4usize] = all_challenges.as_slice()[..4usize]
             .try_into()
             .unwrap_unchecked();
         make_eq_poly(eq_challenges, &mut eq_buf);
-        let mut prev_claims: LazyVec<BabyBearExt4, GKR_ADDRS> = LazyVec::new();
+        let prev_claims = base_layer_claims;
+        prev_claims.clear();
         {
             let vals: &[BabyBearExt4; 16usize] =
                 evals_slice[0usize..16usize].try_into().unwrap_unchecked();
@@ -6967,19 +6952,13 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             let claim = dot_eq(vals, eq_arr);
             prev_claims.push(claim);
         }
-        let prev_point = {
-            let mut lv = LazyVec::<BabyBearExt4, CLAIM_POINT_CAPACITY>::new();
-            for i in 0..4usize {
-                lv.push(*all_challenges.get(i));
-            }
-            unsafe {
-                lv.set_len(CLAIM_POINT_CAPACITY);
-            }
-            unsafe { lv.into_array() }
-        };
+        let prev_point = claim_point;
+        prev_point.clear();
+        for i in 0..4usize {
+            prev_point.push(*all_challenges.get(i));
+        }
         let mut state = LayerState {
             prev_point,
-            prev_point_len: 4usize,
             prev_claims,
             batching_challenge,
         };
@@ -7052,7 +7031,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 4usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     22usize,
                     nd_source,
                 )?;
@@ -7076,19 +7055,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -7104,7 +7084,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 22");
         }
@@ -7117,7 +7097,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 5usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     21usize,
                     nd_source,
                 )?;
@@ -7141,19 +7121,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -7169,7 +7150,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 21");
         }
@@ -7182,7 +7163,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 6usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     20usize,
                     nd_source,
                 )?;
@@ -7206,19 +7187,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -7234,7 +7216,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 20");
         }
@@ -7247,7 +7229,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 7usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     19usize,
                     nd_source,
                 )?;
@@ -7271,19 +7253,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -7299,7 +7282,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 19");
         }
@@ -7312,7 +7295,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 8usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     18usize,
                     nd_source,
                 )?;
@@ -7336,19 +7319,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -7364,7 +7348,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 18");
         }
@@ -7377,7 +7361,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 9usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     17usize,
                     nd_source,
                 )?;
@@ -7401,19 +7385,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -7429,7 +7414,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 17");
         }
@@ -7442,7 +7427,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 10usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     16usize,
                     nd_source,
                 )?;
@@ -7466,19 +7451,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -7494,7 +7480,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 16");
         }
@@ -7507,7 +7493,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 11usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     15usize,
                     nd_source,
                 )?;
@@ -7531,19 +7517,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -7559,7 +7546,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 15");
         }
@@ -7572,7 +7559,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 12usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     14usize,
                     nd_source,
                 )?;
@@ -7596,19 +7583,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -7624,7 +7612,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 14");
         }
@@ -7637,7 +7625,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 13usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     13usize,
                     nd_source,
                 )?;
@@ -7661,19 +7649,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -7689,7 +7678,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 13");
         }
@@ -7702,7 +7691,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 14usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     12usize,
                     nd_source,
                 )?;
@@ -7726,19 +7715,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -7754,7 +7744,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 12");
         }
@@ -7767,7 +7757,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 15usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     11usize,
                     nd_source,
                 )?;
@@ -7791,19 +7781,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -7819,7 +7810,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 11");
         }
@@ -7832,7 +7823,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 16usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     10usize,
                     nd_source,
                 )?;
@@ -7856,19 +7847,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -7884,7 +7876,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 10");
         }
@@ -7897,7 +7889,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 17usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     9usize,
                     nd_source,
                 )?;
@@ -7921,19 +7913,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -7949,7 +7942,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 9");
         }
@@ -7962,7 +7955,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 18usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     8usize,
                     nd_source,
                 )?;
@@ -7986,19 +7979,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -8014,7 +8008,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 8");
         }
@@ -8027,7 +8021,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 19usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     7usize,
                     nd_source,
                 )?;
@@ -8051,19 +8045,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -8079,7 +8074,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 7");
         }
@@ -8092,7 +8087,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 20usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     6usize,
                     nd_source,
                 )?;
@@ -8116,19 +8111,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -8144,7 +8140,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 6");
         }
@@ -8157,7 +8153,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 21usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     5usize,
                     nd_source,
                 )?;
@@ -8181,19 +8177,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -8209,7 +8206,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 5");
         }
@@ -8222,7 +8219,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 22usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     4usize,
                     nd_source,
                 )?;
@@ -8246,19 +8243,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let mut draw_buf = LazyVec::<BabyBearExt4, 2>::new();
+            draw_field_els_into_uninit::<DRAW_BUF_CAPACITY>(ts, draw_buf.spare_capacity_mut());
             unsafe {
                 draw_buf.set_len(2);
             }
-            draw_field_els_into::<DRAW_BUF_CAPACITY>(ts, draw_buf.as_mut_slice());
             let r_last = *draw_buf.get(0);
             let next_batching = *draw_buf.get(1);
             {
                 let mut i = fc_len;
                 while i > 0 {
-                    *state.prev_point.get_unchecked_mut(i) = *state.prev_point.get_unchecked(i - 1);
+                    let coordinate = *state.prev_point.get_unchecked(i - 1);
+                    state.prev_point.set_unchecked(i, coordinate);
                     i -= 1;
                 }
-                *state.prev_point.get_unchecked_mut(0) = r_last;
+                state.prev_point.set_unchecked(0, r_last);
             }
             fc_len += 1;
             const DIM_REDUCING_EXTRA_CHALLENGES: usize = 1;
@@ -8274,7 +8272,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 state.prev_claims.push(dot_eq(e, eq2_arr));
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            state.prev_point.set_len(fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR COMPRESSION LAYER 4");
         }
@@ -8287,7 +8285,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     3usize,
                     nd_source,
                 )?;
@@ -8317,12 +8315,9 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<16usize, GKR_ADDRS, GKR_EVAL_BUF>(
-                &eval_buf,
-                &mut state.prev_claims,
-            );
+            fold_standard_claims::<16usize, GKR_ADDRS, GKR_EVAL_BUF>(&eval_buf, state.prev_claims);
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            debug_assert_eq!(state.prev_point.len(), fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR MAIN LAYER 3");
         }
@@ -8335,7 +8330,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     2usize,
                     nd_source,
                 )?;
@@ -8365,12 +8360,9 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             ts.commit(&mut eval_buf, data_words);
             let next_batching = draw_single_field_el(ts);
-            fold_standard_claims::<25usize, GKR_ADDRS, GKR_EVAL_BUF>(
-                &eval_buf,
-                &mut state.prev_claims,
-            );
+            fold_standard_claims::<25usize, GKR_ADDRS, GKR_EVAL_BUF>(&eval_buf, state.prev_claims);
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            debug_assert_eq!(state.prev_point.len(), fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR MAIN LAYER 2");
         }
@@ -8383,7 +8375,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     1usize,
                     nd_source,
                 )?;
@@ -8506,6 +8498,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (75usize, 30usize, 10usize),
                     (76usize, 40usize, 10usize),
                 ];
+                #[allow(clippy::large_const_arrays)]
                 const VL_COLS: [(u32, usize, usize); 50usize] = [
                     (0u32, 0usize, 1usize),
                     (0u32, 1usize, 1usize),
@@ -8558,6 +8551,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (0u32, 39usize, 0usize),
                     (0u32, 39usize, 1usize),
                 ];
+                #[allow(clippy::large_const_arrays)]
                 const VL_TERMS: [(u32, usize); 40usize] = [
                     (268435454u32, 9usize),
                     (268435454u32, 10usize),
@@ -8636,7 +8630,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 }
             }
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            debug_assert_eq!(state.prev_point.len(), fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR MAIN LAYER 1");
         }
@@ -8649,7 +8643,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                 verify_sumcheck_rounds::<I, E, 23usize, GKR_COMMIT_BUF>(
                     ts,
                     initial_claim,
-                    &mut state.prev_point,
+                    state.prev_point.as_mut_slice(),
                     0usize,
                     nd_source,
                 )?;
@@ -8804,6 +8798,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             }
             {
                 const VL_DESCS: [(usize, usize, usize); 1usize] = [(124usize, 0usize, 10usize)];
+                #[allow(clippy::large_const_arrays)]
                 const VL_COLS: [(u32, usize, usize); 10usize] = [
                     (0u32, 0usize, 1usize),
                     (0u32, 1usize, 1usize),
@@ -8816,6 +8811,7 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
                     (0u32, 8usize, 19usize),
                     (268435358u32, 27usize, 0usize),
                 ];
+                #[allow(clippy::large_const_arrays)]
                 const VL_TERMS: [(u32, usize); 27usize] = [
                     (268435454u32, 22usize),
                     (268435454u32, 23usize),
@@ -9327,22 +9323,20 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
             check_virtual_setup_range_check_timestamp::<E>(&state)?;
             check_virtual_setup_inits_and_teardowns::<E>(&state)?;
             state.batching_challenge = next_batching;
-            state.prev_point_len = fc_len;
+            debug_assert_eq!(state.prev_point.len(), fc_len);
             #[cfg(feature = "verifier_stats")]
             verifier_common::stats::log("GKR MAIN LAYER 0");
         }
         read_and_verify_pow::<I>(ts, BATCHED_PROXIMITY_POW_BITS, nd_source);
         state.batching_challenge = draw_single_field_el_after_pow(ts);
-        let mut permutation_read_product: BabyBearExt4 = BabyBearExt4::ONE;
-        let mut permutation_write_product: BabyBearExt4 = BabyBearExt4::ONE;
-        #[allow(unused_mut)]
-        let mut inits_and_teardowns_read_product: BabyBearExt4 = BabyBearExt4::ONE;
-        #[allow(unused_mut)]
-        let mut inits_and_teardowns_write_product: BabyBearExt4 = BabyBearExt4::ONE;
+        let permutation_read_product: BabyBearExt4;
+        let permutation_write_product: BabyBearExt4;
+        let inits_and_teardowns_read_product: BabyBearExt4;
+        let inits_and_teardowns_write_product: BabyBearExt4;
         {
             let mut read_product = BabyBearExt4::ONE;
             for i in 0..16usize {
-                let eval = *evals_slice.get_unchecked(0usize + i);
+                let eval = *evals_slice.get_unchecked(i);
                 field_ops::mul_assign(&mut read_product, &eval);
             }
             let mut write_product = BabyBearExt4::ONE;
@@ -9418,9 +9412,6 @@ pub(crate) fn verify_gkr<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator
         #[cfg(feature = "verifier_stats")]
         verifier_common::stats::log("GKR MAIN OUTPUT");
         Ok(GKRVerifierOutput {
-            base_layer_claims: state.prev_claims,
-            evaluation_point: state.prev_point,
-            evaluation_point_len: state.prev_point_len,
             permutation_read_product,
             permutation_write_product,
             inits_and_teardowns_read_product,
@@ -9451,12 +9442,16 @@ impl
         initial_transcript: &ConcreteInitialTranscript,
         transcript_state: &mut ::verifier_common::structs::TranscriptState,
         nd_source: &mut I,
+        claim_point: &mut LazyVec<BabyBearExt4, CLAIM_POINT_CAPACITY>,
+        base_layer_claims: &mut LazyVec<BabyBearExt4, GKR_ADDRS>,
     ) -> Result<ConcreteGKRVerifierOutput, E::Error> {
         verify_gkr::<I, E>(
             external_challenges,
             initial_transcript,
             transcript_state,
             nd_source,
+            claim_point,
+            base_layer_claims,
         )
     }
     #[inline(always)]

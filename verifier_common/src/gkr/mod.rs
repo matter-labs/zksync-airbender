@@ -61,11 +61,14 @@ impl quote::ToTokens for SimpleGateType {
 #[cfg(any(test, feature = "proof_utils"))]
 pub mod flatten;
 
-#[derive(Clone, Debug)]
-pub struct LayerState<E: Field, const ROUNDS: usize, const ADDRS: usize> {
-    pub prev_point: [E; ROUNDS],
-    pub prev_point_len: usize,
-    pub prev_claims: LazyVec<E, ADDRS>,
+/// The running state of the GKR layer walk. The claim point and the claims are too large to
+/// move around, so they live in storage owned by the caller of the GKR verifier and are
+/// updated in place; after the last layer they are the base-layer claim point and claims.
+#[derive(Debug)]
+pub struct LayerState<'a, E: Field, const ROUNDS: usize, const ADDRS: usize> {
+    /// The current claim point; its length is the number of coordinates written so far.
+    pub prev_point: &'a mut LazyVec<E, ROUNDS>,
+    pub prev_claims: &'a mut LazyVec<E, ADDRS>,
     pub batching_challenge: E,
 }
 
@@ -261,15 +264,14 @@ pub fn make_initial_transcript<
     }
 }
 
-pub struct GKRVerifierOutput<E: Field, const ROUNDS: usize, const ADDRS: usize> {
-    pub evaluation_point: [E; ROUNDS],
-    pub evaluation_point_len: usize,
+/// What the GKR verifier returns by value. The base-layer claim point and claims are written
+/// into the buffers the caller passes in instead.
+pub struct GKRVerifierOutput<E: Field> {
     pub permutation_read_product: E,
     pub permutation_write_product: E,
     pub inits_and_teardowns_read_product: E,
     pub inits_and_teardowns_write_product: E,
     pub whir_batching_challenge: E,
-    pub base_layer_claims: LazyVec<E, ADDRS>,
 }
 
 /// Merge the base-layer claims of a PACKED base commitment, in place.

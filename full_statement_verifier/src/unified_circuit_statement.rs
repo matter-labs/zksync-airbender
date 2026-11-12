@@ -27,12 +27,10 @@ use verifier_common::cs::definitions::split_timestamp;
 ///
 /// # Safety
 ///
-/// No extra caller obligations: `unsafe` covers the body's uninitialized `u32` scratch
-/// buffers (every word is written before it is read) and the reinterpretation of the
-/// register buffer as `(value, (ts_low, ts_high))` triples.
-#[allow(invalid_value)]
+/// No extra caller obligations: `unsafe` covers the in-place fill of the register buffer
+/// (every word is written before the buffer is viewed as initialized) and its
+/// reinterpretation as `(value, (ts_low, ts_high))` triples.
 #[inline(never)]
-#[allow(clippy::uninit_assumed_init)]
 #[allow(clippy::manual_memcpy)]
 pub unsafe fn verify_full_statement_for_unified_circuit<
     I: NonDeterminismSource<BabyBearField>,
@@ -61,22 +59,25 @@ where
 {
     let mut transcript = Blake2sBufferingTranscript::<REDUCED_ROUNDS>::new();
 
-    let mut registers_buffer = MaybeUninit::<[u32; 32 + 2 * 32]>::uninit().assume_init();
+    let mut registers_buffer = MaybeUninit::<[u32; 32 + 2 * 32]>::uninit();
+    let registers_dst = registers_buffer.as_mut_ptr().cast::<u32>();
 
     // first we need to get final register values and timestamps
     for reg_idx in 0..32 {
         let value = nd_source.read_word();
         let timestamp_low = nd_source.read_word();
         let timestamp_high = nd_source.read_word();
-        registers_buffer[reg_idx * 3] = value;
-        registers_buffer[reg_idx * 3 + 1] = timestamp_low;
-        registers_buffer[reg_idx * 3 + 2] = timestamp_high;
+        registers_dst.add(reg_idx * 3).write(value);
+        registers_dst.add(reg_idx * 3 + 1).write(timestamp_low);
+        registers_dst.add(reg_idx * 3 + 2).write(timestamp_high);
     }
+    // SAFETY: the loop above wrote every word of the buffer
+    let registers_buffer: &[u32; 32 + 2 * 32] = registers_buffer.assume_init_ref();
 
     // x0 is always 0, for sanity
     assert_eq!(registers_buffer[0], 0);
 
-    transcript.absorb(&registers_buffer);
+    transcript.absorb(registers_buffer);
 
     let mut final_pc_buffer = [0u32; BLAKE2S_BLOCK_SIZE_U32_WORDS];
     let final_pc = nd_source.read_word();
@@ -255,9 +256,7 @@ where
     // conclude that our memory argument is valid
     let (machine_state_read_set_contribution, machine_state_write_set_contribution) =
         prover::definitions::produce_initial_permutation_product_separate_contributions(
-            core::mem::transmute::<&[u32; 32 + 2 * 32], &[(u32, (u32, u32)); 32]>(
-                &registers_buffer,
-            ),
+            core::mem::transmute::<&[u32; 32 + 2 * 32], &[(u32, (u32, u32)); 32]>(registers_buffer),
             INITIAL_PC,
             split_timestamp(INITIAL_TIMESTAMP),
             final_pc,
@@ -272,7 +271,7 @@ where
 
     // Now we only need to reason about "which program do we execute", and "did it finish successfully or not".
 
-    let mut output: [u32; 16] = MaybeUninit::uninit().assume_init();
+    let mut output = [0u32; 16];
     // in any case we carry registers 10-17 to the next layer - those are the output of the base program
     for i in 0..8 {
         output[i] = registers_buffer[(10 + i) * 3];
@@ -316,16 +315,14 @@ where
     } else {
         // recursion layer: we require that the upper 8 registers are a hash output that encodes
         // our chain of executed programs.
-        let mut aux_registers: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS] =
-            MaybeUninit::uninit().assume_init();
+        let mut aux_registers = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS];
         for i in 8..16 {
             let value = registers_buffer[(10 + i) * 3];
             aux_registers[i - 8] = value;
         }
 
         // So prover can ALWAYS present a preimage
-        let mut preimage: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2] =
-            MaybeUninit::uninit().assume_init();
+        let mut preimage = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2];
         for i in 0..BLAKE2S_DIGEST_SIZE_U32_WORDS * 2 {
             preimage[i] = nd_source.read_word();
         }
@@ -353,8 +350,7 @@ where
             }
         } else {
             // concatenate and hash
-            let mut input: [u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2] =
-                MaybeUninit::uninit().assume_init();
+            let mut input = [0u32; BLAKE2S_DIGEST_SIZE_U32_WORDS * 2];
             for i in 0..8 {
                 input[i] = aux_registers[i];
                 input[i + 8] = end_params_output.0[i];

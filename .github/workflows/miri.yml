@@ -1,0 +1,116 @@
+name: Miri verifier
+on:
+  pull_request:
+  push:
+    branches: [main, stable, dev, av_gkr_compiler]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  RUST_MIN_STACK: "134217728"
+  MIRIFLAGS: "-Zmiri-recursive-validation -Zmiri-symbolic-alignment-check"
+
+jobs:
+  miri:
+    name: Miri verifiers (both modes)
+    runs-on: [matterlabs-ci-runner-high-performance]
+    timeout-minutes: 90
+    container:
+      image: ubuntu:24.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Set workspace paths
+        run: |
+          echo "CARGO_TARGET_DIR=$GITHUB_WORKSPACE/target/miri" >> "$GITHUB_ENV"
+          echo "AIRBENDER_MIRI_CIRCUIT_INPUT_DIR=$GITHUB_WORKSPACE/target/miri/inputs/circuits" >> "$GITHUB_ENV"
+          echo "AIRBENDER_MIRI_FSV_INPUT_DIR=$GITHUB_WORKSPACE/target/miri/inputs/statements" >> "$GITHUB_ENV"
+      - name: Install build dependencies and Python
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential ca-certificates cmake curl git libssl-dev pkg-config python3
+      - uses: actions/checkout@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: miri, rust-src
+          rustflags: ""
+          cache: false
+      - name: Set up Miri sysroot
+        run: cargo miri setup
+      - name: Build the native input producers once
+        run: |
+          cargo build -p verifier --no-default-features --features miri_circuits --example miri_circuit_input
+          cargo build -p full_statement_verifier --no-default-features --features host_utils,miri_fsv --example miri_input
+      - name: Verify every committed circuit proof and chain natively in parallel
+        run: |
+          python3 - <<'PY'
+          import concurrent.futures, os, pathlib, subprocess
+          root = pathlib.Path(os.environ['GITHUB_WORKSPACE'])
+          target = pathlib.Path(os.environ['CARGO_TARGET_DIR'])
+          circuit_inputs = pathlib.Path(os.environ['AIRBENDER_MIRI_CIRCUIT_INPUT_DIR'])
+          statement_inputs = pathlib.Path(os.environ['AIRBENDER_MIRI_FSV_INPUT_DIR'])
+          statement_inputs.mkdir(parents=True, exist_ok=True)
+          circuits, statements = {}, {}
+          for mode in ['ethproofs_soundcalc', 'pessimistic_conjecture']:
+              fixtures = sorted((root / 'fixtures/circuits' / mode).glob('*.json.zlib'))
+              assert fixtures, mode
+              (circuit_inputs / mode).mkdir(parents=True, exist_ok=True)
+              for fixture in fixtures:
+                  circuit = fixture.name.removesuffix('.json.zlib')
+                  circuits[circuit + '_' + mode] = [str(target / 'debug/examples/miri_circuit_input'), circuit, mode,
+                                                    str(circuit_inputs / mode / (circuit + '.bin'))]
+              for chain in ['base', 'unrolled', 'unified', 'unrolled_unified']:
+                  statements[mode + '_' + chain] = [str(target / 'debug/examples/miri_input'),
+                                                    str(statement_inputs / (mode + '_' + chain + '.bin')), mode, chain]
+          def run(item):
+              return item[0], subprocess.run(item[1], capture_output=True, text=True)
+          with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as pool:
+              results = list(pool.map(run, {**circuits, **statements}.items()))
+          for case, result in results:
+              print(f'{case}: exit={result.returncode} {result.stdout.strip()}', flush=True)
+              if result.returncode:
+                  print(result.stderr, end='', flush=True)
+          assert all(result.returncode == 0 for _, result in results)
+          (target / 'circuit-cases.txt').write_text('\n'.join(circuits) + '\n')
+          (target / 'statement-cases.txt').write_text('\n'.join(statements) + '\n')
+          PY
+      - name: Compile the shared Miri test binaries once
+        run: |
+          cargo miri test -p full_statement_verifier --no-default-features --features miri_fsv --test miri_native --no-run
+          cargo miri test -p verifier --no-default-features --features miri_circuits --test miri_circuits --no-run
+      - name: Run every committed chain in both modes in parallel
+        run: |
+          mapfile -t cases < "$CARGO_TARGET_DIR/statement-cases.txt"
+          python3 .github/scripts/run_miri.py \
+            --package full_statement_verifier --features miri_fsv --test-target miri_native \
+            --cases "${cases[@]}" --jobs 8 \
+            --output "$CARGO_TARGET_DIR/results/statements"
+      - name: Run all canonical circuit cases in parallel
+        run: |
+          mapfile -t cases < "$CARGO_TARGET_DIR/circuit-cases.txt"
+          python3 .github/scripts/run_miri.py \
+            --package verifier --features miri_circuits --test-target miri_circuits \
+            --cases "${cases[@]}" --jobs 28 \
+            --output "$CARGO_TARGET_DIR/results/circuits"
+      - name: Check verifier_common helpers
+        run: cargo miri test -p verifier_common --no-default-features --lib
+      - name: Check generated helpers
+        run: cargo miri test -p verifier --no-default-features --features miri_circuits --test generated_common
+      - name: Publish case timing summaries
+        if: always()
+        run: |
+          for part in statements circuits; do
+            if test -f "$CARGO_TARGET_DIR/results/$part/summary.md"; then
+              cat "$CARGO_TARGET_DIR/results/$part/summary.md" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: miri
+          path: target/miri/results

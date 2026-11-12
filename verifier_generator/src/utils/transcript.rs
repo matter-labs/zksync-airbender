@@ -14,11 +14,13 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
         }
 
         #[inline(always)]
+        #[allow(dead_code)]
         pub fn read_field_el<I: NonDeterminismSource<#field_struct>>(nd_source: &mut I) -> #quartic_struct {
             ext_from_nds::<#field_struct, #quartic_struct, I>(nd_source)
         }
 
         #[inline(always)]
+        #[allow(dead_code)]
         pub fn read_field_els<I: NonDeterminismSource<#field_struct>>(dst: &mut [#quartic_struct], nd_source: &mut I) {
             let mut i = 0;
             while i < dst.len() {
@@ -28,18 +30,33 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
         }
 
         #[inline(always)]
+        #[allow(dead_code)]
         pub fn draw_field_els_into<const BUF_CAP: usize>(
             ts: &mut TranscriptState,
             dst: &mut [#quartic_struct],
+        ) {
+            // SAFETY: `MaybeUninit<T>` has the layout of `T`, and the draw only ever writes
+            // initialized elements into the destination.
+            let dst = unsafe { &mut *(core::ptr::from_mut(dst) as *mut [core::mem::MaybeUninit<#quartic_struct>]) };
+            draw_field_els_into_uninit::<BUF_CAP>(ts, dst);
+        }
+
+        /// Variant of [`draw_field_els_into`] for a destination that is not initialized yet:
+        /// every element of `dst` is written.
+        #[inline(always)]
+        pub fn draw_field_els_into_uninit<const BUF_CAP: usize>(
+            ts: &mut TranscriptState,
+            dst: &mut [core::mem::MaybeUninit<#quartic_struct>],
         ) {
             let n = dst.len();
             let padded = (n * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
             assert!(padded <= BUF_CAP, "draw buffer too small");
 
             let mut words = LazyVec::<u32, BUF_CAP>::new();
+            ts.draw_raw_into_uninit(&mut words.spare_capacity_mut()[..padded]);
+            // SAFETY: the draw wrote the first `padded` words
             unsafe {
                 words.set_len(padded);
-                ts.draw_raw(words.as_mut_slice());
             }
 
             let mut i = 0;
@@ -47,7 +64,7 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
                 let base = i * EXT_DEGREE;
                 let raw = unsafe { (words.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
                 unsafe {
-                    *dst.get_unchecked_mut(i) = ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw);
+                    dst.get_unchecked_mut(i).write(ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw));
                 }
                 i += 1;
             }
@@ -58,9 +75,10 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
             ts: &mut TranscriptState,
         ) -> #quartic_struct {
             let mut words = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
+            ts.draw_raw_into_uninit(words.spare_capacity_mut());
+            // SAFETY: the draw wrote all the words
             unsafe {
                 words.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-                ts.draw_raw(words.as_mut_slice());
             }
             let raw = unsafe { words.as_array::<EXT_DEGREE>() };
             ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw)
@@ -81,6 +99,7 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
         /// re-emits its words. Matches the prover's `draw_fresh_random_field_els` — used for
         /// the packing coordinates drawn right after the GKR phase, which ends with a draw.
         #[inline(always)]
+        #[allow(dead_code)]
         pub fn draw_fresh_field_els_into<const BUF_CAP: usize>(
             ts: &mut TranscriptState,
             dst: &mut [#quartic_struct],
@@ -97,14 +116,28 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
             ts: &mut TranscriptState,
             dst: &mut [#quartic_struct],
         ) {
+            // SAFETY: `MaybeUninit<T>` has the layout of `T`, and the draw only ever writes
+            // initialized elements into the destination.
+            let dst = unsafe { &mut *(core::ptr::from_mut(dst) as *mut [core::mem::MaybeUninit<#quartic_struct>]) };
+            draw_field_els_into_uninit_after_pow::<BUF_CAP>(ts, dst);
+        }
+
+        /// Variant of [`draw_field_els_into_after_pow`] for a destination that is not
+        /// initialized yet: every element of `dst` is written.
+        #[inline(always)]
+        pub fn draw_field_els_into_uninit_after_pow<const BUF_CAP: usize>(
+            ts: &mut TranscriptState,
+            dst: &mut [core::mem::MaybeUninit<#quartic_struct>],
+        ) {
             let n = dst.len();
             let padded = (n * EXT_DEGREE + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
             assert!(padded <= BUF_CAP, "draw buffer too small");
 
             let mut words = LazyVec::<u32, BUF_CAP>::new();
+            ts.draw_raw_into_uninit(&mut words.spare_capacity_mut()[..padded]);
+            // SAFETY: the draw wrote the first `padded` words
             unsafe {
                 words.set_len(padded);
-                ts.draw_raw(words.as_mut_slice());
             }
 
             let mut i = 0;
@@ -113,7 +146,7 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
                 let base = 1 + i * EXT_DEGREE;
                 let raw = unsafe { (words.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
                 unsafe {
-                    *dst.get_unchecked_mut(i) = ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw);
+                    dst.get_unchecked_mut(i).write(ext_from_raw_words::<#field_struct, #quartic_struct, EXT_DEGREE>(raw));
                 }
                 i += 1;
             }
@@ -127,9 +160,10 @@ pub fn generate_transcript_helpers<MW: FieldWrapper>() -> TokenStream {
             ts: &mut TranscriptState,
         ) -> #quartic_struct {
             let mut words = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
+            ts.draw_raw_into_uninit(words.spare_capacity_mut());
+            // SAFETY: the draw wrote all the words
             unsafe {
                 words.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-                ts.draw_raw(words.as_mut_slice());
             }
             // skip first word used for PoW
             let raw = unsafe { (words.as_slice().as_ptr().add(1) as *const [u32; EXT_DEGREE]).as_ref_unchecked() };

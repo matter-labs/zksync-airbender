@@ -92,9 +92,10 @@ pub fn draw_query_indices<const MAX_QUERIES: usize, const MAX_DRAW_WORDS: usize>
     draw_words: usize,
 ) -> LazyVec<usize, MAX_QUERIES> {
     let mut source_words = LazyVec::<u32, MAX_DRAW_WORDS>::new();
+    ts.draw_raw_into_uninit(&mut source_words.spare_capacity_mut()[..draw_words]);
+    // SAFETY: the draw wrote the first `draw_words` words
     unsafe {
         source_words.set_len(draw_words);
-        ts.draw_raw(source_words.as_mut_slice());
     }
 
     // Skip first word (matches prover's draw_query_bits convention)
@@ -154,19 +155,23 @@ pub fn verify_merkle_path<I: U32WordNonDeterminismSource>(
     }
 }
 
+/// Hashes the `num_words` leaf words at the start of `buf`. `buf` covers the blocks that get
+/// hashed, the last one zero-padded: a larger backing buffer only has to be initialized up to
+/// there.
 #[inline(always)]
-pub fn hash_leaf_data_into_state<const N: usize>(
+pub fn hash_leaf_data_into_state(
     hasher: &mut DelegatedBlake2sState,
-    buf: &blake2s_u32::AlignedArray64<u32, N>,
+    buf: &blake2s_u32::AlignedSlice64<u32>,
     num_words: usize,
 ) {
     use blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS;
 
-    debug_assert_eq!(N % BLAKE2S_BLOCK_SIZE_U32_WORDS, 0);
+    debug_assert_eq!(buf.len() % BLAKE2S_BLOCK_SIZE_U32_WORDS, 0);
     const BLOCK_LOG2: usize = BLAKE2S_BLOCK_SIZE_U32_WORDS.trailing_zeros() as usize;
     let num_full_blocks = num_words >> BLOCK_LOG2;
     let last_block_words = num_words & (BLAKE2S_BLOCK_SIZE_U32_WORDS - 1);
     let num_blocks = num_full_blocks + if last_block_words > 0 { 1 } else { 0 };
+    debug_assert!(num_blocks.max(1) * BLAKE2S_BLOCK_SIZE_U32_WORDS <= buf.len());
     hasher.reset();
 
     unsafe {

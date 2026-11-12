@@ -1,17 +1,3 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_unsafe,
-    unused_assignments,
-    clippy::needless_range_loop,
-    clippy::too_many_arguments,
-    clippy::manual_div_ceil,
-    clippy::borrow_deref_ref,
-    clippy::identity_op,
-    clippy::missing_safety_doc,
-    clippy::duplicate_mod,
-    clippy::large_const_arrays
-)]
 use verifier_common::blake2s_u32::{DelegatedBlake2sState, BLAKE2S_DIGEST_SIZE_U32_WORDS};
 use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
@@ -31,10 +17,12 @@ pub fn read_reduced_field_el<I: NonDeterminismSource<BabyBearField>>(
     nd_source.read_field_element()
 }
 #[inline(always)]
+#[allow(dead_code)]
 pub fn read_field_el<I: NonDeterminismSource<BabyBearField>>(nd_source: &mut I) -> BabyBearExt4 {
     ext_from_nds::<BabyBearField, BabyBearExt4, I>(nd_source)
 }
 #[inline(always)]
+#[allow(dead_code)]
 pub fn read_field_els<I: NonDeterminismSource<BabyBearField>>(
     dst: &mut [BabyBearExt4],
     nd_source: &mut I,
@@ -46,17 +34,29 @@ pub fn read_field_els<I: NonDeterminismSource<BabyBearField>>(
     }
 }
 #[inline(always)]
+#[allow(dead_code)]
 pub fn draw_field_els_into<const BUF_CAP: usize>(
     ts: &mut TranscriptState,
     dst: &mut [BabyBearExt4],
+) {
+    let dst =
+        unsafe { &mut *(core::ptr::from_mut(dst) as *mut [core::mem::MaybeUninit<BabyBearExt4>]) };
+    draw_field_els_into_uninit::<BUF_CAP>(ts, dst);
+}
+#[doc = r" Variant of [`draw_field_els_into`] for a destination that is not initialized yet:"]
+#[doc = r" every element of `dst` is written."]
+#[inline(always)]
+pub fn draw_field_els_into_uninit<const BUF_CAP: usize>(
+    ts: &mut TranscriptState,
+    dst: &mut [core::mem::MaybeUninit<BabyBearExt4>],
 ) {
     let n = dst.len();
     let padded = (n * EXT_DEGREE).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
     assert!(padded <= BUF_CAP, "draw buffer too small");
     let mut words = LazyVec::<u32, BUF_CAP>::new();
+    ts.draw_raw_into_uninit(&mut words.spare_capacity_mut()[..padded]);
     unsafe {
         words.set_len(padded);
-        ts.draw_raw(words.as_mut_slice());
     }
     let mut i = 0;
     while i < n {
@@ -65,8 +65,11 @@ pub fn draw_field_els_into<const BUF_CAP: usize>(
             (words.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE]).as_ref_unchecked()
         };
         unsafe {
-            *dst.get_unchecked_mut(i) =
-                ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw);
+            dst.get_unchecked_mut(i).write(ext_from_raw_words::<
+                BabyBearField,
+                BabyBearExt4,
+                EXT_DEGREE,
+            >(raw));
         }
         i += 1;
     }
@@ -74,9 +77,9 @@ pub fn draw_field_els_into<const BUF_CAP: usize>(
 #[inline(always)]
 pub fn draw_single_field_el(ts: &mut TranscriptState) -> BabyBearExt4 {
     let mut words = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
+    ts.draw_raw_into_uninit(words.spare_capacity_mut());
     unsafe {
         words.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-        ts.draw_raw(words.as_mut_slice());
     }
     let raw = unsafe { words.as_array::<EXT_DEGREE>() };
     ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw)
@@ -93,6 +96,7 @@ pub fn draw_fresh_single_field_el(ts: &mut TranscriptState) -> BabyBearExt4 {
 #[doc = r" re-emits its words. Matches the prover's `draw_fresh_random_field_els` — used for"]
 #[doc = r" the packing coordinates drawn right after the GKR phase, which ends with a draw."]
 #[inline(always)]
+#[allow(dead_code)]
 pub fn draw_fresh_field_els_into<const BUF_CAP: usize>(
     ts: &mut TranscriptState,
     dst: &mut [BabyBearExt4],
@@ -108,13 +112,24 @@ pub fn draw_field_els_into_after_pow<const BUF_CAP: usize>(
     ts: &mut TranscriptState,
     dst: &mut [BabyBearExt4],
 ) {
+    let dst =
+        unsafe { &mut *(core::ptr::from_mut(dst) as *mut [core::mem::MaybeUninit<BabyBearExt4>]) };
+    draw_field_els_into_uninit_after_pow::<BUF_CAP>(ts, dst);
+}
+#[doc = r" Variant of [`draw_field_els_into_after_pow`] for a destination that is not"]
+#[doc = r" initialized yet: every element of `dst` is written."]
+#[inline(always)]
+pub fn draw_field_els_into_uninit_after_pow<const BUF_CAP: usize>(
+    ts: &mut TranscriptState,
+    dst: &mut [core::mem::MaybeUninit<BabyBearExt4>],
+) {
     let n = dst.len();
     let padded = (n * EXT_DEGREE + 1).next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
     assert!(padded <= BUF_CAP, "draw buffer too small");
     let mut words = LazyVec::<u32, BUF_CAP>::new();
+    ts.draw_raw_into_uninit(&mut words.spare_capacity_mut()[..padded]);
     unsafe {
         words.set_len(padded);
-        ts.draw_raw(words.as_mut_slice());
     }
     let mut i = 0;
     while i < n {
@@ -123,8 +138,11 @@ pub fn draw_field_els_into_after_pow<const BUF_CAP: usize>(
             (words.as_slice().as_ptr().add(base) as *const [u32; EXT_DEGREE]).as_ref_unchecked()
         };
         unsafe {
-            *dst.get_unchecked_mut(i) =
-                ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw);
+            dst.get_unchecked_mut(i).write(ext_from_raw_words::<
+                BabyBearField,
+                BabyBearExt4,
+                EXT_DEGREE,
+            >(raw));
         }
         i += 1;
     }
@@ -135,9 +153,9 @@ pub fn draw_field_els_into_after_pow<const BUF_CAP: usize>(
 #[inline(always)]
 pub fn draw_single_field_el_after_pow(ts: &mut TranscriptState) -> BabyBearExt4 {
     let mut words = LazyVec::<u32, BLAKE2S_DIGEST_SIZE_U32_WORDS>::new();
+    ts.draw_raw_into_uninit(words.spare_capacity_mut());
     unsafe {
         words.set_len(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-        ts.draw_raw(words.as_mut_slice());
     }
     let raw = unsafe {
         (words.as_slice().as_ptr().add(1) as *const [u32; EXT_DEGREE]).as_ref_unchecked()
@@ -149,7 +167,7 @@ pub fn dot_eq<const N: usize>(values: &[BabyBearExt4; N], eq: &[BabyBearExt4; N]
     let mut result = BabyBearExt4::ZERO;
     for i in 0..N {
         let mut t = unsafe { *values.get_unchecked(i) };
-        field_ops::mul_assign(&mut t, &*unsafe { eq.get_unchecked(i) });
+        field_ops::mul_assign(&mut t, unsafe { eq.get_unchecked(i) });
         field_ops::add_assign(&mut result, &t);
     }
     result
@@ -283,7 +301,8 @@ pub fn fold_standard_claims<const NUM_ADDRS: usize, const ADDRS: usize, const BU
     }
 }
 #[inline(always)]
-#[allow(unused_variables)]
+#[allow(clippy::missing_safety_doc)]
+#[allow(dead_code)]
 pub unsafe fn eval_linear_relation(
     evals: &[[BabyBearExt4; 1]],
     terms: &[(usize, usize)],
@@ -302,7 +321,8 @@ pub unsafe fn eval_linear_relation(
     result
 }
 #[inline(always)]
-#[allow(unused_variables)]
+#[allow(clippy::missing_safety_doc)]
+#[allow(dead_code)]
 pub unsafe fn eval_vector_lookup(
     evals: &[[BabyBearExt4; 1]],
     alpha: BabyBearExt4,
@@ -336,7 +356,8 @@ pub unsafe fn eval_vector_lookup(
     result
 }
 #[inline(always)]
-#[allow(unused_variables)]
+#[allow(clippy::missing_safety_doc)]
+#[allow(dead_code)]
 pub unsafe fn eval_max_quadratic(
     evals: &[[BabyBearExt4; 1]],
     quad_outer: &[(usize, usize)],
@@ -378,16 +399,25 @@ pub unsafe fn eval_max_quadratic(
     }
     val
 }
+#[allow(dead_code)]
 pub const ME_OP_ADD_BASE_CONST: usize = 0;
+#[allow(dead_code)]
 pub const ME_OP_ADD_EVAL: usize = 1;
+#[allow(dead_code)]
 pub const ME_OP_ADD_ONE_MINUS_EVAL: usize = 2;
+#[allow(dead_code)]
 pub const ME_OP_CH_MUL_EVAL: usize = 3;
+#[allow(dead_code)]
 pub const ME_OP_CH_MUL_CONST: usize = 4;
+#[allow(dead_code)]
 pub const ME_OP_CH_MUL_EVAL_PLUS_CONST: usize = 5;
+#[allow(dead_code)]
 pub const ME_OP_CH_MUL_EVAL_PLUS_DYN: usize = 6;
+#[allow(dead_code)]
 pub const ME_OP_BYTE_VALUE_PAIR: usize = 7;
 #[inline(always)]
-#[allow(unused_variables)]
+#[allow(clippy::missing_safety_doc)]
+#[allow(dead_code)]
 pub unsafe fn eval_memory_expr(
     evals: &[[BabyBearExt4; 1]],
     challenges: &[BabyBearExt4],
@@ -473,7 +503,7 @@ pub unsafe fn eval_memory_expr(
     result
 }
 #[inline(always)]
-#[allow(unused_variables)]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe fn compute_claim<const N: usize>(
     output_claims: &[BabyBearExt4],
     descs: &[(usize, usize, usize); N],
@@ -538,12 +568,8 @@ pub fn verify_whir_sumcheck_step<I: NonDeterminismSource<BabyBearField>, E: Erro
     nd_source: &mut I,
 ) -> Result<(BabyBearExt4, BabyBearExt4), E::Error> {
     const WHIR_SC_DATA_WORDS: usize = 3 * EXT_DEGREE;
-    const WHIR_SC_COMMIT_BUF: usize = {
-        let total = WHIR_SC_DATA_WORDS;
-        (total + ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS - 1)
-            / ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
-            * ::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS
-    };
+    const WHIR_SC_COMMIT_BUF: usize = WHIR_SC_DATA_WORDS
+        .next_multiple_of(::verifier_common::blake2s_u32::BLAKE2S_BLOCK_SIZE_U32_WORDS);
     let mut buf = CommitBuf::<WHIR_SC_COMMIT_BUF>::new();
     {
         let mut i = 0;
@@ -641,8 +667,10 @@ pub fn eval_multilinear_with_monomial_tensor(
     }
     result
 }
+#[allow(dead_code)]
 pub const MAX_HIGH_POWERS: usize = 32usize;
 #[inline(always)]
+#[allow(dead_code)]
 pub fn bitreverse_inplace<T: Copy>(arr: &mut [T]) {
     let n = arr.len();
     if n <= 1 {
@@ -664,6 +692,7 @@ pub fn bitreverse_inplace<T: Copy>(arr: &mut [T]) {
 }
 #[doc = r" Compute bit-reversed high powers of the set-generator inverse for fold_coset."]
 #[inline(always)]
+#[allow(dead_code)]
 pub fn compute_high_powers_offsets(
     fold_steps: usize,
     dst: &mut LazyVec<BabyBearField, MAX_HIGH_POWERS>,
@@ -681,15 +710,17 @@ pub fn compute_high_powers_offsets(
     bitreverse_inplace(&mut dst.as_mut_slice()[..count]);
 }
 #[inline(always)]
+#[allow(dead_code)]
 pub fn ext_from_raw_word_slice(words: &[u32]) -> BabyBearExt4 {
     debug_assert!(words.len() >= EXT_DEGREE);
     let raw = unsafe { (words.as_ptr() as *const [u32; EXT_DEGREE]).as_ref_unchecked() };
     ext_from_raw_words::<BabyBearField, BabyBearExt4, EXT_DEGREE>(raw)
 }
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::missing_safety_doc)]
+#[allow(dead_code)]
 pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource<BabyBearField>>(
-    hash_buf: &mut [u32],
+    hash_buf: &mut [core::mem::MaybeUninit<u32>],
     num_columns: usize,
     gamma_powers: &[BabyBearExt4],
     gamma_offset: usize,
@@ -702,11 +733,13 @@ pub unsafe fn read_and_batch_leaf<I: NonDeterminismSource<BabyBearField>>(
         let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
         let idx = col * 2;
         let raw = read_reduced_field_el::<I>(nd_source);
-        *hash_buf.get_unchecked_mut(idx) = raw.as_u32_raw_repr();
+        hash_buf.get_unchecked_mut(idx).write(raw.as_u32_raw_repr());
         let base_val = raw;
         field_ops::add_assign_product_with_base(&mut *acc0, &gamma, &base_val);
         let raw = read_reduced_field_el::<I>(nd_source);
-        *hash_buf.get_unchecked_mut(idx + 1) = raw.as_u32_raw_repr();
+        hash_buf
+            .get_unchecked_mut(idx + 1)
+            .write(raw.as_u32_raw_repr());
         let base_val = raw;
         field_ops::add_assign_product_with_base(&mut *acc1, &gamma, &base_val);
         col += 1;
@@ -800,7 +833,8 @@ pub fn push_whir_base_pow_entry<const MAX_POW: usize, const MAX_OOD: usize>(
 #[doc = r" Read one base leaf (two values per column), batch it into"]
 #[doc = r" `acc0` / `acc1` and leave its hash in the hasher state."]
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::missing_safety_doc)]
+#[allow(dead_code)]
 pub unsafe fn read_and_hash_oracle_leaf<
     I: NonDeterminismSource<BabyBearField>,
     const BUF_SIZE: usize,
@@ -819,9 +853,8 @@ pub unsafe fn read_and_hash_oracle_leaf<
     nd_source: &mut I,
 ) {
     use verifier_common::whir::hash_leaf_data_into_state;
-    let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
     read_and_batch_leaf::<I>(
-        &mut buf[..LEAF_WORDS],
+        &mut hash_buf[..LEAF_WORDS],
         num_columns,
         gamma_powers,
         gamma_offset,
@@ -834,11 +867,12 @@ pub unsafe fn read_and_hash_oracle_leaf<
     if block_end > LEAF_WORDS {
         hash_buf.zero_range(LEAF_WORDS, block_end);
     }
-    let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+    let buf = hash_buf.assume_init_prefix(block_end);
     hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
 }
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::missing_safety_doc)]
+#[allow(dead_code)]
 pub unsafe fn process_oracle_query<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
@@ -882,7 +916,8 @@ pub unsafe fn process_oracle_query<
 #[doc = r" walked only up to the first ancestor a later query shares (see"]
 #[doc = r" `verifier_common::whir::multiproof`)."]
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::missing_safety_doc)]
+#[allow(dead_code)]
 pub unsafe fn process_oracle_query_multiproof<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,

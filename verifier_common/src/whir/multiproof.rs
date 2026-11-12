@@ -169,10 +169,6 @@ pub fn sort_queries_by_tree_index<const MAX_Q: usize>(
         unsafe { *counts.get_unchecked_mut(b) += *counts.get_unchecked(b - 1) };
         b += 1;
     }
-    unsafe {
-        perm.set_len(num_queries);
-        sorted.set_len(num_queries);
-    }
     let mut q = 0;
     while q < num_queries {
         let index = *tree_indices.get(q);
@@ -184,6 +180,12 @@ pub fn sort_queries_by_tree_index<const MAX_Q: usize>(
             sorted.set_unchecked(pos, index);
         }
         q += 1;
+    }
+    // SAFETY: the bucket starts are prefix sums of the bucket sizes, so the scatter above wrote
+    // each of the first `num_queries` positions of both outputs exactly once
+    unsafe {
+        perm.set_len(num_queries);
+        sorted.set_len(num_queries);
     }
 
     // insertion pass: finishes the order inside the buckets, stably
@@ -371,7 +373,7 @@ mod tests {
     fn leaf_hash(hasher: &mut DelegatedBlake2sState, leaf: &[u32; 4]) -> Digest {
         let mut buf = AlignedArray64::<u32, BLAKE2S_BLOCK_SIZE_U32_WORDS>::from_value(0);
         buf[..4].copy_from_slice(leaf);
-        hash_leaf_data_into_state(hasher, &buf, 4);
+        hash_leaf_data_into_state(hasher, buf.as_aligned_slice(), 4);
         *hasher.read_state_for_output_ref()
     }
 

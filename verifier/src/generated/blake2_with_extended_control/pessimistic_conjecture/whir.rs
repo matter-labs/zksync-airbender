@@ -1,23 +1,8 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_unsafe,
-    unused_assignments,
-    clippy::needless_range_loop,
-    clippy::too_many_arguments,
-    clippy::manual_div_ceil,
-    clippy::borrow_deref_ref,
-    clippy::identity_op,
-    clippy::missing_safety_doc,
-    clippy::duplicate_mod,
-    clippy::large_const_arrays
-)]
-#[allow(unused_imports)]
 use super::common::{
     compute_tree_index, draw_fresh_single_field_el, eval_multilinear_with_monomial_tensor,
     fold_whir_accumulator, materialize_gamma_powers, precompute_monomial_tensor,
-    process_oracle_query, process_oracle_query_multiproof, push_whir_base_pow_entry,
-    push_whir_pow_entry, read_reduced_field_el, verify_whir_sumcheck_step,
+    push_whir_base_pow_entry, push_whir_pow_entry, read_reduced_field_el,
+    verify_whir_sumcheck_step,
 };
 use super::constants::*;
 use core::mem::MaybeUninit;
@@ -27,12 +12,11 @@ use verifier_common::blake2s_u32::{
 use verifier_common::errors::ErrorCreator;
 use verifier_common::field::baby_bear::base::BabyBearField;
 use verifier_common::field::baby_bear::ext4::BabyBearExt4;
-use verifier_common::field::{Field, FieldExtension, PrimeField};
+use verifier_common::field::{Field, PrimeField};
 use verifier_common::field_ops;
 use verifier_common::lazy_vec::LazyVec;
 use verifier_common::non_determinism_source::NonDeterminismSource;
 use verifier_common::structs::{CommitBuf, TranscriptState};
-#[allow(unused_imports)]
 use verifier_common::whir::multiproof::{
     sort_queries_by_tree_index, verify_merkle_multiproof_leaf, MerkleMultiproofStack, NO_NEXT_INDEX,
 };
@@ -40,7 +24,7 @@ use verifier_common::whir::{
     draw_query_indices, read_and_verify_pow, read_commit_return_merkle_cap,
 };
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::missing_safety_doc)]
 pub unsafe fn process_oracle_query_single_value<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
@@ -60,12 +44,11 @@ pub unsafe fn process_oracle_query_single_value<
     nd_source: &mut I,
 ) -> Result<(), E::Error> {
     use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
-    let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
     let mut col = 0;
     while col < num_columns {
         let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
         let raw = read_reduced_field_el::<I>(nd_source);
-        *buf.get_unchecked_mut(col) = raw.as_u32_raw_repr();
+        hash_buf.get_unchecked_mut(col).write(raw.as_u32_raw_repr());
         let base_val = raw;
         field_ops::add_assign_product_with_base(&mut *acc, &gamma, &base_val);
         col += 1;
@@ -74,7 +57,7 @@ pub unsafe fn process_oracle_query_single_value<
     if block_end > LEAF_WORDS {
         hash_buf.zero_range(LEAF_WORDS, block_end);
     }
-    let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+    let buf = hash_buf.assume_init_prefix(block_end);
     hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
     if !verify_merkle_path::<I>(hasher, query_index, depth, cap, nd_source) {
         return Err(E::whir_merkle_path_failed(query));
@@ -84,7 +67,7 @@ pub unsafe fn process_oracle_query_single_value<
 #[doc = r" [`process_oracle_query_single_value`] under a pruned Merkle"]
 #[doc = r" multiproof (see `process_oracle_query_multiproof`)."]
 #[inline(always)]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::missing_safety_doc)]
 pub unsafe fn process_oracle_query_single_value_multiproof<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
@@ -108,12 +91,11 @@ pub unsafe fn process_oracle_query_single_value_multiproof<
     nd_source: &mut I,
 ) -> Result<(), E::Error> {
     use verifier_common::whir::hash_leaf_data_into_state;
-    let buf = hash_buf.assume_init_subarray_mut::<BUF_SIZE>();
     let mut col = 0;
     while col < num_columns {
         let gamma = *gamma_powers.get_unchecked(gamma_offset + col);
         let raw = read_reduced_field_el::<I>(nd_source);
-        *buf.get_unchecked_mut(col) = raw.as_u32_raw_repr();
+        hash_buf.get_unchecked_mut(col).write(raw.as_u32_raw_repr());
         let base_val = raw;
         field_ops::add_assign_product_with_base(&mut *acc, &gamma, &base_val);
         col += 1;
@@ -122,7 +104,7 @@ pub unsafe fn process_oracle_query_single_value_multiproof<
     if block_end > LEAF_WORDS {
         hash_buf.zero_range(LEAF_WORDS, block_end);
     }
-    let buf = hash_buf.assume_init_subarray::<BUF_SIZE>();
+    let buf = hash_buf.assume_init_prefix(block_end);
     hash_leaf_data_into_state(hasher, buf, LEAF_WORDS);
     if !verify_merkle_multiproof_leaf::<I, MAX_DEPTH>(
         hasher,
@@ -141,11 +123,8 @@ pub unsafe fn process_oracle_query_single_value_multiproof<
 pub const MAX_OOD_SAMPLES: usize = 1usize;
 const OOD_DRAW_BUF: usize = (MAX_OOD_SAMPLES * super::common::EXT_DEGREE + 1)
     .next_multiple_of(BLAKE2S_DIGEST_SIZE_U32_WORDS);
-const OOD_COMMIT_BUF: usize = {
-    let total = MAX_OOD_SAMPLES * super::common::EXT_DEGREE;
-    (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
-        * BLAKE2S_BLOCK_SIZE_U32_WORDS
-};
+const OOD_COMMIT_BUF: usize =
+    (MAX_OOD_SAMPLES * super::common::EXT_DEGREE).next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
 #[inline(always)]
 pub fn read_ood_samples<I: NonDeterminismSource<BabyBearField>>(
     ts: &mut TranscriptState,
@@ -156,14 +135,16 @@ pub fn read_ood_samples<I: NonDeterminismSource<BabyBearField>>(
 ) {
     let num_ood = WHIR_NUM_OOD_SAMPLES[committed_oracle];
     let ood_pow_bits = WHIR_OOD_POW_BITS[committed_oracle];
-    unsafe {
-        ood_points.set_len(num_ood);
-    }
+    ood_points.clear();
+    let ood_points_dst = &mut ood_points.spare_capacity_mut()[..num_ood];
     if ood_pow_bits > 0 {
         read_and_verify_pow::<I>(ts, ood_pow_bits, nd_source);
-        super::common::draw_field_els_into_after_pow::<OOD_DRAW_BUF>(ts, ood_points.as_mut_slice());
+        super::common::draw_field_els_into_uninit_after_pow::<OOD_DRAW_BUF>(ts, ood_points_dst);
     } else {
-        super::common::draw_field_els_into::<OOD_DRAW_BUF>(ts, ood_points.as_mut_slice());
+        super::common::draw_field_els_into_uninit::<OOD_DRAW_BUF>(ts, ood_points_dst);
+    }
+    unsafe {
+        ood_points.set_len(num_ood);
     }
     let ood_data_words = num_ood * super::common::EXT_DEGREE;
     let mut ood_buf = CommitBuf::<OOD_COMMIT_BUF>::new();
@@ -223,13 +204,14 @@ const INITIAL_RS_DOMAIN_LOG2: usize = 23usize;
 const NUM_COSETS: usize = 2usize;
 const NUM_COSETS_LOG2: usize = 1usize;
 const COSET_TREE_SIZE: usize = 4194304usize;
+#[allow(unused_unsafe, clippy::too_many_arguments)]
 pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     initial_transcript: &ConcreteInitialTranscript,
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
     batching_challenge: BabyBearExt4,
     base_layer_claims: &[BabyBearExt4],
-    z_initial: &[BabyBearExt4],
+    _z_initial: &[BabyBearExt4],
     accumulator: &mut ::verifier_common::whir::WhirAccumulator<
         BabyBearField,
         BabyBearExt4,
@@ -252,11 +234,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 col_idx += 1;
             }
         }
-        const CAP_COMMIT_BUF: usize = {
-            let total = WHIR_CAP_WORDS;
-            (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
-                * BLAKE2S_BLOCK_SIZE_U32_WORDS
-        };
+        const CAP_COMMIT_BUF: usize = WHIR_CAP_WORDS.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
         let intermediate_cap =
             read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts, nd_source);
         let mut ood_points: LazyVec<BabyBearExt4, MAX_OOD_SAMPLES> = LazyVec::new();
@@ -277,8 +255,6 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
             delinearization_challenge,
         );
         let extended_generator = BabyBearField::TWO_ADICITY_GENERATORS[INITIAL_RS_DOMAIN_LOG2];
-        let extended_generator_inv =
-            BabyBearField::TWO_ADICITY_GENERATORS_INVERSED[INITIAL_RS_DOMAIN_LOG2];
         let mut tree_indices: LazyVec<usize, INITIAL_NUM_QUERIES> = LazyVec::new();
         {
             let mut q = 0;
@@ -328,7 +304,6 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
             };
             let query_index = *query_indices.get(q);
             let current_delinearization_challenge = *delin_powers.get(q);
-            let base_root_inv = extended_generator_inv.pow(query_index as u32);
             let mut acc0 = BabyBearExt4::ZERO;
             if INITIAL_MERKLE_MULTIPROOF {
                 process_oracle_query_single_value_multiproof::<
@@ -465,10 +440,6 @@ const INTERNAL_COSET_TREE_SIZE: [usize; NUM_INTERNAL_ROUNDS] = [65536usize, 2048
 const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [27usize, 27usize, 24usize];
 const MAX_INTERNAL_FOLD_STEPS: usize = 6usize;
 const MAX_INTERNAL_VALUES_PER_LEAF: usize = 64usize;
-const MAX_INTERNAL_LEAF_EXT_WORDS: usize = MAX_INTERNAL_VALUES_PER_LEAF * EXT_DEGREE;
-const INTERNAL_HASH_BUF_SIZE: usize = MAX_INTERNAL_LEAF_EXT_WORDS
-    .div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS)
-    * BLAKE2S_BLOCK_SIZE_U32_WORDS;
 const MAX_INTERNAL_NUM_QUERIES: usize = 18usize;
 const MAX_INTERNAL_DRAW_WORDS: usize = 16usize;
 #[doc = r" Bit `ir` set: this build opens internal round `ir + 1`'s queries"]
@@ -499,6 +470,7 @@ const MAX_INTERNAL_ORACLE_DEPTH: usize = {
     max
 };
 const INTERNAL_DRAW_WORDS: [usize; NUM_INTERNAL_ROUNDS] = [16usize, 8usize, 8usize];
+#[allow(unused_unsafe, clippy::too_many_arguments)]
 pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -536,11 +508,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             fold_whir_accumulator(accumulator, alpha, z_initial);
             round += 1;
         }
-        const CAP_COMMIT_BUF: usize = {
-            let total = WHIR_CAP_WORDS;
-            (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
-                * BLAKE2S_BLOCK_SIZE_U32_WORDS
-        };
+        const CAP_COMMIT_BUF: usize = WHIR_CAP_WORDS.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
         let intermediate_cap =
             read_commit_return_merkle_cap::<I, WHIR_CAP_WORDS, CAP_COMMIT_BUF>(ts, nd_source);
         let mut ood_points: LazyVec<BabyBearExt4, MAX_OOD_SAMPLES> = LazyVec::new();
@@ -633,7 +601,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             }
             let block_end = (leaf_ext_words).next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
             hash_buf.zero_range(leaf_ext_words, block_end);
-            let init_buf = hash_buf.assume_init_subarray::<INTERNAL_HASH_BUF_SIZE>();
+            let init_buf = hash_buf.assume_init_prefix(block_end);
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, leaf_ext_words);
             let merkle_ok = if (INTERNAL_MERKLE_MULTIPROOF_MASK >> ir) & 1 == 1 {
                 verify_merkle_multiproof_leaf::<I, MAX_INTERNAL_ORACLE_DEPTH>(
@@ -658,7 +626,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             if !merkle_ok {
                 return Err(E::whir_merkle_path_failed(q));
             }
-            let leaf: &[BabyBearExt4] = unsafe { init_buf.transmute_subslice(0, values_per_leaf) };
+            let leaf: &[BabyBearExt4] = unsafe { hash_buf.transmute_subslice(0, values_per_leaf) };
             let folded = eval_multilinear_with_monomial_tensor(leaf, monomial_weights.as_slice());
             let mut query_point_base = extended_generator.pow(query_index as u32);
             query_point_base.exp_power_of_2(fold_steps);
@@ -680,8 +648,6 @@ const FINAL_FOLD_STEPS: usize = 5usize;
 const FINAL_NUM_QUERIES: usize = 7usize;
 const FINAL_VALUES_PER_LEAF: usize = 32usize;
 const FINAL_LEAF_EXT_WORDS: usize = FINAL_VALUES_PER_LEAF * EXT_DEGREE;
-const FINAL_HASH_BUF_SIZE: usize =
-    FINAL_LEAF_EXT_WORDS.div_ceil(BLAKE2S_BLOCK_SIZE_U32_WORDS) * BLAKE2S_BLOCK_SIZE_U32_WORDS;
 const FINAL_QUERY_INDEX_BITS: usize = 15usize;
 const FINAL_RS_DOMAIN_LOG2: usize = 20usize;
 const FINAL_NUM_COSETS: usize = 16384usize;
@@ -697,6 +663,7 @@ const FINAL_ORACLE_DEPTH: usize = WHIR_ORACLE_DEPTHS[FINAL_ORACLE_DEPTH_IDX];
 #[doc = r" time for the build's blake implementation)."]
 const FINAL_MERKLE_MULTIPROOF: bool =
     ::verifier_common::BLAKE_MODE.merkle_multiproofs(FINAL_NUM_QUERIES, WHIR_CAP_SIZE);
+#[allow(unused_unsafe)]
 pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     ts: &mut TranscriptState,
     hash_buf: &mut AlignedArray64<MaybeUninit<u32>, WHIR_HASH_BUF_SIZE>,
@@ -737,11 +704,8 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
             MAX_POW_ENTRIES,
         );
         const FINAL_MONOMIALS_DATA_WORDS: usize = FINAL_MONOMIALS_LEN * EXT_DEGREE;
-        const FINAL_MONOMIALS_COMMIT_BUF: usize = {
-            let total = FINAL_MONOMIALS_DATA_WORDS;
-            (total + BLAKE2S_BLOCK_SIZE_U32_WORDS - 1) / BLAKE2S_BLOCK_SIZE_U32_WORDS
-                * BLAKE2S_BLOCK_SIZE_U32_WORDS
-        };
+        const FINAL_MONOMIALS_COMMIT_BUF: usize =
+            FINAL_MONOMIALS_DATA_WORDS.next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
         let mut monomials_buf = CommitBuf::<FINAL_MONOMIALS_COMMIT_BUF>::new();
         {
             let mut i = 0;
@@ -817,7 +781,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
             }
             let block_end = (FINAL_LEAF_EXT_WORDS).next_multiple_of(BLAKE2S_BLOCK_SIZE_U32_WORDS);
             hash_buf.zero_range(FINAL_LEAF_EXT_WORDS, block_end);
-            let init_buf = hash_buf.assume_init_subarray::<FINAL_HASH_BUF_SIZE>();
+            let init_buf = hash_buf.assume_init_prefix(block_end);
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, FINAL_LEAF_EXT_WORDS);
             let merkle_ok = if FINAL_MERKLE_MULTIPROOF {
                 verify_merkle_multiproof_leaf::<I, FINAL_ORACLE_DEPTH>(
@@ -843,7 +807,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
                 return Err(E::whir_merkle_path_failed(q));
             }
             let leaf: &[BabyBearExt4] =
-                unsafe { init_buf.transmute_subslice(0, FINAL_VALUES_PER_LEAF) };
+                unsafe { hash_buf.transmute_subslice(0, FINAL_VALUES_PER_LEAF) };
             let folded = eval_multilinear_with_monomial_tensor(leaf, monomial_weights.as_slice());
             folded_values.push(folded);
             query_base_roots.push(base_root);
@@ -867,7 +831,6 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
             q += 1;
         }
         let mut f_m_buf = LazyVec::<BabyBearExt4, FINAL_MONOMIALS_LEN>::new();
-        f_m_buf.set_len(FINAL_MONOMIALS_LEN);
         {
             let mut i = 0;
             while i < FINAL_MONOMIALS_LEN {
@@ -875,6 +838,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
                 i += 1;
             }
         }
+        f_m_buf.set_len(FINAL_MONOMIALS_LEN);
         {
             let mut level = 0;
             let mut active_len = FINAL_MONOMIALS_LEN;
