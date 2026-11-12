@@ -1,3 +1,4 @@
+import Proven.Final.Helpers.Context.VerifierBoundary.Theorems
 import Checks.Restatements
 import Proven.AddSub.RVTraceSoundness
 import Proven.Final.Circuits.AddSub.RVTheorems
@@ -1303,3 +1304,11 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.InitsTeardowns.unified_satisfiable
 #print axioms Airbender.Bigint.Memory.Restatement.property_restatement
 #print axioms Airbender.Blake2G.Restatement.property_restatement
+
+#print axioms Airbender.VerifierBoundary.terminal_state_soundness
+
+#print axioms Airbender.VerifierBoundary.terminal_bound_soundness
+
+#print axioms Airbender.VerifierBoundary.terminal_state_satisfiable
+
+#print axioms Airbender.VerifierBoundary.terminal_bound_satisfiable

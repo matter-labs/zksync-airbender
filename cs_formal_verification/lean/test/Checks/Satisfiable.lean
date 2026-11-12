@@ -1,3 +1,4 @@
+import Human.Helpers.Context.VerifierBoundary.Theorems
 import Human.Circuits.AddSub.RVTheorems
 import Human.Circuits.JumpBranchSlt.RVTheorems
 import Human.Circuits.MulDiv.RVTheorems
@@ -30,6 +31,19 @@ import Human.Trace.Delegation.RVCallerTheorems
 open Airbender Trace
 
 namespace Checks.Satisfiable
+
+example (claim : VerifierBoundary.TerminalStateSoundnessClaim) :
+    VerifierBoundary.TerminalStateSatisfiableClaim →
+    ∃ (terminal : PCState.State babyBearModulus) (statement : VerifierBoundary.Statement),
+      terminal = statement.terminal.encode :=
+  fun ⟨_, terminal, _, _, statement, matched, binding, _⟩ =>
+    ⟨terminal, statement, claim matched binding⟩
+
+example (claim : VerifierBoundary.TerminalBoundSoundnessClaim) :
+    VerifierBoundary.TerminalBoundSatisfiableClaim →
+    ∃ terminal : PCState.State babyBearModulus, terminal.word.Bounded :=
+  fun ⟨_, terminal, _, _, hp, matched, closure, _⟩ => ⟨terminal, claim hp matched closure⟩
+
 
 example : InitsTeardowns.StandaloneSatisfiableClaim →
     InitsTeardowns.TopBitsChecked (List.range InitsTeardowns.maxTopBit) :=

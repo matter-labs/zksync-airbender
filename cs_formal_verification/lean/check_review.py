@@ -40,7 +40,7 @@ SOURCE_NAMES = {
     # CI (docs/TRUST_AND_REVIEW.md, What CI re-checks): verify.sh's audit modes, the kernel checker
     "VERIFY_AUDITS", "fresh", "replay", "leanchecker", "kernel_replay", "native_decide",
     # Lean 4.35: lake check's sandbox tool, lean-sail's codegen wrapper command (sail/README.md)
-    "bwrap", "skip_inductive_codegen", "ci.yml",
+    "bwrap", "skip_inductive_codegen", "ci.yml", "mop.r.N", "mop.rr.N",
     # the no-warnings gate (README): Lake library names and Lake's option for non-module files
     "Proven", "CleanAudit", "allowNonModules",
 }

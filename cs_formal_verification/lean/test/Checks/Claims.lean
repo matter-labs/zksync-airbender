@@ -1,3 +1,4 @@
+import Proven.Final.Helpers.Context.VerifierBoundary.Theorems
 import Checks.Restatements
 -- Each final theorem (proven/Proven/Final) proves the statement of the same name in human/ (UpperCamelCase).
 import Proven.Final.Circuits.AddSub.RVTheorems
@@ -546,3 +547,15 @@ example : Airbender.InitsTeardowns.UnifiedSatisfiableClaim := Airbender.InitsTea
 #print axioms Airbender.InitsTeardowns.unified_satisfiable
 #print axioms Airbender.Bigint.Memory.Restatement.property_restatement
 #print axioms Airbender.Blake2G.Restatement.property_restatement
+
+example : Airbender.VerifierBoundary.TerminalStateSoundnessClaim := @Airbender.VerifierBoundary.terminal_state_soundness
+#print axioms Airbender.VerifierBoundary.terminal_state_soundness
+
+example : Airbender.VerifierBoundary.TerminalBoundSoundnessClaim := @Airbender.VerifierBoundary.terminal_bound_soundness
+#print axioms Airbender.VerifierBoundary.terminal_bound_soundness
+
+example : Airbender.VerifierBoundary.TerminalStateSatisfiableClaim := @Airbender.VerifierBoundary.terminal_state_satisfiable
+#print axioms Airbender.VerifierBoundary.terminal_state_satisfiable
+
+example : Airbender.VerifierBoundary.TerminalBoundSatisfiableClaim := @Airbender.VerifierBoundary.terminal_bound_satisfiable
+#print axioms Airbender.VerifierBoundary.terminal_bound_satisfiable

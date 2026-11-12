@@ -31,3 +31,5 @@ import Proven.Final.Trace.Workers.Keccak.RVTheorems
 import Proven.Final.Trace.Workers.KeccakSplit.RVTheorems
 import Proven.Final.Trace.WritesRangeChecked
 import Proven.Final.Trace.ZeroTimestamp
+
+import Proven.Final.Helpers.Context.VerifierBoundary.Theorems

@@ -1,4 +1,5 @@
 module
+public import Tests.VerifierBoundary
 public import Tests.PooledHistory
 public import Tests.PooledROM
 public import Proven.Defs.Helpers.Memory.Native
@@ -271,3 +272,13 @@ public import Proven.Trace.MemoryPorts
 #print axioms Airbender.Trace.NonDeterminism.Pooled.consumed
 #print axioms Tests.PooledOracle.foreign_selector_ignored
 
+
+#print axioms Tests.VerifierBoundary.noncanonical_native_accepted
+
+#print axioms Tests.VerifierBoundary.noncanonical_program_image
+
+#print axioms Tests.VerifierBoundary.noncanonical_initial_image
+
+#print axioms Tests.VerifierBoundary.noncanonical_decoded
+
+#print axioms Tests.VerifierBoundary.noncanonical_verifier_boundary_rejected

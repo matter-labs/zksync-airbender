@@ -409,6 +409,7 @@ roots = [
   "Checks.Satisfiable",
   "Tests.ArtifactImport",
   "Tests.SetupComparison",
+  "Tests.VerifierBoundary",
   "Tests.Bigint",
   "Tests.BigintAbi",
   "Tests.BigintAddresses",
