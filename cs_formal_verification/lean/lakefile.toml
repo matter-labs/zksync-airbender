@@ -37,6 +37,10 @@ srcDir = "human"
 roots = ["Human"]
 globs = [
   "Human",
+  "Human.Compiler.Capture",
+  "Human.Compiler.Theorems",
+  "Human.Import.CompilerJson",
+  "Human.Import.CompilerCapture",
   "Human.Helpers.Context.VerifierBoundary.Model",
   "Human.Helpers.Context.VerifierBoundary.Theorems",
   "Human.Helpers.Decoder.RVMachineProgram",
@@ -502,3 +506,157 @@ root = "Tests.ArtifactImport"
 name = "program_rows_oracle"
 srcDir = "test"
 root = "Tests.ProgramRowsOracle"
+
+[[input_file]]
+name = "compiler_add_sub_capture"
+path = "artifacts/compiler/add-sub-cached.json"
+
+[[lean_lib]]
+name = "CompilerAddSubCapture"
+srcDir = "human"
+roots = ["Human.Compiler.Captures.AddSub"]
+needs = ["compiler_add_sub_capture", "compiler_add_sub_capture_source"]
+
+[[input_file]]
+name = "compiler_add_sub_capture_source"
+path = "artifacts/compiler/add-sub-cached-source.json"
+
+[[input_file]]
+name = "compiler_bigint_capture"
+path = "artifacts/compiler/bigint-cached.json"
+
+[[lean_lib]]
+name = "CompilerBigintCapture"
+srcDir = "human"
+roots = ["Human.Compiler.Captures.Bigint"]
+needs = ["compiler_bigint_capture", "compiler_bigint_capture_source"]
+
+[[input_file]]
+name = "compiler_bigint_capture_source"
+path = "artifacts/compiler/bigint-cached-source.json"
+
+[[input_file]]
+name = "compiler_blake_g_capture"
+path = "artifacts/compiler/blake-g-cached.json"
+
+[[lean_lib]]
+name = "CompilerBlakeGCapture"
+srcDir = "human"
+roots = ["Human.Compiler.Captures.BlakeG"]
+needs = ["compiler_blake_g_capture", "compiler_blake_g_capture_source"]
+
+[[input_file]]
+name = "compiler_blake_g_capture_source"
+path = "artifacts/compiler/blake-g-cached-source.json"
+
+[[input_file]]
+name = "compiler_blake_round_capture"
+path = "artifacts/compiler/blake-round-cached.json"
+
+[[lean_lib]]
+name = "CompilerBlakeRoundCapture"
+srcDir = "human"
+roots = ["Human.Compiler.Captures.BlakeRound"]
+needs = ["compiler_blake_round_capture", "compiler_blake_round_capture_source"]
+
+[[input_file]]
+name = "compiler_blake_round_capture_source"
+path = "artifacts/compiler/blake-round-cached-source.json"
+
+[[input_file]]
+name = "compiler_jump_branch_capture"
+path = "artifacts/compiler/jump-branch-cached.json"
+
+[[lean_lib]]
+name = "CompilerJumpBranchCapture"
+srcDir = "human"
+roots = ["Human.Compiler.Captures.JumpBranch"]
+needs = ["compiler_jump_branch_capture", "compiler_jump_branch_capture_source"]
+
+[[input_file]]
+name = "compiler_jump_branch_capture_source"
+path = "artifacts/compiler/jump-branch-cached-source.json"
+
+[[input_file]]
+name = "compiler_keccak_capture"
+path = "artifacts/compiler/keccak-cached.json"
+
+[[lean_lib]]
+name = "CompilerKeccakCapture"
+srcDir = "human"
+roots = ["Human.Compiler.Captures.Keccak"]
+needs = ["compiler_keccak_capture", "compiler_keccak_capture_source"]
+
+[[input_file]]
+name = "compiler_keccak_capture_source"
+path = "artifacts/compiler/keccak-cached-source.json"
+
+[[input_file]]
+name = "compiler_mul_div_capture"
+path = "artifacts/compiler/mul-div-cached.json"
+
+[[lean_lib]]
+name = "CompilerMulDivCapture"
+srcDir = "human"
+roots = ["Human.Compiler.Captures.MulDiv"]
+needs = ["compiler_mul_div_capture", "compiler_mul_div_capture_source"]
+
+[[input_file]]
+name = "compiler_mul_div_capture_source"
+path = "artifacts/compiler/mul-div-cached-source.json"
+
+[[input_file]]
+name = "compiler_shift_binop_capture"
+path = "artifacts/compiler/shift-binop-cached.json"
+
+[[lean_lib]]
+name = "CompilerShiftBinopCapture"
+srcDir = "human"
+roots = ["Human.Compiler.Captures.ShiftBinop"]
+needs = ["compiler_shift_binop_capture", "compiler_shift_binop_capture_source"]
+
+[[input_file]]
+name = "compiler_shift_binop_capture_source"
+path = "artifacts/compiler/shift-binop-cached-source.json"
+
+[[input_file]]
+name = "compiler_subword_memory_capture"
+path = "artifacts/compiler/subword-memory-cached.json"
+
+[[lean_lib]]
+name = "CompilerSubwordMemoryCapture"
+srcDir = "human"
+roots = ["Human.Compiler.Captures.SubwordMemory"]
+needs = ["compiler_subword_memory_capture", "compiler_subword_memory_capture_source"]
+
+[[input_file]]
+name = "compiler_subword_memory_capture_source"
+path = "artifacts/compiler/subword-memory-cached-source.json"
+
+[[input_file]]
+name = "compiler_unified_capture"
+path = "artifacts/compiler/unified-cached.json"
+
+[[lean_lib]]
+name = "CompilerUnifiedCapture"
+srcDir = "human"
+roots = ["Human.Compiler.Captures.Unified"]
+needs = ["compiler_unified_capture", "compiler_unified_capture_source"]
+
+[[input_file]]
+name = "compiler_unified_capture_source"
+path = "artifacts/compiler/unified-cached-source.json"
+
+[[input_file]]
+name = "compiler_word_memory_capture"
+path = "artifacts/compiler/word-memory-cached.json"
+
+[[lean_lib]]
+name = "CompilerWordMemoryCapture"
+srcDir = "human"
+roots = ["Human.Compiler.Captures.WordMemory"]
+needs = ["compiler_word_memory_capture", "compiler_word_memory_capture_source"]
+
+[[input_file]]
+name = "compiler_word_memory_capture_source"
+path = "artifacts/compiler/word-memory-cached-source.json"

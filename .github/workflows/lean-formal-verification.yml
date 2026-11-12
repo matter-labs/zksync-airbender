@@ -72,7 +72,7 @@ jobs:
               files = comparison.data.files;
               if (files.length >= 300) files = undefined;
             }
-            const native = /^(cs\/src\/|circuit_defs\/|prover\/src\/gkr\/|execution_prover\/examples\/export_setup_json\.rs|riscv_transpiler\/|cs_formal_verification\/lean\/(scripts\/|human\/Human\/.*(?:Decoder|Program)|artifacts\/setup\/)|Cargo\.|rust-toolchain)/;
+            const native = /^(cs\/src\/|circuit_defs\/|prover\/src\/gkr\/|execution_prover\/examples\/export_setup_json\.rs|riscv_transpiler\/|cs_formal_verification\/lean\/(scripts\/|human\/Human\/.*(?:Decoder|Program)|artifacts\/(?:setup|compiler)\/)|Cargo\.|rust-toolchain)/;
             const relevant = /^(cs_formal_verification\/|cs\/compiled_circuits\/|\.github\/(workflows\/(?:ci|lean-formal-verification)\.yml|actions\/lean-fv-setup\/))/;
             core.setOutput('relevant', !files || files.some(f => relevant.test(f.filename) || native.test(f.filename)));
             core.setOutput('native', !files || files.some(f => native.test(f.filename)));
@@ -258,6 +258,12 @@ jobs:
         run: cargo check -p execution_prover --example export_setup_json
       - name: Build the FV exporter
         run: cargo build -p execution_prover --profile cli --example export_setup_json
+      - name: Check the compiler capture exporter
+        run: cargo check -p cs --example export_gkr_translation
+      - name: Build the compiler capture exporter
+        run: cargo build -p cs --profile cli --example export_gkr_translation
+      - name: Native compiler capture freshness
+        run: python3 cs_formal_verification/lean/scripts/check_compiler_captures.py --exporter target/cli/examples/export_gkr_translation
       - name: Native setup freshness
         run: python3 cs_formal_verification/lean/scripts/check_setup_freshness.py --exporter target/cli/examples/export_setup_json
       - uses: actions/download-artifact@v4

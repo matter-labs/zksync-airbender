@@ -20,6 +20,7 @@ python3 scripts/check_import_closure.py
 echo "== 1b. The circuit and setup JSONs the spec imports: pinned sha256, no duplicate keys, no duplicate circuits,"
 echo "   canonical form (setup JSONs compact)"
 python3 check_circuit_json.py
+python3 scripts/check_compiler_captures.py
 
 echo "== 2. Lean build: spec, proofs, regressions and the axiom audit modules in one lake build (test modules start as"
 echo "   soon as their imports are built), timing each module compiled (full log: lean/.lake/verify-build-CleanCore.log)"
