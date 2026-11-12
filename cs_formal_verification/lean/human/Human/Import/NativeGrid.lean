@@ -22,14 +22,6 @@ def compareGrid (data : SetupData) (start length : Nat) (selected : List Nat)
       unless actual[column]![index]! = (expected.toArray[column]! : Int) do
         throw s!"Native grid differs at row {index}, column {column}"
 
-/-- The full virtual columns are an increasing prefix and optional zero padding. -/
-def compareRanges (data : SetupData) : Except String Unit := do
-  for (limit, blocks) in [(65536, data.range16), (524288, data.timestampRange)] do
-    unless limit ≤ data.traceLen do throw "Native range exceeds its setup domain"
-    let expected := if limit = data.traceLen then [Block.affine limit 0 1]
-      else [Block.affine limit 0 1, Block.affine (data.traceLen - limit) 0 0]
-    unless blocks == expected do throw "Native range prefix or padding differs"
-
 syntax "check_native_ranges " str : command
 elab_rules : command
   | `(check_native_ranges $path:str) => do

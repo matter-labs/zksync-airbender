@@ -25,7 +25,7 @@ def rangeTable {p : Nat} [Fact p.Prime] (name : String) (bound : Nat) : Table (Z
 }
 
 /-- Native 16-bit range. Every imported setup checks its complete increasing
-    prefix and zero padding with `check_native_ranges`. Padding adds only zero. -/
+    prefix and zero padding in compiled code. Padding adds only zero. -/
 def range16Table {p : Nat} [Fact p.Prime] : Table (ZMod p) field :=
   rangeTable "Airbender.Range16" limbBase
 

@@ -1,6 +1,5 @@
 module
 public import Human.Import.SetupEmit
-public import Human.Import.NativeGrid
 
 @[expose] public section
 
@@ -12,6 +11,5 @@ set_option maxRecDepth 400000
    (`artifacts/setup/README.md`). Columns are compressed blocks; `decode` is the row value. -/
 import_setup_blocks columnParitySetup from "artifacts/setup/keccak-column-parity.json"
 
-check_native_ranges "artifacts/setup/keccak-column-parity.json"
 
 end Airbender.Keccak.Split.ColumnParity

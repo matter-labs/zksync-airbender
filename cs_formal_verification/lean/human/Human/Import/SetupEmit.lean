@@ -32,6 +32,14 @@ namespace Airbender.Import.Setup
 
 open Lean Elab Command
 
+/-- The full virtual columns are an increasing prefix and optional zero padding. -/
+def compareRanges (data : SetupData) : Except String Unit := do
+  for (limit, blocks) in [(65536, data.range16), (524288, data.timestampRange)] do
+    unless limit ≤ data.traceLen do throw "Native range exceeds its setup domain"
+    let expected := if limit = data.traceLen then [Block.affine limit 0 1]
+      else [Block.affine limit 0 1, Block.affine (data.traceLen - limit) 0 0]
+    unless blocks == expected do throw "Native range prefix or padding differs"
+
 private def natE (n : Nat) : Lean.Expr := mkRawNatLit n
 
 private def intE (i : Int) : Lean.Expr :=
@@ -248,6 +256,9 @@ def elabImportSetupBlocks : CommandElab := fun stx => do
     let d ← match parseSetup text with
       | .ok d => pure d
       | .error e => throwError "setup import failed: {e}"
+    match compareRanges d with
+    | .ok () => pure ()
+    | .error reason => throwError "setup range import failed: {reason}"
     let base := (← getCurrNamespace) ++ name.getId
     liftCoreM do
       let mut colNames : Array Name := #[]

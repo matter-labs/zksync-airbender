@@ -1,6 +1,5 @@
 module
 public import Human.Import.SetupEmit
-public import Human.Import.NativeGrid
 
 @[expose] public section
 
@@ -10,6 +9,5 @@ namespace Airbender.Blake2Round
    (`artifacts/setup/README.md`). Columns are compressed blocks; `decode` is the row value. -/
 import_setup_blocks blake2RoundSetup from "artifacts/setup/blake-round.json"
 
-check_native_ranges "artifacts/setup/blake-round.json"
 
 end Airbender.Blake2Round
