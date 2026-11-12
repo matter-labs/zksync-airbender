@@ -71,10 +71,11 @@ end {ns}
  # Each public placement is checked at its imported array position.
  count=len(c['placement_data'])
  placement_batches=[]
- for first in range(0,count,24):
-  name=f'Placement{first//24:03d}';imports.append(f'Proven.Compiler.NativeBindings.{family}.{name}')
+ placement_step=8 if family=="BlakeRound" else 24
+ for first in range(0,count,placement_step):
+  name=f'Placement{first//placement_step:03d}';imports.append(f'Proven.Compiler.NativeBindings.{family}.{name}')
   s=header
-  for i in range(first,min(first+24,count)):
+  for i in range(first,min(first+placement_step,count)):
    s+=f'''\n/-- Logical column {i} uses its actual native placement. -/
 theorem placement{i} (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement {capture} physical logical) :
@@ -85,13 +86,13 @@ theorem placement{i} (physical : GKRAddress → NativeArithmetic.F) (logical : N
   exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
     ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
 '''
-  batch=f'placements{first//24:03d}';placement_batches.append(batch)
+  batch=f'placements{first//placement_step:03d}';placement_batches.append(batch)
   proof='(by intro index member; cases member)'
-  for i in reversed(range(first,min(first+24,count))):proof=f'(cons_placements (placement{i} physical logical agreement) {proof})'
+  for i in reversed(range(first,min(first+placement_step,count))):proof=f'(cons_placements (placement{i} physical logical agreement) {proof})'
   s+=f'''\n/-- Public placements cover each column in this batch. -/
 theorem {batch} (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement {capture} physical logical) :
-    ∀ index ∈ {list(range(first,min(first+24,count)))},
+    ∀ index ∈ {list(range(first,min(first+placement_step,count)))},
       ({clean}.environment physical (Verification.environment logical).data).get index = logical index :=
   {proof}
 end {ns}

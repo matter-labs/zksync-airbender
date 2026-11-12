@@ -386,7 +386,6 @@ text = true
 [[lean_lib]]
 name = "Proven"
 srcDir = "proven"
-needs = ["compiler_numeric_certificate_0", "compiler_numeric_certificate_1", "compiler_numeric_certificate_2", "compiler_numeric_certificate_3", "compiler_numeric_certificate_4", "compiler_numeric_certificate_5", "compiler_numeric_certificate_6", "compiler_numeric_certificate_7", "compiler_numeric_certificate_8", "compiler_numeric_certificate_9", "compiler_numeric_certificate_10", "compiler_numeric_certificate_11"]
 roots = ["Proven"]
 globs = ["Proven.+"]
 # Files that reach the Sail model (not a module) stay non-modules (scripts/modulize.py converts every other file);
@@ -724,3 +723,73 @@ text = true
 name = "compiler_numeric_certificate_11"
 path = "artifacts/compiler/numeric-clean/keccak-cached.json"
 text = true
+
+# Hash only the numeric reader and its importers when its payload changes.
+[[lean_lib]]
+name = "CompilerNumericData0"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.CleanIdealNative.KeccakCachedTraces"]
+needs = ["compiler_numeric_certificate_11"]
+
+# Hash only the numeric reader and its importers when its payload changes.
+[[lean_lib]]
+name = "CompilerNumericData1"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FullArithmeticNative.BigintCachedNumericTraces"]
+needs = ["compiler_numeric_certificate_0"]
+
+# Hash only the numeric reader and its importers when its payload changes.
+[[lean_lib]]
+name = "CompilerNumericData2"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FullArithmeticNative.BlakeGCachedNumericData"]
+needs = ["compiler_numeric_certificate_1", "compiler_numeric_certificate_1", "compiler_numeric_certificate_1", "compiler_numeric_certificate_1", "compiler_numeric_certificate_1", "compiler_numeric_certificate_1", "compiler_numeric_certificate_1", "compiler_numeric_certificate_1", "compiler_numeric_certificate_1"]
+
+# Hash only the numeric reader and its importers when its payload changes.
+[[lean_lib]]
+name = "CompilerNumericData3"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FullArithmeticNative.JumpBranchCachedNumericData"]
+needs = ["compiler_numeric_certificate_3", "compiler_numeric_certificate_3", "compiler_numeric_certificate_3", "compiler_numeric_certificate_3", "compiler_numeric_certificate_3", "compiler_numeric_certificate_3", "compiler_numeric_certificate_3", "compiler_numeric_certificate_3", "compiler_numeric_certificate_3"]
+
+# Hash only the numeric reader and its importers when its payload changes.
+[[lean_lib]]
+name = "CompilerNumericData4"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FullArithmeticNative.KeccakCachedNumericTraces"]
+needs = ["compiler_numeric_certificate_4"]
+
+# Hash only the numeric reader and its importers when its payload changes.
+[[lean_lib]]
+name = "CompilerNumericData5"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FullArithmeticNative.MulDivCachedNumericData"]
+needs = ["compiler_numeric_certificate_5", "compiler_numeric_certificate_5", "compiler_numeric_certificate_5", "compiler_numeric_certificate_5", "compiler_numeric_certificate_5", "compiler_numeric_certificate_5", "compiler_numeric_certificate_5", "compiler_numeric_certificate_5", "compiler_numeric_certificate_5"]
+
+# Hash only the numeric reader and its importers when its payload changes.
+[[lean_lib]]
+name = "CompilerNumericData6"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FullArithmeticNative.ShiftBinopCachedNumericData"]
+needs = ["compiler_numeric_certificate_6", "compiler_numeric_certificate_6", "compiler_numeric_certificate_6", "compiler_numeric_certificate_6", "compiler_numeric_certificate_6", "compiler_numeric_certificate_6", "compiler_numeric_certificate_6", "compiler_numeric_certificate_6", "compiler_numeric_certificate_6"]
+
+# Hash only the numeric reader and its importers when its payload changes.
+[[lean_lib]]
+name = "CompilerNumericData7"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FullArithmeticNative.SubwordMemoryCachedNumericData"]
+needs = ["compiler_numeric_certificate_7", "compiler_numeric_certificate_7", "compiler_numeric_certificate_7", "compiler_numeric_certificate_7", "compiler_numeric_certificate_7", "compiler_numeric_certificate_7", "compiler_numeric_certificate_7", "compiler_numeric_certificate_7", "compiler_numeric_certificate_7"]
+
+# Hash only the numeric reader and its importers when its payload changes.
+[[lean_lib]]
+name = "CompilerNumericData8"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FullArithmeticNative.UnifiedCachedNumericData"]
+needs = ["compiler_numeric_certificate_8", "compiler_numeric_certificate_8", "compiler_numeric_certificate_8", "compiler_numeric_certificate_8", "compiler_numeric_certificate_8", "compiler_numeric_certificate_8", "compiler_numeric_certificate_8", "compiler_numeric_certificate_8", "compiler_numeric_certificate_8"]
+
+# Hash only the numeric reader and its importers when its payload changes.
+[[lean_lib]]
+name = "CompilerNumericData9"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FullArithmeticNative.WordMemoryCachedNumericData"]
+needs = ["compiler_numeric_certificate_9", "compiler_numeric_certificate_9", "compiler_numeric_certificate_9", "compiler_numeric_certificate_9", "compiler_numeric_certificate_9", "compiler_numeric_certificate_9", "compiler_numeric_certificate_9", "compiler_numeric_certificate_9", "compiler_numeric_certificate_9"]
