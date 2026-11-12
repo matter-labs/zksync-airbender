@@ -63,10 +63,6 @@ pub(super) fn empty_proof() -> ProgramProof {
     }
 }
 
-pub(super) fn artifact(target: ProofTarget, n: usize) -> ProofArtifact {
-    compression_artifact(target, n)
-}
-
 /// A fake single-instance compression proof: the reduced family with `instances`
 /// instances, one inits-and-teardowns instance, no delegation proofs.
 pub(super) fn fake_compression_proof(final_pc: u32, instances: usize) -> ProgramProof {
