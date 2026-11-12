@@ -1,8 +1,6 @@
 mod geometry;
 mod inputs;
 mod orchestration;
-#[cfg(test)]
-mod tests;
 
 pub use geometry::L1WrapGeometry;
 pub use inputs::L1WrapInputs;

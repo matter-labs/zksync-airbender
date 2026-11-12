@@ -16,13 +16,13 @@ use gpu_core::primitives::utils::LOG_WARP_SIZE;
 const SHAPES: [(u32, u32, usize, u32); 4] =
     [(11, 0, 2, 1), (12, 1, 1, 1), (12, 0, 4, 0), (13, 2, 2, 0)];
 const COLS_COUNTS: [usize; 3] = [1, 3, 17];
-const FEEDER_CASE: ((u32, u32, usize, u32), usize) = ((12, 1, 2, 1), 104);
+const COMPRESSION_CASE: ((u32, u32, usize, u32), usize) = ((12, 1, 2, 1), 104);
 
 fn cases() -> impl Iterator<Item = ((u32, u32, usize, u32), usize)> {
     SHAPES
         .into_iter()
         .flat_map(|shape| COLS_COUNTS.into_iter().map(move |cols| (shape, cols)))
-        .chain(std::iter::once(FEEDER_CASE))
+        .chain(std::iter::once(COMPRESSION_CASE))
 }
 
 struct Oracle {

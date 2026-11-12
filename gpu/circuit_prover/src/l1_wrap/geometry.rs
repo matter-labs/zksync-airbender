@@ -207,19 +207,6 @@ pub(crate) mod cpu_tests {
         }
     }
 
-    pub(crate) fn wrap_geometry(circuit_type: CircuitType) -> (L1WrapGeometry, ProverConfig) {
-        let circuit = committed_layout(circuit_type);
-        let config = ProofProfile::L1Wrap.prover_config(
-            circuit_type.get_domain_size_log2() as usize,
-            prover::definitions::SoundnessMode::PessimisticConjecture,
-        );
-        let setup = setup_without_evaluations(circuit_type, circuit.clone());
-        (
-            L1WrapGeometry::new(circuit_type, &config, &circuit, &setup),
-            config,
-        )
-    }
-
     fn assert_panics(f: impl FnOnce(), expected: &str) {
         let payload = catch_unwind(AssertUnwindSafe(f)).expect_err("expected a named panic");
         let message = payload

@@ -70,7 +70,7 @@ pub struct MainContinuationWindowProgram {
     /// The committed continuation lean words, byte-for-byte and in their
     /// original atom order.
     pub program: LeanProgram,
-    /// Candidates constructed from this program; soundness_mode uses runtime geometry/device.
+    /// Candidates constructed from this program; selection uses runtime geometry/device.
     pub partitions: Vec<super::main_continuation_partitions::MainContinuationPartitionPlan>,
     pub c_init: Option<CoefficientRecipeId>,
     pub immediates: Vec<u128>,

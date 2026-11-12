@@ -32,7 +32,6 @@ use gpu_trace::witness::proth120::{
 use gpu_trace::witness::trace_unrolled::PAGE_SIZE_LOG2;
 use gpu_whir::proth120::{
     schedule_l1_whir_fold, L1WhirInputs, L1WhirKeepalive, L1WhirPendingReadback, L1WhirProof,
-    L1WhirShape,
 };
 
 use super::{L1Proof, L1WrapGeometry, L1WrapInputs};
@@ -510,7 +509,6 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
         let config = gkr.state.params.config;
         let p = phase("l1_wrap.whir", context)?;
         let handoff = gkr.gkr.whir_handoff();
-        let shape = L1WhirShape::from_schedule(&config.whir_schedule);
         let whir = schedule_l1_whir_fold(
             &mut gkr.base,
             &mut gkr.state.setup,
@@ -522,7 +520,6 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
                 batching_challenge: handoff.batching_challenge,
             },
             &config.whir_schedule,
-            &shape,
             gkr.slab.whir_target(),
             context,
         )?;

@@ -257,7 +257,7 @@ pub struct GkrPrograms {
     pub(crate) forward: ForwardProgramBundle,
     pub(crate) continuations: ContinuationProgramBundle,
     pub(crate) backward_layers: Vec<BackwardLayerPlan>,
-    /// MAIN R0 soundness_mode depends only on the circuit and is validated at compilation.
+    /// MAIN R0 selection depends only on the circuit and is validated at compilation.
     window: Vec<R0WindowProgram>,
     main_continuation_window: Vec<MainContinuationWindowProgram>,
     main_tail: Vec<MainTailProgram>,

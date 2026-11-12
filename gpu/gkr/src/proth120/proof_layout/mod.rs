@@ -393,9 +393,6 @@ impl ProofSlabPr {
     pub fn extra_evaluations_device_mut(&mut self, layer: usize) -> &mut DeviceSlice<PR> {
         self.fields_device_mut(SectionId::ExtraEvaluations(layer))
     }
-    pub fn grand_product_accumulator_device_mut(&mut self) -> &mut DeviceVariable<PR> {
-        &mut self.fields_device_mut(SectionId::GrandProductAccumulator)[0]
-    }
     pub fn memory_claims_device_mut(&mut self) -> &mut DeviceSlice<PR> {
         self.fields_device_mut(SectionId::MemoryClaims)
     }
