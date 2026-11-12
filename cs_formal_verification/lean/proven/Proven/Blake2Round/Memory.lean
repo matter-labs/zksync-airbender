@@ -76,11 +76,29 @@ theorem final_flag_boolean [Fact p.Prime] {w : Nat → ZMod p}
   all_goals norm_num [Fin.ext_iff] at equation
   all_goals first | exact Or.inl equation | exact Or.inr (by linear_combination -equation)
 
-theorem memory_write_rule [Fact p.Prime] (hp : 8388608 ≤ p)
+/-- Boolean native control bits bound the finalization selector for every round mask. -/
+theorem native_final_flag_boolean [Fact p.Prime] {w : Nat → ZMod p}
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (importedConstraints setupTable)) : w 152 = 0 ∨ w 152 = 1 := by
+  have equation := Verification.assertion_of_holds holds ⟨2, by rw [constraint_count]; decide⟩
+  op_index at equation
+  simp [Expression.eval, Verification.environment] at equation
+  have reduced := Control.Proofs.control_bits holds 0
+  have six := Control.Proofs.control_bits holds 9
+  have nine := Control.Proofs.control_bits holds 12
+  change w 139 = 0 ∨ w 139 = 1 at reduced
+  change w 148 = 0 ∨ w 148 = 1 at six
+  change w 151 = 0 ∨ w 151 = 1 at nine
+  rcases reduced with reduced | reduced <;> rcases six with six | six <;> rcases nine with nine | nine
+  all_goals rw [reduced, six, nine] at equation
+  all_goals norm_num at equation
+  all_goals first | exact Or.inl equation
+                  | exact Or.inr (by linear_combination -equation)
+
+theorem native_memory_write_rule [Fact p.Prime] (hp : 8388608 ≤ p)
     (inverse : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
     (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
-      (clockConstraints setupTable)) (round : Fin 10)
-    (mask : ∀ i : Fin 10, w Variables.roundBits[i] = if i = round then 1 else 0)
+      (clockConstraints setupTable))
     (reads : ∀ port ∈ importedConstraintsMemoryPorts, (readToken w port).word.Bounded) :
     ∀ port ∈ importedConstraintsMemoryPorts,
       ((⟨.blakeRound, w⟩ : Delegation.Row p).writeToken port).word.Bounded := by
@@ -94,7 +112,7 @@ theorem memory_write_rule [Fact p.Prime] (hp : 8388608 ≤ p)
     fin_cases i
     all_goals simpa [Trace.Proofs.read_word, importedConstraintsMemoryPorts,
       Preparation.words, Variables.stateReads, WordColumns.evaluate] using bounds
-  have state := state_write_bounds (by omega) inverse core (final_flag_boolean core round mask) incoming
+  have state := state_write_bounds (by omega) inverse core (native_final_flag_boolean core) incoming
   have extended := extended_write_bounds (by omega) inverse core
   have control := Control.Proofs.soundness (by omega) setupTable
     (⟨(w 135).val, (w 136).val⟩ : Word) ⟨(w 137).val, (w 138).val⟩ w
@@ -183,6 +201,18 @@ theorem memory_write_rule [Fact p.Prime] (hp : 8388608 ≤ p)
   · exact readonly 40 rfl
   · exact readonly 41 rfl
   · simpa [native_write_word, importedConstraintsMemoryPorts, WordColumns.evaluate] using controlBound
+
+
+/-- The scheduled interface is a specialization of the native Boolean-mask bound. -/
+theorem memory_write_rule [Fact p.Prime] (hp : 8388608 ≤ p)
+    (inverse : 64 * (-31457280 : ZMod p) = 1) {w : Nat → ZMod p}
+    (holds : FlatOperation.ConstraintsHoldFlat (Verification.environment w)
+      (clockConstraints setupTable)) (_round : Fin 10)
+    (_mask : ∀ i : Fin 10, w Variables.roundBits[i] = if i = _round then 1 else 0)
+    (reads : ∀ port ∈ importedConstraintsMemoryPorts, (readToken w port).word.Bounded) :
+    ∀ port ∈ importedConstraintsMemoryPorts,
+      ((⟨.blakeRound, w⟩ : Delegation.Row p).writeToken port).word.Bounded :=
+  native_memory_write_rule hp inverse holds reads
 
 
 theorem memory_rules [Fact p.Prime] (hp : 8388608 ≤ p)
