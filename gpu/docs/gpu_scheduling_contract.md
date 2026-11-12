@@ -226,15 +226,11 @@ kernels do not read a buffer that is still being transferred.
 A `Transfer` issues the `E_alloc` wait once, at its first copy or at
 `record_transferred`.
 
-**Per-request sources.** Small inputs that change with every request (top bits,
-external challenges, the unified memory cap) are recorded with
-`Transfer::stage` before any direct copy of the bundle. They are packed into
-the context's fixed 64 KiB pinned staging buffer by one `h2d_stream` callback
-enqueued ahead of the wait, and
-copied right after it. Submission panics if a bundle stages more than the buffer
-holds.
-Each bundle's fill sits behind every earlier staged copy on the in-order
-`h2d_stream`, so all bundles reuse the same buffer.
+**Per-request sources.** Small per-request inputs go through `Transfer::stage`
+into the context's pinned staging buffer, sized by `H2D_STAGING_BYTES`.
+A scheduled callback fills the buffer; H2D copies follow the allocation wait.
+Submission panics if a bundle exceeds the buffer. Each fill follows earlier
+copies on the in-order `h2d_stream`, so bundles reuse the buffer.
 
 ## D2H copies
 
