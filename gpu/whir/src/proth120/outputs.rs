@@ -126,22 +126,14 @@ impl L1WhirPendingReadback {
     }
     pub fn into_keepalive(self) -> L1WhirKeepalive {
         L1WhirKeepalive {
-            tracing_ranges: self.tracing_ranges,
+            _tracing_ranges: self.tracing_ranges,
         }
     }
 }
 
 /// Phase ranges retained until completion; WHIR owns no readback mirrors.
 pub struct L1WhirKeepalive {
-    tracing_ranges: Vec<(String, Range)>,
-}
-impl L1WhirKeepalive {
-    pub fn phase_times_after_completion(&self) -> CudaResult<Vec<(String, f32)>> {
-        self.tracing_ranges
-            .iter()
-            .map(|(name, range)| Ok((name.clone(), range.elapsed()?)))
-            .collect()
-    }
+    _tracing_ranges: Vec<(String, Range)>,
 }
 
 fn assemble_base_queries(

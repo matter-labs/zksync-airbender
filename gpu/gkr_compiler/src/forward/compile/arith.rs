@@ -10,7 +10,7 @@ use crate::forward::ElementModel;
 
 // ── field classification ──────────────────────────────────────────────────────
 
-/// The operand field of a child expression for instruction-field soundness_mode.
+/// The operand field of a child expression for instruction-field selection.
 ///
 pub(crate) fn child_operand_field(
     layer: &gkr_eval_ir::DagLayer,

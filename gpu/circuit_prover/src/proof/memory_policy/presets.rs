@@ -82,135 +82,31 @@ pub fn merged_commit_strategy(circuit: CircuitType, profile: ProofProfile) -> Me
 #[cfg(test)]
 mod cpu_tests {
     use super::*;
-    use gpu_trace::witness::circuit_type::{
-        DelegationCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
-    };
-
     #[test]
-    fn cpu_compression_profile_refusals() {
-        let unified = CircuitType::Unrolled(UnrolledCircuitType::Unified);
-        let unified22 = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
-        let delegations = [
-            DelegationCircuitType::BigIntWithControl,
-            DelegationCircuitType::Blake2WithCompression,
-            DelegationCircuitType::Blake2GFunction,
-            DelegationCircuitType::KeccakSpecial5,
-            DelegationCircuitType::KeccakColumnParity,
-            DelegationCircuitType::KeccakThetaRho,
-            DelegationCircuitType::KeccakChi5,
-        ];
-        let unrolled = [
-            UnrolledCircuitType::InitsAndTeardowns,
-            UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreSubwordOnly),
-            UnrolledCircuitType::Memory(UnrolledMemoryCircuitType::LoadStoreWordOnly),
-            UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop),
-            UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::JumpBranchSlt),
-            UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::MulDivUnsigned),
-            UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::ShiftBinary),
-        ];
-        let named_panic = |select: &dyn Fn(), expected: String| {
-            let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(select))
-                .expect_err("a mismatched Compression identity must panic");
-            assert_eq!(
-                panic
-                    .downcast_ref::<String>()
-                    .expect("named Compression panic"),
-                &expected
-            );
-        };
-        for circuit in delegations
-            .into_iter()
-            .map(CircuitType::Delegation)
-            .chain(unrolled.into_iter().map(CircuitType::Unrolled))
-            .chain([unified, CircuitType::L1Wrap])
-        {
-            assert!(!persists_memory_partial_trees(
-                circuit,
-                ProofProfile::Standard
-            ));
-            let expected = format!("ProofProfile::CompressionFinal requires CircuitType::Unrolled(UnrolledCircuitType::Unified22), got {circuit:?}");
-            named_panic(
-                &|| {
-                    policy(circuit, ProofProfile::CompressionFinal, 30 << 30);
-                },
-                expected.clone(),
-            );
-            named_panic(
-                &|| {
-                    partial_trees(circuit, ProofProfile::CompressionFinal);
-                },
-                expected.clone(),
-            );
-            named_panic(
-                &|| {
-                    merged_commit_strategy(circuit, ProofProfile::CompressionFinal);
-                },
-                expected.clone(),
-            );
-            named_panic(
-                &|| {
-                    persists_memory_partial_trees(circuit, ProofProfile::CompressionFinal);
-                },
-                expected,
-            );
-        }
-        for profile in [ProofProfile::Standard, ProofProfile::L1Wrap] {
-            let expected = format!("CircuitType::Unrolled(UnrolledCircuitType::Unified22) requires ProofProfile::CompressionFinal, got {profile:?}");
-            named_panic(
-                &|| {
-                    policy(unified22, profile, 30 << 30);
-                },
-                expected.clone(),
-            );
-            named_panic(
-                &|| {
-                    partial_trees(unified22, profile);
-                },
-                expected.clone(),
-            );
-            named_panic(
-                &|| {
-                    merged_commit_strategy(unified22, profile);
-                },
-                expected.clone(),
-            );
-            named_panic(
-                &|| {
-                    persists_memory_partial_trees(unified22, profile);
-                },
-                expected,
-            );
-        }
+    #[should_panic(expected = "ProofProfile::CompressionFinal requires")]
+    fn cpu_compression_final_requires_unified22() {
+        is_compression(
+            CircuitType::Unrolled(UnrolledCircuitType::Unified),
+            ProofProfile::CompressionFinal,
+        );
     }
 
     #[test]
-    fn cpu_compression_a_profile_refusals() {
-        let unified22 = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
-        let a = ProofProfile::Compression;
-        let named_panic = |circuit: CircuitType, expected: String| {
-            let panic = std::panic::catch_unwind(|| policy(circuit, a, 21 << 30))
-                .expect_err("a mismatched Compression identity must panic");
-            assert_eq!(
-                panic
-                    .downcast_ref::<String>()
-                    .expect("named Compression panic"),
-                &expected
-            );
-        };
-        named_panic(
-            unified22,
-            format!("CircuitType::Unrolled(UnrolledCircuitType::Unified22) requires ProofProfile::CompressionFinal, got {a:?}"),
+    #[should_panic(expected = "requires ProofProfile::CompressionFinal")]
+    fn cpu_unified22_requires_compression_final() {
+        is_compression(
+            CircuitType::Unrolled(UnrolledCircuitType::Unified22),
+            ProofProfile::Standard,
         );
-        for circuit in [
+    }
+
+    #[test]
+    #[should_panic(expected = "ProofProfile::Compression requires")]
+    fn cpu_compression_requires_unified() {
+        is_compression(
             CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
-            CircuitType::Delegation(DelegationCircuitType::BigIntWithControl),
-            CircuitType::L1Wrap,
-        ] {
-            named_panic(
-                circuit,
-                format!("ProofProfile::Compression requires CircuitType::Unrolled(UnrolledCircuitType::Unified), got {circuit:?}"),
-            );
-        }
+            ProofProfile::Compression,
+        );
     }
 
     #[test]

@@ -63,12 +63,6 @@ impl PartialTreePolicy {
             witness: reduction_layers,
         }
     }
-
-    pub fn assert_valid(self) {
-        assert_partial_tree_reduction_layers(self.setup);
-        assert_partial_tree_reduction_layers(self.memory);
-        assert_partial_tree_reduction_layers(self.witness);
-    }
 }
 
 impl Default for PartialTreePolicy {

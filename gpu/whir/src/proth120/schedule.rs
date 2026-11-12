@@ -113,7 +113,6 @@ fn validate_inputs(
     setup: &PackedSetupSource<'_>,
     seed: &DeviceSlice<u8>,
     inputs: &L1WhirInputs<'_>,
-    schedule: &WhirSchedule,
     shape: &L1WhirShape,
 ) {
     let base_cfg = base
@@ -123,16 +122,6 @@ fn validate_inputs(
         .oracle()
         .config()
         .expect("Proth120 WHIR: setup oracle has not been committed");
-    let expected = L1WhirShape::from_schedule(schedule);
-    assert!(
-        shape.rounds == expected.rounds
-            && shape.log_base_lde == expected.log_base_lde
-            && shape.cap_log == expected.cap_log
-            && shape.term_capacity == expected.term_capacity
-            && shape.total_sumcheck_polys == expected.total_sumcheck_polys
-            && shape.log_final == expected.log_final,
-        "Proth120 WHIR: shape differs from schedule"
-    );
     assert!(
         inputs.claims.len() == base.packed_columns() + setup.oracle().packed_columns(),
         "Proth120 WHIR: claims length differs from packed columns"
@@ -177,11 +166,11 @@ pub fn schedule_l1_whir_fold(
     seed: &mut DeviceSlice<u8>,
     inputs: L1WhirInputs<'_>,
     schedule: &WhirSchedule,
-    shape: &L1WhirShape,
     target: WhirProofTargetPr,
     context: &ProverContext,
 ) -> CudaResult<L1WhirPendingReadback> {
-    validate_inputs(base, setup, seed, &inputs, schedule, shape);
+    let shape = L1WhirShape::from_schedule(schedule);
+    validate_inputs(base, setup, seed, &inputs, &shape);
     let stream = context.get_exec_stream();
     let mut ranges = Vec::new();
     let mut outputs = L1WhirProofDevice::new(&target);

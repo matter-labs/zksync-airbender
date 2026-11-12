@@ -69,12 +69,6 @@ impl PackedCommitConfig {
             skip_bottom: h.min(requested_skip_bottom),
         }
     }
-
-    pub fn same_protocol_geometry(&self, other: &Self) -> bool {
-        self.log_lde_factor == other.log_lde_factor
-            && self.log_values_per_leaf == other.log_values_per_leaf
-            && self.cap_log == other.cap_log
-    }
 }
 
 pub struct PackedCosetRecomputeOracle<T> {

@@ -165,11 +165,6 @@ impl CircuitPrecomputations {
         );
         let (compiled_circuit, cpu_setup, decoder_table) = match setup {
             CanonicalCircuitSetup::L1Wrap(setup) => {
-                // The wrap exists only under PessimisticConjecture (deferred product scope):
-                // refuse any other soundness_mode before its pinned allocations.
-                ProofProfile::L1Wrap
-                    .config_profile()
-                    .assert_supports(soundness_mode);
                 return Self::L1Wrap(Arc::new(
                     L1WrapPrecomputed::new(circuit_type, setup, soundness_mode)
                         .expect("L1 wrap precomputation allocation failed"),

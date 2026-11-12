@@ -38,7 +38,6 @@ pub(crate) use field::Field;
 pub(crate) use field::PrimeField;
 pub(crate) use prover::common_constants::rom::RomGeometry;
 // `prover` — CPU prover types the GPU prover mirrors / interoperates with.
-pub(crate) use prover::common_constants::TimestampScalar;
 pub(crate) use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 pub(crate) use prover::field::Proth120;
 pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
