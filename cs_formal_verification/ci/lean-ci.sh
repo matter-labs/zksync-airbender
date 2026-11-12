@@ -37,7 +37,7 @@ SUDO=; (( EUID == 0 )) || SUDO="sudo DEBIAN_FRONTEND=noninteractive"
 sub() { awk -v a="$1" -v b="$2" -v d="${3:-1}" 'BEGIN { printf "%.1f", (a - b) / d }'; }
 
 sail_inputs() { # every file sail/regen.sh reads (pins are in regen.sh and fetch-lean-sail.sh)
-  find "$FV/sail/regen.sh" "$FV/sail/fetch-lean-sail.sh" "$FV/sail/patches" "$FV/sail/config" "$FV/sail/smoke" \
+  find "$FV/sail/regen.sh" "$FV/sail/opam-packages.txt" "$FV/sail/fetch-lean-sail.sh" "$FV/sail/patches" "$FV/sail/config" "$FV/sail/smoke" \
     -type f | LC_ALL=C sort
 }
 
@@ -80,11 +80,15 @@ step_sail_key() {
 }
 
 step_sail_gen() {
-  # regen.sh rebuilds lean/sail-rv32/ from scratch (deleting the committed lake-manifest.json); restore the
-  # committed files, then require that regen.sh reproduced them exactly.
+  # Keep the generated files for the diff. Only the Lake manifest is not emitted by regen.sh.
   "$FV/sail/regen.sh" --bootstrap-sail
-  git -C "$FV" checkout -- lean/sail-rv32
-  git -C "$FV" diff --exit-code -- lean/sail-rv32 || { echo "sail/regen.sh changed committed files" >&2; exit 1; }
+  git -C "$FV" restore --source=HEAD -- lean/sail-rv32/lake-manifest.json
+  git -C "$FV" diff --exit-code HEAD -- lean/sail-rv32 || {
+    echo "sail/regen.sh changed committed files" >&2; exit 1;
+  }
+  [[ -z "$(git -C "$FV" ls-files --others --exclude-standard -- lean/sail-rv32)" ]] || {
+    echo "sail/regen.sh added files" >&2; exit 1;
+  }
   (cd "$LEAN/sail-rv32" && find SailRV32 SailRV32.lean -type f | LC_ALL=C sort | xargs sha256sum | sha256sum)
 }
 

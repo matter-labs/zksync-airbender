@@ -77,7 +77,8 @@ if (( BOOTSTRAP )); then
   git -C "$WORK/sail" checkout -q -B sail2
   ( cd "$WORK/sail"
     eval "$(opam env --switch="$OPAM_SWITCH")"
-    opam install . --deps-only -y
+    packages=( $(sed '/^[[:space:]]*#/d; /^[[:space:]]*$/d' "$HERE/opam-packages.txt") )
+    opam install -y "${packages[@]}"
     make install )
 fi
 command -v sail >/dev/null || { echo "sail not found; run with --bootstrap-sail" >&2; exit 2; }
@@ -168,6 +169,8 @@ rm -rf "$OUT"; mkdir -p "$OUT"
 cp -r "$GEN/$LEAN_PKG/$LEAN_PKG" "$GEN/$LEAN_PKG/$LEAN_PKG.lean" "$OUT/"
 cp -r "$WORK/lean-sail" "$OUT/lean-sail"
 cp "$HERE/smoke/SailRV32Smoke.lean" "$OUT/SailRV32Smoke.lean"
+cp "$WORK/sail/LICENSE" "$OUT/SAIL_COMPILER_LICENSE"
+cp "$WORK/sail-riscv/LICENCE" "$OUT/SAIL_RISCV_LICENSE"
 cp "$CONFIG" "$OUT/$CONFIG_NAME"            # the compile-time config the model was generated with
 printf '%s\n' "${LEAN_TOOLCHAIN}" > "$OUT/lean-toolchain"
 cat > "$OUT/lakefile.toml" <<EOF
