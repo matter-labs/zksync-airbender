@@ -565,7 +565,7 @@ fn advance_compression_stages(
     batch_id: u64,
 ) -> RecursionState {
     assert!(
-        unified_recursion_has_converged(&state.proof, BlakeMode::Compression),
+        unified_recursion_has_converged(&state.proof),
         "compression seed must be a converged unified proof"
     );
     let mut chain = rebuild_chain(&state.chain_end_params).expect("compression seed has a chain");
@@ -888,7 +888,7 @@ fn advance_standard_stages(
             "final recursion shape {shape:?}, {} cycles",
             proof.executed_cycles()
         );
-        if unified_recursion_has_converged(&proof, final_mode) {
+        if unified_recursion_has_converged(&proof) {
             break;
         }
         // The first bridge-to-final transition can increase either count.
@@ -934,13 +934,11 @@ impl BackendImpl {
     }
 }
 
-/// One unified + one blake delegation proof; `BlakeSpecialOpcodes` hashes with
-/// inline MOPs, so its fixed point has no delegation proof.
-fn unified_recursion_has_converged(proof: &ProgramProof, final_mode: BlakeMode) -> bool {
+/// Standard recursion converges to one unified proof and one Blake delegation proof.
+fn unified_recursion_has_converged(proof: &ProgramProof) -> bool {
     let riscv: usize = proof.riscv_proofs.values().map(|v| v.len()).sum();
     let delegation: usize = proof.delegation_proofs.values().map(|v| v.len()).sum();
-    let expected_delegations = usize::from(final_mode != BlakeMode::BlakeSpecialOpcodes);
-    riscv == 1 && delegation == expected_delegations
+    riscv == 1 && delegation == 1
 }
 
 /// A proving session.

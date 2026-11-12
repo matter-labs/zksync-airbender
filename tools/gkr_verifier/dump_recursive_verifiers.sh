@@ -42,10 +42,12 @@ for soundness in $MODES; do
             build_variant "fsv_unrolled_base_layer_sec_${sec}" "${soundness}" "${mode}"
             build_variant "fsv_unrolled_recursion_layer_sec_${sec}" "${soundness}" "${mode}"
         done
-        # Unified-machine recursion verifier: round or inline special opcodes.
-        for mode in blake2_with_compression special_opcodes_extension; do
-            build_variant "fsv_unified_recursion_layer_sec_${sec}" "${soundness}" "${mode}"
-        done
+        # Standard unified recursion uses the compression Blake mode.
+        build_variant "fsv_unified_recursion_layer_sec_${sec}" "${soundness}" "blake2_with_compression"
+        if [ "$soundness" = "pessimistic_conjecture" ]; then
+            # The first compression step verifies the special-opcode unified guest.
+            build_variant "fsv_unified_recursion_layer_sec_${sec}" "${soundness}" "special_opcodes_extension"
+        fi
     done
     if [ "$soundness" = "pessimistic_conjecture" ]; then
         build_variant "fsv_unified_recursion_layer_sec_100_compression" "${soundness}" "special_opcodes_extension"
