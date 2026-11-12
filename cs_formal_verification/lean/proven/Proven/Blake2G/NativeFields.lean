@@ -4,6 +4,7 @@ public import Proven.Blake2G.Memory
 
 @[expose] public section
 namespace Airbender.Blake2G.Proofs
+set_option warningAsError true
 open Trace Trace.Proofs Delegation.Proofs Arithmetic
 set_option backward.isDefEq.respectTransparency false
 

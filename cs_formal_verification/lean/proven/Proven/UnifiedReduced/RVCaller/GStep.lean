@@ -5,6 +5,7 @@ public import Proven.Trace.RVPooledRow
 
 @[expose] public section
 namespace Airbender.UnifiedReduced.Caller.Proofs
+set_option warningAsError true
 open Trace Trace.Proofs Arithmetic
 
 /-- A fetched native G caller takes one actual RV step from its cut in the shared history. -/

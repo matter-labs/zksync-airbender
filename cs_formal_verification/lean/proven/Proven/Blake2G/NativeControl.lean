@@ -3,6 +3,7 @@ public import Proven.Blake2G.RVSpec
 
 @[expose] public section
 namespace Airbender.Blake2G.Proofs
+set_option warningAsError true
 open Arithmetic
 set_option backward.isDefEq.respectTransparency false
 

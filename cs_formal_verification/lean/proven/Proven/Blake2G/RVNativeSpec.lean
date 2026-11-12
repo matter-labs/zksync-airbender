@@ -3,6 +3,7 @@ public import Proven.Blake2G.NativeControl
 
 @[expose] public section
 namespace Airbender.Blake2G.Proofs
+set_option warningAsError true
 open Arithmetic
 set_option backward.isDefEq.respectTransparency false
 
@@ -33,10 +34,10 @@ theorem native_g_effect (register : Fin 256) (state message : RV.Word) (mem : RV
     omega
   by_cases separate : state ≠ message
   · simp only [RV.Delegation.blakeG, stateAligned, messageAligned, messageFits, separate, byte,
-      ne_eq, not_false_eq_true, true_and, and_self, ↓reduceIte]
+      ne_eq, not_false_eq_true, and_self, ↓reduceIte]
     exact congrArg some (native_g_body register state message mem)
   · simp only [RV.Delegation.blakeG, stateAligned, messageAligned, messageFits, separate, byte,
-      ne_eq, not_false_eq_true, true_and, and_self, ↓reduceIte]
+      true_and, and_self, ↓reduceIte]
     exact congrArg some (native_g_body register state message mem)
 
 

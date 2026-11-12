@@ -4,6 +4,7 @@ public import Human.Circuits.Blake2Round.Mask
 
 @[expose] public section
 namespace Airbender.Blake2Round.Mask.Proofs
+set_option warningAsError true
 open Arithmetic
 open scoped BigOperators
 set_option backward.isDefEq.respectTransparency false

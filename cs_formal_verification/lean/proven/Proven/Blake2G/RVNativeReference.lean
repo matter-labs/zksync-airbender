@@ -4,6 +4,7 @@ public import Proven.Blake2G.RVWorkVector
 
 @[expose] public section
 namespace Airbender.Blake2G.Proofs
+set_option warningAsError true
 open Trace Trace.Proofs Delegation.Proofs Arithmetic
 open Blake2Round.Proofs (rv_block_words)
 attribute [local irreducible] Specs.BLAKE3.g
