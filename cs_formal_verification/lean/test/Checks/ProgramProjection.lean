@@ -1,5 +1,6 @@
-import Human.Helpers.Decoder.RVMachineProgram
-import Mathlib.Tactic.IntervalCases
+module
+public import Human.Helpers.Decoder.RVMachineProgram
+public import Mathlib.Tactic.IntervalCases
 
 open Airbender Airbender.Trace
 

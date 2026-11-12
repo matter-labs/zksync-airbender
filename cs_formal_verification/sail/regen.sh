@@ -76,9 +76,9 @@ if (( BOOTSTRAP )); then
   # and fails the version check below. Name the branch as upstream does (the commit is what is pinned).
   git -C "$WORK/sail" checkout -q -B sail2
   ( cd "$WORK/sail"
-    eval "$(opam env --switch="$OPAM_SWITCH")"
+    eval "$(opam env --switch="$OPAM_SWITCH" --set-switch)"
     packages=( $(sed '/^[[:space:]]*#/d; /^[[:space:]]*$/d' "$HERE/opam-packages.txt") )
-    opam install -y "${packages[@]}"
+    opam install --switch="$OPAM_SWITCH" -y "${packages[@]}"
     make install )
 fi
 command -v sail >/dev/null || { echo "sail not found; run with --bootstrap-sail" >&2; exit 2; }
