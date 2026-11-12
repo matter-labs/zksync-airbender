@@ -27,6 +27,8 @@ The [shared memory proof](../../../../proven/Proven/Trace/Machine/MemoryBounds.l
 write and terminal word from the public seeds and native matching. The transfer-order proof covers both worker pools.
 The [history proof](../../../../proven/Proven/Trace/Machine/SharedHistory.lean) gives one actual RV memory history
 and its terminal reads. Native caller zeroes and public decoder metadata preserve x0.
+The [cycle partition](../../../../proven/Proven/Trace/Machine/CycleGroups.lean) retains each CPU row and its unique
+matched standard or split worker. It uses occurrence clocks and permits repeated PCs.
 
 The native acceptance interface is explicit. Cached GKR preservation, whole execution composition
 and padding remain open before these targets have final proofs.
