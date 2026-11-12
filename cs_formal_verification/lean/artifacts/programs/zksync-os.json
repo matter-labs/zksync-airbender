@@ -1,0 +1,24 @@
+{
+  "repository": "matter-labs/zksync-os",
+  "release": "v0.5.4-private",
+  "release_url": "https://github.com/matter-labs/zksync-os/releases/tag/v0.5.4-private",
+  "commit": "b38a94b53dc35ec1821f21e488812f7deb05883f",
+  "configs": [
+    "full",
+    "unified"
+  ],
+  "assets": [
+    {
+      "name": "multiblock_batch.bin",
+      "size": 1440644,
+      "sha256": "5743a82a713be186bca21f7fa2f4a84b59d964f23781f87d149471dee975b486",
+      "url": "https://github.com/matter-labs/zksync-os/releases/download/v0.5.4-private/multiblock_batch.bin"
+    },
+    {
+      "name": "multiblock_batch.text",
+      "size": 1179488,
+      "sha256": "0c7850469ca4f8f08c7dac8cedf129adce80a964b44ede0216c59f4bdb25d79c",
+      "url": "https://github.com/matter-labs/zksync-os/releases/download/v0.5.4-private/multiblock_batch.text"
+    }
+  ]
+}

@@ -488,3 +488,9 @@ allowNonModules = true
 name = "airbender_tests"
 srcDir = "test"
 root = "Tests.ArtifactImport"
+
+# The decoder differential executes the reviewed RV projections.
+[[lean_exe]]
+name = "program_rows_oracle"
+srcDir = "test"
+root = "Tests.ProgramRowsOracle"
