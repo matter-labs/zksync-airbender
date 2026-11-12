@@ -1,15 +1,15 @@
 # Lean strategies: operating, proving, specifying
 
-How to work on the Lean side (`lean/`): run the checks, keep proofs in `slop/` fast and modular, keep the spec in
+How to work on the Lean side (`lean/`): run the checks, keep proofs in `proven/` fast and modular, keep the spec in
 `human/` short and complete. General rules only; the file map is in [`../README.md`](../README.md), the trust layout
 in [`architecture.md`](architecture.md).
 
 The project proves Airbender's guest binaries correct: `human/` states what they must compute on the Airbender
-machine (RV32IM as Sail defines it, plus Airbender's changes and its precompiles, called delegations); `slop/`
+machine (RV32IM as Sail defines it, plus Airbender's changes and its precompiles, called delegations); `proven/`
 proves it. The trusted base is the Lean kernel, Lean's standard axioms (`propext`, `Classical.choice`,
 `Quot.sound`), the official Sail RISC-V model, and what `human/` states.
 
-**No `sorry`, anywhere.** Not in `human/`, not in `slop/`, not in tests or helpers, not temporarily in a commit. Work
+**No `sorry`, anywhere.** Not in `human/`, not in `proven/`, not in tests or helpers, not temporarily in a commit. Work
 in progress stays uncommitted until it is proven. This is enforced, not just a convention: the axiom audits reject
 `sorryAx`, and `verify.sh` fails on any warning in our code, "declaration uses `sorry`" included (1.1).
 
@@ -121,7 +121,7 @@ without a limit. Given a root module or a batch, it can exhaust the machine's me
 
 ---
 
-## 2. Keeping `slop/` fast and modular
+## 2. Keeping `proven/` fast and modular
 
 Budget: about 10 s per module, 30 s at most. A slow proof is a design problem, not a limit to raise.
 
@@ -186,7 +186,7 @@ transitive closure of the constants the final theorems use and listing declarati
 
 ## 3. Keeping `human/` short, readable and complete
 
-`human/` is what a reviewer reads; everything in `slop/` follows from its statements. It should be short enough to
+`human/` is what a reviewer reads; everything in `proven/` follows from its statements. It should be short enough to
 read in full and need no Lean expertise beyond definitions.
 
 ### 3.1 Standard definitions plus deviations
@@ -247,14 +247,14 @@ Adding a library, an assumption or a tactic module is a change to that `human/` 
 
 ### 3.7 What goes where
 
-| `human/` | `slop/` |
+| `human/` | `proven/` |
 |---|---|
 | Machine state, decoder rows, one line of behaviour per instruction kind | Lemmas about the machine, the executor, tactics |
 | Contracts and what programs should compute | Per-function proofs of those contracts |
 | Final statements, including the sanity facts that pin down the machine | The proofs those statements name |
 | Standard definitions and the deviations from them | Generated code and generated lemmas |
 
-- A definition that is only a proof convenience belongs in `slop/`.
+- A definition that is only a proof convenience belongs in `proven/`.
 - If a `human/` line needs a comment to be understood, restate it as a standard definition plus a deviation.
 - Edit `human/` rarely and deliberately; every edit rebuilds what depends on it (1.3).
 

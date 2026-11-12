@@ -1,10 +1,10 @@
 module
-public import Slop.Trace.RowHistory
+public import Proven.Trace.RowHistory
 public import Human.Helpers.Memory.ROM
-public import Slop.Trace.Timestamps
-public import Slop.AddSub.Selectors
-public import Slop.Trace.Family.Values
-public import Slop.Trace.PC
+public import Proven.Trace.Timestamps
+public import Proven.AddSub.Selectors
+public import Proven.Trace.Family.Values
+public import Proven.Trace.PC
 public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section

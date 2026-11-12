@@ -28,7 +28,7 @@ is measured once per input hash on this machine. Without the cache (or with the 
 every module once: about a cold build's CPU.
 
 Usage (from cs_formal_verification/lean; verify.sh runs both):
-  scripts/module_budget.py build CleanCore CleanEquivalence Human Slop
+  scripts/module_budget.py build CleanCore CleanEquivalence Human Proven
   scripts/module_budget.py check [--jobs N] [--table FILE]
   scripts/module_budget.py time <Module>...   (one module alone, no ledger: before/after a change)
   scripts/module_budget.py watch <stop file> <pid>   (beside a `lake build`: until the file exists or pid exits)
@@ -51,7 +51,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC_DIRS = ("human", "slop", "test")
+SRC_DIRS = ("human", "proven", "test")
 BUILD = ROOT / ".lake" / "build"
 BUDGET = float(os.environ.get("MODULE_BUDGET_S", "30"))
 # The budget is CPU time on the reference machine. The check scales it by a pinned calibration workload's CPU time

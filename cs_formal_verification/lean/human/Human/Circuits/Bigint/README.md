@@ -8,9 +8,9 @@ caller control is valid under the full project ABI.
 
 ## Checked results
 
-[`Memory.rv_addresses_soundness`](../../../../slop/Slop/Final/Circuits/Bigint/RVTheorems.lean) proves all sixteen native indirect
+[`Memory.rv_addresses_soundness`](../../../../proven/Proven/Final/Circuits/Bigint/RVTheorems.lean) proves all sixteen native indirect
 addresses from initialized accepted history, without per-row pointer bounds.
-[`Native.rv_operation_execution`](../../../../slop/Slop/Final/Trace/Workers/Bigint/RVTheorems.lean) connects
+[`Native.rv_operation_execution`](../../../../proven/Proven/Final/Trace/Workers/Bigint/RVTheorems.lean) connects
 the seven selected arithmetic/equality/copy effects to actual port observations.
 Pointers may address any RAM cell, shadow RAM below `ROM_END` included (`RV.State.delegationRAM`).
 The issued invalid-control fixture remains admitted at its stated scope.

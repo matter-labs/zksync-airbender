@@ -18,7 +18,7 @@ public import Human.Circuits.InitsTeardowns.Model
     workers (column parity, theta+rho, chi), and every `Init` tuple of the inits/teardowns sets (standalone and
     inline). A row's write is bounded whenever the row's reads are: a value the row computes is range-checked by its
     constraints, a value it only moves (a readonly port's refresh, a stored or copied register) is one of its reads.
-    The statements mention no machine state. Proven in slop/Slop/Final/Trace/WritesRangeChecked.lean. -/
+    The statements mention no machine state. Proven in proven/Proven/Final/Trace/WritesRangeChecked.lean. -/
 
 namespace Airbender.Trace
 

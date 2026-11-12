@@ -20,15 +20,15 @@ checks that our code builds [without warnings](#no-warnings), checks the review 
   each CleanCore definition equal to Clean's. Nothing in `human/` imports it, so Clean is not in the spec's import
   closure. The Sail model (the generated SailRV32 and lean-sail) is imported only by `Human/ISA/Sail/*` and
   [Configuration.lean](lean/human/Human/Helpers/Core/Configuration.lean). `./verify.sh` step 1 checks that `human/` imports
-  neither `slop/` nor `test/`. Its directory READMEs are the review guide.
+  neither `proven/` nor `test/`. Its directory READMEs are the review guide.
   The final statements are `def …Claim : Prop` in the RVTheorems, RVCallerTheorems and Theorems modules under `Human/`
   (and `Human/Trace/RVSoundness.lean`), imported by `lean/human/Human.lean`. `human/` holds only what a claim
-  states (P4 shrink): definitions only proofs use are in `slop/Slop/Defs/` and `slop/Slop/CleanCore/`. The executable
+  states (P4 shrink): definitions only proofs use are in `proven/Proven/Defs/` and `proven/Proven/CleanCore/`. The executable
   importer code in `Human/Import/Exec/` is pinned by the import claims and is not part of the reviewed spec.
   Each claim restated by that shrink was checked once against its previous text (old ↔ new, or new → old where
   the claim got stronger) in `test/Checks/Restatements.lean`, kept in git history up to commit d8cb7e2d8.
-- `lean/slop/` — everything else (kernel-checked, not meant to be read): supporting calculations, proof assembly and
-  artifact guards (`Slop/`), and the proofs of the final statements (`Slop/Final/`, laid out like `Human/`;
+- `lean/proven/` — everything else (kernel-checked, not meant to be read): supporting calculations, proof assembly and
+  artifact guards (`Proven/`), and the proofs of the final statements (`Proven/Final/`, laid out like `Human/`;
   `test/Checks/Claims.lean` checks each theorem against its `…Claim` by name and type, and its axioms).
 - `lean/test/` — regressions and fixtures (`Tests/`), the axiom audits (`Checks/`).
 - `sail/` — the Sail tooling, used only by the equivalence leaf `Human/ISA/Sail/`: `regen.sh` generates the official Sail RISC-V RV32 model (sail-riscv, Sail and lean-sail
@@ -66,7 +66,7 @@ Directory READMEs explain the relevant references, mappings, assumptions and sco
 [Properties](lean/human/Human/Helpers/Properties.lean) defines soundness,
 completeness and the observable circuit relation. Shared helpers are grouped by
 [topic](lean/human/Human/Helpers/README.md); properties do not require decoder or
-memory-history review. Supporting calculations remain in `slop/`. The [import guide](lean/human/Human/Import/README.md)
+memory-history review. Supporting calculations remain in `proven/`. The [import guide](lean/human/Human/Import/README.md)
 says what of `Human/Import/` to read: one trusted transcription step (headed `TRUSTED: review`), the meaning of the
 JSON as pure functions, and claims proving that the JSON parser rejects malformed input and duplicate keys and that
 every imported definition is the meaning of its transcribed artifact. `Human/Import/Exec/` (parser, emitters) needs
@@ -90,22 +90,22 @@ stream), [RV32.lean](lean/human/Human/ISA/RV32.lean) (`RV.step`, `RV.run`) and
 `-- Airbender:` there. [Vectors.lean](lean/human/Human/ISA/Vectors.lean) checks the BLAKE2s and Keccak-f[1600] published
 test vectors, and [DelegationRuns.lean](lean/human/Human/ISA/DelegationRuns.lean) states what the delegation call runs compute.
 The run claims, the Sail equivalence claims and the per-row circuit claims (`Trace.RVRowClaim`) also state that their
-assumptions can be met (non-vacuity, [Lean strategies](docs/shared/lean-strategies.md) 3.3); the witnesses are in `slop/`.
+assumptions can be met (non-vacuity, [Lean strategies](docs/shared/lean-strategies.md) 3.3); the witnesses are in `proven/`.
 Every other trace, worker and caller claim has a separate statement `…SatisfiableClaim` next to it: the claim's premises,
 restated, hold jointly for some data with the conclusion's domain non-empty (a row, a caller, a worker row in the window,
-a complete hash span). Witnesses in `slop/Slop/NonVacuous/`, final theorems in `slop/Slop/Final/Trace/Satisfiable/`;
+a complete hash span). Witnesses in `proven/Proven/NonVacuous/`, final theorems in `proven/Proven/Final/Trace/Satisfiable/`;
 [Satisfiable.lean](lean/test/Checks/Satisfiable.lean) applies each claim to its witness, which type-checks only if the
 restated premises are exactly the claim's.
 
 The official Sail RISC-V model (pins in [PINS.md](sail/PINS.md)), generated to Lean by [regen.sh](sail/regen.sh) into
 `lean/sail-rv32/SailRV32/`, is used only to justify the spec. The [equivalence leaf](lean/human/Human/ISA/Sail/Theorems.lean)
-states three facts, proved in `slop/Slop/ISA/Equiv/`: `DecodeIsSailClaim` (Sail's decoder decodes every word of the
+states three facts, proved in `proven/Proven/ISA/Equiv/`: `DecodeIsSailClaim` (Sail's decoder decodes every word of the
 spec's encoding table to the same instruction), `StepIsAirbenderClaim` (one `RV.step` is one step of the Airbender
 machine, Sail's `execute` plus the listed changes, on everything a program can see) and `MachineChecksClaim`
 (Sail's reset, what Airbender overrides and one machine step on representative words).
 [Provenance and regeneration](sail/README.md) record model/compiler/runtime pins. Generation fidelity (Sail to Lean)
 is trusted, not proved.
-Representation lemmas live in `Slop/Arithmetic/Word.lean`.
+Representation lemmas live in `Proven/Arithmetic/Word.lean`.
 
 ## Build budget
 
@@ -146,7 +146,7 @@ Fix a module over budget by restructuring its proof (lean-strategies 2.1), never
 
 ## No warnings
 
-`verify.sh` fails on any warning that Lean or Lake reports for a module of ours (`human/`, `slop/`, `test/`: the
+`verify.sh` fails on any warning that Lean or Lake reports for a module of ours (`human/`, `proven/`, `test/`: the
 modules of the build targets; [no_warnings.py](lean/scripts/no_warnings.py)). Lean's messages for a module are kept in
 its Lake trace (`.lake/build/lib/lean/<Module>.trace`), also when Lake only replays it, so a module compiled by an
 earlier build is checked too. A module restored from Lake's artifact cache has no messages in its trace: it passes if
@@ -158,7 +158,7 @@ Warnings in the dependencies (Mathlib, Clean, lean-sail) and in the generated Sa
 Fix a warning; do not disable a linter. Where a fix is impossible or would change a statement, a
 `set_option linter.<name> false in` on that one declaration, with the reason in a comment above it, is the exception.
 The one in use: `linter.unusedSimpArgs` in the three generated
-`slop/Slop/KeccakSplit/Setup/*/ShapesOk.lean` (one simp set for every generated block). The libraries `Slop` and `CleanAudit` set Lake's `allowNonModules`: their
+`proven/Proven/KeccakSplit/Setup/*/ShapesOk.lean` (one simp set for every generated block). The libraries `Proven` and `CleanAudit` set Lake's `allowNonModules`: their
 files that reach the Sail model or Clean cannot be modules ([modulize.py](lean/scripts/modulize.py) converts every
 other file).
 
@@ -176,7 +176,7 @@ The audit lists theorem axiom dependencies. The checked claims use only standard
 Lean axioms; no `sorry` or project axioms are admitted. Importer tests check rejection paths; the import's
 correctness is the claims of the import guide, up to its trusted transcription step. Subsequent work is in [the plan](docs/FORMAL_VERIFICATION_PLAN.md).
 The [review check](lean/check_review.py) uses Lean's compiled declaration locations to require an explicit
-axiom root for every source-declared public theorem in `Human/` and `Slop/Final/`. It also resolves
+axiom root for every source-declared public theorem in `Human/` and `Proven/Final/`. It also resolves
 guide declaration names and local file/heading links. Source-only Rust/Sail names
 are listed separately in the script; their fidelity remains a trust boundary.
 It also checks context/trace import separation.
@@ -192,7 +192,7 @@ lake env lean test/Checks/TraceAxioms.lean
 This focused target checks ADD/SUB, word-memory and jump/branch/SLT native
 clock/port artifacts, rollover/rejection fixtures and timestamp/address/value importer guards. The primary public surface is
 [Trace/RVSoundness.lean](lean/human/Human/Trace/RVSoundness.lean) (proof in
-[slop](lean/slop/Slop/Final/Trace/RVSoundness.lean)), with the native
+[proven](lean/proven/Proven/Final/Trace/RVSoundness.lean)), with the native
 matching and initial-clock conditions in [Context/Model.lean](lean/human/Human/Helpers/Context/Model.lean).
 The history fixtures ([TraceHistory](lean/test/Tests/TraceHistory.lean), [PooledHistory](lean/test/Tests/PooledHistory.lean))
 check rejection of an unmatched previous-write timestamp, complete per-address paths with interleaved accesses and

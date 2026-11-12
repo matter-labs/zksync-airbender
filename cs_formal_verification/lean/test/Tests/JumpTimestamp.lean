@@ -1,18 +1,18 @@
 module
-public import Slop.Final.Helpers.Context.PCState.Theorems
+public import Proven.Final.Helpers.Context.PCState.Theorems
 public import Human.Circuits.JumpBranchSlt.Jump
 public import Human.Helpers.Core.BabyBearPrime
-public import Slop.AddSub.Selectors
-public import Slop.JumpBranchSlt.Branch
-public import Slop.JumpBranchSlt.Jump
-public import Slop.MulDiv.Product
+public import Proven.AddSub.Selectors
+public import Proven.JumpBranchSlt.Branch
+public import Proven.JumpBranchSlt.Jump
+public import Proven.MulDiv.Product
 public import Human.Circuits.MulDiv.Operation
-public import Slop.MulDiv.Values
-public import Slop.SubwordMemory.Values
-public import Slop.Trace.CompositionCore
-public import Slop.Trace.RowContext
-public import Slop.CleanCore.Circuit.Operations
-public import Slop.Defs.Helpers.Context.Columns
+public import Proven.MulDiv.Values
+public import Proven.SubwordMemory.Values
+public import Proven.Trace.CompositionCore
+public import Proven.Trace.RowContext
+public import Proven.CleanCore.Circuit.Operations
+public import Proven.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

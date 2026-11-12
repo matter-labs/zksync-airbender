@@ -2,9 +2,9 @@ module
 public import Tests.DelegationCaller
 public import Tests.DelegationMemory
 public import Human.Helpers.Delegation.SharedMemory
-public import Slop.Delegation.RequestTrace
-public import Slop.Trace.TransferValues
-public import Slop.CleanCore.Circuit.Operations
+public import Proven.Delegation.RequestTrace
+public import Proven.Trace.TransferValues
+public import Proven.CleanCore.Circuit.Operations
 
 @[expose] public section
 

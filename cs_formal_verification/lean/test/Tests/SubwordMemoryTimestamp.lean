@@ -1,10 +1,10 @@
 module
 public import Tests.SubwordMemory
-public import Slop.SubwordMemory.Trace
+public import Proven.SubwordMemory.Trace
 public import Human.Helpers.Tables.Subword
-public import Slop.SubwordMemory.WitnessCheck
-public import Slop.KernelRfl
-public import Slop.Defs.Helpers.Context.Columns
+public import Proven.SubwordMemory.WitnessCheck
+public import Proven.KernelRfl
+public import Proven.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

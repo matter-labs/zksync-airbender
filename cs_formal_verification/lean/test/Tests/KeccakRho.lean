@@ -1,10 +1,10 @@
 module
 public import Human.Helpers.Delegation.SpanABI
 public import Human.Trace.Workers.Blake2G.WorkVector
-public import Slop.Delegation.NativeSegments
-public import Slop.Keccak.CallPermutation
+public import Proven.Delegation.NativeSegments
+public import Proven.Keccak.CallPermutation
 public import Mathlib.Tactic.IntervalCases
-public import Slop.Defs.Circuits.Keccak.Rho
+public import Proven.Defs.Circuits.Keccak.Rho
 
 @[expose] public section
 

@@ -16,7 +16,7 @@ such call does, or that it has no next state, and nothing more is claimed. These
 * 649 Keccak special5 calls, and 361 calls of the three Keccak-f1600 circuits: Keccak-f[1600] (`keccakF`, Clean's
   `keccakPermutation`).
 `CallsRun`: `calls` is what the machine's `run` does on consecutive `csrrw` delegation words in ROM. bigint has no
-runs: one call is the whole 256-bit operation (`bigintOp`). Proven in `slop/Slop/Deleg/`. -/
+runs: one call is the whole 256-bit operation (`bigintOp`). Proven in `proven/Proven/Deleg/`. -/
 
 namespace Spec
 open RV (Word)

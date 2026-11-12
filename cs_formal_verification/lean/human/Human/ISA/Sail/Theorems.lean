@@ -9,7 +9,7 @@ Two facts make our own spec `RV.step` (`Human/ISA/RV32.lean`) trustworthy withou
    `execute` plus the listed changes) does, on everything a program can see.
 `Configured` (Airbender behaves as Sail with fixed register values: `misa`, the memory map, …) appears only here, in
 the equivalence.
-Proofs: `slop/Slop/Final/ISA/Theorems.lean` (from `slop/Slop/ISA/Equiv/`). -/
+Proofs: `proven/Proven/Final/ISA/Theorems.lean` (from `proven/Proven/ISA/Equiv/`). -/
 
 open Sail SailRV32 SailRV32.Functions Human
 

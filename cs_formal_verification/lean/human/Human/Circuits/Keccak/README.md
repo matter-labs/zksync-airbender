@@ -8,7 +8,7 @@ permutation-state binding.
 
 ## Checked results
 
-[`Native.rv_operation_execution`](../../../../slop/Slop/Final/Trace/Workers/Keccak/RVTheorems.lean)
+[`Native.rv_operation_execution`](../../../../proven/Proven/Final/Trace/Workers/Keccak/RVTheorems.lean)
 proves all seven native lane-mode effects against the existing Clean references,
 including actual ports and modeled physical lane selection. History derives
 pointer/read/range facts. Complete permutation and window claims additionally

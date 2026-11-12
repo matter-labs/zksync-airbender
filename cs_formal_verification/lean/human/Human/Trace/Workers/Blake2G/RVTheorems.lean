@@ -6,7 +6,7 @@ public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section
 
--- The statements proven in slop/Slop/Final/Trace/Workers/Blake2G/RVTheorems.lean (checked by verify.sh). The public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING
+-- The statements proven in proven/Proven/Final/Trace/Workers/Blake2G/RVTheorems.lean (checked by verify.sh). The public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING
 -- READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`): no pointer is required to be at or
 -- above `ROM_END`. The complete-span claims also state the delegate link: the circuit's final state IS the spec's run
 -- of the span's `G` delegations (`RV.calls`, `RV.Delegation.blakeG`), up to the spec's PC advance.

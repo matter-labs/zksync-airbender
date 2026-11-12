@@ -3,14 +3,14 @@ public import Human.Import.Transcribe
 public import Human.Import.Columns
 public meta import Human.Import.Transcribe
 public meta import Human.Import.Columns
-public import Slop.AddSub.ArtifactChecks
-public meta import Slop.AddSub.ArtifactChecks
+public import Proven.AddSub.ArtifactChecks
+public meta import Proven.AddSub.ArtifactChecks
 public import Human.Circuits.WordMemory.Artifact
 public meta import Human.Circuits.WordMemory.Artifact
 public import Human.Circuits.JumpBranchSlt.Artifact
 public meta import Human.Circuits.JumpBranchSlt.Artifact
-public import Slop.ShiftBinop.ArtifactChecks
-public meta import Slop.ShiftBinop.ArtifactChecks
+public import Proven.ShiftBinop.ArtifactChecks
+public meta import Proven.ShiftBinop.ArtifactChecks
 public import Human.Circuits.SubwordMemory.Artifact
 public meta import Human.Circuits.SubwordMemory.Artifact
 public import Tests.Timestamps

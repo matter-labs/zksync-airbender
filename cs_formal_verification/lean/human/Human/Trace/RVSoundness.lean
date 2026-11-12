@@ -9,7 +9,7 @@ public import Human.Trace.RVExecution
 
 /-! Six-family trace claims over our RV32 spec: an accepted six-family trace is a run of `RV.run` from the public
     starting state `initial : RV.State`. Proven in
-    `slop/Slop/Final/Trace/RVSoundness.lean` (checked in `test/Checks/Claims.lean`). The program table is the RV one
+    `proven/Proven/Final/Trace/RVSoundness.lean` (checked in `test/Checks/Claims.lean`). The program table is the RV one
     (`rvProgramImageWith`): PC in ROM and 4-byte aligned is its fetch guard. A load into x0 is a no-op in our spec, as in
     Airbender, so no load restriction is needed. -/
 

@@ -176,7 +176,7 @@ step_kernel_check() {
       LEAN_NUM_THREADS=$t lake env leanchecker CleanCore.Equivalence Checks.Axioms ;;
     leanchecker)
       if (( $# )); then LEAN_NUM_THREADS=$t lake env leanchecker "$@"
-      else LEAN_NUM_THREADS=$t lake env leanchecker CleanCore Human Slop Tests Checks; fi ;;
+      else LEAN_NUM_THREADS=$t lake env leanchecker CleanCore Human Proven Tests Checks; fi ;;
     *) echo "unknown KERNEL_CHECKER" >&2; return 2 ;;
   esac
 }

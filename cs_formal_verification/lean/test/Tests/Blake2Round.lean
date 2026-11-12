@@ -2,17 +2,17 @@ module
 public import Human.Helpers.Delegation.SpanABI
 public import Human.Trace.Workers.Blake2G.WorkVector
 public import Human.Trace.Workers.Keccak.Permutation
-public import Slop.Blake2Round.Compression
-public import Slop.Blake2Round.StateTransport
-public import Slop.Delegation.NativeSegments
-public import Slop.Delegation.ReverseFold
-public import Slop.Blake2Round.Diagonal
-public import Slop.Blake2Round.Finalization
-public import Slop.CleanCore.Circuit.Operations
-public import Slop.Defs.Circuits.Blake2Round.Artifact
-public import Slop.Defs.Circuits.Blake2Round.Preparation
-public import Slop.Defs.Circuits.Blake2Round.Mixing
-public import Slop.Defs.Circuits.Blake2Round.Finalization
+public import Proven.Blake2Round.Compression
+public import Proven.Blake2Round.StateTransport
+public import Proven.Delegation.NativeSegments
+public import Proven.Delegation.ReverseFold
+public import Proven.Blake2Round.Diagonal
+public import Proven.Blake2Round.Finalization
+public import Proven.CleanCore.Circuit.Operations
+public import Proven.Defs.Circuits.Blake2Round.Artifact
+public import Proven.Defs.Circuits.Blake2Round.Preparation
+public import Proven.Defs.Circuits.Blake2Round.Mixing
+public import Proven.Defs.Circuits.Blake2Round.Finalization
 
 @[expose] public section
 

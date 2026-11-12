@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """No warnings in our code: verify.sh fails on any warning (or error) that Lean or Lake reports for one of our modules
-(human/, slop/, test/: every module of verify.sh's targets, scripts/module_budget.py `targets()`). Warnings in the
+(human/, proven/, test/: every module of verify.sh's targets, scripts/module_budget.py `targets()`). Warnings in the
 dependencies (Mathlib, Clean, lean-sail) and in the generated Sail model are not ours and not checked (README "No
 warnings").
 
@@ -34,8 +34,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import module_budget as mb  # noqa: E402
 
-# Lake's console form of a message about one of our files: `warning: slop/Slop/X.lean[:l:c]: ...`
-LAKE_MESSAGE = re.compile(r"^(?:warning|error): ((?:human|slop|test)/\S+?\.lean[:\s].*)$")
+# Lake's console form of a message about one of our files: `warning: proven/Proven/X.lean[:l:c]: ...`
+LAKE_MESSAGE = re.compile(r"^(?:warning|error): ((?:human|proven|test)/\S+?\.lean[:\s].*)$")
 
 
 def trace_messages(mod: str) -> tuple[str | None, list[str] | None]:

@@ -1,8 +1,8 @@
 module
-public import Slop.Keccak.FixedTables
+public import Proven.Keccak.FixedTables
 public import Mathlib.Tactic.IntervalCases
 public import Human.Helpers.Core.BabyBearPrime
-public import Slop.Defs.Circuits.Keccak.Tables.Setup
+public import Proven.Defs.Circuits.Keccak.Tables.Setup
 
 @[expose] public section
 

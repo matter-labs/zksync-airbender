@@ -9,10 +9,10 @@ Deterministic and idempotent; re-run after a rebase that brings files importing 
     bare references inside `namespace Airbender ...` already resolve to CleanCore; this includes the terms the
     importer, Human.Import.Exec.Emit, emits);
   * in a file outside `namespace Airbender` (and not opening it), bare `Expression.eval` -> `Airbender.Expression.eval`
-    (macro quotations resolve names where the macro is defined, e.g. Slop.Eval's `eval_entry`), and Clean's
+    (macro quotations resolve names where the macro is defined, e.g. Proven.Eval's `eval_entry`), and Clean's
     root namespaces `Specs.BLAKE3`, `Specs.Keccak256`, `Utils.Bits`, `Utils.Rotation`, `ByteUtils`,
     `MemoryAccessList` and its root definitions `add32`, `not64`, `rotLeft64`, `rotRight64`, `rotRight32`
-    -> `Airbender.` + the same (e.g. Human.ISA.Blake2s, Slop.Deleg.* in `namespace Spec`; not inside backticks);
+    -> `Airbender.` + the same (e.g. Human.ISA.Blake2s, Proven.Deleg.* in `namespace Spec`; not inside backticks);
   * `[FiniteField F]` -> `[Field F]` (CleanCore's semantics needs only a field; CleanCore.Equivalence, deviation 2);
   * test/Checks/Axioms.lean audits CleanCore's Keccak/BLAKE3 specs (`#print axioms Specs.X` ->
     `Airbender.Specs.X`) and keeps importing Clean for its audits of pinned Clean proofs.
@@ -65,7 +65,7 @@ def rewrite(path: Path, text: str) -> tuple[str, list[str]]:
 def main() -> int:
     dry = "--dry-run" in sys.argv[1:]
     changed, notes = [], []
-    for src in ("human", "slop", "test"):
+    for src in ("human", "proven", "test"):
         for path in sorted((ROOT / src).rglob("*.lean")):
             if CORE in path.parents:
                 continue

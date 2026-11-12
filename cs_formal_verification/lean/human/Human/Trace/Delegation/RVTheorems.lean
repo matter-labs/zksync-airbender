@@ -5,7 +5,7 @@ public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section
 
--- The statements proven in slop/Slop/Final/Trace/Delegation/RVTheorems.lean (checked by verify.sh). The
+-- The statements proven in proven/Proven/Final/Trace/Delegation/RVTheorems.lean (checked by verify.sh). The
 -- public starting point is an `RV.State` (`RVMemoryInputs`); execution is `RVMemoryExecution` (RV cell reads/writes).
 
 namespace Airbender.Delegation

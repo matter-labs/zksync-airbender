@@ -1,6 +1,6 @@
 module
-public import Slop.Keccak.Schedule
-public import Slop.Defs.Trace.Workers.Keccak.Call
+public import Proven.Keccak.Schedule
+public import Proven.Defs.Trace.Workers.Keccak.Call
 
 @[expose] public section
 

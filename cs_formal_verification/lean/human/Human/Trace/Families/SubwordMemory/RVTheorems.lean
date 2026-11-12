@@ -11,7 +11,7 @@ public import Human.Helpers.Core.BabyBearPrime
 
 /-! RAM trace claim: the accepted rows are a run of our spec (`RV.run`) from
     the public starting state `initial : RV.State`. Proven in
-    `slop/Slop/Final/Trace/Families/SubwordMemory/RVTheorems.lean` (checked by verify.sh). -/
+    `proven/Proven/Final/Trace/Families/SubwordMemory/RVTheorems.lean` (checked by verify.sh). -/
 
 namespace Airbender.SubwordMemory
 open Trace

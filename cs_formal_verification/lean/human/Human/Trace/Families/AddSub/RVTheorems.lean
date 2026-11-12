@@ -10,7 +10,7 @@ public import Human.Trace.RVExecution
 
 /-! ADD/SUB and word-memory trace claims: the accepted rows are a run of our spec
     (`RV.run`) from the public starting state `initial : RV.State`. In our spec LW to x0 is a no-op (`RV.exec`), as in
-    Airbender, so `RVAirbenderSoundnessClaim` needs no load restriction. Proven in `slop/Slop/Final/Trace/Families/AddSub/RVTheorems.lean` (checked
+    Airbender, so `RVAirbenderSoundnessClaim` needs no load restriction. Proven in `proven/Proven/Final/Trace/Families/AddSub/RVTheorems.lean` (checked
     by verify.sh). -/
 
 namespace Airbender.Trace

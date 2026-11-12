@@ -9,7 +9,7 @@ accepted matching.
 ## Checked results
 
 Every family trace claim also has a `…SatisfiableClaim` beside it (`Trace.RVTraceSatisfiable`), witnessed by a one-row
-trace fetched from ROM ([Satisfiable/Families](../../../../slop/Slop/Final/Trace/Satisfiable/Families.lean)).
+trace fetched from ROM ([Satisfiable/Families](../../../../proven/Proven/Final/Trace/Satisfiable/Families.lean)).
 
 The family trace theorems take imported constraints, logical state/memory matching,
 public initialization/program and their field conditions, then prove

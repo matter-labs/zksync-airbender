@@ -7,7 +7,7 @@ public import Human.Trace.UnifiedReduced.RVCallerCycles
 
 @[expose] public section
 
--- The statements proven in slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean (checked by verify.sh). Complete hash-span results (`Delegation.Caller.HashSpan.RVResult`) carry the delegate
+-- The statements proven in proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean (checked by verify.sh). Complete hash-span results (`Delegation.Caller.HashSpan.RVResult`) carry the delegate
 -- link: the span's final state IS the spec's run of its `.delegate` calls (`RV.calls`), up to the spec's PC advance.
 -- Every caller binding (`RVBinding`) states that the caller's entry decodes to `.delegate k` and that `RV.step` at its
 -- PC is `RV.exec` of that call.

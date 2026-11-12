@@ -1,5 +1,5 @@
 module
-public import Slop.Trace.LastWrite
+public import Proven.Trace.LastWrite
 public import Human.Helpers.Core.Field
 
 @[expose] public section

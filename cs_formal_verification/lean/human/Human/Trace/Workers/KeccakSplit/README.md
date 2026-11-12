@@ -7,8 +7,8 @@ a complete request computes Keccak-f[1600].
 
 | Claim | Direct theorem entry |
 | --- | --- |
-| Every access executes on the `RV.State`; every row is a call of the schedule | [`Native.rv_operation_execution`](../../../../../slop/Slop/Final/Trace/Workers/KeccakSplit/RVTheorems.lean) |
-| A 361-call request executes call by call and writes the permutation | [`Native.rv_permutation_soundness`](../../../../../slop/Slop/Final/Trace/Workers/KeccakSplit/RVTheorems.lean) |
+| Every access executes on the `RV.State`; every row is a call of the schedule | [`Native.rv_operation_execution`](../../../../../proven/Proven/Final/Trace/Workers/KeccakSplit/RVTheorems.lean) |
+| A 361-call request executes call by call and writes the permutation | [`Native.rv_permutation_soundness`](../../../../../proven/Proven/Final/Trace/Workers/KeccakSplit/RVTheorems.lean) |
 
 Read [RVTheorems](RVTheorems.lean), [RVInputs](RVInputs.lean) and [Execution](RVExecution.lean).
 `RVOperationInputs` and `RVCallInputs` give initialized memory (`RVMemoryInputs`, with the

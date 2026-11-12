@@ -28,7 +28,7 @@ Provenance:
 - Cargo: no tracked `Cargo.lock` at HEAD, so `--locked` pins nothing here; the
   output depends on the cs/setups source, not dependency versions.
 
-Row meaning (slop/Slop/Blake2Round/Setup/): `Rows.setupRow_eq` proves that every
+Row meaning (proven/Proven/Blake2Round/Setup/): `Rows.setupRow_eq` proves that every
 one of the 2^20 decoded rows equals the region formula (`Spec.spec0`..`spec5`):
 rows 0..606207 are the six XOR regions, rows 606208.. are all zero (tag 0).
 The padding rows cannot satisfy a query: `Circuit.blakeRoundQueries` (human/Human/Import/Columns.lean)
@@ -48,7 +48,7 @@ trusted like the JSON transcription itself (`parseSetup`): it runs as elaborator
 the kernel never sees the JSON values of a grid region.** The proofs then work by formula:
 each column is a handful of blocks; grid blocks and long affine runs are matched by shape
 (`Spec`/`Shapes`) and proved equal to the row formula algebraically (`digits_eq`), the few
-hundred controller rows are checked by the kernel (`Slop.Setup.Blocks.scan`).
+hundred controller rows are checked by the kernel (`Proven.Setup.Blocks.scan`).
 
 ## Split Keccak workers
 
@@ -73,7 +73,7 @@ Output byte-identical to the committed files (and to a first export from a detac
 `c1a662222` tree). The same exporter at this tree also reproduces `blake-round.json`
 (sha256 `333f3d63…`), so the detached-tree step above is no longer needed.
 
-Row meaning (slop/Slop/KeccakSplit/Setup/{ColumnParity,ThetaRho,Chi5}/): `Rows.setupRow_eq`
+Row meaning (proven/Proven/KeccakSplit/Setup/{ColumnParity,ThetaRho,Chi5}/): `Rows.setupRow_eq`
 proves that each of the 2^22 decoded rows equals the region formula (`Spec.spec*`; controller
 rows via `controlAt`, `bump`, `Call.slots`, call index `Common.callIndex`), and `Members`
 gives the per-tag facts used by the circuit proofs (BabyBear). Regions:

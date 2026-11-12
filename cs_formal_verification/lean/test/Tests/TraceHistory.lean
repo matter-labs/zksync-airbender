@@ -1,21 +1,21 @@
 module
-public import Slop.Trace.ROMView
-public import Slop.AddSub.Selectors
-public import Slop.Trace.Pooled
+public import Proven.Trace.ROMView
+public import Proven.AddSub.Selectors
+public import Proven.Trace.Pooled
 public import Human.Helpers.Decoder.PooledExternalInput
 public import Human.Circuits.WordMemory.Output
 public import Human.Helpers.Core.BabyBearPrime
-public import Slop.Trace.CompositionCore
-public import Slop.Trace.Family.Values
+public import Proven.Trace.CompositionCore
+public import Proven.Trace.Family.Values
 public import Human.Circuits.JumpBranchSlt.Jump
 public import Human.Circuits.SubwordMemory.Output
-public import Slop.JumpBranchSlt.Branch
-public import Slop.JumpBranchSlt.Jump
-public import Slop.MulDiv.Product
+public import Proven.JumpBranchSlt.Branch
+public import Proven.JumpBranchSlt.Jump
+public import Proven.MulDiv.Product
 public import Human.Circuits.MulDiv.Operation
-public import Slop.MulDiv.Values
-public import Slop.ShiftBinop.Ports
-public import Slop.SubwordMemory.Values
+public import Proven.MulDiv.Values
+public import Proven.ShiftBinop.Ports
+public import Proven.SubwordMemory.Values
 
 @[expose] public section
 

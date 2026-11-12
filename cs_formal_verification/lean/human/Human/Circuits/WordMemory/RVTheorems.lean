@@ -8,7 +8,7 @@ public import Human.Helpers.Context.RVRowModel
 /-! RV32 claims for LW/SW, stated against our spec (`RV.step`, `Human/ISA/RV32.lean`), not Sail: the row's pre-state
     is `input.before : RV.State`. `RV.step` has no next state for a misaligned access or a store into ROM, so the
     claims imply that the access is aligned and, for SW, in RAM. Proven in
-    `slop/Slop/Final/Circuits/WordMemory/RVTheorems.lean` (checked in `test/Checks/Claims.lean`). -/
+    `proven/Proven/Final/Circuits/WordMemory/RVTheorems.lean` (checked in `test/Checks/Claims.lean`). -/
 
 namespace Airbender.WordMemory
 open Trace

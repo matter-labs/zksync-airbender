@@ -1,5 +1,5 @@
 module
-public import Slop.Keccak.ControllerLayout
+public import Proven.Keccak.ControllerLayout
 public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section

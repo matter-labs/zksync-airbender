@@ -14,19 +14,19 @@ GUIDES = tuple(ROOT.parent / name for name in (
     "README.md", "docs/VERIFICATION_STATUS.md", "docs/TRUST_AND_REVIEW.md",
     "docs/FORMAL_VERIFICATION_PLAN.md",
 )) + tuple(sorted((ROOT / "human/Human").rglob("README.md")))
-# The claim modules: the specification (human/) and the proofs of its public theorems (slop/Slop/Final/).
-CLAIM_PREFIXES = ("Human.", "Slop.Final.")
+# The claim modules: the specification (human/) and the proofs of its public theorems (proven/Proven/Final/).
+CLAIM_PREFIXES = ("Human.", "Proven.Final.")
 
 
 def module_path(module):
     """Source file of a module, by its library's srcDir."""
-    src = {"Human": "human", "Slop": "slop", "Tests": "test", "Checks": "test"}[module.split(".")[0]]
+    src = {"Human": "human", "Proven": "proven", "Tests": "test", "Checks": "test"}[module.split(".")[0]]
     return ROOT.joinpath(src, *module.split(".")).with_suffix(".lean")
 
 
 def claim_modules():
     return [".".join(path.relative_to(ROOT / src).with_suffix("").parts)
-            for src, sub in (("human", "Human"), ("slop", "Slop/Final"))
+            for src, sub in (("human", "Human"), ("proven", "Proven/Final"))
             for path in sorted((ROOT / src / sub).rglob("*.lean"))]
 # File names, source-only Rust/Sail names, and prose are not emitted Lean declarations.
 SOURCE_NAMES = {
@@ -42,7 +42,7 @@ SOURCE_NAMES = {
     # Lean 4.35: lake check's sandbox tool, lean-sail's codegen wrapper command (sail/README.md)
     "bwrap", "skip_inductive_codegen",
     # the no-warnings gate (README): Lake library names and Lake's option for non-module files
-    "Slop", "CleanAudit", "allowNonModules",
+    "Proven", "CleanAudit", "allowNonModules",
 }
 
 
@@ -110,7 +110,7 @@ run_cmd do
               logInfo m!"DOC_DECL {{ref}}"
   for h : idx in [0:env.header.moduleNames.size] do
     let mod := env.header.moduleNames[idx]
-    if mod.toString.startsWith "Human." || mod.toString.startsWith "Slop.Final." then
+    if mod.toString.startsWith "Human." || mod.toString.startsWith "Proven.Final." then
       for name in env.header.moduleData[idx]!.constNames do
         if !isPrivateName name then
           if let some (.thmInfo _) := env.find? name then
@@ -155,7 +155,7 @@ def check_theorems(output, audit):
 def check_layers():
     graph = {".".join(path.relative_to(ROOT / src).with_suffix("").parts):
              re.findall(r"^(?:public\s+)?(?:meta\s+)?import\s+(?:all\s+)?(\S+)$", path.read_text(), re.M)
-             for src in ("human", "slop") for path in (ROOT / src).rglob("*.lean")}
+             for src in ("human", "proven") for path in (ROOT / src).rglob("*.lean")}
     for module, dependencies in graph.items():
         for dependency in dependencies:
             if dependency.startswith(CLAIM_PREFIXES) and dependency not in graph:

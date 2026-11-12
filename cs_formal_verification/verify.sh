@@ -13,8 +13,8 @@ echo "== 0. The Sail model: lean-sail (pinned, fetched on demand; not committed)
 [[ -f sail-rv32/SailRV32.lean && -d sail-rv32/SailRV32 ]] ||
   fail "the generated Sail model is absent: run sail/regen.sh (needs the pinned Sail compiler; see sail/PINS.md)"
 
-echo "== 1. The spec (human/) imports nothing from the proofs (slop/) or the tests (test/)"
-if grep -rnE '^\s*(public\s+)?import\s+(Slop|Tests|Checks)(\.|$)' human; then fail "human/ imports slop/ or test/"; fi
+echo "== 1. The spec (human/) imports nothing from the proofs (proven/) or the tests (test/)"
+if grep -rnE '^\s*(public\s+)?import\s+(Proven|Tests|Checks)(\.|$)' human; then fail "human/ imports proven/ or test/"; fi
 
 echo "== 1b. The circuit and setup JSONs the spec imports: pinned sha256, no duplicate keys, no duplicate circuits,"
 echo "   canonical form (setup JSONs compact)"
@@ -22,10 +22,10 @@ python3 check_circuit_json.py
 
 echo "== 2. Lean build: spec, proofs, regressions and the axiom audit modules in one lake build (test modules start as"
 echo "   soon as their imports are built), timing each module compiled (full log: lean/.lake/verify-build-CleanCore.log)"
-python3 scripts/module_budget.py build CleanCore CleanEquivalence Human Slop Test CleanAudit airbender_tests ||
+python3 scripts/module_budget.py build CleanCore CleanEquivalence Human Proven Test CleanAudit airbender_tests ||
   fail "lake build"
 
-echo "== 3. Regressions; final statements (each slop/Slop/Final theorem proves its human/ ...Claim, test/Checks/Claims.lean); axiom audits"
+echo "== 3. Regressions; final statements (each proven/Proven/Final theorem proves its human/ ...Claim, test/Checks/Claims.lean); axiom audits"
 # the executable step 2 built (`lake exe` would check the whole build graph again)
 .lake/build/bin/airbender_tests
 # VERIFY_AUDITS=fresh (default): elaborate each audit file again. replay (CI pull requests): read the messages Lake
@@ -54,7 +54,7 @@ echo "== 4. Module budget: every module compiles in at most 30 s of CPU, alone (
 echo "   docs/shared/lean-strategies.md 2). Table: lean/.lake/module-budget.tsv"
 python3 scripts/module_budget.py check || fail "module budget"
 
-echo "== 4b. No warnings: Lean and Lake report no warning for any module of ours (human/, slop/, test/;"
+echo "== 4b. No warnings: Lean and Lake report no warning for any module of ours (human/, proven/, test/;"
 echo "   scripts/no_warnings.py, README \"No warnings\"); dependencies and the generated Sail model are not ours"
 python3 scripts/no_warnings.py .lake/verify-build-CleanCore.log || fail "warnings in our code"
 

@@ -1,7 +1,7 @@
 module
-public import Slop.AddSub.ArtifactChecks
+public import Proven.AddSub.ArtifactChecks
 public import Human.Helpers.Properties
-public import Slop.Constraints
+public import Proven.Constraints
 public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section

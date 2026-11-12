@@ -35,7 +35,7 @@ Deviations (by design; each is visible in the statements below):
    compression/chunking and the Keccak sponge, and lemmas our proofs do not cite.
 
 Clean definitions and lemmas only the proofs use (bit decompositions, source–sink paths, per-address memory
-filtering, the constraint and lookup lists) are transcribed in `slop/Slop/CleanCore/` and need no correspondence:
+filtering, the constraint and lookup lists) are transcribed in `proven/Proven/CleanCore/` and need no correspondence:
 no claim mentions them. -/
 
 namespace Airbender.CleanEquivalence

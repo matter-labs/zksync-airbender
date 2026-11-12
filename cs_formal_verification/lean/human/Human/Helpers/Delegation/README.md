@@ -10,10 +10,10 @@ caller controls or full CSR semantics.
 
 For the four worker families, imported constraints and initialized full-token
 matching imply native clock/address bounds, strict per-cell ordering and Clean
-memory consistency; [`rv_memory_soundness`](../../../../slop/Slop/Final/Trace/Delegation/RVTheorems.lean)
-states this, and [`labeled_history`](../../../../slop/Slop/Delegation/History.lean)
+memory consistency; [`rv_memory_soundness`](../../../../proven/Proven/Final/Trace/Delegation/RVTheorems.lean)
+states this, and [`labeled_history`](../../../../proven/Proven/Delegation/History.lean)
 constructs the history. The corresponding
-[`rv_native_memory_execution`](../../../../slop/Slop/Final/Trace/Delegation/RVTheorems.lean) realizes actual
+[`rv_native_memory_execution`](../../../../proven/Proven/Final/Trace/Delegation/RVTheorems.lean) realizes actual
 `RV.State` register/RAM reads and writes and terminal cells under the public alignment/domain conditions;
 RAM cells include the shadow RAM below `ROM_END` (`RV.State.delegationRAM`).
 

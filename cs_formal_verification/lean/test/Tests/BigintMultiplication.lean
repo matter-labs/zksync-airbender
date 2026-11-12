@@ -1,7 +1,7 @@
 module
 public import Human.Circuits.Bigint.Memory
-public import Slop.Bigint.Addresses
-public import Slop.Bigint.NativeExecution
+public import Proven.Bigint.Addresses
+public import Proven.Bigint.NativeExecution
 public import Mathlib.Tactic.IntervalCases
 
 @[expose] public section

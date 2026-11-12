@@ -36,10 +36,10 @@ The checked conclusions are:
 
 | Result | Proof |
 | --- | --- |
-| Complete per-address chains | [`native_memory_paths`](../../../../slop/Slop/Trace/MemoryPaths.lean) |
-| Complete Clean-consistent history (every read takes the latest preceding write or the initial value) | [`native_memory_history`](../../../../slop/Slop/Trace/MemoryHistory.lean) |
-| Clock conditions from imported constraints | [`ClockLaws`](../../../../slop/Slop/Trace/History.lean) |
-| Actual RV interpretation | [`RVHistory`](RVHistory.lean) executes the events on an `RV.State`; the [history split](../../../../slop/Slop/Trace/HistorySplit.lean) cuts it at a clock |
+| Complete per-address chains | [`native_memory_paths`](../../../../proven/Proven/Trace/MemoryPaths.lean) |
+| Complete Clean-consistent history (every read takes the latest preceding write or the initial value) | [`native_memory_history`](../../../../proven/Proven/Trace/MemoryHistory.lean) |
+| Clock conditions from imported constraints | [`ClockLaws`](../../../../proven/Proven/Trace/History.lean) |
+| Actual RV interpretation | [`RVHistory`](RVHistory.lean) executes the events on an `RV.State`; the [history split](../../../../proven/Proven/Trace/HistorySplit.lean) cuts it at a clock |
 
 This result covers the ports included by the selected model. Public initialization
 and exact matching remain conditions. Native unified ROM-shadow transport and global

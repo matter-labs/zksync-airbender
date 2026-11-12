@@ -14,7 +14,7 @@ public import Mathlib.Control.Monad.Writer
 
 /-! # Offline memory checking (Clean `Clean.Utils.OfflineMemory`, pinned b41c196): memory accesses, timestamp-sorted
 access lists and their online consistency (the per-address filter and the lemmas are in
-`slop/Slop/CleanCore/Utils/OfflineMemory.lean`). Deviation: the circuit gadgets are omitted. -/
+`proven/Proven/CleanCore/Utils/OfflineMemory.lean`). Deviation: the circuit gadgets are omitted. -/
 
 @[expose] public section
 

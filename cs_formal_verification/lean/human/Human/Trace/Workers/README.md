@@ -10,7 +10,7 @@ instruction or validating its full CSR ABI.
 
 Every worker claim also has a `…SatisfiableClaim` beside it, witnessed by a one-row pool (operation claims) or a complete
 span (the 56-call G, 10-round extended BLAKE, 649-call Keccak special5 and 361-call split Keccak requests), whose honest
-rows are proven to satisfy every constraint generically ([Satisfiable/Blake2G](../../../../slop/Slop/Final/Trace/Satisfiable/Blake2G.lean)).
+rows are proven to satisfy every constraint generically ([Satisfiable/Blake2G](../../../../proven/Proven/Final/Trace/Satisfiable/Blake2G.lean)).
 
 All four native worker families have selected reference effects on actual RV
 port reads/writes in initialized shared memory (RAM at every address, shadow RAM below `ROM_END` included); operand/address bounds are derived.
@@ -19,11 +19,11 @@ native terminal tokens, with schedules and intermediate values derived from matc
 
 | Claim | Direct theorem entry |
 | --- | --- |
-| Seven selected bigint operation effects | [`rv_operation_execution`](../../../../slop/Slop/Final/Trace/Workers/Bigint/RVTheorems.lean) |
-| Complete G work-vector fold | [`Native.rv_workvector_soundness`](../../../../slop/Slop/Final/Trace/Workers/Blake2G/RVTheorems.lean) |
-| Complete extended-BLAKE compression | [`rv_compression_soundness`](../../../../slop/Slop/Final/Trace/Workers/Blake2Round/RVTheorems.lean) |
-| Complete Keccak permutation | [`Native.rv_permutation_soundness`](../../../../slop/Slop/Final/Trace/Workers/Keccak/RVTheorems.lean) |
-| Complete split Keccak permutation | [`Split.Native.rv_permutation_soundness`](../../../../slop/Slop/Final/Trace/Workers/KeccakSplit/RVTheorems.lean) |
+| Seven selected bigint operation effects | [`rv_operation_execution`](../../../../proven/Proven/Final/Trace/Workers/Bigint/RVTheorems.lean) |
+| Complete G work-vector fold | [`Native.rv_workvector_soundness`](../../../../proven/Proven/Final/Trace/Workers/Blake2G/RVTheorems.lean) |
+| Complete extended-BLAKE compression | [`rv_compression_soundness`](../../../../proven/Proven/Final/Trace/Workers/Blake2Round/RVTheorems.lean) |
+| Complete Keccak permutation | [`Native.rv_permutation_soundness`](../../../../proven/Proven/Final/Trace/Workers/Keccak/RVTheorems.lean) |
+| Complete split Keccak permutation | [`Split.Native.rv_permutation_soundness`](../../../../proven/Proven/Final/Trace/Workers/KeccakSplit/RVTheorems.lean) |
 
 Native-boundary/window variants retain timestamps rather than restarting history.
 Public protocol modes/counts, modeled tables, domain/alignment and the existing

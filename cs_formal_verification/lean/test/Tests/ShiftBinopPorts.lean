@@ -1,5 +1,5 @@
 module
-public import Slop.ShiftBinop.Ports
+public import Proven.ShiftBinop.Ports
 public import Tests.ShiftBinopTimestamp
 
 @[expose] public section

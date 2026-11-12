@@ -8,7 +8,7 @@ public import Human.Helpers.Context.RVRowModel
 /-! RV32 claims (B2 pilot). The AddSub claims (first block) are stated against our spec (`RV.step`, `Human/ISA/RV32.lean`),
     not Sail: the row's pre-state is `input.before : RV.State`, which carries the input stream (`RV.State.input`), so there is
     no stream binder. `RV.Same` (`ISA/State.lean`) compares two `RV.State`s. Proven in
-    `slop/Slop/Final/Circuits/AddSub/RVTheorems.lean` (checked in `test/Checks/Claims.lean`).
+    `proven/Proven/Final/Circuits/AddSub/RVTheorems.lean` (checked in `test/Checks/Claims.lean`).
     Resolved: PC in ROM and 4-byte aligned is the decoder table's guard (`rvProgramEntryWith`); the word at the row's PC is
     the table's encoding (`Trace.RVRowMapping.instruction`).
     The delegation caller rows' RV claims are in `RVCallerTheorems.lean`. -/

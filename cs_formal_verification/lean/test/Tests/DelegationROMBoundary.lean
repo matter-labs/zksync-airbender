@@ -2,12 +2,12 @@ module
 public import Tests.BigintMemory
 public import Tests.DelegationCaller
 public import Tests.DelegationOperationEffects
-public import Slop.Delegation.RequestTrace
+public import Proven.Delegation.RequestTrace
 public import Human.Helpers.Memory.Native
-public import Slop.Trace.ROMView
+public import Proven.Trace.ROMView
 import all Init.Data.Array.Basic -- Init.Data.Array.Basic is only partly exposed (still true in 4.35)
-public import Slop.Defs.Helpers.Memory.Native
-public import Slop.CleanCore.Circuit.Operations
+public import Proven.Defs.Helpers.Memory.Native
+public import Proven.CleanCore.Circuit.Operations
 
 @[expose] public section
 

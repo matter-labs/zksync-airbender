@@ -4,7 +4,7 @@ public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section
 
--- The statements proven in slop/Slop/Final/Circuits/AddSub/RVCallerTheorems.lean (checked by verify.sh). The public caller table is built from an `RV.State` (`rvProgramImage`, `RV.decode`).
+-- The statements proven in proven/Proven/Final/Circuits/AddSub/RVCallerTheorems.lean (checked by verify.sh). The public caller table is built from an `RV.State` (`rvProgramImage`, `RV.decode`).
 
 namespace Airbender.Delegation.Caller
 

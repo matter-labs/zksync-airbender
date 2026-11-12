@@ -91,7 +91,7 @@ stock only where Lean cannot help (`diff rv32.json airbender-base.json`, marked 
 * `skip_inductive_codegen` inserted before `inductive instruction where` in `Defs.lean` (one line; see above).
   Consequence for proofs: `simp [f]` / `rw [f]` on a definition `f` that matches on `instruction` with a catch-all case
   builds a splitter, which Lean 4.35 compiles and which fails on the layout-less constructors ("`…` was not compiled");
-  unfold with `f.eq_def` or `change` instead (e.g. `Slop.ISA.Equiv.StepMop`).
+  unfold with `f.eq_def` or `change` instead (e.g. `Proven.ISA.Equiv.StepMop`).
 * `assert c "msg"` -> `«assert» c "msg"` in generated code (Lean 4.34 no longer resolves the bare identifier).
 * `set_option backward.do.legacy true` in `RvfiDii.lean` only: with 4.34's new `do` elaborator `print_rvfi_exec` (an
   RVFI trace printer) needed > 17 min and 13 GB; with the legacy elaborator 1 s. Not used by the ISA semantics.

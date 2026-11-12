@@ -1,10 +1,10 @@
 module
 public import Human.Circuits.Bigint.Memory
-public import Slop.Bigint.Addresses
-public import Slop.Bigint.NativeExecution
-public import Slop.Bigint.WitnessCheck
-public import Slop.KernelRfl
-public import Slop.NonVacuous.BigintPool
+public import Proven.Bigint.Addresses
+public import Proven.Bigint.NativeExecution
+public import Proven.Bigint.WitnessCheck
+public import Proven.KernelRfl
+public import Proven.NonVacuous.BigintPool
 
 @[expose] public section
 
@@ -12,7 +12,7 @@ namespace Tests.BigintMemory
 open Airbender Trace Arithmetic
 set_option warningAsError true
 
--- The row, its constraint checks and its cells are the non-vacuity witness's (`Slop/NonVacuous/BigintPool.lean`).
+-- The row, its constraint checks and its cells are the non-vacuity witness's (`Proven/NonVacuous/BigintPool.lean`).
 
 def setup : Delegation.Setup babyBearModulus :=
   ⟨Bigint.setupTable, { name := "unused", Contains _ _ := False },

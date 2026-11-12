@@ -8,7 +8,7 @@ interpretations used by execution claims, rather than whole-execution conclusion
 
 ## Checked connections
 
-[`Caller.rv_mixed_memory_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean)
+[`Caller.rv_mixed_memory_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean)
 derives actual register/RAM transfers on an `RV.State`, ranges, addresses and worker reference effects
 from one joint machine/worker history. It does not require a separate worker
 permutation or supplied intermediate states.
@@ -38,7 +38,7 @@ With a sequential ordinary registry, accepted state/request matching derives
 caller, both row counts equal `(upper - lower) / 4`, and every selected worker has
 that public family and a unique native slot. No selected-worker family, count or
 duration proportional to its row list is supplied. See
-[`Caller.rv_program_window_schedule_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean).
+[`Caller.rv_program_window_schedule_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean).
 Alignment, cut location and the public code remain explicit. Bigint control validity is not checked by this
 request/schedule result.
 
@@ -49,7 +49,7 @@ straight path with callers. `RVSequentialProgram` states
 these original public instruction forms (in terms of `RV.decode`); `RVArithmeticProgram` remains available.
 No operand, read, native selector or result is supplied.
 [`rv_sequential_fields_mask`, `rv_sequential_program_pc_advance` and
-`rv_sequential_program_pc_clock`](../../../../slop/Slop/UnifiedReduced/RVCaller/ControlPreparation.lean)
+`rv_sequential_program_pc_clock`](../../../../proven/Proven/UnifiedReduced/RVCaller/ControlPreparation.lean)
 derive native selectors, PC increments and the instruction address from public
 decoding and accepted constraints/matching. Jumps, branches and comparisons are
 outside this linear PC/clock profile.

@@ -7,10 +7,10 @@ connects all calls and terminal tokens without supplied intermediate states.
 
 ## Checked results
 
-[`Native.rv_operation_execution`](../../../../../slop/Slop/Final/Trace/Workers/Blake2G/RVTheorems.lean) connects each G row to actual
-port effects. [`Native.rv_workvector_soundness`](../../../../../slop/Slop/Final/Trace/Workers/Blake2G/RVTheorems.lean) additionally proves
+[`Native.rv_operation_execution`](../../../../../proven/Proven/Final/Trace/Workers/Blake2G/RVTheorems.lean) connects each G row to actual
+port effects. [`Native.rv_workvector_soundness`](../../../../../proven/Proven/Final/Trace/Workers/Blake2G/RVTheorems.lean) additionally proves
 the complete reference fold on actual initial/final RAM and terminal tokens.
-[`Native.rv_workvector_boundary_soundness` and `Native.rv_window_soundness`](../../../../../slop/Slop/Final/Trace/Workers/Blake2G/RVTheorems.lean)
+[`Native.rv_workvector_boundary_soundness` and `Native.rv_window_soundness`](../../../../../proven/Proven/Final/Trace/Workers/Blake2G/RVTheorems.lean)
 retain native seeds and derive boundary controls/intermediate states under the
 public mode/count, alignment/domain, modeled-table and matching conditions.
 

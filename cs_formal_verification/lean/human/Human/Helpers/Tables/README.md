@@ -8,8 +8,8 @@ are separate obligations.
 
 ## Checked connections
 
-The [lookup lemmas](../../../../slop/Slop/Lookups.lean) extract modeled pair/range-sign/
-low-byte behavior from membership; [byte-table lemmas](../../../../slop/Slop/ByteTables.lean)
+The [lookup lemmas](../../../../proven/Proven/Lookups.lean) extract modeled pair/range-sign/
+low-byte behavior from membership; [byte-table lemmas](../../../../proven/Proven/ByteTables.lean)
 characterize tagged binary rows and their lookup results under stated field bounds.
 Consuming circuit proofs use these results to recover ranges and operation effects.
 The proofs concern these modeled rows; they do not prove Rust setup correspondence.

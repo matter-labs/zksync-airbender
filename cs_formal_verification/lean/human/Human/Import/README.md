@@ -16,7 +16,7 @@ so the code itself needs no review.
 | [BabyBear.lean](BabyBear.lean), [Coefficients.lean](Coefficients.lean) | Montgomery coefficients and their signed representatives (`ConstantsClaim` in [Theorems.lean](Theorems.lean)). |
 | [Columns.lean](Columns.lean), [Operations.lean](Operations.lean), [InitsTeardownsLayout.lean](InitsTeardownsLayout.lean) | **The meaning**: pure functions from a `Circuit` to operations and column descriptors. `PlacementsClaim` (in Columns) states the placement index. |
 | [SetupBlocks.lean](SetupBlocks.lean) | The meaning of a setup column (`decode`). |
-| `ArtifactImportClaim` in each `Human/Circuits/<family>/Artifact.lean`; `StandaloneImportClaim`, `UnifiedImportClaim` in `Human/Circuits/InitsTeardowns/` | Every imported definition is the meaning function applied to `importedCircuit`. The kernel evaluates both sides (`slop/Slop/Final/Circuits/*/Artifact.lean`). |
+| `ArtifactImportClaim` in each `Human/Circuits/<family>/Artifact.lean`; `StandaloneImportClaim`, `UnifiedImportClaim` in `Human/Circuits/InitsTeardowns/` | Every imported definition is the meaning function applied to `importedCircuit`. The kernel evaluates both sides (`proven/Proven/Final/Circuits/*/Artifact.lean`). |
 
 `Exec/` holds the executable code: the JSON parser, the decoder, the emitters of the literal terms and FastColumns (copies of
 the [Columns](Columns.lean) functions the emitter runs, derived by a command). No need to review it:

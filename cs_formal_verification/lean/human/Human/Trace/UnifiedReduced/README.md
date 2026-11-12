@@ -9,27 +9,27 @@ mixed execution with delegation callers remains a separate obligation.
 ## Checked results
 
 Every unified claim also has a `…SatisfiableClaim` beside it: booted traces, caller traces with LUI/ADDI preparation
-rows and complete hash spans in [Satisfiable/UnifiedCallers](../../../../slop/Slop/Final/Trace/Satisfiable/UnifiedCallers.lean).
+rows and complete hash spans in [Satisfiable/UnifiedCallers](../../../../proven/Proven/Final/Trace/Satisfiable/UnifiedCallers.lean).
 
 The ordinary claim is [RVTheorems](RVTheorems.lean); the `Caller.*` claims are in
-[RVCallerTheorems](RVCallerTheorems.lean). Proofs are in `slop/Slop/Final/Trace/UnifiedReduced/`.
+[RVCallerTheorems](RVCallerTheorems.lean). Proofs are in `proven/Proven/Final/Trace/UnifiedReduced/`.
 
 | Result from accepted history and stated public inputs | Direct theorem |
 | --- | --- |
-| Standard instructions plus TRIADD/XORROT retire together as a run of `RV.run` and reach native terminal PC/cells, using public ROM bytes; delegation callers are outside the registry. | [`rv_execution_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVTheorems.lean) |
-| Machine and worker reads/writes, bounds and references share one actual initialized history. | [`Caller.rv_mixed_memory_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| Exact caller regions, counts and slots follow from state/request matching and public cuts/duration. | [`Caller.rv_window_schedule_soundness` and `Caller.rv_request_window_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| Public sequential code identifies caller regions; native matching derives selected worker family, counts and slots. | [`Caller.rv_program_window_schedule_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.rv_mixed_window_soundness` and `Caller.rv_mixed_window_projection_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| Public ADDI-from-x0/LUI preparation yields actual controls after literal or sequential ordinary/custom prefixes; native PC/clock matching derives each preparation address. | [`Caller.rv_control_preparation_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.rv_control_preparation_window_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| An arbitrary ordered finite list of native windows and their gaps executes continuously from one initialization with retained tokens and clocks. | [`Caller.rv_mixed_window_sequence_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| Complete prepared G/Keccak and extended-BLAKE references reach the selected actual cut states; masks are derived. | [`Caller.rv_prepared_hash_window_soundness` and `Caller.rv_prepared_round_window_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| A nonempty ordered list of complete prepared G/Keccak references uses the same continuously executed states across the intervening preparation and other effects. | [`Caller.rv_prepared_hash_sequence_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| Public LUI preparation and raw matching derive exclusive masks inside each selected extended-BLAKE caller region, retaining earlier workers. | [`Caller.rv_prepared_round_region_masks_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| Ordered complete G/extended-BLAKE/Keccak lists share one execution when prepared controller regions cover every extended-round worker. | [`Caller.rv_prepared_protocol_sequence_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| Public caller regions derive each selected span's worker family/count before all three references compose continuously. | [`Caller.rv_program_prepared_protocol_sequence_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
-| Caller fetch (`RV.decode` to `.delegate k`), selected worker observations and the spec's PC advance meet at the same boundaries. | [`Caller.rv_caller_cycles_soundness` and `Caller.rv_prepared_round_cycles_soundness`](../../../../slop/Slop/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
+| Standard instructions plus TRIADD/XORROT retire together as a run of `RV.run` and reach native terminal PC/cells, using public ROM bytes; delegation callers are outside the registry. | [`rv_execution_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVTheorems.lean) |
+| Machine and worker reads/writes, bounds and references share one actual initialized history. | [`Caller.rv_mixed_memory_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
+| Exact caller regions, counts and slots follow from state/request matching and public cuts/duration. | [`Caller.rv_window_schedule_soundness` and `Caller.rv_request_window_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
+| Public sequential code identifies caller regions; native matching derives selected worker family, counts and slots. | [`Caller.rv_program_window_schedule_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
+| Actual joint cut states and projected worker boundaries retain native timestamps. | [`Caller.rv_mixed_window_soundness` and `Caller.rv_mixed_window_projection_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
+| Public ADDI-from-x0/LUI preparation yields actual controls after literal or sequential ordinary/custom prefixes; native PC/clock matching derives each preparation address. | [`Caller.rv_control_preparation_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
+| Two preparations share their actual cut states and the complete intervening machine/worker history; neither control is supplied. | [`Caller.rv_control_preparation_window_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
+| An arbitrary ordered finite list of native windows and their gaps executes continuously from one initialization with retained tokens and clocks. | [`Caller.rv_mixed_window_sequence_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
+| Complete prepared G/Keccak and extended-BLAKE references reach the selected actual cut states; masks are derived. | [`Caller.rv_prepared_hash_window_soundness` and `Caller.rv_prepared_round_window_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
+| A nonempty ordered list of complete prepared G/Keccak references uses the same continuously executed states across the intervening preparation and other effects. | [`Caller.rv_prepared_hash_sequence_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
+| Public LUI preparation and raw matching derive exclusive masks inside each selected extended-BLAKE caller region, retaining earlier workers. | [`Caller.rv_prepared_round_region_masks_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
+| Ordered complete G/extended-BLAKE/Keccak lists share one execution when prepared controller regions cover every extended-round worker. | [`Caller.rv_prepared_protocol_sequence_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
+| Public caller regions derive each selected span's worker family/count before all three references compose continuously. | [`Caller.rv_program_prepared_protocol_sequence_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
+| Caller fetch (`RV.decode` to `.delegate k`), selected worker observations and the spec's PC advance meet at the same boundaries. | [`Caller.rv_caller_cycles_soundness` and `Caller.rv_prepared_round_cycles_soundness`](../../../../proven/Proven/Final/Trace/UnifiedReduced/RVCallerTheorems.lean) |
 
 Field/inverse, public boot/program/domain, modeled tables and logical
 matching remain explicit. Window claims additionally retain cut alignment/location,

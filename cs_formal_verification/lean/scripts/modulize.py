@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC_DIRS = ("human", "slop", "test")
+SRC_DIRS = ("human", "proven", "test")
 # Roots shipped with the toolchain; all are modules since Lean 4.22.
 CORE_ROOTS = {"Init", "Std", "Lean", "Lake"}
 # Files kept non-module by hand: module name -> reason. Their importers stay non-module too.
@@ -45,19 +45,19 @@ IMPORT_ALL_COMMENT = {"Init.Data.Repr": REPR, "Init.Data.String.Defs": REPR, "In
                       "Init.Data.Range.Basic": RANGE, "Init.Data.Array.Basic": ARRAY}
 _R, _S, _I = "Init.Data.Repr", "Init.Data.String.Defs", "Init.Data.Int.Repr"
 IMPORT_ALL: dict[str, tuple[str, ...]] = {
-    "Slop.ShiftBinop.ArtifactChecks": (_R,),
-    "Slop.Bigint.ArtifactChecks": (_R,),
+    "Proven.ShiftBinop.ArtifactChecks": (_R,),
+    "Proven.Bigint.ArtifactChecks": (_R,),
     "Tests.DelegationROMBoundary": ("Init.Data.Array.Basic",),
     # the JSON parser's proofs (integers through `Int.repr`) and its kernel-evaluated samples
-    "Slop.Import.Json.Lexical": (_I,),
-    "Slop.Import.Json.Sample": (_R, _S, _I),
+    "Proven.Import.Json.Lexical": (_I,),
+    "Proven.Import.Json.Sample": (_R, _S, _I),
     # the standalone inits/teardowns layout and its bytes parsed and decoded, evaluated by the kernel
-    "Slop.Final.Circuits.InitsTeardowns.Artifact": ("Init.Data.Range.Basic", _R, _S, _I),
+    "Proven.Final.Circuits.InitsTeardowns.Artifact": ("Init.Data.Range.Basic", _R, _S, _I),
     # every other circuit's artifact import, evaluated by the kernel
-    **{f"Slop.Final.Circuits.{c}": ("Init.Data.Range.Basic",)
+    **{f"Proven.Final.Circuits.{c}": ("Init.Data.Range.Basic",)
        for c in ("AddSub.Artifact", "InitsTeardowns.UnifiedArtifact", "JumpBranchSlt.Artifact", "MulDiv.Artifact",
                  "ShiftBinop.Artifact", "SubwordMemory.Artifact", "UnifiedReduced.Artifact", "WordMemory.Artifact")},
-    **{f"Slop.Final.Circuits.{c}": ("Init.Data.Array.Basic", "Init.Data.Range.Basic")
+    **{f"Proven.Final.Circuits.{c}": ("Init.Data.Array.Basic", "Init.Data.Range.Basic")
        for c in ("Bigint.Artifact", "Blake2G.Artifact", "Blake2Round.Artifact", "Keccak.Artifact",
                  "KeccakSplit.Chi5.Artifact", "KeccakSplit.ColumnParity.Artifact", "KeccakSplit.ThetaRho.Artifact")},
 }

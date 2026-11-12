@@ -8,7 +8,7 @@ fixture leaves open.
 
 ## Checked results
 
-[`rv_operation_execution`](../../../../../slop/Slop/Final/Trace/Workers/Bigint/RVTheorems.lean) proves all seven selected operation
+[`rv_operation_execution`](../../../../../proven/Proven/Final/Trace/Workers/Bigint/RVTheorems.lean) proves all seven selected operation
 effects on actual native RV reads/writes and terminal cells in a shared pool,
 under public initialization/alignment, exact matching and the modeled bigint table.
 Operand/pointer bounds are derived; this still admits the flagged x12 = 0 case

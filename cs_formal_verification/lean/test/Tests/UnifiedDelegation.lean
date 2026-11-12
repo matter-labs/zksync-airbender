@@ -2,21 +2,21 @@ module
 public import Tests.DelegationCaller
 public import Tests.BigintMemory
 public import Tests.DelegationOperationEffects
-public import Slop.UnifiedReduced.Delegation
-public import Slop.UnifiedReduced.ControlContext
+public import Proven.UnifiedReduced.Delegation
+public import Proven.UnifiedReduced.ControlContext
 public import Human.Circuits.JumpBranchSlt.Jump
 public import Human.Circuits.WordMemory.Output
 public import Human.Trace.UnifiedReduced.PreparedRoundWindows
-public import Slop.Arithmetic.ShiftAssembly
-public import Slop.Arithmetic.WordBytes
-public import Slop.Arithmetic.WordRotation
-public import Slop.Trace.CompositionCore
-public import Slop.Trace.ROMView
-public import Slop.Trace.WindowCounts
-public import Slop.UnifiedReduced.WordROM
+public import Proven.Arithmetic.ShiftAssembly
+public import Proven.Arithmetic.WordBytes
+public import Proven.Arithmetic.WordRotation
+public import Proven.Trace.CompositionCore
+public import Proven.Trace.ROMView
+public import Proven.Trace.WindowCounts
+public import Proven.UnifiedReduced.WordROM
 public import Human.Circuits.UnifiedReduced.Tables.Setup
-public import Slop.Bigint.WitnessCheck
-public import Slop.KernelRfl
+public import Proven.Bigint.WitnessCheck
+public import Proven.KernelRfl
 
 @[expose] public section
 

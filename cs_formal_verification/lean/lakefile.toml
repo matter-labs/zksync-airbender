@@ -6,7 +6,7 @@ version = "0.1.0"
 # The default targets are what `lake check --paranoid` checks (ci/lean-ci.sh kernel-check, backup-check.sh): everything
 # except the two files that import Clean (libraries CleanEquivalence and CleanAudit), whose native_decide prime instances
 # it would reject (docs/shared/lean-strategies.md 1.4).
-defaultTargets = ["CleanCore", "Human", "Slop", "Test", "airbender_tests"]
+defaultTargets = ["CleanCore", "Human", "Proven", "Test", "airbender_tests"]
 # With Lake's shared artifact cache on (LAKE_ARTIFACT_CACHE=true), keep every build product in .lake/build
 # as well (hard links into the cache, no extra disk): `lake env lean` (verify.sh's axiom audits, check_review.py)
 # finds .olean files only there. No effect when the cache is off.
@@ -371,10 +371,10 @@ text = true
 
 # proofs (kernel-checked, not meant to be read)
 [[lean_lib]]
-name = "Slop"
-srcDir = "slop"
-roots = ["Slop"]
-globs = ["Slop.+"]
+name = "Proven"
+srcDir = "proven"
+roots = ["Proven"]
+globs = ["Proven.+"]
 # Files that reach the Sail model (not a module) stay non-modules (scripts/modulize.py converts every other file);
 # some import Mathlib directly, which Lake warns about unless the library declares the mix.
 allowNonModules = true
@@ -479,7 +479,7 @@ roots = [
 name = "CleanAudit"
 srcDir = "test"
 roots = ["Checks.Axioms"]
-# imports the Sail model's proofs (not modules) and Clean, which Lake would warn about (see Slop above)
+# imports the Sail model's proofs (not modules) and Clean, which Lake would warn about (see Proven above)
 allowNonModules = true
 
 [[lean_exe]]

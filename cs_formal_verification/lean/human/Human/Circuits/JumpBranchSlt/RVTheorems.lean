@@ -7,7 +7,7 @@ public import Human.Helpers.Context.RVRowModel
 
 /-! RV32 claims for the comparison, branch and jump rows, stated against our spec (`RV.step`, `Human/ISA/RV32.lean`),
     not Sail: the row's pre-state is `input.before : RV.State`. `RV.Same` (`ISA/State.lean`) compares two `RV.State`s.
-    Proven in `slop/Slop/Final/Circuits/JumpBranchSlt/RVTheorems.lean` (checked in `test/Checks/Claims.lean`).
+    Proven in `proven/Proven/Final/Circuits/JumpBranchSlt/RVTheorems.lean` (checked in `test/Checks/Claims.lean`).
     PC in ROM and 4-byte aligned is the decoder table's guard (`rvProgramEntryWith`). The step exists, so a taken
     branch or a jump lands on a 4-byte aligned target (`RV.State.jumpAligned`): the circuit's bit-1 check enforces it. -/
 

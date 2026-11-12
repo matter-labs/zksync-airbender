@@ -1,20 +1,20 @@
 module
 public import Tests.PooledHistory
 public import Tests.PooledROM
-public import Slop.Defs.Helpers.Memory.Native
+public import Proven.Defs.Helpers.Memory.Native
 
 public import Tests.SubwordMemoryTimestamp
 public import Tests.ShiftBinopTimestamp
 public import Tests.ShiftBinopHistory
 public import Tests.ShiftBinopPorts
 public import Tests.ShiftBinopImmediate
-public import Slop.Trace.BytePorts
-public import Slop.MulDiv.Trace
+public import Proven.Trace.BytePorts
+public import Proven.MulDiv.Trace
 public import Mathlib.Tactic.IntervalCases
 public import Tests.BranchTrace
 public import Tests.ComparisonTrace
 public import Tests.JalrTrace
-public import Slop.Trace.ClockHistory
+public import Proven.Trace.ClockHistory
 public import Tests.Timestamps
 public import Tests.TraceHistory
 public import Tests.TraceMemory
@@ -25,16 +25,16 @@ public import Tests.OracleTrace
 public import Tests.PooledOracle
 public import Tests.JumpTimestamp
 public import Tests.JumpHistory
-public import Slop.JumpBranchSlt.Trace
+public import Proven.JumpBranchSlt.Trace
 public import Human.Circuits.JumpBranchSlt.Jump
-public import Slop.JumpBranchSlt.Branch
-public import Slop.JumpBranchSlt.Jump
+public import Proven.JumpBranchSlt.Branch
+public import Proven.JumpBranchSlt.Jump
 public import Tests.DiscardedLoad
 public import Tests.TraceROM
 public import Tests.TraceStore
 public import Tests.MemoryWord
 public import Tests.TraceZeroRegister
-public import Slop.Trace.MemoryPorts
+public import Proven.Trace.MemoryPorts
 
 @[expose] public section
 

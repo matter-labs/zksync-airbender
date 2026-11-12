@@ -1,7 +1,7 @@
 module
 public import Tests.Keccak
 public import Tests.KeccakTheta
-public import Slop.CleanCore.Circuit.Operations
+public import Proven.CleanCore.Circuit.Operations
 
 @[expose] public section
 

@@ -10,7 +10,7 @@ public import Human.Helpers.Core.Field
 /-! Claims about the inits/teardowns sets: the init tuples are the zero-valued, zero-timestamp boot
     image of the RAM windows named by the public top bits (ROM shadow below 4 MiB included), and each
     teardown tuple carries its row's final timestamp and value at the same address. State-free.
-    Proven in slop/Slop/Final/Circuits/InitsTeardowns/Theorems.lean. -/
+    Proven in proven/Proven/Final/Circuits/InitsTeardowns/Theorems.lean. -/
 
 namespace Airbender.InitsTeardowns
 open Trace Arithmetic

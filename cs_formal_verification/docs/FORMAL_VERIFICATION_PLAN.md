@@ -12,7 +12,7 @@ connections. Keep these documents as snapshots, without completed-work history.
 
 Start with the composed execution claim in
 [Trace/RVSoundness.lean](../lean/human/Human/Trace/RVSoundness.lean) (proof in
-[slop](../lean/slop/Slop/Final/Trace/RVSoundness.lean)) and its public inputs. The proof path is:
+[proven](../lean/proven/Proven/Final/Trace/RVSoundness.lean)) and its public inputs. The proof path is:
 
 ```text
 public initialization → preserved write bounds → latest-write reads
@@ -22,7 +22,7 @@ public initialization → preserved write bounds → latest-write reads
 The shared `RVRealizes` property states execution and terminal PC/cell realization
 once. Keep public conditions visible: field compatibility, initial state/program/domain,
 modeled tables, logical matching and unresolved terminal conditions. Derive local
-bounds, reads, decoder selectors and row interfaces inside `Slop/`; never assume
+bounds, reads, decoder selectors and row interfaces inside `Proven/`; never assume
 desired reads, results or decoder answers.
 
 Use Clean's original constraint semantics and our RV32 spec
@@ -39,7 +39,7 @@ Its property definitions remain the root entry point; `Core/`, `Decoder/`,
 unified-machine context retain their separate groups.
 `Human/Trace/` owns execution, terminal realization and composition.
 Explain declaration roles and parameters briefly,
-with field comments for substantive assumptions. `Slop/` owns calculation
+with field comments for substantive assumptions. `Proven/` owns calculation
 interfaces, helper lemmas, proof assembly and mechanical guards; do not add proof
 prose. `Import/` has a separate fidelity boundary. Consolidate identical contracts
 without hiding instruction distinctions or artifact observables.

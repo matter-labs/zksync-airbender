@@ -1,7 +1,7 @@
 import sys,re
 import os
 P=os.path.dirname(os.path.abspath(__file__))+"/"
-L=os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../slop/Slop/KeccakSplit/Setup/")
+L=os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../proven/Proven/KeccakSplit/Setup/")
 fams={
  "theta":dict(dir="ThetaRho",ns="ThetaRho",setup="thetaRhoSetup",ncol=9,
    helpers="callAt, ctl, slt, flag, splitA, splitB, splitS, callIndex"),
@@ -21,7 +21,7 @@ for line in open(P+"struct.txt"):
     cols.setdefault(c,[]).append((s,rest))
 ns=f"Airbender.Keccak.Split.{F['ns']}.SetupProofs"
 # Shapes
-sh=[f"import Slop.KeccakSplit.Setup.{F['dir']}.Spec\n\n/- Long blocks of each column, matched by shape (generated from the imported columns:\n   the import's grid blocks and the affine runs longer than 200 rows). -/\n\nnamespace {ns}\n\nopen Airbender.Import.Setup Airbender.Import.Setup.Proofs\n\nset_option warningAsError true\n"]
+sh=[f"import Proven.KeccakSplit.Setup.{F['dir']}.Spec\n\n/- Long blocks of each column, matched by shape (generated from the imported columns:\n   the import's grid blocks and the affine runs longer than 200 rows). -/\n\nnamespace {ns}\n\nopen Airbender.Import.Setup Airbender.Import.Setup.Proofs\n\nset_option warningAsError true\n"]
 if table:
     sh.append(f"\n/-- The iota table's per-byte constants, as the import emitted them. -/\ndef iotaTable : Array Nat :=\n  #[{table}]\n")
 nlong={}
@@ -38,7 +38,7 @@ for c in range(F['ncol']):
 sh.append(f"\nend {ns}\n")
 open(L+F['dir']+"/Shapes.lean","w").write("".join(sh))
 # ShapesOk
-ok=[f"import Slop.KeccakSplit.Setup.{F['dir']}.Shapes\n\n/- Agreement of every listed long block with its row formula, by formula: grid blocks by\n   their digits (`digits_eq`), affine runs by `omega`. -/\n\nnamespace {ns}\n\nopen Airbender.Import.Setup Airbender.Import.Setup.Proofs Airbender.Keccak.Split.SetupProofs\n\nset_option warningAsError true\n-- generated (gen/setup/genk.py): every block gets the same simp set, which a block need not use in full\nset_option linter.unusedSimpArgs false\n"]
+ok=[f"import Proven.KeccakSplit.Setup.{F['dir']}.Shapes\n\n/- Agreement of every listed long block with its row formula, by formula: grid blocks by\n   their digits (`digits_eq`), affine runs by `omega`. -/\n\nnamespace {ns}\n\nopen Airbender.Import.Setup Airbender.Import.Setup.Proofs Airbender.Keccak.Split.SetupProofs\n\nset_option warningAsError true\n-- generated (gen/setup/genk.py): every block gets the same simp set, which a block need not use in full\nset_option linter.unusedSimpArgs false\n"]
 if table:
     ok.append("\ntheorem iotaTable_eq : ∀ b < 256, iotaTable.getD b 0 = rcByte b := by decide +kernel\n")
 for c in range(F['ncol']):
@@ -58,8 +58,8 @@ theorem col{c}_longs : ∀ p ∈ col{c}Longs, p.2.Ok col{c}Spec p.1 := by
 ok.append(f"\nend {ns}\n")
 open(L+F['dir']+"/ShapesOk.lean","w").write("".join(ok))
 # Rows
-rows=[f"""import Slop.KeccakSplit.Setup.{F['dir']}.ShapesOk
-import Slop.KeccakSplit.Setup.{F['dir']}.Formula
+rows=[f"""import Proven.KeccakSplit.Setup.{F['dir']}.ShapesOk
+import Proven.KeccakSplit.Setup.{F['dir']}.Formula
 import Human.Circuits.KeccakSplit.Tables.Setup
 import Mathlib.Tactic.IntervalCases
 

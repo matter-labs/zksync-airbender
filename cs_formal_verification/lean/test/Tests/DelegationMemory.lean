@@ -1,12 +1,12 @@
 module
 public import Tests.KeccakTheta
-public import Slop.Keccak.CallHistory
-public import Slop.Delegation.NativeSegments
+public import Proven.Keccak.CallHistory
+public import Proven.Delegation.NativeSegments
 public import Mathlib.Data.List.OfFn
-public import Slop.Delegation.NativeViews
-public import Slop.Keccak.CallPorts
-public import Slop.CleanCore.Circuit.Operations
-public import Slop.Defs.Circuits.Keccak.Artifact
+public import Proven.Delegation.NativeViews
+public import Proven.Keccak.CallPorts
+public import Proven.CleanCore.Circuit.Operations
+public import Proven.Defs.Circuits.Keccak.Artifact
 
 @[expose] public section
 

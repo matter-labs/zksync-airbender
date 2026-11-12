@@ -9,7 +9,7 @@ reference.
 ## Definitions and checked representation facts
 
 These modules define representations and reference relations rather than native
-circuit soundness. The supporting [word lemmas](../../../../slop/Slop/Arithmetic/Word.lean)
+circuit soundness. The supporting [word lemmas](../../../../proven/Proven/Arithmetic/Word.lean)
 prove that RV32 conversion produces bounded limbs and round-trips to the original
 bit vector, and that bounded words are determined by their numeric value.
 Those facts do not make arbitrary witness limbs bounded: the consuming circuit

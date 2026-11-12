@@ -1,8 +1,8 @@
 module
-public import Slop.Trace.ROMView
+public import Proven.Trace.ROMView
 public import Human.Circuits.WordMemory.Output
 public import Human.Circuits.SubwordMemory.Output
-public import Slop.JumpBranchSlt.Trace
+public import Proven.JumpBranchSlt.Trace
 public import Tests.JumpTimestamp
 
 @[expose] public section

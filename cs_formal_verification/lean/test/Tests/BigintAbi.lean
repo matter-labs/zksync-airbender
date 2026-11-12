@@ -1,10 +1,10 @@
 module
 public import Human.Circuits.Bigint.Memory
-public import Slop.Bigint.Addresses
-public import Slop.Bigint.NativeExecution
-public import Slop.Bigint.WitnessCheck
-public import Slop.KernelRfl
-public import Slop.Defs.Circuits.Bigint.Artifact
+public import Proven.Bigint.Addresses
+public import Proven.Bigint.NativeExecution
+public import Proven.Bigint.WitnessCheck
+public import Proven.KernelRfl
+public import Proven.Defs.Circuits.Bigint.Artifact
 
 @[expose] public section
 

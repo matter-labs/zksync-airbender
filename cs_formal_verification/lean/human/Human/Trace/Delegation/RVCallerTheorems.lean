@@ -9,7 +9,7 @@ public import Human.Trace.Delegation.RVRequestHashWindows
 
 @[expose] public section
 
--- The statements proven in slop/Slop/Final/Trace/Delegation/RVCallerTheorems.lean (checked by verify.sh). The public starting point is an `RV.State`, the caller table is built by `RV.decode` of
+-- The statements proven in proven/Proven/Final/Trace/Delegation/RVCallerTheorems.lean (checked by verify.sh). The public starting point is an `RV.State`, the caller table is built by `RV.decode` of
 -- its ROM image (`rvProgramImage`; a caller row decodes to `.delegate k`, and `RV.step` at its PC is that call), cells
 -- are read/written by `Cell.readRV`/`Cell.applyRV` (`RVHistory`), seeds are `initialImageRV`. RAM
 -- cells are RAM at any address, INCLUDING READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END`

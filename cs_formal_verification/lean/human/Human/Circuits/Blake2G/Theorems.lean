@@ -4,7 +4,7 @@ public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section
 
--- The statements proven in slop/Slop/Final/Circuits/Blake2G/Theorems.lean (checked by verify.sh).
+-- The statements proven in proven/Proven/Final/Circuits/Blake2G/Theorems.lean (checked by verify.sh).
 
 namespace Airbender.Blake2G
 

@@ -19,9 +19,9 @@
   - `Allowed.lean`: `isIM : instruction → Bool` whitelist + theorem: every aligned code word of the image
     decodes (in `resetState`) to an `isIM` instruction. With RAM non-executable this covers every executed instruction.
   - `Spec*.lean`: the math (e.g. `combine x = 3x+1`, `polyEval a x = ∑ aᵢ xⁱ` in `ZMod (2^31-1)`).
-  - `Theorems.lean`: final statements; imports `Slop` only to name the proof terms. Nothing else in human/ imports slop.
+  - `Theorems.lean`: final statements; imports `Proven` only to name the proof terms. Nothing else in human/ imports proven.
 
-## slop/ (kernel-checked, not read)
+## proven/ (kernel-checked, not read)
 1. Oracle interpreter `runOracle known knownMem : SailM α → Option α` (closed; unknown reads / writes → none) +
    soundness lemma vs `runSail`. Fetch/decode/interrupt-check of each *concrete* word are closed facts proved by
    `decide +kernel`. Decode's dependence on misa etc. is discharged by `Configured`. Never unfold the 4 MB decoder symbolically.
@@ -87,7 +87,7 @@
 - Contract (`human/Human/Call.lean`): `Implements code frame post` (any placement) and `ImplementsAt entry code
   callees frame post` (fixed address, callees' code assumed at theirs); `Returns` = back at ra, callee-saved
   registers restored, memory changed only in `[sp - frame, sp)`.
-- Proofs (`slop/Slop/RV/`): goal-directed symbolic execution `∃ m s', run m S = some s' ∧ P s'`, one `simp` per
+- Proofs (`proven/Proven/RV/`): goal-directed symbolic execution `∃ m s', run m S = some s' ∧ P s'`, one `simp` per
   instruction (fetch facts from `CodeAt`, generated `decode` lemma per word, per-kind `exec` lemmas, byte-memory
   lemmas, side conditions by `bv_omega`); calls use the callee's `Implements` theorem (`run_call`), so each function
   is proven once. inc 4.6 s, double 4.7 s, combine 11 s (two calls).

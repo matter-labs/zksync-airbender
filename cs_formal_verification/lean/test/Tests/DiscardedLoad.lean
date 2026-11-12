@@ -4,7 +4,7 @@ public import Tests.TraceZeroRegister
 public import Human.Circuits.AddSub.RowInput
 public import Human.Helpers.Core.CircuitOutput
 public import Mathlib.Tactic.IntervalCases
-public import Slop.KernelRfl
+public import Proven.KernelRfl
 
 @[expose] public section
 

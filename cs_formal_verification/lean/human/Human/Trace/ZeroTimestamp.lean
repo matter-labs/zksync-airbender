@@ -17,7 +17,7 @@ public import Human.Circuits.KeccakSplit.Native
     `InitsTeardowns.UnifiedClaim`, from which the boot claims derive that the tracked RAM starts at zero
     (`Trace.BootRamZeroClaim`, `UnifiedReduced.BootRamZeroClaim`). What remains unformalised: the cross-chunk clock
     chaining.
-    The statements mention no machine state. Proven in slop/Slop/Final/Trace/ZeroTimestamp.lean. -/
+    The statements mention no machine state. Proven in proven/Proven/Final/Trace/ZeroTimestamp.lean. -/
 
 namespace Airbender.Trace
 

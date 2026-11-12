@@ -7,7 +7,7 @@ public import Human.Helpers.Context.RVRowModel
 
 /-! RV32 claims for XOR/OR/AND, SLL/SRL/SRA (register and immediate forms) and REV8, stated against our spec
     (`RV.step`, `Human/ISA/RV32.lean`), not Sail: the row's pre-state is `input.before : RV.State`. `RV.alu` shifts by
-    the low five bits of the amount. Proven in `slop/Slop/Final/Circuits/ShiftBinop/RVTheorems.lean` (checked in
+    the low five bits of the amount. Proven in `proven/Proven/Final/Circuits/ShiftBinop/RVTheorems.lean` (checked in
     `test/Checks/Claims.lean`). -/
 
 namespace Airbender.ShiftBinop

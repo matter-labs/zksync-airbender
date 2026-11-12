@@ -1,23 +1,23 @@
 module
-public import Slop.Delegation.Requests
-public import Slop.Trace.Timestamps
+public import Proven.Delegation.Requests
+public import Proven.Trace.Timestamps
 public import Human.Circuits.Bigint.Memory
-public import Slop.Bigint.Addresses
-public import Slop.Final.Circuits.Blake2G.Theorems
+public import Proven.Bigint.Addresses
+public import Proven.Final.Circuits.Blake2G.Theorems
 public import Human.Trace.Workers.Blake2G.WorkVector
-public import Slop.Blake2G.CallGroups
-public import Slop.Blake2G.PhysicalWords
-public import Slop.Delegation.NativeSegments
-public import Slop.Delegation.RequestWindows
-public import Slop.Delegation.SharedOperations
-public import Slop.Delegation.WorkerProjection
-public import Slop.JumpBranchSlt.Branch
-public import Slop.JumpBranchSlt.Jump
-public import Slop.Keccak.CallPermutation
-public import Slop.MulDiv.Values
-public import Slop.SubwordMemory.Values
-public import Slop.CleanCore.Circuit.Operations
-public import Slop.AddSub.ArtifactChecks
+public import Proven.Blake2G.CallGroups
+public import Proven.Blake2G.PhysicalWords
+public import Proven.Delegation.NativeSegments
+public import Proven.Delegation.RequestWindows
+public import Proven.Delegation.SharedOperations
+public import Proven.Delegation.WorkerProjection
+public import Proven.JumpBranchSlt.Branch
+public import Proven.JumpBranchSlt.Jump
+public import Proven.Keccak.CallPermutation
+public import Proven.MulDiv.Values
+public import Proven.SubwordMemory.Values
+public import Proven.CleanCore.Circuit.Operations
+public import Proven.AddSub.ArtifactChecks
 
 @[expose] public section
 

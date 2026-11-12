@@ -9,22 +9,22 @@ establish full mixed instruction retirement.
 ## Checked results
 
 Every caller claim also has a `…SatisfiableClaim` beside it, witnessed by caller traces with matched workers (a bigint
-call, an ordinary preparation row, a complete 56-call G span) in [Satisfiable/Callers](../../../../slop/Slop/Final/Trace/Satisfiable/Callers.lean).
+call, an ordinary preparation row, a complete 56-call G span) in [Satisfiable/Callers](../../../../proven/Proven/Final/Trace/Satisfiable/Callers.lean).
 
-[`rv_requests_soundness` and `rv_worker_schedule_soundness`](../../../../slop/Slop/Final/Trace/Delegation/RVCallerTheorems.lean) bind
+[`rv_requests_soundness` and `rv_worker_schedule_soundness`](../../../../proven/Proven/Final/Trace/Delegation/RVCallerTheorems.lean) bind
 public caller decoding (`RV.decode` to `.delegate k`) to the request permutation and derive unique
 issued-worker placement inside the caller's four-tick cycle. Zero-clock workers
 remain classified as unissued; the claims do not exclude their prefix effects.
 The upstream circuits reject an active zero-clock row (timestamp query 0,
 [regression](../../../../test/Tests/DelegationZeroInvocation.lean)); the claims do not use this.
 
-[`rv_shared_memory_soundness`](../../../../slop/Slop/Final/Trace/Delegation/RVCallerTheorems.lean) proves callers and workers execute
-in one initialized GPR/RAM history on an `RV.State`. [`rv_shared_operation_soundness`](../../../../slop/Slop/Final/Trace/Delegation/RVCallerTheorems.lean)
+[`rv_shared_memory_soundness`](../../../../proven/Proven/Final/Trace/Delegation/RVCallerTheorems.lean) proves callers and workers execute
+in one initialized GPR/RAM history on an `RV.State`. [`rv_shared_operation_soundness`](../../../../proven/Proven/Final/Trace/Delegation/RVCallerTheorems.lean)
 adds the selected operation references and derived bounds; the
 [logical memory result](../../Helpers/Memory/README.md#logical-memory-result)
 explains the history implication.
 
-[`rv_shared_span_soundness` and `rv_request_hash_window_soundness`](../../../../slop/Slop/Final/Trace/Delegation/RVCallerTheorems.lean)
+[`rv_shared_span_soundness` and `rv_request_hash_window_soundness`](../../../../proven/Proven/Final/Trace/Delegation/RVCallerTheorems.lean)
 bind complete selected references and actual terminal/cut states under their
 public protocol, count, domain/table and matching inputs. A complete span's final state is the
 spec's run of its delegation calls (`RV.calls`), up to the PC advance.

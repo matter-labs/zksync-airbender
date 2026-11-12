@@ -1,6 +1,6 @@
 module
 public import Tests.ShiftBinopTimestamp
-public import Slop.ShiftBinop.Trace
+public import Proven.ShiftBinop.Trace
 
 @[expose] public section
 

@@ -1,5 +1,5 @@
 module
-public import Slop.Trace.RowContext
+public import Proven.Trace.RowContext
 public import Human.Helpers.Tables.Subword
 
 @[expose] public section

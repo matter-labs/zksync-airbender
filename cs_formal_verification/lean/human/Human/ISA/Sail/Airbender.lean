@@ -13,7 +13,7 @@ thing Sail does not have: the program's input (Airbender's non-determinism sourc
 (a list; a read with none left has no next state).
 
 Our own fast spec `RV.step` (`Human/ISA/RV32.lean`), which the circuit claims are to be stated against, follows this machine:
-stated in `Human/ISA/Sail/Theorems.lean`, proven in `slop/Slop/ISA/Equiv/`. -/
+stated in `Human/ISA/Sail/Theorems.lean`, proven in `proven/Proven/ISA/Equiv/`. -/
 
 open Sail SailRV32 SailRV32.Functions Human
 

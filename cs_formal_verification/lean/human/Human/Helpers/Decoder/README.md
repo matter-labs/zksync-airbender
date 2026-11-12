@@ -11,9 +11,9 @@ preprocessing provenance reviewed separately.
 Successful public-program construction (`rvProgramImageWith`) implies that each entry is an
 aligned ROM word read by `RV.read` from the starting ROM image, decoded by `RV.decode`, and
 projected to native metadata; see
-[`rvProgramEntryWith_some`](../../../../slop/Slop/Trace/RVFetch.lean) (the guard, the public bytes, the decoded
+[`rvProgramEntryWith_some`](../../../../proven/Proven/Trace/RVFetch.lean) (the guard, the public bytes, the decoded
 instruction and its metadata). Decoder-table membership of a witness row yields a program entry of that family with the
-row's query ([`rv_decoder_member`](../../../../slop/Slop/Trace/RVProgram.lean)). The table's fetch guard
+row's query ([`rv_decoder_member`](../../../../proven/Proven/Trace/RVProgram.lean)). The table's fetch guard
 (`rvProgramEntryWith`) places every entry's PC in ROM and 4-byte aligned, so no code-domain or
 alignment premise is needed.
 

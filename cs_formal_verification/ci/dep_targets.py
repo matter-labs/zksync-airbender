@@ -15,7 +15,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path.cwd()
-OURS = ("human", "slop", "test")
+OURS = ("human", "proven", "test")
 IMPORT = re.compile(r"^\s*(?:public\s+|private\s+)?(?:meta\s+)?import\s+(?:all\s+)?([\w.]+)", re.M)
 
 

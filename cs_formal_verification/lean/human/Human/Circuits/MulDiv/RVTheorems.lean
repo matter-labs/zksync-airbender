@@ -7,7 +7,7 @@ public import Human.Helpers.Context.RVRowModel
 
 /-! RV32 claims for MUL/MULHU/DIVU/REMU, stated against our spec (`RV.step`, `Human/ISA/RV32.lean`), not Sail:
     the row's pre-state is `input.before : RV.State`. `RV.alu` gives DIVU by zero = all ones and REMU by zero = the
-    dividend. Proven in `slop/Slop/Final/Circuits/MulDiv/RVTheorems.lean` (checked in `test/Checks/Claims.lean`). -/
+    dividend. Proven in `proven/Proven/Final/Circuits/MulDiv/RVTheorems.lean` (checked in `test/Checks/Claims.lean`). -/
 
 namespace Airbender.MulDiv
 open Trace

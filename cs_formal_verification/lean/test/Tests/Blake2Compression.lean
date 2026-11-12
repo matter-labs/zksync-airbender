@@ -1,5 +1,5 @@
 module
-public import Slop.Blake2Round.Compression
+public import Proven.Blake2Round.Compression
 
 @[expose] public section
 

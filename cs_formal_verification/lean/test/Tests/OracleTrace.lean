@@ -1,11 +1,11 @@
 module
 public import Tests.TraceExecution
-public import Slop.Trace.Family.Timestamps
+public import Proven.Trace.Family.Timestamps
 public import Human.Circuits.AddSub.RowInput
 public import Human.Helpers.Core.CircuitOutput
 public import Mathlib.Tactic.IntervalCases
-public import Slop.KernelRfl
-public import Slop.Defs.Helpers.Decoder.ExternalInput
+public import Proven.KernelRfl
+public import Proven.Defs.Helpers.Decoder.ExternalInput
 
 @[expose] public section
 

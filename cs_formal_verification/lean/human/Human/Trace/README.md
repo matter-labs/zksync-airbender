@@ -11,21 +11,21 @@ admitted.
 
 Every claim here also has a `…SatisfiableClaim` beside it: its premises, restated, can be met with the conclusion's
 domain non-empty (a row, a tracked RAM cell, a teardown tuple); the whole-trace shape's is `Trace.RVTraceSatisfiable`.
-Witnesses: [Satisfiable/Pooled](../../../slop/Slop/Final/Trace/Satisfiable/Pooled.lean) (booted pooled and unified traces seeded by an inits/teardowns
+Witnesses: [Satisfiable/Pooled](../../../proven/Proven/Final/Trace/Satisfiable/Pooled.lean) (booted pooled and unified traces seeded by an inits/teardowns
 instance, one-row family traces).
 
-[`rv_pooled_native_soundness`](../../../slop/Slop/Final/Trace/RVSoundness.lean) proves that the six admitted ordinary
+[`rv_pooled_native_soundness`](../../../proven/Proven/Final/Trace/RVSoundness.lean) proves that the six admitted ordinary
 families, booted from the public `RV.State`, are a run of `RV.run` reaching the native final PC and
 tracked cells. The RAM seeds are the inits/teardowns Init tokens (`RVPooledBootInputs`), the modeled
 ROM tables are built from the ROM image, and native ROM-shadow cells are shadow RAM.
 Initialization, modeled tables, logical matching/decoding and the
 unresolved jump terminal-PC condition remain inputs; reads, ranges and order are derived.
 
-[`NonDeterminism.Pooled.rv_native_soundness`](../../../slop/Slop/Final/Trace/RVSoundness.lean) proves the same terminal
+[`NonDeterminism.Pooled.rv_native_soundness`](../../../proven/Proven/Final/Trace/RVSoundness.lean) proves the same terminal
 agreement for the external-read/write-hint extension and the exact stream consumption.
 The stream (`RV.State.input`) and its port connection are explicit; authentication of the stream is not proved.
 
-[`no_zero_timestamp_writes`](../../../slop/Slop/Final/Trace/ZeroTimestamp.lean) (statements in
+[`no_zero_timestamp_writes`](../../../proven/Proven/Final/Trace/ZeroTimestamp.lean) (statements in
 [ZeroTimestamp](ZeroTimestamp.lean), one per pooled CPU trace, unified machine, delegation workers and split Keccak
 workers) proves that no row of these circuits writes a memory token at timestamp 0: CPU rows write at clock four or
 later after boot, delegation rows at their invocation clock plus two. So only the init circuits produce

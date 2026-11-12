@@ -8,10 +8,10 @@ and controller-prefix restrictions.
 
 ## Checked results
 
-[`rv_operation_execution`](../../../../../slop/Slop/Final/Trace/Workers/Blake2Round/RVTheorems.lean) proves local phase effects with the
-standalone exclusive-mask ABI still explicit. [`rv_compression_soundness`](../../../../../slop/Slop/Final/Trace/Workers/Blake2Round/RVTheorems.lean)
-and [`rv_compression_boundary_soundness`](../../../../../slop/Slop/Final/Trace/Workers/Blake2Round/RVTheorems.lean) prove the complete reference
-output on actual RAM, linked to every terminal token; [`rv_window_soundness`](../../../../../slop/Slop/Final/Trace/Workers/Blake2Round/RVTheorems.lean)
+[`rv_operation_execution`](../../../../../proven/Proven/Final/Trace/Workers/Blake2Round/RVTheorems.lean) proves local phase effects with the
+standalone exclusive-mask ABI still explicit. [`rv_compression_soundness`](../../../../../proven/Proven/Final/Trace/Workers/Blake2Round/RVTheorems.lean)
+and [`rv_compression_boundary_soundness`](../../../../../proven/Proven/Final/Trace/Workers/Blake2Round/RVTheorems.lean) prove the complete reference
+output on actual RAM, linked to every terminal token; [`rv_window_soundness`](../../../../../proven/Proven/Final/Trace/Workers/Blake2Round/RVTheorems.lean)
 does so at selected first-span cut states within the ten-position controller.
 Reads, ranges and intermediate states are derived. Unrestricted restart/chaining and
 full mixed caller retirement remain separate.
@@ -29,7 +29,7 @@ states and terminal agreement. Later rounds may remain outside a selected window
 Completion controls do not automatically restart the protocol.
 [First prepared unified spans](../../UnifiedReduced/RVPreparedRoundWindows.lean)
 retain their public preparation, duration and empty worker-prefix restrictions.
-The broader [`Caller.rv_prepared_protocol_sequence_soundness`](../../../../../slop/Slop/Final/Trace/UnifiedReduced/RVTheorems.lean)
+The broader [`Caller.rv_prepared_protocol_sequence_soundness`](../../../../../proven/Proven/Final/Trace/UnifiedReduced/RVTheorems.lean)
 supports explicit LUI restarts between compression spans in one continuous mixed
 history. Raw matching derives masks within each controller region; earlier workers
 remain in the prefix. Every extended-round worker must belong to one such region,

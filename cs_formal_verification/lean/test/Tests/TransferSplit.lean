@@ -1,6 +1,6 @@
 module
-public import Slop.Trace.TransferSplit
-public import Slop.Trace.TransferBoundary
+public import Proven.Trace.TransferSplit
+public import Proven.Trace.TransferBoundary
 
 @[expose] public section
 

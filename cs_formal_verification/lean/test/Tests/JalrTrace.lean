@@ -1,10 +1,10 @@
 module
 public import Tests.JumpHistory
-public import Slop.JumpBranchSlt.Trace
-public import Slop.Trace.Terminal
+public import Proven.JumpBranchSlt.Trace
+public import Proven.Trace.Terminal
 public import Human.Circuits.JumpBranchSlt.Jump
-public import Slop.JumpBranchSlt.Branch
-public import Slop.JumpBranchSlt.Jump
+public import Proven.JumpBranchSlt.Branch
+public import Proven.JumpBranchSlt.Jump
 
 @[expose] public section
 

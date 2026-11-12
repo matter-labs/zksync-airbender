@@ -1,9 +1,9 @@
 module
 public import Human.Helpers.Delegation.WorkerContext
-public import Slop.Delegation.Operations
-public import Slop.Delegation.Requests
-public import Slop.Delegation.PortEvents
-public import Slop.CleanCore.Circuit.Operations
+public import Proven.Delegation.Operations
+public import Proven.Delegation.Requests
+public import Proven.Delegation.PortEvents
+public import Proven.CleanCore.Circuit.Operations
 
 @[expose] public section
 

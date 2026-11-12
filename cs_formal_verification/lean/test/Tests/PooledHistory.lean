@@ -1,14 +1,14 @@
 module
 public import Tests.SubwordMemoryTimestamp
-public import Slop.AddSub.Selectors
-public import Slop.JumpBranchSlt.Branch
-public import Slop.JumpBranchSlt.Jump
-public import Slop.MulDiv.Values
-public import Slop.ShiftBinop.Ports
-public import Slop.SubwordMemory.Values
-public import Slop.Trace.Family.Values
-public import Slop.Trace.Pooled
-public import Slop.Defs.Helpers.Context.Columns
+public import Proven.AddSub.Selectors
+public import Proven.JumpBranchSlt.Branch
+public import Proven.JumpBranchSlt.Jump
+public import Proven.MulDiv.Values
+public import Proven.ShiftBinop.Ports
+public import Proven.SubwordMemory.Values
+public import Proven.Trace.Family.Values
+public import Proven.Trace.Pooled
+public import Proven.Defs.Helpers.Context.Columns
 
 @[expose] public section
 

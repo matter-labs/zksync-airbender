@@ -65,7 +65,7 @@ Trust base of the spec: this directory (`Human.*`) and CleanCore, our transcript
 Mathlib (including Batteries) only, apart from the Sail leaf below. The one file that imports Clean is the leaf
 [CleanCore/Equivalence.lean](../CleanCore/Equivalence.lean), which proves each CleanCore definition equal to Clean's;
 nothing here imports it. Clean, and with it its native_decide prime instances in Clean's Utils/Primes.lean, is therefore
-not in the spec's import closure (nor in that of the proofs in `slop/`; only the audit file `test/Checks/Axioms.lean` imports it).
+not in the spec's import closure (nor in that of the proofs in `proven/`; only the audit file `test/Checks/Axioms.lean` imports it).
 The Sail model (generated SailRV32 and lean-sail) is imported only by `ISA/Sail/*` and
 [Helpers/Core/Configuration.lean](Helpers/Core/Configuration.lean).
 

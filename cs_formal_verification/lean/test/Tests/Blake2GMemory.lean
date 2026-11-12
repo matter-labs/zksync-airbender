@@ -1,14 +1,14 @@
 module
-public import Slop.Final.Circuits.Blake2G.Theorems
+public import Proven.Final.Circuits.Blake2G.Theorems
 public import Human.Helpers.Delegation.SpanABI
 public import Human.Trace.Workers.Blake2G.WorkVector
 public import Human.Trace.Workers.Keccak.Permutation
-public import Slop.Blake2G.CallGroups
-public import Slop.Blake2G.PhysicalWords
-public import Slop.Delegation.NativeSegments
-public import Slop.Delegation.ReverseFold
+public import Proven.Blake2G.CallGroups
+public import Proven.Blake2G.PhysicalWords
+public import Proven.Delegation.NativeSegments
+public import Proven.Delegation.ReverseFold
 public import Mathlib.Tactic.IntervalCases
-public import Slop.CleanCore.Circuit.Operations
+public import Proven.CleanCore.Circuit.Operations
 
 @[expose] public section
 

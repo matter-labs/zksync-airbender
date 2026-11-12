@@ -1,12 +1,12 @@
 module
-public import Slop.WordMemory.ArtifactChecks
-public import Slop.SubwordMemory.ArtifactChecks
-public import Slop.UnifiedReduced.ArtifactChecks
-public import Slop.JumpBranchSlt.ArtifactChecks
-public import Slop.Keccak.ArtifactChecks
-public import Slop.Blake2G.ArtifactChecks
-public import Slop.Blake2Round.ArtifactChecks
-public import Slop.Bigint.ArtifactChecks
+public import Proven.WordMemory.ArtifactChecks
+public import Proven.SubwordMemory.ArtifactChecks
+public import Proven.UnifiedReduced.ArtifactChecks
+public import Proven.JumpBranchSlt.ArtifactChecks
+public import Proven.Keccak.ArtifactChecks
+public import Proven.Blake2G.ArtifactChecks
+public import Proven.Blake2Round.ArtifactChecks
+public import Proven.Bigint.ArtifactChecks
 public import Tests.DelegationMixedMemory
 public import Tests.DelegationSharedMemory
 public import Tests.KeccakSchedule
@@ -33,7 +33,7 @@ public import Tests.DelegationROMBoundary
 public import Tests.DelegationTimestamps
 public import Tests.DelegationMemory
 public import Tests.WordMemory
-public import Slop.AddSub.ArtifactChecks
+public import Proven.AddSub.ArtifactChecks
 public import Human.Circuits.JumpBranchSlt.Artifact
 public import Human.Import.Transcribe
 public import Human.Import.Columns
@@ -41,7 +41,7 @@ public import Human.Circuits.KeccakSplit.ColumnParity.Artifact
 public import Human.Circuits.KeccakSplit.ThetaRho.Artifact
 public import Human.Circuits.KeccakSplit.Chi5.Artifact
 public import Human.Helpers.Properties
-public import Slop.Constraints
+public import Proven.Constraints
 public import Tests.InactiveRow
 public import Tests.Modular
 public import Tests.PC
@@ -56,7 +56,7 @@ public import Tests.ShiftBinop
 public import Tests.Shifts
 public import Tests.TraceImport
 public import Human.Helpers.Core.BabyBearPrime
-public import Slop.CleanCore.Circuit.Operations
+public import Proven.CleanCore.Circuit.Operations
 
 @[expose] public section
 

@@ -10,11 +10,11 @@ pre-state in the same history without assuming the desired instruction result.
 
 Accepted state matching and the imported clock laws yield the native instruction
 order and its connected boundary path; see
-[`ordered_row_state_path`](../../../../slop/Slop/Trace/RowHistory.lean).
+[`ordered_row_state_path`](../../../../proven/Proven/Trace/RowHistory.lean).
 The memory permutation plus unique initialization and strict timestamps yields
 [complete memory histories and latest-write reads](../Memory/README.md#logical-memory-result).
 
-[`outgoing_bounds`](../../../../slop/Slop/Final/Helpers/Context/PCState/Theorems.lean) proves both outgoing PC limbs bounded
+[`outgoing_bounds`](../../../../proven/Proven/Final/Helpers/Context/PCState/Theorems.lean) proves both outgoing PC limbs bounded
 under its logical interface and low-limb condition, including terminal boundaries.
 Binding that interface to standalone jump teardown remains open. None of these
 results assumes the desired row reads or an independently chosen execution order.

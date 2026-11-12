@@ -3,7 +3,7 @@ public import Human.Helpers.Context.PCState.Model
 
 @[expose] public section
 
--- The statements proven in slop/Slop/Final/Helpers/Context/PCState/Theorems.lean (checked by verify.sh).
+-- The statements proven in proven/Proven/Final/Helpers/Context/PCState/Theorems.lean (checked by verify.sh).
 
 namespace Airbender.PCState
 

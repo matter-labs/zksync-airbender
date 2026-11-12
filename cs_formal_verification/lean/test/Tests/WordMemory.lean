@@ -1,5 +1,5 @@
 module
-public import Slop.WordMemory
+public import Proven.WordMemory
 public import Mathlib.Tactic.IntervalCases
 public import Human.Helpers.Core.BabyBearPrime
 public import Human.Circuits.AddSub.RowInput

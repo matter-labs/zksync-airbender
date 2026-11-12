@@ -8,7 +8,7 @@ public import Human.Helpers.Core.BabyBearPrime
 @[expose] public section
 
 /-! Trace claim: the accepted rows are a run of our spec (`RV.run`) from the
-    public starting state `initial : RV.State`. Proven in `slop/Slop/Final/Trace/Families/JumpBranchSlt/RVTheorems.lean`
+    public starting state `initial : RV.State`. Proven in `proven/Proven/Final/Trace/Families/JumpBranchSlt/RVTheorems.lean`
     (checked by verify.sh). -/
 
 namespace Airbender.JumpBranchSlt

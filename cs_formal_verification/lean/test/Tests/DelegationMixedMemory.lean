@@ -1,13 +1,13 @@
 module
 public import Tests.DelegationOperationEffects
-public import Slop.Delegation.RequestWindows
-public import Slop.Delegation.SharedOperations
-public import Slop.Delegation.WorkerProjection
-public import Slop.JumpBranchSlt.Branch
-public import Slop.JumpBranchSlt.Jump
-public import Slop.MulDiv.Values
-public import Slop.SubwordMemory.Values
-public import Slop.CleanCore.Circuit.Operations
+public import Proven.Delegation.RequestWindows
+public import Proven.Delegation.SharedOperations
+public import Proven.Delegation.WorkerProjection
+public import Proven.JumpBranchSlt.Branch
+public import Proven.JumpBranchSlt.Jump
+public import Proven.MulDiv.Values
+public import Proven.SubwordMemory.Values
+public import Proven.CleanCore.Circuit.Operations
 
 @[expose] public section
 

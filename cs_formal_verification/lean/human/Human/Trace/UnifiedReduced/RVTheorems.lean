@@ -5,7 +5,7 @@ public import Human.Helpers.UnifiedReduced.RVExecutionInputs
 
 @[expose] public section
 
--- The statements proven in slop/Slop/Final/Trace/UnifiedReduced/RVTheorems.lean (checked by verify.sh).
+-- The statements proven in proven/Proven/Final/Trace/UnifiedReduced/RVTheorems.lean (checked by verify.sh).
 
 namespace Airbender.UnifiedReduced
 

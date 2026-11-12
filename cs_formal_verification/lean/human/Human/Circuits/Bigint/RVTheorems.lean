@@ -4,7 +4,7 @@ public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section
 
--- The statements proven in slop/Slop/Final/Circuits/Bigint/RVTheorems.lean (checked by verify.sh). The public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING READ-WRITE
+-- The statements proven in proven/Proven/Final/Circuits/Bigint/RVTheorems.lean (checked by verify.sh). The public starting point is an `RV.State`; RAM cells are RAM at any address, INCLUDING READ-WRITE
 -- ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`): no pointer is required to be at or above
 -- `ROM_END`.
 
