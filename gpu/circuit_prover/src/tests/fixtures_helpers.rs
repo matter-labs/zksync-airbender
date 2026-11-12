@@ -189,8 +189,11 @@ pub(super) fn assert_memory_caps_match_committed(
     caps: &[MerkleTreeCapVarLength],
     proof: &GKRProof<BF, E4, DefaultTreeConstructor>,
 ) {
-    let actual: Vec<_> = caps
-        .iter()
+    // Readback caps are in natural coset order; committed proof caps are bit-reversed.
+    let mut canonical_caps: Vec<_> = caps.iter().collect();
+    fft::utils::bitreverse_enumeration_inplace(&mut canonical_caps);
+    let actual: Vec<_> = canonical_caps
+        .into_iter()
         .flat_map(|cap| cap.cap.iter().copied())
         .collect();
     assert_eq!(
