@@ -1,7 +1,7 @@
 module
 public import Human.Helpers.Decoder.RVMachineProgram
 public import Human.Helpers.Context.RVPooledBoundary
-public import Human.Helpers.Context.VerifierBoundary.Model
+public import Human.Helpers.Context.VerifierBoundary.Theorems
 public import Human.Helpers.Delegation.MixedMemory
 public import Human.Helpers.UnifiedReduced.RVMixedMemory
 public import Human.Helpers.UnifiedReduced.RVExecutionInputs

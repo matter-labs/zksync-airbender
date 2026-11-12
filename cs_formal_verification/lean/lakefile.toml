@@ -38,6 +38,7 @@ roots = ["Human"]
 globs = [
   "Human",
   "Human.Helpers.Context.VerifierBoundary.Model",
+  "Human.Helpers.Context.VerifierBoundary.Theorems",
   "Human.Helpers.Decoder.RVMachineProgram",
   "Human.Trace.Machine.Model",
   "Human.Trace.Machine.Theorems",
