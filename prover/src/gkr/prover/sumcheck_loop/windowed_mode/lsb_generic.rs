@@ -1,8 +1,8 @@
 //! Portable (arch-independent) kernels for the LSB uniskip chain: the same
 //! pass/fold semantics as the NEON `lsb_bench` set, in plain field ops. Used
-//! on non-aarch64 targets and for non-BabyBear field pairs; the chain driver
-//! (`lsb_chain`) picks NEON or these per platform, so proofs are identical
-//! either way.
+//! by portable backends. The concrete GKR backend selects its chain operations;
+//! `DefaultBabyBearGKRBackend` selects NEON on aarch64 and the portable backend
+//! where no specialized backend is selected. Proofs are identical across backends.
 //!
 //! Domain layout (see `windowed_mode::uniskip`): a pass's 16-point grid is
 //! [8 raw values at H = <w8> in node order, 8 interpolated values at the odd

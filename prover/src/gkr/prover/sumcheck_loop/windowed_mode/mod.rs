@@ -7,11 +7,11 @@ pub(crate) mod program;
 pub(crate) mod uniskip;
 
 #[cfg(target_arch = "aarch64")]
-#[allow(dead_code)] // unwired NEON uniskip/windowed kernel set, kept as reference
+#[allow(dead_code)] // NEON windowed kernels used by the NEON GKR backend
 pub(crate) mod neon;
 
 #[cfg(target_arch = "aarch64")]
-#[allow(dead_code)] // unwired NEON uniskip/windowed kernel set, kept as reference
+#[allow(dead_code)] // NEON windowed kernels used by the NEON GKR backend
 pub(crate) mod lsb_bench;
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]

@@ -1,6 +1,6 @@
 //! Per-program `Setups` assembly without proving.
 //!
-//! The provers (`prover_examples::{unrolled,unified}`) build the
+//! The provers (`program_prover::{unrolled,unified}`) build the
 //! `Setups` map — one committed setup cap per circuit family — as a
 //! by-product of proving. Drivers and verifiers need the same map without
 //! running a prover: the setup caps prefix every non-determinism stream the

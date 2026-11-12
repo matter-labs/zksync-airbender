@@ -49,7 +49,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             ExecutionKind::Unified | ExecutionKind::Unified22 => {
                 // Inits and teardowns are inline in the unified circuit, so the
                 // dedicated i&t slot must be empty (mirrors the CPU reference in
-                // prover_examples::unified).
+                // program_prover::unified).
                 assert!(
                     inits_and_teardowns_memory_caps.is_empty(),
                     "unified execution must not produce separate inits-and-teardowns memory caps"

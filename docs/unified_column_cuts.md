@@ -25,7 +25,7 @@ root.
 
 ## 1. What changed
 
-| Quantity | BabyBear 2^23 | Proth120 2^22 |
+| Quantity | BabyBear 2^23 | Proth120 2^21 |
 |---|---|---|
 | Memory columns | 38 → 38 | 38 → 38 |
 | Witness columns | 66 → 58 | 66 → 58 |

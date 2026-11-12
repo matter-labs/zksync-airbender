@@ -21,7 +21,7 @@ pub struct CommitMemoryResult {
     /// whose inits-and-teardowns are trivial (dummy, all-zero). Only the
     /// trailing circuits carry real i&t data. Consumed by the FS-seed
     /// derivation, which must use all-zero top bits for the trivial circuits
-    /// (CPU reference: `prover_examples::unified`).
+    /// (CPU reference: `program_prover::unified`).
     pub num_trivial_unified_circuits: usize,
     /// The i&t address windows assigned to each instance, keyed by sequence ID.
     /// Trivial leading unified instances are absent.
