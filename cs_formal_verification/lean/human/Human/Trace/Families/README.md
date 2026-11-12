@@ -8,7 +8,8 @@ accepted matching.
 
 ## Checked results
 
-Every family trace claim also has a `…SatisfiableClaim` beside it (`Trace.RVTraceSatisfiable`), witnessed by a one-row
+Each trace claim states its inputs, acceptance, decoder membership and run conclusion.
+Each family trace claim has a separate `…SatisfiableClaim`, witnessed by a one-row
 trace fetched from ROM ([Satisfiable/Families](../../../../proven/Proven/Final/Trace/Satisfiable/Families.lean)).
 
 The family trace theorems take imported constraints, logical state/memory matching,

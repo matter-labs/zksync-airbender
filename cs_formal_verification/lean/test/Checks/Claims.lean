@@ -129,8 +129,8 @@ example : Airbender.SubwordMemory.RVRamTraceSoundnessClaim := @Airbender.Subword
 example : Airbender.Trace.RVPooledNativeSoundnessClaim := @Airbender.Trace.rv_pooled_native_soundness
 example : Airbender.Trace.BootRamZeroClaim := @Airbender.Trace.boot_ram_zero
 example : Airbender.Trace.NonDeterminism.Pooled.RVNativeSoundnessClaim := @Airbender.Trace.NonDeterminism.Pooled.rv_native_soundness
-example : Airbender.InitsTeardowns.StandaloneClaim := @Airbender.InitsTeardowns.standalone_claim
-example : Airbender.InitsTeardowns.UnifiedClaim := @Airbender.InitsTeardowns.unified_claim
+example : Airbender.InitsTeardowns.StandaloneClaim := @Airbender.InitsTeardowns.standalone_properties
+example : Airbender.InitsTeardowns.UnifiedClaim := @Airbender.InitsTeardowns.unified_properties
 example : Airbender.Trace.NoZeroTimestampWritesClaim := @Airbender.Trace.no_zero_timestamp_writes
 example : Airbender.UnifiedReduced.NoZeroTimestampWritesClaim := @Airbender.UnifiedReduced.no_zero_timestamp_writes
 example : Airbender.Delegation.NoZeroTimestampWritesClaim := @Airbender.Delegation.no_zero_timestamp_writes
@@ -512,3 +512,37 @@ example : Airbender.JumpBranchSlt.Branch.RVSatisfiableClaim := @Airbender.JumpBr
 #print axioms Airbender.JumpBranchSlt.Branch.rv_satisfiable
 example : Airbender.JumpBranchSlt.Jump.RVSatisfiableClaim := @Airbender.JumpBranchSlt.Jump.rv_satisfiable
 #print axioms Airbender.JumpBranchSlt.Jump.rv_satisfiable
+
+-- Trace statement equivalence checks.
+example : Airbender.Trace.RVAirbenderSoundnessClaim ↔ Airbender.Trace.Restatement.OldRVAirbenderSoundnessClaim := Airbender.Trace.Restatement.RVAirbenderSoundnessClaim_restatement
+#print axioms Airbender.Trace.Restatement.RVAirbenderSoundnessClaim_restatement
+example : Airbender.Trace.RVAirbenderSoundnessSatisfiableClaim ↔ Airbender.Trace.Restatement.OldRVAirbenderSoundnessSatisfiableClaim := Airbender.Trace.Restatement.RVAirbenderSoundnessSatisfiableClaim_restatement
+#print axioms Airbender.Trace.Restatement.RVAirbenderSoundnessSatisfiableClaim_restatement
+example : Airbender.JumpBranchSlt.RVTraceSoundnessClaim ↔ Airbender.JumpBranchSlt.Restatement.OldRVTraceSoundnessClaim := Airbender.JumpBranchSlt.Restatement.RVTraceSoundnessClaim_restatement
+#print axioms Airbender.JumpBranchSlt.Restatement.RVTraceSoundnessClaim_restatement
+example : Airbender.JumpBranchSlt.RVTraceSoundnessSatisfiableClaim ↔ Airbender.JumpBranchSlt.Restatement.OldRVTraceSoundnessSatisfiableClaim := Airbender.JumpBranchSlt.Restatement.RVTraceSoundnessSatisfiableClaim_restatement
+#print axioms Airbender.JumpBranchSlt.Restatement.RVTraceSoundnessSatisfiableClaim_restatement
+example : Airbender.MulDiv.RVTraceSoundnessClaim ↔ Airbender.MulDiv.Restatement.OldRVTraceSoundnessClaim := Airbender.MulDiv.Restatement.RVTraceSoundnessClaim_restatement
+#print axioms Airbender.MulDiv.Restatement.RVTraceSoundnessClaim_restatement
+example : Airbender.MulDiv.RVTraceSoundnessSatisfiableClaim ↔ Airbender.MulDiv.Restatement.OldRVTraceSoundnessSatisfiableClaim := Airbender.MulDiv.Restatement.RVTraceSoundnessSatisfiableClaim_restatement
+#print axioms Airbender.MulDiv.Restatement.RVTraceSoundnessSatisfiableClaim_restatement
+example : Airbender.ShiftBinop.RVTraceSoundnessClaim ↔ Airbender.ShiftBinop.Restatement.OldRVTraceSoundnessClaim := Airbender.ShiftBinop.Restatement.RVTraceSoundnessClaim_restatement
+#print axioms Airbender.ShiftBinop.Restatement.RVTraceSoundnessClaim_restatement
+example : Airbender.ShiftBinop.RVTraceSoundnessSatisfiableClaim ↔ Airbender.ShiftBinop.Restatement.OldRVTraceSoundnessSatisfiableClaim := Airbender.ShiftBinop.Restatement.RVTraceSoundnessSatisfiableClaim_restatement
+#print axioms Airbender.ShiftBinop.Restatement.RVTraceSoundnessSatisfiableClaim_restatement
+example : Airbender.SubwordMemory.RVRamTraceSoundnessClaim ↔ Airbender.SubwordMemory.Restatement.OldRVRamTraceSoundnessClaim := Airbender.SubwordMemory.Restatement.RVRamTraceSoundnessClaim_restatement
+#print axioms Airbender.SubwordMemory.Restatement.RVRamTraceSoundnessClaim_restatement
+example : Airbender.SubwordMemory.RVRamTraceSoundnessSatisfiableClaim ↔ Airbender.SubwordMemory.Restatement.OldRVRamTraceSoundnessSatisfiableClaim := Airbender.SubwordMemory.Restatement.RVRamTraceSoundnessSatisfiableClaim_restatement
+#print axioms Airbender.SubwordMemory.Restatement.RVRamTraceSoundnessSatisfiableClaim_restatement
+
+example : Airbender.InitsTeardowns.StandaloneSatisfiableClaim := Airbender.InitsTeardowns.standalone_satisfiable
+
+example : Airbender.InitsTeardowns.UnifiedSatisfiableClaim := Airbender.InitsTeardowns.unified_satisfiable
+
+-- Explicit property contracts and their witness conditions.
+#print axioms Airbender.InitsTeardowns.standalone_properties
+#print axioms Airbender.InitsTeardowns.standalone_satisfiable
+#print axioms Airbender.InitsTeardowns.unified_properties
+#print axioms Airbender.InitsTeardowns.unified_satisfiable
+#print axioms Airbender.Bigint.Memory.Restatement.property_restatement
+#print axioms Airbender.Blake2G.Restatement.property_restatement

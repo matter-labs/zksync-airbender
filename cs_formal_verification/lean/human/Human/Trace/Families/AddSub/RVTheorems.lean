@@ -41,6 +41,7 @@ structure RVNativeBootBoundary {p : Nat} [Fact p.Prime] (trace : Data p) (initia
     (inits : List (InitsTeardowns.Witness p InitsTeardowns.importedLayout)) : Prop where
   /-- Each tracked register or aligned RAM word occurs once. -/
   distinct : cells.Nodup
+  /-- Every tracked RAM cell is word-aligned. -/
   aligned : ∀ cell ∈ cells, cell.Aligned
   /-- The spec starts at PC 0. -/
   pc : initial.pc = 0
@@ -64,7 +65,10 @@ structure RVNativeBootBoundary {p : Nat} [Fact p.Prime] (trace : Data p) (initia
 
 /-- ADD/SUB and word-memory rows, in native time order, are a run of `RV.step` from `initial` reaching the terminal
     PC and cell values (LW to x0 is a no-op in our spec: the Airbender profile). -/
-def RVAirbenderSoundnessClaim : Prop := RVTraceSoundness RVExecutionBoundary RVDecoded
+def RVAirbenderSoundnessClaim : Prop :=
+  ∀ {trace : Data babyBearModulus} {initial : RV.State} {cells : List Cell} {program : List RVProgramEntry},
+    RVExecutionBoundary trace initial cells program → Accepted trace → RVDecoded trace program →
+      RVRealizes trace initial cells
 
 /-- The same rows from native boot (RAM seeded by the inits/teardowns instances `inits`). No ROM view: ROM-range RAM
     tokens are the shadow RAM, zero at boot. -/
@@ -73,7 +77,9 @@ def RVNativeBootSoundnessClaim : Prop :=
     RVRealizes trace initial cells
 
 /-- The assumptions of `RVAirbenderSoundnessClaim` can be met, by a trace with a row. -/
-def RVAirbenderSoundnessSatisfiableClaim : Prop := RVTraceSatisfiable RVExecutionBoundary RVDecoded
+def RVAirbenderSoundnessSatisfiableClaim : Prop :=
+  ∃ (trace : Data babyBearModulus) (initial : RV.State) (cells : List Cell) (program : List RVProgramEntry),
+    RVExecutionBoundary trace initial cells program ∧ Accepted trace ∧ RVDecoded trace program ∧ trace.rows ≠ []
 
 /-- The assumptions of `RVNativeBootSoundnessClaim` can be met, by a trace with a row. -/
 def RVNativeBootSoundnessSatisfiableClaim : Prop :=

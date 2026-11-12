@@ -1,3 +1,4 @@
+import Checks.Restatements
 import Proven.AddSub.RVTraceSoundness
 import Proven.Final.Circuits.AddSub.RVTheorems
 import Proven.Final.Circuits.JumpBranchSlt.RVTheorems
@@ -1282,3 +1283,23 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.JumpBranchSlt.Comparison.rv_satisfiable
 #print axioms Airbender.JumpBranchSlt.Branch.rv_satisfiable
 #print axioms Airbender.JumpBranchSlt.Jump.rv_satisfiable
+
+-- Trace statement equivalence checks.
+#print axioms Airbender.Trace.Restatement.RVAirbenderSoundnessClaim_restatement
+#print axioms Airbender.Trace.Restatement.RVAirbenderSoundnessSatisfiableClaim_restatement
+#print axioms Airbender.JumpBranchSlt.Restatement.RVTraceSoundnessClaim_restatement
+#print axioms Airbender.JumpBranchSlt.Restatement.RVTraceSoundnessSatisfiableClaim_restatement
+#print axioms Airbender.MulDiv.Restatement.RVTraceSoundnessClaim_restatement
+#print axioms Airbender.MulDiv.Restatement.RVTraceSoundnessSatisfiableClaim_restatement
+#print axioms Airbender.ShiftBinop.Restatement.RVTraceSoundnessClaim_restatement
+#print axioms Airbender.ShiftBinop.Restatement.RVTraceSoundnessSatisfiableClaim_restatement
+#print axioms Airbender.SubwordMemory.Restatement.RVRamTraceSoundnessClaim_restatement
+#print axioms Airbender.SubwordMemory.Restatement.RVRamTraceSoundnessSatisfiableClaim_restatement
+
+-- Explicit property contracts and their witness conditions.
+#print axioms Airbender.InitsTeardowns.standalone_properties
+#print axioms Airbender.InitsTeardowns.standalone_satisfiable
+#print axioms Airbender.InitsTeardowns.unified_properties
+#print axioms Airbender.InitsTeardowns.unified_satisfiable
+#print axioms Airbender.Bigint.Memory.Restatement.property_restatement
+#print axioms Airbender.Blake2G.Restatement.property_restatement

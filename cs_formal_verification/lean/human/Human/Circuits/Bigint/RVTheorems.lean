@@ -15,6 +15,8 @@ namespace Airbender.Bigint.Memory
     READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END` (`RV.State.delegationRAM`). -/
 def RVAddressesSoundnessClaim : Prop :=
   ∀ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Trace.Cell),
-    (circuitModel data).SoundnessUnder (RVInterfaceAssumptions data before cells) Addresses.spec
+    Properties.Soundness
+      (fun input output w => RVInterfaceAssumptions data before cells input output w ∧
+        (circuitModel data).relation input output w) Addresses.spec
 
 end Airbender.Bigint.Memory

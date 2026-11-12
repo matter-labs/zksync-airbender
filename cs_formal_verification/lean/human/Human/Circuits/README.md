@@ -26,6 +26,11 @@ additional standard/custom execution and selected caller windows.
 These are arbitrary-witness soundness implications for the stated relations,
 not completeness, Rust-generation correspondence or every global padding/ABI boundary.
 
+The G and bigint address claims state their interface assumptions and relations.
+The inits/teardowns claims state the token properties and coverage bounds.
+Their separate `StandaloneSatisfiableClaim` and `UnifiedSatisfiableClaim` prove
+that the full list of window top bits meets the verifier check.
+
 Each family owns its local references, imported artifact selection and named
 observable mappings. Start with [Properties](../Helpers/Properties.lean),
 then select a family below.

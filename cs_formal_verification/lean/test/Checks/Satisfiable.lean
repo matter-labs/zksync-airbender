@@ -4,6 +4,7 @@ import Human.Circuits.MulDiv.RVTheorems
 import Human.Circuits.ShiftBinop.RVTheorems
 import Human.Circuits.SubwordMemory.RVTheorems
 import Human.Circuits.WordMemory.RVTheorems
+import Human.Circuits.InitsTeardowns.Theorems
 -- Each `…SatisfiableClaim` restates the premises of its claim. Applying the claim to the satisfying data
 -- type-checks only if they are exactly the claim's premises; the result is the claim's conclusion on that data.
 import Human.Trace.Delegation.RVTheorems
@@ -29,6 +30,14 @@ import Human.Trace.Delegation.RVCallerTheorems
 open Airbender Trace
 
 namespace Checks.Satisfiable
+
+example : InitsTeardowns.StandaloneSatisfiableClaim →
+    InitsTeardowns.TopBitsChecked (List.range InitsTeardowns.maxTopBit) :=
+  fun ⟨_, rfl, checked⟩ => checked
+
+example : InitsTeardowns.UnifiedSatisfiableClaim →
+    InitsTeardowns.TopBitsChecked (List.range InitsTeardowns.maxTopBit) :=
+  fun ⟨_, rfl, checked⟩ => checked
 
 example (claim : Delegation.RVNativeMemoryExecutionClaim) : Delegation.RVNativeMemoryExecutionSatisfiableClaim →
     ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Cell),

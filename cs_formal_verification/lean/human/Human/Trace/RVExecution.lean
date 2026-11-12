@@ -20,19 +20,4 @@ def RVRealizes {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime] (trac
     ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
       cell.readRV after = some sink.word.toBitVec
 
-/-- The shape of the whole-trace claims over a public program: every accepted trace whose public boundary meets
-    `inputs` and whose rows are `decoded` against the program is a run of our spec (`RVRealizes`). -/
-def RVTraceSoundness {Kind : Type} [CircuitLayout Kind] {Program : Type}
-    (inputs : Data babyBearModulus Kind → RV.State → List Cell → Program → Prop)
-    (decoded : Data babyBearModulus Kind → Program → Prop) : Prop :=
-  ∀ {trace : Data babyBearModulus Kind} {initial : RV.State} {cells : List Cell} {program : Program},
-    inputs trace initial cells program → Accepted trace → decoded trace program → RVRealizes trace initial cells
-
-/-- The assumptions of an `RVTraceSoundness inputs decoded` claim can be met, by a trace with a row. -/
-def RVTraceSatisfiable {Kind : Type} [CircuitLayout Kind] {Program : Type}
-    (inputs : Data babyBearModulus Kind → RV.State → List Cell → Program → Prop)
-    (decoded : Data babyBearModulus Kind → Program → Prop) : Prop :=
-  ∃ (trace : Data babyBearModulus Kind) (initial : RV.State) (cells : List Cell) (program : Program),
-    inputs trace initial cells program ∧ Accepted trace ∧ decoded trace program ∧ trace.rows ≠ []
-
 end Airbender.Trace

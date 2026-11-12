@@ -71,9 +71,33 @@ structure Claims (layout : Layout) : Prop where
 /-- The standalone circuit (eight sets of `2 ^ 24` rows, windows of `2 ^ 26` bytes): the claims, and
     the windows of top bits `0, …, 63` cover every aligned RAM word. -/
 def StandaloneClaim : Prop :=
-  Claims importedLayout ∧
+  (∀ top < maxTopBit, ∀ row < 2 ^ importedLayout.traceLog,
+    windowAddress importedLayout top row < 2 ^ 32 ∧
+    (Cell.ram (BitVec.ofNat 32 (windowAddress importedLayout top row))).Aligned ∧
+    initToken (p := babyBearModulus) importedLayout top row =
+      (Cell.ram (BitVec.ofNat 32 (windowAddress importedLayout top row))).initialToken 0 ∧
+    (initToken (p := babyBearModulus) importedLayout top row).time = (0, 0) ∧
+    (initToken (p := babyBearModulus) importedLayout top row).word = ⟨0, 0⟩) ∧
+  (∀ instances : List (Witness babyBearModulus importedLayout),
+    TopBitsChecked (instances.flatMap fun w => w.topBits.toList) →
+    (windowCells importedLayout (instances.flatMap fun w => w.topBits.toList)).Nodup ∧
+    instances.flatMap Witness.initTokens =
+      ROMView.nativeBootImage (windowCells importedLayout (instances.flatMap fun w => w.topBits.toList))) ∧
+  (∀ w : Witness babyBearModulus importedLayout,
+    w.teardownTokens.map MemoryToken.address = w.initTokens.map MemoryToken.address ∧
+    ∀ s (hs : s < importedLayout.sets.size), ∀ row < 2 ^ importedLayout.traceLog,
+      teardownToken importedLayout importedLayout.sets[s] w.topBits[s] row (w.assignment row) ∈ w.teardownTokens ∧
+      (w.topBits[s] < maxTopBit →
+        teardownToken importedLayout importedLayout.sets[s] w.topBits[s] row (w.assignment row) =
+          ⟨(Cell.ram (BitVec.ofNat 32 (windowAddress importedLayout w.topBits[s] row))).addressCode,
+            rawPair (w.assignment row) importedLayout.sets[s].timestamp,
+            pairCode (w.assignment row) importedLayout.sets[s].value⟩)) ∧
     ∀ address : BitVec 32, (Cell.ram address).Aligned →
       Cell.ram address ∈ windowCells importedLayout (List.range maxTopBit)
+
+/-- The full range of window top bits satisfies the verifier check. -/
+def StandaloneSatisfiableClaim : Prop :=
+  ∃ topBits : List Nat, topBits = List.range maxTopBit ∧ TopBitsChecked topBits
 
 /-- The unified reduced machine's inline sets (two sets of `2 ^ 23` rows, windows of `2 ^ 25` bytes):
     the claims, and the windows of top bits `0, …, 63` cover every aligned RAM word below `2 ^ 31`.
@@ -83,9 +107,33 @@ def StandaloneClaim : Prop :=
     unified machine initialises only addresses below `2 ^ 31`. Our spec allows RAM up to `2 ^ 32`; cells at
     or above `2 ^ 31` are then never initialised, so not tracked. -/
 def UnifiedClaim : Prop :=
-  Claims unifiedLayout ∧
+  (∀ top < maxTopBit, ∀ row < 2 ^ unifiedLayout.traceLog,
+    windowAddress unifiedLayout top row < 2 ^ 32 ∧
+    (Cell.ram (BitVec.ofNat 32 (windowAddress unifiedLayout top row))).Aligned ∧
+    initToken (p := babyBearModulus) unifiedLayout top row =
+      (Cell.ram (BitVec.ofNat 32 (windowAddress unifiedLayout top row))).initialToken 0 ∧
+    (initToken (p := babyBearModulus) unifiedLayout top row).time = (0, 0) ∧
+    (initToken (p := babyBearModulus) unifiedLayout top row).word = ⟨0, 0⟩) ∧
+  (∀ instances : List (Witness babyBearModulus unifiedLayout),
+    TopBitsChecked (instances.flatMap fun w => w.topBits.toList) →
+    (windowCells unifiedLayout (instances.flatMap fun w => w.topBits.toList)).Nodup ∧
+    instances.flatMap Witness.initTokens =
+      ROMView.nativeBootImage (windowCells unifiedLayout (instances.flatMap fun w => w.topBits.toList))) ∧
+  (∀ w : Witness babyBearModulus unifiedLayout,
+    w.teardownTokens.map MemoryToken.address = w.initTokens.map MemoryToken.address ∧
+    ∀ s (hs : s < unifiedLayout.sets.size), ∀ row < 2 ^ unifiedLayout.traceLog,
+      teardownToken unifiedLayout unifiedLayout.sets[s] w.topBits[s] row (w.assignment row) ∈ w.teardownTokens ∧
+      (w.topBits[s] < maxTopBit →
+        teardownToken unifiedLayout unifiedLayout.sets[s] w.topBits[s] row (w.assignment row) =
+          ⟨(Cell.ram (BitVec.ofNat 32 (windowAddress unifiedLayout w.topBits[s] row))).addressCode,
+            rawPair (w.assignment row) unifiedLayout.sets[s].timestamp,
+            pairCode (w.assignment row) unifiedLayout.sets[s].value⟩)) ∧
     ∀ address : BitVec 32, (Cell.ram address).Aligned → address.toNat < 2 ^ 31 →
       Cell.ram address ∈ windowCells unifiedLayout (List.range maxTopBit)
+
+/-- The full range of window top bits satisfies the verifier check. -/
+def UnifiedSatisfiableClaim : Prop :=
+  ∃ topBits : List Nat, topBits = List.range maxTopBit ∧ TopBitsChecked topBits
 
 /-- Open item `MemoryArgumentReadsBounded`: every memory value read, teardowns included, is a value some
     write produced; all writes are range-checked (see `WritesRangeCheckedClaim`,

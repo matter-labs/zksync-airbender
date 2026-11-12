@@ -10,7 +10,7 @@ admitted.
 ## Checked results
 
 Every claim here also has a `…SatisfiableClaim` beside it: its premises, restated, can be met with the conclusion's
-domain non-empty (a row, a tracked RAM cell, a teardown tuple); the whole-trace shape's is `Trace.RVTraceSatisfiable`.
+domain non-empty (a row, a tracked RAM cell, a teardown tuple).
 Witnesses: [Satisfiable/Pooled](../../../proven/Proven/Final/Trace/Satisfiable/Pooled.lean) (booted pooled and unified traces seeded by an inits/teardowns
 instance, one-row family traces).
 
