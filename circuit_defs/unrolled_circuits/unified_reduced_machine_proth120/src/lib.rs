@@ -25,14 +25,14 @@ use std::alloc::Global;
 pub const NUM_INIT_AND_TEARDOWN_SETS: usize = 2;
 
 /// The 2^21 wrap circuit over the 512 KiB wrap ROM.
-pub mod l1_wrap_2p21 {
+pub mod l1_wrap {
     use super::*;
 
     pub const TRACE_LEN_LOG2: usize = 21;
     pub const ROM: RomGeometry = L1_WRAP_ROM;
 
     pub const LAYOUT_JSON: &str = include_str!(
-        "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json"
+        "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
     );
 
     pub fn circuit_artifact() -> GKRCircuitArtifact<Proth120> {
@@ -46,7 +46,7 @@ pub mod l1_wrap_2p21 {
         use prover::gkr::witness_gen::witness_proxy::*;
 
         include!(
-            "../../../../prover/compiled_circuits/unified_reduced_machine_generated_gkr_proth120_2p21.rs"
+            "../../../../prover/compiled_circuits/unified_reduced_machine_generated_gkr_proth120.rs"
         );
     }
 

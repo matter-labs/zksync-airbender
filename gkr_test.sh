@@ -223,9 +223,6 @@ Options:
                         Default: run everything (== --from circuits).
   --switch-cycles N     Per-family->unified crossover (RECURSION_UNIFIED_SWITCH_CYCLES).
                         Default 32000000.
-  --unrolled-blake V    Blake for the unrolled stage. Default blake2_with_compression.
-  --bridge-blake V      Blake for the bridge stage.   Default blake2_with_compression.
-  --final-blake V       Blake for the final stage.    Default special_opcodes.
   --variant V           caches (default) | no_caches (artifact regen + binaries).
   --dry-run             Print what would run without executing.
   -h, --help            Show this message.
@@ -240,16 +237,11 @@ EOF
 
 run_recursion() {
   local from="" variant="caches" switch_cycles=32000000 dry=false
-  local unrolled_blake="blake2_with_compression" bridge_blake="blake2_with_compression"
-  local final_blake="special_opcodes"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --from) from="$2"; shift 2 ;;
       --variant) variant="$2"; shift 2 ;;
       --switch-cycles) switch_cycles="$2"; shift 2 ;;
-      --unrolled-blake) unrolled_blake="$2"; shift 2 ;;
-      --bridge-blake) bridge_blake="$2"; shift 2 ;;
-      --final-blake) final_blake="$2"; shift 2 ;;
       --dry-run) dry=true; shift ;;
       -h|--help) recursion_usage; exit 1 ;;
       *) echo "ERROR: unknown recursion option: $1" >&2; recursion_usage; exit 1 ;;
@@ -273,7 +265,6 @@ run_recursion() {
   local genfeat=(); [[ "$variant" = "no_caches" ]] && genfeat=(--features no_caches)
 
   echo "==> recursion: from=$from variant=$variant switch=$switch_cycles"
-  echo "    blake unrolled=$unrolled_blake bridge=$bridge_blake final=$final_blake"
 
   # --- 1) regenerate artifacts (each implies invalidating downstream proofs) ---
   if active circuits; then
@@ -316,9 +307,6 @@ run_recursion() {
   echo "==> proving recursion pipeline (log: $log)"
   $runner "(cd $pe && RUST_MIN_STACK=100000000 \
       RECURSION_UNIFIED_SWITCH_CYCLES=$switch_cycles \
-      RECURSION_UNROLLED_BLAKE=$unrolled_blake \
-      RECURSION_BRIDGE_BLAKE=$bridge_blake \
-      RECURSION_FINAL_BLAKE=$final_blake \
       cargo test --release --features verifiers -- --ignored --nocapture \
         test_recursive_proving_pipeline_zksync_os 2>&1 | tee $log)"
 

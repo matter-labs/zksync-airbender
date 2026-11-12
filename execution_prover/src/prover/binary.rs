@@ -127,8 +127,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 .is_l1_wrap()
                 .then(|| execution_kind.unified_circuit().unwrap());
             let l1_wrap_precomputations = l1_wrap_circuit.map(|circuit_type| {
-                assert_eq!(circuit_type, CircuitType::L1Wrap21);
-                let setup = unified_reduced_machine_proth120::l1_wrap_2p21::l1_wrap_setup(
+                assert_eq!(circuit_type, CircuitType::L1Wrap);
+                let setup = unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup(
                     &padded_binary_image,
                     &padded_text_section,
                     &self.worker,
@@ -203,7 +203,7 @@ mod tests {
         for (kind, profile) in [
             (ExecutionKind::Unified22, ProofProfile::CompressionFinal),
             (ExecutionKind::Unified, ProofProfile::Compression),
-            (ExecutionKind::L1Wrap21, ProofProfile::L1Wrap),
+            (ExecutionKind::L1Wrap, ProofProfile::L1Wrap),
         ] {
             let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 prover.add_binary_variants(

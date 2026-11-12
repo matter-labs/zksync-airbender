@@ -108,29 +108,14 @@ pub fn native_verify_unrolled_in_mode(
 /// reported as `Err`.
 #[cfg(feature = "verifiers")]
 pub fn native_verify_unified_compression_final(stream: Vec<u32>) -> Result<[u32; 16], String> {
-    native_verify_compression_statement(
-        stream,
-        crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_compression_final::<
-            _,
-            verifier_common::errors::DebugErrorCreator,
-            USE_REDUCED_BLAKE2_ROUNDS,
-        >,
-    )
-}
-
-#[cfg(feature = "verifiers")]
-fn native_verify_compression_statement(
-    stream: Vec<u32>,
-    statement: fn(
-        &mut std::vec::IntoIter<u32>,
-    ) -> Result<[u32; 16], verifier_common::errors::VerificationError>,
-) -> Result<[u32; 16], String> {
     let joined = std::thread::Builder::new()
         .name("unified l1 compression verifier".to_string())
         .stack_size(1 << 27)
         .spawn(move || {
             let mut it = stream.into_iter();
-            let output = statement(&mut it)
+            let output = crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_compression_final::<
+                _, verifier_common::errors::DebugErrorCreator, USE_REDUCED_BLAKE2_ROUNDS,
+            >(&mut it)
                 .map_err(|err| format!("unified l1 compression proof failed to verify: {err:?}"))?;
             let trailing = it.count();
             if trailing != 0 {
@@ -190,34 +175,6 @@ pub fn native_verify_unified_in_mode(
 #[must_use]
 pub fn load_program(elf_path: &Path) -> (Vec<u32>, Vec<u32>) {
     riscv_transpiler::elf::load_legacy_program(elf_path)
-}
-
-fn blake_mode_from_env(vars: &[&str], default: BlakeMode) -> BlakeMode {
-    for var in vars {
-        if let Ok(v) = std::env::var(var) {
-            let mode = BlakeMode::parse(&v).unwrap_or_else(|| panic!("invalid {var}={v}"));
-            return mode;
-        }
-    }
-    default
-}
-
-#[must_use]
-pub fn unrolled_blake_mode() -> BlakeMode {
-    blake_mode_from_env(&["RECURSION_UNROLLED_BLAKE"], BlakeMode::Compression)
-}
-
-#[must_use]
-pub fn bridge_blake_mode() -> BlakeMode {
-    blake_mode_from_env(&["RECURSION_BRIDGE_BLAKE"], unrolled_blake_mode())
-}
-
-#[must_use]
-pub fn final_blake_mode() -> BlakeMode {
-    blake_mode_from_env(
-        &["RECURSION_FINAL_BLAKE", "RECURSION_UNIFIED_BLAKE"],
-        BlakeMode::Compression,
-    )
 }
 
 /// Default for the unrolled-to-unified switch threshold.

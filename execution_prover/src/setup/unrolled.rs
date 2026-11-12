@@ -124,7 +124,7 @@ pub fn circuit_types_for_variant(
             };
             vec![circuit]
         }
-        ExecutionKind::L1Wrap21 => vec![],
+        ExecutionKind::L1Wrap => vec![],
     }
 }
 

@@ -32,16 +32,16 @@ use execution_prover::{BinaryHandle, ProofProfile};
 mod l1_wrap;
 use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
 use full_statement_verifier::host_utils::{
-    bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
-    final_blake_mode, fsv_digest, load_fsv_exact, native_verify_unified_compression_final,
-    native_verify_unified_in_mode, native_verify_unrolled_in_mode, recursion_unrolled_layers,
-    unified_switch_cycles, unrolled_blake_mode, FsvRecursionChain,
+    build_unified_stream, build_unrolled_stream, compute_end_params, fsv_digest, load_fsv_exact,
+    native_verify_unified_compression_final, native_verify_unified_in_mode,
+    native_verify_unrolled_in_mode, recursion_unrolled_layers, unified_switch_cycles,
+    FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
+pub use l1_wrap::L1Bundle;
 use l1_wrap::{
     advance_l1_wrap, validate_artifact_envelope, validate_compression_proof, L1_WRAP_KIND,
 };
-pub use l1_wrap::{L1Bundle, L1WrapVersion};
 use riscv_transpiler::vm::FlatResponsesSource;
 use serde::{Deserialize, Serialize};
 use setups::Setups;
@@ -230,8 +230,7 @@ pub trait ProveBackend {
 
     fn prove_l1_wrap(&mut self, request: L1WrapRequest<'_>) -> L1WrapResult;
 
-    /// `Setups` of a binary registered for `profile`, from its precomputations; `None`
-    /// when it is not registered for `profile`.
+    /// `Setups` of a registered binary and profile, from its precomputations.
     fn setups(
         &mut self,
         kind: ExecutionKind,
@@ -239,7 +238,7 @@ pub trait ProveBackend {
         bin: &[u32],
         text: &[u32],
         profile: ProofProfile,
-    ) -> Option<Setups>;
+    ) -> Setups;
 }
 
 pub struct L1WrapRequest<'a> {
@@ -273,7 +272,6 @@ fn handle_key(kind: ExecutionKind, machine: MachineType, bin: &[u32], text: &[u3
 
 struct RegisteredBinary {
     handle: BinaryHandle,
-    profiles: BTreeSet<ProofProfile>,
     role: String,
 }
 
@@ -322,30 +320,17 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
         variants: &[(ExecutionKind, MachineType, &[ProofProfile], &str)],
         cycles_bound: Option<u32>,
     ) {
-        let mut missing = Vec::new();
-        for &(kind, machine, profiles, role) in variants {
-            if let Some(registered) = self.handles.get(&handle_key(kind, machine, bin, text)) {
-                assert_eq!(
-                    registered.profiles,
-                    profiles.iter().copied().collect(),
-                    "pipeline binary was registered for a different profile set"
-                );
-            } else {
-                log::info!("registering {role}");
-                missing.push((kind, machine, profiles, role));
-            }
+        for &(_, _, _, role) in variants {
+            log::info!("registering {role}");
         }
-        if missing.is_empty() {
-            return;
-        }
-        let kinds: Vec<_> = missing
+        let kinds: Vec<_> = variants
             .iter()
             .map(|&(kind, machine, profiles, _)| (kind, machine, profiles))
             .collect();
         let handles =
             self.prover
                 .add_binary_variants(bin.to_vec(), text.to_vec(), &kinds, cycles_bound);
-        for ((kind, machine, profiles, role), handle) in missing.into_iter().zip(handles) {
+        for (&(kind, machine, _, role), handle) in variants.iter().zip(handles) {
             log::info!("registered {role} with key {handle:?}");
             assert!(
                 self.handles
@@ -353,7 +338,6 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
                         handle_key(kind, machine, bin, text),
                         RegisteredBinary {
                             handle,
-                            profiles: profiles.iter().copied().collect(),
                             role: role.to_owned(),
                         },
                     )
@@ -420,14 +404,9 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
         bin: &[u32],
         text: &[u32],
         profile: ProofProfile,
-    ) -> Option<Setups> {
-        let registered = self.handles.get(&handle_key(kind, machine, bin, text))?;
-        if !registered.profiles.contains(&profile) {
-            return None;
-        }
-        Some(program_prover::program_setups(
-            &self.prover.program_artifacts(&registered.handle, profile),
-        ))
+    ) -> Setups {
+        let registered = &self.handles[&handle_key(kind, machine, bin, text)];
+        program_prover::program_setups(&self.prover.program_artifacts(&registered.handle, profile))
     }
 }
 
@@ -435,49 +414,13 @@ impl<B: execution_prover::backend::ExecutionBackend> ProveBackend for PipelineBa
 // Pipeline driver
 // ==============================================================================
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct PipelineBlakeModes {
-    unrolled: BlakeMode,
-    bridge: BlakeMode,
-    final_layer: BlakeMode,
-}
-
-impl PipelineBlakeModes {
-    fn from_env() -> Self {
-        Self {
-            unrolled: unrolled_blake_mode(),
-            bridge: bridge_blake_mode(),
-            final_layer: final_blake_mode(),
-        }
-    }
-
-    fn continuing(
-        artifact: &ProofArtifact,
-        current: impl FnOnce() -> Self,
-    ) -> Result<Self, String> {
-        if artifact.target >= ProofTarget::RecursionUnified {
-            return Ok(Self {
-                unrolled: parse_blake_tag(&artifact.blake_unrolled)?,
-                bridge: parse_blake_tag(&artifact.blake_bridge)?,
-                final_layer: parse_blake_tag(&artifact.blake_final)?,
-            });
-        }
-        let mut current = current();
-        if artifact.target >= ProofTarget::RecursionUnrolled && artifact.chain_end_params.len() > 1
-        {
-            current.unrolled = parse_blake_tag(&artifact.blake_unrolled)?;
-        }
-        Ok(current)
-    }
-}
-
 struct RecursionState {
     stage: ProofTarget,
     l1: Option<L1Bundle>,
     proof: ProgramProof,
     setups: Setups,
     chain_end_params: Vec<[u32; 8]>,
-    /// Whether `proof` is a base-layer proof (drives fsv-program soundness_mode and
+    /// Whether `proof` is a base-layer proof (drives fsv-program selection and
     /// stream/verification flavor).
     input_is_base: bool,
     timings: ProofTimingsMs,
@@ -505,8 +448,8 @@ fn fsv_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tools/gkr_verifier/full_statement_verifiers")
 }
 
-/// The two roles of the compression chain: F1 verifies the final standard unified
-/// proof, every later layer verifies the previous compression proof.
+/// The first compression layer verifies the final Standard unified
+/// proof; later layers verify the previous Compression proof.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CompressionRole {
     First,
@@ -567,8 +510,8 @@ impl CompressionProfile {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct CompressionStageSpec {
     program: FsvProgram,
-    /// F1 runs the standard special-opcodes unified verifier, every later layer the
-    /// repeatable Compression-step guest.
+    /// The first layer runs the Standard special-opcodes unified verifier;
+    /// later layers run the repeatable Compression guest.
     fsv_profile: FsvProfile,
     kind: ExecutionKind,
     profile: ProofProfile,
@@ -623,7 +566,7 @@ fn advance_compression_stages(
     batch_id: u64,
 ) -> RecursionState {
     assert!(
-        unified_recursion_has_converged(&state.proof, fsv.final_blake),
+        unified_recursion_has_converged(&state.proof, BlakeMode::Compression),
         "compression seed must be a converged unified proof"
     );
     let mut chain = rebuild_chain(&state.chain_end_params).expect("compression seed has a chain");
@@ -676,7 +619,6 @@ struct BinaryRegistration {
 
 fn pipeline_registrations(
     loaded: &LoadedProgram,
-    start: Option<ProofTarget>,
     target: ProofTarget,
     cycles_bound: Option<u32>,
     fsv: &FsvPrograms,
@@ -696,18 +638,15 @@ fn pipeline_registrations(
             .profiles
             .insert(profile);
     };
-    if start.is_none() {
-        add(
-            ExecutionKind::Unrolled,
-            MachineType::FullUnsigned,
-            (&loaded.bin_u32, &loaded.text_u32),
-            cycles_bound,
-            ProofProfile::Standard,
-        );
-    }
-    let start = start.unwrap_or(ProofTarget::Base);
+    add(
+        ExecutionKind::Unrolled,
+        MachineType::FullUnsigned,
+        (&loaded.bin_u32, &loaded.text_u32),
+        cycles_bound,
+        ProofProfile::Standard,
+    );
     let mut programs = Vec::new();
-    if start < ProofTarget::RecursionUnified && target > ProofTarget::Base {
+    if target > ProofTarget::Base {
         for program in [
             FsvProgram::UnrolledBaseLayer,
             FsvProgram::UnrolledRecursionLayer,
@@ -719,7 +658,7 @@ fn pipeline_registrations(
             ));
         }
     }
-    if start < ProofTarget::RecursionUnified && target >= ProofTarget::RecursionUnified {
+    if target >= ProofTarget::RecursionUnified {
         for program in [
             FsvProgram::UnrolledBaseLayer,
             FsvProgram::UnrolledRecursionLayer,
@@ -732,20 +671,20 @@ fn pipeline_registrations(
             ));
         }
     }
-    if start < ProofTarget::Compression && target >= ProofTarget::Compression {
+    if target >= ProofTarget::Compression {
         for &(role, profile, _) in &COMPRESSION_SCHEDULE {
             let spec = compression_stage(role, profile);
             let (bin, text) = fsv.compression_program(role);
-            programs.push(((bin.as_slice(), text.as_slice()), spec.kind, spec.profile));
+            programs.push(((bin, text), spec.kind, spec.profile));
         }
     }
-    if start < ProofTarget::L1 && target == ProofTarget::L1 {
-        let (bin, text) = &fsv.compression_wrap;
-        programs.push((
-            (bin.as_slice(), text.as_slice()),
-            L1_WRAP_KIND,
-            ProofProfile::L1Wrap,
-        ));
+    if target == ProofTarget::L1 {
+        let guest = fsv
+            .compression_wrap
+            .as_ref()
+            .expect("L1 wrap guest was not loaded");
+        let (bin, text) = (guest.bin(), guest.text());
+        programs.push(((bin, text), L1_WRAP_KIND, ProofProfile::L1Wrap));
     }
     for (program, kind, profile) in programs {
         add(kind, MachineType::Reduced, program, None, profile);
@@ -786,7 +725,7 @@ fn register_pipeline_plan(
                         ExecutionKind::Unrolled => "unrolled pipeline program",
                         ExecutionKind::Unified => "unified pipeline program",
                         ExecutionKind::Unified22 => "terminal compression program",
-                        ExecutionKind::L1Wrap21 => "L1 wrap program",
+                        ExecutionKind::L1Wrap => "L1 wrap program",
                     },
                 )
             })
@@ -909,7 +848,7 @@ fn advance_standard_stages(
     );
 
     // === Final: fsv_unified_recursion_layer in unified mode, repeated until convergence. ===
-    let final_mode = fsv.final_blake;
+    let final_mode = BlakeMode::Compression;
     let final_guest = fsv.get(FsvProgram::UnifiedRecursionLayer, SetupMachine::Unified);
 
     let mut rounds = 0usize;
@@ -1015,43 +954,7 @@ pub struct ProgramProver {
 
 impl ProgramProver {
     pub fn new(source: ProgramSource, config: ProgramProverConfig) -> Result<Self, String> {
-        let blake = PipelineBlakeModes::from_env();
-        Self::with_registration(source, config, blake, None)
-    }
-
-    /// A prover for continuing `artifact`: it loads the blake modes the artifact was proved
-    /// with and registers only the binaries of the stages after the artifact's target.
-    pub fn for_continuation(
-        source: ProgramSource,
-        config: ProgramProverConfig,
-        artifact: &ProofArtifact,
-    ) -> Result<Self, String> {
         assert_target_mode(config.target, config.soundness_mode);
-        artifact.validate_expected_mode(config.soundness_mode)?;
-        validate_continuation_request(artifact, config.target)?;
-        load_and_validate_program(&source, artifact)?;
-        let blake = PipelineBlakeModes::continuing(artifact, PipelineBlakeModes::from_env)?;
-        Self::with_registration(source, config, blake, Some(artifact.target))
-    }
-
-    fn with_registration(
-        source: ProgramSource,
-        config: ProgramProverConfig,
-        blake: PipelineBlakeModes,
-        start: Option<ProofTarget>,
-    ) -> Result<Self, String> {
-        assert_target_mode(config.target, config.soundness_mode);
-        if config.target >= ProofTarget::Compression {
-            assert_eq!(
-                blake,
-                PipelineBlakeModes {
-                    unrolled: BlakeMode::Compression,
-                    bridge: BlakeMode::Compression,
-                    final_layer: BlakeMode::Compression,
-                },
-                "L1 targets require Compression Blake modes"
-            );
-        }
         if config.backend == ProverBackend::Gpu {
             match config.target {
                 ProofTarget::L1 => {
@@ -1065,7 +968,7 @@ impl ProgramProver {
                 _ => {}
             }
         }
-        let fsv = FsvPrograms::load(config.target, config.soundness_mode, blake);
+        let fsv = FsvPrograms::load(config.target, config.soundness_mode);
         // Resolve source errors before creating the backend's worker pools and buffers.
         let loaded = load_program(&source)?;
         let backend = match config.backend {
@@ -1090,12 +993,12 @@ impl ProgramProver {
             config,
             backend,
         };
-        prover.register_pipeline_binaries(start, &loaded);
+        prover.register_pipeline_binaries(&loaded);
         Ok(prover)
     }
 
-    /// Register every binary the stages after `start` can touch (all of them for `None`).
-    fn register_pipeline_binaries(&mut self, start: Option<ProofTarget>, loaded: &LoadedProgram) {
+    /// Register the complete pipeline from the user program through the target.
+    fn register_pipeline_binaries(&mut self, loaded: &LoadedProgram) {
         let started = Instant::now();
         let cycles_bound = self.config.cycles_bound;
         if let Some(cycles_bound) = cycles_bound {
@@ -1105,7 +1008,7 @@ impl ProgramProver {
             );
         }
         let registrations =
-            pipeline_registrations(loaded, start, self.config.target, cycles_bound, &self.fsv);
+            pipeline_registrations(loaded, self.config.target, cycles_bound, &self.fsv);
         let count = registrations.len();
         register_pipeline_plan(self.backend.as_dyn(), registrations);
         log::info!(
@@ -1125,24 +1028,21 @@ impl ProgramProver {
         validate_artifact_envelope(artifact)?;
         let loaded = load_and_validate_program(&self.source, artifact)?;
         validate_artifact_chain(artifact)?;
-        let artifact_blake = PipelineBlakeModes::continuing(artifact, || self.fsv.modes())?;
-        let fsv = FsvPrograms::load(artifact.target, self.config.soundness_mode, artifact_blake);
+        let fsv = &self.fsv;
         let backend = self.backend.as_dyn();
-        let worker = worker::Worker::new();
         let mut final_setups = None;
         let expected = expected_chain_end_params(
             artifact.target,
             artifact.chain_end_params.len(),
-            fsv.unrolled_blake.tag(),
-            fsv.bridge_blake.tag(),
-            fsv.final_blake.tag(),
+            BlakeMode::Compression.tag(),
+            BlakeMode::Compression.tag(),
+            BlakeMode::Compression.tag(),
             &mut |program| {
-                let (kind, machine, profile, setup_machine, (bin, text)) = match program {
+                let (kind, machine, profile, (bin, text)) = match program {
                     ChainProgram::User => (
                         ExecutionKind::Unrolled,
                         MachineType::FullUnsigned,
                         ProofProfile::Standard,
-                        SetupMachine::UnrolledFullUnsigned,
                         (loaded.bin_u32.as_slice(), loaded.text_u32.as_slice()),
                     ),
                     ChainProgram::Fsv(program, fsv_profile, _, setup_machine) => {
@@ -1157,26 +1057,10 @@ impl ProgramProver {
                             }
                             _ => (ExecutionKind::Unrolled, ProofProfile::Standard),
                         };
-                        (
-                            kind,
-                            MachineType::Reduced,
-                            profile,
-                            setup_machine,
-                            (bin, text),
-                        )
+                        (kind, MachineType::Reduced, profile, (bin, text))
                     }
                 };
-                let setups = backend
-                    .setups(kind, machine, bin, text, profile)
-                    .unwrap_or_else(|| {
-                        recompute_program_setups(
-                            bin,
-                            text,
-                            setup_machine,
-                            self.config.soundness_mode,
-                            &worker,
-                        )
-                    });
+                let setups = backend.setups(kind, machine, bin, text, profile);
                 let end_params = compute_end_params(&setups, find_binary_exit_point(bin)?);
                 final_setups = Some(setups);
                 Ok(end_params)
@@ -1240,28 +1124,14 @@ impl ProgramProver {
             batch_id,
         );
 
-        Ok(finalize_artifact(
-            &self.fsv,
-            &self.config,
-            batch_id,
-            &loaded,
-            state,
-        ))
+        Ok(finalize_artifact(&self.config, batch_id, &loaded, state))
     }
 
-    /// Continue `artifact` with the modes and setups prepared by [`Self::for_continuation`].
+    /// Verify and continue an artifact using this session's registered pipeline.
     pub fn continue_artifact(&mut self, artifact: ProofArtifact) -> Result<ProofArtifact, String> {
-        artifact.validate_expected_mode(self.config.soundness_mode)?;
         validate_continuation_request(&artifact, self.config.target)?;
-        let blake = PipelineBlakeModes::continuing(&artifact, || self.fsv.modes())?;
-        assert_eq!(
-            blake,
-            self.fsv.modes(),
-            "continuation modes differ from the prepared session; use ProgramProver::for_continuation"
-        );
+        self.verify(&artifact)?;
         let loaded = load_and_validate_program(&self.source, &artifact)?;
-        // A serialized checkpoint is untrusted even when its mode label matches.
-        verify_accepted_artifact(&artifact, &loaded, self.config.soundness_mode, None)?;
 
         let batch_id = artifact.batch_id;
         // A single chain entry (just the base end-params) means no recursion
@@ -1287,18 +1157,11 @@ impl ProgramProver {
             batch_id,
         );
 
-        Ok(finalize_artifact(
-            &self.fsv,
-            &self.config,
-            batch_id,
-            &loaded,
-            state,
-        ))
+        Ok(finalize_artifact(&self.config, batch_id, &loaded, state))
     }
 }
 
 fn finalize_artifact(
-    fsv: &FsvPrograms,
     config: &ProgramProverConfig,
     batch_id: u64,
     loaded: &LoadedProgram,
@@ -1335,12 +1198,10 @@ fn finalize_artifact(
         chain_end_params: state.chain_end_params,
         chain_hash: chain.hash(),
         chain_preimage: chain.preimage(),
-        // The pipeline resolves the blake modes from the environment (see
-        // host_utils); record the tags so verification reconstructs the same
-        // pipeline regardless of the verify-time environment.
-        blake_unrolled: fsv.unrolled_blake.tag().to_string(),
-        blake_bridge: fsv.bridge_blake.tag().to_string(),
-        blake_final: fsv.final_blake.tag().to_string(),
+        // Keep the fixed stage-mode tags in the artifact schema.
+        blake_unrolled: BlakeMode::Compression.tag().to_string(),
+        blake_bridge: BlakeMode::Compression.tag().to_string(),
+        blake_final: BlakeMode::Compression.tag().to_string(),
         l1: state.l1,
         proof: state.proof,
         setups: state.setups,
@@ -1359,9 +1220,9 @@ pub fn unified_verification_chain_hashes_in_mode(
 ) -> Result<[[u32; 8]; 3], String> {
     let loaded = load_program(source)?;
     let worker = worker::Worker::new();
-    let unrolled_blake = unrolled_blake_mode();
-    let bridge_blake = bridge_blake_mode();
-    let final_blake = final_blake_mode();
+    let unrolled_blake = BlakeMode::Compression;
+    let bridge_blake = BlakeMode::Compression;
+    let final_blake = BlakeMode::Compression;
     let mut hashes = [[0; 8]; 3];
     for (i, hash) in hashes.iter_mut().enumerate() {
         let expected = expected_chain_end_params(
@@ -1402,9 +1263,10 @@ fn compute_trusted_program_params(
     machine: SetupMachine,
     mode: SoundnessMode,
     worker: &worker::Worker,
+    commit: &mut setups::program_setups::SetupCommitter<'_>,
 ) -> Result<TrustedProgramParams, String> {
     let start = Instant::now();
-    let setups = recompute_program_setups(bin, text, machine, mode, worker);
+    let setups = recompute_program_setups_with_committer(bin, text, machine, mode, worker, commit);
     let exit_pc = find_binary_exit_point(bin)?;
     let end_params = compute_end_params(&setups, exit_pc);
     log::info!(
@@ -1420,52 +1282,80 @@ fn compute_trusted_program_params(
     })
 }
 
-/// Compute complete records for every standard chain program the pipeline can select.
+/// Compute trusted records from the user program through `target`, excluding the L1 wrap.
 pub fn compute_trusted_params(
     source: &ProgramSource,
     soundness_mode: SoundnessMode,
+    target: ProofTarget,
+    backend: ProverBackend,
 ) -> Result<TrustedParams, String> {
-    use verifier_common::fsv_binaries::{FsvProfile, FSV_REGISTRY};
+    assert_target_mode(target, soundness_mode);
     let loaded = load_program(source)?;
     let worker = worker::Worker::new();
-    let mut programs = vec![compute_trusted_program_params(
-        &loaded.bin_u32,
-        &loaded.text_u32,
-        SetupMachine::UnrolledFullUnsigned,
-        soundness_mode,
-        &worker,
-    )?];
-    for entry in FSV_REGISTRY {
-        let descriptor = &entry.descriptor;
-        if descriptor.soundness_mode != soundness_mode
-            || descriptor.profile != FsvProfile::Standard
-            || descriptor.program == FsvProgram::UnifiedBaseLayer
-        {
-            continue;
-        }
-        let guest = load_fsv_exact(fsv_dir(), descriptor);
-        let machines: &[SetupMachine] = match descriptor.program {
-            FsvProgram::UnrolledBaseLayer | FsvProgram::UnrolledRecursionLayer => {
-                &[SetupMachine::UnrolledReduced, SetupMachine::Unified]
-            }
-            FsvProgram::UnifiedRecursionLayer => &[SetupMachine::Unified],
-            FsvProgram::UnifiedBaseLayer => unreachable!(),
-        };
-        let program_hash = fsv_digest(guest.bin(), guest.text()).0;
-        for &machine in machines {
-            if programs
-                .iter()
-                .any(|record| record.program_hash == program_hash && record.machine == machine)
-            {
-                continue;
-            }
-            programs.push(compute_trusted_program_params(
-                guest.bin(),
-                guest.text(),
+    let target = target.min(ProofTarget::Compression);
+    let fsv = FsvPrograms::load(target, soundness_mode);
+    #[cfg(feature = "gpu")]
+    let mut gpu = (backend == ProverBackend::Gpu)
+        .then(gpu_execution_prover::trusted_params::TrustedSetupCommitter::new);
+    #[cfg(not(feature = "gpu"))]
+    if backend == ProverBackend::Gpu {
+        return Err("GPU trusted params require the `gpu` feature".into());
+    }
+    let mut programs = Vec::new();
+    for (_, registration) in pipeline_registrations(&loaded, target, None, &fsv) {
+        for profile in registration.profiles {
+            let machine = match (registration.kind, registration.machine, profile) {
+                (ExecutionKind::Unrolled, MachineType::FullUnsigned, ProofProfile::Standard) => {
+                    SetupMachine::UnrolledFullUnsigned
+                }
+                (ExecutionKind::Unrolled, MachineType::Reduced, ProofProfile::Standard) => {
+                    SetupMachine::UnrolledReduced
+                }
+                (ExecutionKind::Unified, _, ProofProfile::Standard) => SetupMachine::Unified,
+                (ExecutionKind::Unified, _, ProofProfile::Compression) => {
+                    SetupMachine::Compression(CompressionProfile::Step)
+                }
+                (ExecutionKind::Unified22, _, ProofProfile::CompressionFinal) => {
+                    SetupMachine::Compression(CompressionProfile::Final)
+                }
+                other => unreachable!("unsupported trusted params registration {other:?}"),
+            };
+            #[cfg(feature = "gpu")]
+            let record = if let Some(gpu) = gpu.as_mut() {
+                gpu.reset_peak();
+                let record = compute_trusted_program_params(
+                    &registration.bin,
+                    &registration.text,
+                    machine,
+                    soundness_mode,
+                    &worker,
+                    &mut |config, setup| gpu.commit(config, setup),
+                )?;
+                log::info!(
+                    "trusted {machine:?} record peak device allocation: {} bytes",
+                    gpu.peak()
+                );
+                record
+            } else {
+                compute_trusted_program_params(
+                    &registration.bin,
+                    &registration.text,
+                    machine,
+                    soundness_mode,
+                    &worker,
+                    &mut setups::program_setups::cpu_setup_committer(&worker),
+                )?
+            };
+            #[cfg(not(feature = "gpu"))]
+            let record = compute_trusted_program_params(
+                &registration.bin,
+                &registration.text,
                 machine,
                 soundness_mode,
                 &worker,
-            )?);
+                &mut setups::program_setups::cpu_setup_committer(&worker),
+            )?;
+            programs.push(record);
         }
     }
     Ok(TrustedParams {
@@ -1683,6 +1573,24 @@ fn recompute_program_setups(
     soundness_mode: prover::definitions::SoundnessMode,
     worker: &worker::Worker,
 ) -> Setups {
+    recompute_program_setups_with_committer(
+        bin,
+        text,
+        machine,
+        soundness_mode,
+        worker,
+        &mut setups::program_setups::cpu_setup_committer(worker),
+    )
+}
+
+fn recompute_program_setups_with_committer(
+    bin: &[u32],
+    text: &[u32],
+    machine: SetupMachine,
+    soundness_mode: SoundnessMode,
+    worker: &worker::Worker,
+    commit: &mut setups::program_setups::SetupCommitter<'_>,
+) -> Setups {
     use riscv_transpiler::cycle::IMStandardIsaConfigUnsignedMulDivOnly as FullUnsignedConfig;
     use riscv_transpiler::cycle::ReducedMachineWithDelegation as ReducedConfig;
     use setups::program_setups::{
@@ -1705,6 +1613,7 @@ fn recompute_program_setups(
                 security_level,
                 soundness_mode,
                 worker,
+                commit,
             )
         }
         SetupMachine::UnrolledReduced => {
@@ -1715,6 +1624,7 @@ fn recompute_program_setups(
                 security_level,
                 soundness_mode,
                 worker,
+                commit,
             )
         }
         SetupMachine::Compression(profile) => {
@@ -1726,6 +1636,7 @@ fn recompute_program_setups(
                 security_level,
                 profile.proof_profile(),
                 worker,
+                commit,
             )
         }
         SetupMachine::Unified => compute_unified_program_setups_in_mode::<Global>(
@@ -1735,6 +1646,7 @@ fn recompute_program_setups(
             security_level,
             soundness_mode,
             worker,
+            commit,
         ),
     }
 }
@@ -1792,9 +1704,14 @@ fn trusted_end_params_in_mode(
     Ok(end_params)
 }
 
-/// Parse a blake tag claimed by an untrusted artifact.
+/// Read a fixed stage-mode tag from an untrusted artifact.
 fn parse_blake_tag(tag: &str) -> Result<BlakeMode, String> {
-    BlakeMode::parse(tag).ok_or_else(|| format!("artifact claims unknown blake mode tag {tag:?}"))
+    if tag != BlakeMode::Compression.tag() {
+        return Err(format!(
+            "artifact Blake mode {tag:?} does not match the fixed pipeline mode"
+        ));
+    }
+    Ok(BlakeMode::Compression)
 }
 
 /// The unrolled prefix excludes the fixed Standard and compression tails.
@@ -2093,7 +2010,7 @@ fn keccak256(data: &[u8]) -> [u8; 32] {
 mod compression_tests;
 
 #[cfg(test)]
-mod l1_reference;
+mod l1_tests;
 
 /// Recursion-binding tests, adapted to `FsvRecursionChain` (no proving
 /// required).
@@ -2285,7 +2202,6 @@ mod l1_capability_tests {
     /// backend construction, so no CUDA is reached even in a `gpu` build.
     #[test]
     fn ethproofs_l1_prover_entries_reject_before_inputs_and_backends() {
-        let checkpoint = crate::compression_tests::artifact(ProofTarget::RecursionUnified, 3);
         for target in L1_TARGETS {
             for backend in [ProverBackend::Cpu, ProverBackend::Gpu] {
                 let config = ProgramProverConfig {
@@ -2294,52 +2210,12 @@ mod l1_capability_tests {
                     soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
                     ..Default::default()
                 };
-                for error in [
-                    refusal(|| ProgramProver::new(missing(), config.clone())),
-                    refusal(|| {
-                        ProgramProver::for_continuation(missing(), config.clone(), &checkpoint)
-                    }),
-                ] {
-                    assert!(
-                        error.contains("supports only the pessimistic-conjecture soundness mode"),
-                        "{target:?} on {backend:?}: {error}"
-                    );
-                }
+                let error = refusal(|| ProgramProver::new(missing(), config.clone()));
+                assert!(
+                    error.contains("supports only the pessimistic-conjecture soundness mode"),
+                    "{target:?} on {backend:?}: {error}"
+                );
             }
         }
-    }
-
-    /// The pessimistic L1 entries pass the check and reach the source as before.
-    #[test]
-    fn pessimistic_l1_entries_are_unchanged() {
-        for target in L1_TARGETS {
-            let config = ProgramProverConfig {
-                target,
-                backend: ProverBackend::Cpu,
-                ..Default::default()
-            };
-            let error = ProgramProver::new(missing(), config)
-                .err()
-                .expect("a missing source must be reported");
-            assert!(error.starts_with("failed to load program"), "{error}");
-            // Past the mode check, verification fails later (envelope or source).
-            let artifact = crate::compression_tests::compression_artifact(target, 6);
-            verify_artifact_in_mode(&artifact, &missing(), SoundnessMode::PessimisticConjecture)
-                .unwrap_err();
-        }
-    }
-}
-
-#[cfg(test)]
-mod trusted_selection_tests {
-    use super::*;
-    use prover::definitions::SoundnessMode;
-
-    #[test]
-    fn trusted_end_params_key_preserves_binary_text_boundary() {
-        let soundness_mode = SoundnessMode::DEFAULT;
-        let a = trusted_end_params_key(SetupMachine::Unified, &[1, 2], &[3], soundness_mode);
-        let b = trusted_end_params_key(SetupMachine::Unified, &[1], &[2, 3], soundness_mode);
-        assert_ne!(a, b);
     }
 }

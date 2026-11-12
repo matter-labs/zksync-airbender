@@ -53,15 +53,6 @@ pub mod unrolled_circuits;
 pub use self::circuits::*;
 pub use self::unrolled_circuits::*;
 
-pub fn pad_bytecode_bytes_for_proving(bytecode: &mut Vec<u8>) {
-    let rom = common_constants::REGULAR_ROM;
-    assert!(
-        bytecode.len() <= rom.byte_size(),
-        "bytecode exceeds selected ROM"
-    );
-    bytecode.resize(rom.byte_size(), 0);
-}
-
 pub fn pad_bytecode_for_proving(bytecode: &mut Vec<u32>) {
     pad_bytecode_for_proving_with_rom(bytecode, common_constants::REGULAR_ROM);
 }

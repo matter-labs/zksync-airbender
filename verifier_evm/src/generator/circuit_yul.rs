@@ -680,7 +680,7 @@ pub fn emit_circuit_yul_with_stats(
         let rounds = circuit.trace_len.trailing_zeros();
         assert_eq!(
             rounds as usize,
-            prover::gkr::prover_config::example_configs::l1_wrap_2p21::TRACE_LEN_LOG2,
+            prover::gkr::prover_config::example_configs::l1_wrap::TRACE_LEN_LOG2,
             "GKR verifier requires the L1 wrap trace geometry"
         );
         rounds

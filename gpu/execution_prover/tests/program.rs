@@ -8,9 +8,8 @@
 mod upstream {
     pub use full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles_for;
     pub use full_statement_verifier::host_utils::{
-        bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
-        final_blake_mode, load_fsv_exact, unified_switch_cycles, unrolled_blake_mode,
-        FsvRecursionChain,
+        build_unified_stream, build_unrolled_stream, compute_end_params, load_fsv_exact,
+        unified_switch_cycles, FsvRecursionChain,
     };
     #[cfg(feature = "verifiers")]
     pub use full_statement_verifier::host_utils::{
@@ -1226,10 +1225,9 @@ fn run_gpu_recursive_pipeline(
     force_first_layer: bool,
 ) {
     use crate::upstream::{
-        bridge_blake_mode, build_unified_stream, compute_end_params, estimate_verifier_cycles_for,
-        final_blake_mode, load_fsv_exact, native_verify_unified_in_mode,
-        native_verify_unrolled_in_mode, unified_switch_cycles, unrolled_blake_mode, FsvDescriptor,
-        FsvProgram, FsvRecursionChain, SecurityLevel, SoundnessMode,
+        build_unified_stream, compute_end_params, estimate_verifier_cycles_for, load_fsv_exact,
+        native_verify_unified_in_mode, native_verify_unrolled_in_mode, unified_switch_cycles,
+        FsvDescriptor, FsvProgram, FsvRecursionChain, SecurityLevel, SoundnessMode,
     };
 
     let switch_cycles = unified_switch_cycles();
@@ -1248,9 +1246,9 @@ fn run_gpu_recursive_pipeline(
         None,
     )[0];
     let fsv_dir = artifact_root().join("tools/gkr_verifier/full_statement_verifiers");
-    let unrolled_blake = unrolled_blake_mode();
-    let bridge_blake = bridge_blake_mode();
-    let final_blake = final_blake_mode();
+    let unrolled_blake = BlakeMode::Compression;
+    let bridge_blake = BlakeMode::Compression;
+    let final_blake = BlakeMode::Compression;
     log::info!(
         "blake modes: unrolled={}, bridge={}, final={}",
         unrolled_blake.tag(),

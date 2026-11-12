@@ -1,7 +1,7 @@
 use super::{inits_and_teardowns, rows};
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
-    evaluate_gkr_witness_for_executor_family, l1_wrap_2p21,
+    evaluate_gkr_witness_for_executor_family, l1_wrap,
     prove_configured_with_gkr_with_storage_and_backend, Field, GKRExternalChallenges,
     GKRFullWitnessTrace, Keccak256MerkleTreeWithCap, Keccak256Transcript, L1WrapSetup,
     NaiveGKRBackend, Proth120, Proth120WorkStealingLazyBackend, UnifiedRiscvCircuitOracle,
@@ -107,7 +107,7 @@ fn evaluate_witness<A: HostTraceAllocator>(
         decoder_table: &setup.decoder_table,
     };
     let witness_eval_fn = match circuit_type {
-        CircuitType::L1Wrap21 => l1_wrap_2p21::witness_eval_fn,
+        CircuitType::L1Wrap => l1_wrap::witness_eval_fn,
         other => panic!("{other:?} is not an L1 wrap circuit"),
     };
     evaluate_gkr_witness_for_executor_family::<Proth120, _, _, _>(

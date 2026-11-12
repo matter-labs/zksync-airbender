@@ -127,7 +127,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 .insert(sequence_id, data);
         }
         match execution_kind {
-            ExecutionKind::L1Wrap21 => {
+            ExecutionKind::L1Wrap => {
                 panic!("ExecutionKind::{execution_kind:?} requires prove_l1_wrap")
             }
             ExecutionKind::Unrolled => {
@@ -304,7 +304,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         ram_config,
                         assume_canonical_mop_inputs,
                     ),
-                    ExecutionKind::Unified | ExecutionKind::Unified22 | ExecutionKind::L1Wrap21 => {
+                    ExecutionKind::Unified | ExecutionKind::Unified22 | ExecutionKind::L1Wrap => {
                         run_simulator::<_, UnifiedTracingType, _, _, _>(
                             batch_id,
                             machine_type,
@@ -359,7 +359,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     work_results_sender,
                     abort,
                 ),
-                ExecutionKind::Unified | ExecutionKind::Unified22 | ExecutionKind::L1Wrap21 => {
+                ExecutionKind::Unified | ExecutionKind::Unified22 | ExecutionKind::L1Wrap => {
                     run_replayer::<UnifiedTracingType, _, _>(
                         batch_id,
                         worker_id,

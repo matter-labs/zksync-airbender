@@ -30,7 +30,8 @@ pub(super) fn canonical_circuit_type(circuit: CanonicalCircuit) -> CircuitType {
             UnrolledMemoryCircuitType::LoadStoreSubwordOnly,
         )),
         InitsAndTeardowns => CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns),
-        UnifiedReducedMachine => CircuitType::Unrolled(UnrolledCircuitType::Unified),
+        UnifiedReducedMachine | Compression => CircuitType::Unrolled(UnrolledCircuitType::Unified),
+        CompressionFinal => CircuitType::Unrolled(UnrolledCircuitType::Unified22),
         BigintWithExtendedControl => {
             CircuitType::Delegation(DelegationCircuitType::BigIntWithControl)
         }

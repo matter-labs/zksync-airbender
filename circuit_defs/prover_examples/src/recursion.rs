@@ -18,13 +18,9 @@
 //! 5. Feed the unified proof into `fsv_unified_recursion_layer_sec_100` and prove
 //!    it in unified machine mode. Verify natively.
 //!
-//! Blake variants of the recursive verifiers are selected at runtime, per stage:
-//! `RECURSION_UNROLLED_BLAKE` / `RECURSION_BRIDGE_BLAKE` / `RECURSION_FINAL_BLAKE`
-//! (see `full_statement_verifier::host_utils` for the selection rules). Build
-//! the matching binaries with `tools/gkr_verifier/dump_recursive_verifiers.sh`.
-//! Intermediate proofs/setups are cached to disk as zlib-compressed JSON
-//! (`*.json.zlib`), keyed by the active blake variants so different options
-//! don't overwrite each other.
+//! Recursive stages use the Compression Blake mode. Build the verifier binaries
+//! with `tools/gkr_verifier/dump_recursive_verifiers.sh`. Intermediate proofs
+//! and setups are cached as zlib-compressed JSON.
 //!
 //! The protocol pieces (recursion hash chain, `end_params` hashing, nd-stream
 //! layout, binary registry) live in `full_statement_verifier::recursion_chain`,
@@ -36,9 +32,8 @@ mod tests {
     use super::scripts::*;
     use crate::*;
     use full_statement_verifier::host_utils::{
-        bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
-        final_blake_mode, load_fsv_exact, native_verify_unified_in_mode,
-        native_verify_unrolled_in_mode, unified_switch_cycles, unrolled_blake_mode,
+        build_unified_stream, build_unrolled_stream, compute_end_params, load_fsv_exact,
+        native_verify_unified_in_mode, native_verify_unrolled_in_mode, unified_switch_cycles,
         FsvRecursionChain,
     };
     use full_statement_verifier::program_proof::ProgramProof;
@@ -203,9 +198,9 @@ mod tests {
         println!("zksync_os base layer ran {total_cycles} cycles");
 
         // === Stages 2-3: unrolled recursion (reduced ISA). ===
-        let unrolled_blake = unrolled_blake_mode();
-        let bridge_blake = bridge_blake_mode();
-        let final_blake = final_blake_mode();
+        let unrolled_blake = BlakeMode::Compression;
+        let bridge_blake = BlakeMode::Compression;
+        let final_blake = BlakeMode::Compression;
         let u_tag = unrolled_blake.tag();
         let bridge_tag = bridge_blake.tag();
         let final_tag = final_blake.tag();
@@ -599,9 +594,9 @@ mod tests {
     fn measure_final_proof_verifier_variants() {
         skip_if_ci!();
 
-        let u_tag = unrolled_blake_mode().tag();
-        let bridge_tag = bridge_blake_mode().tag();
-        let final_tag = final_blake_mode().tag();
+        let u_tag = BlakeMode::Compression.tag();
+        let bridge_tag = BlakeMode::Compression.tag();
+        let final_tag = BlakeMode::Compression.tag();
         let proof: ProgramProof = try_deserialize_compressed_from_file(&format!(
             "final_layer_0_proof_{u_tag}_{bridge_tag}_{final_tag}.json.zlib"
         ))
@@ -651,9 +646,9 @@ mod tests {
 
         let use_caches = true;
         let worker = Worker::new_with_num_threads(12);
-        let u_tag = unrolled_blake_mode().tag();
-        let bridge_tag = bridge_blake_mode().tag();
-        let final_tag = final_blake_mode().tag();
+        let u_tag = BlakeMode::Compression.tag();
+        let bridge_tag = BlakeMode::Compression.tag();
+        let final_tag = BlakeMode::Compression.tag();
 
         fn shape(p: &ProgramProof) -> (usize, Vec<(u32, usize)>) {
             let unified_chunks = p.riscv_proofs.values().map(|v| v.len()).sum::<usize>();

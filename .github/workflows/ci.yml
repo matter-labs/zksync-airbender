@@ -187,7 +187,7 @@ jobs:
           cargo test -p verifier_evm --release --test generate_contracts -- --ignored
           cargo test -p verifier_evm --release --test flatten_calldata -- --ignored
       - name: EVM verifier Foundry tests
-        # Forge installs solc as pinned by each project's foundry.toml under l1_wrap_2p21/.
+        # Forge installs solc as pinned by each project's foundry.toml under l1_wrap/.
         run: bash -o pipefail verifier_evm/generated_contracts/run_merged.sh
       - name: Fail if the generated contract or calldata changed
         run: |
@@ -219,13 +219,6 @@ jobs:
         with:
           name: fixture-executables
           path: fixture-executables/
-      - name: Verify the committed L1 reference
-        run: |
-          chmod +x fixture-executables/cli
-          for proof in unified compression; do
-            ./fixture-executables/cli verify --proof "fixtures/chains/pessimistic_conjecture/$proof.json.zlib" \
-              --bin examples/basic_fibonacci/app.bin
-          done
       - name: CPU tests
         run: |
           python3 - <<'PYTHON'

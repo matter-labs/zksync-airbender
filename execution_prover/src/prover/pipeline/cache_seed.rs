@@ -52,7 +52,7 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
                 _ => profile,
             };
             let precomputations = match circuit_type {
-                CircuitType::L1Wrap21 => {
+                CircuitType::L1Wrap => {
                     panic!("L1Wrap does not use the BabyBear trace cache")
                 }
                 CircuitType::Delegation(_)

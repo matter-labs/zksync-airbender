@@ -262,10 +262,7 @@ mod tests {
                 COMPRESSION_MAX_POW_BITS,
             ),
             (compression_config_for_2_23(), COMPRESSION_MAX_POW_BITS),
-            (
-                l1_wrap_2p21::packed_prover_config(),
-                l1_wrap_2p21::MAX_POW_BITS,
-            ),
+            (l1_wrap::packed_prover_config(), l1_wrap::MAX_POW_BITS),
         ] {
             assert_every_round_preserves_security_margin(&config);
             assert!(config

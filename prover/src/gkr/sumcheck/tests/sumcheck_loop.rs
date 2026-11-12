@@ -432,7 +432,7 @@ fn test_sumcheck_loop_multiple_gates() {
 /// none. Over Proth120 it must reproduce the naive schedule's transcript,
 /// claims, claim points and round messages.
 #[test]
-fn proth120_2p21_windowed_schedule_transcript() {
+fn proth120_windowed_schedule_transcript() {
     windowed_schedule_matches_naive_over_proth120(21);
 }
 

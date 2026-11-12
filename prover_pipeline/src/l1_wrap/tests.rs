@@ -4,7 +4,7 @@ use prover::definitions::FinalRegisterValue;
 
 fn result() -> L1WrapResult {
     let external_challenges_pow_bits =
-        L1WrapVersion::of_kind(L1_WRAP_KIND).external_challenges_pow_bits();
+        prover::gkr::prover_config::example_configs::l1_wrap::EXTERNAL_CHALLENGES_POW_BITS;
     L1WrapResult {
         proof: empty_gkr_proof(),
         operation_mode: OperationMode::SingleChunk {
@@ -83,11 +83,6 @@ fn malformed_l1_envelopes_fail_verify_and_continuation_before_loading_programs()
             fsv: FsvPrograms::load(
                 ProofTarget::Base,
                 prover::definitions::SoundnessMode::DEFAULT,
-                PipelineBlakeModes {
-                    unrolled: BlakeMode::Compression,
-                    bridge: BlakeMode::Compression,
-                    final_layer: BlakeMode::Compression,
-                },
             ),
         };
         let error = session.verify(&checkpoint).unwrap_err();
@@ -115,24 +110,4 @@ fn l1_activation_rejects_gpu_before_registration() {
             format!("ProofTarget::{target:?} is not supported by the GPU backend")
         );
     }
-}
-
-#[test]
-fn l1_bundle_rejects_unknown_wrap_version() {
-    let mut json = serde_json::to_value(L1Bundle::from_result(result())).unwrap();
-    json["wrap"] = "unknown_wrap".into();
-    let err = serde_json::from_value::<L1Bundle>(json).unwrap_err();
-    assert!(
-        err.to_string().contains("unknown variant `unknown_wrap`"),
-        "{err}"
-    );
-}
-
-#[test]
-fn wrap_circuit_matches_the_guest_geometry() {
-    let circuit = L1_WRAP_KIND.unified_circuit().unwrap();
-    assert_eq!(
-        circuit.rom(),
-        verifier_common::fsv_binaries::FsvProfile::CompressionFinalWrap.rom()
-    );
 }

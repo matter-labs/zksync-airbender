@@ -2,43 +2,12 @@ use super::*;
 use execution_prover::OperationMode;
 
 /// The wrap identity `ProofTarget::L1` proves.
-pub(super) const L1_WRAP_KIND: ExecutionKind = ExecutionKind::L1Wrap21;
-
-/// The wrap circuit an L1 bundle was proven in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum L1WrapVersion {
-    /// `ExecutionKind::L1Wrap21`: 2^21 trace, 512 KiB wrap ROM.
-    #[serde(rename = "2p21")]
-    Wrap2p21,
-}
-
-impl L1WrapVersion {
-    pub fn kind(self) -> ExecutionKind {
-        match self {
-            Self::Wrap2p21 => ExecutionKind::L1Wrap21,
-        }
-    }
-
-    fn of_kind(kind: ExecutionKind) -> Self {
-        match kind {
-            ExecutionKind::L1Wrap21 => Self::Wrap2p21,
-            other => panic!("{other:?} is not an L1 wrap kind"),
-        }
-    }
-
-    fn external_challenges_pow_bits(self) -> u32 {
-        use prover::gkr::prover_config::example_configs::l1_wrap_2p21;
-        match self {
-            Self::Wrap2p21 => l1_wrap_2p21::EXTERNAL_CHALLENGES_POW_BITS,
-        }
-    }
-}
+pub(super) const L1_WRAP_KIND: ExecutionKind = ExecutionKind::L1Wrap;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct L1Bundle {
     pub proof: L1Proof,
     pub operation_mode: OperationMode,
-    pub wrap: L1WrapVersion,
 }
 
 impl L1Bundle {
@@ -46,19 +15,12 @@ impl L1Bundle {
         Self {
             proof: result.proof,
             operation_mode: result.operation_mode,
-            wrap: L1WrapVersion::of_kind(L1_WRAP_KIND),
         }
     }
 
     pub(crate) fn validate(&self) -> Result<(), String> {
-        let active = L1WrapVersion::of_kind(L1_WRAP_KIND);
-        if self.wrap != active {
-            return Err(format!(
-                "L1 bundle was proven in the {:?} wrap; this build proves the {active:?} wrap",
-                self.wrap
-            ));
-        }
-        let external_challenges_pow_bits = self.wrap.external_challenges_pow_bits();
+        let external_challenges_pow_bits =
+            prover::gkr::prover_config::example_configs::l1_wrap::EXTERNAL_CHALLENGES_POW_BITS;
         if !matches!(
             self.operation_mode,
             OperationMode::SingleChunk {
@@ -66,10 +28,7 @@ impl L1Bundle {
                 ..
             } if e == external_challenges_pow_bits
         ) {
-            return Err(format!(
-                "L1 bundle requires a production single-chunk operation for the {:?} wrap",
-                self.wrap
-            ));
+            return Err("L1 bundle requires a production single-chunk operation".into());
         }
         Ok(())
     }
@@ -167,7 +126,11 @@ pub(super) fn advance_l1_wrap(
     batch_id: u64,
 ) -> RecursionState {
     let start = Instant::now();
-    let (bin, text) = &fsv.compression_wrap;
+    let guest = fsv
+        .compression_wrap
+        .as_ref()
+        .expect("L1 wrap guest was not loaded");
+    let (bin, text) = (guest.bin(), guest.text());
     let nd_words =
         build_unified_stream(&state.setups, &state.proof, BlakeMode::BlakeSpecialOpcodes);
     let result = backend.prove_l1_wrap(L1WrapRequest {

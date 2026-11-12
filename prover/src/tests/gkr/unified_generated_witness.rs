@@ -132,7 +132,7 @@ fn generated_witness_satisfies_proth120_wrap_layout() {
         { L1_WRAP_ROM.second_word_bits() },
     >(&circuit_tester_config(), &worker);
     let circuit: GKRCircuitArtifact<Proth120> = deserialize_from_file(
-        "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json",
+        "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
     );
     let num_teardown_sets = circuit.memory_layout.teardown_sets.len();
     let (trace, _table_driver, decoder_table, _top_bits) = build_unified_trace_without_precompiles(

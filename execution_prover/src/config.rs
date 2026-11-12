@@ -12,7 +12,7 @@ pub fn assert_profiles_for_circuit(circuit: CircuitType, profiles: &[ProofProfil
         "at least one ProofProfile is required"
     );
     let valid = match circuit {
-        CircuitType::L1Wrap21 => profiles == [ProofProfile::L1Wrap],
+        CircuitType::L1Wrap => profiles == [ProofProfile::L1Wrap],
         CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
             profiles == [ProofProfile::CompressionFinal]
         }

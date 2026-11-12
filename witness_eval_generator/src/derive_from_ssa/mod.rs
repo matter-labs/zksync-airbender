@@ -543,7 +543,7 @@ mod test {
         skip_if_ci!();
         use ::field::proth120::Proth120;
 
-        let suffix = "proth120_2p21";
+        let suffix = "proth120";
         let prefix = "unified_reduced_machine";
         let compiled_circuit: GKRCircuitArtifact<Proth120> = deserialize_from_file(&format!(
             "../cs/compiled_circuits/{}_layout_gkr_{}.json",

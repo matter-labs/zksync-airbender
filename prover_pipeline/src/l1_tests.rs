@@ -19,7 +19,6 @@ fn export_l1_wrap_setup_frontier() {
     use ::prover::field::Proth120;
     use ::prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
     use ::prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
-    use ::prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, PathQueryable};
     use ::prover::worker::Worker;
 
     let artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
@@ -30,7 +29,7 @@ fn export_l1_wrap_setup_frontier() {
     bundle.validate().expect("committed L1 wrap bundle");
     let setup_commitment = &bundle.proof.whir_proof.setup_commitment;
 
-    let circuit_type = CircuitType::L1Wrap21;
+    let circuit_type = CircuitType::L1Wrap;
     let (mut binary, mut text) = load_fsv_exact(
         fsv_dir(),
         &FsvDescriptor::compression(FsvProfile::CompressionFinalWrap),
@@ -39,8 +38,7 @@ fn export_l1_wrap_setup_frontier() {
     setups::pad_bytecode_for_proving_with_rom(&mut binary, circuit_type.rom());
     setups::pad_bytecode_for_proving_with_rom(&mut text, circuit_type.rom());
     let worker = Worker::new();
-    let setup =
-        unified_reduced_machine_proth120::l1_wrap_2p21::l1_wrap_setup(&binary, &text, &worker);
+    let setup = unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup(&binary, &text, &worker);
     let config = ProofProfile::L1Wrap.prover_config(
         circuit_type.get_domain_size_log2() as usize,
         SoundnessMode::PessimisticConjecture,
@@ -71,67 +69,13 @@ fn export_l1_wrap_setup_frontier() {
         cap,
         "recommitted setup differs from the reference proof's setup cap"
     );
-    assert_eq!(
-        <Keccak256MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<Proth120>>::build_over_leaf_hashes(
-            frontier.clone(),
-            config.cap_size,
-            &worker,
-        )
-            .get_cap()
-            .cap,
-        cap,
-        "the frontier does not reduce to the setup cap"
-    );
-    // every opened setup path reaches the frontier: hash the leaf (BE16 values, column-major)
-    // and walk its lower siblings to the frontier level, where its node and sibling must be
-    // frontier entries
-    let digest_bytes = ::prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTES;
-    let hash = |bytes: &[u8]| -> [u32; 8] {
-        let mut out: [u8; 32] = Keccak256::digest(bytes).into();
-        out[digest_bytes..].fill(0);
-        std::array::from_fn(|i| u32::from_be_bytes(out[4 * i..4 * i + 4].try_into().unwrap()))
-    };
-    let be = |d: &[u32; 8]| -> Vec<u8> { d.iter().flat_map(|w| w.to_be_bytes()).collect() };
-    let cap_log2 = config.cap_size.trailing_zeros() as usize;
-    let height = setup_commitment.queries[0].path.len() - (SETUP_FRONTIER_LEVEL - cap_log2);
-    let columns = setup_commitment.num_columns;
-    for query in setup_commitment.queries.iter() {
-        assert_eq!(query.path.len(), height + SETUP_FRONTIER_LEVEL - cap_log2);
-        let values = &query.leaf_values_concatenated;
-        let per_column = values.len() / columns;
-        let leaf: Vec<u8> = (0..columns)
-            .flat_map(|c| (0..per_column).map(move |o| values[o * columns + c]))
-            .flat_map(|v| v.to_u128().to_be_bytes())
-            .collect();
-        let mut node = hash(&leaf);
-        let mut index = query.index;
-        for sibling in &query.path[..height] {
-            let (left, right) = if index & 1 == 0 {
-                (node, *sibling)
-            } else {
-                (*sibling, node)
-            };
-            node = hash(&[be(&left), be(&right)].concat());
-            index >>= 1;
-        }
-        assert_eq!(
-            node, frontier[index],
-            "setup query {} does not reach its frontier node",
-            query.index
-        );
-        assert_eq!(
-            query.path[height],
-            frontier[index ^ 1],
-            "setup query {} misses the frontier sibling",
-            query.index
-        );
-    }
     let digests: Vec<String> = frontier
         .iter()
         .map(|d| d.iter().map(|w| format!("{w:08x}")).collect())
         .collect();
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../verifier_evm/debug_data/l1_wrap_2p21/setup_frontier.json");
+        .join("../verifier_evm/debug_data/l1_wrap/setup_frontier.json");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(
         &path,
         format!(

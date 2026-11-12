@@ -12,7 +12,7 @@ fn repo_root() -> PathBuf {
 
 fn fixture_rom(path: &std::path::Path) -> common_constants::rom::RomGeometry {
     if path.file_name().and_then(|name| name.to_str())
-        == Some("fsv_unified_recursion_layer_sec_100_l1_feeder_wrap_special_opcodes_extension.elf")
+        == Some("fsv_unified_recursion_layer_sec_100_compression_final_wrap_special_opcodes_extension.elf")
     {
         L1_WRAP_ROM
     } else {
@@ -569,7 +569,7 @@ fn legacy_binaries_reject_text_that_is_not_a_prefix() {
 #[test]
 fn wrap_fsv_requires_wrap_rom_geometry() {
     let path = repo_root().join(
-        "tools/gkr_verifier/full_statement_verifiers/fsv_unified_recursion_layer_sec_100_l1_feeder_wrap_special_opcodes_extension.elf",
+        "tools/gkr_verifier/full_statement_verifiers/fsv_unified_recursion_layer_sec_100_compression_final_wrap_special_opcodes_extension.elf",
     );
     let bytes = std::fs::read(path).unwrap();
     let image = read_elf_with_rom(&bytes, ElfReadMode::Legacy, L1_WRAP_ROM).unwrap();

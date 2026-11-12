@@ -66,7 +66,7 @@ done
 if [[ $action == trusted-params ]]; then printf params >"$output"; exit; fi
 if [[ $action == verify ]]; then
   [[ -f $proof ]]
-  if [[ $proof == */compression.json.zlib || $proof == */l1.json.zlib ]]; then
+  if [[ $proof == */l1.json.zlib ]]; then
     [[ -z $trusted ]]
   elif [[ -n ${FIXTURE_TRUSTED_PARAMS:-} ]]; then
     [[ -f $trusted ]]

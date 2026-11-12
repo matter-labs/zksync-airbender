@@ -70,10 +70,10 @@ impl ProofProfile {
             Self::L1Wrap => {
                 assert_eq!(
                     trace_len_log2,
-                    example_configs::l1_wrap_2p21::TRACE_LEN_LOG2,
+                    example_configs::l1_wrap::TRACE_LEN_LOG2,
                     "ProofProfile::L1Wrap requires the 2^21 Proth120 unified circuit"
                 );
-                example_configs::l1_wrap_2p21::packed_prover_config()
+                example_configs::l1_wrap::packed_prover_config()
             }
         };
         assert_eq!(
@@ -890,7 +890,7 @@ mod test {
         for config in [
             example_configs::compression_final_config_for_2_22(),
             example_configs::compression_config_for_2_23(),
-            example_configs::l1_wrap_2p21::packed_prover_config(),
+            example_configs::l1_wrap::packed_prover_config(),
         ] {
             config.validate_for_whir_message_size(config.whir_message_size_log2());
         }

@@ -416,61 +416,42 @@ pub fn verify_unified_circuit_recursion_layer<
     )
 }
 
-/// The compression statement: a recursion layer over the 2^22 compression circuit
-/// (`prover::gkr::prover_config::example_configs::compression_final_config_for_2_22`,
-/// cap 16, merged memory+witness commitment) that carries NO delegation
-/// proofs: every delegation count word must be 0. Every compression layer and the
-/// L1 wrap execute this entry; the instance geometry (inits-and-teardowns
-/// window shift, cycles per instance) follows the generated verifier's
-/// `TRACE_LEN_LOG2`.
-pub fn verify_unified_circuit_recursion_layer_sec_100_compression_final<
-    I: NonDeterminismSource<BabyBearField>,
-    E: ErrorCreator,
-    const REDUCED_ROUNDS: bool,
->(
-    nd_source: &mut I,
-) -> Result<[u32; 16], E::Error> {
-    use crate::imports::unified_reduced_machine_sec_100_compression_final as compression;
-    unsafe {
-        let unified_setup = read_setup_cap::<I, { compression::CAP_SIZE }>(nd_source);
-        verify_full_statement_for_unified_circuit_without_delegations::<
-            I,
-            E,
-            REDUCED_ROUNDS,
-            { compression::CAP_SIZE },
-            { address_high_bits_shift(compression::TRACE_LEN_LOG2) },
-            { 1u64 << compression::TRACE_LEN_LOG2 },
-            _,
-        >(&unified_setup, compression::verify::<I, E>, nd_source)
-    }
+// Both compression profiles have the same statement; their generated verifier
+// supplies the cap and trace geometry.
+macro_rules! compression_statement {
+    ($entry:ident, $module:ident) => {
+        pub fn $entry<
+            I: NonDeterminismSource<BabyBearField>,
+            E: ErrorCreator,
+            const REDUCED_ROUNDS: bool,
+        >(
+            nd_source: &mut I,
+        ) -> Result<[u32; 16], E::Error> {
+            use crate::imports::$module as compression;
+            unsafe {
+                let unified_setup = read_setup_cap::<I, { compression::CAP_SIZE }>(nd_source);
+                verify_full_statement_for_unified_circuit_without_delegations::<
+                    I,
+                    E,
+                    REDUCED_ROUNDS,
+                    { compression::CAP_SIZE },
+                    { address_high_bits_shift(compression::TRACE_LEN_LOG2) },
+                    { 1u64 << compression::TRACE_LEN_LOG2 },
+                    _,
+                >(&unified_setup, compression::verify::<I, E>, nd_source)
+            }
+        }
+    };
 }
 
-/// The compression statement over the 2^23 compression circuit of Compression profile
-/// (`prover::gkr::prover_config::example_configs::compression_config_for_2_23`,
-/// cap 4, merged memory+witness commitment), with the same zero-delegation
-/// rule as [`verify_unified_circuit_recursion_layer_sec_100_compression_final`]. Every
-/// compression layer after a Compression-profile layer executes this entry.
-pub fn verify_unified_circuit_recursion_layer_sec_100_compression<
-    I: NonDeterminismSource<BabyBearField>,
-    E: ErrorCreator,
-    const REDUCED_ROUNDS: bool,
->(
-    nd_source: &mut I,
-) -> Result<[u32; 16], E::Error> {
-    use crate::imports::unified_reduced_machine_sec_100_compression as compression;
-    unsafe {
-        let unified_setup = read_setup_cap::<I, { compression::CAP_SIZE }>(nd_source);
-        verify_full_statement_for_unified_circuit_without_delegations::<
-            I,
-            E,
-            REDUCED_ROUNDS,
-            { compression::CAP_SIZE },
-            { address_high_bits_shift(compression::TRACE_LEN_LOG2) },
-            { 1u64 << compression::TRACE_LEN_LOG2 },
-            _,
-        >(&unified_setup, compression::verify::<I, E>, nd_source)
-    }
-}
+compression_statement!(
+    verify_unified_circuit_recursion_layer_sec_100_compression,
+    unified_reduced_machine_sec_100_compression
+);
+compression_statement!(
+    verify_unified_circuit_recursion_layer_sec_100_compression_final,
+    unified_reduced_machine_sec_100_compression_final
+);
 
 pub fn verify_unrolled_or_unified_circuit_recursion_layer<
     I: NonDeterminismSource<BabyBearField>,

@@ -47,9 +47,6 @@ script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 repo=$(cd "${AB_TEST_ARTIFACT_ROOT:-$script_root}" && pwd)
 export AB_TEST_ARTIFACT_ROOT=$repo
 export FSV_DIR="$repo/tools/gkr_verifier/full_statement_verifiers"
-export RECURSION_UNROLLED_BLAKE=blake2_with_compression
-export RECURSION_BRIDGE_BLAKE=blake2_with_compression
-export RECURSION_FINAL_BLAKE=blake2_with_compression
 export RUST_MIN_STACK=${RUST_MIN_STACK:-16777216}
 cd "$repo"
 
@@ -114,11 +111,12 @@ check_artifact() {
   local file="$chain_out/$name.json.zlib"
   "$codec" check "$file"
   local trusted=()
-  # The shared cache contains Standard records only; L1 verification derives
-  # its profile-specific trusted parameters from the program.
-  if [[ -n $trusted_params && $name != compression && $name != l1 ]]; then
+  # The cache includes compression records; L1 wrap verification stays external.
+  if [[ -n $trusted_params && $name != l1 ]]; then
     local params="$trusted_params/$cli_mode-trusted-params.json"
-    [[ -f $params ]] || "$cli" trusted-params --bin "$bin" --soundness-mode "$cli_mode" --output "$params"
+    local params_target=recursion-unified
+    [[ $mode != pessimistic_conjecture ]] || params_target=compression
+    [[ -f $params ]] || "$cli" trusted-params --bin "$bin" --soundness-mode "$cli_mode" --target "$params_target" --backend cpu --output "$params"
     trusted=(--trusted-params "$params")
   fi
   "$cli" verify --proof "$file" --bin "$bin" --soundness-mode "$cli_mode" "${trusted[@]}"

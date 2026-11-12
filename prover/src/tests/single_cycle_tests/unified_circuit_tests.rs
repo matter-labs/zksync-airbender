@@ -1255,12 +1255,12 @@ mod wrap_rom_tests {
     }
 
     #[test]
-    fn wrap_2p21_sw_into_rom_rejected() {
+    fn wrap_l1_wrap_sw_into_rom_rejected() {
         assert!(store_outcome(0x0007_fffc).is_err());
     }
 
     #[test]
-    fn wrap_2p21_sw_at_ram_boundary_accepted() {
+    fn wrap_l1_wrap_sw_at_ram_boundary_accepted() {
         store_outcome(0x0008_0000).unwrap();
     }
 }

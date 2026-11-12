@@ -59,14 +59,17 @@ fn unified_prover(
 
 #[test]
 fn unsupported_registration_profiles_are_rejected() {
-    use crate::ProofProfile::{Compression, L1Wrap, Standard};
+    use crate::ProofProfile::{Compression, CompressionFinal, L1Wrap, Standard};
     for (kind, profiles) in [
-        (ExecutionKind::Unified22, vec![Compression, Standard]),
-        (ExecutionKind::Unified, vec![Standard, Compression]),
-        (ExecutionKind::Unified22, vec![Compression, Compression]),
-        (ExecutionKind::L1Wrap21, vec![Standard]),
+        (ExecutionKind::Unified22, vec![CompressionFinal, Standard]),
+        (ExecutionKind::Unified, vec![Standard, CompressionFinal]),
+        (
+            ExecutionKind::Unified22,
+            vec![CompressionFinal, Compression],
+        ),
+        (ExecutionKind::L1Wrap, vec![Standard]),
         (ExecutionKind::Unified, vec![L1Wrap]),
-        (ExecutionKind::Unrolled, vec![Compression]),
+        (ExecutionKind::Unrolled, vec![CompressionFinal]),
         (ExecutionKind::Unrolled, vec![Compression]),
     ] {
         assert!(
@@ -98,7 +101,7 @@ fn wrap_image_over_512kib_is_rejected() {
         vec![0; 1 << 20],
         vec![0; 1 << 20],
         &[(
-            ExecutionKind::L1Wrap21,
+            ExecutionKind::L1Wrap,
             MachineType::Reduced,
             &[crate::ProofProfile::L1Wrap],
         )],

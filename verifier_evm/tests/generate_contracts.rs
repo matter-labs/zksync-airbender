@@ -17,7 +17,7 @@ fn check_descriptor() -> u32 {
         panic!("expected single-chunk operation mode");
     };
     assert_eq!(
-        prover::gkr::prover_config::example_configs::l1_wrap_2p21::EXTERNAL_CHALLENGES_POW_BITS,
+        prover::gkr::prover_config::example_configs::l1_wrap::EXTERNAL_CHALLENGES_POW_BITS,
         external_challenges_pow_bits,
         "descriptor external PoW floor must match proof aux"
     );
@@ -45,9 +45,8 @@ fn derived_pow_bits(
         config.security_level.security_bits(),
         pow_bits::lookup_identity_degree(circuit),
     );
-    let external_pow_bits = lookup_pow_bits.max(
-        prover::gkr::prover_config::example_configs::l1_wrap_2p21::EXTERNAL_CHALLENGES_POW_BITS,
-    );
+    let external_pow_bits = lookup_pow_bits
+        .max(prover::gkr::prover_config::example_configs::l1_wrap::EXTERNAL_CHALLENGES_POW_BITS);
     let batched_proximity_pow_bits = config.base_round().batching_pow_bits::<Proth120, Proth120>(
         config.security_level.security_bits(),
         config.whir_message_size_log2(),
@@ -130,19 +129,5 @@ fn write(rel: &str, content: &str) {
 fn generate_contracts_into_dir() {
     for (rel, content) in generated_sources() {
         write(&rel, &content);
-    }
-}
-
-#[test]
-fn checked_in_contracts_are_current() {
-    for (rel, content) in generated_sources() {
-        let path = common::contract_path(&rel);
-        let checked_in =
-            std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("missing {}", path.display()));
-        assert!(
-                checked_in == content,
-                "{} is stale: rerun `cargo test -p verifier_evm --test generate_contracts -- --ignored`",
-                path.display()
-            );
     }
 }

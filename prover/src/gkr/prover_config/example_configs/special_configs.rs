@@ -102,7 +102,7 @@ pub fn compression_final_config_for_2_22() -> ProverConfig {
     )
 }
 
-/// Intermediate compression Compression profile.
+/// Repeatable Compression profile.
 pub fn compression_config_for_2_23() -> ProverConfig {
     compression_config(
         23,
@@ -118,7 +118,7 @@ pub fn compression_config_for_2_23() -> ProverConfig {
 }
 
 /// L1 wrap over the 512 KiB wrap ROM.
-pub mod l1_wrap_2p21 {
+pub mod l1_wrap {
     use super::*;
 
     pub const TRACE_LEN_LOG2: usize = 21;

@@ -205,6 +205,11 @@ enum Commands {
         elf: Option<String>,
         #[clap(flatten)]
         soundness: SoundnessArgs,
+        /// Last stage whose trusted records are needed (the L1 wrap has no record).
+        #[arg(long, value_enum, default_value = "recursion-unified")]
+        target: ProofTarget,
+        #[arg(long, value_enum)]
+        backend: Option<ProverBackend>,
         #[arg(short, long)]
         output: String,
     },
@@ -470,9 +475,8 @@ fn run_cli() {
             let input_artifact = read_artifact(&proof);
             let source = program_source(bin, text, elf);
 
-            let mut prover =
-                ProgramProver::for_continuation(source, prover_config, &input_artifact)
-                    .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
+            let mut prover = ProgramProver::new(source, prover_config)
+                .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
             let artifact = prover
                 .continue_artifact(input_artifact)
                 .unwrap_or_else(|e| panic!("Continuation failed: {}", e));
@@ -501,7 +505,7 @@ fn run_cli() {
             .unwrap_or_else(|e| panic!("Verification failed: {}", e));
             if artifact.target == ProofTarget::L1 {
                 println!(
-                    "FEEDER SIDECAR AND CHAIN ARE VALID. Proth proof was not verified. output={:?}",
+                    "COMPRESSION SIDECAR AND CHAIN ARE VALID. Proth proof was not verified. output={:?}",
                     output
                 );
             } else {
@@ -513,11 +517,18 @@ fn run_cli() {
             text,
             elf,
             soundness: SoundnessArgs { soundness_mode },
+            target,
+            backend,
             output,
         } => {
             let source = program_source(bin, text, elf);
-            let params = prover_pipeline::compute_trusted_params(&source, soundness_mode)
-                .unwrap_or_else(|error| panic!("Trusted parameter construction failed: {error}"));
+            let params = prover_pipeline::compute_trusted_params(
+                &source,
+                soundness_mode,
+                target,
+                backend.unwrap_or_else(default_backend_for_build),
+            )
+            .unwrap_or_else(|error| panic!("Trusted parameter construction failed: {error}"));
             prover_pipeline::serialize_to_file(&params, &output);
         }
         Commands::Run {

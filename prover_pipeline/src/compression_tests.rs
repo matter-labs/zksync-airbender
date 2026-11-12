@@ -35,14 +35,6 @@ pub(super) fn empty_gkr_proof<
     }
 }
 
-fn compression_modes() -> PipelineBlakeModes {
-    PipelineBlakeModes {
-        unrolled: BlakeMode::Compression,
-        bridge: BlakeMode::Compression,
-        final_layer: BlakeMode::Compression,
-    }
-}
-
 fn program() -> LoadedProgram {
     LoadedProgram {
         bin_bytes: vec![],
@@ -69,10 +61,6 @@ pub(super) fn empty_proof() -> ProgramProof {
         pow_challenge: 0,
         num_it_circuits: None,
     }
-}
-
-fn modes_only(blake: PipelineBlakeModes) -> FsvPrograms {
-    FsvPrograms::load(ProofTarget::Base, SoundnessMode::DEFAULT, blake)
 }
 
 pub(super) fn artifact(target: ProofTarget, n: usize) -> ProofArtifact {
@@ -128,7 +116,6 @@ pub(super) fn unified_reduced_machine_2_22_layout(
 
 pub(super) fn compression_artifact(target: ProofTarget, n: usize) -> ProofArtifact {
     finalize_artifact(
-        &modes_only(compression_modes()),
         &ProgramProverConfig {
             target,
             backend: ProverBackend::Cpu,
@@ -154,21 +141,6 @@ pub(super) fn compression_artifact(target: ProofTarget, n: usize) -> ProofArtifa
 }
 
 #[test]
-fn continuation_keeps_historical_modes_when_current_modes_differ() {
-    let mut checkpoint = artifact(ProofTarget::RecursionUnified, 3);
-    checkpoint.blake_final = BlakeMode::BlakeSpecialOpcodes.tag().to_string();
-    let blake = PipelineBlakeModes::continuing(&checkpoint, compression_modes).unwrap();
-    assert_eq!(
-        PipelineBlakeModes::continuing(&checkpoint, || panic!(
-            "historical modes must not read the environment"
-        ))
-        .unwrap(),
-        blake
-    );
-    assert_eq!(blake.final_layer, BlakeMode::BlakeSpecialOpcodes);
-}
-
-#[test]
 fn compression_artifacts_require_the_fixed_chain_tail() {
     assert_eq!(
         chain_unrolled_layers(&compression_artifact(ProofTarget::Compression, 7)).unwrap(),
@@ -182,7 +154,7 @@ fn compression_artifacts_require_the_fixed_chain_tail() {
 }
 
 #[test]
-fn terminal_c_rejects_profile_a_sized_setup_caps() {
+fn compression_final_rejects_compression_sized_setup_caps() {
     let family = CompressionProfile::Final.circuit().get_family_idx() as u32;
     let mut artifact = compression_artifact(ProofTarget::Compression, 6);
     let setup = |cap_size| setups::UnrolledCircuitSetupParams {
@@ -202,45 +174,6 @@ fn terminal_c_rejects_profile_a_sized_setup_caps() {
     assert!(validate_artifact_envelope(&artifact)
         .unwrap_err()
         .contains("leafs"));
-}
-
-// A regression reaching backend setup must return the missing-GPU-feature error,
-// rather than allocate a GPU outside the CPU test harness.
-#[cfg(not(feature = "gpu"))]
-#[test]
-fn continuation_constructor_rejects_request_and_source_before_backend_setup() {
-    let missing = ProgramSource::elf("must-not-read-continuation-input.elf");
-    assert!(matches!(&missing, ProgramSource::Elf(path) if !path.exists()));
-    let source = ProgramSource::legacy_binaries_from_bin(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/hashed_fibonacci/app_plain.bin"),
-    );
-    let loaded = load_program(&source).unwrap();
-    let config = ProgramProverConfig {
-        target: ProofTarget::RecursionUnified,
-        backend: ProverBackend::Gpu,
-        ..Default::default()
-    };
-    let mut wrong_bin = artifact(ProofTarget::Base, 1);
-    wrong_bin.program_bin_keccak = keccak256(&loaded.bin_bytes);
-    wrong_bin.program_bin_keccak[0] ^= 1;
-    let mut wrong_text = wrong_bin.clone();
-    wrong_text.program_bin_keccak = keccak256(&loaded.bin_bytes);
-    wrong_text.program_text_keccak = keccak256(&loaded.text_bytes);
-    wrong_text.program_text_keccak[0] ^= 1;
-    for (source, invalid, expected) in [
-        (
-            &missing,
-            artifact(ProofTarget::RecursionUnified, 3),
-            "already at target",
-        ),
-        (&source, wrong_bin, "program_bin_keccak"),
-        (&source, wrong_text, "program_text_keccak"),
-    ] {
-        let error = ProgramProver::for_continuation(source.clone(), config.clone(), &invalid)
-            .err()
-            .expect("invalid continuation");
-        assert!(error.contains(expected), "{error}");
-    }
 }
 
 /// A compression artifact is admitted against the trusted chain of the supplied

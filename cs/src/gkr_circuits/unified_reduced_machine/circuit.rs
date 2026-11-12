@@ -677,7 +677,7 @@ mod test {
     use test_utils::skip_if_ci;
 
     const UNIFIED_CIRCUIT_TRACE_LEN_LOG2: usize = 23;
-    const L1_WRAP_2P21_TRACE_LEN_LOG2: usize = 21;
+    const L1_WRAP_TRACE_LEN_LOG2: usize = 21;
 
     use super::*;
     use crate::definitions::OutputType;
@@ -862,8 +862,8 @@ mod test {
             "compiled_circuits/unified_reduced_machine_ssa_gkr.json",
         );
         check::<Proth120>(
-            "compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json",
-            "compiled_circuits/unified_reduced_machine_ssa_gkr_proth120_2p21.json",
+            "compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+            "compiled_circuits/unified_reduced_machine_ssa_gkr_proth120.json",
         );
     }
 
@@ -1014,25 +1014,25 @@ mod test {
     }
 
     #[test]
-    fn compile_unified_reduced_machine_into_gkr_large_field_2p21() {
+    fn compile_unified_reduced_machine_into_gkr_large_field() {
         skip_if_ci!();
         use ::field::baby_bear::base::BabyBearField;
         use ::field::proth120::Proth120;
 
         let artifact = build_unified_artifact_core::<Proth120, BabyBearField>(
             true,
-            L1_WRAP_2P21_TRACE_LEN_LOG2,
+            L1_WRAP_TRACE_LEN_LOG2,
             1,
             L1_WRAP_ROM,
         );
         serialize_to_file(
             &artifact,
-            "compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json",
+            "compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
         );
     }
 
     #[test]
-    fn compile_unified_reduced_machine_gkr_witness_graph_large_field_2p21() {
+    fn compile_unified_reduced_machine_gkr_witness_graph_large_field() {
         skip_if_ci!();
         use crate::gkr_compiler::dump_ssa_witness_eval_form;
         use ::field::baby_bear::base::BabyBearField;
@@ -1050,7 +1050,7 @@ mod test {
         );
         serialize_to_file(
             &ssa_forms,
-            "compiled_circuits/unified_reduced_machine_ssa_gkr_proth120_2p21.json",
+            "compiled_circuits/unified_reduced_machine_ssa_gkr_proth120.json",
         );
     }
 }

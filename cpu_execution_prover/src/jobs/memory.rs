@@ -46,7 +46,7 @@ pub(super) fn run<A: HostTraceAllocator>(
     let storage = whir_storage(profile, config);
     let twiddles = jobs.twiddles(1usize << config.whir_message_size_log2(), worker);
     let flat_cap = match circuit_type {
-        CircuitType::L1Wrap21 => {
+        CircuitType::L1Wrap => {
             panic!("L1Wrap requires its typed proof request")
         }
         CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22)

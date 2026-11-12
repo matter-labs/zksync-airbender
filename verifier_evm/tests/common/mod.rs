@@ -4,7 +4,7 @@
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
 use prover::gkr::prover::{GKRProof, OperationMode};
-use prover::gkr::prover_config::example_configs::l1_wrap_2p21;
+use prover::gkr::prover_config::example_configs::l1_wrap;
 use prover::gkr::prover_config::ProverConfig;
 use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
 use std::path::{Path, PathBuf};
@@ -18,14 +18,14 @@ pub use prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTE
 
 /// gkr.sol consumes monomial rounds, transcript-identical to the windowed prover schedule.
 pub fn prover_config() -> ProverConfig {
-    let mut config = l1_wrap_2p21::packed_prover_config();
+    let mut config = l1_wrap::packed_prover_config();
     config.same_size_sumcheck_schedule = prover::gkr::prover_config::naive_same_size_schedule();
     config
 }
 pub fn load() -> (Circuit, Proof, OperationMode) {
     let circuit = serde_json::from_reader(
         std::fs::File::open(
-            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p21.json",
+            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
         )
         .expect("circuit layout"),
     )
@@ -47,27 +47,13 @@ pub fn final_pc() -> u32 {
 }
 
 pub fn contract_path(name: &str) -> PathBuf {
-    Path::new("generated_contracts/l1_wrap_2p21").join(name)
+    Path::new("generated_contracts/l1_wrap").join(name)
 }
 pub fn data_path(name: &str) -> PathBuf {
-    Path::new("debug_data/l1_wrap_2p21").join(name)
+    Path::new("debug_data/l1_wrap").join(name)
 }
 
 /// Require a named rejection from a public encoder boundary.
-pub fn assert_panics_with<T>(expected: &str, action: impl FnOnce() -> T + std::panic::UnwindSafe) {
-    let Err(payload) = std::panic::catch_unwind(action) else {
-        panic!("expected rejection");
-    };
-    let message = payload
-        .downcast_ref::<String>()
-        .map(String::as_str)
-        .or_else(|| payload.downcast_ref::<&str>().copied())
-        .expect("text panic");
-    assert!(
-        message.contains(expected),
-        "expected {expected:?}, got {message:?}"
-    );
-}
 
 pub const F1_CALLDATA: &str = "single_tx_f1.hex";
 pub const F1_FIELDS: &str = "single_tx_f1_fields.json";
@@ -137,7 +123,6 @@ pub fn f1_field_metadata(
 pub struct Bundle {
     pub proof: Proof,
     pub operation_mode: OperationMode,
-    pub wrap: String,
 }
 pub fn load_bundle(path: impl AsRef<Path>) -> Bundle {
     #[derive(serde::Deserialize)]
@@ -146,6 +131,5 @@ pub fn load_bundle(path: impl AsRef<Path>) -> Bundle {
     }
     let artifact: Artifact = proof_fixtures::read_file(path);
     let bundle = artifact.l1;
-    assert_eq!(bundle.wrap, "2p21");
     bundle
 }

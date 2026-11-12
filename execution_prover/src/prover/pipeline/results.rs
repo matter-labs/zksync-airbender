@@ -69,7 +69,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
             _ => self.profile,
         };
         let precomputations = match circuit_type {
-            CircuitType::L1Wrap21 => {
+            CircuitType::L1Wrap => {
                 panic!("L1Wrap requires its typed proof request")
             }
             CircuitType::Delegation(_)
@@ -359,7 +359,7 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                     prover.free_traces(inits_and_teardowns, tracing_data)
                 }
                 let caps: &mut BTreeMap<usize, Vec<MerkleTreeCapVarLength>> = match circuit_type {
-                    CircuitType::L1Wrap21 => {
+                    CircuitType::L1Wrap => {
                         panic!("L1Wrap result reached the BabyBear pipeline")
                     }
                     CircuitType::Delegation(circuit_type) => self
@@ -393,7 +393,7 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                 );
                 prover.free_traces(inits_and_teardowns, tracing_data);
                 match circuit_type {
-                    CircuitType::L1Wrap21 => {
+                    CircuitType::L1Wrap => {
                         panic!("L1Wrap result reached the BabyBear pipeline")
                     }
                     CircuitType::Delegation(circuit_type) => {

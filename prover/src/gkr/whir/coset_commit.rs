@@ -1198,7 +1198,7 @@ mod test {
 
     fn packed_recompute_setup_matches_materialized_with(num_columns: usize) {
         use crate::gkr::prover::setup::GKRSetup;
-        use crate::gkr::prover_config::example_configs::l1_wrap_2p21::packed_prover_config;
+        use crate::gkr::prover_config::example_configs::l1_wrap::packed_prover_config;
         use std::sync::Arc;
 
         let worker = Worker::new_with_num_threads(2);
