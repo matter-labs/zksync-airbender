@@ -7,11 +7,26 @@ on:
       - dev
       - av_gkr_compiler
   pull_request:
+  workflow_dispatch:
+    inputs:
+      lean_mode:
+        description: "Lean FV mode"
+        type: choice
+        options: [incremental, cold, kernel_replay]
+        default: incremental
 
 permissions: read-all
 
 jobs:
+  lean:
+    name: Lean FV
+    uses: ./.github/workflows/lean-formal-verification.yml
+    with:
+      cold: ${{ inputs.lean_mode == 'cold' }}
+      kernel_replay: ${{ inputs.lean_mode == 'kernel_replay' }}
+
   tests:
+    if: github.event_name != 'workflow_dispatch'
     name: tests
     runs-on: [matterlabs-ci-runner-high-performance]
     # The non-ignored GKR e2e tests (prover tests::gkr::*) run for tens of
@@ -54,6 +69,7 @@ jobs:
         run: cargo test -p full_statement_verifier --profile cli --features host_utils,verifiers --lib --test cost_model_drift
 
   formatting:
+    if: github.event_name != 'workflow_dispatch'
     name: cargo fmt
     runs-on: ubuntu-latest
     steps:
@@ -77,6 +93,7 @@ jobs:
           fi
 
   warnings:
+    if: github.event_name != 'workflow_dispatch'
     name: warnings (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
@@ -111,6 +128,7 @@ jobs:
           cargo check -p gpu_core -p gpu_ntt --lib ${{ matrix.args }}
 
   circuits_generated:
+    if: github.event_name != 'workflow_dispatch'
     name: circuits_generated
     runs-on: [matterlabs-ci-runner-c3d]
     steps:
@@ -135,6 +153,7 @@ jobs:
           fi
 
   check_verifiers:
+    if: github.event_name != 'workflow_dispatch'
     name: check_verifiers
     runs-on: [matterlabs-ci-runner-c3d]
     steps:
@@ -162,6 +181,7 @@ jobs:
           fi
 
   evm_verifier:
+    if: github.event_name != 'workflow_dispatch'
     name: evm_verifier
     runs-on: [matterlabs-ci-runner-c3d]
     timeout-minutes: 30
@@ -186,6 +206,7 @@ jobs:
         run: git diff --exit-code -- verifier_evm/
 
   cli_smoke_verify:
+    if: github.event_name != 'workflow_dispatch'
     name: cli_smoke_verify
     runs-on: [matterlabs-ci-runner-high-performance]
     timeout-minutes: 180
@@ -226,8 +247,9 @@ jobs:
   pr-checks:
     name: pr-checks
     runs-on: ubuntu-latest
-    if: always()
+    if: always() && github.event_name != 'workflow_dispatch'
     needs:
+      - lean
       - tests
       - formatting
       - warnings

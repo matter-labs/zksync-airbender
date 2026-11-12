@@ -12,26 +12,17 @@ name: "Lean formal verification"
 # Job kernel_replay (1st and 15th of each month, manual with `kernel_replay`): the kernel re-checks every constant of
 #   our modules (ci/lean-ci.sh kernel-check).
 on:
-  # pushes to the branches Rust CI runs on: their caches seed the pull requests that target them (a pull request
-  # can restore caches of its base branch and of the default branch only)
-  push:
-    branches:
-      - main
-      - stable
-      - dev
-      - av_gkr_compiler
-    paths:
-      - "cs_formal_verification/**"
-      # the circuit JSONs the spec imports (lean/lakefile.toml [[input_file]]) and the tests read
-      - "cs/compiled_circuits/*_gkr.json"
-      - ".github/workflows/lean-formal-verification.yml"
-      - ".github/actions/lean-fv-setup/**"
-  pull_request:
-    paths:
-      - "cs_formal_verification/**"
-      - "cs/compiled_circuits/*_gkr.json"
-      - ".github/workflows/lean-formal-verification.yml"
-      - ".github/actions/lean-fv-setup/**"
+  workflow_call:
+    inputs:
+      lean_threads:
+        type: string
+        default: ""
+      cold:
+        type: boolean
+        default: false
+      kernel_replay:
+        type: boolean
+        default: false
   # nightly cold run (GitHub runs schedules from the default branch only: inert until this file is on main)
   schedule:
     - cron: "17 2 * * *"      # lean_verify, cold
@@ -58,8 +49,36 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.scope.outputs.relevant }}
+      native: ${{ steps.scope.outputs.native }}
+    steps:
+      - uses: actions/github-script@v7
+        id: scope
+        with:
+          script: |
+            let files;
+            if (context.eventName === 'pull_request') {
+              files = await github.paginate(github.rest.pulls.listFiles, {
+                ...context.repo, pull_number: context.issue.number, per_page: 100
+              });
+            } else if (context.eventName === 'push' && !/^0+$/.test(context.payload.before)) {
+              const comparison = await github.rest.repos.compareCommitsWithBasehead({
+                ...context.repo, basehead: `${context.payload.before}...${context.sha}`
+              });
+              files = comparison.data.files;
+              if (files.length >= 300) files = undefined;
+            }
+            const native = /^(cs\/src\/|circuit_defs\/|prover\/src\/gkr\/|execution_prover\/examples\/export_setup_json\.rs|riscv_transpiler\/|cs_formal_verification\/lean\/(scripts\/|human\/Human\/.*(?:Decoder|Program)|artifacts\/setup\/)|Cargo\.|rust-toolchain)/;
+            const relevant = /^(cs_formal_verification\/|cs\/compiled_circuits\/|\.github\/(workflows\/(?:ci|lean-formal-verification)\.yml|actions\/lean-fv-setup\/))/;
+            core.setOutput('relevant', !files || files.some(f => relevant.test(f.filename) || native.test(f.filename)));
+            core.setOutput('native', !files || files.some(f => native.test(f.filename)));
+
   lean_verify:
     name: lean_verify
+    needs: scope
     if: >-
       (github.event_name == 'schedule' && github.event.schedule == '17 2 * * *') ||
       (github.event_name == 'workflow_dispatch' && !inputs.kernel_replay) ||
@@ -73,6 +92,7 @@ jobs:
       # LEAN_CI_THREADS overrides the default for the runner class.
       LEAN_NUM_THREADS: ${{ inputs.lean_threads || vars.LEAN_CI_THREADS || '8' }}
       MODULE_BUDGET_JOBS: ${{ vars.LEAN_CI_BUDGET_JOBS || '4' }}
+      LEAN_RELEVANT: ${{ needs.scope.outputs.relevant }}
       LEAN_DIR: cs_formal_verification/lean
       CI_MODE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.cold)) && 'incremental' || 'cold' }}
       VERIFY_AUDITS: ${{ (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.cold)) && 'replay' || 'fresh' }}
@@ -80,12 +100,18 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: No relevant changes
+        if: env.LEAN_RELEVANT != 'true'
+        run: echo "Lean inputs are unchanged."
       - name: Install git
+        if: env.LEAN_RELEVANT == 'true'
         run: |
           apt-get update -q
           apt-get install -y -q --no-install-recommends ca-certificates git
       - uses: actions/checkout@v4
+        if: env.LEAN_RELEVANT == 'true'
       - uses: ./.github/actions/lean-fv-setup
+        if: env.LEAN_RELEVANT == 'true'
 
       # Lake's build outputs of this project, the Sail model and Clean; the dependencies' C objects (the test
       # executable links every imported module and Mathlib's cache has no objects: ~3100 files, ~6 min of clang CPU,
@@ -94,7 +120,7 @@ jobs:
       # cache of the same toolchain and dependencies.
       - name: Restore the Lake build
         id: build-cache
-        if: env.CI_MODE == 'incremental'
+        if: ${{ env.LEAN_RELEVANT == 'true' && (env.CI_MODE == 'incremental') }}
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -108,19 +134,33 @@ jobs:
             lean-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-
 
       - name: Dependencies (Sail model, Clean imports, the test executable's dependency objects)
+        if: env.LEAN_RELEVANT == 'true'
         run: |
           touch /tmp/job-start
           cs_formal_verification/ci/lean-ci.sh time lean-deps
       - name: verify.sh
+        if: env.LEAN_RELEVANT == 'true'
         run: cs_formal_verification/ci/lean-ci.sh time verify
+      - name: Decoder oracle
+        if: env.LEAN_RELEVANT == 'true'
+        run: python3 scripts/module_budget.py build program_rows_oracle
+        working-directory: cs_formal_verification/lean
+      - name: Upload decoder oracle
+        if: env.LEAN_RELEVANT == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: decoder-oracle
+          path: cs_formal_verification/lean/.lake/build/bin/program_rows_oracle
+          include-hidden-files: true
+          if-no-files-found: error
       - name: Build report
-        if: ${{ !cancelled() }}
+        if: ${{ env.LEAN_RELEVANT == 'true' && (!cancelled()) }}
         run: cs_formal_verification/ci/lean-ci.sh report /tmp/job-start
 
       # Saved in both modes (a cold run seeds the pull requests), even when verify.sh fails: the modules that did
       # build are reused by the next run.
       - name: Save the Lake build
-        if: ${{ !cancelled() && steps.build-cache.outputs.cache-hit != 'true' }}
+        if: ${{ env.LEAN_RELEVANT == 'true' && (!cancelled() && steps.build-cache.outputs.cache-hit != 'true') }}
         uses: actions/cache/save@v4
         with:
           path: |
@@ -131,7 +171,7 @@ jobs:
             ${{ env.LEAN_DIR }}/.lake/packages/*/.lake/build/ir/**/*.c.o*
           key: lean-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-${{ github.sha }}
       - name: Upload the build logs and the budget table
-        if: ${{ !cancelled() }}
+        if: ${{ env.LEAN_RELEVANT == 'true' && (!cancelled()) }}
         uses: actions/upload-artifact@v4
         with:
           name: lean-verify-logs
@@ -198,3 +238,41 @@ jobs:
         run: |
           echo "::error::bwrap cannot sandbox on this runner: only the leanchecker fallback ran (see kernel-probe)"
           exit 1
+
+  native_drift:
+    name: native_drift
+    needs: [scope, lean_verify]
+    if: needs.scope.outputs.native == 'true' && !inputs.kernel_replay
+    runs-on: [matterlabs-ci-runner-high-performance]
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: "4"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+      RAYON_NUM_THREADS: "1"
+      ZKSYNC_USE_CUDA_STUBS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+          cache-key: fv-native-drift
+      - name: Check the FV exporter
+        run: cargo check -p execution_prover --example export_setup_json
+      - name: Build the FV exporter
+        run: cargo build -p execution_prover --profile cli --example export_setup_json
+      - name: Native setup freshness
+        run: python3 cs_formal_verification/lean/scripts/check_setup_freshness.py --exporter target/cli/examples/export_setup_json
+      - uses: actions/download-artifact@v4
+        with:
+          name: decoder-oracle
+          path: /tmp/fv-decoder-oracle
+      - name: Public program decoder row differential
+        run: |
+          chmod +x /tmp/fv-decoder-oracle/program_rows_oracle
+          python3 cs_formal_verification/lean/scripts/test_program_decoder_rows.py
+          python3 cs_formal_verification/lean/scripts/test_setup_freshness.py
+          python3 cs_formal_verification/lean/scripts/fetch_production_program.py --destination /tmp/fv-programs
+          python3 cs_formal_verification/lean/scripts/check_program_decoder_rows.py --exporter target/cli/examples/export_setup_json --oracle /tmp/fv-decoder-oracle/program_rows_oracle
+          python3 cs_formal_verification/lean/scripts/check_program_decoder_rows.py --exporter target/cli/examples/export_setup_json --oracle /tmp/fv-decoder-oracle/program_rows_oracle --committed-verifiers
+          python3 cs_formal_verification/lean/scripts/check_program_decoder_rows.py --exporter target/cli/examples/export_setup_json --oracle /tmp/fv-decoder-oracle/program_rows_oracle --program /tmp/fv-programs/multiblock_batch.text --configs full,unified
