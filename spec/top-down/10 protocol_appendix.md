@@ -89,7 +89,7 @@ RecursionChain (10c): prove the base program, then repeatedly prove the matching
 >
 > 3. Run $\mathrm{VerifyChunks}(\mathtt{ProgramSetupCaps},\mathbf r_{\mathrm{mem}},T_{\mathrm{mem}})$ (Algorithm 2), obtaining the read/write products $\mathrm{RS},\mathrm{WS}\in E$ and the completed memory transcript $T_{\mathrm{mem}}$.
 > 4. Prover sends the 64-bit memory-PoW nonce. Both parties absorb it into $T_{\mathrm{mem}}$, draw one 32-bit PoW word, then sample the shared challenges from subsequent words. Verifier requires at least 19 leading zero bits in the PoW word and equality between the sampled challenges and the supplied $\mathbf r_{\mathrm{mem}}$.
-> 5. Run $\mathrm{CloseMemory}(\mathrm{fin},\mathbf{r}_{\mathrm{mem}},\mathrm{RS},\mathrm{WS})$ (Algorithm 9).
+> 5. Run $\mathrm{CloseMemory}(\mathrm{fin},\mathbf{r}_{\mathrm{mem}},\mathrm{RS},\mathrm{WS})$ (Algorithm 9b).
 > 6. Return $\mathrm{ContinueChain}(\mathtt{ProgramSetupCaps},\mathrm{fin},\mathrm{mode})$ (Algorithm 10b): the application result $(x_{10},\ldots,x_{17})$ and program-history digest $(h_0,\ldots,h_7)$, each eight 32-bit words. Reject if any check or subalgorithm fails.
 >
 > **Algorithm 1b — TerminalStatement**
@@ -102,7 +102,7 @@ RecursionChain (10c): prove the base program, then repeatedly prove the matching
 > 2. Both parties initialize $T_{\mathrm{mem{+}}}$ with seed $\mathrm{Keccak256}(\mathrm{fin}\mathbin{\|}b\mathbin{\|}\mathtt{SetupCaps}\mathbin{\|}\mathtt{MemoryCaps})$, encoding the concatenation as little-endian 32-bit words.
 > 3. Prover sends the 64-bit memory/lookup-PoW nonce. Both parties absorb it into $T_{\mathrm{mem{+}}}$ and draw one 256-bit PoW word. Verifier requires the number of leading zero bits to meet the combined memory/lookup-PoW threshold specified in Algorithm 12. Both parties then sample $\mathbf{r}_{\mathrm{mem}}=(r_{\mathrm{mem},0},\ldots,r_{\mathrm{mem},5},r_{\mathrm{mem},\eta})\in E^7$, followed by $\mathbf{r}_{\mathrm{lookup}}=(r_{\mathrm{lookup},\alpha},r_{\mathrm{lookup},\beta})\in E^2$, from subsequent drawn words.
 > 4. Run $\mathrm{SeededChunk}(C,\mathbf{r}_{\mathrm{mem}},\mathbf{r}_{\mathrm{lookup}},b,(\mathtt{MemoryCaps},\varnothing,\mathtt{SetupCaps}),T_{\mathrm{mem{+}}})$ (Algorithm 3b), obtaining $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$ and $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$, together with the updated $T_{\mathrm{mem{+}}}$.
-> 5. Run $\mathrm{CloseMemory}(\mathrm{fin},\mathbf{r}_{\mathrm{mem}},\mathrm{RS}_{\mathrm{chunk}}\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{chunk}}\mathrm{WS}_{\mathrm{IT}})$ (Algorithm 9).
+> 5. Run $\mathrm{CloseMemory}(\mathrm{fin},\mathbf{r}_{\mathrm{mem}},\mathrm{RS}_{\mathrm{chunk}}\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{chunk}}\mathrm{WS}_{\mathrm{IT}})$ (Algorithm 9b).
 > 6. Return from $\mathrm{fin}$: the application result $(x_{10},\ldots,x_{17})$ and program-history digest $(h_0,\ldots,h_7)=(x_{18},\ldots,x_{25})$, each eight 32-bit words. Reject if any check or subalgorithm fails.
 >
 > **Soundness — statement composition (conditional)**
@@ -531,13 +531,49 @@ RecursionChain (10c): prove the base program, then repeatedly prove the matching
 
 ---
 
-> **Algorithm 9 — CloseMemory**
+> **Algorithm 9 — Memory argument**
+>
+> Algorithm 9a defines the event encoding shared by all circuits and by the boundary events; Algorithm 9b closes the argument for one statement.
+>
+> **Algorithm 9a — EncodeEvent**
+>
+> **Input:** memory event $t$ and challenges $\mathbf{r}_{\mathrm{mem}}=(r_{\mathrm{mem},0},\ldots,r_{\mathrm{mem},5},r_{\mathrm{mem},\eta})$. **Output:** the event's image $L_{\mathbf{r}_{\mathrm{mem}}}(t)\in E$.
+>
+> **Notation:** an event is $t=(a;t_0,\ldots,t_5)$ with tag $a$ and limbs $(t_0,t_1)$ = address lo/hi, $(t_2,t_3)$ = timestamp lo/hi and $(t_4,t_5)$ = value lo/hi. Address and value limbs are 16-bit halves of a 32-bit word; timestamp limbs are 19-bit, with $\mathrm{timestamp}=t_2+2^{19}t_3$.
+>
+> | Tag $a$ | Subspace | Address | Value |
+> |---|---|---|---|
+> | 0 | Register | register index $0,\ldots,31$ | register value |
+> | 1 | RAM | address of the RAM word | stored word |
+> | 2 | PC | 0 (a single cell) | program counter |
+>
+> 1. Return, with six independent coefficients:
+>
+>    $$
+>    L_{\mathbf{r}_{\mathrm{mem}}}(t)=a+r_{\mathrm{mem},\eta}+\sum_{j=0}^5r_{\mathrm{mem},j}\,t_j
+>    $$
+>
+> **Role in the memory argument.** This encoding is the set fingerprint of the memory-consistency argument of [Two Shuffles Make a RAM](https://eprint.iacr.org/2023/1115). Every access to a location emits a read event, which consumes the tuple left by the previous access (its timestamp and value), and a write event, which leaves a new tuple with the current timestamp and the resulting value. Together with one initial write and one final read per location, the accesses are consistent when the read and write multisets are equal and timestamps increase along each location's history. Multiset equality is tested through the products of the images $L_{\mathbf{r}_{\mathrm{mem}}}(t)$ over both multisets at the random $\mathbf{r}_{\mathrm{mem}}$.
+>
+> Here a single argument covers the whole machine state: RAM, the registers and the PC are subspaces of one memory, separated by the tag. The tag enters additively and without a challenge, so events of different subspaces have different images as polynomials in $\mathbf{r}_{\mathrm{mem}}$ and never cancel each other. All circuits use this encoding for their read/write products, which is why Algorithm 2 can multiply the chunk products and Algorithm 9b can close them with a single equality.
+>
+> **Algorithm 9b — CloseMemory**
 >
 > **Input:** final state $\mathrm{fin}$, $\mathbf{r}_{\mathrm{mem}}$, authenticated products $\mathrm{RS},\mathrm{WS}$.
 >
-> **Notation:** $R,W$ are read/write event multisets; $\mathbf{r}_{\mathrm{mem}}=(r_{\mathrm{mem},0},\ldots,r_{\mathrm{mem},5},r_{\mathrm{mem},\eta})$. In event $t=(a,t_0,\ldots,t_5)$, the limbs are address lo/hi, timestamp lo/hi, value lo/hi; tags are 0 = register, 1 = RAM, 2 = PC. Define $L_{\mathbf{r}_{\mathrm{mem}}}(t)=a+r_{\mathrm{mem},\eta}+\sum_{j=0}^5r_{\mathrm{mem},j} t_j$ with six independent coefficients.
+> **Notation:** $R,W$ are the statement's read/write event multisets, including the boundary events below. $L_{\mathbf{r}_{\mathrm{mem}}}$ is the encoding of Algorithm 9a. From $\mathrm{fin}$, $x_i=x_{i,\mathrm{lo}}+2^{16}x_{i,\mathrm{hi}}$ and $\mathrm{pc}=\mathrm{pc}_{\mathrm{lo}}+2^{16}\mathrm{pc}_{\mathrm{hi}}$, and the timestamp limbs are used as sent.
 >
-> 1. Form multisets of event tuples: `Initial` contains the ordinary-register writes $x_0,\ldots,x_{31}$ of value 0 at time 0, and the PC write with value 0 at time 4; `Final` contains the 32 register reads and PC read specified by $\mathrm{fin}$. Include their boundary factors:
+> 1. **Initial events (write side).** `Initial` describes the registers and PC before the first cycle. It is the same for every statement:
+>    - **Registers:** for each $i=0,\ldots,31$, the event $(0;\,i,0,\,0,0,\,0,0)$: register $x_i$ holds 0, written at time 0, before any cycle.
+>    - **PC:** the event $(2;\,0,0,\,4,0,\,0,0)$: the PC cell holds the entry point 0 at time 4, the timestamp of the first cycle.
+>
+>    These are writes because they are the tuples consumed by the first access to each register and by the first cycle's PC read. An execution therefore always starts from zero registers and $\mathrm{pc}=0$, and no input is passed through the initial state.
+> 2. **Final events (read side).** `Final` describes the registers and PC after the last cycle, as claimed in $\mathrm{fin}$:
+>    - **Registers:** for each $i=0,\ldots,31$, the event $(0;\,i,0,\,\mathrm{ts}_{i,\mathrm{lo}},\mathrm{ts}_{i,\mathrm{hi}},\,x_{i,\mathrm{lo}},x_{i,\mathrm{hi}})$: the tuple left by the last access to $x_i$, namely its final value and the time of that access. For a register that is never accessed this is its initial tuple.
+>    - **PC:** the event $(2;\,0,0,\,\mathrm{ts}_{\mathrm{pc},\mathrm{lo}},\mathrm{ts}_{\mathrm{pc},\mathrm{hi}},\,\mathrm{pc}_{\mathrm{lo}},\mathrm{pc}_{\mathrm{hi}})$: the tuple left by the last cycle, namely the final PC and the time following that cycle.
+>
+>    These are reads because they consume the tuples that no later access consumes, which closes every register's history and the PC chain.
+> 3. Include the boundary factors:
 >
 >    $$
 >    \begin{aligned}
@@ -546,7 +582,11 @@ RecursionChain (10c): prove the base program, then repeatedly prove the matching
 >    \end{aligned}
 >    $$
 >
-> 2. Require $\mathrm{RS}=\mathrm{WS}$. RAM boundaries already enter through IT products.
+> 4. Require $\mathrm{RS}=\mathrm{WS}$.
+>
+> RAM has the same two kinds of boundary events, zero-valued initialization writes and teardown reads, but they are proved by the IT circuits and already enter $\mathrm{RS},\mathrm{WS}$ through the IT products (Algorithm 2). The final RAM contents are therefore not exposed.
+>
+> **Public output.** $\mathrm{fin}$ is the only statement-specific input to these boundary events. Prover claims it in Algorithm 1a, step 1, and the product equality binds it to the execution: the accepted final register values are the values left by the last writes, and the accepted final PC is the one left by the last cycle. The final register values thus act as the public output of the proved execution. Algorithm 10b reads the application result from $x_{10},\ldots,x_{17}$ and the incoming program history from $x_{18},\ldots,x_{25}$, and Algorithm 10a hashes the final PC into the end program parameters, which identify a successful ending. The remaining registers and all timestamps are bound in the same way but are not used further.
 >
 > Chunk transcripts end independently. This product equality uses the shared $\mathbf{r}_{\mathrm{mem}}$ and requires no further challenges or transcript merge.
 >
@@ -556,7 +596,7 @@ RecursionChain (10c): prove the base program, then repeatedly prove the matching
 >
 > - **Local semantics:** instruction and delegation relations hold under the supplied program setups and fixed delegation setups, including instruction decoding, lookup membership and local PC updates. Range constraints give addresses, values and timestamps their intended integer interpretation; inactive rows contribute neutral memory products.
 > - **Memory consistency:** the read/write event multisets, including boundary events, are equal with multiplicity under the injective encoding above. Timestamps strictly increase along each location's state transitions, and each read identifies a unique preceding write by location and timestamp.
-> - **Boundary coverage:** register and PC boundary events are exactly those in steps 1–2. Disjoint IT windows cover every RAM location used by the execution and supply its zero-valued initialization and matching teardown.
+> - **Boundary coverage:** register and PC boundary events are exactly those in Algorithm 9b, steps 1–2. Disjoint IT windows cover every RAM location used by the execution and supply its zero-valued initialization and matching teardown.
 > - **Global connectivity:** PC events connect all active instruction transitions into a single chain from the initial PC/time to the final PC/time in $\mathrm{fin}$. Delegation requests and responses match with multiplicity, including their operation identities, arguments and results.
 >
 > These premises imply an execution of the program identified by the supplied setups, from $(\mathrm{pc},\mathrm{time})=(0,4)$ and zero ordinary registers/RAM to $\mathrm{fin}$. Proving this implication and deriving its premises from the accepted circuit and participant checks remain reconstruction proof obligations.
