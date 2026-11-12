@@ -1,4 +1,6 @@
 module
+public import Proven.Trace.Machine.Requests
+public import Proven.Trace.Machine.UnifiedRequests
 public import Tests.VerifierBoundary
 public import Tests.PooledHistory
 public import Tests.PooledROM
@@ -282,3 +284,13 @@ public import Proven.Trace.MemoryPorts
 #print axioms Tests.VerifierBoundary.noncanonical_decoded
 
 #print axioms Tests.VerifierBoundary.noncanonical_verifier_boundary_rejected
+
+#print axioms Airbender.Trace.Machine.Proofs.worker_fulfillments_live
+
+#print axioms Airbender.Trace.Machine.Proofs.unrolled_requests_complete
+
+#print axioms Airbender.Trace.Machine.Proofs.unrolled_request_times_unique
+
+#print axioms Airbender.Trace.Machine.Proofs.unrolled_worker_clocks
+
+#print axioms Airbender.Trace.Machine.Proofs.unified_requests_complete
