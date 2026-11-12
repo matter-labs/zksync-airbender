@@ -402,6 +402,7 @@ roots = [
   "Checks.TraceAxioms",
   "Checks.Satisfiable",
   "Tests.ArtifactImport",
+  "Tests.SetupComparison",
   "Tests.Bigint",
   "Tests.BigintAbi",
   "Tests.BigintAddresses",
