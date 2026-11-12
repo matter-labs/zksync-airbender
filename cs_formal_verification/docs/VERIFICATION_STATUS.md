@@ -101,3 +101,5 @@ The witnesses are in `proven/Proven/<family>/RVNonVacuous.lean`.
 
 See [reproduction commands](../README.md#reproduce), [trust boundaries](TRUST_AND_REVIEW.md)
 and the [plan](FORMAL_VERIFICATION_PLAN.md).
+
+| [Production machine targets](../lean/human/Human/Trace/Machine/Theorems.lean) | `UnrolledFullUnsigned`, `UnrolledReduced` and `Unified` are explicit target statements. They use public ROM programs, initialization-instance lists, typed verifier closure and shared worker matching. | Proofs, cached GKR composition, initialization gates and padding remain open. |

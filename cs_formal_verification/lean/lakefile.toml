@@ -37,6 +37,10 @@ srcDir = "human"
 roots = ["Human"]
 globs = [
   "Human",
+  "Human.Helpers.Context.VerifierBoundary.Model",
+  "Human.Helpers.Decoder.RVMachineProgram",
+  "Human.Trace.Machine.Model",
+  "Human.Trace.Machine.Theorems",
   "Human.Circuits.AddSub.RVCallerTheorems",
   "Human.Circuits.AddSub.RVModel",
   "Human.Circuits.AddSub.RVTheorems",

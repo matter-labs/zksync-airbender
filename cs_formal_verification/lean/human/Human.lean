@@ -33,3 +33,5 @@ import Human.ISA.DelegationRuns
 import Human.ISA.Vectors
 import Human.Trace.UnifiedReduced.RVCallerTheorems
 import Human.Import.Theorems
+
+import Human.Trace.Machine.Theorems
