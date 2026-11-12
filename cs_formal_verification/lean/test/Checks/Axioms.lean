@@ -1,3 +1,5 @@
+import Proven.Final.Trace.Machine.Unrolled
+import Proven.Final.Trace.Machine.Unified
 import Proven.Final.Circuits.Blake2Round.Mask
 import Proven.Final.Circuits.InitsTeardowns.NativeProducts
 import Proven.Final.Compiler.Theorems
@@ -1362,3 +1364,9 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.Blake2Round.Mask.soundness
 
 #print axioms Airbender.Blake2Round.Mask.satisfiable
+
+#print axioms Airbender.Trace.Machine.unrolled_full_unsigned
+
+#print axioms Airbender.Trace.Machine.unrolled_reduced
+
+#print axioms Airbender.Trace.Machine.unified

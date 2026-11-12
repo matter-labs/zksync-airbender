@@ -1,3 +1,5 @@
+import Proven.Final.Trace.Machine.Unrolled
+import Proven.Final.Trace.Machine.Unified
 import Proven.Final.Circuits.Blake2Round.Mask
 import Proven.Final.Circuits.InitsTeardowns.NativeProducts
 import Proven.Final.Compiler.Theorems
@@ -638,3 +640,15 @@ example : Airbender.Blake2Round.Mask.SoundnessClaim := Airbender.Blake2Round.Mas
 example : Airbender.Blake2Round.Mask.SatisfiableClaim := Airbender.Blake2Round.Mask.satisfiable
 
 #print axioms Airbender.Blake2Round.Mask.satisfiable
+
+example : Airbender.Trace.Machine.UnrolledFullUnsigned := Airbender.Trace.Machine.unrolled_full_unsigned
+
+#print axioms Airbender.Trace.Machine.unrolled_full_unsigned
+
+example : Airbender.Trace.Machine.UnrolledReduced := Airbender.Trace.Machine.unrolled_reduced
+
+#print axioms Airbender.Trace.Machine.unrolled_reduced
+
+example : Airbender.Trace.Machine.Unified := Airbender.Trace.Machine.unified
+
+#print axioms Airbender.Trace.Machine.unified

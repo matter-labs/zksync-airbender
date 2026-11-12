@@ -2,7 +2,8 @@
 
 [Theorems.lean](Theorems.lean) states the three production targets:
 `UnrolledFullUnsigned`, `UnrolledReduced` and `Unified`.
-The statements are targets. Their proofs are open.
+The [final proofs](../../../../proven/Proven/Final/Trace/Machine/Unrolled.lean) establish both unrolled targets.
+The [unified proof](../../../../proven/Proven/Final/Trace/Machine/Unified.lean) establishes the unified target.
 
 Each conclusion is `RVRealizes`: one run of `RV.run` reaches the terminal PC and tracked cells.
 The program is public ROM data. Each initialization instance supplies its own checked top bits.
@@ -37,5 +38,5 @@ and its terminal reads. Native caller zeroes and public decoder metadata preserv
 The [cycle partition](../../../../proven/Proven/Trace/Machine/CycleGroups.lean) retains each CPU row and its unique
 matched standard or split worker. It uses occurrence clocks and permits repeated PCs.
 
-The native acceptance interface is explicit. Cached GKR preservation, whole execution composition
-and padding remain open before these targets have final proofs.
+The native acceptance interface is explicit. The [run composition](../../../../proven/Proven/Trace/Machine/UnrolledRun.lean)
+uses one shared history and permits loops. Cached GKR preservation and padding remain open.
