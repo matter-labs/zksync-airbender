@@ -542,8 +542,7 @@ fn test_program_prover_cpu_gpu_proof_diff() {
     init_test_logger();
     let (binary_image, text_section) = load_workload("hashed_fibonacci");
 
-    // CPU reference (params mirror prover_examples::recursion's base layer,
-    // including the ROM-word padding its `load_program` applies).
+    // CPU reference with the ROM-word padding applied by ProgramSource::load.
     let (padded_binary_image, padded_text_section) = ProgramSource::legacy_binaries(
         artifact_root().join("examples/hashed_fibonacci/app_blake2_with_compression.bin"),
         artifact_root().join("examples/hashed_fibonacci/app_blake2_with_compression.text"),
@@ -758,8 +757,8 @@ fn test_program_prover_cpu_gpu_proof_diff() {
 /// special opcodes) through the JIT simulator + GPU prover; a decode gap in the
 /// JIT would surface here.
 ///
-/// Mirrors one iteration of `prover_examples::recursion`'s unrolled-recursion
-/// loop: chain fields come from `begin_chain(compute_end_params(base))`, and
+/// One unrolled-recursion iteration: chain fields come from
+/// `begin_chain(compute_end_params(base))`, and
 /// the recursion-layer verify runs with `is_base = false` (reads the chain
 /// preimage from the stream).
 #[test]
@@ -844,9 +843,8 @@ fn test_program_prover_recursion_layer_verify() {
     log::info!("recursion layer verified natively; output registers: {output:?}");
 }
 
-/// Full GPU recursive pipeline, mirroring `prover_examples::recursion`'s
-/// `test_recursive_proving_pipeline_zksync_os` but with our test workload
-/// (hashed_fibonacci) and every proof produced by the GPU `ExecutionProver`:
+/// Full GPU recursive pipeline for the hashed_fibonacci test workload,
+/// with every proof produced by the GPU `ExecutionProver`:
 ///
 ///   base (unrolled, full-unsigned ISA)
 ///   → unrolled recursion loop (reduced ISA, fsv verifier binaries)
