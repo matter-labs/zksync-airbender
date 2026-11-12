@@ -138,7 +138,8 @@ jobs:
           path: |
             ${{ env.LEAN_DIR }}/.lake/verify-build-*.log
             ${{ env.LEAN_DIR }}/.lake/module-budget.tsv
-          if-no-files-found: ignore
+          include-hidden-files: true
+          if-no-files-found: error
 
   kernel_replay:
     name: kernel_replay
