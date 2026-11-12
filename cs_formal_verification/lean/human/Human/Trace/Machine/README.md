@@ -25,6 +25,8 @@ The [bigint](../../../../proven/Proven/UnifiedReduced/RVCaller/BigintStep.lean),
 The round proof accepts every native Boolean mask.
 The [shared memory proof](../../../../proven/Proven/Trace/Machine/MemoryBounds.lean) bounds every CPU and worker read,
 write and terminal word from the public seeds and native matching. The transfer-order proof covers both worker pools.
+The [history proof](../../../../proven/Proven/Trace/Machine/SharedHistory.lean) gives one actual RV memory history
+and its terminal reads. Native caller zeroes and public decoder metadata preserve x0.
 
 The native acceptance interface is explicit. Cached GKR preservation, whole execution composition
 and padding remain open before these targets have final proofs.
