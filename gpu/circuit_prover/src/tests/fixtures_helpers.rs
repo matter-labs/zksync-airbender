@@ -164,6 +164,11 @@ fn build_input_fixture(
     BasicUnrolledFixture {
         context,
         circuit_type,
+        profile: match circuit {
+            CanonicalCircuit::Compression => ProofProfile::Compression,
+            CanonicalCircuit::CompressionFinal => ProofProfile::CompressionFinal,
+            _ => ProofProfile::Standard,
+        },
         gkr_programs: Arc::new(
             GkrPrograms::compile(circuit_type, Arc::new(compiled_circuit.clone())).unwrap(),
         ),
