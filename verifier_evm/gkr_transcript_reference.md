@@ -22,7 +22,7 @@ concatenate registers x10..x17 and x18..x25 as little-endian u32s. The last is
 Keccak256 of the setup cap serialized as big-endian u32 digest words;
 [verified_mark](src/seed.rs) computes the same tuple.
 
-[encoding_roundtrip.rs](tests/encoding_roundtrip.rs) checks replay and round
+[encoding_roundtrip.rs](tests/encoding_roundtrip.rs) checks round
 factorization, including exceptional challenges. Run Rust checks with
 `cargo test -p verifier_evm --tests`; cryptographic acceptance and rejection
 controls require [run_merged.sh](generated_contracts/run_merged.sh).
@@ -30,6 +30,6 @@ controls require [run_merged.sh](generated_contracts/run_merged.sh).
 Proof and setup-frontier producer commands are in the
 [fixture README](../fixtures/README.md).
 The EVM producers read `.l1` from the CLI `l1.json` artifact. The
-[contract harness README](generated_contracts/l1_wrap_2p21/README.md) gives contract
-and calldata producer commands. `checked_in_contracts_are_current` checks
+[contract harness README](generated_contracts/l1_wrap/README.md) gives contract
+and calldata producer commands. The CI producer-and-diff check validates
 committed contracts against current inputs and templates.

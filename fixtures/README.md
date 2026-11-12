@@ -5,16 +5,15 @@ soundness mode: `PessimisticConjecture` and `EthproofsSoundnessCalc`.
 Proofs live in `circuits/<mode>/<circuit>.json.zlib` under this directory.
 The mode directories are `pessimistic_conjecture` and `ethproofs_soundcalc`.
 G-function has no canonical fixture. Legacy `keccak_special5` remains covered.
-Pessimistic-conjecture mode also has two special-profile circuit fixtures:
-`compression.json.zlib` is the last repeatable 2^23 Compression-step proof,
-and `compression_final.json.zlib` is the terminal 2^22 CompressionFinal proof.
-The `compression` stage produces them together with its chain artifact.
+Pessimistic-conjecture mode also has the canonical special-profile fixtures
+`compression.json.zlib` and `compression_final.json.zlib`. The `circuits` stage
+produces them from the shared fixed workload.
 
 The producer recipe runs from the repository root:
 
 ```sh
 fixtures/regenerate.sh                    # both modes, circuits and chains in order
-fixtures/regenerate.sh --stage circuits   # only the 28 circuit proofs
+fixtures/regenerate.sh --stage circuits   # only canonical circuit proofs
 fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage base_unified
 ```
 
@@ -36,7 +35,7 @@ generated layouts. The producer reads each circuit's generated Sec100 config
 for its mode, uses every available core with in-memory WHIR oracles, and
 writes one zlib stream of typed compact JSON without a trailing newline.
 Proof bytes depend on neither the thread count nor the oracle storage mode.
-Each mode emits exactly 14 files.
+The mode-specific inventory is defined in `proof_fixtures`.
 
 `proof_fixtures` pins `flate2` and its `miniz_oxide` compressor because the
 currency gates compare complete compressed files. Bumping either version is a
@@ -57,7 +56,7 @@ without their `.bin` and `.text` extensions; reads are ordered `u32` values.
 | `unsigned_mul_div` | `examples/hashed_fibonacci/app_blake2_with_compression` | `[15, 1]` | full unsigned | 1 GiB | 23 |
 | `bigint_with_extended_control` | `examples/bigint_with_control/app` | `[]` | full unsigned | 1 GiB | 22 |
 | `blake2_with_extended_control` | `examples/multi_family_smoke/app_blake2_with_compression` | `[50, 0xDEADBEEF]` | reduced | 1 GiB | 20 |
-| `unified_reduced_machine` | `examples/multi_family_smoke/app_blake2_with_compression` | `[50, 0xDEADBEEF]` | reduced | 1 GiB | 23 |
+| `unified_reduced_machine`, `compression`, `compression_final` | `examples/multi_family_smoke/app_blake2_with_compression` | `[50, 0xDEADBEEF]` | reduced | 1 GiB | 23 (22 for `compression_final`) |
 | `keccak_special5` | `riscv_transpiler/examples/keccak_f1600/app` | `[15, 1]` | full unsigned | 512 MiB | 22 |
 | `keccak_column_parity`, `keccak_theta_rho`, `keccak_chi5` | `examples/keccak/app` | `[]` | full unsigned | 512 MiB | 22 |
 
@@ -73,30 +72,23 @@ No environment filter, suffix or packing override selects canonical inputs.
 The gitignored `prover/test_proofs/malicious_*` files serve verifier rejection
 tests and have separate forge producers. The canonical producer does not refresh them.
 
-## Currency and GPU agreement
+## Currency checks
 
 `fixtures/regenerate.sh --check` writes into a temporary root and compares
 complete compressed files with the committed outputs. Every child reads its
 committed parent, including when several stages are checked in one invocation.
 A stale parent's own stage fails even when a dependent stage passes. Failed
 checks retain their temporary outputs and logs and print their location.
-With `FIXTURE_BACKEND=gpu` the chain stages are proved on GPU and compared with
-the same committed CPU artifacts; the GPU `canonical_*` tests compare GPU
-circuit proofs with the committed bytes. Whole-program `*_cpu_gpu_proof_diff`
-diagnostics remain outside this canonical circuit set. CI runs six Standard
-CPU jobs and one pessimistic-only CPU `compression` job in `fixture_currency`;
-GPU checks run in the GPU workflow's `chains` shard.
+CPU CI checks canonical circuits, Standard chains and the pessimistic-only
+compression chain in `fixture_currency`.
 
-For prebuilt executables, set `FIXTURE_CLI`, `FIXTURE_CANONICAL_PRODUCER`,
-`FIXTURE_COMPRESSION_PRODUCER` (the `export_compression_final` example), and
-`FIXTURE_CODEC` to their paths; the script builds any that are unset with Cargo.
-With `FIXTURE_TRUSTED_PARAMS` set to a directory, the recipe's Standard-stage
-`verify` passes the trusted params kept there and computes a missing file once.
-Without it, as in the CPU currency jobs, that `verify` derives them from the
-program. The smoke checks compute their own trusted params and always pass them.
-The `compression` and `l1` stages always derive their parameters from the program:
-the shared cache contains only Standard records, and supplied Standard records
-must refuse L1 verification.
+For prebuilt executables, set `FIXTURE_CLI`, `FIXTURE_CANONICAL_PRODUCER` and
+`FIXTURE_CODEC`; the script builds any that are unset with Cargo.
+With `FIXTURE_TRUSTED_PARAMS` set to a directory, verification reuses the records
+kept there and computes a missing file once. Pessimistic records include
+compression; other modes stop at `recursion-unified`. Without the cache,
+verification derives parameters from the program. The soundness smoke checks
+compute and pass their own records.
 
 `AB_TEST_ARTIFACT_ROOT` selects the repository containing layouts, configs,
 workloads, committed parents, and expected outputs. `PROOF_FIXTURES_OUTPUT_ROOT`
@@ -141,24 +133,17 @@ existing artifacts.
 | `chains/<mode>/unrolled` | CLI verification, currency, typed encoding; census recursion guest fit and gates |
 | `chains/<mode>/unrolled_unified` | CLI verification, currency, typed encoding; unified FSV acceptance and rejection |
 | `chains/pessimistic_conjecture/compression` | native CLI verification, compression tampering and trusted-chain tests; GPU L1 currency and continuation tests |
-| `chains/pessimistic_conjecture/l1` | CLI envelope and native C-sidecar verification; wrap/frontier tests; EVM contract and calldata producers; GPU wrap parity |
+| `chains/pessimistic_conjecture/l1` | CLI envelope and native CompressionFinal-sidecar verification; wrap/frontier tests; EVM contract and calldata producers; GPU wrap parity |
 
 ## L1 production and EVM checks
 
-The shared `unified` artifact is the converged Standard seed. `compression` is the
-terminal CompressionFinal proof after `(First, Step, 2)`, `(Recurrent, Step, 1)`, `(Recurrent, Final, 1)`.
-`l1` contains that CompressionFinal proof, setups, chain and the `.l1` Proth120 wrap bundle.
-All are typed compact JSON, compressed as one zlib stream with no trailing
-newline. Backend selection is not stored; timings remain transient for the
-batch summary. Regenerate after changes to guests, circuits, configs, proof
-formats or L1 proving. Do not convert existing JSON to refresh these files:
-run the CLI through the recipe.
+The pessimistic chain fixtures are `chains/pessimistic_conjecture/compression.json.zlib`
+and `l1.json.zlib`. The compression recipe reads the committed `unified.json.zlib`;
+the L1 recipe reads the committed compression chain. The L1 artifact retains the
+CompressionFinal sidecar and adds its Proth120 proof and operation-mode bundle.
 
-The recipe pins the three recursion Blake modes to `blake2_with_compression`
-and `RECURSION_UNIFIED_SWITCH_CYCLES=52000000` for seed construction;
-continuations use the artifact's Blake tags. L1 targets require Compression
-modes. Use default CLI features, including `deterministic_pow`. From the
-repository root, produce the two L1 files on the CPU:
+Regenerate through the CLI after guest, circuit, config or format changes.
+Use default CLI features, including `deterministic_pow`, from the repository root:
 
 ```bash
 export CARGO_BUILD_JOBS=12 RUST_MIN_STACK=1073741824
@@ -167,58 +152,31 @@ fixtures/regenerate.sh --mode pessimistic_conjecture --stage l1
 git status --porcelain -- fixtures/chains/pessimistic_conjecture
 ```
 
-The first command reads the committed `unified.json.zlib`; the second reads
-`compression.json.zlib`. CPU wrap production must stay available for local
-regeneration, but it never runs in CI. CPU CI checks `compression` currency and
-natively verifies the committed seed and terminal C artifact. CLI verification of `l1.json.zlib` checks its envelope and native
-CompressionFinal sidecar; EVM verification checks the Proth120 wrap proof.
+CPU CI checks compression currency. CPU wrap production is available for local
+regeneration. CLI verification of the L1 artifact checks its envelope, chain and
+native CompressionFinal sidecar; the EVM verifier checks the Proth120 proof.
+The Standard stages use fixed Compression Blake modes. The unrolled-to-unified
+switch threshold is the library default unless `RECURSION_UNIFIED_SWITCH_CYCLES`
+is set; the recipe does not override it.
 
-The same compression run emits the single-instance proof from its second
-layer `(Recurrent, Step, 1)` to the circuit fixture `compression.json.zlib`:
-the recipe sets `COMPRESSION_STEP_PROOF_OUTPUT` for this producer output.
-It then exports the terminal proof to `compression_final.json.zlib` through
-`prover_pipeline`'s `export_compression_final` example. There is one compression
-chain artifact after all three layers, with no intermediate chain artifact.
-The `compression` currency stage compares the complete compressed bytes of
-both circuit fixtures and the chain. The `compression_fixture` integration
-test also checks that the final circuit fixture equals the chain's terminal
-proof. These two circuit fixtures exist only in pessimistic-conjecture mode.
+The compression circuit fixtures are independent canonical proofs, produced and
+checked by the `circuits` stage. The Software-mode Miri case reads `compression`
+through the circuit input producer and asserts executed multiproof coverage.
 
-They are outside the 28-case Standard GPU canonical matrix: their proving
-profiles and geometry differ from that matrix. The GPU chains shard's
-`compression` recipe checks both circuit fixtures from its existing chain run,
-so their GPU parity adds no duplicate proving run. The Software-mode Miri case
-uses the Compression-step circuit fixture; its native input producer counts
-executed multiproof queries in rounds 0–2 before writing the runtime input.
-
-GPU CI checks both L1 stages against complete compressed CPU artifacts. It
-reuses prebuilt executables just like the standard GPU chain parity step.
-Standard stages share trusted parameters; L1 verification derives its parameters
-from the program because the Standard cache has no L1 records. For local checks, build the CLI with `--features gpu`, set
-`FIXTURE_CLI` to that binary and `FIXTURE_CODEC` to the built codec, and run each
-proving command under the GPU lock:
+The schedule and input checks live in `prover_pipeline/src/lib.rs`;
+[l1_tests.rs](../prover_pipeline/src/l1_tests.rs) owns frontier export and
+native compression refusal tests. After producing the L1 fixture, refresh its
+setup frontier and EVM outputs:
 
 ```bash
-export FIXTURE_BACKEND=gpu
-.agents/bin/with_gpu_lock.sh fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage compression
-.agents/bin/with_gpu_lock.sh fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage l1
-```
-
-CPU verification and builds do not take the GPU lock. `--check` compares the
-entire compressed file with `cmp`; a successful check means unchanged bytes.
-The recipe makes no current resource or timing claim.
-
-After producing `l1.json.zlib`, refresh the setup frontier and check EVM outputs:
-
-```bash
-cargo test -p prover_pipeline --release --lib l1_reference::export_l1_wrap_setup_frontier -- --exact --ignored
+cargo test -p prover_pipeline --release --lib l1_tests::export_l1_wrap_setup_frontier -- --exact --ignored
 cargo test -p verifier_evm --release --test generate_contracts -- --ignored
 cargo test -p verifier_evm --release --test flatten_calldata -- --ignored
 git status --porcelain -- verifier_evm/generated_contracts verifier_evm/debug_data
 verifier_evm/generated_contracts/run_merged.sh
 ```
 
-The [EVM harness README](../verifier_evm/generated_contracts/l1_wrap_2p21/README.md)
+The [EVM harness README](../verifier_evm/generated_contracts/l1_wrap/README.md)
 describes deployment and calldata.
 
 ## Census tables
