@@ -18,5 +18,11 @@ The typed [verifier boundary](../../Helpers/Context/VerifierBoundary/Theorems.le
 Its raw tuple and range claims have separate witnesses.
 The [malformed-PC regression](../../../../test/Tests/VerifierBoundary.lean) checks native acceptance and verifier rejection.
 
-The native acceptance interface is explicit. Cached GKR preservation, full execution composition,
-padding and initialization-gate binding must discharge the open parts before these targets have final proofs.
+Native initialization gates imply the exact token products through the imported artifact bindings.
+The [bigint](../../../../proven/Proven/UnifiedReduced/RVCaller/BigintStep.lean),
+[G](../../../../proven/Proven/UnifiedReduced/RVCaller/GStep.lean) and
+[round](../../../../proven/Proven/UnifiedReduced/RVCaller/RoundStep.lean) caller proofs give local RV steps.
+The round proof accepts every native Boolean mask.
+
+The native acceptance interface is explicit. Cached GKR preservation, whole execution composition
+and padding remain open before these targets have final proofs.
