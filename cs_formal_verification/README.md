@@ -1,9 +1,14 @@
 # Circuit verification
 
-Lean proofs that Airbender's circuits (the no-cache constraint JSON in `cs/compiled_circuits/`) implement our own
-RV32 specification (`RV.step`/`RV.run`, [RV32.lean](lean/human/Human/ISA/RV32.lean)): RV32IM without the signed M
-operations, plus Airbender's custom operations and delegations. The specification is tied to the official Sail
-RISC-V model by a separate equivalence ([Sail leaf](lean/human/Human/ISA/Sail/Theorems.lean)); no circuit claim mentions Sail.
+Lean proves that Airbender's constraint descriptions implement the RV32 specification
+(`RV.step`/`RV.run`, [RV32.lean](lean/human/Human/ISA/RV32.lean)). The specification covers RV32IM without the signed M
+operations, plus Airbender's custom operations and delegations. A separate
+[equivalence](lean/human/Human/ISA/Sail/Theorems.lean) connects it to the official Sail RISC-V model.
+Circuit claims use the RV32 specification.
+
+The cached and no-cache JSON files in `cs/compiled_circuits/` have the same constraint sections.
+Only their compiled GKR layers can differ. The claims cover the shared constraint description in both cache modes.
+The proof that the compiled GKR layers preserve these constraints is open.
 
 **Check everything:** `./verify.sh` (prepares the pinned Clean, builds the spec and all proofs, checks that the spec
 does not import the proofs, runs the regressions and the axiom audits, checks every module's [build budget](#build-budget),
@@ -49,11 +54,11 @@ and open tasks. It is updated after each completed task.
 The proof path is:
 
 ```text
-no-cache JSON → native Clean constraints → our RV32 spec (RV.step, RV.run)
+shared constraint description → CleanCore constraints → RV.step / RV.run
 ```
 
-Claims are conditional on explicit interfaces. The imported richer constraints are
-the current target; compiled-gate and cryptographic argument soundness are deferred.
+Claims use explicit interface assumptions. They cover the imported constraint description.
+Compiled GKR layer preservation and cryptographic argument soundness remain open.
 
 ## Read these first
 

@@ -6,6 +6,10 @@ objects faithfully represent Rust artifacts or express the intended system claim
 [Verification status](VERIFICATION_STATUS.md) is the coverage and gap inventory;
 [the plan](FORMAL_VERIFICATION_PLAN.md) contains pending work.
 
+The claims cover the constraint description shared by the cached and no-cache circuit JSON files.
+Their constraint sections are identical. Only the compiled GKR layers can differ.
+The imports use the no-cache files. Compiled GKR layer preservation and cryptographic argument soundness remain open.
+
 ## Review entry points
 
 The [directory review guide](../lean/human/Human/README.md) separates
@@ -58,7 +62,7 @@ coverage from a local operation theorem.
 ## Checked scope boundaries
 
 These fixtures mark the scope of the current claims (the last row records how the spec treats the case its fixture exercises). They concern the
-imported richer relations and logical matching; they do not establish a
+shared constraint descriptions and logical matching; they do not establish a
 whole-system or cryptographic exploit. Keep their public inputs and scope visible
 when reviewing or strengthening a theorem.
 
