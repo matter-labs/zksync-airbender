@@ -255,10 +255,13 @@ mod tests {
     }
 
     #[test]
-    fn l1_feeder_and_wrap_rounds_preserve_security_margin() {
+    fn compressionnd_wrap_rounds_preserve_security_margin() {
         for (config, max_pow) in [
-            (l1_feeder_config_for_2_22(), L1_FEEDER_MAX_POW_BITS),
-            (l1_feeder_a_config_for_2_23(), L1_FEEDER_MAX_POW_BITS),
+            (
+                compression_final_config_for_2_22(),
+                COMPRESSION_MAX_POW_BITS,
+            ),
+            (compression_config_for_2_23(), COMPRESSION_MAX_POW_BITS),
             (
                 l1_wrap_2p21::packed_prover_config(),
                 l1_wrap_2p21::MAX_POW_BITS,

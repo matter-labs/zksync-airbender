@@ -1,10 +1,14 @@
 # Canonical circuit proofs
 
-The canonical set contains one Sec100 proof for each of 14 circuits in each
+The Standard canonical set contains one Sec100 proof for each of 14 circuits in each
 soundness mode: `PessimisticConjecture` and `EthproofsSoundnessCalc`.
 Proofs live in `circuits/<mode>/<circuit>.json.zlib` under this directory.
 The mode directories are `pessimistic_conjecture` and `ethproofs_soundcalc`.
 G-function has no canonical fixture. Legacy `keccak_special5` remains covered.
+Pessimistic-conjecture mode also has two special-profile circuit fixtures:
+`compression.json.zlib` is the last repeatable 2^23 Compression-step proof,
+and `compression_final.json.zlib` is the terminal 2^22 CompressionFinal proof.
+The `compression` stage produces them together with its chain artifact.
 
 The producer recipe runs from the repository root:
 
@@ -15,7 +19,7 @@ fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage base_unifie
 ```
 
 Modes are `pessimistic_conjecture` and `ethproofs_soundcalc`. Stages are
-`circuits`, `base_unified`, `unrolled`, `l1_feeder`, and `l1`. Selecting
+`circuits`, `base_unified`, `unrolled`, `compression`, and `l1`. Selecting
 `base_unified` or `unrolled` requires `--check`; without a stage, write mode
 refreshes a mode's circuits and whole chain in order. The L1 stages can also be
 written individually and select `pessimistic_conjecture` by default; explicitly
@@ -80,16 +84,17 @@ With `FIXTURE_BACKEND=gpu` the chain stages are proved on GPU and compared with
 the same committed CPU artifacts; the GPU `canonical_*` tests compare GPU
 circuit proofs with the committed bytes. Whole-program `*_cpu_gpu_proof_diff`
 diagnostics remain outside this canonical circuit set. CI runs six Standard
-CPU jobs and one pessimistic-only CPU `l1_feeder` job in `fixture_currency`;
+CPU jobs and one pessimistic-only CPU `compression` job in `fixture_currency`;
 GPU checks run in the GPU workflow's `chains` shard.
 
-For prebuilt executables, set `FIXTURE_CLI`, `FIXTURE_CANONICAL_PRODUCER`, and
+For prebuilt executables, set `FIXTURE_CLI`, `FIXTURE_CANONICAL_PRODUCER`,
+`FIXTURE_COMPRESSION_PRODUCER` (the `export_compression_final` example), and
 `FIXTURE_CODEC` to their paths; the script builds any that are unset with Cargo.
 With `FIXTURE_TRUSTED_PARAMS` set to a directory, the recipe's Standard-stage
 `verify` passes the trusted params kept there and computes a missing file once.
 Without it, as in the CPU currency jobs, that `verify` derives them from the
 program. The smoke checks compute their own trusted params and always pass them.
-The `l1_feeder` and `l1` stages always derive their parameters from the program:
+The `compression` and `l1` stages always derive their parameters from the program:
 the shared cache contains only Standard records, and supplied Standard records
 must refuse L1 verification.
 
@@ -103,7 +108,7 @@ root.
 ## Chain artifacts
 
 Each mode has four standard schema 5 CLI artifacts under `chains/<mode>/`.
-`pessimistic_conjecture` additionally has `l1_feeder` and `l1`; ethproofs refuses
+`pessimistic_conjecture` additionally has `compression` and `l1`; ethproofs refuses
 both L1 targets. They use the tracked `examples/basic_fibonacci/app.bin`, CPU
 backend on every available core, and Compression guests for unrolled, bridge,
 and final layers. Every artifact has `program_cycles = 97`; the recipe natively
@@ -117,8 +122,8 @@ chain artifacts keep their schema-5 encoding.
 | `unified` | `base` | 0 | 3 |
 | `unrolled` | `base` | 1 | 2 |
 | `unrolled_unified` | `unrolled` | 0 | 4 |
-| `l1_feeder` (pessimistic only) | `unified` | fixed feeder schedule | 6 |
-| `l1` (pessimistic only) | `l1_feeder` | wrap; same C sidecar | 6 |
+| `compression` (pessimistic only) | `unified` | fixed compression schedule | 6 |
+| `l1` (pessimistic only) | `compression` | wrap; same CompressionFinal sidecar | 6 |
 
 The `prover_pipeline` test `committed_chain_encoding` checks each committed
 artifact's target, chain entries and `program_cycles`.
@@ -135,14 +140,14 @@ existing artifacts.
 | `chains/<mode>/unified` | CLI verification, currency, soundness smoke checks, typed encoding; unified FSV acceptance and rejection |
 | `chains/<mode>/unrolled` | CLI verification, currency, typed encoding; census recursion guest fit and gates |
 | `chains/<mode>/unrolled_unified` | CLI verification, currency, typed encoding; unified FSV acceptance and rejection |
-| `chains/pessimistic_conjecture/l1_feeder` | native CLI verification, feeder tampering and trusted-chain tests; GPU L1 currency and continuation tests |
+| `chains/pessimistic_conjecture/compression` | native CLI verification, compression tampering and trusted-chain tests; GPU L1 currency and continuation tests |
 | `chains/pessimistic_conjecture/l1` | CLI envelope and native C-sidecar verification; wrap/frontier tests; EVM contract and calldata producers; GPU wrap parity |
 
 ## L1 production and EVM checks
 
-The shared `unified` artifact is the converged Standard seed. `l1_feeder` is the
-terminal C proof after `(First, A, 2)`, `(Recurrent, A, 1)`, `(Recurrent, C, 1)`.
-`l1` contains that C proof, setups, chain and the `.l1` Proth120 wrap bundle.
+The shared `unified` artifact is the converged Standard seed. `compression` is the
+terminal CompressionFinal proof after `(First, Step, 2)`, `(Recurrent, Step, 1)`, `(Recurrent, Final, 1)`.
+`l1` contains that CompressionFinal proof, setups, chain and the `.l1` Proth120 wrap bundle.
 All are typed compact JSON, compressed as one zlib stream with no trailing
 newline. Backend selection is not stored; timings remain transient for the
 batch summary. Regenerate after changes to guests, circuits, configs, proof
@@ -157,16 +162,34 @@ repository root, produce the two L1 files on the CPU:
 
 ```bash
 export CARGO_BUILD_JOBS=12 RUST_MIN_STACK=1073741824
-fixtures/regenerate.sh --mode pessimistic_conjecture --stage l1_feeder
+fixtures/regenerate.sh --mode pessimistic_conjecture --stage compression
 fixtures/regenerate.sh --mode pessimistic_conjecture --stage l1
 git status --porcelain -- fixtures/chains/pessimistic_conjecture
 ```
 
 The first command reads the committed `unified.json.zlib`; the second reads
-`l1_feeder.json.zlib`. CPU wrap production must stay available for local
-regeneration, but it never runs in CI. CPU CI checks `l1_feeder` currency and
+`compression.json.zlib`. CPU wrap production must stay available for local
+regeneration, but it never runs in CI. CPU CI checks `compression` currency and
 natively verifies the committed seed and terminal C artifact. CLI verification of `l1.json.zlib` checks its envelope and native
-C sidecar; EVM verification checks the Proth120 wrap proof.
+CompressionFinal sidecar; EVM verification checks the Proth120 wrap proof.
+
+The same compression run emits the single-instance proof from its second
+layer `(Recurrent, Step, 1)` to the circuit fixture `compression.json.zlib`:
+the recipe sets `COMPRESSION_STEP_PROOF_OUTPUT` for this producer output.
+It then exports the terminal proof to `compression_final.json.zlib` through
+`prover_pipeline`'s `export_compression_final` example. There is one compression
+chain artifact after all three layers, with no intermediate chain artifact.
+The `compression` currency stage compares the complete compressed bytes of
+both circuit fixtures and the chain. The `compression_fixture` integration
+test also checks that the final circuit fixture equals the chain's terminal
+proof. These two circuit fixtures exist only in pessimistic-conjecture mode.
+
+They are outside the 28-case Standard GPU canonical matrix: their proving
+profiles and geometry differ from that matrix. The GPU chains shard's
+`compression` recipe checks both circuit fixtures from its existing chain run,
+so their GPU parity adds no duplicate proving run. The Software-mode Miri case
+uses the Compression-step circuit fixture; its native input producer counts
+executed multiproof queries in rounds 0–2 before writing the runtime input.
 
 GPU CI checks both L1 stages against complete compressed CPU artifacts. It
 reuses prebuilt executables just like the standard GPU chain parity step.
@@ -177,7 +200,7 @@ proving command under the GPU lock:
 
 ```bash
 export FIXTURE_BACKEND=gpu
-.agents/bin/with_gpu_lock.sh fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage l1_feeder
+.agents/bin/with_gpu_lock.sh fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage compression
 .agents/bin/with_gpu_lock.sh fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage l1
 ```
 

@@ -416,59 +416,59 @@ pub fn verify_unified_circuit_recursion_layer<
     )
 }
 
-/// The L1 feeder statement: a recursion layer over the 2^22 feeder circuit
-/// (`prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_22`,
+/// The compression statement: a recursion layer over the 2^22 compression circuit
+/// (`prover::gkr::prover_config::example_configs::compression_final_config_for_2_22`,
 /// cap 16, merged memory+witness commitment) that carries NO delegation
-/// proofs: every delegation count word must be 0. Every feeder layer and the
+/// proofs: every delegation count word must be 0. Every compression layer and the
 /// L1 wrap execute this entry; the instance geometry (inits-and-teardowns
 /// window shift, cycles per instance) follows the generated verifier's
 /// `TRACE_LEN_LOG2`.
-pub fn verify_unified_circuit_recursion_layer_sec_100_l1_feeder<
+pub fn verify_unified_circuit_recursion_layer_sec_100_compression_final<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
     const REDUCED_ROUNDS: bool,
 >(
     nd_source: &mut I,
 ) -> Result<[u32; 16], E::Error> {
-    use crate::imports::unified_reduced_machine_sec_100_l1_feeder as feeder;
+    use crate::imports::unified_reduced_machine_sec_100_compression_final as compression;
     unsafe {
-        let unified_setup = read_setup_cap::<I, { feeder::CAP_SIZE }>(nd_source);
+        let unified_setup = read_setup_cap::<I, { compression::CAP_SIZE }>(nd_source);
         verify_full_statement_for_unified_circuit_without_delegations::<
             I,
             E,
             REDUCED_ROUNDS,
-            { feeder::CAP_SIZE },
-            { address_high_bits_shift(feeder::TRACE_LEN_LOG2) },
-            { 1u64 << feeder::TRACE_LEN_LOG2 },
+            { compression::CAP_SIZE },
+            { address_high_bits_shift(compression::TRACE_LEN_LOG2) },
+            { 1u64 << compression::TRACE_LEN_LOG2 },
             _,
-        >(&unified_setup, feeder::verify::<I, E>, nd_source)
+        >(&unified_setup, compression::verify::<I, E>, nd_source)
     }
 }
 
-/// The L1 feeder statement over the 2^23 feeder circuit of profile A
-/// (`prover::gkr::prover_config::example_configs::l1_feeder_a_config_for_2_23`,
+/// The compression statement over the 2^23 compression circuit of Compression profile
+/// (`prover::gkr::prover_config::example_configs::compression_config_for_2_23`,
 /// cap 4, merged memory+witness commitment), with the same zero-delegation
-/// rule as [`verify_unified_circuit_recursion_layer_sec_100_l1_feeder`]. Every
-/// feeder layer after a profile-A layer executes this entry.
-pub fn verify_unified_circuit_recursion_layer_sec_100_l1_feeder_a<
+/// rule as [`verify_unified_circuit_recursion_layer_sec_100_compression_final`]. Every
+/// compression layer after a Compression-profile layer executes this entry.
+pub fn verify_unified_circuit_recursion_layer_sec_100_compression<
     I: NonDeterminismSource<BabyBearField>,
     E: ErrorCreator,
     const REDUCED_ROUNDS: bool,
 >(
     nd_source: &mut I,
 ) -> Result<[u32; 16], E::Error> {
-    use crate::imports::unified_reduced_machine_sec_100_l1_feeder_a as feeder;
+    use crate::imports::unified_reduced_machine_sec_100_compression as compression;
     unsafe {
-        let unified_setup = read_setup_cap::<I, { feeder::CAP_SIZE }>(nd_source);
+        let unified_setup = read_setup_cap::<I, { compression::CAP_SIZE }>(nd_source);
         verify_full_statement_for_unified_circuit_without_delegations::<
             I,
             E,
             REDUCED_ROUNDS,
-            { feeder::CAP_SIZE },
-            { address_high_bits_shift(feeder::TRACE_LEN_LOG2) },
-            { 1u64 << feeder::TRACE_LEN_LOG2 },
+            { compression::CAP_SIZE },
+            { address_high_bits_shift(compression::TRACE_LEN_LOG2) },
+            { 1u64 << compression::TRACE_LEN_LOG2 },
             _,
-        >(&unified_setup, feeder::verify::<I, E>, nd_source)
+        >(&unified_setup, compression::verify::<I, E>, nd_source)
     }
 }
 
@@ -508,7 +508,7 @@ pub const fn address_high_bits_shift(trace_len_log2: u32) -> u32 {
 const _: () = assert!(address_high_bits_shift(23) == STANDARD_ADDRESS_HIGH_BITS_SHIFT);
 const _: () = assert!(crate::definitions::DELEGATION_TYPES.len() == NUM_DELEGATION_CIRCUIT_TYPES);
 
-/// [`verify_full_statement_for_unified_circuit`] for the L1 feeder layers: the
+/// [`verify_full_statement_for_unified_circuit`] for the compression layers: the
 /// same statement over a unified circuit of setup cap `UCAP`, instance window
 /// shift `ADDRESS_HIGH_BITS_SHIFT` and `CYCLES_PER_INSTANCE` cycles per
 /// instance, with a zero-only delegation section. The stream keeps one count
@@ -638,7 +638,7 @@ where
         let num_circuits = nd_source.read_word();
         assert!(
             num_circuits == 0,
-            "L1 feeder proofs carry no delegation proofs"
+            "compression proofs carry no delegation proofs"
         );
     }
 

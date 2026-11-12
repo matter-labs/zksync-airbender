@@ -21,8 +21,10 @@ pub const CIRCUITS: [&str; 14] = [
     "keccak_chi5",
 ];
 pub const CHAINS: [&str; 4] = ["base", "unified", "unrolled", "unrolled_unified"];
+/// Special-profile circuit proofs exported from their committed chain artifact.
+pub const PESSIMISTIC_CIRCUITS: [&str; 2] = ["compression", "compression_final"];
 /// L1 chains exist only in pessimistic_conjecture.
-pub const L1_CHAINS: [&str; 2] = ["l1_feeder", "l1"];
+pub const L1_CHAINS: [&str; 2] = ["compression", "l1"];
 
 /// Repository root containing fixture data and its producer inputs.
 pub fn root() -> PathBuf {
@@ -51,7 +53,11 @@ pub fn circuit_proof_in(repository_root: &Path, mode_dir: &str, circuit: &str) -
         MODES.contains(&mode_dir),
         "unknown soundness mode: {mode_dir}"
     );
-    assert!(CIRCUITS.contains(&circuit), "unknown circuit: {circuit}");
+    assert!(
+        CIRCUITS.contains(&circuit)
+            || (mode_dir == "pessimistic_conjecture" && PESSIMISTIC_CIRCUITS.contains(&circuit)),
+        "unknown circuit/mode: {circuit}/{mode_dir}"
+    );
     repository_root
         .join("fixtures/circuits")
         .join(mode_dir)
@@ -137,7 +143,11 @@ mod tests {
 
     #[test]
     fn committed_fixture_inventory() {
-        assert_inventory(&root().join("fixtures/circuits"), &CIRCUITS, &[]);
+        assert_inventory(
+            &root().join("fixtures/circuits"),
+            &CIRCUITS,
+            &PESSIMISTIC_CIRCUITS,
+        );
         assert_inventory(&root().join("fixtures/chains"), &CHAINS, &L1_CHAINS);
     }
 }

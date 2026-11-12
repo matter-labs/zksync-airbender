@@ -58,12 +58,12 @@ name = "fsv_unified_recursion_layer_sec_100"
 path = "src/bin/full_statement_verifiers/fsv_unified_recursion_layer_sec_100.rs"
 
 [[bin]]
-name = "fsv_unified_recursion_layer_sec_100_l1_feeder_a"
-path = "src/bin/full_statement_verifiers/fsv_unified_recursion_layer_sec_100_l1_feeder_a.rs"
+name = "fsv_unified_recursion_layer_sec_100_compression"
+path = "src/bin/full_statement_verifiers/fsv_unified_recursion_layer_sec_100_compression.rs"
 
 # --- Full-statement verifiers wired to the ethproofs-soundcalc circuit verifiers
 # (`full_statement_verifiers/ethproofs_soundcalc/<name without the mode suffix>_<blake>.elf`).
-# No unified base layer: the recursion pipeline never selects it. No L1 feeder: its schedule
+# No unified base layer: the recursion pipeline never selects it. No compression: its schedule
 # exists only in pessimistic_conjecture. ---
 [[bin]]
 name = "fsv_unrolled_base_layer_sec_100_ethproofs_soundcalc"

@@ -146,7 +146,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn l1_feeder_guests_decode_at_their_rom() {
+    fn compression_guests_decode_at_their_rom() {
         use verifier_common::fsv_binaries::{FsvProfile, FSV_REGISTRY};
         for entry in FSV_REGISTRY
             .iter()
@@ -159,7 +159,7 @@ mod tests {
             assert!(guest.unpadded_bin().len() <= words);
             assert!(guest.unpadded_text().len() <= words);
         }
-        let wrap = FsvDescriptor::l1_feeder(FsvProfile::L1FeederWrap);
+        let wrap = FsvDescriptor::compression(FsvProfile::CompressionFinalWrap);
         let bytes = std::fs::read(canonical_fsv_dir().join(wrap.relative_path())).unwrap();
         assert!(matches!(
             read_elf_with_rom(

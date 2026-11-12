@@ -1,5 +1,5 @@
 use super::*;
-use crate::l1_feeder_tests::{empty_gkr_proof, feeder_artifact};
+use crate::compression_tests::{compression_artifact, empty_gkr_proof};
 use prover::definitions::FinalRegisterValue;
 
 fn result() -> L1WrapResult {
@@ -20,7 +20,7 @@ fn result() -> L1WrapResult {
 }
 
 fn wrapped_artifact() -> ProofArtifact {
-    let mut checkpoint = feeder_artifact(ProofTarget::L1Feeder, 6);
+    let mut checkpoint = compression_artifact(ProofTarget::Compression, 6);
     checkpoint.target = ProofTarget::L1;
     checkpoint.l1 = Some(L1Bundle::from_result(result()));
     checkpoint
@@ -47,9 +47,9 @@ fn malformed_l1_envelopes_fail_verify_and_continuation_before_loading_programs()
                 *external_challenges_pow_bits -= 1;
             }
         }),
-        ("non-L1", |a| a.target = ProofTarget::L1Feeder),
+        ("non-L1", |a| a.target = ProofTarget::Compression),
         ("reduced-machine family", |a| {
-            a.proof = crate::l1_feeder_tests::empty_proof()
+            a.proof = crate::compression_tests::empty_proof()
         }),
     ];
     for (expected, mutate) in mutations {
@@ -97,7 +97,7 @@ fn malformed_l1_envelopes_fail_verify_and_continuation_before_loading_programs()
 
 #[test]
 fn l1_activation_rejects_gpu_before_registration() {
-    for target in [ProofTarget::L1, ProofTarget::L1Feeder] {
+    for target in [ProofTarget::L1, ProofTarget::Compression] {
         let error = ProgramProver::new(
             unused_source(),
             ProgramProverConfig {
@@ -133,6 +133,6 @@ fn wrap_circuit_matches_the_guest_geometry() {
     let circuit = L1_WRAP_KIND.unified_circuit().unwrap();
     assert_eq!(
         circuit.rom(),
-        verifier_common::fsv_binaries::FsvProfile::L1FeederWrap.rom()
+        verifier_common::fsv_binaries::FsvProfile::CompressionFinalWrap.rom()
     );
 }

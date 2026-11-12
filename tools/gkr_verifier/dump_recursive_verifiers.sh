@@ -48,7 +48,7 @@ for soundness in $MODES; do
         done
     done
     if [ "$soundness" = "pessimistic_conjecture" ]; then
-        build_variant "fsv_unified_recursion_layer_sec_100_l1_feeder_a" "${soundness}" "special_opcodes_extension"
+        build_variant "fsv_unified_recursion_layer_sec_100_compression" "${soundness}" "special_opcodes_extension"
     fi
 done
 

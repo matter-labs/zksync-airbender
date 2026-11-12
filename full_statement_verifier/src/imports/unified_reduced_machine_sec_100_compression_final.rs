@@ -1,4 +1,4 @@
-#[path = "../../../verifier/src/generated/unified_reduced_machine_2_22/pessimistic_conjecture_l1_feeder/mod.rs"]
+#[path = "../../../verifier/src/generated/unified_reduced_machine_2_22/pessimistic_conjecture_compression_final/mod.rs"]
 mod generated_gkr;
 
 pub use generated_gkr::constants::{

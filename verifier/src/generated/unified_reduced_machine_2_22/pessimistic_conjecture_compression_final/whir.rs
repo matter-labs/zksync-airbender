@@ -94,19 +94,19 @@ pub fn accumulate_ood_samples<const MAX_POW: usize, const MAX_OOD: usize>(
     }
     (claim_correction, current)
 }
-const INITIAL_QUERY_INDEX_BITS: usize = 24usize;
-const INITIAL_NUM_QUERIES: usize = 45usize;
+const INITIAL_QUERY_INDEX_BITS: usize = 25usize;
+const INITIAL_NUM_QUERIES: usize = 23usize;
 #[doc = r" Whether this build opens the base queries as a pruned Merkle"]
 #[doc = r" multiproof (`BlakeMode::merkle_multiproofs`, decided at compile"]
 #[doc = r" time for the build's blake implementation)."]
 const INITIAL_MERKLE_MULTIPROOF: bool =
     ::verifier_common::BLAKE_MODE.merkle_multiproofs(INITIAL_NUM_QUERIES, WHIR_CAP_SIZE);
-const INITIAL_POW_BITS: u32 = 25u32;
-const INITIAL_DRAW_WORDS: usize = 40usize;
-const INITIAL_RS_DOMAIN_LOG2: usize = 25usize;
-const NUM_COSETS: usize = 4usize;
-const NUM_COSETS_LOG2: usize = 2usize;
-const COSET_TREE_SIZE: usize = 4194304usize;
+const INITIAL_POW_BITS: u32 = 24u32;
+const INITIAL_DRAW_WORDS: usize = 24usize;
+const INITIAL_RS_DOMAIN_LOG2: usize = 26usize;
+const NUM_COSETS: usize = 16usize;
+const NUM_COSETS_LOG2: usize = 4usize;
+const COSET_TREE_SIZE: usize = 2097152usize;
 #[allow(unused_unsafe, clippy::too_many_arguments)]
 pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorCreator>(
     initial_transcript: &ConcreteInitialTranscript,
@@ -209,8 +209,8 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                 q += 1;
             }
         }
-        let mut multiproof_stack_0 = MerkleMultiproofStack::<22usize>::new();
-        let mut multiproof_stack_2 = MerkleMultiproofStack::<22usize>::new();
+        let mut multiproof_stack_0 = MerkleMultiproofStack::<21usize>::new();
+        let mut multiproof_stack_2 = MerkleMultiproofStack::<21usize>::new();
         let mut j = 0;
         while j < INITIAL_NUM_QUERIES {
             let q = *perm.get(j);
@@ -227,7 +227,8 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
             let mut acc0 = BabyBearExt4::ZERO;
             let mut acc1 = BabyBearExt4::ZERO;
             if INITIAL_MERKLE_MULTIPROOF {
-                process_oracle_query_multiproof::<I, E, WHIR_HASH_BUF_SIZE, 192usize, 22usize>(
+                ::verifier_common::record_merkle_multiproof_query!(0);
+                process_oracle_query_multiproof::<I, E, WHIR_HASH_BUF_SIZE, 192usize, 21usize>(
                     &mut ts.hasher,
                     hash_buf,
                     96usize,
@@ -235,7 +236,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                     tree_index,
                     prev_index_equal,
                     next_index,
-                    22usize,
+                    21usize,
                     initial_transcript.memory_caps_slice(),
                     &gamma_powers[..],
                     0usize,
@@ -244,7 +245,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                     q,
                     nd_source,
                 )?;
-                process_oracle_query_multiproof::<I, E, WHIR_HASH_BUF_SIZE, 20usize, 22usize>(
+                process_oracle_query_multiproof::<I, E, WHIR_HASH_BUF_SIZE, 20usize, 21usize>(
                     &mut ts.hasher,
                     hash_buf,
                     10usize,
@@ -252,7 +253,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                     tree_index,
                     prev_index_equal,
                     next_index,
-                    22usize,
+                    21usize,
                     initial_transcript.setup_caps_slice(),
                     &gamma_powers[..],
                     96usize,
@@ -267,7 +268,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                     hash_buf,
                     96usize,
                     tree_index,
-                    22usize,
+                    21usize,
                     initial_transcript.memory_caps_slice(),
                     &gamma_powers[..],
                     0usize,
@@ -281,7 +282,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
                     hash_buf,
                     10usize,
                     tree_index,
-                    22usize,
+                    21usize,
                     initial_transcript.setup_caps_slice(),
                     &gamma_powers[..],
                     96usize,
@@ -321,11 +322,11 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
 use super::common::EXT_DEGREE;
 use verifier_common::whir::{hash_leaf_data_into_state, verify_merkle_path};
 pub const NUM_INTERNAL_ROUNDS: usize = 3usize;
-const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] = [22usize, 22usize, 22usize];
+const INTERNAL_QUERY_INDEX_BITS: [usize; NUM_INTERNAL_ROUNDS] = [21usize, 21usize, 21usize];
 const INTERNAL_NUM_COSETS: [usize; NUM_INTERNAL_ROUNDS] = [32usize, 1024usize, 32768usize];
 const INTERNAL_NUM_COSETS_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [5usize, 10usize, 15usize];
-const INTERNAL_COSET_TREE_SIZE: [usize; NUM_INTERNAL_ROUNDS] = [131072usize, 4096usize, 128usize];
-const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [27usize, 27usize, 27usize];
+const INTERNAL_COSET_TREE_SIZE: [usize; NUM_INTERNAL_ROUNDS] = [65536usize, 2048usize, 64usize];
+const INTERNAL_RS_DOMAIN_LOG2: [usize; NUM_INTERNAL_ROUNDS] = [26usize, 26usize, 26usize];
 const MAX_INTERNAL_FOLD_STEPS: usize = 5usize;
 const MAX_INTERNAL_VALUES_PER_LEAF: usize = 32usize;
 const MAX_INTERNAL_NUM_QUERIES: usize = 18usize;
@@ -492,6 +493,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             let init_buf = hash_buf.assume_init_prefix(block_end);
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, leaf_ext_words);
             let merkle_ok = if (INTERNAL_MERKLE_MULTIPROOF_MASK >> ir) & 1 == 1 {
+                ::verifier_common::record_merkle_multiproof_query!(ir + 1);
                 verify_merkle_multiproof_leaf::<I, MAX_INTERNAL_ORACLE_DEPTH>(
                     &mut ts.hasher,
                     &mut multiproof_stack,
@@ -532,12 +534,12 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
         Ok((claim, intermediate_cap))
     }
 }
-const FINAL_FOLD_STEPS: usize = 4usize;
+const FINAL_FOLD_STEPS: usize = 3usize;
 const FINAL_NUM_QUERIES: usize = 5usize;
-const FINAL_VALUES_PER_LEAF: usize = 16usize;
+const FINAL_VALUES_PER_LEAF: usize = 8usize;
 const FINAL_LEAF_EXT_WORDS: usize = FINAL_VALUES_PER_LEAF * EXT_DEGREE;
 const FINAL_QUERY_INDEX_BITS: usize = 23usize;
-const FINAL_RS_DOMAIN_LOG2: usize = 27usize;
+const FINAL_RS_DOMAIN_LOG2: usize = 26usize;
 const FINAL_NUM_COSETS: usize = 1048576usize;
 const FINAL_NUM_COSETS_LOG2: usize = 20usize;
 const FINAL_COSET_TREE_SIZE: usize = 8usize;
@@ -672,6 +674,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
             let init_buf = hash_buf.assume_init_prefix(block_end);
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, FINAL_LEAF_EXT_WORDS);
             let merkle_ok = if FINAL_MERKLE_MULTIPROOF {
+                ::verifier_common::record_merkle_multiproof_query!(4usize);
                 verify_merkle_multiproof_leaf::<I, FINAL_ORACLE_DEPTH>(
                     &mut ts.hasher,
                     &mut multiproof_stack,

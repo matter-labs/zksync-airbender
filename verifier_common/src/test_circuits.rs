@@ -29,6 +29,16 @@ macro_rules! make_circuits {
 pub static CIRCUITS: LazyLock<Vec<CircuitData>> =
     LazyLock::new(|| gkr_fixture_circuits!(make_circuits));
 
+/// The last repeatable 2^23 compression-step profile, exported from the compression chain.
+/// It has a fixture only in pessimistic-conjecture mode and is outside the
+/// Standard-profile circuit catalogue.
+pub static COMPRESSION: LazyLock<CircuitData> = LazyLock::new(|| {
+    CircuitData::new(
+        "compression",
+        "../circuit_defs/unrolled_circuits/unified_reduced_machine",
+    )
+});
+
 /// Every circuit with a generated verifier, including those without a canonical proof.
 pub static ALL_CIRCUITS: LazyLock<Vec<CircuitData>> =
     LazyLock::new(|| gkr_circuits!(make_circuits));
@@ -119,6 +129,17 @@ impl CircuitData {
         mode: SoundnessMode,
     ) -> &ProverConfig {
         self.prover_configs_cache[level as usize][mode_index(mode)].get_or_init(|| {
+            if self.name == "compression" {
+                assert_eq!(mode, SoundnessMode::PessimisticConjecture);
+                let config =
+                    prover::gkr::prover_config::example_configs::compression_config_for_2_23();
+                assert_eq!(
+                    1usize << config.trace_len_log2,
+                    self.compiled_circuit().trace_len,
+                    "Compression profile trace length differs from the compiled circuit"
+                );
+                return config;
+            }
             let path = self.prover_config_path_for_mode(level, mode);
             let config: ProverConfig = deserialize_from_file(&path);
             assert_eq!(
@@ -155,6 +176,10 @@ impl CircuitData {
     }
 
     pub fn circuit_path(&self) -> String {
+        if self.name == "compression" {
+            return CircuitData::new("unified_reduced_machine", self.production_path)
+                .circuit_path();
+        }
         if self.name == "unified_reduced_machine_2_22" {
             return format!("{}/generated/layout.json", self.production_path);
         }

@@ -14,16 +14,21 @@ parser.add_argument('--test-target', required=True)
 parser.add_argument('--cases', nargs='+', required=True)
 parser.add_argument('--output', type=pathlib.Path, required=True)
 parser.add_argument('--jobs', type=int, required=True)
+parser.add_argument('--case-config', nargs=3, action='append', default=[],
+                    metavar=('CASE', 'FEATURES', 'TEST_TARGET'))
 args = parser.parse_args()
 cases = args.cases
 assert args.jobs > 0 and cases
+case_configs = {case: (features, target) for case, features, target in args.case_config}
+assert len(case_configs) == len(args.case_config) and set(case_configs) <= set(cases)
 args.output.mkdir(parents=True, exist_ok=True)
 
 def run(case):
     started = time.monotonic()
     log = args.output / (case + '.log')
+    features, target = case_configs.get(case, (args.features, args.test_target))
     command = ['cargo', 'miri', 'test', '-p', args.package, '--no-default-features',
-               '--features', args.features, '--test', args.test_target,
+               '--features', features, '--test', target,
                '--', '--exact', case]
     with log.open('w') as output:
         exit_code = subprocess.run(command, stdout=output, stderr=subprocess.STDOUT).returncode

@@ -33,7 +33,7 @@ fn export_l1_wrap_setup_frontier() {
     let circuit_type = CircuitType::L1Wrap21;
     let (mut binary, mut text) = load_fsv_exact(
         fsv_dir(),
-        &FsvDescriptor::l1_feeder(FsvProfile::L1FeederWrap),
+        &FsvDescriptor::compression(FsvProfile::CompressionFinalWrap),
     )
     .into_words();
     setups::pad_bytecode_for_proving_with_rom(&mut binary, circuit_type.rom());
@@ -149,44 +149,44 @@ fn export_l1_wrap_setup_frontier() {
 }
 
 #[test]
-fn cpu_l1_feeder_rejects_tampered_streams() {
+fn cpu_compression_rejects_tampered_streams() {
     let artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
         "pessimistic_conjecture",
-        "l1_feeder",
+        "compression",
     ));
     let stream = build_unified_stream(
         &artifact.setups,
         &artifact.proof,
         BlakeMode::BlakeSpecialOpcodes,
     );
-    native_verify_unified_l1_feeder(stream.clone()).unwrap();
+    native_verify_unified_compression_final(stream.clone()).unwrap();
     let count_end = stream.len() - 2 - 16;
     let count_start = count_end - full_statement_verifier::definitions::DELEGATION_TYPES.len();
     for offset in count_start..count_end {
         let mut bad = stream.clone();
         assert_eq!(bad[offset], 0);
         bad[offset] = 1;
-        assert!(native_verify_unified_l1_feeder(bad)
+        assert!(native_verify_unified_compression_final(bad)
             .unwrap_err()
             .contains("no delegation proofs"));
     }
     let mut trailing = stream.clone();
     trailing.push(7);
-    assert!(native_verify_unified_l1_feeder(trailing)
+    assert!(native_verify_unified_compression_final(trailing)
         .unwrap_err()
         .contains("trailing"));
     let truncated = stream[..stream.len() - 1].to_vec();
-    assert!(native_verify_unified_l1_feeder(truncated).is_err());
+    assert!(native_verify_unified_compression_final(truncated).is_err());
     let mut flipped = stream;
-    flipped[(FeederProfile::C.cap_size() - 1) * 8] ^= 1;
-    assert!(native_verify_unified_l1_feeder(flipped).is_err());
+    flipped[(CompressionProfile::Final.cap_size() - 1) * 8] ^= 1;
+    assert!(native_verify_unified_compression_final(flipped).is_err());
 }
 
 #[test]
 fn supplied_standard_records_refuse_an_l1_chain_without_recomputation() {
     let artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
         "pessimistic_conjecture",
-        "l1_feeder",
+        "compression",
     ));
     let source = source();
     let loaded = load_and_validate_program(&source, &artifact).unwrap();
@@ -212,7 +212,7 @@ fn supplied_standard_records_refuse_an_l1_chain_without_recomputation() {
                     SetupMachine::UnrolledFullUnsigned,
                     find_binary_exit_point(&loaded.bin_u32)?,
                 ),
-                ChainProgram::Fsv(_, _, _, SetupMachine::L1Feeder(_)) => return Ok(end_params),
+                ChainProgram::Fsv(_, _, _, SetupMachine::Compression(_)) => return Ok(end_params),
                 ChainProgram::Fsv(program, profile, blake, machine) => {
                     let guest = load_fsv_exact(
                         fsv_dir(),

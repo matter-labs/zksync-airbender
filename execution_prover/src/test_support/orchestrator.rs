@@ -59,15 +59,15 @@ fn unified_prover(
 
 #[test]
 fn unsupported_registration_profiles_are_rejected() {
-    use crate::ProofProfile::{L1Feeder, L1FeederA, L1Wrap, Standard};
+    use crate::ProofProfile::{Compression, L1Wrap, Standard};
     for (kind, profiles) in [
-        (ExecutionKind::Unified22, vec![L1Feeder, Standard]),
-        (ExecutionKind::Unified, vec![Standard, L1Feeder]),
-        (ExecutionKind::Unified22, vec![L1Feeder, L1FeederA]),
+        (ExecutionKind::Unified22, vec![Compression, Standard]),
+        (ExecutionKind::Unified, vec![Standard, Compression]),
+        (ExecutionKind::Unified22, vec![Compression, Compression]),
         (ExecutionKind::L1Wrap21, vec![Standard]),
         (ExecutionKind::Unified, vec![L1Wrap]),
-        (ExecutionKind::Unrolled, vec![L1Feeder]),
-        (ExecutionKind::Unrolled, vec![L1FeederA]),
+        (ExecutionKind::Unrolled, vec![Compression]),
+        (ExecutionKind::Unrolled, vec![Compression]),
     ] {
         assert!(
             std::panic::catch_unwind(|| unified_prover(kind, &profiles)).is_err(),
@@ -77,7 +77,7 @@ fn unsupported_registration_profiles_are_rejected() {
 }
 
 #[test]
-#[should_panic(expected = "ProofProfile::L1Feeder was not declared for this binary")]
+#[should_panic(expected = "ProofProfile::CompressionFinal was not declared for this binary")]
 fn undeclared_profile_is_rejected() {
     let (mut prover, handle) =
         unified_prover(ExecutionKind::Unified, &[crate::ProofProfile::Standard]);
@@ -86,7 +86,7 @@ fn undeclared_profile_is_rejected() {
         1,
         &handle,
         QuasiUARTSource::new_with_reads(vec![]),
-        crate::ProofProfile::L1Feeder,
+        crate::ProofProfile::CompressionFinal,
     );
 }
 

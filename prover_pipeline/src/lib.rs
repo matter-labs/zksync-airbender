@@ -33,12 +33,14 @@ mod l1_wrap;
 use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
 use full_statement_verifier::host_utils::{
     bridge_blake_mode, build_unified_stream, build_unrolled_stream, compute_end_params,
-    final_blake_mode, fsv_digest, load_fsv_exact, native_verify_unified_in_mode,
-    native_verify_unified_l1_feeder, native_verify_unrolled_in_mode, recursion_unrolled_layers,
+    final_blake_mode, fsv_digest, load_fsv_exact, native_verify_unified_compression_final,
+    native_verify_unified_in_mode, native_verify_unrolled_in_mode, recursion_unrolled_layers,
     unified_switch_cycles, unrolled_blake_mode, FsvRecursionChain,
 };
 use full_statement_verifier::program_proof::ProgramProof;
-use l1_wrap::{advance_l1_wrap, validate_artifact_envelope, validate_feeder_proof, L1_WRAP_KIND};
+use l1_wrap::{
+    advance_l1_wrap, validate_artifact_envelope, validate_compression_proof, L1_WRAP_KIND,
+};
 pub use l1_wrap::{L1Bundle, L1WrapVersion};
 use riscv_transpiler::vm::FlatResponsesSource;
 use serde::{Deserialize, Serialize};
@@ -77,8 +79,8 @@ pub enum ProofTarget {
     Base,
     RecursionUnrolled,
     RecursionUnified,
-    #[value(name = "l1-feeder")]
-    L1Feeder,
+    #[value(name = "compression")]
+    Compression,
     #[value(name = "l1")]
     L1,
 }
@@ -129,14 +131,14 @@ pub struct ProgramProverConfig {
     pub replay_threads: Option<usize>,
 }
 
-/// The deferred L1 scope: the ethproofs L1 feeder, wrap and EVM profiles are not implemented.
+/// The deferred L1 scope: the ethproofs compression, wrap and EVM profiles are not implemented.
 /// Every L1 entry asserts this before it loads a guest, reads an input or creates a backend;
 /// there is no fallback to another mode and no mixed-mode chain. The assert is the profile's
 /// [`ProverConfigProfile::assert_supports`](prover::definitions::ProverConfigProfile::assert_supports).
 fn assert_target_mode(target: ProofTarget, soundness_mode: prover::definitions::SoundnessMode) {
     use prover::definitions::ProverConfigProfile;
-    if target >= ProofTarget::L1Feeder {
-        ProverConfigProfile::L1Feeder.assert_supports(soundness_mode);
+    if target >= ProofTarget::Compression {
+        ProverConfigProfile::Compression.assert_supports(soundness_mode);
     }
     if target == ProofTarget::L1 {
         ProverConfigProfile::EvmProductionPacked.assert_supports(soundness_mode);
@@ -168,7 +170,7 @@ pub struct ProofTimingsMs {
     pub base_ms: u64,
     pub unrolled_recursion_ms: Vec<u64>,
     pub unified_recursion_ms: Vec<u64>,
-    pub l1_feeder_ms: Vec<u64>,
+    pub compression_ms: Vec<u64>,
     pub l1_wrap_ms: Option<u64>,
 }
 
@@ -503,49 +505,49 @@ fn fsv_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tools/gkr_verifier/full_statement_verifiers")
 }
 
-/// The two roles of the feeder chain: F1 verifies the final standard unified
-/// proof, every later layer verifies the previous feeder proof.
+/// The two roles of the compression chain: F1 verifies the final standard unified
+/// proof, every later layer verifies the previous compression proof.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum FeederRole {
+enum CompressionRole {
     First,
     Recurrent,
 }
 
-const L1_FEEDER_SCHEDULE: [(FeederRole, FeederProfile, usize); 3] = [
-    (FeederRole::First, FeederProfile::A, 2),
-    (FeederRole::Recurrent, FeederProfile::A, 1),
-    (FeederRole::Recurrent, FeederProfile::C, 1),
+const COMPRESSION_SCHEDULE: [(CompressionRole, CompressionProfile, usize); 3] = [
+    (CompressionRole::First, CompressionProfile::Step, 2),
+    (CompressionRole::Recurrent, CompressionProfile::Step, 1),
+    (CompressionRole::Recurrent, CompressionProfile::Final, 1),
 ];
 
 /// The proving profile is independent of the verifier program's input profile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-enum FeederProfile {
-    A,
-    C,
+enum CompressionProfile {
+    Step,
+    Final,
 }
 
-impl FeederProfile {
+impl CompressionProfile {
     #[cfg(test)]
-    const ALL: [Self; 2] = [Self::A, Self::C];
+    const ALL: [Self; 2] = [Self::Step, Self::Final];
 
     const fn circuit(self) -> UnrolledCircuitType {
         match self {
-            Self::A => UnrolledCircuitType::Unified,
-            Self::C => UnrolledCircuitType::Unified22,
+            Self::Step => UnrolledCircuitType::Unified,
+            Self::Final => UnrolledCircuitType::Unified22,
         }
     }
 
     const fn kind(self) -> ExecutionKind {
         match self {
-            Self::A => ExecutionKind::Unified,
-            Self::C => ExecutionKind::Unified22,
+            Self::Step => ExecutionKind::Unified,
+            Self::Final => ExecutionKind::Unified22,
         }
     }
 
     const fn proof_profile(self) -> ProofProfile {
         match self {
-            Self::A => ProofProfile::L1FeederA,
-            Self::C => ProofProfile::L1Feeder,
+            Self::Step => ProofProfile::Compression,
+            Self::Final => ProofProfile::CompressionFinal,
         }
     }
 
@@ -563,26 +565,29 @@ impl FeederProfile {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct FeederStageSpec {
+struct CompressionStageSpec {
     program: FsvProgram,
     /// F1 runs the standard special-opcodes unified verifier, every later layer the
-    /// L1 feeder A guest.
+    /// repeatable Compression-step guest.
     fsv_profile: FsvProfile,
     kind: ExecutionKind,
     profile: ProofProfile,
     setup_machine: SetupMachine,
 }
 
-const fn feeder_stage(role: FeederRole, profile: FeederProfile) -> FeederStageSpec {
-    FeederStageSpec {
+const fn compression_stage(
+    role: CompressionRole,
+    profile: CompressionProfile,
+) -> CompressionStageSpec {
+    CompressionStageSpec {
         program: FsvProgram::UnifiedRecursionLayer,
         fsv_profile: match role {
-            FeederRole::First => FsvProfile::Standard,
-            FeederRole::Recurrent => FsvProfile::L1FeederA,
+            CompressionRole::First => FsvProfile::Standard,
+            CompressionRole::Recurrent => FsvProfile::Compression,
         },
         kind: profile.kind(),
         profile: profile.proof_profile(),
-        setup_machine: SetupMachine::L1Feeder(profile),
+        setup_machine: SetupMachine::Compression(profile),
     }
 }
 
@@ -602,8 +607,8 @@ fn advance_to_target(
             batch_id,
         );
     }
-    if state.stage < ProofTarget::L1Feeder && target >= ProofTarget::L1Feeder {
-        state = advance_feeder_stages(backend, fsv, state, batch_id);
+    if state.stage < ProofTarget::Compression && target >= ProofTarget::Compression {
+        state = advance_compression_stages(backend, fsv, state, batch_id);
     }
     if state.stage < ProofTarget::L1 && target == ProofTarget::L1 {
         state = advance_l1_wrap(backend, fsv, state, batch_id);
@@ -611,7 +616,7 @@ fn advance_to_target(
     state
 }
 
-fn advance_feeder_stages(
+fn advance_compression_stages(
     backend: &mut dyn ProveBackend,
     fsv: &FsvPrograms,
     mut state: RecursionState,
@@ -619,12 +624,12 @@ fn advance_feeder_stages(
 ) -> RecursionState {
     assert!(
         unified_recursion_has_converged(&state.proof, fsv.final_blake),
-        "L1 feeder seed must be a converged unified proof"
+        "compression seed must be a converged unified proof"
     );
-    let mut chain = rebuild_chain(&state.chain_end_params).expect("feeder seed has a chain");
-    for (layer, &(role, profile, instances)) in L1_FEEDER_SCHEDULE.iter().enumerate() {
-        let (bin, text) = fsv.feeder_program(role);
-        let spec = feeder_stage(role, profile);
+    let mut chain = rebuild_chain(&state.chain_end_params).expect("compression seed has a chain");
+    for (layer, &(role, profile, instances)) in COMPRESSION_SCHEDULE.iter().enumerate() {
+        let (bin, text) = fsv.compression_program(role);
+        let spec = compression_stage(role, profile);
         let start = Instant::now();
         let (mut proof, setups) = backend.prove(ProveRequest {
             batch_id,
@@ -639,23 +644,33 @@ fn advance_feeder_stages(
             ),
             profile: spec.profile,
         });
-        validate_feeder_proof(&proof, profile, instances)
-            .unwrap_or_else(|error| panic!("L1 feeder layer {layer}: {error}"));
+        validate_compression_proof(&proof, profile, instances)
+            .unwrap_or_else(|error| panic!("compression layer {layer}: {error}"));
         setups::validate_setups_cap_size(&setups, profile.config().cap_size)
-            .unwrap_or_else(|error| panic!("L1 feeder layer {layer}: {error}"));
-        state.timings.l1_feeder_ms.push(elapsed_ms(start));
+            .unwrap_or_else(|error| panic!("compression layer {layer}: {error}"));
+        state.timings.compression_ms.push(elapsed_ms(start));
         proof.set_recursion_chain(&chain);
+        // The fixture producer captures the last repeatable compression step
+        // from this same chain run, before the terminal CompressionFinal layer.
+        if role == CompressionRole::Recurrent && profile == CompressionProfile::Step {
+            if let Some(output) = std::env::var_os("COMPRESSION_STEP_PROOF_OUTPUT") {
+                let mut circuits = proof.riscv_proofs.values().flatten();
+                let circuit = circuits.next().expect("single compression step proof");
+                assert!(circuits.next().is_none());
+                proof_fixtures::write_file(output, circuit);
+            }
+        }
         let end_params = compute_end_params(&setups, proof.final_pc);
         chain.extend(&end_params);
         state.chain_end_params.push(end_params);
         log::info!(
-            "L1 feeder layer {layer} ({profile:?}) proved ({} cycles)",
+            "compression layer {layer} ({profile:?}) proved ({} cycles)",
             proof.executed_cycles()
         );
         state.proof = proof;
         state.setups = setups;
     }
-    state.stage = ProofTarget::L1Feeder;
+    state.stage = ProofTarget::Compression;
     state.input_is_base = false;
     state
 }
@@ -727,15 +742,15 @@ fn pipeline_registrations(
             ));
         }
     }
-    if start < ProofTarget::L1Feeder && target >= ProofTarget::L1Feeder {
-        for &(role, profile, _) in &L1_FEEDER_SCHEDULE {
-            let spec = feeder_stage(role, profile);
-            let (bin, text) = fsv.feeder_program(role);
+    if start < ProofTarget::Compression && target >= ProofTarget::Compression {
+        for &(role, profile, _) in &COMPRESSION_SCHEDULE {
+            let spec = compression_stage(role, profile);
+            let (bin, text) = fsv.compression_program(role);
             programs.push(((bin.as_slice(), text.as_slice()), spec.kind, spec.profile));
         }
     }
     if start < ProofTarget::L1 && target == ProofTarget::L1 {
-        let (bin, text) = &fsv.feeder_wrap;
+        let (bin, text) = &fsv.compression_wrap;
         programs.push((
             (bin.as_slice(), text.as_slice()),
             L1_WRAP_KIND,
@@ -780,7 +795,7 @@ fn register_pipeline_plan(
                     match r.kind {
                         ExecutionKind::Unrolled => "unrolled pipeline program",
                         ExecutionKind::Unified => "unified pipeline program",
-                        ExecutionKind::Unified22 => "terminal L1 feeder program",
+                        ExecutionKind::Unified22 => "terminal compression program",
                         ExecutionKind::L1Wrap21 => "L1 wrap program",
                     },
                 )
@@ -1036,7 +1051,7 @@ impl ProgramProver {
         start: Option<ProofTarget>,
     ) -> Result<Self, String> {
         assert_target_mode(config.target, config.soundness_mode);
-        if config.target >= ProofTarget::L1Feeder {
+        if config.target >= ProofTarget::Compression {
             assert_eq!(
                 blake,
                 PipelineBlakeModes {
@@ -1052,8 +1067,10 @@ impl ProgramProver {
                 ProofTarget::L1 => {
                     return Err("ProofTarget::L1 is not supported by the GPU backend".into())
                 }
-                ProofTarget::L1Feeder => {
-                    return Err("ProofTarget::L1Feeder is not supported by the GPU backend".into());
+                ProofTarget::Compression => {
+                    return Err(
+                        "ProofTarget::Compression is not supported by the GPU backend".into(),
+                    );
                 }
                 _ => {}
             }
@@ -1144,8 +1161,8 @@ impl ProgramProver {
                             SetupMachine::Unified => {
                                 (ExecutionKind::Unified, ProofProfile::Standard)
                             }
-                            SetupMachine::L1Feeder(profile) => {
-                                let spec = feeder_stage(FeederRole::Recurrent, profile);
+                            SetupMachine::Compression(profile) => {
+                                let spec = compression_stage(CompressionRole::Recurrent, profile);
                                 (spec.kind, spec.profile)
                             }
                             _ => (ExecutionKind::Unrolled, ProofProfile::Standard),
@@ -1219,7 +1236,7 @@ impl ProgramProver {
                 base_ms,
                 unrolled_recursion_ms: Vec::new(),
                 unified_recursion_ms: Vec::new(),
-                l1_feeder_ms: Vec::new(),
+                compression_ms: Vec::new(),
                 l1_wrap_ms: None,
             },
             program_cycles,
@@ -1300,15 +1317,15 @@ fn finalize_artifact(
     state.timings.total_ms = state.timings.base_ms
         + state.timings.unrolled_recursion_ms.iter().sum::<u64>()
         + state.timings.unified_recursion_ms.iter().sum::<u64>()
-        + state.timings.l1_feeder_ms.iter().sum::<u64>()
+        + state.timings.compression_ms.iter().sum::<u64>()
         + state.timings.l1_wrap_ms.unwrap_or(0);
     log::info!(
-        "proving stages took {} ms (base {} ms, unrolled {:?} ms, unified {:?} ms, feeder {:?} ms, wrap {:?} ms)",
+        "proving stages took {} ms (base {} ms, unrolled {:?} ms, unified {:?} ms, compression {:?} ms, wrap {:?} ms)",
         state.timings.total_ms,
         state.timings.base_ms,
         state.timings.unrolled_recursion_ms,
         state.timings.unified_recursion_ms,
-        state.timings.l1_feeder_ms,
+        state.timings.compression_ms,
         state.timings.l1_wrap_ms
     );
 
@@ -1616,8 +1633,8 @@ fn verify_against_chain(
             is_base,
             expected_mode,
         ),
-        ProofTarget::L1Feeder | ProofTarget::L1 => {
-            native_verify_unified_l1_feeder(build_unified_stream(
+        ProofTarget::Compression | ProofTarget::L1 => {
+            native_verify_unified_compression_final(build_unified_stream(
                 &artifact.setups,
                 &artifact.proof,
                 verifier_common::BLAKE_MODE,
@@ -1663,7 +1680,7 @@ enum SetupMachine {
     UnrolledReduced,
     /// Unified reduced machine (bridge + final layers).
     Unified,
-    L1Feeder(FeederProfile),
+    Compression(CompressionProfile),
 }
 
 /// Recompute the per-program `Setups` map for `(binary, machine)` WITHOUT
@@ -1710,8 +1727,8 @@ fn recompute_program_setups(
                 worker,
             )
         }
-        SetupMachine::L1Feeder(profile) => {
-            prover::definitions::ProverConfigProfile::L1Feeder.assert_supports(soundness_mode);
+        SetupMachine::Compression(profile) => {
+            prover::definitions::ProverConfigProfile::Compression.assert_supports(soundness_mode);
             setups::program_setups::compute_unified_program_setups_for_profile::<Global>(
                 &padded_bin,
                 &padded_text,
@@ -1790,7 +1807,7 @@ fn parse_blake_tag(tag: &str) -> Result<BlakeMode, String> {
     BlakeMode::parse(tag).ok_or_else(|| format!("artifact claims unknown blake mode tag {tag:?}"))
 }
 
-/// The unrolled prefix excludes the fixed Standard and feeder tails.
+/// The unrolled prefix excludes the fixed Standard and compression tails.
 fn claimed_unrolled_layers(target: ProofTarget, n: usize) -> Result<usize, String> {
     let tail = match target {
         ProofTarget::Base => {
@@ -1801,7 +1818,7 @@ fn claimed_unrolled_layers(target: ProofTarget, n: usize) -> Result<usize, Strin
         }
         ProofTarget::RecursionUnrolled => 1,
         ProofTarget::RecursionUnified => 3,
-        ProofTarget::L1Feeder | ProofTarget::L1 => 3 + L1_FEEDER_SCHEDULE.len(),
+        ProofTarget::Compression | ProofTarget::L1 => 3 + COMPRESSION_SCHEDULE.len(),
     };
     n.checked_sub(tail)
         .ok_or_else(|| format!("{target:?} artifact must claim at least {tail} layers, got {n}"))
@@ -1912,9 +1929,9 @@ fn expected_chain_end_params(
         SetupMachine::Unified,
     ))?);
 
-    if target >= ProofTarget::L1Feeder {
-        for &(role, profile, _) in &L1_FEEDER_SCHEDULE {
-            let spec = feeder_stage(role, profile);
+    if target >= ProofTarget::Compression {
+        for &(role, profile, _) in &COMPRESSION_SCHEDULE {
+            let spec = compression_stage(role, profile);
             expected.push(end_params(ChainProgram::Fsv(
                 spec.program,
                 spec.fsv_profile,
@@ -2083,7 +2100,7 @@ fn keccak256(data: &[u8]) -> [u8; 32] {
 }
 
 #[cfg(test)]
-mod l1_feeder_tests;
+mod compression_tests;
 
 #[cfg(test)]
 mod l1_reference;
@@ -2255,7 +2272,7 @@ mod l1_capability_tests {
     use super::*;
     use prover::definitions::SoundnessMode;
 
-    const L1_TARGETS: [ProofTarget; 2] = [ProofTarget::L1Feeder, ProofTarget::L1];
+    const L1_TARGETS: [ProofTarget; 2] = [ProofTarget::Compression, ProofTarget::L1];
 
     fn missing() -> ProgramSource {
         let source = ProgramSource::elf("must-not-read-l1-capability-input.elf");
@@ -2278,7 +2295,7 @@ mod l1_capability_tests {
     /// backend construction, so no CUDA is reached even in a `gpu` build.
     #[test]
     fn ethproofs_l1_prover_entries_reject_before_inputs_and_backends() {
-        let checkpoint = crate::l1_feeder_tests::artifact(ProofTarget::RecursionUnified, 3);
+        let checkpoint = crate::compression_tests::artifact(ProofTarget::RecursionUnified, 3);
         for target in L1_TARGETS {
             for backend in [ProverBackend::Cpu, ProverBackend::Gpu] {
                 let config = ProgramProverConfig {
@@ -2316,7 +2333,7 @@ mod l1_capability_tests {
                 .expect("a missing source must be reported");
             assert!(error.starts_with("failed to load program"), "{error}");
             // Past the mode check, verification fails later (envelope or source).
-            let artifact = crate::l1_feeder_tests::feeder_artifact(target, 6);
+            let artifact = crate::compression_tests::compression_artifact(target, 6);
             verify_artifact_in_mode(&artifact, &missing(), SoundnessMode::PessimisticConjecture)
                 .unwrap_err();
         }

@@ -28,7 +28,7 @@ pub struct ProofArtifact {
     pub timings_ms: ProofTimingsMs,
     pub proof_counts: ProofCounts,
     /// Layer end-params history: `[base, unrolled_1, .., bridge, final,
-    /// feeder_0, feeder_1, feeder_2]`, one entry per proven layer.
+    /// compression_0, compression_1, compression_2]`, one entry per proven layer.
     pub chain_end_params: Vec<[u32; 8]>,
     /// Recursion-chain state AFTER this artifact's layer.
     pub chain_hash: [u32; 8],
@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn current_schema_supports_l1_targets_and_omits_absent_bundle() {
-        for target in [ProofTarget::L1Feeder, ProofTarget::L1] {
+        for target in [ProofTarget::Compression, ProofTarget::L1] {
             let mut original = artifact(SoundnessMode::PessimisticConjecture);
             original.target = target;
             let mut value = serde_json::to_value(&original).unwrap();

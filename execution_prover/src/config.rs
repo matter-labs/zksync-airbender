@@ -14,11 +14,11 @@ pub fn assert_profiles_for_circuit(circuit: CircuitType, profiles: &[ProofProfil
     let valid = match circuit {
         CircuitType::L1Wrap21 => profiles == [ProofProfile::L1Wrap],
         CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
-            profiles == [ProofProfile::L1Feeder]
+            profiles == [ProofProfile::CompressionFinal]
         }
         CircuitType::Unrolled(UnrolledCircuitType::Unified) => profiles
             .iter()
-            .all(|profile| matches!(profile, ProofProfile::Standard | ProofProfile::L1FeederA)),
+            .all(|profile| matches!(profile, ProofProfile::Standard | ProofProfile::Compression)),
         _ => profiles == [ProofProfile::Standard],
     };
     assert!(valid, "{circuit:?} does not support profiles {profiles:?}");

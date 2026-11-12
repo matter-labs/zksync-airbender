@@ -101,16 +101,16 @@ pub fn native_verify_unrolled_in_mode(
     })
 }
 
-/// Native verification of an L1 feeder stream (the zero-delegation
-/// feeder statement) at a checked boundary: a verifier error, a structural
+/// Native verification of an compression stream (the zero-delegation
+/// compression statement) at a checked boundary: a verifier error, a structural
 /// panic inside the statement (a nonzero delegation count, a truncated
 /// stream), or trailing words after the statement consumed its input are all
 /// reported as `Err`.
 #[cfg(feature = "verifiers")]
-pub fn native_verify_unified_l1_feeder(stream: Vec<u32>) -> Result<[u32; 16], String> {
-    native_verify_l1_feeder_statement(
+pub fn native_verify_unified_compression_final(stream: Vec<u32>) -> Result<[u32; 16], String> {
+    native_verify_compression_statement(
         stream,
-        crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_l1_feeder::<
+        crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_compression_final::<
             _,
             verifier_common::errors::DebugErrorCreator,
             USE_REDUCED_BLAKE2_ROUNDS,
@@ -119,23 +119,23 @@ pub fn native_verify_unified_l1_feeder(stream: Vec<u32>) -> Result<[u32; 16], St
 }
 
 #[cfg(feature = "verifiers")]
-fn native_verify_l1_feeder_statement(
+fn native_verify_compression_statement(
     stream: Vec<u32>,
     statement: fn(
         &mut std::vec::IntoIter<u32>,
     ) -> Result<[u32; 16], verifier_common::errors::VerificationError>,
 ) -> Result<[u32; 16], String> {
     let joined = std::thread::Builder::new()
-        .name("unified l1 feeder verifier".to_string())
+        .name("unified l1 compression verifier".to_string())
         .stack_size(1 << 27)
         .spawn(move || {
             let mut it = stream.into_iter();
             let output = statement(&mut it)
-                .map_err(|err| format!("unified l1 feeder proof failed to verify: {err:?}"))?;
+                .map_err(|err| format!("unified l1 compression proof failed to verify: {err:?}"))?;
             let trailing = it.count();
             if trailing != 0 {
                 return Err(format!(
-                    "unified l1 feeder stream carries {trailing} trailing words after the statement"
+                    "unified l1 compression stream carries {trailing} trailing words after the statement"
                 ));
             }
             Ok(output)
@@ -151,7 +151,7 @@ fn native_verify_l1_feeder_statement(
                 .or_else(|| payload.downcast_ref::<&str>().copied())
                 .unwrap_or("unknown verifier panic");
             Err(format!(
-                "unified l1 feeder statement rejected the stream: {reason}"
+                "unified l1 compression statement rejected the stream: {reason}"
             ))
         }
     }

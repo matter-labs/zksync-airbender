@@ -201,8 +201,8 @@ mod tests {
         );
         let program = vec![0x0001_2083, 0xffdf_f06f];
         for (kind, profile) in [
-            (ExecutionKind::Unified22, ProofProfile::L1Feeder),
-            (ExecutionKind::Unified, ProofProfile::L1FeederA),
+            (ExecutionKind::Unified22, ProofProfile::CompressionFinal),
+            (ExecutionKind::Unified, ProofProfile::Compression),
             (ExecutionKind::L1Wrap21, ProofProfile::L1Wrap),
         ] {
             let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

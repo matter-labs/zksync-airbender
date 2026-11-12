@@ -278,7 +278,7 @@ pub enum UnrolledCircuitType {
     NonMemory(UnrolledNonMemoryCircuitType),
     /// The 2^23 unified reduced-machine circuit of regular recursion.
     Unified,
-    /// The 2^22 unified reduced-machine circuit of the L1 feeder layers:
+    /// The 2^22 unified reduced-machine circuit of the compression layers:
     /// same family and definition as [`Self::Unified`], distinct geometry
     /// (and so distinct setups, precomputations and proof shape).
     Unified22,

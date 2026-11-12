@@ -29,7 +29,7 @@ for d in "$CARGO_REGISTRY"/*; do
     REMAP_ARGS="${REMAP_ARGS},\"--remap-path-prefix=${d}=/cargo-registry\""
 done
 
-bin=fsv_unified_recursion_layer_sec_100_l1_feeder_wrap
+bin=fsv_unified_recursion_layer_sec_100_compression_final_wrap
 stem=${bin}_special_opcodes_extension
 flags=(--locked --release -Z panic-immediate-abort -Z build-std=core,alloc
        --config "build.rustflags=[${REMAP_ARGS},\"-A\",\"warnings\",\"-C\",\"link-arg=-Map=wrap-link.map\"]"

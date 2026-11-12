@@ -26,17 +26,17 @@ impl FsvProgram {
 pub enum FsvProfile {
     /// The recursion pipeline's statement.
     Standard,
-    /// Unified recursion verifying the merged-mode L1 feeder schedule.
-    L1FeederA,
-    L1FeederWrap,
+    /// Unified recursion verifying the merged-mode compression schedule.
+    Compression,
+    CompressionFinalWrap,
 }
 
 impl FsvProfile {
     #[must_use]
     pub const fn rom(self) -> RomGeometry {
         match self {
-            Self::L1FeederWrap => L1_WRAP_ROM,
-            Self::Standard | Self::L1FeederA => REGULAR_ROM,
+            Self::CompressionFinalWrap => L1_WRAP_ROM,
+            Self::Standard | Self::Compression => REGULAR_ROM,
         }
     }
 }
@@ -63,7 +63,7 @@ impl FsvDescriptor {
     }
 
     #[must_use]
-    pub const fn l1_feeder(profile: FsvProfile) -> Self {
+    pub const fn compression(profile: FsvProfile) -> Self {
         Self {
             soundness_mode: SoundnessMode::PessimisticConjecture,
             program: FsvProgram::UnifiedRecursionLayer,
@@ -111,7 +111,7 @@ const fn entry(
 /// Every built guest, with ethproofs-soundcalc guests in their mode subdirectory.
 pub const FSV_REGISTRY: &[FsvRegistryEntry] = {
     use BlakeMode::{BlakeSpecialOpcodes, Compression};
-    use FsvProfile::{L1FeederA, L1FeederWrap, Standard};
+    use FsvProfile::{CompressionFinalWrap, Standard};
     use FsvProgram::*;
     use SoundnessMode::{EthproofsSoundnessCalc, PessimisticConjecture};
     &[
@@ -146,16 +146,16 @@ pub const FSV_REGISTRY: &[FsvRegistryEntry] = {
         entry(
             PessimisticConjecture,
             UnifiedRecursionLayer,
-            L1FeederA,
+            FsvProfile::Compression,
             BlakeSpecialOpcodes,
-            "fsv_unified_recursion_layer_sec_100_l1_feeder_a_special_opcodes_extension.elf",
+            "fsv_unified_recursion_layer_sec_100_compression_special_opcodes_extension.elf",
         ),
         entry(
             PessimisticConjecture,
             UnifiedRecursionLayer,
-            L1FeederWrap,
+            CompressionFinalWrap,
             BlakeSpecialOpcodes,
-            "fsv_unified_recursion_layer_sec_100_l1_feeder_wrap_special_opcodes_extension.elf",
+            "fsv_unified_recursion_layer_sec_100_compression_final_wrap_special_opcodes_extension.elf",
         ),
         entry(
             EthproofsSoundnessCalc,

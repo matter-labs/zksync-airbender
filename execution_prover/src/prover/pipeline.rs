@@ -550,7 +550,7 @@ mod tests {
     fn l1_profile_rejects_delegation_requests() {
         let mut prover = ExecutionProver::<TestBackend>::new();
         let program = vec![0x0001_2083, 0xffdf_f06f];
-        let profile = ProofProfile::L1Feeder;
+        let profile = ProofProfile::CompressionFinal;
         let kind = ExecutionKind::Unified22;
         let handle = prover.add_binary_variants(
             program.clone(),

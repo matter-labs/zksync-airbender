@@ -27,6 +27,10 @@ fn command(root: &Path, arguments: &[&str], backend: Option<&str>) -> Command {
         .env("FIXTURE_CLI", root.join("cli"))
         .env("FIXTURE_CODEC", root.join("codec"))
         .env("FIXTURE_CANONICAL_PRODUCER", root.join("producer"))
+        .env(
+            "FIXTURE_COMPRESSION_PRODUCER",
+            root.join("compression-producer"),
+        )
         .env("TMPDIR", root)
         .env_remove("FIXTURE_BACKEND")
         .env_remove("EXPECTED_FIXTURE_BACKEND")
@@ -66,7 +70,7 @@ done
 if [[ $action == trusted-params ]]; then printf params >"$output"; exit; fi
 if [[ $action == verify ]]; then
   [[ -f $proof ]]
-  if [[ $proof == */l1_feeder.json.zlib || $proof == */l1.json.zlib ]]; then
+  if [[ $proof == */compression.json.zlib || $proof == */l1.json.zlib ]]; then
     [[ -z $trusted ]]
   elif [[ -n ${FIXTURE_TRUSTED_PARAMS:-} ]]; then
     [[ -f $trusted ]]
@@ -78,17 +82,35 @@ fi
 [[ $backend == "${EXPECTED_FIXTURE_BACKEND:-cpu}" ]]
 if [[ $action == continue-proof ]]; then
   case $target in
-    l1-feeder) parent=unified ;;
-    l1) parent=l1_feeder ;;
+    compression) parent=unified ;;
+    l1) parent=compression ;;
     *) parent=base; [[ $output_file != unrolled_unified.json.zlib ]] || parent=unrolled ;;
   esac
   [[ $proof == "$AB_TEST_ARTIFACT_ROOT/fixtures/chains/pessimistic_conjecture/$parent.json.zlib" ]]
 fi
 mkdir -p "$output_dir"
 printf '%s' "$output_file" >"$output_dir/$output_file"
+if [[ $target == compression ]]; then
+  printf compression-step >"$COMPRESSION_STEP_PROOF_OUTPUT"
+fi
 "##,
     );
     executable(&root.join("codec"), "#!/bin/sh\ntest -f \"$2\"\n");
+    executable(
+        &root.join("compression-producer"),
+        "#!/bin/sh\ntest -f \"$1\" || exit 1\nprintf compression-final >\"$2\"\n",
+    );
+    fs::create_dir_all(root.join("fixtures/circuits/pessimistic_conjecture")).unwrap();
+    fs::write(
+        root.join("fixtures/circuits/pessimistic_conjecture/compression_final.json.zlib"),
+        "compression-final",
+    )
+    .unwrap();
+    fs::write(
+        root.join("fixtures/circuits/pessimistic_conjecture/compression.json.zlib"),
+        "compression-step",
+    )
+    .unwrap();
     executable(
         &root.join("producer"),
         "#!/bin/sh\necho 'test result: ok. 0 passed; 0 failed'\n",
@@ -110,7 +132,7 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
         .unwrap();
     }
     for backend in [None, Some("cpu"), Some("gpu")] {
-        for stage in ["base_unified", "unrolled", "l1_feeder", "l1"] {
+        for stage in ["base_unified", "unrolled", "compression", "l1"] {
             let result = run_with_backend(
                 &root,
                 &[
@@ -130,7 +152,7 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
         }
     }
     let trusted_params = root.join("trusted-params");
-    for stage in ["base_unified", "unrolled", "l1_feeder", "l1"] {
+    for stage in ["base_unified", "unrolled", "compression", "l1"] {
         let result = command(
             &root,
             &[
@@ -151,7 +173,7 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
             String::from_utf8_lossy(&result.stderr)
         );
     }
-    for stage in ["l1_feeder", "l1"] {
+    for stage in ["compression", "l1"] {
         // L1 stage selection defaults to its only supported soundness mode.
         for arguments in [vec!["--check", "--stage", stage], vec!["--stage", stage]] {
             let result = run(&root, &arguments);

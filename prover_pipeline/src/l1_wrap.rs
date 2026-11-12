@@ -78,8 +78,8 @@ impl L1Bundle {
 /// The setup cap every entry of an artifact's `setups` must carry: the
 /// profile config's `cap_size` of the artifact's final proof layer.
 pub(super) fn expected_setup_cap_size(target: ProofTarget) -> usize {
-    if target >= ProofTarget::L1Feeder {
-        ProofProfile::L1Feeder
+    if target >= ProofTarget::Compression {
+        ProofProfile::CompressionFinal
             .prover_config(
                 CircuitType::Unrolled(UnrolledCircuitType::Unified22).get_domain_size_log2()
                     as usize,
@@ -102,51 +102,51 @@ pub(super) fn validate_artifact_envelope(artifact: &ProofArtifact) -> Result<(),
     }
     // serde bypasses the setup-cap constructor: repeat its shape check here
     setups::validate_setups_cap_size(&artifact.setups, expected_setup_cap_size(artifact.target))?;
-    if artifact.target >= ProofTarget::L1Feeder {
-        validate_feeder_proof(&artifact.proof, FeederProfile::C, 1)?;
+    if artifact.target >= ProofTarget::Compression {
+        validate_compression_proof(&artifact.proof, CompressionProfile::Final, 1)?;
     }
     Ok(())
 }
 
-/// A feeder proof must have the scheduled circuit, instance count and WHIR schedule.
-pub(super) fn validate_feeder_proof(
+/// A compression proof must have the scheduled circuit, instance count and WHIR schedule.
+pub(super) fn validate_compression_proof(
     proof: &ProgramProof,
-    profile: FeederProfile,
+    profile: CompressionProfile,
     instances: usize,
 ) -> Result<(), String> {
     let family = profile.circuit().get_family_idx() as u32;
     if proof.riscv_proofs.len() != 1 || !proof.riscv_proofs.contains_key(&family) {
         return Err(format!(
-            "feeder proof must carry the reduced-machine family {family} only"
+            "compression proof must carry the reduced-machine family {family} only"
         ));
     }
     if proof.riscv_proofs[&family].len() != instances {
         return Err(format!(
-            "feeder proof carries {} instance(s), expected {instances}",
+            "compression proof carries {} instance(s), expected {instances}",
             proof.riscv_proofs[&family].len()
         ));
     }
     if !proof.delegation_proofs.is_empty() {
-        return Err("feeder proof must carry no delegation proofs".into());
+        return Err("compression proof must carry no delegation proofs".into());
     }
     if proof.num_it_circuits != Some(1)
         || !proof.inits_and_teardown_proofs.is_empty()
         || proof.inits_and_teardowns_circuit.is_some()
     {
         return Err(
-            "feeder proof must carry exactly one embedded inits-and-teardowns instance".into(),
+            "compression proof must carry exactly one embedded inits-and-teardowns instance".into(),
         );
     }
     if proof.compiled_riscv_circuits.len() != 1 {
-        return Err("feeder proof must carry one compiled unified circuit".into());
+        return Err("compression proof must carry one compiled unified circuit".into());
     }
     let compiled = proof
         .compiled_riscv_circuits
         .get(&family)
-        .ok_or("feeder proof carries no compiled unified circuit")?;
+        .ok_or("compression proof carries no compiled unified circuit")?;
     if compiled.trace_len != profile.circuit().get_domain_size() {
         return Err(format!(
-            "feeder proof circuit has trace length {}, expected {:?}",
+            "compression proof circuit has trace length {}, expected {:?}",
             compiled.trace_len,
             profile.circuit()
         ));
@@ -154,7 +154,7 @@ pub(super) fn validate_feeder_proof(
     let expected_schedule = profile.config().whir_schedule;
     for instance in &proof.riscv_proofs[&family] {
         if instance.whir_proof.whir_schedule != expected_schedule {
-            return Err(format!("feeder proof instance was not proven under the {profile:?} L1 feeder WHIR schedule"));
+            return Err(format!("compression proof instance was not proven under the {profile:?} compression WHIR schedule"));
         }
     }
     Ok(())
@@ -167,7 +167,7 @@ pub(super) fn advance_l1_wrap(
     batch_id: u64,
 ) -> RecursionState {
     let start = Instant::now();
-    let (bin, text) = &fsv.feeder_wrap;
+    let (bin, text) = &fsv.compression_wrap;
     let nd_words =
         build_unified_stream(&state.setups, &state.proof, BlakeMode::BlakeSpecialOpcodes);
     let result = backend.prove_l1_wrap(L1WrapRequest {

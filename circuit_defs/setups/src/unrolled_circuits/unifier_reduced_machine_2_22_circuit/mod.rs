@@ -1,7 +1,7 @@
 use super::*;
 
 /// Build the GKR [`CircuitSetup`] for the 2^22 unified reduced-machine circuit
-/// of the L1 feeder layers (`ProofProfile::L1Feeder`). Same decoder table and
+/// of the compression layers (`ProofProfile::CompressionFinal`). Same decoder table and
 /// table driver as [`unified_reduced_machine_circuit_setup`]; the compiled
 /// artifact and the setup are the 2^22 ones.
 pub fn unified_reduced_machine_2_22_circuit_setup<A: GoodAllocator + 'static>(

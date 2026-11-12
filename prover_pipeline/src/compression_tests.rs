@@ -76,19 +76,19 @@ fn modes_only(blake: PipelineBlakeModes) -> FsvPrograms {
 }
 
 pub(super) fn artifact(target: ProofTarget, n: usize) -> ProofArtifact {
-    feeder_artifact(target, n)
+    compression_artifact(target, n)
 }
 
-/// A fake single-instance feeder proof: the reduced family with `instances`
+/// A fake single-instance compression proof: the reduced family with `instances`
 /// instances, one inits-and-teardowns instance, no delegation proofs.
-pub(super) fn fake_feeder_proof(final_pc: u32, instances: usize) -> ProgramProof {
-    fake_feeder_proof_for_profile(final_pc, instances, FeederProfile::C)
+pub(super) fn fake_compression_proof(final_pc: u32, instances: usize) -> ProgramProof {
+    fake_compression_proof_for_profile(final_pc, instances, CompressionProfile::Final)
 }
 
-pub(super) fn fake_feeder_proof_for_profile(
+pub(super) fn fake_compression_proof_for_profile(
     final_pc: u32,
     instances: usize,
-    profile: FeederProfile,
+    profile: CompressionProfile,
 ) -> ProgramProof {
     let family = profile.circuit().get_family_idx() as u32;
     let schedule = profile.config().whir_schedule;
@@ -105,18 +105,18 @@ pub(super) fn fake_feeder_proof_for_profile(
             .collect(),
     );
     let layout = match profile {
-        FeederProfile::A => serde_json::from_str(include_str!(
+        CompressionProfile::Step => serde_json::from_str(include_str!(
             "../../circuit_defs/unrolled_circuits/unified_reduced_machine/generated/layout.json"
         ))
         .unwrap(),
-        FeederProfile::C => unified_reduced_machine_2_22_layout(),
+        CompressionProfile::Final => unified_reduced_machine_2_22_layout(),
     };
     proof.compiled_riscv_circuits.insert(family, layout);
     proof.num_it_circuits = Some(1);
     proof
 }
 
-/// The committed 2^22 unified layout, the compiled circuit a feeder proof
+/// The committed 2^22 unified layout, the compiled circuit a compression proof
 /// carries.
 pub(super) fn unified_reduced_machine_2_22_layout(
 ) -> prover::cs::gkr_compiler::GKRCircuitArtifact<prover::field::baby_bear::base::BabyBearField> {
@@ -126,7 +126,7 @@ pub(super) fn unified_reduced_machine_2_22_layout(
     .unwrap()
 }
 
-pub(super) fn feeder_artifact(target: ProofTarget, n: usize) -> ProofArtifact {
+pub(super) fn compression_artifact(target: ProofTarget, n: usize) -> ProofArtifact {
     finalize_artifact(
         &modes_only(compression_modes()),
         &ProgramProverConfig {
@@ -139,8 +139,8 @@ pub(super) fn feeder_artifact(target: ProofTarget, n: usize) -> ProofArtifact {
         RecursionState {
             stage: target,
             l1: None,
-            proof: if target >= ProofTarget::L1Feeder {
-                fake_feeder_proof(0, 1)
+            proof: if target >= ProofTarget::Compression {
+                fake_compression_proof(0, 1)
             } else {
                 empty_proof()
             },
@@ -169,36 +169,36 @@ fn continuation_keeps_historical_modes_when_current_modes_differ() {
 }
 
 #[test]
-fn feeder_artifacts_require_the_fixed_chain_tail() {
+fn compression_artifacts_require_the_fixed_chain_tail() {
     assert_eq!(
-        chain_unrolled_layers(&feeder_artifact(ProofTarget::L1Feeder, 7)).unwrap(),
+        chain_unrolled_layers(&compression_artifact(ProofTarget::Compression, 7)).unwrap(),
         1
     );
     assert_eq!(
-        chain_unrolled_layers(&feeder_artifact(ProofTarget::L1, 6)).unwrap(),
+        chain_unrolled_layers(&compression_artifact(ProofTarget::L1, 6)).unwrap(),
         0
     );
-    assert!(chain_unrolled_layers(&feeder_artifact(ProofTarget::L1Feeder, 5)).is_err());
+    assert!(chain_unrolled_layers(&compression_artifact(ProofTarget::Compression, 5)).is_err());
 }
 
 #[test]
 fn terminal_c_rejects_profile_a_sized_setup_caps() {
-    let family = FeederProfile::C.circuit().get_family_idx() as u32;
-    let mut artifact = feeder_artifact(ProofTarget::L1Feeder, 6);
+    let family = CompressionProfile::Final.circuit().get_family_idx() as u32;
+    let mut artifact = compression_artifact(ProofTarget::Compression, 6);
     let setup = |cap_size| setups::UnrolledCircuitSetupParams {
         family_idx: family,
-        capacity: FeederProfile::C.circuit().get_domain_size() as u32,
+        capacity: CompressionProfile::Final.circuit().get_domain_size() as u32,
         setup_caps: prover::merkle_trees::MerkleTreeCapVarLength {
             cap: vec![[7; 8]; cap_size],
         },
     };
     artifact
         .setups
-        .insert(family, setup(FeederProfile::C.cap_size()));
+        .insert(family, setup(CompressionProfile::Final.cap_size()));
     validate_artifact_envelope(&artifact).unwrap();
     artifact
         .setups
-        .insert(family, setup(FeederProfile::A.cap_size()));
+        .insert(family, setup(CompressionProfile::Step.cap_size()));
     assert!(validate_artifact_envelope(&artifact)
         .unwrap_err()
         .contains("leafs"));
@@ -243,17 +243,17 @@ fn continuation_constructor_rejects_request_and_source_before_backend_setup() {
     }
 }
 
-/// A feeder artifact is admitted against the trusted chain of the supplied
+/// A compression artifact is admitted against the trusted chain of the supplied
 /// program before its continuation proves anything: a history that hashes
 /// consistently but is not the program's chain is rejected.
 #[test]
-fn feeder_continuation_requires_the_trusted_chain() {
+fn compression_continuation_requires_the_trusted_chain() {
     let source = ProgramSource::legacy_binaries_from_bin(
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/basic_fibonacci/app.bin"),
     );
     let mut artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
         "pessimistic_conjecture",
-        "l1_feeder",
+        "compression",
     ));
     artifact.chain_end_params[0][0] ^= 1;
     let chain = rebuild_chain(&artifact.chain_end_params).unwrap();
@@ -269,25 +269,31 @@ fn feeder_continuation_requires_the_trusted_chain() {
 }
 
 #[test]
-fn feeder_proof_profile_requires_the_trace_and_every_instance_schedule() {
-    for profile in FeederProfile::ALL {
-        let proof = fake_feeder_proof_for_profile(0, 1, profile);
-        validate_feeder_proof(&proof, profile, 1).unwrap();
+fn compression_proof_profile_requires_the_trace_and_every_instance_schedule() {
+    for profile in CompressionProfile::ALL {
+        let proof = fake_compression_proof_for_profile(0, 1, profile);
+        validate_compression_proof(&proof, profile, 1).unwrap();
     }
-    let mut proof = fake_feeder_proof_for_profile(0, 2, FeederProfile::A);
+    let mut proof = fake_compression_proof_for_profile(0, 2, CompressionProfile::Step);
     let family = UnrolledCircuitType::Unified.get_family_idx() as u32;
     proof.riscv_proofs.get_mut(&family).unwrap()[1]
         .whir_proof
-        .whir_schedule = FeederProfile::C.config().whir_schedule;
-    assert!(validate_feeder_proof(&proof, FeederProfile::A, 2)
-        .unwrap_err()
-        .contains("WHIR schedule"));
-    let proof = fake_feeder_proof_for_profile(0, 2, FeederProfile::C);
-    assert!(validate_feeder_proof(&proof, FeederProfile::C, 1)
-        .unwrap_err()
-        .contains("expected 1"));
-    let proof = fake_feeder_proof_for_profile(0, 1, FeederProfile::A);
-    assert!(validate_feeder_proof(&proof, FeederProfile::C, 1)
-        .unwrap_err()
-        .contains("trace length"));
+        .whir_schedule = CompressionProfile::Final.config().whir_schedule;
+    assert!(
+        validate_compression_proof(&proof, CompressionProfile::Step, 2)
+            .unwrap_err()
+            .contains("WHIR schedule")
+    );
+    let proof = fake_compression_proof_for_profile(0, 2, CompressionProfile::Final);
+    assert!(
+        validate_compression_proof(&proof, CompressionProfile::Final, 1)
+            .unwrap_err()
+            .contains("expected 1")
+    );
+    let proof = fake_compression_proof_for_profile(0, 1, CompressionProfile::Step);
+    assert!(
+        validate_compression_proof(&proof, CompressionProfile::Final, 1)
+            .unwrap_err()
+            .contains("trace length")
+    );
 }

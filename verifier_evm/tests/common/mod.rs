@@ -38,7 +38,7 @@ pub fn load() -> (Circuit, Proof, OperationMode) {
 }
 pub fn final_pc() -> u32 {
     let image = riscv_transpiler::elf::read_elf_from_path_with_rom(
-        Path::new("../tools/gkr_verifier/full_statement_verifiers/fsv_unified_recursion_layer_sec_100_l1_feeder_wrap_special_opcodes_extension.elf"),
+        Path::new("../tools/gkr_verifier/full_statement_verifiers/fsv_unified_recursion_layer_sec_100_compression_final_wrap_special_opcodes_extension.elf"),
         riscv_transpiler::elf::ElfReadMode::Legacy,
         riscv_transpiler::common_constants::rom::L1_WRAP_ROM,
     )

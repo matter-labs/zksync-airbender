@@ -147,9 +147,9 @@ cargo run --release -p cli -- verify \
 Status: CPU proving in `ethproofs-soundcalc` is enabled; its end-to-end
 validation is still pending. The GPU backend rejects `ethproofs-soundcalc`
 before reading inputs, because it does not yet implement that mode's folding
-and OOD proof of work. The L1 targets (`--target l1-feeder` and `--target l1`)
+and OOD proof of work. The L1 targets (`--target compression` and `--target l1`)
 exist only in `pessimistic-conjecture`: with `ethproofs-soundcalc` they are
-rejected before any input is read, because the L1 feeder/wrap/EVM profile is
+rejected before any input is read, because the compression/wrap/EVM profile is
 deferred product scope. `verify` and `continue-proof` reject an L1 artifact
 under `ethproofs-soundcalc` the same way.
 
@@ -166,16 +166,16 @@ cargo run --release -p cli -- verify \
   --soundness-mode pessimistic-conjecture
 ```
 
-## L1 Feeder Checkpoint
+## L1 Compression Checkpoint
 
-`--target l1-feeder` continues a `recursion-unified` proof with a feeder chain.
+`--target compression` continues a `recursion-unified` proof with a compression chain.
 The pipeline requires Compression Blake modes and follows the fixed schedule:
 F1 proves the Standard seed as two A instances, then the A verifier is proved
 as one A instance and finally one C instance. Each proof must match the scheduled
 circuit, instance count, WHIR schedule and setup cap before the chain advances.
 
 Artifacts use schema 5. The optional `l1` bundle is serialized only when present;
-artifacts without it retain the existing schema-5 encoding. The `l1-feeder`
+artifacts without it retain the existing schema-5 encoding. The `compression`
 artifact is the input of the L1 wrap.
 
 Producer commands and the pinned seed environment are in the
@@ -185,26 +185,26 @@ Producer commands and the pinned seed environment are in the
 cargo run --release -p cli -- continue-proof \
   --proof output/recursion_unified.json \
   --bin examples/basic_fibonacci/app.bin \
-  --target l1-feeder \
+  --target compression \
   --output-dir output \
-  --output-file l1_feeder.json
+  --output-file compression.json
 
 cargo run --release -p cli -- verify \
-  --proof output/l1_feeder.json \
+  --proof output/compression.json \
   --bin examples/basic_fibonacci/app.bin
 ```
 
 ## L1 Proof
 
-`--target l1` continues an `l1-feeder` checkpoint (or runs through it) and
-proves the L1 feeder verifier's execution as one Proth120 packed unified proof
+`--target l1` continues an `compression` checkpoint (or runs through it) and
+proves the compression verifier's execution as one Proth120 packed unified proof
 with Keccak commitments, the proof shape the EVM verifier consumes. The
-artifact (schema 5) keeps the BabyBear feeder sidecar and adds the `l1` bundle
+artifact (schema 5) keeps the BabyBear compression sidecar and adds the `l1` bundle
 (proof and operation-mode data).
 
 ```bash
 cargo run --release -p cli -- continue-proof \
-  --proof output/l1_feeder.json \
+  --proof output/compression.json \
   --bin examples/basic_fibonacci/app.bin \
   --target l1 \
   --backend cpu \
@@ -217,7 +217,7 @@ cargo run --release -p cli -- verify \
 ```
 
 There is no native verifier for the Proth120 proof: `verify` on an L1 artifact
-checks the feeder sidecar, the recursion chain and the bundle's packing
+checks the compression sidecar, the recursion chain and the bundle's packing
 parameters, and says that the Proth proof was not verified.
 
 ## Trusted Params

@@ -108,7 +108,7 @@ pub(crate) fn replay_unified_circuit<C: Counters>(
 /// The proving flow of [`prove_unified_execution_with_replayer_in_profile`] under Pessimistic
 /// Conjecture with an explicit prover config for the UNIFIED circuit (delegation circuits keep
 /// their standard per-level configs). Used to prove final recursion layers under special
-/// commitment parameters (e.g. the high-LDE "L1 feeder" config) — the corresponding generated
+/// commitment parameters (e.g. the high-LDE "compression" config) — the corresponding generated
 /// verifier must be used to verify the result, since the LDE factor and WHIR schedule are baked
 /// into the verify function.
 pub fn prove_unified_execution_with_replayer_with_unified_config<
@@ -156,8 +156,8 @@ pub fn prove_unified_execution_with_replayer_with_unified_config<
 /// inits-and-teardowns, alongside the delegation circuits. It is the unified-mode analogue of
 /// [`crate::unrolled::prove_unrolled_execution_with_replayer_in_mode`]: the same Fiat-Shamir flow
 /// (commit memory trees -> derive challenges -> prove), and it asserts that the global permutation
-/// grand-product closes to ONE. `L1Feeder` and `EvmProductionPacked` are refused: the L1 feeder
-/// is proven by the pipeline's `ProofTarget::L1Feeder` route.
+/// grand-product closes to ONE. `Compression` and `EvmProductionPacked` are refused: the compression
+/// is proven by the pipeline's `ProofTarget::Compression` route.
 ///
 /// The caller chooses the compute backends: the FFT/tree [`Backend`] (whose
 /// [`Backend::TwiddleSet`]s are built here, once per WHIR message length) and the
@@ -207,8 +207,8 @@ pub fn prove_unified_execution_with_replayer_in_profile<
             backend,
             gkr_backend,
         ),
-        // The L1 feeder is proven by the pipeline's `ProofTarget::L1Feeder` route.
-        ProverConfigProfile::L1Feeder | ProverConfigProfile::EvmProductionPacked => {
+        // The compression is proven by the pipeline's `ProofTarget::Compression` route.
+        ProverConfigProfile::Compression | ProverConfigProfile::EvmProductionPacked => {
             panic!("BabyBear unified execution cannot use {profile:?}")
         }
     }
@@ -819,7 +819,7 @@ fn prove_unified_execution_with_replayer_impl<
             );
 
             let now = std::time::Instant::now();
-            // With an override config (e.g. the high-LDE L1 feeder) the
+            // With an override config (e.g. the high-LDE compression) the
             // materialized RS codewords would not fit in memory — serve base
             // codewords and trees by RECOMPUTATION instead. The default path
             // keeps the historical fully-in-memory policy.

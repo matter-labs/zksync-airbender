@@ -101,7 +101,7 @@ pub fn compute_unified_program_setups_for_profile<A: GoodAllocator + 'static>(
     worker: &Worker,
 ) -> Setups {
     let unified_setup = match profile {
-        ProofProfile::Standard | ProofProfile::L1FeederA => {
+        ProofProfile::Standard | ProofProfile::Compression => {
             unified_reduced_machine_circuit_setup::<A>(
                 binary_image,
                 text_section,
@@ -109,7 +109,7 @@ pub fn compute_unified_program_setups_for_profile<A: GoodAllocator + 'static>(
                 worker,
             )
         }
-        ProofProfile::L1Feeder => unified_reduced_machine_2_22_circuit_setup::<A>(
+        ProofProfile::CompressionFinal => unified_reduced_machine_2_22_circuit_setup::<A>(
             binary_image,
             text_section,
             use_caches,
@@ -140,7 +140,7 @@ pub fn compute_unified_program_setups_for_profile<A: GoodAllocator + 'static>(
 fn setup_prover_config(profile: ProofProfile, circuit_config: &ProverConfig) -> ProverConfig {
     match profile {
         ProofProfile::Standard => circuit_config.clone(),
-        ProofProfile::L1Feeder | ProofProfile::L1FeederA => profile.prover_config(
+        ProofProfile::CompressionFinal | ProofProfile::Compression => profile.prover_config(
             circuit_config.trace_len_log2,
             prover::definitions::SoundnessMode::PessimisticConjecture,
         ),

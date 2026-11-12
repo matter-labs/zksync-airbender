@@ -19,11 +19,11 @@ case $mode_filter in
   *) echo "unknown mode: $mode_filter" >&2; exit 1 ;;
 esac
 case $stage_filter in
-  ''|circuits|base_unified|unrolled|l1_feeder|l1) ;;
+  ''|circuits|base_unified|unrolled|compression|l1) ;;
   *) echo "unknown stage: $stage_filter" >&2; exit 1 ;;
 esac
 case $stage_filter in
-  l1_feeder|l1)
+  compression|l1)
     [[ $mode_filter != ethproofs_soundcalc ]] || {
       echo "L1 stages support only pessimistic_conjecture" >&2; exit 1;
     }
@@ -80,6 +80,7 @@ trap cleanup EXIT
 producer=${FIXTURE_CANONICAL_PRODUCER:-}
 cli=${FIXTURE_CLI:-}
 codec=${FIXTURE_CODEC:-}
+compression_producer=${FIXTURE_COMPRESSION_PRODUCER:-}
 if [[ -z $stage_filter || $stage_filter == circuits ]]; then
   if [[ -n $producer ]]; then
     [[ -x $producer ]]
@@ -103,6 +104,13 @@ if [[ $stage_filter != circuits ]]; then
   fi
   [[ -x $cli && -x $codec ]]
 fi
+if [[ -z $stage_filter || $stage_filter == compression ]]; then
+  if [[ -z $compression_producer ]]; then
+    cargo build --release -p prover_pipeline --example export_compression_final
+    compression_producer="$repo/target/release/examples/export_compression_final"
+  fi
+  [[ -x $compression_producer ]]
+fi
 
 compare_file() {
   if ((check)); then
@@ -116,7 +124,7 @@ check_artifact() {
   local trusted=()
   # The shared cache contains Standard records only; L1 verification derives
   # its profile-specific trusted parameters from the program.
-  if [[ -n $trusted_params && $name != l1_feeder && $name != l1 ]]; then
+  if [[ -n $trusted_params && $name != compression && $name != l1 ]]; then
     local params="$trusted_params/$cli_mode-trusted-params.json"
     [[ -f $params ]] || "$cli" trusted-params --bin "$bin" --soundness-mode "$cli_mode" --output "$params"
     trusted=(--trusted-params "$params")
@@ -134,7 +142,7 @@ for mode in "${modes[@]}"; do
   chain_parent="$repo/fixtures/chains/$mode"
   common=(--bin "$bin" --backend "$backend" --soundness-mode "$cli_mode" --output-dir "$chain_out")
   stages=(circuits base_unified unrolled)
-  [[ $mode != pessimistic_conjecture ]] || stages+=(l1_feeder l1)
+  [[ $mode != pessimistic_conjecture ]] || stages+=(compression l1)
   [[ -z $stage_filter ]] || stages=("$stage_filter")
   for stage in "${stages[@]}"; do
     echo "== $mode / $stage"
@@ -174,13 +182,20 @@ for mode in "${modes[@]}"; do
         RECURSION_UNROLLED_LAYERS=0 "$cli" continue-proof "${common[@]}" \
           --proof "$chain_parent/unrolled.json.zlib" --target recursion-unified --output-file unrolled_unified.json.zlib
         check_artifact unrolled_unified ;;
-      l1_feeder)
-        "$cli" continue-proof "${common[@]}" \
-          --proof "$chain_parent/unified.json.zlib" --target l1-feeder --output-file l1_feeder.json.zlib
-        check_artifact l1_feeder ;;
+      compression)
+        step_out="$out_repo/fixtures/circuits/$mode/compression.json.zlib"
+        mkdir -p "$(dirname "$step_out")"
+        COMPRESSION_STEP_PROOF_OUTPUT="$step_out" "$cli" continue-proof "${common[@]}" \
+          --proof "$chain_parent/unified.json.zlib" --target compression --output-file compression.json.zlib
+        check_artifact compression
+        compare_file "$step_out"
+        circuit_out="$out_repo/fixtures/circuits/$mode/compression_final.json.zlib"
+        mkdir -p "$(dirname "$circuit_out")"
+        "$compression_producer" "$chain_out/compression.json.zlib" "$circuit_out"
+        compare_file "$circuit_out" ;;
       l1)
         "$cli" continue-proof "${common[@]}" \
-          --proof "$chain_parent/l1_feeder.json.zlib" --target l1 --output-file l1.json.zlib
+          --proof "$chain_parent/compression.json.zlib" --target l1 --output-file l1.json.zlib
         check_artifact l1 ;;
     esac
   done

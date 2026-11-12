@@ -1,5 +1,5 @@
 //! The unified reduced-machine circuit at trace length 2^22: the circuit of
-//! the L1 feeder layers.
+//! the compression layers.
 //!
 //! Same definition, tables and witness-eval fn as the 2^23
 //! `unified_reduced_machine` crate; only the compiled artifact

@@ -222,7 +222,7 @@ jobs:
       - name: Verify the committed L1 reference
         run: |
           chmod +x fixture-executables/cli
-          for proof in unified l1_feeder; do
+          for proof in unified compression; do
             ./fixture-executables/cli verify --proof "fixtures/chains/pessimistic_conjecture/$proof.json.zlib" \
               --bin examples/basic_fibonacci/app.bin
           done
@@ -344,7 +344,7 @@ jobs:
         stage: [circuits, base_unified, unrolled]
         include:
           - mode: pessimistic_conjecture
-            stage: l1_feeder
+            stage: compression
     defaults:
       run:
         shell: bash

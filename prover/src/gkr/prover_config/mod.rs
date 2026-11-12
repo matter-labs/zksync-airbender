@@ -14,18 +14,18 @@ pub use whir_schedule::{WhirBaseRoundSchedule, WhirInternalRound, WhirSchedule};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ProofProfile {
     Standard,
-    /// The 2^22 L1 feeder (profile C).
-    L1Feeder,
+    /// The 2^22 compression (CompressionFinal profile).
+    CompressionFinal,
     L1Wrap,
-    /// The 2^23 L1 feeder at base LDE 4 (profile A).
-    L1FeederA,
+    /// The 2^23 compression at base LDE 4 (Compression profile).
+    Compression,
 }
 
 impl ProofProfile {
-    /// The L1 feeder profiles: merged memory+witness commitment, recomputed
-    /// base oracles, the L1 feeder memory policy.
-    pub fn is_l1_feeder(self) -> bool {
-        matches!(self, Self::L1Feeder | Self::L1FeederA)
+    /// The compression profiles: merged memory+witness commitment, recomputed
+    /// base oracles, the compression memory policy.
+    pub fn is_compression(self) -> bool {
+        matches!(self, Self::CompressionFinal | Self::Compression)
     }
 
     /// The named special-config profile this proof profile is selected under.
@@ -33,13 +33,13 @@ impl ProofProfile {
         use crate::definitions::ProverConfigProfile;
         match self {
             Self::Standard => ProverConfigProfile::Standard,
-            Self::L1Feeder | Self::L1FeederA => ProverConfigProfile::L1Feeder,
+            Self::CompressionFinal | Self::Compression => ProverConfigProfile::Compression,
             Self::L1Wrap => ProverConfigProfile::EvmProductionPacked,
         }
     }
 
     /// The special config of an L1 profile under `soundness_mode`. The L1 profiles exist only under
-    /// [`SoundnessMode::PessimisticConjecture`] (Ethproofs L1 feeder/wrap/EVM is deferred product
+    /// [`SoundnessMode::PessimisticConjecture`] (Ethproofs compression/wrap/EVM is deferred product
     /// scope): another mode fails
     /// [`ProverConfigProfile::assert_supports`](crate::definitions::ProverConfigProfile::assert_supports).
     /// `Standard` resolves through the circuit's own config.
@@ -53,19 +53,19 @@ impl ProofProfile {
             Self::Standard => {
                 panic!("ProofProfile::Standard resolves through the circuit's own prover_config")
             }
-            Self::L1Feeder => {
+            Self::CompressionFinal => {
                 assert_eq!(
                     trace_len_log2, 22,
-                    "ProofProfile::L1Feeder requires the 2^22 unified circuit"
+                    "ProofProfile::CompressionFinal requires the 2^22 unified circuit"
                 );
-                example_configs::l1_feeder_config_for_2_22()
+                example_configs::compression_final_config_for_2_22()
             }
-            Self::L1FeederA => {
+            Self::Compression => {
                 assert_eq!(
                     trace_len_log2, 23,
-                    "ProofProfile::L1FeederA requires the 2^23 unified circuit"
+                    "ProofProfile::Compression requires the 2^23 unified circuit"
                 );
-                example_configs::l1_feeder_a_config_for_2_23()
+                example_configs::compression_config_for_2_23()
             }
             Self::L1Wrap => {
                 assert_eq!(
@@ -888,8 +888,8 @@ mod test {
             config.validate_for_whir_message_size(log);
         }
         for config in [
-            example_configs::l1_feeder_config_for_2_22(),
-            example_configs::l1_feeder_a_config_for_2_23(),
+            example_configs::compression_final_config_for_2_22(),
+            example_configs::compression_config_for_2_23(),
             example_configs::l1_wrap_2p21::packed_prover_config(),
         ] {
             config.validate_for_whir_message_size(config.whir_message_size_log2());

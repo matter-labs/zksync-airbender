@@ -186,6 +186,23 @@ pub mod structs;
 pub mod test_circuits;
 pub mod whir;
 
+#[cfg(feature = "multiproof_coverage")]
+pub mod multiproof_coverage;
+
+#[cfg(feature = "multiproof_coverage")]
+#[macro_export]
+macro_rules! record_merkle_multiproof_query {
+    ($round:expr) => {
+        $crate::multiproof_coverage::record($round)
+    };
+}
+
+#[cfg(not(feature = "multiproof_coverage"))]
+#[macro_export]
+macro_rules! record_merkle_multiproof_query {
+    ($round:expr) => {};
+}
+
 pub mod inline_ops;
 pub mod lazy_vec;
 pub mod no_inline_ops;

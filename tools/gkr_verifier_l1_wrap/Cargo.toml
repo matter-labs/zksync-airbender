@@ -16,13 +16,13 @@ verifier_common = { path = "../../verifier_common", default-features = false, fe
 non_determinism_source = { path = "../../non_determinism_source" }
 riscv_common = { path = "../../riscv_common", default-features = false, features = ["checked_word_memory", "boot_sequence", "ram_16mb_no_heap_wrap"] }
 field = { path = "../../field", default-features = false, features = ["modular_ops", "modular_fma"] }
-# The shared feeder entry needs only the no_std verifier, with the Blake mode
+# The shared compression entry needs only the no_std verifier, with the Blake mode
 # selected through verifier_common above.
 full_statement_verifier = { path = "../../full_statement_verifier", default-features = false, features = ["verifiers"] }
 
 [[bin]]
-name = "fsv_unified_recursion_layer_sec_100_l1_feeder_wrap"
-path = "src/bin/fsv_unified_recursion_layer_sec_100_l1_feeder_wrap.rs"
+name = "fsv_unified_recursion_layer_sec_100_compression_final_wrap"
+path = "src/bin/fsv_unified_recursion_layer_sec_100_compression_final_wrap.rs"
 
 [workspace]
 

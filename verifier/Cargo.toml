@@ -16,7 +16,10 @@ verifier_common = { workspace = true , default-features = false }
 
 [features]
 # Static canonical proof tests use the production Compression wire layout.
-miri_circuits = ["verifier_common/test_compression"]
+miri_circuits = ["proof_utils", "verifier_common/test_compression"]
+# Software Blake selects the Merkle multiproof layout of Compression.
+miri_compression = ["proof_utils"]
+miri_compression_coverage = ["miri_compression", "verifier_common/multiproof_coverage"]
 blake2_with_compression = ["verifier_common/blake2_with_compression"]
 blake2_g_function = ["verifier_common/blake2_g_function"]
 mop_extension = ["verifier_common/mop_extension"]
@@ -49,7 +52,11 @@ required-features = ["miri_circuits"]
 
 [[example]]
 name = "miri_circuit_input"
-required-features = ["miri_circuits"]
+required-features = ["proof_utils"]
+
+[[test]]
+name = "miri_compression"
+required-features = ["miri_compression"]
 
 [lints]
 workspace = true

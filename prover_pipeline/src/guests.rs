@@ -1,7 +1,8 @@
 //! Selected guests and the inputs whose executions recursion proves.
 
 use super::{
-    feeder_stage, fsv_dir, FeederProfile, FeederRole, PipelineBlakeModes, ProofTarget, SetupMachine,
+    compression_stage, fsv_dir, CompressionProfile, CompressionRole, PipelineBlakeModes,
+    ProofTarget, SetupMachine,
 };
 use full_statement_verifier::host_utils::cost_model::estimate_verifier_cycles_for;
 use full_statement_verifier::host_utils::{fsv_stream, load_fsv_exact, VerifiedFsvProgram};
@@ -22,14 +23,14 @@ pub(super) struct FsvPrograms {
     bridge_base: Option<VerifiedFsvProgram>,
     bridge_recursion: Option<VerifiedFsvProgram>,
     unified: Option<VerifiedFsvProgram>,
-    /// F1: the special-opcodes unified verifier proved at the L1 feeder profile (a standard
+    /// F1: the special-opcodes unified verifier proved at the compression profile (a standard
     /// registry guest).
-    feeder_first: ProgramWords,
-    /// Every later feeder layer verifies A proofs (`FsvProfile::L1FeederA`).
-    feeder_a: ProgramWords,
-    /// The feeder statement linked for the L1 wrap ROM (`FsvProfile::L1FeederWrap`, words
-    /// padded to that ROM): the program the wrap executes over the last feeder proof.
-    pub(super) feeder_wrap: ProgramWords,
+    compression_first: ProgramWords,
+    /// Every later compression layer verifies A proofs (`FsvProfile::Compression`).
+    compression_step: ProgramWords,
+    /// The compression statement linked for the L1 wrap ROM (`FsvProfile::CompressionFinalWrap`, words
+    /// padded to that ROM): the program the wrap executes over the last compression proof.
+    pub(super) compression_wrap: ProgramWords,
 }
 
 impl FsvPrograms {
@@ -44,7 +45,7 @@ impl FsvPrograms {
         let final_blake = blake.final_layer;
         let recursion = target != ProofTarget::Base;
         let unified = target >= ProofTarget::RecursionUnified;
-        let feeder = target >= ProofTarget::L1Feeder;
+        let compression = target >= ProofTarget::Compression;
         let load = |needed: bool, program, profile, blake| {
             needed.then(|| {
                 load_fsv_exact(
@@ -56,15 +57,15 @@ impl FsvPrograms {
                 )
             })
         };
-        // The feeder programs are owned words, copied out of the loaded guests.
+        // The compression programs are owned words, copied out of the loaded guests.
         let words = |guest: Option<VerifiedFsvProgram>| {
             guest.map_or_else(ProgramWords::default, |guest| {
                 (guest.bin().to_vec(), guest.text().to_vec())
             })
         };
         let standard = FsvProfile::Standard;
-        let first = feeder_stage(FeederRole::First, FeederProfile::A);
-        let recurrent = feeder_stage(FeederRole::Recurrent, FeederProfile::A);
+        let first = compression_stage(CompressionRole::First, CompressionProfile::Step);
+        let recurrent = compression_stage(CompressionRole::Recurrent, CompressionProfile::Step);
         Self {
             unrolled_base: load(
                 recursion,
@@ -96,22 +97,22 @@ impl FsvPrograms {
                 standard,
                 final_blake,
             ),
-            feeder_first: words(load(
-                feeder,
+            compression_first: words(load(
+                compression,
                 first.program,
                 first.fsv_profile,
                 BlakeMode::BlakeSpecialOpcodes,
             )),
-            feeder_a: words(load(
-                feeder,
+            compression_step: words(load(
+                compression,
                 recurrent.program,
                 recurrent.fsv_profile,
                 BlakeMode::BlakeSpecialOpcodes,
             )),
-            feeder_wrap: words(load(
+            compression_wrap: words(load(
                 target == ProofTarget::L1,
                 FsvProgram::UnifiedRecursionLayer,
-                FsvProfile::L1FeederWrap,
+                FsvProfile::CompressionFinalWrap,
                 BlakeMode::BlakeSpecialOpcodes,
             )),
             unrolled_blake,
@@ -128,38 +129,38 @@ impl FsvPrograms {
         }
     }
 
-    pub(super) fn feeder_program(&self, role: FeederRole) -> &ProgramWords {
+    pub(super) fn compression_program(&self, role: CompressionRole) -> &ProgramWords {
         match role {
-            FeederRole::First => &self.feeder_first,
-            FeederRole::Recurrent => &self.feeder_a,
+            CompressionRole::First => &self.compression_first,
+            CompressionRole::Recurrent => &self.compression_step,
         }
     }
 
-    /// The words of a chain program: a selected guest, or a feeder program.
+    /// The words of a chain program: a selected guest, or a compression program.
     pub(super) fn words(
         &self,
         program: FsvProgram,
         profile: FsvProfile,
         machine: SetupMachine,
     ) -> (&[u32], &[u32]) {
-        let feeder = match (program, profile, machine) {
+        let compression = match (program, profile, machine) {
             (
                 FsvProgram::UnifiedRecursionLayer,
                 FsvProfile::Standard,
-                SetupMachine::L1Feeder(_),
-            ) => &self.feeder_first,
+                SetupMachine::Compression(_),
+            ) => &self.compression_first,
             (
                 FsvProgram::UnifiedRecursionLayer,
-                FsvProfile::L1FeederA,
-                SetupMachine::L1Feeder(_),
-            ) => &self.feeder_a,
+                FsvProfile::Compression,
+                SetupMachine::Compression(_),
+            ) => &self.compression_step,
             (_, FsvProfile::Standard, _) => {
                 let guest = self.get(program, machine);
                 return (guest.bin(), guest.text());
             }
             other => unreachable!("unsupported pipeline guest {other:?}"),
         };
-        (&feeder.0, &feeder.1)
+        (&compression.0, &compression.1)
     }
 
     pub(super) fn get(&self, program: FsvProgram, machine: SetupMachine) -> &VerifiedFsvProgram {

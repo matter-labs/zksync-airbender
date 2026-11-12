@@ -1,11 +1,11 @@
-//! L1 feeder and wrap configs, supported only in pessimistic-conjecture mode.
+//! compression and wrap configs, supported only in pessimistic-conjecture mode.
 //! Ethproofs support is deferred; see `soundcalc/README.md`.
 
 use super::*;
 use crate::gkr::whir::proximity_testing_modes::{PessimisticConjectureMode, ProximityTestingMode};
 
 impl ProverConfigProfile {
-    /// The L1 feeder and EVM profiles exist only in the pessimistic-conjecture
+    /// The compression and EVM profiles exist only in the pessimistic-conjecture
     /// mode; Ethproofs for them is deferred product scope.
     pub fn assert_supports(self, soundness_mode: SoundnessMode) {
         assert!(
@@ -15,8 +15,8 @@ impl ProverConfigProfile {
     }
 }
 
-/// PoW ceiling for feeder WHIR, lookup, batching and external challenges.
-pub const L1_FEEDER_MAX_POW_BITS: u32 = 25;
+/// PoW ceiling for compression WHIR, lookup, batching and external challenges.
+pub const COMPRESSION_MAX_POW_BITS: u32 = 25;
 
 fn queries_and_pow_under_pessimistic_conjecture<const ROUNDS: usize>(
     level: SecurityLevel,
@@ -39,21 +39,21 @@ fn queries_and_pow_under_pessimistic_conjecture<const ROUNDS: usize>(
     rounds
 }
 
-const L1_FEEDER_BASE_LDE_FACTOR: usize = 16;
-const L1_FEEDER_WHIR_STEPS_LDE_FACTORS: [usize; 4] = [32, 1024, 32768, 1048576];
+const COMPRESSION_FINAL_BASE_LDE_FACTOR: usize = 16;
+const COMPRESSION_FINAL_WHIR_STEPS_LDE_FACTORS: [usize; 4] = [32, 1024, 32768, 1048576];
 
 /// Each round uses the least PoW satisfying `6 * pow + 5 * queries * rate_bits >= 600`,
-/// bounded by [`L1_FEEDER_MAX_POW_BITS`].
-pub const L1_FEEDER_POW_BITS: [u32; 5] = [24, 25, 25, 25, 17];
+/// bounded by [`COMPRESSION_MAX_POW_BITS`].
+pub const COMPRESSION_FINAL_POW_BITS: [u32; 5] = [24, 25, 25, 25, 17];
 
-const L1_FEEDER_A_BASE_LDE_FACTOR: usize = 4;
+const COMPRESSION_BASE_LDE_FACTOR: usize = 4;
 
-/// Profile A follows the same security rule and ceiling as [`L1_FEEDER_POW_BITS`].
-pub const L1_FEEDER_A_POW_BITS: [u32; 5] = [25, 25, 25, 25, 17];
+/// The repeatable Compression step follows the same rule and ceiling as [`COMPRESSION_FINAL_POW_BITS`].
+pub const COMPRESSION_POW_BITS: [u32; 5] = [25, 25, 25, 25, 17];
 
 /// The cap must equal the base LDE: coset commitment requires cap <= LDE,
 /// while splitting the memory cap requires cap >= LDE.
-fn l1_feeder_config(
+fn compression_config(
     trace_len_log2: usize,
     base_lde_factor: usize,
     whir_steps_schedule: Vec<usize>,
@@ -78,7 +78,7 @@ fn l1_feeder_config(
                 .iter()
                 .map(|(queries, _)| *queries)
                 .collect::<Vec<_>>(),
-            &L1_FEEDER_WHIR_STEPS_LDE_FACTORS,
+            &COMPRESSION_FINAL_WHIR_STEPS_LDE_FACTORS,
             &queries_and_pow
                 .iter()
                 .map(|(_, pow)| *pow)
@@ -87,32 +87,32 @@ fn l1_feeder_config(
     }
 }
 
-/// Terminal feeder profile C.
-pub fn l1_feeder_config_for_2_22() -> ProverConfig {
-    l1_feeder_config(
+/// The terminal CompressionFinal profile.
+pub fn compression_final_config_for_2_22() -> ProverConfig {
+    compression_config(
         22,
-        L1_FEEDER_BASE_LDE_FACTOR,
+        COMPRESSION_FINAL_BASE_LDE_FACTOR,
         vec![1, 5, 5, 5, 3],
         &queries_and_pow_under_pessimistic_conjecture(
             SecurityLevel::Sec100,
-            L1_FEEDER_BASE_LDE_FACTOR,
-            &L1_FEEDER_WHIR_STEPS_LDE_FACTORS,
-            L1_FEEDER_POW_BITS,
+            COMPRESSION_FINAL_BASE_LDE_FACTOR,
+            &COMPRESSION_FINAL_WHIR_STEPS_LDE_FACTORS,
+            COMPRESSION_FINAL_POW_BITS,
         ),
     )
 }
 
-/// Intermediate feeder profile A.
-pub fn l1_feeder_a_config_for_2_23() -> ProverConfig {
-    l1_feeder_config(
+/// Intermediate compression Compression profile.
+pub fn compression_config_for_2_23() -> ProverConfig {
+    compression_config(
         23,
-        L1_FEEDER_A_BASE_LDE_FACTOR,
+        COMPRESSION_BASE_LDE_FACTOR,
         vec![1, 5, 5, 5, 4],
         &queries_and_pow_under_pessimistic_conjecture(
             SecurityLevel::Sec100,
-            L1_FEEDER_A_BASE_LDE_FACTOR,
-            &L1_FEEDER_WHIR_STEPS_LDE_FACTORS,
-            L1_FEEDER_A_POW_BITS,
+            COMPRESSION_BASE_LDE_FACTOR,
+            &COMPRESSION_FINAL_WHIR_STEPS_LDE_FACTORS,
+            COMPRESSION_POW_BITS,
         ),
     )
 }

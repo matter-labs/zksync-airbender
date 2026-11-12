@@ -255,7 +255,7 @@ use prover::definitions::DEFAULT_CAP_SIZE;
 pub type Setups = std::collections::BTreeMap<u32, UnrolledCircuitSetupParams>;
 
 /// The setup caps a profile commits: [`DEFAULT_CAP_SIZE`] leaves for
-/// `Standard`, the feeder config's cap for `L1Feeder`. Every leaf is part of
+/// `Standard`, the compression config's cap for `Compression`. Every leaf is part of
 /// the statement (the verifier stream and `end_params`); the entry point
 /// fixes the cap, so no cap-length word enters the stream.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -94,7 +94,7 @@ fn whir_storage(
     profile: ProofProfile,
     config: &crate::upstream::ProverConfig,
 ) -> WhirOracleStorage {
-    if profile.is_l1_feeder() {
+    if profile.is_compression() {
         WhirOracleStorage::recompute_base_materialized_intermediates()
     } else if config.pack_log2() > 0 {
         WhirOracleStorage::fully_recompute()
