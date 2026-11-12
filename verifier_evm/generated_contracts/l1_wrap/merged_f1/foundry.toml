@@ -9,7 +9,7 @@ via_ir = true
 optimizer = true
 optimizer_runs = 1
 fs_permissions = [
-    { access = "read", path = "../../../debug_data/l1_wrap_2p21" },
+    { access = "read", path = "../../../debug_data/l1_wrap" },
     { access = "read", path = "./out" },
     { access = "read", path = "../negative" },
 ]

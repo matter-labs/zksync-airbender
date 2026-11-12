@@ -55,7 +55,6 @@ contract GkrWhirVerifier {
     // GKR/WHIR heap region (which starts at 2144). The generator checks these boundaries.
     // It is written once from the immutable address and only read by the Yul helpers.
     uint256 constant F1_FRONTIER_PTR = 2112;
-    uint256 constant ROUNDS = 200; // test-harness only (GKRStreamGen); stripped from production
 
     // ── Heap layout (GENERATED sizes: the regions are chained back to back from
     //    MINIMUM_FREE_HEAP_PTR + 96 by the `*_PTR()` accessors below, each region's size — a
@@ -66,7 +65,7 @@ contract GkrWhirVerifier {
     //    LOGUP_CHALLS_PTR alone triggers it). The WHIR half's regions follow at the chain's
     //    end (its generated absolute offsets; the fallback's first statement asserts, at
     //    compile time, that the chain ends exactly where the WHIR map starts).
-    // HEAP ORDER: memory challenges (7), logup challenges (2), point (rounds), gas probes (2),
+    // HEAP ORDER: memory challenges (7), logup challenges (2), point (rounds),
     // seed + transcript scratch (the preimage copy / cache array / SEED±96 absorb scratch),
     // batching (1), dim-reduce claims (NUM_OUTPUTS), eq (max(OUTPUT_EVALS, NUM_OUTPUTS)),
     // absorb scratch (32 + max absorb), permutation products (4), circuit claims (widest layer),
@@ -74,8 +73,6 @@ contract GkrWhirVerifier {
     uint256 constant __TEMPLATE_GKR_MEMORY_CHALLS_BYTES  = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_LOGUP_CHALLS_BYTES   = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_POINT_BYTES          = "{unassigned}";
-    uint256 constant __TEMPLATE_GKR_INIT_GAS_BYTES       = "{unassigned}";
-    uint256 constant __TEMPLATE_GKR_MAIN_GAS_BYTES       = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_SEED_BYTES           = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_BATCHING_BYTES       = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_CLAIMS_BYTES         = "{unassigned}";
@@ -174,12 +171,10 @@ contract GkrWhirVerifier {
         function MEMORY_CHALLS_PTR() -> ptr { ptr := add(MINIMUM_FREE_HEAP_PTR, 96) }
         function LOGUP_CHALLS_PTR()  -> ptr { ptr := add(MEMORY_CHALLS_PTR(), __TEMPLATE_GKR_MEMORY_CHALLS_BYTES) }
         function POINT_PTR()         -> ptr { ptr := add(LOGUP_CHALLS_PTR(), __TEMPLATE_GKR_LOGUP_CHALLS_BYTES) }
-        function GKR_INIT_GAS_PTR()  -> ptr { ptr := add(POINT_PTR(), __TEMPLATE_GKR_POINT_BYTES) }
-        function GKR_MAIN_GAS_PTR()  -> ptr { ptr := add(GKR_INIT_GAS_PTR(), __TEMPLATE_GKR_INIT_GAS_BYTES) }
         // The seed region also holds the transcript scratch the absorbs use at SEED+32/+64, the
         // preimage copy (transcript_init) and the per-layer cache array (circuit.yul); the
         // generator sizes it for the largest of those.
-        function SEED_PTR()          -> ptr { ptr := add(GKR_MAIN_GAS_PTR(), __TEMPLATE_GKR_MAIN_GAS_BYTES) }
+        function SEED_PTR()          -> ptr { ptr := add(POINT_PTR(), __TEMPLATE_GKR_POINT_BYTES) }
         function GKR_INIT_SCRATCH_PTR()   -> ptr { ptr := add(SEED_PTR(), mul(32, 1)) }
         function GKR_INIT_CLAIM_PTR()     -> ptr { ptr := add(SEED_PTR(), mul(32, 2)) }
         function GKR_CIRCUIT_ALPHA2_PTR() -> ptr { ptr := add(SEED_PTR(), mul(32, 1)) }
@@ -746,14 +741,11 @@ contract GkrWhirVerifier {
             revert(0, 0)
         }
 
-        // INIT + MAIN. `alpha`, `init_gas`, `compress_gas` are confined to this block so
-        // their stack slots free before the tail (assert/emit/return) — the legacy backend
-        // does not spill, and keeping them live to the end runs the root `ptr` 1 slot too deep.
-        // Gas deltas are stashed to heap (read back in the anti-DCE return), so scoping is safe.
+        // Keep `alpha` inside this block so its stack slot is free before the tail.
+        // The legacy backend does not spill; keeping it live would put `ptr` one slot too deep.
         let ptr, claim, output_evals_ptr
         {
             let alpha
-            mstore(GKR_INIT_GAS_PTR(), gas())
             mstore(SEED_PTR(), 0) // SEED Transcript, FINE as long as we don't draw without absorb!
             // the stream cursor is a memory address inside the v0 image
             f1_decode()
@@ -761,14 +753,11 @@ contract GkrWhirVerifier {
             output_evals_ptr := ptr // base of the 10 GKR output columns (for the lookup-identity check)
             ptr, claim,
             alpha := gkr_init(ptr)
-            mstore(GKR_INIT_GAS_PTR(), sub(mload(GKR_INIT_GAS_PTR()), gas()))
 
-            mstore(GKR_MAIN_GAS_PTR(), gas())
             ptr, claim,
             alpha := gkr_compress(ptr, claim, alpha)
             ptr, claim,
             alpha := gkr_circuit(ptr, claim, alpha)
-            mstore(GKR_MAIN_GAS_PTR(), sub(mload(GKR_MAIN_GAS_PTR()), gas()))
         }
 
         // Permutation identity: read-set product == write-set product (no inversions).

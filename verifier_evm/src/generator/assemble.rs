@@ -804,8 +804,6 @@ fn gkr_heap_regions(
         ("MEMORY_CHALLS", "MEMORY_CHALLS_PTR", w(7)), // 6 perm-linearization challenges + additive
         ("LOGUP_CHALLS", "LOGUP_CHALLS_PTR", w(2)),   // alpha, additive
         ("POINT", "POINT_PTR", w(d.rounds)),          // the claim point grows to trace_log2 coords
-        ("INIT_GAS", "GKR_INIT_GAS_PTR", Lit::num(32)),
-        ("MAIN_GAS", "GKR_MAIN_GAS_PTR", Lit::num(32)),
         ("SEED", "SEED_PTR", words_for(seed_bytes)),
         ("BATCHING", "GKR_BATCHING_PTR", Lit::num(32)),
         ("CLAIMS", "GKR_CLAIMS_PTR", w(d.num_outputs)),

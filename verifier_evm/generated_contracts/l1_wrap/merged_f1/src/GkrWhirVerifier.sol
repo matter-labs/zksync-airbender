@@ -55,7 +55,6 @@ contract GkrWhirVerifier {
     // GKR/WHIR heap region (which starts at 2144). The generator checks these boundaries.
     // It is written once from the immutable address and only read by the Yul helpers.
     uint256 constant F1_FRONTIER_PTR = 2112;
-    uint256 constant ROUNDS = 200; // test-harness only (GKRStreamGen); stripped from production
 
     // ── Heap layout (GENERATED sizes: the regions are chained back to back from
     //    MINIMUM_FREE_HEAP_PTR + 96 by the `*_PTR()` accessors below, each region's size — a
@@ -66,7 +65,7 @@ contract GkrWhirVerifier {
     //    LOGUP_CHALLS_PTR alone triggers it). The WHIR half's regions follow at the chain's
     //    end (its generated absolute offsets; the fallback's first statement asserts, at
     //    compile time, that the chain ends exactly where the WHIR map starts).
-    // HEAP ORDER: memory challenges (7), logup challenges (2), point (rounds), gas probes (2),
+    // HEAP ORDER: memory challenges (7), logup challenges (2), point (rounds),
     // seed + transcript scratch (the preimage copy / cache array / SEED±96 absorb scratch),
     // batching (1), dim-reduce claims (NUM_OUTPUTS), eq (max(OUTPUT_EVALS, NUM_OUTPUTS)),
     // absorb scratch (32 + max absorb), permutation products (4), circuit claims (widest layer),
@@ -74,8 +73,6 @@ contract GkrWhirVerifier {
     uint256 constant __TEMPLATE_GKR_MEMORY_CHALLS_BYTES  = 32 * 7;
     uint256 constant __TEMPLATE_GKR_LOGUP_CHALLS_BYTES   = 32 * 2;
     uint256 constant __TEMPLATE_GKR_POINT_BYTES          = 32 * 21;
-    uint256 constant __TEMPLATE_GKR_INIT_GAS_BYTES       = 32;
-    uint256 constant __TEMPLATE_GKR_MAIN_GAS_BYTES       = 32;
     uint256 constant __TEMPLATE_GKR_SEED_BYTES           = 32 * 29;
     uint256 constant __TEMPLATE_GKR_BATCHING_BYTES       = 32;
     uint256 constant __TEMPLATE_GKR_CLAIMS_BYTES         = 32 * 10;
@@ -172,37 +169,37 @@ contract GkrWhirVerifier {
 
     // ── Memory map (generated: contiguous regions above the GKR heap, each sized from the
     //    schedule — see WhirGenConfig::memory_regions for every region's size formula) ────────
-    uint256 constant __TEMPLATE_WHIR_SEED_PTR     = 48064;  // seed + in-place absorb scratch
-    uint256 constant __TEMPLATE_WHIR_Z_PTR        = 48352;  // z: nz coords
-    uint256 constant __TEMPLATE_WHIR_POW_PTR      = 49120;  // (scalar, running eq, coefficient) x numpow
-    uint256 constant __TEMPLATE_WHIR_ACC_PREF_PTR = 52960;
-    uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = 52992;  // gcount gamma powers
-    uint256 constant __TEMPLATE_WHIR_FOLD_CH_PTR  = 53472;  // max_fold challenges
-    uint256 constant __TEMPLATE_WHIR_HPO_PTR      = 53600;  // 2^(max_fold-1) high-power offsets
-    uint256 constant __TEMPLATE_WHIR_FBUF_PTR     = 53856;  // 2^max_fold folding buffer
-    uint256 constant __TEMPLATE_WHIR_LEAF_PTR     = 54368;  // leaf hashing scratch
-    uint256 constant __TEMPLATE_WHIR_REG_CD       = 54816;  // calldata cursor
-    uint256 constant __TEMPLATE_WHIR_REG_CLAIM    = 54848;
-    uint256 constant __TEMPLATE_WHIR_REG_NUMPOW   = 54880;
-    uint256 constant __TEMPLATE_WHIR_REG_ZIOFF    = 54912;
-    uint256 constant __TEMPLATE_WHIR_REG_CC       = 54944;
-    uint256 constant __TEMPLATE_WHIR_REG_CURDELIN = 54976;
+    uint256 constant __TEMPLATE_WHIR_SEED_PTR     = 48000;  // seed + in-place absorb scratch
+    uint256 constant __TEMPLATE_WHIR_Z_PTR        = 48288;  // z: nz coords
+    uint256 constant __TEMPLATE_WHIR_POW_PTR      = 49056;  // (scalar, running eq, coefficient) x numpow
+    uint256 constant __TEMPLATE_WHIR_ACC_PREF_PTR = 52896;
+    uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = 52928;  // gcount gamma powers
+    uint256 constant __TEMPLATE_WHIR_FOLD_CH_PTR  = 53408;  // max_fold challenges
+    uint256 constant __TEMPLATE_WHIR_HPO_PTR      = 53536;  // 2^(max_fold-1) high-power offsets
+    uint256 constant __TEMPLATE_WHIR_FBUF_PTR     = 53792;  // 2^max_fold folding buffer
+    uint256 constant __TEMPLATE_WHIR_LEAF_PTR     = 54304;  // leaf hashing scratch
+    uint256 constant __TEMPLATE_WHIR_REG_CD       = 54752;  // calldata cursor
+    uint256 constant __TEMPLATE_WHIR_REG_CLAIM    = 54784;
+    uint256 constant __TEMPLATE_WHIR_REG_NUMPOW   = 54816;
+    uint256 constant __TEMPLATE_WHIR_REG_ZIOFF    = 54848;
+    uint256 constant __TEMPLATE_WHIR_REG_CC       = 54880;
+    uint256 constant __TEMPLATE_WHIR_REG_CURDELIN = 54912;
     // GKR→WHIR handoff: the WHIR batching challenge, written by the GKR half's emit_gkr_mark.
-    uint256 constant __TEMPLATE_WHIR_HANDOFF_BATCHING_PTR = 55008;
+    uint256 constant __TEMPLATE_WHIR_HANDOFF_BATCHING_PTR = 54944;
     // cap regions (CAP*32 bytes each)
-    uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = 55040;  // witness base-oracle cap
-    uint256 constant __TEMPLATE_WHIR_BCAP1_PTR    = 55296;  // setup base-oracle cap
-    uint256 constant __TEMPLATE_WHIR_QCAP_PTR     = 55552;  // current query cap (rounds >= 1)
-    uint256 constant __TEMPLATE_WHIR_NCAP_PTR     = 55808;  // just-read intermediate cap
+    uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = 54976;  // witness base-oracle cap
+    uint256 constant __TEMPLATE_WHIR_BCAP1_PTR    = 55232;  // setup base-oracle cap
+    uint256 constant __TEMPLATE_WHIR_QCAP_PTR     = 55488;  // current query cap (rounds >= 1)
+    uint256 constant __TEMPLATE_WHIR_NCAP_PTR     = 55744;  // just-read intermediate cap
     // Per-round query drawing (matches prover `draw_query_bits`/`BitSource`):
     //   QIDX_BUF holds the drawn query indices (max_q words);
     //   DRAW_BUF holds the little-endian u32 words squeezed from the seed (one per slot).
-    uint256 constant __TEMPLATE_WHIR_QIDX_BUF_PTR = 56064;
-    uint256 constant __TEMPLATE_WHIR_DRAW_BUF_PTR = 56448;
+    uint256 constant __TEMPLATE_WHIR_QIDX_BUF_PTR = 56000;
+    uint256 constant __TEMPLATE_WHIR_DRAW_BUF_PTR = 56384;
     // do_final scratch: the plain-text tail is 2^RFIN monomials (MONO), then the tail absorb +
     // halving-fold scratch (FEVAL, 32 + 2^RFIN words).
-    uint256 constant __TEMPLATE_WHIR_MONO_PTR     = 56960;
-    uint256 constant __TEMPLATE_WHIR_FEVAL_PTR    = 61056;
+    uint256 constant __TEMPLATE_WHIR_MONO_PTR     = 56896;
+    uint256 constant __TEMPLATE_WHIR_FEVAL_PTR    = 60992;
 
     fallback(bytes calldata) external returns (bytes memory) {
         // The verified statement, read out of the MARK region once the assembly block has
@@ -241,12 +238,10 @@ contract GkrWhirVerifier {
         function MEMORY_CHALLS_PTR() -> ptr { ptr := add(MINIMUM_FREE_HEAP_PTR, 96) }
         function LOGUP_CHALLS_PTR()  -> ptr { ptr := add(MEMORY_CHALLS_PTR(), __TEMPLATE_GKR_MEMORY_CHALLS_BYTES) }
         function POINT_PTR()         -> ptr { ptr := add(LOGUP_CHALLS_PTR(), __TEMPLATE_GKR_LOGUP_CHALLS_BYTES) }
-        function GKR_INIT_GAS_PTR()  -> ptr { ptr := add(POINT_PTR(), __TEMPLATE_GKR_POINT_BYTES) }
-        function GKR_MAIN_GAS_PTR()  -> ptr { ptr := add(GKR_INIT_GAS_PTR(), __TEMPLATE_GKR_INIT_GAS_BYTES) }
         // The seed region also holds the transcript scratch the absorbs use at SEED+32/+64, the
         // preimage copy (transcript_init) and the per-layer cache array (circuit.yul); the
         // generator sizes it for the largest of those.
-        function SEED_PTR()          -> ptr { ptr := add(GKR_MAIN_GAS_PTR(), __TEMPLATE_GKR_MAIN_GAS_BYTES) }
+        function SEED_PTR()          -> ptr { ptr := add(POINT_PTR(), __TEMPLATE_GKR_POINT_BYTES) }
         function GKR_INIT_SCRATCH_PTR()   -> ptr { ptr := add(SEED_PTR(), mul(32, 1)) }
         function GKR_INIT_CLAIM_PTR()     -> ptr { ptr := add(SEED_PTR(), mul(32, 2)) }
         function GKR_CIRCUIT_ALPHA2_PTR() -> ptr { ptr := add(SEED_PTR(), mul(32, 1)) }
@@ -2772,14 +2767,11 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             revert(0, 0)
         }
 
-        // INIT + MAIN. `alpha`, `init_gas`, `compress_gas` are confined to this block so
-        // their stack slots free before the tail (assert/emit/return) — the legacy backend
-        // does not spill, and keeping them live to the end runs the root `ptr` 1 slot too deep.
-        // Gas deltas are stashed to heap (read back in the anti-DCE return), so scoping is safe.
+        // Keep `alpha` inside this block so its stack slot is free before the tail.
+        // The legacy backend does not spill; keeping it live would put `ptr` one slot too deep.
         let ptr, claim, output_evals_ptr
         {
             let alpha
-            mstore(GKR_INIT_GAS_PTR(), gas())
             mstore(SEED_PTR(), 0) // SEED Transcript, FINE as long as we don't draw without absorb!
             // the stream cursor is a memory address inside the v0 image
             f1_decode()
@@ -2787,14 +2779,11 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             output_evals_ptr := ptr // base of the 10 GKR output columns (for the lookup-identity check)
             ptr, claim,
             alpha := gkr_init(ptr)
-            mstore(GKR_INIT_GAS_PTR(), sub(mload(GKR_INIT_GAS_PTR()), gas()))
 
-            mstore(GKR_MAIN_GAS_PTR(), gas())
             ptr, claim,
             alpha := gkr_compress(ptr, claim, alpha)
             ptr, claim,
             alpha := gkr_circuit(ptr, claim, alpha)
-            mstore(GKR_MAIN_GAS_PTR(), sub(mload(GKR_MAIN_GAS_PTR()), gas()))
         }
 
         // Permutation identity: read-set product == write-set product (no inversions).
@@ -2843,40 +2832,38 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
 //     2144 ..   2368  MEMORY_CHALLS (32 * 7 = 224 B)
 //     2368 ..   2432  LOGUP_CHALLS (32 * 2 = 64 B)
 //     2432 ..   3104  POINT (32 * 21 = 672 B)
-//     3104 ..   3136  INIT_GAS (32 = 32 B)
-//     3136 ..   3168  MAIN_GAS (32 = 32 B)
-//     3168 ..   4096  SEED (32 * 29 = 928 B)
-//     4096 ..   4128  BATCHING (32 = 32 B)
-//     4128 ..   4448  CLAIMS (32 * 10 = 320 B)
-//     4448 ..   4768  EQ (32 * 10 = 320 B)
-//     4768 ..   6816  ABS (32 * 64 = 2048 B)
-//     6816 ..   6944  PERM_PROD (32 * 4 = 128 B)
-//     6944 ..   9312  CIRCUIT_CLAIMS (32 * 74 = 2368 B)
-//     9312 ..  13152  GATEVAL (32 * 120 = 3840 B)
-//    13152 ..  16512  QTABLE (32 * 105 = 3360 B)
-//    16512 ..  48064  F1_V0 (32 * 986 = 31552 B)
-//    48064 ..  48352  SEED_PTR (32 + (1 << 3) * 32 = 288 B)
-//    48352 ..  49120  Z_PTR (24 * 32 = 768 B)
-//    49120 ..  52960  POW_PTR (40 * 96 = 3840 B)
-//    52960 ..  52992  ACC_PREF_PTR (32 = 32 B)
-//    52992 ..  53472  GAMMA_PTR (15 * 32 = 480 B)
-//    53472 ..  53600  FOLD_CH_PTR (4 * 32 = 128 B)
-//    53600 ..  53856  HPO_PTR ((1 << 3) * 32 = 256 B)
-//    53856 ..  54368  FBUF_PTR ((1 << 4) * 32 = 512 B)
-//    54368 ..  54816  LEAF_PTR (14 * 32 = 448 B)
-//    54816 ..  54848  REG_CD (32 = 32 B)
-//    54848 ..  54880  REG_CLAIM (32 = 32 B)
-//    54880 ..  54912  REG_NUMPOW (32 = 32 B)
-//    54912 ..  54944  REG_ZIOFF (32 = 32 B)
-//    54944 ..  54976  REG_CC (32 = 32 B)
-//    54976 ..  55008  REG_CURDELIN (32 = 32 B)
-//    55008 ..  55040  HANDOFF_BATCHING_PTR (32 = 32 B)
-//    55040 ..  55296  BCAP0_PTR ((1 << 3) * 32 = 256 B)
-//    55296 ..  55552  BCAP1_PTR ((1 << 3) * 32 = 256 B)
-//    55552 ..  55808  QCAP_PTR ((1 << 3) * 32 = 256 B)
-//    55808 ..  56064  NCAP_PTR ((1 << 3) * 32 = 256 B)
-//    56064 ..  56448  QIDX_BUF_PTR (12 * 32 = 384 B)
-//    56448 ..  56960  DRAW_BUF_PTR (16 * 32 = 512 B)
-//    56960 ..  61056  MONO_PTR ((1 << 7) * 32 = 4096 B)
-//    61056 ..  65184  FEVAL_PTR (32 + (1 << 7) * 32 = 4128 B)
-//   heap end: 65184
+//     3104 ..   4032  SEED (32 * 29 = 928 B)
+//     4032 ..   4064  BATCHING (32 = 32 B)
+//     4064 ..   4384  CLAIMS (32 * 10 = 320 B)
+//     4384 ..   4704  EQ (32 * 10 = 320 B)
+//     4704 ..   6752  ABS (32 * 64 = 2048 B)
+//     6752 ..   6880  PERM_PROD (32 * 4 = 128 B)
+//     6880 ..   9248  CIRCUIT_CLAIMS (32 * 74 = 2368 B)
+//     9248 ..  13088  GATEVAL (32 * 120 = 3840 B)
+//    13088 ..  16448  QTABLE (32 * 105 = 3360 B)
+//    16448 ..  48000  F1_V0 (32 * 986 = 31552 B)
+//    48000 ..  48288  SEED_PTR (32 + (1 << 3) * 32 = 288 B)
+//    48288 ..  49056  Z_PTR (24 * 32 = 768 B)
+//    49056 ..  52896  POW_PTR (40 * 96 = 3840 B)
+//    52896 ..  52928  ACC_PREF_PTR (32 = 32 B)
+//    52928 ..  53408  GAMMA_PTR (15 * 32 = 480 B)
+//    53408 ..  53536  FOLD_CH_PTR (4 * 32 = 128 B)
+//    53536 ..  53792  HPO_PTR ((1 << 3) * 32 = 256 B)
+//    53792 ..  54304  FBUF_PTR ((1 << 4) * 32 = 512 B)
+//    54304 ..  54752  LEAF_PTR (14 * 32 = 448 B)
+//    54752 ..  54784  REG_CD (32 = 32 B)
+//    54784 ..  54816  REG_CLAIM (32 = 32 B)
+//    54816 ..  54848  REG_NUMPOW (32 = 32 B)
+//    54848 ..  54880  REG_ZIOFF (32 = 32 B)
+//    54880 ..  54912  REG_CC (32 = 32 B)
+//    54912 ..  54944  REG_CURDELIN (32 = 32 B)
+//    54944 ..  54976  HANDOFF_BATCHING_PTR (32 = 32 B)
+//    54976 ..  55232  BCAP0_PTR ((1 << 3) * 32 = 256 B)
+//    55232 ..  55488  BCAP1_PTR ((1 << 3) * 32 = 256 B)
+//    55488 ..  55744  QCAP_PTR ((1 << 3) * 32 = 256 B)
+//    55744 ..  56000  NCAP_PTR ((1 << 3) * 32 = 256 B)
+//    56000 ..  56384  QIDX_BUF_PTR (12 * 32 = 384 B)
+//    56384 ..  56896  DRAW_BUF_PTR (16 * 32 = 512 B)
+//    56896 ..  60992  MONO_PTR ((1 << 7) * 32 = 4096 B)
+//    60992 ..  65120  FEVAL_PTR (32 + (1 << 7) * 32 = 4128 B)
+//   heap end: 65120

@@ -6,7 +6,7 @@ if [ "$#" -ne 0 ]; then
   echo "usage: run_merged.sh" >&2
   exit 1
 fi
-cd "$SCRIPT_DIR/l1_wrap_2p21"
+cd "$SCRIPT_DIR/l1_wrap"
 for p in merged_f1 negative/f1_wrong_final_pc; do
   ( cd "$p" && forge build >/dev/null )
 done
