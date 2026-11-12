@@ -1,7 +1,3 @@
----
-class: protocol-appendix-light
----
-
 # Appendix — Protocol algorithms and soundness
 
 Parameter reference: `Sec100`, `av_gkr_compiler` at [`c1a6622`](https://github.com/matter-labs/zksync-airbender/commit/c1a662222cafcd96db4383dce737edb79fa62b09).
@@ -22,7 +18,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 > - **BabyBear:** seven-round BLAKE2s with messages absorbed as raw 32-bit words. $E$ is BabyBear's quartic extension, with base modulus $p=2^{31}-2^{27}+1$.
 > - **Proth120:** Keccak256 with field elements encoded as canonical 16-byte big-endian values and 32-bit messages, including boundary-state and Merkle-cap digest words, encoded little-endian. $E$ is the prime field with modulus $q=7\cdot2^{120}+1$. Each subsequent absorption of an encoded message $m$ updates the seed as $S\leftarrow\mathrm{Keccak256}(S\mathbin{\|}m)$.
 >
-> **Proof of work (PoW).** When challenge drawing requires $b$ bits of proof of work, Prover supplies a 64-bit nonce (encoded as eight big-endian bytes for Proth120), which both parties absorb into the transcript immediately before drawing. The first output word, 32 bits for BabyBear or 256 bits for Proth120, is reserved for PoW: Verifier accepts only if it has $b$ leading zero bits, and field challenges are sampled from subsequent drawn words. For Proth120 and only when sampling WHIR queries, the first 32-bit word following the 256-bit PoW digest is additionally discarded. At $b=0$, except for WHIR OOD draws (Algorithm 7, step 2.2) and WHIR sumcheck folding challenges (Algorithm 8, QuadraticStep, step 2), the nonce is still absorbed and the PoW word skipped, so every nonce passes.
+> **Proof of work (PoW).** When challenge drawing requires $b$ bits of proof of work, Prover supplies a 64-bit nonce (encoded as eight big-endian bytes for Proth120), which both parties absorb into the transcript immediately before drawing. The first output word, 32 bits for BabyBear or 256 bits for Proth120, is reserved for PoW: Verifier accepts only if it has $b$ leading zero bits, and field challenges are sampled from subsequent drawn words. For Proth120 and only when sampling WHIR queries, the first 32-bit word following the 256-bit PoW digest is additionally discarded. At $b=0$, except for WHIR OOD draws (Algorithm 7, step 3.2) and WHIR sumcheck folding challenges (Algorithm 7, step 3.1.3), the nonce is still absorbed and the PoW word skipped, so every nonce passes.
 >
 > **Transcript flow across FullStatement.** In base/continuation mode, `FullStatement` first absorbs the final state (register values, PC and timestamps) and all chunks' memory commitments (Merkle tree caps), with circuit-family identifiers and RAM initialization/teardown window identifiers. These identify the circuit types and RAM ranges associated with the commitments. Before absorbing a Merkle-cap sequence, it zero-pads to the next block boundary; successive absorb calls otherwise concatenate without padding. This precommitment binds the selected memory events before the shared challenges $\mathbf{r}_{\mathrm{mem}}$ are drawn (Algorithms 1a and 2).
 >
@@ -98,10 +94,10 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > **Protocol**
 >
-> 1. Select circuit $C$ from Algorithm 12's terminal-wrapper entry. Prover sends $\mathrm{fin}$ in the 99-word format from Algorithm 1a, step 1, followed by two RAM initialization/teardown window identifiers $b$ as 32-bit values, then setup caps `SetupCaps` and memory caps `MemoryCaps`. The number of caps in each group and the number of hashes per cap are specified in Algorithm 12's terminal-wrapper entry.
-> 2. Both parties initialize $T_{\mathrm{mem{+}}}$ with seed $\mathrm{Keccak256}(\mathrm{fin}\mathbin{\|}b\mathbin{\|}\mathtt{SetupCaps}\mathbin{\|}\mathtt{MemoryCaps})$, encoding the concatenation as little-endian 32-bit words.
+> 1. Select circuit $C$ from Algorithm 12's terminal-wrapper entry. Prover sends $\mathrm{fin}$ in the 99-word format from Algorithm 1a, step 1, followed by two RAM initialization/teardown window identifiers $\mathbf{b}$ as 32-bit values, then setup caps `SetupCaps` and memory caps `MemoryCaps`. The number of caps in each group and the number of hashes per cap are specified in Algorithm 12's terminal-wrapper entry.
+> 2. Both parties initialize $T_{\mathrm{mem{+}}}$ with seed $\mathrm{Keccak256}(\mathrm{fin}\mathbin{\|}\mathbf{b}\mathbin{\|}\mathtt{SetupCaps}\mathbin{\|}\mathtt{MemoryCaps})$, encoding the concatenation as little-endian 32-bit words.
 > 3. Prover sends the 64-bit memory/lookup-PoW nonce. Both parties absorb it into $T_{\mathrm{mem{+}}}$ and draw one 256-bit PoW word. Verifier requires the number of leading zero bits to meet the combined memory/lookup-PoW threshold specified in Algorithm 12. Both parties then sample $\mathbf{r}_{\mathrm{mem}}=(r_{\mathrm{mem},0},\ldots,r_{\mathrm{mem},5},r_{\mathrm{mem},\eta})\in E^7$, followed by $\mathbf{r}_{\mathrm{lookup}}=(r_{\mathrm{lookup},\alpha},r_{\mathrm{lookup},\beta})\in E^2$, from subsequent drawn words.
-> 4. Run $\mathrm{SeededChunk}(C,\mathbf{r}_{\mathrm{mem}},\mathbf{r}_{\mathrm{lookup}},b,(\mathtt{MemoryCaps},\varnothing,\mathtt{SetupCaps}),T_{\mathrm{mem{+}}})$ (Algorithm 3b), obtaining $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$ and $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$, together with the updated $T_{\mathrm{mem{+}}}$.
+> 4. Run $\mathrm{SeededChunk}(C,\mathbf{r}_{\mathrm{mem}},\mathbf{r}_{\mathrm{lookup}},\mathbf{b},(\mathtt{MemoryCaps},\varnothing,\mathtt{SetupCaps}),T_{\mathrm{mem{+}}})$ (Algorithm 3b), obtaining $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$ and $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$, together with the updated $T_{\mathrm{mem{+}}}$.
 > 5. Run $\mathrm{CloseMemory}(\mathrm{fin},\mathbf{r}_{\mathrm{mem}},\mathrm{RS}_{\mathrm{chunk}}\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{chunk}}\mathrm{WS}_{\mathrm{IT}})$ (Algorithm 9).
 > 6. Return from $\mathrm{fin}$: the application result $(x_{10},\ldots,x_{17})$ and program-history digest $(h_0,\ldots,h_7)=(x_{18},\ldots,x_{25})$, each eight 32-bit words. Reject if any check or subalgorithm fails.
 >
@@ -127,8 +123,6 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > **Input:** `ProgramSetupCaps` Merkle tree caps, $\mathbf{r}_{\mathrm{mem}}$ challenges, and the running memory transcript $T_{\mathrm{mem}}$ initialized with $\mathrm{fin}$. **Output:** accumulated read/write products $\mathrm{RS},\mathrm{WS}\in E$ and $T_{\mathrm{mem}}$ extended with the participating memory commitments and identifiers.
 >
-> **Protocol**
->
 > 1. Verifier initializes $\mathrm{RS}\leftarrow1$, $\mathrm{WS}\leftarrow1$ and forms the ordered circuit list according to $\mathrm{profile}$:
 >
 >    - **$\mathrm{profile}=\mathrm{unrolled}$:** the instruction circuits selected by Algorithm 12 for $(\mathrm{profile},\mathrm{mode})$, in their listed order; then the standalone IT circuit; then the delegation circuits in Algorithm 12's fixed order.
@@ -144,22 +138,22 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 >    3. For each chunk, in proof order:
 >
->       1. Verifier runs $\mathrm{Chunk}(C,\mathbf{r}_{\mathrm{mem}})$† (Algorithm 3a), obtaining the chunk's main read/write products $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$, the additional initialization/teardown products $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$ for unified instruction chunks, memory caps `MemoryCaps`, setup caps `SetupCaps` and window identifiers $b$.
+>       1. Verifier runs $\mathrm{Chunk}(C,\mathbf{r}_{\mathrm{mem}})$† (Algorithm 3a), obtaining the chunk's main read/write products $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$, the additional initialization/teardown products $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$ for unified instruction chunks, memory caps `MemoryCaps`, setup caps `SetupCaps` and window identifiers $\mathbf{b}$.
 >
 >          † _Chunk calls may run in parallel, each consuming the separate, non-overlapping portion of proof data corresponding to that chunk._
 >
 >       2. Verifier checks the returned outputs according to $C$:
 >
->          - **Unrolled instruction circuit:** require $b$ to be empty and `SetupCaps` to match the cap for $C$ in `ProgramSetupCaps`.
->          - **Unified instruction circuit:** require two window identifiers in $b$ and `SetupCaps` to match the cap for $C$ in `ProgramSetupCaps`. For the first $n-n_{\mathrm{IT}}$ chunks, require $b=(0,0)$. Across the final $n_{\mathrm{IT}}$ chunks, require the window identifiers, in proof order, to form a strictly increasing sequence in $[0,64)$.
->          - **Standalone IT circuit:** require eight window identifiers in $b$ and require the identifiers, in proof order across chunks, to form a strictly increasing sequence in $[0,64)$. This circuit has no committed setup tables, so `SetupCaps` is empty and requires no comparison.
->          - **Delegation circuit:** require $b$ to be empty and `SetupCaps` to match the Verifier's hardcoded cap for $C$.
+>          - **Unrolled instruction circuit:** require $\mathbf{b}$ to be empty and `SetupCaps` to match the cap for $C$ in `ProgramSetupCaps`.
+>          - **Unified instruction circuit:** require two window identifiers in $\mathbf{b}$ and `SetupCaps` to match the cap for $C$ in `ProgramSetupCaps`. For the first $n-n_{\mathrm{IT}}$ chunks, require $\mathbf{b}=(0,0)$. Across the final $n_{\mathrm{IT}}$ chunks, require the window identifiers, in proof order, to form a strictly increasing sequence in $[0,64)$.
+>          - **Standalone IT circuit:** require eight window identifiers in $\mathbf{b}$ and require the identifiers, in proof order across chunks, to form a strictly increasing sequence in $[0,64)$. This circuit has no committed setup tables, so `SetupCaps` is empty and requires no comparison.
+>          - **Delegation circuit:** require $\mathbf{b}$ to be empty and `SetupCaps` to match the Verifier's hardcoded cap for $C$.
 >
 >       3. Both parties absorb the following into $T_{\mathrm{mem}}$, using $C$'s 32-bit family label from Algorithm 12:
 >
 >          - **Unrolled instruction or delegation circuit:** if this is the first chunk for $C$, absorb its family label padded with fifteen zero words. Then absorb this chunk's `MemoryCaps`.
->          - **Standalone IT circuit:** if this is the first chunk for $C$, absorb its family label padded with fifteen zero words. Then absorb this chunk's `MemoryCaps`, followed by its eight window identifiers $b$ padded with eight zero words.
->          - **Unified instruction circuit:** absorb $C$'s family label and this chunk's two window identifiers $b$, padded with thirteen zero words. Then absorb this chunk's `MemoryCaps`.
+>          - **Standalone IT circuit:** if this is the first chunk for $C$, absorb its family label padded with fifteen zero words. Then absorb this chunk's `MemoryCaps`, followed by its eight window identifiers $\mathbf{b}$ padded with eight zero words.
+>          - **Unified instruction circuit:** absorb $C$'s family label and this chunk's two window identifiers $\mathbf{b}$, padded with thirteen zero words. Then absorb this chunk's `MemoryCaps`.
 >       4. Update $\mathrm{RS}\leftarrow\mathrm{RS}\cdot\mathrm{RS}_{\mathrm{chunk}}$ and $\mathrm{WS}\leftarrow\mathrm{WS}\cdot\mathrm{WS}_{\mathrm{chunk}}$. For the final $n_{\mathrm{IT}}$ unified instruction chunks, Verifier also updates $\mathrm{RS}\leftarrow\mathrm{RS}\cdot\mathrm{RS}_{\mathrm{IT}}$ and $\mathrm{WS}\leftarrow\mathrm{WS}\cdot\mathrm{WS}_{\mathrm{IT}}$.
 > 3. Verifier requires the following memory-term capacity bounds, using the fixed circuit parameters listed before Algorithm 12. The bounds count only one side of the memory argument ($\mathrm{RS}$ or $\mathrm{WS}$), for soundness analysis purposes:
 >
@@ -186,7 +180,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > Required participant-binding lemma: under commitment binding, for each fixed memory-transcript prefix immediately before the nonce, all completions satisfying the local chunk relations and participant checks induce the same selected read/write event multisets, including multiplicities and Algorithm 9's boundary events, independently of the subsequently sampled memory challenges. Its proof must establish that the encoding fixes the participating caps and their interpretation sufficiently to determine these multisets. In particular, proof counts, `ProgramSetupCaps` and separate witness caps are omitted from this prefix: varying them while preserving the prefix must not change event selection, tuple values or multiplicities. Later absorption of setup/witness caps into chunk transcripts does not establish this earlier binding. This lemma remains a proof obligation.
 >
-> For unified chunks, the authenticated window identifiers determine which IT products contribute: excluded chunks have $b=(0,0)$, whereas selected chunks have strictly increasing identifiers. Once the ordered chunk list and its identifiers are bound, these conditions uniquely determine the selected suffix and $n_{\mathrm{IT}}$. Establishing that the selected IT windows supply every RAM boundary required by the execution remains part of Algorithm 9's reconstruction lemma.
+> For unified chunks, the authenticated window identifiers determine which IT products contribute: excluded chunks have $\mathbf{b}=(0,0)$, whereas selected chunks have strictly increasing identifiers. Once the ordered chunk list and its identifiers are bound, these conditions uniquely determine the selected suffix and $n_{\mathrm{IT}}$. Establishing that the selected IT windows supply every RAM boundary required by the execution remains part of Algorithm 9's reconstruction lemma.
 >
 > Outside local verification failures, setup-cap equality ties instruction chunks to the supplied program setups and delegation chunks to the fixed delegation setups. Circuit-bound, strictly increasing IT windows exclude repeated initialization/teardown windows; complete coverage remains a premise of Algorithm 9's reconstruction lemma. The capacity argument must additionally show that the charged counts bound all selected events, including IT and boundary events in the final $N$ bound. Subject to these obligations, the accumulated products are fingerprints of the fixed multisets, so Algorithm 9's collision bound applies after Algorithm 1a authenticates the shared challenges.
 
@@ -200,35 +194,31 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > **Configuration:** $\mathrm{chunk\text{-}config}=\mathrm{standard}$; inherit $\mathrm{profile}$, $\mathrm{mode}$ and $\mathrm{commitment\text{-}config}$ from Algorithm 2.
 >
-> **Input:** compiled arithmetic circuit $C$ and memory challenges $\mathbf{r}_{\mathrm{mem}}$. **Output:** read/write products $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$, the additional initialization/teardown products $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$ for unified instruction chunks, memory caps `MemoryCaps`, setup caps `SetupCaps` and window identifiers $b$.
+> **Input:** compiled arithmetic circuit $C$ and memory challenges $\mathbf{r}_{\mathrm{mem}}$. **Output:** read/write products $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$, the additional initialization/teardown products $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$ for unified instruction chunks, memory caps `MemoryCaps`, setup caps `SetupCaps` and window identifiers $\mathbf{b}$.
 >
-> **Protocol**
->
-> 1. Prover sends the RAM initialization/teardown window identifiers $b$ as 32-bit values according to $C$:
+> 1. Prover sends the RAM initialization/teardown window identifiers $\mathbf{b}$ as 32-bit values according to $C$:
 >
 >    - **Standalone IT circuit:** eight values.
 >    - **Unified instruction circuit:** two values.
->    - **Otherwise:** $b$ is empty and no values are sent.
+>    - **Otherwise:** $\mathbf{b}$ is empty and no values are sent.
 >
 > 2. Prover sends `SetupCaps`, `MemoryCaps` and `WitnessCaps`, in that order. The number of caps in each group and the number of hashes per cap are specified in Algorithm 12 for $C$ and the inherited $(\mathrm{profile},\mathrm{mode},\mathrm{commitment\text{-}config})$ configuration parameters.
 >
 > 3. Both parties start a fresh transcript $T_{\mathrm{chunk}}$ by absorbing the ordered prefix below:
 >
 >    $$
->    b\mathbin{\|}\mathbf{r}_{\mathrm{mem}}\mathbin{\|}\mathtt{SetupCaps}\mathbin{\|}\mathtt{MemoryCaps}\mathbin{\|}\mathtt{WitnessCaps}
+>    \mathbf{b}\mathbin{\|}\mathbf{r}_{\mathrm{mem}}\mathbin{\|}\mathtt{SetupCaps}\mathbin{\|}\mathtt{MemoryCaps}\mathbin{\|}\mathtt{WitnessCaps}
 >    $$
 >
 > 4. Prover sends the 64-bit lookup-PoW nonce. Both parties absorb it into $T_{\mathrm{chunk}}$ and draw one 32-bit PoW word. Verifier requires the number of leading zero bits to meet the lookup-PoW threshold specified in Algorithm 12. Both parties then sample the lookup challenges $\mathbf{r}_{\mathrm{lookup}}=(r_{\mathrm{lookup},\alpha},r_{\mathrm{lookup},\beta})\in E^2$ from subsequent words.
-> 5. Run $\mathrm{SeededChunk}(C,\mathbf{r}_{\mathrm{mem}},\mathbf{r}_{\mathrm{lookup}},b,(\mathtt{MemoryCaps},\mathtt{WitnessCaps},\mathtt{SetupCaps}),T_{\mathrm{chunk}})$ (Algorithm 3b), obtaining $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$, the additional pair $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$ when present, and the updated $T_{\mathrm{chunk}}$.
-> 6. Return $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$ and $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$, when present, from step 5, together with `MemoryCaps`, `SetupCaps` and $b$ from steps 1–2.
+> 5. Run $\mathrm{SeededChunk}(C,\mathbf{r}_{\mathrm{mem}},\mathbf{r}_{\mathrm{lookup}},\mathbf{b},(\mathtt{MemoryCaps},\mathtt{WitnessCaps},\mathtt{SetupCaps}),T_{\mathrm{chunk}})$ (Algorithm 3b), obtaining $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$, the additional pair $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$ when present, and the updated $T_{\mathrm{chunk}}$.
+> 6. Return $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$ and $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$, when present, from step 5, together with `MemoryCaps`, `SetupCaps` and $\mathbf{b}$ from steps 1–2.
 >
 > **Algorithm 3b — SeededChunk**
 >
 > **Configuration:** $\mathrm{chunk\text{-}config}\in\{\mathrm{standard},\mathrm{terminal\text{-}wrapper}\}$, fixed to $\mathrm{standard}$ by Algorithm 3a and $\mathrm{terminal\text{-}wrapper}$ by Algorithm 1b. For $\mathrm{standard}$, inherit $\mathrm{profile}$, $\mathrm{mode}$ and $\mathrm{commitment\text{-}config}$ from Algorithm 3a.
 >
-> **Input:** compiled arithmetic circuit $C$, memory challenges $\mathbf{r}_{\mathrm{mem}}$, lookup challenges $\mathbf{r}_{\mathrm{lookup}}$, window identifiers $b$, cap groups $(\mathtt{MemoryCaps},\mathtt{WitnessCaps},\mathtt{SetupCaps})$ and the prepared transcript $T_{\mathrm{chunk}}$. **Output:** read/write products $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$, the additional initialization/teardown products $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$ for unified instruction chunks, and the updated transcript $T_{\mathrm{chunk}}$.
->
-> **Protocol**
+> **Input:** compiled arithmetic circuit $C$, memory challenges $\mathbf{r}_{\mathrm{mem}}$, lookup challenges $\mathbf{r}_{\mathrm{lookup}}$, window identifiers $\mathbf{b}$, cap groups $(\mathtt{MemoryCaps},\mathtt{WitnessCaps},\mathtt{SetupCaps})$ and the prepared transcript $T_{\mathrm{chunk}}$. **Output:** read/write products $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$, the additional initialization/teardown products $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$ for unified instruction chunks, and the updated transcript $T_{\mathrm{chunk}}$.
 >
 > 1. Both parties run GKR:
 >
@@ -237,7 +227,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >    3. Let $2^n$ be $C$'s trace row count from Algorithm 12. Process $C$'s compression layers for $k=4,\ldots,n-1$, followed by its main layers from outputs towards inputs. For each layer $C_{\mathrm{layer}}$, update using Algorithm 4:
 >
 >       $$
->       ((\mathbf{z}_{\mathrm{gkr}},\mathbf{a}_{\mathrm{gkr}}),r_{\mathrm{batch},\mathrm{gkr}},T_{\mathrm{chunk}})\leftarrow\mathrm{GKRLayer}(C_{\mathrm{layer}},(\mathbf{z}_{\mathrm{gkr}},\mathbf{a}_{\mathrm{gkr}}),r_{\mathrm{batch},\mathrm{gkr}},\mathbf{r}_{\mathrm{mem}},\mathbf{r}_{\mathrm{lookup}},b,T_{\mathrm{chunk}}).
+>       ((\mathbf{z}_{\mathrm{gkr}},\mathbf{a}_{\mathrm{gkr}}),r_{\mathrm{batch},\mathrm{gkr}},T_{\mathrm{chunk}})\leftarrow\mathrm{GKRLayer}(C_{\mathrm{layer}},(\mathbf{z}_{\mathrm{gkr}},\mathbf{a}_{\mathrm{gkr}}),r_{\mathrm{batch},\mathrm{gkr}},\mathbf{r}_{\mathrm{mem}},\mathbf{r}_{\mathrm{lookup}},\mathbf{b},T_{\mathrm{chunk}}).
 >       $$
 >    4. Take the column-packing factor $\mathrm{pack}=2^k$ from Algorithm 12 using $\mathrm{chunk\text{-}config}$.
 >
@@ -252,11 +242,11 @@ Recursive step: prove the execution of FullStatement; repeat.
 >         \end{aligned}
 >         $$
 >
-> 2. Run $\mathrm{OutputChecks}(A_0,\ldots,A_{s-1})$ (Algorithm 6), obtaining the read/write products $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$ and, if $C$ is the unified instruction circuit, the additional initialization/teardown products $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$.
+> 2. Run $\mathrm{OutputChecks}(C,A_0,\ldots,A_{s-1})$ (Algorithm 6), obtaining the read/write products $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$ and, if $C$ is the unified instruction circuit, the additional initialization/teardown products $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$.
 >
 > 3. Prover sends the 64-bit batching/proximity-PoW nonce. Both parties absorb it into $T_{\mathrm{chunk}}$ and draw one 32-bit PoW word (256-bit for Proth120 transcript). Verifier requires the number of leading zero bits to meet the batching-PoW threshold specified in Algorithm 12 for $C$ and the selected configuration. Both parties then sample the WHIR batching challenge $r_{\mathrm{batch},\mathrm{whir}}\in E$ from subsequent words.
 >
-> 4. Set $T_{\mathrm{chunk}}\leftarrow\mathrm{WHIR}((\mathtt{MemoryCaps},\mathtt{WitnessCaps},\mathtt{SetupCaps}),(\mathbf{z}_{\mathrm{whir}},\mathbf{a}_{\mathrm{whir}}),r_{\mathrm{batch},\mathrm{whir}},T_{\mathrm{chunk}})$ (Algorithm 7).
+> 4. Set $T_{\mathrm{chunk}}\leftarrow\mathrm{WHIR}(C,(\mathtt{MemoryCaps},\mathtt{WitnessCaps},\mathtt{SetupCaps}),(\mathbf{z}_{\mathrm{whir}},\mathbf{a}_{\mathrm{whir}}),r_{\mathrm{batch},\mathrm{whir}},T_{\mathrm{chunk}})$ (Algorithm 7).
 >
 > 5. Return $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$, the additional pair $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$ when present, and the updated $T_{\mathrm{chunk}}$.
 >
@@ -278,11 +268,11 @@ Recursive step: prove the execution of FullStatement; repeat.
 
 > **Algorithm 4 — GKRLayer**
 >
-> **Input:** fixed circuit layer $C_{\mathrm{layer}}$, output evaluation point $\mathbf{z}_{\mathrm{gkr}}$ and claims $\mathbf{a}_{\mathrm{gkr}}$, batching challenge $r_{\mathrm{batch},\mathrm{gkr}}$, shared memory challenges $\mathbf{r}_{\mathrm{mem}}$, lookup challenges $\mathbf{r}_{\mathrm{lookup}}$, window identifiers $b$ and the running chunk transcript $T_{\mathrm{chunk}}$. **Output:** preceding-layer evaluation point $\mathbf{z}'_{\mathrm{gkr}}$, claims $\mathbf{a}'_{\mathrm{gkr}}$, next batching challenge $r'_{\mathrm{batch},\mathrm{gkr}}$, and the updated transcript $T_{\mathrm{chunk}}$.
+> **Input:** fixed circuit layer $C_{\mathrm{layer}}$, output evaluation point $\mathbf{z}_{\mathrm{gkr}}$ and claims $\mathbf{a}_{\mathrm{gkr}}$, batching challenge $r_{\mathrm{batch},\mathrm{gkr}}$, shared memory challenges $\mathbf{r}_{\mathrm{mem}}$, lookup challenges $\mathbf{r}_{\mathrm{lookup}}$, window identifiers $\mathbf{b}$ and the running chunk transcript $T_{\mathrm{chunk}}$. **Output:** preceding-layer evaluation point $\mathbf{z}'_{\mathrm{gkr}}$, claims $\mathbf{a}'_{\mathrm{gkr}}$, next batching challenge $r'_{\mathrm{batch},\mathrm{gkr}}$, and the updated transcript $T_{\mathrm{chunk}}$.
 >
-> 1. Both parties batch the incoming claims $\mathbf{a}_{\mathrm{gkr}}$ via RLC using powers of $r_{\mathrm{batch},\mathrm{gkr}}$ in the order specified by $C_{\mathrm{layer}}$, obtaining the initial sumcheck claim $v_{\mathrm{batch}}$.
+> 1. Both parties batch the incoming claims $\mathbf{a}_{\mathrm{gkr}}$ via RLC using powers of $r_{\mathrm{batch},\mathrm{gkr}}$ in the order specified by $C_{\mathrm{layer}}$, obtaining the initial sumcheck claim $v_{\mathrm{sumcheck}}$.
 >
-> 2. Run $\mathrm{EQSumcheck}(C_{\mathrm{layer}},(\mathbf{z}_{\mathrm{gkr}},v_{\mathrm{batch}}),T_{\mathrm{chunk}})$ (Algorithm 5) for the layer's batched gate polynomial, obtaining the sumcheck evaluation point $\mathbf{z}_{\mathrm{sumcheck}}$, scalar residual claim $v_{\mathrm{sumcheck}}$, final-coordinate EQ factor $e$ and updated transcript $T_{\mathrm{chunk}}$.
+> 2. Run $\mathrm{EQSumcheck}(C_{\mathrm{layer}},(\mathbf{z}_{\mathrm{gkr}},v_{\mathrm{sumcheck}}),T_{\mathrm{chunk}})$ (Algorithm 5) for the layer's batched gate polynomial, obtaining the sumcheck evaluation point $\mathbf{z}_{\mathrm{sumcheck}}$, scalar residual claim $v_{\mathrm{sumcheck}}$, final-coordinate EQ factor $e$ and updated transcript $T_{\mathrm{chunk}}$.
 >
 > 3. Prover sends $\mathbf{a}_{\mathrm{sumcheck}}$: claimed evaluations of all input polynomials required by $C_{\mathrm{layer}}$ and, for main layers only, cached relation outputs (including claimed virtual-setup polynomial evaluations), in $C_{\mathrm{layer}}$'s prescribed evaluation order.
 >
@@ -290,7 +280,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 >    - **Compression layer:** Verifier combines the pairwise claimed evaluations at $(0,\mathbf{z}_{\mathrm{sumcheck}})$ and $(1,\mathbf{z}_{\mathrm{sumcheck}})$ using the layer's memory-product or rational-sum LogUp accumulation relations.
 >
->    - **Main layer:** Verifier uses the gate-input evaluations at $\mathbf{z}_{\mathrm{sumcheck}}$, including cached relation outputs where applicable, to evaluate copy/linear relations, quadratic arithmetic, memory-product and lookup relations (using $\mathbf{r}_{\mathrm{mem}}$, $\mathbf{r}_{\mathrm{lookup}}$ and $b$ where required), and zero-constraint expressions as specified by $C_{\mathrm{layer}}$'s gates. Verifier also evaluates the cached relations using claimed inputs from $\mathbf{a}_{\mathrm{sumcheck}}$ where needed and computes virtual lookup-table expressions directly at $\mathbf{z}_{\mathrm{sumcheck}}$. He requires the claimed cached outputs, including virtual setup evaluations, to equal the corresponding computed values.
+>    - **Main layer:** Verifier uses the gate-input evaluations at $\mathbf{z}_{\mathrm{sumcheck}}$, including cached relation outputs where applicable, to evaluate copy/linear relations, quadratic arithmetic, memory-product and lookup relations (using $\mathbf{r}_{\mathrm{mem}}$, $\mathbf{r}_{\mathrm{lookup}}$ and $\mathbf{b}$ where required), and zero-constraint expressions as specified by $C_{\mathrm{layer}}$'s gates. Verifier also evaluates the cached relations using claimed inputs from $\mathbf{a}_{\mathrm{sumcheck}}$ where needed and computes virtual lookup-table expressions directly at $\mathbf{z}_{\mathrm{sumcheck}}$. He requires the claimed cached outputs, including virtual setup evaluations, to equal the corresponding computed values.
 >
 >
 >    Verifier batches the resulting scalar gate evaluations using the same powers of $r_{\mathrm{batch},\mathrm{gkr}}$ and the same order as in step 1. He then scales this batch by the final-coordinate EQ factor $e$ returned by Algorithm 5, and requires the result to equal $v_{\mathrm{sumcheck}}$.
@@ -323,18 +313,18 @@ Recursive step: prove the execution of FullStatement; repeat.
 
 > **Algorithm 5 — EQSumcheck**
 >
-> **Input:** fixed circuit layer $C_{\mathrm{layer}}$ of degree at most 2, incoming point $\mathbf{z}_{\mathrm{gkr}}$, batched claim $v_{\mathrm{batch}}$ and the running chunk transcript $T_{\mathrm{chunk}}$. **Output:** point $\mathbf{z}_{\mathrm{sumcheck}}$, scalar residual claim $v_{\mathrm{sumcheck}}$, final-coordinate EQ factor $e$, and the updated transcript $T_{\mathrm{chunk}}$.
+> **Input:** fixed circuit layer $C_{\mathrm{layer}}$ of degree at most 2, incoming point $\mathbf{z}_{\mathrm{gkr}}$, initial batched claim $v_{\mathrm{sumcheck}}$ and the running chunk transcript $T_{\mathrm{chunk}}$. **Output:** point $\mathbf{z}_{\mathrm{sumcheck}}$, updated scalar residual claim $v_{\mathrm{sumcheck}}$, final-coordinate EQ factor $e$, and the updated transcript $T_{\mathrm{chunk}}$.
 >
->> This algorithm reduces the weighted sum claim below to a polynomial evaluation claim. Here $m$ is the number of coordinates of $\mathbf{z}_{\mathrm{gkr}}$, $G$ is the batched gate polynomial computed in step 2, and $\mathrm{eq}$ is the Boolean-cube interpolation kernel:
+>> This algorithm reduces the initial weighted sum claim below to a polynomial evaluation claim. Here $m$ is the number of coordinates of $\mathbf{z}_{\mathrm{gkr}}$, $G$ is the batched gate polynomial computed in step 2, and $\mathrm{eq}$ is the Boolean-cube interpolation kernel:
 >>
 >> $$
 >> \begin{aligned}
->> v_{\mathrm{batch}}&=\sum_{\mathbf{x}\in\{0,1\}^m}\mathrm{eq}(\mathbf{z}_{\mathrm{gkr}},\mathbf{x})G(\mathbf{x}),\\
+>> v_{\mathrm{sumcheck}}&=\sum_{\mathbf{x}\in\{0,1\}^m}\mathrm{eq}(\mathbf{z}_{\mathrm{gkr}},\mathbf{x})G(\mathbf{x}),\\
 >> \mathrm{eq}(\mathbf{u},\mathbf{x})&=\prod_j((1-u_j)(1-x_j)+u_jx_j).
 >> \end{aligned}
 >> $$
 >>
-> 1. Both parties initialize $e\leftarrow1$ and $v_{\mathrm{sumcheck}}\leftarrow v_{\mathrm{batch}}$.
+> 1. Both parties initialize $e\leftarrow1$.
 > 2. Prover computes $G\in E^{\le2}[X_0,\ldots,X_{m-1}]$ (degree at most two in each variable) by batching the layer gate expressions from Algorithm 4, step 4, with the same powers of $r_{\mathrm{batch},\mathrm{gkr}}$ and ordering as in Algorithm 4, step 1.
 > 3. Both parties run the following rounds for $j=0,\ldots,m-1$:
 >    1. Prover computes the univariate round polynomial
@@ -365,33 +355,44 @@ Recursive step: prove the execution of FullStatement; repeat.
 
 > **Algorithm 6 — OutputChecks: memory products and LogUp**
 >
-> **Input:** original sixteen-entry tables. **Output:** main read/write products $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$ and, for unified instruction circuits, the additional IT products $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$, after checking the lookup identities. Standalone IT returns its initialization/teardown products as the main pair.
+> **Input:** compiled arithmetic circuit $C$ and its claimed output tables $A_0,\ldots,A_{s-1}\in E^{16}$, received in Algorithm 3b, step 1.1. **Output:** read/write products $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$ and, for unified instruction circuits, the additional initialization/teardown products $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$.
 >
-> **Notation:** $Q$ is the query multiset and $T$ the lookup table; $m_t$ is table tuple $t$'s committed multiplicity. Tuples have width $w$, including any table identifier. With lookup challenges $\alpha,\beta$, define $\ell(t)=\beta+\sum_{j=0}^{w-1}\alpha^j t_j$.
->
-> 1. For each main or additional IT product pair $(A_R,A_W)$, compute:
+> 1. Verifier selects the two main read/write tables $(A_{\mathrm{RS},\mathrm{chunk}},A_{\mathrm{WS},\mathrm{chunk}})$ from $A_0,\ldots,A_{s-1}$ according to $C$'s output layout. For standalone IT circuits, these are the initialization/teardown tables. He computes the product of the entries in each table:
 >
 >    $$
 >    \begin{aligned}
->    R &\leftarrow \prod_{j=0}^{15}A_R[j] \\
->    W &\leftarrow \prod_{j=0}^{15}A_W[j]
+>    \mathrm{RS}_{\mathrm{chunk}} &\leftarrow \prod_{j=0}^{15}A_{\mathrm{RS},\mathrm{chunk}}[j] \\
+>    \mathrm{WS}_{\mathrm{chunk}} &\leftarrow \prod_{j=0}^{15}A_{\mathrm{WS},\mathrm{chunk}}[j]
 >    \end{aligned}
 >    $$
 >
-> 2. For each present lookup pair $(A_N,A_D)$:
->    1. Initialize $N\leftarrow 0$, $D\leftarrow 1$.
->    2. For $j=0,\ldots,15$, update simultaneously:
+>    If $C$ is the unified instruction circuit, Verifier also selects the two additional initialization/teardown tables $(A_{\mathrm{RS},\mathrm{IT}},A_{\mathrm{WS},\mathrm{IT}})$ from $A_0,\ldots,A_{s-1}$ according to $C$'s output layout and computes the product of the entries in each table:
+>
+>    $$
+>    \begin{aligned}
+>    \mathrm{RS}_{\mathrm{IT}} &\leftarrow \prod_{j=0}^{15}A_{\mathrm{RS},\mathrm{IT}}[j] \\
+>    \mathrm{WS}_{\mathrm{IT}} &\leftarrow \prod_{j=0}^{15}A_{\mathrm{WS},\mathrm{IT}}[j]
+>    \end{aligned}
+>    $$
+>
+> 2. For each lookup category present in $C$'s output layout (at most three: 16-bit range, timestamp range and generic), Verifier selects its numerator and denominator tables $(A_N,A_D)$ from $A_0,\ldots,A_{s-1}$ and performs the following checks:
+>    1. Verifier initializes $N\leftarrow 0$, $D\leftarrow 1$.
+>    2. For $j=0,\ldots,15$, Verifier updates simultaneously:
 >
 >       $$
 >       (N,D)\leftarrow\bigl(N\,A_D[j]+A_N[j]D,\;D\,A_D[j]\bigr)
 >       $$
 >
->    3. Require $N=0$ and $D\ne 0$.
-> 3. Return the product pairs.
+>    3. Verifier requires $N=0$ and $D\ne 0$.
+> 3. Verifier returns $(\mathrm{RS}_{\mathrm{chunk}},\mathrm{WS}_{\mathrm{chunk}})$ and, if $C$ is the unified instruction circuit, $(\mathrm{RS}_{\mathrm{IT}},\mathrm{WS}_{\mathrm{IT}})$.
 >
-> The leaf relation is $\sum_{q\in Q}1/\ell(q)=\sum_{t\in T}m_t/\ell(t)$. Its rational compression tree is proved by GKR with base openings in WHIR. The 16-bit and timestamp virtual tables have $2^{16}$ and $2^{19}$ entries. IT has zero categories; BLAKE and Keccak have two; the other listed circuits have three. The fixed arithmetic circuit determines selectors and padding queries.
+> **Soundness — lookup membership and product export (adapted, conditional).**
 >
-> **Soundness — lookup membership and product export (adapted, conditional).** Assume Algorithms 5 and 7 authenticate the output tables as evaluations of the product/rational compression trees. Also assume tuple encoding is injective, all lookup tuples and multiplicities are fixed before $\alpha,\beta$, and every invalid tuple occurring in the queries has a nonzero count modulo $p$. An invalid tuple then contributes an uncancelled pole to the symbolic rational difference. Clearing denominators gives a nonzero polynomial in $\alpha,\beta$; the authenticated $D\ne0$ check permits this reduction on accepted proofs. If category $a$ has $T_a$ fraction occurrences and tuple width $w_a$, its numerator has total degree at most $D_a\le T_a\max(1,w_a)$. Therefore
+> For the lookup relation, $Q$ is the query multiset and $T$ the lookup table; $m_{\mathbf{t}}$ is table tuple $\mathbf{t}$'s committed multiplicity. Tuples have width $w$, including any table identifier. With lookup challenges $\alpha,\beta$, define $\ell(\mathbf{t})=\beta+\sum_{j=0}^{w-1}\alpha^j t_j$.
+>
+> The leaf relation is $\sum_{\mathbf{q}\in Q}1/\ell(\mathbf{q})=\sum_{\mathbf{t}\in T}m_{\mathbf{t}}/\ell(\mathbf{t})$. Its rational compression tree is proved by GKR with base openings in WHIR.
+>
+> Assume Algorithms 5 and 7 authenticate the output tables as evaluations of the product/rational compression trees. Also assume tuple encoding is injective, all lookup tuples and multiplicities are fixed before $\alpha,\beta$, and every invalid tuple occurring in the queries has a nonzero count modulo $p$. An invalid tuple then contributes an uncancelled pole to the symbolic rational difference. Clearing denominators gives a nonzero polynomial in $\alpha,\beta$; the authenticated $D\ne0$ check permits this reduction on accepted proofs. If category $a$ has $T_a$ fraction occurrences and tuple width $w_a$, its numerator has total degree at most $D_a\le T_a\max(1,w_a)$. Therefore
 >
 > $$
 > \varepsilon_{\mathrm{lookup}}\le\min\!\left(1,\mu\sum_a D_a\right).
@@ -403,61 +404,90 @@ Recursive step: prove the execution of FullStatement; repeat.
 
 > **Algorithm 7 — WHIR**
 >
-> **Input:** cap groups $(\mathtt{MemoryCaps},\mathtt{WitnessCaps},\mathtt{SetupCaps})$; opening claim $(\zeta,\mathbf{a})$, with $f_j(\zeta)=a_j$; $\gamma$; the chunk transcript $T$ continued after GKR and batching. **Parameters:** oracle layout, domains, fold/query schedule and PoW thresholds from Algorithm 12. **Prover data:** base and folded polynomials and Merkle trees. **Relation:** the committed base polynomials have the claimed evaluations and required encoding/degree bounds. **Output:** acceptance of the base-opening claims and the updated transcript $T$.
+> **Configuration:** inherit $\mathrm{chunk\text{-}config}$ and, for standard chunks, $\mathrm{commitment\text{-}config}$ from Algorithm 3b.
 >
-> **Notation:** $f_j$ are the committed multilinear polynomials and $\zeta$ their opening point. For monomial coefficients $c_t$, $F_f(X)=\sum_t c_tX^t$ and $\mathrm{powers}(s)=(s,s^2,s^4,\ldots)$, so $F_f(s)=f(\mathrm{powers}(s))$; low-index bits select the first folded variables. $\mathrm{eq}$ is the interpolation kernel from EQSumcheck; $w$ is the running weight function, $m$ the remaining dimension and $D_r$ the current Reed–Solomon evaluation domain.
+> **Input:** compiled arithmetic circuit $C$, cap groups $(\mathtt{MemoryCaps},\mathtt{WitnessCaps},\mathtt{SetupCaps})$, opening point $\mathbf{z}_{\mathrm{whir}}$ and claims $\mathbf{a}_{\mathrm{whir}}$, batching challenge $r_{\mathrm{batch},\mathrm{whir}}$ and the running chunk transcript $T_{\mathrm{chunk}}$. **Output:** the updated transcript $T_{\mathrm{chunk}}$.
 >
-> **Query sampling:** for $t$ indices of $\ell_{\mathrm{query}}=\log_2(|D_r|/2^{k_r})$ bits each, draw $8\lceil(\lceil t\ell_{\mathrm{query}}/32\rceil+1)/8\rceil$ raw 32-bit words. For BabyBear, this stream begins with the checked PoW word. For Proth120, it begins with the next Keccak256 hash after the PoW digest, with each digest split into eight little-endian words. Skip the first word of this stream and read $\ell_{\mathrm{query}}$ bits per index, least-significant bit first. All drawn blocks advance the transcript; subsequent field challenges use fresh hash output.
+>> The running claim is
+>>
+>> $$
+>> v_{\mathrm{whir}}=\sum_{\mathbf{x}}F(\mathbf{x})W(\mathbf{x}).
+>> $$
+>>
+>> Here $F$ is Prover's current multilinear polynomial, initially computed in step 2 and subsequently folded in step 3.1. The polynomial $W$ accumulates the EQ weights of the claims. The sum ranges over the Boolean cube on their remaining variables.
 >
-> 1. Prover batches $f$; Verifier initializes $v,w$:
+> 1. Both parties batch $\mathbf{a}_{\mathrm{whir}}$ via RLC using powers of $r_{\mathrm{batch},\mathrm{whir}}$ in the order inherited from Algorithm 3b, obtaining $v_{\mathrm{whir}}$, and initialize $W(\mathbf{x})\leftarrow\mathrm{eq}(\mathbf{z}_{\mathrm{whir}},\mathbf{x})$ using the EQ kernel from Algorithm 5.
 >
->    $$
->    \begin{aligned}
->    f &\leftarrow \sum_j\gamma^j f_j \\
->    v &\leftarrow \sum_j\gamma^j a_j \\
->    w(x) &\leftarrow \mathrm{eq}(\zeta,x)
->    \end{aligned}
->    $$
+> 2. Prover computes $F\in E^{\le1}[X_0,\ldots,X_{m-1}]$, where $m$ is the number of coordinates of $\mathbf{z}_{\mathrm{whir}}$, by batching the committed polynomials corresponding to $\mathbf{a}_{\mathrm{whir}}$ via RLC with the same powers of $r_{\mathrm{batch},\mathrm{whir}}$ and order as in step 1.
 >
->    Maintain $v=\sum_{x\in\{0,1\}^m}f(x)w(x)$. The current oracle is the committed base polynomials in memory/witness/setup order, with packing groups specified in Algorithm 12.
-> 2. For each nonfinal round $r$:
->    1. For $j=0,\ldots,k_r-1$, set $(a_j,f,v,w,T)\leftarrow\mathrm{QuadraticStep}(f,v,w,T)$ (Algorithm 8), with $f$ held only by Prover. Collect the fold challenges as $a=(a_0,\ldots,a_{k_r-1})$.
->    2. Prover sets $f_{\mathrm{next}}\leftarrow f$ and sends a cap committing to it. Both parties absorb the cap into $T$ and draw $\xi$.
->    3. Prover sends $u$, claimed as $F_{\mathrm{next}}(\xi)$; both parties absorb $u$ into $T$. Prover sends the 64-bit query-PoW nonce. Both parties absorb it into $T$ and draw one 32-bit PoW word (256-bit for Proth120). Verifier requires $b_r$ leading zero bits. Both parties draw query indices $I_0,\ldots,I_{t_r-1}$ using the query-sampling rule above, then derive $\delta$ from fresh hash output beyond the query-index randomness.
+> 3. Both parties process each round $r$ of the WHIR schedule selected by Algorithm 12 for $C$, $\mathrm{chunk\text{-}config}$ and $\mathrm{commitment\text{-}config}$, with $m_r=m-\sum_{i<r}k_i$ variables at the start of round $r$:
+>    1. Both parties run $k_r$ sumcheck rounds, indexed by $j=0,\ldots,k_r-1$, where $k_r$ is the fold count selected by Algorithm 12 for WHIR round $r$. Denote their challenges by $\mathbf{z}_{\mathrm{fold},r}=(z_{\mathrm{fold},r,0},\ldots,z_{\mathrm{fold},r,k_r-1})$:
+>       1. Prover computes the univariate round polynomial
+>
+>          $$
+>          g_j(X)=\sum_{\mathbf{x}\in\{0,1\}^{m_r-j-1}}F(X,\mathbf{x})W(X,\mathbf{x})
+>          $$
+>
+>          and sends its three coefficients, with $\deg g_j\le2$.
+>       2. Verifier requires $g_j(0)+g_j(1)=v_{\mathrm{whir}}$.
+>       3. Both parties absorb the coefficients into $T_{\mathrm{chunk}}$ and draw $z_{\mathrm{fold},r,j}\in E$.
+>       4. Prover sets $F\leftarrow F(z_{\mathrm{fold},r,j},\cdot)$; both parties set $W\leftarrow W(z_{\mathrm{fold},r,j},\cdot)$ and $v_{\mathrm{whir}}\leftarrow g_j(z_{\mathrm{fold},r,j})$.
+>    2. Prover supplies the folded polynomial according to the round:
+>
+>       - **Intermediate round:** Prover sends `WhirCap_r`, committing to $F$ on the next domain from Algorithm 12. Both parties absorb `WhirCap_r` into $T_{\mathrm{chunk}}$ and draw $\xi\in E$. Prover sends $u$, claiming $u=F(\mathrm{powers}(\xi))$, where $\mathrm{powers}(s)=(s,s^2,\ldots,s^{2^{m_r-k_r-1}})$ for the $m_r-k_r$ remaining variables. Both parties absorb $u$ into $T_{\mathrm{chunk}}$.
+>       - **Final round:** Prover sends the $2^{m_r-k_r}$ monomial coefficients $\mathbf{c}=(c_0,\ldots,c_{2^{m_r-k_r}-1})$ of $F$, indexed so bit $j$ of $t$ is variable $j$'s exponent in the monomial for $c_t$. Both parties absorb $\mathbf{c}$ into $T_{\mathrm{chunk}}$.
+>
+>    3. Prover sends the 64-bit query-PoW nonce. Both parties absorb it into $T_{\mathrm{chunk}}$ and draw one 32-bit PoW word (256-bit for Proth120). Verifier requires at least $b_r$ leading zero bits, where $b_r$ is the round's query-PoW threshold from Algorithm 12. Both parties draw query indices $I_0,\ldots,I_{t_r-1}$ using the query count $t_r$ and current-oracle domain $D_r$ from Algorithm 12. Each index has $\ell_{\mathrm{query}}=\log_2(|D_r|/2^{k_r})$ bits, sampled as follows:
+>
+>       Draw $8\lceil(\lceil t_r\ell_{\mathrm{query}}/32\rceil+1)/8\rceil$ raw 32-bit words. For BabyBear, this stream begins with the checked PoW word. For Proth120, it begins with the next Keccak256 hash after the PoW digest, with each digest split into eight little-endian words. Skip the first word of this stream and read $\ell_{\mathrm{query}}$ bits per index, least-significant bit first. All drawn blocks advance $T_{\mathrm{chunk}}$.
+>
+>       In an intermediate round, both parties then draw $\delta\in E$ from fresh hash output beyond the query-index randomness.
 >    4. For each query $j=0,\ldots,t_r-1$:
->       1. Prover sends current-oracle leaves and Merkle paths.
->       2. Verifier authenticates each leaf against its cap at the configured tree position and runs Fold (Algorithm 8) with the selected encoding, challenges $a$ and query coset points. For base oracles, Verifier combines the per-polynomial folds with the same $\gamma$ powers used in step 1 to obtain $q_j$; later rounds fold the single batched oracle.
->       3. Set $s_j\leftarrow(\omega^{I_j})^{2^{k_r}}$, where $\omega$ generates the current oracle's domain.
->    5. Verifier updates:
+>       1. Prover sends the current-oracle leaves and Merkle paths. The first round opens evaluation leaves from every nonempty base commitment named by the input caps, with the group layout fixed by Algorithm 12. Later rounds open coefficient leaves from the commitment named by `WhirCap_{r-1}`. The paths are checked but not absorbed into $T_{\mathrm{chunk}}$.
+>       2. Verifier authenticates each leaf against its cap at the tree position specified by Algorithm 12 and folds each polynomial's leaf values using $\mathbf{z}_{\mathrm{fold},r}$ according to their encoding:
 >
->       $$
->       \begin{aligned}
->       w &\leftarrow w+\delta\,\mathrm{eq}(\mathrm{powers}(\xi),\cdot) \\
->         &\quad +\sum_{j=0}^{t_r-1}\delta^{j+2}\mathrm{eq}(\mathrm{powers}(s_j),\cdot) \\
->       v &\leftarrow v+\delta u+\sum_{j=0}^{t_r-1}\delta^{j+2}q_j
->       \end{aligned}
->       $$
+>          - **Coefficient leaves:** Verifier computes
 >
->    6. Continue with $f\leftarrow f_{\mathrm{next}}$ and its commitment as the next round's oracle.
-> 3. Final round:
->    1. For $j=0,\ldots,k_r-1$, set $(a_j,f,v,w,T)\leftarrow\mathrm{QuadraticStep}(f,v,w,T)$ (Algorithm 8), with $f$ held only by Prover. Collect the fold challenges as $a=(a_0,\ldots,a_{k_r-1})$.
->    2. Prover sends exactly $2^{N-\sum_r k_r}$ monomial coefficients $c$ of the remaining polynomial, where $N$ is the WHIR message dimension from Algorithm 12. Both parties absorb $c$ into $T$.
->    3. Prover sends the 64-bit final query-PoW nonce. Both parties absorb it into $T$ and draw one 32-bit PoW word (256-bit for Proth120). Verifier requires the final query-PoW threshold from Algorithm 12. Both parties draw the final query indices as in step 2.3.
->    4. Prover sends the current-oracle leaves and Merkle paths. Verifier authenticates the leaves and runs Fold, defining $s_j$ as in step 2.4. For each query require $q_j=\sum_l c_l s_j^l$.
->    5. Reconstruct $f_{\mathrm{final}}$ from $c$ and require:
+>            $$
+>            \sum_{\mathbf{b}\in\{0,1\}^{k_r}}d_{\mathbf{b}}\prod_{i=0}^{k_r-1}z_{\mathrm{fold},r,i}^{b_i},
+>            $$
 >
->       $$
->       v=\sum_{x\in\{0,1\}^m}f_{\mathrm{final}}(x)w(x)
->       $$
+>            where $d_{\mathbf{b}}$ are the authenticated local monomial coefficients indexed by the exponent vector $\mathbf{b}$.
+>          - **Evaluation leaves:** For $i=0,\ldots,k_r-1$, Verifier pairs the current values $A,B$ at nonzero coset points $x,-x$ in the configured coset order and replaces each pair by
 >
-> 4. Accept the base-opening claims and return $T$.
+>            $$
+>            \frac{A+B+z_{\mathrm{fold},r,i}(A-B)/x}{2}.
+>            $$
 >
-> The same fold challenges restrict $f,w$ and the authenticated leaves. The first round opens evaluation leaves from every nonempty base oracle: separate memory/witness/setup trees for ordinary or packed-delegation chunks, or merged memory/witness and separate setup trees for merged-feeder chunks or the terminal wrapper. Both layouts batch the committed polynomials in the same memory/witness/setup order with the claims' $\gamma$ powers; later rounds open coefficient leaves from the preceding fold commitment (Algorithm 8). Merkle paths are checked but not absorbed. Query evaluations constrain $f_{\mathrm{next}}$. For $m$ remaining variables, $\deg(F_f)<2^m$; the schedule fixes Reed–Solomon domains and expansion factors.
+>            He squares the coset points between these steps. The last remaining value is the folded evaluation.
 >
-> **Soundness — opening reduction (adapted, conditional).** Assume binding commitments, Algorithm 8's encoding/restriction identities, and a Reed–Solomon proximity/list-decoding theorem applicable to the selected domains, both leaf encodings and this accumulator update. That theorem must supply candidate lists at the required challenge boundaries and bound the probability of leaving the candidate invariant. Outside those failures, the following tests propagate a false base-opening claim to rejection at the final polynomial check:
+>          For base oracles, Verifier batches the per-polynomial folded values with the same powers of $r_{\mathrm{batch},\mathrm{whir}}$ and order as in step 1 to obtain $q_j$. For later rounds, $q_j$ is the folded value of the single batched oracle.
+>       3. Verifier sets $s_j\leftarrow(\omega^{I_j})^{2^{k_r}}$, where $\omega$ is the generator of the current oracle's domain $D_r$ specified by Algorithm 12.
+>    5. Both parties finish the round according to its type:
 >
-> - **Base batching:** for $c$ columns and claims fixed before $\gamma$, cancellation of a nonzero discrepancy costs at most $(c-1)\mu$.
-> - **Claim reduction:** each QuadraticStep costs at most $2\mu$ by Algorithm 8. Each $\delta$ combination has degree at most $t_r+1$ and costs at most $(t_r+1)\mu$, provided all combined discrepancies are fixed before $\delta$. Commitment binding fixes the queried leaf values even when their paths are supplied later.
+>       - **Intermediate round:** Both parties update
+>
+>         $$
+>         \begin{aligned}
+>         W(\mathbf{x}) &\leftarrow W(\mathbf{x})+\delta\,\mathrm{eq}(\mathrm{powers}(\xi),\mathbf{x})
+>           +\sum_{j=0}^{t_r-1}\delta^{j+2}\mathrm{eq}(\mathrm{powers}(s_j),\mathbf{x}),\\
+>         v_{\mathrm{whir}} &\leftarrow v_{\mathrm{whir}}+\delta u+\sum_{j=0}^{t_r-1}\delta^{j+2}q_j.
+>         \end{aligned}
+>         $$
+>
+>         Both parties use `WhirCap_r` as the current oracle cap for the next round.
+>       - **Final round:** Verifier requires $q_j=\sum_{l=0}^{2^{m_r-k_r}-1}c_l s_j^l$ for every query. He reconstructs $F_{\mathrm{final}}$ from $\mathbf{c}$ using the coefficient indexing in step 3.2 and requires
+>
+>         $$
+>         v_{\mathrm{whir}}=\sum_{\mathbf{x}\in\{0,1\}^{m_r-k_r}}F_{\mathrm{final}}(\mathbf{x})W(\mathbf{x}).
+>         $$
+>
+> 4. Verifier accepts the base-opening claims. Both parties return $T_{\mathrm{chunk}}$.
+>
+> **Soundness — opening reduction (adapted, conditional).** Assume binding commitments, the encoding/restriction identities below, and a Reed–Solomon proximity/list-decoding theorem applicable to the selected domains, both leaf encodings and this accumulator update. That theorem must supply candidate lists at the required challenge boundaries and bound the probability of leaving the candidate invariant. Outside those failures, the following tests propagate a false base-opening claim to rejection at the final polynomial check:
+>
+> - **Base batching:** for $c$ columns and claims fixed before $r_{\mathrm{batch},\mathrm{whir}}$, cancellation of a nonzero discrepancy costs at most $(c-1)\mu$.
+> - **Claim reduction:** for step 3.1, assume $F$ and $W$ are multilinear and fixed before each fresh challenge. The honest $g_j$ has degree at most two, so a false incoming claim forces a nonzero discrepancy of degree at most two at the endpoint check; it vanishes at $z_{\mathrm{fold},r,j}$ with probability at most $2\mu$, charged once per step. Each $\delta$ combination has degree at most $t_r+1$ and costs at most $(t_r+1)\mu$, provided all combined discrepancies are fixed before $\delta$. Commitment binding fixes the queried leaf values even when their paths are supplied later.
 > - **OOD separation:** two distinct candidate polynomials fixed before $\xi$, with difference of degree at most $d_r$, agree at $\xi$ with probability at most $d_r\mu$. The proximity reduction must specify which candidate comparisons are needed and account for their number.
 > - **Query consistency:** for fixed fold challenges and a candidate fixed before the query draw, let $a$ be its agreement fraction with the authenticated fold over the current fold groups. Sampling $t_r$ indices independently with replacement accepts this candidate with probability $a^{t_r}$. For a predetermined candidate list, sum these bounds over the false candidates tested.
 >
@@ -469,65 +499,14 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > Instantiating the proximity invariant, candidate-list sizes and fold-group agreement bounds for every round remains a proof obligation. The final coefficient and accumulator checks close the reduction once that invariant is established. Commitment binding and Fiat–Shamir compilation enter the separate computational analysis.
 >
+> **Soundness — exact folding and EQ restriction (adapted).** Assume authenticated leaves have the specified encoding and coset/bit ordering, with nonzero coset points. Evaluating the local coefficient tensor restricts the corresponding multilinear coordinates. For evaluation leaves, let $f$ be the univariate polynomial represented by the current values and write $f(X)=f_{\mathrm{even}}(X^2)+Xf_{\mathrm{odd}}(X^2)$: the displayed formula returns $f_{\mathrm{even}}(x^2)+z_{\mathrm{fold},r,i}f_{\mathrm{odd}}(x^2)$, the same coordinate restriction. Iteration gives the folded evaluation in step 3.4.2. These deterministic identities require the layout-to-polynomial correspondence for each encoding.
+>
+> Restricting each EQ term of $W$ (step 3.1.4) contributes its evaluated leading factor to its weight $\kappa$ in the EQ expansion of $W$. Writing $f_{\mathrm{final}}(s)=\sum_l c_l s^l$, the final cube sum is $\kappa_0 F_{\mathrm{final}}(\mathbf{z}_{\mathrm{whir},\mathrm{remaining}})+\sum_j\kappa_jf_{\mathrm{final}}(s_j)$, with each OOD/query scalar squared at every subsequent coordinate restriction. This identity justifies the final accumulator evaluation in step 3.5; the encoding correspondence remains an implementation-specific proof obligation.
+>
 > **Memory-table binding export (proof obligation).** Algorithms 2 and 3b require the memory caps, together with the fixed circuit layout, to bind the memory columns before the shared $\mathbf r_{\mathrm{mem}}$ is sampled. Outside the accounted commitment/PCS failures, accepted openings and local chunk relations must refer to those same columns. This must cover adversarial caps as well as honestly encoded tables, both the ordinary memory commitment and the memory-column projection of the merged memory/witness commitment. The guarantee must hold at the memory-precommitment stage, before the later GKR, batching and WHIR challenges.
 >
-> **TODO — justify this export:** combine Merkle authentication, Algorithm 8's encoding correspondence and the proximity/candidate-list invariant to identify the column tables consistent with accepted proofs, specifying when those tables or candidate lists are fixed. If the result supplies a list rather than one fixed table, bound its size and account for any selection after the memory challenges in Algorithms 2 and 9; the single-table fingerprint bound cannot be imported unchanged. Carry these losses through the existing commitment/PCS and memory accounting, charging each failure once. This export and its numerical loss remain unproved.
+> **TODO — justify this export:** combine Merkle authentication, the encoding correspondence above and the proximity/candidate-list invariant to identify the column tables consistent with accepted proofs, specifying when those tables or candidate lists are fixed. If the result supplies a list rather than one fixed table, bound its size and account for any selection after the memory challenges in Algorithms 2 and 9; the single-table fingerprint bound cannot be imported unchanged. Carry these losses through the existing commitment/PCS and memory accounting, charging each failure once. This export and its numerical loss remain unproved.
 
-
----
-
-> **Algorithm 8 — QuadraticStep and Fold**
->
-> **Notation:** $a=(a_0,\ldots,a_{k-1})$ are fold challenges; $c_b$ are authenticated local monomial coefficients. $x$ is a nonzero coset point; $F_f$ is the univariate encoding of $f$. The $\kappa$ values are weights of restricted EQ terms.
->
-> **QuadraticStep**
->
-> **Input:** running claim $v$, weights $w$ and transcript $T$; Prover holds the current polynomial $f$. **Output:** fold challenge $a$, restricted polynomial $f$ and weights $w$, updated claim $v$ and transcript $T$. The polynomial $f$ is Prover-only input and output.
->
-> 1. Prover sends three coefficients of $h(X)$, with $\deg h\le 2$, claiming $h(X)=\sum_x f(X,x)w(X,x)$.
-> 2. Verifier requires $h(0)+h(1)=v$; both parties absorb its coefficients into $T$ and draw $a$.
-> 3. Prover restricts $f$; Verifier updates $v,w$:
->
->    $$
->    \begin{aligned}
->    f &\leftarrow f(a,\cdot) \\
->    v &\leftarrow h(a) \\
->    w &\leftarrow w(a,\cdot)
->    \end{aligned}
->    $$
->
-> 4. Return $(a,f,v,w,T)$.
->
-> **Fold**
->
-> **Input:** authenticated leaf values, fold challenges $a$, the round's encoding from WHIR and, for evaluation leaves, the query's coset points. **Output:** folded value $q$.
->
-> **Coefficient leaves:**
->
-> 1. Return:
->
->    $$
->    \sum_{b\in\{0,1\}^k}c_b\prod_{j=0}^{k-1}a_j^{b_j}
->    $$
->
-> **Evaluation leaves:**
->
-> 1. For each fold challenge $a_j$:
->    1. Pair $A=F_f(x)$, $B=F_f(-x)$ in the configured coset order.
->    2. Replace each pair by:
->
->       $$
->       \frac{A+B+a_j(A-B)/x}{2}
->       $$
->
->    3. Square the coset points between fold steps.
-> 2. Return the remaining value.
->
-> **Soundness — quadratic reduction and exact folding (adapted).** For QuadraticStep, assume $f$ and $w$ are multilinear and fixed before the fresh challenge. The honest round polynomial has degree at most two. If the incoming sum claim is false, the endpoint check forces a nonzero discrepancy of degree at most two; it vanishes at $a$ with probability at most $2\mu$. Thus a false incoming claim reduces to a false restricted claim except with this error, which Algorithm 7 counts once per step.
->
-> For Fold, assume authenticated leaves have the specified encoding and coset/bit ordering, with nonzero coset points. Evaluating the local coefficient tensor restricts the corresponding multilinear coordinates. For evaluation leaves, write $F(X)=F_{\mathrm{even}}(X^2)+XF_{\mathrm{odd}}(X^2)$: the displayed formula returns $F_{\mathrm{even}}(x^2)+a_jF_{\mathrm{odd}}(x^2)$, the same coordinate restriction. Iteration gives the folded evaluation used by Algorithm 7. These deterministic identities require the layout-to-polynomial correspondence for each encoding.
->
-> Restricting each EQ term contributes its evaluated leading factor to its weight $\kappa$. The final cube sum is therefore $\kappa_0 f_{\mathrm{final}}(\zeta_{\mathrm{remaining}})+\sum_j\kappa_jF_{\mathrm{final}}(s_j)$, with each OOD/query scalar squared at every subsequent coordinate restriction. This identity justifies Algorithm 7's final accumulator evaluation; the encoding correspondence remains an implementation-specific proof obligation.
 
 ---
 
@@ -535,14 +514,14 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > **Input:** final state $\mathrm{fin}$, $\mathbf{r}_{\mathrm{mem}}$, authenticated products $\mathrm{RS},\mathrm{WS}$.
 >
-> **Notation:** $R,W$ are read/write event multisets; $\mathbf{r}_{\mathrm{mem}}=(r_{\mathrm{mem},0},\ldots,r_{\mathrm{mem},5},r_{\mathrm{mem},\eta})$. In event $t=(a,t_0,\ldots,t_5)$, the limbs are address lo/hi, timestamp lo/hi, value lo/hi; tags are 0 = register, 1 = RAM, 2 = PC. Define $L_{\mathbf{r}_{\mathrm{mem}}}(t)=a+r_{\mathrm{mem},\eta}+\sum_{j=0}^5r_{\mathrm{mem},j} t_j$ with six independent coefficients.
+> **Notation:** $R,W$ are read/write event multisets; $\mathbf{r}_{\mathrm{mem}}=(r_{\mathrm{mem},0},\ldots,r_{\mathrm{mem},5},r_{\mathrm{mem},\eta})$. In event $\mathbf{t}=(a,t_0,\ldots,t_5)$, the limbs are address lo/hi, timestamp lo/hi, value lo/hi; tags are 0 = register, 1 = RAM, 2 = PC. Define $L_{\mathbf{r}_{\mathrm{mem}}}(\mathbf{t})=a+r_{\mathrm{mem},\eta}+\sum_{j=0}^5r_{\mathrm{mem},j} t_j$ with six independent coefficients.
 >
 > 1. Form multisets of event tuples: `Initial` contains the ordinary-register writes $x_0,\ldots,x_{31}$ of value 0 at time 0, and the PC write with value 0 at time 4; `Final` contains the 32 register reads and PC read specified by $\mathrm{fin}$. Include their boundary factors:
 >
 >    $$
 >    \begin{aligned}
->    \mathrm{WS} &\leftarrow \mathrm{WS}\prod_{t\in\mathrm{Initial}}L_{\mathbf{r}_{\mathrm{mem}}}(t) \\
->    \mathrm{RS} &\leftarrow \mathrm{RS}\prod_{t\in\mathrm{Final}}L_{\mathbf{r}_{\mathrm{mem}}}(t)
+>    \mathrm{WS} &\leftarrow \mathrm{WS}\prod_{\mathbf{t}\in\mathrm{Initial}}L_{\mathbf{r}_{\mathrm{mem}}}(\mathbf{t}) \\
+>    \mathrm{RS} &\leftarrow \mathrm{RS}\prod_{\mathbf{t}\in\mathrm{Final}}L_{\mathbf{r}_{\mathrm{mem}}}(\mathbf{t})
 >    \end{aligned}
 >    $$
 >
@@ -565,11 +544,11 @@ Recursive step: prove the execution of FullStatement; repeat.
 
 > **Algorithm 10 — FinishChain**
 >
-> **Input:** program setups `ProgramSetupCaps`, final state $\mathrm{fin}$ and base/continuation $\mathrm{mode}$. **Output:** application result $y$ and program-history digest $h$, each eight 32-bit words.
+> **Input:** program setups `ProgramSetupCaps`, final state $\mathrm{fin}$ and base/continuation $\mathrm{mode}$. **Output:** application result $\mathbf{y}$ and program-history digest $h$, each eight 32-bit words.
 >
 > **Notation:** $x_j$ and $\mathrm{pc}$ come from $\mathrm{fin}$; `Hash` uses seven-round BLAKE2s with messages absorbed as raw 32-bit words.
 >
-> 1. Set $y\leftarrow(x_{10},\ldots,x_{17})$ and:
+> 1. Set $\mathbf{y}\leftarrow(x_{10},\ldots,x_{17})$ and:
 >
 >    $$
 >    e\leftarrow\mathrm{Hash}\bigl((\mathrm{pc},0^{15})\mathbin{\|}\mathtt{ProgramSetupCaps}\bigr)
@@ -582,15 +561,15 @@ Recursive step: prove the execution of FullStatement; repeat.
 >    2. Prover sends the 16-word hash-chain preimage $(h_{\mathrm{prev}},e_{\mathrm{prev}})$, eight 32-bit words each. Verifier requires $\mathrm{Hash}(h_{\mathrm{prev}}\mathbin{\|}e_{\mathrm{prev}})=h_{\mathrm{in}}$.
 >    3. **If $e_{\mathrm{prev}}=e$:** set $h\leftarrow h_{\mathrm{in}}$.
 >    4. **Otherwise:** set $h\leftarrow\mathrm{Hash}(h_{\mathrm{in}}\mathbin{\|}e)$.
-> 4. Return $(y,h)$.
+> 4. Return $(\mathbf{y},h)$.
 >
-> **Soundness — program-history binding (conditional).** Assume binding of the encoded setup/ending-PC identities and hash-chain nodes. In continuation mode, assume authenticated execution of the intended Verifier returns the genuine child result and history $(y,h_{\mathrm{in}})$. The base case starts the history with the current identity $e$. In continuation mode, the checked preimage identifies the incoming history's last identity: equality with $e$ preserves the history, while inequality appends $e$. Induction therefore binds $h$ to the sequence of identities with consecutive repetitions collapsed. Algorithm 11 supplies the authenticated handoffs and compares this history with the expected one. Charge failures of identity/node binding once to $\varepsilon_{\mathrm{chain}}$ in the computational analysis; recursion depth and work use the external bound in Algorithm 11.
+> **Soundness — program-history binding (conditional).** Assume binding of the encoded setup/ending-PC identities and hash-chain nodes. In continuation mode, assume authenticated execution of the intended Verifier returns the genuine child result and history $(\mathbf{y},h_{\mathrm{in}})$. The base case starts the history with the current identity $e$. In continuation mode, the checked preimage identifies the incoming history's last identity: equality with $e$ preserves the history, while inequality appends $e$. Induction therefore binds $h$ to the sequence of identities with consecutive repetitions collapsed. Algorithm 11 supplies the authenticated handoffs and compares this history with the expected one. Charge failures of identity/node binding once to $\varepsilon_{\mathrm{chain}}$ in the computational analysis; recursion depth and work use the external bound in Algorithm 11.
 
 ---
 
 > **Algorithm 11 — Recursion and terminal acceptance**
 >
-> **Public claim:** application identity, expected collapsed Verifier history and result $y$. **Witness:** child proof bundle and its Verifier-execution trace. **Recursive relation:** the selected Verifier program runs `FullStatement` on the child and reaches its successful return with $(y,h)$ in $x_{10},\ldots,x_{25}$.
+> **Public claim:** application identity, expected collapsed Verifier history and result $\mathbf{y}$. **Witness:** child proof bundle and its Verifier-execution trace. **Recursive relation:** the selected Verifier program runs `FullStatement` on the child and reaches its successful return with $(\mathbf{y},h)$ in $x_{10},\ldots,x_{25}$.
 >
 > 1. Prove the application execution:
 >    - **If unrolled:** use unrolled circuits; verify with the base unrolled Verifier.
@@ -601,23 +580,23 @@ Recursive step: prove the execution of FullStatement; repeat.
 > 3. **Bridge (if switching from unrolled to unified):** prove the selected unrolled base/continuation Verifier's execution with unified circuits; verify with the unified continuation Verifier, then repeat step 2 as needed using unified circuits.
 > 4. **Terminal acceptance:**
 >    1. Verify the last proof:
->       - **BabyBear:** run `FullStatement`, obtaining $(y,h)$.
->       - **L1 wrapping:** produce a unified continuation proof with merged-feeder commitments, then prove that feeder Verifier's execution with the fixed terminal-wrapper parameters. Run `TerminalStatement` (Algorithm 1b), obtaining $(y,h)$. Require the proof's window identifiers to match those fixed for the terminal Verifier.
+>       - **BabyBear:** run `FullStatement`, obtaining $(\mathbf{y},h)$.
+>       - **L1 wrapping:** produce a unified continuation proof with merged-feeder commitments, then prove that feeder Verifier's execution with the fixed terminal-wrapper parameters. Run `TerminalStatement` (Algorithm 1b), obtaining $(\mathbf{y},h)$. Require the proof's window identifiers to match those fixed for the terminal Verifier.
 >    2. Require the last proof's setup caps (`ProgramSetupCaps` for BabyBear, `SetupCaps` for L1 wrapping) and final PC to match the expected setup caps and successful ending PC, and require $h=h_{\mathrm{expected}}$.
->    3. Accept and expose $y$ only if all verification and expectation checks pass; otherwise reject.
+>    3. Accept and expose $\mathbf{y}$ only if all verification and expectation checks pass; otherwise reject.
 >
-> Expected identities and $h_{\mathrm{expected}}$ are determined by the application starting values and selected recursive configuration. For L1, the EVM Verifier checks the expected final PC and window identifiers. It reports $y$ and $h$ as little-endian 32-bit register words concatenated in register order, and the setup identity as Keccak256 of the ordered setup-cap digests, with each digest's 32-bit words encoded big-endian. The application or registry must compare the reported setup identity and history with the expected values in step 4.2.
+> Expected identities and $h_{\mathrm{expected}}$ are determined by the application starting values and selected recursive configuration. For L1, the EVM Verifier checks the expected final PC and window identifiers. It reports $\mathbf{y}$ and $h$ as little-endian 32-bit register words concatenated in register order, and the setup identity as Keccak256 of the ordered setup-cap digests, with each digest's 32-bit words encoded big-endian. The application or registry must compare the reported setup identity and history with the expected values in step 4.2.
 >
-> **Soundness — recursive composition (conditional).** Assume Algorithm 1a's execution guarantee for every invoked configuration; binding and canonical interpretation of the history from Algorithm 10; and correctness of each selected Verifier program, including its child-input parsing, acceptance branch and transfer of $(y,h)$ to the designated registers. Expected setup identities, successful PCs and history must be fixed by the public claim. A recursive composition reduction must justify applying the component soundness bounds to child proofs carried inside execution witnesses, within an external bound $d$ on all proved invocations and their query/work budgets.
+> **Soundness — recursive composition (conditional).** Assume Algorithm 1a's execution guarantee for every invoked configuration; binding and canonical interpretation of the history from Algorithm 10; and correctness of each selected Verifier program, including its child-input parsing, acceptance branch and transfer of $(\mathbf{y},h)$ to the designated registers. Expected setup identities, successful PCs and history must be fixed by the public claim. A recursive composition reduction must justify applying the component soundness bounds to child proofs carried inside execution witnesses, within an external bound $d$ on all proved invocations and their query/work budgets.
 >
-> Outside the corresponding failure events, terminal acceptance identifies a successful execution of the expected outer Verifier. Its verified local semantics imply child acceptance with the same result and the authenticated child history. Applying this implication at each handoff reaches the base application execution, so the exposed $y$ is its result. The algebraic error is bounded by the sum over all proved invocations; Algorithm 10 accounts for history binding, and terminal comparisons anchor the claimed identities and endpoints. Establishing the recursive reduction and each implementation handoff remains a proof obligation. Extending this argument to the stated L1 route additionally requires soundness of its terminal proof system and correctness of its serialization, public-claim mapping and contract linkage.
+> Outside the corresponding failure events, terminal acceptance identifies a successful execution of the expected outer Verifier. Its verified local semantics imply child acceptance with the same result and the authenticated child history. Applying this implication at each handoff reaches the base application execution, so the exposed $\mathbf{y}$ is its result. The algebraic error is bounded by the sum over all proved invocations; Algorithm 10 accounts for history binding, and terminal comparisons anchor the claimed identities and endpoints. Establishing the recursive reduction and each implementation handoff remains a proof obligation. Extending this argument to the stated L1 route additionally requires soundness of its terminal proof system and correctness of its serialization, public-claim mapping and contract linkage.
 
 ---
 
 **Circuit and memory parameters for base/continuation FullStatement.** Merkle caps contain sixteen 256-bit hashes. $\mathrm{profile}$ and $\mathrm{mode}$ fix the instruction-family selection in Algorithm 12; the families have the following row counts and capacity charges.
 
 - **Unrolled instructions:** add/sub/LUI/AUIPC/MOP (family 1); jump/branch/compare (2); shift/binary (3); unsigned multiply/divide (4); word memory (16); subword memory (17). Trace logarithms are 24 except multiply/divide, which uses 23.
-- **Delegations:** BLAKE2s, bigint, Keccak special5, theta/rho, column parity and chi5, with trace logarithms $(20,22,22,22,22,22)$ and memory/permutation-argument terms per chunk $A_d=(44\cdot2^{20},20\cdot2^{22},15\cdot2^{22},17\cdot2^{22},15\cdot2^{22},13\cdot2^{22})$ in that order.
+- **Delegations:** BLAKE2s, bigint, Keccak special5, theta/rho, column parity and chi5, with trace logarithms $(20,22,22,22,22,22)$ and memory/permutation-argument terms per chunk $(A_d)_d=(44\cdot2^{20},20\cdot2^{22},15\cdot2^{22},17\cdot2^{22},15\cdot2^{22},13\cdot2^{22})$ in that order.
 - **IT windows:** standalone IT has $2^{24}$ rows and eight windows of $2^{24}$ 32-bit words per proof. Unified has two windows of $2^{25}$ bytes per chunk. With identifiers below 64, unified covers windows below $2^{31}$ bytes; unrolled covers the $2^{32}$-byte range.
 - **Unified capacity:** each circuit has $2^{23}$ rows but is charged $2^{24}$ cycles by the participant bound.
 
@@ -700,9 +679,9 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > **Packed-delegation fixture.** The packed-delegation fixture uses the following fixed parameters for standalone chunk proving and verification: the [blake2_with_extended_control circuit](https://github.com/matter-labs/zksync-airbender/blob/c1a662222cafcd96db4383dce737edb79fa62b09/cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json), BabyBear, shared memory challenges, $n=20$, $\mathrm{pack}=16$ and the packed-delegation row below. Its commitment layout and derived parameters follow steps 3–5. Before drawing the packing coordinates, both parties hash $T_{\mathrm{chunk}}$'s current seed once with seven-round BLAKE2s.
 >
-> **Parameter rows:** $L=(L_0,L_1,\ldots)$ lists base then intermediate expansion factors; $k,t,b$ list folds, query counts and PoW bits per round.
+> **Parameter rows:** $\mathbf{L}=(L_0,L_1,\ldots)$ lists base then intermediate expansion factors; $\mathbf{k},\mathbf{t},\mathbf{b}$ list folds, query counts and PoW bits per round.
 >
-> | Family | $n$ | $k$ | $L$ | $t$ | $b$ |
+> | Family | $n$ | $\mathbf{k}$ | $\mathbf{L}$ | $\mathbf{t}$ | $\mathbf{b}$ |
 > |---|---|---|---|---|---|
 > | Ordinary | 20 | (1,5,5,4,4) | (2,256,8192,32768,524288) | (89,11,7,6,5) | (26,27,25,25,21) |
 > | Ordinary | 21 | (1,5,5,5,4) | (2,64,2048,32768,524288) | (89,15,8,6,5) | (26,25,27,25,21) |
