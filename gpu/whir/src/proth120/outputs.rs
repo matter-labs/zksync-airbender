@@ -3,7 +3,6 @@ use crate::upstream::{
     WhirBaseLayerCommitmentAndQueries, WhirCommitment, WhirIntermediateCommitmentAndQueries,
     WhirPolyCommitProof, WhirSchedule,
 };
-use era_cudart::result::CudaResult;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::PR;
 use gpu_gkr::proth120::proof_layout::{
