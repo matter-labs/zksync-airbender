@@ -14,8 +14,11 @@ pub struct TrustedSetupCommitter {
 impl TrustedSetupCommitter {
     pub fn new() -> Self {
         Self {
-            context: ProverContext::new(&ProverContextConfig::default())
-                .expect("trusted setup context"),
+            context: ProverContext::new_with_auto_arena_size(
+                &ProverContextConfig::default(),
+                crate::memory_policy::select_arena_bytes,
+            )
+            .expect("trusted setup context"),
         }
     }
 
