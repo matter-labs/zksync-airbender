@@ -59,9 +59,15 @@ step_elan() {
   if ! command -v elan >/dev/null; then
     # the pinned elan release itself (elan-init.sh would fetch "latest"); GitHub's release downloads answered 504 for
     # minutes at a time here, so retry
-    local d; d=$(mktemp -d)
+    local d digest; d=$(mktemp -d)
+    case "$(uname -m)" in
+      x86_64) digest=42b94d4244e8353142c456ec0e4ca6528fd898a6c604d4059f494e706e431f63 ;;
+      aarch64) digest=05febd124d84ebf994b2e7479922a5650b1e950c17ae3bd1ddd776b65bb72bf9 ;;
+      *) echo "Unsupported elan installer architecture" >&2; return 1 ;;
+    esac
     curl -sSfL --retry 8 --retry-all-errors --retry-delay 20 -o "$d/elan.tar.gz" \
       "https://github.com/leanprover/elan/releases/download/$ELAN_VERSION/elan-$(uname -m)-unknown-linux-gnu.tar.gz"
+    printf '%s  %s\n' "$digest" "$d/elan.tar.gz" | sha256sum --check
     tar -xzf "$d/elan.tar.gz" -C "$d"
     "$d/elan-init" -y --no-modify-path --default-toolchain none
     rm -rf "$d"
