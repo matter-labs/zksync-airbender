@@ -30,7 +30,7 @@ theorem unified_modular_row_step {setup : Table (ZMod babyBearModulus) (fields 1
   have small : ((modularData opcode rs1 rs2 rd).mapFamily (fun _ => UnifiedFamily.machine)).mask < 128 := by
     cases opcode <;> norm_num [modularData, AddSub.Modular.Opcode.selector, DecoderData.mapFamily]
   obtain ⟨flags, noTriAdd, left, right, old, written, finish⟩ :=
-    UnifiedReduced.Modular.Proofs.row_frame core active query small pc history
+    UnifiedReduced.Modular.Proofs.row_frame core active query (small.trans (by decide : 128 < 512)) pc history
   have pcWord := rv_native_query_pc_word (by decide : limbBase < babyBearModulus) query
   change Word.mk (w 0).val (w 1).val = Word.ofBitVec entryPC at pcWord
   have rdQuery := congrArg (fun q : Vector (ZMod babyBearModulus) 9 => q[4]) query

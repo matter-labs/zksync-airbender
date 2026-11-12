@@ -32,7 +32,7 @@ theorem unified_modular_zero_step {setup : Table (ZMod babyBearModulus) (fields 
   change entryData = _ at dataEq
   subst entryData
   obtain ⟨_, _, _, _, _, written, finish⟩ := UnifiedReduced.Modular.Proofs.row_frame core active query
-    (by decide : UnifiedReduced.rvNopFields.mask < 128) pc history
+    (by decide : UnifiedReduced.rvNopFields.mask < 512) pc history
   have same := written.trans (rv_same_set_zero before _)
   refine ⟨_, RV.exec_mop before opcode.rvOp 0 rs1 rs2, ?_⟩
   exact (rv_same_set_zero before _).nextInstr.trans (rv_state_next same rfl finish)
