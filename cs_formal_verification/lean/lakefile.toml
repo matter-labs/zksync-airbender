@@ -44,6 +44,7 @@ globs = [
   "Human.Trace.Machine.Theorems",
   "Human.Circuits.AddSub.RVCallerTheorems",
   "Human.Circuits.AddSub.RVModel",
+  "Human.Circuits.AddSub.Modular.Model",
   "Human.Circuits.AddSub.RVTheorems",
   "Human.Circuits.AddSub.RowInput",
   "Human.Circuits.Bigint.Additive",
