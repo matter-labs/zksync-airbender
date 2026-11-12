@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Module build budget (docs/shared/lean-strategies.md 2): every module of ours compiles in at most 30 s of CPU on the
+"""Module build budget (docs/lean-strategies.md 2): every module of ours compiles in at most 30 s of CPU on the
 reference machine. `check` first times a pinned calibration file and scales the limit by its CPU time here / on the
 reference machine (CALIBRATION_* below; README "Build budget").
 

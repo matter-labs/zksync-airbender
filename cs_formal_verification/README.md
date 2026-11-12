@@ -39,8 +39,7 @@ checks that our code builds [without warnings](#no-warnings), checks the review 
   `PROVENANCE.txt` and config copy are). `lean/check_review.py` — review-guide and audit-coverage check.
 - `docs/` — [status](docs/VERIFICATION_STATUS.md), [trust and review boundaries](docs/TRUST_AND_REVIEW.md),
   [plan](docs/FORMAL_VERIFICATION_PLAN.md), and the pinned Airbender reference (`docs/airbender/00-master.md`).
-- `docs/shared/` — 1:1 copy of `verifier_formal_verification/docs/`, kept in sync, not edited here; in particular
-  [Lean strategies](docs/shared/lean-strategies.md), the rules for operating, proving and specifying in Lean.
+- [Lean strategies](docs/lean-strategies.md) — the rules for operating, proving and specifying in Lean.
 
 ## What is checked
 
@@ -90,7 +89,7 @@ stream), [RV32.lean](lean/human/Human/ISA/RV32.lean) (`RV.step`, `RV.run`) and
 `-- Airbender:` there. [Vectors.lean](lean/human/Human/ISA/Vectors.lean) checks the BLAKE2s and Keccak-f[1600] published
 test vectors, and [DelegationRuns.lean](lean/human/Human/ISA/DelegationRuns.lean) states what the delegation call runs compute.
 The run claims, the Sail equivalence claims and the per-row circuit claims (`Trace.RVRowClaim`) also state that their
-assumptions can be met (non-vacuity, [Lean strategies](docs/shared/lean-strategies.md) 3.3); the witnesses are in `proven/`.
+assumptions can be met (non-vacuity, [Lean strategies](docs/lean-strategies.md) 3.3); the witnesses are in `proven/`.
 Every other trace, worker and caller claim has a separate statement `…SatisfiableClaim` next to it: the claim's premises,
 restated, hold jointly for some data with the conclusion's domain non-empty (a row, a caller, a worker row in the window,
 a complete hash span). Witnesses in `proven/Proven/NonVacuous/`, final theorems in `proven/Proven/Final/Trace/Satisfiable/`;
@@ -109,7 +108,7 @@ Representation lemmas live in `Proven/Arithmetic/Word.lean`.
 
 ## Build budget
 
-[Lean strategies](docs/shared/lean-strategies.md) section 2 sets the budget: about 10 s per module, 30 s at most.
+[Lean strategies](docs/lean-strategies.md) section 2 sets the budget: about 10 s per module, 30 s at most.
 `verify.sh` fails any module of the build targets over 30 s ([module_budget.py](lean/scripts/module_budget.py)). A
 module's time is the CPU time (user + sys) of its `lean` process compiled alone, imports built.
 

@@ -2,10 +2,10 @@
 
 How to work on the Lean side (`lean/`): run the checks, keep proofs in `proven/` fast and modular, keep the spec in
 `human/` short and complete. General rules only; the file map is in [`../README.md`](../README.md), the trust layout
-in [`architecture.md`](architecture.md).
+in [`TRUST_AND_REVIEW.md`](TRUST_AND_REVIEW.md).
 
-The project proves Airbender's guest binaries correct: `human/` states what they must compute on the Airbender
-machine (RV32IM as Sail defines it, plus Airbender's changes and its precompiles, called delegations); `proven/`
+The project proves that Airbender's circuits implement the Airbender machine: `human/` states what the circuits
+must compute on that machine (RV32IM as Sail defines it, plus Airbender's changes and its precompiles, called delegations); `proven/`
 proves it. The trusted base is the Lean kernel, Lean's standard axioms (`propext`, `Classical.choice`,
 `Quot.sound`), the official Sail RISC-V model, and what `human/` states.
 

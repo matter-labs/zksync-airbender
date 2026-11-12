@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Backup check (docs/shared/lean-strategies.md 1.5): the kernel_replay CI job run by hand, every few months at most.
+# Backup check (docs/lean-strategies.md 1.5): the kernel_replay CI job run by hand, every few months at most.
 # `lake check --paranoid` re-checks every declaration of the default targets (everything except the two files that
 # import Clean) through Lean's kernel and the independent checkers bundled with the toolchain, and checks their
 # axioms; leanchecker then replays the two Clean-importing modules (ci/lean-ci.sh kernel-check). Not part of

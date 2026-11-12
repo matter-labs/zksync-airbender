@@ -5,7 +5,7 @@ name = "airbender_circuits"
 version = "0.1.0"
 # The default targets are what `lake check --paranoid` checks (ci/lean-ci.sh kernel-check, backup-check.sh): everything
 # except the two files that import Clean (libraries CleanEquivalence and CleanAudit), whose native_decide prime instances
-# it would reject (docs/shared/lean-strategies.md 1.4).
+# it would reject (docs/lean-strategies.md 1.4).
 defaultTargets = ["CleanCore", "Human", "Proven", "Test", "airbender_tests"]
 # With Lake's shared artifact cache on (LAKE_ARTIFACT_CACHE=true), keep every build product in .lake/build
 # as well (hard links into the cache, no extra disk): `lake env lean` (verify.sh's axiom audits, check_review.py)

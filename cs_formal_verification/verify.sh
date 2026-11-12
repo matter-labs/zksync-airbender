@@ -51,7 +51,7 @@ for audit in Claims Axioms TraceAxioms; do
 done
 
 echo "== 4. Module budget: every module compiles in at most 30 s of CPU, alone (scripts/module_budget.py;"
-echo "   docs/shared/lean-strategies.md 2). Table: lean/.lake/module-budget.tsv"
+echo "   docs/lean-strategies.md 2). Table: lean/.lake/module-budget.tsv"
 python3 scripts/module_budget.py check || fail "module budget"
 
 echo "== 4b. No warnings: Lean and Lake report no warning for any module of ours (human/, proven/, test/;"
