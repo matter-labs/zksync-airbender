@@ -1,20 +1,21 @@
 //! Replace inner proof streams with natively verified challenges and outputs.
-use super::Selection;
+use super::{Chain, Selection};
 use full_statement_verifier::{
-    delegation_circuits_setups::pessimistic_conjecture::DELEGATION_CIRCUITS_SETUP_PARAMS,
-    delegation_params::{pessimistic_conjecture as delegations, NUM_DELEGATION_CIRCUIT_TYPES},
+    delegation_params::NUM_DELEGATION_CIRCUIT_TYPES,
     imports::{
-        pessimistic_conjecture as circuits, DelegationCircuitOutput,
-        InitsAndTeardownsCircuitOutput, UnifiedCircuitOutput, UnrolledCircuitOutput,
+        DelegationCircuitOutput, InitsAndTeardownsCircuitOutput, UnifiedCircuitOutput,
+        UnrolledCircuitOutput,
     },
     statement_common::read_setup_cap,
     unified_circuit_statement::verify_full_statement_for_unified_circuit,
-    unrolled_circuit_params::{self, pessimistic_conjecture as unrolled},
+    unrolled_circuit_params,
     unrolled_proof_statement::verify_full_statement_for_unrolled_circuits,
     verifier_common::{
         errors::{DebugErrorCreator, VerificationError},
         field::{baby_bear::base::BabyBearField, baby_bear::ext4::BabyBearExt4},
-        prover::definitions::{GKRExternalChallenges, MerkleTreeCap, DEFAULT_CAP_SIZE},
+        prover::definitions::{
+            GKRExternalChallenges, MerkleTreeCap, SoundnessMode, DEFAULT_CAP_SIZE,
+        },
         InitsAndTeardownsProduct, VerifierOutput, USE_REDUCED_BLAKE2_ROUNDS,
     },
 };
@@ -173,136 +174,165 @@ macro_rules! inner_verifier {
     };
 }
 
-inner_verifier!(add_sub_lui_auipc_mop, UnrolledCircuitOutput);
-inner_verifier!(jump_branch_slt, UnrolledCircuitOutput);
-inner_verifier!(shift_binop, UnrolledCircuitOutput);
-inner_verifier!(unsigned_mul_div, UnrolledCircuitOutput);
-inner_verifier!(mem_word_only, UnrolledCircuitOutput);
-inner_verifier!(mem_subword_only, UnrolledCircuitOutput);
-inner_verifier!(inits_and_teardowns, InitsAndTeardownsCircuitOutput);
-inner_verifier!(unified_reduced_machine, UnifiedCircuitOutput);
-inner_verifier!(blake2_with_extended_control, DelegationCircuitOutput);
-inner_verifier!(bigint_with_extended_control, DelegationCircuitOutput);
-inner_verifier!(keccak_special5, DelegationCircuitOutput);
-inner_verifier!(keccak_theta_rho, DelegationCircuitOutput);
-inner_verifier!(keccak_column_parity, DelegationCircuitOutput);
-inner_verifier!(keccak_chi5, DelegationCircuitOutput);
+macro_rules! mode_statements {
+    ($mode:ident) => {
+        mod $mode {
+            use super::*;
+            use full_statement_verifier::{
+                delegation_circuits_setups::$mode::DELEGATION_CIRCUITS_SETUP_PARAMS,
+                delegation_params::$mode as delegations,
+                imports::$mode as circuits,
+                unrolled_circuit_params::$mode as unrolled,
+            };
+            inner_verifier!(add_sub_lui_auipc_mop, UnrolledCircuitOutput);
+            inner_verifier!(jump_branch_slt, UnrolledCircuitOutput);
+            inner_verifier!(shift_binop, UnrolledCircuitOutput);
+            inner_verifier!(unsigned_mul_div, UnrolledCircuitOutput);
+            inner_verifier!(mem_word_only, UnrolledCircuitOutput);
+            inner_verifier!(mem_subword_only, UnrolledCircuitOutput);
+            inner_verifier!(inits_and_teardowns, InitsAndTeardownsCircuitOutput);
+            inner_verifier!(unified_reduced_machine, UnifiedCircuitOutput);
+            inner_verifier!(blake2_with_extended_control, DelegationCircuitOutput);
+            inner_verifier!(bigint_with_extended_control, DelegationCircuitOutput);
+            inner_verifier!(keccak_special5, DelegationCircuitOutput);
+            inner_verifier!(keccak_theta_rho, DelegationCircuitOutput);
+            inner_verifier!(keccak_column_parity, DelegationCircuitOutput);
+            inner_verifier!(keccak_chi5, DelegationCircuitOutput);
 
-fn delegation_verifiers<
-    I: Iterator<Item = u32> + Send + Sync,
-    const RECORD: bool,
-    const BASE: bool,
->() -> [CircuitFn<Stream<I, RECORD>, DelegationCircuitOutput>; NUM_DELEGATION_CIRCUIT_TYPES] {
-    if BASE {
-        [
-            blake2_with_extended_control::<I, RECORD>,
-            bigint_with_extended_control::<I, RECORD>,
-            keccak_special5::<I, RECORD>,
-            keccak_theta_rho::<I, RECORD>,
-            keccak_column_parity::<I, RECORD>,
-            keccak_chi5::<I, RECORD>,
-        ]
-    } else {
-        let mut table =
-            delegations::reduced_machine_delegation_circuit_verifiers::<_, DebugErrorCreator>();
-        for (csr, verifier) in full_statement_verifier::definitions::DELEGATION_TYPES
-            .iter()
-            .zip(&mut table)
-        {
-            if *csr == common_constants::BLAKE2S_DELEGATION_CSR_REGISTER {
-                *verifier = blake2_with_extended_control::<I, RECORD>;
+            fn delegation_verifiers<
+                I: Iterator<Item = u32> + Send + Sync,
+                const RECORD: bool,
+                const BASE: bool,
+            >() -> [CircuitFn<Stream<I, RECORD>, DelegationCircuitOutput>; NUM_DELEGATION_CIRCUIT_TYPES] {
+                if BASE {
+                    [
+                        blake2_with_extended_control::<I, RECORD>,
+                        bigint_with_extended_control::<I, RECORD>,
+                        keccak_special5::<I, RECORD>,
+                        keccak_theta_rho::<I, RECORD>,
+                        keccak_column_parity::<I, RECORD>,
+                        keccak_chi5::<I, RECORD>,
+                    ]
+                } else {
+                    let mut table =
+                        delegations::reduced_machine_delegation_circuit_verifiers::<_, DebugErrorCreator>();
+                    for (csr, verifier) in full_statement_verifier::definitions::DELEGATION_TYPES
+                        .iter()
+                        .zip(&mut table)
+                    {
+                        if *csr == common_constants::BLAKE2S_DELEGATION_CSR_REGISTER {
+                            *verifier = blake2_with_extended_control::<I, RECORD>;
+                        }
+                    }
+                    table
+                }
+            }
+
+            fn unrolled_statement<
+                I: Iterator<Item = u32> + Send + Sync,
+                const RECORD: bool,
+                const BASE: bool,
+            >(
+                nds: &mut Stream<I, RECORD>,
+            ) -> Result<[u32; 16], VerificationError> {
+                let (mut table, wrappers) = if BASE {
+                    let wrappers: [CircuitFn<_, UnrolledCircuitOutput>; 6] = [
+                        add_sub_lui_auipc_mop::<I, RECORD>,
+                        jump_branch_slt::<I, RECORD>,
+                        shift_binop::<I, RECORD>,
+                        unsigned_mul_div::<I, RECORD>,
+                        mem_word_only::<I, RECORD>,
+                        mem_subword_only::<I, RECORD>,
+                    ];
+                    (
+                        unrolled::unrolled_circuit_verifiers_for_base_layer::<_, DebugErrorCreator>().to_vec(),
+                        wrappers.to_vec(),
+                    )
+                } else {
+                    let wrappers: [CircuitFn<_, UnrolledCircuitOutput>; 4] = [
+                        add_sub_lui_auipc_mop::<I, RECORD>,
+                        jump_branch_slt::<I, RECORD>,
+                        shift_binop::<I, RECORD>,
+                        mem_word_only::<I, RECORD>,
+                    ];
+                    (
+                        unrolled::unrolled_circuit_verifiers_for_recursion_layer::<_, DebugErrorCreator>()
+                            .to_vec(),
+                        wrappers.to_vec(),
+                    )
+                };
+                assert_eq!(table.len(), wrappers.len());
+                for (entry, wrapper) in table.iter_mut().zip(wrappers) {
+                    entry.2 = wrapper;
+                }
+                let num_setups = if BASE {
+                    unrolled_circuit_params::NUM_BASE_LAYER_CIRCUITS
+                } else {
+                    unrolled_circuit_params::NUM_RECURSION_LAYER_CIRCUITS
+                };
+                // SAFETY: the production reader initializes the whole cap; no extra caller obligations.
+                let setups: Vec<MerkleTreeCap<DEFAULT_CAP_SIZE>> = (0..num_setups)
+                    .map(|_| unsafe { read_setup_cap(nds) })
+                    .collect();
+                let setup_refs: Vec<_> = setups.iter().collect();
+                // SAFETY: the statement function has no extra caller obligations.
+                unsafe {
+                    verify_full_statement_for_unrolled_circuits::<
+                        _,
+                        DebugErrorCreator,
+                        BASE,
+                        USE_REDUCED_BLAKE2_ROUNDS,
+                    >(
+                        &setup_refs,
+                        &table,
+                        inits_and_teardowns::<I, RECORD>,
+                        &DELEGATION_CIRCUITS_SETUP_PARAMS,
+                        &delegation_verifiers::<I, RECORD, BASE>(),
+                        nds,
+                    )
+                }
+            }
+
+            pub(super) fn statement<I: Iterator<Item = u32> + Send + Sync, const RECORD: bool>(
+                chain: Chain,
+                nds: &mut Stream<I, RECORD>,
+            ) -> Result<[u32; 16], VerificationError> {
+                match chain {
+                    Chain::Base => unrolled_statement::<I, RECORD, true>(nds),
+                    Chain::Unrolled => unrolled_statement::<I, RECORD, false>(nds),
+                    Chain::Unified | Chain::UnrolledUnified => {
+                        // SAFETY: these production functions have no extra caller obligations.
+                        unsafe {
+                            let setup = read_setup_cap::<_, DEFAULT_CAP_SIZE>(nds);
+                            verify_full_statement_for_unified_circuit::<_, DebugErrorCreator, false, USE_REDUCED_BLAKE2_ROUNDS, _, _>(
+                                &setup, unified_reduced_machine::<I, RECORD>,
+                                &DELEGATION_CIRCUITS_SETUP_PARAMS, &delegation_verifiers::<I, RECORD, false>(), nds,
+                            )
+                        }
+                    }
+                }
             }
         }
-        table
-    }
+    };
 }
 
-fn unrolled_statement<
-    I: Iterator<Item = u32> + Send + Sync,
-    const RECORD: bool,
-    const BASE: bool,
->(
-    nds: &mut Stream<I, RECORD>,
-) -> Result<[u32; 16], VerificationError> {
-    let (mut table, wrappers) = if BASE {
-        let wrappers: [CircuitFn<_, UnrolledCircuitOutput>; 6] = [
-            add_sub_lui_auipc_mop::<I, RECORD>,
-            jump_branch_slt::<I, RECORD>,
-            shift_binop::<I, RECORD>,
-            unsigned_mul_div::<I, RECORD>,
-            mem_word_only::<I, RECORD>,
-            mem_subword_only::<I, RECORD>,
-        ];
-        (
-            unrolled::unrolled_circuit_verifiers_for_base_layer::<_, DebugErrorCreator>().to_vec(),
-            wrappers.to_vec(),
-        )
-    } else {
-        let wrappers: [CircuitFn<_, UnrolledCircuitOutput>; 4] = [
-            add_sub_lui_auipc_mop::<I, RECORD>,
-            jump_branch_slt::<I, RECORD>,
-            shift_binop::<I, RECORD>,
-            mem_word_only::<I, RECORD>,
-        ];
-        (
-            unrolled::unrolled_circuit_verifiers_for_recursion_layer::<_, DebugErrorCreator>()
-                .to_vec(),
-            wrappers.to_vec(),
-        )
-    };
-    assert_eq!(table.len(), wrappers.len());
-    for (entry, wrapper) in table.iter_mut().zip(wrappers) {
-        entry.2 = wrapper;
-    }
-    let num_setups = if BASE {
-        unrolled_circuit_params::NUM_BASE_LAYER_CIRCUITS
-    } else {
-        unrolled_circuit_params::NUM_RECURSION_LAYER_CIRCUITS
-    };
-    // SAFETY: the production reader initializes the whole cap; no extra caller obligations.
-    let setups: Vec<MerkleTreeCap<DEFAULT_CAP_SIZE>> = (0..num_setups)
-        .map(|_| unsafe { read_setup_cap(nds) })
-        .collect();
-    let setup_refs: Vec<_> = setups.iter().collect();
-    // SAFETY: the statement function has no extra caller obligations.
-    unsafe {
-        verify_full_statement_for_unrolled_circuits::<
-            _,
-            DebugErrorCreator,
-            BASE,
-            USE_REDUCED_BLAKE2_ROUNDS,
-        >(
-            &setup_refs,
-            &table,
-            inits_and_teardowns::<I, RECORD>,
-            &DELEGATION_CIRCUITS_SETUP_PARAMS,
-            &delegation_verifiers::<I, RECORD, BASE>(),
-            nds,
-        )
-    }
-}
+mode_statements!(pessimistic_conjecture);
+mode_statements!(ethproofs_soundcalc);
 
 impl Selection {
     fn statement<I: Iterator<Item = u32> + Send + Sync, const RECORD: bool>(
         self,
         nds: &mut Stream<I, RECORD>,
     ) -> [u32; 16] {
-        let output = match self {
-            Self::UnrolledBase => unrolled_statement::<I, RECORD, true>(nds),
-            Self::UnrolledRecursion => unrolled_statement::<I, RECORD, false>(nds),
-            Self::RecursionDispatch => {
-                // Mirror the dispatcher's selected branch; the producer also runs the real entry.
-                assert_eq!(nds.next(), Some(full_statement_verifier::definitions::OP_VERIFY_UNIFIED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT));
-                // SAFETY: these production functions have no extra caller obligations.
-                unsafe {
-                    let setup = read_setup_cap::<_, DEFAULT_CAP_SIZE>(nds);
-                    verify_full_statement_for_unified_circuit::<_, DebugErrorCreator, false, USE_REDUCED_BLAKE2_ROUNDS, _, _>(
-                        &setup, unified_reduced_machine::<I, RECORD>,
-                        &DELEGATION_CIRCUITS_SETUP_PARAMS, &delegation_verifiers::<I, RECORD, false>(), nds,
-                    )
-                }
+        let output = match self.mode {
+            SoundnessMode::PessimisticConjecture => {
+                pessimistic_conjecture::statement(self.chain, nds)
             }
-        }.expect("statement verifier rejected input");
+            SoundnessMode::EthproofsSoundnessCalc => {
+                ethproofs_soundcalc::statement(self.chain, nds)
+            }
+        }
+        .expect("statement verifier rejected input");
         assert!(nds.next().is_none(), "statement verifier left NDS words");
         output
     }

@@ -90,7 +90,7 @@ jobs:
           path: target/miri-circuits/results
 
   fsv:
-    name: Miri pessimistic base, unrolled-recursion and dispatcher statements
+    name: Miri statements on every committed chain (both modes)
     runs-on: [matterlabs-ci-runner-highmem]
     timeout-minutes: 90
     container:
@@ -118,19 +118,24 @@ jobs:
         run: cargo miri setup
       - name: Build the native input producer once
         run: cargo build -p full_statement_verifier --no-default-features --features host_utils,miri_fsv --example miri_input
-      - name: Verify B, R and D natively and record inner verifier outputs
+      - name: Verify every committed chain in both modes and record inner outputs
         run: |
           mkdir -p "$AIRBENDER_MIRI_FSV_INPUT_DIR"
-          "$CARGO_TARGET_DIR/debug/examples/miri_input" "$AIRBENDER_MIRI_FSV_INPUT_DIR/B.bin" base unrolled_base
-          "$CARGO_TARGET_DIR/debug/examples/miri_input" "$AIRBENDER_MIRI_FSV_INPUT_DIR/R.bin" unrolled unrolled_recursion
-          "$CARGO_TARGET_DIR/debug/examples/miri_input" "$AIRBENDER_MIRI_FSV_INPUT_DIR/D.bin" unified recursion_dispatch
-      - name: Compile the shared three-test FSV binary once
+          for mode in pessimistic_conjecture ethproofs_soundcalc; do
+            for chain in base unrolled unified unrolled_unified; do
+              "$CARGO_TARGET_DIR/debug/examples/miri_input" "$AIRBENDER_MIRI_FSV_INPUT_DIR/${mode}_${chain}.bin" "$mode" "$chain"
+            done
+          done
+      - name: Compile the shared eight-test FSV binary once
         run: cargo miri test -p full_statement_verifier --no-default-features --features miri_fsv --test miri_native --no-run
-      - name: Run B, R and D in parallel
+      - name: Run every committed chain in both modes in parallel
         run: |
           python3 .github/scripts/run_miri.py \
             --package full_statement_verifier --features miri_fsv --test-target miri_native \
-            --cases unrolled_base_layer unrolled_recursion_layer unified_recursion_dispatch --jobs 3 \
+            --cases pessimistic_conjecture_base pessimistic_conjecture_unrolled \
+              pessimistic_conjecture_unified pessimistic_conjecture_unrolled_unified \
+              ethproofs_soundcalc_base ethproofs_soundcalc_unrolled \
+              ethproofs_soundcalc_unified ethproofs_soundcalc_unrolled_unified --jobs 8 \
             --output "$CARGO_TARGET_DIR/results"
       - name: Publish case timing summary
         if: always()

@@ -1,7 +1,7 @@
 //! Verify a committed chain natively and record inner outputs for statement-only Miri.
-//! Usage: miri_input OUTPUT CHAIN ENTRY
-//! CHAIN / ENTRY: base / unrolled_base, unrolled / unrolled_recursion,
-//! unified / recursion_dispatch. Uses pessimistic_conjecture.
+//! Usage: miri_input OUTPUT MODE CHAIN
+//! MODE: pessimistic_conjecture or ethproofs_soundcalc.
+//! CHAIN: base, unrolled, unified or unrolled_unified.
 #[path = "../tests/common/miri_stream.rs"]
 mod miri_stream;
 
@@ -11,36 +11,41 @@ use full_statement_verifier::host_utils::{
 use full_statement_verifier::verifier_common::{
     self, prover::definitions::SoundnessMode, BlakeMode,
 };
-use miri_stream::Selection;
+use miri_stream::{Chain, Selection};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    assert_eq!(args.len(), 3, "usage: miri_input OUTPUT CHAIN ENTRY");
-    let chain = args[1].as_str();
-    let selection = match (chain, args[2].as_str()) {
-        ("base", "unrolled_base") => Selection::UnrolledBase,
-        ("unrolled", "unrolled_recursion") => Selection::UnrolledRecursion,
-        ("unified", "recursion_dispatch") => Selection::RecursionDispatch,
-        _ => panic!("unsupported chain/entry pair"),
+    assert_eq!(args.len(), 3, "usage: miri_input OUTPUT MODE CHAIN");
+    let mode = match args[1].as_str() {
+        "pessimistic_conjecture" => SoundnessMode::PessimisticConjecture,
+        "ethproofs_soundcalc" => SoundnessMode::EthproofsSoundnessCalc,
+        _ => panic!("unsupported soundness mode"),
+    };
+    let chain = args[2].as_str();
+    let selection = Selection {
+        mode,
+        chain: match chain {
+            "base" => Chain::Base,
+            "unrolled" => Chain::Unrolled,
+            "unified" => Chain::Unified,
+            "unrolled_unified" => Chain::UnrolledUnified,
+            _ => panic!("unsupported chain"),
+        },
     };
     assert_eq!(verifier_common::BLAKE_MODE, BlakeMode::Compression);
-    let artifact = ChainArtifact::load(SoundnessMode::PessimisticConjecture, chain);
-    let mut nds = if !matches!(selection, Selection::RecursionDispatch) {
-        build_unrolled_stream(
+    let artifact = ChainArtifact::load(mode, chain);
+    let nds = match selection.chain {
+        Chain::Base | Chain::Unrolled => build_unrolled_stream(
             &artifact.setups,
             &artifact.proof,
             verifier_common::BLAKE_MODE,
-        )
-    } else {
-        build_unified_stream(
+        ),
+        Chain::Unified | Chain::UnrolledUnified => build_unified_stream(
             &artifact.setups,
             &artifact.proof,
             verifier_common::BLAKE_MODE,
-        )
+        ),
     };
-    if matches!(selection, Selection::RecursionDispatch) {
-        nds.insert(0, full_statement_verifier::definitions::OP_VERIFY_UNIFIED_RECURSION_LAYER_IN_UNIFIED_CIRCUIT);
-    }
     let input = std::thread::Builder::new()
         .stack_size(1 << 27)
         .spawn(move || {

@@ -1,8 +1,11 @@
-//! Pessimistic statements with recorded inner verifier outputs over static inputs.
+//! Every committed chain in both soundness modes with recorded inner verifier outputs.
 #[path = "common/miri_stream.rs"]
 mod miri_stream;
 
-use full_statement_verifier::verifier_common::{self, BlakeMode};
+use full_statement_verifier::verifier_common::{
+    self, prover::definitions::SoundnessMode, BlakeMode,
+};
+use miri_stream::{Chain, Selection};
 
 fn check(input: &[u8], selection: miri_stream::Selection) {
     assert_eq!(verifier_common::BLAKE_MODE, BlakeMode::Compression);
@@ -12,34 +15,51 @@ fn check(input: &[u8], selection: miri_stream::Selection) {
 }
 
 macro_rules! statement_test {
-    ($name:ident, $file:literal, $entry:expr) => {
+    ($name:ident, $mode:ident, $chain:ident) => {
         #[test]
         fn $name() {
             const INPUT: &[u8] = include_bytes!(concat!(
                 env!(
                     "AIRBENDER_MIRI_FSV_INPUT_DIR",
-                    "prepare B.bin, R.bin and D.bin with the miri_input example"
+                    "prepare <mode>_<chain>.bin for both modes and all four chains with the miri_input example"
                 ),
                 "/",
-                $file
+                stringify!($name),
+                ".bin"
             ));
-            check(INPUT, $entry);
+            check(
+                INPUT,
+                Selection { mode: SoundnessMode::$mode, chain: Chain::$chain },
+            );
         }
     };
 }
 
+statement_test!(pessimistic_conjecture_base, PessimisticConjecture, Base);
 statement_test!(
-    unrolled_base_layer,
-    "B.bin",
-    miri_stream::Selection::UnrolledBase
+    pessimistic_conjecture_unrolled,
+    PessimisticConjecture,
+    Unrolled
 );
 statement_test!(
-    unrolled_recursion_layer,
-    "R.bin",
-    miri_stream::Selection::UnrolledRecursion
+    pessimistic_conjecture_unified,
+    PessimisticConjecture,
+    Unified
 );
 statement_test!(
-    unified_recursion_dispatch,
-    "D.bin",
-    miri_stream::Selection::RecursionDispatch
+    pessimistic_conjecture_unrolled_unified,
+    PessimisticConjecture,
+    UnrolledUnified
+);
+statement_test!(ethproofs_soundcalc_base, EthproofsSoundnessCalc, Base);
+statement_test!(
+    ethproofs_soundcalc_unrolled,
+    EthproofsSoundnessCalc,
+    Unrolled
+);
+statement_test!(ethproofs_soundcalc_unified, EthproofsSoundnessCalc, Unified);
+statement_test!(
+    ethproofs_soundcalc_unrolled_unified,
+    EthproofsSoundnessCalc,
+    UnrolledUnified
 );

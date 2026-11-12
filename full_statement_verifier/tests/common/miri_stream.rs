@@ -4,33 +4,46 @@
 #[path = "miri_mock.rs"]
 mod miri_mock;
 
+use full_statement_verifier::verifier_common::prover::definitions::SoundnessMode;
+
 #[derive(Clone, Copy)]
-pub enum Selection {
-    UnrolledBase,
-    UnrolledRecursion,
-    RecursionDispatch,
+pub enum Chain {
+    Base,
+    Unrolled,
+    Unified,
+    UnrolledUnified,
+}
+
+#[derive(Clone, Copy)]
+pub struct Selection {
+    pub mode: SoundnessMode,
+    pub chain: Chain,
 }
 
 impl Selection {
     pub fn verify(self, nds: &mut (impl Iterator<Item = u32> + Send + Sync)) -> [u32; 16] {
-        use full_statement_verifier::pessimistic_conjecture::*;
         use full_statement_verifier::verifier_common::{
             errors::DebugErrorCreator, USE_REDUCED_BLAKE2_ROUNDS,
         };
-        let output = match self {
-            Self::UnrolledBase => {
-                verify_unrolled_base_layer::<_, DebugErrorCreator, USE_REDUCED_BLAKE2_ROUNDS>(nds)
-            }
-            Self::UnrolledRecursion => {
-                verify_unrolled_recursion_layer::<_, DebugErrorCreator, USE_REDUCED_BLAKE2_ROUNDS>(
-                    nds,
-                )
-            }
-            Self::RecursionDispatch => verify_unrolled_or_unified_circuit_recursion_layer::<
-                _,
-                DebugErrorCreator,
-                USE_REDUCED_BLAKE2_ROUNDS,
-            >(nds),
+        macro_rules! verify {
+            ($mode:ident) => {{
+                use full_statement_verifier::$mode::*;
+                match self.chain {
+                    Chain::Base => {
+                        verify_unrolled_base_layer::<_, DebugErrorCreator, USE_REDUCED_BLAKE2_ROUNDS>(nds)
+                    },
+                    Chain::Unrolled => {
+                        verify_unrolled_recursion_layer::<_, DebugErrorCreator, USE_REDUCED_BLAKE2_ROUNDS>(nds)
+                    },
+                    Chain::Unified | Chain::UnrolledUnified => {
+                        verify_unified_circuit_recursion_layer::<_, DebugErrorCreator, USE_REDUCED_BLAKE2_ROUNDS>(nds)
+                    },
+                }
+            }};
+        }
+        let output = match self.mode {
+            SoundnessMode::PessimisticConjecture => verify!(pessimistic_conjecture),
+            SoundnessMode::EthproofsSoundnessCalc => verify!(ethproofs_soundcalc),
         }
         .expect("full statement verifier rejected input");
         assert!(
