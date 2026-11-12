@@ -21,7 +21,7 @@ pub const CIRCUITS: [&str; 14] = [
     "keccak_chi5",
 ];
 pub const CHAINS: [&str; 4] = ["base", "unified", "unrolled", "unrolled_unified"];
-/// Special-profile circuit proofs exported from their committed chain artifact.
+/// Canonical special-profile circuits available only in pessimistic mode.
 pub const PESSIMISTIC_CIRCUITS: [&str; 2] = ["compression", "compression_final"];
 /// L1 chains exist only in pessimistic_conjecture.
 pub const L1_CHAINS: [&str; 2] = ["compression", "l1"];

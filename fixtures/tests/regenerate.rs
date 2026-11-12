@@ -27,10 +27,6 @@ fn command(root: &Path, arguments: &[&str], backend: Option<&str>) -> Command {
         .env("FIXTURE_CLI", root.join("cli"))
         .env("FIXTURE_CODEC", root.join("codec"))
         .env("FIXTURE_CANONICAL_PRODUCER", root.join("producer"))
-        .env(
-            "FIXTURE_COMPRESSION_PRODUCER",
-            root.join("compression-producer"),
-        )
         .env("TMPDIR", root)
         .env_remove("FIXTURE_BACKEND")
         .env_remove("EXPECTED_FIXTURE_BACKEND")
@@ -90,27 +86,9 @@ if [[ $action == continue-proof ]]; then
 fi
 mkdir -p "$output_dir"
 printf '%s' "$output_file" >"$output_dir/$output_file"
-if [[ $target == compression ]]; then
-  printf compression-step >"$COMPRESSION_STEP_PROOF_OUTPUT"
-fi
 "##,
     );
     executable(&root.join("codec"), "#!/bin/sh\ntest -f \"$2\"\n");
-    executable(
-        &root.join("compression-producer"),
-        "#!/bin/sh\ntest -f \"$1\" || exit 1\nprintf compression-final >\"$2\"\n",
-    );
-    fs::create_dir_all(root.join("fixtures/circuits/pessimistic_conjecture")).unwrap();
-    fs::write(
-        root.join("fixtures/circuits/pessimistic_conjecture/compression_final.json.zlib"),
-        "compression-final",
-    )
-    .unwrap();
-    fs::write(
-        root.join("fixtures/circuits/pessimistic_conjecture/compression.json.zlib"),
-        "compression-step",
-    )
-    .unwrap();
     executable(
         &root.join("producer"),
         "#!/bin/sh\necho 'test result: ok. 0 passed; 0 failed'\n",

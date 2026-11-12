@@ -80,7 +80,6 @@ trap cleanup EXIT
 producer=${FIXTURE_CANONICAL_PRODUCER:-}
 cli=${FIXTURE_CLI:-}
 codec=${FIXTURE_CODEC:-}
-compression_producer=${FIXTURE_COMPRESSION_PRODUCER:-}
 if [[ -z $stage_filter || $stage_filter == circuits ]]; then
   if [[ -n $producer ]]; then
     [[ -x $producer ]]
@@ -103,13 +102,6 @@ if [[ $stage_filter != circuits ]]; then
     codec="$repo/target/release/fixture-codec"
   fi
   [[ -x $cli && -x $codec ]]
-fi
-if [[ -z $stage_filter || $stage_filter == compression ]]; then
-  if [[ -z $compression_producer ]]; then
-    cargo build --release -p prover_pipeline --example export_compression_final
-    compression_producer="$repo/target/release/examples/export_compression_final"
-  fi
-  [[ -x $compression_producer ]]
 fi
 
 compare_file() {
@@ -183,16 +175,9 @@ for mode in "${modes[@]}"; do
           --proof "$chain_parent/unrolled.json.zlib" --target recursion-unified --output-file unrolled_unified.json.zlib
         check_artifact unrolled_unified ;;
       compression)
-        step_out="$out_repo/fixtures/circuits/$mode/compression.json.zlib"
-        mkdir -p "$(dirname "$step_out")"
-        COMPRESSION_STEP_PROOF_OUTPUT="$step_out" "$cli" continue-proof "${common[@]}" \
+        "$cli" continue-proof "${common[@]}" \
           --proof "$chain_parent/unified.json.zlib" --target compression --output-file compression.json.zlib
-        check_artifact compression
-        compare_file "$step_out"
-        circuit_out="$out_repo/fixtures/circuits/$mode/compression_final.json.zlib"
-        mkdir -p "$(dirname "$circuit_out")"
-        "$compression_producer" "$chain_out/compression.json.zlib" "$circuit_out"
-        compare_file "$circuit_out" ;;
+        check_artifact compression ;;
       l1)
         "$cli" continue-proof "${common[@]}" \
           --proof "$chain_parent/compression.json.zlib" --target l1 --output-file l1.json.zlib

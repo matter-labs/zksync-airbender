@@ -36,7 +36,6 @@ full_statement_verifier = { path = "../full_statement_verifier", default-feature
 ] }
 sha3 = { workspace = true }
 log = "0.4"
-proof_fixtures = { workspace = true }
 
 # GPU proving stack (behind the `gpu` feature).
 gpu_execution_prover = { workspace = true, optional = true, default-features = false }
@@ -59,6 +58,9 @@ gpu = ["dep:gpu_execution_prover"]
 # architecture as well): the feature only adds its assembler dependencies elsewhere.
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 riscv_transpiler = { path = "../riscv_transpiler", features = ["jit"] }
+
+[dev-dependencies]
+proof_fixtures = { workspace = true }
 
 [lints]
 workspace = true

@@ -650,16 +650,6 @@ fn advance_compression_stages(
             .unwrap_or_else(|error| panic!("compression layer {layer}: {error}"));
         state.timings.compression_ms.push(elapsed_ms(start));
         proof.set_recursion_chain(&chain);
-        // The fixture producer captures the last repeatable compression step
-        // from this same chain run, before the terminal CompressionFinal layer.
-        if role == CompressionRole::Recurrent && profile == CompressionProfile::Step {
-            if let Some(output) = std::env::var_os("COMPRESSION_STEP_PROOF_OUTPUT") {
-                let mut circuits = proof.riscv_proofs.values().flatten();
-                let circuit = circuits.next().expect("single compression step proof");
-                assert!(circuits.next().is_none());
-                proof_fixtures::write_file(output, circuit);
-            }
-        }
         let end_params = compute_end_params(&setups, proof.final_pc);
         chain.extend(&end_params);
         state.chain_end_params.push(end_params);
