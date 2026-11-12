@@ -23,6 +23,10 @@ The [bigint](../../../../proven/Proven/UnifiedReduced/RVCaller/BigintStep.lean),
 [G](../../../../proven/Proven/UnifiedReduced/RVCaller/GStep.lean) and
 [round](../../../../proven/Proven/UnifiedReduced/RVCaller/RoundStep.lean) caller proofs give local RV steps.
 The round proof accepts every native Boolean mask.
+The [unrolled](../../../../proven/Proven/Trace/Machine/UnrolledModularStep.lean) and
+[unified](../../../../proven/Proven/Trace/Machine/UnifiedModularStep.lean) modular row proofs give RV instruction steps
+for all four field operations. The [discarded-destination proofs](../../../../proven/Proven/Trace/Machine/ModularZeroStep.lean)
+cover their x0 preprocessing.
 The [shared memory proof](../../../../proven/Proven/Trace/Machine/MemoryBounds.lean) bounds every CPU and worker read,
 write and terminal word from the public seeds and native matching. The transfer-order proof covers both worker pools.
 The [history proof](../../../../proven/Proven/Trace/Machine/SharedHistory.lean) gives one actual RV memory history
