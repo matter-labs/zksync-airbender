@@ -1,3 +1,4 @@
+import Proven.Final.Circuits.InitsTeardowns.NativeProducts
 import Proven.Final.Compiler.Theorems
 import Proven.Final.Helpers.Context.VerifierBoundary.Theorems
 import Checks.Restatements
@@ -604,3 +605,27 @@ example : Airbender.Compiler.UnifiedCachedDescriptionClaim := Airbender.Compiler
 example : Airbender.Compiler.WordMemoryCachedDescriptionClaim := Airbender.Compiler.wordMemory_cached_description
 
 #print axioms Airbender.Compiler.wordMemory_cached_description
+
+example : Airbender.InitsTeardowns.Native.StandaloneBindingClaim := Airbender.InitsTeardowns.Native.standalone_binding
+
+#print axioms Airbender.InitsTeardowns.Native.standalone_binding
+
+example : Airbender.InitsTeardowns.Native.StandaloneSoundnessClaim := Airbender.InitsTeardowns.Native.standalone_soundness
+
+#print axioms Airbender.InitsTeardowns.Native.standalone_soundness
+
+example : Airbender.InitsTeardowns.Native.StandaloneSatisfiableClaim := Airbender.InitsTeardowns.Native.standalone_satisfiable
+
+#print axioms Airbender.InitsTeardowns.Native.standalone_satisfiable
+
+example : Airbender.InitsTeardowns.Native.UnifiedBindingClaim := Airbender.InitsTeardowns.Native.unified_binding
+
+#print axioms Airbender.InitsTeardowns.Native.unified_binding
+
+example : Airbender.InitsTeardowns.Native.UnifiedSoundnessClaim := Airbender.InitsTeardowns.Native.unified_soundness
+
+#print axioms Airbender.InitsTeardowns.Native.unified_soundness
+
+example : Airbender.InitsTeardowns.Native.UnifiedSatisfiableClaim := Airbender.InitsTeardowns.Native.unified_satisfiable
+
+#print axioms Airbender.InitsTeardowns.Native.unified_satisfiable

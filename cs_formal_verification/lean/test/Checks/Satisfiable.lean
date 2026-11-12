@@ -1,3 +1,5 @@
+import Human.Circuits.InitsTeardowns.Native.Standalone
+import Human.Circuits.InitsTeardowns.Native.Unified
 import Human.Helpers.Context.VerifierBoundary.Theorems
 import Human.Circuits.AddSub.RVTheorems
 import Human.Circuits.JumpBranchSlt.RVTheorems
@@ -648,3 +650,29 @@ example (claim : Airbender.JumpBranchSlt.Jump.RVSoundnessClaim) : Airbender.Jump
     ⟨input, output, claim trace initial cells program assumptions input output w relation⟩
 
 end Checks.Satisfiable
+
+example (claim : Airbender.InitsTeardowns.Native.StandaloneSoundnessClaim)
+    (satisfiable : Airbender.InitsTeardowns.Native.StandaloneSatisfiableClaim) :
+    ∃ (parameters : Airbender.InitsTeardowns.Native.Parameters Airbender.babyBearModulus
+      (ZMod Airbender.babyBearModulus)) (raw : Airbender.InitsTeardowns.Native.Raw Airbender.babyBearModulus)
+      (wires : Airbender.InitsTeardowns.Native.Wires (ZMod Airbender.babyBearModulus)),
+      Airbender.InitsTeardowns.Native.Accepted Airbender.InitsTeardowns.Native.standaloneArtifact parameters raw wires ∧
+      Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.standaloneArtifact
+        Airbender.InitsTeardowns.Native.standaloneArtifact.terminal wires =
+        ((Airbender.InitsTeardowns.Native.ramTokens Airbender.InitsTeardowns.Native.standaloneArtifact.layout
+          parameters raw .terminal).map parameters.encode).prod := by
+  obtain ⟨parameters, raw, wires, accepted⟩ := satisfiable
+  exact ⟨parameters, raw, wires, accepted, (claim parameters raw wires accepted).1⟩
+
+example (claim : Airbender.InitsTeardowns.Native.UnifiedSoundnessClaim)
+    (satisfiable : Airbender.InitsTeardowns.Native.UnifiedSatisfiableClaim) :
+    ∃ (parameters : Airbender.InitsTeardowns.Native.Parameters Airbender.babyBearModulus
+      (ZMod Airbender.babyBearModulus)) (raw : Airbender.InitsTeardowns.Native.Raw Airbender.babyBearModulus)
+      (wires : Airbender.InitsTeardowns.Native.Wires (ZMod Airbender.babyBearModulus)),
+      Airbender.InitsTeardowns.Native.Accepted Airbender.InitsTeardowns.Native.unifiedArtifact parameters raw wires ∧
+      Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.unifiedArtifact
+        Airbender.InitsTeardowns.Native.unifiedArtifact.terminal wires =
+        ((Airbender.InitsTeardowns.Native.ramTokens Airbender.InitsTeardowns.Native.unifiedArtifact.layout
+          parameters raw .terminal).map parameters.encode).prod := by
+  obtain ⟨parameters, raw, wires, accepted⟩ := satisfiable
+  exact ⟨parameters, raw, wires, accepted, (claim parameters raw wires accepted).1⟩

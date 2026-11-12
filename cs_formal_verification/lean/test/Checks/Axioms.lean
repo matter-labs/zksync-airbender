@@ -1,3 +1,4 @@
+import Proven.Final.Circuits.InitsTeardowns.NativeProducts
 import Proven.Final.Compiler.Theorems
 import Proven.AddSub.Modular.RVArithmetic
 import Proven.Final.Helpers.Context.VerifierBoundary.Theorems
@@ -1344,3 +1345,15 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.Compiler.unified_cached_description
 
 #print axioms Airbender.Compiler.wordMemory_cached_description
+
+#print axioms Airbender.InitsTeardowns.Native.standalone_binding
+
+#print axioms Airbender.InitsTeardowns.Native.standalone_soundness
+
+#print axioms Airbender.InitsTeardowns.Native.standalone_satisfiable
+
+#print axioms Airbender.InitsTeardowns.Native.unified_binding
+
+#print axioms Airbender.InitsTeardowns.Native.unified_soundness
+
+#print axioms Airbender.InitsTeardowns.Native.unified_satisfiable

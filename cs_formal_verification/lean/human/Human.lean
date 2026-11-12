@@ -1,3 +1,5 @@
+import Human.Circuits.InitsTeardowns.Native.Standalone
+import Human.Circuits.InitsTeardowns.Native.Unified
 -- The specification. The final statements (`…Claim : Prop`, one file per area) are imported here; every
 -- definition they depend on is in human/ (all of Human.* is built).
 import Human.Circuits.AddSub.RVTheorems
