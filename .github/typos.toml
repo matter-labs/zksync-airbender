@@ -36,6 +36,8 @@ hom = "hom" # Ring homomorphisms.
 Hom = "Hom"
 thm = "thm" # Lean declaration constructors.
 ue = "ue" # Sail exception type argument.
+hel = "hel" # Lean hypothesis names.
+henc = "henc"
 
 [type.asm.extend-words]
 Wich = "Wich"

@@ -101,10 +101,10 @@ def main(logs: list[str]) -> int:
                         mb.warnings_ledger_append([(m, h)])
 
         try:
-            ths = [threading.Thread(target=worker) for _ in range(jobs)]
-            for t in ths:
+            threads = [threading.Thread(target=worker) for _ in range(jobs)]
+            for t in threads:
                 t.start()
-            for t in ths:
+            for t in threads:
                 t.join()
         finally:
             shutil.rmtree(tmp, ignore_errors=True)

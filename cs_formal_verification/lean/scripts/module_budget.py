@@ -408,10 +408,10 @@ def calibrate(lean: str, env: dict[str, str], tmp: Path) -> tuple[float, float]:
         o = tmp / f"calibration{k}"
         results.append(run_timed([lean, str(CALIBRATION), "-o", f"{o}.olean", "-i", f"{o}.ilean", "-c", f"{o}.c"], env))
 
-    ths = [threading.Thread(target=one, args=(k,)) for k in range(3)]
-    for t in ths:
+    threads = [threading.Thread(target=one, args=(k,)) for k in range(3)]
+    for t in threads:
         t.start()
-    for t in ths:
+    for t in threads:
         t.join()
     for cpu, rc, out in results:
         if rc != 0:
@@ -473,10 +473,10 @@ def cmd_check(jobs: int, table: Path | None) -> int:
                         if done[0] % 50 == 0:
                             print(f"budget: {done[0]}/{len(missing)}", flush=True)
 
-            ths = [threading.Thread(target=worker) for _ in range(max(1, jobs))]
-            for t in ths:
+            threads = [threading.Thread(target=worker) for _ in range(max(1, jobs))]
+            for t in threads:
                 t.start()
-            for t in ths:
+            for t in threads:
                 t.join()
         if failed:
             print(f"budget: FAIL {len(failed)} modules did not compile outside Lake")
