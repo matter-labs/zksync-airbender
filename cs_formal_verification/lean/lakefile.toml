@@ -386,6 +386,7 @@ text = true
 [[lean_lib]]
 name = "Proven"
 srcDir = "proven"
+needs = ["compiler_numeric_certificate_0", "compiler_numeric_certificate_1", "compiler_numeric_certificate_2", "compiler_numeric_certificate_3", "compiler_numeric_certificate_4", "compiler_numeric_certificate_5", "compiler_numeric_certificate_6", "compiler_numeric_certificate_7", "compiler_numeric_certificate_8", "compiler_numeric_certificate_9", "compiler_numeric_certificate_10", "compiler_numeric_certificate_11"]
 roots = ["Proven"]
 globs = ["Proven.+"]
 # Files that reach the Sail model (not a module) stay non-modules (scripts/modulize.py converts every other file);
@@ -663,3 +664,63 @@ needs = ["compiler_word_memory_capture", "compiler_word_memory_capture_source"]
 [[input_file]]
 name = "compiler_word_memory_capture_source"
 path = "artifacts/compiler/word-memory-cached-source.json"
+
+[[input_file]]
+name = "compiler_numeric_certificate_0"
+path = "artifacts/compiler/numeric-arithmetic/bigint-cached.json"
+text = true
+
+[[input_file]]
+name = "compiler_numeric_certificate_1"
+path = "artifacts/compiler/numeric-arithmetic/blake-g-cached.json"
+text = true
+
+[[input_file]]
+name = "compiler_numeric_certificate_2"
+path = "artifacts/compiler/numeric-arithmetic/blake-round-cached.json"
+text = true
+
+[[input_file]]
+name = "compiler_numeric_certificate_3"
+path = "artifacts/compiler/numeric-arithmetic/jump-branch-cached.json"
+text = true
+
+[[input_file]]
+name = "compiler_numeric_certificate_4"
+path = "artifacts/compiler/numeric-arithmetic/keccak-cached.json"
+text = true
+
+[[input_file]]
+name = "compiler_numeric_certificate_5"
+path = "artifacts/compiler/numeric-arithmetic/mul-div-cached.json"
+text = true
+
+[[input_file]]
+name = "compiler_numeric_certificate_6"
+path = "artifacts/compiler/numeric-arithmetic/shift-binop-cached.json"
+text = true
+
+[[input_file]]
+name = "compiler_numeric_certificate_7"
+path = "artifacts/compiler/numeric-arithmetic/subword-memory-cached.json"
+text = true
+
+[[input_file]]
+name = "compiler_numeric_certificate_8"
+path = "artifacts/compiler/numeric-arithmetic/unified-cached.json"
+text = true
+
+[[input_file]]
+name = "compiler_numeric_certificate_9"
+path = "artifacts/compiler/numeric-arithmetic/word-memory-cached.json"
+text = true
+
+[[input_file]]
+name = "compiler_numeric_certificate_10"
+path = "artifacts/compiler/numeric-clean/bigint-cached.json"
+text = true
+
+[[input_file]]
+name = "compiler_numeric_certificate_11"
+path = "artifacts/compiler/numeric-clean/keccak-cached.json"
+text = true

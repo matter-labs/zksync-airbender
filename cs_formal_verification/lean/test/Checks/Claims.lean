@@ -1,3 +1,4 @@
+import Proven.Final.Compiler.Arithmetic
 import Proven.Final.Trace.Machine.CodeWindows
 import Proven.Final.ISA.ValidUse
 import Proven.Final.Trace.Machine.Segmentation
@@ -721,3 +722,47 @@ example : Airbender.Trace.Machine.UnrolledCodeHashSegmentationClaim := Airbender
 example : Airbender.Trace.Machine.UnifiedCodeHashSegmentationClaim := Airbender.Trace.Machine.unified_code_hash_segmentation
 
 #print axioms Airbender.Trace.Machine.unified_code_hash_segmentation
+
+example : Airbender.Compiler.AddSubCachedArithmeticClaim := Airbender.Compiler.addSub_cached_arithmetic
+
+#print axioms Airbender.Compiler.addSub_cached_arithmetic
+
+example : Airbender.Compiler.BigintCachedArithmeticClaim := Airbender.Compiler.bigint_cached_arithmetic
+
+#print axioms Airbender.Compiler.bigint_cached_arithmetic
+
+example : Airbender.Compiler.BlakeGCachedArithmeticClaim := Airbender.Compiler.blakeG_cached_arithmetic
+
+#print axioms Airbender.Compiler.blakeG_cached_arithmetic
+
+example : Airbender.Compiler.BlakeRoundCachedArithmeticClaim := Airbender.Compiler.blakeRound_cached_arithmetic
+
+#print axioms Airbender.Compiler.blakeRound_cached_arithmetic
+
+example : Airbender.Compiler.JumpBranchCachedArithmeticClaim := Airbender.Compiler.jumpBranch_cached_arithmetic
+
+#print axioms Airbender.Compiler.jumpBranch_cached_arithmetic
+
+example : Airbender.Compiler.KeccakCachedArithmeticClaim := Airbender.Compiler.keccak_cached_arithmetic
+
+#print axioms Airbender.Compiler.keccak_cached_arithmetic
+
+example : Airbender.Compiler.MulDivCachedArithmeticClaim := Airbender.Compiler.mulDiv_cached_arithmetic
+
+#print axioms Airbender.Compiler.mulDiv_cached_arithmetic
+
+example : Airbender.Compiler.ShiftBinopCachedArithmeticClaim := Airbender.Compiler.shiftBinop_cached_arithmetic
+
+#print axioms Airbender.Compiler.shiftBinop_cached_arithmetic
+
+example : Airbender.Compiler.SubwordMemoryCachedArithmeticClaim := Airbender.Compiler.subwordMemory_cached_arithmetic
+
+#print axioms Airbender.Compiler.subwordMemory_cached_arithmetic
+
+example : Airbender.Compiler.UnifiedCachedArithmeticClaim := Airbender.Compiler.unified_cached_arithmetic
+
+#print axioms Airbender.Compiler.unified_cached_arithmetic
+
+example : Airbender.Compiler.WordMemoryCachedArithmeticClaim := Airbender.Compiler.wordMemory_cached_arithmetic
+
+#print axioms Airbender.Compiler.wordMemory_cached_arithmetic

@@ -3,7 +3,9 @@
 [Capture.lean](Capture.lean) gives the typed source snapshot and complete compiled artifact.
 The [ADD/SUB capture](Captures/AddSub.lean) and ten other capture modules read native exports for cached compilation.
 [Theorems.lean](Theorems.lean) states that each capture has the existing circuit's constraint description.
-Only the compiled layers differ. Arithmetic preservation is a separate obligation.
+Only the compiled layers differ. Each capture also has a cached arithmetic preservation claim.
+The proof binds every scalar cache, native sparse gate and logical placement to the checked arithmetic model.
+Lookup and native machine acceptance remain separate obligations.
 
 The [import command](../Import/CompilerCapture.lean) performs trusted transcription. Its native JSON conversion uses the current schema.
 It checks scalar bounds and fixed array lengths. It orders map entries as Rust BTree maps.

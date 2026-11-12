@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "name": "FullArithmeticNative-BigintCachedFoundation",
+      "module": "Proven.GKRProtocol.FullArithmeticNative.BigintCachedFoundation",
+      "source": "gen/compiler/FullArithmeticNative-BigintCachedFoundation.lean.in",
+      "output": ".lake/compiler-exports/FullArithmeticNative-BigintCachedFoundation.commands",
+      "relative": "FullArithmeticNative/BigintCachedFoundation.lean"
+    },
+    {
+      "name": "CleanArithmeticNative-BigintCached",
+      "module": "Proven.GKRProtocol.CleanArithmeticNative.BigintCached",
+      "source": "gen/compiler/CleanArithmeticNative-BigintCached.lean.in",
+      "output": ".lake/compiler-exports/CleanArithmeticNative-BigintCached.commands",
+      "relative": "CleanArithmeticNative/BigintCached.lean"
+    },
+    {
+      "name": "FullArithmeticNative-BigintCachedNumericData",
+      "module": "Proven.GKRProtocol.FullArithmeticNative.BigintCachedNumericData",
+      "source": "gen/compiler/FullArithmeticNative-BigintCachedNumericData.lean.in",
+      "output": ".lake/compiler-exports/FullArithmeticNative-BigintCachedNumericData.commands",
+      "relative": "FullArithmeticNative/BigintCachedNumericData.lean"
+    },
+    {
+      "name": "FullArithmeticNative-BlakeRoundCachedFoundation",
+      "module": "Proven.GKRProtocol.FullArithmeticNative.BlakeRoundCachedFoundation",
+      "source": "gen/compiler/FullArithmeticNative-BlakeRoundCachedFoundation.lean.in",
+      "output": ".lake/compiler-exports/FullArithmeticNative-BlakeRoundCachedFoundation.commands",
+      "relative": "FullArithmeticNative/BlakeRoundCachedFoundation.lean"
+    },
+    {
+      "name": "CleanArithmeticNative-BlakeRoundCached",
+      "module": "Proven.GKRProtocol.CleanArithmeticNative.BlakeRoundCached",
+      "source": "gen/compiler/CleanArithmeticNative-BlakeRoundCached.lean.in",
+      "output": ".lake/compiler-exports/CleanArithmeticNative-BlakeRoundCached.commands",
+      "relative": "CleanArithmeticNative/BlakeRoundCached.lean"
+    },
+    {
+      "name": "FullArithmeticNative-BlakeRoundCachedNumericData",
+      "module": "Proven.GKRProtocol.FullArithmeticNative.BlakeRoundCachedNumericData",
+      "source": "gen/compiler/FullArithmeticNative-BlakeRoundCachedNumericData.lean.in",
+      "output": ".lake/compiler-exports/FullArithmeticNative-BlakeRoundCachedNumericData.commands",
+      "relative": "FullArithmeticNative/BlakeRoundCachedNumericData.lean"
+    },
+    {
+      "name": "FullArithmeticNative-KeccakCachedFoundation",
+      "module": "Proven.GKRProtocol.FullArithmeticNative.KeccakCachedFoundation",
+      "source": "gen/compiler/FullArithmeticNative-KeccakCachedFoundation.lean.in",
+      "output": ".lake/compiler-exports/FullArithmeticNative-KeccakCachedFoundation.commands",
+      "relative": "FullArithmeticNative/KeccakCachedFoundation.lean"
+    },
+    {
+      "name": "CleanArithmeticNative-KeccakCached",
+      "module": "Proven.GKRProtocol.CleanArithmeticNative.KeccakCached",
+      "source": "gen/compiler/CleanArithmeticNative-KeccakCached.lean.in",
+      "output": ".lake/compiler-exports/CleanArithmeticNative-KeccakCached.commands",
+      "relative": "CleanArithmeticNative/KeccakCached.lean"
+    },
+    {
+      "name": "FullArithmeticNative-KeccakCachedNumericData",
+      "module": "Proven.GKRProtocol.FullArithmeticNative.KeccakCachedNumericData",
+      "source": "gen/compiler/FullArithmeticNative-KeccakCachedNumericData.lean.in",
+      "output": ".lake/compiler-exports/FullArithmeticNative-KeccakCachedNumericData.commands",
+      "relative": "FullArithmeticNative/KeccakCachedNumericData.lean"
+    },
+    {
+      "name": "CleanIdealNative-BigintCachedTraces",
+      "module": "Proven.GKRProtocol.CleanIdealNative.BigintCachedTraces",
+      "source": "gen/compiler/CleanIdealNative-BigintCachedTraces.lean.in",
+      "output": ".lake/compiler-exports/CleanIdealNative-BigintCachedTraces.commands",
+      "relative": "CleanIdealNative/BigintCachedTraces.lean"
+    }
+  ]
+}

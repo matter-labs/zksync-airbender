@@ -56,7 +56,19 @@ def check():
         native = read(REPO / f'cs/compiled_circuits/{circuit}_layout_gkr.json')
         if canonical(capture['circuit']) != canonical(native):
             raise ValueError(f'Compiler capture differs from the production cached artifact: {family}')
-    print('PASS 11 pinned cached compiler captures and complete source sidecars')
+    sys.set_int_max_str_digits(100000)
+    certificate_pins = read(ROOT / 'compiler_certificate_pins.json')
+    certificate_paths = {str(path.relative_to(ROOT))
+                         for directory in ('numeric-arithmetic', 'numeric-clean')
+                         for path in (ROOT / 'artifacts/compiler' / directory).glob('*.json')}
+    if set(certificate_pins) != certificate_paths:
+        raise ValueError('Compiler certificate pins do not cover every numeric payload')
+    for name, digest in certificate_pins.items():
+        path = ROOT / name
+        if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            raise ValueError(f'Compiler certificate bytes changed: {name}')
+        read(path)
+    print('PASS 11 pinned cached compiler captures, source sidecars and numeric certificates')
 
 
 def fresh(exporter):

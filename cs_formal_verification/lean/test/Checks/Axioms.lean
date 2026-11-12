@@ -1,3 +1,4 @@
+import Proven.Final.Compiler.Arithmetic
 import Proven.Final.Trace.Machine.CodeWindows
 import Proven.Final.ISA.ValidUse
 import Proven.Final.Trace.Machine.Segmentation
@@ -1407,3 +1408,25 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.Trace.Machine.unrolled_code_hash_segmentation
 
 #print axioms Airbender.Trace.Machine.unified_code_hash_segmentation
+
+#print axioms Airbender.Compiler.addSub_cached_arithmetic
+
+#print axioms Airbender.Compiler.bigint_cached_arithmetic
+
+#print axioms Airbender.Compiler.blakeG_cached_arithmetic
+
+#print axioms Airbender.Compiler.blakeRound_cached_arithmetic
+
+#print axioms Airbender.Compiler.jumpBranch_cached_arithmetic
+
+#print axioms Airbender.Compiler.keccak_cached_arithmetic
+
+#print axioms Airbender.Compiler.mulDiv_cached_arithmetic
+
+#print axioms Airbender.Compiler.shiftBinop_cached_arithmetic
+
+#print axioms Airbender.Compiler.subwordMemory_cached_arithmetic
+
+#print axioms Airbender.Compiler.unified_cached_arithmetic
+
+#print axioms Airbender.Compiler.wordMemory_cached_arithmetic
