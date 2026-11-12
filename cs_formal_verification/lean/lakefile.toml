@@ -76,6 +76,7 @@ globs = [
   "Human.Circuits.Blake2Round.Mixing",
   "Human.Circuits.Blake2Round.Preparation",
   "Human.Circuits.Blake2Round.Row",
+  "Human.Circuits.Blake2Round.Mask",
   "Human.Circuits.Blake2Round.Schedule",
   "Human.Circuits.Blake2Round.Tables.+",
   "Human.Circuits.InitsTeardowns.Model",

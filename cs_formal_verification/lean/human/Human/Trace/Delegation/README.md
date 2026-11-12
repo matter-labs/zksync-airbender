@@ -1,5 +1,8 @@
 # Caller and worker composition
 
+The RV delegation spec follows the circuit for invalid controls and worker RAM pointers.
+These inputs have undefined VM behavior; separate validity conditions delimit the reference-agreement claims.
+
 This directory states composition relations between decoded callers, matched
 worker requests and shared memory histories. Its conclusions include actual port
 execution, terminal-token agreement and complete reference effects for selected
