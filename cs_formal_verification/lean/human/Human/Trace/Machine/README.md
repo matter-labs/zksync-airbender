@@ -19,9 +19,9 @@ Its raw tuple and range claims have separate witnesses.
 The [malformed-PC regression](../../../../test/Tests/VerifierBoundary.lean) checks native acceptance and verifier rejection.
 
 Native initialization gates imply the exact token products through the imported artifact bindings.
-The [bigint](../../../../proven/Proven/UnifiedReduced/RVCaller/BigintStep.lean),
-[G](../../../../proven/Proven/UnifiedReduced/RVCaller/GStep.lean) and
-[round](../../../../proven/Proven/UnifiedReduced/RVCaller/RoundStep.lean) caller proofs give local RV steps.
+The [unrolled](../../../../proven/Proven/Trace/Machine/UnrolledStandardCycle.lean) and
+[unified](../../../../proven/Proven/Trace/Machine/UnifiedStandardCycle.lean) caller proofs give actual fetched RV steps
+for bigint, G and round cycles. They derive reads, write values and distinct worker addresses from shared matching.
 The round proof accepts every native Boolean mask.
 The [unrolled](../../../../proven/Proven/Trace/Machine/UnrolledModularStep.lean) and
 [unified](../../../../proven/Proven/Trace/Machine/UnifiedModularStep.lean) modular row proofs give RV instruction steps
