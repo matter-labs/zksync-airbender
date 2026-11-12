@@ -39,4 +39,6 @@ The [cycle partition](../../../../proven/Proven/Trace/Machine/CycleGroups.lean) 
 matched standard or split worker. It uses occurrence clocks and permits repeated PCs.
 
 The native acceptance interface is explicit. The [run composition](../../../../proven/Proven/Trace/Machine/UnrolledRun.lean)
-uses one shared history and permits loops. Cached GKR preservation and padding remain open.
+uses one shared history and permits loops. The [padded targets](Padding.lean) use the native contribution mask
+for CPU, worker, state, request and memory tuples. Their [proofs](../../../../proven/Proven/Final/Trace/Machine/Padding.lean)
+erase identity factors and retain full occurrence counts. Cached GKR preservation remains open.

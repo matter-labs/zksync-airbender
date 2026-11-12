@@ -1,3 +1,5 @@
+import Proven.Final.Helpers.Context.PaddingBoundary
+import Proven.Final.Trace.Machine.Padding
 import Proven.Final.Trace.Machine.Unrolled
 import Proven.Final.Trace.Machine.Unified
 import Proven.Final.Circuits.Blake2Round.Mask
@@ -652,3 +654,27 @@ example : Airbender.Trace.Machine.UnrolledReduced := Airbender.Trace.Machine.unr
 example : Airbender.Trace.Machine.Unified := Airbender.Trace.Machine.unified
 
 #print axioms Airbender.Trace.Machine.unified
+
+example : Airbender.Trace.Machine.PaddedUnrolledFullUnsigned := Airbender.Trace.Machine.padded_unrolled_full_unsigned
+
+#print axioms Airbender.Trace.Machine.padded_unrolled_full_unsigned
+
+example : Airbender.Trace.Machine.PaddedUnrolledReduced := Airbender.Trace.Machine.padded_unrolled_reduced
+
+#print axioms Airbender.Trace.Machine.padded_unrolled_reduced
+
+example : Airbender.Trace.Machine.PaddedUnified := Airbender.Trace.Machine.padded_unified
+
+#print axioms Airbender.Trace.Machine.padded_unified
+
+example : Airbender.PaddingBoundary.ContributionSoundnessClaim := Airbender.PaddingBoundary.contribution_soundness
+
+#print axioms Airbender.PaddingBoundary.contribution_soundness
+
+example : Airbender.PaddingBoundary.ProductSoundnessClaim := Airbender.PaddingBoundary.product_soundness
+
+#print axioms Airbender.PaddingBoundary.product_soundness
+
+example : Airbender.PaddingBoundary.ProjectionClaim := Airbender.PaddingBoundary.projection
+
+#print axioms Airbender.PaddingBoundary.projection

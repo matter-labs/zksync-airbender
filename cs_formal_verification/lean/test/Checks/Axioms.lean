@@ -1,3 +1,5 @@
+import Proven.Final.Helpers.Context.PaddingBoundary
+import Proven.Final.Trace.Machine.Padding
 import Proven.Final.Trace.Machine.Unrolled
 import Proven.Final.Trace.Machine.Unified
 import Proven.Final.Circuits.Blake2Round.Mask
@@ -1370,3 +1372,15 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.Trace.Machine.unrolled_reduced
 
 #print axioms Airbender.Trace.Machine.unified
+
+#print axioms Airbender.Trace.Machine.padded_unrolled_full_unsigned
+
+#print axioms Airbender.Trace.Machine.padded_unrolled_reduced
+
+#print axioms Airbender.Trace.Machine.padded_unified
+
+#print axioms Airbender.PaddingBoundary.contribution_soundness
+
+#print axioms Airbender.PaddingBoundary.product_soundness
+
+#print axioms Airbender.PaddingBoundary.projection
