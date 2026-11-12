@@ -23,6 +23,8 @@ The [bigint](../../../../proven/Proven/UnifiedReduced/RVCaller/BigintStep.lean),
 [G](../../../../proven/Proven/UnifiedReduced/RVCaller/GStep.lean) and
 [round](../../../../proven/Proven/UnifiedReduced/RVCaller/RoundStep.lean) caller proofs give local RV steps.
 The round proof accepts every native Boolean mask.
+The [shared memory proof](../../../../proven/Proven/Trace/Machine/MemoryBounds.lean) bounds every CPU and worker read,
+write and terminal word from the public seeds and native matching. The transfer-order proof covers both worker pools.
 
 The native acceptance interface is explicit. Cached GKR preservation, whole execution composition
 and padding remain open before these targets have final proofs.
