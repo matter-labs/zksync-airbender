@@ -11,6 +11,7 @@ runs:
       run: |
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
         cs_formal_verification/ci/lean-ci.sh deps
+        python3 cs_formal_verification/ci/test_sail_drift.py
 
     - name: Restore elan
       uses: actions/cache@v4

@@ -40,7 +40,7 @@ SOURCE_NAMES = {
     # CI (docs/TRUST_AND_REVIEW.md, What CI re-checks): verify.sh's audit modes, the kernel checker
     "VERIFY_AUDITS", "fresh", "replay", "leanchecker", "kernel_replay", "native_decide",
     # Lean 4.35: lake check's sandbox tool, lean-sail's codegen wrapper command (sail/README.md)
-    "bwrap", "skip_inductive_codegen",
+    "bwrap", "skip_inductive_codegen", "ci.yml",
     # the no-warnings gate (README): Lake library names and Lake's option for non-module files
     "Proven", "CleanAudit", "allowNonModules",
 }
@@ -53,7 +53,7 @@ def guide_names():
         names.update(name for name in re.findall(r"`([^`\n]+)`", text)
                      if re.fullmatch(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*", name)
                      and name not in SOURCE_NAMES
-                     and not re.fullmatch(r"[0-9a-f]{40}", name))
+                     and not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", name))
     return names
 
 

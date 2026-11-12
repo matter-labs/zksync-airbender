@@ -64,6 +64,7 @@ jobs:
               files = await github.paginate(github.rest.pulls.listFiles, {
                 ...context.repo, pull_number: context.issue.number, per_page: 100
               });
+              if (files.length >= 3000) files = undefined;
             } else if (context.eventName === 'push' && !/^0+$/.test(context.payload.before)) {
               const comparison = await github.rest.repos.compareCommitsWithBasehead({
                 ...context.repo, basehead: `${context.payload.before}...${context.sha}`
@@ -141,10 +142,6 @@ jobs:
       - name: verify.sh
         if: env.LEAN_RELEVANT == 'true'
         run: cs_formal_verification/ci/lean-ci.sh time verify
-      - name: Decoder oracle
-        if: env.LEAN_RELEVANT == 'true'
-        run: python3 scripts/module_budget.py build program_rows_oracle
-        working-directory: cs_formal_verification/lean
       - name: Upload decoder oracle
         if: env.LEAN_RELEVANT == 'true'
         uses: actions/upload-artifact@v4
