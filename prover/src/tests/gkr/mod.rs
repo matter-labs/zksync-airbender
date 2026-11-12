@@ -21,12 +21,6 @@ pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &s
     serde_json::from_reader(src).unwrap()
 }
 
-#[cfg(test)]
-pub(crate) fn bincode_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src = std::fs::File::open(filename).unwrap();
-    bincode::deserialize_from(src).unwrap()
-}
-
 // The orchestration layer (VM capture + per-circuit prove helpers) is exposed
 // under `feature = "test"` so thin downstream harnesses (`experiments_runner`'s
 // fast add/sub proving test) can reuse the exact prove path of the per-family

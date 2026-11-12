@@ -9,8 +9,7 @@
 //! - Protocol helpers (ND streams, end-params, recursion chain, fsv binaries,
 //!   native verification): `full_statement_verifier::host_utils`.
 //!
-//! The pipeline mirrors `prover_examples::recursion`'s (and its GPU
-//! twin, `run_gpu_recursive_pipeline` in `gpu/execution_prover/tests/program.rs`):
+//! The pipeline follows these stages:
 //!
 //!   base (unrolled, full-unsigned ISA)
 //!   → unrolled recursion layers (reduced ISA, fsv verifier binaries) while the
