@@ -1,0 +1,4 @@
+interface:
+  display_name: "GKR and WHIR Verifier Review"
+  short_description: "Audit one GKR, Sumcheck, or WHIR verifier slice"
+  default_prompt: "Use $zk-gkr-whir-verifier-review to audit this GKR or WHIR verifier phase and its claim handoffs."
