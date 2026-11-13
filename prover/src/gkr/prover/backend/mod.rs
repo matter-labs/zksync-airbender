@@ -1537,10 +1537,14 @@ mod tests {
         let backend = BabyBearNeonWorkStealingBackend;
 
         // n covers: fallback (8 < 16), NEON without radix-4 pass (16), NEON
-        // with radix-4 + u64-acc passes (1024/4096)
-        for (num_threads, num_cols, n_log, lde) in
-            [(4, 5, 3, 2), (4, 3, 4, 2), (4, 5, 10, 8), (8, 2, 12, 2)]
-        {
+        // with radix-4 + u64-acc passes (1024/4096), production size (2^20)
+        for (num_threads, num_cols, n_log, lde) in [
+            (4, 5, 3, 2),
+            (4, 3, 4, 2),
+            (4, 5, 10, 8),
+            (8, 2, 12, 2),
+            (8, 4, 20, 2),
+        ] {
             let worker = Worker::new_with_num_threads(num_threads);
             let n = 1usize << n_log;
             let twiddles = Twiddles::<F, Global>::new(n, &worker);
@@ -1660,10 +1664,15 @@ mod tests {
         let backend = BabyBearAvx2WorkStealingBackend;
 
         // n covers: fallback (8 < 16), AVX2 base fallback (16 < 32), AVX2
-        // with radix-4 + u64-acc passes (1024/4096)
-        for (num_threads, num_cols, n_log, lde) in
-            [(4, 5, 3, 2), (4, 3, 4, 2), (4, 5, 10, 8), (8, 2, 12, 2)]
-        {
+        // with radix-4 + u64-acc passes (1024/4096), blocked all-threads
+        // plan (2^20)
+        for (num_threads, num_cols, n_log, lde) in [
+            (4, 5, 3, 2),
+            (4, 3, 4, 2),
+            (4, 5, 10, 8),
+            (8, 2, 12, 2),
+            (8, 4, 20, 2),
+        ] {
             let worker = Worker::new_with_num_threads(num_threads);
             let n = 1usize << n_log;
             let twiddles = Twiddles::<F, Global>::new(n, &worker);
