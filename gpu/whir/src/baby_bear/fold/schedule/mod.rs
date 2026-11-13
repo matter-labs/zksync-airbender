@@ -169,7 +169,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         folds_range.start(stream)?;
         schedule_fold_round(
             num_folding_steps,
-            0, // base-round folding PoW is rejected when the proof layout is built
+            whir_schedule.base_round.folding_pow_bits,
             &mut state,
             &mut scheduled_sumcheck_poly_idx,
             proof_slab,
