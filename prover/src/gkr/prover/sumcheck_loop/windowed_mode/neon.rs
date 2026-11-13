@@ -2122,220 +2122,10 @@ pub unsafe fn soa_untranspose_to_aos_ext<const N: usize>(acc: *const u32, out: *
 // ---------------------------------------------------------------------------
 // LSB-layout ("contiguous tap") kernels: the window variables are the LOW bits
 // of the trace index, so one row's 2^k packed values are contiguous in memory
-// and one call processes ONE row -- 4 CELLS per vector for base values (the
-// in-register NTT needs shuffle stages for butterfly distances 2 and 1), one
-// ext element per vector (`soa_lde8` / `soa_lde64_r2` apply unchanged: their
-// per-vector lanes are independent, and broadcast base twiddles times a
-// [4-limb ext element] vector IS the ext-by-base product). The NEON GKR backend
-// uses these through the `lsb_bench` LSB same-size chain.
+// and one call processes ONE row -- 4 CELLS per vector for base values, one
+// ext element per vector. The NEON GKR backend uses these through the
+// `lsb_bench` LSB same-size chain.
 // ---------------------------------------------------------------------------
-
-/// In-vector DIF tail: butterfly distances 2 then 1 on the 4 cells of one
-/// vector, standard in-place positions. `tw2 = [1, 1, 1, w^(n/4)]` applies the
-/// distance-2 stage's only non-unit twiddle after packing.
-#[inline(always)]
-unsafe fn lsb_dif_tail(v: uint32x4_t, tw2: uint32x4_t) -> uint32x4_t {
-    // distance 2: pairs (0,2),(1,3) -> [s0, s1, d0, d1] then diagonal twiddle
-    let hi = vextq_u32(v, v, 2);
-    let s = add4(v, hi);
-    let d = sub4(v, hi);
-    let packed = vreinterpretq_u32_u64(vzip1q_u64(
-        vreinterpretq_u64_u32(s),
-        vreinterpretq_u64_u32(d),
-    ));
-    let v = mont_mul4(packed, tw2);
-    // distance 1: pairs (0,1),(2,3), twiddle 1
-    let r = vrev64q_u32(v);
-    let s = add4(v, r);
-    let d = sub4(v, r);
-    vtrn1q_u32(s, d)
-}
-
-/// In-vector DIT head: the mirror of [`lsb_dif_tail`] (distance 1 then 2,
-/// twiddle applied to the second operand before the butterfly).
-#[inline(always)]
-unsafe fn lsb_dit_head(v: uint32x4_t, tw2: uint32x4_t) -> uint32x4_t {
-    let r = vrev64q_u32(v);
-    let s = add4(v, r);
-    let d = sub4(v, r);
-    let v = vtrn1q_u32(s, d);
-    let v = mont_mul4(v, tw2);
-    let hi = vextq_u32(v, v, 2);
-    let s = add4(v, hi);
-    let d = sub4(v, hi);
-    vreinterpretq_u32_u64(vzip1q_u64(
-        vreinterpretq_u64_u32(s),
-        vreinterpretq_u64_u32(d),
-    ))
-}
-
-#[derive(Clone, Copy)]
-pub struct LsbLde8Tables {
-    inv_d4: uint32x4_t,  // lanes [1, wi, wi^2, wi^3]
-    inv_tw2: uint32x4_t, // [1, 1, 1, wi^2]
-    fwd_d4: uint32x4_t,
-    fwd_tw2: uint32x4_t,
-    scale: [uint32x4_t; 2], // gamma^bitrev3(p) / 8, packed 4 positions/vector
-}
-
-impl LsbLde8Tables {
-    pub fn new(omega8: BabyBearField, gamma: BabyBearField) -> Self {
-        assert!(omega8.pow(8).is_one());
-        assert!(!omega8.pow(4).is_one());
-        let lanes = |a: [BabyBearField; 4]| unsafe {
-            let raw = [
-                a[0].raw_u32_value(),
-                a[1].raw_u32_value(),
-                a[2].raw_u32_value(),
-                a[3].raw_u32_value(),
-            ];
-            vld1q_u32(raw.as_ptr())
-        };
-        let one = BabyBearField::ONE;
-        let wi = omega8.inverse().expect("invertible");
-        let eighth = BabyBearField::from_u32_with_reduction(8)
-            .inverse()
-            .expect("8 invertible");
-        let bitrev3 = [0usize, 4, 2, 6, 1, 5, 3, 7];
-        let mut scale = [BabyBearField::ZERO; 8];
-        for m in 0..8 {
-            let mut t = gamma.pow(m as u32);
-            t.mul_assign(&eighth);
-            scale[bitrev3[m]] = t;
-        }
-        LsbLde8Tables {
-            inv_d4: lanes([one, wi, wi.pow(2), wi.pow(3)]),
-            inv_tw2: lanes([one, one, one, wi.pow(2)]),
-            fwd_d4: lanes([one, omega8, omega8.pow(2), omega8.pow(3)]),
-            fwd_tw2: lanes([one, one, one, omega8.pow(2)]),
-            scale: [
-                lanes([scale[0], scale[1], scale[2], scale[3]]),
-                lanes([scale[4], scale[5], scale[6], scale[7]]),
-            ],
-        }
-    }
-}
-
-/// LDE of one row's 8 contiguous cells (2 vectors, 4 cells/lane-group):
-/// values on H (natural order) -> values on the coset gamma*H (natural order).
-#[inline(always)]
-pub unsafe fn lsb_lde8_base(h: [uint32x4_t; 2], t: &LsbLde8Tables) -> [uint32x4_t; 2] {
-    // DIF inverse NTT: cross-vector distance 4, then in-vector tail
-    let s = add4(h[0], h[1]);
-    let d = mont_mul4(sub4(h[0], h[1]), t.inv_d4);
-    let mut v0 = lsb_dif_tail(s, t.inv_tw2);
-    let mut v1 = lsb_dif_tail(d, t.inv_tw2);
-    // coset + 1/8 diagonal in bit-reversed positions
-    v0 = mont_mul4(v0, t.scale[0]);
-    v1 = mont_mul4(v1, t.scale[1]);
-    // DIT forward NTT
-    let v0 = lsb_dit_head(v0, t.fwd_tw2);
-    let v1 = lsb_dit_head(v1, t.fwd_tw2);
-    let tt = mont_mul4(v1, t.fwd_d4);
-    [add4(v0, tt), sub4(v0, tt)]
-}
-
-// ---- partially-reduced (u32-lazy) variant of the size-8 LDE ----
-//
-// Values live in [0, 2P) between operations. With BabyBear (P ~ 2^30.9) a sum
-// of two operands only fits u32 when both are < P (2P < 2^32 < 3P), so the
-// butterfly add/sub REQUIRE canonical inputs; everything else is deferred:
-// * Montgomery multiply drops its final conditional subtraction -- REDC alone
-//   returns < 2P, and its input bound holds for a lazy operand times a
-//   canonical twiddle (2P * P < R*P);
-// * a value is brought back to [0, P) with ONE conditional subtraction of P
-//   (`red2p`, the min trick) only right before it enters a butterfly;
-// * the subtract side of a butterfly is computed as `(a + P) - b` on
-//   canonical a, b -- in (0, 2P), no conditional needed.
-// A wider range (conditionally subtracting 2P instead) is impossible here:
-// 4P > 2^32, so [0, 2P) is already the maximal partially-reduced window.
-
-/// `[0, 2P) -> [0, P)`: one conditional subtraction of P.
-#[inline(always)]
-unsafe fn red2p(v: uint32x4_t, p: uint32x4_t) -> uint32x4_t {
-    vminq_u32(v, vsubq_u32(v, p))
-}
-
-/// Montgomery multiply WITHOUT the final conditional subtraction: for
-/// `a < 2P`, `b < P` the REDC input `a*b + m*P < 2P^2 + R*P < 2R*P` never
-/// overflows u64 and the result is `< 2P`.
-#[inline(always)]
-unsafe fn mont_mul4_lazy(a: uint32x4_t, b: uint32x4_t) -> uint32x4_t {
-    let p = vdupq_n_u32(P);
-    let k = vdupq_n_u32(K);
-    let prod_lo = vmull_u32(vget_low_u32(a), vget_low_u32(b));
-    let prod_hi = vmull_high_u32(a, b);
-    let lo32 = vcombine_u32(vmovn_u64(prod_lo), vmovn_u64(prod_hi));
-    let m = vmulq_u32(lo32, k);
-    let prod_lo = vmlal_u32(prod_lo, vget_low_u32(m), vget_low_u32(p));
-    let prod_hi = vmlal_high_u32(prod_hi, m, p);
-    vcombine_u32(vshrn_n_u64::<32>(prod_lo), vshrn_n_u64::<32>(prod_hi))
-}
-
-/// Lazy in-vector DIF tail: input `< 2P`, output `< 2P`.
-#[inline(always)]
-unsafe fn lsb_dif_tail_lazy(v: uint32x4_t, tw2: uint32x4_t, p: uint32x4_t) -> uint32x4_t {
-    // distance 2: reduce once, then raw butterflies
-    let v = red2p(v, p);
-    let hi = vextq_u32(v, v, 2);
-    let s = vaddq_u32(v, hi); // lanes 0,1: < 2P
-    let d = vsubq_u32(vaddq_u32(v, p), hi); // lanes 0,1: in (0, 2P)
-    let packed = vreinterpretq_u32_u64(vzip1q_u64(
-        vreinterpretq_u64_u32(s),
-        vreinterpretq_u64_u32(d),
-    ));
-    let v = mont_mul4_lazy(packed, tw2); // < 2P
-                                         // distance 1
-    let v = red2p(v, p);
-    let r = vrev64q_u32(v);
-    let s = vaddq_u32(v, r);
-    let d = vsubq_u32(vaddq_u32(v, p), r);
-    vtrn1q_u32(s, d) // < 2P
-}
-
-/// Lazy in-vector DIT head: input `< 2P`, output `< 2P`.
-#[inline(always)]
-unsafe fn lsb_dit_head_lazy(v: uint32x4_t, tw2: uint32x4_t, p: uint32x4_t) -> uint32x4_t {
-    let v = red2p(v, p);
-    let r = vrev64q_u32(v);
-    let s = vaddq_u32(v, r);
-    let d = vsubq_u32(vaddq_u32(v, p), r);
-    let v = vtrn1q_u32(s, d); // < 2P
-    let v = mont_mul4_lazy(v, tw2); // < 2P
-    let v = red2p(v, p);
-    let hi = vextq_u32(v, v, 2);
-    let s = vaddq_u32(v, hi);
-    let d = vsubq_u32(vaddq_u32(v, p), hi);
-    vreinterpretq_u32_u64(vzip1q_u64(
-        vreinterpretq_u64_u32(s),
-        vreinterpretq_u64_u32(d),
-    ))
-}
-
-/// Partially-reduced [`lsb_lde8_base`]: canonical input and output, `[0, 2P)`
-/// internally with reductions only at butterfly entry.
-#[inline(always)]
-pub unsafe fn lsb_lde8_base_lazy(h: [uint32x4_t; 2], t: &LsbLde8Tables) -> [uint32x4_t; 2] {
-    let p = vdupq_n_u32(P);
-    // DIF distance 4 on canonical inputs: raw butterflies
-    let s = vaddq_u32(h[0], h[1]); // < 2P
-    let d = vsubq_u32(vaddq_u32(h[0], p), h[1]); // in (0, 2P)
-    let d = mont_mul4_lazy(d, t.inv_d4); // < 2P
-    let v0 = lsb_dif_tail_lazy(s, t.inv_tw2, p);
-    let v1 = lsb_dif_tail_lazy(d, t.inv_tw2, p);
-    // coset + 1/8 diagonal
-    let v0 = mont_mul4_lazy(v0, t.scale[0]);
-    let v1 = mont_mul4_lazy(v1, t.scale[1]);
-    // DIT
-    let v0 = lsb_dit_head_lazy(v0, t.fwd_tw2, p);
-    let v1 = lsb_dit_head_lazy(v1, t.fwd_tw2, p);
-    let a = red2p(v0, p);
-    let tt = red2p(mont_mul4_lazy(v1, t.fwd_d4), p);
-    // final butterflies canonicalize the outputs
-    let out0 = red2p(vaddq_u32(a, tt), p);
-    let out1 = red2p(vsubq_u32(vaddq_u32(a, p), tt), p);
-    [out0, out1]
-}
 
 // ---- Lagrange-matrix variant of the size-8 LDE ----
 //
@@ -2539,146 +2329,6 @@ pub unsafe fn soa_lde8_mat(cells: &[uint32x4_t; 8], t: &SoaLde8MatTables) -> [ui
         condsub!();
         lazy_redc_pair(lo, hi)
     })
-}
-
-#[derive(Clone, Copy)]
-pub struct LsbLde64Tables {
-    inv_d32: [uint32x4_t; 8], // lanes wi^(4m+lane)
-    inv_d16: [uint32x4_t; 4], // wi^(2*(4m+lane))
-    inv_d8: [uint32x4_t; 2],  // wi^(4*(4m+lane))
-    inv_d4: uint32x4_t,       // [1, wi^8, wi^16, wi^24]
-    inv_tw2: uint32x4_t,      // [1, 1, 1, wi^16]
-    fwd_d32: [uint32x4_t; 8],
-    fwd_d16: [uint32x4_t; 4],
-    fwd_d8: [uint32x4_t; 2],
-    fwd_d4: uint32x4_t,
-    fwd_tw2: uint32x4_t,
-    scale: [uint32x4_t; 16], // gamma^bitrev6(p) / 64, packed 4 positions/vector
-}
-
-impl LsbLde64Tables {
-    pub fn new(omega64: BabyBearField, gamma: BabyBearField) -> Self {
-        assert!(omega64.pow(64).is_one());
-        assert!(!omega64.pow(32).is_one());
-        let lanes = |a: [BabyBearField; 4]| unsafe {
-            let raw = [
-                a[0].raw_u32_value(),
-                a[1].raw_u32_value(),
-                a[2].raw_u32_value(),
-                a[3].raw_u32_value(),
-            ];
-            vld1q_u32(raw.as_ptr())
-        };
-        let one = BabyBearField::ONE;
-        let wi = omega64.inverse().expect("invertible");
-        let inv64 = BabyBearField::from_u32_with_reduction(64)
-            .inverse()
-            .expect("64 invertible");
-        let mut scale = [BabyBearField::ZERO; 64];
-        for m in 0..64 {
-            let mut t = gamma.pow(m as u32);
-            t.mul_assign(&inv64);
-            scale[bitrev6(m)] = t;
-        }
-        let stage = |root: BabyBearField, e_step: u32, m: usize| -> [BabyBearField; 4] {
-            core::array::from_fn(|lane| root.pow(e_step * (4 * m as u32 + lane as u32)))
-        };
-        LsbLde64Tables {
-            inv_d32: core::array::from_fn(|m| lanes(stage(wi, 1, m))),
-            inv_d16: core::array::from_fn(|m| lanes(stage(wi, 2, m))),
-            inv_d8: core::array::from_fn(|m| lanes(stage(wi, 4, m))),
-            inv_d4: lanes([one, wi.pow(8), wi.pow(16), wi.pow(24)]),
-            inv_tw2: lanes([one, one, one, wi.pow(16)]),
-            fwd_d32: core::array::from_fn(|m| lanes(stage(omega64, 1, m))),
-            fwd_d16: core::array::from_fn(|m| lanes(stage(omega64, 2, m))),
-            fwd_d8: core::array::from_fn(|m| lanes(stage(omega64, 4, m))),
-            fwd_d4: lanes([one, omega64.pow(8), omega64.pow(16), omega64.pow(24)]),
-            fwd_tw2: lanes([one, one, one, omega64.pow(16)]),
-            scale: core::array::from_fn(|m| {
-                lanes(core::array::from_fn(|lane| scale[4 * m + lane]))
-            }),
-        }
-    }
-}
-
-/// LDE of one row's 64 contiguous cells (16 vectors, 4 cells each): values on
-/// H64 (natural order) -> values on the coset gamma*H64 (natural order).
-#[inline(always)]
-pub unsafe fn lsb_lde64_base(h: &[uint32x4_t; 16], t: &LsbLde64Tables) -> [uint32x4_t; 16] {
-    let mut x = *h;
-    // ---- DIF inverse NTT ----
-    for m in 0..8 {
-        let a = x[m];
-        let b = x[m + 8];
-        x[m] = add4(a, b);
-        x[m + 8] = mont_mul4(sub4(a, b), t.inv_d32[m]);
-    }
-    for blk in [0usize, 8] {
-        for m in 0..4 {
-            let a = x[blk + m];
-            let b = x[blk + m + 4];
-            x[blk + m] = add4(a, b);
-            x[blk + m + 4] = mont_mul4(sub4(a, b), t.inv_d16[m]);
-        }
-    }
-    for blk in [0usize, 4, 8, 12] {
-        for m in 0..2 {
-            let a = x[blk + m];
-            let b = x[blk + m + 2];
-            x[blk + m] = add4(a, b);
-            x[blk + m + 2] = mont_mul4(sub4(a, b), t.inv_d8[m]);
-        }
-    }
-    let mut blk = 0;
-    while blk < 16 {
-        let a = x[blk];
-        let b = x[blk + 1];
-        x[blk] = add4(a, b);
-        x[blk + 1] = mont_mul4(sub4(a, b), t.inv_d4);
-        blk += 2;
-    }
-    for m in 0..16 {
-        x[m] = lsb_dif_tail(x[m], t.inv_tw2);
-    }
-    // ---- coset + 1/64 diagonal (bit-reversed positions) ----
-    for m in 0..16 {
-        x[m] = mont_mul4(x[m], t.scale[m]);
-    }
-    // ---- DIT forward NTT ----
-    for m in 0..16 {
-        x[m] = lsb_dit_head(x[m], t.fwd_tw2);
-    }
-    let mut blk = 0;
-    while blk < 16 {
-        let a = x[blk];
-        let tt = mont_mul4(x[blk + 1], t.fwd_d4);
-        x[blk] = add4(a, tt);
-        x[blk + 1] = sub4(a, tt);
-        blk += 2;
-    }
-    for blk in [0usize, 4, 8, 12] {
-        for m in 0..2 {
-            let a = x[blk + m];
-            let tt = mont_mul4(x[blk + m + 2], t.fwd_d8[m]);
-            x[blk + m] = add4(a, tt);
-            x[blk + m + 2] = sub4(a, tt);
-        }
-    }
-    for blk in [0usize, 8] {
-        for m in 0..4 {
-            let a = x[blk + m];
-            let tt = mont_mul4(x[blk + m + 4], t.fwd_d16[m]);
-            x[blk + m] = add4(a, tt);
-            x[blk + m + 4] = sub4(a, tt);
-        }
-    }
-    for m in 0..8 {
-        let a = x[m];
-        let tt = mont_mul4(x[m + 8], t.fwd_d32[m]);
-        x[m] = add4(a, tt);
-        x[m + 8] = sub4(a, tt);
-    }
-    x
 }
 
 // ---- generic AoS cell kernels for the LSB evaluators ----
@@ -2890,12 +2540,7 @@ mod tests {
         let omega16 = ::fft::domain_generator_for_size::<BabyBearField>(16);
         let mut omega8 = omega16;
         omega8.square();
-        let t8 = LsbLde8Tables::new(omega8, omega16);
         let t8m = LsbLde8MatTables::new(omega8, omega16);
-        let omega128 = ::fft::domain_generator_for_size::<BabyBearField>(128);
-        let mut omega64 = omega128;
-        omega64.square();
-        let t64 = LsbLde64Tables::new(omega64, omega128);
 
         let eval = |coeffs: &[BabyBearField], x: BabyBearField| -> BabyBearField {
             let mut acc = BabyBearField::ZERO;
@@ -2908,7 +2553,6 @@ mod tests {
 
         let mut seed = 91u64;
         for _ in 0..50 {
-            // n = 8: one row, cells are lanes
             let coeffs: [BabyBearField; 8] = core::array::from_fn(|_| pseudo_base(&mut seed));
             let mut cells = [0u32; 8];
             for j in 0..8 {
@@ -2916,22 +2560,10 @@ mod tests {
             }
             let out = unsafe {
                 let h = [vld1q_u32(cells.as_ptr()), vld1q_u32(cells.as_ptr().add(4))];
-                let o = lsb_lde8_base(h, &t8);
-                // the partially-reduced variant canonicalizes its outputs, so
-                // it must agree bitwise with the canonical kernel
-                let o_lazy = lsb_lde8_base_lazy(h, &t8);
-                let o_mat = lsb_lde8_base_mat(h, &t8m);
+                let o = lsb_lde8_base_mat(h, &t8m);
                 let mut raw = [0u32; 8];
-                let mut raw_lazy = [0u32; 8];
-                let mut raw_mat = [0u32; 8];
                 vst1q_u32(raw.as_mut_ptr(), o[0]);
                 vst1q_u32(raw.as_mut_ptr().add(4), o[1]);
-                vst1q_u32(raw_lazy.as_mut_ptr(), o_lazy[0]);
-                vst1q_u32(raw_lazy.as_mut_ptr().add(4), o_lazy[1]);
-                vst1q_u32(raw_mat.as_mut_ptr(), o_mat[0]);
-                vst1q_u32(raw_mat.as_mut_ptr().add(4), o_mat[1]);
-                assert_eq!(raw, raw_lazy, "lazy lde8 diverges from canonical");
-                assert_eq!(raw, raw_mat, "matrix lde8 diverges from canonical");
                 raw
             };
             for j in 0..8 {
@@ -2941,33 +2573,6 @@ mod tests {
                     out[j],
                     eval(&coeffs, x).raw_u32_value(),
                     "lsb lde8 mismatch at coset point {}",
-                    j
-                );
-            }
-
-            // n = 64
-            let coeffs: [BabyBearField; 64] = core::array::from_fn(|_| pseudo_base(&mut seed));
-            let mut cells = [0u32; 64];
-            for j in 0..64 {
-                cells[j] = eval(&coeffs, omega64.pow(j as u32)).raw_u32_value();
-            }
-            let out = unsafe {
-                let h: [uint32x4_t; 16] =
-                    core::array::from_fn(|m| vld1q_u32(cells.as_ptr().add(4 * m)));
-                let o = lsb_lde64_base(&h, &t64);
-                let mut raw = [0u32; 64];
-                for m in 0..16 {
-                    vst1q_u32(raw.as_mut_ptr().add(4 * m), o[m]);
-                }
-                raw
-            };
-            for j in 0..64 {
-                let mut x = omega128;
-                x.mul_assign(&omega64.pow(j as u32));
-                assert_eq!(
-                    out[j],
-                    eval(&coeffs, x).raw_u32_value(),
-                    "lsb lde64 mismatch at coset point {}",
                     j
                 );
             }
