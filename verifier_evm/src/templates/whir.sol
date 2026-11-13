@@ -52,7 +52,6 @@ contract WhirVerifier {
     uint256 constant __TEMPLATE_WHIR_GEN     = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_GEN_INV = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_NUM_ROUNDS   = "{unassigned}";
-    uint256 constant __TEMPLATE_WHIR_NZ           = "{unassigned}";  // WHIR eval-point coords = trace_log2 + pack_log2
     uint256 constant __TEMPLATE_WHIR_GCOUNT       = "{unassigned}";  // gamma-batched base columns + 1
     uint256 constant __TEMPLATE_WHIR_RFIN         = "{unassigned}";  // final-poly log2 = message_log2 - sum(folds)
     uint256 constant __TEMPLATE_WHIR_MERGED_MW    = "{unassigned}";  // merged memory+witness base columns
@@ -77,7 +76,7 @@ contract WhirVerifier {
     // ── Memory map (generated: contiguous regions above the GKR heap, each sized from the
     //    schedule — see WhirGenConfig::memory_regions for every region's size formula) ────────
     uint256 constant __TEMPLATE_WHIR_SEED_PTR     = "{unassigned}";  // seed + in-place absorb scratch
-    uint256 constant __TEMPLATE_WHIR_Z_PTR        = "{unassigned}";  // z: nz coords
+    uint256 constant __TEMPLATE_WHIR_Z_PTR        = "{unassigned}";  // z: the evaluation-point coords
     uint256 constant __TEMPLATE_WHIR_POW_PTR      = "{unassigned}";  // (scalar, running eq, coefficient) x numpow
     uint256 constant __TEMPLATE_WHIR_ACC_PREF_PTR = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = "{unassigned}";  // gcount gamma powers
@@ -130,11 +129,6 @@ contract WhirVerifier {
         function exp_pow2(x, k) -> res {
             res := x
             for { let i := 0 } lt(i, k) { i := add(i, 1) } { res := mulmod(res, res, P) }
-        }
-        function f1_fe(cd, i) -> v {
-            let bit := mul(123, i)
-            v := and(shr(sub(133, and(bit, 7)), calldataload(add(cd, shr(3, bit)))), 0x7ffffffffffffffffffffffffffffff)
-            if iszero(lt(v, P)) { revert(0, 0) }
         }
         function f1_word(cd, bit) -> w {
             let x := shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))
@@ -555,9 +549,8 @@ contract WhirVerifier {
         // above. `cd_start` = calldata offset of the WHIR proof stream (right after the GKR
         // stream's trailing 8-byte WHIR-batching PoW nonce).
         function whir_verify(cd_start) {
-        // Base geometry (all generated): nz = z-coords, gcount = gamma-batched base columns + 1,
+        // Base geometry (all generated): gcount = gamma-batched base columns + 1,
         // rfin = final-poly log2.
-        let nz := __TEMPLATE_WHIR_NZ
         let gcount := __TEMPLATE_WHIR_GCOUNT
         let rfin := __TEMPLATE_WHIR_RFIN
         let batching := mload(__TEMPLATE_WHIR_HANDOFF_BATCHING_PTR)

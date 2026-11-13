@@ -82,7 +82,6 @@ contract GkrWhirVerifier {
     uint256 constant __TEMPLATE_GKR_CIRCUIT_CLAIMS_BYTES = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_GATEVAL_BYTES        = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_QTABLE_BYTES         = "{unassigned}";
-    uint256 constant __TEMPLATE_GKR_F1_V0_BYTES          = "{unassigned}"; // F1: the decoded v0 GKR calldata image
 
     // ── Transcript preimage: registers ‖ final_pc/ts ‖ inits/teardowns top_bits ‖ setup_cap ‖
     //    memory_cap (LE u32 words). The register prefix is the RISC-V machine state (fixed);
@@ -149,14 +148,8 @@ contract GkrWhirVerifier {
         assembly ("memory-safe") {
         mstore(P_PTR, 0x7000000000000000000000000000001)
         mstore(F1_FRONTIER_PTR, frontier)
-        // Layout self-check (constant-folded away when it holds): the GKR region chain must end
-        // exactly where the generator placed the WHIR half's first region.
-        if iszero(eq(add(F1_V0_PTR(), __TEMPLATE_GKR_F1_V0_BYTES), __TEMPLATE_WHIR_SEED_PTR)) {
-            revert(0, 0)
-        }
         // the setup data contract is this deployment's data: check its code before any read
         if iszero(eq(extcodehash(mload(F1_FRONTIER_PTR)), __TEMPLATE_F1_FRONTIER_HASH)) { revert(0, 0) }
-        // assembly ("memory-safe") {
         // Proof/transcript bytes preserve logical stream order. Rust must append
         // fixed-width BE integer bytes: u32::to_be_bytes(), u64::to_be_bytes(),
         // u128::to_be_bytes(). 32-byte hashes/caps/roots are absorbed as raw bytes.
@@ -175,9 +168,6 @@ contract GkrWhirVerifier {
         // preimage copy (transcript_init) and the per-layer cache array (circuit.yul); the
         // generator sizes it for the largest of those.
         function SEED_PTR()          -> ptr { ptr := add(POINT_PTR(), __TEMPLATE_GKR_POINT_BYTES) }
-        function GKR_INIT_SCRATCH_PTR()   -> ptr { ptr := add(SEED_PTR(), mul(32, 1)) }
-        function GKR_INIT_CLAIM_PTR()     -> ptr { ptr := add(SEED_PTR(), mul(32, 2)) }
-        function GKR_CIRCUIT_ALPHA2_PTR() -> ptr { ptr := add(SEED_PTR(), mul(32, 1)) }
         function GKR_CIRCUIT_CACHE_PTR()  -> ptr { ptr := add(SEED_PTR(), mul(32, 2)) }
         // Dim-reducing / entry regions (used before the circuit layers).
         function GKR_BATCHING_PTR() -> ptr { ptr := add(SEED_PTR(), __TEMPLATE_GKR_SEED_BYTES) }                 // running batching

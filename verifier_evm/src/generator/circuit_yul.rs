@@ -295,6 +295,15 @@ fn scaled(c: &Dual, input: &Dual) -> Dual {
     }
 }
 
+/// `constant + linear` in Yul; a zero constant is omitted.
+fn add_constant(constant: &Dual, linear: &Dual) -> Yul {
+    if constant.1 .0 == "0" {
+        yul_format!("{linear:x}")
+    } else {
+        yul_format!("add({constant:x}, {linear:x})")
+    }
+}
+
 /// One collected layer-0 quadratic/linear term for the table-driven evaluator.
 /// `coeff` is canonical in [0, P); `b == None` marks a linear term (`coeff·col[a]`),
 /// `b == Some` a quadratic term (`coeff·col[a]·col[b]`). `slot` is the gate's index into
@@ -580,7 +589,7 @@ fn memrel_to_calldata(
             [
                 Dual(
                     format!("({timestamp_offset} + {low})"),
-                    yul_format!("add({timestamp_offset:x}, {low:x})"),
+                    add_constant(&timestamp_offset, &low),
                 ),
                 high,
             ]
@@ -712,27 +721,31 @@ pub fn emit_circuit_yul_with_stats(
         };
 
         // println!("{i}:");
-        yul_println!("
+        yul_println!(
+            "
         function sumcheck_circuit_layer{i}(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {{
             // INITIAL CLAIM: batch the previous layer's claims (heap array) in gate/slot order
             // (compute_claim). Replaces the threaded scalar; alpha == this layer's batching.
             claim := sccl{i}(alpha)
             // SUMCHECK ROUNDS
             let eq_scale
-            // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
             ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
             
             // POINT CHECK
-            let acc := 0"); // Horner accumulator starts at 0 (explicit init: the first chunk reads it)
-                            // Wrap this layer's cache computations (MemoryTuple / lookups / virtual-setup) in a
-                            // dedicated TOP-LEVEL function so their deep expressions (e.g. the 7-arg
-                            // gkr_memrel_compress) don't pile onto the layer function's already-tight stack —
-                            // buffer them now, hoist the function after the layer, call it inline.
+            let acc := 0"
+        ); // Horner accumulator starts at 0 (explicit init: the first chunk reads it)
+           // Wrap this layer's cache computations (MemoryTuple / lookups / virtual-setup) in a
+           // dedicated TOP-LEVEL function so their deep expressions don't pile onto the layer
+           // function's already-tight stack — buffer them now, hoist the function after the
+           // layer, call it inline. A layer without cached relations gets no function.
         *YUL_BUFFER
             .get_or_init(|| std::sync::Mutex::new(None))
             .lock()
             .unwrap() = Some(String::new());
-        yul_println!("            function scl{i}_caches() {{");
+        let has_caches = !cached_relations.is_empty();
+        if has_caches {
+            yul_println!("            function scl{i}_caches() {{");
+        }
         // Record the InnerLayer offsets the caches depend on (the transcript "extras").
         *CACHE_DEP_OFFSETS
             .get_or_init(|| std::sync::Mutex::new(None))
@@ -946,7 +959,7 @@ pub fn emit_circuit_yul_with_stats(
                             let constant = proth120_const_to_evm(constant);
                             Dual(
                                 format!("({constant} + {linear})"),
-                                yul_format!("add({constant:x}, {linear:x})"),
+                                add_constant(&constant, &linear),
                             )
                         })
                         .collect();
@@ -990,7 +1003,7 @@ pub fn emit_circuit_yul_with_stats(
                     let constant = proth120_const_to_evm(constant);
                     let val = Dual(
                         format!("{constant} + {linear}"),
-                        yul_format!("add({constant:x}, {linear:x})"),
+                        add_constant(&constant, &linear),
                     );
                     yul_println!(
                         "
@@ -1088,7 +1101,9 @@ pub fn emit_circuit_yul_with_stats(
         }
         // Close the buffered cache function, capture it for top-level hoisting, and emit the
         // inline call (caches are computed + mstore'd before the gates that mload them).
-        yul_println!("            }}");
+        if has_caches {
+            yul_println!("            }}");
+        }
         let layer_cache_func = YUL_BUFFER
             .get()
             .unwrap()
@@ -1114,7 +1129,9 @@ pub fn emit_circuit_yul_with_stats(
                                                    // Publish the post-sumcheck calldata cursor to the fixed heap slot so the cache and
                                                    // gate sub-functions can read it via mload(CIRCUIT_PTR) instead of a `ptr` parameter.
         yul_println!("            mstore(CIRCUIT_PTR, ptr)");
-        yul_println!("            scl{i}_caches()");
+        if has_caches {
+            yul_println!("            scl{i}_caches()");
+        }
         const DEBUG_NATURAL_GATE_ORDER: bool = false;
         trait EachRefMaybeRev<T, const N: usize> {
             fn each_ref_mayberevmap<U>(&self, f: impl FnMut(&T) -> U) -> [U; N];
@@ -1524,7 +1541,7 @@ pub fn emit_circuit_yul_with_stats(
                 let constant = proth120_const_to_evm(constant);
                 Dual(
                     format!("{constant} + {linear}"),
-                    yul_format!("add({constant:x}, {linear:x})"),
+                    add_constant(&constant, &linear),
                 )
             }
             fn quadrel_to_calldata_inner(
@@ -1595,7 +1612,7 @@ pub fn emit_circuit_yul_with_stats(
                 let constant = proth120_const_to_evm(constant);
                 Dual(
                     format!("{constant} + {linear} + {quadratic}"),
-                    yul_format!("add(add({constant:x}, {linear:x}), {quadratic:x})"),
+                    yul_format!("add({}, {quadratic:x})", add_constant(&constant, &linear).0),
                 )
             }
             // fn expression_to_calldata(expression: &StructuredExpression, expected_layer: usize, layer0_group_widths: (usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize)) -> String {
@@ -2588,7 +2605,6 @@ pub fn emit_circuit_yul_with_stats(
         )
     };
     let gate_calldataload_inner = Yul::calldataload(&123).0.replace("123", "idx");
-    let gate_mload_inner = Yul::mload(&123).0.replace("123", "idx");
     yul_println!("
         function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim, eq_scale {{
             // NB: need to inline __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS unfortunately
@@ -2634,28 +2650,6 @@ pub fn emit_circuit_yul_with_stats(
             next_ptr := add(ptr, mul(16, points))
         }}
 
-        function gkr_memrel_compress(address_space, addr_low, addr_high, ts_low, ts_high, val_low, val_high) -> compressed {{
-            compressed := add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space)
-            compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P))
-        }}
-
-        // Fold five generic lookup tuple columns into an existing Horner accumulator.
-        // A single helper that took all c0..c9 made solc materialize all ten columns
-        // at the call boundary and failed stack allocation. Splitting the fold into
-        // two five-column calls keeps each call boundary small while still supporting
-        // arbitrary linrel_to_calldata_inner() output for every column.
-        function gkr_lookrel_compress_half(acc, c0, c1, c2, c3, c4) -> acc_next {{
-            acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR()), P), c4)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c3)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c2)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c1)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c0)
-        }}
         // One β-Horner step: acc·β + c. Callers chain ten of these (see lookrel_horner)
         // instead of one 5-arg compress_half, keeping every call boundary at 2 args so the
         // enclosing cache/gate function stays inside the EVM stack limit.
@@ -2702,18 +2696,12 @@ pub fn emit_circuit_yul_with_stats(
         function gate_calldataload(idx) -> load {{
             load := {gate_calldataload_inner}
         }}
-        function gate_mload(idx) -> load {{
-            load := {gate_mload_inner}
-        }}
         function pointcheck_update(acc, alpha, gate) -> next_acc {{
             next_acc := add(mulmod(acc, alpha, P), gate)
         }}
         function logup_pointcheck_update(acc, alpha, num_out, den_out) -> next_acc {{
             acc := pointcheck_update(acc, alpha, den_out)
             next_acc := pointcheck_update(acc, alpha, num_out)
-        }}
-        function u128_neg(input) -> neg_input {{
-            neg_input := sub(mul(2, P), input)
         }}
 
         // 3
@@ -2735,8 +2723,6 @@ pub fn emit_circuit_yul_with_stats(
         function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_acc {{
             let input := gate_calldataload(input_idx)
             let mask := gate_calldataload(mask_idx)
-            // let neg_mask := u128_neg(mask)
-            // let gate := add(mulmod(input, mask, P), add(1, neg_mask))
             let neg_one := sub(P, 1)
             let gate := add(mulmod(mask, add(input, neg_one), P), 1)
             next_acc := pointcheck_update(acc, alpha, gate)

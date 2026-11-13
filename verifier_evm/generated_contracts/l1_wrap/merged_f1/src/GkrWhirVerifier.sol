@@ -82,7 +82,6 @@ contract GkrWhirVerifier {
     uint256 constant __TEMPLATE_GKR_CIRCUIT_CLAIMS_BYTES = 32 * 74;
     uint256 constant __TEMPLATE_GKR_GATEVAL_BYTES        = 32 * 120;
     uint256 constant __TEMPLATE_GKR_QTABLE_BYTES         = 32 * 105;
-    uint256 constant __TEMPLATE_GKR_F1_V0_BYTES          = 32 * 986; // F1: the decoded v0 GKR calldata image
 
     // ── Transcript preimage: registers ‖ final_pc/ts ‖ inits/teardowns top_bits ‖ setup_cap ‖
     //    memory_cap (LE u32 words). The register prefix is the RISC-V machine state (fixed);
@@ -148,7 +147,6 @@ contract GkrWhirVerifier {
     uint256 constant __TEMPLATE_WHIR_GEN     = 0x0293B319B108C8A856BF8B8AB7799ECD;
     uint256 constant __TEMPLATE_WHIR_GEN_INV = 0x0290A0CB0CAD8AC9DAFCDC73EBD1A223;
     uint256 constant __TEMPLATE_WHIR_NUM_ROUNDS   = 5;
-    uint256 constant __TEMPLATE_WHIR_NZ           = 21 + 3;  // WHIR eval-point coords = trace_log2 + pack_log2
     uint256 constant __TEMPLATE_WHIR_GCOUNT       = ((96 + 8 - 1) >> 3) + ((10 + 8 - 1) >> 3) + 1;  // gamma-batched base columns + 1
     uint256 constant __TEMPLATE_WHIR_RFIN         = 24 - (1 + 4 + 4 + 4 + 4);  // final-poly log2 = message_log2 - sum(folds)
     // Merkle cap: each commitment is a cap of 2^CAP_LOG2 hashes, so a Merkle path is CAP_LOG2
@@ -170,7 +168,7 @@ contract GkrWhirVerifier {
     // ── Memory map (generated: contiguous regions above the GKR heap, each sized from the
     //    schedule — see WhirGenConfig::memory_regions for every region's size formula) ────────
     uint256 constant __TEMPLATE_WHIR_SEED_PTR     = 48000;  // seed + in-place absorb scratch
-    uint256 constant __TEMPLATE_WHIR_Z_PTR        = 48288;  // z: nz coords
+    uint256 constant __TEMPLATE_WHIR_Z_PTR        = 48288;  // z: the evaluation-point coords
     uint256 constant __TEMPLATE_WHIR_POW_PTR      = 49056;  // (scalar, running eq, coefficient) x numpow
     uint256 constant __TEMPLATE_WHIR_ACC_PREF_PTR = 52896;
     uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = 52928;  // gcount gamma powers
@@ -216,14 +214,8 @@ contract GkrWhirVerifier {
         assembly ("memory-safe") {
         mstore(P_PTR, 0x7000000000000000000000000000001)
         mstore(F1_FRONTIER_PTR, frontier)
-        // Layout self-check (constant-folded away when it holds): the GKR region chain must end
-        // exactly where the generator placed the WHIR half's first region.
-        if iszero(eq(add(F1_V0_PTR(), __TEMPLATE_GKR_F1_V0_BYTES), __TEMPLATE_WHIR_SEED_PTR)) {
-            revert(0, 0)
-        }
         // the setup data contract is this deployment's data: check its code before any read
         if iszero(eq(extcodehash(mload(F1_FRONTIER_PTR)), __TEMPLATE_F1_FRONTIER_HASH)) { revert(0, 0) }
-        // assembly ("memory-safe") {
         // Proof/transcript bytes preserve logical stream order. Rust must append
         // fixed-width BE integer bytes: u32::to_be_bytes(), u64::to_be_bytes(),
         // u128::to_be_bytes(). 32-byte hashes/caps/roots are absorbed as raw bytes.
@@ -242,9 +234,6 @@ contract GkrWhirVerifier {
         // preimage copy (transcript_init) and the per-layer cache array (circuit.yul); the
         // generator sizes it for the largest of those.
         function SEED_PTR()          -> ptr { ptr := add(POINT_PTR(), __TEMPLATE_GKR_POINT_BYTES) }
-        function GKR_INIT_SCRATCH_PTR()   -> ptr { ptr := add(SEED_PTR(), mul(32, 1)) }
-        function GKR_INIT_CLAIM_PTR()     -> ptr { ptr := add(SEED_PTR(), mul(32, 2)) }
-        function GKR_CIRCUIT_ALPHA2_PTR() -> ptr { ptr := add(SEED_PTR(), mul(32, 1)) }
         function GKR_CIRCUIT_CACHE_PTR()  -> ptr { ptr := add(SEED_PTR(), mul(32, 2)) }
         // Dim-reducing / entry regions (used before the circuit layers).
         function GKR_BATCHING_PTR() -> ptr { ptr := add(SEED_PTR(), __TEMPLATE_GKR_SEED_BYTES) }                 // running batching
@@ -789,13 +778,11 @@ function sumcheck_circuit_layer4(ptr, claim, alpha) -> next_ptr, next_claim, nex
     claim := sccl4(alpha)
     // SUMCHECK ROUNDS
     let eq_scale
-    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
     ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
     let acc := 0
             mstore(CIRCUIT_PTR, ptr)
-            scl4_caches()
             acc := scl4_g0(alpha, acc)
     let rhs_scaled := mulmod(acc, eq_scale, mload(P_PTR))
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
@@ -814,8 +801,6 @@ function sumcheck_circuit_layer4(ptr, claim, alpha) -> next_ptr, next_claim, nex
     next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, 12)
 }
 
-            function scl4_caches() {
-            }
             function scl4_g0(alpha, a) -> acc { acc := a
     // CopyInExtensionField: [11] = 9
     acc := gate_copyinextensionfield(alpha, acc, 11)
@@ -865,13 +850,11 @@ function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, nex
     claim := sccl3(alpha)
     // SUMCHECK ROUNDS
     let eq_scale
-    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
     ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
     let acc := 0
             mstore(CIRCUIT_PTR, ptr)
-            scl3_caches()
             acc := scl3_g0(alpha, acc)
     let rhs_scaled := mulmod(acc, eq_scale, mload(P_PTR))
     // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
@@ -890,8 +873,6 @@ function sumcheck_circuit_layer3(ptr, claim, alpha) -> next_ptr, next_claim, nex
     next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, 18)
 }
 
-            function scl3_caches() {
-            }
             function scl3_g0(alpha, a) -> acc { acc := a
     // CopyInExtensionField: [17] = 11
     acc := gate_copyinextensionfield(alpha, acc, 17)
@@ -943,13 +924,11 @@ function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, nex
     claim := sccl2(alpha)
     // SUMCHECK ROUNDS
     let eq_scale
-    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
     ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
     let acc := 0
             mstore(CIRCUIT_PTR, ptr)
-            scl2_caches()
             acc := scl2_g0(alpha, acc)
             acc := scl2_g1(alpha, acc)
     let rhs_scaled := mulmod(acc, eq_scale, mload(P_PTR))
@@ -969,8 +948,6 @@ function sumcheck_circuit_layer2(ptr, claim, alpha) -> next_ptr, next_claim, nex
     next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, 26)
 }
 
-            function scl2_caches() {
-            }
             function scl2_g0(alpha, a) -> acc { acc := a
     // CopyInExtensionField: [25] = 17
     acc := gate_copyinextensionfield(alpha, acc, 25)
@@ -1050,7 +1027,6 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
     claim := sccl1(alpha)
     // SUMCHECK ROUNDS
     let eq_scale
-    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
     ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
@@ -1107,23 +1083,23 @@ function sumcheck_circuit_layer1(ptr, claim, alpha) -> next_ptr, next_claim, nex
 
             function scl1_caches() {
     {  // VectorizedLookup: (0 + 1[9]) + (0 + 1[10]) + (0 + 1[11]) + (0 + 0) + (0 + 0) + (0 + 0) + (0 + 0) + (0 + 0) + (0 + 0) + (0 + 1[8]) = Cache(0)
-        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 8)))))), add(0, 0)), add(0, 0)), add(0, 0)), add(0, 0)), add(0, 0)), add(0, 0)), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 11)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 10)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 9))))))
+        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 8))))), 0), 0), 0), 0), 0), 0), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 11))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 10))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 9)))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)), mod(gate, mload(P_PTR)))
     }
     {  // VectorizedLookup: (0 + 1[13]) + (0 + 1[14]) + (0 + 1[15]) + (0 + 1[16]) + (0 + 1[17]) + (0 + 1[18]) + (0 + 1[19]) + (0 + 1[20]) + (0 + 0) + (0 + 1[12]) = Cache(1)
-        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 12)))))), add(0, 0)), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 20)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 19)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 18)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 17)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 16)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 15)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 14)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 13))))))
+        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 12))))), 0), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 20))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 19))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 18))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 17))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 16))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 15))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 14))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 13)))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)), mod(gate, mload(P_PTR)))
     }
     {  // VectorizedLookup: (0 + 1[22]) + (0 + 1[23]) + (0 + 1[24]) + (0 + 1[25]) + (0 + 1[26]) + (0 + 1[27]) + (0 + 1[28]) + (0 + 1[29]) + (0 + 0) + (0 + 1[21]) = Cache(2)
-        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 21)))))), add(0, 0)), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 29)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 28)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 27)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 26)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 25)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 24)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 23)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 22))))))
+        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 21))))), 0), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 29))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 28))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 27))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 26))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 25))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 24))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 23))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 22)))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2)), mod(gate, mload(P_PTR)))
     }
     {  // VectorizedLookup: (0 + 1[31]) + (0 + 1[32]) + (0 + 1[33]) + (0 + 1[34]) + (0 + 1[35]) + (0 + 1[36]) + (0 + 1[37]) + (0 + 1[38]) + (0 + 0) + (0 + 1[30]) = Cache(3)
-        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 30)))))), add(0, 0)), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 38)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 37)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 36)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 35)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 34)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 33)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 32)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 31))))))
+        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 30))))), 0), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 38))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 37))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 36))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 35))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 34))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 33))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 32))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 31)))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3)), mod(gate, mload(P_PTR)))
     }
     {  // VectorizedLookup: (0 + 1[40]) + (0 + 1[41]) + (0 + 1[42]) + (0 + 1[43]) + (0 + 1[44]) + (0 + 1[45]) + (0 + 1[46]) + (0 + 1[47]) + (0 + 0) + (0 + 1[39]) = Cache(4)
-        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 39)))))), add(0, 0)), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 47)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 46)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 45)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 44)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 43)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 42)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 41)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 40))))))
+        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 39))))), 0), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 47))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 46))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 45))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 44))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 43))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 42))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 41))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 40)))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)), mod(gate, mload(P_PTR)))
     }
             }
@@ -1251,7 +1227,6 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
     claim := sccl0(alpha)
     // SUMCHECK ROUNDS
     let eq_scale
-    // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
     ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
     
     // POINT CHECK
@@ -1447,15 +1422,15 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
 
             function scl0_caches() {
     {  // MemoryTuple: (γ + 0 + α[4] + α²0 + α³(0 + [0]) + α⁴[1] + α⁵[2] + α⁶[3]) = Cache(0)
-        let gate := add(gkr_memrel_compress_low(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 4)))), 0), gkr_memrel_compress_high(add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 0))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 1)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 2)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 3))))))
+        let gate := add(gkr_memrel_compress_low(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 4)))), 0), gkr_memrel_compress_high(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 0)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 1)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 2)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 3))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)), mod(gate, mload(P_PTR)))
     }
     {  // MemoryTuple: (γ + [9] + α[10] + α²[11] + α³(0 + [5]) + α⁴[6] + α⁵[7] + α⁶[8]) = Cache(1)
-        let gate := add(gkr_memrel_compress_low(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 9)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 10)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 11))))), gkr_memrel_compress_high(add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 5))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 6)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 7)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 8))))))
+        let gate := add(gkr_memrel_compress_low(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 9)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 10)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 11))))), gkr_memrel_compress_high(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 5)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 6)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 7)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 8))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)), mod(gate, mload(P_PTR)))
     }
     {  // MemoryTuple: (γ + 0 + α[4] + α²0 + α³(0 + [24]) + α⁴[25] + α⁵[2] + α⁶[3]) = Cache(2)
-        let gate := add(gkr_memrel_compress_low(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 4)))), 0), gkr_memrel_compress_high(add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 24))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 25)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 2)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 3))))))
+        let gate := add(gkr_memrel_compress_low(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 4)))), 0), gkr_memrel_compress_high(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 24)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 25)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 2)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 3))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2)), mod(gate, mload(P_PTR)))
     }
     {  // MemoryTuple: (γ + [9] + α[10] + α²[11] + α³(1 + [24]) + α⁴[25] + α⁵[7] + α⁶[8]) = Cache(3)
@@ -1463,11 +1438,11 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3)), mod(gate, mload(P_PTR)))
     }
     {  // MemoryTuple: (γ + [16] + α[17] + α²[18] + α³(0 + [12]) + α⁴[13] + α⁵[14] + α⁶[15]) = Cache(4)
-        let gate := add(gkr_memrel_compress_low(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 16)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 17)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 18))))), gkr_memrel_compress_high(add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 12))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 13)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 14)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 15))))))
+        let gate := add(gkr_memrel_compress_low(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 16)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 17)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 18))))), gkr_memrel_compress_high(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 12)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 13)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 14)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 15))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)), mod(gate, mload(P_PTR)))
     }
     {  // MemoryTuple: (γ + 2 + α0 + α²0 + α³(0 + [24]) + α⁴[25] + α⁵[22] + α⁶[23]) = Cache(5)
-        let gate := add(gkr_memrel_compress_low(2, 0, 0), gkr_memrel_compress_high(add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 24))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 25)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 22)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 23))))))
+        let gate := add(gkr_memrel_compress_low(2, 0, 0), gkr_memrel_compress_high(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 24)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 25)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 22)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 23))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 5)), mod(gate, mload(P_PTR)))
     }
     {  // MemoryTuple: (γ + [16] + α[17] + α²[18] + α³(2 + [24]) + α⁴[25] + α⁵[19] + α⁶[20]) = Cache(6)
@@ -1475,11 +1450,11 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 6)), mod(gate, mload(P_PTR)))
     }
     {  // MemoryTuple: (γ + 2 + α0 + α²0 + α³(0 + [28]) + α⁴[29] + α⁵[26] + α⁶[27]) = Cache(7)
-        let gate := add(gkr_memrel_compress_low(2, 0, 0), gkr_memrel_compress_high(add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 28))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 29)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 26)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 27))))))
+        let gate := add(gkr_memrel_compress_low(2, 0, 0), gkr_memrel_compress_high(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 28)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 29)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 26)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 27))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 7)), mod(gate, mload(P_PTR)))
     }
     {  // SingleColumnLookup: 0 + -1[24] + 1[0] + 2^19[90] = Cache(8)
-        let gate := add(0, add(add(mulmod(sub(mload(P_PTR), 1), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 24)))), mload(P_PTR)), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 0))))), mulmod(524288, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 90)))), mload(P_PTR))))
+        let gate := add(add(mulmod(sub(mload(P_PTR), 1), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 24)))), mload(P_PTR)), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 0))))), mulmod(524288, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 90)))), mload(P_PTR)))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 8)), mod(gate, mload(P_PTR)))
     }
     {  // SingleColumnLookup: 2^19 + -1[25] + 1[1] + -1[90] = Cache(9)
@@ -1503,7 +1478,7 @@ function sumcheck_circuit_layer0(ptr, claim, alpha) -> next_ptr, next_claim, nex
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 13)), mod(gate, mload(P_PTR)))
     }
     {  // VectorizedLookup: (0 + 1[22]) + (0 + 1[23]) + (0 + 1[4]) + (0 + 1[38]) + (0 + 1[39]) + (0 + 1[40]) + (0 + 1[41]) + (0 + 1[42]) + (0 + 1[43] + 2[44] + 2^2[45] + 2^3[46] + 2^4[47] + 2^5[48] + 2^6[49] + 2^7[50] + 2^8[51] + 2^9[52] + 2^10[53] + 2^11[54] + 2^12[55] + 2^13[56] + 2^14[57] + 2^15[58] + 2^16[59] + 2^17[9] + 2^18[16]) + (46 + 0) = Cache(14)
-        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(46, 0)), add(0, add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 43)))), mulmod(2, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 44)))), mload(P_PTR))), mulmod(4, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 45)))), mload(P_PTR))), mulmod(8, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 46)))), mload(P_PTR))), mulmod(16, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 47)))), mload(P_PTR))), mulmod(32, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 48)))), mload(P_PTR))), mulmod(64, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 49)))), mload(P_PTR))), mulmod(128, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 50)))), mload(P_PTR))), mulmod(256, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 51)))), mload(P_PTR))), mulmod(512, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 52)))), mload(P_PTR))), mulmod(1024, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mload(P_PTR))), mulmod(2048, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mload(P_PTR))), mulmod(4096, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mload(P_PTR))), mulmod(8192, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mload(P_PTR))), mulmod(16384, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 57)))), mload(P_PTR))), mulmod(32768, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mload(P_PTR))), mulmod(65536, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 59)))), mload(P_PTR))), mulmod(131072, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mload(P_PTR))), mulmod(262144, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mload(P_PTR))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 42)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 41)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 40)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 39)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 38)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 4)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 23)))))), add(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 22))))))
+        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(46, 0)), add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 43)))), mulmod(2, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 44)))), mload(P_PTR))), mulmod(4, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 45)))), mload(P_PTR))), mulmod(8, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 46)))), mload(P_PTR))), mulmod(16, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 47)))), mload(P_PTR))), mulmod(32, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 48)))), mload(P_PTR))), mulmod(64, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 49)))), mload(P_PTR))), mulmod(128, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 50)))), mload(P_PTR))), mulmod(256, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 51)))), mload(P_PTR))), mulmod(512, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 52)))), mload(P_PTR))), mulmod(1024, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mload(P_PTR))), mulmod(2048, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mload(P_PTR))), mulmod(4096, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mload(P_PTR))), mulmod(8192, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mload(P_PTR))), mulmod(16384, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 57)))), mload(P_PTR))), mulmod(32768, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mload(P_PTR))), mulmod(65536, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 59)))), mload(P_PTR))), mulmod(131072, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mload(P_PTR))), mulmod(262144, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mload(P_PTR)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 42))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 41))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 40))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 39))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 38))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 4))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 23))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 22)))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 14)), mod(gate, mload(P_PTR)))
     }
     {  // VectorizedLookupSetup: β⁰[96] + β¹[97] + β²[98] + β³[99] + β⁴[100] + β⁵[101] + β⁶[102] + β⁷[103] + β⁸[104] + β⁹[105] = Cache(15)
@@ -1970,28 +1945,6 @@ function sumcheck_claims_batch(ptr, points) -> next_ptr, next_claim, next_alpha 
     next_ptr := add(ptr, mul(16, points))
 }
 
-function gkr_memrel_compress(address_space, addr_low, addr_high, ts_low, ts_high, val_low, val_high) -> compressed {
-    compressed := add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space)
-    compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, mload(P_PTR)))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, mload(P_PTR)))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, mload(P_PTR)))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, mload(P_PTR)))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, mload(P_PTR)))
-    compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, mload(P_PTR)))
-}
-
-// Fold five generic lookup tuple columns into an existing Horner accumulator.
-// A single helper that took all c0..c9 made solc materialize all ten columns
-// at the call boundary and failed stack allocation. Splitting the fold into
-// two five-column calls keeps each call boundary small while still supporting
-// arbitrary linrel_to_calldata_inner() output for every column.
-function gkr_lookrel_compress_half(acc, c0, c1, c2, c3, c4) -> acc_next {
-    acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR()), mload(P_PTR)), c4)
-    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), mload(P_PTR)), c3)
-    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), mload(P_PTR)), c2)
-    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), mload(P_PTR)), c1)
-    acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), mload(P_PTR)), c0)
-}
 // One β-Horner step: acc·β + c. Callers chain ten of these (see lookrel_horner)
 // instead of one 5-arg compress_half, keeping every call boundary at 2 args so the
 // enclosing cache/gate function stays inside the EVM stack limit.
@@ -2038,18 +1991,12 @@ function gkr_virtual_poly_rangecheck(width) -> eval {
 function gate_calldataload(idx) -> load {
     load := shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, idx))))
 }
-function gate_mload(idx) -> load {
-    load := mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, idx)))
-}
 function pointcheck_update(acc, alpha, gate) -> next_acc {
     next_acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
 }
 function logup_pointcheck_update(acc, alpha, num_out, den_out) -> next_acc {
     acc := pointcheck_update(acc, alpha, den_out)
     next_acc := pointcheck_update(acc, alpha, num_out)
-}
-function u128_neg(input) -> neg_input {
-    neg_input := sub(mul(2, mload(P_PTR)), input)
 }
 
 // 3
@@ -2071,8 +2018,6 @@ function gate_copyinextensionfield(alpha, acc, input_idx) -> next_acc {
 function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_acc {
     let input := gate_calldataload(input_idx)
     let mask := gate_calldataload(mask_idx)
-    // let neg_mask := u128_neg(mask)
-    // let gate := add(mulmod(input, mask, mload(P_PTR)), add(1, neg_mask))
     let neg_one := sub(mload(P_PTR), 1)
     let gate := add(mulmod(mask, add(input, neg_one), mload(P_PTR)), 1)
     next_acc := pointcheck_update(acc, alpha, gate)
@@ -2244,11 +2189,6 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         function exp_pow2(x, k) -> res {
             res := x
             for { let i := 0 } lt(i, k) { i := add(i, 1) } { res := mulmod(res, res, P) }
-        }
-        function f1_fe(cd, i) -> v {
-            let bit := mul(123, i)
-            v := and(shr(sub(133, and(bit, 7)), calldataload(add(cd, shr(3, bit)))), 0x7ffffffffffffffffffffffffffffff)
-            if iszero(lt(v, P)) { revert(0, 0) }
         }
         function f1_word(cd, bit) -> w {
             let x := shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))
@@ -2691,9 +2631,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         // above. `cd_start` = calldata offset of the WHIR proof stream (right after the GKR
         // stream's trailing 8-byte WHIR-batching PoW nonce).
         function whir_verify(cd_start) {
-        // Base geometry (all generated): nz = z-coords, gcount = gamma-batched base columns + 1,
+        // Base geometry (all generated): gcount = gamma-batched base columns + 1,
         // rfin = final-poly log2.
-        let nz := __TEMPLATE_WHIR_NZ
         let gcount := __TEMPLATE_WHIR_GCOUNT
         let rfin := __TEMPLATE_WHIR_RFIN
         let batching := mload(__TEMPLATE_WHIR_HANDOFF_BATCHING_PTR)

@@ -542,15 +542,18 @@ fn render(
     // The GKR regions are chained in the template by their sizes (`add(previous(), SIZE)`, see
     // the template's layout note for why not absolute literals): assign each region's padded
     // size and verify the template's accessor chain follows this allocation order exactly.
+    // The last region's size only advances the allocator: no accessor follows it.
     let mut previous: Option<(&str, &str)> = None;
-    for (name, accessor, size) in &gkr_regions {
+    for (idx, (name, accessor, size)) in gkr_regions.iter().enumerate() {
         heap.region(name, size);
-        gkr = set_const(
-            &gkr,
-            &format!("__TEMPLATE_GKR_{name}_BYTES"),
-            size.expr(),
-            &mut assigned,
-        );
+        if idx + 1 < gkr_regions.len() {
+            gkr = set_const(
+                &gkr,
+                &format!("__TEMPLATE_GKR_{name}_BYTES"),
+                size.expr(),
+                &mut assigned,
+            );
+        }
         let expected_body = match previous {
             None => "add(MINIMUM_FREE_HEAP_PTR, 96)".to_string(),
             Some((prev_name, prev_accessor)) => {
@@ -752,7 +755,6 @@ fn render(
         ("__TEMPLATE_WHIR_NUM_ROUNDS", wc.num_rounds.to_string()),
         ("__TEMPLATE_WHIR_GEN", format!("0x{:032X}", wc.gen)),
         ("__TEMPLATE_WHIR_GEN_INV", format!("0x{:032X}", wc.gen_inv)),
-        ("__TEMPLATE_WHIR_NZ", nz.expr().to_string()),
         ("__TEMPLATE_WHIR_GCOUNT", gcount.expr().to_string()),
         ("__TEMPLATE_WHIR_RFIN", rfin.expr().to_string()),
         ("__TEMPLATE_WHIR_MERGED_MW", merged_mw.expr().to_string()),
@@ -764,8 +766,6 @@ fn render(
         whir = set_const(&whir, name, value, &mut assigned);
     }
     let whir_regions = wc.memory_regions();
-    // the template's compile-time layout guard compares the GKR chain end to the WHIR SEED region
-    assert_eq!(whir_regions[0].0, "SEED_PTR");
     for (name, size) in &whir_regions {
         let addr = heap.region(name, size);
         whir = set_const(
