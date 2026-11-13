@@ -61,8 +61,9 @@ unique-decoding analysis would need. Copy a new block into
 `ethproofs_soundcalc.rs` as an `EthproofsSoundcalcEntry` together with the
 reasons for the regime choices.
 
-Not implemented in this mode: the compression 2^23 schedule (base LDE 16) and the
-EVM Proth120 2^26 packed config (`assess_current_configs.py` evaluates both;
+Not implemented in this mode: the Compression (2^23, base LDE 4) and CompressionFinal
+(2^22, base LDE 16) schedules and the EVM Proth120 2^26 packed config
+(`assess_current_configs.py` evaluates all three;
 Proth120 with 2^31 domains caps the Johnson-bound fold term near 48–57 bits, so
 a 100-bit schedule there needs smaller domains and ~75 unique-decoding queries
 per round).
