@@ -742,7 +742,7 @@ fn render(
         !whir.contains("__WHIR_SCHEDULE_SWITCH__"),
         "whir.sol template missing the schedule marker"
     );
-    // rfin = message_log2 - Σ folds, gcount = merged_mw + setup_merged — spelled out
+    // rfin = message_log2 - Σ folds spelled out; gcount = merged_mw + setup_merged, checked
     let folds_sum = wc.folds[1..]
         .iter()
         .fold(n(wc.folds[0]), |acc, &f| acc.add(&n(f)));

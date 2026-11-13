@@ -162,7 +162,7 @@ contract GkrWhirVerifier {
     uint256 constant __TEMPLATE_WHIR_Z_PTR        = 28608;  // z: the evaluation-point coords
     uint256 constant __TEMPLATE_WHIR_POW_PTR      = 29376;  // (scalar, running eq, coefficient) x numpow
     uint256 constant __TEMPLATE_WHIR_ACC_PREF_PTR = 33216;
-    uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = 33248;  // gcount gamma powers
+    uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = 33248;  // one gamma power per batched base column
     uint256 constant __TEMPLATE_WHIR_FOLD_CH_PTR  = 33696;  // max_fold challenges
     uint256 constant __TEMPLATE_WHIR_HPO_PTR      = 33824;  // 2^(fold_0 - 1) high-power offsets (round 0)
     uint256 constant __TEMPLATE_WHIR_FBUF_PTR     = 33856;  // 2^max_fold folding buffer
@@ -279,7 +279,8 @@ contract GkrWhirVerifier {
             next_v0 := add(v0, shl(4, n))
         }
         // E1 run of k (b, c) pairs: the round functions read the pairs from calldata (f1_cd) and
-        // range-check them; the run's single image slot holds its bit offset.
+        // range-check them; the run's single image slot holds its bit offset. The decoder shares
+        // f1_run_end and f1_digest with the WHIR half (whir.sol).
         function f1_rounds(cd, v0, k) -> next_cd, next_v0 {
             mstore(add(F1_V0_PTR(), v0), shl(3, cd))
             next_cd := f1_run_end(cd, shl(1, k))
@@ -382,7 +383,8 @@ contract GkrWhirVerifier {
             revert(0, 0) }
 
             // PoW fold: digest = keccak(seed(32) || nonce_be8); require top __TEMPLATE_EXTERNAL_POW_BITS zero.
-            // the 40-byte hash covers the seed and the word's leading 8-byte BE nonce
+            // the 40-byte hash covers the seed and the word's leading 8-byte BE nonce; the rest of the
+            // word stays behind, and every later absorb writes the bytes it hashes
             mstore(SEED_PTR(), seed)
             mstore(add(SEED_PTR(), 32), mload(add(ptr, __TEMPLATE_GKR_INIT_PREIMAGE_BYTES)))
             seed := keccak256(SEED_PTR(), 40)
@@ -748,7 +750,7 @@ function sumcheck_circuit_layer4(ptr, alpha) -> next_ptr, next_alpha {
                     if iszero(lt(cv, mload(P_PTR))) { revert(0, 0) }
                     mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), cv)
                 }
-    // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
+    // POINT CLAIMS BATCH — absorb this layer's evals + draw the next batching (cache layers
     // absorb final_step ++ extras in one keccak, THEN draw).
     next_ptr, next_alpha := sumcheck_claims_batch(ptr, 12)
 }
@@ -816,7 +818,7 @@ function sumcheck_circuit_layer3(ptr, alpha) -> next_ptr, next_alpha {
                     if iszero(lt(cv, mload(P_PTR))) { revert(0, 0) }
                     mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), cv)
                 }
-    // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
+    // POINT CLAIMS BATCH — absorb this layer's evals + draw the next batching (cache layers
     // absorb final_step ++ extras in one keccak, THEN draw).
     next_ptr, next_alpha := sumcheck_claims_batch(ptr, 18)
 }
@@ -887,7 +889,7 @@ function sumcheck_circuit_layer2(ptr, alpha) -> next_ptr, next_alpha {
                     if iszero(lt(cv, mload(P_PTR))) { revert(0, 0) }
                     mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), cv)
                 }
-    // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
+    // POINT CLAIMS BATCH — absorb this layer's evals + draw the next batching (cache layers
     // absorb final_step ++ extras in one keccak, THEN draw).
     next_ptr, next_alpha := sumcheck_claims_batch(ptr, 26)
 }
@@ -987,7 +989,7 @@ function sumcheck_circuit_layer1(ptr, alpha) -> next_ptr, next_alpha {
                     if iszero(lt(cv, mload(P_PTR))) { revert(0, 0) }
                     mstore(add(GKR_CIRCUIT_CLAIMS_PTR(), mul(32, wk)), cv)
                 }
-    // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
+    // POINT CLAIMS BATCH — absorb this layer's evals + draw the next batching (cache layers
     // absorb final_step ++ extras in one keccak, THEN draw).
     {
             let base := mload(CIRCUIT_PTR)
@@ -1281,7 +1283,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
                 for { let wk := 0 } lt(wk, 106) { wk := add(wk, 1) } {
                     if iszero(lt(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, wk)))), mload(P_PTR))) { revert(0, 0) }
                 }
-    // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
+    // POINT CLAIMS BATCH — absorb this layer's evals + draw the next batching (cache layers
     // absorb final_step ++ extras in one keccak, THEN draw).
     {
             let base := mload(CIRCUIT_PTR)
@@ -1898,7 +1900,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         // GKR→WHIR handoff: draw the PACK_LOG2 packing coords, merge the base-layer claims
         // (mem++wit NUM_MEMWIT→MERGED_MW, setup NUM_SETUP→SETUP_MERGED), draw the WHIR batching challenge
         // (PoW), form the batched opening, and write the WHIR half's start state straight into
-        // its memory regions: seed, batching, opening, z = base_z(BASE_Z_COORDS) ++
+        // its memory regions: seed, gamma powers, opening, z = base_z(BASE_Z_COORDS) ++
         // extra(PACK_LOG2) (the pack index occupies the HIGH bits of the packed enumeration, so
         // under LSB binding the packing coords EXTEND the claim point at the top). f1_decode
         // already wrote the memory base-oracle cap. Own frame — keeps the fallback stack under the
@@ -1934,7 +1936,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             // draw WHIR batching (PoW fold: digest=keccak(seed||nonce_be8), top __TEMPLATE_WHIR_BATCH_POW_BITS
             // must be zero; nonce is the 8-byte BE word at the GKR stream cursor). Then draw.
             mstore(sp, seed)
-            mstore(add(sp, 32), mload(ptr))
+            mstore(add(sp, 32), mload(ptr)) // the hash covers the leading 8-byte nonce
             seed := keccak256(sp, 40)
             if shr(sub(256, __TEMPLATE_WHIR_BATCH_POW_BITS), seed) {
             revert(0, 0) }
@@ -1995,7 +1997,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         function f1_run_end(cd, n) -> next_cd {
             let bits := mul(123, n)
             next_cd := add(cd, shr(3, add(bits, 7)))
-            // All cursor advances are profile-derived; the final REG_CD equality rejects overruns.
+            // All cursor advances are profile-derived; the final cursor checks (REG_CD for the WHIR
+            // stream, f1_decode's end offset for the GKR section) reject overruns.
             let pad := and(sub(0, bits), 7)
             if pad {
                 if and(byte(0, calldataload(sub(next_cd, 1))), sub(shl(pad, 1), 1)) { revert(0, 0) }
@@ -2005,7 +2008,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             d := and(calldataload(cp), __TEMPLATE_DIGEST_MASK)
         }
         function verify_pow(cp, pow_bits) -> next_cd {
-            // the 40-byte hash covers the seed and the word's leading 8-byte BE nonce
+            // the 40-byte hash covers the seed and the word's leading 8-byte BE nonce; the rest of the
+            // word stays behind, and every later absorb writes the bytes it hashes
             mstore(add(__TEMPLATE_WHIR_SEED_PTR, 32), calldataload(cp))
             let h := keccak256(__TEMPLATE_WHIR_SEED_PTR, 40)
             mstore(__TEMPLATE_WHIR_SEED_PTR, h)
@@ -2402,11 +2406,12 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
 
         // =================================================================== MAIN
         // The WHIR half's entry point, called by the merged verifier after the GKR half has
-        // written the start state (seed / batching / opening / z) and f1_decode the memory
-        // base cap into the regions above. `cd_start` = calldata offset of the WHIR proof stream (right after the GKR
-        // stream's trailing 8-byte WHIR-batching PoW nonce).
+        // written the start state (seed / gamma powers / opening / z) and f1_decode the memory
+        // base cap into the regions above. `cd_start` = calldata offset of the WHIR proof stream
+        // (right after the GKR stream's trailing 8-byte WHIR-batching PoW nonce). It runs once, on
+        // fresh memory: REG_NUMPOW and REG_ZIOFF start at zero.
         function whir_verify(cd_start) {
-        // Base geometry (generated): rfin = final-poly log2. emit_gkr_mark wrote the gamma powers.
+        // Base geometry (generated): rfin = final-poly log2.
         let rfin := __TEMPLATE_WHIR_RFIN
 
         mstore(__TEMPLATE_WHIR_ACC_PREF_PTR, 1)
@@ -2421,7 +2426,6 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             case 2 { fold := 4 q := 7 pow_bits := 30 qib := 27 vp := 16 cb := 12 }
             case 3 { fold := 4 q := 6 pow_bits := 20 qib := 27 vp := 16 cb := 16 }
             default { fold := 4 q := 5 pow_bits := 17 qib := 27 vp := 16 cb := 20 }
-            // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
 
             {
             let scbase := mload(__TEMPLATE_WHIR_REG_CD)

@@ -218,7 +218,8 @@ contract GkrWhirVerifier {
             revert(0, 0) }
 
             // PoW fold: digest = keccak(seed(32) || nonce_be8); require top __TEMPLATE_EXTERNAL_POW_BITS zero.
-            // the 40-byte hash covers the seed and the word's leading 8-byte BE nonce
+            // the 40-byte hash covers the seed and the word's leading 8-byte BE nonce; the rest of the
+            // word stays behind, and every later absorb writes the bytes it hashes
             mstore(SEED_PTR(), seed)
             mstore(add(SEED_PTR(), 32), calldataload(add(ptr, __TEMPLATE_GKR_INIT_PREIMAGE_BYTES)))
             seed := keccak256(SEED_PTR(), 40)
@@ -615,7 +616,7 @@ contract GkrWhirVerifier {
         // GKR→WHIR handoff: draw the PACK_LOG2 packing coords, merge the base-layer claims
         // (mem++wit NUM_MEMWIT→MERGED_MW, setup NUM_SETUP→SETUP_MERGED), draw the WHIR batching challenge
         // (PoW), form the batched opening, and write the WHIR half's start state straight into
-        // its memory regions: seed, batching, opening, z = base_z(BASE_Z_COORDS) ++
+        // its memory regions: seed, gamma powers, opening, z = base_z(BASE_Z_COORDS) ++
         // extra(PACK_LOG2) (the pack index occupies the HIGH bits of the packed enumeration, so
         // under LSB binding the packing coords EXTEND the claim point at the top). f1_decode
         // already wrote the memory base-oracle cap. Own frame — keeps the fallback stack under the
@@ -651,7 +652,7 @@ contract GkrWhirVerifier {
             // draw WHIR batching (PoW fold: digest=keccak(seed||nonce_be8), top __TEMPLATE_WHIR_BATCH_POW_BITS
             // must be zero; nonce is the 8-byte BE word at the GKR stream cursor). Then draw.
             mstore(sp, seed)
-            mstore(add(sp, 32), calldataload(ptr))
+            mstore(add(sp, 32), calldataload(ptr)) // the hash covers the leading 8-byte nonce
             seed := keccak256(sp, 40)
             if shr(sub(256, __TEMPLATE_WHIR_BATCH_POW_BITS), seed) {
             revert(0, 0) }

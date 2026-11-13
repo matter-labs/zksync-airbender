@@ -68,7 +68,7 @@ pub(crate) fn calldata_to_v0_memory(src: &str) -> String {
         out.push_str(&rest[..at]);
         let tail = &rest[at..];
         if out.chars().next_back().is_some_and(is_ident) {
-            // inside a longer identifier, e.g. `gate_calldataload`
+            // inside a longer identifier
             out.push_str("calldata");
             rest = &tail["calldata".len()..];
         } else if let Some(op) = ["calldataload", "calldatacopy"]
@@ -257,7 +257,8 @@ pub(crate) fn gkr_decoder(
             next_v0 := add(v0, shl(4, n))
         }}
         // E1 run of k (b, c) pairs: the round functions read the pairs from calldata (f1_cd) and
-        // range-check them; the run's single image slot holds its bit offset.
+        // range-check them; the run's single image slot holds its bit offset. The decoder shares
+        // f1_run_end and f1_digest with the WHIR half (whir.sol).
         function f1_rounds(cd, v0, k) -> next_cd, next_v0 {{
             mstore(add({V0_PTR}, v0), shl(3, cd))
             next_cd := f1_run_end(cd, shl(1, k))

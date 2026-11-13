@@ -309,15 +309,9 @@ impl WhirGenConfig {
             // do_final: 2^rfin monomials, then the tail absorb (32 + nmono·16 B) and the
             // halving-fold scratch (nmono words) share FEVAL
             ("MONO_PTR", nmono.mul(&w32)),
-            // the tail absorb (32 + nmono·16 B) fits in the nmono-word fold scratch once nmono ≥ 2
-            (
-                "FEVAL_PTR",
-                if self.rfin >= 1 {
-                    nmono.mul(&w32)
-                } else {
-                    w32.add(&nmono.mul(&w32))
-                },
-            ),
+            // rfin > 0, so nmono ≥ 2 and the tail absorb (32 + nmono·16 B) fits in the nmono-word
+            // fold scratch
+            ("FEVAL_PTR", nmono.mul(&w32)),
         ]
     }
 }

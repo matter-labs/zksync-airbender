@@ -19,12 +19,11 @@ pragma solidity =0.8.36;
 // (REG_*); heavy logic in shallow Yul fns.
 //
 // ---- Start state: handed over in memory by the GKR half ---------------------
-// The GKR half writes the transcript seed, the WHIR batching challenge, the batched opening
+// The GKR half writes the transcript seed, the gamma (batching) powers, the batched opening
 // and the evaluation point z (emit_gkr_mark) and the memory base-oracle cap (f1_decode)
 // straight into this half's regions, then calls `whir_verify(cd_start)`, which consumes the
-// WHIR proof stream
-// that follows the GKR stream in the same calldata. No committed-state preimage, no registry:
-// the whole GKR+WHIR verification is one transaction.
+// WHIR proof stream that follows the GKR stream in the same calldata. The whole GKR+WHIR
+// verification is one transaction.
 //
 // ---- Layout: merged memory+witness base oracle + setup base oracle ----------
 // The witness oracle batches the merged mem+wit columns into one Merkle tree, the setup oracle
@@ -73,7 +72,7 @@ contract WhirVerifier {
     uint256 constant __TEMPLATE_WHIR_Z_PTR        = "{unassigned}";  // z: the evaluation-point coords
     uint256 constant __TEMPLATE_WHIR_POW_PTR      = "{unassigned}";  // (scalar, running eq, coefficient) x numpow
     uint256 constant __TEMPLATE_WHIR_ACC_PREF_PTR = "{unassigned}";
-    uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = "{unassigned}";  // gcount gamma powers
+    uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = "{unassigned}";  // one gamma power per batched base column
     uint256 constant __TEMPLATE_WHIR_FOLD_CH_PTR  = "{unassigned}";  // max_fold challenges
     uint256 constant __TEMPLATE_WHIR_HPO_PTR      = "{unassigned}";  // 2^(fold_0 - 1) high-power offsets (round 0)
     uint256 constant __TEMPLATE_WHIR_FBUF_PTR     = "{unassigned}";  // 2^max_fold folding buffer
@@ -131,7 +130,8 @@ contract WhirVerifier {
         function f1_run_end(cd, n) -> next_cd {
             let bits := mul(123, n)
             next_cd := add(cd, shr(3, add(bits, 7)))
-            // All cursor advances are profile-derived; the final REG_CD equality rejects overruns.
+            // All cursor advances are profile-derived; the final cursor checks (REG_CD for the WHIR
+            // stream, f1_decode's end offset for the GKR section) reject overruns.
             let pad := and(sub(0, bits), 7)
             if pad {
                 if and(byte(0, calldataload(sub(next_cd, 1))), sub(shl(pad, 1), 1)) { revert(0, 0) }
@@ -141,7 +141,8 @@ contract WhirVerifier {
             d := and(calldataload(cp), __TEMPLATE_DIGEST_MASK)
         }
         function verify_pow(cp, pow_bits) -> next_cd {
-            // the 40-byte hash covers the seed and the word's leading 8-byte BE nonce
+            // the 40-byte hash covers the seed and the word's leading 8-byte BE nonce; the rest of the
+            // word stays behind, and every later absorb writes the bytes it hashes
             mstore(add(__TEMPLATE_WHIR_SEED_PTR, 32), calldataload(cp))
             let h := keccak256(__TEMPLATE_WHIR_SEED_PTR, 40)
             mstore(__TEMPLATE_WHIR_SEED_PTR, h)
@@ -516,11 +517,12 @@ contract WhirVerifier {
 
         // =================================================================== MAIN
         // The WHIR half's entry point, called by the merged verifier after the GKR half has
-        // written the start state (seed / batching / opening / z) and f1_decode the memory
-        // base cap into the regions above. `cd_start` = calldata offset of the WHIR proof stream (right after the GKR
-        // stream's trailing 8-byte WHIR-batching PoW nonce).
+        // written the start state (seed / gamma powers / opening / z) and f1_decode the memory
+        // base cap into the regions above. `cd_start` = calldata offset of the WHIR proof stream
+        // (right after the GKR stream's trailing 8-byte WHIR-batching PoW nonce). It runs once, on
+        // fresh memory: REG_NUMPOW and REG_ZIOFF start at zero.
         function whir_verify(cd_start) {
-        // Base geometry (generated): rfin = final-poly log2. emit_gkr_mark wrote the gamma powers.
+        // Base geometry (generated): rfin = final-poly log2.
         let rfin := __TEMPLATE_WHIR_RFIN
 
         mstore(__TEMPLATE_WHIR_ACC_PREF_PTR, 1)
@@ -530,7 +532,6 @@ contract WhirVerifier {
             // `cb` = coset bits = log2(LDE factor) for this round's oracle tree.
             let fold, q, pow_bits, qib, vp, cb
             // __WHIR_SCHEDULE_SWITCH__
-            // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
 
             {
             let scbase := mload(__TEMPLATE_WHIR_REG_CD)

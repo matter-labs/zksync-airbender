@@ -2601,7 +2601,7 @@ pub fn emit_circuit_yul_with_stats(
             let rhs := mod(acc, P)
             {check:x}
             {writeback}
-            // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
+            // POINT CLAIMS BATCH — absorb this layer's evals + draw the next batching (cache layers
             // absorb final_step ++ extras in one keccak, THEN draw).
             {claims_batch}
         }}
