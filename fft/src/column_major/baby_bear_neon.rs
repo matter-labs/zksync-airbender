@@ -12,7 +12,7 @@
 //! `ppg == 1` and `ppg == 2` run as dedicated in-register shuffle passes
 //! (`uzp`/`zip` on 32-/64-bit lanes) — no scalar fallback; `ppg >= 4` stages
 //! run as radix-4 FUSED passes (two butterfly levels per sweep, broadcast
-//! twiddles, same twiddle indexing as `higher_radix`); the last multiplying
+//! twiddles); the last multiplying
 //! level is fused with the final twiddle-free level.
 //!
 //! Partial (lazy) reduction was evaluated and rejected: `2p ≈ 2^31.9` leaves
