@@ -94,10 +94,7 @@ pub(super) fn circuit_tester_config() -> ProgramConfig {
     }
 }
 
-pub use crate::gkr::prover_config::example_configs::{
-    evm_production_packed_prover_config, EVM_PRODUCTION_EXTERNAL_CHALLENGES_POW_BITS,
-    EVM_PRODUCTION_PACK_LOG2,
-};
+use crate::gkr::prover_config::example_configs::evm_production_packed_prover_config;
 
 /// Load the serialized `OperationMode` aux data and build the transcript prefix the packed
 /// prover now prepends before the top-bits/caps: the 32 register final states as
