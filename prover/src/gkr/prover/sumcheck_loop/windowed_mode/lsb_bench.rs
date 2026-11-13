@@ -1,24 +1,22 @@
-//! Artificial LSB-binding test: the window (or uniskip) variables are the LOW
-//! bits of the trace index instead of the top bits, so one row's 2^k packed
-//! values are CONTIGUOUS in memory.
+//! NEON per-pass kernels of the same-size LSB chain for `BabyBearField` /
+//! `BabyBearExt4`: the window (or uniskip) variables are the LOW bits of the
+//! trace index, so one row's 2^k packed values are CONTIGUOUS in memory. The
+//! NEON GKR backend runs its chain passes and folds through this module; the
+//! transcript, claim chaining and schedule stay with the callers of
+//! `lsb_chain`.
 //!
-//! # Reading order (entry point for the uniskip implementation)
+//! # Reading order
 //!
-//! 1. **Protocol shape**: the `[LSB-CHAIN]` block in `bench.rs`
-//!    (`run_windowed_sumcheck_benchmarks`, search for "full 24-round chain")
-//!    -- its header comment defines the notation (packed polys, q_g, T_g,
-//!    w3_g, folding) and the telescoping identity every pass is checked
-//!    against.
-//! 2. **One uniskip pass over mixed base/ext columns**:
-//!    [`lsb_soa_full_parallel`] below (instantiated with NG=4/NBIN=4/OUT=16
-//!    for k=3 uniskip) -- the per-row steps are annotated in place.
-//! 3. **One pass over already-folded (all-ext) columns**:
+//! 1. **One uniskip pass over mixed base/ext columns**:
+//!    [`lsb_soa_full_parallel`] (instantiated with NG=4/NBIN=4/OUT=16 for k=3
+//!    uniskip) -- the per-row steps are annotated in place.
+//! 2. **One pass over already-folded (all-ext) columns**:
 //!    [`lsb_soa_ext_pass_parallel`] -- same steps, ext-only kernels, fully
 //!    lazy accumulation; `tables: None` selects window-3 mode (NG=7/NBIN=2),
 //!    `Some` uniskip (NG=NBIN=K/2).
-//! 4. **The LDE kernel**: `neon::lsb_lde8_base_mat` (Lagrange-matrix form),
+//! 3. **The LDE kernel**: `neon::lsb_lde8_base_mat` (Lagrange-matrix form),
 //!    applied per limb for ext values.
-//! 5. **The fold**: `neon::lsb_soa_fold8_base` / `lsb_soa_fold8_ext` wrapped
+//! 4. **The fold**: `neon::lsb_soa_fold8_base` / `lsb_soa_fold8_ext` wrapped
 //!    by [`lsb_fold_base_soa_parallel`] / [`lsb_fold_ext_soa_parallel`].
 //!
 //! # What one uniskip pass computes
@@ -36,8 +34,7 @@
 //! per-point evaluation: the prover only applies the per-row scalar T(row)
 //! (`soa_apply_eq_*`, one ext mul per row), and the window part w3 is folded
 //! into the CLAIM by weighting q's 8 H-values -- verifier-side, 8 multiplies
-//! per pass. That is why eq shows up as only 2-5% in the [LSB-SPLIT] phase
-//! breakdown, and why the term kernels contain no eq logic at all.
+//! per pass. The term kernels therefore contain no eq logic.
 //!
 //! Compute engine: the SoA kernel suite, reinterpreted. In the MSB SoA layout
 //! one vector holds 4 ROWS of a cell; here one vector holds 4 consecutive
@@ -45,7 +42,7 @@
 //! vector loads of the row's taps are already "SoA" over cell groups. Ext
 //! values are transposed to limb-major SoA per group of 4 cells
 //! (`soa_transpose_ext4`), which unlocks the lazy-u64 accumulation and SoA
-//! ext-mul kernels; ext LDE runs per limb with the in-register base NTTs.
+//! ext-mul kernels; ext LDE runs per limb with the base LDE kernel.
 //! Per-poly scratch stays a single row: 2^k cells for uniskip, 28 (27 + one
 //! dummy pad cell) for window-3.
 //!
@@ -54,14 +51,12 @@
 //! all U rows before the next op, amortizing program dispatch.
 //!
 //! Accumulators use the LSB cell convention and are NOT comparable to the MSB
-//! accumulators cell-by-cell; the bench cross-checks the eq-weighted claim
-//! (which is layout-independent) plus full/bounded/unrolled bitwise identity.
+//! accumulators cell-by-cell; only the eq-weighted claim is layout-independent.
 //!
 //! Window-3 cell layout: cells 0..8 = binary taps in natural low-bit order
 //! (b = 4*x0 + 2*x1 + x2), cells 8..27 = infinity extrapolations per
 //! [`W3_INF`], cell 27 = padding. Uniskip layout: cells 0..K = values on H
 //! (natural order), K..2K = values on the coset gamma*H.
-
 use super::*;
 
 use super::neon;
