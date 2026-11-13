@@ -1237,61 +1237,6 @@ pub fn lde_prepare_bitrev_scaled_into(
     unsafe { avx2::scaled_bitrev_copy_parallel(src, dst, sp.as_ref(), worker) };
 }
 
-/// Reference TWO-sweep variant of [`lde_prepare_bitrev_scaled_into`]: a
-/// vectorized scaled copy, then the in-place parallel bit-reversal. Kept for
-/// parity checks and kernel benchmarks.
-pub fn lde_prepare_bitrev_scaled_two_sweeps_into(
-    src: &[u32],
-    dst: &mut [u32],
-    offset: BabyBearField,
-    worker: &worker::Worker,
-) {
-    let n = src.len();
-    let log_n = n.trailing_zeros();
-    let src_addr = src.as_ptr() as usize;
-    let dst_addr = dst.as_mut_ptr() as usize;
-    if offset != BabyBearField::ONE {
-        let sp = SplitPowersRaw::new(offset, log_n);
-        let sp_ref = &sp;
-        worker.scope(n / 8, |scope, geometry| {
-            let (work, chunks) = (n / 8, geometry.len());
-            for thread_idx in 0..chunks {
-                let (start, size) = balanced_chunk(work, chunks, thread_idx);
-                spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
-                    use core::arch::x86_64::*;
-                    let src = src_addr as *const u32;
-                    let dst = dst_addr as *mut u32;
-                    for v8 in start..start + size {
-                        let i = v8 * 8;
-                        let hi = _mm256_set1_epi32(sp_ref.hi[i >> sp_ref.h] as i32);
-                        let lo = _mm256_loadu_si256(
-                            sp_ref.lo.as_ptr().add(i & sp_ref.mask) as *const __m256i
-                        );
-                        let f = avx2::mont_mul(lo, hi);
-                        let x = _mm256_loadu_si256(src.add(i) as *const __m256i);
-                        _mm256_storeu_si256(dst.add(i) as *mut __m256i, avx2::mont_mul(x, f));
-                    }
-                });
-            }
-        });
-    } else {
-        worker.scope(n, |scope, geometry| {
-            let (work, chunks) = (n, geometry.len());
-            for thread_idx in 0..chunks {
-                let (start, size) = balanced_chunk(work, chunks, thread_idx);
-                spawn_chunk(scope, thread_idx == geometry.len() - 1, move |_| unsafe {
-                    core::ptr::copy_nonoverlapping(
-                        (src_addr as *const u32).add(start),
-                        (dst_addr as *mut u32).add(start),
-                        size,
-                    );
-                });
-            }
-        });
-    }
-    crate::utils::parallel_bitreverse_enumeration_inplace(dst, worker);
-}
-
 /// Worker-PARALLEL base-field LDE coset (all threads on one coset): parallel
 /// scaled copy, parallel bit-reversal, blocked parallel NTT. Byte-identical
 /// to [`lde_coset_avx2`]; sizes below 2^16 run the serial kernel.
