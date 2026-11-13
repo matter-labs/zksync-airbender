@@ -17,3 +17,10 @@ def SoundnessClaim : Prop :=
         (circuitModel (p := babyBearModulus) control).relation input output w) spec
 
 end Airbender.Blake2G
+
+namespace Airbender.Blake2G
+/-- The G arithmetic claim has an accepted imported row with every input bound and word mapping. -/
+def SoundnessSatisfiableClaim : Prop :=
+  ∃ (control : Fin 512 → Vector Nat 7) (input : Input) (output : Words) (w : Nat → ZMod babyBearModulus),
+    InterfaceAssumptions input output w ∧ (circuitModel control).relation input output w
+end Airbender.Blake2G

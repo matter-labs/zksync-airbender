@@ -1441,3 +1441,7 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.Trace.Machine.Native.unrolled_reduced_from_native
 
 #print axioms Airbender.Trace.Machine.Native.unified_from_native
+
+#print axioms Airbender.decode_is_sail_satisfiable
+
+#print axioms Airbender.step_is_airbender_satisfiable

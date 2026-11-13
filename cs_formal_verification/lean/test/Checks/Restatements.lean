@@ -1,20 +1,21 @@
-module
-public import Proven.Final.Circuits.AddSub.RVTheorems
-public import Proven.Final.Circuits.JumpBranchSlt.RVTheorems
-public import Proven.Final.Circuits.MulDiv.RVTheorems
-public import Proven.Final.Circuits.ShiftBinop.RVTheorems
-public import Proven.Final.Circuits.SubwordMemory.RVTheorems
-public import Proven.Final.Circuits.WordMemory.RVTheorems
-public import Proven.Final.Trace.Families.AddSub.RVTheorems
-public import Proven.Final.Trace.Families.JumpBranchSlt.RVTheorems
-public import Proven.Final.Trace.Families.MulDiv.RVTheorems
-public import Proven.Final.Trace.Families.ShiftBinop.RVTheorems
-public import Proven.Final.Trace.Families.SubwordMemory.RVTheorems
-public import Proven.Final.Circuits.Bigint.RVTheorems
-public import Proven.Final.Circuits.Blake2G.Theorems
-public import Proven.Final.Circuits.InitsTeardowns.Theorems
+-- This audit leaf imports the non-module Sail specification for the Sail restatements.
+import Human.ISA.Sail.Theorems
+import Proven.Final.Circuits.AddSub.RVTheorems
+import Proven.Final.Circuits.JumpBranchSlt.RVTheorems
+import Proven.Final.Circuits.MulDiv.RVTheorems
+import Proven.Final.Circuits.ShiftBinop.RVTheorems
+import Proven.Final.Circuits.SubwordMemory.RVTheorems
+import Proven.Final.Circuits.WordMemory.RVTheorems
+import Proven.Final.Trace.Families.AddSub.RVTheorems
+import Proven.Final.Trace.Families.JumpBranchSlt.RVTheorems
+import Proven.Final.Trace.Families.MulDiv.RVTheorems
+import Proven.Final.Trace.Families.ShiftBinop.RVTheorems
+import Proven.Final.Trace.Families.SubwordMemory.RVTheorems
+import Proven.Final.Circuits.Bigint.RVTheorems
+import Proven.Final.Circuits.Blake2G.Theorems
+import Proven.Final.Circuits.InitsTeardowns.Theorems
 
-@[expose] public section
+
 
 /-! Equivalence checks for the reviewed claim statements. -/
 
@@ -418,3 +419,19 @@ theorem unified_restatement : UnifiedClaim ↔ OldUnifiedClaim :=
     fun h => (unified_claims_restatement.mpr h).1⟩
 
 end Airbender.InitsTeardowns.Restatement
+
+namespace Airbender.SailRestatement
+
+def OldDecodeIsSailClaim : Prop :=
+  (∀ word instruction state, RV.decode word = some instruction → Configured state →
+    Human.runSail (SailRV32.Functions.ext_decode word) state = .ok (Airbender.toSail instruction) state) ∧
+    ∃ word instruction state, RV.decode word = some instruction ∧ Configured state
+
+def OldStepIsAirbenderClaim : Prop :=
+  (∀ s s' machine, Agree s machine → RV.step s = some s' →
+    ∃ machine', step machine = some machine' ∧ Agree s' machine') ∧
+    ∃ s s' machine, Agree s machine ∧ RV.step s = some s'
+
+example : (DecodeIsSailClaim ∧ DecodeIsSailSatisfiableClaim) ↔ OldDecodeIsSailClaim := Iff.rfl
+example : (StepIsAirbenderClaim ∧ StepIsAirbenderSatisfiableClaim) ↔ OldStepIsAirbenderClaim := Iff.rfl
+end Airbender.SailRestatement

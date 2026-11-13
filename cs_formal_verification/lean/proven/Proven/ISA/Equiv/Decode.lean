@@ -51,7 +51,7 @@ elab "mk_bits" : tactic => withMainContext do
   replaceMainGoal [g]
 
 set_option maxHeartbeats 400000 in
-theorem decode_is_sail : Airbender.DecodeIsSailClaim := by
+theorem decode_is_sail : Airbender.DecodeIsSailClaim ∧ Airbender.DecodeIsSailSatisfiableClaim := by
   refine ⟨?_, NonVacuous.decode_assumptions⟩
   intro w i σ h hs
   unfold RV.decode at h

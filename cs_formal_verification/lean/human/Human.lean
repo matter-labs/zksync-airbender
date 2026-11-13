@@ -42,3 +42,6 @@ import Human.Trace.Machine.Theorems
 import Human.Compiler.Theorems
 
 import Human.Compiler.NativeTargets
+
+import Human.ISA.Sail.WholeRun
+import Human.ISA.Sail.MachineTargets

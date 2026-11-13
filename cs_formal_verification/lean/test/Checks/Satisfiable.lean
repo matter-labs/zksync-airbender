@@ -1,3 +1,4 @@
+import Proven.Final.ISA.Theorems
 import Proven.Final.Compiler.LookupSelectors
 import Human.Circuits.Blake2Round.Mask
 import Human.Circuits.InitsTeardowns.Native.Standalone
@@ -689,3 +690,6 @@ example (claim : Airbender.Blake2Round.Mask.SoundnessClaim)
   exact ⟨input, output, w, assumptions, mapping, claim input output w assumptions constraints mapping⟩
 
 example : Airbender.Compiler.NativeLookups.CachedLookupSelectorsSatisfiableClaim := Airbender.Compiler.NativeLookups.cached_lookup_selectors_satisfiable
+
+example : Airbender.DecodeIsSailSatisfiableClaim := Airbender.decode_is_sail_satisfiable
+example : Airbender.StepIsAirbenderSatisfiableClaim := Airbender.step_is_airbender_satisfiable

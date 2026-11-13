@@ -61,7 +61,7 @@ theorem step_sail (s t : RV.State) (σ : SailState) (h : Airbender.AgreeSail s �
     rw [hs] at e a
     exact ⟨σ', true, e, a, w, rfl⟩
 
-theorem step_is_airbender : Airbender.StepIsAirbenderClaim := by
+theorem step_is_airbender : Airbender.StepIsAirbenderClaim ∧ Airbender.StepIsAirbenderSatisfiableClaim := by
   refine ⟨?_, NonVacuous.step_assumptions⟩
   intro s t m ⟨hA, hsh, hin⟩ ht
   have ht' := ht

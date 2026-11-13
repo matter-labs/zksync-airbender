@@ -29,13 +29,19 @@ def Agree (s : RV.State) (m : Machine) : Prop :=
 
 /-- 1. Sail decodes every word of our table to the same instruction (on any Airbender state). -/
 def DecodeIsSailClaim : Prop :=
-  (∀ word instr σ, RV.decode word = some instr → Configured σ →
-    runSail (ext_decode word) σ = .ok (toSail instr) σ) ∧
+  ∀ word instr σ, RV.decode word = some instr → Configured σ →
+    runSail (ext_decode word) σ = .ok (toSail instr) σ
+
+/-- The decode assumptions hold for an instruction in a configured Sail state. -/
+def DecodeIsSailSatisfiableClaim : Prop :=
   ∃ word instr σ, RV.decode word = some instr ∧ Configured σ
 
 /-- 2. One step of our spec is one step of the Airbender machine. -/
 def StepIsAirbenderClaim : Prop :=
-  (∀ s s' m, Agree s m → RV.step s = some s' → ∃ m', step m = some m' ∧ Agree s' m') ∧
+  ∀ s s' m, Agree s m → RV.step s = some s' → ∃ m', step m = some m' ∧ Agree s' m'
+
+/-- The step assumptions hold for an agreeing machine with a next state. -/
+def StepIsAirbenderSatisfiableClaim : Prop :=
   ∃ s s' m, Agree s m ∧ RV.step s = some s'
 
 /-- The checks of `Checks.lean` (Sail's reset, what Airbender overrides Sail rejects, one machine step on

@@ -1,5 +1,6 @@
 module
 public import Human.Helpers.Context.PCState.Model
+public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section
 
@@ -14,4 +15,12 @@ def OutgoingBoundsClaim : Prop :=
   ∀ {p n : Nat} [Fact p.Prime] (_hp : Arithmetic.limbBase < p) {context : Context p n} (_interface : Interface context) {pc : ZMod p × ZMod p} (_outgoing : Outgoing context pc) (_lowBound : pc.1.val < Arithmetic.limbBase),
     pc.1.val < Arithmetic.limbBase ∧ pc.2.val < Arithmetic.limbBase
 
+end Airbender.PCState
+
+namespace Airbender.PCState
+/-- A balanced decoded context can contain the outgoing PC whose two limbs are bounded. -/
+def OutgoingBoundsSatisfiableClaim : Prop :=
+  ∃ (n : Nat) (context : Context babyBearModulus n) (pc : ZMod babyBearModulus × ZMod babyBearModulus),
+    Arithmetic.limbBase < babyBearModulus ∧ Interface context ∧ Outgoing context pc ∧
+      pc.1.val < Arithmetic.limbBase
 end Airbender.PCState

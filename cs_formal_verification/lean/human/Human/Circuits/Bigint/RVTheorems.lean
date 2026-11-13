@@ -20,3 +20,11 @@ def RVAddressesSoundnessClaim : Prop :=
         (circuitModel data).relation input output w) Addresses.spec
 
 end Airbender.Bigint.Memory
+
+namespace Airbender.Bigint.Memory
+/-- The address claim has an initialized accepted bigint row and its complete pointer mapping. -/
+def RVAddressesSoundnessSatisfiableClaim : Prop :=
+  ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Trace.Cell)
+    (input : Addresses.Input) (output : Addresses.Output) (w : Nat → ZMod babyBearModulus),
+    RVInterfaceAssumptions data before cells input output w ∧ (circuitModel data).relation input output w
+end Airbender.Bigint.Memory

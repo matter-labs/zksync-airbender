@@ -787,3 +787,11 @@ example : Airbender.Trace.Machine.Native.UnrolledReducedFromNative := Airbender.
 example : Airbender.Trace.Machine.Native.UnifiedFromNative := Airbender.Trace.Machine.Native.unified_from_native
 
 #print axioms Airbender.Trace.Machine.Native.unified_from_native
+
+example : Airbender.DecodeIsSailSatisfiableClaim := Airbender.decode_is_sail_satisfiable
+
+#print axioms Airbender.decode_is_sail_satisfiable
+
+example : Airbender.StepIsAirbenderSatisfiableClaim := Airbender.step_is_airbender_satisfiable
+
+#print axioms Airbender.step_is_airbender_satisfiable
