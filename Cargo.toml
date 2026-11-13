@@ -76,11 +76,6 @@ members = [
     "sumcheck_common",
 ]
 
-exclude = [
-    # Temporarily disabled until legacy generator dependencies are removed.
-    "tools/generator",
-]
-
 default-members = [
     "blake2s_u32",
     "common_constants",
