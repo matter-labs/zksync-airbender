@@ -93,6 +93,7 @@ contract GkrWhirVerifier {
     uint256 constant MARK_WORD_REGISTERS         = 8;  // 8 u32 values = one bytes32
     uint256 constant __TEMPLATE_PREIMAGE_FINAL_PC_OFFSET   = 32 * 12; // = NUM_REGISTERS * PREIMAGE_REGISTER_STRIDE
     uint256 constant __TEMPLATE_GKR_INIT_PREIMAGE_BYTES    = 32 * 12 + 12 + 2 * 4 + 8 * 32 + 8 * 32; // registers ‖ final PC ‖ top bits ‖ setup cap ‖ memory cap
+    uint256 constant __TEMPLATE_F1_E1_SLOT_BYTES = 32; // image bytes of an E1 run: its calldata bit offset
     uint256 constant __TEMPLATE_SETUP_COMMITMENT = 0x309facf34d70dc04c8480a888765fbb51248237e9088d3378410d1f99c8fc05f; // keccak256 of the pinned setup cap as BE u32 words
     // The inits/teardowns RAM-set base chunk indices (`top_bits`) are deployment parameters of
     // the program: f1_decode writes them into the preimage, and the layer-0 inits/teardowns gates
@@ -613,7 +614,7 @@ contract GkrWhirVerifier {
                 bit := add(bit, 246)
                 mstore(zp, r)
             }
-            next_ptr := add(ptr, 32)
+            next_ptr := add(ptr, __TEMPLATE_F1_E1_SLOT_BYTES)
             // gkr_dr_final compares the claim directly, so it must be canonical. f1_e1_round already
             // returns it reduced; the explicit mod compiles to cheaper code than omitting it.
             next_claim := mod(claim, modulus)

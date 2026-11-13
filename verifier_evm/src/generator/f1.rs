@@ -11,6 +11,9 @@ use crate::encoding::{fe_run_len, ts_run_len, Geometry};
 /// Memory address of the v0 calldata image, as the Yul expression the rewritten readers use.
 pub(crate) const V0_PTR: &str = "F1_V0_PTR()";
 
+/// Image bytes an E1 run of round pairs occupies: one word, the run's calldata bit offset.
+pub(crate) const E1_SLOT_BYTES: usize = 32;
+
 /// GKR output lines (5 output types × [read/num, write/den]).
 const GKR_OUTPUTS: usize = 10;
 const NUM_REGISTERS: usize = 32;
@@ -171,7 +174,13 @@ pub(crate) fn gkr_decoder(
         + 8
         + runs
             .iter()
-            .map(|&(n, e1)| if e1 { 32 } else { (n >> 1) * 32 + 16 * (n & 1) })
+            .map(|&(n, e1)| {
+                if e1 {
+                    E1_SLOT_BYTES
+                } else {
+                    (n >> 1) * 32 + 16 * (n & 1)
+                }
+            })
             .sum::<usize>()
         + 8;
     // f1_run handles an odd element count only if some FE run has one.
@@ -272,7 +281,7 @@ pub(crate) fn gkr_decoder(
         function f1_rounds(cd, v0, k) -> next_cd, next_v0 {{
             mstore(add({V0_PTR}, v0), shl(3, cd))
             next_cd := f1_run_end(cd, shl(1, k))
-            next_v0 := add(v0, 32)
+            next_v0 := add(v0, {E1_SLOT_BYTES})
         }}
         function f1_cd(off) -> w {{
             w := calldataload(off)

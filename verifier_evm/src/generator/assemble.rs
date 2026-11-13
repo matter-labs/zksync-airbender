@@ -617,6 +617,12 @@ fn render(
             &mut assigned,
         );
     }
+    gkr = set_const(
+        &gkr,
+        "__TEMPLATE_F1_E1_SLOT_BYTES",
+        f1::E1_SLOT_BYTES,
+        &mut assigned,
+    );
     let setup_commitment: String = f1
         .setup_commitment
         .iter()
