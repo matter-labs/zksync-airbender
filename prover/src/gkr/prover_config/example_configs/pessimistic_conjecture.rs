@@ -258,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn compressionnd_wrap_rounds_preserve_security_margin() {
+    fn compression_and_wrap_rounds_preserve_security_margin() {
         for (config, max_pow) in [
             (
                 compression_final_config_for_2_22(),
