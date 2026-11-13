@@ -1,5 +1,8 @@
 # Circuit verification
 
+[The complete claim inventory](docs/VERIFICATION_STATUS.md) lists every final statement, proof and non-vacuity boundary. [The findings register](docs/FINDINGS.md) records the inherited findings and dispositions.
+
+
 Lean proves that Airbender's constraint descriptions implement the RV32 specification
 (`RV.step`/`RV.run`, [RV32.lean](lean/human/Human/ISA/RV32.lean)). The specification covers RV32IM without the signed M
 operations, plus Airbender's custom operations and delegations. A separate
