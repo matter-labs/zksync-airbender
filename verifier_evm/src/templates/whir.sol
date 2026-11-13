@@ -9,8 +9,8 @@ pragma solidity =0.8.36;
 // contract: `verifier_evm::generate_f1_verifier` injects the Yul below (the helper functions +
 // `whir_verify(cd_start)`) into the GKR template's assembly block to form the single merged
 // `GkrWhirVerifier`; the `__TEMPLATE_WHIR_*` constants (schedule parameters AND the memory
-// map, laid out above the GKR heap) are assigned by the generator (see assemble.rs). Every checked relation is a real assert via sink2() (reverts
-// on mismatch). The circuit-independent logic is hand-written; the per-round fold/query/PoW
+// map, laid out above the GKR heap) are assigned by the generator (see assemble.rs). Every
+// failed check reverts. The circuit-independent logic is hand-written; the per-round fold/query/PoW
 // schedule + the config-derived constants (RS-codeword generators, cap, base geometry) are
 // generated from the prover's config.
 //
@@ -19,9 +19,10 @@ pragma solidity =0.8.36;
 // (REG_*); heavy logic in shallow Yul fns.
 //
 // ---- Start state: handed over in memory by the GKR half ---------------------
-// The GKR half (emit_gkr_mark) writes the transcript seed, the WHIR batching challenge, the
-// batched opening, the evaluation point z and the two base-oracle caps straight into this
-// half's regions, then calls `whir_verify(cd_start)`, which consumes the WHIR proof stream
+// The GKR half writes the transcript seed, the WHIR batching challenge, the batched opening
+// and the evaluation point z (emit_gkr_mark) and the memory base-oracle cap (f1_decode)
+// straight into this half's regions, then calls `whir_verify(cd_start)`, which consumes the
+// WHIR proof stream
 // that follows the GKR stream in the same calldata. No committed-state preimage, no registry:
 // the whole GKR+WHIR verification is one transaction.
 //
@@ -88,7 +89,7 @@ contract WhirVerifier {
     // GKR→WHIR handoff: the WHIR batching challenge, written by the GKR half's emit_gkr_mark.
     uint256 constant __TEMPLATE_WHIR_HANDOFF_BATCHING_PTR = "{unassigned}";
     // cap regions (CAP*32 bytes each)
-    uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = "{unassigned}";  // witness base-oracle cap
+    uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = "{unassigned}";  // memory+witness base-oracle cap
     uint256 constant __TEMPLATE_WHIR_QCAP_PTR     = "{unassigned}";  // current query cap (rounds >= 1)
     uint256 constant __TEMPLATE_WHIR_NCAP_PTR     = "{unassigned}";  // just-read intermediate cap
     // Per-round query drawing (matches prover `draw_query_bits`/`BitSource`):
@@ -103,7 +104,7 @@ contract WhirVerifier {
 
     fallback() external {
         assembly {
-        // Every checked WHIR relation flows through here: revert unless equal.
+        // Revert unless equal.
         function sink2(a, b) { if iszero(eq(a, b)) { revert(0, 0) } }
         function draw1() -> r {
             let s := keccak256(__TEMPLATE_WHIR_SEED_PTR, 32)
@@ -456,8 +457,8 @@ contract WhirVerifier {
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let nmono := shl(rfin, 1)
             let cp := mload(__TEMPLATE_WHIR_REG_CD)
-            // absorb via the large FEVAL scratch: 32 + nmono*16 bytes would
-            // overrun the SEED region (into z / pow) for the 2^8 tail
+            // absorb via the large FEVAL scratch: 32 + nmono*16 bytes can exceed the SEED
+            // region
             mstore(__TEMPLATE_WHIR_FEVAL_PTR, mload(__TEMPLATE_WHIR_SEED_PTR))
             {
             let bit := 0

@@ -27,9 +27,9 @@ contract GkrWhirVerifier {
     // consume literal (numeric-expression) constants, so the literal lives in the declaration.
 
     // ── Generic (used throughout) ───────────────────────────────────────────
-    uint256 constant MINIMUM_FREE_HEAP_PTR = 2048; // via_ir memoryguard reservation is 0x4c0 = 1216 today (guarded below)
+    uint256 constant MINIMUM_FREE_HEAP_PTR = 2048; // above via_ir's memoryguard reservation (guarded below)
     uint256 constant P      = 0x7000000000000000000000000000001; // Proth120: 7*2^120 + 1
-    uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // high 128 bits (one field lane)
+    uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // low 128 bits (one field lane)
     // Stack-pressure fix: the ~123-bit modulus P as a literal is a PUSH16 rematerialized at
     // every addmod/mulmod, and the Yul scheduler keeps it live across the deep gate sequences
     // (→ "stack too deep"). Store P once at a heap offset and `mload(P_PTR)` it instead. The
@@ -40,14 +40,14 @@ contract GkrWhirVerifier {
     // fixed low offsets that grow up from 0x80, and the SPILL-OVERWRITE guard (before the GKR
     // half runs) asserts they never reach MINIMUM_FREE_HEAP_PTR. So the region
     // [0x80, MINIMUM_FREE_HEAP_PTR) is the spill zone and [MINIMUM_FREE_HEAP_PTR, ∞) is
-    // spill-safe. P_PTR / CIRCUIT_PTR MUST live in the safe region — a low fixed slot (the old
-    // 160/192) is silently clobbered by via_ir spills, corrupting the committed state. They take
+    // spill-safe. P_PTR / CIRCUIT_PTR MUST live in the safe region — a low fixed slot is
+    // silently clobbered by via_ir spills, corrupting the committed state. They take
     // the first two slots of the safe region; the data address takes the third. The generated heap starts 96 bytes
     // higher. INVARIANT (Yul forbids constant arithmetic in assembly, so these are spelled as
     // literals): P_PTR == MINIMUM_FREE_HEAP_PTR, CIRCUIT_PTR == MINIMUM_FREE_HEAP_PTR + 32, and
     // the generator starts the heap at MINIMUM_FREE_HEAP_PTR + 96 (it reads the constant).
     uint256 constant P_PTR  = 2048;      // == MINIMUM_FREE_HEAP_PTR  (spill-safe slot 0)
-    // Fixed heap slot holding the circuit-layer calldata cursor, so gate/cache sub-functions
+    // Fixed heap slot holding the circuit-layer image cursor, so gate/cache sub-functions
     // read it via mload instead of a `ptr` parameter (that param was the single deepest stack
     // slot pushing each of them 1 over the EVM limit). Spill-safe slot 1, just above P_PTR.
     uint256 constant CIRCUIT_PTR = 2080; // == MINIMUM_FREE_HEAP_PTR + 32
@@ -61,15 +61,15 @@ contract GkrWhirVerifier {
     //    whole number of 32-byte words — derived from the circuit / prover config, see
     //    gkr_heap_regions in assemble.rs). NOTE: the accessors are deliberately a chain of
     //    `add(previous(), SIZE)` calls rather than absolute literals — with absolute literals the
-    //    IR optimizer emits ~1.7 KB more bytecode for the layer-0 gates (measured; literal
-    //    LOGUP_CHALLS_PTR alone triggers it). The WHIR half's regions follow at the chain's
+    //    IR optimizer emits markedly more bytecode for the layer-0 gates. The WHIR half's regions
+    //    follow at the chain's
     //    end (its generated absolute offsets; the generator's allocator places the WHIR map
     //    right after the chain).
     // HEAP ORDER: memory challenges (7), logup challenges (2), point (rounds),
     // seed + transcript scratch (cache array / SEED±96 absorb scratch / transcriptNTo1 absorbs),
     // batching (1), dim-reduce claims (NUM_OUTPUTS), eq (max(OUTPUT_EVALS, NUM_OUTPUTS)),
     // absorb scratch (32 + max absorb), permutation products (4), circuit claims (widest layer),
-    // layer-0 gate values (gate slots), layer-0 packed term table.
+    // layer-0 gate values (gate slots), layer-0 packed term table, decoded calldata image.
     uint256 constant __TEMPLATE_GKR_MEMORY_CHALLS_BYTES  = 32 * 7;
     uint256 constant __TEMPLATE_GKR_LOGUP_CHALLS_BYTES   = 32 * 2;
     uint256 constant __TEMPLATE_GKR_POINT_BYTES          = 32 * 21;
@@ -114,7 +114,7 @@ contract GkrWhirVerifier {
     // ── GKR→WHIR handoff (generated; shared with the WHIR half where the names coincide) ──────
     uint256 constant __TEMPLATE_WHIR_CAP            = 1 << 3; // base-oracle merkle cap size
     uint256 constant __TEMPLATE_WHIR_BATCH_POW_BITS = 13; // batched_proximity_check_pow_bits
-    // Base-layer at-point claims (dense in layer0's calldata eval block): mem++wit = NUM_MEMWIT
+    // Base-layer at-point claims (dense in layer 0's eval block of the image): mem++wit = NUM_MEMWIT
     // cols, setup = NUM_SETUP cols. The merge folds each 2^PACK_LOG2-chunk by the PACK_LOG2
     // packing coords: NUM_MEMWIT -> MERGED_MW claims, NUM_SETUP -> SETUP_MERGED claims.
     uint256 constant __TEMPLATE_WHIR_PACK_LOG2      = 3;
@@ -178,7 +178,7 @@ contract GkrWhirVerifier {
     // GKR→WHIR handoff: the WHIR batching challenge, written by the GKR half's emit_gkr_mark.
     uint256 constant __TEMPLATE_WHIR_HANDOFF_BATCHING_PTR = 35072;
     // cap regions (CAP*32 bytes each)
-    uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = 35104;  // witness base-oracle cap
+    uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = 35104;  // memory+witness base-oracle cap
     uint256 constant __TEMPLATE_WHIR_QCAP_PTR     = 35360;  // current query cap (rounds >= 1)
     uint256 constant __TEMPLATE_WHIR_NCAP_PTR     = 35616;  // just-read intermediate cap
     // Per-round query drawing (matches prover `draw_query_bits`/`BitSource`):
@@ -199,10 +199,9 @@ contract GkrWhirVerifier {
         bytes32 auxInput;
         bytes32 setupCommitment;
         address frontier = setupFrontier;
-        // NOTE: "memory-safe" is TRANSIENT — it lets solc spill the 1 leftover stack slot in the
-        // OLD sumcheck_compress_2pass (dim-reducing, pending replacement by the validated
-        // GkrDimReduce logic). The hand-placed memory is disjoint from spill slots, but
-        // re-audit memory-safety once the dim-reducing port lands.
+        // "memory-safe" lets solc spill stack slots, which the deepest functions need (without it
+        // check_permutation_identity is too deep for the stack). The hand-placed heap starts above
+        // the spill zone (MEMORY LAYOUT above).
         assembly ("memory-safe") {
         mstore(P_PTR, 0x7000000000000000000000000000001)
         mstore(F1_FRONTIER_PTR, frontier)
@@ -211,7 +210,7 @@ contract GkrWhirVerifier {
         // Proof/transcript bytes preserve logical stream order. Rust must append
         // fixed-width BE integer bytes: u32::to_be_bytes(), u64::to_be_bytes(),
         // u128::to_be_bytes(). 32-byte hashes/caps/roots are absorbed as raw bytes.
-        // For u128 pairs calldata is [x0:16][x1:16], so x0 is shr(128, word)
+        // For u128 pairs the decoded image holds [x0:16][x1:16], so x0 is shr(128, word)
         // and x1 is and(word, MASK). Smaller lanes follow the same BE packing rule
         // with larger shifts. Hash challenges use the earlier 16 hash bytes
         // first: shr(128, seed), then and(seed, MASK).
@@ -245,7 +244,7 @@ contract GkrWhirVerifier {
         // Layer-0 table-driven quadratic-gate evaluation (size opt). GATEVAL holds one reduced
         // value per quadratic gate (filled by the compact bucket loops from GKR_QTABLE, read by
         // the Horner chunk functions as `mload(GATEVAL+32*slot)`). QTABLE is the packed record
-        // stream (slot,a,b,coeff) written via mstore immediates. Both live in pristine (zero,
+        // stream (slot,a,b,coeff), copied from SetupFrontier. Both live in pristine (zero,
         // never-written) heap above every region written before layer 0, so GATEVAL needs no
         // zeroing. Only used during layer 0's point-check; nothing else touches these slots.
         function GKR_GATEVAL_PTR() -> ptr { ptr := add(GKR_CIRCUIT_CLAIMS_PTR(), __TEMPLATE_GKR_CIRCUIT_CLAIMS_BYTES) }
@@ -365,7 +364,7 @@ contract GkrWhirVerifier {
             if iszero(and(eq(add(cd, 8), 20270), eq(add(v0, 8), 12196))) { revert(0, 0) }
         }
 
-        // Read one little-endian u32 from the transcript preimage (absolute calldata byteoff).
+        // Read one little-endian u32 from the transcript preimage (byte offset in the image).
         function preimage_u32(byteoff) -> v {
             let w := mload(add(F1_V0_PTR(), byteoff))
             v := add(add(byte(0, w), shl(8, byte(1, w))), add(shl(16, byte(2, w)), shl(24, byte(3, w))))
@@ -374,7 +373,6 @@ contract GkrWhirVerifier {
         function transcript_4to1_dual(w0, w1, modulus) -> r {
             // Absorb the four coefficients before drawing the round challenge:
             // seed = keccak(seed || w0 || w1), then seed = keccak(seed), r = top128 mod P.
-            // The proof verification in Merged.t.sol binds this replay to the prover transcript.
             // F1/E1 rebuilds c0..c3 from (b, c) with lanes up to 2P: canonicalize the 4 lanes (mod
             // P) before absorbing, so the transcript binds to the reduced values. Re-pack keeps
             // the [hi|lo] layout.
@@ -390,8 +388,7 @@ contract GkrWhirVerifier {
         function transcript_init(ptr) -> next_ptr {
             // SingleChunk commits the register/PC boundary, top bits and both caps.
             // Hash the LE-u32 preimage, absorb the BE-u64 nonce, check its configured PoW,
-            // then draw permutation and lookup challenges. The committed proof acceptance
-            // in Merged.t.sol checks this transcript against the prover.
+            // then draw permutation and lookup challenges.
             let seed := keccak256(ptr, __TEMPLATE_GKR_INIT_PREIMAGE_BYTES)
             // The inits/teardowns top_bits the prover absorbed must be the program's pinned
             // values (one uint8 constant per RAM set) — the layer-0 inits/teardowns gates are
@@ -452,7 +449,7 @@ contract GkrWhirVerifier {
             let sp := SEED_PTR()
             // absorb output evals: seed = keccak(seed || outputEvals). The INIT_BYTES are bulk-copied
             // raw; canonicity is enforced at the use site below — the claims loop reads every one
-            // of these 160 lanes and range-checks `val < P`, so any accepted proof has canonical
+            // of these lanes and range-checks `val < P`, so any accepted proof has canonical
             // evals and hence a canonical absorb (cheaper than reduce-on-copy: it reuses the read
             // the claims loop already performs).
             mstore(GKR_ABS_PTR(), mload(sp))
@@ -579,12 +576,12 @@ contract GkrWhirVerifier {
         // Lookup identities — the logup analogue of the permutation-identity check, mirroring the
         // CPU verifier's `gkr_lookup_identity_failed` gate. The 10 GKR output columns are laid out
         // in OutputType order [Perm(0,1), Lookup16Bits(2,3), LookupTimestamps(4,5),
-        // GenericLookup(6,7), InitsAndTeardowns(8,9)] as 16 boundary evals each (u128 hi-lane at
-        // `op + (col*16 + j)*16`). Each lookup argument is a (numerator, denominator) pair; its
-        // rational sum Σ_j num_j/den_j over the 16 evals must be exactly zero. Accumulate the sum
+        // GenericLookup(6,7), InitsAndTeardowns(8,9)] as OUTPUT_EVALS boundary evals each (u128
+        // hi-lane at `op + (col*OUTPUT_EVALS + j)*16`). Each lookup argument is a (numerator,
+        // denominator) pair; its rational sum Σ_j num_j/den_j over the evals must be exactly zero. Accumulate the sum
         // as a single fraction — acc_num = acc_num·d + n·acc_den, acc_den = acc_den·d — and require
         // acc_num == 0 with acc_den ≠ 0 (a vanishing denominator would make the sum ill-defined).
-        // `op` is the output-evals calldata base (the pointer gkr_init read the evals from).
+        // `op` is the output evals' image address (the pointer gkr_init read the evals from).
         function check_lookup_identities(op) {
             let modulus := mload(P_PTR)
             // 3 lookup pairs at columns (2,3),(4,5),(6,7) — the fixed unified-circuit output layout
@@ -639,10 +636,9 @@ contract GkrWhirVerifier {
                 mstore(zp, r)
             }
             next_ptr := add(ptr, 32)
-            // Canonicalize: `claim` accumulates as mulmod(...) + c0, i.e. anything in [0, 2P).
-            // gkr_dr_final subtracts it from P with wrapping EVM arithmetic, and an unreduced
-            // claim would make that check accept a second relation (g ≡ claim − 2^256
-            // mod P) — so hand back the residue.
+            // Hand back a canonical claim: gkr_dr_final subtracts it from P with wrapping EVM
+            // arithmetic, and an unreduced claim would make that check accept a second relation
+            // (g ≡ claim − 2^256 mod P).
             next_claim := mod(claim, modulus)
         }
 
@@ -734,7 +730,6 @@ contract GkrWhirVerifier {
         // DIM_REDUCE_LAYERS dim-reducing layers (folding_steps OUTPUT_LOG2 .. trace_log2-1).
         // Reads the NUM_OUTPUTS claims + batching from gkr_init (GKR_CLAIMS_PTR /
         // GKR_BATCHING_PTR); reuses sumcheck_rounds for the monomial rounds.
-        // Merged.t.sol checks acceptance and rejects tampered GKR proof bytes.
         function gkr_compress(ptr) -> next_ptr, next_alpha {
             let batching := mload(GKR_BATCHING_PTR())
             for { let k := 0 } lt(k, __TEMPLATE_GKR_DIM_REDUCE_LAYERS) { k := add(k, 1) } {
@@ -1049,23 +1044,23 @@ function sumcheck_circuit_layer1(ptr, alpha) -> next_ptr, next_alpha {
 }
 
             function scl1_caches() {
-    {  // VectorizedLookup: (0 + 1[9]) + (0 + 1[10]) + (0 + 1[11]) + (0 + 0) + (0 + 0) + (0 + 0) + (0 + 0) + (0 + 0) + (0 + 0) + (0 + 1[8]) = Cache(0)
+    {  // VectorizedLookup: (1[9]) + (1[10]) + (1[11]) + (0) + (0) + (0) + (0) + (0) + (0) + (1[8]) = Cache(0)
         let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 8))))), 0), 0), 0), 0), 0), 0), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 11))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 10))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 9)))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)), mod(gate, mload(P_PTR)))
     }
-    {  // VectorizedLookup: (0 + 1[13]) + (0 + 1[14]) + (0 + 1[15]) + (0 + 1[16]) + (0 + 1[17]) + (0 + 1[18]) + (0 + 1[19]) + (0 + 1[20]) + (0 + 0) + (0 + 1[12]) = Cache(1)
+    {  // VectorizedLookup: (1[13]) + (1[14]) + (1[15]) + (1[16]) + (1[17]) + (1[18]) + (1[19]) + (1[20]) + (0) + (1[12]) = Cache(1)
         let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 12))))), 0), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 20))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 19))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 18))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 17))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 16))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 15))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 14))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 13)))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)), mod(gate, mload(P_PTR)))
     }
-    {  // VectorizedLookup: (0 + 1[22]) + (0 + 1[23]) + (0 + 1[24]) + (0 + 1[25]) + (0 + 1[26]) + (0 + 1[27]) + (0 + 1[28]) + (0 + 1[29]) + (0 + 0) + (0 + 1[21]) = Cache(2)
+    {  // VectorizedLookup: (1[22]) + (1[23]) + (1[24]) + (1[25]) + (1[26]) + (1[27]) + (1[28]) + (1[29]) + (0) + (1[21]) = Cache(2)
         let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 21))))), 0), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 29))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 28))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 27))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 26))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 25))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 24))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 23))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 22)))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2)), mod(gate, mload(P_PTR)))
     }
-    {  // VectorizedLookup: (0 + 1[31]) + (0 + 1[32]) + (0 + 1[33]) + (0 + 1[34]) + (0 + 1[35]) + (0 + 1[36]) + (0 + 1[37]) + (0 + 1[38]) + (0 + 0) + (0 + 1[30]) = Cache(3)
+    {  // VectorizedLookup: (1[31]) + (1[32]) + (1[33]) + (1[34]) + (1[35]) + (1[36]) + (1[37]) + (1[38]) + (0) + (1[30]) = Cache(3)
         let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 30))))), 0), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 38))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 37))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 36))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 35))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 34))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 33))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 32))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 31)))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3)), mod(gate, mload(P_PTR)))
     }
-    {  // VectorizedLookup: (0 + 1[40]) + (0 + 1[41]) + (0 + 1[42]) + (0 + 1[43]) + (0 + 1[44]) + (0 + 1[45]) + (0 + 1[46]) + (0 + 1[47]) + (0 + 0) + (0 + 1[39]) = Cache(4)
+    {  // VectorizedLookup: (1[40]) + (1[41]) + (1[42]) + (1[43]) + (1[44]) + (1[45]) + (1[46]) + (1[47]) + (0) + (1[39]) = Cache(4)
         let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 39))))), 0), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 47))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 46))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 45))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 44))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 43))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 42))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 41))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 40)))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)), mod(gate, mload(P_PTR)))
     }
@@ -1214,7 +1209,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr, next_alpha {
             // accumulate every term into gateval[gate_slot], one loop per bucket
             {
             let modulus := P
-            let col_base := mload(CIRCUIT_PTR) // calldata base of the column at-point evals
+            let col_base := mload(CIRCUIT_PTR) // image address of the column at-point evals
             let gateval := GKR_GATEVAL_PTR()
             // linear    terms, coeff  1B positive  (68 records)
             { let rec_ptr := add(GKR_QTABLE_PTR(), 0) let rec_end := add(rec_ptr, 204)
@@ -1305,7 +1300,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr, next_alpha {
 
     
             // canonicity guard for the base-layer claims_batch absorb: 106 at-point evals from
-            // calldata; require each < P so the absorbed transcript bytes are canonical
+            // the image; require each < P so the absorbed transcript bytes are canonical
                 for { let wk := 0 } lt(wk, 106) { wk := add(wk, 1) } {
                     if iszero(lt(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, wk)))), mload(P_PTR))) { revert(0, 0) }
                 }
@@ -1383,15 +1378,15 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr, next_alpha {
 }
 
             function scl0_caches() {
-    {  // MemoryTuple: (γ + 0 + α[4] + α²0 + α³(0 + [0]) + α⁴[1] + α⁵[2] + α⁶[3]) = Cache(0)
+    {  // MemoryTuple: (γ + 0 + α[4] + α²0 + α³([0]) + α⁴[1] + α⁵[2] + α⁶[3]) = Cache(0)
         let gate := add(gkr_memrel_compress_low(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 4)))), 0), gkr_memrel_compress_high(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 0)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 1)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 2)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 3))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)), mod(gate, mload(P_PTR)))
     }
-    {  // MemoryTuple: (γ + [9] + α[10] + α²[11] + α³(0 + [5]) + α⁴[6] + α⁵[7] + α⁶[8]) = Cache(1)
+    {  // MemoryTuple: (γ + [9] + α[10] + α²[11] + α³([5]) + α⁴[6] + α⁵[7] + α⁶[8]) = Cache(1)
         let gate := add(gkr_memrel_compress_low(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 9)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 10)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 11))))), gkr_memrel_compress_high(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 5)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 6)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 7)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 8))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)), mod(gate, mload(P_PTR)))
     }
-    {  // MemoryTuple: (γ + 0 + α[4] + α²0 + α³(0 + [24]) + α⁴[25] + α⁵[2] + α⁶[3]) = Cache(2)
+    {  // MemoryTuple: (γ + 0 + α[4] + α²0 + α³([24]) + α⁴[25] + α⁵[2] + α⁶[3]) = Cache(2)
         let gate := add(gkr_memrel_compress_low(0, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 4)))), 0), gkr_memrel_compress_high(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 24)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 25)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 2)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 3))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2)), mod(gate, mload(P_PTR)))
     }
@@ -1399,11 +1394,11 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr, next_alpha {
         let gate := add(gkr_memrel_compress_low(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 9)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 10)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 11))))), gkr_memrel_compress_high(add(1, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 24))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 25)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 7)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 8))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3)), mod(gate, mload(P_PTR)))
     }
-    {  // MemoryTuple: (γ + [16] + α[17] + α²[18] + α³(0 + [12]) + α⁴[13] + α⁵[14] + α⁶[15]) = Cache(4)
+    {  // MemoryTuple: (γ + [16] + α[17] + α²[18] + α³([12]) + α⁴[13] + α⁵[14] + α⁶[15]) = Cache(4)
         let gate := add(gkr_memrel_compress_low(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 16)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 17)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 18))))), gkr_memrel_compress_high(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 12)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 13)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 14)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 15))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)), mod(gate, mload(P_PTR)))
     }
-    {  // MemoryTuple: (γ + 2 + α0 + α²0 + α³(0 + [24]) + α⁴[25] + α⁵[22] + α⁶[23]) = Cache(5)
+    {  // MemoryTuple: (γ + 2 + α0 + α²0 + α³([24]) + α⁴[25] + α⁵[22] + α⁶[23]) = Cache(5)
         let gate := add(gkr_memrel_compress_low(2, 0, 0), gkr_memrel_compress_high(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 24)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 25)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 22)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 23))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 5)), mod(gate, mload(P_PTR)))
     }
@@ -1411,11 +1406,11 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr, next_alpha {
         let gate := add(gkr_memrel_compress_low(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 16)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 17)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 18))))), gkr_memrel_compress_high(add(2, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 24))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 25)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 19)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 20))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 6)), mod(gate, mload(P_PTR)))
     }
-    {  // MemoryTuple: (γ + 2 + α0 + α²0 + α³(0 + [28]) + α⁴[29] + α⁵[26] + α⁶[27]) = Cache(7)
+    {  // MemoryTuple: (γ + 2 + α0 + α²0 + α³([28]) + α⁴[29] + α⁵[26] + α⁶[27]) = Cache(7)
         let gate := add(gkr_memrel_compress_low(2, 0, 0), gkr_memrel_compress_high(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 28)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 29)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 26)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 27))))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 7)), mod(gate, mload(P_PTR)))
     }
-    {  // SingleColumnLookup: 0 + -1[24] + 1[0] + 2^19[90] = Cache(8)
+    {  // SingleColumnLookup: -1[24] + 1[0] + 2^19[90] = Cache(8)
         let gate := add(add(mulmod(sub(mload(P_PTR), 1), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 24)))), mload(P_PTR)), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 0))))), mulmod(524288, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 90)))), mload(P_PTR)))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 8)), mod(gate, mload(P_PTR)))
     }
@@ -1439,8 +1434,8 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr, next_alpha {
         let gate := add(524288, add(add(mulmod(sub(mload(P_PTR), 1), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 25)))), mload(P_PTR)), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 13))))), mulmod(sub(mload(P_PTR), 1), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 92)))), mload(P_PTR))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 13)), mod(gate, mload(P_PTR)))
     }
-    {  // VectorizedLookup: (0 + 1[22]) + (0 + 1[23]) + (0 + 1[4]) + (0 + 1[38]) + (0 + 1[39]) + (0 + 1[40]) + (0 + 1[41]) + (0 + 1[42]) + (0 + 1[43] + 2[44] + 2^2[45] + 2^3[46] + 2^4[47] + 2^5[48] + 2^6[49] + 2^7[50] + 2^8[51] + 2^9[52] + 2^10[53] + 2^11[54] + 2^12[55] + 2^13[56] + 2^14[57] + 2^15[58] + 2^16[59] + 2^17[9] + 2^18[16]) + (46 + 0) = Cache(14)
-        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, add(46, 0)), add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 43)))), mulmod(2, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 44)))), mload(P_PTR))), mulmod(4, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 45)))), mload(P_PTR))), mulmod(8, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 46)))), mload(P_PTR))), mulmod(16, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 47)))), mload(P_PTR))), mulmod(32, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 48)))), mload(P_PTR))), mulmod(64, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 49)))), mload(P_PTR))), mulmod(128, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 50)))), mload(P_PTR))), mulmod(256, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 51)))), mload(P_PTR))), mulmod(512, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 52)))), mload(P_PTR))), mulmod(1024, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mload(P_PTR))), mulmod(2048, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mload(P_PTR))), mulmod(4096, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mload(P_PTR))), mulmod(8192, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mload(P_PTR))), mulmod(16384, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 57)))), mload(P_PTR))), mulmod(32768, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mload(P_PTR))), mulmod(65536, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 59)))), mload(P_PTR))), mulmod(131072, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mload(P_PTR))), mulmod(262144, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mload(P_PTR)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 42))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 41))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 40))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 39))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 38))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 4))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 23))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 22)))))
+    {  // VectorizedLookup: (1[22]) + (1[23]) + (1[4]) + (1[38]) + (1[39]) + (1[40]) + (1[41]) + (1[42]) + (1[43] + 2[44] + 2^2[45] + 2^3[46] + 2^4[47] + 2^5[48] + 2^6[49] + 2^7[50] + 2^8[51] + 2^9[52] + 2^10[53] + 2^11[54] + 2^12[55] + 2^13[56] + 2^14[57] + 2^15[58] + 2^16[59] + 2^17[9] + 2^18[16]) + (46) = Cache(14)
+        let gate := gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(gkr_lookrel_step(0, 46), add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(add(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 43)))), mulmod(2, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 44)))), mload(P_PTR))), mulmod(4, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 45)))), mload(P_PTR))), mulmod(8, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 46)))), mload(P_PTR))), mulmod(16, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 47)))), mload(P_PTR))), mulmod(32, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 48)))), mload(P_PTR))), mulmod(64, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 49)))), mload(P_PTR))), mulmod(128, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 50)))), mload(P_PTR))), mulmod(256, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 51)))), mload(P_PTR))), mulmod(512, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 52)))), mload(P_PTR))), mulmod(1024, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 53)))), mload(P_PTR))), mulmod(2048, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 54)))), mload(P_PTR))), mulmod(4096, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 55)))), mload(P_PTR))), mulmod(8192, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 56)))), mload(P_PTR))), mulmod(16384, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 57)))), mload(P_PTR))), mulmod(32768, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 58)))), mload(P_PTR))), mulmod(65536, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 59)))), mload(P_PTR))), mulmod(131072, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 9)))), mload(P_PTR))), mulmod(262144, shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 16)))), mload(P_PTR)))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 42))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 41))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 40))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 39))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 38))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 4))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 23))))), shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, 22)))))
         mstore(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 14)), mod(gate, mload(P_PTR)))
     }
     {  // VectorizedLookupSetup: β⁰[96] + β¹[97] + β²[98] + β³[99] + β⁴[100] + β⁵[101] + β⁶[102] + β⁷[103] + β⁸[104] + β⁹[105] = Cache(15)
@@ -1784,7 +1779,8 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr, next_alpha {
             claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 0))))
             }
 function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim {
-    // NB: need to inline __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS unfortunately
+    // sumcheck_rounds with the round count inlined: the circuit layers use this copy,
+    // which compiles smaller and cheaper than sharing sumcheck_rounds.
     let modulus := mload(P_PTR) // hoisted: DUP per use instead of re-mload every round
     // E1 (see sumcheck_rounds): (b, c) in, c0..c3 rebuilt and absorbed, claim = K
     let bit := mload(ptr)
@@ -1812,17 +1808,17 @@ function sumcheck_claims_batch(ptr, points) -> next_ptr, next_alpha {
     next_ptr := add(ptr, mul(16, points))
 }
 
-// One β-Horner step: acc·β + c. Callers chain ten of these (see lookrel_horner)
-// instead of one 5-arg compress_half, keeping every call boundary at 2 args so the
-// enclosing cache/gate function stays inside the EVM stack limit.
+// One β-Horner step: acc·β + c. Callers chain ten of these (see lookrel_horner),
+// keeping every call boundary at 2 args so the enclosing cache/gate function stays
+// inside the EVM stack limit.
 function gkr_lookrel_step(acc, c) -> acc_next {
     acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR()), mload(P_PTR)), c)
 }
 
 // Split memrel into a 3-arg low + 4-arg high, composed by the caller as
-// add(low(...), high(...)). A single 7-arg gkr_memrel_compress forced solc to
-// materialize all 7 expression-args at the call boundary, running the enclosing
-// cache function 1 slot too deep (same failure the lookrel split above avoids).
+// add(low(...), high(...)). A single 7-arg helper would make solc materialize all 7
+// expression-args at the call boundary, running the enclosing cache function 1 slot
+// too deep (the same failure the lookrel steps above avoid).
 function gkr_memrel_compress_low(address_space, addr_low, addr_high) -> compressed {
     compressed := add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space)
     compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, mload(P_PTR)))
@@ -1866,7 +1862,6 @@ function logup_pointcheck_update(acc, alpha, num_out, den_out) -> next_acc {
     next_acc := pointcheck_update(acc, alpha, num_out)
 }
 
-// 3
 function gate_aggregatelookuprationalpair(alpha, acc, num1_idx, num2_idx, den1_idx, den2_idx) -> next_acc {
     let num1 := gate_calldataload(num1_idx)
     let num2 := gate_calldataload(num2_idx)
@@ -1881,7 +1876,6 @@ function gate_copyinextensionfield(alpha, acc, input_idx) -> next_acc {
     next_acc := pointcheck_update(acc, alpha, input)
 }
 
-// 2
 function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_acc {
     let input := gate_calldataload(input_idx)
     let mask := gate_calldataload(mask_idx)
@@ -1905,9 +1899,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
 
         // Interpolate-halve n elements at sc: sc[j] = sc[2j] + (sc[2j+1]-sc[2j])·r.
         function whir_foldhalf(sc, n, r) {
-            // canonical interpolation a + (b-a)*r. Reduce a,b mod P first: after several folds
-            // the running values accumulate non-canonically (up to ~4P), which would make the
-            // old `sub(2*P, a)` underflow once a > 2P (a real bug hit by the last partial chunk).
+            // canonical interpolation a + (b-a)*r; a and b are reduced first so `sub(Pm, a)` sees a
+            // canonical value.
             let Pm := mload(P_PTR)
             for { let j := 0 } lt(j, div(n, 2)) { j := add(j, 1) } {
                 let a := mod(mload(add(sc, mul(64, j))), Pm)
@@ -1915,7 +1908,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
                 mstore(add(sc, mul(32, j)), addmod(a, mulmod(addmod(b, sub(Pm, a), Pm), r, Pm), Pm))
             }
         }
-        // Fold one PACK = 2^PACK_LOG2 chunk (count real evals from calldata, rest zero) by the
+        // Fold one PACK = 2^PACK_LOG2 chunk (count real evals from the image, rest zero) by the
         // PACK_LOG2 packing coords at `ex` — a PACK_LOG2-var multilinear eval → single claim.
         // LSB binding: adjacent evals differ in pack-index bit 0, which pairs with ex[0], so the
         // coords apply FORWARD (mirrors the prover's merge_claims). Scratch: PACK slots at
@@ -1936,7 +1929,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             v := mload(sc)
         }
         // bytes32 from MARK_WORD_REGISTERS consecutive final registers' u32 values (each stored
-        // LE at preimage byte reg*PREIMAGE_REGISTER_STRIDE; the preimage is at calldata 0),
+        // LE at preimage byte reg*PREIMAGE_REGISTER_STRIDE; the preimage starts the image),
         // concatenated in register order. Assembled in the 0x00 scratch word.
         function mark_word(first_reg) -> w {
             for { let i := 0 } lt(i, MARK_WORD_REGISTERS) { i := add(i, 1) } {
@@ -2013,7 +2006,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             }
         }
 
-        // Every checked WHIR relation flows through here: revert unless equal.
+        // Revert unless equal.
         function sink2(a, b) { if iszero(eq(a, b)) { revert(0, 0) } }
         function draw1() -> r {
             let s := keccak256(__TEMPLATE_WHIR_SEED_PTR, 32)
@@ -2388,8 +2381,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let nmono := shl(rfin, 1)
             let cp := mload(__TEMPLATE_WHIR_REG_CD)
-            // absorb via the large FEVAL scratch: 32 + nmono*16 bytes would
-            // overrun the SEED region (into z / pow) for the 2^8 tail
+            // absorb via the large FEVAL scratch: 32 + nmono*16 bytes can exceed the SEED
+            // region
             mstore(__TEMPLATE_WHIR_FEVAL_PTR, mload(__TEMPLATE_WHIR_SEED_PTR))
             {
             let bit := 0
@@ -2530,7 +2523,6 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         }
 
         // Keep `alpha` inside this block so its stack slot is free before the tail.
-        // The legacy backend does not spill; keeping it live would put `ptr` one slot too deep.
         let ptr, output_evals_ptr
         {
             let alpha
@@ -2551,21 +2543,19 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         check_lookup_identities(output_evals_ptr)
 
         // TODO: don't forget the recursion chain check
-        // TODO: very, VERY, carefully review end-to-end fiat-shamir
 
         // ── GKR→WHIR handoff in memory, then the WHIR proximity check ─────────────────
-        // emit_gkr_mark draws the packing coords + WHIR batching, merges the base-layer claims,
-        // writes the WHIR start state into the __TEMPLATE_WHIR_* regions and stages the registry
-        // payload; whir_verify then consumes the WHIR proof stream that follows the 8-byte
-        // WHIR-batching PoW nonce at `ptr`, and requires its cursor to land exactly at
-        // add(F1_V0_PTR(), 12196) — so the whole merged stream (GKR ‖ nonce ‖ WHIR) is checked for exact
-        // consumption.
+        // emit_gkr_mark draws the packing coords + WHIR batching, merges the base-layer claims and
+        // writes the WHIR start state into the __TEMPLATE_WHIR_* regions; whir_verify then
+        // consumes the WHIR proof stream that follows the 8-byte WHIR-batching PoW nonce at `ptr`,
+        // and requires its cursor to land exactly at the end of the calldata — so the whole
+        // merged stream (GKR ‖ nonce ‖ WHIR) is checked for exact consumption.
         emit_gkr_mark(ptr)
         // F1: `ptr` is an image address; the WHIR stream follows the F1 GKR section
         whir_verify(20270)
 
         // The verified statement, handed to Solidity: publicInput = registers x10..x17,
-        // auxInput = x18..x25 (u32 LE each, concatenated, from the preimage in calldata);
+        // auxInput = x18..x25 (u32 LE each, concatenated, from the preimage);
         // setupCommitment = keccak256 of the pinned setup cap (CAP BE-u32 digests) — the
         // circuit setup the proof was verified against.
         publicInput := mark_word(PUBLIC_INPUT_FIRST_REGISTER)

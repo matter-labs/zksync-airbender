@@ -135,7 +135,7 @@ impl Yul {
         {
             v.push(*idx);
         }
-        // The circuit-layer calldata cursor lives in a fixed heap slot (CIRCUIT_PTR), not a
+        // The circuit-layer image cursor lives in a fixed heap slot (CIRCUIT_PTR), not a
         // function parameter, so the gate/cache/chunk sub-functions need not carry `ptr` —
         // that param was the single deepest slot pushing each of them 1 over the EVM limit.
         yul_format!("shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, {idx}))))")
@@ -295,12 +295,28 @@ fn scaled(c: &Dual, input: &Dual) -> Dual {
     }
 }
 
-/// `constant + linear` in Yul; a zero constant is omitted.
+/// `constant + linear` in Yul; a zero operand is omitted.
 fn add_constant(constant: &Dual, linear: &Dual) -> Yul {
     if constant.1 .0 == "0" {
         yul_format!("{linear:x}")
+    } else if linear.1 .0 == "0" {
+        yul_format!("{constant:x}")
     } else {
         yul_format!("add({constant:x}, {linear:x})")
+    }
+}
+
+/// The comment text of a sum, omitting zero terms.
+fn display_sum(terms: &[&Dual]) -> String {
+    let nonzero: Vec<String> = terms
+        .iter()
+        .filter(|t| t.0 != "0")
+        .map(|t| t.to_string())
+        .collect();
+    if nonzero.is_empty() {
+        "0".to_string()
+    } else {
+        nonzero.join(" + ")
     }
 }
 
@@ -420,7 +436,7 @@ fn emit_layer0_quad_table(
     );
     out.push_str("            {\n");
     out.push_str("            let modulus := P\n");
-    out.push_str("            let col_base := mload(CIRCUIT_PTR) // calldata base of the column at-point evals\n");
+    out.push_str("            let col_base := mload(CIRCUIT_PTR) // image address of the column at-point evals\n");
     out.push_str("            let gateval := GKR_GATEVAL_PTR()\n");
     for (key, start, count, stride) in &layout {
         if *count == 0 {
@@ -586,7 +602,7 @@ fn memrel_to_calldata(
             let high = Dual(format!("[{high}]"), Yul::calldataload(high));
             [
                 Dual(
-                    format!("({timestamp_offset} + {low})"),
+                    format!("({})", display_sum(&[&timestamp_offset, &low])),
                     add_constant(&timestamp_offset, &low),
                 ),
                 high,
@@ -959,7 +975,7 @@ pub fn emit_circuit_yul_with_stats(
                                 .unwrap_or_else(|| Dual("0".to_string(), yul_format!("0")));
                             let constant = proth120_const_to_evm(constant);
                             Dual(
-                                format!("({constant} + {linear})"),
+                                format!("({})", display_sum(&[&constant, &linear])),
                                 add_constant(&constant, &linear),
                             )
                         })
@@ -1003,7 +1019,7 @@ pub fn emit_circuit_yul_with_stats(
                         .unwrap_or_else(|| Dual("0".to_string(), yul_format!("0")));
                     let constant = proth120_const_to_evm(constant);
                     let val = Dual(
-                        format!("{constant} + {linear}"),
+                        display_sum(&[&constant, &linear]),
                         add_constant(&constant, &linear),
                     );
                     yul_println!(
@@ -1541,7 +1557,7 @@ pub fn emit_circuit_yul_with_stats(
                     .unwrap_or(Dual("0".to_string(), yul_format!("0")));
                 let constant = proth120_const_to_evm(constant);
                 Dual(
-                    format!("{constant} + {linear}"),
+                    display_sum(&[&constant, &linear]),
                     add_constant(&constant, &linear),
                 )
             }
@@ -1612,7 +1628,7 @@ pub fn emit_circuit_yul_with_stats(
                     .unwrap_or_else(zero);
                 let constant = proth120_const_to_evm(constant);
                 Dual(
-                    format!("{constant} + {linear} + {quadratic}"),
+                    display_sum(&[&constant, &linear, &quadratic]),
                     yul_format!("add({}, {quadratic:x})", add_constant(&constant, &linear).0),
                 )
             }
@@ -1641,7 +1657,6 @@ pub fn emit_circuit_yul_with_stats(
             // }
 
             match enforced_relation {
-                // 3
                 GKRRelation::AggregateLookupRationalPair { input, output } => {
                     let [[num1, den1], [num2, den2]] = input.each_ref().map(|pair| {
                         pair.each_ref().map(|addr| {
@@ -1683,7 +1698,6 @@ pub fn emit_circuit_yul_with_stats(
                     );
                 }
 
-                // 2
                 GKRRelation::MaskIntoIdentityProduct {
                     input,
                     mask,
@@ -2417,7 +2431,7 @@ pub fn emit_circuit_yul_with_stats(
             let n0 = layer0_group_widths.0 + layer0_group_widths.1 + layer0_group_widths.2;
             format!("
             // canonicity guard for the base-layer claims_batch absorb: {n0} at-point evals from
-            // calldata; require each < P so the absorbed transcript bytes are canonical
+            // the image; require each < P so the absorbed transcript bytes are canonical
             \tfor {{ let wk := 0 }} lt(wk, {n0}) {{ wk := add(wk, 1) }} {{
             \t    if iszero(lt(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))), P)) {{ revert(0, 0) }}
             \t}}")
@@ -2619,7 +2633,8 @@ pub fn emit_circuit_yul_with_stats(
     let gate_calldataload_inner = Yul::calldataload(&123).0.replace("123", "idx");
     yul_println!("
         function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim {{
-            // NB: need to inline __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS unfortunately
+            // sumcheck_rounds with the round count inlined: the circuit layers use this copy,
+            // which compiles smaller and cheaper than sharing sumcheck_rounds.
             let modulus := mload(P_PTR) // hoisted: DUP per use instead of re-mload every round
             // E1 (see sumcheck_rounds): (b, c) in, c0..c3 rebuilt and absorbed, claim = K
             let bit := mload(ptr)
@@ -2647,17 +2662,17 @@ pub fn emit_circuit_yul_with_stats(
             next_ptr := add(ptr, mul(16, points))
         }}
 
-        // One β-Horner step: acc·β + c. Callers chain ten of these (see lookrel_horner)
-        // instead of one 5-arg compress_half, keeping every call boundary at 2 args so the
-        // enclosing cache/gate function stays inside the EVM stack limit.
+        // One β-Horner step: acc·β + c. Callers chain ten of these (see lookrel_horner),
+        // keeping every call boundary at 2 args so the enclosing cache/gate function stays
+        // inside the EVM stack limit.
         function gkr_lookrel_step(acc, c) -> acc_next {{
             acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR()), P), c)
         }}
 
         // Split memrel into a 3-arg low + 4-arg high, composed by the caller as
-        // add(low(...), high(...)). A single 7-arg gkr_memrel_compress forced solc to
-        // materialize all 7 expression-args at the call boundary, running the enclosing
-        // cache function 1 slot too deep (same failure the lookrel split above avoids).
+        // add(low(...), high(...)). A single 7-arg helper would make solc materialize all 7
+        // expression-args at the call boundary, running the enclosing cache function 1 slot
+        // too deep (the same failure the lookrel steps above avoid).
         function gkr_memrel_compress_low(address_space, addr_low, addr_high) -> compressed {{
             compressed := add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space)
             compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, P))
@@ -2701,7 +2716,6 @@ pub fn emit_circuit_yul_with_stats(
             next_acc := pointcheck_update(acc, alpha, num_out)
         }}
 
-        // 3
         function gate_aggregatelookuprationalpair(alpha, acc, num1_idx, num2_idx, den1_idx, den2_idx) -> next_acc {{
             let num1 := gate_calldataload(num1_idx)
             let num2 := gate_calldataload(num2_idx)
@@ -2716,7 +2730,6 @@ pub fn emit_circuit_yul_with_stats(
             next_acc := pointcheck_update(acc, alpha, input)
         }}
 
-        // 2
         function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_acc {{
             let input := gate_calldataload(input_idx)
             let mask := gate_calldataload(mask_idx)

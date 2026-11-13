@@ -27,9 +27,9 @@ contract GkrWhirVerifier {
     // consume literal (numeric-expression) constants, so the literal lives in the declaration.
 
     // ── Generic (used throughout) ───────────────────────────────────────────
-    uint256 constant MINIMUM_FREE_HEAP_PTR = 2048; // via_ir memoryguard reservation is 0x4c0 = 1216 today (guarded below)
+    uint256 constant MINIMUM_FREE_HEAP_PTR = 2048; // above via_ir's memoryguard reservation (guarded below)
     uint256 constant P      = 0x7000000000000000000000000000001; // Proth120: 7*2^120 + 1
-    uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // high 128 bits (one field lane)
+    uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // low 128 bits (one field lane)
     // Stack-pressure fix: the ~123-bit modulus P as a literal is a PUSH16 rematerialized at
     // every addmod/mulmod, and the Yul scheduler keeps it live across the deep gate sequences
     // (→ "stack too deep"). Store P once at a heap offset and `mload(P_PTR)` it instead. The
@@ -40,14 +40,14 @@ contract GkrWhirVerifier {
     // fixed low offsets that grow up from 0x80, and the SPILL-OVERWRITE guard (before the GKR
     // half runs) asserts they never reach MINIMUM_FREE_HEAP_PTR. So the region
     // [0x80, MINIMUM_FREE_HEAP_PTR) is the spill zone and [MINIMUM_FREE_HEAP_PTR, ∞) is
-    // spill-safe. P_PTR / CIRCUIT_PTR MUST live in the safe region — a low fixed slot (the old
-    // 160/192) is silently clobbered by via_ir spills, corrupting the committed state. They take
+    // spill-safe. P_PTR / CIRCUIT_PTR MUST live in the safe region — a low fixed slot is
+    // silently clobbered by via_ir spills, corrupting the committed state. They take
     // the first two slots of the safe region; the data address takes the third. The generated heap starts 96 bytes
     // higher. INVARIANT (Yul forbids constant arithmetic in assembly, so these are spelled as
     // literals): P_PTR == MINIMUM_FREE_HEAP_PTR, CIRCUIT_PTR == MINIMUM_FREE_HEAP_PTR + 32, and
     // the generator starts the heap at MINIMUM_FREE_HEAP_PTR + 96 (it reads the constant).
     uint256 constant P_PTR  = 2048;      // == MINIMUM_FREE_HEAP_PTR  (spill-safe slot 0)
-    // Fixed heap slot holding the circuit-layer calldata cursor, so gate/cache sub-functions
+    // Fixed heap slot holding the circuit-layer image cursor, so gate/cache sub-functions
     // read it via mload instead of a `ptr` parameter (that param was the single deepest stack
     // slot pushing each of them 1 over the EVM limit). Spill-safe slot 1, just above P_PTR.
     uint256 constant CIRCUIT_PTR = 2080; // == MINIMUM_FREE_HEAP_PTR + 32
@@ -61,15 +61,15 @@ contract GkrWhirVerifier {
     //    whole number of 32-byte words — derived from the circuit / prover config, see
     //    gkr_heap_regions in assemble.rs). NOTE: the accessors are deliberately a chain of
     //    `add(previous(), SIZE)` calls rather than absolute literals — with absolute literals the
-    //    IR optimizer emits ~1.7 KB more bytecode for the layer-0 gates (measured; literal
-    //    LOGUP_CHALLS_PTR alone triggers it). The WHIR half's regions follow at the chain's
+    //    IR optimizer emits markedly more bytecode for the layer-0 gates. The WHIR half's regions
+    //    follow at the chain's
     //    end (its generated absolute offsets; the generator's allocator places the WHIR map
     //    right after the chain).
     // HEAP ORDER: memory challenges (7), logup challenges (2), point (rounds),
     // seed + transcript scratch (cache array / SEED±96 absorb scratch / transcriptNTo1 absorbs),
     // batching (1), dim-reduce claims (NUM_OUTPUTS), eq (max(OUTPUT_EVALS, NUM_OUTPUTS)),
     // absorb scratch (32 + max absorb), permutation products (4), circuit claims (widest layer),
-    // layer-0 gate values (gate slots), layer-0 packed term table.
+    // layer-0 gate values (gate slots), layer-0 packed term table, decoded calldata image.
     uint256 constant __TEMPLATE_GKR_MEMORY_CHALLS_BYTES  = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_LOGUP_CHALLS_BYTES   = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_POINT_BYTES          = "{unassigned}";
@@ -114,7 +114,7 @@ contract GkrWhirVerifier {
     // ── GKR→WHIR handoff (generated; shared with the WHIR half where the names coincide) ──────
     uint256 constant __TEMPLATE_WHIR_CAP            = "{unassigned}"; // base-oracle merkle cap size
     uint256 constant __TEMPLATE_WHIR_BATCH_POW_BITS = "{unassigned}"; // batched_proximity_check_pow_bits
-    // Base-layer at-point claims (dense in layer0's calldata eval block): mem++wit = NUM_MEMWIT
+    // Base-layer at-point claims (dense in layer 0's eval block of the image): mem++wit = NUM_MEMWIT
     // cols, setup = NUM_SETUP cols. The merge folds each 2^PACK_LOG2-chunk by the PACK_LOG2
     // packing coords: NUM_MEMWIT -> MERGED_MW claims, NUM_SETUP -> SETUP_MERGED claims.
     uint256 constant __TEMPLATE_WHIR_PACK_LOG2      = "{unassigned}";
@@ -139,10 +139,9 @@ contract GkrWhirVerifier {
         bytes32 auxInput;
         bytes32 setupCommitment;
         address frontier = setupFrontier;
-        // NOTE: "memory-safe" is TRANSIENT — it lets solc spill the 1 leftover stack slot in the
-        // OLD sumcheck_compress_2pass (dim-reducing, pending replacement by the validated
-        // GkrDimReduce logic). The hand-placed memory is disjoint from spill slots, but
-        // re-audit memory-safety once the dim-reducing port lands.
+        // "memory-safe" lets solc spill stack slots, which the deepest functions need (without it
+        // check_permutation_identity is too deep for the stack). The hand-placed heap starts above
+        // the spill zone (MEMORY LAYOUT above).
         assembly ("memory-safe") {
         mstore(P_PTR, 0x7000000000000000000000000000001)
         mstore(F1_FRONTIER_PTR, frontier)
@@ -151,7 +150,7 @@ contract GkrWhirVerifier {
         // Proof/transcript bytes preserve logical stream order. Rust must append
         // fixed-width BE integer bytes: u32::to_be_bytes(), u64::to_be_bytes(),
         // u128::to_be_bytes(). 32-byte hashes/caps/roots are absorbed as raw bytes.
-        // For u128 pairs calldata is [x0:16][x1:16], so x0 is shr(128, word)
+        // For u128 pairs the decoded image holds [x0:16][x1:16], so x0 is shr(128, word)
         // and x1 is and(word, MASK). Smaller lanes follow the same BE packing rule
         // with larger shifts. Hash challenges use the earlier 16 hash bytes
         // first: shr(128, seed), then and(seed, MASK).
@@ -185,7 +184,7 @@ contract GkrWhirVerifier {
         // Layer-0 table-driven quadratic-gate evaluation (size opt). GATEVAL holds one reduced
         // value per quadratic gate (filled by the compact bucket loops from GKR_QTABLE, read by
         // the Horner chunk functions as `mload(GATEVAL+32*slot)`). QTABLE is the packed record
-        // stream (slot,a,b,coeff) written via mstore immediates. Both live in pristine (zero,
+        // stream (slot,a,b,coeff), copied from SetupFrontier. Both live in pristine (zero,
         // never-written) heap above every region written before layer 0, so GATEVAL needs no
         // zeroing. Only used during layer 0's point-check; nothing else touches these slots.
         function GKR_GATEVAL_PTR() -> ptr { ptr := add(GKR_CIRCUIT_CLAIMS_PTR(), __TEMPLATE_GKR_CIRCUIT_CLAIMS_BYTES) }
@@ -194,7 +193,7 @@ contract GkrWhirVerifier {
         function F1_V0_PTR()       -> ptr { ptr := add(GKR_QTABLE_PTR(), __TEMPLATE_GKR_QTABLE_BYTES) }
         // __F1_DECODER__
 
-        // Read one little-endian u32 from the transcript preimage (absolute calldata byteoff).
+        // Read one little-endian u32 from the transcript preimage (byte offset in the image).
         function preimage_u32(byteoff) -> v {
             let w := calldataload(add(F1_V0_PTR(), byteoff))
             v := add(add(byte(0, w), shl(8, byte(1, w))), add(shl(16, byte(2, w)), shl(24, byte(3, w))))
@@ -203,7 +202,6 @@ contract GkrWhirVerifier {
         function transcript_4to1_dual(w0, w1, modulus) -> r {
             // Absorb the four coefficients before drawing the round challenge:
             // seed = keccak(seed || w0 || w1), then seed = keccak(seed), r = top128 mod P.
-            // The proof verification in Merged.t.sol binds this replay to the prover transcript.
             // F1/E1 rebuilds c0..c3 from (b, c) with lanes up to 2P: canonicalize the 4 lanes (mod
             // P) before absorbing, so the transcript binds to the reduced values. Re-pack keeps
             // the [hi|lo] layout.
@@ -219,8 +217,7 @@ contract GkrWhirVerifier {
         function transcript_init(ptr) -> next_ptr {
             // SingleChunk commits the register/PC boundary, top bits and both caps.
             // Hash the LE-u32 preimage, absorb the BE-u64 nonce, check its configured PoW,
-            // then draw permutation and lookup challenges. The committed proof acceptance
-            // in Merged.t.sol checks this transcript against the prover.
+            // then draw permutation and lookup challenges.
             let seed := keccak256(ptr, __TEMPLATE_GKR_INIT_PREIMAGE_BYTES)
             // The inits/teardowns top_bits the prover absorbed must be the program's pinned
             // values (one uint8 constant per RAM set) — the layer-0 inits/teardowns gates are
@@ -281,7 +278,7 @@ contract GkrWhirVerifier {
             let sp := SEED_PTR()
             // absorb output evals: seed = keccak(seed || outputEvals). The INIT_BYTES are bulk-copied
             // raw; canonicity is enforced at the use site below — the claims loop reads every one
-            // of these 160 lanes and range-checks `val < P`, so any accepted proof has canonical
+            // of these lanes and range-checks `val < P`, so any accepted proof has canonical
             // evals and hence a canonical absorb (cheaper than reduce-on-copy: it reuses the read
             // the claims loop already performs).
             mstore(GKR_ABS_PTR(), mload(sp))
@@ -408,12 +405,12 @@ contract GkrWhirVerifier {
         // Lookup identities — the logup analogue of the permutation-identity check, mirroring the
         // CPU verifier's `gkr_lookup_identity_failed` gate. The 10 GKR output columns are laid out
         // in OutputType order [Perm(0,1), Lookup16Bits(2,3), LookupTimestamps(4,5),
-        // GenericLookup(6,7), InitsAndTeardowns(8,9)] as 16 boundary evals each (u128 hi-lane at
-        // `op + (col*16 + j)*16`). Each lookup argument is a (numerator, denominator) pair; its
-        // rational sum Σ_j num_j/den_j over the 16 evals must be exactly zero. Accumulate the sum
+        // GenericLookup(6,7), InitsAndTeardowns(8,9)] as OUTPUT_EVALS boundary evals each (u128
+        // hi-lane at `op + (col*OUTPUT_EVALS + j)*16`). Each lookup argument is a (numerator,
+        // denominator) pair; its rational sum Σ_j num_j/den_j over the evals must be exactly zero. Accumulate the sum
         // as a single fraction — acc_num = acc_num·d + n·acc_den, acc_den = acc_den·d — and require
         // acc_num == 0 with acc_den ≠ 0 (a vanishing denominator would make the sum ill-defined).
-        // `op` is the output-evals calldata base (the pointer gkr_init read the evals from).
+        // `op` is the output evals' image address (the pointer gkr_init read the evals from).
         function check_lookup_identities(op) {
             let modulus := mload(P_PTR)
             // 3 lookup pairs at columns (2,3),(4,5),(6,7) — the fixed unified-circuit output layout
@@ -468,10 +465,9 @@ contract GkrWhirVerifier {
                 mstore(zp, r)
             }
             next_ptr := add(ptr, 32)
-            // Canonicalize: `claim` accumulates as mulmod(...) + c0, i.e. anything in [0, 2P).
-            // gkr_dr_final subtracts it from P with wrapping EVM arithmetic, and an unreduced
-            // claim would make that check accept a second relation (g ≡ claim − 2^256
-            // mod P) — so hand back the residue.
+            // Hand back a canonical claim: gkr_dr_final subtracts it from P with wrapping EVM
+            // arithmetic, and an unreduced claim would make that check accept a second relation
+            // (g ≡ claim − 2^256 mod P).
             next_claim := mod(claim, modulus)
         }
 
@@ -554,7 +550,6 @@ contract GkrWhirVerifier {
         // DIM_REDUCE_LAYERS dim-reducing layers (folding_steps OUTPUT_LOG2 .. trace_log2-1).
         // Reads the NUM_OUTPUTS claims + batching from gkr_init (GKR_CLAIMS_PTR /
         // GKR_BATCHING_PTR); reuses sumcheck_rounds for the monomial rounds.
-        // Merged.t.sol checks acceptance and rejects tampered GKR proof bytes.
         function gkr_compress(ptr) -> next_ptr, next_alpha {
             let batching := mload(GKR_BATCHING_PTR())
             for { let k := 0 } lt(k, __TEMPLATE_GKR_DIM_REDUCE_LAYERS) { k := add(k, 1) } {
@@ -588,9 +583,8 @@ contract GkrWhirVerifier {
 
         // Interpolate-halve n elements at sc: sc[j] = sc[2j] + (sc[2j+1]-sc[2j])·r.
         function whir_foldhalf(sc, n, r) {
-            // canonical interpolation a + (b-a)*r. Reduce a,b mod P first: after several folds
-            // the running values accumulate non-canonically (up to ~4P), which would make the
-            // old `sub(2*P, a)` underflow once a > 2P (a real bug hit by the last partial chunk).
+            // canonical interpolation a + (b-a)*r; a and b are reduced first so `sub(Pm, a)` sees a
+            // canonical value.
             let Pm := mload(P_PTR)
             for { let j := 0 } lt(j, div(n, 2)) { j := add(j, 1) } {
                 let a := mod(mload(add(sc, mul(64, j))), Pm)
@@ -598,7 +592,7 @@ contract GkrWhirVerifier {
                 mstore(add(sc, mul(32, j)), addmod(a, mulmod(addmod(b, sub(Pm, a), Pm), r, Pm), Pm))
             }
         }
-        // Fold one PACK = 2^PACK_LOG2 chunk (count real evals from calldata, rest zero) by the
+        // Fold one PACK = 2^PACK_LOG2 chunk (count real evals from the image, rest zero) by the
         // PACK_LOG2 packing coords at `ex` — a PACK_LOG2-var multilinear eval → single claim.
         // LSB binding: adjacent evals differ in pack-index bit 0, which pairs with ex[0], so the
         // coords apply FORWARD (mirrors the prover's merge_claims). Scratch: PACK slots at
@@ -619,7 +613,7 @@ contract GkrWhirVerifier {
             v := mload(sc)
         }
         // bytes32 from MARK_WORD_REGISTERS consecutive final registers' u32 values (each stored
-        // LE at preimage byte reg*PREIMAGE_REGISTER_STRIDE; the preimage is at calldata 0),
+        // LE at preimage byte reg*PREIMAGE_REGISTER_STRIDE; the preimage starts the image),
         // concatenated in register order. Assembled in the 0x00 scratch word.
         function mark_word(first_reg) -> w {
             for { let i := 0 } lt(i, MARK_WORD_REGISTERS) { i := add(i, 1) } {
@@ -704,7 +698,6 @@ contract GkrWhirVerifier {
         }
 
         // Keep `alpha` inside this block so its stack slot is free before the tail.
-        // The legacy backend does not spill; keeping it live would put `ptr` one slot too deep.
         let ptr, output_evals_ptr
         {
             let alpha
@@ -725,21 +718,19 @@ contract GkrWhirVerifier {
         check_lookup_identities(output_evals_ptr)
 
         // TODO: don't forget the recursion chain check
-        // TODO: very, VERY, carefully review end-to-end fiat-shamir
 
         // ── GKR→WHIR handoff in memory, then the WHIR proximity check ─────────────────
-        // emit_gkr_mark draws the packing coords + WHIR batching, merges the base-layer claims,
-        // writes the WHIR start state into the __TEMPLATE_WHIR_* regions and stages the registry
-        // payload; whir_verify then consumes the WHIR proof stream that follows the 8-byte
-        // WHIR-batching PoW nonce at `ptr`, and requires its cursor to land exactly at
-        // calldatasize() — so the whole merged stream (GKR ‖ nonce ‖ WHIR) is checked for exact
-        // consumption.
+        // emit_gkr_mark draws the packing coords + WHIR batching, merges the base-layer claims and
+        // writes the WHIR start state into the __TEMPLATE_WHIR_* regions; whir_verify then
+        // consumes the WHIR proof stream that follows the 8-byte WHIR-batching PoW nonce at `ptr`,
+        // and requires its cursor to land exactly at the end of the calldata — so the whole
+        // merged stream (GKR ‖ nonce ‖ WHIR) is checked for exact consumption.
         emit_gkr_mark(ptr)
         // F1: `ptr` is an image address; the WHIR stream follows the F1 GKR section
         whir_verify(__F1_WHIR_START__)
 
         // The verified statement, handed to Solidity: publicInput = registers x10..x17,
-        // auxInput = x18..x25 (u32 LE each, concatenated, from the preimage in calldata);
+        // auxInput = x18..x25 (u32 LE each, concatenated, from the preimage);
         // setupCommitment = keccak256 of the pinned setup cap (CAP BE-u32 digests) — the
         // circuit setup the proof was verified against.
         publicInput := mark_word(PUBLIC_INPUT_FIRST_REGISTER)
