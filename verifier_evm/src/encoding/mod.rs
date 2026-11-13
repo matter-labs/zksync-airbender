@@ -3,10 +3,10 @@
 //! before absorbing them. See `verifier_evm/gkr_transcript_reference.md`
 //! for encoding invariants and verification/producer pointers.
 //!
-//! F1 stores GKR then WHIR. Registers and top bits are LE u32; PoW nonces are
-//! BE u64. Field runs pack canonical 123-bit values MSB-first; digests use the
-//! 25-byte prefix of their big-endian words.
-//! The final PC and setup cap are deployment constants.
+//! F1 stores GKR then WHIR. Registers are LE u32; PoW nonces are BE u64.
+//! Field runs pack canonical 123-bit values MSB-first; digests use the 25-byte
+//! prefix of their big-endian words. The final PC, the inits/teardowns top bits
+//! and the setup cap are deployment constants.
 
 mod digest;
 mod gkr;

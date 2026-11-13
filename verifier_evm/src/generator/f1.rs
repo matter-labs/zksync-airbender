@@ -122,8 +122,13 @@ pub(crate) fn gkr_decoder(
     params: &Geometry,
     final_pc: u32,
     setup_cap: &[[u32; 8]],
-    num_top_bits: usize,
+    top_bits: &[u32],
 ) -> GkrDecoder {
+    let num_top_bits = top_bits.len();
+    assert!(
+        4 * num_top_bits <= 32,
+        "the pinned top bits must fit one image word"
+    );
     let cap = params.cap();
     let db = DIGEST_BYTES;
     assert_eq!(setup_cap.len(), cap, "setup cap size");
@@ -135,8 +140,7 @@ pub(crate) fn gkr_decoder(
 
     // (F1 runs) — the preimage region is decoded by f1_preimage; the rest is runs and raw bytes
     let preimage_v0 = 12 * NUM_REGISTERS + 12 + 4 * num_top_bits + 2 * 32 * cap;
-    let preimage_f1 =
-        4 * NUM_REGISTERS + ts_run_len(NUM_REGISTERS + 1) + 4 * num_top_bits + cap * db;
+    let preimage_f1 = 4 * NUM_REGISTERS + ts_run_len(NUM_REGISTERS + 1) + cap * db;
     // Static walk of the stream (the runtime walk in f1_decode must end at the same offsets).
     let widths: Vec<usize> = (0..circuit.layers.len())
         .rev()
@@ -214,7 +218,13 @@ pub(crate) fn gkr_decoder(
     let pc_le = u32::from_le_bytes(final_pc.to_be_bytes());
     let ts_off = 4 * NUM_REGISTERS;
     let top_off = ts_off + ts_run_len(NUM_REGISTERS + 1);
-    let cap_off = top_off + 4 * num_top_bits;
+    let cap_off = top_off;
+    // the pinned top bits as preimage LE u32s, left-aligned in one word
+    let mut top_word = [0u8; 32];
+    for (slot, tb) in top_word.chunks_mut(4).zip(top_bits) {
+        slot.copy_from_slice(&tb.to_le_bytes());
+    }
+    let top_word: String = top_word.iter().map(|b| format!("{b:02x}")).collect();
     let ts_pad = (8 - (38 * (NUM_REGISTERS + 1)) % 8) % 8;
     let yul = format!(
         "
@@ -301,7 +311,8 @@ pub(crate) fn gkr_decoder(
                 mstore(add({V0_PTR}, {fts_hi}), f1_le19(hi))
             }}
             if and(byte(0, calldataload({ts_last})), {ts_pad_mask:#x}) {{ revert(0, 0) }}
-            calldatacopy(add({V0_PTR}, {top_v0}), {top_off}, {top_len})
+            // pinned inits/teardowns top bits (the setup cap below overwrites the rest of the word)
+            mstore(add({V0_PTR}, {top_v0}), 0x{top_word})
             // pinned setup cap
             extcodecopy(mload(F1_FRONTIER_PTR), add({V0_PTR}, {setup_cap_v0}), __TEMPLATE_F1_DATA_CAP_OFFSET, {setup_cap_len})
             // memory cap: {cap} DIGESTs of {db} bytes, as preimage LE words and as the WHIR
@@ -319,7 +330,6 @@ pub(crate) fn gkr_decoder(
         ts_last = top_off - 1,
         ts_pad_mask = (1u32 << ts_pad) - 1,
         top_v0 = 12 * NUM_REGISTERS + 12,
-        top_len = 4 * num_top_bits,
         mem_cap_v0 = 12 * NUM_REGISTERS + 12 + 4 * num_top_bits + 32 * cap,
     );
     GkrDecoder {

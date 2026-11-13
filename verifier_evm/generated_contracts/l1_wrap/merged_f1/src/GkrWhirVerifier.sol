@@ -92,12 +92,11 @@ contract GkrWhirVerifier {
     uint256 constant AUX_INPUT_FIRST_REGISTER    = 18; // x18..x25 (s2..s9)
     uint256 constant MARK_WORD_REGISTERS         = 8;  // 8 u32 values = one bytes32
     uint256 constant __TEMPLATE_PREIMAGE_FINAL_PC_OFFSET   = 32 * 12; // = NUM_REGISTERS * PREIMAGE_REGISTER_STRIDE
-    uint256 constant __TEMPLATE_PREIMAGE_TOP_BITS_OFFSET   = 32 * 12 + 12; // final_pc + 12
     uint256 constant __TEMPLATE_GKR_INIT_PREIMAGE_BYTES    = 32 * 12 + 12 + 2 * 4 + 8 * 32 + 8 * 32; // registers ‖ final PC ‖ top bits ‖ setup cap ‖ memory cap
     uint256 constant __TEMPLATE_SETUP_COMMITMENT = 0x309facf34d70dc04c8480a888765fbb51248237e9088d3378410d1f99c8fc05f; // keccak256 of the pinned setup cap as BE u32 words
     // The inits/teardowns RAM-set base chunk indices (`top_bits`) are deployment parameters of
-    // the program: the prover's preimage values must EQUAL these (checked in transcript_init),
-    // and the layer-0 inits/teardowns gates use the constants. One uint8 per teardown set.
+    // the program: f1_decode writes them into the preimage, and the layer-0 inits/teardowns gates
+    // use the constants. One uint8 per teardown set.
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_0 = 0;
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_1 = 1;
     uint256 constant __TEMPLATE_EXTERNAL_POW_BITS = 20; // external-challenge PoW difficulty
@@ -323,17 +322,18 @@ contract GkrWhirVerifier {
                 mstore(add(F1_V0_PTR(), 392), f1_le19(hi))
             }
             if and(byte(0, calldataload(284)), 0x3) { revert(0, 0) }
-            calldatacopy(add(F1_V0_PTR(), 396), 285, 8)
+            // pinned inits/teardowns top bits (the setup cap below overwrites the rest of the word)
+            mstore(add(F1_V0_PTR(), 396), 0x0000000001000000000000000000000000000000000000000000000000000000)
             // pinned setup cap
             extcodecopy(mload(F1_FRONTIER_PTR), add(F1_V0_PTR(), 404), __TEMPLATE_F1_DATA_CAP_OFFSET, 256)
             // memory cap: 8 DIGESTs of 25 bytes, as preimage LE words and as the WHIR
             // half's BE base-oracle cap
             for { let i := 0 } lt(i, 8) { i := add(i, 1) } {
-                let d := f1_digest(add(293, mul(25, i)))
+                let d := f1_digest(add(285, mul(25, i)))
                 mstore(add(F1_V0_PTR(), add(660, mul(32, i))), f1_bswap32x8(d))
                 mstore(add(__TEMPLATE_WHIR_BCAP0_PTR, mul(32, i)), d)
             }
-            let cd := 493
+            let cd := 485
             let v0 := 916
             calldatacopy(add(F1_V0_PTR(), v0), cd, 8) // external PoW nonce
             cd, v0 := f1_seq(add(cd, 8), add(v0, 8), 40)
@@ -347,7 +347,7 @@ contract GkrWhirVerifier {
                 cd, v0 := f1_seq(cd, v0, and(shr(mul(16, l), 0x006a004a001a0012000c), 0xffff))
             }
             calldatacopy(add(F1_V0_PTR(), v0), cd, 8) // WHIR batching PoW nonce
-            if iszero(and(eq(add(cd, 8), 20270), eq(add(v0, 8), 12196))) { revert(0, 0) }
+            if iszero(and(eq(add(cd, 8), 20262), eq(add(v0, 8), 12196))) { revert(0, 0) }
         }
 
         // Read one little-endian u32 from the transcript preimage (byte offset in the image).
@@ -374,13 +374,6 @@ contract GkrWhirVerifier {
             // Hash the LE-u32 preimage, absorb the BE-u64 nonce, check its configured PoW,
             // then draw permutation and lookup challenges.
             let seed := keccak256(ptr, __TEMPLATE_GKR_INIT_PREIMAGE_BYTES)
-            // The inits/teardowns top_bits the prover absorbed must be the program's pinned
-            // values (one uint8 constant per RAM set) — the layer-0 inits/teardowns gates are
-            // generated against the constants, so a different preimage must not verify.
-            if iszero(eq(preimage_u32(__TEMPLATE_PREIMAGE_TOP_BITS_OFFSET), __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_0)) {
-            revert(0, 0) }
-            if iszero(eq(preimage_u32(add(__TEMPLATE_PREIMAGE_TOP_BITS_OFFSET, 4)), __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_1)) {
-            revert(0, 0) }
 
             // PoW fold: digest = keccak(seed(32) || nonce_be8); require top __TEMPLATE_EXTERNAL_POW_BITS zero.
             // the 40-byte hash covers the seed and the word's leading 8-byte BE nonce; the rest of the
@@ -2498,7 +2491,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         // section, and requires its cursor to land exactly at the end of the calldata — so the
         // whole stream (GKR ‖ nonce ‖ WHIR) is checked for exact consumption.
         emit_gkr_mark(ptr)
-        whir_verify(20270)
+        whir_verify(20262)
 
         // The verified statement, handed to Solidity: publicInput = registers x10..x17,
         // auxInput = x18..x25 (u32 LE each, concatenated, from the preimage);

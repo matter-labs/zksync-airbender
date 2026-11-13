@@ -345,7 +345,7 @@ pub fn generate_f1_verifier(
         params,
         final_pc,
         setup_cap,
-        circuit.memory_layout.teardown_sets.len(),
+        inits_teardowns_top_bits,
     );
     let f1_render = F1Render {
         decoder,
@@ -581,7 +581,6 @@ fn render(
         ("__TEMPLATE_GKR_LSB_LINES_BYTES", lsb_lines_bytes),
         ("__TEMPLATE_GKR_DIM_REDUCE_LAYERS", dim_reduce_layers),
         ("__TEMPLATE_PREIMAGE_FINAL_PC_OFFSET", final_pc_offset),
-        ("__TEMPLATE_PREIMAGE_TOP_BITS_OFFSET", top_bits_offset),
         ("__TEMPLATE_GKR_INIT_PREIMAGE_BYTES", preimage_bytes.clone()),
         (
             "__TEMPLATE_EXTERNAL_POW_BITS",

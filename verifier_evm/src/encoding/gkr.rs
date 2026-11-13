@@ -109,12 +109,6 @@ pub(super) fn encode_gkr(
         .chain(std::iter::once(split_timestamp(*final_timestamp)))
         .collect();
     w.put("gkr_timestamps", &write_ts_run(&timestamps));
-    let top_bits: Vec<u8> = proof
-        .inits_and_teardowns_top_bits
-        .iter()
-        .flat_map(|t| t.to_le_bytes())
-        .collect();
-    w.put("gkr_top_bits", &top_bits);
     let memory_cap = &proof.whir_proof.memory_commitment.commitment.cap.cap;
     assert_eq!(memory_cap.len(), params.cap(), "memory cap size");
     let memory_cap: Vec<u8> = memory_cap.iter().flat_map(digest_wire).collect();

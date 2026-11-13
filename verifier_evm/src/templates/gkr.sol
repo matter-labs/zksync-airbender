@@ -92,12 +92,11 @@ contract GkrWhirVerifier {
     uint256 constant AUX_INPUT_FIRST_REGISTER    = 18; // x18..x25 (s2..s9)
     uint256 constant MARK_WORD_REGISTERS         = 8;  // 8 u32 values = one bytes32
     uint256 constant __TEMPLATE_PREIMAGE_FINAL_PC_OFFSET   = "{unassigned}"; // = NUM_REGISTERS * PREIMAGE_REGISTER_STRIDE
-    uint256 constant __TEMPLATE_PREIMAGE_TOP_BITS_OFFSET   = "{unassigned}"; // final_pc + 12
     uint256 constant __TEMPLATE_GKR_INIT_PREIMAGE_BYTES    = "{unassigned}"; // registers ‖ final PC ‖ top bits ‖ setup cap ‖ memory cap
     uint256 constant __TEMPLATE_SETUP_COMMITMENT = "{unassigned}"; // keccak256 of the pinned setup cap as BE u32 words
     // The inits/teardowns RAM-set base chunk indices (`top_bits`) are deployment parameters of
-    // the program: the prover's preimage values must EQUAL these (checked in transcript_init),
-    // and the layer-0 inits/teardowns gates use the constants. One uint8 per teardown set.
+    // the program: f1_decode writes them into the preimage, and the layer-0 inits/teardowns gates
+    // use the constants. One uint8 per teardown set.
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_0 = "{unassigned}";
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_1 = "{unassigned}";
     uint256 constant __TEMPLATE_EXTERNAL_POW_BITS = "{unassigned}"; // external-challenge PoW difficulty
@@ -209,13 +208,6 @@ contract GkrWhirVerifier {
             // Hash the LE-u32 preimage, absorb the BE-u64 nonce, check its configured PoW,
             // then draw permutation and lookup challenges.
             let seed := keccak256(ptr, __TEMPLATE_GKR_INIT_PREIMAGE_BYTES)
-            // The inits/teardowns top_bits the prover absorbed must be the program's pinned
-            // values (one uint8 constant per RAM set) — the layer-0 inits/teardowns gates are
-            // generated against the constants, so a different preimage must not verify.
-            if iszero(eq(preimage_u32(__TEMPLATE_PREIMAGE_TOP_BITS_OFFSET), __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_0)) {
-            revert(0, 0) }
-            if iszero(eq(preimage_u32(add(__TEMPLATE_PREIMAGE_TOP_BITS_OFFSET, 4)), __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_1)) {
-            revert(0, 0) }
 
             // PoW fold: digest = keccak(seed(32) || nonce_be8); require top __TEMPLATE_EXTERNAL_POW_BITS zero.
             // the 40-byte hash covers the seed and the word's leading 8-byte BE nonce; the rest of the

@@ -237,7 +237,6 @@ contract MergedTest is MergedBase {
         m = _copy(f1);
         m[offset + 4 * 10] ^= 0x01; // x10 value
         require(_rejects(f1v, m), "register value");
-        require(_rejects(f1v, _flipLastByte("gkr_top_bits")), "inits/teardowns top bits");
         require(_rejects(f1v, _flipLastByte("gkr_memory_cap")), "memory cap");
         require(_rejects(f1v, _flipLastByte("gkr_external_pow_nonce")), "external PoW nonce");
         require(_rejects(f1v, _flipLastByte("gkr_batching_pow_nonce")), "batching PoW nonce");
