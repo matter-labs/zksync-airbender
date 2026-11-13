@@ -33,11 +33,10 @@ pub(crate) fn bincode_serialize_to_file<T: serde::Serialize>(el: &T, filename: &
 }
 
 // The orchestration layer (VM capture + per-circuit prove helpers) is exposed
-// under `feature = "test"` so thin downstream harnesses (`experiments_runner`'s
-// fast add/sub proving test) can reuse the exact prove path of the per-family
-// tests. The concrete test suites below — and all generated witness-eval
-// includes except the add/sub one — stay `cfg(test)`-only so a lib build with
-// that feature does not pay for ~49K lines of other generated circuit code.
+// under `feature = "test"` so downstream test harnesses can reuse the exact
+// prove path of the per-family tests. The concrete test suites below and the
+// per-family generated witness-eval includes stay `cfg(test)`-only so a lib
+// build with that feature does not pay for the generated circuit code.
 pub mod orchestration;
 
 #[cfg(test)]
@@ -545,7 +544,8 @@ pub fn check_satisfied_row<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
     true
 }
 
-pub mod add_sub_lui_auipc_mop {
+#[cfg(test)]
+mod add_sub_lui_auipc_mop {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
