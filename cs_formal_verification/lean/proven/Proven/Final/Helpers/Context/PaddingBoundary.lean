@@ -16,3 +16,8 @@ theorem product_soundness : ProductSoundnessClaim := Proofs.evaluate_group
 theorem projection : ProjectionClaim := fun _ accepted => Proofs.projected_acceptance accepted
 
 end Airbender.PaddingBoundary
+
+namespace Airbender.PaddingBoundary
+/-- The Boolean contribution premise holds for a participating row. -/
+theorem contribution_satisfiable : ContributionSatisfiableClaim := ⟨1, rfl, Or.inr rfl⟩
+end Airbender.PaddingBoundary

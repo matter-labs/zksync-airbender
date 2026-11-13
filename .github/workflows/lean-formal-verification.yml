@@ -9,7 +9,7 @@ name: "Lean formal verification"
 #   cold (pushes to the branches below, nightly, manual with `cold`): no build cache (toolchain, dependency checkouts,
 #     Mathlib's files and the Sail model are still restored), everything elaborated again, fresh audits. Its build
 #     seeds the pull requests' cache.
-# Job kernel_replay (1st and 15th of each month, manual with `kernel_replay`): the kernel re-checks every constant of
+# Job kernel_replay (nightly, manual with `kernel_replay`): the kernel re-checks every constant of
 #   our modules (ci/lean-ci.sh kernel-check).
 on:
   workflow_call:
@@ -26,7 +26,7 @@ on:
   # nightly cold run (GitHub runs schedules from the default branch only: inert until this file is on main)
   schedule:
     - cron: "17 2 * * *"      # lean_verify, cold
-    - cron: "43 4 1,15 * *"   # kernel_replay
+    - cron: "43 4 * * *"   # kernel_replay
   workflow_dispatch:
     inputs:
       lean_threads:
@@ -181,7 +181,7 @@ jobs:
   kernel_replay:
     name: kernel_replay
     if: >-
-      (github.event_name == 'schedule' && github.event.schedule == '43 4 1,15 * *') ||
+      (github.event_name == 'schedule' && github.event.schedule == '43 4 * * *') ||
       (github.event_name == 'workflow_dispatch' && inputs.kernel_replay)
     runs-on: [matterlabs-ci-runner-high-performance]
     timeout-minutes: 240

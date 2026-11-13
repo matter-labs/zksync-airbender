@@ -1,3 +1,4 @@
+import Proven.Final.ISA.NativeTargets
 import Proven.Final.ISA.WholeRun
 import Proven.Final.ISA.MachineTargets
 import Proven.Final.Compiler.NativeMachine
@@ -925,3 +926,55 @@ example : RV.KeccakSpecial5RunSatisfiableClaim := RV.keccak_special5_run_satisfi
 example : RV.KeccakF1600RunSatisfiableClaim := RV.keccak_f1600_run_satisfiable
 
 #print axioms RV.keccak_f1600_run_satisfiable
+
+example : Airbender.Trace.Machine.Native.UnrolledFullFromNativeSatisfiableClaim := Airbender.Trace.Machine.Native.unrolled_full_from_native_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_full_from_native_satisfiable
+
+example : Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSatisfiableClaim := Airbender.Trace.Machine.Native.unrolled_reduced_from_native_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_reduced_from_native_satisfiable
+
+example : Airbender.Trace.Machine.Native.UnifiedFromNativeSatisfiableClaim := Airbender.Trace.Machine.Native.unified_from_native_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unified_from_native_satisfiable
+
+example : Airbender.PaddingBoundary.ContributionSatisfiableClaim := Airbender.PaddingBoundary.contribution_satisfiable
+
+#print axioms Airbender.PaddingBoundary.contribution_satisfiable
+
+example : RV.ValidUse.BigintReferenceSatisfiableClaim := RV.ValidUse.bigint_reference_satisfiable
+
+#print axioms RV.ValidUse.bigint_reference_satisfiable
+
+example : RV.ValidUse.GReferenceSatisfiableClaim := RV.ValidUse.g_reference_satisfiable
+
+#print axioms RV.ValidUse.g_reference_satisfiable
+
+example : RV.ValidUse.RoundReferenceSatisfiableClaim := RV.ValidUse.round_reference_satisfiable
+
+#print axioms RV.ValidUse.round_reference_satisfiable
+
+example : RV.ValidUse.HashReferenceSatisfiableClaim := RV.ValidUse.hash_reference_satisfiable
+
+#print axioms RV.ValidUse.hash_reference_satisfiable
+
+example : RV.ValidUse.SplitKeccakReferenceSatisfiableClaim := RV.ValidUse.split_keccak_reference_satisfiable
+
+#print axioms RV.ValidUse.split_keccak_reference_satisfiable
+
+example : RV.ValidUse.Special5ReferenceSatisfiableClaim := RV.ValidUse.special5_reference_satisfiable
+
+#print axioms RV.ValidUse.special5_reference_satisfiable
+
+example : Airbender.Trace.Machine.Native.UnrolledFullFromNativeSailClaim := Airbender.Trace.Machine.Native.unrolled_full_from_native_sail
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_full_from_native_sail
+
+example : Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSailClaim := Airbender.Trace.Machine.Native.unrolled_reduced_from_native_sail
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_reduced_from_native_sail
+
+example : Airbender.Trace.Machine.Native.UnifiedFromNativeSailClaim := Airbender.Trace.Machine.Native.unified_from_native_sail
+
+#print axioms Airbender.Trace.Machine.Native.unified_from_native_sail

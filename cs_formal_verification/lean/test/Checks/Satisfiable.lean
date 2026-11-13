@@ -1,3 +1,7 @@
+import Proven.Final.ISA.NativeTargets
+import Proven.Final.Helpers.Context.PaddingBoundary
+import Proven.Final.ISA.ValidUse
+import Proven.Final.Compiler.NativeMachine
 import Proven.Final.ISA.DelegationRuns
 import Proven.Final.Helpers.Context.PCState.Theorems
 import Proven.Final.Circuits.Blake2G.Theorems
@@ -752,3 +756,23 @@ example : RV.BlakeGRun10SatisfiableClaim := RV.blake_g_run10_satisfiable
 example : RV.KeccakSpecial5RunSatisfiableClaim := RV.keccak_special5_run_satisfiable
 
 example : RV.KeccakF1600RunSatisfiableClaim := RV.keccak_f1600_run_satisfiable
+
+example : Airbender.Trace.Machine.Native.UnrolledFullFromNativeSatisfiableClaim := Airbender.Trace.Machine.Native.unrolled_full_from_native_satisfiable
+
+example : Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSatisfiableClaim := Airbender.Trace.Machine.Native.unrolled_reduced_from_native_satisfiable
+
+example : Airbender.Trace.Machine.Native.UnifiedFromNativeSatisfiableClaim := Airbender.Trace.Machine.Native.unified_from_native_satisfiable
+
+example : Airbender.PaddingBoundary.ContributionSatisfiableClaim := Airbender.PaddingBoundary.contribution_satisfiable
+
+example : RV.ValidUse.BigintReferenceSatisfiableClaim := RV.ValidUse.bigint_reference_satisfiable
+
+example : RV.ValidUse.GReferenceSatisfiableClaim := RV.ValidUse.g_reference_satisfiable
+
+example : RV.ValidUse.RoundReferenceSatisfiableClaim := RV.ValidUse.round_reference_satisfiable
+
+example : RV.ValidUse.HashReferenceSatisfiableClaim := RV.ValidUse.hash_reference_satisfiable
+
+example : RV.ValidUse.SplitKeccakReferenceSatisfiableClaim := RV.ValidUse.split_keccak_reference_satisfiable
+
+example : RV.ValidUse.Special5ReferenceSatisfiableClaim := RV.ValidUse.special5_reference_satisfiable

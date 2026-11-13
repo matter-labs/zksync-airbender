@@ -11,6 +11,11 @@ construction of an agreeing configured machine and preservation of configuration
 through a supported fetch. Each statement has a separate non-vacuity statement.
 [MachineTargets.lean](MachineTargets.lean) declares one machine-level conclusion
 for each production machine target.
+[NativeTargets.lean](NativeTargets.lean) states the direct cached-certificate
+variants. Their [final proofs](../../../../proven/Proven/Final/ISA/NativeTargets.lean)
+compose native acceptance, whole RV execution and the finite machine simulation.
+[WholeRun proofs](../../../../proven/Proven/Final/ISA/WholeRun.lean) expose the run,
+configuration and fetch results with separate witnesses.
 
 The Airbender machine uses the specification's own definitions for loads into x0,
 `mop.rr.N`, `mop.r.N`, CSR 0x7c0 and all delegations. These are machine overrides.

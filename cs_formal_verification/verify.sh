@@ -68,4 +68,10 @@ echo "== 5. Review guides: every public claim theorem is audited, guide names an
 if [[ $audits == replay ]]; then python3 check_review.py --built --key .lake/build/review-pass.key --reuse
 else python3 check_review.py --built --key .lake/build/review-pass.key; fi
 
+
+
+echo "== 6. Every public claim has a final proof and a separate proved non-vacuity statement"
+python3 scripts/test_claim_coverage.py || fail "claim coverage guard tests"
+python3 scripts/check_claim_coverage.py || fail "claim coverage"
+
 echo "OK"

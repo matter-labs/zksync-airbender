@@ -1,4 +1,5 @@
 module
+public import Proven.NonVacuous.NativeMachines
 public import Human.Compiler.NativeTargets
 public import Proven.Compiler.NativeAcceptance
 public import Proven.Final.Trace.Machine.Unrolled
@@ -30,5 +31,18 @@ theorem unified_from_native : UnifiedFromNative := by
   intro trace workers initial cells program inits tables boot setup workerSetup noSpecial stream bound certificates arguments
   exact Machine.unified trace workers initial cells program inits boot setup workerSetup noSpecial stream
     (NativeAcceptance.unified bound certificates trace workers arguments setup boot.initialBoundary)
+
+end Airbender.Trace.Machine.Native
+
+namespace Airbender.Trace.Machine.Native
+
+/-- An empty submitted trace satisfies every stated native boot and matching premise. -/
+theorem unrolled_full_from_native_satisfiable : UnrolledFullFromNativeSatisfiableClaim := NonVacuous.Machine.full_native
+
+/-- An empty submitted trace satisfies every stated native boot and matching premise. -/
+theorem unrolled_reduced_from_native_satisfiable : UnrolledReducedFromNativeSatisfiableClaim := NonVacuous.Machine.reduced_native
+
+/-- An empty submitted trace satisfies every stated native boot and matching premise. -/
+theorem unified_from_native_satisfiable : UnifiedFromNativeSatisfiableClaim := NonVacuous.Machine.unified_native
 
 end Airbender.Trace.Machine.Native

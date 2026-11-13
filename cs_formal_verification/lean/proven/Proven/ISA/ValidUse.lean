@@ -24,31 +24,31 @@ theorem bigint_reference : BigintReferenceClaim := by
 theorem g_reference : GReferenceClaim := by
   intro reduced state left right valid
   cases reduced
-  · exact blake_g_run10.1 state left right valid.2.2.2
-  · exact blake_g_run.1 state left right valid.2.2.2
+  · exact blake_g_run10 state left right valid.2.2.2
+  · exact blake_g_run state left right valid.2.2.2
 
 /-- Both round schedules compute the independent compression function. -/
 theorem round_reference : RoundReferenceClaim := by
   intro reduced state left right counter last valid
   cases reduced
-  · exact blake_compress_run10.1 state left right counter last valid.2.2
-  · exact blake_compress_run.1 state left right counter last valid.2.2
+  · exact blake_compress_run10 state left right counter last valid.2.2
+  · exact blake_compress_run state left right counter last valid.2.2
 
 /-- Compression mode computes the independent two-to-one hash in both schedules. -/
 theorem hash_reference : HashReferenceClaim := by
   intro reduced right state left sibling valid
   cases reduced
-  · exact blake_hash_run10.1 state left sibling right valid.2.2
+  · exact blake_hash_run10 state left sibling right valid.2.2
   · cases right
-    · exact blake_hash_run.1 state left sibling false valid.2.2
-    · exact blake_hash_run.1 state left sibling true valid.2.2
+    · exact blake_hash_run state left sibling false valid.2.2
+    · exact blake_hash_run state left sibling true valid.2.2
 
 /-- The complete valid split schedule computes Keccak-f[1600]. -/
 theorem split_keccak_reference : SplitKeccakReferenceClaim := fun state pointer valid =>
-  keccak_f1600_run.1 state pointer valid.2
+  keccak_f1600_run state pointer valid.2
 
 /-- The complete valid special5 schedule computes Keccak-f[1600]. -/
 theorem special5_reference : Special5ReferenceClaim := fun state pointer valid =>
-  keccak_special5_run.1 state pointer valid.2
+  keccak_special5_run state pointer valid.2
 
 end RV.ValidUse.Proofs

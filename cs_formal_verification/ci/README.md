@@ -12,7 +12,7 @@ budget, review check) when `cs_formal_verification/` or a circuit JSON the spec 
 - **cold** (pushes to `main`, `stable`, `dev`, `av_gkr_compiler`; nightly; dispatch with `cold`): no build cache,
   fresh audits. Its build is saved and seeds the pull requests. The toolchain, the dependency checkouts, Mathlib's
   files and the Sail model are restored in both modes (regenerating the Sail model nightly would add ~10 min);
-- **kernel replay** (job `kernel_replay`: the 1st and 15th of each month, or dispatch with `kernel_replay`): builds,
+- **kernel replay** (job `kernel_replay`: nightly, or dispatch with `kernel_replay`): builds,
   then the kernel re-checks every constant (`lean-ci.sh kernel-check`, `KERNEL_CHECKER=paranoid`: `lake check
   --paranoid` on the lakefile's default targets, then `leanchecker` on the two Clean-importing modules). It runs on the
   runner host, not in a container, so that `lake check`'s `bwrap` sandbox gets user and mount namespaces; `lean-ci.sh

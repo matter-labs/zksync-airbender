@@ -1,3 +1,4 @@
+import Proven.Final.ISA.NativeTargets
 import Proven.Final.ISA.WholeRun
 import Proven.Final.ISA.MachineTargets
 import Proven.Final.Compiler.NativeMachine
@@ -1511,3 +1512,29 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms RV.keccak_special5_run_satisfiable
 
 #print axioms RV.keccak_f1600_run_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_full_from_native_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_reduced_from_native_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unified_from_native_satisfiable
+
+#print axioms Airbender.PaddingBoundary.contribution_satisfiable
+
+#print axioms RV.ValidUse.bigint_reference_satisfiable
+
+#print axioms RV.ValidUse.g_reference_satisfiable
+
+#print axioms RV.ValidUse.round_reference_satisfiable
+
+#print axioms RV.ValidUse.hash_reference_satisfiable
+
+#print axioms RV.ValidUse.split_keccak_reference_satisfiable
+
+#print axioms RV.ValidUse.special5_reference_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_full_from_native_sail
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_reduced_from_native_sail
+
+#print axioms Airbender.Trace.Machine.Native.unified_from_native_sail

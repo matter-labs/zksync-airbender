@@ -117,6 +117,13 @@ The owner must refer these patches to Legal. Do not add source lines from lean-s
 | [DelegationRuns](../lean/proven/Proven/Final/ISA/DelegationRuns.lean) | `calls_run`, `blake_compress_run`, `blake_hash_run`, `blake_compress_run10`, `blake_hash_run10`, `blake_g_run`, `blake_g_run10`, `keccak_special5_run`, `keccak_f1600_run` |
 | [Theorems](../lean/proven/Proven/Final/ISA/Theorems.lean) | `decode_is_sail`, `step_is_airbender`, `machine_checks_claim` |
 | [Vectors](../lean/proven/Proven/Final/ISA/Vectors.lean) | `standard_vectors` |
+| [WholeRun](../lean/proven/Proven/Final/ISA/WholeRun.lean) | `run_is_airbender`, `agree_exists`, `fetch_keeps_configured`, and their separate non-vacuity proofs |
+| [MachineTargets](../lean/proven/Proven/Final/ISA/MachineTargets.lean) | `unrolled_full_unsigned_sail`, `unrolled_reduced_sail`, `unified_sail` |
+| [NativeTargets](../lean/proven/Proven/Final/ISA/NativeTargets.lean) | `unrolled_full_from_native_sail`, `unrolled_reduced_from_native_sail`, `unified_from_native_sail` |
+
+Decode, step and delegation-run soundness have separate non-vacuity statements.
+The [claim inventory](../docs/VERIFICATION_STATUS.md) lists every final claim,
+its proof and its non-vacuity statement or fixed-data boundary.
 
 The Airbender machine uses its own definitions for loads into x0, `mop.rr.N`, `mop.r.N`, CSR `0x7c0` and delegations.
 These effects are not Sail instruction effects.
