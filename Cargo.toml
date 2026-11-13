@@ -5,7 +5,6 @@ members = [
     "blake2s_u32",
     "common_constants",
     "field",
-    "experiments_runner",
     "fixtures",
     "cs",
     "prover",
