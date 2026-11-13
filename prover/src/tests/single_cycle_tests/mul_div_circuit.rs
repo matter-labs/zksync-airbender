@@ -196,31 +196,4 @@ mod test {
         let opcode = 0x0220b1b3;
         test_mul_div_circuit(opcode, opcode_data);
     }
-
-    #[test]
-    #[ignore = "reads a local witness dump that is not committed"]
-    fn test_on_external_witness() {
-        use crate::tests::gkr::bincode_deserialize_from_file;
-        let witness: Vec<NonMemoryOpcodeTracingDataWithTimestamp> = bincode_deserialize_from_file(
-            "../circuit_defs/prover_examples/family_4_circuit_0_oracle_witness.bin",
-        );
-        println!("{} inputs in total", witness.len());
-        let (_, binary) = riscv_transpiler::elf::ProgramSource::legacy_binaries(
-            "../riscv_transpiler/examples/zksync_os/app.bin",
-            "../riscv_transpiler/examples/zksync_os/app.text",
-        )
-        .load_unpadded();
-        for (i, wit) in witness.into_iter().enumerate() {
-            if i % 100 == 0 {
-                println!("{}", i);
-            }
-            let pc = wit.opcode_data.initial_pc;
-            let opcode = binary[(pc / 4) as usize];
-            // remap witness
-            let mut opcode_data = wit.opcode_data;
-            opcode_data.initial_pc = 0;
-            opcode_data.new_pc = 4;
-            test_mul_div_circuit(opcode, opcode_data);
-        }
-    }
 }
