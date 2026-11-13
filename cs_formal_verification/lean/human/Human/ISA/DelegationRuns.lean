@@ -59,7 +59,10 @@ def CallsAssumptions (ks : List DelegationKind) (s t : State) : Prop :=
 /-- Delegation instructions of the kinds `ks`, in ROM from the pc, run as the calls `ks`; some nonempty run meets the
 assumptions (not vacuous). -/
 def CallsRun : Prop :=
-  (∀ (ks : List DelegationKind) (s t : State), CallsAssumptions ks s t → run ks.length s = some t) ∧
+  ∀ (ks : List DelegationKind) (s t : State), CallsAssumptions ks s t → run ks.length s = some t
+
+/-- The assumptions of the delegation run have a concrete witness. -/
+def CallsRunSatisfiableClaim : Prop :=
   ∃ (ks : List DelegationKind) (s t : State), ks ≠ [] ∧ CallsAssumptions ks s t
 
 /-- `n` bytes at `a`, `al`-aligned, within the address space (RAM; below `ROM_END` shadow RAM). -/
@@ -82,9 +85,12 @@ def BlakeCompressAssumptions (control : Word) (s : State) (p q t : Word) (last :
 
 /-- The 7-round compression (above); its assumptions can be met. -/
 def BlakeCompressRun : Prop :=
-  (∀ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x90000#32 s p q t last →
+  ∀ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x90000#32 s p q t last →
     ∃ s', calls (.replicate 7 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
-      readWords s'.mem p 8 = compress (readWords s.mem p 8) (readWords s.mem q 16) t last) ∧
+      readWords s'.mem p 8 = compress (readWords s.mem p 8) (readWords s.mem q 16) t last
+
+/-- The assumptions of the delegation run have a concrete witness. -/
+def BlakeCompressRunSatisfiableClaim : Prop :=
   ∃ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x90000#32 s p q t last
 
 /-- The two-to-one hash: 7 round calls in compression mode, `x12 = 0xd0000` (the node `h` at `x10 = p` is the left
@@ -95,29 +101,38 @@ def BlakeHashAssumptions (control : Word) (s : State) (p q : Word) : Prop :=
 
 /-- The two-to-one hash (above); its assumptions can be met. -/
 def BlakeHashRun : Prop :=
-  (∀ (s : State) (p q : Word) (right : Bool),
+  ∀ (s : State) (p q : Word) (right : Bool),
     BlakeHashAssumptions (if right then 0xf0000#32 else 0xd0000#32) s p q →
     ∃ s', calls (.replicate 7 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
       readWords s'.mem p 8 =
-        if right then hash2 (readWords s.mem q 8) (readWords s.mem p 8) else hash2 (readWords s.mem p 8) (readWords s.mem q 8)) ∧
+        if right then hash2 (readWords s.mem q 8) (readWords s.mem p 8) else hash2 (readWords s.mem p 8) (readWords s.mem q 8)
+
+/-- The assumptions of the delegation run have a concrete witness. -/
+def BlakeHashRunSatisfiableClaim : Prop :=
   ∃ (s : State) (p q : Word) (right : Bool), BlakeHashAssumptions (if right then 0xf0000#32 else 0xd0000#32) s p q
 
 /-- Blake2s compression, 10 rounds (RFC 7693): 10 round calls from `x12 = 0x80000` (10 rounds, round 0), layout as
 for 7. -/
 def BlakeCompressRun10 : Prop :=
-  (∀ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x80000#32 s p q t last →
+  ∀ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x80000#32 s p q t last →
     ∃ s', calls (.replicate 10 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
-      readWords s'.mem p 8 = compressRounds 10 (readWords s.mem p 8) (readWords s.mem q 16) t last) ∧
+      readWords s'.mem p 8 = compressRounds 10 (readWords s.mem p 8) (readWords s.mem q 16) t last
+
+/-- The assumptions of the delegation run have a concrete witness. -/
+def BlakeCompressRun10SatisfiableClaim : Prop :=
   ∃ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x80000#32 s p q t last
 
 /-- The two-to-one hash with 10 rounds: 10 round calls from `x12 = 0xc0000` (left) or `0xe0000` (right). -/
 def BlakeHashRun10 : Prop :=
-  (∀ (s : State) (p q : Word) (right : Bool),
+  ∀ (s : State) (p q : Word) (right : Bool),
     BlakeHashAssumptions (if right then 0xe0000#32 else 0xc0000#32) s p q →
     ∃ s', calls (.replicate 10 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
       readWords s'.mem p 8 = compressRounds 10 (Vector.ofFn configuredIV)
         (if right then readWords s.mem q 8 ++ readWords s.mem p 8 else readWords s.mem p 8 ++ readWords s.mem q 8)
-        64#32 true) ∧
+        64#32 true
+
+/-- The assumptions of the delegation run have a concrete witness. -/
+def BlakeHashRun10SatisfiableClaim : Prop :=
   ∃ (s : State) (p q : Word) (right : Bool), BlakeHashAssumptions (if right then 0xe0000#32 else 0xc0000#32) s p q
 
 /-- 7 Blake2s rounds: 56 `G` calls (CSR `0x7c8`) from `x12 = 0x80` on the work vector `v` at `x10 = p` with the
@@ -127,18 +142,24 @@ def BlakeGAssumptions (control : Word) (s : State) (p q : Word) : Prop :=
 
 /-- 7 Blake2s rounds by `G` calls (above); its assumptions can be met. -/
 def BlakeGRun : Prop :=
-  (∀ (s : State) (p q : Word), BlakeGAssumptions 0x80#32 s p q →
+  ∀ (s : State) (p q : Word), BlakeGAssumptions 0x80#32 s p q →
     ∃ s', calls (.replicate 56 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0x80#32 ∧
       readWords s'.mem p 16 = (List.finRange 7).foldl
-        (fun v r => round (readWords s.mem q 16) (SIGMA (r.castLE (by decide))) v) (readWords s.mem p 16)) ∧
+        (fun v r => round (readWords s.mem q 16) (SIGMA (r.castLE (by decide))) v) (readWords s.mem p 16)
+
+/-- The assumptions of the delegation run have a concrete witness. -/
+def BlakeGRunSatisfiableClaim : Prop :=
   ∃ (s : State) (p q : Word), BlakeGAssumptions 0x80#32 s p q
 
 /-- 10 Blake2s rounds: 80 `G` calls from `x12 = 0`; `x12` is `0` again. -/
 def BlakeGRun10 : Prop :=
-  (∀ (s : State) (p q : Word), BlakeGAssumptions 0#32 s p q →
+  ∀ (s : State) (p q : Word), BlakeGAssumptions 0#32 s p q →
     ∃ s', calls (.replicate 80 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0#32 ∧
       readWords s'.mem p 16 = (List.finRange 10).foldl
-        (fun v r => round (readWords s.mem q 16) (SIGMA r) v) (readWords s.mem p 16)) ∧
+        (fun v r => round (readWords s.mem q 16) (SIGMA r) v) (readWords s.mem p 16)
+
+/-- The assumptions of the delegation run have a concrete witness. -/
+def BlakeGRun10SatisfiableClaim : Prop :=
   ∃ (s : State) (p q : Word), BlakeGAssumptions 0#32 s p q
 
 /-- Keccak-f[1600]: 649 special5 calls (CSR `0x7cb`) from `x10 = 0` on the 25 lanes at `x11 = p` (6 scratch lanes
@@ -147,9 +168,12 @@ def KeccakAssumptions (s : State) (p : Word) : Prop := Buffer p 248 256 ∧ s.ge
 
 /-- Keccak-f[1600] by special5 calls (above); its assumptions can be met. -/
 def KeccakSpecial5Run : Prop :=
-  (∀ (s : State) (p : Word), KeccakAssumptions s p →
+  ∀ (s : State) (p : Word), KeccakAssumptions s p →
     ∃ s', calls (.replicate 649 .keccak) s = some s' ∧ ChangesOnly s s' p 248 10 ∧
-      readLanes s'.mem p 25 = keccakF (readLanes s.mem p 25)) ∧
+      readLanes s'.mem p 25 = keccakF (readLanes s.mem p 25)
+
+/-- The assumptions of the delegation run have a concrete witness. -/
+def KeccakSpecial5RunSatisfiableClaim : Prop :=
   ∃ (s : State) (p : Word), KeccakAssumptions s p
 
 /-- The order of the Keccak-f1600 calls: per round 5 column parity, 5 θ+ρ, 5 χ calls; then one column parity. -/
@@ -159,9 +183,12 @@ def f1600Calls : List DelegationKind :=
 
 /-- Keccak-f[1600] in the three circuits (CSRs `0x7cc` … `0x7ce`): 361 calls from `x10 = 0`, as for special5. -/
 def KeccakF1600Run : Prop :=
-  (∀ (s : State) (p : Word), KeccakAssumptions s p →
+  ∀ (s : State) (p : Word), KeccakAssumptions s p →
     ∃ s', calls f1600Calls s = some s' ∧ ChangesOnly s s' p 248 10 ∧
-      readLanes s'.mem p 25 = keccakF (readLanes s.mem p 25)) ∧
+      readLanes s'.mem p 25 = keccakF (readLanes s.mem p 25)
+
+/-- The assumptions of the delegation run have a concrete witness. -/
+def KeccakF1600RunSatisfiableClaim : Prop :=
   ∃ (s : State) (p : Word), KeccakAssumptions s p
 
 end RV

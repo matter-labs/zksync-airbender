@@ -126,13 +126,13 @@ theorem blake_g_gen (red : Bool) (s : State) (p q : Word) (hp : Buffer p 64 64) 
   obtain ⟨t, h1, h2, h3, h4⟩ := key (nG red) le_rfl
   exact ⟨t, h1, h2, by rw [h3, Nat.mod_self], h4⟩
 
-theorem Deleg.blake_g_run : BlakeGRun := by
+theorem Deleg.blake_g_run : BlakeGRun ∧ BlakeGRunSatisfiableClaim := by
   refine ⟨?_, _, _, _, Deleg.NonVacuous.g_assumptions _⟩
   rintro s p q ⟨hp, hq, hpq, h10, h11, h12⟩
   obtain ⟨t, h1, h2, h3, h4⟩ := blake_g_gen true s p q hp hq hpq h10 h11 h12
   exact ⟨t, h1, h2, h3, by rw [h4]; exact gs_56 _ _⟩
 
-theorem Deleg.blake_g_run10 : BlakeGRun10 := by
+theorem Deleg.blake_g_run10 : BlakeGRun10 ∧ BlakeGRun10SatisfiableClaim := by
   refine ⟨?_, _, _, _, Deleg.NonVacuous.g_assumptions _⟩
   rintro s p q ⟨hp, hq, hpq, h10, h11, h12⟩
   obtain ⟨t, h1, h2, h3, h4⟩ := blake_g_gen false s p q hp hq hpq h10 h11 h12

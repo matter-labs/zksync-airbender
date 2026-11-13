@@ -69,7 +69,7 @@ theorem lanes_final (B : Vector Lane 25) (W : Fin 6 → Lane) (mem : Word → Bi
   · simp [iota', lane, Fin.ext_iff, show i ≠ 0 by omega,
       show 0 ≠ i by omega]
 
-theorem Deleg.keccak_special5_run : KeccakSpecial5Run := by
+theorem Deleg.keccak_special5_run : KeccakSpecial5Run ∧ KeccakSpecial5RunSatisfiableClaim := by
   refine ⟨?_, _, _, Deleg.NonVacuous.keccak_assumptions⟩
   rintro s p ⟨hp, h10, h11⟩
   obtain ⟨t, h1, ⟨W, hW⟩, t10, ch⟩ := s5_rounds s p hp h10 h11 24 le_rfl

@@ -47,3 +47,31 @@ def Special5ReferenceClaim : Prop :=
       readLanes finish.mem pointer 25 = keccakF (readLanes state.mem pointer 25)
 
 end RV.ValidUse
+
+namespace RV.ValidUse
+
+/-- The valid reference-use assumptions have a concrete state and RAM buffers. -/
+def BigintReferenceSatisfiableClaim : Prop :=
+  ∃ state : State, Bigint state
+
+/-- The valid reference-use assumptions have a concrete state and RAM buffers. -/
+def GReferenceSatisfiableClaim : Prop :=
+  ∃ (reduced : Bool) (state : State) (left right : Word), G reduced state left right
+
+/-- The valid reference-use assumptions have a concrete state and RAM buffers. -/
+def RoundReferenceSatisfiableClaim : Prop :=
+  ∃ (reduced : Bool) (state : State) (left right counter : Word) (last : Bool), Round reduced state left right counter last
+
+/-- The valid reference-use assumptions have a concrete state and RAM buffers. -/
+def HashReferenceSatisfiableClaim : Prop :=
+  ∃ (reduced right : Bool) (state : State) (left sibling : Word), Hash reduced right state left sibling
+
+/-- The valid reference-use assumptions have a concrete state and RAM buffers. -/
+def SplitKeccakReferenceSatisfiableClaim : Prop :=
+  ∃ (state : State) (pointer : Word), Keccak state pointer
+
+/-- The valid reference-use assumptions have a concrete state and RAM buffers. -/
+def Special5ReferenceSatisfiableClaim : Prop :=
+  ∃ (state : State) (pointer : Word), Keccak state pointer
+
+end RV.ValidUse

@@ -1,3 +1,4 @@
+import Human.ISA.DelegationRuns
 -- This audit leaf imports the non-module Sail specification for the Sail restatements.
 import Human.ISA.Sail.Theorems
 import Proven.Final.Circuits.AddSub.RVTheorems
@@ -435,3 +436,94 @@ def OldStepIsAirbenderClaim : Prop :=
 example : (DecodeIsSailClaim ∧ DecodeIsSailSatisfiableClaim) ↔ OldDecodeIsSailClaim := Iff.rfl
 example : (StepIsAirbenderClaim ∧ StepIsAirbenderSatisfiableClaim) ↔ OldStepIsAirbenderClaim := Iff.rfl
 end Airbender.SailRestatement
+
+namespace RV.DelegationRunRestatement
+open Spec
+
+def OldCallsRun : Prop :=
+  (∀ (ks : List DelegationKind) (s t : State), CallsAssumptions ks s t → run ks.length s = some t) ∧
+  ∃ (ks : List DelegationKind) (s t : State), ks ≠ [] ∧ CallsAssumptions ks s t
+
+
+example : (CallsRun ∧ CallsRunSatisfiableClaim) ↔ OldCallsRun := Iff.rfl
+
+def OldBlakeCompressRun : Prop :=
+  (∀ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x90000#32 s p q t last →
+    ∃ s', calls (.replicate 7 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compress (readWords s.mem p 8) (readWords s.mem q 16) t last) ∧
+  ∃ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x90000#32 s p q t last
+
+
+example : (BlakeCompressRun ∧ BlakeCompressRunSatisfiableClaim) ↔ OldBlakeCompressRun := Iff.rfl
+
+def OldBlakeHashRun : Prop :=
+  (∀ (s : State) (p q : Word) (right : Bool),
+    BlakeHashAssumptions (if right then 0xf0000#32 else 0xd0000#32) s p q →
+    ∃ s', calls (.replicate 7 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 =
+        if right then hash2 (readWords s.mem q 8) (readWords s.mem p 8) else hash2 (readWords s.mem p 8) (readWords s.mem q 8)) ∧
+  ∃ (s : State) (p q : Word) (right : Bool), BlakeHashAssumptions (if right then 0xf0000#32 else 0xd0000#32) s p q
+
+
+example : (BlakeHashRun ∧ BlakeHashRunSatisfiableClaim) ↔ OldBlakeHashRun := Iff.rfl
+
+def OldBlakeCompressRun10 : Prop :=
+  (∀ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x80000#32 s p q t last →
+    ∃ s', calls (.replicate 10 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compressRounds 10 (readWords s.mem p 8) (readWords s.mem q 16) t last) ∧
+  ∃ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x80000#32 s p q t last
+
+
+example : (BlakeCompressRun10 ∧ BlakeCompressRun10SatisfiableClaim) ↔ OldBlakeCompressRun10 := Iff.rfl
+
+def OldBlakeHashRun10 : Prop :=
+  (∀ (s : State) (p q : Word) (right : Bool),
+    BlakeHashAssumptions (if right then 0xe0000#32 else 0xc0000#32) s p q →
+    ∃ s', calls (.replicate 10 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compressRounds 10 (Vector.ofFn configuredIV)
+        (if right then readWords s.mem q 8 ++ readWords s.mem p 8 else readWords s.mem p 8 ++ readWords s.mem q 8)
+        64#32 true) ∧
+  ∃ (s : State) (p q : Word) (right : Bool), BlakeHashAssumptions (if right then 0xe0000#32 else 0xc0000#32) s p q
+
+
+example : (BlakeHashRun10 ∧ BlakeHashRun10SatisfiableClaim) ↔ OldBlakeHashRun10 := Iff.rfl
+
+def OldBlakeGRun : Prop :=
+  (∀ (s : State) (p q : Word), BlakeGAssumptions 0x80#32 s p q →
+    ∃ s', calls (.replicate 56 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0x80#32 ∧
+      readWords s'.mem p 16 = (List.finRange 7).foldl
+        (fun v r => round (readWords s.mem q 16) (SIGMA (r.castLE (by decide))) v) (readWords s.mem p 16)) ∧
+  ∃ (s : State) (p q : Word), BlakeGAssumptions 0x80#32 s p q
+
+
+example : (BlakeGRun ∧ BlakeGRunSatisfiableClaim) ↔ OldBlakeGRun := Iff.rfl
+
+def OldBlakeGRun10 : Prop :=
+  (∀ (s : State) (p q : Word), BlakeGAssumptions 0#32 s p q →
+    ∃ s', calls (.replicate 80 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0#32 ∧
+      readWords s'.mem p 16 = (List.finRange 10).foldl
+        (fun v r => round (readWords s.mem q 16) (SIGMA r) v) (readWords s.mem p 16)) ∧
+  ∃ (s : State) (p q : Word), BlakeGAssumptions 0#32 s p q
+
+
+example : (BlakeGRun10 ∧ BlakeGRun10SatisfiableClaim) ↔ OldBlakeGRun10 := Iff.rfl
+
+def OldKeccakSpecial5Run : Prop :=
+  (∀ (s : State) (p : Word), KeccakAssumptions s p →
+    ∃ s', calls (.replicate 649 .keccak) s = some s' ∧ ChangesOnly s s' p 248 10 ∧
+      readLanes s'.mem p 25 = keccakF (readLanes s.mem p 25)) ∧
+  ∃ (s : State) (p : Word), KeccakAssumptions s p
+
+
+example : (KeccakSpecial5Run ∧ KeccakSpecial5RunSatisfiableClaim) ↔ OldKeccakSpecial5Run := Iff.rfl
+
+def OldKeccakF1600Run : Prop :=
+  (∀ (s : State) (p : Word), KeccakAssumptions s p →
+    ∃ s', calls f1600Calls s = some s' ∧ ChangesOnly s s' p 248 10 ∧
+      readLanes s'.mem p 25 = keccakF (readLanes s.mem p 25)) ∧
+  ∃ (s : State) (p : Word), KeccakAssumptions s p
+
+
+example : (KeccakF1600Run ∧ KeccakF1600RunSatisfiableClaim) ↔ OldKeccakF1600Run := Iff.rfl
+
+end RV.DelegationRunRestatement

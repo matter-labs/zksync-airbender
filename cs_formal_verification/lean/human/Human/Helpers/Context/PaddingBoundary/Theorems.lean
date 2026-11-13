@@ -23,3 +23,9 @@ def ProjectionClaim : Prop :=
     AcceptedLayout trace → Trace.Accepted (active trace)
 
 end Airbender.PaddingBoundary
+
+namespace Airbender.PaddingBoundary
+/-- The native Boolean contribution premise holds for a participating row. -/
+def ContributionSatisfiableClaim : Prop :=
+  ∃ execute : ZMod babyBearModulus, execute = 1 ∧ (execute = 0 ∨ execute = 1)
+end Airbender.PaddingBoundary

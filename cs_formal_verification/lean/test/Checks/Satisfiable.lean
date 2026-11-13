@@ -1,3 +1,4 @@
+import Proven.Final.ISA.DelegationRuns
 import Proven.Final.Helpers.Context.PCState.Theorems
 import Proven.Final.Circuits.Blake2G.Theorems
 import Proven.Final.Circuits.Bigint.RVTheorems
@@ -733,3 +734,21 @@ example : Airbender.Compiler.SubwordMemoryCachedArithmeticSatisfiableClaim := Ai
 example : Airbender.Compiler.UnifiedCachedArithmeticSatisfiableClaim := Airbender.Compiler.unified_cached_arithmetic_satisfiable
 
 example : Airbender.Compiler.WordMemoryCachedArithmeticSatisfiableClaim := Airbender.Compiler.wordMemory_cached_arithmetic_satisfiable
+
+example : RV.CallsRunSatisfiableClaim := RV.calls_run_satisfiable
+
+example : RV.BlakeCompressRunSatisfiableClaim := RV.blake_compress_run_satisfiable
+
+example : RV.BlakeHashRunSatisfiableClaim := RV.blake_hash_run_satisfiable
+
+example : RV.BlakeCompressRun10SatisfiableClaim := RV.blake_compress_run10_satisfiable
+
+example : RV.BlakeHashRun10SatisfiableClaim := RV.blake_hash_run10_satisfiable
+
+example : RV.BlakeGRunSatisfiableClaim := RV.blake_g_run_satisfiable
+
+example : RV.BlakeGRun10SatisfiableClaim := RV.blake_g_run10_satisfiable
+
+example : RV.KeccakSpecial5RunSatisfiableClaim := RV.keccak_special5_run_satisfiable
+
+example : RV.KeccakF1600RunSatisfiableClaim := RV.keccak_f1600_run_satisfiable

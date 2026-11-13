@@ -63,7 +63,7 @@ theorem f1600_rounds (s : State) (p : Word) (hp : Buffer p 248 256) (h10 : s.get
         ← fRound_kinds, h2]
     · rw [hl]; exact hW'
 
-theorem Deleg.keccak_f1600_run : KeccakF1600Run := by
+theorem Deleg.keccak_f1600_run : KeccakF1600Run ∧ KeccakF1600RunSatisfiableClaim := by
   refine ⟨?_, _, _, Deleg.NonVacuous.keccak_assumptions⟩
   rintro s p ⟨hp, h10, h11⟩
   obtain ⟨t, h1, ⟨W, hW⟩, t10, ch⟩ := f1600_rounds s p hp h10 h11 24 le_rfl

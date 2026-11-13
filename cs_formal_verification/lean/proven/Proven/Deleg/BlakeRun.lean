@@ -105,13 +105,13 @@ theorem blake_compress_gen (red : Bool) (s : State) (p q t : Word) (last : Bool)
   rw [h5, ite_eq_left rfl, compressRounds_eq _ _ _ t last _ e12 e14]
   rfl
 
-theorem Deleg.blake_compress_run : BlakeCompressRun := by
+theorem Deleg.blake_compress_run : BlakeCompressRun ∧ BlakeCompressRunSatisfiableClaim := by
   refine ⟨?_, _, _, _, _, _, Deleg.NonVacuous.compress_assumptions _⟩
   rintro s p q t last ⟨hp, hq, hpq, h10, h11, h12, e12, e14⟩
   rw [compress_rounds]
   exact blake_compress_gen true s p q t last hp hq hpq h10 h11 (by rw [h12]; decide +kernel) e12 e14
 
-theorem Deleg.blake_compress_run10 : BlakeCompressRun10 := by
+theorem Deleg.blake_compress_run10 : BlakeCompressRun10 ∧ BlakeCompressRun10SatisfiableClaim := by
   refine ⟨?_, _, _, _, _, _, Deleg.NonVacuous.compress_assumptions _⟩
   rintro s p q t last ⟨hp, hq, hpq, h10, h11, h12, e12, e14⟩
   exact blake_compress_gen false s p q t last hp hq hpq h10 h11 (by rw [h12]; decide +kernel) e12 e14
@@ -157,7 +157,7 @@ theorem blake_hash_gen (red : Bool) (s : State) (p q : Word) (right : Bool) (hp 
   · rw [ite_eq_left rfl, compressRounds_eq _ _ _ _ _ _ c12 c14, ← hv, mr]
     simp only [bH0, ↓reduceIte]
 
-theorem Deleg.blake_hash_run : BlakeHashRun := by
+theorem Deleg.blake_hash_run : BlakeHashRun ∧ BlakeHashRunSatisfiableClaim := by
   refine ⟨?_, _, _, _, false, Deleg.NonVacuous.hash_assumptions _ 0⟩
   rintro s p q right ⟨hp, hq, hpq, h10, h11, h12⟩
   obtain ⟨s', h1, h2, h3⟩ := blake_hash_gen true s p q right hp hq hpq h10 h11
@@ -166,7 +166,7 @@ theorem Deleg.blake_hash_run : BlakeHashRun := by
   rw [h3]
   cases right <;> simp only [hash2, compress_rounds, ↓reduceIte, Bool.false_eq_true] <;> rfl
 
-theorem Deleg.blake_hash_run10 : BlakeHashRun10 := by
+theorem Deleg.blake_hash_run10 : BlakeHashRun10 ∧ BlakeHashRun10SatisfiableClaim := by
   refine ⟨?_, _, _, _, false, Deleg.NonVacuous.hash_assumptions _ 0⟩
   rintro s p q right ⟨hp, hq, hpq, h10, h11, h12⟩
   exact blake_hash_gen false s p q right hp hq hpq h10 h11 (by rw [h12]; cases right <;> decide +kernel)

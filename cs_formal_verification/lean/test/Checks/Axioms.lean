@@ -1493,3 +1493,21 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.Compiler.unified_cached_arithmetic_satisfiable
 
 #print axioms Airbender.Compiler.wordMemory_cached_arithmetic_satisfiable
+
+#print axioms RV.calls_run_satisfiable
+
+#print axioms RV.blake_compress_run_satisfiable
+
+#print axioms RV.blake_hash_run_satisfiable
+
+#print axioms RV.blake_compress_run10_satisfiable
+
+#print axioms RV.blake_hash_run10_satisfiable
+
+#print axioms RV.blake_g_run_satisfiable
+
+#print axioms RV.blake_g_run10_satisfiable
+
+#print axioms RV.keccak_special5_run_satisfiable
+
+#print axioms RV.keccak_f1600_run_satisfiable

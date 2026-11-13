@@ -889,3 +889,39 @@ example : Airbender.Compiler.UnifiedCachedArithmeticSatisfiableClaim := Airbende
 example : Airbender.Compiler.WordMemoryCachedArithmeticSatisfiableClaim := Airbender.Compiler.wordMemory_cached_arithmetic_satisfiable
 
 #print axioms Airbender.Compiler.wordMemory_cached_arithmetic_satisfiable
+
+example : RV.CallsRunSatisfiableClaim := RV.calls_run_satisfiable
+
+#print axioms RV.calls_run_satisfiable
+
+example : RV.BlakeCompressRunSatisfiableClaim := RV.blake_compress_run_satisfiable
+
+#print axioms RV.blake_compress_run_satisfiable
+
+example : RV.BlakeHashRunSatisfiableClaim := RV.blake_hash_run_satisfiable
+
+#print axioms RV.blake_hash_run_satisfiable
+
+example : RV.BlakeCompressRun10SatisfiableClaim := RV.blake_compress_run10_satisfiable
+
+#print axioms RV.blake_compress_run10_satisfiable
+
+example : RV.BlakeHashRun10SatisfiableClaim := RV.blake_hash_run10_satisfiable
+
+#print axioms RV.blake_hash_run10_satisfiable
+
+example : RV.BlakeGRunSatisfiableClaim := RV.blake_g_run_satisfiable
+
+#print axioms RV.blake_g_run_satisfiable
+
+example : RV.BlakeGRun10SatisfiableClaim := RV.blake_g_run10_satisfiable
+
+#print axioms RV.blake_g_run10_satisfiable
+
+example : RV.KeccakSpecial5RunSatisfiableClaim := RV.keccak_special5_run_satisfiable
+
+#print axioms RV.keccak_special5_run_satisfiable
+
+example : RV.KeccakF1600RunSatisfiableClaim := RV.keccak_f1600_run_satisfiable
+
+#print axioms RV.keccak_f1600_run_satisfiable
