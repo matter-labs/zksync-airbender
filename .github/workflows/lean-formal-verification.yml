@@ -201,6 +201,12 @@ jobs:
           command -v git >/dev/null || { sudo apt-get update -q
             sudo apt-get install -y -q --no-install-recommends ca-certificates git; }
       - uses: actions/checkout@v4
+      # Host runners need Python 3.11+ for the CI helpers' standard-library TOML parser.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Check the Python runtime
+        run: python3 -c 'import tomllib'
       - uses: ./.github/actions/lean-fv-setup
       # the newest build of the default branch (seeded by its cold runs); Lake rebuilds what is missing
       - name: Restore the Lake build
