@@ -7,7 +7,7 @@ schedule come from the wrap's ProverConfig; the expected PC comes from the guest
 binary and must match the bundle.
 
 `merged_f1/` contains the verifier, SetupFrontier and Foundry tests.
-`negative/f1_wrong_final_pc/` differs only in the expected final PC.
+`negative/f1_wrong_final_pc/` differs only in the final PC the decoder pins.
 
 Deploy SetupFrontier first, then deploy `GkrWhirVerifier(registry, setupFrontier)`
 with that address and a registry implementing IVerificationRegistry. The

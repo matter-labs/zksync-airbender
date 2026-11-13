@@ -34,7 +34,7 @@ pub struct WhirGenConfig {
     pub nz: usize,            // WHIR evaluation-point coords = message_log2
     pub merged_mw: usize,     // ceil(num_memwit / 2^pack_log2)  (merged mem+wit base columns)
     pub setup_merged: usize,  // ceil(num_setup  / 2^pack_log2)  (merged setup base columns)
-    pub gcount: usize,        // gamma-batched base columns + 1 = merged_mw + setup_merged + 1
+    pub gcount: usize,        // gamma-batched base columns = merged_mw + setup_merged
     pub gen: u128,            // primitive 2^codeword_log2-th root of unity (RS domain generator)
     pub gen_inv: u128,        // its inverse
 }
@@ -142,7 +142,7 @@ impl WhirGenConfig {
             nz: message_log2,
             merged_mw,
             setup_merged,
-            gcount: merged_mw + setup_merged + 1,
+            gcount: merged_mw + setup_merged,
             gen,
             gen_inv,
         };
@@ -251,13 +251,14 @@ impl WhirGenConfig {
         // POW entries (push_pow, 96 B each): every internal round pushes 1 ood point + 1 per
         // query; the final round pushes none.
         let numpow: usize = (0..self.num_rounds - 1).map(|r| self.queries[r] + 1).sum();
-        // LEAF scratch: round 0 hashes (merged_mw + setup_merged) columns × vp0/2 words of
-        // the base oracles; a later round r hashes vp_r/2 words of the intermediate oracle.
+        // LEAF scratch: round 0 hashes each base oracle's leaf separately (merged_mw or
+        // setup_merged columns × vp0/2 words); a later round r hashes vp_r/2 words of the
+        // intermediate oracle.
         let leaf_words = (0..self.num_rounds)
             .map(|r| {
                 let words = (1usize << self.folds[r]) / 2;
                 if r == 0 {
-                    (self.merged_mw + self.setup_merged) * words
+                    self.merged_mw.max(self.setup_merged) * words
                 } else {
                     words
                 }
@@ -290,7 +291,8 @@ impl WhirGenConfig {
             ("ACC_PREF_PTR", w32.clone()),
             ("GAMMA_PTR", slot(self.gcount)),
             ("FOLD_CH_PTR", slot(max_fold)),
-            ("HPO_PTR", Lit::pow2(max_fold as u128 - 1).mul(&w32)),
+            // only round 0 (the coset fold) reads the high-power offsets
+            ("HPO_PTR", Lit::pow2(self.folds[0] as u128 - 1).mul(&w32)),
             ("FBUF_PTR", Lit::pow2(max_fold as u128).mul(&w32)),
             ("LEAF_PTR", slot(leaf_words)),
             ("REG_CD", w32.clone()),
@@ -301,7 +303,6 @@ impl WhirGenConfig {
             ("REG_CURDELIN", w32.clone()),
             ("HANDOFF_BATCHING_PTR", w32.clone()),
             ("BCAP0_PTR", cap_bytes.clone()),
-            ("BCAP1_PTR", cap_bytes.clone()),
             ("QCAP_PTR", cap_bytes.clone()),
             ("NCAP_PTR", cap_bytes.clone()),
             ("QIDX_BUF_PTR", slot(max_q)),

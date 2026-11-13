@@ -384,9 +384,7 @@ fn emit_layer0_quad_table(
         layout.push((*key, stream.len(), bytes.len() / stride, stride));
         stream.extend_from_slice(bytes);
     }
-    while !stream.len().is_multiple_of(32) {
-        stream.push(0); // pad: the loop mload reads 32 B; trailing bytes are never consumed
-    }
+    // No padding: a record's loop mload may read past the table, and those bytes are ignored.
 
     let mut out = String::new();
     out.push_str(
@@ -651,12 +649,16 @@ pub struct CircuitYulStats {
     /// Most cached-relation values (incl. layer 0's injected virtual-setup polys) any layer
     /// stores at `GKR_CIRCUIT_CACHE_PTR` (32-byte slots).
     pub max_cache_slots: usize,
-    /// Largest claims-batch absorb (`32 + 16·n` bytes) staged at `GKR_ABS_PTR`.
+    /// Largest claims-batch absorb (`32 + 16·n` bytes) a layer with caches stages at
+    /// `GKR_ABS_PTR`.
     pub max_absorb_bytes: usize,
+    /// Largest claims-batch absorb (`32 + 16·n` bytes) `transcriptNTo1` stages at `SEED_PTR()`
+    /// for a layer without caches.
+    pub max_seed_absorb_bytes: usize,
     /// Layer-0 quadratic-gate accumulator slots at `GKR_GATEVAL_PTR` (32-byte slots).
     pub gateval_slots: usize,
-    /// The packed layer-0 term table materialized at `GKR_QTABLE_PTR` (zero-padded to whole
-    /// 32-byte words).
+    /// The packed layer-0 term table materialized at `GKR_QTABLE_PTR` (its region is rounded up
+    /// to whole 32-byte words).
     pub qtable: Vec<u8>,
 }
 
@@ -723,13 +725,12 @@ pub fn emit_circuit_yul_with_stats(
         // println!("{i}:");
         yul_println!(
             "
-        function sumcheck_circuit_layer{i}(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {{
+        function sumcheck_circuit_layer{i}(ptr, alpha) -> next_ptr, next_alpha {{
             // INITIAL CLAIM: batch the previous layer's claims (heap array) in gate/slot order
-            // (compute_claim). Replaces the threaded scalar; alpha == this layer's batching.
-            claim := sccl{i}(alpha)
+            // (compute_claim); alpha == this layer's batching.
+            let claim := sccl{i}(alpha)
             // SUMCHECK ROUNDS
-            let eq_scale
-            ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
+            ptr, claim := sumcheck_rounds_circuit(ptr, claim)
             
             // POINT CHECK
             let acc := 0"
@@ -2376,14 +2377,21 @@ pub fn emit_circuit_yul_with_stats(
             "GKR_CIRCUIT_CLAIMS_PTR()"
         };
         let sccl_func = {
+            // Slots before the first claim only scale the zero accumulator: skip them.
             let mut body = String::new();
+            let mut started = false;
             for slot in &claim_slots {
                 match slot {
+                    Some(off) if !started => {
+                        started = true;
+                        body.push_str(&format!("            claim := mload(add(src, mul(32, {off})))\n"));
+                    }
                     Some(off) => body.push_str(&format!("            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, {off}))))\n")),
+                    None if !started => {}
                     None => body.push_str("            claim := mulmod(claim, alpha, P)\n"),
                 }
             }
-            format!("            function sccl{i}(alpha) -> claim {{\n            let src := {claims_src}\n            claim := 0\n{body}            }}\n")
+            format!("            function sccl{i}(alpha) -> claim {{\n            let src := {claims_src}\n{body}            }}\n")
         };
         // Writeback: publish this layer's at-point evals (offset-indexed, at CIRCUIT_PTR) to the
         // threaded claims array for the next-executed layer. The last-executed layer (i==0) has
@@ -2439,7 +2447,8 @@ pub fn emit_circuit_yul_with_stats(
             r
         }
         // Heap facts for the layout allocator: cache slots this layer stores, and the bytes the
-        // claims-batch absorb below stages at GKR_ABS_PTR (seed ‖ 16 B per absorbed value).
+        // claims-batch absorb below stages (seed ‖ 16 B per absorbed value): at GKR_ABS_PTR for a
+        // layer with caches, at SEED_PTR() (transcriptNTo1) otherwise.
         {
             let cache_slots = cached_count
                 + if i == 0 {
@@ -2453,7 +2462,13 @@ pub fn emit_circuit_yul_with_stats(
                 layer0_group_widths.0 + layer0_group_widths.1 + layer0_group_widths.2
             } + cache_slots;
             stats.max_cache_slots = stats.max_cache_slots.max(cache_slots);
-            stats.max_absorb_bytes = stats.max_absorb_bytes.max(32 + 16 * absorbed);
+            if cached_count > 0 {
+                stats.max_absorb_bytes = stats.max_absorb_bytes.max(32 + 16 * absorbed);
+            } else {
+                stats.max_seed_absorb_bytes = stats
+                    .max_seed_absorb_bytes
+                    .max(32 + 16 * previous_input_count);
+            }
         }
         let claims_batch = if cached_count > 0 {
             let extra_set: std::collections::HashSet<usize> =
@@ -2536,36 +2551,33 @@ pub fn emit_circuit_yul_with_stats(
             mstore(SEED_PTR(), s)
             next_alpha := mod(shr(128, s), P)
             next_ptr := add(ptr, mul(16, {n}))
-            next_claim := 0
             }}"
             )
         } else {
-            format!("next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, {previous_input_count})")
+            format!("next_ptr, next_alpha := sumcheck_claims_batch(ptr, {previous_input_count})")
         };
 
         let check = if DEBUG_ENABLE_DUMMY_CHECKS {
             yul_format!(
                 "
-            let dummy_check := mod(add(claim, sub(P, rhs_scaled)), P)
+            let dummy_check := mod(add(claim, sub(P, rhs)), P)
             \tmstore(GKR_CIRCUIT_CACHE_PTR(), dummy_check)
             "
             )
         } else {
             yul_format!(
                 "
-            if mod(add(claim, sub(P, rhs_scaled)), P) {{ revert(0, 0) }}
+            if mod(add(claim, sub(P, rhs)), P) {{ revert(0, 0) }}
             "
             )
         };
         yul_println!(
             "
-            let rhs_scaled := mulmod(acc, eq_scale, P)
-            // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-            // after stack-heavy values are dead
+            let rhs := mod(acc, P)
             {check:x}
             {writeback}
             // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
-            // absorb final_step ++ extras in one keccak, THEN draw). next_claim unused (sccl recomputes).
+            // absorb final_step ++ extras in one keccak, THEN draw).
             {claims_batch}
         }}
         "
@@ -2606,11 +2618,10 @@ pub fn emit_circuit_yul_with_stats(
     };
     let gate_calldataload_inner = Yul::calldataload(&123).0.replace("123", "idx");
     yul_println!("
-        function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim, eq_scale {{
+        function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim {{
             // NB: need to inline __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS unfortunately
-            eq_scale := 1
             let modulus := mload(P_PTR) // hoisted: DUP per use instead of re-mload every round
-            // E1 (see sumcheck_rounds): (b, c) in, c0..c3 rebuilt and absorbed, claim = K, eq_scale = 1
+            // E1 (see sumcheck_rounds): (b, c) in, c0..c3 rebuilt and absorbed, claim = K
             let bit := mload(ptr)
             for {{ let i := 0 }} lt(i, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) {{ i := add(i, 1) }} {{
                 let zp := add(POINT_PTR(), mul(i, 32))
@@ -2618,9 +2629,8 @@ pub fn emit_circuit_yul_with_stats(
                 r, claim := f1_e1_round(bit, mload(zp), claim, modulus)
                 bit := add(bit, 246)
                 mstore(zp, r)
-                ptr := add(ptr, 64)
             }}
-            next_ptr := ptr
+            next_ptr := add(ptr, 32)
             next_claim := claim
         }}
         function transcriptNTo1(ptr, input_elements) -> alpha {{
@@ -2632,21 +2642,8 @@ pub fn emit_circuit_yul_with_stats(
             mstore(SEED_PTR(), seed)
             alpha := mod(shr(128, seed), P)                         // batching is a field element mod P
         }}
-        function sumcheck_claims_batch(ptr, points) -> next_ptr, next_claim, next_alpha {{
-            let is_odd := mod(points, 2)
-            if is_odd {{
-                next_claim := shr(128, calldataload(add(ptr, mul(16, sub(points, 1)))))
-            }}
+        function sumcheck_claims_batch(ptr, points) -> next_ptr, next_alpha {{
             next_alpha := transcriptNTo1(ptr, points)
-            let even_points := sub(points, is_odd)
-            let pairs := shr(1, even_points)
-            for {{ let pair := sub(pairs, 1) }} lt(pair, pairs) {{ pair := sub(pair, 1) }} {{
-                let word := calldataload(add(ptr, mul(pair, 32)))
-                let el1 := and(MASK, word)
-                let el0 := shr(128, word)
-                next_claim := add(mulmod(next_claim, next_alpha, P), el1)
-                next_claim := add(mulmod(next_claim, next_alpha, P), el0)
-            }}
             next_ptr := add(ptr, mul(16, points))
         }}
 

@@ -37,11 +37,6 @@ contract WhirVerifier {
     uint256 constant P    = 0x7000000000000000000000000000001;
     uint256 constant MASK = 0xffffffffffffffffffffffffffffffff;
     uint256 constant HALF = 0x3800000000000000000000000000001;  // 2^-1 = (P+1)/2
-    // Must match the prover's `eval_leaves` cargo feature. 0 (default): intermediate
-    // oracles commit multilinear-COEFFICIENT leaves -> fold with the plain monomial
-    // tensor (fold_multilinear). 1 (eval_leaves): they commit raw EVALUATIONS -> fold
-    // with the coset base-root (fold_coset), like the round-0 base oracle.
-    uint256 constant EVAL_LEAVES = 0;
 
     // ── Generated from the prover config + circuit (`__TEMPLATE_WHIR_*`) ─────────────────────
     // Every value below is assigned by the generator (the "{unassigned}" placeholder does not
@@ -52,7 +47,7 @@ contract WhirVerifier {
     uint256 constant __TEMPLATE_WHIR_GEN     = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_GEN_INV = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_NUM_ROUNDS   = "{unassigned}";
-    uint256 constant __TEMPLATE_WHIR_GCOUNT       = "{unassigned}";  // gamma-batched base columns + 1
+    uint256 constant __TEMPLATE_WHIR_GCOUNT       = "{unassigned}";  // gamma-batched base columns
     uint256 constant __TEMPLATE_WHIR_RFIN         = "{unassigned}";  // final-poly log2 = message_log2 - sum(folds)
     uint256 constant __TEMPLATE_WHIR_MERGED_MW    = "{unassigned}";  // merged memory+witness base columns
     uint256 constant __TEMPLATE_WHIR_SETUP_MERGED = "{unassigned}";  // merged setup base columns
@@ -81,7 +76,7 @@ contract WhirVerifier {
     uint256 constant __TEMPLATE_WHIR_ACC_PREF_PTR = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = "{unassigned}";  // gcount gamma powers
     uint256 constant __TEMPLATE_WHIR_FOLD_CH_PTR  = "{unassigned}";  // max_fold challenges
-    uint256 constant __TEMPLATE_WHIR_HPO_PTR      = "{unassigned}";  // 2^(max_fold-1) high-power offsets
+    uint256 constant __TEMPLATE_WHIR_HPO_PTR      = "{unassigned}";  // 2^(fold_0 - 1) high-power offsets (round 0)
     uint256 constant __TEMPLATE_WHIR_FBUF_PTR     = "{unassigned}";  // 2^max_fold folding buffer
     uint256 constant __TEMPLATE_WHIR_LEAF_PTR     = "{unassigned}";  // leaf hashing scratch
     uint256 constant __TEMPLATE_WHIR_REG_CD       = "{unassigned}";  // calldata cursor
@@ -94,7 +89,6 @@ contract WhirVerifier {
     uint256 constant __TEMPLATE_WHIR_HANDOFF_BATCHING_PTR = "{unassigned}";
     // cap regions (CAP*32 bytes each)
     uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = "{unassigned}";  // witness base-oracle cap
-    uint256 constant __TEMPLATE_WHIR_BCAP1_PTR    = "{unassigned}";  // setup base-oracle cap
     uint256 constant __TEMPLATE_WHIR_QCAP_PTR     = "{unassigned}";  // current query cap (rounds >= 1)
     uint256 constant __TEMPLATE_WHIR_NCAP_PTR     = "{unassigned}";  // just-read intermediate cap
     // Per-round query drawing (matches prover `draw_query_bits`/`BitSource`):
@@ -237,8 +231,7 @@ contract WhirVerifier {
                 let half := shr(1, n)
                 let ch := mload(add(__TEMPLATE_WHIR_FOLD_CH_PTR, mul(round, 32)))
                 for { let i := 0 } lt(i, half) { i := add(i, 1) } {
-                    // reduce on load: with eval_leaves the buffer holds raw (possibly >= P)
-                    // calldata lanes, and `sub(P, b)` below must see a canonical b
+                    // reduce on load: `sub(P, b)` below must see a canonical b
                     let a := mod(mload(add(__TEMPLATE_WHIR_FBUF_PTR, mul(mul(i, 2), 32))), P)
                     let b := mod(mload(add(__TEMPLATE_WHIR_FBUF_PTR, mul(add(mul(i, 2), 1), 32))), P)
                     let t := mulmod(addmod(a, sub(P, b), P), ch, P)
@@ -377,20 +370,6 @@ contract WhirVerifier {
             cp := f1_run_end(cp, vp)
             next_cd := merkle_path(and(keccak256(__TEMPLATE_WHIR_LEAF_PTR, mul(words, 32)), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
-        // Reinterpret a 32-byte digest (8 big-endian u32 words) as the same 8
-        // words each in little-endian byte order, keeping word positions. This
-        // matches the prover's `commit_u32` cap absorption (LE u32 word bytes)
-        // while the raw BE digest is still used for Merkle-root comparison.
-        function bswap_digest(d) -> s {
-            for { let i := 0 } lt(i, 8) { i := add(i, 1) } {
-                let sh := sub(224, mul(i, 32))
-                let w := and(shr(sh, d), 0xffffffff)
-                let sw := or(
-                    or(shl(24, and(w, 0xff)), shl(8, and(w, 0xff00))),
-                    or(and(shr(8, w), 0xff00), and(shr(24, w), 0xff)))
-                s := or(s, shl(sh, sw))
-            }
-        }
         function push_pow(current_scalar, coefficient) {
             let n := mload(__TEMPLATE_WHIR_REG_NUMPOW)
             let b := add(__TEMPLATE_WHIR_POW_PTR, mul(n, 96))
@@ -410,14 +389,13 @@ contract WhirVerifier {
             let cur := mulmod(mload(__TEMPLATE_WHIR_REG_CURDELIN), delin, P)
             mstore(__TEMPLATE_WHIR_REG_CURDELIN, cur)
             let qidx := and(mload(add(__TEMPLATE_WHIR_QIDX_BUF_PTR, mul(qq, 32))), idx_mask)
-            let base_root_inv := powmod(__TEMPLATE_WHIR_GEN_INV, qidx)
             let depth := sub(qib, __TEMPLATE_WHIR_CAP_LOG2)
 
             switch r
             case 0 {
-                // Round 0 queries the base oracles: 7 witness columns (BCAP0) then
-                // 1 setup column (BCAP1), gamma-batched into the folding buffer.
-                // (7 = merged memory+witness packed columns; setup at gamma-power 7.)
+                // Round 0 queries the base oracles: the merged memory+witness columns (BCAP0),
+                // then the setup columns, whose paths end at the SetupFrontier nodes; all are
+                // gamma-batched into the folding buffer.
                 for { let j := 0 } lt(j, vp) { j := add(j, 1) } { mstore(add(__TEMPLATE_WHIR_FBUF_PTR, mul(j, 32)), 0) }
                 cp := batch_oracle(cp, __TEMPLATE_WHIR_MERGED_MW, 0, vp, depth, __TEMPLATE_WHIR_BCAP0_PTR, qidx, cb)
                 cp := batch_oracle(cp, __TEMPLATE_WHIR_SETUP_MERGED, __TEMPLATE_WHIR_MERGED_MW, vp, sub(depth, __TEMPLATE_F1_FRONTIER_SKIP), 0, qidx, cb)
@@ -426,14 +404,12 @@ contract WhirVerifier {
                 cp := read_leaf(cp, vp, depth, __TEMPLATE_WHIR_QCAP_PTR, qidx, cb)
             }
             mstore(__TEMPLATE_WHIR_REG_CD, cp)
-            // round 0 queries a base oracle (coset fold); later rounds query
-            // intermediate oracles (plain multilinear fold, no base-root).
+            // round 0 queries a base oracle: its evaluations fold with the coset base-root.
+            // Later rounds query intermediate oracles, whose coefficient leaves fold with the
+            // plain monomial tensor.
             let folded
-            // round 0 (base oracle) always folds evals with the coset base-root;
-            // intermediate rounds fold coeff leaves (fold_multilinear) unless the
-            // prover used eval_leaves, in which case they too are raw evals.
-            switch or(iszero(r), EVAL_LEAVES)
-            case 1 { folded := fold_coset(fold, base_root_inv) }
+            switch r
+            case 0 { folded := fold_coset(fold, powmod(__TEMPLATE_WHIR_GEN_INV, qidx)) }
             default { folded := fold_multilinear(fold) }
             push_pow(exp_pow2(powmod(__TEMPLATE_WHIR_GEN, qidx), fold), cur)
             mstore(__TEMPLATE_WHIR_REG_CC, addmod(mload(__TEMPLATE_WHIR_REG_CC), mulmod(folded, cur, P), P))
@@ -446,7 +422,7 @@ contract WhirVerifier {
             for { let i := 0 } lt(i, __TEMPLATE_WHIR_CAP) { i := add(i, 1) } {
                 let d := f1_digest(add(cp, mul(i, __TEMPLATE_F1_DIGEST_BYTES)))
                 mstore(add(__TEMPLATE_WHIR_NCAP_PTR, mul(i, 32)), d)
-                mstore(add(__TEMPLATE_WHIR_SEED_PTR, add(32, mul(i, 32))), bswap_digest(d))
+                mstore(add(__TEMPLATE_WHIR_SEED_PTR, add(32, mul(i, 32))), f1_bswap32x8(d))
             }
             mstore(__TEMPLATE_WHIR_SEED_PTR, keccak256(__TEMPLATE_WHIR_SEED_PTR, add(32, mul(__TEMPLATE_WHIR_CAP, 32))))
             cp := add(cp, mul(__TEMPLATE_WHIR_CAP, __TEMPLATE_F1_DIGEST_BYTES))
@@ -466,7 +442,8 @@ contract WhirVerifier {
             push_pow(ood_point, delin)
             mstore(__TEMPLATE_WHIR_REG_CC, mulmod(ood_value, delin, P))
             mstore(__TEMPLATE_WHIR_REG_CURDELIN, delin)
-            compute_hpo(fold, qib)
+            // only the round-0 coset fold reads the high-power offsets
+            if iszero(r) { compute_hpo(fold, qib) }
             for { let qq := 0 } lt(qq, q) { qq := add(qq, 1) } {
                 do_query(r, fold, qib, vp, idx_mask, delin, cb, qq)
             }
@@ -500,19 +477,15 @@ contract WhirVerifier {
             cp := f1_run_end(cp, nmono)
             cp := verify_pow(cp, pow_bits)
             draw_queries(q, qib)
-            compute_hpo(fold, qib)
             let depth := sub(qib, __TEMPLATE_WHIR_CAP_LOG2)
 
             for { let qq := 0 } lt(qq, q) { qq := add(qq, 1) } {
                 let qidx := and(mload(add(__TEMPLATE_WHIR_QIDX_BUF_PTR, mul(qq, 32))), idx_mask)
                 let base_root := powmod(__TEMPLATE_WHIR_GEN, qidx)
                 cp := read_leaf(cp, vp, depth, __TEMPLATE_WHIR_QCAP_PTR, qidx, cb)
-                // final round queries an intermediate oracle: coeff leaves fold with
-                // the plain monomial tensor, unless eval_leaves (raw evals -> fold_coset).
-                let folded
-                switch EVAL_LEAVES
-                case 1 { folded := fold_coset(fold, powmod(__TEMPLATE_WHIR_GEN_INV, qidx)) }
-                default { folded := fold_multilinear(fold) }
+                // final round queries an intermediate oracle: its coefficient leaves fold
+                // with the plain monomial tensor
+                let folded := fold_multilinear(fold)
                 let qp := exp_pow2(base_root, fold)
                 sink2(__F1_HORNER_NAME__(qp), folded)
             }
@@ -545,11 +518,11 @@ contract WhirVerifier {
 
         // =================================================================== MAIN
         // The WHIR half's entry point, called by the merged verifier after the GKR half has
-        // written the start state (seed / batching / opening / z / base caps) into the regions
-        // above. `cd_start` = calldata offset of the WHIR proof stream (right after the GKR
+        // written the start state (seed / batching / opening / z) and f1_decode the memory
+        // base cap into the regions above. `cd_start` = calldata offset of the WHIR proof stream (right after the GKR
         // stream's trailing 8-byte WHIR-batching PoW nonce).
         function whir_verify(cd_start) {
-        // Base geometry (all generated): gcount = gamma-batched base columns + 1,
+        // Base geometry (all generated): gcount = gamma-batched base columns,
         // rfin = final-poly log2.
         let gcount := __TEMPLATE_WHIR_GCOUNT
         let rfin := __TEMPLATE_WHIR_RFIN

@@ -118,7 +118,7 @@ pub(crate) fn calldata_to_v0_memory(src: &str, v0_bytes: usize) -> String {
 
 /// The decoder for `circuit` under `params`: `f1_decode()` checks the section length and every
 /// run's zero padding and writes the v0 GKR calldata image at [`V0_PTR`]: the preimage, the
-/// nonces and every run's lanes; an E1 run leaves only its bit offset in its first round slot.
+/// nonces and every run's lanes; an E1 run leaves only its bit offset in its single image slot.
 /// Lanes are range-checked where they are read: the image lanes by the v0 code, the E1 pairs by
 /// the round functions.
 pub(crate) fn gkr_decoder(
@@ -155,23 +155,36 @@ pub(crate) fn gkr_decoder(
         })
         .collect();
     assert!(widths.iter().all(|w| *w < 1 << 16) && widths.len() <= 16);
-    let mut runs: Vec<(usize, usize)> = vec![(GKR_OUTPUTS << e, 32)];
+    // (element count, is an E1 run): an E1 run of k (b, c) pairs keeps one image slot (its bit
+    // offset); an FE run keeps its lanes, two per word.
+    let mut runs: Vec<(usize, bool)> = vec![(GKR_OUTPUTS << e, false)];
     for k in e..t {
-        runs.push((2 * k, 64)); // E1 round slots: (b, c) at the v0 slot of (c0..c3)
-        runs.push((2 * GKR_OUTPUTS, 32));
+        runs.push((2 * k, true));
+        runs.push((2 * GKR_OUTPUTS, false));
     }
     for w in &widths {
-        runs.push((2 * t, 64));
-        runs.push((*w, 32));
+        runs.push((2 * t, true));
+        runs.push((*w, false));
     }
     let f1 = preimage_f1 + 8 + runs.iter().map(|(n, _)| fe_run_len(*n)).sum::<usize>() + 8;
     let v0 = preimage_v0
         + 8
         + runs
             .iter()
-            .map(|(n, stride)| (n >> 1) * stride + 16 * (n & 1))
+            .map(|&(n, e1)| if e1 { 32 } else { (n >> 1) * 32 + 16 * (n & 1) })
             .sum::<usize>()
         + 8;
+    // f1_run handles an odd element count only if some FE run has one.
+    let odd_runs = runs.iter().any(|&(n, e1)| !e1 && n & 1 == 1);
+    let odd_tail = if odd_runs {
+        "            if and(n, 1) {
+                mstore(dst, shl(128, and(shr(sub(133, and(bit, 7)), calldataload(add(cd, shr(3, bit)))), 0x7ffffffffffffffffffffffffffffff)))
+                bit := add(bit, 123)
+            }
+"
+    } else {
+        ""
+    };
     // one 256-bit word, layer i in bits [16i, 16i + 16)
     let widths_word: String = widths.iter().rev().map(|w| format!("{w:04x}")).collect();
     let body = format!(
@@ -239,11 +252,7 @@ pub(crate) fn gkr_decoder(
                 mstore(dst, f1_lanes(shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))))
                 dst := add(dst, 32)
             }}
-            if and(n, 1) {{
-                mstore(dst, shl(128, and(shr(sub(133, and(bit, 7)), calldataload(add(cd, shr(3, bit)))), 0x7ffffffffffffffffffffffffffffff)))
-                bit := add(bit, 123)
-            }}
-            f1_pad(cd, bit)
+{odd_tail}            f1_pad(cd, bit)
         }}
         // The pad bits after `bits` run bits at cd must be zero.
         function f1_pad(cd, bits) {{
@@ -257,13 +266,13 @@ pub(crate) fn gkr_decoder(
             next_v0 := add(v0, shl(4, n))
         }}
         // E1 run of k (b, c) pairs: the round functions read the pairs from calldata (f1_cd) and
-        // range-check them; the image slot of round 0 holds the run's bit offset.
+        // range-check them; the run's single image slot holds its bit offset.
         function f1_rounds(cd, v0, k) -> next_cd, next_v0 {{
             mstore(add({V0_PTR}, v0), shl(3, cd))
             let bits := mul(246, k)
             f1_pad(cd, bits)
             next_cd := add(cd, shr(3, add(bits, 7)))
-            next_v0 := add(v0, shl(6, k))
+            next_v0 := add(v0, 32)
         }}
         function f1_cd(off) -> w {{
             w := calldataload(off)
@@ -305,10 +314,13 @@ pub(crate) fn gkr_decoder(
             calldatacopy(add({V0_PTR}, {top_v0}), {top_off}, {top_len})
             // pinned setup cap
             extcodecopy(mload(F1_FRONTIER_PTR), add({V0_PTR}, {setup_cap_v0}), __TEMPLATE_F1_DATA_CAP_OFFSET, {setup_cap_len})
-            // memory cap: {cap} DIGESTs of {db} bytes
+            // memory cap: {cap} DIGESTs of {db} bytes, as preimage LE words and as the WHIR
+            // half's BE base-oracle cap
             for {{ let i := 0 }} lt(i, {cap}) {{ i := add(i, 1) }} {{
                 let w := calldataload(add({cap_off}, mul({db}, i)))
-                mstore(add({V0_PTR}, add({mem_cap_v0}, mul(32, i))), f1_bswap32x8({digest_mask}))
+                let d := {digest_mask}
+                mstore(add({V0_PTR}, add({mem_cap_v0}, mul(32, i))), f1_bswap32x8(d))
+                mstore(add(__TEMPLATE_WHIR_BCAP0_PTR, mul(32, i)), d)
             }}
 {body}        }}
 ",

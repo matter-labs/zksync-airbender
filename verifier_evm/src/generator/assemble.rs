@@ -58,11 +58,7 @@ fn gkr_circuit_layer_calls(circuit: &GKRCircuitArtifact<Proth120>) -> String {
     assert!(n > 0, "circuit must have at least one layer");
     (0..n)
         .rev()
-        .map(|i| {
-            format!(
-                "            ptr, claim,\n            alpha := sumcheck_circuit_layer{i}(ptr, claim, alpha)\n"
-            )
-        })
+        .map(|i| format!("            ptr, alpha := sumcheck_circuit_layer{i}(ptr, alpha)\n"))
         .collect()
 }
 
@@ -299,6 +295,7 @@ contract SetupFrontier {{
 struct F1Render {
     decoder: f1::GkrDecoder,
     frontier: (Vec<u8>, usize, usize),
+    setup_commitment: [u8; 32],
 }
 
 /// The merged F1 verifier: every proof byte is read by the F1 decoders, the final PC
@@ -349,12 +346,12 @@ pub fn generate_f1_verifier(
             params.setup_frontier_level,
             params.setup_frontier_skip(),
         ),
+        setup_commitment: crate::seed::setup_commitment(setup_cap),
     };
     let (verifier_sol, data) = render(
         circuit,
         prover_config,
         external_pow_bits,
-        final_pc,
         inits_teardowns_top_bits,
         &f1_render,
     );
@@ -365,12 +362,10 @@ pub fn generate_f1_verifier(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn render(
     circuit: &GKRCircuitArtifact<Proth120>,
     prover_config: &ProverConfig,
     external_pow_bits: u32,
-    final_pc: u32,
     inits_teardowns_top_bits: &[u32],
     f1: &F1Render,
 ) -> (String, Vec<u8>) {
@@ -532,7 +527,6 @@ fn render(
     let gkr_regions = gkr_heap_regions(
         &d,
         &stats,
-        preimage_bytes.value as usize,
         &init_bytes,
         output_evals.value as usize,
         pack,
@@ -580,8 +574,6 @@ fn render(
         ("__TEMPLATE_GKR_DIM_REDUCE_LAYERS", dim_reduce_layers),
         ("__TEMPLATE_PREIMAGE_FINAL_PC_OFFSET", final_pc_offset),
         ("__TEMPLATE_PREIMAGE_TOP_BITS_OFFSET", top_bits_offset),
-        ("__TEMPLATE_PREIMAGE_SETUP_CAP_OFFSET", setup_cap_offset),
-        ("__TEMPLATE_PREIMAGE_MEMORY_CAP_OFFSET", memory_cap_offset),
         ("__TEMPLATE_GKR_INIT_PREIMAGE_BYTES", preimage_bytes.clone()),
         (
             "__TEMPLATE_EXTERNAL_POW_BITS",
@@ -591,7 +583,6 @@ fn render(
             "__TEMPLATE_WHIR_BATCH_POW_BITS",
             n(whir_batch_pow_bits as usize),
         ),
-        ("__TEMPLATE_EXPECTED_FINAL_PC", n(final_pc as usize)),
         (
             "__TEMPLATE_WHIR_NUM_MEMWIT",
             n(d.mem_width).add(&n(d.wit_width)),
@@ -619,6 +610,17 @@ fn render(
             &mut assigned,
         );
     }
+    let setup_commitment: String = f1
+        .setup_commitment
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    gkr = set_const(
+        &gkr,
+        "__TEMPLATE_SETUP_COMMITMENT",
+        format!("0x{setup_commitment}"),
+        &mut assigned,
+    );
 
     // Boundary-layer LSB reorder for gkr_dr_final: the dim-reduce LSB lines are stored in
     // GKRAddress-offset order, but the g-accumulator wants OutputType-group (iteration) order so
@@ -739,13 +741,13 @@ fn render(
         !whir.contains("__WHIR_SCHEDULE_SWITCH__"),
         "whir.sol template missing the schedule marker"
     );
-    // rfin = message_log2 - Σ folds, gcount = merged_mw + setup_merged + 1 — spelled out
+    // rfin = message_log2 - Σ folds, gcount = merged_mw + setup_merged — spelled out
     let folds_sum = wc.folds[1..]
         .iter()
         .fold(n(wc.folds[0]), |acc, &f| acc.add(&n(f)));
     let rfin = n(wc.message_log2).sub(&folds_sum);
     assert_eq!(rfin.value as usize, wc.rfin);
-    let gcount = merged_mw.add(&setup_merged).add(&n(1));
+    let gcount = merged_mw.add(&setup_merged);
     assert_eq!(gcount.value as usize, wc.gcount);
     let nz = n(d.rounds).add(&n(pack_log2));
     assert_eq!(nz.value as usize, wc.nz);
@@ -805,7 +807,6 @@ fn render(
 fn gkr_heap_regions(
     d: &Derived,
     stats: &CircuitYulStats,
-    preimage_bytes: usize,
     init_bytes: &Lit,
     output_evals: usize,
     pack: usize,
@@ -814,9 +815,11 @@ fn gkr_heap_regions(
     // Seed region: the seed word plus everything the template keeps right after it —
     //  * the transcript-absorb scratch at SEED+32/+64 (keccak256(SEED, 96) in
     //    transcript_4to1_dual, the 40-byte PoW absorb),
-    //  * the preimage copy transcript_init keccaks in place (preimage_bytes),
-    //  * circuit.yul's per-layer cache array at SEED+64 (GKR_CIRCUIT_CACHE_PTR, max_cache_slots).
-    let seed_bytes = preimage_bytes.max(96).max(64 + 32 * stats.max_cache_slots);
+    //  * circuit.yul's per-layer cache array at SEED+64 (GKR_CIRCUIT_CACHE_PTR, max_cache_slots),
+    //  * the claims transcriptNTo1 absorbs at SEED+32 for layers without caches.
+    let seed_bytes = 96
+        .max(64 + 32 * stats.max_cache_slots)
+        .max(stats.max_seed_absorb_bytes);
     // Absorb scratch: gkr_init's 32 + INIT_BYTES, the circuit layers' claims-batch absorbs, and
     // emit_gkr_mark's sub-buffers (packing coords, merged claims, whir_fold_pack's PACK-slot
     // chunk buffer — the generated HANDOFF offsets, one word each).
@@ -865,8 +868,8 @@ fn gkr_heap_regions(
 //    batch_oracle, do_*, draw*, fold_*, ...).
 //  * memory-safe assembly: via_ir spills into [0x80, MINIMUM_FREE_HEAP_PTR); the GKR heap and
 //    then every WHIR region are laid out above it by the same bump allocator, so nothing
-//    overlaps; the WHIR half never touches 0x40/0x60, and the end-of-fallback spill guard is
-//    re-checked after it.
+//    overlaps; the WHIR half never touches 0x40/0x60, so the single spill guard before the GKR
+//    half covers both halves.
 
 /// `__TEMPLATE_WHIR_*` names the GKR template references (handoff) — must come from whir.sol.
 const GKR_REQUIRED_WHIR_CONSTS: &[&str] = &[
@@ -875,7 +878,6 @@ const GKR_REQUIRED_WHIR_CONSTS: &[&str] = &[
     "__TEMPLATE_WHIR_REG_CLAIM",
     "__TEMPLATE_WHIR_Z_PTR",
     "__TEMPLATE_WHIR_BCAP0_PTR",
-    "__TEMPLATE_WHIR_BCAP1_PTR",
 ];
 
 fn is_ident_char(c: u8) -> bool {

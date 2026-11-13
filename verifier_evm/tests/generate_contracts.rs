@@ -92,7 +92,7 @@ fn generated_sources() -> Vec<(String, String)> {
     let pc = common::final_pc();
     let f1 = generate_f1(pc);
     let wrong = generate_f1(pc ^ 1);
-    // The negative changes only the pinned PC and the decoder's PC word.
+    // The negative changes only the decoder's pinned PC word.
     assert_eq!(
         f1.verifier_sol.lines().count(),
         wrong.verifier_sol.lines().count()
@@ -103,13 +103,10 @@ fn generated_sources() -> Vec<(String, String)> {
         .zip(wrong.verifier_sol.lines())
         .filter(|(a, b)| a != b)
         .collect();
-    assert_eq!(differences.len(), 2);
-    assert!(differences.iter().all(|(a, b)| [
-        "constant __TEMPLATE_EXPECTED_FINAL_PC",
-        "// pinned final PC"
-    ]
-    .iter()
-    .any(|tag| a.contains(tag) && b.contains(tag))));
+    assert_eq!(differences.len(), 1);
+    assert!(differences
+        .iter()
+        .all(|(a, b)| a.contains("// pinned final PC") && b.contains("// pinned final PC")));
     vec![
         (MERGED_F1.into(), f1.verifier_sol),
         (F1_FRONTIER_CONTRACT.into(), f1.setup_frontier_sol),
