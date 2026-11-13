@@ -135,7 +135,7 @@ Subcommands:
                 configurable for strategy sweeps. See: $0 recursion --help
 
 Options:
-  --blake V             blake2_with_compression (default) | blake2_g_function | special_opcodes_extension
+  --blake V             blake2_with_compression (default) | special_opcodes_extension
                         Used by verifier binaries and malicious diagnostics.
   --variant V           caches (the canonical production configuration)
   --security-level L    Security level (currently: 100)
@@ -372,8 +372,8 @@ done
 # Validate
 # ============================================================================
 case "$BLAKE" in
-  blake2_with_compression|blake2_g_function|special_opcodes_extension) ;;
-  *) die "--blake must be blake2_with_compression, blake2_g_function, or special_opcodes_extension. Got: $BLAKE" ;;
+  blake2_with_compression|special_opcodes_extension) ;;
+  *) die "--blake must be blake2_with_compression or special_opcodes_extension. Got: $BLAKE" ;;
 esac
 
 case "$VARIANT" in
