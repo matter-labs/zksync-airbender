@@ -5,11 +5,14 @@ Our WhirSchedule fixes an explicit LDE factor per intermediate oracle instead of
 per-iteration `log_inv_rates` with ours (the object reads that list everywhere).
 """
 import math, sys
-from soundcalc.common.fields import BABYBEAR_4
+from soundcalc.common.fields import FieldParams, BABYBEAR_4
 from soundcalc.pcs.whir import WHIR, WHIRConfig
 from soundcalc.proxgaps.unique_decoding import UniqueDecodingRegime
 from soundcalc.proxgaps.johnson_bound import JohnsonBoundRegime
 from soundcalc.common.utils import get_bits_of_security_from_error
+
+PROTH120_P = 7 * 2**120 + 1
+PROTH120 = FieldParams(name="Proth120", p=PROTH120_P, field_extension_degree=1, F=float(PROTH120_P), two_adicity=120)
 
 def field_bits(f):  # floor(log2 |E|), as prover_config::pow_bits::challenge_field_size_log2
     return int(math.floor(math.log2(f.F)))
@@ -53,6 +56,9 @@ def report(name, w, std_rates, rates, bpow):
     print(f"  (airbender's own 'pessimistic conjecture' accounting: per-iteration {[round(x) for x in ours]} bits)")
 
 configs = []
+# EVM production (Proth120, 2^22 trace packed x16 -> 2^26 message); 7 + 1 merged packed columns
+configs.append(our_config("EVM production Proth120 2^22 (packed 2^26)", PROTH120, 26, 32,
+    [2, 4, 4, 4, 4, 4], [17, 12, 8, 6, 5, 4], [1 << 7, 1 << 11, 1 << 15, 1 << 19, 1 << 23], [30, 30, 27, 25, 21, 24], 8))
 # BabyBear^4 sec-100 configs (unified circuit: 38 + 66 + 10 = 114 base columns batched)
 BB = {
     20: ([1, 5, 5, 4, 4], [89, 11, 7, 6, 5], [256, 8192, 32768, 524288], [26, 27, 25, 25, 21]),
@@ -63,5 +69,7 @@ BB = {
 }
 for n, (f, q, l, p) in BB.items():
     configs.append(our_config(f"BabyBear^4 sec-100 trace 2^{n} (base LDE 2)", BABYBEAR_4, n, 2, f, q, l, p, 114))
+configs.append(our_config("BabyBear^4 L1-feeder 2^23 (base LDE 16, all oracles 2^27)", BABYBEAR_4, 23, 16,
+    [1, 5, 5, 5, 4], [21, 17, 9, 5, 4], [32, 1024, 32768, 1048576], [29, 26, 25, 26, 21], 114))
 for c in configs:
     report(*c)

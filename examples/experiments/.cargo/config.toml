@@ -1,0 +1,14 @@
+[build]
+target = "riscv32i-unknown-none-elf"
+rustflags = [
+  # "--cfg", "no_global_oom_handling",
+  "-C", "target-feature=-unaligned-scalar-mem,+relax,+zimop",
+  "-C", "link-arg=-Tmemory.x",
+  "-C", "link-arg=-Tlink.x",
+  "-C", "link-arg=--save-temps",
+  "-C", "force-frame-pointers",
+]
+
+[unstable]
+panic-immediate-abort = true
+build-std = ["core", "alloc"]
