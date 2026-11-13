@@ -485,11 +485,10 @@ unsafe fn pairwise_blocks(
     let r11 = k::r11v();
     let xp = ExtPerm::new();
     let (ei, oi) = (k::idx(&EVEN_IDX), k::idx(&ODD_IDX));
-    let nt = k::nt_stores();
     let mut i = range.start;
     while i < range.end {
         let (a, b) = load_even_odd16(src.add(2 * i), &xp, ei, oi);
-        k::store_ext16_out(&k::soa_ext_mul_lazy(&a, &b, r11), dst.add(i), &xp, nt);
+        k::store_ext16_nt(&k::soa_ext_mul_lazy(&a, &b, r11), dst.add(i), &xp);
         i += 16;
     }
     _mm_sfence();
@@ -507,7 +506,6 @@ unsafe fn logup_blocks(
     let r11 = k::r11v();
     let xp = ExtPerm::new();
     let (ei, oi) = (k::idx(&EVEN_IDX), k::idx(&ODD_IDX));
-    let nt = k::nt_stores();
     let mut i = range.start;
     while i < range.end {
         let (n0, n1) = load_even_odd16(n_src.add(2 * i), &xp, ei, oi);
@@ -516,8 +514,8 @@ unsafe fn logup_blocks(
             &k::soa_ext_mul_lazy(&n0, &d1, r11),
             &k::soa_ext_mul_lazy(&n1, &d0, r11),
         );
-        k::store_ext16_out(&num, n_dst.add(i), &xp, nt);
-        k::store_ext16_out(&k::soa_ext_mul_lazy(&d0, &d1, r11), d_dst.add(i), &xp, nt);
+        k::store_ext16_nt(&num, n_dst.add(i), &xp);
+        k::store_ext16_nt(&k::soa_ext_mul_lazy(&d0, &d1, r11), d_dst.add(i), &xp);
         i += 16;
     }
     _mm_sfence();
