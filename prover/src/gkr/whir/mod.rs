@@ -98,7 +98,6 @@ use std::sync::Arc;
 use transcript::Transcript;
 use worker::{IterableWithGeometry, Worker};
 
-pub mod by_coefficient;
 pub mod coset_commit;
 pub mod hypercube_to_monomial;
 pub mod in_domain;
@@ -884,9 +883,6 @@ where
 {
     Monolithic(ColumnMajorExtensionOracleForLDE<F, E, T>),
     InMemoryContinuous(ContinuousExtensionOracleForLDE<F, E, T>),
-    /// The limb columns LDE'd through the base-column pipeline, leaves
-    /// assembled on access (same tree as the in-memory variants).
-    ByCoefficient(by_coefficient::ByCoefficientExtOracle<F, E, T>),
     CosetRecompute(coset_commit::CosetByCosetExtCommitment<F, E, T>),
 }
 
@@ -901,16 +897,7 @@ where
         match self {
             Self::Monolithic(oracle) => oracle.cosets.len(),
             Self::InMemoryContinuous(oracle) => oracle.num_cosets(),
-            Self::ByCoefficient(oracle) => oracle.num_cosets(),
             Self::CosetRecompute(c) => c.lde_factor,
-        }
-    }
-
-    /// Done with this oracle: pooled storage goes back to `pool`.
-    fn release_into(self, pool: &dyn AllocationPool<F, E>) {
-        match self {
-            Self::ByCoefficient(oracle) => oracle.release_into(pool),
-            other => drop(other),
         }
     }
 
@@ -934,7 +921,6 @@ where
                 oracle.leaf_evaluations(index),
                 oracle.leaves_in_coefficient_form,
             ),
-            Self::ByCoefficient(oracle) => (oracle.leaf_evaluations(index), false),
             Self::CosetRecompute(c) => (c.query(index, twiddles, worker).1, true),
         }
     }
@@ -954,10 +940,6 @@ where
                 .map(|&qi| oracle.query_for_folded_index(qi))
                 .collect(),
             Self::InMemoryContinuous(oracle) => query_indices
-                .iter()
-                .map(|&qi| oracle.query_for_folded_index(qi))
-                .collect(),
-            Self::ByCoefficient(oracle) => query_indices
                 .iter()
                 .map(|&qi| oracle.query_for_folded_index(qi))
                 .collect(),
@@ -1030,32 +1012,6 @@ where
             )
         }
         WhirIntermediateOracleMode::InMemoryContinuous => {
-            // the by-coefficient path: the backend's fast base-column LDE
-            // length is twice this polynomial, and the leaves are large
-            // enough for the fused (hash-time) conversion
-            if let Some(len) = backend.by_coefficient_lde_len() {
-                if 2 * evaluation_form.len() == len
-                    && lde_factor >= 2
-                    && values_per_leaf >= FUSED_LEAF_CONVERSION_MIN_VALUES_PER_LEAF
-                {
-                    let (oracle, t_lde, t_tree) = by_coefficient::commit_by_coefficient::<F, E, T, B>(
-                        evaluation_form,
-                        lde_factor,
-                        values_per_leaf,
-                        tree_cap_size,
-                        backend,
-                        twiddles,
-                        pool,
-                        worker,
-                    );
-                    let cap = oracle.tree.get_cap();
-                    return (
-                        cap,
-                        IntermediateOracle::ByCoefficient(oracle),
-                        Some((t_lde, t_tree)),
-                    );
-                }
-            }
             let t_lde = std::time::Instant::now();
             let (buffer, coset_offsets) = backend.lde_ext_poly_from_monomial_form_continuous(
                 monomial_form,
@@ -2088,7 +2044,7 @@ pub fn whir_fold<
             internal_round + 1,
             t_queries.elapsed()
         );
-        rs_oracle_to_query.release_into(pool);
+        drop(rs_oracle_to_query);
         for &query_index in query_indexes.iter() {
             assert!(query_index < query_domain_size as usize);
             let query_point = query_domain_generator.pow(query_index as u32);
@@ -2333,7 +2289,7 @@ pub fn whir_fold<
             "  [timing] final-round queries ({num_queries}) served in {:.3?}",
             t_queries.elapsed()
         );
-        rs_oracle_to_query.release_into(pool);
+        drop(rs_oracle_to_query);
         for &query_index in query_indexes.iter() {
             assert!(query_index < query_domain_size as usize);
             let query_point = query_domain_generator.pow(query_index as u32);

@@ -8,8 +8,8 @@
 //! Values are byte-identical to the AVX2 pipeline (parity test below); only
 //! the storage layout differs, which the tree builder and the query paths
 //! address through [`ColumnLayout::PaddedBlocks`]. The radix-1024 pass is a
-//! 2^24-only kernel, so other sizes (and a missing `avx512f`, or
-//! `FFT_STRIDED=0`) take the AVX2 path unchanged.
+//! 2^24-only kernel, so other sizes (and a missing `avx512f`) take the AVX2
+//! path unchanged.
 
 use super::x86_64::{
     BabyBearAvx2ExtCoeffConv, BabyBearAvx2Twiddles, BabyBearAvx2WorkStealingBackend,
@@ -25,13 +25,10 @@ const STRIDED_LOG_N: u32 = 24;
 const STRIDED_CHUNK_STRIDE: usize = (1 << (STRIDED_LOG_N - 4)) + 1088;
 
 /// The AVX2 work-stealing backend with the AVX-512 strided base LDE on top.
-/// `Default` detects `avx512f` at runtime (and honours `FFT_STRIDED=0`).
+/// `Default` detects `avx512f` at runtime.
 #[derive(Clone, Copy, Debug)]
 pub struct BabyBearAvx512WorkStealingBackend {
     strided: bool,
-    /// Commit the 2^23-value WHIR oracle by coefficient through the strided
-    /// pipeline (see [`Backend::by_coefficient_lde_len`]); needs `strided`.
-    by_coefficient: bool,
     inner: BabyBearAvx2WorkStealingBackend,
 }
 
@@ -44,32 +41,16 @@ impl BabyBearAvx512WorkStealingBackend {
         );
         Self {
             strided,
-            by_coefficient: strided,
             inner: BabyBearAvx2WorkStealingBackend,
         }
     }
-    /// The strided base LDE when the CPU has `avx512f` and env `FFT_STRIDED`
-    /// is not `0`; the plain AVX2 backend otherwise. The by-coefficient WHIR
-    /// oracle rides on the strided pipeline unless env `WHIR_BY_COEFF` is `0`.
+    /// The strided base LDE when the CPU has `avx512f`; the plain AVX2
+    /// backend otherwise.
     pub fn detect() -> Self {
-        let wanted = std::env::var("FFT_STRIDED")
-            .map(|v| v != "0")
-            .unwrap_or(true);
-        let by_coefficient = std::env::var("WHIR_BY_COEFF")
-            .map(|v| v != "0")
-            .unwrap_or(true);
-        Self::new(wanted && is_x86_feature_detected!("avx512f")).with_by_coefficient(by_coefficient)
-    }
-    /// Enable/disable the by-coefficient WHIR oracle (a no-op without `strided`).
-    pub fn with_by_coefficient(mut self, on: bool) -> Self {
-        self.by_coefficient = on && self.strided;
-        self
+        Self::new(is_x86_feature_detected!("avx512f"))
     }
     pub fn uses_strided(&self) -> bool {
         self.strided
-    }
-    pub fn uses_by_coefficient(&self) -> bool {
-        self.by_coefficient
     }
 }
 
@@ -225,14 +206,6 @@ impl Backend<BabyBearField, BabyBearExt4> for BabyBearAvx512WorkStealingBackend 
         }
         self.inner
             .lde_multiple_polys_from_hypercubes(evals, twiddles, lde_factor, pool, worker)
-    }
-
-    fn by_coefficient_lde_len(&self) -> Option<usize> {
-        if self.by_coefficient {
-            Some(1usize << STRIDED_LOG_N)
-        } else {
-            None
-        }
     }
 
     fn lde_packed_monomials_into_cosets(
