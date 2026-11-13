@@ -73,7 +73,7 @@ unsafe fn ld_ext16(p: *const BE, row0: usize, xp: &ExtPerm) -> Limbs {
 #[inline]
 #[target_feature(enable = "avx512f")]
 unsafe fn st_ext16(v: &Limbs, p: *mut BE, row0: usize, xp: &ExtPerm) {
-    k::store_ext16_out(v, p.add(row0), xp, k::nt_stores())
+    k::store_ext16_nt(v, p.add(row0), xp)
 }
 #[inline]
 #[target_feature(enable = "avx512f")]
@@ -194,7 +194,7 @@ fn run_blocks(trace_len: usize, worker: &Worker, f: impl Fn(usize) + Sync) {
 /// (every allocator hands out 16-byte aligned blocks of these sizes).
 fn check_out_alignment(ptr: usize) {
     assert!(
-        ptr.is_multiple_of(16) || !k::nt_stores(),
+        ptr.is_multiple_of(16),
         "forward output buffer is not 16-byte aligned"
     );
 }
@@ -689,11 +689,7 @@ unsafe fn single_column_block<const U16: bool>(map: usize, dst: usize, r2: u32, 
         ld_u32x16(map as *const u32, row0)
     };
     let out = k::mont_mul16(v, k::bc32(r2));
-    if k::nt_stores() {
-        k::st_nt16((dst as *mut u32).add(row0), out);
-    } else {
-        k::st((dst as *mut u32).add(row0), out);
-    }
+    k::st_nt16((dst as *mut u32).add(row0), out);
 }
 
 /// 1/(m1+g) + 1/(m2+g) from two range-check mappings
@@ -740,14 +736,7 @@ unsafe fn vector_lookup_block(
     let t = table as *const __m128i;
     let m = (map as *const u32).add(row0);
     let d = (dst as *mut __m128i).add(row0);
-    let nt = k::nt_stores();
-    let st = |q: *mut __m128i, v: __m128i| {
-        if nt {
-            _mm_stream_si128(q, v)
-        } else {
-            _mm_storeu_si128(q, v)
-        }
-    };
+    let st = |q: *mut __m128i, v: __m128i| _mm_stream_si128(q, v);
     match pred {
         None => {
             for i in 0..16 {

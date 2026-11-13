@@ -1412,38 +1412,6 @@ fn run_gpu_recursive_pipeline(
         "stage 5: final unified recursion proof verified ({} cycles); output registers: {output:?}",
         final_proof.executed_cycles()
     );
-
-    // Convergence experiment (opt-in): keep applying the final-blake unified
-    // recursion layer to its own proof and watch the cycle count settle at
-    // the self-verification fixpoint. RECURSION_EXTRA_FINAL_ROUNDS=N runs N
-    // more rounds; re-chaining the same program is a no-op by the chain rule.
-    let extra_rounds: u32 = std::env::var("RECURSION_EXTRA_FINAL_ROUNDS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
-    let (mut proof, mut setups) = (final_proof, final_setups);
-    for round in 0..extra_rounds {
-        let end_params = compute_end_params(&setups, proof.final_pc);
-        chain.extend(&end_params);
-        let (mut new_proof, new_setups) = prove_registered_on_gpu(
-            &mut prover,
-            &final_handle,
-            build_unified_stream(&setups, &proof, final_blake),
-        );
-        new_proof.set_recursion_chain(&chain);
-        native_verify_unified_in_mode(
-            build_unified_stream(&new_setups, &new_proof, verifier_common::BLAKE_MODE),
-            false,
-            SoundnessMode::PessimisticConjecture,
-        )
-        .expect("unified proof must verify");
-        log::info!(
-            "extra final round {round}: verified ({} cycles)",
-            new_proof.executed_cycles()
-        );
-        proof = new_proof;
-        setups = new_setups;
-    }
 }
 
 gpu_core::force_serial_libtest!();

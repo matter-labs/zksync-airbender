@@ -2631,23 +2631,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             ;; check_to_save_trace!(ops, pc_for_trace)
                         );
                     } else {
-                        let (spill_knob, call_knob) = match instr.imm {
-                            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER => (
-                                "RISCV_ABLATE_DELEG_SPILL_DUP",
-                                "RISCV_ABLATE_DELEG_CALL_DUP",
-                            ),
-                            _ => (
-                                "RISCV_ABLATE_KECCAK_SPILL_DUP",
-                                "RISCV_ABLATE_KECCAK_CALL_DUP",
-                            ),
-                        };
-                        let spill_dup = ablation_knob(spill_knob);
-                        let call_dup = ablation_knob(call_knob);
                         dynasm!(ops ; .arch x64 ; mov rdx, rsp);
-                        for _ in 0..spill_dup {
-                            save_machine_state!(ops);
-                            update_machine_state_post_call!(ops);
-                        }
                         dynasm!(ops
                             ; .arch x64
                             ;; before_call!(ops) // will save rsi and rdi
@@ -2656,17 +2640,6 @@ impl<I: ContextImpl> JittedCode<I> {
                             ; mov [rdi + (TraceChunk::LEN_OFFSET as i32)], r9
                             ; sub rsp, 8
                         );
-                        for _ in 0..call_dup {
-                            dynasm!(ops
-                                ; .arch x64
-                                ; mov rax, QWORD (ablation_empty_handler as *const ()).addr() as isize as i64
-                                ; call rax
-                                // the arguments of the real call, from where they were pushed
-                                ; mov rdx, [rsp + 8]
-                                ; mov rdi, [rsp + 16]
-                                ; mov rsi, [rsp + 24]
-                            );
-                        }
                         dynasm!(ops
                             ; .arch x64
                             ; mov rax, QWORD (function as *const ()).addr() as usize as isize as i64
@@ -2967,10 +2940,6 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
         assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
-        // Per-run setup timings, printed when `AIRBENDER_HOST_TIMING` is set
-        let timing = std::env::var_os("AIRBENDER_HOST_TIMING").is_some();
-        let t = std::time::Instant::now();
-
         // println!("Preparing default context implementation");
         let implementation = DefaultContextImpl {
             non_determinism_source,
@@ -3003,46 +2972,22 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         //     (&*trace as *const TraceChunk).addr()
         // );
 
-        let alloc_time = t.elapsed();
-        let t = std::time::Instant::now();
         let instructions = crate::ir::simple_instruction_set::preprocess_bytecode::<
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let decode_time = t.elapsed();
 
         // println!("Preprocessing the bytecode");
-        let t = std::time::Instant::now();
         let runner =
             Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
-        let compile_time = t.elapsed();
 
         // println!("Running the simulator");
-        let t = std::time::Instant::now();
         runner.run(
             &mut context,
             memory.as_mut(),
             unsafe { NonNull::new_unchecked(trace.as_mut() as *mut _) },
             initial_memory,
         );
-        if timing {
-            eprintln!(
-                "jit run_alternative_simulator: memory + trace alloc {alloc_time:?}, decode {decode_time:?} ({} instructions), jit compile {compile_time:?}, execution {:?}",
-                instructions.len(),
-                t.elapsed()
-            );
-            if let Some(state) = context.final_state_ref() {
-                eprintln!("jit final counters: {:?}", state.counters);
-            }
-            eprintln!(
-                "jit bigint delegations: {}",
-                if delegations::bigint_asm::bigint_asm_enabled() {
-                    "assembly routine"
-                } else {
-                    "Rust handler"
-                }
-            );
-        }
 
         // println!("Obtaining the final machine state");
         let final_state = context
@@ -3147,24 +3092,6 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
 
         (final_state, memory, trace)
     }
-}
-
-/// A profiling knob: the count in the environment variable `name`, 0 when unset
-pub(crate) fn ablation_knob(name: &str) -> usize {
-    std::env::var(name)
-        .ok()
-        .map(|value| value.parse().expect("an ablation knob is a count"))
-        .unwrap_or(0)
-}
-
-/// The handler of the extra calls of `RISCV_ABLATE_DELEG_CALL_DUP`
-#[inline(never)]
-extern "sysv64" fn ablation_empty_handler(
-    trace_piece: &mut TraceChunk,
-    _memory_holder: NonNull<u64>,
-    _machine_state: &mut MachineState,
-) -> u64 {
-    core::hint::black_box(trace_piece.len)
 }
 
 extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(
