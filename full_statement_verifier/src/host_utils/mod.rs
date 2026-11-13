@@ -50,9 +50,7 @@ pub fn fsv_stream(setups: &Setups, proof: &ProgramProof, descriptor: &FsvDescrip
         FsvProgram::UnrolledBaseLayer | FsvProgram::UnrolledRecursionLayer => {
             build_unrolled_stream(setups, proof, descriptor.blake)
         }
-        FsvProgram::UnifiedBaseLayer | FsvProgram::UnifiedRecursionLayer => {
-            build_unified_stream(setups, proof, descriptor.blake)
-        }
+        FsvProgram::UnifiedRecursionLayer => build_unified_stream(setups, proof, descriptor.blake),
     }
 }
 
