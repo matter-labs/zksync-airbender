@@ -10,7 +10,6 @@ pub use crate::prover::definitions::{BlakeMode, SecurityLevel, SoundnessMode};
 pub enum FsvProgram {
     UnrolledBaseLayer,
     UnrolledRecursionLayer,
-    UnifiedBaseLayer,
     UnifiedRecursionLayer,
 }
 

@@ -50,10 +50,6 @@ name = "fsv_unrolled_recursion_layer_sec_100"
 path = "src/bin/full_statement_verifiers/fsv_unrolled_recursion_layer_sec_100.rs"
 
 [[bin]]
-name = "fsv_unified_base_layer_sec_100"
-path = "src/bin/full_statement_verifiers/fsv_unified_base_layer_sec_100.rs"
-
-[[bin]]
 name = "fsv_unified_recursion_layer_sec_100"
 path = "src/bin/full_statement_verifiers/fsv_unified_recursion_layer_sec_100.rs"
 
