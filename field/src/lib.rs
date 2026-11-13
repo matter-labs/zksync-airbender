@@ -22,9 +22,6 @@ pub mod baby_bear;
 
 pub mod proth120;
 
-// #[cfg(test)]
-mod tests;
-
 #[cfg(feature = "verifier_stats")]
 pub mod stats;
 
