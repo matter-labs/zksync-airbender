@@ -58,7 +58,13 @@ fn gkr_circuit_layer_calls(circuit: &GKRCircuitArtifact<Proth120>) -> String {
     assert!(n > 0, "circuit must have at least one layer");
     (0..n)
         .rev()
-        .map(|i| format!("            ptr, alpha := sumcheck_circuit_layer{i}(ptr, alpha)\n"))
+        .map(|i| {
+            if i == 0 {
+                "            ptr := sumcheck_circuit_layer0(ptr, alpha)\n".to_string()
+            } else {
+                format!("            ptr, alpha := sumcheck_circuit_layer{i}(ptr, alpha)\n")
+            }
+        })
         .collect()
 }
 
@@ -82,9 +88,11 @@ fn boundary_si_yul(circuit: &GKRCircuitArtifact<Proth120>, num_outputs: usize) -
         "gkr_dr_final expects {num_outputs} GKR output LSB lines, got {}",
         offsets.len()
     );
+    // gkr_dr_final fills SI with the identity first: emit only the entries that differ
     offsets
         .iter()
         .enumerate()
+        .filter(|&(i, off)| i != *off)
         .map(|(i, off)| format!("                mstore(add(SI, {}), {off})\n", i * 32))
         .collect()
 }
@@ -651,7 +659,7 @@ fn render(
     // reader, and the WHIR stream starts after the F1 GKR section.
     let gkr = {
         let f = f1;
-        let gkr = f1::calldata_to_v0_memory(&gkr, f.decoder.v0_bytes);
+        let gkr = f1::calldata_to_v0_memory(&gkr);
         let marker = "        // __F1_DECODER__\n";
         assert_eq!(
             gkr.matches(marker).count(),
@@ -684,13 +692,6 @@ fn render(
                 "__F1_HORNER_NAME__",
                 &format!("horner_{}", 1usize << wc.rfin),
             );
-        let digest_load = format!(
-            "d := and(calldataload(cp), 0x{}{})",
-            "ff".repeat(DIGEST_BYTES),
-            "00".repeat(32 - DIGEST_BYTES)
-        );
-        assert_eq!(whir.matches("// __F1_DIGEST_LOAD__").count(), 1);
-        whir = whir.replace("// __F1_DIGEST_LOAD__", &digest_load);
         whir = set_const(
             &whir,
             "__TEMPLATE_F1_DIGEST_BYTES",
@@ -757,7 +758,6 @@ fn render(
         ("__TEMPLATE_WHIR_NUM_ROUNDS", wc.num_rounds.to_string()),
         ("__TEMPLATE_WHIR_GEN", format!("0x{:032X}", wc.gen)),
         ("__TEMPLATE_WHIR_GEN_INV", format!("0x{:032X}", wc.gen_inv)),
-        ("__TEMPLATE_WHIR_GCOUNT", gcount.expr().to_string()),
         ("__TEMPLATE_WHIR_RFIN", rfin.expr().to_string()),
         ("__TEMPLATE_WHIR_MERGED_MW", merged_mw.expr().to_string()),
         (
@@ -816,7 +816,7 @@ fn gkr_heap_regions(
     //  * the transcript-absorb scratch at SEED+32/+64 (keccak256(SEED, 96) in
     //    transcript_4to1_dual, the 40-byte PoW absorb),
     //  * circuit.yul's per-layer cache array at SEED+64 (GKR_CIRCUIT_CACHE_PTR, max_cache_slots),
-    //  * the claims transcriptNTo1 absorbs at SEED+32 for layers without caches.
+    //  * the claims sumcheck_claims_batch absorbs at SEED+32 for layers without caches.
     let seed_bytes = 96
         .max(64 + 32 * stats.max_cache_slots)
         .max(stats.max_seed_absorb_bytes);
@@ -841,7 +841,6 @@ fn gkr_heap_regions(
         // eq[OUTPUT_EVALS] for the entry claims; reused as SI[NUM_OUTPUTS] by gkr_dr_final
         ("EQ", "GKR_EQ_PTR", w(output_evals.max(d.num_outputs))),
         ("ABS", "GKR_ABS_PTR", abs_bytes),
-        ("PERM_PROD", "GKR_PERM_PROD_PTR", w(4)),
         (
             "CIRCUIT_CLAIMS",
             "GKR_CIRCUIT_CLAIMS_PTR",
@@ -874,7 +873,7 @@ fn gkr_heap_regions(
 /// `__TEMPLATE_WHIR_*` names the GKR template references (handoff) — must come from whir.sol.
 const GKR_REQUIRED_WHIR_CONSTS: &[&str] = &[
     "__TEMPLATE_WHIR_SEED_PTR",
-    "__TEMPLATE_WHIR_HANDOFF_BATCHING_PTR",
+    "__TEMPLATE_WHIR_GAMMA_PTR",
     "__TEMPLATE_WHIR_REG_CLAIM",
     "__TEMPLATE_WHIR_Z_PTR",
     "__TEMPLATE_WHIR_BCAP0_PTR",

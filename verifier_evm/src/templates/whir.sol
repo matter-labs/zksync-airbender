@@ -40,15 +40,13 @@ contract WhirVerifier {
     uint256 constant HALF = 0x3800000000000000000000000000001;  // 2^-1 = (P+1)/2
 
     // ── Generated from the prover config + circuit (`__TEMPLATE_WHIR_*`) ─────────────────────
-    // Every value below is assigned by the generator (the "{unassigned}" placeholder does not
-    // compile, so a forgotten assignment is caught); the Yul only ever references the names
-    // (inline assembly needs literal constants, so the literal lives in the declaration alone).
+    // Every value below is assigned by the generator (see the note on `__TEMPLATE_*` constants in
+    // the GKR template).
     // RS-codeword evaluation-domain generator and its inverse — a primitive 2^codeword_log2-th
     // root of unity (`Proth120::TWO_ADICITY_GENERATORS[codeword_log2]`).
     uint256 constant __TEMPLATE_WHIR_GEN     = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_GEN_INV = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_NUM_ROUNDS   = "{unassigned}";
-    uint256 constant __TEMPLATE_WHIR_GCOUNT       = "{unassigned}";  // gamma-batched base columns
     uint256 constant __TEMPLATE_WHIR_RFIN         = "{unassigned}";  // final-poly log2 = message_log2 - sum(folds)
     uint256 constant __TEMPLATE_WHIR_MERGED_MW    = "{unassigned}";  // merged memory+witness base columns
     uint256 constant __TEMPLATE_WHIR_SETUP_MERGED = "{unassigned}";  // merged setup base columns
@@ -86,8 +84,6 @@ contract WhirVerifier {
     uint256 constant __TEMPLATE_WHIR_REG_ZIOFF    = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_REG_CC       = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_REG_CURDELIN = "{unassigned}";
-    // GKR→WHIR handoff: the WHIR batching challenge, written by the GKR half's emit_gkr_mark.
-    uint256 constant __TEMPLATE_WHIR_HANDOFF_BATCHING_PTR = "{unassigned}";
     // cap regions (CAP*32 bytes each)
     uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = "{unassigned}";  // memory+witness base-oracle cap
     uint256 constant __TEMPLATE_WHIR_QCAP_PTR     = "{unassigned}";  // current query cap (rounds >= 1)
@@ -98,7 +94,7 @@ contract WhirVerifier {
     uint256 constant __TEMPLATE_WHIR_QIDX_BUF_PTR = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_DRAW_BUF_PTR = "{unassigned}";
     // do_final scratch: the plain-text tail is 2^RFIN monomials (MONO), then the tail absorb +
-    // halving-fold scratch (FEVAL, 32 + 2^RFIN words).
+    // halving-fold scratch (FEVAL, 2^RFIN words).
     uint256 constant __TEMPLATE_WHIR_MONO_PTR     = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_FEVAL_PTR    = "{unassigned}";
 
@@ -113,9 +109,9 @@ contract WhirVerifier {
             // Reduction is required: unreduced values break `sub(P, x)` for x > P.
             r := mod(shr(128, s), P)
         }
+        // `base` is canonical (the domain generator or its inverse)
         function powmod(base, e) -> res {
             res := 1
-            base := mod(base, P)
             for {} e { e := shr(1, e) } {
                 if and(e, 1) { res := mulmod(res, base, P) }
                 base := mulmod(base, base, P)
@@ -142,11 +138,11 @@ contract WhirVerifier {
             }
         }
         function f1_digest(cp) -> d {
-            // __F1_DIGEST_LOAD__
+            d := and(calldataload(cp), __TEMPLATE_DIGEST_MASK)
         }
         function verify_pow(cp, pow_bits) -> next_cd {
-            let nonce := shr(192, calldataload(cp))
-            mstore(add(__TEMPLATE_WHIR_SEED_PTR, 32), shl(192, nonce))
+            // the 40-byte hash covers the seed and the word's leading 8-byte BE nonce
+            mstore(add(__TEMPLATE_WHIR_SEED_PTR, 32), calldataload(cp))
             let h := keccak256(__TEMPLATE_WHIR_SEED_PTR, 40)
             mstore(__TEMPLATE_WHIR_SEED_PTR, h)
             sink2(shr(sub(256, pow_bits), h), 0)
@@ -167,7 +163,8 @@ contract WhirVerifier {
             for {} lt(wi, padded) {} {
                 let d := keccak256(__TEMPLATE_WHIR_SEED_PTR, 32)
                 mstore(__TEMPLATE_WHIR_SEED_PTR, d)
-                for { let j := 0 } and(lt(j, 8), lt(wi, padded)) { j := add(j, 1) } {
+                // `padded` is a multiple of 8, so a block never runs past it
+                for { let j := 0 } lt(j, 8) { j := add(j, 1) } {
                     let b := mul(j, 4)
                     // little-endian u32 from digest bytes [b, b+4)
                     let w := or(
@@ -204,7 +201,7 @@ contract WhirVerifier {
             }
         }
         // high_powers_offsets: bit-reversed powers of the order-2^fold generator's
-        // inverse (matches prover `initial_high_powers_offsets`). set_generator =
+        // inverse (matches the prover's `high_powers_offsets`). set_generator =
         // domain_generator_for_size(2^fold) = __TEMPLATE_WHIR_GEN^(2^(codeword_log2 - fold)), and
         // qib = codeword_log2 - fold, so set_gen_inv = __TEMPLATE_WHIR_GEN_INV^(2^qib) = exp_pow2(__TEMPLATE_WHIR_GEN_INV, qib).
         // hp[i] = set_gen_inv^i, then the length-2^(fold-1) array is bit-reversed.
@@ -232,9 +229,9 @@ contract WhirVerifier {
                 let half := shr(1, n)
                 let ch := mload(add(__TEMPLATE_WHIR_FOLD_CH_PTR, mul(round, 32)))
                 for { let i := 0 } lt(i, half) { i := add(i, 1) } {
-                    // reduce on load: `sub(P, b)` below must see a canonical b
-                    let a := mod(mload(add(__TEMPLATE_WHIR_FBUF_PTR, mul(mul(i, 2), 32))), P)
-                    let b := mod(mload(add(__TEMPLATE_WHIR_FBUF_PTR, mul(add(mul(i, 2), 1), 32))), P)
+                    // the folding buffer holds addmod/mulmod outputs: canonical
+                    let a := mload(add(__TEMPLATE_WHIR_FBUF_PTR, mul(mul(i, 2), 32)))
+                    let b := mload(add(__TEMPLATE_WHIR_FBUF_PTR, mul(add(mul(i, 2), 1), 32)))
                     let t := mulmod(addmod(a, sub(P, b), P), ch, P)
                     let root := mulmod(root_inv, mload(add(__TEMPLATE_WHIR_HPO_PTR, mul(i, 32))), P)
                     t := mulmod(t, root, P)
@@ -385,11 +382,11 @@ contract WhirVerifier {
             }
         }
 
-        function do_query(r, fold, qib, vp, idx_mask, delin, cb, qq) {
+        function do_query(r, fold, qib, vp, delin, cb, qq) {
             let cp := mload(__TEMPLATE_WHIR_REG_CD)
             let cur := mulmod(mload(__TEMPLATE_WHIR_REG_CURDELIN), delin, P)
             mstore(__TEMPLATE_WHIR_REG_CURDELIN, cur)
-            let qidx := and(mload(add(__TEMPLATE_WHIR_QIDX_BUF_PTR, mul(qq, 32))), idx_mask)
+            let qidx := mload(add(__TEMPLATE_WHIR_QIDX_BUF_PTR, mul(qq, 32)))
             let depth := sub(qib, __TEMPLATE_WHIR_CAP_LOG2)
 
             switch r
@@ -416,10 +413,10 @@ contract WhirVerifier {
             mstore(__TEMPLATE_WHIR_REG_CC, addmod(mload(__TEMPLATE_WHIR_REG_CC), mulmod(folded, cur, P), P))
         }
 
-        function do_internal(r, fold, q, pow_bits, qib, vp, idx_mask, cb) {
+        function do_internal(r, fold, q, pow_bits, qib, vp, cb) {
             let cp := mload(__TEMPLATE_WHIR_REG_CD)
             // read + absorb the next oracle's __TEMPLATE_WHIR_CAP (__TEMPLATE_WHIR_CAP*32 bytes)
-            // keep BE digests for Merkle roots; absorb LE-word copies (commit_u32)
+            // keep BE digests for Merkle roots; absorb LE-word copies (commit_u32_with_seed)
             for { let i := 0 } lt(i, __TEMPLATE_WHIR_CAP) { i := add(i, 1) } {
                 let d := f1_digest(add(cp, mul(i, __TEMPLATE_F1_DIGEST_BYTES)))
                 mstore(add(__TEMPLATE_WHIR_NCAP_PTR, mul(i, 32)), d)
@@ -446,14 +443,14 @@ contract WhirVerifier {
             // only the round-0 coset fold reads the high-power offsets
             if iszero(r) { compute_hpo(fold, qib) }
             for { let qq := 0 } lt(qq, q) { qq := add(qq, 1) } {
-                do_query(r, fold, qib, vp, idx_mask, delin, cb, qq)
+                do_query(r, fold, qib, vp, delin, cb, qq)
             }
             mstore(__TEMPLATE_WHIR_REG_CLAIM, addmod(mload(__TEMPLATE_WHIR_REG_CLAIM), mload(__TEMPLATE_WHIR_REG_CC), P))
             copy_cap(__TEMPLATE_WHIR_QCAP_PTR, __TEMPLATE_WHIR_NCAP_PTR) // this round's intermediate cap is next round's query cap
         }
 
         // __F1_FINAL_HORNER__
-        function do_final(fold, q, pow_bits, qib, vp, idx_mask, zi_off, rfin, cb) {
+        function do_final(fold, q, pow_bits, qib, vp, zi_off, rfin, cb) {
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let nmono := shl(rfin, 1)
             let cp := mload(__TEMPLATE_WHIR_REG_CD)
@@ -481,7 +478,7 @@ contract WhirVerifier {
             let depth := sub(qib, __TEMPLATE_WHIR_CAP_LOG2)
 
             for { let qq := 0 } lt(qq, q) { qq := add(qq, 1) } {
-                let qidx := and(mload(add(__TEMPLATE_WHIR_QIDX_BUF_PTR, mul(qq, 32))), idx_mask)
+                let qidx := mload(add(__TEMPLATE_WHIR_QIDX_BUF_PTR, mul(qq, 32)))
                 let base_root := powmod(__TEMPLATE_WHIR_GEN, qidx)
                 cp := read_leaf(cp, vp, depth, __TEMPLATE_WHIR_QCAP_PTR, qidx, cb)
                 // final round queries an intermediate oracle: its coefficient leaves fold
@@ -523,25 +520,10 @@ contract WhirVerifier {
         // base cap into the regions above. `cd_start` = calldata offset of the WHIR proof stream (right after the GKR
         // stream's trailing 8-byte WHIR-batching PoW nonce).
         function whir_verify(cd_start) {
-        // Base geometry (all generated): gcount = gamma-batched base columns,
-        // rfin = final-poly log2.
-        let gcount := __TEMPLATE_WHIR_GCOUNT
+        // Base geometry (generated): rfin = final-poly log2. emit_gkr_mark wrote the gamma powers.
         let rfin := __TEMPLATE_WHIR_RFIN
-        let batching := mload(__TEMPLATE_WHIR_HANDOFF_BATCHING_PTR)
-
-        // gamma powers
-        mstore(__TEMPLATE_WHIR_GAMMA_PTR, 1)
-        {
-            let g := 1
-            for { let i := 1 } lt(i, gcount) { i := add(i, 1) } {
-                g := mulmod(g, batching, P)
-                mstore(add(__TEMPLATE_WHIR_GAMMA_PTR, mul(i, 32)), g)
-            }
-        }
 
         mstore(__TEMPLATE_WHIR_ACC_PREF_PTR, 1)
-        mstore(__TEMPLATE_WHIR_REG_NUMPOW, 0)
-        mstore(__TEMPLATE_WHIR_REG_ZIOFF, 0)
         mstore(__TEMPLATE_WHIR_REG_CD, cd_start) // the WHIR proof stream starts right after the GKR stream
 
         for { let r := 0 } lt(r, __TEMPLATE_WHIR_NUM_ROUNDS) { r := add(r, 1) } {
@@ -549,7 +531,6 @@ contract WhirVerifier {
             let fold, q, pow_bits, qib, vp, cb
             // __WHIR_SCHEDULE_SWITCH__
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
-            let idx_mask := sub(shl(qib, 1), 1)
 
             {
             let scbase := mload(__TEMPLATE_WHIR_REG_CD)
@@ -560,13 +541,12 @@ contract WhirVerifier {
                 bit := add(bit, 246)
                 let c0 := shr(128, pair)
                 let c2 := and(pair, MASK)
+                // c1 is derived, so p(0) + p(1) = c0 + (c0 + c1 + c2) equals the claim by construction
                 let c1 := addmod(mload(__TEMPLATE_WHIR_REG_CLAIM), sub(P, addmod(addmod(c0, c0, P), c2, P)), P)
                 mstore(add(__TEMPLATE_WHIR_SEED_PTR, 32), or(shl(128, c0), c1))
                 mstore(add(__TEMPLATE_WHIR_SEED_PTR, 64), shl(128, c2))
                 mstore(__TEMPLATE_WHIR_SEED_PTR, keccak256(__TEMPLATE_WHIR_SEED_PTR, 80))
                 let alpha := draw1()
-                let p1 := addmod(c0, addmod(c1, c2, P), P)
-                sink2(addmod(c0, p1, P), mload(__TEMPLATE_WHIR_REG_CLAIM))
                 mstore(__TEMPLATE_WHIR_REG_CLAIM,
                     addmod(mulmod(addmod(mulmod(c2, alpha, P), c1, P), alpha, P), c0, P))
                 mstore(add(__TEMPLATE_WHIR_FOLD_CH_PTR, mul(s, 32)), alpha)
@@ -577,8 +557,8 @@ contract WhirVerifier {
             }
 
             switch lt(r, sub(__TEMPLATE_WHIR_NUM_ROUNDS, 1))
-            case 1 { do_internal(r, fold, q, pow_bits, qib, vp, idx_mask, cb) }
-            default { do_final(fold, q, pow_bits, qib, vp, idx_mask, mload(__TEMPLATE_WHIR_REG_ZIOFF), rfin, cb) }
+            case 1 { do_internal(r, fold, q, pow_bits, qib, vp, cb) }
+            default { do_final(fold, q, pow_bits, qib, vp, mload(__TEMPLATE_WHIR_REG_ZIOFF), rfin, cb) }
         }
 
         // Hardening: the proof stream must be fully consumed — the cursor (__TEMPLATE_WHIR_REG_CD) must land

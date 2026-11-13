@@ -34,9 +34,8 @@ contract GkrWhirVerifier {
     uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // low 128 bits (one field lane)
     // Stack-pressure fix: the ~123-bit modulus P as a literal is a PUSH16 rematerialized at
     // every addmod/mulmod, and the Yul scheduler keeps it live across the deep gate sequences
-    // (→ "stack too deep"). Store P once at a heap offset and `mload(P_PTR)` it instead. The
-    // generated circuit.yul and the hand-written ops both use `mload(P_PTR)`; `mstore(P_PTR, P)`
-    // runs first in the fallback.
+    // (→ "stack too deep"). Store P once at a heap offset and `mload(P_PTR)` it where stack depth
+    // matters (the generated circuit gates and the GKR helpers); the fallback stores it first.
     //
     // MEMORY LAYOUT (matters under via_ir): solc's IR backend places its stack-spill slots at
     // fixed low offsets that grow up from 0x80, and the SPILL-OVERWRITE guard (before the GKR
@@ -68,9 +67,9 @@ contract GkrWhirVerifier {
     //    end (its generated absolute offsets; the generator's allocator places the WHIR map
     //    right after the chain).
     // HEAP ORDER: memory challenges (7), logup challenges (2), point (rounds),
-    // seed + transcript scratch (cache array / SEED±96 absorb scratch / transcriptNTo1 absorbs),
+    // seed + transcript scratch (absorb scratch at SEED+32/+64, cache array, claims-batch absorbs),
     // batching (1), dim-reduce claims (NUM_OUTPUTS), eq (max(OUTPUT_EVALS, NUM_OUTPUTS)),
-    // absorb scratch (32 + max absorb), permutation products (4), circuit claims (widest layer),
+    // absorb scratch (32 + max absorb), circuit claims (widest layer),
     // layer-0 gate values (gate slots), layer-0 packed term table, decoded calldata image.
     uint256 constant __TEMPLATE_GKR_MEMORY_CHALLS_BYTES  = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_LOGUP_CHALLS_BYTES   = "{unassigned}";
@@ -80,7 +79,6 @@ contract GkrWhirVerifier {
     uint256 constant __TEMPLATE_GKR_CLAIMS_BYTES         = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_EQ_BYTES             = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_ABS_BYTES            = "{unassigned}";
-    uint256 constant __TEMPLATE_GKR_PERM_PROD_BYTES      = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_CIRCUIT_CLAIMS_BYTES = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_GATEVAL_BYTES        = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_QTABLE_BYTES         = "{unassigned}";
@@ -134,9 +132,9 @@ contract GkrWhirVerifier {
     // __WHIR_CONSTANTS__
 
     fallback(bytes calldata) external returns (bytes memory) {
-        // The verified statement, read out of the MARK region once the assembly block has
-        // finished and reported through the typed registry interface below (the compiler does
-        // the ABI encoding of both the call and the return data).
+        // The verified statement, assembled from the preimage inside the assembly block (mark_word)
+        // and reported through the typed registry interface below (the compiler does the ABI
+        // encoding of both the call and the return data).
         bytes32 publicInput;
         bytes32 auxInput;
         bytes32 setupCommitment;
@@ -149,13 +147,10 @@ contract GkrWhirVerifier {
         mstore(F1_FRONTIER_PTR, frontier)
         // the setup data contract is this deployment's data: check its code before any read
         if iszero(eq(extcodehash(mload(F1_FRONTIER_PTR)), __TEMPLATE_F1_FRONTIER_HASH)) { revert(0, 0) }
-        // Proof/transcript bytes preserve logical stream order. Rust must append
-        // fixed-width BE integer bytes: u32::to_be_bytes(), u64::to_be_bytes(),
-        // u128::to_be_bytes(). 32-byte hashes/caps/roots are absorbed as raw bytes.
-        // For u128 pairs the decoded image holds [x0:16][x1:16], so x0 is shr(128, word)
-        // and x1 is and(word, MASK). Smaller lanes follow the same BE packing rule
-        // with larger shifts. Hash challenges use the earlier 16 hash bytes
-        // first: shr(128, seed), then and(seed, MASK).
+        // f1_decode (below) unpacks the F1 calldata into the image the GKR half reads, in
+        // transcript order. The image holds field elements as BE 16-byte lanes, two per word:
+        // x0 = shr(128, word), x1 = and(word, MASK). Challenges take the high 16 hash bytes:
+        // mod(shr(128, seed), P).
 
         // Heap regions, chained by their GENERATED sizes (the generated circuit.yul calls these
         // by name). The chain order here is verified by the generator against its allocator.
@@ -164,7 +159,7 @@ contract GkrWhirVerifier {
         function LOGUP_CHALLS_PTR()  -> ptr { ptr := add(MEMORY_CHALLS_PTR(), __TEMPLATE_GKR_MEMORY_CHALLS_BYTES) }
         function POINT_PTR()         -> ptr { ptr := add(LOGUP_CHALLS_PTR(), __TEMPLATE_GKR_LOGUP_CHALLS_BYTES) }
         // The seed region also holds the transcript scratch the absorbs use at SEED+32/+64, the
-        // per-layer cache array (circuit.yul) and the claims absorbed by transcriptNTo1 at
+        // per-layer cache array (circuit.yul) and the claims sumcheck_claims_batch absorbs at
         // SEED+32; the generator sizes it for the largest of those.
         function SEED_PTR()          -> ptr { ptr := add(POINT_PTR(), __TEMPLATE_GKR_POINT_BYTES) }
         function GKR_CIRCUIT_CACHE_PTR()  -> ptr { ptr := add(SEED_PTR(), mul(32, 2)) }
@@ -173,22 +168,17 @@ contract GkrWhirVerifier {
         function GKR_CLAIMS_PTR()   -> ptr { ptr := add(GKR_BATCHING_PTR(), __TEMPLATE_GKR_BATCHING_BYTES) }     // NUM_OUTPUTS dim-reduce claims
         function GKR_EQ_PTR()       -> ptr { ptr := add(GKR_CLAIMS_PTR(), __TEMPLATE_GKR_CLAIMS_BYTES) }         // eq[OUTPUT_EVALS] / SI[NUM_OUTPUTS]
         function GKR_ABS_PTR()      -> ptr { ptr := add(GKR_EQ_PTR(), __TEMPLATE_GKR_EQ_BYTES) }                 // absorb scratch (32 + max absorb)
-        // Permutation-identity products: read_poly, write_poly, teardown_poly, init_poly
-        // (∏ of each relevant GKR output poly's OUTPUT_EVALS elements). Filled in gkr_init,
-        // consumed by check_permutation_identity; untouched by compress/circuit.
-        function GKR_PERM_PROD_PTR() -> ptr { ptr := add(GKR_ABS_PTR(), __TEMPLATE_GKR_ABS_BYTES) }
         // Circuit-layer claims array: the previous circuit layer's at-point evals,
         // offset-indexed, that this layer's `compute_claim` batches into its initial claim.
         // Threaded across layers: each layer writes its input evals here for the next one.
         // Sized by the generator for the widest layer.
-        function GKR_CIRCUIT_CLAIMS_PTR() -> ptr { ptr := add(GKR_PERM_PROD_PTR(), __TEMPLATE_GKR_PERM_PROD_BYTES) }
+        function GKR_CIRCUIT_CLAIMS_PTR() -> ptr { ptr := add(GKR_ABS_PTR(), __TEMPLATE_GKR_ABS_BYTES) }
 
         // Layer-0 table-driven quadratic-gate evaluation (size opt). GATEVAL holds one reduced
         // value per quadratic gate (filled by the compact bucket loops from GKR_QTABLE, read by
         // the Horner chunk functions as `mload(GATEVAL+32*slot)`). QTABLE is the packed record
-        // stream (slot,a,b,coeff), copied from SetupFrontier. Both live in pristine (zero,
-        // never-written) heap above every region written before layer 0, so GATEVAL needs no
-        // zeroing. Only used during layer 0's point-check; nothing else touches these slots.
+        // stream (slot,a,b,coeff), copied from SetupFrontier. GATEVAL is never written before
+        // layer 0, so it needs no zeroing; only layer 0's point-check uses these regions.
         function GKR_GATEVAL_PTR() -> ptr { ptr := add(GKR_CIRCUIT_CLAIMS_PTR(), __TEMPLATE_GKR_CIRCUIT_CLAIMS_BYTES) }
         function GKR_QTABLE_PTR()  -> ptr { ptr := add(GKR_GATEVAL_PTR(), __TEMPLATE_GKR_GATEVAL_BYTES) }
         // F1: the v0 GKR calldata image, written once by f1_decode; the verifier reads it at v0 offsets.
@@ -204,11 +194,9 @@ contract GkrWhirVerifier {
         function transcript_4to1_dual(w0, w1, modulus) -> r {
             // Absorb the four coefficients before drawing the round challenge:
             // seed = keccak(seed || w0 || w1), then seed = keccak(seed), r = top128 mod P.
-            // F1/E1 rebuilds c0..c3 from (b, c) with lanes up to 2P: canonicalize the 4 lanes (mod
-            // P) before absorbing, so the transcript binds to the reduced values. Re-pack keeps
-            // the [hi|lo] layout.
-            mstore(add(SEED_PTR(), 32), or(shl(128, mod(shr(128, w0), modulus)), mod(and(w0, MASK), modulus)))
-            mstore(add(SEED_PTR(), 64), or(shl(128, mod(shr(128, w1), modulus)), mod(and(w1, MASK), modulus)))
+            // w0 = [c0|c1], w1 = [c2|c3], each lane canonical (f1_e1_round reduces them).
+            mstore(add(SEED_PTR(), 32), w0)
+            mstore(add(SEED_PTR(), 64), w1)
             let seed := keccak256(SEED_PTR(), 96) // absorb 4 (canonical) coeffs
             mstore(SEED_PTR(), seed)
             seed := keccak256(SEED_PTR(), 32)     // draw
@@ -230,9 +218,9 @@ contract GkrWhirVerifier {
             revert(0, 0) }
 
             // PoW fold: digest = keccak(seed(32) || nonce_be8); require top __TEMPLATE_EXTERNAL_POW_BITS zero.
-            let nonce := shr(192, calldataload(add(ptr, __TEMPLATE_GKR_INIT_PREIMAGE_BYTES))) // 8-byte BE nonce
+            // the 40-byte hash covers the seed and the word's leading 8-byte BE nonce
             mstore(SEED_PTR(), seed)
-            mstore(add(SEED_PTR(), 32), shl(192, nonce))
+            mstore(add(SEED_PTR(), 32), calldataload(add(ptr, __TEMPLATE_GKR_INIT_PREIMAGE_BYTES)))
             seed := keccak256(SEED_PTR(), 40)
             if shr(sub(256, __TEMPLATE_EXTERNAL_POW_BITS), seed) { revert(0, 0) } // PoW: top pow_bits must be zero
 
@@ -273,8 +261,8 @@ contract GkrWhirVerifier {
 
 
         // Absorb the explicit output evaluations and draw the evaluation point plus
-        // batching challenge. Stream the equality factors while accumulating the
-        // NUM_OUTPUTS claims, without retaining a full equality table.
+        // batching challenge. Build the OUTPUT_EVALS-entry equality table once and reuse it for
+        // the NUM_OUTPUTS claims.
         // gkr_compress reads the claims and the batching from GKR_CLAIMS_PTR / GKR_BATCHING_PTR.
         function gkr_init(ptr) -> next_ptr {
             let sp := SEED_PTR()
@@ -314,13 +302,8 @@ contract GkrWhirVerifier {
                 mstore(add(GKR_EQ_PTR(), mul(j, 32)), e)
             }
             // NUM_OUTPUTS claims: claim_c = Σ_j outputEval[c*OUTPUT_EVALS+j] * eq[j] (column c).
-            // Also accumulate ∏ of the OUTPUT_EVALS elements for the permutation-identity outputs:
-            // BTreeMap<OutputType> order => [0]=Perm.read, [1]=Perm.write, [8]=I&T.teardown,
-            // [9]=I&T.init (validated in verify_permutation_identity_no_inversion; the generator
-            // asserts the artifact's output map has exactly this 5x2 OutputType layout).
             for { let c := 0 } lt(c, __TEMPLATE_GKR_NUM_OUTPUTS) { c := add(c, 1) } {
                 let acc := 0
-                let prod := 1
                 for { let j := 0 } lt(j, __TEMPLATE_GKR_OUTPUT_EVALS) { j := add(j, 1) } {
                     let k := add(mul(c, __TEMPLATE_GKR_OUTPUT_EVALS), j)
                     let val := shr(128, calldataload(add(ptr, mul(k, 16))))
@@ -328,15 +311,8 @@ contract GkrWhirVerifier {
                     // reduced values (see the absorb note above)
                     if iszero(lt(val, mload(P_PTR))) { revert(0, 0) }
                     acc := add(mulmod(val, mload(add(GKR_EQ_PTR(), mul(j, 32))), mload(P_PTR)), acc)
-                    prod := mulmod(prod, val, mload(P_PTR))
                 }
                 mstore(add(GKR_CLAIMS_PTR(), mul(c, 32)), mod(acc, mload(P_PTR)))
-                // stash the 4 permutation-identity products (read=0, write=1, teardown=8, init=9)
-                switch c
-                case 0 { mstore(add(GKR_PERM_PROD_PTR(), 0),  prod) }
-                case 1 { mstore(add(GKR_PERM_PROD_PTR(), 32), prod) }
-                case 8 { mstore(add(GKR_PERM_PROD_PTR(), 64), prod) }
-                case 9 { mstore(add(GKR_PERM_PROD_PTR(), 96), prod) }
             }
             next_ptr := add(ptr, __TEMPLATE_GKR_INIT_BYTES)
         }
@@ -352,7 +328,10 @@ contract GkrWhirVerifier {
         //   VALUE_LOW=4, VALUE_HIGH=5; additive = mc@192. PC modeled as memory cell:
         //   PC_LOW=VALUE_LOW=4, PC_HIGH=VALUE_HIGH=5, PC_TS_LOW=2, PC_TS_HIGH=3.
         //   AddressSpaceType: Register=0, PC=2. INITIAL_PC=0, split(INITIAL_TIMESTAMP=4)=(4,0).
-        function check_permutation_identity() {
+        // The polys are products of the output evals at `op` (gkr_init range-checked every lane), in
+        // BTreeMap<OutputType> order: column 0 = Perm.read, 1 = Perm.write, 8 = I&T.teardown,
+        // 9 = I&T.init (the generator asserts this 5x2 OutputType layout).
+        function check_permutation_identity(op) {
             let Pm := mload(P_PTR)
             let mc := MEMORY_CHALLS_PTR()
             let mc0 := mload(mc)
@@ -397,9 +376,17 @@ contract GkrWhirVerifier {
             // PC write: initial pc=0, initial ts=(4,0) => PC(2) + mc2*4 + additive
             write_bnd := mulmod(write_bnd, addmod(addmod(2, additive, Pm), mulmod(mc2, 4, Pm), Pm), Pm)
 
-            let pp := GKR_PERM_PROD_PTR()
-            let read_side := mulmod(mulmod(mload(pp), mload(add(pp, 64)), Pm), read_bnd, Pm)        // read_poly*teardown*read_bnd
-            let write_side := mulmod(mulmod(mload(add(pp, 32)), mload(add(pp, 96)), Pm), write_bnd, Pm) // write_poly*init*write_bnd
+            // read_poly * teardown * read_bnd vs write_poly * init * write_bnd
+            let read_side := read_bnd
+            let write_side := write_bnd
+            for { let j := 0 } lt(j, __TEMPLATE_GKR_OUTPUT_EVALS) { j := add(j, 1) } {
+                let read_poly := shr(128, calldataload(add(op, mul(16, j))))
+                let teardown := shr(128, calldataload(add(op, mul(16, add(mul(8, __TEMPLATE_GKR_OUTPUT_EVALS), j)))))
+                let write_poly := shr(128, calldataload(add(op, mul(16, add(__TEMPLATE_GKR_OUTPUT_EVALS, j)))))
+                let init := shr(128, calldataload(add(op, mul(16, add(mul(9, __TEMPLATE_GKR_OUTPUT_EVALS), j)))))
+                read_side := mulmod(read_side, mulmod(read_poly, teardown, Pm), Pm)
+                write_side := mulmod(write_side, mulmod(write_poly, init, Pm), Pm)
+            }
             if iszero(eq(read_side, write_side)) {
             revert(0, 0) }
         }
@@ -435,8 +422,8 @@ contract GkrWhirVerifier {
         }
 
         // One E1 round: (b, c) from the F1 calldata pair at `bit`, a = K − z(b + c), absorb
-        // c0..c3 of e_z·(a + bX + cX²) as v0, draw r, K := a + br + cr². t, s, a, c1, c2 stay
-        // unreduced where they only feed mulmod or a lane transcript_4to1_dual reduces.
+        // c0..c3 of e_z·(a + bX + cX²) as v0, draw r, K := a + br + cr². t, s and a stay
+        // unreduced where they only feed mulmod; the absorbed lanes are reduced.
         function f1_e1_round(bit, z, k, modulus) -> r, next_k {
             let x := shr(sub(10, and(bit, 7)), f1_cd(shr(3, bit)))
             let b := and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)
@@ -446,8 +433,8 @@ contract GkrWhirVerifier {
             let t := add(1, sub(modulus, z))
             let s := add(add(z, z), sub(modulus, 1))
             r := transcript_4to1_dual(
-                or(shl(128, mulmod(t, a, modulus)), add(mulmod(t, b, modulus), mulmod(s, a, modulus))),
-                or(shl(128, add(mulmod(t, c, modulus), mulmod(s, b, modulus))), mulmod(s, c, modulus)),
+                or(shl(128, mulmod(t, a, modulus)), addmod(mulmod(t, b, modulus), mulmod(s, a, modulus), modulus)),
+                or(shl(128, addmod(mulmod(t, c, modulus), mulmod(s, b, modulus), modulus)), mulmod(s, c, modulus)),
                 modulus)
             next_k := addmod(a, mulmod(r, addmod(b, mulmod(r, c, modulus), modulus), modulus), modulus)
         }
@@ -467,9 +454,8 @@ contract GkrWhirVerifier {
                 mstore(zp, r)
             }
             next_ptr := add(ptr, 32)
-            // Hand back a canonical claim: gkr_dr_final subtracts it from P with wrapping EVM
-            // arithmetic, and an unreduced claim would make that check accept a second relation
-            // (g ≡ claim − 2^256 mod P).
+            // gkr_dr_final compares the claim directly, so it must be canonical. f1_e1_round already
+            // returns it reduced; the explicit mod compiles to cheaper code than omitting it.
             next_claim := mod(claim, modulus)
         }
 
@@ -513,7 +499,7 @@ contract GkrWhirVerifier {
                 g := add(mulmod(gb, mulmod(shr(128, word), and(word, MASK), modulus), modulus), g)
                 gb := mulmod(gb, batching, modulus)
             }
-            if mod(add(mod(g, modulus), sub(modulus, claim)), modulus) {
+            if iszero(eq(mod(g, modulus), claim)) {
             revert(0, 0) }
             // absorb the NUM_OUTPUTS [E;2] LSB lines (sorted transcript order), draw r_last +
             // next_batching
@@ -585,12 +571,12 @@ contract GkrWhirVerifier {
 
         // Interpolate-halve n elements at sc: sc[j] = sc[2j] + (sc[2j+1]-sc[2j])·r.
         function whir_foldhalf(sc, n, r) {
-            // canonical interpolation a + (b-a)*r; a and b are reduced first so `sub(Pm, a)` sees a
-            // canonical value.
+            // canonical interpolation a + (b-a)*r; the inputs are range-checked layer-0 lanes,
+            // zero padding or earlier outputs, all canonical
             let Pm := mload(P_PTR)
             for { let j := 0 } lt(j, div(n, 2)) { j := add(j, 1) } {
-                let a := mod(mload(add(sc, mul(64, j))), Pm)
-                let b := mod(mload(add(sc, add(mul(64, j), 32))), Pm)
+                let a := mload(add(sc, mul(64, j)))
+                let b := mload(add(sc, add(mul(64, j), 32)))
                 mstore(add(sc, mul(32, j)), addmod(a, mulmod(addmod(b, sub(Pm, a), Pm), r, Pm), Pm))
             }
         }
@@ -630,8 +616,9 @@ contract GkrWhirVerifier {
         // its memory regions: seed, batching, opening, z = base_z(BASE_Z_COORDS) ++
         // extra(PACK_LOG2) (the pack index occupies the HIGH bits of the packed enumeration, so
         // under LSB binding the packing coords EXTEND the claim point at the top). f1_decode
-        // already wrote the memory base-oracle cap. Own frame — keeps the fallback stack under the EVM limit. `ptr` is the GKR stream cursor after the circuit layers: it points at the
-        // 8-byte WHIR-batching PoW nonce; the WHIR proof stream follows it.
+        // already wrote the memory base-oracle cap. Own frame — keeps the fallback stack under the
+        // EVM limit. `ptr` is the image cursor after the circuit layers: it points at the 8-byte
+        // WHIR-batching PoW nonce.
         function emit_gkr_mark(ptr) {
             let sp := SEED_PTR()
             // ABS-region scratch (sized by the generator): PACK_LOG2 packing coords at +0,
@@ -661,9 +648,8 @@ contract GkrWhirVerifier {
             }
             // draw WHIR batching (PoW fold: digest=keccak(seed||nonce_be8), top __TEMPLATE_WHIR_BATCH_POW_BITS
             // must be zero; nonce is the 8-byte BE word at the GKR stream cursor). Then draw.
-            let wnonce := shr(192, calldataload(ptr))
             mstore(sp, seed)
-            mstore(add(sp, 32), shl(192, wnonce))
+            mstore(add(sp, 32), calldataload(ptr))
             seed := keccak256(sp, 40)
             if shr(sub(256, __TEMPLATE_WHIR_BATCH_POW_BITS), seed) {
             revert(0, 0) }
@@ -672,23 +658,24 @@ contract GkrWhirVerifier {
             mstore(sp, seed)
             let batching := mod(shr(128, seed), mload(P_PTR))
             // batched opening = Σ merged_i · batching^i
+            // and the batching powers, which the WHIR half reuses as its gamma powers
             let opening := 0
             let bexp := 1
             for { let i := 0 } lt(i, add(__TEMPLATE_WHIR_MERGED_MW, __TEMPLATE_WHIR_SETUP_MERGED)) { i := add(i, 1) } {
+                mstore(add(__TEMPLATE_WHIR_GAMMA_PTR, mul(32, i)), bexp)
                 opening := addmod(opening, mulmod(mload(add(mg, mul(32, i))), bexp, mload(P_PTR)), mload(P_PTR))
                 bexp := mulmod(bexp, batching, mload(P_PTR))
             }
             // Hand the WHIR start state over in memory (the __TEMPLATE_WHIR_* regions are the
             // WHIR half's, laid out by the generator). Layout mirrors what the WHIR half consumes.
             mstore(__TEMPLATE_WHIR_SEED_PTR, seed)
-            mstore(__TEMPLATE_WHIR_HANDOFF_BATCHING_PTR, batching)
             mstore(__TEMPLATE_WHIR_REG_CLAIM, opening)
             // z = base_z(BASE_Z_COORDS) ++ packing coords, one 128-bit value per slot
             for { let i := 0 } lt(i, __TEMPLATE_WHIR_BASE_Z_COORDS) { i := add(i, 1) } {
-                mstore(add(__TEMPLATE_WHIR_Z_PTR, mul(i, 32)), and(mload(add(POINT_PTR(), mul(i, 32))), MASK))
+                mstore(add(__TEMPLATE_WHIR_Z_PTR, mul(i, 32)), mload(add(POINT_PTR(), mul(i, 32))))
             }
             for { let i := 0 } lt(i, __TEMPLATE_WHIR_PACK_LOG2) { i := add(i, 1) } {
-                mstore(add(__TEMPLATE_WHIR_Z_PTR, mul(add(__TEMPLATE_WHIR_BASE_Z_COORDS, i), 32)), and(mload(add(ex, mul(32, i))), MASK))
+                mstore(add(__TEMPLATE_WHIR_Z_PTR, mul(add(__TEMPLATE_WHIR_BASE_Z_COORDS, i), 32)), mload(add(ex, mul(32, i))))
             }
         }
 
@@ -713,7 +700,7 @@ contract GkrWhirVerifier {
         }
 
         // Permutation identity: read-set product == write-set product (no inversions).
-        check_permutation_identity()
+        check_permutation_identity(output_evals_ptr)
 
         // Lookup identities: every logup argument's rational sum Σ num/den over the boundary
         // evaluations must be zero (same as the CPU verifier's lookup-identity check).
@@ -725,11 +712,10 @@ contract GkrWhirVerifier {
         // ── GKR→WHIR handoff in memory, then the WHIR proximity check ─────────────────
         // emit_gkr_mark draws the packing coords + WHIR batching, merges the base-layer claims and
         // writes the WHIR start state into the __TEMPLATE_WHIR_* regions; whir_verify then
-        // consumes the WHIR proof stream that follows the 8-byte WHIR-batching PoW nonce at `ptr`,
-        // and requires its cursor to land exactly at the end of the calldata — so the whole
-        // merged stream (GKR ‖ nonce ‖ WHIR) is checked for exact consumption.
+        // consumes the WHIR proof stream, which starts in the calldata right after the F1 GKR
+        // section, and requires its cursor to land exactly at the end of the calldata — so the
+        // whole stream (GKR ‖ nonce ‖ WHIR) is checked for exact consumption.
         emit_gkr_mark(ptr)
-        // F1: `ptr` is an image address; the WHIR stream follows the F1 GKR section
         whir_verify(__F1_WHIR_START__)
 
         // The verified statement, handed to Solidity: publicInput = registers x10..x17,

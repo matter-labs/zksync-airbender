@@ -27,11 +27,10 @@ pub(crate) struct GkrDecoder {
     pub f1_bytes: usize,
 }
 
-/// `calldataload(x)` → `mload(x)`, `calldatacopy(d, x, n)` → `mcopy(d, x, n)`, `calldatasize()` →
-/// the end of the v0 image: the F1 verifier's stream cursor starts at [`V0_PTR`], and the few
-/// absolute-offset readers add [`V0_PTR`] themselves. Panics on any
-/// other calldata opcode.
-pub(crate) fn calldata_to_v0_memory(src: &str, v0_bytes: usize) -> String {
+/// `calldataload(x)` → `mload(x)`, `calldatacopy(d, x, n)` → `mcopy(d, x, n)`: the F1 verifier's
+/// stream cursor starts at [`V0_PTR`], and the few absolute-offset readers add [`V0_PTR`]
+/// themselves. Panics on any other calldata opcode.
+pub(crate) fn calldata_to_v0_memory(src: &str) -> String {
     fn close(src: &str, open: usize) -> usize {
         let mut depth = 0usize;
         for (i, ch) in src[open..].char_indices() {
@@ -72,16 +71,13 @@ pub(crate) fn calldata_to_v0_memory(src: &str, v0_bytes: usize) -> String {
             // inside a longer identifier, e.g. `gate_calldataload`
             out.push_str("calldata");
             rest = &tail["calldata".len()..];
-        } else if let Some(after) = tail.strip_prefix("calldatasize()") {
-            out.push_str(&format!("add({V0_PTR}, {v0_bytes})"));
-            rest = after;
         } else if let Some(op) = ["calldataload", "calldatacopy"]
             .into_iter()
             .find(|op| tail.starts_with(&format!("{op}(")))
         {
             let open = op.len();
             let end = close(tail, open);
-            let args = calldata_to_v0_memory(&tail[open + 1..end], v0_bytes);
+            let args = calldata_to_v0_memory(&tail[open + 1..end]);
             if op == "calldataload" {
                 out.push_str(&format!("mload({})", args.trim()));
             } else {
@@ -215,11 +211,6 @@ pub(crate) fn gkr_decoder(
         .collect();
     let setup_cap_v0 = 12 * NUM_REGISTERS + 12 + 4 * num_top_bits;
     let setup_cap_len = setup_cap_image.len();
-    let digest_mask = if db == 32 {
-        "w".to_string()
-    } else {
-        format!("and(w, not(sub(shl({}, 1), 1)))", 8 * (32 - db))
-    };
     let pc_le = u32::from_le_bytes(final_pc.to_be_bytes());
     let ts_off = 4 * NUM_REGISTERS;
     let top_off = ts_off + ts_run_len(NUM_REGISTERS + 1);
@@ -269,9 +260,7 @@ pub(crate) fn gkr_decoder(
         // range-check them; the run's single image slot holds its bit offset.
         function f1_rounds(cd, v0, k) -> next_cd, next_v0 {{
             mstore(add({V0_PTR}, v0), shl(3, cd))
-            let bits := mul(246, k)
-            f1_pad(cd, bits)
-            next_cd := add(cd, shr(3, add(bits, 7)))
+            next_cd := f1_run_end(cd, shl(1, k))
             next_v0 := add(v0, 32)
         }}
         function f1_cd(off) -> w {{
@@ -317,8 +306,7 @@ pub(crate) fn gkr_decoder(
             // memory cap: {cap} DIGESTs of {db} bytes, as preimage LE words and as the WHIR
             // half's BE base-oracle cap
             for {{ let i := 0 }} lt(i, {cap}) {{ i := add(i, 1) }} {{
-                let w := calldataload(add({cap_off}, mul({db}, i)))
-                let d := {digest_mask}
+                let d := f1_digest(add({cap_off}, mul({db}, i)))
                 mstore(add({V0_PTR}, add({mem_cap_v0}, mul(32, i))), f1_bswap32x8(d))
                 mstore(add(__TEMPLATE_WHIR_BCAP0_PTR, mul(32, i)), d)
             }}

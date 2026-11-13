@@ -668,7 +668,7 @@ pub struct CircuitYulStats {
     /// Largest claims-batch absorb (`32 + 16·n` bytes) a layer with caches stages at
     /// `GKR_ABS_PTR`.
     pub max_absorb_bytes: usize,
-    /// Largest claims-batch absorb (`32 + 16·n` bytes) `transcriptNTo1` stages at `SEED_PTR()`
+    /// Largest claims-batch absorb (`32 + 16·n` bytes) `sumcheck_claims_batch` stages at `SEED_PTR()`
     /// for a layer without caches.
     pub max_seed_absorb_bytes: usize,
     /// Layer-0 quadratic-gate accumulator slots at `GKR_GATEVAL_PTR` (32-byte slots).
@@ -739,9 +739,15 @@ pub fn emit_circuit_yul_with_stats(
         };
 
         // println!("{i}:");
+        // Layer 0 runs last: its batching challenge has no reader, so it returns only the cursor.
+        let layer_returns = if i == 0 {
+            "next_ptr"
+        } else {
+            "next_ptr, next_alpha"
+        };
         yul_println!(
             "
-        function sumcheck_circuit_layer{i}(ptr, alpha) -> next_ptr, next_alpha {{
+        function sumcheck_circuit_layer{i}(ptr, alpha) -> {layer_returns} {{
             // INITIAL CLAIM: batch the previous layer's claims (heap array) in gate/slot order
             // (compute_claim); alpha == this layer's batching.
             let claim := sccl{i}(alpha)
@@ -1061,7 +1067,7 @@ pub fn emit_circuit_yul_with_stats(
                         assert!(16 <= circuit_rounds);
                         // println!("{relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}");
                         yul_println!("
-                        \t{{  // {relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}
+                        \t{{  // {relation_name}: (Σ_{{k<16}} 2^k·r[k]) · Π_{{k≥16}} (1 − r[k]) = {output}
                         \t    let gate := gkr_virtual_poly_rangecheck(16)
                         \t    {output:x}
                         \t}}");
@@ -1071,7 +1077,7 @@ pub fn emit_circuit_yul_with_stats(
                         assert!(timestamp_range_bits <= circuit_rounds);
                         // println!("{relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8] + 2^16 r[7] + 2^17 r[6] + 2^18 r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}");
                         yul_println!("
-                        \t{{  // {relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8] + 2^16 r[7] + 2^17 r[6] + 2^18 r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}
+                        \t{{  // {relation_name}: (Σ_{{k<{timestamp_range_bits}}} 2^k·r[k]) · Π_{{k≥{timestamp_range_bits}}} (1 − r[k]) = {output}
                         \t    let gate := gkr_virtual_poly_rangecheck({timestamp_range_bits})
                         \t    {output:x}
                         \t}}");
@@ -1086,7 +1092,7 @@ pub fn emit_circuit_yul_with_stats(
                         assert!(low_bits <= circuit_rounds);
                         // println!("{relation_name}: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = {output}");
                         yul_println!("
-                        \t{{  // {relation_name}: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = {output}
+                        \t{{  // {relation_name}: 4·Σ_{{k<{low_bits}}} 2^k·r[k] = {output}
                         \t    let gate := mul(4, gkr_virtual_poly_compose_vars({low_bits}, 0)) // u32 word-aligned
                         \t    {output:x}
                         \t}}");
@@ -1108,7 +1114,7 @@ pub fn emit_circuit_yul_with_stats(
                         );
                         // println!("{relation_name}: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = {output}");
                         yul_println!("
-                        \t{{  // {relation_name}: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = {output}
+                        \t{{  // {relation_name}: Σ_{{k<{high_bits}}} 2^k·r[{low_bits} + k] = {output}
                         \t    let gate := gkr_virtual_poly_compose_vars({high_bits}, {low_bits})
                         \t    {output:x}
                         \t}}");
@@ -1891,8 +1897,8 @@ pub fn emit_circuit_yul_with_stats(
                     yul_println!(
                         "
                     \t{{  // {relation_name}: {lhs}*{rhs} = {output}
-                    \t    let lhs := {lhs:x} // for memrel we collect
-                    \t    let rhs := {rhs:x} // for memrel we collect
+                    \t    let lhs := {lhs:x}
+                    \t    let rhs := {rhs:x}
                     \t    let gate := mulmod(lhs, rhs, P)
                     \t    {pointcheck_update:x}
                     \t}}"
@@ -2162,8 +2168,8 @@ pub fn emit_circuit_yul_with_stats(
                     yul_println!("
                     \t{{  // {relation_name}: ({shared} + {lhs_addr_high} + {lhs_timestamp_and_value}) * ({shared} + {rhs_addr_high} + {rhs_timestamp_and_value}) = {output}
                     \t    let shared := {shared:x}
-                    \t    let lhs := add(shared, add({lhs_addr_high:x}, {lhs_timestamp_and_value:x})) // for memrel we collect
-                    \t    let rhs := add(shared, add({rhs_addr_high:x}, {rhs_timestamp_and_value:x})) // for memrel we collect
+                    \t    let lhs := add(shared, add({lhs_addr_high:x}, {lhs_timestamp_and_value:x}))
+                    \t    let rhs := add(shared, add({rhs_addr_high:x}, {rhs_timestamp_and_value:x}))
                     \t    let gate := mulmod(lhs, rhs, P)
                     \t    {pointcheck_update:x}
                     \t}}");
@@ -2462,7 +2468,7 @@ pub fn emit_circuit_yul_with_stats(
         }
         // Heap facts for the layout allocator: cache slots this layer stores, and the bytes the
         // claims-batch absorb below stages (seed ‖ 16 B per absorbed value): at GKR_ABS_PTR for a
-        // layer with caches, at SEED_PTR() (transcriptNTo1) otherwise.
+        // layer with caches, at SEED_PTR() (sumcheck_claims_batch) otherwise.
         {
             let cache_slots = cached_count
                 + if i == 0 {
@@ -2484,6 +2490,11 @@ pub fn emit_circuit_yul_with_stats(
                     .max(32 + 16 * previous_input_count);
             }
         }
+        let next_alpha = if i == 0 {
+            ""
+        } else {
+            "            next_alpha := mod(shr(128, s), P)\n"
+        };
         let claims_batch = if cached_count > 0 {
             let extra_set: std::collections::HashSet<usize> =
                 cache_dep_offsets.iter().copied().collect();
@@ -2563,11 +2574,11 @@ pub fn emit_circuit_yul_with_stats(
             mstore(SEED_PTR(), s)
             s := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), s)
-            next_alpha := mod(shr(128, s), P)
-            next_ptr := add(ptr, mul(16, {n}))
+{next_alpha}            next_ptr := add(ptr, mul(16, {n}))
             }}"
             )
         } else {
+            assert!(i > 0, "layer 0 batches its claims with its caches");
             format!("next_ptr, next_alpha := sumcheck_claims_batch(ptr, {previous_input_count})")
         };
 
@@ -2581,7 +2592,7 @@ pub fn emit_circuit_yul_with_stats(
         } else {
             yul_format!(
                 "
-            if mod(add(claim, sub(P, rhs)), P) {{ revert(0, 0) }}
+            if iszero(eq(claim, rhs)) {{ revert(0, 0) }}
             "
             )
         };
@@ -2630,11 +2641,12 @@ pub fn emit_circuit_yul_with_stats(
         "
         )
     };
-    let gate_calldataload_inner = Yul::calldataload(&123).0.replace("123", "idx");
+    let gate_image_load_inner = Yul::calldataload(&123).0.replace("123", "idx");
     yul_println!("
         function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim {{
-            // sumcheck_rounds with the round count inlined: the circuit layers use this copy,
-            // which compiles smaller and cheaper than sharing sumcheck_rounds.
+            // sumcheck_rounds with the round count inlined: the circuit layers use this copy, which
+            // keeps the bytecode smaller (sharing sumcheck_rounds lets the compiler inline the round
+            // function, which saves gas and costs bytes).
             let modulus := mload(P_PTR) // hoisted: DUP per use instead of re-mload every round
             // E1 (see sumcheck_rounds): (b, c) in, c0..c3 rebuilt and absorbed, claim = K
             let bit := mload(ptr)
@@ -2648,18 +2660,15 @@ pub fn emit_circuit_yul_with_stats(
             next_ptr := add(ptr, 32)
             next_claim := claim
         }}
-        function transcriptNTo1(ptr, input_elements) -> alpha {{
-            let input_bytes := mul(input_elements, 16)
+        function sumcheck_claims_batch(ptr, points) -> next_ptr, next_alpha {{
+            let input_bytes := mul(points, 16)
             calldatacopy(add(SEED_PTR(), 32), ptr, input_bytes)
             let seed := keccak256(SEED_PTR(), add(32, input_bytes)) // absorb evals
             mstore(SEED_PTR(), seed)
             seed := keccak256(SEED_PTR(), 32)                       // draw (the mirror draws a fresh el)
             mstore(SEED_PTR(), seed)
-            alpha := mod(shr(128, seed), P)                         // batching is a field element mod P
-        }}
-        function sumcheck_claims_batch(ptr, points) -> next_ptr, next_alpha {{
-            next_alpha := transcriptNTo1(ptr, points)
-            next_ptr := add(ptr, mul(16, points))
+            next_alpha := mod(shr(128, seed), P)                    // batching is a field element mod P
+            next_ptr := add(ptr, input_bytes)
         }}
 
         // One β-Horner step: acc·β + c. Callers chain ten of these (see lookrel_horner),
@@ -2679,7 +2688,7 @@ pub fn emit_circuit_yul_with_stats(
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, P))
         }}
         function gkr_memrel_compress_high(ts_low, ts_high, val_low, val_high) -> compressed {{
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P))
+            compressed := mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P)
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, P))
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P))
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P))
@@ -2705,8 +2714,8 @@ pub fn emit_circuit_yul_with_stats(
             eval := mulmod(gkr_virtual_poly_compose_vars(width, 0), gkr_virtual_poly_zero_vars(sub(__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS, width)), P)
         }}
 
-        function gate_calldataload(idx) -> load {{
-            load := {gate_calldataload_inner}
+        function gate_image_load(idx) -> load {{
+            load := {gate_image_load_inner}
         }}
         function pointcheck_update(acc, alpha, gate) -> next_acc {{
             next_acc := add(mulmod(acc, alpha, P), gate)
@@ -2717,22 +2726,22 @@ pub fn emit_circuit_yul_with_stats(
         }}
 
         function gate_aggregatelookuprationalpair(alpha, acc, num1_idx, num2_idx, den1_idx, den2_idx) -> next_acc {{
-            let num1 := gate_calldataload(num1_idx)
-            let num2 := gate_calldataload(num2_idx)
-            let den1 := gate_calldataload(den1_idx)
-            let den2 := gate_calldataload(den2_idx)
+            let num1 := gate_image_load(num1_idx)
+            let num2 := gate_image_load(num2_idx)
+            let den1 := gate_image_load(den1_idx)
+            let den2 := gate_image_load(den2_idx)
             let den_out := mulmod(den1, den2, P)
             let num_out := add(mulmod(num1, den2, P), mulmod(num2, den1, P))
             next_acc := logup_pointcheck_update(acc, alpha, num_out, den_out)
         }}
         function gate_copyinextensionfield(alpha, acc, input_idx) -> next_acc {{
-            let input := gate_calldataload(input_idx)
+            let input := gate_image_load(input_idx)
             next_acc := pointcheck_update(acc, alpha, input)
         }}
 
         function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_acc {{
-            let input := gate_calldataload(input_idx)
-            let mask := gate_calldataload(mask_idx)
+            let input := gate_image_load(input_idx)
+            let mask := gate_image_load(mask_idx)
             let neg_one := sub(P, 1)
             let gate := add(mulmod(mask, add(input, neg_one), P), 1)
             next_acc := pointcheck_update(acc, alpha, gate)
