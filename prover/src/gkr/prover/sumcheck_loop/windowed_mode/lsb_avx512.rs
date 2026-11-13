@@ -555,12 +555,7 @@ unsafe fn initial_chunk(
     // add/sub layer 0 (49 base slots): 2 rows 319 ms, 8 rows 270, 32 rows
     // 212 (the hardware prefetchers do not track 59 streams); layers with
     // few base slots are best at 2 (their ext grids fill L2 otherwise).
-    // Knob `SS_ROW_BLOCK` overrides.
-    let rb: usize = std::env::var("SS_ROW_BLOCK")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .filter(|&b: &usize| b >= 2 && b % 2 == 0 && b <= 64)
-        .unwrap_or(if nb >= 24 { 32 } else { 2 });
+    let rb: usize = if nb >= 24 { 32 } else { 2 };
     let mut base_flat = vec![0u32; nb * rb * BS];
     let mut ext_flat = vec![0u32; ne * rb * ES];
     let mut form_flat = vec![0u32; nf * rb * BS];
@@ -659,27 +654,11 @@ pub(crate) fn lsb_soa_full_parallel_w3(
     let num_blocks = rows / U;
     let geometry = worker.get_geometry_with_threshold(num_blocks, (PAR_THRESHOLD / U).max(1));
     let mut acc_chunks = vec![[BabyBearExt4::ZERO; OUT]; geometry.num_chunks];
-    // timing-experiment knobs (the proof diverges; never set in production):
-    // SS_SKIP_PRODUCTS=1 drops the factored products, SS_SKIP_EXT_STEPS=1 the
-    // ext rest steps (QuadBE/QuadEE/LinE), SS_SKIP_BASE_STEPS=1 the base rest
-    // steps (QuadBB/LinB)
-    let knob = |name: &str| std::env::var(name).map(|v| v == "1").unwrap_or(false);
-    let prods: Vec<(FormRef, FormRef, [u32; 4])> = if knob("SS_SKIP_PRODUCTS") {
-        Vec::new()
-    } else {
-        products
-            .iter()
-            .map(|(a, b, c)| (*a, *b, limbs(c)))
-            .collect()
-    };
-    let (skip_ext, skip_base) = (knob("SS_SKIP_EXT_STEPS"), knob("SS_SKIP_BASE_STEPS"));
-    let rest: Vec<RStep> = to_rsteps(rest_steps)
-        .into_iter()
-        .filter(|s| match s {
-            RStep::QuadBB { .. } | RStep::LinB { .. } => !skip_base,
-            _ => !skip_ext,
-        })
+    let prods: Vec<(FormRef, FormRef, [u32; 4])> = products
+        .iter()
+        .map(|(a, b, c)| (*a, *b, limbs(c)))
         .collect();
+    let rest: Vec<RStep> = to_rsteps(rest_steps);
     let base_ptrs: Vec<usize> = base_field_inputs.iter().map(|s| s.ptr as usize).collect();
     let ext_ptrs: Vec<usize> = ext_field_inputs.iter().map(|s| s.ptr as usize).collect();
 

@@ -602,14 +602,6 @@ pub(crate) unsafe fn store_ext16(limbs: &[__m512i; 4], dst: *mut BabyBearExt4, p
     _mm512_storeu_si512(d.add(3), _mm512_permutex2var_epi32(x2, p.z_hi, y2));
 }
 
-/// Output-store policy of the forward kernels: non-temporal 16-byte stores
-/// (no read-for-ownership traffic; the buffers are 16-byte aligned) unless
-/// env `FWD_NT=0` asks for plain stores.
-pub(crate) fn nt_stores() -> bool {
-    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *FLAG.get_or_init(|| std::env::var("FWD_NT").map(|v| v != "0").unwrap_or(true))
-}
-
 /// [`store_ext16`] with non-temporal 16-byte stores (`dst` 16-byte aligned).
 #[inline]
 #[target_feature(enable = "avx512f")]
@@ -630,22 +622,6 @@ pub(crate) unsafe fn store_ext16_nt(limbs: &[__m512i; 4], dst: *mut BabyBearExt4
         _mm_stream_si128(d.add(4 * i + 1), _mm512_extracti32x4_epi32::<1>(*v));
         _mm_stream_si128(d.add(4 * i + 2), _mm512_extracti32x4_epi32::<2>(*v));
         _mm_stream_si128(d.add(4 * i + 3), _mm512_extracti32x4_epi32::<3>(*v));
-    }
-}
-
-/// Output store per the policy: [`store_ext16_nt`] or [`store_ext16`].
-#[inline]
-#[target_feature(enable = "avx512f")]
-pub(crate) unsafe fn store_ext16_out(
-    limbs: &[__m512i; 4],
-    dst: *mut BabyBearExt4,
-    p: &ExtPerm,
-    nt: bool,
-) {
-    if nt {
-        store_ext16_nt(limbs, dst, p)
-    } else {
-        store_ext16(limbs, dst, p)
     }
 }
 
