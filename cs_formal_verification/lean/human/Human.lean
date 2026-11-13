@@ -45,3 +45,5 @@ import Human.Compiler.NativeTargets
 
 import Human.ISA.Sail.WholeRun
 import Human.ISA.Sail.MachineTargets
+
+import Human.ISA.Sail.NativeTargets
