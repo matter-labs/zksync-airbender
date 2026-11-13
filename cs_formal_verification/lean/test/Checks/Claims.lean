@@ -1,3 +1,5 @@
+import Proven.Final.ISA.WholeRun
+import Proven.Final.ISA.MachineTargets
 import Proven.Final.Compiler.NativeMachine
 import Proven.Final.Compiler.LookupSelectors
 import Proven.Final.Compiler.Arithmetic
@@ -795,3 +797,95 @@ example : Airbender.DecodeIsSailSatisfiableClaim := Airbender.decode_is_sail_sat
 example : Airbender.StepIsAirbenderSatisfiableClaim := Airbender.step_is_airbender_satisfiable
 
 #print axioms Airbender.step_is_airbender_satisfiable
+
+example : Airbender.RunIsAirbenderClaim := Airbender.run_is_airbender
+
+#print axioms Airbender.run_is_airbender
+
+example : Airbender.AgreeExistsClaim := Airbender.agree_exists
+
+#print axioms Airbender.agree_exists
+
+example : Airbender.FetchKeepsConfiguredClaim := Airbender.fetch_keeps_configured
+
+#print axioms Airbender.fetch_keeps_configured
+
+example : Airbender.RunIsAirbenderSatisfiableClaim := Airbender.run_is_airbender_satisfiable
+
+#print axioms Airbender.run_is_airbender_satisfiable
+
+example : Airbender.AgreeExistsSatisfiableClaim := Airbender.agree_exists_satisfiable
+
+#print axioms Airbender.agree_exists_satisfiable
+
+example : Airbender.FetchKeepsConfiguredSatisfiableClaim := Airbender.fetch_keeps_configured_satisfiable
+
+#print axioms Airbender.fetch_keeps_configured_satisfiable
+
+example : Airbender.Trace.Machine.UnrolledFullUnsignedSailClaim := Airbender.Trace.Machine.unrolled_full_unsigned_sail
+
+#print axioms Airbender.Trace.Machine.unrolled_full_unsigned_sail
+
+example : Airbender.Trace.Machine.UnrolledReducedSailClaim := Airbender.Trace.Machine.unrolled_reduced_sail
+
+#print axioms Airbender.Trace.Machine.unrolled_reduced_sail
+
+example : Airbender.Trace.Machine.UnifiedSailClaim := Airbender.Trace.Machine.unified_sail
+
+#print axioms Airbender.Trace.Machine.unified_sail
+
+example : Airbender.Bigint.Memory.RVAddressesSoundnessSatisfiableClaim := Airbender.Bigint.Memory.rv_addresses_soundness_satisfiable
+
+#print axioms Airbender.Bigint.Memory.rv_addresses_soundness_satisfiable
+
+example : Airbender.Blake2G.SoundnessSatisfiableClaim := Airbender.Blake2G.soundness_satisfiable
+
+#print axioms Airbender.Blake2G.soundness_satisfiable
+
+example : Airbender.PCState.OutgoingBoundsSatisfiableClaim := Airbender.PCState.outgoing_bounds_satisfiable
+
+#print axioms Airbender.PCState.outgoing_bounds_satisfiable
+
+example : Airbender.Compiler.AddSubCachedArithmeticSatisfiableClaim := Airbender.Compiler.addSub_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.addSub_cached_arithmetic_satisfiable
+
+example : Airbender.Compiler.BigintCachedArithmeticSatisfiableClaim := Airbender.Compiler.bigint_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.bigint_cached_arithmetic_satisfiable
+
+example : Airbender.Compiler.BlakeGCachedArithmeticSatisfiableClaim := Airbender.Compiler.blakeG_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.blakeG_cached_arithmetic_satisfiable
+
+example : Airbender.Compiler.BlakeRoundCachedArithmeticSatisfiableClaim := Airbender.Compiler.blakeRound_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.blakeRound_cached_arithmetic_satisfiable
+
+example : Airbender.Compiler.JumpBranchCachedArithmeticSatisfiableClaim := Airbender.Compiler.jumpBranch_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.jumpBranch_cached_arithmetic_satisfiable
+
+example : Airbender.Compiler.KeccakCachedArithmeticSatisfiableClaim := Airbender.Compiler.keccak_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.keccak_cached_arithmetic_satisfiable
+
+example : Airbender.Compiler.MulDivCachedArithmeticSatisfiableClaim := Airbender.Compiler.mulDiv_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.mulDiv_cached_arithmetic_satisfiable
+
+example : Airbender.Compiler.ShiftBinopCachedArithmeticSatisfiableClaim := Airbender.Compiler.shiftBinop_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.shiftBinop_cached_arithmetic_satisfiable
+
+example : Airbender.Compiler.SubwordMemoryCachedArithmeticSatisfiableClaim := Airbender.Compiler.subwordMemory_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.subwordMemory_cached_arithmetic_satisfiable
+
+example : Airbender.Compiler.UnifiedCachedArithmeticSatisfiableClaim := Airbender.Compiler.unified_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.unified_cached_arithmetic_satisfiable
+
+example : Airbender.Compiler.WordMemoryCachedArithmeticSatisfiableClaim := Airbender.Compiler.wordMemory_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.wordMemory_cached_arithmetic_satisfiable

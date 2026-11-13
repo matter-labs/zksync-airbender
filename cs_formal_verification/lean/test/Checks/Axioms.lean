@@ -1,3 +1,5 @@
+import Proven.Final.ISA.WholeRun
+import Proven.Final.ISA.MachineTargets
 import Proven.Final.Compiler.NativeMachine
 import Proven.Final.Compiler.LookupSelectors
 import Proven.Final.Compiler.Arithmetic
@@ -1445,3 +1447,49 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.decode_is_sail_satisfiable
 
 #print axioms Airbender.step_is_airbender_satisfiable
+
+#print axioms Airbender.run_is_airbender
+
+#print axioms Airbender.agree_exists
+
+#print axioms Airbender.fetch_keeps_configured
+
+#print axioms Airbender.run_is_airbender_satisfiable
+
+#print axioms Airbender.agree_exists_satisfiable
+
+#print axioms Airbender.fetch_keeps_configured_satisfiable
+
+#print axioms Airbender.Trace.Machine.unrolled_full_unsigned_sail
+
+#print axioms Airbender.Trace.Machine.unrolled_reduced_sail
+
+#print axioms Airbender.Trace.Machine.unified_sail
+
+#print axioms Airbender.Bigint.Memory.rv_addresses_soundness_satisfiable
+
+#print axioms Airbender.Blake2G.soundness_satisfiable
+
+#print axioms Airbender.PCState.outgoing_bounds_satisfiable
+
+#print axioms Airbender.Compiler.addSub_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.bigint_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.blakeG_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.blakeRound_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.jumpBranch_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.keccak_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.mulDiv_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.shiftBinop_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.subwordMemory_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.unified_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.wordMemory_cached_arithmetic_satisfiable

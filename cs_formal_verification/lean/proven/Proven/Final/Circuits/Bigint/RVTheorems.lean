@@ -1,4 +1,5 @@
 module
+public import Proven.NonVacuous.BigintAddressesAdditional
 public import Proven.Bigint.RVMemorySoundness
 public import Proven.Blake2G.Soundness
 public import Proven.Final.Generic.Circuits.Bigint.RVTheorems
@@ -23,4 +24,9 @@ private theorem rv_addresses_soundness_generic [Fact p.Prime] (_hp : 2097152 ≤
 
 theorem rv_addresses_soundness : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := by babybear_instance rv_addresses_soundness_generic
 
+end Airbender.Bigint.Memory
+
+namespace Airbender.Bigint.Memory
+/-- The stated native assumptions have a concrete accepted witness. -/
+theorem rv_addresses_soundness_satisfiable : RVAddressesSoundnessSatisfiableClaim := rv_addresses_soundness_witness
 end Airbender.Bigint.Memory

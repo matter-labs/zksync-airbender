@@ -1,4 +1,5 @@
 module
+public import Proven.NonVacuous.PCStateAdditional
 public import Proven.PCState
 
 @[expose] public section
@@ -14,4 +15,9 @@ theorem outgoing_bounds {p n : Nat} [Fact p.Prime] (hp : Arithmetic.limbBase < p
     pc.1.val < Arithmetic.limbBase ∧ pc.2.val < Arithmetic.limbBase :=
   Proofs.outgoing_bounds hp interface outgoing lowBound
 
+end Airbender.PCState
+
+namespace Airbender.PCState
+/-- The stated native assumptions have a concrete accepted witness. -/
+theorem outgoing_bounds_satisfiable : OutgoingBoundsSatisfiableClaim := outgoing_bounds_witness
 end Airbender.PCState

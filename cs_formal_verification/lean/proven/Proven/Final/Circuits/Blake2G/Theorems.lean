@@ -1,4 +1,5 @@
 module
+public import Proven.NonVacuous.BlakeGAdditional
 public import Proven.Blake2G.Soundness
 public import Proven.Final.Generic.Circuits.Blake2G.Theorems
 public import Proven.Field.BabyBearInstance
@@ -17,4 +18,9 @@ private theorem soundness_generic {p : Nat} [Fact p.Prime] (hp : 262144 ≤ p)
 
 theorem soundness : Airbender.Blake2G.SoundnessClaim := by babybear_instance soundness_generic
 
+end Airbender.Blake2G
+
+namespace Airbender.Blake2G
+/-- The stated native assumptions have a concrete accepted witness. -/
+theorem soundness_satisfiable : SoundnessSatisfiableClaim := soundness_witness
 end Airbender.Blake2G
