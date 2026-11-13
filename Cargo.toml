@@ -25,6 +25,7 @@ members = [
     "circuit_defs/circuit_common",
     "circuit_defs/trace_and_split",
     "circuit_defs/setups",
+    "circuit_defs/prover_examples",
 
 
     "gpu/core",
@@ -92,6 +93,7 @@ default-members = [
     "circuit_defs/keccak_column_parity",
     "circuit_defs/keccak_special5",
     "circuit_defs/keccak_theta_rho",
+    "circuit_defs/prover_examples",
     "circuit_defs/setups",
     "circuit_defs/trace_and_split",
     "cpu_execution_prover",
@@ -214,6 +216,7 @@ program_prover = { path = "./program_prover", default-features = false }
 cpu_execution_prover = { path = "./cpu_execution_prover", default-features = false }
 execution_prover = { path = "./execution_prover", default-features = false }
 execution_prover_model = { path = "./execution_prover_model" }
+prover_examples = { path = "./circuit_defs/prover_examples", default-features = false }
 prover_pipeline = { path = "./prover_pipeline", default-features = false }
 gpu_gkr_model = { path = "./gpu/gkr_model" }
 gpu_gkr_compiler = { path = "./gpu/gkr_compiler" }
