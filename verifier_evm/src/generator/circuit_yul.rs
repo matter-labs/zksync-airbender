@@ -752,7 +752,7 @@ pub fn emit_circuit_yul_with_stats(
             // (compute_claim); alpha == this layer's batching.
             let claim := sccl{i}(alpha)
             // SUMCHECK ROUNDS
-            ptr, claim := sumcheck_rounds_circuit(ptr, claim)
+            ptr, claim := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS)
             
             // POINT CHECK
             let acc := 0"
@@ -2643,23 +2643,6 @@ pub fn emit_circuit_yul_with_stats(
     };
     let gate_image_load_inner = Yul::calldataload(&123).0.replace("123", "idx");
     yul_println!("
-        function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim {{
-            // sumcheck_rounds with the round count inlined: the circuit layers use this copy, which
-            // keeps the bytecode smaller (sharing sumcheck_rounds lets the compiler inline the round
-            // function, which saves gas and costs bytes).
-            let modulus := mload(P_PTR) // hoisted: DUP per use instead of re-mload every round
-            // E1 (see sumcheck_rounds): (b, c) in, c0..c3 rebuilt and absorbed, claim = K
-            let bit := mload(ptr)
-            for {{ let i := 0 }} lt(i, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) {{ i := add(i, 1) }} {{
-                let zp := add(POINT_PTR(), mul(i, 32))
-                let r
-                r, claim := f1_e1_round(bit, mload(zp), claim, modulus)
-                bit := add(bit, 246)
-                mstore(zp, r)
-            }}
-            next_ptr := add(ptr, 32)
-            next_claim := claim
-        }}
         function sumcheck_claims_batch(ptr, points) -> next_ptr, next_alpha {{
             let input_bytes := mul(points, 16)
             calldatacopy(add(SEED_PTR(), 32), ptr, input_bytes)

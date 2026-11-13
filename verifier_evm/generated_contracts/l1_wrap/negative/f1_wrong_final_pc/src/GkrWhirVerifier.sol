@@ -730,7 +730,7 @@ function sumcheck_circuit_layer4(ptr, alpha) -> next_ptr, next_alpha {
     // (compute_claim); alpha == this layer's batching.
     let claim := sccl4(alpha)
     // SUMCHECK ROUNDS
-    ptr, claim := sumcheck_rounds_circuit(ptr, claim)
+    ptr, claim := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS)
     
     // POINT CHECK
     let acc := 0
@@ -798,7 +798,7 @@ function sumcheck_circuit_layer3(ptr, alpha) -> next_ptr, next_alpha {
     // (compute_claim); alpha == this layer's batching.
     let claim := sccl3(alpha)
     // SUMCHECK ROUNDS
-    ptr, claim := sumcheck_rounds_circuit(ptr, claim)
+    ptr, claim := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS)
     
     // POINT CHECK
     let acc := 0
@@ -868,7 +868,7 @@ function sumcheck_circuit_layer2(ptr, alpha) -> next_ptr, next_alpha {
     // (compute_claim); alpha == this layer's batching.
     let claim := sccl2(alpha)
     // SUMCHECK ROUNDS
-    ptr, claim := sumcheck_rounds_circuit(ptr, claim)
+    ptr, claim := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS)
     
     // POINT CHECK
     let acc := 0
@@ -967,7 +967,7 @@ function sumcheck_circuit_layer1(ptr, alpha) -> next_ptr, next_alpha {
     // (compute_claim); alpha == this layer's batching.
     let claim := sccl1(alpha)
     // SUMCHECK ROUNDS
-    ptr, claim := sumcheck_rounds_circuit(ptr, claim)
+    ptr, claim := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS)
     
     // POINT CHECK
     let acc := 0
@@ -1162,7 +1162,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
     // (compute_claim); alpha == this layer's batching.
     let claim := sccl0(alpha)
     // SUMCHECK ROUNDS
-    ptr, claim := sumcheck_rounds_circuit(ptr, claim)
+    ptr, claim := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS)
     
     // POINT CHECK
     let acc := 0
@@ -1752,23 +1752,6 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
             claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 1))))
             claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 0))))
             }
-function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim {
-    // sumcheck_rounds with the round count inlined: the circuit layers use this copy, which
-    // keeps the bytecode smaller (sharing sumcheck_rounds lets the compiler inline the round
-    // function, which saves gas and costs bytes).
-    let modulus := mload(P_PTR) // hoisted: DUP per use instead of re-mload every round
-    // E1 (see sumcheck_rounds): (b, c) in, c0..c3 rebuilt and absorbed, claim = K
-    let bit := mload(ptr)
-    for { let i := 0 } lt(i, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) { i := add(i, 1) } {
-        let zp := add(POINT_PTR(), mul(i, 32))
-        let r
-        r, claim := f1_e1_round(bit, mload(zp), claim, modulus)
-        bit := add(bit, 246)
-        mstore(zp, r)
-    }
-    next_ptr := add(ptr, 32)
-    next_claim := claim
-}
 function sumcheck_claims_batch(ptr, points) -> next_ptr, next_alpha {
     let input_bytes := mul(points, 16)
     mcopy(add(SEED_PTR(), 32), ptr, input_bytes)
