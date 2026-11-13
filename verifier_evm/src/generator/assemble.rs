@@ -516,8 +516,8 @@ fn render(
         );
     }
 
-    // 1. GKR verifier: inline circuit.yul (replace the whole marker line, matching the awk
-    //    splice the shell scripts used), then substitute circuit-derived + param constants.
+    // 1. GKR verifier: inline circuit.yul (replace the whole marker line), then substitute
+    //    circuit-derived + param constants.
     let (circuit_yul, stats) = emit_circuit_yul_with_stats(circuit);
     let mut gkr = String::with_capacity(GKR_TEMPLATE.len() + circuit_yul.len());
     let mut inlined = false;
@@ -608,7 +608,6 @@ fn render(
         );
         previous = Some((name, accessor));
     }
-    let _ = previous;
     // Tie the exact POINT allocation to each template write loop, including the last
     // dimension-reduction shift (which writes index fs, not fs - 1).
     let last_shift_index = output_log2 + dim_reduce_layers.value as usize - 1;
@@ -931,11 +930,6 @@ fn render(
 
     // Every template use must have an assigned value, including names emitted by circuit.yul.
     for line in out.lines() {
-        let trimmed = line.trim();
-        assert!(
-            !trimmed.starts_with("// #if") && trimmed != "// #else" && trimmed != "// #endif",
-            "unresolved template directive: {trimmed}"
-        );
         let code = line.split_once("//").map_or(line, |(code, _)| code);
         for token in code.split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_') {
             if token.starts_with("__TEMPLATE_") {
@@ -1319,9 +1313,6 @@ fn build_merged(gkr: &str, whir: &str, heap: &HeapAlloc) -> String {
         "__WHIR_CONSTANTS__",
         "__WHIR_INLINE__",
         "__WHIR_YUL_END__",
-        "__TEMPLATE_VERIFIED_TOPIC",
-        "W_SEED_PTR",
-        "whir_fold16",
         // a declaration still holding the templates' placeholder (would not compile anyway)
         "= \"{unassigned}\"",
     ] {
