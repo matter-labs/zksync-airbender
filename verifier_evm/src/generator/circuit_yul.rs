@@ -239,7 +239,7 @@ fn u128_to_neg(Dual(input, yul): &Dual) -> Dual {
 /// Field elements are < P < 2^123 (one uint128). Emit small positives as literals,
 /// small negatives (near P) as `sub(P, n)`, and anything else as a full 128-bit literal.
 /// The Yul consumer must funnel every product through `mulmod` before adding to a
-/// reduced value (non-canonical arithmetic, per HEURISTICS.md).
+/// reduced value (non-canonical arithmetic).
 #[allow(dead_code)]
 fn proth120_const_to_evm(c: &Proth120) -> Dual {
     let v = c.to_u128();
