@@ -416,7 +416,7 @@ pub fn verify_unified_circuit_recursion_layer<
     )
 }
 
-// Both compression profiles have the same statement; their generated verifier
+// Every compression profile has the same statement; its generated verifier
 // supplies the cap and trace geometry.
 macro_rules! compression_statement {
     ($entry:ident, $module:ident) => {
@@ -451,6 +451,10 @@ compression_statement!(
 compression_statement!(
     verify_unified_circuit_recursion_layer_sec_100_compression_final,
     unified_reduced_machine_sec_100_compression_final
+);
+compression_statement!(
+    verify_unified_circuit_recursion_layer_sec_100_compression_ethproofs_soundcalc,
+    unified_reduced_machine_sec_100_compression_ethproofs_soundcalc
 );
 
 pub fn verify_unrolled_or_unified_circuit_recursion_layer<

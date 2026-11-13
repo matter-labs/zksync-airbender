@@ -32,7 +32,7 @@ mod l1_wrap;
 use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
 use full_statement_verifier::host_utils::{
     build_unified_stream, build_unrolled_stream, compute_end_params, fsv_digest, load_fsv_exact,
-    native_verify_unified_compression_final, native_verify_unified_in_mode,
+    native_verify_unified_compression_in_mode, native_verify_unified_in_mode,
     native_verify_unrolled_in_mode, recursion_unrolled_layers, unified_switch_cycles,
     FsvRecursionChain,
 };
@@ -1513,13 +1513,14 @@ fn verify_against_chain(
             is_base,
             expected_mode,
         ),
-        ProofTarget::Compression | ProofTarget::L1 => {
-            native_verify_unified_compression_final(build_unified_stream(
+        ProofTarget::Compression | ProofTarget::L1 => native_verify_unified_compression_in_mode(
+            build_unified_stream(
                 &artifact.setups,
                 &artifact.proof,
                 verifier_common::BLAKE_MODE,
-            ))
-        }
+            ),
+            expected_mode,
+        ),
     }
     .map_err(|error| format!("NativeVerificationFailed: {error}"))?;
     ensure_recursion_chain_binds_program(&output, &expected_chain.hash())?;

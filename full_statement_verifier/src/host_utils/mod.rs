@@ -101,22 +101,43 @@ pub fn native_verify_unrolled_in_mode(
     })
 }
 
-/// Native verification of an compression stream (the zero-delegation
-/// compression statement) at a checked boundary: a verifier error, a structural
-/// panic inside the statement (a nonzero delegation count, a truncated
-/// stream), or trailing words after the statement consumed its input are all
-/// reported as `Err`.
+/// Native verification of the last compression stream of `mode`'s chain (the
+/// zero-delegation compression statement) at a checked boundary: a verifier
+/// error, a structural panic inside the statement (a nonzero delegation count,
+/// a truncated stream), or trailing words after the statement consumed its
+/// input are all reported as `Err`.
 #[cfg(feature = "verifiers")]
-pub fn native_verify_unified_compression_final(stream: Vec<u32>) -> Result<[u32; 16], String> {
+pub fn native_verify_unified_compression_in_mode(
+    stream: Vec<u32>,
+    mode: SoundnessMode,
+) -> Result<[u32; 16], String> {
     let joined = std::thread::Builder::new()
         .name("unified l1 compression verifier".to_string())
         .stack_size(1 << 27)
         .spawn(move || {
+            use crate::unified_circuit_statement::{
+                verify_unified_circuit_recursion_layer_sec_100_compression_ethproofs_soundcalc,
+                verify_unified_circuit_recursion_layer_sec_100_compression_final,
+            };
+            use verifier_common::errors::DebugErrorCreator;
             let mut it = stream.into_iter();
-            let output = crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_compression_final::<
-                _, verifier_common::errors::DebugErrorCreator, USE_REDUCED_BLAKE2_ROUNDS,
-            >(&mut it)
-                .map_err(|err| format!("unified l1 compression proof failed to verify: {err:?}"))?;
+            let output = match mode {
+                SoundnessMode::PessimisticConjecture => {
+                    verify_unified_circuit_recursion_layer_sec_100_compression_final::<
+                        _,
+                        DebugErrorCreator,
+                        USE_REDUCED_BLAKE2_ROUNDS,
+                    >(&mut it)
+                }
+                SoundnessMode::EthproofsSoundnessCalc => {
+                    verify_unified_circuit_recursion_layer_sec_100_compression_ethproofs_soundcalc::<
+                        _,
+                        DebugErrorCreator,
+                        USE_REDUCED_BLAKE2_ROUNDS,
+                    >(&mut it)
+                }
+            }
+            .map_err(|err| format!("unified l1 compression proof failed to verify: {err:?}"))?;
             let trailing = it.count();
             if trailing != 0 {
                 return Err(format!(
