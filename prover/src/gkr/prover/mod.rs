@@ -607,12 +607,9 @@ pub fn prove_configured_with_gkr<
 /// policy) with explicit compute backends: the FFT/tree [`Backend`] — whose
 /// [`Backend::TwiddleSet`] (built once via [`Backend::make_twiddles`]) replaces
 /// the plain twiddles — and the [`GKRBackend`] sumcheck engine. Field-concrete
-/// callers select their target-recommended pair here — the DEFAULT
-/// configurations (prover_examples, the test orchestration) pass
-/// [`DefaultBabyBearBackend`] + [`DefaultBabyBearGKRBackend`], which resolve to
-/// the NEON implementations on aarch64 and to the generic ones elsewhere.
-/// Proof bytes are identical across backends; only the execution strategy
-/// differs.
+/// callers select their target-recommended pair here: [`DefaultBabyBearBackend`]
+/// and [`DefaultBabyBearGKRBackend`]. Proof bytes are identical across backends;
+/// only the execution strategy differs.
 pub fn prove_configured_with_gkr_with_backends_and_pool<
     F: PrimeField + TwoAdicField,
     E: FieldExtension<F> + Field,

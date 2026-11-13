@@ -27,6 +27,7 @@ pub(crate) fn bincode_deserialize_from_file<T: serde::de::DeserializeOwned>(file
     bincode::deserialize_from(src).unwrap()
 }
 
+#[cfg(test)]
 pub(crate) fn bincode_serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
     let dst = std::fs::File::create(filename).unwrap();
     bincode::serialize_into(dst, el).unwrap();
@@ -47,11 +48,8 @@ mod canonical_proofs;
 mod constraint_check;
 #[cfg(test)]
 mod family_circuits;
-// Also exposed under `feature = "test"`: the L1 wrap driver in
-// `prover_examples` reuses the Proth120 unified packed-proving pieces
-// (`build_unified_trace_without_precompiles`, the EVM-production config and
-// the Proth120 witness eval fn).
-pub mod large_field;
+#[cfg(test)]
+mod large_field;
 #[cfg(test)]
 mod malicious_proofs;
 #[cfg(test)]
