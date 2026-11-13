@@ -150,7 +150,10 @@ step_kernel_deps() { # bubblewrap: `lake check` builds and exports the project i
 # container whose profiles deny them).
 step_kernel_probe() {
   local err
-  if err=$(bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --unshare-all --die-with-parent true 2>&1); then
+  local input="$(cd "$FV/../cs/compiled_circuits" && pwd)/add_sub_lui_auipc_mop_layout_no_caches_gkr.json"
+  if err=$("$CI_DIR/kernel-bwrap.sh" --ro-bind / / --tmpfs /home --tmpfs /root --tmpfs /run/user \
+      --dev /dev --proc /proc --tmpfs /tmp --unshare-all --die-with-parent -- \
+      /bin/sh -c 'test -r "$1" && ! test -w "$1"' sandbox-probe "$input" 2>&1); then
     echo paranoid
   else
     log "bwrap cannot create the sandbox lake check needs: $err"
@@ -172,6 +175,7 @@ step_kernel_probe() {
 #     leanchecker over our module prefixes.
 # lake check's sandbox clears the environment (LAKE_NO_CACHE does not reach it) and can write only lean/.lake: build
 # first (step_build), so Clean is already built from source and sail-rv32/.lake and lean-sail/.lake are up to date.
+# kernel-bwrap.sh binds the external cs/compiled_circuits inputs read-only after Lake covers the host home paths.
 # The kernel_replay job runs on the runner host (no container: Docker's default profiles deny bwrap the user and mount
 # namespaces it needs) and sets KERNEL_CHECKER from kernel-probe; backup-check.sh sets paranoid.
 # leanchecker replays KERNEL_CHECK_THREADS (default 2) modules at a time, each on top of its own import of the
@@ -182,7 +186,7 @@ step_kernel_check() {
   local t=${KERNEL_CHECK_THREADS:-2}
   case "${KERNEL_CHECKER:-leanchecker}" in
     paranoid)
-      lake check --paranoid
+      COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check --paranoid
       LEAN_NUM_THREADS=$t lake env leanchecker CleanCore.Equivalence Checks.Axioms ;;
     leanchecker)
       if (( $# )); then LEAN_NUM_THREADS=$t lake env leanchecker "$@"

@@ -218,13 +218,10 @@ jobs:
             ${{ env.LEAN_DIR }}/sail-rv32/.lake
             ${{ env.LEAN_DIR }}/.lake/packages/Clean/.lake
             ${{ env.LEAN_DIR }}/.lake/packages/*/.lake/build/ir/**/*.c.o*
-          key: lean-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-${{ github.sha }}
+          key: lean-kernel-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-${{ github.sha }}
           restore-keys: |
+            lean-kernel-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-
             lean-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-
-      - name: Dependencies
-        run: cs_formal_verification/ci/lean-ci.sh time lean-deps
-      - name: Build (spec, proofs, tests)
-        run: cs_formal_verification/ci/lean-ci.sh time build
       # lake check --paranoid if bwrap can create its sandbox on this host; otherwise an error annotation, the
       # leanchecker replay, and a failed job (ci/lean-ci.sh kernel-probe)
       - name: bubblewrap (lake check's sandbox) and a sandbox probe
@@ -232,6 +229,20 @@ jobs:
         run: |
           cs_formal_verification/ci/lean-ci.sh kernel-deps
           echo "checker=$(cs_formal_verification/ci/lean-ci.sh kernel-probe)" >> "$GITHUB_OUTPUT"
+      - name: Dependencies
+        run: cs_formal_verification/ci/lean-ci.sh time lean-deps
+      - name: Build (spec, proofs, tests)
+        run: cs_formal_verification/ci/lean-ci.sh time build
+      - name: Save the host Lake build
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ env.LEAN_DIR }}/.lake/build
+            ${{ env.LEAN_DIR }}/.lake/module-cpu.tsv
+            ${{ env.LEAN_DIR }}/sail-rv32/.lake
+            ${{ env.LEAN_DIR }}/.lake/packages/Clean/.lake
+            ${{ env.LEAN_DIR }}/.lake/packages/*/.lake/build/ir/**/*.c.o*
+          key: lean-kernel-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-${{ github.sha }}
       - name: Kernel replay (lake check --paranoid, leanchecker on the two Clean-importing modules)
         env:
           KERNEL_CHECKER: ${{ steps.probe.outputs.checker }}

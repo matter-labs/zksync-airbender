@@ -138,3 +138,7 @@ x86 runner.
 
 Native reference (M3 Max, artifact cache off, before the warm-run changes above): PR 555 / 465 / 435 s at 4 / 8 / 12
 threads, no-op 100 s.
+
+The kernel sandbox exposes `cs/compiled_circuits/` through a read-only bind.
+`kernel-bwrap.sh` adds this data path after Lake covers the host home paths.
+The probe checks input visibility and the read-only mount before the proof build.
