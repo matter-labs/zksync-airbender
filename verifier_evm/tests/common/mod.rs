@@ -16,20 +16,6 @@ pub type Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 pub const INITS_TEARDOWNS_TOP_BITS: &[u32] = &[0, 1];
 pub use prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTES as DIGEST_BYTES;
 
-/// The production packed config, straight from the prover crate (single
-/// source of truth — no schedule mirror to drift), with one difference:
-/// gkr.sol consumes monomial [c0..c3] rounds, so the sumcheck schedule here
-/// is plain naive for every round (transcript-identical to the prover's
-/// windowed schedule).
-pub fn production_prover_config() -> ProverConfig {
-    let mut config =
-        prover::gkr::prover_config::example_configs::evm_production_packed_prover_config(
-            prover::definitions::SecurityLevel::Sec100,
-        );
-    config.same_size_sumcheck_schedule = prover::gkr::prover_config::naive_same_size_schedule();
-    config
-}
-
 /// gkr.sol consumes monomial rounds, transcript-identical to the windowed prover schedule.
 pub fn prover_config() -> ProverConfig {
     let mut config = l1_wrap::packed_prover_config();
