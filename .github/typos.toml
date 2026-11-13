@@ -12,7 +12,10 @@ extend-exclude = [
     ".git/",
     "SECURITY.md",
     # Keep the pinned upstream document unchanged.
-    "formal_verification/lean/vendor/airbender/00-master.md"
+    "cs_formal_verification/docs/airbender/00-master.md",
+    # Generated from pinned upstream sources. The drift check preserves these bytes.
+    "cs_formal_verification/lean/sail-rv32/SailRV32.lean",
+    "cs_formal_verification/lean/sail-rv32/SailRV32/**"
 ]
 
 [default.extend-words]
@@ -36,6 +39,8 @@ hom = "hom" # Ring homomorphisms.
 Hom = "Hom"
 thm = "thm" # Lean declaration constructors.
 ue = "ue" # Sail exception type argument.
+hel = "hel" # Lean hypothesis names.
+henc = "henc"
 
 [type.asm.extend-words]
 Wich = "Wich"

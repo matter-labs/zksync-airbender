@@ -1,0 +1,50 @@
+diff --git a/Sail.lean b/Sail.lean
+index 0d85a82..63a2c95 100644
+--- a/Sail.lean
++++ b/Sail.lean
+@@ -1,3 +1,4 @@
+ import Sail.BitVec
+ import Sail.IntRange
+ import Sail.Sail
++import Sail.SkipCodegen
+diff --git a/Sail/SkipCodegen.lean b/Sail/SkipCodegen.lean
+new file mode 100644
+index 0000000..ea299de
+--- /dev/null
++++ b/Sail/SkipCodegen.lean
+@@ -0,0 +1,35 @@
++import Lean
++open Lean Elab Command Compiler.LCNF
++
++/-- Lean 4.35 compat (lean4#8930). Since 4.35 the compiler computes every constructor's runtime layout
++when an inductive type is declared, and rejects the declaration if a data-carrying constructor's tag
++exceeds `LeanMaxCtorTag` (243); 4.34 only rejected *code* that built such a constructor. The generated
++`instruction` has 361 data-carrying constructors.
++
++`skip_inductive_codegen cmd` elaborates `cmd` unchanged, except in the compiler:
++* for an inductive type it runs the same phases as `compileInductives`, but a constructor whose layout
++  is rejected gets no layout (so code that constructs or matches it cannot be compiled, as in 4.34);
++* any other code-generation failure of a declaration added by `cmd` (derived instances, `ctorElim`, ...)
++  leaves that declaration without compiled code (`noncomputable`) instead of failing.
++The declarations sent to the kernel are the same. -/
++elab "skip_inductive_codegen " cmd:command : command => do
++  let old ← compileDeclsRef.get
++  compileDeclsRef.set fun names opts => do
++    let env ← getEnv
++    let inds := names.filter fun n => env.find? n matches some (.inductInfo _)
++    if !inds.isEmpty then
++      for t in inds do setHasTrivialStructure? t; setHasTrivialImpureStructure? t
++      for t in inds do setOtherDeclMonoType t; setImpureType t
++      for t in inds do
++        let .inductInfo iv ← getConstInfo t | unreachable!
++        for c in iv.ctors do
++          setOtherDeclMonoType c
++          try setCtorLayout c catch _ => pure ()
++    else
++      let s ← Core.saveState
++      try old names opts catch _ =>
++        s.restore
++        for n in names do modifyEnv (addNoncomputable · n)
++  try
++    withScope (fun sc => { sc with opts := Elab.async.set sc.opts false }) (elabCommand cmd)
++  finally compileDeclsRef.set old

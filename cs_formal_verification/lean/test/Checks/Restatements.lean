@@ -1,0 +1,529 @@
+import Human.ISA.DelegationRuns
+-- This audit leaf imports the non-module Sail specification for the Sail restatements.
+import Human.ISA.Sail.Theorems
+import Proven.Final.Circuits.AddSub.RVTheorems
+import Proven.Final.Circuits.JumpBranchSlt.RVTheorems
+import Proven.Final.Circuits.MulDiv.RVTheorems
+import Proven.Final.Circuits.ShiftBinop.RVTheorems
+import Proven.Final.Circuits.SubwordMemory.RVTheorems
+import Proven.Final.Circuits.WordMemory.RVTheorems
+import Proven.Final.Trace.Families.AddSub.RVTheorems
+import Proven.Final.Trace.Families.JumpBranchSlt.RVTheorems
+import Proven.Final.Trace.Families.MulDiv.RVTheorems
+import Proven.Final.Trace.Families.ShiftBinop.RVTheorems
+import Proven.Final.Trace.Families.SubwordMemory.RVTheorems
+import Proven.Final.Circuits.Bigint.RVTheorems
+import Proven.Final.Circuits.Blake2G.Theorems
+import Proven.Final.Circuits.InitsTeardowns.Theorems
+
+
+
+/-! Equivalence checks for the reviewed claim statements. -/
+
+namespace Checks.Restatements
+open Airbender Airbender.Trace
+
+/-- The shape of the per-row RV claims: for every public setup meeting `assumptions`, every row the model relates
+    satisfies `conclusion`. -/
+def OldRVRowSoundness {Input Output : Type} (family : PooledFamily) (before : Input → RV.State)
+    (instruction : Input → RV.Instr) (words : Input → Output → (Nat → ZMod babyBearModulus) → Prop)
+    (assumptions : PooledTrace babyBearModulus → RV.State → List Cell → List RVPooledProgramEntry → Prop)
+    (conclusion : Input → Output → Prop) : Prop :=
+  ∀ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry),
+    assumptions trace initial cells program →
+    ∀ input output w, (rvRowModel family before instruction words trace initial cells program).relation input output w →
+      conclusion input output
+
+/-- The assumptions of a per-row RV claim can be met (lean-strategies 3.3): some public setup meeting `assumptions`
+    has a row of `family` that the model relates to some input and output. -/
+def OldRVRowSatisfiable {Input Output : Type} (family : PooledFamily) (before : Input → RV.State)
+    (instruction : Input → RV.Instr) (words : Input → Output → (Nat → ZMod babyBearModulus) → Prop)
+    (assumptions : PooledTrace babyBearModulus → RV.State → List Cell → List RVPooledProgramEntry → Prop) : Prop :=
+  ∃ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell)
+    (program : List RVPooledProgramEntry) (input : Input) (output : Output) (w : Nat → ZMod babyBearModulus),
+    assumptions trace initial cells program ∧
+      (rvRowModel family before instruction words trace initial cells program).relation input output w
+
+/-- A per-row RV claim: `OldRVRowSoundness`, and its assumptions can be met (`OldRVRowSatisfiable`). -/
+def OldRVRowClaim {Input Output : Type} (family : PooledFamily) (before : Input → RV.State)
+    (instruction : Input → RV.Instr) (words : Input → Output → (Nat → ZMod babyBearModulus) → Prop)
+    (assumptions : PooledTrace babyBearModulus → RV.State → List Cell → List RVPooledProgramEntry → Prop)
+    (conclusion : Input → Output → Prop) : Prop :=
+  OldRVRowSoundness family before instruction words assumptions conclusion ∧
+    OldRVRowSatisfiable family before instruction words assumptions
+
+end Checks.Restatements
+
+namespace Airbender.AddSub.Restatement
+
+/-- The source row contract before its soundness and non-vacuity statements are separated. -/
+def OldRVSoundnessClaim : Prop :=
+  Checks.Restatements.OldRVRowClaim .addSub RVInput.before rvInstruction RVWordMapping RVInterfaceAssumptions fun input output =>
+    ∃ s', RV.step input.before = some s' ∧
+      RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
+
+/-- The two reviewed statements preserve the complete source contract. -/
+theorem claims_restatement : (RVSoundnessClaim ∧ RVSatisfiableClaim) ↔ OldRVSoundnessClaim := Iff.rfl
+
+/-- Soundness preserves the source contract because its non-vacuity claim is proved separately. -/
+theorem soundness_restatement : RVSoundnessClaim ↔ OldRVSoundnessClaim :=
+  ⟨fun h => claims_restatement.mp ⟨h, rv_satisfiable⟩, fun h => (claims_restatement.mpr h).1⟩
+
+/-- The separate non-vacuity statement preserves the source witness condition. -/
+theorem satisfiable_restatement : RVSatisfiableClaim ↔
+    Checks.Restatements.OldRVRowSatisfiable .addSub RVInput.before rvInstruction RVWordMapping RVInterfaceAssumptions := Iff.rfl
+
+end Airbender.AddSub.Restatement
+
+namespace Airbender.MulDiv.Restatement
+
+/-- The source row contract before its soundness and non-vacuity statements are separated. -/
+def OldRVSoundnessClaim : Prop :=
+  Checks.Restatements.OldRVRowClaim .mulDiv RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs fun input output =>
+    ∃ s', RV.step input.before = some s' ∧
+      RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
+
+/-- The two reviewed statements preserve the complete source contract. -/
+theorem claims_restatement : (RVSoundnessClaim ∧ RVSatisfiableClaim) ↔ OldRVSoundnessClaim := Iff.rfl
+
+/-- Soundness preserves the source contract because its non-vacuity claim is proved separately. -/
+theorem soundness_restatement : RVSoundnessClaim ↔ OldRVSoundnessClaim :=
+  ⟨fun h => claims_restatement.mp ⟨h, rv_satisfiable⟩, fun h => (claims_restatement.mpr h).1⟩
+
+/-- The separate non-vacuity statement preserves the source witness condition. -/
+theorem satisfiable_restatement : RVSatisfiableClaim ↔
+    Checks.Restatements.OldRVRowSatisfiable .mulDiv RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs := Iff.rfl
+
+end Airbender.MulDiv.Restatement
+
+namespace Airbender.ShiftBinop.Restatement
+
+/-- The source row contract before its soundness and non-vacuity statements are separated. -/
+def OldRVSoundnessClaim : Prop :=
+  Checks.Restatements.OldRVRowClaim .shiftBinop RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs fun input output =>
+    ∃ s', RV.step input.before = some s' ∧
+      RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
+
+/-- The two reviewed statements preserve the complete source contract. -/
+theorem claims_restatement : (RVSoundnessClaim ∧ RVSatisfiableClaim) ↔ OldRVSoundnessClaim := Iff.rfl
+
+/-- Soundness preserves the source contract because its non-vacuity claim is proved separately. -/
+theorem soundness_restatement : RVSoundnessClaim ↔ OldRVSoundnessClaim :=
+  ⟨fun h => claims_restatement.mp ⟨h, rv_satisfiable⟩, fun h => (claims_restatement.mpr h).1⟩
+
+/-- The separate non-vacuity statement preserves the source witness condition. -/
+theorem satisfiable_restatement : RVSatisfiableClaim ↔
+    Checks.Restatements.OldRVRowSatisfiable .shiftBinop RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs := Iff.rfl
+
+end Airbender.ShiftBinop.Restatement
+
+namespace Airbender.SubwordMemory.Restatement
+
+/-- The source row contract before its soundness and non-vacuity statements are separated. -/
+def OldRVSoundnessClaim : Prop :=
+  Checks.Restatements.OldRVRowClaim .subwordMemory RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs fun input output =>
+    output.cell.toBitVec.toNat = (input.source.toBitVec + input.immediate.toBitVec).toNat / 4 * 4 ∧
+    ∃ s', RV.step input.before = some s' ∧
+      RV.Same s' (if input.store then
+          (input.before.store output.cell.toBitVec output.data.toBitVec 4).setPC output.pc.toBitVec
+        else (input.before.setReg input.rd output.data.toBitVec).setPC output.pc.toBitVec)
+
+/-- The two reviewed statements preserve the complete source contract. -/
+theorem claims_restatement : (RVSoundnessClaim ∧ RVSatisfiableClaim) ↔ OldRVSoundnessClaim := Iff.rfl
+
+/-- Soundness preserves the source contract because its non-vacuity claim is proved separately. -/
+theorem soundness_restatement : RVSoundnessClaim ↔ OldRVSoundnessClaim :=
+  ⟨fun h => claims_restatement.mp ⟨h, rv_satisfiable⟩, fun h => (claims_restatement.mpr h).1⟩
+
+/-- The separate non-vacuity statement preserves the source witness condition. -/
+theorem satisfiable_restatement : RVSatisfiableClaim ↔
+    Checks.Restatements.OldRVRowSatisfiable .subwordMemory RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs := Iff.rfl
+
+end Airbender.SubwordMemory.Restatement
+
+namespace Airbender.WordMemory.Restatement
+
+/-- The source row contract before its soundness and non-vacuity statements are separated. -/
+def OldRVSoundnessClaim : Prop :=
+  Checks.Restatements.OldRVRowClaim .wordMemory RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs fun input output =>
+    output.address.toBitVec = input.source.toBitVec + input.immediate.toBitVec ∧
+    ∃ s', RV.step input.before = some s' ∧
+      RV.Same s' (if input.store then
+          (input.before.store output.address.toBitVec output.data.toBitVec 4).setPC output.pc.toBitVec
+        else (input.before.setReg input.rd output.data.toBitVec).setPC output.pc.toBitVec)
+
+/-- The two reviewed statements preserve the complete source contract. -/
+theorem claims_restatement : (RVSoundnessClaim ∧ RVSatisfiableClaim) ↔ OldRVSoundnessClaim := Iff.rfl
+
+/-- Soundness preserves the source contract because its non-vacuity claim is proved separately. -/
+theorem soundness_restatement : RVSoundnessClaim ↔ OldRVSoundnessClaim :=
+  ⟨fun h => claims_restatement.mp ⟨h, rv_satisfiable⟩, fun h => (claims_restatement.mpr h).1⟩
+
+/-- The separate non-vacuity statement preserves the source witness condition. -/
+theorem satisfiable_restatement : RVSatisfiableClaim ↔
+    Checks.Restatements.OldRVRowSatisfiable .wordMemory RVInput.before rvInstruction RVWordMapping Trace.RVPooledHistoryInputs := Iff.rfl
+
+end Airbender.WordMemory.Restatement
+
+namespace Airbender.JumpBranchSlt.Comparison.Restatement
+
+/-- The source row contract before its soundness and non-vacuity statements are separated. -/
+def OldRVSoundnessClaim : Prop :=
+  Checks.Restatements.OldRVRowClaim .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs fun input output =>
+    ∃ s', RV.step input.before = some s' ∧
+      RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
+
+/-- The two reviewed statements preserve the complete source contract. -/
+theorem claims_restatement : (RVSoundnessClaim ∧ RVSatisfiableClaim) ↔ OldRVSoundnessClaim := Iff.rfl
+
+/-- Soundness preserves the source contract because its non-vacuity claim is proved separately. -/
+theorem soundness_restatement : RVSoundnessClaim ↔ OldRVSoundnessClaim :=
+  ⟨fun h => claims_restatement.mp ⟨h, rv_satisfiable⟩, fun h => (claims_restatement.mpr h).1⟩
+
+/-- The separate non-vacuity statement preserves the source witness condition. -/
+theorem satisfiable_restatement : RVSatisfiableClaim ↔
+    Checks.Restatements.OldRVRowSatisfiable .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs := Iff.rfl
+
+end Airbender.JumpBranchSlt.Comparison.Restatement
+
+namespace Airbender.JumpBranchSlt.Branch.Restatement
+
+/-- The source row contract before its soundness and non-vacuity statements are separated. -/
+def OldRVSoundnessClaim : Prop :=
+  Checks.Restatements.OldRVRowClaim .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs fun input output =>
+    ∃ s', RV.step input.before = some s' ∧ RV.Same s' (input.before.setPC output.pc.toBitVec)
+
+/-- The two reviewed statements preserve the complete source contract. -/
+theorem claims_restatement : (RVSoundnessClaim ∧ RVSatisfiableClaim) ↔ OldRVSoundnessClaim := Iff.rfl
+
+/-- Soundness preserves the source contract because its non-vacuity claim is proved separately. -/
+theorem soundness_restatement : RVSoundnessClaim ↔ OldRVSoundnessClaim :=
+  ⟨fun h => claims_restatement.mp ⟨h, rv_satisfiable⟩, fun h => (claims_restatement.mpr h).1⟩
+
+/-- The separate non-vacuity statement preserves the source witness condition. -/
+theorem satisfiable_restatement : RVSatisfiableClaim ↔
+    Checks.Restatements.OldRVRowSatisfiable .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs := Iff.rfl
+
+end Airbender.JumpBranchSlt.Branch.Restatement
+
+namespace Airbender.JumpBranchSlt.Jump.Restatement
+
+/-- The source row contract before its soundness and non-vacuity statements are separated. -/
+def OldRVSoundnessClaim : Prop :=
+  Checks.Restatements.OldRVRowClaim .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs fun input output =>
+    ∃ s', RV.step input.before = some s' ∧
+      RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
+
+/-- The two reviewed statements preserve the complete source contract. -/
+theorem claims_restatement : (RVSoundnessClaim ∧ RVSatisfiableClaim) ↔ OldRVSoundnessClaim := Iff.rfl
+
+/-- Soundness preserves the source contract because its non-vacuity claim is proved separately. -/
+theorem soundness_restatement : RVSoundnessClaim ↔ OldRVSoundnessClaim :=
+  ⟨fun h => claims_restatement.mp ⟨h, rv_satisfiable⟩, fun h => (claims_restatement.mpr h).1⟩
+
+/-- The separate non-vacuity statement preserves the source witness condition. -/
+theorem satisfiable_restatement : RVSatisfiableClaim ↔
+    Checks.Restatements.OldRVRowSatisfiable .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs := Iff.rfl
+
+end Airbender.JumpBranchSlt.Jump.Restatement
+
+namespace Checks.Restatements
+open Airbender Airbender.Trace
+
+/-- The shape of the whole-trace claims over a public program: every accepted trace whose public boundary meets
+    `inputs` and whose rows are `decoded` against the program is a run of our spec (`RVRealizes`). -/
+def OldRVTraceSoundness {Kind : Type} [CircuitLayout Kind] {Program : Type}
+    (inputs : Data babyBearModulus Kind → RV.State → List Cell → Program → Prop)
+    (decoded : Data babyBearModulus Kind → Program → Prop) : Prop :=
+  ∀ {trace : Data babyBearModulus Kind} {initial : RV.State} {cells : List Cell} {program : Program},
+    inputs trace initial cells program → Accepted trace → decoded trace program → RVRealizes trace initial cells
+
+/-- The assumptions of an `OldRVTraceSoundness inputs decoded` claim can be met, by a trace with a row. -/
+def OldRVTraceSatisfiable {Kind : Type} [CircuitLayout Kind] {Program : Type}
+    (inputs : Data babyBearModulus Kind → RV.State → List Cell → Program → Prop)
+    (decoded : Data babyBearModulus Kind → Program → Prop) : Prop :=
+  ∃ (trace : Data babyBearModulus Kind) (initial : RV.State) (cells : List Cell) (program : Program),
+    inputs trace initial cells program ∧ Accepted trace ∧ decoded trace program ∧ trace.rows ≠ []
+
+end Checks.Restatements
+
+namespace Airbender.Trace.Restatement
+
+/-- The source trace statement. -/
+def OldRVAirbenderSoundnessClaim : Prop := Checks.Restatements.OldRVTraceSoundness RVExecutionBoundary RVDecoded
+
+/-- The explicit trace statement preserves its source contract. -/
+theorem RVAirbenderSoundnessClaim_restatement : RVAirbenderSoundnessClaim ↔ OldRVAirbenderSoundnessClaim := Iff.rfl
+
+end Airbender.Trace.Restatement
+
+namespace Airbender.Trace.Restatement
+
+/-- The source trace statement. -/
+def OldRVAirbenderSoundnessSatisfiableClaim : Prop := Checks.Restatements.OldRVTraceSatisfiable RVExecutionBoundary RVDecoded
+
+/-- The explicit trace statement preserves its source contract. -/
+theorem RVAirbenderSoundnessSatisfiableClaim_restatement : RVAirbenderSoundnessSatisfiableClaim ↔ OldRVAirbenderSoundnessSatisfiableClaim := Iff.rfl
+
+end Airbender.Trace.Restatement
+
+namespace Airbender.JumpBranchSlt.Restatement
+
+/-- The source trace statement. -/
+def OldRVTraceSoundnessClaim : Prop := Checks.Restatements.OldRVTraceSoundness RVExecutionInputs RVDecoded
+
+/-- The explicit trace statement preserves its source contract. -/
+theorem RVTraceSoundnessClaim_restatement : RVTraceSoundnessClaim ↔ OldRVTraceSoundnessClaim := Iff.rfl
+
+end Airbender.JumpBranchSlt.Restatement
+
+namespace Airbender.JumpBranchSlt.Restatement
+
+/-- The source trace statement. -/
+def OldRVTraceSoundnessSatisfiableClaim : Prop := Checks.Restatements.OldRVTraceSatisfiable RVExecutionInputs RVDecoded
+
+/-- The explicit trace statement preserves its source contract. -/
+theorem RVTraceSoundnessSatisfiableClaim_restatement : RVTraceSoundnessSatisfiableClaim ↔ OldRVTraceSoundnessSatisfiableClaim := Iff.rfl
+
+end Airbender.JumpBranchSlt.Restatement
+
+namespace Airbender.MulDiv.Restatement
+
+/-- The source trace statement. -/
+def OldRVTraceSoundnessClaim : Prop := Checks.Restatements.OldRVTraceSoundness RVExecutionInputs RVDecoded
+
+/-- The explicit trace statement preserves its source contract. -/
+theorem RVTraceSoundnessClaim_restatement : RVTraceSoundnessClaim ↔ OldRVTraceSoundnessClaim := Iff.rfl
+
+end Airbender.MulDiv.Restatement
+
+namespace Airbender.MulDiv.Restatement
+
+/-- The source trace statement. -/
+def OldRVTraceSoundnessSatisfiableClaim : Prop := Checks.Restatements.OldRVTraceSatisfiable RVExecutionInputs RVDecoded
+
+/-- The explicit trace statement preserves its source contract. -/
+theorem RVTraceSoundnessSatisfiableClaim_restatement : RVTraceSoundnessSatisfiableClaim ↔ OldRVTraceSoundnessSatisfiableClaim := Iff.rfl
+
+end Airbender.MulDiv.Restatement
+
+namespace Airbender.ShiftBinop.Restatement
+
+/-- The source trace statement. -/
+def OldRVTraceSoundnessClaim : Prop := Checks.Restatements.OldRVTraceSoundness RVExecutionInputs RVDecoded
+
+/-- The explicit trace statement preserves its source contract. -/
+theorem RVTraceSoundnessClaim_restatement : RVTraceSoundnessClaim ↔ OldRVTraceSoundnessClaim := Iff.rfl
+
+end Airbender.ShiftBinop.Restatement
+
+namespace Airbender.ShiftBinop.Restatement
+
+/-- The source trace statement. -/
+def OldRVTraceSoundnessSatisfiableClaim : Prop := Checks.Restatements.OldRVTraceSatisfiable RVExecutionInputs RVDecoded
+
+/-- The explicit trace statement preserves its source contract. -/
+theorem RVTraceSoundnessSatisfiableClaim_restatement : RVTraceSoundnessSatisfiableClaim ↔ OldRVTraceSoundnessSatisfiableClaim := Iff.rfl
+
+end Airbender.ShiftBinop.Restatement
+
+namespace Airbender.SubwordMemory.Restatement
+
+/-- The source trace statement. -/
+def OldRVRamTraceSoundnessClaim : Prop := Checks.Restatements.OldRVTraceSoundness RVRAMInputs RVDecoded
+
+/-- The explicit trace statement preserves its source contract. -/
+theorem RVRamTraceSoundnessClaim_restatement : RVRamTraceSoundnessClaim ↔ OldRVRamTraceSoundnessClaim := Iff.rfl
+
+end Airbender.SubwordMemory.Restatement
+
+namespace Airbender.SubwordMemory.Restatement
+
+/-- The source trace statement. -/
+def OldRVRamTraceSoundnessSatisfiableClaim : Prop := Checks.Restatements.OldRVTraceSatisfiable RVRAMInputs RVDecoded
+
+/-- The explicit trace statement preserves its source contract. -/
+theorem RVRamTraceSoundnessSatisfiableClaim_restatement : RVRamTraceSoundnessSatisfiableClaim ↔ OldRVRamTraceSoundnessSatisfiableClaim := Iff.rfl
+
+end Airbender.SubwordMemory.Restatement
+
+namespace Airbender.Bigint.Memory.Restatement
+
+/-- The source property statement. -/
+def OldRVAddressesSoundnessClaim : Prop :=
+  ∀ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Trace.Cell),
+    (circuitModel data).SoundnessUnder (RVInterfaceAssumptions data before cells) Addresses.spec
+
+/-- The explicit relation preserves the source property. -/
+theorem property_restatement : RVAddressesSoundnessClaim ↔ OldRVAddressesSoundnessClaim := Iff.rfl
+
+end Airbender.Bigint.Memory.Restatement
+
+namespace Airbender.Blake2G.Restatement
+
+/-- The source property statement. -/
+def OldSoundnessClaim : Prop :=
+  ∀ (control : Fin 512 → Vector Nat 7),
+    (circuitModel (p := babyBearModulus) control).SoundnessUnder (InterfaceAssumptions (p := babyBearModulus)) spec
+
+/-- The explicit relation preserves the source property. -/
+theorem property_restatement : SoundnessClaim ↔ OldSoundnessClaim := Iff.rfl
+
+end Airbender.Blake2G.Restatement
+
+namespace Airbender.InitsTeardowns.Restatement
+open Trace
+
+/-- The source initialization contract. -/
+def OldStandaloneClaim : Prop :=
+  Claims importedLayout ∧
+    ∀ address : BitVec 32, (Cell.ram address).Aligned →
+      Cell.ram address ∈ windowCells importedLayout (List.range maxTopBit)
+
+/-- The explicit properties and witness condition preserve the source contract. -/
+theorem standalone_claims_restatement : (StandaloneClaim ∧ StandaloneSatisfiableClaim) ↔ OldStandaloneClaim := by
+  constructor
+  · rintro ⟨⟨init, boot, teardown, coverage⟩, ⟨topBits, rfl, checked⟩⟩
+    exact ⟨⟨init, boot, teardown, checked⟩, coverage⟩
+  · rintro ⟨properties, coverage⟩
+    exact ⟨⟨properties.init, properties.bootImage, properties.teardown, coverage⟩,
+      ⟨_, rfl, properties.checkable⟩⟩
+
+/-- The separate witness proof preserves the source soundness contract. -/
+theorem standalone_restatement : StandaloneClaim ↔ OldStandaloneClaim :=
+  ⟨fun h => standalone_claims_restatement.mp ⟨h, standalone_satisfiable⟩,
+    fun h => (standalone_claims_restatement.mpr h).1⟩
+
+end Airbender.InitsTeardowns.Restatement
+
+namespace Airbender.InitsTeardowns.Restatement
+open Trace
+
+/-- The source initialization contract. -/
+def OldUnifiedClaim : Prop :=
+  Claims unifiedLayout ∧
+    ∀ address : BitVec 32, (Cell.ram address).Aligned → address.toNat < 2 ^ 31 →
+      Cell.ram address ∈ windowCells unifiedLayout (List.range maxTopBit)
+
+/-- The explicit properties and witness condition preserve the source contract. -/
+theorem unified_claims_restatement : (UnifiedClaim ∧ UnifiedSatisfiableClaim) ↔ OldUnifiedClaim := by
+  constructor
+  · rintro ⟨⟨init, boot, teardown, coverage⟩, ⟨topBits, rfl, checked⟩⟩
+    exact ⟨⟨init, boot, teardown, checked⟩, coverage⟩
+  · rintro ⟨properties, coverage⟩
+    exact ⟨⟨properties.init, properties.bootImage, properties.teardown, coverage⟩,
+      ⟨_, rfl, properties.checkable⟩⟩
+
+/-- The separate witness proof preserves the source soundness contract. -/
+theorem unified_restatement : UnifiedClaim ↔ OldUnifiedClaim :=
+  ⟨fun h => unified_claims_restatement.mp ⟨h, unified_satisfiable⟩,
+    fun h => (unified_claims_restatement.mpr h).1⟩
+
+end Airbender.InitsTeardowns.Restatement
+
+namespace Airbender.SailRestatement
+
+def OldDecodeIsSailClaim : Prop :=
+  (∀ word instruction state, RV.decode word = some instruction → Configured state →
+    Human.runSail (SailRV32.Functions.ext_decode word) state = .ok (Airbender.toSail instruction) state) ∧
+    ∃ word instruction state, RV.decode word = some instruction ∧ Configured state
+
+def OldStepIsAirbenderClaim : Prop :=
+  (∀ s s' machine, Agree s machine → RV.step s = some s' →
+    ∃ machine', step machine = some machine' ∧ Agree s' machine') ∧
+    ∃ s s' machine, Agree s machine ∧ RV.step s = some s'
+
+example : (DecodeIsSailClaim ∧ DecodeIsSailSatisfiableClaim) ↔ OldDecodeIsSailClaim := Iff.rfl
+example : (StepIsAirbenderClaim ∧ StepIsAirbenderSatisfiableClaim) ↔ OldStepIsAirbenderClaim := Iff.rfl
+end Airbender.SailRestatement
+
+namespace RV.DelegationRunRestatement
+open Spec
+
+def OldCallsRun : Prop :=
+  (∀ (ks : List DelegationKind) (s t : State), CallsAssumptions ks s t → run ks.length s = some t) ∧
+  ∃ (ks : List DelegationKind) (s t : State), ks ≠ [] ∧ CallsAssumptions ks s t
+
+
+example : (CallsRun ∧ CallsRunSatisfiableClaim) ↔ OldCallsRun := Iff.rfl
+
+def OldBlakeCompressRun : Prop :=
+  (∀ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x90000#32 s p q t last →
+    ∃ s', calls (.replicate 7 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compress (readWords s.mem p 8) (readWords s.mem q 16) t last) ∧
+  ∃ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x90000#32 s p q t last
+
+
+example : (BlakeCompressRun ∧ BlakeCompressRunSatisfiableClaim) ↔ OldBlakeCompressRun := Iff.rfl
+
+def OldBlakeHashRun : Prop :=
+  (∀ (s : State) (p q : Word) (right : Bool),
+    BlakeHashAssumptions (if right then 0xf0000#32 else 0xd0000#32) s p q →
+    ∃ s', calls (.replicate 7 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 =
+        if right then hash2 (readWords s.mem q 8) (readWords s.mem p 8) else hash2 (readWords s.mem p 8) (readWords s.mem q 8)) ∧
+  ∃ (s : State) (p q : Word) (right : Bool), BlakeHashAssumptions (if right then 0xf0000#32 else 0xd0000#32) s p q
+
+
+example : (BlakeHashRun ∧ BlakeHashRunSatisfiableClaim) ↔ OldBlakeHashRun := Iff.rfl
+
+def OldBlakeCompressRun10 : Prop :=
+  (∀ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x80000#32 s p q t last →
+    ∃ s', calls (.replicate 10 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compressRounds 10 (readWords s.mem p 8) (readWords s.mem q 16) t last) ∧
+  ∃ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x80000#32 s p q t last
+
+
+example : (BlakeCompressRun10 ∧ BlakeCompressRun10SatisfiableClaim) ↔ OldBlakeCompressRun10 := Iff.rfl
+
+def OldBlakeHashRun10 : Prop :=
+  (∀ (s : State) (p q : Word) (right : Bool),
+    BlakeHashAssumptions (if right then 0xe0000#32 else 0xc0000#32) s p q →
+    ∃ s', calls (.replicate 10 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compressRounds 10 (Vector.ofFn configuredIV)
+        (if right then readWords s.mem q 8 ++ readWords s.mem p 8 else readWords s.mem p 8 ++ readWords s.mem q 8)
+        64#32 true) ∧
+  ∃ (s : State) (p q : Word) (right : Bool), BlakeHashAssumptions (if right then 0xe0000#32 else 0xc0000#32) s p q
+
+
+example : (BlakeHashRun10 ∧ BlakeHashRun10SatisfiableClaim) ↔ OldBlakeHashRun10 := Iff.rfl
+
+def OldBlakeGRun : Prop :=
+  (∀ (s : State) (p q : Word), BlakeGAssumptions 0x80#32 s p q →
+    ∃ s', calls (.replicate 56 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0x80#32 ∧
+      readWords s'.mem p 16 = (List.finRange 7).foldl
+        (fun v r => round (readWords s.mem q 16) (SIGMA (r.castLE (by decide))) v) (readWords s.mem p 16)) ∧
+  ∃ (s : State) (p q : Word), BlakeGAssumptions 0x80#32 s p q
+
+
+example : (BlakeGRun ∧ BlakeGRunSatisfiableClaim) ↔ OldBlakeGRun := Iff.rfl
+
+def OldBlakeGRun10 : Prop :=
+  (∀ (s : State) (p q : Word), BlakeGAssumptions 0#32 s p q →
+    ∃ s', calls (.replicate 80 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0#32 ∧
+      readWords s'.mem p 16 = (List.finRange 10).foldl
+        (fun v r => round (readWords s.mem q 16) (SIGMA r) v) (readWords s.mem p 16)) ∧
+  ∃ (s : State) (p q : Word), BlakeGAssumptions 0#32 s p q
+
+
+example : (BlakeGRun10 ∧ BlakeGRun10SatisfiableClaim) ↔ OldBlakeGRun10 := Iff.rfl
+
+def OldKeccakSpecial5Run : Prop :=
+  (∀ (s : State) (p : Word), KeccakAssumptions s p →
+    ∃ s', calls (.replicate 649 .keccak) s = some s' ∧ ChangesOnly s s' p 248 10 ∧
+      readLanes s'.mem p 25 = keccakF (readLanes s.mem p 25)) ∧
+  ∃ (s : State) (p : Word), KeccakAssumptions s p
+
+
+example : (KeccakSpecial5Run ∧ KeccakSpecial5RunSatisfiableClaim) ↔ OldKeccakSpecial5Run := Iff.rfl
+
+def OldKeccakF1600Run : Prop :=
+  (∀ (s : State) (p : Word), KeccakAssumptions s p →
+    ∃ s', calls f1600Calls s = some s' ∧ ChangesOnly s s' p 248 10 ∧
+      readLanes s'.mem p 25 = keccakF (readLanes s.mem p 25)) ∧
+  ∃ (s : State) (p : Word), KeccakAssumptions s p
+
+
+example : (KeccakF1600Run ∧ KeccakF1600RunSatisfiableClaim) ↔ OldKeccakF1600Run := Iff.rfl
+
+end RV.DelegationRunRestatement

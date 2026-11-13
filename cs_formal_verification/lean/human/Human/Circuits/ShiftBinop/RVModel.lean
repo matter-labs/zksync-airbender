@@ -1,0 +1,116 @@
+module
+public import Human.Circuits.ShiftBinop.Artifact
+public import Human.Helpers.Context.RVInterfaces
+public import Human.Helpers.Context.RVRowContext
+public import Human.Helpers.Context.RVRowModel
+public import Human.Helpers.Decoder.RVPooledProgram
+public import Human.ISA.RV32
+public import Human.Helpers.Core.CircuitOutput
+
+@[expose] public section
+
+/-! RV32 vocabulary for the XOR/OR/AND, SLL/SRL/SRA (register and immediate forms) and REV8 circuit (RV
+    registers, an `RV.State` pre-state and the instruction `RV.decode` of the public program entry). `Circuit.Output`
+    is the destination word and PC. -/
+
+namespace Airbender.ShiftBinop
+open Arithmetic Trace
+
+/-- The circuit's input in RV32 terms: operation and form, operand words (for binary immediates `right` is the
+    sign-extended immediate), start PC, register indices (they may alias), the 12-bit encoded immediate and the row's
+    pre-state. -/
+structure RVInput where
+  /-- The selected arithmetic or bit operation. -/
+  operation : Operation
+  /-- Select the immediate instruction form when true. -/
+  immediate : Bool
+  /-- The left operand word. -/
+  left : BitVec 32
+  /-- The right operand word. -/
+  right : BitVec 32
+  /-- The row's starting PC. -/
+  pc : Word
+  /-- The first source register index. -/
+  rs1 : RV.Reg
+  /-- The second source register index. -/
+  rs2 : RV.Reg
+  /-- The destination register index. -/
+  rd : RV.Reg
+  /-- The original 12-bit immediate encoding. -/
+  encodedImmediate : BitVec 12
+  /-- The row's pre-state. -/
+  before : RV.State
+
+/-- The RV32 instruction the row executes, in our spec's vocabulary (`RV.decode` of its encoding): binary immediates
+    are sign-extended, immediate shift amounts are the encoding's low five bits (the `rs2` field), zero-extended. -/
+def rvInstruction (input : RVInput) : RV.Instr :=
+  match input.operation, input.immediate with
+  | .rev8, _ => .rev8 input.rd input.rs1
+  | .xor, true => .opImm .xor input.rd input.rs1 (input.encodedImmediate.signExtend 32)
+  | .or, true => .opImm .or input.rd input.rs1 (input.encodedImmediate.signExtend 32)
+  | .and, true => .opImm .and input.rd input.rs1 (input.encodedImmediate.signExtend 32)
+  | .sll, true => .opImm .sll input.rd input.rs1 ((input.encodedImmediate.extractLsb' 0 5).zeroExtend 32)
+  | .srl, true => .opImm .srl input.rd input.rs1 ((input.encodedImmediate.extractLsb' 0 5).zeroExtend 32)
+  | .sra, true => .opImm .sra input.rd input.rs1 ((input.encodedImmediate.extractLsb' 0 5).zeroExtend 32)
+  | .xor, false => .op .xor input.rd input.rs1 input.rs2
+  | .or, false => .op .or input.rd input.rs1 input.rs2
+  | .and, false => .op .and input.rd input.rs1 input.rs2
+  | .sll, false => .op .sll input.rd input.rs1 input.rs2
+  | .srl, false => .op .srl input.rd input.rs1 input.rs2
+  | .sra, false => .op .sra input.rd input.rs1 input.rs2
+
+/-- Word mapping for the RV input: the imported variable IDs. These mappings identify operands;
+    none prescribes the result. -/
+structure RVWordMapping {p : Nat} (input : RVInput) (output : Circuit.Output) (w : Nat → ZMod p) : Prop where
+  /-- Bind the left operand bytes to their witness columns. -/
+  leftBytes : ∀ i : Fin 4,
+    w (19 + i.val) = ((input.left.extractLsb' (8 * i.val) 8).toNat : ZMod p)
+  /-- Bind the binary-operation right operand bytes to their witness columns. -/
+  binaryRightBytes : input.operation.isShift = false → ∀ i : Fin 4,
+    w (25 + i.val) +
+      (if i.val = 0 then w 8 else if i.val = 1 then w 9 else w 35) =
+      ((BitVec.extractLsb' (8 * i.val) 8
+        input.right).toNat : ZMod p)
+  /-- Bind the low shift-register byte to its witness column. -/
+  shiftLowByte : input.operation.isShift = true →
+    w 25 = ((BitVec.extractLsb' 0 8
+      (if input.immediate || input.operation = .rev8 then 0 else input.right)).toNat : ZMod p)
+  /-- Bind the encoded shift amount to its witness column. -/
+  shiftImmediate : input.operation.isShift = true →
+    w 8 = (if input.operation = .rev8 then 0 else if input.immediate then (input.encodedImmediate.extractLsb' 0 5).toNat else 0 : ZMod p)
+  /-- Bind the first source register index to its witness column. -/
+  rs1Index : w 5 = (input.rs1.toNat : ZMod p)
+  /-- Bind the second source register index to its witness column. -/
+  rs2Index : w 6 = (input.rs2.toNat : ZMod p)
+  /-- Bind the destination register index to its witness column. -/
+  rdIndex : w 7 = (input.rd.toNat : ZMod p)
+  /-- Bind the low limb of the starting PC to its witness column. -/
+  pcLo : input.pc.lo = (w 0).val
+  /-- Bind the high limb of the starting PC to its witness column. -/
+  pcHi : input.pc.hi = (w 1).val
+  /-- Bind the low limb of the row result to its witness column. -/
+  outputLo : output.destination.lo = (w 31).val
+  /-- Bind the high limb of the row result to its witness column. -/
+  outputHi : output.destination.hi = (w 32).val
+  /-- Bind the low limb of the final PC to its witness column. -/
+  finalPCLo : output.pc.lo = (w 13).val
+  /-- Bind the high limb of the final PC to its witness column. -/
+  finalPCHi : output.pc.hi = (w 14).val
+
+/-- Public initialization and ROM tables for this family. -/
+abbrev RVAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+    (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
+  Trace.RVPooledHistoryInputs trace initial cells program
+
+/-- A row of this family in an accepted, decoded trace, with its words, pre-state, and public program entry. -/
+def rvModel (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell)
+    (program : List RVPooledProgramEntry) :=
+  Trace.rvRowModel (family := .shiftBinop) (before := RVInput.before) (instruction := rvInstruction)
+    (words := RVWordMapping) trace initial cells program
+
+/-- One step sets the destination register and the PC to the row's results. It changes no other visible state; x0's stored value is not visible. -/
+def rvSpec (input : RVInput) (output : Circuit.Output) : Prop :=
+  ∃ s', RV.step input.before = some s' ∧
+    RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
+
+end Airbender.ShiftBinop

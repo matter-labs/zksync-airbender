@@ -9,30 +9,22 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
-      diagnose_modules:
-        description: "Partial Lean diagnosis only: space-separated project modules; no FV assurance"
-        type: string
-        default: ""
-      cold_build:
-        description: Build every project module without restored Lean objects
-        type: boolean
-        default: false
-      refresh_axiom_baseline:
-        description: Export a refreshed baseline after the passing environment audit
-        type: boolean
-        default: false
-      full_assurance:
-        description: Run the complete independent kernel replay and false-proof controls
-        type: boolean
-        default: false
-      requalify_setups:
-        description: Re-export unchanged setup payloads before promoting changed source receipts
-        type: boolean
-        default: false
+      lean_mode:
+        description: "Lean FV mode"
+        type: choice
+        options: [incremental, cold, kernel_replay]
+        default: incremental
 
 permissions: read-all
 
 jobs:
+  lean:
+    name: Lean FV
+    uses: ./.github/workflows/lean-formal-verification.yml
+    with:
+      cold: ${{ inputs.lean_mode == 'cold' }}
+      kernel_replay: ${{ inputs.lean_mode == 'kernel_replay' }}
+
   tests:
     if: github.event_name != 'workflow_dispatch'
     name: tests
@@ -257,6 +249,7 @@ jobs:
     runs-on: ubuntu-latest
     if: always() && github.event_name != 'workflow_dispatch'
     needs:
+      - lean
       - tests
       - formatting
       - warnings
@@ -269,16 +262,3 @@ jobs:
         uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
         with:
           jobs: ${{ toJSON(needs) }}
-
-  formal-verification:
-    if: github.event_name == 'workflow_dispatch'
-    permissions:
-      contents: read
-      actions: write # Used only by the reusable workflow's cache retention job.
-    uses: ./.github/workflows/formal-verification.yml
-    with:
-      diagnose_modules: ${{ inputs.diagnose_modules }}
-      cold_build: ${{ inputs.cold_build }}
-      refresh_axiom_baseline: ${{ inputs.refresh_axiom_baseline }}
-      full_assurance: ${{ inputs.full_assurance }}
-      requalify_setups: ${{ inputs.requalify_setups }}

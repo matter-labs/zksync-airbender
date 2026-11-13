@@ -1,0 +1,21 @@
+{
+  "artifacts/compiler/numeric-arithmetic/bigint-cached.json": "0f4d4e391a92cacb33b506f7b79d170520b40467b228663185601f6681842a42",
+  "artifacts/compiler/numeric-arithmetic/blake-g-cached.json": "3e32810df6a7ce2470245c83641a71019696f286b08228caa5beca17d07fecab",
+  "artifacts/compiler/numeric-arithmetic/blake-round-cached.json": "4f994f173dc13dd2a9eda82ba35fd392b4246caf8e79c70b7f235c3ffe07f503",
+  "artifacts/compiler/numeric-arithmetic/jump-branch-cached.json": "fde28e40fee154d263a24039b2f976f515a703b323c17ef02394c6e324b3d531",
+  "artifacts/compiler/numeric-arithmetic/keccak-cached.json": "da2e32d6d73d8b96b1dbaafc5ca5fd714d6220faa699990ecac451018cf2e884",
+  "artifacts/compiler/numeric-arithmetic/mul-div-cached.json": "49d8a9647a20fab2007f11305674025d18a251d52253e17975a9d8756cfd6944",
+  "artifacts/compiler/numeric-arithmetic/shift-binop-cached.json": "51213f2b5d58671e098fe11a90f567f1343aa591440e385ce9064cc4f88b4df2",
+  "artifacts/compiler/numeric-arithmetic/subword-memory-cached.json": "2abb73c120008a3a58269f592f3531f24fbc4b5e1fae5419201283693df65e9f",
+  "artifacts/compiler/numeric-arithmetic/unified-cached.json": "928aca9344fd5b869dc03539735194bc0abbe15f4c2073e1b58940069eb9665a",
+  "artifacts/compiler/numeric-arithmetic/word-memory-cached.json": "376065535dfed91b81c461ac4df84590b093fb6d208730522372ea8fad478b8d",
+  "artifacts/compiler/numeric-clean/bigint-cached.json": "788d6a6600c66acd7128b63aa6ed4842b91944aa308ba45721411b5bdf360cad",
+  "artifacts/compiler/numeric-clean/keccak-cached.json": "dae5f067f8725a18197dc390069ba9bb1155fc7258ef13ae4d8aca53dac943aa",
+  "artifacts/compiler/lookup/add-sub-cached.json": "18a19a5e196b39ab2549de5c64bbb1362c2f9fd6c55d540e25393f3581de1f91",
+  "artifacts/compiler/lookup/jump-branch-cached.json": "830cc64d4f046a89d4e4e0a8ea1524568995daeddffc2edd177396b7cc3b3f83",
+  "artifacts/compiler/lookup/mul-div-cached.json": "9202b729a9bdea67d724c9b619577dfcaf737088a4737d84a22d4fa939e7db5e",
+  "artifacts/compiler/lookup/shift-binop-cached.json": "a29a98633761c7a308933227b69004779176d6edc4c1edd004899af5faf715ca",
+  "artifacts/compiler/lookup/subword-memory-cached.json": "bec6c4eca1e0236591e81ff8afd9c1da1986a6f7ae15f539126970d38e5ace6b",
+  "artifacts/compiler/lookup/unified-cached.json": "5b6663dcfa8b530c8681a3140165b583d52fbc7d654f5c4d2c6cf43ce58ded15",
+  "artifacts/compiler/lookup/word-memory-cached.json": "8e81ee88ed820814766055f78f14fa407032f5a90c6de564aa4afcd49b9d39b5"
+}

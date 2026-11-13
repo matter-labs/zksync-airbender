@@ -1,0 +1,18 @@
+module
+public import Human.Trace.Delegation.RVExecution
+public import Human.Helpers.Delegation.RVRequestTrace
+
+@[expose] public section
+
+namespace Airbender.Delegation.Caller
+open Trace
+
+/-- Request binding and the same worker pool's accesses executed as RV cell
+    reads/writes (`RVMemoryExecution`; RAM cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END`). -/
+structure RVRequestExecution [Fact p.Prime] (data : RVRequestTrace p)
+    (before : RV.State) (cells : List Cell) : Prop where
+  requests : RVRequestBinding data before
+  memory : MemorySoundness data.workers
+  execution : RVMemoryExecution data.workers before cells
+
+end Airbender.Delegation.Caller

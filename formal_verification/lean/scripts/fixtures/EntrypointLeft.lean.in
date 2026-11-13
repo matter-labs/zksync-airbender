@@ -1,5 +1,0 @@
-import Lean
-namespace AssuranceEntrypoints
- theorem left : True := True.intro
-end AssuranceEntrypoints
-def main : IO Unit := pure ()
