@@ -167,30 +167,6 @@ fn read_const(src: &str, name: &str) -> u128 {
     found.unwrap_or_else(|| panic!("template does not declare constant {name}"))
 }
 
-/// Keep everything up to (not including) the first line that starts a contract named `marker`,
-/// dropping the trailing test/bench harness contracts so the generated source is just the
-/// production verifier. Also trims a trailing block-comment that introduces the removed section.
-fn strip_from_contract(src: &str, marker: &str) -> String {
-    let needle = format!("contract {marker}");
-    let cut = src
-        .find(&needle)
-        .unwrap_or_else(|| panic!("template missing `{needle}`"));
-    // back up over any immediately-preceding `//`-comment lines that document the removed section
-    let mut end = src[..cut].trim_end_matches([' ', '\t']).len();
-    end = src[..end].trim_end_matches('\n').len();
-    loop {
-        let line_start = src[..end].rfind('\n').map(|i| i + 1).unwrap_or(0);
-        if src[line_start..end].trim_start().starts_with("//") {
-            end = src[..line_start].trim_end_matches('\n').len();
-        } else {
-            break;
-        }
-    }
-    let mut out = src[..end].to_string();
-    out.push('\n');
-    out
-}
-
 /// Circuit-derived layout values used to substitute the gkr.sol constants.
 struct Derived {
     rounds: usize,
@@ -654,10 +630,6 @@ fn render(
         !gkr.contains("__GKR_CIRCUIT_LAYER_CALLS__"),
         "gkr.sol template missing the circuit-layer-calls marker"
     );
-
-    // Drop the trailing test/bench harness (GKRVerifierTest + the via_ir-only GKRStreamGen) so
-    // the production source is just the verifier.
-    let gkr = strip_from_contract(&gkr, "GKRVerifierTest");
 
     // F1: the GKR half reads the decoded v0 image (every calldata access rewritten; the absolute
     // preimage readers add F1_V0_PTR() in the template), the decoder is the only GKR calldata

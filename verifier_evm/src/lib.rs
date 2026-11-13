@@ -15,10 +15,9 @@
 //! tests, never by these functions.
 
 pub mod encoding;
-pub mod flatten;
+mod flatten;
 pub mod generator;
 pub mod seed;
 
-pub use flatten::{gkr_calldata, merged_calldata, whir_stream};
 pub use generator::{emit_circuit_yul, generate_f1_verifier, F1Contracts};
-pub use seed::{commit_seed_preimage, verified_mark, VerifiedMark};
+pub use seed::{verified_mark, VerifiedMark};
