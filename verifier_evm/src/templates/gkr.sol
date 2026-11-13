@@ -312,6 +312,7 @@ contract GkrWhirVerifier {
                     if iszero(lt(val, mload(P_PTR))) { revert(0, 0) }
                     acc := add(mulmod(val, mload(add(GKR_EQ_PTR(), mul(j, 32))), mload(P_PTR)), acc)
                 }
+                // only mulmod consumes the claims, so this mod is redundant; removing it saves nothing
                 mstore(add(GKR_CLAIMS_PTR(), mul(c, 32)), mod(acc, mload(P_PTR)))
             }
             next_ptr := add(ptr, __TEMPLATE_GKR_INIT_BYTES)
@@ -549,6 +550,7 @@ contract GkrWhirVerifier {
                     claim := add(mulmod(cb, mload(add(GKR_CLAIMS_PTR(), mul(c, 32))), mload(P_PTR)), claim)
                     cb := mulmod(cb, batching, mload(P_PTR))
                 }
+                // redundant for f1_e1_round, which reduces its own output; removing it saves nothing
                 claim := mod(claim, mload(P_PTR))
                 ptr, claim := sumcheck_rounds(ptr, claim, fs)
                 ptr,
