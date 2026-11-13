@@ -531,8 +531,7 @@ impl ProofLayout {
         // oracle, one query-draw PoW nonce per round. The folding and OOD PoW
         // nonce slots parallel the polynomials and the samples; only gated
         // rounds write theirs. Split them by the schedule's round shape (the
-        // GPU prover implements no base-round folding PoW and exactly one OOD
-        // sample per oracle).
+        // GPU prover implements exactly one OOD sample per oracle).
         let ood_samples = self.whir_ood_samples_host(slab).to_vec();
         let sumcheck_polys: Vec<[E4; 3]> = self
             .whir_sumcheck_polys_host(slab)
@@ -556,6 +555,11 @@ impl ProofLayout {
         assert_eq!(folding_pow_nonces.len(), sumcheck_polys.len());
         let mut polys = sumcheck_polys.into_iter();
         let base_sumcheck_polys: Vec<[E4; 3]> = polys.by_ref().take(fold_steps[0]).collect();
+        let base_folding_pow_nonces = if whir_schedule.base_round.folding_pow_bits > 0 {
+            folding_pow_nonces[..fold_steps[0]].to_vec()
+        } else {
+            vec![]
+        };
         let mut step = fold_steps[0];
         for (i, (oracle, round)) in intermediate_whir_oracles
             .iter_mut()
@@ -581,7 +585,7 @@ impl ProofLayout {
             // filled by the caller from the slab
             batching_challenge_pow_nonce: 0,
             base_sumcheck_polys,
-            base_folding_pow_nonces: vec![],
+            base_folding_pow_nonces,
             base_queries_pow_nonce: pow_nonces[0],
             intermediate_whir_oracles,
             final_monomials,

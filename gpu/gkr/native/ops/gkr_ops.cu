@@ -26,6 +26,13 @@ EXTERN __global__ void ab_whir_fold_round_update_kernel(const e4 *reduction_outp
   whir_fold_round_update_inline(reduction_output, seed_io, coeffs_out, challenge_out);
 }
 
+// The update above without the challenge draw, for a PoW-gated folding step
+// whose challenge is drawn afterward on the stream. Launched <<<1,1>>>.
+EXTERN __global__ void ab_whir_fold_round_commit_kernel(const e4 *reduction_output, u32 *seed_io, e4 *coeffs_out) {
+  u32 state[STATE_SIZE];
+  whir_fold_round_commit_inline(reduction_output, seed_io, coeffs_out, state);
+}
+
 // ---------------------------------------------------------------------------
 // Backward per-address "new_claims" evaluators (device-side).
 //

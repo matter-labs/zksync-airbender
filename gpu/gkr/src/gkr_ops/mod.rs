@@ -57,6 +57,36 @@ pub fn whir_fold_round_update(
 }
 
 cuda_kernel!(
+    WhirFoldRoundCommit,
+    ab_whir_fold_round_commit_kernel(
+        reduction_output: *const E4,
+        seed_io: *mut u32,
+        coeffs_out: *mut E4,
+    )
+);
+
+/// [`whir_fold_round_update`] without the challenge draw: commits the round
+/// polynomial and leaves the advanced seed in `seed`, for a PoW-gated folding
+/// step that draws its challenge afterward.
+pub fn whir_fold_round_commit(
+    reduction_output: &DeviceSlice<E4>,
+    seed: &mut DeviceSlice<u32>,
+    coeffs_out: &mut DeviceSlice<E4>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    assert_eq!(reduction_output.len(), 3);
+    assert_eq!(seed.len(), STATE_SIZE);
+    assert_eq!(coeffs_out.len(), 3);
+    let config = CudaLaunchConfig::basic(1u32, 1u32, stream);
+    let args = WhirFoldRoundCommitArguments::new(
+        reduction_output.as_ptr(),
+        seed.as_mut_ptr(),
+        coeffs_out.as_mut_ptr(),
+    );
+    WhirFoldRoundCommitFunction::default().launch(&config, &args)
+}
+
+cuda_kernel!(
     BackwardNewClaimsTwoVar,
     ab_backward_new_claims_two_var_kernel(
         last_evals_packed: *const E4,
