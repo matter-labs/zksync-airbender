@@ -802,12 +802,14 @@ contract GkrWhirVerifier {
     }
 }
 
-// Test/bench harness. Inherits GKRVerifier so it picks up the fallback (and
-// ROUNDS) for free: `address(this).call(data)` invokes the inherited fallback
+// Test/bench harness. Inherits GKRVerifier so it picks up the fallback for
+// free: `address(this).call(data)` invokes the inherited fallback
 // exactly as a standalone GKRVerifier deployment would, so the measured gas
 // reflects production. GKRVerifier itself stays free of test-only code, so
 // `forge build --sizes` (and any prod build) sees only the verifier bytecode.
 contract GKRVerifierTest is GkrWhirVerifier {
+    uint256 constant ROUNDS = 200; // compression rounds of the GKRStreamGen stream
+
     event log_named_uint(string key, uint256 val);
     event log_named_decimal_uint(string key, uint256 val, uint256 decimals);
     event log_named_string(string key, string val);
