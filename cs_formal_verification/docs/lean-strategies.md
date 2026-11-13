@@ -85,8 +85,7 @@ in the model is compiled), not the declarations the kernel checks, so it is not 
 fixed.
 
 `verify.sh` stays the check everywhere (its trust checks included). `lake check --paranoid` (Lean 4.35: kernel replay
-by Lean's kernel and the independent checkers bundled with it, plus an axiom check) runs only in a scheduled CI job,
-every two weeks, and in `backup-check.sh` (1.5). Its targets, the lakefile's default targets, cover every final proof
+by Lean's kernel and the independent checkers bundled with it, plus an axiom check) runs nightly, on manual dispatch, and in `backup-check.sh` (1.5). Its targets, the lakefile's default targets, cover every final proof
 module and the tests, not only `human/` (replaying `human/` checks that the statements are well-formed, not that they
 are proven), and leave out the two files that import Clean, `human/CleanCore/Equivalence.lean` and
 `test/Checks/Axioms.lean` (libraries `CleanEquivalence`, `CleanAudit`): `lake check` rejects a non-standard axiom

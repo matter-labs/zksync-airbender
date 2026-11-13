@@ -159,7 +159,7 @@ step_kernel_probe() {
   fi
 }
 
-# The kernel replay (CI job kernel_replay every two weeks; backup-check.sh): every constant re-added to a kernel.
+# The kernel replay (CI job kernel_replay nightly; backup-check.sh): every constant re-added to a kernel.
 # KERNEL_CHECKER selects the tool:
 #   paranoid: `lake check --paranoid` (Lean 4.35) on the default targets (lakefile.toml: everything except
 #     human/CleanCore/Equivalence.lean and test/Checks/Axioms.lean, which import Clean's native_decide prime
