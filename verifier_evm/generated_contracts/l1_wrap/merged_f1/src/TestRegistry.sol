@@ -5,8 +5,9 @@ import {IVerificationRegistry} from "./GkrWhirVerifier.sol";
 
 /// Minimal `IVerificationRegistry` for tests and local deployments: records every statement a
 /// verifier reports (`markVerified`), keyed by the full (publicInput, auxInput, setupCommitment)
-/// tuple, and keeps the last mark + its reporter for inspection. Anyone may call it — a
-/// production registry would restrict `msg.sender` to the trusted verifier(s).
+/// tuple, and keeps the last mark + its reporter for inspection. Anyone may call it and any
+/// chain is accepted — a production registry restricts `msg.sender` to the trusted verifier(s)
+/// and compares `auxInput` with the expected recursion chain hash.
 contract TestRegistry is IVerificationRegistry {
     struct Mark {
         bytes32 publicInput;

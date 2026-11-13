@@ -4,7 +4,9 @@ pragma solidity =0.8.36;
 /// The registry every successfully verified statement is reported to (one call per proof).
 interface IVerificationRegistry {
     /// `publicInput`     = final registers x10..x17 (a0..a7), each u32 LE, concatenated;
-    /// `auxInput`        = final registers x18..x25 (s2..s9), same encoding;
+    /// `auxInput`        = final registers x18..x25 (s2..s9), same encoding: the recursion chain
+    ///                     hash, which the verifier does not check — the registry must compare it
+    ///                     with the expected chain of the program it accepts;
     /// `setupCommitment` = keccak256 of the setup oracle's Merkle cap (CAP digests, BE u32 words)
     ///                     — the circuit setup (lookup tables) the proof was verified against.
     function markVerified(bytes32 publicInput, bytes32 auxInput, bytes32 setupCommitment) external;
@@ -717,7 +719,8 @@ contract GkrWhirVerifier {
         // evaluations must be zero (same as the CPU verifier's lookup-identity check).
         check_lookup_identities(output_evals_ptr)
 
-        // TODO: don't forget the recursion chain check
+        // The recursion chain hash (auxInput, registers x18..x25) is not checked here: the
+        // registry compares it with the expected chain of the program it accepts.
 
         // ── GKR→WHIR handoff in memory, then the WHIR proximity check ─────────────────
         // emit_gkr_mark draws the packing coords + WHIR batching, merges the base-layer claims and
