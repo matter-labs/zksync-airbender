@@ -25,7 +25,6 @@ fn main() {
     let output = std::path::absolute(&args[2]).unwrap();
     std::env::set_current_dir(env!("CARGO_MANIFEST_DIR")).unwrap();
     let circuit = if name == "compression" {
-        assert_eq!(mode, SoundnessMode::PessimisticConjecture);
         assert_eq!(
             verifier_common::BLAKE_MODE,
             verifier_common::BlakeMode::Software
@@ -58,12 +57,22 @@ fn main() {
         let expected = miri_circuit_stream::verify(&name, mode_id, &mut payload.iter().copied());
         #[cfg(feature = "miri_compression_coverage")]
         if name == "compression" {
-            use verifier::compression::constants::{WHIR_CAP_SIZE, WHIR_QUERIES};
+            use verifier::compression::{ethproofs_soundcalc, pessimistic_conjecture};
+            let (queries_per_round, cap_size) = match mode {
+                SoundnessMode::PessimisticConjecture => (
+                    pessimistic_conjecture::constants::WHIR_QUERIES.as_slice(),
+                    pessimistic_conjecture::constants::WHIR_CAP_SIZE,
+                ),
+                SoundnessMode::EthproofsSoundnessCalc => (
+                    ethproofs_soundcalc::constants::WHIR_QUERIES.as_slice(),
+                    ethproofs_soundcalc::constants::WHIR_CAP_SIZE,
+                ),
+            };
             let counts = verifier_common::multiproof_coverage::counts();
-            for (round, queries) in WHIR_QUERIES.into_iter().enumerate() {
+            for (round, &queries) in queries_per_round.iter().enumerate() {
                 let executed = counts.get(round).copied().unwrap_or(0);
-                let expected = if verifier_common::BlakeMode::Software.merkle_multiproofs(queries, WHIR_CAP_SIZE) { queries } else { 0 };
-                println!("compression round {round}: queries={queries}, cap_size={WHIR_CAP_SIZE}, executed_multiproof_queries={executed}");
+                let expected = if verifier_common::BlakeMode::Software.merkle_multiproofs(queries, cap_size) { queries } else { 0 };
+                println!("compression round {round}: queries={queries}, cap_size={cap_size}, executed_multiproof_queries={executed}");
                 assert_eq!(executed, expected, "multiproof branch coverage in round {round}");
             }
             assert!(counts.iter().sum::<usize>() > 0, "compression must execute multiproofs");

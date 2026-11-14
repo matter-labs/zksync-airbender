@@ -211,8 +211,8 @@ jobs:
           grep -q "test result: ok. 1 passed" inventory.txt
           "$binary" --list --ignored tests::proof_matrix::canonical_ > proof-tests.txt
           mapfile -t tests < <(sed -n 's/: test$//p' proof-tests.txt)
-          if [[ "${#tests[@]}" -ne 30 ]]; then
-            echo "Expected all 30 canonical circuit/mode tests, found ${#tests[@]}" >&2
+          if [[ "${#tests[@]}" -ne 31 ]]; then
+            echo "Expected all 31 canonical circuit/mode tests, found ${#tests[@]}" >&2
             exit 1
           fi
           failed=0

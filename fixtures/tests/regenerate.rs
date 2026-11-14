@@ -42,14 +42,16 @@ fn command(root: &Path, arguments: &[&str], backend: Option<&str>) -> Command {
 #[test]
 fn checks_read_committed_parents_and_compare_only_their_stage() {
     let root = std::env::temp_dir().join(format!("proof-fixture-recipe-{}", std::process::id()));
-    fs::create_dir_all(root.join("fixtures/chains/pessimistic_conjecture")).unwrap();
+    for mode in proof_fixtures::MODES {
+        fs::create_dir_all(root.join("fixtures/chains").join(mode)).unwrap();
+    }
     fs::create_dir_all(root.join(".github/scripts")).unwrap();
     executable(
         &root.join("cli"),
         r##"#!/usr/bin/env bash
 set -euo pipefail
 action=$1; shift
-proof= output_dir= output_file= backend= trusted= output= target=
+proof= output_dir= output_file= backend= trusted= output= target= soundness=
 while (($#)); do
   case $1 in
     --proof) proof=$2 ;;
@@ -59,11 +61,17 @@ while (($#)); do
     --output-dir) output_dir=$2 ;;
     --output-file) output_file=$2 ;;
     --backend) backend=$2 ;;
+    --soundness-mode) soundness=$2 ;;
     --gpu-memory-preset) exit 1 ;;
   esac
   shift 2
 done
-if [[ $action == trusted-params ]]; then printf params >"$output"; exit; fi
+mode=${soundness//-/_}
+if [[ $action == trusted-params ]]; then
+  [[ $target == compression ]]
+  printf params >"$output"
+  exit
+fi
 if [[ $action == verify ]]; then
   [[ -f $proof ]]
   if [[ $proof == */l1.json.zlib ]]; then
@@ -82,7 +90,7 @@ if [[ $action == continue-proof ]]; then
     l1) parent=compression ;;
     *) parent=base; [[ $output_file != unrolled_unified.json.zlib ]] || parent=unrolled ;;
   esac
-  [[ $proof == "$AB_TEST_ARTIFACT_ROOT/fixtures/chains/pessimistic_conjecture/$parent.json.zlib" ]]
+  [[ $proof == "$AB_TEST_ARTIFACT_ROOT/fixtures/chains/$mode/$parent.json.zlib" ]]
 fi
 mkdir -p "$output_dir"
 printf '%s' "$output_file" >"$output_dir/$output_file"
@@ -97,17 +105,25 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
         &root.join(".github/scripts/soundness_mode_smoke.sh"),
         "#!/bin/sh\ntest -n \"$FIXTURE_CHAIN_ROOT\"\ntest -n \"$SMOKE_OUTPUT_DIR\"\ntest \"$3\" = cpu\n",
     );
-    for chain in proof_fixtures::CHAINS
-        .into_iter()
-        .chain(proof_fixtures::L1_CHAINS)
-    {
-        let name = format!("{chain}.json.zlib");
-        fs::write(
-            root.join("fixtures/chains/pessimistic_conjecture")
-                .join(&name),
-            &name,
-        )
-        .unwrap();
+    for mode in proof_fixtures::MODES {
+        for chain in proof_fixtures::chains(mode) {
+            let name = format!("{chain}.json.zlib");
+            fs::write(root.join("fixtures/chains").join(mode).join(&name), &name).unwrap();
+        }
+    }
+    for backend in [None, Some("cpu")] {
+        for stage in ["base_unified", "unrolled", "compression"] {
+            let result = run_with_backend(
+                &root,
+                &["--check", "--mode", "ethproofs_soundcalc", "--stage", stage],
+                backend,
+            );
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+        }
     }
     for backend in [None, Some("cpu"), Some("gpu")] {
         for stage in ["base_unified", "unrolled", "compression", "l1"] {
@@ -130,29 +146,29 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
         }
     }
     let trusted_params = root.join("trusted-params");
-    for stage in ["base_unified", "unrolled", "compression", "l1"] {
-        let result = command(
-            &root,
-            &[
-                "--check",
-                "--mode",
-                "pessimistic_conjecture",
-                "--stage",
-                stage,
-            ],
-            None,
-        )
-        .env("FIXTURE_TRUSTED_PARAMS", &trusted_params)
-        .output()
-        .unwrap();
-        assert!(
-            result.status.success(),
-            "{}",
-            String::from_utf8_lossy(&result.stderr)
-        );
+    for (mode, stages) in [
+        (
+            "pessimistic_conjecture",
+            &["base_unified", "unrolled", "compression", "l1"][..],
+        ),
+        (
+            "ethproofs_soundcalc",
+            &["base_unified", "unrolled", "compression"][..],
+        ),
+    ] {
+        for stage in stages {
+            let result = command(&root, &["--check", "--mode", mode, "--stage", stage], None)
+                .env("FIXTURE_TRUSTED_PARAMS", &trusted_params)
+                .output()
+                .unwrap();
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+        }
     }
     for stage in ["compression", "l1"] {
-        // L1 stage selection defaults to its only supported soundness mode.
         for arguments in [vec!["--check", "--stage", stage], vec!["--stage", stage]] {
             let result = run(&root, &arguments);
             assert!(
@@ -161,23 +177,23 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
                 String::from_utf8_lossy(&result.stderr)
             );
         }
-        for backend in ["cpu", "gpu"] {
-            let result = run_with_backend(
-                &root,
-                &["--check", "--mode", "ethproofs_soundcalc", "--stage", stage],
-                Some(backend),
-            );
-            assert!(!result.status.success());
-            assert!(String::from_utf8_lossy(&result.stderr)
-                .contains("L1 stages support only pessimistic_conjecture"));
-        }
+    }
+    for backend in ["cpu", "gpu"] {
+        let result = run_with_backend(
+            &root,
+            &["--check", "--mode", "ethproofs_soundcalc", "--stage", "l1"],
+            Some(backend),
+        );
+        assert!(!result.status.success());
+        assert!(String::from_utf8_lossy(&result.stderr)
+            .contains("L1 stages support only pessimistic_conjecture"));
     }
     assert!(trusted_params
         .join("pessimistic-conjecture-trusted-params.json")
         .is_file());
-    assert!(!trusted_params
+    assert!(trusted_params
         .join("ethproofs-soundcalc-trusted-params.json")
-        .exists());
+        .is_file());
     for arguments in [vec!["--check"], vec!["--check", "--stage", "circuits"]] {
         let result = run_with_backend(&root, &arguments, Some("gpu"));
         assert!(!result.status.success());

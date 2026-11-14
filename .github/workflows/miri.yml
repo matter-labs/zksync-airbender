@@ -70,10 +70,7 @@ jobs:
                   producer = 'miri_circuit_input' if circuit == 'compression' else 'miri_circuit_input_standard'
                   circuits[circuit + '_' + mode] = [str(target / 'debug/examples' / producer), circuit, mode,
                                                     str(circuit_inputs / mode / (circuit + '.bin'))]
-              chains = ['base', 'unrolled', 'unified', 'unrolled_unified']
-              if (root / 'fixtures/chains' / mode / 'compression.json.zlib').exists():
-                  chains.append('compression')
-              for chain in chains:
+              for chain in ['base', 'unrolled', 'unified', 'unrolled_unified', 'compression']:
                   statements[mode + '_' + chain] = [str(target / 'debug/examples/miri_input'),
                                                     str(statement_inputs / (mode + '_' + chain + '.bin')), mode, chain]
           def run(item):
@@ -111,6 +108,7 @@ jobs:
           python3 .github/scripts/run_miri.py \
             --package verifier --features miri_circuits --test-target miri_circuits \
             --case-config compression_pessimistic_conjecture miri_compression miri_compression \
+            --case-config compression_ethproofs_soundcalc miri_compression miri_compression \
             --cases "${cases[@]}" --jobs 29 \
             --output "$CARGO_TARGET_DIR/results/circuits"
       - name: Check verifier_common helpers
