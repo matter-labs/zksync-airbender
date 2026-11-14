@@ -1,7 +1,7 @@
 //! Verify a committed chain natively and record inner outputs for statement-only Miri.
 //! Usage: miri_input OUTPUT MODE CHAIN
 //! MODE: pessimistic_conjecture or ethproofs_soundcalc.
-//! CHAIN: base, unrolled, unified or unrolled_unified.
+//! CHAIN: base, unrolled, unified, unrolled_unified or compression.
 #[path = "../tests/common/miri_stream.rs"]
 mod miri_stream;
 
@@ -29,6 +29,7 @@ fn main() {
             "unrolled" => Chain::Unrolled,
             "unified" => Chain::Unified,
             "unrolled_unified" => Chain::UnrolledUnified,
+            "compression" => Chain::Compression,
             _ => panic!("unsupported chain"),
         },
     };
@@ -40,7 +41,7 @@ fn main() {
             &artifact.proof,
             verifier_common::BLAKE_MODE,
         ),
-        Chain::Unified | Chain::UnrolledUnified => build_unified_stream(
+        Chain::Unified | Chain::UnrolledUnified | Chain::Compression => build_unified_stream(
             &artifact.setups,
             &artifact.proof,
             verifier_common::BLAKE_MODE,

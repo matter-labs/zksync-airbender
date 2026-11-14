@@ -4,10 +4,13 @@ use full_statement_verifier::{
     delegation_params::NUM_DELEGATION_CIRCUIT_TYPES,
     imports::{
         DelegationCircuitOutput, InitsAndTeardownsCircuitOutput, UnifiedCircuitOutput,
-        UnrolledCircuitOutput,
+        UnifiedCircuitOutputWithCap, UnrolledCircuitOutput,
     },
     statement_common::read_setup_cap,
-    unified_circuit_statement::verify_full_statement_for_unified_circuit,
+    unified_circuit_statement::{
+        address_high_bits_shift, verify_full_statement_for_unified_circuit,
+        verify_full_statement_for_unified_circuit_without_delegations,
+    },
     unrolled_circuit_params,
     unrolled_proof_statement::verify_full_statement_for_unrolled_circuits,
     verifier_common::{
@@ -310,6 +313,7 @@ macro_rules! mode_statements {
                             )
                         }
                     }
+                    Chain::Compression => unreachable!("compression statements use their mode-specific mock"),
                 }
             }
         }
@@ -319,16 +323,61 @@ macro_rules! mode_statements {
 mode_statements!(pessimistic_conjecture);
 mode_statements!(ethproofs_soundcalc);
 
+macro_rules! compression_statement {
+    ($mode:ident, $module:ident) => {
+        mod $mode {
+            use super::*;
+            use full_statement_verifier::imports::$module as m;
+
+            fn verify<I: Iterator<Item = u32> + Send + Sync, const RECORD: bool>(
+                challenges: &Challenges,
+                nds: &mut Stream<I, RECORD>,
+            ) -> Result<UnifiedCircuitOutputWithCap<{ m::CAP_SIZE }>, VerificationError> {
+                inner(challenges, nds, m::verify::<_, DebugErrorCreator>)
+            }
+
+            pub(super) fn statement<I: Iterator<Item = u32> + Send + Sync, const RECORD: bool>(
+                nds: &mut Stream<I, RECORD>,
+            ) -> Result<[u32; 16], VerificationError> {
+                // SAFETY: the production reader and statement have no extra caller obligations.
+                unsafe {
+                    let setup = read_setup_cap::<_, { m::CAP_SIZE }>(nds);
+                    verify_full_statement_for_unified_circuit_without_delegations::<
+                        _,
+                        DebugErrorCreator,
+                        USE_REDUCED_BLAKE2_ROUNDS,
+                        { m::CAP_SIZE },
+                        { address_high_bits_shift(m::TRACE_LEN_LOG2) },
+                        { 1u64 << m::TRACE_LEN_LOG2 },
+                        _,
+                    >(&setup, verify::<I, RECORD>, nds)
+                }
+            }
+        }
+    };
+}
+
+compression_statement!(
+    pessimistic_conjecture_compression,
+    unified_reduced_machine_sec_100_compression_final
+);
+
 impl Selection {
     fn statement<I: Iterator<Item = u32> + Send + Sync, const RECORD: bool>(
         self,
         nds: &mut Stream<I, RECORD>,
     ) -> [u32; 16] {
-        let output = match self.mode {
-            SoundnessMode::PessimisticConjecture => {
+        let output = match (self.mode, self.chain) {
+            (SoundnessMode::PessimisticConjecture, Chain::Compression) => {
+                pessimistic_conjecture_compression::statement(nds)
+            }
+            (SoundnessMode::EthproofsSoundnessCalc, Chain::Compression) => {
+                panic!("Ethproofs compression statement is unavailable")
+            }
+            (SoundnessMode::PessimisticConjecture, _) => {
                 pessimistic_conjecture::statement(self.chain, nds)
             }
-            SoundnessMode::EthproofsSoundnessCalc => {
+            (SoundnessMode::EthproofsSoundnessCalc, _) => {
                 ethproofs_soundcalc::statement(self.chain, nds)
             }
         }

@@ -1,4 +1,5 @@
 //! Every committed chain in both soundness modes with recorded inner verifier outputs.
+//! The Pessimistic compression step has no committed input and is outside Miri coverage.
 #[path = "common/miri_stream.rs"]
 mod miri_stream;
 
@@ -21,7 +22,7 @@ macro_rules! statement_test {
             const INPUT: &[u8] = include_bytes!(concat!(
                 env!(
                     "AIRBENDER_MIRI_FSV_INPUT_DIR",
-                    "prepare <mode>_<chain>.bin for both modes and all four chains with the miri_input example"
+                    "prepare <mode>_<chain>.bin with the miri_input example"
                 ),
                 "/",
                 stringify!($name),
@@ -29,7 +30,10 @@ macro_rules! statement_test {
             ));
             check(
                 INPUT,
-                Selection { mode: SoundnessMode::$mode, chain: Chain::$chain },
+                Selection {
+                    mode: SoundnessMode::$mode,
+                    chain: Chain::$chain,
+                },
             );
         }
     };
@@ -50,6 +54,11 @@ statement_test!(
     pessimistic_conjecture_unrolled_unified,
     PessimisticConjecture,
     UnrolledUnified
+);
+statement_test!(
+    pessimistic_conjecture_compression,
+    PessimisticConjecture,
+    Compression
 );
 statement_test!(ethproofs_soundcalc_base, EthproofsSoundnessCalc, Base);
 statement_test!(

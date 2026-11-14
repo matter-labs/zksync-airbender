@@ -70,7 +70,10 @@ jobs:
                   producer = 'miri_circuit_input' if circuit == 'compression' else 'miri_circuit_input_standard'
                   circuits[circuit + '_' + mode] = [str(target / 'debug/examples' / producer), circuit, mode,
                                                     str(circuit_inputs / mode / (circuit + '.bin'))]
-              for chain in ['base', 'unrolled', 'unified', 'unrolled_unified']:
+              chains = ['base', 'unrolled', 'unified', 'unrolled_unified']
+              if (root / 'fixtures/chains' / mode / 'compression.json.zlib').exists():
+                  chains.append('compression')
+              for chain in chains:
                   statements[mode + '_' + chain] = [str(target / 'debug/examples/miri_input'),
                                                     str(statement_inputs / (mode + '_' + chain + '.bin')), mode, chain]
           def run(item):

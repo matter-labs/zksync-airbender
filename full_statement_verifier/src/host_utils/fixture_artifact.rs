@@ -11,6 +11,7 @@ pub enum ProofTarget {
     Base,
     RecursionUnrolled,
     RecursionUnified,
+    Compression,
 }
 
 #[derive(Deserialize)]
@@ -36,6 +37,7 @@ impl ChainArtifact {
             "base" => ProofTarget::Base,
             "unrolled" => ProofTarget::RecursionUnrolled,
             "unified" | "unrolled_unified" => ProofTarget::RecursionUnified,
+            "compression" => ProofTarget::Compression,
             _ => unreachable!(),
         };
         assert_eq!(artifact.target, target);
