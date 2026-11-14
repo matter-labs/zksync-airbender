@@ -248,11 +248,6 @@ impl<F: PrimeField + TwoAdicField> RSQueryable<F> for MaterializedCosets<F> {
     }
 }
 
-/// Boxed [`RSQueryable`] value source (used by the on-disk setup commitment). The
-/// trait object is `Send + Sync + Debug` via the trait's supertraits, so it can
-/// cross the worker boundary.
-pub type BoxedBaseRSSource<F> = Box<dyn RSQueryable<F>>;
-
 /// The fully materialized base oracle: every LDE coset's evaluations in RAM plus
 /// the full (concretely typed) Merkle tree. Serves main-domain columns in
 /// EVALUATION form and answers queries directly from the stored data.
@@ -2922,73 +2917,6 @@ pub fn commit_single_ext_poly_for_test<
         &crate::gkr::prover::backend::NaiveBackend,
         worker,
     )
-}
-
-/// Eval-form (no leaf transform) single-poly commit for tests that validate the
-/// `transform_leaves_to_multilinear_coeffs == false` path against a GPU oracle.
-/// `commit_single_ext_poly` is coefficient-form (#279); this helper provides the
-/// eval-form reference (raw evaluations committed).
-#[cfg(any(test, feature = "test-utils"))]
-pub fn commit_single_ext_poly_no_transform_for_test<
-    F: PrimeField + TwoAdicField,
-    E: FieldExtension<F> + Field,
-    T: ColumnMajorMerkleTreeConstructor<F>,
->(
-    cosets: Vec<(Box<[E]>, F)>,
-    values_per_leaf: usize,
-    tree_cap_size: usize,
-    worker: &Worker,
-) -> ColumnMajorExtensionOracleForLDE<F, E, T> {
-    let mut t = Vec::with_capacity(cosets.len());
-    let trace_len_log2 = cosets[0].0.len().trailing_zeros() as usize;
-    for (column, offset) in cosets.into_iter() {
-        assert!(!column.is_empty());
-        let el = ColumnMajorExtensionOracleForCoset {
-            values_normal_order: ColumnMajorCosetBoundTracePart::owned(column, offset),
-        };
-        t.push(el);
-    }
-
-    let source: Vec<_> = t
-        .iter()
-        .map(|el| {
-            vec![el
-                .values_normal_order
-                .as_contiguous()
-                .expect("contiguous ext oracle column")]
-        })
-        .collect();
-    let source_ref: Vec<_> = source.iter().map(|el| &el[..]).collect();
-
-    let tree = T::construct_from_cosets::<E, _>(
-        &source_ref[..],
-        values_per_leaf,
-        tree_cap_size,
-        true,
-        true,
-        false,
-        worker,
-    );
-
-    let coset_offsets_inv: Vec<F> = t
-        .iter()
-        .map(|el| el.values_normal_order.offset.inverse().unwrap())
-        .collect();
-    ColumnMajorExtensionOracleForLDE {
-        cosets: t,
-        tree,
-        values_per_leaf,
-        trace_len_log2,
-        // the buffers already hold the committed values: queries gather as is
-        conv: LeafConversionHandle(Arc::new(
-            crate::gkr::prover::backend::NoLeafConversion::<F>::new(
-                1usize << trace_len_log2,
-                values_per_leaf,
-            ),
-        )),
-        coset_offsets_inv,
-        leaves_in_coefficient_form: true,
-    }
 }
 
 #[cfg(any(test, feature = "test-utils"))]
