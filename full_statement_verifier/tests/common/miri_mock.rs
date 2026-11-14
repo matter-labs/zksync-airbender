@@ -361,6 +361,10 @@ compression_statement!(
     pessimistic_conjecture_compression,
     unified_reduced_machine_sec_100_compression_final
 );
+compression_statement!(
+    ethproofs_soundcalc_compression,
+    unified_reduced_machine_sec_100_compression_ethproofs_soundcalc
+);
 
 impl Selection {
     fn statement<I: Iterator<Item = u32> + Send + Sync, const RECORD: bool>(
@@ -372,7 +376,7 @@ impl Selection {
                 pessimistic_conjecture_compression::statement(nds)
             }
             (SoundnessMode::EthproofsSoundnessCalc, Chain::Compression) => {
-                panic!("Ethproofs compression statement is unavailable")
+                ethproofs_soundcalc_compression::statement(nds)
             }
             (SoundnessMode::PessimisticConjecture, _) => {
                 pessimistic_conjecture::statement(self.chain, nds)

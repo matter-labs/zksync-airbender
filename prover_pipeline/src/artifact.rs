@@ -156,7 +156,7 @@ mod tests {
     #[test]
     fn committed_chain_encoding() {
         for &mode in SoundnessMode::ALL {
-            for chain in proof_fixtures::CHAINS {
+            for chain in proof_fixtures::chains(mode.file_suffix()) {
                 let path = proof_fixtures::chain_artifact(mode.file_suffix(), chain);
                 let artifact: ProofArtifact = proof_fixtures::read_file(&path);
                 let (target, entries) = match chain {
@@ -164,6 +164,8 @@ mod tests {
                     "unified" => (ProofTarget::RecursionUnified, 3),
                     "unrolled" => (ProofTarget::RecursionUnrolled, 2),
                     "unrolled_unified" => (ProofTarget::RecursionUnified, 4),
+                    "compression" => (ProofTarget::Compression, 6),
+                    "l1" => (ProofTarget::L1, 6),
                     _ => unreachable!(),
                 };
                 assert_eq!(artifact.soundness_mode, mode);

@@ -17,3 +17,19 @@ fn compression_pessimistic_conjecture() {
         )),
     );
 }
+
+#[test]
+fn compression_ethproofs_soundcalc() {
+    assert_eq!(
+        verifier::verifier_common::BLAKE_MODE,
+        verifier::verifier_common::BlakeMode::Software
+    );
+    miri_circuit_stream::check(
+        "compression",
+        1,
+        include_bytes!(concat!(
+            env!("AIRBENDER_MIRI_CIRCUIT_INPUT_DIR"),
+            "/ethproofs_soundcalc/compression.bin"
+        )),
+    );
+}
