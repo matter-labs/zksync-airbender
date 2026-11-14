@@ -170,6 +170,24 @@ jobs:
             exit 1
           fi
 
+  guest_clippy:
+    name: guest clippy
+    runs-on: [matterlabs-ci-runner-high-performance]
+    steps:
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          # rust-src: the root-workspace guest dependencies are linted with -Z build-std.
+          components: clippy, rust-src
+          target: riscv32i-unknown-none-elf
+          rustflags: ""
+      - name: Setup
+        # The verifier guests' toolchain is installed on demand from
+        # tools/gkr_verifier/rust-toolchain.toml; the default profile brings clippy.
+        run: rustup set profile default
+      - name: Clippy on every guest workspace
+        run: .github/scripts/guest_clippy.sh
+
   evm_verifier:
     name: evm_verifier
     runs-on: [matterlabs-ci-runner-c3d]
