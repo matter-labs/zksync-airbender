@@ -63,8 +63,7 @@ path = "src/bin/full_statement_verifiers/fsv_unified_recursion_layer_sec_100_com
 
 # --- Full-statement verifiers wired to the ethproofs-soundcalc circuit verifiers
 # (`full_statement_verifiers/ethproofs_soundcalc/<name without the mode suffix>_<blake>.elf`).
-# No unified base layer: the recursion pipeline never selects it. No compression: its schedule
-# exists only in pessimistic_conjecture. ---
+# No unified base layer: the recursion pipeline never selects it. ---
 [[bin]]
 name = "fsv_unrolled_base_layer_sec_100_ethproofs_soundcalc"
 path = "src/bin/full_statement_verifiers/ethproofs_soundcalc/fsv_unrolled_base_layer_sec_100.rs"
@@ -76,6 +75,10 @@ path = "src/bin/full_statement_verifiers/ethproofs_soundcalc/fsv_unrolled_recurs
 [[bin]]
 name = "fsv_unified_recursion_layer_sec_100_ethproofs_soundcalc"
 path = "src/bin/full_statement_verifiers/ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100.rs"
+
+[[bin]]
+name = "fsv_unified_recursion_layer_sec_100_compression_ethproofs_soundcalc"
+path = "src/bin/full_statement_verifiers/ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100_compression.rs"
 
 # --- Per-circuit test verifiers, pessimistic_conjecture (`circuit_verifiers/pessimistic_conjecture/<circuit>.elf`) ---
 [[bin]]
