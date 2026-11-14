@@ -186,11 +186,11 @@ The GPU canonical matrix covers Standard and `compression` circuit fixtures in
 both modes, plus the Pessimistic `compression_final` fixture. The inventory test
 binds the matrix to the mode-specific canonical registry.
 
-The GPU workflow's `chains` shard checks Standard chains in both modes and
-the pessimistic `compression` and `l1` chains through the shared recipe.
+The GPU workflow's `chains` shard checks Standard and `compression` chains in
+both modes, plus the Pessimistic `l1` chain, through the shared recipe.
 Before proving, it compares CPU and GPU trusted records byte for byte; GPU
 record construction logs the context's actual peak allocation per record.
-The shared cache includes compression records and no L1 wrap record.
+The shared cache includes compression records for both modes and no L1 wrap record.
 
 For local currency checks, build the GPU CLI and codec before taking the
 device lock, set `FIXTURE_CLI` and `FIXTURE_CODEC` to those executables,
