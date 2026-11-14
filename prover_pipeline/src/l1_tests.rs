@@ -120,7 +120,8 @@ fn cpu_compression_rejects_tampered_streams() {
     let truncated = stream[..stream.len() - 1].to_vec();
     assert!(verify(truncated).is_err());
     let mut flipped = stream;
-    flipped[(CompressionProfile::Final.cap_size() - 1) * 8] ^= 1;
+    flipped[(CompressionProfile::Final.cap_size(SoundnessMode::PessimisticConjecture) - 1) * 8] ^=
+        1;
     assert!(verify(flipped).is_err());
 }
 
@@ -141,6 +142,7 @@ fn supplied_standard_records_refuse_an_l1_chain_without_recomputation() {
     let mut layer = 0;
     expected_chain_end_params(
         artifact.target,
+        artifact.soundness_mode,
         artifact.chain_end_params.len(),
         &artifact.blake_unrolled,
         &artifact.blake_bridge,

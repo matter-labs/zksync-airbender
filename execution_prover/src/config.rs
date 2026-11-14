@@ -26,7 +26,7 @@ pub fn assert_profiles_for_circuit(circuit: CircuitType, profiles: &[ProofProfil
 
 /// The config of `circuit_type` under `profile` and `soundness_mode`: `Standard` resolves the selected
 /// mode from the compiled columns, the L1 profiles use their special configs
-/// ([`ProofProfile::prover_config`], Pessimistic only).
+/// ([`ProofProfile::prover_config`]).
 pub fn prover_config_in_mode(
     circuit_type: CircuitType,
     compiled: &GKRCircuitArtifact<BF>,

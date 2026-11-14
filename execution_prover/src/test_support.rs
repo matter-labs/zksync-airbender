@@ -88,6 +88,7 @@ impl BackendConfiguration for TestConfiguration {
 pub(crate) struct TestBackend {
     batches: Mutex<Vec<JoinHandle<()>>>,
     active_batches: Arc<Mutex<std::collections::HashSet<u64>>>,
+    soundness_mode: SoundnessMode,
 }
 
 impl Drop for TestBackend {
@@ -108,12 +109,13 @@ impl ExecutionBackend for TestBackend {
     type Precomputations = TestPrecomputations;
 
     fn initialize(
-        _config: &ExecutionProverConfiguration<TestConfiguration>,
+        config: &ExecutionProverConfiguration<TestConfiguration>,
         _worker: Arc<Worker>,
     ) -> Self {
         Self {
             batches: Mutex::new(Vec::new()),
             active_batches: Default::default(),
+            soundness_mode: config.soundness_mode,
         }
     }
 
@@ -155,6 +157,7 @@ impl ExecutionBackend for TestBackend {
             "test batch is already active"
         );
         let active_batches = self.active_batches.clone();
+        let soundness_mode = self.soundness_mode;
         self.batches
             .lock()
             .unwrap()
@@ -186,12 +189,15 @@ impl ExecutionBackend for TestBackend {
                         }
                         WorkRequest::MemoryCommitment(request) => {
                             let config = match request.profile {
-                                ProofProfile::Standard => request
-                                    .circuit_type
-                                    .prover_config(prover::definitions::SecurityLevel::Sec100),
+                                ProofProfile::Standard => {
+                                    request.circuit_type.prover_config_in_mode(
+                                        request.precomputations.compiled_circuit(),
+                                        soundness_mode,
+                                    )
+                                }
                                 l1 => l1.prover_config(
                                     request.circuit_type.get_domain_size_log2() as usize,
-                                    prover::definitions::SoundnessMode::PessimisticConjecture,
+                                    soundness_mode,
                                 ),
                             };
                             WorkResult::MemoryCommitment(MemoryCommitmentResult {
