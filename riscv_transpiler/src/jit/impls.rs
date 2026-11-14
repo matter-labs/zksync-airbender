@@ -959,10 +959,9 @@ fn emit_merged_word_run(
 //     one conditional subtract), per `field::baby_bear::ops::basic`.
 // FMA computes `rd = rs1*rs2 + rd_old` in the field (reading rd's OLD value, no timestamp touch).
 // The field is an explicit `preprocess_bytecode` parameter — the caller must pass the same
-// field its replayer/witness pipeline uses (`mop_field()` reads `RISCV_MOP_FIELD` for
-// env-driven callers such as the JIT differential tests). The emitter only
-// loads operands and leaves the reduced result in `out`; the caller owns the timestamp touches
-// (rs1@+0, rs2@+1, rd@+2), `store_result`, and the AddSubLui family counter.
+// field its replayer/witness pipeline uses. The emitter only loads operands and leaves the
+// reduced result in `out`; the caller owns the timestamp touches (rs1@+0, rs2@+1, rd@+2),
+// `store_result`, and the AddSubLui family counter.
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MopField {
@@ -974,28 +973,6 @@ pub enum MopField {
     /// result diverges from the reference semantics (`from_raw_repr_with_reduction`), so it
     /// is only suitable for programs that are known to uphold it.
     BabyBearAssumeCanonical,
-}
-
-/// Env-driven MOP field selection for callers without a fixed field (e.g. the JIT differential
-/// tests): reads `RISCV_MOP_FIELD` (default `M31`); an unrecognized value panics. Intentionally
-/// not cached, so a single process can build JITs for different fields by changing the variable
-/// between builds. Production pipelines should pass their field to `preprocess_bytecode`
-/// explicitly instead of relying on process env.
-pub fn mop_field() -> MopField {
-    match std::env::var("RISCV_MOP_FIELD") {
-        Ok(s) => match s.to_ascii_lowercase().as_str() {
-            "m31" | "mersenne31" | "mersenne" => MopField::M31,
-            "babybear" | "baby_bear" | "bb" => MopField::BabyBear,
-            "babybear_assume_canonical" | "baby_bear_assume_canonical" | "bb_assume_canonical" => {
-                MopField::BabyBearAssumeCanonical
-            }
-            other => panic!(
-                "RISCV_MOP_FIELD must be 'm31', 'babybear' or 'babybear_assume_canonical' (got {:?})",
-                other
-            ),
-        },
-        Err(_) => MopField::M31,
-    }
 }
 
 const M31_P: i32 = 0x7fff_ffffu32 as i32; // 2^31 - 1
@@ -2086,10 +2063,10 @@ impl<I: ContextImpl> JittedCode<I> {
                 }
 
                 // MOP (Zimop) prime-field instructions: addmod / submod / mulmod / fmamod. The
-                // value computation is delegated to the env-selected field emitter (M31 default,
-                // BabyBear via RISCV_MOP_FIELD); timestamps (rs1@+0, rs2@+1, rd@+2), store_result
-                // and the family counter are handled here and are field-independent. FMA also
-                // reads rd's OLD value inside the emitter (value-only, no timestamp touch).
+                // value computation is delegated to the `mop_field` emitter; timestamps (rs1@+0,
+                // rs2@+1, rd@+2), store_result and the family counter are handled here and are
+                // field-independent. FMA also reads rd's OLD value inside the emitter
+                // (value-only, no timestamp touch).
                 Op::ZimopAdd | Op::ZimopSub | Op::ZimopMul | Op::ZimopFMA => {
                     assert!(rd != 0);
                     let out = destination_gpr(rd); // either a value GPR or EAX
@@ -2869,6 +2846,7 @@ impl<'a> JittedCode<FlattenedContextImpl<'a>> {
         non_determinism_responses: &'a [u32],
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        mop_field: MopField,
         ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
         assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
@@ -2901,8 +2879,7 @@ impl<'a> JittedCode<FlattenedContextImpl<'a>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner =
-            Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field, ram_config);
 
         // Profiling baseline: when RISCV_PROFILE_SKIP_RUN is set we do all of the
         // setup (decode + JIT compile + the large allocations) but skip execution,
@@ -2937,6 +2914,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         non_determinism_source: &mut N,
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        mop_field: MopField,
         ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
         assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
@@ -2978,8 +2956,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         >(program);
 
         // println!("Preprocessing the bytecode");
-        let runner =
-            Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field, ram_config);
 
         // println!("Running the simulator");
         runner.run(
@@ -3006,6 +2983,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         non_determinism_source: &mut N,
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        mop_field: MopField,
         ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
         assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
@@ -3022,7 +3000,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
             MemoryHolder::allocate_zeroed(ram_config, Default::default());
         let mut trace: Box<TraceChunk> = unsafe { Box::new_zeroed().assume_init() };
 
-        let runner = Self::preprocess_bytecode(instructions, cycles_bound, mop_field(), ram_config);
+        let runner = Self::preprocess_bytecode(instructions, cycles_bound, mop_field, ram_config);
         runner.run(
             &mut context,
             memory.as_mut(),
@@ -3043,6 +3021,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         non_determinism_source: &mut N,
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        mop_field: MopField,
         ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>, Box<TraceChunk>) {
         assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
@@ -3075,8 +3054,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner =
-            Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field, ram_config);
 
         runner.run(
             &mut context,
