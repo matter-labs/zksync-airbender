@@ -62,8 +62,6 @@
 // = \sum_{X''} eq(r1, ...., alpha, 0, X'') f(alpha, 0, X'') + eq(r1, ...., alpha, 1, X'') f(alpha, 1, X'')
 
 use crate::allocation_pool::AllocationPool;
-#[cfg(test)]
-use crate::allocation_pool::GenericAllocationPool;
 use crate::gkr::prover::backend::LeafConversionHandle;
 use crate::gkr::prover::backend::TwiddleSetOps;
 use crate::gkr::prover::gkr_backend::BatchedBaseColumn;
@@ -3653,23 +3651,6 @@ pub(crate) fn update_eq_poly_reference<F: PrimeField, E: FieldExtension<F> + Fie
     }
 }
 
-#[cfg(test)]
-fn evaluate_base_multivariate<F: PrimeField, E: FieldExtension<F> + Field>(
-    evals: &[F],
-    point: &[E],
-    worker: &Worker,
-) -> E {
-    let eq = crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E>(point, worker);
-    assert_eq!(eq.len(), evals.len());
-    let mut result = E::ZERO;
-    for (a, b) in eq.iter().zip(evals.iter()) {
-        let mut t = *a;
-        t.mul_assign_by_base(b);
-        result.add_assign(&t);
-    }
-    result
-}
-
 pub fn evaluate_multivariate<E: Field>(evals: &[E], point: &[E], worker: &Worker) -> E {
     let eq = crate::gkr::sumcheck::eq_poly::make_eq_table_lsb_first::<E>(point, worker);
     assert_eq!(eq.len(), evals.len());
@@ -3887,7 +3868,6 @@ fn fold_coset<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::gkr::prover::WhirSchedule;
     use crate::{
         field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4},
         merkle_trees::blake2s_for_everything_tree::Blake2sU32MerkleTreeWithCap,
@@ -4202,82 +4182,6 @@ mod test {
         }
     }
 
-    // fn make_base_oracle(
-    //     size: usize,
-    //     worker: &Worker,
-    // ) -> ColumnMajorBaseOracleForLDE<F, Blake2sU32MerkleTreeWithCap> {
-    //     let main_domain: Vec<F> = (1..=size).map(|el| {
-    //         F::from_u32_unchecked(el as u32)
-    //     }).collect();
-    //     let twiddles = Twiddles::<F, Global>::new(size, worker);
-    //     let main_domain = Arc::new(main_domain.into_boxed_slice());
-
-    //     let other_domains =
-    //         compute_column_major_lde_from_main_domain(main_domain.clone(), &twiddles, 2);
-    //     let original_values_normal_order = ColumnMajorCosetBoundTracePart {
-    //         column: main_domain,
-    //         offset: F::ONE,
-    //     };
-    //     let source = Some(original_values_normal_order)
-    //         .into_iter()
-    //         .chain(other_domains.into_iter());
-
-    //     let mut result = ColumnMajorBaseOracleForLDE { cosets: vec![] };
-    //     for coset in source {
-    //         let el = ColumnMajorBaseOracleForCoset {
-    //             original_values_normal_order: vec![coset],
-    //             tree: <Blake2sU32MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<F>>::dummy(),
-    //             values_per_leaf: 2,
-    //             trace_len_log2: size.trailing_zeros() as usize,
-    //         };
-    //         result.cosets.push(el);
-    //     }
-
-    //     result
-    // }
-
-    fn make_base_oracle(
-        _size: usize,
-        _worker: &Worker,
-        _offset: usize,
-    ) -> (
-        ColumnMajorBaseOracleForLDE<F, Blake2sU32MerkleTreeWithCap>,
-        Vec<F>,
-    ) {
-        todo!();
-
-        // let coeffs: Vec<F> = (1..=size)
-        //     .map(|el| F::from_u32_with_reduction((el + offset) as u32))
-        //     .collect();
-        // let twiddles = Twiddles::<F, Global>::new(size, worker);
-
-        // let cosets = compute_column_major_lde_from_monomial_form(&coeffs, &twiddles, 2);
-
-        // let mut result = ColumnMajorBaseOracleForLDE { cosets: vec![] };
-        // for (column, offset) in cosets.into_iter() {
-        //     let tree = <Blake2sU32MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<F>>::construct_for_column_major_coset::<F, Global>(
-        //         &[&column[..]],
-        //         2,
-        //         1,
-        //         true,
-        //         false,
-        //         worker
-        //     );
-        //     let el = ColumnMajorBaseOracleForCoset {
-        //         original_values_normal_order: vec![ColumnMajorCosetBoundTracePart {
-        //             column: Arc::new(column),
-        //             offset,
-        //         }],
-        //         tree,
-        //         values_per_leaf: 2,
-        //         trace_len_log2: size.trailing_zeros() as usize,
-        //     };
-        //     result.cosets.push(el);
-        // }
-
-        // (result, coeffs)
-    }
-
     #[test]
     fn test_fold_evaluation_form() {
         let mut rng = rand::rng();
@@ -4546,93 +4450,5 @@ mod test {
             let value = evaluate_multivariate_at_base_for_domain_hypercube(&main_domain, &pows);
             dbg!(value);
         }
-    }
-
-    #[test]
-    fn test_whir() {
-        let worker = Worker::new_with_num_threads(1);
-        let size = 128;
-
-        let mut inputs = vec![];
-        let mut monomial_forms = vec![];
-        for i in 0..3 {
-            let (input, monomial) = make_base_oracle(size, &worker, i * 32);
-            inputs.push(input);
-            monomial_forms.push(monomial);
-        }
-
-        let [mem, wit, setup] = inputs.try_into().unwrap();
-
-        let original_evaluation_point: Vec<_> = (0..size.trailing_zeros())
-            .map(|el| E::from_base(F::from_u32_unchecked(4 << el)))
-            .collect();
-        let twiddles = Twiddles::<F, Global>::new(size, &worker);
-
-        let original_claims: Vec<_> = monomial_forms
-            .iter()
-            .map(|el| {
-                // compute on hypercube
-                let mut t = el.to_vec();
-                bitreverse_enumeration_inplace(&mut t);
-                multivariate_coeffs_into_hypercube_evals(&mut t, size.trailing_zeros());
-                let eval = evaluate_base_multivariate(&t, &original_evaluation_point, &worker);
-
-                vec![eval]
-            })
-            .collect::<Vec<_>>();
-
-        let [a, b, c] = original_claims.try_into().unwrap();
-
-        let whir_schedule = WhirSchedule::from_legacy_arrays(
-            2,
-            1,
-            0,
-            &[1, 2, 3],
-            &[4, 4, 4],
-            &[8, 16],
-            &[10, 10, 10],
-        );
-
-        let setup_commitment = crate::gkr::prover::SetupCommitment::InMemory(setup);
-        let mut gkr_storage = GKRStorage::<F, E>::default();
-        for (key, monomial) in [
-            GKRAddress::BaseLayerMemory(0),
-            GKRAddress::BaseLayerWitness(0),
-            GKRAddress::Setup(0),
-        ]
-        .into_iter()
-        .zip(monomial_forms.iter())
-        {
-            let mut t = monomial.to_vec();
-            bitreverse_enumeration_inplace(&mut t);
-            multivariate_coeffs_into_hypercube_evals(&mut t, size.trailing_zeros());
-            gkr_storage.insert_base_field_at_layer(
-                0,
-                key,
-                crate::gkr::sumcheck::access_and_fold::BaseFieldPoly::new(t.into_boxed_slice()),
-            );
-        }
-        let _proof = whir_fold::<F, E, _, ::transcript::Blake2sTranscript, _, _>(
-            mem,
-            a,
-            wit,
-            b,
-            &setup_commitment,
-            c,
-            gkr_storage,
-            &crate::gkr::prover_config::ProverConfig::whir_only(
-                size.trailing_zeros() as usize,
-                whir_schedule,
-                crate::definitions::SecurityLevel::Sec100,
-            ),
-            original_evaluation_point,
-            &twiddles,
-            ::transcript::Seed::default(),
-            &crate::gkr::prover::backend::NaiveBackend,
-            &crate::gkr::prover::gkr_backend::NaiveGKRBackend,
-            WhirIntermediateOracleMode::Monolithic,
-            &GenericAllocationPool::proxy(),
-            &worker,
-        );
     }
 }
