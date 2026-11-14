@@ -49,9 +49,6 @@ impl BabyBearAvx512WorkStealingBackend {
     pub fn detect() -> Self {
         Self::new(is_x86_feature_detected!("avx512f"))
     }
-    pub fn uses_strided(&self) -> bool {
-        self.strided
-    }
 }
 
 impl Default for BabyBearAvx512WorkStealingBackend {

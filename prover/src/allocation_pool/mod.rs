@@ -99,19 +99,6 @@ pub const PAGE: usize = if cfg!(all(target_arch = "aarch64", target_os = "macos"
 } else {
     4096
 };
-/// Cache line of the target (128 B on Apple M-series, 64 B elsewhere).
-pub const CACHE_LINE: usize = if cfg!(all(target_arch = "aarch64", target_os = "macos")) {
-    128
-} else {
-    64
-};
-/// Transparent huge page of the target where the kernel provides them
-/// (Linux, 2 MB); macOS has none, so its "huge" granule is the page.
-pub const HUGE_PAGE: usize = if cfg!(target_os = "linux") {
-    2 << 20
-} else {
-    PAGE
-};
 
 /// Geometry of a block-padded FFT output layout: blocks of `2^block_log2`
 /// elements with `pad` unused elements between consecutive blocks (so the
