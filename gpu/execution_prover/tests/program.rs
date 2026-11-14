@@ -1227,7 +1227,7 @@ fn run_gpu_recursive_pipeline(
     use crate::upstream::{
         build_unified_stream, compute_end_params, estimate_verifier_cycles_for, load_fsv_exact,
         native_verify_unified_in_mode, native_verify_unrolled_in_mode, unified_switch_cycles,
-        FsvDescriptor, FsvProgram, FsvRecursionChain, SecurityLevel, SoundnessMode,
+        BlakeMode, FsvDescriptor, FsvProgram, FsvRecursionChain, SecurityLevel, SoundnessMode,
     };
 
     let switch_cycles = unified_switch_cycles();
