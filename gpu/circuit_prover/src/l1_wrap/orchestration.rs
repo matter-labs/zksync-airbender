@@ -398,7 +398,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
         let p = phase("l1_wrap.challenges", context)?;
         let mut seed = context.alloc::<u8>(32, AllocationPlacement::BestFit)?;
         memory_set_async(&mut seed, 0, stream)?;
-        let challenge_config = PackedChallengeConfig::new(circuit, config, &operation_mode, true);
+        let challenge_config = PackedChallengeConfig::new(circuit, config, operation_mode, true);
         let challenges = packed_challenges::derive(
             &mut seed,
             &transcript_prefix,
@@ -472,9 +472,9 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
         let gkr = schedule_gkr(
             Arc::clone(programs),
             &base,
-            &setup,
+            setup,
             witness,
-            &top_bits_host,
+            top_bits_host,
             &challenges,
             config,
             batching_pow_bits,

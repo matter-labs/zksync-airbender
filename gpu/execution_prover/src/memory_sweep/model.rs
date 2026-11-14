@@ -356,7 +356,6 @@ pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
             UnrolledNonMemoryCircuitType::ShiftBinary,
         )) => "unrolled_non_memory_shift_binary",
         CircuitType::Unrolled(UnrolledCircuitType::Unified) => "unrolled_unified",
-        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it uses the CompressionFinal profile and presets::compression policy"),
     }
 }
 
@@ -403,7 +402,6 @@ fn circuit_pattern(circuit: CircuitType) -> &'static str {
         CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
             "CircuitType::Unrolled(UnrolledCircuitType::Unified)"
         }
-        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it uses the CompressionFinal profile and presets::compression policy"),
     }
 }
 

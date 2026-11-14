@@ -264,54 +264,52 @@ fn packed_challenges_match_cpu_transcript_small() {
     let top_bits = deterministic_words(2, 0x7071);
     let setup_cap = deterministic_words(64, 0x5e70);
     let merged_cap = deterministic_words(64, 0x3e6d);
-    for (pow_bits, setup_present) in [(20, true)] {
-        let cfg = PackedChallengeConfig {
-            pow_bits,
-            cap_log: 3,
-            top_bits_len: 2,
-            setup_present,
-        };
-        let setup_words: &[u32] = if setup_present { &setup_cap } else { &[] };
-        let words: Vec<u32> = [&prefix[..], &top_bits, setup_words, &merged_cap].concat();
-        let seed =
-            <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(&words);
-        let mut expected = [Proth120::ZERO; PACKED_CHALLENGE_DRAWS];
-        let (expected_seed, expected_nonce) = <Keccak256Transcript as Transcript<
+    let (pow_bits, setup_present) = (20, true);
+    let cfg = PackedChallengeConfig {
+        pow_bits,
+        cap_log: 3,
+        top_bits_len: 2,
+        setup_present,
+    };
+    let setup_words: &[u32] = if setup_present { &setup_cap } else { &[] };
+    let words: Vec<u32> = [&prefix[..], &top_bits, setup_words, &merged_cap].concat();
+    let seed = <Keccak256Transcript as Transcript<Proth120, Proth120>>::commit_initial_u32(&words);
+    let mut expected = [Proth120::ZERO; PACKED_CHALLENGE_DRAWS];
+    let (expected_seed, expected_nonce) = <Keccak256Transcript as Transcript<
             Proth120,
             Proth120,
         >>::draw_random_field_elements_with_pow(
             &seed, pow_bits, &mut expected, &worker
         );
-        let d_prefix = upload(&transcript_prefix_words(&mode, &top_bits), &context);
-        let d_setup_cap = upload(setup_words, &context);
-        let d_merged_cap = upload(&merged_cap, &context);
-        let mut d_seed = upload(&[0u8; 32], &context);
-        let challenges = derive(
-            &mut d_seed,
-            &d_prefix,
-            &d_setup_cap,
-            &d_merged_cap,
-            &cfg,
-            &context,
-        )
-        .unwrap();
-        let nonce = read_back(challenges.nonce(), 0u64, &context);
-        let values = read_back(challenges.challenges(), PR::ZERO, &context);
-        let external = read_back(challenges.external(), PR::ZERO, &context);
-        let lookup = read_back(challenges.lookup(), PR::ZERO, &context);
-        let final_seed = read_back(&d_seed, 0u8, &context);
-        let label = format!("pow_bits={pow_bits}, setup_present={setup_present}");
-        assert_eq!(nonce, [expected_nonce], "nonce, {label}");
-        assert_eq!(values, expected, "challenges, {label}");
-        assert_eq!(final_seed, expected_seed.0, "seed, {label}");
-        let (split_external, split_lookup) = split_challenges(&expected);
-        assert_eq!(
-            split_external,
-            GKRExternalChallenges::<Proth120, Proth120>::from_slice(&expected[..7])
-        );
-        assert_eq!(external, expected[..7], "external, {label}");
-        assert_eq!(lookup, split_lookup, "lookup, {label}");
-    }
+    let d_prefix = upload(&transcript_prefix_words(&mode, &top_bits), &context);
+    let d_setup_cap = upload(setup_words, &context);
+    let d_merged_cap = upload(&merged_cap, &context);
+    let mut d_seed = upload(&[0u8; 32], &context);
+    let challenges = derive(
+        &mut d_seed,
+        &d_prefix,
+        &d_setup_cap,
+        &d_merged_cap,
+        &cfg,
+        &context,
+    )
+    .unwrap();
+    let nonce = read_back(challenges.nonce(), 0u64, &context);
+    let values = read_back(challenges.challenges(), PR::ZERO, &context);
+    let external = read_back(challenges.external(), PR::ZERO, &context);
+    let lookup = read_back(challenges.lookup(), PR::ZERO, &context);
+    let final_seed = read_back(&d_seed, 0u8, &context);
+    let label = format!("pow_bits={pow_bits}, setup_present={setup_present}");
+    assert_eq!(nonce, [expected_nonce], "nonce, {label}");
+    assert_eq!(values, expected, "challenges, {label}");
+    assert_eq!(final_seed, expected_seed.0, "seed, {label}");
+    let (split_external, split_lookup) = split_challenges(&expected);
+    assert_eq!(
+        split_external,
+        GKRExternalChallenges::<Proth120, Proth120>::from_slice(&expected[..7])
+    );
+    assert_eq!(external, expected[..7], "external, {label}");
+    assert_eq!(lookup, split_lookup, "lookup, {label}");
 }
 
 fn cpu_commit(

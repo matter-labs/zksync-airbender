@@ -22,6 +22,7 @@ use crate::setup::PackedSetupSource;
 use crate::upstream::{ProverConfig, PR};
 
 /// Per-proof GKR launch constants, passed by value.
+#[derive(Clone, Copy)]
 pub struct GkrPreparedInputsPr {
     pub base_claim_indices: BaseClaimGatherPr,
 }

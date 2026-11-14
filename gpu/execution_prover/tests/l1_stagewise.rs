@@ -157,7 +157,7 @@ fn l1_wrap_stagewise_pessimistic_conjecture() {
                     &circuit,
                     &geometry,
                     &config,
-                    fixture.operation_mode.clone(),
+                    fixture.operation_mode,
                     inputs,
                     &tail,
                     partial_trees,

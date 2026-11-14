@@ -481,7 +481,7 @@ fn physical_matrix_column(resolved: ResolvedColumn, slot: u8, column: u16) -> us
             )
         });
     assert!(
-        offset % resolved.stride_bytes as usize == 0,
+        offset.is_multiple_of(resolved.stride_bytes as usize),
         "forward source column off stride (window={:?}, column={:?})",
         slot,
         column

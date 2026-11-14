@@ -140,7 +140,7 @@ pub(crate) fn launch_dr_tail_megakernel_pr(
         capacity.global_state_bytes,
         capacity.dynamic_smem_bytes,
         PR_DR_TAIL_BLOCK_THREADS,
-        PrDrTailMegakernelFunction::default(),
+        &PrDrTailMegakernelFunction::default(),
         |state| PrDrTailMegakernelArguments::new(desc, state),
         context,
     )

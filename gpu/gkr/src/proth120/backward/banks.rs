@@ -289,7 +289,7 @@ struct EvaluatedCoefficientBankPr {
 }
 
 impl EvaluatedCoefficientBankPr {
-    fn new(host: CoefficientBankHostPr, offset: usize, symbol: *mut PR) -> Self {
+    fn new(host: &CoefficientBankHostPr, offset: usize, symbol: *mut PR) -> Self {
         assert!(
             host.recipes.len() + host.immediates.len() <= PR_COEFF_BANK_STRIDE,
             "Proth120 evaluated coefficient bank exceeds its constant range"
@@ -354,12 +354,12 @@ impl CoefficientBankPr {
         let symbol = coefficient_bank_device_ptr_pr()?;
         Ok(Self {
             r0: EvaluatedCoefficientBankPr::new(
-                CoefficientBankHostPr::build(programs, layer, top_bits, true),
+                &CoefficientBankHostPr::build(programs, layer, top_bits, true),
                 0,
                 symbol,
             ),
             continuation: EvaluatedCoefficientBankPr::new(
-                CoefficientBankHostPr::build(programs, layer, top_bits, false),
+                &CoefficientBankHostPr::build(programs, layer, top_bits, false),
                 PR_COEFF_BANK_STRIDE,
                 symbol,
             ),
