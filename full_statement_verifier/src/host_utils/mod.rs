@@ -12,7 +12,6 @@ use crate::recursion_chain::{self, RecursionChain};
 use setups::Setups;
 use std::path::Path;
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProgram};
-use verifier_common::prover::definitions::MerkleTreeCap;
 #[cfg(feature = "verifiers")]
 use verifier_common::prover::definitions::{SecurityLevel, SoundnessMode};
 use verifier_common::USE_REDUCED_BLAKE2_ROUNDS;
@@ -58,9 +57,7 @@ pub fn fsv_stream(setups: &Setups, proof: &ProgramProof, descriptor: &FsvDescrip
 }
 
 fn flattened_caps(setups: &Setups) -> impl Iterator<Item = &[u32]> {
-    setups
-        .values()
-        .map(|params| MerkleTreeCap::flatten_single(&params.setup_caps))
+    setups.values().map(|params| params.flattened_setup_caps())
 }
 
 #[cfg(feature = "verifiers")]
@@ -102,6 +99,47 @@ pub fn native_verify_unrolled_in_mode(
         };
         result.map_err(|error| format!("{error:?}"))
     })
+}
+
+/// Native verification of an compression stream (the zero-delegation
+/// compression statement) at a checked boundary: a verifier error, a structural
+/// panic inside the statement (a nonzero delegation count, a truncated
+/// stream), or trailing words after the statement consumed its input are all
+/// reported as `Err`.
+#[cfg(feature = "verifiers")]
+pub fn native_verify_unified_compression_final(stream: Vec<u32>) -> Result<[u32; 16], String> {
+    let joined = std::thread::Builder::new()
+        .name("unified l1 compression verifier".to_string())
+        .stack_size(1 << 27)
+        .spawn(move || {
+            let mut it = stream.into_iter();
+            let output = crate::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_compression_final::<
+                _, verifier_common::errors::DebugErrorCreator, USE_REDUCED_BLAKE2_ROUNDS,
+            >(&mut it)
+                .map_err(|err| format!("unified l1 compression proof failed to verify: {err:?}"))?;
+            let trailing = it.count();
+            if trailing != 0 {
+                return Err(format!(
+                    "unified l1 compression stream carries {trailing} trailing words after the statement"
+                ));
+            }
+            Ok(output)
+        })
+        .expect("spawn verifier thread")
+        .join();
+    match joined {
+        Ok(result) => result,
+        Err(payload) => {
+            let reason = payload
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| payload.downcast_ref::<&str>().copied())
+                .unwrap_or("unknown verifier panic");
+            Err(format!(
+                "unified l1 compression statement rejected the stream: {reason}"
+            ))
+        }
+    }
 }
 
 /// Verify under the caller-selected schedule, returning malformed/invalid proof errors.

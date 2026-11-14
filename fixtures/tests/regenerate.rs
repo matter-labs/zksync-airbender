@@ -49,10 +49,11 @@ fn checks_read_committed_parents_and_compare_only_their_stage() {
         r##"#!/usr/bin/env bash
 set -euo pipefail
 action=$1; shift
-proof= output_dir= output_file= backend= trusted= output=
+proof= output_dir= output_file= backend= trusted= output= target=
 while (($#)); do
   case $1 in
     --proof) proof=$2 ;;
+    --target) target=$2 ;;
     --trusted-params) trusted=$2 ;;
     --output) output=$2 ;;
     --output-dir) output_dir=$2 ;;
@@ -65,13 +66,23 @@ done
 if [[ $action == trusted-params ]]; then printf params >"$output"; exit; fi
 if [[ $action == verify ]]; then
   [[ -f $proof ]]
-  if [[ -n ${FIXTURE_TRUSTED_PARAMS:-} ]]; then [[ -f $trusted ]]; else [[ -z $trusted ]]; fi
+  if [[ $proof == */l1.json.zlib ]]; then
+    [[ -z $trusted ]]
+  elif [[ -n ${FIXTURE_TRUSTED_PARAMS:-} ]]; then
+    [[ -f $trusted ]]
+  else
+    [[ -z $trusted ]]
+  fi
   exit
 fi
 [[ $backend == "${EXPECTED_FIXTURE_BACKEND:-cpu}" ]]
 if [[ $action == continue-proof ]]; then
-  [[ $proof == "$AB_TEST_ARTIFACT_ROOT/fixtures/chains/pessimistic_conjecture/base.json.zlib" ||
-     $proof == "$AB_TEST_ARTIFACT_ROOT/fixtures/chains/pessimistic_conjecture/unrolled.json.zlib" ]]
+  case $target in
+    compression) parent=unified ;;
+    l1) parent=compression ;;
+    *) parent=base; [[ $output_file != unrolled_unified.json.zlib ]] || parent=unrolled ;;
+  esac
+  [[ $proof == "$AB_TEST_ARTIFACT_ROOT/fixtures/chains/pessimistic_conjecture/$parent.json.zlib" ]]
 fi
 mkdir -p "$output_dir"
 printf '%s' "$output_file" >"$output_dir/$output_file"
@@ -86,7 +97,10 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
         &root.join(".github/scripts/soundness_mode_smoke.sh"),
         "#!/bin/sh\ntest -n \"$FIXTURE_CHAIN_ROOT\"\ntest -n \"$SMOKE_OUTPUT_DIR\"\ntest \"$3\" = cpu\n",
     );
-    for chain in proof_fixtures::CHAINS {
+    for chain in proof_fixtures::CHAINS
+        .into_iter()
+        .chain(proof_fixtures::L1_CHAINS)
+    {
         let name = format!("{chain}.json.zlib");
         fs::write(
             root.join("fixtures/chains/pessimistic_conjecture")
@@ -96,7 +110,7 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
         .unwrap();
     }
     for backend in [None, Some("cpu"), Some("gpu")] {
-        for stage in ["base_unified", "unrolled"] {
+        for stage in ["base_unified", "unrolled", "compression", "l1"] {
             let result = run_with_backend(
                 &root,
                 &[
@@ -116,25 +130,48 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
         }
     }
     let trusted_params = root.join("trusted-params");
-    let result = command(
-        &root,
-        &[
-            "--check",
-            "--mode",
-            "pessimistic_conjecture",
-            "--stage",
-            "base_unified",
-        ],
-        None,
-    )
-    .env("FIXTURE_TRUSTED_PARAMS", &trusted_params)
-    .output()
-    .unwrap();
-    assert!(
-        result.status.success(),
-        "{}",
-        String::from_utf8_lossy(&result.stderr)
-    );
+    for stage in ["base_unified", "unrolled", "compression", "l1"] {
+        let result = command(
+            &root,
+            &[
+                "--check",
+                "--mode",
+                "pessimistic_conjecture",
+                "--stage",
+                stage,
+            ],
+            None,
+        )
+        .env("FIXTURE_TRUSTED_PARAMS", &trusted_params)
+        .output()
+        .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+    for stage in ["compression", "l1"] {
+        // L1 stage selection defaults to its only supported soundness mode.
+        for arguments in [vec!["--check", "--stage", stage], vec!["--stage", stage]] {
+            let result = run(&root, &arguments);
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+        }
+        for backend in ["cpu", "gpu"] {
+            let result = run_with_backend(
+                &root,
+                &["--check", "--mode", "ethproofs_soundcalc", "--stage", stage],
+                Some(backend),
+            );
+            assert!(!result.status.success());
+            assert!(String::from_utf8_lossy(&result.stderr)
+                .contains("L1 stages support only pessimistic_conjecture"));
+        }
+    }
     assert!(trusted_params
         .join("pessimistic-conjecture-trusted-params.json")
         .is_file());

@@ -26,6 +26,7 @@ pub fn program_setups(artifacts: &ProgramArtifacts) -> Setups {
                 *family_idx,
                 trace_len,
                 artifact.setup_cap.clone(),
+                artifact.setup_cap_size,
             );
             (*family_idx, params)
         })

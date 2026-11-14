@@ -11,6 +11,80 @@ pub mod whir_schedule;
 pub use example_configs::{BaseColumns, BasePacking, SoundnessMode, WhirInput};
 pub use whir_schedule::{WhirBaseRoundSchedule, WhirInternalRound, WhirSchedule};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ProofProfile {
+    Standard,
+    /// The 2^22 compression (CompressionFinal profile).
+    CompressionFinal,
+    L1Wrap,
+    /// The 2^23 compression at base LDE 4 (Compression profile).
+    Compression,
+}
+
+impl ProofProfile {
+    /// The compression profiles: merged memory+witness commitment, recomputed
+    /// base oracles, the compression memory policy.
+    pub fn is_compression(self) -> bool {
+        matches!(self, Self::CompressionFinal | Self::Compression)
+    }
+
+    /// The named special-config profile this proof profile is selected under.
+    pub fn config_profile(self) -> crate::definitions::ProverConfigProfile {
+        use crate::definitions::ProverConfigProfile;
+        match self {
+            Self::Standard => ProverConfigProfile::Standard,
+            Self::CompressionFinal | Self::Compression => ProverConfigProfile::Compression,
+            Self::L1Wrap => ProverConfigProfile::EvmProductionPacked,
+        }
+    }
+
+    /// The special config of an L1 profile under `soundness_mode`. The L1 profiles exist only under
+    /// [`SoundnessMode::PessimisticConjecture`] (Ethproofs compression/wrap/EVM is deferred product
+    /// scope): another mode fails
+    /// [`ProverConfigProfile::assert_supports`](crate::definitions::ProverConfigProfile::assert_supports).
+    /// `Standard` resolves through the circuit's own config.
+    pub fn prover_config(
+        self,
+        trace_len_log2: usize,
+        soundness_mode: crate::definitions::SoundnessMode,
+    ) -> ProverConfig {
+        self.config_profile().assert_supports(soundness_mode);
+        let config = match self {
+            Self::Standard => {
+                panic!("ProofProfile::Standard resolves through the circuit's own prover_config")
+            }
+            Self::CompressionFinal => {
+                assert_eq!(
+                    trace_len_log2, 22,
+                    "ProofProfile::CompressionFinal requires the 2^22 unified circuit"
+                );
+                example_configs::compression_final_config_for_2_22()
+            }
+            Self::Compression => {
+                assert_eq!(
+                    trace_len_log2, 23,
+                    "ProofProfile::Compression requires the 2^23 unified circuit"
+                );
+                example_configs::compression_config_for_2_23()
+            }
+            Self::L1Wrap => {
+                assert_eq!(
+                    trace_len_log2,
+                    example_configs::l1_wrap::TRACE_LEN_LOG2,
+                    "ProofProfile::L1Wrap requires the 2^21 Proth120 unified circuit"
+                );
+                example_configs::l1_wrap::packed_prover_config()
+            }
+        };
+        assert_eq!(
+            config.security_level,
+            SecurityLevel::Sec100,
+            "the {self:?} config must match the requested security level"
+        );
+        config
+    }
+}
+
 /// One step of a sumcheck schedule: how many variables the step binds and
 /// with which evaluation strategy. The prover binds variables LSB-first
 /// (consistent with monomial ordering and WHIR's RS-codeword folding), so a
@@ -813,9 +887,13 @@ mod test {
             assert_eq!(config.trace_len_log2, log);
             config.validate_for_whir_message_size(log);
         }
-        let feeder = example_configs::l1_feeder_config_for_2_23();
-        assert_eq!(feeder.trace_len_log2, 23);
-        feeder.validate_for_whir_message_size(feeder.trace_len_log2);
+        for config in [
+            example_configs::compression_final_config_for_2_22(),
+            example_configs::compression_config_for_2_23(),
+            example_configs::l1_wrap::packed_prover_config(),
+        ] {
+            config.validate_for_whir_message_size(config.whir_message_size_log2());
+        }
     }
 
     #[test]

@@ -1160,6 +1160,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                         family_idx as u32,
                         trace_len as u32,
                         setup_commitment.get_cap(),
+                        prover_config.cap_size,
                     ),
                 );
             }
@@ -1186,6 +1187,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                 family_idx as u32,
                 trace_len as u32,
                 setup_commitment.get_cap(),
+                prover_config.cap_size,
             ),
         );
 
@@ -1323,6 +1325,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                         family_idx as u32,
                         trace_len as u32,
                         setup_commitment.get_cap(),
+                        prover_config.cap_size,
                     ),
                 );
             }
@@ -1348,6 +1351,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                 family_idx as u32,
                 trace_len as u32,
                 setup_commitment.get_cap(),
+                prover_config.cap_size,
             ),
         );
 

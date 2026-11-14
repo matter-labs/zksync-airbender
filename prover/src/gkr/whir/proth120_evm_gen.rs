@@ -454,6 +454,7 @@ fn run_generation(cfg: &GenConfig, worker: &Worker) {
 /// VARIANT 5 (whir.sol): small test schedule, runs locally; matches the fixture
 /// verified by `WhirRealProofTest`.
 #[test]
+#[ignore = "writes standalone WHIR playground data"]
 fn generate_whir_input_for_evm() {
     let worker = Worker::new_with_num_threads(1);
     let cfg = GenConfig {

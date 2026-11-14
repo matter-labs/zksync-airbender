@@ -89,12 +89,21 @@ fn the_shared_path_agrees_with_the_legacy_cpu_prover() {
         let handle = prover.add_binary_variants(
             binary.clone(),
             text.clone(),
-            &[(ExecutionKind::Unrolled, MachineType::FullUnsigned)],
+            &[(
+                ExecutionKind::Unrolled,
+                MachineType::FullUnsigned,
+                &[execution_prover::ProofProfile::Standard],
+            )],
             Some(CYCLES_BOUND as u32),
         )[0];
         prover.finalize_setup();
-        let result = prover.commit_memory_and_prove(1, &handle, non_determinism());
-        let artifacts = prover.program_artifacts(&handle);
+        let result = prover.commit_memory_and_prove(
+            1,
+            &handle,
+            non_determinism(),
+            execution_prover::ProofProfile::Standard,
+        );
+        let artifacts = prover.program_artifacts(&handle, execution_prover::ProofProfile::Standard);
         program_prover::assemble_program_proof(&artifacts, result)
     };
 

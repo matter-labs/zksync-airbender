@@ -25,7 +25,7 @@ root.
 
 ## 1. What changed
 
-| Quantity | BabyBear 2^23 | Proth120 2^22 |
+| Quantity | BabyBear 2^23 | Proth120 2^21 |
 |---|---|---|
 | Memory columns | 38 → 38 | 38 → 38 |
 | Witness columns | 66 → 58 | 66 → 58 |
@@ -285,7 +285,7 @@ leaves in that slot. Family 3 writes its byte splits as
 
 | Claim | Test | Crate | Notes |
 |---|---|---|---|
-| Widths of §1 | committed layouts; the generated verifiers declare `[38, 58, 10]` columns for the regular circuit and `[96, 10]` for the feeder variant | | regenerated from the circuit, see §6 |
+| Widths of §1 | committed layouts; the generated verifiers declare `[38, 58, 10]` columns for the regular circuit and `[96, 10]` for the compression variants | | regenerated from the circuit, see §6 |
 | Decoder masks obey the facts of §2 | the panic in `define_decoder_subspace`; `decoder::tests::invalid_decoded_mask_panics`; the existing decoder tests decode a representative of each accepted opcode through the panic (`decoder_family_dispatch_bits_exclusive` and the per-family tests) | `cs` | fail-closed at table build |
 | Each gate matches its flag semantics on every admitted row, and the tie holds there | `circuit::test::gates_match_their_flag_semantics_on_admitted_rows` | `cs` | the 20 masks that pass `unified_decoder_mask_violation` plus padding, both fields |
 | Slots 17, 18, 7 each carry one bare RC-16 lookup; no u8 or bool writer (§4) | `circuit::test::aliased_scratch_slots_are_range_checked_and_written_at_least_u16` | `cs` | committed layouts and SSA graphs, both fields |
@@ -295,14 +295,13 @@ leaves in that slot. Family 3 writes its byte splits as
 | Committed CUDA witness source and forward schedule follow the new layout | `gpu_witness_eval_generator` `tests::{committed_witness_cuh_is_current, every_committed_cuh_is_listed}`; `gpu_gkr_compiler` `every_retained_forward_artifact_validates_compiles_and_encodes` (`tests/forward_corpus.rs`) | GPU crates | currentness guards, no GPU needed; they do not establish GPU execution parity |
 | BabyBear proof generation and native verification | `fixtures/regenerate.sh --stage circuits`; `verifier::native::unified_reduced_machine_{pessimistic_conjecture,ethproofs_soundcalc}` | `prover`, `verifier` | The canonical producer regenerates all 28 proofs, including independent compression and unified proofs from the shared deterministic `blake2_with_compression` workload. Native tests verify both committed unified proofs. |
 | Full-statement verification of the CPU chain artifacts | `full_statement_verifier::unified::{unified_recursion_layer_accepts_valid_proof, unified_recursion_layer_rejects_corrupted_stream, rejects_corrupted_setup_cap, rejects_tampered_final_register_state, rejects_num_it_circuits_zero, rejects_num_it_circuits_exceeds_num_circuits, rejects_duplicated_multi_instance, unified_recursion_layer_transpiler_accepts_valid_proof}` | `full_statement_verifier` | Seven native tests cover both unified chain artifacts in both soundness modes. The ignored transpiler test runs their registered Compression recursion guests. |
-| Proth120 2^22 packed proof and calldata consistency | `prover::tests::gkr::large_field::gkr_unified_packed_commitment_basic_fibonacci`; `verifier_evm::flatten_roundtrip::flatten_and_seed_match_reference` | `prover`, `verifier_evm` | The ignored producer proves `circuit_tester` despite its name. This smoke fixture is not full-chain L1 parity coverage. |
-| Merged EVM verifier acceptance and rejection | `GkrWhirMergedTest::{test_merged_single_tx, test_production_verifier_rejects_other_program, test_noncanonical_dim_reduce_lane_rejected, test_zero_registry_rejected, test_codeless_registry_rejected, test_refusing_registry_fails_verification}` | `verifier_evm` Foundry suite | `generated_contracts/merged/test/GkrWhirMerged.t.sol`. The fixture contract binds the saved proof's program; the production contract retains the feeder binding. |
+| Proth120 2^21 wrap proof and calldata consistency | CLI producers in `fixtures/README.md`; EVM contract/calldata producers and Foundry checks | `prover_pipeline`, `verifier_evm` | The CLI produces the seed, terminal compression and L1 artifacts; EVM producers read `.l1` from `l1.json`. Follow the fixture README for the commands and raw byte comparison. |
+| F1 EVM verifier acceptance and rejection | `MergedTest::{test_merged_single_tx, test_f1_rejects_non_canonical_lane, test_registry_constructor_rejections, test_refusing_registry_fails_verification, test_f1_rejects_wrong_final_pc, test_f1_rejects_repinned_wrong_setup_data}` | `verifier_evm` Foundry suite | `generated_contracts/l1_wrap/merged_f1/test/Merged.t.sol`. The verifier checks the wrap proof and binds its statement to the registry; malformed streams and changed setup data are rejected. |
 
 For integration tests, `crate::target::test` names the crate, Cargo test target and test.
-The regenerated verifier binaries were reproduced using the pinned Docker build in
-[`tools/reproduce`](../tools/reproduce/README.md): all 57 tracked artifacts matched
-byte-for-byte. Nine artifacts changed relative to the build before the column cuts: the three unified FSV
-variants, each with `.bin`, `.elf` and `.text` outputs.
+Rebuild the verifier guests with the pinned native producer in
+[`tools/reproduce`](../tools/reproduce/README.md). It emits the `.bin`, `.elf` and
+`.text` outputs consumed by the setup builders and verifier loaders.
 
 Coverage limits:
 
@@ -348,7 +347,7 @@ cargo test -p witness_eval_generator --release --lib -- --exact derive_from_ssa:
 cargo test -p unified_reduced_machine --release --lib test::generate -- --exact
 cargo run --release -p gpu_witness_eval_generator --bin generate -- cs/compiled_circuits/unified_reduced_machine_layout_gkr.json cs/compiled_circuits/unified_reduced_machine_ssa_gkr.json circuit_defs/unrolled_circuits/unified_reduced_machine/generated/witness_generation_fn.cuh
 cargo run --release -p gpu_gkr_compiler --features search --bin gkr-forward-artifact -- --if-stale --circuit unified_reduced_machine --layout cs/compiled_circuits/unified_reduced_machine_layout_gkr.json --output cs/compiled_circuits/unified_reduced_machine_schedule_b4_gkr.json --seed 42 --cache-buckets 4 --population 64 --evaluations 1024
-cargo test -p verifier_generator --no-default-features --test generate_verifiers -- --exact unified_reduced_machine unified_reduced_machine_l1_feeder --test-threads=1
+cargo test -p verifier_generator --no-default-features --test generate_verifiers -- --exact unified_reduced_machine unified_reduced_machine_compression_final --test-threads=1
 # the gate, slot, decoder and forgery checks
 cargo test -p cs --release --lib unified_reduced_machine::circuit::test::gates_match_their_flag_semantics_on_admitted_rows
 cargo test -p cs --release --lib unified_reduced_machine::circuit::test::aliased_scratch_slots_are_range_checked_and_written_at_least_u16
@@ -360,4 +359,4 @@ cargo test -p prover --release --lib unified_generated_witness
 
 The committed layouts must show `memory_layout.total_width = 38` and
 `witness_layout.total_width = 58`; the generated verifiers declare `[38, 58, 10]` columns for
-the regular circuit and `[96, 10]` for the feeder variant.
+the regular circuit and `[96, 10]` for the compression variants.

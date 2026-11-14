@@ -106,7 +106,7 @@ impl SoundnessMode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ProverConfigProfile {
     Standard,
-    L1Feeder,
+    Compression,
     EvmProductionPacked,
 }
 

@@ -203,7 +203,7 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     // 2. Load the unified reduced-machine circuit.
     let unified_circuit: GKRCircuitArtifact<Proth120> = {
         let src = std::fs::File::open(
-            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p22.json",
         )
         .expect("unified circuit layout");
         serde_json::from_reader(src).expect("deserialize unified circuit")
@@ -538,7 +538,7 @@ fn validate_packed_transcript_recipe() {
 
     let unified_circuit: GKRCircuitArtifact<Proth120> = {
         let src = std::fs::File::open(
-            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p22.json",
         )
         .expect("unified circuit layout");
         serde_json::from_reader(src).expect("deserialize unified circuit")
@@ -657,7 +657,7 @@ fn capture_gkr_dim_reduce_reference() {
     let prover_config = evm_production_packed_prover_config(SecurityLevel::Sec100);
     let unified_circuit: GKRCircuitArtifact<Proth120> = {
         let src = std::fs::File::open(
-            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p22.json",
         )
         .unwrap();
         serde_json::from_reader(src).unwrap()
@@ -1163,7 +1163,7 @@ fn verify_dim_reduce_layers() {
     let prover_config = evm_production_packed_prover_config(SecurityLevel::Sec100);
     let unified_circuit: GKRCircuitArtifact<Proth120> = serde_json::from_reader(
         std::fs::File::open(
-            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p22.json",
         )
         .unwrap(),
     )
@@ -2251,7 +2251,7 @@ fn inspect_packed_proof_structure() {
 fn inspect_circuit_layer_relations() {
     let unified_circuit: GKRCircuitArtifact<Proth120> = serde_json::from_reader(
         std::fs::File::open(
-            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p22.json",
         )
         .unwrap(),
     )

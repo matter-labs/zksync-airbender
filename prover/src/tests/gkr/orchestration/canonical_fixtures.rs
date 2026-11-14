@@ -7,7 +7,7 @@
 
 use super::common::{run_vm_and_capture, ProgramConfig, VmRunOutput};
 use crate::definitions::{FinalRegisterValue, SoundnessMode};
-use crate::gkr::prover_config::ProverConfig;
+use crate::gkr::prover_config::{ProofProfile, ProverConfig};
 use crate::gkr::witness_gen::family_circuits::build_unified_table_driver;
 use common_constants::circuit_families::*;
 use common_constants::keccak_f1600::*;
@@ -45,7 +45,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use worker::Worker;
 
-/// Exactly one ordinary proof per entry and soundness mode. G-function is not
+/// Exactly one Standard proof per entry and soundness mode. G-function is not
 /// part of this set; legacy special5 remains required by the committed OS guest.
 pub const CANONICAL_CIRCUITS: [CanonicalCircuit; 14] = [
     CanonicalCircuit::AddSubLuiAuipcMop,
@@ -64,6 +64,19 @@ pub const CANONICAL_CIRCUITS: [CanonicalCircuit; 14] = [
     CanonicalCircuit::KeccakChi5,
 ];
 
+pub const PESSIMISTIC_CANONICAL_CIRCUITS: [CanonicalCircuit; 2] = [
+    CanonicalCircuit::Compression,
+    CanonicalCircuit::CompressionFinal,
+];
+
+pub fn canonical_circuits(mode: SoundnessMode) -> impl Iterator<Item = CanonicalCircuit> {
+    CANONICAL_CIRCUITS.into_iter().chain(
+        PESSIMISTIC_CANONICAL_CIRCUITS
+            .into_iter()
+            .filter(move |_| mode == SoundnessMode::PessimisticConjecture),
+    )
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CanonicalCircuit {
     AddSubLuiAuipcMop,
@@ -74,6 +87,8 @@ pub enum CanonicalCircuit {
     MemSubwordOnly,
     InitsAndTeardowns,
     UnifiedReducedMachine,
+    Compression,
+    CompressionFinal,
     BigintWithExtendedControl,
     Blake2WithExtendedControl,
     KeccakSpecial5,
@@ -93,6 +108,8 @@ impl CanonicalCircuit {
             Self::MemSubwordOnly => "mem_subword_only",
             Self::InitsAndTeardowns => "inits_and_teardowns",
             Self::UnifiedReducedMachine => "unified_reduced_machine",
+            Self::Compression => "compression",
+            Self::CompressionFinal => "compression_final",
             Self::BigintWithExtendedControl => "bigint_with_extended_control",
             Self::Blake2WithExtendedControl => "blake2_with_extended_control",
             Self::KeccakSpecial5 => "keccak_special5",
@@ -111,7 +128,10 @@ impl CanonicalCircuit {
             Self::MemWordOnly => "unrolled_circuits/load_store_word_only",
             Self::MemSubwordOnly => "unrolled_circuits/load_store_subword_only",
             Self::InitsAndTeardowns => "unrolled_circuits/inits_and_teardowns",
-            Self::UnifiedReducedMachine => "unrolled_circuits/unified_reduced_machine",
+            Self::UnifiedReducedMachine | Self::Compression => {
+                "unrolled_circuits/unified_reduced_machine"
+            }
+            Self::CompressionFinal => "unrolled_circuits/unified_reduced_machine_2_22",
             Self::BigintWithExtendedControl => "bigint_with_control",
             Self::Blake2WithExtendedControl => "blake2_with_compression",
             Self::KeccakSpecial5 => "keccak_special5",
@@ -126,9 +146,10 @@ impl CanonicalCircuit {
             Self::AddSubLuiAuipcMop | Self::ShiftBinop => CanonicalWorkload::MopSmoke,
             Self::UnsignedMulDiv => CanonicalWorkload::HashedFibonacciCompression,
             Self::BigintWithExtendedControl => CanonicalWorkload::Bigint,
-            Self::UnifiedReducedMachine | Self::Blake2WithExtendedControl => {
-                CanonicalWorkload::CompressionSmoke
-            }
+            Self::UnifiedReducedMachine
+            | Self::Compression
+            | Self::CompressionFinal
+            | Self::Blake2WithExtendedControl => CanonicalWorkload::CompressionSmoke,
             Self::KeccakColumnParity | Self::KeccakThetaRho | Self::KeccakChi5 => {
                 CanonicalWorkload::Keccak
             }
@@ -148,7 +169,9 @@ impl CanonicalCircuit {
             Self::UnsignedMulDiv => Some(MUL_DIV_CIRCUIT_FAMILY_IDX),
             Self::MemWordOnly => Some(LOAD_STORE_WORD_ONLY_CIRCUIT_FAMILY_IDX),
             Self::MemSubwordOnly => Some(LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX),
-            Self::UnifiedReducedMachine => Some(REDUCED_MACHINE_CIRCUIT_FAMILY_IDX),
+            Self::UnifiedReducedMachine | Self::Compression | Self::CompressionFinal => {
+                Some(REDUCED_MACHINE_CIRCUIT_FAMILY_IDX)
+            }
             _ => None,
         }
     }
@@ -165,6 +188,14 @@ impl CanonicalCircuit {
     }
 
     pub fn prover_config(self, root: &Path, mode: SoundnessMode) -> ProverConfig {
+        let profile = match self {
+            Self::Compression => Some((ProofProfile::Compression, 23)),
+            Self::CompressionFinal => Some((ProofProfile::CompressionFinal, 22)),
+            _ => None,
+        };
+        if let Some((profile, trace_len_log2)) = profile {
+            return profile.prover_config(trace_len_log2, mode);
+        }
         read_json(&self.generated_path(
             root,
             &format!("prover_config_sec_100_{}.json", mode.file_suffix()),
@@ -409,7 +440,9 @@ fn finish_capture<C: Counters + Default>(
             LOAD_STORE_SUBWORD_ONLY_CIRCUIT_FAMILY_IDX,
             C,
         >(&vm)),
-        CanonicalCircuit::UnifiedReducedMachine => {
+        CanonicalCircuit::UnifiedReducedMachine
+        | CanonicalCircuit::Compression
+        | CanonicalCircuit::CompressionFinal => {
             let mut rows = vec![
                 UnifiedOpcodeTracingDataWithTimestamp::default();
                 vm.counters
@@ -491,7 +524,10 @@ fn finish_capture<C: Counters + Default>(
 
     let inits_and_teardowns = if matches!(
         circuit,
-        CanonicalCircuit::InitsAndTeardowns | CanonicalCircuit::UnifiedReducedMachine
+        CanonicalCircuit::InitsAndTeardowns
+            | CanonicalCircuit::UnifiedReducedMachine
+            | CanonicalCircuit::Compression
+            | CanonicalCircuit::CompressionFinal
     ) {
         let touched: Vec<_> = vm
             .shuffle_ram_touched_addresses
@@ -631,7 +667,12 @@ fn decoder_table(
     let Some(family) = circuit.family_index() else {
         return Vec::new();
     };
-    if circuit == CanonicalCircuit::UnifiedReducedMachine {
+    if matches!(
+        circuit,
+        CanonicalCircuit::UnifiedReducedMachine
+            | CanonicalCircuit::Compression
+            | CanonicalCircuit::CompressionFinal
+    ) {
         let decoders: Vec<Box<dyn OpcodeFamilyDecoder>> =
             vec![Box::new(UnifiedReducedMachineDecoder)];
         process_binary_into_separate_tables_ext::<BF, ReducedMachineDecoderConfig, true, Global>(
@@ -673,7 +714,7 @@ fn table_driver(circuit: CanonicalCircuit, binary: &[u32]) -> TableDriver<BF> {
                 tables.add_table_with_content(kind, table);
             }
         }
-        CanonicalCircuit::UnifiedReducedMachine => return build_unified_table_driver(binary),
+        CanonicalCircuit::UnifiedReducedMachine | CanonicalCircuit::Compression | CanonicalCircuit::CompressionFinal => return build_unified_table_driver(binary),
         CanonicalCircuit::BigintWithExtendedControl => delegation::bigint_with_control::bigint_with_extended_control_delegation_circuit_table_driver_fn(&mut tables),
         CanonicalCircuit::Blake2WithExtendedControl => delegation::blake2_round_with_extended_control::blake2_with_extended_control_table_driver_fn(&mut tables),
         CanonicalCircuit::KeccakSpecial5 => delegation::keccak_special5::keccak_special5_delegation_circuit_table_driver_fn(&mut tables),

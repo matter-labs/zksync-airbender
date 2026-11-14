@@ -4,8 +4,8 @@
 //! prover derives while emitting proof calldata, plus the `(publicInput, auxInput,
 //! setupCommitment)` tuple the on-chain verifier reports to its registry. Nothing here reads
 //! a fixture; the bytes are computed purely from the circuit artifact, the proof, and the aux
-//! commitment-mode data. The logic mirrors the reference simulation in
-//! `prover/src/tests/gkr/large_field.rs::verify_dim_reduce_layers`.
+//! operation mode. The F1 replay checks the reconstructed batching challenge
+//! against the first WHIR sumcheck claim.
 
 use field::Proth120;
 use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;
@@ -95,7 +95,6 @@ impl VerifiedMark {
 
 /// Compute the registry mark for `proof` + `aux` (see [`VerifiedMark`]).
 pub fn verified_mark(proof: &Proof, aux: &OperationMode) -> VerifiedMark {
-    use sha3::Digest;
     let OperationMode::SingleChunk {
         register_final_state,
         ..
@@ -111,15 +110,20 @@ pub fn verified_mark(proof: &Proof, aux: &OperationMode) -> VerifiedMark {
         }
         w
     };
-    let mut cap_bytes = Vec::new();
-    for digest in proof.whir_proof.setup_commitment.commitment.cap.cap.iter() {
-        for word in digest.iter() {
-            cap_bytes.extend_from_slice(&word.to_be_bytes());
-        }
-    }
     VerifiedMark {
         public_input: regs(10),
         aux_input: regs(18),
-        setup_commitment: sha3::Keccak256::digest(&cap_bytes).into(),
+        setup_commitment: setup_commitment(&proof.whir_proof.setup_commitment.commitment.cap.cap),
     }
+}
+
+/// The registry's `setupCommitment`: keccak256 of the setup cap digests serialized as BE u32
+/// words. The verifier pins the setup cap, so this is a deployment constant.
+pub(crate) fn setup_commitment(cap: &[[u32; 8]]) -> [u8; 32] {
+    use sha3::Digest;
+    let cap_bytes: Vec<u8> = cap
+        .iter()
+        .flat_map(|digest| digest.iter().flat_map(|word| word.to_be_bytes()))
+        .collect();
+    sha3::Keccak256::digest(&cap_bytes).into()
 }

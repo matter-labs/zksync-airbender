@@ -4,6 +4,23 @@ set -e
 
 cd "$(dirname "$0")"
 
+usage() {
+    cat <<'EOF'
+Usage: ./recreate_verifiers.sh [--help]
+
+Regenerate circuit layouts, witness evaluators and Rust verifiers.
+For L1 proof references, setup-frontier export and EVM checks, follow
+fixtures/README.md.
+EOF
+}
+
+for option in "$@"; do
+    case "$option" in
+        --help|-h) usage; exit 0 ;;
+        *) echo "unknown option: $option" >&2; usage >&2; exit 1 ;;
+    esac
+done
+
 # Keep compiler layouts and SSA in sync with the production artifacts.
 RUST_MIN_STACK=100000000 cargo test -p cs --lib -- \
     _into_gkr _into_no_caches_gkr _witness_graph
@@ -29,6 +46,7 @@ unrolled_circuit_names=(
     "mul_div_unsigned"
     "shift_binary"
     "unified_reduced_machine"
+    "unified_reduced_machine_2_22"
 )
 
 for CIRCUIT_NAME in "${circuit_names[@]}"; do
@@ -42,6 +60,9 @@ for CIRCUIT_NAME in "${unrolled_circuit_names[@]}"; do
 
     (cd circuit_defs/unrolled_circuits/${CIRCUIT_NAME} && RUST_MIN_STACK=100000000 cargo test generate)
 done
+
+(RUST_MIN_STACK=100000000 cargo test -p unified_reduced_machine_2_22 --profile cli --lib \
+    test::witness_eval_fn_matches_sibling -- --exact)
 
 (cd circuit_defs/setups && RUST_MIN_STACK=100000000 cargo test --release generate_delegation_circuits_artifacts)
 

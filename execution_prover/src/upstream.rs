@@ -20,6 +20,7 @@ pub(crate) use field::baby_bear::ext4::BabyBearExt4 as E4;
 pub(crate) use prover::definitions::USE_REDUCED_BLAKE2_ROUNDS;
 pub(crate) use prover::definitions::{FinalRegisterValue, GKRExternalChallenges};
 pub(crate) use prover::gkr::prover::GKRProof;
+pub use prover::gkr::prover::{CommitmentMode, OperationMode};
 pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLength};
 pub(crate) use prover::transcript::Seed;
 pub type Blake2sTranscript = prover::transcript::Blake2sTranscript<{ USE_REDUCED_BLAKE2_ROUNDS }>;
@@ -39,6 +40,7 @@ pub(crate) use setups::unrolled_circuits::{
     add_sub_lui_auipc_mop_circuit_setup, inits_and_teardowns_circuit_setup,
     jump_branch_slt_circuit_setup, load_store_subword_only_circuit_setup,
     load_store_word_only_circuit_setup, mul_div_unsigned_circuit_setup, shift_binary_circuit_setup,
+    unified_reduced_machine_2_22_circuit_setup_from_decoder,
     unified_reduced_machine_circuit_setup_from_decoder,
 };
-pub(crate) use setups::{pad_bytecode_for_proving, CircuitSetup};
+pub(crate) use setups::{pad_bytecode_for_proving_with_rom, CircuitSetup};

@@ -228,6 +228,7 @@ pub fn verify_initial_whir_round<I: NonDeterminismSource<BabyBearField>, E: Erro
             let mut acc0 = BabyBearExt4::ZERO;
             let mut acc1 = BabyBearExt4::ZERO;
             if INITIAL_MERKLE_MULTIPROOF {
+                ::verifier_common::record_merkle_multiproof_query!(0);
                 process_oracle_query_multiproof::<I, E, WHIR_HASH_BUF_SIZE, 60usize, 20usize>(
                     &mut ts.hasher,
                     hash_buf,
@@ -527,6 +528,7 @@ pub fn verify_internal_whir_round<I: NonDeterminismSource<BabyBearField>, E: Err
             let init_buf = hash_buf.assume_init_prefix(block_end);
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, leaf_ext_words);
             let merkle_ok = if (INTERNAL_MERKLE_MULTIPROOF_MASK >> ir) & 1 == 1 {
+                ::verifier_common::record_merkle_multiproof_query!(ir + 1);
                 verify_merkle_multiproof_leaf::<I, MAX_INTERNAL_ORACLE_DEPTH>(
                     &mut ts.hasher,
                     &mut multiproof_stack,
@@ -707,6 +709,7 @@ pub fn verify_final_whir_round<I: NonDeterminismSource<BabyBearField>, E: ErrorC
             let init_buf = hash_buf.assume_init_prefix(block_end);
             hash_leaf_data_into_state(&mut ts.hasher, init_buf, FINAL_LEAF_EXT_WORDS);
             let merkle_ok = if FINAL_MERKLE_MULTIPROOF {
+                ::verifier_common::record_merkle_multiproof_query!(5usize);
                 verify_merkle_multiproof_leaf::<I, FINAL_ORACLE_DEPTH>(
                     &mut ts.hasher,
                     &mut multiproof_stack,

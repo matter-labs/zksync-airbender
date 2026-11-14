@@ -8,19 +8,21 @@
 //! by its `__TEMPLATE_*` NAME in the Solidity/Yul and gets its literal value from this file
 //! (inline assembly can only consume literal constants, so the literal lives in the
 //! declaration alone). The few genuinely non-circuit deployment values (PoW difficulties, the
-//! program's terminal PC, the inits/teardowns top bits) are parameters of [`generate_verifier`].
+//! program's terminal PC, the inits/teardowns top bits) are parameters of [`generate_f1_verifier`].
 //!
 //! The WHIR *proving-config* (fold/query/PoW schedule, base rate, merkle cap) is not encoded in
 //! the circuit artifact; it is supplied by the caller as the same `ProverConfig` the prover used,
-//! and (with `pack_log2`) drives both halves of the merged verifier so they stay consistent — see
+//! including its packing factor. This config drives both halves of the merged verifier — see
 //! [`WhirGenConfig`].
 
 use super::whir::WhirGenConfig;
-use super::{emit_circuit_yul_with_stats, CircuitYulStats, Lit};
+use super::{emit_circuit_yul_with_stats, f1, CircuitYulStats, F1Contracts, Lit};
+use crate::encoding::{FormatParams, Geometry};
 use cs::definitions::{GKRAddress, OutputType};
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
 use prover::gkr::prover_config::{pow_bits, ProverConfig};
+use prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTES as DIGEST_BYTES;
 use std::collections::BTreeSet;
 
 const GKR_TEMPLATE: &str = include_str!("../templates/gkr.sol");
@@ -57,9 +59,11 @@ fn gkr_circuit_layer_calls(circuit: &GKRCircuitArtifact<Proth120>) -> String {
     (0..n)
         .rev()
         .map(|i| {
-            format!(
-                "            ptr, claim,\n            alpha := sumcheck_circuit_layer{i}(ptr, claim, alpha)\n"
-            )
+            if i == 0 {
+                "            ptr := sumcheck_circuit_layer0(ptr, alpha)\n".to_string()
+            } else {
+                format!("            ptr, alpha := sumcheck_circuit_layer{i}(ptr, alpha)\n")
+            }
         })
         .collect()
 }
@@ -84,9 +88,11 @@ fn boundary_si_yul(circuit: &GKRCircuitArtifact<Proth120>, num_outputs: usize) -
         "gkr_dr_final expects {num_outputs} GKR output LSB lines, got {}",
         offsets.len()
     );
+    // gkr_dr_final fills SI with the identity first: emit only the entries that differ
     offsets
         .iter()
         .enumerate()
+        .filter(|&(i, off)| i != *off)
         .map(|(i, off)| format!("                mstore(add(SI, {}), {off})\n", i * 32))
         .collect()
 }
@@ -193,6 +199,7 @@ struct Derived {
     num_memwit: usize,
     num_setup: usize,
     merged_mw: usize,
+    setup_merged: usize,
     num_teardown_sets: usize,
     num_outputs: usize,
 }
@@ -223,6 +230,7 @@ impl Derived {
             num_memwit,
             num_setup: circuit.generic_lookup_tables_width,
             merged_mw: num_memwit.div_ceil(1 << pack_log2),
+            setup_merged: circuit.generic_lookup_tables_width.div_ceil(1 << pack_log2),
             num_teardown_sets: circuit.memory_layout.teardown_sets.len(),
             num_outputs,
         }
@@ -265,27 +273,110 @@ fn words_for(bytes: usize) -> Lit {
     Lit::words((bytes as u128).div_ceil(32))
 }
 
-/// Generate the merged `GkrWhirVerifier` Solidity source for `circuit`: GKR and WHIR verified
-/// in ONE transaction, the GKR→WHIR handoff state passed in memory, the verified statement
-/// reported to the constructor-pinned registry.
-///
-/// The circuit *layout* comes from the artifact; the WHIR *proving config* (fold/query/PoW
-/// schedule, base rate, merkle cap) comes from `prover_config`, and the base-layer packing factor
-/// from `pack_log2` (the prover's `ProverConfig::pack_log2`). Deriving both halves from the same config is
-/// what guarantees GKR↔WHIR consistency. The remaining parameters are deployment properties of
-/// the *program* (never of a proof): `external_pow_bits` is the external-challenge PoW
-/// difficulty (not part of the WHIR schedule; the WHIR batching PoW is derived from the
-/// config + the circuit like the prover does), `final_pc` the program's
-/// terminal PC, and `inits_teardowns_top_bits` the RAM-set base chunk index of every
-/// inits/teardowns set the circuit has (one per `memory_layout.teardown_sets` entry, each
-/// fitting a byte) — the prover's preimage must carry exactly these values.
-pub fn generate_verifier(
+/// The `SetupFrontier` data contract: its runtime code is `STOP ‖ data`, `data` = the setup
+/// frontier at `level` ‖ the pinned setup cap image ‖ the GKR term table.
+fn setup_frontier_sol(data: &[u8], level: usize) -> String {
+    let frontier = format!(
+        "the L1 wrap setup tree's {} nodes at level {level} (physical order), ",
+        1usize << level
+    );
+    format!(
+        "// SPDX-License-Identifier: UNLICENSED
+pragma solidity =0.8.36;
+
+/// The F1 verifier's setup data after a STOP byte: {frontier}the pinned setup cap and the GKR
+/// term table; the constructor and each verification check its code hash before data reads.
+contract SetupFrontier {{
+    constructor() {{
+        bytes memory code = hex\"00{hex}\";
+        assembly {{
+            return(add(code, 32), mload(code))
+        }}
+    }}
+}}
+",
+        hex = data.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+    )
+}
+
+/// The GKR decoder and setup frontier (nodes, level and skipped levels).
+struct F1Render {
+    decoder: f1::GkrDecoder,
+    frontier: (Vec<u8>, usize, usize),
+    setup_commitment: [u8; 32],
+}
+
+/// The merged F1 verifier: every proof byte is read by the F1 decoders, the final PC
+/// and `setup_cap` are deployment constants. The setup cap and the GKR term table live in the
+/// `SetupFrontier` data contract, supplied to the verifier constructor. The nodes at
+/// `params.setup_frontier_level` (physical order) are stored there before the cap and table.
+#[allow(clippy::too_many_arguments)]
+pub fn generate_f1_verifier(
     circuit: &GKRCircuitArtifact<Proth120>,
     prover_config: &ProverConfig,
+    params: &FormatParams,
     external_pow_bits: u32,
     final_pc: u32,
     inits_teardowns_top_bits: &[u32],
-) -> String {
+    setup_cap: &[[u32; 8]],
+    setup_frontier: &[[u32; 8]],
+) -> F1Contracts {
+    let params = &Geometry::from_config(prover_config, params);
+    assert_eq!(setup_cap.len(), params.cap(), "setup cap size");
+    let frontier = {
+        let nodes = setup_frontier;
+        assert_eq!(
+            nodes.len(),
+            1 << params.setup_frontier_level,
+            "setup frontier size"
+        );
+        assert_eq!(
+            crate::encoding::merkle_reduce(nodes, params.setup_frontier_skip()),
+            setup_cap,
+            "the setup frontier does not reduce to the setup cap"
+        );
+        nodes
+            .iter()
+            .flat_map(crate::encoding::digest_wire)
+            .collect::<Vec<u8>>()
+    };
+    let decoder = f1::gkr_decoder(
+        circuit,
+        params,
+        final_pc,
+        setup_cap,
+        inits_teardowns_top_bits,
+    );
+    let f1_render = F1Render {
+        decoder,
+        frontier: (
+            frontier,
+            params.setup_frontier_level,
+            params.setup_frontier_skip(),
+        ),
+        setup_commitment: crate::seed::setup_commitment(setup_cap),
+    };
+    let (verifier_sol, data) = render(
+        circuit,
+        prover_config,
+        external_pow_bits,
+        inits_teardowns_top_bits,
+        &f1_render,
+    );
+    let level = params.setup_frontier_level;
+    F1Contracts {
+        verifier_sol,
+        setup_frontier_sol: setup_frontier_sol(&data, level),
+    }
+}
+
+fn render(
+    circuit: &GKRCircuitArtifact<Proth120>,
+    prover_config: &ProverConfig,
+    external_pow_bits: u32,
+    inits_teardowns_top_bits: &[u32],
+    f1: &F1Render,
+) -> (String, Vec<u8>) {
     // Every proving-geometry parameter comes from the prover config: the packing
     // factor, the message size and the WHIR batching PoW difficulty (which the
     // prover derives from the config + the circuit exactly like this).
@@ -295,19 +386,21 @@ pub fn generate_verifier(
         prover_config.merged_memory_and_witness(),
         "the EVM verifier serves the single merged memory+witness commitment"
     );
+    // The schedule owns the base rate and leaf width; the config accessors
+    // read that same geometry, so no independent consistency pins are needed.
     let d = Derived::from(circuit, pack_log2);
     assert_eq!(
         prover_config.trace_len_log2, d.rounds,
         "prover config trace_len_log2 {} != circuit trace log2 {}",
         prover_config.trace_len_log2, d.rounds
     );
-    let whir_batch_pow_bits = pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
-        prover_config.security_level.security_bits(),
-        prover_config.whir_message_size_log2(),
-        prover_config.whir_schedule.base_lde_factor_log2(),
-        // the PHYSICALLY committed (packed, merged mem+wit) column count
-        pow_bits::committed_base_oracle_columns(circuit, pack_log2, true),
-    );
+    let whir_batch_pow_bits = prover_config
+        .base_round()
+        .batching_pow_bits::<Proth120, Proth120>(
+            prover_config.security_level.security_bits(),
+            prover_config.whir_message_size_log2(),
+            pow_bits::committed_base_oracle_columns(circuit, pack_log2, true),
+        );
     // WHIR config derived from the same source the prover used, plus the artifact's widths.
     let wc = WhirGenConfig::derive(prover_config, d.num_memwit, d.num_setup);
     // GKR↔WHIR consistency: the shared parameters must agree between the two halves.
@@ -317,11 +410,9 @@ pub fn generate_verifier(
         wc.merged_mw, d.merged_mw
     );
     assert_eq!(
-        wc.setup_merged,
-        1,
-        "gkr.sol folds the setup columns into ONE merged claim (NUM_SETUP {} > PACK {})",
-        d.num_setup,
-        1usize << pack_log2
+        wc.setup_merged, d.setup_merged,
+        "GKR/WHIR merged setup width disagree ({} vs {})",
+        wc.setup_merged, d.setup_merged
     );
     assert_eq!(
         prover_config.cap_size, prover_config.whir_schedule.cap_size,
@@ -379,6 +470,14 @@ pub fn generate_verifier(
         .sub(&n(1))
         .shr(pack_log2 as u128);
     assert_eq!(merged_mw.value as usize, wc.merged_mw);
+    let setup_merged = n(d.num_setup)
+        .add(&n(pack))
+        .sub(&n(1))
+        .shr(pack_log2 as u128);
+    assert_eq!(setup_merged.value as usize, wc.setup_merged);
+    // emit_gkr_mark's ABS scratch: packing coords, then the merged claims, then the fold buffer
+    let handoff_merged_offset = Lit::words(pack_log2 as u128);
+    let handoff_fold_offset = Lit::words((pack_log2 + d.merged_mw + d.setup_merged) as u128);
 
     // Transcript preimage layout: registers ‖ final_pc/ts ‖ top_bits ‖ setup_cap ‖ memory_cap.
     let final_pc_offset = n(super::NUM_REGISTERS).mul(&n(super::PREIMAGE_REGISTER_STRIDE));
@@ -426,35 +525,39 @@ pub fn generate_verifier(
     }
     assert!(inlined, "gkr.sol template missing inline marker");
 
-    // 2. Heap layout: one bump allocator for both halves, starting right after the two
-    //    spill-safe fixed slots (P_PTR, CIRCUIT_PTR) above the via_ir spill zone.
+    // 2. Heap layout: one bump allocator for both halves, starting right after the three
+    //    spill-safe fixed slots (P_PTR, CIRCUIT_PTR, F1_FRONTIER_PTR) above the via_ir spill zone.
     let min_free = read_const(GKR_TEMPLATE, "MINIMUM_FREE_HEAP_PTR");
     assert_eq!(read_const(GKR_TEMPLATE, "P_PTR"), min_free);
     assert_eq!(read_const(GKR_TEMPLATE, "CIRCUIT_PTR"), min_free + 32);
-    let mut heap = HeapAlloc::new(min_free + 64);
+    assert_eq!(read_const(GKR_TEMPLATE, "F1_FRONTIER_PTR"), min_free + 64);
+    let mut heap = HeapAlloc::new(min_free + 96);
     let gkr_regions = gkr_heap_regions(
         &d,
         &stats,
-        preimage_bytes.value as usize,
         &init_bytes,
         output_evals.value as usize,
         pack,
+        f1.decoder.v0_bytes,
     );
     let mut assigned = BTreeSet::new();
     // The GKR regions are chained in the template by their sizes (`add(previous(), SIZE)`, see
     // the template's layout note for why not absolute literals): assign each region's padded
     // size and verify the template's accessor chain follows this allocation order exactly.
+    // The last region's size only advances the allocator: no accessor follows it.
     let mut previous: Option<(&str, &str)> = None;
-    for (name, accessor, size) in &gkr_regions {
+    for (idx, (name, accessor, size)) in gkr_regions.iter().enumerate() {
         heap.region(name, size);
-        gkr = set_const(
-            &gkr,
-            &format!("__TEMPLATE_GKR_{name}_BYTES"),
-            size.expr(),
-            &mut assigned,
-        );
+        if idx + 1 < gkr_regions.len() {
+            gkr = set_const(
+                &gkr,
+                &format!("__TEMPLATE_GKR_{name}_BYTES"),
+                size.expr(),
+                &mut assigned,
+            );
+        }
         let expected_body = match previous {
-            None => "add(MINIMUM_FREE_HEAP_PTR, 64)".to_string(),
+            None => "add(MINIMUM_FREE_HEAP_PTR, 96)".to_string(),
             Some((prev_name, prev_accessor)) => {
                 format!("add({prev_accessor}(), __TEMPLATE_GKR_{prev_name}_BYTES)")
             }
@@ -478,9 +581,6 @@ pub fn generate_verifier(
         ("__TEMPLATE_GKR_LSB_LINES_BYTES", lsb_lines_bytes),
         ("__TEMPLATE_GKR_DIM_REDUCE_LAYERS", dim_reduce_layers),
         ("__TEMPLATE_PREIMAGE_FINAL_PC_OFFSET", final_pc_offset),
-        ("__TEMPLATE_PREIMAGE_TOP_BITS_OFFSET", top_bits_offset),
-        ("__TEMPLATE_PREIMAGE_SETUP_CAP_OFFSET", setup_cap_offset),
-        ("__TEMPLATE_PREIMAGE_MEMORY_CAP_OFFSET", memory_cap_offset),
         ("__TEMPLATE_GKR_INIT_PREIMAGE_BYTES", preimage_bytes.clone()),
         (
             "__TEMPLATE_EXTERNAL_POW_BITS",
@@ -490,13 +590,18 @@ pub fn generate_verifier(
             "__TEMPLATE_WHIR_BATCH_POW_BITS",
             n(whir_batch_pow_bits as usize),
         ),
-        ("__TEMPLATE_EXPECTED_FINAL_PC", n(final_pc as usize)),
         (
             "__TEMPLATE_WHIR_NUM_MEMWIT",
             n(d.mem_width).add(&n(d.wit_width)),
         ),
         ("__TEMPLATE_WHIR_NUM_SETUP", n(d.num_setup)),
         ("__TEMPLATE_WHIR_MERGED_MW", merged_mw.clone()),
+        ("__TEMPLATE_WHIR_SETUP_MERGED", setup_merged.clone()),
+        (
+            "__TEMPLATE_GKR_HANDOFF_MERGED_OFFSET",
+            handoff_merged_offset,
+        ),
+        ("__TEMPLATE_GKR_HANDOFF_FOLD_OFFSET", handoff_fold_offset),
         ("__TEMPLATE_WHIR_PACK_LOG2", n(pack_log2)),
         ("__TEMPLATE_WHIR_PACK", pack_lit),
         ("__TEMPLATE_WHIR_BASE_Z_COORDS", n(d.rounds)),
@@ -512,6 +617,23 @@ pub fn generate_verifier(
             &mut assigned,
         );
     }
+    gkr = set_const(
+        &gkr,
+        "__TEMPLATE_F1_E1_SLOT_BYTES",
+        f1::E1_SLOT_BYTES,
+        &mut assigned,
+    );
+    let setup_commitment: String = f1
+        .setup_commitment
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    gkr = set_const(
+        &gkr,
+        "__TEMPLATE_SETUP_COMMITMENT",
+        format!("0x{setup_commitment}"),
+        &mut assigned,
+    );
 
     // Boundary-layer LSB reorder for gkr_dr_final: the dim-reduce LSB lines are stored in
     // GKRAddress-offset order, but the g-accumulator wants OutputType-group (iteration) order so
@@ -537,6 +659,23 @@ pub fn generate_verifier(
     // the production source is just the verifier.
     let gkr = strip_from_contract(&gkr, "GKRVerifierTest");
 
+    // F1: the GKR half reads the decoded v0 image (every calldata access rewritten; the absolute
+    // preimage readers add F1_V0_PTR() in the template), the decoder is the only GKR calldata
+    // reader, and the WHIR stream starts after the F1 GKR section.
+    let gkr = {
+        let f = f1;
+        let gkr = f1::calldata_to_v0_memory(&gkr);
+        let marker = "        // __F1_DECODER__\n";
+        assert_eq!(
+            gkr.matches(marker).count(),
+            1,
+            "gkr.sol misses the F1 decoder marker"
+        );
+        assert_eq!(gkr.matches("__F1_WHIR_START__").count(), 1);
+        gkr.replace(marker, &f.decoder.yul)
+            .replace("__F1_WHIR_START__", &f.decoder.f1_bytes.to_string())
+    };
+
     // 3. WHIR half: inject the per-round fold/query/PoW schedule generated from `wc`, then
     //    substitute every config-derived constant (schedule count, cap, RS-codeword domain
     //    generators, base-column geometry) and lay its memory regions out above the GKR heap.
@@ -545,22 +684,76 @@ pub fn generate_verifier(
         "            // __WHIR_SCHEDULE_SWITCH__",
         whir_schedule_yul.trim_end_matches('\n'),
     );
+    let f1_data = {
+        let f = f1;
+        assert_eq!(whir.matches("        // __F1_FINAL_HORNER__").count(), 1);
+        assert_eq!(whir.matches("__F1_HORNER_NAME__").count(), 2);
+        whir = whir
+            .replace(
+                "        // __F1_FINAL_HORNER__",
+                wc.final_horner_yul().trim_end_matches('\n'),
+            )
+            .replace(
+                "__F1_HORNER_NAME__",
+                &format!("horner_{}", 1usize << wc.rfin),
+            );
+        whir = set_const(
+            &whir,
+            "__TEMPLATE_F1_DIGEST_BYTES",
+            DIGEST_BYTES,
+            &mut assigned,
+        );
+        let nodes = &f.frontier.0[..];
+        let cap_offset = 1 + nodes.len();
+        let qtable_offset = cap_offset + f.decoder.setup_cap_image.len();
+        let data = [nodes, &f.decoder.setup_cap_image, &stats.qtable].concat();
+        let hash: [u8; 32] = {
+            use sha3::{Digest, Keccak256};
+            Keccak256::digest([&[0u8][..], &data].concat()).into()
+        };
+        let hash: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+        for (name, value) in [
+            ("__TEMPLATE_F1_FRONTIER_HASH", format!("0x{hash}")),
+            ("__TEMPLATE_F1_DATA_CAP_OFFSET", cap_offset.to_string()),
+            (
+                "__TEMPLATE_F1_DATA_QTABLE_OFFSET",
+                qtable_offset.to_string(),
+            ),
+        ] {
+            whir = set_const(&whir, name, value, &mut assigned);
+        }
+        {
+            let (_, level, skip) = &f.frontier;
+            for (name, value) in [
+                ("__TEMPLATE_F1_FRONTIER_LEVEL", level.to_string()),
+                ("__TEMPLATE_F1_FRONTIER_SKIP", skip.to_string()),
+            ] {
+                whir = set_const(&whir, name, value, &mut assigned);
+            }
+        }
+        data
+    };
+    whir = set_const(
+        &whir,
+        "__TEMPLATE_DIGEST_MASK",
+        format!(
+            "0x{}{}",
+            "ff".repeat(DIGEST_BYTES),
+            "00".repeat(32 - DIGEST_BYTES)
+        ),
+        &mut assigned,
+    );
     assert!(
         !whir.contains("__WHIR_SCHEDULE_SWITCH__"),
         "whir.sol template missing the schedule marker"
     );
-    // rfin = message_log2 - Σ folds, gcount = merged_mw + setup_merged + 1 — spelled out
+    // rfin = message_log2 - Σ folds spelled out; gcount = merged_mw + setup_merged, checked
     let folds_sum = wc.folds[1..]
         .iter()
         .fold(n(wc.folds[0]), |acc, &f| acc.add(&n(f)));
     let rfin = n(wc.message_log2).sub(&folds_sum);
     assert_eq!(rfin.value as usize, wc.rfin);
-    let setup_merged = n(d.num_setup)
-        .add(&n(pack))
-        .sub(&n(1))
-        .shr(pack_log2 as u128);
-    assert_eq!(setup_merged.value as usize, wc.setup_merged);
-    let gcount = merged_mw.add(&setup_merged).add(&n(1));
+    let gcount = merged_mw.add(&setup_merged);
     assert_eq!(gcount.value as usize, wc.gcount);
     let nz = n(d.rounds).add(&n(pack_log2));
     assert_eq!(nz.value as usize, wc.nz);
@@ -570,8 +763,6 @@ pub fn generate_verifier(
         ("__TEMPLATE_WHIR_NUM_ROUNDS", wc.num_rounds.to_string()),
         ("__TEMPLATE_WHIR_GEN", format!("0x{:032X}", wc.gen)),
         ("__TEMPLATE_WHIR_GEN_INV", format!("0x{:032X}", wc.gen_inv)),
-        ("__TEMPLATE_WHIR_NZ", nz.expr().to_string()),
-        ("__TEMPLATE_WHIR_GCOUNT", gcount.expr().to_string()),
         ("__TEMPLATE_WHIR_RFIN", rfin.expr().to_string()),
         ("__TEMPLATE_WHIR_MERGED_MW", merged_mw.expr().to_string()),
         (
@@ -582,8 +773,6 @@ pub fn generate_verifier(
         whir = set_const(&whir, name, value, &mut assigned);
     }
     let whir_regions = wc.memory_regions();
-    // the template's compile-time layout guard compares the GKR chain end to the WHIR SEED region
-    assert_eq!(whir_regions[0].0, "SEED_PTR");
     for (name, size) in &whir_regions {
         let addr = heap.region(name, size);
         whir = set_const(
@@ -597,18 +786,24 @@ pub fn generate_verifier(
     // 4. Splice the WHIR half into the GKR contract: one Solidity source, one transaction.
     let out = build_merged(&gkr, &whir, &heap);
 
-    // 5. Every `__TEMPLATE_*` declaration in the merged source must have been assigned here.
+    // Every template use must have an assigned value, including names emitted by circuit.yul.
     for line in out.lines() {
-        if let Some(name) = const_decl_name(line) {
-            if name.starts_with("__TEMPLATE_") {
+        let trimmed = line.trim();
+        assert!(
+            !trimmed.starts_with("// #if") && trimmed != "// #else" && trimmed != "// #endif",
+            "unresolved template directive: {trimmed}"
+        );
+        let code = line.split_once("//").map_or(line, |(code, _)| code);
+        for token in code.split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_') {
+            if token.starts_with("__TEMPLATE_") {
                 assert!(
-                    assigned.contains(name),
-                    "template constant {name} was never assigned by the generator"
+                    assigned.contains(token),
+                    "template token {token} was never assigned"
                 );
             }
         }
     }
-    out
+    (out, f1_data)
 }
 
 /// The GKR heap regions `(gkr.sol constant suffix, Yul accessor name, padded size as a
@@ -617,58 +812,51 @@ pub fn generate_verifier(
 fn gkr_heap_regions(
     d: &Derived,
     stats: &CircuitYulStats,
-    preimage_bytes: usize,
     init_bytes: &Lit,
     output_evals: usize,
     pack: usize,
+    f1_v0_bytes: usize,
 ) -> Vec<(&'static str, &'static str, Lit)> {
     // Seed region: the seed word plus everything the template keeps right after it —
     //  * the transcript-absorb scratch at SEED+32/+64 (keccak256(SEED, 96) in
     //    transcript_4to1_dual, the 40-byte PoW absorb),
-    //  * the preimage copy transcript_init keccaks in place (preimage_bytes),
-    //  * circuit.yul's per-layer cache array at SEED+64 (GKR_CIRCUIT_CACHE_PTR, max_cache_slots).
-    let seed_bytes = preimage_bytes.max(96).max(64 + 32 * stats.max_cache_slots);
+    //  * circuit.yul's per-layer cache array at SEED+64 (GKR_CIRCUIT_CACHE_PTR, max_cache_slots),
+    //  * the claims sumcheck_claims_batch absorbs at SEED+32 for layers without caches.
+    let seed_bytes = 96
+        .max(64 + 32 * stats.max_cache_slots)
+        .max(stats.max_seed_absorb_bytes);
     // Absorb scratch: gkr_init's 32 + INIT_BYTES, the circuit layers' claims-batch absorbs, and
-    // emit_gkr_mark's sub-buffers (packing coords at +0, merged claims at +128, whir_fold_pack's
-    // PACK-slot chunk buffer at +384 — the fixed sub-offsets the template spells out).
+    // emit_gkr_mark's sub-buffers (packing coords, merged claims, whir_fold_pack's PACK-slot
+    // chunk buffer — the generated HANDOFF offsets, one word each).
     let pack_log2 = pack.trailing_zeros() as usize;
-    assert!(
-        pack_log2 * 32 <= 128,
-        "emit_gkr_mark keeps the {pack_log2} packing coords in the 128-byte slot before the merged claims"
-    );
-    assert!(
-        128 + (d.merged_mw + 1) * 32 <= 384,
-        "emit_gkr_mark keeps the {} merged claims in [+128, +384) of the absorb scratch",
-        d.merged_mw + 1
-    );
-    let abs_bytes = if 32 + init_bytes.value as usize >= stats.max_absorb_bytes.max(384 + pack * 32)
-    {
+    let handoff_bytes = 32 * (pack_log2 + d.merged_mw + d.setup_merged + pack);
+    let abs_bytes = if 32 + init_bytes.value as usize >= stats.max_absorb_bytes.max(handoff_bytes) {
         Lit::num(32).add(init_bytes) // the seed word + gkr_init's output-evals absorb
     } else {
-        words_for(stats.max_absorb_bytes.max(384 + pack * 32))
+        words_for(stats.max_absorb_bytes.max(handoff_bytes))
     };
     let w = |n: usize| Lit::words(n as u128);
-    vec![
+    let regions = vec![
         ("MEMORY_CHALLS", "MEMORY_CHALLS_PTR", w(7)), // 6 perm-linearization challenges + additive
         ("LOGUP_CHALLS", "LOGUP_CHALLS_PTR", w(2)),   // alpha, additive
         ("POINT", "POINT_PTR", w(d.rounds)),          // the claim point grows to trace_log2 coords
-        ("INIT_GAS", "GKR_INIT_GAS_PTR", Lit::num(32)),
-        ("MAIN_GAS", "GKR_MAIN_GAS_PTR", Lit::num(32)),
         ("SEED", "SEED_PTR", words_for(seed_bytes)),
         ("BATCHING", "GKR_BATCHING_PTR", Lit::num(32)),
         ("CLAIMS", "GKR_CLAIMS_PTR", w(d.num_outputs)),
         // eq[OUTPUT_EVALS] for the entry claims; reused as SI[NUM_OUTPUTS] by gkr_dr_final
         ("EQ", "GKR_EQ_PTR", w(output_evals.max(d.num_outputs))),
         ("ABS", "GKR_ABS_PTR", abs_bytes),
-        ("PERM_PROD", "GKR_PERM_PROD_PTR", w(4)),
         (
             "CIRCUIT_CLAIMS",
             "GKR_CIRCUIT_CLAIMS_PTR",
             w(stats.max_claims_slots),
         ),
         ("GATEVAL", "GKR_GATEVAL_PTR", w(stats.gateval_slots)),
-        ("QTABLE", "GKR_QTABLE_PTR", words_for(stats.qtable_bytes)),
-    ]
+        ("QTABLE", "GKR_QTABLE_PTR", words_for(stats.qtable.len())),
+        // The decoded GKR transcript image.
+        ("F1_V0", "F1_V0_PTR", words_for(f1_v0_bytes)),
+    ];
+    regions
 }
 
 // ── Splicing the WHIR half into the GKR contract ────────────────────────────────────────────
@@ -684,17 +872,16 @@ fn gkr_heap_regions(
 //    batch_oracle, do_*, draw*, fold_*, ...).
 //  * memory-safe assembly: via_ir spills into [0x80, MINIMUM_FREE_HEAP_PTR); the GKR heap and
 //    then every WHIR region are laid out above it by the same bump allocator, so nothing
-//    overlaps; the WHIR half never touches 0x40/0x60, and the end-of-fallback spill guard is
-//    re-checked after it.
+//    overlaps; the WHIR half never touches 0x40/0x60, so the single spill guard before the GKR
+//    half covers both halves.
 
 /// `__TEMPLATE_WHIR_*` names the GKR template references (handoff) — must come from whir.sol.
 const GKR_REQUIRED_WHIR_CONSTS: &[&str] = &[
     "__TEMPLATE_WHIR_SEED_PTR",
-    "__TEMPLATE_WHIR_HANDOFF_BATCHING_PTR",
+    "__TEMPLATE_WHIR_GAMMA_PTR",
     "__TEMPLATE_WHIR_REG_CLAIM",
     "__TEMPLATE_WHIR_Z_PTR",
     "__TEMPLATE_WHIR_BCAP0_PTR",
-    "__TEMPLATE_WHIR_BCAP1_PTR",
 ];
 
 fn is_ident_char(c: u8) -> bool {
@@ -759,7 +946,7 @@ fn build_merged(gkr: &str, whir: &str, heap: &HeapAlloc) -> String {
             consts.push('\n');
             continue;
         };
-        if name.starts_with("__TEMPLATE_WHIR_") {
+        if name.starts_with("__TEMPLATE_") {
             // shared with the GKR template? then it is declared there, with the same value
             if let Some(gline) = gkr.lines().find(|l| const_decl_name(l) == Some(name)) {
                 assert_eq!(

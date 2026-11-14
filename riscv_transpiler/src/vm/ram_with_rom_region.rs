@@ -147,6 +147,8 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamPeek
 }
 
 impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RAM for RamWithRomRegion<ROM_BOUND_SECOND_WORD_BITS> {
+    const ROM_BYTE_SIZE: usize = 1 << (16 + ROM_BOUND_SECOND_WORD_BITS);
+
     #[inline(always)]
     fn mask_read_for_witness(&self, _address: &mut u32, _value: &mut u32) {
         // we do not do anything here

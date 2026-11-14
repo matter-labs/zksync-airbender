@@ -122,12 +122,14 @@ fn generate_single_oracle_query_body<MW: FieldWrapper>(
 /// capacity, or the plain path.
 fn merkle_verify(
     multiproof_const: TokenStream,
+    round_expr: TokenStream,
     oracle_depth_expr: TokenStream,
     oracle_cap_expr: TokenStream,
     max_depth_const: TokenStream,
 ) -> TokenStream {
     quote! {
         let merkle_ok = if #multiproof_const {
+            ::verifier_common::record_merkle_multiproof_query!(#round_expr);
             verify_merkle_multiproof_leaf::<I, #max_depth_const>(
                 &mut ts.hasher, &mut multiproof_stack, tree_index, prev_index_equal, next_index,
                 #oracle_depth_expr, #oracle_cap_expr, nd_source,
@@ -534,6 +536,7 @@ pub fn generate_whir_initial_round<MW: FieldWrapper>(
                 #acc1_decl
 
                 if INITIAL_MERKLE_MULTIPROOF {
+                    ::verifier_common::record_merkle_multiproof_query!(0);
                     #unrolled_multiproof_oracle_queries
                 } else {
                     #unrolled_oracle_queries
@@ -847,6 +850,7 @@ pub fn generate_whir_internal_rounds<MW: FieldWrapper>(
         quote! { fold_steps },
         merkle_verify(
             quote! { (INTERNAL_MERKLE_MULTIPROOF_MASK >> ir) & 1 == 1 },
+            quote! { ir + 1 },
             quote! { oracle_depth },
             quote! { prev_oracle_cap },
             quote! { MAX_INTERNAL_ORACLE_DEPTH },
@@ -1106,6 +1110,7 @@ pub fn generate_whir_final_round<MW: FieldWrapper>(
         quote! { FINAL_FOLD_STEPS },
         merkle_verify(
             quote! { FINAL_MERKLE_MULTIPROOF },
+            quote! { #final_round_idx },
             quote! { oracle_depth },
             quote! { prev_oracle_cap },
             quote! { FINAL_ORACLE_DEPTH },

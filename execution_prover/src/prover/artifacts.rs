@@ -5,6 +5,7 @@
 //! prefixed with — neither of which `ProveResult` carries.
 
 use super::*;
+use crate::config::SoundnessMode;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength};
 
 /// `setup_cap` is the exact digest sequence the backend committed and every
@@ -12,14 +13,31 @@ use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength};
 pub struct RiscvFamilyArtifact {
     pub compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
     pub setup_cap: MerkleTreeCapVarLength,
+    /// The profile config's `cap_size`: the setup cap is admitted against it,
+    /// not against its own length.
+    pub setup_cap_size: usize,
 }
 
 impl RiscvFamilyArtifact {
-    fn from_precomputations(precomputations: &impl CircuitPrecomputation) -> Self {
+    fn from_precomputations(
+        precomputations: &impl CircuitPrecomputation,
+        circuit: UnrolledCircuitType,
+        profile: ProofProfile,
+        soundness_mode: SoundnessMode,
+    ) -> Self {
+        let compiled_circuit = Arc::clone(precomputations.compiled_circuit());
+        let setup_cap_size = crate::config::prover_config_in_mode(
+            CircuitType::Unrolled(circuit),
+            &compiled_circuit,
+            profile,
+            soundness_mode,
+        )
+        .cap_size;
         Self {
-            compiled_circuit: Arc::clone(precomputations.compiled_circuit()),
+            compiled_circuit,
+            setup_cap_size,
             setup_cap: precomputations
-                .setup_cap()
+                .setup_cap(profile)
                 .expect("RISC-V family setup must have columns"),
         }
     }
@@ -42,7 +60,11 @@ pub struct ProgramArtifacts {
 
 impl<B: ExecutionBackend> ExecutionProver<B> {
     /// Snapshot the compiled-circuit artifacts for a registered binary.
-    pub fn program_artifacts(&self, handle: &BinaryHandle) -> ProgramArtifacts {
+    pub fn program_artifacts(
+        &self,
+        handle: &BinaryHandle,
+        profile: ProofProfile,
+    ) -> ProgramArtifacts {
         assert!(
             self.host_pool_allocation.is_none() && self.pending_setup_initializations.is_empty(),
             "setup must be finalized before proving or reading artifacts"
@@ -54,7 +76,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .map(|(circuit_type, precomputations)| {
                 (
                     circuit_type.get_family_idx() as u32,
-                    RiscvFamilyArtifact::from_precomputations(precomputations),
+                    RiscvFamilyArtifact::from_precomputations(
+                        precomputations,
+                        *circuit_type,
+                        profile,
+                        self.configuration.soundness_mode,
+                    ),
                 )
             })
             .collect();
@@ -74,7 +101,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 _ => {}
             }
         }
-        if holder.execution_kind == ExecutionKind::Unified {
+        if holder.execution_kind.is_unified() {
             inits_and_teardowns = None;
         }
         ProgramArtifacts {

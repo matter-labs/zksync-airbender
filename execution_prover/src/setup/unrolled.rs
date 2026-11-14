@@ -5,12 +5,13 @@ use crate::upstream::{
     mul_div_unsigned_circuit_setup,
     opcodes_for_full_machine_with_unsigned_mul_div_only_with_mem_word_access_specialization,
     opcodes_for_reduced_machine, process_predecoded_into_separate_tables,
-    shift_binary_circuit_setup, unified_reduced_machine_circuit_setup_from_decoder,
-    ExecutorFamilyDecoderData, OpcodeFamilyDecoder, UnifiedReducedMachineDecoder, ROM_WORD_SIZE,
+    shift_binary_circuit_setup, unified_reduced_machine_2_22_circuit_setup_from_decoder,
+    unified_reduced_machine_circuit_setup_from_decoder, ExecutorFamilyDecoderData,
+    OpcodeFamilyDecoder, UnifiedReducedMachineDecoder, ROM_WORD_SIZE,
 };
 use crate::ExecutionKind;
 use execution_prover_model::circuit_type::{
-    DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
+    CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
 use execution_prover_model::MachineType;
@@ -67,7 +68,7 @@ pub fn preprocess_binary(
             &supported_csrs,
         ));
     }
-    if kinds.contains(&ExecutionKind::Unified) {
+    if kinds.iter().any(|kind| kind.is_unified()) {
         assert_eq!(
             machine,
             MachineType::Reduced,
@@ -112,14 +113,18 @@ pub fn circuit_types_for_variant(
                     .map(UnrolledCircuitType::NonMemory);
             memory.chain(non_memory).collect()
         }
-        ExecutionKind::Unified => {
+        ExecutionKind::Unified | ExecutionKind::Unified22 => {
             assert_eq!(
                 machine,
                 MachineType::Reduced,
                 "Unified execution requires the Reduced machine"
             );
-            vec![UnrolledCircuitType::Unified]
+            let CircuitType::Unrolled(circuit) = kind.unified_circuit().unwrap() else {
+                unreachable!()
+            };
+            vec![circuit]
         }
+        ExecutionKind::L1Wrap => vec![],
     }
 }
 
@@ -131,10 +136,10 @@ pub fn build_unrolled_setup(
     text_section: &[u32],
     worker: &Worker,
 ) -> CanonicalCircuitSetup {
-    let kind = if circuit_type == UnrolledCircuitType::Unified {
-        ExecutionKind::Unified
-    } else {
-        ExecutionKind::Unrolled
+    let kind = match circuit_type {
+        UnrolledCircuitType::Unified => ExecutionKind::Unified,
+        UnrolledCircuitType::Unified22 => ExecutionKind::Unified22,
+        _ => ExecutionKind::Unrolled,
     };
     let preprocessing = preprocess_binary(machine_type, &[kind], text_section);
     build_unrolled_setup_with_preprocessing(circuit_type, binary_image, &preprocessing, worker)
@@ -155,6 +160,19 @@ pub fn build_unrolled_setup_with_preprocessing(
                 .clone();
             return CanonicalCircuitSetup::Riscv(
                 unified_reduced_machine_circuit_setup_from_decoder::<Global>(
+                    binary_image,
+                    decoder,
+                    true,
+                    worker,
+                ),
+            );
+        }
+        UnrolledCircuitType::Unified22 => {
+            let decoder = preprocessing.decoder_tables
+                [&common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX]
+                .clone();
+            return CanonicalCircuitSetup::Riscv(
+                unified_reduced_machine_2_22_circuit_setup_from_decoder::<Global>(
                     binary_image,
                     decoder,
                     true,
@@ -187,7 +205,9 @@ pub fn build_unrolled_setup_with_preprocessing(
         UnrolledCircuitType::NonMemory(UnrolledNonMemoryCircuitType::MulDivUnsigned) => {
             mul_div_unsigned_circuit_setup::<Global>(table_data, true, worker)
         }
-        UnrolledCircuitType::InitsAndTeardowns | UnrolledCircuitType::Unified => unreachable!(),
+        UnrolledCircuitType::InitsAndTeardowns
+        | UnrolledCircuitType::Unified
+        | UnrolledCircuitType::Unified22 => unreachable!(),
     };
     CanonicalCircuitSetup::Riscv(setup)
 }

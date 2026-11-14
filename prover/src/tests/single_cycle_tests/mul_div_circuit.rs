@@ -198,6 +198,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "reads a local witness dump that is not committed"]
     fn test_on_external_witness() {
         use crate::tests::gkr::bincode_deserialize_from_file;
         let witness: Vec<NonMemoryOpcodeTracingDataWithTimestamp> = bincode_deserialize_from_file(

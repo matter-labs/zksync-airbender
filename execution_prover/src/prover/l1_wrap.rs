@@ -1,0 +1,250 @@
+use super::*;
+use crate::messages::L1WrapProofRequest;
+use crate::workers::simulation::assert_l1_wrap_geometry;
+use crate::OperationMode;
+use ::prover::field::Proth120;
+use ::prover::gkr::prover::GKRProof;
+use ::prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
+use execution_prover_model::allocator::HostTraceAllocator;
+use execution_prover_model::trace::{UnrolledTracingDataHost, UnrolledUnifiedTraceHost};
+
+pub type L1Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
+
+#[derive(Clone, Debug)]
+pub struct L1WrapResult {
+    pub proof: L1Proof,
+    pub operation_mode: OperationMode,
+}
+
+struct L1WrapTrace<A: HostTraceAllocator> {
+    tracing_data: UnrolledUnifiedTraceHost<A>,
+    inits_and_teardowns: InitsAndTeardownsTraceHost<A>,
+    simulation: SimulationResult,
+}
+
+fn collect_l1_wrap_trace<A: HostTraceAllocator>(
+    circuit_type: CircuitType,
+    results: impl IntoIterator<Item = WorkerResult<A>>,
+) -> L1WrapTrace<A> {
+    assert!(circuit_type.is_l1_wrap());
+    let mut traces = Vec::new();
+    let mut inits = Vec::new();
+    let mut simulation = None;
+    let mut replayed = BTreeSet::new();
+    for result in results {
+        match result {
+            WorkerResult::SnapshotProduced => {}
+            WorkerResult::TracingData(data) => traces.push(data),
+            WorkerResult::InitsAndTeardownsData(data) => inits.push(data),
+            WorkerResult::SimulationResult(result) => {
+                assert!(
+                    simulation.replace(result).is_none(),
+                    "duplicate L1Wrap simulation result"
+                );
+            }
+            WorkerResult::SnapshotReplayed(index) => {
+                assert!(replayed.insert(index), "duplicate L1Wrap replay completion");
+            }
+            WorkerResult::BackendWorkResult(_) => {
+                panic!("unexpected backend result during L1Wrap tracing")
+            }
+        }
+    }
+    assert!(
+        traces
+            .iter()
+            .all(|data| !matches!(data.circuit_type, CircuitType::Delegation(_))),
+        "L1Wrap does not support delegation calls"
+    );
+    assert_l1_wrap_geometry(traces.len(), inits.len());
+    let trace = traces.pop().unwrap();
+    assert_eq!(
+        trace.circuit_type, circuit_type,
+        "L1Wrap requires its own trace geometry"
+    );
+    assert!(
+        trace.participating_snapshot_indexes.is_subset(&replayed),
+        "L1Wrap trace has unfinished replay snapshots"
+    );
+    let TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(tracing_data)) =
+        trace.tracing_data
+    else {
+        panic!("L1Wrap requires a unified trace");
+    };
+    let inits = inits.pop().unwrap();
+    assert_eq!(
+        inits.circuit_type, circuit_type,
+        "L1Wrap requires its own I&T geometry"
+    );
+    let inits_and_teardowns = inits
+        .inits_and_teardowns
+        .expect("L1Wrap requires inits/teardowns data");
+    L1WrapTrace {
+        tracing_data,
+        inits_and_teardowns,
+        simulation: simulation.expect("L1Wrap simulation did not complete"),
+    }
+}
+
+impl<B: ExecutionBackend> ExecutionProver<B> {
+    pub fn prove_l1_wrap<ND: NonDeterminismCSRSource + Send + 'static>(
+        &self,
+        batch_id: u64,
+        handle: &BinaryHandle,
+        non_determinism: ND,
+    ) -> L1WrapResult {
+        assert!(
+            self.host_pool_allocation.is_none() && self.pending_setup_initializations.is_empty(),
+            "setup must be finalized before proving or reading artifacts"
+        );
+        let holder = &self.binary_holders[&handle.0];
+        assert!(
+            holder.execution_kind.is_l1_wrap(),
+            "prove_l1_wrap requires an L1 wrap binary, got ExecutionKind::{:?}",
+            holder.execution_kind
+        );
+        let (sender, receiver) = unbounded();
+        let non_determinism_return = self.spawn_simulation_workers(
+            batch_id,
+            holder,
+            non_determinism,
+            &sender,
+            &Arc::new(AtomicBool::new(false)),
+        );
+        drop(sender);
+        let trace =
+            collect_l1_wrap_trace(holder.execution_kind.unified_circuit().unwrap(), receiver);
+        drop(
+            non_determinism_return
+                .recv()
+                .expect("wrap simulation did not return its non-determinism source"),
+        );
+        self.prove_l1_wrap_trace(batch_id, holder, trace)
+    }
+
+    fn prove_l1_wrap_trace(
+        &self,
+        batch_id: u64,
+        holder: &BinaryHolder<B>,
+        trace: L1WrapTrace<B::Allocator>,
+    ) -> L1WrapResult {
+        let circuit_type = holder.execution_kind.unified_circuit().unwrap();
+        use ::prover::gkr::prover_config::example_configs::l1_wrap;
+        let external_challenges_pow_bits = match circuit_type {
+            CircuitType::L1Wrap => l1_wrap::EXTERNAL_CHALLENGES_POW_BITS,
+            other => panic!("{other:?} is not an L1 wrap circuit"),
+        };
+        let operation_mode = OperationMode::SingleChunk {
+            external_challenges_pow_bits,
+            final_pc: trace.simulation.final_pc,
+            final_timestamp: trace.simulation.final_timestamp,
+            register_final_state: trace.simulation.final_register_values,
+        };
+        let (request_sender, request_receiver) = unbounded();
+        let (result_sender, result_receiver) = unbounded();
+        self.backend.submit(WorkBatch {
+            batch_id,
+            receiver: request_receiver,
+            sender: result_sender,
+        });
+        request_sender
+            .send(WorkRequest::L1WrapProof(L1WrapProofRequest {
+                batch_id,
+                circuit_type,
+                precomputations: holder
+                    .l1_wrap_precomputations
+                    .as_ref()
+                    .expect("L1Wrap setup was not registered")
+                    .clone(),
+                inits_and_teardowns: trace.inits_and_teardowns,
+                tracing_data: trace.tracing_data,
+                operation_mode,
+            }))
+            .expect("backend rejected L1Wrap proof request");
+        drop(request_sender);
+        let mut output = None;
+        for result in result_receiver {
+            let WorkerResult::BackendWorkResult(WorkResult::L1WrapProof(result)) = result else {
+                panic!("unexpected backend result during L1Wrap proving");
+            };
+            assert_eq!(result.circuit_type, circuit_type);
+            self.free_traces(
+                Some(result.inits_and_teardowns),
+                Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(
+                    result.tracing_data,
+                ))),
+            );
+            assert!(
+                output.replace(result.result).is_none(),
+                "duplicate L1Wrap proof result"
+            );
+        }
+        output.expect("backend terminated before producing the L1Wrap proof")
+    }
+}
+
+#[cfg(all(test, target_arch = "x86_64"))]
+mod tests {
+    use super::*;
+    use execution_prover_model::allocator::CpuTraceAllocator;
+    use execution_prover_model::trace::ChunkedTraceHolder;
+
+    fn events() -> Vec<WorkerResult<CpuTraceAllocator>> {
+        vec![
+            WorkerResult::TracingData(TracingData {
+                circuit_type: CircuitType::L1Wrap,
+                sequence_id: 0,
+                tracing_data: TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(
+                    ChunkedTraceHolder { chunks: vec![] },
+                )),
+                participating_snapshot_indexes: BTreeSet::from([0, 2]),
+            }),
+            WorkerResult::InitsAndTeardownsData(InitsAndTeardownsData {
+                circuit_type: CircuitType::L1Wrap,
+                sequence_id: 0,
+                inits_and_teardowns: Some(InitsAndTeardownsTraceHost {
+                    page_indices: ChunkedTraceHolder { chunks: vec![] },
+                    values_packed: ChunkedTraceHolder { chunks: vec![] },
+                    timestamps_packed: ChunkedTraceHolder { chunks: vec![] },
+                    top_bits: vec![0, 1],
+                }),
+            }),
+            WorkerResult::SimulationResult(SimulationResult {
+                final_pc: 42,
+                final_timestamp: 100,
+                final_register_values: [FinalRegisterValue {
+                    value: 0,
+                    last_access_timestamp: 0,
+                }; 32],
+            }),
+            WorkerResult::SnapshotReplayed(2),
+            WorkerResult::SnapshotReplayed(0),
+        ]
+    }
+
+    #[test]
+    fn delayed_out_of_order_replay_is_drained_before_consuming_trace() {
+        let trace = collect_l1_wrap_trace(CircuitType::L1Wrap, events());
+        assert_eq!(trace.simulation.final_pc, 42);
+        assert_eq!(trace.inits_and_teardowns.top_bits, [0, 1]);
+    }
+
+    #[test]
+    #[should_panic(expected = "L1Wrap trace has unfinished replay snapshots")]
+    fn missing_replay_is_rejected() {
+        let mut events = events();
+        events.pop();
+        collect_l1_wrap_trace(CircuitType::L1Wrap, events);
+    }
+
+    #[test]
+    #[should_panic(expected = "L1Wrap does not support delegation calls")]
+    fn delegation_calls_are_rejected() {
+        let mut events = events();
+        let WorkerResult::TracingData(trace) = &mut events[0] else {
+            unreachable!()
+        };
+        trace.circuit_type = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression);
+        collect_l1_wrap_trace(CircuitType::L1Wrap, events);
+    }
+}

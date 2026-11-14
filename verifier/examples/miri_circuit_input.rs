@@ -24,14 +24,28 @@ fn main() {
     };
     let output = std::path::absolute(&args[2]).unwrap();
     std::env::set_current_dir(env!("CARGO_MANIFEST_DIR")).unwrap();
-    assert_eq!(
-        verifier_common::BLAKE_MODE,
-        verifier_common::BlakeMode::Compression
-    );
-    let circuit = CIRCUITS
-        .iter()
-        .find(|c| c.name == name)
-        .expect("canonical circuit");
+    let circuit = if name == "compression" {
+        assert_eq!(mode, SoundnessMode::PessimisticConjecture);
+        assert_eq!(
+            verifier_common::BLAKE_MODE,
+            verifier_common::BlakeMode::Software
+        );
+        #[cfg(feature = "miri_compression_coverage")]
+        {
+            &*verifier_common::test_circuits::COMPRESSION
+        }
+        #[cfg(not(feature = "miri_compression_coverage"))]
+        panic!("compression input preparation needs --features miri_compression_coverage");
+    } else {
+        assert_eq!(
+            verifier_common::BLAKE_MODE,
+            verifier_common::BlakeMode::Compression
+        );
+        CIRCUITS
+            .iter()
+            .find(|c| c.name == name)
+            .expect("canonical circuit")
+    };
     let (nds, challenges) =
         circuit.load_nds_for_mode(SecurityLevel::Sec100, mode, verifier_common::BLAKE_MODE);
     let mut payload = Vec::new();
@@ -39,7 +53,21 @@ fn main() {
     let challenge_words = payload.len();
     payload.extend(&nds);
     let bytes = std::thread::Builder::new().stack_size(1 << 27).spawn(move || {
+        #[cfg(feature = "miri_compression_coverage")]
+        verifier_common::multiproof_coverage::reset();
         let expected = miri_circuit_stream::verify(&name, mode_id, &mut payload.iter().copied());
+        #[cfg(feature = "miri_compression_coverage")]
+        if name == "compression" {
+            use verifier::compression::constants::{WHIR_CAP_SIZE, WHIR_QUERIES};
+            let counts = verifier_common::multiproof_coverage::counts();
+            for (round, queries) in WHIR_QUERIES.into_iter().enumerate() {
+                let executed = counts.get(round).copied().unwrap_or(0);
+                let expected = if verifier_common::BlakeMode::Software.merkle_multiproofs(queries, WHIR_CAP_SIZE) { queries } else { 0 };
+                println!("compression round {round}: queries={queries}, cap_size={WHIR_CAP_SIZE}, executed_multiproof_queries={executed}");
+                assert_eq!(executed, expected, "multiproof branch coverage in round {round}");
+            }
+            assert!(counts.iter().sum::<usize>() > 0, "compression must execute multiproofs");
+        }
         let bytes = miri_circuit_stream::encode(&expected, &payload);
         println!("{name}: natively verified {} NDS words + {challenge_words} challenge words; {} output words; {} bytes", nds.len(), expected.len(), bytes.len());
         bytes

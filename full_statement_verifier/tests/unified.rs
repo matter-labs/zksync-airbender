@@ -4,7 +4,6 @@ use common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX;
 use full_statement_verifier::host_utils::fixture_artifact::ChainArtifact;
 use full_statement_verifier::host_utils::{build_unified_stream, native_verify_unified_in_mode};
 use prover::definitions::SoundnessMode;
-use verifier_common::prover::definitions::MerkleTreeCap;
 use verifier_common::BlakeMode;
 
 fn with_fixtures(mut check: impl FnMut(SoundnessMode, ChainArtifact)) {
@@ -23,7 +22,7 @@ fn prefix_len(artifact: &ChainArtifact) -> usize {
     artifact
         .setups
         .values()
-        .map(|params| MerkleTreeCap::flatten_single(&params.setup_caps).len())
+        .map(|params| params.setup_caps.cap.as_flattened().len())
         .sum()
 }
 

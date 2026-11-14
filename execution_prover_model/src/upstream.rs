@@ -14,5 +14,7 @@ pub(crate) use setups::{
     JumpBranchSltCircuit, KeccakChi5DelegationCircuit, KeccakColumnParityDelegationCircuit,
     KeccakSpecial5DelegationCircuit, KeccakThetaRhoDelegationCircuit, LoadStoreSubwordOnlyCircuit,
     LoadStoreWordOnlyCircuit, ShiftBinaryCircuit, UnifiedReducedMachineCircuit,
-    UnsignedMulDivCircuit,
+    UnifiedReducedMachineCircuit2_22, UnsignedMulDivCircuit,
 };
+
+pub(crate) use setups::prover::gkr::prover_config::ProofProfile;

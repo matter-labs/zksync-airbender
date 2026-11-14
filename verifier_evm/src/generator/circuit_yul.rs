@@ -135,7 +135,7 @@ impl Yul {
         {
             v.push(*idx);
         }
-        // The circuit-layer calldata cursor lives in a fixed heap slot (CIRCUIT_PTR), not a
+        // The circuit-layer image cursor lives in a fixed heap slot (CIRCUIT_PTR), not a
         // function parameter, so the gate/cache/chunk sub-functions need not carry `ptr` —
         // that param was the single deepest slot pushing each of them 1 over the EVM limit.
         yul_format!("shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, {idx}))))")
@@ -295,6 +295,31 @@ fn scaled(c: &Dual, input: &Dual) -> Dual {
     }
 }
 
+/// `constant + linear` in Yul; a zero operand is omitted.
+fn add_constant(constant: &Dual, linear: &Dual) -> Yul {
+    if constant.1 .0 == "0" {
+        yul_format!("{linear:x}")
+    } else if linear.1 .0 == "0" {
+        yul_format!("{constant:x}")
+    } else {
+        yul_format!("add({constant:x}, {linear:x})")
+    }
+}
+
+/// The comment text of a sum, omitting zero terms.
+fn display_sum(terms: &[&Dual]) -> String {
+    let nonzero: Vec<String> = terms
+        .iter()
+        .filter(|t| t.0 != "0")
+        .map(|t| t.to_string())
+        .collect();
+    if nonzero.is_empty() {
+        "0".to_string()
+    } else {
+        nonzero.join(" + ")
+    }
+}
+
 /// One collected layer-0 quadratic/linear term for the table-driven evaluator.
 /// `coeff` is canonical in [0, P); `b == None` marks a linear term (`coeff·col[a]`),
 /// `b == Some` a quadratic term (`coeff·col[a]·col[b]`). `slot` is the gate's index into
@@ -320,7 +345,10 @@ struct QTerm {
 /// heap, so only nonzero gate constants need an explicit seed.
 /// `gate_constant_terms`: the additive constant of each quadratic relation `(gate slot, value)`,
 /// only for gates whose constant is nonzero (it seeds `GATEVAL[slot]` before the term loops add).
-fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) -> (String, usize) {
+fn emit_layer0_quad_table(
+    terms: &[QTerm],
+    gate_constant_terms: &[(u32, u128)],
+) -> (String, Vec<u8>) {
     use std::collections::BTreeMap;
     // canonical coeff -> (byte width, is_negative, stored value). Small +ve: store as-is.
     // Small -ve (canonical near P): store magnitude P-v, negate in-loop. Else: full 16 B.
@@ -372,9 +400,7 @@ fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) 
         layout.push((*key, stream.len(), bytes.len() / stride, stride));
         stream.extend_from_slice(bytes);
     }
-    while !stream.len().is_multiple_of(32) {
-        stream.push(0); // pad: the loop mload reads 32 B; trailing bytes are never consumed
-    }
+    // No padding: a record's loop mload may read past the table, and those bytes are ignored.
 
     let mut out = String::new();
     out.push_str(
@@ -398,17 +424,11 @@ fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) 
             ));
         }
     }
-    // 2. materialize the packed record stream via mstore immediates
-    out.push_str("            // packed term records, written 32 bytes at a time\n");
-    for (i, chunk) in stream.chunks(32).enumerate() {
-        let mut word = [0u8; 32];
-        word[..chunk.len()].copy_from_slice(chunk);
-        let hex: String = word.iter().map(|b| format!("{b:02x}")).collect();
-        out.push_str(&format!(
-            "            mstore(add(GKR_QTABLE_PTR(), {}), 0x{hex})\n",
-            i * 32
-        ));
-    }
+    // 2. copy the packed records from the verified setup data contract.
+    out.push_str(&format!(
+        "            extcodecopy(mload(F1_FRONTIER_PTR), GKR_QTABLE_PTR(), __TEMPLATE_F1_DATA_QTABLE_OFFSET, {})\n",
+        stream.len()
+    ));
     // 3. bucket loops — modulus loaded once from the P constant into a local (cheap DUP in the
     //    shallow loop, no per-op PUSH16), calldata + gateval bases hoisted.
     out.push_str(
@@ -416,7 +436,7 @@ fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) 
     );
     out.push_str("            {\n");
     out.push_str("            let modulus := P\n");
-    out.push_str("            let col_base := mload(CIRCUIT_PTR) // calldata base of the column at-point evals\n");
+    out.push_str("            let col_base := mload(CIRCUIT_PTR) // image address of the column at-point evals\n");
     out.push_str("            let gateval := GKR_GATEVAL_PTR()\n");
     for (key, start, count, stride) in &layout {
         if *count == 0 {
@@ -465,7 +485,7 @@ fn emit_layer0_quad_table(terms: &[QTerm], gate_constant_terms: &[(u32, u128)]) 
         ));
     }
     out.push_str("            }\n");
-    (out, stream.len())
+    (out, stream)
 }
 
 /// Emit the Horner accumulation of a contiguous run of quadratic gates (GATEVAL slots `lo..hi`)
@@ -582,8 +602,8 @@ fn memrel_to_calldata(
             let high = Dual(format!("[{high}]"), Yul::calldataload(high));
             [
                 Dual(
-                    format!("({timestamp_offset} + {low})"),
-                    yul_format!("add({timestamp_offset:x}, {low:x})"),
+                    format!("({})", display_sum(&[&timestamp_offset, &low])),
+                    add_constant(&timestamp_offset, &low),
                 ),
                 high,
             ]
@@ -638,24 +658,29 @@ fn memrel_to_calldata(
 /// Heap-usage facts about the emitted `circuit.yul`, consumed by the generator's heap-layout
 /// allocator (assemble.rs) so every circuit-sized region of the GKR heap is sized from the
 /// circuit instead of a hand-picked slot number.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct CircuitYulStats {
     /// Widest per-layer at-point eval array written to `GKR_CIRCUIT_CLAIMS_PTR` (32-byte slots).
     pub max_claims_slots: usize,
     /// Most cached-relation values (incl. layer 0's injected virtual-setup polys) any layer
     /// stores at `GKR_CIRCUIT_CACHE_PTR` (32-byte slots).
     pub max_cache_slots: usize,
-    /// Largest claims-batch absorb (`32 + 16·n` bytes) staged at `GKR_ABS_PTR`.
+    /// Largest claims-batch absorb (`32 + 16·n` bytes) a layer with caches stages at
+    /// `GKR_ABS_PTR`.
     pub max_absorb_bytes: usize,
+    /// Largest claims-batch absorb (`32 + 16·n` bytes) `sumcheck_claims_batch` stages at `SEED_PTR()`
+    /// for a layer without caches.
+    pub max_seed_absorb_bytes: usize,
     /// Layer-0 quadratic-gate accumulator slots at `GKR_GATEVAL_PTR` (32-byte slots).
     pub gateval_slots: usize,
-    /// Bytes of the packed layer-0 term table materialized at `GKR_QTABLE_PTR`.
-    pub qtable_bytes: usize,
+    /// The packed layer-0 term table materialized at `GKR_QTABLE_PTR` (its region is rounded up
+    /// to whole 32-byte words).
+    pub qtable: Vec<u8>,
 }
 
 /// Emit the circuit-specific `circuit.yul` (the GKR per-layer sumcheck/gate functions) for a
 /// given circuit artifact, as a String. This is the only circuit-dependent part of the GKR
-/// verifier; `generate_verifier` inlines it into the hand-written gkr.sol template.
+/// verifier; `generate_f1_verifier` inlines it into the hand-written gkr.sol template.
 pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
     emit_circuit_yul_with_stats(circuit).0
 }
@@ -679,12 +704,13 @@ pub fn emit_circuit_yul_with_stats(
     yul_main_output().lock().unwrap().clear();
     let circuit_rounds = {
         assert!(circuit.trace_len.is_power_of_two() && circuit.trace_len > 0);
+        let rounds = circuit.trace_len.trailing_zeros();
         assert_eq!(
-            circuit.trace_len,
-            1 << 22,
-            "we currently expect gkr_compress to go up to 2^22"
+            rounds as usize,
+            prover::gkr::prover_config::example_configs::l1_wrap::TRACE_LEN_LOG2,
+            "GKR verifier requires the L1 wrap trace geometry"
         );
-        circuit.trace_len.trailing_zeros()
+        rounds
     };
     let layer0_group_widths = (
         circuit.memory_layout.total_width,
@@ -713,27 +739,36 @@ pub fn emit_circuit_yul_with_stats(
         };
 
         // println!("{i}:");
-        yul_println!("
-        function sumcheck_circuit_layer{i}(ptr, claim, alpha) -> next_ptr, next_claim, next_alpha {{
+        // Layer 0 runs last: its batching challenge has no reader, so it returns only the cursor.
+        let layer_returns = if i == 0 {
+            "next_ptr"
+        } else {
+            "next_ptr, next_alpha"
+        };
+        yul_println!(
+            "
+        function sumcheck_circuit_layer{i}(ptr, alpha) -> {layer_returns} {{
             // INITIAL CLAIM: batch the previous layer's claims (heap array) in gate/slot order
-            // (compute_claim). Replaces the threaded scalar; alpha == this layer's batching.
-            claim := sccl{i}(alpha)
+            // (compute_claim); alpha == this layer's batching.
+            let claim := sccl{i}(alpha)
             // SUMCHECK ROUNDS
-            let eq_scale
-            // ptr, claim, eq_scale := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) // BREAKS UNSAFE SOLX, BUT MUCH CHEAPER SOLX
-            ptr, claim, eq_scale := sumcheck_rounds_circuit(ptr, claim)
+            ptr, claim := sumcheck_rounds(ptr, claim, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS)
             
             // POINT CHECK
-            let acc := 0"); // Horner accumulator starts at 0 (explicit init: the first chunk reads it)
-                            // Wrap this layer's cache computations (MemoryTuple / lookups / virtual-setup) in a
-                            // dedicated TOP-LEVEL function so their deep expressions (e.g. the 7-arg
-                            // gkr_memrel_compress) don't pile onto the layer function's already-tight stack —
-                            // buffer them now, hoist the function after the layer, call it inline.
+            let acc := 0"
+        ); // Horner accumulator starts at 0 (explicit init: the first chunk reads it)
+           // Wrap this layer's cache computations (MemoryTuple / lookups / virtual-setup) in a
+           // dedicated TOP-LEVEL function so their deep expressions don't pile onto the layer
+           // function's already-tight stack — buffer them now, hoist the function after the
+           // layer, call it inline. A layer without cached relations gets no function.
         *YUL_BUFFER
             .get_or_init(|| std::sync::Mutex::new(None))
             .lock()
             .unwrap() = Some(String::new());
-        yul_println!("            function scl{i}_caches() {{");
+        let has_caches = !cached_relations.is_empty();
+        if has_caches {
+            yul_println!("            function scl{i}_caches() {{");
+        }
         // Record the InnerLayer offsets the caches depend on (the transcript "extras").
         *CACHE_DEP_OFFSETS
             .get_or_init(|| std::sync::Mutex::new(None))
@@ -946,8 +981,8 @@ pub fn emit_circuit_yul_with_stats(
                                 .unwrap_or_else(|| Dual("0".to_string(), yul_format!("0")));
                             let constant = proth120_const_to_evm(constant);
                             Dual(
-                                format!("({constant} + {linear})"),
-                                yul_format!("add({constant:x}, {linear:x})"),
+                                format!("({})", display_sum(&[&constant, &linear])),
+                                add_constant(&constant, &linear),
                             )
                         })
                         .collect();
@@ -990,8 +1025,8 @@ pub fn emit_circuit_yul_with_stats(
                         .unwrap_or_else(|| Dual("0".to_string(), yul_format!("0")));
                     let constant = proth120_const_to_evm(constant);
                     let val = Dual(
-                        format!("{constant} + {linear}"),
-                        yul_format!("add({constant:x}, {linear:x})"),
+                        display_sum(&[&constant, &linear]),
+                        add_constant(&constant, &linear),
                     );
                     yul_println!(
                         "
@@ -1032,7 +1067,7 @@ pub fn emit_circuit_yul_with_stats(
                         assert!(16 <= circuit_rounds);
                         // println!("{relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}");
                         yul_println!("
-                        \t{{  // {relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8])(1 - r[7])(1 - r[6])(1 - r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}
+                        \t{{  // {relation_name}: (Σ_{{k<16}} 2^k·r[k]) · Π_{{k≥16}} (1 − r[k]) = {output}
                         \t    let gate := gkr_virtual_poly_rangecheck(16)
                         \t    {output:x}
                         \t}}");
@@ -1042,7 +1077,7 @@ pub fn emit_circuit_yul_with_stats(
                         assert!(timestamp_range_bits <= circuit_rounds);
                         // println!("{relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8] + 2^16 r[7] + 2^17 r[6] + 2^18 r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}");
                         yul_println!("
-                        \t{{  // {relation_name}: (2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10] + 2^14 r[9] + 2^15 r[8] + 2^16 r[7] + 2^17 r[6] + 2^18 r[5])(1 - r[4])(1 - r[3])(1 - r[2])(1 - r[1])(1 - r[0]) = {output}
+                        \t{{  // {relation_name}: (Σ_{{k<{timestamp_range_bits}}} 2^k·r[k]) · Π_{{k≥{timestamp_range_bits}}} (1 − r[k]) = {output}
                         \t    let gate := gkr_virtual_poly_rangecheck({timestamp_range_bits})
                         \t    {output:x}
                         \t}}");
@@ -1057,7 +1092,7 @@ pub fn emit_circuit_yul_with_stats(
                         assert!(low_bits <= circuit_rounds);
                         // println!("{relation_name}: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = {output}");
                         yul_println!("
-                        \t{{  // {relation_name}: 4(2^0 r[23] + 2^1 r[22] + 2^2 r[21] + 2^3 r[20] + 2^4 r[19] + 2^5 r[18] + 2^6 r[17] + 2^7 r[16] + 2^8 r[15] + 2^9 r[14] + 2^10 r[13] + 2^11 r[12] + 2^12 r[11] + 2^13 r[10]) = {output}
+                        \t{{  // {relation_name}: 4·Σ_{{k<{low_bits}}} 2^k·r[k] = {output}
                         \t    let gate := mul(4, gkr_virtual_poly_compose_vars({low_bits}, 0)) // u32 word-aligned
                         \t    {output:x}
                         \t}}");
@@ -1079,7 +1114,7 @@ pub fn emit_circuit_yul_with_stats(
                         );
                         // println!("{relation_name}: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = {output}");
                         yul_println!("
-                        \t{{  // {relation_name}: 2^0 r[9] + 2^1 r[8] + 2^2 r[7] + 2^3 r[6] + 2^4 r[5] + 2^5 r[4] + 2^6 r[3] + 2^7 r[2] + 2^8 r[1] + 2^9 r[0] = {output}
+                        \t{{  // {relation_name}: Σ_{{k<{high_bits}}} 2^k·r[{low_bits} + k] = {output}
                         \t    let gate := gkr_virtual_poly_compose_vars({high_bits}, {low_bits})
                         \t    {output:x}
                         \t}}");
@@ -1089,7 +1124,9 @@ pub fn emit_circuit_yul_with_stats(
         }
         // Close the buffered cache function, capture it for top-level hoisting, and emit the
         // inline call (caches are computed + mstore'd before the gates that mload them).
-        yul_println!("            }}");
+        if has_caches {
+            yul_println!("            }}");
+        }
         let layer_cache_func = YUL_BUFFER
             .get()
             .unwrap()
@@ -1115,7 +1152,9 @@ pub fn emit_circuit_yul_with_stats(
                                                    // Publish the post-sumcheck calldata cursor to the fixed heap slot so the cache and
                                                    // gate sub-functions can read it via mload(CIRCUIT_PTR) instead of a `ptr` parameter.
         yul_println!("            mstore(CIRCUIT_PTR, ptr)");
-        yul_println!("            scl{i}_caches()");
+        if has_caches {
+            yul_println!("            scl{i}_caches()");
+        }
         const DEBUG_NATURAL_GATE_ORDER: bool = false;
         trait EachRefMaybeRev<T, const N: usize> {
             fn each_ref_mayberevmap<U>(&self, f: impl FnMut(&T) -> U) -> [U; N];
@@ -1524,8 +1563,8 @@ pub fn emit_circuit_yul_with_stats(
                     .unwrap_or(Dual("0".to_string(), yul_format!("0")));
                 let constant = proth120_const_to_evm(constant);
                 Dual(
-                    format!("{constant} + {linear}"),
-                    yul_format!("add({constant:x}, {linear:x})"),
+                    display_sum(&[&constant, &linear]),
+                    add_constant(&constant, &linear),
                 )
             }
             fn quadrel_to_calldata_inner(
@@ -1595,8 +1634,8 @@ pub fn emit_circuit_yul_with_stats(
                     .unwrap_or_else(zero);
                 let constant = proth120_const_to_evm(constant);
                 Dual(
-                    format!("{constant} + {linear} + {quadratic}"),
-                    yul_format!("add(add({constant:x}, {linear:x}), {quadratic:x})"),
+                    display_sum(&[&constant, &linear, &quadratic]),
+                    yul_format!("add({}, {quadratic:x})", add_constant(&constant, &linear).0),
                 )
             }
             // fn expression_to_calldata(expression: &StructuredExpression, expected_layer: usize, layer0_group_widths: (usize, usize, usize), running_max_group_offsets: &mut (usize, usize, usize)) -> String {
@@ -1624,7 +1663,6 @@ pub fn emit_circuit_yul_with_stats(
             // }
 
             match enforced_relation {
-                // 3
                 GKRRelation::AggregateLookupRationalPair { input, output } => {
                     let [[num1, den1], [num2, den2]] = input.each_ref().map(|pair| {
                         pair.each_ref().map(|addr| {
@@ -1666,7 +1704,6 @@ pub fn emit_circuit_yul_with_stats(
                     );
                 }
 
-                // 2
                 GKRRelation::MaskIntoIdentityProduct {
                     input,
                     mask,
@@ -1860,8 +1897,8 @@ pub fn emit_circuit_yul_with_stats(
                     yul_println!(
                         "
                     \t{{  // {relation_name}: {lhs}*{rhs} = {output}
-                    \t    let lhs := {lhs:x} // for memrel we collect
-                    \t    let rhs := {rhs:x} // for memrel we collect
+                    \t    let lhs := {lhs:x}
+                    \t    let rhs := {rhs:x}
                     \t    let gate := mulmod(lhs, rhs, P)
                     \t    {pointcheck_update:x}
                     \t}}"
@@ -2087,11 +2124,6 @@ pub fn emit_circuit_yul_with_stats(
                     });
                     let [lhs_addr_high, rhs_addr_high] = {
                         assert_eq!(
-                            circuit.trace_len,
-                            1 << 22,
-                            "currently we expect gkr_compress to go up to 2^22"
-                        );
-                        assert_eq!(
                             circuit.memory_layout.inits_and_teardowns_word_bits.unwrap(),
                             2,
                             "we expect there to be just 2 empty low bits"
@@ -2136,8 +2168,8 @@ pub fn emit_circuit_yul_with_stats(
                     yul_println!("
                     \t{{  // {relation_name}: ({shared} + {lhs_addr_high} + {lhs_timestamp_and_value}) * ({shared} + {rhs_addr_high} + {rhs_timestamp_and_value}) = {output}
                     \t    let shared := {shared:x}
-                    \t    let lhs := add(shared, add({lhs_addr_high:x}, {lhs_timestamp_and_value:x})) // for memrel we collect
-                    \t    let rhs := add(shared, add({rhs_addr_high:x}, {rhs_timestamp_and_value:x})) // for memrel we collect
+                    \t    let lhs := add(shared, add({lhs_addr_high:x}, {lhs_timestamp_and_value:x}))
+                    \t    let rhs := add(shared, add({rhs_addr_high:x}, {rhs_timestamp_and_value:x}))
                     \t    let gate := mulmod(lhs, rhs, P)
                     \t    {pointcheck_update:x}
                     \t}}");
@@ -2301,9 +2333,9 @@ pub fn emit_circuit_yul_with_stats(
             // modulus in a stack local) BEFORE the Horner chunk calls read it. Emitted into the
             // layer body (main output; YUL_BUFFER is drained above so yul_println! targets it).
             if i == 0 && !quad_terms.is_empty() {
-                let (table_yul, qtable_bytes) =
+                let (table_yul, qtable) =
                     emit_layer0_quad_table(&quad_terms, &quad_gate_constant_terms);
-                stats.qtable_bytes = qtable_bytes;
+                stats.qtable = qtable;
                 stats.gateval_slots = quad_slot_counter as usize;
                 yul_println!("{}", table_yul);
             }
@@ -2365,14 +2397,21 @@ pub fn emit_circuit_yul_with_stats(
             "GKR_CIRCUIT_CLAIMS_PTR()"
         };
         let sccl_func = {
+            // Slots before the first claim only scale the zero accumulator: skip them.
             let mut body = String::new();
+            let mut started = false;
             for slot in &claim_slots {
                 match slot {
+                    Some(off) if !started => {
+                        started = true;
+                        body.push_str(&format!("            claim := mload(add(src, mul(32, {off})))\n"));
+                    }
                     Some(off) => body.push_str(&format!("            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, {off}))))\n")),
+                    None if !started => {}
                     None => body.push_str("            claim := mulmod(claim, alpha, P)\n"),
                 }
             }
-            format!("            function sccl{i}(alpha) -> claim {{\n            let src := {claims_src}\n            claim := 0\n{body}            }}\n")
+            format!("            function sccl{i}(alpha) -> claim {{\n            let src := {claims_src}\n{body}            }}\n")
         };
         // Writeback: publish this layer's at-point evals (offset-indexed, at CIRCUIT_PTR) to the
         // threaded claims array for the next-executed layer. The last-executed layer (i==0) has
@@ -2398,7 +2437,7 @@ pub fn emit_circuit_yul_with_stats(
             let n0 = layer0_group_widths.0 + layer0_group_widths.1 + layer0_group_widths.2;
             format!("
             // canonicity guard for the base-layer claims_batch absorb: {n0} at-point evals from
-            // calldata; require each < P so the absorbed transcript bytes are canonical
+            // the image; require each < P so the absorbed transcript bytes are canonical
             \tfor {{ let wk := 0 }} lt(wk, {n0}) {{ wk := add(wk, 1) }} {{
             \t    if iszero(lt(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))), P)) {{ revert(0, 0) }}
             \t}}")
@@ -2428,7 +2467,8 @@ pub fn emit_circuit_yul_with_stats(
             r
         }
         // Heap facts for the layout allocator: cache slots this layer stores, and the bytes the
-        // claims-batch absorb below stages at GKR_ABS_PTR (seed ‖ 16 B per absorbed value).
+        // claims-batch absorb below stages (seed ‖ 16 B per absorbed value): at GKR_ABS_PTR for a
+        // layer with caches, at SEED_PTR() (sumcheck_claims_batch) otherwise.
         {
             let cache_slots = cached_count
                 + if i == 0 {
@@ -2442,8 +2482,19 @@ pub fn emit_circuit_yul_with_stats(
                 layer0_group_widths.0 + layer0_group_widths.1 + layer0_group_widths.2
             } + cache_slots;
             stats.max_cache_slots = stats.max_cache_slots.max(cache_slots);
-            stats.max_absorb_bytes = stats.max_absorb_bytes.max(32 + 16 * absorbed);
+            if cached_count > 0 {
+                stats.max_absorb_bytes = stats.max_absorb_bytes.max(32 + 16 * absorbed);
+            } else {
+                stats.max_seed_absorb_bytes = stats
+                    .max_seed_absorb_bytes
+                    .max(32 + 16 * previous_input_count);
+            }
         }
+        let next_alpha = if i == 0 {
+            ""
+        } else {
+            "            next_alpha := mod(shr(128, s), P)\n"
+        };
         let claims_batch = if cached_count > 0 {
             let extra_set: std::collections::HashSet<usize> =
                 cache_dep_offsets.iter().copied().collect();
@@ -2523,38 +2574,35 @@ pub fn emit_circuit_yul_with_stats(
             mstore(SEED_PTR(), s)
             s := keccak256(SEED_PTR(), 32)
             mstore(SEED_PTR(), s)
-            next_alpha := mod(shr(128, s), P)
-            next_ptr := add(ptr, mul(16, {n}))
-            next_claim := 0
+{next_alpha}            next_ptr := add(ptr, mul(16, {n}))
             }}"
             )
         } else {
-            format!("next_ptr, next_claim, next_alpha := sumcheck_claims_batch(ptr, {previous_input_count})")
+            assert!(i > 0, "layer 0 batches its claims with its caches");
+            format!("next_ptr, next_alpha := sumcheck_claims_batch(ptr, {previous_input_count})")
         };
 
         let check = if DEBUG_ENABLE_DUMMY_CHECKS {
             yul_format!(
                 "
-            let dummy_check := mod(add(claim, sub(P, rhs_scaled)), P)
+            let dummy_check := mod(add(claim, sub(P, rhs)), P)
             \tmstore(GKR_CIRCUIT_CACHE_PTR(), dummy_check)
             "
             )
         } else {
             yul_format!(
                 "
-            if mod(add(claim, sub(P, rhs_scaled)), P) {{ revert(0, 0) }}
+            if iszero(eq(claim, rhs)) {{ revert(0, 0) }}
             "
             )
         };
         yul_println!(
             "
-            let rhs_scaled := mulmod(acc, eq_scale, P)
-            // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-            // after stack-heavy values are dead
+            let rhs := mod(acc, P)
             {check:x}
             {writeback}
-            // POINT CLAIMS BATCH — absorb this layer's evals + draw next_alpha (cache layers
-            // absorb final_step ++ extras in one keccak, THEN draw). next_claim unused (sccl recomputes).
+            // POINT CLAIMS BATCH — absorb this layer's evals + draw the next batching (cache layers
+            // absorb final_step ++ extras in one keccak, THEN draw).
             {claims_batch}
         }}
         "
@@ -2593,106 +2641,37 @@ pub fn emit_circuit_yul_with_stats(
         "
         )
     };
-    let gate_calldataload_inner = Yul::calldataload(&123).0.replace("123", "idx");
-    let gate_mload_inner = Yul::mload(&123).0.replace("123", "idx");
+    let gate_image_load_inner = Yul::calldataload(&123).0.replace("123", "idx");
     yul_println!("
-        function sumcheck_rounds_circuit(ptr, claim) -> next_ptr, next_claim, eq_scale {{
-            // NB: need to inline __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS unfortunately
-            eq_scale := 1
-            let modulus := mload(P_PTR) // hoisted: DUP per use instead of re-mload every round
-            for {{ let i := 0 }} lt(i, __TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS) {{ i := add(i, 1) }} {{
-                let w0 := calldataload(ptr)
-                let w1 := calldataload(add(ptr, 32))
-                let c0 := shr(128, w0)
-                let c1 := and(w0, MASK)
-                let c2 := shr(128, w1)
-                let c3 := and(w1, MASK)
-                // reject non-canonical coefficient lanes (the absorb takes the raw words)
-                if iszero(lt(c0, modulus)) {{ revert(0, 0) }}
-                if iszero(lt(c1, modulus)) {{ revert(0, 0) }}
-                if iszero(lt(c2, modulus)) {{ revert(0, 0) }}
-                if iszero(lt(c3, modulus)) {{ revert(0, 0) }}
-                let g0g1_scaled := mulmod(add(add(add(add(c0, c0), c1), c2), c3), eq_scale, modulus)
-                let r := transcript_4to1_dual(w0, w1, modulus) // before-check draw is intentional; see HEURISTICS.md
-                // TODO: benchmark canonical claim updates so scaled checks can use plain eq.
-                if mod(add(claim, sub(modulus, g0g1_scaled)), modulus) {{ revert(0, 0) }}
-                claim := add(mulmod(add(mulmod(add(mulmod(c3, r, modulus), c2), r, modulus), c1), r, modulus), c0)
-                let z := mload(add(POINT_PTR(), mul(i, 32)))
-                let zr := mulmod(z, r, modulus)
-                eq_scale := add(add(add(zr, zr), 1), sub(mul(4, modulus), add(z, r)))
-                mstore(add(POINT_PTR(), mul(i, 32)), r)
-                ptr := add(ptr, 64)
-            }}
-            next_ptr := ptr
-            next_claim := claim
-        }}
-        function transcriptNTo1(ptr, input_elements) -> alpha {{
-            let input_bytes := mul(input_elements, 16)
+        function sumcheck_claims_batch(ptr, points) -> next_ptr, next_alpha {{
+            let input_bytes := mul(points, 16)
             calldatacopy(add(SEED_PTR(), 32), ptr, input_bytes)
             let seed := keccak256(SEED_PTR(), add(32, input_bytes)) // absorb evals
             mstore(SEED_PTR(), seed)
             seed := keccak256(SEED_PTR(), 32)                       // draw (the mirror draws a fresh el)
             mstore(SEED_PTR(), seed)
-            alpha := mod(shr(128, seed), P)                         // batching is a field element mod P
-        }}
-        function sumcheck_claims_batch(ptr, points) -> next_ptr, next_claim, next_alpha {{
-            let is_odd := mod(points, 2)
-            if is_odd {{
-                next_claim := shr(128, calldataload(add(ptr, mul(16, sub(points, 1)))))
-            }}
-            next_alpha := transcriptNTo1(ptr, points)
-            let even_points := sub(points, is_odd)
-            let pairs := shr(1, even_points)
-            for {{ let pair := sub(pairs, 1) }} lt(pair, pairs) {{ pair := sub(pair, 1) }} {{
-                let word := calldataload(add(ptr, mul(pair, 32)))
-                let el1 := and(MASK, word)
-                let el0 := shr(128, word)
-                next_claim := add(mulmod(next_claim, next_alpha, P), el1)
-                next_claim := add(mulmod(next_claim, next_alpha, P), el0)
-            }}
-            next_ptr := add(ptr, mul(16, points))
+            next_alpha := mod(shr(128, seed), P)                    // batching is a field element mod P
+            next_ptr := add(ptr, input_bytes)
         }}
 
-        function gkr_memrel_compress(address_space, addr_low, addr_high, ts_low, ts_high, val_low, val_high) -> compressed {{
-            compressed := add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space)
-            compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P))
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P))
-        }}
-
-        // Fold five generic lookup tuple columns into an existing Horner accumulator.
-        // A single helper that took all c0..c9 made solc materialize all ten columns
-        // at the call boundary and failed stack allocation. Splitting the fold into
-        // two five-column calls keeps each call boundary small while still supporting
-        // arbitrary linrel_to_calldata_inner() output for every column.
-        function gkr_lookrel_compress_half(acc, c0, c1, c2, c3, c4) -> acc_next {{
-            acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR()), P), c4)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c3)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c2)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c1)
-            acc_next := add(mulmod(acc_next, mload(LOGUP_CHALLS_PTR()), P), c0)
-        }}
-        // One β-Horner step: acc·β + c. Callers chain ten of these (see lookrel_horner)
-        // instead of one 5-arg compress_half, keeping every call boundary at 2 args so the
-        // enclosing cache/gate function stays inside the EVM stack limit.
+        // One β-Horner step: acc·β + c. Callers chain ten of these (see lookrel_horner),
+        // keeping every call boundary at 2 args so the enclosing cache/gate function stays
+        // inside the EVM stack limit.
         function gkr_lookrel_step(acc, c) -> acc_next {{
             acc_next := add(mulmod(acc, mload(LOGUP_CHALLS_PTR()), P), c)
         }}
 
         // Split memrel into a 3-arg low + 4-arg high, composed by the caller as
-        // add(low(...), high(...)). A single 7-arg gkr_memrel_compress forced solc to
-        // materialize all 7 expression-args at the call boundary, running the enclosing
-        // cache function 1 slot too deep (same failure the lookrel split above avoids).
+        // add(low(...), high(...)). A single 7-arg helper would make solc materialize all 7
+        // expression-args at the call boundary, running the enclosing cache function 1 slot
+        // too deep (the same failure the lookrel steps above avoid).
         function gkr_memrel_compress_low(address_space, addr_low, addr_high) -> compressed {{
             compressed := add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space)
             compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, P))
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 32)), addr_high, P))
         }}
         function gkr_memrel_compress_high(ts_low, ts_high, val_low, val_high) -> compressed {{
-            compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P))
+            compressed := mulmod(mload(add(MEMORY_CHALLS_PTR(), 64)), ts_low, P)
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 96)), ts_high, P))
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 128)), val_low, P))
             compressed := add(compressed, mulmod(mload(add(MEMORY_CHALLS_PTR(), 160)), val_high, P))
@@ -2718,11 +2697,8 @@ pub fn emit_circuit_yul_with_stats(
             eval := mulmod(gkr_virtual_poly_compose_vars(width, 0), gkr_virtual_poly_zero_vars(sub(__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS, width)), P)
         }}
 
-        function gate_calldataload(idx) -> load {{
-            load := {gate_calldataload_inner}
-        }}
-        function gate_mload(idx) -> load {{
-            load := {gate_mload_inner}
+        function gate_image_load(idx) -> load {{
+            load := {gate_image_load_inner}
         }}
         function pointcheck_update(acc, alpha, gate) -> next_acc {{
             next_acc := add(mulmod(acc, alpha, P), gate)
@@ -2731,31 +2707,24 @@ pub fn emit_circuit_yul_with_stats(
             acc := pointcheck_update(acc, alpha, den_out)
             next_acc := pointcheck_update(acc, alpha, num_out)
         }}
-        function u128_neg(input) -> neg_input {{
-            neg_input := sub(mul(2, P), input)
-        }}
 
-        // 3
         function gate_aggregatelookuprationalpair(alpha, acc, num1_idx, num2_idx, den1_idx, den2_idx) -> next_acc {{
-            let num1 := gate_calldataload(num1_idx)
-            let num2 := gate_calldataload(num2_idx)
-            let den1 := gate_calldataload(den1_idx)
-            let den2 := gate_calldataload(den2_idx)
+            let num1 := gate_image_load(num1_idx)
+            let num2 := gate_image_load(num2_idx)
+            let den1 := gate_image_load(den1_idx)
+            let den2 := gate_image_load(den2_idx)
             let den_out := mulmod(den1, den2, P)
             let num_out := add(mulmod(num1, den2, P), mulmod(num2, den1, P))
             next_acc := logup_pointcheck_update(acc, alpha, num_out, den_out)
         }}
         function gate_copyinextensionfield(alpha, acc, input_idx) -> next_acc {{
-            let input := gate_calldataload(input_idx)
+            let input := gate_image_load(input_idx)
             next_acc := pointcheck_update(acc, alpha, input)
         }}
 
-        // 2
         function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_acc {{
-            let input := gate_calldataload(input_idx)
-            let mask := gate_calldataload(mask_idx)
-            // let neg_mask := u128_neg(mask)
-            // let gate := add(mulmod(input, mask, P), add(1, neg_mask))
+            let input := gate_image_load(input_idx)
+            let mask := gate_image_load(mask_idx)
             let neg_one := sub(P, 1)
             let gate := add(mulmod(mask, add(input, neg_one), P), 1)
             next_acc := pointcheck_update(acc, alpha, gate)
@@ -2764,7 +2733,7 @@ pub fn emit_circuit_yul_with_stats(
     let _ = DEBUG_ENABLE_DUMMY_CHECKS;
     let out = std::mem::take(&mut *yul_main_output().lock().unwrap());
     assert!(
-        stats.gateval_slots > 0 && stats.qtable_bytes > 0,
+        stats.gateval_slots > 0 && !stats.qtable.is_empty(),
         "layer 0 emitted no table-driven quadratic gates"
     );
     // Modulus representation: the ~124-bit Proth120 P as a Solidity `constant` compiles to a

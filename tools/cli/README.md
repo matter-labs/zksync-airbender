@@ -128,12 +128,66 @@ cargo run --release -p cli -- verify \
 `--soundness-mode pessimistic-conjecture|ethproofs-soundcalc` (default
 `pessimistic-conjecture`). Artifacts record their mode; `continue-proof` and `verify`
 refuse an artifact recorded in another mode and use that mode's own verifier guests.
-The L1 feeder/wrap/EVM profile exists only in `pessimistic-conjecture`.
+The L1 compression/wrap/EVM profile exists only in `pessimistic-conjecture`.
+
+## L1 Compression Checkpoint
+
+`--target compression` continues a `recursion-unified` proof with a compression chain.
+The pipeline uses the fixed compression schedule in `prover_pipeline`.
+
+Artifacts use schema 5. The optional `l1` bundle is serialized only when present;
+artifacts without it retain the existing schema-5 encoding. The `compression`
+artifact is the input of the L1 wrap.
+
+Producer commands and fixture inputs are in the
+[fixture README](../../fixtures/README.md).
+
+```bash
+cargo run --release -p cli -- continue-proof \
+  --proof output/recursion_unified.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --target compression \
+  --output-dir output \
+  --output-file compression.json
+
+cargo run --release -p cli -- verify \
+  --proof output/compression.json \
+  --bin examples/basic_fibonacci/app.bin
+```
+
+## L1 Proof
+
+`--target l1` continues a `compression` checkpoint (or runs through it) and
+proves the compression verifier's execution as one Proth120 packed unified proof
+with Keccak commitments, the proof shape the EVM verifier consumes. The
+artifact (schema 5) keeps the BabyBear compression sidecar and adds the `l1` bundle
+(proof and operation-mode data).
+
+```bash
+cargo run --release -p cli -- continue-proof \
+  --proof output/compression.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --target l1 \
+  --backend cpu \
+  --output-dir output \
+  --output-file l1.json
+
+cargo run --release -p cli -- verify \
+  --proof output/l1.json \
+  --bin examples/basic_fibonacci/app.bin
+```
+
+There is no native verifier for the Proth120 proof: `verify` on an L1 artifact
+checks the compression sidecar, the recursion chain and the bundle's packing
+parameters, and says that the Proth proof was not verified.
 
 ## Trusted Params
 
 `trusted-params` writes the trusted verification parameters of one program and soundness
-mode; `verify --trusted-params <file>` uses them instead of recomputing the setups.
+mode through `--target` (default `recursion-unified`); `--backend cpu|gpu` selects
+how setup caps are computed. Compression records are available in pessimistic mode;
+the L1 wrap has no trusted record. `verify --trusted-params <file>` uses these
+records instead of recomputing setups.
 
 ## Prove Batch
 

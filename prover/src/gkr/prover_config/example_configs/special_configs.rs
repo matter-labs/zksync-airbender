@@ -1,79 +1,17 @@
-//! Hand-tuned configs outside the per-circuit ladders: the L1-feeder schedule
-//! of the last BabyBear recursion layer and the EVM-production Proth120
-//! config. Both are [`SoundnessMode::PessimisticConjecture`] accountings.
-//! Ethproofs L1 feeder/wrap/EVM implementation is deferred product scope;
-//! [`ProverConfigProfile::assert_supports`] rejects that combination (see
-//! `soundcalc/README.md`).
+//! compression and wrap configs, supported only in pessimistic-conjecture mode.
+//! Ethproofs support is deferred; see `soundcalc/README.md`.
 
 use super::*;
+use crate::gkr::whir::proximity_testing_modes::{PessimisticConjectureMode, ProximityTestingMode};
 
 impl ProverConfigProfile {
-    /// The L1 feeder and EVM profiles exist only in the pessimistic-conjecture
+    /// The compression and EVM profiles exist only in the pessimistic-conjecture
     /// mode; Ethproofs for them is deferred product scope.
     pub fn assert_supports(self, soundness_mode: SoundnessMode) {
         assert!(
             self == Self::Standard || soundness_mode == SoundnessMode::PessimisticConjecture,
             "{self:?} supports only the pessimistic-conjecture soundness mode, not {soundness_mode:?}"
         );
-    }
-}
-
-/// The "L1 feeder" configuration for the 2^23 unified circuit: identical to
-/// the standard [`config_for_100_bits_under_pessimistic_conjecture`] 2^23
-/// entry except EVERY oracle — the base one and each intermediate — is
-/// committed at the LARGEST LDE factor BabyBear admits: every oracle domain
-/// (poly_size x lde_factor) is pinned at 2^27, the field's full two-adicity
-/// (a larger domain does not exist — `BabyBearField::TWO_ADICITY = 27`; a
-/// uniform x8 ladder was tried first and produced invalid 2^29 domains).
-/// Base 2 -> 16 (2^23 x 16 = 2^27); intermediate ladder
-/// (then [16, 512, 16384, 524288]) -> [32, 1024, 32768, 1048576] for the post-fold
-/// poly sizes [2^22, 2^17, 2^12, 2^7]; the schedule stops at the 2^3
-/// polynomial (plain-text tail). Under [`PessimisticConjectureMode`]
-/// accounting (`queries = ceil(1.2 * (100 - pow) / rate_bits)`) with the
-/// fewest queries a 2^30 grind admits per round and the smallest PoW that
-/// keeps them, the query ladder drops [89, 23, 10, 7, 5] -> [21, 17, 9, 6, 5].
-/// Purpose: make proofs of the
-/// LAST BabyBear recursion layer(s) maximally cheap to VERIFY (fewer Merkle
-/// paths + leaf hashes in every round) so the verification run fits the L1
-/// (Proth120) wrapper's 2^22-cycle unified circuit; the LDE prover overhead
-/// is paid only on those final small layers (prove such layers with the
-/// RS/tree RECOMPUTATION storage policy — the materialized codewords no
-/// longer fit in memory).
-///
-/// [`PessimisticConjectureMode`]: crate::gkr::whir::proximity_testing_modes::PessimisticConjectureMode
-pub fn l1_feeder_config_for_2_23() -> ProverConfig {
-    const L1_FEEDER_BASE_LDE_FACTOR: usize = 16;
-    ProverConfig {
-        trace_len_log2: 23,
-        // the L1 feeder flow commits the single merged memory+witness tree
-        commitment_mode: CommitmentMode::MergedMemoryAndWitness,
-        same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(23),
-        dimension_reducing_sumcheck_schedule: Default::default(),
-        cap_size: DEFAULT_CAP_SIZE,
-        sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
-        security_level: SecurityLevel::Sec100,
-        // Total fold 20: the WHIR run STOPS at the 2^3 polynomial and ships
-        // its 8 monomial coefficients in plain text — no LDE/oracle for the
-        // degree-8 tail (the extra fold-by-2 round on a 2^27-domain oracle is
-        // dropped entirely).
-        //
-        // rates 2^-4 / 2^-5 / 2^-10 / 2^-15 / 2^-20; the fewest queries a
-        // 2^30 grind admits, then the smallest PoW that keeps them:
-        //   ceil(1.2 * 70 / 4)  = 21  (pow 30)
-        //   ceil(1.2 * 70 / 5)  = 17  (pow 30)
-        //   ceil(1.2 * 75 / 10) = 9   (pow 25)
-        //   ceil(1.2 * 75 / 15) = 6   (pow 25)
-        //   ceil(1.2 * 83 / 20) = 5   (pow 17)
-        // every oracle domain = 2^27 exactly (BabyBear's two-adicity cap)
-        whir_schedule: WhirSchedule::from_legacy_arrays(
-            L1_FEEDER_BASE_LDE_FACTOR,
-            DEFAULT_CAP_SIZE,
-            0,
-            &[1, 5, 5, 5, 4],
-            &[21, 17, 9, 6, 5],
-            &[32, 1024, 32768, 1048576],
-            &[30, 30, 25, 25, 17],
-        ),
     }
 }
 
@@ -120,5 +58,154 @@ pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig
             &[1 << 7, 1 << 11, 1 << 15, 1 << 19, 1 << 23],
             &[30, 30, 27, 25, 21, 24],
         ),
+    }
+}
+
+/// PoW ceiling for compression WHIR, lookup, batching and external challenges.
+pub const COMPRESSION_MAX_POW_BITS: u32 = 25;
+
+fn queries_and_pow_under_pessimistic_conjecture<const ROUNDS: usize>(
+    level: SecurityLevel,
+    base_lde_factor: usize,
+    whir_steps_lde_factors: &[usize],
+    pow_bits: [u32; ROUNDS],
+) -> [(usize, u32); ROUNDS] {
+    assert_eq!(whir_steps_lde_factors.len() + 1, ROUNDS);
+    let security_bits = level.security_bits() as u32;
+    let lde_factors =
+        core::iter::once(base_lde_factor).chain(whir_steps_lde_factors.iter().copied());
+    let mut rounds = [(0, 0); ROUNDS];
+    for ((round, pow), lde_factor) in rounds.iter_mut().zip(pow_bits).zip(lde_factors) {
+        let queries = PessimisticConjectureMode.num_queries_for_rate_and_bits_of_security(
+            security_bits - pow,
+            lde_factor.trailing_zeros(),
+        );
+        *round = (queries as usize, pow);
+    }
+    rounds
+}
+
+const COMPRESSION_FINAL_BASE_LDE_FACTOR: usize = 16;
+const COMPRESSION_FINAL_WHIR_STEPS_LDE_FACTORS: [usize; 4] = [32, 1024, 32768, 1048576];
+
+/// Each round uses the least PoW satisfying `6 * pow + 5 * queries * rate_bits >= 600`,
+/// bounded by [`COMPRESSION_MAX_POW_BITS`].
+pub const COMPRESSION_FINAL_POW_BITS: [u32; 5] = [24, 25, 25, 25, 17];
+
+const COMPRESSION_BASE_LDE_FACTOR: usize = 4;
+
+/// The repeatable Compression step follows the same rule and ceiling as [`COMPRESSION_FINAL_POW_BITS`].
+pub const COMPRESSION_POW_BITS: [u32; 5] = [25, 25, 25, 25, 17];
+
+/// The cap must equal the base LDE: coset commitment requires cap <= LDE,
+/// while splitting the memory cap requires cap >= LDE.
+fn compression_config(
+    trace_len_log2: usize,
+    base_lde_factor: usize,
+    whir_steps_schedule: Vec<usize>,
+    queries_and_pow: &[(usize, u32); 5],
+) -> ProverConfig {
+    ProverConfig {
+        trace_len_log2,
+        same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
+            trace_len_log2,
+        ),
+        commitment_mode: CommitmentMode::MergedMemoryAndWitness,
+        dimension_reducing_sumcheck_schedule: Default::default(),
+        cap_size: base_lde_factor,
+        sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
+        security_level: SecurityLevel::Sec100,
+        whir_schedule: WhirSchedule::from_legacy_arrays(
+            base_lde_factor,
+            base_lde_factor,
+            0,
+            &whir_steps_schedule,
+            &queries_and_pow
+                .iter()
+                .map(|(queries, _)| *queries)
+                .collect::<Vec<_>>(),
+            &COMPRESSION_FINAL_WHIR_STEPS_LDE_FACTORS,
+            &queries_and_pow
+                .iter()
+                .map(|(_, pow)| *pow)
+                .collect::<Vec<_>>(),
+        ),
+    }
+}
+
+/// The terminal CompressionFinal profile.
+pub fn compression_final_config_for_2_22() -> ProverConfig {
+    compression_config(
+        22,
+        COMPRESSION_FINAL_BASE_LDE_FACTOR,
+        vec![1, 5, 5, 5, 3],
+        &queries_and_pow_under_pessimistic_conjecture(
+            SecurityLevel::Sec100,
+            COMPRESSION_FINAL_BASE_LDE_FACTOR,
+            &COMPRESSION_FINAL_WHIR_STEPS_LDE_FACTORS,
+            COMPRESSION_FINAL_POW_BITS,
+        ),
+    )
+}
+
+/// Repeatable Compression profile.
+pub fn compression_config_for_2_23() -> ProverConfig {
+    compression_config(
+        23,
+        COMPRESSION_BASE_LDE_FACTOR,
+        vec![1, 5, 5, 5, 4],
+        &queries_and_pow_under_pessimistic_conjecture(
+            SecurityLevel::Sec100,
+            COMPRESSION_BASE_LDE_FACTOR,
+            &COMPRESSION_FINAL_WHIR_STEPS_LDE_FACTORS,
+            COMPRESSION_POW_BITS,
+        ),
+    )
+}
+
+/// L1 wrap over the 512 KiB wrap ROM.
+pub mod l1_wrap {
+    use super::*;
+
+    pub const TRACE_LEN_LOG2: usize = 21;
+    pub const PACK_LOG2: usize = 3;
+    pub const EXPLICIT_OUTPUT_LOG2: usize = 2;
+    pub const EXTERNAL_CHALLENGES_POW_BITS: u32 = 20;
+    /// No WHIR round grinds above it.
+    pub const MAX_POW_BITS: u32 = 30;
+
+    const BASE_LDE_FACTOR: usize = 1 << 7;
+    const WHIR_STEPS_LDE_FACTORS: [usize; 4] = [1 << 8, 1 << 12, 1 << 16, 1 << 20];
+
+    /// Each round uses the least PoW satisfying `6 * pow + 5 * queries * rate_bits >= 600`.
+    pub const POW_BITS: [u32; 5] = [30, 27, 30, 20, 17];
+
+    pub fn packed_prover_config() -> ProverConfig {
+        const CAP_SIZE: usize = 8;
+        let level = SecurityLevel::Sec100;
+        let queries_and_pow = queries_and_pow_under_pessimistic_conjecture(
+            level,
+            BASE_LDE_FACTOR,
+            &WHIR_STEPS_LDE_FACTORS,
+            POW_BITS,
+        );
+        ProverConfig {
+            trace_len_log2: TRACE_LEN_LOG2,
+            commitment_mode: CommitmentMode::MergedMemoryAndWitness,
+            same_size_sumcheck_schedule: windowed_same_size_schedule(TRACE_LEN_LOG2),
+            dimension_reducing_sumcheck_schedule: Default::default(),
+            cap_size: CAP_SIZE,
+            sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
+            security_level: level,
+            whir_schedule: WhirSchedule::from_legacy_arrays(
+                BASE_LDE_FACTOR,
+                CAP_SIZE,
+                PACK_LOG2,
+                &[1, 4, 4, 4, 4],
+                &queries_and_pow.iter().map(|(q, _)| *q).collect::<Vec<_>>(),
+                &WHIR_STEPS_LDE_FACTORS,
+                &queries_and_pow.iter().map(|(_, p)| *p).collect::<Vec<_>>(),
+            ),
+        }
     }
 }

@@ -20,14 +20,8 @@ pub(crate) fn blake2_round_function_call<
     let x11 = state.registers[11].value;
     let x12 = state.registers[12].value;
 
-    assert!(
-        x10 >= common_constants::rom::ROM_BYTE_SIZE as u32,
-        "state pointer is in ROM"
-    );
-    assert!(
-        x11 >= common_constants::rom::ROM_BYTE_SIZE as u32,
-        "input pointer is in ROM"
-    );
+    assert!(x10 >= R::ROM_BYTE_SIZE as u32, "state pointer is in ROM");
+    assert!(x11 >= R::ROM_BYTE_SIZE as u32, "input pointer is in ROM");
 
     assert!(x10 != x11);
 

@@ -5,6 +5,8 @@ type ScheduledProof = crate::upstream::GKRProof<BF, E4, crate::upstream::Default
 
 pub(super) struct RequestContext<'a, B: ExecutionBackend> {
     pub(super) proving: bool,
+    pub(super) commitment_mode: CommitmentMode,
+    pub(super) profile: ProofProfile,
     pub(super) batch_id: u64,
     pub(super) binary_holder: &'a BinaryHolder<B>,
     pub(super) external_challenges: Option<&'a GKRExternalChallenges<BF, E4>>,
@@ -51,10 +53,25 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
         let circuit_type = circuit_type_value.expect(
             "get_gpu_work_request needs at least one of inits_and_teardowns or tracing_data",
         );
+        assert!(
+            self.commitment_mode != CommitmentMode::MergedMemoryAndWitness
+                || !matches!(circuit_type, CircuitType::Delegation(_)),
+            "MergedMemoryAndWitness does not support delegation calls or circuits"
+        );
         let sequence_id = sequence_id_value.expect(
             "get_gpu_work_request needs at least one of inits_and_teardowns or tracing_data",
         );
+        let profile = match circuit_type {
+            CircuitType::Delegation(_)
+            | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+                ProofProfile::Standard
+            }
+            _ => self.profile,
+        };
         let precomputations = match circuit_type {
+            CircuitType::L1Wrap => {
+                panic!("L1Wrap requires its typed proof request")
+            }
             CircuitType::Delegation(_)
             | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
                 prover.common_precomputations[&circuit_type].clone()
@@ -80,6 +97,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                     .external_challenges
                     .expect("proof request construction requires external challenges"),
                 memory_caps,
+                profile,
             };
             WorkRequest::Proof(request)
         } else {
@@ -90,6 +108,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 precomputations,
                 inits_and_teardowns,
                 tracing_data,
+                profile,
             };
             WorkRequest::MemoryCommitment(request)
         }
@@ -108,7 +127,7 @@ fn enqueue_ready_tracing_data<B: ExecutionBackend>(
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
             panic!("tracing data can not have the inits and teardowns circuit_type")
         }
-        CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
+        CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22) => {
             let sequence_id = data.sequence_id;
             assert!(!unpaired_unified_tracing_data.contains_key(&sequence_id));
             if let Some(inits_and_teardowns) =
@@ -192,7 +211,9 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                     let request = request_context.build_work_request(prover, Some(data), None);
                     work_requests.push_back(request);
                 }
-                CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
+                CircuitType::Unrolled(
+                    UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22,
+                ) => {
                     let sequence_id = data.sequence_id;
                     if sequence_id < self.trivial_unified_inits_and_teardowns_count {
                         assert!(data.inits_and_teardowns.is_none());
@@ -309,6 +330,7 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
         result: WorkResult<B::Allocator>,
     ) {
         match result {
+            WorkResult::L1WrapProof(_) => panic!("L1Wrap result reached the BabyBear pipeline"),
             WorkResult::MemoryCommitment(commitment) => {
                 assert!(!proving);
                 let MemoryCommitmentResult {
@@ -337,6 +359,9 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                     prover.free_traces(inits_and_teardowns, tracing_data)
                 }
                 let caps: &mut BTreeMap<usize, Vec<MerkleTreeCapVarLength>> = match circuit_type {
+                    CircuitType::L1Wrap => {
+                        panic!("L1Wrap result reached the BabyBear pipeline")
+                    }
                     CircuitType::Delegation(circuit_type) => self
                         .delegation_circuits_memory_caps
                         .entry(circuit_type as u32)
@@ -368,6 +393,9 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                 );
                 prover.free_traces(inits_and_teardowns, tracing_data);
                 match circuit_type {
+                    CircuitType::L1Wrap => {
+                        panic!("L1Wrap result reached the BabyBear pipeline")
+                    }
                     CircuitType::Delegation(circuit_type) => {
                         assert!(self
                             .delegation_circuits_proofs

@@ -17,6 +17,8 @@ serde_json = "*"
 program_prover = { workspace = true, default-features = false }
 cpu_execution_prover = { workspace = true }
 execution_prover = { workspace = true }
+execution_prover_model = { workspace = true }
+unified_reduced_machine_proth120 = { workspace = true }
 worker = { path = "../worker" }
 clap = { workspace = true }
 riscv_transpiler = { path = "../riscv_transpiler", default-features = false }
@@ -57,8 +59,8 @@ gpu = ["dep:gpu_execution_prover"]
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 riscv_transpiler = { path = "../riscv_transpiler", features = ["jit"] }
 
-[lints]
-workspace = true
-
 [dev-dependencies]
 proof_fixtures = { workspace = true }
+
+[lints]
+workspace = true

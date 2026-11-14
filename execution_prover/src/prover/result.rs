@@ -7,8 +7,10 @@ use crate::upstream::{
     DefaultTreeConstructor, FinalRegisterValue, GKRProof, MerkleTreeCapVarLength,
 };
 use crate::upstream::{BF, E4};
+use crate::ProofProfile;
 
 pub struct CommitMemoryResult {
+    pub profile: ProofProfile,
     pub final_register_values: [FinalRegisterValue; 32],
     pub final_pc: u32,
     pub final_timestamp: TimestampScalar,
@@ -19,7 +21,7 @@ pub struct CommitMemoryResult {
     /// whose inits-and-teardowns are trivial (dummy, all-zero). Only the
     /// trailing circuits carry real i&t data. Consumed by the FS-seed
     /// derivation, which must use all-zero top bits for the trivial circuits
-    /// (CPU reference: `prover_examples::unified`).
+    /// (CPU reference: `program_prover::unified`).
     pub num_trivial_unified_circuits: usize,
     /// The i&t address windows assigned to each instance, keyed by sequence ID.
     /// Trivial leading unified instances are absent.
@@ -47,21 +49,21 @@ pub struct ProveResult {
 }
 
 pub(super) enum ExecutionProverResult {
-    CommitMemory(CommitMemoryResult),
-    Prove(ProveResult),
+    CommitMemory(Box<CommitMemoryResult>),
+    Prove(Box<ProveResult>),
 }
 
 impl ExecutionProverResult {
     pub fn into_memory_commitment_result(self) -> CommitMemoryResult {
         match self {
-            ExecutionProverResult::CommitMemory(result) => result,
+            ExecutionProverResult::CommitMemory(result) => *result,
             _ => panic!("expected CommitMemoryResult"),
         }
     }
 
     pub fn into_proof_result(self) -> ProveResult {
         match self {
-            ExecutionProverResult::Prove(result) => result,
+            ExecutionProverResult::Prove(result) => *result,
             _ => panic!("expected ProveResult"),
         }
     }

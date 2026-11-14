@@ -20,7 +20,7 @@ non_determinism_source = { path = "../../non_determinism_source" }
 riscv_common = { path = "../../riscv_common", features = ["boot_sequence", "ram_32mb_no_heap", "checked_word_memory"] }
 field = { path = "../../field", default-features = false, features = ["modular_ops", "modular_fma"] }
 # Full-statement verifier (no_std, verifiers-only — NOT proof_utils, which would pull std + the
-# full prover). Used only by the fsv_unified_base_layer bin; the blake variant comes from
+# full prover). Every FSV common source uses it. The blake variant comes from
 # verifier_common's unified features (the FSV's blake feature only forwards there), so no blake pin.
 full_statement_verifier = { path = "../../full_statement_verifier", default-features = false, features = ["verifiers"] }
 
@@ -58,12 +58,12 @@ name = "fsv_unified_recursion_layer_sec_100"
 path = "src/bin/full_statement_verifiers/fsv_unified_recursion_layer_sec_100.rs"
 
 [[bin]]
-name = "fsv_unified_recursion_layer_sec_100_l1_feeder"
-path = "src/bin/full_statement_verifiers/fsv_unified_recursion_layer_sec_100_l1_feeder.rs"
+name = "fsv_unified_recursion_layer_sec_100_compression"
+path = "src/bin/full_statement_verifiers/fsv_unified_recursion_layer_sec_100_compression.rs"
 
 # --- Full-statement verifiers wired to the ethproofs-soundcalc circuit verifiers
 # (`full_statement_verifiers/ethproofs_soundcalc/<name without the mode suffix>_<blake>.elf`).
-# No unified base layer: the recursion pipeline never selects it. No L1 feeder: its schedule
+# No unified base layer: the recursion pipeline never selects it. No compression: its schedule
 # exists only in pessimistic_conjecture. ---
 [[bin]]
 name = "fsv_unrolled_base_layer_sec_100_ethproofs_soundcalc"

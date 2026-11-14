@@ -13,7 +13,7 @@ type Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 fn load_inputs() -> (GKRCircuitArtifact<Proth120>, Proof, OperationMode) {
     let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_reader(
         std::fs::File::open(
-            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120_2p22.json",
         )
         .expect("circuit layout"),
     )

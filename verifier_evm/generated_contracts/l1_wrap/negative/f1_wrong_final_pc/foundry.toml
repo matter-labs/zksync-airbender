@@ -1,0 +1,10 @@
+# Wrong-final-PC control for ../../merged_f1; built by ../../../run_merged.sh.
+[profile.default]
+solc_version = "0.8.36"
+auto_detect_solc = false
+evm_version = "osaka"
+src = "src"
+out = "out"
+via_ir = true
+optimizer = true
+optimizer_runs = 1

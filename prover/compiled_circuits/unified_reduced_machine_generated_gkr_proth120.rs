@@ -769,7 +769,7 @@ fn eval_fn_12<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120,
     let mut v_9 = v_8;
     W::Field::add_assign_product(&mut v_9, &v_1, &v_3);
     let v_10 = v_9.as_integer();
-    let v_11 = v_10.shr(6u32);
+    let v_11 = v_10.shr(3u32);
     let v_12 = W::U32::constant(0u32);
     let v_13 = W::U32::equal(&v_11, &v_12);
     witness_proxy.set_witness_place_boolean(
@@ -2296,7 +2296,7 @@ fn eval_fn_53<'a, 'b: 'a, W: WitnessTypeSet<Proth120>, P: WitnessProxy<Proth120,
     W::Field::mul_assign(&mut v_10, &v_7);
     let mut v_11 = v_9;
     W::Field::add_assign_product(&mut v_11, &v_10, &v_2);
-    let v_12 = W::Field::constant(Proth120(3987683987354747618711421180841036069u128));
+    let v_12 = W::Field::constant(Proth120(3987683987354747618711421180841034021u128));
     let mut v_13 = v_11;
     W::Field::add_assign_product(&mut v_13, &v_12, &v_0);
     let mut v_14 = v_13;

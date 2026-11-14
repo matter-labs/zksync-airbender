@@ -1,8 +1,9 @@
-use super::{ProofCounts, ProofTarget, ProofTimingsMs, SecurityLevel, SoundnessMode};
+use super::{L1Bundle, ProofCounts, ProofTarget, ProofTimingsMs, SecurityLevel, SoundnessMode};
 use full_statement_verifier::program_proof::ProgramProof;
 use serde::{Deserialize, Serialize};
 use setups::Setups;
 
+/// The current proof artifact schema.
 pub const ARTIFACT_SCHEMA_VERSION: u32 = 5;
 
 /// JSON proof artifact, schema v5. `proof` + `setups` are enough to verify natively; `chain_end_params` is the ordered list of layer
@@ -26,7 +27,8 @@ pub struct ProofArtifact {
     #[serde(skip)]
     pub timings_ms: ProofTimingsMs,
     pub proof_counts: ProofCounts,
-    /// Layer end-params history: `[base, unrolled_1, .., bridge, final]`.
+    /// Layer end-params history: `[base, unrolled_1, .., bridge, final,
+    /// compression_0, compression_1, compression_2]`, one entry per proven layer.
     pub chain_end_params: Vec<[u32; 8]>,
     /// Recursion-chain state AFTER this artifact's layer.
     pub chain_hash: [u32; 8],
@@ -38,6 +40,8 @@ pub struct ProofArtifact {
     pub blake_unrolled: String,
     pub blake_bridge: String,
     pub blake_final: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub l1: Option<L1Bundle>,
     pub proof: ProgramProof,
     pub setups: Setups,
 }
@@ -48,16 +52,27 @@ fn deserialize_artifact_version<'de, D: serde::Deserializer<'de>>(
     let version = u32::deserialize(deserializer)?;
     if version != ARTIFACT_SCHEMA_VERSION {
         return Err(<D::Error as serde::de::Error>::custom(format!(
-            "artifact schema version {version} is not the supported {ARTIFACT_SCHEMA_VERSION}"
+            "artifact schema version {version} is not the supported {ARTIFACT_SCHEMA_VERSION}; regenerate"
         )));
     }
     Ok(version)
 }
 
 impl ProofArtifact {
-    /// Check the caller's soundness mode before source loading or backend work. Decoding
-    /// already rejects any other schema version.
+    /// Admit the caller's soundness mode and the fixed pipeline Blake modes.
     pub fn validate_expected_mode(&self, expected: SoundnessMode) -> Result<(), String> {
+        for tag in [&self.blake_unrolled, &self.blake_bridge, &self.blake_final] {
+            if tag != verifier_common::fsv_binaries::BlakeMode::Compression.tag() {
+                return Err(format!(
+                    "artifact Blake mode {tag:?} does not match the fixed pipeline mode"
+                ));
+            }
+        }
+        // L1 artifacts exist only in PessimisticConjecture: neither an ethproofs request nor
+        // an ethproofs label reaches an L1 verifier or continuation.
+        for mode in [expected, self.soundness_mode] {
+            super::assert_target_mode(self.target, mode);
+        }
         if self.soundness_mode != expected {
             return Err(format!(
                 "SoundnessModeMismatch: expected {expected:?}, artifact is {:?}",
@@ -87,6 +102,7 @@ mod tests {
             timings_ms: ProofTimingsMs::default(),
             proof_counts: ProofCounts::default(),
             chain_end_params: vec![[0; 8]],
+            l1: None,
             chain_hash: [0; 8],
             chain_preimage: [0; 16],
             blake_unrolled: BlakeMode::Compression.tag().to_owned(),
