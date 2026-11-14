@@ -1,5 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use field::baby_bear::base::BabyBearField;
+use field::PrimeField;
+
 // ── ID newtypes ──────────────────────────────────────────────────────────────
 
 #[derive(
@@ -118,7 +121,7 @@ pub enum SourceKind {
         place: ReadPlace,
     },
     Constant {
-        value: u32,
+        value: u128,
     },
     Challenge {
         reference: ChallengeRef,
@@ -254,6 +257,19 @@ pub struct DagLayer {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DagCircuit {
     pub layers: Vec<DagLayer>,
+    #[serde(
+        default = "babybear_modulus",
+        skip_serializing_if = "is_babybear_modulus"
+    )]
+    pub modulus: u128,
+}
+
+fn babybear_modulus() -> u128 {
+    BabyBearField::CHARACTERISTICS_U128
+}
+
+fn is_babybear_modulus(modulus: &u128) -> bool {
+    *modulus == BabyBearField::CHARACTERISTICS_U128
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -261,6 +277,7 @@ pub struct DagCircuit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use field::proth120::Proth120;
 
     /// Serde round-trip: one-layer DagCircuit with a Constant source,
     /// an Add expr referencing it, and one claim-bearing Output root (its sink
@@ -309,13 +326,29 @@ mod tests {
 
         let circuit = DagCircuit {
             layers: vec![layer],
+            modulus: BabyBearField::CHARACTERISTICS_U128,
         };
 
         // Serialize → deserialize → compare
         let json = serde_json::to_string(&circuit).expect("serialize");
+        assert!(!json.contains("modulus"));
         let back: DagCircuit = serde_json::from_str(&json).expect("deserialize");
 
         assert_eq!(back, circuit);
         assert_eq!(back.layers.len(), 1);
+
+        let mut proth120 = circuit.clone();
+        proth120.modulus = Proth120::CHARACTERISTICS_U128;
+        proth120.layers[0].sources[0] = SourceKind::Constant {
+            value: Proth120::CHARACTERISTICS_U128 - 1,
+        };
+        let json = serde_json::to_string(&proth120).expect("serialize");
+        assert!(json.contains("modulus"));
+        let back: DagCircuit = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, proth120);
+
+        let old_json = r#"{"layers":[]}"#;
+        let back: DagCircuit = serde_json::from_str(old_json).expect("deserialize");
+        assert_eq!(back.modulus, BabyBearField::CHARACTERISTICS_U128);
     }
 }

@@ -15,6 +15,7 @@ use super::window::{
 };
 use super::WindowProgram;
 use crate::analysis::build_cross_layer_field_map;
+use crate::ElementModel;
 
 pub(super) struct BoundR0Layer {
     pub layer: usize,
@@ -56,14 +57,13 @@ fn compile_layer(
     layer_index: usize,
     canonical: &gkr_eval_ir::DagLayer,
     cross_fields: &HashMap<ReadPlace, FieldKind>,
+    model: ElementModel,
 ) -> Result<BoundR0Layer, R0CompileError> {
     let distilled = distill(canonical, crate::BwdRegime::R0, cross_fields);
-    let coefficients =
-        super::common::lower::lower_coeff_layer(canonical, &distilled).map_err(|error| {
-            R0CompileError::Lower {
-                layer: layer_index,
-                error,
-            }
+    let coefficients = super::common::lower::lower_coeff_layer(canonical, &distilled, model)
+        .map_err(|error| R0CompileError::Lower {
+            layer: layer_index,
+            error,
         })?;
     let order = order_terms(&coefficients);
     let binding = bind_lean_sources(&coefficients, cross_fields, &order).map_err(|error| {
@@ -126,12 +126,24 @@ pub struct R0WindowProgram {
 }
 
 pub fn compile_r0(dag: &DagCircuit) -> Result<Vec<R0WindowProgram>, R0CompileError> {
+    compile_r0_with_model(dag, ElementModel::for_dag(dag))
+}
+
+pub fn compile_r0_with_model(
+    dag: &DagCircuit,
+    model: ElementModel,
+) -> Result<Vec<R0WindowProgram>, R0CompileError> {
+    assert_eq!(
+        model,
+        ElementModel::for_dag(dag),
+        "R0 element model does not match the DAG modulus"
+    );
     let fields = build_cross_layer_field_map(dag);
     dag.layers
         .iter()
         .enumerate()
         .map(|(layer, canonical)| {
-            let program = compile_layer(layer, canonical, &fields)?;
+            let program = compile_layer(layer, canonical, &fields, model)?;
             let lower = |tails| {
                 lower_r0_window_program(&program, tails)
                     .map_err(|error| R0CompileError::Window { layer, error })

@@ -1,3 +1,4 @@
+#include "../support/eq_high_low.cuh"
 #include "../support/eq_inline.cuh"
 #include "../support/lookup_helpers.cuh"
 
@@ -10,13 +11,6 @@ EXTERN __global__ void ab_gkr_dim_reducing_build_eq_group_tables_from_point_e4_k
                                                                                       const unsigned challenge_count, e4 *eq_group_tables) {
   gkr_build_eq_group_tables_from_point(claim_point, challenge_offset, challenge_count, eq_group_tables);
 }
-
-template <typename E> struct gkr_independent_eq_group_writer {
-  E *destination;
-  unsigned source_offset;
-
-  DEVICE_FORCEINLINE void operator()(const unsigned index, const E &value) const { store<E, st_modifier::cs>(destination, value, index - source_offset); }
-};
 
 // Builds the factored eq representation directly from a claim point into the
 // strict 3-slot layout. Each slot has an independent owner so DR continuation
@@ -32,22 +26,8 @@ template <typename E> struct gkr_independent_eq_group_writer {
 // initialize every high slab.
 EXTERN __global__ void ab_gkr_dim_reducing_build_eq_high_low_from_point_e4_kernel(const e4 *claim_point, const unsigned challenge_offset,
                                                                                   const unsigned challenge_count, e4 *high_0, e4 *high_1, e4 *low_buffer) {
-  if (threadIdx.x == 0) {
-    if (blockIdx.x == 0)
-      high_0[0] = e4::ONE();
-    else if (blockIdx.x == 1)
-      high_1[0] = e4::ONE();
-  }
-  const unsigned groups_count = gkr_eq_group_count(challenge_count);
-  if (blockIdx.x >= groups_count)
-    return;
-  e4 *destination = low_buffer;
-  if (blockIdx.x + 1u != groups_count)
-    destination = blockIdx.x == 0 ? high_0 : high_1;
-  const gkr_independent_eq_group_writer<e4> write_destination{destination, blockIdx.x * GKR_EQ_GROUP_TABLE_LEN};
-  gkr_build_eq_group_table_from_point<e4>(claim_point, challenge_offset, challenge_count, blockIdx.x, write_destination);
+  gkr_build_eq_high_low_from_point(claim_point, challenge_offset, challenge_count, high_0, high_1, low_buffer);
 }
-
 EXTERN __global__ void ab_gkr_dim_reducing_build_eq_values_from_group_tables_e4_kernel(const e4 *eq_group_tables, const unsigned challenge_count, e4 *eq_values,
                                                                                        const unsigned acc_size) {
   gkr_build_eq_values_from_group_tables(eq_group_tables, challenge_count, eq_values, acc_size);

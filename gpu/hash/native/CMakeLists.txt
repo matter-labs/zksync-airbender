@@ -12,5 +12,11 @@ add_library(gpu_hash_native STATIC
         gather.cu
         hash.cu
         hash.cuh
+        pow_search.cuh
+        keccak256.cuh
+        keccak256_hash.cu
+        keccak256_merkle.cu
+        keccak256_gather.cu
+        keccak256_transcript.cu
 )
 ab_cuda_configure_target(gpu_hash_native PREFIX GPU_HASH DETERMINISTIC_POW INCLUDE_DIRS ${GPU_CORE_NATIVE_INCLUDE})

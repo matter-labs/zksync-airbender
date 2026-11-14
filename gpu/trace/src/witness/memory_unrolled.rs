@@ -429,14 +429,26 @@ pub(crate) fn generate_memory_values_unrolled_non_memory(
     GenerateMemoryValuesUnrolledNonMemoryFunction::default().launch(&config, &args)
 }
 
+pub(crate) fn unified_trace_len(circuit_type: UnrolledCircuitType) -> usize {
+    match circuit_type {
+        UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22 => {
+            circuit_type.get_domain_size()
+        }
+        _ => panic!(
+            "the unified witness launchers require Unified or Unified22, got {circuit_type:?}"
+        ),
+    }
+}
+
 pub(crate) fn generate_memory_values_unrolled_unified(
+    circuit_type: UnrolledCircuitType,
     memory_layout: &GKRMemoryLayout,
     decoder_table: &DeviceSlice<ExecutorFamilyDecoderData>,
     trace: &UnrolledUnifiedTraceDevice,
     memory: &mut impl DeviceMatrixMutImpl<BF>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    let count = UnrolledCircuitType::Unified.get_domain_size();
+    let count = unified_trace_len(circuit_type);
     assert_eq!(memory.stride(), count);
     assert_eq!(memory.cols(), memory_layout.total_width);
     assert!(count <= u32::MAX as usize);
@@ -580,6 +592,7 @@ pub fn generate_memory_and_witness_values_unrolled_inits_and_teardowns(
 /// launch MUST therefore run BEFORE this per-row launch, or it will wipe the
 /// machine/shuffle columns this kernel produced.
 pub fn generate_memory_and_witness_values_unrolled_unified(
+    circuit_type: UnrolledCircuitType,
     layout: &GKRMemoryLayout,
     aux_layout_data: &GKRAuxLayoutData,
     decoder_table: &DeviceSlice<ExecutorFamilyDecoderData>,
@@ -590,7 +603,7 @@ pub fn generate_memory_and_witness_values_unrolled_unified(
     decoder_lookup_mapping: &mut DeviceSlice<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    let count = UnrolledCircuitType::Unified.get_domain_size();
+    let count = unified_trace_len(circuit_type);
     assert_eq!(memory.stride(), count);
     assert_eq!(memory.cols(), layout.total_width);
     assert!(count <= u32::MAX as usize);

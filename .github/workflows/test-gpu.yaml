@@ -117,6 +117,19 @@ jobs:
           shutil.copy2(executables[0], "artifacts/gpu_circuit_prover_tests")
           PYTHON
 
+      - name: GPU crate CPU tests
+        env:
+          CUDAARCHS: "80;89;90;120"
+        run: cargo +$RUST_TOOLCHAIN test -p gpu_execution_prover -p gpu_circuit_prover --profile release-thin --target x86_64-unknown-linux-gnu --lib ::cpu_
+
+      # Real CUDA builds the GPU tests that the no_cuda clippy job in ci.yml leaves out.
+      - name: Clippy with CUDA
+        env:
+          CUDAARCHS: "80"
+        run: |
+          rustup component add clippy --toolchain "$RUST_TOOLCHAIN"
+          cargo +"$RUST_TOOLCHAIN" clippy --workspace --all-targets --target x86_64-unknown-linux-gnu --features "$(python3 .github/scripts/clippy_features.py)"
+
       - name: Record compiler cache statistics
         if: always() && steps.sccache.outcome == 'success'
         run: |
@@ -198,8 +211,8 @@ jobs:
           grep -q "test result: ok. 1 passed" inventory.txt
           "$binary" --list --ignored tests::proof_matrix::canonical_ > proof-tests.txt
           mapfile -t tests < <(sed -n 's/: test$//p' proof-tests.txt)
-          if [[ "${#tests[@]}" -ne 28 ]]; then
-            echo "Expected all 28 canonical circuit/mode tests, found ${#tests[@]}" >&2
+          if [[ "${#tests[@]}" -ne 30 ]]; then
+            echo "Expected all 30 canonical circuit/mode tests, found ${#tests[@]}" >&2
             exit 1
           fi
           failed=0
@@ -239,7 +252,11 @@ jobs:
           chmod +x "$FIXTURE_CLI" "$FIXTURE_CODEC"
           failed=0
           for mode in pessimistic_conjecture ethproofs_soundcalc; do
-            for stage in base_unified unrolled; do
+            stages=(base_unified unrolled)
+            if [[ $mode == pessimistic_conjecture ]]; then
+              stages+=(compression l1)
+            fi
+            for stage in "${stages[@]}"; do
               fixtures/regenerate.sh --check --mode "$mode" --stage "$stage" || failed=1
             done
           done

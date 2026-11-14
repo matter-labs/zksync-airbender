@@ -2,7 +2,6 @@ use super::super::*;
 
 use crate::pow::schedule_draw_e4_challenges_with_pow;
 use gpu_hash::blake2s::{transcript_commit, transcript_squeeze_e4, transcript_squeeze_fresh_e4};
-use gpu_ops::powers::get_powers_by_ref;
 use gpu_ops::squaring::squaring_sequence_e4;
 
 /// Commits the next WHIR extension oracle: builds it from `state.sumchecked_poly_monomial_form`,
@@ -202,10 +201,8 @@ pub(super) fn schedule_delinearization_running_powers_phase(
     let mut delin_base: DeviceAllocation<E4> = context.alloc(1, AllocationPlacement::BestFit)?;
     transcript_squeeze_fresh_e4(device_seed, &mut delin_base, stream)?;
     // Materialize [base^1, base^2, ..., base^(num_queries + 1)] on device.
-    let count = num_queries + 1;
-    let mut delinearization_device: DeviceAllocation<E4> =
-        context.alloc(count, AllocationPlacement::BestFit)?;
-    get_powers_by_ref(&delin_base[0], 1, &mut delinearization_device[..], stream)?;
+    let delinearization_device =
+        crate::pow::schedule_running_powers(&delin_base[0], num_queries, context)?;
     // Materialize the OOD anchor squaring sequence directly into the caller's
     // slot (slot 0 of the fused claim_points buffer).
     squaring_sequence_e4(&ood_point_device[0], anchor_out, stream)?;

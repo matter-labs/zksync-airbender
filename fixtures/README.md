@@ -179,6 +179,32 @@ verifier_evm/generated_contracts/run_merged.sh
 The [EVM harness README](../verifier_evm/generated_contracts/l1_wrap/README.md)
 describes deployment and calldata.
 
+## GPU checks
+
+The GPU canonical matrix checks every registered circuit fixture against the
+same committed bytes, including `compression` and `compression_final` in
+pessimistic mode. The inventory test binds the matrix to the mode-specific
+canonical registry.
+
+The GPU workflow's `chains` shard checks Standard chains in both modes and
+the pessimistic `compression` and `l1` chains through the shared recipe.
+Before proving, it compares CPU and GPU trusted records byte for byte; GPU
+record construction logs the context's actual peak allocation per record.
+The shared cache includes compression records and no L1 wrap record.
+
+For local currency checks, build the GPU CLI and codec before taking the
+device lock, set `FIXTURE_CLI` and `FIXTURE_CODEC` to those executables,
+then run one recipe per hold:
+
+```bash
+export FIXTURE_BACKEND=gpu
+.agents/bin/with_gpu_lock.sh fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage compression
+.agents/bin/with_gpu_lock.sh fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage l1
+```
+
+Builds and CPU verification do not take the GPU lock. The currency recipe
+compares the complete compressed files; it makes no resource or timing claim.
+
 ## Census tables
 
 `build.sh` rebuilds the registered guests and emits all four census tables from

@@ -3,13 +3,13 @@
 use crate::backend::{CircuitPrecomputation, ExecutionBackend};
 use crate::config::{BackendConfiguration, ExecutionProverConfiguration, SoundnessMode};
 use crate::messages::{
-    MemoryCommitmentResult, ProofResult, SetupInitializationResult, WorkBatch, WorkRequest,
-    WorkResult, WorkerResult,
+    MemoryCommitmentResult, MemoryPartialTrees, ProofResult, SetupInitializationResult, WorkBatch,
+    WorkRequest, WorkResult, WorkerResult,
 };
 use crate::setup::CanonicalCircuitSetup;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, BF};
 use crate::ProofProfile;
-use execution_prover_model::allocator::CpuTraceAllocator;
+use execution_prover_model::allocator::{CpuTraceAllocator, PooledHostBuffer};
 use execution_prover_model::circuit_type::CircuitType;
 use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, TraceChunk};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -20,6 +20,34 @@ use worker::Worker;
 const BLOCK_BYTES: usize = 64 << 20;
 const POOL_BLOCKS: usize = 64;
 static REQUESTS: AtomicUsize = AtomicUsize::new(0);
+/// Per dispatched proof request: batch, circuit, sequence ID and the partial
+/// trees it carried, as (circuit, sequence ID) tags.
+pub(crate) static PROOF_PARTIAL_TREES: Mutex<
+    Vec<(u64, CircuitType, usize, Option<(CircuitType, usize)>)>,
+> = Mutex::new(Vec::new());
+
+/// Trees the fake commitment persists, tagged with their instance.
+fn tagged_partial_trees(
+    circuit_type: CircuitType,
+    profile: ProofProfile,
+    sequence_id: usize,
+    mut nodes: PooledHostBuffer<[u32; 8], CpuTraceAllocator>,
+) -> MemoryPartialTrees<CpuTraceAllocator> {
+    nodes.resize(1, [sequence_id as u32; 8]);
+    MemoryPartialTrees {
+        layout_version: 0,
+        circuit_type,
+        profile,
+        log_domain_size: 0,
+        log_lde_factor: 0,
+        log_rows_per_leaf: 0,
+        log_tree_cap_size: 0,
+        reduction_layers: 0,
+        columns_count: 0,
+        nodes,
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct TestPrecomputations(pub(crate) Option<Arc<GKRCircuitArtifact<BF>>>);
 
@@ -91,6 +119,10 @@ impl ExecutionBackend for TestBackend {
 
     fn allocate_trace_block(&self, bytes: usize) -> CpuTraceAllocator {
         CpuTraceAllocator::new(bytes)
+    }
+
+    fn persists_memory_partial_trees(&self, _profile: ProofProfile) -> bool {
+        true
     }
 
     fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory {
@@ -174,24 +206,41 @@ impl ExecutionBackend for TestBackend {
                                     };
                                     config.lde_factor()
                                 ],
+                                memory_partial_trees: Some(tagged_partial_trees(
+                                    request.circuit_type,
+                                    request.profile,
+                                    request.sequence_id,
+                                    request.partial_tree_buffer.expect("mock commitment buffer"),
+                                )),
                             })
                         }
-                        WorkRequest::Proof(request) => WorkResult::Proof(ProofResult {
-                            batch_id: request.batch_id,
-                            circuit_type: request.circuit_type,
-                            sequence_id: request.sequence_id,
-                            inits_and_teardowns: request.inits_and_teardowns,
-                            tracing_data: request.tracing_data,
-                            proof: crate::upstream::GKRProof {
-                                external_challenges: request.external_challenges,
-                                final_explicit_evaluations: Default::default(),
-                                sumcheck_intermediate_values: Default::default(),
-                                whir_proof: empty_whir_proof(),
-                                grand_product_accumulator_computed: Default::default(),
-                                inits_and_teardowns_top_bits: Vec::new(),
-                                lookup_challenges_pow_nonce: 0,
-                            },
-                        }),
+                        WorkRequest::Proof(request) => {
+                            PROOF_PARTIAL_TREES.lock().unwrap().push((
+                                request.batch_id,
+                                request.circuit_type,
+                                request.sequence_id,
+                                request
+                                    .memory_partial_trees
+                                    .as_ref()
+                                    .map(|trees| (trees.circuit_type, trees.nodes[0][0] as usize)),
+                            ));
+                            WorkResult::Proof(ProofResult {
+                                batch_id: request.batch_id,
+                                circuit_type: request.circuit_type,
+                                sequence_id: request.sequence_id,
+                                inits_and_teardowns: request.inits_and_teardowns,
+                                tracing_data: request.tracing_data,
+                                proof: crate::upstream::GKRProof {
+                                    external_challenges: request.external_challenges,
+                                    final_explicit_evaluations: Default::default(),
+                                    sumcheck_intermediate_values: Default::default(),
+                                    whir_proof: empty_whir_proof(),
+                                    grand_product_accumulator_computed: Default::default(),
+                                    inits_and_teardowns_top_bits: Vec::new(),
+                                    lookup_challenges_pow_nonce: 0,
+                                },
+                            })
+                        }
                     };
                     batch
                         .sender

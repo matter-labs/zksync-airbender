@@ -129,6 +129,7 @@ fn make_memory_tracing_host_for_test(
 pub(crate) struct BasicUnrolledFixture {
     pub(crate) context: ProverContext,
     pub(crate) circuit_type: CircuitType,
+    pub(crate) profile: ProofProfile,
     pub(crate) gkr_programs: Arc<GkrPrograms>,
     pub(crate) compiled_circuit: GKRCircuitArtifact<BF>,
     pub(crate) external_challenges: GKRExternalChallenges<BF, E4>,
@@ -174,7 +175,9 @@ impl BasicUnrolledFixture {
         let setup_transfer = self
             .gpu_setup_host
             .as_ref()
-            .map(|host| GpuGKRSetupTransfer::new(Arc::clone(host), context))
+            .map(|host| {
+                GpuGKRSetupTransfer::new(Arc::clone(host), self.partial_trees().setup, context)
+            })
             .transpose()?;
         let decoder_transfer = if self.compiled_circuit.has_decoder_lookup {
             Some(DecoderTableTransfer::new(
@@ -247,18 +250,25 @@ impl BasicUnrolledFixture {
         &self,
         transfers: BasicUnrolledTransfers<'static>,
     ) -> CudaResult<GpuGKRProofJob<'static>> {
-        prove::<Global>(
-            &self.gkr_programs,
-            &self.prover_config,
-            self.final_trace_size_log_2,
-            transfers,
-            self.memory_policy(),
+        prove(
+            crate::proof::BabyBearProofRequest::new(
+                &self.gkr_programs,
+                &self.prover_config,
+                self.final_trace_size_log_2,
+                transfers,
+                self.memory_policy(),
+                self.partial_trees(),
+            ),
             &self.context,
         )
     }
 
     fn memory_policy(&self) -> ProofMemoryPolicy {
-        presets::policy(self.circuit_type, self.context.get_mem_size())
+        presets::policy(self.circuit_type, self.profile, self.context.get_mem_size())
+    }
+
+    fn partial_trees(&self) -> crate::proof::memory_policy::PartialTreePolicy {
+        presets::partial_trees(self.circuit_type, self.profile)
     }
 
     fn schedule_prove(&self) -> CudaResult<GpuGKRProofJob<'static>> {
@@ -278,12 +288,15 @@ impl BasicUnrolledFixture {
         transfers.schedule(&self.context)?;
         transfer_range.end(h2d_stream)?;
 
-        let mut proof_job = crate::proof::prove::<Global>(
-            &self.gkr_programs,
-            &self.prover_config,
-            self.final_trace_size_log_2,
-            transfers,
-            policy,
+        let mut proof_job = crate::proof::prove(
+            crate::proof::BabyBearProofRequest::new(
+                &self.gkr_programs,
+                &self.prover_config,
+                self.final_trace_size_log_2,
+                transfers,
+                policy,
+                self.partial_trees(),
+            ),
             &self.context,
         )?;
         let mem_after_prove = self.context.get_used_mem_current();

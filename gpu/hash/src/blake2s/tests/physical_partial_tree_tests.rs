@@ -99,6 +99,8 @@ fn check_partial_tree(
         log_rows_per_hash,
         layers_count,
         cosets_count,
+        LOG_WARP_SIZE,
+        None,
         stream,
     )
     .unwrap();

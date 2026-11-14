@@ -43,6 +43,10 @@ impl Range {
         self.end_event.record(stream)
     }
 
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     pub fn elapsed(&self) -> CudaResult<f32> {
         elapsed_time(&self.start_event, &self.end_event)
     }

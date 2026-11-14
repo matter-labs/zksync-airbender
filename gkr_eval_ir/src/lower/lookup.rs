@@ -182,7 +182,7 @@ fn shift(arena: &mut ArenaBuilder, x: ExprId, g: ExprId) -> ExprId {
 }
 
 /// `(−1) · term` — negates `term` using the reduced base-field `−1` constant.
-fn scale_minus_one(arena: &mut ArenaBuilder, minus_one: u32, term: ExprId) -> ExprId {
+fn scale_minus_one(arena: &mut ArenaBuilder, minus_one: u128, term: ExprId) -> ExprId {
     let neg = arena.intern_source(SourceKind::Constant { value: minus_one });
     let neg_expr = arena.source_expr(neg);
     arena.mul(vec![neg_expr, term])
@@ -206,7 +206,7 @@ pub(super) fn minus_multiplicity(
     b: ExprId,
     c: ExprId,
     d: ExprId,
-    minus_one: u32,
+    minus_one: u128,
 ) -> (ExprId, ExprId) {
     let g = gamma(arena);
     let sb = shift(arena, b, g);
@@ -227,7 +227,7 @@ pub(super) fn dens_and_setup(
     b: ExprId,
     c: ExprId,
     d: ExprId,
-    minus_one: u32,
+    minus_one: u128,
 ) -> (ExprId, ExprId) {
     let g = gamma(arena);
     let sb = shift(arena, b, g);

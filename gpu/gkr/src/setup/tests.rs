@@ -1,3 +1,5 @@
+mod projection;
+
 use std::alloc::Global;
 use std::ops::DerefMut;
 use std::ptr::null;
@@ -152,6 +154,7 @@ fn materialize_trace_holder_from_values(
         log_tree_cap_size,
         columns_count,
         TreesCacheMode::CachePartial,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         context,
     )
     .unwrap();
@@ -391,7 +394,12 @@ fn setup_transfer_reuses_single_raw_backing_and_lazy_queries_match_fresh_commit(
         )
         .unwrap(),
     );
-    let mut transfer = GpuGKRSetupTransfer::new(host, &context).unwrap();
+    let mut transfer = GpuGKRSetupTransfer::new(
+        host,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        &context,
+    )
+    .unwrap();
     let _h2d = gpu_prover_context::transfer::single_shot_h2d(
         |t| transfer.schedule_transfer(t, &context),
         &context,
@@ -428,6 +436,7 @@ fn setup_transfer_reuses_single_raw_backing_and_lazy_queries_match_fresh_commit(
         setup_geometry(&setup, log_lde_factor, log_rows_per_leaf, log_tree_cap_size),
         crate::upstream::BaseOracleRole::Setup,
         TreesCacheMode::CachePartial,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
         &context,
     )
     .unwrap();
@@ -497,7 +506,12 @@ fn bootstrap_storage_binds_setup_memory_and_witness_trace_holders() {
         )
         .unwrap(),
     );
-    let mut transfer = GpuGKRSetupTransfer::new(host, &context).unwrap();
+    let mut transfer = GpuGKRSetupTransfer::new(
+        host,
+        gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+        &context,
+    )
+    .unwrap();
     let _h2d = gpu_prover_context::transfer::single_shot_h2d(
         |t| transfer.schedule_transfer(t, &context),
         &context,
@@ -724,7 +738,12 @@ fn forward_setup_schedule_generic_lookup_matches_cpu() {
             )
             .unwrap(),
         );
-        let mut transfer = GpuGKRSetupTransfer::new(Arc::clone(&host), &context).unwrap();
+        let mut transfer = GpuGKRSetupTransfer::new(
+            Arc::clone(&host),
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
+            &context,
+        )
+        .unwrap();
         let _h2d = gpu_prover_context::transfer::single_shot_h2d(
             |t| transfer.schedule_transfer(t, &context),
             &context,

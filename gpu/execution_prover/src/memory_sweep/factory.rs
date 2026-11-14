@@ -12,7 +12,7 @@ use crate::precomputations::{
     build_unrolled_circuit_precomputation, get_common_precomputations_for_all,
     CircuitPrecomputations,
 };
-use crate::upstream::{GKRExternalChallenges, MerkleTreeCapVarLength, ROM_WORD_SIZE};
+use crate::upstream::{GKRExternalChallenges, MerkleTreeCapVarLength, ProofProfile, ROM_WORD_SIZE};
 use crate::A;
 use common_constants::delegation_types::keccak_f1600::{
     keccak_chi5_lane_read_distance, keccak_f1600_bump_control, keccak_f1600_decode_control,
@@ -236,17 +236,19 @@ fn build_tracing_data(circuit: CircuitType, rows: usize) -> CudaResult<Option<Tr
                 },
             )?)),
         )),
-        CircuitType::Unrolled(UnrolledCircuitType::Unified) => Ok(Some(TracingDataHost::Unrolled(
-            UnrolledTracingDataHost::Unified(pinned_filled_trace(
-                rows,
-                UnifiedOpcodeTracingDataWithTimestamp::NonMem(
-                    NonMemoryOpcodeTracingDataWithTimestamp {
-                        cycle_timestamp: TimestampData::from_scalar(INITIAL_TIMESTAMP),
-                        ..Default::default()
-                    },
-                ),
-            )?),
-        ))),
+        CircuitType::Unrolled(UnrolledCircuitType::Unified) => {
+            Ok(Some(TracingDataHost::Unrolled(
+                UnrolledTracingDataHost::Unified(pinned_filled_trace(
+                    rows,
+                    UnifiedOpcodeTracingDataWithTimestamp::NonMem(
+                        NonMemoryOpcodeTracingDataWithTimestamp {
+                            cycle_timestamp: TimestampData::from_scalar(INITIAL_TIMESTAMP),
+                            ..Default::default()
+                        },
+                    ),
+                )?),
+            )))
+        }
     }
 }
 
@@ -302,7 +304,12 @@ impl SyntheticInputFactory {
                     DelegationCircuitType::Blake2GFunction,
                     &self.worker,
                 );
-                CircuitPrecomputations::from_canonical(circuit, setup, self.soundness_mode)
+                CircuitPrecomputations::from_canonical(
+                    circuit,
+                    setup,
+                    self.soundness_mode,
+                    &[ProofProfile::Standard],
+                )
             }
             CircuitType::Delegation(_)
             | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
@@ -310,7 +317,9 @@ impl SyntheticInputFactory {
             }
             CircuitType::Unrolled(unrolled) => {
                 let machine_type = match unrolled {
-                    UnrolledCircuitType::Unified => MachineType::Reduced,
+                    UnrolledCircuitType::Unified => {
+                        MachineType::Reduced
+                    }
                     _ => MachineType::FullUnsigned,
                 };
                 build_unrolled_circuit_precomputation(
@@ -320,6 +329,7 @@ impl SyntheticInputFactory {
                     &self.text_section,
                     &self.worker,
                     self.soundness_mode,
+                    &[ProofProfile::Standard],
                 )
             }
         }
@@ -341,7 +351,7 @@ fn build_inputs(
     circuit: CircuitType,
     precomputations: &CircuitPrecomputations,
 ) -> CudaResult<SyntheticInputs> {
-    let compiled = precomputations.gkr_programs.compiled_circuit();
+    let compiled = precomputations.baby_bear().gkr_programs.compiled_circuit();
     let tracing_data = build_tracing_data(circuit, circuit.get_domain_size())?;
     let num_sets = compiled.memory_layout.teardown_sets.len();
     let inits_and_teardowns = if carries_inits_and_teardowns(circuit) {

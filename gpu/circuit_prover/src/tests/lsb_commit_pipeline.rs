@@ -9,7 +9,7 @@ use gpu_hash::blake2s::{
     gather_merkle_paths_partial_for_queries_physical, Digest, OracleGatherDesc,
     OraclePartialPathDesc, STATE_SIZE,
 };
-use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
+use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
 use prover::gkr::whir::ColumnMajorBaseOracleForLDE;
 
 const DEVICE_ALLOCATOR_ARENA_BYTES: usize = 8usize << 30;
@@ -175,6 +175,7 @@ fn gpu_commit_and_query(
         shape.log_tree_cap_size(),
         columns_count,
         trees_cache_mode,
+        PARTIAL_TREE_REDUCTION_LAYERS,
         context,
     )
     .unwrap();
@@ -254,6 +255,7 @@ fn gpu_commit_and_query(
                 shape.log_rows_per_leaf,
                 shape.log_leaves_count(),
                 path_layers_count,
+                PARTIAL_TREE_REDUCTION_LAYERS,
                 &queries_device,
                 stream,
             )

@@ -20,12 +20,13 @@ use worker::Worker;
 
 impl CircuitPrecomputation for CircuitPrecomputations {
     fn compiled_circuit(&self) -> &Arc<GKRCircuitArtifact<BF>> {
-        self.gkr_programs.compiled_circuit()
+        self.baby_bear().gkr_programs.compiled_circuit()
     }
 
-    fn setup_cap(&self, _profile: ProofProfile) -> Option<MerkleTreeCapVarLength> {
-        self.setup_host
-            .get_initialized()
+    fn setup_cap(&self, profile: ProofProfile) -> Option<MerkleTreeCapVarLength> {
+        self.baby_bear()
+            .setup_host
+            .get_initialized(profile)
             .map(|setup_host| MerkleTreeCapVarLength {
                 cap: setup_host.unified_tree_cap().to_vec(),
             })
@@ -66,6 +67,10 @@ impl ExecutionBackend for GpuBackend {
         A::new([allocation], bytes.trailing_zeros())
     }
 
+    fn persists_memory_partial_trees(&self, profile: ProofProfile) -> bool {
+        profile.is_compression()
+    }
+
     fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory {
         LockedBoxedMemoryHolder::new(ram)
     }
@@ -82,15 +87,10 @@ impl ExecutionBackend for GpuBackend {
         &self,
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
-        selection: SoundnessMode,
+        soundness_mode: SoundnessMode,
         profiles: &[ProofProfile],
     ) -> Self::Precomputations {
-        match profiles {
-            [ProofProfile::Standard] => {
-                CircuitPrecomputations::from_canonical(circuit, setup, selection)
-            }
-            _ => unimplemented!("L1 GPU profile preparation"),
-        }
+        CircuitPrecomputations::from_canonical(circuit, setup, soundness_mode, profiles)
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {

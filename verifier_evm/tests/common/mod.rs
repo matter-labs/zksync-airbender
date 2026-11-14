@@ -67,8 +67,6 @@ pub fn data_path(name: &str) -> PathBuf {
     Path::new("debug_data/l1_wrap").join(name)
 }
 
-/// Require a named rejection from a public encoder boundary.
-
 pub const F1_CALLDATA: &str = "single_tx_f1.hex";
 pub const F1_FIELDS: &str = "single_tx_f1_fields.json";
 /// The verified statement reported to the registry.
@@ -144,6 +142,5 @@ pub fn load_bundle(path: impl AsRef<Path>) -> Bundle {
         l1: Bundle,
     }
     let artifact: Artifact = proof_fixtures::read_file(path);
-    let bundle = artifact.l1;
-    bundle
+    artifact.l1
 }

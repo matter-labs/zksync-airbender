@@ -41,6 +41,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         inits_and_teardowns,
         tracing_data,
         profile,
+        partial_tree_buffer: _,
     } = request;
     let config = precomputations.config(profile);
     let storage = whir_storage(profile, config);
@@ -299,6 +300,7 @@ pub(super) fn run<A: HostTraceAllocator>(
         inits_and_teardowns,
         tracing_data,
         merkle_tree_caps,
+        memory_partial_trees: None,
     }
 }
 

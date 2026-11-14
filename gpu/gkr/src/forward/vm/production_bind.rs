@@ -222,8 +222,22 @@ fn bind_fused_reduction_prefix(
     desc: &mut FwdVmDesc,
     prepared: &PreparedDimensionReductionForward<E4>,
 ) {
-    assert!(desc.count > 0 && desc.count.is_multiple_of(128));
-    assert_eq!(desc.count.trailing_zeros(), prepared.initial_trace_log_2);
+    write_fused_reduction_prefix(
+        desc.count,
+        &mut desc.reduction_pairs,
+        &mut desc.reduction_pair_count,
+        prepared,
+    );
+}
+
+pub(crate) fn write_fused_reduction_prefix<F: Copy>(
+    count: u32,
+    pairs: &mut [FwdVmReductionPair<F>; REDUCTION_PAIR_CAP],
+    pair_count: &mut u32,
+    prepared: &PreparedDimensionReductionForward<F>,
+) {
+    assert!(count > 0 && count.is_multiple_of(128));
+    assert_eq!(count.trailing_zeros(), prepared.initial_trace_log_2);
     assert_eq!(
         prepared.per_round_slot_outputs.len(),
         prepared.total_rounds as usize
@@ -317,11 +331,11 @@ fn bind_fused_reduction_prefix(
                 }
             }
         };
-        desc.reduction_pairs[pair] = record;
+        pairs[pair] = record;
         pair += 1;
         slot = range_end;
     }
-    desc.reduction_pair_count = pair as u32;
+    *pair_count = pair as u32;
 }
 
 pub(in crate::forward) fn prepare_vm(
@@ -356,8 +370,7 @@ pub(in crate::forward) fn prepare_vm(
         arg_derived_e4_value(external_challenges, reference)
             .unwrap_or_else(|error| panic!("{error}"))
     };
-    let lowered = lower_desc(compiled_layers, &header, &resolve, &challenge)
-        .unwrap_or_else(|error| panic!("forward VM lowering failed: {error:?}"));
+    let lowered = lower_desc(compiled_layers, &header, &resolve, &challenge);
     assert_eq!(lowered.desc.count, trace_len as u32);
     Ok(lowered)
 }
@@ -396,13 +409,13 @@ mod tests {
     use crate::forward::vm::desc::{REDUCTION_PAIR_LOOKUP, REDUCTION_PAIR_PAIRWISE2};
     use crate::upstream::{ChallengeKey, ChallengePower, ChallengeRef, PermutationSlot};
 
-    fn pointer(value: usize) -> *mut E4 {
-        value as *mut E4
+    fn pointer<F>(value: usize) -> *mut F {
+        value as *mut F
     }
 
-    fn prepared_for_types(
+    fn prepared_for_types<F: Copy>(
         types: Vec<crate::upstream::OutputType>,
-    ) -> PreparedDimensionReductionForward<E4> {
+    ) -> PreparedDimensionReductionForward<F> {
         let slot_initial_inputs = types
             .iter()
             .enumerate()
@@ -494,7 +507,7 @@ mod tests {
     }
 
     #[test]
-    fn unified_reduction_prefix_packs_five_pairs() {
+    fn cpu_unified_reduction_prefix_packs_five_pairs() {
         use crate::upstream::OutputType::*;
 
         let prepared = prepared_for_types(vec![
@@ -521,6 +534,30 @@ mod tests {
             desc.reduction_pairs[4].round_outputs[6].map(|ptr| ptr as usize),
             [0x76000, 0x77000]
         );
+        let pr_prepared =
+            prepared_for_types::<crate::upstream::PR>(prepared.slot_output_types.clone());
+        let mut pr_desc: crate::proth120::forward::desc::FwdVmDesc = unsafe { core::mem::zeroed() };
+        pr_desc.count = desc.count;
+        write_fused_reduction_prefix(
+            pr_desc.count,
+            &mut pr_desc.reduction_pairs,
+            &mut pr_desc.reduction_pair_count,
+            &pr_prepared,
+        );
+        assert_eq!(pr_desc.reduction_pair_count, desc.reduction_pair_count);
+        for (pr, base) in pr_desc
+            .reduction_pairs
+            .iter()
+            .zip(&desc.reduction_pairs)
+            .take(desc.reduction_pair_count as usize)
+        {
+            assert_eq!(pr.kind, base.kind);
+            assert_eq!(pr.input.map(|p| p as usize), base.input.map(|p| p as usize));
+            assert_eq!(
+                pr.round_outputs.map(|r| r.map(|p| p as usize)),
+                base.round_outputs.map(|r| r.map(|p| p as usize))
+            );
+        }
     }
 
     #[test]

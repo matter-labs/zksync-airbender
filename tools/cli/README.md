@@ -172,14 +172,23 @@ cargo run --release -p cli -- continue-proof \
   --output-dir output \
   --output-file l1.json
 
+# The GPU backend produces the same bundle.
+cargo run --release -p cli --features gpu -- continue-proof \
+  --proof output/compression.json \
+  --bin examples/basic_fibonacci/app.bin \
+  --target l1 \
+  --backend gpu \
+  --output-dir output \
+  --output-file l1.json
+
 cargo run --release -p cli -- verify \
   --proof output/l1.json \
   --bin examples/basic_fibonacci/app.bin
 ```
 
 There is no native verifier for the Proth120 proof: `verify` on an L1 artifact
-checks the compression sidecar, the recursion chain and the bundle's packing
-parameters, and says that the Proth proof was not verified.
+checks the compression sidecar, the recursion chain and the bundle's operation mode,
+and says that the Proth proof was not verified.
 
 ## Trusted Params
 

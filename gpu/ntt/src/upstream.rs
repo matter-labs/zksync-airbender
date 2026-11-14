@@ -6,6 +6,8 @@
 // `field` — trait bounds used in twiddle generation
 // -----------------------------------------------------------------------
 
+#[cfg(test)]
+pub(crate) use field::PrimeField;
 pub(crate) use field::{Field, TwoAdicField};
 
 // -----------------------------------------------------------------------
@@ -18,3 +20,14 @@ pub(crate) use field::{Field, TwoAdicField};
 pub(crate) use fft::{
     bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size,
 };
+
+#[cfg(test)]
+pub(crate) use fft::{proth120_lazy::lde_coset_lazy_r8, Twiddles};
+#[cfg(test)]
+pub(crate) use prover::{
+    allocation_pool::GenericAllocationPool,
+    gkr::prover::backend::{Backend, Proth120WorkStealingLazyBackend},
+    gkr::whir::hypercube_to_monomial::multivariate_hypercube_evals_into_coeffs_radix4,
+};
+#[cfg(test)]
+pub(crate) use worker::Worker;

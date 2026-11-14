@@ -85,7 +85,7 @@ pub(super) fn run<A: HostTraceAllocator>(
     }
 }
 
-fn evaluate_witness<A: HostTraceAllocator>(
+pub(crate) fn evaluate_witness<A: HostTraceAllocator>(
     circuit_type: CircuitType,
     setup: &L1WrapSetup,
     inits_and_teardowns: &InitsAndTeardownsTraceHost<A>,

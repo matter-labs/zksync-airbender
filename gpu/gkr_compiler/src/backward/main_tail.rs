@@ -15,7 +15,7 @@ pub struct MainTailProgram {
     pub layer: usize,
     pub list_offsets: [u16; MAIN_TAIL_LIST_OFFSETS],
     pub program_words: Vec<u16>,
-    pub immediates: Vec<u32>,
+    pub immediates: Vec<u128>,
     pub source_count: u16,
     pub c_init_coeff_id: u16,
 }

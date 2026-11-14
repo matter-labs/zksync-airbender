@@ -18,6 +18,8 @@ mod workers;
 pub(crate) type A = GpuTraceAllocator;
 
 pub type ExecutionProver = execution_prover::ExecutionProver<GpuBackend>;
+pub type CommitMemoryResult = execution_prover::CommitMemoryResult<A>;
+
 pub type ExecutionProverConfiguration =
     execution_prover::ExecutionProverConfiguration<GpuBackendConfiguration>;
 
@@ -26,8 +28,7 @@ pub type ExecutionProverConfiguration =
 pub use backend::GpuBackend;
 pub use config::{GpuBackendConfiguration, MemoryPreset};
 pub use execution_prover::{
-    BinaryHandle, CommitMemoryResult, ExecutionKind, ProgramArtifacts, ProveResult,
-    RiscvFamilyArtifact,
+    BinaryHandle, CommitmentMode, ExecutionKind, ProgramArtifacts, ProveResult, RiscvFamilyArtifact,
 };
 pub use execution_prover_model::MachineType;
 pub use gpu_circuit_prover::GPU_SUPPORTED_SECURITY_LEVELS;

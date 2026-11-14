@@ -33,14 +33,23 @@ pub(super) fn gpu_memory_caps(
         };
         let setup = gpu_gkr::setup::GpuGKRSetupTransfer::new(
             Arc::clone(base.gpu_setup_host.as_ref().unwrap()),
+            base.partial_trees().setup,
             context,
         )
         .unwrap();
         let mut inputs =
             GpuGKRMergedCommitTransfer::new(setup, decoder, inits, trace, context).unwrap();
         inputs.schedule(context).unwrap();
-        commit_merged_from_transfers(&base.gkr_programs, &base.prover_config, inputs, context)
-            .unwrap()
+        commit_merged_from_transfers(
+            &base.gkr_programs,
+            &base.prover_config,
+            inputs,
+            presets::merged_commit_strategy(base.circuit_type, base.profile),
+            base.partial_trees(),
+            None,
+            context,
+        )
+        .unwrap()
     } else {
         let mut inputs = gpu_trace::trace::memory::GpuGKRCommitMemoryTransfer::new(
             decoder, inits, trace, context,
@@ -52,6 +61,7 @@ pub(super) fn gpu_memory_caps(
             &base.compiled_circuit,
             inputs,
             geometry,
+            gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )
         .unwrap()

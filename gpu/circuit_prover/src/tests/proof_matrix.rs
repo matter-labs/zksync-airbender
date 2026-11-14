@@ -1,5 +1,5 @@
 use super::*;
-use prover::tests::gkr::orchestration::canonical_fixtures::CANONICAL_CIRCUITS;
+use prover::tests::gkr::orchestration::canonical_fixtures::canonical_circuits;
 use std::collections::BTreeSet;
 
 /// Queue both jobs before either finish so the second reuses retired blocks.
@@ -73,12 +73,47 @@ canonical_matrix! {
     (canonical_keccak_chi5_pessimistic_conjecture, canonical_keccak_chi5_ethproofs_soundcalc, profile_keccak_chi5, KeccakChi5),
 }
 
+const PESSIMISTIC_CANONICAL_GPU_CASES: &[(
+    &str,
+    CanonicalCircuit,
+    circuit_common::SoundnessMode,
+)] = &[
+    (
+        "tests::proof_matrix::canonical_compression_pessimistic_conjecture",
+        CanonicalCircuit::Compression,
+        circuit_common::SoundnessMode::PessimisticConjecture,
+    ),
+    (
+        "tests::proof_matrix::canonical_compression_final_pessimistic_conjecture",
+        CanonicalCircuit::CompressionFinal,
+        circuit_common::SoundnessMode::PessimisticConjecture,
+    ),
+];
+
+#[test]
+#[ignore = "canonical GPU proof bytes and two-enqueue allocator coverage"]
+fn canonical_compression_pessimistic_conjecture() {
+    canonical_case(
+        CanonicalCircuit::Compression,
+        circuit_common::SoundnessMode::PessimisticConjecture,
+    );
+}
+
+#[test]
+#[ignore = "canonical GPU proof bytes and two-enqueue allocator coverage"]
+fn canonical_compression_final_pessimistic_conjecture() {
+    canonical_case(
+        CanonicalCircuit::CompressionFinal,
+        circuit_common::SoundnessMode::PessimisticConjecture,
+    );
+}
+
 #[test]
 fn cpu_canonical_matrix_inventory() {
-    let expected: BTreeSet<_> = CANONICAL_CIRCUITS
-        .into_iter()
-        .flat_map(|circuit| {
-            circuit_common::SoundnessMode::ALL.iter().map(move |mode| {
+    let expected: BTreeSet<_> = circuit_common::SoundnessMode::ALL
+        .iter()
+        .flat_map(|&mode| {
+            canonical_circuits(mode).map(move |circuit| {
                 format!(
                     "tests::proof_matrix::canonical_{}_{}",
                     circuit.stem(),
@@ -87,9 +122,10 @@ fn cpu_canonical_matrix_inventory() {
             })
         })
         .collect();
-    assert_eq!(expected.len(), 28);
+    assert_eq!(expected.len(), 30);
     let registered: BTreeSet<_> = CANONICAL_GPU_CASES
         .iter()
+        .chain(PESSIMISTIC_CANONICAL_GPU_CASES)
         .map(|&(name, circuit, mode)| {
             assert_eq!(
                 name,
@@ -104,13 +140,28 @@ fn cpu_canonical_matrix_inventory() {
         .collect();
     assert_eq!(
         registered.len(),
-        CANONICAL_GPU_CASES.len(),
+        CANONICAL_GPU_CASES.len() + PESSIMISTIC_CANONICAL_GPU_CASES.len(),
         "duplicate canonical GPU key"
     );
     assert_eq!(
         registered, expected,
         "GPU matrix differs from canonical input registry"
     );
+
+    for &mode in circuit_common::SoundnessMode::ALL {
+        let expected: BTreeSet<_> = canonical_circuits(mode)
+            .map(|circuit| format!("{}.json.zlib", circuit.stem()))
+            .collect();
+        let actual: BTreeSet<_> = std::fs::read_dir(
+            proof_fixtures::root()
+                .join("fixtures/circuits")
+                .join(mode.file_suffix()),
+        )
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+        assert_eq!(actual, expected, "uncovered circuit fixture in {mode:?}");
+    }
 }
 
 #[test]
@@ -137,12 +188,15 @@ fn run_mixed_circuit_multi_schedule_test() {
         let mut transfers = base.create_transfers_for_context(context).unwrap();
         transfers.schedule(context).unwrap();
         jobs.push(
-            prove::<Global>(
-                &base.gkr_programs,
-                &base.prover_config,
-                base.final_trace_size_log_2,
-                transfers,
-                ProofMemoryPolicy::default(),
+            prove(
+                crate::proof::BabyBearProofRequest::new(
+                    &base.gkr_programs,
+                    &base.prover_config,
+                    base.final_trace_size_log_2,
+                    transfers,
+                    ProofMemoryPolicy::default(),
+                    crate::proof::memory_policy::PartialTreePolicy::DEFAULT,
+                ),
                 context,
             )
             .unwrap(),

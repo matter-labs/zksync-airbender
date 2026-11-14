@@ -1,8 +1,8 @@
-use crate::upstream::GKRCircuitArtifact;
+use crate::upstream::{GKRCircuitArtifact, PrimeField};
 use crate::witness::circuit_type::{
     UnrolledCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
 };
-use crate::witness::memory_unrolled::{AuxLayoutData, UnrolledMemoryLayout};
+use crate::witness::memory_unrolled::{unified_trace_len, AuxLayoutData, UnrolledMemoryLayout};
 use crate::witness::multiplicities::LookupExpressions;
 use crate::witness::trace_unrolled::{
     ExecutorFamilyDecoderData, UnrolledMemoryOracle, UnrolledMemoryTraceDevice,
@@ -10,14 +10,17 @@ use crate::witness::trace_unrolled::{
     UnrolledNonMemoryTraceRaw, UnrolledUnifiedOracle, UnrolledUnifiedTraceDevice,
     UnrolledUnifiedTraceRaw,
 };
-use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
+use era_cudart::{
+    cuda_kernel, cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function,
+};
 use gpu_core::primitives::device_structures::{DeviceMatrixImpl, DeviceMatrixMutImpl};
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
+use gpu_ops::simple::set_to_zero;
 
 cuda_kernel!(GenerateFusedUnrolledMemoryKernel,
     generate_fused_unrolled_memory_kernel,
@@ -65,8 +68,7 @@ generate_fused_unrolled_non_memory_kernel!(ab_generate_fused_jump_branch_slt_ker
 generate_fused_unrolled_non_memory_kernel!(ab_generate_fused_mul_div_unsigned_kernel);
 generate_fused_unrolled_non_memory_kernel!(ab_generate_fused_shift_binary_kernel);
 
-cuda_kernel!(GenerateFusedUnrolledUnifiedKernel,
-    ab_generate_fused_unified_reduced_machine_kernel(
+cuda_kernel_declaration!(ab_generate_fused_unified_reduced_machine_kernel(
         layout: UnrolledMemoryLayout,
         aux_layout_data: AuxLayoutData,
         oracle: UnrolledUnifiedOracle,
@@ -82,8 +84,7 @@ cuda_kernel!(GenerateFusedUnrolledUnifiedKernel,
         range_check_timestamp_lookup_mapping: *mut u32,
         stride: u32,
         count: u32,
-    )
-);
+));
 
 cuda_kernel!(GenerateWitnessUnrolledMemoryKernel,
     generate_witness_unrolled_memory_kernel,
@@ -238,6 +239,7 @@ generate_witness_unrolled_unified_kernel!(
 );
 
 pub fn generate_witness_values_unrolled_unified(
+    circuit_type: UnrolledCircuitType,
     trace: &UnrolledUnifiedTraceDevice,
     generic_lookup_tables: &impl DeviceMatrixImpl<BF>,
     memory: &impl DeviceMatrixImpl<BF>,
@@ -246,8 +248,9 @@ pub fn generate_witness_values_unrolled_unified(
     lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    let count = UnrolledCircuitType::Unified.get_domain_size();
+    let count = unified_trace_len(circuit_type);
     let stride = generic_lookup_tables.stride();
+    assert_eq!(stride, count);
     assert_eq!(memory.stride(), stride);
     assert_eq!(witness.stride(), stride);
     assert_eq!(scratch.stride(), stride);
@@ -452,6 +455,7 @@ pub fn generate_fused_values_unrolled_non_memory(
 }
 
 pub fn generate_fused_values_unrolled_unified(
+    circuit_type: UnrolledCircuitType,
     circuit: &GKRCircuitArtifact<BF>,
     decoder_table: &DeviceSlice<ExecutorFamilyDecoderData>,
     trace: &UnrolledUnifiedTraceDevice,
@@ -465,8 +469,64 @@ pub fn generate_fused_values_unrolled_unified(
     range_check_timestamp_lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    let count = UnrolledCircuitType::Unified.get_domain_size();
-    assert_eq!(circuit.trace_len, count);
+    assert_eq!(circuit.trace_len, unified_trace_len(circuit_type));
+    launch_fused_unified(
+        circuit,
+        decoder_table,
+        trace,
+        generic_lookup_tables,
+        memory,
+        witness,
+        scratch,
+        generic_lookup_mapping,
+        decoder_lookup_mapping,
+        range_check_16_lookup_mapping,
+        range_check_timestamp_lookup_mapping,
+        LookupExpressions::from(&circuit.range_check_16_lookup_expressions),
+        LookupExpressions::from(&circuit.timestamp_range_check_lookup_expressions),
+        stream,
+        false,
+        ab_generate_fused_unified_reduced_machine_kernel,
+    )
+}
+
+cuda_kernel_signature_arguments_and_function!(pub(crate) GenerateFusedUnified<F, R16, TS>,
+    layout: UnrolledMemoryLayout,
+    aux_layout_data: AuxLayoutData,
+    oracle: UnrolledUnifiedOracle,
+    generic_lookup_tables: *const F,
+    memory: *mut F,
+    witness: *mut F,
+    scratch: *mut F,
+    generic_lookup_mapping: *mut u32,
+    decoder_lookup_mapping: *mut u32,
+    range_check_16_lookup_expressions: R16,
+    range_check_16_lookup_mapping: *mut u32,
+    range_check_timestamp_lookup_expressions: TS,
+    range_check_timestamp_lookup_mapping: *mut u32,
+    stride: u32,
+    count: u32,
+);
+
+pub(crate) fn launch_fused_unified<F: PrimeField, R16, TS>(
+    circuit: &GKRCircuitArtifact<F>,
+    decoder_table: &DeviceSlice<ExecutorFamilyDecoderData>,
+    trace: &UnrolledUnifiedTraceDevice,
+    generic_lookup_tables: &impl DeviceMatrixImpl<F>,
+    memory: &mut impl DeviceMatrixMutImpl<F>,
+    witness: &mut impl DeviceMatrixMutImpl<F>,
+    scratch: &mut impl DeviceMatrixMutImpl<F>,
+    generic_lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
+    decoder_lookup_mapping: &mut DeviceSlice<u32>,
+    range_check_16_lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
+    range_check_timestamp_lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
+    range_check_16_lookup_expressions: R16,
+    range_check_timestamp_lookup_expressions: TS,
+    stream: &CudaStream,
+    clear_outputs: bool,
+    kernel: GenerateFusedUnifiedSignature<F, R16, TS>,
+) -> CudaResult<()> {
+    let count = circuit.trace_len;
     assert_eq!(memory.stride(), count);
     assert_eq!(memory.cols(), circuit.memory_layout.total_width);
     assert_eq!(witness.stride(), count);
@@ -490,7 +550,16 @@ pub fn generate_fused_values_unrolled_unified(
         range_check_timestamp_lookup_mapping.cols(),
         circuit.timestamp_range_check_lookup_expressions.len()
     );
+    assert_eq!(
+        generic_lookup_tables.cols(),
+        circuit.generic_lookup_tables_width
+    );
+    assert!(trace.tracing_data.len() <= count);
     assert!(count <= u32::MAX as usize);
+    if clear_outputs {
+        set_to_zero(witness.slice_mut(), stream)?;
+        set_to_zero(scratch.slice_mut(), stream)?;
+    }
     let count = count as u32;
     let layout = UnrolledMemoryLayout::from_parts(
         &circuit.memory_layout,
@@ -501,13 +570,9 @@ pub fn generate_fused_values_unrolled_unified(
         trace: trace.into(),
         decoder_table: decoder_table.as_ptr(),
     };
-    let range_check_16_lookup_expressions =
-        LookupExpressions::from(&circuit.range_check_16_lookup_expressions);
-    let range_check_timestamp_lookup_expressions =
-        LookupExpressions::from(&circuit.timestamp_range_check_lookup_expressions);
     let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count);
     let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = GenerateFusedUnrolledUnifiedKernelArguments::new(
+    let args = GenerateFusedUnifiedArguments::new(
         layout,
         aux_layout_data,
         oracle,
@@ -524,5 +589,5 @@ pub fn generate_fused_values_unrolled_unified(
         count,
         count,
     );
-    GenerateFusedUnrolledUnifiedKernelFunction::default().launch(&config, &args)
+    GenerateFusedUnifiedFunction(kernel).launch(&config, &args)
 }

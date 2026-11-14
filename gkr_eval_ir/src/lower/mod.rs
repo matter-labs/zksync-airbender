@@ -22,10 +22,9 @@ use cs::definitions::{GKRAddress, VirtualSetupPoly};
 use cs::gkr_compiler::{GKRCacheRelation, GKRCircuitArtifact, GKRRelation, GateArtifacts};
 
 use super::{
-    simplify::{simplify_circuit, SIMPLIFY_MODULUS},
-    ArenaBuilder, BatchingOrder, DagCircuit, DagLayer, ExprId, FieldKind, RangeWidth, ReadPlace,
-    ResolutionStrategy, Root, RootGroup, RootId, RootOrigin, SinkInfo, SinkKind, SourceKind,
-    VirtualSetupKind,
+    simplify::simplify_circuit, ArenaBuilder, BatchingOrder, DagCircuit, DagLayer, ExprId,
+    FieldKind, RangeWidth, ReadPlace, ResolutionStrategy, Root, RootGroup, RootId, RootOrigin,
+    SinkInfo, SinkKind, SourceKind, VirtualSetupKind,
 };
 
 /// Map an input address to a source. Same-layer cache aliases are resolved first.
@@ -247,7 +246,7 @@ impl LayerOut {
 
 #[derive(Clone, Copy)]
 struct RelationInputs<'a> {
-    minus_one: u32,
+    minus_one: u128,
     trace_len: usize,
     inits_word_bits: Option<u32>,
     decoder_predicate: Option<&'a ReadPlace>,
@@ -449,7 +448,7 @@ fn lower_cache<F: PrimeField>(
     out: &mut LayerOut,
     addr: GKRAddress,
     rel: &GKRCacheRelation<F>,
-    minus_one: u32,
+    minus_one: u128,
     decoder_predicate: Option<&ReadPlace>,
 ) -> Result<ExprId, String> {
     use GKRCacheRelation as C;
@@ -540,7 +539,7 @@ fn lower_layer<F: PrimeField + PartialEq>(
 
     // Reduced base-field `−1`, used to encode subtractions as `a + (−1)·b` (there
     // is no `Sub`/`Neg` node) — lookup numerators, `IsRegister`, and the mask gate.
-    let minus_one = F::CHARACTERISTICS_U32 - 1;
+    let minus_one = F::CHARACTERISTICS_U128 - 1;
 
     // Circuit globals the inits/teardowns top-bits constant resolves from.
     let trace_len = artifact.trace_len;
@@ -690,13 +689,6 @@ fn forward_skip_roots<F: PrimeField>(
 pub fn lower_dag<F: PrimeField + PartialEq>(
     artifact: &GKRCircuitArtifact<F>,
 ) -> Result<DagCircuit, String> {
-    if F::CHARACTERISTICS_U32 as u64 != SIMPLIFY_MODULUS {
-        return Err(format!(
-            "gkr_eval_ir: simplification requires modulus {SIMPLIFY_MODULUS} (BabyBear), \
-             but the field characteristic is {}",
-            F::CHARACTERISTICS_U32
-        ));
-    }
     let mut layers = (0..artifact.layers.len())
         .map(|i| lower_layer(artifact, i))
         .collect::<Result<Vec<_>, _>>()?;
@@ -704,7 +696,10 @@ pub fn lower_dag<F: PrimeField + PartialEq>(
         layer.forward_skip_roots = forward_skip_roots(artifact, index, layer)?;
     }
 
-    let dag = simplify_circuit(DagCircuit { layers });
+    let dag = simplify_circuit::<F>(DagCircuit {
+        layers,
+        modulus: F::CHARACTERISTICS_U128,
+    });
     validate(&dag)?;
     Ok(dag)
 }

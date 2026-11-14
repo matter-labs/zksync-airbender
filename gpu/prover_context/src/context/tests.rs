@@ -19,7 +19,7 @@ fn exact_budget_includes_small_pool_and_enforces_boundary() {
             device_allocation_blocks_count: Some(budget >> config.allocator_block_log_size),
             ..config
         },
-        |_| panic!("explicit arena must bypass automatic selection"),
+        |_| panic!("explicit arena must bypass automatic soundness_mode"),
     )
     .unwrap();
     assert_eq!(context.get_mem_size(), budget);

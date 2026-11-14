@@ -1,3 +1,5 @@
+pub(crate) mod coefficient_chunks;
+use crate::upstream::PrimeField;
 use std::collections::BTreeMap;
 
 use super::GpuGKRStorage;
@@ -24,6 +26,7 @@ pub use kernels::{
     GpuGKRBackwardScheduledExecution, GpuGKRDimensionReducingBackwardState, GKR_EQ_GROUP_TABLE_LEN,
     GKR_EQ_HIGH_SLOTS,
 };
+pub(crate) use stage_snapshots::schedule_stage_snapshot_fields;
 #[doc(hidden)]
 pub use stage_snapshots::{GKRBackwardStageSnapshot, GKRBackwardStageSnapshotSink};
 #[cfg(test)]
@@ -34,6 +37,14 @@ pub(crate) use main_layer::extras::derive_dimension_reducing_inputs;
 use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
 use dr_tail::resources::DrTailResources;
 use main_layer::blueprints::build_dimension_reducing_slots_static;
+
+pub(crate) fn babybear_from_canonical(value: u128) -> BF {
+    let canonical = u32::try_from(value)
+        .ok()
+        .filter(|&canonical| canonical < BF::CHARACTERISTICS_U32)
+        .unwrap_or_else(|| panic!("backward value {value} is not a canonical BabyBear value"));
+    BF::from_u32_with_reduction(canonical)
+}
 
 fn validate_dr_window_layer_program(
     program: &crate::DrWindowLayerProgram,
@@ -256,3 +267,10 @@ impl GpuGKRDimensionReducingBackwardState {
 
 #[cfg(test)]
 mod tests;
+
+pub(crate) use dr_tail::resources::DrTailRawAttributes;
+pub(crate) use dr_tail::{
+    dr_tail_device_optin_cap_bytes, kernel_attributes as dr_tail_kernel_attributes,
+    kernel_occupancy as dr_tail_kernel_occupancy, launch_dr_tail_state,
+    set_kernel_max_dynamic_smem as dr_tail_set_kernel_max_dynamic_smem,
+};

@@ -3,10 +3,12 @@ use crate::OperationMode;
 use crate::ProofProfile;
 use common_constants::TimestampScalar;
 use crossbeam_channel::{Receiver, Sender};
+use execution_prover_model::allocator::PooledHostBuffer;
 use execution_prover_model::circuit_type::CircuitType;
 use execution_prover_model::trace::UnrolledUnifiedTraceHost;
 use execution_prover_model::trace::{InitsAndTeardownsTraceHost, TracingDataHost};
 use fft::GoodAllocator;
+use std::alloc::Global;
 
 use crate::upstream::{
     DefaultTreeConstructor, FinalRegisterValue, GKRExternalChallenges, GKRProof,
@@ -18,6 +20,7 @@ pub struct InitsAndTeardownsData<A: GoodAllocator> {
     pub circuit_type: CircuitType,
     pub sequence_id: usize,
     pub inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
+    pub partial_tree_buffer: Option<PooledHostBuffer<[u32; 8], A>>,
 }
 
 pub struct TracingData<A: GoodAllocator> {
@@ -25,6 +28,7 @@ pub struct TracingData<A: GoodAllocator> {
     pub sequence_id: usize,
     pub tracing_data: TracingDataHost<A>,
     pub participating_snapshot_indexes: BTreeSet<usize>,
+    pub partial_tree_buffer: Option<PooledHostBuffer<[u32; 8], A>>,
 }
 
 #[derive(Clone)]
@@ -57,6 +61,24 @@ pub struct MemoryCommitmentRequest<A: GoodAllocator, P> {
     pub tracing_data: Option<TracingDataHost<A>>,
 
     pub profile: ProofProfile,
+    pub partial_tree_buffer: Option<PooledHostBuffer<[u32; 8], A>>,
+}
+
+/// A commitment's partial Merkle trees, kept on the host so the proof of the
+/// same instance opens them instead of rebuilding them. The backend produces
+/// and interprets the nodes; the orchestrator moves them from the commitment
+/// to that instance's proof request.
+pub struct MemoryPartialTrees<A: GoodAllocator = Global> {
+    pub layout_version: u32,
+    pub circuit_type: CircuitType,
+    pub profile: ProofProfile,
+    pub log_domain_size: u32,
+    pub log_lde_factor: u32,
+    pub log_rows_per_leaf: u32,
+    pub log_tree_cap_size: u32,
+    pub reduction_layers: u32,
+    pub columns_count: usize,
+    pub nodes: PooledHostBuffer<[u32; 8], A>,
 }
 
 pub struct MemoryCommitmentResult<A: GoodAllocator> {
@@ -66,6 +88,7 @@ pub struct MemoryCommitmentResult<A: GoodAllocator> {
     pub inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
     pub tracing_data: Option<TracingDataHost<A>>,
     pub merkle_tree_caps: Vec<MerkleTreeCapVarLength>,
+    pub memory_partial_trees: Option<MemoryPartialTrees<A>>,
 }
 
 pub struct SetupInitializationRequest<P> {
@@ -93,6 +116,8 @@ pub struct ProofRequest<A: GoodAllocator, P> {
     /// per coset, in natural order). The GPU backend builds a
     /// `GpuGKRMemoryCapTransfer` from these caps.
     pub memory_caps: Vec<MerkleTreeCapVarLength>,
+    /// The partial trees this circuit's commitment persisted, if any.
+    pub memory_partial_trees: Option<MemoryPartialTrees<A>>,
 
     pub profile: ProofProfile,
 }

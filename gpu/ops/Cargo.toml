@@ -20,7 +20,7 @@ era_cudart_sys = "=0.156.0"
 field = { workspace = true }
 fft = { workspace = true }
 itertools = { workspace = true }
-rand = { workspace = true, features = ["thread_rng"] }
+rand = { workspace = true, features = ["std_rng", "thread_rng"] }
 
 [build-dependencies]
 gpu_native_build = { workspace = true }

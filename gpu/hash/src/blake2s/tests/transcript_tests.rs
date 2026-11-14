@@ -2,7 +2,6 @@ use era_cudart::memory::{memory_copy_async, DeviceAllocation};
 use era_cudart::stream::CudaStream;
 use gpu_core::primitives::field::{BF, E4};
 use rand::Rng;
-#[cfg(feature = "deterministic_pow")]
 use worker::Worker;
 
 use super::super::*;
@@ -22,7 +21,15 @@ fn pow() {
     let mut d_result = DeviceAllocation::alloc(1).unwrap();
     let stream = CudaStream::default();
     memory_copy_async(&mut d_seed, &h_seed, &stream).unwrap();
-    blake2s_pow(&d_seed, BITS_COUNT, &mut d_result[0], &stream).unwrap();
+    let mut d_counter = DeviceAllocation::alloc(1).unwrap();
+    blake2s_pow(
+        &d_seed,
+        BITS_COUNT,
+        &mut d_result[0],
+        &mut d_counter[0],
+        &stream,
+    )
+    .unwrap();
     memory_copy_async(&mut h_result, &d_result, &stream).unwrap();
     stream.synchronize().unwrap();
     let mut state = Blake2sState::new();
@@ -35,11 +42,7 @@ fn pow() {
     assert!(digest[0].leading_zeros() >= BITS_COUNT);
 }
 
-// Feature-gated: run with `--features deterministic_pow` (not part of the
-// default suite). The CPU reference is kept deterministic via the dev-dep
-// `transcript/deterministic_pow` feature; without it both sides return
-// first-found nonces and the comparison is meaningless.
-#[cfg(feature = "deterministic_pow")]
+// Dev dependencies keep both the native search and CPU reference deterministic in test builds.
 #[test]
 fn pow_deterministic_matches_cpu_baseline() {
     let seeds = [
@@ -60,7 +63,15 @@ fn pow_deterministic_matches_cpu_baseline() {
             let mut d_seed = DeviceAllocation::alloc(STATE_SIZE).unwrap();
             let mut d_result = DeviceAllocation::alloc(1).unwrap();
             memory_copy_async(&mut d_seed, &seed.0, &stream).unwrap();
-            blake2s_pow(&d_seed, pow_bits, &mut d_result[0], &stream).unwrap();
+            let mut d_counter = DeviceAllocation::alloc(1).unwrap();
+            blake2s_pow(
+                &d_seed,
+                pow_bits,
+                &mut d_result[0],
+                &mut d_counter[0],
+                &stream,
+            )
+            .unwrap();
             memory_copy_async(&mut h_result, &d_result, &stream).unwrap();
             stream.synchronize().unwrap();
             assert_eq!(

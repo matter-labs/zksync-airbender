@@ -37,8 +37,9 @@ use setup_init::{request_setup_initialization, PendingSetupInitialization};
 use crate::backend::{CircuitPrecomputation, ExecutionBackend};
 use crate::config::ExecutionProverConfiguration;
 use crate::messages::{
-    InitsAndTeardownsData, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
-    ProofResult, SimulationResult, TracingData, WorkBatch, WorkRequest, WorkResult, WorkerResult,
+    InitsAndTeardownsData, MemoryCommitmentRequest, MemoryCommitmentResult, MemoryPartialTrees,
+    ProofRequest, ProofResult, SimulationResult, TracingData, WorkBatch, WorkRequest, WorkResult,
+    WorkerResult,
 };
 use crate::setup::{
     build_common_setups, build_unrolled_setup_with_preprocessing, preprocess_binary,

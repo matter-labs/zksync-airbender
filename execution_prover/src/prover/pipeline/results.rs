@@ -11,15 +11,20 @@ pub(super) struct RequestContext<'a, B: ExecutionBackend> {
     pub(super) binary_holder: &'a BinaryHolder<B>,
     pub(super) external_challenges: Option<&'a GKRExternalChallenges<BF, E4>>,
     pub(super) proof_caps: &'a BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
+    /// Taken by the first proof request built for each instance; a later
+    /// duplicate of a cache-served request gets `None` and is never dispatched.
+    pub(super) proof_partial_trees:
+        BTreeMap<(CircuitType, usize), MemoryPartialTrees<B::Allocator>>,
 }
 
 impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
     pub(super) fn build_work_request(
-        &self,
+        &mut self,
         prover: &ExecutionProver<B>,
         inits_and_teardowns: Option<InitsAndTeardownsData<B::Allocator>>,
         tracing_data: Option<TracingData<B::Allocator>>,
     ) -> WorkRequest<B::Allocator, B::Precomputations> {
+        let mut partial_tree_buffer = None;
         let mut circuit_type_value = None;
         let mut sequence_id_value = None;
         let inits_and_teardowns = if let Some(inits_and_teardowns) = inits_and_teardowns {
@@ -27,7 +32,9 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 circuit_type,
                 sequence_id,
                 inits_and_teardowns,
+                partial_tree_buffer: inits_partial_tree_buffer,
             } = inits_and_teardowns;
+            partial_tree_buffer = inits_partial_tree_buffer;
             circuit_type_value = Some(circuit_type);
             sequence_id_value = Some(sequence_id);
             inits_and_teardowns
@@ -39,8 +46,10 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 circuit_type,
                 sequence_id,
                 tracing_data,
+                partial_tree_buffer: tracing_partial_tree_buffer,
                 ..
             } = tracing_data;
+            partial_tree_buffer = tracing_partial_tree_buffer.or(partial_tree_buffer);
             assert_eq!(
                 circuit_type_value.get_or_insert(circuit_type),
                 &circuit_type
@@ -97,6 +106,10 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                     .external_challenges
                     .expect("proof request construction requires external challenges"),
                 memory_caps,
+                memory_partial_trees: self
+                    .proof_partial_trees
+                    .remove(&(circuit_type, sequence_id)),
+
                 profile,
             };
             WorkRequest::Proof(request)
@@ -109,6 +122,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 inits_and_teardowns,
                 tracing_data,
                 profile,
+                partial_tree_buffer,
             };
             WorkRequest::MemoryCommitment(request)
         }
@@ -117,7 +131,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
 
 fn enqueue_ready_tracing_data<B: ExecutionBackend>(
     prover: &ExecutionProver<B>,
-    request_context: &RequestContext<'_, B>,
+    request_context: &mut RequestContext<'_, B>,
     data: TracingData<B::Allocator>,
     work_requests: &mut VecDeque<WorkRequest<B::Allocator, B::Precomputations>>,
     unpaired_unified_inits_and_teardowns: &mut BTreeMap<usize, InitsAndTeardownsData<B::Allocator>>,
@@ -177,6 +191,7 @@ pub(super) struct ResultAccumulator<A: GoodAllocator> {
     pub(super) inits_and_teardowns_memory_caps: BTreeMap<usize, Vec<MerkleTreeCapVarLength>>,
     pub(super) delegation_circuits_memory_caps:
         BTreeMap<u32, BTreeMap<usize, Vec<MerkleTreeCapVarLength>>>,
+    pub(super) memory_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees<A>>,
     pub(super) circuit_families_proofs: BTreeMap<u8, BTreeMap<usize, ScheduledProof>>,
     pub(super) inits_and_teardowns_proofs: BTreeMap<usize, ScheduledProof>,
     pub(super) delegation_circuits_proofs: BTreeMap<u32, BTreeMap<usize, ScheduledProof>>,
@@ -192,7 +207,7 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
         prover: &ExecutionProver<B>,
         cache: &mut Option<TraceCache<B::Allocator>>,
         work_result: WorkerResult<B::Allocator>,
-        request_context: &RequestContext<'_, B>,
+        request_context: &mut RequestContext<'_, B>,
     ) -> VecDeque<WorkRequest<B::Allocator, B::Precomputations>> {
         let mut work_requests = VecDeque::new();
         match work_result {
@@ -340,6 +355,7 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                     inits_and_teardowns,
                     tracing_data,
                     merkle_tree_caps,
+                    memory_partial_trees,
                 } = commitment;
                 trace!(
                     "BATCH[{batch_id}] PROVER received memory commitment for circuit {circuit_type:?}[{sequence_id}]"
@@ -377,6 +393,12 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                     },
                 };
                 assert!(caps.insert(sequence_id, merkle_tree_caps).is_none());
+                if let Some(trees) = memory_partial_trees {
+                    assert!(self
+                        .memory_partial_trees
+                        .insert((circuit_type, sequence_id), trees)
+                        .is_none());
+                }
             }
             WorkResult::Proof(proof) => {
                 assert!(proving);

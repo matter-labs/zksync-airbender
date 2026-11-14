@@ -2,9 +2,8 @@ use super::*;
 use std::fs;
 
 fn source() -> ProgramSource {
-    ProgramSource::legacy_binaries_from_bin(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/basic_fibonacci/app.bin"),
-    )
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    ProgramSource::legacy_binaries_from_bin(root.join("examples/basic_fibonacci/app.bin"))
 }
 
 /// Setup-tree level the verifier's pinned setup frontier holds (the cap is level 3).

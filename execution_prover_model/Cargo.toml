@@ -10,6 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+crossbeam-channel = "0.5"
 circuit_common = { workspace = true }
 common_constants = { workspace = true }
 fft = { workspace = true }

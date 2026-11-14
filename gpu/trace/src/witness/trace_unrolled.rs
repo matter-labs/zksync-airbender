@@ -5,10 +5,12 @@ use gpu_core::primitives::context::DeviceAllocation;
 
 use riscv_transpiler::witness::{
     MemoryOpcodeTracingDataWithTimestamp, NonMemoryOpcodeTracingDataWithTimestamp,
-    UnifiedOpcodeTracingDataWithTimestamp,
 };
 
-pub use execution_prover_model::trace::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};
+pub use execution_prover_model::trace::{
+    InitsAndTeardownsTraceHost, UnrolledUnifiedTraceHost, PAGE_SIZE_LOG2,
+};
+pub use riscv_transpiler::witness::UnifiedOpcodeTracingDataWithTimestamp;
 
 #[repr(C)]
 #[derive(Copy, Clone, Default, Debug)]

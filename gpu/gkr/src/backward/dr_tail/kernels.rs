@@ -1,7 +1,7 @@
 use core::mem::{align_of, offset_of, size_of};
 
 use era_cudart::cuda_kernel;
-use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
+use era_cudart::execution::{CudaLaunchConfig, KernelArguments, KernelFunction};
 use era_cudart::occupancy::max_active_blocks_per_multiprocessor;
 use era_cudart::result::CudaResult;
 use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
@@ -116,51 +116,20 @@ pub(crate) fn launch_dr_tail_megakernel_e4(
     context: &ProverContext,
 ) -> CudaResult<()> {
     assert_capacity_matches_descriptor(&desc, capacity);
-    let dynamic_smem_bytes = capacity.dynamic_smem_bytes;
-
-    let mut state = context.alloc_with_extra_alignment::<E4, 1>(
-        capacity.global_state_bytes / size_of::<E4>(),
-        AllocationPlacement::Top,
-    )?;
-    let state_ptr = state.as_mut_ptr();
-    assert_eq!(
-        state_ptr as usize % 32,
-        0,
-        "DR-tail packed working state alignment"
-    );
-    let function = DrTailMegakernelE4Function::default();
-    let config = CudaLaunchConfig::builder()
-        .grid_dim(1)
-        .block_dim(DR_TAIL_BLOCK_THREADS)
-        .dynamic_smem_bytes(dynamic_smem_bytes)
-        .stream(context.get_exec_stream())
-        .build();
-    let args = DrTailMegakernelE4Arguments::new(desc, state_ptr);
-    function.launch(&config, &args)?;
-    // All working-buffer accesses are now enqueued on the exec stream.
-    drop(state);
-    Ok(())
+    launch_dr_tail_state::<E4, _, _>(
+        capacity.global_state_bytes,
+        capacity.dynamic_smem_bytes,
+        DR_TAIL_BLOCK_THREADS,
+        &DrTailMegakernelE4Function::default(),
+        |state| DrTailMegakernelE4Arguments::new(desc, state),
+        context,
+    )
 }
 
 /// Attribute queries against the linked DR-tail kernel, made while scheduling
 /// the DR tail.
 pub(crate) fn dr_tail_attributes() -> CudaResult<DrTailRawAttributes> {
-    let function = DrTailMegakernelE4Function::default();
-    let mut raw = std::mem::MaybeUninit::<era_cudart_sys::CudaFuncAttributes>::zeroed();
-    // SAFETY: `raw` is a zeroed POD attribute record sized by the CUDA
-    // headers, and the function pointer comes from the linked kernel.
-    let status =
-        unsafe { era_cudart_sys::cudaFuncGetAttributes(raw.as_mut_ptr(), function.as_ptr()) };
-    if status != era_cudart_sys::CudaError::Success {
-        return Err(status);
-    }
-    // SAFETY: the call above returned success, so the record is initialised.
-    let raw = unsafe { raw.assume_init() };
-    Ok(DrTailRawAttributes {
-        static_smem_bytes: raw.sharedSizeBytes,
-        local_bytes: raw.localSizeBytes,
-        max_dynamic_smem_bytes: raw.maxDynamicSharedSizeBytes.max(0) as usize,
-    })
+    kernel_attributes(&DrTailMegakernelE4Function::default())
 }
 
 pub(crate) fn dr_tail_device_optin_cap_bytes(device_id: i32) -> CudaResult<usize> {
@@ -172,14 +141,75 @@ pub(crate) fn dr_tail_device_optin_cap_bytes(device_id: i32) -> CudaResult<usize
 }
 
 pub(crate) fn set_dr_tail_max_dynamic_smem_bytes(bytes: usize) -> CudaResult<()> {
-    let function = DrTailMegakernelE4Function::default();
-    // SAFETY: the function pointer comes from the linked kernel and the
-    // request was bounded against the device cap by the caller.
+    set_kernel_max_dynamic_smem(&DrTailMegakernelE4Function::default(), bytes)
+}
+
+pub(crate) fn dr_tail_occupancy(dynamic_smem_bytes: usize) -> CudaResult<u32> {
+    kernel_occupancy(
+        &DrTailMegakernelE4Function::default(),
+        DR_TAIL_OCCUPANCY_THREADS,
+        dynamic_smem_bytes,
+    )
+}
+
+pub(crate) fn launch_dr_tail_state<F, K, A>(
+    global_state_bytes: usize,
+    dynamic_smem_bytes: usize,
+    threads: u32,
+    function: &K,
+    arguments: impl FnOnce(*mut F) -> A,
+    context: &ProverContext,
+) -> CudaResult<()>
+where
+    K: KernelFunction,
+    A: KernelArguments<Signature = K::Signature>,
+{
+    let mut state = context.alloc_with_extra_alignment::<F, 1>(
+        global_state_bytes / size_of::<F>(),
+        AllocationPlacement::Top,
+    )?;
+    let state_ptr = state.as_mut_ptr();
+    assert_eq!(
+        state_ptr as usize % 32,
+        0,
+        "DR-tail packed working state alignment"
+    );
+    let config = CudaLaunchConfig::builder()
+        .grid_dim(1)
+        .block_dim(threads)
+        .dynamic_smem_bytes(dynamic_smem_bytes)
+        .stream(context.get_exec_stream())
+        .build();
+    function.launch(&config, &arguments(state_ptr))?;
+    drop(state);
+    Ok(())
+}
+
+pub(crate) fn kernel_attributes(function: &impl KernelFunction) -> CudaResult<DrTailRawAttributes> {
+    let mut raw = std::mem::MaybeUninit::<era_cudart_sys::CudaFuncAttributes>::zeroed();
+    let status =
+        unsafe { era_cudart_sys::cudaFuncGetAttributes(raw.as_mut_ptr(), function.as_ptr()) };
+    if status != era_cudart_sys::CudaError::Success {
+        return Err(status);
+    }
+    let raw = unsafe { raw.assume_init() };
+    Ok(DrTailRawAttributes {
+        static_smem_bytes: raw.sharedSizeBytes,
+        local_bytes: raw.localSizeBytes,
+        max_dynamic_smem_bytes: raw.maxDynamicSharedSizeBytes.max(0) as usize,
+    })
+}
+
+pub(crate) fn set_kernel_max_dynamic_smem(
+    function: &impl KernelFunction,
+    bytes: usize,
+) -> CudaResult<()> {
+    let bytes = i32::try_from(bytes).expect("DR-tail dynamic shared memory exceeds i32");
     let status = unsafe {
         cudaFuncSetAttribute(
             function.as_ptr(),
             CudaFuncAttribute::MaxDynamicSharedMemorySize,
-            bytes as i32,
+            bytes,
         )
     };
     if status != era_cudart_sys::CudaError::Success {
@@ -188,14 +218,13 @@ pub(crate) fn set_dr_tail_max_dynamic_smem_bytes(bytes: usize) -> CudaResult<()>
     Ok(())
 }
 
-pub(crate) fn dr_tail_occupancy(dynamic_smem_bytes: usize) -> CudaResult<u32> {
-    let function = DrTailMegakernelE4Function::default();
-    max_active_blocks_per_multiprocessor(
-        &function,
-        DR_TAIL_OCCUPANCY_THREADS as i32,
-        dynamic_smem_bytes,
-    )
-    .map(|blocks| blocks.max(0) as u32)
+pub(crate) fn kernel_occupancy(
+    function: &impl KernelFunction,
+    threads: u32,
+    dynamic_smem_bytes: usize,
+) -> CudaResult<u32> {
+    max_active_blocks_per_multiprocessor(function, threads as i32, dynamic_smem_bytes)
+        .map(|blocks| blocks.max(0) as u32)
 }
 
 #[cfg(test)]

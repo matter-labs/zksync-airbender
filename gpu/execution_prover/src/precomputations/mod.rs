@@ -1,5 +1,6 @@
 #[cfg(feature = "memory_sweep")]
 mod common;
+pub mod l1_wrap;
 mod setup_host;
 #[cfg(feature = "memory_sweep")]
 mod unrolled;

@@ -8,3 +8,4 @@ pub(crate) use field::baby_bear::base::BabyBearField;
 pub(crate) use field::baby_bear::ext2::BabyBearExt2;
 pub(crate) use field::baby_bear::ext4::BabyBearExt4;
 pub(crate) use field::baby_bear::ext6::BabyBearExt6;
+pub(crate) use field::proth120::Proth120;

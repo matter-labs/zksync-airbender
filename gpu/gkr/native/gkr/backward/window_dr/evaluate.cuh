@@ -1,4 +1,5 @@
 #pragma once
+#include "corner_quad.cuh"
 
 #include "../window/window_geometry.cuh"
 #include "abi.cuh"
@@ -11,18 +12,6 @@ struct dr_window_gate_pairs {
 };
 
 using dr_window_corner_quad = bwd_window_packed_values<e4, 4>;
-
-DEVICE_FORCEINLINE dr_window_corner_quad dr_window_load_corner_quad(const e4 *column, const u32 row, const u32 bit0, const u32 bit1) {
-  return bwd_window_load<e4, 4>(column, 2u * bwd_window_corner_index(row, bit0, bit1, 0));
-}
-
-DEVICE_FORCEINLINE dr_window_corner_quad dr_window_quad_sub(const dr_window_corner_quad one, const dr_window_corner_quad zero) {
-  dr_window_corner_quad result;
-#pragma unroll
-  for (u32 index = 0; index < 4; ++index)
-    result.values[index] = e4::sub(one.values[index], zero.values[index]);
-  return result;
-}
 
 DEVICE_FORCEINLINE dr_window_gate_pairs dr_window_packed_gate_pairs(const e4 *column, const u32 row, const bwd_window_selector_pair selector) {
   const u32 bit0_zero = selector.x0_infinity() ? 0 : selector.x0;
