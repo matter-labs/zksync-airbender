@@ -11,6 +11,12 @@ pub struct TrustedSetupCommitter {
     context: ProverContext,
 }
 
+impl Default for TrustedSetupCommitter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TrustedSetupCommitter {
     pub fn new() -> Self {
         Self {

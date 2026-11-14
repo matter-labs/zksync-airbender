@@ -30,8 +30,8 @@ impl Hash for Blake2s {
 
     fn matches(seed: &[u8; 32], nonce: u64, bits: u32) -> bool {
         let mut block = [0; 16];
-        for (slot, bytes) in block[..8].iter_mut().zip(seed.chunks_exact(4)) {
-            *slot = u32::from_le_bytes(bytes.try_into().unwrap());
+        for (slot, bytes) in block[..8].iter_mut().zip(seed.as_chunks::<4>().0) {
+            *slot = u32::from_le_bytes(*bytes);
         }
         block[8] = nonce as u32;
         block[9] = (nonce >> 32) as u32;

@@ -311,10 +311,6 @@ impl SyntheticInputFactory {
                     &[ProofProfile::Standard],
                 )
             }
-            CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it uses the CompressionFinal profile and presets::compression policy"),
-            CircuitType::L1Wrap => panic!(
-                "L1Wrap is not enumerated by the all-circuit sweep; its policy is presets::l1_wrap"
-            ),
             CircuitType::Delegation(_)
             | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
                 self.common[&circuit].clone()

@@ -248,7 +248,7 @@ pub(in crate::proof) fn prepare_challenges_and_forward_setup<'a, A: GoodAllocato
     let chunks = &preparation.initial_chunks;
     let mut d_seed: DeviceAllocation<u32> =
         context.alloc(STATE_SIZE, AllocationPlacement::BestFit)?;
-    gpu_hash::blake2s::transcript_commit_initial_chunked(&mut d_seed, &chunks, stream)?;
+    gpu_hash::blake2s::transcript_commit_initial_chunked(&mut d_seed, chunks, stream)?;
 
     let mut d_lookup_challenges: DeviceAllocation<E4> =
         context.alloc(2, AllocationPlacement::BestFit)?;
