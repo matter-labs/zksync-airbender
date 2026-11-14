@@ -8,8 +8,7 @@
 //!       run the x86-64 JIT and print a digest of the captured witness (all trace chunks,
 //!       machine state at every snapshot, final memory and memory timestamps)
 //!   recursion_profiling jit <program-base> <nd-file> [default|flat] [repeats]
-//!       run the x86-64 JIT (reduced machine), print the frequency. MOP field comes from
-//!       `RISCV_MOP_FIELD` (`babybear` if unset, or `babybear_assume_canonical`)
+//!       run the x86-64 JIT (reduced machine, BabyBear MOPs), print the frequency
 //!
 //! `<program-base>` is the path without the `.bin` / `.text` extension.
 
@@ -217,11 +216,7 @@ fn jit(text: &[u32], binary: &[u32], responses: Vec<u32>, flattened: bool, repea
     use std::ptr::NonNull;
 
     let ram_config = JitRunnerRam::Medium;
-    let field = if std::env::var_os("RISCV_MOP_FIELD").is_some() {
-        mop_field()
-    } else {
-        MopField::BabyBear
-    };
+    let field = MopField::BabyBear;
     println!("MOP field: {:?}", field);
     let instructions: Vec<Instruction> = decode(text);
 
@@ -362,11 +357,7 @@ fn witness_digest<const FLATTENED: bool>(text: &[u32], binary: &[u32], responses
     use std::ptr::NonNull;
 
     let ram_config = JitRunnerRam::Medium;
-    let field = if std::env::var_os("RISCV_MOP_FIELD").is_some() {
-        mop_field()
-    } else {
-        MopField::BabyBear
-    };
+    let field = MopField::BabyBear;
     let instructions: Vec<Instruction> = decode(text);
     let runner = JittedCode::<digest::DigestingContext<'_, FLATTENED>>::preprocess_bytecode(
         &instructions,
