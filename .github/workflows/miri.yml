@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          components: miri, rust-src
+          components: clippy, miri, rust-src
           rustflags: ""
           cache: false
       - name: Set up Miri sysroot
@@ -88,6 +88,11 @@ jobs:
           (target / 'circuit-cases.txt').write_text('\n'.join(circuits) + '\n')
           (target / 'statement-cases.txt').write_text('\n'.join(statements) + '\n')
           PY
+      - name: Clippy on the targets that need the generated inputs
+        run: |
+          cargo clippy -p verifier --no-default-features --features miri_circuits --all-targets -- -D warnings
+          cargo clippy -p verifier --no-default-features --features miri_compression_coverage --all-targets -- -D warnings
+          cargo clippy -p full_statement_verifier --no-default-features --features host_utils,miri_fsv --all-targets -- -D warnings
       - name: Compile the shared Miri test binaries once
         run: |
           cargo miri test -p full_statement_verifier --no-default-features --features miri_fsv --test miri_native --no-run

@@ -122,6 +122,14 @@ jobs:
           CUDAARCHS: "80;89;90;120"
         run: cargo +$RUST_TOOLCHAIN test -p gpu_execution_prover -p gpu_circuit_prover --profile release-thin --target x86_64-unknown-linux-gnu --lib ::cpu_
 
+      # Real CUDA builds the GPU tests that the no_cuda clippy job in ci.yml leaves out.
+      - name: Clippy with CUDA
+        env:
+          CUDAARCHS: "80"
+        run: |
+          rustup component add clippy --toolchain "$RUST_TOOLCHAIN"
+          cargo +"$RUST_TOOLCHAIN" clippy --workspace --all-targets --target x86_64-unknown-linux-gnu --features "$(python3 .github/scripts/clippy_features.py)"
+
       - name: Record compiler cache statistics
         if: always() && steps.sccache.outcome == 'success'
         run: |
