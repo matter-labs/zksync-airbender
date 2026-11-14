@@ -102,27 +102,27 @@ fn cpu_compression_rejects_tampered_streams() {
         &artifact.proof,
         BlakeMode::BlakeSpecialOpcodes,
     );
-    native_verify_unified_compression_final(stream.clone()).unwrap();
+    let verify = |stream| {
+        native_verify_unified_compression_in_mode(stream, SoundnessMode::PessimisticConjecture)
+    };
+    verify(stream.clone()).unwrap();
     let count_end = stream.len() - 2 - 16;
     let count_start = count_end - full_statement_verifier::definitions::DELEGATION_TYPES.len();
     for offset in count_start..count_end {
         let mut bad = stream.clone();
         assert_eq!(bad[offset], 0);
         bad[offset] = 1;
-        assert!(native_verify_unified_compression_final(bad)
-            .unwrap_err()
-            .contains("no delegation proofs"));
+        assert!(verify(bad).unwrap_err().contains("no delegation proofs"));
     }
     let mut trailing = stream.clone();
     trailing.push(7);
-    assert!(native_verify_unified_compression_final(trailing)
-        .unwrap_err()
-        .contains("trailing"));
+    assert!(verify(trailing).unwrap_err().contains("trailing"));
     let truncated = stream[..stream.len() - 1].to_vec();
-    assert!(native_verify_unified_compression_final(truncated).is_err());
+    assert!(verify(truncated).is_err());
     let mut flipped = stream;
-    flipped[(CompressionProfile::Final.cap_size() - 1) * 8] ^= 1;
-    assert!(native_verify_unified_compression_final(flipped).is_err());
+    flipped[(CompressionProfile::Final.cap_size(SoundnessMode::PessimisticConjecture) - 1) * 8] ^=
+        1;
+    assert!(verify(flipped).is_err());
 }
 
 #[test]
@@ -142,6 +142,7 @@ fn supplied_standard_records_refuse_an_l1_chain_without_recomputation() {
     let mut layer = 0;
     expected_chain_end_params(
         artifact.target,
+        artifact.soundness_mode,
         artifact.chain_end_params.len(),
         &artifact.blake_unrolled,
         &artifact.blake_bridge,

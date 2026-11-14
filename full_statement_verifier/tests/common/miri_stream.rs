@@ -48,7 +48,7 @@ impl Selection {
                 full_statement_verifier::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_compression_final::<_, DebugErrorCreator, USE_REDUCED_BLAKE2_ROUNDS>(nds)
             }
             (SoundnessMode::EthproofsSoundnessCalc, Chain::Compression) => {
-                panic!("Ethproofs compression statement is unavailable")
+                full_statement_verifier::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_compression_ethproofs_soundcalc::<_, DebugErrorCreator, USE_REDUCED_BLAKE2_ROUNDS>(nds)
             }
             (SoundnessMode::PessimisticConjecture, _) => verify!(pessimistic_conjecture),
             (SoundnessMode::EthproofsSoundnessCalc, _) => verify!(ethproofs_soundcalc),

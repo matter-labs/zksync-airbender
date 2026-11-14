@@ -3,7 +3,8 @@
 use common_constants::ROM_SECOND_WORD_BITS;
 use prover::definitions::{SecurityLevel, SoundnessMode};
 use prover::tests::gkr::orchestration::canonical_fixtures::{
-    capture_canonical_inputs, CanonicalCircuit, CanonicalInputs, CanonicalTrace, CANONICAL_CIRCUITS,
+    canonical_circuits, capture_canonical_inputs, CanonicalCircuit, CanonicalInputs,
+    CanonicalTrace, CANONICAL_CIRCUITS,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -139,6 +140,18 @@ replay_test!(canonical_fixture_inputs_keccak_theta_rho, KeccakThetaRho);
 replay_test!(canonical_fixture_inputs_keccak_chi5, KeccakChi5);
 
 #[test]
+fn canonical_fixture_registry_matches_inventory() {
+    use std::collections::BTreeSet;
+    for &mode in SoundnessMode::ALL {
+        let actual: BTreeSet<_> = canonical_circuits(mode)
+            .map(|circuit| circuit.stem())
+            .collect();
+        let expected: BTreeSet<_> = proof_fixtures::circuits(mode.file_suffix()).collect();
+        assert_eq!(actual, expected, "{mode:?}");
+    }
+}
+
+#[test]
 fn canonical_fixture_encoding() {
     type Proof = prover::gkr::prover::GKRProof<
         field::baby_bear::base::BabyBearField,
@@ -146,8 +159,8 @@ fn canonical_fixture_encoding() {
         prover::merkle_trees::DefaultTreeConstructor,
     >;
     let root = root();
-    for circuit in CANONICAL_CIRCUITS {
-        for &mode in SoundnessMode::ALL {
+    for &mode in SoundnessMode::ALL {
+        for circuit in canonical_circuits(mode) {
             let path = circuit.proof_path(&root, mode);
             let proof: Proof = proof_fixtures::read_file(&path);
             assert_eq!(

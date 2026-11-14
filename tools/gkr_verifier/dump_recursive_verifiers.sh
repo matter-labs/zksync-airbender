@@ -47,9 +47,7 @@ for soundness in $MODES; do
             build_variant "fsv_unified_recursion_layer_sec_${sec}" "${soundness}" "${mode}"
         done
     done
-    if [ "$soundness" = "pessimistic_conjecture" ]; then
-        build_variant "fsv_unified_recursion_layer_sec_100_compression" "${soundness}" "special_opcodes_extension"
-    fi
+    build_variant "fsv_unified_recursion_layer_sec_100_compression" "${soundness}" "special_opcodes_extension"
 done
 
 echo "==> all recursive verifier variants built (sec: ${SEC})"

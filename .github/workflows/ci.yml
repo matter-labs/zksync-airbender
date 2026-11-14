@@ -361,6 +361,8 @@ jobs:
         include:
           - mode: pessimistic_conjecture
             stage: compression
+          - mode: ethproofs_soundcalc
+            stage: compression
     defaults:
       run:
         shell: bash

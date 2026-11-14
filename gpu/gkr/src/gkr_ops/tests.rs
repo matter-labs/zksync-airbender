@@ -80,16 +80,16 @@ fn special_lagrange_interpolate_host(
     result
 }
 
-/// Runs the exact host-side per-round callback logic and returns the
-/// updated state plus the derived sumcheck coefficients and challenge.
-fn host_whir_fold_round_update(
+/// The host-side round polynomial commit: returns the advanced seed and the
+/// committed sumcheck coefficients.
+fn host_whir_fold_round_commit(
     mut seed: Seed,
     f_at_0: E4,
     f_at_1: E4,
     raw_half_input: E4,
-) -> (Seed, [E4; 3], E4) {
+) -> (Seed, [E4; 3]) {
     use field::{Field, FieldExtension, PrimeField};
-    use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
+    use prover::gkr::prover::transcript_utils::commit_field_els;
 
     let quart = BF::from_u32_unchecked(4).inverse().unwrap();
     let two_inv = BF::from_u32_unchecked(2).inverse().unwrap();
@@ -98,8 +98,25 @@ fn host_whir_fold_round_update(
 
     let coeffs = special_lagrange_interpolate_host(f_at_0, f_at_1, f_half, E4::from_base(two_inv));
     commit_field_els::<BF, E4, prover::transcript::Blake2sTranscript>(&mut seed, &coeffs);
-    let challenge =
-        draw_random_field_els::<BF, E4, prover::transcript::Blake2sTranscript>(&mut seed, 1)[0];
+    (seed, coeffs)
+}
+
+fn host_draw_challenge(seed: &mut Seed) -> E4 {
+    use prover::gkr::prover::transcript_utils::draw_random_field_els;
+
+    draw_random_field_els::<BF, E4, prover::transcript::Blake2sTranscript>(seed, 1)[0]
+}
+
+/// Runs the exact host-side per-round callback logic and returns the
+/// updated state plus the derived sumcheck coefficients and challenge.
+fn host_whir_fold_round_update(
+    seed: Seed,
+    f_at_0: E4,
+    f_at_1: E4,
+    raw_half_input: E4,
+) -> (Seed, [E4; 3], E4) {
+    let (mut seed, coeffs) = host_whir_fold_round_commit(seed, f_at_0, f_at_1, raw_half_input);
+    let challenge = host_draw_challenge(&mut seed);
     (seed, coeffs, challenge)
 }
 
@@ -138,6 +155,33 @@ fn run_device_whir_fold_round_update(
     stream.synchronize().unwrap();
 
     (seed_out, coeffs_out, challenge_out[0])
+}
+
+fn run_device_whir_fold_round_commit(
+    seed_in: Seed,
+    f_at_0: E4,
+    f_at_1: E4,
+    raw_half_input: E4,
+) -> (Seed, [E4; 3]) {
+    let stream = CudaStream::default();
+
+    let mut d_reduction: DeviceAllocation<E4> = DeviceAllocation::alloc(3).unwrap();
+    memory_copy_async(&mut d_reduction, &[f_at_0, f_at_1, raw_half_input], &stream).unwrap();
+
+    let mut d_seed: DeviceAllocation<u32> = DeviceAllocation::alloc(STATE_SIZE).unwrap();
+    memory_copy_async(&mut d_seed, &seed_in.0[..], &stream).unwrap();
+
+    let mut d_coeffs: DeviceAllocation<E4> = DeviceAllocation::alloc(3).unwrap();
+
+    super::whir_fold_round_commit(&d_reduction, &mut d_seed, &mut d_coeffs, &stream).unwrap();
+
+    let mut seed_out = Seed::default();
+    let mut coeffs_out = [E4::ZERO; 3];
+    memory_copy_async(&mut seed_out.0[..], &d_seed, &stream).unwrap();
+    memory_copy_async(&mut coeffs_out[..], &d_coeffs, &stream).unwrap();
+    stream.synchronize().unwrap();
+
+    (seed_out, coeffs_out)
 }
 
 fn assert_whir_fold_round_parity(seed_in: Seed, f_at_0: E4, f_at_1: E4, raw_half_input: E4) {
@@ -196,6 +240,39 @@ fn whir_fold_round_update_parity_chained() {
         assert_eq!(d_challenge, h_challenge, "round {round}: challenge");
 
         seed = h_seed;
+    }
+}
+
+#[test]
+fn whir_fold_round_commit_parity() {
+    let mut rng = rand::rng();
+    for _ in 0..16 {
+        let seed = Seed(std::array::from_fn(|_| rng.random()));
+        let f_at_0 = sample_e4(rng.random());
+        let f_at_1 = sample_e4(rng.random());
+        let raw_half_input = sample_e4(rng.random());
+
+        let (h_seed, h_coeffs) = host_whir_fold_round_commit(seed, f_at_0, f_at_1, raw_half_input);
+        let (mut d_seed, d_coeffs) =
+            run_device_whir_fold_round_commit(seed, f_at_0, f_at_1, raw_half_input);
+        assert_eq!(d_seed.0, h_seed.0, "seed mismatch");
+        assert_eq!(d_coeffs, h_coeffs, "coeffs mismatch");
+
+        let (u_seed, u_coeffs, u_challenge) =
+            run_device_whir_fold_round_update(seed, f_at_0, f_at_1, raw_half_input);
+        let challenge = host_draw_challenge(&mut d_seed);
+        assert_eq!(
+            d_seed.0, u_seed.0,
+            "commit + draw seed differs from the fused update"
+        );
+        assert_eq!(
+            d_coeffs, u_coeffs,
+            "commit coeffs differ from the fused update"
+        );
+        assert_eq!(
+            challenge, u_challenge,
+            "commit + draw challenge differs from the fused update"
+        );
     }
 }
 

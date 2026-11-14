@@ -48,6 +48,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     }
                 }
                 for profile in &profiles {
+                    if *profile == ProofProfile::CompressionFinal {
+                        assert_eq!(
+                            self.configuration.soundness_mode,
+                            crate::config::SoundnessMode::PessimisticConjecture,
+                            "Ethproofs compression has no final profile"
+                        );
+                    }
                     profile
                         .config_profile()
                         .assert_supports(self.configuration.soundness_mode);
@@ -192,7 +199,7 @@ mod tests {
     use crate::config::SoundnessMode;
     use crate::test_support::TestBackend;
 
-    /// Every L1 profile under ethproofs is rejected before a binary is registered.
+    /// Ethproofs wrap and final profiles are rejected before a binary is registered.
     #[test]
     fn ethproofs_l1_binary_is_rejected_before_registration() {
         let soundness_mode = SoundnessMode::EthproofsSoundnessCalc;
@@ -202,7 +209,6 @@ mod tests {
         let program = vec![0x0001_2083, 0xffdf_f06f];
         for (kind, profile) in [
             (ExecutionKind::Unified22, ProofProfile::CompressionFinal),
-            (ExecutionKind::Unified, ProofProfile::Compression),
             (ExecutionKind::L1Wrap, ProofProfile::L1Wrap),
         ] {
             let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -220,7 +226,11 @@ mod tests {
                 .map(String::as_str)
                 .unwrap_or_default();
             assert!(
-                message.contains("supports only the pessimistic-conjecture soundness mode"),
+                message.contains(if profile == ProofProfile::CompressionFinal {
+                    "Ethproofs compression has no final profile"
+                } else {
+                    "supports only the pessimistic-conjecture soundness mode"
+                }),
                 "{profile:?}: {message}"
             );
             assert_eq!(prover.next_binary_id, 0);

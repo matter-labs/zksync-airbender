@@ -18,9 +18,9 @@ use crate::pow::schedule_draw_e4_challenges_with_pow;
 /// from the update: the round polynomial is committed first, then the
 /// challenge is drawn under PoW (nonce into the slab's folding-PoW slot that
 /// parallels the round's sumcheck polynomial), then the symbolic terms fold
-/// with it. Only intermediate-oracle rounds are gated, and they always carry
-/// symbolic terms. With `folding_pow_bits == 0` the fused update runs
-/// unchanged.
+/// with it. A round without symbolic terms (the base round) commits the
+/// uncorrected reductions and folds no terms. With `folding_pow_bits == 0`
+/// the fused update runs unchanged.
 pub(super) fn schedule_fold_round(
     num_folding_steps: usize,
     folding_pow_bits: u32,
@@ -112,12 +112,20 @@ pub(super) fn schedule_fold_round(
                     slab_folding_nonces_ptr.add(group_start_idx + round),
                 )
             };
-            state.in_domain.correct_and_commit(
+            let has_terms = state.in_domain.correct_and_commit(
                 &mut state.reduce_out[..3],
                 device_seed,
                 slab_round_dst,
                 context,
             )?;
+            if !has_terms {
+                gpu_gkr::gkr_ops::whir_fold_round_commit(
+                    &state.reduce_out[..3],
+                    device_seed,
+                    slab_round_dst,
+                    stream,
+                )?;
+            }
             schedule_draw_e4_challenges_with_pow(
                 device_seed,
                 &mut d_challenge,
@@ -125,7 +133,9 @@ pub(super) fn schedule_fold_round(
                 nonce_slab_dst,
                 context,
             )?;
-            state.in_domain.fold_terms(&d_challenge, context)?;
+            if has_terms {
+                state.in_domain.fold_terms(&d_challenge, context)?;
+            }
         }
         schedule_fold_state(state, &d_challenge[0], context)?;
         *scheduled_sumcheck_poly_idx += 1;

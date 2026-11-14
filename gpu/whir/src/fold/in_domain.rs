@@ -129,20 +129,18 @@ impl InDomainState {
     /// [`Self::try_update_and_fold`] split around the challenge for a
     /// PoW-gated folding draw: corrects the reductions and commits the round
     /// polynomial without drawing. The caller then draws the challenge and
-    /// calls [`Self::fold_terms`]. Gated draws fold only intermediate oracles,
-    /// which always carry the base queries' terms (base-round folding PoW is
-    /// rejected when the proof layout is built).
+    /// calls [`Self::fold_terms`]. Returns `false` without scheduling anything
+    /// when there are no terms (the base round).
     pub(super) fn correct_and_commit(
         &mut self,
         reductions: &mut DeviceSlice<E4>,
         seed: &mut DeviceSlice<u32>,
         coefficients: &mut DeviceSlice<E4>,
         context: &ProverContext,
-    ) -> CudaResult<()> {
-        assert!(
-            self.count != 0,
-            "PoW-gated folding step without symbolic in-domain terms"
-        );
+    ) -> CudaResult<bool> {
+        if self.count == 0 {
+            return Ok(false);
+        }
         assert!(self.leaf_width >= 2);
         crate::in_domain::correct_and_commit(
             &self.leaves[..self.count * self.leaf_stride],
@@ -154,7 +152,8 @@ impl InDomainState {
             seed,
             coefficients,
             context.get_exec_stream(),
-        )
+        )?;
+        Ok(true)
     }
 
     /// Folds the terms by the challenge drawn after

@@ -1,15 +1,15 @@
-//! compression and wrap configs, supported only in pessimistic-conjecture mode.
-//! Ethproofs support is deferred; see `soundcalc/README.md`.
+//! compression and wrap configs. The wrap is supported only in
+//! pessimistic-conjecture mode; see `soundcalc/README.md`.
 
 use super::*;
 use crate::gkr::whir::proximity_testing_modes::{PessimisticConjectureMode, ProximityTestingMode};
 
 impl ProverConfigProfile {
-    /// The compression and EVM profiles exist only in the pessimistic-conjecture
-    /// mode; Ethproofs for them is deferred product scope.
+    /// The EVM profile exists only in the pessimistic-conjecture mode.
     pub fn assert_supports(self, soundness_mode: SoundnessMode) {
         assert!(
-            self == Self::Standard || soundness_mode == SoundnessMode::PessimisticConjecture,
+            self != Self::EvmProductionPacked
+                || soundness_mode == SoundnessMode::PessimisticConjecture,
             "{self:?} supports only the pessimistic-conjecture soundness mode, not {soundness_mode:?}"
         );
     }
@@ -99,12 +99,15 @@ pub const COMPRESSION_POW_BITS: [u32; 5] = [25, 25, 25, 25, 17];
 
 /// The cap must equal the base LDE: coset commitment requires cap <= LDE,
 /// while splitting the memory cap requires cap >= LDE.
-fn compression_config(
+fn compression_config_for_schedule(
     trace_len_log2: usize,
-    base_lde_factor: usize,
-    whir_steps_schedule: Vec<usize>,
-    queries_and_pow: &[(usize, u32); 5],
+    whir_schedule: WhirSchedule,
 ) -> ProverConfig {
+    assert_eq!(
+        whir_schedule.cap_size,
+        whir_schedule.base_round.lde_factor(),
+        "a compression config's cap must equal its base LDE"
+    );
     ProverConfig {
         trace_len_log2,
         same_size_sumcheck_schedule: crate::gkr::prover_config::windowed_same_size_schedule(
@@ -112,10 +115,22 @@ fn compression_config(
         ),
         commitment_mode: CommitmentMode::MergedMemoryAndWitness,
         dimension_reducing_sumcheck_schedule: Default::default(),
-        cap_size: base_lde_factor,
+        cap_size: whir_schedule.cap_size,
         sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
         security_level: SecurityLevel::Sec100,
-        whir_schedule: WhirSchedule::from_legacy_arrays(
+        whir_schedule,
+    }
+}
+
+fn compression_config(
+    trace_len_log2: usize,
+    base_lde_factor: usize,
+    whir_steps_schedule: Vec<usize>,
+    queries_and_pow: &[(usize, u32); 5],
+) -> ProverConfig {
+    compression_config_for_schedule(
+        trace_len_log2,
+        WhirSchedule::from_legacy_arrays(
             base_lde_factor,
             base_lde_factor,
             0,
@@ -130,7 +145,7 @@ fn compression_config(
                 .map(|(_, pow)| *pow)
                 .collect::<Vec<_>>(),
         ),
-    }
+    )
 }
 
 /// The terminal CompressionFinal profile.
@@ -161,6 +176,11 @@ pub fn compression_config_for_2_23() -> ProverConfig {
             COMPRESSION_POW_BITS,
         ),
     )
+}
+
+/// Repeatable Compression profile under [`SoundnessMode::EthproofsSoundnessCalc`].
+pub fn ethproofs_compression_config_for_2_23() -> ProverConfig {
+    compression_config_for_schedule(23, super::ethproofs_soundcalc::COMPRESSION_2_23.schedule(0))
 }
 
 /// L1 wrap over the 512 KiB wrap ROM.

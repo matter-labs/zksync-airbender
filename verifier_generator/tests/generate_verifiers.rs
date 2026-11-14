@@ -304,6 +304,36 @@ fn unified_reduced_machine_compression() {
     );
 }
 
+/// The 2^23 compression unified verifier (Compression profile) under
+/// `ethproofs_compression_config_for_2_23`, with the MERGED memory+witness base
+/// commitment. Generated into
+/// `.../unified_reduced_machine/ethproofs_soundcalc_compression`.
+#[test]
+fn unified_reduced_machine_compression_ethproofs_soundcalc() {
+    let circuit = CircuitData::new(
+        "unified_reduced_machine",
+        "../circuit_defs/unrolled_circuits/unified_reduced_machine",
+    );
+    let prover_config =
+        prover::gkr::prover_config::example_configs::ethproofs_compression_config_for_2_23();
+    let compiled = circuit.compiled_circuit();
+    assert_eq!(
+        compiled.trace_len.trailing_zeros() as usize,
+        prover_config.trace_len_log2,
+        "Compression profile is computed for the 2^23 unified circuit"
+    );
+    assert!(
+        prover::gkr::prover_config::pow_bits::committed_base_oracle_columns(&compiled, 0, true)
+            <= prover::gkr::prover_config::example_configs::ethproofs_soundcalc::COMPRESSION_2_23
+                .max_committed_polys
+    );
+    generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
+        &circuit,
+        &prover_config,
+        "ethproofs_soundcalc_compression",
+    );
+}
+
 macro_rules! generate_circuit_tests {
     ($($name:ident; $prod_path:expr),* $(,)?) => {
         $(

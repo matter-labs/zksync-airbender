@@ -211,8 +211,8 @@ jobs:
           grep -q "test result: ok. 1 passed" inventory.txt
           "$binary" --list --ignored tests::proof_matrix::canonical_ > proof-tests.txt
           mapfile -t tests < <(sed -n 's/: test$//p' proof-tests.txt)
-          if [[ "${#tests[@]}" -ne 30 ]]; then
-            echo "Expected all 30 canonical circuit/mode tests, found ${#tests[@]}" >&2
+          if [[ "${#tests[@]}" -ne 31 ]]; then
+            echo "Expected all 31 canonical circuit/mode tests, found ${#tests[@]}" >&2
             exit 1
           fi
           failed=0
@@ -230,9 +230,7 @@ jobs:
           records="$GITHUB_WORKSPACE/trusted-params/basic_fibonacci"
           mkdir -p "$records"
           for mode in pessimistic_conjecture ethproofs_soundcalc; do
-            target=recursion-unified
-            [[ $mode != pessimistic_conjecture ]] || target=compression
-            common=(--bin examples/basic_fibonacci/app.bin --soundness-mode "${mode//_/-}" --target "$target")
+            common=(--bin examples/basic_fibonacci/app.bin --soundness-mode "${mode//_/-}" --target compression)
             "$cli" trusted-params "${common[@]}" --backend cpu --output "$records/$mode-cpu.json"
             "$cli" trusted-params "${common[@]}" --backend gpu --output "$records/$mode-gpu.json"
             cmp "$records/$mode-cpu.json" "$records/$mode-gpu.json"
@@ -252,9 +250,9 @@ jobs:
           chmod +x "$FIXTURE_CLI" "$FIXTURE_CODEC"
           failed=0
           for mode in pessimistic_conjecture ethproofs_soundcalc; do
-            stages=(base_unified unrolled)
+            stages=(base_unified unrolled compression)
             if [[ $mode == pessimistic_conjecture ]]; then
-              stages+=(compression l1)
+              stages+=(l1)
             fi
             for stage in "${stages[@]}"; do
               fixtures/regenerate.sh --check --mode "$mode" --stage "$stage" || failed=1

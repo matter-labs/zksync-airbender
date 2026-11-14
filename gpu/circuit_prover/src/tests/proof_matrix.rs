@@ -73,15 +73,16 @@ canonical_matrix! {
     (canonical_keccak_chi5_pessimistic_conjecture, canonical_keccak_chi5_ethproofs_soundcalc, profile_keccak_chi5, KeccakChi5),
 }
 
-const PESSIMISTIC_CANONICAL_GPU_CASES: &[(
-    &str,
-    CanonicalCircuit,
-    circuit_common::SoundnessMode,
-)] = &[
+const SPECIAL_CANONICAL_GPU_CASES: &[(&str, CanonicalCircuit, circuit_common::SoundnessMode)] = &[
     (
         "tests::proof_matrix::canonical_compression_pessimistic_conjecture",
         CanonicalCircuit::Compression,
         circuit_common::SoundnessMode::PessimisticConjecture,
+    ),
+    (
+        "tests::proof_matrix::canonical_compression_ethproofs_soundcalc",
+        CanonicalCircuit::Compression,
+        circuit_common::SoundnessMode::EthproofsSoundnessCalc,
     ),
     (
         "tests::proof_matrix::canonical_compression_final_pessimistic_conjecture",
@@ -96,6 +97,15 @@ fn canonical_compression_pessimistic_conjecture() {
     canonical_case(
         CanonicalCircuit::Compression,
         circuit_common::SoundnessMode::PessimisticConjecture,
+    );
+}
+
+#[test]
+#[ignore = "canonical GPU proof bytes and two-enqueue allocator coverage"]
+fn canonical_compression_ethproofs_soundcalc() {
+    canonical_case(
+        CanonicalCircuit::Compression,
+        circuit_common::SoundnessMode::EthproofsSoundnessCalc,
     );
 }
 
@@ -122,10 +132,10 @@ fn cpu_canonical_matrix_inventory() {
             })
         })
         .collect();
-    assert_eq!(expected.len(), 30);
+    assert_eq!(expected.len(), 31);
     let registered: BTreeSet<_> = CANONICAL_GPU_CASES
         .iter()
-        .chain(PESSIMISTIC_CANONICAL_GPU_CASES)
+        .chain(SPECIAL_CANONICAL_GPU_CASES)
         .map(|&(name, circuit, mode)| {
             assert_eq!(
                 name,
@@ -140,7 +150,7 @@ fn cpu_canonical_matrix_inventory() {
         .collect();
     assert_eq!(
         registered.len(),
-        CANONICAL_GPU_CASES.len() + PESSIMISTIC_CANONICAL_GPU_CASES.len(),
+        CANONICAL_GPU_CASES.len() + SPECIAL_CANONICAL_GPU_CASES.len(),
         "duplicate canonical GPU key"
     );
     assert_eq!(

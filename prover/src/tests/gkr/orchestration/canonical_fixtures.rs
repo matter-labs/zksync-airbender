@@ -64,17 +64,21 @@ pub const CANONICAL_CIRCUITS: [CanonicalCircuit; 14] = [
     CanonicalCircuit::KeccakChi5,
 ];
 
-pub const PESSIMISTIC_CANONICAL_CIRCUITS: [CanonicalCircuit; 2] = [
+pub const SPECIAL_CANONICAL_CIRCUITS: [CanonicalCircuit; 2] = [
     CanonicalCircuit::Compression,
     CanonicalCircuit::CompressionFinal,
 ];
 
 pub fn canonical_circuits(mode: SoundnessMode) -> impl Iterator<Item = CanonicalCircuit> {
-    CANONICAL_CIRCUITS.into_iter().chain(
-        PESSIMISTIC_CANONICAL_CIRCUITS
-            .into_iter()
-            .filter(move |_| mode == SoundnessMode::PessimisticConjecture),
-    )
+    CANONICAL_CIRCUITS
+        .into_iter()
+        .chain(
+            SPECIAL_CANONICAL_CIRCUITS
+                .into_iter()
+                .filter(move |circuit| {
+                    proof_fixtures::circuits(mode.file_suffix()).any(|stem| stem == circuit.stem())
+                }),
+        )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
