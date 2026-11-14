@@ -185,6 +185,13 @@ pub const FSV_REGISTRY: &[FsvRegistryEntry] = {
             BlakeSpecialOpcodes,
             "ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100_special_opcodes_extension.elf",
         ),
+        entry(
+            EthproofsSoundnessCalc,
+            UnifiedRecursionLayer,
+            FsvProfile::Compression,
+            BlakeSpecialOpcodes,
+            "ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100_compression_special_opcodes_extension.elf",
+        ),
     ]
 };
 
