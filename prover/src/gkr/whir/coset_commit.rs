@@ -149,17 +149,6 @@ where
         self.top_tree.get_cap()
     }
 
-    /// Per-column values on the MAIN evaluation domain (LDE coset 0, offset 1) — the
-    /// only coset `whir_fold` reads for the batched-polynomial computation. This is
-    /// the memory the base oracle must still hold during folding (~num_cols * 2^N).
-    pub fn main_domain_columns(
-        &self,
-        twiddles: &Twiddles<F, Global>,
-        worker: &Worker,
-    ) -> Vec<Box<[F]>> {
-        coset_columns(&self.monomial_forms, twiddles, self.lde_factor, 0, worker)
-    }
-
     /// Commit a batch of columns given on the boolean hypercube (same inputs as
     /// `commit_trace_part`: `input_on_hypercube[col]` is a message-sized column).
     pub fn commit(
