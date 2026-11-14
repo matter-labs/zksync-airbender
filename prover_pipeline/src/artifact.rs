@@ -68,8 +68,8 @@ impl ProofArtifact {
                 ));
             }
         }
-        // L1 artifacts exist only in PessimisticConjecture: neither an ethproofs request nor
-        // an ethproofs label reaches an L1 verifier or continuation.
+        // Wrap artifacts exist only in PessimisticConjecture: neither an ethproofs request nor
+        // an ethproofs label reaches a wrap verifier or continuation.
         for mode in [expected, self.soundness_mode] {
             super::assert_target_mode(self.target, mode);
         }

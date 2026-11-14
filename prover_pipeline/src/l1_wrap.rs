@@ -36,14 +36,13 @@ impl L1Bundle {
 
 /// The setup cap every entry of an artifact's `setups` must carry: the
 /// profile config's `cap_size` of the artifact's final proof layer.
-pub(super) fn expected_setup_cap_size(target: ProofTarget) -> usize {
+pub(super) fn expected_setup_cap_size(target: ProofTarget, mode: SoundnessMode) -> usize {
     if target >= ProofTarget::Compression {
-        ProofProfile::CompressionFinal
-            .prover_config(
-                CircuitType::Unrolled(UnrolledCircuitType::Unified22).get_domain_size_log2()
-                    as usize,
-                SoundnessMode::PessimisticConjecture,
-            )
+        compression_schedule(mode)
+            .last()
+            .unwrap()
+            .1
+            .config(mode)
             .cap_size
     } else {
         CircuitType::Unrolled(UnrolledCircuitType::Unified)
@@ -60,9 +59,15 @@ pub(super) fn validate_artifact_envelope(artifact: &ProofArtifact) -> Result<(),
         (_, None) => {}
     }
     // serde bypasses the setup-cap constructor: repeat its shape check here
-    setups::validate_setups_cap_size(&artifact.setups, expected_setup_cap_size(artifact.target))?;
+    setups::validate_setups_cap_size(
+        &artifact.setups,
+        expected_setup_cap_size(artifact.target, artifact.soundness_mode),
+    )?;
     if artifact.target >= ProofTarget::Compression {
-        validate_compression_proof(&artifact.proof, CompressionProfile::Final, 1)?;
+        let &(_, profile, instances) = compression_schedule(artifact.soundness_mode)
+            .last()
+            .unwrap();
+        validate_compression_proof(&artifact.proof, profile, instances, artifact.soundness_mode)?;
     }
     Ok(())
 }
@@ -72,6 +77,7 @@ pub(super) fn validate_compression_proof(
     proof: &ProgramProof,
     profile: CompressionProfile,
     instances: usize,
+    mode: SoundnessMode,
 ) -> Result<(), String> {
     let family = profile.circuit().get_family_idx() as u32;
     if proof.riscv_proofs.len() != 1 || !proof.riscv_proofs.contains_key(&family) {
@@ -110,7 +116,7 @@ pub(super) fn validate_compression_proof(
             profile.circuit()
         ));
     }
-    let expected_schedule = profile.config().whir_schedule;
+    let expected_schedule = profile.config(mode).whir_schedule;
     for instance in &proof.riscv_proofs[&family] {
         if instance.whir_proof.whir_schedule != expected_schedule {
             return Err(format!("compression proof instance was not proven under the {profile:?} compression WHIR schedule"));

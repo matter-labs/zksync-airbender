@@ -128,12 +128,13 @@ cargo run --release -p cli -- verify \
 `--soundness-mode pessimistic-conjecture|ethproofs-soundcalc` (default
 `pessimistic-conjecture`). Artifacts record their mode; `continue-proof` and `verify`
 refuse an artifact recorded in another mode and use that mode's own verifier guests.
-The L1 compression/wrap/EVM profile exists only in `pessimistic-conjecture`.
+Compression supports both modes. The L1 wrap and EVM profiles exist only
+in `pessimistic-conjecture`.
 
 ## L1 Compression Checkpoint
 
 `--target compression` continues a `recursion-unified` proof with a compression chain.
-The pipeline uses the fixed compression schedule in `prover_pipeline`.
+The pipeline selects the compression schedule for the artifact's soundness mode.
 
 Artifacts use schema 5. The optional `l1` bundle is serialized only when present;
 artifacts without it retain the existing schema-5 encoding. The `compression`
@@ -194,7 +195,7 @@ and says that the Proth proof was not verified.
 
 `trusted-params` writes the trusted verification parameters of one program and soundness
 mode through `--target` (default `recursion-unified`); `--backend cpu|gpu` selects
-how setup caps are computed. Compression records are available in pessimistic mode;
+how setup caps are computed. Compression records are available in both modes;
 the L1 wrap has no trusted record. `verify --trusted-params <file>` uses these
 records instead of recomputing setups.
 

@@ -113,13 +113,14 @@ pub fn compute_unified_program_setups_in_mode<A: GoodAllocator + 'static>(
     )
 }
 
-/// Pessimistic setups of the unified family under an explicit proof profile.
+/// Setups of the unified family under an explicit proof profile and soundness mode.
 pub fn compute_unified_program_setups_for_profile<A: GoodAllocator + 'static>(
     binary_image: &[u32],
     text_section: &[u32],
     use_caches: bool,
     security_level: SecurityLevel,
     profile: ProofProfile,
+    soundness_mode: SoundnessMode,
     worker: &Worker,
     commit: &mut SetupCommitter<'_>,
 ) -> Setups {
@@ -138,10 +139,7 @@ pub fn compute_unified_program_setups_for_profile<A: GoodAllocator + 'static>(
         ),
         _ => panic!("special unified setups require a compression profile"),
     };
-    let config = profile.prover_config(
-        unified_setup.trace_len.ilog2() as usize,
-        SoundnessMode::PessimisticConjecture,
-    );
+    let config = profile.prover_config(unified_setup.trace_len.ilog2() as usize, soundness_mode);
     assert_eq!(
         unified_setup.trace_len.ilog2() as usize,
         config.trace_len_log2

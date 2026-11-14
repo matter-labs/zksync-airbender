@@ -1,15 +1,15 @@
-//! compression and wrap configs, supported only in pessimistic-conjecture mode.
-//! Ethproofs support is deferred; see `soundcalc/README.md`.
+//! compression and wrap configs. The wrap is supported only in
+//! pessimistic-conjecture mode; see `soundcalc/README.md`.
 
 use super::*;
 use crate::gkr::whir::proximity_testing_modes::{PessimisticConjectureMode, ProximityTestingMode};
 
 impl ProverConfigProfile {
-    /// The compression and EVM profiles exist only in the pessimistic-conjecture
-    /// mode; Ethproofs for them is deferred product scope.
+    /// The EVM profile exists only in the pessimistic-conjecture mode.
     pub fn assert_supports(self, soundness_mode: SoundnessMode) {
         assert!(
-            self == Self::Standard || soundness_mode == SoundnessMode::PessimisticConjecture,
+            self != Self::EvmProductionPacked
+                || soundness_mode == SoundnessMode::PessimisticConjecture,
             "{self:?} supports only the pessimistic-conjecture soundness mode, not {soundness_mode:?}"
         );
     }

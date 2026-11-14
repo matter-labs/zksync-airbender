@@ -17,7 +17,7 @@ pub enum ProofProfile {
     /// The 2^22 compression (CompressionFinal profile).
     CompressionFinal,
     L1Wrap,
-    /// The 2^23 compression at base LDE 4 (Compression profile).
+    /// The 2^23 compression (Compression profile).
     Compression,
 }
 
@@ -38,36 +38,47 @@ impl ProofProfile {
         }
     }
 
-    /// The special config of an L1 profile under `soundness_mode`. The L1 profiles exist only under
-    /// [`SoundnessMode::PessimisticConjecture`] (Ethproofs compression/wrap/EVM is deferred product
-    /// scope): another mode fails
+    /// The special config of an L1 profile under `soundness_mode`. The wrap exists only under
+    /// [`SoundnessMode::PessimisticConjecture`]: another mode fails
     /// [`ProverConfigProfile::assert_supports`](crate::definitions::ProverConfigProfile::assert_supports).
+    /// The [`SoundnessMode::EthproofsSoundnessCalc`] compression chain has no `CompressionFinal`.
     /// `Standard` resolves through the circuit's own config.
     pub fn prover_config(
         self,
         trace_len_log2: usize,
         soundness_mode: crate::definitions::SoundnessMode,
     ) -> ProverConfig {
+        use crate::definitions::SoundnessMode;
         self.config_profile().assert_supports(soundness_mode);
-        let config = match self {
-            Self::Standard => {
+        let config = match (self, soundness_mode) {
+            (Self::Standard, _) => {
                 panic!("ProofProfile::Standard resolves through the circuit's own prover_config")
             }
-            Self::CompressionFinal => {
+            (Self::CompressionFinal, SoundnessMode::PessimisticConjecture) => {
                 assert_eq!(
                     trace_len_log2, 22,
                     "ProofProfile::CompressionFinal requires the 2^22 unified circuit"
                 );
                 example_configs::compression_final_config_for_2_22()
             }
-            Self::Compression => {
+            (Self::CompressionFinal, SoundnessMode::EthproofsSoundnessCalc) => {
+                panic!("ProofProfile::CompressionFinal does not exist in the EthproofsSoundnessCalc compression chain")
+            }
+            (Self::Compression, _) => {
                 assert_eq!(
                     trace_len_log2, 23,
                     "ProofProfile::Compression requires the 2^23 unified circuit"
                 );
-                example_configs::compression_config_for_2_23()
+                match soundness_mode {
+                    SoundnessMode::PessimisticConjecture => {
+                        example_configs::compression_config_for_2_23()
+                    }
+                    SoundnessMode::EthproofsSoundnessCalc => {
+                        example_configs::ethproofs_compression_config_for_2_23()
+                    }
+                }
             }
-            Self::L1Wrap => {
+            (Self::L1Wrap, _) => {
                 assert_eq!(
                     trace_len_log2,
                     example_configs::l1_wrap::TRACE_LEN_LOG2,
