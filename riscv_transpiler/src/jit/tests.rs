@@ -63,6 +63,7 @@ fn test_jit_preserves_counters_across_nondeterminism_callbacks() {
             &mut (),
             &[],
             None,
+            MopField::M31,
             JitRunnerRam::Tiny,
         );
         let (actual, _) = JittedCode::<_>::run_alternative_simulator(
@@ -70,6 +71,7 @@ fn test_jit_preserves_counters_across_nondeterminism_callbacks() {
             &mut ClobberingSource,
             &[],
             None,
+            MopField::M31,
             JitRunnerRam::Tiny,
         );
         assert_eq!(actual.counters, expected.counters, "{callback}");
@@ -77,7 +79,14 @@ fn test_jit_preserves_counters_across_nondeterminism_callbacks() {
 }
 
 fn run_jit_program(program: &[u32]) {
-    JittedCode::<_>::run_alternative_simulator(program, &mut (), &[], None, JitRunnerRam::Medium);
+    JittedCode::<_>::run_alternative_simulator(
+        program,
+        &mut (),
+        &[],
+        None,
+        MopField::M31,
+        JitRunnerRam::Medium,
+    );
 }
 
 /// Assert that an unsupported instruction aborts the process (with `expected`
@@ -159,7 +168,14 @@ fn test_jit_simple_fibonacci() {
         "examples/keccak_f1600/app.text",
     );
 
-    JittedCode::<_>::run_alternative_simulator(&text, &mut (), &binary, None, JitRunnerRam::Medium);
+    JittedCode::<_>::run_alternative_simulator(
+        &text,
+        &mut (),
+        &binary,
+        None,
+        MopField::M31,
+        JitRunnerRam::Medium,
+    );
 }
 
 #[test]
@@ -189,6 +205,7 @@ fn test_jit_recursive_verifier() {
         &mut source,
         &binary,
         None,
+        MopField::M31,
         JitRunnerRam::Medium,
     );
 }
@@ -274,7 +291,14 @@ fn test_few_instr() {
     }
     text.push(0x0000006f);
 
-    JittedCode::<_>::run_alternative_simulator(&text, &mut (), &[], None, JitRunnerRam::Medium);
+    JittedCode::<_>::run_alternative_simulator(
+        &text,
+        &mut (),
+        &[],
+        None,
+        MopField::M31,
+        JitRunnerRam::Medium,
+    );
 }
 
 /// `ZimopIXorRot` (MOP-I xor-rotate) computes `rd = (rd_old ^ rs1).rotate_right(imm)` — the
@@ -326,6 +350,7 @@ fn test_jit_zimop_ixor_rot() {
             &mut (),
             &[],
             None,
+            MopField::M31,
             JitRunnerRam::Medium,
         );
         let got = state.materialized_registers()[rd as usize];
@@ -374,6 +399,7 @@ fn test_jit_rev8() {
             &mut (),
             &[],
             None,
+            MopField::M31,
             JitRunnerRam::Medium,
         );
         let got = state.materialized_registers()[rd as usize];
@@ -443,6 +469,7 @@ fn test_jit_zimop_tri_add() {
             &mut (),
             &[],
             None,
+            MopField::M31,
             JitRunnerRam::Medium,
         );
         let got = state.materialized_registers()[rd as usize];
@@ -453,12 +480,12 @@ fn test_jit_zimop_tri_add() {
     }
 }
 
-/// The MOP prime-field opcodes (ZimopAdd/Sub/Mul/FMA) computed by the env-selected field
-/// emitter (M31 default, BabyBear via `RISCV_MOP_FIELD`) must match the reference `field` crate
-/// exactly. The default decoder config never emits these as a field choice, so build instruction
-/// streams directly, run the JIT under each field, and compare to `from_raw_repr_with_reduction`
-/// + the field op + `as_u32_raw_repr_reduced`. Covers GPR-mapped / XMM-resident placements,
-/// rs2 == x0 (the M31 add fast path), and inputs above the modulus (exercising reduction).
+/// The MOP prime-field opcodes (ZimopAdd/Sub/Mul/FMA) computed by each field emitter must match
+/// the reference `field` crate exactly. The default decoder config never emits these as a field
+/// choice, so build instruction streams directly, run the JIT under each field, and compare to
+/// `from_raw_repr_with_reduction` + the field op + `as_u32_raw_repr_reduced`. Covers GPR-mapped /
+/// XMM-resident placements, rs2 == x0 (the M31 add fast path), and inputs above the modulus
+/// (exercising reduction).
 #[test]
 #[serial_test::serial]
 fn test_jit_zimop_field_ops() {
@@ -505,13 +532,16 @@ fn test_jit_zimop_field_ops() {
     ];
     let ops = [ZimopAdd, ZimopSub, ZimopMul, ZimopFMA];
 
-    for field_env in ["m31", "babybear", "babybear_assume_canonical"] {
-        std::env::set_var("RISCV_MOP_FIELD", field_env);
+    for mop_field in [
+        MopField::M31,
+        MopField::BabyBear,
+        MopField::BabyBearAssumeCanonical,
+    ] {
         for &op in &ops {
             for &(rs1, rs2, rd) in placements {
                 for &(v1, v2, v_rd) in values {
                     // this mode is only defined over canonical inputs
-                    let (v1, v2, v_rd) = if field_env == "babybear_assume_canonical" {
+                    let (v1, v2, v_rd) = if mop_field == MopField::BabyBearAssumeCanonical {
                         const P: u32 = 0x7800_0001;
                         (v1 % P, v2 % P, v_rd % P)
                     } else {
@@ -533,8 +563,8 @@ fn test_jit_zimop_field_ops() {
                     let a = v1;
                     let b = if rs2 == 0 { 0 } else { v2 };
                     let c = v_rd;
-                    let expected = match field_env {
-                        "m31" => field_expected::<field::Mersenne31Field>(op, a, b, c),
+                    let expected = match mop_field {
+                        MopField::M31 => field_expected::<field::Mersenne31Field>(op, a, b, c),
                         _ => field_expected::<field::baby_bear::base::BabyBearField>(op, a, b, c),
                     };
 
@@ -544,23 +574,23 @@ fn test_jit_zimop_field_ops() {
                             &mut (),
                             &[],
                             None,
+                            mop_field,
                             JitRunnerRam::Medium,
                         );
-                    if field_env == "babybear_assume_canonical" {
+                    if mop_field == MopField::BabyBearAssumeCanonical {
                         // Even when the value computation degenerates (e.g. addition of x0 is
                         // just a move), all the bookkeeping must be the same as with the
                         // reducing implementation: register timestamps, machine timestamp,
                         // PC and family counters
-                        std::env::set_var("RISCV_MOP_FIELD", "babybear");
                         let (reference_state, _mem) =
                             JittedCode::<_>::run_alternative_simulator_from_instructions(
                                 &prog,
                                 &mut (),
                                 &[],
                                 None,
+                                MopField::BabyBear,
                                 JitRunnerRam::Medium,
                             );
-                        std::env::set_var("RISCV_MOP_FIELD", field_env);
                         assert_eq!(
                             state.as_replayer_state(),
                             reference_state.as_replayer_state(),
@@ -570,13 +600,12 @@ fn test_jit_zimop_field_ops() {
                     let got = state.materialized_registers()[rd as usize];
                     assert_eq!(
                         got, expected,
-                        "{field_env} {op:?}: rs1=x{rs1}({a:#010x}) rs2=x{rs2}({b:#010x}) rd=x{rd}({c:#010x}) -> got {got:#010x}, expected {expected:#010x}"
+                        "{mop_field:?} {op:?}: rs1=x{rs1}({a:#010x}) rs2=x{rs2}({b:#010x}) rd=x{rd}({c:#010x}) -> got {got:#010x}, expected {expected:#010x}"
                     );
                 }
             }
         }
     }
-    std::env::remove_var("RISCV_MOP_FIELD"); // restore default (M31) for other tests
 }
 
 #[test]
@@ -601,6 +630,7 @@ fn test_jit_full_block() {
         &mut source,
         &binary,
         None,
+        MopField::M31,
         JitRunnerRam::Full,
     );
     println!("PC = 0x{:08x}", state.pc);
@@ -628,6 +658,7 @@ fn test_jit_full_block_with_flattened_responder() {
         &witness[..],
         &binary,
         None,
+        MopField::M31,
         JitRunnerRam::Medium,
     );
     println!("PC = 0x{:08x}", state.pc);
@@ -726,6 +757,7 @@ fn packed_ts_vs_reference() {
         &mut source.clone(),
         &binary,
         Some(num_steps),
+        MopField::M31,
         JitRunnerRam::Medium,
     );
     let (reference_state, reference_ram, _snap) = run_reference_for_num_cycles_with_snapshots(
@@ -1569,6 +1601,7 @@ fn run_and_compare() {
                 &mut source.clone(),
                 &binary,
                 Some(num_steps),
+                MopField::M31,
                 ram_config,
             );
 
@@ -1792,6 +1825,7 @@ fn run_recursion_and_compare() {
                 &mut source.clone(),
                 &binary,
                 Some(num_steps),
+                MopField::M31,
                 JitRunnerRam::Medium,
             );
 
@@ -1996,7 +2030,7 @@ fn test_perf_with_trace_keeping() {
 
     let instructions = preprocess_bytecode::<FullUnsignedMachineDecoderConfig, false>(&text);
     let simulator =
-        JittedCode::<_>::preprocess_bytecode(&instructions, None, mop_field(), ram_config);
+        JittedCode::<_>::preprocess_bytecode(&instructions, None, MopField::M31, ram_config);
 
     let mut implementation = PreallocatedSnapshots::<1024, _>::new_in(Global, &mut source);
     let initial_chunk = implementation.initial_snapshot();
@@ -2029,6 +2063,7 @@ fn test_jit_keccak_f1600_matches_vm() {
             &mut (),
             &binary,
             None,
+            MopField::M31,
             JitRunnerRam::Medium,
         );
     let (state, ram, snapshotter) = run_reference_for_num_cycles_with_snapshots(

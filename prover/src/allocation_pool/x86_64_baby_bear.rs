@@ -40,13 +40,6 @@ pub const PADDED_GEOMETRY: PaddedBlocks = PaddedBlocks {
 /// stores.
 pub const WINDOW_ALIGN: usize = 64;
 
-/// `POOL_TRACE=1` prints every allocation (element size, length, window
-/// address) to stderr.
-fn trace() -> bool {
-    static V: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *V.get_or_init(|| std::env::var("POOL_TRACE").is_ok())
-}
-
 #[derive(Clone)]
 pub struct X86BabyBearAllocationPool {
     store: Arc<RetainedStore>,
@@ -100,13 +93,6 @@ impl X86BabyBearAllocationPool {
         debug_assert!((aligned - base).is_multiple_of(elem));
         let offset = (aligned - base) / elem;
         debug_assert!(offset + requested_len <= n_alloc);
-        if trace() {
-            eprintln!(
-                "[pool-trace] alloc elem {elem} len {len} {layout:?} -> window {aligned:#x} (mod 2MB {:#x}), box {base:#x} of {} bytes",
-                aligned % (2 << 20),
-                l.size()
-            );
-        }
         Buffer::from_parts(unsafe { box_from_raw(ptr, n_alloc) }, offset, requested_len)
     }
 

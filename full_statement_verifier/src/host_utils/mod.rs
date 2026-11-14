@@ -50,9 +50,7 @@ pub fn fsv_stream(setups: &Setups, proof: &ProgramProof, descriptor: &FsvDescrip
         FsvProgram::UnrolledBaseLayer | FsvProgram::UnrolledRecursionLayer => {
             build_unrolled_stream(setups, proof, descriptor.blake)
         }
-        FsvProgram::UnifiedBaseLayer | FsvProgram::UnifiedRecursionLayer => {
-            build_unified_stream(setups, proof, descriptor.blake)
-        }
+        FsvProgram::UnifiedRecursionLayer => build_unified_stream(setups, proof, descriptor.blake),
     }
 }
 
@@ -175,34 +173,6 @@ pub fn native_verify_unified_in_mode(
 #[must_use]
 pub fn load_program(elf_path: &Path) -> (Vec<u32>, Vec<u32>) {
     riscv_transpiler::elf::load_legacy_program(elf_path)
-}
-
-fn blake_mode_from_env(vars: &[&str], default: BlakeMode) -> BlakeMode {
-    for var in vars {
-        if let Ok(v) = std::env::var(var) {
-            let mode = BlakeMode::parse(&v).unwrap_or_else(|| panic!("invalid {var}={v}"));
-            return mode;
-        }
-    }
-    default
-}
-
-#[must_use]
-pub fn unrolled_blake_mode() -> BlakeMode {
-    blake_mode_from_env(&["RECURSION_UNROLLED_BLAKE"], BlakeMode::Compression)
-}
-
-#[must_use]
-pub fn bridge_blake_mode() -> BlakeMode {
-    blake_mode_from_env(&["RECURSION_BRIDGE_BLAKE"], unrolled_blake_mode())
-}
-
-#[must_use]
-pub fn final_blake_mode() -> BlakeMode {
-    blake_mode_from_env(
-        &["RECURSION_FINAL_BLAKE", "RECURSION_UNIFIED_BLAKE"],
-        BlakeMode::Compression,
-    )
 }
 
 /// Default for the unrolled-to-unified switch threshold.

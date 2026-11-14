@@ -1,5 +1,3 @@
-use crate::bincode_serialize_to_file;
-use crate::DUMP_WITNESS_VAR;
 use ::prover::gkr::witness_gen::delegation_circuits::evaluate_gkr_witness_for_delegation_circuit;
 use circuit_common::DelegationCircuit;
 use common_constants::keccak_f1600::{
@@ -445,10 +443,6 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
     println!("Final usage: {:?}", counters);
 
     let keccak_f1600_permutations = keccak_f1600_permutations(counters.keccak_f1600_calls);
-
-    let should_dump_witness = std::env::var(DUMP_WITNESS_VAR)
-        .map(|el| el.parse::<u32>().unwrap_or(0) == 1)
-        .unwrap_or(false);
 
     let mut memory_trees = vec![];
 
@@ -1206,20 +1200,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
             family_idx
         );
 
-        for (idx, chunk) in witness_chunks.into_iter().enumerate() {
-            if should_dump_witness {
-                println!(
-                    "Will serialize witness for family {} circuit {}",
-                    family_idx, idx
-                );
-                bincode_serialize_to_file(
-                    &chunk,
-                    // &chunk.realloc_to_global(),
-                    &format!("family_{}_circuit_{}_oracle_witness.bin", family_idx, idx),
-                );
-                println!("Serialization is done");
-            }
-
+        for chunk in witness_chunks {
             let oracle = NonMemoryCircuitOracle {
                 inner: &chunk,
                 decoder_table,
@@ -1369,20 +1350,7 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
             family_idx
         );
 
-        for (idx, chunk) in witness_chunks.into_iter().enumerate() {
-            if should_dump_witness {
-                println!(
-                    "Will serialize witness for family {} circuit {}",
-                    family_idx, idx
-                );
-                bincode_serialize_to_file(
-                    &chunk,
-                    // &chunk.realloc_to_global(),
-                    &format!("family_{}_circuit_{}_oracle_witness.bin", family_idx, idx),
-                );
-                println!("Serialization is done");
-            }
-
+        for chunk in witness_chunks {
             let oracle = MemoryCircuitOracle {
                 inner: &chunk[..],
                 decoder_table,
@@ -1565,7 +1533,6 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                     delegation_type,
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
-                    should_dump_witness,
                     &*twiddles_for(&prover_config),
                     &prover_config,
                     backend,
@@ -1600,7 +1567,6 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                     delegation_type,
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
-                    should_dump_witness,
                     &*twiddles_for(&prover_config),
                     &prover_config,
                     backend,
@@ -1635,7 +1601,6 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                     delegation_type,
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
-                    should_dump_witness,
                     &*twiddles_for(&prover_config),
                     &prover_config,
                     backend,
@@ -1670,7 +1635,6 @@ pub fn prove_unrolled_execution_with_replayer_in_mode<
                         delegation_type as u16,
                         &mut permutation_argument_accumulator,
                         &mut delegation_proofs_count,
-                        should_dump_witness,
                         &*twiddles_for(&prover_config),
                         &prover_config,
                         backend,
@@ -1783,7 +1747,6 @@ pub(crate) fn prove_delegation_circuit<
     delegation_type: u16,
     permutation_argument_grand_product: &mut BabyBearExt4,
     delegation_proofs_count: &mut usize,
-    should_dump_witness: bool,
     twiddles_for_size: &B::TwiddleSet,
     prover_config: &ProverConfig,
     backend: &B,
@@ -1812,21 +1775,6 @@ pub(crate) fn prove_delegation_circuit<
             cycle_data: el,
             marker: core::marker::PhantomData,
         };
-
-        if should_dump_witness {
-            // println!(
-            //     "Will serialize witness for delegaiton circuit {}",
-            //     delegation_type
-            // );
-            // bincode_serialize_to_file(
-            //     &oracle.cycle_data,
-            //     &format!(
-            //         "delegation_circuit_{}_{}_oracle_witness.bin",
-            //         delegation_type, _circuit_idx
-            //     ),
-            // );
-            // println!("Serialization is done");
-        }
 
         #[cfg(feature = "timing_logs")]
         let now = std::time::Instant::now();

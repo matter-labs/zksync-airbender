@@ -167,30 +167,6 @@ fn read_const(src: &str, name: &str) -> u128 {
     found.unwrap_or_else(|| panic!("template does not declare constant {name}"))
 }
 
-/// Keep everything up to (not including) the first line that starts a contract named `marker`,
-/// dropping the trailing test/bench harness contracts so the generated source is just the
-/// production verifier. Also trims a trailing block-comment that introduces the removed section.
-fn strip_from_contract(src: &str, marker: &str) -> String {
-    let needle = format!("contract {marker}");
-    let cut = src
-        .find(&needle)
-        .unwrap_or_else(|| panic!("template missing `{needle}`"));
-    // back up over any immediately-preceding `//`-comment lines that document the removed section
-    let mut end = src[..cut].trim_end_matches([' ', '\t']).len();
-    end = src[..end].trim_end_matches('\n').len();
-    loop {
-        let line_start = src[..end].rfind('\n').map(|i| i + 1).unwrap_or(0);
-        if src[line_start..end].trim_start().starts_with("//") {
-            end = src[..line_start].trim_end_matches('\n').len();
-        } else {
-            break;
-        }
-    }
-    let mut out = src[..end].to_string();
-    out.push('\n');
-    out
-}
-
 /// Circuit-derived layout values used to substitute the gkr.sol constants.
 struct Derived {
     rounds: usize,
@@ -508,8 +484,8 @@ fn render(
         );
     }
 
-    // 1. GKR verifier: inline circuit.yul (replace the whole marker line, matching the awk
-    //    splice the shell scripts used), then substitute circuit-derived + param constants.
+    // 1. GKR verifier: inline circuit.yul (replace the whole marker line), then substitute
+    //    circuit-derived + param constants.
     let (circuit_yul, stats) = emit_circuit_yul_with_stats(circuit);
     let mut gkr = String::with_capacity(GKR_TEMPLATE.len() + circuit_yul.len());
     let mut inlined = false;
@@ -570,7 +546,6 @@ fn render(
         );
         previous = Some((name, accessor));
     }
-    let _ = previous;
 
     for (name, value) in [
         ("__TEMPLATE_GKR_CIRCUIT_LAYER_ROUNDS", n(d.rounds)),
@@ -654,10 +629,6 @@ fn render(
         !gkr.contains("__GKR_CIRCUIT_LAYER_CALLS__"),
         "gkr.sol template missing the circuit-layer-calls marker"
     );
-
-    // Drop the trailing test/bench harness (GKRVerifierTest + the via_ir-only GKRStreamGen) so
-    // the production source is just the verifier.
-    let gkr = strip_from_contract(&gkr, "GKRVerifierTest");
 
     // F1: the GKR half reads the decoded v0 image (every calldata access rewritten; the absolute
     // preimage readers add F1_V0_PTR() in the template), the decoder is the only GKR calldata
@@ -788,11 +759,6 @@ fn render(
 
     // Every template use must have an assigned value, including names emitted by circuit.yul.
     for line in out.lines() {
-        let trimmed = line.trim();
-        assert!(
-            !trimmed.starts_with("// #if") && trimmed != "// #else" && trimmed != "// #endif",
-            "unresolved template directive: {trimmed}"
-        );
         let code = line.split_once("//").map_or(line, |(code, _)| code);
         for token in code.split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_') {
             if token.starts_with("__TEMPLATE_") {
@@ -994,9 +960,6 @@ fn build_merged(gkr: &str, whir: &str, heap: &HeapAlloc) -> String {
         "__WHIR_CONSTANTS__",
         "__WHIR_INLINE__",
         "__WHIR_YUL_END__",
-        "__TEMPLATE_VERIFIED_TOPIC",
-        "W_SEED_PTR",
-        "whir_fold16",
         // a declaration still holding the templates' placeholder (would not compile anyway)
         "= \"{unassigned}\"",
     ] {

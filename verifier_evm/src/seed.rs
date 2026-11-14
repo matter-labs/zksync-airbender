@@ -61,13 +61,6 @@ pub(crate) fn build_transcript_input(proof: &Proof, aux: &OperationMode) -> Vec<
     ti
 }
 
-/// The transcript preimage (little-endian bytes of the u32 words) whose keccak256
-/// is the initial GKR verifier seed.
-pub fn commit_seed_preimage(_circuit: &Circuit, proof: &Proof, aux: &OperationMode) -> Vec<u8> {
-    let ti = build_transcript_input(proof, aux);
-    ti.iter().flat_map(|w| w.to_le_bytes()).collect()
-}
-
 /// The `(publicInput, auxInput, setupCommitment)` tuple the on-chain verifier reports to its
 /// registry (`IVerificationRegistry.markVerified`) for this proof, each as a bytes32:
 ///  * `public_input` = final registers x10..x17, `aux_input` = x18..x25 — each register's

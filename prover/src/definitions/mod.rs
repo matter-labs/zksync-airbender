@@ -121,9 +121,6 @@ pub enum BlakeMode {
     /// (`blake2_with_compression`): a Merkle level costs the main machine
     /// little more than reading its sibling.
     Compression,
-    /// The mixing function is delegated (`blake2_g_function`): one call per
-    /// G function, the rest of the compression on the main machine.
-    GFunction,
     /// The compression runs on the main machine with the special blake
     /// opcodes (`special_opcodes_extension`): hundreds of cycles each.
     BlakeSpecialOpcodes,
@@ -135,7 +132,6 @@ pub enum BlakeMode {
 impl BlakeMode {
     pub const ALL: &'static [BlakeMode] = &[
         BlakeMode::Compression,
-        BlakeMode::GFunction,
         BlakeMode::BlakeSpecialOpcodes,
         BlakeMode::Software,
     ];
@@ -144,7 +140,6 @@ impl BlakeMode {
     pub const fn tag(self) -> &'static str {
         match self {
             Self::Compression => "blake2_with_compression",
-            Self::GFunction => "blake2_g_function",
             Self::BlakeSpecialOpcodes => "special_opcodes_extension",
             Self::Software => "software",
         }
@@ -154,7 +149,6 @@ impl BlakeMode {
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "blake2_with_compression" | "compression" | "round" => Some(Self::Compression),
-            "blake2_g_function" | "g_function" => Some(Self::GFunction),
             "special_opcodes_extension" | "special_opcodes" | "spec" => {
                 Some(Self::BlakeSpecialOpcodes)
             }
@@ -171,7 +165,7 @@ impl BlakeMode {
     pub const fn merkle_compressions_are_expensive(self) -> bool {
         match self {
             Self::Compression => false,
-            Self::GFunction | Self::BlakeSpecialOpcodes | Self::Software => true,
+            Self::BlakeSpecialOpcodes | Self::Software => true,
         }
     }
 

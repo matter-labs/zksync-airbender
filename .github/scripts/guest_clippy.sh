@@ -32,7 +32,7 @@ guest() {
     dependency_runs[$run]=1
 }
 
-for blake in blake2_with_compression blake2_g_function mop_extension special_opcodes_extension; do
+for blake in blake2_with_compression mop_extension special_opcodes_extension; do
     for extra in "" ",no_caches,modular_fma"; do
         guest tools/gkr_verifier --no-default-features --features "${blake}${extra}"
     done

@@ -959,10 +959,9 @@ fn emit_merged_word_run(
 //     one conditional subtract), per `field::baby_bear::ops::basic`.
 // FMA computes `rd = rs1*rs2 + rd_old` in the field (reading rd's OLD value, no timestamp touch).
 // The field is an explicit `preprocess_bytecode` parameter — the caller must pass the same
-// field its replayer/witness pipeline uses (`mop_field()` reads `RISCV_MOP_FIELD` for
-// env-driven callers such as the JIT differential tests). The emitter only
-// loads operands and leaves the reduced result in `out`; the caller owns the timestamp touches
-// (rs1@+0, rs2@+1, rd@+2), `store_result`, and the AddSubLui family counter.
+// field its replayer/witness pipeline uses. The emitter only loads operands and leaves the
+// reduced result in `out`; the caller owns the timestamp touches (rs1@+0, rs2@+1, rd@+2),
+// `store_result`, and the AddSubLui family counter.
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MopField {
@@ -974,28 +973,6 @@ pub enum MopField {
     /// result diverges from the reference semantics (`from_raw_repr_with_reduction`), so it
     /// is only suitable for programs that are known to uphold it.
     BabyBearAssumeCanonical,
-}
-
-/// Env-driven MOP field selection for callers without a fixed field (e.g. the JIT differential
-/// tests): reads `RISCV_MOP_FIELD` (default `M31`); an unrecognized value panics. Intentionally
-/// not cached, so a single process can build JITs for different fields by changing the variable
-/// between builds. Production pipelines should pass their field to `preprocess_bytecode`
-/// explicitly instead of relying on process env.
-pub fn mop_field() -> MopField {
-    match std::env::var("RISCV_MOP_FIELD") {
-        Ok(s) => match s.to_ascii_lowercase().as_str() {
-            "m31" | "mersenne31" | "mersenne" => MopField::M31,
-            "babybear" | "baby_bear" | "bb" => MopField::BabyBear,
-            "babybear_assume_canonical" | "baby_bear_assume_canonical" | "bb_assume_canonical" => {
-                MopField::BabyBearAssumeCanonical
-            }
-            other => panic!(
-                "RISCV_MOP_FIELD must be 'm31', 'babybear' or 'babybear_assume_canonical' (got {:?})",
-                other
-            ),
-        },
-        Err(_) => MopField::M31,
-    }
 }
 
 const M31_P: i32 = 0x7fff_ffffu32 as i32; // 2^31 - 1
@@ -2086,10 +2063,10 @@ impl<I: ContextImpl> JittedCode<I> {
                 }
 
                 // MOP (Zimop) prime-field instructions: addmod / submod / mulmod / fmamod. The
-                // value computation is delegated to the env-selected field emitter (M31 default,
-                // BabyBear via RISCV_MOP_FIELD); timestamps (rs1@+0, rs2@+1, rd@+2), store_result
-                // and the family counter are handled here and are field-independent. FMA also
-                // reads rd's OLD value inside the emitter (value-only, no timestamp touch).
+                // value computation is delegated to the `mop_field` emitter; timestamps (rs1@+0,
+                // rs2@+1, rd@+2), store_result and the family counter are handled here and are
+                // field-independent. FMA also reads rd's OLD value inside the emitter
+                // (value-only, no timestamp touch).
                 Op::ZimopAdd | Op::ZimopSub | Op::ZimopMul | Op::ZimopFMA => {
                     assert!(rd != 0);
                     let out = destination_gpr(rd); // either a value GPR or EAX
@@ -2631,23 +2608,7 @@ impl<I: ContextImpl> JittedCode<I> {
                             ;; check_to_save_trace!(ops, pc_for_trace)
                         );
                     } else {
-                        let (spill_knob, call_knob) = match instr.imm {
-                            BIGINT_OPS_WITH_CONTROL_CSR_REGISTER => (
-                                "RISCV_ABLATE_DELEG_SPILL_DUP",
-                                "RISCV_ABLATE_DELEG_CALL_DUP",
-                            ),
-                            _ => (
-                                "RISCV_ABLATE_KECCAK_SPILL_DUP",
-                                "RISCV_ABLATE_KECCAK_CALL_DUP",
-                            ),
-                        };
-                        let spill_dup = ablation_knob(spill_knob);
-                        let call_dup = ablation_knob(call_knob);
                         dynasm!(ops ; .arch x64 ; mov rdx, rsp);
-                        for _ in 0..spill_dup {
-                            save_machine_state!(ops);
-                            update_machine_state_post_call!(ops);
-                        }
                         dynasm!(ops
                             ; .arch x64
                             ;; before_call!(ops) // will save rsi and rdi
@@ -2656,17 +2617,6 @@ impl<I: ContextImpl> JittedCode<I> {
                             ; mov [rdi + (TraceChunk::LEN_OFFSET as i32)], r9
                             ; sub rsp, 8
                         );
-                        for _ in 0..call_dup {
-                            dynasm!(ops
-                                ; .arch x64
-                                ; mov rax, QWORD (ablation_empty_handler as *const ()).addr() as isize as i64
-                                ; call rax
-                                // the arguments of the real call, from where they were pushed
-                                ; mov rdx, [rsp + 8]
-                                ; mov rdi, [rsp + 16]
-                                ; mov rsi, [rsp + 24]
-                            );
-                        }
                         dynasm!(ops
                             ; .arch x64
                             ; mov rax, QWORD (function as *const ()).addr() as usize as isize as i64
@@ -2896,6 +2846,7 @@ impl<'a> JittedCode<FlattenedContextImpl<'a>> {
         non_determinism_responses: &'a [u32],
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        mop_field: MopField,
         ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
         assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
@@ -2928,8 +2879,7 @@ impl<'a> JittedCode<FlattenedContextImpl<'a>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner =
-            Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field, ram_config);
 
         // Profiling baseline: when RISCV_PROFILE_SKIP_RUN is set we do all of the
         // setup (decode + JIT compile + the large allocations) but skip execution,
@@ -2964,13 +2914,10 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         non_determinism_source: &mut N,
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        mop_field: MopField,
         ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
         assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
-        // Per-run setup timings, printed when `AIRBENDER_HOST_TIMING` is set
-        let timing = std::env::var_os("AIRBENDER_HOST_TIMING").is_some();
-        let t = std::time::Instant::now();
-
         // println!("Preparing default context implementation");
         let implementation = DefaultContextImpl {
             non_determinism_source,
@@ -3003,46 +2950,21 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         //     (&*trace as *const TraceChunk).addr()
         // );
 
-        let alloc_time = t.elapsed();
-        let t = std::time::Instant::now();
         let instructions = crate::ir::simple_instruction_set::preprocess_bytecode::<
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let decode_time = t.elapsed();
 
         // println!("Preprocessing the bytecode");
-        let t = std::time::Instant::now();
-        let runner =
-            Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
-        let compile_time = t.elapsed();
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field, ram_config);
 
         // println!("Running the simulator");
-        let t = std::time::Instant::now();
         runner.run(
             &mut context,
             memory.as_mut(),
             unsafe { NonNull::new_unchecked(trace.as_mut() as *mut _) },
             initial_memory,
         );
-        if timing {
-            eprintln!(
-                "jit run_alternative_simulator: memory + trace alloc {alloc_time:?}, decode {decode_time:?} ({} instructions), jit compile {compile_time:?}, execution {:?}",
-                instructions.len(),
-                t.elapsed()
-            );
-            if let Some(state) = context.final_state_ref() {
-                eprintln!("jit final counters: {:?}", state.counters);
-            }
-            eprintln!(
-                "jit bigint delegations: {}",
-                if delegations::bigint_asm::bigint_asm_enabled() {
-                    "assembly routine"
-                } else {
-                    "Rust handler"
-                }
-            );
-        }
 
         // println!("Obtaining the final machine state");
         let final_state = context
@@ -3061,6 +2983,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         non_determinism_source: &mut N,
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        mop_field: MopField,
         ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>) {
         assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
@@ -3077,7 +3000,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
             MemoryHolder::allocate_zeroed(ram_config, Default::default());
         let mut trace: Box<TraceChunk> = unsafe { Box::new_zeroed().assume_init() };
 
-        let runner = Self::preprocess_bytecode(instructions, cycles_bound, mop_field(), ram_config);
+        let runner = Self::preprocess_bytecode(instructions, cycles_bound, mop_field, ram_config);
         runner.run(
             &mut context,
             memory.as_mut(),
@@ -3098,6 +3021,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
         non_determinism_source: &mut N,
         initial_memory: &[u32],
         cycles_bound: Option<u32>,
+        mop_field: MopField,
         ram_config: JitRunnerRam,
     ) -> (MachineState, Box<MemoryHolder>, Box<TraceChunk>) {
         assert_ne!(ram_config, JitRunnerRam::UninitPlaceholder);
@@ -3130,8 +3054,7 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
             crate::ir::FullUnsignedMachineDecoderConfig,
             false,
         >(program);
-        let runner =
-            Self::preprocess_bytecode(&instructions, cycles_bound, mop_field(), ram_config);
+        let runner = Self::preprocess_bytecode(&instructions, cycles_bound, mop_field, ram_config);
 
         runner.run(
             &mut context,
@@ -3147,24 +3070,6 @@ impl<N: NonDeterminismCSRSource> JittedCode<DefaultContextImpl<'_, N>> {
 
         (final_state, memory, trace)
     }
-}
-
-/// A profiling knob: the count in the environment variable `name`, 0 when unset
-pub(crate) fn ablation_knob(name: &str) -> usize {
-    std::env::var(name)
-        .ok()
-        .map(|value| value.parse().expect("an ablation knob is a count"))
-        .unwrap_or(0)
-}
-
-/// The handler of the extra calls of `RISCV_ABLATE_DELEG_CALL_DUP`
-#[inline(never)]
-extern "sysv64" fn ablation_empty_handler(
-    trace_piece: &mut TraceChunk,
-    _memory_holder: NonNull<u64>,
-    _machine_state: &mut MachineState,
-) -> u64 {
-    core::hint::black_box(trace_piece.len)
 }
 
 extern "sysv64" fn process_csr<const CSR_NUMBER: u32>(

@@ -800,7 +800,6 @@ fn prove_unified_execution_with_replayer_impl<
     // Prove the delegation circuits.
     let mut aux_delegation_memory_trees = vec![];
     let mut delegation_proofs = vec![];
-    let should_dump_witness = false;
     {
         let delegation_type = <setups::Blake2sWithCompressionDelegationCircuit as circuit_common::DelegationCircuit<BabyBearField>>::DELEGATION_TYPE_ID;
         let prover_config =
@@ -823,7 +822,6 @@ fn prove_unified_execution_with_replayer_impl<
                 delegation_type,
                 &mut permutation_argument_accumulator,
                 &mut delegation_proofs_count,
-                should_dump_witness,
                 &*twiddles_for(&prover_config),
                 &prover_config,
                 backend,
@@ -852,7 +850,6 @@ fn prove_unified_execution_with_replayer_impl<
                     delegation_type,
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
-                    should_dump_witness,
                     &*twiddles_for(&prover_config),
                     &prover_config,
                     backend,
@@ -884,7 +881,6 @@ fn prove_unified_execution_with_replayer_impl<
                     delegation_type,
                     &mut permutation_argument_accumulator,
                     &mut delegation_proofs_count,
-                    should_dump_witness,
                     &*twiddles_for(&prover_config),
                     &prover_config,
                     backend,
@@ -924,7 +920,6 @@ fn prove_unified_execution_with_replayer_impl<
                 delegation_type,
                 &mut permutation_argument_accumulator,
                 &mut delegation_proofs_count,
-                should_dump_witness,
                 &*twiddles_for(&prover_config),
                 &prover_config,
                 backend,
