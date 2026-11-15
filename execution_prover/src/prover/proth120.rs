@@ -1,3 +1,6 @@
+//! Proth120 L1 wrap proving: the wrap circuit's setup and its single-chunk
+//! proof.
+
 use super::*;
 use crate::messages::L1WrapProofRequest;
 use crate::workers::simulation::assert_l1_wrap_geometry;
@@ -87,6 +90,45 @@ fn collect_l1_wrap_trace<A: HostTraceAllocator>(
 }
 
 impl<B: ExecutionBackend> ExecutionProver<B> {
+    /// The instruction tape and prepared setup of an L1 wrap binary.
+    pub(super) fn prepare_l1_wrap(
+        &self,
+        padded_binary_image: &[u32],
+        text_section: &[u32],
+        profiles: &[ProofProfile],
+    ) -> (Arc<SimpleTape>, B::Precomputations) {
+        let circuit_type = CircuitType::L1Wrap;
+        let instruction_tape = Arc::new(SimpleTape::new(
+            &riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode::<
+                riscv_transpiler::ir::ReducedMachineDecoderConfig,
+                true,
+            >(text_section),
+        ));
+        let mut padded_text_section = text_section.to_vec();
+        crate::upstream::pad_bytecode_for_proving_with_rom(
+            &mut padded_text_section,
+            circuit_type.rom(),
+        );
+        let setup = unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup(
+            padded_binary_image,
+            &padded_text_section,
+            &self.worker,
+        );
+        assert_eq!(setup.trace_len, circuit_type.get_domain_size());
+        assert_eq!(setup.rom, circuit_type.rom());
+        assert_eq!(
+            setup.circuit.memory_layout.teardown_sets.len(),
+            circuit_type.get_num_inits_and_teardowns_sets()
+        );
+        let precomputations = self.backend.prepare(
+            circuit_type,
+            crate::setup::CanonicalCircuitSetup::L1Wrap(setup),
+            self.configuration.soundness_mode,
+            profiles,
+        );
+        (instruction_tape, precomputations)
+    }
+
     pub fn prove_l1_wrap<ND: NonDeterminismCSRSource + Send + 'static>(
         &self,
         batch_id: u64,
@@ -186,7 +228,10 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
 #[cfg(all(test, target_arch = "x86_64"))]
 mod tests {
     use super::*;
+    use crate::messages::{InitsAndTeardownsData, TracingData};
+    use crate::upstream::FinalRegisterValue;
     use execution_prover_model::allocator::CpuTraceAllocator;
+    use execution_prover_model::circuit_type::DelegationCircuitType;
     use execution_prover_model::trace::ChunkedTraceHolder;
 
     fn events() -> Vec<WorkerResult<CpuTraceAllocator>> {

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use common_constants::TimestampScalar;
 
-use super::BinaryHandle;
+use crate::prover::BinaryHandle;
 use crate::upstream::{
     DefaultTreeConstructor, FinalRegisterValue, GKRProof, MerkleTreeCapVarLength,
 };

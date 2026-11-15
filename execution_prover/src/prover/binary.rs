@@ -64,19 +64,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             );
         }
         let decode_start = Instant::now();
-        let mut machines = Vec::new();
-        for &(kind, machine, _) in &variants {
-            if kind.is_l1_wrap() || machines.iter().any(|(m, _, _)| *m == machine) {
-                continue;
-            }
-            let kinds: Vec<_> = variants
-                .iter()
-                .filter_map(|(k, m, _)| (*m == machine && !k.is_l1_wrap()).then_some(*k))
-                .collect();
-            let preprocessing = preprocess_binary(machine, &kinds, &text_section);
-            let tape = Arc::new(SimpleTape::new(&preprocessing.execution_instructions));
-            machines.push((machine, preprocessing, tape));
-        }
+        let machines = baby_bear::setup::preprocess_machines(&variants, &text_section);
         info!(
             "PROVER decoded and padded binary for {} variants on {} machines in {:?}",
             variants.len(),
@@ -91,61 +79,40 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             info!(
                 "PROVER inserting binary with key {key:?} ({execution_kind:?}, {machine_type:?})"
             );
-            let rom = execution_kind.rom();
             let mut padded_binary_image = binary_image.to_vec();
-            let mut padded_text_section = text_section.to_vec();
-            crate::upstream::pad_bytecode_for_proving_with_rom(&mut padded_binary_image, rom);
-            crate::upstream::pad_bytecode_for_proving_with_rom(&mut padded_text_section, rom);
-            let ordinary = machines
-                .iter()
-                .find(|(machine, _, _)| *machine == machine_type);
-            let instruction_tape = if execution_kind.is_l1_wrap() {
-                Arc::new(SimpleTape::new(
-                    &riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode::<
-                        riscv_transpiler::ir::ReducedMachineDecoderConfig,
-                        true,
-                    >(&text_section),
-                ))
-            } else {
-                Arc::clone(&ordinary.unwrap().2)
-            };
-            let circuit_types =
-                crate::setup::circuit_types_for_variant(execution_kind, machine_type);
-            let mut setup_time = std::time::Duration::ZERO;
-            let mut preparation_time = std::time::Duration::ZERO;
-            let precomputations: HashMap<_, _> = circuit_types.into_iter().map(|circuit_type| {
-                debug!("PROVER producing precomputations for circuit {circuit_type:?} and binary with key {key:?}");
-                let start = Instant::now();
-                let setup = build_unrolled_setup_with_preprocessing(circuit_type, &padded_binary_image, &ordinary.unwrap().1, &self.worker);
-                setup_time += start.elapsed();
-                let start = Instant::now();
-                let precomp = self.backend.prepare(CircuitType::Unrolled(circuit_type), setup, self.configuration.soundness_mode, &profiles);
-                preparation_time += start.elapsed();
-                (circuit_type, precomp)
-            }).collect();
-            let l1_wrap_circuit = execution_kind
-                .is_l1_wrap()
-                .then(|| execution_kind.unified_circuit().unwrap());
-            let l1_wrap_precomputations = l1_wrap_circuit.map(|circuit_type| {
-                assert_eq!(circuit_type, CircuitType::L1Wrap);
-                let setup = unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup(
-                    &padded_binary_image,
-                    &padded_text_section,
-                    &self.worker,
-                );
-                assert_eq!(setup.trace_len, circuit_type.get_domain_size());
-                assert_eq!(setup.rom, circuit_type.rom());
-                assert_eq!(
-                    setup.circuit.memory_layout.teardown_sets.len(),
-                    circuit_type.get_num_inits_and_teardowns_sets()
-                );
-                self.backend.prepare(
-                    circuit_type,
-                    crate::setup::CanonicalCircuitSetup::L1Wrap(setup),
-                    self.configuration.soundness_mode,
-                    &profiles,
+            crate::upstream::pad_bytecode_for_proving_with_rom(
+                &mut padded_binary_image,
+                execution_kind.rom(),
+            );
+            let (
+                instruction_tape,
+                precomputations,
+                l1_wrap_precomputations,
+                (setup_time, preparation_time),
+            ) = if execution_kind.is_l1_wrap() {
+                let (instruction_tape, precomputations) =
+                    self.prepare_l1_wrap(&padded_binary_image, &text_section, &profiles);
+                (
+                    instruction_tape,
+                    HashMap::new(),
+                    Some(precomputations),
+                    Default::default(),
                 )
-            });
+            } else {
+                let (_, preprocessing, instruction_tape) = machines
+                    .iter()
+                    .find(|(machine, _, _)| *machine == machine_type)
+                    .unwrap();
+                let (precomputations, times) = self.prepare_riscv_families(
+                    key,
+                    execution_kind,
+                    machine_type,
+                    &padded_binary_image,
+                    preprocessing,
+                    &profiles,
+                );
+                (Arc::clone(instruction_tape), precomputations, None, times)
+            };
             let start = Instant::now();
             // Common setup uses 0; each variant needs a distinct batch while
             // earlier setup requests can still be running in the backend.
@@ -161,7 +128,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     .map(|(circuit_type, precomp)| {
                         (CircuitType::Unrolled(*circuit_type), precomp.clone())
                     })
-                    .chain(l1_wrap_circuit.zip(l1_wrap_precomputations.clone()))
+                    .chain(
+                        l1_wrap_precomputations
+                            .iter()
+                            .map(|precomp| (CircuitType::L1Wrap, precomp.clone())),
+                    )
                     .collect(),
             );
             self.pending_setup_initializations.push(pending);
