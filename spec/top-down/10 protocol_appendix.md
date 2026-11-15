@@ -6,9 +6,9 @@ Parameter reference: `Sec100`, `av_gkr_compiler` at [`c1a6622`](https://github.c
 FullStatement (1a)
   ├─ VerifyChunks → Chunk → SeededChunk → GKR layers → OutputChecks → WHIR
   ├─ CloseMemory → equal event multisets → machine execution
-  └─ FinishChain → (application result, program-history digest)
+  └─ ContinueChain → (application result, program-history digest)
 TerminalStatement (1b) → SeededChunk → CloseMemory → (application result, program-history digest)
-Recursive step: prove the execution of FullStatement; repeat.
+RecursionChain (10c): prove the base program, then repeatedly prove the matching Verifier's execution of FullStatement.
 ```
 
 > **Fiat–Shamir challenges**
@@ -86,7 +86,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 > 3. Run $\mathrm{VerifyChunks}(\mathtt{ProgramSetupCaps},\mathbf r_{\mathrm{mem}},T_{\mathrm{mem}})$ (Algorithm 2), obtaining the read/write products $\mathrm{RS},\mathrm{WS}\in E$ and the completed memory transcript $T_{\mathrm{mem}}$.
 > 4. Prover sends the 64-bit memory-PoW nonce. Both parties absorb it into $T_{\mathrm{mem}}$, draw one 32-bit PoW word, then sample the shared challenges from subsequent words. Verifier requires at least 19 leading zero bits in the PoW word and equality between the sampled challenges and the supplied $\mathbf r_{\mathrm{mem}}$.
 > 5. Run $\mathrm{CloseMemory}(\mathrm{fin},\mathbf{r}_{\mathrm{mem}},\mathrm{RS},\mathrm{WS})$ (Algorithm 9).
-> 6. Return $\mathrm{FinishChain}(\mathtt{ProgramSetupCaps},\mathrm{fin},\mathrm{mode})$ (Algorithm 10): the application result $(x_{10},\ldots,x_{17})$ and program-history digest $(h_0,\ldots,h_7)$, each eight 32-bit words. Reject if any check or subalgorithm fails.
+> 6. Return $\mathrm{ContinueChain}(\mathtt{ProgramSetupCaps},\mathrm{fin},\mathrm{mode})$ (Algorithm 10b): the application result $(x_{10},\ldots,x_{17})$ and program-history digest $(h_0,\ldots,h_7)$, each eight 32-bit words. Reject if any check or subalgorithm fails.
 >
 > **Algorithm 1b — TerminalStatement**
 >
@@ -111,7 +111,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > Here $\varepsilon_{\mathrm{chunk},i}$ includes all local lookup, GKR and PCS errors of Algorithm 3b, counted once, with the sum bounded over permitted participant collections. Each component bound must hold for adversarial choices conditioned on the preceding transcript and no earlier soundness failure. The resulting execution claim is relative to the supplied setup identities; Algorithms 10–11 bind the program history and anchor the recursive executions to the expected program identities and successful endpoints.
 >
-> **Terminal path (Algorithm 1b; conditional).** Algorithm 1b fixes one circuit and absorbs $\mathrm{fin}$, window identifiers and setup/memory caps before drawing the memory and lookup challenges, then invokes the shared local verification in Algorithm 3b. Applying the same local-verification and memory-closure decomposition requires terminal-specific memory-table/event binding, event-count and Algorithm 9 reconstruction premises; Algorithm 2's participant-binding argument is not invoked. These remain proof obligations, together with the packed-claim reduction and configuration-specific opening guarantees identified below. Algorithm 11 supplies the terminal identity/history comparisons and recursive handoff premises; Algorithm 1b does not run Algorithm 10's history update.
+> **Terminal path (Algorithm 1b; conditional).** Algorithm 1b fixes one circuit and absorbs $\mathrm{fin}$, window identifiers and setup/memory caps before drawing the memory and lookup challenges, then invokes the shared local verification in Algorithm 3b. Applying the same local-verification and memory-closure decomposition requires terminal-specific memory-table/event binding, event-count and Algorithm 9 reconstruction premises; Algorithm 2's participant-binding argument is not invoked. These remain proof obligations, together with the packed-claim reduction and configuration-specific opening guarantees identified below. Algorithm 11 supplies the terminal identity/history comparisons and recursive handoff premises; Algorithm 1b does not run Algorithm 10b's history update.
 >
 > These component bounds enter the whole-system Fiat–Shamir analysis described in the final soundness section.
 
@@ -164,7 +164,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 >    - **Standalone-IT memory-argument terms $\le 2^{30}$:** this follows from the earlier limit of eight chunks and the fixed eight windows of $2^{24}$ terms per chunk (listed before Algorithm 12).
 >    - **Unified-IT memory-argument terms $\le 2^{29}$:** the identifier checks permit at most 64 distinct windows, each contributing $2^{23}$ terms (listed before Algorithm 12).
->    - **33 machine-state boundary terms:** Algorithm 9, step 1 adds 33 initialization writes to $\mathrm{WS}$ and 33 final-state reads to $\mathrm{RS}$, one for each register and the PC.
+>    - **33 machine-state boundary terms:** Algorithm 9, step 3 adds 33 initialization writes to $\mathrm{WS}$ and 33 final-state reads to $\mathrm{RS}$, one for each register and the PC.
 >
 > 4. Return $\mathrm{RS},\mathrm{WS},T_{\mathrm{mem}}$.
 >
@@ -392,7 +392,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > The leaf relation is $\sum_{\mathbf{q}\in Q}1/\ell(\mathbf{q})=\sum_{\mathbf{t}\in T}m_{\mathbf{t}}/\ell(\mathbf{t})$. Its rational compression tree is proved by GKR with base openings in WHIR.
 >
-> Assume Algorithms 5 and 7 authenticate the output tables as evaluations of the product/rational compression trees. Also assume tuple encoding is injective, all lookup tuples and multiplicities are fixed before $\alpha,\beta$, and every invalid tuple occurring in the queries has a nonzero count modulo $p$. An invalid tuple then contributes an uncancelled pole to the symbolic rational difference. Clearing denominators gives a nonzero polynomial in $\alpha,\beta$; the authenticated $D\ne0$ check permits this reduction on accepted proofs. If category $a$ has $T_a$ fraction occurrences and tuple width $w_a$, its numerator has total degree at most $D_a\le T_a\max(1,w_a)$. Therefore
+> Assume Algorithms 4 and 7 authenticate the output tables as evaluations of the product/rational compression trees. Also assume tuple encoding is injective, all lookup tuples and multiplicities are fixed before $\alpha,\beta$, and every invalid tuple occurring in the queries has a nonzero count modulo $p$. An invalid tuple then contributes an uncancelled pole to the symbolic rational difference. Clearing denominators gives a nonzero polynomial in $\alpha,\beta$; the authenticated $D\ne0$ check permits this reduction on accepted proofs. If category $a$ has $T_a$ fraction occurrences and tuple width $w_a$, its numerator has total degree at most $D_a\le T_a\max(1,w_a)$. Therefore
 >
 > $$
 > \varepsilon_{\mathrm{lookup}}\le\min\!\left(1,\mu\sum_a D_a\right).
@@ -518,11 +518,25 @@ Recursive step: prove the execution of FullStatement; repeat.
 
 > **Algorithm 9 — CloseMemory**
 >
-> **Input:** final state $\mathrm{fin}$, $\mathbf{r}_{\mathrm{mem}}$, authenticated products $\mathrm{RS},\mathrm{WS}$.
+> **Input:** final state $\mathrm{fin}$, shared challenges $\mathbf{r}_{\mathrm{mem}}=(r_{\mathrm{mem},0},\ldots,r_{\mathrm{mem},5},r_{\mathrm{mem},\eta})$, authenticated products $\mathrm{RS},\mathrm{WS}$.
 >
-> **Notation:** $R,W$ are read/write event multisets; $\mathbf{r}_{\mathrm{mem}}=(r_{\mathrm{mem},0},\ldots,r_{\mathrm{mem},5},r_{\mathrm{mem},\eta})$. In event $\mathbf{t}=(a,t_0,\ldots,t_5)$, the limbs are address lo/hi, timestamp lo/hi, value lo/hi; tags are 0 = register, 1 = RAM, 2 = PC. Define $L_{\mathbf{r}_{\mathrm{mem}}}(\mathbf{t})=a+r_{\mathrm{mem},\eta}+\sum_{j=0}^5r_{\mathrm{mem},j} t_j$ with six independent coefficients.
+> 1. Verifier forms the multiset `Initial` with one write event per register $i=0,\ldots,31$, with value 0 at timestamp 0, and one PC write event with value 0 at timestamp 4.
+> 2. Verifier forms the multiset `Final` with one read event per register $i=0,\ldots,31$, using value $x_i$ and timestamp limbs $(\mathrm{ts}_{i,\mathrm{lo}},\mathrm{ts}_{i,\mathrm{hi}})$ from $\mathrm{fin}$, and one PC read event using $\mathrm{pc}$ and $(\mathrm{ts}_{\mathrm{pc},\mathrm{lo}},\mathrm{ts}_{\mathrm{pc},\mathrm{hi}})$ from $\mathrm{fin}$.
+> 3. Verifier represents each event in `Initial` and `Final` as $\mathbf{t}=(\mathrm{tag},\mathrm{addr}_{\mathrm{lo}},\mathrm{addr}_{\mathrm{hi}},\mathrm{ts}_{\mathrm{lo}},\mathrm{ts}_{\mathrm{hi}},\mathrm{val}_{\mathrm{lo}},\mathrm{val}_{\mathrm{hi}})$, with $\mathrm{tag}$ equal to 0 for registers, 1 for RAM and 2 for the PC. The address is $i$ for register $i$ and 0 for the PC cell. Address and value pairs use 16-bit limbs and encode $\mathrm{lo}+2^{16}\mathrm{hi}$; timestamp pairs use 19-bit limbs and encode $\mathrm{lo}+2^{19}\mathrm{hi}$, taking the final timestamp limbs as sent in $\mathrm{fin}$.
 >
-> 1. Form multisets of event tuples: `Initial` contains the ordinary-register writes $x_0,\ldots,x_{31}$ of value 0 at time 0, and the PC write with value 0 at time 4; `Final` contains the 32 register reads and PC read specified by $\mathrm{fin}$. Include their boundary factors:
+>    Verifier encodes each event as
+>
+>    $$
+>    \begin{aligned}
+>    L_{\mathbf{r}_{\mathrm{mem}}}(\mathbf{t})
+>      &=\mathrm{tag}+r_{\mathrm{mem},\eta} \\
+>      &\quad+r_{\mathrm{mem},0}\,\mathrm{addr}_{\mathrm{lo}}+r_{\mathrm{mem},1}\,\mathrm{addr}_{\mathrm{hi}} \\
+>      &\quad+r_{\mathrm{mem},2}\,\mathrm{ts}_{\mathrm{lo}}+r_{\mathrm{mem},3}\,\mathrm{ts}_{\mathrm{hi}} \\
+>      &\quad+r_{\mathrm{mem},4}\,\mathrm{val}_{\mathrm{lo}}+r_{\mathrm{mem},5}\,\mathrm{val}_{\mathrm{hi}}
+>    \end{aligned}
+>    $$
+>
+>    Verifier multiplies $\mathrm{WS}$ by the encoded `Initial` events and $\mathrm{RS}$ by the encoded `Final` events:
 >
 >    $$
 >    \begin{aligned}
@@ -531,36 +545,44 @@ Recursive step: prove the execution of FullStatement; repeat.
 >    \end{aligned}
 >    $$
 >
-> 2. Require $\mathrm{RS}=\mathrm{WS}$. RAM boundaries already enter through IT products.
+>    RAM initialization and teardown products are already included in $\mathrm{RS}$ and $\mathrm{WS}$.
 >
-> Chunk transcripts end independently. This product equality uses the shared $\mathbf{r}_{\mathrm{mem}}$ and requires no further challenges or transcript merge.
+> 4. Verifier requires $\mathrm{RS}=\mathrm{WS}$.
 >
-> **Soundness — memory fingerprint (conditional).** Assume Algorithm 2 fixes $R,W$, including the boundary events, before the shared challenges are sampled, and the event encoding is injective on accepted data. If $R\ne W$, unique factorization makes the difference of their products nonzero: each affine factor has $r_{\mathrm{mem},\eta}$-coefficient 1, fixing its normalization. This difference has total degree at most $N=\max(|R|,|W|)$, so acceptance of unequal multisets has probability $\varepsilon_{\mathrm{mem}}\le\min(1,N\mu)$. Algorithm 1a charges this error once per statement, using a capacity bound that includes all instruction, delegation, IT and boundary events. Accepted-boundary injectivity, particularly for timestamp limbs reduced modulo $p$, remains a proof obligation. The reconstruction argument below supplies the execution interpretation of multiset equality.
+> **Soundness — memory fingerprint (conditional).** Let $R,W$ be the statement's read/write event multisets, including the boundary events. Assume Algorithm 2 fixes $R,W$ before the shared challenges are sampled, and the event encoding is injective on accepted data. If $R\ne W$, unique factorization makes the difference of their products nonzero: each affine factor has $r_{\mathrm{mem},\eta}$-coefficient 1, fixing its normalization. This difference has total degree at most $N=\max(|R|,|W|)$, so acceptance of unequal multisets has probability $\varepsilon_{\mathrm{mem}}\le\min(1,N\mu)$. Algorithm 1a charges this error once per statement, using a capacity bound that includes all instruction, delegation, IT and boundary events. Accepted-boundary injectivity, particularly for timestamp limbs reduced modulo $p$, remains a proof obligation. The reconstruction argument below supplies the execution interpretation of multiset equality.
 >
 > **Soundness — execution reconstruction (adapted/new).** Required reconstruction lemma: assume the following properties of the accepted chunks and their combined events:
 >
 > - **Local semantics:** instruction and delegation relations hold under the supplied program setups and fixed delegation setups, including instruction decoding, lookup membership and local PC updates. Range constraints give addresses, values and timestamps their intended integer interpretation; inactive rows contribute neutral memory products.
 > - **Memory consistency:** the read/write event multisets, including boundary events, are equal with multiplicity under the injective encoding above. Timestamps strictly increase along each location's state transitions, and each read identifies a unique preceding write by location and timestamp.
-> - **Boundary coverage:** register and PC boundary events are exactly those in steps 1–2. Disjoint IT windows cover every RAM location used by the execution and supply its zero-valued initialization and matching teardown.
+> - **Boundary coverage:** register and PC boundary events are exactly those in Algorithm 9, steps 1–2. Disjoint IT windows cover every RAM location used by the execution and supply its zero-valued initialization and matching teardown.
 > - **Global connectivity:** PC events connect all active instruction transitions into a single chain from the initial PC/time to the final PC/time in $\mathrm{fin}$. Delegation requests and responses match with multiplicity, including their operation identities, arguments and results.
 >
 > These premises imply an execution of the program identified by the supplied setups, from $(\mathrm{pc},\mathrm{time})=(0,4)$ and zero ordinary registers/RAM to $\mathrm{fin}$. Proving this implication and deriving its premises from the accepted circuit and participant checks remain reconstruction proof obligations.
 
 ---
 
-> **Algorithm 10 — FinishChain**
+> **Algorithm 10a — EndParameters**
 >
-> **Input:** program setups `ProgramSetupCaps`, final state $\mathrm{fin}$ and base/continuation $\mathrm{mode}$. **Output:** application result $\mathbf{y}$ and program-history digest $h$, each eight 32-bit words.
+> **Input:** program setups `ProgramSetupCaps` and ending PC $\mathrm{pc}$. **Output:** end program parameters $e$, eight 32-bit words, identifying the program together with its ending PC.
 >
-> **Notation:** $x_j$ and $\mathrm{pc}$ come from $\mathrm{fin}$; `Hash` uses seven-round BLAKE2s with messages absorbed as raw 32-bit words.
+> **Notation:** `Hash` uses seven-round BLAKE2s with messages absorbed as raw 32-bit words.
 >
-> 1. Set $\mathbf{y}\leftarrow(x_{10},\ldots,x_{17})$ and:
+> 1. Return:
 >
 >    $$
 >    e\leftarrow\mathrm{Hash}\bigl((\mathrm{pc},0^{15})\mathbin{\|}\mathtt{ProgramSetupCaps}\bigr)
 >    $$
 >
->    After PC, `Hash` zero-pads to fill the current input block (15 words), then absorbs the ordered setup caps. Timestamps are excluded.
+>    After PC, `Hash` zero-pads to fill the current input block (15 words), then absorbs the ordered setup caps. No other part of the final state enters $e$; in particular, register values and timestamps are excluded.
+>
+> **Algorithm 10b — ContinueChain**
+>
+> **Input:** program setups `ProgramSetupCaps`, final state $\mathrm{fin}$ and base/continuation $\mathrm{mode}$. **Output:** application result $\mathbf{y}$ and program-history digest $h$, each eight 32-bit words.
+>
+> **Notation:** $x_j$ and $\mathrm{pc}$ come from $\mathrm{fin}$; `Hash` is as in Algorithm 10a.
+>
+> 1. Set $\mathbf{y}\leftarrow(x_{10},\ldots,x_{17})$ and $e\leftarrow\mathrm{EndParameters}(\mathtt{ProgramSetupCaps},\mathrm{pc})$ (Algorithm 10a).
 > 2. **Base mode:** require $(x_{18},\ldots,x_{25})=0^8$; set $h\leftarrow\mathrm{Hash}(0^8\mathbin{\|}e)$.
 > 3. **Otherwise, continuation mode:**
 >    1. Set $h_{\mathrm{in}}\leftarrow(x_{18},\ldots,x_{25})$.
@@ -569,33 +591,89 @@ Recursive step: prove the execution of FullStatement; repeat.
 >    4. **Otherwise:** set $h\leftarrow\mathrm{Hash}(h_{\mathrm{in}}\mathbin{\|}e)$.
 > 4. Return $(\mathbf{y},h)$.
 >
-> **Soundness — program-history binding (conditional).** Assume binding of the encoded setup/ending-PC identities and hash-chain nodes. In continuation mode, assume authenticated execution of the intended Verifier returns the genuine child result and history $(\mathbf{y},h_{\mathrm{in}})$. The base case starts the history with the current identity $e$. In continuation mode, the checked preimage identifies the incoming history's last identity: equality with $e$ preserves the history, while inequality appends $e$. Induction therefore binds $h$ to the sequence of identities with consecutive repetitions collapsed. Algorithm 11 supplies the authenticated handoffs and compares this history with the expected one. Charge failures of identity/node binding once to $\varepsilon_{\mathrm{chain}}$ in the computational analysis; recursion depth and work use the external bound in Algorithm 11.
+> **Soundness — program-history binding (conditional).** Assume binding of the encoded setup/ending-PC identities and hash-chain nodes. In continuation mode, assume authenticated execution of the intended Verifier returns the genuine child result and history $(\mathbf{y},h_{\mathrm{in}})$. The base case starts the history with the current identity $e$. In continuation mode, the checked preimage identifies the incoming history's last identity: equality with $e$ preserves the history, while inequality appends $e$. Induction therefore binds $h$ to the sequence of identities with consecutive repetitions collapsed. Algorithm 10c supplies the handoffs between proofs; Algorithm 11 authenticates the last one and compares this history with the admissible ones. Charge failures of identity/node binding once to $\varepsilon_{\mathrm{chain}}$ in the computational analysis; recursion depth and work use the external bound in Algorithm 11.
+>
+> **Algorithm 10c — RecursionChain**
+>
+> **Public input:** base program binary $B$, together with the pre-agreed circuit definitions and their parameters (Algorithm 12). **Witness:** the non-determinism responses $\omega$ consumed by the execution of $B$. This is the only free Prover input: every later program in the chain is a fixed Verifier program, and its non-determinism responses are the previous proof. **Output:** the final proof after $T\ge0$ recursive steps. Its final state carries the application result $\mathbf{y}$ and the program history of all preceding proofs.
+>
+> **Notation:**
+>
+> - $\mathrm{cfg}=(\mathrm{profile},\mathrm{mode},\mathrm{commitment\text{-}config})$ is a configuration of Algorithm 1a.
+> - $\mathrm{Prove}_{\mathrm{cfg}}(\Pi,\nu)$ executes the RISC-V program $\Pi$ with non-determinism responses $\nu$ and outputs a proof bundle for `FullStatement` under $\mathrm{cfg}$: the `ProgramSetupCaps` of $\Pi$, the final state $\mathrm{fin}$, the chunk proofs and, in continuation mode, the hash-chain preimage of Algorithm 10b, step 3.2.
+> - $\mathrm{stream}(P)$ is the `ProgramSetupCaps` of proof bundle $P$ followed by its remaining messages, serialized in the order `FullStatement` reads them.
+> - $V[\mathrm{cfg}]$ is the Verifier program matching $\mathrm{cfg}$. It reads $\mathrm{stream}(P)$ as its non-determinism responses and runs `FullStatement` under $\mathrm{cfg}$. It reaches its successful ending PC only if `FullStatement` accepts, with the returned $\mathbf{y}$ in $x_{10},\ldots,x_{17}$ and $h$ in $x_{18},\ldots,x_{25}$. The chain uses $V^{\mathrm{unr}}_{\mathrm{base}}=V[(\mathrm{unrolled},\mathrm{base},\mathrm{ordinary})]$, $V^{\mathrm{unr}}_{\mathrm{cont}}=V[(\mathrm{unrolled},\mathrm{continuation},\mathrm{ordinary})]$, $V^{\mathrm{uni}}_{\mathrm{cont}}=V[(\mathrm{unified},\mathrm{continuation},\mathrm{ordinary})]$ and, on the L1 route, the build of $V^{\mathrm{uni}}_{\mathrm{cont}}$ that computes BLAKE2s directly with RISC-V instructions, and the feeder Verifier $V[(\mathrm{unified},\mathrm{continuation},\mathrm{merged\text{-}feeder})]$, which computes BLAKE2s the same way.
+> - $\mathrm{pc}_{\mathrm{ok}}(\Pi)$ is the successful ending PC of $\Pi$, and $\mathtt{ProgramSetupCaps}(\Pi,\mathrm{cfg})$ are the setup caps of $\Pi$ for the instruction families selected by $\mathrm{cfg}$ (Algorithm 12). The end program parameters of a successful execution of $\Pi$ proved under $\mathrm{cfg}$ are given by Algorithm 10a:
+>
+>    $$
+>    e(\Pi,\mathrm{cfg})=\mathrm{EndParameters}\bigl(\mathtt{ProgramSetupCaps}(\Pi,\mathrm{cfg}),\mathrm{pc}_{\mathrm{ok}}(\Pi)\bigr)
+>    $$
+>
+> **Protocol**
+>
+> 1. **Base layer.** Prover executes $B$ on $\omega$ and computes $P_0\leftarrow\mathrm{Prove}_{\mathrm{cfg}_0}(B,\omega)$ with $\mathrm{cfg}_0=(\mathrm{unrolled},\mathrm{base},\mathrm{ordinary})$. This chain construction starts only with the unrolled profile. The execution must end at $\mathrm{pc}_{\mathrm{ok}}(B)$ with $\mathbf{y}$ in $x_{10},\ldots,x_{17}$ and zeros in $x_{18},\ldots,x_{25}$.
+> 2. **Recursive steps.** For $t=1,\ldots,T$:
+>    1. **Matching Verifier:** set $V_t\leftarrow V[\mathrm{cfg}_{t-1}]$, so $V_1=V^{\mathrm{unr}}_{\mathrm{base}}$ and every later $V_t$ is a continuation Verifier for the profile of $P_{t-1}$.
+>    2. **Proving configuration:** choose $\mathrm{cfg}_t=(p_t,\mathrm{continuation},c_t)$ with $p_t\in\{\mathrm{unrolled},\mathrm{unified}\}$. The switch from unrolled to unified is one-way: if $p_{t-1}=\mathrm{unified}$ then $p_t=\mathrm{unified}$. For BabyBear output, $c_t=\mathrm{ordinary}$. On the L1 route, $c_t$ may switch once from $\mathrm{ordinary}$ to $\mathrm{merged\text{-}feeder}$, only with $p_t=\mathrm{unified}$, and remains $\mathrm{merged\text{-}feeder}$ thereafter. At this switch, require $p_{t-1}=\mathrm{unified}$ and set $V_t$ to the L1 build of $V^{\mathrm{uni}}_{\mathrm{cont}}$ defined above.
+>    3. **Prove the Verifier's execution:** compute $P_t\leftarrow\mathrm{Prove}_{\mathrm{cfg}_t}(V_t,\mathrm{stream}(P_{t-1}))$. The proved execution runs `FullStatement` on $P_{t-1}$ under $\mathrm{cfg}_{t-1}$, including `ContinueChain` (Algorithm 10b), which computes $e_{t-1}$ and returns $(\mathbf{y},h_{t-1})$. It ends at $\mathrm{pc}_{\mathrm{ok}}(V_t)$ with $\mathbf{y}$ in $x_{10},\ldots,x_{17}$ and $h_{t-1}$ in $x_{18},\ldots,x_{25}$. Prover attaches to $P_t$ the hash-chain preimage of $h_{t-1}$.
+> 3. **Output:**
+>    - **BabyBear:** output $P_T$.
+>    - **L1 wrapping:** require $T\ge1$, $p_T=\mathrm{unified}$ and $c_T=\mathrm{merged\text{-}feeder}$. Prove the execution of the feeder Verifier $V[\mathrm{cfg}_T]$ on $\mathrm{stream}(P_T)$ with the fixed terminal-wrapper parameters (Algorithm 12), and output the resulting proof for `TerminalStatement` (Algorithm 1b).
+>
+> The identities and history digests along the chain follow Algorithms 10a and 10b:
+>
+> $$
+> e_0=e(B,\mathrm{cfg}_0),\qquad e_t=e(V_t,\mathrm{cfg}_t),\qquad h_0=\mathrm{Hash}(0^8\mathbin{\|}e_0),\qquad h_t=
+> \begin{cases}
+> h_{t-1}, & e_t=e_{t-1},\\
+> \mathrm{Hash}(h_{t-1}\mathbin{\|}e_t), & \text{otherwise.}
+> \end{cases}
+> $$
+>
+> The output proof carries $\mathbf{y}$ in $x_{10},\ldots,x_{17}$ and, in $x_{18},\ldots,x_{25}$, the history digest of all proofs before it: $0^8$ for $P_0$, $h_{T-1}$ for $P_T$ with $T\ge1$, and $h_T$ for the L1 wrapper. The output proof's own program is identified by its setup caps and final PC rather than by the registers. Algorithm 11 checks both.
+>
+> **Static identities.** No identity in the chain depends on $\omega$, and only $e_0$ depends on $B$:
+>
+> - **Base program:** $\mathtt{ProgramSetupCaps}(B,\mathrm{cfg}_0)$ and $\mathrm{pc}_{\mathrm{ok}}(B)$ are computed from the binary $B$ and the circuit definitions alone, so $e_0$ is known before any execution.
+> - **Verifier programs:** each Verifier build is a fixed binary determined by the pre-agreed circuit definitions, proof parameters and BLAKE2s implementation. It receives the child's setup caps through $\mathrm{stream}(P)$ instead of embedding them, so the same binaries verify the chain of any base program. Their identities therefore depend on neither $B$ nor $\omega$ and are precomputed once.
+> - **Non-determinism of recursive steps:** $\mathrm{stream}(P_{t-1})$ is computed by Prover from the previous proof. It is not part of the witness of the application claim.
+>
+> **Admissible histories.** For ordinary commitments write $e^{p}(V)=e(V,(p,\mathrm{continuation},\mathrm{ordinary}))$. For every ordinary-commitment prefix allowed by step 2.2, collapsing consecutive repetitions of its Verifier identities gives a prefix of one of the following sequences, selected by the first step proved with unified circuits:
+>
+> | First unified step | Collapsed Verifier identities |
+> |---|---|
+> | $t=1$ | $e^{\mathrm{uni}}(V^{\mathrm{unr}}_{\mathrm{base}}),\ e^{\mathrm{uni}}(V^{\mathrm{uni}}_{\mathrm{cont}})$ |
+> | $t=2$ | $e^{\mathrm{unr}}(V^{\mathrm{unr}}_{\mathrm{base}}),\ e^{\mathrm{uni}}(V^{\mathrm{unr}}_{\mathrm{cont}}),\ e^{\mathrm{uni}}(V^{\mathrm{uni}}_{\mathrm{cont}})$ |
+> | $t\ge3$, or never | $e^{\mathrm{unr}}(V^{\mathrm{unr}}_{\mathrm{base}}),\ e^{\mathrm{unr}}(V^{\mathrm{unr}}_{\mathrm{cont}}),\ e^{\mathrm{uni}}(V^{\mathrm{unr}}_{\mathrm{cont}}),\ e^{\mathrm{uni}}(V^{\mathrm{uni}}_{\mathrm{cont}})$ |
+>
+> A history digest is obtained by folding $e_0$ followed by such a prefix through the recurrence above. On the L1 route, extend this history through each merged-feeder step using the recurrence above and the merged-feeder setup caps. The finite list $h_{\mathrm{paths}}$ of Algorithm 11 pairs $(0^8,e_0)$ for the base proof and $(h_{T-1},e_T)$ for later BabyBear proofs; for L1, it pairs $h_T$ with the expected terminal-wrapper `SetupCaps` and successful ending PC. Because repetitions collapse, the list is finite for unbounded $T$ and a digest does not record the number of recursive steps.
+>
+> **Scheduling.** $T$ and the profiles $p_t$ are Prover's choices and are not part of the proved relation beyond the admissible histories above. The reference pipeline proves with unrolled circuits while the estimated execution length of the next Verifier exceeds a switch threshold, then proves with unified circuits until the proof shape stops shrinking.
 
 ---
 
-> **Algorithm 11 — Recursion and terminal acceptance**
+> **Algorithm 11 — Terminal acceptance of recursion**
 >
-> **Public claim:** application identity, expected collapsed Verifier history and result $\mathbf{y}$. **Witness:** child proof bundle and its Verifier-execution trace. **Recursive relation:** the selected Verifier program runs `FullStatement` on the child and reaches its successful return with $(\mathbf{y},h)$ in $x_{10},\ldots,x_{25}$.
+> **Public claim:** base program binary $B$ and the fixed Verifier programs of Algorithm 10c, unrolled and unified. **Derived:** the preprocessed list $h_{\mathrm{paths}}$ of admissible collapsed histories from Algorithm 10c. Each entry pairs a history digest with the expected identity of the last proof: its end program parameters $e$ (Algorithm 10a) or, for the L1 wrapper, the fixed terminal-wrapper `SetupCaps` and successful ending PC. The history digest is the one carried in the last proof's final-state registers, as specified in Algorithm 10c. **Witness:** the last proof of the chain: a proof bundle for $B$, a proof bundle for a Verifier program proved with unrolled or unified circuits, or the L1 wrapper proof. **Recursive relation:** Prover proved the execution of $B$ under the agreed circuits and then, zero or more times, proved the matching Verifier program's `FullStatement` execution over the previous proof (Algorithm 10c). The last proved execution reaches its successful return with public output $\mathbf{y}$ in $x_{10},\ldots,x_{17}$.
 >
-> 1. Prove the application execution:
->    - **If unrolled:** use unrolled circuits; verify with the base unrolled Verifier.
->    - **If unified:** use unified circuits; verify with the base unified Verifier.
-> 2. Optionally repeat, proving the selected Verifier's execution:
->    - **If unrolled:** use unrolled circuits; verify with the unrolled continuation Verifier.
->    - **If unified:** use unified circuits; verify with the unified continuation Verifier.
-> 3. **Bridge (if switching from unrolled to unified):** prove the selected unrolled base/continuation Verifier's execution with unified circuits; verify with the unified continuation Verifier, then repeat step 2 as needed using unified circuits.
-> 4. **Terminal acceptance:**
->    1. Verify the last proof:
->       - **BabyBear:** run `FullStatement`, obtaining $(\mathbf{y},h)$.
->       - **L1 wrapping:** produce a unified continuation proof with merged-feeder commitments, then prove that feeder Verifier's execution with the fixed terminal-wrapper parameters. Run `TerminalStatement` (Algorithm 1b), obtaining $(\mathbf{y},h)$. Require the proof's window identifiers to match those fixed for the terminal Verifier.
->    2. Require the last proof's setup caps (`ProgramSetupCaps` for BabyBear, `SetupCaps` for L1 wrapping) and final PC to match the expected setup caps and successful ending PC, and require $h=h_{\mathrm{expected}}$.
->    3. Accept and expose $\mathbf{y}$ only if all verification and expectation checks pass; otherwise reject.
+> **Terminal acceptance:**
 >
-> Expected identities and $h_{\mathrm{expected}}$ are determined by the application starting values and selected recursive configuration. For L1, the EVM Verifier checks the expected final PC and window identifiers. It reports $\mathbf{y}$ and $h$ as little-endian 32-bit register words concatenated in register order, and the setup identity as Keccak256 of the ordered setup-cap digests, with each digest's 32-bit words encoded big-endian. The application or registry must compare the reported setup identity and history with the expected values in step 4.2.
+> 1. Verify the last proof, retaining the authenticated final state $\mathrm{fin}$ read during verification:
+>    - **BabyBear:** run `FullStatement` (Algorithm 1a) under the last proof's configuration.
+>    - **L1 wrapping:** run `TerminalStatement` (Algorithm 1b). Require the proof's window identifiers to match those fixed for the terminal Verifier.
+> 2. Identify the last proof's program against some entry of $h_{\mathrm{paths}}$:
+>    - **BabyBear:** compute $e\leftarrow\mathrm{EndParameters}(\mathtt{ProgramSetupCaps},\mathrm{pc})$ (Algorithm 10a) from the last proof's setup caps and the PC in $\mathrm{fin}$. Require $e$ to equal the entry's expected end program parameters.
+>    - **L1 wrapping:** require the last proof's `SetupCaps` and the PC in $\mathrm{fin}$ to match the entry's expected setup caps and successful ending PC.
+> 3. Require the history digest $h=(x_{18},\ldots,x_{25})$ in $\mathrm{fin}$ to equal the history digest of the same entry.
+> 4. Accept and expose $\mathbf{y}=(x_{10},\ldots,x_{17})$ only if all verification and expectation checks pass; otherwise reject.
 >
-> **Soundness — recursive composition (conditional).** Assume Algorithm 1a's execution guarantee for every invoked configuration; binding and canonical interpretation of the history from Algorithm 10; and correctness of each selected Verifier program, including its child-input parsing, acceptance branch and transfer of $(\mathbf{y},h)$ to the designated registers. Expected setup identities, successful PCs and history must be fixed by the public claim. A recursive composition reduction must justify applying the component soundness bounds to child proofs carried inside execution witnesses, within an external bound $d$ on all proved invocations and their query/work budgets.
+> The expected identities and $h_{\mathrm{paths}}$ are determined by the base program $B$, the precompiled Verifier programs and the acceptable recursive configurations. The Verifier programs depend only on the circuits' constraints and setups, not on $B$, and nothing in the list depends on the witness of $B$'s execution.
 >
-> Outside the corresponding failure events, terminal acceptance identifies a successful execution of the expected outer Verifier. Its verified local semantics imply child acceptance with the same result and the authenticated child history. Applying this implication at each handoff reaches the base application execution, so the exposed $\mathbf{y}$ is its result. The algebraic error is bounded by the sum over all proved invocations; Algorithm 10 accounts for history binding, and terminal comparisons anchor the claimed identities and endpoints. Establishing the recursive reduction and each implementation handoff remains a proof obligation. Extending this argument to the stated L1 route additionally requires soundness of its terminal proof system and correctness of its serialization, public-claim mapping and contract linkage.
+> For L1, the EVM Verifier checks the expected final PC and window identifiers. It reports $\mathbf{y}$ and $h$ as little-endian 32-bit register words concatenated in register order, and the setup identity as Keccak256 of the ordered setup-cap digests, with each digest's 32-bit words encoded big-endian. The application or registry performs the expected setup-identity and history comparisons in steps 2–3 using these reported values.
+>
+> **Soundness — recursive composition (conditional).** Assume Algorithm 1a's execution guarantee for every invoked configuration; binding of the history from Algorithm 10b and its interpretation as an admissible chain from Algorithm 10c; and correctness of each selected Verifier program, including its child-input parsing, acceptance branch and transfer of $(\mathbf{y},h)$ to the designated registers. Expected setup identities, successful PCs and history must be fixed by the public claim. A recursive composition reduction must justify applying the component soundness bounds to child proofs carried inside execution witnesses, within an external bound $d$ on all proved invocations and their query/work budgets.
+>
+> Outside the corresponding failure events, terminal acceptance identifies a successful execution of the expected outer Verifier. Its verified local semantics imply child acceptance with the same result and the authenticated child history. Applying this implication at each handoff reaches the base application execution, so the exposed $\mathbf{y}$ is its result. The algebraic error is bounded by the sum over all proved invocations; Algorithm 10b accounts for history binding, and terminal comparisons anchor the claimed identities and endpoints. Establishing the recursive reduction and each implementation handoff remains a proof obligation. Extending this argument to the stated L1 route additionally requires soundness of its terminal proof system and correctness of its serialization, public-claim mapping and contract linkage.
 
 ---
 
@@ -679,7 +757,7 @@ Recursive step: prove the execution of FullStatement; repeat.
 >    \end{aligned}
 >    $$
 >
->    Use $\ell_{\mathrm{lookup}}$ for the lookup-PoW threshold in Algorithm 3a, step 4, and $\max(20,\ell_{\mathrm{lookup}})$ for the combined memory/lookup-PoW threshold in Algorithm 1b, step 3.
+>    Use $\ell_{\mathrm{lookup}}$ for the lookup-PoW threshold in Algorithm 3a, step 4, and $\max(20,\ell_{\mathrm{lookup}})$ for the combined memory/lookup-PoW threshold in Algorithm 1b, step 3. Use $\ell_{\mathrm{batch}}$ for the batching-PoW threshold in Algorithm 3b, step 3.
 >
 > 6. Return the ordered instruction-family list where applicable, and the selected field, transcript, commitment layout, column-packing factor, schedules, sizes and PoW thresholds.
 >
@@ -725,7 +803,7 @@ $$
 \end{aligned}
 $$
 
-Each bound must hold under the preceding transcript and permitted adaptive choices, with sums bounded over the allowed participant collections. Algorithm 10's $\varepsilon_{\mathrm{chain}}$ accounts for history-binding failures in the computational analysis. Algorithm 11's terminal comparisons and handoff conditions are deterministic premises; any additional terminal proof system contributes its own soundness term.
+Each bound must hold under the preceding transcript and permitted adaptive choices, with sums bounded over the allowed participant collections. Algorithm 10b's $\varepsilon_{\mathrm{chain}}$ accounts for history-binding failures in the computational analysis. Algorithm 11's terminal comparisons and handoff conditions are deterministic premises; any additional terminal proof system contributes its own soundness term.
 
 **Fiat–Shamir security.** The bounds above give conditional algebraic soundness guarantees under fresh transcript randomness, including field-sampling bias and the stated per-candidate PoW bounds. Let $q$ bound the adversary's total random-oracle queries across all transcript and nonce trials. A complete Fiat–Shamir proof must establish round-by-round soundness for the composed protocol and derive its computational soundness bound as a function of $q$, accounting for adaptive trials, repeated oracle inputs and commitment binding. The main unresolved obligations are WHIR's proximity/list-decoding invariant and the memory participant-binding, event-encoding and execution-reconstruction lemmas. Recursive composition additionally requires the handoff guarantees stated in Algorithm 11.
 
