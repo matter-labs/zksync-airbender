@@ -2,7 +2,7 @@
 #include "baby_bear/whir_leaf_transform.cuh"
 #include "common.cuh"
 #include "hash.cuh"
-#include "ops/gkr_ops_helpers.cuh"
+#include "ops/baby_bear/gkr_ops_helpers.cuh"
 #include "primitives/baby_bear/field.cuh"
 #include "primitives/memory.cuh"
 

@@ -1,5 +1,5 @@
 #pragma once
-#include "common.cuh"
+#include "gkr/backward/window/common.cuh"
 namespace airbender::gkr {
 template <typename F, typename Point> DEVICE_FORCEINLINE void build_fold_weights(F *fold_weights, const Point point, const u32 round) {
   const u32 slot = threadIdx.x;

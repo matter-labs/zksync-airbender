@@ -14,7 +14,7 @@ use crate::proth120::base_layer_claims::{
     schedule_gather_base_claims_pr, BaseClaimGatherPr, GatheredBaseClaimsPr,
 };
 use crate::proth120::proof_layout::ProofSlabPr;
-use crate::setup::PackedSetupSource;
+use crate::proth120::setup::PackedSetupSource;
 use crate::upstream::PR;
 
 cuda_kernel_signature_arguments_and_function!(pub(crate) PrMergeClaims, claims: *const PR, count: u32, extra: *const PR, pack_log2: u32, merged: *mut PR);

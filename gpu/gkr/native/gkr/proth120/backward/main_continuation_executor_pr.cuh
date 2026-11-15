@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../../support/eq_inline.cuh"
-#include "../../support/kernel_helpers.cuh"
-#include "fold_prologue_pr.cuh"
+#include "gkr/proth120/backward/fold_prologue_pr.cuh"
+#include "gkr/support/eq_inline.cuh"
+#include "gkr/support/kernel_helpers.cuh"
 
 namespace airbender::gkr::proth120::backward {
 

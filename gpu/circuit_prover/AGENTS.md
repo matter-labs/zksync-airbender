@@ -123,7 +123,7 @@ This crate's own module DAG is small: `config` and `baby_bear::inputs` are leave
 `gpu_trace`/`gpu_gkr`/`gpu_whir` directly.
 `proof::prove()` is the proof entry point exposed upward to
 `gpu_execution_prover`; merged memory jobs use
-`gpu_gkr::stage1::merged_commitment::commit_merged_from_transfers`.
+`gpu_gkr::baby_bear::stage1::merged_commitment::commit_merged_from_transfers`.
 
 The crate stack itself — which modules became `gpu_core` / `gpu_ntt` /
 `gpu_ops` / `gpu_hash` / `gpu_prover_context` / `gpu_trace` /

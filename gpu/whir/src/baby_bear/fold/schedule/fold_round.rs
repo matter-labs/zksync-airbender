@@ -93,7 +93,7 @@ pub(super) fn schedule_fold_round(
                 context,
             )?;
             if !terms_updated {
-                gpu_gkr::gkr_ops::whir_fold_round_update(
+                gpu_gkr::baby_bear::gkr_ops::whir_fold_round_update(
                     &state.reduce_out[..3],
                     device_seed,
                     slab_round_dst,

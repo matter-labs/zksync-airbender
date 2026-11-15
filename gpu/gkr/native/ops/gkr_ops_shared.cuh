@@ -1,5 +1,5 @@
 #pragma once
-#include "../gkr/support/kernel_helpers.cuh"
+#include "gkr/support/kernel_helpers.cuh"
 
 namespace airbender::gkr::ops::shared {
 

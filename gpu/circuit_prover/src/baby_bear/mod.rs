@@ -11,10 +11,13 @@ use era_cudart::stream::CudaStreamWaitEventFlags;
 use fft::GoodAllocator;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr::backward::{GKRBackwardStageSnapshotSink, GpuGKRBackwardScheduledExecution};
-use gpu_gkr::forward::{schedule_forward_pass, ForwardOutputSlabTarget, GpuGKRTranscriptHandoff};
-use gpu_gkr::setup::GpuGKRForwardSetupHostKeepalive;
-use gpu_gkr::GkrPrograms;
+use gpu_gkr::baby_bear::backward::GpuGKRBackwardScheduledExecution;
+use gpu_gkr::baby_bear::forward::schedule_forward_pass;
+use gpu_gkr::baby_bear::setup::GpuGKRForwardSetupHostKeepalive;
+use gpu_gkr::baby_bear::GkrPrograms;
+use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
+use gpu_gkr::forward::ForwardOutputSlabTarget;
+use gpu_gkr::forward::GpuGKRTranscriptHandoff;
 use gpu_prover_context::ProverContext;
 use std::sync::Arc;
 

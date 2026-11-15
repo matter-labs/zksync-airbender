@@ -11,10 +11,14 @@ use crate::upstream::{BaseCommitmentGeometry, BaseOracleRole, ProverConfig, Whir
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr::proof_layout::build_proof_layout_inputs_for_geometry;
-use gpu_gkr::proof_layout::{GpuGKRTraceGeometry, ProofLayout, WhirBaseLayerKind};
-use gpu_gkr::setup::{schedule_forward_setup_for_shape, GpuGKRForwardSetup, GpuGKRSetupTransfer};
-use gpu_gkr::stage1::GpuGKRStage1Output;
+use gpu_gkr::baby_bear::proof_layout::build_proof_layout_inputs_for_geometry;
+use gpu_gkr::baby_bear::proof_layout::GpuGKRTraceGeometry;
+use gpu_gkr::baby_bear::proof_layout::ProofLayout;
+use gpu_gkr::baby_bear::proof_layout::WhirBaseLayerKind;
+use gpu_gkr::baby_bear::setup::schedule_forward_setup_for_shape;
+use gpu_gkr::baby_bear::setup::GpuGKRForwardSetup;
+use gpu_gkr::baby_bear::setup::GpuGKRSetupTransfer;
+use gpu_gkr::baby_bear::stage1::GpuGKRStage1Output;
 use gpu_hash::blake2s::STATE_SIZE;
 use gpu_prover_context::ProverContext;
 use gpu_trace::baby_bear::trace::memory_cap::GpuGKRMemoryCapTransfer;
@@ -71,7 +75,7 @@ fn allocate_proof_slab(
 }
 
 pub(in crate::baby_bear) fn prepare_witness_and_commitment<'a, A: GoodAllocator + 'a>(
-    gkr_programs: &gpu_gkr::GkrPrograms,
+    gkr_programs: &gpu_gkr::baby_bear::GkrPrograms,
     prover_config: &ProverConfig,
     base_geometry: BaseCommitmentGeometry,
     final_trace_size_log_2: u32,
@@ -235,7 +239,7 @@ pub(in crate::baby_bear) fn prepare_witness_and_commitment<'a, A: GoodAllocator 
 }
 
 pub(in crate::baby_bear) fn prepare_challenges_and_forward_setup<'a, A: GoodAllocator + 'a>(
-    gkr_programs: &gpu_gkr::GkrPrograms,
+    gkr_programs: &gpu_gkr::baby_bear::GkrPrograms,
     prover_config: &ProverConfig,
     bundle: BundleDeviceRefs<'_, 'a, A>,
     preparation: &Stage1WitnessPreparation,

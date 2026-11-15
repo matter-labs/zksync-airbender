@@ -1,6 +1,6 @@
 #pragma once
-#include "../../forward/vm_addresses.cuh"
-#include "fwd_vm.cuh"
+#include "gkr/forward/vm_addresses.cuh"
+#include "gkr/proth120/forward/fwd_vm.cuh"
 namespace airbender::gkr::proth120::forward {
 
 using ::airbender::gkr::forward_vm_detail::dst_col;

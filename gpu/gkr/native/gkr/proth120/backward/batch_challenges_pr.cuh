@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../support/descriptors.cuh"
+#include "gkr/support/descriptors.cuh"
 #include "primitives/proth120/field.cuh"
 
 EXTERN __device__ __constant__ ::airbender::primitives::field::proth120

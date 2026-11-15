@@ -2,9 +2,9 @@
 
 #include <type_traits>
 
-#include "../../../backward/window/window_geometry.cuh"
-#include "../../../support/lookup_helpers.cuh"
-#include "../accumulator_pr.cuh"
+#include "gkr/backward/window/window_geometry.cuh"
+#include "gkr/proth120/backward/accumulator_pr.cuh"
+#include "gkr/support/lookup_helpers.cuh"
 
 namespace airbender::gkr::proth120::backward {
 

@@ -1,12 +1,13 @@
 use std::ptr::{null, null_mut};
 
-use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
-use era_cudart::result::CudaResult;
-use era_cudart::stream::CudaStream;
-use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
-use gpu_core::primitives::field::E4;
+use era_cudart::{
+    cuda_kernel_signature_arguments_and_function,
+    execution::{CudaLaunchConfig, KernelFunction},
+    result::CudaResult,
+    stream::CudaStream,
+};
 
-use super::vm::desc::REDUCTION_PAIR_CAP;
+use crate::forward::vm::desc::REDUCTION_PAIR_CAP;
 
 pub(crate) const GKR_DIM_REDUCING_FORWARD_TOWER_LOG_BLOCK: u32 = 8;
 pub(crate) const GKR_DIM_REDUCING_FORWARD_TOWER_BLOCK: u32 =
@@ -61,22 +62,9 @@ impl<E> Default for GpuGKRDimensionReducingForwardTowerBatch<E> {
     }
 }
 
-/// ABI size guards, paired with the CUDA `static_assert`s in `descriptors.cuh`.
-const _: () = {
-    assert!(core::mem::size_of::<GpuGKRDimensionReducingForwardTowerPair<E4>>() == 144);
-    assert!(core::mem::size_of::<GpuGKRDimensionReducingForwardTowerBatch<E4>>() == 736);
-    assert!(core::mem::align_of::<GpuGKRDimensionReducingForwardTowerBatch<E4>>() == 8);
-};
-
 cuda_kernel_signature_arguments_and_function!(
     pub(crate) GpuGKRDimensionReducingForwardTower<T>,
     batch: GpuGKRDimensionReducingForwardTowerBatch<T>,
-);
-
-cuda_kernel_declaration!(pub(crate)
-    ab_gkr_dim_reducing_forward_tower_e4_kernel(
-        batch: GpuGKRDimensionReducingForwardTowerBatch<E4>,
-    )
 );
 
 pub(crate) fn launch_dimension_reducing_forward_tower<E: crate::ForwardKernels>(
@@ -99,14 +87,4 @@ pub(crate) fn launch_dimension_reducing_forward_tower<E: crate::ForwardKernels>(
 
 pub(crate) trait ForwardKernels: Copy + Sized {
     const DIMENSION_REDUCING_FORWARD_TOWER: GpuGKRDimensionReducingForwardTowerSignature<Self>;
-}
-
-impl ForwardKernels for E4 {
-    const DIMENSION_REDUCING_FORWARD_TOWER: GpuGKRDimensionReducingForwardTowerSignature<Self> =
-        ab_gkr_dim_reducing_forward_tower_e4_kernel;
-}
-
-impl ForwardKernels for crate::upstream::PR {
-    const DIMENSION_REDUCING_FORWARD_TOWER: GpuGKRDimensionReducingForwardTowerSignature<Self> =
-        crate::proth120::forward::kernels::ab_pr_gkr_dim_reducing_forward_tower_kernel;
 }

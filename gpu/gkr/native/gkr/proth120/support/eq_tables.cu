@@ -1,6 +1,6 @@
-#include "../../support/eq_high_low.cuh"
-#include "../../support/eq_inline.cuh"
-#include "../../support/kernel_helpers.cuh"
+#include "gkr/support/eq_high_low.cuh"
+#include "gkr/support/eq_inline.cuh"
+#include "gkr/support/kernel_helpers.cuh"
 #include "primitives/proth120/field.cuh"
 namespace airbender::gkr::proth120::support {
 using pr = ::airbender::primitives::field::proth120;

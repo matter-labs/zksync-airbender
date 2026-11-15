@@ -1,6 +1,6 @@
 #pragma once
-#include "eq_inline.cuh"
-#include "kernel_helpers.cuh"
+#include "gkr/support/eq_inline.cuh"
+#include "gkr/support/kernel_helpers.cuh"
 
 namespace airbender::gkr {
 

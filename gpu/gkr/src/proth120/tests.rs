@@ -31,7 +31,8 @@ use super::packed_challenges::{
     boundary_prefix_words, derive, split_challenges, transcript_prefix_words,
     PackedChallengeConfig, PACKED_CHALLENGE_DRAWS,
 };
-use crate::setup::{L1WrapSetupHost, PackedSetupSource};
+use crate::proth120::setup::L1WrapSetupHost;
+use crate::proth120::setup::PackedSetupSource;
 
 type CpuOracle = CosetByCosetBaseCommitment<Proth120, Keccak256MerkleTreeWithCap>;
 

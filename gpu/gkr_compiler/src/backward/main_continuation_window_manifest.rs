@@ -44,10 +44,10 @@ const FUSED_UNIT_NAME: &str = "main_continuation_window_fused.cu";
 
 /// Repo-relative directory containing the generated native bank.
 pub const MAIN_CONTINUATION_WINDOW_GENERATED_NATIVE_DIR: &str =
-    "gpu/gkr/native/gkr/backward/main_continuation_window/generated";
+    "gpu/gkr/native/gkr/baby_bear/backward/main_continuation_window/generated";
 /// Repo-relative path of the generated Rust kernel declarations and dispatch table.
 pub const MAIN_CONTINUATION_WINDOW_GENERATED_KERNELS: &str =
-    "gpu/gkr/src/backward/main_continuation/generated_kernels.rs";
+    "gpu/gkr/src/baby_bear/backward/main_continuation/generated_kernels.rs";
 
 pub const PR_MAIN_CONTINUATION_MASKS: &[u8] = &[0x01, 0x03, 0x07, 0x1f];
 pub const PR_MAIN_CONTINUATION_MIN_BLOCKS: u32 = 4;

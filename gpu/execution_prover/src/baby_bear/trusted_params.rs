@@ -1,7 +1,7 @@
 //! GPU setup caps for trusted records, without a proving backend.
 
 use crate::upstream::{BaseColumns, BaseCommitmentGeometry, ProverConfig};
-use gpu_gkr::setup::GpuGKRSetupHost;
+use gpu_gkr::baby_bear::setup::GpuGKRSetupHost;
 use gpu_prover_context::{ProverContext, ProverContextConfig};
 use prover::field::baby_bear::base::BabyBearField;
 use prover::gkr::prover::setup::GKRSetup;

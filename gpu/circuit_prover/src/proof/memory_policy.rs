@@ -1,6 +1,6 @@
 pub mod presets;
 
-pub use gpu_gkr::forward::GkrMemoryPolicy;
+pub use gpu_gkr::baby_bear::forward::GkrMemoryPolicy;
 pub use gpu_trace::trace::holder::{
     OpeningStrategy, PartialTreePolicy, WitnessCommitmentStrategy, WitnessPostCommitStorage,
 };

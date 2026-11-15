@@ -1,6 +1,6 @@
 #pragma once
-#include "../window/window_geometry.cuh"
-#include "../window/window_source.cuh"
+#include "gkr/backward/window/window_geometry.cuh"
+#include "gkr/backward/window/window_source.cuh"
 namespace airbender::gkr::backward {
 template <typename F>
 DEVICE_FORCEINLINE bwd_window_packed_values<F, 4> dr_window_load_corner_quad(const F *column, const u32 row, const u32 bit0, const u32 bit1) {

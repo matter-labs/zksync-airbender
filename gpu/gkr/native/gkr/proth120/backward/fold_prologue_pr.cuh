@@ -1,7 +1,7 @@
 #pragma once
-#include "coefficient_storage_pr.cuh"
+#include "gkr/proth120/backward/coefficient_storage_pr.cuh"
 
-#include "../../backward/window/common.cuh"
+#include "gkr/backward/window/common.cuh"
 #include "primitives/proth120/field.cuh"
 
 namespace airbender::gkr::proth120::backward {

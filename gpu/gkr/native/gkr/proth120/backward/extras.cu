@@ -1,5 +1,5 @@
-#include "../../support/eq_inline.cuh"
-#include "accumulator_pr.cuh"
+#include "gkr/proth120/backward/accumulator_pr.cuh"
+#include "gkr/support/eq_inline.cuh"
 
 namespace airbender::gkr::proth120::backward {
 

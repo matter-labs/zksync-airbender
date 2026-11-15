@@ -10,10 +10,9 @@ use gpu_core::primitives::context::{
     DeviceAllocation, HostAllocation, UnsafeAccessor, UnsafeMutAccessor,
 };
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr::base_layer_claims::{
-    clone_base_layer_extra_evaluations_from_slab, ScheduledBaseLayerClaimsState,
-};
-use gpu_gkr::proof_layout::ProofLayout;
+use gpu_gkr::baby_bear::base_layer_claims::clone_base_layer_extra_evaluations_from_slab;
+use gpu_gkr::baby_bear::base_layer_claims::ScheduledBaseLayerClaimsState;
+use gpu_gkr::baby_bear::proof_layout::ProofLayout;
 use gpu_prover_context::ProverContext;
 
 use super::grand_product_accumulator_from_explicit_evaluations;

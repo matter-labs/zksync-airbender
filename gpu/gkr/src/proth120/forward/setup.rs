@@ -8,7 +8,7 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_prover_context::ProverContext;
 
 use super::challenge_banks::ForwardChallengeBanks;
-use crate::setup::PackedSetupSource;
+use crate::proth120::setup::PackedSetupSource;
 use crate::upstream::{GKRCircuitArtifact, PR};
 
 #[repr(C)]

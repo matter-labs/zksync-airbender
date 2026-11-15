@@ -4,10 +4,11 @@ use crate::baby_bear::inputs::GpuGKRProofTransferKeepalive;
 use crate::upstream::{DimensionReducingInputOutput, Field, OutputType};
 use gpu_core::primitives::context::HostAllocation;
 use gpu_core::primitives::field::E4;
-use gpu_gkr::backward::{ClaimBufferLayout, GpuGKRBackwardScheduledExecution};
-use gpu_gkr::base_layer_claims::GpuGKRBaseLayerClaimsScheduledExecution;
-use gpu_gkr::setup::GpuGKRForwardSetupHostKeepalive;
-use gpu_gkr::stage1::GpuGKRStage1Keepalive;
+use gpu_gkr::baby_bear::backward::GpuGKRBackwardScheduledExecution;
+use gpu_gkr::baby_bear::base_layer_claims::GpuGKRBaseLayerClaimsScheduledExecution;
+use gpu_gkr::baby_bear::setup::GpuGKRForwardSetupHostKeepalive;
+use gpu_gkr::baby_bear::stage1::GpuGKRStage1Keepalive;
+use gpu_gkr::backward::ClaimBufferLayout;
 use gpu_whir::baby_bear::fold::GpuWhirFoldScheduledExecution;
 
 mod backward;

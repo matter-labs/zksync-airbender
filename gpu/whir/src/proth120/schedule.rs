@@ -7,7 +7,7 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::PR;
 use gpu_gkr::gkr_ops::assemble_query_indexes;
 use gpu_gkr::proth120::proof_layout::WhirProofTargetPr;
-use gpu_gkr::setup::proth120::PackedSetupSource;
+use gpu_gkr::proth120::setup::PackedSetupSource;
 use gpu_hash::keccak256::{
     keccak256_pow, transcript_commit_fields, transcript_draw_fields, transcript_draw_u32,
 };

@@ -87,3 +87,10 @@ pub(crate) fn launch_initial_inner_products(
         &PrInitialInnerProductArguments::new(polys, eq, len, claims),
     )
 }
+
+use crate::forward::kernels::{ForwardKernels, GpuGKRDimensionReducingForwardTowerSignature};
+
+impl ForwardKernels for crate::upstream::PR {
+    const DIMENSION_REDUCING_FORWARD_TOWER: GpuGKRDimensionReducingForwardTowerSignature<Self> =
+        crate::proth120::forward::kernels::ab_pr_gkr_dim_reducing_forward_tower_kernel;
+}

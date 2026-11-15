@@ -1,15 +1,9 @@
 #pragma once
 
-// Shared state updates and Eq-slot folding for backward tails.
-
-#include "../../ops/gkr_ops_helpers.cuh"
-#include "../support/descriptors.cuh"
-#include "../support/kernel_helpers.cuh"
+#include "gkr/support/descriptors.cuh"
+#include "gkr/support/kernel_helpers.cuh"
 
 namespace airbender::gkr::backward {
-
-using ::airbender::gkr::ops::run_round_update_single_thread;
-using ::airbender::gkr::ops::run_round_update_with_inverses;
 
 // Parallel fold of the active eq slot, called by EVERY thread of the block.
 // `active_eq_size_before_fold` is the bit count before the fold. The largest

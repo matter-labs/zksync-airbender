@@ -20,7 +20,7 @@ use gpu_gkr::proth120::packed_challenges::{
     transcript_prefix_words, PackedChallengeConfig, PACKED_CHALLENGE_DRAWS,
 };
 use gpu_gkr::proth120::programs::GkrProgramsPr;
-use gpu_gkr::setup::L1WrapSetupHost;
+use gpu_gkr::proth120::setup::L1WrapSetupHost;
 use gpu_prover_context::{ProverContext, ProverContextConfig};
 use gpu_trace::proth120::trace::packed::PackedCommitConfig;
 use gpu_trace::witness::trace_unrolled::ExecutorFamilyDecoderData;

@@ -1,0 +1,366 @@
+//! Per-circuit symbolic programs used by the GPU GKR interpreters.
+//!
+//! Forward search is deliberately absent from this module. The searched
+//! schedules are committed artifacts embedded in the binary; initialization
+//! only lowers the circuit, rejects an artifact mismatch, and compiles the
+//! forward, R0, and continuation programs once.
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
+};
+
+use gpu_core::primitives::field::BF;
+use gpu_gkr_compiler::{
+    backward::R0WindowProgram, compile_continuations, compile_forward, lower_dr_window_program,
+    lower_main_continuation_window_program, lower_main_tail_program, parse_forward_artifact,
+    project_dr_window_inputs, ContinuationProgramBundle, ForwardProgramBundle,
+    MainContinuationWindowProgram, MainTailProgram,
+};
+use gpu_trace::witness::circuit_type::{
+    CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
+    UnrolledNonMemoryCircuitType,
+};
+
+use crate::{
+    backward::{derive_dimension_reducing_inputs, window_dr},
+    programs::*,
+    storage_layout::GpuGKRStorageLayout,
+    transform::normalize_compiled_circuit_for_gpu,
+    upstream::{DimensionReducingInputOutput, GKRAddress, GKRCircuitArtifact, OutputType},
+};
+
+const ADD_SUB: &[u8] =
+    include_bytes!("../../../../cs/compiled_circuits/add_sub_lui_auipc_mop_schedule_b4_gkr.json");
+const BIGINT: &[u8] = include_bytes!(
+    "../../../../cs/compiled_circuits/bigint_with_extended_control_schedule_b4_gkr.json"
+);
+const BLAKE2_G: &[u8] =
+    include_bytes!("../../../../cs/compiled_circuits/blake2_g_function_schedule_b4_gkr.json");
+const BLAKE2_EXT: &[u8] = include_bytes!(
+    "../../../../cs/compiled_circuits/blake2_with_extended_control_schedule_b4_gkr.json"
+);
+const INITS: &[u8] =
+    include_bytes!("../../../../cs/compiled_circuits/inits_and_teardowns_schedule_b4_gkr.json");
+const JUMP: &[u8] =
+    include_bytes!("../../../../cs/compiled_circuits/jump_branch_slt_schedule_b4_gkr.json");
+const KECCAK: &[u8] =
+    include_bytes!("../../../../cs/compiled_circuits/keccak_special5_schedule_b4_gkr.json");
+const KECCAK_COLUMN_PARITY: &[u8] =
+    include_bytes!("../../../../cs/compiled_circuits/keccak_column_parity_schedule_b4_gkr.json");
+const KECCAK_THETA_RHO: &[u8] =
+    include_bytes!("../../../../cs/compiled_circuits/keccak_theta_rho_schedule_b4_gkr.json");
+const KECCAK_CHI5: &[u8] =
+    include_bytes!("../../../../cs/compiled_circuits/keccak_chi5_schedule_b4_gkr.json");
+const MEM_SUBWORD: &[u8] =
+    include_bytes!("../../../../cs/compiled_circuits/mem_subword_only_schedule_b4_gkr.json");
+const MEM_WORD: &[u8] =
+    include_bytes!("../../../../cs/compiled_circuits/mem_word_only_schedule_b4_gkr.json");
+const SHIFT: &[u8] =
+    include_bytes!("../../../../cs/compiled_circuits/shift_binop_schedule_b4_gkr.json");
+const UNIFIED: &[u8] =
+    include_bytes!("../../../../cs/compiled_circuits/unified_reduced_machine_schedule_b4_gkr.json");
+const UNSIGNED_MUL_DIV: &[u8] =
+    include_bytes!("../../../../cs/compiled_circuits/unsigned_mul_div_schedule_b4_gkr.json");
+
+fn forward_artifact(circuit_type: CircuitType) -> (&'static [u8], &'static str) {
+    match circuit_type {
+        CircuitType::L1Wrap => {
+            panic!("BabyBear GKR programs cannot compile CircuitType::L1Wrap; use GkrProgramsPr")
+        }
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
+        )) => (ADD_SUB, "add_sub_lui_auipc_mop"),
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::JumpBranchSlt,
+        )) => (JUMP, "jump_branch_slt"),
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::MulDivUnsigned,
+        )) => (UNSIGNED_MUL_DIV, "unsigned_mul_div"),
+        CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
+            UnrolledNonMemoryCircuitType::ShiftBinary,
+        )) => (SHIFT, "shift_binop"),
+        CircuitType::Unrolled(UnrolledCircuitType::Memory(
+            UnrolledMemoryCircuitType::LoadStoreWordOnly,
+        )) => (MEM_WORD, "mem_word_only"),
+        CircuitType::Unrolled(UnrolledCircuitType::Memory(
+            UnrolledMemoryCircuitType::LoadStoreSubwordOnly,
+        )) => (MEM_SUBWORD, "mem_subword_only"),
+        CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
+            (INITS, "inits_and_teardowns")
+        }
+        CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22) => {
+            (UNIFIED, "unified_reduced_machine")
+        }
+        CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
+            (BIGINT, "bigint_with_extended_control")
+        }
+        CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression) => {
+            (BLAKE2_EXT, "blake2_with_extended_control")
+        }
+        CircuitType::Delegation(DelegationCircuitType::Blake2GFunction) => {
+            (BLAKE2_G, "blake2_g_function")
+        }
+        CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5) => {
+            (KECCAK, "keccak_special5")
+        }
+        CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity) => {
+            (KECCAK_COLUMN_PARITY, "keccak_column_parity")
+        }
+        CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho) => {
+            (KECCAK_THETA_RHO, "keccak_theta_rho")
+        }
+        CircuitType::Delegation(DelegationCircuitType::KeccakChi5) => (KECCAK_CHI5, "keccak_chi5"),
+    }
+}
+
+/// Symbolic programs compiled once with the circuit's other precomputations.
+pub struct GkrPrograms {
+    circuit_type: CircuitType,
+    compiled_circuit: Arc<GKRCircuitArtifact<BF>>,
+    runtime_circuit: Arc<GKRCircuitArtifact<BF>>,
+    pub(crate) forward: ForwardProgramBundle,
+    pub(crate) continuations: ContinuationProgramBundle,
+    pub(crate) backward_layers: Vec<BackwardLayerPlan>,
+    /// MAIN R0 selection depends only on the circuit and is validated at compilation.
+    window: Vec<R0WindowProgram>,
+    main_continuation_window: Vec<MainContinuationWindowProgram>,
+    main_tail: Vec<MainTailProgram>,
+    recompute: Mutex<
+        BTreeMap<
+            crate::baby_bear::forward::GkrMemoryPolicy,
+            Arc<crate::baby_bear::forward::recompute_plan::RecomputePlan>,
+        >,
+    >,
+}
+
+impl GkrPrograms {
+    pub(crate) fn recompute_plan(
+        &self,
+        layout: &GpuGKRStorageLayout,
+        policy: crate::baby_bear::forward::GkrMemoryPolicy,
+    ) -> Arc<crate::baby_bear::forward::recompute_plan::RecomputePlan> {
+        self.recompute
+            .lock()
+            .unwrap()
+            .entry(policy)
+            .or_insert_with(|| {
+                Arc::new(
+                    crate::baby_bear::forward::recompute_plan::RecomputePlan::new(
+                        self, layout, policy,
+                    ),
+                )
+            })
+            .clone()
+    }
+
+    pub fn compile(
+        circuit_type: CircuitType,
+        artifact: Arc<GKRCircuitArtifact<BF>>,
+    ) -> Result<Self, String> {
+        let runtime_circuit = Arc::new(normalize_compiled_circuit_for_gpu(
+            artifact.as_ref().clone(),
+        ));
+        let dag = gkr_eval_ir::lower_dag(&artifact)?;
+        let (bytes, expected_circuit) = forward_artifact(circuit_type);
+        let searched = parse_forward_artifact(bytes, "embedded forward GKR schedule")
+            .map_err(|error| error.to_string())?;
+        if searched.circuit != expected_circuit {
+            return Err(format!(
+                "embedded forward GKR schedule is for {}, expected {expected_circuit}",
+                searched.circuit
+            ));
+        }
+        if searched.field.is_some() {
+            return Err(format!(
+                "embedded BabyBear forward GKR schedule has field {:?}, expected no field tag",
+                searched.field
+            ));
+        }
+        if searched.budget_buckets != 4 {
+            return Err(format!(
+                "embedded forward GKR schedule has E4 budget {}, expected 4",
+                searched.budget_buckets
+            ));
+        }
+        let forward = compile_forward(&dag, &searched)
+            .map_err(|error| format!("forward GKR compile: {error:?}"))?;
+
+        let continuations = compile_continuations(&dag)
+            .map_err(|error| format!("continuation GKR compile: {error:?}"))?;
+        let backward_layers = backward_layer_plans(&dag, &continuations);
+
+        let window =
+            gpu_gkr_compiler::backward::compile_r0(&dag).map_err(|error| format!("R0: {error}"))?;
+
+        let main_continuation_window = continuations
+            .layers
+            .iter()
+            .map(lower_main_continuation_window_program)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("MAIN continuation: {error}"))?;
+        let main_tail = continuations
+            .layers
+            .iter()
+            .map(lower_main_tail_program)
+            .collect();
+
+        Ok(Self {
+            circuit_type,
+            compiled_circuit: artifact,
+            runtime_circuit,
+            forward,
+            continuations,
+            backward_layers,
+            window,
+            main_continuation_window,
+            main_tail,
+            recompute: Mutex::new(BTreeMap::new()),
+        })
+    }
+
+    pub(crate) fn compile_dr_window_programs(&self, final_trace_log: u32) -> DrWindowProgramBundle {
+        let initial_layer = self.runtime_circuit.layers.len();
+        let initial_trace_log = self.runtime_circuit.trace_len.trailing_zeros();
+        assert!(final_trace_log <= initial_trace_log);
+
+        let layer_inputs = derive_dimension_reducing_inputs(
+            initial_layer,
+            &self.runtime_circuit.global_output_map,
+            initial_trace_log,
+            final_trace_log,
+        );
+        let layout = GpuGKRStorageLayout::from_artifact_with_tower(
+            self.runtime_circuit.as_ref(),
+            final_trace_log as usize,
+        );
+        let mut layers = BTreeMap::new();
+
+        for (layer, inputs) in layer_inputs {
+            let rows = adapt_dr_window_rows(&inputs);
+            let program = lower_dr_window_program(&rows).unwrap();
+            let input_projection = project_dr_window_inputs(&program, &layout.aliases);
+            let folding_steps = layout
+                .layers
+                .get(layer + 1)
+                .map(|output_layout| output_layout.log2_stride as usize)
+                .unwrap();
+            window_dr::validate_dr_window_folding_steps(folding_steps).unwrap();
+            layers.insert(
+                layer,
+                Arc::new(DrWindowLayerProgram::new(
+                    layer,
+                    folding_steps,
+                    program,
+                    input_projection,
+                )),
+            );
+        }
+
+        DrWindowProgramBundle { layers }
+    }
+
+    pub(crate) fn window_layer(&self, layer: usize) -> &R0WindowProgram {
+        &self.window[layer]
+    }
+
+    pub(crate) fn main_continuation_window_layer(
+        &self,
+        layer: usize,
+    ) -> &MainContinuationWindowProgram {
+        &self.main_continuation_window[layer]
+    }
+
+    pub(crate) fn main_tail_layer(&self, layer: usize) -> &MainTailProgram {
+        &self.main_tail[layer]
+    }
+
+    pub fn circuit_type(&self) -> CircuitType {
+        self.circuit_type
+    }
+
+    pub fn compiled_circuit(&self) -> &Arc<GKRCircuitArtifact<BF>> {
+        &self.compiled_circuit
+    }
+
+    pub(crate) fn runtime_circuit(&self) -> &Arc<GKRCircuitArtifact<BF>> {
+        &self.runtime_circuit
+    }
+
+    pub(crate) fn continuation_layer(
+        &self,
+        layer: usize,
+    ) -> &gpu_gkr_compiler::ContinuationLayerProgram {
+        &self.continuations.layers[layer]
+    }
+}
+
+fn adapt_dr_window_rows(
+    source_rows: &BTreeMap<OutputType, DimensionReducingInputOutput>,
+) -> BTreeMap<OutputType, [GKRAddress; 2]> {
+    source_rows
+        .iter()
+        .map(|(output_type, source)| {
+            (
+                *output_type,
+                source
+                    .inputs
+                    .as_slice()
+                    .try_into()
+                    .expect("DR inputs must be pairs"),
+            )
+        })
+        .collect()
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use std::path::Path;
+
+    use super::*;
+
+    fn compile_embedded(layout: &str, circuit_type: CircuitType) -> GkrPrograms {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../cs/compiled_circuits")
+            .join(layout);
+        let artifact: GKRCircuitArtifact<BF> =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        GkrPrograms::compile(circuit_type, Arc::new(artifact))
+            .unwrap_or_else(|error| panic!("{layout}: {error}"))
+    }
+
+    #[test]
+    fn cpu_unified22_programs_compile() {
+        let unified = compile_embedded(
+            "unified_reduced_machine_layout_gkr.json",
+            CircuitType::Unrolled(UnrolledCircuitType::Unified),
+        );
+        let unified22 = compile_embedded(
+            "../../circuit_defs/unrolled_circuits/unified_reduced_machine_2_22/generated/layout.json",
+            CircuitType::Unrolled(UnrolledCircuitType::Unified22),
+        );
+        assert_eq!(unified22.runtime_circuit().trace_len, 1 << 22);
+        crate::baby_bear::forward::recompute_plan::check_recompute_bindings(&unified22);
+        assert_eq!(unified22.forward.layers.len(), unified.forward.layers.len());
+        assert_eq!(
+            unified22.continuations.layers.len(),
+            unified.continuations.layers.len()
+        );
+        assert_eq!(
+            unified22.backward_layers.len(),
+            unified.backward_layers.len()
+        );
+        assert_eq!(unified22.window.len(), unified.window.len());
+        assert_eq!(
+            unified22.main_continuation_window.len(),
+            unified.main_continuation_window.len()
+        );
+        assert_eq!(unified22.main_tail.len(), unified.main_tail.len());
+        let final_trace_log = 4;
+        let initial_layer = unified22.runtime_circuit().layers.len();
+        let dr = unified22.compile_dr_window_programs(final_trace_log);
+        assert_eq!(
+            dr.layers.keys().copied().collect::<Vec<_>>(),
+            (initial_layer..initial_layer + 22 - final_trace_log as usize).collect::<Vec<_>>()
+        );
+    }
+}

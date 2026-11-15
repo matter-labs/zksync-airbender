@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../support/lookup_helpers.cuh"
+#include "gkr/support/lookup_helpers.cuh"
 
 namespace airbender::gkr::dr_tail_detail {
 

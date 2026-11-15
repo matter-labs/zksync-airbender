@@ -1,8 +1,8 @@
 #pragma once
-#include "../coefficient_storage_pr.cuh"
+#include "gkr/proth120/backward/coefficient_storage_pr.cuh"
 
-#include "../../../backward/window/window_geometry.cuh"
-#include "../accumulator_pr.cuh"
+#include "gkr/backward/window/window_geometry.cuh"
+#include "gkr/proth120/backward/accumulator_pr.cuh"
 
 namespace airbender::gkr::proth120::backward {
 

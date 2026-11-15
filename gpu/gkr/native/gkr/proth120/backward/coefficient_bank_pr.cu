@@ -1,4 +1,4 @@
-#include "coefficient_bank_pr.cuh"
+#include "gkr/proth120/backward/coefficient_bank_pr.cuh"
 
 __device__ __constant__ ::airbender::primitives::field::proth120 ab_pr_gkr_bwd_coeff_bank[::airbender::gkr::proth120::backward::PR_COEFF_BANK_CAPACITY];
 

@@ -23,7 +23,7 @@ use crate::backward::window::common::{
 };
 use crate::backward::window::zeroed_box;
 use crate::backward::{make_eq_sizes, GkrEqSizes};
-use crate::forward::vm::lower::read_place_to_gkr_address;
+use crate::forward::vm::lower_common::read_place_to_gkr_address;
 use crate::proth120::backward::main_continuation_window_manifest::PrMainContinuationWindowKernelEntry;
 use crate::proth120::forward::bind::resolve_storage_column;
 use crate::upstream::PR;

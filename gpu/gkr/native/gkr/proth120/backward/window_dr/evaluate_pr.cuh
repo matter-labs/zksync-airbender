@@ -1,9 +1,9 @@
 #pragma once
-#include "../../../backward/window_dr/corner_quad.cuh"
+#include "gkr/backward/window_dr/corner_quad.cuh"
 
-#include "../batch_challenges_pr.cuh"
+#include "gkr/proth120/backward/batch_challenges_pr.cuh"
 
-#include "abi_pr.cuh"
+#include "gkr/proth120/backward/window_dr/abi_pr.cuh"
 
 namespace airbender::gkr::proth120::backward {
 

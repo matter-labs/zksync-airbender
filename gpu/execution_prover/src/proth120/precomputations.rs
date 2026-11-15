@@ -5,7 +5,7 @@ use gpu_circuit_prover::proth120::{L1WrapConstantsHost, L1WrapGeometry};
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::static_host::StaticPinnedBox;
 use gpu_gkr::proth120::programs::GkrProgramsPr;
-use gpu_gkr::setup::L1WrapSetupHost;
+use gpu_gkr::proth120::setup::L1WrapSetupHost;
 use gpu_prover_context::ProverContext;
 use gpu_trace::proth120::trace::packed::PackedCommitConfig;
 use gpu_trace::witness::circuit_type::CircuitType;

@@ -1,6 +1,5 @@
 use std::{collections::BTreeMap, ptr};
 
-use gpu_core::primitives::field::{BF, E4, PR};
 use gpu_gkr_compiler::{
     encode_forward_runtime_program, virtual_setup_kind_code, CompiledLayer,
     ForwardDstLine as DstLine, ForwardInstr as Instr, ForwardLdcSub as LdcSub,
@@ -9,13 +8,18 @@ use gpu_gkr_compiler::{
     FORWARD_MAX_COLS as MAX_COLS,
 };
 
-use super::desc::{
-    pack_desc, FwdVmLayer, ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP,
-    ARG_DERIVED_E4_CAP, CONST_CAP, CONST_DERIVED_E4_CAP, DESC_CAP, DST_SLOT_COUNT, LAYER_CAP,
-    MAPPING_ARENA_COUNT, PROGRAM_CAP, SD_AGGREGATE, SD_DECODER, SD_INITS_TOP_BITS, SD_SETUP,
-    SD_SINGLE_COLUMN, SD_VIRTUAL, SOURCE_WINDOW_COUNT,
+use crate::{
+    forward::vm::desc::{
+        pack_desc, FwdVmLayer, ARENA_GENERIC_FAMILY, ARENA_RANGE_CHECK_16, ARENA_TIMESTAMP,
+        ARG_DERIVED_E4_CAP, CONST_CAP, CONST_DERIVED_E4_CAP, DESC_CAP, DST_SLOT_COUNT, LAYER_CAP,
+        MAPPING_ARENA_COUNT, PROGRAM_CAP, SD_AGGREGATE, SD_DECODER, SD_INITS_TOP_BITS, SD_SETUP,
+        SD_SINGLE_COLUMN, SD_VIRTUAL, SOURCE_WINDOW_COUNT,
+    },
+    upstream::{ChallengeRef, Field, GKRAddress, PrimeField, RangeWidth, ReadPlace},
 };
-use crate::upstream::{ChallengeRef, Field, GKRAddress, PrimeField, RangeWidth, ReadPlace};
+
+#[cfg(test)]
+use gpu_core::primitives::field::E4;
 
 pub(crate) trait LoweringField: PrimeField {
     type Ext: Field;
@@ -23,39 +27,6 @@ pub(crate) trait LoweringField: PrimeField {
     const SEPARATE_DECODER_MAPPING: bool;
     fn canonical_constant(value: u128) -> Self;
     fn inits_top_bits(raw: u32, shift: u32) -> Self;
-}
-
-impl LoweringField for BF {
-    type Ext = E4;
-    const NEEDS_SETUP_FILL: bool = true;
-    const SEPARATE_DECODER_MAPPING: bool = false;
-    fn canonical_constant(value: u128) -> Self {
-        let canonical = u32::try_from(value)
-            .ok()
-            .filter(|&v| v < BF::CHARACTERISTICS_U32)
-            .unwrap_or_else(|| {
-                panic!("forward constant {value} is not a canonical BabyBear value")
-            });
-        BF::from_u32_with_reduction(canonical)
-    }
-    fn inits_top_bits(raw: u32, shift: u32) -> Self {
-        BF::from_u32_with_reduction(raw.checked_shl(shift).unwrap_or(0))
-    }
-}
-impl LoweringField for PR {
-    type Ext = PR;
-    const NEEDS_SETUP_FILL: bool = false;
-    const SEPARATE_DECODER_MAPPING: bool = true;
-    fn canonical_constant(value: u128) -> Self {
-        assert!(
-            value < PR::CHARACTERISTICS_U128,
-            "forward constant is not canonical"
-        );
-        PR::from_u128_with_reduction(value)
-    }
-    fn inits_top_bits(raw: u32, shift: u32) -> Self {
-        PR::from_u128_with_reduction(u128::from(raw).checked_shl(shift).unwrap_or(0))
-    }
 }
 
 pub(crate) struct DescFields<B, E> {
@@ -944,10 +915,8 @@ pub(crate) fn resolve_test_columns(
 }
 
 #[cfg(test)]
-mod tests {
-    use std::collections::BTreeMap;
-    use std::path::Path;
-    use std::sync::Arc;
+pub(crate) mod tests {
+    use std::{collections::BTreeMap, path::Path, sync::Arc};
 
     use gpu_core::primitives::field::BF;
     use gpu_gkr_compiler::{
@@ -961,8 +930,10 @@ mod tests {
     };
 
     use super::*;
-    use crate::programs::GkrPrograms;
-    use crate::upstream::{GKRAddress, GKRCircuitArtifact};
+    use crate::{
+        baby_bear::GkrPrograms,
+        upstream::{GKRAddress, GKRCircuitArtifact},
+    };
 
     fn source_use(
         layer: usize,
@@ -1175,7 +1146,7 @@ mod tests {
         let artifact: GKRCircuitArtifact<BF> =
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         let programs = GkrPrograms::compile(circuit_type, Arc::new(artifact)).unwrap();
-        crate::forward::recompute_plan::check_recompute_bindings(&programs);
+        crate::baby_bear::forward::recompute_plan::check_recompute_bindings(&programs);
 
         let resolved = resolve_test_columns(&programs.forward.layers, 64);
         let resolve = |address: GKRAddress| {
@@ -1183,7 +1154,7 @@ mod tests {
                 .iter()
                 .find_map(|(candidate, column)| (*candidate == address).then_some(*column))
         };
-        let header = super::super::lower::FwdVmInputs {
+        let header = crate::baby_bear::forward::vm::lower::FwdVmInputs {
             mapping_arena: [
                 std::ptr::without_provenance(1),
                 std::ptr::without_provenance(2),
@@ -1196,9 +1167,12 @@ mod tests {
             inits_and_teardowns_top_bits: &[0; 32],
         };
 
-        super::super::lower::lower_desc(&programs.forward.layers, &header, &resolve, &|_| unsafe {
-            core::mem::zeroed()
-        });
+        crate::baby_bear::forward::vm::lower::lower_desc(
+            &programs.forward.layers,
+            &header,
+            &resolve,
+            &|_| unsafe { core::mem::zeroed() },
+        );
     }
 
     #[test]

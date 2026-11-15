@@ -148,3 +148,6 @@ pub(crate) fn build_combined_claim(
         ),
     )
 }
+
+#[cfg(test)]
+mod tests;

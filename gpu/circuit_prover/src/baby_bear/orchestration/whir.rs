@@ -6,14 +6,13 @@ use crate::proof::memory_policy::ProofMemoryPolicy;
 use crate::upstream::{BaseCommitmentGeometry, GKRCircuitArtifact, WhirSchedule};
 use gpu_core::primitives::context::{DeviceAllocation, UnsafeAccessor};
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr::backward::GpuGKRBackwardScheduledExecution;
-use gpu_gkr::base_layer_claims::{
-    schedule_prepare_base_layer_claims_with_sources, GpuGKRBaseLayerClaimsScheduledExecution,
-    ScheduledBaseLayerClaimsState,
-};
-use gpu_gkr::proof_layout::ProofLayout;
-use gpu_gkr::setup::GpuGKRSetupTransfer;
-use gpu_gkr::stage1::GpuGKRStage1Output;
+use gpu_gkr::baby_bear::backward::GpuGKRBackwardScheduledExecution;
+use gpu_gkr::baby_bear::base_layer_claims::schedule_prepare_base_layer_claims_with_sources;
+use gpu_gkr::baby_bear::base_layer_claims::GpuGKRBaseLayerClaimsScheduledExecution;
+use gpu_gkr::baby_bear::base_layer_claims::ScheduledBaseLayerClaimsState;
+use gpu_gkr::baby_bear::proof_layout::ProofLayout;
+use gpu_gkr::baby_bear::setup::GpuGKRSetupTransfer;
+use gpu_gkr::baby_bear::stage1::GpuGKRStage1Output;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::TraceHolder;
 use gpu_whir::baby_bear::fold::{
@@ -164,9 +163,9 @@ pub(crate) fn schedule_base_commitment_handoff(
                 context.get_exec_stream(),
             )?;
             for kind in [
-                gpu_gkr::proof_layout::WhirBaseLayerKind::Memory,
-                gpu_gkr::proof_layout::WhirBaseLayerKind::Witness,
-                gpu_gkr::proof_layout::WhirBaseLayerKind::Setup,
+                gpu_gkr::baby_bear::proof_layout::WhirBaseLayerKind::Memory,
+                gpu_gkr::baby_bear::proof_layout::WhirBaseLayerKind::Witness,
+                gpu_gkr::baby_bear::proof_layout::WhirBaseLayerKind::Setup,
             ] {
                 let (src, src_len) = unsafe {
                     proof_layout
@@ -177,7 +176,7 @@ pub(crate) fn schedule_base_commitment_handoff(
                 };
                 let src = unsafe { DeviceSlice::from_raw_parts(src, src_len) };
                 let dst = unsafe { DeviceSlice::from_raw_parts_mut(dst, dst_len) };
-                gpu_gkr::gkr_ops::merge_packed_claims(
+                gpu_gkr::baby_bear::gkr_ops::merge_packed_claims(
                     src,
                     coordinates,
                     u32::try_from(base_geometry.pack_log2()).expect("packing log2 exceeds u32"),

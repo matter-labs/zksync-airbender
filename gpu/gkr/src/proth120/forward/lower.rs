@@ -61,3 +61,23 @@ pub(crate) fn lower_desc(
         decoder_fill_slot: lowered.decoder_fill_slot,
     }
 }
+
+use crate::forward::vm::lower_common::LoweringField;
+
+impl LoweringField for PR {
+    type Ext = PR;
+    const NEEDS_SETUP_FILL: bool = false;
+    const SEPARATE_DECODER_MAPPING: bool = true;
+    fn canonical_constant(value: u128) -> Self {
+        assert!(
+            value < PR::CHARACTERISTICS_U128,
+            "forward constant is not canonical"
+        );
+        PR::from_u128_with_reduction(value)
+    }
+    fn inits_top_bits(raw: u32, shift: u32) -> Self {
+        PR::from_u128_with_reduction(u128::from(raw).checked_shl(shift).unwrap_or(0))
+    }
+}
+
+use crate::upstream::PrimeField;

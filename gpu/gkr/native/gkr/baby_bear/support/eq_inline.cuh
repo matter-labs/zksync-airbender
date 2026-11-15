@@ -1,0 +1,55 @@
+#pragma once
+
+#include "gkr/baby_bear/support/descriptors.cuh"
+#include "gkr/support/eq_inline.cuh"
+
+EXTERN __device__ __constant__ e4 ab_gkr_eq_high[airbender::gkr::GKR_EQ_HIGH_SLOTS][airbender::gkr::GKR_EQ_GROUP_TABLE_LEN];
+
+namespace airbender::gkr {
+
+// Per-row inline eq: strict 3-slot layout [high[0], high[1], low].
+// High slabs live in __constant__ memory (LDC broadcast path); the low slab
+// stays in global memory and is read with `ld.global.cs` (each thread reads
+// its own entry, no row-level reuse).
+//
+// `acc` is initialized from the first load rather than from `E::ONE()` to
+// save one full E::mul per row.
+template <typename E> DEVICE_FORCEINLINE E gkr_compute_eq_inline(const E *__restrict__ eq_low, const gkr_eq_sizes &sizes, const unsigned gid) {
+  const unsigned shift1 = sizes.low;
+  const unsigned shift0 = sizes.low + sizes.high[1];
+  const unsigned hi0 = (gid >> shift0) & ((1u << sizes.high[0]) - 1u);
+  const unsigned hi1 = (gid >> shift1) & ((1u << sizes.high[1]) - 1u);
+  const unsigned lo = gid & ((1u << sizes.low) - 1u);
+
+  E acc = load<E, ld_modifier::ca>(&ab_gkr_eq_high[0][0], hi0);
+  acc = E::mul(acc, load<E, ld_modifier::ca>(&ab_gkr_eq_high[1][0], hi1));
+  acc = E::mul(acc, load<E, ld_modifier::cs>(eq_low, lo));
+  return acc;
+}
+
+// `row` must be aligned to the pack width. A pack contained in the low group
+// shares its high product; smaller low groups use the per-row Eq path.
+template <typename E> struct gkr_eq_inline_reader {
+  const E *eq_low;
+  gkr_eq_sizes sizes;
+  template <unsigned PACK_LOG2> DEVICE_FORCEINLINE void load_pack(const unsigned row, E (&eq)[1u << PACK_LOG2]) const {
+    static_assert(PACK_LOG2 == 2 || PACK_LOG2 == 3);
+    if (sizes.low >= PACK_LOG2) {
+      const unsigned shift1 = sizes.low;
+      const unsigned shift0 = sizes.low + sizes.high[1];
+      const unsigned hi0 = (row >> shift0) & ((1u << sizes.high[0]) - 1u);
+      const unsigned hi1 = (row >> shift1) & ((1u << sizes.high[1]) - 1u);
+      const unsigned lo = row & ((1u << sizes.low) - 1u);
+      const E hi = E::mul(load<E, ld_modifier::ca>(&ab_gkr_eq_high[0][0], hi0), load<E, ld_modifier::ca>(&ab_gkr_eq_high[1][0], hi1));
+#pragma unroll
+      for (unsigned i = 0; i < (1u << PACK_LOG2); ++i)
+        eq[i] = E::mul(hi, load<E, ld_modifier::cs>(eq_low, lo + i));
+    } else {
+#pragma unroll
+      for (unsigned i = 0; i < (1u << PACK_LOG2); ++i)
+        eq[i] = gkr_compute_eq_inline(eq_low, sizes, row + i);
+    }
+  }
+};
+
+} // namespace airbender::gkr

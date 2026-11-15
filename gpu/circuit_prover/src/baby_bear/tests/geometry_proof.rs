@@ -28,10 +28,9 @@ pub(super) fn gpu_memory_caps(
         .transpose()
         .unwrap();
     let job = if geometry.commitment_mode() == CommitmentMode::MergedMemoryAndWitness {
-        use gpu_gkr::stage1::merged_commitment::{
-            commit_merged_from_transfers, GpuGKRMergedCommitTransfer,
-        };
-        let setup = gpu_gkr::setup::GpuGKRSetupTransfer::new(
+        use gpu_gkr::baby_bear::stage1::merged_commitment::commit_merged_from_transfers;
+        use gpu_gkr::baby_bear::stage1::merged_commitment::GpuGKRMergedCommitTransfer;
+        let setup = gpu_gkr::baby_bear::setup::GpuGKRSetupTransfer::new(
             Arc::clone(base.gpu_setup_host.as_ref().unwrap()),
             base.partial_trees().setup,
             context,

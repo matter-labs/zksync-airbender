@@ -39,7 +39,7 @@ pub(crate) struct PreparedDimensionReductionForward<E> {
 }
 
 impl<E> PreparedDimensionReductionForward<E> {
-    pub(super) fn fused_prefix_rounds(&self) -> u32 {
+    pub(crate) fn fused_prefix_rounds(&self) -> u32 {
         vm::desc::FUSED_REDUCTION_ROUNDS as u32
     }
 }

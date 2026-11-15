@@ -1,5 +1,5 @@
-#include "../../support/kernel_helpers.cuh"
-#include "tail_common_pr.cuh"
+#include "gkr/proth120/backward/tail_common_pr.cuh"
+#include "gkr/support/kernel_helpers.cuh"
 
 namespace airbender::gkr::proth120::backward {
 

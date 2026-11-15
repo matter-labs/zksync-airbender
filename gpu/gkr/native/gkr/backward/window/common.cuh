@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../../support/eq_inline.cuh"
-#include "../../support/kernel_helpers.cuh"
+#include "gkr/support/eq_inline.cuh"
+#include "gkr/support/kernel_helpers.cuh"
 
 namespace airbender::gkr {
 
@@ -59,7 +59,6 @@ constexpr u32 BWD_CONTINUATION_MAX_SOURCES = 1072;
 constexpr u32 BWD_CONTINUATION_PROGRAM_WORD_CAP = 8192;
 constexpr u32 BWD_CONTINUATION_MAX_IMMEDIATES = 512;
 
-static_assert(BWD_COEFF_BANK_CAPACITY * sizeof(e4) == 28 * 1024, "coefficient bank size drift");
 static_assert(BWD_COEFF_BANK_CAPACITY <= BWD_COEFF_MAX_COEFFICIENT_ENCODINGS, "coefficient bank encoding overflow");
 
 constexpr u32 BWD_CONTINUATION_WORDS_PER_TERM = 3;
@@ -90,11 +89,3 @@ constexpr u32 BWD_FOLD_WEIGHT_BASE_D2 = 1;
 constexpr u32 BWD_FOLD_WEIGHT_BASE_D3 = 4;
 
 } // namespace airbender::gkr
-
-EXTERN __device__ __constant__ e4 ab_gkr_bwd_coeff_bank[airbender::gkr::BWD_COEFF_BANK_CAPACITY];
-#define AB_GKR_BWD_COEFF(slot) (::ab_gkr_bwd_coeff_bank[(slot)])
-
-EXTERN __device__ __constant__ e4 ab_gkr_main_layer_claim_point[airbender::gkr::GKR_MAIN_LAYER_CLAIM_POINT_LEN];
-EXTERN __device__ __constant__ e4 ab_gkr_bwd_fold_weights[airbender::gkr::BWD_FOLD_WEIGHT_SLOTS];
-
-EXTERN __global__ void ab_gkr_bwd_build_fold_weights_kernel(e4 *fold_weights, u32 round);

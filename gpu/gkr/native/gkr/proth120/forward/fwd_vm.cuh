@@ -1,5 +1,5 @@
 #pragma once
-#include "../../forward/fwd_vm.cuh"
+#include "gkr/forward/fwd_vm.cuh"
 #include "primitives/proth120/field.cuh"
 namespace airbender::gkr::proth120::forward {
 using pr = ::airbender::primitives::field::proth120;

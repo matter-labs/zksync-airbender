@@ -1,5 +1,5 @@
-#include "../../gkr/support/kernel_helpers.cuh"
-#include "../gkr_ops_shared.cuh"
+#include "gkr/support/kernel_helpers.cuh"
+#include "ops/gkr_ops_shared.cuh"
 #include "primitives/proth120/field.cuh"
 
 namespace airbender::gkr::proth120::ops {

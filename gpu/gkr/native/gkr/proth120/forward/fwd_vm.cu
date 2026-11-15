@@ -1,4 +1,4 @@
-#include "eval_vm_exec_pr.cuh"
+#include "gkr/proth120/forward/eval_vm_exec_pr.cuh"
 namespace airbender::gkr::proth120::forward {
 #if __CUDA_ARCH__ == 800
 constexpr u32 PR_FWD_VM_MIN_BLOCKS = 6;

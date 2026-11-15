@@ -1,15 +1,7 @@
-mod abi;
-mod binding;
-mod generated_kernels;
-mod publication;
-mod sequence;
-
-pub(crate) use binding::MainContinuationWindowRuntimeScratch;
-
-pub(crate) use publication::{
-    repoint_final_evaluations_from_raw, ContinuationPublicationError, ContinuationPublishedLevel,
-    ContinuationPublishedShape,
+pub(crate) use crate::backward::main_continuation::{
+    binding::pointer_ranges_overlap,
+    publication::{ContinuationPublicationError, ContinuationPublishedShape},
 };
-pub(crate) use sequence::MainContinuationWindowSequence;
 
-pub(crate) use binding::pointer_ranges_overlap;
+pub(crate) mod binding;
+pub(crate) mod publication;

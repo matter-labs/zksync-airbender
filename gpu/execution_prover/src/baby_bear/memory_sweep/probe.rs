@@ -9,10 +9,9 @@ use gpu_circuit_prover::proof::memory_policy::{PartialTreePolicy, ProofMemoryPol
 use gpu_circuit_prover::proof::prove;
 use gpu_core::allocator::tracker::AllocationDirection;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr::setup::GpuGKRSetupTransfer;
-use gpu_gkr::stage1::merged_commitment::{
-    commit_merged_from_transfers, GpuGKRMergedCommitTransfer,
-};
+use gpu_gkr::baby_bear::setup::GpuGKRSetupTransfer;
+use gpu_gkr::baby_bear::stage1::merged_commitment::commit_merged_from_transfers;
+use gpu_gkr::baby_bear::stage1::merged_commitment::GpuGKRMergedCommitTransfer;
 use gpu_prover_context::{AllocationMode, ProverContext};
 use gpu_trace::baby_bear::trace::memory::{
     commit_memory_from_transfers_for_geometry, GpuGKRCommitMemoryTransfer,

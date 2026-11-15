@@ -1,4 +1,4 @@
-#include "../../support/lookup_helpers.cuh"
+#include "gkr/support/lookup_helpers.cuh"
 #include "primitives/proth120/field.cuh"
 namespace airbender::gkr::proth120::forward {
 using pr = ::airbender::primitives::field::proth120;

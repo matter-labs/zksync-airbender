@@ -1,5 +1,5 @@
 #pragma once
-#include "fwd_vm.cuh"
+#include "gkr/forward/fwd_vm.cuh"
 namespace airbender::gkr::forward_vm_detail {
 struct fwd_vm_special {
   u32 kind;

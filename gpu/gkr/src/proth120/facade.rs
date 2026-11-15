@@ -18,7 +18,7 @@ use super::packed_challenges::PackedChallenges;
 use super::packed_merge::{schedule_base_layer_claims_and_packed_merge_pr, GkrOutputPr};
 use super::programs::GkrProgramsPr;
 use super::proof_layout::ProofSlabPr;
-use crate::setup::PackedSetupSource;
+use crate::proth120::setup::PackedSetupSource;
 use crate::upstream::{ProverConfig, PR};
 
 /// Per-proof GKR launch constants, passed by value.

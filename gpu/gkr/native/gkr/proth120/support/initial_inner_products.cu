@@ -1,4 +1,4 @@
-#include "../../support/initial_inner_product.cuh"
+#include "gkr/support/initial_inner_product.cuh"
 #include "primitives/proth120/field.cuh"
 
 using namespace ::airbender::primitives::field;

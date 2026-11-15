@@ -370,7 +370,7 @@ pub fn schedule_gpu_whir_fold_with_sources(
         // oracle at a time. The unchanged full-coset NTT retains its
         // cross-coset and cross-column fusion. Slab order is independent
         // of execution order; every reader is enqueued before release.
-        use gpu_gkr::proof_layout::WhirBaseLayerKind;
+        use gpu_gkr::baby_bear::proof_layout::WhirBaseLayerKind;
         use gpu_trace::trace::holder::OpeningStrategy;
         for (holder, kind) in [
             (&mut *witness_trace_holder, WhirBaseLayerKind::Witness),

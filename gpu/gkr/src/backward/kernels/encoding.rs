@@ -1,14 +1,15 @@
-use std::ffi::c_void;
-use std::ptr::{null, null_mut};
+use std::ptr::null;
 
-use super::dim_reducing::{
-    GKR_DIM_REDUCING_INPUTS_PER_SLOT, GKR_DIM_REDUCING_OUTPUTS_PER_SLOT, GKR_DIM_REDUCING_SLOTS,
+use crate::{
+    backward::kernels::{
+        dim_reducing::{
+            GKR_DIM_REDUCING_INPUTS_PER_SLOT, GKR_DIM_REDUCING_OUTPUTS_PER_SLOT,
+            GKR_DIM_REDUCING_SLOTS,
+        },
+        launchers::GkrEqSizes,
+    },
+    upstream::Field,
 };
-use super::launchers::GkrEqSizes;
-use crate::upstream::Field;
-use era_cudart::result::CudaResultWrap;
-use era_cudart_sys::{cudaGetSymbolAddress, cuda_struct_and_stub};
-use gpu_core::primitives::field::E4;
 
 #[derive(Clone, Copy)]
 pub(crate) struct FoldingArenaBinding {
@@ -24,23 +25,6 @@ impl FoldingArenaBinding {
 }
 
 pub(crate) const MAX_MAIN_LAYER_CLAIM_POINT_LEN: usize = super::GKR_BACKWARD_MAX_TRACE_LEN_LOG2 + 1;
-
-cuda_struct_and_stub! {
-    static ab_gkr_main_layer_claim_point: [E4; MAX_MAIN_LAYER_CLAIM_POINT_LEN];
-}
-
-pub(crate) fn get_main_layer_claim_point_device_ptr() -> *mut E4 {
-    let mut ptr: *mut c_void = null_mut();
-    unsafe {
-        cudaGetSymbolAddress(
-            &mut ptr,
-            &ab_gkr_main_layer_claim_point as *const _ as *const c_void,
-        )
-    }
-    .wrap()
-    .expect("cudaGetSymbolAddress failed for ab_gkr_main_layer_claim_point");
-    ptr.cast()
-}
 
 // ---------------------------------------------------------------------------
 // Compact dim-reducing descriptor types. Each source record carries two u16s:

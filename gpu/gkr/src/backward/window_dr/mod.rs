@@ -1,12 +1,7 @@
-mod binding;
-mod composition;
-pub(crate) mod shared;
-
-pub(crate) use binding::{
-    dr_window_log_rows, dr_window_partials_len, dr_window_row_tiles, launch_dr_window_continuation,
-    launch_dr_window_r0, prepare_dr_window_r0, resolve_dr_global_active_eq_slot,
+pub(crate) use crate::backward::window_dr::binding::{
+    dr_window_log_rows, dr_window_partials_len, dr_window_row_tiles,
     validate_dr_window_folding_steps, DrWindowBindError,
 };
-pub(crate) use composition::{
-    DrWindowLayerPreparationHook, DrWindowPassEqState, DrWindowRawInputKeepalive,
-};
+
+pub(crate) mod binding;
+pub(crate) mod shared;

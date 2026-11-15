@@ -6,28 +6,21 @@
 // `no_cuda` gates out every GPU test body, leaving their helpers and imports dead
 // by construction. That mode only ever compiles, so this is not a real finding.
 #![cfg_attr(no_cuda, allow(dead_code, unused_imports))]
+pub mod baby_bear;
 pub mod backward;
-pub mod base_layer_claims;
 pub mod forward;
 pub mod gkr_ops;
 mod programs;
-pub mod proof_layout;
 pub mod proth120;
 pub mod setup;
-pub mod stage1;
 pub(crate) mod storage;
 pub(crate) mod storage_types;
-pub(crate) mod support;
 pub(crate) mod upstream;
 
 pub(crate) use forward::kernels::ForwardKernels;
-pub(crate) use gpu_gkr_model::address_audit as gkr_address_audit;
-pub(crate) use gpu_gkr_model::storage_layout;
-pub(crate) use gpu_gkr_model::transform;
-pub use programs::{DrWindowLayerProgram, DrWindowProgramBundle, GkrPrograms};
+pub(crate) use gpu_gkr_model::{address_audit as gkr_address_audit, storage_layout, transform};
+pub use programs::{DrWindowLayerProgram, DrWindowProgramBundle};
 pub(crate) use storage_types::*;
-// Keep the public path `gpu_gkr::gkr_initial_inner_products` (apex proof).
-pub use support::initial_inner_products as gkr_initial_inner_products;
 
 #[cfg(test)]
 gpu_core::force_serial_libtest!();

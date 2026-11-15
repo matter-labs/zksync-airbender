@@ -19,7 +19,7 @@ use crate::backward::{
     make_eq_sizes, max_partials_len, record_active_eq_slot_fold, ClaimBufferLayout,
     GKR_EQ_GROUP_TABLE_LEN,
 };
-use crate::forward::vm::lower::read_place_to_gkr_address;
+use crate::forward::vm::lower_common::read_place_to_gkr_address;
 use crate::proth120::backward::banks::{schedule_coefficient_bank_fill_pr, CoefficientBankPr};
 use crate::proth120::backward::eq::{
     launch_eq_high_low_pr, resolve_active_eq_slot_pr, BackwardScratchPr,

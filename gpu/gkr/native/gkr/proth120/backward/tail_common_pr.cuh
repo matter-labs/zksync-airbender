@@ -1,9 +1,9 @@
 #pragma once
-#include "../../../ops/round_update_shared.cuh"
-#include "../../backward/tail_common.cuh"
-#include "../../support/descriptors.cuh"
-#include "accumulator_pr.cuh"
+#include "gkr/backward/tail_common.cuh"
+#include "gkr/proth120/backward/accumulator_pr.cuh"
+#include "gkr/support/descriptors.cuh"
 #include "keccak256.cuh"
+#include "ops/round_update_shared.cuh"
 #include "primitives/proth120/field.cuh"
 
 namespace airbender::gkr::proth120::backward {

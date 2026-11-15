@@ -1,10 +1,10 @@
 #pragma once
 
-#include "../../backward/dr_tail_shared.cuh"
+#include "gkr/backward/dr_tail_shared.cuh"
 
-#include "../../support/lookup_helpers.cuh"
-#include "batch_challenges_pr.cuh"
-#include "tail_common_pr.cuh"
+#include "gkr/proth120/backward/batch_challenges_pr.cuh"
+#include "gkr/proth120/backward/tail_common_pr.cuh"
+#include "gkr/support/lookup_helpers.cuh"
 
 namespace airbender::gkr::proth120::backward {
 

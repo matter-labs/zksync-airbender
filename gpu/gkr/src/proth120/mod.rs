@@ -12,3 +12,5 @@ pub use packed_merge::{GkrOutputPr, GkrWhirHandoffPr};
 
 #[cfg(test)]
 mod tests;
+
+pub mod setup;

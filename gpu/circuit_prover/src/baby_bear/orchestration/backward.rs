@@ -6,14 +6,16 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::context::UnsafeMutAccessor;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr::backward::kernels::{eq_group_tables_len, launch_build_eq_values_from_point};
-use gpu_gkr::backward::{
-    ClaimBufferLayout, GKRBackwardStageSnapshotSink, GpuGKRBackwardScheduledExecution,
-    GpuGKRDimensionReducingBackwardState,
-};
+use gpu_gkr::baby_bear::backward::kernels::launch_build_eq_values_from_point;
+use gpu_gkr::baby_bear::backward::GpuGKRBackwardScheduledExecution;
+use gpu_gkr::baby_bear::backward::GpuGKRDimensionReducingBackwardState;
+use gpu_gkr::baby_bear::proof_layout::ProofLayout;
+use gpu_gkr::baby_bear::setup::GpuGKRForwardSetup;
+use gpu_gkr::baby_bear::setup::GpuGKRForwardSetupHostKeepalive;
+use gpu_gkr::backward::kernels::eq_group_tables_len;
+use gpu_gkr::backward::ClaimBufferLayout;
+use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
 use gpu_gkr::forward::{GpuGKRForwardOutput, GpuGKRTranscriptHandoff};
-use gpu_gkr::proof_layout::ProofLayout;
-use gpu_gkr::setup::{GpuGKRForwardSetup, GpuGKRForwardSetupHostKeepalive};
 use gpu_prover_context::ProverContext;
 
 use super::top_layer_claim_layout;
@@ -121,7 +123,7 @@ pub(in crate::baby_bear) fn prepare_backward_handoff(
                 poly_idx += 1;
             }
         }
-        gpu_gkr::gkr_initial_inner_products::initial_inner_product_e4(
+        gpu_gkr::baby_bear::gkr_initial_inner_products::initial_inner_product_e4(
             device_flat_evaluations.as_ptr(),
             num_top_claims,
             &eq_values_for_init,
@@ -150,7 +152,7 @@ pub(in crate::baby_bear) fn schedule_backward_phase(
     // The global address window each of this circuit's i&t sets holds; all
     // zeros for trivial (dummy) unified chunks.
     inits_and_teardowns_top_bits: Vec<u32>,
-    gkr_programs: std::sync::Arc<gpu_gkr::GkrPrograms>,
+    gkr_programs: std::sync::Arc<gpu_gkr::baby_bear::GkrPrograms>,
     d_external_challenges_ptr: *const E4,
     d_seed: DeviceAllocation<u32>,
     d_evaluation_point_and_batching: DeviceAllocation<E4>,

@@ -1,6 +1,6 @@
 use super::{PartialTreePolicy, ProofMemoryPolicy};
 use crate::upstream::ProofProfile;
-use gpu_gkr::stage1::merged_commitment::MergedCommitStrategy;
+use gpu_gkr::baby_bear::stage1::merged_commitment::MergedCommitStrategy;
 use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 
 use crate::baby_bear::presets::{compression, generated};

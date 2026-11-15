@@ -1,5 +1,5 @@
+#include "gkr/baby_bear/support/kernel_helpers.cuh"
 #include "gkr/support/eq_inline.cuh"
-#include "gkr/support/kernel_helpers.cuh"
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;

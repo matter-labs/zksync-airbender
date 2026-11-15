@@ -11,10 +11,9 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_core::primitives::nvtx::scoped_range;
 use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
-use gpu_gkr::{
-    setup::{GpuGKRSetupHost, GpuGKRSetupTransfer},
-    GkrPrograms,
-};
+use gpu_gkr::baby_bear::setup::GpuGKRSetupHost;
+use gpu_gkr::baby_bear::setup::GpuGKRSetupTransfer;
+use gpu_gkr::baby_bear::GkrPrograms;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::tracing_data::{

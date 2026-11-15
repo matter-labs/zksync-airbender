@@ -289,10 +289,10 @@ fn run_stage1_buffer_parity(fixture: &BasicUnrolledFixture) {
     let baseline = fixture.context.get_used_mem_current();
     fixture.context.reset_used_mem_peak();
     {
-        use gpu_gkr::proof_layout::GpuGKRTraceGeometry;
-        use gpu_gkr::stage1::{
-            generate_with_witness_strategy, GpuGKRStage1Output, WitnessGenerationStrategy,
-        };
+        use gpu_gkr::baby_bear::proof_layout::GpuGKRTraceGeometry;
+        use gpu_gkr::baby_bear::stage1::generate_with_witness_strategy;
+        use gpu_gkr::baby_bear::stage1::GpuGKRStage1Output;
+        use gpu_gkr::baby_bear::stage1::WitnessGenerationStrategy;
 
         let transfers = fixture.schedule_transfers().unwrap();
         transfers

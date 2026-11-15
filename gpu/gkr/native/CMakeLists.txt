@@ -11,8 +11,34 @@ if (NOT DEFINED AB_CUDA_CMAKE_DIR)
 endif ()
 include(${AB_CUDA_CMAKE_DIR}/ab_cuda_target.cmake)
 add_library(gpu_gkr_native STATIC)
-add_subdirectory(ops)
-add_subdirectory(gkr)
+target_sources(gpu_gkr_native PRIVATE
+        gkr/backward/dr_tail_shared.cuh
+        gkr/backward/tail_common.cuh
+        gkr/backward/window/common.cuh
+        gkr/backward/window/fold_weights_shared.cuh
+        gkr/backward/window/window_abi.cuh
+        gkr/backward/window/window_geometry.cuh
+        gkr/backward/window/window_source.cuh
+        gkr/backward/window_dr/corner_quad.cuh
+        gkr/eval_vm_isa.cuh
+        gkr/forward/fwd_vm.cuh
+        gkr/forward/vm_addresses.cuh
+        gkr/support/descriptors.cuh
+        gkr/support/eq_high_low.cuh
+        gkr/support/eq_inline.cuh
+        gkr/support/initial_inner_product.cuh
+        gkr/support/kernel_helpers.cuh
+        gkr/support/lookup_helpers.cuh
+        ops/gkr_ops_shared.cuh
+        ops/query_indexes.cu
+        ops/round_update_shared.cuh
+)
+add_subdirectory(gkr/baby_bear)
+add_subdirectory(gkr/proth120)
+# The compiler owns this generated field-specific source list.
+add_subdirectory(gkr/proth120/backward/main_continuation_window)
+add_subdirectory(ops/baby_bear)
+add_subdirectory(ops/proth120)
 ab_cuda_configure_target(gpu_gkr_native
         PREFIX GPU_GKR
-        INCLUDE_DIRS ${GPU_CORE_NATIVE_INCLUDE} ${GPU_HASH_NATIVE_INCLUDE})
+        INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} ${GPU_CORE_NATIVE_INCLUDE} ${GPU_HASH_NATIVE_INCLUDE})

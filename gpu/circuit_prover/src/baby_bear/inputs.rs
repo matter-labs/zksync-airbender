@@ -13,7 +13,8 @@ use crate::upstream::{GKRExternalChallenges, NUM_PERMUTATION_ARGUMENT_LINEARIZAT
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::{BF, E4};
-use gpu_gkr::setup::{GpuGKRSetupHost, GpuGKRSetupTransfer};
+use gpu_gkr::baby_bear::setup::GpuGKRSetupHost;
+use gpu_gkr::baby_bear::setup::GpuGKRSetupTransfer;
 use gpu_prover_context::transfer::{Transfer, TransferKeepalive};
 use gpu_prover_context::ProverContext;
 use gpu_trace::baby_bear::trace::memory_cap::GpuGKRMemoryCapTransfer;

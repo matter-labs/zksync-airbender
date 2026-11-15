@@ -14,7 +14,7 @@ use crate::forward::{
     ForwardOutputSlabTarget, GpuGKRForwardOutput,
 };
 use crate::gkr_address_audit::AddressClass;
-use crate::setup::PackedSetupSource;
+use crate::proth120::setup::PackedSetupSource;
 use crate::upstream::{GKRAddress, PR};
 use crate::{ClassBacking, GpuBaseFieldPoly, GpuGKRStorage};
 

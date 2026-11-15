@@ -2,9 +2,6 @@ pub(crate) mod bank;
 pub(crate) mod binding;
 pub(crate) mod coefficient_bank;
 pub(crate) mod common;
-pub(crate) mod r0;
-pub(crate) mod state;
-pub(crate) mod tail;
 
 /// # Safety
 ///
@@ -17,3 +14,5 @@ pub(crate) unsafe fn zeroed_box<T>() -> Box<T> {
     }
     Box::from_raw(ptr)
 }
+
+pub(crate) mod tail;

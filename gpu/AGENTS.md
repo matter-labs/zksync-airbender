@@ -43,7 +43,10 @@ workspace-root `gkr_eval_ir`), and `gpu_native_build` (the shared build-script h
   native headers in `native/witness/` and shared Rust in `src/{trace,witness}/`.
   Owns the upstream-constant drift guards (`src/witness/mod.rs`).
 - **`gpu_gkr`**: the GKR engine and the GKR/WHIR protocol kernels; holds the
-  cluster's `__constant__` symbols and exports its headers for `gpu_whir`.
+  cluster's `__constant__` symbols and exports its headers for `gpu_whir`. Shared
+  code stays at the crate root; field implementations live in Rust
+  `src/{baby_bear,proth120}/` and native `{gkr,ops}/{baby_bear,proth120}/` trees
+  within one `gpu_gkr_native` archive.
 - **`gpu_whir`**: WHIR folds, PoW and query scheduling, and the recursive WHIR oracle.
   Field-specific Rust and native sources live in parallel `baby_bear/` and
   `proth120/` folders; generic PoW helpers and native fold/in-domain templates

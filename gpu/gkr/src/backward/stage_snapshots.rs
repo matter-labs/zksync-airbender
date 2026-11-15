@@ -1,15 +1,10 @@
 use std::collections::BTreeMap;
 
-use era_cudart::memory::memory_copy_async;
-use era_cudart::result::CudaResult;
-use era_cudart::slice::DeviceSlice;
-
-use super::kernels::{ClaimBufferLayout, DeviceClaimPointAndBatching};
-use crate::upstream::GKRAddress;
-use gpu_core::primitives::callbacks::Callbacks;
-use gpu_core::primitives::context::{DeviceAllocation, UnsafeMutAccessor};
-use gpu_core::primitives::field::E4;
+use era_cudart::{memory::memory_copy_async, result::CudaResult, slice::DeviceSlice};
+use gpu_core::primitives::{callbacks::Callbacks, context::UnsafeMutAccessor, field::E4};
 use gpu_prover_context::ProverContext;
+
+use crate::{backward::kernels::ClaimBufferLayout, upstream::GKRAddress};
 
 #[doc(hidden)]
 #[derive(Debug, PartialEq, Eq)]
@@ -30,26 +25,6 @@ impl<F> GKRBackwardStageSnapshotSink<F> {
     pub fn into_snapshots(self) -> Vec<GKRBackwardStageSnapshot<F>> {
         self.snapshots
     }
-}
-
-pub(super) fn schedule_stage_snapshot(
-    layer_idx: usize,
-    point_and_batching: &DeviceClaimPointAndBatching,
-    claims: &DeviceAllocation<E4>,
-    claim_layout: &ClaimBufferLayout,
-    output: UnsafeMutAccessor<GKRBackwardStageSnapshotSink>,
-    callbacks: &mut Callbacks<'_>,
-    context: &ProverContext,
-) -> CudaResult<()> {
-    schedule_stage_snapshot_fields(
-        layer_idx,
-        point_and_batching.slice(0, point_and_batching.len()),
-        claims,
-        claim_layout,
-        output,
-        callbacks,
-        context,
-    )
 }
 
 pub(crate) fn schedule_stage_snapshot_fields<F: Copy + Send + Sync + 'static>(
