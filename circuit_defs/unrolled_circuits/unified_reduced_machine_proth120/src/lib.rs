@@ -2,8 +2,9 @@
 
 //! The unified reduced-machine circuit over Proth120: the 2^21 L1 wrap circuit.
 //!
-//! The layout is the compiled JSON the L1 wrap verifiers are generated
-//! from; the witness-eval fn is generated from the matching SSA.
+//! `generated/layout.json` is the compiled circuit the L1 wrap verifiers are generated from,
+//! and `generated/witness_generation_fn.rs` is the witness-eval fn derived from its SSA; the
+//! `generate` test writes both.
 
 use common_constants::rom::{RomGeometry, L1_WRAP_ROM};
 use prover::cs::gkr_circuits::decoder_trait::{
@@ -31,9 +32,7 @@ pub mod l1_wrap {
     pub const TRACE_LEN_LOG2: usize = 21;
     pub const ROM: RomGeometry = L1_WRAP_ROM;
 
-    pub const LAYOUT_JSON: &str = include_str!(
-        "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
-    );
+    pub const LAYOUT_JSON: &str = include_str!("../generated/layout.json");
 
     pub fn circuit_artifact() -> GKRCircuitArtifact<Proth120> {
         serde_json::from_str(LAYOUT_JSON).expect("embedded 2^21 Proth120 unified layout")
@@ -45,9 +44,7 @@ pub mod l1_wrap {
         use prover::field::Proth120;
         use prover::gkr::witness_gen::witness_proxy::*;
 
-        include!(
-            "../../../../prover/compiled_circuits/unified_reduced_machine_generated_gkr_proth120.rs"
-        );
+        include!("../generated/witness_generation_fn.rs");
     }
 
     pub fn witness_eval_fn(
@@ -118,4 +115,49 @@ pub struct L1WrapSetup {
     pub setup: GKRSetup<Proth120>,
     pub trace_len: usize,
     pub rom: RomGeometry,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use prover::cs::gkr_circuits::unified_reduced_machine::{
+        build_unified_artifact_core,
+        unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core,
+        unified_register_all_tables,
+    };
+    use prover::cs::gkr_compiler::dump_ssa_witness_eval_form;
+    use std::io::Write;
+    use test_utils::skip_if_ci;
+
+    /// Writes `generated/layout.json` and `generated/witness_generation_fn.rs`.
+    #[test]
+    fn generate() {
+        skip_if_ci!();
+
+        let layout = build_unified_artifact_core::<Proth120, BabyBearField>(
+            true,
+            l1_wrap::TRACE_LEN_LOG2,
+            1,
+            L1_WRAP_ROM,
+        );
+        let ssa = dump_ssa_witness_eval_form::<Proth120>(
+            &|cs| unified_register_all_tables(cs, L1_WRAP_ROM),
+            &|cs| {
+                unified_reduced_machine_circuit_with_preprocessed_bytecode_for_gkr_core::<
+                    Proth120,
+                    BabyBearField,
+                    _,
+                >(cs, L1_WRAP_ROM)
+            },
+        );
+        let mut dst = std::fs::File::create("generated/layout.json").unwrap();
+        serde_json::to_writer_pretty(&mut dst, &layout).unwrap();
+        let witness = witness_eval_generator::derive_from_ssa::derive_from_gkr_ssa(
+            &ssa, &layout, false, "Proth120",
+        );
+        std::fs::File::create("generated/witness_generation_fn.rs")
+            .unwrap()
+            .write_all(witness.to_string().as_bytes())
+            .unwrap();
+    }
 }

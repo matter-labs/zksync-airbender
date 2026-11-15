@@ -604,7 +604,7 @@ fn apply_unified_family_dispatch_one_hot<F: PrimeField, CS: Circuit<F>>(
 /// at cs-side with dummy bytecode so `offset_for_decoder_table` accounts for
 /// its size; the prover supplies the real binary-derived content at prove time
 /// via the same `create_mem_word_only_special_tables` call.
-fn unified_register_all_tables<F: ::field::PrimeField, CS: Circuit<F>>(
+pub fn unified_register_all_tables<F: ::field::PrimeField, CS: Circuit<F>>(
     cs: &mut CS,
     rom: RomGeometry,
 ) {

@@ -15,5 +15,9 @@ common_constants = { workspace = true }
 riscv_transpiler = { workspace = true }
 serde_json = "*"
 
+[dev-dependencies]
+test_utils = { workspace = true }
+witness_eval_generator = { workspace = true }
+
 [lints]
 workspace = true
