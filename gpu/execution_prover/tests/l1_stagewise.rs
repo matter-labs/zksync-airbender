@@ -54,7 +54,7 @@ struct CompressionCheckpoint {
     setups: Setups,
 }
 
-/// Local gate after wrap scheduling or GKR transcript changes:
+/// Run locally after changing wrap scheduling or the GKR transcript:
 /// `cargo test -p gpu_execution_prover --test l1_stagewise --release -- --ignored --exact l1_wrap_stagewise_pessimistic_conjecture`
 #[test]
 #[ignore]

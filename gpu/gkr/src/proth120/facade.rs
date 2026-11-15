@@ -59,11 +59,11 @@ pub fn schedule_gkr(
     assert_eq!(
         base.pack_log2(),
         pack_log2,
-        "Proth120 facade base packing differs from the admitted proof layout"
+        "Proth120 facade base packing differs from the proof layout"
     );
     assert_eq!(
         setup.host.pack_log2, pack_log2,
-        "Proth120 facade setup packing differs from the admitted proof layout"
+        "Proth120 facade setup packing differs from the proof layout"
     );
     assert_eq!(seed.len(), 32, "Proth120 facade seed length mismatch");
     assert_eq!(

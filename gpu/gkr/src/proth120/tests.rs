@@ -99,7 +99,9 @@ fn l1_setup_host_round_trip_small() {
     .unwrap();
     drop(twiddle_factors);
     let worker = Worker::new_with_num_threads(4);
-    // Diagnostic rows, production setup width/pack/v1. Host init and proof both retain depth10.
+    // Reduced rows (2^15) and LDE factor (16) with the production setup width (10 columns),
+    // pack_log2 = 3 and log_values_per_leaf = 1. Both the host precomputation and the openings
+    // use partial trees with skip_bottom = 10.
     let log_rows = 15;
     let columns = deterministic_columns(log_rows, 10);
     let twiddles = Twiddles::<PR, Global>::new(1 << (log_rows + 3), &worker);

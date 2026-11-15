@@ -143,7 +143,8 @@ fn pr_accumulate_base_matches_cpu() {
     let ctx = context(512);
     let stream = ctx.get_exec_stream();
     let mut rng = TestRng::new(0x7101);
-    // Diagnostic row count, production packing and column counts.
+    // Reduced row count (2^12) with the production packing (pack_log2 = 3) and column counts
+    // (96 memory and witness, 10 setup).
     for (log_rows, memory_cols, setup_cols, pack) in [(12u32, 96usize, 10usize, 3u32)] {
         let rows = 1 << log_rows;
         let mut memory = rng.fields(rows * memory_cols);
@@ -329,7 +330,8 @@ fn pr_round_update_matches_cpu() {
 type ExtCommitment = CosetByCosetExtCommitment<PR, PR, Keccak256MerkleTreeWithCap>;
 
 pub(super) fn small_oracle(log_n: u32, log_lde: u32, tile_bytes: usize) -> OracleShape {
-    // Diagnostic shape: same v4/depth5 routes, fewer rows/cosets for an exact CPU cap.
+    // The production WHIR oracle parameters (log_values_per_leaf = 4, skip_bottom = 5,
+    // cap_log = 3) with fewer rows and cosets, so the CPU can compute the exact cap.
     let log_v = 4;
     let log_leaves = log_n - log_v;
     let skip_bottom = 5;
@@ -414,7 +416,8 @@ fn pr_commit_intermediate_matches_cpu_small() {
     let ctx = context(512);
     let worker = worker();
     let mut rng = TestRng::new(0x7201);
-    // Diagnostic fused suffix 8_4 and n11 residue, both with independent CPU caps.
+    // The (r, log_v) = (8, 4) suffix with the fused coefficient-tree sink at log_n = 15 and the
+    // residue sink at log_n = 11, both against independent CPU caps.
     for (log_n, log_lde, passes) in [(15u32, 4u32, 4usize), (11, 8, 4)] {
         let cosets = 1usize << log_lde;
         let tile_bytes = (cosets / passes) << (log_n + 4);
@@ -612,7 +615,8 @@ fn pr_open_intermediate_matches_cpu_small() {
     drop(twiddle_factors);
     let worker = worker();
     let mut rng = TestRng::new(0x7130_7eaf);
-    // Diagnostic fused suffix 8_4 and n11 residue; includes all top-path levels.
+    // The (r, log_v) = (8, 4) suffix with the fused coefficient-tree sink at log_n = 15 and the
+    // residue sink at log_n = 11; the paths include every top-tree level.
     for (log_n, log_lde, tile_log, log_v) in [(15, 4, 2, 4), (11, 8, 6, 4)] {
         let shape = opening_oracle(log_n, log_lde, tile_log, log_v);
         let monomials = rng.fields(1 << log_n);
@@ -781,7 +785,8 @@ fn pr_transcript_phases_match_reference() {
         config.whir_schedule.queries_pow_bits_per_round(),
         [30, 27, 30, 20, 17]
     );
-    // This CPU encoder oracle is independent of the GPU stage-test GKR replay.
+    // The WHIR handoff seed comes from the EVM encoder's CPU replay of the fixture proof's GKR
+    // transcript (`verifier_evm::encoding::replay_gkr_points`), independent of the GPU prover.
     let cpu = verifier_evm::encoding::replay_gkr_points(
         &circuit,
         &bundle.proof,
@@ -1068,7 +1073,8 @@ fn pr_in_domain_symbolic_matches_dense() {
     .unwrap();
     drop(twiddle_factors);
     let mut rng = TestRng::new(0x7401);
-    // Diagnostic: two production v4/depth5 routes reduced to n15 and n11.
+    // The two production WHIR commit paths at reduced sizes: the fused (8, 4) suffix at
+    // log_n = 15 and the residue sink at log_n = 11 (log_values_per_leaf = 4, skip_bottom = 5).
     let oracle0 = small_oracle(15, 4, 16 << 17);
     let oracle1 = small_oracle(11, 8, 16 << 17);
     let monomials = rng.fields(1 << 15);

@@ -97,7 +97,7 @@ fn guarded_columns(columns: &[Vec<PR>], rows: usize) -> Vec<PR> {
 fn pr_hypercube_cpu_parity() {
     let stream = CudaStream::create().unwrap();
     let mut rng = StdRng::seed_from_u64(SEED);
-    // Diagnostic: reduced rows, production base column count.
+    // Reduced rows (2^16) with the production base column count (12).
     let logs = [16];
     for log_n in logs {
         let rows = 1usize << log_n;
@@ -213,7 +213,8 @@ fn pr_pack_cpu_parity() {
     let stream = CudaStream::create().unwrap();
     let worker = Worker::new_with_num_threads(8);
     let mut rng = StdRng::seed_from_u64(SEED);
-    // Wrap packing shape, including the partial final group of columns.
+    // The production setup packing (2^21 rows, pack_log2 = 3, 10 columns), whose second group of
+    // eight columns is partial.
     pack_case(&stream, &worker, &mut rng, 21, 3, 10);
 }
 

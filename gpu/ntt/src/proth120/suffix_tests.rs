@@ -35,7 +35,7 @@ fn shape(log_n: u32, r: u32, log_v: u32, skip_bottom: u32, columns: u32) -> Suff
 // complete subtrees of 2^sb leaves, and every natural index of the coset is covered exactly once.
 #[test]
 fn cpu_pr_suffix_tile_maps() {
-    // Diagnostic rows preserve the three production suffix variants.
+    // Reduced rows with the (r, log_v, skip_bottom) of the three production suffix kernels.
     for (log_n, r, log_v, skip_bottom) in [(18, 7, 1, 10), (19, 8, 1, 10), (15, 8, 4, 5)] {
         let s = shape(log_n, r, log_v, skip_bottom, 1);
         let a = s.log_a();
@@ -144,7 +144,8 @@ fn pr_suffix_micro_matches_reference() {
     };
     let nu = domain_generator_for_size::<PR>(1u64 << 31);
     let mut rng = StdRng::seed_from_u64(0x9120_4201);
-    // Diagnostic: base 12-column 7_1, setup 2-column 8_1, and WHIR 8_4.
+    // Reduced rows for the three production suffix kernels: (r, log_v) = (7, 1) with 12 base
+    // columns, (8, 1) with 2 setup columns and (8, 4) with the one WHIR column.
     for (log_n, r, log_v, skip_bottom, columns, cosets) in [
         (18, 7, 1, 10, 12, 1),
         (19, 8, 1, 10, 2, 1),
@@ -273,8 +274,8 @@ fn pr_suffix_micro_matches_reference() {
     }
 }
 
-// Openings slots (T1.2): with the slot's active flag at 0 the chunked prefix and the suffix micro
-// leave their outputs untouched; at 1 they equal the ungated launches with the coset by value.
+// Openings slots: with the slot's active flag at 0 the chunked prefix and the suffix micro leave
+// their outputs untouched; at 1 they equal the ungated launches with the coset by value.
 #[test]
 #[cfg(not(no_cuda))]
 fn pr_slot_gate_skips_launches() {
@@ -285,7 +286,8 @@ fn pr_slot_gate_skips_launches() {
         pr_twiddles::prepare_proof_twiddles(&mut twiddle_tables, &mut twiddle_factors, &stream)
             .unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_1201);
-    // Diagnostic rows with the production base columns and suffix.
+    // Reduced rows (2^20) with the production base column count (12) and its suffix kernel,
+    // (r, log_v) = (7, 1).
     let (log_n, columns, log_v, skip_bottom) = (20u32, 12u32, 1u32, 10u32);
     let rows = 1usize << log_n;
     let len = rows * columns as usize;
@@ -381,5 +383,8 @@ fn pr_slot_gate_skips_launches() {
             );
         }
     }
-    println!("pr_slot_gate_skips_launches: (25,7,2,10) gate 0 untouched, gate 1 byte-equal");
+    println!(
+        "pr_slot_gate_skips_launches: ({log_n},{},{log_v},{skip_bottom}) {columns} columns, gate 0 untouched, gate 1 byte-equal",
+        s.r
+    );
 }

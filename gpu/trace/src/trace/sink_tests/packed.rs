@@ -1,4 +1,5 @@
-//! Diagnostic packed commit/open parity through the production wrapper.
+//! Packed commit and open parity of `PackedCosetRecomputeOracle` against the CPU commitment,
+//! at a reduced shape.
 
 use std::alloc::Global;
 
@@ -26,8 +27,10 @@ fn check_packed(raw_columns: usize, open: bool) {
     let stream = context.get_exec_stream();
     let baseline = context.get_used_mem_current();
     {
-        // Diagnostic: fewer rows/cosets, production pack3, base12/setup2, v1 and depth10.
-        // LDE16/cap8 retains a top-tree path level as well as all within-coset levels.
+        // Fewer rows (2^15) and cosets (LDE factor 16) than production, with its pack_log2 = 3,
+        // base and setup widths (96 and 10 columns: 12 and 2 packed), log_values_per_leaf = 1
+        // and skip_bottom = 10. LDE factor 16 with cap size 8 leaves one top-tree path level as
+        // well as all within-coset levels.
         let log_rows = 15;
         let pack_log2 = 3;
         let log_packed = log_rows + pack_log2;
@@ -100,7 +103,8 @@ fn check_packed(raw_columns: usize, open: bool) {
             let h = log_packed - cfg.log_values_per_leaf;
             let last = (1u32 << h) - 1;
             let coset_mask = (1 << cfg.log_lde_factor) - 1;
-            // Distinct touched order [last,1,0], duplicates, same coset, final leaf and Q12.
+            // Touched cosets first seen in the order [last, 1, 0], duplicate queries, several
+            // queries in one coset, the final leaf, and 12 queries in total.
             let queries: Vec<u32> = [
                 (last, coset_mask),
                 (0, 1),

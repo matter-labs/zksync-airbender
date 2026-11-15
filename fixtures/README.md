@@ -192,9 +192,10 @@ Before proving, it compares CPU and GPU trusted records byte for byte; GPU
 record construction logs the context's actual peak allocation per record.
 The shared cache includes compression records and no L1 wrap record.
 
-For local currency checks, build the GPU CLI and codec before taking the
-device lock, set `FIXTURE_CLI` and `FIXTURE_CODEC` to those executables,
-then run one recipe per hold:
+For local currency checks, build the GPU CLI and codec first, set
+`FIXTURE_CLI` and `FIXTURE_CODEC` to those executables, then run each recipe
+through `.agents/bin/with_gpu_lock.sh`, which holds the shared GPU lock
+(`/tmp/zksync-airbender-gpu.lock` by default) for one command:
 
 ```bash
 export FIXTURE_BACKEND=gpu
@@ -203,7 +204,7 @@ export FIXTURE_BACKEND=gpu
 ```
 
 Builds and CPU verification do not take the GPU lock. The currency recipe
-compares the complete compressed files; it makes no resource or timing claim.
+compares the complete compressed files.
 
 ## Census tables
 

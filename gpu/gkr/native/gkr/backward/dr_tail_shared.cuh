@@ -153,9 +153,9 @@ template <class Policy> DEVICE_FORCEINLINE void inner(const typename Policy::Des
   const unsigned eq_group_count = gkr_eq_group_count(eq_challenge_count);
 
   __shared__ F entry_weights[1u << Policy::ENTRY_CHALLENGES];
-  // Keep the entry challenge tuple in shared memory. A thread-0 local array
-  // becomes a 16-byte local-memory spill in the linked production kernel,
-  // which is forbidden by the resource admission gate.
+  // Keep the entry challenge tuple in shared memory: a thread-0 local array
+  // can spill to local memory, and DR-tail preparation asserts that the kernel
+  // uses none (`local_bytes == 0` in each field's `backward/dr_tail/resources.rs`).
   __shared__ F entry_challenges[Policy::ENTRY_CHALLENGES];
   __shared__ F round_challenge;
   __shared__ gkr_eq_sizes eq_sizes_shared;

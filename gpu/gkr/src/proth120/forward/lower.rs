@@ -1,4 +1,4 @@
-//! Field-specific assembly of the unchanged forward VM descriptor ABI.
+//! Proth120 forward VM descriptor, filled from the field-generic lowering in `lower_common`.
 use super::desc::{FwdVmDesc, MAPPING_ARENA_COUNT};
 use crate::forward::vm::lower_common;
 use crate::upstream::{Field, GKRAddress, PR};

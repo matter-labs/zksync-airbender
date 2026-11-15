@@ -132,8 +132,8 @@ pub(crate) const MAX_CHUNK_BYTES: usize = 32 << 20;
 pub(crate) const MIN_CHUNK_BYTES: usize = 1 << 20;
 pub(crate) const MAX_TILE_BYTES: usize = 32 << 20;
 
-// Half of the device L2: the working set at which the BabyBear NTT's measured per-NTT cost
-// minimum landed on both the 96 MiB and the 128 MiB parts (`ntt::strategy`).
+// Half of the device L2, the same cap `ntt::strategy` puts on the BabyBear NTT's monomial
+// working set.
 pub fn l2_working_set_budget(l2_cache_size_bytes: usize) -> usize {
     l2_cache_size_bytes / 2
 }

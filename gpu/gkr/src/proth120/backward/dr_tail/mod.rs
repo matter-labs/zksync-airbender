@@ -92,7 +92,7 @@ fn assert_capacity_matches_descriptor(
     let source_count = desc.source_count as usize;
     assert_eq!(
         entry_round, capacity.entry_round,
-        "Proth120 DR-tail entry round differs from the admitted capacity"
+        "Proth120 DR-tail entry round differs from the capacity decision"
     );
     let remaining_rounds = folding_steps
         .checked_sub(entry_round)

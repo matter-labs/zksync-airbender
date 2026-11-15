@@ -89,7 +89,8 @@ fn sink_coefficient_tree_matches_reference() {
     let proof_twiddles =
         pr_twiddles::prepare_proof_twiddles(&mut twiddle_tables, &mut twiddle_factors, &stream)
             .unwrap();
-    // Diagnostic fused suffix8_4 with exact CPU LDE/leaf coefficients.
+    // Reduced shape (2^15 rows, four of the 16 cosets) on the (r, log_v) = (8, 4) suffix and the
+    // coefficient-tree sink, against an independent CPU LDE and Merkle tree.
     for (log_n, log_v, log_lde, k0, cosets) in [(15, 4, 4, 3, 4)] {
         let skip_bottom = 5;
         let log_domain = log_n + log_lde;

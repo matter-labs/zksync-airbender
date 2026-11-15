@@ -614,7 +614,9 @@ pub fn open_coset_slot(
     )
 }
 
-// L2 working-set budget a coefficient-tree suffix batch leaves free; larger batches measured slower on the wrap.
+// L2 working-set budget a coefficient-tree suffix batch leaves free: a batch's tiles are sized to
+// stay in L2 from the suffix micro to the sink, and this headroom keeps room beside them for the
+// twiddle tables and the prefix reads and digest writes streaming through L2.
 const COEFFICIENT_BATCH_L2_HEADROOM_BYTES: usize = 6 << 20;
 
 pub fn coefficient_batch_bytes(l2_budget: usize) -> usize {

@@ -180,7 +180,8 @@ impl MultiplicityField for BF {
 #[test]
 #[cfg(not(no_cuda))]
 fn multiplicity_contract() {
-    // Preserve the BF alias/transient fixtures, including a multi-column output.
+    // BabyBear keeps its counter shards in the output for (512, 1, 64) and in a transient buffer
+    // for the other two cases, one with a two-column output; Proth120 runs the same cases.
     for (rows, columns, active) in [(512, 1, 64), (64, 2, 96), (2048, 1, 257)] {
         assert_multiplicity_contract::<BF>(rows, columns, active);
         assert_multiplicity_contract::<Proth120>(rows, columns, active);

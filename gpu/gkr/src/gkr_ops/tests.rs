@@ -438,7 +438,7 @@ macro_rules! claims_parity_suite {
             // `backward_dim_reducing_lsb_lines` must match the host dim-reducing
             // final-round reduction: out[0] = interpolate_linear(evals[0], evals[2], rbl),
             // out[1] = interpolate_linear(evals[1], evals[3], rbl). The two LSB lines are
-            // what the new structure commits to the transcript and sends in the proof.
+            // what the prover commits to the transcript and sends in the proof.
             fn run_device_lsb_lines(packed_values: &[F], r_before_last: F) -> Vec<F> {
                 let stream = CudaStream::default();
                 let num_addresses = packed_values.len() / 4;
@@ -502,7 +502,8 @@ macro_rules! claims_parity_suite {
 
             // Cross-check: lerp over LSB of the two lines at r_last must reproduce the full
             // two-var new_claim — i.e. the LSB-line split + linear new_claim is consistent
-            // with the existing two-var kernel (and so with the CPU final claim).
+            // with the two-variable reference `host_new_claim_two_var` (and so with the CPU
+            // final claim).
             #[test]
             fn lsb_lines_then_linear_matches_two_var() {
                 let rbl = sample(71);

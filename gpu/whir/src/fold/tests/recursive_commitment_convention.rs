@@ -93,7 +93,8 @@ fn assert_recursive_commitment_leaves_match_live_cpu(
     let worker = Worker::new();
     let context = match leaves {
         Leaves::All => make_test_context(if log_trace_len == 22 { 4096 } else { 512 }, 128),
-        // Production codewords are 2 GiB of E4 values; the 30 GiB arena of the compression gates.
+        // Production codewords are 2 GiB of E4 values, so this case runs in a 30 GiB arena, the
+        // size of the GPU prover's `MemoryPreset::GiB30`.
         Leaves::Sampled => make_test_context(30 << 10, 256),
     };
     let baseline = context.get_used_mem_current();

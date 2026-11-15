@@ -48,8 +48,8 @@ fn suffix_micro_function(r: u32, log_v: u32) -> SuffixMicroFunction {
     })
 }
 
-// Suffix geometry of one packed or WHIR oracle (spec section 2): after the a = log_n - r prefix
-// stages, component g is the run of 2^r values at prefix block bitrev_a(g); tile G holds components
+// Suffix geometry of one packed or WHIR oracle: after the a = log_n - r prefix stages, component
+// g is the run of 2^r values at prefix block bitrev_a(g); tile G holds components
 // [G * 2^sb, (G + 1) * 2^sb) of every column, i.e. 2^(r - v) complete subtrees of 2^sb leaves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SuffixShape {

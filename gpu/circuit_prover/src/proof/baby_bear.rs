@@ -195,7 +195,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for BabyBearProofRequest<'r, '
         } = state;
         let r = &mut committed.joined.request;
         let w = &mut committed.witness;
-        // Preserve the old post-challenge last-use point for these device inputs.
+        // Release these device inputs once the challenges are drawn: no later phase reads them.
         drop(r.inputs.tracing_data.take());
         drop(r.inputs.inits_and_teardowns.take());
         drop(r.inputs.decoder.take());
@@ -399,8 +399,8 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for BabyBearProofRequest<'r, '
                 _proof_host_mirror: proof_host_mirror,
             },
         };
-        // The original input bindings retired in reverse declaration order after
-        // the completion record. Keep that order across consuming phase states.
+        // Release the input bindings after the completion event is recorded, in reverse
+        // declaration order.
         drop(external_challenges);
         drop(top_bits);
         drop(memory);

@@ -237,7 +237,8 @@ impl<T> CudaSliceMut<T> for ProofSlabSlicePr<T> {
     }
 }
 
-/// The apex hands the WHIR crate one target; views only cover its output ranges.
+/// The L1 wrap orchestration in `gpu_circuit_prover` hands the WHIR crate one target; views
+/// only cover its output ranges.
 pub struct WhirProofTargetPr {
     pub backing: Arc<DeviceAllocation<PR>>,
     pub layout: Arc<ProofLayoutPr>,

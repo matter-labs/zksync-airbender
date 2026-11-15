@@ -459,7 +459,7 @@ fn schedule_phase_one<'a>(
             })
             .transpose()?;
         let admitted_memory_host =
-            Arc::clone(memory_host.as_ref().expect("proof cap metadata admitted"));
+            Arc::clone(memory_host.as_ref().expect("a proof needs memory caps"));
         let memory_host =
             match proof_partial_trees(circuit_type, state.profile, memory_partial_trees) {
                 Some(trees) => {
@@ -511,7 +511,7 @@ fn schedule_phase_one<'a>(
         PhaseOneInputs::Proof(bundle)
     } else if config.commitment_mode == CommitmentMode::MergedMemoryAndWitness {
         let setup_transfer = GpuGKRSetupTransfer::new(
-            Arc::clone(setup_host.as_ref().expect("merged setup metadata admitted")),
+            Arc::clone(setup_host.as_ref().expect("a merged commit needs a setup")),
             crate::memory_policy::partial_trees(circuit_type, state.profile).setup,
             context,
         )?;

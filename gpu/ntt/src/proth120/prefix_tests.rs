@@ -155,7 +155,7 @@ fn cpu_pr_chunk_plan_closure() {
             }
         }
     }
-    // Diagnostic exhaustive address closure at reduced rows.
+    // Exhaustive address closure at a reduced row count (2^16).
     let plan = chunk_plan(16, &[(8, false)], CHUNK_16_MIB).unwrap();
     assert_closure(&plan, true);
 }
@@ -367,7 +367,8 @@ fn prefix_case<P: TransformPolicy>(
 fn pr_prefix_chunked_mobius_cpu_parity() {
     let stream = CudaStream::create().unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_3102);
-    // Diagnostic wide Mobius prefixes; narrow Mobius is not a wrap route.
+    // Wide Mobius prefixes only: the chunked Mobius transform never plans narrow passes, and
+    // the Mobius policy has no narrow kernels.
     for (log_n, groups, cols) in [
         (16, vec![(8, false)], 12),
         (19, vec![(6, false), (5, false)], 2),
@@ -423,7 +424,8 @@ fn pr_lde_coset_slot_fused_scale_parity() {
         pr_twiddles::prepare_proof_twiddles(&mut twiddle_tables, &mut twiddle_factors, &stream)
             .unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_3201);
-    // Diagnostic row counts, production column counts; exact CPU oracle.
+    // Reduced row counts (2^19, 2^15) with the production column counts (12 base, 2 setup,
+    // 1 WHIR); exact CPU oracle.
     for (log_n, cols) in [(19, 12), (19, 2), (15, 1)] {
         let rows = 1usize << log_n;
         let plan = scaled_prefix_plan(log_n);
@@ -509,7 +511,8 @@ fn pr_lde_coset_slot_small_l2_parity() {
             .unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_3401);
     let k = 5u32;
-    // Diagnostic rows with the production base/setup columns and WHIR fold.
+    // Reduced rows with the production base, setup and WHIR column counts (12, 2, 1) and their
+    // (log_values_per_leaf, skip_bottom): (1, 10) for base and setup, (4, 5) for WHIR.
     for (log_n, columns, log_v, skip_bottom, cols) in
         [(19, 12, 1, 10, 12), (19, 2, 1, 10, 2), (15, 1, 4, 5, 1)]
     {
@@ -575,7 +578,7 @@ fn pr_hypercube_chunked_matches_plain() {
     use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
     let stream = CudaStream::create().unwrap();
     let mut rng = StdRng::seed_from_u64(0x9120_2301);
-    // Diagnostic row count with the production base columns.
+    // Reduced row count (2^19) with the production base column count (12).
     for (log_n, cols) in [(19, 12)] {
         let rows = 1usize << log_n;
         let input: Vec<PR> = (0..rows * cols)

@@ -13,7 +13,9 @@ constexpr bool COUNTER_SEARCH = false;
 constexpr u64 STOP = u64{1} << 63;
 
 // FULL_CHUNK skips per-nonce bounds checks for complete counter-search chunks.
-// CHECKED_GRID retains the hashes' existing advance and publication policies.
+// Grid search: CHECKED_GRID (Keccak) computes nonce indices in 64 bits and returns as soon as
+// the next nonce would reach max_nonce, so nonce + stride never overflows; without it (Blake2s)
+// indices use 32-bit products and a thread fences after publishing a hit.
 template <bool COUNTER, bool FULL_CHUNK, bool CHECKED_GRID, typename Predicate, typename Published>
 DEVICE_FORCEINLINE void search(const u64 max_nonce, const u32 chunk_steps, u64 *counter, u64 *result, Predicate predicate, Published published) {
   auto *result_ptr = reinterpret_cast<unsigned long long *>(result);

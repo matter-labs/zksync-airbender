@@ -1,4 +1,4 @@
-// Adapted from PR #493 (gpu/ntt/native/natural_monomials_to_bitrev_evals_proth120.cu).
+// Adapted from the Proth120 NTT kernel of zksync-airbender PR #493 (closed without merging).
 #pragma once
 #include "context.cuh"
 

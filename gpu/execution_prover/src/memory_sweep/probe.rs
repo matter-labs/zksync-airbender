@@ -96,7 +96,7 @@ pub(super) fn commit_memory(
         let (decoder, inits, trace) = input_transfers(context, circuit)?;
         let job = if config.commitment_mode == CommitmentMode::MergedMemoryAndWitness {
             let setup = GpuGKRSetupTransfer::new(
-                setup_host.expect("merged setup metadata admitted"),
+                setup_host.expect("a merged commit needs a setup"),
                 PartialTreePolicy::DEFAULT.setup,
                 context,
             )?;

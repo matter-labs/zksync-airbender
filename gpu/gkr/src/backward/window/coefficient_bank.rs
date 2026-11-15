@@ -256,7 +256,8 @@ fn translate_recipe_inner(
 pub(crate) type CoefficientMonomialKey = (u16, u8, u8, u8, u8);
 
 /// Field-neutral recipe normalization; scalar conversion is the only field policy.
-/// The BabyBear caller retains its per-recipe capacity check; Proth120 asserts errors at its boundary.
+/// The BabyBear caller checks its per-recipe monomial capacity itself; the Proth120 caller
+/// panics on any error.
 pub(crate) fn translate_coefficient_recipe<F: PrimeField>(
     recipe: &NormalizedCoefficientRecipe,
     recipe_index: usize,
@@ -322,7 +323,8 @@ fn translate_coefficient_product<F: PrimeField>(
             distinct: exponents.len(),
         });
     }
-    // Keep BabyBear's canonical-scalar validation before the exponent checks.
+    // Convert the scalar before the exponent overflow checks, so a non-canonical BabyBear scalar
+    // panics (`babybear_from_canonical`) before an exponent error is returned.
     let scalar = convert_scalar(product.scalar);
     let mut key = (
         batch as u16,

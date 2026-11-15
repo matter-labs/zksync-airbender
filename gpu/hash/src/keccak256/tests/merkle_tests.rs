@@ -52,7 +52,8 @@ fn sentinel_buffer(len: usize, stream: &CudaStream) -> DeviceAllocation<Digest> 
 fn keccak256_leaf_parity() {
     let stream = CudaStream::default();
     let mut rng = TestRng::new(0x6c65_6166);
-    // Diagnostic base12/setup2 and WHIR v4 leaf widths.
+    // Reduced domains at the production leaf widths: 12 packed base and 2 packed setup columns
+    // with log_values_per_leaf = 1, and one WHIR column with log_values_per_leaf = 4.
     for (log_domain, log_v, columns) in [(18u32, 1u32, 12usize), (18, 1, 2), (11, 4, 1)] {
         let label = format!("log_domain={log_domain} log_v={log_v} columns={columns}");
         let domain = 1usize << log_domain;
