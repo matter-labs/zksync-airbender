@@ -3,12 +3,8 @@
 #include "primitives/memory.cuh"
 using namespace ::airbender::primitives::memory;
 namespace airbender::trace::witness::multiplicities {
-template <typename Shard> DEVICE_FORCEINLINE auto counter_word(Shard *ptr) {
-  if constexpr (std::is_same_v<std::remove_const_t<Shard>, bf>)
-    return &ptr->limb;
-  else
-    return ptr;
-}
+template <typename Shard> DEVICE_FORCEINLINE auto counter_word(Shard *ptr) { return ptr; }
+
 template <typename Shard>
 DEVICE_FORCEINLINE void count_multiplicities(u32 *const __restrict__ lookup_mapping, const unsigned lookup_mapping_size,
                                              Shard *const __restrict__ counter_shards, const unsigned active_counts_len, const unsigned counter_replicas) {

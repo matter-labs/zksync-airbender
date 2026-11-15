@@ -3,10 +3,5 @@
 pub mod decoder;
 // test-reference readers: apex test suites reach `holder` across the crate boundary.
 pub mod holder;
-pub mod memory;
 pub mod memory_cap;
-pub mod packed;
-pub mod sink;
-#[cfg(test)]
-mod sink_tests;
 pub mod tracing_data;

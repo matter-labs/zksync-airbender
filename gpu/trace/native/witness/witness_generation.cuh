@@ -8,8 +8,10 @@ using namespace ::airbender::trace::witness::placeholder;
 using namespace ::airbender::trace::witness::tables;
 
 #ifndef WITNESS_GENERATION_NAMESPACE
-#define WITNESS_GENERATION_NAMESPACE generation
-#define WITNESS_VALUE bf
+#error "Define WITNESS_GENERATION_NAMESPACE before including witness/witness_generation.cuh"
+#endif
+#ifndef WITNESS_VALUE
+#error "Define WITNESS_VALUE before including witness/witness_generation.cuh"
 #endif
 namespace airbender::trace::witness::WITNESS_GENERATION_NAMESPACE {
 using witness_value = WITNESS_VALUE;
@@ -417,9 +419,9 @@ template <class R, class Places> struct WitnessProxy {
 
 // NOLINTBEGIN
 // clang-format off
-// Relative to the including template's dir (native/witness/circuits/). The crate
+// Relative to the including template's dir (native/<field>/circuits/). The crate
 // lives at gpu/trace/, so reaching the workspace-root circuit_defs/ needs
-// five "../" (circuits→witness→native→trace→gpu→root).
+// five "../" (circuits→field→native→trace→gpu→root).
 #define INCLUDE_PREFIX ../../../../../circuit_defs
 #define UNROLLED_INCLUDE_PREFIX ../../../../../circuit_defs/unrolled_circuits
 #define INCLUDE_SUFFIX generated/witness_generation_fn.cuh

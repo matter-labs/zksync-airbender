@@ -5,7 +5,7 @@ use era_cudart::result::CudaResult;
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::{DeviceAllocation, UnsafeMutAccessor};
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
+use gpu_trace::proth120::trace::packed::PackedCosetRecomputeOracle;
 
 use super::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
 use super::backward::{schedule_backward_pr, DrTailProofPlanPr, GKRBackwardStageSnapshotSinkPr};

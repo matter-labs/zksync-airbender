@@ -21,14 +21,15 @@ use gpu_gkr::stage1::merged_commitment::{
     commit_merged_from_transfers, GpuGKRMergedCommitTransfer,
 };
 use gpu_prover_context::{AllocationMode, ProverContext, ProverContextConfig};
-use gpu_trace::trace::decoder::DecoderTableTransfer;
-use gpu_trace::trace::holder::resolve_partial_tree_reduction_layers;
-use gpu_trace::trace::memory::{
+use gpu_trace::baby_bear::trace::memory::{
     commit_memory_from_transfers_for_geometry, MemoryCommitmentJob, PartialTreeBuffer,
 };
-use gpu_trace::trace::memory_cap::{
-    GpuGKRMemoryCapHost, GpuGKRMemoryCapTransfer, PartialTrees, PartialTreesGeometry,
+use gpu_trace::baby_bear::trace::memory_cap::{
+    GpuGKRMemoryCapHost, GpuGKRMemoryCapTransfer, PartialTrees,
 };
+use gpu_trace::trace::decoder::DecoderTableTransfer;
+use gpu_trace::trace::holder::resolve_partial_tree_reduction_layers;
+use gpu_trace::trace::memory_cap::PartialTreesGeometry;
 use gpu_trace::trace::tracing_data::{
     InitsAndTeardownsTransfer, TracingDataHost, TracingDataTransfer, UnrolledTracingDataHost,
 };
@@ -153,7 +154,7 @@ struct PhaseOne<'a> {
 #[allow(clippy::large_enum_variant)]
 enum PhaseOneInputs<'a> {
     Proof(gpu_circuit_prover::proof::inputs::GpuGKRProofTransfer<'a, A>),
-    MemoryCommitment(gpu_trace::trace::memory::GpuGKRCommitMemoryTransfer<'a, A>),
+    MemoryCommitment(gpu_trace::baby_bear::trace::memory::GpuGKRCommitMemoryTransfer<'a, A>),
     MergedCommitment(GpuGKRMergedCommitTransfer<'a, A>),
     L1Wrap(L1WrapInputs<'a, A>, DrTailProofPlanPr, OperationMode),
     SetupInitialization,
@@ -525,12 +526,13 @@ fn schedule_phase_one<'a>(
         bundle.schedule(context)?;
         PhaseOneInputs::MergedCommitment(bundle)
     } else {
-        let mut bundle = gpu_trace::trace::memory::GpuGKRCommitMemoryTransfer::<'_, A>::new(
-            decoder_transfer,
-            inits_and_teardowns_transfer,
-            tracing_data_transfer,
-            context,
-        )?;
+        let mut bundle =
+            gpu_trace::baby_bear::trace::memory::GpuGKRCommitMemoryTransfer::<'_, A>::new(
+                decoder_transfer,
+                inits_and_teardowns_transfer,
+                tracing_data_transfer,
+                context,
+            )?;
         trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling commit-memory H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );

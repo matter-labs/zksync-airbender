@@ -7,7 +7,7 @@ use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_hash::keccak256::{keccak256_pow, transcript_draw_fields};
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::packed::PackedCosetRecomputeOracle;
+use gpu_trace::proth120::trace::packed::PackedCosetRecomputeOracle;
 
 use crate::proth120::backward::GpuGKRBackwardScheduledExecutionPr;
 use crate::proth120::base_layer_claims::{

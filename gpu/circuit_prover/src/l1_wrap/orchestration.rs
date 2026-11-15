@@ -22,13 +22,13 @@ use gpu_gkr::setup::{L1WrapSetupHost, PackedSetupSource};
 use gpu_ntt::proth120::TwiddleDescriptor;
 use gpu_prover_context::transfer::{Transfer, TransferKeepalive};
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
-use gpu_trace::trace::packed::{PackedCommitConfig, PackedCosetRecomputeOracle};
-use gpu_trace::trace::tracing_data::{TracingDataDevice, UnrolledTracingDataDevice};
-use gpu_trace::witness::proth120::{
+use gpu_trace::proth120::trace::packed::{PackedCommitConfig, PackedCosetRecomputeOracle};
+use gpu_trace::proth120::witness::{
     generate_fused_values, generate_inits_and_teardowns, generate_lookup_multiplicities,
     Proth120WitnessBuffers,
 };
+use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
+use gpu_trace::trace::tracing_data::{TracingDataDevice, UnrolledTracingDataDevice};
 use gpu_trace::witness::trace_unrolled::PAGE_SIZE_LOG2;
 use gpu_whir::proth120::{
     schedule_l1_whir_fold, L1WhirInputs, L1WhirKeepalive, L1WhirPendingReadback, L1WhirProof,

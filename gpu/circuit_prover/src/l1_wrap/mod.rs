@@ -12,7 +12,7 @@ use gpu_core::primitives::field::PR;
 use gpu_gkr::proth120::base_layer_claims::BaseClaimGatherPr;
 use gpu_gkr::proth120::programs::GkrProgramsPr;
 use gpu_gkr::proth120::proof_layout::ProofLayoutPr;
-use gpu_trace::witness::proth120::LookupRelationsPr;
+use gpu_trace::proth120::witness::LookupRelationsPr;
 
 use crate::upstream::{
     GKRCircuitArtifact, GKRProof, Keccak256MerkleTreeWithCap, Proth120, ProverConfig,

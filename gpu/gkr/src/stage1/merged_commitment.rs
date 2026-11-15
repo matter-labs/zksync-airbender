@@ -1,4 +1,4 @@
-use gpu_trace::trace::memory::PartialTreeBuffer;
+use gpu_trace::baby_bear::trace::memory::PartialTreeBuffer;
 use std::sync::Arc;
 
 use era_cudart::result::CudaResult;
@@ -13,13 +13,13 @@ use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::device_tracing::Range;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::decoder::DecoderTableTransfer;
-use gpu_trace::trace::holder::PartialTreePolicy;
-use gpu_trace::trace::holder::{WitnessCommitmentStrategy, WitnessPostCommitStorage};
-use gpu_trace::trace::memory::{
+use gpu_trace::baby_bear::trace::memory::{
     schedule_memory_commitment_job, schedule_memory_commitment_job_in_place,
     schedule_memory_commitment_job_with_monomials, MemoryCommitmentJob,
 };
+use gpu_trace::trace::decoder::DecoderTableTransfer;
+use gpu_trace::trace::holder::PartialTreePolicy;
+use gpu_trace::trace::holder::{WitnessCommitmentStrategy, WitnessPostCommitStorage};
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 
 /// Shared H2D ownership for the existing BF memory-and-witness generator.

@@ -14,7 +14,7 @@ use gpu_hash::keccak256::{
 use gpu_ntt::proth120::{update_eq_poly, EqSample, TwiddleDescriptor};
 use gpu_ops::powers::get_powers_by_ref;
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::packed::{CosetQueryPlan, PackedCosetRecomputeOracle};
+use gpu_trace::proth120::trace::packed::{CosetQueryPlan, PackedCosetRecomputeOracle};
 use std::sync::Arc;
 
 use super::commit::{schedule_commit_intermediate, IntermediateOracle};

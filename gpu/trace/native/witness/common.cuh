@@ -1,8 +1,6 @@
 #pragma once
 
-#include "primitives/baby_bear/field.cuh"
-
-using namespace ::airbender::primitives::field;
+#include "primitives/ptx.cuh"
 
 namespace airbender::trace::witness {
 
@@ -26,28 +24,12 @@ struct Address {
 
 template <typename F> struct witness_field;
 
-template <> struct witness_field<bf> {
-  static DEVICE_FORCEINLINE bf from_u32(u32 value) { return bf::from_u32_unchecked(value); }
-  static consteval DEVICE_FORCEINLINE bf constant(u32 value) { return bf::const_into_mont(value); }
-  static DEVICE_FORCEINLINE bf from_raw(u32 value) { return bf::from_raw_repr_with_reduction(value); }
-  static DEVICE_FORCEINLINE u32 to_integer(bf value) { return bf::into_canonical_u32(value); }
-  static DEVICE_FORCEINLINE u32 to_raw(bf value) { return bf::into_raw_u32(value); }
-  static DEVICE_FORCEINLINE u32 to_bounded(bf value) { return bf::into_canonical_u32(value); }
-  static DEVICE_FORCEINLINE bool to_mask(bf value) { return static_cast<bool>(bf::into_canonical_u32(value)); }
-  static DEVICE_FORCEINLINE bool equal(bf lhs, bf rhs) { return lhs.limb == rhs.limb; }
-  static DEVICE_FORCEINLINE void print(bf value) { printf("%u", value.limb); }
-};
-
 #define MAX_LINEAR_TERMS_COUNT 4
 
 template <typename F> struct LinearTerm {
   F coefficient;
   Address address;
   u32 padding;
-};
-template <> struct LinearTerm<bf> {
-  u32 coefficient;
-  Address address;
 };
 
 template <typename F> struct LinearRelation {
@@ -56,22 +38,12 @@ template <typename F> struct LinearRelation {
   u32 linear_terms_count;
   u32 padding[3];
 };
-template <> struct LinearRelation<bf> {
-  u32 linear_terms_count;
-  LinearTerm<bf> linear_terms[MAX_LINEAR_TERMS_COUNT];
-  u32 constant;
-};
 
 template <typename F, typename Memory, typename Witness, typename Scratch>
 DEVICE_FORCEINLINE F evaluate_linear_relation(const Memory &memory, const Witness &witness, const Scratch &scratch, const LinearRelation<F> relation) {
-  F result;
-  if constexpr (std::is_same_v<F, bf>) {
-    result = relation.constant == 0 ? bf::ZERO() : bf::from_u32_unchecked(relation.constant);
-  } else {
-    if (relation.linear_terms_count > MAX_LINEAR_TERMS_COUNT)
-      __trap();
-    result = relation.constant;
-  }
+  if (relation.linear_terms_count > MAX_LINEAR_TERMS_COUNT)
+    __trap();
+  F result = relation.constant;
 #pragma unroll
   for (int i = 0; i < MAX_LINEAR_TERMS_COUNT; ++i) {
     if (i == relation.linear_terms_count)
@@ -79,9 +51,7 @@ DEVICE_FORCEINLINE F evaluate_linear_relation(const Memory &memory, const Witnes
     const auto &term = relation.linear_terms[i];
     const auto coefficient = term.coefficient;
     const auto address = term.address;
-    F value;
-    if constexpr (!std::is_same_v<F, bf>)
-      value = F::ZERO();
+    F value = F::ZERO();
     switch (address.tag) {
     case BaseLayerMemory:
       value = memory.get_at_col(address.offset);
@@ -96,26 +66,9 @@ DEVICE_FORCEINLINE F evaluate_linear_relation(const Memory &memory, const Witnes
       __trap();
       break;
     }
-    if constexpr (std::is_same_v<F, bf>) {
-      switch (coefficient) {
-      case 0:
-        __trap();
-        break;
-      case 1:
-        break;
-      case bf::ORDER - 1:
-        value = bf::neg(value);
-        break;
-      default:
-        value = bf::mul(value, bf::from_u32_unchecked(coefficient));
-        break;
-      }
-      result = bf::add(result, value);
-    } else {
-      if (F::is_zero(coefficient))
-        __trap();
-      result = F::fma(coefficient, value, result);
-    }
+    if (F::is_zero(coefficient))
+      __trap();
+    result = F::fma(coefficient, value, result);
   }
   return result;
 }

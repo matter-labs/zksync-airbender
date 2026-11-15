@@ -261,7 +261,7 @@ fn l1_wrap_followed_worker_parity() {
 
 fn tagged_partial_trees(circuit_type: CircuitType, profile: ProofProfile) -> MemoryPartialTrees {
     MemoryPartialTrees {
-        layout_version: gpu_trace::trace::memory_cap::PARTIAL_TREES_LAYOUT_VERSION,
+        layout_version: gpu_trace::baby_bear::trace::memory_cap::PARTIAL_TREES_LAYOUT_VERSION,
         circuit_type,
         profile,
         log_domain_size: 22,

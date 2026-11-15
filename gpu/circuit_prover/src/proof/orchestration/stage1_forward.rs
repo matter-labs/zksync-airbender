@@ -17,9 +17,9 @@ use gpu_gkr::setup::{schedule_forward_setup_for_shape, GpuGKRForwardSetup, GpuGK
 use gpu_gkr::stage1::GpuGKRStage1Output;
 use gpu_hash::blake2s::STATE_SIZE;
 use gpu_prover_context::ProverContext;
+use gpu_trace::baby_bear::trace::memory_cap::GpuGKRMemoryCapTransfer;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
-use gpu_trace::trace::memory_cap::GpuGKRMemoryCapTransfer;
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 
 pub(in crate::proof) struct Stage1WitnessPreparation {

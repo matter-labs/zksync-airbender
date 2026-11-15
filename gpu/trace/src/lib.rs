@@ -7,6 +7,8 @@
 // by construction. That mode only ever compiles, so this is not a real finding.
 #![cfg_attr(no_cuda, allow(dead_code, unused_imports))]
 
+pub mod baby_bear;
+pub mod proth120;
 pub mod trace;
 pub(crate) mod upstream;
 pub mod witness;

@@ -12,6 +12,25 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::BF;
 use gpu_ops::simple::set_to_zero;
 use gpu_prover_context::ProverContext;
+use gpu_trace::baby_bear::witness::memory_delegation::generate_memory_and_witness_values_delegation;
+use gpu_trace::baby_bear::witness::memory_unrolled::{
+    generate_memory_and_witness_values_unrolled_inits_and_teardowns,
+    generate_memory_and_witness_values_unrolled_memory,
+    generate_memory_and_witness_values_unrolled_non_memory,
+    generate_memory_and_witness_values_unrolled_unified,
+};
+use gpu_trace::baby_bear::witness::multiplicities::{
+    allocate_range_check_lookup_mappings, generate_lookup_multiplicities,
+    generate_range_check_lookup_mappings,
+};
+use gpu_trace::baby_bear::witness::witness_delegation::{
+    generate_fused_values_delegation, generate_witness_values_delegation,
+};
+use gpu_trace::baby_bear::witness::witness_unrolled::{
+    generate_fused_values_unrolled_memory, generate_fused_values_unrolled_non_memory,
+    generate_fused_values_unrolled_unified, generate_witness_values_unrolled_memory,
+    generate_witness_values_unrolled_non_memory, generate_witness_values_unrolled_unified,
+};
 use gpu_trace::trace::holder::{
     PartialTreePolicy, TraceHolder, TreesCacheMode, WitnessCommitmentStrategy,
     WitnessPostCommitStorage,
@@ -23,27 +42,8 @@ use gpu_trace::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
-use gpu_trace::witness::memory_delegation::generate_memory_and_witness_values_delegation;
-use gpu_trace::witness::memory_unrolled::{
-    generate_memory_and_witness_values_unrolled_inits_and_teardowns,
-    generate_memory_and_witness_values_unrolled_memory,
-    generate_memory_and_witness_values_unrolled_non_memory,
-    generate_memory_and_witness_values_unrolled_unified,
-};
-use gpu_trace::witness::multiplicities::{
-    allocate_range_check_lookup_mappings, generate_lookup_multiplicities,
-    generate_range_check_lookup_mappings,
-};
 use gpu_trace::witness::trace_unrolled::{
     ExecutorFamilyDecoderData, InitsAndTeardownsTraceDevice, PAGE_SIZE_LOG2,
-};
-use gpu_trace::witness::witness_delegation::{
-    generate_fused_values_delegation, generate_witness_values_delegation,
-};
-use gpu_trace::witness::witness_unrolled::{
-    generate_fused_values_unrolled_memory, generate_fused_values_unrolled_non_memory,
-    generate_fused_values_unrolled_unified, generate_witness_values_unrolled_memory,
-    generate_witness_values_unrolled_non_memory, generate_witness_values_unrolled_unified,
 };
 
 use crate::upstream::{BaseCommitmentGeometry, BaseOracleRole, CommitmentMode, GKRCircuitArtifact};
@@ -230,7 +230,7 @@ impl GpuGKRStage1Output {
         base_geometry: BaseCommitmentGeometry,
         partial_trees: PartialTreePolicy,
     ) -> CudaResult<Self> {
-        gpu_trace::trace::memory::validate_stage1_commitment_geometry(
+        gpu_trace::baby_bear::trace::memory::validate_stage1_commitment_geometry(
             &base_geometry,
             compiled_circuit,
         );

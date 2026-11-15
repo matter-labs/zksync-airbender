@@ -205,26 +205,13 @@ const _: () = DelegationAbi {
 });
 
 pub(crate) mod layout;
-// pub: apex production (`prover::gkr::stage1`) launches these witness-generation
-// entry points across the Task-8 split (bridge removed in Task 12).
-pub mod memory_delegation;
 pub mod memory_unrolled;
-pub mod multiplicities;
-mod option;
-// pub: the Proth120 L1 wrap proof job (via `gpu_gkr` stage 1) launches these witness-generation
-// entry points across the crate boundary.
-pub mod proth120;
-mod ram_access;
+pub(crate) mod option;
+pub(crate) mod ram_access;
 pub use execution_prover_model::trace;
 // test-reference readers: apex test suites reach `trace_delegation` across the crate boundary.
 pub mod trace_delegation;
 pub mod trace_unrolled;
-// pub: `gpu_gkr`'s stage1 (`gpu_gkr::stage1`) imports
-// `generate_witness_values_delegation` across the crate boundary.
-pub mod witness_delegation;
-// pub: `gpu_gkr`'s stage1 (`gpu_gkr::stage1`) imports
-// `generate_witness_values_unrolled_{memory,non_memory,unified}` across the
-// crate boundary.
 pub mod witness_unrolled;
 
 #[repr(C, u32)]
@@ -269,42 +256,7 @@ impl From<GKRAddress> for Address {
     }
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct LinearTerm {
-    coefficient: u32,
-    address: Address,
-}
-
 pub(crate) const MAX_LINEAR_TERMS_COUNT: usize = 4;
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct LinearRelation {
-    linear_terms_count: u32,
-    linear_terms: [LinearTerm; MAX_LINEAR_TERMS_COUNT],
-    constant: u32,
-}
-
-impl From<&crate::upstream::LinearRelation> for LinearRelation {
-    fn from(value: &crate::upstream::LinearRelation) -> Self {
-        let terms = &value.linear_terms;
-        let len = terms.len();
-        assert!(len <= MAX_LINEAR_TERMS_COUNT);
-        let mut linear_terms = [LinearTerm::default(); MAX_LINEAR_TERMS_COUNT];
-        for (&src, dst) in terms.iter().zip(linear_terms.iter_mut()) {
-            *dst = LinearTerm {
-                coefficient: src.0.to_u32(),
-                address: src.1.into(),
-            };
-        }
-        Self {
-            linear_terms_count: len as u32,
-            linear_terms,
-            constant: value.constant.to_u32(),
-        }
-    }
-}
 
 // Native KeccakColumnParityAbiDescription in trace_delegation.cuh.
 const _: () = DelegationAbi {

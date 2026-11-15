@@ -14,7 +14,7 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::PR;
 use gpu_prover_context::transfer::single_shot_h2d;
 use gpu_prover_context::{ProverContext, ProverContextConfig};
-use gpu_trace::trace::packed::{opening_path_len, PackedCommitConfig};
+use gpu_trace::proth120::trace::packed::{opening_path_len, PackedCommitConfig};
 use prover::common_constants::TimestampScalar;
 use prover::definitions::{FinalRegisterValue, GKRExternalChallenges};
 use prover::gkr::prover::setup::GKRSetup as CpuGKRSetup;
@@ -185,9 +185,12 @@ fn l1_setup_host_round_trip_small() {
         let depth = opening_path_len(log_rows + pack_log2, &cfg);
         let leaf_len = 10usize.div_ceil(1 << pack_log2) << log_v;
         let d_queries = upload(&queries, &context);
-        let plan =
-            gpu_trace::trace::packed::CosetQueryPlan::new(&d_queries, cfg.log_lde_factor, &context)
-                .unwrap();
+        let plan = gpu_trace::proth120::trace::packed::CosetQueryPlan::new(
+            &d_queries,
+            cfg.log_lde_factor,
+            &context,
+        )
+        .unwrap();
         let mut d_leaves = upload(&vec![PR::ONE; count * leaf_len], &context);
         let mut d_paths = upload(&vec![[0xdead_beef; 8]; count * depth], &context);
         let mut d_indexes = upload(&vec![0xaaaa_aaaa; count], &context);

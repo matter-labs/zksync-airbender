@@ -79,10 +79,6 @@ enum TableType : u16 {
 
 template <typename F> struct witness_table_key;
 
-template <> struct witness_table_key<bf> {
-  static DEVICE_FORCEINLINE u32 to_u32(const bf value) { return bf::into_canonical_u32(value); }
-};
-
 template <unsigned K, typename F> DEVICE_FORCEINLINE void keys_into_binary_keys(const F keys[K], u32 binary_keys[K]) {
 #pragma unroll
   for (unsigned i = 0; i < K; i++)
@@ -112,7 +108,7 @@ DEVICE_FORCEINLINE u32 index_for_keys(const F keys[1]) {
   return witness_table_key<F>::to_u32(keys[0]);
 }
 
-template <unsigned K, unsigned V, typename F = bf> struct TableDriver {
+template <unsigned K, unsigned V, typename F> struct TableDriver {
   const F *tables;
   const unsigned stride;
   const u32 *offsets;

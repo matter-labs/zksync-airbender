@@ -22,7 +22,7 @@ use gpu_gkr::proth120::packed_challenges::{
 use gpu_gkr::proth120::programs::GkrProgramsPr;
 use gpu_gkr::setup::L1WrapSetupHost;
 use gpu_prover_context::{ProverContext, ProverContextConfig};
-use gpu_trace::trace::packed::PackedCommitConfig;
+use gpu_trace::proth120::trace::packed::PackedCommitConfig;
 use gpu_trace::witness::trace_unrolled::ExecutorFamilyDecoderData;
 use prover::gkr::prover::transcript_utils::draw_random_field_els;
 use prover::gkr::prover::utils::flatten_merkle_caps_iter_into;

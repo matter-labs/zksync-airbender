@@ -51,12 +51,12 @@ pub(super) fn gpu_memory_caps(
         )
         .unwrap()
     } else {
-        let mut inputs = gpu_trace::trace::memory::GpuGKRCommitMemoryTransfer::new(
+        let mut inputs = gpu_trace::baby_bear::trace::memory::GpuGKRCommitMemoryTransfer::new(
             decoder, inits, trace, context,
         )
         .unwrap();
         inputs.schedule(context).unwrap();
-        gpu_trace::trace::memory::commit_memory_from_transfers_for_geometry(
+        gpu_trace::baby_bear::trace::memory::commit_memory_from_transfers_for_geometry(
             base.circuit_type,
             &base.compiled_circuit,
             inputs,

@@ -4,14 +4,10 @@
 
 namespace airbender::trace::witness::multiplicities {
 
-#define MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT 128
-
 template <typename F, unsigned N> struct LookupExpressions {
   u32 relations_count;
   LinearRelation<F> relations[N];
 };
-
-using LookupExpressionsBf = LookupExpressions<bf, MAX_LOOKUP_EXPRESSIONS_RELATIONS_COUNT>;
 
 template <typename Memory, typename Witness, typename Scratch, typename Mapping, typename F, unsigned N>
 DEVICE_FORCEINLINE void process_lookup_expressions(const Memory &memory, const Witness &witness, const Scratch &scratch,

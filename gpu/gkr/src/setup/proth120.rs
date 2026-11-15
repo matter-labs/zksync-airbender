@@ -12,8 +12,10 @@ use gpu_hash::keccak256::Digest;
 use gpu_ntt::proth120::TwiddleDescriptor;
 use gpu_prover_context::transfer::Transfer;
 use gpu_prover_context::ProverContext;
+use gpu_trace::proth120::trace::packed::{
+    CosetQueryPlan, PackedCommitConfig, PackedCosetRecomputeOracle,
+};
 use gpu_trace::trace::holder::{TraceHolder, TreesCacheMode};
-use gpu_trace::trace::packed::{CosetQueryPlan, PackedCommitConfig, PackedCosetRecomputeOracle};
 
 use crate::upstream::{CpuGKRSetup, MerkleTreeCapVarLength};
 

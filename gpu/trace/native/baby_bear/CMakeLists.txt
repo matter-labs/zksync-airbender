@@ -1,0 +1,25 @@
+target_sources(gpu_trace_native PRIVATE
+        circuits/add_sub_lui_auipc_mop.cu
+        circuits/bigint_with_control.cu
+        circuits/blake2_g_function.cu
+        circuits/blake2_with_compression.cu
+        circuits/jump_branch_slt.cu
+        circuits/keccak_chi5.cu
+        circuits/keccak_column_parity.cu
+        circuits/keccak_special5.cu
+        circuits/keccak_theta_rho.cu
+        circuits/load_store_subword_only.cu
+        circuits/load_store_word_only.cu
+        circuits/mul_div_unsigned.cu
+        circuits/shift_binary.cu
+        circuits/template_delegation.cuh
+        circuits/template_unrolled.cuh
+        circuits/unified_reduced_machine.cu
+        field.cuh
+        fused_delegation.cuh
+        fused_unrolled.cuh
+        memory_delegation.cu
+        memory_unrolled.cu
+        multiplicities.cu
+        witness_generation.cuh
+)

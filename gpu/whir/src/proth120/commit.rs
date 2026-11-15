@@ -10,7 +10,7 @@ use gpu_hash::keccak256::{
 };
 use gpu_ntt::proth120::{dispatch, SuffixShape, TwiddleDescriptor};
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::sink::{
+use gpu_trace::proth120::trace::sink::{
     coefficient_tiles_len, commit_coefficient_cosets, commit_residue_cosets, has_leaf_sink,
     has_residue_sink, residue_scratch_len, SinkMode,
 };

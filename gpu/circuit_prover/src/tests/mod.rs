@@ -199,15 +199,16 @@ impl BasicUnrolledFixture {
             BaseColumns::of(&self.compiled_circuit),
         );
         let memory_transfer_host = Arc::new(
-            gpu_trace::trace::memory_cap::GpuGKRMemoryCapHost::from_per_coset_caps_for_geometry(
+            gpu_trace::baby_bear::trace::memory_cap::GpuGKRMemoryCapHost::from_per_coset_caps_for_geometry(
                 &self.memory_tree_caps,
                 geometry,
             ),
         );
-        let memory_transfer = gpu_trace::trace::memory_cap::GpuGKRMemoryCapTransfer::new(
-            memory_transfer_host,
-            context,
-        )?;
+        let memory_transfer =
+            gpu_trace::baby_bear::trace::memory_cap::GpuGKRMemoryCapTransfer::new(
+                memory_transfer_host,
+                context,
+            )?;
 
         let inits_and_teardowns_transfer = self
             .inits_and_teardowns_host

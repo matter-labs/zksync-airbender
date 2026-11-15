@@ -14,11 +14,11 @@ use gpu_gkr::stage1::merged_commitment::{
     commit_merged_from_transfers, GpuGKRMergedCommitTransfer,
 };
 use gpu_prover_context::{AllocationMode, ProverContext};
-use gpu_trace::trace::decoder::DecoderTableTransfer;
-use gpu_trace::trace::memory::{
+use gpu_trace::baby_bear::trace::memory::{
     commit_memory_from_transfers_for_geometry, GpuGKRCommitMemoryTransfer,
 };
-use gpu_trace::trace::memory_cap::{GpuGKRMemoryCapHost, GpuGKRMemoryCapTransfer};
+use gpu_trace::baby_bear::trace::memory_cap::{GpuGKRMemoryCapHost, GpuGKRMemoryCapTransfer};
+use gpu_trace::trace::decoder::DecoderTableTransfer;
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;

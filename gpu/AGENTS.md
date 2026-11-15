@@ -38,8 +38,10 @@ workspace-root `gkr_eval_ir`), and `gpu_native_build` (the shared build-script h
 - **`gpu_prover_context`**: `ProverContext` (device and host allocators, `exec_stream`,
   `h2d_stream`, NTT twiddles) and the H2D `Transfer`. Every crate from `gpu_trace` up
   threads a `&ProverContext` through its scheduling functions.
-- **`gpu_trace`**: witness generation and trace commit/holder; owns the
-  upstream-constant drift guards (`src/witness/mod.rs`).
+- **`gpu_trace`**: witness generation and trace commit/holder; field-specific code
+  lives in `native/{baby_bear,proth120}/` and `src/{baby_bear,proth120}/`, with shared
+  native headers in `native/witness/` and shared Rust in `src/{trace,witness}/`.
+  Owns the upstream-constant drift guards (`src/witness/mod.rs`).
 - **`gpu_gkr`**: the GKR engine and the GKR/WHIR protocol kernels; holds the
   cluster's `__constant__` symbols and exports its headers for `gpu_whir`.
 - **`gpu_whir`**: WHIR folds, PoW and query scheduling, and the recursive WHIR oracle.

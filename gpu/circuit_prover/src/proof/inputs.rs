@@ -16,8 +16,8 @@ use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::setup::{GpuGKRSetupHost, GpuGKRSetupTransfer};
 use gpu_prover_context::transfer::{Transfer, TransferKeepalive};
 use gpu_prover_context::ProverContext;
+use gpu_trace::baby_bear::trace::memory_cap::GpuGKRMemoryCapTransfer;
 use gpu_trace::trace::decoder::DecoderTableTransfer;
-use gpu_trace::trace::memory_cap::GpuGKRMemoryCapTransfer;
 use gpu_trace::trace::tracing_data::{InitsAndTeardownsTransfer, TracingDataTransfer};
 
 /// Number of `E4` slots needed to hold a `GKRExternalChallenges` value

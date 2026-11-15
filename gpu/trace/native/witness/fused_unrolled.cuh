@@ -3,9 +3,13 @@
 using FusedUnrolledOracle = std::conditional_t<std::is_same_v<ORACLE, UnrolledMemoryTrace>, UnrolledMemoryOracle, ORACLE>;
 
 #ifndef FUSED_KERNEL_NAME
-#define FUSED_KERNEL_NAME(NAME) ab_generate_fused_##NAME##_kernel
-#define FUSED_RANGE_CHECK_16 LookupExpressionsBf
-#define FUSED_TIMESTAMP LookupExpressionsBf
+#error "Define FUSED_KERNEL_NAME before including witness/fused_unrolled.cuh"
+#endif
+#ifndef FUSED_RANGE_CHECK_16
+#error "Define FUSED_RANGE_CHECK_16 before including witness/fused_unrolled.cuh"
+#endif
+#ifndef FUSED_TIMESTAMP
+#error "Define FUSED_TIMESTAMP before including witness/fused_unrolled.cuh"
 #endif
 #define FUSED_KERNEL(NAME)                                                                                                                                     \
   EXTERN __global__ void FUSED_KERNEL_NAME(NAME)(                                                                                                              \

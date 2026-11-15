@@ -3,7 +3,7 @@ use era_cudart::result::CudaResult;
 use gpu_core::primitives::device_structures::{DeviceMatrixMut, DeviceMatrixMutImpl};
 use gpu_core::primitives::field::BF;
 use gpu_prover_context::ProverContext;
-use gpu_trace::witness::multiplicities::{
+use gpu_trace::baby_bear::witness::multiplicities::{
     generate_lookup_multiplicities, RANGE_CHECK_16_DOMAIN_SIZE, TIMESTAMP_RANGE_CHECK_DOMAIN_SIZE,
 };
 

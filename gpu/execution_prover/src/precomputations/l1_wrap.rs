@@ -7,7 +7,7 @@ use gpu_core::primitives::static_host::StaticPinnedBox;
 use gpu_gkr::proth120::programs::GkrProgramsPr;
 use gpu_gkr::setup::L1WrapSetupHost;
 use gpu_prover_context::ProverContext;
-use gpu_trace::trace::packed::PackedCommitConfig;
+use gpu_trace::proth120::trace::packed::PackedCommitConfig;
 use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::ExecutorFamilyDecoderData;
 
