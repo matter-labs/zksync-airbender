@@ -106,7 +106,7 @@ backend on every available core, and Compression guests for unrolled, bridge,
 and final layers. Every artifact has `program_cycles = 97`; the recipe natively
 verifies its proof and rejects absolute paths inside `Variable at ...` labels.
 The optional `l1` bundle is serialized only when present, so the eight standard
-chain artifacts keep their schema-5 encoding.
+chain artifacts have no `l1` field.
 
 | Artifact | Input | Additional unrolled layers | Chain entries |
 | --- | --- | --- | --- |

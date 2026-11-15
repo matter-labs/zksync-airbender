@@ -1,12 +1,19 @@
-//! Calldata format F1 for the single-transaction L1 wrap verifier
-//! with transcript-preserving compression. The verifier reconstructs omitted values
+//! The compressed calldata of the single-transaction L1 wrap verifier, with
+//! transcript-preserving compression. The verifier reconstructs omitted values
 //! before absorbing them. See `verifier_evm/gkr_transcript_reference.md`
 //! for encoding invariants and verification/producer pointers.
 //!
-//! F1 stores GKR then WHIR. Registers are LE u32; PoW nonces are BE u64.
-//! Field runs pack canonical 123-bit values MSB-first; digests use the 25-byte
-//! prefix of their big-endian words. The final PC, the inits/teardowns top bits
-//! and the setup cap are deployment constants.
+//! The calldata holds the GKR section, then the WHIR section. Registers are LE u32;
+//! PoW nonces are BE u64. Field runs pack canonical 123-bit values MSB-first and
+//! timestamp runs pack 19-bit limb pairs; digests use the 25-byte prefix of their
+//! big-endian words. The final PC, the inits/teardowns top bits and the setup cap
+//! are deployment constants.
+//!
+//! GKR sumcheck rounds are factored: each round polynomial is `p = e_z·u`, with
+//! `e_z(X) = (1 − z) + (2z − 1)·X` and the quadratic `u = a + bX + cX²`. Only `(b, c)`
+//! is sent; the verifier derives `a` from the running claim and absorbs the rebuilt
+//! coefficients of `p`. A WHIR sumcheck round sends `(c0, c2)`: `c1` is derived as
+//! `claim − 2·c0 − c2`.
 
 mod digest;
 mod gkr;
@@ -30,7 +37,7 @@ pub use runs::{fe_run_len, ts_run_len, write_fe_run, write_ts_run};
 
 use crate::seed::{Circuit, Proof};
 
-/// F1 single-tx calldata and the `(offset, length)` of every named field.
+/// The compressed single-tx calldata and the `(offset, length)` of every named field.
 #[derive(Clone, Debug)]
 pub struct SingleTxCalldata {
     pub bytes: Vec<u8>,
@@ -113,8 +120,8 @@ fn check_profile(
     );
 }
 
-/// The F1 single-tx calldata of `proof`. Panics when the proof does not fit `params`, when a
-/// round polynomial is not `e_z(X)` times a quadratic, or when the reconstructed
+/// The compressed single-tx calldata of `proof`. Panics when the proof does not fit `params`,
+/// when a round polynomial is not `e_z(X)` times a quadratic, or when the reconstructed
 /// batching challenge does not match the proof's first WHIR sumcheck claim.
 pub fn encode_single_tx(
     circuit: &Circuit,

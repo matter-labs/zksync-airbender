@@ -8,7 +8,8 @@
 //! by its `__TEMPLATE_*` NAME in the Solidity/Yul and gets its literal value from this file
 //! (inline assembly can only consume literal constants, so the literal lives in the
 //! declaration alone). The few genuinely non-circuit deployment values (PoW difficulties, the
-//! program's terminal PC, the inits/teardowns top bits) are parameters of [`generate_f1_verifier`].
+//! program's terminal PC, the inits/teardowns top bits) are parameters of
+//! [`generate_wrap_verifier`].
 //!
 //! The WHIR *proving-config* (fold/query/PoW schedule, base rate, merkle cap) is not encoded in
 //! the circuit artifact; it is supplied by the caller as the same `ProverConfig` the prover used,
@@ -16,7 +17,7 @@
 //! [`WhirGenConfig`].
 
 use super::whir::WhirGenConfig;
-use super::{emit_circuit_yul_with_stats, f1, CircuitYulStats, F1Contracts, Lit};
+use super::{calldata_decoder, emit_circuit_yul_with_stats, CircuitYulStats, Lit, WrapContracts};
 use crate::encoding::{FormatParams, Geometry};
 use cs::definitions::{GKRAddress, OutputType};
 use cs::gkr_compiler::GKRCircuitArtifact;
@@ -88,7 +89,8 @@ fn boundary_si_yul(circuit: &GKRCircuitArtifact<Proth120>, num_outputs: usize) -
         "gkr_dr_final expects {num_outputs} GKR output LSB lines, got {}",
         offsets.len()
     );
-    // gkr_dr_final fills SI with the identity first: emit only the entries that differ
+    // gkr_dr_final fills its sorted-index array (`SI` in gkr.sol) with the identity first: emit
+    // only the entries that differ
     offsets
         .iter()
         .enumerate()
@@ -284,7 +286,7 @@ fn setup_frontier_sol(data: &[u8], level: usize) -> String {
         "// SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.8.36;
 
-/// The F1 verifier's setup data after a STOP byte: {frontier}the pinned setup cap and the GKR
+/// The wrap verifier's setup data after a STOP byte: {frontier}the pinned setup cap and the GKR
 /// term table; the constructor and each verification check its code hash before data reads.
 contract SetupFrontier {{
     constructor() {{
@@ -300,18 +302,18 @@ contract SetupFrontier {{
 }
 
 /// The GKR decoder and setup frontier (nodes, level and skipped levels).
-struct F1Render {
-    decoder: f1::GkrDecoder,
+struct WrapRender {
+    decoder: calldata_decoder::GkrDecoder,
     frontier: (Vec<u8>, usize, usize),
     setup_commitment: [u8; 32],
 }
 
-/// The merged F1 verifier: every proof byte is read by the F1 decoders, the final PC
-/// and `setup_cap` are deployment constants. The setup cap and the GKR term table live in the
-/// `SetupFrontier` data contract, supplied to the verifier constructor. The nodes at
+/// The single-transaction wrap verifier: every proof byte is read from the compressed calldata,
+/// the final PC and `setup_cap` are deployment constants. The setup cap and the GKR term table
+/// live in the `SetupFrontier` data contract, supplied to the verifier constructor. The nodes at
 /// `params.setup_frontier_level` (physical order) are stored there before the cap and table.
 #[allow(clippy::too_many_arguments)]
-pub fn generate_f1_verifier(
+pub fn generate_wrap_verifier(
     circuit: &GKRCircuitArtifact<Proth120>,
     prover_config: &ProverConfig,
     params: &FormatParams,
@@ -320,7 +322,7 @@ pub fn generate_f1_verifier(
     inits_teardowns_top_bits: &[u32],
     setup_cap: &[[u32; 8]],
     setup_frontier: &[[u32; 8]],
-) -> F1Contracts {
+) -> WrapContracts {
     let params = &Geometry::from_config(prover_config, params);
     assert_eq!(setup_cap.len(), params.cap(), "setup cap size");
     let frontier = {
@@ -340,14 +342,14 @@ pub fn generate_f1_verifier(
             .flat_map(crate::encoding::digest_wire)
             .collect::<Vec<u8>>()
     };
-    let decoder = f1::gkr_decoder(
+    let decoder = calldata_decoder::gkr_decoder(
         circuit,
         params,
         final_pc,
         setup_cap,
         inits_teardowns_top_bits,
     );
-    let f1_render = F1Render {
+    let wrap_render = WrapRender {
         decoder,
         frontier: (
             frontier,
@@ -361,10 +363,10 @@ pub fn generate_f1_verifier(
         prover_config,
         external_pow_bits,
         inits_teardowns_top_bits,
-        &f1_render,
+        &wrap_render,
     );
     let level = params.setup_frontier_level;
-    F1Contracts {
+    WrapContracts {
         verifier_sol,
         setup_frontier_sol: setup_frontier_sol(&data, level),
     }
@@ -375,7 +377,7 @@ fn render(
     prover_config: &ProverConfig,
     external_pow_bits: u32,
     inits_teardowns_top_bits: &[u32],
-    f1: &F1Render,
+    wrap: &WrapRender,
 ) -> (String, Vec<u8>) {
     // Every proving-geometry parameter comes from the prover config: the packing
     // factor, the message size and the WHIR batching PoW difficulty (which the
@@ -526,11 +528,11 @@ fn render(
     assert!(inlined, "gkr.sol template missing inline marker");
 
     // 2. Heap layout: one bump allocator for both halves, starting right after the three
-    //    spill-safe fixed slots (P_PTR, CIRCUIT_PTR, F1_FRONTIER_PTR) above the via_ir spill zone.
+    //    spill-safe fixed slots (P_PTR, CIRCUIT_PTR, FRONTIER_PTR) above the via_ir spill zone.
     let min_free = read_const(GKR_TEMPLATE, "MINIMUM_FREE_HEAP_PTR");
     assert_eq!(read_const(GKR_TEMPLATE, "P_PTR"), min_free);
     assert_eq!(read_const(GKR_TEMPLATE, "CIRCUIT_PTR"), min_free + 32);
-    assert_eq!(read_const(GKR_TEMPLATE, "F1_FRONTIER_PTR"), min_free + 64);
+    assert_eq!(read_const(GKR_TEMPLATE, "FRONTIER_PTR"), min_free + 64);
     let mut heap = HeapAlloc::new(min_free + 96);
     let gkr_regions = gkr_heap_regions(
         &d,
@@ -538,7 +540,7 @@ fn render(
         &init_bytes,
         output_evals.value as usize,
         pack,
-        f1.decoder.v0_bytes,
+        wrap.decoder.image_bytes,
     );
     let mut assigned = BTreeSet::new();
     // The GKR regions are chained in the template by their sizes (`add(previous(), SIZE)`, see
@@ -619,11 +621,11 @@ fn render(
     }
     gkr = set_const(
         &gkr,
-        "__TEMPLATE_F1_E1_SLOT_BYTES",
-        f1::E1_SLOT_BYTES,
+        "__TEMPLATE_FACTORED_ROUND_SLOT_BYTES",
+        calldata_decoder::FACTORED_ROUND_SLOT_BYTES,
         &mut assigned,
     );
-    let setup_commitment: String = f1
+    let setup_commitment: String = wrap
         .setup_commitment
         .iter()
         .map(|b| format!("{b:02x}"))
@@ -659,21 +661,21 @@ fn render(
     // the production source is just the verifier.
     let gkr = strip_from_contract(&gkr, "GKRVerifierTest");
 
-    // F1: the GKR half reads the decoded v0 image (every calldata access rewritten; the absolute
-    // preimage readers add F1_V0_PTR() in the template), the decoder is the only GKR calldata
-    // reader, and the WHIR stream starts after the F1 GKR section.
+    // The GKR half reads the decoded GKR image (every calldata access rewritten; the absolute
+    // preimage readers add IMAGE_PTR() in the template), the decoder is the only GKR calldata
+    // reader, and the WHIR stream starts after the calldata's GKR section.
     let gkr = {
-        let f = f1;
-        let gkr = f1::calldata_to_v0_memory(&gkr);
-        let marker = "        // __F1_DECODER__\n";
+        let f = wrap;
+        let gkr = calldata_decoder::calldata_reads_to_image_reads(&gkr);
+        let marker = "        // __CALLDATA_DECODER__\n";
         assert_eq!(
             gkr.matches(marker).count(),
             1,
-            "gkr.sol misses the F1 decoder marker"
+            "gkr.sol misses the calldata decoder marker"
         );
-        assert_eq!(gkr.matches("__F1_WHIR_START__").count(), 1);
+        assert_eq!(gkr.matches("__WHIR_START__").count(), 1);
         gkr.replace(marker, &f.decoder.yul)
-            .replace("__F1_WHIR_START__", &f.decoder.f1_bytes.to_string())
+            .replace("__WHIR_START__", &f.decoder.calldata_bytes.to_string())
     };
 
     // 3. WHIR half: inject the per-round fold/query/PoW schedule generated from `wc`, then
@@ -684,22 +686,19 @@ fn render(
         "            // __WHIR_SCHEDULE_SWITCH__",
         whir_schedule_yul.trim_end_matches('\n'),
     );
-    let f1_data = {
-        let f = f1;
-        assert_eq!(whir.matches("        // __F1_FINAL_HORNER__").count(), 1);
-        assert_eq!(whir.matches("__F1_HORNER_NAME__").count(), 2);
+    let setup_data = {
+        let f = wrap;
+        assert_eq!(whir.matches("        // __FINAL_HORNER__").count(), 1);
+        assert_eq!(whir.matches("__HORNER_NAME__").count(), 2);
         whir = whir
             .replace(
-                "        // __F1_FINAL_HORNER__",
+                "        // __FINAL_HORNER__",
                 wc.final_horner_yul().trim_end_matches('\n'),
             )
-            .replace(
-                "__F1_HORNER_NAME__",
-                &format!("horner_{}", 1usize << wc.rfin),
-            );
+            .replace("__HORNER_NAME__", &format!("horner_{}", 1usize << wc.rfin));
         whir = set_const(
             &whir,
-            "__TEMPLATE_F1_DIGEST_BYTES",
+            "__TEMPLATE_DIGEST_BYTES",
             DIGEST_BYTES,
             &mut assigned,
         );
@@ -713,20 +712,17 @@ fn render(
         };
         let hash: String = hash.iter().map(|b| format!("{b:02x}")).collect();
         for (name, value) in [
-            ("__TEMPLATE_F1_FRONTIER_HASH", format!("0x{hash}")),
-            ("__TEMPLATE_F1_DATA_CAP_OFFSET", cap_offset.to_string()),
-            (
-                "__TEMPLATE_F1_DATA_QTABLE_OFFSET",
-                qtable_offset.to_string(),
-            ),
+            ("__TEMPLATE_FRONTIER_HASH", format!("0x{hash}")),
+            ("__TEMPLATE_DATA_CAP_OFFSET", cap_offset.to_string()),
+            ("__TEMPLATE_DATA_QTABLE_OFFSET", qtable_offset.to_string()),
         ] {
             whir = set_const(&whir, name, value, &mut assigned);
         }
         {
             let (_, level, skip) = &f.frontier;
             for (name, value) in [
-                ("__TEMPLATE_F1_FRONTIER_LEVEL", level.to_string()),
-                ("__TEMPLATE_F1_FRONTIER_SKIP", skip.to_string()),
+                ("__TEMPLATE_FRONTIER_LEVEL", level.to_string()),
+                ("__TEMPLATE_FRONTIER_SKIP", skip.to_string()),
             ] {
                 whir = set_const(&whir, name, value, &mut assigned);
             }
@@ -803,7 +799,7 @@ fn render(
             }
         }
     }
-    (out, f1_data)
+    (out, setup_data)
 }
 
 /// The GKR heap regions `(gkr.sol constant suffix, Yul accessor name, padded size as a
@@ -815,7 +811,7 @@ fn gkr_heap_regions(
     init_bytes: &Lit,
     output_evals: usize,
     pack: usize,
-    f1_v0_bytes: usize,
+    image_bytes: usize,
 ) -> Vec<(&'static str, &'static str, Lit)> {
     // Seed region: the seed word plus everything the template keeps right after it —
     //  * the transcript-absorb scratch at SEED+32/+64 (keccak256(SEED, 96) in
@@ -853,8 +849,8 @@ fn gkr_heap_regions(
         ),
         ("GATEVAL", "GKR_GATEVAL_PTR", w(stats.gateval_slots)),
         ("QTABLE", "GKR_QTABLE_PTR", words_for(stats.qtable.len())),
-        // The decoded GKR transcript image.
-        ("F1_V0", "F1_V0_PTR", words_for(f1_v0_bytes)),
+        // The decoded GKR image.
+        ("IMAGE", "IMAGE_PTR", words_for(image_bytes)),
     ];
     regions
 }

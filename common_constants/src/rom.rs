@@ -22,7 +22,8 @@ impl RomGeometry {
 pub const REGULAR_ROM: RomGeometry = RomGeometry { byte_size_log2: 22 };
 pub const L1_WRAP_ROM: RomGeometry = RomGeometry { byte_size_log2: 19 };
 
-// Existing circuits retain their 4 MiB ROM regardless of the enclosing guest's layout.
+// Every circuit except the L1 wrap (`L1_WRAP_ROM`) uses the 4 MiB `REGULAR_ROM`, regardless of
+// the enclosing guest's layout.
 pub const ROM_BYTE_SIZE_LOG2: usize = REGULAR_ROM.byte_size_log2 as usize;
 pub const ROM_BYTE_SIZE: usize = REGULAR_ROM.byte_size();
 pub const ROM_SECOND_WORD_BITS: usize = REGULAR_ROM.second_word_bits();

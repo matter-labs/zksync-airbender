@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.8.36;
 
-/// The F1 verifier's setup data after a STOP byte: the L1 wrap setup tree's 512 nodes at level 9 (physical order), the pinned setup cap and the GKR
+/// The wrap verifier's setup data after a STOP byte: the L1 wrap setup tree's 512 nodes at level 9 (physical order), the pinned setup cap and the GKR
 /// term table; the constructor and each verification check its code hash before data reads.
 contract SetupFrontier {
     constructor() {

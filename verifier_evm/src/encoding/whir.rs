@@ -1,4 +1,5 @@
-//! F1 WHIR section (single-tx: the committed-state header comes from the GKR verifier).
+//! WHIR section of the compressed calldata (single-tx: the committed-state header comes from
+//! the GKR verifier).
 
 use field::Proth120;
 
@@ -29,25 +30,29 @@ pub(super) fn encode_whir(w: &mut Writer, proof: &Proof, params: &Geometry) {
     assert_eq!(nonces.len(), num_rounds, "WHIR query PoW count");
     assert!(
         wp.base_folding_pow_nonces.is_empty(),
-        "F1 does not encode base folding PoW"
+        "the compressed calldata does not encode base folding PoW"
     );
     for oracle in &wp.intermediate_whir_oracles {
         assert_eq!(
             oracle.ood_samples.len(),
             1,
-            "F1 encodes one OOD sample per oracle"
+            "the compressed calldata encodes one OOD sample per oracle"
         );
-        assert!(oracle.ood_pow_nonce.is_none(), "F1 does not encode OOD PoW");
+        assert!(
+            oracle.ood_pow_nonce.is_none(),
+            "the compressed calldata does not encode OOD PoW"
+        );
         assert!(
             oracle.folding_pow_nonces.is_empty(),
-            "F1 does not encode folding PoW"
+            "the compressed calldata does not encode folding PoW"
         );
     }
     for r in 0..num_rounds {
         let sumcheck: Vec<Proth120> = (0..params.folds[r])
             .flat_map(|_| {
                 let sp = steps.next().expect("missing WHIR sumcheck step");
-                [sp[0], sp[2]] // E2: c1 = claim − 2·c0 − c2
+                // c1 is not sent: the verifier derives it as claim − 2·c0 − c2
+                [sp[0], sp[2]]
             })
             .collect();
         w.put(format!("whir_{r}_sumcheck"), &write_fe_run(&sumcheck));

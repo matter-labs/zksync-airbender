@@ -69,18 +69,18 @@ pub fn data_path(name: &str) -> PathBuf {
 
 /// Require a named rejection from a public encoder boundary.
 
-pub const F1_CALLDATA: &str = "single_tx_f1.hex";
-pub const F1_FIELDS: &str = "single_tx_f1_fields.json";
+pub const CALLDATA: &str = "single_tx_calldata.hex";
+pub const CALLDATA_FIELDS: &str = "single_tx_calldata_fields.json";
 /// The verified statement reported to the registry.
 pub const VERIFIED_MARK: &str = "verified_mark.hex";
 
-/// Generated sources relative to the L1 contract root. The F1 project carries the
+/// Generated sources relative to the L1 contract root. The merged project carries the
 /// registry and Foundry tests; the negative project builds its verifier for those tests.
-pub const MERGED_F1: &str = "merged_f1/src/GkrWhirVerifier.sol";
-pub const F1_FRONTIER_CONTRACT: &str = "merged_f1/src/SetupFrontier.sol";
-pub const F1_WRONG_FINAL_PC: &str = "negative/f1_wrong_final_pc/src/GkrWhirVerifier.sol";
+pub const MERGED_VERIFIER: &str = "merged/src/GkrWhirVerifier.sol";
+pub const FRONTIER_CONTRACT: &str = "merged/src/SetupFrontier.sol";
+pub const WRONG_FINAL_PC_VERIFIER: &str = "negative/wrong_final_pc/src/GkrWhirVerifier.sol";
 
-pub fn f1_params() -> verifier_evm::encoding::FormatParams {
+pub fn format_params() -> verifier_evm::encoding::FormatParams {
     verifier_evm::encoding::FormatParams {
         setup_frontier_level: setup_frontier().0,
     }
@@ -105,12 +105,12 @@ pub fn setup_frontier() -> (usize, Vec<[u32; 8]>) {
     (level, nodes)
 }
 
-/// The F1 field map as committed JSON: `{gkr_bytes, fields: {name: {offset, length}}}`.
-pub fn f1_field_metadata(
-    f1: &verifier_evm::encoding::SingleTxCalldata,
+/// The calldata field map as committed JSON: `{gkr_bytes, fields: {name: {offset, length}}}`.
+pub fn calldata_field_metadata(
+    calldata: &verifier_evm::encoding::SingleTxCalldata,
     params: &verifier_evm::encoding::FormatParams,
 ) -> serde_json::Value {
-    let fields: serde_json::Map<String, serde_json::Value> = f1
+    let fields: serde_json::Map<String, serde_json::Value> = calldata
         .fields
         .iter()
         .map(|(name, (offset, length))| {
@@ -121,11 +121,11 @@ pub fn f1_field_metadata(
         })
         .collect();
     let whir_rounds = (0..)
-        .take_while(|r| f1.fields.contains_key(&format!("whir_{r}_sumcheck")))
+        .take_while(|r| calldata.fields.contains_key(&format!("whir_{r}_sumcheck")))
         .count();
     serde_json::json!({
-        "gkr_bytes": f1.gkr_bytes,
-        "bytes": f1.bytes.len(),
+        "gkr_bytes": calldata.gkr_bytes,
+        "bytes": calldata.bytes.len(),
         "whir_rounds": whir_rounds,
         "digest_bytes": DIGEST_BYTES,
         "setup_frontier_level": params.setup_frontier_level,

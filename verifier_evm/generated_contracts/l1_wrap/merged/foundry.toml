@@ -1,4 +1,4 @@
-# F1 verifier and its cryptographic controls.
+# Wrap verifier and its cryptographic controls.
 [profile.default]
 solc_version = "0.8.36"
 auto_detect_solc = false

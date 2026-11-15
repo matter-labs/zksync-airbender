@@ -1,4 +1,4 @@
-# Wrong-final-PC control for ../../merged_f1; built by ../../../run_merged.sh.
+# Wrong-final-PC control for ../../merged; built by ../../../run_merged.sh.
 [profile.default]
 solc_version = "0.8.36"
 auto_detect_solc = false

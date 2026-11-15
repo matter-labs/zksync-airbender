@@ -2,8 +2,8 @@
 //!
 //! - [`circuit_yul::emit_circuit_yul`] emits the circuit-specific `circuit.yul` (the GKR
 //!   per-layer sumcheck/gate Yul functions) as a String.
-//! - [`generate_f1_verifier`] assembles the merged `GkrWhirVerifier` Solidity source: that Yul and
-//!   the WHIR template's Yul are inlined into the hand-written GKR template and the
+//! - [`generate_wrap_verifier`] assembles the merged `GkrWhirVerifier` Solidity source: that Yul
+//!   and the WHIR template's Yul are inlined into the hand-written GKR template and the
 //!   circuit-derived (plus a few caller-supplied) constants substituted. GKR and WHIR are
 //!   verified in ONE transaction, the GKR→WHIR handoff state passed in memory.
 //!
@@ -15,8 +15,8 @@
 //! literal `"{unassigned}"`, which solc rejects for a numeric constant, so a generator that
 //! forgets an assignment cannot produce a buildable verifier.
 
+mod calldata_decoder;
 mod circuit_yul;
-mod f1;
 mod whir;
 
 pub use circuit_yul::{emit_circuit_yul, emit_circuit_yul_with_stats, CircuitYulStats};
@@ -117,15 +117,15 @@ impl Lit {
     }
 }
 
-/// The F1 verifier and the `SetupFrontier` data contract it reads.
+/// The single-transaction wrap verifier and the `SetupFrontier` data contract it reads.
 #[derive(Clone, Debug)]
-pub struct F1Contracts {
-    /// The merged F1 `GkrWhirVerifier` source.
+pub struct WrapContracts {
+    /// The merged `GkrWhirVerifier` source.
     pub verifier_sol: String,
     /// The `SetupFrontier` data contract source.
     pub setup_frontier_sol: String,
 }
 
-// `generate_f1_verifier` is implemented in `assemble.rs`.
+// `generate_wrap_verifier` is implemented in `assemble.rs`.
 mod assemble;
-pub use assemble::generate_f1_verifier;
+pub use assemble::generate_wrap_verifier;

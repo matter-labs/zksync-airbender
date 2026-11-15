@@ -10,9 +10,9 @@ use verifier_common::cs::definitions::split_timestamp;
 
 // The statement body shared by `verify_full_statement_for_unified_circuit` and
 // `verify_full_statement_for_unified_circuit_without_delegations`. It is a macro rather than a
-// generic function because a shared generic function changed the standard entries' compiled
-// verifier binaries; expanded in place, they stay as they were. The delegation section is the
-// caller's block; the locals it uses are passed in by name.
+// generic function: expanded in place, the standard entries compile to the same verifier binaries
+// as a standalone function, while a shared generic function compiles them differently. The
+// delegation section is the caller's block; the locals it uses are passed in by name.
 macro_rules! unified_statement_body {
     (
         $setup:ident,
@@ -86,7 +86,7 @@ macro_rules! unified_statement_body {
         let max_top_bit: u32 = 1 << (32 - 16 - $shift);
 
         // Strictly-increasing check over the concatenated `top_bits` of all i/t-carrying
-        // instances. The GKR-verified i/t address window is now bound to exactly these runtime
+        // instances. The GKR-verified i/t address window is bound to exactly these runtime
         // `top_bits` (`set_bits = top_bits[set_idx] << shift`), and `MAX_TOP_BIT` keeps
         // each window inside the high-address field, so strictly-increasing top_bits ⇒ disjoint
         // per-instance super-blocks: no two instances can init/teardown the same range.

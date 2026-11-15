@@ -1,5 +1,5 @@
 //! compression and wrap configs, supported only in pessimistic-conjecture mode.
-//! Ethproofs support is deferred; see `soundcalc/README.md`.
+//! Ethproofs-soundcalc mode has no compression or wrap config; see `soundcalc/README.md`.
 
 use super::*;
 use crate::gkr::whir::proximity_testing_modes::{PessimisticConjectureMode, ProximityTestingMode};

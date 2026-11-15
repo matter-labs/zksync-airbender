@@ -130,7 +130,8 @@ pub struct ProgramProverConfig {
     pub replay_threads: Option<usize>,
 }
 
-/// The deferred L1 scope: the ethproofs compression, wrap and EVM profiles are not implemented.
+/// L1 targets are pessimistic-conjecture only: the ethproofs compression, wrap and EVM profiles
+/// are not implemented.
 /// Every L1 entry asserts this before it loads a guest, reads an input or creates a backend;
 /// there is no fallback to another mode and no mixed-mode chain. The assert is the profile's
 /// [`ProverConfigProfile::assert_supports`](prover::definitions::ProverConfigProfile::assert_supports).
@@ -2169,7 +2170,7 @@ mod program_source_tests {
     }
 }
 
-/// The deferred-scope boundary of the L1 targets: ethproofs is rejected before any guest, input
+/// The soundness-mode check of the L1 targets: ethproofs is rejected before any guest, input
 /// or backend is touched; pessimistic L1 entries pass it unchanged.
 #[cfg(test)]
 mod l1_capability_tests {

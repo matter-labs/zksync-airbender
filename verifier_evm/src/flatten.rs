@@ -1,5 +1,5 @@
-//! Circuit-layer evaluations in the group order consumed by the F1 encoder, and the proof →
-//! calldata flattening of the merged `GkrWhirVerifier` (one transaction: the GKR stream
+//! Circuit-layer evaluations in the group order consumed by the calldata encoder, and the
+//! proof → calldata flattening of the merged `GkrWhirVerifier` (one transaction: the GKR stream
 //! immediately followed by the WHIR proof stream — see [`merged_calldata`]). No generator in
 //! this crate emits the merged verifier any more.
 use crate::seed::{Circuit, Proof};

@@ -426,7 +426,7 @@ fn emit_layer0_quad_table(
     }
     // 2. copy the packed records from the verified setup data contract.
     out.push_str(&format!(
-        "            extcodecopy(mload(F1_FRONTIER_PTR), GKR_QTABLE_PTR(), __TEMPLATE_F1_DATA_QTABLE_OFFSET, {})\n",
+        "            extcodecopy(mload(FRONTIER_PTR), GKR_QTABLE_PTR(), __TEMPLATE_DATA_QTABLE_OFFSET, {})\n",
         stream.len()
     ));
     // 3. bucket loops — modulus loaded once from the P constant into a local (cheap DUP in the
@@ -680,7 +680,7 @@ pub struct CircuitYulStats {
 
 /// Emit the circuit-specific `circuit.yul` (the GKR per-layer sumcheck/gate functions) for a
 /// given circuit artifact, as a String. This is the only circuit-dependent part of the GKR
-/// verifier; `generate_f1_verifier` inlines it into the hand-written gkr.sol template.
+/// verifier; `generate_wrap_verifier` inlines it into the hand-written gkr.sol template.
 pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
     emit_circuit_yul_with_stats(circuit).0
 }

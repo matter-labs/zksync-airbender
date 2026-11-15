@@ -19,7 +19,7 @@ contract GkrWhirVerifier {
     constructor(address registry_, address setupFrontier_) {
         require(registry_ != address(0), "registry is zero");
         require(registry_.code.length > 0, "registry has no code");
-        require(setupFrontier_.codehash == bytes32(__TEMPLATE_F1_FRONTIER_HASH), "setup frontier code hash");
+        require(setupFrontier_.codehash == bytes32(__TEMPLATE_FRONTIER_HASH), "setup frontier code hash");
         registry = registry_;
         setupFrontier = setupFrontier_;
     }
@@ -55,7 +55,7 @@ contract GkrWhirVerifier {
     // Spill-safe slot [2112,2144): after P_PTR and CIRCUIT_PTR, before every generated
     // GKR/WHIR heap region (which starts at 2144). The generator checks these boundaries.
     // It is written once from the immutable address and only read by the Yul helpers.
-    uint256 constant F1_FRONTIER_PTR = 2112;
+    uint256 constant FRONTIER_PTR = 2112;
 
     // ── Heap layout (GENERATED sizes: the regions are chained back to back from
     //    MINIMUM_FREE_HEAP_PTR + 96 by the `*_PTR()` accessors below, each region's size — a
@@ -93,11 +93,11 @@ contract GkrWhirVerifier {
     uint256 constant MARK_WORD_REGISTERS         = 8;  // 8 u32 values = one bytes32
     uint256 constant __TEMPLATE_PREIMAGE_FINAL_PC_OFFSET   = 32 * 12; // = NUM_REGISTERS * PREIMAGE_REGISTER_STRIDE
     uint256 constant __TEMPLATE_GKR_INIT_PREIMAGE_BYTES    = 32 * 12 + 12 + 2 * 4 + 8 * 32 + 8 * 32; // registers ‖ final PC ‖ top bits ‖ setup cap ‖ memory cap
-    uint256 constant __TEMPLATE_F1_E1_SLOT_BYTES = 32; // image bytes of an E1 run: its calldata bit offset
+    uint256 constant __TEMPLATE_FACTORED_ROUND_SLOT_BYTES = 32; // image bytes of a factored-round run: its calldata bit offset
     uint256 constant __TEMPLATE_SETUP_COMMITMENT = 0xd6df118d3cd2e5cdac110a7a84ba802115bb8eba12b4fd4894fb96617280e640; // keccak256 of the pinned setup cap as BE u32 words
     // The inits/teardowns RAM-set base chunk indices (`top_bits`) are deployment parameters of
-    // the program: f1_decode writes them into the preimage, and the layer-0 inits/teardowns gates
-    // use the constants. One uint8 per teardown set.
+    // the program: decode_calldata writes them into the preimage, and the layer-0
+    // inits/teardowns gates use the constants. One uint8 per teardown set.
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_0 = 0;
     uint8 constant __TEMPLATE_INITS_TEARDOWNS_TOP_BITS_1 = 1;
     uint256 constant __TEMPLATE_EXTERNAL_POW_BITS = 20; // external-challenge PoW difficulty
@@ -145,16 +145,16 @@ contract GkrWhirVerifier {
     uint256 constant __TEMPLATE_WHIR_CAP_LOG2 = 3;
     // Merkle leaf/node hash: keccak256 truncated to the digest bytes (the high bytes kept).
     uint256 constant __TEMPLATE_DIGEST_MASK = 0xffffffffffffffffffffffffffffffffffffffffffffffffff00000000000000;
-    uint256 constant __TEMPLATE_F1_DIGEST_BYTES = 25; // Merkle digest bytes on the F1 wire
+    uint256 constant __TEMPLATE_DIGEST_BYTES = 25; // Merkle digest bytes in the compressed calldata
     // The setup data contract: STOP ‖ setup frontier ‖ pinned setup cap image ‖ GKR
     // term table; its code hash is checked by the constructor and before each verification.
-    uint256 constant __TEMPLATE_F1_FRONTIER_HASH = 0xf5e33e946c45cc936b514c2158e8ac6ce4085a320a7cbd8dde3d90d37b7301ed;
-    uint256 constant __TEMPLATE_F1_DATA_CAP_OFFSET = 12801;
-    uint256 constant __TEMPLATE_F1_DATA_QTABLE_OFFSET = 13057;
+    uint256 constant __TEMPLATE_FRONTIER_HASH = 0xf5e33e946c45cc936b514c2158e8ac6ce4085a320a7cbd8dde3d90d37b7301ed;
+    uint256 constant __TEMPLATE_DATA_CAP_OFFSET = 12801;
+    uint256 constant __TEMPLATE_DATA_QTABLE_OFFSET = 13057;
     // Setup frontier: the setup tree's 2^LEVEL nodes at that level (DIGEST_BYTES each, physical
     // order) after the STOP byte; setup paths stop SKIP = LEVEL − CAP_LOG2 levels early.
-    uint256 constant __TEMPLATE_F1_FRONTIER_LEVEL = 9;
-    uint256 constant __TEMPLATE_F1_FRONTIER_SKIP = 6;
+    uint256 constant __TEMPLATE_FRONTIER_LEVEL = 9;
+    uint256 constant __TEMPLATE_FRONTIER_SKIP = 6;
 
     // ── Memory map (generated: contiguous regions above the GKR heap, each sized from the
     //    schedule — see WhirGenConfig::memory_regions for every region's size formula) ────────
@@ -200,13 +200,13 @@ contract GkrWhirVerifier {
         // the spill zone (MEMORY LAYOUT above).
         assembly ("memory-safe") {
         mstore(P_PTR, 0x7000000000000000000000000000001)
-        mstore(F1_FRONTIER_PTR, frontier)
+        mstore(FRONTIER_PTR, frontier)
         // the setup data contract is this deployment's data: check its code before any read
-        if iszero(eq(extcodehash(mload(F1_FRONTIER_PTR)), __TEMPLATE_F1_FRONTIER_HASH)) { revert(0, 0) }
-        // f1_decode (below) unpacks the F1 calldata into the image the GKR half reads, in
-        // transcript order. The image holds field elements as BE 16-byte lanes, two per word:
-        // x0 = shr(128, word), x1 = and(word, MASK). Challenges take the high 16 hash bytes:
-        // mod(shr(128, seed), P).
+        if iszero(eq(extcodehash(mload(FRONTIER_PTR)), __TEMPLATE_FRONTIER_HASH)) { revert(0, 0) }
+        // decode_calldata (below) unpacks the compressed calldata into the decoded GKR image the
+        // GKR half reads, in transcript order. The image holds field elements as BE 16-byte
+        // lanes, two per word: x0 = shr(128, word), x1 = and(word, MASK). Challenges take the
+        // high 16 hash bytes: mod(shr(128, seed), P).
 
         // Heap regions, chained by their GENERATED sizes (the generated circuit.yul calls these
         // by name). The chain order here is verified by the generator against its allocator.
@@ -237,130 +237,131 @@ contract GkrWhirVerifier {
         // layer 0, so it needs no zeroing; only layer 0's point-check uses these regions.
         function GKR_GATEVAL_PTR() -> ptr { ptr := add(GKR_CIRCUIT_CLAIMS_PTR(), __TEMPLATE_GKR_CIRCUIT_CLAIMS_BYTES) }
         function GKR_QTABLE_PTR()  -> ptr { ptr := add(GKR_GATEVAL_PTR(), __TEMPLATE_GKR_GATEVAL_BYTES) }
-        // F1: the v0 GKR calldata image, written once by f1_decode; the verifier reads it at v0 offsets.
-        function F1_V0_PTR()       -> ptr { ptr := add(GKR_QTABLE_PTR(), __TEMPLATE_GKR_QTABLE_BYTES) }
+        // The decoded GKR image, written once by decode_calldata; the verifier reads it at image
+        // offsets.
+        function IMAGE_PTR()       -> ptr { ptr := add(GKR_QTABLE_PTR(), __TEMPLATE_GKR_QTABLE_BYTES) }
 
-        // ── F1 decoder: the GKR half's only calldata reader. Writes the v0 GKR calldata image
-        // at F1_V0_PTR(); the GKR half reads that image at v0 offsets, the WHIR half reads its
+        // ── Calldata decoder: the GKR half's only calldata reader. Writes the decoded GKR image
+        // at IMAGE_PTR(); the GKR half reads that image at image offsets, the WHIR half reads its
         // stream from calldata after the GKR section.
         // FE-run(n) at cd: element j = bits [123j, 123j + 123) MSB-first, the pad bits of the last
         // byte zero. Elements 2i, 2i + 1 lie in the word loaded at byte bit >> 3 (bit & 7 ≤ 7,
         // 7 + 246 ≤ 256) and go to the two BE16 lanes at dst + 32i. No range check here: the
         // verifier checks every lane of these runs < P where it reads it (output evaluations, LSB
         // lines, at-point evaluations).
-        function f1_lanes(x) -> w {
+        function fe_pair_lanes(x) -> w {
             w := or(shl(128, and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)), and(x, 0x7ffffffffffffffffffffffffffffff))
         }
-        function f1_run(cd, n, dst) {
+        function decode_run(cd, n, dst) {
             // four pairs = 984 bits = 123 bytes: pair k at byte (246k) >> 3, shifted by 10 − (246k & 7)
             for { let end := add(cd, mul(123, shr(3, n))) } lt(cd, end) { cd := add(cd, 123) } {
-                mstore(dst, f1_lanes(shr(10, calldataload(cd))))
-                mstore(add(dst, 32), f1_lanes(shr(4, calldataload(add(cd, 30)))))
-                mstore(add(dst, 64), f1_lanes(shr(6, calldataload(add(cd, 61)))))
-                mstore(add(dst, 96), f1_lanes(shr(8, calldataload(add(cd, 92)))))
+                mstore(dst, fe_pair_lanes(shr(10, calldataload(cd))))
+                mstore(add(dst, 32), fe_pair_lanes(shr(4, calldataload(add(cd, 30)))))
+                mstore(add(dst, 64), fe_pair_lanes(shr(6, calldataload(add(cd, 61)))))
+                mstore(add(dst, 96), fe_pair_lanes(shr(8, calldataload(add(cd, 92)))))
                 dst := add(dst, 128)
             }
             let bit := 0
             for { let end := mul(246, and(shr(1, n), 3)) } lt(bit, end) { bit := add(bit, 246) } {
-                mstore(dst, f1_lanes(shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))))
+                mstore(dst, fe_pair_lanes(shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))))
                 dst := add(dst, 32)
             }
-            f1_pad(cd, bit)
+            check_run_pad(cd, bit)
         }
         // The pad bits after `bits` run bits at cd must be zero.
-        function f1_pad(cd, bits) {
+        function check_run_pad(cd, bits) {
             let pad := and(sub(0, bits), 7)
             if and(byte(0, calldataload(add(cd, shr(3, sub(add(bits, pad), 1))))), sub(shl(pad, 1), 1)) { revert(0, 0) }
         }
-        // f1_run over the run at (cd, v0): the next F1 and v0 offsets.
-        function f1_seq(cd, v0, n) -> next_cd, next_v0 {
-            f1_run(cd, n, add(F1_V0_PTR(), v0))
+        // decode_run over the run at (cd, image): the next calldata and image offsets.
+        function decode_next_run(cd, image, n) -> next_cd, next_image {
+            decode_run(cd, n, add(IMAGE_PTR(), image))
             next_cd := add(cd, shr(3, add(mul(123, n), 7)))
-            next_v0 := add(v0, shl(4, n))
+            next_image := add(image, shl(4, n))
         }
-        // E1 run of k (b, c) pairs: the round functions read the pairs from calldata (f1_cd) and
-        // range-check them; the run's single image slot holds its bit offset. The decoder shares
-        // f1_run_end and f1_digest with the WHIR half (whir.sol).
-        function f1_rounds(cd, v0, k) -> next_cd, next_v0 {
-            mstore(add(F1_V0_PTR(), v0), shl(3, cd))
-            next_cd := f1_run_end(cd, shl(1, k))
-            next_v0 := add(v0, 32)
+        // Factored-round run of k (b, c) pairs: the round functions read the pairs from calldata
+        // (cd_load) and range-check them; the run's single image slot holds its bit offset. The
+        // decoder shares run_end and cd_digest with the WHIR half (whir.sol).
+        function record_factored_run(cd, image, k) -> next_cd, next_image {
+            mstore(add(IMAGE_PTR(), image), shl(3, cd))
+            next_cd := run_end(cd, shl(1, k))
+            next_image := add(image, 32)
         }
-        function f1_cd(off) -> w {
+        function cd_load(off) -> w {
             w := calldataload(off)
         }
         // A 19-bit limb as the 4 little-endian bytes of its u32, left-aligned.
-        function f1_le19(x) -> w {
+        function limb19_le(x) -> w {
             w := or(or(shl(248, and(x, 0xff)), shl(240, and(shr(8, x), 0xff))), shl(232, shr(16, x)))
         }
         // TS-run pair i: bits [38i, 38i + 38) = low19 ‖ high19.
-        function f1_ts(i) -> lo, hi {
+        function cd_timestamp(i) -> lo, hi {
             let bit := mul(38, i)
             let x := and(shr(sub(218, and(bit, 7)), calldataload(add(128, shr(3, bit)))), 0x3fffffffff)
             lo := shr(19, x)
             hi := and(x, 0x7ffff)
         }
         // Byte-reverse each u32 lane of a 32-byte word (BE digest words → preimage LE words).
-        function f1_bswap32x8(w) -> r {
+        function bswap32x8(w) -> r {
             r := or(shr(8, and(w, 0xff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00)),
                     shl(8, and(w, 0x00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff)))
             r := or(shr(16, and(r, 0xffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000)),
                     shl(16, and(r, 0x0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff)))
         }
-        function f1_decode() {
+        function decode_calldata() {
             // preimage: registers (value, ts_low, ts_high) as LE u32
             for { let i := 0 } lt(i, 32) { i := add(i, 1) } {
-                let dst := add(F1_V0_PTR(), mul(12, i))
+                let dst := add(IMAGE_PTR(), mul(12, i))
                 calldatacopy(dst, mul(4, i), 4)
-                let lo, hi := f1_ts(i)
-                mstore(add(dst, 4), f1_le19(lo))
-                mstore(add(dst, 8), f1_le19(hi))
+                let lo, hi := cd_timestamp(i)
+                mstore(add(dst, 4), limb19_le(lo))
+                mstore(add(dst, 8), limb19_le(hi))
             }
             {
-                let lo, hi := f1_ts(32)
-                mstore(add(F1_V0_PTR(), 384), shl(224, 0xddfd0300)) // pinned final PC
-                mstore(add(F1_V0_PTR(), 388), f1_le19(lo))
-                mstore(add(F1_V0_PTR(), 392), f1_le19(hi))
+                let lo, hi := cd_timestamp(32)
+                mstore(add(IMAGE_PTR(), 384), shl(224, 0xdcfd0300)) // pinned final PC
+                mstore(add(IMAGE_PTR(), 388), limb19_le(lo))
+                mstore(add(IMAGE_PTR(), 392), limb19_le(hi))
             }
             if and(byte(0, calldataload(284)), 0x3) { revert(0, 0) }
             // pinned inits/teardowns top bits (the setup cap below overwrites the rest of the word)
-            mstore(add(F1_V0_PTR(), 396), 0x0000000001000000000000000000000000000000000000000000000000000000)
+            mstore(add(IMAGE_PTR(), 396), 0x0000000001000000000000000000000000000000000000000000000000000000)
             // pinned setup cap
-            extcodecopy(mload(F1_FRONTIER_PTR), add(F1_V0_PTR(), 404), __TEMPLATE_F1_DATA_CAP_OFFSET, 256)
+            extcodecopy(mload(FRONTIER_PTR), add(IMAGE_PTR(), 404), __TEMPLATE_DATA_CAP_OFFSET, 256)
             // memory cap: 8 DIGESTs of 25 bytes, as preimage LE words and as the WHIR
             // half's BE base-oracle cap
             for { let i := 0 } lt(i, 8) { i := add(i, 1) } {
-                let d := f1_digest(add(285, mul(25, i)))
-                mstore(add(F1_V0_PTR(), add(660, mul(32, i))), f1_bswap32x8(d))
+                let d := cd_digest(add(285, mul(25, i)))
+                mstore(add(IMAGE_PTR(), add(660, mul(32, i))), bswap32x8(d))
                 mstore(add(__TEMPLATE_WHIR_BCAP0_PTR, mul(32, i)), d)
             }
             let cd := 485
-            let v0 := 916
-            calldatacopy(add(F1_V0_PTR(), v0), cd, 8) // external PoW nonce
-            cd, v0 := f1_seq(add(cd, 8), add(v0, 8), 40)
+            let image := 916
+            calldatacopy(add(IMAGE_PTR(), image), cd, 8) // external PoW nonce
+            cd, image := decode_next_run(add(cd, 8), add(image, 8), 40)
             for { let k := 2 } lt(k, 21) { k := add(k, 1) } {
-                cd, v0 := f1_rounds(cd, v0, k)
-                cd, v0 := f1_seq(cd, v0, 20)
+                cd, image := record_factored_run(cd, image, k)
+                cd, image := decode_next_run(cd, image, 20)
             }
             // circuit layers, top first; at-point eval counts 16 bits each
             for { let l := 0 } lt(l, 5) { l := add(l, 1) } {
-                cd, v0 := f1_rounds(cd, v0, 21)
-                cd, v0 := f1_seq(cd, v0, and(shr(mul(16, l), 0x006a004a001a0012000c), 0xffff))
+                cd, image := record_factored_run(cd, image, 21)
+                cd, image := decode_next_run(cd, image, and(shr(mul(16, l), 0x006a004a001a0012000c), 0xffff))
             }
-            calldatacopy(add(F1_V0_PTR(), v0), cd, 8) // WHIR batching PoW nonce
-            if iszero(and(eq(add(cd, 8), 20262), eq(add(v0, 8), 12196))) { revert(0, 0) }
+            calldatacopy(add(IMAGE_PTR(), image), cd, 8) // WHIR batching PoW nonce
+            if iszero(and(eq(add(cd, 8), 20262), eq(add(image, 8), 12196))) { revert(0, 0) }
         }
 
         // Read one little-endian u32 from the transcript preimage (byte offset in the image).
         function preimage_u32(byteoff) -> v {
-            let w := mload(add(F1_V0_PTR(), byteoff))
+            let w := mload(add(IMAGE_PTR(), byteoff))
             v := add(add(byte(0, w), shl(8, byte(1, w))), add(shl(16, byte(2, w)), shl(24, byte(3, w))))
         }
 
         function transcript_4to1_dual(w0, w1, modulus) -> r {
             // Absorb the four coefficients before drawing the round challenge:
             // seed = keccak(seed || w0 || w1), then seed = keccak(seed), r = top128 mod P.
-            // w0 = [c0|c1], w1 = [c2|c3], each lane canonical (f1_e1_round reduces them).
+            // w0 = [c0|c1], w1 = [c2|c3], each lane canonical (factored_round reduces them).
             mstore(add(SEED_PTR(), 32), w0)
             mstore(add(SEED_PTR(), 64), w1)
             let seed := keccak256(SEED_PTR(), 96) // absorb 4 (canonical) coeffs
@@ -522,8 +523,8 @@ contract GkrWhirVerifier {
             }
             // PC read: PC(2) + mc4*pc_low + mc5*pc_high + mc2*ts_low + mc3*ts_high + additive
             {
-                // f1_decode writes this program's pinned terminal PC into the preimage, and the
-                // transcript hashes it, so the verified statement is bound to that PC.
+                // decode_calldata writes this program's pinned terminal PC into the preimage, and
+                // the transcript hashes it, so the verified statement is bound to that PC.
                 let pcv := preimage_u32(__TEMPLATE_PREIMAGE_FINAL_PC_OFFSET)
                 let ts_low := preimage_u32(add(__TEMPLATE_PREIMAGE_FINAL_PC_OFFSET, 4))
                 let ts_high := preimage_u32(add(__TEMPLATE_PREIMAGE_FINAL_PC_OFFSET, 8))
@@ -582,11 +583,11 @@ contract GkrWhirVerifier {
             }
         }
 
-        // One E1 round: (b, c) from the F1 calldata pair at `bit`, a = K − z(b + c), absorb
-        // c0..c3 of e_z·(a + bX + cX²) as v0, draw r, K := a + br + cr². t, s and a stay
-        // unreduced where they only feed mulmod; the absorbed lanes are reduced.
-        function f1_e1_round(bit, z, k, modulus) -> r, next_k {
-            let x := shr(sub(10, and(bit, 7)), f1_cd(shr(3, bit)))
+        // One factored round: (b, c) from the calldata pair at `bit`, a = K − z(b + c), absorb
+        // the coefficients c0..c3 of p = e_z·(a + bX + cX²), draw r, K := a + br + cr². t, s and
+        // a stay unreduced where they only feed mulmod; the absorbed lanes are reduced.
+        function factored_round(bit, z, k, modulus) -> r, next_k {
+            let x := shr(sub(10, and(bit, 7)), cd_load(shr(3, bit)))
             let b := and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)
             let c := and(x, 0x7ffffffffffffffffffffffffffffff)
             if iszero(and(lt(b, modulus), lt(c, modulus))) { revert(0, 0) }
@@ -601,21 +602,21 @@ contract GkrWhirVerifier {
         }
         function sumcheck_rounds(ptr, claim, total_rounds) -> next_ptr, next_claim {
             let modulus := mload(P_PTR)
-            // E1: each round's (b, c) pair gives u = a + bX + cX² with p = e_z·u,
+            // Factored rounds: each round's (b, c) pair gives u = a + bX + cX² with p = e_z·u,
             // e_z(X) = (1 − z) + (2z − 1)X. claim tracks K = u_prev(r_prev); a = K − z(b + c) makes
-            // p(0) + p(1) = K and c0..c3 are rebuilt and absorbed as v0, so the layer's end check
-            // is g == K. The (b, c) pairs are read from the F1 calldata
-            // run whose bit offset f1_decode left in the run's image slot.
+            // p(0) + p(1) = K and p's coefficients c0..c3 are rebuilt and absorbed, so the layer's
+            // end check is g == K. The (b, c) pairs are read from the calldata
+            // run whose bit offset decode_calldata left in the run's image slot.
             let bit := mload(ptr)
             for { let i := 0 } lt(i, total_rounds) { i := add(i, 1) } {
                 let zp := add(POINT_PTR(), mul(i, 32))
                 let r
-                r, claim := f1_e1_round(bit, mload(zp), claim, modulus)
+                r, claim := factored_round(bit, mload(zp), claim, modulus)
                 bit := add(bit, 246)
                 mstore(zp, r)
             }
-            next_ptr := add(ptr, __TEMPLATE_F1_E1_SLOT_BYTES)
-            // gkr_dr_final compares the claim directly, so it must be canonical. f1_e1_round already
+            next_ptr := add(ptr, __TEMPLATE_FACTORED_ROUND_SLOT_BYTES)
+            // gkr_dr_final compares the claim directly, so it must be canonical. factored_round already
             // returns it reduced; the explicit mod compiles to cheaper code than omitting it.
             next_claim := mod(claim, modulus)
         }
@@ -713,7 +714,7 @@ contract GkrWhirVerifier {
                     claim := add(mulmod(cb, mload(add(GKR_CLAIMS_PTR(), mul(c, 32))), mload(P_PTR)), claim)
                     cb := mulmod(cb, batching, mload(P_PTR))
                 }
-                // redundant for f1_e1_round, which reduces its own output; removing it saves nothing
+                // redundant for factored_round, which reduces its own output; removing it saves nothing
                 claim := mod(claim, mload(P_PTR))
                 ptr, claim := sumcheck_rounds(ptr, claim, fs)
                 ptr,
@@ -1178,7 +1179,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
             mstore(add(GKR_GATEVAL_PTR(), mul(32, 29)), 0x380000000000000000000000000)
             mstore(add(GKR_GATEVAL_PTR(), mul(32, 30)), 0x37ffe4000000000000000000000)
             mstore(add(GKR_GATEVAL_PTR(), mul(32, 77)), 0x7800000100000000)
-            extcodecopy(mload(F1_FRONTIER_PTR), GKR_QTABLE_PTR(), __TEMPLATE_F1_DATA_QTABLE_OFFSET, 3353)
+            extcodecopy(mload(FRONTIER_PTR), GKR_QTABLE_PTR(), __TEMPLATE_DATA_QTABLE_OFFSET, 3353)
             // accumulate every term into gateval[gate_slot], one loop per bucket
             {
             let modulus := P
@@ -1886,7 +1887,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         // concatenated in register order. Assembled in the 0x00 scratch word.
         function mark_word(first_reg) -> w {
             for { let i := 0 } lt(i, MARK_WORD_REGISTERS) { i := add(i, 1) } {
-                mcopy(mul(i, 4), add(F1_V0_PTR(), mul(add(first_reg, i), PREIMAGE_REGISTER_STRIDE)), 4)
+                mcopy(mul(i, 4), add(IMAGE_PTR(), mul(add(first_reg, i), PREIMAGE_REGISTER_STRIDE)), 4)
             }
             w := mload(0)
         }
@@ -1896,7 +1897,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         // (PoW), form the batched opening, and write the WHIR half's start state straight into
         // its memory regions: seed, gamma powers, opening, z = base_z(BASE_Z_COORDS) ++
         // extra(PACK_LOG2) (the pack index occupies the HIGH bits of the packed enumeration, so
-        // under LSB binding the packing coords EXTEND the claim point at the top). f1_decode
+        // under LSB binding the packing coords EXTEND the claim point at the top). decode_calldata
         // already wrote the memory base-oracle cap. Own frame — keeps the fallback stack under the
         // EVM limit. `ptr` is the image cursor after the circuit layers: it points at the 8-byte
         // WHIR-batching PoW nonce.
@@ -1981,24 +1982,24 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             res := x
             for { let i := 0 } lt(i, k) { i := add(i, 1) } { res := mulmod(res, res, P) }
         }
-        function f1_word(cd, bit) -> w {
+        function cd_fe_pair(cd, bit) -> w {
             let x := shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))
             let a := and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)
             let b := and(x, 0x7ffffffffffffffffffffffffffffff)
             if or(iszero(lt(a, P)), iszero(lt(b, P))) { revert(0, 0) }
             w := or(shl(128, a), b)
         }
-        function f1_run_end(cd, n) -> next_cd {
+        function run_end(cd, n) -> next_cd {
             let bits := mul(123, n)
             next_cd := add(cd, shr(3, add(bits, 7)))
             // All cursor advances are profile-derived; the final cursor checks (REG_CD for the WHIR
-            // stream, f1_decode's end offset for the GKR section) reject overruns.
+            // stream, decode_calldata's end offset for the GKR section) reject overruns.
             let pad := and(sub(0, bits), 7)
             if pad {
                 if and(byte(0, calldataload(sub(next_cd, 1))), sub(shl(pad, 1), 1)) { revert(0, 0) }
             }
         }
-        function f1_digest(cp) -> d {
+        function cd_digest(cp) -> d {
             d := and(calldataload(cp), __TEMPLATE_DIGEST_MASK)
         }
         function verify_pow(cp, pow_bits) -> next_cd {
@@ -2143,7 +2144,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         function merkle_path(leaf_hash, depth, cap_ptr, cp, qidx, coset_bits) -> next_cd {
             // cap_ptr 0 = the setup frontier: the walk stops LEVEL bits below the root, not CAP_LOG2
             let top_bits := __TEMPLATE_WHIR_CAP_LOG2
-            if iszero(cap_ptr) { top_bits := __TEMPLATE_F1_FRONTIER_LEVEL }
+            if iszero(cap_ptr) { top_bits := __TEMPLATE_FRONTIER_LEVEL }
             let qib := add(depth, top_bits)
             let internal_bits := sub(qib, coset_bits)
             let internal_index := shr(coset_bits, qidx)
@@ -2168,8 +2169,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
 
                 switch lt(pos, depth)
                 case 1 {
-                    let sibling := f1_digest(cp)
-                    cp := add(cp, __TEMPLATE_F1_DIGEST_BYTES)
+                    let sibling := cd_digest(cp)
+                    cp := add(cp, __TEMPLATE_DIGEST_BYTES)
                     switch bit
                     case 0 {
                         // current node is the left child
@@ -2191,7 +2192,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             switch cap_ptr
             case 0 {
                 // frontier[cap_index], after the data contract's leading STOP byte
-                extcodecopy(mload(F1_FRONTIER_PTR), 0, add(1, mul(__TEMPLATE_F1_DIGEST_BYTES, cap_index)), __TEMPLATE_F1_DIGEST_BYTES)
+                extcodecopy(mload(FRONTIER_PTR), 0, add(1, mul(__TEMPLATE_DIGEST_BYTES, cap_index)), __TEMPLATE_DIGEST_BYTES)
                 sink2(h, and(mload(0), __TEMPLATE_DIGEST_MASK))
             }
             default { sink2(h, mload(add(cap_ptr, mul(cap_index, 32)))) }
@@ -2204,7 +2205,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             for { let c := 0 } lt(c, cols) { c := add(c, 1) } {
                 let gamma := mload(add(__TEMPLATE_WHIR_GAMMA_PTR, mul(add(goff, c), 32)))
                 for { let wj := 0 } lt(wj, wpc) { wj := add(wj, 1) } {
-                    let w := f1_word(cp, bit)
+                    let w := cd_fe_pair(cp, bit)
                     bit := add(bit, 246)
                     mstore(add(__TEMPLATE_WHIR_LEAF_PTR, mul(li, 32)), w)
                     li := add(li, 1)
@@ -2214,20 +2215,20 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
                     mstore(s1, addmod(mload(s1), mulmod(gamma, and(w, MASK), P), P))
                 }
             }
-            cp := f1_run_end(cp, mul(cols, vp))
+            cp := run_end(cp, mul(cols, vp))
             next_cd := merkle_path(and(keccak256(__TEMPLATE_WHIR_LEAF_PTR, mul(li, 32)), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
         function read_leaf(cp, vp, depth, cap_ptr, qidx, cb) -> next_cd {
             let words := shr(1, vp)
             let bit := 0
             for { let i := 0 } lt(i, words) { i := add(i, 1) } {
-                let w := f1_word(cp, bit)
+                let w := cd_fe_pair(cp, bit)
                 bit := add(bit, 246)
                 mstore(add(__TEMPLATE_WHIR_LEAF_PTR, mul(i, 32)), w)
                 mstore(add(__TEMPLATE_WHIR_FBUF_PTR, mul(mul(i, 2), 32)), shr(128, w))
                 mstore(add(__TEMPLATE_WHIR_FBUF_PTR, mul(add(mul(i, 2), 1), 32)), and(w, MASK))
             }
-            cp := f1_run_end(cp, vp)
+            cp := run_end(cp, vp)
             next_cd := merkle_path(and(keccak256(__TEMPLATE_WHIR_LEAF_PTR, mul(words, 32)), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
         function push_pow(current_scalar, coefficient) {
@@ -2258,7 +2259,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
                 // gamma-batched into the folding buffer.
                 for { let j := 0 } lt(j, vp) { j := add(j, 1) } { mstore(add(__TEMPLATE_WHIR_FBUF_PTR, mul(j, 32)), 0) }
                 cp := batch_oracle(cp, __TEMPLATE_WHIR_MERGED_MW, 0, vp, depth, __TEMPLATE_WHIR_BCAP0_PTR, qidx, cb)
-                cp := batch_oracle(cp, __TEMPLATE_WHIR_SETUP_MERGED, __TEMPLATE_WHIR_MERGED_MW, vp, sub(depth, __TEMPLATE_F1_FRONTIER_SKIP), 0, qidx, cb)
+                cp := batch_oracle(cp, __TEMPLATE_WHIR_SETUP_MERGED, __TEMPLATE_WHIR_MERGED_MW, vp, sub(depth, __TEMPLATE_FRONTIER_SKIP), 0, qidx, cb)
             }
             default {
                 cp := read_leaf(cp, vp, depth, __TEMPLATE_WHIR_QCAP_PTR, qidx, cb)
@@ -2280,12 +2281,12 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             // read + absorb the next oracle's __TEMPLATE_WHIR_CAP (__TEMPLATE_WHIR_CAP*32 bytes)
             // keep BE digests for Merkle roots; absorb LE-word copies (commit_u32_with_seed)
             for { let i := 0 } lt(i, __TEMPLATE_WHIR_CAP) { i := add(i, 1) } {
-                let d := f1_digest(add(cp, mul(i, __TEMPLATE_F1_DIGEST_BYTES)))
+                let d := cd_digest(add(cp, mul(i, __TEMPLATE_DIGEST_BYTES)))
                 mstore(add(__TEMPLATE_WHIR_NCAP_PTR, mul(i, 32)), d)
-                mstore(add(__TEMPLATE_WHIR_SEED_PTR, add(32, mul(i, 32))), f1_bswap32x8(d))
+                mstore(add(__TEMPLATE_WHIR_SEED_PTR, add(32, mul(i, 32))), bswap32x8(d))
             }
             mstore(__TEMPLATE_WHIR_SEED_PTR, keccak256(__TEMPLATE_WHIR_SEED_PTR, add(32, mul(__TEMPLATE_WHIR_CAP, 32))))
-            cp := add(cp, mul(__TEMPLATE_WHIR_CAP, __TEMPLATE_F1_DIGEST_BYTES))
+            cp := add(cp, mul(__TEMPLATE_WHIR_CAP, __TEMPLATE_DIGEST_BYTES))
             let ood_point := draw1()
             let ood_value := shr(128, calldataload(cp))
             // reject a non-canonical (>= P) ood_value: it is absorbed as raw bytes below,
@@ -2344,7 +2345,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             {
             let bit := 0
             for { let wj := 0 } lt(wj, shr(1, nmono)) { wj := add(wj, 1) } {
-                mstore(add(__TEMPLATE_WHIR_FEVAL_PTR, add(32, mul(wj, 32))), f1_word(cp, bit))
+                mstore(add(__TEMPLATE_WHIR_FEVAL_PTR, add(32, mul(wj, 32))), cd_fe_pair(cp, bit))
                 bit := add(bit, 246)
             }
             }
@@ -2356,7 +2357,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
                 mstore(add(__TEMPLATE_WHIR_MONO_PTR, mul(mul(wj, 2), 32)), hi)
                 mstore(add(__TEMPLATE_WHIR_MONO_PTR, mul(add(mul(wj, 2), 1), 32)), lo)
             }
-            cp := f1_run_end(cp, nmono)
+            cp := run_end(cp, nmono)
             cp := verify_pow(cp, pow_bits)
             draw_queries(q, qib)
             let depth := sub(qib, __TEMPLATE_WHIR_CAP_LOG2)
@@ -2400,10 +2401,10 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
 
         // =================================================================== MAIN
         // The WHIR half's entry point, called by the merged verifier after the GKR half has
-        // written the start state (seed / gamma powers / opening / z) and f1_decode the memory
-        // base cap into the regions above. `cd_start` = calldata offset of the WHIR proof stream
-        // (right after the GKR stream's trailing 8-byte WHIR-batching PoW nonce). It runs once, on
-        // fresh memory: REG_NUMPOW and REG_ZIOFF start at zero.
+        // written the start state (seed / gamma powers / opening / z) and decode_calldata the
+        // memory base cap into the regions above. `cd_start` = calldata offset of the WHIR proof
+        // stream (right after the GKR stream's trailing 8-byte WHIR-batching PoW nonce). It runs
+        // once, on fresh memory: REG_NUMPOW and REG_ZIOFF start at zero.
         function whir_verify(cd_start) {
         // Base geometry (generated): rfin = final-poly log2.
         let rfin := __TEMPLATE_WHIR_RFIN
@@ -2423,10 +2424,10 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
 
             {
             let scbase := mload(__TEMPLATE_WHIR_REG_CD)
-            mstore(__TEMPLATE_WHIR_REG_CD, f1_run_end(scbase, mul(2, fold)))
+            mstore(__TEMPLATE_WHIR_REG_CD, run_end(scbase, mul(2, fold)))
             let bit := 0
             for { let s := 0 } lt(s, fold) { s := add(s, 1) } {
-                let pair := f1_word(scbase, bit)
+                let pair := cd_fe_pair(scbase, bit)
                 bit := add(bit, 246)
                 let c0 := shr(128, pair)
                 let c2 := and(pair, MASK)
@@ -2466,9 +2467,9 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         let ptr, output_evals_ptr
         {
             let alpha
-            // the stream cursor is a memory address inside the v0 image
-            f1_decode()
-            ptr := transcript_init(F1_V0_PTR())
+            // the stream cursor is a memory address inside the decoded GKR image
+            decode_calldata()
+            ptr := transcript_init(IMAGE_PTR())
             output_evals_ptr := ptr // base of the 10 GKR output columns (for the lookup-identity check)
             ptr := gkr_init(ptr)
             ptr, alpha := gkr_compress(ptr)
@@ -2488,7 +2489,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         // ── GKR→WHIR handoff in memory, then the WHIR proximity check ─────────────────
         // emit_gkr_mark draws the packing coords + WHIR batching, merges the base-layer claims and
         // writes the WHIR start state into the __TEMPLATE_WHIR_* regions; whir_verify then
-        // consumes the WHIR proof stream, which starts in the calldata right after the F1 GKR
+        // consumes the WHIR proof stream, which starts in the calldata right after the GKR
         // section, and requires its cursor to land exactly at the end of the calldata — so the
         // whole stream (GKR ‖ nonce ‖ WHIR) is checked for exact consumption.
         emit_gkr_mark(ptr)
@@ -2521,7 +2522,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
 //     6528 ..   8896  CIRCUIT_CLAIMS (32 * 74 = 2368 B)
 //     8896 ..  12736  GATEVAL (32 * 120 = 3840 B)
 //    12736 ..  16096  QTABLE (32 * 105 = 3360 B)
-//    16096 ..  28320  F1_V0 (32 * 382 = 12224 B)
+//    16096 ..  28320  IMAGE (32 * 382 = 12224 B)
 //    28320 ..  28608  SEED_PTR (32 + (1 << 3) * 32 = 288 B)
 //    28608 ..  29376  Z_PTR (24 * 32 = 768 B)
 //    29376 ..  33216  POW_PTR (40 * 96 = 3840 B)

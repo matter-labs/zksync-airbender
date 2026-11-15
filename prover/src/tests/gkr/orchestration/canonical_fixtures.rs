@@ -45,7 +45,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use worker::Worker;
 
-/// Exactly one Standard proof per entry and soundness mode. G-function is not
+/// Exactly one Standard proof per entry and soundness mode. `blake2_g_function` is not
 /// part of this set; legacy special5 remains required by the committed OS guest.
 pub const CANONICAL_CIRCUITS: [CanonicalCircuit; 14] = [
     CanonicalCircuit::AddSubLuiAuipcMop,

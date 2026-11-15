@@ -101,7 +101,7 @@ pub fn native_verify_unrolled_in_mode(
     })
 }
 
-/// Native verification of an compression stream (the zero-delegation
+/// Native verification of a compression stream (the zero-delegation
 /// compression statement) at a checked boundary: a verifier error, a structural
 /// panic inside the statement (a nonzero delegation count, a truncated
 /// stream), or trailing words after the statement consumed its input are all

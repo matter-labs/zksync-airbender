@@ -1,4 +1,4 @@
-//! F1 GKR section and the E1 round-polynomial factorization.
+//! GKR section of the compressed calldata and the factored round polynomials.
 
 use cs::definitions::split_timestamp;
 use field::{Field, Proth120};
@@ -69,8 +69,8 @@ pub fn split_round(p: &[Proth120; 4], z: Proth120) -> [Proth120; 3] {
     u
 }
 
-/// The `(b, c)` pairs of every round of `layer` (E1).
-fn e1_coefficients(proof: &Proof, layer: usize, z: &[Proth120]) -> Vec<Proth120> {
+/// The `(b, c)` pairs of every factored round of `layer`.
+fn factored_round_coefficients(proof: &Proof, layer: usize, z: &[Proth120]) -> Vec<Proth120> {
     let siv = &proof.sumcheck_intermediate_values[&layer];
     siv.internal_round_coefficients
         .iter()
@@ -141,7 +141,7 @@ pub(super) fn encode_gkr(
         assert_eq!(lp.layer, layer);
         w.put(
             format!("gkr_dr_{layer}_rounds"),
-            &write_fe_run(&e1_coefficients(proof, layer, &lp.z)),
+            &write_fe_run(&factored_round_coefficients(proof, layer, &lp.z)),
         );
         let lines: Vec<Proth120> = proof.sumcheck_intermediate_values[&layer]
             .final_step_evaluations
@@ -156,7 +156,7 @@ pub(super) fn encode_gkr(
         assert_eq!(lp.z.len(), params.trace_log2, "standard layer rounds");
         w.put(
             format!("gkr_layer_{layer}_rounds"),
-            &write_fe_run(&e1_coefficients(proof, layer, &lp.z)),
+            &write_fe_run(&factored_round_coefficients(proof, layer, &lp.z)),
         );
         w.put(
             format!("gkr_layer_{layer}_evals"),

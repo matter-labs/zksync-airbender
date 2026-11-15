@@ -46,19 +46,25 @@ impl WhirGenConfig {
         let schedule = &prover_config.whir_schedule;
         assert!(
             !schedule.is_virtual_packing(),
-            "F1 requires a folded base round"
+            "the compressed calldata requires a folded base round"
         );
         assert_eq!(
             schedule.base_round.folding_pow_bits, 0,
-            "F1 does not encode base folding PoW"
+            "the compressed calldata does not encode base folding PoW"
         );
         for round in &schedule.internal_rounds {
             assert_eq!(
                 round.num_ood_samples, 1,
-                "F1 encodes one OOD sample per oracle"
+                "the compressed calldata encodes one OOD sample per oracle"
             );
-            assert_eq!(round.ood_pow_bits, 0, "F1 does not encode OOD PoW");
-            assert_eq!(round.folding_pow_bits, 0, "F1 does not encode folding PoW");
+            assert_eq!(
+                round.ood_pow_bits, 0,
+                "the compressed calldata does not encode OOD PoW"
+            );
+            assert_eq!(
+                round.folding_pow_bits, 0,
+                "the compressed calldata does not encode folding PoW"
+            );
         }
         let pack_log2 = prover_config.pack_log2();
         let trace_len_log2 = prover_config.trace_len_log2;

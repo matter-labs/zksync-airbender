@@ -1,4 +1,5 @@
-//! The F1 profile parameters shared by the encoder, the decoder and the generated verifiers.
+//! The compressed-calldata profile parameters shared by the encoder, the decoder and the
+//! generated verifiers.
 
 use prover::gkr::prover_config::ProverConfig;
 

@@ -135,9 +135,9 @@ The L1 compression/wrap/EVM profile exists only in `pessimistic-conjecture`.
 `--target compression` continues a `recursion-unified` proof with a compression chain.
 The pipeline uses the fixed compression schedule in `prover_pipeline`.
 
-Artifacts use schema 5. The optional `l1` bundle is serialized only when present;
-artifacts without it retain the existing schema-5 encoding. The `compression`
-artifact is the input of the L1 wrap.
+Artifacts use schema 5. The optional `l1` bundle is serialized only when present, so
+an artifact without it has no `l1` field. The `compression` artifact is the input of
+the L1 wrap.
 
 Producer commands and fixture inputs are in the
 [fixture README](../../fixtures/README.md).

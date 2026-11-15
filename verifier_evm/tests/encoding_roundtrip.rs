@@ -1,4 +1,4 @@
-//! F1 round factorization, including its degenerate points.
+//! GKR round factorization, including its degenerate points.
 use field::{Field, Proth120};
 use verifier_evm::encoding::*;
 fn fe(v: u128) -> Proth120 {
@@ -6,7 +6,7 @@ fn fe(v: u128) -> Proth120 {
 }
 
 #[test]
-fn e1_factorization_including_degenerate_points() {
+fn round_factorization_including_degenerate_points() {
     let p = Proth120::ORDER;
     let u = [fe(5), fe(p - 7), fe(11)];
     let half = fe(2).inverse().unwrap();

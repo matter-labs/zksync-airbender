@@ -39,8 +39,8 @@ impl ProofProfile {
     }
 
     /// The special config of an L1 profile under `soundness_mode`. The L1 profiles exist only under
-    /// [`SoundnessMode::PessimisticConjecture`] (Ethproofs compression/wrap/EVM is deferred product
-    /// scope): another mode fails
+    /// [`SoundnessMode::PessimisticConjecture`] (no Ethproofs compression, wrap or EVM config
+    /// exists): another mode fails
     /// [`ProverConfigProfile::assert_supports`](crate::definitions::ProverConfigProfile::assert_supports).
     /// `Standard` resolves through the circuit's own config.
     pub fn prover_config(

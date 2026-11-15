@@ -1,12 +1,12 @@
 //! Regenerate the L1 wrap verifier and its wrong-final-PC control from the canonical bundle.
 mod common;
-use common::{F1_FRONTIER_CONTRACT, F1_WRONG_FINAL_PC, MERGED_F1};
+use common::{FRONTIER_CONTRACT, MERGED_VERIFIER, WRONG_FINAL_PC_VERIFIER};
 use field::Proth120;
 
-/// The proof aux must match the descriptor (external PoW floor, exit PC, top bits).
+/// The proof aux must match the pinned inputs (external PoW floor, exit PC, top bits).
 /// Packing comes from the prover config.
 /// Returns the final PC.
-fn check_descriptor() -> u32 {
+fn check_pinned_inputs() -> u32 {
     let (_, proof, operation_mode) = common::load();
     let prover::gkr::prover::OperationMode::SingleChunk {
         external_challenges_pow_bits,
@@ -19,17 +19,17 @@ fn check_descriptor() -> u32 {
     assert_eq!(
         prover::gkr::prover_config::example_configs::l1_wrap::EXTERNAL_CHALLENGES_POW_BITS,
         external_challenges_pow_bits,
-        "descriptor external PoW floor must match proof aux"
+        "pinned external PoW floor must match proof aux"
     );
     assert_eq!(
         common::final_pc(),
         final_pc,
-        "descriptor exit PC must match proof aux"
+        "pinned exit PC must match proof aux"
     );
     assert_eq!(
         common::INITS_TEARDOWNS_TOP_BITS,
         &proof.inits_and_teardowns_top_bits[..],
-        "descriptor inits/teardowns top bits must match the proof"
+        "pinned inits/teardowns top bits must match the proof"
     );
     final_pc
 }
@@ -70,16 +70,16 @@ fn derived_pow_bits(
     (external_pow_bits, batched_proximity_pow_bits)
 }
 
-fn generate_f1(pc: u32) -> verifier_evm::F1Contracts {
+fn generate_wrap(pc: u32) -> verifier_evm::WrapContracts {
     let (circuit, proof, _) = common::load();
     let config = common::prover_config();
-    check_descriptor();
+    check_pinned_inputs();
     let (_, nodes) = common::setup_frontier();
     let (pow, _) = derived_pow_bits(&circuit, &config);
-    verifier_evm::generate_f1_verifier(
+    verifier_evm::generate_wrap_verifier(
         &circuit,
         &config,
-        &common::f1_params(),
+        &common::format_params(),
         pow,
         pc,
         common::INITS_TEARDOWNS_TOP_BITS,
@@ -90,14 +90,14 @@ fn generate_f1(pc: u32) -> verifier_evm::F1Contracts {
 
 fn generated_sources() -> Vec<(String, String)> {
     let pc = common::final_pc();
-    let f1 = generate_f1(pc);
-    let wrong = generate_f1(pc ^ 1);
+    let contracts = generate_wrap(pc);
+    let wrong = generate_wrap(pc ^ 1);
     // The negative changes only the decoder's pinned PC word.
     assert_eq!(
-        f1.verifier_sol.lines().count(),
+        contracts.verifier_sol.lines().count(),
         wrong.verifier_sol.lines().count()
     );
-    let differences: Vec<_> = f1
+    let differences: Vec<_> = contracts
         .verifier_sol
         .lines()
         .zip(wrong.verifier_sol.lines())
@@ -108,9 +108,9 @@ fn generated_sources() -> Vec<(String, String)> {
         .iter()
         .all(|(a, b)| a.contains("// pinned final PC") && b.contains("// pinned final PC")));
     vec![
-        (MERGED_F1.into(), f1.verifier_sol),
-        (F1_FRONTIER_CONTRACT.into(), f1.setup_frontier_sol),
-        (F1_WRONG_FINAL_PC.into(), wrong.verifier_sol),
+        (MERGED_VERIFIER.into(), contracts.verifier_sol),
+        (FRONTIER_CONTRACT.into(), contracts.setup_frontier_sol),
+        (WRONG_FINAL_PC_VERIFIER.into(), wrong.verifier_sol),
     ]
 }
 

@@ -1,7 +1,7 @@
 # L1 wrap encoding invariants
 
-The bundle paths and resolved `ProverConfig` belong to the
-[version descriptor](tests/common/mod.rs). Auxiliary data supplies the
+The bundle paths and resolved `ProverConfig` are pinned in
+[tests/common/mod.rs](tests/common/mod.rs). Auxiliary data supplies the
 `OperationMode::SingleChunk` boundary state and external-challenge PoW; packing
 comes from the configuration.
 
@@ -13,7 +13,7 @@ eight big-endian bytes. A PoW step absorbs its nonce even at difficulty zero.
 [replay_gkr_points](src/encoding/replay.rs) is an encoding oracle. It checks
 transcript order, shape and the WHIR batching claim; it does not verify the full
 proof or PoW difficulty. Proof acceptance belongs to the generated Solidity
-verifier and [WHIR template](src/templates/whir.sol). The F1 decoder rejects
+verifier and [WHIR template](src/templates/whir.sol). The calldata decoder rejects
 unconsumed input.
 
 The statement passed to `IVerificationRegistry.markVerified` is

@@ -4,7 +4,7 @@
 //! prover derives while emitting proof calldata, plus the `(publicInput, auxInput,
 //! setupCommitment)` tuple the on-chain verifier reports to its registry. Nothing here reads
 //! a fixture; the bytes are computed purely from the circuit artifact, the proof, and the aux
-//! operation mode. The F1 replay checks the reconstructed batching challenge
+//! operation mode. The calldata encoder's replay checks the reconstructed batching challenge
 //! against the first WHIR sumcheck claim.
 
 use field::Proth120;

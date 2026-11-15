@@ -1,12 +1,12 @@
 //! `verifier_evm` — generate the on-chain (EVM/Yul) GKR+WHIR verifier for a Proth120 circuit,
 //! and flatten a proof into the calldata it consumes.
 //!
-//! [`generate_f1_verifier`] renders the GKR/WHIR verifier and SetupFrontier data
+//! [`generate_wrap_verifier`] renders the GKR/WHIR verifier and SetupFrontier data
 //! contract from a circuit, ProverConfig and deployment parameters. The verifier
 //! constructor takes the registry and data-contract addresses; proof acceptance
 //! reports the verified statement to that registry.
 //!
-//! [`encoding::encode_single_tx`] encodes a proof as F1 calldata, and
+//! [`encoding::encode_single_tx`] encodes a proof as compressed calldata, and
 //! [`verified_mark`] computes the statement returned and reported by the verifier.
 //! [`seed`] builds the transcript preimage and verified statement.
 //!
@@ -20,5 +20,5 @@ pub mod generator;
 pub mod seed;
 
 pub use flatten::{gkr_calldata, merged_calldata, whir_stream};
-pub use generator::{emit_circuit_yul, generate_f1_verifier, F1Contracts};
+pub use generator::{emit_circuit_yul, generate_wrap_verifier, WrapContracts};
 pub use seed::{commit_seed_preimage, verified_mark, VerifiedMark};
