@@ -3,9 +3,8 @@ use crate::upstream::ProofProfile;
 use gpu_gkr::stage1::merged_commitment::MergedCommitStrategy;
 use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 
-pub mod compression;
-mod generated;
-pub mod l1_wrap;
+use crate::baby_bear::presets::{compression, generated};
+use crate::proth120::presets as l1_wrap;
 
 /// Arena bytes kept free for the next request's inputs while a proof runs:
 /// the largest full-capacity input bundle of any supported circuit, rounded up.

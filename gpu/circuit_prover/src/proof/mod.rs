@@ -1,14 +1,10 @@
-mod baby_bear;
-pub mod inputs;
 mod job;
 pub mod memory_policy;
-mod orchestration;
 pub(crate) mod pipeline;
 
 use era_cudart::result::CudaResult;
 use gpu_prover_context::ProverContext;
 
-pub use baby_bear::{BabyBearProofRequest, GpuGKRProofJob};
 pub use job::{ProofJob, ProofResult};
 
 pub(crate) mod sealed {

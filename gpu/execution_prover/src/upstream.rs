@@ -9,6 +9,7 @@
 //! lines in orchestrator code are forbidden.
 
 // `cs` — GKR circuit artifacts.
+pub use cs::gkr_circuits::ExecutorFamilyDecoderData as CSExecutorFamilyDecoderData;
 pub use cs::gkr_compiler::GKRCircuitArtifact;
 
 // `common_constants` — ROM geometry for unified decoder preprocessing.

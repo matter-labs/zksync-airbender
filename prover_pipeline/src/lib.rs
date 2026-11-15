@@ -1297,7 +1297,7 @@ pub fn compute_trusted_params(
     let fsv = FsvPrograms::load(target, soundness_mode);
     #[cfg(feature = "gpu")]
     let mut gpu = (backend == ProverBackend::Gpu)
-        .then(gpu_execution_prover::trusted_params::TrustedSetupCommitter::new);
+        .then(gpu_execution_prover::baby_bear::trusted_params::TrustedSetupCommitter::new);
     #[cfg(not(feature = "gpu"))]
     if backend == ProverBackend::Gpu {
         return Err("GPU trusted params require the `gpu` feature".into());

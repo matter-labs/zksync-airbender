@@ -7,9 +7,10 @@
 // Required by the stream-scheduled callback accessors.
 #![allow(clippy::mut_from_ref)]
 
+pub mod baby_bear;
 pub mod config;
-pub mod l1_wrap;
 pub mod proof;
+pub mod proth120;
 pub(crate) mod upstream;
 
 pub use config::GPU_SUPPORTED_SECURITY_LEVELS;
@@ -19,5 +20,3 @@ pub use upstream::CommitmentMode;
 gpu_core::force_serial_libtest!();
 #[cfg(test)]
 pub(crate) mod test_utils;
-#[cfg(test)]
-mod tests;

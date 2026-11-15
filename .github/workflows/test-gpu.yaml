@@ -207,9 +207,9 @@ jobs:
           export AB_TEST_ARTIFACT_ROOT="$GITHUB_WORKSPACE"
           binary=./zksync-airbender-gpu/gpu_circuit_prover_tests
           chmod +x "$binary"
-          "$binary" --exact tests::proof_matrix::cpu_canonical_matrix_inventory --test-threads=1 > inventory.txt
+          "$binary" --exact baby_bear::tests::proof_matrix::cpu_canonical_matrix_inventory --test-threads=1 > inventory.txt
           grep -q "test result: ok. 1 passed" inventory.txt
-          "$binary" --list --ignored tests::proof_matrix::canonical_ > proof-tests.txt
+          "$binary" --list --ignored baby_bear::tests::proof_matrix::canonical_ > proof-tests.txt
           mapfile -t tests < <(sed -n 's/: test$//p' proof-tests.txt)
           if [[ "${#tests[@]}" -ne 30 ]]; then
             echo "Expected all 30 canonical circuit/mode tests, found ${#tests[@]}" >&2

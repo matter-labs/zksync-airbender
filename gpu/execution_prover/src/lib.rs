@@ -4,13 +4,12 @@
 use host_storage::GpuTraceAllocator;
 
 use gpu_circuit_prover::proof::memory_policy::presets as memory_policy;
+pub mod baby_bear;
 mod backend;
 mod config;
 mod host_storage;
-#[cfg(feature = "memory_sweep")]
-pub mod memory_sweep;
 mod precomputations;
-pub mod trusted_params;
+mod proth120;
 #[allow(unused_imports)]
 mod upstream;
 mod workers;

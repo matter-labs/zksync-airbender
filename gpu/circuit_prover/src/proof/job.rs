@@ -2,13 +2,10 @@ use era_cudart::event::CudaEvent;
 use era_cudart::result::CudaResult;
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::device_tracing::Range;
-use gpu_core::primitives::field::{BF, E4, PR};
 use gpu_core::primitives::nvtx::scoped_range;
-use gpu_gkr::backward::{GKRBackwardStageSnapshot, GKRBackwardStageSnapshotSink};
+use gpu_gkr::backward::GKRBackwardStageSnapshotSink;
 
-use crate::upstream::{DefaultTreeConstructor, Field, GKRProof, L1WrapResult};
-
-type BabyBearProof = GKRProof<BF, E4, DefaultTreeConstructor>;
+use crate::upstream::Field;
 
 #[doc(hidden)]
 pub trait ProofResult: super::sealed::ResultSealed {
@@ -23,55 +20,6 @@ pub trait ProofResult: super::sealed::ResultSealed {
         snapshots: Option<Box<GKRBackwardStageSnapshotSink<Self::Field>>>,
         time_ms: f32,
     ) -> Self::Stagewise;
-}
-
-impl super::sealed::ResultSealed for BabyBearProof {}
-impl ProofResult for BabyBearProof {
-    type Field = E4;
-    type Finished = (Self, f32);
-    type Stagewise = (Self, Vec<GKRBackwardStageSnapshot<E4>>, f32);
-    const MEASURE_TIME: bool = true;
-    const FINISH_RANGE: Option<&'static str> = None;
-    fn finish(self, time_ms: f32) -> Self::Finished {
-        (self, time_ms)
-    }
-    fn finish_stagewise(
-        self,
-        snapshots: Option<Box<GKRBackwardStageSnapshotSink<E4>>>,
-        time_ms: f32,
-    ) -> Self::Stagewise {
-        (
-            self,
-            snapshots
-                .expect("stagewise proof job must collect snapshots")
-                .into_snapshots(),
-            time_ms,
-        )
-    }
-}
-
-impl super::sealed::ResultSealed for L1WrapResult {}
-impl ProofResult for L1WrapResult {
-    type Field = PR;
-    type Finished = Self;
-    type Stagewise = (Self, Vec<GKRBackwardStageSnapshot<PR>>);
-    const MEASURE_TIME: bool = false;
-    const FINISH_RANGE: Option<&'static str> = Some("l1_wrap.finish");
-    fn finish(self, _time_ms: f32) -> Self::Finished {
-        self
-    }
-    fn finish_stagewise(
-        self,
-        snapshots: Option<Box<GKRBackwardStageSnapshotSink<PR>>>,
-        _time_ms: f32,
-    ) -> Self::Stagewise {
-        (
-            self,
-            snapshots
-                .expect("stagewise proof job must collect snapshots")
-                .into_snapshots(),
-        )
-    }
 }
 
 pub struct ProofJob<'a, T: ProofResult, K> {

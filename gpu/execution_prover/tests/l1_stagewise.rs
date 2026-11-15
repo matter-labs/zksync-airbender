@@ -9,10 +9,10 @@ use execution_prover::config::SoundnessMode;
 use execution_prover::{OperationMode, ProofProfile};
 use full_statement_verifier::host_utils::{build_unified_stream, load_fsv_exact};
 use full_statement_verifier::program_proof::ProgramProof;
-use gpu_circuit_prover::l1_wrap::{
+use gpu_circuit_prover::proof::memory_policy::presets;
+use gpu_circuit_prover::proth120::{
     L1Proof, L1WrapConstantsHost, L1WrapGeometry, L1WrapInputs, L1WrapProofRequest,
 };
-use gpu_circuit_prover::proof::memory_policy::presets;
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 use gpu_gkr::proth120::backward::prepare_dr_tail_resources_pr;
@@ -136,7 +136,7 @@ fn l1_wrap_stagewise_pessimistic_conjecture() {
             let decoder = Some(Arc::new(
                 alloc_static_pinned_box_from_slice(&decoder).unwrap(),
             ));
-            let partial_trees = presets::l1_wrap::PARTIAL_TREES;
+            let partial_trees = gpu_circuit_prover::proth120::presets::PARTIAL_TREES;
             let mut inputs = L1WrapInputs::new(
                 &geometry,
                 decoder,
