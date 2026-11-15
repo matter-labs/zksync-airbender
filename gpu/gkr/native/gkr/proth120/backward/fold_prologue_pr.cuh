@@ -2,7 +2,7 @@
 #include "coefficient_storage_pr.cuh"
 
 #include "../../backward/window/common.cuh"
-#include "primitives/proth120.cuh"
+#include "primitives/proth120/field.cuh"
 
 namespace airbender::gkr::proth120::backward {
 

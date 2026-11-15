@@ -1,6 +1,6 @@
 #include "../fold_shared.cuh"
 #include "common.cuh"
-#include "primitives/proth120.cuh"
+#include "primitives/proth120/field.cuh"
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;

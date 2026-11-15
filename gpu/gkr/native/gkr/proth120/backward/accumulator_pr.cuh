@@ -1,5 +1,5 @@
 #pragma once
-#include "primitives/proth120.cuh"
+#include "primitives/proth120/field.cuh"
 #include <cassert>
 
 namespace airbender::gkr::proth120::backward {

@@ -22,7 +22,8 @@ workspace-root `gkr_eval_ir`), and `gpu_native_build` (the shared build-script h
 
 - **`gpu_core`**: allocators and GPU primitives, and the base CUDA headers
   (`native_headers/`, exported as `DEP_GPU_CORE_NATIVE_INCLUDE`). No production
-  kernels. Its headers are a complete library on purpose: the PTX cache-operator set,
+  kernels: its archive holds the Proth120 field-header probes its tests launch and,
+  under `bench`, the field benches. Its headers are a complete library on purpose: the PTX cache-operator set,
   u32 and u64 carry chains, the field operations (incl. `e6`) and the full accessor
   matrix stay even when unused in-project. Broken or incomplete vestiges may still go.
 - **`gpu_ntt`**: NTT launchers, twiddles and `native/ntt`; exports `native/` so

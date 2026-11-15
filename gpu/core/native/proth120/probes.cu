@@ -1,7 +1,7 @@
-#include "primitives/proth120.cuh"
+#include "primitives/proth120/field.cuh"
 #include <cstddef>
 
-namespace airbender::ops::proth120 {
+namespace airbender::primitives::proth120_probes {
 
 using ::airbender::primitives::field::pr;
 namespace field = ::airbender::primitives::field;
@@ -334,4 +334,4 @@ EXTERN __global__ void ab_pr_access_probe_kernel(const pr *src, pr *dst, field::
   dst_matrix_getter_setter.set(i, 8, pr::add(dst_matrix_getter_setter.get(i, 8), pr::ONE()));
 }
 
-} // namespace airbender::ops::proth120
+} // namespace airbender::primitives::proth120_probes

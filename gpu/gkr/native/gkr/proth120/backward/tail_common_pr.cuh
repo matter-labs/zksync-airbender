@@ -4,7 +4,7 @@
 #include "../../support/descriptors.cuh"
 #include "accumulator_pr.cuh"
 #include "keccak256.cuh"
-#include "primitives/proth120.cuh"
+#include "primitives/proth120/field.cuh"
 
 namespace airbender::gkr::proth120::backward {
 

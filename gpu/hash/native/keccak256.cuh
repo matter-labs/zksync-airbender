@@ -2,8 +2,8 @@
 
 #include "common.cuh"
 #include "pow_search.cuh"
-#include "primitives/field.cuh"
-#include "primitives/proth120.cuh"
+#include "primitives/baby_bear/field.cuh"
+#include "primitives/proth120/field.cuh"
 #include <cuda/atomic>
 #include <type_traits>
 #include <utility>

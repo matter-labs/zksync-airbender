@@ -5,16 +5,11 @@
 /// when gpu_core is tested or used standalone. Plain C, but not CUDA-free: it
 /// includes `nvtx3/nvToolsExt.h` from the Toolkit, hence the `no_cuda` skip.
 ///
-/// Under the `bench` feature it additionally builds the field micro-benchmark
-/// CUDA archive (`native/bench/field.cu` → `gpu_core_bench_native`). gpu_core
-/// has no production kernels, so this is the crate's only CUDA compilation and
-/// is entirely bench-gated.
+/// gpu_core has no production kernels. Its CUDA archive (`gpu_core_native`)
+/// holds the Proth120 field-header probes that its tests launch and, under the
+/// `bench` feature, the BabyBear field micro-benchmark kernels.
 fn main() {
     use std::env;
-
-    // Build-script cfgs do not propagate from dependencies, so `primitives/nvtx.rs`
-    // needs this crate to declare/set `no_cuda` itself.
-    gpu_native_build::emit_no_cuda_cfg();
 
     // Toolkit absent → the wrapper cannot compile; `primitives/nvtx.rs` swaps the
     // `#[link]`ed externs for stubs, so nothing references the archive.
@@ -36,17 +31,16 @@ fn main() {
     println!("cargo:include={}", headers.display());
     println!("cargo:rerun-if-changed=native_headers");
 
-    // The bench kernels `#include "primitives/field.cuh"`, so the archive needs
-    // gpu_core's own `native_headers` on its include path — there is no
+    // The archive's kernels include gpu_core's own headers; there is no
     // `DEP_GPU_CORE_NATIVE_INCLUDE` for gpu_core itself, so pass it explicitly.
+    let mut archive = gpu_native_build::CudaArchive::new("gpu_core_native", "GPU_CORE").define(
+        "GPU_CORE_NATIVE_INCLUDE",
+        headers
+            .to_str()
+            .expect("native_headers path must be valid UTF-8"),
+    );
     if env::var_os("CARGO_FEATURE_BENCH").is_some() {
-        gpu_native_build::CudaArchive::new("gpu_core_bench_native", "GPU_CORE")
-            .define(
-                "GPU_CORE_NATIVE_INCLUDE",
-                headers
-                    .to_str()
-                    .expect("native_headers path must be valid UTF-8"),
-            )
-            .build();
+        archive = archive.define("GPU_CORE_BUILD_BENCH", "ON");
     }
+    archive.build();
 }

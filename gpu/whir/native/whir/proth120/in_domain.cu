@@ -1,7 +1,7 @@
 #include "../in_domain_shared.cuh"
 #include "common.cuh"
 #include "primitives/memory.cuh"
-#include "primitives/proth120.cuh"
+#include "primitives/proth120/field.cuh"
 #include "round.cuh"
 
 using namespace ::airbender::primitives::field;

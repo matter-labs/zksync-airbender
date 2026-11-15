@@ -1,6 +1,6 @@
 #pragma once
-#include "primitives/field.cuh"
-#include "primitives/proth120.cuh"
+#include "primitives/baby_bear/field.cuh"
+#include "primitives/proth120/field.cuh"
 namespace airbender::gkr::proth120::setup {
 using pr = ::airbender::primitives::field::proth120;
 struct forward_setup_lookup_batch_pr {

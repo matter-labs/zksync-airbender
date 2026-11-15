@@ -1,6 +1,6 @@
 #include <common.cuh>
 #include <hash.cuh>
-#include <primitives/field.cuh>
+#include <primitives/baby_bear/field.cuh>
 #include <primitives/memory.cuh>
 #include <whir_leaf_transform.cuh>
 

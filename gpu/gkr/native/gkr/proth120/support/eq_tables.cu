@@ -1,7 +1,7 @@
 #include "../../support/eq_high_low.cuh"
 #include "../../support/eq_inline.cuh"
 #include "../../support/kernel_helpers.cuh"
-#include "primitives/proth120.cuh"
+#include "primitives/proth120/field.cuh"
 namespace airbender::gkr::proth120::support {
 using pr = ::airbender::primitives::field::proth120;
 static_assert(sizeof(void *) == 8 && sizeof(u32) == 4 && sizeof(pr) == 16 && alignof(pr) == 16);

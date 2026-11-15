@@ -1,7 +1,7 @@
 #include "common.cuh"
 #include "keccak256.cuh"
 #include "primitives/memory.cuh"
-#include "primitives/proth120.cuh"
+#include "primitives/proth120/field.cuh"
 #include "proth120/context.cuh"
 
 using namespace ::airbender::primitives::field;

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "eval_vm_isa.cuh"
-#include "primitives/field.cuh"
+#include "primitives/baby_bear/field.cuh"
 
 namespace airbender::gkr {
 

@@ -1,4 +1,4 @@
-#include "primitives/proth120.cuh"
+#include "primitives/proth120/field.cuh"
 namespace airbender::gkr::proth120::ops {
 using pr = ::airbender::primitives::field::proth120;
 struct dense_claim_indices {

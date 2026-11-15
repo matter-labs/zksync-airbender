@@ -1,8 +1,8 @@
 #include "common.cuh"
 #include "fold_shared.cuh"
-#include "primitives/field.cuh"
+#include "primitives/baby_bear/field.cuh"
+#include "primitives/baby_bear/vectorized.cuh"
 #include "primitives/memory.cuh"
-#include "primitives/vectorized.cuh"
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;

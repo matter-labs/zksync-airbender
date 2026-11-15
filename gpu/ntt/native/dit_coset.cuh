@@ -5,7 +5,7 @@
 #pragma once
 #include "context.cuh"    // get_forward_twiddle_power (the Rust-initialized twiddle table)
 #include "dit_memory.cuh" // bitrev_u32
-#include <primitives/field.cuh>
+#include <primitives/baby_bear/field.cuh>
 using namespace ::airbender::primitives::field;
 namespace airbender {
 namespace ntt {

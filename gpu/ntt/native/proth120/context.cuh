@@ -3,7 +3,7 @@
 #include <common.cuh>
 #include <cstddef>
 #include <primitives/memory.cuh>
-#include <primitives/proth120.cuh>
+#include <primitives/proth120/field.cuh>
 #include <type_traits>
 
 using namespace ::airbender::primitives::field;

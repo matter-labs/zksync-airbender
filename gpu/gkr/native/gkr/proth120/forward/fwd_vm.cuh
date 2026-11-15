@@ -1,6 +1,6 @@
 #pragma once
 #include "../../forward/fwd_vm.cuh"
-#include "primitives/proth120.cuh"
+#include "primitives/proth120/field.cuh"
 namespace airbender::gkr::proth120::forward {
 using pr = ::airbender::primitives::field::proth120;
 constexpr u32 PR_FWD_VM_BUCKETS = 4;

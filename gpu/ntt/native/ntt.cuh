@@ -1,7 +1,7 @@
 #pragma once
 #include "context.cuh"
 #include <cuda_pipeline.h>
-#include <primitives/field.cuh>
+#include <primitives/baby_bear/field.cuh>
 #include <primitives/memory.cuh>
 
 namespace airbender::ntt {

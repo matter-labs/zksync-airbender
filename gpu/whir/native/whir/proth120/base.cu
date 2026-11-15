@@ -1,5 +1,5 @@
 #include "common.cuh"
-#include "primitives/proth120.cuh"
+#include "primitives/proth120/field.cuh"
 #include <cstddef>
 #include <type_traits>
 

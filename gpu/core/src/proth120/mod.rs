@@ -1,14 +1,16 @@
+//! Probe kernels for the Proth120 field header (`native_headers/primitives/proth120/field.cuh`),
+//! compared against the CPU field in `tests`.
+
+use crate::primitives::device_structures::{MutPtrAndStride, PtrAndStride};
+use crate::primitives::field::PR;
+use crate::primitives::utils::get_grid_block_dims_for_threads_count;
 use core::mem::{align_of, offset_of, size_of};
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
-use gpu_core::primitives::device_structures::{MutPtrAndStride, PtrAndStride};
-use gpu_core::primitives::field::PR;
-use gpu_core::primitives::utils::get_grid_block_dims_for_threads_count;
 
-#[doc(hidden)]
 #[repr(C, align(16))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PrProbeInput {
@@ -37,7 +39,6 @@ const _: () = {
     assert!(offset_of!(PrProbeInput, _pad) == 92);
 };
 
-#[doc(hidden)]
 #[repr(C, align(16))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PrProbeOutput {
@@ -96,7 +97,6 @@ const _: () = {
     assert!(offset_of!(PrProbeOutput, reduce_lazy) == 320);
 };
 
-#[doc(hidden)]
 #[repr(C, align(16))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PrRawProbeInput {
@@ -119,7 +119,6 @@ const _: () = {
     assert!(offset_of!(PrRawProbeInput, flags) == 76);
 };
 
-#[doc(hidden)]
 #[repr(C, align(16))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PrRawProbeOutput {
@@ -187,7 +186,6 @@ const _: () = {
     assert!(offset_of!(MutPtrAndStride<PR>, stride) == 8);
 };
 
-#[doc(hidden)]
 pub fn pr_field_probe(
     input: &DeviceSlice<PrProbeInput>,
     output: &mut DeviceSlice<PrProbeOutput>,
@@ -211,7 +209,6 @@ pub fn pr_field_probe(
     PrFieldProbeFunction(ab_pr_field_probe_kernel).launch(&config, &args)
 }
 
-#[doc(hidden)]
 pub fn pr_raw_probe(
     input: &DeviceSlice<PrRawProbeInput>,
     output: &mut DeviceSlice<PrRawProbeOutput>,
@@ -235,7 +232,6 @@ pub fn pr_raw_probe(
     PrRawProbeFunction(ab_pr_raw_probe_kernel).launch(&config, &args)
 }
 
-#[doc(hidden)]
 pub fn pr_access_probe(
     src: &DeviceSlice<PR>,
     dst: &mut DeviceSlice<PR>,

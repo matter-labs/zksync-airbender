@@ -3,7 +3,7 @@
 // (ntt_two_pass_fixed) lives in bench/dit_bench_kernels.cu.
 #pragma once
 #include "dit_memory.cuh" // StoreMode, load_vec_vpt, store_vec_vpt,
-#include <primitives/field.cuh>
+#include <primitives/baby_bear/field.cuh>
 // stage_combined, load_combined
 #include "dit_core.cuh"
 #include "dit_coset.cuh"

@@ -1,7 +1,7 @@
 #pragma once
 
+#include "../memory.cuh"
 #include "field.cuh"
-#include "memory.cuh"
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;

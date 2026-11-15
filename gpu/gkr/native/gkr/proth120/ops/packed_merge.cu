@@ -1,4 +1,4 @@
-#include "primitives/proth120.cuh"
+#include "primitives/proth120/field.cuh"
 namespace airbender::gkr::proth120::ops {
 using namespace ::airbender::primitives;
 using pr = field::proth120;

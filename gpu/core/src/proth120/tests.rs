@@ -1,8 +1,8 @@
 use super::*;
+use crate::primitives::field::PR;
 use era_cudart::memory::{memory_copy_async, memory_set_async, DeviceAllocation};
 use era_cudart::stream::CudaStream;
 use field::{Field, PrimeField};
-use gpu_core::primitives::field::PR;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 

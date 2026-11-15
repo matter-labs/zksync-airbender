@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../tables.cuh"
-#include "primitives/proth120.cuh"
+#include "primitives/proth120/field.cuh"
 
 namespace airbender::trace::witness::proth120 {
 

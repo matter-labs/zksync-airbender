@@ -1,6 +1,6 @@
 // Compile-time geometry for the unified kernels.
 #pragma once
-#include <primitives/field.cuh>
+#include <primitives/baby_bear/field.cuh>
 using namespace ::airbender::primitives::field;
 namespace airbender {
 namespace ntt {

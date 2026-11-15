@@ -1,9 +1,9 @@
 #pragma once
 
-#include "../common.cuh"
-#include "carry_chain.cuh"
-#include "memory.cuh"
-#include "ptx.cuh"
+#include "../../common.cuh"
+#include "../carry_chain.cuh"
+#include "../memory.cuh"
+#include "../ptx.cuh"
 #include <cassert>
 #include <cstddef>
 #include <type_traits>

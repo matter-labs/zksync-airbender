@@ -6,7 +6,7 @@
 // (L>>k)&7 term spreads the phase-2 V1 read across banks. v4 store is already
 // conflict-free (block = 4*tid) so only the spread term is used there.
 #pragma once
-#include <primitives/field.cuh>
+#include <primitives/baby_bear/field.cuh>
 using namespace ::airbender::primitives::field;
 namespace airbender {
 namespace ntt {

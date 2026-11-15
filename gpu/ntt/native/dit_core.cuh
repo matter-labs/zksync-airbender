@@ -10,7 +10,7 @@
 // (single-pass NTTS-per-warp packing) and the full warp for LANES==32.
 #pragma once
 #include "dit_twiddles.cuh" // pt_stage_offset, load_local_stage_tw
-#include <primitives/field.cuh>
+#include <primitives/baby_bear/field.cuh>
 using namespace ::airbender::primitives::field;
 namespace airbender {
 namespace ntt {

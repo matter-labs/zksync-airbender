@@ -1,8 +1,8 @@
 //! Shared build-script helper for the GPU kernel crates.
 //!
-//! `gpu_ntt`, `gpu_ops`, `gpu_hash` (and, under its `bench` feature,
-//! `gpu_core`) each compile a CUDA static archive from their `native/`
-//! directory via CMake and emit the link directives. That logic is identical
+//! The GPU kernel crates (`gpu_core`, `gpu_ntt`, `gpu_ops`, `gpu_hash`, ...)
+//! each compile a CUDA static archive from their `native/` directory via CMake
+//! and emit the link directives. That logic is identical
 //! across crates except for the archive/target name, the `*_ENABLE_LINEINFO`
 //! env-var prefix, and two optional behaviors (exporting the native include
 //! dir; the deterministic-PoW feature gate). This crate centralizes it so each
@@ -77,7 +77,7 @@ impl CudaArchive {
 
     /// Forward an extra `-D<key>=<value>` to CMake — e.g. an include directory
     /// the crate provides itself rather than via a `DEP_*` env var (used by
-    /// `gpu_core`'s own bench archive, which has no `DEP_GPU_CORE_NATIVE_INCLUDE`).
+    /// `gpu_core`'s own archive, which has no `DEP_GPU_CORE_NATIVE_INCLUDE`).
     pub fn define(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.extra_defines.push((key.into(), value.into()));
         self

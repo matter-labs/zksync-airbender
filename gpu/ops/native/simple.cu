@@ -1,5 +1,5 @@
-#include "primitives/field.cuh"
-#include "primitives/proth120.cuh"
+#include "primitives/baby_bear/field.cuh"
+#include "primitives/proth120/field.cuh"
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;

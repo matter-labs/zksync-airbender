@@ -2,7 +2,7 @@
 
 #include <common.cuh>
 #include <cstddef>
-#include <primitives/field.cuh>
+#include <primitives/baby_bear/field.cuh>
 #include <primitives/memory.cuh>
 
 using namespace ::airbender::primitives::field;

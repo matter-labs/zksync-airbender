@@ -5,7 +5,7 @@
 // cross stages one-per-group (V1 broadcast). Total per phase = 2^M - 1.
 #pragma once
 #include "dit_memory.cuh" // ld_shared_v2/v4, ld_cg_v4, st_shared_v4
-#include <primitives/field.cuh>
+#include <primitives/baby_bear/field.cuh>
 using namespace ::airbender::primitives::field;
 namespace airbender {
 namespace ntt {

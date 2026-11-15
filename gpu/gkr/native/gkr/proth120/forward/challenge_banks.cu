@@ -1,5 +1,5 @@
-#include "primitives/field.cuh"
-#include "primitives/proth120.cuh"
+#include "primitives/baby_bear/field.cuh"
+#include "primitives/proth120/field.cuh"
 namespace airbender::gkr::proth120::forward {
 using pr = ::airbender::primitives::field::proth120;
 struct challenge_power_slot {

@@ -1,6 +1,6 @@
 #pragma once
 #include "keccak256.cuh"
-#include "primitives/proth120.cuh"
+#include "primitives/proth120/field.cuh"
 
 namespace airbender::whir {
 

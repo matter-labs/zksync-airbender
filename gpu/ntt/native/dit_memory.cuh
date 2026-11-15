@@ -4,7 +4,7 @@
 // lives here.
 
 #pragma once
-#include <primitives/field.cuh>
+#include <primitives/baby_bear/field.cuh>
 #include <primitives/memory.cuh>
 #include <primitives/ptx.cuh>
 using namespace ::airbender::primitives::field;

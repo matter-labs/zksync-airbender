@@ -1,5 +1,5 @@
 #pragma once
-#include "primitives/proth120.cuh"
+#include "primitives/proth120/field.cuh"
 namespace airbender::gkr::proth120::backward {
 using pr = ::airbender::primitives::field::proth120;
 // R0 and continuation have disjoint ranges. Layers reuse them on exec_stream:

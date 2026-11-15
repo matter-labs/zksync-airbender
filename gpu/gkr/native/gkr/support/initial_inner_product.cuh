@@ -1,5 +1,5 @@
 #pragma once
-#include "primitives/field.cuh"
+#include "primitives/baby_bear/field.cuh"
 
 namespace airbender::gkr {
 

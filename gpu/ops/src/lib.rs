@@ -11,7 +11,6 @@ mod upstream;
 
 pub mod bit_reverse;
 pub mod powers;
-pub mod proth120;
 pub mod simple;
 pub mod squaring;
 pub mod transpose;
