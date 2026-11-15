@@ -39,7 +39,7 @@ pub fn prover_config() -> ProverConfig {
 pub fn load() -> (Circuit, Proof, OperationMode) {
     let circuit = serde_json::from_reader(
         std::fs::File::open(
-            "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+            "../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json",
         )
         .expect("circuit layout"),
     )
