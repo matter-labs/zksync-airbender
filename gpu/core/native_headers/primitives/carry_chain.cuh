@@ -1,5 +1,4 @@
 #pragma once
-// Adapted from matter-labs/era-bellman-cuda, src/carry_chain.cuh (MIT OR Apache-2.0).
 
 #include "ptx.cuh"
 #include <cstdint>

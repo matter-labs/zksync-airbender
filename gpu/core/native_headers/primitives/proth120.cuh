@@ -1,5 +1,4 @@
 #pragma once
-// Adapted from matter-labs/era-bellman-cuda, src/ff_dispatch_st.cuh (MIT OR Apache-2.0).
 
 #include "../common.cuh"
 #include "carry_chain.cuh"
