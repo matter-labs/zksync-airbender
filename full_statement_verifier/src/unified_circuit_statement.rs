@@ -112,6 +112,9 @@ where
 
     let mut total_cycles = 0u64;
 
+    // This constant derives the verifier's 64-window identifier limit. It is distinct
+    // from the generated circuit's similarly named address_high_bits_shift (9), which
+    // converts window identifiers into address offsets in the high 16-bit limb.
     const ADDRESS_HIGH_BITS_SHIFT: u32 = 10;
     const MAX_TOP_BIT: u32 = 1 << (32 - 16 - ADDRESS_HIGH_BITS_SHIFT);
 
