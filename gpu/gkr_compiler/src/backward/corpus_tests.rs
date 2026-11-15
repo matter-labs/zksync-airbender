@@ -71,13 +71,16 @@ impl CoeffResolver<Proth120> for Proth120Resolver {
     }
 }
 
+fn proth120_wrap_layout() -> GKRCircuitArtifact<Proth120> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+        "../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_21/generated/layout.json",
+    );
+    serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+}
+
 #[test]
 fn proth120_interpreter_parity() {
-    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
-    let artifact: GKRCircuitArtifact<Proth120> = serde_json::from_slice(
-        &std::fs::read(directory.join("unified_reduced_machine_layout_gkr_proth120.json")).unwrap(),
-    )
-    .unwrap();
+    let artifact = proth120_wrap_layout();
     let dag = lower_dag(&artifact).unwrap();
     let continuations =
         super::compile_continuations_with_model(&dag, crate::ElementModel::PROTH120).unwrap();
@@ -126,11 +129,7 @@ fn continuation_corpus_matches_the_cpu_codec_oracle() {
 
 #[test]
 fn proth120_backward_term_classes() {
-    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cs/compiled_circuits");
-    let artifact: GKRCircuitArtifact<Proth120> = serde_json::from_slice(
-        &std::fs::read(directory.join("unified_reduced_machine_layout_gkr_proth120.json")).unwrap(),
-    )
-    .unwrap();
+    let artifact = proth120_wrap_layout();
     let dag = lower_dag(&artifact).unwrap();
     let model = crate::ElementModel::PROTH120;
     let r0 = super::compile_r0_with_model(&dag, model).unwrap();
