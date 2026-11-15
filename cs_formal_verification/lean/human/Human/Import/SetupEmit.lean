@@ -12,7 +12,7 @@ public meta section
    `Json.parse`, read field by field) and the comparison of grid blocks with the JSON rows.
 
    `import_setup_blocks name from "path"` reads a native setup JSON at elaboration time and
-   adds `name : Airbender.Import.Setup.SetupData` with one declaration per column. The terms
+   adds `name : Airbender.Import.Setup.SetupData` with one declaration per column and small shared literal tails. The terms
    are built directly as kernel expressions (no surface syntax), so elaboration cost stays
    linear in the number of blocks. Lake tracks the file through the `needs` input of the
    library containing the use.
@@ -240,11 +240,46 @@ private def tableE (t : Table) : Lean.Expr :=
   mkAppN (mkConst ``Airbender.Import.Setup.Table.mk)
     #[natE t.id, natE t.offset, natE t.length, natE t.width, natE t.keyColumns]
 
-/-- Kernel-checked definition without code generation: the data is used by kernel reduction, so its body is
-    exposed to importing modules (`forceExpose`; no effect in a non-module). -/
-private def addDef (name : Name) (ty value : Lean.Expr) : CoreM Unit :=
+/-- Kernel-checked data definition without code generation. -/
+private def addDataDef (name : Name) (ty value : Lean.Expr) : CoreM Unit :=
   addDecl (forceExpose := true) <| .defnDecl {
     name, levelParams := [], type := ty, value, hints := .abbrev, safety := .safe }
+
+/-- Share long literal lists through small definitions. Their values and grid formulas stay definitionally equal. -/
+private partial def shareDataLists (base : Name) (value : Lean.Expr) : StateT Nat CoreM Lean.Expr := do
+  if value.isAppOfArity ``List.cons 3 then
+    let ty := value.getAppArgs[0]!
+    let mut entries : Array Lean.Expr := #[]
+    let mut rest := value
+    while rest.isAppOfArity ``List.cons 3 do
+      let args := rest.getAppArgs
+      entries := entries.push (← shareDataLists base args[1]!)
+      rest := args[2]!
+    let mut tail ← shareDataLists base rest
+    let mut stop := entries.size
+    while stop > 0 do
+      let first := stop - 128
+      let mut chunk := tail
+      for index in (List.range (stop - first)).reverse do
+        chunk := mkApp3 (mkConst ``List.cons [Level.zero]) ty entries[first + index]! chunk
+      if entries.size > 128 then
+        let index ← getThe Nat
+        set (index + 1)
+        let name := base.appendAfter s!"_data{index}"
+        liftM <| addDataDef name (mkApp (mkConst ``List [Level.zero]) ty) chunk
+        tail := mkConst name
+      else
+        tail := chunk
+      stop := first
+    return tail
+  match value with
+  | .app f a => return mkApp (← shareDataLists base f) (← shareDataLists base a)
+  | _ => return value
+
+/-- Expose the imported data with bounded declaration depth and the same kernel value. -/
+private def addDef (name : Name) (ty value : Lean.Expr) : CoreM Unit := do
+  let (value, _) ← (shareDataLists name value).run 0
+  addDataDef name ty value
 
 syntax (name := importSetupBlocks) "import_setup_blocks " ident " from " str : command
 
