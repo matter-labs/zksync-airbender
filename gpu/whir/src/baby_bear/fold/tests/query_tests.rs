@@ -15,7 +15,7 @@ use gpu_ntt::baby_bear::MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
 
 /// The smallest base trace the natural-to-bitreversed commit admits.
 const BASE_ROWS: usize = 1 << MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
-use crate::fold::debug::{
+use crate::baby_bear::fold::debug::{
     copy_back, copy_small_to_device, query_base_trace_holder_for_folded_index,
 };
 use crate::upstream::{

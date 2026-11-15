@@ -4,7 +4,7 @@
 (`trace/**`): the machinery that turns a compiled circuit + captured
 non-determinism into a device-resident trace and commits it (LDE, leaf
 transform, Merkle-tree build). Recursive-WHIR oracle commitment is owned by
-`gpu_whir/src/oracle_commit.rs`. This crate carries the `gpu_trace_native`
+`gpu_whir/src/baby_bear/oracle_commit.rs`. This crate carries the `gpu_trace_native`
 CUDA archive (the tree that used to live under
 `circuit_prover/native/witness/`).
 

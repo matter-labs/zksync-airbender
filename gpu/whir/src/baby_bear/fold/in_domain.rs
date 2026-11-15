@@ -45,7 +45,7 @@ impl InDomainState {
         assert_eq!(indexes.len(), weights.len());
         let end = self.count + indexes.len();
         assert!(end <= self.weights.len());
-        crate::in_domain::add_terms(
+        crate::baby_bear::in_domain::add_terms(
             indexes,
             weights,
             domain_log2,
@@ -78,7 +78,7 @@ impl InDomainState {
         self.leaf_width = self.leaf_stride;
         assert!(self.count * self.leaf_stride <= self.leaves.len());
         if self.count != 0 {
-            crate::in_domain::prepare_indexes(
+            crate::baby_bear::in_domain::prepare_indexes(
                 &self.exponents[..self.count],
                 domain_log2,
                 folding_steps as u32,
@@ -108,7 +108,7 @@ impl InDomainState {
             return Ok(false);
         }
         assert!(self.leaf_width >= 2);
-        crate::in_domain::correct_update_and_fold(
+        crate::baby_bear::in_domain::correct_update_and_fold(
             &mut self.leaves[..self.count * self.leaf_stride],
             self.leaf_stride as u32,
             self.leaf_width as u32,
@@ -144,7 +144,7 @@ impl InDomainState {
             "PoW-gated folding step without symbolic in-domain terms"
         );
         assert!(self.leaf_width >= 2);
-        crate::in_domain::correct_and_commit(
+        crate::baby_bear::in_domain::correct_and_commit(
             &self.leaves[..self.count * self.leaf_stride],
             self.leaf_stride as u32,
             self.leaf_width as u32,
@@ -165,7 +165,7 @@ impl InDomainState {
         context: &ProverContext,
     ) -> CudaResult<()> {
         assert!(self.count != 0 && self.leaf_width >= 2);
-        crate::in_domain::fold_terms(
+        crate::baby_bear::in_domain::fold_terms(
             &mut self.leaves[..self.count * self.leaf_stride],
             self.leaf_stride as u32,
             self.leaf_width as u32,

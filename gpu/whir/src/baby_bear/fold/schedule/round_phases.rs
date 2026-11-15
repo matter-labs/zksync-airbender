@@ -1,6 +1,6 @@
 use super::super::*;
 
-use crate::pow::schedule_draw_e4_challenges_with_pow;
+use crate::baby_bear::pow::schedule_draw_e4_challenges_with_pow;
 use gpu_hash::blake2s::{transcript_commit, transcript_squeeze_e4, transcript_squeeze_fresh_e4};
 use gpu_ops::squaring::squaring_sequence_e4;
 

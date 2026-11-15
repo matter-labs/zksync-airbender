@@ -1,5 +1,5 @@
+#include "../fold_shared.cuh"
 #include "common.cuh"
-#include "fold_shared.cuh"
 #include "primitives/baby_bear/field.cuh"
 #include "primitives/baby_bear/vectorized.cuh"
 #include "primitives/memory.cuh"

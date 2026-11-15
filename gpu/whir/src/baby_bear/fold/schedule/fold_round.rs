@@ -1,6 +1,6 @@
 use super::super::*;
 
-use crate::pow::schedule_draw_e4_challenges_with_pow;
+use crate::baby_bear::pow::schedule_draw_e4_challenges_with_pow;
 
 /// Schedules one fold-round group: `num_folding_steps` sumcheck/fold iterations
 /// driven by a rolling device-resident seed buffer threaded by the caller.

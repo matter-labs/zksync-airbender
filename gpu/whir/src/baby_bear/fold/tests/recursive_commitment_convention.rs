@@ -11,8 +11,8 @@ use prover::gkr::whir::commit_single_ext_poly_for_test;
 use prover::merkle_trees::{DefaultTreeConstructor, PathQueryable};
 use worker::Worker;
 
+use crate::baby_bear::{decode_leaf_values, GpuWhirExtensionOracle, EXT4_DEGREE};
 use crate::test_utils::make_test_context;
-use crate::{decode_leaf_values, GpuWhirExtensionOracle, EXT4_DEGREE};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::field::{BF, E4};
 
@@ -139,7 +139,7 @@ fn assert_recursive_commitment_leaves_match_live_cpu(
         )
         .unwrap();
 
-        if let crate::OracleValues::Recomputed(coefficients) = &gpu.values {
+        if let crate::baby_bear::OracleValues::Recomputed(coefficients) = &gpu.values {
             assert_eq!(coefficients.len(), trace_len * EXT4_DEGREE);
             assert!(!gpu.trace_holder.are_cosets_materialized());
         }

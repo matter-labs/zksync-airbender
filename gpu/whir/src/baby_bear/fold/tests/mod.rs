@@ -8,7 +8,7 @@ use std::alloc::Global;
 use era_cudart::memory::memory_copy_async;
 use fft::{bitreverse_enumeration_inplace, Twiddles};
 
-use crate::e4_coeffs_to_vectorized;
+use crate::baby_bear::e4_coeffs_to_vectorized;
 use crate::test_utils::make_test_context;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_ntt::baby_bear::MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
@@ -499,7 +499,7 @@ fn whir_initial_state_eq_matches_cpu_lsb_large() {
     run_whir_initial_state_eq_matches_cpu_lsb(LARGE_LOG_COUNT, true);
 }
 
-use crate::fold::debug::{
+use crate::baby_bear::fold::debug::{
     build_initial_state, copy_back, copy_small_to_device, evaluate_monomial_form_device,
     fold_eq_poly_in_place_device, schedule_special_three_point_eval_device,
     special_three_point_eval_device, vectorized_to_e4_coeffs,

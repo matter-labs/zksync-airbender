@@ -43,6 +43,9 @@ workspace-root `gkr_eval_ir`), and `gpu_native_build` (the shared build-script h
 - **`gpu_gkr`**: the GKR engine and the GKR/WHIR protocol kernels; holds the
   cluster's `__constant__` symbols and exports its headers for `gpu_whir`.
 - **`gpu_whir`**: WHIR folds, PoW and query scheduling, and the recursive WHIR oracle.
+  Field-specific Rust and native sources live in parallel `baby_bear/` and
+  `proth120/` folders; generic PoW helpers and native fold/in-domain templates
+  stay at their respective roots. Both native fields feed `gpu_whir_native`.
 - **`circuit_prover`**: proof orchestration and config over the crates above; no
   native code.
 - **`execution_prover`** (`gpu_execution_prover`): implements the root

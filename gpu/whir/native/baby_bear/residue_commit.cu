@@ -1,8 +1,8 @@
+#include <baby_bear/whir_leaf_transform.cuh>
 #include <common.cuh>
 #include <hash.cuh>
 #include <primitives/baby_bear/field.cuh>
 #include <primitives/memory.cuh>
-#include <baby_bear/whir_leaf_transform.cuh>
 
 using namespace ::airbender::primitives::field;
 using namespace ::airbender::primitives::memory;

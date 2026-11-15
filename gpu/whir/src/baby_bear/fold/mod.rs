@@ -7,19 +7,19 @@ use fft::domain_generator_for_size;
 use fft::materialize_powers_serial_starting_with_one;
 
 #[cfg(test)]
-use crate::kernels::whir_fold_adjacent;
-use crate::kernels::{
+use crate::baby_bear::kernels::whir_fold_adjacent;
+use crate::baby_bear::kernels::{
     accumulate_whir_base_columns_with_serialized_bf, batched_eq_factor_scratch_lens,
     launch_batched_accumulate_eq_samples, launch_split_accumulate_eq_samples,
     launch_whir_three_point_partials, monomial_eval_scratch_lens,
     partially_evaluate_monomials_by_ref, split_eq_factor_scratch_lens, whir_fold_adjacent_pair,
     whir_fold_adjacent_vectorized, whir_sum, whir_three_point_partials_len,
 };
-use crate::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesState};
+use crate::baby_bear::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesState};
+use crate::baby_bear::GpuWhirExtensionOracle;
 #[cfg(test)]
 use crate::upstream::Field;
 use crate::upstream::FieldExtension;
-use crate::GpuWhirExtensionOracle;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 #[cfg(test)]
@@ -45,7 +45,7 @@ mod schedule;
 
 pub use schedule::schedule_gpu_whir_fold_with_sources;
 
-pub(super) struct GpuWhirState {
+pub(crate) struct GpuWhirState {
     sumchecked_poly_monomial_form: DeviceMatrixOwnsAllocation<BF>,
     sumchecked_poly_evaluation_form: DeviceAllocation<E4>,
     eq_poly: DeviceAllocation<E4>,

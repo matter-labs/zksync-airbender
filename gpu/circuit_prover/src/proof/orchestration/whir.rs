@@ -16,7 +16,9 @@ use gpu_gkr::setup::GpuGKRSetupTransfer;
 use gpu_gkr::stage1::GpuGKRStage1Output;
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::TraceHolder;
-use gpu_whir::fold::{schedule_gpu_whir_fold_with_sources, GpuWhirFoldScheduledExecution};
+use gpu_whir::baby_bear::fold::{
+    schedule_gpu_whir_fold_with_sources, GpuWhirFoldScheduledExecution,
+};
 
 pub(in crate::proof) struct WhirPhaseResult {
     pub(in crate::proof) base_layer_claims_scheduled: GpuGKRBaseLayerClaimsScheduledExecution,
@@ -206,7 +208,7 @@ pub(crate) fn schedule_base_commitment_handoff(
     };
     let batching_nonce_dst: &mut era_cudart::slice::DeviceVariable<u64> =
         unsafe { era_cudart::slice::DeviceVariable::from_raw_parts_mut(batching_nonce_ptr) };
-    gpu_whir::pow::schedule_draw_e4_challenges_with_pow(
+    gpu_whir::baby_bear::pow::schedule_draw_e4_challenges_with_pow(
         seed,
         &mut *batching_challenge_device,
         batching_pow_bits,

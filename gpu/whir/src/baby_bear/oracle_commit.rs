@@ -36,7 +36,7 @@ fn flush_partial_tree_batch(
         return Ok(());
     }
     let staged = &staging[..batch.leaves_len];
-    crate::kernels::reduce_staged_whir_subtrees_natural_tiles(
+    crate::baby_bear::kernels::reduce_staged_whir_subtrees_natural_tiles(
         staged,
         boundary_roots,
         log_packed_leaf_count,
@@ -100,7 +100,7 @@ pub(crate) fn schedule_recursive_oracle_commit(
         let roots_count = total_leaf_count >> PARTIAL_TREE_REDUCTION_LAYERS;
         assert_eq!(backing.len(), roots_count << 1);
         let (roots, nodes) = backing.split_at_mut(roots_count);
-        crate::fused_commit::commit(
+        crate::baby_bear::fused_commit::commit(
             gpu_core::primitives::device_structures::DeviceMatrixChunkImpl::slice(inputs_matrix),
             roots,
             log_trace_len,

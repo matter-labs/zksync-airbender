@@ -5,7 +5,7 @@ use era_cudart::memory::memory_copy_async;
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 
-use crate::kernels::accumulate_whir_base_columns_with_serialized_bf;
+use crate::baby_bear::kernels::accumulate_whir_base_columns_with_serialized_bf;
 #[cfg(test)]
 use crate::upstream::BaseFieldQuery;
 use crate::upstream::DefaultTreeConstructor;

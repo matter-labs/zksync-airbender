@@ -8,7 +8,7 @@ use gpu_gkr::backward::{ClaimBufferLayout, GpuGKRBackwardScheduledExecution};
 use gpu_gkr::base_layer_claims::GpuGKRBaseLayerClaimsScheduledExecution;
 use gpu_gkr::setup::GpuGKRForwardSetupHostKeepalive;
 use gpu_gkr::stage1::GpuGKRStage1Keepalive;
-use gpu_whir::fold::GpuWhirFoldScheduledExecution;
+use gpu_whir::baby_bear::fold::GpuWhirFoldScheduledExecution;
 
 mod backward;
 pub(super) mod stage1_forward;
