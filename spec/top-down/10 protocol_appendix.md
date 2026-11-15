@@ -432,63 +432,69 @@ Recursive step: prove the execution of FullStatement; repeat.
 >       2. Verifier requires $g_j(0)+g_j(1)=v_{\mathrm{whir}}$.
 >       3. Both parties absorb the coefficients into $T_{\mathrm{chunk}}$ and draw $z_{\mathrm{fold},r,j}\in E$.
 >       4. Prover sets $F\leftarrow F(z_{\mathrm{fold},r,j},\cdot)$; both parties set $W\leftarrow W(z_{\mathrm{fold},r,j},\cdot)$ and $v_{\mathrm{whir}}\leftarrow g_j(z_{\mathrm{fold},r,j})$.
->    2. Prover supplies the folded polynomial according to the round:
+>    2. Prover supplies the folded polynomial according to the round, writing $\mathrm{powers}(x)=(x,x^2,\ldots,x^{2^{m_r-k_r-1}})$ for the $m_r-k_r$ remaining variables:
 >
->       - **Intermediate round:** Prover sends `WhirCap_r`, committing to $F$ on the next domain from Algorithm 12. Both parties absorb `WhirCap_r` into $T_{\mathrm{chunk}}$ and draw $\xi\in E$. Prover sends $u$, claiming $u=F(\mathrm{powers}(\xi))$, where $\mathrm{powers}(s)=(s,s^2,\ldots,s^{2^{m_r-k_r-1}})$ for the $m_r-k_r$ remaining variables. Both parties absorb $u$ into $T_{\mathrm{chunk}}$.
->       - **Final round:** Prover sends the $2^{m_r-k_r}$ monomial coefficients $\mathbf{c}=(c_0,\ldots,c_{2^{m_r-k_r}-1})$ of $F$, indexed so bit $j$ of $t$ is variable $j$'s exponent in the monomial for $c_t$. Both parties absorb $\mathbf{c}$ into $T_{\mathrm{chunk}}$.
+>       - **Intermediate round:**
 >
->    3. Prover sends the 64-bit query-PoW nonce. Both parties absorb it into $T_{\mathrm{chunk}}$ and draw one 32-bit PoW word (256-bit for Proth120). Verifier requires at least $b_r$ leading zero bits, where $b_r$ is the round's query-PoW threshold from Algorithm 12. Both parties draw query indices $I_0,\ldots,I_{t_r-1}$ using the query count $t_r$ and current-oracle domain $D_r$ from Algorithm 12. Each index has $\ell_{\mathrm{query}}=\log_2(|D_r|/2^{k_r})$ bits, sampled as follows:
+>         1. Prover sends `WhirCap_r`, committing to $F$ on the next domain from Algorithm 12. Both parties absorb `WhirCap_r` into $T_{\mathrm{chunk}}$.
+>         2. Both parties draw $z_{\mathrm{ood},r}\in E$. Prover sends $a_{\mathrm{ood},r}$, claiming $a_{\mathrm{ood},r}=F(\mathbf{z}_{\mathrm{ood},r})$, where $\mathbf{z}_{\mathrm{ood},r}=\mathrm{powers}(z_{\mathrm{ood},r})$. Both parties absorb $a_{\mathrm{ood},r}$ into $T_{\mathrm{chunk}}$.
 >
->       Draw $8\lceil(\lceil t_r\ell_{\mathrm{query}}/32\rceil+1)/8\rceil$ raw 32-bit words. For BabyBear, this stream begins with the checked PoW word. For Proth120, it begins with the next Keccak256 hash after the PoW digest, with each digest split into eight little-endian words. Skip the first word of this stream and read $\ell_{\mathrm{query}}$ bits per index, least-significant bit first. All drawn blocks advance $T_{\mathrm{chunk}}$.
+>       - **Final round:** Prover sends the $2^{m_r-k_r}$ coefficients $\mathbf{c}=(c_0,\ldots,c_{2^{m_r-k_r}-1})$ of the univariate polynomial $f(x)=F(\mathrm{powers}(x))$, in increasing degree order. Both parties absorb $\mathbf{c}$ into $T_{\mathrm{chunk}}$.
 >
->       In an intermediate round, both parties then draw $\delta\in E$ from fresh hash output beyond the query-index randomness.
+>    3. Prover sends the 64-bit query-PoW nonce. Both parties absorb it into $T_{\mathrm{chunk}}$ and draw one 32-bit PoW word (256-bit for Proth120). Verifier requires the number of leading zero bits to meet the query-PoW threshold specified in Algorithm 12 for round $r$. Both parties sample $t_r$ folding-coset indices $I_{r,j}\in\{0,\ldots,|D_r|/2^{k_r}-1\}$ from subsequently drawn transcript bits, where $t_r$ is the round's query count and $D_r$ its pre-folding domain, both specified by Algorithm 12, and set $z_{\mathrm{query},r,j}\leftarrow(\omega^{I_{r,j}})^{2^{k_r}}$ and $\mathbf{z}_{\mathrm{query},r,j}\leftarrow\mathrm{powers}(z_{\mathrm{query},r,j})$ for each query, where $\omega$ generates $D_r$.
+>
+>       If this is not the last round, both parties discard any unused bits in the current 256-bit transcript output block, then draw $r_{\mathrm{batch},\mathrm{evals},r}\in E$ from fresh transcript output to batch the OOD and query evaluation claims.
 >    4. For each query $j=0,\ldots,t_r-1$:
->       1. Prover sends the current-oracle leaves and Merkle paths. The first round opens evaluation leaves from every nonempty base commitment named by the input caps, with the group layout fixed by Algorithm 12. Later rounds open coefficient leaves from the commitment named by `WhirCap_{r-1}`. The paths are checked but not absorbed into $T_{\mathrm{chunk}}$.
->       2. Verifier authenticates each leaf against its cap at the tree position specified by Algorithm 12 and folds each polynomial's leaf values using $\mathbf{z}_{\mathrm{fold},r}$ according to their encoding:
+>       1. Prover sends leaves and Merkle authentication paths for the trees belonging to `MemoryCaps`, `WitnessCaps` and `SetupCaps` in the first round (evaluation leaves for all base polynomials at the $2^{k_r}$-th roots of $z_{\mathrm{query},r,j}$), and to `WhirCap_{r-1}` in later rounds (coefficient leaves for the single batched polynomial at the same roots).
+>       2. Verifier authenticates each leaf against its cap at the tree position specified by Algorithm 12 and folds each polynomial's leaf values using $\mathbf{z}_{\mathrm{fold},r}$ to compute its evaluation at $\mathbf{z}_{\mathrm{query},r,j}$ (evaluation in the remaining variables is already incorporated in the leaf values), according to the leaf encoding:
 >
->          - **Coefficient leaves:** Verifier computes
+>          - **Coefficient leaves:** For $i=0,\ldots,k_r-1$, Verifier replaces each adjacent pair $c_0,c_1$ of the current values, starting from each polynomial's authenticated coefficients in leaf order, by
 >
 >            $$
->            \sum_{\mathbf{b}\in\{0,1\}^{k_r}}d_{\mathbf{b}}\prod_{i=0}^{k_r-1}z_{\mathrm{fold},r,i}^{b_i},
+>            \operatorname{Int}[(0,A),(1,B)](z_{\mathrm{fold},r,i})
+>            =A+z_{\mathrm{fold},r,i}(B-A)
+>            =c_0+z_{\mathrm{fold},r,i}c_1,
 >            $$
 >
->            where $d_{\mathbf{b}}$ are the authenticated local monomial coefficients indexed by the exponent vector $\mathbf{b}$.
+>            where $A$ and $B$ are the corresponding evaluations at $0,1$, and $\operatorname{Int}$ denotes linear interpolation through the specified points.
+>
 >          - **Evaluation leaves:** For $i=0,\ldots,k_r-1$, Verifier pairs the current values $A,B$ at nonzero coset points $x,-x$ in the configured coset order and replaces each pair by
 >
 >            $$
 >            \frac{A+B+z_{\mathrm{fold},r,i}(A-B)/x}{2}.
 >            $$
 >
->            He squares the coset points between these steps. The last remaining value is the folded evaluation.
+>            Between folding steps, Verifier updates each point $x\leftarrow x^2$.
 >
->          For base oracles, Verifier batches the per-polynomial folded values with the same powers of $r_{\mathrm{batch},\mathrm{whir}}$ and order as in step 1 to obtain $q_j$. For later rounds, $q_j$ is the folded value of the single batched oracle.
->       3. Verifier sets $s_j\leftarrow(\omega^{I_j})^{2^{k_r}}$, where $\omega$ is the generator of the current oracle's domain $D_r$ specified by Algorithm 12.
+>       3. Verifier sets $a_{\mathrm{query},r,j}$ as follows:
+>
+>          - **First round:** batch the per-polynomial folded evaluations from step 3.4.2 using the same powers of $r_{\mathrm{batch},\mathrm{whir}}$ and order as in step 1.
+>          - **Later rounds:** use the single folded evaluation from step 3.4.2.
 >    5. Both parties finish the round according to its type:
 >
 >       - **Intermediate round:** Both parties update
 >
 >         $$
 >         \begin{aligned}
->         W(\mathbf{x}) &\leftarrow W(\mathbf{x})+\delta\,\mathrm{eq}(\mathrm{powers}(\xi),\mathbf{x})
->           +\sum_{j=0}^{t_r-1}\delta^{j+2}\mathrm{eq}(\mathrm{powers}(s_j),\mathbf{x}),\\
->         v_{\mathrm{whir}} &\leftarrow v_{\mathrm{whir}}+\delta u+\sum_{j=0}^{t_r-1}\delta^{j+2}q_j.
+>         W(\mathbf{x}) &\leftarrow W(\mathbf{x})+r_{\mathrm{batch},\mathrm{evals},r}\,\mathrm{eq}(\mathbf{z}_{\mathrm{ood},r},\mathbf{x})
+>           +\sum_{j=0}^{t_r-1}r_{\mathrm{batch},\mathrm{evals},r}^{j+2}\mathrm{eq}(\mathbf{z}_{\mathrm{query},r,j},\mathbf{x}),\\
+>         v_{\mathrm{whir}} &\leftarrow v_{\mathrm{whir}}+r_{\mathrm{batch},\mathrm{evals},r} a_{\mathrm{ood},r}+\sum_{j=0}^{t_r-1}r_{\mathrm{batch},\mathrm{evals},r}^{j+2}a_{\mathrm{query},r,j}.
 >         \end{aligned}
 >         $$
 >
->         Both parties use `WhirCap_r` as the current oracle cap for the next round.
->       - **Final round:** Verifier requires $q_j=\sum_{l=0}^{2^{m_r-k_r}-1}c_l s_j^l$ for every query. He reconstructs $F_{\mathrm{final}}$ from $\mathbf{c}$ using the coefficient indexing in step 3.2 and requires
+>       - **Final round:** Verifier requires $a_{\mathrm{query},r,j}=f(z_{\mathrm{query},r,j})$ for every query. He interprets $\mathbf{c}$ as the monomial coefficients of $F_{\mathrm{final}}$ using the encoding in step 3.2 and requires
 >
 >         $$
 >         v_{\mathrm{whir}}=\sum_{\mathbf{x}\in\{0,1\}^{m_r-k_r}}F_{\mathrm{final}}(\mathbf{x})W(\mathbf{x}).
 >         $$
 >
-> 4. Verifier accepts the base-opening claims. Both parties return $T_{\mathrm{chunk}}$.
+> 4. Both parties return $T_{\mathrm{chunk}}$.
 >
 > **Soundness — opening reduction (adapted, conditional).** Assume binding commitments, the encoding/restriction identities below, and a Reed–Solomon proximity/list-decoding theorem applicable to the selected domains, both leaf encodings and this accumulator update. That theorem must supply candidate lists at the required challenge boundaries and bound the probability of leaving the candidate invariant. Outside those failures, the following tests propagate a false base-opening claim to rejection at the final polynomial check:
 >
 > - **Base batching:** for $c$ columns and claims fixed before $r_{\mathrm{batch},\mathrm{whir}}$, cancellation of a nonzero discrepancy costs at most $(c-1)\mu$.
-> - **Claim reduction:** for step 3.1, assume $F$ and $W$ are multilinear and fixed before each fresh challenge. The honest $g_j$ has degree at most two, so a false incoming claim forces a nonzero discrepancy of degree at most two at the endpoint check; it vanishes at $z_{\mathrm{fold},r,j}$ with probability at most $2\mu$, charged once per step. Each $\delta$ combination has degree at most $t_r+1$ and costs at most $(t_r+1)\mu$, provided all combined discrepancies are fixed before $\delta$. Commitment binding fixes the queried leaf values even when their paths are supplied later.
-> - **OOD separation:** two distinct candidate polynomials fixed before $\xi$, with difference of degree at most $d_r$, agree at $\xi$ with probability at most $d_r\mu$. The proximity reduction must specify which candidate comparisons are needed and account for their number.
+> - **Claim reduction:** for step 3.1, assume $F$ and $W$ are multilinear and fixed before each fresh challenge. The honest $g_j$ has degree at most two, so a false incoming claim forces a nonzero discrepancy of degree at most two at the endpoint check; it vanishes at $z_{\mathrm{fold},r,j}$ with probability at most $2\mu$, charged once per step. Each $r_{\mathrm{batch},\mathrm{evals},r}$ combination has degree at most $t_r+1$ and costs at most $(t_r+1)\mu$, provided all combined discrepancies are fixed before $r_{\mathrm{batch},\mathrm{evals},r}$. Commitment binding fixes the queried leaf values even when their paths are supplied later.
+> - **OOD separation:** two distinct candidate polynomials fixed before $z_{\mathrm{ood},r}$, with difference of degree at most $d_r$, agree at $z_{\mathrm{ood},r}$ with probability at most $d_r\mu$. The proximity reduction must specify which candidate comparisons are needed and account for their number.
 > - **Query consistency:** for fixed fold challenges and a candidate fixed before the query draw, let $a$ be its agreement fraction with the authenticated fold over the current fold groups. Sampling $t_r$ indices independently with replacement accepts this candidate with probability $a^{t_r}$. For a predetermined candidate list, sum these bounds over the false candidates tested.
 >
 > With each failure charged once, the algebraic opening budget is
@@ -499,9 +505,9 @@ Recursive step: prove the execution of FullStatement; repeat.
 >
 > Instantiating the proximity invariant, candidate-list sizes and fold-group agreement bounds for every round remains a proof obligation. The final coefficient and accumulator checks close the reduction once that invariant is established. Commitment binding and Fiat–Shamir compilation enter the separate computational analysis.
 >
-> **Soundness — exact folding and EQ restriction (adapted).** Assume authenticated leaves have the specified encoding and coset/bit ordering, with nonzero coset points. Evaluating the local coefficient tensor restricts the corresponding multilinear coordinates. For evaluation leaves, let $f$ be the univariate polynomial represented by the current values and write $f(X)=f_{\mathrm{even}}(X^2)+Xf_{\mathrm{odd}}(X^2)$: the displayed formula returns $f_{\mathrm{even}}(x^2)+z_{\mathrm{fold},r,i}f_{\mathrm{odd}}(x^2)$, the same coordinate restriction. Iteration gives the folded evaluation in step 3.4.2. These deterministic identities require the layout-to-polynomial correspondence for each encoding.
+> **Soundness — exact folding and EQ restriction (adapted).** Assume authenticated leaves have the specified encoding and coset/bit ordering, with nonzero coset points. Evaluating the local coefficient tensor restricts the corresponding multilinear coordinates. For evaluation leaves, let $p$ be the univariate polynomial represented by the current values and write $p(X)=p_{\mathrm{even}}(X^2)+Xp_{\mathrm{odd}}(X^2)$: the displayed formula returns $p_{\mathrm{even}}(x^2)+z_{\mathrm{fold},r,i}p_{\mathrm{odd}}(x^2)$, the same coordinate restriction. Iteration gives the folded evaluation in step 3.4.2. These deterministic identities require the layout-to-polynomial correspondence for each encoding.
 >
-> Restricting each EQ term of $W$ (step 3.1.4) contributes its evaluated leading factor to its weight $\kappa$ in the EQ expansion of $W$. Writing $f_{\mathrm{final}}(s)=\sum_l c_l s^l$, the final cube sum is $\kappa_0 F_{\mathrm{final}}(\mathbf{z}_{\mathrm{whir},\mathrm{remaining}})+\sum_j\kappa_jf_{\mathrm{final}}(s_j)$, with each OOD/query scalar squared at every subsequent coordinate restriction. This identity justifies the final accumulator evaluation in step 3.5; the encoding correspondence remains an implementation-specific proof obligation.
+> Restricting each EQ term of $W$ (step 3.1.4) contributes its evaluated leading factor to its weight $\kappa$ in the EQ expansion of $W$. Denoting the accumulated OOD/query weights and scalar points by $(\kappa_j,s_j)$, the final cube sum is $\kappa_0 F_{\mathrm{final}}(\mathbf{z}_{\mathrm{whir},\mathrm{remaining}})+\sum_j\kappa_jf(s_j)$, with each OOD/query scalar squared at every subsequent coordinate restriction. This identity justifies the final accumulator evaluation in step 3.5; the encoding correspondence remains an implementation-specific proof obligation.
 >
 > **Memory-table binding export (proof obligation).** Algorithms 2 and 3b require the memory caps, together with the fixed circuit layout, to bind the memory columns before the shared $\mathbf r_{\mathrm{mem}}$ is sampled. Outside the accounted commitment/PCS failures, accepted openings and local chunk relations must refer to those same columns. This must cover adversarial caps as well as honestly encoded tables, both the ordinary memory commitment and the memory-column projection of the merged memory/witness commitment. The guarantee must hold at the memory-precommitment stage, before the later GKR, batching and WHIR challenges.
 >
