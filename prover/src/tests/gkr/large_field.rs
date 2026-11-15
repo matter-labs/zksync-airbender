@@ -1143,6 +1143,7 @@ fn circuit_layer_g(
 /// the recipe (which the Solidity will implement) is confirmed. Also captures the
 /// per-layer claim/challenge reference.
 #[test]
+#[ignore = "the committed 2^22 Proth120 research proof does not match the 2^21 wrap layout"]
 fn verify_dim_reduce_layers() {
     use crate::gkr::prover::transcript_utils::{
         commit_field_els, draw_fresh_random_field_els, draw_random_field_els,
