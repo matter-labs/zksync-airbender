@@ -94,7 +94,7 @@ contract GkrWhirVerifier {
     uint256 constant __TEMPLATE_PREIMAGE_FINAL_PC_OFFSET   = 32 * 12; // = NUM_REGISTERS * PREIMAGE_REGISTER_STRIDE
     uint256 constant __TEMPLATE_GKR_INIT_PREIMAGE_BYTES    = 32 * 12 + 12 + 2 * 4 + 8 * 32 + 8 * 32; // registers ‖ final PC ‖ top bits ‖ setup cap ‖ memory cap
     uint256 constant __TEMPLATE_F1_E1_SLOT_BYTES = 32; // image bytes of an E1 run: its calldata bit offset
-    uint256 constant __TEMPLATE_SETUP_COMMITMENT = 0x309facf34d70dc04c8480a888765fbb51248237e9088d3378410d1f99c8fc05f; // keccak256 of the pinned setup cap as BE u32 words
+    uint256 constant __TEMPLATE_SETUP_COMMITMENT = 0xd6df118d3cd2e5cdac110a7a84ba802115bb8eba12b4fd4894fb96617280e640; // keccak256 of the pinned setup cap as BE u32 words
     // The inits/teardowns RAM-set base chunk indices (`top_bits`) are deployment parameters of
     // the program: f1_decode writes them into the preimage, and the layer-0 inits/teardowns gates
     // use the constants. One uint8 per teardown set.
@@ -148,7 +148,7 @@ contract GkrWhirVerifier {
     uint256 constant __TEMPLATE_F1_DIGEST_BYTES = 25; // Merkle digest bytes on the F1 wire
     // The setup data contract: STOP ‖ setup frontier ‖ pinned setup cap image ‖ GKR
     // term table; its code hash is checked by the constructor and before each verification.
-    uint256 constant __TEMPLATE_F1_FRONTIER_HASH = 0x4732c05fd78d1351e8e902db3ffc13fa8c9b3b9bc99530bad4ee037f224a2a44;
+    uint256 constant __TEMPLATE_F1_FRONTIER_HASH = 0xf5e33e946c45cc936b514c2158e8ac6ce4085a320a7cbd8dde3d90d37b7301ed;
     uint256 constant __TEMPLATE_F1_DATA_CAP_OFFSET = 12801;
     uint256 constant __TEMPLATE_F1_DATA_QTABLE_OFFSET = 13057;
     // Setup frontier: the setup tree's 2^LEVEL nodes at that level (DIGEST_BYTES each, physical
@@ -318,7 +318,7 @@ contract GkrWhirVerifier {
             }
             {
                 let lo, hi := f1_ts(32)
-                mstore(add(F1_V0_PTR(), 384), shl(224, 0x58fa0300)) // pinned final PC
+                mstore(add(F1_V0_PTR(), 384), shl(224, 0xdcfd0300)) // pinned final PC
                 mstore(add(F1_V0_PTR(), 388), f1_le19(lo))
                 mstore(add(F1_V0_PTR(), 392), f1_le19(hi))
             }
