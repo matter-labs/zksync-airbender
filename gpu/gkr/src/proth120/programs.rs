@@ -126,7 +126,7 @@ mod cpu_tests {
     #[test]
     fn cpu_proth120_programs_compile_2p21() {
         let artifact = serde_json::from_slice(include_bytes!(
-            "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
+            "../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json"
         ))
         .unwrap();
         let programs = GkrProgramsPr::compile(CircuitType::L1Wrap, Arc::new(artifact));

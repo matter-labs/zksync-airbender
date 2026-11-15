@@ -486,7 +486,7 @@ mod tests {
         let layout: GKRCircuitArtifact<Proth120> = serde_json::from_slice(
             &std::fs::read(
                 repo_root()
-                    .join("cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"),
+                    .join("circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json"),
             )
             .unwrap(),
         )

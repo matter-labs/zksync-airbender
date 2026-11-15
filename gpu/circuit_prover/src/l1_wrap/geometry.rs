@@ -183,7 +183,7 @@ pub(crate) mod cpu_tests {
     pub(crate) fn committed_layout(circuit_type: CircuitType) -> GKRCircuitArtifact<Proth120> {
         let json = match circuit_type {
             CircuitType::L1Wrap => include_str!(
-                "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
+                "../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json"
             ),
             other => panic!("{other:?} has no committed Proth120 layout"),
         };

@@ -10,7 +10,7 @@ use gpu_trace::witness::circuit_type::CircuitType;
 
 pub(crate) fn programs() -> GkrProgramsPr {
     let artifact: GKRCircuitArtifact<PR> = serde_json::from_slice(include_bytes!(
-        "../../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
+        "../../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json"
     ))
     .unwrap();
     GkrProgramsPr::compile(CircuitType::L1Wrap, Arc::new(artifact))

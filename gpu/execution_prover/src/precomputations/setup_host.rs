@@ -254,7 +254,7 @@ mod cpu_tests {
         use execution_prover::config::SoundnessMode;
         let setup = crate::upstream::L1WrapSetup {
             circuit: serde_json::from_str(include_str!(
-                "../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
+                "../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json"
             ))
             .expect("committed Proth120 layout"),
             rom: prover::common_constants::rom::L1_WRAP_ROM,

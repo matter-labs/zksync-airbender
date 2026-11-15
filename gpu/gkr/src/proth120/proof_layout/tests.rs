@@ -1,6 +1,6 @@
 pub(crate) fn programs() -> crate::proth120::programs::GkrProgramsPr {
     let artifact = serde_json::from_slice(include_bytes!(
-        "../../../../../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"
+        "../../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json"
     ))
     .unwrap();
     crate::proth120::programs::GkrProgramsPr::compile(

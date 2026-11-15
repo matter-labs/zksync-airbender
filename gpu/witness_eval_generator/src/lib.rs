@@ -752,7 +752,7 @@ pub const CIRCUITS: &[GeneratedCircuit] = &[
     GeneratedCircuit {
         id: "unified_reduced_machine_proth120",
         inputs: GeneratorInputs {
-            layout_json: "cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
+            layout_json: "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json",
             ssa_json: "cs/compiled_circuits/unified_reduced_machine_ssa_gkr_proth120.json",
         },
         committed_cuh: "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/witness_generation_fn.cuh",

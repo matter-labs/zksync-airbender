@@ -760,9 +760,9 @@ fn pr_transcript_phases_match_reference() {
         "l1",
     ));
     let circuit: verifier_evm::seed::Circuit = serde_json::from_reader(
-        std::fs::File::open(
-            root.join("cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json"),
-        )
+        std::fs::File::open(root.join(
+            "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json",
+        ))
         .unwrap(),
     )
     .unwrap();
