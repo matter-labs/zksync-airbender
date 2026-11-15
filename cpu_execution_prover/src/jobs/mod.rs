@@ -1,33 +1,22 @@
 use execution_prover::ProofProfile;
+mod baby_bear;
 mod caps;
 mod inits_and_teardowns;
-mod l1_wrap;
-mod memory;
-mod proof;
+mod proth120;
 
 use crate::precomputations::CpuCircuitPrecomputations;
-use crate::upstream::{
-    Backend, DefaultBabyBearBackend, DefaultBabyBearGKRBackend, WhirOracleStorage, BF, E4,
-};
-use execution_prover::backend::CircuitPrecomputation;
+use crate::upstream::WhirOracleStorage;
 use execution_prover::messages::{
     SetupInitializationRequest, SetupInitializationResult, WorkRequest, WorkResult,
 };
 use execution_prover_model::allocator::HostTraceAllocator;
-use execution_prover_model::trace::{ChunkedTraceHolder, InitsAndTeardownsTraceHost};
-use inits_and_teardowns::TeardownColumns;
+use execution_prover_model::trace::ChunkedTraceHolder;
 use std::borrow::Cow;
-use std::collections::HashMap;
-use std::sync::Arc;
 use worker::Worker;
-
-type CpuTwiddles = <DefaultBabyBearBackend as Backend<BF, E4>>::TwiddleSet;
 
 #[derive(Default)]
 pub(crate) struct CpuJobs {
-    backend: DefaultBabyBearBackend,
-    gkr_backend: DefaultBabyBearGKRBackend,
-    twiddles: HashMap<usize, Arc<CpuTwiddles>>,
+    baby_bear: baby_bear::BabyBearJobs,
 }
 
 impl CpuJobs {
@@ -38,15 +27,17 @@ impl CpuJobs {
     ) -> WorkResult<A> {
         match request {
             WorkRequest::L1WrapProof(request) => {
-                WorkResult::L1WrapProof(l1_wrap::run(request, worker))
+                WorkResult::L1WrapProof(proth120::run(request, worker))
             }
             WorkRequest::SetupInitialization(request) => {
                 WorkResult::SetupInitialization(self.initialize_setup(request, worker))
             }
-            WorkRequest::MemoryCommitment(request) => {
-                WorkResult::MemoryCommitment(memory::run(self, request, worker))
+            WorkRequest::MemoryCommitment(request) => WorkResult::MemoryCommitment(
+                baby_bear::memory::run(&mut self.baby_bear, request, worker),
+            ),
+            WorkRequest::Proof(request) => {
+                WorkResult::Proof(baby_bear::proof::run(&mut self.baby_bear, request, worker))
             }
-            WorkRequest::Proof(request) => WorkResult::Proof(proof::run(self, request, worker)),
         }
     }
 
@@ -65,28 +56,13 @@ impl CpuJobs {
             let l1_wrap = precomputations.l1_wrap();
             l1_wrap.initialize_setup(worker);
         } else {
-            let message_size_log2 = precomputations.max_whir_message_size_log2();
-            let twiddles = self.twiddles(1usize << message_size_log2, worker);
-            precomputations.initialize_setup(&*twiddles, worker);
+            self.baby_bear.initialize_setup(&precomputations, worker);
         }
         SetupInitializationResult {
             batch_id,
             circuit_type,
             sequence_id,
         }
-    }
-
-    fn twiddles(&mut self, message_len: usize, worker: &Worker) -> Arc<CpuTwiddles> {
-        self.twiddles
-            .entry(message_len)
-            .or_insert_with(|| {
-                Arc::new(<DefaultBabyBearBackend as Backend<BF, E4>>::make_twiddles(
-                    &self.backend,
-                    message_len,
-                    worker,
-                ))
-            })
-            .clone()
     }
 }
 
@@ -116,23 +92,3 @@ fn rows<T: Clone, A: HostTraceAllocator>(holder: &ChunkedTraceHolder<T, A>) -> C
         }
     }
 }
-
-fn teardown_sets<A: HostTraceAllocator>(
-    precomputations: &CpuCircuitPrecomputations,
-    trace: Option<&InitsAndTeardownsTraceHost<A>>,
-) -> Vec<TeardownColumns> {
-    let num_sets = precomputations
-        .compiled_circuit()
-        .memory_layout
-        .teardown_sets
-        .len();
-    match trace {
-        Some(trace) => {
-            inits_and_teardowns::expand(trace, num_sets, precomputations.trace_len_log2() as u32)
-        }
-        None => inits_and_teardowns::zero_sets(num_sets, precomputations.trace_len),
-    }
-}
-
-#[cfg(test)]
-mod tests;

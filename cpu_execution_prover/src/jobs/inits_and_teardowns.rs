@@ -1,10 +1,10 @@
-use crate::upstream::{split_timestamp, split_u32_into_pair_u16, Field, PrimeField, BF};
+use crate::upstream::{split_timestamp, split_u32_into_pair_u16, Field, PrimeField};
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::trace::{InitsAndTeardownsTraceHost, PAGE_SIZE_LOG2};
 
 /// One set's teardown columns: `(.0 = [timestamp low, timestamp high], .1 =
 /// [value low, value high])`, each of length `1 << trace_len_log2`.
-pub(super) type TeardownColumns<F = BF> = ([Vec<F>; 2], [Vec<F>; 2]);
+pub(super) type TeardownColumns<F> = ([Vec<F>; 2], [Vec<F>; 2]);
 
 pub(super) fn zero_sets<F: Field>(num_sets: usize, trace_len: usize) -> Vec<TeardownColumns<F>> {
     (0..num_sets)
@@ -89,6 +89,7 @@ pub(super) fn expand<F: PrimeField, A: HostTraceAllocator>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::upstream::BF;
     use common_constants::TimestampScalar;
     use execution_prover_model::allocator::CpuTraceAllocator;
     use execution_prover_model::trace::ChunkedTraceHolder;

@@ -1,5 +1,6 @@
-use super::caps::split_memory_cap;
-use super::{rows, teardown_sets, whir_storage, CpuJobs, CpuTwiddles};
+use super::{teardown_sets, BabyBearJobs, CpuTwiddles};
+use crate::jobs::caps::split_memory_cap;
+use crate::jobs::{rows, whir_storage};
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
     commit_memory_tree_for_delegation_circuit, commit_memory_tree_for_inits_and_teardowns,
@@ -28,8 +29,8 @@ use worker::Worker;
 /// not read it: the binary is already baked into the compiled artifact.
 const UNUSED_TEXT_SECTION: &[u32] = &[];
 
-pub(super) fn run<A: HostTraceAllocator>(
-    jobs: &mut CpuJobs,
+pub(in crate::jobs) fn run<A: HostTraceAllocator>(
+    jobs: &mut BabyBearJobs,
     request: MemoryCommitmentRequest<A, CpuCircuitPrecomputations>,
     worker: &Worker,
 ) -> MemoryCommitmentResult<A> {

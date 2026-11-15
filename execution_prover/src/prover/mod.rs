@@ -7,17 +7,17 @@ mod artifacts;
 mod binary;
 mod cache;
 mod config;
-mod l1_wrap;
 mod lifecycle;
 mod non_determinism_wrapper;
 mod pipeline;
 mod proof_artifacts;
+mod proth120;
 mod result;
 mod setup_init;
 
 pub use artifacts::{ProgramArtifacts, RiscvFamilyArtifact};
 pub use config::ExecutionKind;
-pub use l1_wrap::{L1Proof, L1WrapResult};
+pub use proth120::{L1Proof, L1WrapResult};
 pub use result::{CommitMemoryResult, ProveResult};
 
 /// Opaque handle to a binary registered with the `ExecutionProver`. Returned by

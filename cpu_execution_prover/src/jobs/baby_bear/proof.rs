@@ -1,5 +1,6 @@
-use super::caps::join_memory_caps;
-use super::{rows, teardown_sets, whir_storage, CpuJobs};
+use super::{teardown_sets, BabyBearJobs};
+use crate::jobs::caps::join_memory_caps;
+use crate::jobs::{rows, whir_storage};
 use crate::precomputations::CpuCircuitPrecomputations;
 use crate::upstream::{
     bigint_witness_eval_fn, blake2_g_function_witness_eval_fn,
@@ -27,8 +28,8 @@ use worker::Worker;
 
 type Witness = GKRFullWitnessTrace<BF, Global, Global>;
 
-pub(super) fn run<A: HostTraceAllocator>(
-    jobs: &mut CpuJobs,
+pub(in crate::jobs) fn run<A: HostTraceAllocator>(
+    jobs: &mut BabyBearJobs,
     request: ProofRequest<A, CpuCircuitPrecomputations>,
     worker: &Worker,
 ) -> ProofResult<A> {

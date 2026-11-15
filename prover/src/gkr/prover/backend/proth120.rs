@@ -1,5 +1,5 @@
 //! Proth120 work-stealing backend used by the CPU L1 wrap job
-//! (`cpu_execution_prover::jobs::l1_wrap`).
+//! (`cpu_execution_prover::jobs::proth120`).
 
 use super::*;
 use crate::allocation_pool::AllocationPool;
