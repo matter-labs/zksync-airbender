@@ -51,9 +51,10 @@ fn proth120_unified_lowers() {
     use field::PrimeField;
     use gkr_eval_ir::SourceKind;
 
-    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../cs/compiled_circuits");
-    let bytes =
-        std::fs::read(directory.join("unified_reduced_machine_layout_gkr_proth120.json")).unwrap();
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+        "../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json",
+    );
+    let bytes = std::fs::read(path).unwrap();
     let artifact: GKRCircuitArtifact<Proth120> = serde_json::from_slice(&bytes).unwrap();
     let dag = lower_dag(&artifact).unwrap();
     let modulus = Proth120::CHARACTERISTICS_U128;

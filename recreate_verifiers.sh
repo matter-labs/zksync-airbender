@@ -25,7 +25,7 @@ done
 RUST_MIN_STACK=100000000 cargo test -p cs --lib -- \
     _into_gkr _into_no_caches_gkr _witness_graph
 RUST_MIN_STACK=100000000 cargo test -p witness_eval_generator --lib -- \
-    gen_for_gkr gen_for_large_field
+    gen_for_gkr
 
 circuit_names=(
     "bigint_with_control"
