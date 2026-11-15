@@ -26,8 +26,8 @@ workspace-root `gkr_eval_ir`), and `gpu_native_build` (the shared build-script h
   under `bench`, the field benches. Its headers are a complete library on purpose: the PTX cache-operator set,
   u32 and u64 carry chains, the field operations (incl. `e6`) and the full accessor
   matrix stay even when unused in-project. Broken or incomplete vestiges may still go.
-- **`gpu_ntt`**: NTT launchers, twiddles and `native/ntt`; exports `native/` so
-  `gpu_whir` can include `whir_leaf_transform.cuh`.
+- **`gpu_ntt`**: NTT launchers and twiddles; exports `native/` so `gpu_whir` can
+  include `baby_bear/whir_leaf_transform.cuh`.
 - **`gpu_ops`**: generic math and transform kernels. `bit_reverse_in_place<T>` is
   size-generic (4/16/32-byte elements) and asserts payload alignment.
 - **`gpu_hash`**: blake2s hashing, Merkle trees, gather and the Fiat-Shamir transcript

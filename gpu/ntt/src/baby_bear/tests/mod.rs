@@ -5,7 +5,7 @@ use era_cudart::stream::CudaStream;
 use super::{
     hypercube_coeffs_to_evals, hypercube_evals_to_monomial_coeffs, hypercube_evals_to_monomials,
 };
-use crate::ntt_twiddles::DeviceContext;
+use crate::baby_bear::twiddles::DeviceContext;
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::field::BF;
 
@@ -42,7 +42,7 @@ impl NttTestContext {
         &self.props
     }
 
-    pub(crate) fn device_context(&self) -> &crate::ntt_twiddles::DeviceContext {
+    pub(crate) fn device_context(&self) -> &crate::baby_bear::twiddles::DeviceContext {
         &self._device_context
     }
 
@@ -350,7 +350,7 @@ fn run_multi_coset_monomials_to_evals_parity_for_range(
         monomials_to_evals_2_pass_compact_initial, monomials_to_evals_compact_1_pass,
     };
     use super::lde_with_coset_range;
-    use crate::ntt_twiddles::OMEGA_LOG_ORDER;
+    use crate::baby_bear::twiddles::OMEGA_LOG_ORDER;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
 
     assert!(num_cosets.is_power_of_two());
@@ -632,7 +632,7 @@ mod host_oracle {
     use super::super::lde_with_coset_range;
     use super::helpers::host_forward_ntt_single_coset;
     use super::make_context;
-    use crate::ntt_twiddles::OMEGA_LOG_ORDER;
+    use crate::baby_bear::twiddles::OMEGA_LOG_ORDER;
     use crate::upstream::Field;
     use era_cudart::memory::memory_copy_async;
     use fft::precompute_twiddles_for_fft;
@@ -895,7 +895,7 @@ fn run_smem_packed_vs_compact_parity(
     num_cols: usize,
 ) {
     use super::forward::{monomials_to_evals_compact_1_pass, monomials_to_evals_smem_packed};
-    use crate::ntt_twiddles::OMEGA_LOG_ORDER;
+    use crate::baby_bear::twiddles::OMEGA_LOG_ORDER;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
 
     let log_lde_factor = num_cosets.trailing_zeros() as usize;
@@ -1023,7 +1023,7 @@ fn run_streaming_vs_compact_parity(
         monomials_to_evals_2_pass_compact_initial, monomials_to_evals_compact_1_pass,
     };
     use super::lde_with_coset_range;
-    use crate::ntt_twiddles::OMEGA_LOG_ORDER;
+    use crate::baby_bear::twiddles::OMEGA_LOG_ORDER;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
     let _ = log_vpt;
 
@@ -1223,7 +1223,7 @@ fn run_subwarp_vs_compact_parity(
     num_cols: usize,
 ) {
     use super::forward::{monomials_to_evals_compact_1_pass, monomials_to_evals_subwarp};
-    use crate::ntt_twiddles::OMEGA_LOG_ORDER;
+    use crate::baby_bear::twiddles::OMEGA_LOG_ORDER;
     use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
 
     let log_lde_factor = num_cosets.trailing_zeros() as usize;
@@ -1522,7 +1522,7 @@ mod natural_to_bitrev {
         natural_monomials_to_bitreversed_evals_multi_coset,
     };
     use super::{make_context, NttTestContext};
-    use crate::ntt_twiddles::OMEGA_LOG_ORDER;
+    use crate::baby_bear::twiddles::OMEGA_LOG_ORDER;
     use crate::upstream::{
         bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size, Field,
     };

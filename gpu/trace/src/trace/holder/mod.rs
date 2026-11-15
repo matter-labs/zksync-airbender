@@ -23,7 +23,7 @@ use gpu_hash::blake2s::{
 use gpu_hash::blake2s::{
     gather_leaf_rows_physical, gather_merkle_paths_device, gather_merkle_paths_from_rows_physical,
 };
-use gpu_ntt::ntt::{
+use gpu_ntt::baby_bear::{
     hypercube_evals_to_monomials, hypercube_to_bitreversed_multi_coset_evals_fused_log_n_20,
     hypercube_to_multi_coset_bitrev_evals_fused, log_size_supports_natural_to_bitrev_lde,
     natural_monomials_to_bitreversed_evals_multi_coset,

@@ -11,7 +11,7 @@ use crate::test_utils::make_test_context;
 use gpu_core::allocator::tracker::AllocationPlacement;
 
 use super::make_lde_trace_holder;
-use gpu_ntt::ntt::MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
+use gpu_ntt::baby_bear::MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
 
 /// The smallest base trace the natural-to-bitreversed commit admits.
 const BASE_ROWS: usize = 1 << MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;

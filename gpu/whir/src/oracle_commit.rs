@@ -7,7 +7,7 @@ use gpu_core::primitives::device_structures::{
 };
 use gpu_core::primitives::field::BF;
 use gpu_hash::blake2s::{gather_tree_caps_inline, Digest, STATE_SIZE};
-use gpu_ntt::ntt::{lde_with_coset_range, MAX_LOG_N_FOR_SINGLE_KERNEL_LDE};
+use gpu_ntt::baby_bear::{lde_with_coset_range, MAX_LOG_N_FOR_SINGLE_KERNEL_LDE};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::{TraceHolder, TreesHolder, PARTIAL_TREE_REDUCTION_LAYERS};
 

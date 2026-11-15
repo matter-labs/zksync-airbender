@@ -6,11 +6,11 @@
 //! over a single fixed workload (`log_n + log_lde = 27`, one column per coset).
 //!
 //! The four families share a coset-major param model identical to the
-//! production launcher `crate::ntt::dit::monomials_to_evals_dit` — this module
+//! production launcher `crate::baby_bear::dit::monomials_to_evals_dit` — this module
 //! reuses that file's geometry/sizing helpers (`ntt_two_pass_smem_bytes`,
 //! `clean_triangle_count`, `log_n2_for`) and the runtime d-table fill
 //! (`fill_d_table`) rather than re-deriving them. The triangle buffers come from
-//! a `crate::ntt_twiddles::DeviceContext`, exactly as the production path and
+//! a `crate::baby_bear::twiddles::DeviceContext`, exactly as the production path and
 //! the gpu_ntt tests construct them.
 //!
 //! Workload: `log_lde = 27 - log_n`, `num_cosets = 1 << log_lde`, `coset_step =
@@ -35,8 +35,10 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 
-use crate::ntt::dit::{clean_triangle_count, fill_d_table, log_n2_for, ntt_two_pass_smem_bytes};
-use crate::ntt_twiddles::DeviceContext;
+use crate::baby_bear::dit::{
+    clean_triangle_count, fill_d_table, log_n2_for, ntt_two_pass_smem_bytes,
+};
+use crate::baby_bear::twiddles::DeviceContext;
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::field::BF;
 
@@ -196,7 +198,7 @@ cuda_kernel!(Bench1pFixed72K16, ab_dit_single_fixed_7_2_16(mono: *const BF, tw_c
 
 // ===========================================================================
 // Per-family dispatchers (config -> shared `<Family>Function`). Mirrors the
-// production `crate::ntt::dit::two_pass_func` form: every symbol is referenced
+// production `crate::baby_bear::dit::two_pass_func` form: every symbol is referenced
 // here so the extern declarations are used, but each family collapses to one
 // `<Family>Function` so all configs share one `<Family>Arguments::new` at the
 // launch site.
@@ -373,7 +375,7 @@ fn single_fixed_func(log_n: usize, log_vpt: usize, k: u32) -> Bench1pFixedFuncti
 
 /// Sum of `log_n + log_lde` for the bench workload (== OMEGA_LOG_ORDER, so the
 /// coset factor shift is exactly 0).
-pub const TOTAL_LOG: usize = crate::ntt_twiddles::OMEGA_LOG_ORDER as usize;
+pub const TOTAL_LOG: usize = crate::baby_bear::twiddles::OMEGA_LOG_ORDER as usize;
 
 const CFP_0: u32 = 0;
 const COSET_STEP: u32 = 1;

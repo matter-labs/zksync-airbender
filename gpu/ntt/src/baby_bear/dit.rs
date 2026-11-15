@@ -884,7 +884,7 @@ pub(crate) fn monomials_to_evals_dit(
     coset_factor_shift: u32,
     num_cosets: usize,
     num_cols_per_coset: usize,
-    ctx: &crate::ntt_twiddles::DeviceContext,
+    ctx: &crate::baby_bear::twiddles::DeviceContext,
     d_table_scratch: &mut DeviceSlice<BF>,
     stream: &CudaStream,
     device_props: &DeviceProperties,

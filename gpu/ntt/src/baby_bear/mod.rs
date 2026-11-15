@@ -5,10 +5,10 @@ use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
-pub use crate::ntt_twiddles::OMEGA_LOG_ORDER;
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::get_grid_block_dims_for_threads_count;
+pub use twiddles::OMEGA_LOG_ORDER;
 
 /// Number of passes for the multi-stage NTT kernels at a given `log_n`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -37,6 +37,10 @@ pub(crate) fn hypercube_three_pass(log_n: usize, properties: &DeviceProperties) 
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(feature = "bench")]
+pub mod bench;
+pub mod twiddles;
 
 pub(crate) mod dit;
 mod forward;

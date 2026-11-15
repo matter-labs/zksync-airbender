@@ -197,7 +197,7 @@ impl DitChoice {
 fn v8_smem_bytes(log_n: usize) -> usize {
     const LOG_VPT: usize = 3;
     if log_n > LOG_VPT + 5 {
-        crate::ntt::dit::ntt_two_pass_smem_bytes(log_n as u32, LOG_VPT as u32)
+        crate::baby_bear::dit::ntt_two_pass_smem_bytes(log_n as u32, LOG_VPT as u32)
     } else {
         ((1usize << log_n) - 1) * size_of::<BF>()
     }
@@ -288,7 +288,7 @@ fn dit_is_applicable(
         }
         c @ (DitChoice::V4TwoPass | DitChoice::V8TwoPass) => {
             let log_vpt = c.log_vpt();
-            let smem = crate::ntt::dit::ntt_two_pass_smem_bytes(log_n as u32, log_vpt as u32);
+            let smem = crate::baby_bear::dit::ntt_two_pass_smem_bytes(log_n as u32, log_vpt as u32);
             if smem <= props.max_dynamic_smem_per_block_optin {
                 Some(c)
             } else {

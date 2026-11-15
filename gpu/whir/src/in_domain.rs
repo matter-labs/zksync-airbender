@@ -6,7 +6,7 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use gpu_core::primitives::field::{BF, E4};
 use gpu_core::primitives::utils::get_grid_block_dims_for_threads_count;
 use gpu_hash::blake2s::STATE_SIZE;
-use gpu_ntt::ntt_twiddles::WhirLeafTransformParams;
+use gpu_ntt::baby_bear::twiddles::WhirLeafTransformParams;
 
 /// Must equal `WHIR_IN_DOMAIN_BLOCK_THREADS` in `in_domain.cu`: the one-CTA
 /// corrections reduce exactly this many partials.

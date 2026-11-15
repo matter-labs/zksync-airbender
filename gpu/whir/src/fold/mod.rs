@@ -31,7 +31,7 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::backward::{eq_group_tables_len, launch_build_eq_values_from_point};
 use gpu_gkr::proof_layout::ProofLayout;
-use gpu_ntt::ntt::hypercube_evals_to_monomials;
+use gpu_ntt::baby_bear::hypercube_evals_to_monomials;
 #[cfg(test)]
 use gpu_ops::simple::{add, mul, mul_into_x};
 use gpu_ops::transpose::transpose;

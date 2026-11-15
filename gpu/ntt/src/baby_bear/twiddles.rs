@@ -4,7 +4,7 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use era_cudart_sys::cuda_struct_and_stub;
 
-use crate::ntt::dit::DitTriangles;
+use crate::baby_bear::dit::DitTriangles;
 
 use crate::upstream::{
     bitreverse_enumeration_inplace, distribute_powers_serial, domain_generator_for_size, Field,

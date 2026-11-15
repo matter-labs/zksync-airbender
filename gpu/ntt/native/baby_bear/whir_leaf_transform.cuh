@@ -19,7 +19,7 @@ struct whir_leaf_transform_params {
   unsigned omega_log_order;
 };
 
-// Twin of `WhirLeafTransformParams` in `src/ntt_twiddles.rs`.
+// Twin of `WhirLeafTransformParams` in `src/baby_bear/twiddles.rs`.
 static_assert(sizeof(whir_leaf_transform_params) == 32);
 static_assert(alignof(whir_leaf_transform_params) == 8);
 static_assert(offsetof(whir_leaf_transform_params, inverse_fine_values) == 0);

@@ -18,7 +18,7 @@ use super::super::{
     monomials_to_evals_2_pass_smem, monomials_to_evals_3_pass, OMEGA_LOG_ORDER,
 };
 use super::{InOrOutOfPlace, TEST_COSET_INDEX, TEST_LOG_LDE_FACTOR};
-use crate::ntt_twiddles::DeviceContext;
+use crate::baby_bear::twiddles::DeviceContext;
 use crate::upstream::Field;
 use gpu_core::primitives::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut,

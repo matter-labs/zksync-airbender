@@ -1,9 +1,10 @@
-//! GPU NTT subsystem: forward/inverse NTT kernels + twiddle device context.
-//! Owns its own device-linked CUDA archive (native/ntt). Built on gpu_core.
+//! GPU NTT subsystem: forward/inverse NTT kernels + twiddle device context,
+//! for BabyBear (`baby_bear`) and Proth120 (`proth120`). Owns its own
+//! device-linked CUDA archive (`native/`). Built on gpu_core.
 //!
 //! The `cuda_struct_and_stub!` device-symbol stubs for the twiddle tables in
-//! `ntt_twiddles` are co-located here with their `__constant__` definitions in
-//! `native/ntt`, so this crate device-links self-contained.
+//! `baby_bear::twiddles` are co-located here with their `__constant__`
+//! definitions in `native/baby_bear`, so this crate device-links self-contained.
 
 #![cfg_attr(test, feature(allocator_api))]
 // `no_cuda` gates out every GPU test body, leaving their helpers and imports dead
@@ -12,12 +13,8 @@
 
 mod upstream;
 
-pub mod ntt;
-pub mod ntt_twiddles;
+pub mod baby_bear;
 pub mod proth120;
-
-#[cfg(feature = "bench")]
-pub mod bench;
 
 #[cfg(test)]
 gpu_core::force_serial_libtest!();

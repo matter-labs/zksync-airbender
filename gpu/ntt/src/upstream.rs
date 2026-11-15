@@ -1,6 +1,6 @@
 //! Upstream re-export manifest for `gpu_ntt`.
 //!
-//! Only items actually consumed by `ntt` and `ntt_twiddles` are listed here.
+//! Only items actually consumed by `baby_bear` (NTT and twiddles) are listed here.
 
 // -----------------------------------------------------------------------
 // `field` — trait bounds used in twiddle generation
@@ -12,7 +12,7 @@ pub(crate) use field::{Field, TwoAdicField};
 
 // -----------------------------------------------------------------------
 // `fft` — twiddle-generation and bit-reversal helpers consumed by
-// `ntt_twiddles` (and re-used by the parity tests). `fft` re-exports both
+// `baby_bear::twiddles` (and re-used by the parity tests). `fft` re-exports both
 // `field_utils::*` and `utils::*` at its crate root, so the top-level paths
 // are the canonical ones.
 // -----------------------------------------------------------------------

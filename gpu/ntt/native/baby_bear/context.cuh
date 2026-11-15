@@ -11,13 +11,13 @@ using namespace ::airbender::primitives::memory;
 namespace airbender::ntt {
 
 static constexpr unsigned OMEGA_LOG_ORDER = 27;
-// Mirrors CMEM_LOG_ORDER in src/ntt_twiddles.rs; only used to compile-check the
+// Mirrors CMEM_LOG_ORDER in src/baby_bear/twiddles.rs; only used to compile-check the
 // CMEM_FINE_LOG_COUNT derivation below.
 static constexpr int CMEM_LOG_ORDER = 19;
 static constexpr int CMEM_COARSE_LOG_COUNT = 10;
 static constexpr int CMEM_COARSE_MASK = (1 << CMEM_COARSE_LOG_COUNT) - 1;
 // "- 1" accounts for NTT twiddle arrays only covering half the range. The Rust
-// side (src/ntt_twiddles.rs) DERIVES this; here it is hardcoded, so pin the
+// side (src/baby_bear/twiddles.rs) DERIVES this; here it is hardcoded, so pin the
 // derivation with a static_assert so either side drifting fails its own compile.
 static constexpr int CMEM_FINE_LOG_COUNT = 8;
 static_assert(CMEM_FINE_LOG_COUNT == CMEM_LOG_ORDER - CMEM_COARSE_LOG_COUNT - 1);
@@ -39,11 +39,11 @@ struct powers_data_2_layer {
 };
 
 // Cross-language layout drift guard. These MUST match the twin `const _: ()`
-// assert block for PowersLayerData / PowersData2Layer in src/ntt_twiddles.rs:
+// assert block for PowersLayerData / PowersData2Layer in src/baby_bear/twiddles.rs:
 // both sides pin the SAME explicit numbers so that either side drifting fails
 // its own compile (the structs are memcpy'd verbatim into the `__constant__`
 // symbols above, so any layout mismatch would silently corrupt every twiddle
-// lookup). Update the twin block in ntt_twiddles.rs whenever a field changes.
+// lookup). Update the twin block in baby_bear/twiddles.rs whenever a field changes.
 static_assert(sizeof(powers_layer_data) == 16);
 static_assert(alignof(powers_layer_data) == 8);
 static_assert(offsetof(powers_layer_data, values) == 0);

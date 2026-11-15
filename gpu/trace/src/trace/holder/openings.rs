@@ -6,7 +6,7 @@ use gpu_hash::blake2s::{
     gather_leaves_for_queries_single_coset_physical,
     gather_merkle_paths_partial_for_queries_single_coset_physical,
 };
-use gpu_ntt::ntt::{
+use gpu_ntt::baby_bear::{
     coset_to_monomials_in_place, hypercube_to_coset_in_place,
     hypercube_to_retained_monomials_and_coset, hypercube_to_retained_monomials_and_coset_in_place,
     monomials_to_coset_in_place, monomials_to_hypercube_in_place, retained_monomials_to_coset,
@@ -197,7 +197,7 @@ impl TraceHolder<BF> {
                 "geometry-backed retained commitments require PerCoset storage with partial trees"
             );
             assert!(
-                gpu_ntt::ntt::log_size_supports_retained_monomials(
+                gpu_ntt::baby_bear::log_size_supports_retained_monomials(
                     self.commitment_log_domain_size() as usize
                 ),
                 "geometry-backed PerCoset commitments require the retained-monomial dispatch family"
@@ -354,7 +354,9 @@ impl TraceHolder<BF> {
         }
         if self.base_geometry.is_some() {
             assert!(
-                gpu_ntt::ntt::log_size_supports_in_place(self.commitment_log_domain_size() as usize),
+                gpu_ntt::baby_bear::log_size_supports_in_place(
+                    self.commitment_log_domain_size() as usize
+                ),
                 "in-place commitments require the generated transform domain"
             );
         }

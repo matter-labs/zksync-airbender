@@ -11,7 +11,7 @@ use fft::{bitreverse_enumeration_inplace, Twiddles};
 use crate::e4_coeffs_to_vectorized;
 use crate::test_utils::make_test_context;
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_ntt::ntt::MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
+use gpu_ntt::baby_bear::MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
 use gpu_trace::trace::holder::TreesCacheMode;
 
 use crate::upstream::{multivariate_coeffs_into_hypercube_evals, PrimeField};

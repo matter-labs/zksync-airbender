@@ -21,7 +21,7 @@ use super::hypercube::{
 use super::kernels::*;
 use super::shared;
 
-use crate::ntt_twiddles::OMEGA_LOG_ORDER;
+use crate::baby_bear::twiddles::OMEGA_LOG_ORDER;
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::device_structures::{
     DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl, DeviceMatrixMut, MutPtrAndStride, PtrAndStride,
@@ -371,7 +371,7 @@ pub fn lde_with_coset_range(
     num_cosets: usize,
     coset_index_base: usize,
     num_cols_per_coset_stride: usize,
-    ntt_ctx: &crate::ntt_twiddles::DeviceContext,
+    ntt_ctx: &crate::baby_bear::twiddles::DeviceContext,
     d_table_scratch: Option<&mut DeviceSlice<BF>>,
     stream: &CudaStream,
     device_properties: &DeviceProperties,
@@ -432,7 +432,7 @@ fn dispatch_forward_multi_coset(
     num_cosets: usize,
     coset_index_base: usize,
     num_cols_per_coset_stride: usize,
-    ntt_ctx: &crate::ntt_twiddles::DeviceContext,
+    ntt_ctx: &crate::baby_bear::twiddles::DeviceContext,
     d_table_scratch: Option<&mut DeviceSlice<BF>>,
     stream: &CudaStream,
     device_properties: &DeviceProperties,
@@ -631,7 +631,7 @@ pub fn natural_monomials_to_bitreversed_evals_multi_coset(
     log_n: usize,
     log_lde_factor: usize,
     num_cols_per_coset_stride: usize,
-    ntt_ctx: &crate::ntt_twiddles::DeviceContext,
+    ntt_ctx: &crate::baby_bear::twiddles::DeviceContext,
     d_table_scratch: Option<&mut DeviceSlice<BF>>,
     stream: &CudaStream,
     device_properties: &DeviceProperties,
@@ -667,7 +667,7 @@ pub fn natural_monomials_to_bitreversed_evals_coset_range(
     num_cosets: usize,
     coset_index_base: usize,
     num_cols_per_coset_stride: usize,
-    ntt_ctx: &crate::ntt_twiddles::DeviceContext,
+    ntt_ctx: &crate::baby_bear::twiddles::DeviceContext,
     d_table_scratch: Option<&mut DeviceSlice<BF>>,
     stream: &CudaStream,
     device_properties: &DeviceProperties,

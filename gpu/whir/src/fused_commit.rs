@@ -25,7 +25,7 @@ use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_fu
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::WARP_SIZE;
 use gpu_hash::blake2s::{Digest, STATE_SIZE};
-use gpu_ntt::ntt_twiddles::WhirLeafTransformParams;
+use gpu_ntt::baby_bear::twiddles::WhirLeafTransformParams;
 use gpu_trace::trace::holder::PARTIAL_TREE_REDUCTION_LAYERS;
 
 /// Sub-warp family: one warp per 32-leaf subtree, `M <= 16`.

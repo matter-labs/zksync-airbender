@@ -27,7 +27,7 @@ use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 use crate::upstream::domain_generator_for_size;
 
 use super::make_context;
-use crate::ntt_twiddles::OMEGA_LOG_ORDER;
+use crate::baby_bear::twiddles::OMEGA_LOG_ORDER;
 use crate::upstream::Field;
 use gpu_core::primitives::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut,
@@ -39,7 +39,7 @@ type BF = BaseField;
 // ---------------------------------------------------------------------------
 // Single-pass kernel bindings — the SUBJECT is the production streaming kernel
 // `ab_dit_single_stream_<N>_<V>` (7-arg ABI), the same symbols the launcher
-// drives in `crate::ntt::dit`. We re-bind them with a test-local `cuda_kernel!`
+// drives in `crate::baby_bear::dit`. We re-bind them with a test-local `cuda_kernel!`
 // type (one shared type for all 12 — identical signatures — then one
 // `dit_single_stream_hot!(sym)` per symbol) rather than importing the launcher's
 // bindings, because that macro's generated `Function` newtype has a private
@@ -833,9 +833,9 @@ dit_two_pass_parity_test!(dit_two_pass_12_2_parity, 12, 2);
 // ===========================================================================
 
 // These helpers launch through the production `fill_*` dispatchers in
-// `crate::ntt::dit`, so they double as the regression guard for that crate's
+// `crate::baby_bear::dit`, so they double as the regression guard for that crate's
 // grid=1/block=256 launch contract and per-config dispatch.
-use crate::ntt::dit::{fill_clean_triangle, fill_coupled_triangle, fill_d_table};
+use crate::baby_bear::dit::{fill_clean_triangle, fill_coupled_triangle, fill_d_table};
 
 /// CLEAN-triangle fill parity for one `(log_m, log_vpt)`.
 fn run_fill_clean_parity(log_m: u32, log_vpt: u32) {
@@ -844,7 +844,7 @@ fn run_fill_clean_parity(log_m: u32, log_vpt: u32) {
     let expected = build_clean_triangle(log_m, log_vpt); // parity-proven Rust
     assert_eq!(
         expected.len(),
-        crate::ntt::dit::clean_triangle_count(log_m, log_vpt)
+        crate::baby_bear::dit::clean_triangle_count(log_m, log_vpt)
     );
 
     let mut dev = ctx.alloc(expected.len()).unwrap();
@@ -874,7 +874,7 @@ fn run_fill_coupled_parity(log_n: u32, log_vpt: u32) {
     let expected = build_coupled_triangle(log_n, log_vpt, g.log_n1);
     assert_eq!(
         expected.len(),
-        crate::ntt::dit::coupled_triangle_count(log_n, log_vpt)
+        crate::baby_bear::dit::coupled_triangle_count(log_n, log_vpt)
     );
 
     let mut dev = ctx.alloc(expected.len()).unwrap();
@@ -996,7 +996,7 @@ dit_fill_d_table_parity_test!(dit_fill_d_table_13_parity, 13);
 #[cfg(not(no_cuda))]
 fn dit_context_triangle_precompute_parity() {
     use super::super::dit::{CLEAN_CONFIGS, COUPLED_CONFIGS};
-    use crate::ntt_twiddles::DeviceContext;
+    use crate::baby_bear::twiddles::DeviceContext;
     use era_cudart::memory::memory_copy;
 
     // log_n=13 covers every coupled config (max two-pass LOG_N).
@@ -1071,7 +1071,7 @@ fn dit_context_triangle_precompute_parity() {
 /// runs `monomials_to_evals_dit` into a strided output, and compares each
 /// (coset, column) slab against the per-coset oracle for that column.
 fn run_launcher_parity(log_n: u32, log_vpt: u32, num_cosets: usize, num_ntts: usize) {
-    use crate::ntt::dit::monomials_to_evals_dit;
+    use crate::baby_bear::dit::monomials_to_evals_dit;
 
     let n: usize = 1 << log_n;
     let num_cols_per_coset = num_ntts; // back-to-back strided (stride > N)
@@ -1239,7 +1239,7 @@ fn run_launcher_batched_vs_per_column(
     num_cosets: usize,
     num_ntts: usize,
 ) {
-    use crate::ntt::dit::{column_batch_applies, monomials_to_evals_dit};
+    use crate::baby_bear::dit::{column_batch_applies, monomials_to_evals_dit};
 
     assert!(
         column_batch_applies(log_n as usize, log_vpt as usize, num_ntts),
@@ -1383,7 +1383,7 @@ fn dit_launcher_batched_two_pass_9_3_residue_columns() {
 #[test]
 #[cfg(not(no_cuda))]
 fn dit_launcher_batched_capped_ragged_columns_all_shapes() {
-    use crate::ntt::dit::with_cols_per_launch_cap;
+    use crate::baby_bear::dit::with_cols_per_launch_cap;
     with_cols_per_launch_cap(5, || {
         for log_n in 9..=13 {
             run_launcher_batched_vs_per_column(log_n, 3, 64, 37);
