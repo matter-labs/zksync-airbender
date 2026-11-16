@@ -43,7 +43,6 @@ globs = [
   "Human.Compiler.NativePublicSetup",
   "Human.Compiler.NativeTargets",
   "Human.Compiler.NativeFixedRows",
-  "Human.Compiler.NativeFixedRows.+",
   "Human.Compiler.NativeSetups.+",
   "Human.Compiler.LookupArgument",
   "Human.Compiler.NativeLookups",
