@@ -189,11 +189,15 @@ step_kernel_check() {
   local t=${KERNEL_CHECK_THREADS:-2}
   case "${KERNEL_CHECKER:-leanchecker}" in
     lake|paranoid)
-      local export=.lake/kernel-required.ndjson
+      local export
       mkdir -p .lake
-      rm -f -- "$export" "$export.part"
-      KERNEL_EXPORT_PATH="$PWD/$export" COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check
+      rm -f -- .lake/kernel-export-path
+      # The sandbox covers the host temporary directories. Judged code cannot alter this copy.
+      export=$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/airbender-kernel.XXXXXX")
+      case "$export" in "$PWD"/*) echo "The export must be outside the judged package." >&2; return 2 ;; esac
+      KERNEL_EXPORT_PATH="$export" COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check
       test -s "$export"
+      printf '%s\n' "$export" > .lake/kernel-export-path
       lake env leanchecker-paranoid --silent --from-export "$export"
       echo "Lean paranoid kernel accepts the solution"
       LEAN_NUM_THREADS=$t lake env leanchecker CleanCore.Equivalence Checks.Axioms ;;
@@ -206,8 +210,10 @@ step_kernel_check() {
 
 step_kernel_external() {
   cd "$LEAN"
-  if [[ -s .lake/kernel-required.ndjson ]]; then
-    COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check --paranoid --from-export .lake/kernel-required.ndjson
+  local export=''
+  if [[ -f .lake/kernel-export-path ]]; then IFS= read -r export < .lake/kernel-export-path; fi
+  if [[ -n "$export" && -s "$export" ]]; then
+    COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check --paranoid --from-export "$export"
   else
     COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check --paranoid
   fi

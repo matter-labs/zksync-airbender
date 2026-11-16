@@ -14,10 +14,10 @@ lake() {
   printf '%s\n' "$*" >> "$REPLAY_TRACE"
   case "$*" in
     check)
-      if [[ ${REQUIRED_RC:-0} == 0 ]]; then printf 'export\n' > .lake/kernel-required.ndjson; fi
+      if [[ ${REQUIRED_RC:-0} == 0 ]]; then printf 'export\n' > "$KERNEL_EXPORT_PATH"; fi
       return "${REQUIRED_RC:-0}" ;;
-    'env leanchecker-paranoid --silent --from-export .lake/kernel-required.ndjson') return "${PARANOID_RC:-0}" ;;
-    'check --paranoid'|'check --paranoid --from-export .lake/kernel-required.ndjson') return "${EXTERNAL_RC:-0}" ;;
+    env\ leanchecker-paranoid\ --silent\ --from-export\ *) return "${PARANOID_RC:-0}" ;;
+    'check --paranoid'|check\ --paranoid\ --from-export\ *) return "${EXTERNAL_RC:-0}" ;;
     'env leanchecker CleanCore.Equivalence Checks.Axioms') return "${CLEAN_RC:-0}" ;;
     *) return 99 ;;
   esac
@@ -33,21 +33,30 @@ class ReplayGateTests(unittest.TestCase):
             (root / "lean").mkdir()
             if export_exists:
                 (root / "lean/.lake").mkdir()
-                (root / "lean/.lake/kernel-required.ndjson").write_text("complete export\n")
+                export = root / 'complete-export'
+                export.write_text("complete export\n")
+                (root / "lean/.lake/kernel-export-path").write_text(str(export) + '\n')
             trace = root / "trace"
             env = dict(os.environ, FV_DIR=directory, KERNEL_CHECKER="lake", REPLAY_TRACE=str(trace),
+                       RUNNER_TEMP=directory,
                        REQUIRED_RC="0", EXTERNAL_RC="0", CLEAN_RC="0", PARANOID_RC="0")
             env.update(overrides)
             result = subprocess.run(
                 ["bash", "-c", MOCK, "replay-test", str(CI / "lean-ci.sh"), step],
                 env=env, capture_output=True, text=True,
             )
-            return result.returncode, trace.read_text().splitlines() if trace.exists() else []
+            calls = trace.read_text().splitlines() if trace.exists() else []
+            for index, call in enumerate(calls):
+                if ' --from-export ' in call:
+                    command, export_path = call.rsplit(' ', 1)
+                    self.assertFalse(Path(export_path).is_relative_to(root / 'lean'))
+                    calls[index] = command + ' <export>'
+            return result.returncode, calls
 
     def test_required_checks_exclude_external_checkers(self):
         code, calls = self.replay()
         self.assertEqual(code, 0)
-        self.assertEqual(calls, ["check", "env leanchecker-paranoid --silent --from-export .lake/kernel-required.ndjson",
+        self.assertEqual(calls, ["check", "env leanchecker-paranoid --silent --from-export <export>",
                                  "env leanchecker CleanCore.Equivalence Checks.Axioms"])
 
     def test_kernel_or_export_axiom_failure_fails_required_replay(self):
@@ -62,7 +71,7 @@ class ReplayGateTests(unittest.TestCase):
     def test_native_paranoid_rejection_remains_required(self):
         code, calls = self.replay(PARANOID_RC="21")
         self.assertEqual(code, 21)
-        self.assertEqual(calls, ["check", "env leanchecker-paranoid --silent --from-export .lake/kernel-required.ndjson"])
+        self.assertEqual(calls, ["check", "env leanchecker-paranoid --silent --from-export <export>"])
 
     def test_external_failure_is_reported_without_changing_required_result(self):
         code, calls = self.replay("kernel-external", EXTERNAL_RC="23")
@@ -77,7 +86,7 @@ class ReplayGateTests(unittest.TestCase):
     def test_advisory_checks_reuse_the_complete_required_export(self):
         code, calls = self.replay("kernel-external", export_exists=True, EXTERNAL_RC="23")
         self.assertEqual(code, 23)
-        self.assertEqual(calls, ["check --paranoid --from-export .lake/kernel-required.ndjson"])
+        self.assertEqual(calls, ["check --paranoid --from-export <export>"])
 
 
 class SandboxExportTests(unittest.TestCase):
