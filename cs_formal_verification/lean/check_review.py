@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parent
 GUIDES = tuple(ROOT.parent / name for name in (
     "README.md", "docs/VERIFICATION_STATUS.md", "docs/TRUST_AND_REVIEW.md",
     "docs/FORMAL_VERIFICATION_PLAN.md",
-)) + tuple(sorted((ROOT / "human/Human").rglob("README.md")))
+)) + (ROOT / "human/README.md", ROOT / "human/CleanCore/README.md") + tuple(
+    sorted((ROOT / "human/Human").rglob("README.md")))
 # The claim modules: the specification (human/) and the proofs of its public theorems (proven/Proven/Final/).
 CLAIM_PREFIXES = ("Human.", "Proven.Final.")
 
@@ -38,9 +39,9 @@ SOURCE_NAMES = {
     "verify.sh", "MODULE_BUDGET_JOBS", "MODULE_BUDGET_LEDGER", "MODULE_BUDGET_S", "depHash", "ps", "wait4",
     "CALIBRATION_REFERENCE_S",
     # CI (docs/TRUST_AND_REVIEW.md, What CI re-checks): verify.sh's audit modes, the kernel checker
-    "VERIFY_AUDITS", "fresh", "replay", "leanchecker", "kernel_replay", "native_decide",
+    "VERIFY_AUDITS", "fresh", "replay", "leanchecker", "kernel_replay", "native_decide", "ci.yml",
     # Lean 4.35: lake check's sandbox tool, lean-sail's codegen wrapper command (sail/README.md)
-    "bwrap", "skip_inductive_codegen", "ci.yml", "mop.r.N", "mop.rr.N",
+    "bwrap", "skip_inductive_codegen", "mop.r.N", "mop.rr.N",
     # the no-warnings gate (README): Lake library names and Lake's option for non-module files
     "Proven", "CleanAudit", "allowNonModules",
 }
