@@ -78,8 +78,8 @@ fn flatten_and_seed_match_reference() {
     );
 
     // The registry mark: public/aux inputs are the final registers x10..x17 / x18..x25 (LE u32
-    // each) — i.e. the preimage bytes at reg*12 — and the setup commitment hashes the setup cap.
-    let mark = verifier_evm::verified_mark(&proof, &aux);
+    // each) — i.e. the preimage bytes at reg*12.
+    let mark = verifier_evm::verified_mark(&aux);
     let regs = |first: usize| -> Vec<u8> {
         (first..first + 8)
             .flat_map(|r| preimage[r * 12..r * 12 + 4].to_vec())

@@ -77,7 +77,6 @@ pub const VERIFIED_MARK: &str = "verified_mark.hex";
 /// Generated sources relative to the L1 contract root. The merged project carries the
 /// registry and Foundry tests; the negative project builds its verifier for those tests.
 pub const MERGED_VERIFIER: &str = "merged/src/GkrWhirVerifier.sol";
-pub const FRONTIER_CONTRACT: &str = "merged/src/SetupFrontier.sol";
 pub const WRONG_FINAL_PC_VERIFIER: &str = "negative/wrong_final_pc/src/GkrWhirVerifier.sol";
 
 pub fn format_params() -> verifier_evm::encoding::FormatParams {

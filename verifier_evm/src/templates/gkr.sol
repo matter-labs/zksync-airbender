@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.36;
+pragma solidity =0.8.38;
 
 /// The registry every successfully verified statement is reported to (one call per proof).
 interface IVerificationRegistry {
@@ -7,21 +7,19 @@ interface IVerificationRegistry {
     /// `auxInput`        = final registers x18..x25 (s2..s9), same encoding: the recursion chain
     ///                     hash, which the verifier does not check — the registry must compare it
     ///                     with the expected chain of the program it accepts;
-    /// `setupCommitment` = keccak256 of the setup oracle's Merkle cap (CAP digests, BE u32 words)
-    ///                     — the circuit setup (lookup tables) the proof was verified against.
-    function markVerified(bytes32 publicInput, bytes32 auxInput, bytes32 setupCommitment) external;
+    /// The registry must accept only approved verifier addresses (`msg.sender`), each pinned
+    /// to one setup embedded in its runtime code.
+    function markVerified(bytes32 publicInput, bytes32 auxInput) external;
 }
 
-contract GkrWhirVerifier {
-    // ── Registry (set once at construction, never zero) ─────────────────────
-    address public immutable registry;
-    address private immutable setupFrontier;
-    constructor(address registry_, address setupFrontier_) {
-        require(registry_ != address(0), "registry is zero");
-        require(registry_.code.length > 0, "registry has no code");
-        require(setupFrontier_.codehash == bytes32(__TEMPLATE_FRONTIER_HASH), "setup frontier code hash");
-        registry = registry_;
-        setupFrontier = setupFrontier_;
+/// Runtime code used by GkrWhirVerifier's constructor, which appends setup data and the registry.
+contract GkrWhirVerifierCode {
+    /// The constructor-pinned registry is the final ABI word of this deployment's code.
+    function registry() public view returns (address value) {
+        assembly ("memory-safe") {
+            codecopy(0, sub(codesize(), 32), 32)
+            value := mload(0)
+        }
     }
     // Every `__TEMPLATE_*` constant below is assigned by the generator (assemble.rs); in the
     // template they hold the string literal "{unassigned}", which does not compile as a number —
@@ -45,7 +43,7 @@ contract GkrWhirVerifier {
     // [0x80, MINIMUM_FREE_HEAP_PTR) is the spill zone and [MINIMUM_FREE_HEAP_PTR, ∞) is
     // spill-safe. P_PTR / CIRCUIT_PTR MUST live in the safe region — a low fixed slot is
     // silently clobbered by via_ir spills, corrupting the committed state. They take
-    // the first two slots of the safe region; the data address takes the third. The generated heap starts 96 bytes
+    // the first two slots of the safe region; the setup code offset takes the third. The generated heap starts 96 bytes
     // higher. INVARIANT (Yul forbids constant arithmetic in assembly, so these are spelled as
     // literals): P_PTR == MINIMUM_FREE_HEAP_PTR, CIRCUIT_PTR == MINIMUM_FREE_HEAP_PTR + 32, and
     // the generator starts the heap at MINIMUM_FREE_HEAP_PTR + 96 (it reads the constant).
@@ -56,8 +54,9 @@ contract GkrWhirVerifier {
     uint256 constant CIRCUIT_PTR = 2080; // == MINIMUM_FREE_HEAP_PTR + 32
     // Spill-safe slot [2112,2144): after P_PTR and CIRCUIT_PTR, before every generated
     // GKR/WHIR heap region (which starts at 2144). The generator checks these boundaries.
-    // It is written once from the immutable address and only read by the Yul helpers.
-    uint256 constant FRONTIER_PTR = 2112;
+    // It holds the start of the appended setup data, computed from the runtime tail. Solidity
+    // metadata precedes that data and cannot change this tail-relative offset.
+    uint256 constant SETUP_CODE_OFFSET_PTR = 2112;
 
     // ── Heap layout (GENERATED sizes: the regions are chained back to back from
     //    MINIMUM_FREE_HEAP_PTR + 96 by the `*_PTR()` accessors below, each region's size — a
@@ -96,7 +95,6 @@ contract GkrWhirVerifier {
     uint256 constant __TEMPLATE_PREIMAGE_FINAL_PC_OFFSET   = "{unassigned}"; // = NUM_REGISTERS * PREIMAGE_REGISTER_STRIDE
     uint256 constant __TEMPLATE_GKR_INIT_PREIMAGE_BYTES    = "{unassigned}"; // registers ‖ final PC ‖ top bits ‖ setup cap ‖ memory cap
     uint256 constant __TEMPLATE_FACTORED_ROUND_SLOT_BYTES = "{unassigned}"; // image bytes of a factored-round run: its calldata bit offset
-    uint256 constant __TEMPLATE_SETUP_COMMITMENT = "{unassigned}"; // keccak256 of the pinned setup cap as BE u32 words
     // The inits/teardowns RAM-set base chunk indices (`top_bits`) are deployment parameters of
     // the program: decode_calldata writes them into the preimage, and the layer-0
     // inits/teardowns gates use the constants. One uint8 per teardown set.
@@ -139,16 +137,12 @@ contract GkrWhirVerifier {
         // encoding of both the call and the return data).
         bytes32 publicInput;
         bytes32 auxInput;
-        bytes32 setupCommitment;
-        address frontier = setupFrontier;
         // "memory-safe" lets solc spill stack slots, which the deepest functions need (without it
         // check_permutation_identity is too deep for the stack). The hand-placed heap starts above
         // the spill zone (MEMORY LAYOUT above).
         assembly ("memory-safe") {
         mstore(P_PTR, 0x7000000000000000000000000000001)
-        mstore(FRONTIER_PTR, frontier)
-        // the setup data contract is this deployment's data: check its code before any read
-        if iszero(eq(extcodehash(mload(FRONTIER_PTR)), __TEMPLATE_FRONTIER_HASH)) { revert(0, 0) }
+        mstore(SETUP_CODE_OFFSET_PTR, sub(codesize(), add(__TEMPLATE_SETUP_DATA_BYTES, 32)))
         // decode_calldata (below) unpacks the compressed calldata into the decoded GKR image the
         // GKR half reads, in transcript order. The image holds field elements as BE 16-byte
         // lanes, two per word: x0 = shr(128, word), x1 = and(word, MASK). Challenges take the
@@ -156,7 +150,7 @@ contract GkrWhirVerifier {
 
         // Heap regions, chained by their GENERATED sizes (the generated circuit.yul calls these
         // by name). The chain order here is verified by the generator against its allocator.
-        // +96: three safe slots hold P_PTR, CIRCUIT_PTR and the data address.
+        // +96: three safe slots hold P_PTR, CIRCUIT_PTR and the setup code offset.
         function MEMORY_CHALLS_PTR() -> ptr { ptr := add(MINIMUM_FREE_HEAP_PTR, 96) }
         function LOGUP_CHALLS_PTR()  -> ptr { ptr := add(MEMORY_CHALLS_PTR(), __TEMPLATE_GKR_MEMORY_CHALLS_BYTES) }
         function POINT_PTR()         -> ptr { ptr := add(LOGUP_CHALLS_PTR(), __TEMPLATE_GKR_LOGUP_CHALLS_BYTES) }
@@ -179,7 +173,7 @@ contract GkrWhirVerifier {
         // Layer-0 table-driven quadratic-gate evaluation (size opt). GATEVAL holds one reduced
         // value per quadratic gate (filled by the compact bucket loops from GKR_QTABLE, read by
         // the Horner chunk functions as `mload(GATEVAL+32*slot)`). QTABLE is the packed record
-        // stream (slot,a,b,coeff), copied from SetupFrontier. GATEVAL is never written before
+        // stream (slot,a,b,coeff), copied from the embedded setup. GATEVAL is never written before
         // layer 0, so it needs no zeroing; only layer 0's point-check uses these regions.
         function GKR_GATEVAL_PTR() -> ptr { ptr := add(GKR_CIRCUIT_CLAIMS_PTR(), __TEMPLATE_GKR_CIRCUIT_CLAIMS_BYTES) }
         function GKR_QTABLE_PTR()  -> ptr { ptr := add(GKR_GATEVAL_PTR(), __TEMPLATE_GKR_GATEVAL_BYTES) }
@@ -718,17 +712,14 @@ contract GkrWhirVerifier {
         whir_verify(__WHIR_START__)
 
         // The verified statement, handed to Solidity: publicInput = registers x10..x17,
-        // auxInput = x18..x25 (u32 LE each, concatenated, from the preimage);
-        // setupCommitment = keccak256 of the pinned setup cap (CAP BE-u32 digests) — the
-        // circuit setup the proof was verified against.
+        // auxInput = x18..x25 (u32 LE each, concatenated, from the preimage).
         publicInput := mark_word(PUBLIC_INPUT_FIRST_REGISTER)
         auxInput := mark_word(AUX_INPUT_FIRST_REGISTER)
-        setupCommitment := __TEMPLATE_SETUP_COMMITMENT
         }
         // Report the verified statement; the registry (constructor-pinned, non-zero, has code)
         // must accept — its revert aborts the verification transaction.
-        IVerificationRegistry(registry).markVerified(publicInput, auxInput, setupCommitment);
-        return abi.encode(publicInput, auxInput, setupCommitment);
+        IVerificationRegistry(registry()).markVerified(publicInput, auxInput);
+        return abi.encode(publicInput, auxInput);
     }
 }
 

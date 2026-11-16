@@ -117,13 +117,11 @@ impl Lit {
     }
 }
 
-/// The single-transaction wrap verifier and the `SetupFrontier` data contract it reads.
+/// The single-transaction wrap verifier with its setup embedded in runtime code.
 #[derive(Clone, Debug)]
 pub struct WrapContracts {
     /// The merged `GkrWhirVerifier` source.
     pub verifier_sol: String,
-    /// The `SetupFrontier` data contract source.
-    pub setup_frontier_sol: String,
 }
 
 // `generate_wrap_verifier` is implemented in `assemble.rs`.

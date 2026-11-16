@@ -19,7 +19,7 @@ fn write_calldata_into_debug_data() {
     put(common::CALLDATA, &calldata.bytes);
     put(
         common::VERIFIED_MARK,
-        &verifier_evm::verified_mark(&proof, &mode).to_bytes(),
+        &verifier_evm::verified_mark(&mode).to_bytes(),
     );
     std::fs::write(
         common::data_path(common::CALLDATA_FIELDS),

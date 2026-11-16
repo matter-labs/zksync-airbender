@@ -275,23 +275,17 @@ fn words_for(bytes: usize) -> Lit {
     Lit::words((bytes as u128).div_ceil(32))
 }
 
-/// The `SetupFrontier` data contract: its runtime code is `STOP ‖ data`, `data` = the setup
-/// frontier at `level` ‖ the pinned setup cap image ‖ the GKR term table.
-fn setup_frontier_sol(data: &[u8], level: usize) -> String {
-    let frontier = format!(
-        "the L1 wrap setup tree's {} nodes at level {level} (physical order), ",
-        1usize << level
-    );
+/// Append the unchanged setup payload and constructor-pinned registry to the runtime.
+/// Reading from the code tail keeps Solidity's metadata trailer outside the setup layout.
+fn deployment_sol(runtime: &str, data: &[u8]) -> String {
     format!(
-        "// SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.36;
-
-/// The wrap verifier's setup data after a STOP byte: {frontier}the pinned setup cap and the GKR
-/// term table; the constructor and each verification check its code hash before data reads.
-contract SetupFrontier {{
-    constructor() {{
-        bytes memory code = hex\"00{hex}\";
-        assembly {{
+        "{runtime}\ncontract GkrWhirVerifier is GkrWhirVerifierCode {{
+    constructor(address registry_) {{
+        require(registry_ != address(0), \"registry is zero\");
+        require(registry_.code.length > 0, \"registry has no code\");
+        // Runtime layout: Solidity code (including metadata) | setup data | registry ABI word.
+        bytes memory code = bytes.concat(type(GkrWhirVerifierCode).runtimeCode, hex\"{hex}\", abi.encode(registry_));
+        assembly (\"memory-safe\") {{
             return(add(code, 32), mload(code))
         }}
     }}
@@ -305,13 +299,12 @@ contract SetupFrontier {{
 struct WrapRender {
     decoder: calldata_decoder::GkrDecoder,
     frontier: (Vec<u8>, usize, usize),
-    setup_commitment: [u8; 32],
 }
 
 /// The single-transaction wrap verifier: every proof byte is read from the compressed calldata,
 /// the final PC and `setup_cap` are deployment constants. The setup cap and the GKR term table
-/// live in the `SetupFrontier` data contract, supplied to the verifier constructor. The nodes at
-/// `params.setup_frontier_level` (physical order) are stored there before the cap and table.
+/// are appended to the runtime code by the registry-only constructor. The nodes at
+/// `params.setup_frontier_level` (physical order) precede the cap and table after a STOP byte.
 #[allow(clippy::too_many_arguments)]
 pub fn generate_wrap_verifier(
     circuit: &GKRCircuitArtifact<Proth120>,
@@ -356,7 +349,6 @@ pub fn generate_wrap_verifier(
             params.setup_frontier_level,
             params.setup_frontier_skip(),
         ),
-        setup_commitment: crate::seed::setup_commitment(setup_cap),
     };
     let (verifier_sol, data) = render(
         circuit,
@@ -365,10 +357,8 @@ pub fn generate_wrap_verifier(
         inits_teardowns_top_bits,
         &wrap_render,
     );
-    let level = params.setup_frontier_level;
     WrapContracts {
-        verifier_sol,
-        setup_frontier_sol: setup_frontier_sol(&data, level),
+        verifier_sol: deployment_sol(&verifier_sol, &data),
     }
 }
 
@@ -528,11 +518,14 @@ fn render(
     assert!(inlined, "gkr.sol template missing inline marker");
 
     // 2. Heap layout: one bump allocator for both halves, starting right after the three
-    //    spill-safe fixed slots (P_PTR, CIRCUIT_PTR, FRONTIER_PTR) above the via_ir spill zone.
+    //    spill-safe fixed slots (P_PTR, CIRCUIT_PTR, SETUP_CODE_OFFSET_PTR) above the via_ir spill zone.
     let min_free = read_const(GKR_TEMPLATE, "MINIMUM_FREE_HEAP_PTR");
     assert_eq!(read_const(GKR_TEMPLATE, "P_PTR"), min_free);
     assert_eq!(read_const(GKR_TEMPLATE, "CIRCUIT_PTR"), min_free + 32);
-    assert_eq!(read_const(GKR_TEMPLATE, "FRONTIER_PTR"), min_free + 64);
+    assert_eq!(
+        read_const(GKR_TEMPLATE, "SETUP_CODE_OFFSET_PTR"),
+        min_free + 64
+    );
     let mut heap = HeapAlloc::new(min_free + 96);
     let gkr_regions = gkr_heap_regions(
         &d,
@@ -625,17 +618,6 @@ fn render(
         calldata_decoder::FACTORED_ROUND_SLOT_BYTES,
         &mut assigned,
     );
-    let setup_commitment: String = wrap
-        .setup_commitment
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    gkr = set_const(
-        &gkr,
-        "__TEMPLATE_SETUP_COMMITMENT",
-        format!("0x{setup_commitment}"),
-        &mut assigned,
-    );
 
     // Boundary-layer LSB reorder for gkr_dr_final: the dim-reduce LSB lines are stored in
     // GKRAddress-offset order, but the g-accumulator wants OutputType-group (iteration) order so
@@ -705,14 +687,9 @@ fn render(
         let nodes = &f.frontier.0[..];
         let cap_offset = 1 + nodes.len();
         let qtable_offset = cap_offset + f.decoder.setup_cap_image.len();
-        let data = [nodes, &f.decoder.setup_cap_image, &stats.qtable].concat();
-        let hash: [u8; 32] = {
-            use sha3::{Digest, Keccak256};
-            Keccak256::digest([&[0u8][..], &data].concat()).into()
-        };
-        let hash: String = hash.iter().map(|b| format!("{b:02x}")).collect();
+        let data = [&[0u8][..], nodes, &f.decoder.setup_cap_image, &stats.qtable].concat();
         for (name, value) in [
-            ("__TEMPLATE_FRONTIER_HASH", format!("0x{hash}")),
+            ("__TEMPLATE_SETUP_DATA_BYTES", data.len().to_string()),
             ("__TEMPLATE_DATA_CAP_OFFSET", cap_offset.to_string()),
             ("__TEMPLATE_DATA_QTABLE_OFFSET", qtable_offset.to_string()),
         ] {

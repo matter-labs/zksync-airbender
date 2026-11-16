@@ -1,8 +1,8 @@
 //! Commit-seed + GKR→WHIR handoff-seed reconstruction, and the registry-mark words.
 //!
 //! These reproduce the transcript preimage and the intermediate seeds that the
-//! prover derives while emitting proof calldata, plus the `(publicInput, auxInput,
-//! setupCommitment)` tuple the on-chain verifier reports to its registry. Nothing here reads
+//! prover derives while emitting proof calldata, plus the `(publicInput, auxInput)` tuple
+//! the on-chain verifier reports to its registry. Nothing here reads
 //! a fixture; the bytes are computed purely from the circuit artifact, the proof, and the aux
 //! operation mode. The calldata encoder's replay checks the reconstructed batching challenge
 //! against the first WHIR sumcheck claim.
@@ -68,33 +68,29 @@ pub fn commit_seed_preimage(_circuit: &Circuit, proof: &Proof, aux: &OperationMo
     ti.iter().flat_map(|w| w.to_le_bytes()).collect()
 }
 
-/// The `(publicInput, auxInput, setupCommitment)` tuple the on-chain verifier reports to its
+/// The `(publicInput, auxInput)` tuple the on-chain verifier reports to its
 /// registry (`IVerificationRegistry.markVerified`) for this proof, each as a bytes32:
 ///  * `public_input` = final registers x10..x17, `aux_input` = x18..x25 — each register's
-///    u32 value as 4 LE bytes, concatenated in register order;
-///  * `setup_commitment` = keccak256 of the setup oracle's Merkle cap, the cap digests
-///    serialized as BE u32 words (the WHIR calldata encoding of a digest).
+///    u32 value as 4 LE bytes, concatenated in register order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VerifiedMark {
     pub public_input: [u8; 32],
     pub aux_input: [u8; 32],
-    pub setup_commitment: [u8; 32],
 }
 
 impl VerifiedMark {
-    /// The 96-byte ABI encoding `publicInput ‖ auxInput ‖ setupCommitment` (also what the
+    /// The 64-byte ABI encoding `publicInput ‖ auxInput` (also what the
     /// verifier returns on success).
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut v = Vec::with_capacity(96);
+        let mut v = Vec::with_capacity(64);
         v.extend_from_slice(&self.public_input);
         v.extend_from_slice(&self.aux_input);
-        v.extend_from_slice(&self.setup_commitment);
         v
     }
 }
 
-/// Compute the registry mark for `proof` + `aux` (see [`VerifiedMark`]).
-pub fn verified_mark(proof: &Proof, aux: &OperationMode) -> VerifiedMark {
+/// Compute the registry mark for `aux` (see [`VerifiedMark`]).
+pub fn verified_mark(aux: &OperationMode) -> VerifiedMark {
     let OperationMode::SingleChunk {
         register_final_state,
         ..
@@ -113,17 +109,5 @@ pub fn verified_mark(proof: &Proof, aux: &OperationMode) -> VerifiedMark {
     VerifiedMark {
         public_input: regs(10),
         aux_input: regs(18),
-        setup_commitment: setup_commitment(&proof.whir_proof.setup_commitment.commitment.cap.cap),
     }
-}
-
-/// The registry's `setupCommitment`: keccak256 of the setup cap digests serialized as BE u32
-/// words. The verifier pins the setup cap, so this is a deployment constant.
-pub(crate) fn setup_commitment(cap: &[[u32; 8]]) -> [u8; 32] {
-    use sha3::Digest;
-    let cap_bytes: Vec<u8> = cap
-        .iter()
-        .flat_map(|digest| digest.iter().flat_map(|word| word.to_be_bytes()))
-        .collect();
-    sha3::Keccak256::digest(&cap_bytes).into()
 }

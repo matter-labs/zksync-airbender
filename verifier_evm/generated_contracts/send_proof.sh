@@ -1,13 +1,15 @@
 #!/bin/sh
 # Send the single verification transaction to an already-deployed GkrWhirVerifier. The proof
-# bytes (GKR stream ‖ WHIR proof stream) are the transaction's calldata, read from ../debug_data
-# (regenerate with `cargo test -p verifier_evm --test flatten_calldata` after a new proof). The
+# bytes (GKR stream ‖ WHIR proof stream) are the transaction's calldata, read from ../debug_data/l1_wrap
+# (regenerate with `cargo test -p verifier_evm --release --test flatten_calldata -- --ignored` after a new proof). The
 # verifier address comes from OUTSIDE the script — argument or environment — since it is a
 # property of the deployment (see ./deploy.sh), not of this repository. A successful transaction
 # (status 1) means the whole GKR+WHIR verification passed and the verifier reported
-# `(publicInput, auxInput, setupCommitment)` to its registry (`markVerified`); the same tuple is
-# the call's return data.
+# `(publicInput, auxInput)` to its registry (`markVerified`); the same 64-byte tuple is the
+# call's return data. The registry must accept only approved verifier addresses (`msg.sender`),
+# each pinned to one setup embedded in its runtime code, and check `auxInput` against the expected chain.
 #
+# Requires Foundry v1.9.0 on PATH and a Glamsterdam-capable chain.
 #   ./send_proof.sh <verifier-address>
 #   VERIFIER_ADDR=0x… ./send_proof.sh
 set -e
@@ -24,7 +26,7 @@ if [ -z "$VERIFIER_ADDR" ]; then
   exit 1
 fi
 
-cd_hex="0x$(cat ../debug_data/merged_calldata.hex)"
+cd_hex="0x$(cat ../debug_data/l1_wrap/single_tx_calldata.hex)"
 bytes=$(( (${#cd_hex} - 2) / 2 ))
 
 echo "== sending the verification transaction =="

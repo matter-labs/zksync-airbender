@@ -424,9 +424,9 @@ fn emit_layer0_quad_table(
             ));
         }
     }
-    // 2. copy the packed records from the verified setup data contract.
+    // 2. copy the packed records from the embedded setup data.
     out.push_str(&format!(
-        "            extcodecopy(mload(FRONTIER_PTR), GKR_QTABLE_PTR(), __TEMPLATE_DATA_QTABLE_OFFSET, {})\n",
+        "            codecopy(GKR_QTABLE_PTR(), add(mload(SETUP_CODE_OFFSET_PTR), __TEMPLATE_DATA_QTABLE_OFFSET), {})\n",
         stream.len()
     ));
     // 3. bucket loops — modulus loaded once from the P constant into a local (cheap DUP in the

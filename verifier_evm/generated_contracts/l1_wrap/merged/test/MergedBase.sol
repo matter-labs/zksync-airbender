@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.8.36;
+pragma solidity =0.8.38;
 
 import {IVerificationRegistry} from "../src/GkrWhirVerifier.sol";
 
@@ -15,19 +15,19 @@ interface Vm {
 
 /// A registry that refuses every mark.
 contract RevertingRegistry is IVerificationRegistry {
-    function markVerified(bytes32, bytes32, bytes32) external pure override {
+    function markVerified(bytes32, bytes32) external pure override {
         revert("refused");
     }
 }
 
 /// Shared helpers: committed data, and deployment of the renders built in sibling projects
 /// (`../negative/*`) from their creation
-/// code, with registry and setup-data addresses as constructor arguments.
+/// code, with only the registry address as constructor argument.
 abstract contract MergedBase {
     Vm constant vm = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
     string constant DATA = "../../../debug_data/l1_wrap/";
     uint256 constant EIP170 = 24_576;
-    address internal frontier;
+    uint256 constant GLAMSTERDAM_CODE_LIMIT = 65_536;
 
     function _hex(string memory path) internal view returns (bytes memory) {
         return vm.parseBytes(string.concat("0x", vm.readFile(path)));
@@ -39,19 +39,11 @@ abstract contract MergedBase {
     }
 
     function _deploy(string memory artifact, address registry) internal returns (address v) {
-        bytes memory init = bytes.concat(_creation(artifact), abi.encode(registry, frontier));
+        bytes memory init = bytes.concat(_creation(artifact), abi.encode(registry));
         assembly ("memory-safe") {
             v := create(0, add(init, 32), mload(init))
         }
         require(v != address(0), "verifier deployment failed");
-    }
-
-    function _deployFrontier() internal returns (address data) {
-        bytes memory init = _creation("out/SetupFrontier.sol/SetupFrontier.json");
-        assembly ("memory-safe") {
-            data := create(0, add(init, 32), mload(init))
-        }
-        require(data != address(0), "frontier deployment failed");
     }
 
     function _slice(bytes memory b, uint256 from, uint256 to) internal pure returns (bytes memory out) {

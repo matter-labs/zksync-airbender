@@ -1,5 +1,6 @@
 #!/bin/sh
-# Deterministic deployment of the merged GkrWhirVerifier (+ a TestRegistry) through the CreateX
+# Requires Foundry v1.9.0 on PATH and a Glamsterdam-capable chain.
+# Deterministic deployment of the L1 wrap GkrWhirVerifier (+ a TestRegistry) through the CreateX
 # factory (https://github.com/pcaversaccio/createx, pre-deployed on most networks at the fixed
 # address below) via `ICreateX.deployCreate2(bytes32 salt, bytes initCode)`, so every address is a
 # pure function of (factory, salt, initCode).
@@ -8,7 +9,9 @@
 # non-zero and have code), so the deployment is two steps: 1. the registry (TestRegistry here —
 # substitute the production IVerificationRegistry's initcode/address), 2. the verifier with the
 # registry address appended to its initcode. On success the verifier calls
-# `registry.markVerified(publicInput, auxInput, setupCommitment)`.
+# `registry.markVerified(publicInput, auxInput)`. A production registry must accept only
+# approved verifier addresses (`msg.sender`), each pinned to one setup embedded in its runtime code,
+# and compare `auxInput` with the expected recursion chain hash.
 #
 # CREATE2 reverts on an address collision — bump the salts to deploy fresh contracts.
 # Feed the printed verifier address to ./send_proof.sh afterwards.
@@ -55,17 +58,17 @@ deploy_create2() {
 }
 
 echo "== building GkrWhirVerifier + TestRegistry =="
-( cd merged && forge build >/dev/null )
+( cd l1_wrap/merged && forge build >/dev/null )
 
 if [ -z "$REGISTRY_ADDR" ]; then
   echo "== deploying TestRegistry via CreateX deployCreate2 =="
-  registry_initcode=$(jq -r '.bytecode.object' merged/out/TestRegistry.sol/TestRegistry.json)
+  registry_initcode=$(jq -r '.bytecode.object' l1_wrap/merged/out/TestRegistry.sol/TestRegistry.json)
   REGISTRY_ADDR=$(deploy_create2 "$REGISTRY_SALT" "$registry_initcode")
 fi
 echo "   registry        : $REGISTRY_ADDR"
 
 echo "== deploying GkrWhirVerifier(registry) via CreateX deployCreate2 =="
-initcode=$(jq -r '.bytecode.object' merged/out/GkrWhirVerifier.sol/GkrWhirVerifier.json)
+initcode=$(jq -r '.bytecode.object' l1_wrap/merged/out/GkrWhirVerifier.sol/GkrWhirVerifier.json)
 ctor_args=$(cast abi-encode "constructor(address)" "$REGISTRY_ADDR")
 ADDR=$(deploy_create2 "$VERIFIER_SALT" "${initcode}${ctor_args#0x}")
 echo "   GkrWhirVerifier : $ADDR"

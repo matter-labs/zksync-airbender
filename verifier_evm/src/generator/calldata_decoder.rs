@@ -329,7 +329,7 @@ pub(crate) fn gkr_decoder(
             // pinned inits/teardowns top bits (the setup cap below overwrites the rest of the word)
             mstore(add({IMAGE_PTR}, {top_image}), 0x{top_word})
             // pinned setup cap
-            extcodecopy(mload(FRONTIER_PTR), add({IMAGE_PTR}, {setup_cap_in_image}), __TEMPLATE_DATA_CAP_OFFSET, {setup_cap_len})
+            codecopy(add({IMAGE_PTR}, {setup_cap_in_image}), add(mload(SETUP_CODE_OFFSET_PTR), __TEMPLATE_DATA_CAP_OFFSET), {setup_cap_len})
             // memory cap: {cap} DIGESTs of {db} bytes, as preimage LE words and as the WHIR
             // half's BE base-oracle cap
             for {{ let i := 0 }} lt(i, {cap}) {{ i := add(i, 1) }} {{

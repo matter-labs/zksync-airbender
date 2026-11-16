@@ -1,10 +1,10 @@
 //! `verifier_evm` — generate the on-chain (EVM/Yul) GKR+WHIR verifier for a Proth120 circuit,
 //! and flatten a proof into the calldata it consumes.
 //!
-//! [`generate_wrap_verifier`] renders the GKR/WHIR verifier and SetupFrontier data
-//! contract from a circuit, ProverConfig and deployment parameters. The verifier
-//! constructor takes the registry and data-contract addresses; proof acceptance
-//! reports the verified statement to that registry.
+//! [`generate_wrap_verifier`] renders the GKR/WHIR verifier with embedded setup data
+//! from a circuit, ProverConfig and deployment parameters. The verifier constructor
+//! takes only the registry address; proof acceptance reports the verified statement
+//! to that registry. Deployment targets Glamsterdam's contract size limit.
 //!
 //! [`encoding::encode_single_tx`] encodes a proof as compressed calldata, and
 //! [`verified_mark`] computes the statement returned and reported by the verifier.

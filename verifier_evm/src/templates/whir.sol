@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.36;
+pragma solidity =0.8.38;
 
 // =============================================================================
 // WHIR polynomial-commitment opening verifier — the WHIR half of GkrWhirVerifier
@@ -58,9 +58,9 @@ contract WhirVerifier {
     // Merkle leaf/node hash: keccak256 truncated to the digest bytes (the high bytes kept).
     uint256 constant __TEMPLATE_DIGEST_MASK = "{unassigned}";
     uint256 constant __TEMPLATE_DIGEST_BYTES = "{unassigned}"; // Merkle digest bytes in the compressed calldata
-    // The setup data contract: STOP ‖ setup frontier ‖ pinned setup cap image ‖ GKR
-    // term table; its code hash is checked by the constructor and before each verification.
-    uint256 constant __TEMPLATE_FRONTIER_HASH = "{unassigned}";
+    // Appended setup data: STOP ‖ setup frontier ‖ pinned setup cap image ‖ GKR term table.
+    // The registry ABI word follows it; all setup offsets are relative to its leading STOP.
+    uint256 constant __TEMPLATE_SETUP_DATA_BYTES = "{unassigned}";
     uint256 constant __TEMPLATE_DATA_CAP_OFFSET = "{unassigned}";
     uint256 constant __TEMPLATE_DATA_QTABLE_OFFSET = "{unassigned}";
     // Setup frontier: the setup tree's 2^LEVEL nodes at that level (DIGEST_BYTES each, physical
@@ -331,8 +331,8 @@ contract WhirVerifier {
             }
             switch cap_ptr
             case 0 {
-                // frontier[cap_index], after the data contract's leading STOP byte
-                extcodecopy(mload(FRONTIER_PTR), 0, add(1, mul(__TEMPLATE_DIGEST_BYTES, cap_index)), __TEMPLATE_DIGEST_BYTES)
+                // frontier[cap_index], after the embedded setup's leading STOP byte
+                codecopy(0, add(mload(SETUP_CODE_OFFSET_PTR), add(1, mul(__TEMPLATE_DIGEST_BYTES, cap_index))), __TEMPLATE_DIGEST_BYTES)
                 sink2(h, and(mload(0), __TEMPLATE_DIGEST_MASK))
             }
             default { sink2(h, mload(add(cap_ptr, mul(cap_index, 32)))) }
@@ -395,7 +395,7 @@ contract WhirVerifier {
             switch r
             case 0 {
                 // Round 0 queries the base oracles: the merged memory+witness columns (BCAP0),
-                // then the setup columns, whose paths end at the SetupFrontier nodes; all are
+                // then the setup columns, whose paths end at the embedded frontier nodes; all are
                 // gamma-batched into the folding buffer.
                 for { let j := 0 } lt(j, vp) { j := add(j, 1) } { mstore(add(__TEMPLATE_WHIR_FBUF_PTR, mul(j, 32)), 0) }
                 cp := batch_oracle(cp, __TEMPLATE_WHIR_MERGED_MW, 0, vp, depth, __TEMPLATE_WHIR_BCAP0_PTR, qidx, cb)

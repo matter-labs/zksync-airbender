@@ -1,6 +1,6 @@
 //! Regenerate the L1 wrap verifier and its wrong-final-PC control from the canonical bundle.
 mod common;
-use common::{FRONTIER_CONTRACT, MERGED_VERIFIER, WRONG_FINAL_PC_VERIFIER};
+use common::{MERGED_VERIFIER, WRONG_FINAL_PC_VERIFIER};
 use field::Proth120;
 
 /// The proof aux must match the pinned inputs (external PoW floor, exit PC, top bits).
@@ -92,6 +92,30 @@ fn generated_sources() -> Vec<(String, String)> {
     let pc = common::final_pc();
     let contracts = generate_wrap(pc);
     let wrong = generate_wrap(pc ^ 1);
+    // Preserve the complete former data-contract runtime, including its leading STOP.
+    // The code tail makes its placement independent of Solidity's metadata trailer.
+    let source = &contracts.verifier_sol;
+    assert!(!source.contains("SetupFrontier"));
+    assert!(!source.contains("extcodecopy("));
+    assert!(!source.contains("extcodehash("));
+    assert!(source.contains("constructor(address registry_)"));
+    assert!(source.contains("sub(codesize(), add(__TEMPLATE_SETUP_DATA_BYTES, 32))"));
+    let data = hex::decode(
+        source
+            .split_once("hex\"")
+            .unwrap()
+            .1
+            .split('"')
+            .next()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(data.len(), 16_410);
+    use sha3::{Digest, Keccak256};
+    assert_eq!(
+        hex::encode(Keccak256::digest(&data)),
+        "f5e33e946c45cc936b514c2158e8ac6ce4085a320a7cbd8dde3d90d37b7301ed"
+    );
     // The negative changes only the decoder's pinned PC word.
     assert_eq!(
         contracts.verifier_sol.lines().count(),
@@ -109,7 +133,6 @@ fn generated_sources() -> Vec<(String, String)> {
         .all(|(a, b)| a.contains("// pinned final PC") && b.contains("// pinned final PC")));
     vec![
         (MERGED_VERIFIER.into(), contracts.verifier_sol),
-        (FRONTIER_CONTRACT.into(), contracts.setup_frontier_sol),
         (WRONG_FINAL_PC_VERIFIER.into(), wrong.verifier_sol),
     ]
 }

@@ -17,10 +17,18 @@ verifier and [WHIR template](src/templates/whir.sol). The calldata decoder rejec
 unconsumed input.
 
 The statement passed to `IVerificationRegistry.markVerified` is
-`publicInput || auxInput || setupCommitment` (96 bytes). The first two words
-concatenate registers x10..x17 and x18..x25 as little-endian u32s. The last is
-Keccak256 of the setup cap serialized as big-endian u32 digest words;
-[verified_mark](src/seed.rs) computes the same tuple.
+`publicInput || auxInput` (64 bytes). The two words concatenate registers
+x10..x17 and x18..x25 as little-endian u32s;
+[verified_mark](src/seed.rs) computes the same tuple. The registry must accept
+only approved verifier addresses (`msg.sender`), each pinned to one setup embedded in its
+runtime code, and compare `auxInput` with the expected recursion chain hash.
+
+The setup frontier, cap image and GKR term table are embedded in the deployed
+verifier code, with their existing STOP/nodes/cap/table layout unchanged. Reads
+use `codecopy` at a tail-relative offset; the constructor takes only the registry
+address. The verifier targets Glamsterdam's EIP-7954 size limit. Tests use Foundry
+v1.9.0 with the Amsterdam hardfork; solc 0.8.38 compiles for Osaka while its
+Amsterdam target is experimental.
 
 [encoding_roundtrip.rs](tests/encoding_roundtrip.rs) checks round
 factorization, including exceptional challenges. Run Rust checks with
