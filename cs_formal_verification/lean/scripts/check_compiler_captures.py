@@ -13,7 +13,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parent.parent
 sys.path.insert(0, str(ROOT))
-from check_circuit_json import reject_duplicates, reject_constant
+from check_circuit_json import reject_duplicates, reject_constant, imported_paths, setup_paths
 
 FAMILIES = {
     'add-sub': 'add_sub_lui_auipc_mop', 'bigint': 'bigint_with_extended_control',
@@ -32,7 +32,43 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False)
 
 
+def check_setup_pins():
+    pins = read(ROOT / 'setup_json_pins.json')
+    paths = setup_paths()
+    expected = {str(path.relative_to(ROOT)) for path in paths}
+    if set(pins) != expected:
+        raise ValueError('Setup pins must cover every imported setup JSON')
+    for name, digest in pins.items():
+        if hashlib.sha256((ROOT / name).read_bytes()).hexdigest() != digest:
+            raise ValueError(f'Setup bytes changed: {name}')
+    table = (ROOT / 'artifacts/setup/README.md').read_text()
+    for name, digest in re.findall(r'\| `([^`]+\.json)` \| `([0-9a-f]{64})` \|', table):
+        if pins.get('artifacts/setup/' + name) != digest:
+            raise ValueError(f'Setup README hash differs from its pin: {name}')
+    print(f'PASS {len(paths)} setup content pins and README hashes')
+
+
+def check_cached_layouts():
+    checked = set()
+    for path in imported_paths():
+        name = path.name.replace('_layout_no_caches_gkr.json', '')
+        name = name.replace('_layout_gkr.json', '')
+        if name in checked:
+            continue
+        checked.add(name)
+        parent = path.parent
+        cached = read(parent / (name + '_layout_gkr.json'))
+        plain = read(parent / (name + '_layout_no_caches_gkr.json'))
+        cached.pop('layers')
+        plain.pop('layers')
+        if canonical(cached) != canonical(plain):
+            raise ValueError(f'Cached constraint description differs from no-cache layout: {name}')
+    print(f'PASS {len(checked)} complete cached/no-cache constraint descriptions')
+
+
 def check():
+    check_setup_pins()
+    check_cached_layouts()
     pins = read(ROOT / 'compiler_capture_pins.json')
     expected = {f'artifacts/compiler/{family}-cached{suffix}.json'
                 for family in FAMILIES for suffix in ('', '-source')}

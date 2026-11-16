@@ -47,6 +47,9 @@ hundred controller rows are checked by the kernel (`Proven.Setup.Blocks.scan`).
 three split Keccak-f[1600] workers (CSRs 0x7CD, 0x7CC, 0x7CE; 8/9/11 columns, trace length
 4194304). Source of truth for `Human.Circuits.KeccakSplit.Tables.Setup`.
 
+The [input check](../../scripts/check_compiler_captures.py) checks every setup
+content pin and each hash in this table.
+
 | file | sha256 |
 |---|---|
 | `keccak-column-parity.json` | `e3ceeb5372616a87cfacfe888a0847bad784bf94cad81e5c143a1ff77d47919d` |
