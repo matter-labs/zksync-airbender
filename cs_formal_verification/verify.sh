@@ -16,6 +16,7 @@ echo "== 0. The Sail model: lean-sail (pinned, fetched on demand; not committed)
 echo "== 1. The spec (human/) imports nothing from the proofs (proven/) or the tests (test/)"
 python3 scripts/test_import_closure.py
 python3 scripts/check_import_closure.py
+python3 ../ci/test_kernel_replay.py
 
 echo "== 1b. The circuit and setup JSONs the spec imports: pinned sha256, no duplicate keys, no duplicate circuits,"
 echo "   canonical form (setup JSONs compact)"

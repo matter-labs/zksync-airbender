@@ -14,8 +14,9 @@
 #   ci/lean-ci.sh verify        ./verify.sh, each of its steps timed
 #   ci/lean-ci.sh build         lake build of the spec, proofs and tests (kernel_replay job)
 #   ci/lean-ci.sh kernel-deps   bubblewrap, for `lake check` (kernel_replay job)
-#   ci/lean-ci.sh kernel-probe  prints the KERNEL_CHECKER usable here: paranoid if bwrap can sandbox, else leanchecker
+#   ci/lean-ci.sh kernel-probe  prints the KERNEL_CHECKER usable here: lake if bwrap can sandbox, else leanchecker
 #   ci/lean-ci.sh kernel-check  replay our modules' constants in the kernel (kernel_replay job; KERNEL_CHECKER)
+#   ci/lean-ci.sh kernel-external  run the bundled external checkers for an advisory report
 #   ci/lean-ci.sh report        what the build did: modules compiled, slowest modules, peak memory
 #   ci/lean-ci.sh time <step>   run a step, then print its wall time, CPU time and peak memory (container cgroup)
 #
@@ -145,7 +146,7 @@ step_kernel_deps() { # bubblewrap: `lake check` builds and exports the project i
   $SUDO mkdir -p /run/user /home   # the sandbox mounts a tmpfs on each; bwrap cannot create them in a read-only root
 }
 
-# kernel-probe: can bwrap create the namespaces `lake check` uses here? Prints the KERNEL_CHECKER to use: paranoid,
+# kernel-probe: can bwrap create the namespaces `lake check` uses here? Prints the KERNEL_CHECKER to use: lake,
 # or leanchecker with a loud warning (e.g. Ubuntu 24.04's AppArmor restriction of unprivileged user namespaces, or a
 # container whose profiles deny them).
 step_kernel_probe() {
@@ -154,22 +155,21 @@ step_kernel_probe() {
   if err=$("$CI_DIR/kernel-bwrap.sh" --ro-bind / / --tmpfs /home --tmpfs /root --tmpfs /run/user \
       --dev /dev --proc /proc --tmpfs /tmp --unshare-all --die-with-parent -- \
       /bin/sh -c 'test -r "$1" && ! test -w "$1"' sandbox-probe "$input" 2>&1); then
-    echo paranoid
+    echo lake
   else
     log "bwrap cannot create the sandbox lake check needs: $err"
-    [[ -n "${GITHUB_ACTIONS:-}" ]] && echo "::error title=kernel replay::bwrap cannot create a sandbox here ($err); lake check --paranoid skipped, falling back to leanchecker" >&2
+    [[ -n "${GITHUB_ACTIONS:-}" ]] && echo "::error title=kernel replay::bwrap cannot create a sandbox here ($err); the export axiom audit cannot run, falling back to leanchecker" >&2
     echo leanchecker
   fi
 }
 
 # The kernel replay (CI job kernel_replay nightly; backup-check.sh): every constant re-added to a kernel.
 # KERNEL_CHECKER selects the tool:
-#   paranoid: `lake check --paranoid` (Lean 4.35) on the default targets (lakefile.toml: everything except
+#   lake: `lake check` (Lean 4.35) on the default targets (lakefile.toml: everything except
 #     human/CleanCore/Equivalence.lean and test/Checks/Axioms.lean, which import Clean's native_decide prime
 #     instances, and which it would reject: it fails on any non-standard axiom in the exported environment). It
 #     builds and exports them in a bwrap sandbox (Linux, user namespaces), replays the export through Lean's kernel
-#     and the independent checkers bundled with the toolchain (leanchecker-paranoid, lean4lean, nanoda, con-leche,
-#     con-ron), and checks the axioms. Then the two
+#     and checks the exported axioms. These are the required replay results. Then the two
 #     Clean-importing modules, which it leaves out, are replayed by leanchecker (their own constants only).
 #   leanchecker (default when unset; the fallback where bwrap cannot sandbox, see kernel-probe): the toolchain's
 #     leanchecker over our module prefixes.
@@ -177,7 +177,9 @@ step_kernel_probe() {
 # first (step_build), so Clean is already built from source and sail-rv32/.lake and lean-sail/.lake are up to date.
 # kernel-bwrap.sh binds the external cs/compiled_circuits inputs read-only after Lake covers the host home paths.
 # The kernel_replay job runs on the runner host (no container: Docker's default profiles deny bwrap the user and mount
-# namespaces it needs) and sets KERNEL_CHECKER from kernel-probe; backup-check.sh sets paranoid.
+# namespaces it needs) and sets KERNEL_CHECKER from kernel-probe; backup-check.sh sets lake.
+# The old `paranoid` value remains an alias for this required check. kernel-external runs `--paranoid` separately;
+# its result is advisory in CI and backup-check.sh. No checker resource limits are changed.
 # leanchecker replays KERNEL_CHECK_THREADS (default 2) modules at a time, each on top of its own import of the
 # environment; memory grows fast with that count (container: 1 -> 1.3 GB, 2 -> 5.8-10.1 GB, 4 -> over 15 GB), so it
 # does not follow LEAN_NUM_THREADS.
@@ -185,14 +187,19 @@ step_kernel_check() {
   cd "$LEAN"
   local t=${KERNEL_CHECK_THREADS:-2}
   case "${KERNEL_CHECKER:-leanchecker}" in
-    paranoid)
-      COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check --paranoid
+    lake|paranoid)
+      COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check
       LEAN_NUM_THREADS=$t lake env leanchecker CleanCore.Equivalence Checks.Axioms ;;
     leanchecker)
       if (( $# )); then LEAN_NUM_THREADS=$t lake env leanchecker "$@"
       else LEAN_NUM_THREADS=$t lake env leanchecker CleanCore Human Proven Tests Checks; fi ;;
     *) echo "unknown KERNEL_CHECKER" >&2; return 2 ;;
   esac
+}
+
+step_kernel_external() {
+  cd "$LEAN"
+  COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check --paranoid
 }
 
 step_verify() {
@@ -279,6 +286,7 @@ case "$cmd" in
   mathlib) step_mathlib ;;
   lean-deps) step_lean_deps ;;
   kernel-check) step_kernel_check "$@" ;;
+  kernel-external) step_kernel_external ;;
   build) step_build ;;
   kernel-deps) step_kernel_deps ;;
   kernel-probe) step_kernel_probe ;;

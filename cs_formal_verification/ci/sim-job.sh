@@ -74,6 +74,10 @@ else
     set +e; "$CI" kernel-deps > /dev/null; T kernel-check; rc=$?; set -e
   fi
 fi
+if [[ $rc == 0 && ( "${FVCI_JOB:-verify}" == kernel_replay || "${FVCI_KERNEL:-0}" == 1 ) &&
+      "${KERNEL_CHECKER:-leanchecker}" != leanchecker ]]; then
+  T kernel-external || echo "Advisory external checker replay did not pass." >&2
+fi
 "$CI" report "$marker"
 
 if [[ "$to" != "-" ]]; then

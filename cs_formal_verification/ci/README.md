@@ -13,8 +13,10 @@ budget, review check) when `cs_formal_verification/` or a circuit JSON the spec 
   fresh audits. Its build is saved and seeds the pull requests. The toolchain, the dependency checkouts, Mathlib's
   files and the Sail model are restored in both modes (regenerating the Sail model nightly would add ~10 min);
 - **kernel replay** (job `kernel_replay`: nightly, or dispatch with `kernel_replay`): builds,
-  then the kernel re-checks every constant (`lean-ci.sh kernel-check`, `KERNEL_CHECKER=paranoid`: `lake check
-  --paranoid` on the lakefile's default targets, then `leanchecker` on the two Clean-importing modules). It runs on the
+  then Lean's kernel re-checks every constant and the export axiom audit must pass (`lean-ci.sh kernel-check`,
+  `KERNEL_CHECKER=lake`: `lake check` on the default targets, then `leanchecker` on the two Clean-importing modules).
+  A separate `kernel-external` step runs `lake check --paranoid`. Its checker results and logs are reported, but
+  external failures do not fail the job. The replay runs on the
   runner host, not in a container, so that `lake check`'s `bwrap` sandbox gets user and mount namespaces; `lean-ci.sh
   kernel-probe` checks that first, and where `bwrap` cannot sandbox the job replays with `leanchecker` and fails.
   `backup-check.sh` runs the same job by hand. Host prerequisites: passwordless `sudo` that allows the
@@ -36,6 +38,7 @@ commands.
 | `mathlib` | `lake exe cache get` for the modules the build imports (`dep_targets.py --cache-args`: 3082 of Mathlib's 8908 files; the cache tool adds their imports) | the dependency checkouts `.lake/packages` without build outputs (0.6 GB; Mathlib's git history most of it), the downloaded files and the cache tool binary `~/.cache/mathlib` (0.22 GB), key = manifest |
 | `lean-deps` | the dependencies of the build apart from our code ([dep_targets.py](dep_targets.py)): the Sail model library, the Clean modules we import, the C objects of the test executable's dependencies | in the build cache |
 | `kernel-check` | job `kernel_replay`: every constant of our modules replayed in the kernel, `KERNEL_CHECK_THREADS` (2) modules at a time | no |
+| `kernel-external` | advisory bundled checker replay; results and logs are reported | no |
 | `verify` | `./verify.sh`, each of its steps timed | `.lake/build`, `.lake/module-cpu.tsv` (the budget ledger), `sail-rv32/.lake`, Clean's `.lake`, the dependencies' C objects (`airbender_tests` links every imported module; Mathlib's cache ships no objects: ~3100 clang compiles, ~6 min CPU, 40 MB); key = arch + toolchain + manifest + commit, restored from the newest entry with the same prefix |
 
 The build cache is Lake's own build directory, not Lake's shared artifact cache (`LAKE_ARTIFACT_CACHE`, used on the

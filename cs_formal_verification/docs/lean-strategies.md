@@ -84,8 +84,9 @@ type: it leaves the rejected constructors without a runtime layout, as 4.34 did.
 in the model is compiled), not the declarations the kernel checks, so it is not trusted. Remove it once lean4#8930 is
 fixed.
 
-`verify.sh` stays the check everywhere (its trust checks included). `lake check --paranoid` (Lean 4.35: kernel replay
-by Lean's kernel and the independent checkers bundled with it, plus an axiom check) runs nightly, on manual dispatch, and in `backup-check.sh` (1.5). Its targets, the lakefile's default targets, cover every final proof
+`verify.sh` stays the check everywhere (its trust checks included). `lake check` (Lean 4.35: Lean's kernel and an
+export axiom check) is required nightly, on manual dispatch, and in `backup-check.sh` (1.5). A separate
+`lake check --paranoid` run reports the bundled checkers as advisory results. Its targets, the lakefile's default targets, cover every final proof
 module and the tests, not only `human/` (replaying `human/` checks that the statements are well-formed, not that they
 are proven), and leave out the two files that import Clean, `human/CleanCore/Equivalence.lean` and
 `test/Checks/Axioms.lean` (libraries `CleanEquivalence`, `CleanAudit`): `lake check` rejects a non-standard axiom
@@ -96,9 +97,10 @@ Ubuntu 24.04's AppArmor restriction), the job replays with `leanchecker` and fai
 
 ### 1.5 Backup checker: rarely
 
-`backup-check.sh` is the kernel replay job run by hand: `lake check --paranoid` on the default targets, then
+`backup-check.sh` is the kernel replay job run by hand: required `lake check` on the default targets, then
 `leanchecker` on the two Clean-importing modules (`ci/lean-ci.sh kernel-check`). It guards against tactics or other
-metaprograms that might add declarations without the kernel. One export and one replay for the whole target set,
+metaprograms that might add declarations without the kernel. The advisory `--paranoid` run follows separately.
+Each run exports and checks the whole target set,
 Mathlib and the Sail model included, with nothing cached between runs: hours (`verify.sh`: about 15 min), so it is
 not part of `verify.sh` and never run per commit: run it by hand every few months at most. On Linux it runs on the
 checkout; on macOS in the CI job's Docker image (`ci/sim.sh`), privileged inside Docker Desktop's VM so that `bwrap`

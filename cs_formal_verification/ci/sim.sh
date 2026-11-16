@@ -15,7 +15,7 @@
 # FVCI_STOP=sail stops after the Sail model step (to seed or time the sail cache alone). VERIFY_AUDITS (fresh|replay)
 # is passed to verify.sh; FVCI_KERNEL=1 adds the kernel replay (the kernel_replay job's check) after verify.sh;
 # FVCI_JOB=kernel_replay runs the kernel_replay job instead (build, then the kernel replay; backup-check.sh).
-# KERNEL_CHECKER (paranoid|leanchecker) is passed to ci/lean-ci.sh kernel-check; FVCI_DOCKER_OPTS adds `docker run`
+# KERNEL_CHECKER (lake|leanchecker; paranoid is a legacy alias for lake) is passed to kernel-check; FVCI_DOCKER_OPTS adds `docker run`
 # options (`lake check`'s bwrap sandbox needs user and mount namespaces, which Docker's default profiles deny).
 # Each run is a build: on the shared machine run it under the build lock (rvlock/lb.sh ci/sim.sh run ...).
 set -euo pipefail

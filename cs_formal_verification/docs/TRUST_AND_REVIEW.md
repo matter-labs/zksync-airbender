@@ -150,11 +150,11 @@ kernel replay ([ci/README.md](../ci/README.md)). A local `./verify.sh` is the co
 An incremental run trusts the restored build (produced by an earlier CI run of this repository). Cold runs re-derive the project modules from source. Schedules are active only after the workflow reaches the default branch.
 
 **Kernel replay** (job `kernel_replay`, nightly, or manually; `backup-check.sh` by hand):
-`lake check --paranoid` exports the lakefile's default targets with everything they import and replays every constant
-through Lean's kernel and the independent checkers bundled with the toolchain, then checks that only the standard
-axioms are used; `leanchecker` replays the two modules it leaves out (`human/CleanCore/Equivalence.lean`,
+`lake check` exports the default targets with everything they import. Lean's kernel must accept every declaration,
+and the export axiom audit must find only the standard axioms. `leanchecker` also replays the two modules it leaves out (`human/CleanCore/Equivalence.lean`,
 `test/Checks/Axioms.lean`: they import Clean's `native_decide` prime instances). This catches an `.olean` whose
-declarations the elaborator accepted but a kernel would not. It does not run on pull requests or in the cold runs.
+declarations the elaborator accepted but Lean's kernel would not. A separate `lake check --paranoid` step reports
+the bundled external checkers. Those results are advisory and do not fail the job. The replay does not run on pull requests or in the cold runs.
 The job runs on the runner host, where `bwrap` can create `lake check`'s sandbox; if it cannot, the job replays with
 `leanchecker` only and fails.
 

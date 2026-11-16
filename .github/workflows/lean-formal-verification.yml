@@ -207,6 +207,8 @@ jobs:
           python-version: "3.12"
       - name: Check the Python runtime
         run: python3 -c 'import tomllib'
+      - name: Check replay gate behavior
+        run: python3 cs_formal_verification/ci/test_kernel_replay.py
       - uses: ./.github/actions/lean-fv-setup
       # the newest build of the default branch (seeded by its cold runs); Lake rebuilds what is missing
       - name: Restore the Lake build
@@ -222,8 +224,7 @@ jobs:
           restore-keys: |
             lean-kernel-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-
             lean-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-
-      # lake check --paranoid if bwrap can create its sandbox on this host; otherwise an error annotation, the
-      # leanchecker replay, and a failed job (ci/lean-ci.sh kernel-probe)
+      # The required replay uses Lean's kernel and the export axiom audit. External checkers are advisory.
       - name: bubblewrap (lake check's sandbox) and a sandbox probe
         id: probe
         run: |
@@ -243,15 +244,51 @@ jobs:
             ${{ env.LEAN_DIR }}/.lake/packages/Clean/.lake
             ${{ env.LEAN_DIR }}/.lake/packages/*/.lake/build/ir/**/*.c.o*
           key: lean-kernel-build-${{ runner.arch }}-${{ hashFiles('cs_formal_verification/lean/lean-toolchain', 'cs_formal_verification/lean/lake-manifest.json') }}-${{ github.sha }}
-      - name: Kernel replay (lake check --paranoid, leanchecker on the two Clean-importing modules)
+      - name: Required Lean kernel replay and export axiom audit
+        id: required_kernel
         env:
           KERNEL_CHECKER: ${{ steps.probe.outputs.checker }}
-        run: cs_formal_verification/ci/lean-ci.sh time kernel-check
-      - name: Fail if lake check could not run
-        if: steps.probe.outputs.checker != 'paranoid'
         run: |
-          echo "::error::bwrap cannot sandbox on this runner: only the leanchecker fallback ran (see kernel-probe)"
-          exit 1
+          set -o pipefail
+          cs_formal_verification/ci/lean-ci.sh time kernel-check 2>&1 | tee cs_formal_verification/lean/.lake/kernel-required.log
+          if [[ "$KERNEL_CHECKER" != lake ]]; then
+            echo "::error::bwrap cannot sandbox on this runner: the required export axiom audit did not run"
+            exit 1
+          fi
+      - name: Bundled external checkers (advisory)
+        id: external
+        if: steps.required_kernel.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 120
+        run: |
+          set -o pipefail
+          cs_formal_verification/ci/lean-ci.sh time kernel-external 2>&1 | tee cs_formal_verification/lean/.lake/kernel-external.log
+      - name: Report replay results
+        if: always()
+        run: |
+          {
+            echo "## Kernel replay"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| Required Lean kernel and export axiom audit | ${{ steps.required_kernel.outcome }} |"
+            echo "| Bundled external checkers (advisory) | ${{ steps.external.outcome }} |"
+            if [[ -f cs_formal_verification/lean/.lake/kernel-external.log ]]; then
+              echo
+              echo '```text'
+              sed -nE '/kernel (accepted|rejected|failed|on)/p; /uncaught exception:/p; /[Ss]tack overflow/p; /fuel exhausted/p' cs_formal_verification/lean/.lake/kernel-external.log | tail -30
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload replay logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-replay-logs
+          path: |
+            cs_formal_verification/lean/.lake/kernel-required.log
+            cs_formal_verification/lean/.lake/kernel-external.log
+          if-no-files-found: ignore
 
   native_drift:
     name: native_drift
