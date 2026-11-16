@@ -1,6 +1,6 @@
 module
 public meta import Proven.GKRProtocol.Source
-public meta import Human.Import.CompilerJson
+public meta import Proven.Import.CompilerJson
 public meta import Lean
 
 public meta section

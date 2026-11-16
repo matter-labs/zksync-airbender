@@ -18,7 +18,7 @@ private partial def wiringSyntax : Tree → CommandElabM (TSyntax `term)
 elab "prove_ram_product_wiring " terminal:ident initial:ident " for " data:ident
     " from " path:str inline:(" unified_inline")? : command => do
   let text ← IO.FS.readFile path.getString
-  let circuit : Circuit ← match Lean.Json.parse text >>= fromJson? with
+  let circuit : Circuit ← match parseCircuit text with
     | .ok circuit => pure circuit
     | .error error => throwError "Native initialization JSON: {error}"
   let flavor := if inline.isSome then Extract.Flavor.unified else .standalone

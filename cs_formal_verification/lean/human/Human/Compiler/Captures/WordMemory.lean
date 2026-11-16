@@ -1,5 +1,6 @@
 module
-public import Human.Import.CompilerCapture
+public import Human.Compiler.Capture
+public import Human.Import.TranscribeCommand
 public import Human.Compiler.NativeArithmetic
 public import Human.Helpers.Properties
 public import Human.Circuits.WordMemory.Artifact
@@ -8,7 +9,10 @@ public import Human.Circuits.WordMemory.Artifact
 
 namespace Airbender.Compiler.Captures.WordMemory
 
-import_compiler_capture imported from "artifacts/compiler/word-memory-cached.json" family "word-memory"
+import_circuit importedCircuit from "../../cs/compiled_circuits/mem_word_only_layout_gkr.json" shared imported
+
+noncomputable def imported : NativeCapture := {
+  cached := true, circuit := importedCircuit, family := "word-memory", format_version := 1 }
 
 end Airbender.Compiler.Captures.WordMemory
 

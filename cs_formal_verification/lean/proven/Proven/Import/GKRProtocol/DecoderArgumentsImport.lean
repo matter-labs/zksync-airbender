@@ -33,7 +33,7 @@ elab_rules : command
       clean_model $cleanName:ident base_model $baseName:ident lookup_model $lookupName:ident
       query_model $queryName:ident links_model $linksName:ident source_query $sourceQuery:ident
       trace_columns $traceName:ident decoder_columns $decoderName:ident) => do
-    let pair ← match Lean.Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
+    let pair ← match ← Airbender.Compiler.Import.parsePairText (← IO.FS.readFile path.getString) with
       | .ok pair => pure pair | .error error => throwError "{error}"
     let cert ← match Lean.Json.parse (← IO.FS.readFile certPath.getString) >>= (fromJson? (α := LookupImport.LookupCertificate)) with
       | .ok cert => pure cert | .error error => throwError "{error}"

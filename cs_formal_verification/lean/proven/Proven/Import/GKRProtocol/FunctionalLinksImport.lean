@@ -33,7 +33,7 @@ elab_rules : command
       base_model $baseName:ident typing $typingName:ident lookup_fields $lookupName:ident
       lookup_source $sourceName:ident memory_model $memoryName:ident helper_model $helperName:ident
       base_checks $baseChecks:ident) => do
-    let pair ← match Lean.Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
+    let pair ← match ← Airbender.Compiler.Import.parsePairText (← IO.FS.readFile path.getString) with
       | .ok pair => pure pair | .error error => throwError "{error}"
     unless pair.format_version == 1 do throwError "unsupported native functional link version"
     let mut outputs : Array (GKRAddress × Nat) := #[]

@@ -11,7 +11,9 @@ Circuit claims use the RV32 specification.
 
 The cached and no-cache JSON files in `cs/compiled_circuits/` have the same constraint sections.
 Only their compiled GKR layers can differ. The claims cover the shared constraint description in both cache modes.
-The proof that the compiled GKR layers preserve these constraints is open.
+Cached captures bind native base-field gates and scalar caches to the shared arithmetic equations.
+The native CPU targets also bind exact lookup arguments. Worker constraints enter the
+machine targets at the constraint-description level.
 
 **Check everything:** `./verify.sh` (prepares the pinned Clean, builds the spec and all proofs, checks that the spec
 does not import the proofs, runs the regressions and the axiom audits, checks every module's [build budget](#build-budget),
@@ -76,10 +78,10 @@ Directory READMEs explain the relevant references, mappings, assumptions and sco
 completeness and the observable circuit relation. Shared helpers are grouped by
 [topic](lean/human/Human/Helpers/README.md); properties do not require decoder or
 memory-history review. Supporting calculations remain in `proven/`. The [import guide](lean/human/Human/Import/README.md)
-says what of `Human/Import/` to read: one trusted transcription step (headed `TRUSTED: review`), the meaning of the
-JSON as pure functions, and claims proving that the JSON parser rejects malformed input and duplicate keys and that
-every imported definition is the meaning of its transcribed artifact. `Human/Import/Exec/` (parser, emitters) needs
-no review: each file names the claims that fix its behaviour.
+lists trusted circuit transcription, setup emission and compiled row comparisons
+([NativeGrid](lean/human/Human/Import/NativeGrid.lean)). The parser, decoder and placement claims
+fix their mathematical meaning. Each executable parser or emitter names the claims that check it.
+The [trust lists](lean/human/Human/Trust.lean) name the external module roots and allowed tactic procedures.
 
 ## Clean, the RV32 spec and Sail
 

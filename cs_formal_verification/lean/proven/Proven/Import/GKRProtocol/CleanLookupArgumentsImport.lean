@@ -7,11 +7,11 @@ public import Human.Import.Operations
 public meta import Human.Import.Operations
 public meta import Proven.GKRProtocol.CleanArguments
 public meta import Proven.Import.GKRProtocol.CleanArithmeticImport
-public meta import Human.Import.CompilerJson
+public meta import Proven.Import.CompilerJson
 public meta import Proven.Import.GKRProtocol.LookupImport
 public import Proven.GKRProtocol.CleanArguments
 public import Proven.Import.GKRProtocol.CleanArithmeticImport
-public import Human.Import.CompilerJson
+public import Proven.Import.CompilerJson
 public import Proven.Import.GKRProtocol.LookupImport
 
 public meta section
@@ -47,7 +47,7 @@ elab_rules : command
     unless phaseIndex ≤ 2 do throwError "invalid Clean range argument phase"
     if phaseIndex == 1 && wholeChecks.isNone then throwError "the complete range phase requires checker facts"
     if phaseIndex == 0 && wholeChecks.isSome then throwError "the range input phase cannot accept checker facts"
-    let pair ← match Lean.Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
+    let pair ← match ← Airbender.Compiler.Import.parsePairText (← IO.FS.readFile path.getString) with
       | .ok pair => pure pair | .error error => throwError "{error}"
     let certData ← match Lean.Json.parse (← IO.FS.readFile certPath.getString) >>= (fromJson? (α := LookupImport.LookupCertificate)) with
       | .ok data => pure data | .error error => throwError "{error}"

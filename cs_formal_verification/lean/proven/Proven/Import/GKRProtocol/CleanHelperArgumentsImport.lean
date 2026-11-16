@@ -6,10 +6,10 @@ public meta import Human.Import.Coefficients
 public import Human.Import.Operations
 public meta import Human.Import.Operations
 public meta import Proven.GKRProtocol.CleanHelperArguments
-public meta import Human.Import.CompilerJson
+public meta import Proven.Import.CompilerJson
 public meta import Proven.Import.GKRProtocol.FullArithmeticImport
 public import Proven.GKRProtocol.CleanHelperArguments
-public import Human.Import.CompilerJson
+public import Proven.Import.CompilerJson
 public import Proven.Import.GKRProtocol.FullArithmeticImport
 
 public meta section
@@ -51,7 +51,7 @@ elab_rules : command
     unless phaseIndex ≤ 2 do throwError "invalid Clean timestamp argument phase"
     if phaseIndex == 1 && wholeChecks.isNone then throwError "the complete timestamp phase requires checker facts"
     if phaseIndex == 0 && wholeChecks.isSome then throwError "the timestamp input phase cannot accept checker facts"
-    let pair ← match Lean.Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
+    let pair ← match ← Airbender.Compiler.Import.parsePairText (← IO.FS.readFile path.getString) with
       | .ok pair => pure pair | .error error => throwError "{error}"
     let indices ← match Lean.Json.parse indexText.getString >>= (fromJson? (α := Indices)) with
       | .ok data => pure data | .error error => throwError "{error}"

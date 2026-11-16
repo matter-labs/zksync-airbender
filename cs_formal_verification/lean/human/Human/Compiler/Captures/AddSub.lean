@@ -1,5 +1,6 @@
 module
-public import Human.Import.CompilerCapture
+public import Human.Compiler.Capture
+public import Human.Import.TranscribeCommand
 public import Human.Compiler.NativeArithmetic
 public import Human.Helpers.Properties
 public import Human.Circuits.AddSub.Artifact
@@ -8,7 +9,10 @@ public import Human.Circuits.AddSub.Artifact
 
 namespace Airbender.Compiler.Captures.AddSub
 
-import_compiler_capture imported from "artifacts/compiler/add-sub-cached.json" family "add-sub"
+import_circuit importedCircuit from "../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_gkr.json" shared imported
+
+noncomputable def imported : NativeCapture := {
+  cached := true, circuit := importedCircuit, family := "add-sub", format_version := 1 }
 
 end Airbender.Compiler.Captures.AddSub
 

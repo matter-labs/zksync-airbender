@@ -144,7 +144,7 @@ private def reflect (pair : Import.Pair) (name lookupName productName : Ident) :
   return ⟨definitionTerms, steps, affineSteps, base, lookupSteps, productSteps⟩
 
 private def readPair (path : StrLit) : CommandElabM Import.Pair := do
-  match Lean.Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
+  match ← Airbender.Compiler.Import.parsePairText (← IO.FS.readFile path.getString) with
   | .ok pair =>
       unless pair.format_version == 1 do throwError "unsupported functional graph artifact"
       pure pair

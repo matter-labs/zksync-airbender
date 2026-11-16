@@ -10,3 +10,6 @@ public import Human.Compiler.Captures.ShiftBinop
 public import Human.Compiler.Captures.SubwordMemory
 public import Human.Compiler.Captures.Unified
 public import Human.Compiler.Captures.WordMemory
+public import Human.Compiler.Captures.KeccakColumnParity
+public import Human.Compiler.Captures.KeccakThetaRho
+public import Human.Compiler.Captures.KeccakChi5

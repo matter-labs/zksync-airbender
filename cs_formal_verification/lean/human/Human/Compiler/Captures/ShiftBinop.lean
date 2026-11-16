@@ -1,5 +1,6 @@
 module
-public import Human.Import.CompilerCapture
+public import Human.Compiler.Capture
+public import Human.Import.TranscribeCommand
 public import Human.Compiler.NativeArithmetic
 public import Human.Helpers.Properties
 public import Human.Circuits.ShiftBinop.Artifact
@@ -8,7 +9,10 @@ public import Human.Circuits.ShiftBinop.Artifact
 
 namespace Airbender.Compiler.Captures.ShiftBinop
 
-import_compiler_capture imported from "artifacts/compiler/shift-binop-cached.json" family "shift-binop"
+import_circuit importedCircuit from "../../cs/compiled_circuits/shift_binop_layout_gkr.json" shared imported
+
+noncomputable def imported : NativeCapture := {
+  cached := true, circuit := importedCircuit, family := "shift-binop", format_version := 1 }
 
 end Airbender.Compiler.Captures.ShiftBinop
 

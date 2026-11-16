@@ -125,7 +125,7 @@ syntax (name := importCacheBindings) "import_cache_bindings " ident " from " str
 
 elab_rules : command
   | `(import_cache_bindings $name:ident from $path:str wiring $wiringName:ident) => do
-    let pair ← match Lean.Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
+    let pair ← match ← Airbender.Compiler.Import.parsePairText (← IO.FS.readFile path.getString) with
       | .ok pair => pure pair
       | .error error => throwError "invalid compiler artifact for cache semantics: {error}"
     let hom := mkIdent `hom

@@ -1,37 +1,41 @@
 # Cached compiler captures
 
-[Capture.lean](Capture.lean) gives the typed source snapshot and complete compiled artifact.
-The [ADD/SUB capture](Captures/AddSub.lean) and ten other capture modules read native exports for cached compilation.
-[Theorems.lean](Theorems.lean) states that each capture has the existing circuit's constraint description.
-Only the compiled layers differ. Each capture also has a cached arithmetic preservation claim.
-The proof binds every scalar cache, native sparse gate and logical placement to the checked arithmetic model.
-[NativeTargets.lean](NativeTargets.lean) gives three whole-machine corollaries.
-[NativeMachineArguments.lean](NativeMachineArguments.lean) supplies cached physical equations,
-checked placements and exact natural lookup matching. These derive all CPU clock constraints
-and public decoder membership. Worker constraints, participation, state matching, request
-matching and shared memory matching remain explicit interfaces.
+[Capture.lean](Capture.lean) defines a cached circuit and its public profile.
+The [ADD/SUB capture](Captures/AddSub.lean) and the other family modules import
+14 cached production layouts with the [proved circuit parser](../Import/Transcribe.lean).
+Each import reads its pinned file in `cs/compiled_circuits/`.
+Large gate, cache and placement arrays retain shared literal declarations.
 
-[NativePublicSetup.lean](NativePublicSetup.lean) binds public setup rows to fixed regions,
-public ROM bytes and native program projections. Capacity, nonzero selector masks and omitted
-zero coordinates are explicit public setup properties. The fixed and fixture-ROM regions
-have complete compiled comparisons under [the fixed-row test library](../../../test/Tests/NativeFixedRows/Bindings.lean).
-These comparisons are trusted compiled code. They do not prove a general Rust setup generator
-correct for every possible program or ROM image.
+The CPU and standard-worker modules state description equality, arithmetic
+preservation and arithmetic witness claims. Only compiled layers differ from the
+no-cache description. The split-worker modules supply their cached circuit data.
+[Theorems.lean](Theorems.lean) imports all captures.
 
-The [import command](../Import/CompilerCapture.lean) performs trusted transcription. Its native JSON conversion uses the current schema.
-It checks scalar bounds and fixed array lengths. It orders map entries as Rust BTree maps.
-It does not import proof code. The ordinary circuit decoder stays unchanged.
-The kernel checks the emitted terms. The file read and JSON conversion are trusted.
+[NativeTargets.lean](NativeTargets.lean) gives three machine corollaries.
+[NativeMachineArguments.lean](NativeMachineArguments.lean) supplies cached CPU gates,
+placement, participation and exact native lookup matching. These derive CPU clock
+constraints and public decoder membership. Worker constraints, state and request
+matching, and shared memory matching are explicit interfaces.
 
-The [drift check](../../../scripts/check_compiler_captures.py) checks every input's SHA-256, rejects duplicate JSON keys and compares each full
-compiled artifact with the production cached JSON. It also checks the complete source sidecar.
-CI regenerates all eleven source/compiler pairs and compares their bytes.
-The source counts retain lookup, range, memory and executor interfaces. Arithmetic preservation alone does not cover them.
+[NativePublicSetup.lean](NativePublicSetup.lean) defines fixed rows, public ROM rows
+and PC-indexed decoder rows. Capacity, selector bounds and omitted zero fields are
+public setup properties. The
+[fixed-row test library](../../../test/Tests/NativeFixedRows/Bindings.lean) compares
+complete fixed and fixture-ROM regions with native data. These compiled comparisons
+are trusted. The [import guide](../Import/README.md) states the DECISION B binding.
 
-The native lookup selectors cover every primitive query once. Each cache or copy expansion follows actual compiled definitions.
-[NativeLookups.lean](NativeLookups.lean) states the expanded tuple interface.
-[LookupArgument.lean](LookupArgument.lean) states exact matching with public setup rows and natural multiplicities.
-A sampled rational equation does not supply this matching. The kernel binds these tuples to the checked native leaf encodings.
+Source snapshots and their JSON conversion are in `proven/`. Certificate procedures
+read a source snapshot and the production cached layout through the proved parser.
+The kernel checks every term they emit against the imported circuit.
+The [drift check](../../../scripts/check_compiler_captures.py) checks content pins,
+source sidecars, importer paths and every cached/no-cache description except layers.
+CI checks fresh source exports against the pinned snapshots.
 
-The proof wrappers use the kernel_exact tactic when elaborator conversion repeats a large artifact reduction.
-The enclosing theorem receives the complete kernel type check. A regression rejects a proof with the wrong type.
+[LookupSelectors.lean](LookupSelectors.lean) states complete native query coverage.
+[NativeLookups.lean](NativeLookups.lean) defines expanded tuples, and
+[LookupArgument.lean](LookupArgument.lean) defines exact natural matching with public
+setup rows. A sampled field equation does not establish this matching.
+
+The proof wrappers use the kernel_exact tactic for large artifact conversions.
+The kernel checks the complete theorem type. A regression rejects a term with the
+wrong type. The [trust lists](../Trust.lean) state the allowed tactic procedures.

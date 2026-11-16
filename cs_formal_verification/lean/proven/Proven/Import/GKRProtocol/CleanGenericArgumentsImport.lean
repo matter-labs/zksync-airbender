@@ -45,7 +45,7 @@ elab_rules : command
     if phaseIndex == 0 && wholeChecks.isSome then throwError "the generic input phase cannot accept checker facts"
     if let some size := partSize then
       if size.getNat == 0 then throwError "the generic argument part size must be positive"
-    let pair ← match Lean.Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
+    let pair ← match ← Airbender.Compiler.Import.parsePairText (← IO.FS.readFile path.getString) with
       | .ok pair => pure pair | .error error => throwError "{error}"
     let certData ← match Lean.Json.parse (← IO.FS.readFile certPath.getString) >>= (fromJson? (α := LookupImport.LookupCertificate)) with
       | .ok data => pure data | .error error => throwError "{error}"

@@ -1,5 +1,6 @@
 module
-public import Human.Import.CompilerCapture
+public import Human.Compiler.Capture
+public import Human.Import.TranscribeCommand
 public import Human.Compiler.NativeArithmetic
 public import Human.Helpers.Properties
 public import Human.Circuits.Bigint.Artifact
@@ -8,7 +9,10 @@ public import Human.Circuits.Bigint.Artifact
 
 namespace Airbender.Compiler.Captures.Bigint
 
-import_compiler_capture imported from "artifacts/compiler/bigint-cached.json" family "bigint"
+import_circuit importedCircuit from "../../cs/compiled_circuits/bigint_with_extended_control_layout_gkr.json" shared imported
+
+noncomputable def imported : NativeCapture := {
+  cached := true, circuit := importedCircuit, family := "bigint", format_version := 1 }
 
 end Airbender.Compiler.Captures.Bigint
 

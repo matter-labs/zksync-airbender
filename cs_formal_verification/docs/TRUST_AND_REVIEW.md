@@ -92,7 +92,10 @@ CleanCore (Clean's definitions, transcribed) supplies `Expression`, `FlatOperati
 `ConstraintsHoldFlat` directly. The [import guide](../lean/human/Human/Import/README.md) lists what to read.
 
 - **Trusted (not kernel-checked):** [Transcribe](../lean/human/Human/Import/Transcribe.lean) and
-  [TranscribeCommand](../lean/human/Human/Import/TranscribeCommand.lean), headed `TRUSTED: review`. The import_circuit command
+  [TranscribeCommand](../lean/human/Human/Import/TranscribeCommand.lean), headed `TRUSTED: review`.
+  [NativeGrid](../lean/human/Human/Import/NativeGrid.lean) performs the trusted DECISION B setup-row comparisons.
+  [Trust.lean](../lean/human/Human/Trust.lean) lists allowed external roots and tactic modules;
+  [the source check](../lean/scripts/check_trusted_code.py) enforces the procedure list. The import_circuit command
   reads a circuit JSON, parses it with `Json.parse`, decodes the value with `Circuit.decode` and reflects the result as
   `importedCircuit` (derived `ToExpr`), next to the file's text `importedCircuitSourceBytes`. Trusted: the file read,
   the composition and the reflection. For the standalone inits/teardowns artifact, `StandaloneBytesClaim` has the
@@ -126,7 +129,9 @@ the import replaces each recognised table region (table ids in `gridCatalogue`) 
 `grid` block, a named row formula, after comparing every row of the region with the JSON;
 any mismatch fails the import. This comparison is an elaborator responsibility with the same
 trust as the transcription: it is elaborator code, not kernel-checked, and the kernel proofs
-see only the formula. See [the setup README](../lean/artifacts/setup/README.md).
+see only the formula. The input modules for unused setup data retain content stamps.
+The fixed-row test library uses NativeGrid to compare complete fixed regions and the ROM fixture.
+See [the setup README](../lean/artifacts/setup/README.md).
 
 ## What CI re-checks
 

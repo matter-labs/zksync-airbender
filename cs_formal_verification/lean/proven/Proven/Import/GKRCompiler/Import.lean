@@ -120,10 +120,10 @@ the same explicit data-binding boundary used by the existing native importer. -/
 elab "import_compiler_arithmetic " name:ident " from " pairPath:str " certificate " certPath:str : command => do
   let pairBytes ← IO.FS.readFile pairPath.getString
   let certBytes ← IO.FS.readFile certPath.getString
-  let pair : Pair ← match Json.parse pairBytes >>= (fromJson? (α := Pair)) with
+  let pair : Pair ← match ← Airbender.Compiler.Import.parsePairText pairBytes with
     | .ok value => pure value
     | .error error => throwError "native compiler pair parse failed: {error}"
-  let certificate : IdentityCertificate ← match Json.parse certBytes >>= (fromJson? (α := IdentityCertificate)) with
+  let certificate : IdentityCertificate ← match Lean.Json.parse certBytes >>= (fromJson? (α := IdentityCertificate)) with
     | .ok value => pure value
     | .error error => throwError "compiler identity parse failed: {error}"
   unless pair.format_version == 1 && certificate.format_version == 1 do

@@ -207,7 +207,7 @@ elab_rules : command
       | .ok value => pure value | .error error => throwError "{error}"
     let sourceJson ← match Lean.Json.parse (← IO.FS.readFile sourcePath.getString) with
       | .ok value => pure value | .error error => throwError "{error}"
-    let pair ← match fromJson? (α := Import.Pair) pairJson with
+    let pair ← match ← Airbender.Compiler.Import.parsePairJson pairJson with
       | .ok value => pure value | .error error => throwError "{error}"
     let snapshot ← match fromJson? (α := Source.Snapshot) sourceJson with
       | .ok value => pure value | .error error => throwError "{error}"

@@ -145,7 +145,7 @@ syntax (name := importNativeProducts) "import_native_products " ident " from " s
 
 elab_rules : command
   | `(import_native_products $name:ident from $path:str) => do
-    let pair ← match Lean.Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
+    let pair ← match ← Airbender.Compiler.Import.parsePairText (← IO.FS.readFile path.getString) with
       | .ok parsed => pure parsed | .error error => throwError "{error}"
     unless pair.format_version == 1 do throwError "unsupported native product capture"
     let memoryCaches := pair.circuit.layers.flatMap fun layer => layer.cached_relations.filterMap fun (address, relation) =>

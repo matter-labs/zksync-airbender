@@ -2,11 +2,12 @@
 """Emit complete native sparse gate and placement bindings. The kernel checks every equality."""
 from pathlib import Path
 import json,re,sys
+from check_compiler_captures import FAMILIES
 root=Path(__file__).resolve().parents[1]
 families={'AddSub':'add-sub','Bigint':'bigint','BlakeG':'blake-g','BlakeRound':'blake-round','JumpBranch':'jump-branch','Keccak':'keccak','MulDiv':'mul-div','ShiftBinop':'shift-binop','SubwordMemory':'subword-memory','Unified':'unified','WordMemory':'word-memory'}
 base={'LinearBaseFieldRelation','MaxQuadratic','EnforceSingleMaxQuadraticConstraint','CopyInBaseField','MaterializeSingleLookupInput'}
 for family in sys.argv[1:] or families:
- c=json.load((root/f'artifacts/compiler/{families[family]}-cached.json').open())['circuit']
+ c=json.load((root.parent.parent/f'cs/compiled_circuits/{FAMILIES[families[family]]}_layout_gkr.json').open())
  ns=f'Airbender.Compiler.NativeBindings.{family}'
  native=f'Airbender.Compiler.FullArithmeticNative.{family}Cached.native'
  clean=f'Airbender.Compiler.CleanArithmeticNative.{family}Cached.native'

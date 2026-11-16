@@ -17,7 +17,7 @@ def load_graph(modules, source_root=None):
     return dict(json.loads(result.stdout))
 
 
-def check_graph(graph, roots):
+def check_graph(graph, roots, trusted=None):
     for root in roots:
         pending, seen = deque([[root]]), set()
         while pending:
@@ -28,6 +28,10 @@ def check_graph(graph, roots):
             seen.add(current)
             forbidden = current.split('.')[0] in {'Proven', 'Tests', 'Checks'}
             forbidden |= root != 'CleanCore.Equivalence' and current.split('.')[0] == 'Clean'
+            if trusted is not None:
+                prefix = current.split('.')[0]
+                forbidden |= prefix not in trusted | {'Human', 'CleanCore'} and not (
+                    root == 'CleanCore.Equivalence' and prefix == 'Clean')
             if forbidden:
                 raise ValueError('Spec import boundary: ' + ' → '.join(path))
             if current not in graph:
@@ -36,10 +40,11 @@ def check_graph(graph, roots):
 
 
 def main():
+    from check_trusted_code import manifest_list
     roots = sorted('.'.join(p.relative_to(ROOT / 'human').with_suffix('').parts)
                    for p in (ROOT / 'human').rglob('*.lean'))
     graph = load_graph(roots)
-    check_graph(graph, roots)
+    check_graph(graph, roots, manifest_list('trustedModuleRoots'))
     print(f'PASS import closure: {len(roots)} spec modules, {len(graph)} total modules')
 
 

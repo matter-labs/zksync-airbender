@@ -1,3 +1,4 @@
+import Human.Trust
 import Human.Circuits.Blake2Round.Mask
 import Human.Circuits.InitsTeardowns.Native.Standalone
 import Human.Circuits.InitsTeardowns.Native.Unified

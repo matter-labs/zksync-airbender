@@ -98,13 +98,43 @@ def addTranscribedDef (name : Name) (type value : Lean.Expr) : CoreM Unit :=
     name, levelParams := [], type, value, hints := .abbrev, safety := .safe }
 
 /-- Share the capture placement array without changing its value. -/
-def addSharedTranscribedDef (name : Name) (type value placementData : Lean.Expr) : CoreM Unit := do
-  let placementName := name.appendAfter "PlacementEntries"
+def addSharedTranscribedDef (name : Name) (type value placementData : Lean.Expr)
+    (sharingName : Name := name) : CoreM Unit := do
+  let placementName := sharingName.appendAfter "PlacementEntries"
   let pairType := mkApp2 (mkConst ``Prod [0, 0]) (mkConst ``Nat) (mkConst ``GKRAddress)
   addTranscribedDef placementName (mkApp (mkConst ``Array [0]) pairType) placementData
   let value := value.replace fun entry =>
     if entry == placementData then some (mkConst placementName) else none
   addTranscribedDef name type value
+
+/-- Share literal array entries while retaining the complete kernel value. -/
+def addTranscribedArray {α : Type} [ToExpr α] (name : Name) (entries : Array α) : CoreM Lean.Expr := do
+  let type := toTypeExpr α
+  let mut references : Array Lean.Expr := #[]
+  for h : index in [0:entries.size] do
+    let entryName := name.appendAfter s!"Entry{index}"
+    addTranscribedDef entryName type (toExpr entries[index])
+    references := references.push (mkConst entryName)
+  let data := references.toList.foldr (mkApp3 (mkConst ``List.cons [0]) type)
+    (mkApp (mkConst ``List.nil [0]) type)
+  addTranscribedDef name (mkApp (mkConst ``Array [0]) type)
+    (mkApp2 (mkConst ``Array.mk [0]) type data)
+  return mkConst name
+
+/-- Share large native gate and cache arrays and the placement array. -/
+def addSharedCircuit (name sharingName : Name) (circuit : Circuit) : CoreM Unit := do
+  let mut value := toExpr circuit
+  for h : index in [0:circuit.layers.size] do
+    let layer := circuit.layers[index]
+    if layer.gates.size > 253 then
+      let data ← addTranscribedArray (sharingName.appendAfter s!"Layer{index}Gates") layer.gates
+      let original := toExpr layer.gates
+      value := value.replace fun entry => if entry == original then some data else none
+    if layer.cached_relations.size > 253 then
+      let data ← addTranscribedArray (sharingName.appendAfter s!"Layer{index}Caches") layer.cached_relations
+      let original := toExpr layer.cached_relations
+      value := value.replace fun entry => if entry == original then some data else none
+  addSharedTranscribedDef name (mkConst ``Circuit) value (toExpr circuit.placement_data.entries) sharingName
 
 /-- Pairs of neighbours joined by `app`, in order. -/
 def pairUp (app : Lean.Expr → Lean.Expr → Lean.Expr) : List Lean.Expr → List Lean.Expr
@@ -129,7 +159,7 @@ def bytesExpr (bytes : ByteArray) : Lean.Expr :=
   let l := balanced (mkApp3 (mkConst ``List.append [0]) u8) nil leaves.length leaves
   mkApp (mkConst ``ByteArray.mk) (mkApp2 (mkConst ``Array.mk [0]) u8 l)
 
-syntax (name := importCircuit) "import_circuit " ident " from " str (&" bytes")? : command
+syntax (name := importCircuit) "import_circuit " ident " from " str (&" bytes")? (&" shared" ident)? : command
 
 @[command_elab importCircuit]
 def elabImportCircuit : CommandElab := fun stx => do
@@ -146,7 +176,10 @@ def elabImportCircuit : CommandElab := fun stx => do
     compileDecl (.defnDecl
       { name := bytesName, levelParams := [], type := stringType, value := mkStrLit text, hints := .abbrev,
         safety := .safe })
-    addTranscribedDef base (mkConst ``Circuit) (toExpr c)
+    if stx[5].isNone then
+      addTranscribedDef base (mkConst ``Circuit) (toExpr c)
+    else
+      addSharedCircuit base ((← getCurrNamespace) ++ stx[5][1].getId) c
     unless stx[4].isNone do
       addTranscribedDef (base.appendAfter "Bytes") (mkConst ``ByteArray) (bytesExpr text.toUTF8)
 

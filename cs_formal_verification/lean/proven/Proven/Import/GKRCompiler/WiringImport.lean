@@ -176,7 +176,7 @@ elab_rules : command
     if mode == "certified" && (supplied.isNone || first != 0 || length.getNat != 0) then
       throwError "complete wiring corollaries require a checker and no slice"
     let bytes ← IO.FS.readFile path.getString
-    let pair ← match Json.parse bytes >>= (fromJson? (α := Import.Pair)) with
+    let pair ← match ← Airbender.Compiler.Import.parsePairText bytes with
       | .ok pair => pure pair
       | .error error => throwError "invalid native compiler pair: {error}"
     let circuit := pair.circuit

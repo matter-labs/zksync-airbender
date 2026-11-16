@@ -21,6 +21,8 @@ FAMILIES = {
     'jump-branch': 'jump_branch_slt', 'keccak': 'keccak_special5', 'mul-div': 'unsigned_mul_div',
     'shift-binop': 'shift_binop', 'subword-memory': 'mem_subword_only',
     'unified': 'unified_reduced_machine', 'word-memory': 'mem_word_only',
+    'keccak-column-parity': 'keccak_column_parity', 'keccak-theta-rho': 'keccak_theta_rho',
+    'keccak-chi5': 'keccak_chi5',
 }
 
 
@@ -75,7 +77,7 @@ def check():
     inputs = set(re.findall(r'"(artifacts/compiler/[A-Za-z0-9_.-]+\.json)"',
                             (ROOT / 'lakefile.toml').read_text()))
     if set(pins) != expected or inputs != expected:
-        raise ValueError('Compiler pin and Lake input inventories must cover all 11 cached captures and sidecars')
+        raise ValueError('Compiler pin and Lake input inventories must cover all cached captures and sidecars')
     for name, digest in pins.items():
         path = ROOT / name
         if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
@@ -89,9 +91,13 @@ def check():
             raise ValueError(f'Compiler capture profile differs: {family}')
         if canonical(capture['source']) != canonical(source['source']):
             raise ValueError(f'Compiler source snapshot differs from its sidecar: {family}')
-        native = read(REPO / f'cs/compiled_circuits/{circuit}_layout_gkr.json')
-        if canonical(capture['circuit']) != canonical(native):
-            raise ValueError(f'Compiler capture differs from the production cached artifact: {family}')
+        if set(capture) != {'format_version', 'cached', 'family', 'source'}:
+            raise ValueError(f'Source capture contains fields outside its source snapshot: {family}')
+        expected_path = f'../../cs/compiled_circuits/{circuit}_layout_gkr.json'
+        readers = [path for path in (ROOT / 'human/Human/Compiler/Captures').glob('*.lean')
+                   if f'family := "{family}"' in path.read_text()]
+        if len(readers) != 1 or f'import_circuit importedCircuit from "{expected_path}" shared imported' not in readers[0].read_text():
+            raise ValueError(f'Cached circuit must use the proved importer: {family}')
     sys.set_int_max_str_digits(100000)
     certificate_pins = read(ROOT / 'compiler_certificate_pins.json')
     certificate_root = ROOT / 'artifacts/compiler'
@@ -104,7 +110,7 @@ def check():
         if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             raise ValueError(f'Compiler certificate bytes changed: {name}')
         read(path)
-    print('PASS 11 pinned cached compiler captures, source sidecars and arithmetic/lookup certificates')
+    print(f'PASS {len(FAMILIES)} pinned source captures, sidecars and arithmetic/lookup certificates')
 
 
 def fresh(exporter):

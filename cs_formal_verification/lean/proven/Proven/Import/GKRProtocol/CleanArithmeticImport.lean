@@ -78,7 +78,7 @@ syntax (name := importCleanArithmetic) "import_clean_arithmetic " ident " from "
 elab_rules : command
   | `(import_clean_arithmetic $name:ident from $path:str selectors $selectorText:str
       base_model $baseName:ident variables $arityNumber:num $[using $provided:ident]? $[ideal_checks $ideals:ident]?) => do
-    let pair ← match Lean.Json.parse (← IO.FS.readFile path.getString) >>= (fromJson? (α := Import.Pair)) with
+    let pair ← match ← Airbender.Compiler.Import.parsePairText (← IO.FS.readFile path.getString) with
       | .ok pair => pure pair | .error error => throwError "{error}"
     let certificateData ← match Lean.Json.parse selectorText.getString >>= (fromJson? (α := Selectors)) with
       | .ok decoded => pure decoded | .error error => throwError "{error}"

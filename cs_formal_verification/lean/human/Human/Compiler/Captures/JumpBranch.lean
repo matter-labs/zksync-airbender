@@ -1,5 +1,6 @@
 module
-public import Human.Import.CompilerCapture
+public import Human.Compiler.Capture
+public import Human.Import.TranscribeCommand
 public import Human.Compiler.NativeArithmetic
 public import Human.Helpers.Properties
 public import Human.Circuits.JumpBranchSlt.Artifact
@@ -8,7 +9,10 @@ public import Human.Circuits.JumpBranchSlt.Artifact
 
 namespace Airbender.Compiler.Captures.JumpBranch
 
-import_compiler_capture imported from "artifacts/compiler/jump-branch-cached.json" family "jump-branch"
+import_circuit importedCircuit from "../../cs/compiled_circuits/jump_branch_slt_layout_gkr.json" shared imported
+
+noncomputable def imported : NativeCapture := {
+  cached := true, circuit := importedCircuit, family := "jump-branch", format_version := 1 }
 
 end Airbender.Compiler.Captures.JumpBranch
 

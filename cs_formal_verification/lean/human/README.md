@@ -29,6 +29,7 @@ These modules perform trusted import or comparison operations:
 - [SetupEmit.lean](Human/Import/SetupEmit.lean) reads compressed setup data and emits setup terms.
 - [NativeGrid.lean](Human/Import/NativeGrid.lean) compares mathematical table rows with native JSON rows in compiled code.
 
+The [trust lists](Human/Trust.lean) name the allowed external roots and tactic modules.
 The [import guide](Human/Import/README.md) states the parser, decoder and placement
 claims. The [trust guide](../../docs/TRUST_AND_REVIEW.md) states the checks and the
 limits of the trusted operations. Read each claim with its public data and

@@ -3,6 +3,10 @@ public meta import Human.Import.SetupEmit
 public meta import Lean
 
 public meta section
+
+/-! # TRUSTED: review. Native setup rows are compared with mathematical row functions
+    in compiled elaborator code. DECISION B uses these comparisons as the setup binding. -/
+
 namespace Airbender.Import.Setup
 open Lean Meta Elab Command
 

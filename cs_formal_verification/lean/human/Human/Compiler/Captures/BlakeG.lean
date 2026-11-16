@@ -1,5 +1,6 @@
 module
-public import Human.Import.CompilerCapture
+public import Human.Compiler.Capture
+public import Human.Import.TranscribeCommand
 public import Human.Compiler.NativeArithmetic
 public import Human.Helpers.Properties
 public import Human.Circuits.Blake2G.Artifact
@@ -8,7 +9,10 @@ public import Human.Circuits.Blake2G.Artifact
 
 namespace Airbender.Compiler.Captures.BlakeG
 
-import_compiler_capture imported from "artifacts/compiler/blake-g-cached.json" family "blake-g"
+import_circuit importedCircuit from "../../cs/compiled_circuits/blake2_g_function_layout_gkr.json" shared imported
+
+noncomputable def imported : NativeCapture := {
+  cached := true, circuit := importedCircuit, family := "blake-g", format_version := 1 }
 
 end Airbender.Compiler.Captures.BlakeG
 

@@ -1,5 +1,6 @@
 module
-public import Human.Import.CompilerCapture
+public import Human.Compiler.Capture
+public import Human.Import.TranscribeCommand
 public import Human.Compiler.NativeArithmetic
 public import Human.Helpers.Properties
 public import Human.Circuits.Keccak.Artifact
@@ -8,7 +9,10 @@ public import Human.Circuits.Keccak.Artifact
 
 namespace Airbender.Compiler.Captures.Keccak
 
-import_compiler_capture imported from "artifacts/compiler/keccak-cached.json" family "keccak"
+import_circuit importedCircuit from "../../cs/compiled_circuits/keccak_special5_layout_gkr.json" shared imported
+
+noncomputable def imported : NativeCapture := {
+  cached := true, circuit := importedCircuit, family := "keccak", format_version := 1 }
 
 end Airbender.Compiler.Captures.Keccak
 

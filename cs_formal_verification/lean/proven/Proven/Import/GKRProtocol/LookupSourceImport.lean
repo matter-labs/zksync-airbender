@@ -125,7 +125,7 @@ elab_rules : command
       match wholeChecks with
       | some owner => pure (mkIdent (owner.getId ++ Name.mkSimple stem))
       | none => `(by decide +kernel)
-    let pair ← match Lean.Json.parse (← IO.FS.readFile pairPath.getString) >>= (fromJson? (α := Import.Pair)) with
+    let pair ← match ← Airbender.Compiler.Import.parsePairText (← IO.FS.readFile pairPath.getString) with
       | .ok pair => pure pair
       | .error error => throwError "invalid actual source-lookup pair: {error}"
     let previous ← match Lean.Json.parse (← IO.FS.readFile oldPath.getString) >>= (fromJson? (α := LookupImport.LookupCertificate)) with

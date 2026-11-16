@@ -30,9 +30,22 @@ for directory in ('GKRCompiler', 'GKRProtocol', 'Import/GKRCompiler', 'Import/GK
             continue
         module = '.'.join(reader.relative_to(ROOT / 'proven').with_suffix('').parts)
         needs = [inputs[file] for file in files]
+        for file in files:
+            capture = re.fullmatch(r'artifacts/compiler/([a-z0-9-]+)-cached\.json', file)
+            if capture:
+                layout_input = 'compiler_' + capture[1].replace('-', '_') + '_cached_layout'
+                if layout_input not in inputs.values():
+                    raise ValueError('Missing cached layout input: ' + file)
+                needs.append(layout_input)
+        needs = sorted(set(needs))
         if module in libraries:
-            if not set(needs) <= set(libraries[module].get('needs', [])):
-                raise ValueError('Update the existing reader needs: ' + module)
+            existing = libraries[module].get('needs', [])
+            if not set(needs) <= set(existing):
+                merged = sorted(set(existing) | set(needs))
+                pattern = r'(roots = \["' + re.escape(module) + r'"\]\n)needs = \[[^\n]+\]'
+                source, count = re.subn(pattern, lambda match: match[1] + 'needs = ' + json.dumps(merged), source)
+                if count != 1:
+                    raise ValueError('Cannot update reader inputs: ' + module)
             continue
         name = 'CompilerInputs_' + module.removeprefix('Proven.').replace('.', '_')
         source += '\n# A compiler JSON change rebuilds its direct reader and importers.\n'

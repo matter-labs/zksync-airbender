@@ -1,6 +1,6 @@
 module
 import all Mathlib.Data.List.Sort
-public import Human.Compiler.Capture
+public import Proven.Defs.Compiler.Capture
 public import Human.Helpers.Core.BabyBearPrime
 
 @[expose] public section

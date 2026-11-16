@@ -1,6 +1,6 @@
 module
-public import Human.Compiler.Capture
-public meta import Human.Compiler.Capture
+public import Proven.Defs.Compiler.Capture
+public meta import Proven.Defs.Compiler.Capture
 public meta import Human.Import.Schema
 public meta import Human.Import.Json
 public meta import Human.Import.BabyBear
@@ -8,7 +8,7 @@ public meta import Lean
 
 public meta section
 
-/-! Trusted JSON conversion for pinned compiler captures. The ordinary circuit decoder stays unchanged. -/
+/-! JSON conversion for source snapshots and certificate data. Circuit files use the proved circuit parser. -/
 
 namespace Airbender
 open Lean
@@ -140,10 +140,9 @@ deriving instance FromJson, ToJson for Term
 deriving instance FromJson, ToJson for Constraint
 deriving instance FromJson, ToJson for Expr
 deriving instance FromJson, ToJson for StructuredStatement
-deriving instance FromJson, ToJson for GKRCircuitArtifact
 
 deriving instance FromJson for Compiler.RemainingInputs
 deriving instance FromJson for Compiler.SourceSnapshot
-deriving instance FromJson for Compiler.NativeCapture
+deriving instance FromJson for Compiler.SourceCapture
 
 end Airbender
