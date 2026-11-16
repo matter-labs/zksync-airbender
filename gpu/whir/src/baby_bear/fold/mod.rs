@@ -1,3 +1,4 @@
+use crate::whir_three_point_partials_len;
 #[cfg(test)]
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
@@ -13,7 +14,7 @@ use crate::baby_bear::kernels::{
     launch_batched_accumulate_eq_samples, launch_split_accumulate_eq_samples,
     launch_whir_three_point_partials, monomial_eval_scratch_lens,
     partially_evaluate_monomials_by_ref, split_eq_factor_scratch_lens, whir_fold_adjacent_pair,
-    whir_fold_adjacent_vectorized, whir_sum, whir_three_point_partials_len,
+    whir_fold_adjacent_vectorized, whir_sum,
 };
 use crate::baby_bear::pow::{schedule_pow_verify_and_query_indexes, PowAndQueryIndexesState};
 use crate::baby_bear::GpuWhirExtensionOracle;

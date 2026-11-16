@@ -1,8 +1,7 @@
 use era_cudart::execution::{CudaLaunchConfig, KernelArguments, KernelFunction};
-use era_cudart::result::{CudaResult, CudaResultWrap};
+use era_cudart::result::CudaResult;
 use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
-use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
 use gpu_core::primitives::device_structures::{MutPtrAndStride, PtrAndStride};
 use gpu_core::primitives::field::PR;
 
@@ -127,14 +126,7 @@ pub(crate) fn set_max_dynamic_smem(function: &impl KernelFunction, bytes: usize)
         bytes <= i32::MAX as usize,
         "Proth120 NTT: dynamic shared memory size exceeds i32::MAX"
     );
-    unsafe {
-        cudaFuncSetAttribute(
-            function.as_ptr(),
-            CudaFuncAttribute::MaxDynamicSharedMemorySize,
-            bytes as i32,
-        )
-        .wrap()
-    }
+    crate::shared::set_max_dynamic_smem(function, bytes as i32)
 }
 
 pub(crate) fn launch_transform<P: TransformPolicy>(

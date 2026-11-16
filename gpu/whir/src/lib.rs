@@ -11,6 +11,15 @@ pub mod pow;
 pub mod proth120;
 pub(crate) mod upstream;
 
+pub(crate) fn whir_three_point_partials_len(half: usize) -> usize {
+    const BLOCK_THREADS: usize = 256;
+    if half <= BLOCK_THREADS {
+        0
+    } else {
+        half.div_ceil(BLOCK_THREADS) * 3
+    }
+}
+
 #[cfg(test)]
 mod primitive_tests;
 #[cfg(test)]

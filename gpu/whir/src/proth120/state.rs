@@ -116,7 +116,7 @@ pub(crate) fn schedule_three_point(
     context: &ProverContext,
 ) -> CudaResult<()> {
     let mut partials = context.alloc(
-        kernels::whir_three_point_partials_len(state.current_len / 2).max(1),
+        crate::whir_three_point_partials_len(state.current_len / 2).max(1),
         AllocationPlacement::BestFit,
     )?;
     kernels::three_point(

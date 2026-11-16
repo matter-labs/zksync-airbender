@@ -1,6 +1,6 @@
 #pragma once
 #include "../../common.cuh"
-#include "../memory.cuh"
+#include "../field_accessors.cuh"
 #include "../ptx.cuh"
 
 namespace airbender::primitives::field {
@@ -840,83 +840,8 @@ static_assert(sizeof(e6) == 24 && alignof(e6) == 8, "e6 ABI");
 
 using namespace memory;
 
-template <ld_modifier LD_MODIFIER = ld_modifier::none> struct bf_vector_getter : vector_getter<bf, LD_MODIFIER> {};
-
-template <st_modifier ST_MODIFIER = st_modifier::none> struct bf_vector_setter : vector_setter<bf, ST_MODIFIER> {};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none, st_modifier ST_MODIFIER = st_modifier::none>
-struct bf_vector_getter_setter : vector_getter_setter<bf, LD_MODIFIER, ST_MODIFIER> {};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none> struct bf_matrix_getter : matrix_getter<bf, LD_MODIFIER> {
-  explicit bf_matrix_getter(size_t stride) : matrix_getter<bf, LD_MODIFIER>(stride) {}
-};
-
-template <st_modifier ST_MODIFIER = st_modifier::none> struct bf_matrix_setter : matrix_setter<bf, ST_MODIFIER> {
-  explicit bf_matrix_setter(size_t stride) : matrix_setter<bf, ST_MODIFIER>(stride) {}
-};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none, st_modifier ST_MODIFIER = st_modifier::none>
-struct bf_matrix_getter_setter : matrix_getter_setter<bf, LD_MODIFIER, ST_MODIFIER> {
-  explicit bf_matrix_getter_setter(size_t stride) : matrix_getter_setter<bf, LD_MODIFIER, ST_MODIFIER>(stride) {}
-};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none> struct e2_vector_getter : vector_getter<e2, LD_MODIFIER> {};
-
-template <st_modifier ST_MODIFIER = st_modifier::none> struct e2_vector_setter : vector_setter<e2, ST_MODIFIER> {};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none, st_modifier ST_MODIFIER = st_modifier::none>
-struct e2_vector_getter_setter : vector_getter_setter<e2, LD_MODIFIER, ST_MODIFIER> {};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none> struct e2_matrix_getter : matrix_getter<e2, LD_MODIFIER> {
-  explicit e2_matrix_getter(size_t stride) : matrix_getter<e2, LD_MODIFIER>(stride) {}
-};
-
-template <st_modifier ST_MODIFIER = st_modifier::none> struct e2_matrix_setter : matrix_setter<e2, ST_MODIFIER> {
-  explicit e2_matrix_setter(size_t stride) : matrix_setter<e2, ST_MODIFIER>(stride) {}
-};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none, st_modifier ST_MODIFIER = st_modifier::none>
-struct e2_matrix_getter_setter : matrix_getter_setter<e2, LD_MODIFIER, ST_MODIFIER> {
-  explicit e2_matrix_getter_setter(size_t stride) : matrix_getter_setter<e2, LD_MODIFIER, ST_MODIFIER>(stride) {}
-};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none> struct e4_vector_getter : vector_getter<e4, LD_MODIFIER> {};
-
-template <st_modifier ST_MODIFIER = st_modifier::none> struct e4_vector_setter : vector_setter<e4, ST_MODIFIER> {};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none, st_modifier ST_MODIFIER = st_modifier::none>
-struct e4_vector_getter_setter : vector_getter_setter<e4, LD_MODIFIER, ST_MODIFIER> {};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none> struct e4_matrix_getter : matrix_getter<e4, LD_MODIFIER> {
-  explicit e4_matrix_getter(size_t stride) : matrix_getter<e4, LD_MODIFIER>(stride) {}
-};
-
-template <st_modifier ST_MODIFIER = st_modifier::none> struct e4_matrix_setter : matrix_setter<e4, ST_MODIFIER> {
-  explicit e4_matrix_setter(size_t stride) : matrix_setter<e4, ST_MODIFIER>(stride) {}
-};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none, st_modifier ST_MODIFIER = st_modifier::none>
-struct e4_matrix_getter_setter : matrix_getter_setter<e4, LD_MODIFIER, ST_MODIFIER> {
-  explicit e4_matrix_getter_setter(size_t stride) : matrix_getter_setter<e4, LD_MODIFIER, ST_MODIFIER>(stride) {}
-};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none> struct e6_vector_getter : vector_getter<e6, LD_MODIFIER> {};
-
-template <st_modifier ST_MODIFIER = st_modifier::none> struct e6_vector_setter : vector_setter<e6, ST_MODIFIER> {};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none, st_modifier ST_MODIFIER = st_modifier::none>
-struct e6_vector_getter_setter : vector_getter_setter<e6, LD_MODIFIER, ST_MODIFIER> {};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none> struct e6_matrix_getter : matrix_getter<e6, LD_MODIFIER> {
-  explicit e6_matrix_getter(size_t stride) : matrix_getter<e6, LD_MODIFIER>(stride) {}
-};
-
-template <st_modifier ST_MODIFIER = st_modifier::none> struct e6_matrix_setter : matrix_setter<e6, ST_MODIFIER> {
-  explicit e6_matrix_setter(size_t stride) : matrix_setter<e6, ST_MODIFIER>(stride) {}
-};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none, st_modifier ST_MODIFIER = st_modifier::none>
-struct e6_matrix_getter_setter : matrix_getter_setter<e6, LD_MODIFIER, ST_MODIFIER> {
-  explicit e6_matrix_getter_setter(size_t stride) : matrix_getter_setter<e6, LD_MODIFIER, ST_MODIFIER>(stride) {}
-};
+AB_DEFINE_FIELD_ACCESSORS(bf)
+AB_DEFINE_FIELD_ACCESSORS(e2)
+AB_DEFINE_FIELD_ACCESSORS(e4)
+AB_DEFINE_FIELD_ACCESSORS(e6)
 } // namespace airbender::primitives::field

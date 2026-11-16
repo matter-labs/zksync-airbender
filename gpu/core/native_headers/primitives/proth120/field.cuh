@@ -2,7 +2,7 @@
 
 #include "../../common.cuh"
 #include "../carry_chain.cuh"
-#include "../memory.cuh"
+#include "../field_accessors.cuh"
 #include "../ptx.cuh"
 #include <cassert>
 #include <cstddef>
@@ -585,25 +585,7 @@ DEVICE_FORCEINLINE void proth120::to_canonical_be_bytes(proth120 v, u8 out[16]) 
 
 using namespace memory;
 
-template <ld_modifier LD_MODIFIER = ld_modifier::none> struct pr_vector_getter : vector_getter<pr, LD_MODIFIER> {};
-
-template <st_modifier ST_MODIFIER = st_modifier::none> struct pr_vector_setter : vector_setter<pr, ST_MODIFIER> {};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none, st_modifier ST_MODIFIER = st_modifier::none>
-struct pr_vector_getter_setter : vector_getter_setter<pr, LD_MODIFIER, ST_MODIFIER> {};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none> struct pr_matrix_getter : matrix_getter<pr, LD_MODIFIER> {
-  explicit pr_matrix_getter(size_t stride) : matrix_getter<pr, LD_MODIFIER>(stride) {}
-};
-
-template <st_modifier ST_MODIFIER = st_modifier::none> struct pr_matrix_setter : matrix_setter<pr, ST_MODIFIER> {
-  explicit pr_matrix_setter(size_t stride) : matrix_setter<pr, ST_MODIFIER>(stride) {}
-};
-
-template <ld_modifier LD_MODIFIER = ld_modifier::none, st_modifier ST_MODIFIER = st_modifier::none>
-struct pr_matrix_getter_setter : matrix_getter_setter<pr, LD_MODIFIER, ST_MODIFIER> {
-  explicit pr_matrix_getter_setter(size_t stride) : matrix_getter_setter<pr, LD_MODIFIER, ST_MODIFIER>(stride) {}
-};
+AB_DEFINE_FIELD_ACCESSORS(pr)
 
 } // namespace airbender::primitives::field
 

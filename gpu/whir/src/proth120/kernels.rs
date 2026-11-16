@@ -1,3 +1,4 @@
+use crate::whir_three_point_partials_len;
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
@@ -238,14 +239,6 @@ pub(crate) fn fold_adjacent_pair(
             dst_a.len() as u32,
         ),
     )
-}
-
-pub(crate) fn whir_three_point_partials_len(half: usize) -> usize {
-    if half <= BLOCK {
-        0
-    } else {
-        half.div_ceil(BLOCK) * 3
-    }
 }
 
 pub(crate) fn three_point(

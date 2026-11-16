@@ -19,7 +19,7 @@ use super::hypercube::{
     hypercube_evals_to_pre_tail_monomials_lsb_3_pass_after_finest,
 };
 use super::kernels::*;
-use super::shared;
+use crate::shared as launch;
 
 use crate::baby_bear::twiddles::OMEGA_LOG_ORDER;
 use gpu_core::primitives::context::DeviceProperties;
@@ -146,10 +146,10 @@ pub(crate) fn lde_intermediate_range(
         inputs_matrix,
         outputs_matrix_mut,
         log_n as u32,
-        shared::checked_u32(coset_index_base, "coset_index_base"),
+        launch::checked_u32(coset_index_base, "coset_index_base"),
         coset_factor_shift,
-        shared::checked_u32(num_cols_per_coset_stride, "num_cols_per_coset_stride"),
-        shared::checked_u32(cosets_in_tile, "cosets_in_tile"),
+        launch::checked_u32(num_cols_per_coset_stride, "num_cols_per_coset_stride"),
+        launch::checked_u32(cosets_in_tile, "cosets_in_tile"),
     );
     first_pass_function.launch(&config, &args)?;
     // Pass 2: noninitial_8 with start_stage = log_k.
@@ -180,7 +180,7 @@ pub(crate) fn lde_intermediate_range(
         outputs_matrix_mut,
         log_n as i32,
         start_stage as i32,
-        shared::checked_i32(cols_in_chunk, "num_cols_per_coset_stride"),
+        launch::checked_i32(cols_in_chunk, "num_cols_per_coset_stride"),
         log_cosets_in_tile as i32,
     );
     StridedTilesStagesFunction(ab_monomials_to_evals_noninitial_8_stages_kernel)

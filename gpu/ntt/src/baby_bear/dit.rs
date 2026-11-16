@@ -42,6 +42,7 @@ use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 
 use super::shared;
+use crate::shared as launch;
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::device_structures::{DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl};
 use gpu_core::primitives::field::BaseField;
@@ -936,8 +937,8 @@ pub(crate) fn monomials_to_evals_dit(
     let output_offset = outputs_matrix.offset();
 
     if column_batch_applies(log_n, log_vpt, num_ntts) {
-        let mono_col_stride = shared::checked_u32(input_stride, "input_stride");
-        let out_col_stride = shared::checked_u32(output_stride, "output_stride");
+        let mono_col_stride = launch::checked_u32(input_stride, "input_stride");
+        let out_col_stride = launch::checked_u32(output_stride, "output_stride");
         let mono_base = inputs_matrix.slice().as_ptr();
         let out_base = outputs_matrix.slice_mut().as_mut_ptr();
         let column_ptrs = |group_start: usize| {

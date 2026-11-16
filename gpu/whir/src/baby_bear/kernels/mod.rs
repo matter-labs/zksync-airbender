@@ -1,3 +1,4 @@
+use crate::whir_three_point_partials_len;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
 use era_cudart::slice::{DeviceSlice, DeviceVariable};
@@ -494,14 +495,6 @@ cuda_kernel_declaration!(
         half: u32,
     )
 );
-
-pub(crate) fn whir_three_point_partials_len(half: usize) -> usize {
-    if half <= WHIR_THREE_POINT_BLOCK_THREADS as usize {
-        0
-    } else {
-        half.div_ceil(WHIR_THREE_POINT_BLOCK_THREADS as usize) * 3
-    }
-}
 
 /// Computes the three sumcheck partials into `reduce_out[0..3]`. Picks the
 /// single-launch combined kernel when `half` fits in one block, otherwise

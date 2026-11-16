@@ -6,8 +6,7 @@
 //! form where it differed).
 
 use era_cudart::execution::KernelFunction;
-use era_cudart::result::{CudaResult, CudaResultWrap};
-use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute};
+use era_cudart::result::CudaResult;
 
 use gpu_core::primitives::device_structures::{DeviceMatrixChunkImpl, DeviceMatrixChunkMutImpl};
 use gpu_core::primitives::field::BaseField;
@@ -44,40 +43,5 @@ pub(super) fn assert_ntt_16b_aligned(
 #[track_caller]
 pub(crate) fn set_max_dynamic_smem(func: &impl KernelFunction, bytes: usize) -> CudaResult<()> {
     assert!(bytes <= i32::MAX as usize);
-    unsafe {
-        cudaFuncSetAttribute(
-            func.as_ptr(),
-            CudaFuncAttribute::MaxDynamicSharedMemorySize,
-            bytes as i32,
-        )
-        .wrap()?;
-    }
-    Ok(())
-}
-
-/// Narrow a caller-controlled value to `i32` for a kernel argument struct,
-/// panicking on truncation (assert taxonomy class 1: a silently wrapped
-/// negative feeds device-side column addressing / twiddle indexing and would
-/// corrupt memory or the result). Use this only for caller-controlled values;
-/// log-domain and launch-geometry casts (which CUDA already rejects loudly, or
-/// which cannot exceed range for any valid input) do NOT use it. `u32` sources
-/// widen losslessly through `usize` before the narrowing check.
-#[track_caller]
-pub(super) fn checked_i32(v: usize, what: &str) -> i32 {
-    assert!(
-        v <= i32::MAX as usize,
-        "{what} ({v}) exceeds i32::MAX for its kernel-argument cast",
-    );
-    v as i32
-}
-
-/// Narrow a caller-controlled value to `u32` for a kernel argument struct,
-/// panicking on truncation. Same class-1 rationale as [`checked_i32`].
-#[track_caller]
-pub(super) fn checked_u32(v: usize, what: &str) -> u32 {
-    assert!(
-        v <= u32::MAX as usize,
-        "{what} ({v}) exceeds u32::MAX for its kernel-argument cast",
-    );
-    v as u32
+    crate::shared::set_max_dynamic_smem(func, bytes as i32)
 }

@@ -7,6 +7,7 @@ use era_cudart::stream::CudaStream;
 
 use super::kernels::*;
 use super::shared;
+use crate::shared as launch;
 use gpu_core::primitives::context::DeviceProperties;
 use gpu_core::primitives::device_structures::{
     DeviceMatrixChunk, DeviceMatrixChunkImpl, DeviceMatrixChunkMut, DeviceMatrixChunkMutImpl,
@@ -150,7 +151,7 @@ fn launch_noninitial_pair(
             output_matrix_mut,
             log_n as i32,
             start_stage as i32,
-            shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
+            launch::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
             log_cosets_in_tile,
         );
         let noninitial = if start_stage == log_n - 8 {
@@ -262,9 +263,9 @@ pub(crate) fn monomials_to_evals_3_pass(
                 input_matrix,
                 output_matrix_mut,
                 log_n as i32,
-                shared::checked_i32(tile_coset_base, "tile_coset_base"),
-                shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
-                shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
+                launch::checked_i32(tile_coset_base, "tile_coset_base"),
+                launch::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+                launch::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
                 log_cosets_in_tile,
             );
             initial_function.launch(&config, &args_initial)?;
@@ -302,7 +303,7 @@ pub(crate) fn launch_natural_to_bitrev_tail(
 ) -> CudaResult<()> {
     let n = 1usize << log_n;
     let bf_vals_per_block = 1usize << 13; // 8192
-    let num_cols_arg = shared::checked_i32(num_cols_per_coset, "num_cols_per_coset");
+    let num_cols_arg = launch::checked_i32(num_cols_per_coset, "num_cols_per_coset");
     let start_stage = 8usize;
     let num_exchg_regions = 1usize << start_stage;
     let exchg_region_size = n >> start_stage;
@@ -584,9 +585,9 @@ pub(crate) fn natural_monomials_to_bitrev_evals_3_pass(
                 input_matrix,
                 output_matrix_mut,
                 log_n as i32,
-                shared::checked_i32(tile_coset_base, "tile_coset_base"),
-                shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
-                shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
+                launch::checked_i32(tile_coset_base, "tile_coset_base"),
+                launch::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+                launch::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
                 log_cosets_in_tile,
             );
             initial_function.launch(&config, &args_initial)?;
@@ -663,7 +664,7 @@ pub(crate) fn natural_monomials_to_bitrev_evals_2_pass(
     shared::set_max_dynamic_smem(&last_function, smem_bytes_last)?;
     let threads = 512u32;
     let blocks = n.get_chunks_count(bf_vals_per_block);
-    let num_cols_arg = shared::checked_i32(num_cols_per_coset, "num_cols_per_coset");
+    let num_cols_arg = launch::checked_i32(num_cols_per_coset, "num_cols_per_coset");
     let inputs_slice = inputs_matrix.slice();
     let input_stride = inputs_matrix.stride();
     let input_offset = inputs_matrix.offset();
@@ -706,8 +707,8 @@ pub(crate) fn natural_monomials_to_bitrev_evals_2_pass(
                 input_matrix,
                 output_matrix_mut,
                 log_n as i32,
-                shared::checked_i32(tile_coset_base, "tile_coset_base"),
-                shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+                launch::checked_i32(tile_coset_base, "tile_coset_base"),
+                launch::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
                 num_cols_arg,
                 log_cosets_in_tile,
             );
@@ -869,7 +870,7 @@ fn natural_monomials_to_bitrev_evals_2_pass_compact_with_initial(
     let k_vals = 1usize << log_k;
     let blocks_last = (n / k_vals) as u32;
     let smem_bytes_last = k_vals * size_of::<BF>();
-    let num_cols_arg = shared::checked_i32(num_cols_per_coset, "num_cols_per_coset");
+    let num_cols_arg = launch::checked_i32(num_cols_per_coset, "num_cols_per_coset");
     let inputs_slice = inputs_matrix.slice();
     let input_stride = inputs_matrix.stride();
     let input_offset = inputs_matrix.offset();
@@ -911,8 +912,8 @@ fn natural_monomials_to_bitrev_evals_2_pass_compact_with_initial(
                 input_matrix,
                 output_matrix_mut,
                 log_n as i32,
-                shared::checked_i32(tile_coset_base, "tile_coset_base"),
-                shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+                launch::checked_i32(tile_coset_base, "tile_coset_base"),
+                launch::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
                 num_cols_arg,
                 log_cosets_in_tile,
             );
@@ -954,8 +955,8 @@ pub(crate) fn natural_fused_multi_coset_3_pass(
     shared::assert_ntt_16b_aligned(outputs_matrix, outputs_matrix);
     let stride = outputs_matrix.stride();
     let offset = outputs_matrix.offset();
-    let shift_arg = shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift");
-    let ncpc_arg = shared::checked_i32(num_cols_per_coset, "num_cols_per_coset");
+    let shift_arg = launch::checked_i32(coset_factor_shift as usize, "coset_factor_shift");
+    let ncpc_arg = launch::checked_i32(num_cols_per_coset, "num_cols_per_coset");
     let outputs_slice_const = unsafe {
         DeviceSlice::from_raw_parts(
             outputs_matrix.slice().as_ptr(),
@@ -1052,7 +1053,7 @@ pub(crate) fn natural_fused_multi_coset_3_pass(
             chunk_const(0),
             out_mut,
             log_n as i32,
-            shared::checked_i32(coset, "coset"),
+            launch::checked_i32(coset, "coset"),
             shift_arg,
             ncpc_arg,
             0,
@@ -1207,9 +1208,9 @@ pub(crate) fn monomials_to_evals_compact_1_pass(
             input_matrix,
             output_matrix_mut,
             log_n as i32,
-            shared::checked_i32(coset_index_base, "coset_index_base"),
-            shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
-            shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
+            launch::checked_i32(coset_index_base, "coset_index_base"),
+            launch::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+            launch::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
             log_cosets_in_tile,
         );
         function.launch(&config, &args)?;
@@ -1318,9 +1319,9 @@ pub(crate) fn monomials_to_evals_subwarp(
         input_matrix,
         output_matrix_mut,
         log_n as i32,
-        shared::checked_i32(coset_index_base, "coset_index_base"),
-        shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
-        shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
+        launch::checked_i32(coset_index_base, "coset_index_base"),
+        launch::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+        launch::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
         log_cosets_in_tile,
     );
     function.launch(&config, &args)?;
@@ -1425,9 +1426,9 @@ pub(crate) fn monomials_to_evals_smem_packed(
         input_matrix,
         output_matrix_mut,
         log_n as i32,
-        shared::checked_i32(coset_index_base, "coset_index_base"),
-        shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
-        shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
+        launch::checked_i32(coset_index_base, "coset_index_base"),
+        launch::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+        launch::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
         log_cosets_in_tile,
     );
     function.launch(&config, &args)?;
@@ -1547,9 +1548,9 @@ pub(crate) fn monomials_to_evals_2_pass_compact_initial(
                 input_matrix,
                 output_matrix_mut,
                 log_n as i32,
-                shared::checked_i32(tile_coset_base, "tile_coset_base"),
-                shared::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
-                shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
+                launch::checked_i32(tile_coset_base, "tile_coset_base"),
+                launch::checked_i32(coset_factor_shift as usize, "coset_factor_shift"),
+                launch::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
                 log_cosets_in_tile,
             );
             pass1_function.launch(&config, &args)?;
@@ -1576,7 +1577,7 @@ pub(crate) fn monomials_to_evals_2_pass_compact_initial(
                 output_matrix_mut,
                 log_n as i32,
                 start_stage as i32,
-                shared::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
+                launch::checked_i32(num_cols_per_coset, "num_cols_per_coset"),
                 log_cosets_in_tile,
             );
             StridedTilesStagesFunction(ab_monomials_to_evals_noninitial_8_stages_kernel)
@@ -1646,7 +1647,7 @@ pub(crate) fn monomials_to_evals_2_pass_smem(
             input_matrix,
             output_matrix_mut,
             log_n as i32,
-            shared::checked_i32(coset_factor_power, "coset_factor_power"),
+            launch::checked_i32(coset_factor_power, "coset_factor_power"),
         );
         let function =
             MonomialsToEvalsInitialFunction(ab_monomials_to_evals_first_14_stages_kernel);

@@ -89,31 +89,26 @@ PARAMETRIZED_KERNEL(pow, bf)
 PARAMETRIZED_KERNEL(pow, e4)
 PARAMETRIZED_KERNEL(pow, pr)
 
-#define BINARY_KERNEL(op, arg0_t, arg1_t, result_t)                                                                                                            \
-  EXTERN __global__ void ab_##op##_##arg0_t##_##arg1_t##_kernel(const arg0_t##_getter arg0, const arg1_t##_getter arg1, result_t##_setter result) {            \
+#define BINARY_KERNEL(op, arg0_t, arg1_t, result_t, suffix)                                                                                                    \
+  EXTERN __global__ void ab_##op##_##suffix##_kernel(const arg0_t##_getter arg0, const arg1_t##_getter arg1, result_t##_setter result) {                       \
     binary_op(result_t::op, arg0, arg1, result);                                                                                                               \
   }
 
-BINARY_KERNEL(add, bf, bf, bf)
-BINARY_KERNEL(add, bf, e4, e4)
-BINARY_KERNEL(add, e4, bf, e4)
-BINARY_KERNEL(add, e4, e4, e4)
-BINARY_KERNEL(mul, bf, bf, bf)
-BINARY_KERNEL(mul, bf, e4, e4)
-BINARY_KERNEL(mul, e4, bf, e4)
-BINARY_KERNEL(mul, e4, e4, e4)
-BINARY_KERNEL(sub, bf, bf, bf)
-BINARY_KERNEL(sub, bf, e4, e4)
-BINARY_KERNEL(sub, e4, bf, e4)
-BINARY_KERNEL(sub, e4, e4, e4)
+BINARY_KERNEL(add, bf, bf, bf, bf_bf)
+BINARY_KERNEL(add, bf, e4, e4, bf_e4)
+BINARY_KERNEL(add, e4, bf, e4, e4_bf)
+BINARY_KERNEL(add, e4, e4, e4, e4_e4)
+BINARY_KERNEL(mul, bf, bf, bf, bf_bf)
+BINARY_KERNEL(mul, bf, e4, e4, bf_e4)
+BINARY_KERNEL(mul, e4, bf, e4, e4_bf)
+BINARY_KERNEL(mul, e4, e4, e4, e4_e4)
+BINARY_KERNEL(sub, bf, bf, bf, bf_bf)
+BINARY_KERNEL(sub, bf, e4, e4, bf_e4)
+BINARY_KERNEL(sub, e4, bf, e4, e4_bf)
+BINARY_KERNEL(sub, e4, e4, e4, e4_e4)
 
-#define BINARY_KERNEL_SINGLE(op, arg_t)                                                                                                                        \
-  EXTERN __global__ void ab_##op##_##arg_t##_kernel(const arg_t##_getter arg0, const arg_t##_getter arg1, arg_t##_setter result) {                             \
-    binary_op(arg_t::op, arg0, arg1, result);                                                                                                                  \
-  }
-
-BINARY_KERNEL_SINGLE(add, pr)
-BINARY_KERNEL_SINGLE(sub, pr)
-BINARY_KERNEL_SINGLE(mul, pr)
+BINARY_KERNEL(add, pr, pr, pr, pr)
+BINARY_KERNEL(sub, pr, pr, pr, pr)
+BINARY_KERNEL(mul, pr, pr, pr, pr)
 
 } // namespace airbender::ops::simple

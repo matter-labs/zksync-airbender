@@ -243,20 +243,6 @@ cuda_kernel_signature_arguments_and_function!(
     result: MutPtrAndStrideWrappingMatrix<TR>,
 );
 
-macro_rules! binary_op_kernel {
-    ($op:ty, $t0:ty, $t1:ty, $tr:ty) => {
-        paste! {
-            cuda_kernel_declaration!(
-                [<ab_ $op:lower _ $t0:lower _ $t1:lower _kernel>](
-                    x: PtrAndStrideWrappingMatrix<$t0>,
-                    y: PtrAndStrideWrappingMatrix<$t1>,
-                    result: MutPtrAndStrideWrappingMatrix<$tr>,
-                )
-            );
-        }
-    };
-}
-
 #[doc(hidden)]
 pub trait BinaryOp<T0, T1, TR> {
     const KERNEL_FUNCTION: BinaryOpSignature<T0, T1, TR>;
@@ -365,55 +351,35 @@ binary_op_def!(Mul, pub, pub); // both public
 binary_op_def!(Sub, pub(crate), pub(crate)); // both internal
 
 macro_rules! binary_op_impl {
-    ($op:ty, $t0:ty, $t1:ty, $tr:ty) => {
-        paste! {
-            binary_op_kernel!($op, $t0, $t1, $tr);
-            impl BinaryOp<$t0, $t1, $tr> for $op {
-                const KERNEL_FUNCTION: BinaryOpSignature<$t0, $t1, $tr> = [<ab_ $op:lower _ $t0:lower _ $t1:lower _kernel>];
-            }
+    ($op:ty, $t0:ty, $t1:ty, $tr:ty, $kernel:ident) => {
+        cuda_kernel_declaration!(
+            $kernel(
+                x: PtrAndStrideWrappingMatrix<$t0>,
+                y: PtrAndStrideWrappingMatrix<$t1>,
+                result: MutPtrAndStrideWrappingMatrix<$tr>,
+            )
+        );
+        impl BinaryOp<$t0, $t1, $tr> for $op {
+            const KERNEL_FUNCTION: BinaryOpSignature<$t0, $t1, $tr> = $kernel;
         }
     };
 }
 
 macro_rules! binary_ops_impl {
-    ($t0:ty, $t1:ty, $tr:ty) => {
-        binary_op_impl!(Add, $t0, $t1, $tr);
-        binary_op_impl!(Mul, $t0, $t1, $tr);
-        binary_op_impl!(Sub, $t0, $t1, $tr);
-    };
-}
-
-binary_ops_impl!(BF, BF, BF);
-binary_ops_impl!(BF, E4, E4);
-binary_ops_impl!(E4, BF, E4);
-binary_ops_impl!(E4, E4, E4);
-
-macro_rules! binary_op_single_impl {
-    ($op:ty, $type:ty) => {
+    ($t0:ty, $t1:ty, $tr:ty, $suffix:ident) => {
         paste! {
-            cuda_kernel_declaration!(
-                [<ab_ $op:lower _ $type:lower _kernel>](
-                    x: PtrAndStrideWrappingMatrix<$type>,
-                    y: PtrAndStrideWrappingMatrix<$type>,
-                    result: MutPtrAndStrideWrappingMatrix<$type>,
-                )
-            );
-            impl BinaryOp<$type, $type, $type> for $op {
-                const KERNEL_FUNCTION: BinaryOpSignature<$type, $type, $type> = [<ab_ $op:lower _ $type:lower _kernel>];
-            }
+            binary_op_impl!(Add, $t0, $t1, $tr, [<ab_add_ $suffix _kernel>]);
+            binary_op_impl!(Mul, $t0, $t1, $tr, [<ab_mul_ $suffix _kernel>]);
+            binary_op_impl!(Sub, $t0, $t1, $tr, [<ab_sub_ $suffix _kernel>]);
         }
     };
 }
 
-macro_rules! binary_ops_single_impl {
-    ($type:ty) => {
-        binary_op_single_impl!(Add, $type);
-        binary_op_single_impl!(Mul, $type);
-        binary_op_single_impl!(Sub, $type);
-    };
-}
-
-binary_ops_single_impl!(PR);
+binary_ops_impl!(BF, BF, BF, bf_bf);
+binary_ops_impl!(BF, E4, E4, bf_e4);
+binary_ops_impl!(E4, BF, E4, e4_bf);
+binary_ops_impl!(E4, E4, E4, e4_e4);
+binary_ops_impl!(PR, PR, PR, pr);
 
 #[cfg(test)]
 mod tests;
