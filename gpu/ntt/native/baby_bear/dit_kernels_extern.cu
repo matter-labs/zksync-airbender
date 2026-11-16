@@ -2,7 +2,7 @@
 // __global__ symbol per (LOG_N, LOG_VPT) config. EXTERN = extern "C" [[maybe_unused]].
 // ntt_single_stream/ntt_two_pass are __device__ (see dit_kernels.cuh); these thin
 // __global__ wrappers carry the launch bounds. Bound + launched by the Rust
-// launcher monomials_to_evals_dit (gpu/ntt/src/ntt/dit.rs).
+// launcher monomials_to_evals_dit (gpu/ntt/src/baby_bear/dit.rs).
 #include "dit_kernels.cuh"
 namespace airbender {
 namespace ntt {
@@ -16,7 +16,7 @@ namespace ntt {
 // Streaming single-pass (guarded grid-stride + delta walk): the production
 // single-pass launch path (unified with two-pass on the streaming/diagonal
 // strategy) and the SUBJECT of the single-pass parity tests
-// (gpu/ntt/src/ntt/tests/dit_engine.rs). It wraps ntt_single_stream, an
+// (gpu/ntt/src/baby_bear/tests/dit_engine.rs). It wraps ntt_single_stream, an
 // implementation independent of the ntt_single __device__ template (which stays
 // in dit_kernels.cuh for the bench-feature kernels).
 #define DIT_SINGLE_STREAM_WRAPPER(LOGN, LOGVPT)                                                                                                                \

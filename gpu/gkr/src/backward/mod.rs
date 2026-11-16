@@ -28,4 +28,4 @@ pub mod window;
 pub(crate) mod window_dr;
 
 #[cfg(test)]
-pub(crate) mod tests;
+mod tests;

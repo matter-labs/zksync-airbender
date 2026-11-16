@@ -1,4 +1,5 @@
-use crate::upstream::{GKRAddress, GKRCircuitArtifact, PRLinearRelation};
+use crate::proth120::upstream::PRLinearRelation;
+use crate::upstream::{GKRAddress, GKRCircuitArtifact};
 use crate::witness::{Address, MAX_LINEAR_TERMS_COUNT};
 use gpu_core::primitives::field::PR;
 use std::mem::{align_of, offset_of, size_of};
@@ -39,7 +40,7 @@ pub struct LookupRelationsPr {
 impl LookupRelationsPr {
     pub fn new(circuit: &GKRCircuitArtifact<PR>) -> Self {
         fn expressions<const N: usize>(
-            relations: &[crate::upstream::PRSingleColumnLookupRelation],
+            relations: &[crate::proth120::upstream::PRSingleColumnLookupRelation],
         ) -> Proth120LookupExpressions<N> {
             assert_eq!(relations.len(), N, "Proth120 unified lookup relation count");
             Proth120LookupExpressions {

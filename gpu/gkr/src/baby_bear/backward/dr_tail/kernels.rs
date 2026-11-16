@@ -131,7 +131,7 @@ pub(crate) fn dr_tail_occupancy(dynamic_smem_bytes: usize) -> CudaResult<u32> {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     #[test]
     fn cpu_dr_tail_shared_eq_sizes_matches_helper_and_mutation_oracle() {
         use crate::backward::{make_eq_sizes, GkrEqSizes, GKR_EQ_GROUP_SIZE, GKR_EQ_HIGH_SLOTS};

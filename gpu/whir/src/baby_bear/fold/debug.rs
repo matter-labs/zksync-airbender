@@ -2,8 +2,8 @@ use super::*;
 
 use era_cudart::memory::memory_copy_async;
 
+use crate::test_utils::{bitreverse_index, copy_small_to_device};
 use gpu_core::allocator::tracker::AllocationPlacement;
-use gpu_core::primitives::static_host::alloc_static_pinned_box_from_slice;
 
 use crate::baby_bear::kernels::accumulate_whir_base_columns_with_serialized_bf;
 #[cfg(test)]
@@ -17,16 +17,6 @@ use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::HostAllocation;
 #[cfg(test)]
 use gpu_hash::blake2s::Digest;
-
-pub(super) fn copy_small_to_device<T: Copy>(
-    dst: &mut DeviceSlice<T>,
-    values: &[T],
-    context: &ProverContext,
-) -> CudaResult<()> {
-    assert_eq!(dst.len(), values.len());
-    let host = alloc_static_pinned_box_from_slice(values)?;
-    memory_copy_async(dst, &host[..], context.get_exec_stream())
-}
 
 pub(super) fn copy_scalar_to_device(
     value: E4,
@@ -46,13 +36,6 @@ pub(super) fn read_reduce_outputs(
     memory_copy_async(&mut host, &state.reduce_out[..count], stream)?;
     stream.synchronize()?;
     Ok(unsafe { host.get_accessor().get().to_vec() })
-}
-
-pub(super) fn copy_back<T: Clone>(values: &DeviceSlice<T>, context: &ProverContext) -> Vec<T> {
-    let mut host = unsafe { context.alloc_host_uninit_slice(values.len()) };
-    memory_copy_async(&mut host, values, context.get_exec_stream()).unwrap();
-    context.get_exec_stream().synchronize().unwrap();
-    unsafe { host.get_accessor().get().to_vec() }
 }
 
 #[cfg(test)]

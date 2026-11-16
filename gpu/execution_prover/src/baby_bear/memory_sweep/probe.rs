@@ -106,7 +106,7 @@ pub(super) fn commit_memory(
                 &circuit.precomputations.baby_bear().gkr_programs,
                 config,
                 inputs,
-                crate::memory_policy::merged_commit_strategy(
+                gpu_circuit_prover::baby_bear::presets::merged_commit_strategy(
                     circuit.circuit,
                     ProofProfile::Standard,
                 ),

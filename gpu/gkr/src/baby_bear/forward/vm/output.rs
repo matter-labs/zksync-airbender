@@ -3,9 +3,10 @@ use gpu_core::primitives::field::BF;
 use gpu_prover_context::ProverContext;
 
 use crate::{
+    baby_bear::upstream::{GKRLayerDescription, GKRRelation},
     gkr_address_audit::AddressClass,
     storage_layout::FieldType,
-    upstream::{Field, FieldExtension, GKRAddress, GKRLayerDescription, GKRRelation},
+    upstream::{Field, FieldExtension, GKRAddress},
     GpuGKRStorage,
 };
 

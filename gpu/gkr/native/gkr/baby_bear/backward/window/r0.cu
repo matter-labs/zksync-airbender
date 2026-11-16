@@ -25,7 +25,7 @@ EXTERN __global__ __launch_bounds__(BWD_WINDOW_BLOCK_THREADS, 4) void ab_gkr_r0_
 }
 
 namespace {
-// Matches PartitionBounds in src/backward/window/r0/partition.rs.
+// Matches PartitionBounds in src/baby_bear/backward/window/r0/partition.rs.
 struct bwd_window_partition_bounds {
   u32 parts;
   u32 ends[16][4];

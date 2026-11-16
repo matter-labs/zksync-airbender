@@ -1,7 +1,7 @@
 //! Launch microbenchmark for the DIT NTT engine (bench feature only).
 //!
 //! Drives the bench-gated DIT kernel variants exported by `gpu_ntt_native`
-//! (`native/bench/dit_bench_kernels.cu`) plus the production two-pass STREAM
+//! (`native/baby_bear/bench/dit_bench_kernels.cu`) plus the production two-pass STREAM
 //! symbols, measuring pure launch + execution time across four kernel families
 //! over a single fixed workload (`log_n + log_lde = 27`, one column per coset).
 //!

@@ -23,7 +23,7 @@ use crate::{
     },
 };
 
-pub(crate) mod projection;
+mod projection;
 
 fn setup_geometry(
     setup: &CpuGKRSetup<BF>,

@@ -1,7 +1,7 @@
 // One-time device fill of the DIT engine's per-config twiddle buffers, sourced
 // from the Rust-initialized ab_ntt_forward_powers (get_forward_twiddle_power).
 // Mirrors the parity-proven Rust build_clean_triangle / build_coupled_triangle /
-// build_coset_delta_table layouts (see gpu/ntt/src/ntt/tests/dit_engine.rs)
+// build_coset_delta_table layouts (see gpu/ntt/src/baby_bear/tests/dit_engine.rs)
 // index-for-index; there is NO host-side twiddle compute. The triangles are
 // <= ~8K entries (one-time fill,
 // not perf-critical).

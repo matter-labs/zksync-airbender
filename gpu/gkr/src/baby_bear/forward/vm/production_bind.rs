@@ -281,7 +281,7 @@ pub(in crate::baby_bear::forward) fn schedule_vm(
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use std::collections::BTreeMap;
 
     use super::*;

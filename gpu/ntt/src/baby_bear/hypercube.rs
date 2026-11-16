@@ -658,7 +658,7 @@ pub(crate) fn launch_pre_tail_lsb_column(
     grid_dim.y = num_exchg_regions as u32;
     let pdl_middle = finest_already_computed
         && matches!(log_n, 22..=24)
-        && shared::supports_tma_pdl(device_properties.compute_capability_major);
+        && crate::shared::supports_tma_pdl(device_properties.compute_capability_major);
     let pdl_attributes = [CudaLaunchAttribute::ProgrammaticStreamSerialization(true)];
     let mut config = CudaLaunchConfig::basic(grid_dim, threads as u32, stream);
     if pdl_middle {

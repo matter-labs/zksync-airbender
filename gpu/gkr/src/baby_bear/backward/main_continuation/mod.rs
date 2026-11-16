@@ -4,8 +4,8 @@ pub(crate) use crate::baby_bear::backward::main_continuation::{
     sequence::MainContinuationWindowSequence,
 };
 
-pub(crate) mod abi;
+mod abi;
 pub(crate) mod binding;
-pub(crate) mod generated_kernels;
-pub(crate) mod publication;
-pub(crate) mod sequence;
+mod generated_kernels;
+mod publication;
+mod sequence;

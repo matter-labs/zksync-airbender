@@ -192,7 +192,7 @@ pub(crate) fn monomials_to_evals_3_pass(
     assert!(num_cosets.is_power_of_two());
     assert!(cosets_per_launch.is_power_of_two());
     let num_ntts = inputs_matrix.cols();
-    shared::assert_multi_coset_output_cols(
+    crate::shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
         num_cosets,
         num_cols_per_coset,
@@ -419,7 +419,7 @@ pub(crate) fn launch_natural_to_bitrev_tail(
         if matches!(log_n, 21..=24)
             && log_cosets_in_tile == 0
             && (output_matrix_mut.ptr as usize & 127) == 0
-            && shared::supports_tma_pdl(device_properties.compute_capability_major)
+            && crate::shared::supports_tma_pdl(device_properties.compute_capability_major)
         {
             let output_tensor_map = encode_natural_final_output_tensor_map(output_matrix_mut, n)?;
             let args = NaturalToBitrevFinalPrefetchTmaArguments::new(
@@ -471,7 +471,7 @@ pub(crate) fn launch_natural_to_bitrev_tail(
         && ntts_in_launch == 1
         && log_cosets_in_tile == 0
         && (output_matrix_mut.ptr as usize & 127) == 0
-        && shared::supports_tma_pdl(device_properties.compute_capability_major)
+        && crate::shared::supports_tma_pdl(device_properties.compute_capability_major)
     {
         let output_tensor_map = encode_natural_final_output_tensor_map(output_matrix_mut, n)?;
         let args = NaturalToBitrevFinalTmaArguments::new(
@@ -528,7 +528,7 @@ pub(crate) fn natural_monomials_to_bitrev_evals_3_pass(
     assert!(num_cosets.is_power_of_two());
     assert!(cosets_per_launch.is_power_of_two());
     let num_ntts = inputs_matrix.cols();
-    shared::assert_multi_coset_output_cols(
+    crate::shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
         num_cosets,
         num_cols_per_coset,
@@ -636,7 +636,7 @@ pub(crate) fn natural_monomials_to_bitrev_evals_2_pass(
     assert!(num_cosets.is_power_of_two());
     assert!(cosets_per_launch.is_power_of_two());
     let num_ntts = inputs_matrix.cols();
-    shared::assert_multi_coset_output_cols(
+    crate::shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
         num_cosets,
         num_cols_per_coset,
@@ -828,7 +828,7 @@ fn natural_monomials_to_bitrev_evals_2_pass_compact_with_initial(
     assert!(num_cosets.is_power_of_two());
     assert!(cosets_per_launch.is_power_of_two());
     let num_ntts = inputs_matrix.cols();
-    shared::assert_multi_coset_output_cols(
+    crate::shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
         num_cosets,
         num_cols_per_coset,
@@ -1151,7 +1151,7 @@ pub(crate) fn monomials_to_evals_compact_1_pass(
     assert_eq!(inputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.rows(), n);
     let num_ntts = inputs_matrix.cols();
-    shared::assert_multi_coset_output_cols(
+    crate::shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
         num_cosets,
         num_cols_per_coset,
@@ -1257,7 +1257,7 @@ pub(crate) fn monomials_to_evals_subwarp(
         workload % instances_per_block == 0,
         "workload ({workload}) not divisible by instances_per_block ({instances_per_block})",
     );
-    shared::assert_multi_coset_output_cols(
+    crate::shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
         num_cosets,
         num_cols_per_coset,
@@ -1373,7 +1373,7 @@ pub(crate) fn monomials_to_evals_smem_packed(
         workload % instances_per_block == 0,
         "workload ({workload}) not divisible by instances_per_block ({instances_per_block})",
     );
-    shared::assert_multi_coset_output_cols(
+    crate::shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
         num_cosets,
         num_cols_per_coset,
@@ -1489,7 +1489,7 @@ pub(crate) fn monomials_to_evals_2_pass_compact_initial(
         _ => unreachable!("log_k = log_n - 8 in [5, 12] for the 2-pass compact range"),
     };
     let num_ntts = inputs_matrix.cols();
-    shared::assert_multi_coset_output_cols(
+    crate::shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
         num_cosets,
         num_cols_per_coset,

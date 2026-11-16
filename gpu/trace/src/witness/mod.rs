@@ -206,7 +206,7 @@ const _: () = DelegationAbi {
 
 pub(crate) mod layout;
 pub mod memory_unrolled;
-pub(crate) mod option;
+mod option;
 pub(crate) mod ram_access;
 pub use execution_prover_model::trace;
 // test-reference readers: apex test suites reach `trace_delegation` across the crate boundary.

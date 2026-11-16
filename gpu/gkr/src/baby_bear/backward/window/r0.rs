@@ -96,6 +96,6 @@ pub(crate) fn launch(window: &Launch, context: &ProverContext) -> CudaResult<()>
 }
 
 #[cfg(test)]
-pub(crate) mod cpu_tests;
+mod cpu_tests;
 
 pub(crate) mod partition;

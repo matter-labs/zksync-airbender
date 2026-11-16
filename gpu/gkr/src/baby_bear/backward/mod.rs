@@ -261,7 +261,7 @@ pub(crate) mod dr_tail;
 pub mod kernels;
 pub mod main_continuation;
 pub(crate) mod main_layer;
-pub(crate) mod stage_snapshots;
+mod stage_snapshots;
 pub mod window;
 pub(crate) mod window_dr;
 

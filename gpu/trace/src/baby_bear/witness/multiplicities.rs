@@ -1,7 +1,6 @@
+use crate::baby_bear::upstream::SingleColumnLookupRelation;
 use crate::baby_bear::witness::LinearRelation;
-use crate::upstream::{
-    GKRCircuitArtifact, PrimeField, SingleColumnLookupRelation, TIMESTAMP_COLUMNS_NUM_BITS,
-};
+use crate::upstream::{GKRCircuitArtifact, PrimeField, TIMESTAMP_COLUMNS_NUM_BITS};
 use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;

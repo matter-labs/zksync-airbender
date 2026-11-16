@@ -1,5 +1,5 @@
 //! End-to-end GPU parity harness for the vendored DIT NTT engine bring-up
-//! kernels (`gpu/ntt/native/dit_kernels_extern.cu`).
+//! kernels (`gpu/ntt/native/baby_bear/dit_kernels_extern.cu`).
 //!
 //! Covers all 12 single-pass configs against the PRODUCTION streaming kernels:
 //!   v8 (LOG_VPT=3): LOG_N ∈ {3,4,5,6,7,8}  → ab_dit_single_stream_{3..8}_3
@@ -433,7 +433,7 @@ dit_two_pass!(ab_dit_two_pass_11_2);
 dit_two_pass!(ab_dit_two_pass_12_2);
 
 // ---------------------------------------------------------------------------
-// Two-pass geometry (`NttTwoPassGeom`, from `gpu/ntt/native/dit_geometry.cuh`)
+// Two-pass geometry (`NttTwoPassGeom`, from `gpu/ntt/native/baby_bear/dit_geometry.cuh`)
 // replicated in Rust.
 // ---------------------------------------------------------------------------
 #[derive(Clone, Copy)]
@@ -818,7 +818,7 @@ dit_two_pass_parity_test!(dit_two_pass_12_2_parity, 12, 2);
 // ===========================================================================
 // Device twiddle FILL kernels — parity vs the Rust builders.
 //
-// The fill kernels (`gpu/ntt/native/dit_twiddle_fill.cu`, bound in
+// The fill kernels (`gpu/ntt/native/baby_bear/dit_twiddle_fill.cu`, bound in
 // `super::super::dit`) construct the per-config butterfly-triangle and coset
 // d-table buffers ON-DEVICE, reading the `ab_ntt_forward_powers` via
 // `get_forward_twiddle_power`. They must reproduce the exact buffers the
@@ -1395,7 +1395,7 @@ fn dit_launcher_batched_capped_ragged_columns_all_shapes() {
 // BENCH-ONLY DIT kernel VARIANTS — parity for the two NEW templates that the
 // bench bring-up added (`ntt_two_pass_fixed<K>`, `ntt_single_stream`).
 //
-// These symbols are emitted ONLY from `native/bench/dit_bench_kernels.cu`,
+// These symbols are emitted ONLY from `native/baby_bear/bench/dit_bench_kernels.cu`,
 // which compiles into `gpu_ntt_native` solely under `-DGPU_NTT_BUILD_BENCH=ON`
 // (the gpu_ntt `bench` feature). Linking them outside `--features bench` would
 // fail, so the entire section is `#[cfg(feature = "bench")]`.

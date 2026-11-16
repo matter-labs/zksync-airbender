@@ -1,3 +1,5 @@
+mod backend;
+
 #[cfg(feature = "memory_sweep")]
 pub mod memory_sweep;
 pub(crate) mod precomputations;

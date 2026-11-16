@@ -18,7 +18,7 @@ use crate::forward::vm::desc::CONST_DERIVED_E4_CAP;
 pub(crate) mod desc;
 pub(crate) mod lower;
 pub(crate) mod lower_common;
-pub(crate) mod output;
+mod output;
 pub(crate) mod production_bind;
 
 pub(crate) const FWD_VM_THREADS_PER_BLOCK: u32 = 128;

@@ -43,7 +43,7 @@ pub(super) fn gpu_memory_caps(
             &base.gkr_programs,
             &base.prover_config,
             inputs,
-            presets::merged_commit_strategy(base.circuit_type, base.profile),
+            crate::baby_bear::presets::merged_commit_strategy(base.circuit_type, base.profile),
             base.partial_trees(),
             None,
             context,

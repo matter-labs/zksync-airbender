@@ -1,5 +1,5 @@
 // `pub` re-exports (not `pub(crate)`): the apex proof/whir layer and the apex
-// e2e tests consume these through `gpu_gkr::backward::…` (backward/mod.rs
+// e2e tests consume these through `gpu_gkr::baby_bear::backward::…` (backward/mod.rs
 // re-exports them again). Pinned public API of the gpu_gkr split.
 pub use crate::baby_bear::backward::kernels::{
     dim_reducing::GpuGKRDimensionReducingBackwardState,
@@ -10,9 +10,9 @@ pub(crate) use crate::baby_bear::backward::kernels::{
     shared::DeviceClaimPointAndBatching,
 };
 
-pub(crate) mod dim_reducing;
-pub(crate) mod encoding;
+mod dim_reducing;
+mod encoding;
 pub(crate) mod eq;
-pub(crate) mod launchers;
+mod launchers;
 pub(crate) mod main_layer;
 pub(crate) mod shared;

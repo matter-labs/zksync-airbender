@@ -24,8 +24,9 @@ pub(crate) use cs::definitions::{
     PERMUTATION_ARGUMENT_CHALLENGE_POWERS_VALUE_LOW_IDX,
 };
 pub(crate) use cs::gkr_compiler::{GKRCircuitArtifact, OutputType};
-pub(crate) type GKRLayerDescription = cs::gkr_compiler::GKRLayerDescription<BabyBearField>;
-pub(crate) type GKRRelation = cs::gkr_compiler::GKRRelation<BabyBearField>;
+pub(crate) use cs::gkr_compiler::{
+    GKRLayerDescription as CSGKRLayerDescription, GKRRelation as CSGKRRelation,
+};
 pub(crate) use cs::tables::TableType;
 
 // -----------------------------------------------------------------------
@@ -63,6 +64,5 @@ pub(crate) use prover::merkle_trees::{DefaultTreeConstructor, MerkleTreeCapVarLe
 pub(crate) use prover::transcript::Seed;
 
 pub(crate) use field::proth120::Proth120 as PR;
-pub(crate) type GKRRelationPr = cs::gkr_compiler::GKRRelation<PR>;
 #[allow(unused_imports)]
 pub(crate) use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;

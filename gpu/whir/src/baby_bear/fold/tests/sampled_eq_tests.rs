@@ -2,7 +2,8 @@ use super::super::*;
 
 use crate::test_utils::make_test_context;
 
-use super::{copy_back, copy_small_to_device, fold_eq_poly_in_place_device, sample_ext};
+use super::{fold_eq_poly_in_place_device, sample_ext};
+use crate::test_utils::{copy_back, copy_small_to_device};
 
 /// Independent LSB reference, written from the definition: index bit `j` pairs
 /// with `point[j]`.

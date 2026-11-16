@@ -345,7 +345,10 @@ pub(crate) fn enqueue_phase_two<'a>(
                     &state.precomputations.baby_bear().gkr_programs,
                     prover_config,
                     bundle,
-                    crate::memory_policy::merged_commit_strategy(circuit_type, state.profile),
+                    gpu_circuit_prover::baby_bear::presets::merged_commit_strategy(
+                        circuit_type,
+                        state.profile,
+                    ),
                     crate::memory_policy::partial_trees(circuit_type, state.profile),
                     state.partial_tree_buffer.take(),
                     context,

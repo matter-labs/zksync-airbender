@@ -7,7 +7,6 @@ use gpu_trace::witness::circuit_type::{
     CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
     UnrolledNonMemoryCircuitType,
 };
-pub(crate) const PRESET_ARENA_BYTES: &[usize] = &[22548578304, 32212254720];
 pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMemoryPolicy {
     match arena_bytes {
         22548578304 => match circuit {

@@ -1,6 +1,5 @@
 use super::{PartialTreePolicy, ProofMemoryPolicy};
 use crate::upstream::ProofProfile;
-use gpu_gkr::baby_bear::stage1::merged_commitment::MergedCommitStrategy;
 use gpu_trace::witness::circuit_type::{CircuitType, UnrolledCircuitType};
 
 use crate::baby_bear::presets::{compression, generated};
@@ -10,8 +9,10 @@ use crate::proth120::presets as l1_wrap;
 /// the largest full-capacity input bundle of any supported circuit, rounded up.
 pub const INPUTS_RESERVE_BYTES: usize = 1537 << 20;
 
+pub(crate) const PRESET_ARENA_BYTES: &[usize] = &[22548578304, 32212254720];
+
 pub fn select_arena_bytes(available: usize) -> usize {
-    generated::PRESET_ARENA_BYTES
+    PRESET_ARENA_BYTES
         .iter()
         .rev()
         .copied()
@@ -22,7 +23,7 @@ pub fn select_arena_bytes(available: usize) -> usize {
 /// `ProofProfile::CompressionFinal` and `UnrolledCircuitType::Unified22` imply each
 /// other; `ProofProfile::Compression` requires `UnrolledCircuitType::Unified`,
 /// which also proves `ProofProfile::Standard`.
-fn is_compression(circuit: CircuitType, profile: ProofProfile) -> bool {
+pub(crate) fn is_compression(circuit: CircuitType, profile: ProofProfile) -> bool {
     const UNIFIED22: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
     const UNIFIED: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified);
     assert!(
@@ -70,14 +71,6 @@ pub fn persists_memory_partial_trees(circuit: CircuitType, profile: ProofProfile
     is_compression(circuit, profile)
 }
 
-pub fn merged_commit_strategy(circuit: CircuitType, profile: ProofProfile) -> MergedCommitStrategy {
-    if is_compression(circuit, profile) {
-        MergedCommitStrategy::Monomials
-    } else {
-        MergedCommitStrategy::AllCosets
-    }
-}
-
 #[cfg(test)]
 mod cpu_tests {
     use super::*;
@@ -110,7 +103,7 @@ mod cpu_tests {
 
     #[test]
     fn preset_budget_boundaries() {
-        assert_eq!(generated::PRESET_ARENA_BYTES, &[21 << 30, 30 << 30]);
+        assert_eq!(PRESET_ARENA_BYTES, &[21 << 30, 30 << 30]);
         assert!(std::panic::catch_unwind(|| select_arena_bytes((21 << 30) - 1)).is_err());
         for (available, expected) in [
             (21 << 30, 21 << 30),

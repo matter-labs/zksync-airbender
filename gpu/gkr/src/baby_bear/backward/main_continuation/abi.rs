@@ -112,7 +112,7 @@ const _: () = {
 };
 
 #[cfg(test)]
-pub(crate) mod cpu_main_continuation_binding {
+mod cpu_main_continuation_binding {
     use core::mem::{align_of, offset_of, size_of};
 
     use super::MainContinuationWindowDesc;

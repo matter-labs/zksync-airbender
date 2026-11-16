@@ -270,7 +270,7 @@ pub(crate) fn schedule_main_layer_extras_eval(
 }
 
 #[cfg(test)]
-pub(crate) mod cpu_tests {
+mod cpu_tests {
     use super::*;
 
     #[test]

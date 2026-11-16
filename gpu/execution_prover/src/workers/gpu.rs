@@ -136,9 +136,9 @@ pub(crate) enum PhaseOneInputs<'a> {
 }
 
 /// Phase-2 state: GPU job enqueued, awaiting `finish()`.
-pub(crate) struct PhaseTwo<'a> {
-    pub(crate) state: RequestState,
-    pub(crate) job: JobType<'a>,
+struct PhaseTwo<'a> {
+    state: RequestState,
+    job: JobType<'a>,
 }
 
 // Same rationale as `PhaseOneInputs` above: one instance per in-flight

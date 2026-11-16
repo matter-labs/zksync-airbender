@@ -32,6 +32,10 @@ target_sources(gpu_trace_native PRIVATE
 )
 add_subdirectory(baby_bear)
 add_subdirectory(proth120)
+# The Proth120 leaf sink reads gpu_ntt's Proth120 transform and gpu_hash's keccak256
+# headers; keep these include directories local to the leaf sink source.
+set_source_files_properties(proth120/leaf_sink.cu PROPERTIES
+        INCLUDE_DIRECTORIES "${GPU_HASH_NATIVE_INCLUDE};${GPU_NTT_NATIVE_INCLUDE}")
 ab_cuda_configure_target(gpu_trace_native
         PREFIX GPU_TRACE
         INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} ${GPU_CORE_NATIVE_INCLUDE})

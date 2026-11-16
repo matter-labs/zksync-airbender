@@ -84,7 +84,7 @@ pub(crate) fn repoint_final_evaluations_from_raw<E>(
 }
 
 #[cfg(test)]
-pub(crate) mod cpu_continuation_published_level {
+mod cpu_continuation_published_level {
     use std::collections::BTreeMap;
 
     use super::FinalEvaluationRepointError;

@@ -1,4 +1,5 @@
 use super::super::*;
+use crate::test_utils::{bitreverse_index, copy_back, copy_small_to_device};
 
 use std::alloc::Global;
 
@@ -15,9 +16,7 @@ use gpu_ntt::baby_bear::MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
 
 /// The smallest base trace the natural-to-bitreversed commit admits.
 const BASE_ROWS: usize = 1 << MIN_LOG_N_FOR_NATURAL_TO_BITREV_LDE;
-use crate::baby_bear::fold::debug::{
-    copy_back, copy_small_to_device, query_base_trace_holder_for_folded_index,
-};
+use crate::baby_bear::fold::debug::query_base_trace_holder_for_folded_index;
 use crate::upstream::{
     Blake2sU32MerkleTreeWithCap, ColumnMajorMerkleTreeConstructor, PathQueryable, PrimeField,
 };
@@ -132,7 +131,7 @@ fn base_query_leaf_and_path_helpers_match_combined_queries() {
         let value_coset_index = query_index & (lde_factor - 1);
         let value_internal_index = query_index / lde_factor;
         let stage1_coset_index = query_index / coset_tree_size;
-        let path_coset_index = super::bitreverse_index(stage1_coset_index, log_lde_factor);
+        let path_coset_index = bitreverse_index(stage1_coset_index, log_lde_factor);
         let path_internal_index = query_index % coset_tree_size;
 
         let mut value_index = context.alloc(1, AllocationPlacement::BestFit).unwrap();

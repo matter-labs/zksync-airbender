@@ -54,7 +54,7 @@ use crate::{
 };
 
 #[path = "dispatch.rs"]
-pub(crate) mod dispatch;
+mod dispatch;
 
 // Recomputed delegation inputs need up to 23 first-window slots. Reserve
 // headroom within the existing 64-slot descriptor; the wire ABI is unchanged.

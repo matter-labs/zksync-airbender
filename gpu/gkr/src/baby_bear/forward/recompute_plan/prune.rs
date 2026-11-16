@@ -86,4 +86,4 @@ pub(super) fn keep_instruction(
 }
 
 #[cfg(test)]
-pub(crate) mod cpu_tests;
+mod cpu_tests;

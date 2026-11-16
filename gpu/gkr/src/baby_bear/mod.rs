@@ -1,3 +1,5 @@
+pub(crate) mod upstream;
+
 pub mod backward;
 pub mod base_layer_claims;
 pub mod forward;
@@ -6,6 +8,8 @@ mod programs;
 pub mod proof_layout;
 pub mod setup;
 pub mod stage1;
+#[cfg(test)]
+mod storage;
 pub(crate) mod support;
 
 pub use programs::GkrPrograms;

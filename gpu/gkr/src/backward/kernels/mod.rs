@@ -11,6 +11,6 @@ pub use crate::backward::kernels::{
 
 pub(crate) mod dim_reducing;
 pub(crate) mod encoding;
-pub(crate) mod eq;
+mod eq;
 pub(crate) mod launchers;
 pub(crate) mod shared;

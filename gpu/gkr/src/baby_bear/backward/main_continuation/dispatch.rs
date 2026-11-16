@@ -17,7 +17,7 @@ use crate::baby_bear::backward::main_continuation::{
 };
 
 #[path = "partition.rs"]
-pub(crate) mod partition;
+mod partition;
 
 era_cudart::cuda_kernel_declaration!(ab_gkr_main_cont_operand_1f_b2(desc: MainContinuationWindowLaunchBinding));
 era_cudart::cuda_kernel_declaration!(ab_gkr_main_cont_publish(desc: MainContinuationWindowLaunchBinding));
@@ -54,7 +54,7 @@ fn main_continuation_use_paired(sm_count: usize, program_words: usize, row_tiles
 }
 
 #[cfg(test)]
-pub(crate) mod cpu_main_continuation_fusion_policy {
+mod cpu_main_continuation_fusion_policy {
     use super::main_continuation_use_paired;
 
     #[test]

@@ -22,8 +22,8 @@ pub(crate) struct LinearRelation {
     constant: u32,
 }
 
-impl From<&crate::upstream::LinearRelation> for LinearRelation {
-    fn from(value: &crate::upstream::LinearRelation) -> Self {
+impl From<&crate::baby_bear::upstream::LinearRelation> for LinearRelation {
+    fn from(value: &crate::baby_bear::upstream::LinearRelation) -> Self {
         let terms = &value.linear_terms;
         let len = terms.len();
         assert!(len <= MAX_LINEAR_TERMS_COUNT);

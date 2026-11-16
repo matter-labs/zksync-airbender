@@ -4,10 +4,10 @@ use crate::{
 };
 
 pub(crate) const DR_WINDOW_COORDINATES: usize = 3;
-pub(crate) const DR_WINDOW_ROWS_PER_TILE: usize = 32;
+const DR_WINDOW_ROWS_PER_TILE: usize = 32;
 pub(crate) const DR_WINDOW_TENSOR_CELLS: usize = 27;
-pub(crate) const DR_WINDOW_MIN_FOLDING_STEPS: usize = 4;
-pub(crate) const DR_WINDOW_MAX_FOLDING_STEPS: usize = GKR_BACKWARD_MAX_TRACE_LEN_LOG2;
+const DR_WINDOW_MIN_FOLDING_STEPS: usize = 4;
+const DR_WINDOW_MAX_FOLDING_STEPS: usize = GKR_BACKWARD_MAX_TRACE_LEN_LOG2;
 pub(crate) const DR_WINDOW_BLOCK_THREADS: u32 = 288;
 
 #[derive(Clone, Debug, PartialEq, Eq)]

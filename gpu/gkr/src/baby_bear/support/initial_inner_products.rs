@@ -48,7 +48,7 @@ pub fn initial_inner_product_e4(
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use era_cudart::{
         memory::{memory_copy_async, DeviceAllocation},
         stream::CudaStream,

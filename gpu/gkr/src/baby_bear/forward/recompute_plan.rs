@@ -1,13 +1,11 @@
+use crate::forward::recompute::GkrMemoryPolicy;
 use std::collections::{BTreeMap, BTreeSet};
 
 use gpu_gkr_compiler::{CompiledLayer, ForwardDstLine, ForwardInstr, ForwardOperandLine};
 
 use crate::{
     baby_bear::{
-        forward::{
-            recompute_plan::prune::{keep_instruction, visit_operands},
-            GkrMemoryPolicy,
-        },
+        forward::recompute_plan::prune::{keep_instruction, visit_operands},
         GkrPrograms,
     },
     forward::vm::lower_common::read_place_to_gkr_address,
@@ -16,7 +14,7 @@ use crate::{
     upstream::GKRAddress,
 };
 
-pub(crate) mod prune;
+mod prune;
 
 fn source_address(layer: &CompiledLayer, window: u8, column: u16) -> GKRAddress {
     read_place_to_gkr_address(

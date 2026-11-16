@@ -59,7 +59,7 @@ use crate::{
 };
 
 pub mod merged_commitment;
-pub(crate) mod multiplicities;
+mod multiplicities;
 
 #[doc(hidden)]
 #[derive(Default)]
@@ -238,7 +238,7 @@ impl GpuGKRStage1Output {
         base_geometry: BaseCommitmentGeometry,
         partial_trees: PartialTreePolicy,
     ) -> CudaResult<Self> {
-        gpu_trace::baby_bear::trace::memory::validate_stage1_commitment_geometry(
+        gpu_trace::trace::memory::validate_stage1_commitment_geometry(
             &base_geometry,
             compiled_circuit,
         );

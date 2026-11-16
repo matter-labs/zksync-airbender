@@ -54,7 +54,7 @@ pub(crate) fn select_capacity(request: DrTailCapacityRequest) -> DrTailCapacityD
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
 
     fn request(width: usize, sources: usize) -> DrTailCapacityRequest {

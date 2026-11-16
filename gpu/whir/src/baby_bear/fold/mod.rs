@@ -159,15 +159,6 @@ pub(super) fn schedule_reduce_outputs_readback(
     Ok(host)
 }
 
-#[cfg(test)]
-pub(super) fn bitreverse_index(index: usize, num_bits: u32) -> usize {
-    if num_bits == 0 {
-        debug_assert_eq!(index, 0);
-        return 0;
-    }
-    index.reverse_bits() >> (usize::BITS - num_bits)
-}
-
 pub(super) fn get_base_columns<'a>(
     trace_holder: &'a TraceHolder<BF>,
     rows: usize,

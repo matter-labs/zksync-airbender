@@ -428,7 +428,7 @@ pub(crate) fn launch_trace_holder_column_sums(
 }
 
 #[cfg(test)]
-pub(crate) mod cpu_tests {
+mod cpu_tests {
     use super::*;
 
     #[test]

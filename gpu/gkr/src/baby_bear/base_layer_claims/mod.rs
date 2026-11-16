@@ -13,6 +13,7 @@ use gpu_prover_context::{ProverContext, MAX_SM_COUNT};
 use gpu_trace::trace::holder::TraceHolder;
 
 use crate::{
+    baby_bear::upstream::GKRLayerDescription,
     baby_bear::{
         backward::{
             get_eq_high_constant_device_ptr, launch_build_eq_high_and_low_groups_from_point,
@@ -21,7 +22,7 @@ use crate::{
         proof_layout::{ProofLayout, WhirBaseLayerKind},
     },
     backward::{make_eq_sizes, GkrEqSizes, GKR_EQ_GROUP_TABLE_LEN},
-    upstream::{GKRAddress, GKRLayerDescription, VirtualSetupPoly},
+    upstream::{GKRAddress, VirtualSetupPoly},
 };
 
 /// Addresses for the four virtual setup polynomials that every layer adds to

@@ -15,12 +15,9 @@
 // -----------------------------------------------------------------------
 
 pub(crate) use cs::definitions::gkr::{GKRMachineState, GKRMemoryLayout};
-pub(crate) type LinearRelation = cs::definitions::gkr::LinearRelation<BabyBearField>;
-pub(crate) type SingleColumnLookupRelation =
-    cs::definitions::gkr::SingleColumnLookupRelation<BabyBearField>;
-pub(crate) type PRLinearRelation = cs::definitions::gkr::LinearRelation<Proth120>;
-pub(crate) type PRSingleColumnLookupRelation =
-    cs::definitions::gkr::SingleColumnLookupRelation<Proth120>;
+pub(crate) use cs::definitions::gkr::{
+    LinearRelation as CSLinearRelation, SingleColumnLookupRelation as CSSingleColumnLookupRelation,
+};
 // Aliased to avoid collision with crate-local types of the same name.
 pub(crate) use cs::definitions::gkr::DecoderPlacementDescription as CSDecoderPlacementDescription;
 pub(crate) use cs::definitions::gkr::IndirectRamAccessAddress as CSIndirectRamAccessAddress;

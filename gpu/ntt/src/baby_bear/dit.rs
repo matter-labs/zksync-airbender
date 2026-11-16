@@ -1,5 +1,5 @@
 //! Rust bindings for the DIT engine's on-device twiddle fill kernels
-//! (`gpu/ntt/native/dit_twiddle_fill.cu`), plus the Rust-side machinery that
+//! (`gpu/ntt/native/baby_bear/dit_twiddle_fill.cu`), plus the Rust-side machinery that
 //! drives and owns them: the `CLEAN_CONFIGS`/`COUPLED_CONFIGS` sets (the single
 //! source of truth shared with the production launcher), the geometry/count
 //! helpers (`log_n1_for`/`log_n2_for`, `clean_triangle_count`/
@@ -383,7 +383,7 @@ impl DitTriangles {
 // Production launcher `monomials_to_evals_dit`.
 //
 // Runs the vendored DIT engine hot kernels (`ntt_single` / `ntt_two_pass`,
-// see `gpu/ntt/native/dit_kernels.cuh`, launched via the `ab_dit_single_stream_*` /
+// see `gpu/ntt/native/baby_bear/dit_kernels.cuh`, launched via the `ab_dit_single_stream_*` /
 // `ab_dit_two_pass_*` wrappers in `dit_kernels_extern.cu`) for the streaming range
 // (log_n in [2, 13]). It uses the coset-major param model: column loop +
 // strided output, borrowing the precomputed
@@ -909,7 +909,7 @@ pub(crate) fn monomials_to_evals_dit(
     assert_eq!(inputs_matrix.rows(), n);
     assert_eq!(outputs_matrix.rows(), n);
     let num_ntts = inputs_matrix.cols();
-    shared::assert_multi_coset_output_cols(
+    crate::shared::assert_multi_coset_output_cols(
         outputs_matrix.cols(),
         num_cosets,
         num_cols_per_coset,

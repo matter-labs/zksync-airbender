@@ -361,7 +361,7 @@ fn forward_production_vm_binds_adjacent_pairs_vs_cpu() {
     }
 }
 
-pub(crate) mod helpers;
+mod helpers;
 
 use std::collections::BTreeMap;
 

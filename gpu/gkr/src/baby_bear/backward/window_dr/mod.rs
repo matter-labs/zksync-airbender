@@ -7,4 +7,4 @@ pub(crate) use crate::baby_bear::backward::window_dr::{
 };
 
 pub(crate) mod binding;
-pub(crate) mod composition;
+mod composition;

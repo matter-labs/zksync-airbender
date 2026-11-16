@@ -239,7 +239,7 @@ pub(crate) fn final_evaluation_repoint_probe(
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
 
     #[test]

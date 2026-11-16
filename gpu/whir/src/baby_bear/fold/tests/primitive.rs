@@ -1,5 +1,6 @@
 use super::*;
 use crate::primitive_tests::PrimitiveField;
+use crate::test_utils::copy_back;
 
 impl PrimitiveField for E4 {
     type State = GpuWhirState;

@@ -11,6 +11,8 @@
 // by construction. That mode only ever compiles, so this is not a real finding.
 #![cfg_attr(no_cuda, allow(dead_code, unused_imports))]
 
+mod shared;
+mod twiddles;
 mod upstream;
 
 pub mod baby_bear;

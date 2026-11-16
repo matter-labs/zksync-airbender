@@ -527,7 +527,7 @@ pub(crate) fn schedule_bwd_coeff_bank_fill(
 pub(crate) mod tests;
 
 #[cfg(test)]
-pub(crate) mod cpu_tests {
+mod cpu_tests {
     use gpu_gkr_compiler::CoeffChallenge;
 
     use super::*;
@@ -1027,7 +1027,7 @@ pub(crate) mod cpu_tests {
 }
 
 #[cfg(test)]
-pub(crate) mod corpus_capacity_tests {
+mod corpus_capacity_tests {
     use std::path::PathBuf;
 
     use gpu_gkr_compiler::compile_continuations;

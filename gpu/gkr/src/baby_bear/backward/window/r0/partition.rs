@@ -199,7 +199,7 @@ pub(super) fn launch(
 }
 
 #[cfg(test)]
-pub(crate) mod cpu_tests {
+mod cpu_tests {
     use super::*;
 
     #[test]

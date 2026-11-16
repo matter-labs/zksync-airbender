@@ -1,3 +1,5 @@
+pub mod recompute;
+
 use std::{collections::BTreeMap, sync::Arc};
 
 use era_cudart::{result::CudaResult, slice::DeviceSlice};

@@ -127,7 +127,7 @@ pub struct GkrPrograms {
     main_tail: Vec<MainTailProgram>,
     recompute: Mutex<
         BTreeMap<
-            crate::baby_bear::forward::GkrMemoryPolicy,
+            crate::forward::recompute::GkrMemoryPolicy,
             Arc<crate::baby_bear::forward::recompute_plan::RecomputePlan>,
         >,
     >,
@@ -137,7 +137,7 @@ impl GkrPrograms {
     pub(crate) fn recompute_plan(
         &self,
         layout: &GpuGKRStorageLayout,
-        policy: crate::baby_bear::forward::GkrMemoryPolicy,
+        policy: crate::forward::recompute::GkrMemoryPolicy,
     ) -> Arc<crate::baby_bear::forward::recompute_plan::RecomputePlan> {
         self.recompute
             .lock()
@@ -313,7 +313,7 @@ fn adapt_dr_window_rows(
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use std::path::Path;
 
     use super::*;

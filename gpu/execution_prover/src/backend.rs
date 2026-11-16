@@ -1,37 +1,20 @@
 use crate::config::GpuBackendConfiguration;
 use crate::host_storage::{LockedBoxedMemoryHolder, LockedBoxedTraceChunk};
 use crate::precomputations::CircuitPrecomputations;
-use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength};
 use crate::workers::gpu_manager::GpuManager;
 use crate::A;
 use era_cudart::device::get_device_count;
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
-use execution_prover::backend::{CircuitPrecomputation, ExecutionBackend};
+use execution_prover::backend::ExecutionBackend;
 use execution_prover::config::ExecutionProverConfiguration;
 use execution_prover::config::SoundnessMode;
 use execution_prover::messages::WorkBatch;
 use execution_prover::setup::CanonicalCircuitSetup;
 use execution_prover::ProofProfile;
 use execution_prover_model::circuit_type::CircuitType;
-use gpu_core::primitives::field::BF;
 use riscv_transpiler::jit::JitRunnerRam;
 use std::sync::Arc;
 use worker::Worker;
-
-impl CircuitPrecomputation for CircuitPrecomputations {
-    fn compiled_circuit(&self) -> &Arc<GKRCircuitArtifact<BF>> {
-        self.baby_bear().gkr_programs.compiled_circuit()
-    }
-
-    fn setup_cap(&self, profile: ProofProfile) -> Option<MerkleTreeCapVarLength> {
-        self.baby_bear()
-            .setup_host
-            .get_initialized(profile)
-            .map(|setup_host| MerkleTreeCapVarLength {
-                cap: setup_host.unified_tree_cap().to_vec(),
-            })
-    }
-}
 
 pub struct GpuBackend {
     manager: GpuManager,

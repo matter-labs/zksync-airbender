@@ -1,3 +1,4 @@
+use crate::forward::recompute::GkrMemoryPolicy;
 use std::sync::Arc;
 
 use era_cudart::result::CudaResult;
@@ -7,7 +8,6 @@ use gpu_core::primitives::{
 };
 use gpu_prover_context::ProverContext;
 
-pub use crate::baby_bear::forward::recompute::GkrMemoryPolicy;
 use crate::{
     baby_bear::{
         backward::GpuGKRDimensionReducingBackwardState,

@@ -268,8 +268,8 @@ pub struct ProofLayout {
     pub total_bytes: usize,
 }
 
-pub(crate) mod accessors;
-pub(crate) mod build_inputs;
+mod accessors;
+mod build_inputs;
 
 impl ProofLayout {
     pub fn new(inputs: &ProofLayoutInputs) -> Self {
