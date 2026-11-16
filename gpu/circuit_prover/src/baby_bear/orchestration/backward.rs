@@ -1,10 +1,11 @@
+use crate::baby_bear::BabyBearProof;
+use crate::proof::pipeline::ProofWork;
 use era_cudart::result::CudaResult;
 
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::callbacks::Callbacks;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::context::UnsafeMutAccessor;
-use gpu_core::primitives::device_tracing::Range;
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::baby_bear::backward::kernels::launch_build_eq_values_from_point;
 use gpu_gkr::baby_bear::backward::GpuGKRBackwardScheduledExecution;
@@ -21,7 +22,6 @@ use gpu_prover_context::ProverContext;
 use super::top_layer_claim_layout;
 
 pub(in crate::baby_bear) struct ForwardToBackwardHandoff {
-    pub(in crate::baby_bear) post_forward_handoff_range: Range,
     pub(in crate::baby_bear) transcript_handoff: GpuGKRTranscriptHandoff<E4>,
     pub(in crate::baby_bear) backward_state: GpuGKRDimensionReducingBackwardState,
     pub(in crate::baby_bear) forward_setup_keepalive: GpuGKRForwardSetupHostKeepalive,
@@ -41,11 +41,12 @@ pub(in crate::baby_bear) fn prepare_backward_handoff(
     forward_setup: GpuGKRForwardSetup,
     mut d_seed: DeviceAllocation<u32>,
     final_trace_size_log_2: u32,
+    work: &mut ProofWork<'_, BabyBearProof>,
     context: &ProverContext,
 ) -> CudaResult<ForwardToBackwardHandoff> {
     let stream = context.get_exec_stream();
-    let post_forward_handoff_range = Range::new("gkr.proof.post_forward_handoff")?;
-    post_forward_handoff_range.start(stream)?;
+    let post_forward_handoff_range =
+        ProofWork::<BabyBearProof>::phase("gkr.proof.post_forward_handoff", context)?;
 
     // The reduced-output polys at the initial sumcheck layer share a single
     // consolidated backing. In the proof path, the final forward dim-reduction
@@ -133,9 +134,8 @@ pub(in crate::baby_bear) fn prepare_backward_handoff(
         )?;
     }
 
-    post_forward_handoff_range.end(stream)?;
+    work.end_phase(post_forward_handoff_range, context)?;
     Ok(ForwardToBackwardHandoff {
-        post_forward_handoff_range,
         transcript_handoff,
         backward_state,
         forward_setup_keepalive,

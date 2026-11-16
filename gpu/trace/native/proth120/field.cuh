@@ -48,5 +48,15 @@ template <> struct witness_field<pr> {
   static DEVICE_FORCEINLINE bool to_mask(pr value) { return proth120::pr_to_mask(value); }
   static DEVICE_FORCEINLINE bool equal(pr lhs, pr rhs) { return pr::eq(lhs, rhs); }
   static DEVICE_FORCEINLINE void print(pr value) { printf("[%u, %u, %u, %u]", value.limbs[0], value.limbs[1], value.limbs[2], value.limbs[3]); }
+  static DEVICE_FORCEINLINE pr linear_relation_constant(pr value, u32 terms_count) {
+    if (terms_count > MAX_LINEAR_TERMS_COUNT)
+      __trap();
+    return value;
+  }
+  static DEVICE_FORCEINLINE pr add_linear_term(pr coefficient, pr value, pr result) {
+    if (pr::is_zero(coefficient))
+      __trap();
+    return pr::fma(coefficient, value, result);
+  }
 };
 } // namespace airbender::trace::witness

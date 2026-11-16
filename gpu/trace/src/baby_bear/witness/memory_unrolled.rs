@@ -1,18 +1,15 @@
 use crate::witness::circuit_type::{
     UnrolledCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
 };
-use crate::witness::memory_unrolled::{
-    AuxLayoutData, InitsAndTeardownsLayouts, UnrolledMemoryLayout,
-};
+use crate::witness::memory_unrolled::{AuxLayoutData, UnrolledMemoryLayout};
 use crate::witness::trace_unrolled::{
-    ExecutorFamilyDecoderData, InitsAndTeardownsTraceDevice, InitsAndTeardownsTraceRaw,
-    UnrolledMemoryOracle, UnrolledMemoryTraceDevice, UnrolledNonMemoryOracle,
-    UnrolledNonMemoryTraceDevice, UnrolledUnifiedOracle, UnrolledUnifiedTraceDevice,
+    ExecutorFamilyDecoderData, UnrolledMemoryOracle, UnrolledMemoryTraceDevice,
+    UnrolledNonMemoryOracle, UnrolledNonMemoryTraceDevice, UnrolledUnifiedOracle,
+    UnrolledUnifiedTraceDevice,
 };
 use gpu_core::primitives::device_structures::{DeviceMatrixMutImpl, MutPtrAndStride};
 use gpu_core::primitives::field::BF;
 use gpu_core::primitives::utils::{get_grid_block_dims_for_threads_count, WARP_SIZE};
-use gpu_ops::simple::set_to_zero;
 
 use crate::upstream::{GKRAuxLayoutData, GKRMemoryLayout};
 use era_cudart::cuda_kernel;
@@ -72,14 +69,10 @@ cuda_kernel!(GenerateMemoryAndWitnessValuesUnrolledNonMemory,
     )
 );
 
-cuda_kernel!(GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardowns,
-    ab_generate_memory_and_witness_values_unrolled_inits_and_teardowns_kernel(
-        init_and_teardown_layouts: InitsAndTeardownsLayouts,
-        trace: InitsAndTeardownsTraceRaw,
-        memory: MutPtrAndStride<BF>,
-        page_size_log2: u32,
-        pages_per_set_log2: u32,
-    )
+crate::witness::memory_unrolled::define_inits_and_teardowns!(
+    BF,
+    generate_memory_and_witness_values_unrolled_inits_and_teardowns,
+    ab_generate_memory_and_witness_values_unrolled_inits_and_teardowns_kernel
 );
 
 cuda_kernel!(GenerateMemoryAndWitnessValuesUnrolledUnified,
@@ -260,44 +253,6 @@ pub fn generate_memory_and_witness_values_unrolled_non_memory(
         count,
     );
     GenerateMemoryAndWitnessValuesUnrolledNonMemoryFunction::default().launch(&config, &args)
-}
-
-pub fn generate_memory_and_witness_values_unrolled_inits_and_teardowns(
-    layout: &GKRMemoryLayout,
-    trace_len_log2: u32,
-    page_size_log2: u32,
-    trace_device: &InitsAndTeardownsTraceDevice,
-    memory: &mut impl DeviceMatrixMutImpl<BF>,
-    stream: &CudaStream,
-) -> CudaResult<()> {
-    assert_eq!(memory.cols(), layout.total_width);
-    assert_eq!(memory.stride(), 1usize << trace_len_log2);
-    assert!(page_size_log2 < trace_len_log2);
-    set_to_zero(memory.slice_mut(), stream)?;
-    let num_pages = trace_device.page_indices.len();
-    if num_pages == 0 {
-        return Ok(());
-    }
-    let total_words = num_pages
-        .checked_shl(page_size_log2)
-        .expect("inits-and-teardowns total word count overflows usize");
-    assert!(total_words <= u32::MAX as usize);
-    let pages_per_set_log2 = trace_len_log2 - page_size_log2;
-    let layouts = (&layout.teardown_sets).into();
-    let trace_raw: InitsAndTeardownsTraceRaw = trace_device.into();
-    let memory = memory.as_mut_ptr_and_stride();
-    let (grid_dim, block_dim) =
-        get_grid_block_dims_for_threads_count(WARP_SIZE * 8, total_words as u32);
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsArguments::new(
-        layouts,
-        trace_raw,
-        memory,
-        page_size_log2,
-        pages_per_set_log2,
-    );
-    GenerateMemoryAndWitnessValuesUnrolledInitsAndTeardownsFunction::default()
-        .launch(&config, &args)
 }
 
 /// NOTE (unified two-launch composition): this launcher writes only the per-row

@@ -1,4 +1,5 @@
 use era_cudart::result::CudaResult;
+use gpu_core::primitives::device_tracing::Range;
 use gpu_prover_context::ProverContext;
 
 pub(crate) trait ProofPipeline: super::sealed::Sealed + Sized {
@@ -29,8 +30,8 @@ pub(crate) fn prove<P: ProofPipeline>(request: P, context: &ProverContext) -> Cu
 pub(crate) struct ProofWork<'a, T: super::job::ProofResult> {
     pub callbacks: gpu_core::primitives::callbacks::Callbacks<'a>,
     pub result: Box<Option<T>>,
-    pub ranges: Vec<gpu_core::primitives::device_tracing::Range>,
-    pub proof_range: gpu_core::primitives::device_tracing::Range,
+    pub ranges: Vec<Range>,
+    pub proof_range: Range,
 }
 
 impl<T: super::job::ProofResult> ProofWork<'_, T> {
@@ -38,13 +39,24 @@ impl<T: super::job::ProofResult> ProofWork<'_, T> {
         let callbacks = gpu_core::primitives::callbacks::Callbacks::new();
         let result = Box::new(None);
         let ranges = Vec::new();
-        let proof_range = gpu_core::primitives::device_tracing::Range::new(name)?;
-        proof_range.start(context.get_exec_stream())?;
+        let proof_range = Self::phase(name, context)?;
         Ok(Self {
             callbacks,
             result,
             ranges,
             proof_range,
         })
+    }
+
+    pub(crate) fn phase(name: &str, context: &ProverContext) -> CudaResult<Range> {
+        let range = Range::new(name)?;
+        range.start(context.get_exec_stream())?;
+        Ok(range)
+    }
+
+    pub(crate) fn end_phase(&mut self, range: Range, context: &ProverContext) -> CudaResult<()> {
+        range.end(context.get_exec_stream())?;
+        self.ranges.push(range);
+        Ok(())
     }
 }

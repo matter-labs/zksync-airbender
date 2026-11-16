@@ -206,6 +206,7 @@ const _: () = DelegationAbi {
 
 pub(crate) mod layout;
 pub mod memory_unrolled;
+pub(crate) mod multiplicities;
 mod option;
 pub(crate) mod ram_access;
 pub use execution_prover_model::trace;

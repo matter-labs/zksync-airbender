@@ -41,9 +41,7 @@ template <typename F> struct LinearRelation {
 
 template <typename F, typename Memory, typename Witness, typename Scratch>
 DEVICE_FORCEINLINE F evaluate_linear_relation(const Memory &memory, const Witness &witness, const Scratch &scratch, const LinearRelation<F> relation) {
-  if (relation.linear_terms_count > MAX_LINEAR_TERMS_COUNT)
-    __trap();
-  F result = relation.constant;
+  F result = witness_field<F>::linear_relation_constant(relation.constant, relation.linear_terms_count);
 #pragma unroll
   for (int i = 0; i < MAX_LINEAR_TERMS_COUNT; ++i) {
     if (i == relation.linear_terms_count)
@@ -66,9 +64,7 @@ DEVICE_FORCEINLINE F evaluate_linear_relation(const Memory &memory, const Witnes
       __trap();
       break;
     }
-    if (F::is_zero(coefficient))
-      __trap();
-    result = F::fma(coefficient, value, result);
+    result = witness_field<F>::add_linear_term(coefficient, value, result);
   }
   return result;
 }

@@ -243,7 +243,6 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for BabyBearProofRequest<'r, '
             context,
         )?;
         let ForwardToBackwardHandoff {
-            post_forward_handoff_range,
             transcript_handoff,
             backward_state,
             forward_setup_keepalive,
@@ -257,13 +256,9 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for BabyBearProofRequest<'r, '
             forward_setup,
             d_seed,
             r.final_trace_log,
+            &mut committed.joined.work,
             context,
         )?;
-        committed
-            .joined
-            .work
-            .ranges
-            .push(post_forward_handoff_range);
         let BackwardPhaseResult { backward_scheduled } = schedule_backward_phase(
             backward_state,
             r.inputs.top_bits_host.clone(),

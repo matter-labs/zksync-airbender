@@ -54,18 +54,6 @@ pub struct GpuL1WrapProofJobKeepalive<'a> {
     _twiddle_tables: DeviceAllocation<PR>,
 }
 
-fn phase(name: &str, context: &ProverContext) -> CudaResult<Range> {
-    let range = Range::new(name)?;
-    range.start(context.get_exec_stream())?;
-    Ok(range)
-}
-
-fn end_phase(range: Range, phases: &mut Vec<Range>, context: &ProverContext) -> CudaResult<()> {
-    range.end(context.get_exec_stream())?;
-    phases.push(range);
-    Ok(())
-}
-
 pub type GpuL1WrapProofJob<'a> = ProofJob<'a, L1WrapResult, GpuL1WrapProofJobKeepalive<'a>>;
 
 struct Parameters<'r> {
@@ -229,7 +217,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
         } = inputs;
         let decoder = decoder.expect("L1Wrap requires a decoder table");
         let stream = context.get_exec_stream();
-        let p = phase("l1_wrap.witness", context)?;
+        let p = ProofWork::<L1WrapResult>::phase("l1_wrap.witness", context)?;
         let mut raw = TraceHolder::<PR>::new_without_cosets_padded(
             geometry.trace_log,
             cfg.log_lde_factor,
@@ -334,15 +322,15 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
                 )?;
             }
         }
-        end_phase(p, &mut work.ranges, context)?;
+        work.end_phase(p, context)?;
         drop(tracing_data);
         drop(inits_and_teardowns);
         drop(decoder);
-        let p = phase("l1_wrap.pack", context)?;
+        let p = ProofWork::<L1WrapResult>::phase("l1_wrap.pack", context)?;
         let mut base =
             PackedCosetRecomputeOracle::pack_from_columns(raw, geometry.pack_log2, context)?;
-        end_phase(p, &mut work.ranges, context)?;
-        let p = phase("l1_wrap.commit", context)?;
+        work.end_phase(p, context)?;
+        let p = ProofWork::<L1WrapResult>::phase("l1_wrap.commit", context)?;
         // Build one pair of forward tables for this proof's commitments and openings.
         let mut twiddle_tables =
             context.alloc::<PR>(gpu_ntt::proth120::TABLE_LEN, AllocationPlacement::Bottom)?;
@@ -355,7 +343,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
         )?;
         drop(twiddle_factors);
         base.commit(&cfg, twiddles, context)?;
-        end_phase(p, &mut work.ranges, context)?;
+        work.end_phase(p, context)?;
         Ok(Committed {
             state: State {
                 params,
@@ -396,7 +384,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
         let setup = &state.setup;
         let base = &witness.base;
         let stream = context.get_exec_stream();
-        let p = phase("l1_wrap.challenges", context)?;
+        let p = ProofWork::<L1WrapResult>::phase("l1_wrap.challenges", context)?;
         let mut seed = context.alloc::<u8>(32, AllocationPlacement::BestFit)?;
         memory_set_async(&mut seed, 0, stream)?;
         let challenge_config = PackedChallengeConfig::new(circuit, config, operation_mode, true);
@@ -409,7 +397,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
             context,
         )?;
         drop(transcript_prefix);
-        end_phase(p, &mut state.work.ranges, context)?;
+        state.work.end_phase(p, context)?;
         Ok(Challenged {
             state,
             witness,
@@ -451,7 +439,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
             .witness_layout
             .multiplicities_columns_for_generic_lookup
             .end;
-        let p = phase("l1_wrap.gkr", context)?;
+        let p = ProofWork::<L1WrapResult>::phase("l1_wrap.gkr", context)?;
         let layout = Arc::new(ProofLayoutPr::new(programs, config));
         let mut slab = ProofSlabPr::new(Arc::clone(&layout), context)?;
         #[allow(clippy::arc_with_non_send_sync)]
@@ -495,7 +483,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
         drop(generic);
         drop(range16);
         drop(timestamp);
-        end_phase(p, &mut state.work.ranges, context)?;
+        state.work.end_phase(p, context)?;
         Ok(Gkr {
             state,
             base,
@@ -508,7 +496,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
 
     fn whir(mut gkr: Self::Gkr, context: &ProverContext) -> CudaResult<Self::Whir> {
         let config = gkr.state.params.config;
-        let p = phase("l1_wrap.whir", context)?;
+        let p = ProofWork::<L1WrapResult>::phase("l1_wrap.whir", context)?;
         let handoff = gkr.gkr.whir_handoff();
         let whir = schedule_l1_whir_fold(
             &mut gkr.base,
@@ -524,7 +512,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
             gkr.slab.whir_target(),
             context,
         )?;
-        end_phase(p, &mut gkr.state.work.ranges, context)?;
+        gkr.state.work.end_phase(p, context)?;
         Ok(Whir { gkr, output: whir })
     }
 
@@ -556,7 +544,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
         } = state;
         let operation_mode = params.operation_mode;
         let stream = context.get_exec_stream();
-        let p = phase("l1_wrap.readback", context)?;
+        let p = ProofWork::<L1WrapResult>::phase("l1_wrap.readback", context)?;
         let mut mirror = unsafe { context.alloc_host_uninit_slice::<u8>(layout.bytes_len()) };
         let slab_bytes = unsafe {
             DeviceSlice::from_raw_parts(slab.backing.as_ptr().cast::<u8>(), layout.bytes_len())
@@ -583,9 +571,9 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
             stream,
         )?;
         drop(slab);
-        end_phase(p, &mut work.ranges, context)?;
+        work.end_phase(p, context)?;
         if let Some(request_range) = request_range {
-            end_phase(request_range, &mut work.ranges, context)?;
+            work.end_phase(request_range, context)?;
         }
         let h2d_join = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;
         h2d_join.record(stream)?;

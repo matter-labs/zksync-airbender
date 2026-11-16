@@ -16,92 +16,28 @@ use gpu_prover_context::ProverContext;
 
 pub const RANGE_CHECK_16_DOMAIN_SIZE: usize = 1 << 16;
 pub const TIMESTAMP_RANGE_CHECK_DOMAIN_SIZE: usize = 1 << TIMESTAMP_COLUMNS_NUM_BITS;
-const COUNTER_REPLICAS: usize = 8;
 
-cuda_kernel!(CountMultiplicities,
-    ab_count_multiplicities_kernel(
-        lookup_mapping: *mut u32,
-        lookup_mapping_size: u32,
-        counter_shards: *mut BF,
-        active_counts_len: u32,
-        counter_replicas: u32,
-    )
+crate::witness::multiplicities::define_lookup_multiplicities!(
+    BF,
+    BF,
+    BF::CHARACTERISTICS_U32 as usize,
+    allocate_counter_storage,
+    ab_count_multiplicities_kernel,
+    ab_reduce_convert_multiplicities_kernel
 );
 
-cuda_kernel!(ReduceConvertMultiplicities,
-    ab_reduce_convert_multiplicities_kernel(
-        counter_shards: *const BF,
-        multiplicities: *mut BF,
-        active_counts_len: u32,
-        counter_replicas: u32,
-    )
-);
-
-pub fn generate_lookup_multiplicities(
-    lookup_mapping: &mut impl DeviceMatrixMutImpl<u32>,
-    multiplicities: &mut impl DeviceMatrixMutImpl<BF>,
-    active_counts_len: usize,
+fn allocate_counter_storage(
+    counter_storage_len: usize,
+    multiplicities_len: usize,
     context: &ProverContext,
-) -> CudaResult<()> {
-    let stride = lookup_mapping.stride();
-    assert!(stride.is_power_of_two());
-    assert_eq!(stride, multiplicities.stride());
-    let mapping_len = lookup_mapping.slice().len();
-    let multiplicities_len = multiplicities.slice().len();
-    let stream = context.get_exec_stream();
-    set_to_zero(multiplicities.slice_mut(), stream)?;
-    if mapping_len == 0 {
-        return Ok(());
-    }
-    assert!(mapping_len < BF::CHARACTERISTICS_U32 as usize);
-    assert!(active_counts_len > 0);
-    assert!(active_counts_len <= multiplicities_len);
-    let counter_storage_len = active_counts_len * COUNTER_REPLICAS;
-    assert!(counter_storage_len <= u32::MAX as usize);
-
-    let mapping_len = mapping_len as u32;
-    let active_counts_len = active_counts_len as u32;
-    let counter_replicas = COUNTER_REPLICAS as u32;
-    let multiplicities_ptr = multiplicities.as_mut_ptr();
-    let mut counter_storage = if counter_storage_len > multiplicities_len {
-        let mut storage: DeviceAllocation<BF> =
-            context.alloc(counter_storage_len, AllocationPlacement::BestFit)?;
-        set_to_zero(&mut storage, stream)?;
-        Some(storage)
+) -> CudaResult<Option<DeviceAllocation<BF>>> {
+    if counter_storage_len > multiplicities_len {
+        let mut storage = context.alloc(counter_storage_len, AllocationPlacement::BestFit)?;
+        set_to_zero(&mut storage, context.get_exec_stream())?;
+        Ok(Some(storage))
     } else {
-        None
-    };
-    let counter_shards = counter_storage
-        .as_mut()
-        .map_or(multiplicities_ptr, |storage| storage.as_mut_ptr());
-    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, mapping_len);
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = CountMultiplicitiesArguments::new(
-        lookup_mapping.as_mut_ptr(),
-        mapping_len,
-        counter_shards,
-        active_counts_len,
-        counter_replicas,
-    );
-    CountMultiplicitiesFunction::default().launch(&config, &args)?;
-
-    let (grid_dim, block_dim) =
-        get_grid_block_dims_for_threads_count(WARP_SIZE * 4, active_counts_len);
-    let config = CudaLaunchConfig::basic(grid_dim, block_dim, stream);
-    let args = ReduceConvertMultiplicitiesArguments::new(
-        counter_shards,
-        multiplicities_ptr,
-        active_counts_len,
-        counter_replicas,
-    );
-    ReduceConvertMultiplicitiesFunction::default().launch(&config, &args)?;
-    if counter_storage.is_none() {
-        set_to_zero(
-            &mut multiplicities.slice_mut()[active_counts_len as usize..counter_storage_len],
-            stream,
-        )?;
+        Ok(None)
     }
-    Ok(())
 }
 
 // Sized for delegation layouts that need many lookup expressions per circuit.

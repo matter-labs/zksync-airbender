@@ -17,45 +17,8 @@ template <> struct witness_field<bf> {
   static DEVICE_FORCEINLINE bool to_mask(bf value) { return static_cast<bool>(bf::into_canonical_u32(value)); }
   static DEVICE_FORCEINLINE bool equal(bf lhs, bf rhs) { return lhs.limb == rhs.limb; }
   static DEVICE_FORCEINLINE void print(bf value) { printf("%u", value.limb); }
-};
-
-template <> struct LinearTerm<bf> {
-  u32 coefficient;
-  Address address;
-};
-
-template <> struct LinearRelation<bf> {
-  u32 linear_terms_count;
-  LinearTerm<bf> linear_terms[MAX_LINEAR_TERMS_COUNT];
-  u32 constant;
-};
-
-template <typename Memory, typename Witness, typename Scratch>
-DEVICE_FORCEINLINE bf evaluate_linear_relation(const Memory &memory, const Witness &witness, const Scratch &scratch, const LinearRelation<bf> relation) {
-  bf result;
-  result = relation.constant == 0 ? bf::ZERO() : bf::from_u32_unchecked(relation.constant);
-#pragma unroll
-  for (int i = 0; i < MAX_LINEAR_TERMS_COUNT; ++i) {
-    if (i == relation.linear_terms_count)
-      break;
-    const auto &term = relation.linear_terms[i];
-    const auto coefficient = term.coefficient;
-    const auto address = term.address;
-    bf value;
-    switch (address.tag) {
-    case BaseLayerMemory:
-      value = memory.get_at_col(address.offset);
-      break;
-    case BaseLayerWitness:
-      value = witness.get_at_col(address.offset);
-      break;
-    case ScratchSpace:
-      value = scratch.get_at_col(address.offset);
-      break;
-    default:
-      __trap();
-      break;
-    }
+  static DEVICE_FORCEINLINE bf linear_relation_constant(u32 value, u32) { return value == 0 ? bf::ZERO() : bf::from_u32_unchecked(value); }
+  static DEVICE_FORCEINLINE bf add_linear_term(u32 coefficient, bf value, bf result) {
     switch (coefficient) {
     case 0:
       __trap();
@@ -69,10 +32,20 @@ DEVICE_FORCEINLINE bf evaluate_linear_relation(const Memory &memory, const Witne
       value = bf::mul(value, bf::from_u32_unchecked(coefficient));
       break;
     }
-    result = bf::add(result, value);
+    return bf::add(result, value);
   }
-  return result;
-}
+};
+
+template <> struct LinearTerm<bf> {
+  u32 coefficient;
+  Address address;
+};
+
+template <> struct LinearRelation<bf> {
+  u32 linear_terms_count;
+  LinearTerm<bf> linear_terms[MAX_LINEAR_TERMS_COUNT];
+  u32 constant;
+};
 
 } // namespace airbender::trace::witness
 
