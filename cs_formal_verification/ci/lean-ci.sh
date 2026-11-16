@@ -169,7 +169,8 @@ step_kernel_probe() {
 #     human/CleanCore/Equivalence.lean and test/Checks/Axioms.lean, which import Clean's native_decide prime
 #     instances, and which it would reject: it fails on any non-standard axiom in the exported environment). It
 #     builds and exports them in a bwrap sandbox (Linux, user namespaces), replays the export through Lean's kernel
-#     and checks the exported axioms. These are the required replay results. Then the two
+#     and checks the exported axioms. Lean's paranoid kernel checks the same complete export.
+#     These are the required replay results. Then the two
 #     Clean-importing modules, which it leaves out, are replayed by leanchecker (their own constants only).
 #   leanchecker (default when unset; the fallback where bwrap cannot sandbox, see kernel-probe): the toolchain's
 #     leanchecker over our module prefixes.
@@ -188,7 +189,13 @@ step_kernel_check() {
   local t=${KERNEL_CHECK_THREADS:-2}
   case "${KERNEL_CHECKER:-leanchecker}" in
     lake|paranoid)
-      COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check
+      local export=.lake/kernel-required.ndjson
+      mkdir -p .lake
+      rm -f -- "$export" "$export.part"
+      KERNEL_EXPORT_PATH="$PWD/$export" COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check
+      test -s "$export"
+      lake env leanchecker-paranoid --silent --from-export "$export"
+      echo "Lean paranoid kernel accepts the solution"
       LEAN_NUM_THREADS=$t lake env leanchecker CleanCore.Equivalence Checks.Axioms ;;
     leanchecker)
       if (( $# )); then LEAN_NUM_THREADS=$t lake env leanchecker "$@"
@@ -199,7 +206,11 @@ step_kernel_check() {
 
 step_kernel_external() {
   cd "$LEAN"
-  COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check --paranoid
+  if [[ -s .lake/kernel-required.ndjson ]]; then
+    COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check --paranoid --from-export .lake/kernel-required.ndjson
+  else
+    COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check --paranoid
+  fi
 }
 
 step_verify() {

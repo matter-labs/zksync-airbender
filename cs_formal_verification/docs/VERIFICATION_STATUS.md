@@ -10,8 +10,10 @@ witness statements and 37 fixed-data or import exceptions. Every statement has
 a final proof. [The coverage map](../lean/claim_coverage.json) and
 [its checker](../lean/scripts/check_claim_coverage.py) reject missing proofs, missing
 witness statements, joined soundness/witness claims and unsupported exceptions.
-The [axiom audit](../lean/test/Checks/Axioms.lean) and nightly paranoid replay check
-the proof dependencies. The [trust guide](TRUST_AND_REVIEW.md) states the external interfaces.
+The [axiom audit](../lean/test/Checks/Axioms.lean) checks proof dependencies.
+The replay schedule runs only from main. On this branch, ci.yml dispatches the replay.
+Lean kernel replay, its export axiom audit, the native paranoid kernel and the
+Clean-module leanchecker replay are required. The external checkers are advisory. The [trust guide](TRUST_AND_REVIEW.md) states the external interfaces.
 
 All 16 native setups have complete byte freshness checks. Trusted compiled comparisons
 bind their fixed regions and the ROM fixture. Arbitrary public ROM and decoder data use

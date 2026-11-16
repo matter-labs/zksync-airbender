@@ -72,7 +72,7 @@ jobs:
               files = comparison.data.files;
               if (files.length >= 300) files = undefined;
             }
-            const native = /^(cs\/src\/|circuit_defs\/|prover\/src\/gkr\/|execution_prover\/examples\/export_setup_json\.rs|riscv_transpiler\/|cs_formal_verification\/lean\/(scripts\/|human\/Human\/.*(?:Decoder|Program)|artifacts\/(?:setup|compiler)\/)|Cargo\.|rust-toolchain)/;
+            const native = /(?:\.rs$|(?:^|\/)Cargo\.[^/]+$|^rust-toolchain(?:\.toml)?$)|^(?:cs\/|cs_formal_verification\/lean\/|tools\/gkr_verifier\/|\.github\/workflows\/(?:ci|lean-formal-verification)\.yml$)/;
             const relevant = /^(cs_formal_verification\/|cs\/compiled_circuits\/|\.github\/(workflows\/(?:ci|lean-formal-verification)\.yml|actions\/lean-fv-setup\/))/;
             core.setOutput('relevant', !files || files.some(f => relevant.test(f.filename) || native.test(f.filename)));
             core.setOutput('native', !files || files.some(f => native.test(f.filename)));
@@ -333,3 +333,4 @@ jobs:
           python3 cs_formal_verification/lean/scripts/check_program_decoder_rows.py --exporter target/cli/examples/export_setup_json --oracle /tmp/fv-decoder-oracle/program_rows_oracle
           python3 cs_formal_verification/lean/scripts/check_program_decoder_rows.py --exporter target/cli/examples/export_setup_json --oracle /tmp/fv-decoder-oracle/program_rows_oracle --committed-verifiers
           python3 cs_formal_verification/lean/scripts/check_program_decoder_rows.py --exporter target/cli/examples/export_setup_json --oracle /tmp/fv-decoder-oracle/program_rows_oracle --program /tmp/fv-programs/multiblock_batch.text --configs full,unified
+          python3 cs_formal_verification/lean/scripts/check_program_decoder_rows.py --exporter target/cli/examples/export_setup_json --oracle /tmp/fv-decoder-oracle/program_rows_oracle --program riscv_transpiler/examples/zksync_os/app.text --configs full,unified

@@ -35,7 +35,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: /tmp/sail-drift-receipt
-        key: ${{ steps.sail.outputs.key }}-${{ hashFiles('cs_formal_verification/lean/sail-rv32/SailRV32.lean', 'cs_formal_verification/lean/sail-rv32/SailRV32/**/*.lean', 'cs_formal_verification/lean/sail-rv32/*LICENSE') }}
+        key: ${{ steps.sail.outputs.key }}-${{ hashFiles('cs_formal_verification/lean/sail-rv32/SailRV32.lean', 'cs_formal_verification/lean/sail-rv32/SailRV32/**/*.lean', 'cs_formal_verification/lean/sail-rv32/*') }}
     - name: Generate the Sail model (sail/regen.sh --bootstrap-sail)
       if: steps.sail-cache.outputs.cache-hit != 'true'
       shell: bash
@@ -48,7 +48,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: /tmp/sail-drift-receipt
-        key: ${{ steps.sail.outputs.key }}-${{ hashFiles('cs_formal_verification/lean/sail-rv32/SailRV32.lean', 'cs_formal_verification/lean/sail-rv32/SailRV32/**/*.lean', 'cs_formal_verification/lean/sail-rv32/*LICENSE') }}
+        key: ${{ steps.sail.outputs.key }}-${{ hashFiles('cs_formal_verification/lean/sail-rv32/SailRV32.lean', 'cs_formal_verification/lean/sail-rv32/SailRV32/**/*.lean', 'cs_formal_verification/lean/sail-rv32/*') }}
     - name: Fetch lean-sail (pinned; not cached, no upstream licence)
       shell: bash
       run: cs_formal_verification/ci/lean-ci.sh time lean-sail
