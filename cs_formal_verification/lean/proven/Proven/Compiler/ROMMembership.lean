@@ -67,11 +67,12 @@ theorem word_contains {initial : RV.State} {program : List RVMachineProgramEntry
     {actual : ProgramLookupRows} (bound : Bound initial program actual) (cells : List Cell)
     (covers : CoversROM cells) (value : Vector F 9)
     (member : Contains initial program (.pooled .wordMemory) 0 value.toList)
-    (unused : value[7] = 0) (provided : Array (Vector F 9)) :
+    (unused : value[7] = 0) (destination : value[4] = 0) (provided : Array (Vector F 9)) :
     (ROM.table (p := babyBearModulus) cells (romImageRV initial cells)).Contains provided value := by
   have zero : (value.toList[maskColumn (.pooled .wordMemory)]?).getD 0 = 0 := by
     simpa [maskColumn, hasFunct3] using unused
-  rcases fixed_or_padding bound (.pooled .wordMemory) rfl value.toList member zero with fixed | padding
+  rcases fixed_or_padding bound (.pooled .wordMemory) rfl value.toList member zero
+      (by intro _; simpa using destination) with fixed | padding
   · obtain ⟨index, _, same⟩ := fixed
     have equal : value = (NativeFixedRows.wordMemory (ROM.wordsRV initial) (Fin.ofNat 1048577 index)).map
         (fun (n : Nat) => (n : F)) := by

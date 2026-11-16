@@ -75,3 +75,28 @@ example (initial : RV.State) (family : RVMachineDecoderFamily)
         (index.val - Airbender.Compiler.NativePublicSetup.Metadata.offset family)).map
           (fun (value : Nat) => (value : Airbender.Compiler.NativeArithmetic.F)) :=
   Airbender.Compiler.NativePublicSetup.rows_decoder_binding initial family program index inside afterFixed
+
+private def zeroWordEntry : RVMachineProgramEntry :=
+  ⟨0, 0x00002083, ⟨.pooled .wordMemory, 0, 0, 1, ⟨0, 0⟩, 0, 0⟩⟩
+
+private def zeroHalfEntry : RVMachineProgramEntry :=
+  ⟨4, 0x00005083, ⟨.pooled .subwordMemory, 0, 0, 1, ⟨0, 0⟩, 0, 0⟩⟩
+
+private def zeroMaskProgram : List RVMachineProgramEntry := [zeroWordEntry, zeroHalfEntry]
+
+-- LW and LHU retain the native zero mask and satisfy the public setup properties.
+example : (RV.decode 0x00002083#32).bind (rvMachineDecoderFields .unrolledFullUnsigned) =
+    some zeroWordEntry.data := by kernel_rfl
+
+example : (RV.decode 0x00005083#32).bind (rvMachineDecoderFields .unrolledFullUnsigned) =
+    some zeroHalfEntry.data := by kernel_rfl
+
+example (initial : RV.State) : Airbender.Compiler.NativePublicSetup.Bound initial zeroMaskProgram
+    (Airbender.Compiler.NativePublicSetup.rows initial zeroMaskProgram) := by
+  refine ⟨rfl, by decide +kernel, ?_, ?_⟩
+  · intro entry present
+    simp [zeroMaskProgram] at present
+    rcases present with rfl | rfl <;> decide +kernel
+  · intro entry present
+    simp [zeroMaskProgram] at present
+    rcases present with rfl | rfl <;> decide +kernel

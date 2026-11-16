@@ -60,7 +60,7 @@ theorem generic_lookup0
   have same7 := (Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native.part0.generic_value0_7 physical data arithmetic)
   have same8 := (Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native.part0.generic_value0_8 physical data arithmetic)
   apply clean_vector_lookup
-  apply NativeFixedMembership.word_contains bound cells covers _ ?_ ?_ _
+  apply NativeFixedMembership.word_contains bound cells covers _ ?_ ?_ ?_ _
   · simp only [Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native.genericExpressions0, Vector.map_mk, List.map_toArray]
     change NativePublicSetup.Proofs.Contains initial program (.pooled .wordMemory) 0 [Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native.part0.genericExpression0_0.eval (Airbender.Compiler.CleanArithmeticNative.WordMemoryCached.native.environment physical data), Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native.part0.genericExpression0_1.eval (Airbender.Compiler.CleanArithmeticNative.WordMemoryCached.native.environment physical data), Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native.part0.genericExpression0_2.eval (Airbender.Compiler.CleanArithmeticNative.WordMemoryCached.native.environment physical data), Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native.part0.genericExpression0_3.eval (Airbender.Compiler.CleanArithmeticNative.WordMemoryCached.native.environment physical data), Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native.part0.genericExpression0_4.eval (Airbender.Compiler.CleanArithmeticNative.WordMemoryCached.native.environment physical data), Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native.part0.genericExpression0_5.eval (Airbender.Compiler.CleanArithmeticNative.WordMemoryCached.native.environment physical data), Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native.part0.genericExpression0_6.eval (Airbender.Compiler.CleanArithmeticNative.WordMemoryCached.native.environment physical data), Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native.part0.genericExpression0_7.eval (Airbender.Compiler.CleanArithmeticNative.WordMemoryCached.native.environment physical data), Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native.part0.genericExpression0_8.eval (Airbender.Compiler.CleanArithmeticNative.WordMemoryCached.native.environment physical data)]
     rw [same0, same1, same2, same3, same4, same5, same6, same7, same8]
@@ -68,6 +68,10 @@ theorem generic_lookup0
   · rw [Vector.getElem_map]
     change Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native.part0.genericExpression0_7.eval (Airbender.Compiler.CleanArithmeticNative.WordMemoryCached.native.environment physical data) = 0
     rw [same7]
+    rfl
+  · rw [Vector.getElem_map]
+    change Airbender.Compiler.CleanGenericArgumentsNative.WordMemoryCached.native.part0.genericExpression0_4.eval (Airbender.Compiler.CleanArithmeticNative.WordMemoryCached.native.environment physical data) = 0
+    rw [same4]
     rfl
 
 end Airbender.Compiler.NativeVectorLookups.WordMemory

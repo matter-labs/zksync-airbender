@@ -7,13 +7,15 @@ namespace Airbender.Compiler.NativePublicSetup.Proofs
 open Airbender Trace NativeArithmetic Metadata
 set_option warningAsError true
 
-/-- A zero unused payload coordinate excludes every public decoder row and sentinel.
-    The remaining native row is in the fixed prefix or is zero commitment padding. -/
+/-- Fixed queries have zero mask padding. Small load-family queries also have zero destination padding.
+    These coordinates exclude decoder rows, including zero-mask loads. -/
 theorem fixed_or_padding {initial : RV.State} {program : List RVMachineProgramEntry}
     {actual : ProgramLookupRows} (bound : Bound initial program actual)
     (family : RVMachineDecoderFamily) (isTagged : tagged family = true) (fields : List F)
     (member : Contains initial program family 0 fields)
-    (unused : (fields[maskColumn family]?).getD 0 = 0) :
+    (unused : (fields[maskColumn family]?).getD 0 = 0)
+    (destination : (family = .pooled .wordMemory ∨ family = .pooled .subwordMemory) →
+      (fields[4]?).getD 0 = 0) :
     (∃ index < offset family, fields = fixedRow family (ROM.wordsRV initial) index) ∨
       fields = List.replicate (width family) 0 := by
   obtain ⟨index, same⟩ := member
@@ -26,9 +28,11 @@ theorem fixed_or_padding {initial : RV.State} {program : List RVMachineProgramEn
   · rw [ite_eq_right isFixed] at same
     by_cases decoder : index.val - offset family < decoderCapacity
     · rw [ite_eq_left decoder] at same
-      have selected := congrArg (fun row : List F => (row[maskColumn family]?).getD 0) same
-      exact False.elim ((decoder_mask_nonzero bound family (index.val - offset family))
-        (selected.symm.trans unused))
+      rcases decoder_row_nonzero bound family (index.val - offset family) with mask | ⟨load, dest⟩
+      · have selected := congrArg (fun row : List F => (row[maskColumn family]?).getD 0) same
+        exact False.elim (mask (selected.symm.trans unused))
+      · have selected := congrArg (fun row : List F => (row[4]?).getD 0) same
+        exact False.elim (dest (selected.symm.trans (destination load)))
     · rw [ite_eq_right decoder] at same
       exact Or.inr (by simpa only [isTagged, ite_true] using same)
 
@@ -46,7 +50,7 @@ theorem shift_contains {initial : RV.State} {program : List RVMachineProgramEntr
     (Verification.shiftBinopTable (p := babyBearModulus)).Contains provided value := by
   have zero : (value.toList[maskColumn (.pooled .shiftBinop)]?).getD 0 = 0 := by
     simpa [maskColumn, hasFunct3] using unused
-  rcases fixed_or_padding bound (.pooled .shiftBinop) rfl value.toList member zero with fixed | padding
+  rcases fixed_or_padding bound (.pooled .shiftBinop) rfl value.toList member zero (by rintro (h | h) <;> cases h) with fixed | padding
   · obtain ⟨index, _, same⟩ := fixed
     change ∃ row : Fin 524545, value = (Verification.shiftBinopRow row).map (fun (n : Nat) => (n : F))
     refine ⟨Fin.ofNat 524545 index, ?_⟩
@@ -61,11 +65,11 @@ theorem shift_contains {initial : RV.State} {program : List RVMachineProgramEntr
 theorem subword_contains {initial : RV.State} {program : List RVMachineProgramEntry}
     {actual : ProgramLookupRows} (bound : Bound initial program actual) (value : Vector F 9)
     (member : Contains initial program (.pooled .subwordMemory) 0 value.toList)
-    (unused : value[7] = 0) (provided : Array (Vector F 9)) :
+    (unused : value[7] = 0) (destination : value[4] = 0) (provided : Array (Vector F 9)) :
     (Verification.subwordTable (p := babyBearModulus) (ROM.wordsRV initial)).Contains provided value := by
   have zero : (value.toList[maskColumn (.pooled .subwordMemory)]?).getD 0 = 0 := by
     simpa [maskColumn, hasFunct3] using unused
-  rcases fixed_or_padding bound (.pooled .subwordMemory) rfl value.toList member zero with fixed | padding
+  rcases fixed_or_padding bound (.pooled .subwordMemory) rfl value.toList member zero (by intro _; simpa using destination) with fixed | padding
   · obtain ⟨index, _, same⟩ := fixed
     change ∃ row : Fin 13238273, value = (Verification.subwordRow (ROM.wordsRV initial) row).map (fun (n : Nat) => (n : F))
     refine ⟨Fin.ofNat 13238273 index, ?_⟩
@@ -84,7 +88,7 @@ theorem unified_contains {initial : RV.State} {program : List RVMachineProgramEn
     (UnifiedReduced.Setup.tableRV (p := babyBearModulus) initial).Contains provided value := by
   have zero : (value.toList[maskColumn .unified]?).getD 0 = 0 := by
     simpa [maskColumn, hasFunct3] using unused
-  rcases fixed_or_padding bound .unified rfl value.toList member zero with fixed | padding
+  rcases fixed_or_padding bound .unified rfl value.toList member zero (by rintro (h | h) <;> cases h) with fixed | padding
   · obtain ⟨index, _, same⟩ := fixed
     change ∃ row : Fin 2097537, value = (UnifiedReduced.Setup.rowWith (ROM.wordsRV initial) row).map (fun (n : Nat) => (n : F))
     refine ⟨NativeFixedRows.unifiedIndex (Fin.ofNat 2097537 index), ?_⟩

@@ -78,8 +78,11 @@ structure Bound (initial : RV.State) (program : List RVMachineProgramEntry)
   binding : actual = rows initial program
   /-- All supplied public entries fit the native decoder capacity. -/
   fits : program.length ≤ decoderCapacity
-  /-- Each public native entry has a nonzero selector mask in the base field. -/
-  mask : ∀ entry ∈ program, 0 < entry.data.mask ∧ entry.data.mask < babyBearModulus
+  /-- A nonzero packed mask fits the field. Zero-mask LW and LHU entries have a canonical nonzero destination. -/
+  mask : ∀ entry ∈ program,
+    (0 < entry.data.mask ∧ entry.data.mask < babyBearModulus) ∨
+    ((entry.data.family = .pooled .wordMemory ∨ entry.data.family = .pooled .subwordMemory) ∧
+      entry.data.mask = 0 ∧ 0 < entry.data.rd ∧ entry.data.rd < babyBearModulus)
   /-- Every omitted decoder coordinate is zero in the public native projection. -/
   omitted : ∀ entry ∈ program, ∀ index : Fin 9,
     (NativeLookups.circuitFor entry.data.family).decode_table_columns_mask[index.val]?.getD false = false →
