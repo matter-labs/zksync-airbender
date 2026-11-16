@@ -68,6 +68,10 @@ because a dependency's `#[cfg(test)]` items are invisible to its consumers.
   include dirs propagate as `DEP_<X>_NATIVE_INCLUDE`. Shared CMake configuration is
   `native_build/cmake/ab_cuda_target.cmake`; change behavior for all kernel crates
   there.
+- **Field layout:** code shared by BabyBear and Proth120 lives at the crate root;
+  field-specific Rust and native code lives in parallel `baby_bear/` and `proth120/`
+  folders. Each native field folder has a CMakeLists that only adds its sources to
+  the crate's single archive.
 - **C++ namespace = owning crate** (`airbender::{hash, ntt, ops, primitives,
   trace::witness, gkr, whir}`). Launched kernels are `extern "C"`: the bare symbol
   name is the ABI.
