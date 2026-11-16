@@ -18,7 +18,7 @@ use cs::{
 use field::baby_bear::base::BabyBearField;
 use field::Proth120;
 
-/// Proth120 modulus P = 7*2^120 + 1 (same as gkr.sol / whir.sol once migrated).
+/// Proth120 modulus P = 7*2^120 + 1 (same as gkr.sol / whir.sol).
 const PROTH120_P: u128 = 0x7000000000000000000000000000001;
 
 /// Width of the generic lookup tables (each generic lookup is a tuple of this many columns, and
@@ -239,7 +239,7 @@ fn u128_to_neg(Dual(input, yul): &Dual) -> Dual {
 /// Field elements are < P < 2^123 (one uint128). Emit small positives as literals,
 /// small negatives (near P) as `sub(P, n)`, and anything else as a full 128-bit literal.
 /// The Yul consumer must funnel every product through `mulmod` before adding to a
-/// reduced value (non-canonical arithmetic, per HEURISTICS.md).
+/// reduced value to keep intermediate sums within the EVM word.
 #[allow(dead_code)]
 fn proth120_const_to_evm(c: &Proth120) -> Dual {
     let v = c.to_u128();
@@ -503,13 +503,8 @@ fn quad_run_loop(lo: u32, hi: u32) -> String {
     )
 }
 
-/// Fold 10 lookup columns into a β-Horner accumulator using 2-arg `gkr_lookrel_step`
-/// calls, so no call boundary materializes more than one column expression at a time.
-/// The prior 5-arg `gkr_lookrel_compress_half` forced solc to put all five column
-/// expressions on the stack at once, running the enclosing cache/gate function 1 slot
-/// too deep (neither legacy nor via_ir could place it). Order reproduces the old
-/// nesting exactly — inner(0,c5..c9) then outer(_,c0..c4) is Horner over
-/// c9,c8,c7,c6,c5,c4,c3,c2,c1,c0 with step(acc,c) = acc·β + c.
+/// Fold the generic-lookup tuple into a β-Horner accumulator with two-argument
+/// `gkr_lookrel_step` calls, so no call materializes multiple tuple columns at once.
 fn lookrel_horner(cols: &[Dual]) -> String {
     // Horner over cols[n-1], …, cols[0]: step(acc, c) = acc·β + c. Length comes from the caller
     // (= the artifact's generic-lookup-tuple width), so this works for any table width.
@@ -689,7 +684,6 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
 pub fn emit_circuit_yul_with_stats(
     circuit: &GKRCircuitArtifact<Proth120>,
 ) -> (String, CircuitYulStats) {
-    const DEBUG_ENABLE_DUMMY_CHECKS: bool = false;
     let mut stats = CircuitYulStats::default();
     // Harden against a layout with a different generic-lookup table width: the lookup-fold code
     // and the WHIR_NUM_SETUP constant both assume exactly LOOKUP_TABLES_WIDTH setup lookup columns.
@@ -950,7 +944,7 @@ pub fn emit_circuit_yul_with_stats(
                     lookup_set_index: _,
                 }) => {
                     // cached = Σ_col α^col · (col_constant + Σ coeff·read), α-compressed by
-                    // gkr_lookrel_compress_half (same nesting as VectorizedLookupSetup, but each
+                    // lookrel_horner (same order as VectorizedLookupSetup, but each
                     // slot is a compressed linear relation instead of a raw read). No γ here.
                     assert_eq!(columns.len(), LOOKUP_TABLES_WIDTH, "layout: generic lookup tuple has {} columns, expected {LOOKUP_TABLES_WIDTH}", columns.len());
                     let cols: Vec<Dual> = columns
@@ -1155,24 +1149,7 @@ pub fn emit_circuit_yul_with_stats(
         if has_caches {
             yul_println!("            scl{i}_caches()");
         }
-        const DEBUG_NATURAL_GATE_ORDER: bool = false;
-        trait EachRefMaybeRev<T, const N: usize> {
-            fn each_ref_mayberevmap<U>(&self, f: impl FnMut(&T) -> U) -> [U; N];
-        }
-        impl<T, const N: usize> EachRefMaybeRev<T, N> for [T; N] {
-            fn each_ref_mayberevmap<U>(&self, f: impl FnMut(&T) -> U) -> [U; N] {
-                if DEBUG_NATURAL_GATE_ORDER {
-                    self.each_ref().map(f)
-                } else {
-                    self.each_ref_revmap(f)
-                }
-            }
-        }
-        let mut running_output_counter = if DEBUG_NATURAL_GATE_ORDER {
-            0
-        } else {
-            previous_input_count
-        };
+        let mut running_output_counter = previous_input_count;
         // Split the gate accumulation into nested sub-functions (own stack frames, hoisted;
         // caches read from heap) so the layer function's stack stays under the EVM limit and
         // dodges the via_ir StackLayoutGenerator bug on the large layer-0 gate code.
@@ -1222,11 +1199,7 @@ pub fn emit_circuit_yul_with_stats(
                 chunk_calls.push(format!("acc := scl{i}_g{cidx}(alpha, acc)"));
             }
             let gate_idx_rev = gates.len() - 1 - gate_idx;
-            let gate = &gates[if DEBUG_NATURAL_GATE_ORDER {
-                gate_idx
-            } else {
-                gate_idx_rev
-            }];
+            let gate = &gates[gate_idx_rev];
             let GateArtifacts {
                 output_layer,
                 enforced_relation,
@@ -1411,11 +1384,7 @@ pub fn emit_circuit_yul_with_stats(
                 running_output_counter: &mut usize,
             ) -> usize {
                 match address {
-                    InnerLayer { layer, offset } if DEBUG_NATURAL_GATE_ORDER && *layer == expected_layer && *offset == *running_output_counter => {
-                        *running_output_counter += 1;
-                        *offset
-                    },
-                    InnerLayer { layer, offset } if !DEBUG_NATURAL_GATE_ORDER && *layer == expected_layer && *offset + 1 == *running_output_counter => {
+                    InnerLayer { layer, offset } if *layer == expected_layer && *offset + 1 == *running_output_counter => {
                         *running_output_counter -= 1;
                         *offset
                     },
@@ -1674,7 +1643,7 @@ pub fn emit_circuit_yul_with_stats(
                             )
                         })
                     });
-                    let [num_out, den_out] = output.each_ref_mayberevmap(|addr| {
+                    let [num_out, den_out] = output.each_ref_revmap(|addr| {
                         gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter)
                     });
                     claim_slots.push(Some(den_out));
@@ -1799,7 +1768,7 @@ pub fn emit_circuit_yul_with_stats(
                         layer0_group_widths,
                         &mut running_max_group_offsets,
                     );
-                    let [num_out, den_out] = output.each_ref_mayberevmap(|addr| {
+                    let [num_out, den_out] = output.each_ref_revmap(|addr| {
                         gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter)
                     });
                     claim_slots.push(Some(den_out));
@@ -1826,7 +1795,7 @@ pub fn emit_circuit_yul_with_stats(
                             &mut running_max_group_offsets,
                         )
                     });
-                    let [num_out, den_out] = output.each_ref_mayberevmap(|address| {
+                    let [num_out, den_out] = output.each_ref_revmap(|address| {
                         gkraddress_to_outputvar(address, i + 1, &mut running_output_counter)
                     });
                     claim_slots.push(Some(den_out));
@@ -1865,7 +1834,7 @@ pub fn emit_circuit_yul_with_stats(
                         layer0_group_widths,
                         &mut running_max_group_offsets,
                     );
-                    let [num_out, den_out] = output.each_ref_mayberevmap(|address| {
+                    let [num_out, den_out] = output.each_ref_revmap(|address| {
                         gkraddress_to_outputvar(address, i + 1, &mut running_output_counter)
                     });
                     claim_slots.push(Some(den_out));
@@ -1923,7 +1892,7 @@ pub fn emit_circuit_yul_with_stats(
                             &mut running_max_group_offsets,
                         )
                     });
-                    let [num_out, den_out] = output.each_ref_mayberevmap(|addr| {
+                    let [num_out, den_out] = output.each_ref_revmap(|addr| {
                         gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter)
                     });
                     claim_slots.push(Some(den_out));
@@ -1953,7 +1922,7 @@ pub fn emit_circuit_yul_with_stats(
                             &mut running_max_group_offsets,
                         )
                     });
-                    let [num_out, den_out] = output.each_ref_mayberevmap(|addr| {
+                    let [num_out, den_out] = output.each_ref_revmap(|addr| {
                         gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter)
                     });
                     claim_slots.push(Some(den_out));
@@ -2047,7 +2016,7 @@ pub fn emit_circuit_yul_with_stats(
                             yul_format!("{}", lookrel_horner(&sets)),
                         )
                     };
-                    let [num_out, den_out] = output.each_ref_mayberevmap(|addr| {
+                    let [num_out, den_out] = output.each_ref_revmap(|addr| {
                         gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter)
                     });
                     claim_slots.push(Some(den_out));
@@ -2087,7 +2056,7 @@ pub fn emit_circuit_yul_with_stats(
                         pending_run = Some(match pending_run {
                             None => (slot, slot + 1),
                             Some((lo, hi)) => {
-                                debug_assert_eq!(hi, slot, "quad run slots must be consecutive");
+                                assert_eq!(hi, slot, "quad run slots must be consecutive");
                                 (lo, slot + 1)
                             }
                         });
@@ -2192,7 +2161,7 @@ pub fn emit_circuit_yul_with_stats(
                         pending_run = Some(match pending_run {
                             None => (slot, slot + 1),
                             Some((lo, hi)) => {
-                                debug_assert_eq!(hi, slot, "quad run slots must be consecutive");
+                                assert_eq!(hi, slot, "quad run slots must be consecutive");
                                 (lo, slot + 1)
                             }
                         });
@@ -2225,7 +2194,7 @@ pub fn emit_circuit_yul_with_stats(
                             &mut running_max_group_offsets,
                         )
                     });
-                    let [num_out, den_out] = output.each_ref_mayberevmap(|address| {
+                    let [num_out, den_out] = output.each_ref_revmap(|address| {
                         gkraddress_to_outputvar(address, i + 1, &mut running_output_counter)
                     });
                     claim_slots.push(Some(den_out));
@@ -2273,7 +2242,7 @@ pub fn emit_circuit_yul_with_stats(
                         layer0_group_widths,
                         &mut running_max_group_offsets,
                     );
-                    let [num_out, den_out] = output.each_ref_mayberevmap(|addr| {
+                    let [num_out, den_out] = output.each_ref_revmap(|addr| {
                         gkraddress_to_outputvar(addr, i + 1, &mut running_output_counter)
                     });
                     claim_slots.push(Some(den_out));
@@ -2348,14 +2317,7 @@ pub fn emit_circuit_yul_with_stats(
             String::new()
         };
 
-        assert_eq!(
-            running_output_counter,
-            if DEBUG_NATURAL_GATE_ORDER {
-                previous_input_count
-            } else {
-                0
-            }
-        );
+        assert_eq!(running_output_counter, 0);
         if i > 0 {
             // (with-caches: inner layers CAN have cached relations now — handled above.)
             previous_input_count = intermediate_layer_width.unwrap();
@@ -2582,24 +2544,10 @@ pub fn emit_circuit_yul_with_stats(
             format!("next_ptr, next_alpha := sumcheck_claims_batch(ptr, {previous_input_count})")
         };
 
-        let check = if DEBUG_ENABLE_DUMMY_CHECKS {
-            yul_format!(
-                "
-            let dummy_check := mod(add(claim, sub(P, rhs)), P)
-            \tmstore(GKR_CIRCUIT_CACHE_PTR(), dummy_check)
-            "
-            )
-        } else {
-            yul_format!(
-                "
-            if iszero(eq(claim, rhs)) {{ revert(0, 0) }}
-            "
-            )
-        };
         yul_println!(
             "
             let rhs := mod(acc, P)
-            {check:x}
+            if iszero(eq(claim, rhs)) {{ revert(0, 0) }}
             {writeback}
             // POINT CLAIMS BATCH — absorb this layer's evals + draw the next batching (cache layers
             // absorb final_step ++ extras in one keccak, THEN draw).
@@ -2625,22 +2573,6 @@ pub fn emit_circuit_yul_with_stats(
         // }
     }
 
-    // INTRODUCE EXTERNAL HELPER FNS
-    // GREAT FOR BYTECODE REDUCTION!!
-    let _check = if DEBUG_ENABLE_DUMMY_CHECKS {
-        yul_format!(
-            "
-        let dummy_check := mod(add(claim, sub(P, g0g1_scaled)), P)
-        \t\tmstore(GKR_CIRCUIT_CACHE_PTR(), dummy_check)
-        "
-        )
-    } else {
-        yul_format!(
-            "
-        if mod(add(claim, sub(P, g0g1_scaled)), P) {{ revert(0, 0) }}
-        "
-        )
-    };
     let gate_image_load_inner = Yul::calldataload(&123).0.replace("123", "idx");
     yul_println!("
         function sumcheck_claims_batch(ptr, points) -> next_ptr, next_alpha {{
@@ -2730,7 +2662,6 @@ pub fn emit_circuit_yul_with_stats(
             next_acc := pointcheck_update(acc, alpha, gate)
         }}
     ");
-    let _ = DEBUG_ENABLE_DUMMY_CHECKS;
     let out = std::mem::take(&mut *yul_main_output().lock().unwrap());
     assert!(
         stats.gateval_slots > 0 && !stats.qtable.is_empty(),

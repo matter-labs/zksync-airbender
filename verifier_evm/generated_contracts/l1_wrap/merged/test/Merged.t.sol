@@ -2,7 +2,7 @@
 pragma solidity =0.8.38;
 
 /// The L1 wrap proof, statement and malformed-input controls.
-import {GkrWhirVerifier, GkrWhirVerifierCode} from "../src/GkrWhirVerifier.sol";
+import {GkrWhirVerifierCode} from "../src/GkrWhirVerifier.sol";
 import {TestRegistry} from "../src/TestRegistry.sol";
 import {MergedBase, RevertingRegistry, AlternateRegistry} from "./MergedBase.sol";
 
@@ -124,7 +124,6 @@ contract MergedTest is MergedBase {
         for (uint256 i; i < prefix.length; ++i) {
             require(code[i] == prefix[i], "runtime prefix differs");
         }
-        require(GkrWhirVerifier(wrapVerifier).registry() == address(registry), "registry getter differs");
     }
 
     function test_merged_single_tx() external {
@@ -167,6 +166,7 @@ contract MergedTest is MergedBase {
     }
 
     function test_rejects_mutated_sibling() external {
+        require(_rejects(wrapVerifier, _flipLastByte("whir_0_query_0_memory_path")), "memory+witness sibling");
         require(_rejects(wrapVerifier, _flipLastByte("whir_1_query_0_path")), "intermediate sibling");
         require(_rejects(wrapVerifier, _flipLastByte("whir_0_query_0_setup_path")), "setup sibling");
     }
@@ -187,7 +187,27 @@ contract MergedTest is MergedBase {
     function test_rejects_nonzero_pad_bit() external {
         require(_rejects(wrapVerifier, _flipLastByte("gkr_layer_0_evals")), "GKR run pad");
         require(_rejects(wrapVerifier, _flipLastByte("gkr_timestamps")), "timestamp run pad");
-        require(_rejects(wrapVerifier, _flipLastByte("whir_0_query_0_memory_leaf")), "WHIR run pad");
+    }
+
+    function _rejectsRunPad(string memory name) internal {
+        (, uint256 length) = _field(name);
+        uint256 elements = length * 8 / 123;
+        uint256 pad = length * 8 - elements * 123;
+        require(pad > 0 && pad < 8, "field map must describe a padded 123-bit run");
+        require((elements * 123 + 7) / 8 == length, "run geometry differs");
+        require(_rejects(wrapVerifier, _flipLastByte(name)), name);
+    }
+
+    function test_rejects_whir_sumcheck_pad() external {
+        _rejectsRunPad("whir_0_sumcheck");
+    }
+
+    function test_rejects_setup_leaf_pad() external {
+        _rejectsRunPad("whir_0_query_0_setup_leaf");
+    }
+
+    function test_rejects_gkr_round_pad() external {
+        _rejectsRunPad("gkr_layer_0_rounds");
     }
 
     function test_rejects_truncated_extended_or_shifted_streams() external {
@@ -259,6 +279,26 @@ contract MergedTest is MergedBase {
         require(_rejects(wrong, proof), "verifier with another final PC");
     }
 
+    function test_rejects_external_pow() external {
+        address control = _deploy("../negative/external_pow/out/GkrWhirVerifier.sol/GkrWhirVerifier.json");
+        require(_rejects(control, proof), "external PoW check missing");
+    }
+
+    function test_rejects_batching_pow() external {
+        address control = _deploy("../negative/batching_pow/out/GkrWhirVerifier.sol/GkrWhirVerifier.json");
+        require(_rejects(control, proof), "batching PoW check missing");
+    }
+
+    function test_rejects_query_pow() external {
+        uint256 rounds = vm.parseJsonUint(fields, ".whir_rounds");
+        for (uint256 r; r < rounds; ++r) {
+            address control = _deploy(string.concat(
+                "../negative/query_pow_", vm.toString(r), "/out/GkrWhirVerifier.sol/GkrWhirVerifier.json"
+            ));
+            require(_rejects(control, proof), string.concat("query PoW check missing at round ", vm.toString(r)));
+        }
+    }
+
     function test_refusing_registry_fails_verification() external {
         vm.etch(address(registry), type(RevertingRegistry).runtimeCode);
         require(_rejects(wrapVerifier, proof), "refused registry mark accepted");
@@ -275,18 +315,23 @@ contract MergedTest is MergedBase {
     }
 
     function test_rejects_selector_only_inputs() external {
-        bytes4[3] memory selectors = [bytes4(0xb969ce40), bytes4(0x08b39c85), bytes4(0)];
+        bytes4[4] memory selectors = [bytes4(0xb969ce40), bytes4(0x08b39c85), bytes4(0), bytes4(0x7b103999)];
         for (uint256 i; i < selectors.length; ++i) {
             require(_rejects(wrapVerifier, abi.encodePacked(selectors[i])), "selector-only input accepted");
         }
         require(_rejects(wrapVerifier, ""), "empty input accepted");
+        bytes memory m = _copy(proof);
+        m[0] = 0x7b;
+        m[1] = 0x10;
+        m[2] = 0x39;
+        m[3] = 0x99;
+        require(_rejects(wrapVerifier, m), "old registry selector followed by proof accepted");
     }
 
     function test_registry_implementation_can_be_replaced_at_generated_address() external {
         TestRegistry other = new TestRegistry();
         vm.etch(address(registry), type(AlternateRegistry).runtimeCode);
         AlternateRegistry replacement = AlternateRegistry(address(registry));
-        require(GkrWhirVerifier(wrapVerifier).registry() == address(replacement), "generated registry differs");
         bytes memory result = _accepts(wrapVerifier, proof);
         require(
             keccak256(result) == keccak256(_hex(string.concat(DATA, "verified_mark.hex"))),

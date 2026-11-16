@@ -1,5 +1,6 @@
 //! The canonical L1 wrap inputs shared by contract and calldata generation.
 #![allow(dead_code)] // Each integration-test binary uses a different subset.
+pub mod pow;
 
 use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
@@ -15,20 +16,6 @@ pub type Proof = GKRProof<Proth120, Proth120, Keccak256MerkleTreeWithCap>;
 
 pub const INITS_TEARDOWNS_TOP_BITS: &[u32] = &[0, 1];
 pub use prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTES as DIGEST_BYTES;
-
-/// The production packed config, straight from the prover crate (single
-/// source of truth — no schedule mirror to drift), with one difference:
-/// gkr.sol consumes monomial [c0..c3] rounds, so the sumcheck schedule here
-/// is plain naive for every round (transcript-identical to the prover's
-/// windowed schedule).
-pub fn production_prover_config() -> ProverConfig {
-    let mut config =
-        prover::gkr::prover_config::example_configs::evm_production_packed_prover_config(
-            prover::definitions::SecurityLevel::Sec100,
-        );
-    config.same_size_sumcheck_schedule = prover::gkr::prover_config::naive_same_size_schedule();
-    config
-}
 
 /// gkr.sol consumes monomial rounds, transcript-identical to the windowed prover schedule.
 pub fn prover_config() -> ProverConfig {
@@ -67,17 +54,14 @@ pub fn data_path(name: &str) -> PathBuf {
     Path::new("debug_data/l1_wrap").join(name)
 }
 
-/// Require a named rejection from a public encoder boundary.
-
 pub const CALLDATA: &str = "single_tx_calldata.hex";
 pub const CALLDATA_FIELDS: &str = "single_tx_calldata_fields.json";
 /// The verified statement reported to the registry.
 pub const VERIFIED_MARK: &str = "verified_mark.hex";
 
 /// Generated sources relative to the L1 contract root. The merged project carries the
-/// registry and Foundry tests; the negative project builds its verifier for those tests.
+/// registry and Foundry tests; ignored negative projects build their verifiers for those tests.
 pub const MERGED_VERIFIER: &str = "merged/src/GkrWhirVerifier.sol";
-pub const WRONG_FINAL_PC_VERIFIER: &str = "negative/wrong_final_pc/src/GkrWhirVerifier.sol";
 
 pub fn format_params() -> verifier_evm::encoding::FormatParams {
     verifier_evm::encoding::FormatParams {
@@ -143,6 +127,5 @@ pub fn load_bundle(path: impl AsRef<Path>) -> Bundle {
         l1: Bundle,
     }
     let artifact: Artifact = proof_fixtures::read_file(path);
-    let bundle = artifact.l1;
-    bundle
+    artifact.l1
 }

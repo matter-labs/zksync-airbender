@@ -7,9 +7,9 @@
 //! for — widths, output counts, cap size, preimage offsets, the whole heap map — is referenced
 //! by its `__TEMPLATE_*` NAME in the Solidity/Yul and gets its literal value from this file
 //! (inline assembly can only consume literal constants, so the literal lives in the
-//! declaration alone). The few genuinely non-circuit deployment values (PoW difficulties, the
-//! program's terminal PC, the inits/teardowns top bits) are parameters of
-//! [`generate_wrap_verifier`].
+//! declaration alone). The program's terminal PC and inits/teardowns top bits are
+//! deployment parameters. PoW difficulties are derived from the circuit and prover config,
+//! with the L1 wrap's external-challenge floor.
 //!
 //! The WHIR *proving-config* (fold/query/PoW schedule, base rate, merkle cap) is not encoded in
 //! the circuit artifact; it is supplied by the caller as the same `ProverConfig` the prover used,
@@ -17,7 +17,10 @@
 //! [`WhirGenConfig`].
 
 use super::whir::WhirGenConfig;
-use super::{calldata_decoder, emit_circuit_yul_with_stats, CircuitYulStats, Lit, WrapContracts};
+use super::{
+    calldata_decoder, emit_circuit_yul_with_stats, CircuitYulStats, Lit, WrapContracts,
+    MAX_GKR_POW_BITS,
+};
 use crate::encoding::{FormatParams, Geometry};
 use cs::definitions::{GKRAddress, OutputType};
 use cs::gkr_compiler::GKRCircuitArtifact;
@@ -169,30 +172,6 @@ fn read_const(src: &str, name: &str) -> u128 {
     found.unwrap_or_else(|| panic!("template does not declare constant {name}"))
 }
 
-/// Keep everything up to (not including) the first line that starts a contract named `marker`,
-/// dropping the trailing test/bench harness contracts so the generated source is just the
-/// production verifier. Also trims a trailing block-comment that introduces the removed section.
-fn strip_from_contract(src: &str, marker: &str) -> String {
-    let needle = format!("contract {marker}");
-    let cut = src
-        .find(&needle)
-        .unwrap_or_else(|| panic!("template missing `{needle}`"));
-    // back up over any immediately-preceding `//`-comment lines that document the removed section
-    let mut end = src[..cut].trim_end_matches([' ', '\t']).len();
-    end = src[..end].trim_end_matches('\n').len();
-    loop {
-        let line_start = src[..end].rfind('\n').map(|i| i + 1).unwrap_or(0);
-        if src[line_start..end].trim_start().starts_with("//") {
-            end = src[..line_start].trim_end_matches('\n').len();
-        } else {
-            break;
-        }
-    }
-    let mut out = src[..end].to_string();
-    out.push('\n');
-    out
-}
-
 /// Circuit-derived layout values used to substitute the gkr.sol constants.
 struct Derived {
     rounds: usize,
@@ -329,7 +308,6 @@ pub fn generate_wrap_verifier(
     circuit: &GKRCircuitArtifact<Proth120>,
     prover_config: &ProverConfig,
     params: &FormatParams,
-    external_pow_bits: u32,
     final_pc: u32,
     inits_teardowns_top_bits: &[u32],
     setup_cap: &[[u32; 8]],
@@ -374,7 +352,6 @@ pub fn generate_wrap_verifier(
     let (verifier_sol, data, memory_layout) = render(
         circuit,
         prover_config,
-        external_pow_bits,
         inits_teardowns_top_bits,
         &wrap_render,
         registry_address,
@@ -388,7 +365,6 @@ pub fn generate_wrap_verifier(
 fn render(
     circuit: &GKRCircuitArtifact<Proth120>,
     prover_config: &ProverConfig,
-    external_pow_bits: u32,
     inits_teardowns_top_bits: &[u32],
     wrap: &WrapRender,
     registry_address: [u8; 20],
@@ -417,6 +393,22 @@ fn render(
             prover_config.whir_message_size_log2(),
             pow_bits::committed_base_oracle_columns(circuit, pack_log2, true),
         );
+    let lookup_pow_bits = pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
+        prover_config.security_level.security_bits(),
+        pow_bits::lookup_identity_degree(circuit),
+    );
+    let external_pow_bits = lookup_pow_bits
+        .max(prover::gkr::prover_config::example_configs::l1_wrap::EXTERNAL_CHALLENGES_POW_BITS);
+    for (gate, bits) in [
+        ("external challenges", external_pow_bits),
+        ("WHIR batching", whir_batch_pow_bits),
+    ] {
+        // The cap also keeps shr(sub(256, bits), digest) within its 0..=256 range.
+        assert!(
+            bits <= MAX_GKR_POW_BITS,
+            "{gate} PoW {bits} exceeds GKR cap {MAX_GKR_POW_BITS}"
+        );
+    }
     // WHIR config derived from the same source the prover used, plus the artifact's widths.
     let wc = WhirGenConfig::derive(prover_config, d.num_memwit, d.num_setup);
     // GKR↔WHIR consistency: the shared parameters must agree between the two halves.
@@ -456,6 +448,12 @@ fn render(
             "inits/teardowns top bits [{i}] = {tb} does not fit a byte"
         );
     }
+    assert!(
+        inits_teardowns_top_bits
+            .windows(2)
+            .all(|pair| pair[0] < pair[1]),
+        "inits/teardowns top bits must be strictly increasing"
+    );
 
     // GKR entry geometry: the dimension reduction stops at the explicit output layer.
     let output_log2 = prover_config.sumcheck_explicit_output_size_log_2;
@@ -730,10 +728,6 @@ fn render(
         !gkr.contains("__GKR_CIRCUIT_LAYER_CALLS__"),
         "gkr.sol template missing the circuit-layer-calls marker"
     );
-
-    // Drop the trailing test/bench harness (GKRVerifierTest + the via_ir-only GKRStreamGen) so
-    // the production source is just the verifier.
-    let gkr = strip_from_contract(&gkr, "GKRVerifierTest");
 
     // The GKR half reads the decoded GKR image (every calldata access rewritten; the absolute
     // preimage readers add IMAGE_PTR() in the template), the decoder is the only GKR calldata

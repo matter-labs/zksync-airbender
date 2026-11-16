@@ -16,10 +16,6 @@ interface IVerificationRegistry {
 contract GkrWhirVerifierCode {
     address constant __TEMPLATE_REGISTRY = address(0x0078d549f2a140923c517c23b008dffe979b3c4e91);
 
-    /// Generated for this registry; regenerate the verifier if the registry address changes.
-    function registry() public pure returns (address) {
-        return __TEMPLATE_REGISTRY;
-    }
     // Every `__TEMPLATE_*` constant below is assigned by the generator (assemble.rs); in the
     // template they hold the string literal "{unassigned}", which does not compile as a number —
     // a generator that forgets one cannot produce a buildable verifier. Inline assembly can only
@@ -762,7 +758,6 @@ function sumcheck_circuit_layer4(ptr, alpha) -> next_ptr, next_alpha {
             acc := scl4_g0(alpha, acc)
     let rhs := mod(acc, mload(P_PTR))
     if iszero(eq(claim, rhs)) { revert(0, 0) }
-
     
             // WRITEBACK claims for next layer (12 evals) + canonicity guard
                 for { let wk := 0 } lt(wk, 12) { wk := add(wk, 1) } {
@@ -830,7 +825,6 @@ function sumcheck_circuit_layer3(ptr, alpha) -> next_ptr, next_alpha {
             acc := scl3_g0(alpha, acc)
     let rhs := mod(acc, mload(P_PTR))
     if iszero(eq(claim, rhs)) { revert(0, 0) }
-
     
             // WRITEBACK claims for next layer (18 evals) + canonicity guard
                 for { let wk := 0 } lt(wk, 18) { wk := add(wk, 1) } {
@@ -901,7 +895,6 @@ function sumcheck_circuit_layer2(ptr, alpha) -> next_ptr, next_alpha {
             acc := scl2_g1(alpha, acc)
     let rhs := mod(acc, mload(P_PTR))
     if iszero(eq(claim, rhs)) { revert(0, 0) }
-
     
             // WRITEBACK claims for next layer (26 evals) + canonicity guard
                 for { let wk := 0 } lt(wk, 26) { wk := add(wk, 1) } {
@@ -1001,7 +994,6 @@ function sumcheck_circuit_layer1(ptr, alpha) -> next_ptr, next_alpha {
             acc := scl1_g1(alpha, acc)
     let rhs := mod(acc, mload(P_PTR))
     if iszero(eq(claim, rhs)) { revert(0, 0) }
-
     
             // WRITEBACK claims for next layer (74 evals) + canonicity guard
                 for { let wk := 0 } lt(wk, 74) { wk := add(wk, 1) } {
@@ -1296,7 +1288,6 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
             acc := scl0_g11(alpha, acc)
     let rhs := mod(acc, mload(P_PTR))
     if iszero(eq(claim, rhs)) { revert(0, 0) }
-
     
             // canonicity guard for the base-layer claims_batch absorb: 106 at-point evals from
             // the image; require each < P so the absorbed transcript bytes are canonical
@@ -2528,9 +2519,9 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         publicInput := mark_word(PUBLIC_INPUT_FIRST_REGISTER)
         auxInput := mark_word(AUX_INPUT_FIRST_REGISTER)
         }
-        // Report the verified statement; the registry (constructor-pinned, non-zero, has code)
-        // must accept — its revert aborts the verification transaction.
-        IVerificationRegistry(registry()).markVerified(publicInput, auxInput);
+        // Report to the generated registry address. The deployer checks its code before
+        // deployment; a refused mark aborts the verification transaction.
+        IVerificationRegistry(__TEMPLATE_REGISTRY).markVerified(publicInput, auxInput);
         return abi.encode(publicInput, auxInput);
     }
 }

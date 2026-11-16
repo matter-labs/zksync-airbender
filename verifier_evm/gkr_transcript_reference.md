@@ -2,8 +2,11 @@
 
 The bundle paths and resolved `ProverConfig` are pinned in
 [tests/common/mod.rs](tests/common/mod.rs). Auxiliary data supplies the
-`OperationMode::SingleChunk` boundary state and external-challenge PoW; packing
-comes from the configuration.
+`OperationMode::SingleChunk` boundary state and external-challenge floor; packing
+comes from the configuration. The generator derives the effective external difficulty
+as the maximum of the lookup requirement and the wrap's external floor, using the
+same circuit, security level and functions as the prover. Difficulties are bounded by
+the existing GKR/query caps, and inits/teardowns top bits must be strictly increasing.
 
 [seed.rs](src/seed.rs) owns transcript initialization and the verified statement.
 Initial-preimage words are little-endian u32s; WHIR digest words are big-endian
@@ -22,6 +25,8 @@ x10..x17 and x18..x25 as little-endian u32s;
 [verified_mark](src/seed.rs) computes the same tuple. The registry must accept
 only approved verifier addresses (`msg.sender`), each pinned to one setup embedded in its
 runtime code, and compare `auxInput` with the expected recursion chain hash.
+There are no public getter selectors: a successful call verifies a proof and reports
+the statement. Deployment checks the generated registry address and runtime bytes.
 
 The setup frontier, cap image and GKR term table are embedded in the deployed
 verifier code, with their existing STOP/nodes/cap/table layout unchanged. Reads
@@ -34,6 +39,10 @@ Amsterdam target is experimental.
 factorization, including exceptional challenges. Run Rust checks with
 `cargo test -p verifier_evm --tests`; cryptographic acceptance and rejection
 controls require [run_merged.sh](generated_contracts/run_merged.sh).
+The ignored contract producer also replays PoW digests from the proof and writes
+negative renders differing in exactly one difficulty. Each must reject the honest
+proof. Real pad-bit cases assert their geometry from the calldata field map, and
+Merkle controls include the memory+witness path.
 
 Proof and setup-frontier producer commands are in the
 [fixture README](../fixtures/README.md).

@@ -20,8 +20,8 @@ set -e
 cd "$(dirname "$0")"
 
 # ---- configuration: edit for the target network ------------------------------------------------
-RPC=http://127.0.0.1:8545
-KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+RPC=${RPC:-http://127.0.0.1:8545}
+KEY=${KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
 # First 20 bytes zero + 21st byte zero = CreateX's unpermissioned, non-redeploy-protected salt
 # flavor (anyone can reproduce the address).
 REGISTRY_SALT=0x00000000000000000000000000000000000000000000000000616972621b0001
@@ -34,8 +34,8 @@ CREATEX=0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed
 
 # deploy_create2 <salt> <initcode> -> prints the created address (from the factory's event)
 deploy_create2() {
-  receipt=$(cast send $CREATEX "deployCreate2(bytes32,bytes)" "$1" "$2" \
-    --private-key $KEY --rpc-url $RPC --json)
+  receipt=$(cast send "$CREATEX" "deployCreate2(bytes32,bytes)" "$1" "$2" \
+    --private-key "$KEY" --rpc-url "$RPC" --json)
   status=$(printf '%s' "$receipt" | jq -r '.status')
   if [ "$status" != "0x1" ] && [ "$status" != "1" ]; then
     echo "ERROR: deployCreate2 transaction failed (status $status)" >&2
@@ -78,7 +78,7 @@ if [ "$(printf '%s' "$EXPECTED_REGISTRY" | tr 'A-F' 'a-f')" != "$GENERATED_REGIS
   exit 1
 fi
 
-factory_code=$(cast code $CREATEX --rpc-url $RPC)
+factory_code=$(cast code "$CREATEX" --rpc-url "$RPC")
 if [ "$factory_code" = "0x" ]; then
   echo "ERROR: no CreateX factory code at $CREATEX on this RPC." >&2
   echo "       Use a network where CreateX is deployed (or etch/deploy it first)." >&2
@@ -101,9 +101,13 @@ if [ "$registry_code" = "0x" ]; then
 fi
 ADDR=$(deploy_create2 "$VERIFIER_SALT" "$initcode")
 echo "   GkrWhirVerifier : $ADDR"
-pinned=$(cast call "$ADDR" "registry()(address)" --rpc-url $RPC)
-if [ "$(printf '%s' "$pinned" | tr 'A-F' 'a-f')" != "$(printf '%s' "$REGISTRY_ADDR" | tr 'A-F' 'a-f')" ]; then
-  echo "ERROR: deployed verifier reports registry $pinned, expected $REGISTRY_ADDR" >&2
+# The runtime has no getter: compare its bytes with the generated runtime prefix
+# plus embedded setup. This also checks that the generated registry constant was deployed.
+prefix=$(jq -r '.deployedBytecode.object' l1_wrap/merged/out/GkrWhirVerifier.sol/GkrWhirVerifierCode.json)
+setup=$(sed -n 's/.*bytes.concat(.*hex"\([0-9a-f]*\)").*/\1/p' l1_wrap/merged/src/GkrWhirVerifier.sol)
+deployed=$(cast code "$ADDR" --rpc-url "$RPC")
+if [ -z "$setup" ] || [ "$deployed" != "0x${prefix#0x}${setup}" ]; then
+  echo "ERROR: deployed verifier runtime differs from the generated registry/setup" >&2
   exit 1
 fi
 echo "== done =="

@@ -22,6 +22,9 @@ mod whir;
 
 pub use circuit_yul::{emit_circuit_yul, emit_circuit_yul_with_stats, CircuitYulStats};
 pub use whir::WhirGenConfig;
+
+/// Maximum difficulty of the external-challenge and WHIR batching PoW checks.
+pub const MAX_GKR_POW_BITS: u32 = 25;
 // `Lit` (below) is the generated-constant value+expression pair `WhirGenConfig::memory_regions`
 // returns.
 

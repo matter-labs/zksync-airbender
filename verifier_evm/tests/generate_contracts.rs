@@ -1,7 +1,8 @@
-//! Regenerate the L1 wrap verifier and its wrong-final-PC control from the canonical bundle.
+//! Regenerate the L1 wrap verifier and its ignored negative controls from the canonical bundle.
 mod common;
-use common::{MERGED_VERIFIER, WRONG_FINAL_PC_VERIFIER};
-use field::Proth120;
+use common::MERGED_VERIFIER;
+use prover::gkr::prover_config::example_configs::l1_wrap;
+use verifier_evm::generator::MAX_GKR_POW_BITS;
 
 // CreateX deployCreate2 address for TestRegistry (factory/salt in deploy.sh).
 // TestRegistry intentionally does not import the generated verifier, keeping its initcode stable.
@@ -41,53 +42,15 @@ fn check_pinned_inputs() -> u32 {
     final_pc
 }
 
-// Enforce the layout/config PoW bounds before rendering.
-fn derived_pow_bits(
-    circuit: &common::Circuit,
-    config: &prover::gkr::prover_config::ProverConfig,
-) -> (u32, u32) {
-    use prover::gkr::prover_config::pow_bits;
-    let pack_log2 = config.pack_log2();
-    let lookup_pow_bits = pow_bits::lookup_challenges_pow_bits::<Proth120, Proth120>(
-        config.security_level.security_bits(),
-        pow_bits::lookup_identity_degree(circuit),
-    );
-    let external_pow_bits = lookup_pow_bits
-        .max(prover::gkr::prover_config::example_configs::l1_wrap::EXTERNAL_CHALLENGES_POW_BITS);
-    let batched_proximity_pow_bits = config.base_round().batching_pow_bits::<Proth120, Proth120>(
-        config.security_level.security_bits(),
-        config.whir_message_size_log2(),
-        pow_bits::committed_base_oracle_columns(circuit, pack_log2, true),
-    );
-    for (gate, bits) in [
-        ("external challenges", external_pow_bits),
-        ("WHIR batching", batched_proximity_pow_bits),
-    ] {
-        assert!(bits <= 25, "{gate} PoW {bits} exceeds GKR cap 25");
-    }
-    for bits in config
-        .whir_schedule
-        .queries_pow_bits_per_round()
-        .iter()
-        .copied()
-        .chain([external_pow_bits, batched_proximity_pow_bits])
-    {
-        assert!(bits <= 30, "PoW {bits} exceeds 30");
-    }
-    (external_pow_bits, batched_proximity_pow_bits)
-}
-
 fn generate_wrap(pc: u32) -> verifier_evm::WrapContracts {
     let (circuit, proof, _) = common::load();
     let config = common::prover_config();
     check_pinned_inputs();
     let (_, nodes) = common::setup_frontier();
-    let (pow, _) = derived_pow_bits(&circuit, &config);
     verifier_evm::generate_wrap_verifier(
         &circuit,
         &config,
         &common::format_params(),
-        pow,
         pc,
         common::INITS_TEARDOWNS_TOP_BITS,
         &proof.whir_proof.setup_commitment.commitment.cap.cap,
@@ -144,11 +107,157 @@ fn generated_sources() -> Vec<(String, String)> {
     assert!(source.contains("ptr := add(SEED_PTR(), __TEMPLATE_GKR_CACHE_OFFSET)"));
     assert!(source.contains("__TEMPLATE_GKR_CACHE_OFFSET         = 448;"));
     assert!(source.contains("__TEMPLATE_GKR_SEED_BYTES           = 32 * 34;"));
-    vec![
-        (MERGED_VERIFIER.into(), contracts.verifier_sol),
-        (WRONG_FINAL_PC_VERIFIER.into(), wrong.verifier_sol),
-        ("merged/MEMORY_LAYOUT.md".into(), contracts.memory_layout),
-    ]
+    let (circuit, proof, mode) = common::load();
+    let config = common::prover_config();
+    let (external, batching, queries) =
+        common::pow::leading_zeros(&circuit, &proof, &mode, &config);
+    eprintln!("PoW leading zeros: external={external}, batching={batching}, queries={queries:?}");
+    let schedule = config.whir_schedule.queries_pow_bits_per_round();
+    assert!(
+        external < MAX_GKR_POW_BITS && batching < MAX_GKR_POW_BITS,
+        "no room under the GKR PoW cap"
+    );
+    for (&zeros, &bits) in queries.iter().zip(&schedule) {
+        assert!(zeros >= bits, "honest proof misses query PoW");
+    }
+    let mut negative = vec![
+        ("wrong_final_pc".into(), wrong.verifier_sol),
+        (
+            "external_pow".into(),
+            raised_difficulty(source, "__TEMPLATE_EXTERNAL_POW_BITS", external + 1),
+        ),
+        (
+            "batching_pow".into(),
+            raised_difficulty(source, "__TEMPLATE_WHIR_BATCH_POW_BITS", batching + 1),
+        ),
+    ];
+    for (round, &zeros) in queries.iter().enumerate() {
+        // Test-only text replacements may exceed the production cap, but must remain
+        // representable by shr(sub(256, bits), digest). Cover the final default arm too.
+        assert!(zeros < 256, "query PoW control cannot exceed 256 bits");
+        let selector = if round + 1 == queries.len() {
+            "default".to_owned()
+        } else {
+            format!("case {round}")
+        };
+        negative.push((
+            format!("query_pow_{round}"),
+            raised_query_difficulty(source, &selector, schedule[round], zeros + 1),
+        ));
+    }
+    let mut files = Vec::new();
+    // Share the compiler settings, omitting the main project's test file permissions.
+    let foundry = include_str!("../generated_contracts/l1_wrap/merged/foundry.toml")
+        .split("fs_permissions")
+        .next()
+        .unwrap();
+    for (name, control) in negative {
+        assert_one_changed_line(source, &control);
+        files.push((format!("negative/{name}/src/GkrWhirVerifier.sol"), control));
+        files.push((format!("negative/{name}/foundry.toml"), foundry.to_owned()));
+    }
+    files.push((MERGED_VERIFIER.into(), contracts.verifier_sol));
+    files.push(("merged/MEMORY_LAYOUT.md".into(), contracts.memory_layout));
+    files
+}
+
+// Controls use the real generator's complete output, changing exactly one difficulty.
+// They intentionally cannot be produced through the production API's parameter guards.
+fn assert_one_changed_line(source: &str, control: &str) {
+    assert_eq!(source.lines().count(), control.lines().count());
+    assert_eq!(
+        source
+            .lines()
+            .zip(control.lines())
+            .filter(|(a, b)| a != b)
+            .count(),
+        1
+    );
+}
+
+fn raised_difficulty(source: &str, name: &str, bits: u32) -> String {
+    let line = source
+        .lines()
+        .find(|line| line.contains(&format!("constant {name} ")))
+        .unwrap();
+    let (prefix, rest) = line.split_once('=').unwrap();
+    let (old, suffix) = rest.split_once(';').unwrap();
+    assert!(
+        bits > old.trim().parse::<u32>().unwrap(),
+        "control must raise PoW"
+    );
+    source.replacen(line, &format!("{prefix}= {bits};{suffix}"), 1)
+}
+
+fn raised_query_difficulty(source: &str, selector: &str, old: u32, new: u32) -> String {
+    let line = source
+        .lines()
+        .find(|line| line.contains(&format!("{selector} {{ fold :=")))
+        .unwrap();
+    let target = format!("pow_bits := {old}");
+    assert_eq!(line.matches(&target).count(), 1);
+    source.replacen(
+        line,
+        &line.replace(&target, &format!("pow_bits := {new}")),
+        1,
+    )
+}
+
+#[test]
+fn generator_rejects_invalid_inputs() {
+    let (mut circuit, proof, _) = common::load();
+    let config = common::prover_config();
+    let (_, nodes) = common::setup_frontier();
+    let params = common::format_params();
+    let generate = |circuit: &common::Circuit,
+                    config: &prover::gkr::prover_config::ProverConfig,
+                    top: &[u32]| {
+        verifier_evm::generate_wrap_verifier(
+            circuit,
+            config,
+            &params,
+            common::final_pc(),
+            top,
+            &proof.whir_proof.setup_commitment.commitment.cap.cap,
+            &nodes,
+            REGISTRY_ADDRESS,
+        )
+    };
+    let rejects = |circuit: &common::Circuit,
+                   config: &prover::gkr::prover_config::ProverConfig,
+                   top: &[u32],
+                   expected: &str| {
+        let Err(panic) = std::panic::catch_unwind(|| generate(circuit, config, top)) else {
+            panic!("generator accepted invalid inputs");
+        };
+        let message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap();
+        assert!(message.contains(expected), "unexpected panic: {message}");
+    };
+    for top in [&[0, 0][..], &[1, 0], &[0, 256]] {
+        rejects(&circuit, &config, top, "inits/teardowns top bits");
+    }
+    for bits in [l1_wrap::MAX_POW_BITS + 1, 257] {
+        let mut config = config.clone();
+        config.whir_schedule.base_round.queries_pow_bits = bits;
+        rejects(
+            &circuit,
+            &config,
+            common::INITS_TEARDOWNS_TOP_BITS,
+            "query PoW",
+        );
+    }
+    // A layout whose lookup requirement exceeds the GKR cap must fail at generation.
+    circuit.num_generic_lookups = 1 << 32;
+    rejects(
+        &circuit,
+        &config,
+        common::INITS_TEARDOWNS_TOP_BITS,
+        "external challenges PoW",
+    );
 }
 
 fn write(rel: &str, content: &str) {

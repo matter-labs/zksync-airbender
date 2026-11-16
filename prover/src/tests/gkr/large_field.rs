@@ -338,11 +338,8 @@ fn gkr_unified_packed_commitment_basic_fibonacci_impl(
     }
 
     println!("Preparing data for proving");
-    // 4. Prover config for a 2^22 base trace, but with the WHIR schedule taken from
-    //    the EVM-production generator (`generate_whir_input_for_evm_production`,
-    //    message 2^26). Because `pack_log2 = 4` enlarges each column to 2^26 the
-    //    packed polynomials match that message size exactly, so the same folds /
-    //    queries / lde_factors / pow schedule applies. base LDE 2^5 => 2^31 codeword.
+    // The production packed config uses a 2^22 trace with pack_log2 = 4,
+    // giving a 2^26 message and a 2^31 codeword at base LDE 2^5.
 
     println!("Computing setup");
     // The proof function's twiddles are of unified circuit size * (1 << pack_log2):
@@ -576,8 +573,7 @@ fn validate_packed_transcript_recipe() {
     );
 
     // The seed is exactly keccak256 of `transcript_input` as little-endian u32 bytes.
-    // Emit that preimage as the EVM fixture (the Solidity `transcript_init` keccaks it),
-    // and sanity-check our byte reconstruction matches `commit_initial_u32`.
+    // Check that the byte reconstruction matches `commit_initial_u32`.
     {
         use sha3::{Digest, Keccak256};
         let preimage: Vec<u8> = transcript_input
@@ -589,13 +585,6 @@ fn validate_packed_transcript_recipe() {
             &computed[..],
             &seed.0[..],
             "preimage keccak must equal commit_initial_u32 seed"
-        );
-        let hex: String = preimage.iter().map(|b| format!("{b:02x}")).collect();
-        let out = "../verifier_evm/debug_data/gkr_step1_preimage.hex";
-        std::fs::write(out, &hex).expect("write step1 preimage fixture");
-        println!(
-            "[transcript] wrote {} preimage bytes to {out}",
-            preimage.len()
         );
     }
 
@@ -744,21 +733,6 @@ fn capture_gkr_dim_reduce_reference() {
     }
     assert_eq!(claims.len(), 10);
 
-    // Emit the output-eval blob for the EVM fixture: each field element as its
-    // 16-byte big-endian u128 (exactly how `commit_field_els`/absorb_field feeds it).
-    {
-        let mut blob: Vec<u8> = Vec::with_capacity(evals_flattened.len() * 16);
-        for e in evals_flattened.iter() {
-            blob.extend_from_slice(&e.to_u128().to_be_bytes());
-        }
-        let hex: String = blob.iter().map(|b| format!("{b:02x}")).collect();
-        std::fs::write(
-            "../verifier_evm/debug_data/gkr_step2_output_evals.hex",
-            &hex,
-        )
-        .unwrap();
-        println!("[dimreduce] wrote {} output-eval bytes", blob.len());
-    }
     println!("[dimreduce] OK: reproduced GKR-entry transcript + initial claims");
 }
 
@@ -1279,21 +1253,7 @@ fn verify_dim_reduce_layers() {
         .copied()
         .filter(|l| proof.sumcheck_intermediate_values[l].sumcheck_num_rounds < 22)
         .collect();
-    let mut blob: Vec<u8> = vec![]; // per layer: rounds*[c0..c3] then 10*[lsb0,lsb1], all BE16
-    let push_e = |blob: &mut Vec<u8>, e: &E| blob.extend_from_slice(&e.to_u128().to_be_bytes());
     for &layer in dim_layers.iter().rev() {
-        {
-            let siv = &proof.sumcheck_intermediate_values[&layer];
-            for c in siv.internal_round_coefficients.iter() {
-                for e in c.as_multilinear().iter() {
-                    push_e(&mut blob, e);
-                }
-            }
-            for v in siv.final_step_evaluations.values() {
-                push_e(&mut blob, &v[0]);
-                push_e(&mut blob, &v[1]);
-            }
-        }
         let siv = &proof.sumcheck_intermediate_values[&layer];
         let folding_steps = siv.sumcheck_num_rounds;
         assert_eq!(
@@ -1447,7 +1407,6 @@ fn verify_dim_reduce_layers() {
         0
     };
     let mut layer0_merged: std::collections::BTreeMap<GKRAddress, E> = Default::default();
-    let mut circuit_blob: Vec<u8> = vec![]; // per circuit layer: coeffs then group-offset evals (BE16)
     for config_idx in (0..num_standard_layers).rev() {
         let layer = &unified_circuit.layers[config_idx];
         let siv = &proof.sumcheck_intermediate_values[&config_idx];
@@ -1485,52 +1444,6 @@ fn verify_dim_reduce_layers() {
         // input at-point evals (sorted by address) + their addresses
         let input_sorted: Vec<GKRAddress> = siv.final_step_evaluations.keys().copied().collect();
         let evals: Vec<E> = siv.final_step_evaluations.values().map(|v| v[0]).collect();
-
-        // ---- collect this layer's CALLDATA (gkr.sol stream order): the folding-round coeffs
-        // (22 rounds * [c0..c3], BE16) then the at-point evals in GROUP-OFFSET order (BE16).
-        // Cached/VirtualSetup are computed on the verifier heap, so they're NOT in calldata. ----
-        {
-            for c in siv.internal_round_coefficients.iter() {
-                for e in c.as_multilinear().iter() {
-                    circuit_blob.extend_from_slice(&e.to_u128().to_be_bytes());
-                }
-            }
-            let num_mem = unified_circuit.memory_layout.total_width;
-            let num_wit = unified_circuit.witness_layout.total_width;
-            let group_idx = |addr: &GKRAddress| -> Option<usize> {
-                match addr {
-                    GKRAddress::InnerLayer { layer, offset }
-                        if *layer == config_idx && config_idx > 0 =>
-                    {
-                        Some(*offset)
-                    }
-                    GKRAddress::BaseLayerMemory(o) if config_idx == 0 => Some(*o),
-                    GKRAddress::BaseLayerWitness(o) if config_idx == 0 => Some(num_mem + *o),
-                    GKRAddress::Setup(o) if config_idx == 0 => Some(num_mem + num_wit + *o),
-                    _ => None, // Cached / VirtualSetup: computed on heap, not in calldata
-                }
-            };
-            let mut by_idx: std::collections::BTreeMap<usize, E> = Default::default();
-            for (addr, val) in siv.final_step_evaluations.iter() {
-                if let Some(idx) = group_idx(addr) {
-                    by_idx.insert(idx, val[0]);
-                }
-            }
-            // Also serialize the caching-relation extra evals: they are InnerLayer inputs the
-            // caches depend on but that live outside final_step_evaluations, and previously left
-            // 0-fill gaps in the calldata (offsets 8..47 for layer1). The verifier reads them by
-            // group offset just like any other InnerLayer input.
-            for (addr, val) in siv.extra_evaluations_from_caching_relations.iter() {
-                if let Some(idx) = group_idx(addr) {
-                    by_idx.insert(idx, *val);
-                }
-            }
-            let n = by_idx.keys().max().map(|m| m + 1).unwrap_or(0);
-            for i in 0..n {
-                let v = by_idx.get(&i).copied().unwrap_or(E::ZERO);
-                circuit_blob.extend_from_slice(&v.to_u128().to_be_bytes());
-            }
-        }
 
         // ---- initial claim = compute_claim(prev_claims, descs) ----
         // descs in gate order; kind 0 = constraint (skip 1 batch), 1 = single out, 2 = dual out.
@@ -1706,8 +1619,7 @@ fn verify_dim_reduce_layers() {
                     CR::MemoryTuple(rel) => {
                         // Tie the cached memory-tuple poly to its memory-column at-point evals
                         // via the permutation challenges (same expression as eval_memory_expr).
-                        // NOTE: the verifier-generator SKIPS this check — see report; it is
-                        // required for the InitialGrandProductFromCaches path to be sound.
+                        // The EVM generator emits the same relation for MemoryTuple caches.
                         let lin = &entry_challenges[0..6];
                         let mem = |off: usize| claim_at(&GKRAddress::BaseLayerMemory(off));
                         let mut result = entry_challenges[6]; // permutation additive part
@@ -2000,177 +1912,7 @@ fn verify_dim_reduce_layers() {
             "[whir-handoff] batched_opening_value=0x{:032x}",
             batched.to_u128()
         );
-
-        // ---- serialize the WHIR verifier calldata from the REAL proof.whir_proof ----
-        // Format = whir.sol VARIANT 4 (proth120_evm_gen::run_generation): preimage
-        // [seed:32][batching:16][opening:16][z:26*16][witCap:CAP*32][setupCap:CAP*32]
-        // then the proof stream. Base oracles: BCAP0 = merged mem+wit (memory_commitment,
-        // 7 cols), BCAP1 = setup (setup_commitment, 1 col).
-        {
-            let wp = &proof.whir_proof;
-            let folds = [2usize, 4, 4, 4, 4, 4];
-            let queries = [17usize, 12, 8, 6, 5, 4];
-            let num_rounds = folds.len();
-            let be16 = |e: E| e.to_u128().to_be_bytes();
-            let dig32 = |d: &[u32; 8]| -> [u8; 32] {
-                let mut o = [0u8; 32];
-                for i in 0..8 {
-                    o[4 * i..4 * i + 4].copy_from_slice(&d[i].to_be_bytes());
-                }
-                o
-            };
-            let mut cd: Vec<u8> = vec![];
-            // preimage
-            cd.extend_from_slice(&seed.0);
-            cd.extend_from_slice(&be16(whir_batching));
-            cd.extend_from_slice(&be16(batched));
-            for e in whir_point.iter() {
-                cd.extend_from_slice(&be16(*e));
-            }
-            for d in wp.memory_commitment.commitment.cap.cap.iter() {
-                cd.extend_from_slice(&dig32(d));
-            }
-            for d in wp.setup_commitment.commitment.cap.cap.iter() {
-                cd.extend_from_slice(&dig32(d));
-            }
-            let plen = cd.len();
-            // proof stream
-            let push_leaf = |cd: &mut Vec<u8>, vals: &[E], path: &[[u32; 8]]| {
-                for v in vals.iter() {
-                    cd.extend_from_slice(&be16(*v));
-                }
-                for d in path.iter() {
-                    cd.extend_from_slice(&dig32(d));
-                }
-            };
-            let push_base = |cd: &mut Vec<u8>, vals: &[E], path: &[[u32; 8]], nc: usize| {
-                let vp = vals.len() / nc;
-                for c in 0..nc {
-                    for o in 0..vp {
-                        cd.extend_from_slice(&be16(vals[o * nc + c]));
-                    }
-                }
-                for d in path.iter() {
-                    cd.extend_from_slice(&dig32(d));
-                }
-            };
-            let round_sumcheck_polys = |r: usize| -> &[[E; 3]] {
-                if r == 0 {
-                    &wp.base_sumcheck_polys
-                } else {
-                    &wp.intermediate_whir_oracles[r - 1].sumcheck_polys
-                }
-            };
-            let round_queries_pow_nonce = |r: usize| -> u64 {
-                if r == 0 {
-                    wp.base_queries_pow_nonce
-                } else {
-                    wp.intermediate_whir_oracles[r - 1].queries_pow_nonce
-                }
-            };
-            for r in 0..num_rounds {
-                assert_eq!(round_sumcheck_polys(r).len(), folds[r]);
-                for sp in round_sumcheck_polys(r).iter() {
-                    cd.extend_from_slice(&be16(sp[0]));
-                    cd.extend_from_slice(&be16(sp[1]));
-                    cd.extend_from_slice(&be16(sp[2]));
-                }
-                if r < num_rounds - 1 {
-                    for d in wp.intermediate_whir_oracles[r].commitment.cap.cap.iter() {
-                        cd.extend_from_slice(&dig32(d));
-                    }
-                    let ood = &wp.intermediate_whir_oracles[r].ood_samples;
-                    assert_eq!(ood.len(), 1, "whir.sol takes one OOD sample per oracle");
-                    cd.extend_from_slice(&be16(ood[0]));
-                    cd.extend_from_slice(&round_queries_pow_nonce(r).to_be_bytes());
-                    for qq in 0..queries[r] {
-                        if r == 0 {
-                            let mq = &wp.memory_commitment.queries[qq];
-                            push_base(
-                                &mut cd,
-                                &mq.leaf_values_concatenated,
-                                &mq.path,
-                                wp.memory_commitment.num_columns,
-                            );
-                            let sq = &wp.setup_commitment.queries[qq];
-                            push_base(
-                                &mut cd,
-                                &sq.leaf_values_concatenated,
-                                &sq.path,
-                                wp.setup_commitment.num_columns,
-                            );
-                        } else {
-                            let q = &wp.intermediate_whir_oracles[r - 1].queries[qq];
-                            push_leaf(&mut cd, &q.leaf_values_concatenated, &q.path);
-                        }
-                    }
-                } else {
-                    for m in wp.final_monomials.iter() {
-                        cd.extend_from_slice(&be16(*m));
-                    }
-                    cd.extend_from_slice(&round_queries_pow_nonce(r).to_be_bytes());
-                    for qq in 0..queries[r] {
-                        let q = &wp.intermediate_whir_oracles[num_rounds - 2].queries[qq];
-                        push_leaf(&mut cd, &q.leaf_values_concatenated, &q.path);
-                    }
-                }
-            }
-            let hx: String = cd.iter().map(|b| format!("{b:02x}")).collect();
-            std::fs::write(
-                "../verifier_evm/debug_data/proth120_whir_calldata_from_proof.hex",
-                &hx,
-            )
-            .unwrap();
-            println!(
-                "[whir-handoff] wrote WHIR calldata from real proof: {} bytes (preimage plen={}, {} cols mem / {} setup)",
-                cd.len(), plen, wp.memory_commitment.num_columns, wp.setup_commitment.num_columns
-            );
-        }
     }
-
-    // Emit the dim-reducing proof-data blob (processing order 21..=4): per layer,
-    // folding_steps*[c0..c3] then 10*[lsb0,lsb1], all field els BE16. Consumed by the
-    // Solidity dim-reducing verifier's forge test.
-    let hex: String = blob.iter().map(|b| format!("{b:02x}")).collect();
-    let path = "../verifier_evm/debug_data/gkr_dimreduce_data.hex";
-    std::fs::write(path, &hex).unwrap();
-    println!(
-        "[dimreduce-verify] wrote {} bytes of proof data to {path}",
-        blob.len()
-    );
-
-    // ===== CALLDATA SERIALIZER: assemble the full GKR-verifier calldata =====
-    // gkr.sol stream order: preimage(520) ‖ output-evals(2560) ‖ dim-reduce blob(20160) ‖
-    // per-circuit-layer (coeffs ‖ group-offset evals). This is exactly what the ported
-    // gkr.sol reads (transcript_init ‖ gkr_init ‖ gkr_compress ‖ gkr_circuit).
-    let td = "../verifier_evm/debug_data";
-    let read_fixture = |name: &str| -> Vec<u8> {
-        let h = std::fs::read_to_string(format!("{td}/{name}")).unwrap();
-        (0..h.trim().len())
-            .step_by(2)
-            .map(|i| u8::from_str_radix(&h.trim()[i..i + 2], 16).unwrap())
-            .collect()
-    };
-    let mut calldata: Vec<u8> = vec![];
-    calldata.extend_from_slice(&read_fixture("gkr_step1_preimage.hex")); // transcript preimage (916 B)
-                                                                         // external-challenge PoW nonce (8 B BE): the verifier folds keccak(seed || nonce_be8) and
-                                                                         // checks the top `pow_bits` bits are zero. Comes right after the preimage.
-    calldata.extend_from_slice(&proof.lookup_challenges_pow_nonce.to_be_bytes());
-    calldata.extend_from_slice(&read_fixture("gkr_step2_output_evals.hex")); // GKR entry outputs
-    calldata.extend_from_slice(&blob); // dim-reducing data
-    calldata.extend_from_slice(&circuit_blob); // circuit layers (coeffs + group-offset evals)
-                                               // WHIR-batching PoW nonce (8 B BE) at the calldata tail: emit_gkr_mark folds
-                                               // keccak(handoff_seed || nonce_be8), checks the top 11 bits are zero, then draws the
-                                               // WHIR batching challenge. The verifier reads it at calldatasize()-8.
-    calldata.extend_from_slice(&proof.whir_proof.batching_challenge_pow_nonce.to_be_bytes());
-    let calldata_hex: String = calldata.iter().map(|b| format!("{b:02x}")).collect();
-    std::fs::write(format!("{td}/gkr_full_calldata.hex"), &calldata_hex).unwrap();
-    println!(
-        "[calldata] wrote full GKR calldata: {} bytes (preimage 916 + nonce 8 + outputs 2560 + dimreduce {} + circuit {})",
-        calldata.len(),
-        blob.len(),
-        circuit_blob.len()
-    );
 }
 
 /// Dump the GKR proof's layer/round structure so I can port the dimension-reducing

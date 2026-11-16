@@ -15,7 +15,7 @@
 
 use super::Lit;
 use field::Proth120;
-use prover::gkr::prover_config::ProverConfig;
+use prover::gkr::prover_config::{example_configs::l1_wrap, ProverConfig};
 
 /// Every WHIR verifier parameter, derived from `(WhirSchedule, pack_log2, trace_len_log2, widths)`.
 #[derive(Clone, Debug)]
@@ -71,6 +71,14 @@ impl WhirGenConfig {
         let folds = schedule.fold_steps();
         let queries = schedule.queries_per_round();
         let pow_bits = schedule.queries_pow_bits_per_round();
+        for &bits in &pow_bits {
+            // Keep every query check representable by shr(sub(256, bits), digest).
+            assert!(
+                bits <= l1_wrap::MAX_POW_BITS,
+                "query PoW {bits} exceeds cap {}",
+                l1_wrap::MAX_POW_BITS
+            );
+        }
         let num_rounds = folds.len();
         assert!(num_rounds >= 2, "WHIR schedule needs at least 2 rounds");
         assert_eq!(
@@ -254,7 +262,7 @@ impl WhirGenConfig {
         let cap_bytes = cap.mul(&Lit::num(32));
         let w32 = Lit::num(32);
         let slot = |n: usize| Lit::num(n as u128).mul(&w32);
-        // POW entries (push_pow, 96 B each): every internal round pushes 1 ood point + 1 per
+        // Constraint entries (push_pow, 96 B each): every internal round pushes 1 OOD point + 1 per
         // query; the final round pushes none.
         let numpow: usize = (0..self.num_rounds - 1).map(|r| self.queries[r] + 1).sum();
         // LEAF scratch: round 0 hashes each base oracle's leaf separately (merged_mw or
@@ -296,7 +304,7 @@ impl WhirGenConfig {
             (
                 "POW_PTR",
                 Lit::num(numpow as u128).mul(&Lit::num(96)),
-                "Deferred proof-of-work checks",
+                "Deferred OOD and query constraints",
             ),
             ("ACC_PREF_PTR", w32.clone(), "Accumulated prefix product"),
             (
@@ -319,9 +327,9 @@ impl WhirGenConfig {
             ("LEAF_PTR", slot(leaf_words), "Merkle leaf hashing scratch"),
             ("REG_CD", w32.clone(), "Calldata cursor"),
             ("REG_CLAIM", w32.clone(), "Current opening claim"),
-            ("REG_NUMPOW", w32.clone(), "Deferred proof-of-work count"),
+            ("REG_NUMPOW", w32.clone(), "Deferred constraint count"),
             ("REG_ZIOFF", w32.clone(), "Opening coordinate cursor"),
-            ("REG_CC", w32.clone(), "Current column count"),
+            ("REG_CC", w32.clone(), "Current claim correction"),
             (
                 "REG_CURDELIN",
                 w32.clone(),
