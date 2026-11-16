@@ -53,7 +53,7 @@ elab_rules : command
       let value ← Term.elabTermEnsuringType f type
       Term.synthesizeSyntheticMVarsNoPostponing
       unsafe evalExpr (Fin length → Vector Nat width) type (← instantiateMVars value)
-    match compareGrid data lo.getNat length selected formula with
+    match compareGrid data.toSetupData lo.getNat length selected formula with
     | .ok () => pure ()
     | .error reason => throwError "{reason}"
 

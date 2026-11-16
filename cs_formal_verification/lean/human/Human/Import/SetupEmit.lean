@@ -15,7 +15,8 @@ public meta section
    adds `name : Airbender.Import.Setup.SetupData` with one declaration per column and small shared literal tails. The terms
    are built directly as kernel expressions (no surface syntax), so elaboration cost stays
    linear in the number of blocks. Lake tracks the file through the `needs` input of the
-   library containing the use.
+   library containing the use. Range and table metadata stay in `ParsedSetup`; the kernel
+   receives only the trace length and columns.
 
    Structured regions: the JSON blocks of each column are cut at every table edge; for each
    `tables` entry whose id is in `gridCatalogue`, column `c` of the region (`c < width`) is
@@ -32,8 +33,14 @@ namespace Airbender.Import.Setup
 
 open Lean Elab Command
 
+/-- The decoded file, with metadata used only during import. -/
+structure ParsedSetup extends SetupData where
+  range16 : List Block
+  timestampRange : List Block
+  tables : Array Table
+
 /-- The full virtual columns are an increasing prefix and optional zero padding. -/
-def compareRanges (data : SetupData) : Except String Unit := do
+def compareRanges (data : ParsedSetup) : Except String Unit := do
   for (limit, blocks) in [(65536, data.range16), (524288, data.timestampRange)] do
     unless limit ≤ data.traceLen do throw "Native range exceeds its setup domain"
     let expected := if limit = data.traceLen then [Block.affine limit 0 1]
@@ -103,7 +110,7 @@ def tableOf (j : Airbender.Json.Value) : Except String Table :=
            keyColumns := ← get j "key_columns" }
 
 /-- Parse the setup JSON text (`Json.parse`, fixed by `ParseSoundClaim` and `TextUniqueClaim`). -/
-def parseSetup (text : String) : Except String SetupData := do
+def parseSetup (text : String) : Except String ParsedSetup := do
   let j ← Airbender.Json.parse text.toUTF8
   let version : Nat ← get j "version"
   if version != 1 then throw s!"unsupported setup version {version}"
@@ -236,10 +243,6 @@ def structureColumn (tables : Array Table) (c : Nat) (bs : List Block) :
 
 private def blocksTy : Lean.Expr := mkApp (mkConst ``List [Level.zero]) blockTy
 
-private def tableE (t : Table) : Lean.Expr :=
-  mkAppN (mkConst ``Airbender.Import.Setup.Table.mk)
-    #[natE t.id, natE t.offset, natE t.length, natE t.width, natE t.keyColumns]
-
 /-- Kernel-checked data definition without code generation. -/
 private def addDataDef (name : Name) (ty value : Lean.Expr) : CoreM Unit :=
   addDecl (forceExpose := true) <| .defnDecl {
@@ -304,15 +307,10 @@ def elabImportSetupBlocks : CommandElab := fun stx => do
           | .error e => throwError "setup import failed: {e}"
         addDef n blocksTy (blocksE col)
         colNames := colNames.push n
-      let r16 := base.appendAfter "_range16"
-      addDef r16 blocksTy (blocksE d.range16)
-      let ts := base.appendAfter "_timestampRange"
-      addDef ts blocksTy (blocksE d.timestampRange)
       let setupTy := mkConst ``Airbender.Import.Setup.SetupData
       let cols := arrayE blocksTy (colNames.toList.map fun n => mkConst n)
-      let tables := arrayE (mkConst ``Airbender.Import.Setup.Table) (d.tables.toList.map tableE)
       let value := mkAppN (mkConst ``Airbender.Import.Setup.SetupData.mk)
-        #[natE d.traceLen, cols, mkConst r16, mkConst ts, tables]
+        #[natE d.traceLen, cols]
       addDef base setupTy value
   | _ => throwUnsupportedSyntax
 

@@ -95,13 +95,10 @@ structure Table where
   keyColumns : Nat
   deriving Repr, Inhabited
 
-/-- The fields of the setup JSON that the human layer consumes. -/
+/-- The native setup fields used by the model. -/
 structure SetupData where
   traceLen : Nat
   columns : Array (List Block)
-  range16 : List Block
-  timestampRange : List Block
-  tables : Array Table
   deriving Inhabited
 
 end Airbender.Import.Setup
