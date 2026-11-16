@@ -653,6 +653,42 @@ fn render(
     ] {
         gkr = set_const(&gkr, name, value.expr(), &mut assigned);
     }
+    // Assign logical column indices in the same flattened OutputType order as boundary_si_yul.
+    // Derived::from checks the grouping/width assumptions used by the template's lookup loops.
+    let mut output_column = 0;
+    for (output_type, outputs) in &circuit.global_output_map {
+        let names = match output_type {
+            OutputType::PermutationProduct => [
+                "__TEMPLATE_GKR_OUTPUT_PERM_READ",
+                "__TEMPLATE_GKR_OUTPUT_PERM_WRITE",
+            ],
+            OutputType::Lookup16Bits => [
+                "__TEMPLATE_GKR_OUTPUT_LOOKUP16_NUM",
+                "__TEMPLATE_GKR_OUTPUT_LOOKUP16_DEN",
+            ],
+            OutputType::LookupTimestamps => [
+                "__TEMPLATE_GKR_OUTPUT_LOOKUP_TS_NUM",
+                "__TEMPLATE_GKR_OUTPUT_LOOKUP_TS_DEN",
+            ],
+            OutputType::GenericLookup => [
+                "__TEMPLATE_GKR_OUTPUT_GENERIC_LOOKUP_NUM",
+                "__TEMPLATE_GKR_OUTPUT_GENERIC_LOOKUP_DEN",
+            ],
+            OutputType::InitsAndTeardownsProduct => [
+                "__TEMPLATE_GKR_OUTPUT_TEARDOWN",
+                "__TEMPLATE_GKR_OUTPUT_INIT",
+            ],
+        };
+        assert_eq!(names.len(), outputs.len());
+        for name in names {
+            gkr = set_const(&gkr, name, output_column, &mut assigned);
+            output_column += 1;
+        }
+    }
+    assert_eq!(
+        output_column, num_outputs.value as usize,
+        "named GKR output columns must cover every output poly"
+    );
     for (name, value) in preimage.constants() {
         gkr = set_const(&gkr, name, value.expr(), &mut assigned);
     }
