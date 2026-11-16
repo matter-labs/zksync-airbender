@@ -1,3 +1,4 @@
+use crate::backward::dr_tail::kernels::encode_dr_tail_slots;
 use std::collections::BTreeMap;
 
 use era_cudart::{
@@ -27,11 +28,7 @@ use crate::{
         },
         proof_layout::ProofLayout,
     },
-    backward::{
-        dr_tail::{DrTailSlot, DR_TAIL_MAX_SOURCES, DR_TAIL_SLOTS},
-        kernels::*,
-        window_dr::DrWindowBindError,
-    },
+    backward::{dr_tail::DR_TAIL_MAX_SOURCES, kernels::*, window_dr::DrWindowBindError},
     upstream::GKRAddress,
     GpuGKRStorage,
 };
@@ -201,25 +198,11 @@ impl GpuGKRDimensionReducingSumcheckLayerPlan {
         let mut source_ptrs = [std::ptr::null(); DR_TAIL_MAX_SOURCES];
         source_ptrs[..folding_poly_count].copy_from_slice(&canonical_sources);
 
-        let mut slots = [DrTailSlot::default(); DR_TAIL_SLOTS];
-        for (slot_idx, slot) in self.layer_slots.iter_enabled() {
-            let mut encoded = DrTailSlot::default();
-            for (input_idx, address) in slot.inputs.iter().copied().enumerate() {
-                let canonical = storage
-                    .layout
-                    .as_ref()
-                    .and_then(|layout| layout.aliases.get(&address))
-                    .copied()
-                    .unwrap_or(address);
-                let source_idx = self
-                    .folding_addresses
-                    .binary_search(&canonical)
-                    .expect("DR-tail source must be in the canonical publication");
-                encoded.input_source[input_idx] = source_idx as u16;
-            }
-            encoded.batch_exp = slot.batch_exp;
-            slots[slot_idx] = encoded;
-        }
+        let slots = encode_dr_tail_slots(
+            &self.layer_slots,
+            &self.folding_addresses,
+            storage.layout.as_ref().map(|layout| &layout.aliases),
+        );
 
         memory_copy_async(
             device_claim_point_out.slice_mut(0, self.folding_steps),

@@ -1,3 +1,6 @@
+use crate::backward::dr_tail::kernels::encode_dr_tail_slots;
+use crate::backward::dr_tail::kernels::DrTailSlot;
+use crate::backward::main_layer::blueprints::build_dimension_reducing_slots_static;
 use std::collections::BTreeMap;
 
 use field::Field;
@@ -10,9 +13,8 @@ use rand::{Rng, SeedableRng};
 use super::{make_context, read_back, upload};
 use crate::backward::{derive_dimension_reducing_inputs, GKR_DIM_REDUCING_SLOTS};
 use crate::proth120::backward::dr_tail::{
-    dimension_reducing_slots_pr, encode_dr_tail_slots_pr, launch_dr_tail_megakernel_pr,
-    prepare_dr_tail_resources_pr, DrTailLayerPlanPr, DrTailMegakernelDescPr, DrTailSlotPr,
-    PR_DR_TAIL_MAX_SOURCES,
+    launch_dr_tail_megakernel_pr, prepare_dr_tail_resources_pr, DrTailLayerPlanPr,
+    DrTailMegakernelDescPr, PR_DR_TAIL_MAX_SOURCES,
 };
 use crate::proth120::backward::window_dr::schedule_dr_batch_challenge_table_pr;
 use crate::proth120::programs::GkrProgramsPr;
@@ -73,7 +75,7 @@ fn lsb_fold(column: &[PR], challenge: PR) -> Vec<PR> {
 
 fn slot_terms(
     columns: &[Vec<PR>],
-    slots: &[DrTailSlotPr; GKR_DIM_REDUCING_SLOTS],
+    slots: &[DrTailSlot; GKR_DIM_REDUCING_SLOTS],
     enabled_mask: u32,
     table: &[PR],
     row: usize,
@@ -129,7 +131,7 @@ fn slot_terms(
 
 fn round_sums(
     columns: &[Vec<PR>],
-    slots: &[DrTailSlotPr; GKR_DIM_REDUCING_SLOTS],
+    slots: &[DrTailSlot; GKR_DIM_REDUCING_SLOTS],
     enabled_mask: u32,
     table: &[PR],
     tau: &[PR],
@@ -180,9 +182,9 @@ fn check_tail_case(
     let capacity = layer.capacity();
     let entry = capacity.entry_round;
     let sources = layer.canonical_sources();
-    let layer_slots = dimension_reducing_slots_pr(layer_map);
+    let layer_slots = build_dimension_reducing_slots_static(layer_map);
     let enabled_mask = layer_slots.enabled_mask();
-    let slots = encode_dr_tail_slots_pr(
+    let slots = encode_dr_tail_slots(
         &layer_slots,
         sources,
         Some(&programs.storage_layout.aliases),

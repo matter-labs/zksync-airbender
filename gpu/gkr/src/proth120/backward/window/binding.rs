@@ -5,21 +5,15 @@ use gpu_gkr_compiler::{
     MAX_SOURCE_WINDOWS, WINDOW_SECTION_WORDS,
 };
 
-use crate::backward::window::bank::family_read_place;
 use crate::backward::window::binding::{
-    bind_window_lane, intern_window_slot, rewrite_window_words, window_chunk_address, window_lane,
-    window_log_rows, window_partials_len,
+    rewrite_window_words, window_log_rows, window_partials_len, WindowAddressing, WindowBindError,
 };
-use crate::backward::window::common::{
-    BwdSourceWindow, BWD_COEFF_ORIGIN_PROCEDURAL, BWD_COEFF_ORIGIN_READ_BASE,
-    BWD_COEFF_ORIGIN_READ_EXT, BWD_COEFF_PROCEDURAL_KINDS, BWD_COEFF_PROCEDURAL_NONE,
-};
+use crate::backward::window::common::BwdSourceWindow;
 use crate::backward::window::zeroed_box;
 use crate::backward::{make_eq_sizes, GkrEqSizes, GKR_EQ_GROUP_SIZE, GKR_EQ_HIGH_SLOTS};
 use crate::proth120::backward::banks::CoefficientBankViewPr;
 use crate::proth120::forward::bind::resolve_storage_column;
-use crate::proth120::forward::lower::read_place_to_gkr_address;
-use crate::upstream::{FieldKind, PR};
+use crate::upstream::PR;
 use crate::GpuGKRStorage;
 
 pub(crate) const PR_WINDOW_ADDR_SLOTS: usize = MAX_SOURCE_WINDOWS;
@@ -80,115 +74,54 @@ pub(crate) struct WindowRuntimeScratchPr {
     pub partials_capacity: usize,
 }
 
-pub(super) struct WindowAddressingPr {
-    slots: Vec<BwdSourceWindow>,
-    lanes: Vec<Option<u16>>,
-}
-
-impl WindowAddressingPr {
-    fn intern(&mut self, slot: BwdSourceWindow) -> usize {
-        intern_window_slot(&mut self.slots, slot, PR_WINDOW_ADDR_SLOTS).unwrap_or_else(|| {
-            panic!(
-                "Proth120 binding capacity: window address slots {} exceeds {}",
-                PR_WINDOW_ADDR_SLOTS + 1,
-                PR_WINDOW_ADDR_SLOTS
-            )
-        })
-    }
-
-    fn bind(&mut self, source: u32, lane: u16) {
-        bind_window_lane(&mut self.lanes, source, lane);
-    }
-}
-
 pub(super) fn intern_window_addressing_pr(
     storage: &GpuGKRStorage<PR, PR>,
     program: &WindowProgram,
-) -> WindowAddressingPr {
-    let mut addressing = WindowAddressingPr {
-        slots: Vec::new(),
-        lanes: vec![None; program.source_slots.len()],
-    };
-    let element = size_of::<PR>() as u32;
-    for (index, entry) in program.windows.iter().enumerate() {
-        let window = index as u8;
-        if let Some(kind) = entry.procedural_kind() {
-            assert!(
-                usize::from(kind) < BWD_COEFF_PROCEDURAL_KINDS,
-                "Proth120 binding UnknownProceduralKind: window={:?}, kind={:?}",
-                window,
-                kind
-            );
-            let slot = addressing.intern(BwdSourceWindow {
-                base: std::ptr::null(),
-                log2_stride: 0,
-                origin: BWD_COEFF_ORIGIN_PROCEDURAL,
-                procedural_kind: kind,
-                reserved: 0,
-                r0_stride_bytes: 0,
-            });
-            let lane = window_lane(slot, 0);
-            for column in &entry.columns {
-                addressing.bind(column.source, lane);
-            }
-            continue;
+) -> WindowAddressing {
+    crate::backward::window::binding::intern_window_addressing::<PR, PR>(program, |address| {
+        resolve_storage_column(storage, address)
+    })
+    .unwrap_or_else(|error| match error {
+        WindowBindError::Capacity {
+            required, capacity, ..
+        } => panic!(
+            "Proth120 binding capacity: window address slots {} exceeds {}",
+            required, capacity
+        ),
+        WindowBindError::UnknownProceduralKind { window, kind } => panic!(
+            "Proth120 binding UnknownProceduralKind: window={:?}, kind={:?}",
+            window, kind
+        ),
+        WindowBindError::EmptyWindow { window } => {
+            panic!("Proth120 binding EmptyWindow: window={:?}", window)
         }
-        assert!(
-            !entry.columns.is_empty(),
-            "Proth120 binding EmptyWindow: window={:?}",
-            window
-        );
-        let expect_e4 = entry.backing_field() == FieldKind::Ext;
-        for column in &entry.columns {
-            let place = family_read_place(entry.family, column.column)
-                .expect("an addressless window is procedural");
-            let address = read_place_to_gkr_address(&place);
-            let resolved = resolve_storage_column(storage, address).unwrap_or_else(|| {
-                panic!(
-                    "Proth120 binding UnresolvedWindow: window={:?}, address={:?}",
-                    window, address
-                )
-            });
-            assert!(
-                resolved.is_e4 == expect_e4,
-                "Proth120 binding WindowFieldMismatch: window={:?}, expect_e4={:?}",
-                window,
-                expect_e4
-            );
-            assert!(
-                (!resolved.ptr.is_null()
-                    && (!resolved.matrix_base.is_null()
-                        && (resolved.stride_bytes.is_multiple_of(element)
-                            && (resolved.stride_bytes / element).is_power_of_two()))),
-                "Proth120 binding WindowStrideMismatch: window={:?}, stride_bytes={:?}",
-                window,
-                resolved.stride_bytes
-            );
-            let stride = resolved.stride_bytes as usize;
-            let pointer = resolved.ptr as usize;
-            let matrix = resolved.matrix_base as usize;
-            assert!(
-                (pointer >= matrix && (pointer - matrix).is_multiple_of(stride)),
-                "Proth120 binding UnresolvableRank: window={:?}",
-                window
-            );
-            let (chunk_base, within) = window_chunk_address(matrix, pointer, stride);
-            let slot = addressing.intern(BwdSourceWindow {
-                base: chunk_base as *const u8,
-                log2_stride: (resolved.stride_bytes / element).trailing_zeros() as u8,
-                origin: if expect_e4 {
-                    BWD_COEFF_ORIGIN_READ_EXT
-                } else {
-                    BWD_COEFF_ORIGIN_READ_BASE
-                },
-                procedural_kind: BWD_COEFF_PROCEDURAL_NONE,
-                reserved: 0,
-                r0_stride_bytes: resolved.stride_bytes,
-            });
-            addressing.bind(column.source, window_lane(slot, within));
+        WindowBindError::UnresolvedWindow { window, address } => panic!(
+            "Proth120 binding UnresolvedWindow: window={:?}, address={:?}",
+            window, address
+        ),
+        WindowBindError::WindowFieldMismatch { window, expect_e4 } => panic!(
+            "Proth120 binding WindowFieldMismatch: window={:?}, expect_e4={:?}",
+            window, expect_e4
+        ),
+        WindowBindError::WindowStrideMismatch {
+            window,
+            stride_bytes,
+        } => panic!(
+            "Proth120 binding WindowStrideMismatch: window={:?}, stride_bytes={:?}",
+            window, stride_bytes
+        ),
+        WindowBindError::UnresolvableRank { window } => {
+            panic!("Proth120 binding UnresolvableRank: window={:?}", window)
         }
-    }
-    addressing
+        WindowBindError::UnsupportedFoldingSteps { folding_steps } => panic!(
+            "Proth120 binding UnsupportedFoldingSteps: folding_steps={:?}",
+            folding_steps
+        ),
+        WindowBindError::LaneSourceMissing { word, source } => panic!(
+            "Proth120 binding LaneSourceMissing: word={:?}, source={:?}",
+            word, source
+        ),
+    })
 }
 
 fn assert_bf_only(program: &WindowProgram) {
@@ -210,7 +143,7 @@ fn assert_bf_only(program: &WindowProgram) {
 
 pub(super) fn build_window_binding_pr(
     program: &WindowProgram,
-    addressing: &WindowAddressingPr,
+    addressing: &WindowAddressing,
     folding_steps: usize,
     scratch: WindowRuntimeScratchPr,
     bank: CoefficientBankViewPr,
@@ -281,11 +214,7 @@ pub(super) fn build_window_binding_pr(
     binding
 }
 
-fn bind_window_words_pr(
-    program: &WindowProgram,
-    addressing: &WindowAddressingPr,
-    words: &mut [u16],
-) {
+fn bind_window_words_pr(program: &WindowProgram, addressing: &WindowAddressing, words: &mut [u16]) {
     rewrite_window_words(program, &addressing.lanes, words).unwrap_or_else(|(word, source)| {
         panic!("Proth120 binding LaneSourceMissing: word={word:?}, source={source:?}")
     });

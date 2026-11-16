@@ -1,14 +1,14 @@
 use std::collections::BTreeMap;
 
 use era_cudart::{memory::memory_copy_async, result::CudaResult, slice::DeviceSlice};
-use gpu_core::primitives::{callbacks::Callbacks, context::UnsafeMutAccessor, field::E4};
+use gpu_core::primitives::{callbacks::Callbacks, context::UnsafeMutAccessor};
 use gpu_prover_context::ProverContext;
 
 use crate::{backward::kernels::ClaimBufferLayout, upstream::GKRAddress};
 
 #[doc(hidden)]
 #[derive(Debug, PartialEq, Eq)]
-pub struct GKRBackwardStageSnapshot<F = E4> {
+pub struct GKRBackwardStageSnapshot<F> {
     pub layer_idx: usize,
     pub claim_point: Vec<F>,
     pub batching_challenge: F,
@@ -17,7 +17,7 @@ pub struct GKRBackwardStageSnapshot<F = E4> {
 
 #[doc(hidden)]
 #[derive(Default)]
-pub struct GKRBackwardStageSnapshotSink<F = E4> {
+pub struct GKRBackwardStageSnapshotSink<F> {
     snapshots: Vec<GKRBackwardStageSnapshot<F>>,
 }
 

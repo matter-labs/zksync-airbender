@@ -1,3 +1,5 @@
+use crate::backward::dr_tail::kernels::DR_TAIL_MAX_REMAINING_ROUNDS;
+use crate::backward::main_layer::blueprints::build_dimension_reducing_slots_static;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
@@ -7,54 +9,18 @@ use super::{
     dr_tail_attributes_pr, dr_tail_device_optin_cap_bytes_pr, dr_tail_occupancy_pr,
     set_dr_tail_max_dynamic_smem_bytes_pr,
 };
-use crate::backward::{
-    derive_dimension_reducing_inputs, dim_reducing_slot_index, GpuGKRDimensionReducingLayerSlots,
-    GpuGKRDimensionReducingSlotPlan, GKR_DIM_REDUCING_INPUTS_PER_SLOT,
-    GKR_DIM_REDUCING_OUTPUTS_PER_SLOT,
+use crate::backward::derive_dimension_reducing_inputs;
+use crate::backward::dr_tail::capacity::{
+    dr_tail_entry_round, DrTailCapacityDecision, DrTailCapacityRequest,
 };
-use crate::proth120::backward::capacity::{
-    dr_tail_entry_round_pr, select_capacity_pr, DrTailCapacityDecisionPr, DrTailCapacityRequestPr,
-};
-use crate::proth120::backward::dr_tail::{
-    PR_DR_FINAL_TRACE_LOG_2, PR_DR_TAIL_MAX_REMAINING_ROUNDS, PR_DR_TAIL_MAX_SOURCES,
-};
+use crate::proth120::backward::capacity::select_capacity_pr;
+use crate::proth120::backward::dr_tail::{PR_DR_FINAL_TRACE_LOG_2, PR_DR_TAIL_MAX_SOURCES};
 use crate::proth120::backward::window_dr::{
     compile_dr_window_programs_pr, dr_window_continuation_count_pr, PR_DR_MAX_ENTRY_ROUND,
 };
 use crate::proth120::programs::GkrProgramsPr;
-use crate::upstream::{DimensionReducingInputOutput, GKRAddress, OutputType};
+use crate::upstream::GKRAddress;
 use crate::DrWindowLayerProgram;
-
-pub(crate) fn dimension_reducing_slots_pr(
-    layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
-) -> GpuGKRDimensionReducingLayerSlots {
-    let mut layer_slots = GpuGKRDimensionReducingLayerSlots::default();
-    let mut next_batch_exp = 0u16;
-    for (output_type, reduced) in layer {
-        let inputs: [GKRAddress; GKR_DIM_REDUCING_INPUTS_PER_SLOT] =
-            reduced.inputs.clone().try_into().unwrap_or_else(|_| {
-                panic!("Proth120 dimension-reducing {output_type:?} expects two inputs")
-            });
-        let outputs: [GKRAddress; GKR_DIM_REDUCING_OUTPUTS_PER_SLOT] =
-            reduced.output.clone().try_into().unwrap_or_else(|_| {
-                panic!("Proth120 dimension-reducing {output_type:?} expects two outputs")
-            });
-        let batch_exp = [next_batch_exp, next_batch_exp + 1];
-        next_batch_exp += GKR_DIM_REDUCING_OUTPUTS_PER_SLOT as u16;
-        let previous = layer_slots.slots[dim_reducing_slot_index(*output_type)].replace(
-            GpuGKRDimensionReducingSlotPlan {
-                inputs,
-                outputs,
-                batch_exp,
-            },
-        );
-        assert!(
-            previous.is_none(),
-            "Proth120 duplicate dimension-reducing slot for {output_type:?}"
-        );
-    }
-    layer_slots
-}
 
 struct DrTailLayerInputPr {
     layer_idx: usize,
@@ -79,7 +45,7 @@ fn dr_tail_layer_inputs_pr(programs: &GkrProgramsPr) -> Vec<DrTailLayerInputPr> 
             .checked_sub(layer_offset)
             .and_then(|value| value.checked_sub(1))
             .expect("Proth120 DR folding width underflowed");
-        let canonical_sources = dimension_reducing_slots_pr(&layer)
+        let canonical_sources = build_dimension_reducing_slots_static(&layer)
             .input_addresses()
             .map(|address| aliases.get(&address).copied().unwrap_or(address))
             .collect::<BTreeSet<_>>()
@@ -120,10 +86,10 @@ fn validate_dr_tail_shapes_pr(inputs: &[DrTailLayerInputPr], trace_log: usize) {
             input.layer_idx,
             input.canonical_sources.len()
         );
-        let entry_round = dr_tail_entry_round_pr(input.folding_steps);
+        let entry_round = dr_tail_entry_round(input.folding_steps);
         assert!(
             entry_round <= PR_DR_MAX_ENTRY_ROUND
-                && input.folding_steps - entry_round <= PR_DR_TAIL_MAX_REMAINING_ROUNDS,
+                && input.folding_steps - entry_round <= DR_TAIL_MAX_REMAINING_ROUNDS,
             "Proth120 DR layer {} tail entry round {entry_round} is unsupported",
             input.layer_idx
         );
@@ -148,7 +114,7 @@ pub(crate) struct DrTailLayerPlanPr {
     layer_idx: usize,
     folding_steps: usize,
     canonical_sources: Vec<GKRAddress>,
-    capacity: DrTailCapacityDecisionPr,
+    capacity: DrTailCapacityDecision,
 }
 
 impl DrTailLayerPlanPr {
@@ -168,7 +134,7 @@ impl DrTailLayerPlanPr {
     }
 
     #[cfg(test)]
-    pub(crate) fn capacity(&self) -> DrTailCapacityDecisionPr {
+    pub(crate) fn capacity(&self) -> DrTailCapacityDecision {
         self.capacity
     }
 }
@@ -186,7 +152,7 @@ fn plan_dr_tail_layers_pr(
     inputs
         .into_iter()
         .map(|input| {
-            let capacity = select_capacity_pr(DrTailCapacityRequestPr {
+            let capacity = select_capacity_pr(DrTailCapacityRequest {
                 folding_steps: input.folding_steps,
                 canonical_sources: input.canonical_sources.len(),
                 static_smem_bytes,
@@ -249,7 +215,7 @@ impl DrTailPlanCursorPr<'_> {
         layer_idx: usize,
         folding_steps: usize,
         canonical_sources: &[GKRAddress],
-    ) -> DrTailCapacityDecisionPr {
+    ) -> DrTailCapacityDecision {
         let planned = self
             .layers
             .iter()

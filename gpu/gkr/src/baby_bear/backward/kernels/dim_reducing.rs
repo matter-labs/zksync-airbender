@@ -86,8 +86,7 @@ pub(crate) struct GpuGKRDimensionReducingSumcheckLayerPlan {
     pub(crate) dr_window_program: std::sync::Arc<crate::DrWindowLayerProgram>,
     pub(crate) dr_window:
         Option<crate::baby_bear::backward::window_dr::DrWindowLayerPreparationHook>,
-    pub(crate) dr_tail_capacity:
-        crate::baby_bear::backward::dr_tail::capacity::DrTailCapacityDecision,
+    pub(crate) dr_tail_capacity: crate::backward::dr_tail::capacity::DrTailCapacityDecision,
     pub(crate) direct_tail_inputs:
         Option<crate::baby_bear::backward::window_dr::DrWindowRawInputKeepalive>,
     pub(crate) _partials: Option<DeviceAllocation<E4>>,

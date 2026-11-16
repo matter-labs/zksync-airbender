@@ -1,37 +1,27 @@
+use crate::backward::dr_tail::kernels::DrTailSlot;
+use crate::backward::dr_tail::kernels::DR_TAIL_MAX_REMAINING_ROUNDS;
 mod resources;
 
+pub(crate) use resources::DrTailPlanCursorPr;
 #[cfg(test)]
 pub(crate) use resources::{cpu_validate_dr_tail_shapes_pr, DrTailLayerPlanPr};
-pub(crate) use resources::{dimension_reducing_slots_pr, DrTailPlanCursorPr};
 pub use resources::{prepare_dr_tail_resources_pr, DrTailProofPlanPr};
 
 use core::mem::{align_of, offset_of, size_of};
-use std::collections::BTreeMap;
 
 use era_cudart::cuda_kernel;
 use era_cudart::result::CudaResult;
 use gpu_gkr_compiler::KERNEL_ARGUMENT_CEILING_BYTES;
 use gpu_prover_context::ProverContext;
 
-use super::capacity::DrTailCapacityDecisionPr;
-use crate::backward::{
-    GpuGKRDimensionReducingLayerSlots, GKR_DIM_REDUCING_INPUTS_PER_SLOT,
-    GKR_DIM_REDUCING_OUTPUTS_PER_SLOT, GKR_DIM_REDUCING_SLOTS,
-};
-use crate::upstream::{GKRAddress, L1_WRAP_EXPLICIT_OUTPUT_LOG2, PR};
+use crate::backward::dr_tail::capacity::DrTailCapacityDecision;
+use crate::backward::GKR_DIM_REDUCING_SLOTS;
+use crate::upstream::{L1_WRAP_EXPLICIT_OUTPUT_LOG2, PR};
 
 pub(crate) const PR_DR_FINAL_TRACE_LOG_2: u32 = L1_WRAP_EXPLICIT_OUTPUT_LOG2 as u32;
 pub(crate) const PR_DR_TAIL_MAX_SOURCES: usize = 10;
 pub(crate) const PR_DR_TAIL_BLOCK_THREADS: u32 = 256;
-pub(crate) const PR_DR_TAIL_MAX_REMAINING_ROUNDS: usize = 8;
 pub(crate) const PR_DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE: usize = 128;
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DrTailSlotPr {
-    pub(crate) input_source: [u16; GKR_DIM_REDUCING_INPUTS_PER_SLOT],
-    pub(crate) batch_exp: [u16; GKR_DIM_REDUCING_OUTPUTS_PER_SLOT],
-}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -48,17 +38,17 @@ pub(crate) struct DrTailMegakernelDescPr {
     pub(crate) eq_prefactor: *mut PR,
     pub(crate) coeffs_out: *mut PR,
     pub(crate) challenges_out: *mut PR,
-    pub(crate) slots: [DrTailSlotPr; GKR_DIM_REDUCING_SLOTS],
+    pub(crate) slots: [DrTailSlot; GKR_DIM_REDUCING_SLOTS],
 }
 
 pub(crate) const PR_DR_TAIL_ARGUMENT_BYTES: usize =
     size_of::<DrTailMegakernelDescPr>() + size_of::<*mut PR>();
 
 const _: () = {
-    assert!(size_of::<DrTailSlotPr>() == 8);
-    assert!(align_of::<DrTailSlotPr>() == 2);
-    assert!(offset_of!(DrTailSlotPr, input_source) == 0);
-    assert!(offset_of!(DrTailSlotPr, batch_exp) == 4);
+    assert!(size_of::<DrTailSlot>() == 8);
+    assert!(align_of::<DrTailSlot>() == 2);
+    assert!(offset_of!(DrTailSlot, input_source) == 0);
+    assert!(offset_of!(DrTailSlot, batch_exp) == 4);
     assert!(size_of::<DrTailMegakernelDescPr>() == 192);
     assert!(align_of::<DrTailMegakernelDescPr>() == 8);
     assert!(PR_DR_TAIL_ARGUMENT_BYTES == 200);
@@ -85,7 +75,7 @@ cuda_kernel!(
 
 fn assert_capacity_matches_descriptor(
     desc: &DrTailMegakernelDescPr,
-    capacity: &DrTailCapacityDecisionPr,
+    capacity: &DrTailCapacityDecision,
 ) {
     let folding_steps = desc.folding_steps as usize;
     let entry_round = desc.entry_round as usize;
@@ -98,7 +88,7 @@ fn assert_capacity_matches_descriptor(
         .checked_sub(entry_round)
         .expect("Proth120 DR-tail entry round exceeds the folding steps");
     assert!(
-        (1..=PR_DR_TAIL_MAX_REMAINING_ROUNDS).contains(&remaining_rounds),
+        (1..=DR_TAIL_MAX_REMAINING_ROUNDS).contains(&remaining_rounds),
         "Proth120 DR-tail remaining rounds out of range"
     );
     assert!(
@@ -132,7 +122,7 @@ fn assert_capacity_matches_descriptor(
 
 pub(crate) fn launch_dr_tail_megakernel_pr(
     desc: DrTailMegakernelDescPr,
-    capacity: &DrTailCapacityDecisionPr,
+    capacity: &DrTailCapacityDecision,
     context: &ProverContext,
 ) -> CudaResult<()> {
     assert_capacity_matches_descriptor(&desc, capacity);
@@ -144,30 +134,6 @@ pub(crate) fn launch_dr_tail_megakernel_pr(
         |state| PrDrTailMegakernelArguments::new(desc, state),
         context,
     )
-}
-
-pub(crate) fn encode_dr_tail_slots_pr(
-    layer_slots: &GpuGKRDimensionReducingLayerSlots,
-    folding_addresses: &[GKRAddress],
-    aliases: Option<&BTreeMap<GKRAddress, GKRAddress>>,
-) -> [DrTailSlotPr; GKR_DIM_REDUCING_SLOTS] {
-    let mut slots = [DrTailSlotPr::default(); GKR_DIM_REDUCING_SLOTS];
-    for (slot_idx, slot) in layer_slots.iter_enabled() {
-        let mut encoded = DrTailSlotPr::default();
-        for (input_idx, address) in slot.inputs.iter().copied().enumerate() {
-            let canonical = aliases
-                .and_then(|aliases| aliases.get(&address))
-                .copied()
-                .unwrap_or(address);
-            let source_idx = folding_addresses
-                .binary_search(&canonical)
-                .expect("Proth120 DR-tail source must be in the canonical publication");
-            encoded.input_source[input_idx] = source_idx as u16;
-        }
-        encoded.batch_exp = slot.batch_exp;
-        slots[slot_idx] = encoded;
-    }
-    slots
 }
 
 pub(crate) use crate::backward::DrTailRawAttributes as DrTailRawAttributesPr;

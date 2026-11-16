@@ -4,20 +4,10 @@ use gpu_gkr_compiler::CompiledLayer;
 pub(crate) use lower_common::ResolvedColumn;
 
 use crate::baby_bear::forward::vm::desc::FwdVmDesc;
-use crate::forward::vm::desc::MAPPING_ARENA_COUNT;
 use crate::forward::vm::lower_common;
+use crate::forward::vm::lower_common::FwdVmInputs;
 use crate::upstream::ChallengeRef;
 use crate::upstream::GKRAddress;
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct FwdVmInputs<'a> {
-    pub mapping_arena: [*const u32; MAPPING_ARENA_COUNT],
-    pub decoder_mapping_col: Option<u16>,
-    pub table: *const E4,
-    pub table_len: u32,
-    pub count: u32,
-    pub inits_and_teardowns_top_bits: &'a [u32],
-}
 
 pub(crate) struct LoweredFwdVm {
     pub desc: FwdVmDesc,
@@ -28,20 +18,11 @@ pub(crate) struct LoweredFwdVm {
 
 pub(crate) fn lower_desc(
     layers: &[CompiledLayer],
-    header: &FwdVmInputs<'_>,
+    header: &FwdVmInputs<'_, E4>,
     resolve_column: &dyn Fn(GKRAddress) -> Option<ResolvedColumn>,
     challenge: &dyn Fn(&ChallengeRef) -> E4,
 ) -> LoweredFwdVm {
-    let common_header = lower_common::FwdVmInputs {
-        mapping_arena: header.mapping_arena,
-        decoder_mapping_col: header.decoder_mapping_col,
-        table: header.table,
-        decoder_mapping: std::ptr::null(),
-        table_len: header.table_len,
-        count: header.count,
-        inits_and_teardowns_top_bits: header.inits_and_teardowns_top_bits,
-    };
-    let lowered = lower_common::lower_desc::<BF>(layers, &common_header, resolve_column, challenge);
+    let lowered = lower_common::lower_desc::<BF>(layers, header, resolve_column, challenge);
     let d = lowered.desc;
     let mut desc: FwdVmDesc = unsafe { std::mem::zeroed() };
     desc.source_base = d.source_base;

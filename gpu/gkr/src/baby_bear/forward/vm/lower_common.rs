@@ -92,7 +92,7 @@ mod tests {
                 .iter()
                 .find_map(|(candidate, column)| (*candidate == address).then_some(*column))
         };
-        let header = crate::baby_bear::forward::vm::lower::FwdVmInputs {
+        let header = crate::forward::vm::lower_common::FwdVmInputs {
             mapping_arena: [
                 std::ptr::without_provenance(1),
                 std::ptr::without_provenance(2),
@@ -100,6 +100,7 @@ mod tests {
             ],
             decoder_mapping_col: Some(0),
             table: std::ptr::without_provenance(4),
+            decoder_mapping: std::ptr::null(),
             table_len: 16,
             count: 16,
             inits_and_teardowns_top_bits: &[0; 32],

@@ -14,9 +14,9 @@ use std::sync::Arc;
 
 use gpu_gkr_compiler::{lower_dr_window_program, project_dr_window_inputs};
 
+use crate::backward::dr_tail::capacity::dr_tail_entry_round;
 use crate::backward::window_dr::validate_dr_window_folding_steps;
 use crate::backward::{derive_dimension_reducing_inputs, make_eq_sizes, GkrEqSizes};
-use crate::proth120::backward::capacity::dr_tail_entry_round_pr;
 use crate::proth120::backward::dr_tail::PR_DR_FINAL_TRACE_LOG_2;
 use crate::proth120::programs::GkrProgramsPr;
 use crate::upstream::{GKRAddress, OutputType};
@@ -66,7 +66,7 @@ pub(crate) fn compile_dr_window_programs_pr(
             .get(layer + 1)
             .map(|output_layout| output_layout.log2_stride as usize)
             .unwrap_or_else(|| panic!("Proth120 DR layer {layer} has no output layout"));
-        if dr_tail_entry_round_pr(folding_steps) != 0 {
+        if dr_tail_entry_round(folding_steps) != 0 {
             validate_dr_window_folding_steps(folding_steps)
                 .unwrap_or_else(|error| panic!("Proth120 DR window layer {layer}: {error}"));
         }

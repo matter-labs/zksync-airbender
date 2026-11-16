@@ -133,7 +133,7 @@ mod cpu_tests {
         // Match the BabyBear CPU lowering test with the committed wrap program.
         let resolved =
             crate::forward::vm::lower_common::resolve_test_columns(&programs.forward.layers, 256);
-        let header = crate::proth120::forward::lower::FwdVmInputs {
+        let header = crate::forward::vm::lower_common::FwdVmInputs {
             mapping_arena: std::array::from_fn(|i| std::ptr::without_provenance(i + 1)),
             decoder_mapping_col: Some(0),
             table: std::ptr::without_provenance(4),

@@ -1,3 +1,5 @@
+use crate::backward::dr_tail::kernels::encode_dr_tail_slots;
+use crate::backward::main_layer::blueprints::build_dimension_reducing_slots_static;
 use std::collections::{BTreeMap, BTreeSet};
 
 use era_cudart::memory::memory_copy_async;
@@ -7,10 +9,9 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_hash::keccak256::{transcript_commit_fields, transcript_draw_fields};
 use gpu_prover_context::ProverContext;
 
-use super::capacity::DrTailCapacityDecisionPr;
 use super::dr_tail::{
-    dimension_reducing_slots_pr, encode_dr_tail_slots_pr, launch_dr_tail_megakernel_pr,
-    DrTailMegakernelDescPr, DrTailPlanCursorPr, DrTailProofPlanPr, PR_DR_TAIL_MAX_SOURCES,
+    launch_dr_tail_megakernel_pr, DrTailMegakernelDescPr, DrTailPlanCursorPr, DrTailProofPlanPr,
+    PR_DR_TAIL_MAX_SOURCES,
 };
 use super::gkr_ops;
 use super::scheduled_execution::{gather_pr, LayerInputPr, ScheduledLayerExecutionPr};
@@ -20,6 +21,7 @@ use super::window_dr::{
     DrWindowRawInputKeepalivePr,
 };
 use super::GpuGKRDimensionReducingBackwardStatePr;
+use crate::backward::dr_tail::capacity::DrTailCapacityDecision;
 use crate::backward::{ClaimBufferLayout, GpuGKRDimensionReducingLayerSlots};
 use crate::proth120::proof_layout::ProofSlabPr;
 use crate::upstream::{GKRAddress, PR};
@@ -30,7 +32,7 @@ pub(crate) struct DimensionReducingLayerPlanPr {
     folding_steps: usize,
     layer_slots: GpuGKRDimensionReducingLayerSlots,
     folding_addresses: Vec<GKRAddress>,
-    capacity: DrTailCapacityDecisionPr,
+    capacity: DrTailCapacityDecision,
 }
 
 fn canonical_address(storage: &GpuGKRStorage<PR, PR>, address: GKRAddress) -> GKRAddress {
@@ -54,7 +56,7 @@ impl GpuGKRDimensionReducingBackwardStatePr {
             "Proth120 dimension-reducing trace length {trace_len} is unsupported"
         );
         let folding_steps = trace_len.trailing_zeros() as usize;
-        let layer_slots = dimension_reducing_slots_pr(&layer);
+        let layer_slots = build_dimension_reducing_slots_static(&layer);
         assert_ne!(
             layer_slots.enabled_mask(),
             0,
@@ -192,7 +194,7 @@ impl DimensionReducingLayerPlanPr {
         assert!(source_count <= PR_DR_TAIL_MAX_SOURCES);
         let mut source_ptrs = [std::ptr::null(); PR_DR_TAIL_MAX_SOURCES];
         source_ptrs[..source_count].copy_from_slice(&sources);
-        let slots = encode_dr_tail_slots_pr(
+        let slots = encode_dr_tail_slots(
             &self.layer_slots,
             &self.folding_addresses,
             storage.layout.as_ref().map(|layout| &layout.aliases),

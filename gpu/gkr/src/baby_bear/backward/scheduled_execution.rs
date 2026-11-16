@@ -95,7 +95,7 @@ impl GpuGKRDimensionReducingBackwardState {
         // base eval ranges and merged at parse time.
         proof_slab: &DeviceAllocation<E4>,
         proof_layout: &ProofLayout,
-        stage_snapshots: Option<UnsafeMutAccessor<GKRBackwardStageSnapshotSink>>,
+        stage_snapshots: Option<UnsafeMutAccessor<GKRBackwardStageSnapshotSink<E4>>>,
         callbacks: &mut Callbacks<'_>,
         context: &ProverContext,
     ) -> CudaResult<GpuGKRBackwardScheduledExecution> {

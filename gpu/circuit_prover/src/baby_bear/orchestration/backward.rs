@@ -161,7 +161,7 @@ pub(in crate::baby_bear) fn schedule_backward_phase(
     d_lookup_challenges_for_backward: DeviceAllocation<E4>,
     proof_slab: &DeviceAllocation<E4>,
     proof_layout: &ProofLayout,
-    stage_snapshots: Option<UnsafeMutAccessor<GKRBackwardStageSnapshotSink>>,
+    stage_snapshots: Option<UnsafeMutAccessor<GKRBackwardStageSnapshotSink<E4>>>,
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
 ) -> CudaResult<BackwardPhaseResult> {

@@ -1,4 +1,7 @@
+use crate::backward::{GpuGKRDimensionReducingLayerSlots, GKR_DIM_REDUCING_SLOTS};
+use crate::upstream::GKRAddress;
 use core::mem::size_of;
+use std::collections::BTreeMap;
 
 use era_cudart::{
     execution::{CudaLaunchConfig, KernelArguments, KernelFunction},
@@ -106,4 +109,28 @@ pub(crate) fn kernel_occupancy(
 ) -> CudaResult<u32> {
     max_active_blocks_per_multiprocessor(function, threads as i32, dynamic_smem_bytes)
         .map(|blocks| blocks.max(0) as u32)
+}
+
+pub(crate) fn encode_dr_tail_slots(
+    layer_slots: &GpuGKRDimensionReducingLayerSlots,
+    folding_addresses: &[GKRAddress],
+    aliases: Option<&BTreeMap<GKRAddress, GKRAddress>>,
+) -> [DrTailSlot; GKR_DIM_REDUCING_SLOTS] {
+    let mut slots = [DrTailSlot::default(); GKR_DIM_REDUCING_SLOTS];
+    for (slot_idx, slot) in layer_slots.iter_enabled() {
+        let mut encoded = DrTailSlot::default();
+        for (input_idx, address) in slot.inputs.iter().copied().enumerate() {
+            let canonical = aliases
+                .and_then(|aliases| aliases.get(&address))
+                .copied()
+                .unwrap_or(address);
+            let source_idx = folding_addresses
+                .binary_search(&canonical)
+                .expect("DR-tail source must be in the canonical publication");
+            encoded.input_source[input_idx] = source_idx as u16;
+        }
+        encoded.batch_exp = slot.batch_exp;
+        slots[slot_idx] = encoded;
+    }
+    slots
 }

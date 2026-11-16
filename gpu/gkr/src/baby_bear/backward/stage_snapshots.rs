@@ -16,7 +16,7 @@ pub(super) fn schedule_stage_snapshot(
     point_and_batching: &DeviceClaimPointAndBatching,
     claims: &DeviceAllocation<E4>,
     claim_layout: &ClaimBufferLayout,
-    output: UnsafeMutAccessor<GKRBackwardStageSnapshotSink>,
+    output: UnsafeMutAccessor<GKRBackwardStageSnapshotSink<E4>>,
     callbacks: &mut Callbacks<'_>,
     context: &ProverContext,
 ) -> CudaResult<()> {

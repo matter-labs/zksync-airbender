@@ -342,7 +342,7 @@ fn production_vm_fixture() -> (gpu_gkr_compiler::CompiledLayer, Vec<ProductionVm
                     .resolve_read_place(window, column)
                     .unwrap();
                 inputs.insert(
-                    crate::proth120::forward::lower::read_place_to_gkr_address(&place),
+                    crate::forward::vm::lower_common::read_place_to_gkr_address(&place),
                     field,
                 );
             }
@@ -378,7 +378,7 @@ fn production_vm_fixture() -> (gpu_gkr_compiler::CompiledLayer, Vec<ProductionVm
                 if let Some(ForwardDstLine::GlobalMaterialize { slot, col }) = dst {
                     let place = layer.backings.slot_col_to_read_place(*slot, *col).unwrap();
                     outputs.insert(
-                        crate::proth120::forward::lower::read_place_to_gkr_address(&place),
+                        crate::forward::vm::lower_common::read_place_to_gkr_address(&place),
                         *field,
                     );
                 }
@@ -580,7 +580,7 @@ fn pr_partial_block_vm_and_tower_are_guarded() {
         }
         buffers.push((device, indexes, values));
     }
-    let header = crate::proth120::forward::lower::FwdVmInputs {
+    let header = crate::forward::vm::lower_common::FwdVmInputs {
         mapping_arena: [std::ptr::null(); 3],
         decoder_mapping_col: None,
         table: std::ptr::null(),

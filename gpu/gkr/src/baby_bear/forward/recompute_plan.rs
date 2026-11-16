@@ -52,10 +52,11 @@ pub(crate) fn check_recompute_bindings(programs: &GkrPrograms) {
 
 #[cfg(test)]
 fn check_policy_bindings(programs: &GkrPrograms, policy: GkrMemoryPolicy) {
+    use crate::forward::vm::lower_common::FwdVmInputs;
     use gpu_core::primitives::field::E4;
 
     use crate::{
-        baby_bear::forward::vm::lower::{lower_desc, FwdVmInputs, ResolvedColumn},
+        baby_bear::forward::vm::lower::{lower_desc, ResolvedColumn},
         upstream::Field,
     };
 
@@ -99,6 +100,7 @@ fn check_policy_bindings(programs: &GkrPrograms, policy: GkrMemoryPolicy) {
     allocate(&raw, layout.trace_len, &mut resolved);
     let header = FwdVmInputs {
         mapping_arena: [std::ptr::without_provenance(1); 3],
+        decoder_mapping: std::ptr::null(),
         decoder_mapping_col: Some(0),
         table: std::ptr::without_provenance(2),
         table_len: 16,

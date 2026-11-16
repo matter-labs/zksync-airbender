@@ -19,7 +19,6 @@ use crate::baby_bear::forward::vm::ab_gkr_fwd_vm_const_derived_e4;
 use crate::baby_bear::forward::vm::desc::FwdVmDesc;
 use crate::baby_bear::forward::vm::launch_fwd_vm;
 use crate::baby_bear::forward::vm::lower::lower_desc;
-use crate::baby_bear::forward::vm::lower::FwdVmInputs;
 use crate::baby_bear::forward::vm::lower::LoweredFwdVm;
 use crate::baby_bear::forward::vm::output::materialize_output_slot;
 use crate::baby_bear::forward::vm::output::register_layer_copy_aliases;
@@ -28,6 +27,7 @@ use crate::baby_bear::stage1::GpuGKRLookupMappings;
 use crate::baby_bear::stage1::GpuGKRStage1Output;
 use crate::forward::dimension_reducing::PreparedDimensionReductionForward;
 use crate::forward::vm::desc::CONST_DERIVED_E4_CAP;
+use crate::forward::vm::lower_common::FwdVmInputs;
 use crate::forward::vm::lower_common::ResolvedColumn;
 use crate::forward::vm::production_bind::*;
 use crate::gkr_address_audit::AddressClass;
@@ -153,7 +153,7 @@ pub(crate) fn forward_header<'a>(
     table: Option<&DeviceSlice<E4>>,
     trace_len: usize,
     inits_and_teardowns_top_bits: &'a [u32],
-) -> FwdVmInputs<'a> {
+) -> FwdVmInputs<'a, E4> {
     let m = mappings;
     assert_eq!(
         m.trace_len, trace_len,
@@ -181,6 +181,7 @@ pub(crate) fn forward_header<'a>(
             .has_decoder
             .then(|| u16::try_from(m.num_generic_sets).expect("num_generic_sets exceeds u16")),
         table: table.map_or(null(), |t| t.as_ptr()),
+        decoder_mapping: null(),
         table_len: table.map_or(0, |t| t.len() as u32),
         count: trace_len as u32,
         inits_and_teardowns_top_bits,

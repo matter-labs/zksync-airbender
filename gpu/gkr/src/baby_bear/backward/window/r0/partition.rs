@@ -139,7 +139,7 @@ pub(super) fn bind<E: Copy>(
 pub(super) fn bind_addressed(
     program: &WindowProgram,
     plan: &R0PartitionPlan,
-    addressing: &crate::baby_bear::backward::window::binding::WindowAddressing,
+    addressing: &crate::backward::window::binding::WindowAddressing,
     folding_steps: usize,
     scratch: WindowRuntimeScratch,
 ) -> Result<(Box<WindowLaunchBinding>, Option<PartitionBounds>), WindowBindError> {

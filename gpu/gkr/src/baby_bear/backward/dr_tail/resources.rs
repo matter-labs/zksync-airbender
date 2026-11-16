@@ -1,12 +1,10 @@
 //! Device limits asserted while scheduling the DR tail.
+use crate::backward::dr_tail::capacity::{DrTailCapacityDecision, DrTailCapacityRequest};
 use era_cudart::result::CudaResult;
 use gpu_prover_context::ProverContext;
 
 use crate::{
-    baby_bear::backward::dr_tail::capacity::{
-        select_capacity, DrTailCapacityDecision, DrTailCapacityRequest,
-    },
-    backward::dr_tail::resources::*,
+    baby_bear::backward::dr_tail::capacity::select_capacity, backward::dr_tail::resources::*,
 };
 
 pub(crate) struct DrTailResources {

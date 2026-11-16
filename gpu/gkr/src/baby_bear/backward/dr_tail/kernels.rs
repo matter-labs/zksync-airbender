@@ -5,7 +5,7 @@ use gpu_core::primitives::field::E4;
 use gpu_prover_context::ProverContext;
 
 use crate::{
-    baby_bear::backward::dr_tail::capacity::DrTailCapacityDecision,
+    backward::dr_tail::capacity::DrTailCapacityDecision,
     backward::dr_tail::{
         kernels::*,
         resources::{DrTailRawAttributes, DR_TAIL_OCCUPANCY_THREADS},

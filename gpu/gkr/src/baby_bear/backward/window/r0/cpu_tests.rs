@@ -127,7 +127,7 @@ fn cpu_selected_r0_programs_and_banks_cover_corpus() {
 fn check_partition_bindings(program: &R0WindowProgram) {
     use gpu_gkr_compiler::window::partition::policy::REQUESTED_PARTS;
 
-    use crate::baby_bear::backward::window::binding::WindowAddressing;
+    use crate::backward::window::binding::WindowAddressing;
     // A bijective synthetic lane map checks relocation, including non-identity
     // source words. No pointer in this CPU descriptor is dereferenced.
     let addressing = WindowAddressing {

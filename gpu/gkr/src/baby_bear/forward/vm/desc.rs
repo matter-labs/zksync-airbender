@@ -25,7 +25,7 @@ pub(crate) struct FwdVmDesc {
     pub layer_count: u32,
     pub layers: [FwdVmLayer; LAYER_CAP],
     pub reduction_pair_count: u32,
-    pub reduction_pairs: [FwdVmReductionPair; REDUCTION_PAIR_CAP],
+    pub reduction_pairs: [FwdVmReductionPair<E4>; REDUCTION_PAIR_CAP],
     pub program: [u16; PROGRAM_CAP],
     pub temporary_source_mask: u32,
     pub temporary_dst_mask: u32,
@@ -34,8 +34,8 @@ pub(crate) struct FwdVmDesc {
 /// ABI size guards, paired with the CUDA `static_assert`s in `fwd_vm.cuh`.
 const _: () = {
     assert!(core::mem::size_of::<FwdVmLayer>() == 4);
-    assert!(core::mem::size_of::<FwdVmReductionPair>() == 136);
-    assert!(core::mem::align_of::<FwdVmReductionPair>() == 8);
+    assert!(core::mem::size_of::<FwdVmReductionPair<E4>>() == 136);
+    assert!(core::mem::align_of::<FwdVmReductionPair<E4>>() == 8);
     assert!(core::mem::size_of::<FwdVmDesc>() == 27_664);
     assert!(core::mem::offset_of!(FwdVmDesc, temporary_source_mask) == 27_656);
     assert!(core::mem::offset_of!(FwdVmDesc, temporary_dst_mask) == 27_660);
@@ -56,12 +56,12 @@ mod tests {
         assert_eq!(offset_of!(FwdVmLayer, program_offset), 0);
         assert_eq!(offset_of!(FwdVmLayer, instruction_count), 2);
 
-        assert_eq!(size_of::<FwdVmReductionPair>(), 136);
-        assert_eq!(align_of::<FwdVmReductionPair>(), 8);
-        assert_eq!(offset_of!(FwdVmReductionPair, input), 0);
-        assert_eq!(offset_of!(FwdVmReductionPair, round_outputs), 16);
-        assert_eq!(offset_of!(FwdVmReductionPair, kind), 128);
-        assert_eq!(offset_of!(FwdVmReductionPair, reserved), 132);
+        assert_eq!(size_of::<FwdVmReductionPair<E4>>(), 136);
+        assert_eq!(align_of::<FwdVmReductionPair<E4>>(), 8);
+        assert_eq!(offset_of!(FwdVmReductionPair<E4>, input), 0);
+        assert_eq!(offset_of!(FwdVmReductionPair<E4>, round_outputs), 16);
+        assert_eq!(offset_of!(FwdVmReductionPair<E4>, kind), 128);
+        assert_eq!(offset_of!(FwdVmReductionPair<E4>, reserved), 132);
 
         assert_eq!(offset_of!(FwdVmDesc, arg_derived_e4), 0);
         assert_eq!(offset_of!(FwdVmDesc, source_base), 192);

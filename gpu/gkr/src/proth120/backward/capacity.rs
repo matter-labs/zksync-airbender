@@ -1,40 +1,20 @@
-use crate::backward::GKR_EQ_GROUP_TABLE_LEN;
-use crate::proth120::backward::dr_tail::{PR_DR_TAIL_MAX_REMAINING_ROUNDS, PR_DR_TAIL_MAX_SOURCES};
+use crate::backward::dr_tail::capacity::{
+    capacity_sizes, dr_tail_entry_round, DrTailCapacityDecision, DrTailCapacityRequest,
+};
+use crate::backward::dr_tail::kernels::DR_TAIL_MAX_REMAINING_ROUNDS;
+use crate::proth120::backward::dr_tail::PR_DR_TAIL_MAX_SOURCES;
 use crate::upstream::PR;
 
 const PR_BYTES: usize = 16;
-const EQ_GROUP_BITS: usize = 8;
 
-const _: () = assert!(GKR_EQ_GROUP_TABLE_LEN == 1 << EQ_GROUP_BITS);
 const _: () = assert!(size_of::<PR>() == PR_BYTES);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct DrTailCapacityRequestPr {
-    pub(crate) folding_steps: usize,
-    pub(crate) canonical_sources: usize,
-    pub(crate) static_smem_bytes: usize,
-    pub(crate) device_cap_bytes: usize,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct DrTailCapacityDecisionPr {
-    pub(crate) entry_round: usize,
-    pub(crate) global_state_bytes: usize,
-    pub(crate) dynamic_smem_bytes: usize,
-}
-
-pub(crate) fn dr_tail_entry_round_pr(folding_steps: usize) -> usize {
-    3 * folding_steps
-        .saturating_sub(PR_DR_TAIL_MAX_REMAINING_ROUNDS)
-        .div_ceil(3)
-}
-
-pub(crate) fn select_capacity_pr(request: DrTailCapacityRequestPr) -> DrTailCapacityDecisionPr {
+pub(crate) fn select_capacity_pr(request: DrTailCapacityRequest) -> DrTailCapacityDecision {
     assert!(
         request.folding_steps > 0,
         "Proth120 DR tail needs at least one folding step"
     );
-    let entry_round = dr_tail_entry_round_pr(request.folding_steps);
+    let entry_round = dr_tail_entry_round(request.folding_steps);
     assert!(
         (1..=PR_DR_TAIL_MAX_SOURCES).contains(&request.canonical_sources),
         "Proth120 DR tail supports 1..={PR_DR_TAIL_MAX_SOURCES} canonical sources, got {}",
@@ -42,13 +22,11 @@ pub(crate) fn select_capacity_pr(request: DrTailCapacityRequestPr) -> DrTailCapa
     );
     let remaining_rounds = request.folding_steps - entry_round;
     assert!(
-        (1..=PR_DR_TAIL_MAX_REMAINING_ROUNDS).contains(&remaining_rounds),
+        (1..=DR_TAIL_MAX_REMAINING_ROUNDS).contains(&remaining_rounds),
         "Proth120 DR tail remaining rounds out of range"
     );
-    let global_state_bytes =
-        2 * request.canonical_sources * (1 << (remaining_rounds + 1)) * PR_BYTES;
-    let dynamic_smem_bytes =
-        (remaining_rounds - 1).div_ceil(EQ_GROUP_BITS) * GKR_EQ_GROUP_TABLE_LEN * PR_BYTES;
+    let (global_state_bytes, dynamic_smem_bytes) =
+        capacity_sizes::<PR>(request.canonical_sources, remaining_rounds);
     let total_smem_bytes = dynamic_smem_bytes
         .checked_add(request.static_smem_bytes)
         .expect("Proth120 DR-tail shared-memory size overflowed");
@@ -56,7 +34,7 @@ pub(crate) fn select_capacity_pr(request: DrTailCapacityRequestPr) -> DrTailCapa
         total_smem_bytes <= request.device_cap_bytes,
         "Proth120 DR-tail shared-memory capacity exceeded"
     );
-    DrTailCapacityDecisionPr {
+    DrTailCapacityDecision {
         entry_round,
         global_state_bytes,
         dynamic_smem_bytes,
@@ -66,9 +44,10 @@ pub(crate) fn select_capacity_pr(request: DrTailCapacityRequestPr) -> DrTailCapa
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backward::GKR_EQ_GROUP_TABLE_LEN;
 
-    fn request(width: usize, sources: usize) -> DrTailCapacityRequestPr {
-        DrTailCapacityRequestPr {
+    fn request(width: usize, sources: usize) -> DrTailCapacityRequest {
+        DrTailCapacityRequest {
             folding_steps: width,
             canonical_sources: sources,
             static_smem_bytes: 1024,

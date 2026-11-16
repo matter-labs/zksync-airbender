@@ -46,7 +46,7 @@ pub struct BabyBearProofRequest<'r, 'a, A: GoodAllocator> {
     inputs: GpuGKRProofTransfer<'a, A>,
     memory_policy: ProofMemoryPolicy,
     partial_trees: PartialTreePolicy,
-    stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink>>,
+    stage_snapshots: Option<Box<GKRBackwardStageSnapshotSink<E4>>>,
 }
 
 impl<'r, 'a, A: GoodAllocator + 'a> BabyBearProofRequest<'r, 'a, A> {

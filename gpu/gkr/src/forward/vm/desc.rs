@@ -1,6 +1,4 @@
 //! Rust half of the forward VM descriptor ABI.
-use gpu_core::primitives::field::E4;
-
 // --- caps (mirror the FWD_VM_* constexprs in fwd_vm.cuh) ---------------------
 pub(crate) const PROGRAM_CAP: usize = 12288;
 pub(crate) const CONST_CAP: usize = 64;
@@ -126,7 +124,7 @@ pub(crate) struct FwdVmLayer {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub(crate) struct FwdVmReductionPair<F = E4> {
+pub(crate) struct FwdVmReductionPair<F> {
     pub input: [*const F; 2],
     pub round_outputs: [[*mut F; 2]; FUSED_REDUCTION_ROUNDS],
     pub kind: u32,

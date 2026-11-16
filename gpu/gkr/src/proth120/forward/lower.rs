@@ -1,20 +1,10 @@
 //! Proth120 forward VM descriptor, filled from the field-generic lowering in `lower_common`.
-use super::desc::{FwdVmDesc, MAPPING_ARENA_COUNT};
+use super::desc::FwdVmDesc;
 use crate::forward::vm::lower_common;
+use crate::forward::vm::lower_common::FwdVmInputs;
 use crate::upstream::{Field, GKRAddress, PR};
 use gpu_gkr_compiler::CompiledLayer;
-pub(crate) use lower_common::{read_place_to_gkr_address, ResolvedColumn};
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct FwdVmInputs<'a> {
-    pub mapping_arena: [*const u32; MAPPING_ARENA_COUNT],
-    pub decoder_mapping_col: Option<u16>,
-    pub table: *const PR,
-    pub decoder_mapping: *const u32,
-    pub table_len: u32,
-    pub count: u32,
-    pub inits_and_teardowns_top_bits: &'a [u32],
-}
+pub(crate) use lower_common::ResolvedColumn;
 
 pub(crate) struct LoweredFwdVm {
     pub desc: FwdVmDesc,
@@ -24,20 +14,10 @@ pub(crate) struct LoweredFwdVm {
 
 pub(crate) fn lower_desc(
     layers: &[CompiledLayer],
-    header: &FwdVmInputs<'_>,
+    header: &FwdVmInputs<'_, PR>,
     resolve_column: &dyn Fn(GKRAddress) -> Option<ResolvedColumn>,
 ) -> LoweredFwdVm {
-    let common_header = lower_common::FwdVmInputs {
-        mapping_arena: header.mapping_arena,
-        decoder_mapping_col: header.decoder_mapping_col,
-        table: header.table,
-        decoder_mapping: header.decoder_mapping,
-        table_len: header.table_len,
-        count: header.count,
-        inits_and_teardowns_top_bits: header.inits_and_teardowns_top_bits,
-    };
-    let lowered =
-        lower_common::lower_desc::<PR>(layers, &common_header, resolve_column, &|_| PR::ZERO);
+    let lowered = lower_common::lower_desc::<PR>(layers, header, resolve_column, &|_| PR::ZERO);
     let d = lowered.desc;
     let mut desc: FwdVmDesc = unsafe { std::mem::zeroed() };
     desc.source_base = d.source_base;

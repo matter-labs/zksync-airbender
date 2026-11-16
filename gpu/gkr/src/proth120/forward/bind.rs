@@ -1,7 +1,8 @@
 use super::challenge_banks::ForwardChallengeBanks;
 use super::desc::*;
-use super::lower::{lower_desc, FwdVmInputs, LoweredFwdVm, ResolvedColumn};
+use super::lower::{lower_desc, LoweredFwdVm, ResolvedColumn};
 use super::setup::GpuGKRForwardSetupPr;
+use crate::forward::vm::lower_common::FwdVmInputs;
 use crate::forward::PreparedDimensionReductionForward;
 use crate::gkr_address_audit::AddressClass;
 use crate::proth120::inputs::Proth120GkrWitnessInputs;
