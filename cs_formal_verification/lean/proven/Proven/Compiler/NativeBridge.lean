@@ -16,6 +16,19 @@ theorem entry_of_binding {α : Type} {actual expected : Array α} {index : Nat} 
   have same := (congrArg (fun entries : Array α => entries.toList[index]?) binding).trans found
   exact Option.some.inj ((List.getElem?_eq_getElem (by simpa using bound)).symm.trans same)
 
+/-- A checked list predicate applies at a certified lookup. -/
+theorem all_at {α : Type} {entries : List α} {predicate : α → Bool} {index : Nat} {value : α}
+    (checked : entries.all predicate = true) (found : entries[index]? = some value) :
+    predicate value = true := by
+  obtain ⟨bound, same⟩ := List.getElem?_eq_some_iff.mp found
+  exact List.all_eq_true.mp checked _ (same ▸ List.getElem_mem bound)
+
+/-- Resolve one bank coordinate with a small list lookup certificate. -/
+theorem bank_lookup (entries : List GKRAddress) (nonempty : 0 < entries.length)
+    (index : Fin entries.length) (value : GKRAddress) (found : entries[index.val]? = some value) :
+    (WireBank.ofList entries nonempty).address index = value := by
+  exact Option.some.inj ((List.getElem?_eq_getElem index.isLt).symm.trans found)
+
 /-- A native scalar cache or native gate retains its complete imported relation. -/
 inductive Clause where
   | cache (output : GKRAddress) (relation : GKRCacheRelation)

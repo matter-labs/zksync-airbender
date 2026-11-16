@@ -1,5 +1,8 @@
 module
-public import Proven.Compiler.NativeBridge
+public import Proven.Compiler.NativeLiteralBridge
+public import Proven.Compiler.NativeBindings.BlakeRound.NativeData
+public import Proven.Compiler.NativeBindings.BlakeRound.BankCoordinates
+public import Proven.Compiler.NativeBindings.BlakeRound.CaptureData
 public import Proven.KernelRfl
 public import Human.Compiler.Captures.BlakeRound
 public import Proven.GKRProtocol.CleanArithmeticNative.BlakeRoundCached
@@ -15,176 +18,240 @@ theorem gate240 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate240.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate240.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨240, by decide⟩)
+    all_at (index := 240) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate240) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[337]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry337 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate240 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[337]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨337, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry337).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate240, Expression.value, Function.comp_apply, coordinate391]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨337, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry337 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- The actual native sparse relation supplies gate 241. -/
 theorem gate241 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate241.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate241.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨241, by decide⟩)
+    all_at (index := 241) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate241) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[338]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry338 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate241 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[338]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨338, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry338).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate241, Expression.value, Function.comp_apply, coordinate409]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨338, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry338 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- The actual native sparse relation supplies gate 242. -/
 theorem gate242 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate242.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate242.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨242, by decide⟩)
+    all_at (index := 242) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate242) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[339]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry339 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate242 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[339]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨339, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry339).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate242, Expression.value, Function.comp_apply, coordinate411]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨339, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry339 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- The actual native sparse relation supplies gate 243. -/
 theorem gate243 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate243.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate243.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨243, by decide⟩)
+    all_at (index := 243) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate243) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[340]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry340 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate243 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[340]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨340, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry340).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate243, Expression.value, Function.comp_apply, coordinate426]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨340, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry340 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- The actual native sparse relation supplies gate 244. -/
 theorem gate244 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate244.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate244.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨244, by decide⟩)
+    all_at (index := 244) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate244) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[341]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry341 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate244 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[341]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨341, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry341).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate244, Expression.value, Function.comp_apply, coordinate429]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨341, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry341 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- The actual native sparse relation supplies gate 245. -/
 theorem gate245 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate245.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate245.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨245, by decide⟩)
+    all_at (index := 245) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate245) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[342]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry342 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate245 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[342]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨342, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry342).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate245, Expression.value, Function.comp_apply, coordinate456]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨342, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry342 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- The actual native sparse relation supplies gate 246. -/
 theorem gate246 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate246.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate246.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨246, by decide⟩)
+    all_at (index := 246) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate246) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[343]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry343 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate246 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[343]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨343, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry343).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate246, Expression.value, Function.comp_apply, coordinate459]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨343, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry343 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- The actual native sparse relation supplies gate 247. -/
 theorem gate247 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate247.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate247.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨247, by decide⟩)
+    all_at (index := 247) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate247) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[344]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry344 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate247 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[344]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨344, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry344).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate247, Expression.value, Function.comp_apply, coordinate486]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨344, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry344 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- The actual native sparse relation supplies gate 248. -/
 theorem gate248 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate248.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate248.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨248, by decide⟩)
+    all_at (index := 248) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate248) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[345]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry345 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate248 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[345]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨345, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry345).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate248, Expression.value, Function.comp_apply, coordinate489]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨345, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry345 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- The actual native sparse relation supplies gate 249. -/
 theorem gate249 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate249.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate249.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨249, by decide⟩)
+    all_at (index := 249) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate249) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[346]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry346 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate249 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[346]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨346, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry346).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate249, Expression.value, Function.comp_apply, coordinate516]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨346, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry346 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- The actual native sparse relation supplies gate 250. -/
 theorem gate250 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate250.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate250.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨250, by decide⟩)
+    all_at (index := 250) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate250) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[347]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry347 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate250 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[347]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨347, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry347).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate250, Expression.value, Function.comp_apply, coordinate519]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨347, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry347 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- The actual native sparse relation supplies gate 251. -/
 theorem gate251 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate251.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate251.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨251, by decide⟩)
+    all_at (index := 251) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate251) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[348]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry348 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate251 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[348]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨348, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry348).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate251, Expression.value, Function.comp_apply, coordinate539]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨348, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry348 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- The actual native sparse relation supplies gate 252. -/
 theorem gate252 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate252.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate252.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨252, by decide⟩)
+    all_at (index := 252) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate252) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[349]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry349 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate252 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[349]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨349, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry349).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate252, Expression.value, Function.comp_apply, coordinate545]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨349, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry349 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- The actual native sparse relation supplies gate 253. -/
 theorem gate253 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate253.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate253.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨253, by decide⟩)
+    all_at (index := 253) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate253) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[350]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry350 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate253 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[350]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨350, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry350).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate253, Expression.value, Function.comp_apply, coordinate551]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨350, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry350 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- The actual native sparse relation supplies gate 254. -/
 theorem gate254 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate254.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate254.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨254, by decide⟩)
+    all_at (index := 254) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate254) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[351]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry351 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate254 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[351]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨351, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry351).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate254, Expression.value, Function.comp_apply, coordinate557]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨351, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry351 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- The actual native sparse relation supplies gate 255. -/
 theorem gate255 (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate255.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 := by
   have checked : Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate255.check = true :=
-    List.all_eq_true.mp Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gatesChecked _ (List.get_mem _ ⟨255, by decide⟩)
+    all_at (index := 255) (value := Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate255) scalar_gate_data_checked (by cbv)
+  have captured : (((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[352]'(by decide) = Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry352 :=
+    entry_of_binding (by decide) layer0_gates (by cbv)
   have binding : sparseResidual Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate255 (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) =
-      (Clause.gate ((((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates ++ ((Airbender.Compiler.Captures.BlakeRound.imported.circuit).layers[0]'(by decide)).gates_with_external_connections)[352]'(by decide)).enforced_relation).residual physical := by kernel_rfl
-  exact (sparse_checked checked _).symm.trans
-    (binding.trans (gate_at accepted ⟨0, by decide⟩ ⟨352, by decide⟩))
+      (Clause.gate (Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry352).enforced_relation).residual physical := by
+    simp only [sparseResidual, Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.gate255, Expression.value, Function.comp_apply, coordinate563]
+    rfl
+  have acceptedEntry := gate_at_literal accepted ⟨0, by decide⟩ ⟨352, by decide⟩ Airbender.Compiler.Captures.BlakeRound.importedLayer0GatesEntry352 captured
+  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)
 
 /-- This batch retains every native scalar equation at these positions. -/
 theorem gates015 (physical : GKRAddress → NativeArithmetic.F)
