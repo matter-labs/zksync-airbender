@@ -1,9 +1,67 @@
 module
 public import Proven.InitsTeardowns.Native.Trees
+public import Proven.InitsTeardowns.Claims
 
 @[expose] public section
 
 namespace Airbender.InitsTeardowns.Native.Proofs
+
+/-- A vector lists its entries in index order. -/
+theorem vector_list {α : Type} {n : Nat} (values : Vector α n) :
+    values.toList = (List.finRange n).map (fun index => values[index]) := by
+  apply List.ext_getElem
+  · simp
+  · intro index left right
+    simp
+
+/-- Public windows and logical teardown sets have the same native set order. -/
+theorem vector_zip_array {α β : Type} (sets : Array β) (values : Vector α sets.size) :
+    values.toList.zip sets.toList =
+      (List.finRange sets.size).map (fun index => (values[index], sets[index])) := by
+  apply List.ext_getElem
+  · simp
+  · intro index left right
+    simp
+
+/-- Read native memory columns through their logical variable offset. -/
+def rawOfWitness {p : Nat} {layout : InitsTeardowns.Layout} (offset : Nat)
+    (w : InitsTeardowns.Witness p layout) : Raw p :=
+  fun row column => w.assignment row (column + offset)
+
+/-- Native RAM addresses equal the logical window addresses under the verifier bounds. -/
+theorem native_address {layout : InitsTeardowns.Layout}
+    (shape : InitsTeardowns.Proofs.Shape layout) {top row : Nat}
+    (topBound : top < InitsTeardowns.maxTopBit) (rowBound : row < 2 ^ layout.traceLog) :
+    InitsTeardowns.addressCode (p := babyBearModulus) layout top row =
+      Nat.pair 1 (Nat.pair (addressLo row) (row / 16384 + top * 2 ^ InitsTeardowns.topShift layout)) := by
+  have limbFacts := InitsTeardowns.Proofs.limbs shape.traceLog topBound rowBound
+  have lowBound : row * 2 ^ 2 % 2 ^ 16 < babyBearModulus := by
+    norm_num only [Nat.reducePow]
+    unfold babyBearModulus
+    omega
+  have highBound : row / 2 ^ (16 - 2) + (top <<< (layout.traceLog + 2 - 16)) % 2 ^ 32 < babyBearModulus := by
+    have same := limbFacts.2.1
+    have small := limbFacts.2.2
+    unfold babyBearModulus
+    omega
+  unfold InitsTeardowns.addressCode InitsTeardowns.addressLimbs
+    InitsTeardowns.setupLow InitsTeardowns.setupHigh InitsTeardowns.topShift addressLo
+  rw [shape.wordBits, ← Nat.cast_add,
+    InitsTeardowns.Proofs.natCast_val lowBound, InitsTeardowns.Proofs.natCast_val highBound]
+  obtain ⟨_, traceLog⟩ := shape
+  rcases traceLog with log | log <;> rw [log]
+  all_goals
+    norm_num only [Nat.shiftLeft_eq, Nat.reducePow, Nat.reduceSub, Nat.reduceAdd]
+    unfold InitsTeardowns.maxTopBit at topBound
+    congr 2 <;> omega
+
+/-- The native finite row indices have the same order as logical row numbers. -/
+theorem finRange_values (size : Nat) : (List.finRange size).map Fin.val = List.range size := by
+  apply List.ext_getElem
+  · simp
+  · intro index left right
+    simp
+
 
 variable {p : Nat} [Fact p.Prime] [CommRing E]
 

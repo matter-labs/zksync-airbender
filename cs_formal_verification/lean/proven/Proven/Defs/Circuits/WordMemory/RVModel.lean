@@ -37,9 +37,5 @@ def rvCircuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
   satisfies := fun w => Accepted trace ∧ RVPooledDecoded trace program ∧ (⟨.wordMemory, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := RVTraceMapping trace initial cells program
 
-/-- Assumptions of the RV statements: public initialization and modeled tables. -/
-abbrev RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
-    (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
-  RVPooledHistoryInputs trace initial cells program
 
 end Airbender.WordMemory

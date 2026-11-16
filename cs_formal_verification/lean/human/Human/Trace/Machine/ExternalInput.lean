@@ -10,6 +10,10 @@ namespace Airbender.Trace.Machine
 def unifiedIsRead [Fact p.Prime] (row : Trace.Row p UnifiedFamily) : Bool :=
   row.assignment UnifiedReduced.importedConstraintsDecoderColumns.flags[8] == 1
 
+/-- The number of selected external reads in the submitted unified CPU rows. -/
+def unifiedReadCount [Fact p.Prime] (trace : UnifiedTrace p) : Nat :=
+  ExternalStream.count unifiedIsRead trace.rows
+
 /-- The unified external response is the native destination write token's word. -/
 def unifiedResponse [Fact p.Prime] (row : Trace.Row p UnifiedFamily) : BitVec 32 :=
   (UnifiedReduced.Caller.destinationToken row.assignment).word.toBitVec

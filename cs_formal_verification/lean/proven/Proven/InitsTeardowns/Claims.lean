@@ -85,6 +85,19 @@ theorem teardown_addresses {layout : Layout} (w : Witness babyBearModulus layout
   simp only [List.map_map]
   rfl
 
+/-- Zero teardown columns produce the same tokens as initialization. -/
+theorem teardown_zero {layout : Layout} (w : Witness babyBearModulus layout)
+    (zero : ∀ row column, w.assignment row column = 0) : w.teardownTokens = w.initTokens := by
+  unfold Witness.teardownTokens Witness.initTokens initTokens
+  have hlen : w.topBits.toList.length = layout.sets.toList.length := by simp
+  conv => rhs; rw [← List.map_fst_zip (l₁ := w.topBits.toList) (l₂ := layout.sets.toList) (by omega),
+    List.flatMap_map]
+  refine flatMap_congr_mem fun pair _ => ?_
+  apply List.map_congr_left
+  intro row _
+  simp only [teardownToken, initToken, rawPair, pairCode, zero]
+  rfl
+
 theorem teardown_mem {layout : Layout} (w : Witness babyBearModulus layout) {s : Nat}
     (hs : s < layout.sets.size) {row : Nat} (hrow : row < 2 ^ layout.traceLog) :
     teardownToken layout layout.sets[s] w.topBits[s] row (w.assignment row) ∈ w.teardownTokens := by

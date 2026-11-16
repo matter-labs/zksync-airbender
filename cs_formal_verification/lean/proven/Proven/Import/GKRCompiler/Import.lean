@@ -117,7 +117,8 @@ private def checksSyntax (proofs : Array (TSyntax `ident)) : CommandElabM (TSynt
 The external certificate supplies identities/selection, never replacement
 source equations or replacement lowered equations. File parsing/emission is
 the same explicit data-binding boundary used by the existing native importer. -/
-elab "import_compiler_arithmetic " name:ident " from " pairPath:str " certificate " certPath:str : command => do
+elab "import_compiler_arithmetic " name:ident " from " pairPath:str " certificate " certPath:str
+    descriptionMode:(" source_description")? : command => do
   let pairBytes ← IO.FS.readFile pairPath.getString
   let certBytes ← IO.FS.readFile certPath.getString
   let pair : Pair ← match ← Airbender.Compiler.Import.parsePairText pairBytes with
@@ -130,14 +131,23 @@ elab "import_compiler_arithmetic " name:ident " from " pairPath:str " certificat
     throwError "unsupported compiler translation format"
   unless certificate.addresses.toList.eraseDups.length == certificate.addresses.size do
     throwError "compiler address bank contains duplicate native addresses"
-  let n := pair.source.num_variables
+  let n := if descriptionMode.isSome then pair.circuit.placement_data.entries.size else pair.source.num_variables
   let m := certificate.addresses.size
-  let mut source ← pair.source.statements.mapM (statementSyntax n)
-  for wire in pair.source.booleans do
+  let statements := if descriptionMode.isSome then pair.circuit.structured_statements else pair.source.statements
+  let mut source ← statements.mapM (statementSyntax n)
+  let booleans := if descriptionMode.isSome then #[] else pair.source.booleans
+  for wire in booleans do
     let atom ← atomSyntax wire n
     let negative ← `(Compiler.Expression.constant (-1))
     source := source.push (← mulSyntax atom (← addSyntax atom negative))
   let mut gates := #[]
+  if descriptionMode.isSome then
+    for layer in pair.circuit.layers do
+      for (output, relation) in layer.cached_relations do
+        if let .SingleColumnLookup row _ := relation then
+          let expression ← linearSyntax certificate.addresses row.input
+          gates := gates.push (← `(Compiler.ArithmeticGate.define
+            $(← finSyntax (← addressIndex certificate.addresses output) m) $expression $expression))
   for layer in pair.circuit.layers do
     for gate in layer.gates ++ layer.gates_with_external_connections do
       if let some gateTerm ← gateSyntax certificate.addresses gate.enforced_relation then

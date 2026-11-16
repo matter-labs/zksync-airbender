@@ -21,6 +21,18 @@ public import Proven.Defs.Helpers.Memory.History
 namespace Airbender.Trace.Proofs
 open Arithmetic
 
+/-- Architectural memory histories preserve the independent input stream. -/
+theorem rv_history_input {cells : List Cell} {events : List MemoryAccess} {before after : RV.State}
+    (history : RVHistory cells events before after) : after.input = before.input := by
+  induction history with
+  | nil => rfl
+  | cons past cell member address read write ih =>
+    unfold Cell.applyRV at write
+    split at write
+    · cases Option.some.inj write
+      exact ih
+    · exact (writeRV_pc write).2.trans ih
+
 /-- RV sibling of `SailStateMatches`: the RV state reads the latest value of each tracked cell. -/
 def RVStateMatches (cells : List Cell) (history : TimestampSortedMemoryAccessList) (state : RV.State) : Prop :=
   ∀ cell ∈ cells, cell.readRV state =

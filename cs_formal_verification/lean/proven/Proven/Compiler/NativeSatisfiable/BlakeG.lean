@@ -9,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 65536
 
 /-- The existing accepted row supplies every source coordinate, including clock helpers. -/
-noncomputable def inputValues (index : Fin 112) : F := Airbender.NonVacuous.Blake2G.row index.val
+noncomputable def inputValues (index : Fin 112) : F := NativeExtension.BlakeG.inputValues Airbender.NonVacuous.Blake2G.row index
 
 /-- Kernel evaluation checks every source equation of this concrete witness. -/
 theorem source_check : FullArithmeticNative.BlakeGCached.native.artifact.source.all
@@ -23,6 +23,6 @@ theorem source_satisfied : Satisfies FullArithmeticNative.BlakeGCached.native.ar
 theorem witness : ∃ (physical : GKRAddress → F) (logical : Nat → F),
     Holds Captures.BlakeG.imported.circuit physical ∧
       PlacementAgreement Captures.BlakeG.imported.circuit physical logical := by
-  obtain ⟨physical, logical, accepted, placement⟩ := NativeExtension.BlakeG.extension Airbender.NonVacuous.Blake2G.row source_satisfied
-  exact ⟨physical, logical, accepted, placement⟩
+  obtain ⟨physical, accepted, placement⟩ := NativeExtension.BlakeG.extension_preserves Airbender.NonVacuous.Blake2G.row source_satisfied
+  exact ⟨physical, Airbender.NonVacuous.Blake2G.row, accepted, placement⟩
 end Airbender.Compiler.NativeSatisfiable.BlakeG

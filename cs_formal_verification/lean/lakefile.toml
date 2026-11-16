@@ -43,6 +43,9 @@ globs = [
   "Human.Compiler.NativeMachineArguments",
   "Human.Compiler.NativePublicSetup",
   "Human.Compiler.NativeTargets",
+  "Human.Compiler.WorkerLookups",
+  "Human.Compiler.WorkerPublicSetup",
+  "Human.Compiler.WorkerCertificates",
   "Human.Compiler.NativeFixedRows",
   "Human.Compiler.NativeSetups.+",
   "Human.Compiler.LookupArgument",
@@ -2083,3 +2086,39 @@ name = "CompilerKeccakChi5Capture"
 srcDir = "human"
 roots = ["Human.Compiler.Captures.KeccakChi5"]
 needs = ["compiler_keccak_chi5_cached_layout"]
+
+[[input_file]]
+name = "compiler_certificate_description_arithmetic_keccak_column_parity_cached"
+path = "artifacts/compiler/description-arithmetic/keccak-column-parity-cached.json"
+text = true
+
+[[input_file]]
+name = "compiler_certificate_description_arithmetic_keccak_theta_rho_cached"
+path = "artifacts/compiler/description-arithmetic/keccak-theta-rho-cached.json"
+text = true
+
+[[input_file]]
+name = "compiler_certificate_description_arithmetic_keccak_chi5_cached"
+path = "artifacts/compiler/description-arithmetic/keccak-chi5-cached.json"
+text = true
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_Compiler_WorkerArithmetic_KeccakChi5"
+srcDir = "proven"
+roots = ["Proven.Compiler.WorkerArithmetic.KeccakChi5"]
+needs = ["compiler_certificate_description_arithmetic_keccak_chi5_cached", "compiler_keccak_chi5_cached_layout", "compiler_keccak_chi5_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_Compiler_WorkerArithmetic_KeccakColumnParity"
+srcDir = "proven"
+roots = ["Proven.Compiler.WorkerArithmetic.KeccakColumnParity"]
+needs = ["compiler_certificate_description_arithmetic_keccak_column_parity_cached", "compiler_keccak_column_parity_cached_layout", "compiler_keccak_column_parity_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_Compiler_WorkerArithmetic_KeccakThetaRho"
+srcDir = "proven"
+roots = ["Proven.Compiler.WorkerArithmetic.KeccakThetaRho"]
+needs = ["compiler_certificate_description_arithmetic_keccak_theta_rho_cached", "compiler_keccak_theta_rho_cached_layout", "compiler_keccak_theta_rho_capture"]

@@ -64,8 +64,8 @@ def unrolledSteps [Fact p.Prime] (trace : PooledTrace p) :=
   trace.rows.flatMap fun row => (Delegation.Caller.machinePorts row).toList.map fun port =>
     (readToken row.assignment port, writeToken row.columns row.assignment port)
 
-/-- The unrolled native acceptance boundary. Cached-layer preservation discharges the imported constraints.
-    Decoder membership, request matching, raw state matching and shared memory matching remain explicit here. -/
+/-- The unrolled constraint-description boundary. Imported CPU and worker constraints are premises.
+    Decoder membership, request matching, raw state matching and shared memory matching are explicit premises. -/
 structure UnrolledAcceptance [Fact p.Prime] (trace : PooledTrace p) (workers : WorkerPools p)
     (program : List RVMachineProgramEntry) : Prop extends WorkersAccepted workers where
   /-- Every CPU assignment satisfies its imported constraints. -/
@@ -128,6 +128,10 @@ structure BootInputs {Kind : Type} [CircuitLayout Kind] [Fact p.Prime]
   topBits : InitsTeardowns.TopBitsChecked (inits.flatMap fun w => w.topBits.toList)
   /-- Native seeds contain the register seeds and every initialization instance. -/
   seeds : trace.initialMemory = registerSeeds ++ inits.flatMap InitsTeardowns.Witness.initTokens
+  /-- Terminal tokens are one token per register and the native teardown tokens of every initialization instance. -/
+  teardowns : ∃ registers : List (MemoryToken p),
+    (registers.map MemoryToken.address).Perm (registerCells.map Cell.addressCode) ∧
+      trace.terminalMemory = registers ++ inits.flatMap InitsTeardowns.Witness.teardownTokens
   /-- The tracked domain is the registers and all initialized windows. -/
   domain : cells = registerCells ++
     InitsTeardowns.windowCells layout (inits.flatMap fun w => w.topBits.toList)

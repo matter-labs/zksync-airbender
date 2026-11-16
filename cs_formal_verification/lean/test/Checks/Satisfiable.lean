@@ -1,3 +1,8 @@
+import Proven.Final.Import.Theorems
+import Proven.Final.Compiler.WorkerCertificates
+import Proven.Final.Compiler.WorkerArithmetic
+import Proven.Final.Compiler.WorkerSelectors
+import Proven.Final.Trace.Machine.Witnesses
 import Proven.Final.ISA.NativeTargets
 import Proven.Final.Helpers.Context.PaddingBoundary
 import Proven.Final.ISA.ValidUse
@@ -61,13 +66,23 @@ example (claim : VerifierBoundary.TerminalBoundSoundnessClaim) :
   fun ⟨_, terminal, _, _, hp, matched, closure, _⟩ => ⟨terminal, claim hp matched closure⟩
 
 
-example : InitsTeardowns.StandaloneSatisfiableClaim →
-    InitsTeardowns.TopBitsChecked (List.range InitsTeardowns.maxTopBit) :=
-  fun ⟨_, rfl, checked⟩ => checked
+example (claim : InitsTeardowns.StandaloneClaim) : InitsTeardowns.StandaloneSatisfiableClaim →
+    ∃ instances : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout),
+      (InitsTeardowns.windowCells InitsTeardowns.importedLayout
+        (instances.flatMap fun witness => witness.topBits.toList)).Nodup ∧
+      instances.flatMap InitsTeardowns.Witness.initTokens = ROMView.nativeBootImage
+        (InitsTeardowns.windowCells InitsTeardowns.importedLayout
+          (instances.flatMap fun witness => witness.topBits.toList)) :=
+  fun ⟨instances, _, checked⟩ => ⟨instances, claim.1.bootImage instances checked⟩
 
-example : InitsTeardowns.UnifiedSatisfiableClaim →
-    InitsTeardowns.TopBitsChecked (List.range InitsTeardowns.maxTopBit) :=
-  fun ⟨_, rfl, checked⟩ => checked
+example (claim : InitsTeardowns.UnifiedClaim) : InitsTeardowns.UnifiedSatisfiableClaim →
+    ∃ instances : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout),
+      (InitsTeardowns.windowCells InitsTeardowns.unifiedLayout
+        (instances.flatMap fun witness => witness.topBits.toList)).Nodup ∧
+      instances.flatMap InitsTeardowns.Witness.initTokens = ROMView.nativeBootImage
+        (InitsTeardowns.windowCells InitsTeardowns.unifiedLayout
+          (instances.flatMap fun witness => witness.topBits.toList)) :=
+  fun ⟨instances, _, checked⟩ => ⟨instances, claim.1.bootImage instances checked⟩
 
 example (claim : Delegation.RVNativeMemoryExecutionClaim) : Delegation.RVNativeMemoryExecutionSatisfiableClaim →
     ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Cell),
@@ -697,7 +712,7 @@ example (claim : Airbender.Blake2Round.Mask.SoundnessClaim)
       (w : Nat → ZMod Airbender.babyBearModulus),
       Airbender.Blake2Round.Mask.Assumptions input ∧ Airbender.Blake2Round.Mask.Mapping input output w ∧
       Airbender.Blake2Round.Mask.spec input output := by
-  obtain ⟨input, output, w, assumptions, constraints, mapping⟩ := witness
+  obtain ⟨input, output, w, assumptions, constraints, mapping, _⟩ := witness
   exact ⟨input, output, w, assumptions, mapping, claim input output w assumptions constraints mapping⟩
 
 example : Airbender.Compiler.NativeLookups.CachedLookupSelectorsSatisfiableClaim := Airbender.Compiler.NativeLookups.cached_lookup_selectors_satisfiable
@@ -777,6 +792,590 @@ example : RV.ValidUse.SplitKeccakReferenceSatisfiableClaim := RV.ValidUse.split_
 
 example : RV.ValidUse.Special5ReferenceSatisfiableClaim := RV.ValidUse.special5_reference_satisfiable
 
+namespace Airbender.Trace.Machine
+open Airbender.Compiler
+
+example (claim : Airbender.Trace.Machine.UnrolledFullUnsigned) : Airbender.Trace.Machine.UnrolledFullUnsignedSatisfiableClaim →
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    BootInputs .unrolledFullUnsigned trace initial cells program InitsTeardowns.importedLayout inits ∧
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NoSpecial5 program ∧
+    NonDeterminism.Pooled.StreamPorts trace initial.input ∧
+    UnrolledAcceptance trace workers program ∧
+    (RVRealizes trace initial cells (NonDeterminism.Pooled.readCount trace)) :=
+  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, premise6⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, premise6, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5 premise6⟩
+
+example (claim : Airbender.Trace.Machine.UnrolledReduced) : Airbender.Trace.Machine.UnrolledReducedSatisfiableClaim →
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    BootInputs .unrolledReduced trace initial cells program InitsTeardowns.importedLayout inits ∧
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NonDeterminism.Pooled.StreamPorts trace initial.input ∧
+    UnrolledAcceptance trace workers program ∧
+    (RVRealizes trace initial cells (NonDeterminism.Pooled.readCount trace)) :=
+  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5⟩
+
+example (claim : Airbender.Trace.Machine.Unified) : Airbender.Trace.Machine.UnifiedSatisfiableClaim →
+  ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)),
+    BootInputs .unified trace initial cells program InitsTeardowns.unifiedLayout inits ∧
+    trace.rom = UnifiedReduced.Setup.tableRV initial ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NoSpecial5 program ∧ UnifiedStreamPorts trace initial.input ∧
+    UnifiedAcceptance trace workers program ∧
+    (RVRealizes trace initial cells (unifiedReadCount trace)) :=
+  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5⟩
+
+end Airbender.Trace.Machine
+
+
+namespace Airbender.Trace.Machine
+open Airbender.Compiler
+
+example (claim : Airbender.Trace.Machine.PaddedUnrolledFullUnsigned) : Airbender.Trace.Machine.PaddedUnrolledFullUnsignedSatisfiableClaim →
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    BootInputs .unrolledFullUnsigned (PaddingBoundary.active trace) initial cells program InitsTeardowns.importedLayout inits ∧
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NoSpecial5 program ∧
+    NonDeterminism.Pooled.StreamPorts (PaddingBoundary.active trace) initial.input ∧
+    MaskedUnrolledAcceptance trace workers program ∧
+    (RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (PaddingBoundary.active trace))) :=
+  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, premise6⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, premise6, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5 premise6⟩
+
+example (claim : Airbender.Trace.Machine.PaddedUnrolledReduced) : Airbender.Trace.Machine.PaddedUnrolledReducedSatisfiableClaim →
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    BootInputs .unrolledReduced (PaddingBoundary.active trace) initial cells program InitsTeardowns.importedLayout inits ∧
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NonDeterminism.Pooled.StreamPorts (PaddingBoundary.active trace) initial.input ∧
+    MaskedUnrolledAcceptance trace workers program ∧
+    (RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (PaddingBoundary.active trace))) :=
+  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5⟩
+
+example (claim : Airbender.Trace.Machine.PaddedUnified) : Airbender.Trace.Machine.PaddedUnifiedSatisfiableClaim →
+  ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)),
+    BootInputs .unified (PaddingBoundary.active trace) initial cells program InitsTeardowns.unifiedLayout inits ∧
+    trace.rom = UnifiedReduced.Setup.tableRV initial ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NoSpecial5 program ∧ UnifiedStreamPorts (PaddingBoundary.active trace) initial.input ∧
+    MaskedUnifiedAcceptance trace workers program ∧
+    (RVRealizes trace initial cells (unifiedReadCount (PaddingBoundary.active trace))) :=
+  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5⟩
+
+end Airbender.Trace.Machine
+
+
+namespace Airbender.Trace.Machine
+open Airbender.Compiler
+
+example (claim : Airbender.Trace.Machine.UnrolledHashSegmentationClaim) : Airbender.Trace.Machine.UnrolledHashSegmentationSatisfiableClaim →
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (program : List RVMachineProgramEntry) (windows : List HashWindow),
+    UnrolledAcceptance trace workers program ∧
+    (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
+    HashWindowProfile ((unrolledCallers trace).map fun row => Delegation.Requests.caller row.assignment) windows ∧
+    (IssuedHashSegmentation workers.fulfillments windows) :=
+  fun ⟨trace, workers, program, windows, premise0, premise1, premise2, premise3⟩ =>
+    ⟨trace, workers, program, windows, premise0, premise1, premise2, premise3, claim trace workers program windows premise0 premise1 premise2 premise3⟩
+
+example (claim : Airbender.Trace.Machine.UnifiedHashSegmentationClaim) : Airbender.Trace.Machine.UnifiedHashSegmentationSatisfiableClaim →
+  ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (program : List RVMachineProgramEntry) (windows : List HashWindow),
+    UnifiedAcceptance trace workers program ∧
+    (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
+    HashWindowProfile ((trace.rows.filter fun row => decide (UnifiedReduced.Caller.Selected row.assignment)).map
+      fun row => UnifiedReduced.Caller.request row.assignment) windows ∧
+    (IssuedHashSegmentation workers.fulfillments windows) :=
+  fun ⟨trace, workers, program, windows, premise0, premise1, premise2, premise3⟩ =>
+    ⟨trace, workers, program, windows, premise0, premise1, premise2, premise3, claim trace workers program windows premise0 premise1 premise2 premise3⟩
+
+end Airbender.Trace.Machine
+
+
+namespace Airbender.Trace.Machine
+open Airbender.Compiler
+
+example (claim : Airbender.Trace.Machine.UnrolledCodeHashSegmentationClaim) : Airbender.Trace.Machine.UnrolledCodeHashSegmentationSatisfiableClaim →
+  ∃ (config : RVMachineConfig) (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (addresses : List (BitVec 32))
+    (program : List RVMachineProgramEntry) (windows : List HashWindow),
+    config ≠ .unified ∧ rvMachineProgramImage config initial addresses = some program ∧
+    UnrolledAcceptance trace workers program ∧
+    (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
+    windows.Pairwise (fun first second => first.upper ≤ second.lower) ∧
+    (∀ request ∈ (unrolledCallers trace).map (fun row => Delegation.Requests.caller row.assignment),
+      request.csr ≠ Delegation.Requests.csr .bigint ↔ ∃ window ∈ windows, window.select request = true) ∧
+    (∀ window ∈ windows, CodeWindowScope trace program window) ∧
+    (IssuedHashSegmentation workers.fulfillments windows) :=
+  fun ⟨config, trace, workers, initial, addresses, program, windows, premise0, premise1, premise2, premise3, premise4, premise5, premise6, premise7⟩ =>
+    ⟨config, trace, workers, initial, addresses, program, windows, premise0, premise1, premise2, premise3, premise4, premise5, premise6, premise7, claim config trace workers initial addresses program windows premise0 premise1 premise2 premise3 premise4 premise5 premise6 premise7⟩
+
+example (claim : Airbender.Trace.Machine.UnifiedCodeHashSegmentationClaim) : Airbender.Trace.Machine.UnifiedCodeHashSegmentationSatisfiableClaim →
+  ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (addresses : List (BitVec 32))
+    (program : List RVMachineProgramEntry) (windows : List HashWindow),
+    rvMachineProgramImage .unified initial addresses = some program ∧ UnifiedAcceptance trace workers program ∧
+    (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
+    windows.Pairwise (fun first second => first.upper ≤ second.lower) ∧
+    (∀ request ∈ (trace.rows.filter (fun row => decide (UnifiedReduced.Caller.Selected row.assignment))).map
+      (fun row => UnifiedReduced.Caller.request row.assignment),
+      request.csr ≠ Delegation.Requests.csr .bigint ↔ ∃ window ∈ windows, window.select request = true) ∧
+    (∀ window ∈ windows, CodeWindowScope trace program window) ∧
+    (IssuedHashSegmentation workers.fulfillments windows) :=
+  fun ⟨trace, workers, initial, addresses, program, windows, premise0, premise1, premise2, premise3, premise4, premise5, premise6⟩ =>
+    ⟨trace, workers, initial, addresses, program, windows, premise0, premise1, premise2, premise3, premise4, premise5, premise6, claim trace workers initial addresses program windows premise0 premise1 premise2 premise3 premise4 premise5 premise6⟩
+
+end Airbender.Trace.Machine
+
+
+namespace Airbender.Trace.Machine
+open Airbender.Compiler
+
+example (claim : Airbender.Trace.Machine.UnrolledFullUnsignedSailClaim) : Airbender.Trace.Machine.UnrolledFullUnsignedSailSatisfiableClaim →
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    BootInputs .unrolledFullUnsigned trace initial cells program InitsTeardowns.importedLayout inits ∧
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NoSpecial5 program ∧
+    NonDeterminism.Pooled.StreamPorts trace initial.input ∧
+    UnrolledAcceptance trace workers program ∧
+    (SailRealizes trace initial cells (NonDeterminism.Pooled.readCount trace)) :=
+  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, premise6⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, premise6, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5 premise6⟩
+
+example (claim : Airbender.Trace.Machine.UnrolledReducedSailClaim) : Airbender.Trace.Machine.UnrolledReducedSailSatisfiableClaim →
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    BootInputs .unrolledReduced trace initial cells program InitsTeardowns.importedLayout inits ∧
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NonDeterminism.Pooled.StreamPorts trace initial.input ∧
+    UnrolledAcceptance trace workers program ∧
+    (SailRealizes trace initial cells (NonDeterminism.Pooled.readCount trace)) :=
+  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5⟩
+
+example (claim : Airbender.Trace.Machine.UnifiedSailClaim) : Airbender.Trace.Machine.UnifiedSailSatisfiableClaim →
+  ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)),
+    BootInputs .unified trace initial cells program InitsTeardowns.unifiedLayout inits ∧
+    trace.rom = UnifiedReduced.Setup.tableRV initial ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NoSpecial5 program ∧ UnifiedStreamPorts trace initial.input ∧
+    UnifiedAcceptance trace workers program ∧
+    (SailRealizes trace initial cells (unifiedReadCount trace)) :=
+  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5⟩
+
+end Airbender.Trace.Machine
+
+
+namespace Airbender.Trace.Machine.Native
+open Airbender.Compiler
+
+example (claim : Airbender.Trace.Machine.Native.UnrolledFullFromNativeSailClaim) : Airbender.Trace.Machine.Native.UnrolledFullFromNativeSailSatisfiableClaim →
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
+    BootInputs .unrolledFullUnsigned trace initial cells program InitsTeardowns.importedLayout inits ∧
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NoSpecial5 program ∧
+    NonDeterminism.Pooled.StreamPorts trace initial.input ∧
+    NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
+    ∃ certificates : List (ProgramLogicalRowCertificate tables),
+      UnrolledNativeArguments tables certificates trace workers ∧
+    (SailRealizes trace initial cells (NonDeterminism.Pooled.readCount trace)) :=
+  fun ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, premise4, premise5, premise6, premise7, certificates, premise8⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, premise4, premise5, premise6, premise7, certificates, premise8, claim trace workers initial cells program inits tables premise0 premise1 premise2 premise3 premise4 premise5 premise6 premise7 certificates premise8⟩
+
+example (claim : Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSailClaim) : Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSailSatisfiableClaim →
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
+    BootInputs .unrolledReduced trace initial cells program InitsTeardowns.importedLayout inits ∧
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NonDeterminism.Pooled.StreamPorts trace initial.input ∧
+    NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
+    ∃ certificates : List (ProgramLogicalRowCertificate tables),
+      UnrolledNativeArguments tables certificates trace workers ∧
+    (SailRealizes trace initial cells (NonDeterminism.Pooled.readCount trace)) :=
+  fun ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, premise4, premise5, premise6, certificates, premise7⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, premise4, premise5, premise6, certificates, premise7, claim trace workers initial cells program inits tables premise0 premise1 premise2 premise3 premise4 premise5 premise6 certificates premise7⟩
+
+example (claim : Airbender.Trace.Machine.Native.UnifiedFromNativeSailClaim) : Airbender.Trace.Machine.Native.UnifiedFromNativeSailSatisfiableClaim →
+  ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)) (tables : ProgramLookupRows),
+    BootInputs .unified trace initial cells program InitsTeardowns.unifiedLayout inits ∧
+    trace.rom = UnifiedReduced.Setup.tableRV initial ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NoSpecial5 program ∧ UnifiedStreamPorts trace initial.input ∧
+    NativePublicSetup.Bound initial program tables ∧
+    ∃ certificates : List (UnifiedLogicalRowCertificate tables),
+      UnifiedNativeArguments tables certificates trace workers ∧
+    (SailRealizes trace initial cells (unifiedReadCount trace)) :=
+  fun ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, premise4, premise5, certificates, premise6⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, premise4, premise5, certificates, premise6, claim trace workers initial cells program inits tables premise0 premise1 premise2 premise3 premise4 premise5 certificates premise6⟩
+
+end Airbender.Trace.Machine.Native
+
+example (claim : Airbender.Bigint.Memory.RVAddressesSoundnessClaim) :
+    Airbender.Bigint.Memory.RVAddressesSoundnessSatisfiableClaim →
+    ∃ (input : Airbender.Bigint.Addresses.Input) (output : Airbender.Bigint.Addresses.Output),
+      Airbender.Bigint.Addresses.spec input output :=
+  fun ⟨data, before, cells, input, output, assignment, assumptions, accepted⟩ =>
+    ⟨input, output, claim data before cells input output assignment ⟨assumptions, accepted⟩⟩
+
+example (claim : Airbender.Blake2G.SoundnessClaim) : Airbender.Blake2G.SoundnessSatisfiableClaim →
+    ∃ (input : Airbender.Blake2G.Input) (output : Airbender.Blake2G.Words),
+      Airbender.Blake2G.spec input output :=
+  fun ⟨control, input, output, assignment, assumptions, accepted⟩ =>
+    ⟨input, output, claim control input output assignment ⟨assumptions, accepted⟩⟩
+
+example (claim : Airbender.Blake2Round.Mask.SoundnessClaim) : Airbender.Blake2Round.Mask.SatisfiableClaim →
+    ∃ (input : Airbender.Blake2Round.Mask.Input) (output : Airbender.Blake2Round.Mask.Output),
+      Airbender.Blake2Round.Mask.spec input output :=
+  fun ⟨input, output, assignment, assumptions, accepted, mapping, _⟩ =>
+    ⟨input, output, claim input output assignment assumptions accepted mapping⟩
+
+example (claim : Airbender.PCState.OutgoingBoundsClaim) : Airbender.PCState.OutgoingBoundsSatisfiableClaim →
+    ∃ pc : ZMod babyBearModulus × ZMod babyBearModulus,
+      pc ≠ PCState.encode 0 ∧ pc.1.val < Arithmetic.limbBase ∧ pc.2.val < Arithmetic.limbBase :=
+  fun ⟨_, _, pc, room, interface, outgoing, low, nonzero⟩ =>
+    ⟨pc, nonzero, claim room interface outgoing low⟩
+
+example (claim : Airbender.PaddingBoundary.ContributionSoundnessClaim) :
+    Airbender.PaddingBoundary.ContributionSatisfiableClaim →
+    ∃ (execute : ZMod babyBearModulus) (encode : Nat → ZMod babyBearModulus) (value : Nat),
+      PaddingBoundary.evaluate encode (PaddingBoundary.contribution execute value) =
+        PaddingBoundary.mask execute (encode value) :=
+  fun ⟨execute, encode, value, boolean, _, _⟩ => ⟨execute, encode, value, claim execute boolean encode value⟩
+
+example (claim : Airbender.PaddingBoundary.ProductSoundnessClaim) :
+    Airbender.PaddingBoundary.ProductSatisfiableClaim →
+    ∃ (execute : ZMod babyBearModulus) (encode : Nat → ZMod babyBearModulus) (values : List Nat),
+      ((values.map (PaddingBoundary.contribution execute)).map (PaddingBoundary.evaluate encode)).prod =
+        PaddingBoundary.mask execute (values.map encode).prod :=
+  fun ⟨execute, encode, values, boolean, _, _⟩ => ⟨execute, encode, values, claim execute boolean encode values⟩
+
+example (claim : Airbender.PaddingBoundary.ProjectionClaim) :
+    Airbender.PaddingBoundary.ProjectionSatisfiableClaim →
+    ∃ trace : Trace.PooledTrace babyBearModulus, Trace.Accepted (PaddingBoundary.active trace) :=
+  fun ⟨trace, accepted⟩ => ⟨trace, claim trace accepted⟩
+
+example (claim : Airbender.Json.ParseSoundClaim) : Airbender.Json.ParseSoundSatisfiableClaim →
+    ∃ (bytes : ByteArray) (value : Airbender.Json.Value),
+      Airbender.Json.Text bytes.toList value ∧ Airbender.Json.NoDuplicateKeys value :=
+  fun ⟨bytes, value, accepted, _, _, _⟩ => ⟨bytes, value, claim bytes value accepted⟩
+
+example (claim : Airbender.Json.TextUniqueClaim) : Airbender.Json.TextUniqueSatisfiableClaim →
+    ∃ (bytes : List UInt8) (left right : Airbender.Json.Value),
+      Airbender.Json.Text bytes left ∧ Airbender.Json.Text bytes right ∧ left = right :=
+  fun ⟨bytes, left, right, first, second, _, _⟩ => ⟨bytes, left, right, first, second, claim bytes left right first second⟩
+
+example (claim : Airbender.DecodeClaim) : Airbender.DecodeSatisfiableClaim →
+    ∃ (value : Airbender.Json.Value) (circuit : Airbender.Circuit), Airbender.Serde.encode circuit = value :=
+  fun ⟨value, circuit, accepted⟩ => ⟨value, circuit, (claim value circuit).mp accepted⟩
+
+example (claim : Airbender.PlacementsClaim) : Airbender.PlacementsSatisfiableClaim →
+    ∃ (circuit : Airbender.Circuit) (address : Airbender.GKRAddress),
+      circuit.placements.getD address.key [] =
+        ((circuit.placement_data.entries.toList.filter (fun entry => decide (entry.2 = address))).map (·.1)).reverse :=
+  fun ⟨circuit, address, _, _⟩ => ⟨circuit, address, claim circuit address⟩
+
+example (claim : Airbender.Compiler.NativeLookups.CachedLookupSelectorsClaim) :
+    Airbender.Compiler.NativeLookups.CachedLookupSelectorsSatisfiableClaim →
+    ∃ family : Trace.RVMachineDecoderFamily,
+      Airbender.Compiler.NativeLookups.selectorsFor family ≠ [] ∧
+      Airbender.Compiler.NativeLookups.queryLocators (Airbender.Compiler.NativeLookups.circuitFor family) =
+        .ok ((Airbender.Compiler.NativeLookups.selectorsFor family).map (fun selector => (selector.gate, selector.operand))) :=
+  fun ⟨family, nonempty, _⟩ => ⟨family, nonempty, (claim family).1⟩
+
+example (claim : Airbender.Compiler.AddSubCachedArithmeticClaim) :
+    Airbender.Compiler.AddSubCachedArithmeticSatisfiableClaim →
+    ∃ (physical : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (logical : Nat → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeArithmetic.Holds Airbender.Compiler.Captures.AddSub.imported.circuit physical ∧
+      Airbender.FlatOperation.ConstraintsHoldFlat (Airbender.Verification.environment logical)
+        (Airbender.Circuit.equations Airbender.Compiler.Captures.AddSub.imported.circuit) :=
+  fun ⟨physical, logical, nativeHolds, placement⟩ => ⟨physical, logical, nativeHolds, claim physical logical nativeHolds placement⟩
+
+example (claim : Airbender.Compiler.BigintCachedArithmeticClaim) :
+    Airbender.Compiler.BigintCachedArithmeticSatisfiableClaim →
+    ∃ (physical : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (logical : Nat → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeArithmetic.Holds Airbender.Compiler.Captures.Bigint.imported.circuit physical ∧
+      Airbender.FlatOperation.ConstraintsHoldFlat (Airbender.Verification.environment logical)
+        (Airbender.Circuit.equations Airbender.Compiler.Captures.Bigint.imported.circuit) :=
+  fun ⟨physical, logical, nativeHolds, placement⟩ => ⟨physical, logical, nativeHolds, claim physical logical nativeHolds placement⟩
+
+example (claim : Airbender.Compiler.BlakeGCachedArithmeticClaim) :
+    Airbender.Compiler.BlakeGCachedArithmeticSatisfiableClaim →
+    ∃ (physical : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (logical : Nat → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeG.imported.circuit physical ∧
+      Airbender.FlatOperation.ConstraintsHoldFlat (Airbender.Verification.environment logical)
+        (Airbender.Circuit.equations Airbender.Compiler.Captures.BlakeG.imported.circuit) :=
+  fun ⟨physical, logical, nativeHolds, placement⟩ => ⟨physical, logical, nativeHolds, claim physical logical nativeHolds placement⟩
+
+example (claim : Airbender.Compiler.BlakeRoundCachedArithmeticClaim) :
+    Airbender.Compiler.BlakeRoundCachedArithmeticSatisfiableClaim →
+    ∃ (physical : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (logical : Nat → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical ∧
+      Airbender.FlatOperation.ConstraintsHoldFlat (Airbender.Verification.environment logical)
+        (Airbender.Circuit.equations Airbender.Compiler.Captures.BlakeRound.imported.circuit) :=
+  fun ⟨physical, logical, nativeHolds, placement⟩ => ⟨physical, logical, nativeHolds, claim physical logical nativeHolds placement⟩
+
+example (claim : Airbender.Compiler.JumpBranchCachedArithmeticClaim) :
+    Airbender.Compiler.JumpBranchCachedArithmeticSatisfiableClaim →
+    ∃ (physical : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (logical : Nat → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeArithmetic.Holds Airbender.Compiler.Captures.JumpBranch.imported.circuit physical ∧
+      Airbender.FlatOperation.ConstraintsHoldFlat (Airbender.Verification.environment logical)
+        (Airbender.Circuit.equations Airbender.Compiler.Captures.JumpBranch.imported.circuit) :=
+  fun ⟨physical, logical, nativeHolds, placement⟩ => ⟨physical, logical, nativeHolds, claim physical logical nativeHolds placement⟩
+
+example (claim : Airbender.Compiler.KeccakCachedArithmeticClaim) :
+    Airbender.Compiler.KeccakCachedArithmeticSatisfiableClaim →
+    ∃ (physical : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (logical : Nat → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeArithmetic.Holds Airbender.Compiler.Captures.Keccak.imported.circuit physical ∧
+      Airbender.FlatOperation.ConstraintsHoldFlat (Airbender.Verification.environment logical)
+        (Airbender.Circuit.equations Airbender.Compiler.Captures.Keccak.imported.circuit) :=
+  fun ⟨physical, logical, nativeHolds, placement⟩ => ⟨physical, logical, nativeHolds, claim physical logical nativeHolds placement⟩
+
+example (claim : Airbender.Compiler.MulDivCachedArithmeticClaim) :
+    Airbender.Compiler.MulDivCachedArithmeticSatisfiableClaim →
+    ∃ (physical : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (logical : Nat → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeArithmetic.Holds Airbender.Compiler.Captures.MulDiv.imported.circuit physical ∧
+      Airbender.FlatOperation.ConstraintsHoldFlat (Airbender.Verification.environment logical)
+        (Airbender.Circuit.equations Airbender.Compiler.Captures.MulDiv.imported.circuit) :=
+  fun ⟨physical, logical, nativeHolds, placement⟩ => ⟨physical, logical, nativeHolds, claim physical logical nativeHolds placement⟩
+
+example (claim : Airbender.Compiler.ShiftBinopCachedArithmeticClaim) :
+    Airbender.Compiler.ShiftBinopCachedArithmeticSatisfiableClaim →
+    ∃ (physical : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (logical : Nat → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeArithmetic.Holds Airbender.Compiler.Captures.ShiftBinop.imported.circuit physical ∧
+      Airbender.FlatOperation.ConstraintsHoldFlat (Airbender.Verification.environment logical)
+        (Airbender.Circuit.equations Airbender.Compiler.Captures.ShiftBinop.imported.circuit) :=
+  fun ⟨physical, logical, nativeHolds, placement⟩ => ⟨physical, logical, nativeHolds, claim physical logical nativeHolds placement⟩
+
+example (claim : Airbender.Compiler.SubwordMemoryCachedArithmeticClaim) :
+    Airbender.Compiler.SubwordMemoryCachedArithmeticSatisfiableClaim →
+    ∃ (physical : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (logical : Nat → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeArithmetic.Holds Airbender.Compiler.Captures.SubwordMemory.imported.circuit physical ∧
+      Airbender.FlatOperation.ConstraintsHoldFlat (Airbender.Verification.environment logical)
+        (Airbender.Circuit.equations Airbender.Compiler.Captures.SubwordMemory.imported.circuit) :=
+  fun ⟨physical, logical, nativeHolds, placement⟩ => ⟨physical, logical, nativeHolds, claim physical logical nativeHolds placement⟩
+
+example (claim : Airbender.Compiler.UnifiedCachedArithmeticClaim) :
+    Airbender.Compiler.UnifiedCachedArithmeticSatisfiableClaim →
+    ∃ (physical : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (logical : Nat → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeArithmetic.Holds Airbender.Compiler.Captures.Unified.imported.circuit physical ∧
+      Airbender.FlatOperation.ConstraintsHoldFlat (Airbender.Verification.environment logical)
+        (Airbender.Circuit.equations Airbender.Compiler.Captures.Unified.imported.circuit) :=
+  fun ⟨physical, logical, nativeHolds, placement⟩ => ⟨physical, logical, nativeHolds, claim physical logical nativeHolds placement⟩
+
+example (claim : Airbender.Compiler.WordMemoryCachedArithmeticClaim) :
+    Airbender.Compiler.WordMemoryCachedArithmeticSatisfiableClaim →
+    ∃ (physical : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (logical : Nat → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeArithmetic.Holds Airbender.Compiler.Captures.WordMemory.imported.circuit physical ∧
+      Airbender.FlatOperation.ConstraintsHoldFlat (Airbender.Verification.environment logical)
+        (Airbender.Circuit.equations Airbender.Compiler.Captures.WordMemory.imported.circuit) :=
+  fun ⟨physical, logical, nativeHolds, placement⟩ => ⟨physical, logical, nativeHolds, claim physical logical nativeHolds placement⟩
+
+example (claim : Airbender.InitsTeardowns.Native.StandaloneSoundnessClaim) :
+    Airbender.InitsTeardowns.Native.StandaloneSatisfiableClaim →
+    ∃ (parameters : Airbender.InitsTeardowns.Native.Parameters babyBearModulus (ZMod babyBearModulus))
+      (raw : Airbender.InitsTeardowns.Native.Raw babyBearModulus)
+      (wires : Airbender.InitsTeardowns.Native.Wires (ZMod babyBearModulus)),
+      Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.standaloneArtifact
+        Airbender.InitsTeardowns.Native.standaloneArtifact.terminal wires =
+        ((Airbender.InitsTeardowns.Native.ramTokens Airbender.InitsTeardowns.Native.standaloneArtifact.layout parameters raw .terminal).map parameters.encode).prod ∧
+      Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.standaloneArtifact
+        Airbender.InitsTeardowns.Native.standaloneArtifact.initial wires =
+        ((Airbender.InitsTeardowns.Native.ramTokens Airbender.InitsTeardowns.Native.standaloneArtifact.layout parameters raw .initial).map parameters.encode).prod :=
+  fun ⟨parameters, raw, wires, accepted⟩ => ⟨parameters, raw, wires, claim parameters raw wires accepted⟩
+
+example (claim : Airbender.InitsTeardowns.Native.UnifiedSoundnessClaim) :
+    Airbender.InitsTeardowns.Native.UnifiedSatisfiableClaim →
+    ∃ (parameters : Airbender.InitsTeardowns.Native.Parameters babyBearModulus (ZMod babyBearModulus))
+      (raw : Airbender.InitsTeardowns.Native.Raw babyBearModulus)
+      (wires : Airbender.InitsTeardowns.Native.Wires (ZMod babyBearModulus)),
+      Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.unifiedArtifact
+        Airbender.InitsTeardowns.Native.unifiedArtifact.terminal wires =
+        ((Airbender.InitsTeardowns.Native.ramTokens Airbender.InitsTeardowns.Native.unifiedArtifact.layout parameters raw .terminal).map parameters.encode).prod ∧
+      Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.unifiedArtifact
+        Airbender.InitsTeardowns.Native.unifiedArtifact.initial wires =
+        ((Airbender.InitsTeardowns.Native.ramTokens Airbender.InitsTeardowns.Native.unifiedArtifact.layout parameters raw .initial).map parameters.encode).prod :=
+  fun ⟨parameters, raw, wires, accepted⟩ => ⟨parameters, raw, wires, claim parameters raw wires accepted⟩
+
+namespace RV.ValidUse
+open Spec
+
+example (claim : RV.ValidUse.BigintReferenceClaim) : RV.ValidUse.BigintReferenceSatisfiableClaim →
+    ∃ state, Delegation.effect .bigint (state.getReg 10) (state.getReg 11) (state.getReg 12)
+    state.delegationRAM = bigintReference state :=
+  fun ⟨state, assumptions⟩ => ⟨state, claim state assumptions⟩
+
+example (claim : RV.ValidUse.GReferenceClaim) : RV.ValidUse.GReferenceSatisfiableClaim →
+    ∃ (reduced : Bool) (state : RV.State) (left right : RV.Word), ∃ finish, calls (.replicate (if reduced then 56 else 80) .blakeG) state = some finish ∧
+      ChangesOnly state finish left 64 12 ∧ finish.getReg 12 = (if reduced then 0x80#32 else 0#32) ∧
+      readWords finish.mem left 16 = gReference reduced (readWords state.mem left 16) (readWords state.mem right 16) :=
+  fun ⟨reduced, state, left, right, assumptions⟩ => ⟨reduced, state, left, right, claim reduced state left right assumptions⟩
+
+example (claim : RV.ValidUse.RoundReferenceClaim) : RV.ValidUse.RoundReferenceSatisfiableClaim →
+    ∃ (reduced : Bool) (state : RV.State) (left right counter : RV.Word) (last : Bool), ∃ finish, calls (.replicate (if reduced then 7 else 10) .blakeRound) state = some finish ∧
+      ChangesOnly state finish left 96 12 ∧
+      readWords finish.mem left 8 = compressRounds (if reduced then 7 else 10)
+        (readWords state.mem left 8) (readWords state.mem right 16) counter last :=
+  fun ⟨reduced, state, left, right, counter, last, assumptions⟩ => ⟨reduced, state, left, right, counter, last, claim reduced state left right counter last assumptions⟩
+
+example (claim : RV.ValidUse.HashReferenceClaim) : RV.ValidUse.HashReferenceSatisfiableClaim →
+    ∃ (reduced right : Bool) (state : RV.State) (left sibling : RV.Word), ∃ finish, calls (.replicate (if reduced then 7 else 10) .blakeRound) state = some finish ∧
+      ChangesOnly state finish left 96 12 ∧
+      readWords finish.mem left 8 = compressRounds (if reduced then 7 else 10) (Vector.ofFn configuredIV)
+        (if right then readWords state.mem sibling 8 ++ readWords state.mem left 8
+          else readWords state.mem left 8 ++ readWords state.mem sibling 8) 64#32 true :=
+  fun ⟨reduced, right, state, left, sibling, assumptions⟩ => ⟨reduced, right, state, left, sibling, claim reduced right state left sibling assumptions⟩
+
+example (claim : RV.ValidUse.SplitKeccakReferenceClaim) : RV.ValidUse.SplitKeccakReferenceSatisfiableClaim →
+    ∃ state pointer, ∃ finish, calls f1600Calls state = some finish ∧ ChangesOnly state finish pointer 248 10 ∧
+      readLanes finish.mem pointer 25 = keccakF (readLanes state.mem pointer 25) :=
+  fun ⟨state, pointer, assumptions⟩ => ⟨state, pointer, claim state pointer assumptions⟩
+
+example (claim : RV.ValidUse.Special5ReferenceClaim) : RV.ValidUse.Special5ReferenceSatisfiableClaim →
+    ∃ state pointer, ∃ finish, calls (.replicate 649 .keccak) state = some finish ∧ ChangesOnly state finish pointer 248 10 ∧
+      readLanes finish.mem pointer 25 = keccakF (readLanes state.mem pointer 25) :=
+  fun ⟨state, pointer, assumptions⟩ => ⟨state, pointer, claim state pointer assumptions⟩
+
+end RV.ValidUse
+
+
+namespace RV
+open Spec
+
+example (claim : RV.BlakeCompressRun) : RV.BlakeCompressRunSatisfiableClaim →
+    ∃ (s : State) (p q t : Word) (last : Bool), ∃ s', calls (.replicate 7 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compress (readWords s.mem p 8) (readWords s.mem q 16) t last :=
+  fun ⟨s, p, q, t, last, assumptions⟩ => ⟨s, p, q, t, last, claim s p q t last assumptions⟩
+
+example (claim : RV.BlakeCompressRun10) : RV.BlakeCompressRun10SatisfiableClaim →
+    ∃ (s : State) (p q t : Word) (last : Bool), ∃ s', calls (.replicate 10 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compressRounds 10 (readWords s.mem p 8) (readWords s.mem q 16) t last :=
+  fun ⟨s, p, q, t, last, assumptions⟩ => ⟨s, p, q, t, last, claim s p q t last assumptions⟩
+
+example (claim : RV.BlakeHashRun) : RV.BlakeHashRunSatisfiableClaim →
+    ∃ (s : State) (p q : Word) (right : Bool), ∃ s', calls (.replicate 7 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 =
+        if right then hash2 (readWords s.mem q 8) (readWords s.mem p 8) else hash2 (readWords s.mem p 8) (readWords s.mem q 8) :=
+  fun ⟨s, p, q, right, assumptions⟩ => ⟨s, p, q, right, claim s p q right assumptions⟩
+
+example (claim : RV.BlakeHashRun10) : RV.BlakeHashRun10SatisfiableClaim →
+    ∃ (s : State) (p q : Word) (right : Bool), ∃ s', calls (.replicate 10 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
+      readWords s'.mem p 8 = compressRounds 10 (Vector.ofFn configuredIV)
+        (if right then readWords s.mem q 8 ++ readWords s.mem p 8 else readWords s.mem p 8 ++ readWords s.mem q 8)
+        64#32 true :=
+  fun ⟨s, p, q, right, assumptions⟩ => ⟨s, p, q, right, claim s p q right assumptions⟩
+
+example (claim : RV.BlakeGRun) : RV.BlakeGRunSatisfiableClaim →
+    ∃ (s : State) (p q : Word), ∃ s', calls (.replicate 56 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0x80#32 ∧
+      readWords s'.mem p 16 = (List.finRange 7).foldl
+        (fun v r => round (readWords s.mem q 16) (SIGMA (r.castLE (by decide))) v) (readWords s.mem p 16) :=
+  fun ⟨s, p, q, assumptions⟩ => ⟨s, p, q, claim s p q assumptions⟩
+
+example (claim : RV.BlakeGRun10) : RV.BlakeGRun10SatisfiableClaim →
+    ∃ (s : State) (p q : Word), ∃ s', calls (.replicate 80 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0#32 ∧
+      readWords s'.mem p 16 = (List.finRange 10).foldl
+        (fun v r => round (readWords s.mem q 16) (SIGMA r) v) (readWords s.mem p 16) :=
+  fun ⟨s, p, q, assumptions⟩ => ⟨s, p, q, claim s p q assumptions⟩
+
+example (claim : RV.KeccakF1600Run) : RV.KeccakF1600RunSatisfiableClaim →
+    ∃ (s : State) (p : Word), ∃ s', calls f1600Calls s = some s' ∧ ChangesOnly s s' p 248 10 ∧
+      readLanes s'.mem p 25 = keccakF (readLanes s.mem p 25) :=
+  fun ⟨s, p, assumptions⟩ => ⟨s, p, claim s p assumptions⟩
+
+example (claim : RV.KeccakSpecial5Run) : RV.KeccakSpecial5RunSatisfiableClaim →
+    ∃ (s : State) (p : Word), ∃ s', calls (.replicate 649 .keccak) s = some s' ∧ ChangesOnly s s' p 248 10 ∧
+      readLanes s'.mem p 25 = keccakF (readLanes s.mem p 25) :=
+  fun ⟨s, p, assumptions⟩ => ⟨s, p, claim s p assumptions⟩
+
+end RV
+
+example (claim : Airbender.AgreeExistsClaim) : Airbender.AgreeExistsSatisfiableClaim →
+    ∃ state machine, Airbender.Agree state machine :=
+  fun ⟨state, _, _⟩ => ⟨state, claim state⟩
+
+example (claim : Airbender.DecodeIsSailClaim) : Airbender.DecodeIsSailSatisfiableClaim →
+    ∃ word instruction state,
+      Human.runSail (SailRV32.Functions.ext_decode word) state = .ok (Airbender.toSail instruction) state :=
+  fun ⟨word, instruction, state, decoded, configured⟩ => ⟨word, instruction, state, claim word instruction state decoded configured⟩
+
+example (claim : Airbender.StepIsAirbenderClaim) : Airbender.StepIsAirbenderSatisfiableClaim →
+    ∃ (state next : RV.State) (machine machine' : Airbender.Machine),
+      RV.step state = some next ∧ Airbender.step machine = some machine' ∧ Airbender.Agree next machine' :=
+  fun ⟨state, next, machine, agree, step⟩ => by
+    obtain ⟨finish, stepped, agrees⟩ := claim state next machine agree step
+    exact ⟨state, next, machine, finish, step, stepped, agrees⟩
+
+example (claim : Airbender.RunIsAirbenderClaim) : Airbender.RunIsAirbenderSatisfiableClaim →
+    ∃ (n : Nat) (state next : RV.State) (machine : Airbender.Machine), Airbender.Agree state machine ∧ 1 ≤ n ∧
+      ∃ finish, Airbender.Machine.run n machine = some finish ∧ Airbender.Agree next finish :=
+  fun ⟨n, state, next, machine, positive, agree, run⟩ =>
+    ⟨n, state, next, machine, agree, positive, claim n state next machine agree run⟩
+
+example (claim : Airbender.FetchKeepsConfiguredClaim) : Airbender.FetchKeepsConfiguredSatisfiableClaim →
+    ∃ (state : Human.SailState) (word : RV.Word) (instruction : RV.Instr)
+      (result : _) (state' : Human.SailState),
+      RV.decode word = some instruction ∧ Airbender.Configured state ∧
+      Human.runSail (SailRV32.Functions.fetch ()) state = .ok result state' ∧ Airbender.Configured state' :=
+  fun ⟨state, word, instruction, result, state', configured, aligned, room, read, decoded, fetched⟩ =>
+    ⟨state, word, instruction, result, state', decoded, configured, fetched,
+      claim state word instruction result state' configured aligned room read decoded fetched⟩
+
+example (claim : RV.CallsRun) : RV.CallsRunSatisfiableClaim →
+    ∃ (kinds : List RV.DelegationKind) (state next : RV.State), kinds ≠ [] ∧ RV.run kinds.length state = some next :=
+  fun ⟨kinds, state, next, nonempty, assumptions⟩ => ⟨kinds, state, next, nonempty, claim kinds state next assumptions⟩
+
 namespace RV.Delegation
 open Spec
 
@@ -790,3 +1389,99 @@ example (claim : RV.Delegation.BlakeRoundOneHotClaim) : RV.Delegation.BlakeRound
     ⟨state, message, control, mem, roundIndex, claim state message control mem roundIndex bound mask⟩
 
 end RV.Delegation
+
+namespace Airbender.Trace.Machine.Native
+open Airbender.Compiler
+
+example (claim : Airbender.Trace.Machine.Native.UnrolledFullFromNative) :
+    Airbender.Trace.Machine.Native.UnrolledFullFromNativeSatisfiableClaim →
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
+    BootInputs .unrolledFullUnsigned trace initial cells program InitsTeardowns.importedLayout inits ∧
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NoSpecial5 program ∧
+    NonDeterminism.Pooled.StreamPorts trace initial.input ∧
+    NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
+    ∃ certificates : List (ProgramLogicalRowCertificate tables),
+      UnrolledNativeArguments tables certificates trace workers ∧
+    RVRealizes trace initial cells (NonDeterminism.Pooled.readCount trace) :=
+  fun ⟨trace, workers, initial, cells, program, inits, tables, _, _, _, boot, wordSetup, subwordSetup, workerSetup, noSpecial, stream, bound, covers, certificates, arguments⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, boot, wordSetup, subwordSetup, workerSetup, noSpecial, stream, bound, covers, certificates, arguments, claim trace workers initial cells program inits tables boot wordSetup subwordSetup workerSetup noSpecial stream bound covers certificates arguments⟩
+
+example (claim : Airbender.Trace.Machine.Native.UnrolledReducedFromNative) :
+    Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSatisfiableClaim →
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
+    BootInputs .unrolledReduced trace initial cells program InitsTeardowns.importedLayout inits ∧
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NonDeterminism.Pooled.StreamPorts trace initial.input ∧
+    NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
+    ∃ certificates : List (ProgramLogicalRowCertificate tables),
+      UnrolledNativeArguments tables certificates trace workers ∧
+    RVRealizes trace initial cells (NonDeterminism.Pooled.readCount trace) :=
+  fun ⟨trace, workers, initial, cells, program, inits, tables, _, _, _, boot, wordSetup, subwordSetup, workerSetup, stream, bound, covers, certificates, arguments⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, boot, wordSetup, subwordSetup, workerSetup, stream, bound, covers, certificates, arguments, claim trace workers initial cells program inits tables boot wordSetup subwordSetup workerSetup stream bound covers certificates arguments⟩
+
+example (claim : Airbender.Trace.Machine.Native.UnifiedFromNative) :
+    Airbender.Trace.Machine.Native.UnifiedFromNativeSatisfiableClaim →
+  ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)) (tables : ProgramLookupRows),
+    BootInputs .unified trace initial cells program InitsTeardowns.unifiedLayout inits ∧
+    trace.rom = UnifiedReduced.Setup.tableRV initial ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NoSpecial5 program ∧ UnifiedStreamPorts trace initial.input ∧
+    NativePublicSetup.Bound initial program tables ∧
+    ∃ certificates : List (UnifiedLogicalRowCertificate tables),
+      UnifiedNativeArguments tables certificates trace workers ∧
+    RVRealizes trace initial cells (unifiedReadCount trace) :=
+  fun ⟨trace, workers, initial, cells, program, inits, tables, _, _, _, boot, setup, workerSetup, noSpecial, stream, bound, certificates, arguments⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, boot, setup, workerSetup, noSpecial, stream, bound, certificates, arguments, claim trace workers initial cells program inits tables boot setup workerSetup noSpecial stream bound certificates arguments⟩
+
+end Airbender.Trace.Machine.Native
+
+example (claim : Airbender.Compiler.KeccakColumnParityCachedArithmeticClaim) :
+    Airbender.Compiler.KeccakColumnParityCachedArithmeticSatisfiableClaim →
+    ∃ (physical : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (logical : Nat → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeArithmetic.Holds Airbender.Compiler.Captures.KeccakColumnParity.imported.circuit physical ∧
+      Airbender.FlatOperation.ConstraintsHoldFlat (Airbender.Verification.environment logical)
+        (Airbender.Circuit.equations Airbender.Compiler.Captures.KeccakColumnParity.imported.circuit) :=
+  fun ⟨physical, logical, nativeHolds, placement⟩ => ⟨physical, logical, nativeHolds, claim physical logical nativeHolds placement⟩
+
+example (claim : Airbender.Compiler.KeccakThetaRhoCachedArithmeticClaim) :
+    Airbender.Compiler.KeccakThetaRhoCachedArithmeticSatisfiableClaim →
+    ∃ (physical : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (logical : Nat → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeArithmetic.Holds Airbender.Compiler.Captures.KeccakThetaRho.imported.circuit physical ∧
+      Airbender.FlatOperation.ConstraintsHoldFlat (Airbender.Verification.environment logical)
+        (Airbender.Circuit.equations Airbender.Compiler.Captures.KeccakThetaRho.imported.circuit) :=
+  fun ⟨physical, logical, nativeHolds, placement⟩ => ⟨physical, logical, nativeHolds, claim physical logical nativeHolds placement⟩
+
+example (claim : Airbender.Compiler.KeccakChi5CachedArithmeticClaim) :
+    Airbender.Compiler.KeccakChi5CachedArithmeticSatisfiableClaim →
+    ∃ (physical : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (logical : Nat → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeArithmetic.Holds Airbender.Compiler.Captures.KeccakChi5.imported.circuit physical ∧
+      Airbender.FlatOperation.ConstraintsHoldFlat (Airbender.Verification.environment logical)
+        (Airbender.Circuit.equations Airbender.Compiler.Captures.KeccakChi5.imported.circuit) :=
+  fun ⟨physical, logical, nativeHolds, placement⟩ => ⟨physical, logical, nativeHolds, claim physical logical nativeHolds placement⟩
+
+example (claim : Airbender.Compiler.NativeWorkerLookups.CachedWorkerLookupSelectorsClaim) :
+    Airbender.Compiler.NativeWorkerLookups.CachedWorkerLookupSelectorsSatisfiableClaim →
+    ∃ family : Airbender.Compiler.NativeWorkerLookups.Family,
+      Airbender.Compiler.NativeWorkerLookups.selectorsFor family ≠ [] ∧
+      Airbender.Compiler.NativeLookups.queryLocators (Airbender.Compiler.NativeWorkerLookups.circuitFor family) =
+        .ok ((Airbender.Compiler.NativeWorkerLookups.selectorsFor family).map (fun selector => (selector.gate, selector.operand))) :=
+  fun ⟨family, nonempty, _⟩ => ⟨family, nonempty, (claim family).1⟩
+
+/-- Every target worker has a certificate with native nativeHolds, placement, lookups and execute one. -/
+example (family : Airbender.Compiler.NativeWorkerLookups.Family) :
+    ∃ entry : Airbender.Compiler.WorkerCertificate, entry.family = family :=
+  Airbender.Compiler.cached_worker_certificates_satisfiable family

@@ -26,6 +26,9 @@ python3 check_circuit_json.py
 python3 scripts/check_compiler_captures.py
 python3 scripts/sync_compiler_inputs.py --check
 python3 scripts/generate_fixed_row_checks.py --check
+python3 scripts/generate_worker_selectors.py --check
+python3 scripts/generate_worker_arithmetic.py --check
+python3 scripts/generate_worker_constraints.py --check
 
 echo "== 2. Lean build: spec, proofs, regressions and the axiom audit modules in one lake build (test modules start as"
 echo "   soon as their imports are built), timing each module compiled (full log: lean/.lake/verify-build-CleanCore.log)"

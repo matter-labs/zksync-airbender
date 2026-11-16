@@ -23,13 +23,22 @@ theorem unified_realizes
     (setup : trace.rom = UnifiedReduced.Setup.tableRV initialState)
     (tables : workers.standard.setup = modeledSetup Keccak.Controller.rows)
     (start : initialState.pc = trace.initial.word.toBitVec) (noSpecial : NoSpecial5 program)
-    (streamPorts : UnifiedStreamPorts trace initialState.input) : RVRealizes trace initialState cells := by
+    (streamPorts : UnifiedStreamPorts trace initialState.input) : RVRealizes trace initialState cells (unifiedReadCount trace) := by
   obtain ⟨events, finalState, permutation, ordered, history, terminalReads⟩ :=
     unified_shared_history accepted initial alignedClock image distinct aligned programImage
   let index := readIndexAt trace.rows Row.clock unifiedIsRead
   have zeroIndex : index (timeOfPair trace.initial.timestamp).value = 0 :=
     read_index_initial trace.rows Row.clock unifiedIsRead _ (fun row member =>
       (cpu_cycle_clock_bounds accepted.constraints accepted.states initial alignedClock member).1)
+  have finalIndex : index (timeOfPair trace.terminal.timestamp).value = unifiedReadCount trace :=
+    read_index_terminal trace.rows Row.clock unifiedIsRead _ (by
+      intro row member
+      have upper := (cpu_cycle_clock_bounds accepted.constraints accepted.states initial alignedClock member).2
+      have clocks := state_clock_inputs (by decide) (by decide) accepted.constraints accepted.states initial alignedClock row member
+      have advance := ClockLaws.advance (by decide) (by decide) trace.rom row (accepted.constraints row member) clocks.1
+      change (decodeTimestamp row.assignment row.columns.finalTime).value = row.clock + 4 at advance
+      omega)
+  rw [← finalIndex]
   apply realizes_of_cycle_steps accepted.constraints accepted.states initial alignedClock ordered history
     (fun event present => unified_event_bounds accepted initial alignedClock event (permutation.mem_iff.mp present))
     terminalReads start index zeroIndex

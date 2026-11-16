@@ -9,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 65536
 
 /-- The existing accepted row supplies every source coordinate, including clock helpers. -/
-noncomputable def inputValues (index : Fin 266) : F := Airbender.NonVacuous.Keccak.row index.val
+noncomputable def inputValues (index : Fin 266) : F := NativeExtension.Keccak.inputValues Airbender.NonVacuous.Keccak.row index
 
 /-- Kernel evaluation checks every source equation of this concrete witness. -/
 theorem source_check : FullArithmeticNative.KeccakCached.native.artifact.source.all
@@ -23,6 +23,6 @@ theorem source_satisfied : Satisfies FullArithmeticNative.KeccakCached.native.ar
 theorem witness : ∃ (physical : GKRAddress → F) (logical : Nat → F),
     Holds Captures.Keccak.imported.circuit physical ∧
       PlacementAgreement Captures.Keccak.imported.circuit physical logical := by
-  obtain ⟨physical, logical, accepted, placement⟩ := NativeExtension.Keccak.extension Airbender.NonVacuous.Keccak.row source_satisfied
-  exact ⟨physical, logical, accepted, placement⟩
+  obtain ⟨physical, accepted, placement⟩ := NativeExtension.Keccak.extension_preserves Airbender.NonVacuous.Keccak.row source_satisfied
+  exact ⟨physical, Airbender.NonVacuous.Keccak.row, accepted, placement⟩
 end Airbender.Compiler.NativeSatisfiable.Keccak

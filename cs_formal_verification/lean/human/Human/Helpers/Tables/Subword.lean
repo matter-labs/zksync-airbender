@@ -8,7 +8,8 @@ namespace Airbender.Verification
 
 /- Symbolic rows from cs/src/tables/memory_opcode_related.rs and rom_related.rs,
    selected by mem_subword_only/circuit.rs. Tags are from table_type.rs. This
-   reconstructs the tables; extraction and Rust setup correspondence are deferred.
+   defines the symbolic tables. Trusted compiled comparisons bind the fixed rows
+   and the public ROM fixture to native setup data. No theorem covers the Rust generator.
    `program` supplies independently fixed ROM words, including any padding. -/
 
 def subwordLoadLimbs (byte : Bool) (key : Nat) : Nat × Nat :=

@@ -97,7 +97,7 @@ structure RVWordMapping {p : Nat} (input : RVInput) (output : Output) (w : Nat �
   finalPCHi : output.pc.hi = (w 14).val
 
 /-- Public initialization and ROM tables for this family. -/
-abbrev RVAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+abbrev RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
   Trace.RVPooledHistoryInputs trace initial cells program
 
@@ -107,7 +107,9 @@ def rvModel (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : 
   Trace.rvRowModel (family := .subwordMemory) (before := RVInput.before) (instruction := rvInstruction)
     (words := RVWordMapping) trace initial cells program
 
-/-- One step computes the aligned cell and transfers the row's byte or halfword. It sets the final PC and changes no other visible state. -/
+/-- The cell is the aligned four-byte cell that contains the effective address from the source and immediate.
+    Our RV32 spec (`RV.step`) loads the result into `rd` or writes the updated whole cell for a store.
+    It sets the final PC and preserves the other visible state. A misaligned halfword access or ROM store has no step. -/
 def rvSpec (input : RVInput) (output : Output) : Prop :=
   output.cell.toBitVec.toNat = (input.source.toBitVec + input.immediate.toBitVec).toNat / 4 * 4 ∧
   ∃ s', RV.step input.before = some s' ∧

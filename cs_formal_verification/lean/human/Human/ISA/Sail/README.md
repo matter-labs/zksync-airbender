@@ -19,9 +19,19 @@ configuration and fetch results with separate witnesses.
 
 The Airbender machine uses the specification's own definitions for loads into x0,
 `mop.rr.N`, `mop.r.N`, CSR 0x7c0 and all delegations. These are machine overrides.
-The equivalence applies to this configured Airbender machine. The full unsigned
-target excludes `mop.r.N`; the reduced and unified targets use the modeled
-xor-rotate behavior. Special5 remains outside the production machine targets.
+Sail gives Zimop instructions a zero result; this machine gives them the stated custom effects.
+An aligned load into x0 does not access memory in this machine.
+The machine decodes with `RV.decode`. Other enabled Sail extensions, such as A, have no instruction step.
+A standard instruction step requires `nextPC % 4 = 0`.
+Delegation stores can update shadow RAM below the ROM boundary. Ordinary stores to ROM have no step.
+The equivalence applies to this configured Airbender machine. Both unrolled targets exclude `mop.r.N`.
+Unified admits `mop.r.N` with N = 16, 12, 8 or 7, including rd = x0.
+Special5 remains outside the production machine targets.
+Each whole-run conclusion holds for every configured start that agrees with the public initial state.
+The final input is the public input after the number of reads in the submitted CPU trace.
+
+The [valid-use claims](../ValidUse/README.md) connect valid bigint, BLAKE2s and Keccak calls to their reference functions.
+Their RAM buffers, controls and complete reference schedules are public ABI premises.
 
 Sail generation and its pinned sources are documented in
 [the generation guide](../../../../../sail/README.md).

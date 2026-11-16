@@ -24,13 +24,22 @@ theorem unrolled_realizes {config : RVMachineConfig} (unrolled : config ≠ .uni
     (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initialState))
     (tables : workers.standard.setup = modeledSetup Keccak.Controller.rows) (terminal : trace.terminal.word.Bounded)
     (start : initialState.pc = trace.initial.word.toBitVec) (noSpecial : NoSpecial5 program)
-    (streamPorts : NonDeterminism.Pooled.StreamPorts trace initialState.input) : RVRealizes trace initialState cells := by
+    (streamPorts : NonDeterminism.Pooled.StreamPorts trace initialState.input) : RVRealizes trace initialState cells (NonDeterminism.Pooled.readCount trace) := by
   obtain ⟨events, finalState, permutation, ordered, history, terminalReads⟩ :=
     unrolled_shared_history unrolled accepted initial alignedClock image distinct aligned programImage
   let index := readIndexAt trace.rows Row.clock NonDeterminism.Pooled.isRead
   have zeroIndex : index (timeOfPair trace.initial.timestamp).value = 0 :=
     read_index_initial trace.rows Row.clock NonDeterminism.Pooled.isRead _ (fun row member =>
       (cpu_cycle_clock_bounds accepted.constraints accepted.states initial alignedClock member).1)
+  have finalIndex : index (timeOfPair trace.terminal.timestamp).value = NonDeterminism.Pooled.readCount trace :=
+    read_index_terminal trace.rows Row.clock NonDeterminism.Pooled.isRead _ (by
+      intro row member
+      have upper := (cpu_cycle_clock_bounds accepted.constraints accepted.states initial alignedClock member).2
+      have clocks := state_clock_inputs (by decide) (by decide) accepted.constraints accepted.states initial alignedClock row member
+      have advance := ClockLaws.advance (by decide) (by decide) trace.rom row (accepted.constraints row member) clocks.1
+      change (decodeTimestamp row.assignment row.columns.finalTime).value = row.clock + 4 at advance
+      omega)
+  rw [← finalIndex]
   apply realizes_of_cycle_steps accepted.constraints accepted.states initial alignedClock ordered history
     (fun event present => unrolled_event_bounds accepted initial alignedClock event (permutation.mem_iff.mp present))
     terminalReads start index zeroIndex

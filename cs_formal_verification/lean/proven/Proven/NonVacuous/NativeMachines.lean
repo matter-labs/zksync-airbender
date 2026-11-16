@@ -68,39 +68,34 @@ theorem covers_rom : NativePublicSetup.CoversROM (cells InitsTeardowns.importedL
       simp [Nat.mul_comm]
     exact congrArg (fun address => Cell.ram (BitVec.ofNat 32 address)) address
 
+/-- The zero standalone teardown columns retain every public seed token. -/
+theorem pooled_memory : pooled.initialMemory.Perm pooled.terminalMemory := by
+  have tokens : standaloneInits.flatMap InitsTeardowns.Witness.teardownTokens =
+      standaloneInits.flatMap InitsTeardowns.Witness.initTokens := by
+    simp only [standaloneInits, List.flatMap_cons, List.flatMap_nil, List.append_nil]
+    exact InitsTeardowns.Proofs.teardown_zero _ (fun _ _ => rfl)
+  change (registerSeeds ++ standaloneInits.flatMap InitsTeardowns.Witness.initTokens).Perm
+    (registerSeeds ++ standaloneInits.flatMap InitsTeardowns.Witness.teardownTokens)
+  rw [tokens]
+
+/-- The zero unified teardown columns retain every public seed token. -/
+theorem unified_memory : unifiedTrace.initialMemory.Perm unifiedTrace.terminalMemory := by
+  have tokens : unifiedInits.flatMap InitsTeardowns.Witness.teardownTokens =
+      unifiedInits.flatMap InitsTeardowns.Witness.initTokens := by
+    simp only [unifiedInits, List.flatMap_cons, List.flatMap_nil, List.append_nil]
+    exact InitsTeardowns.Proofs.teardown_zero _ (fun _ _ => rfl)
+  change (registerSeeds ++ unifiedInits.flatMap InitsTeardowns.Witness.initTokens).Perm
+    (registerSeeds ++ unifiedInits.flatMap InitsTeardowns.Witness.teardownTokens)
+  rw [tokens]
+
 theorem pooled_arguments : UnrolledNativeArguments tables [] pooled workers := by
-  refine ⟨workers_accepted, rfl, List.Perm.refl _, List.Perm.refl _, ?_⟩
-  change (pooled.initialMemory ++ []).Perm (pooled.initialMemory ++ [])
-  exact List.Perm.refl _
+  refine ⟨⟨[], rfl, rfl⟩, rfl, List.Perm.refl _, List.Perm.refl _, ?_⟩
+  change (pooled.initialMemory ++ []).Perm (pooled.terminalMemory ++ [])
+  simpa only [List.append_nil] using pooled_memory
 
 theorem unified_arguments : UnifiedNativeArguments tables [] unifiedTrace workers := by
-  refine ⟨workers_accepted, rfl, List.Perm.refl _, List.Perm.refl _, ?_⟩
-  change (unifiedTrace.initialMemory ++ []).Perm (unifiedTrace.initialMemory ++ [])
-  exact List.Perm.refl _
+  refine ⟨⟨[], rfl, rfl⟩, rfl, List.Perm.refl _, List.Perm.refl _, ?_⟩
+  change (unifiedTrace.initialMemory ++ []).Perm (unifiedTrace.terminalMemory ++ [])
+  simpa only [List.append_nil] using unified_memory
 
-end Airbender.NonVacuous.Machine
-
-namespace Airbender.NonVacuous.Machine
-open Airbender Trace Trace.Machine Arithmetic Compiler NativeArithmetic
-
-theorem full_native : Native.UnrolledFullFromNativeSatisfiableClaim := by
-  refine ⟨pooled, workers, zero, cells InitsTeardowns.importedLayout standaloneInits, [], standaloneInits,
-    tables, rfl, rfl, rfl, ?_, rfl, rfl, rfl, ?_, ?_, ?_, tables_bound, covers_rom, [], pooled_arguments⟩
-  · exact boot .unrolledFullUnsigned _ _ (InitsTeardowns.Proofs.claims ⟨rfl, Or.inr rfl⟩) _ standalone_checked
-  · intro entry member; cases member
-  · intro entry member; cases member
-  · intro row member; cases member
-
-theorem reduced_native : Native.UnrolledReducedFromNativeSatisfiableClaim := by
-  refine ⟨pooled, workers, zero, cells InitsTeardowns.importedLayout standaloneInits, [], standaloneInits,
-    tables, rfl, rfl, rfl, ?_, rfl, rfl, rfl, ?_, tables_bound, covers_rom, [], pooled_arguments⟩
-  · exact boot .unrolledReduced _ _ (InitsTeardowns.Proofs.claims ⟨rfl, Or.inr rfl⟩) _ standalone_checked
-  · intro row member; cases member
-
-theorem unified_native : Native.UnifiedFromNativeSatisfiableClaim := by
-  refine ⟨unifiedTrace, workers, zero, cells InitsTeardowns.unifiedLayout unifiedInits, [], unifiedInits,
-    tables, rfl, rfl, rfl, ?_, rfl, rfl, ?_, ?_, tables_bound, [], unified_arguments⟩
-  · exact boot .unified _ _ (InitsTeardowns.Proofs.claims ⟨rfl, Or.inl rfl⟩) _ unified_checked
-  · intro entry member; cases member
-  · intro row member; cases member
 end Airbender.NonVacuous.Machine

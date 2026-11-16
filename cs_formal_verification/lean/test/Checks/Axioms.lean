@@ -1,3 +1,8 @@
+import Proven.Final.Compiler.CPUCertificates
+import Proven.Final.Compiler.WorkerCertificates
+import Proven.Final.Compiler.WorkerSelectors
+import Proven.Final.Compiler.WorkerArithmetic
+import Proven.Final.Trace.Machine.Witnesses
 import Proven.Final.ISA.NativeTargets
 import Proven.Final.ISA.WholeRun
 import Proven.Final.ISA.MachineTargets
@@ -12,6 +17,7 @@ import Proven.Final.Trace.Machine.Padding
 import Proven.Final.Trace.Machine.Unrolled
 import Proven.Final.Trace.Machine.Unified
 import Proven.Final.Circuits.Blake2Round.Mask
+import Proven.Final.ISA.DelegationBranches
 import Proven.Final.Circuits.InitsTeardowns.NativeProducts
 import Proven.Final.Compiler.Theorems
 import Proven.AddSub.Modular.RVArithmetic
@@ -1539,6 +1545,92 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 
 #print axioms Airbender.Trace.Machine.Native.unified_from_native_sail
 
+#print axioms Airbender.Json.parse_sound_satisfiable
+
+#print axioms Airbender.Json.text_unique_satisfiable
+
+#print axioms Airbender.decode_satisfiable
+
+#print axioms Airbender.placements_satisfiable
+
+#print axioms Airbender.PaddingBoundary.product_satisfiable
+
+#print axioms Airbender.PaddingBoundary.projection_satisfiable
+
+#print axioms Airbender.Trace.Machine.unrolled_full_unsigned_satisfiable
+
+#print axioms Airbender.Trace.Machine.unrolled_reduced_satisfiable
+
+#print axioms Airbender.Trace.Machine.unified_satisfiable
+
+#print axioms Airbender.Trace.Machine.padded_unrolled_full_unsigned_satisfiable
+
+#print axioms Airbender.Trace.Machine.padded_unrolled_reduced_satisfiable
+
+#print axioms Airbender.Trace.Machine.padded_unified_satisfiable
+
+#print axioms Airbender.Trace.Machine.unrolled_hash_segmentation_satisfiable
+
+#print axioms Airbender.Trace.Machine.unified_hash_segmentation_satisfiable
+
+#print axioms Airbender.Trace.Machine.unrolled_code_hash_segmentation_satisfiable
+
+#print axioms Airbender.Trace.Machine.unified_code_hash_segmentation_satisfiable
+
+#print axioms Airbender.Trace.Machine.unrolled_full_unsigned_sail_satisfiable
+
+#print axioms Airbender.Trace.Machine.unrolled_reduced_sail_satisfiable
+
+#print axioms Airbender.Trace.Machine.unified_sail_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_full_from_native_sail_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_reduced_from_native_sail_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unified_from_native_sail_satisfiable
+
+#print axioms Airbender.Compiler.keccakColumnParity_cached_description
+
+#print axioms Airbender.Compiler.keccakColumnParity_cached_arithmetic
+
+#print axioms Airbender.Compiler.keccakColumnParity_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.keccakThetaRho_cached_description
+
+#print axioms Airbender.Compiler.keccakThetaRho_cached_arithmetic
+
+#print axioms Airbender.Compiler.keccakThetaRho_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.keccakChi5_cached_description
+
+#print axioms Airbender.Compiler.keccakChi5_cached_arithmetic
+
+#print axioms Airbender.Compiler.keccakChi5_cached_arithmetic_satisfiable
+
+#print axioms Airbender.Compiler.NativeWorkerLookups.cached_worker_lookup_selectors
+
+#print axioms Airbender.Compiler.NativeWorkerLookups.cached_worker_lookup_selectors_satisfiable
+
+#print axioms Airbender.Compiler.cached_worker_certificates_satisfiable
+
+#print axioms Airbender.Compiler.native_standard_worker_row
+
+#print axioms Airbender.Compiler.native_split_worker_row
+
 #print axioms RV.Delegation.blake_round_one_hot
 
 #print axioms RV.Delegation.blake_round_one_hot_satisfiable
+
+#print axioms Airbender.Compiler.cached_add_sub_certificate_satisfiable
+
+#print axioms Airbender.Compiler.cached_jump_branch_certificate_satisfiable
+
+#print axioms Airbender.Compiler.cached_mul_div_certificate_satisfiable
+
+#print axioms Airbender.Compiler.cached_shift_binop_certificate_satisfiable
+
+#print axioms Airbender.Compiler.cached_word_memory_certificate_satisfiable
+
+#print axioms Airbender.Compiler.cached_subword_memory_certificate_satisfiable
+
+#print axioms Airbender.Compiler.cached_unified_certificate_satisfiable

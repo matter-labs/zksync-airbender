@@ -9,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 65536
 
 /-- The existing accepted row supplies every source coordinate, including clock helpers. -/
-noncomputable def inputValues (index : Fin 98) : F := Airbender.NonVacuous.ShiftBinopTrace.assignment index.val
+noncomputable def inputValues (index : Fin 98) : F := NativeExtension.ShiftBinop.inputValues Airbender.NonVacuous.ShiftBinopTrace.assignment index
 
 /-- Kernel evaluation checks every source equation of this concrete witness. -/
 theorem source_check : FullArithmeticNative.ShiftBinopCached.native.artifact.source.all
@@ -23,6 +23,6 @@ theorem source_satisfied : Satisfies FullArithmeticNative.ShiftBinopCached.nativ
 theorem witness : ∃ (physical : GKRAddress → F) (logical : Nat → F),
     Holds Captures.ShiftBinop.imported.circuit physical ∧
       PlacementAgreement Captures.ShiftBinop.imported.circuit physical logical := by
-  obtain ⟨physical, logical, accepted, placement⟩ := NativeExtension.ShiftBinop.extension Airbender.NonVacuous.ShiftBinopTrace.assignment source_satisfied
-  exact ⟨physical, logical, accepted, placement⟩
+  obtain ⟨physical, accepted, placement⟩ := NativeExtension.ShiftBinop.extension_preserves Airbender.NonVacuous.ShiftBinopTrace.assignment source_satisfied
+  exact ⟨physical, Airbender.NonVacuous.ShiftBinopTrace.assignment, accepted, placement⟩
 end Airbender.Compiler.NativeSatisfiable.ShiftBinop

@@ -72,7 +72,7 @@ theorem rv_jbs_row_reads (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 2 
     pre-state is `RV.exec` of the instruction its program entry decodes to. -/
 theorem rv_row_facts (laws : RVPooledLaws) {p : Nat} [Fact p.Prime] (hp : 536870912 ≤ p) (inverse : (-3840 : ZMod p) * 524288 = 1)
     {trace : PooledTrace p} {initial : RV.State} {cells : List Cell} {program : List RVPooledProgramEntry}
-    (assumptions : RVTraceInputs trace initial cells program) (accepted : Accepted trace)
+    (assumptions : RVInterfaceAssumptions trace initial cells program) (accepted : Accepted trace)
     (decoded : RVPooledDecoded trace program) {w : Nat → ZMod p}
     (member : (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows) {before : RV.State}
     (position : RVRowPosition trace initial cells ⟨.jumpBranchSlt, w⟩ before)

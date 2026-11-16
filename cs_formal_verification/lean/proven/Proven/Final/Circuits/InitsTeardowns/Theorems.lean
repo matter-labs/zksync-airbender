@@ -32,21 +32,21 @@ theorem unified_claim :
   omega
 
 /-- The reviewed token properties follow from the native layout theorem. -/
-theorem standalone_properties : StandaloneClaim := by
-  obtain ⟨properties, coverage⟩ := standalone_claim
-  exact ⟨properties.init, properties.bootImage, properties.teardown, coverage⟩
+theorem standalone_properties : StandaloneClaim := standalone_claim
 
 /-- The window top-bits check has a public witness. -/
 theorem standalone_satisfiable : StandaloneSatisfiableClaim :=
-  ⟨_, rfl, standalone_claim.1.checkable⟩
+  ⟨[⟨#v[0, 1, 2, 3, 4, 5, 6, 7], fun _ _ => 0⟩], by decide +kernel, by
+    change TopBitsChecked [0, 1, 2, 3, 4, 5, 6, 7]
+    simp [TopBitsChecked, maxTopBit]⟩
 
 /-- The reviewed token properties follow from the native layout theorem. -/
-theorem unified_properties : UnifiedClaim := by
-  obtain ⟨properties, coverage⟩ := unified_claim
-  exact ⟨properties.init, properties.bootImage, properties.teardown, coverage⟩
+theorem unified_properties : UnifiedClaim := unified_claim
 
 /-- The window top-bits check has a public witness. -/
 theorem unified_satisfiable : UnifiedSatisfiableClaim :=
-  ⟨_, rfl, unified_claim.1.checkable⟩
+  ⟨[⟨#v[0, 1], fun _ _ => 0⟩], by decide +kernel, by
+    change TopBitsChecked [0, 1]
+    simp [TopBitsChecked, maxTopBit]⟩
 
 end Airbender.InitsTeardowns

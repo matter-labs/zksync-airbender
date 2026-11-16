@@ -26,7 +26,8 @@ structure CodeWindowScope {Kind : Type} [CircuitLayout Kind]
 /-- Unrolled hash segmentation derives every protocol count and CSR family from public decoded code and duration. -/
 def UnrolledCodeHashSegmentationClaim : Prop :=
   ∀ config (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
-    (initial : RV.State) addresses program windows,
+    (initial : RV.State) (addresses : List (BitVec 32))
+    (program : List RVMachineProgramEntry) (windows : List HashWindow),
     config ≠ .unified → rvMachineProgramImage config initial addresses = some program →
     UnrolledAcceptance trace workers program →
     (timeOfPair trace.initial.timestamp).Bounded → (timeOfPair trace.initial.timestamp).value % 4 = 0 →
@@ -38,7 +39,8 @@ def UnrolledCodeHashSegmentationClaim : Prop :=
 /-- Unified hash segmentation derives every protocol count and CSR family from the same public code interface. -/
 def UnifiedCodeHashSegmentationClaim : Prop :=
   ∀ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
-    (initial : RV.State) addresses program windows,
+    (initial : RV.State) (addresses : List (BitVec 32))
+    (program : List RVMachineProgramEntry) (windows : List HashWindow),
     rvMachineProgramImage .unified initial addresses = some program → UnifiedAcceptance trace workers program →
     (timeOfPair trace.initial.timestamp).Bounded → (timeOfPair trace.initial.timestamp).value % 4 = 0 →
     windows.Pairwise (fun first second => first.upper ≤ second.lower) →
@@ -46,5 +48,31 @@ def UnifiedCodeHashSegmentationClaim : Prop :=
       (fun row => UnifiedReduced.Caller.request row.assignment),
       request.csr ≠ Requests.csr .bigint ↔ ∃ window ∈ windows, window.select request = true) →
     (∀ window ∈ windows, CodeWindowScope trace program window) → IssuedHashSegmentation workers.fulfillments windows
+
+/-- The public data and acceptance premises of this claim have a simultaneous witness. -/
+def UnrolledCodeHashSegmentationSatisfiableClaim : Prop :=
+  ∃ (config : RVMachineConfig) (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (addresses : List (BitVec 32))
+    (program : List RVMachineProgramEntry) (windows : List HashWindow),
+    config ≠ .unified ∧ rvMachineProgramImage config initial addresses = some program ∧
+    UnrolledAcceptance trace workers program ∧
+    (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
+    windows.Pairwise (fun first second => first.upper ≤ second.lower) ∧
+    (∀ request ∈ (unrolledCallers trace).map (fun row => Requests.caller row.assignment),
+      request.csr ≠ Requests.csr .bigint ↔ ∃ window ∈ windows, window.select request = true) ∧
+    (∀ window ∈ windows, CodeWindowScope trace program window)
+
+/-- The public data and acceptance premises of this claim have a simultaneous witness. -/
+def UnifiedCodeHashSegmentationSatisfiableClaim : Prop :=
+  ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (addresses : List (BitVec 32))
+    (program : List RVMachineProgramEntry) (windows : List HashWindow),
+    rvMachineProgramImage .unified initial addresses = some program ∧ UnifiedAcceptance trace workers program ∧
+    (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
+    windows.Pairwise (fun first second => first.upper ≤ second.lower) ∧
+    (∀ request ∈ (trace.rows.filter (fun row => decide (UnifiedReduced.Caller.Selected row.assignment))).map
+      (fun row => UnifiedReduced.Caller.request row.assignment),
+      request.csr ≠ Requests.csr .bigint ↔ ∃ window ∈ windows, window.select request = true) ∧
+    (∀ window ∈ windows, CodeWindowScope trace program window)
 
 end Airbender.Trace.Machine

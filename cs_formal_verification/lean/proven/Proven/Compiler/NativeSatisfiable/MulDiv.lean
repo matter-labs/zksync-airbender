@@ -9,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 65536
 
 /-- The existing accepted row supplies every source coordinate, including clock helpers. -/
-noncomputable def inputValues (index : Fin 71) : F := Airbender.NonVacuous.MulDivTrace.assignment index.val
+noncomputable def inputValues (index : Fin 71) : F := NativeExtension.MulDiv.inputValues Airbender.NonVacuous.MulDivTrace.assignment index
 
 /-- Kernel evaluation checks every source equation of this concrete witness. -/
 theorem source_check : FullArithmeticNative.MulDivCached.native.artifact.source.all
@@ -23,6 +23,6 @@ theorem source_satisfied : Satisfies FullArithmeticNative.MulDivCached.native.ar
 theorem witness : ∃ (physical : GKRAddress → F) (logical : Nat → F),
     Holds Captures.MulDiv.imported.circuit physical ∧
       PlacementAgreement Captures.MulDiv.imported.circuit physical logical := by
-  obtain ⟨physical, logical, accepted, placement⟩ := NativeExtension.MulDiv.extension Airbender.NonVacuous.MulDivTrace.assignment source_satisfied
-  exact ⟨physical, logical, accepted, placement⟩
+  obtain ⟨physical, accepted, placement⟩ := NativeExtension.MulDiv.extension_preserves Airbender.NonVacuous.MulDivTrace.assignment source_satisfied
+  exact ⟨physical, Airbender.NonVacuous.MulDivTrace.assignment, accepted, placement⟩
 end Airbender.Compiler.NativeSatisfiable.MulDiv

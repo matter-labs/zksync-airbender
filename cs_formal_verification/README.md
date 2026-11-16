@@ -59,11 +59,12 @@ and open tasks. It is updated after each completed task.
 The proof path is:
 
 ```text
-shared constraint description → CleanCore constraints → RV.step / RV.run
+cached gates, placement and public lookups → shared constraints → RV.step / RV.run
 ```
 
-Claims use explicit interface assumptions. They cover the imported constraint description.
-Compiled GKR layer preservation and cryptographic argument soundness remain open.
+Cached CPU and worker certificates imply their complete imported row constraints.
+The native machine targets use these certificates and explicit public setup, state,
+request and memory interfaces. Cryptographic argument soundness remains open.
 The setup grid comparison is trusted compiled code. It compares each grid formula with the exported JSON rows.
 The kernel checks proofs about the emitted formulas.
 

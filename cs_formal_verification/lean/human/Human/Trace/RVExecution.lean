@@ -11,12 +11,12 @@ public import Human.Helpers.Core.BabyBearPrime
 namespace Airbender.Trace
 open Arithmetic
 
-/-- An accepted trace is a run of our spec: some number of `RV.step`s from `initial` reach a state whose PC and
-    tracked cells (registers and RAM, shadow RAM included) are the trace's terminal ones. This definition adds no
-    assumptions. -/
+/-- An accepted trace is a run of our RV32 spec (`RV.step`). The run consumes `consumed` input words.
+    Its final PC and tracked registers and RAM, including shadow RAM, equal the trace terminal values. -/
 def RVRealizes {Kind : Type} [CircuitLayout Kind] {p : Nat} [Fact p.Prime] (trace : Data p Kind)
-    (initial : RV.State) (cells : List Cell) : Prop :=
-  ∃ n after, RV.run n initial = some after ∧ after.pc = trace.terminal.word.toBitVec ∧
+    (initial : RV.State) (cells : List Cell) (consumed : Nat := 0) : Prop :=
+  ∃ n after, RV.run n initial = some after ∧ after.input = initial.input.drop consumed ∧
+    after.pc = trace.terminal.word.toBitVec ∧
     ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
       cell.readRV after = some sink.word.toBitVec
 

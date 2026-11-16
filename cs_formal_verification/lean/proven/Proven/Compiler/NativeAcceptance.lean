@@ -15,6 +15,7 @@ public import Proven.Compiler.Clock.Unified
 public import Proven.Compiler.Decoder.Unified
 public import Proven.Compiler.PCLow
 public import Proven.Compiler.ProgramMembership
+public import Proven.Compiler.WorkerConstraints
 
 @[expose] public section
 namespace Airbender.Compiler.NativeAcceptance
@@ -126,6 +127,7 @@ theorem unrolled {initial : RV.State} {program : List RVMachineProgramEntry}
     (arguments : UnrolledNativeArguments tables certificates trace workers)
     (wordSetup : trace.rom.wordMemory = ROM.table cells (romImageRV initial cells))
     (subwordSetup : trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial))
+    (workerSetup : workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows)
     (initialBoundary : trace.initial = PCState.boundary 0 (4, 0)) :
     UnrolledAcceptance trace workers program := by
   have asPublic : trace.rom = (⟨ROM.table cells (romImageRV initial cells),
@@ -142,7 +144,7 @@ theorem unrolled {initial : RV.State} {program : List RVMachineProgramEntry}
     intro row member
     exact Trace.NativeDecoder.Proofs.pooled_final_pc_low (by decide +kernel) row trace.rom (constraints row member)
   have incoming := incoming_low trace arguments.states (by rw [initialBoundary]; decide +kernel) outputs
-  refine ⟨arguments.toWorkersAccepted, constraints, ?_, arguments.states, ?_, arguments.requests, arguments.memory⟩
+  refine ⟨WorkerConstraints.accepted workers arguments.workerRows workerSetup, constraints, ?_, arguments.states, ?_, arguments.requests, arguments.memory⟩
   · intro row member
     obtain ⟨cert, _, rfl⟩ := List.mem_map.mp (arguments.rows ▸ member)
     exact cert.active
@@ -157,6 +159,7 @@ theorem unified {initial : RV.State} {program : List RVMachineProgramEntry}
     (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (arguments : UnifiedNativeArguments tables certificates trace workers)
     (setup : trace.rom = UnifiedReduced.Setup.tableRV initial)
+    (workerSetup : workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows)
     (initialBoundary : trace.initial = PCState.boundary 0 (4, 0)) :
     UnifiedAcceptance trace workers program := by
   have constraints : ∀ row ∈ trace.rows,
@@ -175,7 +178,7 @@ theorem unified {initial : RV.State} {program : List RVMachineProgramEntry}
           UnifiedReduced.importedConstraintsTimestampLookups)
       exact (UnifiedReduced.Proofs.pc_bounds core).1
   have incoming := incoming_low trace arguments.states (by rw [initialBoundary]; decide +kernel) outputs
-  refine ⟨arguments.toWorkersAccepted, constraints, ?_, arguments.states, ?_, arguments.requests, arguments.memory⟩
+  refine ⟨WorkerConstraints.accepted workers arguments.workerRows workerSetup, constraints, ?_, arguments.states, ?_, arguments.requests, arguments.memory⟩
   · intro row member
     obtain ⟨cert, _, rfl⟩ := List.mem_map.mp (arguments.rows ▸ member)
     exact cert.active

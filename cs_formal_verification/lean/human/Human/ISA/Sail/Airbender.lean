@@ -12,6 +12,9 @@ The instruction formats use `RV.decode`. Standard instruction effects use Sail's
 Loads into x0, field operations, xor-rotates, CSR `0x7c0` and delegations use the definitions in this model.
 Sail implements Zimop as a write of zero. Airbender assigns different effects to these instructions.
 The input list supplies CSR `0x7c0` reads. A read with no input has no next state.
+The decoder uses `RV.decode`; words from other enabled extensions, such as A, have no step.
+A standard instruction step requires `nextPC % 4 = 0`.
+Delegation writes can update shadow RAM below the ROM boundary. Ordinary stores to ROM have no step.
 
 Our own fast spec `RV.step` (`Human/ISA/RV32.lean`), which the circuit claims are to be stated against, follows this machine:
 stated in `Human/ISA/Sail/Theorems.lean`, proven in `proven/Proven/ISA/Equiv/`. -/
@@ -176,8 +179,11 @@ noncomputable def delegation (σ : SailState) (shadow : Shadow) : Option (Option
 
 /-- The Airbender machine: Sail's state, the shadow RAM, plus the input (CSR 0x7c0): the words not yet read. -/
 structure Machine where
+  /-- The configured Sail registers and architectural memory. -/
   sail   : SailState
+  /-- Architectural RAM values below the Sail RAM boundary. -/
   shadow : Shadow
+  /-- Public input words that the machine has not read. -/
   input  : List (BitVec 32)
 
 /-- One instruction, the way Sail's own `run_hart_active` + `try_step` run a 32-bit instruction: fetch, decode,

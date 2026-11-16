@@ -6,10 +6,12 @@
     },
     "Airbender.AddSub.RVSatisfiableClaim": {},
     "Airbender.AddSub.RVSoundnessClaim": {
-      "witness": "Airbender.AddSub.RVSatisfiableClaim"
+      "witness": "Airbender.AddSub.RVSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.AgreeExistsClaim": {
-      "witness": "Airbender.AgreeExistsSatisfiableClaim"
+      "witness": "Airbender.AgreeExistsSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.AgreeExistsSatisfiableClaim": {},
     "Airbender.Bigint.ArtifactImportClaim": {
@@ -17,11 +19,13 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.Bigint.Memory.RVAddressesSoundnessClaim": {
-      "witness": "Airbender.Bigint.Memory.RVAddressesSoundnessSatisfiableClaim"
+      "witness": "Airbender.Bigint.Memory.RVAddressesSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Bigint.Memory.RVAddressesSoundnessSatisfiableClaim": {},
     "Airbender.Bigint.Native.RVOperationExecutionClaim": {
-      "witness": "Airbender.Bigint.Native.RVOperationExecutionSatisfiableClaim"
+      "witness": "Airbender.Bigint.Native.RVOperationExecutionSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Bigint.Native.RVOperationExecutionSatisfiableClaim": {},
     "Airbender.Blake2G.ArtifactImportClaim": {
@@ -29,23 +33,28 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.Blake2G.Native.RVOperationExecutionClaim": {
-      "witness": "Airbender.Blake2G.Native.RVOperationExecutionSatisfiableClaim"
+      "witness": "Airbender.Blake2G.Native.RVOperationExecutionSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Blake2G.Native.RVOperationExecutionSatisfiableClaim": {},
     "Airbender.Blake2G.Native.RVWindowSoundnessClaim": {
-      "witness": "Airbender.Blake2G.Native.RVWindowSoundnessSatisfiableClaim"
+      "witness": "Airbender.Blake2G.Native.RVWindowSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Blake2G.Native.RVWindowSoundnessSatisfiableClaim": {},
     "Airbender.Blake2G.Native.RVWorkvectorBoundarySoundnessClaim": {
-      "witness": "Airbender.Blake2G.Native.RVWorkvectorBoundarySoundnessSatisfiableClaim"
+      "witness": "Airbender.Blake2G.Native.RVWorkvectorBoundarySoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Blake2G.Native.RVWorkvectorBoundarySoundnessSatisfiableClaim": {},
     "Airbender.Blake2G.Native.RVWorkvectorSoundnessClaim": {
-      "witness": "Airbender.Blake2G.Native.RVWorkvectorSoundnessSatisfiableClaim"
+      "witness": "Airbender.Blake2G.Native.RVWorkvectorSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Blake2G.Native.RVWorkvectorSoundnessSatisfiableClaim": {},
     "Airbender.Blake2G.SoundnessClaim": {
-      "witness": "Airbender.Blake2G.SoundnessSatisfiableClaim"
+      "witness": "Airbender.Blake2G.SoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Blake2G.SoundnessSatisfiableClaim": {},
     "Airbender.Blake2Round.ArtifactImportClaim": {
@@ -54,26 +63,32 @@
     },
     "Airbender.Blake2Round.Mask.SatisfiableClaim": {},
     "Airbender.Blake2Round.Mask.SoundnessClaim": {
-      "witness": "Airbender.Blake2Round.Mask.SatisfiableClaim"
+      "witness": "Airbender.Blake2Round.Mask.SatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Blake2Round.Native.RVCompressionBoundarySoundnessClaim": {
-      "witness": "Airbender.Blake2Round.Native.RVCompressionBoundarySoundnessSatisfiableClaim"
+      "witness": "Airbender.Blake2Round.Native.RVCompressionBoundarySoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Blake2Round.Native.RVCompressionBoundarySoundnessSatisfiableClaim": {},
     "Airbender.Blake2Round.Native.RVCompressionSoundnessClaim": {
-      "witness": "Airbender.Blake2Round.Native.RVCompressionSoundnessSatisfiableClaim"
+      "witness": "Airbender.Blake2Round.Native.RVCompressionSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Blake2Round.Native.RVCompressionSoundnessSatisfiableClaim": {},
     "Airbender.Blake2Round.Native.RVOperationExecutionClaim": {
-      "witness": "Airbender.Blake2Round.Native.RVOperationExecutionSatisfiableClaim"
+      "witness": "Airbender.Blake2Round.Native.RVOperationExecutionSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Blake2Round.Native.RVOperationExecutionSatisfiableClaim": {},
     "Airbender.Blake2Round.Native.RVWindowSoundnessClaim": {
-      "witness": "Airbender.Blake2Round.Native.RVWindowSoundnessSatisfiableClaim"
+      "witness": "Airbender.Blake2Round.Native.RVWindowSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Blake2Round.Native.RVWindowSoundnessSatisfiableClaim": {},
     "Airbender.Compiler.AddSubCachedArithmeticClaim": {
-      "witness": "Airbender.Compiler.AddSubCachedArithmeticSatisfiableClaim"
+      "witness": "Airbender.Compiler.AddSubCachedArithmeticSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Compiler.AddSubCachedArithmeticSatisfiableClaim": {},
     "Airbender.Compiler.AddSubCachedDescriptionClaim": {
@@ -81,7 +96,8 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.Compiler.BigintCachedArithmeticClaim": {
-      "witness": "Airbender.Compiler.BigintCachedArithmeticSatisfiableClaim"
+      "witness": "Airbender.Compiler.BigintCachedArithmeticSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Compiler.BigintCachedArithmeticSatisfiableClaim": {},
     "Airbender.Compiler.BigintCachedDescriptionClaim": {
@@ -89,7 +105,8 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.Compiler.BlakeGCachedArithmeticClaim": {
-      "witness": "Airbender.Compiler.BlakeGCachedArithmeticSatisfiableClaim"
+      "witness": "Airbender.Compiler.BlakeGCachedArithmeticSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Compiler.BlakeGCachedArithmeticSatisfiableClaim": {},
     "Airbender.Compiler.BlakeGCachedDescriptionClaim": {
@@ -97,7 +114,8 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.Compiler.BlakeRoundCachedArithmeticClaim": {
-      "witness": "Airbender.Compiler.BlakeRoundCachedArithmeticSatisfiableClaim"
+      "witness": "Airbender.Compiler.BlakeRoundCachedArithmeticSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Compiler.BlakeRoundCachedArithmeticSatisfiableClaim": {},
     "Airbender.Compiler.BlakeRoundCachedDescriptionClaim": {
@@ -105,7 +123,8 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.Compiler.JumpBranchCachedArithmeticClaim": {
-      "witness": "Airbender.Compiler.JumpBranchCachedArithmeticSatisfiableClaim"
+      "witness": "Airbender.Compiler.JumpBranchCachedArithmeticSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Compiler.JumpBranchCachedArithmeticSatisfiableClaim": {},
     "Airbender.Compiler.JumpBranchCachedDescriptionClaim": {
@@ -113,15 +132,44 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.Compiler.KeccakCachedArithmeticClaim": {
-      "witness": "Airbender.Compiler.KeccakCachedArithmeticSatisfiableClaim"
+      "witness": "Airbender.Compiler.KeccakCachedArithmeticSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Compiler.KeccakCachedArithmeticSatisfiableClaim": {},
     "Airbender.Compiler.KeccakCachedDescriptionClaim": {
       "exception": "artifact",
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
+    "Airbender.Compiler.KeccakChi5CachedArithmeticClaim": {
+      "witness": "Airbender.Compiler.KeccakChi5CachedArithmeticSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
+    },
+    "Airbender.Compiler.KeccakChi5CachedArithmeticSatisfiableClaim": {},
+    "Airbender.Compiler.KeccakChi5CachedDescriptionClaim": {
+      "exception": "artifact",
+      "reason": "The cached capture has the same fixed constraint description as its no-cache capture."
+    },
+    "Airbender.Compiler.KeccakColumnParityCachedArithmeticClaim": {
+      "witness": "Airbender.Compiler.KeccakColumnParityCachedArithmeticSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
+    },
+    "Airbender.Compiler.KeccakColumnParityCachedArithmeticSatisfiableClaim": {},
+    "Airbender.Compiler.KeccakColumnParityCachedDescriptionClaim": {
+      "exception": "artifact",
+      "reason": "The cached capture has the same fixed constraint description as its no-cache capture."
+    },
+    "Airbender.Compiler.KeccakThetaRhoCachedArithmeticClaim": {
+      "witness": "Airbender.Compiler.KeccakThetaRhoCachedArithmeticSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
+    },
+    "Airbender.Compiler.KeccakThetaRhoCachedArithmeticSatisfiableClaim": {},
+    "Airbender.Compiler.KeccakThetaRhoCachedDescriptionClaim": {
+      "exception": "artifact",
+      "reason": "The cached capture has the same fixed constraint description as its no-cache capture."
+    },
     "Airbender.Compiler.MulDivCachedArithmeticClaim": {
-      "witness": "Airbender.Compiler.MulDivCachedArithmeticSatisfiableClaim"
+      "witness": "Airbender.Compiler.MulDivCachedArithmeticSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Compiler.MulDivCachedArithmeticSatisfiableClaim": {},
     "Airbender.Compiler.MulDivCachedDescriptionClaim": {
@@ -129,11 +177,18 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.Compiler.NativeLookups.CachedLookupSelectorsClaim": {
-      "witness": "Airbender.Compiler.NativeLookups.CachedLookupSelectorsSatisfiableClaim"
+      "witness": "Airbender.Compiler.NativeLookups.CachedLookupSelectorsSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Compiler.NativeLookups.CachedLookupSelectorsSatisfiableClaim": {},
+    "Airbender.Compiler.NativeWorkerLookups.CachedWorkerLookupSelectorsClaim": {
+      "witness": "Airbender.Compiler.NativeWorkerLookups.CachedWorkerLookupSelectorsSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
+    },
+    "Airbender.Compiler.NativeWorkerLookups.CachedWorkerLookupSelectorsSatisfiableClaim": {},
     "Airbender.Compiler.ShiftBinopCachedArithmeticClaim": {
-      "witness": "Airbender.Compiler.ShiftBinopCachedArithmeticSatisfiableClaim"
+      "witness": "Airbender.Compiler.ShiftBinopCachedArithmeticSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Compiler.ShiftBinopCachedArithmeticSatisfiableClaim": {},
     "Airbender.Compiler.ShiftBinopCachedDescriptionClaim": {
@@ -141,7 +196,8 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.Compiler.SubwordMemoryCachedArithmeticClaim": {
-      "witness": "Airbender.Compiler.SubwordMemoryCachedArithmeticSatisfiableClaim"
+      "witness": "Airbender.Compiler.SubwordMemoryCachedArithmeticSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Compiler.SubwordMemoryCachedArithmeticSatisfiableClaim": {},
     "Airbender.Compiler.SubwordMemoryCachedDescriptionClaim": {
@@ -149,7 +205,8 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.Compiler.UnifiedCachedArithmeticClaim": {
-      "witness": "Airbender.Compiler.UnifiedCachedArithmeticSatisfiableClaim"
+      "witness": "Airbender.Compiler.UnifiedCachedArithmeticSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Compiler.UnifiedCachedArithmeticSatisfiableClaim": {},
     "Airbender.Compiler.UnifiedCachedDescriptionClaim": {
@@ -157,7 +214,8 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.Compiler.WordMemoryCachedArithmeticClaim": {
-      "witness": "Airbender.Compiler.WordMemoryCachedArithmeticSatisfiableClaim"
+      "witness": "Airbender.Compiler.WordMemoryCachedArithmeticSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Compiler.WordMemoryCachedArithmeticSatisfiableClaim": {},
     "Airbender.Compiler.WordMemoryCachedDescriptionClaim": {
@@ -169,83 +227,103 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.DecodeClaim": {
-      "exception": "import",
-      "reason": "This claim checks fixed imported data or a constant proposition."
+      "witness": "Airbender.DecodeSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.DecodeIsSailClaim": {
-      "witness": "Airbender.DecodeIsSailSatisfiableClaim"
+      "witness": "Airbender.DecodeIsSailSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.DecodeIsSailSatisfiableClaim": {},
+    "Airbender.DecodeSatisfiableClaim": {},
     "Airbender.Delegation.Caller.RVMixedMemorySoundnessClaim": {
-      "witness": "Airbender.Delegation.Caller.RVMixedMemorySoundnessSatisfiableClaim"
+      "witness": "Airbender.Delegation.Caller.RVMixedMemorySoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.Caller.RVMixedMemorySoundnessSatisfiableClaim": {},
     "Airbender.Delegation.Caller.RVOperationSoundnessClaim": {
-      "witness": "Airbender.Delegation.Caller.RVOperationSoundnessSatisfiableClaim"
+      "witness": "Airbender.Delegation.Caller.RVOperationSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.Caller.RVOperationSoundnessSatisfiableClaim": {},
     "Airbender.Delegation.Caller.RVPcSoundnessClaim": {
-      "witness": "Airbender.Delegation.Caller.RVPcSoundnessSatisfiableClaim"
+      "witness": "Airbender.Delegation.Caller.RVPcSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.Caller.RVPcSoundnessSatisfiableClaim": {},
     "Airbender.Delegation.Caller.RVRequestHashWindowSoundnessClaim": {
-      "witness": "Airbender.Delegation.Caller.RVRequestHashWindowSoundnessSatisfiableClaim"
+      "witness": "Airbender.Delegation.Caller.RVRequestHashWindowSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.Caller.RVRequestHashWindowSoundnessSatisfiableClaim": {},
     "Airbender.Delegation.Caller.RVRequestMemorySoundnessClaim": {
-      "witness": "Airbender.Delegation.Caller.RVRequestMemorySoundnessSatisfiableClaim"
+      "witness": "Airbender.Delegation.Caller.RVRequestMemorySoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.Caller.RVRequestMemorySoundnessSatisfiableClaim": {},
     "Airbender.Delegation.Caller.RVRequestWindowSoundnessClaim": {
-      "witness": "Airbender.Delegation.Caller.RVRequestWindowSoundnessSatisfiableClaim"
+      "witness": "Airbender.Delegation.Caller.RVRequestWindowSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.Caller.RVRequestWindowSoundnessSatisfiableClaim": {},
     "Airbender.Delegation.Caller.RVRequestsSoundnessClaim": {
-      "witness": "Airbender.Delegation.Caller.RVRequestsSoundnessSatisfiableClaim"
+      "witness": "Airbender.Delegation.Caller.RVRequestsSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.Caller.RVRequestsSoundnessSatisfiableClaim": {},
     "Airbender.Delegation.Caller.RVSharedMemorySoundnessClaim": {
-      "witness": "Airbender.Delegation.Caller.RVSharedMemorySoundnessSatisfiableClaim"
+      "witness": "Airbender.Delegation.Caller.RVSharedMemorySoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.Caller.RVSharedMemorySoundnessSatisfiableClaim": {},
     "Airbender.Delegation.Caller.RVSharedOperationSoundnessClaim": {
-      "witness": "Airbender.Delegation.Caller.RVSharedOperationSoundnessSatisfiableClaim"
+      "witness": "Airbender.Delegation.Caller.RVSharedOperationSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.Caller.RVSharedOperationSoundnessSatisfiableClaim": {},
     "Airbender.Delegation.Caller.RVSharedSpanSoundnessClaim": {
-      "witness": "Airbender.Delegation.Caller.RVSharedSpanSoundnessSatisfiableClaim"
+      "witness": "Airbender.Delegation.Caller.RVSharedSpanSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.Caller.RVSharedSpanSoundnessSatisfiableClaim": {},
     "Airbender.Delegation.Caller.RVSoundnessClaim": {
-      "witness": "Airbender.Delegation.Caller.RVSoundnessSatisfiableClaim"
+      "witness": "Airbender.Delegation.Caller.RVSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.Caller.RVSoundnessSatisfiableClaim": {},
     "Airbender.Delegation.Caller.RVWorkerScheduleSoundnessClaim": {
-      "witness": "Airbender.Delegation.Caller.RVWorkerScheduleSoundnessSatisfiableClaim"
+      "witness": "Airbender.Delegation.Caller.RVWorkerScheduleSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.Caller.RVWorkerScheduleSoundnessSatisfiableClaim": {},
     "Airbender.Delegation.NoZeroTimestampWritesClaim": {
-      "witness": "Airbender.Delegation.NoZeroTimestampWritesSatisfiableClaim"
+      "witness": "Airbender.Delegation.NoZeroTimestampWritesSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.NoZeroTimestampWritesSatisfiableClaim": {},
     "Airbender.Delegation.RVMemorySoundnessClaim": {
-      "witness": "Airbender.Delegation.RVMemorySoundnessSatisfiableClaim"
+      "witness": "Airbender.Delegation.RVMemorySoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.RVMemorySoundnessSatisfiableClaim": {},
     "Airbender.Delegation.RVNativeMemoryExecutionClaim": {
-      "witness": "Airbender.Delegation.RVNativeMemoryExecutionSatisfiableClaim"
+      "witness": "Airbender.Delegation.RVNativeMemoryExecutionSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.RVNativeMemoryExecutionSatisfiableClaim": {},
     "Airbender.Delegation.RVOperationMemorySoundnessClaim": {
-      "witness": "Airbender.Delegation.RVOperationMemorySoundnessSatisfiableClaim"
+      "witness": "Airbender.Delegation.RVOperationMemorySoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.RVOperationMemorySoundnessSatisfiableClaim": {},
     "Airbender.Delegation.WritesRangeCheckedClaim": {
-      "witness": "Airbender.Delegation.WritesRangeCheckedSatisfiableClaim"
+      "witness": "Airbender.Delegation.WritesRangeCheckedSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Delegation.WritesRangeCheckedSatisfiableClaim": {},
     "Airbender.FetchKeepsConfiguredClaim": {
-      "witness": "Airbender.FetchKeepsConfiguredSatisfiableClaim"
+      "witness": "Airbender.FetchKeepsConfiguredSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.FetchKeepsConfiguredSatisfiableClaim": {},
     "Airbender.InitsTeardowns.Native.StandaloneBindingClaim": {
@@ -254,7 +332,8 @@
     },
     "Airbender.InitsTeardowns.Native.StandaloneSatisfiableClaim": {},
     "Airbender.InitsTeardowns.Native.StandaloneSoundnessClaim": {
-      "witness": "Airbender.InitsTeardowns.Native.StandaloneSatisfiableClaim"
+      "witness": "Airbender.InitsTeardowns.Native.StandaloneSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.InitsTeardowns.Native.UnifiedBindingClaim": {
       "exception": "artifact",
@@ -262,14 +341,16 @@
     },
     "Airbender.InitsTeardowns.Native.UnifiedSatisfiableClaim": {},
     "Airbender.InitsTeardowns.Native.UnifiedSoundnessClaim": {
-      "witness": "Airbender.InitsTeardowns.Native.UnifiedSatisfiableClaim"
+      "witness": "Airbender.InitsTeardowns.Native.UnifiedSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.InitsTeardowns.StandaloneBytesClaim": {
       "exception": "artifact",
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.InitsTeardowns.StandaloneClaim": {
-      "witness": "Airbender.InitsTeardowns.StandaloneSatisfiableClaim"
+      "witness": "Airbender.InitsTeardowns.StandaloneSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.InitsTeardowns.StandaloneImportClaim": {
       "exception": "artifact",
@@ -277,7 +358,8 @@
     },
     "Airbender.InitsTeardowns.StandaloneSatisfiableClaim": {},
     "Airbender.InitsTeardowns.UnifiedClaim": {
-      "witness": "Airbender.InitsTeardowns.UnifiedSatisfiableClaim"
+      "witness": "Airbender.InitsTeardowns.UnifiedSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.InitsTeardowns.UnifiedImportClaim": {
       "exception": "artifact",
@@ -285,35 +367,42 @@
     },
     "Airbender.InitsTeardowns.UnifiedSatisfiableClaim": {},
     "Airbender.InitsTeardowns.WritesRangeCheckedClaim": {
-      "witness": "Airbender.InitsTeardowns.WritesRangeCheckedSatisfiableClaim"
+      "witness": "Airbender.InitsTeardowns.WritesRangeCheckedSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.InitsTeardowns.WritesRangeCheckedSatisfiableClaim": {},
     "Airbender.Json.ParseSoundClaim": {
-      "exception": "import",
-      "reason": "This claim checks fixed imported data or a constant proposition."
+      "witness": "Airbender.Json.ParseSoundSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.Json.ParseSoundSatisfiableClaim": {},
     "Airbender.Json.TextUniqueClaim": {
-      "exception": "import",
-      "reason": "This claim checks fixed imported data or a constant proposition."
+      "witness": "Airbender.Json.TextUniqueSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.Json.TextUniqueSatisfiableClaim": {},
     "Airbender.JumpBranchSlt.ArtifactImportClaim": {
       "exception": "artifact",
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.JumpBranchSlt.Branch.RVSatisfiableClaim": {},
     "Airbender.JumpBranchSlt.Branch.RVSoundnessClaim": {
-      "witness": "Airbender.JumpBranchSlt.Branch.RVSatisfiableClaim"
+      "witness": "Airbender.JumpBranchSlt.Branch.RVSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.JumpBranchSlt.Comparison.RVSatisfiableClaim": {},
     "Airbender.JumpBranchSlt.Comparison.RVSoundnessClaim": {
-      "witness": "Airbender.JumpBranchSlt.Comparison.RVSatisfiableClaim"
+      "witness": "Airbender.JumpBranchSlt.Comparison.RVSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.JumpBranchSlt.Jump.RVSatisfiableClaim": {},
     "Airbender.JumpBranchSlt.Jump.RVSoundnessClaim": {
-      "witness": "Airbender.JumpBranchSlt.Jump.RVSatisfiableClaim"
+      "witness": "Airbender.JumpBranchSlt.Jump.RVSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.JumpBranchSlt.RVTraceSoundnessClaim": {
-      "witness": "Airbender.JumpBranchSlt.RVTraceSoundnessSatisfiableClaim"
+      "witness": "Airbender.JumpBranchSlt.RVTraceSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.JumpBranchSlt.RVTraceSoundnessSatisfiableClaim": {},
     "Airbender.Keccak.ArtifactImportClaim": {
@@ -321,19 +410,23 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.Keccak.Native.RVOperationExecutionClaim": {
-      "witness": "Airbender.Keccak.Native.RVOperationExecutionSatisfiableClaim"
+      "witness": "Airbender.Keccak.Native.RVOperationExecutionSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Keccak.Native.RVOperationExecutionSatisfiableClaim": {},
     "Airbender.Keccak.Native.RVPermutationBoundarySoundnessClaim": {
-      "witness": "Airbender.Keccak.Native.RVPermutationBoundarySoundnessSatisfiableClaim"
+      "witness": "Airbender.Keccak.Native.RVPermutationBoundarySoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Keccak.Native.RVPermutationBoundarySoundnessSatisfiableClaim": {},
     "Airbender.Keccak.Native.RVPermutationSoundnessClaim": {
-      "witness": "Airbender.Keccak.Native.RVPermutationSoundnessSatisfiableClaim"
+      "witness": "Airbender.Keccak.Native.RVPermutationSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Keccak.Native.RVPermutationSoundnessSatisfiableClaim": {},
     "Airbender.Keccak.Native.RVWindowSoundnessClaim": {
-      "witness": "Airbender.Keccak.Native.RVWindowSoundnessSatisfiableClaim"
+      "witness": "Airbender.Keccak.Native.RVWindowSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Keccak.Native.RVWindowSoundnessSatisfiableClaim": {},
     "Airbender.Keccak.Split.Chi5.ArtifactImportClaim": {
@@ -345,19 +438,23 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.Keccak.Split.Native.NoZeroTimestampWritesClaim": {
-      "witness": "Airbender.Keccak.Split.Native.NoZeroTimestampWritesSatisfiableClaim"
+      "witness": "Airbender.Keccak.Split.Native.NoZeroTimestampWritesSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Keccak.Split.Native.NoZeroTimestampWritesSatisfiableClaim": {},
     "Airbender.Keccak.Split.Native.RVOperationExecutionClaim": {
-      "witness": "Airbender.Keccak.Split.Native.RVOperationExecutionSatisfiableClaim"
+      "witness": "Airbender.Keccak.Split.Native.RVOperationExecutionSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Keccak.Split.Native.RVOperationExecutionSatisfiableClaim": {},
     "Airbender.Keccak.Split.Native.RVPermutationSoundnessClaim": {
-      "witness": "Airbender.Keccak.Split.Native.RVPermutationSoundnessSatisfiableClaim"
+      "witness": "Airbender.Keccak.Split.Native.RVPermutationSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Keccak.Split.Native.RVPermutationSoundnessSatisfiableClaim": {},
     "Airbender.Keccak.Split.Native.WritesRangeCheckedClaim": {
-      "witness": "Airbender.Keccak.Split.Native.WritesRangeCheckedSatisfiableClaim"
+      "witness": "Airbender.Keccak.Split.Native.WritesRangeCheckedSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Keccak.Split.Native.WritesRangeCheckedSatisfiableClaim": {},
     "Airbender.Keccak.Split.ThetaRho.ArtifactImportClaim": {
@@ -374,33 +471,42 @@
     },
     "Airbender.MulDiv.RVSatisfiableClaim": {},
     "Airbender.MulDiv.RVSoundnessClaim": {
-      "witness": "Airbender.MulDiv.RVSatisfiableClaim"
+      "witness": "Airbender.MulDiv.RVSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.MulDiv.RVTraceSoundnessClaim": {
-      "witness": "Airbender.MulDiv.RVTraceSoundnessSatisfiableClaim"
+      "witness": "Airbender.MulDiv.RVTraceSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.MulDiv.RVTraceSoundnessSatisfiableClaim": {},
     "Airbender.PCState.OutgoingBoundsClaim": {
-      "witness": "Airbender.PCState.OutgoingBoundsSatisfiableClaim"
+      "witness": "Airbender.PCState.OutgoingBoundsSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.PCState.OutgoingBoundsSatisfiableClaim": {},
     "Airbender.PaddingBoundary.ContributionSatisfiableClaim": {},
     "Airbender.PaddingBoundary.ContributionSoundnessClaim": {
-      "witness": "Airbender.PaddingBoundary.ContributionSatisfiableClaim"
+      "witness": "Airbender.PaddingBoundary.ContributionSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.PaddingBoundary.ProductSatisfiableClaim": {},
     "Airbender.PaddingBoundary.ProductSoundnessClaim": {
-      "witness": "Airbender.PaddingBoundary.ContributionSatisfiableClaim"
+      "witness": "Airbender.PaddingBoundary.ProductSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.PaddingBoundary.ProjectionClaim": {
-      "witness": "Airbender.Trace.Machine.Native.UnrolledFullFromNativeSatisfiableClaim",
-      "evidence": "The empty native trace has public boot data, no CPU or worker rows, and exact state, request and memory matching. Empty windows and Boolean identity masking meet the added segmentation and padding premises."
+      "witness": "Airbender.PaddingBoundary.ProjectionSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.PaddingBoundary.ProjectionSatisfiableClaim": {},
     "Airbender.PlacementsClaim": {
-      "exception": "import",
-      "reason": "This claim checks fixed imported data or a constant proposition."
+      "witness": "Airbender.PlacementsSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.PlacementsSatisfiableClaim": {},
     "Airbender.RunIsAirbenderClaim": {
-      "witness": "Airbender.RunIsAirbenderSatisfiableClaim"
+      "witness": "Airbender.RunIsAirbenderSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.RunIsAirbenderSatisfiableClaim": {},
     "Airbender.ShiftBinop.ArtifactImportClaim": {
@@ -409,14 +515,17 @@
     },
     "Airbender.ShiftBinop.RVSatisfiableClaim": {},
     "Airbender.ShiftBinop.RVSoundnessClaim": {
-      "witness": "Airbender.ShiftBinop.RVSatisfiableClaim"
+      "witness": "Airbender.ShiftBinop.RVSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.ShiftBinop.RVTraceSoundnessClaim": {
-      "witness": "Airbender.ShiftBinop.RVTraceSoundnessSatisfiableClaim"
+      "witness": "Airbender.ShiftBinop.RVTraceSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.ShiftBinop.RVTraceSoundnessSatisfiableClaim": {},
     "Airbender.StepIsAirbenderClaim": {
-      "witness": "Airbender.StepIsAirbenderSatisfiableClaim"
+      "witness": "Airbender.StepIsAirbenderSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.StepIsAirbenderSatisfiableClaim": {},
     "Airbender.SubwordMemory.ArtifactImportClaim": {
@@ -424,116 +533,148 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.SubwordMemory.RVRamTraceSoundnessClaim": {
-      "witness": "Airbender.SubwordMemory.RVRamTraceSoundnessSatisfiableClaim"
+      "witness": "Airbender.SubwordMemory.RVRamTraceSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.SubwordMemory.RVRamTraceSoundnessSatisfiableClaim": {},
     "Airbender.SubwordMemory.RVSatisfiableClaim": {},
     "Airbender.SubwordMemory.RVSoundnessClaim": {
-      "witness": "Airbender.SubwordMemory.RVSatisfiableClaim"
+      "witness": "Airbender.SubwordMemory.RVSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Trace.BootRamZeroClaim": {
-      "witness": "Airbender.Trace.BootRamZeroSatisfiableClaim"
+      "witness": "Airbender.Trace.BootRamZeroSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Trace.BootRamZeroSatisfiableClaim": {},
     "Airbender.Trace.Machine.Native.UnifiedFromNative": {
-      "witness": "Airbender.Trace.Machine.Native.UnifiedFromNativeSatisfiableClaim"
+      "witness": "Airbender.Trace.Machine.Native.UnifiedFromNativeSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Trace.Machine.Native.UnifiedFromNativeSailClaim": {
-      "witness": "Airbender.Trace.Machine.Native.UnifiedFromNativeSatisfiableClaim"
+      "witness": "Airbender.Trace.Machine.Native.UnifiedFromNativeSailSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.Trace.Machine.Native.UnifiedFromNativeSailSatisfiableClaim": {},
     "Airbender.Trace.Machine.Native.UnifiedFromNativeSatisfiableClaim": {},
     "Airbender.Trace.Machine.Native.UnrolledFullFromNative": {
-      "witness": "Airbender.Trace.Machine.Native.UnrolledFullFromNativeSatisfiableClaim"
+      "witness": "Airbender.Trace.Machine.Native.UnrolledFullFromNativeSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Trace.Machine.Native.UnrolledFullFromNativeSailClaim": {
-      "witness": "Airbender.Trace.Machine.Native.UnrolledFullFromNativeSatisfiableClaim"
+      "witness": "Airbender.Trace.Machine.Native.UnrolledFullFromNativeSailSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.Trace.Machine.Native.UnrolledFullFromNativeSailSatisfiableClaim": {},
     "Airbender.Trace.Machine.Native.UnrolledFullFromNativeSatisfiableClaim": {},
     "Airbender.Trace.Machine.Native.UnrolledReducedFromNative": {
-      "witness": "Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSatisfiableClaim"
+      "witness": "Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSailClaim": {
-      "witness": "Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSatisfiableClaim"
+      "witness": "Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSailSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSailSatisfiableClaim": {},
     "Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSatisfiableClaim": {},
     "Airbender.Trace.Machine.PaddedUnified": {
-      "witness": "Airbender.Trace.Machine.Native.UnifiedFromNativeSatisfiableClaim",
-      "evidence": "The empty native trace has public boot data, no CPU or worker rows, and exact state, request and memory matching. Empty windows and Boolean identity masking meet the added segmentation and padding premises."
+      "witness": "Airbender.Trace.Machine.PaddedUnifiedSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.Trace.Machine.PaddedUnifiedSatisfiableClaim": {},
     "Airbender.Trace.Machine.PaddedUnrolledFullUnsigned": {
-      "witness": "Airbender.Trace.Machine.Native.UnrolledFullFromNativeSatisfiableClaim",
-      "evidence": "The empty native trace has public boot data, no CPU or worker rows, and exact state, request and memory matching. Empty windows and Boolean identity masking meet the added segmentation and padding premises."
+      "witness": "Airbender.Trace.Machine.PaddedUnrolledFullUnsignedSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.Trace.Machine.PaddedUnrolledFullUnsignedSatisfiableClaim": {},
     "Airbender.Trace.Machine.PaddedUnrolledReduced": {
-      "witness": "Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSatisfiableClaim",
-      "evidence": "The empty native trace has public boot data, no CPU or worker rows, and exact state, request and memory matching. Empty windows and Boolean identity masking meet the added segmentation and padding premises."
+      "witness": "Airbender.Trace.Machine.PaddedUnrolledReducedSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.Trace.Machine.PaddedUnrolledReducedSatisfiableClaim": {},
     "Airbender.Trace.Machine.Unified": {
-      "witness": "Airbender.Trace.Machine.Native.UnifiedFromNativeSatisfiableClaim",
-      "evidence": "The empty native trace has public boot data, no CPU or worker rows, and exact state, request and memory matching. Empty windows and Boolean identity masking meet the added segmentation and padding premises."
+      "witness": "Airbender.Trace.Machine.UnifiedSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Trace.Machine.UnifiedCodeHashSegmentationClaim": {
-      "witness": "Airbender.Trace.Machine.Native.UnifiedFromNativeSatisfiableClaim",
-      "evidence": "The empty native trace has public boot data, no CPU or worker rows, and exact state, request and memory matching. Empty windows and Boolean identity masking meet the added segmentation and padding premises."
+      "witness": "Airbender.Trace.Machine.UnifiedCodeHashSegmentationSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.Trace.Machine.UnifiedCodeHashSegmentationSatisfiableClaim": {},
     "Airbender.Trace.Machine.UnifiedHashSegmentationClaim": {
-      "witness": "Airbender.Trace.Machine.Native.UnifiedFromNativeSatisfiableClaim",
-      "evidence": "The empty native trace has public boot data, no CPU or worker rows, and exact state, request and memory matching. Empty windows and Boolean identity masking meet the added segmentation and padding premises."
+      "witness": "Airbender.Trace.Machine.UnifiedHashSegmentationSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.Trace.Machine.UnifiedHashSegmentationSatisfiableClaim": {},
     "Airbender.Trace.Machine.UnifiedSailClaim": {
-      "witness": "Airbender.Trace.Machine.Native.UnifiedFromNativeSatisfiableClaim",
-      "evidence": "The empty native trace has public boot data, no CPU or worker rows, and exact state, request and memory matching. Empty windows and Boolean identity masking meet the added segmentation and padding premises."
+      "witness": "Airbender.Trace.Machine.UnifiedSailSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.Trace.Machine.UnifiedSailSatisfiableClaim": {},
+    "Airbender.Trace.Machine.UnifiedSatisfiableClaim": {},
     "Airbender.Trace.Machine.UnrolledCodeHashSegmentationClaim": {
-      "witness": "Airbender.Trace.Machine.Native.UnrolledFullFromNativeSatisfiableClaim",
-      "evidence": "The empty native trace has public boot data, no CPU or worker rows, and exact state, request and memory matching. Empty windows and Boolean identity masking meet the added segmentation and padding premises."
+      "witness": "Airbender.Trace.Machine.UnrolledCodeHashSegmentationSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.Trace.Machine.UnrolledCodeHashSegmentationSatisfiableClaim": {},
     "Airbender.Trace.Machine.UnrolledFullUnsigned": {
-      "witness": "Airbender.Trace.Machine.Native.UnrolledFullFromNativeSatisfiableClaim",
-      "evidence": "The empty native trace has public boot data, no CPU or worker rows, and exact state, request and memory matching. Empty windows and Boolean identity masking meet the added segmentation and padding premises."
+      "witness": "Airbender.Trace.Machine.UnrolledFullUnsignedSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Trace.Machine.UnrolledFullUnsignedSailClaim": {
-      "witness": "Airbender.Trace.Machine.Native.UnrolledFullFromNativeSatisfiableClaim",
-      "evidence": "The empty native trace has public boot data, no CPU or worker rows, and exact state, request and memory matching. Empty windows and Boolean identity masking meet the added segmentation and padding premises."
+      "witness": "Airbender.Trace.Machine.UnrolledFullUnsignedSailSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.Trace.Machine.UnrolledFullUnsignedSailSatisfiableClaim": {},
+    "Airbender.Trace.Machine.UnrolledFullUnsignedSatisfiableClaim": {},
     "Airbender.Trace.Machine.UnrolledHashSegmentationClaim": {
-      "witness": "Airbender.Trace.Machine.Native.UnrolledFullFromNativeSatisfiableClaim",
-      "evidence": "The empty native trace has public boot data, no CPU or worker rows, and exact state, request and memory matching. Empty windows and Boolean identity masking meet the added segmentation and padding premises."
+      "witness": "Airbender.Trace.Machine.UnrolledHashSegmentationSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.Trace.Machine.UnrolledHashSegmentationSatisfiableClaim": {},
     "Airbender.Trace.Machine.UnrolledReduced": {
-      "witness": "Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSatisfiableClaim",
-      "evidence": "The empty native trace has public boot data, no CPU or worker rows, and exact state, request and memory matching. Empty windows and Boolean identity masking meet the added segmentation and padding premises."
+      "witness": "Airbender.Trace.Machine.UnrolledReducedSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Trace.Machine.UnrolledReducedSailClaim": {
-      "witness": "Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSatisfiableClaim",
-      "evidence": "The empty native trace has public boot data, no CPU or worker rows, and exact state, request and memory matching. Empty windows and Boolean identity masking meet the added segmentation and padding premises."
+      "witness": "Airbender.Trace.Machine.UnrolledReducedSailSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
+    "Airbender.Trace.Machine.UnrolledReducedSailSatisfiableClaim": {},
+    "Airbender.Trace.Machine.UnrolledReducedSatisfiableClaim": {},
     "Airbender.Trace.NoZeroTimestampWritesClaim": {
-      "witness": "Airbender.Trace.NoZeroTimestampWritesSatisfiableClaim"
+      "witness": "Airbender.Trace.NoZeroTimestampWritesSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Trace.NoZeroTimestampWritesSatisfiableClaim": {},
     "Airbender.Trace.NonDeterminism.Pooled.RVNativeSoundnessClaim": {
-      "witness": "Airbender.Trace.NonDeterminism.Pooled.RVNativeSoundnessSatisfiableClaim"
+      "witness": "Airbender.Trace.NonDeterminism.Pooled.RVNativeSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Trace.NonDeterminism.Pooled.RVNativeSoundnessSatisfiableClaim": {},
     "Airbender.Trace.RVAirbenderSoundnessClaim": {
-      "witness": "Airbender.Trace.RVAirbenderSoundnessSatisfiableClaim"
+      "witness": "Airbender.Trace.RVAirbenderSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Trace.RVAirbenderSoundnessSatisfiableClaim": {},
     "Airbender.Trace.RVNativeBootSoundnessClaim": {
-      "witness": "Airbender.Trace.RVNativeBootSoundnessSatisfiableClaim"
+      "witness": "Airbender.Trace.RVNativeBootSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Trace.RVNativeBootSoundnessSatisfiableClaim": {},
     "Airbender.Trace.RVPooledNativeSoundnessClaim": {
-      "witness": "Airbender.Trace.RVPooledNativeSoundnessSatisfiableClaim"
+      "witness": "Airbender.Trace.RVPooledNativeSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Trace.RVPooledNativeSoundnessSatisfiableClaim": {},
     "Airbender.Trace.TeardownsBoundedClaim": {
-      "witness": "Airbender.Trace.TeardownsBoundedSatisfiableClaim"
+      "witness": "Airbender.Trace.TeardownsBoundedSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Trace.TeardownsBoundedSatisfiableClaim": {},
     "Airbender.Trace.WritesRangeCheckedClaim": {
-      "witness": "Airbender.Trace.WritesRangeCheckedSatisfiableClaim"
+      "witness": "Airbender.Trace.WritesRangeCheckedSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.Trace.WritesRangeCheckedSatisfiableClaim": {},
     "Airbender.UnifiedReduced.ArtifactImportClaim": {
@@ -541,120 +682,149 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.UnifiedReduced.BootRamZeroClaim": {
-      "witness": "Airbender.UnifiedReduced.BootRamZeroSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.BootRamZeroSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.BootRamZeroSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVCallerCyclesSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVCallerCyclesSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVCallerCyclesSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVCallerCyclesSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVControlPreparationSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVControlPreparationSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVControlPreparationSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVControlPreparationSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVControlPreparationWindowSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVControlPreparationWindowSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVControlPreparationWindowSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVControlPreparationWindowSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVJointHashWindowSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVJointHashWindowSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVJointHashWindowSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVJointHashWindowSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVMixedMemorySoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVMixedMemorySoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVMixedMemorySoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVMixedMemorySoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVMixedWindowProjectionSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVMixedWindowProjectionSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVMixedWindowProjectionSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVMixedWindowProjectionSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVMixedWindowSequenceSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVMixedWindowSequenceSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVMixedWindowSequenceSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVMixedWindowSequenceSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVMixedWindowSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVMixedWindowSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVMixedWindowSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVMixedWindowSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVPreparedHashSequenceSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVPreparedHashSequenceSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVPreparedHashSequenceSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVPreparedHashSequenceSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVPreparedHashWindowSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVPreparedHashWindowSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVPreparedHashWindowSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVPreparedHashWindowSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVPreparedProtocolSequenceSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVPreparedProtocolSequenceSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVPreparedProtocolSequenceSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVPreparedProtocolSequenceSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVPreparedRoundCyclesSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVPreparedRoundCyclesSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVPreparedRoundCyclesSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVPreparedRoundCyclesSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVPreparedRoundMasksSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVPreparedRoundMasksSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVPreparedRoundMasksSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVPreparedRoundMasksSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVPreparedRoundRegionMasksSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVPreparedRoundRegionMasksSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVPreparedRoundRegionMasksSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVPreparedRoundRegionMasksSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVPreparedRoundWindowSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVPreparedRoundWindowSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVPreparedRoundWindowSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVPreparedRoundWindowSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVProgramPreparedProtocolSequenceSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVProgramPreparedProtocolSequenceSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVProgramPreparedProtocolSequenceSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVProgramPreparedProtocolSequenceSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVProgramWindowScheduleSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVProgramWindowScheduleSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVProgramWindowScheduleSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVProgramWindowScheduleSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVRequestHashWindowSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVRequestHashWindowSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVRequestHashWindowSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVRequestHashWindowSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVRequestWindowSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVRequestWindowSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVRequestWindowSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVRequestWindowSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVSharedSpanSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVSharedSpanSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVSharedSpanSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVSharedSpanSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVWindowProjectionSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVWindowProjectionSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVWindowProjectionSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVWindowProjectionSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.Caller.RVWindowScheduleSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.Caller.RVWindowScheduleSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.Caller.RVWindowScheduleSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.Caller.RVWindowScheduleSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.NoZeroTimestampWritesClaim": {
-      "witness": "Airbender.UnifiedReduced.NoZeroTimestampWritesSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.NoZeroTimestampWritesSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.NoZeroTimestampWritesSatisfiableClaim": {},
     "Airbender.UnifiedReduced.RVExecutionSoundnessClaim": {
-      "witness": "Airbender.UnifiedReduced.RVExecutionSoundnessSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.RVExecutionSoundnessSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.RVExecutionSoundnessSatisfiableClaim": {},
     "Airbender.UnifiedReduced.TeardownsBoundedClaim": {
-      "witness": "Airbender.UnifiedReduced.TeardownsBoundedSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.TeardownsBoundedSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.TeardownsBoundedSatisfiableClaim": {},
     "Airbender.UnifiedReduced.WritesRangeCheckedClaim": {
-      "witness": "Airbender.UnifiedReduced.WritesRangeCheckedSatisfiableClaim"
+      "witness": "Airbender.UnifiedReduced.WritesRangeCheckedSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.UnifiedReduced.WritesRangeCheckedSatisfiableClaim": {},
     "Airbender.VerifierBoundary.TerminalBoundSatisfiableClaim": {},
     "Airbender.VerifierBoundary.TerminalBoundSoundnessClaim": {
-      "witness": "Airbender.VerifierBoundary.TerminalBoundSatisfiableClaim"
+      "witness": "Airbender.VerifierBoundary.TerminalBoundSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.VerifierBoundary.TerminalStateSatisfiableClaim": {},
     "Airbender.VerifierBoundary.TerminalStateSoundnessClaim": {
-      "witness": "Airbender.VerifierBoundary.TerminalStateSatisfiableClaim"
+      "witness": "Airbender.VerifierBoundary.TerminalStateSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "Airbender.WordMemory.ArtifactImportClaim": {
       "exception": "artifact",
@@ -662,34 +832,42 @@
     },
     "Airbender.WordMemory.RVSatisfiableClaim": {},
     "Airbender.WordMemory.RVSoundnessClaim": {
-      "witness": "Airbender.WordMemory.RVSatisfiableClaim"
+      "witness": "Airbender.WordMemory.RVSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.BlakeCompressRun": {
-      "witness": "RV.BlakeCompressRunSatisfiableClaim"
+      "witness": "RV.BlakeCompressRunSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.BlakeCompressRun10": {
-      "witness": "RV.BlakeCompressRun10SatisfiableClaim"
+      "witness": "RV.BlakeCompressRun10SatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.BlakeCompressRun10SatisfiableClaim": {},
     "RV.BlakeCompressRunSatisfiableClaim": {},
     "RV.BlakeGRun": {
-      "witness": "RV.BlakeGRunSatisfiableClaim"
+      "witness": "RV.BlakeGRunSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.BlakeGRun10": {
-      "witness": "RV.BlakeGRun10SatisfiableClaim"
+      "witness": "RV.BlakeGRun10SatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.BlakeGRun10SatisfiableClaim": {},
     "RV.BlakeGRunSatisfiableClaim": {},
     "RV.BlakeHashRun": {
-      "witness": "RV.BlakeHashRunSatisfiableClaim"
+      "witness": "RV.BlakeHashRunSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.BlakeHashRun10": {
-      "witness": "RV.BlakeHashRun10SatisfiableClaim"
+      "witness": "RV.BlakeHashRun10SatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.BlakeHashRun10SatisfiableClaim": {},
     "RV.BlakeHashRunSatisfiableClaim": {},
     "RV.CallsRun": {
-      "witness": "RV.CallsRunSatisfiableClaim"
+      "witness": "RV.CallsRunSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.CallsRunSatisfiableClaim": {},
     "RV.Delegation.BlakeRoundOneHotClaim": {
@@ -698,11 +876,13 @@
     },
     "RV.Delegation.BlakeRoundOneHotSatisfiableClaim": {},
     "RV.KeccakF1600Run": {
-      "witness": "RV.KeccakF1600RunSatisfiableClaim"
+      "witness": "RV.KeccakF1600RunSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.KeccakF1600RunSatisfiableClaim": {},
     "RV.KeccakSpecial5Run": {
-      "witness": "RV.KeccakSpecial5RunSatisfiableClaim"
+      "witness": "RV.KeccakSpecial5RunSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.KeccakSpecial5RunSatisfiableClaim": {},
     "RV.StandardVectors": {
@@ -710,27 +890,33 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "RV.ValidUse.BigintReferenceClaim": {
-      "witness": "RV.ValidUse.BigintReferenceSatisfiableClaim"
+      "witness": "RV.ValidUse.BigintReferenceSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.ValidUse.BigintReferenceSatisfiableClaim": {},
     "RV.ValidUse.GReferenceClaim": {
-      "witness": "RV.ValidUse.GReferenceSatisfiableClaim"
+      "witness": "RV.ValidUse.GReferenceSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.ValidUse.GReferenceSatisfiableClaim": {},
     "RV.ValidUse.HashReferenceClaim": {
-      "witness": "RV.ValidUse.HashReferenceSatisfiableClaim"
+      "witness": "RV.ValidUse.HashReferenceSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.ValidUse.HashReferenceSatisfiableClaim": {},
     "RV.ValidUse.RoundReferenceClaim": {
-      "witness": "RV.ValidUse.RoundReferenceSatisfiableClaim"
+      "witness": "RV.ValidUse.RoundReferenceSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.ValidUse.RoundReferenceSatisfiableClaim": {},
     "RV.ValidUse.Special5ReferenceClaim": {
-      "witness": "RV.ValidUse.Special5ReferenceSatisfiableClaim"
+      "witness": "RV.ValidUse.Special5ReferenceSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.ValidUse.Special5ReferenceSatisfiableClaim": {},
     "RV.ValidUse.SplitKeccakReferenceClaim": {
-      "witness": "RV.ValidUse.SplitKeccakReferenceSatisfiableClaim"
+      "witness": "RV.ValidUse.SplitKeccakReferenceSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
     },
     "RV.ValidUse.SplitKeccakReferenceSatisfiableClaim": {}
   }

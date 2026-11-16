@@ -93,7 +93,7 @@ theorem boundary : ClockBoundary trace where
     simp only [trace, List.mem_cons, List.mem_nil_iff, or_false] at member
     rcases member with rfl | rfl <;> constructor <;> decide
 
-theorem inputs : RVTraceInputs trace initial cells [entry] where
+theorem inputs : RVInterfaceAssumptions trace initial cells [entry] where
   initialization := {
     distinct := by decide
     aligned := by
@@ -111,7 +111,7 @@ theorem inputs : RVTraceInputs trace initial cells [entry] where
 theorem query : row.decoderQuery = entry.query := by kernel_rfl
 
 theorem satisfiable : Trace.RVRowSatisfiable .jumpBranchSlt RVInput.before rvInstruction RVWordMapping
-    RVTraceInputs :=
+    RVInterfaceAssumptions :=
   ⟨trace, initial, cells, [entry], input, output, assignment, inputs,
     ⟨accepted, Witness.decoded rfl (List.mem_singleton_self _) rfl query, List.mem_singleton_self _⟩,
     { words := by constructor <;> kernel_rfl
@@ -193,7 +193,7 @@ theorem boundary : ClockBoundary trace where
     simp only [trace, List.mem_cons, List.mem_nil_iff, or_false] at member
     rcases member with rfl | rfl | rfl <;> constructor <;> decide
 
-theorem inputs : RVTraceInputs trace initial cells [entry] where
+theorem inputs : RVInterfaceAssumptions trace initial cells [entry] where
   initialization := {
     distinct := by decide
     aligned := by
@@ -211,7 +211,7 @@ theorem inputs : RVTraceInputs trace initial cells [entry] where
 theorem query : row.decoderQuery = entry.query := by kernel_rfl
 
 theorem satisfiable : Trace.RVRowSatisfiable .jumpBranchSlt RVInput.before rvInstruction RVWordMapping
-    RVTraceInputs :=
+    RVInterfaceAssumptions :=
   ⟨trace, initial, cells, [entry], input, output, assignment, inputs,
     ⟨accepted, Witness.decoded rfl (List.mem_singleton_self _) rfl query, List.mem_singleton_self _⟩,
     { words := by constructor <;> kernel_rfl
@@ -290,7 +290,7 @@ theorem boundary : ClockBoundary trace where
     simp only [trace, List.mem_cons, List.mem_nil_iff, or_false] at member
     rcases member with rfl | rfl <;> constructor <;> decide
 
-theorem inputs : RVTraceInputs trace initial cells [entry] where
+theorem inputs : RVInterfaceAssumptions trace initial cells [entry] where
   initialization := {
     distinct := by decide
     aligned := by
@@ -308,7 +308,7 @@ theorem inputs : RVTraceInputs trace initial cells [entry] where
 theorem query : row.decoderQuery = entry.query := by kernel_rfl
 
 theorem satisfiable : Trace.RVRowSatisfiable .jumpBranchSlt RVInput.before rvInstruction RVWordMapping
-    RVTraceInputs :=
+    RVInterfaceAssumptions :=
   ⟨trace, initial, cells, [entry], input, output, assignment, inputs,
     ⟨accepted, Witness.decoded rfl (List.mem_singleton_self _) rfl query, List.mem_singleton_self _⟩,
     { words := by constructor <;> first | kernel_rfl | (intro _; kernel_rfl)

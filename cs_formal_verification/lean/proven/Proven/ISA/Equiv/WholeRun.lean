@@ -97,13 +97,13 @@ theorem read_cell_agrees {s : RV.State} {machine : Airbender.Machine}
 
 /-- An accepted RV run has a machine-level terminal state and the same tracked values. -/
 theorem sail_realizes {Kind : Type} [Airbender.Trace.CircuitLayout Kind] {p : Nat} [_root_.Fact p.Prime]
-    {trace : Airbender.Trace.Data p Kind} {initial : RV.State} {cells : List Airbender.Trace.Cell}
-    (realizes : Airbender.Trace.RVRealizes trace initial cells) :
-    Airbender.Trace.SailRealizes trace initial cells := by
-  obtain ⟨machine, agreement⟩ := agree_exists initial
-  obtain ⟨n, after, run, terminal, memory⟩ := realizes
+    {trace : Airbender.Trace.Data p Kind} {initial : RV.State} {cells : List Airbender.Trace.Cell} {consumed : Nat}
+    (realizes : Airbender.Trace.RVRealizes trace initial cells consumed) :
+    Airbender.Trace.SailRealizes trace initial cells consumed := by
+  intro machine agreement
+  obtain ⟨n, after, run, input, terminal, memory⟩ := realizes
   obtain ⟨finish, executed, finishAgreement⟩ := run_is_airbender n initial after machine agreement run
-  refine ⟨machine, finish, n, agreement, executed, finishAgreement.1.2.1.trans terminal, ?_⟩
+  refine ⟨finish, n, executed, finishAgreement.2.2.trans input, finishAgreement.1.2.1.trans terminal, ?_⟩
   intro sink member
   obtain ⟨cell, included, address, value⟩ := memory sink member
   exact ⟨cell, included, address, (read_cell_agrees finishAgreement cell).trans value⟩

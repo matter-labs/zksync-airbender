@@ -67,4 +67,14 @@ theorem read_index_initial (rows : List α) (clock : α → Nat) (read : α → 
     omega
   simp only [readIndexAt, empty, List.length_nil]
 
+/-- A terminal clock above every CPU row includes all selected external reads. -/
+theorem read_index_terminal (rows : List α) (clock : α → Nat) (read : α → Bool) (terminal : Nat)
+    (ceiling : ∀ row ∈ rows, clock row < terminal) :
+    readIndexAt rows clock read terminal = ExternalStream.count read rows := by
+  unfold readIndexAt ExternalStream.count
+  congr 1
+  apply List.filter_congr
+  intro row member
+  simp only [ceiling row member, decide_true, Bool.and_true]
+
 end Airbender.Trace.Machine.Proofs

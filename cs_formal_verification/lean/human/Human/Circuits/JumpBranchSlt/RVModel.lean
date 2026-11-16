@@ -20,7 +20,7 @@ open Arithmetic Trace
     program table's fetch guard, `rvProgramEntryWith`, aligns every PC). `terminalPC` stays: this circuit does not
     range-check the outgoing PC's high limb (column 17); a row's outgoing PC is canonical because it is the next
     row's incoming PC (a decoder-table PC) or, for the last row, the terminal PC. -/
-structure RVTraceInputs {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+structure RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop
     extends RVPooledHistoryInputs trace initial cells program where
   /-- Both terminal-PC limbs are canonical 16-bit values; intermediate PCs are derived. -/
@@ -114,7 +114,7 @@ structure RVInput where
   left : Word
   /-- The right operand word. -/
   right : Word
-  /-- The decoded branch or jump offset. -/
+  /-- The signed 13-bit branch offset, extended to the architectural word. -/
   offset : Word
   /-- The row's starting PC. -/
   pc : Word
@@ -226,7 +226,7 @@ structure RVWordMapping {p : Nat} (input : RVInput) (output : Circuit.Output) (w
   finalPCLo : output.pc.lo = (w finalPCLo).val
   /-- Bind the high limb of the final PC to its witness column. -/
   finalPCHi : output.pc.hi = (w finalPCHi).val
-  /-- Bind the first source register index to its witness column. -/
+  /-- Bind the first source register index for JALR. JAL uses the starting PC as its base. -/
   rs1Index : input.instruction.indirect = true → w Variables.rs1Index = (input.rs1.toNat : ZMod p)
   /-- Bind the destination register index to its witness column. -/
   rdIndex : w Variables.rdIndex = (input.rd.toNat : ZMod p)

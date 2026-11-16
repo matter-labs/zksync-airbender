@@ -169,7 +169,7 @@ namespace Airbender.JumpBranchSlt.Comparison.Restatement
 
 /-- The source row contract before its soundness and non-vacuity statements are separated. -/
 def OldRVSoundnessClaim : Prop :=
-  Checks.Restatements.OldRVRowClaim .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs fun input output =>
+  Checks.Restatements.OldRVRowClaim .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVInterfaceAssumptions fun input output =>
     ∃ s', RV.step input.before = some s' ∧
       RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
 
@@ -182,7 +182,7 @@ theorem soundness_restatement : RVSoundnessClaim ↔ OldRVSoundnessClaim :=
 
 /-- The separate non-vacuity statement preserves the source witness condition. -/
 theorem satisfiable_restatement : RVSatisfiableClaim ↔
-    Checks.Restatements.OldRVRowSatisfiable .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs := Iff.rfl
+    Checks.Restatements.OldRVRowSatisfiable .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVInterfaceAssumptions := Iff.rfl
 
 end Airbender.JumpBranchSlt.Comparison.Restatement
 
@@ -190,7 +190,7 @@ namespace Airbender.JumpBranchSlt.Branch.Restatement
 
 /-- The source row contract before its soundness and non-vacuity statements are separated. -/
 def OldRVSoundnessClaim : Prop :=
-  Checks.Restatements.OldRVRowClaim .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs fun input output =>
+  Checks.Restatements.OldRVRowClaim .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVInterfaceAssumptions fun input output =>
     ∃ s', RV.step input.before = some s' ∧ RV.Same s' (input.before.setPC output.pc.toBitVec)
 
 /-- The two reviewed statements preserve the complete source contract. -/
@@ -202,7 +202,7 @@ theorem soundness_restatement : RVSoundnessClaim ↔ OldRVSoundnessClaim :=
 
 /-- The separate non-vacuity statement preserves the source witness condition. -/
 theorem satisfiable_restatement : RVSatisfiableClaim ↔
-    Checks.Restatements.OldRVRowSatisfiable .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs := Iff.rfl
+    Checks.Restatements.OldRVRowSatisfiable .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVInterfaceAssumptions := Iff.rfl
 
 end Airbender.JumpBranchSlt.Branch.Restatement
 
@@ -210,7 +210,7 @@ namespace Airbender.JumpBranchSlt.Jump.Restatement
 
 /-- The source row contract before its soundness and non-vacuity statements are separated. -/
 def OldRVSoundnessClaim : Prop :=
-  Checks.Restatements.OldRVRowClaim .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs fun input output =>
+  Checks.Restatements.OldRVRowClaim .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVInterfaceAssumptions fun input output =>
     ∃ s', RV.step input.before = some s' ∧
       RV.Same s' ((input.before.setReg input.rd output.destination.toBitVec).setPC output.pc.toBitVec)
 
@@ -223,7 +223,7 @@ theorem soundness_restatement : RVSoundnessClaim ↔ OldRVSoundnessClaim :=
 
 /-- The separate non-vacuity statement preserves the source witness condition. -/
 theorem satisfiable_restatement : RVSatisfiableClaim ↔
-    Checks.Restatements.OldRVRowSatisfiable .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVTraceInputs := Iff.rfl
+    Checks.Restatements.OldRVRowSatisfiable .jumpBranchSlt RVInput.before rvInstruction RVWordMapping RVInterfaceAssumptions := Iff.rfl
 
 end Airbender.JumpBranchSlt.Jump.Restatement
 
@@ -381,18 +381,11 @@ def OldStandaloneClaim : Prop :=
       Cell.ram address ∈ windowCells importedLayout (List.range maxTopBit)
 
 /-- The explicit properties and witness condition preserve the source contract. -/
-theorem standalone_claims_restatement : (StandaloneClaim ∧ StandaloneSatisfiableClaim) ↔ OldStandaloneClaim := by
-  constructor
-  · rintro ⟨⟨init, boot, teardown, coverage⟩, ⟨topBits, rfl, checked⟩⟩
-    exact ⟨⟨init, boot, teardown, checked⟩, coverage⟩
-  · rintro ⟨properties, coverage⟩
-    exact ⟨⟨properties.init, properties.bootImage, properties.teardown, coverage⟩,
-      ⟨_, rfl, properties.checkable⟩⟩
+theorem standalone_claims_restatement : (StandaloneClaim ∧ StandaloneSatisfiableClaim) ↔ OldStandaloneClaim :=
+  ⟨fun pair => pair.1, fun claim => ⟨claim, standalone_satisfiable⟩⟩
 
 /-- The separate witness proof preserves the source soundness contract. -/
-theorem standalone_restatement : StandaloneClaim ↔ OldStandaloneClaim :=
-  ⟨fun h => standalone_claims_restatement.mp ⟨h, standalone_satisfiable⟩,
-    fun h => (standalone_claims_restatement.mpr h).1⟩
+theorem standalone_restatement : StandaloneClaim ↔ OldStandaloneClaim := Iff.rfl
 
 end Airbender.InitsTeardowns.Restatement
 
@@ -406,18 +399,11 @@ def OldUnifiedClaim : Prop :=
       Cell.ram address ∈ windowCells unifiedLayout (List.range maxTopBit)
 
 /-- The explicit properties and witness condition preserve the source contract. -/
-theorem unified_claims_restatement : (UnifiedClaim ∧ UnifiedSatisfiableClaim) ↔ OldUnifiedClaim := by
-  constructor
-  · rintro ⟨⟨init, boot, teardown, coverage⟩, ⟨topBits, rfl, checked⟩⟩
-    exact ⟨⟨init, boot, teardown, checked⟩, coverage⟩
-  · rintro ⟨properties, coverage⟩
-    exact ⟨⟨properties.init, properties.bootImage, properties.teardown, coverage⟩,
-      ⟨_, rfl, properties.checkable⟩⟩
+theorem unified_claims_restatement : (UnifiedClaim ∧ UnifiedSatisfiableClaim) ↔ OldUnifiedClaim :=
+  ⟨fun pair => pair.1, fun claim => ⟨claim, unified_satisfiable⟩⟩
 
 /-- The separate witness proof preserves the source soundness contract. -/
-theorem unified_restatement : UnifiedClaim ↔ OldUnifiedClaim :=
-  ⟨fun h => unified_claims_restatement.mp ⟨h, unified_satisfiable⟩,
-    fun h => (unified_claims_restatement.mpr h).1⟩
+theorem unified_restatement : UnifiedClaim ↔ OldUnifiedClaim := Iff.rfl
 
 end Airbender.InitsTeardowns.Restatement
 

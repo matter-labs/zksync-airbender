@@ -1,12 +1,10 @@
 import Human.ISA.Sail.Airbender
 
-/-! # The Airbender machine on single instructions (part of the final theorems)
-
-The final theorems (`Theorems.lean`) hold for every `Configured` start state; these checks pin down the machine
-they are about. Sail's reset succeeds in machine mode; where Airbender gives an instruction a meaning of its own
-(`execute`: the input CSR, the delegation calls) Sail's own semantics rejects it, so each change from Sail only
-gives meaning to a trapping instruction; and one step of the machine on representative words: from the reset state
-with the word at address 0 and `a0 = 0x400004` (in RAM), the next PC, or `none` (no step). -/
+/-! Single-instruction checks for the configured Airbender machine.
+    The final theorems apply to every configured start state. These checks fix representative instruction effects
+    and the reset configuration. Sail rejects the input CSR and delegation encodings used here.
+    Airbender also changes effects that Sail accepts: Zimop instructions and aligned loads into x0.
+    Each representative word starts at PC zero with `a0 = 0x400004` in RAM. -/
 
 open Sail SailRV32 SailRV32.Functions Human
 
@@ -33,7 +31,7 @@ def MachineChecks : Prop :=
   -- Sail's reset (with its config validation) succeeds, in machine mode
   (match sailResetRun with | .ok _ _ => true | .error _ _ => false) = true ∧
   (resetState.regs .cur_privilege == Privilege.Machine) = true ∧
-  -- what Airbender overrides, Sail rejects: `csrrw a0, 0x7c0, x0` (input), `csrrw x0, 0x7c7, x0` (a delegation)
+  -- Sail rejects these input and delegation encodings: `csrrw a0, 0x7c0, x0` (input), `csrrw x0, 0x7c7, x0` (a delegation)
   sailRejects (.CSRReg (0x7c0, .Regidx 0, .Regidx 10, .CSRRW)) = true ∧
   sailRejects (.CSRReg (0x7c7, .Regidx 0, .Regidx 0, .CSRRW)) = true ∧
   -- plain RV32IM, and Sail's hint encodings run as plain instructions

@@ -2,7 +2,10 @@
 """Test rejection of missing claim proofs, witnesses and unsupported exceptions."""
 import copy
 import unittest
-from check_claim_coverage import validate
+import subprocess
+import tempfile
+from pathlib import Path
+from check_claim_coverage import validate, EXCEPTIONS, EVIDENCE_MODULE, EVIDENCE_AUDIT, ROOT, evidence_source
 
 
 class ClaimCoverageTests(unittest.TestCase):
@@ -12,8 +15,9 @@ class ClaimCoverageTests(unittest.TestCase):
         self.data = {"claims": {
             self.primary: {"module": "Human.Circuits.Example.Theorems", "head": "forall", "combined": False},
             self.witness: {"module": "Human.Circuits.Example.Theorems", "head": "exists", "combined": False},
-        }, "proofs": {self.primary: ["Example.soundness"], self.witness: ["Example.soundness_satisfiable"]}}
-        self.manifest = {"claims": {self.primary: {"witness": self.witness}, self.witness: {}}}
+        }, "proofs": {self.primary: ["Example.soundness"], self.witness: ["Example.soundness_satisfiable"]},
+            "applications": [(self.primary, self.witness)]}
+        self.manifest = {"claims": {self.primary: {"witness": self.witness, "evidence": EVIDENCE_MODULE}, self.witness: {}}}
 
     def test_complete_pair(self):
         self.assertEqual(validate(self.data, self.manifest), 2)
@@ -52,6 +56,129 @@ class ClaimCoverageTests(unittest.TestCase):
         self.data["claims"][self.witness]["head"] = "forall"
         with self.assertRaisesRegex(ValueError, "must expose its existential"):
             validate(self.data, self.manifest)
+
+    def test_stale_inventory_row(self):
+        self.manifest["claims"]["Example.RemovedClaim"] = {}
+        with self.assertRaisesRegex(ValueError, "Claim inventory mismatch"):
+            validate(self.data, self.manifest)
+
+    def test_non_proposition_claim(self):
+        self.data["non_props"] = ["Example.NumberClaim"]
+        with self.assertRaisesRegex(ValueError, "not a proposition"):
+            validate(self.data, self.manifest)
+
+    def test_missing_typed_evidence(self):
+        del self.manifest["claims"][self.primary]["evidence"]
+        with self.assertRaisesRegex(ValueError, "Missing typed witness evidence"):
+            validate(self.data, self.manifest)
+
+    def test_prose_is_not_typed_evidence(self):
+        self.manifest["claims"][self.primary]["evidence"] = "The premises can hold."
+        with self.assertRaisesRegex(ValueError, "Missing typed witness evidence"):
+            validate(self.data, self.manifest)
+
+    def test_different_claim_witness_is_rejected(self):
+        self.data["applications"] = [(self.primary, "Example.OtherSatisfiableClaim")]
+        with self.assertRaisesRegex(ValueError, "application to its own witness"):
+            validate(self.data, self.manifest)
+
+    def test_missing_claim_application(self):
+        self.data["applications"] = []
+        with self.assertRaisesRegex(ValueError, "application to its own witness"):
+            validate(self.data, self.manifest)
+
+    def test_each_exact_exception_kind(self):
+        for kind, names in EXCEPTIONS.items():
+            with self.subTest(kind=kind):
+                name = sorted(names)[0]
+                data = {"claims": {name: self.data["claims"][self.primary]},
+                        "proofs": {name: ["Example.fixed_data"]}}
+                manifest = {"claims": {name: {"exception": kind, "reason": "Fixed imported data."}}}
+                self.assertEqual(validate(data, manifest), 1)
+                wrong = name + "Other"
+                data["claims"][wrong] = data["claims"].pop(name)
+                data["proofs"][wrong] = data["proofs"].pop(name)
+                manifest["claims"][wrong] = manifest["claims"].pop(name)
+                with self.assertRaisesRegex(ValueError, "Invalid non-vacuity exception"):
+                    validate(data, manifest)
+
+    def test_import_module_is_not_an_exception(self):
+        self.data["claims"][self.primary]["module"] = "Human.Import.Example"
+        self.manifest["claims"][self.primary] = {"exception": "import", "reason": "Module prefix."}
+        with self.assertRaisesRegex(ValueError, "Invalid non-vacuity exception"):
+            validate(self.data, self.manifest)
+
+    def test_constant_template_is_not_an_exception(self):
+        self.data["claims"][self.primary].update(module="Human.ISA.Example", head="constant")
+        self.manifest["claims"][self.primary] = {"exception": "constant", "reason": "Template application."}
+        with self.assertRaisesRegex(ValueError, "Invalid non-vacuity exception"):
+            validate(self.data, self.manifest)
+
+    def test_evidence_keeps_lean_examples_and_names_only_typed_applications(self):
+        source = "import Human.Example\nexample (claim : Example.Claim) : Example.SatisfiableClaim → True := by trivial\n"
+        named, names = evidence_source(source)
+        self.assertEqual(names, ["Checks.ClaimCoverage.case0"])
+        self.assertIn("theorem _root_.Checks.ClaimCoverage.case0 (claim :", named)
+        self.assertNotIn("import Human.Example", named)
+
+    def test_missing_status_row(self):
+        self.data["status_claims"] = [self.primary]
+        with self.assertRaisesRegex(ValueError, "Missing claim status rows"):
+            validate(self.data, self.manifest)
+
+    def test_complete_status_rows(self):
+        self.data["status_claims"] = [self.primary, self.witness]
+        self.assertEqual(validate(self.data, self.manifest), 2)
+
+    def test_kernel_evidence_audit(self):
+        source = r'''import Lean
+namespace Airbender
+inductive Expr where
+  | sample
+end Airbender
+open Airbender
+set_option linter.unusedVariables false
+namespace Smoke
+def Claim : Prop := ∀ n : Nat, n = n
+def Witness : Prop := ∃ n : Nat, 0 < n
+def ConjunctionClaim : Prop := (∀ n : Nat, n = n) ∧ True
+structure Bundle : Prop where
+  proof : ∀ n : Nat, n = n
+def StructuredClaim : Prop := Bundle ∧ True
+theorem valid (claim : Claim) : Witness → ∃ n : Nat, n = n :=
+  fun ⟨n, _⟩ => ⟨n, claim n⟩
+theorem projection (claim : ConjunctionClaim) : Witness → ∃ n : Nat, n = n :=
+  fun ⟨n, _⟩ => ⟨n, claim.1 n⟩
+theorem structured (claim : StructuredClaim) : Witness → ∃ n : Nat, n = n :=
+  fun ⟨n, _⟩ => ⟨n, claim.1.proof n⟩
+theorem noClaim (claim : Claim) : Witness → ∃ n : Nat, n = n :=
+  fun ⟨n, _⟩ => ⟨n, rfl⟩
+theorem noWitness (claim : Claim) : Witness → ∃ n : Nat, n = n :=
+  fun _ => ⟨0, claim 0⟩
+end Smoke
+''' + EVIDENCE_AUDIT + r'''
+run_cmd ClaimCoverageAudit.audit ``Smoke.valid
+run_cmd ClaimCoverageAudit.audit ``Smoke.projection
+run_cmd ClaimCoverageAudit.audit ``Smoke.structured
+/-- error: Evidence does not apply its claim: Smoke.noClaim -/
+#guard_msgs in
+run_cmd ClaimCoverageAudit.audit ``Smoke.noClaim
+/-- error: Evidence does not use its witness: Smoke.noWitness -/
+#guard_msgs in
+run_cmd ClaimCoverageAudit.audit ``Smoke.noWitness
+'''
+        named, names = evidence_source("namespace Smoke\n"
+            "example (claim : Claim) : Witness → ∃ n : Nat, n = n :=\n"
+            "  fun ⟨n, _⟩ => ⟨n, claim n⟩\nend Smoke\n")
+        source += named + f"\nrun_cmd ClaimCoverageAudit.audit ``{names[0]}\n"
+        with tempfile.TemporaryDirectory(prefix="airbender-coverage-test-") as directory:
+            path = Path(directory) / "Evidence.lean"
+            path.write_text(source)
+            result = subprocess.run(["lake", "env", "lean", str(path)], cwd=ROOT,
+                                    text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.assertEqual(result.returncode, 0, result.stdout[-5000:])
+        self.assertIn("WITNESS_APPLICATION Smoke.Claim Smoke.Witness", result.stdout)
+        self.assertIn("WITNESS_APPLICATION Smoke.ConjunctionClaim Smoke.Witness", result.stdout)
 
 
 if __name__ == "__main__":

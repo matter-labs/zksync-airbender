@@ -8,7 +8,9 @@ objects faithfully represent Rust artifacts or express the intended system claim
 
 The claims cover the constraint description shared by the cached and no-cache circuit JSON files.
 Their constraint sections are identical. Only the compiled GKR layers can differ.
-The imports use the no-cache files. Compiled GKR layer preservation and cryptographic argument soundness remain open.
+Individual circuit statements use the no-cache files. The cached captures use the same proved parser.
+Native CPU and worker gates, source placement and exact public lookups imply the complete row constraints.
+Cryptographic argument soundness remains open.
 
 ## Review entry points
 
@@ -84,7 +86,7 @@ when reviewing or strengthening a theorem.
 | Sail runtime | `lean-sail` revision `c816ea7ad03cce98d51acee252540fd4215fede8`, fetched by [fetch-lean-sail.sh](../sail/fetch-lean-sail.sh) with the Lean 4.35 [patch](../sail/patches/lean-sail-lean4.35.0.patch) and the [`skip_inductive_codegen` patch](../sail/patches/lean-sail-skip-inductive-codegen.patch): a command wrapper, put before the generated `instruction` type by `regen.sh`, that skips the runtime layout of constructors whose tag exceeds Lean 4.35's limit (lean4#8930). It changes only the compiler; the declarations the kernel checks are unchanged. |
 | Platform support | The full model implements the platform hooks concretely; three upstream hooks without a Lean body get trivial bodies in [sail-riscv-lean-missing-externs.patch](../sail/patches/sail-riscv-lean-missing-externs.patch). Experimental extensions and CLINT/interrupt devices are off in [airbender-base.json](../sail/config/airbender-base.json). |
 | Project profile/custom reference | Unmodified [00-master.md](airbender/00-master.md) at `2331d1c511f26c17be85879fbab02ab109aefd05`, with [hash/provenance](airbender/provenance.json); the spec's ISA table and decoder pins are named in [RV32.lean](../lean/human/Human/ISA/RV32.lean). Applicability to the circuit revision remains a review obligation. |
-| Base ADD/SUB artifact | `av_gkr_compiler` revision `9501f1f45f075b61389bb301de697514bb61bed8`; [retained no-cache JSON](../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json), SHA-256 `e5aadac65c19335d5adf39b24afad8fca54ca404305058a190004177b325fc49`. Other family JSON paths remain in their reviewed artifact declarations. |
+| Base ADD/SUB artifact | Frozen PR #585 tip `9501f1f45f075b61389bb301de697514bb61bed8`; [retained no-cache JSON](../../cs/compiled_circuits/add_sub_lui_auipc_mop_layout_no_caches_gkr.json), SHA-256 `e5aadac65c19335d5adf39b24afad8fca54ca404305058a190004177b325fc49`. Other family JSON paths remain in their reviewed artifact declarations. |
 
 ## Import and generation fidelity
 
@@ -156,7 +158,7 @@ An incremental run trusts the restored build (produced by an earlier CI run of t
 
 **Kernel replay** (job `kernel_replay`, nightly, or manually; `backup-check.sh` by hand):
 `lake check` exports the default targets with everything they import. Lean's kernel must accept every declaration,
-and the export axiom audit must find only the standard axioms. `leanchecker` also replays the two modules it leaves out (`human/CleanCore/Equivalence.lean`,
+and the export axiom audit must find only the standard axioms. Native `leanchecker-paranoid` must accept the same retained export. `leanchecker` also replays the two modules it leaves out (`human/CleanCore/Equivalence.lean`,
 `test/Checks/Axioms.lean`: they import Clean's `native_decide` prime instances). This catches an `.olean` whose
 declarations the elaborator accepted but Lean's kernel would not. A separate `lake check --paranoid` step reports
 the bundled external checkers. Those results are advisory and do not fail the job. The replay does not run on pull requests or in the cold runs.
@@ -165,26 +167,37 @@ The job runs on the runner host, where `bwrap` can create `lake check`'s sandbox
 
 ## Modeled tables and logical arguments
 
-[RangeChecks.lean](../lean/human/Human/Helpers/Tables/Range.lean) enumerates 16-bit limbs using
-Clean's `StaticTable`; membership characterization is kernel checked. Its rows
-reconstruct [Rust range setup](../../prover/src/gkr/virtual_polys/range_check.rs),
-selected with 16 bits in [the prover](../../prover/src/gkr/prover/mod.rs).
-The 19-bit timestamp table and worker controller/XOR/operation tables have the
-same unproved setup-generator correspondence. Exact extracted rows, table identity,
-query binding and padding remain deferred provenance work.
+[Range.lean](../lean/human/Human/Helpers/Tables/Range.lean) defines the 16-bit and 19-bit tables.
+[NativeSetups/Ranges.lean](../lean/human/Human/Compiler/NativeSetups/Ranges.lean) checks each complete native prefix and its zero padding.
+The [setup inventory](../lean/artifacts/setup/README.md) lists all 16 exported setups and their binding checks.
+The checks compare row formulas with native JSON, or decode the retained setup blocks.
+[NativeGrid.lean](../lean/human/Human/Import/NativeGrid.lean) runs the comparisons as trusted compiled code.
+Fresh Rust exports and content pins check the current input bytes. No theorem verifies the Rust setup generator.
+
+The bigint row formulas, Keccak controller rows and range definitions remain mathematical transcriptions.
+This is a deviation from a specification derived only from native table data.
+The complete comparisons bind these formulas to the retained native rows. The kernel checks their table-membership lemmas.
 
 `Accepted` checks imported equations/lookups and logical native state/memory
 permutations. Decoder membership and caller/request matching are likewise logical
 conditions; cryptographic enforcement of any of them is outside the claims.
 
-**Open item: decoder-table padding.** When decoder lookup enforcement is modelled (with the unifying protocol
-spec), the protocol's decoder table is the program rows ∪ the unsupported −1 rows ∪ tail rows filled with the
-artifact's `generic_lookup_padding` (0 when the field is absent). Discharging `RVPooledDecoded`
-([RVSoundness.lean](../lean/human/Human/Trace/RVSoundness.lean)) then needs: the mask coordinate is < 512, from the
-nine Boolean family bits, so no −1 sentinel row matches. Zero padding would make that step false (a phantom 0⁸
-row). The add_sub artifact's padding is fixed now: [AddSub's `ArtifactImportClaim`](../lean/human/Human/Circuits/AddSub/Artifact.lean)
-states `generic_lookup_padding` is −1 (canonical p − 1), as the Rust compiler sets it for that family
-(`cs/src/gkr_compiler/family_circuit.rs`) and the Rust test checks (`cs/src/gkr_circuits/add_sub_family/circuit.rs`).
+The [native worker certificates](../lean/human/Human/Compiler/WorkerCertificates.lean)
+describe both submitted worker pools exactly, in order. Native cached gates, source
+placement, public worker lookups and participation imply every row constraint.
+The [worker certificate proofs](../lean/proven/Proven/Final/Compiler/WorkerCertificates.lean)
+include a full active witness for each of the six worker circuits used by the targets.
+The constraint-description targets retain worker constraints as premises.
+
+The [public setup interpretation](../lean/human/Human/Compiler/NativePublicSetup.lean) indexes decoder rows by PC.
+Unsupported slots retain their minus-one payload. Tagged circuits retain their native discriminator and zero tail padding.
+ADD/SUB retains minus-one tail padding. The public bound fixes capacity, selector bounds and omitted zero coordinates.
+Zero-mask LW and LHU rows retain a nonzero destination. The decoder-membership proofs use these fields to reject padding rows.
+
+The [decoder comparison](../lean/scripts/check_program_decoder_rows.py) compares the compiled Lean row function with native exports.
+It also compares circuit objects across public programs and the shared unrolled profiles.
+Each test binds the Lean model to the tested Rust preprocessing result.
+These tests do not prove Rust decoder equivalence for every possible program.
 
 Caller and worker claims add public inputs, all visible in their `…Inputs` structures:
 - Request matching derives exact worker/caller multiplicity, unique native slots, full CSR families and the placement of
@@ -243,7 +256,7 @@ A load into x0 is a no-op that only advances the PC in `RV.exec` (Airbender's ru
 load restriction. Likewise `RV.step` has no next state for misaligned accesses, stores into ROM, misaligned jump
 targets and fetches outside ROM; a claim that concludes a step therefore also concludes these conditions.
 
-The jump/branch/SLT claims take the terminal PC as a canonical word (`terminalPC` in `RVTraceInputs` and
+The jump/branch/SLT claims take the terminal PC as a canonical word (`terminalPC` in `RVInterfaceAssumptions` and
 `RVPooledBootInputs`, `terminalCanonical` in the jump family's `RVExecutionInputs`): the circuit does not range-check
 the outgoing PC's high limb, so the last row's target is bounded only through it. Binding it to the teardown circuit is open.
 

@@ -7,7 +7,7 @@ public import Human.Circuits.AddSub.RVModel
 
 namespace Airbender.AddSub
 
-/-- Every accepted row of this family is one step of the RV32 specification. -/
+/-- ADD, ADDI, SUB, LUI and AUIPC rows take one step of our RV32 spec (`RV.step`). -/
 def RVSoundnessClaim : Prop :=
   ∀ trace initial cells program,
     RVInterfaceAssumptions trace initial cells program →

@@ -7,10 +7,10 @@ namespace Airbender.Trace.Machine
 
 /-- Every accepted full unsigned execution has a configured Airbender machine execution. -/
 theorem unrolled_full_unsigned_sail : UnrolledFullUnsignedSailClaim := by
-  intro trace workers initial cells program inits boot wordSetup subwordSetup tables noSpecial noMop stream accepted
+  intro trace workers initial cells program inits boot wordSetup subwordSetup tables noSpecial stream accepted
   exact Proven.Equiv.sail_realizes
     (unrolled_full_unsigned trace workers initial cells program inits boot wordSetup subwordSetup tables
-      noSpecial noMop stream accepted)
+      noSpecial stream accepted)
 
 /-- Every accepted reduced execution has a configured Airbender machine execution. -/
 theorem unrolled_reduced_sail : UnrolledReducedSailClaim := by

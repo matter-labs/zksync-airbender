@@ -27,15 +27,23 @@ def sampleValue : Value :=
 /-- A JSON text whose object has a duplicate member name. -/
 def duplicate : String := "{\"a\":0,\"a\":0}"
 
-/-- The parser accepts only JSON texts without duplicate member names and returns their value; in particular it
-    rejects every malformed input and every input with a duplicate key. The sample shows acceptance is possible. -/
+/-- The parser accepts only JSON texts without duplicate member names and returns their value. -/
 def ParseSoundClaim : Prop :=
-  (∀ (bytes : ByteArray) (v : Value), parse bytes = .ok v → Text bytes.toList v ∧ NoDuplicateKeys v) ∧
-  parse sample.toUTF8 = .ok sampleValue ∧ (parse duplicate.toUTF8).toBool = false
+  ∀ (bytes : ByteArray) (v : Value), parse bytes = .ok v → Text bytes.toList v ∧ NoDuplicateKeys v
 
 /-- A JSON text has exactly one value, so "the value of the bytes" is well defined. -/
 def TextUniqueClaim : Prop :=
-  (∀ (bytes : List UInt8) (v w : Value), Text bytes v → Text bytes w → v = w) ∧ Text (utf8 sample) sampleValue
+  ∀ (bytes : List UInt8) (v w : Value), Text bytes v → Text bytes w → v = w
+
+/-- A text with all JSON value forms supplies an accepted parser input. -/
+def ParseSoundSatisfiableClaim : Prop :=
+  ∃ (bytes : ByteArray) (value : Value), parse bytes = .ok value ∧ bytes = sample.toUTF8 ∧
+    value = sampleValue ∧ (parse duplicate.toUTF8).toBool = false
+
+/-- Two derivations of the same sample supply both grammar premises. -/
+def TextUniqueSatisfiableClaim : Prop :=
+  ∃ (bytes : List UInt8) (left right : Value), Text bytes left ∧ Text bytes right ∧
+    bytes = utf8 sample ∧ left = sampleValue
 
 end Airbender.Json
 
@@ -44,6 +52,10 @@ namespace Airbender
 /-- The decoder returns `c` from a JSON value exactly when the value is the one serde writes for `c`. So a value
     decodes to at most one circuit (`encode` is injective), and every value serde writes for a circuit decodes. -/
 def DecodeClaim : Prop := ∀ (v : Json.Value) (c : Circuit), Circuit.decode v = .ok c ↔ Serde.encode c = v
+
+/-- An encoded circuit supplies an accepted value to the circuit decoder. -/
+def DecodeSatisfiableClaim : Prop :=
+  ∃ (value : Json.Value) (circuit : Circuit), Circuit.decode value = .ok circuit
 
 /-- The field constants of the spec and the importer: `montgomeryInverse` (`RV.RINV`) is `2^-32` mod BabyBear, the
     serialized coefficients of 1 and -1 decode to 1 and -1, and a coefficient's small signed representative

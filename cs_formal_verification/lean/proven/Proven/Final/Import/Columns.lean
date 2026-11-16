@@ -1,5 +1,6 @@
 module
 public import Human.Import.Columns
+public import Human.Circuits.AddSub.Artifact
 public import Std.Data.TreeMap.Lemmas
 
 @[expose] public section
@@ -35,5 +36,11 @@ theorem placements_claim : PlacementsClaim := by
   intro c a
   rw [Circuit.placements, placements_foldl]
   simp
+
+/-- The imported ADD/SUB circuit places logical variable zero at memory column 18. -/
+theorem placements_satisfiable : PlacementsSatisfiableClaim := by
+  refine ⟨AddSub.importedCircuit, .BaseLayerMemory 18, 0, ?_⟩
+  change (0, GKRAddress.BaseLayerMemory 18) ∈ (0, GKRAddress.BaseLayerMemory 18) :: _
+  exact List.mem_cons_self
 
 end Airbender

@@ -29,7 +29,7 @@ def rangeTable {p : Nat} [Fact p.Prime] (name : String) (bound : Nat) : Table (Z
 def range16Table {p : Nat} [Fact p.Prime] : Table (ZMod p) field :=
   rangeTable "Airbender.Range16" limbBase
 
-/-- Native `RangeCheck13`, table ID 26. The comparison below checks every row. -/
+/-- Native `RangeCheck13`, table ID 26. `Human.Compiler.NativeSetups.Ranges` checks every row. -/
 def range13Table {p : Nat} [Fact p.Prime] : Table (ZMod p) field :=
   rangeTable "Airbender.Range13" 8192
 

@@ -83,4 +83,21 @@ def UnifiedHashSegmentationClaim : Prop :=
     HashWindowProfile ((trace.rows.filter fun row => decide (UnifiedReduced.Caller.Selected row.assignment)).map
       fun row => UnifiedReduced.Caller.request row.assignment) windows → IssuedHashSegmentation workers.fulfillments windows
 
+/-- The public data and acceptance premises of this claim have a simultaneous witness. -/
+def UnrolledHashSegmentationSatisfiableClaim : Prop :=
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (program : List RVMachineProgramEntry) (windows : List HashWindow),
+    UnrolledAcceptance trace workers program ∧
+    (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
+    HashWindowProfile ((unrolledCallers trace).map fun row => Requests.caller row.assignment) windows
+
+/-- The public data and acceptance premises of this claim have a simultaneous witness. -/
+def UnifiedHashSegmentationSatisfiableClaim : Prop :=
+  ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (program : List RVMachineProgramEntry) (windows : List HashWindow),
+    UnifiedAcceptance trace workers program ∧
+    (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
+    HashWindowProfile ((trace.rows.filter fun row => decide (UnifiedReduced.Caller.Selected row.assignment)).map
+      fun row => UnifiedReduced.Caller.request row.assignment) windows
+
 end Airbender.Trace.Machine

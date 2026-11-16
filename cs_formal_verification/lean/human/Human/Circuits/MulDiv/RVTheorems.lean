@@ -7,16 +7,16 @@ public import Human.Circuits.MulDiv.RVModel
 
 namespace Airbender.MulDiv
 
-/-- Every accepted row of this family is one step of the RV32 specification. -/
+/-- MUL, MULHU, DIVU and REMU rows take one step of our RV32 spec (`RV.step`). -/
 def RVSoundnessClaim : Prop :=
   ∀ trace initial cells program,
-    RVAssumptions trace initial cells program →
+    RVInterfaceAssumptions trace initial cells program →
     Properties.Soundness (rvModel trace initial cells program).relation rvSpec
 
 /-- The soundness assumptions hold for a trace with a row of this family. -/
 def RVSatisfiableClaim : Prop :=
   ∃ trace initial cells program input output w,
-    RVAssumptions trace initial cells program ∧
+    RVInterfaceAssumptions trace initial cells program ∧
       (rvModel trace initial cells program).relation input output w
 
 end Airbender.MulDiv

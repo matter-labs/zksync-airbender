@@ -9,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 65536
 
 /-- The existing accepted row supplies every source coordinate, including clock helpers. -/
-noncomputable def inputValues (index : Fin 68) : F := Airbender.NonVacuous.SubwordMemoryTrace.assignment index.val
+noncomputable def inputValues (index : Fin 68) : F := NativeExtension.SubwordMemory.inputValues Airbender.NonVacuous.SubwordMemoryTrace.assignment index
 
 /-- Kernel evaluation checks every source equation of this concrete witness. -/
 theorem source_check : FullArithmeticNative.SubwordMemoryCached.native.artifact.source.all
@@ -23,6 +23,6 @@ theorem source_satisfied : Satisfies FullArithmeticNative.SubwordMemoryCached.na
 theorem witness : ∃ (physical : GKRAddress → F) (logical : Nat → F),
     Holds Captures.SubwordMemory.imported.circuit physical ∧
       PlacementAgreement Captures.SubwordMemory.imported.circuit physical logical := by
-  obtain ⟨physical, logical, accepted, placement⟩ := NativeExtension.SubwordMemory.extension Airbender.NonVacuous.SubwordMemoryTrace.assignment source_satisfied
-  exact ⟨physical, logical, accepted, placement⟩
+  obtain ⟨physical, accepted, placement⟩ := NativeExtension.SubwordMemory.extension_preserves Airbender.NonVacuous.SubwordMemoryTrace.assignment source_satisfied
+  exact ⟨physical, Airbender.NonVacuous.SubwordMemoryTrace.assignment, accepted, placement⟩
 end Airbender.Compiler.NativeSatisfiable.SubwordMemory

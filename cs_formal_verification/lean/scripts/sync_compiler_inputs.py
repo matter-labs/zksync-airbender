@@ -23,7 +23,7 @@ for certificate in certificates:
     inputs[certificate] = name
 libraries = {root: library for library in config['lean_lib'] for root in library.get('roots', [])}
 readers = 0
-for directory in ('GKRCompiler', 'GKRProtocol', 'Import/GKRCompiler', 'Import/GKRProtocol'):
+for directory in ('GKRCompiler', 'GKRProtocol', 'Import/GKRCompiler', 'Import/GKRProtocol', 'Compiler/WorkerArithmetic'):
     for reader in sorted((ROOT / 'proven/Proven' / directory).rglob('*.lean')):
         files = sorted(set(re.findall(r'"(artifacts/compiler/[^"\n]+\.json)"', reader.read_text())))
         if not files:

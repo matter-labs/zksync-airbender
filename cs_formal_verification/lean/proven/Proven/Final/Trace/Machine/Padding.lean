@@ -10,9 +10,9 @@ set_option warningAsError true
 
 /-- The full masked unsigned layout executes through its active CPU and worker projection. -/
 theorem padded_unrolled_full_unsigned : PaddedUnrolledFullUnsigned := by
-  intro trace workers initial cells program inits boot wordSetup subwordSetup tables noSpecial noMop stream accepted
+  intro trace workers initial cells program inits boot wordSetup subwordSetup tables noSpecial stream accepted
   exact unrolled_full_unsigned (active trace) (activeWorkers workers) initial cells program inits
-    boot wordSetup subwordSetup tables noSpecial noMop stream (masked_unrolled_acceptance accepted)
+    boot wordSetup subwordSetup tables noSpecial stream (masked_unrolled_acceptance accepted)
 
 /-- The full masked reduced layout executes with modular operations and round calls. -/
 theorem padded_unrolled_reduced : PaddedUnrolledReduced := by

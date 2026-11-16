@@ -126,12 +126,14 @@ theorem rv_realizes {p : Nat} [Fact p.Prime] (hp : 2 * timestampBase + 4 < p)
   have chain := ordered_row_boundaries hp inverse accepted boundary permutation ordered
   obtain ⟨n, final, run, same⟩ := rv_compose_rows start step rows [] trace.terminal
     (by simpa using permutation) (by simpa using ordered) chain native
-  refine ⟨n, final, run, same.1, ?_⟩
-  intro sink member
-  obtain ⟨cell, present, address, read⟩ := rv_terminal_reads hp inverse accepted boundary image domain
-    consistent matched sink member
-  refine ⟨cell, present, address, ?_⟩
-  rw [readRV_congr_same same]
-  cases cell <;> exact read
+  refine ⟨n, final, run, ?_, same.1, ?_⟩
+  · have unchanged := rv_history_input native
+    simpa only [List.drop_zero] using same.2.2.2.2.trans unchanged
+  · intro sink member
+    obtain ⟨cell, present, address, read⟩ := rv_terminal_reads hp inverse accepted boundary image domain
+      consistent matched sink member
+    refine ⟨cell, present, address, ?_⟩
+    rw [readRV_congr_same same]
+    cases cell <;> exact read
 
 end Airbender.Trace.Proofs

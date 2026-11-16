@@ -25,9 +25,9 @@ def RunIsAirbenderClaim : Prop :=
 def AgreeExistsClaim : Prop :=
   ∀ s : RV.State, ∃ machine, Agree s machine
 
-/-- The finite run premise can be met by agreeing states. -/
+/-- Agreeing states meet the finite run premise for at least one instruction. -/
 def RunIsAirbenderSatisfiableClaim : Prop :=
-  ∃ n s s' machine, Agree s machine ∧ RV.run n s = some s'
+  ∃ n s s' machine, 1 ≤ n ∧ Agree s machine ∧ RV.run n s = some s'
 
 /-- The public boot-state premises can be met. -/
 def AgreeExistsSatisfiableClaim : Prop :=
@@ -52,10 +52,12 @@ def FetchKeepsConfiguredSatisfiableClaim : Prop :=
     RV.decode word = some instruction ∧ runSail (fetch ()) state = .ok result state'
 
 namespace Trace
-/-- A configured Airbender machine runs from the public initial state to every accepted terminal value. -/
+/-- Every configured Airbender start that agrees with the public initial state has a run to the accepted
+    terminal values. The run consumes the stated number of input words. -/
 def SailRealizes {Kind : Type} [CircuitLayout Kind] {p : Nat} [_root_.Fact p.Prime]
-    (trace : Data p Kind) (initial : RV.State) (cells : List Cell) : Prop :=
-  ∃ start finish n, Agree initial start ∧ Machine.run n start = some finish ∧
+    (trace : Data p Kind) (initial : RV.State) (cells : List Cell) (consumed : Nat := 0) : Prop :=
+  ∀ start, Agree initial start → ∃ finish n, Machine.run n start = some finish ∧
+    finish.input = initial.input.drop consumed ∧
     finish.sail.regs .PC = trace.terminal.word.toBitVec ∧
     ∀ sink ∈ trace.terminalMemory, ∃ cell ∈ cells, cell.addressCode = sink.address ∧
       finish.readCell cell = some sink.word.toBitVec

@@ -59,6 +59,11 @@ def PlacementsClaim : Prop :=
   ∀ (c : Circuit) (a : GKRAddress),
     c.placements.getD a.key [] = ((c.placement_data.entries.toList.filter (·.2 == a)).map (·.1)).reverse
 
+/-- A nonempty placement map supplies a circuit, physical address and logical variable. -/
+def PlacementsSatisfiableClaim : Prop :=
+  ∃ (circuit : Circuit) (address : GKRAddress) (logical : Nat),
+    (logical, address) ∈ circuit.placement_data.entries.toList
+
 /-- Recover one logical variable for a physical address; reject ambiguity. -/
 def Circuit.logicalVariable (c : Circuit) (address : GKRAddress) : Except String Nat := do
   let address ← c.lookupAddress address

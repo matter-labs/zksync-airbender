@@ -22,5 +22,5 @@ namespace Airbender.PCState
 def OutgoingBoundsSatisfiableClaim : Prop :=
   ∃ (n : Nat) (context : Context babyBearModulus n) (pc : ZMod babyBearModulus × ZMod babyBearModulus),
     Arithmetic.limbBase < babyBearModulus ∧ Interface context ∧ Outgoing context pc ∧
-      pc.1.val < Arithmetic.limbBase
+      pc.1.val < Arithmetic.limbBase ∧ pc ≠ encode 0
 end Airbender.PCState

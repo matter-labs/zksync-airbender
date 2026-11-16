@@ -1,5 +1,6 @@
 module
 public import Human.Compiler.LookupSelectors
+public import Human.Compiler.WorkerCertificates
 public import Human.Trace.Machine.Model
 
 @[expose] public section
@@ -48,13 +49,14 @@ structure UnifiedLogicalRowCertificate (tables : ProgramLookupRows) where
   /-- The unified CPU row participates in the native argument. -/
   active : row.assignment row.columns.execute = 1
 
-/-- Native CPU certificates replace CPU constraints and decoder membership.
-    Worker constraints and participation, raw state matching, request matching and architectural memory
-    matching keep the Phase 2 boundary. The worker pool includes the split Keccak circuits. -/
+/-- Cached CPU and worker certificates supply native equations, source placement and exact public lookups.
+    Raw state matching, request matching and architectural memory matching are explicit interfaces. -/
 structure UnrolledNativeArguments (tables : ProgramLookupRows)
     (certificates : List (ProgramLogicalRowCertificate tables))
     (trace : PooledTrace babyBearModulus) (workers : Machine.WorkerPools babyBearModulus) : Prop
-    extends Machine.WorkersAccepted workers where
+    where
+  /-- Native worker certificates describe both submitted worker pools exactly, in order. -/
+  workerRows : WorkerRowsCertified workers
   /-- Certificates describe exactly the submitted CPU rows, in order. -/
   rows : trace.rows = certificates.map ProgramLogicalRowCertificate.row
   /-- The initial, row and terminal raw state tuples balance. -/
@@ -71,7 +73,9 @@ structure UnrolledNativeArguments (tables : ProgramLookupRows)
 structure UnifiedNativeArguments (tables : ProgramLookupRows)
     (certificates : List (UnifiedLogicalRowCertificate tables))
     (trace : UnifiedTrace babyBearModulus) (workers : Machine.WorkerPools babyBearModulus) : Prop
-    extends Machine.WorkersAccepted workers where
+    where
+  /-- Native worker certificates describe both submitted worker pools exactly, in order. -/
+  workerRows : WorkerRowsCertified workers
   /-- Certificates describe exactly the submitted CPU rows, in order. -/
   rows : trace.rows = certificates.map UnifiedLogicalRowCertificate.row
   /-- The initial, row and terminal raw state tuples balance. -/

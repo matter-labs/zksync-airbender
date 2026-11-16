@@ -19,6 +19,11 @@ The kernel checks both extraction bindings. The [import command](../../../Import
 Its output must pass those bindings. Product equality does not prove a token permutation.
 The raw-column and product-challenge interfaces remain explicit.
 
+The [standalone token proof](../../../../../proven/Proven/InitsTeardowns/Native/Standalone.lean) and
+[unified token proof](../../../../../proven/Proven/InitsTeardowns/Native/Unified.lean) bind these lists to the logical initialization witnesses.
+They use the same checked public windows and the imported teardown memory placements.
+The machine boot interface uses the initialization lists and binds terminal memory to register and teardown tokens.
+
 The EVM verifier pins the deployment window values through upstream fix #548.
 The Rust full statement verifier also requires strictly increasing top bits below 64 across all instances.
 Both conditions matter for the initialization-window fix.

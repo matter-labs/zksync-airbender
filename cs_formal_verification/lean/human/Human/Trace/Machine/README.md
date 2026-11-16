@@ -6,20 +6,28 @@ The [final proofs](../../../../proven/Proven/Final/Trace/Machine/Unrolled.lean) 
 The [unified proof](../../../../proven/Proven/Final/Trace/Machine/Unified.lean) establishes the unified target.
 
 Each conclusion is `RVRealizes`: one run of `RV.run` reaches the terminal PC and tracked cells.
+The final input is the initial input after all selected external reads.
 The program is public ROM data. Each initialization instance supplies its own checked top bits.
 [Model.lean](Model.lean) states the native constraint, decoder, request, state and memory interfaces.
 The standard and split worker pools share the architectural memory permutation.
 The [input interface](ExternalInput.lean) binds actual response ports to the independent stream in the initial state.
 The input values are external data. The circuit does not authenticate the stream.
 
-The full target includes split Keccak and excludes special5. It excludes `mop.r.N` because the full
-machine uses a plain rotate and the current RV spec uses xor-rotate.
+The full target includes split Keccak and excludes special5. Both unrolled targets exclude `mop.r.N`.
+Unified admits `mop.r.N` with N = 16, 12, 8 or 7, including rd = x0.
 Delegation validity is not a target premise. Invalid controls and worker pointer use follow the delegation spec.
 The typed [verifier boundary](../../Helpers/Context/VerifierBoundary/Theorems.lean) derives terminal-PC bounds.
 Its raw tuple and range claims have separate witnesses.
 The [malformed-PC regression](../../../../test/Tests/VerifierBoundary.lean) checks native acceptance and verifier rejection.
 
+The [unified native premise witness](../../../../proven/Proven/NonVacuous/DynamicCopyLoop/Native.lean) has sixteen CPU rows,
+repeated PCs and two bigint COPY calls. Each row has cached native gates, placement, public lookup matching and participation.
+The witness supplies both complete public initialization windows, their checked top bits, all terminal register tokens and all teardown tokens.
+The [unrolled native witness](../../../../proven/Proven/NonVacuous/UnrolledNative/Certificates.lean)
+executes one ADD row under each unrolled profile, with the complete standalone initialization and teardown domain.
+
 Native initialization gates imply the exact token products through the imported artifact bindings.
+The boot interface binds terminal memory to one token per register and every initialization instance's teardown tokens.
 The [unrolled](../../../../proven/Proven/Trace/Machine/UnrolledStandardCycle.lean) and
 [unified](../../../../proven/Proven/Trace/Machine/UnifiedStandardCycle.lean) caller proofs give actual fetched RV steps
 for bigint, G and round cycles. They derive reads, write values and distinct worker addresses from shared matching.
@@ -41,7 +49,9 @@ matched standard or split worker. It uses occurrence clocks and permits repeated
 The native acceptance interface is explicit. The [run composition](../../../../proven/Proven/Trace/Machine/UnrolledRun.lean)
 uses one shared history and permits loops. The [padded targets](Padding.lean) use the native contribution mask
 for CPU, worker, state, request and memory tuples. Their [proofs](../../../../proven/Proven/Final/Trace/Machine/Padding.lean)
-erase identity factors and retain full occurrence counts. Cached GKR preservation remains open.
+erase identity factors and retain full occurrence counts. The [cached circuit results](../../Compiler/README.md)
+connect native CPU and worker gates, placement and public lookups to every imported row constraint.
+CPU certificates also give public decoder membership. State, request and memory matching remain explicit.
 
 [Hash segmentation](Segmentation.lean) partitions complete G, round and split Keccak windows by native occurrence clocks.
 Its public window interface supplies caller coverage, protocol counts and CSR families.

@@ -86,7 +86,7 @@ structure RVWordMapping {p : Nat} (input : RVInput) (output : Output) (w : Nat �
   finalPCHi : output.pc.hi = (w Variables.finalPCHi).val
 
 /-- Public initialization and ROM tables for this family. -/
-abbrev RVAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+abbrev RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
   Trace.RVPooledHistoryInputs trace initial cells program
 
@@ -96,7 +96,9 @@ def rvModel (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : 
   Trace.rvRowModel (family := .wordMemory) (before := RVInput.before) (instruction := rvInstruction)
     (words := RVWordMapping) trace initial cells program
 
-/-- One step computes the effective address and transfers the row's word. It sets the final PC and changes no other visible state. -/
+/-- The effective address is the source plus the immediate, modulo `2 ^ 32`.
+    Our RV32 spec (`RV.step`) loads the result into `rd` or stores the result word at that address.
+    It sets the final PC and preserves the other visible state. A misaligned access or ROM store has no step. -/
 def rvSpec (input : RVInput) (output : Output) : Prop :=
   output.address.toBitVec = input.source.toBitVec + input.immediate.toBitVec ∧
   ∃ s', RV.step input.before = some s' ∧

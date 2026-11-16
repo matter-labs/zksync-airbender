@@ -17,5 +17,8 @@
   "artifacts/compiler/lookup/shift-binop-cached.json": "a29a98633761c7a308933227b69004779176d6edc4c1edd004899af5faf715ca",
   "artifacts/compiler/lookup/subword-memory-cached.json": "bec6c4eca1e0236591e81ff8afd9c1da1986a6f7ae15f539126970d38e5ace6b",
   "artifacts/compiler/lookup/unified-cached.json": "5b6663dcfa8b530c8681a3140165b583d52fbc7d654f5c4d2c6cf43ce58ded15",
-  "artifacts/compiler/lookup/word-memory-cached.json": "8e81ee88ed820814766055f78f14fa407032f5a90c6de564aa4afcd49b9d39b5"
+  "artifacts/compiler/lookup/word-memory-cached.json": "8e81ee88ed820814766055f78f14fa407032f5a90c6de564aa4afcd49b9d39b5",
+  "artifacts/compiler/description-arithmetic/keccak-column-parity-cached.json": "40a95ac8e6496537ae2d5718f47ae1cb625d79351c45d3b8b1e85e16f1e193b3",
+  "artifacts/compiler/description-arithmetic/keccak-theta-rho-cached.json": "f04753f58f52bce1a9af863d3531ba3b9cbb1999b3176a6e1a89a7203feb3bd2",
+  "artifacts/compiler/description-arithmetic/keccak-chi5-cached.json": "51e928971fce86cd0272c3ba1a1b6deba100f588a28365696995038932c44329"
 }

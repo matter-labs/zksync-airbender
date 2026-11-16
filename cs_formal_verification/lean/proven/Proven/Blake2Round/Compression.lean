@@ -41,7 +41,7 @@ theorem row_compression {input : Row.Input} {output : Row.Output} {flags : Fin 8
       (Preparation.step (Row.preparationInput input)).chaining, _⟩ then _ else input.state, _)
   rw [← extended]
   apply Prod.ext
-  · dsimp only [Finalization.spec] at finalization
+  · dsimp only [Finalization.spec, Finalization.result] at finalization
     split_ifs at finalization ⊢ with final
     · have state := congrArg (fun words : Vector Nat 8 =>
         words.map (fun value => Word.ofBitVec (BitVec.ofNat 32 value))) finalization

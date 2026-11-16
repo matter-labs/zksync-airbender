@@ -75,7 +75,7 @@ def emptyTrace {Kind : Type} [CircuitLayout Kind] (setup : CircuitLayout.Setup (
   initial := PCState.boundary 0 (4, 0)
   terminal := PCState.boundary 0 (4, 0)
   initialMemory := registerSeeds ++ inits.flatMap InitsTeardowns.Witness.initTokens
-  terminalMemory := registerSeeds ++ inits.flatMap InitsTeardowns.Witness.initTokens
+  terminalMemory := registerSeeds ++ inits.flatMap InitsTeardowns.Witness.teardownTokens
 
 theorem boot {Kind : Type} [CircuitLayout Kind] (config : RVMachineConfig)
     (setup : CircuitLayout.Setup (Kind := Kind) babyBearModulus)
@@ -89,9 +89,10 @@ theorem boot {Kind : Type} [CircuitLayout Kind] (config : RVMachineConfig)
     rw [(properties.bootImage inits checked).2]
     simp only [cells, registerSeeds, ROMView.nativeBootImage, List.map_append]
   refine ⟨cells_distinct layout properties inits checked, aligned, rfl, ?_, ⟨[], rfl⟩,
-    checked, rfl, rfl, ?_, rfl, ?_⟩
+    checked, rfl, ⟨registerSeeds, ?_, rfl⟩, rfl, ?_, rfl, ?_⟩
   · intro index
     exact cell_zero _ trivial
+  · exact List.Perm.refl _
   · change initialImageRV zero (cells layout inits) = some (registerSeeds ++ inits.flatMap InitsTeardowns.Witness.initTokens)
     rw [seed]
     exact image_zero _ aligned

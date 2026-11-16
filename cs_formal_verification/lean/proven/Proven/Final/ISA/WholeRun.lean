@@ -9,8 +9,9 @@ theorem agree_exists : AgreeExistsClaim := Proven.Equiv.agree_exists
 theorem fetch_keeps_configured : FetchKeepsConfiguredClaim := Proven.Equiv.fetch_keeps_configured
 
 theorem run_is_airbender_satisfiable : RunIsAirbenderSatisfiableClaim := by
-  obtain ⟨machine, agreement⟩ := agree_exists Proven.Equiv.NonVacuous.state
-  exact ⟨0, Proven.Equiv.NonVacuous.state, Proven.Equiv.NonVacuous.state, machine, agreement, rfl⟩
+  obtain ⟨state, after, machine, agreement, step⟩ := Proven.Equiv.NonVacuous.step_assumptions
+  exact ⟨1, state, after, machine, by decide, agreement,
+    by simp only [RV.run, step, Option.bind_some]⟩
 
 theorem agree_exists_satisfiable : AgreeExistsSatisfiableClaim := by
   obtain ⟨machine, agreement⟩ := agree_exists Proven.Equiv.NonVacuous.state

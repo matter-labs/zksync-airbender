@@ -1,6 +1,7 @@
 module
 public import Human.Helpers.Context.PaddingBoundary.Model
 public import Human.Helpers.Core.BabyBearPrime
+public import Human.Helpers.Context.Registries.Pooled
 
 @[expose] public section
 namespace Airbender.PaddingBoundary
@@ -25,7 +26,17 @@ def ProjectionClaim : Prop :=
 end Airbender.PaddingBoundary
 
 namespace Airbender.PaddingBoundary
-/-- The native Boolean contribution premise holds for a participating row. -/
+/-- A participating row supplies the Boolean selector, encoding and value of the contribution claim. -/
 def ContributionSatisfiableClaim : Prop :=
-  ∃ execute : ZMod babyBearModulus, execute = 1 ∧ (execute = 0 ∨ execute = 1)
+  ∃ (execute : ZMod babyBearModulus) (encode : Nat → ZMod babyBearModulus) (value : Nat),
+    (execute = 0 ∨ execute = 1) ∧ execute = 1 ∧ encode value ≠ 0
+
+/-- A nonempty row product supplies the Boolean selector, encoding and values of the product claim. -/
+def ProductSatisfiableClaim : Prop :=
+  ∃ (execute : ZMod babyBearModulus) (encode : Nat → ZMod babyBearModulus) (values : List Nat),
+    (execute = 0 ∨ execute = 1) ∧ execute = 1 ∧ values ≠ [] ∧ (values.map encode).prod ≠ 0
+
+/-- An accepted padded layout supplies every premise of the projection claim. -/
+def ProjectionSatisfiableClaim : Prop :=
+  ∃ (trace : Trace.PooledTrace babyBearModulus), AcceptedLayout trace
 end Airbender.PaddingBoundary

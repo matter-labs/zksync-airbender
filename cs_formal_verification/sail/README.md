@@ -107,7 +107,7 @@ The generated model is committed with `PROVENANCE.txt`, `SAIL_COMPILER_LICENSE` 
 CI regenerates it and checks the diff before it restores the Lake manifest.
 The lean-sail runtime is fetched. Its upstream repository has no licence.
 The existing `patches/lean-sail-*.patch` files contain upstream source lines.
-The owner must refer these patches to Legal. Do not add source lines from lean-sail.
+The build fetches the runtime before it applies these patches.
 
 [Final ISA claims](../lean/proven/Proven/Final/ISA/) include the following results.
 [Claims.lean](../lean/test/Checks/Claims.lean) records the type checks and axiom roots for all circuit and trace claims.

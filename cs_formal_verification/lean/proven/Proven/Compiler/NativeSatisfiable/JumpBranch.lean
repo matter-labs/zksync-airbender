@@ -9,7 +9,7 @@ set_option warningAsError true
 set_option maxRecDepth 65536
 
 /-- The existing accepted row supplies every source coordinate, including clock helpers. -/
-noncomputable def inputValues (index : Fin 55) : F := Airbender.JumpBranchSlt.Comparison.NonVacuous.assignment index.val
+noncomputable def inputValues (index : Fin 55) : F := NativeExtension.JumpBranch.inputValues Airbender.JumpBranchSlt.Comparison.NonVacuous.assignment index
 
 /-- Kernel evaluation checks every source equation of this concrete witness. -/
 theorem source_check : FullArithmeticNative.JumpBranchCached.native.artifact.source.all
@@ -23,6 +23,6 @@ theorem source_satisfied : Satisfies FullArithmeticNative.JumpBranchCached.nativ
 theorem witness : ∃ (physical : GKRAddress → F) (logical : Nat → F),
     Holds Captures.JumpBranch.imported.circuit physical ∧
       PlacementAgreement Captures.JumpBranch.imported.circuit physical logical := by
-  obtain ⟨physical, logical, accepted, placement⟩ := NativeExtension.JumpBranch.extension Airbender.JumpBranchSlt.Comparison.NonVacuous.assignment source_satisfied
-  exact ⟨physical, logical, accepted, placement⟩
+  obtain ⟨physical, accepted, placement⟩ := NativeExtension.JumpBranch.extension_preserves Airbender.JumpBranchSlt.Comparison.NonVacuous.assignment source_satisfied
+  exact ⟨physical, Airbender.JumpBranchSlt.Comparison.NonVacuous.assignment, accepted, placement⟩
 end Airbender.Compiler.NativeSatisfiable.JumpBranch

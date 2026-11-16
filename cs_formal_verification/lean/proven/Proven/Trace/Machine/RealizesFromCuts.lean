@@ -35,7 +35,8 @@ theorem realizes_of_cycle_steps {Kind : Type} [CircuitLayout Kind] [ClockLaws Ki
       RVHistory cells (events.filter fun event => decide (row.clock < event.1 ∧
         event.1 ≤ (decodeTimestamp row.assignment row.columns.finalTime).value)) before after →
       ∃ next, RV.step (nativeView initial index row.start before) = some next ∧
-        RV.Same next (nativeView initial index row.finish after)) : RVRealizes trace initial cells := by
+        RV.Same next (nativeView initial index row.finish after)) :
+    RVRealizes trace initial cells (index (timeOfPair trace.terminal.timestamp).value) := by
   obtain ⟨path, properties⟩ := state_path_checks (by decide) (by decide) constraints states initialClock alignedClock
   have endpoints := history_endpoint_cuts history bounds
   let clock := fun state : PCState.State babyBearModulus => (timeOfPair state.timestamp).value
@@ -61,7 +62,7 @@ theorem realizes_of_cycle_steps {Kind : Type} [CircuitLayout Kind] [ClockLaws Ki
     cases initial
     rfl
   rw [firstView] at run
-  refine ⟨path.length - 1, actual, run, same.1, ?_⟩
+  refine ⟨path.length - 1, actual, run, same.2.2.2.2, same.1, ?_⟩
   intro sink member
   obtain ⟨cell, present, address, read⟩ := terminal sink member
   refine ⟨cell, present, address, ?_⟩

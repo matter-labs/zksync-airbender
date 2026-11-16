@@ -112,9 +112,9 @@ def PaddedUnrolledFullUnsigned : Prop :=
     trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) →
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) →
     workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows →
-    NoSpecial5 program → NoMopR program →
+    NoSpecial5 program →
     NonDeterminism.Pooled.StreamPorts (active trace) initial.input →
-    MaskedUnrolledAcceptance trace workers program → RVRealizes trace initial cells
+    MaskedUnrolledAcceptance trace workers program → RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (active trace))
 
 
 /-- The UnrolledReduced target holds for the full masked layout and its participating CPU and worker rows. -/
@@ -127,7 +127,7 @@ def PaddedUnrolledReduced : Prop :=
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) →
     workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows →
     NonDeterminism.Pooled.StreamPorts (active trace) initial.input →
-    MaskedUnrolledAcceptance trace workers program → RVRealizes trace initial cells
+    MaskedUnrolledAcceptance trace workers program → RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (active trace))
 
 
 /-- The Unified target holds for the full masked layout and its participating CPU and worker rows. -/
@@ -139,7 +139,43 @@ def PaddedUnified : Prop :=
     trace.rom = UnifiedReduced.Setup.tableRV initial →
     workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows →
     NoSpecial5 program → UnifiedStreamPorts (active trace) initial.input →
-    MaskedUnifiedAcceptance trace workers program → RVRealizes trace initial cells
+    MaskedUnifiedAcceptance trace workers program → RVRealizes trace initial cells (unifiedReadCount (active trace))
 
+
+/-- The public data and acceptance premises of this claim have a simultaneous witness. -/
+def PaddedUnrolledFullUnsignedSatisfiableClaim : Prop :=
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    BootInputs .unrolledFullUnsigned (active trace) initial cells program InitsTeardowns.importedLayout inits ∧
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NoSpecial5 program ∧
+    NonDeterminism.Pooled.StreamPorts (active trace) initial.input ∧
+    MaskedUnrolledAcceptance trace workers program
+
+/-- The public data and acceptance premises of this claim have a simultaneous witness. -/
+def PaddedUnrolledReducedSatisfiableClaim : Prop :=
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    BootInputs .unrolledReduced (active trace) initial cells program InitsTeardowns.importedLayout inits ∧
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NonDeterminism.Pooled.StreamPorts (active trace) initial.input ∧
+    MaskedUnrolledAcceptance trace workers program
+
+/-- The public data and acceptance premises of this claim have a simultaneous witness. -/
+def PaddedUnifiedSatisfiableClaim : Prop :=
+  ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)),
+    BootInputs .unified (active trace) initial cells program InitsTeardowns.unifiedLayout inits ∧
+    trace.rom = UnifiedReduced.Setup.tableRV initial ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NoSpecial5 program ∧ UnifiedStreamPorts (active trace) initial.input ∧
+    MaskedUnifiedAcceptance trace workers program
 
 end Airbender.Trace.Machine

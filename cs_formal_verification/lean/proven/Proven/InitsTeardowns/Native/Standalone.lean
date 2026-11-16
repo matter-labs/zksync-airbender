@@ -8,6 +8,7 @@ public import Proven.KernelRfl
 @[expose] public section
 
 namespace Airbender.InitsTeardowns.Native.Proofs.Standalone
+open Trace
 
 /-- The extracted graph is bound to the existing imported circuit. -/
 theorem binding : StandaloneBindingClaim := by
@@ -32,5 +33,74 @@ theorem soundness : StandaloneSoundnessClaim := by
 /-- The native gate premises have an assignment. -/
 theorem satisfiable : StandaloneSatisfiableClaim :=
   ⟨_, _, _, accepted_unit standaloneArtifact⟩
+
+/-- Native initialization tokens equal the boot interface tokens for the same checked public windows. -/
+theorem init_tokens {E : Type} [CommRing E]
+    (parameters : Parameters babyBearModulus E) (raw : Raw babyBearModulus)
+    (w : InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)
+    (windows : ∀ set : Fin 8, parameters.windows set.val = w.topBits[set])
+    (checked : ∀ top ∈ w.topBits.toList, top < InitsTeardowns.maxTopBit) :
+    ramTokens standaloneArtifact.layout parameters raw .initial = w.initTokens := by
+  unfold ramTokens Layout.leaves InitsTeardowns.Witness.initTokens InitsTeardowns.initTokens
+  rw [vector_list, List.flatMap_map, List.flatMap_map]
+  change (List.finRange 8).flatMap _ = (List.finRange 8).flatMap _
+  apply InitsTeardowns.Proofs.flatMap_congr_mem
+  intro set member
+  clear member
+  change (List.finRange 16777216).map _ = (List.range 16777216).map _
+  rw [← finRange_values, List.map_map]
+  apply List.map_congr_left
+  intro row member
+  clear member
+  have topBound := checked (w.topBits[set]) (by
+    rw [vector_list]
+    exact List.mem_map.mpr ⟨set, List.mem_finRange set, rfl⟩)
+  change (⟨Nat.pair 1 (Nat.pair (addressLo row.val)
+    (row.val / 16384 + parameters.windows set.val * 1024)), (0, 0), Nat.pair 0 0⟩ : MemoryToken babyBearModulus) = _
+  rw [windows]
+  unfold InitsTeardowns.initToken
+  congr 1
+  exact (native_address (layout := InitsTeardowns.importedLayout) ⟨rfl, Or.inr rfl⟩ topBound row.isLt).symm
+
+/-- Native scalar memory columns have the imported logical teardown variable IDs. -/
+theorem columns_binding : ∀ set : Fin 8,
+    standaloneArtifact.layout.columns[set].timeLo + 0 = InitsTeardowns.importedLayout.sets[set].timestamp[0] ∧
+    standaloneArtifact.layout.columns[set].timeHi + 0 = InitsTeardowns.importedLayout.sets[set].timestamp[1] ∧
+    standaloneArtifact.layout.columns[set].valueLo + 0 = InitsTeardowns.importedLayout.sets[set].value[0] ∧
+    standaloneArtifact.layout.columns[set].valueHi + 0 = InitsTeardowns.importedLayout.sets[set].value[1] := by
+  decide +kernel
+
+/-- Native teardown tokens equal the boot interface tokens at the imported memory placements. -/
+theorem teardown_tokens {E : Type} [CommRing E]
+    (parameters : Parameters babyBearModulus E)
+    (w : InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)
+    (windows : ∀ set : Fin 8, parameters.windows set.val = w.topBits[set])
+    (checked : ∀ top ∈ w.topBits.toList, top < InitsTeardowns.maxTopBit) :
+    ramTokens standaloneArtifact.layout parameters (rawOfWitness 0 w) .terminal = w.teardownTokens := by
+  unfold ramTokens Layout.leaves InitsTeardowns.Witness.teardownTokens
+  rw [vector_zip_array, List.flatMap_map, List.flatMap_map]
+  change (List.finRange 8).flatMap _ = (List.finRange 8).flatMap _
+  apply InitsTeardowns.Proofs.flatMap_congr_mem
+  intro set member
+  clear member
+  change (List.finRange 16777216).map _ = (List.range 16777216).map _
+  rw [← finRange_values, List.map_map]
+  apply List.map_congr_left
+  intro row member
+  clear member
+  have topBound := checked (w.topBits[set]) (by
+    rw [vector_list]
+    exact List.mem_map.mpr ⟨set, List.mem_finRange set, rfl⟩)
+  have columns := columns_binding set
+  change (⟨Nat.pair 1 (Nat.pair (addressLo row.val)
+    (row.val / 16384 + parameters.windows set.val * 1024)),
+    (w.assignment row.val (standaloneArtifact.layout.columns[set].timeLo + 0),
+      w.assignment row.val (standaloneArtifact.layout.columns[set].timeHi + 0)),
+    Nat.pair (w.assignment row.val (standaloneArtifact.layout.columns[set].valueLo + 0)).val
+      (w.assignment row.val (standaloneArtifact.layout.columns[set].valueHi + 0)).val⟩ : MemoryToken babyBearModulus) = _
+  rw [windows, columns.1, columns.2.1, columns.2.2.1, columns.2.2.2]
+  unfold InitsTeardowns.teardownToken
+  congr 1
+  exact (native_address (layout := InitsTeardowns.importedLayout) ⟨rfl, Or.inr rfl⟩ topBound row.isLt).symm
 
 end Airbender.InitsTeardowns.Native.Proofs.Standalone

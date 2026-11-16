@@ -10,7 +10,9 @@ open Trace
     This is a permutation token, not an initialized architectural register.
     The CSR address is retained in full; it is never truncated to five bits. -/
 structure Request (p : Nat) where
+  /-- The complete custom CSR address identifies the worker family. -/
   csr : Nat
+  /-- The raw low and high invocation-clock limbs identify this call. -/
   time : ZMod p × ZMod p
   deriving DecidableEq
 

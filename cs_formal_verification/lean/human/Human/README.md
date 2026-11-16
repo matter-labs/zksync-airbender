@@ -3,7 +3,7 @@
 This directory states the verification claims and their meaning: circuit
 relations, the shared context needed to interpret their witnesses, and complete
 execution contracts. It exposes the selected references, observable mappings and
-assumptions for human review; supporting proof calculations live in Proofs.
+assumptions for human review; supporting proof calculations are in `proven/`.
 
 ## Main checked results
 
@@ -15,6 +15,8 @@ assumptions for human review; supporting proof calculations live in Proofs.
 | Admitted ordinary instruction traces are a run of `RV.run` reaching the native terminal PC and tracked values; external-read extensions also prove consumption. | [Trace results](Trace/README.md#checked-results) |
 | Native worker operations and complete selected hash spans reach their references on actual history values. | [Worker results](Trace/Workers/README.md#checked-results) |
 | Joint native cuts, caller placement and prepared references use derived states/schedules. | [Unified results](Trace/UnifiedReduced/README.md#checked-results) |
+| Full unrolled, reduced unrolled and unified machines execute their submitted CPU and worker rows from public boot data. They reach the terminal values and consume the counted external input. | [Production machine targets](Trace/Machine/README.md) |
+| Every configured Sail start that agrees with the public state has the same complete machine run. | [Sail machine targets](ISA/Sail/MachineTargets.lean) |
 
 Each link states the remaining premises and scope. A memory-consistency result,
 an operation effect and a whole-instruction retirement result are distinct claims.
@@ -73,4 +75,4 @@ The Sail model (generated SailRV32 and lean-sail) is imported only by `ISA/Sail/
 counterexamples. [Trust boundaries](../../../docs/TRUST_AND_REVIEW.md) records import,
 generation, table and cryptographic correspondence that is not proved.
 [Reproduction](../../../README.md#reproduce) gives the build, regression and audit gates.
-Supporting calculations remain in Proofs; importer fidelity is a separate review.
+Supporting calculations are in `proven/`; importer fidelity is a separate review.

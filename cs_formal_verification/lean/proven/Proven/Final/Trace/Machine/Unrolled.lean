@@ -11,7 +11,7 @@ set_option backward.isDefEq.respectTransparency false
 
 /-- The full unsigned native machine executes the public program, with its matched standard and split calls. -/
 theorem unrolled_full_unsigned : UnrolledFullUnsigned := by
-  intro trace workers initial cells program inits boot wordSetup subwordSetup tables noSpecial _ stream accepted
+  intro trace workers initial cells program inits boot wordSetup subwordSetup tables noSpecial stream accepted
   obtain ⟨addresses, programImage⟩ := boot.programImage
   have clocks := boot_clocks InitsTeardowns.standalone_claim.1 boot
   exact unrolled_realizes (by decide) accepted clocks.initial clocks.aligned boot.image boot.distinct boot.aligned

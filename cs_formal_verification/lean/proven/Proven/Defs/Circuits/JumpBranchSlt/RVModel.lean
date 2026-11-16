@@ -38,10 +38,10 @@ def rvCircuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     Accepted trace ∧ RVPooledDecoded trace program ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := RVTraceMapping trace initial cells program
 
-/-- Assumptions of the RV statements: `RVTraceInputs`. No code-alignment premise is needed. -/
+/-- Assumptions of the RV statements: `RVInterfaceAssumptions`. No code-alignment premise is needed. -/
 abbrev RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
-  RVTraceInputs trace initial cells program
+  JumpBranchSlt.RVInterfaceAssumptions trace initial cells program
 
 end Airbender.JumpBranchSlt.Comparison
 
@@ -70,10 +70,10 @@ def rvCircuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     Accepted trace ∧ RVPooledDecoded trace program ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := RVTraceMapping trace initial cells program
 
-/-- Assumptions of the RV statements: `RVTraceInputs`. No code-alignment premise is needed. -/
+/-- Assumptions of the RV statements: `RVInterfaceAssumptions`. No code-alignment premise is needed. -/
 abbrev RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
-  RVTraceInputs trace initial cells program
+  JumpBranchSlt.RVInterfaceAssumptions trace initial cells program
 
 end Airbender.JumpBranchSlt.Branch
 
@@ -102,9 +102,9 @@ def rvCircuitModel {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     Accepted trace ∧ RVPooledDecoded trace program ∧ (⟨.jumpBranchSlt, w⟩ : Row p PooledFamily) ∈ trace.rows
   represents := RVTraceMapping trace initial cells program
 
-/-- Assumptions of the RV statements: `RVTraceInputs`. No code-alignment premise is needed. -/
+/-- Assumptions of the RV statements: `RVInterfaceAssumptions`. No code-alignment premise is needed. -/
 abbrev RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
-  RVTraceInputs trace initial cells program
+  JumpBranchSlt.RVInterfaceAssumptions trace initial cells program
 
 end Airbender.JumpBranchSlt.Jump

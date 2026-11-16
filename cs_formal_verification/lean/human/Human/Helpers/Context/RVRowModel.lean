@@ -6,10 +6,11 @@ public import Human.ISA.RV32
 
 @[expose] public section
 
-/-! The shape shared by the per-row RV claims of the pooled families (AddSub, MulDiv, ShiftBinop, SubwordMemory,
-    WordMemory, JumpBranchSlt): what a row of a family is, read in RV32 terms, and what the claim asserts about it.
-    Each family supplies its input type, `before` (the row's pre-state), its instruction, its word mapping (the
-    imported variable IDs), its public assumptions and its conclusion. -/
+/-! Shared row interpretation for ADD/SUB, MUL/DIV, shifts and bit operations, word and subword memory,
+    and jump, branch and comparison circuits. `RVRowMapping` binds the imported words, the state at the
+    row clock, and the decoded public instruction. `rvRowModel` requires an accepted trace, program
+    decoding and row membership. Each family claim adds its public interface assumptions and states
+    its result for our RV32 spec (`RV.step`). -/
 
 namespace Airbender.Trace
 

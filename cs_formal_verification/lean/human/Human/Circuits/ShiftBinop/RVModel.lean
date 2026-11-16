@@ -98,7 +98,7 @@ structure RVWordMapping {p : Nat} (input : RVInput) (output : Circuit.Output) (w
   finalPCHi : output.pc.hi = (w 14).val
 
 /-- Public initialization and ROM tables for this family. -/
-abbrev RVAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
+abbrev RVInterfaceAssumptions {p : Nat} [Fact p.Prime] (trace : PooledTrace p)
     (initial : RV.State) (cells : List Cell) (program : List RVPooledProgramEntry) : Prop :=
   Trace.RVPooledHistoryInputs trace initial cells program
 
