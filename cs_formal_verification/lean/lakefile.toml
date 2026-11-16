@@ -427,6 +427,7 @@ roots = [
   "Tests.SetupComparison",
   "Tests.NativeGridComparison",
   "Tests.KernelExact",
+  "Tests.LookupSelectorGroups",
   "Tests.VerifierBoundary",
   "Tests.Bigint",
   "Tests.BigintAbi",

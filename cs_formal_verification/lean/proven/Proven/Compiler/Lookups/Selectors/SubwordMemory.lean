@@ -12,7 +12,8 @@ theorem binding :
     queryLocators (circuitFor (.pooled .subwordMemory)) =
       .ok ((selectorsFor (.pooled .subwordMemory)).map (fun selector => (selector.gate, selector.operand))) ∧
     (selectorsFor (.pooled .subwordMemory)).all (fun selector =>
-      match select (circuitFor (.pooled .subwordMemory)) selector with | .ok _ => true | .error _ => false) = true := by
-  constructor <;> kernel_rfl
+      match select (circuitFor (.pooled .subwordMemory)) selector with | .ok _ => true | .error _ => false) = true ∧
+    groupsAgree (circuitFor (.pooled .subwordMemory)) (selectorsFor (.pooled .subwordMemory)) = true := by
+  refine ⟨?_, ?_, ?_⟩ <;> kernel_rfl
 
 end Airbender.Compiler.NativeLookups.Proofs.SubwordMemory

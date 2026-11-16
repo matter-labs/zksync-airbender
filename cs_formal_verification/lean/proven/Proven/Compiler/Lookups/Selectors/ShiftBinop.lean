@@ -12,7 +12,8 @@ theorem binding :
     queryLocators (circuitFor (.pooled .shiftBinop)) =
       .ok ((selectorsFor (.pooled .shiftBinop)).map (fun selector => (selector.gate, selector.operand))) ∧
     (selectorsFor (.pooled .shiftBinop)).all (fun selector =>
-      match select (circuitFor (.pooled .shiftBinop)) selector with | .ok _ => true | .error _ => false) = true := by
-  constructor <;> kernel_rfl
+      match select (circuitFor (.pooled .shiftBinop)) selector with | .ok _ => true | .error _ => false) = true ∧
+    groupsAgree (circuitFor (.pooled .shiftBinop)) (selectorsFor (.pooled .shiftBinop)) = true := by
+  refine ⟨?_, ?_, ?_⟩ <;> kernel_rfl
 
 end Airbender.Compiler.NativeLookups.Proofs.ShiftBinop

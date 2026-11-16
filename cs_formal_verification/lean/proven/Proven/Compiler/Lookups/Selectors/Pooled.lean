@@ -15,7 +15,8 @@ theorem binding (family : Trace.PooledFamily) :
     queryLocators (circuitFor (.pooled family)) =
       .ok ((selectorsFor (.pooled family)).map (fun selector => (selector.gate, selector.operand))) ∧
     (selectorsFor (.pooled family)).all (fun selector =>
-      match select (circuitFor (.pooled family)) selector with | .ok _ => true | .error _ => false) = true := by
+      match select (circuitFor (.pooled family)) selector with | .ok _ => true | .error _ => false) = true ∧
+    groupsAgree (circuitFor (.pooled family)) (selectorsFor (.pooled family)) = true := by
   cases family with
   | addSub => exact Proofs.AddSub.binding
   | wordMemory => exact Proofs.WordMemory.binding

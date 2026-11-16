@@ -12,7 +12,8 @@ theorem binding :
     queryLocators (circuitFor (.unified)) =
       .ok ((selectorsFor (.unified)).map (fun selector => (selector.gate, selector.operand))) ∧
     (selectorsFor (.unified)).all (fun selector =>
-      match select (circuitFor (.unified)) selector with | .ok _ => true | .error _ => false) = true := by
-  constructor <;> kernel_rfl
+      match select (circuitFor (.unified)) selector with | .ok _ => true | .error _ => false) = true ∧
+    groupsAgree (circuitFor (.unified)) (selectorsFor (.unified)) = true := by
+  refine ⟨?_, ?_, ?_⟩ <;> kernel_rfl
 
 end Airbender.Compiler.NativeLookups.Proofs.Unified

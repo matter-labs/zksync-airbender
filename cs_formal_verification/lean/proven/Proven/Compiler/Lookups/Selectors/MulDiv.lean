@@ -12,7 +12,8 @@ theorem binding :
     queryLocators (circuitFor (.pooled .mulDiv)) =
       .ok ((selectorsFor (.pooled .mulDiv)).map (fun selector => (selector.gate, selector.operand))) ∧
     (selectorsFor (.pooled .mulDiv)).all (fun selector =>
-      match select (circuitFor (.pooled .mulDiv)) selector with | .ok _ => true | .error _ => false) = true := by
-  constructor <;> kernel_rfl
+      match select (circuitFor (.pooled .mulDiv)) selector with | .ok _ => true | .error _ => false) = true ∧
+    groupsAgree (circuitFor (.pooled .mulDiv)) (selectorsFor (.pooled .mulDiv)) = true := by
+  refine ⟨?_, ?_, ?_⟩ <;> kernel_rfl
 
 end Airbender.Compiler.NativeLookups.Proofs.MulDiv
