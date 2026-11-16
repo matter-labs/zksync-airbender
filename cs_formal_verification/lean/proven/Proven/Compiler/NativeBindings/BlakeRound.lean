@@ -19,6 +19,26 @@ public import Proven.Compiler.NativeBindings.BlakeRound.Gates016
 public import Proven.Compiler.NativeBindings.BlakeRound.Gates017
 public import Proven.Compiler.NativeBindings.BlakeRound.Gates018
 public import Proven.Compiler.NativeBindings.BlakeRound.Gates019
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates020
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates021
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates022
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates023
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates024
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates025
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates026
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates027
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates028
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates029
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates030
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates031
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates032
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates033
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates034
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates035
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates036
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates037
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates038
+public import Proven.Compiler.NativeBindings.BlakeRound.Gates039
 public import Proven.Compiler.NativeBindings.BlakeRound.Placement000
 public import Proven.Compiler.NativeBindings.BlakeRound.Placement001
 public import Proven.Compiler.NativeBindings.BlakeRound.Placement002
@@ -127,7 +147,7 @@ theorem scalar_gates (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds Airbender.Compiler.Captures.BlakeRound.imported.circuit physical) :
     ∀ gate ∈ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.artifact.gates,
       gate.expressionResidual (physical ∘ Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank.address) = 0 :=
-  (append_holds (gates000 physical accepted) (append_holds (gates001 physical accepted) (append_holds (gates002 physical accepted) (append_holds (gates003 physical accepted) (append_holds (gates004 physical accepted) (append_holds (gates005 physical accepted) (append_holds (gates006 physical accepted) (append_holds (gates007 physical accepted) (append_holds (gates008 physical accepted) (append_holds (gates009 physical accepted) (append_holds (gates010 physical accepted) (append_holds (gates011 physical accepted) (append_holds (gates012 physical accepted) (append_holds (gates013 physical accepted) (append_holds (gates014 physical accepted) (append_holds (gates015 physical accepted) (append_holds (gates016 physical accepted) (append_holds (gates017 physical accepted) (append_holds (gates018 physical accepted) (append_holds (gates019 physical accepted) (by intro gate member; cases member)))))))))))))))))))))
+  (append_holds (gates000 physical accepted) (append_holds (gates001 physical accepted) (append_holds (gates002 physical accepted) (append_holds (gates003 physical accepted) (append_holds (gates004 physical accepted) (append_holds (gates005 physical accepted) (append_holds (gates006 physical accepted) (append_holds (gates007 physical accepted) (append_holds (gates008 physical accepted) (append_holds (gates009 physical accepted) (append_holds (gates010 physical accepted) (append_holds (gates011 physical accepted) (append_holds (gates012 physical accepted) (append_holds (gates013 physical accepted) (append_holds (gates014 physical accepted) (append_holds (gates015 physical accepted) (append_holds (gates016 physical accepted) (append_holds (gates017 physical accepted) (append_holds (gates018 physical accepted) (append_holds (gates019 physical accepted) (append_holds (gates020 physical accepted) (append_holds (gates021 physical accepted) (append_holds (gates022 physical accepted) (append_holds (gates023 physical accepted) (append_holds (gates024 physical accepted) (append_holds (gates025 physical accepted) (append_holds (gates026 physical accepted) (append_holds (gates027 physical accepted) (append_holds (gates028 physical accepted) (append_holds (gates029 physical accepted) (append_holds (gates030 physical accepted) (append_holds (gates031 physical accepted) (append_holds (gates032 physical accepted) (append_holds (gates033 physical accepted) (append_holds (gates034 physical accepted) (append_holds (gates035 physical accepted) (append_holds (gates036 physical accepted) (append_holds (gates037 physical accepted) (append_holds (gates038 physical accepted) (append_holds (gates039 physical accepted) (by intro gate member; cases member)))))))))))))))))))))))))))))))))))))))))
 
 /-- Public placement agreement supplies all variables used by the description. -/
 theorem environment (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)

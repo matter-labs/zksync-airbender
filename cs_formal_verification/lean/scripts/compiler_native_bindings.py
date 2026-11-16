@@ -166,10 +166,11 @@ set_option maxRecDepth 32768
   header=header.replace('public import Proven.Compiler.NativeBridge',
    'public import Proven.Compiler.NativeLiteralBridge\n'+''.join(f'public import Proven.Compiler.NativeBindings.{family}.{name}\n' for name in ['NativeData','BankCoordinates','CaptureData']).rstrip())
  imports=[];batches=[]
- for first in range(0,len(clauses),16):
-  name=f'Gates{first//16:03d}';imports.append(f'Proven.Compiler.NativeBindings.{family}.{name}')
+ gate_step=8 if family=="BlakeRound" else 16
+ for first in range(0,len(clauses),gate_step):
+  name=f'Gates{first//gate_step:03d}';imports.append(f'Proven.Compiler.NativeBindings.{family}.{name}')
   s=header
-  for i in range(first,min(first+16,len(clauses))):
+  for i in range(first,min(first+gate_step,len(clauses))):
    kind,li,idx=clauses[i]
    layer=f'({capture}).layers[{li}]\'(by decide)'
    if kind=='cache':
@@ -220,10 +221,10 @@ theorem gate{i} (physical : GKRAddress → NativeArithmetic.F)
   exact (sparse_checked checked _).symm.trans
     (binding.trans ({kind}_at accepted ⟨{li}, by decide⟩ ⟨{idx}, by decide⟩))
 '''
-  gates=', '.join(f'{native}.gate{i}' for i in range(first,min(first+16,len(clauses))))
-  batch=f'gates{first//16:03d}';batches.append(batch)
+  gates=', '.join(f'{native}.gate{i}' for i in range(first,min(first+gate_step,len(clauses))))
+  batch=f'gates{first//gate_step:03d}';batches.append(batch)
   proof='(by intro gate member; cases member)'
-  for i in reversed(range(first,min(first+16,len(clauses)))): proof=f'(cons_holds (gate{i} physical accepted) {proof})'
+  for i in reversed(range(first,min(first+gate_step,len(clauses)))): proof=f'(cons_holds (gate{i} physical accepted) {proof})'
   s+=f'''\n/-- This batch retains every native scalar equation at these positions. -/
 theorem {batch} (physical : GKRAddress → NativeArithmetic.F)
     (accepted : NativeArithmetic.Holds {capture} physical) :
