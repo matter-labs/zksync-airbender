@@ -13,9 +13,13 @@ The single `gpu_gkr_native` CUDA archive contains shared headers at
 `native/gkr/` and `native/ops/`, BabyBear sources at
 `native/gkr/baby_bear/` and `native/ops/baby_bear/`, and Proth120 sources at
 `native/gkr/proth120/` and `native/ops/proth120/`. The native root CMakeLists
-lists shared sources and adds all four field subdirectories plus the
-compiler-generated Proth120 continuation-bank source list; each field
-CMakeLists only adds sources to `gpu_gkr_native`. Root-relative native includes distinguish
+creates the archive and visits `ops/` before `gkr/`. Each source-owning folder
+lists its local files with `target_sources(gpu_gkr_native PRIVATE ...)` and
+visits its children in the existing translation-unit order. The Proth120
+backward folder visits the compiler-generated continuation-bank source list
+last. The compiler checks the exact BabyBear continuation `generated/` inventory,
+so its files remain listed by the continuation parent's CMakeLists.
+Root-relative native includes distinguish
 shared and field headers with the same basename.
 
 ## Layer position

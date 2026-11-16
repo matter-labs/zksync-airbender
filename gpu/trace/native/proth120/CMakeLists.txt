@@ -1,6 +1,6 @@
+add_subdirectory(circuits)
+
 target_sources(gpu_trace_native PRIVATE
-        circuits/template_unrolled.cuh
-        circuits/unified_reduced_machine.cu
         field.cuh
         fused_unrolled.cuh
         leaf_sink.cu

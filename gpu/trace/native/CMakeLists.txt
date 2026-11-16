@@ -11,25 +11,7 @@ if (NOT DEFINED AB_CUDA_CMAKE_DIR)
 endif ()
 include(${AB_CUDA_CMAKE_DIR}/ab_cuda_target.cmake)
 add_library(gpu_trace_native STATIC)
-target_sources(gpu_trace_native PRIVATE
-        witness/common.cuh
-        witness/fused_trace_accessor.cuh
-        witness/fused_unrolled.cuh
-        witness/inits_and_teardowns.cuh
-        witness/lookup_mapping.cuh
-        witness/memory.cuh
-        witness/memory_delegation.cuh
-        witness/memory_unrolled.cuh
-        witness/multiplicities.cuh
-        witness/option.cuh
-        witness/placeholder.cuh
-        witness/ram_access.cuh
-        witness/tables.cuh
-        witness/trace.cuh
-        witness/trace_delegation.cuh
-        witness/trace_unrolled.cuh
-        witness/witness_generation.cuh
-)
+add_subdirectory(witness)
 add_subdirectory(baby_bear)
 add_subdirectory(proth120)
 # The Proth120 leaf sink reads gpu_ntt's Proth120 transform and gpu_hash's keccak256

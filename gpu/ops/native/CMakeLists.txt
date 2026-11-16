@@ -8,7 +8,8 @@ if (NOT DEFINED AB_CUDA_CMAKE_DIR)
     set(AB_CUDA_CMAKE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../native_build/cmake)
 endif ()
 include(${AB_CUDA_CMAKE_DIR}/ab_cuda_target.cmake)
-add_library(gpu_ops_native STATIC
+add_library(gpu_ops_native STATIC)
+target_sources(gpu_ops_native PRIVATE
         bit_reverse.cu
         powers.cu
         simple.cu

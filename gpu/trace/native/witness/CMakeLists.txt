@@ -1,0 +1,19 @@
+target_sources(gpu_trace_native PRIVATE
+        common.cuh
+        fused_trace_accessor.cuh
+        fused_unrolled.cuh
+        inits_and_teardowns.cuh
+        lookup_mapping.cuh
+        memory.cuh
+        memory_delegation.cuh
+        memory_unrolled.cuh
+        multiplicities.cuh
+        option.cuh
+        placeholder.cuh
+        ram_access.cuh
+        tables.cuh
+        trace.cuh
+        trace_delegation.cuh
+        trace_unrolled.cuh
+        witness_generation.cuh
+)

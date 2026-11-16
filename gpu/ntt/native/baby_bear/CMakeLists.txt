@@ -21,5 +21,5 @@ target_sources(gpu_ntt_native PRIVATE
 )
 option(GPU_NTT_BUILD_BENCH "Compile bench-only DIT kernel variants into the archive" OFF)
 if (GPU_NTT_BUILD_BENCH)
-    target_sources(gpu_ntt_native PRIVATE bench/dit_bench_kernels.cu)
+    add_subdirectory(bench)
 endif ()

@@ -15,7 +15,8 @@ include(${AB_CUDA_CMAKE_DIR}/ab_cuda_target.cmake)
 # `hash.cuh` and gpu_ntt's reusable WHIR transform through their exported
 # include directories. These dirs arrive as DEP_* env vars that
 # gpu_native_build forwards as CMake -D defines.
-add_library(gpu_whir_native STATIC
+add_library(gpu_whir_native STATIC)
+target_sources(gpu_whir_native PRIVATE
         fold_shared.cuh
         in_domain_shared.cuh
 )

@@ -8,7 +8,8 @@ if (NOT DEFINED AB_CUDA_CMAKE_DIR)
     set(AB_CUDA_CMAKE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../native_build/cmake)
 endif ()
 include(${AB_CUDA_CMAKE_DIR}/ab_cuda_target.cmake)
-add_library(gpu_hash_native STATIC
+add_library(gpu_hash_native STATIC)
+target_sources(gpu_hash_native PRIVATE
         gather.cu
         hash.cu
         hash.cuh
