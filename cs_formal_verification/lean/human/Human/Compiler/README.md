@@ -14,7 +14,7 @@ matching and shared memory matching remain explicit interfaces.
 [NativePublicSetup.lean](NativePublicSetup.lean) binds public setup rows to fixed regions,
 public ROM bytes and native program projections. Capacity, nonzero selector masks and omitted
 zero coordinates are explicit public setup properties. The fixed and fixture-ROM regions
-have complete compiled comparisons under [NativeFixedRows/Bindings.lean](NativeFixedRows/Bindings.lean).
+have complete compiled comparisons under [the fixed-row test library](../../../test/Tests/NativeFixedRows/Bindings.lean).
 These comparisons are trusted compiled code. They do not prove a general Rust setup generator
 correct for every possible program or ROM image.
 

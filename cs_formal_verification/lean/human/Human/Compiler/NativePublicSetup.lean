@@ -1,7 +1,6 @@
 module
 public import Human.Compiler.NativeMachineArguments
 public import Human.Compiler.NativeFixedRows
-public import Human.Compiler.NativeFixedRows.Bindings
 public import Human.Compiler.NativeSetups.Ranges
 
 @[expose] public section
@@ -72,7 +71,7 @@ noncomputable def rows (initial : RV.State) (program : List RVMachineProgramEntr
 
 /-- Public setup data. ROM bytes and native program projection are checked by the
     boot interface. This interface also pins capacity and omitted payload fields.
-    Fixed-region comparisons and range checks run when their native views are imported. -/
+    Fixed-region comparisons run in the verification test library. Range checks run when their native views are imported. -/
 structure Bound (initial : RV.State) (program : List RVMachineProgramEntry)
     (actual : ProgramLookupRows) : Prop where
   /-- Every public setup field equals its fixed, ROM or decoder interpretation. -/

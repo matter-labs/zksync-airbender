@@ -23,10 +23,11 @@ echo "   canonical form (setup JSONs compact)"
 python3 check_circuit_json.py
 python3 scripts/check_compiler_captures.py
 python3 scripts/sync_compiler_inputs.py --check
+python3 scripts/generate_fixed_row_checks.py --check
 
 echo "== 2. Lean build: spec, proofs, regressions and the axiom audit modules in one lake build (test modules start as"
 echo "   soon as their imports are built), timing each module compiled (full log: lean/.lake/verify-build-CleanCore.log)"
-python3 scripts/module_budget.py build CleanCore CleanEquivalence Human Proven Test CleanAudit airbender_tests program_rows_oracle ||
+python3 scripts/module_budget.py build CleanCore CleanEquivalence Human Proven Test NativeFixedRowChecks CleanAudit airbender_tests program_rows_oracle ||
   fail "lake build"
 
 echo "== 3. Regressions; final statements (each proven/Proven/Final theorem proves its human/ ...Claim, test/Checks/Claims.lean); axiom audits"
