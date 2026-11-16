@@ -5,6 +5,9 @@ pub mod multiplicities;
 pub mod witness_delegation;
 pub mod witness_unrolled;
 
+#[cfg(test)]
+mod tests;
+
 use crate::witness::{Address, MAX_LINEAR_TERMS_COUNT};
 
 #[repr(C)]

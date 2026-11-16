@@ -1,3 +1,6 @@
+#[cfg(test)]
+pub(crate) mod tests;
+
 pub use execution_prover_model::circuit_type;
 
 use crate::upstream::GKRAddress;

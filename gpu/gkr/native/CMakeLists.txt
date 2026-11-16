@@ -33,12 +33,13 @@ target_sources(gpu_gkr_native PRIVATE
         ops/query_indexes.cu
         ops/round_update_shared.cuh
 )
+# Preserve the pre-layout source order: device-link constant addresses depend on it.
+add_subdirectory(ops/baby_bear)
+add_subdirectory(ops/proth120)
 add_subdirectory(gkr/baby_bear)
 add_subdirectory(gkr/proth120)
 # The compiler owns this generated field-specific source list.
 add_subdirectory(gkr/proth120/backward/main_continuation_window)
-add_subdirectory(ops/baby_bear)
-add_subdirectory(ops/proth120)
 ab_cuda_configure_target(gpu_gkr_native
         PREFIX GPU_GKR
         INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} ${GPU_CORE_NATIVE_INCLUDE} ${GPU_HASH_NATIVE_INCLUDE})

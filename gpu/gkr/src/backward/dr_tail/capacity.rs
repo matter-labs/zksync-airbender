@@ -1,7 +1,9 @@
 use super::kernels::DR_TAIL_MAX_REMAINING_ROUNDS;
 use crate::backward::kernels::{GKR_EQ_GROUP_SIZE, GKR_EQ_GROUP_TABLE_LEN};
 
-const _: () = assert!(GKR_EQ_GROUP_TABLE_LEN == 1 << 8);
+const EQ_GROUP_BITS: usize = 8;
+
+const _: () = assert!(GKR_EQ_GROUP_TABLE_LEN == 1 << EQ_GROUP_BITS);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct DrTailCapacityRequest {

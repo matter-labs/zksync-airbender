@@ -1,13 +1,16 @@
 target_sources(gpu_gkr_native PRIVATE
-        backward/continuation_eval.cuh
+        # Translation-unit order preserves the pre-layout device-link constant layout.
+        support/eq_constant_storage.cu
+        support/gkr_initial_inner_products.cu
+        forward/dim_reducing_tower.cu
+        forward/fwd_vm.cu
         backward/dim_reducing.cu
         backward/dr_tail_megakernel.cu
-        backward/dr_tail_megakernel.cuh
-        backward/main_continuation_window/executor.cuh
-        backward/main_continuation_window/fold_prologue.cuh
-        backward/main_continuation_window/fused_executor.cuh
+        backward/main_tail.cu
+        backward/window_tail.cu
+        backward/main_continuation_window/paired.cu
+        backward/main_continuation_window/publication.cu
         backward/main_continuation_window/generated/main_continuation_window_fused.cu
-        backward/main_continuation_window/generated/main_continuation_window_manifest.cuh
         backward/main_continuation_window/generated/main_continuation_window_shape_00.cu
         backward/main_continuation_window/generated/main_continuation_window_shape_01.cu
         backward/main_continuation_window/generated/main_continuation_window_shape_03.cu
@@ -16,38 +19,37 @@ target_sources(gpu_gkr_native PRIVATE
         backward/main_continuation_window/generated/main_continuation_window_shape_13.cu
         backward/main_continuation_window/generated/main_continuation_window_shape_17.cu
         backward/main_continuation_window/generated/main_continuation_window_shape_1f.cu
+        backward/window/coefficient_bank.cu
+        backward/window/r0.cu
+        backward/window/state.cu
+        backward/window_dr/r0.cu
+        backward/window_dr/continuation.cu
+        setup/kernels.cu
+        # Field-specific headers.
+        backward/continuation_eval.cuh
+        backward/dr_tail_megakernel.cuh
+        backward/main_continuation_window/executor.cuh
+        backward/main_continuation_window/fold_prologue.cuh
+        backward/main_continuation_window/fused_executor.cuh
+        backward/main_continuation_window/generated/main_continuation_window_manifest.cuh
         backward/main_continuation_window/main_continuation_window_abi.cuh
-        backward/main_continuation_window/paired.cu
-        backward/main_continuation_window/publication.cu
-        backward/main_tail.cu
         backward/main_tail.cuh
         backward/tail_common.cuh
-        backward/window/coefficient_bank.cu
         backward/window/coefficient_bank.cuh
         backward/window/common.cuh
-        backward/window/r0.cu
         backward/window/r0.cuh
-        backward/window/state.cu
         backward/window/window_abi.cuh
         backward/window/window_accumulator.cuh
         backward/window/window_geometry.cuh
         backward/window/window_source.cuh
         backward/window_dr/abi.cuh
         backward/window_dr/accumulator_bounds.cuh
-        backward/window_dr/continuation.cu
         backward/window_dr/evaluate.cuh
         backward/window_dr/math_accumulator_packed.cuh
-        backward/window_dr/r0.cu
-        backward/window_tail.cu
         eval_vm_exec.cuh
-        forward/dim_reducing_tower.cu
-        forward/fwd_vm.cu
         forward/fwd_vm.cuh
-        setup/kernels.cu
         support/descriptors.cuh
-        support/eq_constant_storage.cu
         support/eq_inline.cuh
-        support/gkr_initial_inner_products.cu
         support/kernel_helpers.cuh
         support/lookup_helpers.cuh
 )
