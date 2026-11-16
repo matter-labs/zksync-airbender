@@ -865,7 +865,7 @@ theorem native.placementInBank0 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 0 (GKRAddress.BaseLayerMemory 222) (by rfl)
+    native.placementAddresses native.placementsInBank 0 (GKRAddress.BaseLayerMemory 222) (by cbv)
 
 theorem native.placementInBank1 :
     (fun address : GKRAddress =>
@@ -881,7 +881,7 @@ theorem native.placementInBank1 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 1 (GKRAddress.BaseLayerMemory 223) (by rfl)
+    native.placementAddresses native.placementsInBank 1 (GKRAddress.BaseLayerMemory 223) (by cbv)
 
 theorem native.placementInBank2 :
     (fun address : GKRAddress =>
@@ -897,7 +897,7 @@ theorem native.placementInBank2 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 2 (GKRAddress.BaseLayerMemory 224) (by rfl)
+    native.placementAddresses native.placementsInBank 2 (GKRAddress.BaseLayerMemory 224) (by cbv)
 
 theorem native.placementInBank3 :
     (fun address : GKRAddress =>
@@ -913,7 +913,7 @@ theorem native.placementInBank3 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 3 (GKRAddress.BaseLayerMemory 2) (by rfl)
+    native.placementAddresses native.placementsInBank 3 (GKRAddress.BaseLayerMemory 2) (by cbv)
 
 theorem native.placementInBank4 :
     (fun address : GKRAddress =>
@@ -929,7 +929,7 @@ theorem native.placementInBank4 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 4 (GKRAddress.BaseLayerMemory 3) (by rfl)
+    native.placementAddresses native.placementsInBank 4 (GKRAddress.BaseLayerMemory 3) (by cbv)
 
 theorem native.placementInBank5 :
     (fun address : GKRAddress =>
@@ -945,7 +945,7 @@ theorem native.placementInBank5 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 5 (GKRAddress.BaseLayerMemory 6) (by rfl)
+    native.placementAddresses native.placementsInBank 5 (GKRAddress.BaseLayerMemory 6) (by cbv)
 
 theorem native.placementInBank6 :
     (fun address : GKRAddress =>
@@ -961,7 +961,7 @@ theorem native.placementInBank6 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 6 (GKRAddress.BaseLayerMemory 7) (by rfl)
+    native.placementAddresses native.placementsInBank 6 (GKRAddress.BaseLayerMemory 7) (by cbv)
 
 theorem native.placementInBank7 :
     (fun address : GKRAddress =>
@@ -977,7 +977,7 @@ theorem native.placementInBank7 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 7 (GKRAddress.BaseLayerMemory 8) (by rfl)
+    native.placementAddresses native.placementsInBank 7 (GKRAddress.BaseLayerMemory 8) (by cbv)
 
 theorem native.placementInBank8 :
     (fun address : GKRAddress =>
@@ -993,7 +993,7 @@ theorem native.placementInBank8 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 8 (GKRAddress.BaseLayerMemory 9) (by rfl)
+    native.placementAddresses native.placementsInBank 8 (GKRAddress.BaseLayerMemory 9) (by cbv)
 
 theorem native.placementInBank9 :
     (fun address : GKRAddress =>
@@ -1009,5 +1009,5 @@ theorem native.placementInBank9 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 9 (GKRAddress.BaseLayerMemory 12) (by rfl)
+    native.placementAddresses native.placementsInBank 9 (GKRAddress.BaseLayerMemory 12) (by cbv)
 end Airbender.Compiler.CleanArithmeticNative.BlakeRoundCached

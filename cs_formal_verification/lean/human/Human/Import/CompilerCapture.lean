@@ -29,6 +29,7 @@ def elabImportCompilerCapture : CommandElab := fun stx => do
   let name := (← getCurrNamespace) ++ stx[1].getId
   liftCoreM do
     addTranscribedDef (name.appendAfter "SourceBytes") (mkConst ``String) (mkStrLit text)
-    addTranscribedDef name (mkConst ``Compiler.NativeCapture) (toExpr capture)
+    addSharedTranscribedDef name (mkConst ``Compiler.NativeCapture) (toExpr capture)
+      (toExpr capture.circuit.placement_data.entries)
 
 end Airbender

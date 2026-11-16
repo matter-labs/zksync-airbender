@@ -11,6 +11,7 @@ for family in sys.argv[1:] or families:
  native=f'Airbender.Compiler.FullArithmeticNative.{family}Cached.native'
  clean=f'Airbender.Compiler.CleanArithmeticNative.{family}Cached.native'
  capture=f'Airbender.Compiler.Captures.{family}.imported.circuit'
+ large=family in {'Bigint','BlakeRound','Keccak'}
  directory=root/f'proven/Proven/Compiler/NativeBindings/{family}'
  directory.mkdir(parents=True,exist_ok=True)
  header=f'''module
@@ -25,6 +26,23 @@ namespace {ns}
 open Airbender Airbender.Compiler NativeBridge
 set_option maxRecDepth 32768
 '''
+ placement_header=header
+ if large:
+  placementData=f"Airbender.Compiler.Captures.{family}.importedPlacementEntries"
+  data=f'''module
+public import Proven.KernelRfl
+public import Human.Compiler.Captures.{family}
+
+@[expose] public section
+set_option warningAsError true
+namespace {ns}
+/-- The imported capture retains its shared literal placement array. -/
+theorem placement_entries : ({capture}).placement_data.entries = {placementData} := by kernel_rfl
+end {ns}
+'''
+  (directory/'PlacementData.lean').write_text(data)
+  placement_header=header.replace('public import Proven.Compiler.NativeBridge',
+    f'public import Proven.Compiler.NativeBridge\npublic import Proven.Compiler.NativeBindings.{family}.PlacementData')
  clauses=[]
  for li,l in enumerate(c['layers']):
   for ci,(output,rel) in enumerate(l['cached_relations']):
@@ -74,8 +92,28 @@ end {ns}
  placement_step=8 if family=="BlakeRound" else 24
  for first in range(0,count,placement_step):
   name=f'Placement{first//placement_step:03d}';imports.append(f'Proven.Compiler.NativeBindings.{family}.{name}')
-  s=header
+  s=placement_header
   for i in range(first,min(first+placement_step,count)):
+   if large:
+    kind,value=next(iter(c['placement_data'][str(i)].items()))
+    address=f'(GKRAddress.{kind} {value["layer"]} {value["offset"]})' if isinstance(value,dict) else f'(GKRAddress.{kind} {value})'
+    s+=f'''
+/-- Logical column {i} uses its actual native placement. -/
+theorem placement{i} (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement {capture} physical logical) :
+    ({clean}.environment physical (Verification.environment logical).data).get {i} = logical {i} := by
+  have included := Array.getElem_mem (xs := ({capture}).placement_data.entries) (i := {i}) (by decide)
+  have captured : ({capture}).placement_data.entries[{i}]'(by decide) = ({i}, {address}) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : {clean}.placement {i} = {native}.bank.placement {address} := by
+    as_aux_lemma => kernel_rfl
+  have inverse : {native}.bank.address ({native}.bank.placement {address}) = {address} :=
+    of_decide_eq_true {clean}.placementInBank{i}
+  exact (congrArg physical ((congrArg {native}.bank.address selected).trans inverse)).trans same.symm
+'''
+    continue
    s+=f'''\n/-- Logical column {i} uses its actual native placement. -/
 theorem placement{i} (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement {capture} physical logical) :

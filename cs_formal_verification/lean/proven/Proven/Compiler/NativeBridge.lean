@@ -9,6 +9,13 @@ namespace Airbender.Compiler.NativeBridge
 open NativeArithmetic
 set_option warningAsError true
 
+/-- A list lookup in a shared literal array gives its bounded array entry. -/
+theorem entry_of_binding {α : Type} {actual expected : Array α} {index : Nat} {value : α}
+    (bound : index < actual.size) (binding : actual = expected)
+    (found : expected.toList[index]? = some value) : actual[index] = value := by
+  have same := (congrArg (fun entries : Array α => entries.toList[index]?) binding).trans found
+  exact Option.some.inj ((List.getElem?_eq_getElem (by simpa using bound)).symm.trans same)
+
 /-- A native scalar cache or native gate retains its complete imported relation. -/
 inductive Clause where
   | cache (output : GKRAddress) (relation : GKRCacheRelation)

@@ -33,7 +33,7 @@ theorem native.placementInBank202 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 202 (GKRAddress.BaseLayerWitness 63) (by rfl)
+    native.placementAddresses native.placementsInBank 202 (GKRAddress.BaseLayerWitness 63) (by cbv)
 
 theorem native.placementInBank203 :
     (fun address : GKRAddress =>
@@ -49,7 +49,7 @@ theorem native.placementInBank203 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 203 (GKRAddress.BaseLayerWitness 64) (by rfl)
+    native.placementAddresses native.placementsInBank 203 (GKRAddress.BaseLayerWitness 64) (by cbv)
 
 theorem native.placementInBank204 :
     (fun address : GKRAddress =>
@@ -65,7 +65,7 @@ theorem native.placementInBank204 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 204 (GKRAddress.BaseLayerWitness 65) (by rfl)
+    native.placementAddresses native.placementsInBank 204 (GKRAddress.BaseLayerWitness 65) (by cbv)
 
 theorem native.placementInBank205 :
     (fun address : GKRAddress =>
@@ -81,7 +81,7 @@ theorem native.placementInBank205 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 205 (GKRAddress.BaseLayerWitness 66) (by rfl)
+    native.placementAddresses native.placementsInBank 205 (GKRAddress.BaseLayerWitness 66) (by cbv)
 
 theorem native.placementInBank206 :
     (fun address : GKRAddress =>
@@ -97,7 +97,7 @@ theorem native.placementInBank206 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 206 (GKRAddress.BaseLayerWitness 67) (by rfl)
+    native.placementAddresses native.placementsInBank 206 (GKRAddress.BaseLayerWitness 67) (by cbv)
 
 theorem native.placementInBank207 :
     (fun address : GKRAddress =>
@@ -113,7 +113,7 @@ theorem native.placementInBank207 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 207 (GKRAddress.BaseLayerWitness 68) (by rfl)
+    native.placementAddresses native.placementsInBank 207 (GKRAddress.BaseLayerWitness 68) (by cbv)
 
 theorem native.placementInBank208 :
     (fun address : GKRAddress =>
@@ -129,7 +129,7 @@ theorem native.placementInBank208 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 208 (GKRAddress.BaseLayerWitness 69) (by rfl)
+    native.placementAddresses native.placementsInBank 208 (GKRAddress.BaseLayerWitness 69) (by cbv)
 
 theorem native.placementInBank209 :
     (fun address : GKRAddress =>
@@ -145,7 +145,7 @@ theorem native.placementInBank209 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 209 (GKRAddress.BaseLayerWitness 70) (by rfl)
+    native.placementAddresses native.placementsInBank 209 (GKRAddress.BaseLayerWitness 70) (by cbv)
 
 theorem native.placementInBank210 :
     (fun address : GKRAddress =>
@@ -161,7 +161,7 @@ theorem native.placementInBank210 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 210 (GKRAddress.BaseLayerWitness 71) (by rfl)
+    native.placementAddresses native.placementsInBank 210 (GKRAddress.BaseLayerWitness 71) (by cbv)
 
 theorem native.placementInBank211 :
     (fun address : GKRAddress =>
@@ -177,7 +177,7 @@ theorem native.placementInBank211 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 211 (GKRAddress.BaseLayerWitness 72) (by rfl)
+    native.placementAddresses native.placementsInBank 211 (GKRAddress.BaseLayerWitness 72) (by cbv)
 
 theorem native.placementInBank212 :
     (fun address : GKRAddress =>
@@ -193,7 +193,7 @@ theorem native.placementInBank212 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 212 (GKRAddress.BaseLayerWitness 73) (by rfl)
+    native.placementAddresses native.placementsInBank 212 (GKRAddress.BaseLayerWitness 73) (by cbv)
 
 theorem native.placementInBank213 :
     (fun address : GKRAddress =>
@@ -209,7 +209,7 @@ theorem native.placementInBank213 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 213 (GKRAddress.BaseLayerWitness 74) (by rfl)
+    native.placementAddresses native.placementsInBank 213 (GKRAddress.BaseLayerWitness 74) (by cbv)
 
 theorem native.placementInBank214 :
     (fun address : GKRAddress =>
@@ -225,7 +225,7 @@ theorem native.placementInBank214 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 214 (GKRAddress.BaseLayerWitness 75) (by rfl)
+    native.placementAddresses native.placementsInBank 214 (GKRAddress.BaseLayerWitness 75) (by cbv)
 
 theorem native.placementInBank215 :
     (fun address : GKRAddress =>
@@ -241,7 +241,7 @@ theorem native.placementInBank215 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 215 (GKRAddress.BaseLayerWitness 76) (by rfl)
+    native.placementAddresses native.placementsInBank 215 (GKRAddress.BaseLayerWitness 76) (by cbv)
 
 theorem native.placementInBank216 :
     (fun address : GKRAddress =>
@@ -257,7 +257,7 @@ theorem native.placementInBank216 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 216 (GKRAddress.BaseLayerWitness 77) (by rfl)
+    native.placementAddresses native.placementsInBank 216 (GKRAddress.BaseLayerWitness 77) (by cbv)
 
 theorem native.placementInBank217 :
     (fun address : GKRAddress =>
@@ -273,7 +273,7 @@ theorem native.placementInBank217 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 217 (GKRAddress.BaseLayerWitness 78) (by rfl)
+    native.placementAddresses native.placementsInBank 217 (GKRAddress.BaseLayerWitness 78) (by cbv)
 
 theorem native.placementInBank218 :
     (fun address : GKRAddress =>
@@ -289,7 +289,7 @@ theorem native.placementInBank218 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 218 (GKRAddress.BaseLayerWitness 79) (by rfl)
+    native.placementAddresses native.placementsInBank 218 (GKRAddress.BaseLayerWitness 79) (by cbv)
 
 theorem native.placementInBank219 :
     (fun address : GKRAddress =>
@@ -305,7 +305,7 @@ theorem native.placementInBank219 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 219 (GKRAddress.BaseLayerWitness 80) (by rfl)
+    native.placementAddresses native.placementsInBank 219 (GKRAddress.BaseLayerWitness 80) (by cbv)
 
 theorem native.placementInBank220 :
     (fun address : GKRAddress =>
@@ -321,7 +321,7 @@ theorem native.placementInBank220 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 220 (GKRAddress.BaseLayerWitness 81) (by rfl)
+    native.placementAddresses native.placementsInBank 220 (GKRAddress.BaseLayerWitness 81) (by cbv)
 
 theorem native.placementInBank221 :
     (fun address : GKRAddress =>
@@ -337,7 +337,7 @@ theorem native.placementInBank221 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 221 (GKRAddress.BaseLayerWitness 82) (by rfl)
+    native.placementAddresses native.placementsInBank 221 (GKRAddress.BaseLayerWitness 82) (by cbv)
 
 theorem native.placementInBank222 :
     (fun address : GKRAddress =>
@@ -353,7 +353,7 @@ theorem native.placementInBank222 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 222 (GKRAddress.BaseLayerWitness 83) (by rfl)
+    native.placementAddresses native.placementsInBank 222 (GKRAddress.BaseLayerWitness 83) (by cbv)
 
 theorem native.placementInBank223 :
     (fun address : GKRAddress =>
@@ -369,7 +369,7 @@ theorem native.placementInBank223 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 223 (GKRAddress.BaseLayerWitness 84) (by rfl)
+    native.placementAddresses native.placementsInBank 223 (GKRAddress.BaseLayerWitness 84) (by cbv)
 
 theorem native.placementInBank224 :
     (fun address : GKRAddress =>
@@ -385,7 +385,7 @@ theorem native.placementInBank224 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 224 (GKRAddress.BaseLayerWitness 85) (by rfl)
+    native.placementAddresses native.placementsInBank 224 (GKRAddress.BaseLayerWitness 85) (by cbv)
 
 theorem native.placementInBank225 :
     (fun address : GKRAddress =>
@@ -401,5 +401,5 @@ theorem native.placementInBank225 :
         ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).address
             ((Airbender.Compiler.FullArithmeticNative.BlakeRoundCached.native.bank).placement address) =
           address))
-    native.placementAddresses native.placementsInBank 225 (GKRAddress.BaseLayerWitness 86) (by rfl)
+    native.placementAddresses native.placementsInBank 225 (GKRAddress.BaseLayerWitness 86) (by cbv)
 end Airbender.Compiler.CleanArithmeticNative.BlakeRoundCached

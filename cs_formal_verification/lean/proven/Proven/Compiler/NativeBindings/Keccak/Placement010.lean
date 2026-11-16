@@ -1,5 +1,6 @@
 module
 public import Proven.Compiler.NativeBridge
+public import Proven.Compiler.NativeBindings.Keccak.PlacementData
 public import Proven.KernelRfl
 public import Human.Compiler.Captures.Keccak
 public import Proven.GKRProtocol.CleanArithmeticNative.KeccakCached
@@ -15,240 +16,360 @@ theorem placement240 (physical : GKRAddress → NativeArithmetic.F) (logical : N
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 240 = logical 240 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 240) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[240]'(by decide) =
-      (240, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 240)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[240]'(by decide) = (240, (GKRAddress.BaseLayerMemory 36)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 240 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 36) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 36)) = (GKRAddress.BaseLayerMemory 36) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank240
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 241 uses its actual native placement. -/
 theorem placement241 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 241 = logical 241 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 241) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[241]'(by decide) =
-      (241, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 241)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[241]'(by decide) = (241, (GKRAddress.BaseLayerMemory 37)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 241 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 37) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 37)) = (GKRAddress.BaseLayerMemory 37) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank241
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 242 uses its actual native placement. -/
 theorem placement242 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 242 = logical 242 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 242) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[242]'(by decide) =
-      (242, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 242)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[242]'(by decide) = (242, (GKRAddress.BaseLayerWitness 165)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 242 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 165) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 165)) = (GKRAddress.BaseLayerWitness 165) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank242
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 243 uses its actual native placement. -/
 theorem placement243 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 243 = logical 243 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 243) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[243]'(by decide) =
-      (243, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 243)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[243]'(by decide) = (243, (GKRAddress.BaseLayerMemory 43)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 243 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 43) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 43)) = (GKRAddress.BaseLayerMemory 43) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank243
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 244 uses its actual native placement. -/
 theorem placement244 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 244 = logical 244 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 244) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[244]'(by decide) =
-      (244, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 244)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[244]'(by decide) = (244, (GKRAddress.BaseLayerMemory 44)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 244 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 44) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 44)) = (GKRAddress.BaseLayerMemory 44) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank244
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 245 uses its actual native placement. -/
 theorem placement245 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 245 = logical 245 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 245) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[245]'(by decide) =
-      (245, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 245)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[245]'(by decide) = (245, (GKRAddress.BaseLayerWitness 166)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 245 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 166) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 166)) = (GKRAddress.BaseLayerWitness 166) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank245
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 246 uses its actual native placement. -/
 theorem placement246 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 246 = logical 246 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 246) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[246]'(by decide) =
-      (246, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 246)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[246]'(by decide) = (246, (GKRAddress.BaseLayerMemory 49)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 246 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 49) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 49)) = (GKRAddress.BaseLayerMemory 49) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank246
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 247 uses its actual native placement. -/
 theorem placement247 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 247 = logical 247 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 247) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[247]'(by decide) =
-      (247, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 247)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[247]'(by decide) = (247, (GKRAddress.BaseLayerMemory 50)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 247 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 50) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 50)) = (GKRAddress.BaseLayerMemory 50) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank247
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 248 uses its actual native placement. -/
 theorem placement248 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 248 = logical 248 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 248) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[248]'(by decide) =
-      (248, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 248)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[248]'(by decide) = (248, (GKRAddress.BaseLayerWitness 167)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 248 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 167) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 167)) = (GKRAddress.BaseLayerWitness 167) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank248
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 249 uses its actual native placement. -/
 theorem placement249 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 249 = logical 249 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 249) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[249]'(by decide) =
-      (249, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 249)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[249]'(by decide) = (249, (GKRAddress.BaseLayerMemory 56)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 249 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 56) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 56)) = (GKRAddress.BaseLayerMemory 56) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank249
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 250 uses its actual native placement. -/
 theorem placement250 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 250 = logical 250 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 250) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[250]'(by decide) =
-      (250, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 250)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[250]'(by decide) = (250, (GKRAddress.BaseLayerMemory 57)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 250 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 57) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 57)) = (GKRAddress.BaseLayerMemory 57) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank250
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 251 uses its actual native placement. -/
 theorem placement251 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 251 = logical 251 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 251) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[251]'(by decide) =
-      (251, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 251)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[251]'(by decide) = (251, (GKRAddress.BaseLayerWitness 168)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 251 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 168) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 168)) = (GKRAddress.BaseLayerWitness 168) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank251
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 252 uses its actual native placement. -/
 theorem placement252 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 252 = logical 252 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 252) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[252]'(by decide) =
-      (252, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 252)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[252]'(by decide) = (252, (GKRAddress.BaseLayerMemory 62)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 252 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 62) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 62)) = (GKRAddress.BaseLayerMemory 62) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank252
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 253 uses its actual native placement. -/
 theorem placement253 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 253 = logical 253 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 253) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[253]'(by decide) =
-      (253, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 253)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[253]'(by decide) = (253, (GKRAddress.BaseLayerMemory 63)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 253 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 63) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 63)) = (GKRAddress.BaseLayerMemory 63) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank253
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 254 uses its actual native placement. -/
 theorem placement254 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 254 = logical 254 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 254) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[254]'(by decide) =
-      (254, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 254)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[254]'(by decide) = (254, (GKRAddress.BaseLayerWitness 169)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 254 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 169) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 169)) = (GKRAddress.BaseLayerWitness 169) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank254
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 255 uses its actual native placement. -/
 theorem placement255 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 255 = logical 255 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 255) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[255]'(by decide) =
-      (255, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 255)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[255]'(by decide) = (255, (GKRAddress.BaseLayerMemory 69)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 255 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 69) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 69)) = (GKRAddress.BaseLayerMemory 69) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank255
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 256 uses its actual native placement. -/
 theorem placement256 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 256 = logical 256 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 256) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[256]'(by decide) =
-      (256, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 256)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[256]'(by decide) = (256, (GKRAddress.BaseLayerMemory 70)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 256 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 70) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 70)) = (GKRAddress.BaseLayerMemory 70) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank256
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 257 uses its actual native placement. -/
 theorem placement257 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 257 = logical 257 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 257) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[257]'(by decide) =
-      (257, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 257)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[257]'(by decide) = (257, (GKRAddress.BaseLayerWitness 170)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 257 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 170) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 170)) = (GKRAddress.BaseLayerWitness 170) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank257
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 258 uses its actual native placement. -/
 theorem placement258 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 258 = logical 258 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 258) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[258]'(by decide) =
-      (258, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 258)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[258]'(by decide) = (258, (GKRAddress.BaseLayerMemory 75)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 258 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 75) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 75)) = (GKRAddress.BaseLayerMemory 75) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank258
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 259 uses its actual native placement. -/
 theorem placement259 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 259 = logical 259 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 259) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[259]'(by decide) =
-      (259, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 259)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[259]'(by decide) = (259, (GKRAddress.BaseLayerMemory 76)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 259 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 76) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 76)) = (GKRAddress.BaseLayerMemory 76) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank259
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 260 uses its actual native placement. -/
 theorem placement260 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 260 = logical 260 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 260) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[260]'(by decide) =
-      (260, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 260)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[260]'(by decide) = (260, (GKRAddress.BaseLayerWitness 171)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 260 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 171) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 171)) = (GKRAddress.BaseLayerWitness 171) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank260
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 261 uses its actual native placement. -/
 theorem placement261 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 261 = logical 261 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 261) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[261]'(by decide) =
-      (261, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 261)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[261]'(by decide) = (261, (GKRAddress.BaseLayerMemory 82)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 261 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 82) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 82)) = (GKRAddress.BaseLayerMemory 82) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank261
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 262 uses its actual native placement. -/
 theorem placement262 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 262 = logical 262 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 262) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[262]'(by decide) =
-      (262, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 262)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[262]'(by decide) = (262, (GKRAddress.BaseLayerMemory 83)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 262 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 83) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerMemory 83)) = (GKRAddress.BaseLayerMemory 83) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank262
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Logical column 263 uses its actual native placement. -/
 theorem placement263 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
     (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Keccak.imported.circuit physical logical) :
     (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.environment physical (Verification.environment logical).data).get 263 = logical 263 := by
   have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries) (i := 263) (by decide)
-  have binding : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[263]'(by decide) =
-      (263, Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 263)) := by kernel_rfl
-  exact (congrArg physical (congrArg Prod.snd binding)).symm.trans
-    ((agreement _ included).symm.trans (congrArg logical (congrArg Prod.fst binding)))
+  have captured : (Airbender.Compiler.Captures.Keccak.imported.circuit).placement_data.entries[263]'(by decide) = (263, (GKRAddress.BaseLayerWitness 172)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placement 263 = Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 172) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.placement (GKRAddress.BaseLayerWitness 172)) = (GKRAddress.BaseLayerWitness 172) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.KeccakCached.native.placementInBank263
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.KeccakCached.native.bank.address selected).trans inverse)).trans same.symm
 
 /-- Public placements cover each column in this batch. -/
 theorem placements010 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)

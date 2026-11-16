@@ -22,6 +22,12 @@ responsibility, unless the artifact's claims also state it. With `bytes`, the co
 namespace Airbender
 open Lean Elab Command
 
+/-- Quote an array as its constructor, without a kernel-side list conversion. -/
+instance (priority := 1100) {α : Type u} [ToLevel.{u}] [ToExpr α] : ToExpr (Array α) where
+  toExpr values :=
+    mkApp2 (mkConst ``Array.mk [toLevel.{u}]) (toTypeExpr α) (toExpr values.toList)
+  toTypeExpr := mkApp (mkConst ``Array [toLevel.{u}]) (toTypeExpr α)
+
 /-- `⟨n, proof of n < b by evaluation⟩`. -/
 instance {b : Nat} : ToExpr (BoundedNat b) where
   toExpr n :=
@@ -90,6 +96,15 @@ deriving instance ToExpr for GKRCircuitArtifact
 def addTranscribedDef (name : Name) (type value : Lean.Expr) : CoreM Unit :=
   addDecl (forceExpose := true) <| .defnDecl {
     name, levelParams := [], type, value, hints := .abbrev, safety := .safe }
+
+/-- Share the capture placement array without changing its value. -/
+def addSharedTranscribedDef (name : Name) (type value placementData : Lean.Expr) : CoreM Unit := do
+  let placementName := name.appendAfter "PlacementEntries"
+  let pairType := mkApp2 (mkConst ``Prod [0, 0]) (mkConst ``Nat) (mkConst ``GKRAddress)
+  addTranscribedDef placementName (mkApp (mkConst ``Array [0]) pairType) placementData
+  let value := value.replace fun entry =>
+    if entry == placementData then some (mkConst placementName) else none
+  addTranscribedDef name type value
 
 /-- Pairs of neighbours joined by `app`, in order. -/
 def pairUp (app : Lean.Expr → Lean.Expr → Lean.Expr) : List Lean.Expr → List Lean.Expr
