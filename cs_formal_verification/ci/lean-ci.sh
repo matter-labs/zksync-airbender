@@ -195,8 +195,19 @@ step_kernel_check() {
       # The sandbox covers the host temporary directories. Judged code cannot alter this copy.
       export=$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/airbender-kernel.XXXXXX")
       case "$export" in "$PWD"/*) echo "The export must be outside the judged package." >&2; return 2 ;; esac
-      KERNEL_EXPORT_PATH="$export" COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check
-      test -s "$export"
+      # Lake invokes bwrap through env -i. A host wrapper retains the export path.
+      local wrapper result=0
+      wrapper=$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/airbender-bwrap.XXXXXX")
+      printf '#!/usr/bin/env bash\nexport KERNEL_EXPORT_PATH=%q\nexec %q "$@"\n' \
+        "$export" "$CI_DIR/kernel-bwrap.sh" > "$wrapper"
+      chmod 700 "$wrapper"
+      COMPARATOR_BWRAP="$wrapper" lake check || result=$?
+      rm -f -- "$wrapper"
+      (( result == 0 )) || return "$result"
+      if [[ ! -s "$export" ]]; then
+        echo "The required kernel export is empty." >&2
+        return 1
+      fi
       printf '%s\n' "$export" > .lake/kernel-export-path
       lake env leanchecker-paranoid --silent --from-export "$export"
       echo "Lean paranoid kernel accepts the solution"

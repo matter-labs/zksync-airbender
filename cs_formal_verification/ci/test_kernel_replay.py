@@ -14,7 +14,9 @@ lake() {
   printf '%s\n' "$*" >> "$REPLAY_TRACE"
   case "$*" in
     check)
-      if [[ ${REQUIRED_RC:-0} == 0 ]]; then printf 'export\n' > "$KERNEL_EXPORT_PATH"; fi
+      if [[ ${REQUIRED_RC:-0} == 0 ]]; then
+        env -i PATH="$PATH" "$COMPARATOR_BWRAP" --setenv LAKE_CHECK_EXPORT 1 -- lake check
+      fi
       return "${REQUIRED_RC:-0}" ;;
     env\ leanchecker-paranoid\ --silent\ --from-export\ *) return "${PARANOID_RC:-0}" ;;
     'check --paranoid'|check\ --paranoid\ --from-export\ *) return "${EXTERNAL_RC:-0}" ;;
@@ -31,6 +33,10 @@ class ReplayGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "lean").mkdir()
+            (root / "bin").mkdir()
+            bwrap = root / "bin/bwrap"
+            bwrap.write_text('#!/usr/bin/env bash\nprintf "export\\n"\n')
+            bwrap.chmod(0o755)
             if export_exists:
                 (root / "lean/.lake").mkdir()
                 export = root / 'complete-export'
@@ -39,6 +45,7 @@ class ReplayGateTests(unittest.TestCase):
             trace = root / "trace"
             env = dict(os.environ, FV_DIR=directory, KERNEL_CHECKER="lake", REPLAY_TRACE=str(trace),
                        RUNNER_TEMP=directory,
+                       PATH=str(root / "bin") + os.pathsep + os.environ["PATH"],
                        REQUIRED_RC="0", EXTERNAL_RC="0", CLEAN_RC="0", PARANOID_RC="0")
             env.update(overrides)
             result = subprocess.run(
