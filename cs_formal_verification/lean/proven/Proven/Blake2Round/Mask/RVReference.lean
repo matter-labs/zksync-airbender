@@ -73,6 +73,7 @@ theorem finalization_reference {input : Input} {output : Output} (correct : spec
       if isFinal input then RV.blakeFinal (RV.bH0 input.compression (input.state.map Word.toBitVec))
         (output.extended.map Word.toBitVec) else input.state.map Word.toBitVec := by
   have final := correct.2.2.1
+  unfold Finalization.result at final
   cases last : isFinal input
   · simp only [last, Bool.false_eq_true, ↓reduceIte] at final ⊢
     rw [final]

@@ -1538,3 +1538,7 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.Trace.Machine.Native.unrolled_reduced_from_native_sail
 
 #print axioms Airbender.Trace.Machine.Native.unified_from_native_sail
+
+#print axioms RV.Delegation.blake_round_one_hot
+
+#print axioms RV.Delegation.blake_round_one_hot_satisfiable

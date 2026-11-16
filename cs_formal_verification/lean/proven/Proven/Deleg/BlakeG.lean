@@ -34,7 +34,7 @@ theorem gCtl_next : ∀ red : Bool, ∀ k < nG red, (gCtl red k &&& 0x80#32) |||
     BitVec.ofNat 32 (if k % 128 + 1 < nG red then k % 128 + 1 else 0) = gCtl red ((k + 1) % nG red) := by
   decide +kernel
 
-theorem blakeG_call (mem : Word → BitVec 8) (p q : Word) (hp : Buffer p 64 64) (hq : Buffer q 64 64) (hpq : p ≠ q)
+theorem blakeG_call (mem : Word → BitVec 8) (p q : Word) (hp : Buffer p 64 64) (hq : Buffer q 64 64) (_hpq : p ≠ q)
     (red : Bool) (k : Nat) (hk : k < nG red) :
     Delegation.blakeG p q (gCtl red k) mem = some
       { writes := writesAt p (gStep (readWords mem q 16) k (readWords mem p 16)), reg := 12,
@@ -48,7 +48,7 @@ theorem blakeG_call (mem : Word → BitVec 8) (p q : Word) (hp : Buffer p 64 64)
     rw [BitVec.getLsbD, hn, Nat.testBit_eq_decide_div_mod_eq]; cases red <;> simp <;> omega
   have hk' : (gCtl red k).toNat % 128 = k := by rw [hn]; split <;> omega
   have hnG : (if red = true then 56 else 80) = nG red := by rfl
-  simp only [Delegation.blakeG, hk', h7, hp2, hq2, hq3, ne_eq, hpq, not_false_eq_true, true_and,
+  simp only [Delegation.blakeG, hk', h7, hp2, hq2, hq3, true_and,
     show (gCtl red k).toNat < 256 by rw [hn]; split <;> omega, hnG, ite_eq_left hk, ite_true, Option.some.injEq,
     Effect.mk.injEq, and_true]
   refine ⟨by simp only [gStep], ?_⟩

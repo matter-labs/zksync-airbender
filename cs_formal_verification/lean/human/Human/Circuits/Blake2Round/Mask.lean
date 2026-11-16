@@ -1,5 +1,6 @@
 module
 public import Human.Circuits.Blake2Round.Row
+public import Human.Helpers.Delegation.WorkerContext
 public import Human.Helpers.Core.BabyBearPrime
 public import Human.Helpers.Memory.Values
 public import Mathlib.Algebra.BigOperators.Group.Finset.Basic
@@ -32,16 +33,8 @@ structure Input where
   /-- The sixteen message words read from RAM. -/
   message : Vector Word 16
 
-/-- Observable writes and addresses of the same worker row. -/
-structure Output where
-  /-- The x12 control word written by the worker. -/
-  controller : Word
-  /-- The eight chaining-state words written to RAM. -/
-  state : Vector Word 8
-  /-- The sixteen working-state words written to RAM. -/
-  extended : Vector Word 16
-  /-- The imported indirect RAM addresses. -/
-  addresses : Addresses.Output
+/-- Observable writes and addresses use the shared round output. -/
+abbrev Output := Row.Output
 
 /-- Each selected SIGMA row contributes to both native message limbs. -/
 def scheduledMessage (rounds : Fin 10 → Bool) (message : Vector Word 16) : Vector Word 16 :=
@@ -64,10 +57,7 @@ def spec (input : Input) (output : Output) : Prop :=
   let prepared := Preparation.step (preparationInput input)
   Control.spec input.controller output.controller ∧
   Mixing.spec ⟨prepared.extended, scheduledMessage input.rounds prepared.message⟩ output.extended ∧
-  (if isFinal input then
-    output.state.map Word.value = Vector.ofFn fun i : Fin 8 =>
-      prepared.chaining[i].value ^^^ output.extended[i.val].value ^^^ output.extended[8 + i.val].value
-   else output.state = input.state) ∧
+  Finalization.result (isFinal input) input.state prepared.chaining output.extended output.state ∧
   Addresses.spec ⟨input.statePointer, input.messagePointer⟩ output.addresses
 
 /-- Initialized memory supplies bounded source words. The native equations supply all internal values. -/
@@ -83,14 +73,13 @@ structure Assumptions (input : Input) : Prop where
   /-- Every input message word has two canonical limbs. -/
   message : ∀ i : Fin 16, input.message[i].Bounded
 
-/-- Read the two raw value limbs of one imported native memory port. -/
-def readWord (w : Nat → ZMod babyBearModulus) (index : Fin 43) : Word :=
-  (Trace.readToken w (importedConstraintsMemoryPorts[index.val]'index.isLt)).word
+/-- Read an imported round port through the shared delegation row. -/
+abbrev readWord (w : Nat → ZMod babyBearModulus) (index : Fin 43) : Word :=
+  Delegation.Row.readWord (⟨.blakeRound, w⟩ : Delegation.Row babyBearModulus) index
 
-/-- Read the two raw write-value limbs of one imported native memory port. -/
-def writtenWord (w : Nat → ZMod babyBearModulus) (index : Fin 43) : Word :=
-  let code := (importedConstraintsMemoryPorts[index.val]'index.isLt).writeCode w
-  ⟨(Nat.unpair code).1, (Nat.unpair code).2⟩
+/-- Read an imported round write through the shared delegation row. -/
+abbrev writtenWord (w : Nat → ZMod babyBearModulus) (index : Fin 43) : Word :=
+  Delegation.Row.writtenWord (⟨.blakeRound, w⟩ : Delegation.Row babyBearModulus) index
 
 /-- Bind observable words and Boolean controls to the imported row. -/
 structure Mapping (input : Input) (output : Output) (w : Nat → ZMod babyBearModulus) : Prop where
@@ -131,11 +120,11 @@ def SoundnessClaim : Prop :=
     FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setupTable) →
     Mapping input output w → spec input output
 
-/-- The native row premises admit an assignment. -/
+/-- The native row premises admit an active assignment with no selected round bit. -/
 def SatisfiableClaim : Prop :=
   ∃ (input : Input) (output : Output) (w : Nat → ZMod babyBearModulus),
     Assumptions input ∧
     FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setupTable) ∧
-    Mapping input output w
+    Mapping input output w ∧ (∀ round, input.rounds round = false)
 
 end Airbender.Blake2Round.Mask

@@ -14,7 +14,9 @@ open Trace
 /-- One actual split-worker assignment and its worker. No read, range or
     expected result is part of this record. -/
 structure Row (p : Nat) where
+  /-- The split circuit that supplies this row. -/
   kind : Kind
+  /-- The logical column values of the submitted row. -/
   assignment : Nat → ZMod p
 
 /-- All register and RAM ports of the worker, in the JSON's native order: x10
@@ -50,8 +52,11 @@ def Row.memorySteps (row : Row p) : List (MemoryToken p × MemoryToken p) :=
 
 /-- An unordered pool of split-worker rows and its boundary tokens. -/
 structure MemoryData (p : Nat) where
+  /-- The submitted split rows in their declared order. -/
   rows : List (Row p)
+  /-- The initialized memory tokens consumed by the pool. -/
   initial : List (MemoryToken p)
+  /-- The final memory tokens produced by the pool. -/
   terminal : List (MemoryToken p)
 
 def MemoryData.steps (data : MemoryData p) := data.rows.flatMap Row.memorySteps

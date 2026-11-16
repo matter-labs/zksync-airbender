@@ -16,21 +16,23 @@ theorem native_round_effect (state message control : RV.Word) (mem : RV.Word →
   rw [masked_reads]
   let r := (control >>> 19).toNat.log2
   dsimp only [RV.Delegation.blakeRound]
-  by_cases valid : state.toNat % 128 = 0 ∧ message.toNat + 64 ≤ RV.RAM_END ∧
-      message.toNat % 64 = 0 ∧ state ≠ message ∧ control >>> 19 = 1#32 <<< r ∧
-      r < (if control.getLsbD 16 then 7 else 10)
-  · rw [ite_eq_left valid]
-    obtain ⟨_, _, _, _, mask, bound⟩ := valid
-    rw [onehot_body state bound mask]
-    dsimp only [scheduledBody, scheduledMixed, maskedMessage, r]
-    by_cases zero : (control >>> 19).toNat.log2 = 0
-    · simp only [zero, ne_eq, not_true_eq_false, ↓reduceIte]
-      rfl
-    · simp only [zero, ne_eq, not_false_eq_true, ↓reduceIte]
-      rfl
+  by_cases valid : RV.Delegation.blakeRoundPointers state message ∧
+      control >>> 19 = 1#32 <<< r ∧ r < (if control.getLsbD 16 then 7 else 10)
+  · rw [ite_eq_left valid, scheduled_reads]
+    exact congrArg some (onehot_body state valid.2.2 valid.2.1 _ _ _).symm
   · rw [ite_eq_right valid]
-    simp only [stateAligned, messageAligned, messageFits, separate, controlBound,
-      ne_eq, not_false_eq_true, and_self, ↓reduceIte]
-    exact congrArg some (masked_reads state message control mem)
+    have pointers : RV.Delegation.blakeRoundPointers state message :=
+      ⟨stateAligned, messageFits, messageAligned, separate⟩
+    rw [ite_eq_left ⟨pointers, controlBound⟩, masked_reads]
+
+/-- A one-hot native mask has the public reference-round effect. -/
+theorem onehot_reference : RV.Delegation.BlakeRoundOneHotClaim := by
+  intro state message control mem r bound mask
+  rw [masked_reads, scheduled_reads]
+  exact onehot_body state bound mask _ _ _
+
+/-- Round zero has a valid one-hot control word. -/
+theorem onehot_reference_satisfiable : RV.Delegation.BlakeRoundOneHotSatisfiableClaim := by
+  exact ⟨0#32, 64#32, 0x80000#32, fun _ => 0, 0, by decide, by decide⟩
 
 end Airbender.Blake2Round.Mask.Proofs

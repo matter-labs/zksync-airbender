@@ -71,7 +71,7 @@ theorem finalization_soundness {p : Nat} [Fact p.Prime] (hp : 65536 ≤ p)
       Finalization.spec := by
   intro input output w ⟨interface, holds, mapping⟩
   have flag := finalization_flag holds mapping interface.roundMask
-  unfold Finalization.spec
+  unfold Finalization.spec Finalization.result
   split_ifs with final
   · have enabled : w 152 = 1 := by simpa only [ite_eq_left final] using flag
     rw [mapping.output, mapping.chaining, mapping.extended]

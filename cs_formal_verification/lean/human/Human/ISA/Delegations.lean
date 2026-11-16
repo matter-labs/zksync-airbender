@@ -10,7 +10,7 @@ public import Human.ISA.Keccak
 A delegation call is `csrrw x0, <csr>, x0`; its arguments are pointers and a control word in registers, its data in
 RAM (`State.delegationRAM`): a delegation reads and writes RAM at any address, INCLUDING THE SHADOW RAM BELOW
 `ROM_END`, and never the ROM image. Each instruction is one step of the precompile (one round, one `G`, one micro-operation, …) and updates the
-control register. Complete reference runs use the call counts in `Accepted` at the end and perform the whole operation. Each call is described as an `Effect` (words written, one
+control register. Complete reference runs use the call counts in `DelegationRuns.lean` and perform the whole operation. Each call is described as an `Effect` (words written, one
 register); anything the precompile rejects has no next state.
 
 Following Airbender's ISA table (zksync-airbender `spec/top-down/00 master.md`) and decoder (`av_gkr_compiler`); the
@@ -18,14 +18,15 @@ bit layouts of the control words, which the table does not give, are from the so
 "from source").
 
 Direction of trust: a model that rejects what a circuit accepts would make "no run reaches X" claims vacuous, so where
-a circuit is known to accept more than the VM (bigint, `G`, Keccak special5 controls: see each definition) the
+a circuit accepts more than the VM (bigint controls, `G` controls and equal bases, round masks, and Keccak special5 controls: see each definition) the
 model follows the circuit: pointers may point anywhere in RAM, including the shadow RAM below `ROM_END`
 (`State.lean`): no delegation circuit checks a pointer against `ROM_END`, and a delegation never reads or writes the
 ROM image, so what it does there cannot change what a LOAD returns. (Upstream note: an in-circuit check
 `pointer ≥ ROM_END` would remove shadow-RAM access altogether; a possible circuit improvement, not needed for
-soundness.) The circuits check pointer alignment and distinct accessed addresses. The G spec also covers equal block bases.
-The round spec follows the native Boolean
-round mask, including zero and multiple selected rounds. Its valid one-hot branch keeps the reference schedule. -/
+soundness.) The circuits check pointer alignment. The shared memory argument rejects a call that touches
+one address twice. For equal G bases, an accepted counter uses six different state and message words.
+Each read gives the value before the call. The round spec includes zero masks, multiple selected rounds,
+and one-hot rounds 7 through 9 in reduced mode. Its valid one-hot branch keeps the reference schedule. -/
 
 namespace RV
 open Spec
@@ -63,10 +64,9 @@ def writesAt {n : Nat} (addr : Word) (ws : Vector Word n) : List (Word × Word) 
 
 namespace Delegation
 
-/-- Native extended-round behavior for every accepted control mask.
-    The first mask bit controls preparation. Every selected schedule contributes to each message word. -/
-def blakeRoundMasked (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Effect :=
-  let first := roundMaskBit x12 0
+/-- One round body shares preparation, state writes and control advancement. -/
+def blakeRoundNative (x10 x11 x12 : Word) (mem : Word → BitVec 8)
+    (first final : Bool) (mix : Vector Word 16 → Vector Word 16 → Vector Word 16) : Effect :=
   let right := x12.getLsbD 17
   let compression := x12.getLsbD 18
   let h := readWords mem x10 8
@@ -83,87 +83,79 @@ def blakeRoundMasked (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Effect :=
       (if right then Vector.ofFn fun i : Fin 16 => if i.val < 8 then m[i.val % 16] else h[(i.val - 8) % 8]
        else Vector.ofFn fun i : Fin 16 => if i.val < 8 then h[i.val % 8] else m[(i.val - 8) % 16])
     else m
-  let v' := round (maskedRoundMessage x12 msg) id v
+  let v' := mix msg v
   let h₀ : Vector Word 8 := if compression then Vector.ofFn configuredIV else h
   let h' : Vector Word 8 :=
-    if maskedRoundFinal x12 then Vector.ofFn fun i => h₀[i] ^^^ v'[i.val] ^^^ v'[i.val + 8] else h
+    if final then Vector.ofFn fun i => h₀[i] ^^^ v'[i.val] ^^^ v'[i.val + 8] else h
   let mask := x12 >>> 19
   { writes := writesAt x10 h' ++ writesAt (x10 + 32) v', reg := 12,
     val := (((x12 >>> 16) &&& 7#32) ||| (((mask <<< 1) &&& 0x3ff#32) <<< 3)) <<< 16 }
+
+/-- Native extended-round behavior for every accepted control mask.
+    The first mask bit controls preparation. Every selected schedule contributes to each message word. -/
+def blakeRoundMasked (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Effect :=
+  blakeRoundNative x10 x11 x12 mem (roundMaskBit x12 0) (maskedRoundFinal x12)
+    (fun message state => round (maskedRoundMessage x12 message) id state)
+
+/-- The round ABI has aligned, separate state and message blocks. -/
+abbrev blakeRoundPointers (state message : Word) : Prop :=
+  state.toNat % 128 = 0 ∧ message.toNat + 64 ≤ RAM_END ∧ message.toNat % 64 = 0 ∧ state ≠ message
 
 /-- BLAKE2s round (CSR `0x7c7`; table: "x10 points to h[0..7] followed by v[0..15]; x11 to m[0..15]; x12 selects the
 round, 7- or 10-round schedule, and mode; each instruction performs one round").
 From source (`riscv_transpiler/src/vm/delegations/blake2_round_function.rs`, the per-round
 `blake2_round_function_impl`; the per-call control as `replayer/delegations/blake2_round_function.rs` advances it):
 `x12` bit 16 = 7 rounds, bit 17 = the input is the right node, bit 18 = compression (two-to-one) mode, bits 19 … 28
-= the round, one-hot. Round 0 sets up `v`, the last round folds `v` into `h`; in compression mode the block is
+= the round mask. A one-hot mask in the selected schedule gives the reference round.
+Other accepted masks follow the circuit. Round 0 sets up `v`, the last round folds `v` into `h`; in compression mode the block is
 `h ∥ m[0..7]` (or `m[0..7] ∥ h`) and `h` starts from the configured IV. Pointers: 128- and 64-aligned,
 different. -/
 def blakeRound (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Option Effect :=
   let mask := x12 >>> 19
   let r := mask.toNat.log2
   let reduced := x12.getLsbD 16
-  let right := x12.getLsbD 17
-  let compression := x12.getLsbD 18
   let n := if reduced then 7 else 10
-  if x10.toNat % 128 = 0 ∧ x11.toNat + 64 ≤ RAM_END ∧
-      x11.toNat % 64 = 0 ∧ x10 ≠ x11 ∧ mask = 1#32 <<< r ∧ r < n then
-    let h := readWords mem x10 8          -- the state
-    let e := readWords mem (x10 + 32) 16  -- the work vector (words 12, 14: counter and last-block flag)
-    let m := readWords mem x11 16         -- the message block
-    let v : Vector Word 16 :=
-      if r ≠ 0 then e
-      else if compression then
-        #v[configuredIV 0, configuredIV 1, configuredIV 2, configuredIV 3, configuredIV 4, configuredIV 5,
-          configuredIV 6, configuredIV 7, IV 0, IV 1, IV 2, IV 3, IV 4 ^^^ 64#32, IV 5, IV 6 ^^^ 0xFFFFFFFF#32, IV 7]
-      else #v[h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], IV 0, IV 1, IV 2, IV 3, e[12], IV 5, e[14], IV 7]
-    let msg : Vector Word 16 :=
-      if compression then
-        (if right then Vector.ofFn fun i : Fin 16 => if i.val < 8 then m[i.val % 16] else h[(i.val - 8) % 8]
-         else Vector.ofFn fun i : Fin 16 => if i.val < 8 then h[i.val % 8] else m[(i.val - 8) % 16])
-      else m
-    let v' := round msg (SIGMA ⟨r % 10, Nat.mod_lt _ (by decide)⟩) v
-    let h₀ : Vector Word 8 := if compression then Vector.ofFn configuredIV else h
-    let h' : Vector Word 8 := if r + 1 = n then Vector.ofFn fun i => h₀[i] ^^^ v'[i.val] ^^^ v'[i.val + 8] else h
-    some { writes := writesAt x10 h' ++ writesAt (x10 + 32) v', reg := 12,
-           val := (((x12 >>> 16) &&& 7#32) ||| (((mask <<< 1) &&& 0x3ff#32) <<< 3)) <<< 16 }
-  else if x10.toNat % 128 = 0 ∧ x11.toNat + 64 ≤ RAM_END ∧
-      x11.toNat % 64 = 0 ∧ x10 ≠ x11 ∧ x12.toNat < 2 ^ 29 then
+  if blakeRoundPointers x10 x11 ∧ mask = 1#32 <<< r ∧ r < n then
+    some (blakeRoundNative x10 x11 x12 mem (decide (r = 0)) (decide (r + 1 = n))
+      (fun message state => round message (SIGMA ⟨r % 10, Nat.mod_lt _ (by decide)⟩) state))
+  else if blakeRoundPointers x10 x11 ∧ x12.toNat < 2 ^ 29 then
     some (blakeRoundMasked x10 x11 x12 mem)
   else none
+
+/-- A one-hot round mask in the selected schedule has the reference SIGMA round effect. -/
+def BlakeRoundOneHotClaim : Prop :=
+  ∀ (state message control : Word) (mem : Word → BitVec 8) (roundIndex : Nat),
+    roundIndex < (if control.getLsbD 16 then 7 else 10) →
+    control >>> 19 = 1#32 <<< roundIndex →
+    blakeRoundMasked state message control mem =
+      blakeRoundNative state message control mem (decide (roundIndex = 0))
+        (decide (roundIndex + 1 = (if control.getLsbD 16 then 7 else 10)))
+        (fun message state => round message (SIGMA ⟨roundIndex % 10, Nat.mod_lt _ (by decide)⟩) state)
+
+/-- The first round supplies a one-hot mask in the ten-round schedule. -/
+def BlakeRoundOneHotSatisfiableClaim : Prop :=
+  ∃ (_state _message control : Word) (_mem : Word → BitVec 8) (roundIndex : Nat),
+    roundIndex < (if control.getLsbD 16 then 7 else 10) ∧ control >>> 19 = 1#32 <<< roundIndex
 
 /-- The words of the state and message of `G` number `j` of a round (columns, then diagonals). -/
 def gIndices : Fin 8 → Fin 4 → Fin 16 :=
   ![![0, 4, 8, 12], ![1, 5, 9, 13], ![2, 6, 10, 14], ![3, 7, 11, 15],
     ![0, 5, 10, 15], ![1, 6, 11, 12], ![2, 7, 8, 13], ![3, 4, 9, 14]]
 
-/-- Native G behavior reads both input blocks before it writes the state block.
-    Equal bases are part of the undefined-use domain. -/
-def blakeGNative (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Effect :=
-  let k := x12.toNat % 128
-  let n := if x12.getLsbD 7 then 56 else 80
-  let i := if k < n then k else 0
-  let v := readWords mem x10 16
-  let m := readWords mem x11 16
-  let r : Fin 10 := ⟨i / 8 % 10, Nat.mod_lt _ (by decide)⟩
-  let j : Fin 8 := ⟨i % 8, Nat.mod_lt _ (by decide)⟩
-  let g := gIndices j
-  let v' := G v (g 0) (g 1) (g 2) (g 3) m[SIGMA r ⟨2 * j.val, by omega⟩] m[SIGMA r ⟨2 * j.val + 1, by omega⟩]
-  { writes := writesAt x10 v', reg := 12,
-    val := (x12 &&& 0x80#32) ||| BitVec.ofNat 32 (if k + 1 < n then k + 1 else 0) }
-
 /-- BLAKE2s `G` function (CSR `0x7c8`; table: "x10 → 64-aligned v[0..15], x11 → 64-aligned m[0..15]; each
 instruction performs one G; runs of 56 or 80").
 From source (`riscv_transpiler/src/replayer/delegations/blake2_g_function.rs`): `x12 < 256`, bits 0 … 6 = the counter
 `k` (`G` number `k % 8` of round `k / 8`), bit 7 = 7 rounds (else 10, `n` = 56 / 80 calls); the counter then
 advances, wrapping to 0 after the last `G`. The circuit's table (`cs/src/tables/blake_g_function_precompile_related.rs`)
-also takes `k ≥ n`: `G` 0 of round 0, counter back to 0. Pointers: 64-aligned, different. -/
+also takes `k ≥ n`: `G` 0 of round 0, counter back to 0. Pointers are 64-aligned and can be equal.
+With equal bases, the shared memory argument accepts a call only if its six state and message words are
+different. Each read gives the value before the call. -/
 def blakeG (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Option Effect :=
   let k := x12.toNat % 128
   let n := if x12.getLsbD 7 then 56 else 80
   let i := if k < n then k else 0
   if x10.toNat % 64 = 0 ∧ x11.toNat + 64 ≤ RAM_END ∧
-      x11.toNat % 64 = 0 ∧ x10 ≠ x11 ∧ x12.toNat < 256 then
+      x11.toNat % 64 = 0 ∧ x12.toNat < 256 then
     let v := readWords mem x10 16
     let m := readWords mem x11 16
     let r : Fin 10 := ⟨i / 8 % 10, Nat.mod_lt _ (by decide)⟩
@@ -172,9 +164,6 @@ def blakeG (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Option Effect :=
     let v' := G v (g 0) (g 1) (g 2) (g 3) m[SIGMA r ⟨2 * j.val, by omega⟩] m[SIGMA r ⟨2 * j.val + 1, by omega⟩]
     some { writes := writesAt x10 v', reg := 12,
            val := (x12 &&& 0x80#32) ||| BitVec.ofNat 32 (if k + 1 < n then k + 1 else 0) }
-  else if x10.toNat % 64 = 0 ∧ x11.toNat + 64 ≤ RAM_END ∧
-      x11.toNat % 64 = 0 ∧ x12.toNat < 256 then
-    some (blakeGNative x10 x11 x12 mem)
   else none
 
 /-- The 256-bit number with the 8 words `ws` (least significant first), and back. -/

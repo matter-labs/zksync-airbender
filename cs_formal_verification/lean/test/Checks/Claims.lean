@@ -978,3 +978,11 @@ example : Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSailClaim := A
 example : Airbender.Trace.Machine.Native.UnifiedFromNativeSailClaim := Airbender.Trace.Machine.Native.unified_from_native_sail
 
 #print axioms Airbender.Trace.Machine.Native.unified_from_native_sail
+
+example : RV.Delegation.BlakeRoundOneHotClaim := RV.Delegation.blake_round_one_hot
+
+#print axioms RV.Delegation.blake_round_one_hot
+
+example : RV.Delegation.BlakeRoundOneHotSatisfiableClaim := RV.Delegation.blake_round_one_hot_satisfiable
+
+#print axioms RV.Delegation.blake_round_one_hot_satisfiable

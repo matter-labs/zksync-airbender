@@ -21,7 +21,8 @@ runs: one call is the whole 256-bit operation (`bigintOp`). Proven in `proven/Pr
 namespace Spec
 open RV (Word)
 
-/-- The compression with `n` rounds (round `r` uses `SIGMA (r mod 10)`): RFC 7693's `F` is `compressRounds 10`. -/
+/-- Compression with `n` rounds uses `SIGMA (r mod 10)`.
+    With ten rounds, this is RFC 7693 compression for a counter below 2^32. -/
 def compressRounds (n : Nat) (h : Vector Word 8) (m : Vector Word 16) (t : Word) (last : Bool) : Vector Word 8 :=
   let v₀ : Vector Word 16 := #v[h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], IV 0, IV 1, IV 2, IV 3,
     t ^^^ IV 4, IV 5, (if last then 0xFFFFFFFF#32 else 0#32) ^^^ IV 6, IV 7]
@@ -56,8 +57,7 @@ def CallsAssumptions (ks : List DelegationKind) (s t : State) : Prop :=
     (∀ i (h : i < ks.length), decode (read s.rom (s.pc + BitVec.ofNat 32 (4 * i)) 4) = some (.delegate ks[i])) ∧
     calls ks s = some t
 
-/-- Delegation instructions of the kinds `ks`, in ROM from the pc, run as the calls `ks`; some nonempty run meets the
-assumptions (not vacuous). -/
+/-- Delegation instructions of the kinds `ks`, in ROM from the PC, run as the calls `ks`. -/
 def CallsRun : Prop :=
   ∀ (ks : List DelegationKind) (s t : State), CallsAssumptions ks s t → run ks.length s = some t
 
@@ -83,7 +83,7 @@ def BlakeCompressAssumptions (control : Word) (s : State) (p q t : Word) (last :
     (readWords s.mem (p + 32) 16)[12] = t ^^^ IV 4 ∧
     (readWords s.mem (p + 32) 16)[14] = (if last then 0xFFFFFFFF#32 else 0#32) ^^^ IV 6
 
-/-- The 7-round compression (above); its assumptions can be met. -/
+/-- The 7-round compression (above). -/
 def BlakeCompressRun : Prop :=
   ∀ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x90000#32 s p q t last →
     ∃ s', calls (.replicate 7 .blakeRound) s = some s' ∧ ChangesOnly s s' p 96 12 ∧
@@ -99,7 +99,7 @@ input) or `0xf0000` (the right one), the sibling `n` in the first 8 words at `x1
 def BlakeHashAssumptions (control : Word) (s : State) (p q : Word) : Prop :=
   Buffer p 96 128 ∧ Buffer q 64 64 ∧ Apart p 96 q 64 ∧ s.getReg 10 = p ∧ s.getReg 11 = q ∧ s.getReg 12 = control
 
-/-- The two-to-one hash (above); its assumptions can be met. -/
+/-- The two-to-one hash (above). -/
 def BlakeHashRun : Prop :=
   ∀ (s : State) (p q : Word) (right : Bool),
     BlakeHashAssumptions (if right then 0xf0000#32 else 0xd0000#32) s p q →
@@ -140,7 +140,7 @@ block `m` at `x11 = q`; `x12` is `0x80` again. -/
 def BlakeGAssumptions (control : Word) (s : State) (p q : Word) : Prop :=
   Buffer p 64 64 ∧ Buffer q 64 64 ∧ p ≠ q ∧ s.getReg 10 = p ∧ s.getReg 11 = q ∧ s.getReg 12 = control
 
-/-- 7 Blake2s rounds by `G` calls (above); its assumptions can be met. -/
+/-- 7 Blake2s rounds by `G` calls (above). -/
 def BlakeGRun : Prop :=
   ∀ (s : State) (p q : Word), BlakeGAssumptions 0x80#32 s p q →
     ∃ s', calls (.replicate 56 .blakeG) s = some s' ∧ ChangesOnly s s' p 64 12 ∧ s'.getReg 12 = 0x80#32 ∧
@@ -166,7 +166,7 @@ def BlakeGRun10SatisfiableClaim : Prop :=
 after them). -/
 def KeccakAssumptions (s : State) (p : Word) : Prop := Buffer p 248 256 ∧ s.getReg 10 = 0 ∧ s.getReg 11 = p
 
-/-- Keccak-f[1600] by special5 calls (above); its assumptions can be met. -/
+/-- Keccak-f[1600] by special5 calls (above). -/
 def KeccakSpecial5Run : Prop :=
   ∀ (s : State) (p : Word), KeccakAssumptions s p →
     ∃ s', calls (.replicate 649 .keccak) s = some s' ∧ ChangesOnly s s' p 248 10 ∧

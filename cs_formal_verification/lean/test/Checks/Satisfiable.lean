@@ -776,3 +776,17 @@ example : RV.ValidUse.HashReferenceSatisfiableClaim := RV.ValidUse.hash_referenc
 example : RV.ValidUse.SplitKeccakReferenceSatisfiableClaim := RV.ValidUse.split_keccak_reference_satisfiable
 
 example : RV.ValidUse.Special5ReferenceSatisfiableClaim := RV.ValidUse.special5_reference_satisfiable
+
+namespace RV.Delegation
+open Spec
+
+example (claim : RV.Delegation.BlakeRoundOneHotClaim) : RV.Delegation.BlakeRoundOneHotSatisfiableClaim →
+    ∃ (state message control : Word) (mem : Word → BitVec 8) (roundIndex : Nat),
+      blakeRoundMasked state message control mem =
+        blakeRoundNative state message control mem (decide (roundIndex = 0))
+          (decide (roundIndex + 1 = (if control.getLsbD 16 then 7 else 10)))
+          (fun message state => round message (SIGMA ⟨roundIndex % 10, Nat.mod_lt _ (by decide)⟩) state) :=
+  fun ⟨state, message, control, mem, roundIndex, bound, mask⟩ =>
+    ⟨state, message, control, mem, roundIndex, claim state message control mem roundIndex bound mask⟩
+
+end RV.Delegation

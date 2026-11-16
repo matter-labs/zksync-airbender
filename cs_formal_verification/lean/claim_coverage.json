@@ -692,6 +692,11 @@
       "witness": "RV.CallsRunSatisfiableClaim"
     },
     "RV.CallsRunSatisfiableClaim": {},
+    "RV.Delegation.BlakeRoundOneHotClaim": {
+      "witness": "RV.Delegation.BlakeRoundOneHotSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
+    },
+    "RV.Delegation.BlakeRoundOneHotSatisfiableClaim": {},
     "RV.KeccakF1600Run": {
       "witness": "RV.KeccakF1600RunSatisfiableClaim"
     },

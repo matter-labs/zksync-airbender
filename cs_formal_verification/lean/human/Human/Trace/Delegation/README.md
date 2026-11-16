@@ -1,6 +1,8 @@
 # Caller and worker composition
 
-The RV delegation spec follows the circuit for invalid controls and worker RAM pointers.
+The RV delegation spec follows the circuit for invalid bigint and G controls, arbitrary round masks,
+one-hot rounds 7 through 9 in reduced mode, equal G block bases, and pointers below the public ROM boundary.
+Delegations use shadow RAM at those addresses.
 These inputs have undefined VM behavior; separate validity conditions delimit the reference-agreement claims.
 
 This directory states composition relations between decoded callers, matched

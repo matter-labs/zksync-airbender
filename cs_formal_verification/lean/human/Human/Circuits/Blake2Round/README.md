@@ -34,6 +34,7 @@ windows retain their own matching, table and prefix conditions.
 
 [Mask.lean](Mask.lean) states the full native Boolean-mask behavior.
 `Airbender.Blake2Round.Mask.SoundnessClaim` covers zero and multiple selected rounds.
+It also covers one-hot rounds 7 through 9 in reduced mode.
 `Airbender.Blake2Round.Mask.SatisfiableClaim` gives a separate assignment witness.
 The [final proofs](../../../../proven/Proven/Final/Circuits/Blake2Round/Mask.lean) reuse the existing indexed arithmetic, XOR and address lemmas.
 The message limbs can contain sums of ten source limbs.

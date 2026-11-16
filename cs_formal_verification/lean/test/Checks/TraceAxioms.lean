@@ -1,6 +1,5 @@
 module
 public import Proven.Final.Compiler.NativeMachine
-public import Proven.UnifiedReduced.RVCaller.BigintStep
 public import Proven.Trace.Machine.Boot
 public import Proven.Blake2Round.Mask.Native
 public import Proven.Trace.Machine.Requests
@@ -301,7 +300,6 @@ public import Proven.Trace.MemoryPorts
 
 #print axioms Airbender.Bigint.Proofs.rv_bigint_call_local
 
-#print axioms Airbender.UnifiedReduced.Caller.Proofs.rv_bigint_caller_cycle
 
 #print axioms Airbender.Trace.Machine.Proofs.boot_seed
 

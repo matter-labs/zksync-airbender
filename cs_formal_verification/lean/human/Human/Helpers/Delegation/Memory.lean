@@ -19,15 +19,21 @@ inductive Family where
 /-- Current modeled table interfaces. These are the tables already supplied
     to each imported circuit, including the shared timestamp range table. -/
 structure Setup (p : Nat) where
+  /-- The public bigint setup table. -/
   bigint : Table (ZMod p) (fields 3)
+  /-- The public G controller and arithmetic table. -/
   blakeG : Table (ZMod p) (fields 9)
+  /-- The public extended-round arithmetic table. -/
   blakeRound : Table (ZMod p) (fields 6)
+  /-- The public special5 controller and arithmetic table. -/
   keccak : Table (ZMod p) (fields 8)
 
 /-- One actual delegation assignment and its family. No reads, ranges or
     expected operation result are supplied by this record. -/
 structure Row (p : Nat) where
+  /-- The imported circuit family of this row. -/
   family : Family
+  /-- The logical column values of the submitted row. -/
   assignment : Nat → ZMod p
 
 def Row.columns (row : Row p) : ClockColumns :=
@@ -66,9 +72,13 @@ def Row.memorySteps (row : Row p) : List (MemoryToken p × MemoryToken p) :=
 /-- An unordered pool of native delegation accesses and its boundary tokens.
     Shared matching keeps raw address, value and timestamp limbs intact. -/
 structure MemoryData (p : Nat) where
+  /-- The public setup tables for all worker families. -/
   setup : Setup p
+  /-- The submitted rows in their declared order. -/
   rows : List (Row p)
+  /-- The initialized memory tokens consumed by the pool. -/
   initial : List (MemoryToken p)
+  /-- The final memory tokens produced by the pool. -/
   terminal : List (MemoryToken p)
 
 def MemoryData.steps (data : MemoryData p) := data.rows.flatMap Row.memorySteps

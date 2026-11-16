@@ -1,31 +1,33 @@
 module
-public import Proven.Blake2Round.Mask.Native
-public import Proven.NonVacuous.Blake2RoundSpan.Seed
-public import Proven.NonVacuous.Blake2RoundSpan.Ports
-public import Proven.NonVacuous.Blake2RoundSpan.Row
+public import Proven.Blake2Round.Mask.WitnessLookups
+public import Proven.Blake2Round.Mask.WitnessClockValues
+public import Proven.Blake2Round.Mask.WitnessReads
 
 @[expose] public section
 namespace Airbender.Blake2Round.Mask.Proofs
 open Arithmetic
+set_option maxRecDepth 32768
 
-/-- The existing verified first round supplies a native row assignment. -/
-theorem satisfiable : SatisfiableClaim := by
-  let w : Nat → ZMod babyBearModulus :=
-    (NonVacuous.Blake2RoundSpan.inputAt NonVacuous.Blake2RoundSpan.seed 1 (⟨0, by decide⟩ : Fin 10)).assignment
-  have valid := NonVacuous.Blake2RoundSpan.valid NonVacuous.Blake2RoundSpan.seed_inv
-    (by decide) (by decide) (by decide)
-  have clocks := NonVacuous.Blake2RoundSpan.holds (p := babyBearModulus) rfl valid
-  have core : FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setupTable) :=
-    Verification.holds_of_sublist clocks (List.sublist_append_left _ _)
-  have reads : ∀ i : Fin 43, (readWord w i).Bounded := by
-    intro i
-    have observed := NonVacuous.Blake2RoundSpan.read
-      NonVacuous.Blake2RoundSpan.seed_inv (by decide) i.val i.isLt
-    have bounded := NonVacuous.Blake2RoundSpan.seed_inv.words _
-      (NonVacuous.Blake2RoundSpan.cellAt_mem i.isLt)
-    rw [← observed] at bounded
-    dsimp only [readWord, w]
-    convert bounded using 1
-  exact ⟨inputOf w, outputOf w, w, native_assumptions reads, core, native_mapping core⟩
+/-- The zero-mask assignment also meets every native timestamp lookup. -/
+theorem zero_clocks : FlatOperation.ConstraintsHoldFlat (Verification.environment zeroAssignment)
+    (clockConstraints setupTable) := by
+  apply Verification.holds_append zero_holds
+  apply NonVacuous.holds_of_get
+  · intro i bound
+    have empty : FlatOperation.constraints (importedConstraintsTimestampLookups (p := babyBearModulus)) = [] := rfl
+    rw [empty] at bound
+    exact absurd bound (Nat.not_lt_zero i)
+  · intro i bound
+    have old := NonVacuous.Blake2RoundSpan.timestamps (p := babyBearModulus) rfl zeroSource_valid i bound
+    have same := zero_timestamp_values ⟨i, by rwa [timestamp_count] at bound⟩
+    dsimp only at same
+    unfold Lookup.Contains at old ⊢
+    rw [same]
+    exact old
+
+/-- An active zero-mask row meets all equations, lookups, source bounds and port mappings. -/
+theorem satisfiable : SatisfiableClaim :=
+  ⟨inputOf zeroAssignment, outputOf zeroAssignment, zeroAssignment,
+    native_assumptions zero_reads, zero_holds, native_mapping zero_holds, zero_rounds⟩
 
 end Airbender.Blake2Round.Mask.Proofs

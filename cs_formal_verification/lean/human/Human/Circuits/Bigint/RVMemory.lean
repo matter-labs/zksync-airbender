@@ -15,8 +15,11 @@ namespace Airbender.Bigint.Memory
     cells include READ-WRITE ACCESS TO THE SHADOW RAM BELOW `ROM_END`. -/
 structure RVInputs [Fact p.Prime] (data : Delegation.MemoryData p)
     (before : RV.State) (cells : List Trace.Cell) : Prop where
+  /-- The initialized tokens bind the public RV state and cell list. -/
   publicState : Delegation.RVMemoryInputs data before cells
+  /-- Each submitted worker row uses the bigint circuit. -/
   families : ∀ row ∈ data.rows, row.family = .bigint
+  /-- The public bigint table is the defined setup table. -/
   table : data.setup.bigint = setupTable
 
 /-- Interface assumptions of the bigint memory model: exactly `RVInputs`; the address, output and witness

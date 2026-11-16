@@ -50,9 +50,13 @@ structure WordMapping {p : Nat} (input : Input) (output : Words)
     establish b/d input bounds and all intermediate/output bounds. -/
 structure InterfaceAssumptions {p : Nat} (input : Input) (_output : Words)
     (_w : Nat → ZMod p) : Prop where
+  /-- The first state input has canonical limbs. -/
   aBound : input.state.a.Bounded
+  /-- The third state input has canonical limbs. -/
   cBound : input.state.c.Bounded
+  /-- The first message input has canonical limbs. -/
   messageXBound : input.mx.Bounded
+  /-- The second message input has canonical limbs. -/
   messageYBound : input.my.Bounded
 
 def circuitModel {p : Nat} [Fact p.Prime] (control : Fin 512 → Vector Nat 7) :
