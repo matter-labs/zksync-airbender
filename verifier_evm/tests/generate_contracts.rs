@@ -3,6 +3,13 @@ mod common;
 use common::{MERGED_VERIFIER, WRONG_FINAL_PC_VERIFIER};
 use field::Proth120;
 
+// CreateX deployCreate2 address for TestRegistry (factory/salt in deploy.sh).
+// TestRegistry intentionally does not import the generated verifier, keeping its initcode stable.
+const REGISTRY_ADDRESS: [u8; 20] = [
+    0x78, 0xd5, 0x49, 0xf2, 0xa1, 0x40, 0x92, 0x3c, 0x51, 0x7c, 0x23, 0xb0, 0x08, 0xdf, 0xfe, 0x97,
+    0x9b, 0x3c, 0x4e, 0x91,
+];
+
 /// The proof aux must match the pinned inputs (external PoW floor, exit PC, top bits).
 /// Packing comes from the prover config.
 /// Returns the final PC.
@@ -85,6 +92,7 @@ fn generate_wrap(pc: u32) -> verifier_evm::WrapContracts {
         common::INITS_TEARDOWNS_TOP_BITS,
         &proof.whir_proof.setup_commitment.commitment.cap.cap,
         &nodes,
+        REGISTRY_ADDRESS,
     )
 }
 
@@ -98,8 +106,8 @@ fn generated_sources() -> Vec<(String, String)> {
     assert!(!source.contains("SetupFrontier"));
     assert!(!source.contains("extcodecopy("));
     assert!(!source.contains("extcodehash("));
-    assert!(source.contains("constructor(address registry_)"));
-    assert!(source.contains("sub(codesize(), add(__TEMPLATE_SETUP_DATA_BYTES, 32))"));
+    assert!(source.contains("constructor()"));
+    assert!(source.contains("sub(codesize(), __TEMPLATE_SETUP_DATA_BYTES)"));
     let data = hex::decode(
         source
             .split_once("hex\"")
@@ -131,9 +139,15 @@ fn generated_sources() -> Vec<(String, String)> {
     assert!(differences
         .iter()
         .all(|(a, b)| a.contains("// pinned final PC") && b.contains("// pinned final PC")));
+    assert!(source.contains("address(0x0078d549f2a140923c517c23b008dffe979b3c4e91)"));
+    assert!(!source.contains("abi.encode(registry_)"));
+    assert!(source.contains("ptr := add(SEED_PTR(), __TEMPLATE_GKR_CACHE_OFFSET)"));
+    assert!(source.contains("__TEMPLATE_GKR_CACHE_OFFSET         = 448;"));
+    assert!(source.contains("__TEMPLATE_GKR_SEED_BYTES           = 32 * 34;"));
     vec![
         (MERGED_VERIFIER.into(), contracts.verifier_sol),
         (WRONG_FINAL_PC_VERIFIER.into(), wrong.verifier_sol),
+        ("merged/MEMORY_LAYOUT.md".into(), contracts.memory_layout),
     ]
 }
 

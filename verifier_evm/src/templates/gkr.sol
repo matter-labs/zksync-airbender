@@ -12,14 +12,13 @@ interface IVerificationRegistry {
     function markVerified(bytes32 publicInput, bytes32 auxInput) external;
 }
 
-/// Runtime code used by GkrWhirVerifier's constructor, which appends setup data and the registry.
+/// Runtime code used by GkrWhirVerifier's constructor, which appends the generated setup data.
 contract GkrWhirVerifierCode {
-    /// The constructor-pinned registry is the final ABI word of this deployment's code.
-    function registry() public view returns (address value) {
-        assembly ("memory-safe") {
-            codecopy(0, sub(codesize(), 32), 32)
-            value := mload(0)
-        }
+    address constant __TEMPLATE_REGISTRY = "{unassigned}";
+
+    /// Generated for this registry; regenerate the verifier if the registry address changes.
+    function registry() public pure returns (address) {
+        return __TEMPLATE_REGISTRY;
     }
     // Every `__TEMPLATE_*` constant below is assigned by the generator (assemble.rs); in the
     // template they hold the string literal "{unassigned}", which does not compile as a number —
@@ -54,7 +53,8 @@ contract GkrWhirVerifierCode {
     uint256 constant CIRCUIT_PTR = 2080; // == MINIMUM_FREE_HEAP_PTR + 32
     // Spill-safe slot [2112,2144): after P_PTR and CIRCUIT_PTR, before every generated
     // GKR/WHIR heap region (which starts at 2144). The generator checks these boundaries.
-    // It holds the start of the appended setup data, computed from the runtime tail. Solidity
+    // This is the address of the memory slot holding the setup data code offset, computed
+    // at runtime from codesize(). It is unrelated to cap size or preimage length. Solidity
     // metadata precedes that data and cannot change this tail-relative offset.
     uint256 constant SETUP_CODE_OFFSET_PTR = 2112;
 
@@ -75,6 +75,7 @@ contract GkrWhirVerifierCode {
     uint256 constant __TEMPLATE_GKR_MEMORY_CHALLS_BYTES  = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_LOGUP_CHALLS_BYTES   = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_POINT_BYTES          = "{unassigned}";
+    uint256 constant __TEMPLATE_GKR_CACHE_OFFSET         = "{unassigned}"; // after every seed-relative absorb
     uint256 constant __TEMPLATE_GKR_SEED_BYTES           = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_BATCHING_BYTES       = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_CLAIMS_BYTES         = "{unassigned}";
@@ -92,7 +93,14 @@ contract GkrWhirVerifierCode {
     uint256 constant PUBLIC_INPUT_FIRST_REGISTER = 10; // x10..x17 (a0..a7)
     uint256 constant AUX_INPUT_FIRST_REGISTER    = 18; // x18..x25 (s2..s9)
     uint256 constant MARK_WORD_REGISTERS         = 8;  // 8 u32 values = one bytes32
-    uint256 constant __TEMPLATE_PREIMAGE_FINAL_PC_OFFSET   = "{unassigned}"; // = NUM_REGISTERS * PREIMAGE_REGISTER_STRIDE
+    uint256 constant __TEMPLATE_PREIMAGE_FINAL_PC_OFFSET       = "{unassigned}"; // NUM_REGISTERS * PREIMAGE_REGISTER_STRIDE
+    uint256 constant __TEMPLATE_PREIMAGE_TIMESTAMP_LOW_OFFSET  = "{unassigned}";
+    uint256 constant __TEMPLATE_PREIMAGE_TIMESTAMP_HIGH_OFFSET = "{unassigned}";
+    uint256 constant __TEMPLATE_PREIMAGE_TOP_BITS_OFFSET       = "{unassigned}";
+    uint256 constant __TEMPLATE_PREIMAGE_TOP_BITS_BYTES        = "{unassigned}";
+    uint256 constant __TEMPLATE_PREIMAGE_SETUP_CAP_OFFSET      = "{unassigned}";
+    uint256 constant __TEMPLATE_PREIMAGE_MEMORY_CAP_OFFSET     = "{unassigned}";
+    uint256 constant __TEMPLATE_PREIMAGE_CAP_BYTES             = "{unassigned}";
     uint256 constant __TEMPLATE_GKR_INIT_PREIMAGE_BYTES    = "{unassigned}"; // registers ‖ final PC ‖ top bits ‖ setup cap ‖ memory cap
     uint256 constant __TEMPLATE_FACTORED_ROUND_SLOT_BYTES = "{unassigned}"; // image bytes of a factored-round run: its calldata bit offset
     // The inits/teardowns RAM-set base chunk indices (`top_bits`) are deployment parameters of
@@ -142,7 +150,7 @@ contract GkrWhirVerifierCode {
         // the spill zone (MEMORY LAYOUT above).
         assembly ("memory-safe") {
         mstore(P_PTR, 0x7000000000000000000000000000001)
-        mstore(SETUP_CODE_OFFSET_PTR, sub(codesize(), add(__TEMPLATE_SETUP_DATA_BYTES, 32)))
+        mstore(SETUP_CODE_OFFSET_PTR, sub(codesize(), __TEMPLATE_SETUP_DATA_BYTES))
         // decode_calldata (below) unpacks the compressed calldata into the decoded GKR image the
         // GKR half reads, in transcript order. The image holds field elements as BE 16-byte
         // lanes, two per word: x0 = shr(128, word), x1 = and(word, MASK). Challenges take the
@@ -156,9 +164,9 @@ contract GkrWhirVerifierCode {
         function POINT_PTR()         -> ptr { ptr := add(LOGUP_CHALLS_PTR(), __TEMPLATE_GKR_LOGUP_CHALLS_BYTES) }
         // The seed region also holds the transcript scratch the absorbs use at SEED+32/+64, the
         // per-layer cache array (circuit.yul) and the claims sumcheck_claims_batch absorbs at
-        // SEED+32; the generator sizes it for the largest of those.
+        // SEED+32. Caches start after every absorb; the generator sizes both disjoint areas.
         function SEED_PTR()          -> ptr { ptr := add(POINT_PTR(), __TEMPLATE_GKR_POINT_BYTES) }
-        function GKR_CIRCUIT_CACHE_PTR()  -> ptr { ptr := add(SEED_PTR(), mul(32, 2)) }
+        function GKR_CIRCUIT_CACHE_PTR()  -> ptr { ptr := add(SEED_PTR(), __TEMPLATE_GKR_CACHE_OFFSET) }
         // Dim-reducing / entry regions (used before the circuit layers).
         function GKR_BATCHING_PTR() -> ptr { ptr := add(SEED_PTR(), __TEMPLATE_GKR_SEED_BYTES) }                 // running batching
         function GKR_CLAIMS_PTR()   -> ptr { ptr := add(GKR_BATCHING_PTR(), __TEMPLATE_GKR_BATCHING_BYTES) }     // NUM_OUTPUTS dim-reduce claims
@@ -558,6 +566,8 @@ contract GkrWhirVerifierCode {
         // generated from the artifact's layer count so it can't drift when the circuit gains
         // or loses a layer — see gkr_circuit_layer_calls in the generator.
         function gkr_circuit(ptr, alpha) -> next_ptr {
+            // Generated calls thread (ptr, alpha) through layers N down to 1; layer 0
+            // consumes the final alpha and returns only ptr.
             // __GKR_CIRCUIT_LAYER_CALLS__
             next_ptr := ptr
         }
@@ -684,6 +694,7 @@ contract GkrWhirVerifierCode {
         {
             let alpha
             // the stream cursor is a memory address inside the decoded GKR image
+            // decode_calldata builds the preimage, including the setup cap from code, before hashing it.
             decode_calldata()
             ptr := transcript_init(IMAGE_PTR())
             output_evals_ptr := ptr // base of the 10 GKR output columns (for the lookup-identity check)

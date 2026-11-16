@@ -247,7 +247,7 @@ impl WhirGenConfig {
     /// mirroring exactly how the Yul in whir.sol indexes each region (documented per entry).
     /// The generator lays them out contiguously above the GKR heap and assigns the resulting
     /// absolute offsets to the `__TEMPLATE_WHIR_*` pointer constants.
-    pub fn memory_regions(&self) -> Vec<(&'static str, Lit)> {
+    pub fn memory_regions(&self) -> Vec<(&'static str, Lit, &'static str)> {
         let max_fold = *self.folds.iter().max().unwrap();
         let max_q = *self.queries.iter().max().unwrap();
         let cap = Lit::pow2(self.cap_log2 as u128);
@@ -291,33 +291,61 @@ impl WhirGenConfig {
             w32.add(&Lit::num(64))
         };
         vec![
-            ("SEED_PTR", seed),
-            ("Z_PTR", slot(self.nz)),
-            ("POW_PTR", Lit::num(numpow as u128).mul(&Lit::num(96))),
-            ("ACC_PREF_PTR", w32.clone()),
-            ("GAMMA_PTR", slot(self.gcount)),
-            ("FOLD_CH_PTR", slot(max_fold)),
+            ("SEED_PTR", seed, "WHIR transcript seed and absorb scratch"),
+            ("Z_PTR", slot(self.nz), "Opening-point coordinates"),
+            (
+                "POW_PTR",
+                Lit::num(numpow as u128).mul(&Lit::num(96)),
+                "Deferred proof-of-work checks",
+            ),
+            ("ACC_PREF_PTR", w32.clone(), "Accumulated prefix product"),
+            (
+                "GAMMA_PTR",
+                slot(self.gcount),
+                "Base-column batching challenges",
+            ),
+            ("FOLD_CH_PTR", slot(max_fold), "Round folding challenges"),
             // only round 0 (the coset fold) reads the high-power offsets
-            ("HPO_PTR", Lit::pow2(self.folds[0] as u128 - 1).mul(&w32)),
-            ("FBUF_PTR", Lit::pow2(max_fold as u128).mul(&w32)),
-            ("LEAF_PTR", slot(leaf_words)),
-            ("REG_CD", w32.clone()),
-            ("REG_CLAIM", w32.clone()),
-            ("REG_NUMPOW", w32.clone()),
-            ("REG_ZIOFF", w32.clone()),
-            ("REG_CC", w32.clone()),
-            ("REG_CURDELIN", w32.clone()),
-            ("BCAP0_PTR", cap_bytes.clone()),
-            ("QCAP_PTR", cap_bytes.clone()),
-            ("NCAP_PTR", cap_bytes.clone()),
-            ("QIDX_BUF_PTR", slot(max_q)),
-            ("DRAW_BUF_PTR", slot(draw_words)),
+            (
+                "HPO_PTR",
+                Lit::pow2(self.folds[0] as u128 - 1).mul(&w32),
+                "Round-0 high-power offsets",
+            ),
+            (
+                "FBUF_PTR",
+                Lit::pow2(max_fold as u128).mul(&w32),
+                "Folded leaf scratch",
+            ),
+            ("LEAF_PTR", slot(leaf_words), "Merkle leaf hashing scratch"),
+            ("REG_CD", w32.clone(), "Calldata cursor"),
+            ("REG_CLAIM", w32.clone(), "Current opening claim"),
+            ("REG_NUMPOW", w32.clone(), "Deferred proof-of-work count"),
+            ("REG_ZIOFF", w32.clone(), "Opening coordinate cursor"),
+            ("REG_CC", w32.clone(), "Current column count"),
+            (
+                "REG_CURDELIN",
+                w32.clone(),
+                "Current delinearization challenge",
+            ),
+            ("BCAP0_PTR", cap_bytes.clone(), "Base oracle cap"),
+            ("QCAP_PTR", cap_bytes.clone(), "Current oracle cap"),
+            ("NCAP_PTR", cap_bytes.clone(), "Next oracle cap"),
+            ("QIDX_BUF_PTR", slot(max_q), "Query indices"),
+            (
+                "DRAW_BUF_PTR",
+                slot(draw_words),
+                "Transcript query-draw scratch",
+            ),
             // do_final: 2^rfin monomials, then the tail absorb (32 + nmono·16 B) and the
             // halving-fold scratch (nmono words) share FEVAL
-            ("MONO_PTR", nmono.mul(&w32)),
+            ("MONO_PTR", nmono.mul(&w32), "Final polynomial monomials"),
             // rfin > 0, so nmono ≥ 2 and the tail absorb (32 + nmono·16 B) fits in the nmono-word
             // fold scratch
-            ("FEVAL_PTR", nmono.mul(&w32)),
+            (
+                "FEVAL_PTR",
+                nmono.mul(&w32),
+                "Final polynomial absorb and fold scratch",
+            ),
         ]
     }
 }

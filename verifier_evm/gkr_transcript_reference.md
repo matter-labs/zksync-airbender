@@ -25,8 +25,8 @@ runtime code, and compare `auxInput` with the expected recursion chain hash.
 
 The setup frontier, cap image and GKR term table are embedded in the deployed
 verifier code, with their existing STOP/nodes/cap/table layout unchanged. Reads
-use `codecopy` at a tail-relative offset; the constructor takes only the registry
-address. The verifier targets Glamsterdam's EIP-7954 size limit. Tests use Foundry
+use `codecopy` at a tail-relative offset; the constructor takes no arguments. The
+registry address is a generation input; regenerate the verifier if it changes. The verifier targets Glamsterdam's EIP-7954 size limit. Tests use Foundry
 v1.9.0 with the Amsterdam hardfork; solc 0.8.38 compiles for Osaka while its
 Amsterdam target is experimental.
 

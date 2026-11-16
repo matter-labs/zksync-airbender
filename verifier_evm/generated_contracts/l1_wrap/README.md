@@ -9,13 +9,37 @@ binary and must match the bundle.
 `merged/` contains the verifier with embedded setup data and Foundry tests.
 `negative/wrong_final_pc/` differs only in the final PC the decoder pins.
 
-Deploy `GkrWhirVerifier(registry)` with a registry implementing
-`IVerificationRegistry`. Its constructor embeds the setup frontier, cap image and
-GKR term table directly after the verifier runtime, followed by the registry ABI
-word. Verification reads the setup with `codecopy`, using offsets relative to the
-code tail so Solidity's metadata trailer cannot shift the data. No separate data
-contract is deployed. The generated `GkrWhirVerifierCode` contract supplies runtime
-code to the constructor; deploy `GkrWhirVerifier`, not that runtime template.
+Generate the verifier for one registry implementing `IVerificationRegistry`, then deploy
+`GkrWhirVerifier()` with no constructor arguments. The registry address is an input to
+`generate_wrap_verifier`, compiled into the runtime alongside the final PC and setup.
+Regenerate the verifier whenever the registry address changes. The committed generator and
+Foundry tests use `0x78D549f2A140923c517c23b008DFfE979B3c4E91`, the TestRegistry CREATE2
+address for `../deploy.sh`'s CreateX factory and registry salt. Tests install registry code
+there with `vm.etch`. TestRegistry's source is independent of the generated verifier so its
+initcode hash does not depend on the address being pinned. Generation rejects a zero address;
+`deploy.sh` checks the selected address before sending transactions and checks registry code
+before deploying the verifier.
+
+The constructor returns exactly `type(GkrWhirVerifierCode).runtimeCode || setup data`:
+frontier, cap image and GKR term table, with no registry suffix. Verification reads setup with
+`codecopy`, without an external data contract. Its start is `codesize() - SETUP_DATA_BYTES`;
+Solidity's metadata trailer is inside the runtime prefix. Deploy `GkrWhirVerifier`, whose
+constructor returns that array, rather than the `GkrWhirVerifierCode` runtime template.
+
+The generated [memory and runtime layout](merged/MEMORY_LAYOUT.md) lists all memory regions,
+SEED's disjoint absorb scratch and cache, POINT's exact bound, and setup's internal offsets.
+The runtime layout is relative to the code tail: setup occupies the last `SETUP_DATA_BYTES`
+bytes. `test_create_requires_glamsterdam_size_limit` reports the actual runtime size, and
+`test_embedded_setup_matches_reference` checks the byte-exact runtime prefix.
+
+`test_embedded_setup_matches_reference` checks every deployed runtime-prefix byte, the exact
+setup length and its pinned Keccak256. It catches a toolchain that appends bytes after the
+constructor's returned array. Changing setup length without regenerating is caught by the
+Rust producer's pinned payload length/hash assertions and this deployed-code check, while
+`test_merged_single_tx` exercises the resulting reads. `test_rejects_shifted_setup` appends a
+byte after setup using `vm.etch`, checks rejection of the canonical proof, then restores the
+code and checks acceptance. `test_rejects_altered_setup_data` covers frontier, cap and term
+table mutations.
 
 The verifier targets Glamsterdam's EIP-7954 size limit of 65,536 bytes; its runtime
 exceeds the earlier 24,576-byte limit. Use Foundry v1.9.0 and solc 0.8.38. The

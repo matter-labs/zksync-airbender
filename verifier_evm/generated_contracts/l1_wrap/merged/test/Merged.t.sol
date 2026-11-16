@@ -2,9 +2,9 @@
 pragma solidity =0.8.38;
 
 /// The L1 wrap proof, statement and malformed-input controls.
-import {GkrWhirVerifier} from "../src/GkrWhirVerifier.sol";
+import {GkrWhirVerifier, GkrWhirVerifierCode} from "../src/GkrWhirVerifier.sol";
 import {TestRegistry} from "../src/TestRegistry.sol";
-import {MergedBase, RevertingRegistry} from "./MergedBase.sol";
+import {MergedBase, RevertingRegistry, AlternateRegistry} from "./MergedBase.sol";
 
 contract MergedTest is MergedBase {
     string constant VERIFIER_ARTIFACT = "out/GkrWhirVerifier.sol/GkrWhirVerifier.json";
@@ -18,8 +18,10 @@ contract MergedTest is MergedBase {
     string fields;
 
     function setUp() public {
-        registry = new TestRegistry();
-        wrapVerifier = _deploy(VERIFIER_ARTIFACT, address(registry));
+        address pinnedRegistry = 0x78D549f2A140923c517c23b008DFfE979B3c4E91;
+        vm.etch(pinnedRegistry, type(TestRegistry).runtimeCode);
+        registry = TestRegistry(pinnedRegistry);
+        wrapVerifier = _deploy(VERIFIER_ARTIFACT);
         proof = _hex(string.concat(DATA, "single_tx_calldata.hex"));
         fields = vm.readFile(string.concat(DATA, "single_tx_calldata_fields.json"));
         gkrBytes = vm.parseJsonUint(fields, ".gkr_bytes");
@@ -51,11 +53,12 @@ contract MergedTest is MergedBase {
         return string.concat("whir_", vm.toString(vm.parseJsonUint(fields, ".whir_rounds") - 1), suffix);
     }
 
-    /// The constructor returns this exact runtime prefix before appending setup + registry.
+    /// The constructor returns this exact runtime prefix before appending setup.
     function _setupOffset() internal view returns (uint256) {
         return vm.parseJsonBytes(
             vm.readFile("out/GkrWhirVerifier.sol/GkrWhirVerifierCode.json"), ".deployedBytecode.object"
-        ).length;
+        )
+        .length;
     }
 
     /// Absolute code offsets; the relative STOP/nodes/cap/table layout is unchanged.
@@ -72,7 +75,7 @@ contract MergedTest is MergedBase {
     }
 
     function test_create_requires_glamsterdam_size_limit() external {
-        bytes memory init = bytes.concat(_creation(VERIFIER_ARTIFACT), abi.encode(address(registry)));
+        bytes memory init = _creation(VERIFIER_ARTIFACT);
         require(init.length <= 131_072, "initcode exceeds Glamsterdam limit");
         address verifier;
         uint256 beforeCreate = gasleft();
@@ -86,23 +89,41 @@ contract MergedTest is MergedBase {
         emit log_named_uint("initcode_bytes", init.length);
         require(verifier.code.length > EIP170, "Glamsterdam size dependency missing");
         require(verifier.code.length <= GLAMSTERDAM_CODE_LIMIT, "verifier exceeds EIP-7954");
-        address wrong =
-            _deploy("../negative/wrong_final_pc/out/GkrWhirVerifier.sol/GkrWhirVerifier.json", address(registry));
+        address wrong = _deploy("../negative/wrong_final_pc/out/GkrWhirVerifier.sol/GkrWhirVerifier.json");
         emit log_named_uint("negative_verifier_bytes", wrong.code.length);
         require(wrong.code.length <= GLAMSTERDAM_CODE_LIMIT, "negative verifier exceeds EIP-7954");
+    }
+
+    function test_registry_matches_deploy_create2_address() external view {
+        address factory = 0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed;
+        bytes32 salt = 0x00000000000000000000000000000000000000000000000000616972621b0001;
+        // CreateX _guard hashes this unpermissioned, non-redeploy-protected salt.
+        bytes32 guardedSalt = keccak256(abi.encode(salt));
+        address expected = address(
+            uint160(
+                uint256(
+                    keccak256(
+                        abi.encodePacked(hex"ff", factory, guardedSalt, keccak256(type(TestRegistry).creationCode))
+                    )
+                )
+            )
+        );
+        require(address(registry) == expected, "registry differs from deploy.sh CREATE2 address");
     }
 
     function test_embedded_setup_matches_reference() external view {
         bytes memory code = wrapVerifier.code;
         require(
-            keccak256(_slice(code, _setupOffset(), code.length - 32))
+            keccak256(_slice(code, _setupOffset(), code.length))
                 == 0xf5e33e946c45cc936b514c2158e8ac6ce4085a320a7cbd8dde3d90d37b7301ed,
             "embedded setup bytes changed"
         );
-        require(
-            _slice32(code, code.length - 32) == bytes32(uint256(uint160(address(registry)))),
-            "registry suffix differs"
-        );
+        bytes memory prefix = type(GkrWhirVerifierCode).runtimeCode;
+        require(code.length == prefix.length + 16_410, "runtime length differs");
+        // Check every byte; the pinned setup hash above identifies the complete suffix.
+        for (uint256 i; i < prefix.length; ++i) {
+            require(code[i] == prefix[i], "runtime prefix differs");
+        }
         require(GkrWhirVerifier(wrapVerifier).registry() == address(registry), "registry getter differs");
     }
 
@@ -203,7 +224,9 @@ contract MergedTest is MergedBase {
         uint256 db = vm.parseJsonUint(fields, ".digest_bytes");
         bytes memory nodes = _copy(code);
         // Change every node so this control covers the proof's queried frontier entries.
-        for (uint256 i = _setupOffset() + 1; i < cap; i += db) nodes[i] ^= 0x01;
+        for (uint256 i = _setupOffset() + 1; i < cap; i += db) {
+            nodes[i] ^= 0x01;
+        }
         vm.etch(wrapVerifier, nodes);
         require(_rejects(wrapVerifier, proof), "altered embedded frontier accepted");
         uint256[2] memory at = [cap, table];
@@ -232,28 +255,23 @@ contract MergedTest is MergedBase {
     }
 
     function test_rejects_wrong_final_pc() external {
-        address wrong =
-            _deploy("../negative/wrong_final_pc/out/GkrWhirVerifier.sol/GkrWhirVerifier.json", address(registry));
+        address wrong = _deploy("../negative/wrong_final_pc/out/GkrWhirVerifier.sol/GkrWhirVerifier.json");
         require(_rejects(wrong, proof), "verifier with another final PC");
     }
 
-    function test_registry_constructor_rejections() external {
-        for (uint256 i; i < 2; ++i) {
-            address bad = i == 0 ? address(0) : address(0x1234);
-            try new GkrWhirVerifier(bad) {
-                revert("invalid registry accepted");
-            } catch Error(string memory reason) {
-                require(
-                    keccak256(bytes(reason)) == keccak256(bytes(i == 0 ? "registry is zero" : "registry has no code")),
-                    "wrong rejection"
-                );
-            }
-        }
+    function test_refusing_registry_fails_verification() external {
+        vm.etch(address(registry), type(RevertingRegistry).runtimeCode);
+        require(_rejects(wrapVerifier, proof), "refused registry mark accepted");
     }
 
-    function test_refusing_registry_fails_verification() external {
-        GkrWhirVerifier verifier = new GkrWhirVerifier(address(new RevertingRegistry()));
-        require(_rejects(address(verifier), proof), "refused registry mark accepted");
+    /// A suffix added after setup displaces the tail-relative start by one byte.
+    function test_rejects_shifted_setup() external {
+        _accepts(wrapVerifier, proof);
+        bytes memory original = wrapVerifier.code;
+        vm.etch(wrapVerifier, bytes.concat(original, hex"00"));
+        require(_rejects(wrapVerifier, proof), "shifted setup accepted");
+        vm.etch(wrapVerifier, original);
+        _accepts(wrapVerifier, proof);
     }
 
     function test_rejects_selector_only_inputs() external {
@@ -264,16 +282,21 @@ contract MergedTest is MergedBase {
         require(_rejects(wrapVerifier, ""), "empty input accepted");
     }
 
-    function test_registry_is_a_constructor_input() external {
+    function test_registry_implementation_can_be_replaced_at_generated_address() external {
         TestRegistry other = new TestRegistry();
-        GkrWhirVerifier verifier = new GkrWhirVerifier(address(other));
-        require(verifier.registry() == address(other), "constructor registry differs");
-        bytes memory result = _accepts(address(verifier), proof);
+        vm.etch(address(registry), type(AlternateRegistry).runtimeCode);
+        AlternateRegistry replacement = AlternateRegistry(address(registry));
+        require(GkrWhirVerifier(wrapVerifier).registry() == address(replacement), "generated registry differs");
+        bytes memory result = _accepts(wrapVerifier, proof);
         require(
             keccak256(result) == keccak256(_hex(string.concat(DATA, "verified_mark.hex"))),
-            "statement with another registry"
+            "statement with another registry implementation"
         );
-        require(other.lastVerifier() == address(verifier) && other.count() == 1, "wrong registry caller");
-        require(registry.count() == 0, "original registry marked");
+        require(replacement.reporter() == wrapVerifier, "wrong registry caller");
+        require(
+            keccak256(abi.encode(replacement.publicInput(), replacement.auxInput())) == keccak256(result),
+            "wrong registry statement"
+        );
+        require(other.count() == 0, "other address marked");
     }
 }

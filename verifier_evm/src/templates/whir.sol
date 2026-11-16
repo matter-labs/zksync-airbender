@@ -59,7 +59,7 @@ contract WhirVerifier {
     uint256 constant __TEMPLATE_DIGEST_MASK = "{unassigned}";
     uint256 constant __TEMPLATE_DIGEST_BYTES = "{unassigned}"; // Merkle digest bytes in the compressed calldata
     // Appended setup data: STOP ‖ setup frontier ‖ pinned setup cap image ‖ GKR term table.
-    // The registry ABI word follows it; all setup offsets are relative to its leading STOP.
+    // It ends at codesize(); all setup offsets are relative to its leading STOP.
     uint256 constant __TEMPLATE_SETUP_DATA_BYTES = "{unassigned}";
     uint256 constant __TEMPLATE_DATA_CAP_OFFSET = "{unassigned}";
     uint256 constant __TEMPLATE_DATA_QTABLE_OFFSET = "{unassigned}";

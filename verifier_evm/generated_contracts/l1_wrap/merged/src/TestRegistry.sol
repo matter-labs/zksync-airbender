@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.8.38;
 
-import {IVerificationRegistry} from "./GkrWhirVerifier.sol";
-
 /// Minimal `IVerificationRegistry` for tests and local deployments: records every statement a
 /// verifier reports (`markVerified`), keyed by (msg.sender, publicInput, auxInput), and keeps
 /// the last mark + its reporter for inspection. Anyone may call it and any chain is accepted
 /// — a production registry accepts only approved verifier addresses (`msg.sender`), each
 /// pinned to one setup embedded in its runtime code, and compares `auxInput` with the expected
 /// recursion chain hash.
-contract TestRegistry is IVerificationRegistry {
+// Keep this source independent of the generated verifier: its CREATE2 initcode hash must
+// remain stable when the verifier is regenerated for this registry's address.
+contract TestRegistry {
     struct Mark {
         bytes32 publicInput;
         bytes32 auxInput;
@@ -25,7 +25,7 @@ contract TestRegistry is IVerificationRegistry {
     /// keccak256(abi.encode(msg.sender, publicInput, auxInput)) => recorded
     mapping(bytes32 => bool) public isVerified;
 
-    function markVerified(bytes32 publicInput, bytes32 auxInput) external override {
+    function markVerified(bytes32 publicInput, bytes32 auxInput) external {
         count += 1;
         last = Mark(publicInput, auxInput);
         lastVerifier = msg.sender;

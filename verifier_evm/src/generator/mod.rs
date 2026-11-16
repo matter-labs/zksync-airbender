@@ -17,6 +17,7 @@
 
 mod calldata_decoder;
 mod circuit_yul;
+mod preimage;
 mod whir;
 
 pub use circuit_yul::{emit_circuit_yul, emit_circuit_yul_with_stats, CircuitYulStats};
@@ -122,6 +123,8 @@ impl Lit {
 pub struct WrapContracts {
     /// The merged `GkrWhirVerifier` source.
     pub verifier_sol: String,
+    /// Generated memory and tail-relative runtime layout, independent of compiled code size.
+    pub memory_layout: String,
 }
 
 // `generate_wrap_verifier` is implemented in `assemble.rs`.

@@ -7,6 +7,7 @@ use cs::gkr_compiler::GKRCircuitArtifact;
 use field::Proth120;
 use prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTES as DIGEST_BYTES;
 
+use super::{preimage::PreimageLayout, NUM_REGISTERS};
 use crate::encoding::{fe_run_len, ts_run_len, Geometry};
 
 /// Memory address of the decoded GKR image, as the Yul expression the rewritten readers use.
@@ -18,14 +19,14 @@ pub(crate) const FACTORED_ROUND_SLOT_BYTES: usize = 32;
 
 /// GKR output lines (5 output types × [read/num, write/den]).
 const GKR_OUTPUTS: usize = 10;
-const NUM_REGISTERS: usize = 32;
 
 /// The decoder's layout: every run of the calldata's GKR section in stream order with its
 /// destination in the decoded GKR image.
 pub(crate) struct GkrDecoder {
     pub yul: String,
+    pub preimage: PreimageLayout,
     /// The pinned setup cap as the decoded GKR image holds it (32 bytes per digest, LE u32
-    /// words); the decoder copies it from the setup data contract.
+    /// words); the decoder copies it from the appended setup data.
     pub setup_cap_image: Vec<u8>,
     /// Length of the decoded GKR image.
     pub image_bytes: usize,
@@ -146,8 +147,10 @@ pub(crate) fn gkr_decoder(
 
     // Preimage lengths in the image and in the calldata: decode_calldata rebuilds the preimage
     // first; the rest of the GKR section is runs and raw bytes.
-    let preimage_in_image = 12 * NUM_REGISTERS + 12 + 4 * num_top_bits + 2 * 32 * cap;
-    let preimage_in_calldata = 4 * NUM_REGISTERS + ts_run_len(NUM_REGISTERS + 1) + cap * db;
+    let preimage = PreimageLayout::new(num_top_bits, cap, db);
+    let preimage_in_image = preimage.total.value as usize;
+    let preimage_in_calldata =
+        4 * NUM_REGISTERS + ts_run_len(NUM_REGISTERS + 1) + preimage.wire_cap_bytes.value as usize;
     // Static walk of the stream (the runtime walk in decode_calldata must end at the same
     // offsets).
     let widths: Vec<usize> = (0..circuit.layers.len())
@@ -204,7 +207,7 @@ pub(crate) fn gkr_decoder(
     let widths_word: String = widths.iter().rev().map(|w| format!("{w:04x}")).collect();
     let body = format!(
         "            let cd := {preimage_in_calldata}
-            let image := {preimage_in_image}
+            let image := __TEMPLATE_GKR_INIT_PREIMAGE_BYTES
             calldatacopy(add({IMAGE_PTR}, image), cd, 8) // external PoW nonce
             cd, image := decode_next_run(add(cd, 8), add(image, 8), {outputs})
             for {{ let k := {e} }} lt(k, {t}) {{ k := add(k, 1) }} {{
@@ -228,8 +231,7 @@ pub(crate) fn gkr_decoder(
         .iter()
         .flat_map(|d| d.iter().flat_map(|w| w.to_le_bytes()))
         .collect();
-    let setup_cap_in_image = 12 * NUM_REGISTERS + 12 + 4 * num_top_bits;
-    let setup_cap_len = setup_cap_image.len();
+    assert_eq!(setup_cap_image.len() as u128, preimage.cap_bytes.value);
     let pc_le = u32::from_le_bytes(final_pc.to_be_bytes());
     let ts_off = 4 * NUM_REGISTERS;
     let top_off = ts_off + ts_run_len(NUM_REGISTERS + 1);
@@ -311,44 +313,41 @@ pub(crate) fn gkr_decoder(
                     shl(16, and(r, 0x0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff)))
         }}
         function decode_calldata() {{
-            // preimage: registers (value, ts_low, ts_high) as LE u32
-            for {{ let i := 0 }} lt(i, {NUM_REGISTERS}) {{ i := add(i, 1) }} {{
-                let dst := add({IMAGE_PTR}, mul(12, i))
+            // Build the transcript preimage hashed by transcript_init, field by field.
+            // Registers (value, ts_low, ts_high) are LE u32s; setup cap comes from code.
+            for {{ let i := 0 }} lt(i, NUM_REGISTERS) {{ i := add(i, 1) }} {{
+                let dst := add({IMAGE_PTR}, mul(PREIMAGE_REGISTER_STRIDE, i))
                 calldatacopy(dst, mul(4, i), 4)
                 let lo, hi := cd_timestamp(i)
                 mstore(add(dst, 4), limb19_le(lo))
                 mstore(add(dst, 8), limb19_le(hi))
             }}
             {{
-                let lo, hi := cd_timestamp({NUM_REGISTERS})
-                mstore(add({IMAGE_PTR}, {pc_off}), shl(224, {pc_le:#x})) // pinned final PC
-                mstore(add({IMAGE_PTR}, {fts_lo}), limb19_le(lo))
-                mstore(add({IMAGE_PTR}, {fts_hi}), limb19_le(hi))
+                let lo, hi := cd_timestamp(NUM_REGISTERS)
+                mstore(add({IMAGE_PTR}, __TEMPLATE_PREIMAGE_FINAL_PC_OFFSET), shl(224, {pc_le:#x})) // pinned final PC
+                mstore(add({IMAGE_PTR}, __TEMPLATE_PREIMAGE_TIMESTAMP_LOW_OFFSET), limb19_le(lo))
+                mstore(add({IMAGE_PTR}, __TEMPLATE_PREIMAGE_TIMESTAMP_HIGH_OFFSET), limb19_le(hi))
             }}
             if and(byte(0, calldataload({ts_last})), {ts_pad_mask:#x}) {{ revert(0, 0) }}
             // pinned inits/teardowns top bits (the setup cap below overwrites the rest of the word)
-            mstore(add({IMAGE_PTR}, {top_image}), 0x{top_word})
+            mstore(add({IMAGE_PTR}, __TEMPLATE_PREIMAGE_TOP_BITS_OFFSET), 0x{top_word})
             // pinned setup cap
-            codecopy(add({IMAGE_PTR}, {setup_cap_in_image}), add(mload(SETUP_CODE_OFFSET_PTR), __TEMPLATE_DATA_CAP_OFFSET), {setup_cap_len})
+            codecopy(add({IMAGE_PTR}, __TEMPLATE_PREIMAGE_SETUP_CAP_OFFSET), add(mload(SETUP_CODE_OFFSET_PTR), __TEMPLATE_DATA_CAP_OFFSET), __TEMPLATE_PREIMAGE_CAP_BYTES)
             // memory cap: {cap} DIGESTs of {db} bytes, as preimage LE words and as the WHIR
             // half's BE base-oracle cap
             for {{ let i := 0 }} lt(i, {cap}) {{ i := add(i, 1) }} {{
                 let d := cd_digest(add({cap_off}, mul({db}, i)))
-                mstore(add({IMAGE_PTR}, add({mem_cap_in_image}, mul(32, i))), bswap32x8(d))
+                mstore(add({IMAGE_PTR}, add(__TEMPLATE_PREIMAGE_MEMORY_CAP_OFFSET, mul(32, i))), bswap32x8(d))
                 mstore(add(__TEMPLATE_WHIR_BCAP0_PTR, mul(32, i)), d)
             }}
 {body}        }}
 ",
-        pc_off = 12 * NUM_REGISTERS,
-        fts_lo = 12 * NUM_REGISTERS + 4,
-        fts_hi = 12 * NUM_REGISTERS + 8,
         ts_last = top_off - 1,
         ts_pad_mask = (1u32 << ts_pad) - 1,
-        top_image = 12 * NUM_REGISTERS + 12,
-        mem_cap_in_image = 12 * NUM_REGISTERS + 12 + 4 * num_top_bits + 32 * cap,
     );
     GkrDecoder {
         yul,
+        preimage,
         setup_cap_image,
         image_bytes,
         calldata_bytes,

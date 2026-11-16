@@ -3,8 +3,9 @@
 //!
 //! [`generate_wrap_verifier`] renders the GKR/WHIR verifier with embedded setup data
 //! from a circuit, ProverConfig and deployment parameters. The verifier constructor
-//! takes only the registry address; proof acceptance reports the verified statement
-//! to that registry. Deployment targets Glamsterdam's contract size limit.
+//! takes no arguments: the registry address is a generation input and must be regenerated
+//! if it changes. Proof acceptance reports the verified statement to that registry.
+//! Deployment targets Glamsterdam's contract size limit.
 //!
 //! [`encoding::encode_single_tx`] encodes a proof as compressed calldata, and
 //! [`verified_mark`] computes the statement returned and reported by the verifier.

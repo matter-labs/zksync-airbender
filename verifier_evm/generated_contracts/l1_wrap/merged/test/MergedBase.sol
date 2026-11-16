@@ -22,7 +22,7 @@ contract RevertingRegistry is IVerificationRegistry {
 
 /// Shared helpers: committed data, and deployment of the renders built in sibling projects
 /// (`../negative/*`) from their creation
-/// code, with only the registry address as constructor argument.
+/// code, without constructor arguments.
 abstract contract MergedBase {
     Vm constant vm = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
     string constant DATA = "../../../debug_data/l1_wrap/";
@@ -38,8 +38,8 @@ abstract contract MergedBase {
         require(code.length != 0, "missing generated verifier bytecode (forge build its project)");
     }
 
-    function _deploy(string memory artifact, address registry) internal returns (address v) {
-        bytes memory init = bytes.concat(_creation(artifact), abi.encode(registry));
+    function _deploy(string memory artifact) internal returns (address v) {
+        bytes memory init = _creation(artifact);
         assembly ("memory-safe") {
             v := create(0, add(init, 32), mload(init))
         }
@@ -72,5 +72,18 @@ abstract contract MergedBase {
     function _rejects(address v, bytes memory data) internal returns (bool) {
         (bool ok,) = v.call(data);
         return !ok;
+    }
+}
+
+/// A distinct registry implementation installed at the same generated address.
+contract AlternateRegistry is IVerificationRegistry {
+    address public reporter;
+    bytes32 public publicInput;
+    bytes32 public auxInput;
+
+    function markVerified(bytes32 pi, bytes32 aux) external override {
+        reporter = msg.sender;
+        publicInput = pi;
+        auxInput = aux;
     }
 }
