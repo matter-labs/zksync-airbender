@@ -1,5 +1,6 @@
 module
 public import Proven.Compiler.SetupMetadata
+public import Proven.Trace.Machine.Program
 
 @[expose] public section
 namespace Airbender.Compiler.NativePublicSetup.Proofs
@@ -22,11 +23,11 @@ theorem program_mask (family : RVMachineDecoderFamily) (entry : RVMachineProgram
 theorem decoder_mask (family : RVMachineDecoderFamily) (program : List RVMachineProgramEntry)
     (index : Nat) :
     ((decoderRow family program index)[maskColumn family]?).getD 0 =
-      match program[index]? with
+      match rvMachineProgramSlot program index with
       | some entry => if entry.data.family = family then (entry.data.mask : F) else -1
       | none => -1 := by
   unfold decoderRow
-  cases slot : program[index]? with
+  cases slot : rvMachineProgramSlot program index with
   | none =>
     simp only [Option.map_none, Option.getD_none, width_binding]
     cases family with
@@ -54,15 +55,14 @@ theorem decoder_mask_nonzero {initial : RV.State} {program : List RVMachineProgr
     (family : RVMachineDecoderFamily) (index : Nat) :
     ((decoderRow family program index)[maskColumn family]?).getD 0 ≠ 0 := by
   rw [decoder_mask]
-  cases slot : program[index]? with
+  cases slot : rvMachineProgramSlot program index with
   | none => exact neg_ne_zero.mpr one_ne_zero
   | some entry =>
     dsimp only
     by_cases matching : entry.data.family = family
     · rw [ite_eq_left matching]
       have member : entry ∈ program := by
-        obtain ⟨present, rfl⟩ := List.getElem?_eq_some_iff.mp slot
-        exact List.getElem_mem present
+        exact Trace.Machine.Proofs.machine_program_slot_member slot
       have mask := bound.mask entry member
       intro zero
       have value := congrArg ZMod.val zero
@@ -78,7 +78,7 @@ theorem decoder_tag (family : RVMachineDecoderFamily) (isTagged : tagged family 
     ((decoderRow family program index)[width family - 1]?).getD 0 = 46 := by
   unfold decoderRow
   rw [width_binding]
-  cases slot : program[index]? with
+  cases slot : rvMachineProgramSlot program index with
   | none =>
     simp only [Option.map_none, Option.getD_none]
     cases family with

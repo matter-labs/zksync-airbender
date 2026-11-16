@@ -2,11 +2,41 @@ module
 public import Human.Helpers.Decoder.RVMachineProgram
 public import Proven.Trace.RVFetch
 public import Mathlib.Tactic.IntervalCases
+public import Std.Data.TreeMap.Lemmas
 
 @[expose] public section
 namespace Airbender.Trace.Machine.Proofs
 set_option warningAsError true
 set_option backward.isDefEq.respectTransparency false
+
+/-- The address index has the same result as a search of the public entry list. -/
+theorem machine_program_index_lookup (program : List RVMachineProgramEntry) (pc : Nat) :
+    (rvMachineProgramIndex program)[pc]? = program.find? (fun entry => entry.pc.toNat == pc) := by
+  induction program with
+  | nil => simp [rvMachineProgramIndex]
+  | cons entry program ih =>
+    simp only [rvMachineProgramIndex, List.foldr_cons, Std.TreeMap.getElem?_insert,
+      List.find?_cons]
+    change (if compare entry.pc.toNat pc = .eq then some entry else
+      (rvMachineProgramIndex program)[pc]?) = _
+    rw [ih]
+    cases beq : entry.pc.toNat == pc with
+    | false =>
+      have different : entry.pc.toNat ≠ pc := by
+        intro equal
+        rw [equal] at beq
+        simp at beq
+      simp [different]
+    | true =>
+      have equal : entry.pc.toNat = pc := by simpa only [beq_iff_eq] using beq
+      simp [equal]
+
+/-- A populated native slot retains an entry of the public program. -/
+theorem machine_program_slot_member {program : List RVMachineProgramEntry} {index : Nat}
+    {entry : RVMachineProgramEntry} (slot : rvMachineProgramSlot program index = some entry) :
+    entry ∈ program := by
+  exact List.mem_of_find?_eq_some (by
+    simpa only [rvMachineProgramSlot, machine_program_index_lookup] using slot)
 
 /-- Ordinary machine metadata preserves the complete existing nine-column query. -/
 theorem ordinary_query {Kind : Type} (family : Kind → RVMachineDecoderFamily) (entry : RVProgramEntry Kind) :
@@ -18,29 +48,6 @@ theorem ordinary_query {Kind : Type} (family : Kind → RVMachineDecoderFamily) 
     simp [RVMachineDecoderData.ofOrdinary, RVMachineDecoderData.row,
       RVProgramEntry.query, Arithmetic.Word.ofBitVec, Arithmetic.limbBase]
 
-/-- A successful optional list traversal retains a source for each output occurrence. -/
-theorem option_mapM_member {α β : Type} (build : α → Option β) :
-    ∀ {inputs : List α} {outputs : List β}, inputs.mapM build = some outputs →
-      ∀ output ∈ outputs, ∃ input ∈ inputs, build input = some output
-  | [], outputs, image, output, present => by
-    simp only [List.mapM_nil, pure, Option.some.injEq] at image
-    subst image
-    simp at present
-  | input :: inputs, outputs, image, output, present => by
-    rw [List.mapM_cons] at image
-    cases first : build input with
-    | none => simp [first, bind, Option.bind] at image
-    | some head =>
-      cases rest : inputs.mapM build with
-      | none => simp [first, rest, bind, Option.bind] at image
-      | some tail =>
-        simp only [first, rest, bind, Option.bind, pure, Option.some.injEq] at image
-        subst image
-        rcases List.mem_cons.mp present with rfl | present
-        · exact ⟨input, List.mem_cons_self, first⟩
-        · obtain ⟨source, member, built⟩ := option_mapM_member build rest output present
-          exact ⟨source, List.mem_cons_of_mem input member, built⟩
-
 /-- A public machine entry is an aligned ROM word with its actual RV instruction and native metadata. -/
 theorem machine_entry_fetch {config : RVMachineConfig} {initial : RV.State}
     {addresses : List (BitVec 32)} {program : List RVMachineProgramEntry}
@@ -50,19 +57,14 @@ theorem machine_entry_fetch {config : RVMachineConfig} {initial : RV.State}
       entry.bits = RV.read initial.rom entry.pc 4 ∧
       ∃ instruction, RV.decode entry.bits = some instruction ∧
         rvMachineDecoderFields config instruction = some entry.data := by
-  let build := fun pc : BitVec 32 => do
-    if ¬(pc.toNat < RV.ROM_END ∧ pc.toNat % 4 = 0) then none else
-      let bits := RV.read initial.rom pc 4
-      let instruction ← RV.decode bits
-      let data ← rvMachineDecoderFields config instruction
-      pure (⟨pc, bits, data⟩ : RVMachineProgramEntry)
-  change addresses.mapM build = some program at image
-  obtain ⟨pc, _, built⟩ := option_mapM_member build image entry present
-  dsimp only [build] at built
+  simp only [rvMachineProgramImage, Option.some.injEq] at image
+  subst program
+  obtain ⟨pc, _, built⟩ := List.mem_filterMap.mp present
+  unfold rvMachineProgramEntryWith at built
   split at built
   · cases built
   rename_i admitted
-  have guard : pc.toNat < RV.ROM_END ∧ pc.toNat % 4 = 0 := by simpa using admitted
+  have guard : pc.toNat < RV.ROM_END ∧ pc.toNat % 4 = 0 := by simpa only [rvProgramFetchAllowed, not_not] using admitted
   cases decoded : RV.decode (RV.read initial.rom pc 4) with
   | none => simp [decoded] at built
   | some instruction =>

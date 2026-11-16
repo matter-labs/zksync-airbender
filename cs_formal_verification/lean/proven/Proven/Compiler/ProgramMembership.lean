@@ -123,7 +123,7 @@ theorem decoder_entry {initial : RV.State} {program : List RVMachineProgramEntry
     (omitted : hasFunct3 family = false → query[7] = 0)
     (position : Nat) (equal : payload family query = decoderRow family program position) :
     Trace.Machine.Decoded family query program := by
-  cases slot : program[position]? with
+  cases slot : rvMachineProgramSlot program position with
   | none =>
     have first := payload_first family query
     rw [equal] at first
@@ -138,8 +138,7 @@ theorem decoder_entry {initial : RV.State} {program : List RVMachineProgramEntry
   | some entry =>
     by_cases matching : entry.data.family = family
     · have present : entry ∈ program := by
-        obtain ⟨present, rfl⟩ := List.getElem?_eq_some_iff.mp slot
-        exact List.getElem_mem present
+        exact Trace.Machine.Proofs.machine_program_slot_member slot
       refine ⟨entry, present, matching, ?_⟩
       apply payload_injective family _ _ ?_ ?_
       · intro absent

@@ -23,7 +23,7 @@ theorem rvProgramEntryWith_some {Kind : Type}
   · cases h
   rename_i hg
   have guard : pc.toNat < RV.ROM_END ∧ pc.toNat % 4 = 0 := by
-    simpa using hg
+    simpa only [rvProgramFetchAllowed, not_not] using hg
   dsimp only at h
   cases hd : RV.decode (RV.read before.rom pc 4) with
   | none => simp [hd] at h

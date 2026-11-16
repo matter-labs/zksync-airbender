@@ -50,13 +50,20 @@ def rvDecoderTable {Kind : Type} [DecidableEq Kind] {p : Nat} [Fact p.Prime]
       exact ⟨i, equal.trans (congrArg RVProgramEntry.query index).symm⟩
 }
 
+/-- A public instruction address is an aligned word inside ROM. -/
+def rvProgramFetchAllowed (pc : BitVec 32) : Prop :=
+  pc.toNat < RV.ROM_END ∧ pc.toNat % 4 = 0
+
+instance (pc : BitVec 32) : Decidable (rvProgramFetchAllowed pc) :=
+  inferInstanceAs (Decidable (pc.toNat < RV.ROM_END ∧ pc.toNat % 4 = 0))
+
 /-- The public encoding is read from our spec's ROM image (`RV.read` of `rom`), decoded by `RV.decode`, then projected to
     native metadata. The fetch guard is the ROM bound and alignment of `RV.step` (`RV.ROM_END`). -/
 noncomputable abbrev rvProgramEntryWith {Kind : Type}
     (projection : RV.Instr → Option (DecoderData Kind))
     (before : RV.State) (pc : BitVec 32) :
     Option (RVProgramEntry Kind) := do
-  if ¬(pc.toNat < RV.ROM_END ∧ pc.toNat % 4 = 0) then none else
+  if ¬rvProgramFetchAllowed pc then none else
   let bits := RV.read before.rom pc 4
   let i ← RV.decode bits
   let data ← projection i

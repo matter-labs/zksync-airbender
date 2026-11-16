@@ -22,7 +22,7 @@ POOLED_FAMILIES = ("add-sub", "jump-branch", "shift-binop", "word-memory", "mul-
 REDUCED_FAMILIES = POOLED_FAMILIES[:4]
 FAMILIES = POOLED_FAMILIES + ("unified",)
 SMALL_PROGRAMS = {
-    "one": (0x13, 0x00408093, 0x6F, 0x007181B3),
+    "one": (0x13, 0xC0001073, 0x00408093, 0x6F, 0x007181B3),
     "two": (0x13, 0x00408113, 0x6F, 0x007181B3),
     "muldiv": (0x02E585B3, 0x02E5B5B3, 0x02E5D5B3, 0x02E5F5B3, 0x13),
     "blake-caller": (0x7C701073,) * 7 + (0x13,),
@@ -41,8 +41,9 @@ def csr_word(csr):
 def check_group_shapes(data, config, label):
     """Check the explicit public call-group premise before native preprocessing.
 
-    This diagnostic mirrors the syntactic part of the Lean premise. The native
-    exporter and full row differential remain the cross-language check.
+    Full and unified profiles admit bigint and special5. Only unified admits G.
+    All profiles admit the extended round. Only full admits split Keccak.
+    The native exporter and row differential check these profiles across languages.
     """
     if len(data) % 4:
         raise ValueError(f"{label}: text length is not a whole number of words")
@@ -191,32 +192,21 @@ def run_case(exporter, oracle, directory, text, image, config, family, cache):
     repository = pathlib.Path(__file__).resolve().parents[3]
     circuit = repository / 'cs/compiled_circuits' / (names[family] + '_layout_no_caches_gkr.json')
     expected_mask = json.loads(circuit.read_text())['decode_table_columns_mask']
-    active = {index: [value for value, selected in zip(row, expected_mask) if selected]
-              for index, row in active_rows(lean_path).items()}
+    active = {}
+    for index, values in active_rows(lean_path).items():
+        row, payload = values[:9], values[9:]
+        if len(row) != len(expected_mask):
+            raise ValueError(f"{name}: Lean row {index} has the wrong width")
+        if any(value != 0 for value, selected in zip(row, expected_mask) if not selected):
+            raise ValueError(f"{name}: Lean row {index} has a nonzero omitted field")
+        projected = [value for value, selected in zip(row, expected_mask) if selected]
+        tagged = artifact["circuit"]["tables_ids_in_generic_lookups"]
+        if payload != projected + ([46] if tagged else []):
+            raise ValueError(f"{name}: Lean row {index} differs from NativePublicSetup.rows")
+        active[index] = projected
     checked_rows(artifact, active, name, expected_mask)
     circuit_bytes = json.dumps(artifact["circuit"], sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(circuit_bytes).hexdigest()
-
-
-def run_guarded_case(guard_shell, exporter, oracle, directory, text, image, config, family, cache):
-    """Give one complete row comparison the existing native worker budget."""
-    result = directory / f"{text.stem}-{config}-{family}-{cache}-result.json"
-    result.unlink(missing_ok=True)
-    label = f"decoder-{text.stem}-{cache}-{config}-{family}"
-    subprocess.run([
-        "bash", "-euo", "pipefail", "-c", 'source "$1"\nshift\nfv_native "$@"',
-        "decoder-case", str(guard_shell), label,
-        "env", "-u", "CI", "-u", "RUST_MIN_STACK", sys.executable,
-        str(pathlib.Path(__file__).resolve()), "--exporter", str(exporter),
-        "--oracle", str(oracle), "--work-dir", str(directory),
-        "--worker-case", str(text), str(image), config, family, cache, str(result),
-    ], check=True)
-    digest = json.loads(result.read_text())["sha256"]
-    if not isinstance(digest, str) or len(digest) != 64 or any(
-        character not in "0123456789abcdef" for character in digest
-    ):
-        raise ValueError(f"{label}: invalid worker circuit hash")
-    return digest
 
 
 def main():
@@ -227,28 +217,11 @@ def main():
                         help="public TEXT file; matching .bin supplies the initial image")
     parser.add_argument("--committed-verifiers", action="store_true",
                         help="check each committed FSV text under its production setup machine")
-    parser.add_argument("--small-program", choices=tuple(SMALL_PROGRAMS),
-                        help="check only one generated small public program")
     parser.add_argument("--work-dir", type=pathlib.Path)
     parser.add_argument("--configs", default="full,reduced,unified")
     parser.add_argument("--cache-modes", default="plain,cached")
     parser.add_argument("--families", default=",".join(FAMILIES))
-    parser.add_argument("--guard-shell", type=pathlib.Path,
-                        help="source the CI guard shell for each complete decoder case")
-    parser.add_argument("--worker-case", nargs=6, help=argparse.SUPPRESS)
     args = parser.parse_args()
-    if args.worker_case:
-        if (args.guard_shell or args.program or args.small_program or args.committed_verifiers or
-                args.work_dir is None):
-            parser.error("worker case requires a work directory and no parent program selection")
-        text, image, config, family, cache, result = args.worker_case
-        if (config not in {"full", "reduced", "unified"} or family not in FAMILIES or
-                cache not in {"plain", "cached"}):
-            parser.error("unknown worker configuration, family or cache mode")
-        digest = run_case(args.exporter.resolve(), args.oracle.resolve(), args.work_dir.resolve(),
-                          pathlib.Path(text), pathlib.Path(image), config, family, cache)
-        pathlib.Path(result).write_text(json.dumps({"sha256": digest}) + "\n")
-        return
     configs = args.configs.split(",")
     caches = args.cache_modes.split(",")
     families = args.families.split(",")
@@ -256,7 +229,7 @@ def main():
         parser.error("unknown configuration or cache mode")
     if not set(families) <= set(FAMILIES):
         parser.error("unknown decoder family")
-    if sum((bool(args.committed_verifiers), bool(args.program), bool(args.small_program))) > 1:
+    if args.committed_verifiers and args.program:
         parser.error("select only one program source")
     with tempfile.TemporaryDirectory(prefix="airbender-decoder-") if args.work_dir is None else _kept(args.work_dir) as work:
         directory = pathlib.Path(work)
@@ -270,10 +243,7 @@ def main():
             programs = [(text, text.with_suffix(".bin")) for text in args.program]
         else:
             programs = []
-            cases = SMALL_PROGRAMS.items() if args.small_program is None else (
-                (args.small_program, SMALL_PROGRAMS[args.small_program]),
-            )
-            for name, words in cases:
+            for name, words in SMALL_PROGRAMS.items():
                 path = directory / f"{name}.bin"
                 path.write_bytes(b"".join(struct.pack("<I", word) for word in words))
                 programs.append((path, path))
@@ -302,8 +272,7 @@ def main():
                             continue
                         case = (args.exporter.resolve(), args.oracle.resolve(), directory,
                                 text.resolve(), image.resolve(), config, family, cache)
-                        digest = (run_guarded_case(args.guard_shell.resolve(), *case)
-                                  if args.guard_shell else run_case(*case))
+                        digest = run_case(*case)
                         hashes[(text, cache, config, family)] = digest
                         print(f"PASS {text.name} {cache} {config} {family}", flush=True)
         for text, _ in programs:

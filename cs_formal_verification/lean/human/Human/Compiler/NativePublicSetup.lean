@@ -35,7 +35,7 @@ noncomputable def programRow (family : RVMachineDecoderFamily) (entry : RVMachin
 noncomputable def decoderRow (family : RVMachineDecoderFamily)
     (program : List RVMachineProgramEntry) (index : Nat) : List F :=
   let width := (NativeLookups.circuitFor family).generic_lookup_tables_width
-  let payload := (program[index]?).map (programRow family) |>.getD
+  let payload := (rvMachineProgramSlot program index).map (programRow family) |>.getD
     (List.replicate (width - if tagged family then 1 else 0) (-1))
   if tagged family then payload ++ [46] else payload
 

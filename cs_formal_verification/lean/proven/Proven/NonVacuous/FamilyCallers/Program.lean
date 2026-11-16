@@ -83,7 +83,7 @@ theorem program_image {f : Delegation.Family} {before : RV.State} {first n : Nat
   have value : (BitVec.ofNat 32 (first + 4 * k)).toNat = first + 4 * k := by
     rw [BitVec.toNat_ofNat]; omega
   have word : BitVec.ofNat 32 (first + 4 * k) = BitVec.ofNat 32 (4 * (first / 4 + k)) := by congr 1; omega
-  simp only [rvProgramEntryWith, value]
+  simp only [rvProgramEntryWith, rvProgramFetchAllowed, value]
   rw [ite_eq_right (by simp only [RV.ROM_END] at inside ⊢; omega), memory, word,
     read_caller (by omega) (by omega), decode_caller, ← word]
   cases f <;> rfl

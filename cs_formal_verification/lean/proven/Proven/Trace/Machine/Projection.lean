@@ -62,7 +62,7 @@ theorem unrolled_ordinary_fields {config : RVMachineConfig} {instruction : RV.In
   simp only [mode, Bool.false_eq_true, ↓reduceIte] at fields
   change ((rvPooledDecoderFields instruction).filter fun ordinary =>
       config == .unrolledFullUnsigned ||
-        (ordinary.family != .mulDiv && ordinary.family != .subwordMemory)).map
+        (rvReducedInstruction instruction && ordinary.family != .mulDiv && ordinary.family != .subwordMemory)).map
       (RVMachineDecoderData.ofOrdinary (family := RVMachineDecoderFamily.pooled)) = some data at fields
   obtain ⟨ordinary, admitted, same⟩ := Option.map_eq_some_iff.mp fields
   exact ⟨ordinary, (Option.filter_eq_some_iff.mp admitted).1, same.symm⟩
