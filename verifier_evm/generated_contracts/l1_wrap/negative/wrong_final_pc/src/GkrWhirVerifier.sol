@@ -32,6 +32,8 @@ contract GkrWhirVerifier {
     uint256 constant MINIMUM_FREE_HEAP_PTR = 2048; // above via_ir's memoryguard reservation (guarded below)
     uint256 constant P      = 0x7000000000000000000000000000001; // Proth120: 7*2^120 + 1
     uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // low 128 bits (one field lane)
+    uint256 constant FE_BITS = 123; // bits per field element in a calldata FE run (P < 2^123)
+    uint256 constant FE_MASK = 0x7ffffffffffffffffffffffffffffff; // 2^FE_BITS - 1
     // Stack-pressure fix: the ~123-bit modulus P as a literal is a PUSH16 rematerialized at
     // every addmod/mulmod, and the Yul scheduler keeps it live across the deep gate sequences
     // (→ "stack too deep"). Store P once at a heap offset and `mload(P_PTR)` it where stack depth
@@ -250,7 +252,7 @@ contract GkrWhirVerifier {
         // verifier checks every lane of these runs < P where it reads it (output evaluations, LSB
         // lines, at-point evaluations).
         function fe_pair_lanes(x) -> w {
-            w := or(shl(128, and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)), and(x, 0x7ffffffffffffffffffffffffffffff))
+            w := or(shl(128, and(shr(FE_BITS, x), FE_MASK)), and(x, FE_MASK))
         }
         function decode_run(cd, n, dst) {
             // four pairs = 984 bits = 123 bytes: pair k at byte (246k) >> 3, shifted by 10 − (246k & 7)
@@ -276,7 +278,7 @@ contract GkrWhirVerifier {
         // decode_run over the run at (cd, image): the next calldata and image offsets.
         function decode_next_run(cd, image, n) -> next_cd, next_image {
             decode_run(cd, n, add(IMAGE_PTR(), image))
-            next_cd := add(cd, shr(3, add(mul(123, n), 7)))
+            next_cd := add(cd, shr(3, add(mul(FE_BITS, n), 7)))
             next_image := add(image, shl(4, n))
         }
         // Factored-round run of k (b, c) pairs: the round functions read the pairs from calldata
@@ -588,8 +590,8 @@ contract GkrWhirVerifier {
         // a stay unreduced where they only feed mulmod; the absorbed lanes are reduced.
         function factored_round(bit, z, k, modulus) -> r, next_k {
             let x := shr(sub(10, and(bit, 7)), cd_load(shr(3, bit)))
-            let b := and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)
-            let c := and(x, 0x7ffffffffffffffffffffffffffffff)
+            let b := and(shr(FE_BITS, x), FE_MASK)
+            let c := and(x, FE_MASK)
             if iszero(and(lt(b, modulus), lt(c, modulus))) { revert(0, 0) }
             let a := add(k, sub(modulus, mulmod(z, add(b, c), modulus)))
             let t := add(1, sub(modulus, z))
@@ -1984,13 +1986,13 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         }
         function cd_fe_pair(cd, bit) -> w {
             let x := shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))
-            let a := and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)
-            let b := and(x, 0x7ffffffffffffffffffffffffffffff)
+            let a := and(shr(FE_BITS, x), FE_MASK)
+            let b := and(x, FE_MASK)
             if or(iszero(lt(a, P)), iszero(lt(b, P))) { revert(0, 0) }
             w := or(shl(128, a), b)
         }
         function run_end(cd, n) -> next_cd {
-            let bits := mul(123, n)
+            let bits := mul(FE_BITS, n)
             next_cd := add(cd, shr(3, add(bits, 7)))
             // All cursor advances are profile-derived; the final cursor checks (REG_CD for the WHIR
             // stream, decode_calldata's end offset for the GKR section) reject overruns.

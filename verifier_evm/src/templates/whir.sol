@@ -36,6 +36,8 @@ contract WhirVerifier {
     // Field: Proth120, P = 7*2^120 + 1 (~123 bit), one uint128/element, mulmod.
     uint256 constant P    = 0x7000000000000000000000000000001;
     uint256 constant MASK = 0xffffffffffffffffffffffffffffffff;
+    uint256 constant FE_BITS = 123; // bits per field element in a calldata FE run (P < 2^123)
+    uint256 constant FE_MASK = 0x7ffffffffffffffffffffffffffffff; // 2^FE_BITS - 1
     uint256 constant HALF = 0x3800000000000000000000000000001;  // 2^-1 = (P+1)/2
 
     // ── Generated from the prover config + circuit (`__TEMPLATE_WHIR_*`) ─────────────────────
@@ -122,13 +124,13 @@ contract WhirVerifier {
         }
         function cd_fe_pair(cd, bit) -> w {
             let x := shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))
-            let a := and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)
-            let b := and(x, 0x7ffffffffffffffffffffffffffffff)
+            let a := and(shr(FE_BITS, x), FE_MASK)
+            let b := and(x, FE_MASK)
             if or(iszero(lt(a, P)), iszero(lt(b, P))) { revert(0, 0) }
             w := or(shl(128, a), b)
         }
         function run_end(cd, n) -> next_cd {
-            let bits := mul(123, n)
+            let bits := mul(FE_BITS, n)
             next_cd := add(cd, shr(3, add(bits, 7)))
             // All cursor advances are profile-derived; the final cursor checks (REG_CD for the WHIR
             // stream, decode_calldata's end offset for the GKR section) reject overruns.

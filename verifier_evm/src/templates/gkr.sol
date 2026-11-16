@@ -32,6 +32,8 @@ contract GkrWhirVerifier {
     uint256 constant MINIMUM_FREE_HEAP_PTR = 2048; // above via_ir's memoryguard reservation (guarded below)
     uint256 constant P      = 0x7000000000000000000000000000001; // Proth120: 7*2^120 + 1
     uint256 constant MASK   = 0xffffffffffffffffffffffffffffffff; // low 128 bits (one field lane)
+    uint256 constant FE_BITS = 123; // bits per field element in a calldata FE run (P < 2^123)
+    uint256 constant FE_MASK = 0x7ffffffffffffffffffffffffffffff; // 2^FE_BITS - 1
     // Stack-pressure fix: the ~123-bit modulus P as a literal is a PUSH16 rematerialized at
     // every addmod/mulmod, and the Yul scheduler keeps it live across the deep gate sequences
     // (→ "stack too deep"). Store P once at a heap offset and `mload(P_PTR)` it where stack depth
@@ -422,8 +424,8 @@ contract GkrWhirVerifier {
         // a stay unreduced where they only feed mulmod; the absorbed lanes are reduced.
         function factored_round(bit, z, k, modulus) -> r, next_k {
             let x := shr(sub(10, and(bit, 7)), cd_load(shr(3, bit)))
-            let b := and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)
-            let c := and(x, 0x7ffffffffffffffffffffffffffffff)
+            let b := and(shr(FE_BITS, x), FE_MASK)
+            let c := and(x, FE_MASK)
             if iszero(and(lt(b, modulus), lt(c, modulus))) { revert(0, 0) }
             let a := add(k, sub(modulus, mulmod(z, add(b, c), modulus)))
             let t := add(1, sub(modulus, z))

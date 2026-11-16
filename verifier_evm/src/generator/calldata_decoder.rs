@@ -193,8 +193,8 @@ pub(crate) fn gkr_decoder(
     let odd_runs = runs.iter().any(|&(n, factored)| !factored && n & 1 == 1);
     let odd_tail = if odd_runs {
         "            if and(n, 1) {
-                mstore(dst, shl(128, and(shr(sub(133, and(bit, 7)), calldataload(add(cd, shr(3, bit)))), 0x7ffffffffffffffffffffffffffffff)))
-                bit := add(bit, 123)
+                mstore(dst, shl(128, and(shr(sub(133, and(bit, 7)), calldataload(add(cd, shr(3, bit)))), FE_MASK)))
+                bit := add(bit, FE_BITS)
             }
 "
     } else {
@@ -252,7 +252,7 @@ pub(crate) fn gkr_decoder(
         // verifier checks every lane of these runs < P where it reads it (output evaluations, LSB
         // lines, at-point evaluations).
         function fe_pair_lanes(x) -> w {{
-            w := or(shl(128, and(shr(123, x), 0x7ffffffffffffffffffffffffffffff)), and(x, 0x7ffffffffffffffffffffffffffffff))
+            w := or(shl(128, and(shr(FE_BITS, x), FE_MASK)), and(x, FE_MASK))
         }}
         function decode_run(cd, n, dst) {{
             // four pairs = 984 bits = 123 bytes: pair k at byte (246k) >> 3, shifted by 10 − (246k & 7)
@@ -278,7 +278,7 @@ pub(crate) fn gkr_decoder(
         // decode_run over the run at (cd, image): the next calldata and image offsets.
         function decode_next_run(cd, image, n) -> next_cd, next_image {{
             decode_run(cd, n, add({IMAGE_PTR}, image))
-            next_cd := add(cd, shr(3, add(mul(123, n), 7)))
+            next_cd := add(cd, shr(3, add(mul(FE_BITS, n), 7)))
             next_image := add(image, shl(4, n))
         }}
         // Factored-round run of k (b, c) pairs: the round functions read the pairs from calldata
