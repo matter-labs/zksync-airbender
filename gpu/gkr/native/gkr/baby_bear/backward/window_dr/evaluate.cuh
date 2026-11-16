@@ -1,42 +1,11 @@
 #pragma once
-#include "gkr/backward/window_dr/corner_quad.cuh"
+#include "gkr/backward/window_dr/evaluate.cuh"
 
 #include "gkr/baby_bear/backward/window/window_geometry.cuh"
 #include "gkr/baby_bear/backward/window_dr/abi.cuh"
 #include "gkr/baby_bear/backward/window_dr/math_accumulator_packed.cuh"
 
 namespace airbender::gkr::backward {
-
-struct dr_window_gate_pairs {
-  bwd_window_pair<e4> gate[2];
-};
-
-using dr_window_corner_quad = bwd_window_packed_values<e4, 4>;
-
-DEVICE_FORCEINLINE dr_window_gate_pairs dr_window_packed_gate_pairs(const e4 *column, const u32 row, const bwd_window_selector_pair selector) {
-  const u32 bit0_zero = selector.x0_infinity() ? 0 : selector.x0;
-  const u32 bit1_zero = selector.x1_infinity() ? 0 : selector.x1;
-  const dr_window_corner_quad corner00 = dr_window_load_corner_quad(column, row, bit0_zero, bit1_zero);
-  dr_window_corner_quad at_x1_zero = corner00;
-  if (selector.x0_infinity())
-    at_x1_zero = dr_window_quad_sub(dr_window_load_corner_quad(column, row, 1, bit1_zero), corner00);
-  dr_window_corner_quad value = at_x1_zero;
-  if (selector.x1_infinity()) {
-    const dr_window_corner_quad corner01 = dr_window_load_corner_quad(column, row, bit0_zero, 1);
-    dr_window_corner_quad at_x1_one = corner01;
-    if (selector.x0_infinity())
-      at_x1_one = dr_window_quad_sub(dr_window_load_corner_quad(column, row, 1, 1), corner01);
-    value = dr_window_quad_sub(at_x1_one, at_x1_zero);
-  }
-  dr_window_gate_pairs result;
-  result.gate[0] = {{value.values[0], value.values[2]}};
-  result.gate[1] = {{value.values[1], value.values[3]}};
-  return result;
-}
-
-DEVICE_FORCEINLINE bwd_window_triplet<e4> dr_window_add_triplets(const bwd_window_triplet<e4> a, const bwd_window_triplet<e4> b) {
-  return {{e4::add(a.values[0], b.values[0]), e4::add(a.values[1], b.values[1]), e4::add(a.values[2], b.values[2])}};
-}
 
 DEVICE_FORCEINLINE const e4 *dr_window_resolve_column(const gkr_dr_window3_desc &desc, const gkr_source_record record) {
   return gkr_resolve_dim_reducing_initial_source<e4>(desc.batch.tables, record).start;

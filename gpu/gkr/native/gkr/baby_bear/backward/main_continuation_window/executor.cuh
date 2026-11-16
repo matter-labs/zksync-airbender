@@ -1,4 +1,5 @@
 #pragma once
+#include "gkr/backward/main_continuation_executor.cuh"
 
 #include "gkr/baby_bear/backward/main_continuation_window/fold_prologue.cuh"
 
@@ -11,21 +12,6 @@ struct bwd_main_cont_triplet {
   e4 value[3];
 };
 
-// Adjacent x2 corners occupy one aligned 32-byte sector and can share a load.
-template <u32 X0> DEVICE_FORCEINLINE bwd_main_cont_e4_pair bwd_main_cont_resolve_x0_pair(const e4 *corners, const u32 x1, const u32 dynamic_x0) {
-  const auto *pairs = reinterpret_cast<const bwd_main_cont_e4_pair *>(corners);
-  if constexpr (X0 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X0)
-    return load<bwd_main_cont_e4_pair, ld_modifier::ca>(pairs + x1 + 2 * dynamic_x0);
-  const u32 x0 = X0 == BWD_MAIN_CONT_WINDOW_DYNAMIC_X0 ? dynamic_x0 : X0;
-  if (x0 == 0)
-    return load<bwd_main_cont_e4_pair, ld_modifier::ca>(pairs + x1);
-  if (x0 == 1)
-    return load<bwd_main_cont_e4_pair, ld_modifier::ca>(pairs + x1 + 2);
-  const bwd_main_cont_e4_pair zero = load<bwd_main_cont_e4_pair, ld_modifier::ca>(pairs + x1);
-  const bwd_main_cont_e4_pair one = load<bwd_main_cont_e4_pair, ld_modifier::ca>(pairs + x1 + 2);
-  return bwd_main_cont_e4_pair{{e4::sub(one.value[0], zero.value[0]), e4::sub(one.value[1], zero.value[1])}};
-}
-
 // Resolve one semantic SourceId at one `(x1,x0)` selector pair. Published
 // corners are in bit order `(x2_low, x1, x0_high)`; the returned triplet is x2 = {0,1,infinity}.
 template <u32 X1, u32 X0>
@@ -37,10 +23,10 @@ DEVICE_FORCEINLINE bwd_main_cont_triplet bwd_main_cont_resolve_source(const bwd_
   const e4 *corners = bwd_main_cont_window_column<e4>(desc, lane) + (row << 3);
   bwd_main_cont_e4_pair values;
   if constexpr (X1 < 2 || X1 == BWD_MAIN_CONT_WINDOW_BOOLEAN_X1) {
-    values = bwd_main_cont_resolve_x0_pair<X0>(corners, x1, dynamic_x0);
+    values = bwd_main_cont_resolve_x0_pair<X0, bwd_main_cont_e4_pair>(corners, x1, dynamic_x0);
   } else {
-    const bwd_main_cont_e4_pair zero = bwd_main_cont_resolve_x0_pair<X0>(corners, 0, dynamic_x0);
-    const bwd_main_cont_e4_pair one = bwd_main_cont_resolve_x0_pair<X0>(corners, 1, dynamic_x0);
+    const bwd_main_cont_e4_pair zero = bwd_main_cont_resolve_x0_pair<X0, bwd_main_cont_e4_pair>(corners, 0, dynamic_x0);
+    const bwd_main_cont_e4_pair one = bwd_main_cont_resolve_x0_pair<X0, bwd_main_cont_e4_pair>(corners, 1, dynamic_x0);
     values = bwd_main_cont_e4_pair{{e4::sub(one.value[0], zero.value[0]), e4::sub(one.value[1], zero.value[1])}};
   }
   return bwd_main_cont_triplet{{values.value[0], values.value[1], e4::sub(values.value[1], values.value[0])}};
@@ -95,19 +81,6 @@ DEVICE_FORCEINLINE void bwd_main_cont_resolve_product_sources(const bwd_main_con
     a = {{values.a.value[0], values.a.value[1], e4::sub(values.a.value[1], values.a.value[0])}};
     b = {{values.b.value[0], values.b.value[1], e4::sub(values.b.value[1], values.b.value[0])}};
   }
-}
-
-DEVICE_FORCEINLINE void bwd_main_cont_add_scaled(const bwd_main_cont_triplet &values, const e4 &coefficient, e4 (&accumulator)[3]) {
-#pragma unroll
-  for (u32 x2 = 0; x2 < 3; x2++)
-    accumulator[x2] = e4::fma(coefficient, values.value[x2], accumulator[x2]);
-}
-
-DEVICE_FORCEINLINE void bwd_main_cont_add_product(const bwd_main_cont_triplet &lhs, const bwd_main_cont_triplet &rhs, const e4 &coefficient,
-                                                  e4 (&accumulator)[3]) {
-#pragma unroll
-  for (u32 x2 = 0; x2 < 3; x2++)
-    accumulator[x2] = e4::fma(coefficient, e4::mul(lhs.value[x2], rhs.value[x2]), accumulator[x2]);
 }
 
 template <u16 Shape>

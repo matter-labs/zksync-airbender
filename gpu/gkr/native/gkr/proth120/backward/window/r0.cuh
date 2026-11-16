@@ -1,4 +1,5 @@
 #pragma once
+#include "gkr/backward/window/r0.cuh"
 #include "gkr/proth120/backward/coefficient_storage_pr.cuh"
 
 #include "gkr/backward/window/window_geometry.cuh"
@@ -112,75 +113,15 @@ DEVICE_FORCEINLINE const pr *pr_window_column(const bwd_window_desc_pr &desc, co
   return reinterpret_cast<const pr *>(address.base + static_cast<size_t>(bwd_source_lane_column(packed)) * address.r0_stride_bytes);
 }
 
-template <u32 Count> DEVICE_FORCEINLINE auto pr_window_load(const pr *column, const u32 index) {
-  return ::airbender::gkr::backward::bwd_window_load<pr, Count>(column, index);
-}
-
-DEVICE_FORCEINLINE bwd_window_pair<pr> pr_window_direct_pair(const pr *column, const u32 row, const bwd_window_selector_pair selector) {
-  if (!selector.x0_infinity() && !selector.x1_infinity()) {
-    const auto values = pr_window_load<2>(column, bwd_window_corner_index(row, selector.x0, selector.x1, 0));
-    return {{values.values[0], values.values[1]}};
-  }
-  if (selector.x0_infinity() && !selector.x1_infinity()) {
-    const auto zero = pr_window_load<2>(column, bwd_window_corner_index(row, 0, selector.x1, 0));
-    const auto one = pr_window_load<2>(column, bwd_window_corner_index(row, 1, selector.x1, 0));
-    return {{pr::sub(one.values[0], zero.values[0]), pr::sub(one.values[1], zero.values[1])}};
-  }
-  if (!selector.x0_infinity() && selector.x1_infinity()) {
-    const auto values = pr_window_load<4>(column, bwd_window_corner_index(row, selector.x0, 0, 0));
-    return {{pr::sub(values.values[2], values.values[0]), pr::sub(values.values[3], values.values[1])}};
-  }
-  const auto values = pr_window_load<8>(column, bwd_window_corner_index(row, 0, 0, 0));
-  const pr at_x1_zero_0 = pr::sub(values.values[4], values.values[0]);
-  const pr at_x1_zero_1 = pr::sub(values.values[5], values.values[1]);
-  const pr at_x1_one_0 = pr::sub(values.values[6], values.values[2]);
-  const pr at_x1_one_1 = pr::sub(values.values[7], values.values[3]);
-  return {{pr::sub(at_x1_one_0, at_x1_zero_0), pr::sub(at_x1_one_1, at_x1_zero_1)}};
-}
-
-DEVICE_FORCEINLINE bwd_window_pair<pr> pr_window_procedural_pair(const u8 procedural_kind, const u32 row, const bwd_window_selector_pair selector) {
-  static_assert(GKR_TIMESTAMP_COLUMNS_NUM_BITS >= 3);
-  const u32 base = row << 3;
-  u32 origin;
-  u32 step;
-  switch (procedural_kind) {
-  case BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS:
-    if (base >= (1u << 16))
-      return {{pr::ZERO(), pr::ZERO()}};
-    origin = base;
-    step = 1;
-    break;
-  case BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP:
-    if (base >= (1u << GKR_TIMESTAMP_COLUMNS_NUM_BITS))
-      return {{pr::ZERO(), pr::ZERO()}};
-    origin = base;
-    step = 1;
-    break;
-  case BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW:
-    origin = (base << 2) & 0xffffu;
-    step = 4;
-    break;
-  case BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH: {
-    const pr value = selector.has_infinity() ? pr::ZERO() : pr_window_small(base >> 14);
-    return {{value, value}};
-  }
-  default:
-    return {{pr::ZERO(), pr::ZERO()}};
-  }
-  if (selector.has_infinity()) {
-    const u32 slope = selector.x0_infinity() ? (selector.x1_infinity() ? 0 : 4 * step) : 2 * step;
-    const pr value = pr_window_small(slope);
-    return {{value, value}};
-  }
-  const u32 value = origin + step * (4 * selector.x0 + 2 * selector.x1);
-  return {{pr_window_small(value), pr_window_small(value + step)}};
-}
+struct pr_window_small_field {
+  static DEVICE_FORCEINLINE pr from_u32(const u32 value) { return pr_window_small(value); }
+};
 
 DEVICE_FORCEINLINE bwd_window_pair<pr> pr_window_operand(const bwd_window_desc_pr &desc, const bool procedural, const u16 operand, const u32 row,
                                                          const bwd_window_selector_pair selector) {
   if (procedural)
-    return pr_window_procedural_pair(static_cast<u8>(operand), row, selector);
-  return pr_window_direct_pair(pr_window_column(desc, operand), row, selector);
+    return ::airbender::gkr::backward::bwd_window_procedural_pair<pr, pr_window_small_field>(static_cast<u8>(operand), row, selector);
+  return ::airbender::gkr::backward::bwd_window_direct_pair(pr_window_column(desc, operand), row, selector);
 }
 
 DEVICE_FORCEINLINE bool pr_window_is_linear(const u16 opcode) {
@@ -220,17 +161,13 @@ DEVICE_FORCEINLINE bwd_window_pair<pr> pr_window_scaled_endpoints(const bwd_wind
   return a;
 }
 
-DEVICE_FORCEINLINE bwd_window_triplet<pr> pr_window_endpoint_product(const bwd_window_pair<pr> a, const bwd_window_pair<pr> b) {
-  const pr leading = pr::mul(pr::sub(a.values[1], a.values[0]), pr::sub(b.values[1], b.values[0]));
-  return {{pr::mul(a.values[0], b.values[0]), pr::mul(a.values[1], b.values[1]), leading}};
-}
-
 template <bool MayHaveBanked, bool MayNegate>
 DEVICE_FORCEINLINE void pr_window_accumulate_product(const bwd_window_desc_pr &desc, const pr_window_instruction instruction, const u32 row,
                                                      const bwd_window_selector_pair selector, PrSum32 (&inner)[3]) {
   const auto a = pr_window_operand(desc, pr_window_procedural_a(instruction.opcode), instruction.source_a, row, selector);
   const auto b = pr_window_operand(desc, pr_window_procedural_b(instruction.opcode), instruction.source_b, row, selector);
-  const auto term = pr_window_endpoint_product(pr_window_scaled_endpoints<MayHaveBanked, MayNegate>(desc, instruction.factor, a), b);
+  const auto term =
+      ::airbender::gkr::backward::bwd_window_endpoint_product<pr, pr>(pr_window_scaled_endpoints<MayHaveBanked, MayNegate>(desc, instruction.factor, a), b);
   pr_window_push(inner[0], term.values[0]);
   pr_window_push(inner[1], term.values[1]);
   pr_window_push(inner[2], term.values[2]);
@@ -253,7 +190,8 @@ DEVICE_FORCEINLINE u32 pr_window_execute_atom(const bwd_window_desc_pr &desc, co
       return pc;
     }
     const auto b = pr_window_operand(desc, pr_window_procedural_b(head.opcode), head.source_b, row, selector);
-    const auto term = pr_window_endpoint_product({{pr::mul(coefficient, a.values[0]), pr::mul(coefficient, a.values[1])}}, b);
+    const auto term =
+        ::airbender::gkr::backward::bwd_window_endpoint_product<pr, pr>({{pr::mul(coefficient, a.values[0]), pr::mul(coefficient, a.values[1])}}, b);
     pr_window_push(outer[0], term.values[0]);
     pr_window_push(outer[1], term.values[1]);
     pr_window_push(outer[2], term.values[2]);

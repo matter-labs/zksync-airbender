@@ -1,4 +1,5 @@
 #pragma once
+#include "gkr/forward/fused_reduction.cuh"
 #include "gkr/forward/vm_addresses.cuh"
 #include "gkr/proth120/forward/fwd_vm.cuh"
 namespace airbender::gkr::proth120::forward {
@@ -194,64 +195,6 @@ template <u32 BUCKETS, bool STREAMING> DEVICE_FORCEINLINE void vm_body_pr(const 
   }
 }
 
-DEVICE_FORCEINLINE void fused_reduction_round0_pr(const fwd_vm_reduction_pair_pr &pair, pr *smem, const u32 tile) {
-  constexpr u32 round_len = 64;
-  const u32 lane = threadIdx.x & FWD_VM_LANE_MASK;
-  const u32 block_input = tile * 128;
-  const u32 block_output = tile * round_len;
-#pragma unroll
-  for (u32 local = lane; local < round_len; local += FWD_VM_WARP_LANES) {
-    const u32 even = block_input + 2 * local;
-    const u32 odd = even + 1;
-    pr out0, out1;
-    if (pair.kind == FWD_VM_REDUCTION_PAIR_PAIRWISE2) {
-      out0 = pr::mul(load<pr, ld_modifier::ca>(pair.input[0], even), load<pr, ld_modifier::ca>(pair.input[0], odd));
-      out1 = pr::mul(load<pr, ld_modifier::ca>(pair.input[1], even), load<pr, ld_modifier::ca>(pair.input[1], odd));
-    } else {
-      const pr a = load<pr, ld_modifier::ca>(pair.input[0], even);
-      const pr b = load<pr, ld_modifier::ca>(pair.input[1], even);
-      const pr c = load<pr, ld_modifier::ca>(pair.input[0], odd);
-      const pr d = load<pr, ld_modifier::ca>(pair.input[1], odd);
-      out0 = pr::fma(a, d, pr::mul(c, b));
-      out1 = pr::mul(b, d);
-    }
-    smem[local] = out0;
-    smem[round_len + local] = out1;
-    store<pr, st_modifier::cs>(pair.round_outputs[0][0], out0, block_output + local);
-    store<pr, st_modifier::cs>(pair.round_outputs[0][1], out1, block_output + local);
-  }
-  __syncwarp();
-}
-
-DEVICE_FORCEINLINE void fused_reduction_pair_pr(const fwd_vm_reduction_pair_pr &pair, pr *smem, const u32 tile) {
-  fused_reduction_round0_pr(pair, smem, tile);
-  const u32 lane = threadIdx.x & FWD_VM_LANE_MASK;
-#pragma unroll
-  for (u32 round = 1; round < FWD_VM_FUSED_REDUCTION_ROUNDS; round++) {
-    const u32 round_len = 64 >> round;
-    pr out0, out1;
-    if (lane < round_len) {
-      if (pair.kind == FWD_VM_REDUCTION_PAIR_PAIRWISE2) {
-        out0 = pr::mul(smem[2 * lane], smem[2 * lane + 1]);
-        out1 = pr::mul(smem[64 + 2 * lane], smem[64 + 2 * lane + 1]);
-      } else {
-        const pr a = smem[2 * lane], b = smem[64 + 2 * lane], c = smem[2 * lane + 1], d = smem[64 + 2 * lane + 1];
-        out0 = pr::fma(a, d, pr::mul(c, b));
-        out1 = pr::mul(b, d);
-      }
-    }
-    __syncwarp();
-    if (lane < round_len) {
-      smem[lane] = out0;
-      smem[64 + lane] = out1;
-      const u32 output = tile * round_len + lane;
-      store<pr, st_modifier::cs>(pair.round_outputs[round][0], out0, output);
-      store<pr, st_modifier::cs>(pair.round_outputs[round][1], out1, output);
-    }
-    __syncwarp();
-  }
-}
-
 template <u32 BUCKETS> DEVICE_FORCEINLINE void fwd_vm_pr(const fwd_vm_desc_pr &desc) {
   __shared__ pr cells[BUCKETS * 128];
   vm_body_pr<BUCKETS, false>(desc, cells, blockIdx.x);
@@ -260,9 +203,9 @@ template <u32 BUCKETS> DEVICE_FORCEINLINE void fwd_vm_pr(const fwd_vm_desc_pr &d
   static_assert(BUCKETS * FWD_VM_WARP_LANES >= 128, "reduction scratch");
   pr *smem = cells + warp * BUCKETS * FWD_VM_WARP_LANES;
   if (warp < desc.reduction_pair_count)
-    fused_reduction_pair_pr(desc.reduction_pairs[warp], smem, blockIdx.x);
+    ::airbender::gkr::fused_reduction_pair(desc.reduction_pairs[warp], smem, blockIdx.x);
   if (warp + 4 < desc.reduction_pair_count)
-    fused_reduction_pair_pr(desc.reduction_pairs[warp + 4], smem, blockIdx.x);
+    ::airbender::gkr::fused_reduction_pair(desc.reduction_pairs[warp + 4], smem, blockIdx.x);
 }
 
 } // namespace airbender::gkr::proth120::forward

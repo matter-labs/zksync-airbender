@@ -1,4 +1,5 @@
 #pragma once
+#include "gkr/backward/main_continuation_executor.cuh"
 
 #include "gkr/proth120/backward/fold_prologue_pr.cuh"
 #include "gkr/support/eq_inline.cuh"
@@ -21,20 +22,6 @@ struct bwd_pr_main_cont_triplet {
   pr value[3];
 };
 
-template <u32 X0> DEVICE_FORCEINLINE bwd_pr_pair bwd_pr_main_cont_resolve_x0_pair(const pr *corners, const u32 x1, const u32 dynamic_x0) {
-  const auto *pairs = reinterpret_cast<const bwd_pr_pair *>(corners);
-  if constexpr (X0 == BWD_PR_MAIN_CONT_BOOLEAN_X0)
-    return load<bwd_pr_pair, ld_modifier::ca>(pairs + x1 + 2 * dynamic_x0);
-  const u32 x0 = X0 == BWD_PR_MAIN_CONT_DYNAMIC_X0 ? dynamic_x0 : X0;
-  if (x0 == 0)
-    return load<bwd_pr_pair, ld_modifier::ca>(pairs + x1);
-  if (x0 == 1)
-    return load<bwd_pr_pair, ld_modifier::ca>(pairs + x1 + 2);
-  const bwd_pr_pair zero = load<bwd_pr_pair, ld_modifier::ca>(pairs + x1);
-  const bwd_pr_pair one = load<bwd_pr_pair, ld_modifier::ca>(pairs + x1 + 2);
-  return bwd_pr_pair{{pr::sub(one.value[0], zero.value[0]), pr::sub(one.value[1], zero.value[1])}};
-}
-
 template <u32 X1, u32 X0>
 DEVICE_FORCEINLINE bwd_pr_main_cont_triplet bwd_pr_main_cont_resolve_source(const bwd_pr_main_cont_desc &desc, const u16 source_id, const u32 row,
                                                                             const u32 dynamic_x0, const u32 dynamic_x1) {
@@ -43,26 +30,13 @@ DEVICE_FORCEINLINE bwd_pr_main_cont_triplet bwd_pr_main_cont_resolve_source(cons
   const pr *corners = bwd_pr_main_cont_column(desc, desc.source[source_id].publish) + (row << 3);
   bwd_pr_pair values;
   if constexpr (X1 < 2 || X1 == BWD_PR_MAIN_CONT_BOOLEAN_X1) {
-    values = bwd_pr_main_cont_resolve_x0_pair<X0>(corners, x1, dynamic_x0);
+    values = ::airbender::gkr::backward::bwd_main_cont_resolve_x0_pair<X0, bwd_pr_pair>(corners, x1, dynamic_x0);
   } else {
-    const bwd_pr_pair zero = bwd_pr_main_cont_resolve_x0_pair<X0>(corners, 0, dynamic_x0);
-    const bwd_pr_pair one = bwd_pr_main_cont_resolve_x0_pair<X0>(corners, 1, dynamic_x0);
+    const bwd_pr_pair zero = ::airbender::gkr::backward::bwd_main_cont_resolve_x0_pair<X0, bwd_pr_pair>(corners, 0, dynamic_x0);
+    const bwd_pr_pair one = ::airbender::gkr::backward::bwd_main_cont_resolve_x0_pair<X0, bwd_pr_pair>(corners, 1, dynamic_x0);
     values = bwd_pr_pair{{pr::sub(one.value[0], zero.value[0]), pr::sub(one.value[1], zero.value[1])}};
   }
   return bwd_pr_main_cont_triplet{{values.value[0], values.value[1], pr::sub(values.value[1], values.value[0])}};
-}
-
-DEVICE_FORCEINLINE void bwd_pr_main_cont_add_scaled(const bwd_pr_main_cont_triplet &values, const pr &coefficient, pr (&accumulator)[3]) {
-#pragma unroll
-  for (u32 x2 = 0; x2 < 3; x2++)
-    accumulator[x2] = pr::fma(coefficient, values.value[x2], accumulator[x2]);
-}
-
-DEVICE_FORCEINLINE void bwd_pr_main_cont_add_product(const bwd_pr_main_cont_triplet &lhs, const bwd_pr_main_cont_triplet &rhs, const pr &coefficient,
-                                                     pr (&accumulator)[3]) {
-#pragma unroll
-  for (u32 x2 = 0; x2 < 3; x2++)
-    accumulator[x2] = pr::fma(coefficient, pr::mul(lhs.value[x2], rhs.value[x2]), accumulator[x2]);
 }
 
 template <u16 Shape>
@@ -137,7 +111,7 @@ DEVICE_FORCEINLINE void bwd_pr_main_cont_evaluate(const bwd_pr_main_cont_desc &d
           }
         }
         const bwd_pr_main_cont_triplet grouped{{group_sum[0], group_sum[1], group_sum[2]}};
-        bwd_pr_main_cont_add_scaled(grouped, bwd_pr_main_cont_coefficient(desc, coefficient_id), accumulator);
+        ::airbender::gkr::backward::bwd_main_cont_add_scaled(grouped, bwd_pr_main_cont_coefficient(desc, coefficient_id), accumulator);
         continue;
       }
     }
@@ -147,7 +121,7 @@ DEVICE_FORCEINLINE void bwd_pr_main_cont_evaluate(const bwd_pr_main_cont_desc &d
         if (selector_boolean) {
           const bwd_pr_main_cont_triplet a = bwd_pr_main_cont_resolve_source<X1, X0>(desc, source_a, row, dynamic_x0, dynamic_x1);
           const bwd_pr_main_cont_triplet boolean_a{{a.value[0], a.value[1], pr::ZERO()}};
-          bwd_pr_main_cont_add_scaled(boolean_a, bwd_pr_main_cont_coefficient(desc, coefficient_id), accumulator);
+          ::airbender::gkr::backward::bwd_main_cont_add_scaled(boolean_a, bwd_pr_main_cont_coefficient(desc, coefficient_id), accumulator);
         }
         continue;
       }
@@ -155,7 +129,7 @@ DEVICE_FORCEINLINE void bwd_pr_main_cont_evaluate(const bwd_pr_main_cont_desc &d
     if (term_class == BWD_CONTINUATION_CLASS_DUAL_PRODUCT_E4) {
       const bwd_pr_main_cont_triplet a = bwd_pr_main_cont_resolve_source<X1, X0>(desc, source_a, row, dynamic_x0, dynamic_x1);
       const bwd_pr_main_cont_triplet b = bwd_pr_main_cont_resolve_source<X1, X0>(desc, source_b, row, dynamic_x0, dynamic_x1);
-      bwd_pr_main_cont_add_product(a, b, bwd_pr_main_cont_coefficient(desc, coefficient_id), accumulator);
+      ::airbender::gkr::backward::bwd_main_cont_add_product(a, b, bwd_pr_main_cont_coefficient(desc, coefficient_id), accumulator);
     }
   }
 }

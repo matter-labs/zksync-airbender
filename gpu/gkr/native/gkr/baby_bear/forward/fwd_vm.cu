@@ -4,6 +4,7 @@
 #include "gkr/baby_bear/eval_vm_exec.cuh"
 #include "gkr/baby_bear/forward/fwd_vm.cuh"
 #include "gkr/baby_bear/support/lookup_helpers.cuh"
+#include "gkr/forward/fused_reduction.cuh"
 #include "gkr/forward/vm_addresses.cuh"
 
 // Runtime-produced derived E4 values and the optional decoder fill.
@@ -296,67 +297,6 @@ template <bool STREAMING> DEVICE_FORCEINLINE void vm_body(const fwd_vm_desc &des
     if (gid < desc.count) {
       const fwd_vm_layer &metadata = desc.layers[layer];
       execute_fwd_vm<STREAMING>(desc, cells, gid, metadata.program_offset, metadata.instruction_count);
-    }
-    __syncwarp();
-  }
-}
-
-DEVICE_FORCEINLINE void fused_reduction_round0(const fwd_vm_reduction_pair &pair, e4 *smem, const u32 tile) {
-  constexpr u32 round_len = 64;
-  const u32 lane = threadIdx.x & FWD_VM_LANE_MASK;
-  const u32 block_input = tile * 128;
-  const u32 block_output = tile * round_len;
-
-#pragma unroll
-  for (u32 local = lane; local < round_len; local += FWD_VM_WARP_LANES) {
-    const u32 even = block_input + 2 * local;
-    const u32 odd = even + 1;
-    e4 out0;
-    e4 out1;
-    if (pair.kind == FWD_VM_REDUCTION_PAIR_PAIRWISE2) {
-      gkr_eval_product(load<e4, ld_modifier::ca>(pair.input[0], even), load<e4, ld_modifier::ca>(pair.input[0], odd), out0);
-      gkr_eval_product(load<e4, ld_modifier::ca>(pair.input[1], even), load<e4, ld_modifier::ca>(pair.input[1], odd), out1);
-    } else {
-      const e4 a = load<e4, ld_modifier::ca>(pair.input[0], even);
-      const e4 b = load<e4, ld_modifier::ca>(pair.input[1], even);
-      const e4 c = load<e4, ld_modifier::ca>(pair.input[0], odd);
-      const e4 d = load<e4, ld_modifier::ca>(pair.input[1], odd);
-      gkr_eval_lookup_pair(a, b, c, d, out0, out1);
-    }
-    smem[local] = out0;
-    smem[round_len + local] = out1;
-    store<e4, st_modifier::cs>(pair.round_outputs[0][0], out0, block_output + local);
-    store<e4, st_modifier::cs>(pair.round_outputs[0][1], out1, block_output + local);
-  }
-  // Round 1 reads values written by other lanes.
-  __syncwarp();
-}
-
-DEVICE_FORCEINLINE void fused_reduction_pair(const fwd_vm_reduction_pair &pair, e4 *smem, const u32 tile) {
-  fused_reduction_round0(pair, smem, tile);
-  const u32 lane = threadIdx.x & FWD_VM_LANE_MASK;
-
-#pragma unroll
-  for (u32 round = 1; round < FWD_VM_FUSED_REDUCTION_ROUNDS; round++) {
-    const u32 round_len = 64 >> round;
-    e4 out0;
-    e4 out1;
-    if (lane < round_len) {
-      if (pair.kind == FWD_VM_REDUCTION_PAIR_PAIRWISE2) {
-        gkr_eval_product(smem[2 * lane], smem[2 * lane + 1], out0);
-        gkr_eval_product(smem[64 + 2 * lane], smem[64 + 2 * lane + 1], out1);
-      } else {
-        gkr_eval_lookup_pair(smem[2 * lane], smem[64 + 2 * lane], smem[2 * lane + 1], smem[64 + 2 * lane + 1], out0, out1);
-      }
-    }
-    // Finish all reads before overwriting inputs, then publish writes before the next round.
-    __syncwarp();
-    if (lane < round_len) {
-      smem[lane] = out0;
-      smem[64 + lane] = out1;
-      const u32 output = tile * round_len + lane;
-      store<e4, st_modifier::cs>(pair.round_outputs[round][0], out0, output);
-      store<e4, st_modifier::cs>(pair.round_outputs[round][1], out1, output);
     }
     __syncwarp();
   }

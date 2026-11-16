@@ -1,4 +1,5 @@
 #pragma once
+#include "gkr/backward/main_tail.cuh"
 #include "gkr/proth120/backward/coefficient_storage_pr.cuh"
 
 #include "gkr/backward/window/common.cuh"
@@ -90,21 +91,6 @@ DEVICE_FORCEINLINE const u16 *bwd_pr_main_tail_program(const u8 *program_blob) {
   return reinterpret_cast<const u16 *>(program_blob + BWD_PR_MAIN_TAIL_PROGRAM_OFFSET);
 }
 
-DEVICE_FORCEINLINE pr bwd_pr_main_tail_eq_weight(const bool bit, const pr coordinate) { return bit ? coordinate : pr::sub(pr::ONE(), coordinate); }
-
-DEVICE_FORCEINLINE void bwd_pr_main_tail_build_d3_weights(const bwd_pr_main_tail_desc &desc, pr (&weights)[BWD_PR_MAIN_TAIL_D3_WEIGHTS]) {
-  if (threadIdx.x < BWD_PR_MAIN_TAIL_D3_WEIGHTS) {
-    const u32 q = threadIdx.x + 1;
-    pr weight = pr::ONE();
-#pragma unroll
-    for (u32 bit = 0; bit < 3; ++bit) {
-      const pr coordinate = desc.challenges_out[u32{desc.tail_start} - 3u + bit];
-      weight = pr::mul(weight, bwd_pr_main_tail_eq_weight(((q >> bit) & 1u) != 0, coordinate));
-    }
-    weights[threadIdx.x] = weight;
-  }
-}
-
 DEVICE_FORCEINLINE void bwd_pr_main_tail_fold_d3(const bwd_pr_main_tail_desc &desc, const u32 output_stride, const pr (&weights)[BWD_PR_MAIN_TAIL_D3_WEIGHTS]) {
   const u32 total = u32{desc.source_count} * output_stride;
   for (u32 flat = threadIdx.x; flat < total; flat += BWD_PR_MAIN_TAIL_BLOCK_THREADS) {
@@ -117,17 +103,6 @@ DEVICE_FORCEINLINE void bwd_pr_main_tail_fold_d3(const bwd_pr_main_tail_desc &de
     for (u32 q = 1; q < 8; ++q)
       folded = pr::fma(pr::sub(leaves[q], leaf_zero), weights[q - 1], folded);
     desc.ping[static_cast<size_t>(source) * output_stride + row] = folded;
-  }
-}
-
-DEVICE_FORCEINLINE void bwd_pr_main_tail_fold_d1(const bwd_pr_main_tail_desc &desc, const pr *input, const u32 input_stride, pr *output,
-                                                 const u32 output_stride, const pr challenge) {
-  const u32 total = u32{desc.source_count} * output_stride;
-  for (u32 flat = threadIdx.x; flat < total; flat += BWD_PR_MAIN_TAIL_BLOCK_THREADS) {
-    const u32 source = flat / output_stride;
-    const u32 row = flat - source * output_stride;
-    const pr *pair = input + static_cast<size_t>(source) * input_stride + 2u * row;
-    output[static_cast<size_t>(source) * output_stride + row] = pr::fma(pr::sub(pair[1], pair[0]), challenge, pair[0]);
   }
 }
 
@@ -274,7 +249,7 @@ DEVICE_FORCEINLINE void bwd_pr_main_tail_execute(const bwd_pr_main_tail_desc &de
   const u32 tail_rounds = u32{desc.folding_steps} - u32{desc.tail_start};
   if (threadIdx.x == 0)
     eq_sizes = desc.eq_sizes;
-  bwd_pr_main_tail_build_d3_weights(desc, d3_weights);
+  ::airbender::gkr::backward::bwd_main_tail_build_d3_weights(desc, d3_weights);
   __syncthreads();
   bwd_pr_main_tail_fold_d3(desc, desc.entry_column_elems >> 3, d3_weights);
 
@@ -284,7 +259,7 @@ DEVICE_FORCEINLINE void bwd_pr_main_tail_execute(const bwd_pr_main_tail_desc &de
   for (u32 iteration = 0; iteration < tail_rounds; ++iteration) {
     const u32 output_stride = iteration == 0 ? input_stride >> 3 : input_stride >> 1;
     if (iteration != 0)
-      bwd_pr_main_tail_fold_d1(desc, input, input_stride, output, output_stride, challenge);
+      ::airbender::gkr::backward::bwd_main_tail_fold_d1(desc, input, input_stride, output, output_stride, challenge);
     __syncthreads();
 
     bwd_pr_main_tail_evaluate_round(desc, program_blob, output, output_stride, eq_sizes, plane, e_partial, c_partial);

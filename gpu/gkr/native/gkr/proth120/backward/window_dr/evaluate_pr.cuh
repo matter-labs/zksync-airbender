@@ -1,5 +1,5 @@
 #pragma once
-#include "gkr/backward/window_dr/corner_quad.cuh"
+#include "gkr/backward/window_dr/evaluate.cuh"
 
 #include "gkr/proth120/backward/batch_challenges_pr.cuh"
 
@@ -7,44 +7,7 @@
 
 namespace airbender::gkr::proth120::backward {
 
-using pr_dr_window_pair = pr_dr_bwd::bwd_window_pair<pr>;
 using pr_dr_window_triplet = pr_dr_bwd::bwd_window_triplet<pr>;
-using pr_dr_window_corner_quad = pr_dr_bwd::bwd_window_packed_values<pr, 4>;
-
-struct pr_dr_window_gate_pairs {
-  pr_dr_window_pair gate[2];
-};
-
-DEVICE_FORCEINLINE pr_dr_window_gate_pairs pr_dr_window_packed_gate_pairs(const pr *column, const u32 row, const pr_dr_bwd::bwd_window_selector_pair selector) {
-  const u32 bit0_zero = selector.x0_infinity() ? 0 : selector.x0;
-  const u32 bit1_zero = selector.x1_infinity() ? 0 : selector.x1;
-  const pr_dr_window_corner_quad corner00 = pr_dr_bwd::dr_window_load_corner_quad(column, row, bit0_zero, bit1_zero);
-  pr_dr_window_corner_quad at_x1_zero = corner00;
-  if (selector.x0_infinity())
-    at_x1_zero = pr_dr_bwd::dr_window_quad_sub(pr_dr_bwd::dr_window_load_corner_quad(column, row, 1, bit1_zero), corner00);
-  pr_dr_window_corner_quad value = at_x1_zero;
-  if (selector.x1_infinity()) {
-    const pr_dr_window_corner_quad corner01 = pr_dr_bwd::dr_window_load_corner_quad(column, row, bit0_zero, 1);
-    pr_dr_window_corner_quad at_x1_one = corner01;
-    if (selector.x0_infinity())
-      at_x1_one = pr_dr_bwd::dr_window_quad_sub(pr_dr_bwd::dr_window_load_corner_quad(column, row, 1, 1), corner01);
-    value = pr_dr_bwd::dr_window_quad_sub(at_x1_one, at_x1_zero);
-  }
-  pr_dr_window_gate_pairs result;
-  result.gate[0] = {{value.values[0], value.values[2]}};
-  result.gate[1] = {{value.values[1], value.values[3]}};
-  return result;
-}
-
-DEVICE_FORCEINLINE pr_dr_window_triplet pr_dr_window_endpoint_product(const pr_dr_window_pair a, const pr_dr_window_pair b) {
-  const pr leading = pr::mul(pr::sub(a.values[1], a.values[0]), pr::sub(b.values[1], b.values[0]));
-  return {{pr::mul(a.values[0], b.values[0]), pr::mul(a.values[1], b.values[1]), leading}};
-}
-
-DEVICE_FORCEINLINE pr_dr_window_triplet pr_dr_window_add_triplets(const pr_dr_window_triplet a, const pr_dr_window_triplet b) {
-  return {{pr::add(a.values[0], b.values[0]), pr::add(a.values[1], b.values[1]), pr::add(a.values[2], b.values[2])}};
-}
-
 DEVICE_FORCEINLINE void pr_dr_window_accumulate(PrSum32 (&total)[3], const pr_dr_window_triplet value, const pr coefficient) {
 #pragma unroll
   for (u32 x2 = 0; x2 < 3; ++x2)
@@ -80,15 +43,15 @@ DEVICE_FORCEINLINE void pr_dr_window_slot_body(const pr_dr_window_desc &desc, co
   if constexpr ((GKR_DIM_REDUCING_PAIRWISE_SLOT_MASK & (1u << SLOT)) != 0) {
 #pragma unroll
     for (u32 tower = 0; tower < GKR_DIM_REDUCING_OUTPUTS_PER_SLOT; ++tower) {
-      const auto gates = pr_dr_window_packed_gate_pairs(inputs[tower], row, selector);
-      pr_dr_window_accumulate(total, pr_dr_window_endpoint_product(gates.gate[0], gates.gate[1]), batch_challenges[tower]);
+      const auto gates = pr_dr_bwd::dr_window_packed_gate_pairs(inputs[tower], row, selector);
+      pr_dr_window_accumulate(total, pr_dr_bwd::bwd_window_endpoint_product<pr, pr>(gates.gate[0], gates.gate[1]), batch_challenges[tower]);
     }
   } else {
-    const auto numerator = pr_dr_window_packed_gate_pairs(inputs[0], row, selector);
-    const auto denominator = pr_dr_window_packed_gate_pairs(inputs[1], row, selector);
-    const auto numerator_tensor = pr_dr_window_add_triplets(pr_dr_window_endpoint_product(numerator.gate[0], denominator.gate[1]),
-                                                            pr_dr_window_endpoint_product(numerator.gate[1], denominator.gate[0]));
-    const auto denominator_tensor = pr_dr_window_endpoint_product(denominator.gate[0], denominator.gate[1]);
+    const auto numerator = pr_dr_bwd::dr_window_packed_gate_pairs(inputs[0], row, selector);
+    const auto denominator = pr_dr_bwd::dr_window_packed_gate_pairs(inputs[1], row, selector);
+    const auto numerator_tensor = pr_dr_bwd::dr_window_add_triplets(pr_dr_bwd::bwd_window_endpoint_product<pr, pr>(numerator.gate[0], denominator.gate[1]),
+                                                                    pr_dr_bwd::bwd_window_endpoint_product<pr, pr>(numerator.gate[1], denominator.gate[0]));
+    const auto denominator_tensor = pr_dr_bwd::bwd_window_endpoint_product<pr, pr>(denominator.gate[0], denominator.gate[1]);
     pr_dr_window_accumulate(total, numerator_tensor, batch_challenges[0]);
     pr_dr_window_accumulate(total, denominator_tensor, batch_challenges[1]);
   }

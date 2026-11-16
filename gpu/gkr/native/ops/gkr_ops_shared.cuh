@@ -76,4 +76,22 @@ DEVICE_FORCEINLINE void build_combined_claim(const F *claims, const F *batching,
   }
 }
 
+template <typename F> DEVICE_FORCEINLINE void merge_claims(const F *claims, const u32 count, const F *coordinates, const u32 pack_log2, F *merged) {
+  const u32 width = 1u << pack_log2;
+  const u32 group = (blockIdx.x * blockDim.x + threadIdx.x) / 32;
+  const u32 lane = threadIdx.x % 32;
+  if (group >= count / width + (count % width != 0))
+    return;
+  const u32 index = group * width + lane;
+  F value = lane < width && index < count ? claims[index] : F::ZERO();
+  for (u32 round = 0; round < pack_log2; ++round) {
+    const uint4 shuffled = ::airbender::primitives::memory::shfl_xor(0xffffffffu, *reinterpret_cast<const uint4 *>(&value), 1 << round);
+    const F other = *reinterpret_cast<const F *>(&shuffled);
+    if (lane < width && (lane & ((1u << (round + 1)) - 1)) == 0)
+      value = F::add(value, F::mul(F::sub(other, value), coordinates[round]));
+  }
+  if (lane == 0)
+    merged[group] = value;
+}
+
 } // namespace airbender::gkr::ops::shared

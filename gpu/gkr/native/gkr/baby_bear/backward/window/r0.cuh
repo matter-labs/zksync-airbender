@@ -1,5 +1,6 @@
 #pragma once
 #include "gkr/baby_bear/backward/window/window_geometry.cuh"
+#include "gkr/backward/window/r0.cuh"
 #include <type_traits>
 
 namespace airbender::gkr::backward {
@@ -26,53 +27,16 @@ DEVICE_FORCEINLINE bwd_window_instruction bwd_window_read(const u16 *program, co
   return reinterpret_cast<const bwd_window_instruction *>(program)[pc];
 }
 
-// An aligned eight-corner window stays within one virtual-source region, so
-// its procedural endpoints are affine in the row.
-DEVICE_FORCEINLINE bwd_window_pair<bf> bwd_window_procedural_pair(const bwd_window_procedural_bf_source source, const u32 row,
-                                                                  const bwd_window_selector_pair selector) {
-  static_assert(GKR_TIMESTAMP_COLUMNS_NUM_BITS >= 3);
-  const u32 base = row << 3;
-  u32 origin;
-  u32 step;
-  switch (source.procedural_kind) {
-  case BWD_COEFF_PROCEDURAL_RANGE_CHECK_16_BITS:
-    if (base >= (1u << 16))
-      return {{bf::ZERO(), bf::ZERO()}};
-    origin = base;
-    step = 1;
-    break;
-  case BWD_COEFF_PROCEDURAL_RANGE_CHECK_TIMESTAMP:
-    if (base >= (1u << GKR_TIMESTAMP_COLUMNS_NUM_BITS))
-      return {{bf::ZERO(), bf::ZERO()}};
-    origin = base;
-    step = 1;
-    break;
-  case BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_LOW:
-    origin = (base << 2) & 0xffffu;
-    step = 4;
-    break;
-  case BWD_COEFF_PROCEDURAL_INITS_AND_TEARDOWNS_HIGH: {
-    const bf value = selector.has_infinity() ? bf::ZERO() : bf::from_u32_unchecked(base >> 14);
-    return {{value, value}};
-  }
-  default:
-    return {{bf::ZERO(), bf::ZERO()}};
-  }
-  if (selector.has_infinity()) {
-    const u32 slope = selector.x0_infinity() ? (selector.x1_infinity() ? 0 : 4 * step) : 2 * step;
-    const bf value = bf::from_u32_unchecked(slope);
-    return {{value, value}};
-  }
-  const u32 value = origin + step * (4 * selector.x0 + 2 * selector.x1);
-  return {{bf::from_u32_unchecked(value), bf::from_u32_unchecked(value + step)}};
-}
+struct bwd_window_small_bf {
+  static DEVICE_FORCEINLINE bf from_u32(const u32 value) { return bf::from_u32_unchecked(value); }
+};
 
 DEVICE_FORCEINLINE bwd_window_triplet<bf> bwd_window_bf_linear(const bwd_window_pair<bf> source) { return {{source.values[0], source.values[1], bf::ZERO()}}; }
 
 DEVICE_FORCEINLINE bwd_window_pair<bf> bwd_window_bf_linear_pair(const bwd_window_desc &desc, const u16 opcode, const u16 source_a, const u32 row,
                                                                  const bwd_window_selector_pair selector) {
   if (opcode == BWD_WINDOW_OPCODE_LINEAR_BF_PROCEDURAL)
-    return bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_a)}, row, selector);
+    return bwd_window_procedural_pair<bf, bwd_window_small_bf>(static_cast<u8>(source_a), row, selector);
   return bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector);
 }
 
@@ -84,13 +48,13 @@ DEVICE_FORCEINLINE bwd_window_triplet<bf> bwd_window_bf_term(const bwd_window_de
   if (opcode == BWD_WINDOW_OPCODE_LINEAR_BF)
     return bwd_window_bf_linear(bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector));
   if (opcode == BWD_WINDOW_OPCODE_LINEAR_BF_PROCEDURAL)
-    return bwd_window_bf_linear(bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_a)}, row, selector));
+    return bwd_window_bf_linear(bwd_window_procedural_pair<bf, bwd_window_small_bf>(static_cast<u8>(source_a), row, selector));
   if (opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B)
     return bwd_window_endpoint_product<bf, bf>(bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector),
-                                               bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_b)}, row, selector));
+                                               bwd_window_procedural_pair<bf, bwd_window_small_bf>(static_cast<u8>(source_b), row, selector));
   if (opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB)
-    return bwd_window_endpoint_product<bf, bf>(bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_a)}, row, selector),
-                                               bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(source_b)}, row, selector));
+    return bwd_window_endpoint_product<bf, bf>(bwd_window_procedural_pair<bf, bwd_window_small_bf>(static_cast<u8>(source_a), row, selector),
+                                               bwd_window_procedural_pair<bf, bwd_window_small_bf>(static_cast<u8>(source_b), row, selector));
   return bwd_window_endpoint_product<bf, bf>(bwd_window_pair_values(bwd_window_direct_bf(desc, source_a), row, selector),
                                              bwd_window_pair_values(bwd_window_direct_bf(desc, source_b), row, selector));
 }
@@ -204,8 +168,8 @@ DEVICE_FORCEINLINE void bwd_window_accumulate_product_wide_sources(const bwd_win
   const auto scaled = bwd_window_scaled_endpoints<MayHaveBanked, MayNegate>(desc, instruction.factor, a);
   const bf s0 = scaled.values[0];
   const bf s1 = scaled.values[1];
-  const bf delta_a = bwd_window_sub(s1, s0);
-  const bf delta_b = bwd_window_sub(b.values[1], b.values[0]);
+  const bf delta_a = bf::sub(s1, s0);
+  const bf delta_b = bf::sub(b.values[1], b.values[0]);
   sums[2] = mad_wide(delta_a.limb, delta_b.limb, sums[2]);
   sums[0] = mad_wide(s0.limb, b.values[0].limb, sums[0]);
   sums[1] = mad_wide(s1.limb, b.values[1].limb, sums[1]);
@@ -217,12 +181,12 @@ DEVICE_FORCEINLINE void bwd_window_accumulate_product_wide(const bwd_window_desc
   if (instruction.opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_B) {
     return bwd_window_accumulate_product_wide_sources<MayHaveBanked, MayNegate>(
         desc, instruction, bwd_window_pair_values(bwd_window_direct_bf(desc, instruction.source_a), row, selector),
-        bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(instruction.source_b)}, row, selector), sums);
+        bwd_window_procedural_pair<bf, bwd_window_small_bf>(static_cast<u8>(instruction.source_b), row, selector), sums);
   }
   if (instruction.opcode == BWD_WINDOW_OPCODE_PRODUCT_BF_BF_PROCEDURAL_AB) {
     return bwd_window_accumulate_product_wide_sources<MayHaveBanked, MayNegate>(
-        desc, instruction, bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(instruction.source_a)}, row, selector),
-        bwd_window_procedural_pair(bwd_window_procedural_bf_source{static_cast<u8>(instruction.source_b)}, row, selector), sums);
+        desc, instruction, bwd_window_procedural_pair<bf, bwd_window_small_bf>(static_cast<u8>(instruction.source_a), row, selector),
+        bwd_window_procedural_pair<bf, bwd_window_small_bf>(static_cast<u8>(instruction.source_b), row, selector), sums);
   }
   return bwd_window_accumulate_product_wide_sources<MayHaveBanked, MayNegate>(
       desc, instruction, bwd_window_pair_values(bwd_window_direct_bf(desc, instruction.source_a), row, selector),
