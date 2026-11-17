@@ -56,8 +56,11 @@ definitions do not import.
 | `blake-round` | `Blake2Round.SetupImportClaim` (the table definition reads the imported rows) |
 | `keccak-column-parity`, `keccak-theta-rho`, `keccak-chi5` | `Airbender.Keccak.Split.ColumnParity.SetupProofs.setupRow_eq`, `Airbender.Keccak.Split.ThetaRho.SetupProofs.setupRow_eq`, `Airbender.Keccak.Split.Chi5.SetupProofs.setupRow_eq` (proven/; the table definitions read the imported rows) |
 
-The CPU claims use the setup fixture program: the four words `[0x13, 0x00408093, 0x6f, 0x007181b3]`
-(`Compiler.NativeSetups.fixtureWords`) for the ROM rows, and its decoder rows. The decoder smoke fixture comes from
+The CPU claims (`Compiler.NativeSetups.FixtureRows`) state the public generic rows
+(`Compiler.NativePublicSetup.genericRow`) of the setup fixture program. Its initial state
+(`Compiler.NativeSetups.fixtureInitial`) holds the four words `[0x13, 0x00408093, 0x6f, 0x007181b3]`
+(`Compiler.NativeSetups.fixtureWords`) in its ROM; its program (`Compiler.NativeSetups.fixtureProgram`) is the program
+image of these words. The decoder smoke fixture comes from
 the Rust test setup_json_roundtrip_preserves_materialized_columns_and_program; no claim reads it, and the Lean
 build does not import it. `inits-and-teardowns` has no generic lookup columns.
 

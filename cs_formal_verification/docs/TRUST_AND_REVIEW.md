@@ -143,7 +143,8 @@ the file read and the reflection are for circuits. The import emits the JSON blo
 each table definition of the bigint, G, Keccak, shift/byte, add/sub, jump/branch, multiply/divide, word, subword and
 unified setups equal to the imported rows on the complete trace domain, the range columns of the CPU setups equal to
 their formulas, and the public worker tables equal to the imported worker data with their range columns. The CPU
-claims use the setup fixture program. The BLAKE2 round table reads the imported rows, and
+claims state the public generic rows (`NativePublicSetup.genericRow`) of the setup fixture program: its initial state
+and its program image (`rvMachineProgramImage`). The BLAKE2 round table reads the imported rows, and
 `Blake2Round.SetupImportClaim` makes them equal to the round row formulas; kernel scans give the same row meaning
 for the three split Keccak setups (`SetupProofs.setupRow_eq`). The claim modules import the raw setup data; the
 definitions that the machine claims use do not, except the round and split Keccak tables, which read their imported

@@ -27,7 +27,6 @@ import Proven.Final.Circuits.Blake2G.Setup
 import Proven.Final.Circuits.Keccak.Setup
 import Proven.Final.Compiler.WorkerSetup
 import Proven.Final.Compiler.FixedRows
-import Proven.Final.Helpers.Tables.Bytes
 -- Each final theorem (proven/Proven/Final) proves the statement of the same name in human/ (UpperCamelCase).
 import Proven.Final.Circuits.AddSub.RVTheorems
 import Proven.Final.Circuits.Bigint.RVTheorems

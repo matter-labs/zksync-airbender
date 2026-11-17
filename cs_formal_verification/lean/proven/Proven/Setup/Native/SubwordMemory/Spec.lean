@@ -1,5 +1,6 @@
 module
-public import Human.Compiler.NativeSetups.Claims
+public import Human.Compiler.NativeFixedRows
+public import Human.Compiler.NativeSetups.SubwordMemory
 public import Proven.Setup.Native.Common
 
 @[expose] public section
@@ -146,15 +147,22 @@ theorem column_eq (n : Nat) (bound : n < 13238273) :
     Nat.cast_zero, and_self]
   all_goals simp only [Nat.add_assoc, and_true]
 
-/-- Rows from 13238273: the decoder rows of the setup fixture, then zero padding. -/
-theorem column_after (n : Nat) (low : 13238273 ≤ n) (c : Fin 9) :
-    ((if n < 14286849 then (Vector.replicate 8 ((babyBearModulus - 1 : Nat) : Int)).push 46
-      else Vector.replicate 9 0 : Vector Int 9))[c] =
-      (![column0, column1, column2, column3, column4, column5, column6, column7, column8] c n : Int) := by
-  fin_cases c <;>
-  simp only [Fin.zero_eta, Fin.mk_one, Fin.reduceFinMk, Matrix.cons_val] <;>
-  simp (disch := omega) only [column0, column1, column2, column3, column4, column5, column6, column7, column8,
-    fixedZero, byRegion, nat_blt, nat_beq, pick_false] <;>
-  split_ifs <;> simp_all [babyBearModulus]
+/-- The column formulas, in native column order. -/
+def formulas : List (Nat → Nat) := [column0, column1, column2, column3, column4, column5, column6, column7, column8]
+
+-- One simp set serves every column; each column uses a part of it.
+set_option linter.unusedSimpArgs false in
+/-- Decoder slots from 4 (rows from 13238277): the sentinel `p - 1` in every payload field and the tag 46. -/
+theorem row_decoder (n : Nat) (low : 13238277 ≤ n) (high : n < 14286849) :
+    formulas.map (· n) = [sentinel, sentinel, sentinel, sentinel, sentinel, sentinel, sentinel, sentinel, 46] := by
+  simp (disch := omega) only [formulas, List.map_cons, List.map_nil, column0, column1, column2, column3, column4,
+    column5, column6, column7, column8, fixedZero, byRegion, nat_blt, nat_beq, nat_sub, pick_true, pick_false]
+
+-- One simp set serves every column; each column uses a part of it.
+set_option linter.unusedSimpArgs false in
+/-- Rows from 14286849: zero padding. -/
+theorem row_padding (n : Nat) (low : 14286849 ≤ n) : formulas.map (· n) = [0, 0, 0, 0, 0, 0, 0, 0, 0] := by
+  simp (disch := omega) only [formulas, List.map_cons, List.map_nil, column0, column1, column2, column3, column4,
+    column5, column6, column7, column8, fixedZero, byRegion, nat_blt, nat_beq, nat_sub, pick_true, pick_false]
 
 end Airbender.Compiler.NativeFixedRows.SubwordMemorySetupProofs

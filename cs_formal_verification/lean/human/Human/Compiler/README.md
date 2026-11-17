@@ -45,9 +45,10 @@ lookups and execute equal to one.
 [NativePublicSetup.lean](NativePublicSetup.lean) defines fixed rows, public ROM rows
 and PC-indexed decoder rows. Capacity, selector bounds and omitted zero fields are
 public setup properties. The `…ImportClaim` statements of
-[NativeSetups/Claims.lean](NativeSetups/Claims.lean) make the definitions of
-[NativeFixedRows.lean](NativeFixedRows.lean) (the add/sub, jump/branch, multiply/divide, word, subword and unified
-fixed rows, fixture-ROM rows and fixture decoder rows) and the shift/byte rows equal to the imported native setups;
+[NativeSetups/Claims.lean](NativeSetups/Claims.lean) make the public generic rows of each CPU circuit for the setup
+fixture program ([NativeSetups/Fixture.lean](NativeSetups/Fixture.lean): its initial state and its program image) equal
+to the imported native setups: the fixed rows of [NativeFixedRows.lean](NativeFixedRows.lean) and the shift/byte
+rows, the fixture-ROM rows, the decoder rows with their tag, and the padding rows;
 [NativeSetups/Ranges.lean](NativeSetups/Ranges.lean) does the same for the range columns. These claim modules read
 the raw setup data, and the definitions do not import them. The [import guide](../Import/README.md) states the setup binding.
 

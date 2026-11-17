@@ -196,7 +196,6 @@ import Proven.Final.Circuits.Keccak.Setup
 import Proven.Final.Circuits.Blake2Round.Setup
 import Proven.Final.Compiler.WorkerSetup
 import Proven.Final.Compiler.FixedRows
-import Proven.Final.Helpers.Tables.Bytes
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind

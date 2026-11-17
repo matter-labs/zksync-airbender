@@ -105,15 +105,24 @@ theorem column_eq (n : Nat) (bound : n < 524545) :
     nat_land, nat_lor, Vector.getElem_map, Vector.getElem_mk, List.getElem_toArray, List.getElem_cons_succ,
     List.getElem_cons_zero, Nat.reduceEqDiff, ↓reduceIte, Nat.cast_ofNat, Nat.cast_zero, and_self]
 
-/-- Rows from 524545: the decoder rows of the setup fixture, then zero padding. -/
-theorem column_after (n : Nat) (low : 524545 ≤ n) (c : Fin 10) :
-    ((if n < 1573121 then (Vector.replicate 9 ((babyBearModulus - 1 : Nat) : Int)).push 46
-      else Vector.replicate 10 0 : Vector Int 10))[c] =
-      (![column0, column1, column2, column3, column4, column5, column6, column7, column8, column9] c n : Int) := by
-  fin_cases c <;>
-  simp only [Fin.zero_eta, Fin.mk_one, Fin.reduceFinMk, Matrix.cons_val] <;>
-  simp (disch := omega) only [column0, column1, column2, column3, column4, column5, column6, column7, column8,
-    column9, byRegion, nat_blt, nat_beq, pick_false] <;>
-  split_ifs <;> simp_all [babyBearModulus]
+/-- The column formulas, in native column order. -/
+def formulas : List (Nat → Nat) :=
+  [column0, column1, column2, column3, column4, column5, column6, column7, column8, column9]
+
+-- One simp set serves every column; each column uses a part of it.
+set_option linter.unusedSimpArgs false in
+/-- Decoder slots from 4 (rows from 524549): the sentinel `p - 1` in every payload field and the tag 46. -/
+theorem row_decoder (n : Nat) (low : 524549 ≤ n) (high : n < 1573121) :
+    formulas.map (· n) =
+      [sentinel, sentinel, sentinel, sentinel, sentinel, sentinel, sentinel, sentinel, sentinel, 46] := by
+  simp (disch := omega) only [formulas, List.map_cons, List.map_nil, column0, column1, column2, column3, column4,
+    column5, column6, column7, column8, column9, byRegion, nat_blt, nat_beq, nat_sub, pick_true, pick_false]
+
+-- One simp set serves every column; each column uses a part of it.
+set_option linter.unusedSimpArgs false in
+/-- Rows from 1573121: zero padding. -/
+theorem row_padding (n : Nat) (low : 1573121 ≤ n) : formulas.map (· n) = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] := by
+  simp (disch := omega) only [formulas, List.map_cons, List.map_nil, column0, column1, column2, column3, column4,
+    column5, column6, column7, column8, column9, byRegion, nat_blt, nat_beq, nat_sub, pick_true, pick_false]
 
 end Airbender.Verification.ShiftBinopSetupProofs

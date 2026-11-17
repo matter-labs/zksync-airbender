@@ -1,12 +1,15 @@
 module
-public import Human.Compiler.NativeSetups.Claims
+public import Human.Compiler.NativeFixedRows
+public import Human.Compiler.NativeSetups.JumpBranch
 public import Proven.Setup.Native.Common
 public import Mathlib.Tactic.IntervalCases
 
 @[expose] public section
 
 /- Column formulas of the native jump/branch setup, in the form that the kernel evaluates fast, and their agreement
-   with the reviewed fixed rows `NativeFixedRows.jumpBranch` and the fixture decoder rows. -/
+   with the reviewed fixed rows `NativeFixedRows.jumpBranch`. Rows from 4456448 hold the decoder table of the setup
+   fixture program (slot 2 holds `jal x0, 0`; every payload field of every other slot is the sentinel `p - 1`; the tag
+   is 46), then zero padding. -/
 
 namespace Airbender.Compiler.NativeFixedRows.JumpBranchSetupProofs
 open Airbender.Import.Setup.Scan Airbender.Compiler.NativeSetups.Proofs
@@ -88,26 +91,24 @@ theorem column_eq (n : Nat) (bound : n < 4456448) :
     | simp (disch := omega) only [column1, byRegion, bit, nat_blt, nat_beq, pick_true, pick_false, nat_sub, nat_div,
         nat_mod, Nat.cast_one, Nat.cast_zero]
 
+/-- The column formulas, in native column order. -/
+def formulas : List (Nat → Nat) :=
+  [column0, column1, column2, column3, column4, column5, column6, column7, column8, column9]
+
 -- One simp set serves every column; each column uses a part of it.
 set_option linter.unusedSimpArgs false in
-/-- Rows from 4456448: the decoder rows of the setup fixture, then zero padding. -/
-theorem column_after (n : Nat) (low : 4456448 ≤ n) (c : Fin 10) :
-    ((if n < 5505024 then jumpBranchFixtureDecoderRow (n - 4456448) else Vector.replicate 10 0 :
-      Vector Int 10))[c] =
-      (![column0, column1, column2, column3, column4, column5, column6, column7, column8, column9] c n : Int) := by
-  by_cases decoderRow : n < 5505024
-  · by_cases jump : n - 4456448 = 2
-    · have : n = 4456450 := by omega
-      subst this
-      fin_cases c <;> rfl
-    · fin_cases c <;>
-      simp (disch := omega) only [decoderRow, ↓reduceIte, jumpBranchFixtureDecoderRow, jump, Fin.zero_eta,
-        Fin.mk_one, Fin.reduceFinMk, Matrix.cons_val, column0, column1, column2, column3, column4, column5, column6,
-        column7, column8, column9, byRegion, decoder, nat_blt, nat_beq, nat_sub, pick_false, Vector.getElem_push_eq,
-        Vector.getElem_replicate] <;> simp [babyBearModulus]
-  · fin_cases c <;>
-    simp (disch := omega) only [decoderRow, ↓reduceIte, Fin.zero_eta, Fin.mk_one, Fin.reduceFinMk, Matrix.cons_val,
-      column0, column1, column2, column3, column4, column5, column6, column7, column8, column9, byRegion, nat_blt,
-      pick_false, decide_false, pick_of_false] <;> simp
+/-- Decoder slots from 4 (rows from 4456452): the sentinel `p - 1` in every payload field and the tag 46. -/
+theorem row_decoder (n : Nat) (low : 4456452 ≤ n) (high : n < 5505024) :
+    formulas.map (· n) =
+      [sentinel, sentinel, sentinel, sentinel, sentinel, sentinel, sentinel, sentinel, sentinel, 46] := by
+  simp (disch := omega) only [formulas, List.map_cons, List.map_nil, column0, column1, column2, column3, column4,
+    column5, column6, column7, column8, column9, decoder, byRegion, nat_blt, nat_beq, nat_sub, pick_true, pick_false]
+
+-- One simp set serves every column; each column uses a part of it.
+set_option linter.unusedSimpArgs false in
+/-- Rows from 5505024: zero padding. -/
+theorem row_padding (n : Nat) (low : 5505024 ≤ n) : formulas.map (· n) = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] := by
+  simp (disch := omega) only [formulas, List.map_cons, List.map_nil, column0, column1, column2, column3, column4,
+    column5, column6, column7, column8, column9, decoder, byRegion, nat_blt, nat_beq, nat_sub, pick_true, pick_false]
 
 end Airbender.Compiler.NativeFixedRows.JumpBranchSetupProofs

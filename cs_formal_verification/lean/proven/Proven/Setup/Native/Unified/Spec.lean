@@ -1,6 +1,7 @@
 module
 public import Proven.Setup.Native.ShiftBinop.Spec
-public import Human.Compiler.NativeSetups.Claims
+public import Human.Compiler.NativeFixedRows
+public import Human.Compiler.NativeSetups.Unified
 public import Proven.Setup.Native.JumpBranch.Spec
 public import Mathlib.Tactic.IntervalCases
 public import Mathlib.Tactic.FinCases
@@ -609,31 +610,26 @@ theorem column_eq (n : Nat) (bound : n < 2097537) :
   · exact columns_conditional bound (by omega) r9
   · exact columns_wide bound (by omega)
 
+/-- The column formulas, in native column order. -/
+def formulas : List (Nat → Nat) :=
+  [column0, column1, column2, column3, column4, column5, column6, column7, column8, column9]
+
 -- One simp set serves every column; each column uses a part of it.
 set_option linter.unusedSimpArgs false in
-/-- Rows from 2097537: the decoder rows of the setup fixture, then zero padding. -/
-theorem column_after (n : Nat) (low : 2097537 ≤ n) (c : Fin 10) :
-    ((if n < 3146113 then unifiedFixtureDecoderRow (n - 2097537) else Vector.replicate 10 0 : Vector Int 10))[c] =
-      (![column0, column1, column2, column3, column4, column5, column6, column7, column8, column9] c n : Int) := by
-  by_cases decoderRow : n < 3146113
-  · by_cases zero : n = 2097537
-    · subst zero; fin_cases c <;> rfl
-    by_cases one : n = 2097538
-    · subst one; fin_cases c <;> rfl
-    by_cases two : n = 2097539
-    · subst two; fin_cases c <;> rfl
-    by_cases three : n = 2097540
-    · subst three; fin_cases c <;> rfl
-    fin_cases c <;>
-    simp (disch := omega) only [decoderRow, ↓reduceIte, unifiedFixtureDecoderRow, Fin.zero_eta, Fin.mk_one,
-      Fin.reduceFinMk, Matrix.cons_val, column0, column1, column2, column3, column4, column5, column6, column7,
-          column8, column9, byRegionShift, byRegion_decoder, decoder, nat_beq, pick_false,
-      Vector.getElem_push_eq, Vector.getElem_push_lt, Vector.getElem_replicate] <;>
-    split_ifs <;> first | omega | simp [babyBearModulus]
-  · fin_cases c <;>
-    simp (disch := omega) only [decoderRow, ↓reduceIte, Fin.zero_eta, Fin.mk_one, Fin.reduceFinMk, Matrix.cons_val,
-      column0, column1, column2, column3, column4, column5, column6, column7, column8, column9, byRegionShift,
-          byRegion_padding, Vector.getElem_replicate, Nat.cast_zero] <;>
-    rfl
+/-- Decoder slots from 4 (rows from 2097541): the sentinel `p - 1` in every payload field and the tag 46. -/
+theorem row_decoder (n : Nat) (low : 2097541 ≤ n) (high : n < 3146113) :
+    formulas.map (· n) =
+      [sentinel, sentinel, sentinel, sentinel, sentinel, sentinel, sentinel, sentinel, sentinel, 46] := by
+  simp (disch := omega) only [formulas, List.map_cons, List.map_nil, column0, column1, column2, column3, column4,
+    column5, column6, column7, column8, column9, byRegionShift, byRegion_decoder, byRegion_padding, decoder, nat_beq,
+    nat_sub, pick_true, pick_false]
+
+-- One simp set serves every column; each column uses a part of it.
+set_option linter.unusedSimpArgs false in
+/-- Rows from 3146113: zero padding. -/
+theorem row_padding (n : Nat) (low : 3146113 ≤ n) : formulas.map (· n) = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] := by
+  simp (disch := omega) only [formulas, List.map_cons, List.map_nil, column0, column1, column2, column3, column4,
+    column5, column6, column7, column8, column9, byRegionShift, byRegion_decoder, byRegion_padding, decoder, nat_beq,
+    nat_sub, pick_true, pick_false]
 
 end Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs
