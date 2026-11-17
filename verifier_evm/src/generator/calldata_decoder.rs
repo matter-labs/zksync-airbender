@@ -122,8 +122,8 @@ pub(crate) fn calldata_reads_to_image_reads(src: &str) -> String {
 /// The decoder for `circuit` under `params`: `decode_calldata()` checks the GKR section's length
 /// and every run's zero padding and writes the decoded GKR image at [`IMAGE_PTR`]: the preimage,
 /// the nonces and every run's lanes; a factored-round run leaves only its bit offset in its
-/// single image slot. Lanes are range-checked where they are read: the image lanes by the code
-/// that reads the image, the `(b, c)` pairs by the round functions.
+/// single image slot. gkr_init checks output lanes; gkr_dr_final checks LSB lines;
+/// sumcheck_circuit_layer{i} checks at-point lanes; factored_round checks `(b, c)` pairs.
 pub(crate) fn gkr_decoder(
     circuit: &GKRCircuitArtifact<Proth120>,
     params: &Geometry,
@@ -195,7 +195,8 @@ pub(crate) fn gkr_decoder(
     // decode_run handles an odd element count only if some FE run has one.
     let odd_runs = runs.iter().any(|&(n, factored)| !factored && n & 1 == 1);
     let odd_tail = if odd_runs {
-        "            if and(n, 1) {
+        "            // Low bit n&1 selects an odd tail; 133=256-123 aligns its single field.
+            if and(n, 1) {
                 mstore(dst, shl(128, and(shr(sub(133, and(bit, 7)), calldataload(add(cd, shr(3, bit)))), FE_MASK)))
                 bit := add(bit, FE_BITS)
             }
@@ -206,7 +207,10 @@ pub(crate) fn gkr_decoder(
     // one 256-bit word, layer i in bits [16i, 16i + 16)
     let widths_word: String = widths.iter().rev().map(|w| format!("{w:04x}")).collect();
     let body = format!(
-        "            let cd := {preimage_in_calldata}
+        "            // Wire preimage: {preimage_in_calldata} bytes = register u32s + packed timestamps + wire cap.
+            // Decode {outputs} output-evaluation lanes, then layers with k={e}..{t} sumcheck rounds.
+            // Each dimension-reduction boundary has {lines} lanes (two per output polynomial).
+            let cd := {preimage_in_calldata}
             let image := __TEMPLATE_GKR_INIT_PREIMAGE_BYTES
             calldatacopy(add({IMAGE_PTR}, image), cd, 8) // external PoW nonce
             cd, image := decode_next_run(add(cd, 8), add(image, 8), {outputs})
@@ -214,12 +218,14 @@ pub(crate) fn gkr_decoder(
                 cd, image := record_factored_run(cd, image, k)
                 cd, image := decode_next_run(cd, image, {lines})
             }}
-            // circuit layers, top first; at-point eval counts 16 bits each
+            // {layers} circuit layers, top first; each at-point count is a 16-bit descriptor.
+            // widths_word stores layer l in bits 16*l..16*l+16; 0xffff selects that count.
             for {{ let l := 0 }} lt(l, {layers}) {{ l := add(l, 1) }} {{
                 cd, image := record_factored_run(cd, image, {t})
                 cd, image := decode_next_run(cd, image, and(shr(mul(16, l), 0x{widths_word}), 0xffff))
             }}
             calldatacopy(add({IMAGE_PTR}, image), cd, 8) // WHIR batching PoW nonce
+            // Include the trailing 8-byte nonce: calldata ends at {calldata_bytes}, image at {image_bytes}.
             if iszero(and(eq(add(cd, 8), {calldata_bytes}), eq(add(image, 8), {image_bytes}))) {{ revert(0, 0) }}
 ",
         outputs = GKR_OUTPUTS << e,
@@ -243,6 +249,12 @@ pub(crate) fn gkr_decoder(
     }
     let top_word: String = top_word.iter().map(|b| format!("{b:02x}")).collect();
     let ts_pad = (8 - (38 * (NUM_REGISTERS + 1)) % 8) % 8;
+    let layer_checks = (0..circuit.layers.len())
+        .map(|i| format!("sumcheck_circuit_layer{i}"))
+        .collect::<Vec<_>>()
+        .chunks(2)
+        .map(|names| format!("        // {}\n", names.join(", ")))
+        .collect::<String>();
     let yul = format!(
         "
         // ── Calldata decoder: the GKR half's only calldata reader. Writes the decoded GKR image
@@ -250,14 +262,16 @@ pub(crate) fn gkr_decoder(
         // stream from calldata after the GKR section.
         // FE-run(n) at cd: element j = bits [123j, 123j + 123) MSB-first, the pad bits of the last
         // byte zero. Elements 2i, 2i + 1 lie in the word loaded at byte bit >> 3 (bit & 7 ≤ 7,
-        // 7 + 246 ≤ 256) and go to the two BE16 lanes at dst + 32i. No range check here: the
-        // verifier checks every lane of these runs < P where it reads it (output evaluations, LSB
-        // lines, at-point evaluations).
-        function fe_pair_lanes(x) -> w {{
+        // 7 + 246 ≤ 256) and go to the two u128 lanes at dst + 32i. No range check here: the
+        // gkr_init checks output lanes, gkr_dr_final checks LSB lines, and
+        // The following functions check at-point lanes < P:
+{layer_checks}        function fe_pair_lanes(x) -> w {{
             w := or(shl(128, and(shr(FE_BITS, x), FE_MASK)), and(x, FE_MASK))
         }}
         function decode_run(cd, n, dst) {{
-            // four pairs = 984 bits = 123 bytes: pair k at byte (246k) >> 3, shifted by 10 − (246k & 7)
+            // Four pairs = 984 bits = 123 bytes (8 fields); shr(3,n) counts 8-field blocks.
+            // Pair k starts at byte floor(246*k/8): 0/30/61/92; align by 10-(246*k & 7): 10/4/6/8.
+            // Destination offsets 0/32/64/96 hold four packed pairs; advance by 128 bytes.
             for {{ let end := add(cd, mul(123, shr(3, n))) }} lt(cd, end) {{ cd := add(cd, 123) }} {{
                 mstore(dst, fe_pair_lanes(shr(10, calldataload(cd))))
                 mstore(add(dst, 32), fe_pair_lanes(shr(4, calldataload(add(cd, 30)))))
@@ -265,6 +279,8 @@ pub(crate) fn gkr_decoder(
                 mstore(add(dst, 96), fe_pair_lanes(shr(8, calldataload(add(cd, 92)))))
                 dst := add(dst, 128)
             }}
+            // Remainder: (n/2)&3 pairs after the 8-field blocks; shift 1 divides by 2,
+            // mask 3 takes modulo 4, and each packed pair occupies 246 bits.
             let bit := 0
             for {{ let end := mul(246, and(shr(1, n), 3)) }} lt(bit, end) {{ bit := add(bit, 246) }} {{
                 mstore(dst, fe_pair_lanes(shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))))
@@ -272,19 +288,22 @@ pub(crate) fn gkr_decoder(
             }}
 {odd_tail}            check_run_pad(cd, bit)
         }}
-        // The pad bits after `bits` run bits at cd must be zero.
+        // The pad bits after `bits` run bits at cd must be zero. Mask 7 computes pad modulo 8;
+        // (bits+pad-1)>>3 locates the final byte, and (1<<pad)-1 selects its unused low bits.
         function check_run_pad(cd, bits) {{
             let pad := and(sub(0, bits), 7)
             if and(byte(0, calldataload(add(cd, shr(3, sub(add(bits, pad), 1))))), sub(shl(pad, 1), 1)) {{ revert(0, 0) }}
         }}
         // decode_run over the run at (cd, image): the next calldata and image offsets.
+        // (bits+7)>>3 rounds to bytes; shl(4,n) allocates n * 16-byte u128 lanes.
         function decode_next_run(cd, image, n) -> next_cd, next_image {{
             decode_run(cd, n, add({IMAGE_PTR}, image))
             next_cd := add(cd, shr(3, add(mul(FE_BITS, n), 7)))
             next_image := add(image, shl(4, n))
         }}
         // Factored-round run of k (b, c) pairs: the round functions read the pairs from calldata
-        // (cd_load) and range-check them; the run's single image slot holds its bit offset. The
+        // (cd_load); factored_round checks both < P. The image slot holds cd * 8 (shl(3, cd));
+        // shl(1, k) counts two fields per round. The
         // decoder shares run_end and cd_digest with the WHIR half (whir.sol).
         function record_factored_run(cd, image, k) -> next_cd, next_image {{
             mstore(add({IMAGE_PTR}, image), shl(3, cd))
@@ -294,18 +313,22 @@ pub(crate) fn gkr_decoder(
         function cd_load(off) -> w {{
             w := calldataload(off)
         }}
-        // A 19-bit limb as the 4 little-endian bytes of its u32, left-aligned.
+        // A 19-bit limb as 4 LE u32 bytes, left-aligned: byte shifts 248/240/232 = 256-8/16/24;
+        // 0xff selects one byte, and shifts 8/16 select the next source bytes.
         function limb19_le(x) -> w {{
             w := or(or(shl(248, and(x, 0xff)), shl(240, and(shr(8, x), 0xff))), shl(232, shr(16, x)))
         }}
-        // TS-run pair i: bits [38i, 38i + 38) = low19 ‖ high19.
+        // TS-run pair i: bits [38i, 38i + 38) = low19 | high19; 218 = 256-38.
+        // Masks 0x3fffffffff/0x7ffff select 38/19 bits; bit&7 and bit>>3 address a byte.
         function cd_timestamp(i) -> lo, hi {{
             let bit := mul(38, i)
             let x := and(shr(sub(218, and(bit, 7)), calldataload(add({ts_off}, shr(3, bit)))), 0x3fffffffff)
             lo := shr(19, x)
             hi := and(x, 0x7ffff)
         }}
-        // Byte-reverse each u32 lane of a 32-byte word (BE digest words → preimage LE words).
+        // Byte-reverse each u32 lane of a 32-byte word (BE digest words to preimage LE words):
+        // alternating ff00/00ff masks swap bytes via shifts 8, then ffff0000/0000ffff swap
+        // 16-bit halves via shifts 16, independently within each 4-byte lane.
         function bswap32x8(w) -> r {{
             r := or(shr(8, and(w, 0xff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00)),
                     shl(8, and(w, 0x00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff)))
@@ -314,7 +337,8 @@ pub(crate) fn gkr_decoder(
         }}
         function decode_calldata() {{
             // Build the transcript preimage hashed by transcript_init, field by field.
-            // Registers (value, ts_low, ts_high) are LE u32s; setup cap comes from code.
+            // Registers (value, ts_low, ts_high) are 4-byte LE u32s at byte offsets 0/4/8.
+            // shl(224, pc) left-aligns its 32 bits (256-32=224); setup cap comes from code.
             for {{ let i := 0 }} lt(i, NUM_REGISTERS) {{ i := add(i, 1) }} {{
                 let dst := add({IMAGE_PTR}, mul(PREIMAGE_REGISTER_STRIDE, i))
                 calldatacopy(dst, mul(4, i), 4)
@@ -328,12 +352,13 @@ pub(crate) fn gkr_decoder(
                 mstore(add({IMAGE_PTR}, __TEMPLATE_PREIMAGE_TIMESTAMP_LOW_OFFSET), limb19_le(lo))
                 mstore(add({IMAGE_PTR}, __TEMPLATE_PREIMAGE_TIMESTAMP_HIGH_OFFSET), limb19_le(hi))
             }}
+            // Timestamp pad mask {ts_pad_mask:#x} selects the final {ts_pad} unused low bits.
             if and(byte(0, calldataload({ts_last})), {ts_pad_mask:#x}) {{ revert(0, 0) }}
             // pinned inits/teardowns top bits (the setup cap below overwrites the rest of the word)
             mstore(add({IMAGE_PTR}, __TEMPLATE_PREIMAGE_TOP_BITS_OFFSET), 0x{top_word})
             // pinned setup cap
-            codecopy(add({IMAGE_PTR}, __TEMPLATE_PREIMAGE_SETUP_CAP_OFFSET), add(mload(SETUP_CODE_OFFSET_PTR), __TEMPLATE_DATA_CAP_OFFSET), __TEMPLATE_PREIMAGE_CAP_BYTES)
-            // memory cap: {cap} DIGESTs of {db} bytes, as preimage LE words and as the WHIR
+            codecopy(add({IMAGE_PTR}, __TEMPLATE_PREIMAGE_SETUP_CAP_OFFSET), add(mload(SETUP_CODE_OFFSET_PTR), __TEMPLATE_DATA_CAP_OFFSET), __TEMPLATE_DATA_CAP_BYTES)
+            // memory cap at calldata byte {cap_off}: {cap} digests of {db} bytes, as preimage LE words and as the WHIR
             // half's BE base-oracle cap
             for {{ let i := 0 }} lt(i, {cap}) {{ i := add(i, 1) }} {{
                 let d := cd_digest(add({cap_off}, mul({db}, i)))

@@ -61,6 +61,9 @@ contract WhirVerifier {
     // Appended setup data: STOP ‖ setup frontier ‖ pinned setup cap image ‖ GKR term table.
     // It ends at codesize(); all setup offsets are relative to its leading STOP.
     uint256 constant __TEMPLATE_SETUP_DATA_BYTES = "{unassigned}";
+    uint256 constant __TEMPLATE_DATA_FRONTIER_OFFSET = "{unassigned}";
+    uint256 constant __TEMPLATE_DATA_CAP_BYTES = "{unassigned}";
+    uint256 constant __TEMPLATE_DATA_QTABLE_BYTES = "{unassigned}";
     uint256 constant __TEMPLATE_DATA_CAP_OFFSET = "{unassigned}";
     uint256 constant __TEMPLATE_DATA_QTABLE_OFFSET = "{unassigned}";
     // Setup frontier: the setup tree's 2^LEVEL nodes at that level (DIGEST_BYTES each, physical
@@ -106,11 +109,13 @@ contract WhirVerifier {
         function draw1() -> r {
             let s := keccak256(__TEMPLATE_WHIR_SEED_PTR, 32)
             mstore(__TEMPLATE_WHIR_SEED_PTR, s)
-            // top 128 bits reduced mod P (matches prover `from_u128_with_reduction`).
+            // draw1 reduces the high 128 bits with mod (matches prover from_u128_with_reduction).
             // Reduction is required: unreduced values break `sub(P, x)` for x > P.
             r := mod(shr(128, s), P)
         }
-        // `base` is canonical (the domain generator or its inverse)
+        // WhirGenConfig::derive obtains canonical GEN/GEN_INV via Proth120::to_u128;
+        // powmod and exp_pow2 preserve reduction through mulmod. Binary exponentiation tests
+        // bit 0 with and(e, 1), then shifts e right by 1.
         function powmod(base, e) -> res {
             res := 1
             for {} e { e := shr(1, e) } {
@@ -122,6 +127,8 @@ contract WhirVerifier {
             res := x
             for { let i := 0 } lt(i, k) { i := add(i, 1) } { res := mulmod(res, res, P) }
         }
+        // Two FE_BITS=123-bit fields occupy 246 bits; 10 = 256-246 aligns the pair.
+        // Mask 7 and shift 3 give bit-in-byte and byte offset; shift 128 repacks two checked u128 lanes.
         function cd_fe_pair(cd, bit) -> w {
             let x := shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))
             let a := and(shr(FE_BITS, x), FE_MASK)
@@ -129,6 +136,7 @@ contract WhirVerifier {
             if or(iszero(lt(a, P)), iszero(lt(b, P))) { revert(0, 0) }
             w := or(shl(128, a), b)
         }
+        // Round bits to bytes with (bits+7)>>3; mask 7 gives the low three padding bits.
         function run_end(cd, n) -> next_cd {
             let bits := mul(FE_BITS, n)
             next_cd := add(cd, shr(3, add(bits, 7)))
@@ -142,6 +150,7 @@ contract WhirVerifier {
         function cd_digest(cp) -> d {
             d := and(calldataload(cp), __TEMPLATE_DIGEST_MASK)
         }
+        // PoW preimage: seed32 || BE nonce8 = 40 bytes. 256 is the digest bit width.
         function verify_pow(cp, pow_bits) -> next_cd {
             // the 40-byte hash covers the seed and the word's leading 8-byte BE nonce; the rest of the
             // word stays behind, and every later absorb writes the bytes it hashes
@@ -156,6 +165,9 @@ contract WhirVerifier {
         // keccak block, re-hashing the seed before each block), DROP the first
         // word, then read `qib` bits per index LSB-first from the remaining
         // stream (BitSource + assemble_query_index). Indices land in QIDX_BUF.
+        // u32 bit indices use shift 5 / mask 31; rounding to 32 bits adds 31.
+        // A Keccak block contains eight 4-byte u32s; mask 7 rounds the padded draw to eight words.
+        // Byte indices 0..3 and shifts 0/8/16/24 assemble each little-endian u32.
         function draw_queries(num_q, qib) {
             let num_bits := mul(num_q, qib)
             // num_required_words = next_multiple_of(num_bits, 32) / 32
@@ -189,6 +201,8 @@ contract WhirVerifier {
                 mstore(add(__TEMPLATE_WHIR_QIDX_BUF_PTR, mul(qq, 32)), idx)
             }
         }
+        // Each deferred constraint uses 96 bytes: scalar at +0, running equality at +32, coefficient at +64.
+        // eq(alpha,z) = (1-alpha) + (2*alpha-1)*z.
         function fold_accumulator(alpha, n, zi_off) {
             let one_minus_alpha := addmod(1, sub(P, alpha), P)
             let alpha_coeff := addmod(addmod(alpha, alpha, P), sub(P, 1), P)
@@ -232,7 +246,8 @@ contract WhirVerifier {
                 let half := shr(1, n)
                 let ch := mload(add(__TEMPLATE_WHIR_FOLD_CH_PTR, mul(round, 32)))
                 for { let i := 0 } lt(i, half) { i := add(i, 1) } {
-                    // the folding buffer holds addmod/mulmod outputs: canonical
+                    // batch_oracle fills FBUF with addmod outputs; prior fold_coset iterations
+                    // store mulmod outputs, so a and b are canonical.
                     let a := mload(add(__TEMPLATE_WHIR_FBUF_PTR, mul(mul(i, 2), 32)))
                     let b := mload(add(__TEMPLATE_WHIR_FBUF_PTR, mul(add(mul(i, 2), 1), 32)))
                     let t := mulmod(addmod(a, sub(P, b), P), ch, P)
@@ -251,6 +266,8 @@ contract WhirVerifier {
         // WITHOUT the coset base-root. Used for INTERMEDIATE/FINAL oracle leaves,
         // whose stored values fold as f = e0 + e1*ch per step (the prover's default
         // `eval_multilinear_with_monomial_tensor` path, no `evals_to_multilinear_coeffs`).
+        // read_leaf checks initial lanes through cd_fe_pair; fold_multilinear writes addmod outputs.
+        // Adjacent elements are the pair indices 2*i and 2*i+1.
         function fold_multilinear(fold) -> folded {
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let n := shl(fold, 1)
@@ -266,8 +283,8 @@ contract WhirVerifier {
             }
             folded := mload(__TEMPLATE_WHIR_FBUF_PTR)
         }
-        // Merkle path of `depth` levels (already cap-reduced), then match a cap
-        // entry. depth = query_index_bits - __TEMPLATE_WHIR_CAP_LOG2.
+        // Merkle path of depth levels, then match a cap entry. do_query/do_final compute
+        // depth = query_index_bits - __TEMPLATE_WHIR_CAP_LOG2 (tree depth, not field reduction).
         //
         // The prover splits the query index the same way and lays out tree leaves
         // as [ bitreverse(coset_index) | internal_index ]:
@@ -281,6 +298,7 @@ contract WhirVerifier {
         // top bits index the cap. Each level orders current/sibling by its bit:
         // keccak(current || sibling) for a left child, keccak(sibling || current)
         // for a right child.
+        // Each Merkle parent hashes two 32-byte child digests (64 bytes).
         function merkle_path(leaf_hash, depth, cap_ptr, cp, qidx, coset_bits) -> next_cd {
             // cap_ptr 0 = the setup frontier: the walk stops LEVEL bits below the root, not CAP_LOG2
             let top_bits := __TEMPLATE_WHIR_CAP_LOG2
@@ -332,12 +350,14 @@ contract WhirVerifier {
             switch cap_ptr
             case 0 {
                 // frontier[cap_index], after the embedded setup's leading STOP byte
-                codecopy(0, add(mload(SETUP_CODE_OFFSET_PTR), add(1, mul(__TEMPLATE_DIGEST_BYTES, cap_index))), __TEMPLATE_DIGEST_BYTES)
+                codecopy(0, add(mload(SETUP_CODE_OFFSET_PTR), add(__TEMPLATE_DATA_FRONTIER_OFFSET, mul(__TEMPLATE_DIGEST_BYTES, cap_index))), __TEMPLATE_DIGEST_BYTES)
                 sink2(h, and(mload(0), __TEMPLATE_DIGEST_MASK))
             }
             default { sink2(h, mload(add(cap_ptr, mul(cap_index, 32)))) }
             next_cd := cp
         }
+        // Each 246-bit pair contains two checked u128 lanes (cd_fe_pair); shifts by 128 unpack them.
+        // The pair writes FBUF indices 2*wj and 2*wj+1; addmod produces canonical batched values.
         function batch_oracle(cp, cols, goff, vp, depth, cap_ptr, qidx, cb) -> next_cd {
             let wpc := shr(1, vp)
             let li := 0
@@ -358,6 +378,7 @@ contract WhirVerifier {
             cp := run_end(cp, mul(cols, vp))
             next_cd := merkle_path(and(keccak256(__TEMPLATE_WHIR_LEAF_PTR, mul(li, 32)), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
+        // Each 246-bit pair contains two checked u128 lanes (cd_fe_pair), stored at indices 2*i and 2*i+1.
         function read_leaf(cp, vp, depth, cap_ptr, qidx, cb) -> next_cd {
             let words := shr(1, vp)
             let bit := 0
@@ -371,6 +392,7 @@ contract WhirVerifier {
             cp := run_end(cp, vp)
             next_cd := merkle_path(and(keccak256(__TEMPLATE_WHIR_LEAF_PTR, mul(words, 32)), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
+        // A deferred constraint is three EVM words (96 bytes): scalar, equality weight (initially 1), coefficient.
         function push_pow(current_scalar, coefficient) {
             let n := mload(__TEMPLATE_WHIR_REG_NUMPOW)
             let b := add(__TEMPLATE_WHIR_POW_PTR, mul(n, 96))
@@ -416,6 +438,7 @@ contract WhirVerifier {
             mstore(__TEMPLATE_WHIR_REG_CC, addmod(mload(__TEMPLATE_WHIR_REG_CC), mulmod(folded, cur, P), P))
         }
 
+        // The OOD absorb is seed32 || value16 = 48 bytes; shr(128, word) extracts that u128 value.
         function do_internal(r, fold, q, pow_bits, qib, vp, cb) {
             let cp := mload(__TEMPLATE_WHIR_REG_CD)
             // read + absorb the next oracle's __TEMPLATE_WHIR_CAP (__TEMPLATE_WHIR_CAP*32 bytes)
@@ -429,8 +452,8 @@ contract WhirVerifier {
             cp := add(cp, mul(__TEMPLATE_WHIR_CAP, __TEMPLATE_DIGEST_BYTES))
             let ood_point := draw1()
             let ood_value := shr(128, calldataload(cp))
-            // reject a non-canonical (>= P) ood_value: it is absorbed as raw bytes below,
-            // so the transcript must bind to the reduced value
+            // do_internal rejects ood_value >= P here before absorbing its raw bytes;
+            // this binds the transcript to a canonical field value.
             if iszero(lt(ood_value, P)) { revert(0, 0) }
             calldatacopy(add(__TEMPLATE_WHIR_SEED_PTR, 32), cp, 16)
             mstore(__TEMPLATE_WHIR_SEED_PTR, keccak256(__TEMPLATE_WHIR_SEED_PTR, 48))
@@ -453,6 +476,8 @@ contract WhirVerifier {
         }
 
         // __FINAL_HORNER__
+        // Final monomial pairs occupy 246 bits and unpack into 128-bit lanes at indices 2*wj and 2*wj+1.
+        // The final fold reads adjacent pairs 2*i/2*i+1; deferred constraints stride 96 with weights at +32/+64.
         function do_final(fold, q, pow_bits, qib, vp, zi_off, rfin, cb) {
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let nmono := shl(rfin, 1)
@@ -523,6 +548,9 @@ contract WhirVerifier {
         // memory base cap into the regions above. `cd_start` = calldata offset of the WHIR proof
         // stream (right after the GKR stream's trailing 8-byte WHIR-batching PoW nonce). It runs
         // once, on fresh memory: REG_NUMPOW and REG_ZIOFF start at zero.
+        // Each round encodes two fields (c0,c2) per sumcheck step, hence 2*fold fields and 246 bits per pair.
+        // WHIR reconstructs c1 with addmod; seed32 || three u128 coefficients occupies 80 bytes (scratch +32/+64).
+        // The high 128-bit lane is c0; c2 is the low lane. The round dispatch flag is 1 for an internal round.
         function whir_verify(cd_start) {
         // Base geometry (generated): rfin = final-poly log2.
         let rfin := __TEMPLATE_WHIR_RFIN

@@ -236,10 +236,10 @@ fn u128_to_neg(Dual(input, yul): &Dual) -> Dual {
 }
 
 /// Proth120-aware constant emitter (replaces `const_to_evm` for the Proth120 target).
-/// Field elements are < P < 2^123 (one uint128). Emit small positives as literals,
+/// Proth120::to_u128 returns values < P < 2^123 (one uint128). Emit small positives as literals,
 /// small negatives (near P) as `sub(P, n)`, and anything else as a full 128-bit literal.
 /// The Yul consumer must funnel every product through `mulmod` before adding to a
-/// reduced value to keep intermediate sums within the EVM word.
+/// addmod/mulmod output to keep intermediate sums within the EVM word.
 #[allow(dead_code)]
 fn proth120_const_to_evm(c: &Proth120) -> Dual {
     let v = c.to_u128();
@@ -263,7 +263,7 @@ fn proth120_const_to_evm(c: &Proth120) -> Dual {
         };
         return Dual(normal, yul_format!("sub(P, {neg})"));
     }
-    // Genuine mid-range coefficient: emit the full canonical value as a hex literal.
+    // Proth120::to_u128 above supplies this canonical coefficient, emitted as a hex literal.
     Dual(format!("0x{v:x}"), yul_format!("0x{v:x}"))
 }
 
@@ -283,7 +283,7 @@ fn u32_lit(c: u32) -> Dual {
 ///
 /// This is exact, not an approximation: `input` here is always a single `shr(128, …)`
 /// calldata lane (< 2^128). Whether it lands in [0, P) or [P, 2^128) it flows into the
-/// surrounding `add`-chain whose result is canonicalized by the gate's trailing `mod(_, P)`
+/// surrounding `add`-chain whose result is reduced by sumcheck_circuit_layer{i}'s `mod(acc, P)`
 /// (or, for accumulators, the next round's `mulmod(_, alpha, P)`). Sum stays far below
 /// 2^256, so the result is bit-identical mod P. The human-readable side is unchanged.
 fn scaled(c: &Dual, input: &Dual) -> Dual {
@@ -321,7 +321,7 @@ fn display_sum(terms: &[&Dual]) -> String {
 }
 
 /// One collected layer-0 quadratic/linear term for the table-driven evaluator.
-/// `coeff` is canonical in [0, P); `b == None` marks a linear term (`coeff·col[a]`),
+/// `coeff` comes from Proth120::to_u128 in emit_circuit_yul_with_stats, so lies in [0, P); `b == None` marks a linear term (`coeff·col[a]`),
 /// `b == Some` a quadratic term (`coeff·col[a]·col[b]`). `slot` is the gate's index into
 /// the GATEVAL accumulator array.
 struct QTerm {
@@ -339,7 +339,7 @@ struct QTerm {
 /// order / α-powers / `sccl0` alignment are byte-for-byte unchanged. Records are bucketed by
 /// (quadratic|linear, coeff sign, coeff byte-width): small coefficients store just their
 /// magnitude (1/2/4 B), small negatives store the magnitude and are negated in-loop as
-/// `sub(Pm, mag)`, and genuine mid-range coefficients keep their full 16-byte canonical value.
+/// `sub(Pm, mag)`; Proth120::to_u128 in emit_circuit_yul_with_stats supplies every canonical coefficient.
 /// The modulus is loaded once from the `P` constant into the local `Pm` and reused (a cheap DUP
 /// in the shallow loop — no per-op PUSH16 and no heap reload). GATEVAL lives in pristine (zero)
 /// heap, so only nonzero gate constants need an explicit seed.
@@ -350,7 +350,7 @@ fn emit_layer0_quad_table(
     gate_constant_terms: &[(u32, u128)],
 ) -> (String, Vec<u8>) {
     use std::collections::BTreeMap;
-    // canonical coeff -> (byte width, is_negative, stored value). Small +ve: store as-is.
+    // Proth120::to_u128 coefficients -> (byte width, is_negative, stored value); small +ve stay as-is.
     // Small -ve (canonical near P): store magnitude P-v, negate in-loop. Else: full 16 B.
     fn classify(v: u128) -> (usize, bool, u128) {
         let width_of = |x: u128| {
@@ -420,15 +420,12 @@ fn emit_layer0_quad_table(
         );
         for (slot, constant_value) in gate_constant_terms {
             out.push_str(&format!(
-                "            mstore(add(GKR_GATEVAL_PTR(), mul(32, {slot})), 0x{constant_value:x})\n"
+                "            mstore(add(GKR_GATEVAL_PTR(), mul(32, {slot})), 0x{constant_value:x}) // gate slot {slot}: relation constant via Proth120::to_u128\n"
             ));
         }
     }
     // 2. copy the packed records from the embedded setup data.
-    out.push_str(&format!(
-        "            codecopy(GKR_QTABLE_PTR(), add(mload(SETUP_CODE_OFFSET_PTR), __TEMPLATE_DATA_QTABLE_OFFSET), {})\n",
-        stream.len()
-    ));
+    out.push_str("            codecopy(GKR_QTABLE_PTR(), add(mload(SETUP_CODE_OFFSET_PTR), __TEMPLATE_DATA_QTABLE_OFFSET), __TEMPLATE_DATA_QTABLE_BYTES)\n");
     // 3. bucket loops — modulus loaded once from the P constant into a local (cheap DUP in the
     //    shallow loop, no per-op PUSH16), calldata + gateval bases hoisted.
     out.push_str(
@@ -438,6 +435,9 @@ fn emit_layer0_quad_table(
     out.push_str("            let modulus := P\n");
     out.push_str("            let col_base := mload(CIRCUIT_PTR) // image address of the column at-point evals\n");
     out.push_str("            let gateval := GKR_GATEVAL_PTR()\n");
+    out.push_str(
+        "            // Record byte 0: gate slot; byte 1: column a; quadratic byte 2: column b.\n",
+    );
     for (key, start, count, stride) in &layout {
         if *count == 0 {
             continue;
@@ -466,22 +466,25 @@ fn emit_layer0_quad_table(
         };
         let kind = if is_quad { "quadratic" } else { "linear   " };
         let sign = if width == 16 {
-            "canonical"
+            "canonical (Proth120::to_u128)"
         } else if neg {
             "negative "
         } else {
             "positive "
         };
         let label = format!("{kind} terms, coeff {width:2}B {sign} ({count} records)");
+        let bucket_bytes = count * stride;
+        let bucket_end = start + bucket_bytes;
         out.push_str(&format!(
-            "            // {label}\n\
+            "            // {label}; QTABLE bytes [{start}, {bucket_end}), {stride} bytes per record.\n\
+             \x20           // Coefficient at byte {off}, width {width}, mask {mask}; shift {shift} = 8*(32-{off}-{width}).\n\
              \x20           {{ let rec_ptr := add(GKR_QTABLE_PTR(), {start}) let rec_end := add(rec_ptr, {})\n\
              \x20           for {{ }} lt(rec_ptr, rec_end) {{ rec_ptr := add(rec_ptr, {stride}) }} {{\n\
              \x20               let rec := mload(rec_ptr)\n\
              \x20               let gate_ptr := add(gateval, mul(32, byte(0, rec)))\n\
              \x20               mstore(gate_ptr, addmod(mload(gate_ptr), mulmod({coeff}, {value}, modulus), modulus))\n\
              \x20           }} }}\n",
-            count * stride
+            bucket_bytes
         ));
     }
     out.push_str("            }\n");
@@ -496,7 +499,8 @@ fn emit_layer0_quad_table(
 /// iteration `mulmod` uses a cheap stack DUP rather than re-reading P_PTR.
 fn quad_run_loop(lo: u32, hi: u32) -> String {
     format!(
-        "            {{ let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()\n\
+        "            // Horner over consecutive GATEVAL slots [{lo}, {hi}); each slot is one 32-byte word.\n\
+         \x20           {{ let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()\n\
          \x20           for {{ let s := {lo} }} lt(s, {hi}) {{ s := add(s, 1) }} {{\n\
          \x20               acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))\n\
          \x20           }} }}\n"
@@ -671,6 +675,8 @@ pub struct CircuitYulStats {
     /// The packed layer-0 term table materialized at `GKR_QTABLE_PTR` (its region is rounded up
     /// to whole 32-byte words).
     pub qtable: Vec<u8>,
+    /// Number of previous-layer claims read by sccl{i}, indexed by circuit layer.
+    pub layer_claim_counts: Vec<usize>,
 }
 
 /// Emit the circuit-specific `circuit.yul` (the GKR per-layer sumcheck/gate functions) for a
@@ -684,7 +690,10 @@ pub fn emit_circuit_yul(circuit: &GKRCircuitArtifact<Proth120>) -> String {
 pub fn emit_circuit_yul_with_stats(
     circuit: &GKRCircuitArtifact<Proth120>,
 ) -> (String, CircuitYulStats) {
-    let mut stats = CircuitYulStats::default();
+    let mut stats = CircuitYulStats {
+        layer_claim_counts: vec![0; circuit.layers.len()],
+        ..CircuitYulStats::default()
+    };
     // Harden against a layout with a different generic-lookup table width: the lookup-fold code
     // and the WHIR_NUM_SETUP constant both assume exactly LOOKUP_TABLES_WIDTH setup lookup columns.
     assert_eq!(
@@ -712,10 +721,16 @@ pub fn emit_circuit_yul_with_stats(
         circuit.generic_lookup_tables_width,
         circuit.layers[0].cached_relations.len(),
     );
-    // let mut previous_input_count = 8;
-    let mut previous_input_count = 10; // TEMPORARY: unified adds another product pair for inits/teardowns
+    // Each OutputType contributes its polynomial claims; Derived::from checks this layout.
+    let mut previous_input_count = circuit
+        .global_output_map
+        .values()
+        .map(|outputs| outputs.len())
+        .sum::<usize>();
     stats.max_claims_slots = previous_input_count; // the dim-reduce outputs the top layer reads
+    yul_println!("        // Image column indices are GKRAddress offsets (u128 lanes); cache and GATEVAL\n        // indices are 32-byte heap slots. Gate relation comments identify input/output indices.");
     for (i, layer) in circuit.layers.iter().enumerate().rev() {
+        stats.layer_claim_counts[i] = previous_input_count;
         let GKRLayerDescription {
             layer,
             gates_with_external_connections,
@@ -2362,18 +2377,26 @@ pub fn emit_circuit_yul_with_stats(
             // Slots before the first claim only scale the zero accumulator: skip them.
             let mut body = String::new();
             let mut started = false;
+            let count = stats.layer_claim_counts[i];
             for slot in &claim_slots {
-                match slot {
-                    Some(off) if !started => {
+                let index = slot.map(|off| {
+                    assert!(
+                        off < count,
+                        "layer {i}: claim index {off} exceeds {count} claims"
+                    );
+                    format!("sub(__TEMPLATE_GKR_LAYER_{i}_CLAIMS, {})", count - off)
+                });
+                match index {
+                    Some(index) if !started => {
                         started = true;
-                        body.push_str(&format!("            claim := mload(add(src, mul(32, {off})))\n"));
+                        body.push_str(&format!("            claim := mload(add(src, mul(32, {index})))\n"));
                     }
-                    Some(off) => body.push_str(&format!("            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, {off}))))\n")),
+                    Some(index) => body.push_str(&format!("            claim := add(mulmod(claim, alpha, P), mload(add(src, mul(32, {index}))))\n")),
                     None if !started => {}
                     None => body.push_str("            claim := mulmod(claim, alpha, P)\n"),
                 }
             }
-            format!("            function sccl{i}(alpha) -> claim {{\n            let src := {claims_src}\n{body}            }}\n")
+            format!("            // Batch {count} prior-layer output claims in gate order; count - k is the kth claim from the end.\n            function sccl{i}(alpha) -> claim {{\n            let src := {claims_src}\n{body}            }}\n")
         };
         // Writeback: publish this layer's at-point evals (offset-indexed, at CIRCUIT_PTR) to the
         // threaded claims array for the next-executed layer. The last-executed layer (i==0) has
@@ -2386,7 +2409,7 @@ pub fn emit_circuit_yul_with_stats(
             // value, not the prover's 16-byte encoding) while reusing the read it already performs.
             format!(
                 "
-            // WRITEBACK claims for next layer ({previous_input_count} evals) + canonicity guard
+            // sumcheck_circuit_layer{i} checks these {previous_input_count} image lanes < P before returning them
             \tfor {{ let wk := 0 }} lt(wk, {previous_input_count}) {{ wk := add(wk, 1) }} {{
             \t    let cv := shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk))))
             \t    if iszero(lt(cv, P)) {{ revert(0, 0) }}
@@ -2398,8 +2421,8 @@ pub fn emit_circuit_yul_with_stats(
             // evals (mem++wit++setup) the base-layer claims_batch absorbs from calldata.
             let n0 = layer0_group_widths.0 + layer0_group_widths.1 + layer0_group_widths.2;
             format!("
-            // canonicity guard for the base-layer claims_batch absorb: {n0} at-point evals from
-            // the image; require each < P so the absorbed transcript bytes are canonical
+            // sumcheck_circuit_layer0 checks all {n0} base-layer image lanes < P here before
+            // returning to emit_gkr_mark, making the absorbed transcript bytes canonical
             \tfor {{ let wk := 0 }} lt(wk, {n0}) {{ wk := add(wk, 1) }} {{
             \t    if iszero(lt(shr(128, calldataload(add(mload(CIRCUIT_PTR), mul(16, wk)))), P)) {{ revert(0, 0) }}
             \t}}")
@@ -2462,12 +2485,12 @@ pub fn emit_circuit_yul_with_stats(
                 cache_dep_offsets.iter().copied().collect();
             let cd_ranges = |offs: &[usize]| -> String {
                 contiguous_ranges(offs).iter().map(|(s, l)|
-                    format!("            calldatacopy(bp, add(base, mul(16, {s})), mul(16, {l}))\n            bp := add(bp, mul(16, {l}))\n")
+                    format!("            // Copy {l} u128 image lanes starting at lane {s}; each lane is 16 bytes.\n            calldatacopy(bp, add(base, mul(16, {s})), mul(16, {l}))\n            bp := add(bp, mul(16, {l}))\n")
                 ).collect()
             };
             let cache_reads = |slots: &[usize]| -> String {
                 slots.iter().map(|c|
-                    format!("            mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, {c})))))\n            bp := add(bp, 16)\n")
+                    format!("            // Cache slot {c}: scl{i}_caches stores mod(gate, P); absorb one high u128 lane.\n            mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, {c})))))\n            bp := add(bp, 16)\n")
                 ).collect()
             };
             // Build final_step (absorbed before the batching draw) and extras (after) in
@@ -2479,7 +2502,7 @@ pub fn emit_circuit_yul_with_stats(
                 let mut extras = cache_dep_offsets.clone();
                 extras.sort_unstable();
                 extras.dedup();
-                // The writeback canonicity guard range-checks exactly the lanes [0, n); every
+                // sumcheck_circuit_layer{i}'s writeback guard checks exactly the lanes [0, n); every
                 // extra absorbed here must be one of them, or it would enter the transcript
                 // unchecked.
                 for &o in &extras {
@@ -2575,6 +2598,7 @@ pub fn emit_circuit_yul_with_stats(
 
     let gate_image_load_inner = Yul::calldataload(&123).0.replace("123", "idx");
     yul_println!("
+        // points u128 lanes follow a 32-byte seed; shr(128) selects a lane from the fresh digest.
         function sumcheck_claims_batch(ptr, points) -> next_ptr, next_alpha {{
             let input_bytes := mul(points, 16)
             calldatacopy(add(SEED_PTR(), 32), ptr, input_bytes)
@@ -2582,7 +2606,7 @@ pub fn emit_circuit_yul_with_stats(
             mstore(SEED_PTR(), seed)
             seed := keccak256(SEED_PTR(), 32)                       // draw (the mirror draws a fresh el)
             mstore(SEED_PTR(), seed)
-            next_alpha := mod(shr(128, seed), P)                    // batching is a field element mod P
+            next_alpha := mod(shr(128, seed), P)                    // sumcheck_claims_batch reduces the draw with mod
             next_ptr := add(ptr, input_bytes)
         }}
 
@@ -2597,6 +2621,8 @@ pub fn emit_circuit_yul_with_stats(
         // add(low(...), high(...)). A single 7-arg helper would make solc materialize all 7
         // expression-args at the call boundary, running the enclosing cache function 1 slot
         // too deep (the same failure the lookrel steps above avoid).
+        // Memory challenge byte offsets 0/32 weight address limbs; 64/96 timestamp limbs;
+        // 128/160 value limbs; 192 is the additive challenge (slots 0 through 6).
         function gkr_memrel_compress_low(address_space, addr_low, addr_high) -> compressed {{
             compressed := add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space)
             compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, P))

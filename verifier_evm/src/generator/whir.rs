@@ -182,7 +182,9 @@ impl WhirGenConfig {
         const MONO: &str = "__TEMPLATE_WHIR_MONO_PTR";
         let n = 1usize << self.rfin;
         let tail = (n - 1) % 8;
-        let mut out = format!("        function horner_{n}(x) -> ev {{\n");
+        let last_byte = (n - 1) * 32;
+        let tail_byte = tail * 32;
+        let mut out = format!("        // {n} monomial coefficients, one 32-byte word each; highest coefficient at byte {last_byte}.\n        // Process blocks of 8 words (256 bytes), offsets 224/192/160/128/96/64/32/0;\n        // stop at byte {tail_byte}, then finish the {tail} remaining low coefficients.\n        function horner_{n}(x) -> ev {{\n");
         if n > 8 {
             out.push_str(&format!(
                 "            let ptr := add({MONO}, {})\n\
@@ -244,7 +246,7 @@ impl WhirGenConfig {
                 format!("case {r}")
             };
             out.push_str(&format!(
-                "            {selector} {{ fold := {fold} q := {q} pow_bits := {pow} qib := {qib} vp := {vp} cb := {cb} }}\n"
+                "            // Round {r}: fold {fold} variables, {q} queries at {pow} PoW bits, {qib}-bit indices; {vp} values per leaf, {cb} coset bits.\n            {selector} {{ fold := {fold} q := {q} pow_bits := {pow} qib := {qib} vp := {vp} cb := {cb} }}\n"
             ));
         }
         out

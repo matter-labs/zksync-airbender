@@ -98,7 +98,7 @@ fn boundary_si_yul(circuit: &GKRCircuitArtifact<Proth120>, num_outputs: usize) -
         .iter()
         .enumerate()
         .filter(|&(i, off)| i != *off)
-        .map(|(i, off)| format!("                mstore(add(SI, {}), {off})\n", i * 32))
+        .map(|(i, off)| format!("                mstore(add(SI, {}), {off}) // logical output {i} maps to address-sorted LSB slot {off}\n", i * 32))
         .collect()
 }
 
@@ -553,6 +553,20 @@ fn render(
         wrap.decoder.image_bytes,
     );
     let mut assigned = BTreeSet::new();
+    let marker = "    // __GKR_LAYER_CLAIMS_CONSTANTS__";
+    assert_eq!(gkr.matches(marker).count(), 1);
+    let declarations: String = stats.layer_claim_counts.iter().enumerate().map(|(i, _)| {
+        format!("    uint256 constant __TEMPLATE_GKR_LAYER_{i}_CLAIMS = \"{{unassigned}}\"; // previous-layer output claims batched by sccl{i}\n")
+    }).collect();
+    gkr = gkr.replace(marker, declarations.trim_end());
+    for (i, count) in stats.layer_claim_counts.iter().enumerate() {
+        gkr = set_const(
+            &gkr,
+            &format!("__TEMPLATE_GKR_LAYER_{i}_CLAIMS"),
+            count,
+            &mut assigned,
+        );
+    }
     gkr = set_const(
         &gkr,
         "__TEMPLATE_REGISTRY",
@@ -771,11 +785,25 @@ fn render(
             &mut assigned,
         );
         let nodes = &f.frontier.0[..];
-        let cap_offset = 1 + nodes.len();
+        let stop = [0u8];
+        let frontier_offset = stop.len();
+        let cap_offset = frontier_offset + nodes.len();
         let qtable_offset = cap_offset + f.decoder.setup_cap_image.len();
-        let data = [&[0u8][..], nodes, &f.decoder.setup_cap_image, &stats.qtable].concat();
+        let data = [&stop[..], nodes, &f.decoder.setup_cap_image, &stats.qtable].concat();
         for (name, value) in [
             ("__TEMPLATE_SETUP_DATA_BYTES", data.len().to_string()),
+            (
+                "__TEMPLATE_DATA_FRONTIER_OFFSET",
+                frontier_offset.to_string(),
+            ),
+            (
+                "__TEMPLATE_DATA_CAP_BYTES",
+                f.decoder.setup_cap_image.len().to_string(),
+            ),
+            (
+                "__TEMPLATE_DATA_QTABLE_BYTES",
+                stats.qtable.len().to_string(),
+            ),
             ("__TEMPLATE_DATA_CAP_OFFSET", cap_offset.to_string()),
             ("__TEMPLATE_DATA_QTABLE_OFFSET", qtable_offset.to_string()),
         ] {

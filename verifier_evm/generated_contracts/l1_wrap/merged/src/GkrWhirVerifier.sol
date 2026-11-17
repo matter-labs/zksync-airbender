@@ -1,6 +1,21 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.8.38;
 
+// Code-tail data. The generator (assemble.rs) builds this data for one circuit and setup, and
+// GkrWhirVerifier's constructor returns GkrWhirVerifierCode.runtimeCode followed by it, so the
+// data is part of the deployed code. In order:
+//   - one STOP byte at the start of the data;
+//   - the setup frontier: the setup commitment's Merkle nodes at __TEMPLATE_FRONTIER_LEVEL, in
+//     physical order; setup query paths end at these nodes, and the generator checks that they
+//     hash up to the setup cap (__TEMPLATE_DATA_FRONTIER_OFFSET);
+//   - the setup cap in its transcript-preimage form, copied into the preimage before
+//     transcript_init (__TEMPLATE_DATA_CAP_OFFSET, __TEMPLATE_DATA_CAP_BYTES);
+//   - the layer-0 term table: packed quadratic and linear terms of max-quadratic gate relations
+//     (gate slot, columns, coefficient), read by the bucket loops in sumcheck_circuit_layer0
+//     (__TEMPLATE_DATA_QTABLE_OFFSET, __TEMPLATE_DATA_QTABLE_BYTES).
+// The fallback computes the data's start as codesize() - __TEMPLATE_SETUP_DATA_BYTES and keeps it
+// at SETUP_CODE_OFFSET_PTR. MEMORY_LAYOUT.md next to the generated verifier gives the byte ranges.
+
 /// The registry every successfully verified statement is reported to (one call per proof).
 interface IVerificationRegistry {
     /// `publicInput`     = final registers x10..x17 (a0..a7), each u32 LE, concatenated;
@@ -20,6 +35,12 @@ contract GkrWhirVerifierCode {
     // template they hold the string literal "{unassigned}", which does not compile as a number —
     // a generator that forgets one cannot produce a buildable verifier. Inline assembly can only
     // consume literal (numeric-expression) constants, so the literal lives in the declaration.
+
+    uint256 constant __TEMPLATE_GKR_LAYER_0_CLAIMS = 74; // previous-layer output claims batched by sccl0
+    uint256 constant __TEMPLATE_GKR_LAYER_1_CLAIMS = 26; // previous-layer output claims batched by sccl1
+    uint256 constant __TEMPLATE_GKR_LAYER_2_CLAIMS = 18; // previous-layer output claims batched by sccl2
+    uint256 constant __TEMPLATE_GKR_LAYER_3_CLAIMS = 12; // previous-layer output claims batched by sccl3
+    uint256 constant __TEMPLATE_GKR_LAYER_4_CLAIMS = 10; // previous-layer output claims batched by sccl4
 
     // ── Generic (used throughout) ───────────────────────────────────────────
     uint256 constant MINIMUM_FREE_HEAP_PTR = 2048; // above via_ir's memoryguard reservation (guarded below)
@@ -164,6 +185,9 @@ contract GkrWhirVerifierCode {
     // Appended setup data: STOP ‖ setup frontier ‖ pinned setup cap image ‖ GKR term table.
     // It ends at codesize(); all setup offsets are relative to its leading STOP.
     uint256 constant __TEMPLATE_SETUP_DATA_BYTES = 16410;
+    uint256 constant __TEMPLATE_DATA_FRONTIER_OFFSET = 1;
+    uint256 constant __TEMPLATE_DATA_CAP_BYTES = 256;
+    uint256 constant __TEMPLATE_DATA_QTABLE_BYTES = 3353;
     uint256 constant __TEMPLATE_DATA_CAP_OFFSET = 12801;
     uint256 constant __TEMPLATE_DATA_QTABLE_OFFSET = 13057;
     // Setup frontier: the setup tree's 2^LEVEL nodes at that level (DIGEST_BYTES each, physical
@@ -221,7 +245,7 @@ contract GkrWhirVerifierCode {
 
         // Heap regions, chained by their GENERATED sizes (the generated circuit.yul calls these
         // by name). The chain order here is verified by the generator against its allocator.
-        // +96: three safe slots hold P_PTR, CIRCUIT_PTR and the setup code offset.
+        // 96 skips three reserved 32-byte slots: P_PTR, CIRCUIT_PTR, SETUP_CODE_OFFSET_PTR.
         function MEMORY_CHALLS_PTR() -> ptr { ptr := add(MINIMUM_FREE_HEAP_PTR, 96) }
         function LOGUP_CHALLS_PTR()  -> ptr { ptr := add(MEMORY_CHALLS_PTR(), __TEMPLATE_GKR_MEMORY_CHALLS_BYTES) }
         function POINT_PTR()         -> ptr { ptr := add(LOGUP_CHALLS_PTR(), __TEMPLATE_GKR_LOGUP_CHALLS_BYTES) }
@@ -241,11 +265,11 @@ contract GkrWhirVerifierCode {
         // Sized by the generator for the widest layer.
         function GKR_CIRCUIT_CLAIMS_PTR() -> ptr { ptr := add(GKR_ABS_PTR(), __TEMPLATE_GKR_ABS_BYTES) }
 
-        // Layer-0 table-driven quadratic-gate evaluation (size opt). GATEVAL holds one reduced
-        // value per quadratic gate (filled by the compact bucket loops from GKR_QTABLE, read by
-        // the Horner chunk functions as `mload(GATEVAL+32*slot)`). QTABLE is the packed record
-        // stream (slot,a,b,coeff), copied from the embedded setup. GATEVAL is never written before
-        // layer 0, so it needs no zeroing; only layer 0's point-check uses these regions.
+        // Layer-0 table-driven quadratic-gate evaluation. emit_layer0_quad_table seeds GATEVAL
+        // with Proth120::to_u128 constants and updates it with addmod, so each value is reduced.
+        // Horner chunks read these values as mload(GATEVAL + 32*slot). QTABLE holds packed
+        // records (slot, a, b, coeff) copied from the embedded setup. GATEVAL is not written
+        // before layer 0, so it needs no zeroing; only layer 0's point-check uses these regions.
         function GKR_GATEVAL_PTR() -> ptr { ptr := add(GKR_CIRCUIT_CLAIMS_PTR(), __TEMPLATE_GKR_CIRCUIT_CLAIMS_BYTES) }
         function GKR_QTABLE_PTR()  -> ptr { ptr := add(GKR_GATEVAL_PTR(), __TEMPLATE_GKR_GATEVAL_BYTES) }
         // The decoded GKR image, written once by decode_calldata; the verifier reads it at image
@@ -257,14 +281,19 @@ contract GkrWhirVerifierCode {
         // stream from calldata after the GKR section.
         // FE-run(n) at cd: element j = bits [123j, 123j + 123) MSB-first, the pad bits of the last
         // byte zero. Elements 2i, 2i + 1 lie in the word loaded at byte bit >> 3 (bit & 7 ≤ 7,
-        // 7 + 246 ≤ 256) and go to the two BE16 lanes at dst + 32i. No range check here: the
-        // verifier checks every lane of these runs < P where it reads it (output evaluations, LSB
-        // lines, at-point evaluations).
+        // 7 + 246 ≤ 256) and go to the two u128 lanes at dst + 32i. No range check here: the
+        // gkr_init checks output lanes, gkr_dr_final checks LSB lines, and
+        // The following functions check at-point lanes < P:
+        // sumcheck_circuit_layer0, sumcheck_circuit_layer1
+        // sumcheck_circuit_layer2, sumcheck_circuit_layer3
+        // sumcheck_circuit_layer4
         function fe_pair_lanes(x) -> w {
             w := or(shl(128, and(shr(FE_BITS, x), FE_MASK)), and(x, FE_MASK))
         }
         function decode_run(cd, n, dst) {
-            // four pairs = 984 bits = 123 bytes: pair k at byte (246k) >> 3, shifted by 10 − (246k & 7)
+            // Four pairs = 984 bits = 123 bytes (8 fields); shr(3,n) counts 8-field blocks.
+            // Pair k starts at byte floor(246*k/8): 0/30/61/92; align by 10-(246*k & 7): 10/4/6/8.
+            // Destination offsets 0/32/64/96 hold four packed pairs; advance by 128 bytes.
             for { let end := add(cd, mul(123, shr(3, n))) } lt(cd, end) { cd := add(cd, 123) } {
                 mstore(dst, fe_pair_lanes(shr(10, calldataload(cd))))
                 mstore(add(dst, 32), fe_pair_lanes(shr(4, calldataload(add(cd, 30)))))
@@ -272,6 +301,8 @@ contract GkrWhirVerifierCode {
                 mstore(add(dst, 96), fe_pair_lanes(shr(8, calldataload(add(cd, 92)))))
                 dst := add(dst, 128)
             }
+            // Remainder: (n/2)&3 pairs after the 8-field blocks; shift 1 divides by 2,
+            // mask 3 takes modulo 4, and each packed pair occupies 246 bits.
             let bit := 0
             for { let end := mul(246, and(shr(1, n), 3)) } lt(bit, end) { bit := add(bit, 246) } {
                 mstore(dst, fe_pair_lanes(shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))))
@@ -279,19 +310,22 @@ contract GkrWhirVerifierCode {
             }
             check_run_pad(cd, bit)
         }
-        // The pad bits after `bits` run bits at cd must be zero.
+        // The pad bits after `bits` run bits at cd must be zero. Mask 7 computes pad modulo 8;
+        // (bits+pad-1)>>3 locates the final byte, and (1<<pad)-1 selects its unused low bits.
         function check_run_pad(cd, bits) {
             let pad := and(sub(0, bits), 7)
             if and(byte(0, calldataload(add(cd, shr(3, sub(add(bits, pad), 1))))), sub(shl(pad, 1), 1)) { revert(0, 0) }
         }
         // decode_run over the run at (cd, image): the next calldata and image offsets.
+        // (bits+7)>>3 rounds to bytes; shl(4,n) allocates n * 16-byte u128 lanes.
         function decode_next_run(cd, image, n) -> next_cd, next_image {
             decode_run(cd, n, add(IMAGE_PTR(), image))
             next_cd := add(cd, shr(3, add(mul(FE_BITS, n), 7)))
             next_image := add(image, shl(4, n))
         }
         // Factored-round run of k (b, c) pairs: the round functions read the pairs from calldata
-        // (cd_load) and range-check them; the run's single image slot holds its bit offset. The
+        // (cd_load); factored_round checks both < P. The image slot holds cd * 8 (shl(3, cd));
+        // shl(1, k) counts two fields per round. The
         // decoder shares run_end and cd_digest with the WHIR half (whir.sol).
         function record_factored_run(cd, image, k) -> next_cd, next_image {
             mstore(add(IMAGE_PTR(), image), shl(3, cd))
@@ -301,18 +335,22 @@ contract GkrWhirVerifierCode {
         function cd_load(off) -> w {
             w := calldataload(off)
         }
-        // A 19-bit limb as the 4 little-endian bytes of its u32, left-aligned.
+        // A 19-bit limb as 4 LE u32 bytes, left-aligned: byte shifts 248/240/232 = 256-8/16/24;
+        // 0xff selects one byte, and shifts 8/16 select the next source bytes.
         function limb19_le(x) -> w {
             w := or(or(shl(248, and(x, 0xff)), shl(240, and(shr(8, x), 0xff))), shl(232, shr(16, x)))
         }
-        // TS-run pair i: bits [38i, 38i + 38) = low19 ‖ high19.
+        // TS-run pair i: bits [38i, 38i + 38) = low19 | high19; 218 = 256-38.
+        // Masks 0x3fffffffff/0x7ffff select 38/19 bits; bit&7 and bit>>3 address a byte.
         function cd_timestamp(i) -> lo, hi {
             let bit := mul(38, i)
             let x := and(shr(sub(218, and(bit, 7)), calldataload(add(128, shr(3, bit)))), 0x3fffffffff)
             lo := shr(19, x)
             hi := and(x, 0x7ffff)
         }
-        // Byte-reverse each u32 lane of a 32-byte word (BE digest words → preimage LE words).
+        // Byte-reverse each u32 lane of a 32-byte word (BE digest words to preimage LE words):
+        // alternating ff00/00ff masks swap bytes via shifts 8, then ffff0000/0000ffff swap
+        // 16-bit halves via shifts 16, independently within each 4-byte lane.
         function bswap32x8(w) -> r {
             r := or(shr(8, and(w, 0xff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00)),
                     shl(8, and(w, 0x00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff)))
@@ -321,7 +359,8 @@ contract GkrWhirVerifierCode {
         }
         function decode_calldata() {
             // Build the transcript preimage hashed by transcript_init, field by field.
-            // Registers (value, ts_low, ts_high) are LE u32s; setup cap comes from code.
+            // Registers (value, ts_low, ts_high) are 4-byte LE u32s at byte offsets 0/4/8.
+            // shl(224, pc) left-aligns its 32 bits (256-32=224); setup cap comes from code.
             for { let i := 0 } lt(i, NUM_REGISTERS) { i := add(i, 1) } {
                 let dst := add(IMAGE_PTR(), mul(PREIMAGE_REGISTER_STRIDE, i))
                 calldatacopy(dst, mul(4, i), 4)
@@ -335,18 +374,22 @@ contract GkrWhirVerifierCode {
                 mstore(add(IMAGE_PTR(), __TEMPLATE_PREIMAGE_TIMESTAMP_LOW_OFFSET), limb19_le(lo))
                 mstore(add(IMAGE_PTR(), __TEMPLATE_PREIMAGE_TIMESTAMP_HIGH_OFFSET), limb19_le(hi))
             }
+            // Timestamp pad mask 0x3 selects the final 2 unused low bits.
             if and(byte(0, calldataload(284)), 0x3) { revert(0, 0) }
             // pinned inits/teardowns top bits (the setup cap below overwrites the rest of the word)
             mstore(add(IMAGE_PTR(), __TEMPLATE_PREIMAGE_TOP_BITS_OFFSET), 0x0000000001000000000000000000000000000000000000000000000000000000)
             // pinned setup cap
-            codecopy(add(IMAGE_PTR(), __TEMPLATE_PREIMAGE_SETUP_CAP_OFFSET), add(mload(SETUP_CODE_OFFSET_PTR), __TEMPLATE_DATA_CAP_OFFSET), __TEMPLATE_PREIMAGE_CAP_BYTES)
-            // memory cap: 8 DIGESTs of 25 bytes, as preimage LE words and as the WHIR
+            codecopy(add(IMAGE_PTR(), __TEMPLATE_PREIMAGE_SETUP_CAP_OFFSET), add(mload(SETUP_CODE_OFFSET_PTR), __TEMPLATE_DATA_CAP_OFFSET), __TEMPLATE_DATA_CAP_BYTES)
+            // memory cap at calldata byte 285: 8 digests of 25 bytes, as preimage LE words and as the WHIR
             // half's BE base-oracle cap
             for { let i := 0 } lt(i, 8) { i := add(i, 1) } {
                 let d := cd_digest(add(285, mul(25, i)))
                 mstore(add(IMAGE_PTR(), add(__TEMPLATE_PREIMAGE_MEMORY_CAP_OFFSET, mul(32, i))), bswap32x8(d))
                 mstore(add(__TEMPLATE_WHIR_BCAP0_PTR, mul(32, i)), d)
             }
+            // Wire preimage: 485 bytes = register u32s + packed timestamps + wire cap.
+            // Decode 40 output-evaluation lanes, then layers with k=2..21 sumcheck rounds.
+            // Each dimension-reduction boundary has 20 lanes (two per output polynomial).
             let cd := 485
             let image := __TEMPLATE_GKR_INIT_PREIMAGE_BYTES
             calldatacopy(add(IMAGE_PTR(), image), cd, 8) // external PoW nonce
@@ -355,34 +398,42 @@ contract GkrWhirVerifierCode {
                 cd, image := record_factored_run(cd, image, k)
                 cd, image := decode_next_run(cd, image, 20)
             }
-            // circuit layers, top first; at-point eval counts 16 bits each
+            // 5 circuit layers, top first; each at-point count is a 16-bit descriptor.
+            // widths_word stores layer l in bits 16*l..16*l+16; 0xffff selects that count.
             for { let l := 0 } lt(l, 5) { l := add(l, 1) } {
                 cd, image := record_factored_run(cd, image, 21)
                 cd, image := decode_next_run(cd, image, and(shr(mul(16, l), 0x006a004a001a0012000c), 0xffff))
             }
             calldatacopy(add(IMAGE_PTR(), image), cd, 8) // WHIR batching PoW nonce
+            // Include the trailing 8-byte nonce: calldata ends at 20262, image at 12196.
             if iszero(and(eq(add(cd, 8), 20262), eq(add(image, 8), 12196))) { revert(0, 0) }
         }
 
         // Read one little-endian u32 from the transcript preimage (byte offset in the image).
+        // LE u32: byte indices 0..3 have shifts 0, 8, 16, 24 bits (8 bits per byte).
         function preimage_u32(byteoff) -> v {
             let w := mload(add(IMAGE_PTR(), byteoff))
             v := add(add(byte(0, w), shl(8, byte(1, w))), add(shl(16, byte(2, w)), shl(24, byte(3, w))))
         }
 
+        // Seed (32 bytes) plus four u128 coefficients (64 bytes) totals 96; w1 starts at 64.
+        // A 128-bit shift selects a packed u128 lane; mod below reduces the drawn challenge.
         function transcript_4to1_dual(w0, w1, modulus) -> r {
             // Absorb the four coefficients before drawing the round challenge:
             // seed = keccak(seed || w0 || w1), then seed = keccak(seed), r = top128 mod P.
-            // w0 = [c0|c1], w1 = [c2|c3], each lane canonical (factored_round reduces them).
+            // w0 = [c0|c1], w1 = [c2|c3], each lane canonical via factored_round's addmod/mulmod outputs.
             mstore(add(SEED_PTR(), 32), w0)
             mstore(add(SEED_PTR(), 64), w1)
-            let seed := keccak256(SEED_PTR(), 96) // absorb 4 (canonical) coeffs
+            let seed := keccak256(SEED_PTR(), 96) // absorb factored_round's 4 reduced coefficients
             mstore(SEED_PTR(), seed)
             seed := keccak256(SEED_PTR(), 32)     // draw
             mstore(SEED_PTR(), seed)
             r := mod(shr(128, seed), modulus)
         }
 
+        // PoW hashes seed32 || nonce8 (40 bytes); 256 is the digest bit width.
+        // Memory challenge slots 0..6 use byte offsets 0,32,64,96,128,160,192; logup slots 0..1 follow.
+        // Each mod(shr(128, seed), P) below produces one canonical u128 challenge.
         function transcript_init(ptr) -> next_ptr {
             // SingleChunk commits the register/PC boundary, top bits and both caps.
             // Hash the LE-u32 preimage, absorb the BE-u64 nonce, check its configured PoW,
@@ -437,13 +488,12 @@ contract GkrWhirVerifierCode {
         // batching challenge. Build the OUTPUT_EVALS-entry equality table once and reuse it for
         // the NUM_OUTPUTS claims.
         // gkr_compress reads the claims and the batching from GKR_CLAIMS_PTR / GKR_BATCHING_PTR.
+        // Packed field lanes use the high 128 bits. gkr_init reduces each drawn coordinate with mod.
         function gkr_init(ptr) -> next_ptr {
             let sp := SEED_PTR()
-            // absorb output evals: seed = keccak(seed || outputEvals). The INIT_BYTES are bulk-copied
-            // raw; canonicity is enforced at the use site below — the claims loop reads every one
-            // of these lanes and range-checks `val < P`, so any accepted proof has canonical
-            // evals and hence a canonical absorb (cheaper than reduce-on-copy: it reuses the read
-            // the claims loop already performs).
+            // Absorb seed || output evaluations. The bulk copy keeps the original lanes;
+            // gkr_init's claims loop below rejects val >= P before returning. Thus an accepted
+            // proof's transcript contains canonical values without another read of the lanes.
             mstore(GKR_ABS_PTR(), mload(sp))
             mcopy(add(GKR_ABS_PTR(), 32), ptr, __TEMPLATE_GKR_INIT_BYTES)
             let seed := keccak256(GKR_ABS_PTR(), add(32, __TEMPLATE_GKR_INIT_BYTES))
@@ -481,7 +531,7 @@ contract GkrWhirVerifierCode {
                     let k := add(mul(c, __TEMPLATE_GKR_OUTPUT_EVALS), j)
                     let val := shr(128, mload(add(ptr, mul(k, 16))))
                     // reject a non-canonical lane so the bulk-absorbed output evals bind to
-                    // reduced values (see the absorb note above)
+                    // reduced values: gkr_init checks val < P here before returning
                     if iszero(lt(val, mload(P_PTR))) { revert(0, 0) }
                     acc := add(mulmod(val, mload(add(GKR_EQ_PTR(), mul(j, 32))), mload(P_PTR)), acc)
                 }
@@ -505,6 +555,10 @@ contract GkrWhirVerifierCode {
         // The polys are products of the output evals at `op` (gkr_init range-checked every lane), in
         // BTreeMap<OutputType> order: __TEMPLATE_GKR_OUTPUT_PERM_READ / _PERM_WRITE and
         // __TEMPLATE_GKR_OUTPUT_TEARDOWN / _INIT (the generator asserts the OutputType layout).
+        // Memory tuple challenge slots 0..5 weight address-low/high, timestamp-low/high and
+        // value-low/high; slot 6 is additive (byte offsets 0,32,64,96,128,160,192). A preimage
+        // u32 is 4 bytes, so timestamp limbs start at +4/+8. Values split at 16 bits (low mask
+        // 0xffff). PC uses address-space tag 2.
         function check_permutation_identity(op) {
             let Pm := mload(P_PTR)
             let mc := MEMORY_CHALLS_PTR()
@@ -579,6 +633,8 @@ contract GkrWhirVerifierCode {
         // as a single fraction — acc_num = acc_num·d + n·acc_den, acc_den = acc_den·d — and require
         // acc_num == 0 with acc_den ≠ 0 (a vanishing denominator would make the sum ill-defined).
         // `op` is the output evals' image address (the pointer gkr_init read the evals from).
+        // Three lookup kinds (16-bit, timestamp, generic), each with two adjacent numerator/denominator columns.
+        // A packed u128 lane is extracted with shr(128, word).
         function check_lookup_identities(op) {
             let modulus := mload(P_PTR)
             // Three consecutive (num, den) pairs, two columns each; the generator validates
@@ -604,8 +660,12 @@ contract GkrWhirVerifierCode {
         // e_z(X) = t + sX with t = 1 − z, s = 2z − 1; u(X) = a + bX + cX².
         // p(X) = e_z(X)·u(X) = c0 + c1X + c2X² + c3X³, where
         // c0 = t·a, c1 = t·b + s·a, c2 = t·c + s·b, c3 = s·c.
-        // Absorb the reduced coefficients as [c0|c1], [c2|c3] (128-bit lanes), draw r,
-        // K := a + br + cr². t, s and a stay unreduced where they only feed mulmod.
+        // factored_round reduces the coefficients with addmod/mulmod and absorbs them as
+        // [c0|c1], [c2|c3] (128-bit lanes). It then draws r and computes K := a + br + cr².
+        // t, s and a may stay unreduced until consumed by addmod/mulmod.
+        // Two 123-bit fields occupy 246 bits: shift by 256-246=10 minus the bit-in-byte offset.
+        // Mask 7 and shift 3 split a bit offset into its low 3 bits and byte offset; shift 128
+        // packs the u128 lanes.
         function factored_round(bit, z, k, modulus) -> r, next_k {
             let x := shr(sub(10, and(bit, 7)), cd_load(shr(3, bit)))
             let b := and(shr(FE_BITS, x), FE_MASK)
@@ -620,11 +680,12 @@ contract GkrWhirVerifierCode {
                 modulus)
             next_k := addmod(a, mulmod(r, addmod(b, mulmod(r, c, modulus), modulus), modulus), modulus)
         }
+        // Each (b,c) pair advances 2 * FE_BITS = 246 bits.
         function sumcheck_rounds(ptr, claim, total_rounds) -> next_ptr, next_claim {
             let modulus := mload(P_PTR)
             // Factored rounds: u(X) = a + bX + cX², e_z(X) = t + sX, t = 1 − z, s = 2z − 1.
             // p(X) = e_z(X)·u(X) = c0 + c1X + c2X² + c3X³ with c0 = t·a, c1 = t·b + s·a,
-            // c2 = t·c + s·b, c3 = s·c, absorbed as [c0|c1], [c2|c3] with reduced 128-bit lanes.
+            // c2 = t·c + s·b, c3 = s·c; factored_round's addmod/mulmod reduce each absorbed 128-bit lane.
             // claim tracks K = u_prev(r_prev); a = K − z(b + c) makes p(0) + p(1) = K, so the
             // layer's end check is g == K. The (b, c) pairs are read from the calldata
             // run whose bit offset decode_calldata left in the run's image slot.
@@ -649,6 +710,8 @@ contract GkrWhirVerifierCode {
         // g (products and lookup num/den pairs in the named output layout; running batching powers;
         // boundary permutation on the last layer), check g == claim, absorb the LSB lines,
         // draw r_last + next_batching, interpolate the next claims (sorted order), grow the point.
+        // Packed LSB lines have two 128-bit lanes; the three lookup kinds each use two columns.
+        // The interpolation challenge and next batching draw are reduced by gkr_dr_final's mod.
         function gkr_dr_final(cp, fs, batching, boundary, claim) -> ncp, nbatch {
             let modulus := mload(P_PTR)
             let SI := GKR_EQ_PTR() // reuse eq scratch as the sorted-index array (NUM_OUTPUTS slots)
@@ -658,10 +721,10 @@ contract GkrWhirVerifierCode {
             // grand-products land at PERM_READ / PERM_WRITE and TEARDOWN / INIT. Generated from the artifact's
             // global_output_map value offsets (iteration order).
             if boundary {
-                mstore(add(SI, 0), 2)
-                mstore(add(SI, 32), 3)
-                mstore(add(SI, 64), 0)
-                mstore(add(SI, 96), 1)
+                mstore(add(SI, 0), 2) // logical output 0 maps to address-sorted LSB slot 2
+                mstore(add(SI, 32), 3) // logical output 1 maps to address-sorted LSB slot 3
+                mstore(add(SI, 64), 0) // logical output 2 maps to address-sorted LSB slot 0
+                mstore(add(SI, 96), 1) // logical output 3 maps to address-sorted LSB slot 1
             }
             let g := 0
             let gb := 1
@@ -712,8 +775,8 @@ contract GkrWhirVerifierCode {
                 let a := shr(128, word)
                 let b := and(word, MASK)
                 // this loop reads all NUM_OUTPUTS words (= 2·NUM_OUTPUTS lanes) of the LSB lines
-                // absorbed above, so requiring both lanes < P makes any accepted proof's absorb
-                // canonical
+                // absorbed above; gkr_dr_final checks both lanes < P here, making every
+                // accepted proof's absorb canonical
                 if iszero(lt(a, modulus)) { revert(0, 0) }
                 if iszero(lt(b, modulus)) { revert(0, 0) }
                 mstore(add(GKR_CLAIMS_PTR(), mul(li, 32)), add(a, mulmod(add(b, sub(modulus, a)), r_last, modulus)))
@@ -745,6 +808,8 @@ contract GkrWhirVerifierCode {
             next_alpha := batching
         }
 
+        // Image column indices are GKRAddress offsets (u128 lanes); cache and GATEVAL
+        // indices are 32-byte heap slots. Gate relation comments identify input/output indices.
 function sumcheck_circuit_layer4(ptr, alpha) -> next_ptr, next_alpha {
     // INITIAL CLAIM: batch the previous layer's claims (heap array) in gate/slot order
     // (compute_claim); alpha == this layer's batching.
@@ -759,7 +824,7 @@ function sumcheck_circuit_layer4(ptr, alpha) -> next_ptr, next_alpha {
     let rhs := mod(acc, mload(P_PTR))
     if iszero(eq(claim, rhs)) { revert(0, 0) }
     
-            // WRITEBACK claims for next layer (12 evals) + canonicity guard
+            // sumcheck_circuit_layer4 checks these 12 image lanes < P before returning them
                 for { let wk := 0 } lt(wk, 12) { wk := add(wk, 1) } {
                     let cv := shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, wk))))
                     if iszero(lt(cv, mload(P_PTR))) { revert(0, 0) }
@@ -799,18 +864,19 @@ function sumcheck_circuit_layer4(ptr, alpha) -> next_ptr, next_alpha {
     acc := gate_aggregatelookuprationalpair(alpha, acc, 2, 0, 3, 1)
     
             }
+            // Batch 10 prior-layer output claims in gate order; count - k is the kth claim from the end.
             function sccl4(alpha) -> claim {
             let src := GKR_CLAIMS_PTR()
-            claim := mload(add(src, mul(32, 9)))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 8))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 7))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 6))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 5))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 4))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 3))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 2))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 1))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 0))))
+            claim := mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_4_CLAIMS, 1))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_4_CLAIMS, 2)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_4_CLAIMS, 3)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_4_CLAIMS, 4)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_4_CLAIMS, 5)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_4_CLAIMS, 6)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_4_CLAIMS, 7)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_4_CLAIMS, 8)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_4_CLAIMS, 9)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_4_CLAIMS, 10)))))
             }
 function sumcheck_circuit_layer3(ptr, alpha) -> next_ptr, next_alpha {
     // INITIAL CLAIM: batch the previous layer's claims (heap array) in gate/slot order
@@ -826,7 +892,7 @@ function sumcheck_circuit_layer3(ptr, alpha) -> next_ptr, next_alpha {
     let rhs := mod(acc, mload(P_PTR))
     if iszero(eq(claim, rhs)) { revert(0, 0) }
     
-            // WRITEBACK claims for next layer (18 evals) + canonicity guard
+            // sumcheck_circuit_layer3 checks these 18 image lanes < P before returning them
                 for { let wk := 0 } lt(wk, 18) { wk := add(wk, 1) } {
                     let cv := shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, wk))))
                     if iszero(lt(cv, mload(P_PTR))) { revert(0, 0) }
@@ -866,20 +932,21 @@ function sumcheck_circuit_layer3(ptr, alpha) -> next_ptr, next_alpha {
     acc := gate_aggregatelookuprationalpair(alpha, acc, 6, 4, 7, 5)
     
             }
+            // Batch 12 prior-layer output claims in gate order; count - k is the kth claim from the end.
             function sccl3(alpha) -> claim {
             let src := GKR_CIRCUIT_CLAIMS_PTR()
-            claim := mload(add(src, mul(32, 11)))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 10))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 9))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 8))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 7))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 6))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 5))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 4))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 3))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 2))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 1))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 0))))
+            claim := mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_3_CLAIMS, 1))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_3_CLAIMS, 2)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_3_CLAIMS, 3)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_3_CLAIMS, 4)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_3_CLAIMS, 5)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_3_CLAIMS, 6)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_3_CLAIMS, 7)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_3_CLAIMS, 8)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_3_CLAIMS, 9)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_3_CLAIMS, 10)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_3_CLAIMS, 11)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_3_CLAIMS, 12)))))
             }
 function sumcheck_circuit_layer2(ptr, alpha) -> next_ptr, next_alpha {
     // INITIAL CLAIM: batch the previous layer's claims (heap array) in gate/slot order
@@ -896,7 +963,7 @@ function sumcheck_circuit_layer2(ptr, alpha) -> next_ptr, next_alpha {
     let rhs := mod(acc, mload(P_PTR))
     if iszero(eq(claim, rhs)) { revert(0, 0) }
     
-            // WRITEBACK claims for next layer (26 evals) + canonicity guard
+            // sumcheck_circuit_layer2 checks these 26 image lanes < P before returning them
                 for { let wk := 0 } lt(wk, 26) { wk := add(wk, 1) } {
                     let cv := shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, wk))))
                     if iszero(lt(cv, mload(P_PTR))) { revert(0, 0) }
@@ -958,26 +1025,27 @@ function sumcheck_circuit_layer2(ptr, alpha) -> next_ptr, next_alpha {
     acc := gate_maskintoidentityproduct(alpha, acc, 1, 0)
     
             }
+            // Batch 18 prior-layer output claims in gate order; count - k is the kth claim from the end.
             function sccl2(alpha) -> claim {
             let src := GKR_CIRCUIT_CLAIMS_PTR()
-            claim := mload(add(src, mul(32, 17)))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 16))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 15))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 14))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 13))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 12))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 11))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 10))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 9))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 8))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 7))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 6))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 5))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 4))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 3))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 2))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 1))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 0))))
+            claim := mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 1))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 2)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 3)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 4)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 5)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 6)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 7)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 8)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 9)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 10)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 11)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 12)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 13)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 14)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 15)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 16)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 17)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_2_CLAIMS, 18)))))
             }
 function sumcheck_circuit_layer1(ptr, alpha) -> next_ptr, next_alpha {
     // INITIAL CLAIM: batch the previous layer's claims (heap array) in gate/slot order
@@ -995,7 +1063,7 @@ function sumcheck_circuit_layer1(ptr, alpha) -> next_ptr, next_alpha {
     let rhs := mod(acc, mload(P_PTR))
     if iszero(eq(claim, rhs)) { revert(0, 0) }
     
-            // WRITEBACK claims for next layer (74 evals) + canonicity guard
+            // sumcheck_circuit_layer1 checks these 74 image lanes < P before returning them
                 for { let wk := 0 } lt(wk, 74) { wk := add(wk, 1) } {
                     let cv := shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, wk))))
                     if iszero(lt(cv, mload(P_PTR))) { revert(0, 0) }
@@ -1009,20 +1077,28 @@ function sumcheck_circuit_layer1(ptr, alpha) -> next_ptr, next_alpha {
             let bp := add(GKR_ABS_PTR(), 32)
             // absorb final_step ++ extras contiguously, then draw (soundness: batching depends on
             // the extra cache-dependency evals). ONE keccak of [seed || final_step || extras].
+            // Copy 8 u128 image lanes starting at lane 0; each lane is 16 bytes.
             mcopy(bp, add(base, mul(16, 0)), mul(16, 8))
             bp := add(bp, mul(16, 8))
+            // Copy 26 u128 image lanes starting at lane 48; each lane is 16 bytes.
             mcopy(bp, add(base, mul(16, 48)), mul(16, 26))
             bp := add(bp, mul(16, 26))
+            // Cache slot 0: scl1_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)))))
             bp := add(bp, 16)
+            // Cache slot 1: scl1_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)))))
             bp := add(bp, 16)
+            // Cache slot 2: scl1_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2)))))
             bp := add(bp, 16)
+            // Cache slot 3: scl1_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3)))))
             bp := add(bp, 16)
+            // Cache slot 4: scl1_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)))))
             bp := add(bp, 16)
+            // Copy 40 u128 image lanes starting at lane 8; each lane is 16 bytes.
             mcopy(bp, add(base, mul(16, 8)), mul(16, 40))
             bp := add(bp, mul(16, 40))
             let s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR()))
@@ -1144,34 +1220,35 @@ function sumcheck_circuit_layer1(ptr, alpha) -> next_ptr, next_alpha {
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
+            // Batch 26 prior-layer output claims in gate order; count - k is the kth claim from the end.
             function sccl1(alpha) -> claim {
             let src := GKR_CIRCUIT_CLAIMS_PTR()
-            claim := mload(add(src, mul(32, 25)))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 24))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 23))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 22))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 21))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 20))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 19))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 18))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 17))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 16))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 15))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 14))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 13))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 12))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 11))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 10))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 9))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 8))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 7))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 6))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 5))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 4))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 3))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 2))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 1))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 0))))
+            claim := mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 1))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 2)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 3)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 4)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 5)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 6)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 7)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 8)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 9)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 10)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 11)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 12)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 13)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 14)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 15)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 16)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 17)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 18)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 19)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 20)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 21)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 22)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 23)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 24)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 25)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_1_CLAIMS, 26)))))
             }
 function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
     // INITIAL CLAIM: batch the previous layer's claims (heap array) in gate/slot order
@@ -1193,79 +1270,90 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
             // loop below has one fixed stride; small negative coefficients store their magnitude and
             // are negated in-loop.
             // seed gateval[gate_slot] with each relation's nonzero constant term
-            mstore(add(GKR_GATEVAL_PTR(), mul(32, 29)), 0x380000000000000000000000000)
-            mstore(add(GKR_GATEVAL_PTR(), mul(32, 30)), 0x37ffe4000000000000000000000)
-            mstore(add(GKR_GATEVAL_PTR(), mul(32, 77)), 0x7800000100000000)
-            codecopy(GKR_QTABLE_PTR(), add(mload(SETUP_CODE_OFFSET_PTR), __TEMPLATE_DATA_QTABLE_OFFSET), 3353)
+            mstore(add(GKR_GATEVAL_PTR(), mul(32, 29)), 0x380000000000000000000000000) // gate slot 29: relation constant via Proth120::to_u128
+            mstore(add(GKR_GATEVAL_PTR(), mul(32, 30)), 0x37ffe4000000000000000000000) // gate slot 30: relation constant via Proth120::to_u128
+            mstore(add(GKR_GATEVAL_PTR(), mul(32, 77)), 0x7800000100000000) // gate slot 77: relation constant via Proth120::to_u128
+            codecopy(GKR_QTABLE_PTR(), add(mload(SETUP_CODE_OFFSET_PTR), __TEMPLATE_DATA_QTABLE_OFFSET), __TEMPLATE_DATA_QTABLE_BYTES)
             // accumulate every term into gateval[gate_slot], one loop per bucket
             {
             let modulus := P
             let col_base := mload(CIRCUIT_PTR) // image address of the column at-point evals
             let gateval := GKR_GATEVAL_PTR()
-            // linear    terms, coeff  1B positive  (68 records)
+            // Record byte 0: gate slot; byte 1: column a; quadratic byte 2: column b.
+            // linear    terms, coeff  1B positive  (68 records); QTABLE bytes [0, 204), 3 bytes per record.
+            // Coefficient at byte 2, width 1, mask 0xff; shift 232 = 8*(32-2-1).
             { let rec_ptr := add(GKR_QTABLE_PTR(), 0) let rec_end := add(rec_ptr, 204)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 3) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(232, rec), 0xff), shr(128, mload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
-            // linear    terms, coeff  2B positive  (4 records)
+            // linear    terms, coeff  2B positive  (4 records); QTABLE bytes [204, 220), 4 bytes per record.
+            // Coefficient at byte 2, width 2, mask 0xffff; shift 224 = 8*(32-2-2).
             { let rec_ptr := add(GKR_QTABLE_PTR(), 204) let rec_end := add(rec_ptr, 16)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 4) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(224, rec), 0xffff), shr(128, mload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
-            // linear    terms, coeff 16B canonical (6 records)
+            // linear    terms, coeff 16B canonical (Proth120::to_u128) (6 records); QTABLE bytes [220, 328), 18 bytes per record.
+            // Coefficient at byte 2, width 16, mask MASK; shift 112 = 8*(32-2-16).
             { let rec_ptr := add(GKR_QTABLE_PTR(), 220) let rec_end := add(rec_ptr, 108)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 18) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(112, rec), MASK), shr(128, mload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
-            // linear    terms, coeff  1B negative  (59 records)
+            // linear    terms, coeff  1B negative  (59 records); QTABLE bytes [328, 505), 3 bytes per record.
+            // Coefficient at byte 2, width 1, mask 0xff; shift 232 = 8*(32-2-1).
             { let rec_ptr := add(GKR_QTABLE_PTR(), 328) let rec_end := add(rec_ptr, 177)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 3) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(sub(modulus, and(shr(232, rec), 0xff)), shr(128, mload(add(col_base, mul(16, byte(1, rec))))), modulus), modulus))
             } }
-            // quadratic terms, coeff  1B positive  (328 records)
+            // quadratic terms, coeff  1B positive  (328 records); QTABLE bytes [505, 1817), 4 bytes per record.
+            // Coefficient at byte 3, width 1, mask 0xff; shift 224 = 8*(32-3-1).
             { let rec_ptr := add(GKR_QTABLE_PTR(), 505) let rec_end := add(rec_ptr, 1312)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 4) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(224, rec), 0xff), mulmod(shr(128, mload(add(col_base, mul(16, byte(1, rec))))), shr(128, mload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
-            // quadratic terms, coeff  2B positive  (16 records)
+            // quadratic terms, coeff  2B positive  (16 records); QTABLE bytes [1817, 1897), 5 bytes per record.
+            // Coefficient at byte 3, width 2, mask 0xffff; shift 216 = 8*(32-3-2).
             { let rec_ptr := add(GKR_QTABLE_PTR(), 1817) let rec_end := add(rec_ptr, 80)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 5) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(216, rec), 0xffff), mulmod(shr(128, mload(add(col_base, mul(16, byte(1, rec))))), shr(128, mload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
-            // quadratic terms, coeff  4B positive  (14 records)
+            // quadratic terms, coeff  4B positive  (14 records); QTABLE bytes [1897, 1995), 7 bytes per record.
+            // Coefficient at byte 3, width 4, mask 0xffffffff; shift 200 = 8*(32-3-4).
             { let rec_ptr := add(GKR_QTABLE_PTR(), 1897) let rec_end := add(rec_ptr, 98)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 7) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(200, rec), 0xffffffff), mulmod(shr(128, mload(add(col_base, mul(16, byte(1, rec))))), shr(128, mload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
-            // quadratic terms, coeff 16B canonical (30 records)
+            // quadratic terms, coeff 16B canonical (Proth120::to_u128) (30 records); QTABLE bytes [1995, 2565), 19 bytes per record.
+            // Coefficient at byte 3, width 16, mask MASK; shift 104 = 8*(32-3-16).
             { let rec_ptr := add(GKR_QTABLE_PTR(), 1995) let rec_end := add(rec_ptr, 570)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 19) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(and(shr(104, rec), MASK), mulmod(shr(128, mload(add(col_base, mul(16, byte(1, rec))))), shr(128, mload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
-            // quadratic terms, coeff  1B negative  (113 records)
+            // quadratic terms, coeff  1B negative  (113 records); QTABLE bytes [2565, 3017), 4 bytes per record.
+            // Coefficient at byte 3, width 1, mask 0xff; shift 224 = 8*(32-3-1).
             { let rec_ptr := add(GKR_QTABLE_PTR(), 2565) let rec_end := add(rec_ptr, 452)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 4) } {
                 let rec := mload(rec_ptr)
                 let gate_ptr := add(gateval, mul(32, byte(0, rec)))
                 mstore(gate_ptr, addmod(mload(gate_ptr), mulmod(sub(modulus, and(shr(224, rec), 0xff)), mulmod(shr(128, mload(add(col_base, mul(16, byte(1, rec))))), shr(128, mload(add(col_base, mul(16, byte(2, rec))))), modulus), modulus), modulus))
             } }
-            // quadratic terms, coeff  4B negative  (48 records)
+            // quadratic terms, coeff  4B negative  (48 records); QTABLE bytes [3017, 3353), 7 bytes per record.
+            // Coefficient at byte 3, width 4, mask 0xffffffff; shift 200 = 8*(32-3-4).
             { let rec_ptr := add(GKR_QTABLE_PTR(), 3017) let rec_end := add(rec_ptr, 336)
             for { } lt(rec_ptr, rec_end) { rec_ptr := add(rec_ptr, 7) } {
                 let rec := mload(rec_ptr)
@@ -1289,8 +1377,8 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
     let rhs := mod(acc, mload(P_PTR))
     if iszero(eq(claim, rhs)) { revert(0, 0) }
     
-            // canonicity guard for the base-layer claims_batch absorb: 106 at-point evals from
-            // the image; require each < P so the absorbed transcript bytes are canonical
+            // sumcheck_circuit_layer0 checks all 106 base-layer image lanes < P here before
+            // returning to emit_gkr_mark, making the absorbed transcript bytes canonical
                 for { let wk := 0 } lt(wk, 106) { wk := add(wk, 1) } {
                     if iszero(lt(shr(128, mload(add(mload(CIRCUIT_PTR), mul(16, wk)))), mload(P_PTR))) { revert(0, 0) }
                 }
@@ -1302,60 +1390,88 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
             let bp := add(GKR_ABS_PTR(), 32)
             // absorb final_step ++ extras contiguously, then draw (soundness: batching depends on
             // the extra cache-dependency evals). ONE keccak of [seed || final_step || extras].
+            // Copy 58 u128 image lanes starting at lane 38; each lane is 16 bytes.
             mcopy(bp, add(base, mul(16, 38)), mul(16, 58))
             bp := add(bp, mul(16, 58))
+            // Copy 2 u128 image lanes starting at lane 2; each lane is 16 bytes.
             mcopy(bp, add(base, mul(16, 2)), mul(16, 2))
             bp := add(bp, mul(16, 2))
+            // Copy 7 u128 image lanes starting at lane 5; each lane is 16 bytes.
             mcopy(bp, add(base, mul(16, 5)), mul(16, 7))
             bp := add(bp, mul(16, 7))
+            // Copy 24 u128 image lanes starting at lane 14; each lane is 16 bytes.
             mcopy(bp, add(base, mul(16, 14)), mul(16, 24))
             bp := add(bp, mul(16, 24))
+            // Cache slot 16: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 16)))))
             bp := add(bp, 16)
+            // Cache slot 17: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 17)))))
             bp := add(bp, 16)
+            // Cache slot 18: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 18)))))
             bp := add(bp, 16)
+            // Cache slot 19: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 19)))))
             bp := add(bp, 16)
+            // Cache slot 0: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 0)))))
             bp := add(bp, 16)
+            // Cache slot 1: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 1)))))
             bp := add(bp, 16)
+            // Cache slot 2: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 2)))))
             bp := add(bp, 16)
+            // Cache slot 3: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 3)))))
             bp := add(bp, 16)
+            // Cache slot 4: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 4)))))
             bp := add(bp, 16)
+            // Cache slot 5: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 5)))))
             bp := add(bp, 16)
+            // Cache slot 6: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 6)))))
             bp := add(bp, 16)
+            // Cache slot 7: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 7)))))
             bp := add(bp, 16)
+            // Cache slot 8: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 8)))))
             bp := add(bp, 16)
+            // Cache slot 9: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 9)))))
             bp := add(bp, 16)
+            // Cache slot 10: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 10)))))
             bp := add(bp, 16)
+            // Cache slot 11: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 11)))))
             bp := add(bp, 16)
+            // Cache slot 12: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 12)))))
             bp := add(bp, 16)
+            // Cache slot 13: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 13)))))
             bp := add(bp, 16)
+            // Cache slot 14: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 14)))))
             bp := add(bp, 16)
+            // Cache slot 15: scl0_caches stores mod(gate, mload(P_PTR)); absorb one high u128 lane.
             mstore(bp, shl(128, mload(add(GKR_CIRCUIT_CACHE_PTR(), mul(32, 15)))))
             bp := add(bp, 16)
+            // Copy 2 u128 image lanes starting at lane 0; each lane is 16 bytes.
             mcopy(bp, add(base, mul(16, 0)), mul(16, 2))
             bp := add(bp, mul(16, 2))
+            // Copy 1 u128 image lanes starting at lane 4; each lane is 16 bytes.
             mcopy(bp, add(base, mul(16, 4)), mul(16, 1))
             bp := add(bp, mul(16, 1))
+            // Copy 2 u128 image lanes starting at lane 12; each lane is 16 bytes.
             mcopy(bp, add(base, mul(16, 12)), mul(16, 2))
             bp := add(bp, mul(16, 2))
+            // Copy 10 u128 image lanes starting at lane 96; each lane is 16 bytes.
             mcopy(bp, add(base, mul(16, 96)), mul(16, 10))
             bp := add(bp, mul(16, 10))
             let s := keccak256(GKR_ABS_PTR(), sub(bp, GKR_ABS_PTR()))
@@ -1449,6 +1565,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
     }
             }
             function scl0_g0(alpha, a) -> acc { acc := a
+            // Horner over consecutive GATEVAL slots [0, 12); each slot is one 32-byte word.
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
             for { let s := 0 } lt(s, 12) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
@@ -1456,6 +1573,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
 
             }
             function scl0_g1(alpha, a) -> acc { acc := a
+            // Horner over consecutive GATEVAL slots [12, 24); each slot is one 32-byte word.
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
             for { let s := 12 } lt(s, 24) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
@@ -1463,6 +1581,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
 
             }
             function scl0_g2(alpha, a) -> acc { acc := a
+            // Horner over consecutive GATEVAL slots [24, 36); each slot is one 32-byte word.
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
             for { let s := 24 } lt(s, 36) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
@@ -1470,6 +1589,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
 
             }
             function scl0_g3(alpha, a) -> acc { acc := a
+            // Horner over consecutive GATEVAL slots [36, 48); each slot is one 32-byte word.
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
             for { let s := 36 } lt(s, 48) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
@@ -1477,6 +1597,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
 
             }
             function scl0_g4(alpha, a) -> acc { acc := a
+            // Horner over consecutive GATEVAL slots [48, 60); each slot is one 32-byte word.
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
             for { let s := 48 } lt(s, 60) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
@@ -1484,6 +1605,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
 
             }
             function scl0_g5(alpha, a) -> acc { acc := a
+            // Horner over consecutive GATEVAL slots [60, 72); each slot is one 32-byte word.
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
             for { let s := 60 } lt(s, 72) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
@@ -1491,6 +1613,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
 
             }
             function scl0_g6(alpha, a) -> acc { acc := a
+            // Horner over consecutive GATEVAL slots [72, 79); each slot is one 32-byte word.
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
             for { let s := 72 } lt(s, 79) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
@@ -1622,6 +1745,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
         gate := num_out
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
+            // Horner over consecutive GATEVAL slots [79, 82); each slot is one 32-byte word.
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
             for { let s := 79 } lt(s, 82) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
@@ -1629,6 +1753,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
 
             }
             function scl0_g8(alpha, a) -> acc { acc := a
+            // Horner over consecutive GATEVAL slots [82, 94); each slot is one 32-byte word.
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
             for { let s := 82 } lt(s, 94) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
@@ -1636,6 +1761,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
 
             }
             function scl0_g9(alpha, a) -> acc { acc := a
+            // Horner over consecutive GATEVAL slots [94, 106); each slot is one 32-byte word.
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
             for { let s := 94 } lt(s, 106) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
@@ -1643,6 +1769,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
 
             }
             function scl0_g10(alpha, a) -> acc { acc := a
+            // Horner over consecutive GATEVAL slots [106, 118); each slot is one 32-byte word.
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
             for { let s := 106 } lt(s, 118) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
@@ -1650,6 +1777,7 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
 
             }
             function scl0_g11(alpha, a) -> acc { acc := a
+            // Horner over consecutive GATEVAL slots [118, 120); each slot is one 32-byte word.
             { let modulus := mload(P_PTR) let gv := GKR_GATEVAL_PTR()
             for { let s := 118 } lt(s, 120) { s := add(s, 1) } {
                 acc := add(mulmod(acc, alpha, modulus), mload(add(gv, mul(32, s))))
@@ -1690,83 +1818,85 @@ function sumcheck_circuit_layer0(ptr, alpha) -> next_ptr {
         acc := add(mulmod(acc, alpha, mload(P_PTR)), gate)
     }
             }
+            // Batch 74 prior-layer output claims in gate order; count - k is the kth claim from the end.
             function sccl0(alpha) -> claim {
             let src := GKR_CIRCUIT_CLAIMS_PTR()
-            claim := mload(add(src, mul(32, 73)))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 72))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 71))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 70))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 69))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 68))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 67))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 66))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 65))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 64))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 63))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 62))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 61))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 60))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 59))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 58))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 57))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 56))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 55))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 54))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 53))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 52))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 51))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 50))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 49))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 48))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 47))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 46))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 45))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 44))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 43))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 42))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 41))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 40))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 39))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 38))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 37))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 36))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 35))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 34))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 33))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 32))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 31))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 30))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 29))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 28))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 27))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 26))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 25))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 24))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 23))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 22))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 21))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 20))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 19))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 18))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 17))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 16))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 15))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 14))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 13))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 12))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 11))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 10))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 9))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 8))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 7))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 6))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 5))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 4))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 3))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 2))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 1))))
-            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, 0))))
+            claim := mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 1))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 2)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 3)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 4)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 5)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 6)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 7)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 8)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 9)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 10)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 11)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 12)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 13)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 14)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 15)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 16)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 17)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 18)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 19)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 20)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 21)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 22)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 23)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 24)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 25)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 26)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 27)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 28)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 29)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 30)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 31)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 32)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 33)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 34)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 35)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 36)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 37)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 38)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 39)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 40)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 41)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 42)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 43)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 44)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 45)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 46)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 47)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 48)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 49)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 50)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 51)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 52)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 53)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 54)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 55)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 56)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 57)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 58)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 59)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 60)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 61)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 62)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 63)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 64)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 65)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 66)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 67)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 68)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 69)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 70)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 71)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 72)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 73)))))
+            claim := add(mulmod(claim, alpha, mload(P_PTR)), mload(add(src, mul(32, sub(__TEMPLATE_GKR_LAYER_0_CLAIMS, 74)))))
             }
+// points u128 lanes follow a 32-byte seed; shr(128) selects a lane from the fresh digest.
 function sumcheck_claims_batch(ptr, points) -> next_ptr, next_alpha {
     let input_bytes := mul(points, 16)
     mcopy(add(SEED_PTR(), 32), ptr, input_bytes)
@@ -1774,7 +1904,7 @@ function sumcheck_claims_batch(ptr, points) -> next_ptr, next_alpha {
     mstore(SEED_PTR(), seed)
     seed := keccak256(SEED_PTR(), 32)                       // draw (the mirror draws a fresh el)
     mstore(SEED_PTR(), seed)
-    next_alpha := mod(shr(128, seed), mload(P_PTR))                    // batching is a field element mod P
+    next_alpha := mod(shr(128, seed), mload(P_PTR))                    // sumcheck_claims_batch reduces the draw with mod
     next_ptr := add(ptr, input_bytes)
 }
 
@@ -1789,6 +1919,8 @@ function gkr_lookrel_step(acc, c) -> acc_next {
 // add(low(...), high(...)). A single 7-arg helper would make solc materialize all 7
 // expression-args at the call boundary, running the enclosing cache function 1 slot
 // too deep (the same failure the lookrel steps above avoid).
+// Memory challenge byte offsets 0/32 weight address limbs; 64/96 timestamp limbs;
+// 128/160 value limbs; 192 is the additive challenge (slots 0 through 6).
 function gkr_memrel_compress_low(address_space, addr_low, addr_high) -> compressed {
     compressed := add(mload(add(MEMORY_CHALLS_PTR(), 192)), address_space)
     compressed := add(compressed, mulmod(mload(MEMORY_CHALLS_PTR()), addr_low, mload(P_PTR)))
@@ -1870,9 +2002,11 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         }
 
         // Interpolate-halve n elements at sc: sc[j] = sc[2j] + (sc[2j+1]-sc[2j])·r.
+        // Two adjacent 32-byte elements per pair give a 64-byte source stride; n/2 pairs remain.
         function whir_foldhalf(sc, n, r) {
-            // canonical interpolation a + (b-a)*r; the inputs are range-checked layer-0 lanes,
-            // zero padding or earlier outputs, all canonical
+            // sumcheck_circuit_layer0 checks the input lanes < P before emit_gkr_mark calls here.
+            // whir_fold_pack supplies zero padding; earlier whir_foldhalf outputs use addmod.
+            // Thus sub(Pm, a) is valid. Packing coordinates are reduced by emit_gkr_mark's mod.
             let Pm := mload(P_PTR)
             for { let j := 0 } lt(j, div(n, 2)) { j := add(j, 1) } {
                 let a := mload(add(sc, mul(64, j)))
@@ -1885,6 +2019,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         // LSB binding: adjacent evals differ in pack-index bit 0, which pairs with ex[0], so the
         // coords apply FORWARD (mirrors the prover's merge_claims). Scratch: PACK slots at
         // ABS+FOLD_OFFSET (the generator sizes the ABS region for it).
+        // u128 image lanes are unpacked with a 128-bit shift; absent packing lanes are zero.
         function whir_fold_pack(cdbase, count, ex) -> v {
             let sc := add(GKR_ABS_PTR(), __TEMPLATE_GKR_HANDOFF_FOLD_OFFSET)
             for { let i := 0 } lt(i, __TEMPLATE_WHIR_PACK) { i := add(i, 1) } {
@@ -1903,6 +2038,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         // bytes32 from MARK_WORD_REGISTERS consecutive final registers' u32 values (each stored
         // LE at preimage byte reg*PREIMAGE_REGISTER_STRIDE; the preimage starts the image),
         // concatenated in register order. Assembled in the 0x00 scratch word.
+        // Each public register is a 4-byte LE u32, packed contiguously into one EVM word.
         function mark_word(first_reg) -> w {
             for { let i := 0 } lt(i, MARK_WORD_REGISTERS) { i := add(i, 1) } {
                 mcopy(mul(i, 4), add(IMAGE_PTR(), mul(add(first_reg, i), PREIMAGE_REGISTER_STRIDE)), 4)
@@ -1919,6 +2055,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         // already wrote the memory base-oracle cap. Own frame — keeps the fallback stack under the
         // EVM limit. `ptr` is the image cursor after the circuit layers: it points at the 8-byte
         // WHIR-batching PoW nonce.
+        // Each draw reduces the high 128 bits using mod. PoW hashes seed32 || nonce8 (40 bytes);
+        // 256 is the digest bit width used by the leading-zero check.
         function emit_gkr_mark(ptr) {
             let sp := SEED_PTR()
             // ABS-region scratch (sized by the generator): PACK_LOG2 packing coords at +0,
@@ -1984,11 +2122,13 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         function draw1() -> r {
             let s := keccak256(__TEMPLATE_WHIR_SEED_PTR, 32)
             mstore(__TEMPLATE_WHIR_SEED_PTR, s)
-            // top 128 bits reduced mod P (matches prover `from_u128_with_reduction`).
+            // draw1 reduces the high 128 bits with mod (matches prover from_u128_with_reduction).
             // Reduction is required: unreduced values break `sub(P, x)` for x > P.
             r := mod(shr(128, s), P)
         }
-        // `base` is canonical (the domain generator or its inverse)
+        // WhirGenConfig::derive obtains canonical GEN/GEN_INV via Proth120::to_u128;
+        // powmod and exp_pow2 preserve reduction through mulmod. Binary exponentiation tests
+        // bit 0 with and(e, 1), then shifts e right by 1.
         function powmod(base, e) -> res {
             res := 1
             for {} e { e := shr(1, e) } {
@@ -2000,6 +2140,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             res := x
             for { let i := 0 } lt(i, k) { i := add(i, 1) } { res := mulmod(res, res, P) }
         }
+        // Two FE_BITS=123-bit fields occupy 246 bits; 10 = 256-246 aligns the pair.
+        // Mask 7 and shift 3 give bit-in-byte and byte offset; shift 128 repacks two checked u128 lanes.
         function cd_fe_pair(cd, bit) -> w {
             let x := shr(sub(10, and(bit, 7)), calldataload(add(cd, shr(3, bit))))
             let a := and(shr(FE_BITS, x), FE_MASK)
@@ -2007,6 +2149,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             if or(iszero(lt(a, P)), iszero(lt(b, P))) { revert(0, 0) }
             w := or(shl(128, a), b)
         }
+        // Round bits to bytes with (bits+7)>>3; mask 7 gives the low three padding bits.
         function run_end(cd, n) -> next_cd {
             let bits := mul(FE_BITS, n)
             next_cd := add(cd, shr(3, add(bits, 7)))
@@ -2020,6 +2163,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         function cd_digest(cp) -> d {
             d := and(calldataload(cp), __TEMPLATE_DIGEST_MASK)
         }
+        // PoW preimage: seed32 || BE nonce8 = 40 bytes. 256 is the digest bit width.
         function verify_pow(cp, pow_bits) -> next_cd {
             // the 40-byte hash covers the seed and the word's leading 8-byte BE nonce; the rest of the
             // word stays behind, and every later absorb writes the bytes it hashes
@@ -2034,6 +2178,9 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         // keccak block, re-hashing the seed before each block), DROP the first
         // word, then read `qib` bits per index LSB-first from the remaining
         // stream (BitSource + assemble_query_index). Indices land in QIDX_BUF.
+        // u32 bit indices use shift 5 / mask 31; rounding to 32 bits adds 31.
+        // A Keccak block contains eight 4-byte u32s; mask 7 rounds the padded draw to eight words.
+        // Byte indices 0..3 and shifts 0/8/16/24 assemble each little-endian u32.
         function draw_queries(num_q, qib) {
             let num_bits := mul(num_q, qib)
             // num_required_words = next_multiple_of(num_bits, 32) / 32
@@ -2067,6 +2214,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
                 mstore(add(__TEMPLATE_WHIR_QIDX_BUF_PTR, mul(qq, 32)), idx)
             }
         }
+        // Each deferred constraint uses 96 bytes: scalar at +0, running equality at +32, coefficient at +64.
+        // eq(alpha,z) = (1-alpha) + (2*alpha-1)*z.
         function fold_accumulator(alpha, n, zi_off) {
             let one_minus_alpha := addmod(1, sub(P, alpha), P)
             let alpha_coeff := addmod(addmod(alpha, alpha, P), sub(P, 1), P)
@@ -2110,7 +2259,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
                 let half := shr(1, n)
                 let ch := mload(add(__TEMPLATE_WHIR_FOLD_CH_PTR, mul(round, 32)))
                 for { let i := 0 } lt(i, half) { i := add(i, 1) } {
-                    // the folding buffer holds addmod/mulmod outputs: canonical
+                    // batch_oracle fills FBUF with addmod outputs; prior fold_coset iterations
+                    // store mulmod outputs, so a and b are canonical.
                     let a := mload(add(__TEMPLATE_WHIR_FBUF_PTR, mul(mul(i, 2), 32)))
                     let b := mload(add(__TEMPLATE_WHIR_FBUF_PTR, mul(add(mul(i, 2), 1), 32)))
                     let t := mulmod(addmod(a, sub(P, b), P), ch, P)
@@ -2129,6 +2279,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         // WITHOUT the coset base-root. Used for INTERMEDIATE/FINAL oracle leaves,
         // whose stored values fold as f = e0 + e1*ch per step (the prover's default
         // `eval_multilinear_with_monomial_tensor` path, no `evals_to_multilinear_coeffs`).
+        // read_leaf checks initial lanes through cd_fe_pair; fold_multilinear writes addmod outputs.
+        // Adjacent elements are the pair indices 2*i and 2*i+1.
         function fold_multilinear(fold) -> folded {
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let n := shl(fold, 1)
@@ -2144,8 +2296,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             }
             folded := mload(__TEMPLATE_WHIR_FBUF_PTR)
         }
-        // Merkle path of `depth` levels (already cap-reduced), then match a cap
-        // entry. depth = query_index_bits - __TEMPLATE_WHIR_CAP_LOG2.
+        // Merkle path of depth levels, then match a cap entry. do_query/do_final compute
+        // depth = query_index_bits - __TEMPLATE_WHIR_CAP_LOG2 (tree depth, not field reduction).
         //
         // The prover splits the query index the same way and lays out tree leaves
         // as [ bitreverse(coset_index) | internal_index ]:
@@ -2159,6 +2311,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         // top bits index the cap. Each level orders current/sibling by its bit:
         // keccak(current || sibling) for a left child, keccak(sibling || current)
         // for a right child.
+        // Each Merkle parent hashes two 32-byte child digests (64 bytes).
         function merkle_path(leaf_hash, depth, cap_ptr, cp, qidx, coset_bits) -> next_cd {
             // cap_ptr 0 = the setup frontier: the walk stops LEVEL bits below the root, not CAP_LOG2
             let top_bits := __TEMPLATE_WHIR_CAP_LOG2
@@ -2210,12 +2363,14 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             switch cap_ptr
             case 0 {
                 // frontier[cap_index], after the embedded setup's leading STOP byte
-                codecopy(0, add(mload(SETUP_CODE_OFFSET_PTR), add(1, mul(__TEMPLATE_DIGEST_BYTES, cap_index))), __TEMPLATE_DIGEST_BYTES)
+                codecopy(0, add(mload(SETUP_CODE_OFFSET_PTR), add(__TEMPLATE_DATA_FRONTIER_OFFSET, mul(__TEMPLATE_DIGEST_BYTES, cap_index))), __TEMPLATE_DIGEST_BYTES)
                 sink2(h, and(mload(0), __TEMPLATE_DIGEST_MASK))
             }
             default { sink2(h, mload(add(cap_ptr, mul(cap_index, 32)))) }
             next_cd := cp
         }
+        // Each 246-bit pair contains two checked u128 lanes (cd_fe_pair); shifts by 128 unpack them.
+        // The pair writes FBUF indices 2*wj and 2*wj+1; addmod produces canonical batched values.
         function batch_oracle(cp, cols, goff, vp, depth, cap_ptr, qidx, cb) -> next_cd {
             let wpc := shr(1, vp)
             let li := 0
@@ -2236,6 +2391,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             cp := run_end(cp, mul(cols, vp))
             next_cd := merkle_path(and(keccak256(__TEMPLATE_WHIR_LEAF_PTR, mul(li, 32)), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
+        // Each 246-bit pair contains two checked u128 lanes (cd_fe_pair), stored at indices 2*i and 2*i+1.
         function read_leaf(cp, vp, depth, cap_ptr, qidx, cb) -> next_cd {
             let words := shr(1, vp)
             let bit := 0
@@ -2249,6 +2405,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             cp := run_end(cp, vp)
             next_cd := merkle_path(and(keccak256(__TEMPLATE_WHIR_LEAF_PTR, mul(words, 32)), __TEMPLATE_DIGEST_MASK), depth, cap_ptr, cp, qidx, cb)
         }
+        // A deferred constraint is three EVM words (96 bytes): scalar, equality weight (initially 1), coefficient.
         function push_pow(current_scalar, coefficient) {
             let n := mload(__TEMPLATE_WHIR_REG_NUMPOW)
             let b := add(__TEMPLATE_WHIR_POW_PTR, mul(n, 96))
@@ -2294,6 +2451,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             mstore(__TEMPLATE_WHIR_REG_CC, addmod(mload(__TEMPLATE_WHIR_REG_CC), mulmod(folded, cur, P), P))
         }
 
+        // The OOD absorb is seed32 || value16 = 48 bytes; shr(128, word) extracts that u128 value.
         function do_internal(r, fold, q, pow_bits, qib, vp, cb) {
             let cp := mload(__TEMPLATE_WHIR_REG_CD)
             // read + absorb the next oracle's __TEMPLATE_WHIR_CAP (__TEMPLATE_WHIR_CAP*32 bytes)
@@ -2307,8 +2465,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             cp := add(cp, mul(__TEMPLATE_WHIR_CAP, __TEMPLATE_DIGEST_BYTES))
             let ood_point := draw1()
             let ood_value := shr(128, calldataload(cp))
-            // reject a non-canonical (>= P) ood_value: it is absorbed as raw bytes below,
-            // so the transcript must bind to the reduced value
+            // do_internal rejects ood_value >= P here before absorbing its raw bytes;
+            // this binds the transcript to a canonical field value.
             if iszero(lt(ood_value, P)) { revert(0, 0) }
             calldatacopy(add(__TEMPLATE_WHIR_SEED_PTR, 32), cp, 16)
             mstore(__TEMPLATE_WHIR_SEED_PTR, keccak256(__TEMPLATE_WHIR_SEED_PTR, 48))
@@ -2330,6 +2488,9 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             copy_cap(__TEMPLATE_WHIR_QCAP_PTR, __TEMPLATE_WHIR_NCAP_PTR) // this round's intermediate cap is next round's query cap
         }
 
+        // 128 monomial coefficients, one 32-byte word each; highest coefficient at byte 4064.
+        // Process blocks of 8 words (256 bytes), offsets 224/192/160/128/96/64/32/0;
+        // stop at byte 224, then finish the 7 remaining low coefficients.
         function horner_128(x) -> ev {
             let ptr := add(__TEMPLATE_WHIR_MONO_PTR, 4064)
             let end := add(__TEMPLATE_WHIR_MONO_PTR, 224)
@@ -2353,6 +2514,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             ev := addmod(mulmod(ev, x, P), mload(add(__TEMPLATE_WHIR_MONO_PTR, 32)), P)
             ev := addmod(mulmod(ev, x, P), mload(__TEMPLATE_WHIR_MONO_PTR), P)
         }
+        // Final monomial pairs occupy 246 bits and unpack into 128-bit lanes at indices 2*wj and 2*wj+1.
+        // The final fold reads adjacent pairs 2*i/2*i+1; deferred constraints stride 96 with weights at +32/+64.
         function do_final(fold, q, pow_bits, qib, vp, zi_off, rfin, cb) {
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let nmono := shl(rfin, 1)
@@ -2423,6 +2586,9 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         // memory base cap into the regions above. `cd_start` = calldata offset of the WHIR proof
         // stream (right after the GKR stream's trailing 8-byte WHIR-batching PoW nonce). It runs
         // once, on fresh memory: REG_NUMPOW and REG_ZIOFF start at zero.
+        // Each round encodes two fields (c0,c2) per sumcheck step, hence 2*fold fields and 246 bits per pair.
+        // WHIR reconstructs c1 with addmod; seed32 || three u128 coefficients occupies 80 bytes (scratch +32/+64).
+        // The high 128-bit lane is c0; c2 is the low lane. The round dispatch flag is 1 for an internal round.
         function whir_verify(cd_start) {
         // Base geometry (generated): rfin = final-poly log2.
         let rfin := __TEMPLATE_WHIR_RFIN
@@ -2434,10 +2600,15 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             // `cb` = coset bits = log2(LDE factor) for this round's oracle tree.
             let fold, q, pow_bits, qib, vp, cb
             switch r
+            // Round 0: fold 1 variables, 12 queries at 30 PoW bits, 30-bit indices; 2 values per leaf, 7 coset bits.
             case 0 { fold := 1 q := 12 pow_bits := 30 qib := 30 vp := 2 cb := 7 }
+            // Round 1: fold 4 variables, 11 queries at 27 PoW bits, 27-bit indices; 16 values per leaf, 8 coset bits.
             case 1 { fold := 4 q := 11 pow_bits := 27 qib := 27 vp := 16 cb := 8 }
+            // Round 2: fold 4 variables, 7 queries at 30 PoW bits, 27-bit indices; 16 values per leaf, 12 coset bits.
             case 2 { fold := 4 q := 7 pow_bits := 30 qib := 27 vp := 16 cb := 12 }
+            // Round 3: fold 4 variables, 6 queries at 20 PoW bits, 27-bit indices; 16 values per leaf, 16 coset bits.
             case 3 { fold := 4 q := 6 pow_bits := 20 qib := 27 vp := 16 cb := 16 }
+            // Round 4: fold 4 variables, 5 queries at 17 PoW bits, 27-bit indices; 16 values per leaf, 20 coset bits.
             default { fold := 4 q := 5 pow_bits := 17 qib := 27 vp := 16 cb := 20 }
 
             {
@@ -2476,7 +2647,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
         }
 
 
-        // SPILL OVERWRITE PREVENTION
+        // SPILL OVERWRITE PREVENTION: 0x40 is Solidity's free-memory-pointer slot.
         if gt(mload(0x40), MINIMUM_FREE_HEAP_PTR) {
             revert(0, 0)
         }
