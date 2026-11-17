@@ -5,6 +5,7 @@ mod checked_word;
 mod memcpy;
 mod memmove;
 mod memset;
+pub mod zk_masking;
 
 // The checked runtime replaces riscv_common's own exports; without them the guest would link
 // compiler_builtins' byte-wise fallbacks, and the precompile path is not word-checked.
@@ -47,6 +48,24 @@ pub const EXIT_SEQUENCE: &[u32] = &[
     0x034d2b83, //	lw	s7, 0x34(s10)
     0x038d2c03, //	lw	s8, 0x38(s10)
     0x03cd2c83, //	lw	s9, 0x3c(s10)
+    0x0000006f, //	loop
+];
+
+/// Tail of `finish_execution_recursion_extended`: all the registers outside of x10-x28 are
+/// zeroed, then the loop that an execution ends on.
+pub const RECURSION_EXIT_TAIL_SEQUENCE: &[u32] = &[
+    0x00000093, //	li	ra, 0
+    0x00000113, //	li	sp, 0
+    0x00000193, //	li	gp, 0
+    0x00000213, //	li	tp, 0
+    0x00000293, //	li	t0, 0
+    0x00000313, //	li	t1, 0
+    0x00000393, //	li	t2, 0
+    0x00000413, //	li	s0, 0
+    0x00000493, //	li	s1, 0
+    0x00000e93, //	li	t4, 0
+    0x00000f13, //	li	t5, 0
+    0x00000f93, //	li	t6, 0
     0x0000006f, //	loop
 ];
 
@@ -190,6 +209,64 @@ pub fn zksync_os_finish_success_extended(data: &[u32; 16]) -> ! {
     }
     loop {
         continue;
+    }
+}
+
+/// Exit point of a recursion step, with zero-knowledge masking of the trace.
+///
+/// Puts `data` into registers 10-25 and `rec_counters` into registers 26-28, then runs the
+/// masking sequence of [`zk_masking`]: one oracle query, whose response it consumes as operands
+/// and as stores of random words to oracle-chosen addresses, so nothing may read memory after
+/// this point. Then it zeroes every other register, so that no masking value survives into the
+/// final register state, and ends on an explicit infinite loop, see
+/// [`RECURSION_EXIT_TAIL_SEQUENCE`].
+#[cfg(target_arch = "riscv32")]
+#[inline(never)]
+pub fn finish_execution_recursion_extended(data: &[u32; 16], rec_counters: &[u32; 3]) -> ! {
+    unsafe {
+        core::arch::asm!(
+            "lw x10, 0(t0)",
+            "lw x11, 4(t0)",
+            "lw x12, 8(t0)",
+            "lw x13, 12(t0)",
+            "lw x14, 16(t0)",
+            "lw x15, 20(t0)",
+            "lw x16, 24(t0)",
+            "lw x17, 28(t0)",
+            "lw x18, 32(t0)",
+            "lw x19, 36(t0)",
+            "lw x20, 40(t0)",
+            "lw x21, 44(t0)",
+            "lw x22, 48(t0)",
+            "lw x23, 52(t0)",
+            "lw x24, 56(t0)",
+            "lw x25, 60(t0)",
+            "lw x26, 0(t1)",
+            "lw x27, 4(t1)",
+            "lw x28, 8(t1)",
+            zk_masking::masking_sequence_asm!(),
+            "li x1, 0",
+            "li x2, 0",
+            "li x3, 0",
+            "li x4, 0",
+            "li x5, 0",
+            "li x6, 0",
+            "li x7, 0",
+            "li x8, 0",
+            "li x9, 0",
+            "li x29, 0",
+            "li x30, 0",
+            "li x31, 0",
+            "5:",
+            "j 5b",
+            in("t0") data.as_ptr(),
+            in("t1") rec_counters.as_ptr(),
+            masking_query_id = const zk_masking::MASKING_QUERY_ID,
+            masking_oracle_words = const zk_masking::ORACLE_WORDS,
+            masking_register_groups = const zk_masking::REGISTER_GROUPS,
+            masking_memory_writes = const zk_masking::MEMORY_WRITES,
+            options(noreturn)
+        )
     }
 }
 

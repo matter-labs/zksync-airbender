@@ -174,3 +174,123 @@ macro_rules! generate_transpiler_tests {
     };
 }
 verifier_common::gkr_fixture_circuits!(generate_transpiler_tests);
+
+/// The add/sub verifier guest built with the zero-knowledge masking exit
+/// (`riscv_common::finish_execution_recursion_extended`), on the same proof as the plain test.
+/// The oracle is a `GuestSource`: the proof as its input words, and a `QueryDispatcher` with the
+/// masking responder, which has to answer the masking query of the exit sequence.
+#[test]
+#[ignore = "requires `./dump_bin.sh --zk-exit add_sub_lui_auipc_mop_ethproofs_soundcalc` in tools/gkr_verifier"]
+fn add_sub_lui_auipc_mop_ethproofs_soundcalc_zk_masking_exit() {
+    use riscv_transpiler::oracle::zk_masking::parameters::{
+        ADDRESS_CHUNKS, MASKING_CYCLES, MEMORY_WRITES, MEMORY_WRITES_PER_ADDRESS_CHUNK,
+    };
+    use riscv_transpiler::oracle::zk_masking::{
+        MaskingMemoryLayout, MaskingResponder, RECURSION_EXIT_TAIL_SEQUENCE,
+    };
+    use riscv_transpiler::oracle::{GuestSource, QueryDispatcher, RunMode};
+
+    let name = "add_sub_lui_auipc_mop";
+    let (level, mode) = (SecurityLevel::Sec100, SoundnessMode::EthproofsSoundnessCalc);
+    let (nds, external_challenges) =
+        common::load_nds_in_mode(name, level, mode, BlakeMode::Compression);
+    let plain_elf_path = common::elf_path_in_mode(name, level, mode);
+    let elf_path = plain_elf_path.replace(
+        &format!("{}.elf", name),
+        &format!("zk_masking_exit/{}.elf", name),
+    );
+    let (binary, text_section) =
+        riscv_transpiler::elf::load_legacy_program(std::path::Path::new(&elf_path));
+
+    let mut oracle_responses = vec![];
+    external_challenges.flatten_into_buffer(&mut oracle_responses);
+    oracle_responses.extend(nds);
+
+    let instructions: Vec<Instruction> =
+        preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text_section);
+    let tape = SimpleTape::new(&instructions);
+    let mut ram =
+        RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
+            &binary,
+            1 << 30,
+        );
+    let cycles_bound = 1 << 24;
+    let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
+    let mut snapshotter = SimpleSnapshotter::<
+        DelegationsAndFamiliesCounters,
+        { common_constants::rom::ROM_SECOND_WORD_BITS },
+    >::new_with_cycle_limit(cycles_bound, state);
+
+    // a 2^23 trace: inits and teardowns cover 64 Mb, of which the guest itself uses the low 32
+    let layout = MaskingMemoryLayout::for_trace_len_log2(23);
+    let mut oracle = QueryDispatcher::new(RunMode::RiscVRun);
+    oracle.add_external_processor(MaskingResponder::from_os_entropy(layout));
+    let mut non_determinism = GuestSource::new(oracle_responses, oracle);
+
+    let is_program_finished =
+        VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, BabyBearField>(
+            &mut state,
+            &mut ram,
+            &mut snapshotter,
+            &tape,
+            cycles_bound,
+            &mut non_determinism,
+        );
+    assert!(is_program_finished);
+    let exact_cycles =
+        (state.timestamp - common_constants::INITIAL_TIMESTAMP) / common_constants::TIMESTAMP_STEP;
+    println!(
+        "finished in {} cycles, {} of them masking",
+        exact_cycles, MASKING_CYCLES
+    );
+
+    // the dispatch: the proof is read in full by the guest, the response to the masking query
+    // to its last word, and the guest is still connected (the masking query is not a disconnect)
+    assert!(non_determinism.inputs.is_empty());
+    assert!(!non_determinism.oracle.has_pending_response());
+    assert!(non_determinism.oracle.is_connected());
+
+    // registers: the verifier's success in x10, zeroes up to x25, the counters in x26-x28, and
+    // nothing of the masking randomness anywhere else
+    let registers: Vec<u32> = state.registers.iter().map(|r| r.value).collect();
+    assert_eq!(registers[10], 1);
+    assert!(registers[11..26].iter().all(|value| *value == 0));
+    assert_eq!(registers[26..29], [0x11, 0x22, 0x33]);
+    assert!(registers[..10].iter().all(|value| *value == 0));
+    assert!(registers[29..].iter().all(|value| *value == 0));
+
+    // the execution ends on the explicit loop of the new exit tail
+    let tail = RECURSION_EXIT_TAIL_SEQUENCE;
+    let tail_starts: Vec<usize> = binary
+        .windows(tail.len())
+        .enumerate()
+        .filter_map(|(offset, window)| (window == tail).then_some(offset))
+        .collect();
+    assert_eq!(tail_starts.len(), 1);
+    assert_eq!(state.pc as usize, (tail_starts[0] + tail.len() - 1) * 4);
+
+    // the stores: the guest never touches memory above 32 Mb, so every non-zero word there is a
+    // masking store, 64 per 2 Mb chunk of the second inits/teardowns set (less the rare stores
+    // that hit the same word twice)
+    let chunk_bytes = layout.total_init_memory_bytes / ADDRESS_CHUNKS;
+    let mut stores_in_second_set = 0;
+    for chunk in ADDRESS_CHUNKS / 2..ADDRESS_CHUNKS {
+        let stores = (chunk * chunk_bytes..(chunk + 1) * chunk_bytes)
+            .step_by(4)
+            .filter(|address| ram.peek_word(*address) != 0)
+            .count() as u32;
+        assert!(
+            stores <= MEMORY_WRITES_PER_ADDRESS_CHUNK
+                && stores + 4 >= MEMORY_WRITES_PER_ADDRESS_CHUNK,
+            "chunk {}: {} stores",
+            chunk,
+            stores
+        );
+        stores_in_second_set += stores;
+    }
+    println!(
+        "{} of {} masking stores found above 32 Mb",
+        stores_in_second_set,
+        MEMORY_WRITES / 2
+    );
+}

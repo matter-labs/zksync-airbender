@@ -31,6 +31,9 @@ mop_extension = ["verifier_common/mop_extension"]
 modular_fma = ["verifier_common/modular_fma", "field/modular_fma"]
 special_opcodes_extension = ["verifier_common/special_opcodes_extension"]
 no_caches = ["verifier_common/no_caches"]
+# Per-circuit test verifiers end with `riscv_common::finish_execution_recursion_extended` (the
+# zero-knowledge masking sequence) instead of the plain exit. Built by `dump_bin.sh --zk-exit`.
+zk_masking_exit = []
 default = ["blake2_with_compression"]
 
 [lints.rust]

@@ -19,6 +19,8 @@ usage() {
     echo "  --sec LEVEL     only 100 bits is accepted"
     echo "  --mode MODE     per-circuit verifiers of one soundness mode only"
     echo "                  (pessimistic_conjecture | ethproofs_soundcalc); default: both."
+    echo "  --zk-exit       per-circuit verifiers that end with the zero-knowledge masking exit"
+    echo "                  -> circuit_verifiers/<mode>/zk_masking_exit/<circuit>.elf (never fsv_*)"
     echo "  --warnings      show compiler warnings (suppressed by default)"
     echo "  -h, --help      show this message"
     echo ""
@@ -49,6 +51,7 @@ VARIANT="no_caches"
 SEC="100"
 MODE_FILTER=""
 SHOW_WARNINGS=false
+ZK_EXIT=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -57,6 +60,7 @@ while [ $# -gt 0 ]; do
         --variant) VARIANT="$2"; shift 2 ;;
         --sec) SEC="$2"; shift 2 ;;
         --mode) MODE_FILTER="$2"; shift 2 ;;
+        --zk-exit) ZK_EXIT=true; shift ;;
         --warnings) SHOW_WARNINGS=true; shift ;;
         *) break ;;
     esac
@@ -75,11 +79,26 @@ out_path() {
     case "$1" in
         fsv_*_ethproofs_soundcalc) echo "full_statement_verifiers/ethproofs_soundcalc/${1%_ethproofs_soundcalc}.elf" ;;
         fsv_*) echo "full_statement_verifiers/$1.elf" ;;
-        *_pessimistic_conjecture) echo "circuit_verifiers/pessimistic_conjecture/${1%_pessimistic_conjecture}.elf" ;;
-        *_ethproofs_soundcalc) echo "circuit_verifiers/ethproofs_soundcalc/${1%_ethproofs_soundcalc}.elf" ;;
+        *_pessimistic_conjecture) echo "circuit_verifiers/pessimistic_conjecture/${ZK_EXIT_DIR}${1%_pessimistic_conjecture}.elf" ;;
+        *_ethproofs_soundcalc) echo "circuit_verifiers/ethproofs_soundcalc/${ZK_EXIT_DIR}${1%_ethproofs_soundcalc}.elf" ;;
         *) echo "ERROR: unknown binary naming for $1" >&2; exit 1 ;;
     esac
 }
+
+# `--zk-exit` builds are a separate set of per-circuit verifiers; they never replace the
+# canonical outputs and never include the full statement verifiers.
+ZK_EXIT_DIR=""
+if $ZK_EXIT; then
+    ZK_EXIT_DIR="zk_masking_exit/"
+    if [ $# -eq 0 ]; then
+        echo "ERROR: --zk-exit needs explicit per-circuit binaries" >&2; exit 1
+    fi
+    for circuit in "$@"; do
+        case "$circuit" in
+            fsv_*) echo "ERROR: --zk-exit is for per-circuit verifiers only (got '$circuit')" >&2; exit 1 ;;
+        esac
+    done
+fi
 
 # Remaining args are binaries (cargo bin names), or default to every binary of the level
 # (every full statement verifier and the per-circuit verifiers of every soundness mode, or of
@@ -101,6 +120,9 @@ fi
 FEATURES="${BLAKE_MODE}"
 if [ "$VARIANT" = "no_caches" ]; then
     FEATURES="${FEATURES},no_caches"
+fi
+if $ZK_EXIT; then
+    FEATURES="${FEATURES},zk_masking_exit"
 fi
 
 COMMON_FLAGS="--release -Z panic-immediate-abort -Z build-std=core,alloc --no-default-features --features ${FEATURES}"
