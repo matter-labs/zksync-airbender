@@ -5,6 +5,8 @@ import unittest
 import subprocess
 import tempfile
 from pathlib import Path
+from unittest import mock
+import check_claim_coverage
 from check_claim_coverage import validate, EXCEPTIONS, AUDIT, ROOT
 
 
@@ -123,6 +125,15 @@ class ClaimCoverageTests(unittest.TestCase):
         self.assertEqual(validate(self.data, self.manifest), 4)
         self.data["telescopes"][f"{listed} {witness}"] = None
         with self.assertRaisesRegex(ValueError, "Stale premise telescope exception"):
+            validate(self.data, self.manifest)
+        # A listed claim with premises that its witness omits fails.
+        self.data["telescopes"][f"{listed} {witness}"] = "the witness omits premise 2"
+        with self.assertRaisesRegex(ValueError, "exception does not hold"):
+            validate(self.data, self.manifest)
+        # A listed claim with another reason fails, although Lean finds no premises.
+        self.data["telescopes"][f"{listed} {witness}"] = "no premises"
+        with mock.patch.dict(check_claim_coverage.TELESCOPE_EXCEPTIONS, {listed: "Another reason."}), \
+                self.assertRaisesRegex(ValueError, "exception does not hold"):
             validate(self.data, self.manifest)
 
     def test_missing_telescope_check(self):

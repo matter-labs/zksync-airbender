@@ -189,6 +189,8 @@ def witness_pairs(manifest):
     return sorted((name, row["witness"]) for name, row in manifest["claims"].items() if "witness" in row)
 
 
+# The Lean audit's report for a claim without premises, and the only exception reason.
+NO_PREMISES_FOUND = "no premises"
 NO_PREMISES = "The claim has no premises. Its witness shows a nonempty instance of the claim's data."
 TELESCOPE_EXCEPTIONS = {
     "Airbender.AgreeExistsClaim": NO_PREMISES,
@@ -341,10 +343,14 @@ def validate(data, manifest):
         if f"{name} {witness}" not in telescopes:
             raise ValueError(f"Missing premise telescope check: {name} {witness}")
         mismatch = telescopes[f"{name} {witness}"]
-        if mismatch is not None and name not in TELESCOPE_EXCEPTIONS:
+        if name in TELESCOPE_EXCEPTIONS:
+            # An exception covers only the checked form: Lean finds no premises, and the reason states that.
+            if mismatch is None:
+                raise ValueError(f"Stale premise telescope exception: {name}")
+            if mismatch != NO_PREMISES_FOUND or TELESCOPE_EXCEPTIONS[name] != NO_PREMISES:
+                raise ValueError(f"Premise telescope exception does not hold for {name}: {mismatch}")
+        elif mismatch is not None:
             raise ValueError(f"Witness {witness} is not the premise telescope of {name}: {mismatch}")
-        if mismatch is None and name in TELESCOPE_EXCEPTIONS:
-            raise ValueError(f"Stale premise telescope exception: {name}")
     return len(claims)
 
 
