@@ -12,8 +12,9 @@ Circuit claims use the RV32 specification.
 The cached and no-cache JSON files in `cs/compiled_circuits/` have the same constraint sections.
 Only their compiled GKR layers can differ. The claims cover the shared constraint description in both cache modes.
 Cached captures bind native base-field gates and scalar caches to the shared arithmetic equations.
-The native CPU targets also bind exact lookup arguments. Worker constraints enter the
-machine targets at the constraint-description level.
+Cached CPU and worker certificates supply the native machine targets. Each certificate
+binds native gates, placement and exact lookup arguments. Only the constraint-description
+targets retain `WorkersAccepted`.
 
 **Check everything:** `./verify.sh` (prepares the pinned Clean, builds the spec and all proofs, checks that the spec
 does not import the proofs, runs the regressions and the axiom audits, checks every module's [build budget](#build-budget),

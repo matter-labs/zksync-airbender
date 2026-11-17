@@ -78,7 +78,8 @@ structure Bound (initial : RV.State) (program : List RVMachineProgramEntry)
   binding : actual = rows initial program
   /-- All supplied public entries fit the native decoder capacity. -/
   fits : program.length ≤ decoderCapacity
-  /-- A nonzero packed mask fits the field. Zero-mask LW and LHU entries have a canonical nonzero destination. -/
+  /-- A nonzero packed mask fits the field. LW and LHU rows have mask 0. Their destination
+      is nonzero because loads into x0 use the ADD NOP row. -/
   mask : ∀ entry ∈ program,
     (0 < entry.data.mask ∧ entry.data.mask < babyBearModulus) ∨
     ((entry.data.family = .pooled .wordMemory ∨ entry.data.family = .pooled .subwordMemory) ∧

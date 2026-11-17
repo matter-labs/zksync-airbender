@@ -3,8 +3,9 @@
 
 The comparison covers every padded decoder row, including unsupported words.
 The Lean oracle emits active rows; the checker verifies that every other native
-row is the out-of-range sentinel. The importer/Rust-model boundary remains a
-differential test, not a kernel proof.
+row is the out-of-range sentinel. Both checks enforce the public decoder mask
+and omitted-field conditions. The importer/Rust-model boundary is a differential
+test, not a kernel proof.
 """
 
 import argparse
@@ -21,9 +22,11 @@ import tempfile
 POOLED_FAMILIES = ("add-sub", "jump-branch", "shift-binop", "word-memory", "mul-div", "subword-memory")
 REDUCED_FAMILIES = POOLED_FAMILIES[:4]
 FAMILIES = POOLED_FAMILIES + ("unified",)
+FIELD_MODULUS = 2013265921
 SMALL_PROGRAMS = {
     "one": (0x13, 0xC0001073, 0x00408093, 0x6F, 0x007181B3),
     "two": (0x13, 0x00408113, 0x6F, 0x007181B3),
+    "zero-destinations": (0x00002003, 0x00005003, 0x00000003, 0x02208033, 0x13),
     "muldiv": (0x02E585B3, 0x02E5B5B3, 0x02E5D5B3, 0x02E5F5B3, 0x13),
     "blake-caller": (0x7C701073,) * 7 + (0x13,),
     "split-keccak": tuple(
@@ -172,6 +175,28 @@ def run_checked(command, label):
         raise RuntimeError(f"{label} failed (exit {result.returncode}): {detail}")
 
 
+def validate_projected_row(row, expected_mask, family, label):
+    """Check the mask and omitted-field premises of NativePublicSetup.Bound."""
+    if len(row) != 9 or len(expected_mask) != 9 or any(value < 0 for value in row):
+        raise ValueError(f"{label}: Lean row has the wrong width or a negative field")
+    destination, mask = row[4], row[8]
+    if not (0 < mask < FIELD_MODULUS or
+            (family in ("word-memory", "subword-memory") and mask == 0 and
+             0 < destination < FIELD_MODULUS)):
+        raise ValueError(f"{label}: invalid public decoder mask")
+    if any(value != 0 for value, included in zip(row, expected_mask) if not included):
+        raise ValueError(f"{label}: Lean row has a nonzero omitted field")
+
+
+def zero_destination_rows(config, family):
+    """Pin x0 loads and MUL to NOP rows or unsupported sentinel slots."""
+    arithmetic_family = "unified" if config == "unified" else "add-sub"
+    if family != arithmetic_family:
+        return {}
+    indices = range(5) if config == "full" else (0, 4)
+    return {index: [4 * index, 0, 0, 0, 0, 0, 0, 0, 1] for index in indices}
+
+
 def run_case(exporter, oracle, directory, text, image, config, family, cache):
     name = f"{text.stem}-{config}-{family}-{cache}"
     artifact_path = directory / f"{name}.json"
@@ -192,13 +217,17 @@ def run_case(exporter, oracle, directory, text, image, config, family, cache):
     repository = pathlib.Path(__file__).resolve().parents[3]
     circuit = repository / 'cs/compiled_circuits' / (names[family] + '_layout_no_caches_gkr.json')
     expected_mask = json.loads(circuit.read_text())['decode_table_columns_mask']
+    logical_rows = active_rows(lean_path)
+    if text.stem == "zero-destinations":
+        expected_text = b"".join(struct.pack("<I", word) for word in SMALL_PROGRAMS[text.stem])
+        if text.read_bytes() != expected_text:
+            raise ValueError(f"{name}: incorrect x0 fixture text")
+        if {index: values[:9] for index, values in logical_rows.items()} != zero_destination_rows(config, family):
+            raise ValueError(f"{name}: incorrect x0 decoder rows")
     active = {}
-    for index, values in active_rows(lean_path).items():
+    for index, values in logical_rows.items():
         row, payload = values[:9], values[9:]
-        if len(row) != len(expected_mask):
-            raise ValueError(f"{name}: Lean row {index} has the wrong width")
-        if any(value != 0 for value, selected in zip(row, expected_mask) if not selected):
-            raise ValueError(f"{name}: Lean row {index} has a nonzero omitted field")
+        validate_projected_row(row, expected_mask, family, f"{name}: row {index}")
         projected = [value for value, selected in zip(row, expected_mask) if selected]
         tagged = artifact["circuit"]["tables_ids_in_generic_lookups"]
         if payload != projected + ([46] if tagged else []):

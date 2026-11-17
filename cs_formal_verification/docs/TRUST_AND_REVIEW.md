@@ -196,6 +196,10 @@ Zero-mask LW and LHU rows retain a nonzero destination. The decoder-membership p
 
 The [decoder comparison](../lean/scripts/check_program_decoder_rows.py) compares the compiled Lean row function with native exports.
 It also compares circuit objects across public programs and the shared unrolled profiles.
+The Lean oracle checks the mask and omitted-field conditions for every projected entry before it selects a circuit family.
+The Python checker checks these conditions for each emitted row. The tests include the public ZKsync OS text and
+loads and MUL into x0 on all three machine profiles. Full uses ADD NOP rows for these x0 forms.
+Reduced and unified use an ADD NOP row for LW into x0 and sentinel rows for LHU, LB and MUL into x0.
 Each test binds the Lean model to the tested Rust preprocessing result.
 These tests do not prove Rust decoder equivalence for every possible program.
 

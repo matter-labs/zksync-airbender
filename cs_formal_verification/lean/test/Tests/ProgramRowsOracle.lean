@@ -35,6 +35,15 @@ def main (args : List String) : IO Unit := do
   let addresses := (List.range (bytes.size / 4)).map (fun index => BitVec.ofNat 32 (4 * index))
   let some program := rvMachineProgramImage profile initial addresses
     | throw (IO.userError "Public program construction failed")
+  for entry in program do
+    unless (0 < entry.data.mask ∧ entry.data.mask < babyBearModulus) ∨
+        ((entry.data.family = .pooled .wordMemory ∨ entry.data.family = .pooled .subwordMemory) ∧
+          entry.data.mask = 0 ∧ 0 < entry.data.rd ∧ entry.data.rd < babyBearModulus) do
+      throw (IO.userError s!"Invalid public decoder mask at PC {entry.pc}")
+    for (value, included) in (entry.data.row entry.pc).toList.zip
+        (Metadata.columns entry.data.family).toList do
+      if !included && value != 0 then
+        throw (IO.userError s!"Nonzero omitted public decoder field at PC {entry.pc}")
   let addressIndex := rvMachineProgramIndex program
   let slot := fun index => addressIndex[4 * index]?
   IO.FS.withFile output .write fun handle => do

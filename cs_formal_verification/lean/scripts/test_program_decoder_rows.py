@@ -52,6 +52,34 @@ class ProgramDecoderRowsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "differs from imported Lean mask"):
             checked_rows(self.artifact, self.active, "changed mask", [True] * 9)
 
+    def test_public_mask_premise(self):
+        row = [0] * 9
+        for family in decoder.FAMILIES:
+            with self.subTest(family=family):
+                with self.assertRaisesRegex(ValueError, "invalid public decoder mask"):
+                    decoder.validate_projected_row(row, [True] * 9, family, "zero destination")
+                positive = row[:]
+                positive[8] = 1
+                decoder.validate_projected_row(positive, [True] * 9, family, "positive mask")
+                positive[8] = decoder.FIELD_MODULUS
+                with self.assertRaisesRegex(ValueError, "invalid public decoder mask"):
+                    decoder.validate_projected_row(positive, [True] * 9, family, "mask overflow")
+        for family in ("word-memory", "subword-memory"):
+            row[4] = 1
+            decoder.validate_projected_row(row, [True] * 9, family, "zero-mask load")
+            row[4] = decoder.FIELD_MODULUS
+            with self.assertRaisesRegex(ValueError, "invalid public decoder mask"):
+                decoder.validate_projected_row(row, [True] * 9, family, "destination overflow")
+
+    def test_x0_fixture_classification(self):
+        for config in ("full", "reduced", "unified"):
+            family = "unified" if config == "unified" else "add-sub"
+            rows = decoder.zero_destination_rows(config, family)
+            self.assertEqual(set(rows), set(range(5)) if config == "full" else {0, 4})
+            for index, row in rows.items():
+                self.assertEqual(row, [4 * index, 0, 0, 0, 0, 0, 0, 0, 1])
+            self.assertEqual(decoder.zero_destination_rows(config, "word-memory"), {})
+
     def test_blake_group_shape(self):
         valid = b"".join(struct.pack("<I", word) for word in SMALL_PROGRAMS["blake-caller"])
         check_group_shapes(valid, "reduced", "valid caller")
@@ -70,7 +98,7 @@ class ProgramDecoderRowsTest(unittest.TestCase):
 
 
 class DecoderFixtureInventoryTest(unittest.TestCase):
-    def test_all_126_cases_are_retained(self):
+    def test_all_148_cases_are_retained(self):
         cases = []
         def record(exporter, oracle, directory, text, image, config, family, cache):
             cases.append((text.stem, config, family, cache))
@@ -93,7 +121,7 @@ class DecoderFixtureInventoryTest(unittest.TestCase):
             if program != 'split-keccak' or (config == 'full' and family == 'add-sub')
         }
         self.assertEqual(small, expected_small)
-        self.assertEqual(len(small), 90)
+        self.assertEqual(len(small), 112)
         committed = run(['--committed-verifiers'])
         repository = Path(__file__).resolve().parents[3]
         expected_committed = {
@@ -120,7 +148,7 @@ class DecoderFixtureInventoryTest(unittest.TestCase):
                 for config, families in [('full', decoder.POOLED_FAMILIES), ('unified', ('unified',))]
                 for family in families for cache in ('plain', 'cached')
             })
-            self.assertEqual(len(small) + len(committed) + len(production), 126)
+            self.assertEqual(len(small) + len(committed) + len(production), 148)
 
 
 class DecoderProcessTest(unittest.TestCase):
@@ -169,6 +197,20 @@ class DecoderProcessTest(unittest.TestCase):
                     Path(command[4]).write_text('0,0,0,0,0,0,0,0,1,1\n')
             with patch.object(decoder, 'run_checked', run):
                 with self.assertRaisesRegex(ValueError, 'nonzero omitted field'):
+                    decoder.run_case(Path('/exporter'), Path('/oracle'), root, text,
+                                     text, 'full', 'add-sub', 'plain')
+
+    def test_invalid_mask_fails_the_case(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            text = root / 'public.text'
+            def run(command, label):
+                if label.endswith('native export'):
+                    Path(command[4]).write_text('{}')
+                else:
+                    Path(command[4]).write_text('0,0,0,0,0,0,0,0,0,0\n')
+            with patch.object(decoder, 'run_checked', run):
+                with self.assertRaisesRegex(ValueError, 'invalid public decoder mask'):
                     decoder.run_case(Path('/exporter'), Path('/oracle'), root, text,
                                      text, 'full', 'add-sub', 'plain')
 
