@@ -863,6 +863,16 @@
     "Airbender.Compiler.BigintCachedMemoryClaim": {
       "witness": "Airbender.Compiler.BigintCachedMemorySatisfiableClaim"
     },
-    "Airbender.Compiler.BigintCachedMemorySatisfiableClaim": {}
+    "Airbender.Compiler.BigintCachedMemorySatisfiableClaim": {},
+    "Airbender.Compiler.UnrolledMemoryCompositionClaim": {
+      "witness": "Airbender.Compiler.UnrolledMemoryCompositionSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
+    },
+    "Airbender.Compiler.UnrolledMemoryCompositionSatisfiableClaim": {},
+    "Airbender.Compiler.UnifiedMemoryCompositionClaim": {
+      "witness": "Airbender.Compiler.UnifiedMemoryCompositionSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
+    },
+    "Airbender.Compiler.UnifiedMemoryCompositionSatisfiableClaim": {}
   }
 }

@@ -52,3 +52,4 @@ import Human.ISA.Sail.NativeTargets
 
 import Human.Compiler.MemoryPorts
 import Human.Compiler.WorkerMemoryPorts
+import Human.Compiler.MemoryComposition

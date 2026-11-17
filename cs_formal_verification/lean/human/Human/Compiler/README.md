@@ -30,6 +30,8 @@ from exact matching of the PC-state tokens.
 [WorkerMemoryPorts.lean](WorkerMemoryPorts.lean) states the same claim for the bigint capture.
 Each worker output is the product of the encoded port tokens and request token of the worker
 row, masked by the execute column. The BLAKE2 G, BLAKE2 round and three split Keccak captures have no claim of this form.
+[MemoryComposition.lean](MemoryComposition.lean) splits the single native RAM permutation of each
+machine by address class into the state, request and memory relations of the native machine arguments.
 
 [CPU certificate witnesses](../../../proven/Proven/Final/Compiler/CPUCertificates.lean)
 give one active certificate for each of the seven CPU families. Each certificate

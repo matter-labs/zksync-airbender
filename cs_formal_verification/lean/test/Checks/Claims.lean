@@ -124,6 +124,7 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 import Proven.Final.Compiler.MemoryPorts
 import Proven.Final.Compiler.PaddedNativeMachine
 import Proven.Final.Compiler.WorkerMemoryPorts
+import Proven.Final.Compiler.MemoryComposition
 
 import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 
@@ -1235,3 +1236,23 @@ example : Airbender.Compiler.NativeFixedRows.WordMemoryImportClaim := @Airbender
 example : Airbender.Compiler.NativeSetups.Range13ImportClaim := @Airbender.Compiler.NativeSetups.range13_import
 
 #print axioms Airbender.Compiler.NativeSetups.range13_import
+
+-- RAM permutation composition.
+
+example : Airbender.Compiler.UnrolledMemoryCompositionClaim := @Airbender.Compiler.unrolled_memory_composition
+
+example : Airbender.Compiler.UnrolledMemoryCompositionSatisfiableClaim :=
+  @Airbender.Compiler.unrolled_memory_composition_satisfiable
+
+example : Airbender.Compiler.UnifiedMemoryCompositionClaim := @Airbender.Compiler.unified_memory_composition
+
+example : Airbender.Compiler.UnifiedMemoryCompositionSatisfiableClaim :=
+  @Airbender.Compiler.unified_memory_composition_satisfiable
+
+#print axioms Airbender.Compiler.unrolled_memory_composition
+
+#print axioms Airbender.Compiler.unrolled_memory_composition_satisfiable
+
+#print axioms Airbender.Compiler.unified_memory_composition
+
+#print axioms Airbender.Compiler.unified_memory_composition_satisfiable

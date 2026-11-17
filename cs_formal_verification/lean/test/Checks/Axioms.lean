@@ -185,6 +185,7 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 import Proven.Final.Compiler.MemoryPorts
 import Proven.Final.Compiler.PaddedNativeMachine
 import Proven.Final.Compiler.WorkerMemoryPorts
+import Proven.Final.Compiler.MemoryComposition
 
 import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 
@@ -1698,3 +1699,11 @@ import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 #print axioms Airbender.machine_run_is_sequential
 
 #print axioms Airbender.machine_run_is_sequential_satisfiable
+
+#print axioms Airbender.Compiler.unrolled_memory_composition
+
+#print axioms Airbender.Compiler.unrolled_memory_composition_satisfiable
+
+#print axioms Airbender.Compiler.unified_memory_composition
+
+#print axioms Airbender.Compiler.unified_memory_composition_satisfiable
