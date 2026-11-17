@@ -238,6 +238,9 @@ def main():
     parser.add_argument("--check", action="store_true")
     parser.add_argument("workers", nargs="*")
     args = parser.parse_args()
+    unknown = sorted(set(args.workers) - {worker[0] for worker in WORKERS})
+    if unknown:
+        sys.exit("FAIL unknown worker names: " + ", ".join(unknown))
     stale = []
     for path, text in outputs(set(args.workers)):
         if args.check:

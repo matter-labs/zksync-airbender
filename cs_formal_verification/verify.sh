@@ -31,6 +31,7 @@ python3 scripts/generate_setup_scans.py --check
 python3 scripts/generate_worker_selectors.py --check
 python3 scripts/generate_worker_arithmetic.py --check
 python3 scripts/generate_worker_constraints.py --check
+python3 scripts/test_worker_memory_ports.py
 python3 scripts/generate_worker_memory_ports.py --check
 
 echo "== 2. Lean build: spec, proofs, regressions and the axiom audit modules in one lake build (test modules start as"
