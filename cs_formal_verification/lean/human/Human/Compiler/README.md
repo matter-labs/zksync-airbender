@@ -48,6 +48,7 @@ source sidecars, importer paths and every cached/no-cache description except lay
 CI checks fresh source exports against the pinned snapshots.
 
 [LookupSelectors.lean](LookupSelectors.lean) states complete native query coverage.
+It also states which setup columns the table side of each lookup group reads.
 [NativeLookups.lean](NativeLookups.lean) defines expanded tuples, and
 [LookupArgument.lean](LookupArgument.lean) defines exact natural matching with public
 setup rows. A sampled field equation does not establish this matching.

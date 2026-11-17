@@ -31,16 +31,18 @@ def selectorsFor : Trace.RVMachineDecoderFamily → List Selector
   | .pooled .subwordMemory => subwordMemorySelectors
   | .unified => unifiedSelectors
 
-/-- The selectors cover every actual query operand once, in order. Every cache or copy expansion succeeds. Each group is the group of its native output chain. -/
+/-- The selectors cover every actual query operand once, in order. Every cache or copy expansion succeeds. Each group is the group of its native output chain.
+    The table side of each lookup group reads the setup columns of `tableOperand`. -/
 def CachedLookupSelectorsClaim : Prop :=
   ∀ family : Trace.RVMachineDecoderFamily,
     queryLocators (circuitFor family) =
       .ok ((selectorsFor family).map (fun selector => (selector.gate, selector.operand))) ∧
     (selectorsFor family).all (fun selector =>
       match select (circuitFor family) selector with | .ok _ => true | .error _ => false) = true ∧
-    groupsAgree (circuitFor family) (selectorsFor family) = true
+    groupsAgree (circuitFor family) (selectorsFor family) = true ∧
+    TableSidesRead (circuitFor family)
 
-/-- A cached capture has a nonempty and complete list of resolved native query selectors. -/
+/-- A cached capture has a nonempty and complete list of resolved native query selectors and its table sides. -/
 def CachedLookupSelectorsSatisfiableClaim : Prop :=
   ∃ family : Trace.RVMachineDecoderFamily,
     selectorsFor family ≠ [] ∧
@@ -48,6 +50,7 @@ def CachedLookupSelectorsSatisfiableClaim : Prop :=
       .ok ((selectorsFor family).map (fun selector => (selector.gate, selector.operand))) ∧
     (selectorsFor family).all (fun selector =>
       match select (circuitFor family) selector with | .ok _ => true | .error _ => false) = true ∧
-    groupsAgree (circuitFor family) (selectorsFor family) = true
+    groupsAgree (circuitFor family) (selectorsFor family) = true ∧
+    TableSidesRead (circuitFor family)
 
 end Airbender.Compiler.NativeLookups

@@ -4,7 +4,9 @@ Each family module lists the native group, gate, operand and expansion path of
 every lookup selector. Start with [AddSub.lean](AddSub.lean).
 [LookupSelectors.lean](../LookupSelectors.lean) states `CachedLookupSelectorsClaim`:
 the lists cover the native query operands in order, each expansion succeeds,
-and each group is the group of its native output chain.
+and each group is the group of its native output chain. The claim also states
+`TableSidesRead`: the table side of each lookup group reads its declared
+multiplicity column and the setup columns of `tableOperand`.
 [NativeLookups.lean](../NativeLookups.lean) defines the tuple interpretation.
 
 The `Workers/` directory states the same selectors for the worker circuits:

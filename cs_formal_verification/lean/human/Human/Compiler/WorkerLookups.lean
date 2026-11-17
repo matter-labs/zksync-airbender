@@ -32,7 +32,8 @@ def selectorsFor : Family → List NativeLookups.Selector
   | .thetaRho => keccakThetaRhoSelectors
   | .chi5 => keccakChi5Selectors
 
-/-- The worker selectors cover every query once, resolve its payload and use its native chain group. -/
+/-- The worker selectors cover every query once, resolve its payload and use its native chain group.
+    The table side of each lookup group reads the setup columns of `NativeLookups.tableOperand`. -/
 def CachedWorkerLookupSelectorsClaim : Prop :=
   ∀ family : Family,
     NativeLookups.queryLocators (circuitFor family) =
@@ -40,9 +41,10 @@ def CachedWorkerLookupSelectorsClaim : Prop :=
     (selectorsFor family).all (fun selector =>
       match NativeLookups.select (circuitFor family) selector with
       | .ok _ => true | .error _ => false) = true ∧
-    NativeLookups.groupsAgree (circuitFor family) (selectorsFor family) = true
+    NativeLookups.groupsAgree (circuitFor family) (selectorsFor family) = true ∧
+    NativeLookups.TableSidesRead (circuitFor family)
 
-/-- A cached worker has a nonempty query list with all selector conditions. -/
+/-- A cached worker has a nonempty query list with all selector conditions and its table sides. -/
 def CachedWorkerLookupSelectorsSatisfiableClaim : Prop :=
   ∃ family : Family, selectorsFor family ≠ [] ∧
     NativeLookups.queryLocators (circuitFor family) =
@@ -50,6 +52,7 @@ def CachedWorkerLookupSelectorsSatisfiableClaim : Prop :=
     (selectorsFor family).all (fun selector =>
       match NativeLookups.select (circuitFor family) selector with
       | .ok _ => true | .error _ => false) = true ∧
-    NativeLookups.groupsAgree (circuitFor family) (selectorsFor family) = true
+    NativeLookups.groupsAgree (circuitFor family) (selectorsFor family) = true ∧
+    NativeLookups.TableSidesRead (circuitFor family)
 
 end Airbender.Compiler.NativeWorkerLookups

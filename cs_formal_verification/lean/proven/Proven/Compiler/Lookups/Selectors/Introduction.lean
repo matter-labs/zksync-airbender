@@ -1,5 +1,6 @@
 module
 public import Proven.Compiler.Lookups.Selectors.AddSub
+public import Proven.Compiler.Lookups.Tables.AddSub
 
 @[expose] public section
 namespace Airbender.Compiler.NativeLookups.Proofs.Introduction
@@ -12,9 +13,10 @@ theorem selectors_satisfiable_of (family : Trace.RVMachineDecoderFamily)
       .ok ((selectorsFor family).map (fun selector => (selector.gate, selector.operand))))
     (resolved : (selectorsFor family).all (fun selector =>
       match select (circuitFor family) selector with | .ok _ => true | .error _ => false) = true)
-    (grouped : groupsAgree (circuitFor family) (selectorsFor family) = true) :
+    (grouped : groupsAgree (circuitFor family) (selectorsFor family) = true)
+    (tables : TableSidesRead (circuitFor family)) :
     CachedLookupSelectorsSatisfiableClaim :=
-  ⟨family, nonempty, covered, resolved, grouped⟩
+  ⟨family, nonempty, covered, resolved, grouped, tables⟩
 
 /-- The selector conditions hold for a nonempty native query list. -/
 theorem satisfiable : CachedLookupSelectorsSatisfiableClaim := by
@@ -24,5 +26,6 @@ theorem satisfiable : CachedLookupSelectorsSatisfiableClaim := by
     rw [empty] at size
     contradiction
   exact selectors_satisfiable_of _ nonempty Proofs.AddSub.binding.1 Proofs.AddSub.binding.2.1 Proofs.AddSub.binding.2.2
+    Proofs.AddSub.tables
 
 end Airbender.Compiler.NativeLookups.Proofs.Introduction

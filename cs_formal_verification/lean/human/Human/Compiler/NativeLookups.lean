@@ -20,6 +20,11 @@ def Weight.value (physical : GKRAddress → F) : Weight → F
   | .column address => physical address
   | .negativeMultiplicity address => -physical address
 
+/-- A setup multiplicity weights the table side of a lookup. Every other weight weights a query. -/
+def Weight.isTable : Weight → Bool
+  | .negativeMultiplicity _ => true
+  | _ => false
+
 inductive Input where
   | address : GKRAddress → Input
   | scalar : SingleColumnLookupRelation → Input
@@ -125,15 +130,19 @@ structure Selector where
 def compiledGates (circuit : Circuit) : Array GateArtifacts :=
   circuit.layers.flatMap fun layer => layer.gates ++ layer.gates_with_external_connections
 
-/-- All non-setup primitive operand positions in the actual compiled layers. -/
-def queryLocators (circuit : Circuit) : Except String (List (Nat × Nat)) := do
+/-- The primitive operand positions of one lookup side in the actual compiled layers, in gate and operand order. -/
+def locators (circuit : Circuit) (tableSide : Bool) : Except String (List (Nat × Nat)) := do
   let groups ← (compiledGates circuit).toList.zipIdx.mapM fun (gate, gateIndex) => do
     let inputs ← operands gate.enforced_relation
     return inputs.toList.zipIdx.filterMap fun (operand, operandIndex) =>
-      match operand.weight with
-      | .negativeMultiplicity _ => none
-      | _ => some (gateIndex, operandIndex)
+      if operand.weight.isTable == tableSide then some (gateIndex, operandIndex) else none
   return groups.flatten
+
+/-- All query operand positions in the actual compiled layers. -/
+def queryLocators (circuit : Circuit) : Except String (List (Nat × Nat)) := locators circuit false
+
+/-- All table operand positions in the actual compiled layers. -/
+def tableLocators (circuit : Circuit) : Except String (List (Nat × Nat)) := locators circuit true
 
 /-- Resolve a selector against retained gate and definition arrays. -/
 def selectFrom (gates : Array GateArtifacts) (definitions : Array Definition)
@@ -166,7 +175,7 @@ def chainAddress : GKRAddress → Nat
   | .ScratchSpace index => 8 * index + 5
   | .Cached layer offset => 8 * Nat.pair layer offset + 6
 
-/-- A rational chain records the same query positions for its numerator and denominator. -/
+/-- A rational chain records the same operand positions for its numerator and denominator. -/
 abbrev ChainStore := Std.TreeMap Nat (Bool × List (Nat × Nat))
 
 /-- Read both parts of one actual rational chain. -/
@@ -181,13 +190,13 @@ def readChain (store : ChainStore) (pair : List GKRAddress) : Except String (Lis
   return left.2
 
 /-- Write the two distinct parts of one native rational chain. -/
-def writeChain (store : ChainStore) (pair : List GKRAddress) (queries : List (Nat × Nat)) :
+def writeChain (store : ChainStore) (pair : List GKRAddress) (positions : List (Nat × Nat)) :
     Except String ChainStore := do
   let [numerator, denominator] := pair | throw "Native lookup output is not a pair"
   unless numerator != denominator do throw "Native lookup pair aliases its two parts"
-  return (store.insert (chainAddress numerator) (false, queries)).insert (chainAddress denominator) (true, queries)
+  return (store.insert (chainAddress numerator) (false, positions)).insert (chainAddress denominator) (true, positions)
 
-/-- Follow native copies, primitive lookup leaves and rational additions in gate order. -/
+/-- Follow native copies, primitive query and table leaves and rational additions in gate order. -/
 def chainStep (store : ChainStore) (indexed : GateArtifacts × Nat) : Except String ChainStore := do
   let (gate, index) := indexed
   match gate.enforced_relation with
@@ -208,7 +217,7 @@ def chainStep (store : ChainStore) (indexed : GateArtifacts × Nat) : Except Str
     .LookupFromMaterializedBaseInputWithSetup _ _ output |
     .LookupFromMaterializedVectorInputWithSetup _ _ output |
     .LookupWithCachedDensAndSetup _ _ output | .LookupWithDensAndSetupExpressions _ _ output =>
-      writeChain store output.values.toList [(index, 0)]
+      writeChain store output.values.toList [(index, 0), (index, 1)]
   | .LookupUnbalancedPairWithMaterializedBaseInputs input _ output |
     .LookupUnbalancedPairWithMaterializedVectorInputs input _ output |
     .LookupUnbalancedPairWithVectorInputs input _ output =>
@@ -216,21 +225,27 @@ def chainStep (store : ChainStore) (indexed : GateArtifacts × Nat) : Except Str
       writeChain store output.values.toList (previous ++ [(index, 0)])
   | _ => return store
 
-/-- Each public lookup output identifies the group of every query in its native chain. -/
+/-- The lookup group of a public output: generic, 16-bit range or timestamp range. -/
+def outputGroup : OutputType → Option (Fin 3)
+  | .GenericLookup => some 0
+  | .Lookup16Bits => some 1
+  | .LookupTimestamps => some 2
+  | _ => none
+
+/-- The lookup groups of the public outputs, in output order. -/
+def outputGroups (circuit : Circuit) : List (Fin 3) :=
+  circuit.global_output_map.entries.toList.filterMap fun (kind, _) => outputGroup kind
+
+/-- Each public lookup output identifies the group of every operand in its native chain. -/
 def chainGroups (circuit : Circuit) : Except String (List ((Nat × Nat) × Fin 3)) := do
   let store ← (compiledGates circuit).toList.zipIdx.foldlM chainStep ∅
   let groups ← circuit.global_output_map.entries.toList.mapM fun (kind, output) => do
-    let group : Option (Fin 3) := match kind with
-      | .GenericLookup => some 0
-      | .Lookup16Bits => some 1
-      | .LookupTimestamps => some 2
-      | _ => none
-    match group with
+    match outputGroup kind with
     | none => return []
-    | some group => return (← readChain store output.toList).map (fun query => (query, group))
+    | some group => return (← readChain store output.toList).map (fun operand => (operand, group))
   return groups.flatten
 
-/-- Each query selector belongs to exactly one native output chain with the same group. -/
+/-- Each selector belongs to exactly one native output chain with the same group. -/
 def groupsAgree (circuit : Circuit) (selectors : List Selector) : Bool :=
   match chainGroups circuit with
   | .error _ => false
@@ -260,5 +275,30 @@ structure Arguments {Index : Type} (circuit : Circuit) (selectors : List Selecto
   binding : ∀ group, requests circuit selectors physical group = .ok (tuples group)
   /-- Natural multiplicities give exact matching with independently interpreted setup rows. -/
   matching : GroupedLookupArguments tables tuples
+
+/-- The witness columns that the layout declares for the multiplicities of a lookup group. -/
+def multiplicityColumns (circuit : Circuit) (group : Fin 3) : ColumnRange :=
+  if group.val = 0 then circuit.witness_layout.multiplicities_columns_for_generic_lookup
+  else if group.val = 1 then circuit.witness_layout.multiplicities_columns_for_range_check_16
+  else circuit.witness_layout.multiplicities_columns_for_timestamp_range_check
+
+/-- The table operand of a lookup group. The declared multiplicity column weights the setup columns of the group.
+    Group 0 reads the generic setup columns `0, …, width - 1` in order. Group 1 reads the virtual 16-bit range
+    column. Group 2 reads the virtual timestamp range column. -/
+def tableOperand (circuit : Circuit) (group : Fin 3) : Operand :=
+  ⟨.negativeMultiplicity (.BaseLayerWitness (multiplicityColumns circuit group).start),
+    if group.val = 0 then .setup ⟨(List.range circuit.generic_lookup_tables_width).map .Setup⟩
+    else if group.val = 1 then .address (.VirtualSetup .RangeCheck16Bits)
+    else .address (.VirtualSetup .RangeCheckTimestamp)⟩
+
+/-- The table side of every lookup group reads the columns of `tableOperand`. The table selectors cover every
+    table operand once, in order. Each public lookup output has exactly one table selector, and each table
+    selector belongs to the native output chain of its group. -/
+def TableSidesRead (circuit : Circuit) : Prop :=
+  ∃ tables : List Selector,
+    tableLocators circuit = .ok (tables.map fun selector => (selector.gate, selector.operand)) ∧
+    (tables.map Selector.group).Perm (outputGroups circuit) ∧
+    (∀ selector ∈ tables, select circuit selector = .ok (tableOperand circuit selector.group)) ∧
+    groupsAgree circuit tables = true
 
 end Airbender.Compiler.NativeLookups
