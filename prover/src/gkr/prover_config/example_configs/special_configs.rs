@@ -175,11 +175,17 @@ pub mod l1_wrap {
     pub const MAX_POW_BITS: u32 = 30;
 
     const BASE_LDE_FACTOR: usize = 1 << 7;
-    const WHIR_STEPS_LDE_FACTORS: [usize; 4] = [1 << 8, 1 << 12, 1 << 16, 1 << 20];
+    const WHIR_STEPS_LDE_FACTORS: [usize; 4] = [1 << 8, 1 << 12, 1 << 17, 1 << 21];
 
     /// Each round uses the least PoW satisfying `6 * pow + 5 * queries * rate_bits >= 600`.
-    pub const POW_BITS: [u32; 5] = [30, 27, 30, 20, 17];
+    pub const POW_BITS: [u32; 5] = [30, 27, 30, 30, 30];
 
+    /// Conditional 100-bit pessimistic accounting: queries contribute r/1.2 bits
+    /// (`PessimisticConjectureMode` in `whir/proximity_testing_modes.rs`); the
+    /// linear proximity-gap charge in `pow_bits.rs` is applied to each fold.
+    /// With mu = 37/2^128, the assumed list ceilings are
+    /// [522360887, 336, 5387, 172384, 2758157], including every RS substep. Nominal-100 shifts
+    /// have an accepted deficit below 10^-6 bit. These are conjectural bounds.
     pub fn packed_prover_config() -> ProverConfig {
         const CAP_SIZE: usize = 8;
         let level = SecurityLevel::Sec100;
@@ -197,15 +203,31 @@ pub mod l1_wrap {
             cap_size: CAP_SIZE,
             sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
             security_level: level,
-            whir_schedule: WhirSchedule::from_legacy_arrays(
-                BASE_LDE_FACTOR,
-                CAP_SIZE,
-                PACK_LOG2,
-                &[1, 4, 4, 4, 4],
-                &queries_and_pow.iter().map(|(q, _)| *q).collect::<Vec<_>>(),
-                &WHIR_STEPS_LDE_FACTORS,
-                &queries_and_pow.iter().map(|(_, p)| *p).collect::<Vec<_>>(),
-            ),
+            whir_schedule: WhirSchedule {
+                cap_size: CAP_SIZE,
+                base_round: crate::gkr::prover_config::WhirBaseRoundSchedule {
+                    lde_factor_log2: BASE_LDE_FACTOR.trailing_zeros() as usize,
+                    physical_packing_log2: PACK_LOG2,
+                    fold_log2: 1,
+                    batching_pow_bits: None,
+                    folding_pow_bits: 9,
+                    num_queries: queries_and_pow[0].0,
+                    queries_pow_bits: queries_and_pow[0].1,
+                },
+                internal_rounds: WHIR_STEPS_LDE_FACTORS
+                    .iter()
+                    .enumerate()
+                    .map(|(i, lde)| crate::gkr::prover_config::WhirInternalRound {
+                        lde_factor_log2: lde.trailing_zeros() as usize,
+                        folding_log2: [4, 5, 4, 4][i],
+                        num_queries: queries_and_pow[i + 1].0,
+                        queries_pow_bits: queries_and_pow[i + 1].1,
+                        folding_pow_bits: 9,
+                        num_ood_samples: 1,
+                        ood_pow_bits: [16, 20, 25, 29][i],
+                    })
+                    .collect(),
+            },
         }
     }
 }

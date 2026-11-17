@@ -36,28 +36,28 @@ The fallback rejects `mload(0x40) > MINIMUM_FREE_HEAP_PTR` (2048 / `0x800`) befo
 | IMAGE | `IMAGE_PTR` | 16480 / `0x4060` | 12224 / `0x2fc0` | 28704 / `0x7020` | Decoded GKR calldata image |
 | WHIR_SEED_PTR | `__TEMPLATE_WHIR_SEED_PTR` | 28704 / `0x7020` | 288 / `0x120` | 28992 / `0x7140` | WHIR transcript seed and absorb scratch |
 | WHIR_Z_PTR | `__TEMPLATE_WHIR_Z_PTR` | 28992 / `0x7140` | 768 / `0x300` | 29760 / `0x7440` | Opening-point coordinates |
-| WHIR_POW_PTR | `__TEMPLATE_WHIR_POW_PTR` | 29760 / `0x7440` | 3840 / `0xf00` | 33600 / `0x8340` | Deferred OOD and query constraints |
-| WHIR_ACC_PREF_PTR | `__TEMPLATE_WHIR_ACC_PREF_PTR` | 33600 / `0x8340` | 32 / `0x20` | 33632 / `0x8360` | Accumulated prefix product |
-| WHIR_GAMMA_PTR | `__TEMPLATE_WHIR_GAMMA_PTR` | 33632 / `0x8360` | 448 / `0x1c0` | 34080 / `0x8520` | Base-column batching challenges |
-| WHIR_FOLD_CH_PTR | `__TEMPLATE_WHIR_FOLD_CH_PTR` | 34080 / `0x8520` | 128 / `0x80` | 34208 / `0x85a0` | Round folding challenges |
-| WHIR_HPO_PTR | `__TEMPLATE_WHIR_HPO_PTR` | 34208 / `0x85a0` | 32 / `0x20` | 34240 / `0x85c0` | Round-0 high-power offsets |
-| WHIR_FBUF_PTR | `__TEMPLATE_WHIR_FBUF_PTR` | 34240 / `0x85c0` | 512 / `0x200` | 34752 / `0x87c0` | Folded leaf scratch |
-| WHIR_LEAF_PTR | `__TEMPLATE_WHIR_LEAF_PTR` | 34752 / `0x87c0` | 384 / `0x180` | 35136 / `0x8940` | Merkle leaf hashing scratch |
-| WHIR_REG_CD | `__TEMPLATE_WHIR_REG_CD` | 35136 / `0x8940` | 32 / `0x20` | 35168 / `0x8960` | Calldata cursor |
-| WHIR_REG_CLAIM | `__TEMPLATE_WHIR_REG_CLAIM` | 35168 / `0x8960` | 32 / `0x20` | 35200 / `0x8980` | Current opening claim |
-| WHIR_REG_NUMPOW | `__TEMPLATE_WHIR_REG_NUMPOW` | 35200 / `0x8980` | 32 / `0x20` | 35232 / `0x89a0` | Deferred constraint count |
-| WHIR_REG_ZIOFF | `__TEMPLATE_WHIR_REG_ZIOFF` | 35232 / `0x89a0` | 32 / `0x20` | 35264 / `0x89c0` | Opening coordinate cursor |
-| WHIR_REG_CC | `__TEMPLATE_WHIR_REG_CC` | 35264 / `0x89c0` | 32 / `0x20` | 35296 / `0x89e0` | Current claim correction |
-| WHIR_REG_CURDELIN | `__TEMPLATE_WHIR_REG_CURDELIN` | 35296 / `0x89e0` | 32 / `0x20` | 35328 / `0x8a00` | Current delinearization challenge |
-| WHIR_BCAP0_PTR | `__TEMPLATE_WHIR_BCAP0_PTR` | 35328 / `0x8a00` | 256 / `0x100` | 35584 / `0x8b00` | Base oracle cap |
-| WHIR_QCAP_PTR | `__TEMPLATE_WHIR_QCAP_PTR` | 35584 / `0x8b00` | 256 / `0x100` | 35840 / `0x8c00` | Current oracle cap |
-| WHIR_NCAP_PTR | `__TEMPLATE_WHIR_NCAP_PTR` | 35840 / `0x8c00` | 256 / `0x100` | 36096 / `0x8d00` | Next oracle cap |
-| WHIR_QIDX_BUF_PTR | `__TEMPLATE_WHIR_QIDX_BUF_PTR` | 36096 / `0x8d00` | 384 / `0x180` | 36480 / `0x8e80` | Query indices |
-| WHIR_DRAW_BUF_PTR | `__TEMPLATE_WHIR_DRAW_BUF_PTR` | 36480 / `0x8e80` | 512 / `0x200` | 36992 / `0x9080` | Transcript query-draw scratch |
-| WHIR_MONO_PTR | `__TEMPLATE_WHIR_MONO_PTR` | 36992 / `0x9080` | 4096 / `0x1000` | 41088 / `0xa080` | Final polynomial monomials |
-| WHIR_FEVAL_PTR | `__TEMPLATE_WHIR_FEVAL_PTR` | 41088 / `0xa080` | 4096 / `0x1000` | 45184 / `0xb080` | Final polynomial absorb and fold scratch |
+| WHIR_POW_PTR | `__TEMPLATE_WHIR_POW_PTR` | 29760 / `0x7440` | 3744 / `0xea0` | 33504 / `0x82e0` | Deferred OOD and query constraints |
+| WHIR_ACC_PREF_PTR | `__TEMPLATE_WHIR_ACC_PREF_PTR` | 33504 / `0x82e0` | 32 / `0x20` | 33536 / `0x8300` | Accumulated prefix product |
+| WHIR_GAMMA_PTR | `__TEMPLATE_WHIR_GAMMA_PTR` | 33536 / `0x8300` | 448 / `0x1c0` | 33984 / `0x84c0` | Base-column batching challenges |
+| WHIR_FOLD_CH_PTR | `__TEMPLATE_WHIR_FOLD_CH_PTR` | 33984 / `0x84c0` | 160 / `0xa0` | 34144 / `0x8560` | Round folding challenges |
+| WHIR_HPO_PTR | `__TEMPLATE_WHIR_HPO_PTR` | 34144 / `0x8560` | 32 / `0x20` | 34176 / `0x8580` | Round-0 high-power offsets |
+| WHIR_FBUF_PTR | `__TEMPLATE_WHIR_FBUF_PTR` | 34176 / `0x8580` | 1024 / `0x400` | 35200 / `0x8980` | Folded leaf scratch |
+| WHIR_LEAF_PTR | `__TEMPLATE_WHIR_LEAF_PTR` | 35200 / `0x8980` | 512 / `0x200` | 35712 / `0x8b80` | Merkle leaf hashing scratch |
+| WHIR_REG_CD | `__TEMPLATE_WHIR_REG_CD` | 35712 / `0x8b80` | 32 / `0x20` | 35744 / `0x8ba0` | Calldata cursor |
+| WHIR_REG_CLAIM | `__TEMPLATE_WHIR_REG_CLAIM` | 35744 / `0x8ba0` | 32 / `0x20` | 35776 / `0x8bc0` | Current opening claim |
+| WHIR_REG_NUMPOW | `__TEMPLATE_WHIR_REG_NUMPOW` | 35776 / `0x8bc0` | 32 / `0x20` | 35808 / `0x8be0` | Deferred constraint count |
+| WHIR_REG_ZIOFF | `__TEMPLATE_WHIR_REG_ZIOFF` | 35808 / `0x8be0` | 32 / `0x20` | 35840 / `0x8c00` | Opening coordinate cursor |
+| WHIR_REG_CC | `__TEMPLATE_WHIR_REG_CC` | 35840 / `0x8c00` | 32 / `0x20` | 35872 / `0x8c20` | Current claim correction |
+| WHIR_REG_CURDELIN | `__TEMPLATE_WHIR_REG_CURDELIN` | 35872 / `0x8c20` | 32 / `0x20` | 35904 / `0x8c40` | Current delinearization challenge |
+| WHIR_BCAP0_PTR | `__TEMPLATE_WHIR_BCAP0_PTR` | 35904 / `0x8c40` | 256 / `0x100` | 36160 / `0x8d40` | Base oracle cap |
+| WHIR_QCAP_PTR | `__TEMPLATE_WHIR_QCAP_PTR` | 36160 / `0x8d40` | 256 / `0x100` | 36416 / `0x8e40` | Current oracle cap |
+| WHIR_NCAP_PTR | `__TEMPLATE_WHIR_NCAP_PTR` | 36416 / `0x8e40` | 256 / `0x100` | 36672 / `0x8f40` | Next oracle cap |
+| WHIR_QIDX_BUF_PTR | `__TEMPLATE_WHIR_QIDX_BUF_PTR` | 36672 / `0x8f40` | 384 / `0x180` | 37056 / `0x90c0` | Query indices |
+| WHIR_DRAW_BUF_PTR | `__TEMPLATE_WHIR_DRAW_BUF_PTR` | 37056 / `0x90c0` | 512 / `0x200` | 37568 / `0x92c0` | Transcript query-draw scratch |
+| WHIR_MONO_PTR | `__TEMPLATE_WHIR_MONO_PTR` | 37568 / `0x92c0` | 2048 / `0x800` | 39616 / `0x9ac0` | Final polynomial monomials |
+| WHIR_FEVAL_PTR | `__TEMPLATE_WHIR_FEVAL_PTR` | 39616 / `0x9ac0` | 2048 / `0x800` | 41664 / `0xa2c0` | Final polynomial absorb and fold scratch |
 
-Heap end: 45184 / `0xb080`.
+Heap end: 41664 / `0xa2c0`.
 
 ## SEED word layout
 

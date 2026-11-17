@@ -438,8 +438,8 @@ contract WhirVerifier {
             mstore(__TEMPLATE_WHIR_REG_CC, addmod(mload(__TEMPLATE_WHIR_REG_CC), mulmod(folded, cur, P), P))
         }
 
-        // The OOD absorb is seed32 || value16 = 48 bytes; shr(128, word) extracts that u128 value.
-        function do_internal(r, fold, q, pow_bits, qib, vp, cb) {
+        // OOD point PoW precedes its draw; the absorb is seed32 || one raw u128 value.
+        function do_internal(r, fold, q, pow_bits, ood_pow_bits, qib, vp, cb) {
             let cp := mload(__TEMPLATE_WHIR_REG_CD)
             // read + absorb the next oracle's __TEMPLATE_WHIR_CAP (__TEMPLATE_WHIR_CAP*32 bytes)
             // keep BE digests for Merkle roots; absorb LE-word copies (commit_u32_with_seed)
@@ -450,10 +450,11 @@ contract WhirVerifier {
             }
             mstore(__TEMPLATE_WHIR_SEED_PTR, keccak256(__TEMPLATE_WHIR_SEED_PTR, add(32, mul(__TEMPLATE_WHIR_CAP, 32))))
             cp := add(cp, mul(__TEMPLATE_WHIR_CAP, __TEMPLATE_DIGEST_BYTES))
+            if ood_pow_bits {
+                cp := verify_pow(cp, ood_pow_bits)
+            }
             let ood_point := draw1()
             let ood_value := shr(128, calldataload(cp))
-            // do_internal rejects ood_value >= P here before absorbing its raw bytes;
-            // this binds the transcript to a canonical field value.
             if iszero(lt(ood_value, P)) { revert(0, 0) }
             calldatacopy(add(__TEMPLATE_WHIR_SEED_PTR, 32), cp, 16)
             mstore(__TEMPLATE_WHIR_SEED_PTR, keccak256(__TEMPLATE_WHIR_SEED_PTR, 48))
@@ -560,7 +561,7 @@ contract WhirVerifier {
 
         for { let r := 0 } lt(r, __TEMPLATE_WHIR_NUM_ROUNDS) { r := add(r, 1) } {
             // `cb` = coset bits = log2(LDE factor) for this round's oracle tree.
-            let fold, q, pow_bits, qib, vp, cb
+            let fold, q, pow_bits, fold_pow_bits, ood_pow_bits, qib, vp, cb
             // __WHIR_SCHEDULE_SWITCH__
 
             {
@@ -577,6 +578,9 @@ contract WhirVerifier {
                 mstore(add(__TEMPLATE_WHIR_SEED_PTR, 32), or(shl(128, c0), c1))
                 mstore(add(__TEMPLATE_WHIR_SEED_PTR, 64), shl(128, c2))
                 mstore(__TEMPLATE_WHIR_SEED_PTR, keccak256(__TEMPLATE_WHIR_SEED_PTR, 80))
+                if fold_pow_bits {
+                    mstore(__TEMPLATE_WHIR_REG_CD, verify_pow(mload(__TEMPLATE_WHIR_REG_CD), fold_pow_bits))
+                }
                 let alpha := draw1()
                 mstore(__TEMPLATE_WHIR_REG_CLAIM,
                     addmod(mulmod(addmod(mulmod(c2, alpha, P), c1, P), alpha, P), c0, P))
@@ -588,7 +592,7 @@ contract WhirVerifier {
             }
 
             switch lt(r, sub(__TEMPLATE_WHIR_NUM_ROUNDS, 1))
-            case 1 { do_internal(r, fold, q, pow_bits, qib, vp, cb) }
+            case 1 { do_internal(r, fold, q, pow_bits, ood_pow_bits, qib, vp, cb) }
             default { do_final(fold, q, pow_bits, qib, vp, mload(__TEMPLATE_WHIR_REG_ZIOFF), rfin, cb) }
         }
 

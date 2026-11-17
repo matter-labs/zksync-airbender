@@ -200,6 +200,7 @@ contract MergedTest is MergedBase {
 
     function test_rejects_whir_sumcheck_pad() external {
         _rejectsRunPad("whir_0_sumcheck");
+        _rejectsRunPad("whir_2_sumcheck"); // fold 5: ten fields, then five folding nonces
     }
 
     function test_rejects_setup_leaf_pad() external {
@@ -296,6 +297,26 @@ contract MergedTest is MergedBase {
                 "../negative/query_pow_", vm.toString(r), "/out/GkrWhirVerifier.sol/GkrWhirVerifier.json"
             ));
             require(_rejects(control, proof), string.concat("query PoW check missing at round ", vm.toString(r)));
+        }
+    }
+
+    function test_rejects_folding_pow() external {
+        uint256 rounds = vm.parseJsonUint(fields, ".whir_rounds");
+        for (uint256 r; r < rounds; ++r) {
+            address control = _deploy(string.concat(
+                "../negative/folding_pow_", vm.toString(r), "/out/GkrWhirVerifier.sol/GkrWhirVerifier.json"
+            ));
+            require(_rejects(control, proof), string.concat("folding PoW check missing at round ", vm.toString(r)));
+        }
+    }
+
+    function test_rejects_ood_pow() external {
+        uint256 rounds = vm.parseJsonUint(fields, ".whir_rounds");
+        for (uint256 r; r + 1 < rounds; ++r) {
+            address control = _deploy(string.concat(
+                "../negative/ood_pow_", vm.toString(r), "/out/GkrWhirVerifier.sol/GkrWhirVerifier.json"
+            ));
+            require(_rejects(control, proof), string.concat("OOD PoW check missing at oracle ", vm.toString(r + 1)));
         }
     }
 

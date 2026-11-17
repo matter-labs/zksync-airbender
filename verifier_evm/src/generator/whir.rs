@@ -24,6 +24,9 @@ pub struct WhirGenConfig {
     pub folds: Vec<usize>,   // whir_steps_schedule
     pub queries: Vec<usize>, // whir_queries_schedule
     pub pow_bits: Vec<u32>,  // whir_pow_schedule
+    pub folding_pow_bits: Vec<u32>,
+    /// OOD difficulty for each intermediate oracle (committed by rounds 0..N-1).
+    pub ood_pow_bits: Vec<u32>,
     pub cap_size: usize,
     pub cap_log2: usize,
     pub pack_log2: usize,
@@ -48,22 +51,10 @@ impl WhirGenConfig {
             !schedule.is_virtual_packing(),
             "the compressed calldata requires a folded base round"
         );
-        assert_eq!(
-            schedule.base_round.folding_pow_bits, 0,
-            "the compressed calldata does not encode base folding PoW"
-        );
         for round in &schedule.internal_rounds {
             assert_eq!(
                 round.num_ood_samples, 1,
-                "the compressed calldata encodes one OOD sample per oracle"
-            );
-            assert_eq!(
-                round.ood_pow_bits, 0,
-                "the compressed calldata does not encode OOD PoW"
-            );
-            assert_eq!(
-                round.folding_pow_bits, 0,
-                "the compressed calldata does not encode folding PoW"
+                "the compressed calldata encodes exactly one OOD sample"
             );
         }
         let pack_log2 = prover_config.pack_log2();
@@ -71,11 +62,33 @@ impl WhirGenConfig {
         let folds = schedule.fold_steps();
         let queries = schedule.queries_per_round();
         let pow_bits = schedule.queries_pow_bits_per_round();
+        let folding_pow_bits: Vec<_> = core::iter::once(schedule.base_round.folding_pow_bits)
+            .chain(schedule.internal_rounds.iter().map(|r| r.folding_pow_bits))
+            .collect();
+        let ood_pow_bits: Vec<_> = schedule
+            .internal_rounds
+            .iter()
+            .map(|r| r.ood_pow_bits)
+            .collect();
         for &bits in &pow_bits {
             // Keep every query check representable by shr(sub(256, bits), digest).
             assert!(
                 bits <= l1_wrap::MAX_POW_BITS,
                 "query PoW {bits} exceeds cap {}",
+                l1_wrap::MAX_POW_BITS
+            );
+        }
+        for &bits in &folding_pow_bits {
+            assert!(
+                bits <= l1_wrap::MAX_POW_BITS,
+                "folding PoW exceeds cap {}",
+                l1_wrap::MAX_POW_BITS
+            );
+        }
+        for &bits in &ood_pow_bits {
+            assert!(
+                bits <= l1_wrap::MAX_POW_BITS,
+                "OOD PoW exceeds cap {}",
                 l1_wrap::MAX_POW_BITS
             );
         }
@@ -146,6 +159,8 @@ impl WhirGenConfig {
             folds,
             queries,
             pow_bits,
+            folding_pow_bits,
+            ood_pow_bits,
             cap_size: schedule.cap_size,
             cap_log2,
             pack_log2,
@@ -236,6 +251,8 @@ impl WhirGenConfig {
             let fold = self.folds[r];
             let q = self.queries[r];
             let pow = self.pow_bits[r];
+            let fold_pow = self.folding_pow_bits[r];
+            let ood_pow = self.ood_pow_bits.get(r).copied().unwrap_or(0);
             let vp = 1usize << fold;
             let qib = self.qib(r);
             let cb = self.base_lde_bits + prefolds;
@@ -246,7 +263,7 @@ impl WhirGenConfig {
                 format!("case {r}")
             };
             out.push_str(&format!(
-                "            // Round {r}: fold {fold} variables, {q} queries at {pow} PoW bits, {qib}-bit indices; {vp} values per leaf, {cb} coset bits.\n            {selector} {{ fold := {fold} q := {q} pow_bits := {pow} qib := {qib} vp := {vp} cb := {cb} }}\n"
+                "            // Round {r}: fold {fold} variables at {fold_pow} PoW bits; {q} queries at {pow} PoW bits, OOD PoW {ood_pow}; {qib}-bit indices, {vp} values per leaf, {cb} coset bits.\n            {selector} {{ fold := {fold} q := {q} pow_bits := {pow} fold_pow_bits := {fold_pow} ood_pow_bits := {ood_pow} qib := {qib} vp := {vp} cb := {cb} }}\n"
             ));
         }
         out
@@ -264,7 +281,7 @@ impl WhirGenConfig {
         let cap_bytes = cap.mul(&Lit::num(32));
         let w32 = Lit::num(32);
         let slot = |n: usize| Lit::num(n as u128).mul(&w32);
-        // Constraint entries (push_pow, 96 B each): every internal round pushes 1 OOD point + 1 per
+        // Constraint entries (push_pow, 96 B each): every internal round pushes one OOD point + 1 per
         // query; the final round pushes none.
         let numpow: usize = (0..self.num_rounds - 1).map(|r| self.queries[r] + 1).sum();
         // LEAF scratch: round 0 hashes each base oracle's leaf separately (merged_mw or
@@ -293,13 +310,10 @@ impl WhirGenConfig {
             .max()
             .unwrap();
         let nmono = Lit::pow2(self.rfin as u128);
-        // seed word + the largest in-place absorb: the intermediate cap (cap·32 B), or the
-        // 48-B sumcheck poly / 16-B ood value / 8-B PoW nonce (all < 64 B)
-        let seed = if cap_bytes.value >= 64 {
-            w32.add(&cap_bytes)
-        } else {
-            w32.add(&Lit::num(64))
-        };
+        // Seed plus the largest in-place absorb: the cap, three u128 sumcheck
+        // coefficients, the single OOD value, or the PoW nonce.
+        let absorb_bytes = cap_bytes.value.max(64);
+        let seed = w32.add(&Lit::num(absorb_bytes));
         vec![
             ("SEED_PTR", seed, "WHIR transcript seed and absorb scratch"),
             ("Z_PTR", slot(self.nz), "Opening-point coordinates"),

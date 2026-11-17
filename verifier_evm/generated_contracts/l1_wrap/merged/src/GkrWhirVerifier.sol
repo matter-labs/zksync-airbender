@@ -175,7 +175,7 @@ contract GkrWhirVerifierCode {
     uint256 constant __TEMPLATE_WHIR_GEN     = 0x0293B319B108C8A856BF8B8AB7799ECD;
     uint256 constant __TEMPLATE_WHIR_GEN_INV = 0x0290A0CB0CAD8AC9DAFCDC73EBD1A223;
     uint256 constant __TEMPLATE_WHIR_NUM_ROUNDS   = 5;
-    uint256 constant __TEMPLATE_WHIR_RFIN         = 24 - (1 + 4 + 4 + 4 + 4);  // final-poly log2 = message_log2 - sum(folds)
+    uint256 constant __TEMPLATE_WHIR_RFIN         = 24 - (1 + 4 + 5 + 4 + 4);  // final-poly log2 = message_log2 - sum(folds)
     // Merkle cap: each commitment is a cap of 2^CAP_LOG2 hashes, so a Merkle path is CAP_LOG2
     // levels shorter. Caps shrink paths but grow every commitment to CAP*32 bytes.
     uint256 constant __TEMPLATE_WHIR_CAP_LOG2 = 3;
@@ -200,31 +200,31 @@ contract GkrWhirVerifierCode {
     uint256 constant __TEMPLATE_WHIR_SEED_PTR     = 28704;  // seed + in-place absorb scratch
     uint256 constant __TEMPLATE_WHIR_Z_PTR        = 28992;  // z: the evaluation-point coords
     uint256 constant __TEMPLATE_WHIR_POW_PTR      = 29760;  // (scalar, running eq, coefficient) x numpow
-    uint256 constant __TEMPLATE_WHIR_ACC_PREF_PTR = 33600;
-    uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = 33632;  // one gamma power per batched base column
-    uint256 constant __TEMPLATE_WHIR_FOLD_CH_PTR  = 34080;  // max_fold challenges
-    uint256 constant __TEMPLATE_WHIR_HPO_PTR      = 34208;  // 2^(fold_0 - 1) high-power offsets (round 0)
-    uint256 constant __TEMPLATE_WHIR_FBUF_PTR     = 34240;  // 2^max_fold folding buffer
-    uint256 constant __TEMPLATE_WHIR_LEAF_PTR     = 34752;  // leaf hashing scratch
-    uint256 constant __TEMPLATE_WHIR_REG_CD       = 35136;  // calldata cursor
-    uint256 constant __TEMPLATE_WHIR_REG_CLAIM    = 35168;
-    uint256 constant __TEMPLATE_WHIR_REG_NUMPOW   = 35200;
-    uint256 constant __TEMPLATE_WHIR_REG_ZIOFF    = 35232;
-    uint256 constant __TEMPLATE_WHIR_REG_CC       = 35264;
-    uint256 constant __TEMPLATE_WHIR_REG_CURDELIN = 35296;
+    uint256 constant __TEMPLATE_WHIR_ACC_PREF_PTR = 33504;
+    uint256 constant __TEMPLATE_WHIR_GAMMA_PTR    = 33536;  // one gamma power per batched base column
+    uint256 constant __TEMPLATE_WHIR_FOLD_CH_PTR  = 33984;  // max_fold challenges
+    uint256 constant __TEMPLATE_WHIR_HPO_PTR      = 34144;  // 2^(fold_0 - 1) high-power offsets (round 0)
+    uint256 constant __TEMPLATE_WHIR_FBUF_PTR     = 34176;  // 2^max_fold folding buffer
+    uint256 constant __TEMPLATE_WHIR_LEAF_PTR     = 35200;  // leaf hashing scratch
+    uint256 constant __TEMPLATE_WHIR_REG_CD       = 35712;  // calldata cursor
+    uint256 constant __TEMPLATE_WHIR_REG_CLAIM    = 35744;
+    uint256 constant __TEMPLATE_WHIR_REG_NUMPOW   = 35776;
+    uint256 constant __TEMPLATE_WHIR_REG_ZIOFF    = 35808;
+    uint256 constant __TEMPLATE_WHIR_REG_CC       = 35840;
+    uint256 constant __TEMPLATE_WHIR_REG_CURDELIN = 35872;
     // cap regions (CAP*32 bytes each)
-    uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = 35328;  // memory+witness base-oracle cap
-    uint256 constant __TEMPLATE_WHIR_QCAP_PTR     = 35584;  // current query cap (rounds >= 1)
-    uint256 constant __TEMPLATE_WHIR_NCAP_PTR     = 35840;  // just-read intermediate cap
+    uint256 constant __TEMPLATE_WHIR_BCAP0_PTR    = 35904;  // memory+witness base-oracle cap
+    uint256 constant __TEMPLATE_WHIR_QCAP_PTR     = 36160;  // current query cap (rounds >= 1)
+    uint256 constant __TEMPLATE_WHIR_NCAP_PTR     = 36416;  // just-read intermediate cap
     // Per-round query drawing (matches prover `draw_query_bits`/`BitSource`):
     //   QIDX_BUF holds the drawn query indices (max_q words);
     //   DRAW_BUF holds the little-endian u32 words squeezed from the seed (one per slot).
-    uint256 constant __TEMPLATE_WHIR_QIDX_BUF_PTR = 36096;
-    uint256 constant __TEMPLATE_WHIR_DRAW_BUF_PTR = 36480;
+    uint256 constant __TEMPLATE_WHIR_QIDX_BUF_PTR = 36672;
+    uint256 constant __TEMPLATE_WHIR_DRAW_BUF_PTR = 37056;
     // do_final scratch: the plain-text tail is 2^RFIN monomials (MONO), then the tail absorb +
     // halving-fold scratch (FEVAL, 2^RFIN words).
-    uint256 constant __TEMPLATE_WHIR_MONO_PTR     = 36992;
-    uint256 constant __TEMPLATE_WHIR_FEVAL_PTR    = 41088;
+    uint256 constant __TEMPLATE_WHIR_MONO_PTR     = 37568;
+    uint256 constant __TEMPLATE_WHIR_FEVAL_PTR    = 39616;
 
     fallback(bytes calldata) external returns (bytes memory) {
         // The verified statement, assembled from the preimage inside the assembly block (mark_word)
@@ -2451,8 +2451,8 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             mstore(__TEMPLATE_WHIR_REG_CC, addmod(mload(__TEMPLATE_WHIR_REG_CC), mulmod(folded, cur, P), P))
         }
 
-        // The OOD absorb is seed32 || value16 = 48 bytes; shr(128, word) extracts that u128 value.
-        function do_internal(r, fold, q, pow_bits, qib, vp, cb) {
+        // OOD point PoW precedes its draw; the absorb is seed32 || one raw u128 value.
+        function do_internal(r, fold, q, pow_bits, ood_pow_bits, qib, vp, cb) {
             let cp := mload(__TEMPLATE_WHIR_REG_CD)
             // read + absorb the next oracle's __TEMPLATE_WHIR_CAP (__TEMPLATE_WHIR_CAP*32 bytes)
             // keep BE digests for Merkle roots; absorb LE-word copies (commit_u32_with_seed)
@@ -2463,10 +2463,11 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             }
             mstore(__TEMPLATE_WHIR_SEED_PTR, keccak256(__TEMPLATE_WHIR_SEED_PTR, add(32, mul(__TEMPLATE_WHIR_CAP, 32))))
             cp := add(cp, mul(__TEMPLATE_WHIR_CAP, __TEMPLATE_DIGEST_BYTES))
+            if ood_pow_bits {
+                cp := verify_pow(cp, ood_pow_bits)
+            }
             let ood_point := draw1()
             let ood_value := shr(128, calldataload(cp))
-            // do_internal rejects ood_value >= P here before absorbing its raw bytes;
-            // this binds the transcript to a canonical field value.
             if iszero(lt(ood_value, P)) { revert(0, 0) }
             calldatacopy(add(__TEMPLATE_WHIR_SEED_PTR, 32), cp, 16)
             mstore(__TEMPLATE_WHIR_SEED_PTR, keccak256(__TEMPLATE_WHIR_SEED_PTR, 48))
@@ -2488,11 +2489,11 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             copy_cap(__TEMPLATE_WHIR_QCAP_PTR, __TEMPLATE_WHIR_NCAP_PTR) // this round's intermediate cap is next round's query cap
         }
 
-        // 128 monomial coefficients, one 32-byte word each; highest coefficient at byte 4064.
+        // 64 monomial coefficients, one 32-byte word each; highest coefficient at byte 2016.
         // Process blocks of 8 words (256 bytes), offsets 224/192/160/128/96/64/32/0;
         // stop at byte 224, then finish the 7 remaining low coefficients.
-        function horner_128(x) -> ev {
-            let ptr := add(__TEMPLATE_WHIR_MONO_PTR, 4064)
+        function horner_64(x) -> ev {
+            let ptr := add(__TEMPLATE_WHIR_MONO_PTR, 2016)
             let end := add(__TEMPLATE_WHIR_MONO_PTR, 224)
             ev := mload(ptr)
             for { } gt(ptr, end) { } {
@@ -2551,7 +2552,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
                 // with the plain monomial tensor
                 let folded := fold_multilinear(fold)
                 let qp := exp_pow2(base_root, fold)
-                sink2(horner_128(qp), folded)
+                sink2(horner_64(qp), folded)
             }
             mstore(__TEMPLATE_WHIR_REG_CD, cp)
 
@@ -2574,7 +2575,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             for { let e := 0 } lt(e, n) { e := add(e, 1) } {
                 let b := add(__TEMPLATE_WHIR_POW_PTR, mul(e, 96))
                 let weight := mulmod(mload(add(b, 32)), mload(add(b, 64)), P)
-                let ev := mulmod(horner_128(mload(b)), weight, P)
+                let ev := mulmod(horner_64(mload(b)), weight, P)
                 expected := addmod(expected, ev, P)
             }
             sink2(expected, mload(__TEMPLATE_WHIR_REG_CLAIM))
@@ -2598,18 +2599,18 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
 
         for { let r := 0 } lt(r, __TEMPLATE_WHIR_NUM_ROUNDS) { r := add(r, 1) } {
             // `cb` = coset bits = log2(LDE factor) for this round's oracle tree.
-            let fold, q, pow_bits, qib, vp, cb
+            let fold, q, pow_bits, fold_pow_bits, ood_pow_bits, qib, vp, cb
             switch r
-            // Round 0: fold 1 variables, 12 queries at 30 PoW bits, 30-bit indices; 2 values per leaf, 7 coset bits.
-            case 0 { fold := 1 q := 12 pow_bits := 30 qib := 30 vp := 2 cb := 7 }
-            // Round 1: fold 4 variables, 11 queries at 27 PoW bits, 27-bit indices; 16 values per leaf, 8 coset bits.
-            case 1 { fold := 4 q := 11 pow_bits := 27 qib := 27 vp := 16 cb := 8 }
-            // Round 2: fold 4 variables, 7 queries at 30 PoW bits, 27-bit indices; 16 values per leaf, 12 coset bits.
-            case 2 { fold := 4 q := 7 pow_bits := 30 qib := 27 vp := 16 cb := 12 }
-            // Round 3: fold 4 variables, 6 queries at 20 PoW bits, 27-bit indices; 16 values per leaf, 16 coset bits.
-            case 3 { fold := 4 q := 6 pow_bits := 20 qib := 27 vp := 16 cb := 16 }
-            // Round 4: fold 4 variables, 5 queries at 17 PoW bits, 27-bit indices; 16 values per leaf, 20 coset bits.
-            default { fold := 4 q := 5 pow_bits := 17 qib := 27 vp := 16 cb := 20 }
+            // Round 0: fold 1 variables at 9 PoW bits; 12 queries at 30 PoW bits, OOD PoW 16; 30-bit indices, 2 values per leaf, 7 coset bits.
+            case 0 { fold := 1 q := 12 pow_bits := 30 fold_pow_bits := 9 ood_pow_bits := 16 qib := 30 vp := 2 cb := 7 }
+            // Round 1: fold 4 variables at 9 PoW bits; 11 queries at 27 PoW bits, OOD PoW 20; 27-bit indices, 16 values per leaf, 8 coset bits.
+            case 1 { fold := 4 q := 11 pow_bits := 27 fold_pow_bits := 9 ood_pow_bits := 20 qib := 27 vp := 16 cb := 8 }
+            // Round 2: fold 5 variables at 9 PoW bits; 7 queries at 30 PoW bits, OOD PoW 25; 26-bit indices, 32 values per leaf, 12 coset bits.
+            case 2 { fold := 5 q := 7 pow_bits := 30 fold_pow_bits := 9 ood_pow_bits := 25 qib := 26 vp := 32 cb := 12 }
+            // Round 3: fold 4 variables at 9 PoW bits; 5 queries at 30 PoW bits, OOD PoW 29; 27-bit indices, 16 values per leaf, 17 coset bits.
+            case 3 { fold := 4 q := 5 pow_bits := 30 fold_pow_bits := 9 ood_pow_bits := 29 qib := 27 vp := 16 cb := 17 }
+            // Round 4: fold 4 variables at 9 PoW bits; 4 queries at 30 PoW bits, OOD PoW 0; 27-bit indices, 16 values per leaf, 21 coset bits.
+            default { fold := 4 q := 4 pow_bits := 30 fold_pow_bits := 9 ood_pow_bits := 0 qib := 27 vp := 16 cb := 21 }
 
             {
             let scbase := mload(__TEMPLATE_WHIR_REG_CD)
@@ -2625,6 +2626,9 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
                 mstore(add(__TEMPLATE_WHIR_SEED_PTR, 32), or(shl(128, c0), c1))
                 mstore(add(__TEMPLATE_WHIR_SEED_PTR, 64), shl(128, c2))
                 mstore(__TEMPLATE_WHIR_SEED_PTR, keccak256(__TEMPLATE_WHIR_SEED_PTR, 80))
+                if fold_pow_bits {
+                    mstore(__TEMPLATE_WHIR_REG_CD, verify_pow(mload(__TEMPLATE_WHIR_REG_CD), fold_pow_bits))
+                }
                 let alpha := draw1()
                 mstore(__TEMPLATE_WHIR_REG_CLAIM,
                     addmod(mulmod(addmod(mulmod(c2, alpha, P), c1, P), alpha, P), c0, P))
@@ -2636,7 +2640,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             }
 
             switch lt(r, sub(__TEMPLATE_WHIR_NUM_ROUNDS, 1))
-            case 1 { do_internal(r, fold, q, pow_bits, qib, vp, cb) }
+            case 1 { do_internal(r, fold, q, pow_bits, ood_pow_bits, qib, vp, cb) }
             default { do_final(fold, q, pow_bits, qib, vp, mload(__TEMPLATE_WHIR_REG_ZIOFF), rfin, cb) }
         }
 
@@ -2710,29 +2714,29 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
 //     9280 ..  13120  GATEVAL (32 * 120 = 3840 B)
 //    13120 ..  16480  QTABLE (32 * 105 = 3360 B)
 //    16480 ..  28704  IMAGE (32 * 382 = 12224 B)
-//    28704 ..  28992  WHIR_SEED_PTR (32 + (1 << 3) * 32 = 288 B)
+//    28704 ..  28992  WHIR_SEED_PTR (32 + 256 = 288 B)
 //    28992 ..  29760  WHIR_Z_PTR (24 * 32 = 768 B)
-//    29760 ..  33600  WHIR_POW_PTR (40 * 96 = 3840 B)
-//    33600 ..  33632  WHIR_ACC_PREF_PTR (32 = 32 B)
-//    33632 ..  34080  WHIR_GAMMA_PTR (14 * 32 = 448 B)
-//    34080 ..  34208  WHIR_FOLD_CH_PTR (4 * 32 = 128 B)
-//    34208 ..  34240  WHIR_HPO_PTR ((1 << 0) * 32 = 32 B)
-//    34240 ..  34752  WHIR_FBUF_PTR ((1 << 4) * 32 = 512 B)
-//    34752 ..  35136  WHIR_LEAF_PTR (12 * 32 = 384 B)
-//    35136 ..  35168  WHIR_REG_CD (32 = 32 B)
-//    35168 ..  35200  WHIR_REG_CLAIM (32 = 32 B)
-//    35200 ..  35232  WHIR_REG_NUMPOW (32 = 32 B)
-//    35232 ..  35264  WHIR_REG_ZIOFF (32 = 32 B)
-//    35264 ..  35296  WHIR_REG_CC (32 = 32 B)
-//    35296 ..  35328  WHIR_REG_CURDELIN (32 = 32 B)
-//    35328 ..  35584  WHIR_BCAP0_PTR ((1 << 3) * 32 = 256 B)
-//    35584 ..  35840  WHIR_QCAP_PTR ((1 << 3) * 32 = 256 B)
-//    35840 ..  36096  WHIR_NCAP_PTR ((1 << 3) * 32 = 256 B)
-//    36096 ..  36480  WHIR_QIDX_BUF_PTR (12 * 32 = 384 B)
-//    36480 ..  36992  WHIR_DRAW_BUF_PTR (16 * 32 = 512 B)
-//    36992 ..  41088  WHIR_MONO_PTR ((1 << 7) * 32 = 4096 B)
-//    41088 ..  45184  WHIR_FEVAL_PTR ((1 << 7) * 32 = 4096 B)
-//   heap end: 45184
+//    29760 ..  33504  WHIR_POW_PTR (39 * 96 = 3744 B)
+//    33504 ..  33536  WHIR_ACC_PREF_PTR (32 = 32 B)
+//    33536 ..  33984  WHIR_GAMMA_PTR (14 * 32 = 448 B)
+//    33984 ..  34144  WHIR_FOLD_CH_PTR (5 * 32 = 160 B)
+//    34144 ..  34176  WHIR_HPO_PTR ((1 << 0) * 32 = 32 B)
+//    34176 ..  35200  WHIR_FBUF_PTR ((1 << 5) * 32 = 1024 B)
+//    35200 ..  35712  WHIR_LEAF_PTR (16 * 32 = 512 B)
+//    35712 ..  35744  WHIR_REG_CD (32 = 32 B)
+//    35744 ..  35776  WHIR_REG_CLAIM (32 = 32 B)
+//    35776 ..  35808  WHIR_REG_NUMPOW (32 = 32 B)
+//    35808 ..  35840  WHIR_REG_ZIOFF (32 = 32 B)
+//    35840 ..  35872  WHIR_REG_CC (32 = 32 B)
+//    35872 ..  35904  WHIR_REG_CURDELIN (32 = 32 B)
+//    35904 ..  36160  WHIR_BCAP0_PTR ((1 << 3) * 32 = 256 B)
+//    36160 ..  36416  WHIR_QCAP_PTR ((1 << 3) * 32 = 256 B)
+//    36416 ..  36672  WHIR_NCAP_PTR ((1 << 3) * 32 = 256 B)
+//    36672 ..  37056  WHIR_QIDX_BUF_PTR (12 * 32 = 384 B)
+//    37056 ..  37568  WHIR_DRAW_BUF_PTR (16 * 32 = 512 B)
+//    37568 ..  39616  WHIR_MONO_PTR ((1 << 6) * 32 = 2048 B)
+//    39616 ..  41664  WHIR_FEVAL_PTR ((1 << 6) * 32 = 2048 B)
+//   heap end: 41664
 
 contract GkrWhirVerifier is GkrWhirVerifierCode {
     constructor() {

@@ -13,7 +13,9 @@
 //! `e_z(X) = (1 − z) + (2z − 1)·X` and the quadratic `u = a + bX + cX²`. Only `(b, c)`
 //! is sent; the verifier derives `a` from the running claim and absorbs the rebuilt
 //! coefficients of `p`. A WHIR sumcheck round sends `(c0, c2)`: `c1` is derived as
-//! `claim − 2·c0 − c2`.
+//! `claim − 2·c0 − c2`. Each WHIR round's packed coefficient run is followed by
+//! its folding-PoW nonce array when gated. Each intermediate cap is followed by
+//! an OOD-PoW nonce when gated and one raw BE u128 OOD value.
 
 mod digest;
 mod gkr;

@@ -109,9 +109,14 @@ fn generated_sources() -> Vec<(String, String)> {
     assert!(source.contains("__TEMPLATE_GKR_SEED_BYTES           = 32 * 34;"));
     let (circuit, proof, mode) = common::load();
     let config = common::prover_config();
-    let (external, batching, queries) =
-        common::pow::leading_zeros(&circuit, &proof, &mode, &config);
-    eprintln!("PoW leading zeros: external={external}, batching={batching}, queries={queries:?}");
+    let common::pow::PowLeadingZeros {
+        external,
+        batching,
+        queries,
+        folding,
+        ood,
+    } = common::pow::leading_zeros(&circuit, &proof, &mode, &config);
+    eprintln!("PoW leading zeros: external={external}, batching={batching}, queries={queries:?}, folding={folding:?}, OOD={ood:?}");
     let schedule = config.whir_schedule.queries_pow_bits_per_round();
     assert!(
         external < MAX_GKR_POW_BITS && batching < MAX_GKR_POW_BITS,
@@ -144,6 +149,33 @@ fn generated_sources() -> Vec<(String, String)> {
             format!("query_pow_{round}"),
             raised_query_difficulty(source, &selector, schedule[round], zeros + 1),
         ));
+        if !folding[round].is_empty() {
+            let zeros = *folding[round].iter().max().unwrap();
+            let bits = if round == 0 {
+                config.whir_schedule.base_round.folding_pow_bits
+            } else {
+                config.whir_schedule.internal_rounds[round - 1].folding_pow_bits
+            };
+            assert!(
+                folding[round].iter().all(|&z| z >= bits),
+                "honest proof misses folding PoW"
+            );
+            assert!(zeros < 256, "folding control cannot exceed 256 bits");
+            negative.push((
+                format!("folding_pow_{round}"),
+                raised_round_difficulty(source, &selector, "fold_pow_bits", bits, zeros + 1),
+            ));
+        }
+        if let Some(Some(zeros)) = ood.get(round) {
+            // Round r commits intermediate oracle r+1; its OOD draw happens here.
+            let bits = config.whir_schedule.internal_rounds[round].ood_pow_bits;
+            assert!(*zeros >= bits, "honest proof misses OOD PoW");
+            assert!(*zeros < 256, "OOD control cannot exceed 256 bits");
+            negative.push((
+                format!("ood_pow_{round}"),
+                raised_round_difficulty(source, &selector, "ood_pow_bits", bits, zeros + 1),
+            ));
+        }
     }
     let mut files = Vec::new();
     // Share the compiler settings, omitting the main project's test file permissions.
@@ -190,15 +222,19 @@ fn raised_difficulty(source: &str, name: &str, bits: u32) -> String {
 }
 
 fn raised_query_difficulty(source: &str, selector: &str, old: u32, new: u32) -> String {
+    raised_round_difficulty(source, selector, "pow_bits", old, new)
+}
+
+fn raised_round_difficulty(source: &str, selector: &str, name: &str, old: u32, new: u32) -> String {
     let line = source
         .lines()
         .find(|line| line.contains(&format!("{selector} {{ fold :=")))
         .unwrap();
-    let target = format!("pow_bits := {old}");
+    let target = format!(" {name} := {old}");
     assert_eq!(line.matches(&target).count(), 1);
     source.replacen(
         line,
-        &line.replace(&target, &format!("pow_bits := {new}")),
+        &line.replace(&target, &format!(" {name} := {new}")),
         1,
     )
 }
