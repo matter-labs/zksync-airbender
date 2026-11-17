@@ -55,6 +55,7 @@ globs = [
   "Human.Compiler.Theorems",
   "Human.Compiler.NativeMemory",
   "Human.Compiler.MemoryPorts",
+  "Human.Compiler.WorkerMemoryPorts",
   "Human.Helpers.Context.VerifierBoundary.Model",
   "Human.Helpers.Context.VerifierBoundary.Theorems",
   "Human.Helpers.Decoder.RVMachineProgram",
@@ -2135,3 +2136,10 @@ name = "CompilerInputs_Compiler_WorkerArithmetic_KeccakThetaRho"
 srcDir = "proven"
 roots = ["Proven.Compiler.WorkerArithmetic.KeccakThetaRho"]
 needs = ["compiler_certificate_description_arithmetic_keccak_theta_rho_cached", "compiler_keccak_theta_rho_cached_layout", "compiler_keccak_theta_rho_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_GKRProtocol_ProductNative_BigintCached"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.ProductNative.BigintCached"]
+needs = ["compiler_bigint_cached_layout", "compiler_bigint_capture"]

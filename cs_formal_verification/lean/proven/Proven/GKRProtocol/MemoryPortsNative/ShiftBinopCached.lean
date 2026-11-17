@@ -25,7 +25,7 @@ theorem gates_binding :
   kernel_rfl
 
 /-- Every recipe reads its operands with the field role of the checked typing. -/
-theorem typed : typingChecked ConsumerNative.ShiftBinopCached.native.typing Captures.ShiftBinop.imported.circuit = true := by
+theorem typed : typingChecked (baseRoles ConsumerNative.ShiftBinopCached.native.typing) Captures.ShiftBinop.imported.circuit = true := by
   decide +kernel
 
 /-- The RAM output map names the reduced read and write outputs. Both are extension wires. -/
@@ -34,8 +34,8 @@ theorem outputs : NativeMemory.ramOutputs Captures.ShiftBinop.imported.circuit =
   kernel_rfl
 
 theorem outputs_extension :
-    isBase ConsumerNative.ShiftBinopCached.native.typing MemoryNative.ShiftBinopCached.native.memoryReadOutput = false ∧
-      isBase ConsumerNative.ShiftBinopCached.native.typing MemoryNative.ShiftBinopCached.native.memoryWriteOutput = false := by
+    isBase (baseRoles ConsumerNative.ShiftBinopCached.native.typing) MemoryNative.ShiftBinopCached.native.memoryReadOutput = false ∧
+      isBase (baseRoles ConsumerNative.ShiftBinopCached.native.typing) MemoryNative.ShiftBinopCached.native.memoryWriteOutput = false := by
   decide +kernel
 
 /-- The source read rows are the port read tokens and the starting PC-state token of the model row. -/
@@ -81,14 +81,15 @@ theorem ram_products {R : Type} [CommRing R] (challenges : NativeMemory.Challeng
   let typed' : TypedAssignment R := ⟨physical, values⟩
   have defined : ∀ definition ∈ MemoryNative.ShiftBinopCached.native.definitions,
       definition.Holds challenges.memory.embed (cacheChallenges challenges)
-        (typed'.value ConsumerNative.ShiftBinopCached.native.typing challenges.memory.embed) := by
+        (wires challenges (baseRoles ConsumerNative.ShiftBinopCached.native.typing) physical values) := by
     rw [definitions_binding]
     exact definitions_hold challenges _ physical values typed accepted extension
   have holds : ∀ gate ∈ ProductNative.ShiftBinopCached.native.gates,
       gate.Holds challenges.memory.embed (cacheChallenges challenges)
-        (typed'.value ConsumerNative.ShiftBinopCached.native.typing challenges.memory.embed) := by
+        (wires challenges (baseRoles ConsumerNative.ShiftBinopCached.native.typing) physical values) := by
     rw [gates_binding]
     exact products_hold challenges _ physical values typed extension
+  rw [wires_typed] at defined holds
   have copies := FunctionalLinksNative.ShiftBinopCached.native.memoryCopies physical
     (NativeBindings.ShiftBinop.scalar_gates physical accepted)
   have original := Source.MemoryPlacement.original_of_agreement
@@ -118,11 +119,11 @@ theorem ram_products {R : Type} [CommRing R] (challenges : NativeMemory.Challeng
   have write := MemoryNative.ShiftBinopCached.native.memoryWriteSourceReduction challenges.memory.embed
     (cacheChallenges challenges) typed' defined copies holds
   apply ram_products_of_outputs outputs
-  · rw [← wires_extension challenges _ physical values outputs_extension.1]
+  · rw [← wires_extension challenges _ physical values outputs_extension.1, wires_typed]
     refine read.trans ?_
     rw [execute, ← readTokens, Source.MemoryRow.token_products]
     rfl
-  · rw [← wires_extension challenges _ physical values outputs_extension.2]
+  · rw [← wires_extension challenges _ physical values outputs_extension.2, wires_typed]
     refine write.trans ?_
     rw [execute, ← writeTokens, Source.MemoryRow.token_products]
     rfl
@@ -132,8 +133,9 @@ theorem satisfiable : ShiftBinopCachedMemorySatisfiableClaim := by
   obtain ⟨physical, logical, accepted, placement⟩ := NativeSatisfiable.ShiftBinop.witness
   let challenges : NativeMemory.Challenges NativeArithmetic.F := ⟨⟨RingHom.id _, 0, fun _ => 0, fun _ => 0⟩, 0⟩
   let values := FunctionalNative.ShiftBinopCached.native.canonical challenges.memory.embed (cacheChallenges challenges) 0 physical
-  have same : wires challenges ConsumerNative.ShiftBinopCached.native.typing physical values = values :=
-    FunctionalLinksNative.ShiftBinopCached.native.assignment_value challenges.memory.embed (cacheChallenges challenges) 0 physical
+  have same : wires challenges (baseRoles ConsumerNative.ShiftBinopCached.native.typing) physical values = values :=
+    (wires_typed _ _ _ _).trans
+      (FunctionalLinksNative.ShiftBinopCached.native.assignment_value challenges.memory.embed (cacheChallenges challenges) 0 physical)
   refine ⟨challenges, physical, values, ⟨.shiftBinop, logical⟩, rfl, accepted, placement, ?_⟩
   rw [← same]
   apply holds_of_programs challenges _ physical values typed

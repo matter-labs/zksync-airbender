@@ -184,6 +184,7 @@ import Proven.Final.Trace.Satisfiable.DelegationHashCallers
 import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 import Proven.Final.Compiler.MemoryPorts
 import Proven.Final.Compiler.PaddedNativeMachine
+import Proven.Final.Compiler.WorkerMemoryPorts
 
 import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 
@@ -1689,3 +1690,7 @@ import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 #print axioms Airbender.Trace.Machine.Native.padded_unified_from_native_satisfiable
 
 #print axioms Airbender.InitsTeardowns.shared_bytes
+
+#print axioms Airbender.Compiler.bigint_cached_memory
+
+#print axioms Airbender.Compiler.bigint_cached_memory_satisfiable

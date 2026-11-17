@@ -51,6 +51,7 @@ import Human.Circuits.AddSub.RVCallerTheorems
 import Human.Trace.Delegation.RVCallerTheorems
 import Proven.Final.Compiler.MemoryPorts
 import Proven.Final.Compiler.PaddedNativeMachine
+import Proven.Final.Compiler.WorkerMemoryPorts
 
 open Airbender Trace
 
@@ -1658,3 +1659,18 @@ example (claim : Airbender.Trace.Machine.Native.PaddedUnifiedFromNative) :
       claim trace workers initial cells program inits tables boot noSpecial stream bound certificates arguments⟩
 
 end Airbender.Trace.Machine.Native
+
+-- Worker RAM outputs.
+
+example : Airbender.Compiler.BigintCachedMemorySatisfiableClaim := Airbender.Compiler.bigint_cached_memory_satisfiable
+
+example (claim : Airbender.Compiler.BigintCachedMemoryClaim) :
+    Airbender.Compiler.BigintCachedMemorySatisfiableClaim →
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges Airbender.Compiler.NativeArithmetic.F)
+      (values : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (row : Airbender.Delegation.Row Airbender.babyBearModulus),
+      Airbender.Compiler.NativeMemory.RamProducts Airbender.Compiler.Captures.Bigint.imported.circuit challenges values
+        (row.assignment row.columns.execute) (Airbender.Compiler.NativeMemory.standardReads row)
+        (Airbender.Compiler.NativeMemory.standardWrites row) :=
+  fun ⟨challenges, physical, values, row, selected, nativeHolds, placement, extension⟩ =>
+    ⟨challenges, values, row, claim challenges physical values row selected nativeHolds placement extension⟩

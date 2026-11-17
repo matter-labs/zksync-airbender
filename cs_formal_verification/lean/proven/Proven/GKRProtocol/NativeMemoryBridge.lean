@@ -156,30 +156,39 @@ def productGates (circuit : Circuit) : List NativeProductGate :=
 
 /-! Field roles that the semantic lemmas need. The kernel evaluates them for each capture. -/
 
-def isBase (typing : ConsumerTyping) (address : GKRAddress) : Bool := typing.compatible (address, .base)
+/-- The base-field roles of a checked consumer typing. -/
+def baseRoles (typing : ConsumerTyping) (address : GKRAddress) : Bool := typing.compatible (address, .base)
 
-def linearTyped (typing : ConsumerTyping) (row : LinearRelation) : Bool :=
-  row.linear_terms.toList.all fun term => isBase typing term.2
+/-- Base-layer, setup and virtual setup wires are base-field wires. The supplied roles classify the
+    inner and cached wires. -/
+def isBase (roles : GKRAddress → Bool) (address : GKRAddress) : Bool :=
+  match address with
+  | .BaseLayerWitness _ | .BaseLayerMemory _ | .Setup _ | .VirtualSetup _ => true
+  | .InnerLayer _ _ | .Cached _ _ => roles address
+  | .ScratchSpace _ => false
 
-def cacheTyped (typing : ConsumerTyping) (output : GKRAddress) : GKRCacheRelation → Bool
-  | .SingleColumnLookup row _ => isBase typing output && linearTyped typing row.input
-  | .MemoryTuple row => !isBase typing output && (tupleProgram row).isSome
-  | .VectorizedLookup row => !isBase typing output && row.columns.toList.all (linearTyped typing)
-  | .VectorizedLookupSetup addresses => !isBase typing output && addresses.toList.all (isBase typing)
+def linearTyped (roles : GKRAddress → Bool) (row : LinearRelation) : Bool :=
+  row.linear_terms.toList.all fun term => isBase roles term.2
 
-def gateTyped (typing : ConsumerTyping) : GKRRelation → Bool
-  | .CopyInBaseField input output => isBase typing output && isBase typing input
-  | .CopyInExtensionField input output => !isBase typing output && !isBase typing input
-  | .MaterializeSingleLookupInput row output _ => isBase typing output && linearTyped typing row.input
-  | .MaterializedVectorLookupInput row output => !isBase typing output && row.columns.toList.all (linearTyped typing)
+def cacheTyped (roles : GKRAddress → Bool) (output : GKRAddress) : GKRCacheRelation → Bool
+  | .SingleColumnLookup row _ => isBase roles output && linearTyped roles row.input
+  | .MemoryTuple row => !isBase roles output && (tupleProgram row).isSome
+  | .VectorizedLookup row => !isBase roles output && row.columns.toList.all (linearTyped roles)
+  | .VectorizedLookupSetup addresses => !isBase roles output && addresses.toList.all (isBase roles)
+
+def gateTyped (roles : GKRAddress → Bool) : GKRRelation → Bool
+  | .CopyInBaseField input output => isBase roles output && isBase roles input
+  | .CopyInExtensionField input output => !isBase roles output && !isBase roles input
+  | .MaterializeSingleLookupInput row output _ => isBase roles output && linearTyped roles row.input
+  | .MaterializedVectorLookupInput row output => !isBase roles output && row.columns.toList.all (linearTyped roles)
   | .InitialGrandProductFromCaches input output =>
-    !isBase typing output && input.values.toList.all fun address => !isBase typing address
+    !isBase roles output && input.values.toList.all fun address => !isBase roles address
   | .InitialGrandProductWithoutCaches input output =>
-    !isBase typing output && input.values.toList.all fun row => (tupleProgram row).isSome
-  | .MaterializeGrandProductTermExpression input output => !isBase typing output && (tupleProgram input).isSome
-  | .TrivialProduct input output => !isBase typing output && input.values.toList.all fun address => !isBase typing address
+    !isBase roles output && input.values.toList.all fun row => (tupleProgram row).isSome
+  | .MaterializeGrandProductTermExpression input output => !isBase roles output && (tupleProgram input).isSome
+  | .TrivialProduct input output => !isBase roles output && input.values.toList.all fun address => !isBase roles address
   | .MaskIntoIdentityProduct input predicate output =>
-    !isBase typing output && !isBase typing input && isBase typing predicate
+    !isBase roles output && !isBase roles input && isBase roles predicate
   | .InitsOrTeardownsInitialPair _ _ _ _ => false
   | _ => true
 
@@ -189,13 +198,13 @@ def excludedRelation (excluded : List GKRAddress) : GKRRelation → Bool
   | _ => false
 
 /-- Field roles of every cache and of every gate that writes no excluded wire. -/
-def typingCheckedExcept (typing : ConsumerTyping) (circuit : Circuit) (excluded : List GKRAddress) : Bool :=
-  (layerCaches circuit).all (fun entry => cacheTyped typing entry.1 entry.2) &&
+def typingCheckedExcept (roles : GKRAddress → Bool) (circuit : Circuit) (excluded : List GKRAddress) : Bool :=
+  (layerCaches circuit).all (fun entry => cacheTyped roles entry.1 entry.2) &&
     (layerGates circuit).all fun gate =>
-      excludedRelation excluded gate.enforced_relation || gateTyped typing gate.enforced_relation
+      excludedRelation excluded gate.enforced_relation || gateTyped roles gate.enforced_relation
 
 /-- Field roles of every cache and every gate. -/
-def typingChecked (typing : ConsumerTyping) (circuit : Circuit) : Bool := typingCheckedExcept typing circuit []
+def typingChecked (roles : GKRAddress → Bool) (circuit : Circuit) : Bool := typingCheckedExcept roles circuit []
 
 theorem excludedRelation_nil (relation : GKRRelation) : excludedRelation [] relation = false := by
   cases relation <;> rfl
@@ -208,9 +217,22 @@ def cacheChallenges (challenges : NativeMemory.Challenges R) : CacheChallenges R
   ⟨challenges.lookupAlpha, challenges.memory.additive, challenges.memory.weights⟩
 
 /-- Base wires read `physical`; extension wires read `values`. -/
-def wires (challenges : NativeMemory.Challenges R) (typing : ConsumerTyping) (physical : GKRAddress → F)
-    (values : GKRAddress → R) : GKRAddress → R :=
-  (⟨physical, values⟩ : TypedAssignment R).value typing challenges.memory.embed
+def wires (challenges : NativeMemory.Challenges R) (roles : GKRAddress → Bool) (physical : GKRAddress → F)
+    (values : GKRAddress → R) (address : GKRAddress) : R :=
+  if isBase roles address then challenges.memory.embed (physical address) else values address
+
+/-- The roles of a checked consumer typing classify every wire as the typing does. -/
+theorem isBase_baseRoles (typing : ConsumerTyping) (address : GKRAddress) :
+    isBase (baseRoles typing) address = typing.compatible (address, .base) := by
+  cases address <;> rfl
+
+/-- The wires of a checked consumer typing are its typed assignment. -/
+theorem wires_typed (challenges : NativeMemory.Challenges R) (typing : ConsumerTyping)
+    (physical : GKRAddress → F) (values : GKRAddress → R) :
+    wires challenges (baseRoles typing) physical values =
+      (⟨physical, values⟩ : TypedAssignment R).value typing challenges.memory.embed := by
+  funext address
+  cases address <;> rfl
 
 theorem fixed_two {α : Type} (pair : Fixed 2 α) : ∃ left right, pair.values.toList = [left, right] := by
   have size : pair.values.toList.length = 2 := by simpa using pair.size_eq
@@ -223,21 +245,21 @@ theorem fixed_four {α : Type} (bytes : Fixed 4 α) :
   | [first, second, third, fourth], _ => exact ⟨first, second, third, fourth, rfl⟩
 
 section Semantics
-variable (challenges : NativeMemory.Challenges R) (typing : ConsumerTyping) (physical : GKRAddress → F)
+variable (challenges : NativeMemory.Challenges R) (roles : GKRAddress → Bool) (physical : GKRAddress → F)
   (values : GKRAddress → R)
 
-theorem wires_base {address : GKRAddress} (base : isBase typing address = true) :
-    wires challenges typing physical values address = challenges.embed (physical address) :=
-  TypedAssignment.value_base _ typing _ base
+theorem wires_base {address : GKRAddress} (base : isBase roles address = true) :
+    wires challenges roles physical values address = challenges.embed (physical address) := by
+  simp only [wires, base, ↓reduceIte]
+  rfl
 
-theorem wires_extension {address : GKRAddress} (extension : isBase typing address = false) :
-    wires challenges typing physical values address = values address := by
-  simp only [wires, TypedAssignment.value, show typing.compatible (address, .base) = false from extension,
-    Bool.false_eq_true, ↓reduceIte]
+theorem wires_extension {address : GKRAddress} (extension : isBase roles address = false) :
+    wires challenges roles physical values address = values address := by
+  simp only [wires, extension, Bool.false_eq_true, ↓reduceIte]
 
 theorem wires_memory (offset : Nat) :
-    wires challenges typing physical values (.BaseLayerMemory offset) = challenges.column physical offset :=
-  wires_base challenges typing physical values rfl
+    wires challenges roles physical values (.BaseLayerMemory offset) = challenges.column physical offset :=
+  wires_base challenges roles physical values rfl
 
 @[simp] theorem interpret_constant (scalar : CacheCoefficient) (hom : Source.BaseField →+* R)
     (cache : CacheChallenges R) (input : GKRAddress → R) :
@@ -285,12 +307,12 @@ theorem wires_memory (offset : Nat) :
 @[simp] theorem cacheChallenges_lookupAlpha :
     (cacheChallenges challenges).lookupAlpha = challenges.lookupAlpha := rfl
 
-theorem linear_interpret (row : LinearRelation) (typed : linearTyped typing row = true) :
-    LookupPayload.interpret (linearProgram row) challenges.memory.embed (cacheChallenges challenges) (wires challenges typing physical values) = challenges.embed (linear row physical) := by
+theorem linear_interpret (row : LinearRelation) (typed : linearTyped roles row = true) :
+    LookupPayload.interpret (linearProgram row) challenges.memory.embed (cacheChallenges challenges) (wires challenges roles physical values) = challenges.embed (linear row physical) := by
   unfold linearProgram linear
   rw [← Array.foldl_toList]
   have terms := List.all_eq_true.mp typed
-  have start : LookupPayload.interpret (AffineProgram.constant (CacheCoefficient.base row.constant.raw.val) : LookupPayload) challenges.memory.embed (cacheChallenges challenges) (wires challenges typing physical values) =
+  have start : LookupPayload.interpret (AffineProgram.constant (CacheCoefficient.base row.constant.raw.val) : LookupPayload) challenges.memory.embed (cacheChallenges challenges) (wires challenges roles physical values) =
       challenges.embed (coefficient row.constant) := rfl
   revert terms start
   generalize row.linear_terms.toList = list
@@ -305,20 +327,20 @@ theorem linear_interpret (row : LinearRelation) (typed : linearTyped typing row 
     apply proof
     · intro other member
       exact terms other (List.mem_cons_of_mem _ member)
-    · have base : isBase typing address = true := terms (scalar, address) List.mem_cons_self
+    · have base : isBase roles address = true := terms (scalar, address) List.mem_cons_self
       simp only [interpret_add, interpret_scale, interpret_input, start, coefficient_base,
-        wires_base challenges typing physical values base, Challenges.embed, coefficient, map_add, map_mul]
+        wires_base challenges roles physical values base, Challenges.embed, coefficient, map_add, map_mul]
 
 theorem foldPrograms_interpret (programs : List LookupPayload) (results : List F)
-    (same : List.Forall₂ (fun program result => LookupPayload.interpret program challenges.memory.embed (cacheChallenges challenges) (wires challenges typing physical values) = challenges.embed result) programs results) :
-    LookupPayload.interpret (foldPrograms programs) challenges.memory.embed (cacheChallenges challenges) (wires challenges typing physical values) = fold challenges results := by
+    (same : List.Forall₂ (fun program result => LookupPayload.interpret program challenges.memory.embed (cacheChallenges challenges) (wires challenges roles physical values) = challenges.embed result) programs results) :
+    LookupPayload.interpret (foldPrograms programs) challenges.memory.embed (cacheChallenges challenges) (wires challenges roles physical values) = fold challenges results := by
   unfold foldPrograms fold
-  have start : LookupPayload.interpret (AffineProgram.constant (CacheCoefficient.natural 0) : LookupPayload) challenges.memory.embed (cacheChallenges challenges) (wires challenges typing physical values) = 0 := by
+  have start : LookupPayload.interpret (AffineProgram.constant (CacheCoefficient.natural 0) : LookupPayload) challenges.memory.embed (cacheChallenges challenges) (wires challenges roles physical values) = 0 := by
     simp
   suffices general : ∀ (offset : Nat) (initial : LookupPayload),
       LookupPayload.interpret ((programs.zipIdx offset).foldl
-        (fun result entry => .add result (.scale (.lookupPower entry.2) entry.1)) initial) challenges.memory.embed (cacheChallenges challenges) (wires challenges typing physical values) =
-      LookupPayload.interpret initial challenges.memory.embed (cacheChallenges challenges) (wires challenges typing physical values) + ((results.zipIdx offset).map fun (column, index) =>
+        (fun result entry => .add result (.scale (.lookupPower entry.2) entry.1)) initial) challenges.memory.embed (cacheChallenges challenges) (wires challenges roles physical values) =
+      LookupPayload.interpret initial challenges.memory.embed (cacheChallenges challenges) (wires challenges roles physical values) + ((results.zipIdx offset).map fun (column, index) =>
         challenges.lookupAlpha ^ index * challenges.embed column).sum by
     rw [general 0 _, start, zero_add]
   induction same with
@@ -330,8 +352,8 @@ theorem foldPrograms_interpret (programs : List LookupPayload) (results : List F
     simp only [interpret_add, interpret_scale, coefficient_lookupPower, cacheChallenges_lookupAlpha, head]
     ring
 
-theorem vector_interpret (row : VectorLookupRelation) (typed : row.columns.toList.all (linearTyped typing) = true) :
-    LookupPayload.interpret (vectorProgram row) challenges.memory.embed (cacheChallenges challenges) (wires challenges typing physical values) = fold challenges (row.columns.toList.map fun column => linear column physical) := by
+theorem vector_interpret (row : VectorLookupRelation) (typed : row.columns.toList.all (linearTyped roles) = true) :
+    LookupPayload.interpret (vectorProgram row) challenges.memory.embed (cacheChallenges challenges) (wires challenges roles physical values) = fold challenges (row.columns.toList.map fun column => linear column physical) := by
   unfold vectorProgram
   apply foldPrograms_interpret
   have columns := List.all_eq_true.mp typed
@@ -341,11 +363,11 @@ theorem vector_interpret (row : VectorLookupRelation) (typed : row.columns.toLis
   | nil => intro _; exact List.Forall₂.nil
   | cons column rest proof =>
     intro columns
-    exact List.Forall₂.cons (linear_interpret challenges typing physical values column (columns column List.mem_cons_self))
+    exact List.Forall₂.cons (linear_interpret challenges roles physical values column (columns column List.mem_cons_self))
       (proof fun other member => columns other (List.mem_cons_of_mem _ member))
 
-theorem setup_interpret (addresses : Array GKRAddress) (typed : addresses.toList.all (isBase typing) = true) :
-    LookupPayload.interpret (setupProgram addresses) challenges.memory.embed (cacheChallenges challenges) (wires challenges typing physical values) = fold challenges (addresses.toList.map physical) := by
+theorem setup_interpret (addresses : Array GKRAddress) (typed : addresses.toList.all (isBase roles) = true) :
+    LookupPayload.interpret (setupProgram addresses) challenges.memory.embed (cacheChallenges challenges) (wires challenges roles physical values) = fold challenges (addresses.toList.map physical) := by
   unfold setupProgram
   apply foldPrograms_interpret
   have members := List.all_eq_true.mp typed
@@ -357,15 +379,15 @@ theorem setup_interpret (addresses : Array GKRAddress) (typed : addresses.toList
     intro members
     exact List.Forall₂.cons (by
         simp only [interpret_input]
-        exact wires_base challenges typing physical values (members address List.mem_cons_self))
+        exact wires_base challenges roles physical values (members address List.mem_cons_self))
       (proof fun other member => members other (List.mem_cons_of_mem _ member))
 
 theorem addressSpace_interpret (space : CompiledAddressSpaceRelationStrict) :
     LookupPayload.interpret (addressSpaceProgram space) challenges.memory.embed (cacheChallenges challenges)
-      (wires challenges typing physical values) = addressSpace challenges physical space := by
+      (wires challenges roles physical values) = addressSpace challenges physical space := by
   cases space with
   | Constant value => rfl
-  | IsRam offset => exact wires_memory challenges typing physical values offset
+  | IsRam offset => exact wires_memory challenges roles physical values offset
   | IsRegister offset =>
     simp only [addressSpaceProgram, addressSpace, interpret_add, interpret_scale, interpret_constant,
       interpret_input, coefficient_natural, coefficient_negativeOne, wires_memory, Nat.cast_one, map_one]
@@ -373,9 +395,9 @@ theorem addressSpace_interpret (space : CompiledAddressSpaceRelationStrict) :
 
 theorem address_interpret (start : LookupPayload) (word : CompiledAddressStrict) :
     (addressProgram start word).map (fun program => LookupPayload.interpret program challenges.memory.embed
-      (cacheChallenges challenges) (wires challenges typing physical values)) =
+      (cacheChallenges challenges) (wires challenges roles physical values)) =
       (address challenges physical word).map (LookupPayload.interpret start challenges.memory.embed
-        (cacheChallenges challenges) (wires challenges typing physical values) + ·) := by
+        (cacheChallenges challenges) (wires challenges roles physical values) + ·) := by
   cases word with
   | ConstantU16 value =>
     simp only [addressProgram, address, Option.map_some, interpret_add, interpret_scale, interpret_constant,
@@ -408,9 +430,9 @@ theorem address_interpret (start : LookupPayload) (word : CompiledAddressStrict)
 
 theorem timestamp_interpret (offset : U32) (start : LookupPayload) (time : CompiledMemoryTimestamp) :
     (timestampProgram offset start time).map (fun program => LookupPayload.interpret program challenges.memory.embed
-      (cacheChallenges challenges) (wires challenges typing physical values)) =
+      (cacheChallenges challenges) (wires challenges roles physical values)) =
       (timestamp challenges physical offset time).map (LookupPayload.interpret start challenges.memory.embed
-        (cacheChallenges challenges) (wires challenges typing physical values) + ·) := by
+        (cacheChallenges challenges) (wires challenges roles physical values) + ·) := by
   cases time with
   | Zero => simp only [timestampProgram, timestamp, Option.map_some, add_zero]
   | Normal limbs =>
@@ -422,9 +444,9 @@ theorem timestamp_interpret (offset : U32) (start : LookupPayload) (time : Compi
 
 theorem value_interpret (start : LookupPayload) (word : RamWordRepresentation) :
     (valueProgram start word).map (fun program => LookupPayload.interpret program challenges.memory.embed
-      (cacheChallenges challenges) (wires challenges typing physical values)) =
+      (cacheChallenges challenges) (wires challenges roles physical values)) =
       (value challenges physical word).map (LookupPayload.interpret start challenges.memory.embed
-        (cacheChallenges challenges) (wires challenges typing physical values) + ·) := by
+        (cacheChallenges challenges) (wires challenges roles physical values) + ·) := by
   cases word with
   | Zero => simp only [valueProgram, value, Option.map_some, add_zero]
   | U16Limbs limbs =>
@@ -441,13 +463,13 @@ theorem value_interpret (start : LookupPayload) (word : RamWordRepresentation) :
 
 theorem tuple_interpret (row : SpecialMemoryContributionRelation) :
     (tupleProgram row).map (fun program => LookupPayload.interpret program challenges.memory.embed
-      (cacheChallenges challenges) (wires challenges typing physical values)) = tuple challenges physical row := by
+      (cacheChallenges challenges) (wires challenges roles physical values)) = tuple challenges physical row := by
   have start : LookupPayload.interpret (.add (.constant .memoryGamma) (addressSpaceProgram row.address_space))
-      challenges.memory.embed (cacheChallenges challenges) (wires challenges typing physical values) =
+      challenges.memory.embed (cacheChallenges challenges) (wires challenges roles physical values) =
       challenges.memory.additive + addressSpace challenges physical row.address_space := by
-    rw [interpret_add, addressSpace_interpret challenges typing physical values]
+    rw [interpret_add, addressSpace_interpret challenges roles physical values]
     rfl
-  have addressSame := address_interpret challenges typing physical values
+  have addressSame := address_interpret challenges roles physical values
     (.add (.constant .memoryGamma) (addressSpaceProgram row.address_space)) row.address
   unfold tupleProgram tuple
   cases humanAddress : address challenges physical row.address with
@@ -457,7 +479,7 @@ theorem tuple_interpret (row : SpecialMemoryContributionRelation) :
   | some addressTerm =>
     rw [humanAddress, Option.map_some] at addressSame
     obtain ⟨withAddress, foundAddress, valueAddress⟩ := Option.map_eq_some_iff.mp addressSame
-    have timeSame := timestamp_interpret challenges typing physical values row.timestamp_offset withAddress
+    have timeSame := timestamp_interpret challenges roles physical values row.timestamp_offset withAddress
       row.timestamp
     cases humanTime : timestamp challenges physical row.timestamp_offset row.timestamp with
     | none =>
@@ -466,7 +488,7 @@ theorem tuple_interpret (row : SpecialMemoryContributionRelation) :
     | some timeTerm =>
       rw [humanTime, Option.map_some] at timeSame
       obtain ⟨withTime, foundTime, valueTime⟩ := Option.map_eq_some_iff.mp timeSame
-      have valueSame := value_interpret challenges typing physical values withTime row.value
+      have valueSame := value_interpret challenges roles physical values withTime row.value
       cases humanValue : value challenges physical row.value with
       | none =>
         rw [humanValue, Option.map_none] at valueSame
@@ -479,24 +501,24 @@ theorem tuple_interpret (row : SpecialMemoryContributionRelation) :
         rw [valueValue, valueTime, valueAddress, start]
 
 theorem cache_definition_holds (output : GKRAddress) (relation : GKRCacheRelation) (program : LookupPayload)
-    (found : cacheProgram relation = some program) (typed : cacheTyped typing output relation = true)
+    (found : cacheProgram relation = some program) (typed : cacheTyped roles output relation = true)
     (base : NativeArithmetic.CacheHolds output relation physical)
     (extension : NativeMemory.CacheHolds challenges physical values output relation) :
     (AffineDefinition.mk output program).Holds challenges.memory.embed (cacheChallenges challenges)
-      (wires challenges typing physical values) := by
+      (wires challenges roles physical values) := by
   simp only [AffineDefinition.Holds]
   cases relation with
   | SingleColumnLookup row width =>
     simp only [cacheProgram, Option.some.injEq] at found
     subst found
     simp only [cacheTyped, Bool.and_eq_true] at typed
-    rw [wires_base challenges typing physical values typed.1,
-      linear_interpret challenges typing physical values row.input typed.2]
+    rw [wires_base challenges roles physical values typed.1,
+      linear_interpret challenges roles physical values row.input typed.2]
     exact congrArg challenges.embed base
   | MemoryTuple row =>
     simp only [cacheTyped, Bool.and_eq_true, Bool.not_eq_true'] at typed
-    rw [wires_extension challenges typing physical values typed.1]
-    have same := tuple_interpret challenges typing physical values row
+    rw [wires_extension challenges roles physical values typed.1]
+    have same := tuple_interpret challenges roles physical values row
     change tupleProgram row = some program at found
     rw [found, Option.map_some] at same
     exact (Option.some.inj (same.trans extension)).symm
@@ -504,47 +526,47 @@ theorem cache_definition_holds (output : GKRAddress) (relation : GKRCacheRelatio
     simp only [cacheProgram, Option.some.injEq] at found
     subst found
     simp only [cacheTyped, Bool.and_eq_true, Bool.not_eq_true'] at typed
-    rw [wires_extension challenges typing physical values typed.1,
-      vector_interpret challenges typing physical values row typed.2]
+    rw [wires_extension challenges roles physical values typed.1,
+      vector_interpret challenges roles physical values row typed.2]
     exact extension
   | VectorizedLookupSetup addresses =>
     simp only [cacheProgram, Option.some.injEq] at found
     subst found
     simp only [cacheTyped, Bool.and_eq_true, Bool.not_eq_true'] at typed
-    rw [wires_extension challenges typing physical values typed.1,
-      setup_interpret challenges typing physical values addresses typed.2]
+    rw [wires_extension challenges roles physical values typed.1,
+      setup_interpret challenges roles physical values addresses typed.2]
     exact extension
 
 theorem gate_definition_holds (relation : GKRRelation) (definition : AffineDefinition)
-    (found : gateDefinition relation = some definition) (typed : gateTyped typing relation = true)
+    (found : gateDefinition relation = some definition) (typed : gateTyped roles relation = true)
     (base : NativeArithmetic.GateHolds relation physical)
     (extension : NativeMemory.GateHolds challenges physical values relation) :
-    definition.Holds challenges.memory.embed (cacheChallenges challenges) (wires challenges typing physical values) := by
+    definition.Holds challenges.memory.embed (cacheChallenges challenges) (wires challenges roles physical values) := by
   cases relation <;> simp only [gateDefinition, reduceCtorEq] at found <;>
     simp only [Option.some.injEq] at found <;> subst found <;> simp only [AffineDefinition.Holds, interpret_input]
   case CopyInBaseField input output =>
     simp only [gateTyped, Bool.and_eq_true] at typed
-    rw [wires_base challenges typing physical values typed.1, wires_base challenges typing physical values typed.2]
+    rw [wires_base challenges roles physical values typed.1, wires_base challenges roles physical values typed.2]
     exact congrArg challenges.embed base
   case CopyInExtensionField input output =>
     simp only [gateTyped, Bool.and_eq_true, Bool.not_eq_true'] at typed
-    rw [wires_extension challenges typing physical values typed.1, wires_extension challenges typing physical values typed.2]
+    rw [wires_extension challenges roles physical values typed.1, wires_extension challenges roles physical values typed.2]
     exact extension
   case MaterializeSingleLookupInput row output width =>
     simp only [gateTyped, Bool.and_eq_true] at typed
-    rw [wires_base challenges typing physical values typed.1,
-      linear_interpret challenges typing physical values row.input typed.2]
+    rw [wires_base challenges roles physical values typed.1,
+      linear_interpret challenges roles physical values row.input typed.2]
     exact congrArg challenges.embed base
   case MaterializedVectorLookupInput row output =>
     simp only [gateTyped, Bool.and_eq_true, Bool.not_eq_true'] at typed
-    rw [wires_extension challenges typing physical values typed.1,
-      vector_interpret challenges typing physical values row typed.2]
+    rw [wires_extension challenges roles physical values typed.1,
+      vector_interpret challenges roles physical values row typed.2]
     exact extension
 
 theorem product_gate_holds (circuit : Circuit) (caches : List GKRAddress) (relation : GKRRelation)
-    (gate : NativeProductGate) (found : productGate circuit caches relation = some gate) (typed : gateTyped typing relation = true)
+    (gate : NativeProductGate) (found : productGate circuit caches relation = some gate) (typed : gateTyped roles relation = true)
     (extension : NativeMemory.GateHolds challenges physical values relation) :
-    gate.Holds challenges.memory.embed (cacheChallenges challenges) (wires challenges typing physical values) := by
+    gate.Holds challenges.memory.embed (cacheChallenges challenges) (wires challenges roles physical values) := by
   cases relation <;> simp only [productGate, reduceCtorEq] at found
   case InitialGrandProductFromCaches input output =>
     obtain ⟨left, right, pair⟩ := fixed_two input
@@ -552,8 +574,8 @@ theorem product_gate_holds (circuit : Circuit) (caches : List GKRAddress) (relat
     subst found
     simp only [gateTyped, pair, Bool.and_eq_true, Bool.not_eq_true', List.all_cons, List.all_nil, Bool.and_true] at typed
     simp only [NativeMemory.GateHolds, pair] at extension
-    simp only [NativeProductGate.Holds, interpret_input, wires_extension challenges typing physical values typed.1,
-      wires_extension challenges typing physical values typed.2.1, wires_extension challenges typing physical values typed.2.2]
+    simp only [NativeProductGate.Holds, interpret_input, wires_extension challenges roles physical values typed.1,
+      wires_extension challenges roles physical values typed.2.1, wires_extension challenges roles physical values typed.2.2]
     exact extension
   case InitialGrandProductWithoutCaches input output =>
     obtain ⟨left, right, pair⟩ := fixed_two input
@@ -569,11 +591,11 @@ theorem product_gate_holds (circuit : Circuit) (caches : List GKRAddress) (relat
       | some rightPayload =>
         simp only [leftProgram, rightProgram, Option.bind_eq_bind, Option.bind_some, Option.some.injEq] at found
         subst found
-        have leftSame := tuple_interpret challenges typing physical values left
-        have rightSame := tuple_interpret challenges typing physical values right
+        have leftSame := tuple_interpret challenges roles physical values left
+        have rightSame := tuple_interpret challenges roles physical values right
         rw [leftProgram, Option.map_some, leftFound, Option.some.injEq] at leftSame
         rw [rightProgram, Option.map_some, rightFound, Option.some.injEq] at rightSame
-        simp only [NativeProductGate.Holds, wires_extension challenges typing physical values typed.1, leftSame,
+        simp only [NativeProductGate.Holds, wires_extension challenges roles physical values typed.1, leftSame,
           rightSame]
         exact product
   case MaterializeGrandProductTermExpression input output =>
@@ -583,30 +605,30 @@ theorem product_gate_holds (circuit : Circuit) (caches : List GKRAddress) (relat
       simp only [program, Option.map_some, Option.some.injEq] at found
       subst found
       simp only [gateTyped, Bool.and_eq_true, Bool.not_eq_true'] at typed
-      have same := tuple_interpret challenges typing physical values input
+      have same := tuple_interpret challenges roles physical values input
       rw [program, Option.map_some] at same
-      simp only [NativeProductGate.Holds, wires_extension challenges typing physical values typed.1]
+      simp only [NativeProductGate.Holds, wires_extension challenges roles physical values typed.1]
       exact (Option.some.inj (same.trans extension)).symm
   case CopyInExtensionField input output =>
     simp only [gateTyped, Bool.and_eq_true, Bool.not_eq_true'] at typed
     split at found <;> simp only [Option.some.injEq] at found <;> subst found <;>
-      simp only [NativeProductGate.Holds, interpret_input, wires_extension challenges typing physical values typed.1,
-        wires_extension challenges typing physical values typed.2] <;> exact extension
+      simp only [NativeProductGate.Holds, interpret_input, wires_extension challenges roles physical values typed.1,
+        wires_extension challenges roles physical values typed.2] <;> exact extension
   case TrivialProduct input output =>
     obtain ⟨left, right, pair⟩ := fixed_two input
     simp only [pair, Option.some.injEq] at found
     subst found
     simp only [gateTyped, pair, Bool.and_eq_true, Bool.not_eq_true', List.all_cons, List.all_nil, Bool.and_true] at typed
     simp only [NativeMemory.GateHolds, pair] at extension
-    simp only [NativeProductGate.Holds, wires_extension challenges typing physical values typed.1,
-      wires_extension challenges typing physical values typed.2.1, wires_extension challenges typing physical values typed.2.2]
+    simp only [NativeProductGate.Holds, wires_extension challenges roles physical values typed.1,
+      wires_extension challenges roles physical values typed.2.1, wires_extension challenges roles physical values typed.2.2]
     exact extension
   case MaskIntoIdentityProduct input predicate output =>
     simp only [Option.some.injEq] at found
     subst found
     simp only [gateTyped, Bool.and_eq_true, Bool.not_eq_true'] at typed
-    simp only [NativeProductGate.Holds, wires_extension challenges typing physical values typed.1.1,
-      wires_extension challenges typing physical values typed.1.2, wires_base challenges typing physical values typed.2]
+    simp only [NativeProductGate.Holds, wires_extension challenges roles physical values typed.1.1,
+      wires_extension challenges roles physical values typed.1.2, wires_base challenges roles physical values typed.2]
     rw [extension]
     simp only [PaddingBoundary.mask, maskProduct]
     ring
@@ -616,7 +638,7 @@ theorem product_gate_holds (circuit : Circuit) (caches : List GKRAddress) (relat
 end Semantics
 
 section Circuit
-variable (challenges : NativeMemory.Challenges R) (typing : ConsumerTyping) (physical : GKRAddress → F)
+variable (challenges : NativeMemory.Challenges R) (roles : GKRAddress → Bool) (physical : GKRAddress → F)
   (values : GKRAddress → R) {circuit : Circuit}
 
 theorem cache_member {entry : GKRAddress × GKRCacheRelation} (member : entry ∈ layerCaches circuit) :
@@ -629,52 +651,52 @@ theorem gate_member {gate : GateArtifacts} (member : gate ∈ layerGates circuit
   obtain ⟨layer, layerMember, inside⟩ := List.mem_flatMap.mp member
   exact ⟨layer, Array.mem_def.mpr layerMember, Array.mem_def.mpr inside⟩
 
-theorem typed_caches {excluded : List GKRAddress} (typed : typingCheckedExcept typing circuit excluded = true) :
-    ∀ entry ∈ layerCaches circuit, cacheTyped typing entry.1 entry.2 = true := by
+theorem typed_caches {excluded : List GKRAddress} (typed : typingCheckedExcept roles circuit excluded = true) :
+    ∀ entry ∈ layerCaches circuit, cacheTyped roles entry.1 entry.2 = true := by
   simp only [typingCheckedExcept, Bool.and_eq_true] at typed
   exact List.all_eq_true.mp typed.1
 
-theorem typed_gates_except {excluded : List GKRAddress} (typed : typingCheckedExcept typing circuit excluded = true) :
+theorem typed_gates_except {excluded : List GKRAddress} (typed : typingCheckedExcept roles circuit excluded = true) :
     ∀ gate ∈ layerGates circuit, excludedRelation excluded gate.enforced_relation = false →
-      gateTyped typing gate.enforced_relation = true := by
+      gateTyped roles gate.enforced_relation = true := by
   simp only [typingCheckedExcept, Bool.and_eq_true] at typed
   intro gate member outside
   simpa only [outside, Bool.false_or] using List.all_eq_true.mp typed.2 gate member
 
-theorem typed_gates (typed : typingChecked typing circuit = true) :
-    ∀ gate ∈ layerGates circuit, gateTyped typing gate.enforced_relation = true := fun gate member =>
-  typed_gates_except typing typed gate member (excludedRelation_nil _)
+theorem typed_gates (typed : typingChecked roles circuit = true) :
+    ∀ gate ∈ layerGates circuit, gateTyped roles gate.enforced_relation = true := fun gate member =>
+  typed_gates_except roles typed gate member (excludedRelation_nil _)
 
 /-- Native base gates and the extension semantics give every imported affine definition. -/
-theorem definitions_hold (typed : typingChecked typing circuit = true)
+theorem definitions_hold (typed : typingChecked roles circuit = true)
     (accepted : NativeArithmetic.Holds circuit physical)
     (extension : NativeMemory.Holds circuit challenges physical values) :
     ∀ definition ∈ definitionPrograms circuit, definition.Holds challenges.memory.embed
-      (cacheChallenges challenges) (wires challenges typing physical values) := by
+      (cacheChallenges challenges) (wires challenges roles physical values) := by
   intro definition member
   rcases List.mem_append.mp member with cache | gate
   · obtain ⟨entry, entryMember, found⟩ := List.mem_filterMap.mp cache
     obtain ⟨program, programFound, rfl⟩ := Option.map_eq_some_iff.mp found
     obtain ⟨layer, layerMember, inside⟩ := cache_member entryMember
-    exact cache_definition_holds challenges typing physical values entry.1 entry.2 program programFound
-      (typed_caches typing typed entry entryMember) ((accepted layer layerMember).1 entry inside)
+    exact cache_definition_holds challenges roles physical values entry.1 entry.2 program programFound
+      (typed_caches roles typed entry entryMember) ((accepted layer layerMember).1 entry inside)
       ((extension layer layerMember).1 entry inside)
   · obtain ⟨artifact, artifactMember, found⟩ := List.mem_filterMap.mp gate
     obtain ⟨layer, layerMember, inside⟩ := gate_member artifactMember
-    exact gate_definition_holds challenges typing physical values artifact.enforced_relation definition found
-      (typed_gates typing typed artifact artifactMember) ((accepted layer layerMember).2 artifact inside)
+    exact gate_definition_holds challenges roles physical values artifact.enforced_relation definition found
+      (typed_gates roles typed artifact artifactMember) ((accepted layer layerMember).2 artifact inside)
       ((extension layer layerMember).2 artifact inside)
 
 /-- The extension semantics give every imported RAM-product gate. -/
-theorem products_hold (typed : typingChecked typing circuit = true)
+theorem products_hold (typed : typingChecked roles circuit = true)
     (extension : NativeMemory.Holds circuit challenges physical values) :
     ∀ gate ∈ productGates circuit, gate.Holds challenges.memory.embed
-      (cacheChallenges challenges) (wires challenges typing physical values) := by
+      (cacheChallenges challenges) (wires challenges roles physical values) := by
   intro gate member
   obtain ⟨artifact, artifactMember, found⟩ := List.mem_filterMap.mp member
   obtain ⟨layer, layerMember, inside⟩ := gate_member artifactMember
-  exact product_gate_holds challenges typing physical values circuit _ artifact.enforced_relation gate found
-    (typed_gates typing typed artifact artifactMember) ((extension layer layerMember).2 artifact inside)
+  exact product_gate_holds challenges roles physical values circuit _ artifact.enforced_relation gate found
+    (typed_gates roles typed artifact artifactMember) ((extension layer layerMember).2 artifact inside)
 
 theorem cache_member_definition {layer : GKRLayerDescription} {entry : GKRAddress × GKRCacheRelation}
     {program : LookupPayload} (layerMember : layer ∈ circuit.layers) (inside : entry ∈ layer.cached_relations)
@@ -699,16 +721,16 @@ theorem gate_member_product {layer : GKRLayerDescription} {gate : GateArtifacts}
   List.mem_filterMap.mpr ⟨gate, List.mem_flatMap.mpr ⟨layer, Array.mem_def.mp layerMember, Array.mem_def.mp inside⟩, found⟩
 
 /-- Imported definitions and product gates give the extension semantics of every cache and gate. -/
-theorem holds_of_programs {excluded : List GKRAddress} (typed : typingCheckedExcept typing circuit excluded = true)
+theorem holds_of_programs {excluded : List GKRAddress} (typed : typingCheckedExcept roles circuit excluded = true)
     (definitions : ∀ definition ∈ definitionPrograms circuit, definition.Holds challenges.memory.embed
-      (cacheChallenges challenges) (wires challenges typing physical values))
+      (cacheChallenges challenges) (wires challenges roles physical values))
     (products : ∀ gate ∈ productGates circuit, gate.Holds challenges.memory.embed
-      (cacheChallenges challenges) (wires challenges typing physical values)) :
-    NativeMemory.Holds circuit challenges physical (wires challenges typing physical values) := by
+      (cacheChallenges challenges) (wires challenges roles physical values)) :
+    NativeMemory.Holds circuit challenges physical (wires challenges roles physical values) := by
   intro layer layerMember
   constructor
   · intro entry inside
-    have entryTyped := typed_caches typing typed entry
+    have entryTyped := typed_caches roles typed entry
       (List.mem_flatMap.mpr ⟨layer, Array.mem_def.mp layerMember, Array.mem_def.mp inside⟩)
     have holds (program : LookupPayload) (found : cacheProgram entry.2 = some program) :=
       definitions _ (cache_member_definition layerMember inside found)
@@ -718,7 +740,7 @@ theorem holds_of_programs {excluded : List GKRAddress} (typed : typingCheckedExc
     | MemoryTuple row =>
       simp only [cacheTyped, Bool.and_eq_true, Bool.not_eq_true', Option.isSome_iff_exists] at entryTyped
       obtain ⟨program, found⟩ := entryTyped.2
-      have same := tuple_interpret challenges typing physical values row
+      have same := tuple_interpret challenges roles physical values row
       rw [found, Option.map_some] at same
       simp only [NativeMemory.CacheHolds, ← same]
       exact congrArg some (holds program found).symm
@@ -726,14 +748,14 @@ theorem holds_of_programs {excluded : List GKRAddress} (typed : typingCheckedExc
       simp only [cacheTyped, Bool.and_eq_true, Bool.not_eq_true'] at entryTyped
       simp only [NativeMemory.CacheHolds]
       rw [holds (vectorProgram row) rfl]
-      exact vector_interpret challenges typing physical values row entryTyped.2
+      exact vector_interpret challenges roles physical values row entryTyped.2
     | VectorizedLookupSetup addresses =>
       simp only [cacheTyped, Bool.and_eq_true, Bool.not_eq_true'] at entryTyped
       simp only [NativeMemory.CacheHolds]
       rw [holds (setupProgram addresses) rfl]
-      exact setup_interpret challenges typing physical values addresses entryTyped.2
+      exact setup_interpret challenges roles physical values addresses entryTyped.2
   · intro gate inside
-    have gateTyped' := typed_gates_except typing typed gate
+    have gateTyped' := typed_gates_except roles typed gate
       (List.mem_flatMap.mpr ⟨layer, Array.mem_def.mp layerMember, Array.mem_def.mp inside⟩)
     have holds (definition : AffineDefinition) (found : gateDefinition gate.enforced_relation = some definition) :=
       definitions _ (gate_member_definition layerMember inside found)
@@ -752,7 +774,7 @@ theorem holds_of_programs {excluded : List GKRAddress} (typed : typingCheckedExc
       have equation := holds _ rfl
       simp only [AffineDefinition.Holds] at equation
       rw [equation]
-      exact vector_interpret challenges typing physical values row gateTyped'.2
+      exact vector_interpret challenges roles physical values row gateTyped'.2
     case InitialGrandProductFromCaches input output =>
       obtain ⟨left, right, pair⟩ := fixed_two input
       have equation := product (.pair output (.input left) (.input right)) (by simp only [productGate, pair])
@@ -767,8 +789,8 @@ theorem holds_of_programs {excluded : List GKRAddress} (typed : typingCheckedExc
       obtain ⟨rightProgram, rightFound⟩ := gateTyped'.2.2
       have equation := product (.pair output leftProgram rightProgram)
         (by simp only [productGate, pair, leftFound, rightFound, Option.bind_eq_bind, Option.bind_some])
-      have leftSame := tuple_interpret challenges typing physical values left
-      have rightSame := tuple_interpret challenges typing physical values right
+      have leftSame := tuple_interpret challenges roles physical values left
+      have rightSame := tuple_interpret challenges roles physical values right
       rw [leftFound, Option.map_some] at leftSame
       rw [rightFound, Option.map_some] at rightSame
       simp only [pair]
@@ -778,7 +800,7 @@ theorem holds_of_programs {excluded : List GKRAddress} (typed : typingCheckedExc
       simp only [gateTyped, Bool.and_eq_true, Option.isSome_iff_exists] at gateTyped'
       obtain ⟨program, found⟩ := gateTyped'.2
       have equation := product (.single output program) (by simp only [productGate, found, Option.map_some])
-      have same := tuple_interpret challenges typing physical values input
+      have same := tuple_interpret challenges roles physical values input
       rw [found, Option.map_some] at same
       rw [← same]
       exact congrArg some equation.symm
@@ -792,7 +814,7 @@ theorem holds_of_programs {excluded : List GKRAddress} (typed : typingCheckedExc
       simp only [gateTyped, Bool.and_eq_true, Bool.not_eq_true'] at gateTyped'
       have equation := product (.mask output input predicate) (by simp only [productGate])
       simp only [NativeProductGate.Holds] at equation
-      rw [equation, wires_base challenges typing physical values gateTyped'.2]
+      rw [equation, wires_base challenges roles physical values gateTyped'.2]
       simp only [PaddingBoundary.mask, maskProduct, Challenges.embed]
       ring
 

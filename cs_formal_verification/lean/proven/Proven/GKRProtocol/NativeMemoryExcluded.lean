@@ -36,9 +36,9 @@ def initializationWires (circuit : Circuit) : List GKRAddress :=
     | _ => wires) []
 
 /-- An excluded element reads only excluded or base wires. Any other element reads no excluded wire. -/
-def separated (typing : ConsumerTyping) (excluded : List GKRAddress) (output : GKRAddress)
+def separated (roles : GKRAddress → Bool) (excluded : List GKRAddress) (output : GKRAddress)
     (addresses : List GKRAddress) : Bool :=
-  if excluded.contains output then addresses.all fun address => excluded.contains address || isBase typing address
+  if excluded.contains output then addresses.all fun address => excluded.contains address || isBase roles address
   else addresses.all fun address => !excluded.contains address
 
 /-- Excluded wires take the canonical values. Other wires take the supplied values. -/
@@ -92,29 +92,29 @@ theorem product_holds_congr (gate : NativeProductGate) (hom : Source.BaseField �
     rw [← same.1, holds, same.2]
 
 section Excluded
-variable (challenges : NativeMemory.Challenges R) (typing : ConsumerTyping) (physical : GKRAddress → F)
+variable (challenges : NativeMemory.Challenges R) (roles : GKRAddress → Bool) (physical : GKRAddress → F)
   (values canonical : GKRAddress → R) (excluded : List GKRAddress) {circuit : Circuit}
 
 /-- The spliced wires agree with the canonical wires on excluded and base wires. -/
-theorem spliced_canonical (canonicalBase : ∀ address, isBase typing address = true →
+theorem spliced_canonical (canonicalBase : ∀ address, isBase roles address = true →
       canonical address = challenges.embed (physical address))
-    (address : GKRAddress) (inside : excluded.contains address = true ∨ isBase typing address = true) :
-    wires challenges typing physical (spliced excluded canonical values) address = canonical address := by
-  cases base : isBase typing address with
-  | true => rw [wires_base challenges typing physical _ base, canonicalBase address base]
+    (address : GKRAddress) (inside : excluded.contains address = true ∨ isBase roles address = true) :
+    wires challenges roles physical (spliced excluded canonical values) address = canonical address := by
+  cases base : isBase roles address with
+  | true => rw [wires_base challenges roles physical _ base, canonicalBase address base]
   | false =>
-    rw [wires_extension challenges typing physical _ base]
+    rw [wires_extension challenges roles physical _ base]
     simp only [base, Bool.false_eq_true, or_false] at inside
     simp only [spliced, inside, ↓reduceIte]
 
 /-- The spliced wires agree with the supplied wires off the excluded wires. -/
 theorem spliced_values (address : GKRAddress) (outside : excluded.contains address = false) :
-    wires challenges typing physical (spliced excluded canonical values) address =
-      wires challenges typing physical values address := by
-  cases base : isBase typing address with
-  | true => rw [wires_base challenges typing physical _ base, wires_base challenges typing physical _ base]
+    wires challenges roles physical (spliced excluded canonical values) address =
+      wires challenges roles physical values address := by
+  cases base : isBase roles address with
+  | true => rw [wires_base challenges roles physical _ base, wires_base challenges roles physical _ base]
   | false =>
-    rw [wires_extension challenges typing physical _ base, wires_extension challenges typing physical _ base]
+    rw [wires_extension challenges roles physical _ base, wires_extension challenges roles physical _ base]
     simp only [spliced, outside, Bool.false_eq_true, ↓reduceIte]
 
 theorem gate_definition_excluded {relation : GKRRelation} {definition : AffineDefinition}
@@ -145,35 +145,35 @@ theorem product_gate_excluded {caches : List GKRAddress} {relation : GKRRelation
 
 /-- Native base gates, the extension semantics and the canonical evaluation give every affine definition
     on the spliced wires. -/
-theorem definitions_hold_spliced (typed : typingCheckedExcept typing circuit excluded = true)
+theorem definitions_hold_spliced (typed : typingCheckedExcept roles circuit excluded = true)
     (partitioned : (definitionPrograms circuit).all
-      (fun definition => separated typing excluded definition.output (definitionAddresses definition)) = true)
+      (fun definition => separated roles excluded definition.output (definitionAddresses definition)) = true)
     (accepted : NativeArithmetic.Holds circuit physical)
     (extension : NativeMemory.Holds circuit challenges physical values)
-    (canonicalBase : ∀ address, isBase typing address = true → canonical address = challenges.embed (physical address))
+    (canonicalBase : ∀ address, isBase roles address = true → canonical address = challenges.embed (physical address))
     (canonicalHolds : ∀ definition ∈ definitionPrograms circuit,
       definition.Holds challenges.memory.embed (cacheChallenges challenges) canonical) :
     ∀ definition ∈ definitionPrograms circuit, definition.Holds challenges.memory.embed
-      (cacheChallenges challenges) (wires challenges typing physical (spliced excluded canonical values)) := by
+      (cacheChallenges challenges) (wires challenges roles physical (spliced excluded canonical values)) := by
   intro definition member
   have split := List.all_eq_true.mp partitioned definition member
   cases inside : excluded.contains definition.output with
   | true =>
     simp only [separated, inside, ↓reduceIte, List.all_eq_true, Bool.or_eq_true] at split
     exact definition_holds_congr definition _ _ canonical _
-      (fun address used => (spliced_canonical challenges typing physical values canonical excluded canonicalBase
+      (fun address used => (spliced_canonical challenges roles physical values canonical excluded canonicalBase
         address (split address used)).symm) (canonicalHolds definition member)
   | false =>
     simp only [separated, inside, Bool.false_eq_true, ↓reduceIte, List.all_eq_true, Bool.not_eq_true'] at split
-    apply definition_holds_congr definition _ _ (wires challenges typing physical values)
+    apply definition_holds_congr definition _ _ (wires challenges roles physical values)
     · intro address used
-      exact (spliced_values challenges typing physical values canonical excluded address (split address used)).symm
+      exact (spliced_values challenges roles physical values canonical excluded address (split address used)).symm
     rcases List.mem_append.mp member with cache | gate
     · obtain ⟨entry, entryMember, found⟩ := List.mem_filterMap.mp cache
       obtain ⟨program, programFound, rfl⟩ := Option.map_eq_some_iff.mp found
       obtain ⟨layer, layerMember, entryInside⟩ := cache_member entryMember
-      exact cache_definition_holds challenges typing physical values entry.1 entry.2 program programFound
-        (typed_caches typing typed entry entryMember) ((accepted layer layerMember).1 entry entryInside)
+      exact cache_definition_holds challenges roles physical values entry.1 entry.2 program programFound
+        (typed_caches roles typed entry entryMember) ((accepted layer layerMember).1 entry entryInside)
         ((extension layer layerMember).1 entry entryInside)
     · obtain ⟨artifact, artifactMember, found⟩ := List.mem_filterMap.mp gate
       obtain ⟨layer, layerMember, artifactInside⟩ := gate_member artifactMember
@@ -183,34 +183,34 @@ theorem definitions_hold_spliced (typed : typingCheckedExcept typing circuit exc
         rw [inside] at contradiction
         cases contradiction
       | false =>
-        have checked := typed_gates_except typing typed artifact artifactMember excludedGate
-        exact gate_definition_holds challenges typing physical values artifact.enforced_relation definition found
+        have checked := typed_gates_except roles typed artifact artifactMember excludedGate
+        exact gate_definition_holds challenges roles physical values artifact.enforced_relation definition found
           checked ((accepted layer layerMember).2 artifact artifactInside)
           ((extension layer layerMember).2 artifact artifactInside)
 
 /-- The extension semantics and the canonical evaluation give every product gate on the spliced wires. -/
-theorem products_hold_spliced (typed : typingCheckedExcept typing circuit excluded = true)
+theorem products_hold_spliced (typed : typingCheckedExcept roles circuit excluded = true)
     (partitioned : (productGates circuit).all
-      (fun gate => separated typing excluded (productOutput gate) (productAddresses gate)) = true)
+      (fun gate => separated roles excluded (productOutput gate) (productAddresses gate)) = true)
     (extension : NativeMemory.Holds circuit challenges physical values)
-    (canonicalBase : ∀ address, isBase typing address = true → canonical address = challenges.embed (physical address))
+    (canonicalBase : ∀ address, isBase roles address = true → canonical address = challenges.embed (physical address))
     (canonicalHolds : ∀ gate ∈ productGates circuit,
       gate.Holds challenges.memory.embed (cacheChallenges challenges) canonical) :
     ∀ gate ∈ productGates circuit, gate.Holds challenges.memory.embed
-      (cacheChallenges challenges) (wires challenges typing physical (spliced excluded canonical values)) := by
+      (cacheChallenges challenges) (wires challenges roles physical (spliced excluded canonical values)) := by
   intro gate member
   have split := List.all_eq_true.mp partitioned gate member
   cases inside : excluded.contains (productOutput gate) with
   | true =>
     simp only [separated, inside, ↓reduceIte, List.all_eq_true, Bool.or_eq_true] at split
     exact product_holds_congr gate _ _ canonical _
-      (fun address used => (spliced_canonical challenges typing physical values canonical excluded canonicalBase
+      (fun address used => (spliced_canonical challenges roles physical values canonical excluded canonicalBase
         address (split address used)).symm) (canonicalHolds gate member)
   | false =>
     simp only [separated, inside, Bool.false_eq_true, ↓reduceIte, List.all_eq_true, Bool.not_eq_true'] at split
-    apply product_holds_congr gate _ _ (wires challenges typing physical values)
+    apply product_holds_congr gate _ _ (wires challenges roles physical values)
     · intro address used
-      exact (spliced_values challenges typing physical values canonical excluded address (split address used)).symm
+      exact (spliced_values challenges roles physical values canonical excluded address (split address used)).symm
     obtain ⟨artifact, artifactMember, found⟩ := List.mem_filterMap.mp member
     obtain ⟨layer, layerMember, artifactInside⟩ := gate_member artifactMember
     cases excludedGate : excludedRelation excluded artifact.enforced_relation with
@@ -219,8 +219,8 @@ theorem products_hold_spliced (typed : typingCheckedExcept typing circuit exclud
       rw [inside] at contradiction
       cases contradiction
     | false =>
-      have checked := typed_gates_except typing typed artifact artifactMember excludedGate
-      exact product_gate_holds challenges typing physical values circuit _ artifact.enforced_relation gate found
+      have checked := typed_gates_except roles typed artifact artifactMember excludedGate
+      exact product_gate_holds challenges roles physical values circuit _ artifact.enforced_relation gate found
         checked ((extension layer layerMember).2 artifact artifactInside)
 
 end Excluded

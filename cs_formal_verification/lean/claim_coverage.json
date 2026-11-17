@@ -982,6 +982,11 @@
     "Airbender.InitsTeardowns.SharedBytesClaim": {
       "exception": "artifact",
       "reason": "This claim checks fixed imported data or a constant proposition."
-    }
+    },
+    "Airbender.Compiler.BigintCachedMemoryClaim": {
+      "witness": "Airbender.Compiler.BigintCachedMemorySatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
+    },
+    "Airbender.Compiler.BigintCachedMemorySatisfiableClaim": {}
   }
 }

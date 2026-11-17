@@ -26,7 +26,10 @@ caches and RAM-product gates. [MemoryPorts.lean](MemoryPorts.lean) states one cl
 cached CPU circuit: native base gates, extension caches and product gates give the RAM read and
 write outputs. Each output is the product of the encoded port tokens and PC-state token of the
 model row, masked by the execute column. `StateTokenMatchingClaim` gives the raw state matching
-from exact matching of the PC-state tokens. The worker RAM outputs have no claim of this form.
+from exact matching of the PC-state tokens.
+[WorkerMemoryPorts.lean](WorkerMemoryPorts.lean) states the same claim for the bigint capture.
+Each worker output is the product of the encoded port tokens and request token of the worker
+row, masked by the execute column. The BLAKE2 G, BLAKE2 round and three split Keccak captures have no claim of this form.
 
 [CPU certificate witnesses](../../../proven/Proven/Final/Compiler/CPUCertificates.lean)
 give one active certificate for each of the seven CPU families. Each certificate

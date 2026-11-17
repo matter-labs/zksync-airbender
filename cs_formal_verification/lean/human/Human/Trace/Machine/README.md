@@ -56,6 +56,8 @@ to the CPU, worker, state, request and memory tuples of the constraint-descripti
 [padded native targets](../../Compiler/NativeTargets.lean) state the same masked relations with native
 certificates for active and padding rows. The [RAM output claims](../../Compiler/MemoryPorts.lean) show that each
 cached CPU circuit computes its RAM outputs as products masked by the execute column. The
+[worker RAM output claims](../../Compiler/WorkerMemoryPorts.lean) show the same for the bigint circuit,
+with the request token of the row. The
 [proofs](../../../../proven/Proven/Final/Trace/Machine/Padding.lean) erase identity factors and retain full
 occurrence counts. The [cached circuit results](../../Compiler/README.md)
 connect native CPU and worker gates, placement and public lookups to every imported row constraint.

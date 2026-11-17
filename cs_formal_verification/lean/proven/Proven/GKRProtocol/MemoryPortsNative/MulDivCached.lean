@@ -25,7 +25,7 @@ theorem gates_binding :
   kernel_rfl
 
 /-- Every recipe reads its operands with the field role of the checked typing. -/
-theorem typed : typingChecked ConsumerNative.MulDivCached.native.typing Captures.MulDiv.imported.circuit = true := by
+theorem typed : typingChecked (baseRoles ConsumerNative.MulDivCached.native.typing) Captures.MulDiv.imported.circuit = true := by
   decide +kernel
 
 /-- The RAM output map names the reduced read and write outputs. Both are extension wires. -/
@@ -34,8 +34,8 @@ theorem outputs : NativeMemory.ramOutputs Captures.MulDiv.imported.circuit =
   kernel_rfl
 
 theorem outputs_extension :
-    isBase ConsumerNative.MulDivCached.native.typing MemoryNative.MulDivCached.native.memoryReadOutput = false ∧
-      isBase ConsumerNative.MulDivCached.native.typing MemoryNative.MulDivCached.native.memoryWriteOutput = false := by
+    isBase (baseRoles ConsumerNative.MulDivCached.native.typing) MemoryNative.MulDivCached.native.memoryReadOutput = false ∧
+      isBase (baseRoles ConsumerNative.MulDivCached.native.typing) MemoryNative.MulDivCached.native.memoryWriteOutput = false := by
   decide +kernel
 
 /-- The source read rows are the port read tokens and the starting PC-state token of the model row. -/
@@ -81,14 +81,15 @@ theorem ram_products {R : Type} [CommRing R] (challenges : NativeMemory.Challeng
   let typed' : TypedAssignment R := ⟨physical, values⟩
   have defined : ∀ definition ∈ MemoryNative.MulDivCached.native.definitions,
       definition.Holds challenges.memory.embed (cacheChallenges challenges)
-        (typed'.value ConsumerNative.MulDivCached.native.typing challenges.memory.embed) := by
+        (wires challenges (baseRoles ConsumerNative.MulDivCached.native.typing) physical values) := by
     rw [definitions_binding]
     exact definitions_hold challenges _ physical values typed accepted extension
   have holds : ∀ gate ∈ ProductNative.MulDivCached.native.gates,
       gate.Holds challenges.memory.embed (cacheChallenges challenges)
-        (typed'.value ConsumerNative.MulDivCached.native.typing challenges.memory.embed) := by
+        (wires challenges (baseRoles ConsumerNative.MulDivCached.native.typing) physical values) := by
     rw [gates_binding]
     exact products_hold challenges _ physical values typed extension
+  rw [wires_typed] at defined holds
   have copies := FunctionalLinksNative.MulDivCached.native.memoryCopies physical
     (NativeBindings.MulDiv.scalar_gates physical accepted)
   have original := Source.MemoryPlacement.original_of_agreement
@@ -118,11 +119,11 @@ theorem ram_products {R : Type} [CommRing R] (challenges : NativeMemory.Challeng
   have write := MemoryNative.MulDivCached.native.memoryWriteSourceReduction challenges.memory.embed
     (cacheChallenges challenges) typed' defined copies holds
   apply ram_products_of_outputs outputs
-  · rw [← wires_extension challenges _ physical values outputs_extension.1]
+  · rw [← wires_extension challenges _ physical values outputs_extension.1, wires_typed]
     refine read.trans ?_
     rw [execute, ← readTokens, Source.MemoryRow.token_products]
     rfl
-  · rw [← wires_extension challenges _ physical values outputs_extension.2]
+  · rw [← wires_extension challenges _ physical values outputs_extension.2, wires_typed]
     refine write.trans ?_
     rw [execute, ← writeTokens, Source.MemoryRow.token_products]
     rfl
@@ -132,8 +133,9 @@ theorem satisfiable : MulDivCachedMemorySatisfiableClaim := by
   obtain ⟨physical, logical, accepted, placement⟩ := NativeSatisfiable.MulDiv.witness
   let challenges : NativeMemory.Challenges NativeArithmetic.F := ⟨⟨RingHom.id _, 0, fun _ => 0, fun _ => 0⟩, 0⟩
   let values := FunctionalNative.MulDivCached.native.canonical challenges.memory.embed (cacheChallenges challenges) 0 physical
-  have same : wires challenges ConsumerNative.MulDivCached.native.typing physical values = values :=
-    FunctionalLinksNative.MulDivCached.native.assignment_value challenges.memory.embed (cacheChallenges challenges) 0 physical
+  have same : wires challenges (baseRoles ConsumerNative.MulDivCached.native.typing) physical values = values :=
+    (wires_typed _ _ _ _).trans
+      (FunctionalLinksNative.MulDivCached.native.assignment_value challenges.memory.embed (cacheChallenges challenges) 0 physical)
   refine ⟨challenges, physical, values, ⟨.mulDiv, logical⟩, rfl, accepted, placement, ?_⟩
   rw [← same]
   apply holds_of_programs challenges _ physical values typed
