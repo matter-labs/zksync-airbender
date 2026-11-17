@@ -35,6 +35,11 @@ EVIDENCE_AUDIT = r'''
 namespace ClaimCoverageAudit
 open Lean Elab Command
 
+/-- A claim is a definition whose type is `Prop`. -/
+def isPropDefinition : ConstantInfo → Bool
+  | .defnInfo info => info.type.consumeMData == .sort .zero
+  | _ => false
+
 def claimProjection (env : Environment) : Nat → Lean.Expr → Nat → Bool
   | 0, _, _ => false
   | fuel + 1, expression, index =>
@@ -73,6 +78,62 @@ def mentionsParameter : Lean.Expr → Nat → Bool
   | .mdata _ body, index | .proj _ _ body, index => mentionsParameter body index
   | _, _ => false
 
+/-- Whether a term at binder depth `depth` mentions a variable whose binder level is in `levels`. -/
+def mentionsLevels (levels : List Nat) (depth : Nat) : Lean.Expr → Bool
+  | .bvar i => i < depth && levels.contains (depth - 1 - i)
+  | .app f a => mentionsLevels levels depth f || mentionsLevels levels depth a
+  | .lam _ type body _ | .forallE _ type body _ =>
+      mentionsLevels levels depth type || mentionsLevels levels (depth + 1) body
+  | .letE _ type value body _ =>
+      mentionsLevels levels depth type || mentionsLevels levels depth value || mentionsLevels levels (depth + 1) body
+  | .mdata _ body | .proj _ _ body => mentionsLevels levels depth body
+  | _ => false
+
+/-- The binder kinds of the premises of a claim definition, outermost first. -/
+def premiseBinders : Lean.Expr → List BinderInfo
+  | .forallE _ _ body binder => binder :: premiseBinders body
+  | .mdata _ body => premiseBinders body
+  | _ => []
+
+/-- The arguments that must carry witness data in an application whose head is the claim (binder level 0) or a
+    projection of it. When the claim itself is the head, these are its explicit arguments. Otherwise they are all
+    arguments after the projection. -/
+def claimArguments (env : Environment) (binders : List BinderInfo) (depth : Nat) (expression : Lean.Expr) :
+    Option (Array Lean.Expr) :=
+  let function := expression.getAppFn.consumeMData
+  let arguments := expression.getAppArgs
+  let headSize := (List.range (arguments.size + 1)).find? fun split =>
+    0 < depth && claimProjection env 64 (mkAppN function (arguments.extract 0 split)) (depth - 1)
+  headSize.map fun split =>
+    if split == 0 then
+      (arguments.toList.zipIdx.filter fun (_, index) => (binders[index]?.getD .default).isExplicit).toArray.map
+        Prod.fst
+    else arguments.extract split arguments.size
+
+/-- Whether the evidence applies its claim to data of its witness: every explicit argument mentions witness data.
+    Witness data is the witness (binder level 1), a `let` variable bound to witness data, and a variable that a
+    function argument binds when its application eliminates witness data (a `match` alternative or a `casesOn`
+    minor premise). -/
+partial def appliesToWitness (env : Environment) (binders : List BinderInfo) (levels : List Nat) (depth : Nat)
+    (binds : Bool) (expression : Lean.Expr) : Bool :=
+  let recurse := appliesToWitness env binders
+  match expression.consumeMData with
+  | .lam _ type body _ =>
+      recurse levels depth false type || recurse (if binds then depth :: levels else levels) (depth + 1) binds body
+  | .forallE _ type body _ => recurse levels depth false type || recurse levels (depth + 1) false body
+  | .letE _ type value body _ =>
+      recurse levels depth false type || recurse levels depth false value ||
+        recurse (if mentionsLevels levels depth value then depth :: levels else levels) (depth + 1) false body
+  | .proj _ _ body => recurse levels depth false body
+  | application@(.app ..) =>
+      let arguments := application.getAppArgs
+      let eliminates := arguments.any (mentionsLevels levels depth)
+      let applied := match claimArguments env binders depth application with
+        | some claimed => !claimed.isEmpty && claimed.all (mentionsLevels levels depth)
+        | none => false
+      applied || recurse levels depth false application.getAppFn || arguments.any (recurse levels depth eliminates)
+  | _ => false
+
 def audit (name : Name) : CommandElabM Unit := do
   let env ← getEnv
   let some (.thmInfo info) := env.find? name | throwError "Missing evidence theorem {name}"
@@ -88,6 +149,11 @@ def audit (name : Name) : CommandElabM Unit := do
     throwError "Evidence must use its witness parameter: {name}"
   unless mentionsParameter proof 0 do
     throwError "Evidence does not use its witness: {name}"
+  let binders := match env.find? claim with
+    | some (.defnInfo definition) => premiseBinders definition.value
+    | _ => []
+  unless appliesToWitness env binders [1] 0 false info.value do
+    throwError "Evidence does not apply its claim to its witness data: {name}"
   logInfo m!"WITNESS_APPLICATION {claim} {witness}"
 end ClaimCoverageAudit
 '''
@@ -143,7 +209,7 @@ def inventory():
                for folder, prefix in [("human", "Human"), ("proven", "Proven/Final")]
                for p in sorted((ROOT / folder / prefix).rglob("*.lean"))]
     evidence, evidence_names = evidence_source(EVIDENCE_FILE.read_text())
-    code = "\n".join("import " + m for m in modules) + "\nimport Lean\n" + evidence + '''
+    code = "\n".join("import " + m for m in modules) + "\nimport Lean\n" + evidence + EVIDENCE_AUDIT + '''
 open Lean Elab Command
 run_cmd do
   let env ← getEnv
@@ -151,6 +217,10 @@ run_cmd do
     let mod := env.header.moduleNames[index]
     if mod.toString.startsWith "Human." || mod.toString.startsWith "Proven.Final." then
       for name in env.header.moduleData[index]!.constNames do
+        if mod.toString.startsWith "Human." && name.toString.endsWith "Claim" then
+          if let some info := env.find? name then
+            unless ClaimCoverageAudit.isPropDefinition info do
+              logInfo m!"NON_DEF_CLAIM {name}"
         if !isPrivateName name then
           if mod.toString.startsWith "Human." && name.toString.endsWith "Claim" then
             if let some info := env.find? name then
@@ -172,7 +242,6 @@ run_cmd do
                 logInfo m!"FINAL_PROOF {name} {claim}"
           | _ => pure ()
 '''
-    code += EVIDENCE_AUDIT
     for name in evidence_names:
         code += f'\nrun_cmd ClaimCoverageAudit.audit ``{name}\n'
     # Recheck the ordinary theorem forms against their named Human statements.
@@ -189,11 +258,13 @@ run_cmd do
     if result.returncode:
         raise ValueError(result.stdout[-5000:])
     props, proofs, declarations, proof_modules = {}, {}, set(), {}
-    applications, non_props = set(), []
+    applications, non_props, non_definitions = set(), [], []
     for line in result.stdout.splitlines():
         fields = line.split()
         if fields and fields[0] == "NON_PROP_CLAIM":
             non_props.append(fields[1])
+        elif fields and fields[0] == "NON_DEF_CLAIM":
+            non_definitions.append(fields[1])
         elif fields and fields[0] == "WITNESS_APPLICATION":
             applications.add((fields[1], fields[2]))
         elif fields and fields[0] == "HUMAN_PROP":
@@ -211,6 +282,7 @@ run_cmd do
               if name.endswith("Claim") or info["module"] in SPECIAL_MODULES or name in proofs}
     return {"claims": claims, "proofs": {k: sorted(set(v)) for k, v in proofs.items() if k in claims},
             "proof_modules": proof_modules, "applications": sorted(applications), "non_props": non_props,
+            "non_definitions": non_definitions,
             "status_claims": re.findall(r"^\| \[`([^`]+)`\]\(", STATUS.read_text(), re.M)}
 
 
@@ -219,9 +291,20 @@ def allowed_exception(name, info, kind):
     return name in EXCEPTIONS.get(kind, set())
 
 
+def expected_witness(name, claims):
+    """The witness of a claim is `<stem>SatisfiableClaim`. The stem is the name without `Claim`, or without
+    `SoundnessClaim` when only that witness exists."""
+    candidates = [name.removesuffix("Claim") + "SatisfiableClaim"]
+    if name.endswith("SoundnessClaim"):
+        candidates.append(name.removesuffix("SoundnessClaim") + "SatisfiableClaim")
+    return next((candidate for candidate in candidates if candidate in claims), None)
+
+
 def validate(data, manifest):
     if data.get("non_props"):
         raise ValueError("Public claim is not a proposition: " + ", ".join(data["non_props"]))
+    if data.get("non_definitions"):
+        raise ValueError("Claim is not a Prop-typed definition: " + ", ".join(data["non_definitions"]))
     claims, proofs = data["claims"], data["proofs"]
     rows = manifest["claims"]
     if set(rows) != set(claims):
@@ -232,6 +315,7 @@ def validate(data, manifest):
         missing_status = sorted(set(claims) - set(data["status_claims"]))
         if missing_status:
             raise ValueError("Missing claim status rows: " + ", ".join(missing_status))
+    witnessed = {}
     for name, info in claims.items():
         row = rows[name]
         if not proofs.get(name):
@@ -249,6 +333,11 @@ def validate(data, manifest):
         witness = row.get("witness")
         if witness not in claims or "Satisfiable" not in witness:
             raise ValueError("Missing separate non-vacuity statement: " + name)
+        if witness != expected_witness(name, claims):
+            raise ValueError(f"Witness of {name} must be its stem SatisfiableClaim, not {witness}")
+        if witness in witnessed:
+            raise ValueError(f"Witness {witness} serves two claims: {witnessed[witness]} and {name}")
+        witnessed[witness] = name
         if not proofs.get(witness):
             raise ValueError("Missing non-vacuity proof: " + witness)
         if row.get("evidence") != EVIDENCE_MODULE:
@@ -265,9 +354,7 @@ def initialize(data):
         if "Satisfiable" in name:
             rows[name] = {}
             continue
-        stem = name.removesuffix("Claim")
-        candidates = [stem + "SatisfiableClaim", stem.replace("Soundness", "") + "SatisfiableClaim"]
-        witness = next((x for x in candidates if x in claims), None)
+        witness = expected_witness(name, claims)
         if witness:
             rows[name] = {"witness": witness, "evidence": EVIDENCE_MODULE}
             continue

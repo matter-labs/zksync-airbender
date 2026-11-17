@@ -32,6 +32,45 @@ class ClaimCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Missing separate non-vacuity statement"):
             validate(self.data, self.manifest)
 
+    def test_witness_must_be_the_stem_witness(self):
+        other = "Example.OtherSatisfiableClaim"
+        self.data["claims"][other] = copy.copy(self.data["claims"][self.witness])
+        self.data["proofs"][other] = ["Example.other_satisfiable"]
+        self.manifest["claims"][other] = {}
+        self.manifest["claims"][self.primary]["witness"] = other
+        self.data["applications"] = [(self.primary, other)]
+        with self.assertRaisesRegex(ValueError, "must be its stem SatisfiableClaim"):
+            validate(self.data, self.manifest)
+
+    def test_soundness_stem_witness(self):
+        witness = "Example.SatisfiableClaim"
+        self.data["claims"][witness] = self.data["claims"].pop(self.witness)
+        self.data["proofs"][witness] = self.data["proofs"].pop(self.witness)
+        self.manifest["claims"][witness] = self.manifest["claims"].pop(self.witness)
+        self.manifest["claims"][self.primary]["witness"] = witness
+        self.data["applications"] = [(self.primary, witness)]
+        self.assertEqual(validate(self.data, self.manifest), 2)
+
+    def test_witness_serves_one_claim(self):
+        # `Example.SoundnessClaim` and `Example.Claim` have the same stem witness `Example.SatisfiableClaim`.
+        shared = "Example.SatisfiableClaim"
+        self.data["claims"][shared] = self.data["claims"].pop(self.witness)
+        self.data["proofs"][shared] = self.data["proofs"].pop(self.witness)
+        self.manifest["claims"][shared] = self.manifest["claims"].pop(self.witness)
+        self.manifest["claims"][self.primary]["witness"] = shared
+        second = "Example.Claim"
+        self.data["claims"][second] = copy.copy(self.data["claims"][self.primary])
+        self.data["proofs"][second] = ["Example.claim"]
+        self.manifest["claims"][second] = {"witness": shared, "evidence": EVIDENCE_MODULE}
+        self.data["applications"] = [(self.primary, shared), (second, shared)]
+        with self.assertRaisesRegex(ValueError, "serves two claims"):
+            validate(self.data, self.manifest)
+
+    def test_non_definition_claim(self):
+        self.data["non_definitions"] = ["Example.StructureClaim"]
+        with self.assertRaisesRegex(ValueError, "not a Prop-typed definition"):
+            validate(self.data, self.manifest)
+
     def test_missing_witness_proof(self):
         del self.data["proofs"][self.witness]
         with self.assertRaisesRegex(ValueError, "Missing non-vacuity proof"):
@@ -155,8 +194,26 @@ theorem noClaim (claim : Claim) : Witness → ∃ n : Nat, n = n :=
   fun ⟨n, _⟩ => ⟨n, rfl⟩
 theorem noWitness (claim : Claim) : Witness → ∃ n : Nat, n = n :=
   fun _ => ⟨0, claim 0⟩
+theorem wrongData (claim : Claim) : Witness → ∃ n : Nat, n = n :=
+  fun ⟨n, _⟩ => ⟨0, claim 0⟩
+def PairClaim : Prop := ∀ {m : Nat} (n k : Nat), m = m ∧ n = n ∧ k = k
+theorem implicitConstant (claim : PairClaim) : Witness → ∃ n : Nat, n = n :=
+  fun ⟨n, _⟩ => ⟨n, (claim (m := 0) n n).2.1⟩
+theorem partialData (claim : PairClaim) : Witness → ∃ n : Nat, n = n :=
+  fun ⟨n, _⟩ => ⟨n, (claim (m := n) n 0).2.1⟩
+structure StructureClaim : Prop where
+  proof : True
+theorem TheoremClaim : True := trivial
 end Smoke
 ''' + EVIDENCE_AUDIT + r'''
+open Lean in
+run_cmd do
+  let env ← getEnv
+  for (name, definition) in [(``Smoke.Claim, true), (``Smoke.StructureClaim, false), (``Smoke.TheoremClaim, false)] do
+    let some info := env.find? name | throwError "missing {name}"
+    unless ClaimCoverageAudit.isPropDefinition info == definition do
+      throwError "wrong claim kind: {name}"
+  logInfo "CLAIM_KINDS_CHECKED"
 run_cmd ClaimCoverageAudit.audit ``Smoke.valid
 run_cmd ClaimCoverageAudit.audit ``Smoke.projection
 run_cmd ClaimCoverageAudit.audit ``Smoke.structured
@@ -166,6 +223,13 @@ run_cmd ClaimCoverageAudit.audit ``Smoke.noClaim
 /-- error: Evidence does not use its witness: Smoke.noWitness -/
 #guard_msgs in
 run_cmd ClaimCoverageAudit.audit ``Smoke.noWitness
+/-- error: Evidence does not apply its claim to its witness data: Smoke.wrongData -/
+#guard_msgs in
+run_cmd ClaimCoverageAudit.audit ``Smoke.wrongData
+run_cmd ClaimCoverageAudit.audit ``Smoke.implicitConstant
+/-- error: Evidence does not apply its claim to its witness data: Smoke.partialData -/
+#guard_msgs in
+run_cmd ClaimCoverageAudit.audit ``Smoke.partialData
 '''
         named, names = evidence_source("namespace Smoke\n"
             "example (claim : Claim) : Witness → ∃ n : Nat, n = n :=\n"
@@ -179,6 +243,9 @@ run_cmd ClaimCoverageAudit.audit ``Smoke.noWitness
         self.assertEqual(result.returncode, 0, result.stdout[-5000:])
         self.assertIn("WITNESS_APPLICATION Smoke.Claim Smoke.Witness", result.stdout)
         self.assertIn("WITNESS_APPLICATION Smoke.ConjunctionClaim Smoke.Witness", result.stdout)
+        self.assertIn("WITNESS_APPLICATION Smoke.StructuredClaim Smoke.Witness", result.stdout)
+        self.assertIn("WITNESS_APPLICATION Smoke.PairClaim Smoke.Witness", result.stdout)
+        self.assertIn("CLAIM_KINDS_CHECKED", result.stdout)
 
 
 if __name__ == "__main__":

@@ -7,8 +7,13 @@ ordinary instructions, modular operations and matched standard and split workers
 
 Every public statement has a final proof. Each universal claim has a separate witness for its exact premises,
 except the fixed-data equations listed by exact name in [the coverage map](../lean/claim_coverage.json).
-[The coverage checker](../lean/scripts/check_claim_coverage.py) checks those exceptions and requires a Lean example
-that applies each witnessed claim to its own witness. It rejects missing proofs, missing witnesses and joined claims.
+[The coverage checker](../lean/scripts/check_claim_coverage.py) reads every constant of `human/` whose name ends in
+"Claim". Each one must be a definition of type Prop, with a final theorem in `proven/Proven/Final/` and a row in the
+table below. The witness of a claim must be `<stem>SatisfiableClaim`, where the stem is the claim name without
+"Claim", or without "SoundnessClaim" when only that witness exists. No two claims share a witness. A Lean example in
+[Satisfiable.lean](../lean/test/Checks/Satisfiable.lean) takes the claim and its witness, and applies the claim to
+data that it takes from the witness. A witness statement must be an existential, and no claim joins soundness and
+non-vacuity. Only the fixed-data equations of the coverage map have no witness.
 The [axiom audit](../lean/test/Checks/Axioms.lean) checks proof dependencies.
 The replay runs nightly from `main`, and `ci.yml` dispatches it on demand.
 Lean kernel replay, its export axiom audit, the native paranoid kernel and the
