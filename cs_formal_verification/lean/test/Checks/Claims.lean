@@ -22,6 +22,10 @@ import Proven.Final.Circuits.InitsTeardowns.NativeProducts
 import Proven.Final.Compiler.Theorems
 import Proven.Final.Helpers.Context.VerifierBoundary.Theorems
 import Checks.Restatements
+import Proven.Final.Circuits.Bigint.Setup
+import Proven.Final.Circuits.Blake2G.Setup
+import Proven.Final.Circuits.Keccak.Setup
+import Proven.Final.Compiler.WorkerSetup
 -- Each final theorem (proven/Proven/Final) proves the statement of the same name in human/ (UpperCamelCase).
 import Proven.Final.Circuits.AddSub.RVTheorems
 import Proven.Final.Circuits.Bigint.RVTheorems
@@ -1189,3 +1193,19 @@ example : Airbender.MachineRunIsSequentialClaim := Airbender.machine_run_is_sequ
 example : Airbender.MachineRunIsSequentialSatisfiableClaim := Airbender.machine_run_is_sequential_satisfiable
 
 #print axioms Airbender.machine_run_is_sequential_satisfiable
+
+example : Airbender.Bigint.SetupImportClaim := @Airbender.Bigint.setup_import
+
+#print axioms Airbender.Bigint.setup_import
+
+example : Airbender.Blake2G.Control.SetupImportClaim := @Airbender.Blake2G.Control.setup_import
+
+#print axioms Airbender.Blake2G.Control.setup_import
+
+example : Airbender.Keccak.Controller.SetupImportClaim := @Airbender.Keccak.Controller.setup_import
+
+#print axioms Airbender.Keccak.Controller.setup_import
+
+example : Airbender.Compiler.NativeWorkerSetup.SetupImportClaim := @Airbender.Compiler.NativeWorkerSetup.setup_import
+
+#print axioms Airbender.Compiler.NativeWorkerSetup.setup_import

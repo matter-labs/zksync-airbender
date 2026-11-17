@@ -2,15 +2,13 @@ module
 public import Human.Helpers.Tables.Lookups
 public import Human.Circuits.JumpBranchSlt.Tables.Control
 
-public import Human.Import.NativeGrid
 public import Human.Compiler.NativeSetups.Bigint
-public meta import Human.Compiler.NativeSetups.Bigint
 
 @[expose] public section
 
 namespace Airbender.Bigint
 
-/-- Native fixed rows. The compiled comparison below binds all six tagged regions. -/
+/-- Native fixed rows: the six tagged regions. `SetupImportClaim` makes them equal to the imported native rows. -/
 def setupRow (index : Fin 1390592) : Nat × Nat × Nat :=
   let n := index.val
   if n < 262144 then (n / 512, n % 512, 22)
@@ -36,7 +34,13 @@ def setupTable {p : Nat} [Fact p.Prime] : Table (ZMod p) (fields 3) := .fromStat
   contains_iff _ := Iff.rfl
 }
 
-/- Bind this row formula to every native row. The comparison runs as trusted compiled code. -/
-check_native_grid "artifacts/setup/bigint.json" [0, 1390592] ([0, 1, 2]) => (fun i => #v[(setupRow i).1, (setupRow i).2.1, (setupRow i).2.2])
+/-- The fixed rows, then zero padding, are the imported native rows on the complete trace domain. -/
+def SetupImportClaim : Prop :=
+  Compiler.NativeSetups.bigintSetup.traceLen = 4194304 ∧
+  Compiler.NativeSetups.bigintSetup.Rows fun index =>
+    if bound : index < 1390592 then
+      let row := setupRow ⟨index, bound⟩
+      #v[(row.1 : Int), (row.2.1 : Int), (row.2.2 : Int)]
+    else #v[0, 0, 0]
 
 end Airbender.Bigint

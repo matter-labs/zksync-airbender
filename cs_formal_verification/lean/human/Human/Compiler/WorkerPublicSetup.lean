@@ -4,6 +4,7 @@ public import Human.Circuits.Bigint.Tables.Setup
 public import Human.Circuits.Blake2G.Tables.Controller
 public import Human.Circuits.Blake2Round.Tables.Setup
 public import Human.Circuits.KeccakSplit.Tables.Setup
+public import Human.Compiler.NativeSetups.Rows
 
 @[expose] public section
 namespace Airbender.Compiler.NativeWorkerSetup
@@ -35,5 +36,21 @@ noncomputable def rows (family : Family) : Fin 3 → Fin (circuitFor family).tra
     if group.val = 0 then genericRow family index.val
     else if group.val = 1 then [if index.val < 65536 then (index.val : F) else 0]
     else [if index.val < 524288 then (index.val : F) else 0]
+
+/-- The imported native setup of each worker. -/
+noncomputable def setupData : Family → Import.Setup.SetupData
+  | .bigint => NativeSetups.bigintSetup
+  | .blakeG => NativeSetups.blakeGSetup
+  | .blakeRound => Blake2Round.blake2RoundSetup
+  | .columnParity => Keccak.Split.ColumnParity.columnParitySetup
+  | .thetaRho => Keccak.Split.ThetaRho.thetaRhoSetup
+  | .chi5 => Keccak.Split.Chi5.chi5Setup
+
+/-- The public worker tables are the imported native rows on the complete trace domain, in native column and group
+    order. -/
+def SetupImportClaim : Prop :=
+  ∀ family : Family, (setupData family).traceLen = (circuitFor family).trace_len ∧
+    ∀ (group : Fin 3) (index : Fin (circuitFor family).trace_len),
+      rows family group index = NativeSetups.importedRows (setupData family) group index.val
 
 end Airbender.Compiler.NativeWorkerSetup

@@ -9,7 +9,7 @@ set_option maxRecDepth 400000
 
 /- Native fixed tables of the split Keccak Chi5 worker, read from the exported setup JSON
    (`artifacts/setup/README.md`). Columns are compressed blocks; `decode` is the row value. -/
-import_setup_blocks chi5Setup from "artifacts/setup/keccak-chi5.json"
+import_setup_blocks chi5Setup from "artifacts/setup/keccak-chi5.json" with grids
 
 
 end Airbender.Keccak.Split.Chi5

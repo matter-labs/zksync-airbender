@@ -24,7 +24,15 @@
       "witness": "Airbender.Bigint.Native.RVOperationExecutionSatisfiableClaim"
     },
     "Airbender.Bigint.Native.RVOperationExecutionSatisfiableClaim": {},
+    "Airbender.Bigint.SetupImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
     "Airbender.Blake2G.ArtifactImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
+    "Airbender.Blake2G.Control.SetupImportClaim": {
       "exception": "artifact",
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
@@ -160,6 +168,10 @@
       "witness": "Airbender.Compiler.NativeWorkerLookups.CachedWorkerLookupSelectorsSatisfiableClaim"
     },
     "Airbender.Compiler.NativeWorkerLookups.CachedWorkerLookupSelectorsSatisfiableClaim": {},
+    "Airbender.Compiler.NativeWorkerSetup.SetupImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
     "Airbender.Compiler.ShiftBinopCachedArithmeticClaim": {
       "witness": "Airbender.Compiler.ShiftBinopCachedArithmeticSatisfiableClaim"
     },
@@ -345,6 +357,10 @@
     },
     "Airbender.JumpBranchSlt.RVTraceSoundnessSatisfiableClaim": {},
     "Airbender.Keccak.ArtifactImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
+    "Airbender.Keccak.Controller.SetupImportClaim": {
       "exception": "artifact",
       "reason": "This claim checks fixed imported data or a constant proposition."
     },

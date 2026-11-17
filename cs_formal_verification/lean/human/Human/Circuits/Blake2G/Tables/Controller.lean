@@ -1,12 +1,7 @@
 module
 public import Human.Circuits.Blake2G.Controller
-public meta import Human.Circuits.Blake2G.Controller
-
-public import Human.Import.NativeGrid
+public import Human.Circuits.Blake2G.Tables.Setup
 public import Human.Compiler.NativeSetups.BlakeG
-public meta import Human.Compiler.NativeSetups.BlakeG
-
-public meta import Human.Circuits.Blake2G.Tables.Setup
 
 @[expose] public section
 
@@ -19,10 +14,12 @@ def Output.row (output : Output) : Vector Nat 7 :=
 def controllerRows (key : Fin 512) : Vector Nat 7 :=
   (step ⟨⟨key.val % 256, Nat.mod_lt _ (by decide)⟩, decide (256 ≤ key.val)⟩).row
 
-/- Bind this row formula to every native row. The comparison runs as trusted compiled code. -/
-check_native_grid "artifacts/setup/blake-g.json" [344384, 512] ([1, 2, 3, 4, 5, 6, 7]) => (controllerRows)
-
-/- Compare every fixed row with the native export in trusted compiled code. -/
-check_native_grid "artifacts/setup/blake-g.json" [0, 344896] ([0,1,2,3,4,5,6,7,8]) => (Airbender.Blake2G.setupRow controllerRows)
+/-- The XOR rows, the controller rows of `controllerRows`, then zero padding, are the imported native rows on the
+    complete trace domain. -/
+def SetupImportClaim : Prop :=
+  Compiler.NativeSetups.blakeGSetup.traceLen = 4194304 ∧
+  Compiler.NativeSetups.blakeGSetup.Rows fun index =>
+    if bound : index < 344896 then (setupRow controllerRows ⟨index, bound⟩).map (fun n : Nat => (n : Int))
+    else Vector.replicate 9 0
 
 end Airbender.Blake2G.Control

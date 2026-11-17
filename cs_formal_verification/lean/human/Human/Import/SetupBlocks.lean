@@ -4,7 +4,7 @@ public import Lean
 @[expose] public section
 
 /- Compressed native setup columns, as written by `prover/src/gkr/prover/setup_artifact.rs`
-   (`ColumnBlock`, `value_at`), plus grid blocks (a named row formula) that the import emits
+   (`ColumnBlock`, `value_at`), plus grid blocks (a named row formula) that the `with grids` import emits
    for table regions after an exact row-by-row comparison with the JSON (`SetupEmit`, trusted).
    Proofs consume only what `decode` returns. -/
 
@@ -97,8 +97,20 @@ structure Table where
 
 /-- The native setup fields used by the model. -/
 structure SetupData where
+  /-- The number of rows of every column. -/
   traceLen : Nat
+  /-- The generic lookup columns, in native column order. -/
   columns : Array (List Block)
+  /-- The virtual 16-bit range column. -/
+  range16 : List Block
+  /-- The virtual timestamp range column. -/
+  timestampRange : List Block
   deriving Inhabited
+
+/-- `rows` gives the generic columns of `data` on every row of its trace domain, in native
+    column order. -/
+def SetupData.Rows (data : SetupData) {width : Nat} (rows : Nat → Vector Int width) : Prop :=
+  data.columns.size = width ∧ ∀ index < data.traceLen, ∀ column : Fin width,
+    decode (data.columns.getD column.val []) index = (rows index)[column]
 
 end Airbender.Import.Setup

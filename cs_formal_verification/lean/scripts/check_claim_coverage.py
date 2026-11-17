@@ -164,6 +164,10 @@ EXCEPTIONS = {
         'Airbender.SubwordMemory.ArtifactImportClaim',
         'Airbender.UnifiedReduced.ArtifactImportClaim',
         'Airbender.WordMemory.ArtifactImportClaim',
+        'Airbender.Bigint.SetupImportClaim',
+        'Airbender.Blake2G.Control.SetupImportClaim',
+        'Airbender.Keccak.Controller.SetupImportClaim',
+        'Airbender.Compiler.NativeWorkerSetup.SetupImportClaim',
     },
     'constant': {
         'Airbender.MachineChecksClaim',

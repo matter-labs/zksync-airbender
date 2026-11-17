@@ -27,9 +27,9 @@ open Lean Elab Command Airbender.Import.Setup
 
 run_cmd do
   let constructor ← getConstInfoCtor ``SetupData.mk
-  unless constructor.numFields = 2 do
+  unless constructor.numFields = 4 do
     throwError "The emitted setup contains unused fields."
-  let data : SetupData := ⟨4, #[[.dense #[0, 1, 2, 3]]]⟩
+  let data : SetupData := ⟨4, #[[.dense #[0, 1, 2, 3]]], [], []⟩
   let correct := fun index : Fin 4 => #v[index.val]
   match compareGrid data 0 4 [0] correct with
   | .ok () => pure ()
@@ -71,12 +71,9 @@ run_cmd do
   let declarations := env.constants.toList
   let inputs : List (Name × Name × String) := [
     (`Airbender.Compiler.NativeSetups.addSubSetup, `Airbender.Compiler.NativeSetups.addSubSetupInput, "artifacts/setup/add-sub.json"),
-    (`Airbender.Compiler.NativeSetups.bigintSetup, `Airbender.Compiler.NativeSetups.bigintSetupInput, "artifacts/setup/bigint.json"),
-    (`Airbender.Compiler.NativeSetups.blakeGSetup, `Airbender.Compiler.NativeSetups.blakeGSetupInput, "artifacts/setup/blake-g.json"),
     (`Airbender.Compiler.NativeSetups.decoderSmokeSetup, `Airbender.Compiler.NativeSetups.decoderSmokeSetupInput, "artifacts/setup/decoder-smoke.json"),
     (`Airbender.Compiler.NativeSetups.initsTeardownsSetup, `Airbender.Compiler.NativeSetups.initsTeardownsSetupInput, "artifacts/setup/inits-and-teardowns.json"),
     (`Airbender.Compiler.NativeSetups.jumpBranchSetup, `Airbender.Compiler.NativeSetups.jumpBranchSetupInput, "artifacts/setup/jump-branch.json"),
-    (`Airbender.Compiler.NativeSetups.keccakSetup, `Airbender.Compiler.NativeSetups.keccakSetupInput, "artifacts/setup/keccak.json"),
     (`Airbender.Compiler.NativeSetups.mulDivSetup, `Airbender.Compiler.NativeSetups.mulDivSetupInput, "artifacts/setup/mul-div.json"),
     (`Airbender.Compiler.NativeSetups.shiftBinopSetup, `Airbender.Compiler.NativeSetups.shiftBinopSetupInput, "artifacts/setup/shift-binop.json"),
     (`Airbender.Compiler.NativeSetups.subwordMemorySetup, `Airbender.Compiler.NativeSetups.subwordMemorySetupInput, "artifacts/setup/subword-memory.json"),
@@ -93,6 +90,9 @@ run_cmd do
       if name == old || name.toString.startsWith (old.toString ++ "_") then
         throwError "Unused setup data remains: {name}"
   for name in [
+      `Airbender.Compiler.NativeSetups.bigintSetup,
+      `Airbender.Compiler.NativeSetups.blakeGSetup,
+      `Airbender.Compiler.NativeSetups.keccakSetup,
       `Airbender.Blake2Round.blake2RoundSetup,
       `Airbender.Keccak.Split.ColumnParity.columnParitySetup,
       `Airbender.Keccak.Split.ThetaRho.thetaRhoSetup,

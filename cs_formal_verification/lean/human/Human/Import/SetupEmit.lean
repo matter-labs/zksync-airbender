@@ -9,34 +9,28 @@ public meta import Lean
 public meta section
 
 /- TRUSTED: review. Not kernel-checked: the decoding of the setup JSON (`parseSetup`: the JSON value from
-   `Json.parse`, read field by field) and the comparison of grid blocks with the JSON rows.
+   `Json.parse`, read field by field), and, for the `with grids` form only, the comparison of grid blocks with the
+   JSON rows.
 
    `import_setup_blocks name from "path"` reads a native setup JSON at elaboration time and
-   adds `name : Airbender.Import.Setup.SetupData` with one declaration per column and small shared literal tails. The terms
-   are built directly as kernel expressions (no surface syntax), so elaboration cost stays
-   linear in the number of blocks. Lake tracks the file through the `needs` input of the
-   library containing the use. Range and table metadata stay in `ParsedSetup`; the kernel
-   receives only the trace length and columns.
+   adds `name : Airbender.Import.Setup.SetupData`: the trace length, every generic column and the two virtual range
+   columns, each as the JSON blocks themselves (`affine`, `dense`, `periodic`), with one declaration per column and
+   small shared literal tails. The terms are built directly as kernel expressions (no surface syntax), so
+   elaboration cost stays linear in the number of blocks. Lake tracks the file through the `needs` input of the
+   library containing the use. Kernel proofs give the meaning of the rows.
 
-   Structured regions: the JSON blocks of each column are cut at every table edge; for each
-   `tables` entry whose id is in `gridCatalogue`, column `c` of the region (`c < width`) is
-   emitted as one `grid` block with the catalogue's formula, and rows outside these regions
-   keep the (cut) JSON blocks. `checkColumn` then compares every emitted block with the JSON:
-   a block identical to the JSON block at the same row, or a cut of an affine JSON block, is
-   accepted as is, any other block (grid or cut) row by row against the JSON values; any
-   mismatch fails the import. The emitted blocks tile the rows contiguously and the totals
-   agree, so the emitted column decodes to the JSON column at every row. This comparison is
-   elaborator code (run at import, not by the kernel), trusted like `parseSetup`; the kernel
-   never sees the JSON blocks of a grid region. -/
+   `import_setup_blocks name from "path" with grids` replaces each table region of `gridCatalogue` by one `grid`
+   block (a named row formula), after `checkColumn` compares every row of the region with the JSON. The emitted
+   blocks tile the rows contiguously and the totals agree, so the emitted column decodes to the JSON column at every
+   row. This comparison is elaborator code, trusted like `parseSetup`; the kernel never sees the JSON blocks of a
+   grid region. -/
 
 namespace Airbender.Import.Setup
 
 open Lean Elab Command
 
-/-- The decoded file, with metadata used only during import. -/
+/-- The decoded file, with the table metadata that only the `with grids` form reads. -/
 structure ParsedSetup extends SetupData where
-  range16 : List Block
-  timestampRange : List Block
   tables : Array Table
 
 /-- The full virtual columns are an increasing prefix and optional zero padding. -/
@@ -284,34 +278,40 @@ private def addDef (name : Name) (ty value : Lean.Expr) : CoreM Unit := do
   let (value, _) ← (shareDataLists name value).run 0
   addDataDef name ty value
 
-syntax (name := importSetupBlocks) "import_setup_blocks " ident " from " str : command
+syntax (name := importSetupBlocks) "import_setup_blocks " ident " from " str (" with" &" grids")? : command
 
 @[command_elab importSetupBlocks]
 def elabImportSetupBlocks : CommandElab := fun stx => do
-  match stx with
-  | `(import_setup_blocks $name:ident from $path:str) => do
-    let text ← IO.FS.readFile path.getString
-    let d ← match parseSetup text with
-      | .ok d => pure d
-      | .error e => throwError "setup import failed: {e}"
+  let name : Ident := ⟨stx[1]⟩
+  let some path := stx[3].isStrLit? | throwUnsupportedSyntax
+  let grids := !stx[4].isNone
+  let text ← IO.FS.readFile path
+  let d ← match parseSetup text with
+    | .ok d => pure d
+    | .error e => throwError "setup import failed: {e}"
+  if grids then
     match compareRanges d with
     | .ok () => pure ()
     | .error reason => throwError "setup range import failed: {reason}"
-    let base := (← getCurrNamespace) ++ name.getId
-    liftCoreM do
-      let mut colNames : Array Name := #[]
-      for h : i in [0:d.columns.size] do
-        let n := base.appendAfter s!"_col{i}"
-        let col ← match structureColumn d.tables i d.columns[i] with
+  let base := (← getCurrNamespace) ++ name.getId
+  liftCoreM do
+    let mut colNames : Array Name := #[]
+    for h : i in [0:d.columns.size] do
+      let n := base.appendAfter s!"_col{i}"
+      let col ← if grids then
+          match structureColumn d.tables i d.columns[i] with
           | .ok col => pure col
           | .error e => throwError "setup import failed: {e}"
-        addDef n blocksTy (blocksE col)
-        colNames := colNames.push n
-      let setupTy := mkConst ``Airbender.Import.Setup.SetupData
-      let cols := arrayE blocksTy (colNames.toList.map fun n => mkConst n)
-      let value := mkAppN (mkConst ``Airbender.Import.Setup.SetupData.mk)
-        #[natE d.traceLen, cols]
-      addDef base setupTy value
-  | _ => throwUnsupportedSyntax
+        else pure d.columns[i]
+      addDef n blocksTy (blocksE col)
+      colNames := colNames.push n
+    let range16 := base.appendAfter "_range16"
+    addDef range16 blocksTy (blocksE d.range16)
+    let timestampRange := base.appendAfter "_timestampRange"
+    addDef timestampRange blocksTy (blocksE d.timestampRange)
+    let cols := arrayE blocksTy (colNames.toList.map fun n => mkConst n)
+    let value := mkAppN (mkConst ``Airbender.Import.Setup.SetupData.mk)
+      #[natE d.traceLen, cols, mkConst range16, mkConst timestampRange]
+    addDef base (mkConst ``Airbender.Import.Setup.SetupData) value
 
 end Airbender.Import.Setup

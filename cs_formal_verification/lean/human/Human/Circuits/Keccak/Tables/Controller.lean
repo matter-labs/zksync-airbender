@@ -1,12 +1,7 @@
 module
 public import Human.Circuits.Keccak.Controller
-public meta import Human.Circuits.Keccak.Controller
-
-public import Human.Import.NativeGrid
+public import Human.Circuits.Keccak.Tables.Setup
 public import Human.Compiler.NativeSetups.Keccak
-public meta import Human.Compiler.NativeSetups.Keccak
-
-public meta import Human.Circuits.Keccak.Tables.Setup
 
 @[expose] public section
 
@@ -20,7 +15,7 @@ set_option warningAsError true
     The first five outputs select state lanes; the sixth may select parity or
     scratch. Mix and Chi also use scratch slots 25–30. Invalid controls retain
     Rust's fallback rows; this table does not enforce a complete call schedule.
-    The compiled comparison below binds all 4096 native rows. -/
+    `SetupImportClaim` makes all 4096 rows equal to the imported native rows. -/
 def rows (key : Fin 4096) : Vector Nat 6 :=
   let mode := key.val % 8
   let iteration := key.val / 8 % 8
@@ -46,10 +41,12 @@ def rows (key : Fin 4096) : Vector Nat 6 :=
     else #v[0, 1, 2, 3, 4, 5]
   else #v[0, 1, 2, 3, 4, 5]
 
-/- Bind this row formula to every native row. The comparison runs as trusted compiled code. -/
-check_native_grid "artifacts/setup/keccak.json" [65537, 4096] ([1, 2, 3, 4, 5, 6]) => (rows)
-
-/- Compare every fixed row with the native export in trusted compiled code. -/
-check_native_grid "artifacts/setup/keccak.json" [0, 1249281] ([0,1,2,3,4,5,6,7]) => (Airbender.Keccak.setupRow rows)
+/-- The fixed regions, the controller rows of `rows`, then zero padding, are the imported native rows on the
+    complete trace domain. -/
+def SetupImportClaim : Prop :=
+  Compiler.NativeSetups.keccakSetup.traceLen = 4194304 ∧
+  Compiler.NativeSetups.keccakSetup.Rows fun index =>
+    if bound : index < 1249281 then (setupRow rows ⟨index, bound⟩).map (fun n : Nat => (n : Int))
+    else Vector.replicate 8 0
 
 end Airbender.Keccak.Controller

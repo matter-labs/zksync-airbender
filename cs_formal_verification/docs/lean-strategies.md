@@ -126,6 +126,7 @@ without a limit. Given a root module or a batch, it can exhaust the machine's me
 ## 2. Keeping `proven/` fast and modular
 
 Budget: about 10 s per module, 30 s at most. A slow proof is a design problem, not a limit to raise.
+One checked exception: the setup-table scans (`Proven.Setup.Native.*`, `scripts/module_budget.py`) may take 120 s.
 
 ### 2.1 Do less prover work first
 
