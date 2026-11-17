@@ -50,6 +50,7 @@ def sailModules : List String := [
   "Human.Helpers.Core.Configuration",
   "Human.ISA.Sail.Airbender",
   "Human.ISA.Sail.Checks",
+  "Human.ISA.Sail.Interpreter",
   "Human.ISA.Sail.Machine",
   "Human.ISA.Sail.MachineTargets",
   "Human.ISA.Sail.NativeTargets",
