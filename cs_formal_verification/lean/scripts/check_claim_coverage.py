@@ -182,6 +182,7 @@ EXCEPTIONS = {
         'Airbender.Bigint.SetupImportClaim',
         'Airbender.Blake2G.Control.SetupImportClaim',
         'Airbender.Keccak.Controller.SetupImportClaim',
+        'Airbender.Blake2Round.SetupImportClaim',
         'Airbender.Compiler.NativeWorkerSetup.SetupImportClaim',
         'Airbender.Verification.ShiftBinopImportClaim',
         'Airbender.Compiler.NativeFixedRows.AddSubImportClaim',

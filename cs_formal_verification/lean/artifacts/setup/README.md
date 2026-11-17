@@ -45,7 +45,7 @@ by row, long blocks on one period with an algebraic proof of the period (`Proven
 | `add-sub`, `jump-branch`, `mul-div`, `word-memory` | `Compiler.NativeFixedRows.…ImportClaim` |
 | table 26 of `mul-div` | `Compiler.NativeSetups.Range13ImportClaim` |
 | the six worker setups, with their range columns | `Compiler.NativeWorkerSetup.SetupImportClaim` |
-| `blake-round` | `Blake2Round.SetupProofs.setupRow_eq` (proven/; the table definition reads the imported rows) |
+| `blake-round` | `Blake2Round.SetupImportClaim` (the table definition reads the imported rows) |
 | `keccak-column-parity`, `keccak-theta-rho`, `keccak-chi5` | `Keccak.Split.….SetupProofs.setupRow_eq` (proven/; the table definitions read the imported rows) |
 
 The CPU claims use the setup fixture program: the four words `[0x13, 0x00408093, 0x6f, 0x007181b3]`

@@ -129,6 +129,7 @@ import Proven.Final.Compiler.CertificateMemory
 import Proven.Final.Compiler.PermutationMachine
 
 import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
+import Proven.Final.Circuits.Blake2Round.Setup
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
@@ -1230,6 +1231,10 @@ example : Airbender.Blake2G.Control.SetupImportClaim := @Airbender.Blake2G.Contr
 example : Airbender.Keccak.Controller.SetupImportClaim := @Airbender.Keccak.Controller.setup_import
 
 #print axioms Airbender.Keccak.Controller.setup_import
+
+example : Airbender.Blake2Round.SetupImportClaim := @Airbender.Blake2Round.setup_import
+
+#print axioms Airbender.Blake2Round.setup_import
 
 example : Airbender.Compiler.NativeWorkerSetup.SetupImportClaim := @Airbender.Compiler.NativeWorkerSetup.setup_import
 

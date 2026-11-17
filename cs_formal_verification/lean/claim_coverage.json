@@ -384,6 +384,10 @@
       "exception": "artifact",
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
+    "Airbender.Blake2Round.SetupImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
     "Airbender.Keccak.Native.RVOperationExecutionClaim": {
       "witness": "Airbender.Keccak.Native.RVOperationExecutionSatisfiableClaim"
     },
