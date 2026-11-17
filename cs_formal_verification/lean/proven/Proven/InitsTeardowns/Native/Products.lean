@@ -8,6 +8,13 @@ namespace Airbender.InitsTeardowns.Native.Proofs
 
 variable {p : Nat} [CommRing E]
 
+/-- Window-major native RAM tokens, the proof form of a root product.
+    Noncomputable keeps the full native row domain out of compiled code. -/
+noncomputable def ramTokens (layout : Layout) (parameters : Parameters p E)
+    (raw : Raw p) (phase : Phase) : List (Trace.MemoryToken p) :=
+  (layout.leaves phase).flatMap fun leaf =>
+    (List.finRange layout.rows).map fun row => leaf.token layout parameters raw row.val
+
 theorem matrix_product (rows : List α) (columns : List β) (value : α → β → E) :
     (rows.map fun row => (columns.map (value row)).prod).prod =
       (columns.map fun column => (rows.map fun row => value row column).prod).prod := by

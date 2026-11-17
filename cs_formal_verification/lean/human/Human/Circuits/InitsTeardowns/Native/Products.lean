@@ -6,12 +6,10 @@ public import Human.Circuits.InitsTeardowns.Native.Model
 namespace Airbender.InitsTeardowns.Native
 variable [CommRing E]
 
-/-- Window-major native RAM tokens. This is a symbolic mathematical list;
-    native compilation must never materialize the full 2^24/2^23-row domain. -/
-noncomputable def ramTokens (layout : Layout) (parameters : Parameters p E)
-    (raw : Raw p) (phase : Phase) : List (Trace.MemoryToken p) :=
-  (layout.leaves phase).flatMap fun leaf =>
-    (List.finRange layout.rows).map fun row => leaf.token layout parameters raw row.val
+/-- The native memory bank of an initialization instance.
+    Native memory column `column` holds the logical variable `column + offset` of the instance. -/
+def memoryBank {layout : InitsTeardowns.Layout} (offset : Nat) (witness : InitsTeardowns.Witness p layout) : Raw p :=
+  fun row column => witness.assignment row (column + offset)
 
 /-- The native product over every row of a designated imported output wire.
     Noncomputable prevents large closed domains from being hoisted into native

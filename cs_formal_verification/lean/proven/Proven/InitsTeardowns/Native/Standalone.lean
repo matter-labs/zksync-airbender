@@ -24,16 +24,6 @@ theorem terminal_leaves : standaloneArtifact.terminal.leaves = standaloneArtifac
 /-- The initialization tree covers each native set once. -/
 theorem initial_leaves : standaloneArtifact.initial.leaves = standaloneArtifact.layout.leaves .initial := by decide +kernel
 
-/-- Native gate acceptance gives both complete token products. -/
-theorem soundness : StandaloneSoundnessClaim := by
-  intro E _ parameters raw wires accepted
-  exact ⟨output_token_product parameters raw wires terminal_follows terminal_leaves accepted,
-    output_token_product parameters raw wires initial_follows initial_leaves accepted⟩
-
-/-- The native gate premises have an assignment. -/
-theorem satisfiable : StandaloneSatisfiableClaim :=
-  ⟨_, _, _, accepted_unit standaloneArtifact⟩
-
 /-- Native initialization tokens equal the boot interface tokens for the same checked public windows. -/
 theorem init_tokens {E : Type} [CommRing E]
     (parameters : Parameters babyBearModulus E) (raw : Raw babyBearModulus)
@@ -76,7 +66,7 @@ theorem teardown_tokens {E : Type} [CommRing E]
     (w : InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)
     (windows : ∀ set : Fin 8, parameters.windows set.val = w.topBits[set])
     (checked : ∀ top ∈ w.topBits.toList, top < InitsTeardowns.maxTopBit) :
-    ramTokens standaloneArtifact.layout parameters (rawOfWitness 0 w) .terminal = w.teardownTokens := by
+    ramTokens standaloneArtifact.layout parameters (memoryBank 0 w) .terminal = w.teardownTokens := by
   unfold ramTokens Layout.leaves InitsTeardowns.Witness.teardownTokens
   rw [vector_zip_array, List.flatMap_map, List.flatMap_map]
   change (List.finRange 8).flatMap _ = (List.finRange 8).flatMap _
@@ -102,5 +92,19 @@ theorem teardown_tokens {E : Type} [CommRing E]
   unfold InitsTeardowns.teardownToken
   congr 1
   exact (native_address (layout := InitsTeardowns.importedLayout) ⟨rfl, Or.inr rfl⟩ topBound row.isLt).symm
+
+/-- Native gate acceptance gives the products of the boot interface tokens. -/
+theorem soundness : StandaloneSoundnessClaim := by
+  intro E _ parameters w wires windows checked accepted
+  rw [← teardown_tokens parameters w windows checked, ← init_tokens parameters (memoryBank 0 w) w windows checked]
+  exact ⟨output_token_product parameters _ wires terminal_follows terminal_leaves accepted,
+    output_token_product parameters _ wires initial_follows initial_leaves accepted⟩
+
+/-- The zero instance with zero windows meets the native gate premises. -/
+theorem satisfiable : StandaloneSatisfiableClaim :=
+  ⟨_, ⟨Vector.replicate _ 0, fun _ _ => 0⟩, _, fun _ => by simp, fun _ member => by
+    simp only [Vector.toList_replicate, List.mem_replicate] at member
+    rw [member.2]
+    decide, accepted_unit standaloneArtifact⟩
 
 end Airbender.InitsTeardowns.Native.Proofs.Standalone

@@ -24,16 +24,6 @@ theorem terminal_leaves : unifiedArtifact.terminal.leaves = unifiedArtifact.layo
 /-- The initialization tree covers each native set once. -/
 theorem initial_leaves : unifiedArtifact.initial.leaves = unifiedArtifact.layout.leaves .initial := by decide +kernel
 
-/-- Native gate acceptance gives both complete token products. -/
-theorem soundness : UnifiedSoundnessClaim := by
-  intro E _ parameters raw wires accepted
-  exact ⟨output_token_product parameters raw wires terminal_follows terminal_leaves accepted,
-    output_token_product parameters raw wires initial_follows initial_leaves accepted⟩
-
-/-- The native gate premises have an assignment. -/
-theorem satisfiable : UnifiedSatisfiableClaim :=
-  ⟨_, _, _, accepted_unit unifiedArtifact⟩
-
 /-- Native initialization tokens equal the boot interface tokens for the same checked public windows. -/
 theorem init_tokens {E : Type} [CommRing E]
     (parameters : Parameters babyBearModulus E) (raw : Raw babyBearModulus)
@@ -76,7 +66,7 @@ theorem teardown_tokens {E : Type} [CommRing E]
     (w : InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)
     (windows : ∀ set : Fin 2, parameters.windows set.val = w.topBits[set])
     (checked : ∀ top ∈ w.topBits.toList, top < InitsTeardowns.maxTopBit) :
-    ramTokens unifiedArtifact.layout parameters (rawOfWitness 96 w) .terminal = w.teardownTokens := by
+    ramTokens unifiedArtifact.layout parameters (memoryBank 96 w) .terminal = w.teardownTokens := by
   unfold ramTokens Layout.leaves InitsTeardowns.Witness.teardownTokens
   rw [vector_zip_array, List.flatMap_map, List.flatMap_map]
   change (List.finRange 2).flatMap _ = (List.finRange 2).flatMap _
@@ -102,5 +92,19 @@ theorem teardown_tokens {E : Type} [CommRing E]
   unfold InitsTeardowns.teardownToken
   congr 1
   exact (native_address (layout := InitsTeardowns.unifiedLayout) ⟨rfl, Or.inl rfl⟩ topBound row.isLt).symm
+
+/-- Native gate acceptance gives the products of the boot interface tokens. -/
+theorem soundness : UnifiedSoundnessClaim := by
+  intro E _ parameters w wires windows checked accepted
+  rw [← teardown_tokens parameters w windows checked, ← init_tokens parameters (memoryBank 96 w) w windows checked]
+  exact ⟨output_token_product parameters _ wires terminal_follows terminal_leaves accepted,
+    output_token_product parameters _ wires initial_follows initial_leaves accepted⟩
+
+/-- The zero instance with zero windows meets the native gate premises. -/
+theorem satisfiable : UnifiedSatisfiableClaim :=
+  ⟨_, ⟨Vector.replicate _ 0, fun _ _ => 0⟩, _, fun _ => by simp, fun _ member => by
+    simp only [Vector.toList_replicate, List.mem_replicate] at member
+    rw [member.2]
+    decide, accepted_unit unifiedArtifact⟩
 
 end Airbender.InitsTeardowns.Native.Proofs.Unified

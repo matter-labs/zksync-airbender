@@ -23,11 +23,6 @@ theorem vector_zip_array {α β : Type} (sets : Array β) (values : Vector α se
   · intro index left right
     simp
 
-/-- Read native memory columns through their logical variable offset. -/
-def rawOfWitness {p : Nat} {layout : InitsTeardowns.Layout} (offset : Nat)
-    (w : InitsTeardowns.Witness p layout) : Raw p :=
-  fun row column => w.assignment row (column + offset)
-
 /-- Native RAM addresses equal the logical window addresses under the verifier bounds. -/
 theorem native_address {layout : InitsTeardowns.Layout}
     (shape : InitsTeardowns.Proofs.Shape layout) {top row : Nat}
@@ -62,6 +57,20 @@ theorem finRange_values (size : Nat) : (List.finRange size).map Fin.val = List.r
   · intro index left right
     simp
 
+end Airbender.InitsTeardowns.Native.Proofs
+
+namespace Airbender.InitsTeardowns.Native
+
+/-- The memory token of one native leaf at one row, read from native addresses and raw columns.
+    It is the proof form of a leaf factor. -/
+def Leaf.token {p : Nat} {E : Type} [CommRing E] (layout : Layout) (parameters : Parameters p E) (raw : Raw p)
+    (row : Nat) (leaf : Leaf) : Trace.MemoryToken p :=
+  ⟨Nat.pair 1 (Nat.pair (addressLo row) (addressHi layout parameters leaf.set row)),
+    leaf.time raw row, Nat.pair (leaf.value raw row).1.val (leaf.value raw row).2.val⟩
+
+end Airbender.InitsTeardowns.Native
+
+namespace Airbender.InitsTeardowns.Native.Proofs
 
 variable {p : Nat} [Fact p.Prime] [CommRing E]
 

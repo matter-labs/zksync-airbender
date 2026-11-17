@@ -144,13 +144,6 @@ def Leaf.value (leaf : Leaf) (raw : Raw p) (row : Nat) : ZMod p × ZMod p :=
   | .initial => (0, 0)
   | .terminal => (raw row leaf.columns.valueLo, raw row leaf.columns.valueHi)
 
-/-- Boundary tokens are computed from native addresses and actual raw columns.
-    Value and timestamp limbs are deliberately not restricted to 16 bits. -/
-def Leaf.token (layout : Layout) (parameters : Parameters p E) (raw : Raw p)
-    (row : Nat) (leaf : Leaf) : Trace.MemoryToken p :=
-  ⟨Nat.pair 1 (Nat.pair (addressLo row) (addressHi layout parameters leaf.set row)),
-    leaf.time raw row, Nat.pair (leaf.value raw row).1.val (leaf.value raw row).2.val⟩
-
 /-- The native six-weight encoding of the existing memory-history token type.
     No sampled-product equality is interpreted as logical token matching. -/
 def Parameters.encode (parameters : Parameters p E) (token : Trace.MemoryToken p) : E :=

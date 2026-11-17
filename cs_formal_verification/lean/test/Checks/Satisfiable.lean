@@ -683,28 +683,26 @@ end Checks.Satisfiable
 example (claim : Airbender.InitsTeardowns.Native.StandaloneSoundnessClaim)
     (satisfiable : Airbender.InitsTeardowns.Native.StandaloneSatisfiableClaim) :
     ∃ (parameters : Airbender.InitsTeardowns.Native.Parameters Airbender.babyBearModulus
-      (ZMod Airbender.babyBearModulus)) (raw : Airbender.InitsTeardowns.Native.Raw Airbender.babyBearModulus)
+      (ZMod Airbender.babyBearModulus))
+      (witness : Airbender.InitsTeardowns.Witness Airbender.babyBearModulus Airbender.InitsTeardowns.importedLayout)
       (wires : Airbender.InitsTeardowns.Native.Wires (ZMod Airbender.babyBearModulus)),
-      Airbender.InitsTeardowns.Native.Accepted Airbender.InitsTeardowns.Native.standaloneArtifact parameters raw wires ∧
+      Airbender.InitsTeardowns.Native.Accepted Airbender.InitsTeardowns.Native.standaloneArtifact parameters (Airbender.InitsTeardowns.Native.memoryBank 0 witness) wires ∧
       Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.standaloneArtifact
-        Airbender.InitsTeardowns.Native.standaloneArtifact.terminal wires =
-        ((Airbender.InitsTeardowns.Native.ramTokens Airbender.InitsTeardowns.Native.standaloneArtifact.layout
-          parameters raw .terminal).map parameters.encode).prod := by
-  obtain ⟨parameters, raw, wires, accepted⟩ := satisfiable
-  exact ⟨parameters, raw, wires, accepted, (claim parameters raw wires accepted).1⟩
+        Airbender.InitsTeardowns.Native.standaloneArtifact.terminal wires = (witness.teardownTokens.map parameters.encode).prod := by
+  obtain ⟨parameters, witness, wires, windows, checked, accepted⟩ := satisfiable
+  exact ⟨parameters, witness, wires, accepted, (claim parameters witness wires windows checked accepted).1⟩
 
 example (claim : Airbender.InitsTeardowns.Native.UnifiedSoundnessClaim)
     (satisfiable : Airbender.InitsTeardowns.Native.UnifiedSatisfiableClaim) :
     ∃ (parameters : Airbender.InitsTeardowns.Native.Parameters Airbender.babyBearModulus
-      (ZMod Airbender.babyBearModulus)) (raw : Airbender.InitsTeardowns.Native.Raw Airbender.babyBearModulus)
+      (ZMod Airbender.babyBearModulus))
+      (witness : Airbender.InitsTeardowns.Witness Airbender.babyBearModulus Airbender.InitsTeardowns.unifiedLayout)
       (wires : Airbender.InitsTeardowns.Native.Wires (ZMod Airbender.babyBearModulus)),
-      Airbender.InitsTeardowns.Native.Accepted Airbender.InitsTeardowns.Native.unifiedArtifact parameters raw wires ∧
+      Airbender.InitsTeardowns.Native.Accepted Airbender.InitsTeardowns.Native.unifiedArtifact parameters (Airbender.InitsTeardowns.Native.memoryBank 96 witness) wires ∧
       Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.unifiedArtifact
-        Airbender.InitsTeardowns.Native.unifiedArtifact.terminal wires =
-        ((Airbender.InitsTeardowns.Native.ramTokens Airbender.InitsTeardowns.Native.unifiedArtifact.layout
-          parameters raw .terminal).map parameters.encode).prod := by
-  obtain ⟨parameters, raw, wires, accepted⟩ := satisfiable
-  exact ⟨parameters, raw, wires, accepted, (claim parameters raw wires accepted).1⟩
+        Airbender.InitsTeardowns.Native.unifiedArtifact.terminal wires = (witness.teardownTokens.map parameters.encode).prod := by
+  obtain ⟨parameters, witness, wires, windows, checked, accepted⟩ := satisfiable
+  exact ⟨parameters, witness, wires, accepted, (claim parameters witness wires windows checked accepted).1⟩
 
 example (claim : Airbender.Blake2Round.Mask.SoundnessClaim)
     (witness : Airbender.Blake2Round.Mask.SatisfiableClaim) :
@@ -1240,28 +1238,26 @@ example (claim : Airbender.Compiler.WordMemoryCachedArithmeticClaim) :
 example (claim : Airbender.InitsTeardowns.Native.StandaloneSoundnessClaim) :
     Airbender.InitsTeardowns.Native.StandaloneSatisfiableClaim →
     ∃ (parameters : Airbender.InitsTeardowns.Native.Parameters babyBearModulus (ZMod babyBearModulus))
-      (raw : Airbender.InitsTeardowns.Native.Raw babyBearModulus)
+      (witness : Airbender.InitsTeardowns.Witness babyBearModulus Airbender.InitsTeardowns.importedLayout)
       (wires : Airbender.InitsTeardowns.Native.Wires (ZMod babyBearModulus)),
       Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.standaloneArtifact
-        Airbender.InitsTeardowns.Native.standaloneArtifact.terminal wires =
-        ((Airbender.InitsTeardowns.Native.ramTokens Airbender.InitsTeardowns.Native.standaloneArtifact.layout parameters raw .terminal).map parameters.encode).prod ∧
+        Airbender.InitsTeardowns.Native.standaloneArtifact.terminal wires = (witness.teardownTokens.map parameters.encode).prod ∧
       Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.standaloneArtifact
-        Airbender.InitsTeardowns.Native.standaloneArtifact.initial wires =
-        ((Airbender.InitsTeardowns.Native.ramTokens Airbender.InitsTeardowns.Native.standaloneArtifact.layout parameters raw .initial).map parameters.encode).prod :=
-  fun ⟨parameters, raw, wires, accepted⟩ => ⟨parameters, raw, wires, claim parameters raw wires accepted⟩
+        Airbender.InitsTeardowns.Native.standaloneArtifact.initial wires = (witness.initTokens.map parameters.encode).prod :=
+  fun ⟨parameters, witness, wires, windows, checked, accepted⟩ =>
+    ⟨parameters, witness, wires, claim parameters witness wires windows checked accepted⟩
 
 example (claim : Airbender.InitsTeardowns.Native.UnifiedSoundnessClaim) :
     Airbender.InitsTeardowns.Native.UnifiedSatisfiableClaim →
     ∃ (parameters : Airbender.InitsTeardowns.Native.Parameters babyBearModulus (ZMod babyBearModulus))
-      (raw : Airbender.InitsTeardowns.Native.Raw babyBearModulus)
+      (witness : Airbender.InitsTeardowns.Witness babyBearModulus Airbender.InitsTeardowns.unifiedLayout)
       (wires : Airbender.InitsTeardowns.Native.Wires (ZMod babyBearModulus)),
       Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.unifiedArtifact
-        Airbender.InitsTeardowns.Native.unifiedArtifact.terminal wires =
-        ((Airbender.InitsTeardowns.Native.ramTokens Airbender.InitsTeardowns.Native.unifiedArtifact.layout parameters raw .terminal).map parameters.encode).prod ∧
+        Airbender.InitsTeardowns.Native.unifiedArtifact.terminal wires = (witness.teardownTokens.map parameters.encode).prod ∧
       Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.unifiedArtifact
-        Airbender.InitsTeardowns.Native.unifiedArtifact.initial wires =
-        ((Airbender.InitsTeardowns.Native.ramTokens Airbender.InitsTeardowns.Native.unifiedArtifact.layout parameters raw .initial).map parameters.encode).prod :=
-  fun ⟨parameters, raw, wires, accepted⟩ => ⟨parameters, raw, wires, claim parameters raw wires accepted⟩
+        Airbender.InitsTeardowns.Native.unifiedArtifact.initial wires = (witness.initTokens.map parameters.encode).prod :=
+  fun ⟨parameters, witness, wires, windows, checked, accepted⟩ =>
+    ⟨parameters, witness, wires, claim parameters witness wires windows checked accepted⟩
 
 namespace RV.ValidUse
 open Spec
