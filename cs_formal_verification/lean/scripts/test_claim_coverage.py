@@ -196,6 +196,15 @@ theorem noWitness (claim : Claim) : Witness → ∃ n : Nat, n = n :=
   fun _ => ⟨0, claim 0⟩
 theorem wrongData (claim : Claim) : Witness → ∃ n : Nat, n = n :=
   fun ⟨n, _⟩ => ⟨0, claim 0⟩
+theorem arithmeticData (claim : Claim) : Witness → ∃ n : Nat, n = n :=
+  fun ⟨n, _⟩ => ⟨n + 1, claim (n + 1)⟩
+theorem cancelledData (claim : Claim) : Witness → ∃ n : Nat, n = n :=
+  fun ⟨n, _⟩ => ⟨n - n, claim (n - n)⟩
+def ProductClaim : Prop := ∀ pair : Nat × Nat, pair = pair
+theorem constructorData (claim : ProductClaim) : Witness → ∃ pair : Nat × Nat, pair = pair :=
+  fun ⟨n, _⟩ => ⟨(n, n), claim (n, n)⟩
+theorem secondApplication (claim : Claim) : Witness → ∃ n : Nat, n = n ∧ n + 1 = n + 1 :=
+  fun ⟨n, _⟩ => ⟨n, claim n, claim (n + 1)⟩
 def PairClaim : Prop := ∀ {m : Nat} (n k : Nat), m = m ∧ n = n ∧ k = k
 theorem implicitConstant (claim : PairClaim) : Witness → ∃ n : Nat, n = n :=
   fun ⟨n, _⟩ => ⟨n, (claim (m := 0) n n).2.1⟩
@@ -226,6 +235,16 @@ run_cmd ClaimCoverageAudit.audit ``Smoke.noWitness
 /-- error: Evidence does not apply its claim to its witness data: Smoke.wrongData -/
 #guard_msgs in
 run_cmd ClaimCoverageAudit.audit ``Smoke.wrongData
+/-- error: Evidence does not apply its claim to its witness data: Smoke.arithmeticData -/
+#guard_msgs in
+run_cmd ClaimCoverageAudit.audit ``Smoke.arithmeticData
+/-- error: Evidence does not apply its claim to its witness data: Smoke.cancelledData -/
+#guard_msgs in
+run_cmd ClaimCoverageAudit.audit ``Smoke.cancelledData
+/-- error: Evidence does not apply its claim to its witness data: Smoke.secondApplication -/
+#guard_msgs in
+run_cmd ClaimCoverageAudit.audit ``Smoke.secondApplication
+run_cmd ClaimCoverageAudit.audit ``Smoke.constructorData
 run_cmd ClaimCoverageAudit.audit ``Smoke.implicitConstant
 /-- error: Evidence does not apply its claim to its witness data: Smoke.partialData -/
 #guard_msgs in
@@ -245,6 +264,7 @@ run_cmd ClaimCoverageAudit.audit ``Smoke.partialData
         self.assertIn("WITNESS_APPLICATION Smoke.ConjunctionClaim Smoke.Witness", result.stdout)
         self.assertIn("WITNESS_APPLICATION Smoke.StructuredClaim Smoke.Witness", result.stdout)
         self.assertIn("WITNESS_APPLICATION Smoke.PairClaim Smoke.Witness", result.stdout)
+        self.assertIn("WITNESS_APPLICATION Smoke.ProductClaim Smoke.Witness", result.stdout)
         self.assertIn("CLAIM_KINDS_CHECKED", result.stdout)
 
 

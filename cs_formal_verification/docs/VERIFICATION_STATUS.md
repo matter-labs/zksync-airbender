@@ -11,9 +11,10 @@ except the fixed-data equations listed by exact name in [the coverage map](../le
 "Claim". Each one must be a definition of type Prop, with a final theorem in `proven/Proven/Final/` and a row in the
 table below. The witness of a claim must be `<stem>SatisfiableClaim`, where the stem is the claim name without
 "Claim", or without "SoundnessClaim" when only that witness exists. No two claims share a witness. A Lean example in
-[Satisfiable.lean](../lean/test/Checks/Satisfiable.lean) takes the claim and its witness, and applies the claim to
-data that it takes from the witness. A witness statement must be an existential, and no claim joins soundness and
-non-vacuity. Only the fixed-data equations of the coverage map have no witness.
+[Satisfiable.lean](../lean/test/Checks/Satisfiable.lean) takes the claim and its witness, and applies the claim. Each
+explicit argument of each claim application must be witness data: a variable that the example takes from the witness,
+a projection of witness data, or a constructor whose fields are witness data. A witness statement must be an
+existential, and no claim joins soundness and non-vacuity. Only the fixed-data equations of the coverage map have no witness.
 The [axiom audit](../lean/test/Checks/Axioms.lean) checks proof dependencies.
 The replay runs nightly from `main`, and `ci.yml` dispatches it on demand.
 Lean kernel replay, its export axiom audit, the native paranoid kernel and the

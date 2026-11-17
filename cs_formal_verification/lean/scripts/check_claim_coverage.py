@@ -95,44 +95,75 @@ def premiseBinders : Lean.Expr → List BinderInfo
   | .mdata _ body => premiseBinders body
   | _ => []
 
-/-- The arguments that must carry witness data in an application whose head is the claim (binder level 0) or a
+/-- The arguments that must be witness data in an application whose head is the claim (binder level 0) or a
     projection of it. When the claim itself is the head, these are its explicit arguments. Otherwise they are all
     arguments after the projection. -/
 def claimArguments (env : Environment) (binders : List BinderInfo) (depth : Nat) (expression : Lean.Expr) :
-    Option (Array Lean.Expr) :=
+    Option (Nat × Array Lean.Expr) :=
   let function := expression.getAppFn.consumeMData
   let arguments := expression.getAppArgs
   let headSize := (List.range (arguments.size + 1)).find? fun split =>
     0 < depth && claimProjection env 64 (mkAppN function (arguments.extract 0 split)) (depth - 1)
   headSize.map fun split =>
     if split == 0 then
-      (arguments.toList.zipIdx.filter fun (_, index) => (binders[index]?.getD .default).isExplicit).toArray.map
-        Prod.fst
-    else arguments.extract split arguments.size
+      (split, (arguments.toList.zipIdx.filter fun (_, index) =>
+        (binders[index]?.getD .default).isExplicit).toArray.map Prod.fst)
+    else (split, arguments.extract split arguments.size)
 
-/-- Whether the evidence applies its claim to data of its witness: every explicit argument mentions witness data.
-    Witness data is the witness (binder level 1), a `let` variable bound to witness data, and a variable that a
-    function argument binds when its application eliminates witness data (a `match` alternative or a `casesOn`
-    minor premise). -/
-partial def appliesToWitness (env : Environment) (binders : List BinderInfo) (levels : List Nat) (depth : Nat)
-    (binds : Bool) (expression : Lean.Expr) : Bool :=
-  let recurse := appliesToWitness env binders
+/-- Whether a term is witness data: a variable whose binder level is in `levels`, a projection of witness data, or
+    a constructor application whose fields are all witness data. Any other term, such as arithmetic on witness data,
+    is not witness data. -/
+partial def isWitnessData (env : Environment) (levels : List Nat) (depth : Nat) (expression : Lean.Expr) : Bool :=
   match expression.consumeMData with
-  | .lam _ type body _ =>
-      recurse levels depth false type || recurse (if binds then depth :: levels else levels) (depth + 1) binds body
-  | .forallE _ type body _ => recurse levels depth false type || recurse levels (depth + 1) false body
-  | .letE _ type value body _ =>
-      recurse levels depth false type || recurse levels depth false value ||
-        recurse (if mentionsLevels levels depth value then depth :: levels else levels) (depth + 1) false body
-  | .proj _ _ body => recurse levels depth false body
+  | .bvar i => i < depth && levels.contains (depth - 1 - i)
+  | .proj _ _ body => isWitnessData env levels depth body
   | application@(.app ..) =>
       let arguments := application.getAppArgs
-      let eliminates := arguments.any (mentionsLevels levels depth)
-      let applied := match claimArguments env binders depth application with
-        | some claimed => !claimed.isEmpty && claimed.all (mentionsLevels levels depth)
-        | none => false
-      applied || recurse levels depth false application.getAppFn || arguments.any (recurse levels depth eliminates)
+      match application.getAppFn.consumeMData with
+      | .const name _ =>
+          match env.getProjectionFnInfo? name, env.find? name with
+          | some projection, _ =>
+              arguments.size == projection.numParams + 1 &&
+                isWitnessData env levels depth arguments[projection.numParams]!
+          | none, some (.ctorInfo constructor) =>
+              arguments.size == constructor.numParams + constructor.numFields &&
+                (arguments.extract constructor.numParams arguments.size).all (isWitnessData env levels depth)
+          | _, _ => false
+      | _ => false
   | _ => false
+
+/-- Whether a constant eliminates its discriminants: a `match` function or a `casesOn` or `rec` recursor. -/
+def isEliminator (env : Environment) (name : Name) : Bool :=
+  Lean.Meta.isMatcherCore env name || isCasesOnRecursor env name ||
+    match env.find? name with | some (.recInfo _) => true | _ => false
+
+/-- For each application of the claim (binder level 0) or of a projection of it, whether every explicit argument is
+    witness data. Witness data starts at the witness (binder level 1). A `let` variable whose value is witness data,
+    and a variable that an alternative binds when a `match` or recursor eliminates witness data, are witness data. -/
+partial def claimApplications (env : Environment) (binders : List BinderInfo) (levels : List Nat) (depth : Nat)
+    (binds : Bool) (expression : Lean.Expr) : List Bool :=
+  let recurse := claimApplications env binders
+  match expression.consumeMData with
+  | .lam _ type body _ =>
+      recurse levels depth false type ++ recurse (if binds then depth :: levels else levels) (depth + 1) binds body
+  | .forallE _ type body _ => recurse levels depth false type ++ recurse levels (depth + 1) false body
+  | .letE _ type value body _ =>
+      recurse levels depth false type ++ recurse levels depth false value ++
+        recurse (if isWitnessData env levels depth value then depth :: levels else levels) (depth + 1) false body
+  | .proj _ _ body => recurse levels depth false body
+  | application@(.app ..) =>
+      let function := application.getAppFn.consumeMData
+      let arguments := application.getAppArgs
+      match claimArguments env binders depth application with
+      | some (split, claimed) =>
+          -- The claim head is one application; only the arguments after it can hold further applications.
+          [!claimed.isEmpty && claimed.all (isWitnessData env levels depth)] ++
+            (arguments.extract split arguments.size).toList.flatMap (recurse levels depth false)
+      | none =>
+          let eliminates := (match function with | .const name _ => isEliminator env name | _ => false) &&
+            arguments.any (isWitnessData env levels depth)
+          recurse levels depth false function ++ arguments.toList.flatMap (recurse levels depth eliminates)
+  | _ => []
 
 def audit (name : Name) : CommandElabM Unit := do
   let env ← getEnv
@@ -152,7 +183,8 @@ def audit (name : Name) : CommandElabM Unit := do
   let binders := match env.find? claim with
     | some (.defnInfo definition) => premiseBinders definition.value
     | _ => []
-  unless appliesToWitness env binders [1] 0 false info.value do
+  let applications := claimApplications env binders [1] 0 false info.value
+  unless !applications.isEmpty && applications.all id do
     throwError "Evidence does not apply its claim to its witness data: {name}"
   logInfo m!"WITNESS_APPLICATION {claim} {witness}"
 end ClaimCoverageAudit
