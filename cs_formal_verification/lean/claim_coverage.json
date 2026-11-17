@@ -879,6 +879,11 @@
       "evidence": "Checks.Satisfiable"
     },
     "Airbender.Compiler.KeccakColumnParityCachedMemorySatisfiableClaim": {},
+    "Airbender.Compiler.KeccakThetaRhoCachedMemoryClaim": {
+      "witness": "Airbender.Compiler.KeccakThetaRhoCachedMemorySatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
+    },
+    "Airbender.Compiler.KeccakThetaRhoCachedMemorySatisfiableClaim": {},
     "Airbender.Compiler.UnrolledMemoryCompositionClaim": {
       "witness": "Airbender.Compiler.UnrolledMemoryCompositionSatisfiableClaim",
       "evidence": "Checks.Satisfiable"

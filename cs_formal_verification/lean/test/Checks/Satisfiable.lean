@@ -1722,6 +1722,19 @@ example (claim : Airbender.Compiler.KeccakColumnParityCachedMemoryClaim) :
   fun ⟨challenges, physical, values, row, selected, nativeHolds, placement, extension⟩ =>
     ⟨challenges, values, row, claim challenges physical values row selected nativeHolds placement extension⟩
 
+example : Airbender.Compiler.KeccakThetaRhoCachedMemorySatisfiableClaim := Airbender.Compiler.keccakThetaRho_cached_memory_satisfiable
+
+example (claim : Airbender.Compiler.KeccakThetaRhoCachedMemoryClaim) :
+    Airbender.Compiler.KeccakThetaRhoCachedMemorySatisfiableClaim →
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges Airbender.Compiler.NativeArithmetic.F)
+      (values : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (row : Airbender.Keccak.Split.Native.Row Airbender.babyBearModulus),
+      Airbender.Compiler.NativeMemory.RamProducts Airbender.Compiler.Captures.KeccakThetaRho.imported.circuit challenges values
+        (row.assignment row.columns.execute) (Airbender.Compiler.NativeMemory.splitReads row)
+        (Airbender.Compiler.NativeMemory.splitWrites row) :=
+  fun ⟨challenges, physical, values, row, selected, nativeHolds, placement, extension⟩ =>
+    ⟨challenges, values, row, claim challenges physical values row selected nativeHolds placement extension⟩
+
 -- RAM permutation composition.
 
 example : Airbender.Compiler.UnrolledMemoryCompositionSatisfiableClaim :=

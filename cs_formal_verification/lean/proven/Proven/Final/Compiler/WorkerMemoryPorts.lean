@@ -3,6 +3,7 @@ public import Proven.GKRProtocol.WorkerPortsNative.BigintCachedWitness
 public import Proven.GKRProtocol.WorkerPortsNative.BlakeGCachedWitness
 public import Proven.GKRProtocol.WorkerPortsNative.BlakeRoundCachedWitness
 public import Proven.GKRProtocol.WorkerPortsNative.KeccakColumnParityCachedWitness
+public import Proven.GKRProtocol.WorkerPortsNative.KeccakThetaRhoCachedWitness
 
 @[expose] public section
 namespace Airbender.Compiler
@@ -55,5 +56,17 @@ theorem keccakColumnParity_cached_memory : KeccakColumnParityCachedMemoryClaim :
 /-- The program values of an arithmetic witness meet the column parity memory premises. -/
 theorem keccakColumnParity_cached_memory_satisfiable : KeccakColumnParityCachedMemorySatisfiableClaim :=
   WorkerPortsNative.KeccakColumnParityCached.satisfiable
+
+/-- Cached native gates, caches and product gates give the theta/rho RAM outputs from the model tokens. -/
+theorem keccakThetaRho_cached_memory : KeccakThetaRhoCachedMemoryClaim := by
+  intro E _ challenges physical values row selected accepted placement extension
+  obtain ⟨kind, assignment⟩ := row
+  change kind = .thetaRho at selected
+  subst selected
+  exact WorkerPortsNative.KeccakThetaRhoCached.ram_products challenges physical values assignment accepted placement extension
+
+/-- The program values of an arithmetic witness meet the theta/rho memory premises. -/
+theorem keccakThetaRho_cached_memory_satisfiable : KeccakThetaRhoCachedMemorySatisfiableClaim :=
+  WorkerPortsNative.KeccakThetaRhoCached.satisfiable
 
 end Airbender.Compiler

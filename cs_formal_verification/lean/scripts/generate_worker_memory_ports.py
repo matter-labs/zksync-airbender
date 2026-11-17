@@ -23,6 +23,8 @@ WORKERS = [
      "standard", ".blakeRound", "blakeRound"),
     ("KeccakColumnParity", "keccak-column-parity-cached", "keccak_column_parity",
      "Airbender.Keccak.Split.ColumnParity", 0x7CD, "split", ".columnParity", "keccakColumnParity"),
+    ("KeccakThetaRho", "keccak-theta-rho-cached", "keccak_theta_rho",
+     "Airbender.Keccak.Split.ThetaRho", 0x7CC, "split", ".thetaRho", "keccakThetaRho"),
 ]
 
 

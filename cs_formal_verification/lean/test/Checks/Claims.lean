@@ -1197,6 +1197,10 @@ example : Airbender.Compiler.KeccakColumnParityCachedMemoryClaim := @Airbender.C
 
 example : Airbender.Compiler.KeccakColumnParityCachedMemorySatisfiableClaim := @Airbender.Compiler.keccakColumnParity_cached_memory_satisfiable
 
+example : Airbender.Compiler.KeccakThetaRhoCachedMemoryClaim := @Airbender.Compiler.keccakThetaRho_cached_memory
+
+example : Airbender.Compiler.KeccakThetaRhoCachedMemorySatisfiableClaim := @Airbender.Compiler.keccakThetaRho_cached_memory_satisfiable
+
 #print axioms Airbender.Compiler.bigint_cached_memory
 
 #print axioms Airbender.Compiler.bigint_cached_memory_satisfiable
@@ -1260,6 +1264,10 @@ example : Airbender.Compiler.NativeSetups.Range13ImportClaim := @Airbender.Compi
 #print axioms Airbender.Compiler.keccakColumnParity_cached_memory
 
 #print axioms Airbender.Compiler.keccakColumnParity_cached_memory_satisfiable
+
+#print axioms Airbender.Compiler.keccakThetaRho_cached_memory
+
+#print axioms Airbender.Compiler.keccakThetaRho_cached_memory_satisfiable
 
 -- RAM permutation composition.
 

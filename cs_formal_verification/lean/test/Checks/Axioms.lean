@@ -1712,6 +1712,10 @@ import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 
 #print axioms Airbender.Compiler.keccakColumnParity_cached_memory_satisfiable
 
+#print axioms Airbender.Compiler.keccakThetaRho_cached_memory
+
+#print axioms Airbender.Compiler.keccakThetaRho_cached_memory_satisfiable
+
 #print axioms Airbender.Compiler.unrolled_memory_composition
 
 #print axioms Airbender.Compiler.unrolled_memory_composition_satisfiable
