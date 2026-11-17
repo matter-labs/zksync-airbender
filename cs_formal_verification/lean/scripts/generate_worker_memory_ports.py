@@ -21,6 +21,8 @@ WORKERS = [
      "standard", ".blakeG", "blakeG"),
     ("BlakeRound", "blake-round-cached", "blake2_with_extended_control", "Airbender.Blake2Round", 0x7C7,
      "standard", ".blakeRound", "blakeRound"),
+    ("KeccakColumnParity", "keccak-column-parity-cached", "keccak_column_parity",
+     "Airbender.Keccak.Split.ColumnParity", 0x7CD, "split", ".columnParity", "keccakColumnParity"),
 ]
 
 

@@ -2,6 +2,7 @@ module
 public import Proven.GKRProtocol.WorkerPortsNative.BigintCachedWitness
 public import Proven.GKRProtocol.WorkerPortsNative.BlakeGCachedWitness
 public import Proven.GKRProtocol.WorkerPortsNative.BlakeRoundCachedWitness
+public import Proven.GKRProtocol.WorkerPortsNative.KeccakColumnParityCachedWitness
 
 @[expose] public section
 namespace Airbender.Compiler
@@ -42,5 +43,17 @@ theorem blakeRound_cached_memory : BlakeRoundCachedMemoryClaim := by
 /-- The program values of an arithmetic witness meet the BLAKE2 round memory premises. -/
 theorem blakeRound_cached_memory_satisfiable : BlakeRoundCachedMemorySatisfiableClaim :=
   WorkerPortsNative.BlakeRoundCached.satisfiable
+
+/-- Cached native gates, caches and product gates give the column parity RAM outputs from the model tokens. -/
+theorem keccakColumnParity_cached_memory : KeccakColumnParityCachedMemoryClaim := by
+  intro E _ challenges physical values row selected accepted placement extension
+  obtain ⟨kind, assignment⟩ := row
+  change kind = .columnParity at selected
+  subst selected
+  exact WorkerPortsNative.KeccakColumnParityCached.ram_products challenges physical values assignment accepted placement extension
+
+/-- The program values of an arithmetic witness meet the column parity memory premises. -/
+theorem keccakColumnParity_cached_memory_satisfiable : KeccakColumnParityCachedMemorySatisfiableClaim :=
+  WorkerPortsNative.KeccakColumnParityCached.satisfiable
 
 end Airbender.Compiler

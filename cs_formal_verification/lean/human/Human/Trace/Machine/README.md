@@ -56,7 +56,7 @@ to the CPU, worker, state, request and memory tuples of the constraint-descripti
 [padded native targets](../../Compiler/NativeTargets.lean) state the same masked relations with native
 certificates for active and padding rows. The [RAM output claims](../../Compiler/MemoryPorts.lean) show that each
 cached CPU circuit computes its RAM outputs as products masked by the execute column. The
-[worker RAM output claims](../../Compiler/WorkerMemoryPorts.lean) show the same for the bigint, BLAKE2 G and BLAKE2 round circuits,
+[worker RAM output claims](../../Compiler/WorkerMemoryPorts.lean) show the same for the bigint, BLAKE2 G, BLAKE2 round and column parity circuits,
 with the request token of the row. The [composition claims](../../Compiler/MemoryComposition.lean) derive the
 state, request and memory relations from the single RAM permutation of these tokens. The
 [proofs](../../../../proven/Proven/Final/Trace/Machine/Padding.lean) erase identity factors and retain full
