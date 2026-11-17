@@ -433,8 +433,7 @@
     },
     "Airbender.RunIsAirbenderSatisfiableClaim": {},
     "Airbender.RunSailSimulationClaim": {
-      "witness": "Airbender.RunSailSimulationSatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.RunSailSimulationSatisfiableClaim"
     },
     "Airbender.RunSailSimulationSatisfiableClaim": {},
     "Airbender.ShiftBinop.ArtifactImportClaim": {
@@ -770,58 +769,47 @@
     },
     "RV.ValidUse.SplitKeccakReferenceSatisfiableClaim": {},
     "Airbender.Compiler.NativeMemory.StateTokenMatchingClaim": {
-      "witness": "Airbender.Compiler.NativeMemory.StateTokenMatchingSatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.NativeMemory.StateTokenMatchingSatisfiableClaim"
     },
     "Airbender.Compiler.NativeMemory.StateTokenMatchingSatisfiableClaim": {},
     "Airbender.Compiler.AddSubCachedMemoryClaim": {
-      "witness": "Airbender.Compiler.AddSubCachedMemorySatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.AddSubCachedMemorySatisfiableClaim"
     },
     "Airbender.Compiler.AddSubCachedMemorySatisfiableClaim": {},
     "Airbender.Compiler.JumpBranchCachedMemoryClaim": {
-      "witness": "Airbender.Compiler.JumpBranchCachedMemorySatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.JumpBranchCachedMemorySatisfiableClaim"
     },
     "Airbender.Compiler.JumpBranchCachedMemorySatisfiableClaim": {},
     "Airbender.Compiler.MulDivCachedMemoryClaim": {
-      "witness": "Airbender.Compiler.MulDivCachedMemorySatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.MulDivCachedMemorySatisfiableClaim"
     },
     "Airbender.Compiler.MulDivCachedMemorySatisfiableClaim": {},
     "Airbender.Compiler.ShiftBinopCachedMemoryClaim": {
-      "witness": "Airbender.Compiler.ShiftBinopCachedMemorySatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.ShiftBinopCachedMemorySatisfiableClaim"
     },
     "Airbender.Compiler.ShiftBinopCachedMemorySatisfiableClaim": {},
     "Airbender.Compiler.SubwordMemoryCachedMemoryClaim": {
-      "witness": "Airbender.Compiler.SubwordMemoryCachedMemorySatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.SubwordMemoryCachedMemorySatisfiableClaim"
     },
     "Airbender.Compiler.SubwordMemoryCachedMemorySatisfiableClaim": {},
     "Airbender.Compiler.WordMemoryCachedMemoryClaim": {
-      "witness": "Airbender.Compiler.WordMemoryCachedMemorySatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.WordMemoryCachedMemorySatisfiableClaim"
     },
     "Airbender.Compiler.WordMemoryCachedMemorySatisfiableClaim": {},
     "Airbender.Compiler.UnifiedCachedMemoryClaim": {
-      "witness": "Airbender.Compiler.UnifiedCachedMemorySatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.UnifiedCachedMemorySatisfiableClaim"
     },
     "Airbender.Compiler.UnifiedCachedMemorySatisfiableClaim": {},
     "Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNative": {
-      "witness": "Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativeSatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativeSatisfiableClaim"
     },
     "Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativeSatisfiableClaim": {},
     "Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNative": {
-      "witness": "Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativeSatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativeSatisfiableClaim"
     },
     "Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativeSatisfiableClaim": {},
     "Airbender.Trace.Machine.Native.PaddedUnifiedFromNative": {
-      "witness": "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativeSatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativeSatisfiableClaim"
     },
     "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativeSatisfiableClaim": {},
     "Airbender.InitsTeardowns.SharedBytesClaim": {
@@ -829,8 +817,7 @@
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
     "Airbender.Compiler.BigintCachedMemoryClaim": {
-      "witness": "Airbender.Compiler.BigintCachedMemorySatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.BigintCachedMemorySatisfiableClaim"
     },
     "Airbender.Compiler.BigintCachedMemorySatisfiableClaim": {}
   }
