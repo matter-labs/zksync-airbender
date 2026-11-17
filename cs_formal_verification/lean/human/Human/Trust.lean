@@ -6,7 +6,8 @@ namespace Airbender.Trust
 /-! The trusted base is the Lean kernel, its standard axioms, the official Sail model,
     and the definitions and claims in human/. Lake pins the external libraries.
     Clean is imported only by the equivalence leaf. Import and source checks read
-    the lists below. Compiled setup comparisons in NativeGrid are trusted operations. -/
+    the lists below. The setup JSON reader (`parseSetup`), the grid comparison of the `with grids` setup import and
+    the compiled subword and unified fixed-row comparisons in NativeGrid are trusted operations. -/
 
 /-- External module roots from Lean, Mathlib and their dependencies, and the Sail model. -/
 def trustedModuleRoots : List String := [

@@ -96,7 +96,8 @@ CleanCore (Clean's definitions, transcribed) supplies `Expression`, `FlatOperati
 
 - **Trusted (not kernel-checked):** [Transcribe](../lean/human/Human/Import/Transcribe.lean) and
   [TranscribeCommand](../lean/human/Human/Import/TranscribeCommand.lean), headed `TRUSTED: review`.
-  [NativeGrid](../lean/human/Human/Import/NativeGrid.lean) performs the trusted DECISION B setup-row comparisons.
+  [NativeGrid](../lean/human/Human/Import/NativeGrid.lean) performs the trusted compiled comparison of the subword and
+  unified fixed rows with the native setup rows.
   [Trust.lean](../lean/human/Human/Trust.lean) lists allowed external roots and tactic modules, and the spec modules
   that define commands which add declarations (`declarationCommandModules`; review their code as specification);
   [the source check](../lean/scripts/check_trusted_code.py) requires both lists to be exact. The import_circuit command
@@ -139,14 +140,16 @@ descriptors do not prove that Rust preprocessing or decoder-table contents match
 
 Setup tables (`artifacts/setup/*.json`) are parsed by the same `Json.parse` and read by
 [SetupEmit](../lean/human/Human/Import/SetupEmit.lean) (trusted, headed `TRUSTED: review`) into the blocks of
-[SetupBlocks](../lean/human/Human/Import/SetupBlocks.lean). Besides transcribing the JSON,
-the import replaces each recognised table region (table ids in `gridCatalogue`) by a
-`grid` block, a named row formula, after comparing every row of the region with the JSON;
-any mismatch fails the import. This comparison is an elaborator responsibility with the same
-trust as the transcription: it is elaborator code, not kernel-checked, and the kernel proofs
-see only the formula. The input modules for unused setup data retain content stamps.
-The fixed-row test library uses NativeGrid to compare complete fixed regions and the ROM fixture.
-See [the setup README](../lean/artifacts/setup/README.md).
+[SetupBlocks](../lean/human/Human/Import/SetupBlocks.lean). The JSON reader (`parseSetup`) is the trusted step, as
+the file read and the reflection are for circuits. The import emits the JSON blocks as they are. Kernel claims make
+each table definition of the bigint, G, Keccak, shift/byte, add/sub, jump/branch, multiply/divide and word setups
+equal to the imported rows on the complete trace domain, and the public worker tables equal to the imported
+worker data with their range columns. The CPU claims use the setup fixture program. Kernel scans also give the row
+meaning of the BLAKE2 round setup (`Blake2Round.SetupProofs.setupRow_eq`). Two parts stay trusted compiled code: the
+split Keccak setups use the `with grids` import, which replaces each table region by a grid block after a
+row-by-row comparison with the JSON (`checkColumn`); and the fixed-row test library uses NativeGrid to compare the
+subword and unified fixed regions. `test/Tests/ImportSetupSpotChecks.lean` checks single imported values
+against the JSON. See [the setup README](../lean/artifacts/setup/README.md).
 
 ## What CI re-checks
 
@@ -181,15 +184,14 @@ The job runs on the runner host, where `bwrap` can create `lake check`'s sandbox
 ## Modeled tables and logical arguments
 
 [Range.lean](../lean/human/Human/Helpers/Tables/Range.lean) defines the 16-bit and 19-bit tables.
-[NativeSetups/Ranges.lean](../lean/human/Human/Compiler/NativeSetups/Ranges.lean) checks each complete native prefix and its zero padding.
-The [setup inventory](../lean/artifacts/setup/README.md) lists all 16 exported setups and their binding checks.
-The checks compare row formulas with native JSON, or decode the retained setup blocks.
-[NativeGrid.lean](../lean/human/Human/Import/NativeGrid.lean) runs the comparisons as trusted compiled code.
+The worker setup claim makes the imported 16-bit and timestamp range columns of each worker equal to the increasing
+prefix and zero padding; `Range13ImportClaim` binds the 13-bit table to table 26 of the multiply/divide setup.
+The [setup inventory](../lean/artifacts/setup/README.md) lists all 16 exported setups and their claims.
 Fresh Rust exports and content pins check the current input bytes. No theorem verifies the Rust setup generator.
 
-The bigint row formulas, Keccak controller rows and range definitions remain mathematical transcriptions.
-This is a deviation from a specification derived only from native table data.
-The complete comparisons bind these formulas to the retained native rows. The kernel checks their table-membership lemmas.
+The bigint, G, Keccak, shift/byte and CPU table definitions are mathematical row formulas. Kernel claims make each
+formula equal to the imported native rows, except the subword and unified fixed regions, which compiled comparisons
+bind.
 
 `Accepted` checks imported equations/lookups and logical native state/memory
 permutations. Decoder membership and caller/request matching are likewise logical

@@ -19,27 +19,48 @@ Provenance:
 - The exporter output is canonicalized to compact JSON. The complete bytes must equal the imported file.
 - `scripts/check_setup_freshness.py` checks every setup named in the Lake inputs against the current Rust exporter.
 
-Row meaning (proven/Proven/Blake2Round/Setup/): `Rows.setupRow_eq` proves that every
-one of the 2^20 decoded rows equals the region formula (`Spec.spec0`..`spec5`):
+Row meaning (proven/Proven/Blake2Round/Setup/): `Rows.setupRow_eq` proves, with the kernel scans of
+`Proven.Setup.Native.BlakeRound`, that every one of the 2^20 decoded rows equals the region formula
+(`Spec.spec0`..`spec5`):
 rows 0..606207 are the six XOR regions, rows 606208.. are all zero (tag 0).
 The padding rows cannot satisfy a query: `Circuit.blakeRoundQueries` (human/Human/Import/Columns.lean)
 requires every query's tag column to be a constant in {4, 19, 20, 55, 56, 57}.
 
-## How the import structures all 16 setups
+## How the import works
 
-`import_setup_blocks` (human/Human/Import/SetupEmit.lean) cuts each column's JSON blocks at
-every table edge and replaces column `c < width` of every table whose id is in
-`gridCatalogue` (Xor 4, Xor7 19, Xor9 20, XorSpecialIota 38, Xor8WithCarry 55,
-Xor7WithCarry 56, Xor4x3 57, KeccakXorSplit 58, KeccakXor5Nibble 64, KeccakChi5 65) by one
-`grid` block: a named row formula (`GridFn`, human/Human/Import/SetupBlocks.lean). It emits a
-grid block only after comparing every row of the region with the JSON value; every other
-emitted block is the JSON block itself, a cut of an affine JSON block, or compared row by
-row too; any mismatch fails the import. **This comparison is an elaborator responsibility,
-trusted like the JSON transcription itself (`parseSetup`): it runs as elaborator code, and
-the kernel never sees the JSON values of a grid region.** The proofs then work by formula:
-each column is a handful of blocks; grid blocks and long affine runs are matched by shape
-(`Spec`/`Shapes`) and proved equal to the row formula algebraically (`digits_eq`), the few
-hundred controller rows are checked by the kernel (`Proven.Setup.Blocks.scan`).
+`import_setup_blocks` (human/Human/Import/SetupEmit.lean) reads each setup JSON with the proved `Json.parse` and
+emits the trace length, every generic column and the two virtual range columns as the JSON blocks themselves
+(`affine`, `dense`, `periodic`). The JSON reader (`parseSetup`) is the trusted step. Kernel claims give the meaning
+of the rows: each states that a table definition equals the imported rows on the complete trace domain, with the
+column order of the native setup. The kernel checks every column with the scans of
+[generate_setup_scans.py](../../scripts/generate_setup_scans.py) (`proven/Proven/Setup/Native/`): short blocks row
+by row, long blocks on one period with an algebraic proof of the period (`Proven.Setup.Scan`).
+
+| setup | claim |
+|---|---|
+| `bigint` | `Bigint.SetupImportClaim` |
+| `blake-g` | `Blake2G.Control.SetupImportClaim` |
+| `keccak` | `Keccak.Controller.SetupImportClaim` |
+| `shift-binop` | `Verification.ShiftBinopImportClaim` |
+| `add-sub`, `jump-branch`, `mul-div`, `word-memory` | `Compiler.NativeFixedRows.…ImportClaim` |
+| table 26 of `mul-div` | `Compiler.NativeSetups.Range13ImportClaim` |
+| the six worker setups, with their range columns | `Compiler.NativeWorkerSetup.SetupImportClaim` |
+| `blake-round` | `Blake2Round.SetupProofs.setupRow_eq` (proven/; the table definition reads the imported rows) |
+
+The CPU claims use the setup fixture program: the four words `[0x13, 0x00408093, 0x6f, 0x007181b3]`
+(`Compiler.NativeSetups.fixtureWords`) for the ROM rows, and its decoder rows. The decoder smoke fixture comes from
+the `setup_json_roundtrip_preserves_materialized_columns_and_program` Rust test; no claim reads it, and the Lean
+build does not import it. `inits-and-teardowns` has no generic lookup columns.
+
+Not covered by a kernel claim:
+
+- `subword-memory` and `unified`: the compiled comparison of
+  [the fixed-row test library](../../test/Tests/NativeFixedRows/Bindings.lean) (`check_native_grid`, trusted) binds
+  their fixed regions, with the fixture ROM words.
+- The three split Keccak setups use `import_setup_blocks ... with grids`: the import replaces each table region of
+  `gridCatalogue` (XorSpecialIota 38, KeccakXorSplit 58, KeccakXor5Nibble 64, KeccakChi5 65 and the catalogue's
+  other ids) by one `grid` block (a named row formula, `GridFn`) after a compiled comparison of every row with the
+  JSON (`checkColumn`, trusted). The kernel proofs see only the formula.
 
 ## Split Keccak workers
 
@@ -72,35 +93,9 @@ are grid blocks (see above; the iota constants of `XorSpecialIota` are taken fro
 and proved equal to `rcByte` in `ColumnParity.ShapesOk`); the controller regions keep their
 JSON blocks and are checked row by row in `Rows`.
 
-## Additional native inputs and model comparisons
+## Public setup data
 
-The other 12 files are `add-sub`, `bigint`, `blake-g`, `decoder-smoke`,
-`inits-and-teardowns`, `jump-branch`, `keccak`, `mul-div`, `shift-binop`,
-`subword-memory`, `unified` and `word-memory` (each with the `.json` suffix).
-`Human.Compiler.NativeSetups` imports them with the same fast block importer.
-The freshness check exports and compares all 16 complete files.
-CPU exports use the four-word fixture `[0x13, 0x00408093, 0x6f, 0x007181b3]`
-for both program inputs. The decoder smoke fixture comes from the existing
-`setup_json_roundtrip_preserves_materialized_columns_and_program` Rust test.
-
-`Human.Import.NativeGrid` compares the retained bigint rows, both G tables,
-both special5 Keccak tables and the complete CPU shift table with every native
-row. Each setup also checks its complete 16-bit and 19-bit virtual range columns,
-including zero padding. The range leaf checks all native RangeCheck13 rows.
-These comparisons are trusted compiled code. The regression module rejects a
-wrong formula, a changed native row and changed range padding. No kernel setup
-certificate is added.
-
-The complete jump/branch, multiply/divide, word, subword and unified fixed regions
-also have bounded compiled comparisons in
-[NativeFixedRows/Bindings.lean](../../human/Human/Compiler/NativeFixedRows/Bindings.lean).
-Each comparison checks at most 262144 rows. The ROM fixture is checked in full.
-The unified view only reorders the retained table indices.
-
-[NativePublicSetup.lean](../../human/Human/Compiler/NativePublicSetup.lean) states
-the public data binding for arbitrary ROM bytes and native decoder projections.
-The native machine corollaries use this binding to derive CPU constraints and
-public decoder membership. Capacity, nonzero masks and omitted zero coordinates
-are explicit public setup properties. A fixed fixture does not prove the Rust
-setup generator for every program. All compiled comparisons remain trusted code;
-no large kernel setup certificate is added.
+[NativePublicSetup.lean](../../human/Human/Compiler/NativePublicSetup.lean) states the public data binding for
+arbitrary ROM bytes and native decoder projections. The native machine corollaries use this binding to derive CPU
+constraints and public decoder membership. Capacity, nonzero masks and omitted zero coordinates are explicit public
+setup properties. A fixed fixture does not prove the Rust setup generator for every program.

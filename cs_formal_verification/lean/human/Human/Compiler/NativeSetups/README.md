@@ -1,13 +1,12 @@
 # Native setup inputs
 
-The family modules validate each native setup JSON and retain a small content
-stamp. The [content pins](../../../../setup_json_pins.json) cover every setup input.
-Lake tracks the JSON inputs and rebuilds dependent modules on a change.
-Start with [AddSub.lean](AddSub.lean). [Ranges.lean](Ranges.lean) compares the two
-range grids with their mathematical definitions.
+Each family module imports one native setup JSON as data (`import_setup_blocks`). The
+[content pins](../../../../setup_json_pins.json) cover every setup input. Lake tracks the JSON inputs and rebuilds
+dependent modules on a change. Start with [AddSub.lean](AddSub.lean).
 
-[NativeGrid.lean](../../Import/NativeGrid.lean) performs these compiled checks.
-Its setup row comparisons are the trusted DECISION B binding. The stamps track
-inputs; they are not proofs of row equality.
-[NativePublicSetup.lean](../NativePublicSetup.lean) defines the public rows used
-by the machine claims. See the [compiler guide](../README.md) for their interfaces.
+Kernel claims make the table definitions equal to the imported rows: `SetupImportClaim` next to the bigint, G and
+Keccak tables, `ShiftBinopImportClaim` in [Bytes.lean](../../Helpers/Tables/Bytes.lean), the `…ImportClaim`
+statements of [NativeFixedRows.lean](../NativeFixedRows.lean), `Range13ImportClaim` in [Ranges.lean](Ranges.lean),
+and `NativeWorkerSetup.SetupImportClaim` for the public worker tables with their range columns.
+[NativePublicSetup.lean](../NativePublicSetup.lean) defines the public rows used by the machine claims. See the
+[compiler guide](../README.md) for their interfaces.
