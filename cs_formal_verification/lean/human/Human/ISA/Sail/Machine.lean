@@ -3,7 +3,7 @@
 
 `SailRV32` is generated from sail-riscv by `sail/regen.sh` (pinned, see `sail/PINS.md`).
 Sail's semantics is a program in an effect monad (`SailM`); `runSail` interprets those effects on
-`SailState` the same way lean-sail's `interpretSailEffects` does on its hash-map state.
+`SailState`. `RunSailSimulationClaim` (`Interpreter.lean`) relates it to lean-sail's `interpretSailEffects`.
 
 The definitions are the Airbender configuration's (`Human/Helpers/Core/Configuration.lean`: `SailState`,
 `SailState.set`, `readBytes`, `writeBytes`, `applyEffect`, `runSail`), made available here under `Human`.

@@ -509,6 +509,11 @@
       "evidence": "Checks.Satisfiable"
     },
     "Airbender.RunIsAirbenderSatisfiableClaim": {},
+    "Airbender.RunSailSimulationClaim": {
+      "witness": "Airbender.RunSailSimulationSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
+    },
+    "Airbender.RunSailSimulationSatisfiableClaim": {},
     "Airbender.ShiftBinop.ArtifactImportClaim": {
       "exception": "artifact",
       "reason": "This claim checks fixed imported data or a constant proposition."

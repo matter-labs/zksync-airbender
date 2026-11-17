@@ -33,6 +33,7 @@ import Human.Trace.Workers.Blake2Round.RVTheorems
 import Human.Trace.Workers.Keccak.RVTheorems
 import Human.Trace.Workers.KeccakSplit.RVTheorems
 import Human.ISA.Sail.Theorems
+import Human.ISA.Sail.Interpreter
 import Human.ISA.DelegationRuns
 import Human.ISA.Vectors
 import Human.Trace.UnifiedReduced.RVCallerTheorems

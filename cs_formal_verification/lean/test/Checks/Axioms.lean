@@ -5,6 +5,7 @@ import Proven.Final.Compiler.WorkerArithmetic
 import Proven.Final.Trace.Machine.Witnesses
 import Proven.Final.ISA.NativeTargets
 import Proven.Final.ISA.WholeRun
+import Proven.Final.ISA.Interpreter
 import Proven.Final.ISA.MachineTargets
 import Proven.Final.Compiler.NativeMachine
 import Proven.Final.Compiler.LookupSelectors
@@ -1634,3 +1635,7 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.Compiler.cached_subword_memory_certificate_satisfiable
 
 #print axioms Airbender.Compiler.cached_unified_certificate_satisfiable
+
+#print axioms Airbender.run_sail_simulation
+
+#print axioms Airbender.run_sail_simulation_satisfiable

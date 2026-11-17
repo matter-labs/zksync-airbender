@@ -4,6 +4,7 @@ import Proven.Final.Compiler.WorkerArithmetic
 import Proven.Final.Trace.Machine.Witnesses
 import Proven.Final.ISA.NativeTargets
 import Proven.Final.ISA.WholeRun
+import Proven.Final.ISA.Interpreter
 import Proven.Final.ISA.MachineTargets
 import Proven.Final.Compiler.NativeMachine
 import Proven.Final.Compiler.LookupSelectors
@@ -1063,3 +1064,11 @@ example : RV.Delegation.BlakeRoundOneHotClaim := RV.Delegation.blake_round_one_h
 example : RV.Delegation.BlakeRoundOneHotSatisfiableClaim := RV.Delegation.blake_round_one_hot_satisfiable
 
 #print axioms RV.Delegation.blake_round_one_hot_satisfiable
+
+example : Airbender.RunSailSimulationClaim := Airbender.run_sail_simulation
+
+#print axioms Airbender.run_sail_simulation
+
+example : Airbender.RunSailSimulationSatisfiableClaim := Airbender.run_sail_simulation_satisfiable
+
+#print axioms Airbender.run_sail_simulation_satisfiable

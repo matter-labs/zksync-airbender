@@ -13,6 +13,7 @@ import Proven.Final.Circuits.Blake2G.Theorems
 import Proven.Final.Circuits.Bigint.RVTheorems
 import Proven.Final.Compiler.Arithmetic
 import Proven.Final.ISA.WholeRun
+import Proven.Final.ISA.Interpreter
 import Proven.Final.ISA.MachineTargets
 import Proven.Final.ISA.Theorems
 import Proven.Final.Compiler.LookupSelectors
@@ -1490,3 +1491,11 @@ example (claim : Airbender.Compiler.NativeWorkerLookups.CachedWorkerLookupSelect
 example (family : Airbender.Compiler.NativeWorkerLookups.Family) :
     ∃ entry : Airbender.Compiler.WorkerCertificate, entry.family = family :=
   Airbender.Compiler.cached_worker_certificates_satisfiable family
+
+example (claim : Airbender.RunSailSimulationClaim) : Airbender.RunSailSimulationSatisfiableClaim →
+    ∃ (program : SailRV32.SailM (SailRV32.RegisterType .PC)) (state : Human.SailState)
+      (value : SailRV32.RegisterType .PC) (state' : Human.SailState),
+      Human.runSail program state = .ok value state' :=
+  fun ⟨program, state, sequential, value, sequential', avoids, agrees, run⟩ =>
+    let ⟨state', ours, _⟩ := (claim program state sequential avoids agrees).1 value sequential' run
+    ⟨program, state, value, state', ours⟩

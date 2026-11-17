@@ -41,6 +41,7 @@ import Proven.Final.Compiler.Theorems
 import Proven.Final.Compiler.NativeMachine
 
 import Proven.Final.ISA.WholeRun
+import Proven.Final.ISA.Interpreter
 import Proven.Final.ISA.MachineTargets
 
 import Proven.Final.ISA.NativeTargets

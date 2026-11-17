@@ -16,6 +16,10 @@ variants. Their [final proofs](../../../../proven/Proven/Final/ISA/NativeTargets
 compose native acceptance, whole RV execution and the finite machine simulation.
 [WholeRun proofs](../../../../proven/Proven/Final/ISA/WholeRun.lean) expose the run,
 configuration and fetch results with separate witnesses.
+[Interpreter.lean](Interpreter.lean) relates `runSail` to lean-sail's `interpretSailEffects`.
+The kernel cannot evaluate the hash maps of lean-sail's state, so the claims use `runSail`.
+The simulation holds for every effect except the cycle-counter read, which the generated model does not use.
+Lean-sail can stop where `runSail` continues: on a register or byte that is not in its map, or on a tagged request.
 
 The Airbender machine uses the specification's own definitions for loads into x0,
 `mop.rr.N`, `mop.r.N`, CSR 0x7c0 and all delegations. These are machine overrides.
