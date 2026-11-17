@@ -4,7 +4,7 @@ This directory relates public instruction bytes and our RV32 decoder (`RV.decode
 native family, register, immediate and selector metadata. The ROM image of the public
 `RV.State` holds the program; fetch reads it and no history step changes it. Decoder-table
 membership is a logical connection between the public program and witness rows. The
-[decoder comparison](../../../../scripts/check_program_decoder_rows.py) checks `RVMachineProgram.lean` against the Rust
+[decoder comparison](../../../../scripts/check_program_decoder_rows.py) checks [RVMachineProgram.lean](RVMachineProgram.lean) against the Rust
 decoder export for 126 instruction cases and 14 programs, including the ZKsync OS text.
 
 ## Checked connections

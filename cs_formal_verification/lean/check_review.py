@@ -43,6 +43,8 @@ SOURCE_NAMES = {
     "bwrap", "skip_inductive_codegen", "mop.r.N", "mop.rr.N",
     # the no-warnings gate (README): Lake library names and Lake's option for non-module files
     "Proven", "CleanAudit", "allowNonModules",
+    # the setup import command (Human/Import/SetupEmit.lean)
+    "import_setup_blocks",
 }
 
 
