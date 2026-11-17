@@ -2172,3 +2172,10 @@ name = "CompilerInputs_GKRProtocol_ProductNative_KeccakThetaRhoCached"
 srcDir = "proven"
 roots = ["Proven.GKRProtocol.ProductNative.KeccakThetaRhoCached"]
 needs = ["compiler_keccak_theta_rho_cached_layout", "compiler_keccak_theta_rho_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_GKRProtocol_ProductNative_KeccakChi5Cached"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.ProductNative.KeccakChi5Cached"]
+needs = ["compiler_keccak_chi5_cached_layout", "compiler_keccak_chi5_capture"]

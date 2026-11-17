@@ -4,6 +4,7 @@ public import Proven.GKRProtocol.WorkerPortsNative.BlakeGCachedWitness
 public import Proven.GKRProtocol.WorkerPortsNative.BlakeRoundCachedWitness
 public import Proven.GKRProtocol.WorkerPortsNative.KeccakColumnParityCachedWitness
 public import Proven.GKRProtocol.WorkerPortsNative.KeccakThetaRhoCachedWitness
+public import Proven.GKRProtocol.WorkerPortsNative.KeccakChi5CachedWitness
 
 @[expose] public section
 namespace Airbender.Compiler
@@ -68,5 +69,17 @@ theorem keccakThetaRho_cached_memory : KeccakThetaRhoCachedMemoryClaim := by
 /-- The program values of an arithmetic witness meet the theta/rho memory premises. -/
 theorem keccakThetaRho_cached_memory_satisfiable : KeccakThetaRhoCachedMemorySatisfiableClaim :=
   WorkerPortsNative.KeccakThetaRhoCached.satisfiable
+
+/-- Cached native gates, caches and product gates give the chi5 RAM outputs from the model tokens. -/
+theorem keccakChi5_cached_memory : KeccakChi5CachedMemoryClaim := by
+  intro E _ challenges physical values row selected accepted placement extension
+  obtain ⟨kind, assignment⟩ := row
+  change kind = .chi5 at selected
+  subst selected
+  exact WorkerPortsNative.KeccakChi5Cached.ram_products challenges physical values assignment accepted placement extension
+
+/-- The program values of an arithmetic witness meet the chi5 memory premises. -/
+theorem keccakChi5_cached_memory_satisfiable : KeccakChi5CachedMemorySatisfiableClaim :=
+  WorkerPortsNative.KeccakChi5Cached.satisfiable
 
 end Airbender.Compiler

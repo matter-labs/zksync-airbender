@@ -25,6 +25,8 @@ WORKERS = [
      "Airbender.Keccak.Split.ColumnParity", 0x7CD, "split", ".columnParity", "keccakColumnParity"),
     ("KeccakThetaRho", "keccak-theta-rho-cached", "keccak_theta_rho",
      "Airbender.Keccak.Split.ThetaRho", 0x7CC, "split", ".thetaRho", "keccakThetaRho"),
+    ("KeccakChi5", "keccak-chi5-cached", "keccak_chi5",
+     "Airbender.Keccak.Split.Chi5", 0x7CE, "split", ".chi5", "keccakChi5"),
 ]
 
 

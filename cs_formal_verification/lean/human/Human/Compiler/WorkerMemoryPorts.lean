@@ -5,6 +5,7 @@ public import Human.Compiler.Captures.BlakeG
 public import Human.Compiler.Captures.BlakeRound
 public import Human.Compiler.Captures.KeccakColumnParity
 public import Human.Compiler.Captures.KeccakThetaRho
+public import Human.Compiler.Captures.KeccakChi5
 public import Human.Trace.Machine.Model
 
 @[expose] public section
@@ -134,5 +135,26 @@ def KeccakThetaRhoCachedMemorySatisfiableClaim : Prop :=
     NativeArithmetic.Holds Captures.KeccakThetaRho.imported.circuit physical ∧
     NativeArithmetic.PlacementAgreement Captures.KeccakThetaRho.imported.circuit physical row.assignment ∧
     NativeMemory.Holds Captures.KeccakThetaRho.imported.circuit challenges physical values
+
+/-- Native base gates, extension caches and RAM-product gates give the RAM outputs of a cached chi5 row:
+    the execute-masked products of its port tokens and request tokens. -/
+def KeccakChi5CachedMemoryClaim : Prop :=
+  ∀ {E : Type} [CommRing E] (challenges : NativeMemory.Challenges E) (physical : GKRAddress → NativeArithmetic.F)
+    (values : GKRAddress → E) (row : Keccak.Split.Native.Row babyBearModulus),
+    row.kind = .chi5 →
+    NativeArithmetic.Holds Captures.KeccakChi5.imported.circuit physical →
+    NativeArithmetic.PlacementAgreement Captures.KeccakChi5.imported.circuit physical row.assignment →
+    NativeMemory.Holds Captures.KeccakChi5.imported.circuit challenges physical values →
+    NativeMemory.RamProducts Captures.KeccakChi5.imported.circuit challenges values
+      (row.assignment row.columns.execute) (NativeMemory.splitReads row) (NativeMemory.splitWrites row)
+
+/-- A cached chi5 row with native base and extension values meets the memory premises. -/
+def KeccakChi5CachedMemorySatisfiableClaim : Prop :=
+  ∃ (challenges : NativeMemory.Challenges NativeArithmetic.F) (physical : GKRAddress → NativeArithmetic.F)
+    (values : GKRAddress → NativeArithmetic.F) (row : Keccak.Split.Native.Row babyBearModulus),
+    row.kind = .chi5 ∧
+    NativeArithmetic.Holds Captures.KeccakChi5.imported.circuit physical ∧
+    NativeArithmetic.PlacementAgreement Captures.KeccakChi5.imported.circuit physical row.assignment ∧
+    NativeMemory.Holds Captures.KeccakChi5.imported.circuit challenges physical values
 
 end Airbender.Compiler
