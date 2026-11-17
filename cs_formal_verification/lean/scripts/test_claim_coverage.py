@@ -69,8 +69,8 @@ class ClaimCoverageTests(unittest.TestCase):
             validate(self.data, self.manifest)
 
     def test_non_definition_claim(self):
-        self.data["non_definitions"] = ["Example.StructureClaim"]
-        with self.assertRaisesRegex(ValueError, "not a Prop-typed definition"):
+        self.data["non_definitions"] = ["Example.TheoremClaim"]
+        with self.assertRaisesRegex(ValueError, "not a Prop-typed definition or structure"):
             validate(self.data, self.manifest)
 
     def test_missing_witness_proof(self):
@@ -200,6 +200,12 @@ def ArgumentsSwapped : Prop := ∃ a b : Nat, b + 1 = a
 def ProductClaim : Prop := ∀ pair : Nat × Nat, pair.1 < pair.2 → pair.1 ≠ pair.2
 def ProductPermuted : Prop := ∃ pair : Nat × Nat, (pair.2, pair.1).1 < (pair.2, pair.1).2
 def ProductExact : Prop := ∃ pair : Nat × Nat, pair.1 < pair.2
+structure StructuredClaim : Prop where
+  sound : ∀ a : Nat, P a → R a → a < 6
+structure TwoFieldClaim : Prop where
+  first : ∀ a : Nat, P a → a < 5
+  second : True
+theorem TheoremClaim : True := trivial
 def Bounded : Prop := ∀ rows : List Nat, rows ≠ [] → ∀ row ∈ rows, row < 10 → row < 11
 def BoundedNested : Prop := ∃ rows : List Nat, rows ≠ [] ∧ ∃ row ∈ rows, row < 10
 def ExtraNested : Prop := ∃ a : Nat, P a ∧ R a ∧ ∃ c : Nat, c ≠ a
@@ -218,6 +224,16 @@ run_cmd ClaimCoverageAudit.audit ``Smoke.Pair ``Smoke.BindersSwapped
 run_cmd ClaimCoverageAudit.audit ``Smoke.Order ``Smoke.ArgumentsSwapped
 run_cmd ClaimCoverageAudit.audit ``Smoke.ProductClaim ``Smoke.ProductPermuted
 run_cmd ClaimCoverageAudit.audit ``Smoke.ProductClaim ``Smoke.ProductExact
+run_cmd ClaimCoverageAudit.audit ``Smoke.StructuredClaim ``Smoke.Exact
+run_cmd ClaimCoverageAudit.audit ``Smoke.TwoFieldClaim ``Smoke.Extra
+open Lean in
+run_cmd do
+  let env ← getEnv
+  for (name, expected) in [(``Smoke.Claim, true), (``Smoke.StructuredClaim, true), (``Smoke.TwoFieldClaim, true),
+      (``Smoke.TheoremClaim, false)] do
+    let some info := env.find? name | throwError "missing {name}"
+    unless ClaimCoverageAudit.isClaimDeclaration env info == expected do throwError "wrong claim kind: {name}"
+  logInfo "CLAIM_KINDS_CHECKED"
 run_cmd ClaimCoverageAudit.audit ``Smoke.Bounded ``Smoke.BoundedNested
 run_cmd ClaimCoverageAudit.audit ``Smoke.Claim ``Smoke.ExtraNested
 run_cmd ClaimCoverageAudit.audit ``Smoke.Claim ``Smoke.ExtraFirst
@@ -228,11 +244,17 @@ run_cmd ClaimCoverageAudit.audit ``Smoke.Claim ``Smoke.ExtraFirst
             result = subprocess.run(["lake", "env", "lean", str(path)], cwd=ROOT,
                                     text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.assertEqual(result.returncode, 0, result.stdout[-5000:])
-        verdicts = {}
+        self.assertIn("CLAIM_KINDS_CHECKED", result.stdout)
+        verdicts, reasons = {}, {}
         for line in result.stdout.splitlines():
             fields = line.split()
             if fields and fields[0] in {"TELESCOPE_MATCH", "TELESCOPE_MISMATCH"}:
+                if fields[1] in {"Smoke.StructuredClaim", "Smoke.TwoFieldClaim"}:
+                    reasons[fields[1]] = None if fields[0] == "TELESCOPE_MATCH" else " ".join(fields[3:])
+                    continue
                 verdicts[fields[2]] = fields[0] == "TELESCOPE_MATCH"
+        # A one-field structure states its field; a structure with more fields states a conjunction without premises.
+        self.assertEqual(reasons, {"Smoke.StructuredClaim": None, "Smoke.TwoFieldClaim": "no premises"})
         self.assertEqual(verdicts, {
             "Smoke.Exact": True, "Smoke.Extra": True, "Smoke.FixedWitness": True, "Smoke.PairExact": True,
             "Smoke.ProductExact": True, "Smoke.BoundedNested": True, "Smoke.ExtraNested": True,

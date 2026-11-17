@@ -8,8 +8,9 @@ ordinary instructions, modular operations and matched standard and split workers
 Every public statement has a final proof. Each universal claim has a separate witness for its exact premises,
 except the fixed-data equations listed by exact name in [the coverage map](../lean/claim_coverage.json).
 [The coverage checker](../lean/scripts/check_claim_coverage.py) reads every constant of `human/` whose name ends in
-"Claim". Each one must be a definition of type Prop, with a final theorem in `proven/Proven/Final/` and a row in the
-table below. The witness of a claim must be `<stem>SatisfiableClaim`, where the stem is the claim name without
+"Claim". Each one must be a definition of type Prop, or a structure of type Prop without parameters, with a final
+theorem in `proven/Proven/Final/` and a row in the table below. A structure claim states its fields: one field, or
+the conjunction of more fields, which has no premises. The witness of a claim must be `<stem>SatisfiableClaim`, where the stem is the claim name without
 "Claim", or without "SoundnessClaim" when only that witness exists. No two claims share a witness. The witness must
 have exactly the premises of its claim: for a claim ∀ x₁ … xₙ, P₁ → … → Pₘ → Q, the witness is ∃ x₁ … xₙ, P₁ ∧ … ∧
 Pₘ, with more conjuncts allowed only after Pₘ (for example rows ≠ []). Lean checks each conjunct against the premise

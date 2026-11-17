@@ -24,10 +24,26 @@ AUDIT = r'''
 namespace ClaimCoverageAudit
 open Lean Meta Elab Command
 
-/-- A claim is a definition whose type is `Prop`. -/
-def isPropDefinition : ConstantInfo → Bool
+/-- A claim is a definition of type `Prop`, or a structure of type `Prop` without parameters. -/
+def isClaimDeclaration (env : Environment) : ConstantInfo → Bool
   | .defnInfo info => info.type.consumeMData == .sort .zero
+  | .inductInfo info => isStructure env info.name && info.numParams == 0 && info.type.consumeMData == .sort .zero
   | _ => false
+
+/-- The statement of a claim. A structure claim states its fields: a structure with one field states that field,
+    and a structure with more fields states their conjunction, which has no premises. -/
+def claimStatement (claim : Name) : MetaM (Option Lean.Expr) := do
+  match (← getEnv).find? claim with
+  | some (.defnInfo info) => return some info.value
+  | some (.inductInfo info) =>
+      let [constructorName] := info.ctors | return none
+      let some (.ctorInfo constructor) := (← getEnv).find? constructorName | return none
+      forallTelescope constructor.type fun fields _ => do
+        let types ← fields.mapM inferType
+        match types.toList with
+        | [single] => return some single
+        | many => return some (many.foldr (fun type rest => mkAnd type rest) (mkConst ``True))
+  | _ => return none
 
 /-- Open a witness statement as its telescope: the existential binders and the conjuncts of its right spine, in
     order. Each binder records the number of conjuncts before it. -/
@@ -69,9 +85,9 @@ partial def matchPremise (premise : Lean.Expr) (conjuncts : Array Lean.Expr) (po
 /-- Why a witness statement is not the premise telescope of its claim, or `none` when it is. `some "no premises"`
     marks a claim without premises. -/
 def telescopeMismatch (claim witness : Name) : MetaM (Option String) := do
-  let some (.defnInfo claimInfo) := (← getEnv).find? claim | return some "the claim is not a definition"
+  let some claimValue ← claimStatement claim | return some "the claim is not a definition or a structure"
   let some (.defnInfo witnessInfo) := (← getEnv).find? witness | return some "the witness is not a definition"
-  let statement ← unfoldTemplates claimInfo.value
+  let statement ← unfoldTemplates claimValue
   let premiseEnd ← forallTelescope statement fun binders _ => do
     let mut last := 0
     for h : index in [0:binders.size] do
@@ -217,7 +233,7 @@ run_cmd do
       for name in env.header.moduleData[index]!.constNames do
         if mod.toString.startsWith "Human." && name.toString.endsWith "Claim" then
           if let some info := env.find? name then
-            unless ClaimCoverageAudit.isPropDefinition info do
+            unless ClaimCoverageAudit.isClaimDeclaration env info do
               logInfo m!"NON_DEF_CLAIM {name}"
         if !isPrivateName name then
           if mod.toString.startsWith "Human." && name.toString.endsWith "Claim" then
@@ -233,6 +249,10 @@ run_cmd do
               let combined := if value.isAppOfArity ``And 2 then
                 (value.getAppArgs[1]!).consumeMData.isAppOfArity ``Exists 2 else false
               logInfo m!"HUMAN_PROP {name} {mod} {head} {combined}"
+          | some (.inductInfo info) =>
+            if mod.toString.startsWith "Human." && name.toString.endsWith "Claim" &&
+                ClaimCoverageAudit.isClaimDeclaration env (.inductInfo info) then
+              logInfo m!"HUMAN_PROP {name} {mod} structure false"
           | some (.thmInfo info) =>
             if mod.toString.startsWith "Proven.Final." then
               logInfo m!"FINAL_DECL {name} {mod}"
@@ -303,7 +323,7 @@ def validate(data, manifest):
     if data.get("non_props"):
         raise ValueError("Public claim is not a proposition: " + ", ".join(data["non_props"]))
     if data.get("non_definitions"):
-        raise ValueError("Claim is not a Prop-typed definition: " + ", ".join(data["non_definitions"]))
+        raise ValueError("Claim is not a Prop-typed definition or structure: " + ", ".join(data["non_definitions"]))
     claims, proofs = data["claims"], data["proofs"]
     rows = manifest["claims"]
     if set(rows) != set(claims):
