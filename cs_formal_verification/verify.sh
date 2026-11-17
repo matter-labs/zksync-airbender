@@ -24,6 +24,7 @@ echo "== 1b. The circuit and setup JSONs the spec imports: pinned sha256, no dup
 echo "   canonical form (setup JSONs compact)"
 python3 check_circuit_json.py
 python3 scripts/check_compiler_captures.py
+python3 scripts/test_compiled_circuits.py
 python3 scripts/sync_compiler_inputs.py --check
 python3 scripts/generate_fixed_row_checks.py --check
 python3 scripts/generate_worker_selectors.py --check

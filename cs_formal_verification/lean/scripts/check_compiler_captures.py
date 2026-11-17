@@ -50,6 +50,29 @@ def check_setup_pins():
     print(f'PASS {len(paths)} setup content pins and README hashes')
 
 
+# The derived decoder fixture embeds a test circuit, not a production circuit.
+SETUP_FIXTURES = {'decoder-smoke'}
+
+
+def check_setup_circuits():
+    """Each production setup embeds the imported no-cache circuit of its family."""
+    imported = {path.name: path for path in imported_paths()}
+    families = dict(FAMILIES, **{'inits-and-teardowns': 'inits_and_teardowns'})
+    checked = 0
+    for path in setup_paths():
+        if path.stem in SETUP_FIXTURES:
+            continue
+        if path.stem not in families:
+            raise ValueError(f'Setup without a production circuit family: {path.name}')
+        circuit = imported.get(families[path.stem] + '_layout_no_caches_gkr.json')
+        if circuit is None:
+            raise ValueError(f'Setup family has no imported no-cache circuit: {path.name}')
+        if canonical(read(path)['circuit']) != canonical(read(circuit)):
+            raise ValueError(f'Setup embeds a different circuit than the imported no-cache file: {path.name}')
+        checked += 1
+    print(f'PASS {checked} setups embed their imported no-cache circuits')
+
+
 def check_cached_layouts():
     checked = set()
     for path in imported_paths():
@@ -70,6 +93,7 @@ def check_cached_layouts():
 
 def check():
     check_setup_pins()
+    check_setup_circuits()
     check_cached_layouts()
     pins = read(ROOT / 'compiler_capture_pins.json')
     expected = {f'artifacts/compiler/{family}-cached{suffix}.json'

@@ -319,6 +319,10 @@ jobs:
         run: cargo build -p cs --profile cli --example export_gkr_translation
       - name: Native compiler capture freshness
         run: python3 cs_formal_verification/lean/scripts/check_compiler_captures.py --exporter target/cli/examples/export_gkr_translation
+      - name: Imported circuit regeneration
+        run: |
+          python3 cs_formal_verification/lean/scripts/test_compiled_circuits.py
+          python3 cs_formal_verification/lean/scripts/check_compiled_circuits.py
       - name: Native setup freshness
         run: python3 cs_formal_verification/lean/scripts/check_setup_freshness.py --exporter target/cli/examples/export_setup_json
       - uses: actions/download-artifact@v4

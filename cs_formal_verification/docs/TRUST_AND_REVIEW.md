@@ -109,7 +109,10 @@ CleanCore (Clean's definitions, transcribed) supplies `Expression`, `FlatOperati
   plain and in the shared form, so only the file read stays trusted for it. A bytes claim for a cached capture is
   above the module budget. The sha256 pins of the JSON files, and
   that each circuit and setup JSON is in its canonical form, are checked by
-  [check_circuit_json.py](../lean/check_circuit_json.py) (verify.sh step 1b).
+  [check_circuit_json.py](../lean/check_circuit_json.py) (verify.sh step 1b). In CI,
+  [check_compiled_circuits.py](../lean/scripts/check_compiled_circuits.py) runs the Rust generator test of each
+  imported circuit JSON and fails on a difference. [check_compiler_captures.py](../lean/scripts/check_compiler_captures.py)
+  requires that each setup embeds the imported no-cache circuit of its family.
 - **Spot checks:** [ImportSpotChecks.lean](../lean/test/Tests/ImportSpotChecks.lean) has kernel examples that a
   reviewer can repeat with other values. Each example names its JSON file and JSON path. They read one gate
   coefficient, one placement entry and one cached lookup expression of the shared add-sub and chi imports. They decode
