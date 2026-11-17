@@ -190,6 +190,12 @@ import Proven.Final.Compiler.CertificateMemory
 import Proven.Final.Compiler.PermutationMachine
 
 import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
+import Proven.Final.Circuits.Bigint.Setup
+import Proven.Final.Circuits.Blake2G.Setup
+import Proven.Final.Circuits.Keccak.Setup
+import Proven.Final.Compiler.WorkerSetup
+import Proven.Final.Compiler.FixedRows
+import Proven.Final.Helpers.Tables.Bytes
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -1765,3 +1771,14 @@ import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 #print axioms Airbender.Trace.Machine.Native.padded_unified_from_native_permutation
 
 #print axioms Airbender.Trace.Machine.Native.padded_unified_from_native_permutation_satisfiable
+
+#print axioms Airbender.Bigint.setup_import
+#print axioms Airbender.Blake2G.Control.setup_import
+#print axioms Airbender.Keccak.Controller.setup_import
+#print axioms Airbender.Compiler.NativeWorkerSetup.setup_import
+#print axioms Airbender.Verification.shift_binop_import
+#print axioms Airbender.Compiler.NativeFixedRows.add_sub_import
+#print axioms Airbender.Compiler.NativeFixedRows.jump_branch_import
+#print axioms Airbender.Compiler.NativeFixedRows.mul_div_import
+#print axioms Airbender.Compiler.NativeFixedRows.word_memory_import
+#print axioms Airbender.Compiler.NativeSetups.range13_import
