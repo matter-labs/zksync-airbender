@@ -145,10 +145,9 @@ the file read and the reflection are for circuits. The import emits the JSON blo
 each table definition of the bigint, G, Keccak, shift/byte, add/sub, jump/branch, multiply/divide and word setups
 equal to the imported rows on the complete trace domain, and the public worker tables equal to the imported
 worker data with their range columns. The CPU claims use the setup fixture program. Kernel scans also give the row
-meaning of the BLAKE2 round setup (`Blake2Round.SetupProofs.setupRow_eq`). Two parts stay trusted compiled code: the
-split Keccak setups use the `with grids` import, which replaces each table region by a grid block after a
-row-by-row comparison with the JSON (`checkColumn`); and the fixed-row test library uses NativeGrid to compare the
-subword and unified fixed regions. `test/Tests/ImportSetupSpotChecks.lean` checks single imported values
+meaning of the BLAKE2 round setup and of the three split Keccak setups (`SetupProofs.setupRow_eq`). One part stays
+trusted compiled code: the fixed-row test library uses NativeGrid to compare the subword and unified fixed
+regions. `test/Tests/ImportSetupSpotChecks.lean` checks single imported values
 against the JSON. See [the setup README](../lean/artifacts/setup/README.md).
 
 ## What CI re-checks

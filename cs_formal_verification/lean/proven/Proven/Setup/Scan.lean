@@ -24,9 +24,12 @@ theorem pick_decide {α : Sort _} (p : Prop) [Decidable p] (yes no : α) :
     pick (decide p) yes no = if p then yes else no := by
   by_cases h : p <;> simp [pick, h]
 
-@[simp] theorem pick_of_true {α : Sort _} (yes no : α) : pick true yes no = yes := rfl
+/-! `pick_of_true` and `pick_of_false` are not proved by `rfl`: `simp` then rewrites with them instead of by unfolding
+`pick`, and the kernel does not compare the two sides by unfolding the selected value (slow on row formulas). -/
 
-@[simp] theorem pick_of_false {α : Sort _} (yes no : α) : pick false yes no = no := rfl
+@[simp] theorem pick_of_true {α : Sort _} (yes no : α) : pick true yes no = yes := Eq.trans rfl rfl
+
+@[simp] theorem pick_of_false {α : Sort _} (yes no : α) : pick false yes no = no := Eq.trans rfl rfl
 
 theorem pick_true {α : Sort _} {p : Prop} [Decidable p] {yes no : α} (h : p) : pick (decide p) yes no = yes := by
   simp [pick, h]
@@ -484,17 +487,25 @@ elab_rules : tactic
 
 /-- Proves `Long.Ok` for a column formula written with `pick` and `Nat.blt`: unfold the named definitions, select
     the region of the block by `omega`, and close the equation by linear arithmetic over the row digits. A block
-    across a region bound falls back to a split at every bound. -/
-syntax "long_ok" " [" ident,* "]" : tactic
+    across a region bound falls back to a split at every bound. With a second list, a first `simp` rewrites the
+    formula with these lemmas only (the column formula and its region lemmas), so that the other steps see the
+    formula of one region. -/
+syntax "long_ok" " [" ident,* "]" (" [" ident,* "]")? : tactic
 macro_rules
-  | `(tactic| long_ok [$names,*]) => do
+  | `(tactic| long_ok [$names,*] $[[$regions,*]]?) => do
     let lemmas ← names.getElems.mapM fun name => `(Lean.Parser.Tactic.simpLemma| $name:ident)
+    let select ← match regions with
+      | some regions => do
+        let regions ← regions.getElems.mapM fun name => `(Lean.Parser.Tactic.simpLemma| $name:ident)
+        `(tactic| simp (disch := omega) only [$regions,*])
+      | none => `(tactic| skip)
     `(tactic| (
       dsimp only [Long.Ok, Long.anchor]
       intro q hq j hj
-      simp (disch := omega) only [$lemmas,*, nat_blt, nat_beq, nat_ble, ← Bool.decide_and, ← Bool.decide_or,
-        pick_true, pick_false, decide_true, decide_false, pick_of_true, pick_of_false, nat_add, nat_sub, nat_mul,
-        nat_div, nat_mod, nat_pow, nat_xor, nat_land, nat_lor]
+      $select:tactic
+      simp -failIfUnchanged (disch := omega) only [$lemmas,*, nat_blt, nat_beq, nat_ble, ← Bool.decide_and,
+        ← Bool.decide_or, pick_true, pick_false, decide_true, decide_false, pick_of_true, pick_of_false, nat_add,
+        nat_sub, nat_mul, nat_div, nat_mod, nat_pow, nat_xor, nat_land, nat_lor]
       first
         | omega
         | (simp only [Int.zero_mul, Int.add_zero, Nat.cast_inj]; bitwise_equation; digits_eq)

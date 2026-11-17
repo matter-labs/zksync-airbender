@@ -169,8 +169,9 @@ Warnings in the dependencies (Mathlib, Clean, lean-sail) and in the generated Sa
 
 Fix a warning; do not disable a linter. Where a fix is impossible or would change a statement, a
 `set_option linter.<name> false in` on that one declaration, with the reason in a comment above it, is the exception.
-The one in use: `linter.unusedSimpArgs` in the three generated
-`proven/Proven/KeccakSplit/Setup/*/ShapesOk.lean` (one simp set for every generated block). The libraries `Proven` and `CleanAudit` set Lake's `allowNonModules`: their
+The ones in use: `linter.unusedTactic`, `linter.unreachableTactic` and `linter.unusedSimpArgs` in the generated
+setup scans `proven/Proven/Setup/Native/*/Slice*.lean` (`long_ok` tries several closing tactics, with one simp set
+for every generated block). The libraries `Proven` and `CleanAudit` set Lake's `allowNonModules`: their
 files that reach the Sail model or Clean cannot be modules ([modulize.py](lean/scripts/modulize.py) converts every
 other file).
 

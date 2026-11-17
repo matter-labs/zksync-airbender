@@ -2,14 +2,14 @@
 
 Format: every setup JSON here is committed in its canonical compact form, the exporter's
 output: `json.dumps(v, separators=(",", ":"))` of its own value, byte for byte, without a
-trailing newline. [check_circuit_json.py](../../check_circuit_json.py) (verify.sh step 1b) checks it and, on a mismatch,
+trailing newline. `check_circuit_json.py` (verify.sh step 1b) checks it and, on a mismatch,
 prints the one-line command that canonicalizes the file. The importer parses every byte in the
 interpreter, so whitespace costs build time (a re-save with indent 25 once nearly doubled
-[the chi setup import](../../human/Human/Circuits/KeccakSplit/Chi5/SetupArtifact.lean)); never commit a re-indented copy.
+`Chi5.SetupArtifact`); never commit a re-indented copy.
 
 `blake-round.json`: native setup of the six-column BLAKE2 round circuit
 (192 generic lookups, 6 table regions, trace length 1048576). Source of truth
-for [Blake2Round/Tables/Setup.lean](../../human/Human/Circuits/Blake2Round/Tables/Setup.lean).
+for `Human.Circuits.Blake2Round.Tables.Setup`.
 
 Provenance:
 
@@ -19,9 +19,9 @@ Provenance:
 - The exporter output is canonicalized to compact JSON. The complete bytes must equal the imported file.
 - `scripts/check_setup_freshness.py` checks every setup named in the Lake inputs against the current Rust exporter.
 
-Row meaning (proven/Proven/Blake2Round/Setup/): `Blake2Round.SetupProofs.setupRow_eq` proves, with the kernel scans
-of proven/Proven/Setup/Native/BlakeRound/, that every one of the 2^20 decoded rows equals the region formula
-(`Blake2Round.SetupProofs.spec0`..`spec5`):
+Row meaning (proven/Proven/Blake2Round/Setup/): `Rows.setupRow_eq` proves, with the kernel scans of
+`Proven.Setup.Native.BlakeRound`, that every one of the 2^20 decoded rows equals the region formula
+(`Spec.spec0`..`spec5`):
 rows 0..606207 are the six XOR regions, rows 606208.. are all zero (tag 0).
 The padding rows cannot satisfy a query: `Circuit.blakeRoundQueries` (human/Human/Import/Columns.lean)
 requires every query's tag column to be a constant in {4, 19, 20, 55, 56, 57}.
@@ -34,7 +34,7 @@ emits the trace length, every generic column and the two virtual range columns a
 of the rows: each states that a table definition equals the imported rows on the complete trace domain, with the
 column order of the native setup. The kernel checks every column with the scans of
 [generate_setup_scans.py](../../scripts/generate_setup_scans.py) (`proven/Proven/Setup/Native/`): short blocks row
-by row, long blocks on one period with an algebraic proof of the period ([Scan.lean](../../proven/Proven/Setup/Scan.lean)).
+by row, long blocks on one period with an algebraic proof of the period (`Proven.Setup.Scan`).
 
 | setup | claim |
 |---|---|
@@ -46,6 +46,7 @@ by row, long blocks on one period with an algebraic proof of the period ([Scan.l
 | table 26 of `mul-div` | `Compiler.NativeSetups.Range13ImportClaim` |
 | the six worker setups, with their range columns | `Compiler.NativeWorkerSetup.SetupImportClaim` |
 | `blake-round` | `Blake2Round.SetupProofs.setupRow_eq` (proven/; the table definition reads the imported rows) |
+| `keccak-column-parity`, `keccak-theta-rho`, `keccak-chi5` | `Keccak.Split.….SetupProofs.setupRow_eq` (proven/; the table definitions read the imported rows) |
 
 The CPU claims use the setup fixture program: the four words `[0x13, 0x00408093, 0x6f, 0x007181b3]`
 (`Compiler.NativeSetups.fixtureWords`) for the ROM rows, and its decoder rows. The decoder smoke fixture comes from
@@ -57,16 +58,12 @@ Not covered by a kernel claim:
 - `subword-memory` and `unified`: the compiled comparison of
   [the fixed-row test library](../../test/Tests/NativeFixedRows/Bindings.lean) (`check_native_grid`, trusted) binds
   their fixed regions, with the fixture ROM words.
-- The three split Keccak setups use `import_setup_blocks ... with grids`: the import replaces each table region of
-  `gridCatalogue` (XorSpecialIota 38, KeccakXorSplit 58, KeccakXor5Nibble 64, KeccakChi5 65 and the catalogue's
-  other ids) by one `grid` block (a named row formula, `GridFn`) after a compiled comparison of every row with the
-  JSON (`checkColumn`, trusted). The kernel proofs see only the formula.
 
 ## Split Keccak workers
 
 `keccak-column-parity.json`, `keccak-theta-rho.json`, `keccak-chi5.json`: native setups of the
 three split Keccak-f[1600] workers (CSRs 0x7CD, 0x7CC, 0x7CE; 8/9/11 columns, trace length
-4194304). Source of truth for [KeccakSplit/Tables/Setup.lean](../../human/Human/Circuits/KeccakSplit/Tables/Setup.lean).
+4194304). Source of truth for `Human.Circuits.KeccakSplit.Tables.Setup`.
 
 The [input check](../../scripts/check_compiler_captures.py) checks every setup
 content pin and each hash in this table.
@@ -80,18 +77,18 @@ content pin and each hash in this table.
 The same exporter produces the three split files. Select `keccak-column-parity`, `keccak-theta-rho`
 or `keccak-chi5`. The native freshness check compares every column, table and circuit field.
 
-Row meaning (proven/Proven/KeccakSplit/Setup/{ColumnParity,ThetaRho,Chi5}/): `SetupProofs.setupRow_eq`
+Row meaning (proven/Proven/KeccakSplit/Setup/{ColumnParity,ThetaRho,Chi5}/): `Rows.setupRow_eq`
 proves that each of the 2^22 decoded rows equals the region formula (`Spec.spec*`; controller
-rows via `controlAt`, `bump`, `Call.slots`, call index `Split.SetupProofs.callIndex`), and `Members`
+rows via `controlAt`, `bump`, `Call.slots`, call index `Common.callIndex`), and `Members`
 gives the per-tag facts used by the circuit proofs (BabyBear). Regions:
 column parity: iota 38 [0, 65536), slots 62 [65536, 65658), control 63 [65658, 65780),
 XOR5 64 [65780, 1114356); theta/rho: byte XOR 4 [0, 65536), XOR-and-split 58
 [65536, 589824), control 59 [589824, 589945), slots 60 [589945, 590066); chi5: chi 65
 [0, 1048576), control 66 [1048576, 1048697). The first row of each controller region is
-its zero key (zeros but the tag); all later rows are padding (tag 0). The table regions
-are grid blocks (see above; the iota constants of `XorSpecialIota` are taken from the data
-and proved equal to `rcByte` in [ColumnParity/ShapesOk.lean](../../proven/Proven/KeccakSplit/Setup/ColumnParity/ShapesOk.lean)); the controller regions keep their
-JSON blocks and are checked row by row in `Rows`.
+its zero key (zeros but the tag); all later rows are padding (tag 0). The kernel scans of
+`proven/Proven/Setup/Native/Keccak{ColumnParity,ThetaRho,Chi5}` check every column against
+its fast formula (the controller rows row by row), and `columns_eq` makes the fast formulas
+equal to `Spec.spec*`.
 
 ## Public setup data
 
