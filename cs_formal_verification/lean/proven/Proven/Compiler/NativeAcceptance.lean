@@ -30,7 +30,7 @@ theorem pooled_constraints {initial : RV.State} {program : List RVMachineProgram
     FlatOperation.ConstraintsHoldFlat (Verification.environment cert.row.assignment)
       (cert.row.constraints (⟨ROM.table cells (romImageRV initial cells),
         Verification.subwordTable (ROM.wordsRV initial)⟩ : PooledSetup babyBearModulus)) := by
-  rcases cert with ⟨⟨family, assignment⟩, physical, arithmetic, placement, lookups, active⟩
+  rcases cert with ⟨⟨⟨family, assignment⟩, physical, arithmetic, placement, lookups⟩, active⟩
   rw [bound.binding] at lookups
   cases family with
   | addSub => exact NativeClock.AddSub.logical initial program physical assignment arithmetic placement lookups
@@ -46,7 +46,7 @@ theorem unified_constraints {initial : RV.State} {program : List RVMachineProgra
     (cert : UnifiedLogicalRowCertificate tables) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment cert.row.assignment)
       (cert.row.constraints (UnifiedReduced.Setup.tableRV initial)) := by
-  rcases cert with ⟨⟨family, assignment⟩, physical, arithmetic, placement, lookups, active⟩
+  rcases cert with ⟨⟨⟨family, assignment⟩, physical, arithmetic, placement, lookups⟩, active⟩
   rw [bound.binding] at lookups
   cases family
   exact NativeClock.Unified.logical initial program bound physical assignment arithmetic placement lookups
@@ -56,7 +56,7 @@ theorem pooled_decoded {initial : RV.State} {program : List RVMachineProgramEntr
     {tables : ProgramLookupRows} (bound : Bound initial program tables)
     (cert : ProgramLogicalRowCertificate tables) (typed : cert.row.decoderQuery[0].val < 65536) :
     Decoded (.pooled cert.row.family) cert.row.decoderQuery program := by
-  rcases cert with ⟨⟨family, assignment⟩, physical, arithmetic, placement, lookups, active⟩
+  rcases cert with ⟨⟨⟨family, assignment⟩, physical, arithmetic, placement, lookups⟩, active⟩
   rw [bound.binding] at lookups
   cases family with
   | addSub =>
@@ -94,7 +94,7 @@ theorem unified_decoded {initial : RV.State} {program : List RVMachineProgramEnt
     {tables : ProgramLookupRows} (bound : Bound initial program tables)
     (cert : UnifiedLogicalRowCertificate tables) (typed : cert.row.decoderQuery[0].val < 65536) :
     Decoded .unified cert.row.decoderQuery program := by
-  rcases cert with ⟨⟨family, assignment⟩, physical, arithmetic, placement, lookups, active⟩
+  rcases cert with ⟨⟨⟨family, assignment⟩, physical, arithmetic, placement, lookups⟩, active⟩
   rw [bound.binding] at lookups
   cases family
   apply NativePublicSetup.Proofs.decoded bound .unified _ typed ?_

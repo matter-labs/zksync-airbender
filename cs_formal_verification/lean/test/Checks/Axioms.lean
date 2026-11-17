@@ -183,6 +183,7 @@ import Proven.Final.Trace.Satisfiable.UnifiedHashCallers
 import Proven.Final.Trace.Satisfiable.DelegationHashCallers
 import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 import Proven.Final.Compiler.MemoryPorts
+import Proven.Final.Compiler.PaddedNativeMachine
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -1672,3 +1673,15 @@ import Proven.Final.Compiler.MemoryPorts
 #print axioms Airbender.Compiler.unified_cached_memory
 
 #print axioms Airbender.Compiler.unified_cached_memory_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_full_from_native
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_full_from_native_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_reduced_from_native
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_reduced_from_native_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.padded_unified_from_native
+
+#print axioms Airbender.Trace.Machine.Native.padded_unified_from_native_satisfiable

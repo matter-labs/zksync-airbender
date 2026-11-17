@@ -51,9 +51,13 @@ The [cycle partition](../../../../proven/Proven/Trace/Machine/CycleGroups.lean) 
 matched standard or split worker. It uses occurrence clocks and permits repeated PCs.
 
 The native acceptance interface is explicit. The [run composition](../../../../proven/Proven/Trace/Machine/UnrolledRun.lean)
-uses one shared history and permits loops. The [padded targets](Padding.lean) use the native contribution mask
-for CPU, worker, state, request and memory tuples. Their [proofs](../../../../proven/Proven/Final/Trace/Machine/Padding.lean)
-erase identity factors and retain full occurrence counts. The [cached circuit results](../../Compiler/README.md)
+uses one shared history and permits loops. The [padded targets](Padding.lean) apply the contribution mask
+to the CPU, worker, state, request and memory tuples of the constraint-description layout. The
+[padded native targets](../../Compiler/NativeTargets.lean) state the same masked relations with native
+certificates for active and padding rows. The [RAM output claims](../../Compiler/MemoryPorts.lean) show that each
+cached CPU circuit computes its RAM outputs as products masked by the execute column. The
+[proofs](../../../../proven/Proven/Final/Trace/Machine/Padding.lean) erase identity factors and retain full
+occurrence counts. The [cached circuit results](../../Compiler/README.md)
 connect native CPU and worker gates, placement and public lookups to every imported row constraint.
 CPU certificates also give public decoder membership. State, request and memory matching remain explicit.
 

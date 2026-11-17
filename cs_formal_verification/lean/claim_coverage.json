@@ -963,6 +963,21 @@
       "witness": "Airbender.Compiler.UnifiedCachedMemorySatisfiableClaim",
       "evidence": "Checks.Satisfiable"
     },
-    "Airbender.Compiler.UnifiedCachedMemorySatisfiableClaim": {}
+    "Airbender.Compiler.UnifiedCachedMemorySatisfiableClaim": {},
+    "Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNative": {
+      "witness": "Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativeSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
+    },
+    "Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativeSatisfiableClaim": {},
+    "Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNative": {
+      "witness": "Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativeSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
+    },
+    "Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativeSatisfiableClaim": {},
+    "Airbender.Trace.Machine.Native.PaddedUnifiedFromNative": {
+      "witness": "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativeSatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
+    },
+    "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativeSatisfiableClaim": {}
   }
 }

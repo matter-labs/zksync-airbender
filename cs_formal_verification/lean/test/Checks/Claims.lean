@@ -116,6 +116,7 @@ import Proven.Final.Trace.Satisfiable.UnifiedHashCallers
 import Proven.Final.Trace.Satisfiable.DelegationHashCallers
 import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 import Proven.Final.Compiler.MemoryPorts
+import Proven.Final.Compiler.PaddedNativeMachine
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
@@ -1074,7 +1075,7 @@ example : Airbender.RunSailSimulationSatisfiableClaim := Airbender.run_sail_simu
 
 #print axioms Airbender.run_sail_simulation_satisfiable
 
--- Native RAM outputs.
+-- Native RAM outputs and padded native targets.
 
 example : Airbender.Compiler.NativeMemory.StateTokenMatchingClaim := @Airbender.Compiler.NativeMemory.state_token_matching
 
@@ -1139,3 +1140,27 @@ example : Airbender.Compiler.UnifiedCachedMemorySatisfiableClaim := @Airbender.C
 #print axioms Airbender.Compiler.unified_cached_memory
 
 #print axioms Airbender.Compiler.unified_cached_memory_satisfiable
+
+example : Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNative := @Airbender.Trace.Machine.Native.padded_unrolled_full_from_native
+
+example : Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativeSatisfiableClaim := @Airbender.Trace.Machine.Native.padded_unrolled_full_from_native_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_full_from_native
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_full_from_native_satisfiable
+
+example : Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNative := @Airbender.Trace.Machine.Native.padded_unrolled_reduced_from_native
+
+example : Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativeSatisfiableClaim := @Airbender.Trace.Machine.Native.padded_unrolled_reduced_from_native_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_reduced_from_native
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_reduced_from_native_satisfiable
+
+example : Airbender.Trace.Machine.Native.PaddedUnifiedFromNative := @Airbender.Trace.Machine.Native.padded_unified_from_native
+
+example : Airbender.Trace.Machine.Native.PaddedUnifiedFromNativeSatisfiableClaim := @Airbender.Trace.Machine.Native.padded_unified_from_native_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.padded_unified_from_native
+
+#print axioms Airbender.Trace.Machine.Native.padded_unified_from_native_satisfiable

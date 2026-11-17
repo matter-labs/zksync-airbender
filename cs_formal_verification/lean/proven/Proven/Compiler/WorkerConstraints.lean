@@ -21,7 +21,7 @@ set_option warningAsError true
 theorem certificate_constraints (entry : WorkerCertificate) :
     FlatOperation.ConstraintsHoldFlat (Verification.environment entry.assignment)
       (constraints entry.family) := by
-  obtain ⟨family, logical, physical, arithmetic, placement, arguments, _active⟩ := entry
+  obtain ⟨⟨family, logical, physical, arithmetic, placement, arguments⟩, _active⟩ := entry
   cases family
   · exact holds_of_lookups .bigint logical
       (NativeBindings.Bigint.arithmetic physical logical arithmetic placement)
@@ -50,7 +50,7 @@ theorem standard_facts (entry : WorkerCertificate) (row : Delegation.Row babyBea
       row.assignment row.columns.execute = 1 := by
   have full := certificate_constraints entry
   have active := entry.active
-  obtain ⟨family, _logical, _physical, _arithmetic, _placement, _arguments, _participation⟩ := entry
+  obtain ⟨⟨family, _logical, _physical, _arithmetic, _placement, _arguments⟩, _participation⟩ := entry
   cases family <;> cases represented
   all_goals exact ⟨full, active⟩
 
@@ -61,7 +61,7 @@ theorem split_facts (entry : WorkerCertificate) (row : Keccak.Split.Native.Row b
       row.assignment row.columns.execute = 1 := by
   have full := certificate_constraints entry
   have active := entry.active
-  obtain ⟨family, _logical, _physical, _arithmetic, _placement, _arguments, _participation⟩ := entry
+  obtain ⟨⟨family, _logical, _physical, _arithmetic, _placement, _arguments⟩, _participation⟩ := entry
   cases family <;> cases represented
   all_goals exact ⟨full, active⟩
 

@@ -2,6 +2,7 @@ module
 public import Human.Compiler.LookupSelectors
 public import Human.Compiler.WorkerCertificates
 public import Human.Trace.Machine.Model
+public import Human.Trace.Machine.Padding
 
 @[expose] public section
 namespace Airbender.Compiler
@@ -16,9 +17,9 @@ abbrev NativeSetupIndex (family : RVMachineDecoderFamily) :=
 abbrev ProgramLookupRows := (family : RVMachineDecoderFamily) → Fin 3 → NativeSetupIndex family → List F
 
 /-- A cached CPU row supplies actual physical equations and exact uncompressed lookup matching.
-    Placement binds the logical witness to the current capture. Participation binds the execute column.
+    Placement binds the logical witness to the current capture.
     No imported constraint or decoder-membership conclusion is a certificate field. -/
-structure ProgramLogicalRowCertificate (tables : ProgramLookupRows) where
+structure ProgramRowCertificate (tables : ProgramLookupRows) where
   /-- The CPU family and its logical witness assignment. -/
   row : Trace.Row babyBearModulus PooledFamily
   /-- Values at the native physical addresses. -/
@@ -30,11 +31,14 @@ structure ProgramLogicalRowCertificate (tables : ProgramLookupRows) where
   /-- Enabled native tuples match independently interpreted public setup rows with natural counts. -/
   lookups : NativeLookups.Arguments (NativeLookups.circuitFor (.pooled row.family))
     (NativeLookups.selectorsFor (.pooled row.family)) physical (tables (.pooled row.family))
+
+/-- A participating cached CPU row. Participation binds the execute column. -/
+structure ProgramLogicalRowCertificate (tables : ProgramLookupRows) extends ProgramRowCertificate tables where
   /-- The CPU row participates in the native argument. -/
   active : row.assignment row.columns.execute = 1
 
 /-- The unified cached row uses the same physical and logical boundary. -/
-structure UnifiedLogicalRowCertificate (tables : ProgramLookupRows) where
+structure UnifiedRowCertificate (tables : ProgramLookupRows) where
   /-- The unified CPU witness assignment. -/
   row : Trace.Row babyBearModulus UnifiedFamily
   /-- Values at the native physical addresses. -/
@@ -46,6 +50,9 @@ structure UnifiedLogicalRowCertificate (tables : ProgramLookupRows) where
   /-- Enabled native tuples match independently interpreted public setup rows with natural counts. -/
   lookups : NativeLookups.Arguments (NativeLookups.circuitFor .unified)
     (NativeLookups.selectorsFor .unified) physical (tables .unified)
+
+/-- A participating unified cached row. -/
+structure UnifiedLogicalRowCertificate (tables : ProgramLookupRows) extends UnifiedRowCertificate tables where
   /-- The unified CPU row participates in the native argument. -/
   active : row.assignment row.columns.execute = 1
 
@@ -58,7 +65,7 @@ structure UnrolledNativeArguments (tables : ProgramLookupRows)
   /-- Native worker certificates describe both submitted worker pools exactly, in order. -/
   workerRows : WorkerRowsCertified workers
   /-- Certificates describe exactly the submitted CPU rows, in order. -/
-  rows : trace.rows = certificates.map ProgramLogicalRowCertificate.row
+  rows : trace.rows = certificates.map (·.row)
   /-- The initial, row and terminal raw state tuples balance. -/
   states : (trace.initial :: trace.rows.map Row.finish).Perm (trace.terminal :: trace.rows.map Row.start)
   /-- Every selected caller matches the complete submitted worker multiset. -/
@@ -77,7 +84,7 @@ structure UnifiedNativeArguments (tables : ProgramLookupRows)
   /-- Native worker certificates describe both submitted worker pools exactly, in order. -/
   workerRows : WorkerRowsCertified workers
   /-- Certificates describe exactly the submitted CPU rows, in order. -/
-  rows : trace.rows = certificates.map UnifiedLogicalRowCertificate.row
+  rows : trace.rows = certificates.map (·.row)
   /-- The initial, row and terminal raw state tuples balance. -/
   states : (trace.initial :: trace.rows.map Row.finish).Perm (trace.terminal :: trace.rows.map Row.start)
   /-- Every selected unified caller matches the complete submitted worker multiset. -/
@@ -87,5 +94,64 @@ structure UnifiedNativeArguments (tables : ProgramLookupRows)
   /-- CPU and worker memory transfers share the initialized native memory permutation. -/
   memory : (trace.initialMemory ++ (Machine.unifiedSteps trace ++ workers.steps).map Prod.snd).Perm
     (trace.terminalMemory ++ (Machine.unifiedSteps trace ++ workers.steps).map Prod.fst)
+
+/-- The padded unrolled layout: cached CPU and worker certificates for active and padding rows.
+    The state, request and memory relations keep every row occurrence under the native execute mask. -/
+structure PaddedUnrolledNativeArguments (tables : ProgramLookupRows)
+    (certificates : List (ProgramRowCertificate tables))
+    (trace : PooledTrace babyBearModulus) (workers : Machine.WorkerPools babyBearModulus) : Prop
+    where
+  /-- Native worker certificates describe both submitted worker pools exactly, in order. -/
+  workerRows : PaddedWorkerRowsCertified workers
+  /-- Certificates describe exactly the submitted CPU rows, in order. -/
+  rows : trace.rows = certificates.map (·.row)
+  /-- Each CPU execute selector is Boolean: one marks an active row and zero a padding row. -/
+  selectors : ∀ certificate ∈ certificates,
+    certificate.row.assignment certificate.row.columns.execute = 0 ∨
+      certificate.row.assignment certificate.row.columns.execute = 1
+  /-- The masked initial, row and terminal raw state tuples balance. -/
+  states : (some trace.initial :: PaddingBoundary.contributions trace.rows
+    (fun row => row.assignment row.columns.execute) (fun row => [row.finish])).Perm
+      (some trace.terminal :: PaddingBoundary.contributions trace.rows
+        (fun row => row.assignment row.columns.execute) (fun row => [row.start]))
+  /-- The masked callers match the complete masked worker multiset. -/
+  requests : (Machine.maskedUnrolledRequests trace Delegation.Requests.Request.issued ++
+      Machine.maskedWorkerRequests workers Delegation.Requests.Request.empty).Perm
+    (Machine.maskedUnrolledRequests trace Delegation.Requests.Request.empty ++
+      Machine.maskedWorkerRequests workers Delegation.Requests.Request.issued)
+  /-- Masked CPU and worker memory transfers share the initialized native memory permutation. -/
+  memory : (trace.initialMemory.map some ++ Machine.maskedUnrolledTokens trace Prod.snd ++
+      Machine.maskedWorkerTokens workers Prod.snd).Perm
+    (trace.terminalMemory.map some ++ Machine.maskedUnrolledTokens trace Prod.fst ++
+      Machine.maskedWorkerTokens workers Prod.fst)
+
+/-- The padded unified layout keeps the same masked native boundary. -/
+structure PaddedUnifiedNativeArguments (tables : ProgramLookupRows)
+    (certificates : List (UnifiedRowCertificate tables))
+    (trace : UnifiedTrace babyBearModulus) (workers : Machine.WorkerPools babyBearModulus) : Prop
+    where
+  /-- Native worker certificates describe both submitted worker pools exactly, in order. -/
+  workerRows : PaddedWorkerRowsCertified workers
+  /-- Certificates describe exactly the submitted CPU rows, in order. -/
+  rows : trace.rows = certificates.map (·.row)
+  /-- Each CPU execute selector is Boolean: one marks an active row and zero a padding row. -/
+  selectors : ∀ certificate ∈ certificates,
+    certificate.row.assignment certificate.row.columns.execute = 0 ∨
+      certificate.row.assignment certificate.row.columns.execute = 1
+  /-- The masked initial, row and terminal raw state tuples balance. -/
+  states : (some trace.initial :: PaddingBoundary.contributions trace.rows
+    (fun row => row.assignment row.columns.execute) (fun row => [row.finish])).Perm
+      (some trace.terminal :: PaddingBoundary.contributions trace.rows
+        (fun row => row.assignment row.columns.execute) (fun row => [row.start]))
+  /-- The masked unified callers match the complete masked worker multiset. -/
+  requests : (Machine.maskedUnifiedRequests trace Delegation.Requests.Request.issued ++
+      Machine.maskedWorkerRequests workers Delegation.Requests.Request.empty).Perm
+    (Machine.maskedUnifiedRequests trace Delegation.Requests.Request.empty ++
+      Machine.maskedWorkerRequests workers Delegation.Requests.Request.issued)
+  /-- Masked CPU and worker memory transfers share the initialized native memory permutation. -/
+  memory : (trace.initialMemory.map some ++ Machine.maskedUnifiedTokens trace Prod.snd ++
+      Machine.maskedWorkerTokens workers Prod.snd).Perm
+    (trace.terminalMemory.map some ++ Machine.maskedUnifiedTokens trace Prod.fst ++
+      Machine.maskedWorkerTokens workers Prod.fst)
 
 end Airbender.Compiler

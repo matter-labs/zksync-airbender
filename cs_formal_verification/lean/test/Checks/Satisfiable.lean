@@ -50,6 +50,7 @@ import Human.Trace.Families.SubwordMemory.RVTheorems
 import Human.Circuits.AddSub.RVCallerTheorems
 import Human.Trace.Delegation.RVCallerTheorems
 import Proven.Final.Compiler.MemoryPorts
+import Proven.Final.Compiler.PaddedNativeMachine
 
 open Airbender Trace
 
@@ -1501,7 +1502,7 @@ example (claim : Airbender.RunSailSimulationClaim) : Airbender.RunSailSimulation
     let ⟨state', ours, _⟩ := (claim program state sequential avoids agrees).1 value sequential' run
     ⟨program, state, value, state', ours⟩
 
--- Native RAM outputs.
+-- Native RAM outputs and padded native targets.
 
 example : Airbender.Compiler.NativeMemory.StateTokenMatchingSatisfiableClaim := Airbender.Compiler.NativeMemory.state_token_matching_satisfiable
 
@@ -1600,3 +1601,62 @@ example (claim : Airbender.Compiler.UnifiedCachedMemoryClaim) :
         (Airbender.Compiler.NativeMemory.cpuWrites row) :=
   fun ⟨challenges, physical, values, row, nativeHolds, placement, extension⟩ =>
     ⟨challenges, values, row, claim challenges physical values row nativeHolds placement extension⟩
+
+namespace Airbender.Trace.Machine.Native
+open Airbender.Compiler
+
+example : PaddedUnrolledFullFromNativeSatisfiableClaim := padded_unrolled_full_from_native_satisfiable
+
+example : PaddedUnrolledReducedFromNativeSatisfiableClaim := padded_unrolled_reduced_from_native_satisfiable
+
+example : PaddedUnifiedFromNativeSatisfiableClaim := padded_unified_from_native_satisfiable
+
+example (claim : Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNative) :
+    Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativeSatisfiableClaim →
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
+    (PaddingBoundary.active trace).rows.length = 1 ∧ (PaddingBoundary.inactive trace).rows.length = 1 ∧
+    BootInputs .unrolledFullUnsigned (PaddingBoundary.active trace) initial cells program InitsTeardowns.importedLayout inits ∧
+    ∃ certificates : List (ProgramRowCertificate tables),
+      PaddedUnrolledNativeArguments tables certificates trace workers ∧
+    RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (PaddingBoundary.active trace)) :=
+  fun ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, wordSetup, subwordSetup,
+      workerSetup, noSpecial, stream, bound, covers, certificates, arguments⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, certificates, arguments,
+      claim trace workers initial cells program inits tables boot wordSetup subwordSetup workerSetup noSpecial stream
+        bound covers certificates arguments⟩
+
+example (claim : Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNative) :
+    Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativeSatisfiableClaim →
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
+    (PaddingBoundary.active trace).rows.length = 1 ∧ (PaddingBoundary.inactive trace).rows.length = 1 ∧
+    BootInputs .unrolledReduced (PaddingBoundary.active trace) initial cells program InitsTeardowns.importedLayout inits ∧
+    ∃ certificates : List (ProgramRowCertificate tables),
+      PaddedUnrolledNativeArguments tables certificates trace workers ∧
+    RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (PaddingBoundary.active trace)) :=
+  fun ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, wordSetup, subwordSetup,
+      workerSetup, stream, bound, covers, certificates, arguments⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, certificates, arguments,
+      claim trace workers initial cells program inits tables boot wordSetup subwordSetup workerSetup stream
+        bound covers certificates arguments⟩
+
+example (claim : Airbender.Trace.Machine.Native.PaddedUnifiedFromNative) :
+    Airbender.Trace.Machine.Native.PaddedUnifiedFromNativeSatisfiableClaim →
+  ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)) (tables : ProgramLookupRows),
+    (PaddingBoundary.active trace).rows.length = 1 ∧ (PaddingBoundary.inactive trace).rows.length = 1 ∧
+    BootInputs .unified (PaddingBoundary.active trace) initial cells program InitsTeardowns.unifiedLayout inits ∧
+    ∃ certificates : List (UnifiedRowCertificate tables),
+      PaddedUnifiedNativeArguments tables certificates trace workers ∧
+    RVRealizes trace initial cells (unifiedReadCount (PaddingBoundary.active trace)) :=
+  fun ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, setup, workerSetup,
+      noSpecial, stream, bound, certificates, arguments⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, certificates, arguments,
+      claim trace workers initial cells program inits tables boot setup workerSetup noSpecial stream bound
+        certificates arguments⟩
+
+end Airbender.Trace.Machine.Native

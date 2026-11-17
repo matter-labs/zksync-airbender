@@ -16,7 +16,7 @@ noncomputable def workerColumns : NativeWorkerLookups.Family → Delegation.Cloc
   | .chi5 => Keccak.Split.Chi5.importedConstraintsDelegationColumns
 
 /-- A worker row has native cached equations, source placement and exact public lookup matching. -/
-structure WorkerCertificate where
+structure WorkerRowCertificate where
   /-- The cached production worker. -/
   family : NativeWorkerLookups.Family
   /-- Values at the worker's logical source columns. -/
@@ -30,11 +30,14 @@ structure WorkerCertificate where
   /-- Every enabled native lookup tuple matches its public worker table with natural counts. -/
   lookups : NativeLookups.Arguments (NativeWorkerLookups.circuitFor family)
     (NativeWorkerLookups.selectorsFor family) physical (NativeWorkerSetup.rows family)
+
+/-- A participating worker row. -/
+structure WorkerCertificate extends WorkerRowCertificate where
   /-- This row participates in the worker argument. -/
   active : assignment (workerColumns family).execute = 1
 
 /-- A standard certificate describes a standard submitted worker row. -/
-def WorkerCertificate.standardRow (certificate : WorkerCertificate) : Option (Delegation.Row babyBearModulus) :=
+def WorkerRowCertificate.standardRow (certificate : WorkerRowCertificate) : Option (Delegation.Row babyBearModulus) :=
   match certificate.family with
   | .bigint => some ⟨.bigint, certificate.assignment⟩
   | .blakeG => some ⟨.blakeG, certificate.assignment⟩
@@ -42,7 +45,7 @@ def WorkerCertificate.standardRow (certificate : WorkerCertificate) : Option (De
   | _ => none
 
 /-- A split certificate describes a split submitted worker row. -/
-def WorkerCertificate.splitRow (certificate : WorkerCertificate) : Option (Keccak.Split.Native.Row babyBearModulus) :=
+def WorkerRowCertificate.splitRow (certificate : WorkerRowCertificate) : Option (Keccak.Split.Native.Row babyBearModulus) :=
   match certificate.family with
   | .columnParity => some ⟨.columnParity, certificate.assignment⟩
   | .thetaRho => some ⟨.thetaRho, certificate.assignment⟩
@@ -52,7 +55,16 @@ def WorkerCertificate.splitRow (certificate : WorkerCertificate) : Option (Kecca
 /-- Native certificates describe exactly each submitted worker pool, in its submitted order. -/
 def WorkerRowsCertified (workers : Trace.Machine.WorkerPools babyBearModulus) : Prop :=
   ∃ certificates : List WorkerCertificate,
-    workers.standard.rows = certificates.filterMap WorkerCertificate.standardRow ∧
-    workers.split.rows = certificates.filterMap WorkerCertificate.splitRow
+    workers.standard.rows = certificates.filterMap (·.standardRow) ∧
+    workers.split.rows = certificates.filterMap (·.splitRow)
+
+/-- Native certificates describe exactly each submitted worker pool, in its submitted order.
+    Each execute selector is Boolean: one marks an active row and zero a padding row. -/
+def PaddedWorkerRowsCertified (workers : Trace.Machine.WorkerPools babyBearModulus) : Prop :=
+  ∃ certificates : List WorkerRowCertificate,
+    (∀ certificate ∈ certificates, certificate.assignment (workerColumns certificate.family).execute = 0 ∨
+      certificate.assignment (workerColumns certificate.family).execute = 1) ∧
+    workers.standard.rows = certificates.filterMap (·.standardRow) ∧
+    workers.split.rows = certificates.filterMap (·.splitRow)
 
 end Airbender.Compiler

@@ -115,3 +115,107 @@ def UnifiedFromNativeSatisfiableClaim : Prop :=
       UnifiedNativeArguments tables certificates trace workers
 
 end Airbender.Trace.Machine.Native
+
+namespace Airbender.Trace.Machine.Native
+open Airbender.Compiler PaddingBoundary
+
+/-- The full unsigned production machine executes the active rows of a padded native layout.
+    The public premises of `UnrolledFullFromNative` apply to the active rows.
+    Padding rows have native certificates with execute zero. The state, request and memory
+    relations keep every CPU and worker row under the native execute mask. -/
+def PaddedUnrolledFullFromNative : Prop :=
+  ∀ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
+    BootInputs .unrolledFullUnsigned (active trace) initial cells program InitsTeardowns.importedLayout inits →
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) →
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) →
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows →
+    NoSpecial5 program →
+    NonDeterminism.Pooled.StreamPorts (active trace) initial.input →
+    NativePublicSetup.Bound initial program tables → NativePublicSetup.CoversROM cells →
+    ∀ certificates : List (ProgramRowCertificate tables),
+      PaddedUnrolledNativeArguments tables certificates trace workers →
+      RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (active trace))
+
+/-- The reduced production machine executes the active rows of a padded native layout.
+    The public premises of `UnrolledReducedFromNative` apply to the active rows.
+    Padding rows have native certificates with execute zero. The state, request and memory
+    relations keep every CPU and worker row under the native execute mask. -/
+def PaddedUnrolledReducedFromNative : Prop :=
+  ∀ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
+    BootInputs .unrolledReduced (active trace) initial cells program InitsTeardowns.importedLayout inits →
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) →
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) →
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows →
+    NonDeterminism.Pooled.StreamPorts (active trace) initial.input →
+    NativePublicSetup.Bound initial program tables → NativePublicSetup.CoversROM cells →
+    ∀ certificates : List (ProgramRowCertificate tables),
+      PaddedUnrolledNativeArguments tables certificates trace workers →
+      RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (active trace))
+
+/-- The unified production machine executes the active rows of a padded native layout.
+    The public premises of `UnifiedFromNative` apply to the active rows.
+    Padding rows have native certificates with execute zero. The state, request and memory
+    relations keep every CPU and worker row under the native execute mask. -/
+def PaddedUnifiedFromNative : Prop :=
+  ∀ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)) (tables : ProgramLookupRows),
+    BootInputs .unified (active trace) initial cells program InitsTeardowns.unifiedLayout inits →
+    trace.rom = UnifiedReduced.Setup.tableRV initial →
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows →
+    NoSpecial5 program → UnifiedStreamPorts (active trace) initial.input →
+    NativePublicSetup.Bound initial program tables →
+    ∀ certificates : List (UnifiedRowCertificate tables),
+      PaddedUnifiedNativeArguments tables certificates trace workers →
+      RVRealizes trace initial cells (unifiedReadCount (active trace))
+
+/-- One active CPU row and one padding CPU row meet the exact padded native premises. -/
+def PaddedUnrolledFullFromNativeSatisfiableClaim : Prop :=
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
+    (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1 ∧
+    BootInputs .unrolledFullUnsigned (active trace) initial cells program InitsTeardowns.importedLayout inits ∧
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NoSpecial5 program ∧
+    NonDeterminism.Pooled.StreamPorts (active trace) initial.input ∧
+    NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
+    ∃ certificates : List (ProgramRowCertificate tables),
+      PaddedUnrolledNativeArguments tables certificates trace workers
+
+/-- One active CPU row and one padding CPU row meet the exact padded native premises. -/
+def PaddedUnrolledReducedFromNativeSatisfiableClaim : Prop :=
+  ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
+    (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1 ∧
+    BootInputs .unrolledReduced (active trace) initial cells program InitsTeardowns.importedLayout inits ∧
+    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
+    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NonDeterminism.Pooled.StreamPorts (active trace) initial.input ∧
+    NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
+    ∃ certificates : List (ProgramRowCertificate tables),
+      PaddedUnrolledNativeArguments tables certificates trace workers
+
+/-- One active CPU row and one padding CPU row meet the exact padded native premises. -/
+def PaddedUnifiedFromNativeSatisfiableClaim : Prop :=
+  ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
+    (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
+    (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)) (tables : ProgramLookupRows),
+    (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1 ∧
+    BootInputs .unified (active trace) initial cells program InitsTeardowns.unifiedLayout inits ∧
+    trace.rom = UnifiedReduced.Setup.tableRV initial ∧
+    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
+    NoSpecial5 program ∧ UnifiedStreamPorts (active trace) initial.input ∧
+    NativePublicSetup.Bound initial program tables ∧
+    ∃ certificates : List (UnifiedRowCertificate tables),
+      PaddedUnifiedNativeArguments tables certificates trace workers
+
+end Airbender.Trace.Machine.Native

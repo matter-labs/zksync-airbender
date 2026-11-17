@@ -18,6 +18,8 @@ constraints and public decoder membership.
 placement, exact public lookups and participation. The target proofs derive the complete
 worker row constraints from them. Certificates describe each submitted worker pool in order.
 State, request and shared memory matching are explicit interfaces.
+The padded native arguments also accept padding rows with execute zero. The padded native
+targets keep every row in the masked state, request and memory relations.
 
 [NativeMemory.lean](NativeMemory.lean) gives the extension semantics of memory tuples, lookup
 caches and RAM-product gates. [MemoryPorts.lean](MemoryPorts.lean) states one claim for each
