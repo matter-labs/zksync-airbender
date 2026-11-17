@@ -9,7 +9,7 @@ of the executable import procedures.
 
 | File | Role |
 | --- | --- |
-| [Transcribe.lean](Transcribe.lean), [TranscribeCommand.lean](TranscribeCommand.lean) | **Trusted** (`TRUSTED: review`): the import_circuit command turns a JSON file into `importedCircuit : Circuit` (and its text `importedCircuitSourceBytes`): the file read, `Json.parse` then `Circuit.decode` (both fixed by claims), reflection as a kernel term. The shared form of the 14 cached captures emits no text and replaces large arrays of the reflected circuit with shared constants. Not kernel-checked, except for the standalone inits/teardowns artifact, whose bytes the kernel parses and decodes in the plain and in the shared form (`StandaloneBytesClaim`, `SharedBytesClaim`). |
+| [Transcribe.lean](Transcribe.lean), [TranscribeCommand.lean](TranscribeCommand.lean) | **Trusted** (`TRUSTED: review`): the import_circuit command turns a JSON file into `importedCircuit : Circuit` (and its text `importedCircuitSourceBytes`): the file read, `Json.parse` then `Circuit.decode` (both fixed by claims), reflection as a kernel term. The shared form of the 14 cached captures emits no text and replaces large arrays of the reflected circuit with shared constants. Not kernel-checked, except for the inits/teardowns files: the kernel parses and decodes the no-cache file in the plain form (`StandaloneBytesClaim`) and the cached file in the shared form (`SharedBytesClaim`). |
 | [NativeRamProducts.lean](NativeRamProducts.lean) | Transcribe the native initialization product graphs. The kernel checks their extraction from the existing typed circuit artifacts. |
 | [NativeGrid.lean](NativeGrid.lean) | **Trusted** (`TRUSTED: review`): compiled comparisons of native JSON rows with mathematical row functions. This is the DECISION B setup binding. Input validation retains small content stamps. |
 | [SetupEmit.lean](SetupEmit.lean) | **Trusted** (`TRUSTED: review`): setup-table JSON to compressed column blocks (`Json.parse`, then read field by field), including the row-by-row comparison of grid blocks with the JSON. |
@@ -28,7 +28,7 @@ add-sub (CPU) and chi (worker) imports, the examples read one gate coefficient, 
 lookup expression. For one add-sub word and one word-memory word, Sail decodes the word, and the decoder table of a
 program with that word contains its native query. `SharedBytesClaim`
 ([InitsTeardowns/SharedArtifact.lean](../Circuits/InitsTeardowns/SharedArtifact.lean)) has the kernel parse and
-decode all bytes of a file that the shared form imports.
+decode all bytes of the cached inits/teardowns file, which the shared form imports.
 
 `Exec/` holds the executable code: the JSON parser, the decoder, the emitters of the literal terms and FastColumns (copies of
 the [Columns](Columns.lean) functions the emitter runs, derived by a command). Each file names the claims that fix its behaviour.

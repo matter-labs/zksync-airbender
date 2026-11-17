@@ -81,6 +81,8 @@ GENERATORS = {
         'gkr_circuits::delegation::keccak_f1600_artifacts::compile_keccak_chi5_into_gkr',
     'inits_and_teardowns_layout_no_caches_gkr.json':
         'gkr_compiler::inits_and_teardowns::test::compile_inits_and_teardowns_into_no_caches_gkr',
+    'inits_and_teardowns_layout_gkr.json':
+        'gkr_compiler::inits_and_teardowns::test::compile_inits_and_teardowns_into_gkr',
 }
 
 

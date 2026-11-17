@@ -19,11 +19,12 @@ responsibility, unless the artifact's claims also state it. With `bytes`, the co
 * `nameBytes : ByteArray`, the file's bytes, for a claim that the kernel evaluates
   (`Json.parse nameBytes >>= Circuit.decode = .ok name`); then only the file read is trusted.
 
-With `shared owner`, the command does not add `nameSourceBytes`. It adds the placement array, and each gate or
+With `shared owner`, the command adds `nameSourceBytes` only when `bytes` is also given. It adds the placement array,
+and each gate or
 cache array with more than 253 entries, as a separate definition with a name that starts with `owner`. Then it
 replaces each subterm of the reflected circuit that is equal to one of these arrays with its constant
 (`addSharedCircuit`). This replacement is trusted code: it must not change the value of `name`.
-`SharedBytesClaim` checks the result for the standalone inits/teardowns artifact. -/
+`SharedBytesClaim` checks the result for the cached inits/teardowns file. -/
 
 namespace Airbender
 open Lean Elab Command
@@ -176,13 +177,14 @@ def elabImportCircuit : CommandElab := fun stx => do
     | .error e => throwError "circuit import failed: {e}"
   let base := (← getCurrNamespace) ++ stx[1].getId
   liftCoreM do
-    if stx[5].isNone then
+    if stx[5].isNone || !stx[4].isNone then
       let bytesName := base.appendAfter "SourceBytes"
       let stringType := mkConst ``String
       addTranscribedDef bytesName stringType (mkStrLit text)
       compileDecl (.defnDecl
         { name := bytesName, levelParams := [], type := stringType, value := mkStrLit text, hints := .abbrev,
           safety := .safe })
+    if stx[5].isNone then
       addTranscribedDef base (mkConst ``Circuit) (toExpr c)
     else
       addSharedCircuit base ((← getCurrNamespace) ++ stx[5][1].getId) c

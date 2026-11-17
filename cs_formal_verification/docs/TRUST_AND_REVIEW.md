@@ -104,10 +104,10 @@ CleanCore (Clean's definitions, transcribed) supplies `Expression`, `FlatOperati
   `importedCircuit` (derived `ToExpr`), next to the file's text `importedCircuitSourceBytes`. The 14 cached captures
   use the shared form: it emits no text, adds the placement array and each gate or cache array with more than 253
   entries as a separate constant, and replaces the equal subterms of the reflected circuit with these constants.
-  Trusted: the file read, the composition, the reflection and this replacement. For the standalone inits/teardowns
-  artifact, `StandaloneBytesClaim` and `SharedBytesClaim` have the kernel parse and decode the file's bytes, in the
-  plain and in the shared form, so only the file read stays trusted for it. A bytes claim for a cached capture is
-  above the module budget. The sha256 pins of the JSON files, and
+  Trusted: the file read, the composition, the reflection and this replacement. `StandaloneBytesClaim` has the kernel
+  parse and decode the bytes of the no-cache inits/teardowns file in the plain form. `SharedBytesClaim` does the same
+  for the cached inits/teardowns file in the shared form, the only cached file small enough for the module budget.
+  For these imports only the file read stays trusted. The sha256 pins of the JSON files, and
   that each circuit and setup JSON is in its canonical form, are checked by
   [check_circuit_json.py](../lean/check_circuit_json.py) (verify.sh step 1b). In CI,
   [check_compiled_circuits.py](../lean/scripts/check_compiled_circuits.py) runs the Rust generator test of each

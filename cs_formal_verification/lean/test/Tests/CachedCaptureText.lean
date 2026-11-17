@@ -20,7 +20,6 @@ run_cmd do
       throwError "The shared capture retains unused layout text: {circuit}"
   unless environment.contains `Airbender.AddSub.importedCircuitSourceBytes do
     throwError "The source-bound import must retain its layout text"
-  unless environment.contains `Airbender.InitsTeardowns.sharedLayoutCircuitBytes do
-    throwError "The shared inits/teardowns import must retain the bytes that SharedBytesClaim reads"
-  if environment.contains `Airbender.InitsTeardowns.sharedLayoutCircuitSourceBytes then
-    throwError "The shared inits/teardowns import retains unused layout text"
+  unless environment.contains `Airbender.InitsTeardowns.sharedLayoutCircuitBytes &&
+      environment.contains `Airbender.InitsTeardowns.sharedLayoutCircuitSourceBytes do
+    throwError "The shared import with bytes must retain the bytes and the text of its file"

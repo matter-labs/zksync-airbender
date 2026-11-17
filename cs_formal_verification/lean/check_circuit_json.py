@@ -60,6 +60,11 @@ SETUP_FORM = ("compact", {"separators": (",", ":")}, 'separators=(",", ":")')
 CIRCUIT_FORM = ("serde_json pretty, indent 2", {"indent": 2}, "indent=2")
 
 
+# The inits/teardowns circuit has no cached relations, so its cached and no-cache files have equal content.
+EQUAL_CIRCUITS = {frozenset({"cs/compiled_circuits/inits_and_teardowns_layout_gkr.json",
+                             "cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json"})}
+
+
 def load(raw):
     return json.loads(raw, object_pairs_hook=reject_duplicates, parse_constant=reject_constant)
 
@@ -95,7 +100,7 @@ def main():
             continue
         check_form(path, rel, raw, data, CIRCUIT_FORM, errors)
         digest = hashlib.sha256(json.dumps(data, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-        if digest in seen_digest:
+        if digest in seen_digest and frozenset({rel, seen_digest[digest]}) not in EQUAL_CIRCUITS:
             errors.append(f"{rel}: same circuit content as {seen_digest[digest]}")
         seen_digest.setdefault(digest, rel)
     setups = setup_paths()

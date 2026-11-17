@@ -57,6 +57,7 @@ public import Tests.Shifts
 public import Tests.TraceImport
 public import Human.Helpers.Core.BabyBearPrime
 public import Proven.CleanCore.Circuit.Operations
+public import Human.Circuits.InitsTeardowns.SharedArtifact
 
 @[expose] public section
 
@@ -96,6 +97,9 @@ def main : IO UInt32 := do
       ⟨c.placement_data.entries.push (48, .BaseLayerMemory 15)⟩}))
       "range query with ambiguous logical placement rejected"
     check (source == AddSub.importedCircuitSourceBytes) "embedded source equals current artifact bytes"
+    let cachedInitsSource ← IO.FS.readFile "../../cs/compiled_circuits/inits_and_teardowns_layout_gkr.json"
+    check (cachedInitsSource == InitsTeardowns.sharedLayoutCircuitSourceBytes)
+      "shared cached inits/teardowns import: embedded source equals current artifact bytes"
     Tests.TraceImport.run
     let wordSource ← IO.FS.readFile "../../cs/compiled_circuits/mem_word_only_layout_no_caches_gkr.json"
     let .ok word := parseCircuit wordSource | throw (IO.userError "word-memory artifact failed import")

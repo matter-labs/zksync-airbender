@@ -7,6 +7,7 @@
   "cs/compiled_circuits/blake2_g_function_layout_no_caches_gkr.json": "f1690703b14b47f3e32f24f11f392ebf92ba4d4c25c9d512b002965f813157e1",
   "cs/compiled_circuits/blake2_with_extended_control_layout_gkr.json": "385c160aebe98d8153b9d29680d07434dcd52af451021a1e6d73d7c220708c81",
   "cs/compiled_circuits/blake2_with_extended_control_layout_no_caches_gkr.json": "deef507de8726c5340bf0c55d3050dfef760f9090736bc42260d2ef76affec62",
+  "cs/compiled_circuits/inits_and_teardowns_layout_gkr.json": "de0f06874a6fe27c3f80e566f70062cce3627dad7879e8169998fca49ce9f4ab",
   "cs/compiled_circuits/inits_and_teardowns_layout_no_caches_gkr.json": "de0f06874a6fe27c3f80e566f70062cce3627dad7879e8169998fca49ce9f4ab",
   "cs/compiled_circuits/jump_branch_slt_layout_gkr.json": "2734b9f5a395d471fd0ce7864d7edf7e96946755e1077faf4611976a54e0ac95",
   "cs/compiled_circuits/jump_branch_slt_layout_no_caches_gkr.json": "b928a6a9f13821d6d630f00809211c174ae8e9dbfa06dc5f370d872d69ed9508",
