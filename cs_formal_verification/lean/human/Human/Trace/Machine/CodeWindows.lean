@@ -49,11 +49,13 @@ def UnifiedCodeHashSegmentationClaim : Prop :=
       request.csr ≠ Requests.csr .bigint ↔ ∃ window ∈ windows, window.select request = true) →
     (∀ window ∈ windows, CodeWindowScope trace program window) → IssuedHashSegmentation workers.fulfillments windows
 
-/-- The public data and acceptance premises of this claim have a simultaneous witness. -/
+/-- Ten CPU callers and ten round workers meet the complete premises of one nonempty hash window. -/
 def UnrolledCodeHashSegmentationSatisfiableClaim : Prop :=
   ∃ (config : RVMachineConfig) (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (addresses : List (BitVec 32))
     (program : List RVMachineProgramEntry) (windows : List HashWindow),
+    trace.rows ≠ [] ∧ trace.rows.length = 10 ∧ workers.standard.rows.length = 10 ∧
+    workers.split.rows = [] ∧ windows ≠ [] ∧ windows.length = 1 ∧
     config ≠ .unified ∧ rvMachineProgramImage config initial addresses = some program ∧
     UnrolledAcceptance trace workers program ∧
     (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
@@ -62,11 +64,13 @@ def UnrolledCodeHashSegmentationSatisfiableClaim : Prop :=
       request.csr ≠ Requests.csr .bigint ↔ ∃ window ∈ windows, window.select request = true) ∧
     (∀ window ∈ windows, CodeWindowScope trace program window)
 
-/-- The public data and acceptance premises of this claim have a simultaneous witness. -/
+/-- Ten CPU callers and ten round workers meet the complete premises of one nonempty hash window. -/
 def UnifiedCodeHashSegmentationSatisfiableClaim : Prop :=
   ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (addresses : List (BitVec 32))
     (program : List RVMachineProgramEntry) (windows : List HashWindow),
+    trace.rows ≠ [] ∧ trace.rows.length = 10 ∧ workers.standard.rows.length = 10 ∧
+    workers.split.rows = [] ∧ windows ≠ [] ∧ windows.length = 1 ∧
     rvMachineProgramImage .unified initial addresses = some program ∧ UnifiedAcceptance trace workers program ∧
     (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
     windows.Pairwise (fun first second => first.upper ≤ second.lower) ∧

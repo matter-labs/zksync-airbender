@@ -55,11 +55,12 @@ def Unified : Prop :=
     NoSpecial5 program → UnifiedStreamPorts trace initial.input →
     UnifiedAcceptance trace workers program → RVRealizes trace initial cells (unifiedReadCount trace)
 
-/-- The public data and acceptance premises of this claim have a simultaneous witness. -/
+/-- One participating CPU row meets every public boot and acceptance premise. -/
 def UnrolledFullUnsignedSatisfiableClaim : Prop :=
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    trace.rows ≠ [] ∧ trace.rows.length = 1 ∧
     BootInputs .unrolledFullUnsigned trace initial cells program InitsTeardowns.importedLayout inits ∧
     trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
@@ -68,11 +69,12 @@ def UnrolledFullUnsignedSatisfiableClaim : Prop :=
     NonDeterminism.Pooled.StreamPorts trace initial.input ∧
     UnrolledAcceptance trace workers program
 
-/-- The public data and acceptance premises of this claim have a simultaneous witness. -/
+/-- One participating CPU row meets every public boot and acceptance premise. -/
 def UnrolledReducedSatisfiableClaim : Prop :=
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    trace.rows ≠ [] ∧ trace.rows.length = 1 ∧
     BootInputs .unrolledReduced trace initial cells program InitsTeardowns.importedLayout inits ∧
     trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧

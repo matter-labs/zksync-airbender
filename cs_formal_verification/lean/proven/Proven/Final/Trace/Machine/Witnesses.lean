@@ -6,146 +6,97 @@ import Proven.NonVacuous.NativeMachines
 import Proven.NonVacuous.DynamicCopyLoop.Accepted
 import Proven.NonVacuous.DynamicCopyLoop.Native
 import Proven.NonVacuous.UnrolledNative.Certificates
-
-namespace Airbender.NonVacuous.Machine
-open Airbender Trace Trace.Machine Arithmetic Compiler NativeArithmetic PaddingBoundary
-set_option warningAsError true
-
-private theorem pooled_accepted : UnrolledAcceptance pooled workers [] := by
-  refine ⟨workers_accepted, ?_, ?_, List.Perm.refl _, ?_, List.Perm.refl _, ?_⟩
-  · intro row member; cases member
-  · intro row member; cases member
-  · intro row member; cases member
-  · exact pooled_arguments.memory
-
-private theorem unified_accepted : UnifiedAcceptance unifiedTrace workers [] := by
-  refine ⟨workers_accepted, ?_, ?_, List.Perm.refl _, ?_, List.Perm.refl _, ?_⟩
-  · intro row member; cases member
-  · intro row member; cases member
-  · intro row member; cases member
-  · exact unified_arguments.memory
-
-private theorem masked_workers : MaskedWorkersAccepted workers := by
-  constructor <;> intro row member <;> cases member
-
-private theorem pooled_masked : MaskedUnrolledAcceptance pooled workers [] := by
-  refine ⟨masked_workers, ?_, ?_, ?_, List.Perm.refl _, List.Perm.refl _, ?_⟩
-  · intro row member; cases member
-  · intro row member; cases member
-  · intro row member; cases member
-  · have memory := pooled_memory
-    simp only [maskedUnrolledTokens, maskedWorkerTokens, contributions,
-      show pooled.rows = [] from rfl, show workers.standard.rows = [] from rfl,
-      show workers.split.rows = [] from rfl, List.flatMap_nil, List.append_nil]
-    exact memory.map some
-
-private theorem unified_masked : MaskedUnifiedAcceptance unifiedTrace workers [] := by
-  refine ⟨masked_workers, ?_, ?_, ?_, List.Perm.refl _, List.Perm.refl _, ?_⟩
-  · intro row member; cases member
-  · intro row member; cases member
-  · intro row member; cases member
-  · have memory := unified_memory
-    simp only [maskedUnifiedTokens, maskedWorkerTokens, contributions,
-      show unifiedTrace.rows = [] from rfl, show workers.standard.rows = [] from rfl,
-      show workers.split.rows = [] from rfl, List.flatMap_nil, List.append_nil]
-    exact memory.map some
-
-private theorem pooled_initial_bounded : (timeOfPair pooled.initial.timestamp).Bounded := by
-  change 4 < 524288 ∧ 0 < 524288
-  decide +kernel
-
-private theorem unified_initial_bounded : (timeOfPair unifiedTrace.initial.timestamp).Bounded := by
-  change 4 < 524288 ∧ 0 < 524288
-  decide +kernel
-
-end Airbender.NonVacuous.Machine
+import Proven.NonVacuous.PaddedMachines.Witnesses
+import Proven.NonVacuous.RoundWindow.Acceptance
 
 namespace Airbender.Trace.Machine
 open Airbender.NonVacuous.Machine
 set_option warningAsError true
 
-/-- Public unrolled boot data and acceptance meet the full target's premises. -/
+/-- One active ADD row meets every full unrolled target premise. -/
 theorem unrolled_full_unsigned_satisfiable : UnrolledFullUnsignedSatisfiableClaim := by
-  refine ⟨pooled, workers, zero, cells InitsTeardowns.importedLayout standaloneInits, [], standaloneInits,
-    ?_, rfl, rfl, rfl, ?_, ?_, pooled_accepted⟩
-  · exact boot .unrolledFullUnsigned _ _ (InitsTeardowns.Proofs.claims ⟨rfl, Or.inr rfl⟩) _ standalone_checked
-  · intro entry member; cases member
-  · intro row member; cases member
+  refine ⟨NonVacuous.UnrolledNative.trace, workers, NonVacuous.PooledBoot.initial, NonVacuous.PooledBoot.cells,
+    NonVacuous.UnrolledNative.program, NonVacuous.PooledBoot.inits,
+    List.cons_ne_nil _ _, rfl, NonVacuous.UnrolledNative.boot _ (Or.inl rfl), rfl, rfl, rfl,
+    NonVacuous.UnrolledNative.no_special, NonVacuous.UnrolledNative.stream_ports,
+    NonVacuous.PaddedMachines.pooled_accepted⟩
 
-/-- Public unrolled boot data and acceptance meet the reduced target's premises. -/
+/-- One active ADD row meets every reduced unrolled target premise. -/
 theorem unrolled_reduced_satisfiable : UnrolledReducedSatisfiableClaim := by
-  refine ⟨pooled, workers, zero, cells InitsTeardowns.importedLayout standaloneInits, [], standaloneInits,
-    ?_, rfl, rfl, rfl, ?_, pooled_accepted⟩
-  · exact boot .unrolledReduced _ _ (InitsTeardowns.Proofs.claims ⟨rfl, Or.inr rfl⟩) _ standalone_checked
-  · intro row member; cases member
+  refine ⟨NonVacuous.UnrolledNative.trace, workers, NonVacuous.PooledBoot.initial, NonVacuous.PooledBoot.cells,
+    NonVacuous.UnrolledNative.program, NonVacuous.PooledBoot.inits,
+    List.cons_ne_nil _ _, rfl, NonVacuous.UnrolledNative.boot _ (Or.inr rfl), rfl, rfl, rfl,
+    NonVacuous.UnrolledNative.stream_ports, NonVacuous.PaddedMachines.pooled_accepted⟩
 
 /-- A loop with sixteen CPU rows and two bigint calls meets every unified target premise. -/
 theorem unified_satisfiable : UnifiedSatisfiableClaim := NonVacuous.DynamicCopyLoop.witness
 
-/-- A full masked unrolled layout meets every padded full target premise. -/
-theorem padded_unrolled_full_unsigned_satisfiable : PaddedUnrolledFullUnsignedSatisfiableClaim := by
-  refine ⟨pooled, workers, zero, cells InitsTeardowns.importedLayout standaloneInits, [], standaloneInits,
-    ?_, rfl, rfl, rfl, ?_, ?_, pooled_masked⟩
-  · exact boot .unrolledFullUnsigned _ _ (InitsTeardowns.Proofs.claims ⟨rfl, Or.inr rfl⟩) _ standalone_checked
-  · intro entry member; cases member
-  · intro row member; cases member
+/-- One active ADD row and one constrained padding row meet every padded full premise. -/
+theorem padded_unrolled_full_unsigned_satisfiable : PaddedUnrolledFullUnsignedSatisfiableClaim :=
+  NonVacuous.PaddedMachines.full_witness
 
-/-- A full masked unrolled layout meets every padded reduced target premise. -/
-theorem padded_unrolled_reduced_satisfiable : PaddedUnrolledReducedSatisfiableClaim := by
-  refine ⟨pooled, workers, zero, cells InitsTeardowns.importedLayout standaloneInits, [], standaloneInits,
-    ?_, rfl, rfl, rfl, ?_, pooled_masked⟩
-  · exact boot .unrolledReduced _ _ (InitsTeardowns.Proofs.claims ⟨rfl, Or.inr rfl⟩) _ standalone_checked
-  · intro row member; cases member
+/-- One active ADD row and one constrained padding row meet every padded reduced premise. -/
+theorem padded_unrolled_reduced_satisfiable : PaddedUnrolledReducedSatisfiableClaim :=
+  NonVacuous.PaddedMachines.reduced_witness
 
-/-- A full masked unified layout meets every padded unified target premise. -/
-theorem padded_unified_satisfiable : PaddedUnifiedSatisfiableClaim := by
-  refine ⟨unifiedTrace, workers, zero, cells InitsTeardowns.unifiedLayout unifiedInits, [], unifiedInits,
-    ?_, rfl, rfl, ?_, ?_, unified_masked⟩
-  · exact boot .unified _ _ (InitsTeardowns.Proofs.claims ⟨rfl, Or.inl rfl⟩) _ unified_checked
-  · intro entry member; cases member
-  · intro row member; cases member
+/-- One active unified ADD row and one constrained padding row meet every padded unified premise. -/
+theorem padded_unified_satisfiable : PaddedUnifiedSatisfiableClaim := NonVacuous.PaddedMachines.unified_witness
 
-/-- The full Sail target has its own simultaneous premise witness. -/
+/-- One active ADD row meets every full unrolled Sail premise. -/
 theorem unrolled_full_unsigned_sail_satisfiable : UnrolledFullUnsignedSailSatisfiableClaim :=
   unrolled_full_unsigned_satisfiable
 
-/-- The reduced Sail target has its own simultaneous premise witness. -/
+/-- One active ADD row meets every reduced unrolled Sail premise. -/
 theorem unrolled_reduced_sail_satisfiable : UnrolledReducedSailSatisfiableClaim := unrolled_reduced_satisfiable
 
 /-- The unified Sail target has its own simultaneous premise witness. -/
 theorem unified_sail_satisfiable : UnifiedSailSatisfiableClaim := unified_satisfiable
 
-/-- Empty hash windows meet all unrolled segmentation premises. -/
-theorem unrolled_hash_segmentation_satisfiable : UnrolledHashSegmentationSatisfiableClaim := by
-  refine ⟨pooled, workers, [], [], pooled_accepted, pooled_initial_bounded, by decide +kernel, ?_⟩
-  constructor
-  · exact List.Pairwise.nil
-  · intro request member; cases member
-  · intro window member; cases member
-  · intro window member; cases member
+/-- Ten matched round calls supply one complete unrolled hash window. -/
+theorem unrolled_hash_segmentation_satisfiable : UnrolledHashSegmentationSatisfiableClaim :=
+  ⟨NonVacuous.RoundWindow.unrolledTrace, NonVacuous.RoundWindow.workers,
+    NonVacuous.RoundWindow.unrolledProgram, NonVacuous.RoundWindow.windows,
+    NonVacuous.RoundWindow.unrolled_rows_nonempty, NonVacuous.RoundWindow.unrolled_rows_length,
+    NonVacuous.RoundWindow.worker_rows_length, NonVacuous.RoundWindow.split_rows,
+    List.cons_ne_nil _ _, NonVacuous.RoundWindow.windows_length,
+    NonVacuous.RoundWindow.unrolled_accepted, NonVacuous.RoundWindow.unrolled_initial_bounded,
+    NonVacuous.RoundWindow.unrolled_initial_aligned, NonVacuous.RoundWindow.unrolled_profile⟩
 
-/-- Empty hash windows meet all unified segmentation premises. -/
-theorem unified_hash_segmentation_satisfiable : UnifiedHashSegmentationSatisfiableClaim := by
-  refine ⟨unifiedTrace, workers, [], [], unified_accepted, unified_initial_bounded, by decide +kernel, ?_⟩
-  constructor
-  · exact List.Pairwise.nil
-  · intro request member; cases member
-  · intro window member; cases member
-  · intro window member; cases member
+/-- Ten matched round calls supply one complete unified hash window. -/
+theorem unified_hash_segmentation_satisfiable : UnifiedHashSegmentationSatisfiableClaim :=
+  ⟨NonVacuous.RoundWindow.unifiedTrace, NonVacuous.RoundWindow.workers,
+    NonVacuous.RoundWindow.unifiedProgram, NonVacuous.RoundWindow.windows,
+    NonVacuous.RoundWindow.unified_rows_nonempty, NonVacuous.RoundWindow.unified_rows_length,
+    NonVacuous.RoundWindow.worker_rows_length, NonVacuous.RoundWindow.split_rows,
+    List.cons_ne_nil _ _, NonVacuous.RoundWindow.windows_length,
+    NonVacuous.RoundWindow.unified_accepted, NonVacuous.RoundWindow.unified_initial_bounded,
+    NonVacuous.RoundWindow.unified_initial_aligned, NonVacuous.RoundWindow.unified_profile⟩
 
-/-- Public code, alignment and empty intervals meet all unrolled code-window premises. -/
-theorem unrolled_code_hash_segmentation_satisfiable : UnrolledCodeHashSegmentationSatisfiableClaim := by
-  refine ⟨.unrolledFullUnsigned, pooled, workers, zero, [], [], [], by decide +kernel, rfl,
-    pooled_accepted, pooled_initial_bounded, by decide +kernel, List.Pairwise.nil, ?_, ?_⟩
-  · intro request member; cases member
-  · intro window member; cases member
+/-- Public round code and the complete interval meet every unrolled code-window premise. -/
+theorem unrolled_code_hash_segmentation_satisfiable : UnrolledCodeHashSegmentationSatisfiableClaim :=
+  ⟨.unrolledFullUnsigned, NonVacuous.RoundWindow.unrolledTrace, NonVacuous.RoundWindow.workers,
+    NonVacuous.RoundWindow.initial, NonVacuous.RoundWindow.addresses,
+    NonVacuous.RoundWindow.unrolledProgram, NonVacuous.RoundWindow.windows,
+    NonVacuous.RoundWindow.unrolled_rows_nonempty, NonVacuous.RoundWindow.unrolled_rows_length,
+    NonVacuous.RoundWindow.worker_rows_length, NonVacuous.RoundWindow.split_rows,
+    List.cons_ne_nil _ _, NonVacuous.RoundWindow.windows_length, by decide +kernel,
+    NonVacuous.RoundWindow.unrolled_program_image, NonVacuous.RoundWindow.unrolled_accepted,
+    NonVacuous.RoundWindow.unrolled_initial_bounded, NonVacuous.RoundWindow.unrolled_initial_aligned,
+    NonVacuous.RoundWindow.unrolled_profile.separated, NonVacuous.RoundWindow.unrolled_profile.coverage,
+    NonVacuous.RoundWindow.unrolled_scope⟩
 
-/-- Public code, alignment and empty intervals meet all unified code-window premises. -/
-theorem unified_code_hash_segmentation_satisfiable : UnifiedCodeHashSegmentationSatisfiableClaim := by
-  refine ⟨unifiedTrace, workers, zero, [], [], [], rfl,
-    unified_accepted, unified_initial_bounded, by decide +kernel, List.Pairwise.nil, ?_, ?_⟩
-  · intro request member; cases member
-  · intro window member; cases member
+/-- Public round code and the complete interval meet every unified code-window premise. -/
+theorem unified_code_hash_segmentation_satisfiable : UnifiedCodeHashSegmentationSatisfiableClaim :=
+  ⟨NonVacuous.RoundWindow.unifiedTrace, NonVacuous.RoundWindow.workers,
+    NonVacuous.RoundWindow.initial, NonVacuous.RoundWindow.addresses,
+    NonVacuous.RoundWindow.unifiedProgram, NonVacuous.RoundWindow.windows,
+    NonVacuous.RoundWindow.unified_rows_nonempty, NonVacuous.RoundWindow.unified_rows_length,
+    NonVacuous.RoundWindow.worker_rows_length, NonVacuous.RoundWindow.split_rows,
+    List.cons_ne_nil _ _, NonVacuous.RoundWindow.windows_length,
+    NonVacuous.RoundWindow.unified_program_image, NonVacuous.RoundWindow.unified_accepted,
+    NonVacuous.RoundWindow.unified_initial_bounded, NonVacuous.RoundWindow.unified_initial_aligned,
+    NonVacuous.RoundWindow.unified_profile.separated, NonVacuous.RoundWindow.unified_profile.coverage,
+    NonVacuous.RoundWindow.unified_scope⟩
 
 end Airbender.Trace.Machine
 
@@ -173,14 +124,7 @@ end Airbender.Trace.Machine.Native
 namespace Airbender.PaddingBoundary
 open Airbender.NonVacuous.Machine
 
-/-- The accepted padded layout has the full projection boundary. -/
-theorem projection_satisfiable : ProjectionSatisfiableClaim := by
-  refine ⟨pooled, ?_, ?_⟩
-  · intro row member; cases member
-  · refine ⟨?_, List.Perm.refl _, ?_⟩
-    · intro row member; cases member
-    · have memory := pooled_memory
-      change (pooled.initialMemory.map some ++ []).Perm (pooled.terminalMemory.map some ++ [])
-      simpa only [List.append_nil] using memory.map some
+/-- One participating ADD row and one constrained padding row meet the complete projection boundary. -/
+theorem projection_satisfiable : ProjectionSatisfiableClaim := NonVacuous.PaddedMachines.projection_witness
 
 end Airbender.PaddingBoundary

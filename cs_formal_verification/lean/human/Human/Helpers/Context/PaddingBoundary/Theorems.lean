@@ -36,7 +36,9 @@ def ProductSatisfiableClaim : Prop :=
   ∃ (execute : ZMod babyBearModulus) (encode : Nat → ZMod babyBearModulus) (values : List Nat),
     (execute = 0 ∨ execute = 1) ∧ execute = 1 ∧ values ≠ [] ∧ (values.map encode).prod ≠ 0
 
-/-- An accepted padded layout supplies every premise of the projection claim. -/
+/-- One participating row and one padding row supply the complete projection boundary. -/
 def ProjectionSatisfiableClaim : Prop :=
-  ∃ (trace : Trace.PooledTrace babyBearModulus), AcceptedLayout trace
+  ∃ (trace : Trace.PooledTrace babyBearModulus),
+    trace.rows ≠ [] ∧ trace.rows.length = 2 ∧
+    (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1 ∧ AcceptedLayout trace
 end Airbender.PaddingBoundary

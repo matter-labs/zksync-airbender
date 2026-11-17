@@ -25,6 +25,10 @@ repeated PCs and two bigint COPY calls. Each row has cached native gates, placem
 The witness supplies both complete public initialization windows, their checked top bits, all terminal register tokens and all teardown tokens.
 The [unrolled native witness](../../../../proven/Proven/NonVacuous/UnrolledNative/Certificates.lean)
 executes one ADD row under each unrolled profile, with the complete standalone initialization and teardown domain.
+The unrolled constraint-description and Sail witnesses use this same ADD row.
+The [padded witnesses](../../../../proven/Proven/NonVacuous/PaddedMachines/Witnesses.lean) each have exactly two CPU rows:
+one active ADD row and one inactive row. Both rows satisfy every imported equation and lookup.
+The same masked state and memory boundary supplies the projection witness.
 
 Native initialization gates imply the exact token products through the imported artifact bindings.
 The boot interface binds terminal memory to one token per register and every initialization instance's teardown tokens.
@@ -55,6 +59,9 @@ CPU certificates also give public decoder membership. State, request and memory 
 
 [Hash segmentation](Segmentation.lean) partitions complete G, round and split Keccak windows by native occurrence clocks.
 Its public window interface supplies caller coverage, protocol counts and CSR families.
+The [complete round-window witness](../../../../proven/Proven/NonVacuous/RoundWindow/Acceptance.lean) has ten active CPU callers
+and ten round workers in each machine form. Its single window runs from clock four to clock forty-four.
+Both public programs contain all ten round calls. The same witness supplies the code-window premises.
 The [proof](../../../../proven/Proven/Final/Trace/Machine/Segmentation.lean) derives worker coverage, unique assignment,
 full request multiplicity and the total call count. Active zero-clock workers are rejected.
 

@@ -32,6 +32,10 @@ def contributions [One R] [DecidableEq R] (rows : List ρ) (execute : ρ → R)
 def active {Kind : Type} [CircuitLayout Kind] [Fact p.Prime] (trace : Data p Kind) : Data p Kind :=
   { trace with rows := trace.rows.filter fun row => decide (row.assignment row.columns.execute = 1) }
 
+/-- Select padding solely by the imported execute column, with its occurrence order intact. -/
+def inactive {Kind : Type} [CircuitLayout Kind] [Fact p.Prime] (trace : Data p Kind) : Data p Kind :=
+  { trace with rows := trace.rows.filter fun row => decide (row.assignment row.columns.execute = 0) }
+
 /-- External logical binding for the actual masked PC and memory contributions.
     The same native execute column masks reads and writes. Identity factors stay
     explicit in these permutations; they are erased by the projection proof.

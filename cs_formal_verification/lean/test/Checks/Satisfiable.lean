@@ -799,6 +799,7 @@ example (claim : Airbender.Trace.Machine.UnrolledFullUnsigned) : Airbender.Trace
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    trace.rows ≠ [] ∧ trace.rows.length = 1 ∧
     BootInputs .unrolledFullUnsigned trace initial cells program InitsTeardowns.importedLayout inits ∧
     trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
@@ -807,13 +808,14 @@ example (claim : Airbender.Trace.Machine.UnrolledFullUnsigned) : Airbender.Trace
     NonDeterminism.Pooled.StreamPorts trace initial.input ∧
     UnrolledAcceptance trace workers program ∧
     (RVRealizes trace initial cells (NonDeterminism.Pooled.readCount trace)) :=
-  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, premise6⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, premise6, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5 premise6⟩
+  fun ⟨trace, workers, initial, cells, program, inits, rows_nonempty, row_count, premise0, premise1, premise2, premise3, premise4, premise5, premise6⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, rows_nonempty, row_count, premise0, premise1, premise2, premise3, premise4, premise5, premise6, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5 premise6⟩
 
 example (claim : Airbender.Trace.Machine.UnrolledReduced) : Airbender.Trace.Machine.UnrolledReducedSatisfiableClaim →
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    trace.rows ≠ [] ∧ trace.rows.length = 1 ∧
     BootInputs .unrolledReduced trace initial cells program InitsTeardowns.importedLayout inits ∧
     trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
@@ -821,8 +823,8 @@ example (claim : Airbender.Trace.Machine.UnrolledReduced) : Airbender.Trace.Mach
     NonDeterminism.Pooled.StreamPorts trace initial.input ∧
     UnrolledAcceptance trace workers program ∧
     (RVRealizes trace initial cells (NonDeterminism.Pooled.readCount trace)) :=
-  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5⟩
+  fun ⟨trace, workers, initial, cells, program, inits, rows_nonempty, row_count, premise0, premise1, premise2, premise3, premise4, premise5⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, rows_nonempty, row_count, premise0, premise1, premise2, premise3, premise4, premise5, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5⟩
 
 example (claim : Airbender.Trace.Machine.Unified) : Airbender.Trace.Machine.UnifiedSatisfiableClaim →
   ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
@@ -847,6 +849,8 @@ example (claim : Airbender.Trace.Machine.PaddedUnrolledFullUnsigned) : Airbender
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    trace.rows ≠ [] ∧ trace.rows.length = 2 ∧
+    (PaddingBoundary.active trace).rows.length = 1 ∧ (PaddingBoundary.inactive trace).rows.length = 1 ∧
     BootInputs .unrolledFullUnsigned (PaddingBoundary.active trace) initial cells program InitsTeardowns.importedLayout inits ∧
     trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
@@ -855,13 +859,15 @@ example (claim : Airbender.Trace.Machine.PaddedUnrolledFullUnsigned) : Airbender
     NonDeterminism.Pooled.StreamPorts (PaddingBoundary.active trace) initial.input ∧
     MaskedUnrolledAcceptance trace workers program ∧
     (RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (PaddingBoundary.active trace))) :=
-  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, premise6⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, premise6, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5 premise6⟩
+  fun ⟨trace, workers, initial, cells, program, inits, rows_nonempty, row_count, active_count, padding_count, premise0, premise1, premise2, premise3, premise4, premise5, premise6⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, rows_nonempty, row_count, active_count, padding_count, premise0, premise1, premise2, premise3, premise4, premise5, premise6, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5 premise6⟩
 
 example (claim : Airbender.Trace.Machine.PaddedUnrolledReduced) : Airbender.Trace.Machine.PaddedUnrolledReducedSatisfiableClaim →
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    trace.rows ≠ [] ∧ trace.rows.length = 2 ∧
+    (PaddingBoundary.active trace).rows.length = 1 ∧ (PaddingBoundary.inactive trace).rows.length = 1 ∧
     BootInputs .unrolledReduced (PaddingBoundary.active trace) initial cells program InitsTeardowns.importedLayout inits ∧
     trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
@@ -869,21 +875,23 @@ example (claim : Airbender.Trace.Machine.PaddedUnrolledReduced) : Airbender.Trac
     NonDeterminism.Pooled.StreamPorts (PaddingBoundary.active trace) initial.input ∧
     MaskedUnrolledAcceptance trace workers program ∧
     (RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (PaddingBoundary.active trace))) :=
-  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5⟩
+  fun ⟨trace, workers, initial, cells, program, inits, rows_nonempty, row_count, active_count, padding_count, premise0, premise1, premise2, premise3, premise4, premise5⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, rows_nonempty, row_count, active_count, padding_count, premise0, premise1, premise2, premise3, premise4, premise5, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5⟩
 
 example (claim : Airbender.Trace.Machine.PaddedUnified) : Airbender.Trace.Machine.PaddedUnifiedSatisfiableClaim →
   ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)),
+    trace.rows ≠ [] ∧ trace.rows.length = 2 ∧
+    (PaddingBoundary.active trace).rows.length = 1 ∧ (PaddingBoundary.inactive trace).rows.length = 1 ∧
     BootInputs .unified (PaddingBoundary.active trace) initial cells program InitsTeardowns.unifiedLayout inits ∧
     trace.rom = UnifiedReduced.Setup.tableRV initial ∧
     workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NoSpecial5 program ∧ UnifiedStreamPorts (PaddingBoundary.active trace) initial.input ∧
     MaskedUnifiedAcceptance trace workers program ∧
     (RVRealizes trace initial cells (unifiedReadCount (PaddingBoundary.active trace))) :=
-  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5⟩
+  fun ⟨trace, workers, initial, cells, program, inits, rows_nonempty, row_count, active_count, padding_count, premise0, premise1, premise2, premise3, premise4, premise5⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, rows_nonempty, row_count, active_count, padding_count, premise0, premise1, premise2, premise3, premise4, premise5, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5⟩
 
 end Airbender.Trace.Machine
 
@@ -894,23 +902,27 @@ open Airbender.Compiler
 example (claim : Airbender.Trace.Machine.UnrolledHashSegmentationClaim) : Airbender.Trace.Machine.UnrolledHashSegmentationSatisfiableClaim →
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (program : List RVMachineProgramEntry) (windows : List HashWindow),
+    trace.rows ≠ [] ∧ trace.rows.length = 10 ∧ workers.standard.rows.length = 10 ∧
+    workers.split.rows = [] ∧ windows ≠ [] ∧ windows.length = 1 ∧
     UnrolledAcceptance trace workers program ∧
     (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
     HashWindowProfile ((unrolledCallers trace).map fun row => Delegation.Requests.caller row.assignment) windows ∧
     (IssuedHashSegmentation workers.fulfillments windows) :=
-  fun ⟨trace, workers, program, windows, premise0, premise1, premise2, premise3⟩ =>
-    ⟨trace, workers, program, windows, premise0, premise1, premise2, premise3, claim trace workers program windows premise0 premise1 premise2 premise3⟩
+  fun ⟨trace, workers, program, windows, rows_nonempty, row_count, worker_count, split_rows, windows_nonempty, window_count, premise0, premise1, premise2, premise3⟩ =>
+    ⟨trace, workers, program, windows, rows_nonempty, row_count, worker_count, split_rows, windows_nonempty, window_count, premise0, premise1, premise2, premise3, claim trace workers program windows premise0 premise1 premise2 premise3⟩
 
 example (claim : Airbender.Trace.Machine.UnifiedHashSegmentationClaim) : Airbender.Trace.Machine.UnifiedHashSegmentationSatisfiableClaim →
   ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (program : List RVMachineProgramEntry) (windows : List HashWindow),
+    trace.rows ≠ [] ∧ trace.rows.length = 10 ∧ workers.standard.rows.length = 10 ∧
+    workers.split.rows = [] ∧ windows ≠ [] ∧ windows.length = 1 ∧
     UnifiedAcceptance trace workers program ∧
     (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
     HashWindowProfile ((trace.rows.filter fun row => decide (UnifiedReduced.Caller.Selected row.assignment)).map
       fun row => UnifiedReduced.Caller.request row.assignment) windows ∧
     (IssuedHashSegmentation workers.fulfillments windows) :=
-  fun ⟨trace, workers, program, windows, premise0, premise1, premise2, premise3⟩ =>
-    ⟨trace, workers, program, windows, premise0, premise1, premise2, premise3, claim trace workers program windows premise0 premise1 premise2 premise3⟩
+  fun ⟨trace, workers, program, windows, rows_nonempty, row_count, worker_count, split_rows, windows_nonempty, window_count, premise0, premise1, premise2, premise3⟩ =>
+    ⟨trace, workers, program, windows, rows_nonempty, row_count, worker_count, split_rows, windows_nonempty, window_count, premise0, premise1, premise2, premise3, claim trace workers program windows premise0 premise1 premise2 premise3⟩
 
 end Airbender.Trace.Machine
 
@@ -922,6 +934,8 @@ example (claim : Airbender.Trace.Machine.UnrolledCodeHashSegmentationClaim) : Ai
   ∃ (config : RVMachineConfig) (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (addresses : List (BitVec 32))
     (program : List RVMachineProgramEntry) (windows : List HashWindow),
+    trace.rows ≠ [] ∧ trace.rows.length = 10 ∧ workers.standard.rows.length = 10 ∧
+    workers.split.rows = [] ∧ windows ≠ [] ∧ windows.length = 1 ∧
     config ≠ .unified ∧ rvMachineProgramImage config initial addresses = some program ∧
     UnrolledAcceptance trace workers program ∧
     (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
@@ -930,13 +944,15 @@ example (claim : Airbender.Trace.Machine.UnrolledCodeHashSegmentationClaim) : Ai
       request.csr ≠ Delegation.Requests.csr .bigint ↔ ∃ window ∈ windows, window.select request = true) ∧
     (∀ window ∈ windows, CodeWindowScope trace program window) ∧
     (IssuedHashSegmentation workers.fulfillments windows) :=
-  fun ⟨config, trace, workers, initial, addresses, program, windows, premise0, premise1, premise2, premise3, premise4, premise5, premise6, premise7⟩ =>
-    ⟨config, trace, workers, initial, addresses, program, windows, premise0, premise1, premise2, premise3, premise4, premise5, premise6, premise7, claim config trace workers initial addresses program windows premise0 premise1 premise2 premise3 premise4 premise5 premise6 premise7⟩
+  fun ⟨config, trace, workers, initial, addresses, program, windows, rows_nonempty, row_count, worker_count, split_rows, windows_nonempty, window_count, premise0, premise1, premise2, premise3, premise4, premise5, premise6, premise7⟩ =>
+    ⟨config, trace, workers, initial, addresses, program, windows, rows_nonempty, row_count, worker_count, split_rows, windows_nonempty, window_count, premise0, premise1, premise2, premise3, premise4, premise5, premise6, premise7, claim config trace workers initial addresses program windows premise0 premise1 premise2 premise3 premise4 premise5 premise6 premise7⟩
 
 example (claim : Airbender.Trace.Machine.UnifiedCodeHashSegmentationClaim) : Airbender.Trace.Machine.UnifiedCodeHashSegmentationSatisfiableClaim →
   ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (addresses : List (BitVec 32))
     (program : List RVMachineProgramEntry) (windows : List HashWindow),
+    trace.rows ≠ [] ∧ trace.rows.length = 10 ∧ workers.standard.rows.length = 10 ∧
+    workers.split.rows = [] ∧ windows ≠ [] ∧ windows.length = 1 ∧
     rvMachineProgramImage .unified initial addresses = some program ∧ UnifiedAcceptance trace workers program ∧
     (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
     windows.Pairwise (fun first second => first.upper ≤ second.lower) ∧
@@ -945,8 +961,8 @@ example (claim : Airbender.Trace.Machine.UnifiedCodeHashSegmentationClaim) : Air
       request.csr ≠ Delegation.Requests.csr .bigint ↔ ∃ window ∈ windows, window.select request = true) ∧
     (∀ window ∈ windows, CodeWindowScope trace program window) ∧
     (IssuedHashSegmentation workers.fulfillments windows) :=
-  fun ⟨trace, workers, initial, addresses, program, windows, premise0, premise1, premise2, premise3, premise4, premise5, premise6⟩ =>
-    ⟨trace, workers, initial, addresses, program, windows, premise0, premise1, premise2, premise3, premise4, premise5, premise6, claim trace workers initial addresses program windows premise0 premise1 premise2 premise3 premise4 premise5 premise6⟩
+  fun ⟨trace, workers, initial, addresses, program, windows, rows_nonempty, row_count, worker_count, split_rows, windows_nonempty, window_count, premise0, premise1, premise2, premise3, premise4, premise5, premise6⟩ =>
+    ⟨trace, workers, initial, addresses, program, windows, rows_nonempty, row_count, worker_count, split_rows, windows_nonempty, window_count, premise0, premise1, premise2, premise3, premise4, premise5, premise6, claim trace workers initial addresses program windows premise0 premise1 premise2 premise3 premise4 premise5 premise6⟩
 
 end Airbender.Trace.Machine
 
@@ -958,6 +974,7 @@ example (claim : Airbender.Trace.Machine.UnrolledFullUnsignedSailClaim) : Airben
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    trace.rows ≠ [] ∧ trace.rows.length = 1 ∧
     BootInputs .unrolledFullUnsigned trace initial cells program InitsTeardowns.importedLayout inits ∧
     trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
@@ -966,13 +983,14 @@ example (claim : Airbender.Trace.Machine.UnrolledFullUnsignedSailClaim) : Airben
     NonDeterminism.Pooled.StreamPorts trace initial.input ∧
     UnrolledAcceptance trace workers program ∧
     (SailRealizes trace initial cells (NonDeterminism.Pooled.readCount trace)) :=
-  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, premise6⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, premise6, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5 premise6⟩
+  fun ⟨trace, workers, initial, cells, program, inits, rows_nonempty, row_count, premise0, premise1, premise2, premise3, premise4, premise5, premise6⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, rows_nonempty, row_count, premise0, premise1, premise2, premise3, premise4, premise5, premise6, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5 premise6⟩
 
 example (claim : Airbender.Trace.Machine.UnrolledReducedSailClaim) : Airbender.Trace.Machine.UnrolledReducedSailSatisfiableClaim →
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
+    trace.rows ≠ [] ∧ trace.rows.length = 1 ∧
     BootInputs .unrolledReduced trace initial cells program InitsTeardowns.importedLayout inits ∧
     trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
@@ -980,8 +998,8 @@ example (claim : Airbender.Trace.Machine.UnrolledReducedSailClaim) : Airbender.T
     NonDeterminism.Pooled.StreamPorts trace initial.input ∧
     UnrolledAcceptance trace workers program ∧
     (SailRealizes trace initial cells (NonDeterminism.Pooled.readCount trace)) :=
-  fun ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, premise0, premise1, premise2, premise3, premise4, premise5, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5⟩
+  fun ⟨trace, workers, initial, cells, program, inits, rows_nonempty, row_count, premise0, premise1, premise2, premise3, premise4, premise5⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, rows_nonempty, row_count, premise0, premise1, premise2, premise3, premise4, premise5, claim trace workers initial cells program inits premise0 premise1 premise2 premise3 premise4 premise5⟩
 
 example (claim : Airbender.Trace.Machine.UnifiedSailClaim) : Airbender.Trace.Machine.UnifiedSailSatisfiableClaim →
   ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
@@ -1093,8 +1111,12 @@ example (claim : Airbender.PaddingBoundary.ProductSoundnessClaim) :
 
 example (claim : Airbender.PaddingBoundary.ProjectionClaim) :
     Airbender.PaddingBoundary.ProjectionSatisfiableClaim →
-    ∃ trace : Trace.PooledTrace babyBearModulus, Trace.Accepted (PaddingBoundary.active trace) :=
-  fun ⟨trace, accepted⟩ => ⟨trace, claim trace accepted⟩
+    ∃ trace : Trace.PooledTrace babyBearModulus,
+      trace.rows ≠ [] ∧ trace.rows.length = 2 ∧
+      (PaddingBoundary.active trace).rows.length = 1 ∧ (PaddingBoundary.inactive trace).rows.length = 1 ∧
+      Trace.Accepted (PaddingBoundary.active trace) :=
+  fun ⟨trace, rows_nonempty, row_count, active_count, padding_count, accepted⟩ =>
+    ⟨trace, rows_nonempty, row_count, active_count, padding_count, claim trace accepted⟩
 
 example (claim : Airbender.Json.ParseSoundClaim) : Airbender.Json.ParseSoundSatisfiableClaim →
     ∃ (bytes : ByteArray) (value : Airbender.Json.Value),
@@ -1398,6 +1420,7 @@ example (claim : Airbender.Trace.Machine.Native.UnrolledFullFromNative) :
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
+    trace.rows.length = 1 ∧ workers.standard.rows = [] ∧ workers.split.rows = [] ∧
     BootInputs .unrolledFullUnsigned trace initial cells program InitsTeardowns.importedLayout inits ∧
     trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
@@ -1408,14 +1431,15 @@ example (claim : Airbender.Trace.Machine.Native.UnrolledFullFromNative) :
     ∃ certificates : List (ProgramLogicalRowCertificate tables),
       UnrolledNativeArguments tables certificates trace workers ∧
     RVRealizes trace initial cells (NonDeterminism.Pooled.readCount trace) :=
-  fun ⟨trace, workers, initial, cells, program, inits, tables, _, _, _, boot, wordSetup, subwordSetup, workerSetup, noSpecial, stream, bound, covers, certificates, arguments⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, tables, boot, wordSetup, subwordSetup, workerSetup, noSpecial, stream, bound, covers, certificates, arguments, claim trace workers initial cells program inits tables boot wordSetup subwordSetup workerSetup noSpecial stream bound covers certificates arguments⟩
+  fun ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, wordSetup, subwordSetup, workerSetup, noSpecial, stream, bound, covers, certificates, arguments⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, wordSetup, subwordSetup, workerSetup, noSpecial, stream, bound, covers, certificates, arguments, claim trace workers initial cells program inits tables boot wordSetup subwordSetup workerSetup noSpecial stream bound covers certificates arguments⟩
 
 example (claim : Airbender.Trace.Machine.Native.UnrolledReducedFromNative) :
     Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSatisfiableClaim →
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
+    trace.rows.length = 1 ∧ workers.standard.rows = [] ∧ workers.split.rows = [] ∧
     BootInputs .unrolledReduced trace initial cells program InitsTeardowns.importedLayout inits ∧
     trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
@@ -1425,14 +1449,15 @@ example (claim : Airbender.Trace.Machine.Native.UnrolledReducedFromNative) :
     ∃ certificates : List (ProgramLogicalRowCertificate tables),
       UnrolledNativeArguments tables certificates trace workers ∧
     RVRealizes trace initial cells (NonDeterminism.Pooled.readCount trace) :=
-  fun ⟨trace, workers, initial, cells, program, inits, tables, _, _, _, boot, wordSetup, subwordSetup, workerSetup, stream, bound, covers, certificates, arguments⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, tables, boot, wordSetup, subwordSetup, workerSetup, stream, bound, covers, certificates, arguments, claim trace workers initial cells program inits tables boot wordSetup subwordSetup workerSetup stream bound covers certificates arguments⟩
+  fun ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, wordSetup, subwordSetup, workerSetup, stream, bound, covers, certificates, arguments⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, wordSetup, subwordSetup, workerSetup, stream, bound, covers, certificates, arguments, claim trace workers initial cells program inits tables boot wordSetup subwordSetup workerSetup stream bound covers certificates arguments⟩
 
 example (claim : Airbender.Trace.Machine.Native.UnifiedFromNative) :
     Airbender.Trace.Machine.Native.UnifiedFromNativeSatisfiableClaim →
   ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)) (tables : ProgramLookupRows),
+    trace.rows.length = 16 ∧ workers.standard.rows.length = 2 ∧ workers.split.rows = [] ∧
     BootInputs .unified trace initial cells program InitsTeardowns.unifiedLayout inits ∧
     trace.rom = UnifiedReduced.Setup.tableRV initial ∧
     workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
@@ -1441,8 +1466,8 @@ example (claim : Airbender.Trace.Machine.Native.UnifiedFromNative) :
     ∃ certificates : List (UnifiedLogicalRowCertificate tables),
       UnifiedNativeArguments tables certificates trace workers ∧
     RVRealizes trace initial cells (unifiedReadCount trace) :=
-  fun ⟨trace, workers, initial, cells, program, inits, tables, _, _, _, boot, setup, workerSetup, noSpecial, stream, bound, certificates, arguments⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, tables, boot, setup, workerSetup, noSpecial, stream, bound, certificates, arguments, claim trace workers initial cells program inits tables boot setup workerSetup noSpecial stream bound certificates arguments⟩
+  fun ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, setup, workerSetup, noSpecial, stream, bound, certificates, arguments⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, setup, workerSetup, noSpecial, stream, bound, certificates, arguments, claim trace workers initial cells program inits tables boot setup workerSetup noSpecial stream bound certificates arguments⟩
 
 end Airbender.Trace.Machine.Native
 
