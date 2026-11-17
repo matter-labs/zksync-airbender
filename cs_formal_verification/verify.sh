@@ -33,6 +33,7 @@ python3 scripts/generate_worker_arithmetic.py --check
 python3 scripts/generate_worker_constraints.py --check
 python3 scripts/test_worker_memory_ports.py
 python3 scripts/generate_worker_memory_ports.py --check
+python3 scripts/compiler_native_bindings.py --check
 
 echo "== 2. Lean build: spec, proofs, regressions and the axiom audit modules in one lake build (test modules start as"
 echo "   soon as their imports are built), timing each module compiled (full log: lean/.lake/verify-build-CleanCore.log)"

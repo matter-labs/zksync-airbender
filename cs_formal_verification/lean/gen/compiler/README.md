@@ -22,4 +22,6 @@ The formal build enforces the same fixed module CPU limit on every generated par
 Large conversion proofs use the existing `kernel_rfl` tactic. It leaves the complete equality check to the kernel.
 
 `python3 scripts/compiler_native_bindings.py` emits every native gate and placement binding.
+`--check` compares the committed modules with its output.
+A BlakeRound gate batch with too many rewrite names is proved in part modules, and its batch module composes them.
 Each aggregate retains every batch. The kernel checks the raw relation and address equalities.

@@ -1,12 +1,26 @@
 #!/usr/bin/env python3
-"""Emit complete native sparse gate and placement bindings. The kernel checks every equality."""
+"""Emit complete native sparse gate and placement bindings. The kernel checks every equality.
+
+Usage: compiler_native_bindings.py [--check] [Family...]. --check compares the committed modules with the output."""
 from pathlib import Path
 import json,re,sys
 from check_compiler_captures import FAMILIES
 root=Path(__file__).resolve().parents[1]
 families={'AddSub':'add-sub','Bigint':'bigint','BlakeG':'blake-g','BlakeRound':'blake-round','JumpBranch':'jump-branch','Keccak':'keccak','MulDiv':'mul-div','ShiftBinop':'shift-binop','SubwordMemory':'subword-memory','Unified':'unified','WordMemory':'word-memory'}
 base={'LinearBaseFieldRelation','MaxQuadratic','EnforceSingleMaxQuadraticConstraint','CopyInBaseField','MaterializeSingleLookupInput'}
-for family in sys.argv[1:] or families:
+# The cost of a BlakeRound gate proof is the number of names its binding rewrites with (7-18 for most gates, 51-60
+# for the gates that use shared expressions). CPU time and memory grow with the cost of a module: eight proofs of
+# about 55 names took 56 s of CPU and 9.6 GB, four took 22-30 s and 5 GB on a loaded machine. A batch above GATE_COST
+# is proved in part modules that each hold consecutive proofs with at most GATE_COST names (at most two of the
+# costly proofs), and its batch module composes them.
+GATE_COST=125
+check='--check' in sys.argv[1:]
+outputs=set();stale=[]
+def emit(path,text):
+ outputs.add(path)
+ if not check:path.write_text(text)
+ elif not path.exists() or path.read_text()!=text:stale.append(str(path.relative_to(root)))
+for family in [name for name in sys.argv[1:] if name!='--check'] or families:
  c=json.load((root.parent.parent/f'cs/compiled_circuits/{FAMILIES[families[family]]}_layout_gkr.json').open())
  ns=f'Airbender.Compiler.NativeBindings.{family}'
  native=f'Airbender.Compiler.FullArithmeticNative.{family}Cached.native'
@@ -14,7 +28,7 @@ for family in sys.argv[1:] or families:
  capture=f'Airbender.Compiler.Captures.{family}.imported.circuit'
  large=family in {'Bigint','BlakeRound','Keccak'}
  directory=root/f'proven/Proven/Compiler/NativeBindings/{family}'
- directory.mkdir(parents=True,exist_ok=True)
+ if not check:directory.mkdir(parents=True,exist_ok=True)
  header=f'''module
 public import Proven.Compiler.NativeBridge
 public import Proven.KernelRfl
@@ -41,7 +55,7 @@ namespace {ns}
 theorem placement_entries : ({capture}).placement_data.entries = {placementData} := by kernel_rfl
 end {ns}
 '''
-  (directory/'PlacementData.lean').write_text(data)
+  emit(directory/'PlacementData.lean',data)
   placement_header=header.replace('public import Proven.Compiler.NativeBridge',
     f'public import Proven.Compiler.NativeBridge\npublic import Proven.Compiler.NativeBindings.{family}.PlacementData')
  clauses=[]
@@ -110,10 +124,8 @@ set_option maxRecDepth 32768
 theorem coordinate{index} : {native}.bank.address ⟨{index}, by decide⟩ = {addresses[index]} :=
   bank_lookup {native}.addresses (by decide) ⟨{index}, by decide⟩ ({addresses[index]}) (by cbv)
 '''
-   (directory/f'{name}.lean').write_text(text+f'end {ns}\n')
-  for obsolete in directory.glob('Bank[0-9][0-9][0-9].lean'):
-   if obsolete.stem not in bank_modules:obsolete.unlink()
-  (directory/'BankCoordinates.lean').write_text('module\n'+''.join(f'public import Proven.Compiler.NativeBindings.{family}.{name}\n' for name in bank_modules))
+   emit(directory/f'{name}.lean',text+f'end {ns}\n')
+  emit(directory/'BankCoordinates.lean','module\n'+''.join(f'public import Proven.Compiler.NativeBindings.{family}.{name}\n' for name in bank_modules))
   gates=',\n  '.join(f'{native}.gate{index}' for index in range(len(clauses)))
   attributes=''.join('attribute [cbv_opaque] '+' '.join(f'{native}.gate{index}' for index in range(first,min(first+8,len(clauses))))+'\n' for first in range(0,len(clauses),8))
   text=f'''module
@@ -134,7 +146,7 @@ theorem scalar_gate_data_checked : scalar_gate_data.all ArithmeticGate.check = t
   (congrArg (fun items => items.all ArithmeticGate.check) scalar_gate_data_binding).symm.trans {native}.gatesChecked
 end {ns}
 '''
-  (directory/'NativeData.lean').write_text(text)
+  emit(directory/'NativeData.lean',text)
   text=f'''module
 public import Proven.Compiler.NativeBridge
 public import Proven.KernelRfl
@@ -163,16 +175,17 @@ set_option maxRecDepth 32768
 '''
     else:
      text+=f'theorem layer{li}_caches : {actual} = {literal} := by kernel_rfl\n'
-  (directory/'CaptureData.lean').write_text(text+f'end {ns}\n')
+  emit(directory/'CaptureData.lean',text+f'end {ns}\n')
   header=header.replace('public import Proven.Compiler.NativeBridge',
    'public import Proven.Compiler.NativeLiteralBridge\n'+''.join(f'public import Proven.Compiler.NativeBindings.{family}.{name}\n' for name in ['NativeData','BankCoordinates','CaptureData']).rstrip())
  imports=[];batches=[]
  gate_step=8 if family=="BlakeRound" else 16
  for first in range(0,len(clauses),gate_step):
   name=f'Gates{first//gate_step:03d}';imports.append(f'Proven.Compiler.NativeBindings.{family}.{name}')
-  s=header
+  proofs=[]
   for i in range(first,min(first+gate_step,len(clauses))):
    kind,li,idx=clauses[i]
+   s=''
    layer=f'({capture}).layers[{li}]\'(by decide)'
    if kind=='cache':
     entry=f'({layer}).cached_relations[{idx}]\'(by decide)'
@@ -210,6 +223,7 @@ theorem gate{i} (physical : GKRAddress → NativeArithmetic.F)
     else:
      s+=f'  have acceptedEntry := {kind}_at accepted ⟨{li}, by decide⟩ ⟨{idx}, by decide⟩\n'
     s+='  exact (sparse_checked checked _).symm.trans (binding.trans acceptedEntry)\n'
+    proofs.append((s,len(simplifications)))
     continue
    s+=f'''\n/-- The actual native sparse relation supplies gate {i}. -/
 theorem gate{i} (physical : GKRAddress → NativeArithmetic.F)
@@ -222,6 +236,17 @@ theorem gate{i} (physical : GKRAddress → NativeArithmetic.F)
   exact (sparse_checked checked _).symm.trans
     (binding.trans ({kind}_at accepted ⟨{li}, by decide⟩ ⟨{idx}, by decide⟩))
 '''
+   proofs.append((s,0))
+  parts=[[]]
+  for proof,cost in proofs:
+   if parts[-1] and sum(weight for _,weight in parts[-1])+cost>GATE_COST:parts.append([])
+   parts[-1].append((proof,cost))
+  if len(parts)==1:s=header+''.join(proof for proof,_ in proofs)
+  else:
+   names=[f'{name}Part{index}' for index in range(len(parts))]
+   for part,members in zip(names,parts):
+    emit(directory/f'{part}.lean',header+''.join(proof for proof,_ in members)+f'end {ns}\n')
+   s=header.replace('module\n','module\n'+''.join(f'public import Proven.Compiler.NativeBindings.{family}.{part}\n' for part in names),1)
   gates=', '.join(f'{native}.gate{i}' for i in range(first,min(first+gate_step,len(clauses))))
   batch=f'gates{first//gate_step:03d}';batches.append(batch)
   proof='(by intro gate member; cases member)'
@@ -233,7 +258,7 @@ theorem {batch} (physical : GKRAddress → NativeArithmetic.F)
   {proof}
 end {ns}
 '''
-  (directory/f'{name}.lean').write_text(s)
+  emit(directory/f'{name}.lean',s)
  # Each public placement is checked at its imported array position.
  count=len(c['placement_data'])
  placement_batches=[]
@@ -283,7 +308,7 @@ theorem {batch} (physical : GKRAddress → NativeArithmetic.F) (logical : Nat �
   {proof}
 end {ns}
 '''
-  (directory/f'{name}.lean').write_text(s)
+  emit(directory/f'{name}.lean',s)
  # Separate complete composition.
  s='module\n'+''.join(f'public import {imp}\n' for imp in imports)+f'\n@[expose] public section\nset_option warningAsError true\nnamespace {ns}\nopen Airbender Airbender.Compiler NativeBridge\nset_option maxRecDepth 32768\n'
  proof='(by intro gate member; cases member)'
@@ -324,5 +349,11 @@ theorem arithmetic : {family}CachedArithmeticClaim := by
     ({clean}.arithmetic_preserved physical (Verification.environment logical).data (scalar_gates physical accepted))
 end {ns}
 '''
- (directory.parent/f'{family}.lean').write_text(s)
- print(family,'scalar gates',len(clauses),'placements',count,'modules',len(imports)+1)
+ emit(directory.parent/f'{family}.lean',s)
+ for extra in sorted(set(directory.glob('*.lean'))-outputs):
+  if check:stale.append(str(extra.relative_to(root)))
+  else:extra.unlink()
+ if not check:print(family,'scalar gates',len(clauses),'placements',count,'modules',len(imports)+1)
+if check:
+ if stale:sys.exit('FAIL native binding modules differ from scripts/compiler_native_bindings.py: '+', '.join(stale))
+ print(f'PASS native bindings: {len(outputs)} generated modules')
