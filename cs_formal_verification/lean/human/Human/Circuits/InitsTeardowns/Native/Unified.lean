@@ -1,6 +1,7 @@
 module
 public import Human.Import.NativeRamProducts
 public import Human.Circuits.InitsTeardowns.UnifiedArtifact
+public import Human.Compiler.Captures.Unified
 public import Human.Circuits.InitsTeardowns.Native.Products
 public import Human.Circuits.InitsTeardowns.Theorems
 
@@ -8,14 +9,18 @@ public import Human.Circuits.InitsTeardowns.Theorems
 
 namespace Airbender.InitsTeardowns.Native
 
-import_ram_products unifiedArtifact from "../../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json" unified_inline
+import_ram_products unifiedArtifact from "../../cs/compiled_circuits/unified_reduced_machine_layout_gkr.json" unified_inline
 
-/-- The memory-product graph is extracted from the existing typed circuit artifact. -/
+/-- The cached unified capture is the circuit that production proves. Its initialization gates have the layout
+    `InitsTeardowns.unifiedLayout`: the same sets and teardown columns, and each gate pairs the adjacent sets 2k and
+    2k + 1. Its memory-product graph is the extracted graph. Extraction checks the virtual setup address inputs, the
+    window geometry and the output map. -/
 def UnifiedBindingClaim : Prop :=
-  Extract.extract .unified unifiedLayoutCircuit = .ok unifiedArtifact
+  Compiler.Captures.Unified.imported.circuit.initsTeardownsLayout false = .ok InitsTeardowns.unifiedLayout ∧
+    Extract.extract .unified Compiler.Captures.Unified.imported.circuit = .ok unifiedArtifact
 
-/-- Every accepted native gate computes the products of the boot interface initialization and teardown tokens
-    (`Witness.initTokens` and `Witness.teardownTokens`).
+/-- Every accepted native gate of the cached unified capture computes the products of the boot interface
+    initialization and teardown tokens (`Witness.initTokens` and `Witness.teardownTokens`).
     The public product windows are the instance top bits, below the verifier ceiling.
     The native memory bank reads the instance assignment. The kernel checks its column offset against the
     imported teardown placements. Acceptance binds every native row, extension wire and public product challenge.

@@ -7,7 +7,12 @@ set_option warningAsError true
 
 /-! The initialization pair of the unified capture has its own interface. Its extension wires and their
 copies form a closed subgraph. The RAM bridge reads them from the canonical evaluation and every other
-extension wire from the supplied values. -/
+extension wire from the supplied values.
+
+The canonical evaluation (`initPayload`, `Source.initializationRequests`) gives set `k` the window `k`. The verifier
+gives it the public top bits of set `k` (`gkr_eval_ir/src/lower/memory.rs`). No claim reads the canonical
+initialization values. `UnifiedSoundnessClaim` binds the initialization outputs of the cached capture with the
+public windows. -/
 
 namespace Airbender.Compiler.NativeMemoryBridge
 open NativeArithmetic NativeMemory

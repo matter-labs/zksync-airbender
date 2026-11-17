@@ -9,14 +9,18 @@ It keeps the row products symbolic. It does not enumerate the native row domain.
 | Claim | Result |
 | --- | --- |
 | `Airbender.InitsTeardowns.Native.StandaloneBindingClaim` | The standalone graph is extracted from the existing artifact. |
-| `Airbender.InitsTeardowns.Native.UnifiedBindingClaim` | The inline unified graph is extracted from the existing artifact. |
+| `Airbender.InitsTeardowns.Native.UnifiedBindingClaim` | The cached unified capture has the initialization layout, and its inline graph is extracted from it. |
 | `Airbender.InitsTeardowns.Native.StandaloneSoundnessClaim` | Accepted standalone gates compute the products of the boot interface tokens. |
-| `Airbender.InitsTeardowns.Native.UnifiedSoundnessClaim` | Accepted inline gates compute the products of the boot interface tokens. |
+| `Airbender.InitsTeardowns.Native.UnifiedSoundnessClaim` | Accepted inline gates of the cached capture compute the products of the boot interface tokens. |
 | `Airbender.InitsTeardowns.Native.StandaloneSatisfiableClaim` | An instance with checked windows meets the standalone gate premises. |
 | `Airbender.InitsTeardowns.Native.UnifiedSatisfiableClaim` | An instance with checked windows meets the inline gate premises. |
 
 The [final proofs](../../../../../proven/Proven/Final/Circuits/InitsTeardowns/NativeProducts.lean) use one generic tree and product argument.
-The kernel checks both extraction bindings. The [import command](../../../Import/NativeRamProducts.lean) emits data only.
+The kernel checks both extraction bindings. The unified binding reads the cached capture `Captures.Unified.imported`,
+the circuit that production proves, and checks its initialization layout as well.
+The CPU memory claims of that capture read no initialization output. Their proof evaluates the initialization
+subgraph with internal windows. These two claims bind the initialization outputs with the public windows.
+The [import command](../../../Import/NativeRamProducts.lean) emits data only.
 Its output must pass those bindings. Product equality does not prove a token permutation.
 The extension-wire and product-challenge interfaces remain explicit.
 
@@ -30,7 +34,7 @@ the imported teardown memory placements. They use the checked public windows.
 The EVM verifier pins the deployment window values through upstream fix #548.
 The Rust full statement verifier also requires strictly increasing top bits below 64 across all instances.
 Both conditions matter for the initialization-window fix.
-The unified artifact has `2 ^ 23` rows and a high-limb window stride of `2 ^ 9`.
+The unified capture has `2 ^ 23` rows and a high-limb window stride of `2 ^ 9`.
 Its geometry permits 128 windows. The Rust verifier ceiling admits only 64.
 Thus the accepted inline windows reach addresses below `2 ^ 31`.
 This restriction comes from the verifier ceiling together with the circuit geometry.

@@ -4,19 +4,20 @@ public import Proven.InitsTeardowns.Native.Emit
 public import Proven.InitsTeardowns.Native.Products
 public import Proven.InitsTeardowns.Native.Satisfiable
 public import Proven.KernelRfl
+import all Init.Data.Range.Basic -- the layout import loops over a range; the kernel needs the loop body
 
 @[expose] public section
 
 namespace Airbender.InitsTeardowns.Native.Proofs.Unified
 open Trace
 
-/-- The extracted graph is bound to the existing imported circuit. -/
+/-- The cached capture has the initialization layout and the extracted graph. -/
 theorem binding : UnifiedBindingClaim := by
   unfold UnifiedBindingClaim
-  kernel_rfl
+  constructor <;> kernel_rfl
 
 prove_ram_product_wiring terminal_follows initial_follows for unifiedArtifact
-  from "../../cs/compiled_circuits/unified_reduced_machine_layout_no_caches_gkr.json" unified_inline
+  from "../../cs/compiled_circuits/unified_reduced_machine_layout_gkr.json" unified_inline
 
 /-- The teardown tree covers each native set once. -/
 theorem terminal_leaves : unifiedArtifact.terminal.leaves = unifiedArtifact.layout.leaves .terminal := by decide +kernel
