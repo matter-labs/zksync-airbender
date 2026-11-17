@@ -118,6 +118,8 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 import Proven.Final.Compiler.MemoryPorts
 import Proven.Final.Compiler.PaddedNativeMachine
 
+import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
+
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
 example : Airbender.Blake2G.SoundnessClaim := @Airbender.Blake2G.soundness
@@ -1164,3 +1166,7 @@ example : Airbender.Trace.Machine.Native.PaddedUnifiedFromNativeSatisfiableClaim
 #print axioms Airbender.Trace.Machine.Native.padded_unified_from_native
 
 #print axioms Airbender.Trace.Machine.Native.padded_unified_from_native_satisfiable
+
+example : Airbender.InitsTeardowns.SharedBytesClaim := @Airbender.InitsTeardowns.shared_bytes
+
+#print axioms Airbender.InitsTeardowns.shared_bytes

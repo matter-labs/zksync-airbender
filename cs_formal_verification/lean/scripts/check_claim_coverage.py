@@ -115,6 +115,7 @@ EXCEPTIONS = {
         'Airbender.InitsTeardowns.Native.StandaloneBindingClaim',
         'Airbender.InitsTeardowns.Native.UnifiedBindingClaim',
         'Airbender.InitsTeardowns.StandaloneBytesClaim',
+        'Airbender.InitsTeardowns.SharedBytesClaim',
         'Airbender.InitsTeardowns.StandaloneImportClaim',
         'Airbender.InitsTeardowns.UnifiedImportClaim',
         'Airbender.JumpBranchSlt.ArtifactImportClaim',

@@ -185,6 +185,8 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 import Proven.Final.Compiler.MemoryPorts
 import Proven.Final.Compiler.PaddedNativeMachine
 
+import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
+
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
 #print axioms ExplicitCircuit.from_map
@@ -1685,3 +1687,5 @@ import Proven.Final.Compiler.PaddedNativeMachine
 #print axioms Airbender.Trace.Machine.Native.padded_unified_from_native
 
 #print axioms Airbender.Trace.Machine.Native.padded_unified_from_native_satisfiable
+
+#print axioms Airbender.InitsTeardowns.shared_bytes

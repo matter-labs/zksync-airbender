@@ -100,11 +100,17 @@ CleanCore (Clean's definitions, transcribed) supplies `Expression`, `FlatOperati
   [Trust.lean](../lean/human/Human/Trust.lean) lists allowed external roots and tactic modules;
   [the source check](../lean/scripts/check_trusted_code.py) enforces the procedure list. The import_circuit command
   reads a circuit JSON, parses it with `Json.parse`, decodes the value with `Circuit.decode` and reflects the result as
-  `importedCircuit` (derived `ToExpr`), next to the file's text `importedCircuitSourceBytes`. Trusted: the file read,
-  the composition and the reflection. For the standalone inits/teardowns artifact, `StandaloneBytesClaim` has the
-  kernel parse and decode the file's bytes, so only the file read stays trusted. The sha256 pins of the JSON files, and
+  `importedCircuit` (derived `ToExpr`), next to the file's text `importedCircuitSourceBytes`.
+  Trusted: the file read, the composition and the reflection. For the standalone inits/teardowns
+  artifact, `StandaloneBytesClaim` and `SharedBytesClaim` have the kernel parse and decode the file's bytes, in the
+  plain and in the shared form, so only the file read stays trusted for it. A bytes claim for a cached capture is
+  above the module budget. The sha256 pins of the JSON files, and
   that each circuit and setup JSON is in its canonical form, are checked by
   [check_circuit_json.py](../lean/check_circuit_json.py) (verify.sh step 1b).
+- **Spot checks:** [ImportSpotChecks.lean](../lean/test/Tests/ImportSpotChecks.lean) has kernel examples that a
+  reviewer can repeat with other values. Each example names its JSON file and JSON path. They read one gate
+  coefficient, one placement entry and one cached lookup expression of the shared add-sub and chi imports. They decode
+  one add-sub word and one word-memory word with Sail and find the native query of each in the decoder table.
 - **Proved:** the parser accepts exactly the JSON texts without duplicate member names, and a text has one value
   (`ParseSoundClaim`, `TextUniqueClaim`, [Theorems](../lean/human/Human/Import/Theorems.lean), against the byte-level
   grammar of [JsonGrammar](../lean/human/Human/Import/JsonGrammar.lean): RFC 8259 restricted to integers and to `\u`

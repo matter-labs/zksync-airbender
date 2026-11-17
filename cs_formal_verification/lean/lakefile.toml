@@ -212,6 +212,14 @@ roots = ["Human.Circuits.InitsTeardowns.Artifact"]
 globs = ["Human.Circuits.InitsTeardowns.Artifact"]
 needs = ["initsTeardownsJson"]
 
+# InitsTeardowns in the shared import form, for its bytes claim: rebuilt when its JSON changes
+[[lean_lib]]
+name = "InitsTeardownsSharedArtifact"
+srcDir = "human"
+roots = ["Human.Circuits.InitsTeardowns.SharedArtifact"]
+globs = ["Human.Circuits.InitsTeardowns.SharedArtifact"]
+needs = ["initsTeardownsJson"]
+
 # UnifiedReduced inline inits/teardowns sets: rebuilt when unified_reduced_machine_layout_no_caches_gkr.json changes
 [[lean_lib]]
 name = "InitsTeardownsUnifiedArtifact"
@@ -507,6 +515,7 @@ roots = [
   "Tests.TransferSplit",
   "Tests.UnifiedDelegation",
   "Tests.WordMemory",
+  "Tests.ImportSpotChecks",
 ]
 
 # Compiled comparisons for every native fixed table region.

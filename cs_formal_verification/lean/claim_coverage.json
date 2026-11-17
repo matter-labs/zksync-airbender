@@ -978,6 +978,10 @@
       "witness": "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativeSatisfiableClaim",
       "evidence": "Checks.Satisfiable"
     },
-    "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativeSatisfiableClaim": {}
+    "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativeSatisfiableClaim": {},
+    "Airbender.InitsTeardowns.SharedBytesClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    }
   }
 }
