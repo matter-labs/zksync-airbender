@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Check which replay failures are required and which are advisory."""
 import os
+import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -19,7 +21,8 @@ lake() {
       fi
       return "${REQUIRED_RC:-0}" ;;
     env\ leanchecker-paranoid\ --silent\ --from-export\ *) return "${PARANOID_RC:-0}" ;;
-    'check --paranoid'|check\ --paranoid\ --from-export\ *) return "${EXTERNAL_RC:-0}" ;;
+    'env lean --print-prefix') printf '/mock/toolchain\n' ;;
+    env\ lean\ --run\ */external-checkers.lean\ *) return "${EXTERNAL_RC:-0}" ;;
     'env leanchecker CleanCore.Equivalence Checks.Axioms') return "${CLEAN_RC:-0}" ;;
     *) return 99 ;;
   esac
@@ -58,6 +61,10 @@ class ReplayGateTests(unittest.TestCase):
                     command, export_path = call.rsplit(' ', 1)
                     self.assertFalse(Path(export_path).is_relative_to(root / 'lean'))
                     calls[index] = command + ' <export>'
+                elif '/external-checkers.lean ' in call:
+                    command, export_path, sandbox, prefix = call.rsplit(' ', 3)
+                    self.assertFalse(Path(export_path).is_relative_to(root / 'lean'))
+                    calls[index] = f'{command} <export> {sandbox} {prefix}'
             return result.returncode, calls
 
     def test_required_checks_exclude_external_checkers(self):
@@ -81,9 +88,10 @@ class ReplayGateTests(unittest.TestCase):
         self.assertEqual(calls, ["check", "env leanchecker-paranoid --silent --from-export <export>"])
 
     def test_external_failure_is_reported_without_changing_required_result(self):
-        code, calls = self.replay("kernel-external", EXTERNAL_RC="23")
+        code, calls = self.replay("kernel-external", export_exists=True, EXTERNAL_RC="23")
         self.assertEqual(code, 23)
-        self.assertEqual(calls, ["check --paranoid"])
+        self.assertEqual(calls, ["env lean --print-prefix",
+            f"env lean --run {CI / 'external-checkers.lean'} <export> {CI / 'kernel-bwrap.sh'} /mock/toolchain"])
         workflow = WORKFLOW.read_text()
         required = workflow.split("- name: Required Lean kernel replay and export axiom audit", 1)[1].split("- name:", 1)[0]
         external = workflow.split("- name: Bundled external checkers (advisory)", 1)[1].split("- name:", 1)[0]
@@ -93,7 +101,75 @@ class ReplayGateTests(unittest.TestCase):
     def test_advisory_checks_reuse_the_complete_required_export(self):
         code, calls = self.replay("kernel-external", export_exists=True, EXTERNAL_RC="23")
         self.assertEqual(code, 23)
-        self.assertEqual(calls, ["check --paranoid --from-export <export>"])
+        self.assertEqual(calls, ["env lean --print-prefix",
+            f"env lean --run {CI / 'external-checkers.lean'} <export> {CI / 'kernel-bwrap.sh'} /mock/toolchain"])
+
+    def test_missing_required_export_stops_the_advisory_replay(self):
+        code, calls = self.replay("kernel-external")
+        self.assertEqual(code, 2)
+        self.assertEqual(calls, [])
+
+
+class ExternalCheckerRunnerTests(unittest.TestCase):
+    def replay(self, first_status=0, empty=False, missing=False):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            prefix = root / 'toolchain'
+            (prefix / 'bin').mkdir(parents=True)
+            trace = root / 'trace.jsonl'
+            export = root / 'required-export.ndjson'
+            if not missing:
+                export.write_text('' if empty else 'retained export\n')
+            for name in ('lean4lean', 'nanoda_bin', 'con-leche', 'con-ron'):
+                checker = prefix / 'bin' / name
+                checker.write_text(
+                    '#!' + sys.executable + '\nimport json, pathlib, sys\n'
+                    + 'name = ' + repr(name) + '\n'
+                    + 'config = json.loads(pathlib.Path(sys.argv[1]).read_text()) if name == "nanoda_bin" else None\n'
+                    + 'entry = {"name": name, "arguments": sys.argv[1:], "config": config}\n'
+                    + 'with pathlib.Path(' + repr(str(trace)) + ').open("a") as output:\n'
+                    + '    output.write(json.dumps(entry) + "\\n")\n'
+                    + 'sys.exit(' + str(first_status if name == 'lean4lean' else 0) + ')\n')
+                checker.chmod(0o755)
+            sandbox = root / 'sandbox'
+            sandbox.write_text('#!/bin/sh\nwhile [ "$1" != "--" ]; do shift; done\nshift\nexec "$@"\n')
+            sandbox.chmod(0o755)
+            result = subprocess.run(
+                ['lake', 'env', 'lean', '--run', str(CI / 'external-checkers.lean'),
+                 str(export), str(sandbox), str(prefix)],
+                cwd=CI.parent / 'lean', env=dict(os.environ, LEAN_NUM_THREADS='2'),
+                capture_output=True, text=True,
+            )
+            entries = [json.loads(line) for line in trace.read_text().splitlines()] if trace.exists() else []
+            return result, entries, str(export)
+
+    def test_only_four_external_checkers_read_the_same_export(self):
+        result, entries, export = self.replay()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([entry['name'] for entry in entries],
+                         ['lean4lean', 'nanoda_bin', 'con-leche', 'con-ron'])
+        self.assertEqual(entries[0]['arguments'], ['--import', export])
+        self.assertEqual(entries[2]['arguments'], [export])
+        self.assertEqual(entries[3]['arguments'], [export])
+        self.assertEqual(entries[1]['config'], {
+            'use_stdin': False, 'export_file_path': export,
+            'permitted_axioms': ['propext', 'Quot.sound', 'Classical.choice'],
+            'unpermitted_axiom_hard_error': False, 'num_threads': 4,
+            'nat_extension': True, 'string_extension': True,
+        })
+
+    def test_rejection_does_not_skip_the_other_checkers(self):
+        result, entries, _ = self.replay(first_status=17)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(len(entries), 4)
+        self.assertIn('lean4lean exited with 17', result.stderr)
+
+    def test_missing_or_empty_export_runs_no_checker(self):
+        for options in ({'missing': True}, {'empty': True}):
+            with self.subTest(options=options):
+                result, entries, _ = self.replay(**options)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertEqual(entries, [])
 
 
 class SandboxExportTests(unittest.TestCase):

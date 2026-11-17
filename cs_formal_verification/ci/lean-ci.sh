@@ -179,8 +179,8 @@ step_kernel_probe() {
 # kernel-bwrap.sh binds the external cs/compiled_circuits inputs read-only after Lake covers the host home paths.
 # The kernel_replay job runs on the runner host (no container: Docker's default profiles deny bwrap the user and mount
 # namespaces it needs) and sets KERNEL_CHECKER from kernel-probe; backup-check.sh sets lake.
-# The old `paranoid` value remains an alias for this required check. kernel-external runs `--paranoid` separately;
-# its result is advisory in CI and backup-check.sh. No checker resource limits are changed.
+# The `paranoid` value selects this required check. kernel-external runs the four external checkers;
+# their verdicts are advisory in CI and backup-check.sh. Checker resource limits are fixed.
 # leanchecker replays KERNEL_CHECK_THREADS (default 2) modules at a time, each on top of its own import of the
 # environment; memory grows fast with that count (container: 1 -> 1.3 GB, 2 -> 5.8-10.1 GB, 4 -> over 15 GB), so it
 # does not follow LEAN_NUM_THREADS.
@@ -223,11 +223,13 @@ step_kernel_external() {
   cd "$LEAN"
   local export=''
   if [[ -f .lake/kernel-export-path ]]; then IFS= read -r export < .lake/kernel-export-path; fi
-  if [[ -n "$export" && -s "$export" ]]; then
-    COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check --paranoid --from-export "$export"
-  else
-    COMPARATOR_BWRAP="$CI_DIR/kernel-bwrap.sh" lake check --paranoid
+  if [[ -z "$export" || ! -s "$export" ]]; then
+    echo "The complete required kernel export is missing." >&2
+    return 2
   fi
+  local prefix
+  prefix=$(lake env lean --print-prefix)
+  lake env lean --run "$CI_DIR/external-checkers.lean" "$export" "$CI_DIR/kernel-bwrap.sh" "$prefix"
 }
 
 step_verify() {
