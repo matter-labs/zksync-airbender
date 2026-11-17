@@ -10,11 +10,17 @@ except the fixed-data equations listed by exact name in [the coverage map](../le
 [The coverage checker](../lean/scripts/check_claim_coverage.py) reads every constant of `human/` whose name ends in
 "Claim". Each one must be a definition of type Prop, with a final theorem in `proven/Proven/Final/` and a row in the
 table below. The witness of a claim must be `<stem>SatisfiableClaim`, where the stem is the claim name without
-"Claim", or without "SoundnessClaim" when only that witness exists. No two claims share a witness. A Lean example in
-[Satisfiable.lean](../lean/test/Checks/Satisfiable.lean) takes the claim and its witness, and applies the claim. Each
-explicit argument of each claim application must be witness data: a variable that the example takes from the witness,
-a projection of witness data, or a constructor whose fields are witness data. A witness statement must be an
-existential, and no claim joins soundness and non-vacuity. Only the fixed-data equations of the coverage map have no witness.
+"Claim", or without "SoundnessClaim" when only that witness exists. No two claims share a witness. The witness must
+have exactly the premises of its claim: for a claim ∀ x₁ … xₙ, P₁ → … → Pₘ → Q, the witness is ∃ x₁ … xₙ, P₁ ∧ … ∧
+Pₘ, with more conjuncts allowed only after Pₘ (for example rows ≠ []). Lean checks each conjunct against the premise
+at its position by definitional equality, and the witness binders against the claim binders in the same order and
+with the same types. A claim binder that the witness does not bind must take a closed value, such as the field
+modulus, and an instance binder takes the synthesized instance. The checker lists by exact name, with a reason, the
+28 claims whose witness has another form: 7 claims without premises, 2 witnesses that also bind conclusion variables,
+17 witnesses that state extra facts before the premises, and 2 witnesses that give a nonempty list in place of a
+bound row. The examples in [Satisfiable.lean](../lean/test/Checks/Satisfiable.lean) apply each claim to its witness
+and are only a build check. A witness statement must be an existential, and no claim joins soundness and
+non-vacuity. Only the fixed-data equations of the coverage map have no witness.
 The [axiom audit](../lean/test/Checks/Axioms.lean) checks proof dependencies.
 The replay runs nightly from `main`, and `ci.yml` dispatches it on demand.
 Lean kernel replay, its export axiom audit, the native paranoid kernel and the

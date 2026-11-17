@@ -5,7 +5,7 @@ import unittest
 import subprocess
 import tempfile
 from pathlib import Path
-from check_claim_coverage import validate, EXCEPTIONS, EVIDENCE_MODULE, EVIDENCE_AUDIT, ROOT, evidence_source
+from check_claim_coverage import validate, EXCEPTIONS, AUDIT, ROOT
 
 
 class ClaimCoverageTests(unittest.TestCase):
@@ -16,8 +16,8 @@ class ClaimCoverageTests(unittest.TestCase):
             self.primary: {"module": "Human.Circuits.Example.Theorems", "head": "forall", "combined": False},
             self.witness: {"module": "Human.Circuits.Example.Theorems", "head": "exists", "combined": False},
         }, "proofs": {self.primary: ["Example.soundness"], self.witness: ["Example.soundness_satisfiable"]},
-            "applications": [(self.primary, self.witness)]}
-        self.manifest = {"claims": {self.primary: {"witness": self.witness, "evidence": EVIDENCE_MODULE}, self.witness: {}}}
+            "telescopes": {f"{self.primary} {self.witness}": None}}
+        self.manifest = {"claims": {self.primary: {"witness": self.witness}, self.witness: {}}}
 
     def test_complete_pair(self):
         self.assertEqual(validate(self.data, self.manifest), 2)
@@ -38,7 +38,7 @@ class ClaimCoverageTests(unittest.TestCase):
         self.data["proofs"][other] = ["Example.other_satisfiable"]
         self.manifest["claims"][other] = {}
         self.manifest["claims"][self.primary]["witness"] = other
-        self.data["applications"] = [(self.primary, other)]
+        self.data["telescopes"] = {f"{self.primary} {other}": None}
         with self.assertRaisesRegex(ValueError, "must be its stem SatisfiableClaim"):
             validate(self.data, self.manifest)
 
@@ -48,7 +48,7 @@ class ClaimCoverageTests(unittest.TestCase):
         self.data["proofs"][witness] = self.data["proofs"].pop(self.witness)
         self.manifest["claims"][witness] = self.manifest["claims"].pop(self.witness)
         self.manifest["claims"][self.primary]["witness"] = witness
-        self.data["applications"] = [(self.primary, witness)]
+        self.data["telescopes"] = {f"{self.primary} {witness}": None}
         self.assertEqual(validate(self.data, self.manifest), 2)
 
     def test_witness_serves_one_claim(self):
@@ -61,8 +61,8 @@ class ClaimCoverageTests(unittest.TestCase):
         second = "Example.Claim"
         self.data["claims"][second] = copy.copy(self.data["claims"][self.primary])
         self.data["proofs"][second] = ["Example.claim"]
-        self.manifest["claims"][second] = {"witness": shared, "evidence": EVIDENCE_MODULE}
-        self.data["applications"] = [(self.primary, shared), (second, shared)]
+        self.manifest["claims"][second] = {"witness": shared}
+        self.data["telescopes"] = {f"{self.primary} {shared}": None, f"{second} {shared}": None}
         with self.assertRaisesRegex(ValueError, "serves two claims"):
             validate(self.data, self.manifest)
 
@@ -106,24 +106,28 @@ class ClaimCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not a proposition"):
             validate(self.data, self.manifest)
 
-    def test_missing_typed_evidence(self):
-        del self.manifest["claims"][self.primary]["evidence"]
-        with self.assertRaisesRegex(ValueError, "Missing typed witness evidence"):
+    def test_witness_must_match_the_premise_telescope(self):
+        self.data["telescopes"][f"{self.primary} {self.witness}"] = "premise 1 differs from the conjunct at its position"
+        with self.assertRaisesRegex(ValueError, "is not the premise telescope"):
             validate(self.data, self.manifest)
 
-    def test_prose_is_not_typed_evidence(self):
-        self.manifest["claims"][self.primary]["evidence"] = "The premises can hold."
-        with self.assertRaisesRegex(ValueError, "Missing typed witness evidence"):
+    def test_listed_telescope_exception(self):
+        listed = "Airbender.RunIsAirbenderClaim"
+        witness = "Airbender.RunIsAirbenderSatisfiableClaim"
+        for name in (listed, witness):
+            self.data["claims"][name] = copy.copy(self.data["claims"][self.witness if name == witness else self.primary])
+            self.data["proofs"][name] = ["Example.proof"]
+        self.manifest["claims"][listed] = {"witness": witness}
+        self.manifest["claims"][witness] = {}
+        self.data["telescopes"][f"{listed} {witness}"] = "premise 1 differs from the conjunct at its position"
+        self.assertEqual(validate(self.data, self.manifest), 4)
+        self.data["telescopes"][f"{listed} {witness}"] = None
+        with self.assertRaisesRegex(ValueError, "Stale premise telescope exception"):
             validate(self.data, self.manifest)
 
-    def test_different_claim_witness_is_rejected(self):
-        self.data["applications"] = [(self.primary, "Example.OtherSatisfiableClaim")]
-        with self.assertRaisesRegex(ValueError, "application to its own witness"):
-            validate(self.data, self.manifest)
-
-    def test_missing_claim_application(self):
-        self.data["applications"] = []
-        with self.assertRaisesRegex(ValueError, "application to its own witness"):
+    def test_missing_telescope_check(self):
+        self.data["telescopes"] = {}
+        with self.assertRaisesRegex(ValueError, "Missing premise telescope check"):
             validate(self.data, self.manifest)
 
     def test_each_exact_exception_kind(self):
@@ -153,13 +157,6 @@ class ClaimCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Invalid non-vacuity exception"):
             validate(self.data, self.manifest)
 
-    def test_evidence_keeps_lean_examples_and_names_only_typed_applications(self):
-        source = "import Human.Example\nexample (claim : Example.Claim) : Example.SatisfiableClaim → True := by trivial\n"
-        named, names = evidence_source(source)
-        self.assertEqual(names, ["Checks.ClaimCoverage.case0"])
-        self.assertIn("theorem _root_.Checks.ClaimCoverage.case0 (claim :", named)
-        self.assertNotIn("import Human.Example", named)
-
     def test_missing_status_row(self):
         self.data["status_claims"] = [self.primary]
         with self.assertRaisesRegex(ValueError, "Missing claim status rows"):
@@ -169,104 +166,69 @@ class ClaimCoverageTests(unittest.TestCase):
         self.data["status_claims"] = [self.primary, self.witness]
         self.assertEqual(validate(self.data, self.manifest), 2)
 
-    def test_kernel_evidence_audit(self):
-        source = r'''import Lean
-namespace Airbender
-inductive Expr where
-  | sample
-end Airbender
-open Airbender
+    def test_kernel_telescope_audit(self):
+        source = r"""import Lean
 set_option linter.unusedVariables false
 namespace Smoke
-def Claim : Prop := ∀ n : Nat, n = n
-def Witness : Prop := ∃ n : Nat, 0 < n
-def ConjunctionClaim : Prop := (∀ n : Nat, n = n) ∧ True
-structure Bundle : Prop where
-  proof : ∀ n : Nat, n = n
-def StructuredClaim : Prop := Bundle ∧ True
-theorem valid (claim : Claim) : Witness → ∃ n : Nat, n = n :=
-  fun ⟨n, _⟩ => ⟨n, claim n⟩
-theorem projection (claim : ConjunctionClaim) : Witness → ∃ n : Nat, n = n :=
-  fun ⟨n, _⟩ => ⟨n, claim.1 n⟩
-theorem structured (claim : StructuredClaim) : Witness → ∃ n : Nat, n = n :=
-  fun ⟨n, _⟩ => ⟨n, claim.1.proof n⟩
-theorem noClaim (claim : Claim) : Witness → ∃ n : Nat, n = n :=
-  fun ⟨n, _⟩ => ⟨n, rfl⟩
-theorem noWitness (claim : Claim) : Witness → ∃ n : Nat, n = n :=
-  fun _ => ⟨0, claim 0⟩
-theorem wrongData (claim : Claim) : Witness → ∃ n : Nat, n = n :=
-  fun ⟨n, _⟩ => ⟨0, claim 0⟩
-theorem arithmeticData (claim : Claim) : Witness → ∃ n : Nat, n = n :=
-  fun ⟨n, _⟩ => ⟨n + 1, claim (n + 1)⟩
-theorem cancelledData (claim : Claim) : Witness → ∃ n : Nat, n = n :=
-  fun ⟨n, _⟩ => ⟨n - n, claim (n - n)⟩
-def ProductClaim : Prop := ∀ pair : Nat × Nat, pair = pair
-theorem constructorData (claim : ProductClaim) : Witness → ∃ pair : Nat × Nat, pair = pair :=
-  fun ⟨n, _⟩ => ⟨(n, n), claim (n, n)⟩
-theorem secondApplication (claim : Claim) : Witness → ∃ n : Nat, n = n ∧ n + 1 = n + 1 :=
-  fun ⟨n, _⟩ => ⟨n, claim n, claim (n + 1)⟩
-def PairClaim : Prop := ∀ {m : Nat} (n k : Nat), m = m ∧ n = n ∧ k = k
-theorem implicitConstant (claim : PairClaim) : Witness → ∃ n : Nat, n = n :=
-  fun ⟨n, _⟩ => ⟨n, (claim (m := 0) n n).2.1⟩
-theorem partialData (claim : PairClaim) : Witness → ∃ n : Nat, n = n :=
-  fun ⟨n, _⟩ => ⟨n, (claim (m := n) n 0).2.1⟩
-structure StructureClaim : Prop where
-  proof : True
-theorem TheoremClaim : True := trivial
+def P (a : Nat) : Prop := a < 5
+def R (a : Nat) : Prop := 0 < a
+def Claim : Prop := ∀ a : Nat, P a → R a → a < 6
+def Exact : Prop := ∃ a : Nat, P a ∧ R a
+def Extra : Prop := ∃ a : Nat, P a ∧ R a ∧ a ≠ 0
+def Omitted : Prop := ∃ a : Nat, P a
+def Weaker : Prop := ∃ a : Nat, a < 10 ∧ R a
+def PremisesSwapped : Prop := ∃ a : Nat, R a ∧ P a
+def ExtraBinder : Prop := ∃ (a c : Nat), P a ∧ R a
+def Fixed : Prop := ∀ {n : Nat} (index : Fin n), index.val < n → index.val < n + 1
+def FixedWitness : Prop := ∃ index : Fin 3, index.val < 3
+def Pair : Prop := ∀ (a : Nat) (b : Bool), (a = 1 ∧ b = true) → a ≤ 1
+def PairExact : Prop := ∃ (a : Nat) (b : Bool), a = 1 ∧ b = true
+def BindersSwapped : Prop := ∃ (b : Bool) (a : Nat), a = 1 ∧ b = true
+def Order : Prop := ∀ a b : Nat, a + 1 = b → a < b
+def ArgumentsSwapped : Prop := ∃ a b : Nat, b + 1 = a
+def ProductClaim : Prop := ∀ pair : Nat × Nat, pair.1 < pair.2 → pair.1 ≠ pair.2
+def ProductPermuted : Prop := ∃ pair : Nat × Nat, (pair.2, pair.1).1 < (pair.2, pair.1).2
+def ProductExact : Prop := ∃ pair : Nat × Nat, pair.1 < pair.2
+def Bounded : Prop := ∀ rows : List Nat, rows ≠ [] → ∀ row ∈ rows, row < 10 → row < 11
+def BoundedNested : Prop := ∃ rows : List Nat, rows ≠ [] ∧ ∃ row ∈ rows, row < 10
+def ExtraNested : Prop := ∃ a : Nat, P a ∧ R a ∧ ∃ c : Nat, c ≠ a
+def ExtraFirst : Prop := ∃ a : Nat, a ≠ 0 ∧ P a ∧ R a
 end Smoke
-''' + EVIDENCE_AUDIT + r'''
-open Lean in
-run_cmd do
-  let env ← getEnv
-  for (name, definition) in [(``Smoke.Claim, true), (``Smoke.StructureClaim, false), (``Smoke.TheoremClaim, false)] do
-    let some info := env.find? name | throwError "missing {name}"
-    unless ClaimCoverageAudit.isPropDefinition info == definition do
-      throwError "wrong claim kind: {name}"
-  logInfo "CLAIM_KINDS_CHECKED"
-run_cmd ClaimCoverageAudit.audit ``Smoke.valid
-run_cmd ClaimCoverageAudit.audit ``Smoke.projection
-run_cmd ClaimCoverageAudit.audit ``Smoke.structured
-/-- error: Evidence does not apply its claim: Smoke.noClaim -/
-#guard_msgs in
-run_cmd ClaimCoverageAudit.audit ``Smoke.noClaim
-/-- error: Evidence does not use its witness: Smoke.noWitness -/
-#guard_msgs in
-run_cmd ClaimCoverageAudit.audit ``Smoke.noWitness
-/-- error: Evidence does not apply its claim to its witness data: Smoke.wrongData -/
-#guard_msgs in
-run_cmd ClaimCoverageAudit.audit ``Smoke.wrongData
-/-- error: Evidence does not apply its claim to its witness data: Smoke.arithmeticData -/
-#guard_msgs in
-run_cmd ClaimCoverageAudit.audit ``Smoke.arithmeticData
-/-- error: Evidence does not apply its claim to its witness data: Smoke.cancelledData -/
-#guard_msgs in
-run_cmd ClaimCoverageAudit.audit ``Smoke.cancelledData
-/-- error: Evidence does not apply its claim to its witness data: Smoke.secondApplication -/
-#guard_msgs in
-run_cmd ClaimCoverageAudit.audit ``Smoke.secondApplication
-run_cmd ClaimCoverageAudit.audit ``Smoke.constructorData
-run_cmd ClaimCoverageAudit.audit ``Smoke.implicitConstant
-/-- error: Evidence does not apply its claim to its witness data: Smoke.partialData -/
-#guard_msgs in
-run_cmd ClaimCoverageAudit.audit ``Smoke.partialData
-'''
-        named, names = evidence_source("namespace Smoke\n"
-            "example (claim : Claim) : Witness → ∃ n : Nat, n = n :=\n"
-            "  fun ⟨n, _⟩ => ⟨n, claim n⟩\nend Smoke\n")
-        source += named + f"\nrun_cmd ClaimCoverageAudit.audit ``{names[0]}\n"
+""" + AUDIT + r"""
+run_cmd ClaimCoverageAudit.audit ``Smoke.Claim ``Smoke.Exact
+run_cmd ClaimCoverageAudit.audit ``Smoke.Claim ``Smoke.Extra
+run_cmd ClaimCoverageAudit.audit ``Smoke.Claim ``Smoke.Omitted
+run_cmd ClaimCoverageAudit.audit ``Smoke.Claim ``Smoke.Weaker
+run_cmd ClaimCoverageAudit.audit ``Smoke.Claim ``Smoke.PremisesSwapped
+run_cmd ClaimCoverageAudit.audit ``Smoke.Claim ``Smoke.ExtraBinder
+run_cmd ClaimCoverageAudit.audit ``Smoke.Fixed ``Smoke.FixedWitness
+run_cmd ClaimCoverageAudit.audit ``Smoke.Pair ``Smoke.PairExact
+run_cmd ClaimCoverageAudit.audit ``Smoke.Pair ``Smoke.BindersSwapped
+run_cmd ClaimCoverageAudit.audit ``Smoke.Order ``Smoke.ArgumentsSwapped
+run_cmd ClaimCoverageAudit.audit ``Smoke.ProductClaim ``Smoke.ProductPermuted
+run_cmd ClaimCoverageAudit.audit ``Smoke.ProductClaim ``Smoke.ProductExact
+run_cmd ClaimCoverageAudit.audit ``Smoke.Bounded ``Smoke.BoundedNested
+run_cmd ClaimCoverageAudit.audit ``Smoke.Claim ``Smoke.ExtraNested
+run_cmd ClaimCoverageAudit.audit ``Smoke.Claim ``Smoke.ExtraFirst
+"""
         with tempfile.TemporaryDirectory(prefix="airbender-coverage-test-") as directory:
-            path = Path(directory) / "Evidence.lean"
+            path = Path(directory) / "Telescopes.lean"
             path.write_text(source)
             result = subprocess.run(["lake", "env", "lean", str(path)], cwd=ROOT,
                                     text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.assertEqual(result.returncode, 0, result.stdout[-5000:])
-        self.assertIn("WITNESS_APPLICATION Smoke.Claim Smoke.Witness", result.stdout)
-        self.assertIn("WITNESS_APPLICATION Smoke.ConjunctionClaim Smoke.Witness", result.stdout)
-        self.assertIn("WITNESS_APPLICATION Smoke.StructuredClaim Smoke.Witness", result.stdout)
-        self.assertIn("WITNESS_APPLICATION Smoke.PairClaim Smoke.Witness", result.stdout)
-        self.assertIn("WITNESS_APPLICATION Smoke.ProductClaim Smoke.Witness", result.stdout)
-        self.assertIn("CLAIM_KINDS_CHECKED", result.stdout)
-
+        verdicts = {}
+        for line in result.stdout.splitlines():
+            fields = line.split()
+            if fields and fields[0] in {"TELESCOPE_MATCH", "TELESCOPE_MISMATCH"}:
+                verdicts[fields[2]] = fields[0] == "TELESCOPE_MATCH"
+        self.assertEqual(verdicts, {
+            "Smoke.Exact": True, "Smoke.Extra": True, "Smoke.FixedWitness": True, "Smoke.PairExact": True,
+            "Smoke.ProductExact": True, "Smoke.BoundedNested": True, "Smoke.ExtraNested": True,
+            "Smoke.ExtraFirst": False,
+            "Smoke.Omitted": False, "Smoke.Weaker": False, "Smoke.PremisesSwapped": False,
+            "Smoke.ExtraBinder": False, "Smoke.BindersSwapped": False, "Smoke.ArgumentsSwapped": False,
+            "Smoke.ProductPermuted": False})
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require a final proof and a separate proved witness for every public claim."""
+"""Require a final proof for every public claim, and a separate proved witness with exactly its premises."""
 from pathlib import Path
 import argparse
 import json
@@ -10,183 +10,121 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "claim_coverage.json"
 STATUS = ROOT.parent / "docs/VERIFICATION_STATUS.md"
-EVIDENCE_MODULE = "Checks.Satisfiable"
-EVIDENCE_FILE = ROOT / "test/Checks/Satisfiable.lean"
 SPECIAL_MODULES = {
     "Human.Compiler.NativeTargets", "Human.Trace.Machine.Theorems",
     "Human.Trace.Machine.Padding", "Human.ISA.DelegationRuns",
 }
 
-
-
-def evidence_source(source):
-    """Name the existing Lean examples so that the audit can read their proof terms."""
-    names = []
-    def name_example(match):
-        name = f"Checks.ClaimCoverage.case{len(names)}"
-        names.append(name)
-        return f"theorem _root_.{name} (claim :"
-    source = re.sub(r"(?m)^import [^\n]+\n", "", source)
-    source = re.sub(r"(?m)^example \(claim\s*:", name_example, source)
-    return source, names
-
-
-EVIDENCE_AUDIT = r'''
+# The Lean audit. A witness `W` matches its claim `C := ∀ x₁ … xₙ, P₁ → … → Pₘ → Q` when `W` unfolds to
+# `∃ y₁ … yₖ, P₁ ∧ … ∧ Pₘ ∧ extra`: each premise is definitionally equal to the conjunct at its position, the witness
+# binders are the claim binders in the same order with the same types, and a claim binder that the witness does not
+# bind takes a closed value (a fixed parameter such as the field modulus). Instance binders take synthesized instances.
+# Conjuncts after the m premises are extra facts, such as `rows ≠ []`. The premises end at the last premise binder.
+AUDIT = r'''
 namespace ClaimCoverageAudit
-open Lean Elab Command
+open Lean Meta Elab Command
 
 /-- A claim is a definition whose type is `Prop`. -/
 def isPropDefinition : ConstantInfo → Bool
   | .defnInfo info => info.type.consumeMData == .sort .zero
   | _ => false
 
-def claimProjection (env : Environment) : Nat → Lean.Expr → Nat → Bool
-  | 0, _, _ => false
-  | fuel + 1, expression, index =>
-    match expression.consumeMData with
-    | .bvar i => i == index
-    | .proj _ _ body => claimProjection env fuel body index
-    | e@(.app ..) =>
-        match e.getAppFn with
-        | .const name _ =>
-            match env.getProjectionFnInfo? name with
-            | some projection =>
-                match e.getAppArgs[projection.numParams]? with
-                | some argument => claimProjection env fuel argument index
-                | none => false
-            | none => false
-        | _ => false
-    | _ => false
+/-- Open a witness statement as its telescope: the existential binders and the conjuncts of its right spine, in
+    order. Each binder records the number of conjuncts before it. -/
+partial def openWitness {α : Type} (expression : Lean.Expr) (binders : Array (Lean.Expr × Nat))
+    (conjuncts : Array Lean.Expr) (continuation : Array (Lean.Expr × Nat) → Array Lean.Expr → MetaM α) : MetaM α := do
+  let expression := expression.consumeMData
+  match expression.getAppFnArgs with
+  | (``Exists, #[type, predicate]) =>
+      let name := match predicate.consumeMData with | .lam name _ _ _ => name | _ => `x
+      withLocalDeclD name type fun bound =>
+        openWitness (predicate.beta #[bound]) (binders.push (bound, conjuncts.size)) conjuncts continuation
+  | (``And, #[left, right]) => openWitness right binders (conjuncts.push left) continuation
+  | _ => continuation binders (conjuncts.push expression)
 
-def appliedParameter (env : Environment) : Lean.Expr → Nat → Bool
-  | .app f a, index =>
-      claimProjection env 64 f index || appliedParameter env f index || appliedParameter env a index
-  | .lam _ type body _, index | .forallE _ type body _, index =>
-      appliedParameter env type index || appliedParameter env body (index + 1)
-  | .letE _ type value body _, index =>
-      appliedParameter env type index || appliedParameter env value index || appliedParameter env body (index + 1)
-  | .mdata _ body, index | .proj _ _ body, index => appliedParameter env body index
-  | _, _ => false
+/-- Soundness templates whose definitions state premises. The audit unfolds them in a claim conclusion. -/
+def premiseTemplates : List Name := [`Airbender.Properties.Soundness, `Airbender.Verification.CircuitModel.SoundnessUnder]
 
-def mentionsParameter : Lean.Expr → Nat → Bool
-  | .bvar i, index => i == index
-  | .app f a, index => mentionsParameter f index || mentionsParameter a index
-  | .lam _ type body _, index | .forallE _ type body _, index =>
-      mentionsParameter type index || mentionsParameter body (index + 1)
-  | .letE _ type value body _, index =>
-      mentionsParameter type index || mentionsParameter value index || mentionsParameter body (index + 1)
-  | .mdata _ body, index | .proj _ _ body, index => mentionsParameter body index
-  | _, _ => false
-
-/-- Whether a term at binder depth `depth` mentions a variable whose binder level is in `levels`. -/
-def mentionsLevels (levels : List Nat) (depth : Nat) : Lean.Expr → Bool
-  | .bvar i => i < depth && levels.contains (depth - 1 - i)
-  | .app f a => mentionsLevels levels depth f || mentionsLevels levels depth a
-  | .lam _ type body _ | .forallE _ type body _ =>
-      mentionsLevels levels depth type || mentionsLevels levels (depth + 1) body
-  | .letE _ type value body _ =>
-      mentionsLevels levels depth type || mentionsLevels levels depth value || mentionsLevels levels (depth + 1) body
-  | .mdata _ body | .proj _ _ body => mentionsLevels levels depth body
-  | _ => false
-
-/-- The binder kinds of the premises of a claim definition, outermost first. -/
-def premiseBinders : Lean.Expr → List BinderInfo
-  | .forallE _ _ body binder => binder :: premiseBinders body
-  | .mdata _ body => premiseBinders body
-  | _ => []
-
-/-- The arguments that must be witness data in an application whose head is the claim (binder level 0) or a
-    projection of it. When the claim itself is the head, these are its explicit arguments. Otherwise they are all
-    arguments after the projection. -/
-def claimArguments (env : Environment) (binders : List BinderInfo) (depth : Nat) (expression : Lean.Expr) :
-    Option (Nat × Array Lean.Expr) :=
-  let function := expression.getAppFn.consumeMData
-  let arguments := expression.getAppArgs
-  let headSize := (List.range (arguments.size + 1)).find? fun split =>
-    0 < depth && claimProjection env 64 (mkAppN function (arguments.extract 0 split)) (depth - 1)
-  headSize.map fun split =>
-    if split == 0 then
-      (split, (arguments.toList.zipIdx.filter fun (_, index) =>
-        (binders[index]?.getD .default).isExplicit).toArray.map Prod.fst)
-    else (split, arguments.extract split arguments.size)
-
-/-- Whether a term is witness data: a variable whose binder level is in `levels`, a projection of witness data, or
-    a constructor application whose fields are all witness data. Any other term, such as arithmetic on witness data,
-    is not witness data. -/
-partial def isWitnessData (env : Environment) (levels : List Nat) (depth : Nat) (expression : Lean.Expr) : Bool :=
-  match expression.consumeMData with
-  | .bvar i => i < depth && levels.contains (depth - 1 - i)
-  | .proj _ _ body => isWitnessData env levels depth body
-  | application@(.app ..) =>
-      let arguments := application.getAppArgs
-      match application.getAppFn.consumeMData with
-      | .const name _ =>
-          match env.getProjectionFnInfo? name, env.find? name with
-          | some projection, _ =>
-              arguments.size == projection.numParams + 1 &&
-                isWitnessData env levels depth arguments[projection.numParams]!
-          | none, some (.ctorInfo constructor) =>
-              arguments.size == constructor.numParams + constructor.numFields &&
-                (arguments.extract constructor.numParams arguments.size).all (isWitnessData env levels depth)
-          | _, _ => false
+/-- Unfold the premise templates at the conclusion of a statement. -/
+partial def unfoldTemplates (statement : Lean.Expr) : MetaM Lean.Expr :=
+  forallTelescope statement fun binders conclusion => do
+    let template := match conclusion.getAppFn with
+      | .const name _ => premiseTemplates.contains name
       | _ => false
-  | _ => false
+    if template then
+      if let some unfolded ← unfoldDefinition? conclusion then
+        return ← mkForallFVars binders (← unfoldTemplates unfolded.headBeta)
+    mkForallFVars binders conclusion
 
-/-- Whether a constant eliminates its discriminants: a `match` function or a `casesOn` or `rec` recursor. -/
-def isEliminator (env : Environment) (name : Name) : Bool :=
-  Lean.Meta.isMatcherCore env name || isCasesOnRecursor env name ||
-    match env.find? name with | some (.recInfo _) => true | _ => false
+/-- Match one premise against the witness conjuncts from `position`. A conjunction premise matches one conjunct, or
+    one conjunct for each of its parts. Returns the position after the matched conjuncts. -/
+partial def matchPremise (premise : Lean.Expr) (conjuncts : Array Lean.Expr) (position : Nat) : MetaM (Option Nat) := do
+  let some conjunct := conjuncts[position]? | return none
+  if ← isDefEq premise conjunct then return some (position + 1)
+  if let some (left, right) := (← whnfR premise).and? then
+    if let some afterLeft ← matchPremise left conjuncts position then
+      return ← matchPremise right conjuncts afterLeft
+  return none
 
-/-- For each application of the claim (binder level 0) or of a projection of it, whether every explicit argument is
-    witness data. Witness data starts at the witness (binder level 1). A `let` variable whose value is witness data,
-    and a variable that an alternative binds when a `match` or recursor eliminates witness data, are witness data. -/
-partial def claimApplications (env : Environment) (binders : List BinderInfo) (levels : List Nat) (depth : Nat)
-    (binds : Bool) (expression : Lean.Expr) : List Bool :=
-  let recurse := claimApplications env binders
-  match expression.consumeMData with
-  | .lam _ type body _ =>
-      recurse levels depth false type ++ recurse (if binds then depth :: levels else levels) (depth + 1) binds body
-  | .forallE _ type body _ => recurse levels depth false type ++ recurse levels (depth + 1) false body
-  | .letE _ type value body _ =>
-      recurse levels depth false type ++ recurse levels depth false value ++
-        recurse (if isWitnessData env levels depth value then depth :: levels else levels) (depth + 1) false body
-  | .proj _ _ body => recurse levels depth false body
-  | application@(.app ..) =>
-      let function := application.getAppFn.consumeMData
-      let arguments := application.getAppArgs
-      match claimArguments env binders depth application with
-      | some (split, claimed) =>
-          -- The claim head is one application; only the arguments after it can hold further applications.
-          [!claimed.isEmpty && claimed.all (isWitnessData env levels depth)] ++
-            (arguments.extract split arguments.size).toList.flatMap (recurse levels depth false)
-      | none =>
-          let eliminates := (match function with | .const name _ => isEliminator env name | _ => false) &&
-            arguments.any (isWitnessData env levels depth)
-          recurse levels depth false function ++ arguments.toList.flatMap (recurse levels depth eliminates)
-  | _ => []
+/-- Why a witness statement is not the premise telescope of its claim, or `none` when it is. `some "no premises"`
+    marks a claim without premises. -/
+def telescopeMismatch (claim witness : Name) : MetaM (Option String) := do
+  let some (.defnInfo claimInfo) := (← getEnv).find? claim | return some "the claim is not a definition"
+  let some (.defnInfo witnessInfo) := (← getEnv).find? witness | return some "the witness is not a definition"
+  let statement ← unfoldTemplates claimInfo.value
+  let premiseEnd ← forallTelescope statement fun binders _ => do
+    let mut last := 0
+    for h : index in [0:binders.size] do
+      let declaration ← binders[index].fvarId!.getDecl
+      if !declaration.binderInfo.isInstImplicit && (← isProp declaration.type) then last := index + 1
+    return last
+  if premiseEnd == 0 then return some "no premises"
+  openWitness witnessInfo.value #[] #[] fun witnessBinders conjuncts => do
+    -- The claim metavariables live in the context of the witness binders, so that they can take them as values.
+    let (claimBinders, binderInfos, _) ← forallMetaBoundedTelescope statement premiseEnd
+    let mut position := 0
+    let mut premise := 0
+    for h : index in [0:claimBinders.size] do
+      let type ← instantiateMVars (← inferType claimBinders[index])
+      if binderInfos[index]!.isInstImplicit || !(← isProp type) then continue
+      premise := premise + 1
+      if position ≥ conjuncts.size then return some s!"the witness omits premise {premise}"
+      let some after ← matchPremise type conjuncts position
+        | return some s!"premise {premise} differs from the conjunct at its position"
+      position := after
+    -- Witness binders before the last premise conjunct are the claim binders; later binders belong to extra facts.
+    let required := (witnessBinders.filter fun (_, before) => before < position).map Prod.fst
+    let mut mapped := 0
+    for h : index in [0:claimBinders.size] do
+      let type ← instantiateMVars (← inferType claimBinders[index])
+      if binderInfos[index]!.isInstImplicit || (← isProp type) then continue
+      let value ← instantiateMVars claimBinders[index]
+      if value.isMVar then
+        let some bound := required[mapped]? | return some s!"claim binder {index + 1} has no witness binder"
+        unless ← isDefEq value bound do return some s!"claim binder {index + 1} has another type"
+        mapped := mapped + 1
+      else if value.isFVar then
+        unless required[mapped]? == some value do
+          return some s!"claim binder {index + 1} takes a witness binder out of order"
+        unless ← isDefEq (← inferType value) type do return some s!"claim binder {index + 1} has another type"
+        mapped := mapped + 1
+      else if value.hasFVar || value.hasMVar then
+        return some s!"claim binder {index + 1} is a term of witness binders, not a witness binder"
+    unless mapped == required.size do return some "the witness has a binder that the claim does not have"
+    for h : index in [0:claimBinders.size] do
+      if binderInfos[index]!.isInstImplicit then
+        let value ← instantiateMVars claimBinders[index]
+        if value.isMVar then
+          let some found ← synthInstance? (← instantiateMVars (← inferType value))
+            | return some s!"no instance for claim binder {index + 1}"
+          unless ← isDefEq value found do return some s!"claim binder {index + 1} has another instance"
+    return none
 
-def audit (name : Name) : CommandElabM Unit := do
-  let env ← getEnv
-  let some (.thmInfo info) := env.find? name | throwError "Missing evidence theorem {name}"
-  let .forallE _ (.const claim _) body _ := info.type.consumeMData |
-    throwError "Evidence must take its named claim first: {name}"
-  let .forallE _ (.const witness _) _ _ := body.consumeMData |
-    throwError "Evidence must take its named witness second: {name}"
-  let .lam _ _ proof _ := info.value.consumeMData |
-    throwError "Evidence must use its claim parameter: {name}"
-  unless appliedParameter env proof 0 do
-    throwError "Evidence does not apply its claim: {name}"
-  let .lam _ _ proof _ := proof.consumeMData |
-    throwError "Evidence must use its witness parameter: {name}"
-  unless mentionsParameter proof 0 do
-    throwError "Evidence does not use its witness: {name}"
-  let binders := match env.find? claim with
-    | some (.defnInfo definition) => premiseBinders definition.value
-    | _ => []
-  let applications := claimApplications env binders [1] 0 false info.value
-  unless !applications.isEmpty && applications.all id do
-    throwError "Evidence does not apply its claim to its witness data: {name}"
-  logInfo m!"WITNESS_APPLICATION {claim} {witness}"
+/-- Log whether the witness statement is the premise telescope of the claim. -/
+def audit (claim witness : Name) : CommandElabM Unit := do
+  match ← liftTermElabM (telescopeMismatch claim witness) with
+  | none => logInfo m!"TELESCOPE_MATCH {claim} {witness}"
+  | some reason => logInfo m!"TELESCOPE_MISMATCH {claim} {witness} {reason}"
 end ClaimCoverageAudit
 '''
 
@@ -236,12 +174,54 @@ EXCEPTIONS = {
     },
 }
 
-def inventory():
+def witness_pairs(manifest):
+    """The (claim, witness) rows of the coverage map."""
+    return sorted((name, row["witness"]) for name, row in manifest["claims"].items() if "witness" in row)
+
+
+NO_PREMISES = "The claim has no premises. Its witness shows a nonempty instance of the claim's data."
+EXTRA_FIRST = "The witness states extra facts, such as sizes, before the premises."
+TELESCOPE_EXCEPTIONS = {
+    "Airbender.AgreeExistsClaim": NO_PREMISES,
+    "Airbender.Compiler.NativeLookups.CachedLookupSelectorsClaim": NO_PREMISES,
+    "Airbender.Compiler.NativeWorkerLookups.CachedWorkerLookupSelectorsClaim": NO_PREMISES,
+    "Airbender.DecodeClaim": NO_PREMISES,
+    "Airbender.InitsTeardowns.StandaloneClaim": NO_PREMISES,
+    "Airbender.InitsTeardowns.UnifiedClaim": NO_PREMISES,
+    "Airbender.PlacementsClaim": NO_PREMISES,
+    "Airbender.PaddingBoundary.ContributionSoundnessClaim":
+        "The witness also binds the conclusion variables, to show a nonzero encoded value.",
+    "Airbender.PaddingBoundary.ProductSoundnessClaim":
+        "The witness also binds the conclusion variables, to show a nonzero encoded product.",
+    "Airbender.PaddingBoundary.ProjectionClaim": EXTRA_FIRST,
+    "Airbender.RunIsAirbenderClaim": EXTRA_FIRST,
+    "Airbender.Trace.Machine.Native.UnifiedFromNative": EXTRA_FIRST,
+    "Airbender.Trace.Machine.Native.UnrolledFullFromNative": EXTRA_FIRST,
+    "Airbender.Trace.Machine.Native.UnrolledReducedFromNative": EXTRA_FIRST,
+    "Airbender.Trace.Machine.PaddedUnified": EXTRA_FIRST,
+    "Airbender.Trace.Machine.PaddedUnrolledFullUnsigned": EXTRA_FIRST,
+    "Airbender.Trace.Machine.PaddedUnrolledReduced": EXTRA_FIRST,
+    "Airbender.Trace.Machine.UnifiedCodeHashSegmentationClaim": EXTRA_FIRST,
+    "Airbender.Trace.Machine.UnifiedHashSegmentationClaim": EXTRA_FIRST,
+    "Airbender.Trace.Machine.UnrolledCodeHashSegmentationClaim": EXTRA_FIRST,
+    "Airbender.Trace.Machine.UnrolledFullUnsigned": EXTRA_FIRST,
+    "Airbender.Trace.Machine.UnrolledFullUnsignedSailClaim": EXTRA_FIRST,
+    "Airbender.Trace.Machine.UnrolledHashSegmentationClaim": EXTRA_FIRST,
+    "Airbender.Trace.Machine.UnrolledReduced": EXTRA_FIRST,
+    "Airbender.Trace.Machine.UnrolledReducedSailClaim": EXTRA_FIRST,
+    "Airbender.UnifiedReduced.Caller.RVPreparedRoundMasksSoundnessClaim":
+        "The witness gives a nonempty worker list after an extra caller fact, not a bound worker row.",
+    "Airbender.UnifiedReduced.Caller.RVPreparedRoundRegionMasksSoundnessClaim":
+        "The witness gives a nonempty worker list after an extra caller fact, not a bound worker row.",
+    "RV.CallsRun": EXTRA_FIRST,
+}
+
+
+def inventory(pairs):
     modules = [".".join(p.relative_to(ROOT / folder).with_suffix("").parts)
                for folder, prefix in [("human", "Human"), ("proven", "Proven/Final")]
                for p in sorted((ROOT / folder / prefix).rglob("*.lean"))]
-    evidence, evidence_names = evidence_source(EVIDENCE_FILE.read_text())
-    code = "\n".join("import " + m for m in modules) + "\nimport Lean\n" + evidence + EVIDENCE_AUDIT + '''
+    code = "\n".join("import " + m for m in modules) + "\nimport Lean\n" + AUDIT + '''
 open Lean Elab Command
 run_cmd do
   let env ← getEnv
@@ -274,8 +254,8 @@ run_cmd do
                 logInfo m!"FINAL_PROOF {name} {claim}"
           | _ => pure ()
 '''
-    for name in evidence_names:
-        code += f'\nrun_cmd ClaimCoverageAudit.audit ``{name}\n'
+    for claim, witness in pairs:
+        code += f'\nrun_cmd ClaimCoverageAudit.audit ``{claim} ``{witness}\n'
     # Recheck the ordinary theorem forms against their named Human statements.
     # These assertions also cover generic final theorems whose type unfolds the claim.
     for claim, proof in re.findall(r"^example : ([\w.]+) := @?([\w.]+)\s*$",
@@ -290,15 +270,16 @@ run_cmd do
     if result.returncode:
         raise ValueError(result.stdout[-5000:])
     props, proofs, declarations, proof_modules = {}, {}, set(), {}
-    applications, non_props, non_definitions = set(), [], []
+    telescopes, non_props, non_definitions = {}, [], []
     for line in result.stdout.splitlines():
         fields = line.split()
         if fields and fields[0] == "NON_PROP_CLAIM":
             non_props.append(fields[1])
         elif fields and fields[0] == "NON_DEF_CLAIM":
             non_definitions.append(fields[1])
-        elif fields and fields[0] == "WITNESS_APPLICATION":
-            applications.add((fields[1], fields[2]))
+        elif fields and fields[0] in {"TELESCOPE_MATCH", "TELESCOPE_MISMATCH"}:
+            reason = line.split(None, 3)[3] if fields[0] == "TELESCOPE_MISMATCH" else None
+            telescopes[f"{fields[1]} {fields[2]}"] = reason
         elif fields and fields[0] == "HUMAN_PROP":
             _, name, module, head, combined = fields
             props[name] = {"module": module, "head": head, "combined": combined == "true"}
@@ -313,7 +294,7 @@ run_cmd do
     claims = {name: info for name, info in props.items()
               if name.endswith("Claim") or info["module"] in SPECIAL_MODULES or name in proofs}
     return {"claims": claims, "proofs": {k: sorted(set(v)) for k, v in proofs.items() if k in claims},
-            "proof_modules": proof_modules, "applications": sorted(applications), "non_props": non_props,
+            "proof_modules": proof_modules, "telescopes": telescopes, "non_props": non_props,
             "non_definitions": non_definitions,
             "status_claims": re.findall(r"^\| \[`([^`]+)`\]\(", STATUS.read_text(), re.M)}
 
@@ -372,10 +353,14 @@ def validate(data, manifest):
         witnessed[witness] = name
         if not proofs.get(witness):
             raise ValueError("Missing non-vacuity proof: " + witness)
-        if row.get("evidence") != EVIDENCE_MODULE:
-            raise ValueError("Missing typed witness evidence: " + name)
-        if (name, witness) not in {tuple(pair) for pair in data.get("applications", [])}:
-            raise ValueError("Missing claim application to its own witness: " + name)
+        telescopes = data.get("telescopes", {})
+        if f"{name} {witness}" not in telescopes:
+            raise ValueError(f"Missing premise telescope check: {name} {witness}")
+        mismatch = telescopes[f"{name} {witness}"]
+        if mismatch is not None and name not in TELESCOPE_EXCEPTIONS:
+            raise ValueError(f"Witness {witness} is not the premise telescope of {name}: {mismatch}")
+        if mismatch is None and name in TELESCOPE_EXCEPTIONS:
+            raise ValueError(f"Stale premise telescope exception: {name}")
     return len(claims)
 
 
@@ -388,7 +373,7 @@ def initialize(data):
             continue
         witness = expected_witness(name, claims)
         if witness:
-            rows[name] = {"witness": witness, "evidence": EVIDENCE_MODULE}
+            rows[name] = {"witness": witness}
             continue
         exception = next((x for x in ["import", "artifact", "constant"] if allowed_exception(name, info, x)), None)
         rows[name] = ({"exception": exception, "reason": "This claim checks fixed imported data or a constant proposition."}
@@ -401,14 +386,15 @@ def main():
     parser.add_argument("--initialize", action="store_true")
     parser.add_argument("--inventory", type=Path)
     args = parser.parse_args()
-    data = inventory()
+    manifest = json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {"claims": {}}
+    data = inventory(witness_pairs(manifest))
     if args.inventory:
         args.inventory.write_text(json.dumps(data, indent=2) + "\n")
     if args.initialize:
         MANIFEST.write_text(json.dumps(initialize(data), indent=2) + "\n")
         print(f"Initialized {len(data['claims'])} claim rows")
         return
-    count = validate(data, json.loads(MANIFEST.read_text()))
+    count = validate(data, manifest)
     print(f"PASS {count} public claims have final proofs and separate proved non-vacuity statements or fixed-data exceptions")
 
 
