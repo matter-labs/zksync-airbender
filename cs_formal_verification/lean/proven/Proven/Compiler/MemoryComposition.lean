@@ -13,6 +13,16 @@ set_option warningAsError true
 namespace Airbender.Compiler.NativeMemory
 open Trace Trace.Machine
 
+/-- The address space of a native token address: zero for registers, one for RAM, two for PC states. -/
+def space (address : Nat) : Nat := (Nat.unpair address).1
+
+/-- The first limb of a native token address. It is the register index of a register address. -/
+def registerIndex (address : Nat) : Nat := (Nat.unpair (Nat.unpair address).2).1
+
+/-- A RAM address, or a register address below 32. Request tokens use register indices from 32 up. -/
+def Architectural (address : Nat) : Prop :=
+  space address = 1 ∨ (space address = 0 ∧ registerIndex address < 32)
+
 /-! ### Address classes -/
 
 /-- PC-state tokens: address space two. -/
@@ -443,84 +453,14 @@ theorem production_iff {Kind : Type} [CircuitLayout Kind] (trace : Data babyBear
     rw [sw, sr, rw', rr, mw, mr]
     exact ((states.map stateToken).append requests).append memory
 
-/-! ### Caller rows -/
-
-/-- Every caller family uses a CSR from 32 up. -/
-theorem family_csr (family : Delegation.Family) : 32 ≤ Delegation.Requests.csr family := by
-  cases family <;> decide
+/-! ### Callers -/
 
 /-- An unrolled CPU row calls a worker when it is an ADD/SUB row with the caller selector. -/
 abbrev unrolledCaller (row : Row babyBearModulus PooledFamily) : Bool :=
   row.family == .addSub && decide (Delegation.Requests.Selected row.assignment)
 
-/-- The classes of the tokens of an unrolled CPU row. The binding of a caller gives its request tokens. -/
-theorem unrolled_row_classes (row : Row babyBearModulus PooledFamily)
-    (binding : unrolledCaller row = true → ∃ (before : RV.State) (callers : List Delegation.Caller.RVProgramEntry),
-      Delegation.Caller.RVBinding row.assignment before callers)
-    (machine : ∀ port ∈ Delegation.Caller.machinePorts row, Architectural (port.address.code row.assignment)) :
-    RowClasses row (unrolledCaller row) (Delegation.Requests.caller row.assignment)
-      (Delegation.Caller.machinePorts row) := by
-  cases selected : unrolledCaller row
-  · have ordinary : Delegation.Caller.machinePorts row = row.ports := ite_eq_right (by simpa using selected)
-    rw [ordinary] at machine ⊢
-    exact ordinary_classes row _ machine
-  · obtain ⟨before, callers, bound⟩ := binding selected
-    obtain ⟨entry, _, _, _, _, csr⟩ := bound.instruction
-    have caller : Delegation.Caller.machinePorts row = Delegation.Caller.architecturalPorts := ite_eq_left selected
-    rw [caller] at machine ⊢
-    obtain ⟨family, assignment⟩ := row
-    obtain rfl : family = .addSub := by simpa using (Bool.and_eq_true _ _).mp selected |>.1
-    exact caller_classes _ _ (first := AddSub.importedConstraintsMemoryPorts[0])
-      (middle := Delegation.Requests.callerPort) (last := AddSub.importedConstraintsMemoryPorts[2])
-      (show AddSub.importedConstraintsMemoryPorts.toList = _ by decide +kernel)
-      (machine _ (by simp [Delegation.Caller.architecturalPorts]))
-      (machine _ (by simp [Delegation.Caller.architecturalPorts]))
-      bound.emptyRead bound.issuedWrite (csr ▸ family_csr _)
-
 /-- A unified CPU row calls a worker when it has the caller selector. -/
 abbrev unifiedCaller (row : Row babyBearModulus UnifiedFamily) : Bool :=
   decide (UnifiedReduced.Caller.Selected row.assignment)
-
-/-- The classes of the tokens of a unified CPU row. The binding of a caller gives its request tokens. -/
-theorem unified_row_classes (row : Row babyBearModulus UnifiedFamily)
-    (binding : UnifiedReduced.Caller.Selected row.assignment →
-      ∃ (before : RV.State) (callers : List Delegation.Caller.RVProgramEntry),
-        UnifiedReduced.Caller.RVBinding row.assignment before callers)
-    (machine : ∀ port ∈ UnifiedReduced.Caller.machinePorts row, Architectural (port.address.code row.assignment)) :
-    RowClasses row (unifiedCaller row) (UnifiedReduced.Caller.request row.assignment)
-      (UnifiedReduced.Caller.machinePorts row) := by
-  cases selected : unifiedCaller row
-  · have ordinary : UnifiedReduced.Caller.machinePorts row = row.ports := ite_eq_right (by simpa using selected)
-    rw [ordinary] at machine ⊢
-    exact ordinary_classes row _ machine
-  · obtain ⟨before, callers, bound⟩ := binding (by simpa using selected)
-    obtain ⟨entry, _, _, _, csr, _⟩ := bound.instruction
-    have caller : UnifiedReduced.Caller.machinePorts row = UnifiedReduced.Caller.architecturalPorts :=
-      ite_eq_left (by simpa using selected)
-    rw [caller] at machine ⊢
-    obtain ⟨family, assignment⟩ := row
-    cases family
-    exact caller_classes _ _ (first := UnifiedReduced.importedConstraintsMemoryPorts[0])
-      (middle := UnifiedReduced.Caller.virtualPort) (last := UnifiedReduced.importedConstraintsMemoryPorts[2])
-      (show UnifiedReduced.importedConstraintsMemoryPorts.toList = _ by decide +kernel)
-      (machine _ (by simp [UnifiedReduced.Caller.architecturalPorts]))
-      (machine _ (by simp [UnifiedReduced.Caller.architecturalPorts]))
-      bound.virtual.1 bound.virtual.2 (csr ▸ family_csr _)
-
-/-- A Boolean test of `Architectural`. -/
-def architecturalCheck (address : Nat) : Bool :=
-  space address == 1 || (space address == 0 && decide (registerIndex address < 32))
-
-/-- The Boolean test gives `Architectural`. -/
-theorem architectural_of_check {address : Nat} (checked : architecturalCheck address = true) :
-    Architectural address := by
-  simp only [architecturalCheck, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at checked
-  exact checked
-
-/-- A kernel check of every port address gives the address classes of the ports. -/
-theorem ports_architectural {ports : Array MemoryPort} {w : Nat → ZMod babyBearModulus}
-    (checked : ports.toList.all (fun port => architecturalCheck (port.address.code w)) = true) :
-    ∀ port ∈ ports, Architectural (port.address.code w) := fun port member =>
-  architectural_of_check (List.all_eq_true.mp checked port (Array.mem_toList_iff.mpr member))
 
 end Airbender.Compiler.NativeMemory
