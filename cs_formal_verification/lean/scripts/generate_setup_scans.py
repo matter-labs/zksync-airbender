@@ -52,6 +52,10 @@ SETUPS = (
          columns=[f'column{index}' for index in range(10)],
          unfold=['byRegion', 'Airbender.Compiler.NativeSetups.Proofs.bit', 'conditional', 'decoder'],
          long_cost=4000, per_row=[]),
+    dict(name='BlakeRound', json='blake-round.json', data='Airbender.Blake2Round.blake2RoundSetup',
+         namespace='Airbender.Blake2Round.SetupProofs', columns=[f'column{index}' for index in range(6)],
+         unfold=['byRegion', 'nat_shiftLeft'], long_cost=4000,
+         per_row=[(344064, 344065, (3,)), (589824, 589825, (4,))]),
     dict(name='AddSub', json='add-sub.json', data='Airbender.Compiler.NativeSetups.addSubSetup',
          namespace='Airbender.Compiler.NativeFixedRows.AddSubSetupProofs',
          columns=[f'column{index}' for index in range(8)],
@@ -62,7 +66,6 @@ SETUPS = (
 # The setups without kernel scans, with the reason. Every other file of `artifacts/setup` must be scanned.
 UNSCANNED = {
     'decoder-smoke.json': 'a Rust test fixture that no claim reads',
-    'blake-round.json': 'imported with grid blocks (import_setup_blocks ... with grids)',
     'inits-and-teardowns.json': 'no generic lookup columns',
     'unified.json': 'the compiled comparison in test/Tests/NativeFixedRows binds its fixed region',
     'subword-memory.json': 'the compiled comparison in test/Tests/NativeFixedRows binds its fixed region',

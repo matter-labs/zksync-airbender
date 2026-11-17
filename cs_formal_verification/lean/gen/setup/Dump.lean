@@ -15,7 +15,6 @@ def dump (name path : String) : IO Unit := do
         | .grid n f => s!"G {n} {gs f}"
       IO.println s!"{name} {c} {s} {k}"
       s := s + b.len
-#eval dump "blake" "artifacts/setup/blake-round.json"
 #eval dump "theta" "artifacts/setup/keccak-theta-rho.json"
 #eval dump "parity" "artifacts/setup/keccak-column-parity.json"
 #eval dump "chi" "artifacts/setup/keccak-chi5.json"
