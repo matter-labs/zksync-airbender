@@ -869,6 +869,11 @@
       "evidence": "Checks.Satisfiable"
     },
     "Airbender.Compiler.BlakeGCachedMemorySatisfiableClaim": {},
+    "Airbender.Compiler.BlakeRoundCachedMemoryClaim": {
+      "witness": "Airbender.Compiler.BlakeRoundCachedMemorySatisfiableClaim",
+      "evidence": "Checks.Satisfiable"
+    },
+    "Airbender.Compiler.BlakeRoundCachedMemorySatisfiableClaim": {},
     "Airbender.Compiler.UnrolledMemoryCompositionClaim": {
       "witness": "Airbender.Compiler.UnrolledMemoryCompositionSatisfiableClaim",
       "evidence": "Checks.Satisfiable"

@@ -2151,3 +2151,10 @@ name = "CompilerInputs_GKRProtocol_ProductNative_BlakeGCached"
 srcDir = "proven"
 roots = ["Proven.GKRProtocol.ProductNative.BlakeGCached"]
 needs = ["compiler_blake_g_cached_layout", "compiler_blake_g_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_GKRProtocol_ProductNative_BlakeRoundCached"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.ProductNative.BlakeRoundCached"]
+needs = ["compiler_blake_round_cached_layout", "compiler_blake_round_capture"]

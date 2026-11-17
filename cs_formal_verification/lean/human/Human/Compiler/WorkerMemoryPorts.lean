@@ -2,6 +2,7 @@ module
 public import Human.Compiler.NativeMemory
 public import Human.Compiler.Captures.Bigint
 public import Human.Compiler.Captures.BlakeG
+public import Human.Compiler.Captures.BlakeRound
 public import Human.Trace.Machine.Model
 
 @[expose] public section
@@ -68,5 +69,26 @@ def BlakeGCachedMemorySatisfiableClaim : Prop :=
     NativeArithmetic.Holds Captures.BlakeG.imported.circuit physical ∧
     NativeArithmetic.PlacementAgreement Captures.BlakeG.imported.circuit physical row.assignment ∧
     NativeMemory.Holds Captures.BlakeG.imported.circuit challenges physical values
+
+/-- Native base gates, extension caches and RAM-product gates give the RAM outputs of a cached BLAKE2 round row:
+    the execute-masked products of its port tokens and request tokens. -/
+def BlakeRoundCachedMemoryClaim : Prop :=
+  ∀ {E : Type} [CommRing E] (challenges : NativeMemory.Challenges E) (physical : GKRAddress → NativeArithmetic.F)
+    (values : GKRAddress → E) (row : Delegation.Row babyBearModulus),
+    row.family = .blakeRound →
+    NativeArithmetic.Holds Captures.BlakeRound.imported.circuit physical →
+    NativeArithmetic.PlacementAgreement Captures.BlakeRound.imported.circuit physical row.assignment →
+    NativeMemory.Holds Captures.BlakeRound.imported.circuit challenges physical values →
+    NativeMemory.RamProducts Captures.BlakeRound.imported.circuit challenges values
+      (row.assignment row.columns.execute) (NativeMemory.standardReads row) (NativeMemory.standardWrites row)
+
+/-- A cached BLAKE2 round row with native base and extension values meets the memory premises. -/
+def BlakeRoundCachedMemorySatisfiableClaim : Prop :=
+  ∃ (challenges : NativeMemory.Challenges NativeArithmetic.F) (physical : GKRAddress → NativeArithmetic.F)
+    (values : GKRAddress → NativeArithmetic.F) (row : Delegation.Row babyBearModulus),
+    row.family = .blakeRound ∧
+    NativeArithmetic.Holds Captures.BlakeRound.imported.circuit physical ∧
+    NativeArithmetic.PlacementAgreement Captures.BlakeRound.imported.circuit physical row.assignment ∧
+    NativeMemory.Holds Captures.BlakeRound.imported.circuit challenges physical values
 
 end Airbender.Compiler

@@ -19,6 +19,8 @@ WORKERS = [
      "standard", ".bigint", "bigint"),
     ("BlakeG", "blake-g-cached", "blake2_g_function", "Airbender.Blake2G", 0x7C8,
      "standard", ".blakeG", "blakeG"),
+    ("BlakeRound", "blake-round-cached", "blake2_with_extended_control", "Airbender.Blake2Round", 0x7C7,
+     "standard", ".blakeRound", "blakeRound"),
 ]
 
 

@@ -1696,6 +1696,19 @@ example (claim : Airbender.Compiler.BlakeGCachedMemoryClaim) :
   fun ⟨challenges, physical, values, row, selected, nativeHolds, placement, extension⟩ =>
     ⟨challenges, values, row, claim challenges physical values row selected nativeHolds placement extension⟩
 
+example : Airbender.Compiler.BlakeRoundCachedMemorySatisfiableClaim := Airbender.Compiler.blakeRound_cached_memory_satisfiable
+
+example (claim : Airbender.Compiler.BlakeRoundCachedMemoryClaim) :
+    Airbender.Compiler.BlakeRoundCachedMemorySatisfiableClaim →
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges Airbender.Compiler.NativeArithmetic.F)
+      (values : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (row : Airbender.Delegation.Row Airbender.babyBearModulus),
+      Airbender.Compiler.NativeMemory.RamProducts Airbender.Compiler.Captures.BlakeRound.imported.circuit challenges values
+        (row.assignment row.columns.execute) (Airbender.Compiler.NativeMemory.standardReads row)
+        (Airbender.Compiler.NativeMemory.standardWrites row) :=
+  fun ⟨challenges, physical, values, row, selected, nativeHolds, placement, extension⟩ =>
+    ⟨challenges, values, row, claim challenges physical values row selected nativeHolds placement extension⟩
+
 -- RAM permutation composition.
 
 example : Airbender.Compiler.UnrolledMemoryCompositionSatisfiableClaim :=

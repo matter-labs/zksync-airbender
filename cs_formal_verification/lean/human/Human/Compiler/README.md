@@ -27,9 +27,9 @@ cached CPU circuit: native base gates, extension caches and product gates give t
 write outputs. Each output is the product of the encoded port tokens and PC-state token of the
 model row, masked by the execute column. `StateTokenMatchingClaim` gives the raw state matching
 from exact matching of the PC-state tokens.
-[WorkerMemoryPorts.lean](WorkerMemoryPorts.lean) states the same claim for the bigint and BLAKE2 G captures.
+[WorkerMemoryPorts.lean](WorkerMemoryPorts.lean) states the same claim for the bigint, BLAKE2 G and BLAKE2 round captures.
 Each worker output is the product of the encoded port tokens and request token of the worker
-row, masked by the execute column. The BLAKE2 round and three split Keccak captures have no claim of this form.
+row, masked by the execute column. The three split Keccak captures have no claim of this form.
 [MemoryComposition.lean](MemoryComposition.lean) splits the single native RAM permutation of each
 machine by address class into the state, request and memory relations of the native machine arguments.
 
