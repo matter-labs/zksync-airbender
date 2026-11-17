@@ -16,17 +16,17 @@ set_option maxRecDepth 100000
 
 theorem column4_slice25423 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 25423 40 [] 1730305 1740545 :=
+    SliceOk column4 column4_cut25344 71 40 [] 1730305 1740545 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice25463 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 25463 40 [] 1740545 1750785 :=
+    SliceOk column4 column4_cut25344 111 40 [] 1740545 1750785 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice25503 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 25503 40 [] 1750785 1761025 :=
+    SliceOk column4 column4_cut25472 23 40 [] 1750785 1761025 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs

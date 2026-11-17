@@ -105,7 +105,7 @@ theorem column1_long262401 : Long.Ok column1 ⟨262401, 0, 256, 256, 0⟩ := by
 
 theorem column1_slice0 :
     AllOk column1 [⟨2, 0, 1, 131071, 0⟩, ⟨131075, 0, 4, 16383, 0⟩, ⟨196865, 0, 1, 32768, 0⟩, ⟨229633, 0, 1, 32768, 0⟩, ⟨262401, 0, 256, 256, 0⟩] ∧
-    SliceOk column1 column1_blocks 0 10 [⟨2, 0, 1, 131071, 0⟩, ⟨131075, 0, 4, 16383, 0⟩, ⟨196865, 0, 1, 32768, 0⟩, ⟨229633, 0, 1, 32768, 0⟩, ⟨262401, 0, 256, 256, 0⟩] 0 327937 :=
+    SliceOk column1 column1_cut0 0 10 [⟨2, 0, 1, 131071, 0⟩, ⟨131075, 0, 4, 16383, 0⟩, ⟨196865, 0, 1, 32768, 0⟩, ⟨229633, 0, 1, 32768, 0⟩, ⟨262401, 0, 256, 256, 0⟩] 0 327937 :=
   ⟨⟨column1_long2, column1_long131075, column1_long196865, column1_long229633, column1_long262401, trivial⟩, by decide +kernel⟩
 
 theorem column1_long327937 : Long.Ok column1 ⟨327937, 0, 256, 256, 1⟩ := by
@@ -125,7 +125,7 @@ theorem column1_long590085 : Long.Ok column1 ⟨590085, 0, 1, 1048572, 0⟩ := b
 
 theorem column1_slice10 :
     AllOk column1 [⟨327937, 0, 256, 256, 1⟩, ⟨393473, 0, 256, 256, 1⟩, ⟨459009, 0, 256, 256, 1⟩, ⟨524545, 0, 256, 256, 1⟩, ⟨590085, 0, 1, 1048572, 0⟩] ∧
-    SliceOk column1 column1_blocks 10 6 [⟨327937, 0, 256, 256, 1⟩, ⟨393473, 0, 256, 256, 1⟩, ⟨459009, 0, 256, 256, 1⟩, ⟨524545, 0, 256, 256, 1⟩, ⟨590085, 0, 1, 1048572, 0⟩] 327937 1638657 :=
+    SliceOk column1 column1_cut0 10 6 [⟨327937, 0, 256, 256, 1⟩, ⟨393473, 0, 256, 256, 1⟩, ⟨459009, 0, 256, 256, 1⟩, ⟨524545, 0, 256, 256, 1⟩, ⟨590085, 0, 1, 1048572, 0⟩] 327937 1638657 :=
   ⟨⟨column1_long327937, column1_long393473, column1_long459009, column1_long524545, column1_long590085, trivial⟩, by decide +kernel⟩
 
 theorem column1_long1638658 : Long.Ok column1 ⟨1638658, 0, 256, 1023, 0⟩ := by
@@ -142,7 +142,7 @@ theorem column1_long3146113 : Long.Ok column1 ⟨3146113, 0, 1, 5242495, 0⟩ :=
 
 theorem column1_slice16 :
     AllOk column1 [⟨1638658, 0, 256, 1023, 0⟩, ⟨1900930, 0, 256, 767, 0⟩, ⟨2097541, 0, 1, 1048572, 0⟩, ⟨3146113, 0, 1, 5242495, 0⟩] ∧
-    SliceOk column1 column1_blocks 16 27 [⟨1638658, 0, 256, 1023, 0⟩, ⟨1900930, 0, 256, 767, 0⟩, ⟨2097541, 0, 1, 1048572, 0⟩, ⟨3146113, 0, 1, 5242495, 0⟩] 1638657 8388608 :=
+    SliceOk column1 column1_cut0 16 27 [⟨1638658, 0, 256, 1023, 0⟩, ⟨1900930, 0, 256, 767, 0⟩, ⟨2097541, 0, 1, 1048572, 0⟩, ⟨3146113, 0, 1, 5242495, 0⟩] 1638657 8388608 :=
   ⟨⟨column1_long1638658, column1_long1900930, column1_long2097541, column1_long3146113, trivial⟩, by decide +kernel⟩
 
 theorem column2_long1 : Long.Ok column2 ⟨1, 0, 1, 131072, 0⟩ := by
@@ -162,7 +162,7 @@ theorem column2_long270593 : Long.Ok column2 ⟨270593, 0, 256, 32, 1⟩ := by
 
 theorem column2_slice0 :
     AllOk column2 [⟨1, 0, 1, 131072, 0⟩, ⟨131077, 0, 4, 16383, 4⟩, ⟨196865, 0, 1, 65536, 0⟩, ⟨262657, 0, 256, 31, 1⟩, ⟨270593, 0, 256, 32, 1⟩] ∧
-    SliceOk column2 column2_blocks 0 9 [⟨1, 0, 1, 131072, 0⟩, ⟨131077, 0, 4, 16383, 4⟩, ⟨196865, 0, 1, 65536, 0⟩, ⟨262657, 0, 256, 31, 1⟩, ⟨270593, 0, 256, 32, 1⟩] 0 278785 :=
+    SliceOk column2 column2_cut0 0 9 [⟨1, 0, 1, 131072, 0⟩, ⟨131077, 0, 4, 16383, 4⟩, ⟨196865, 0, 1, 65536, 0⟩, ⟨262657, 0, 256, 31, 1⟩, ⟨270593, 0, 256, 32, 1⟩] 0 278785 :=
   ⟨⟨column2_long1, column2_long131077, column2_long196865, column2_long262657, column2_long270593, trivial⟩, by decide +kernel⟩
 
 theorem column2_long278785 : Long.Ok column2 ⟨278785, 0, 256, 32, 1⟩ := by
@@ -182,7 +182,7 @@ theorem column2_long311553 : Long.Ok column2 ⟨311553, 0, 256, 32, 1⟩ := by
 
 theorem column2_slice9 :
     AllOk column2 [⟨278785, 0, 256, 32, 1⟩, ⟨286977, 0, 256, 32, 1⟩, ⟨295169, 0, 256, 32, 1⟩, ⟨303361, 0, 256, 32, 1⟩, ⟨311553, 0, 256, 32, 1⟩] ∧
-    SliceOk column2 column2_blocks 9 5 [⟨278785, 0, 256, 32, 1⟩, ⟨286977, 0, 256, 32, 1⟩, ⟨295169, 0, 256, 32, 1⟩, ⟨303361, 0, 256, 32, 1⟩, ⟨311553, 0, 256, 32, 1⟩] 278785 319745 :=
+    SliceOk column2 column2_cut0 9 5 [⟨278785, 0, 256, 32, 1⟩, ⟨286977, 0, 256, 32, 1⟩, ⟨295169, 0, 256, 32, 1⟩, ⟨303361, 0, 256, 32, 1⟩, ⟨311553, 0, 256, 32, 1⟩] 278785 319745 :=
   ⟨⟨column2_long278785, column2_long286977, column2_long295169, column2_long303361, column2_long311553, trivial⟩, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs

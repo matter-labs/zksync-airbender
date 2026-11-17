@@ -16,47 +16,47 @@ set_option maxRecDepth 100000
 
 theorem column5_slice24558 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 24558 3 [] 1728769 1741057 :=
+    SliceOk column5 column5_cut24448 104 3 [] 1728769 1741057 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice24561 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 24561 3 [] 1741057 1753345 :=
+    SliceOk column5 column5_cut24448 107 3 [] 1741057 1753345 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice24564 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 24564 3 [] 1753345 1765633 :=
+    SliceOk column5 column5_cut24448 110 3 [] 1753345 1765633 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice24567 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 24567 25 [] 1765633 1775873 :=
+    SliceOk column5 column5_cut24448 113 25 [] 1765633 1775873 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice24592 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 24592 40 [] 1775873 1786113 :=
+    SliceOk column5 column5_cut24576 8 40 [] 1775873 1786113 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice24632 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 24632 336 [] 1786113 1796225 :=
+    SliceOk column5 column5_cut24576 48 336 [] 1786113 1796225 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice24968 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 24968 79 [] 1796225 1806337 :=
+    SliceOk column5 column5_cut24960 0 79 [] 1796225 1806337 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice25047 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 25047 316 [] 1806337 1816385 :=
+    SliceOk column5 column5_cut24960 79 316 [] 1806337 1816385 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice25363 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 25363 69 [] 1816385 1826561 :=
+    SliceOk column5 column5_cut25344 11 69 [] 1816385 1826561 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs

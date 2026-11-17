@@ -19,7 +19,7 @@ theorem column3_long590082 : Long.Ok column3 ⟨590082, 0, 1, 1048575, 0⟩ := b
 
 theorem column3_slice8 :
     AllOk column3 [⟨590082, 0, 1, 1048575, 0⟩] ∧
-    SliceOk column3 column3_blocks 8 3 [⟨590082, 0, 1, 1048575, 0⟩] 590074 1900801 :=
+    SliceOk column3 column3_cut0 8 3 [⟨590082, 0, 1, 1048575, 0⟩] 590074 1900801 :=
   ⟨⟨column3_long590082, trivial⟩, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs

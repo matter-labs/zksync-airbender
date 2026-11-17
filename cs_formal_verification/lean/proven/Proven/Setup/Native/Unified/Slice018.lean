@@ -16,47 +16,47 @@ set_option maxRecDepth 100000
 
 theorem column6_slice111 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 111 880 [] 329842 339842 :=
+    SliceOk column6 column6_cut0 111 880 [] 329842 339842 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice991 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 991 982 [] 339842 349842 :=
+    SliceOk column6 column6_cut896 89 982 [] 339842 349842 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice1973 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 1973 1024 [] 349842 359842 :=
+    SliceOk column6 column6_cut1920 47 1024 [] 349842 359842 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice2997 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 2997 1084 [] 359842 369842 :=
+    SliceOk column6 column6_cut2944 47 1084 [] 359842 369842 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice4081 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 4081 1096 [] 369842 379978 :=
+    SliceOk column6 column6_cut3968 107 1096 [] 369842 379978 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice5177 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 5177 1098 [] 379978 389978 :=
+    SliceOk column6 column6_cut5120 51 1098 [] 379978 389978 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice6275 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 6275 942 [] 389978 399978 :=
+    SliceOk column6 column6_cut6144 125 942 [] 389978 399978 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice7217 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 7217 1006 [] 399978 410118 :=
+    SliceOk column6 column6_cut7168 43 1006 [] 399978 410118 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice8223 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 8223 1104 [] 410118 420122 :=
+    SliceOk column6 column6_cut8192 25 1104 [] 410118 420122 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs

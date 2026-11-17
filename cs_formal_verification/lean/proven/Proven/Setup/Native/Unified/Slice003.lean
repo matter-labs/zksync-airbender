@@ -16,47 +16,47 @@ set_option maxRecDepth 100000
 
 theorem column2_slice453 :
     AllOk column2 [] ∧
-    SliceOk column2 column2_blocks 453 79 [] 1931009 1941121 :=
+    SliceOk column2 column2_cut384 62 79 [] 1931009 1941121 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice532 :
     AllOk column2 [] ∧
-    SliceOk column2 column2_blocks 532 332 [] 1941121 1951361 :=
+    SliceOk column2 column2_cut512 13 332 [] 1941121 1951361 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice864 :
     AllOk column2 [] ∧
-    SliceOk column2 column2_blocks 864 40 [] 1951361 1961601 :=
+    SliceOk column2 column2_cut768 89 40 [] 1951361 1961601 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice904 :
     AllOk column2 [] ∧
-    SliceOk column2 column2_blocks 904 40 [] 1961601 1971841 :=
+    SliceOk column2 column2_cut896 1 40 [] 1961601 1971841 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice944 :
     AllOk column2 [] ∧
-    SliceOk column2 column2_blocks 944 40 [] 1971841 1982081 :=
+    SliceOk column2 column2_cut896 41 40 [] 1971841 1982081 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice984 :
     AllOk column2 [] ∧
-    SliceOk column2 column2_blocks 984 333 [] 1982081 1992193 :=
+    SliceOk column2 column2_cut896 81 333 [] 1982081 1992193 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice1317 :
     AllOk column2 [] ∧
-    SliceOk column2 column2_blocks 1317 79 [] 1992193 2002305 :=
+    SliceOk column2 column2_cut1280 30 79 [] 1992193 2002305 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice1396 :
     AllOk column2 [] ∧
-    SliceOk column2 column2_blocks 1396 310 [] 2002305 2012353 :=
+    SliceOk column2 column2_cut1280 109 310 [] 2002305 2012353 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice1706 :
     AllOk column2 [] ∧
-    SliceOk column2 column2_blocks 1706 78 [] 2012353 2022529 :=
+    SliceOk column2 column2_cut1664 35 78 [] 2012353 2022529 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs

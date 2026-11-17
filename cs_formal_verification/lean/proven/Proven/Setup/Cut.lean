@@ -154,4 +154,33 @@ theorem decode_cutColumn (cuts : List (Nat × List Nat)) (blocks : List Block) (
         · rfl
         · exact ih rest _
 
+/-- The cut blocks cover as many rows as the blocks. -/
+theorem total_cutColumn (cuts : List (Nat × List Nat)) (blocks : List Block) :
+    total (cutColumn cuts blocks) = total blocks := by
+  induction cuts generalizing blocks with
+  | nil => rfl
+  | cons entry cuts ih =>
+    obtain ⟨skip, lengths⟩ := entry
+    simp only [cutColumn]
+    conv => rhs; rw [← List.take_append_drop skip blocks]
+    rw [total_append, total_append]
+    split
+    · rename_i empty
+      rw [empty]
+    · rename_i block rest after
+      rw [after, total_append, (cutMany_sameRows lengths block).1, ih rest]
+      simp only [total]
+
+/-- The next named suffix of a cut column, `count` pieces further. -/
+theorem drop_steps {blocks tail next : List Block} {start count : Nat} (here : blocks.drop start = tail)
+    (step : tail.drop count = next) : blocks.drop (start + count) = next := by
+  rw [← List.drop_drop, here, step]
+
+/-- A column cut chunk by chunk: the first 128 blocks cut by `cuts`, then the cut rest. -/
+theorem decode_cutChunk {cuts : List (Nat × List Nat)} {blocks tail rest : List Block}
+    (next : blocks.drop 128 = rest) (later : ∀ n, decode tail n = decode rest n) (n : Nat) :
+    decode (cutColumn cuts (blocks.take 128) ++ tail) n = decode blocks n := by
+  conv => rhs; rw [← List.take_append_drop 128 blocks]
+  rw [decode_append, decode_append, total_cutColumn, decode_cutColumn, next, later]
+
 end Airbender.Import.Setup.Scan

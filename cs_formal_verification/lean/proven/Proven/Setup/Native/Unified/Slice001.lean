@@ -25,7 +25,7 @@ theorem column2_long590085 : Long.Ok column2 ⟨590085, 0, 1, 1048572, 0⟩ := b
 
 theorem column2_slice14 :
     AllOk column2 [⟨319745, 0, 256, 32, 1⟩, ⟨327937, 0, 256, 1024, 0⟩, ⟨590085, 0, 1, 1048572, 0⟩] ∧
-    SliceOk column2 column2_blocks 14 5 [⟨319745, 0, 256, 32, 1⟩, ⟨327937, 0, 256, 1024, 0⟩, ⟨590085, 0, 1, 1048572, 0⟩] 319745 1835393 :=
+    SliceOk column2 column2_cut0 14 5 [⟨319745, 0, 256, 32, 1⟩, ⟨327937, 0, 256, 1024, 0⟩, ⟨590085, 0, 1, 1048572, 0⟩] 319745 1835393 :=
   ⟨⟨column2_long319745, column2_long327937, column2_long590085, trivial⟩, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs

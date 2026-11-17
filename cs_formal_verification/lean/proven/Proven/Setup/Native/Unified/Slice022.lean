@@ -16,47 +16,47 @@ set_option maxRecDepth 100000
 
 theorem column7_slice9611 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 9611 1048 [] 419970 429970 :=
+    SliceOk column7 column7_cut9600 5 1048 [] 419970 429970 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice10659 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 10659 1096 [] 429970 439970 :=
+    SliceOk column7 column7_cut10624 29 1096 [] 429970 439970 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice11755 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 11755 1100 [] 439970 450122 :=
+    SliceOk column7 column7_cut11648 101 1100 [] 439970 450122 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice12855 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 12855 1046 [] 450122 460122 :=
+    SliceOk column7 column7_cut12800 49 1046 [] 450122 460122 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice13901 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 13901 860 [] 460122 470122 :=
+    SliceOk column7 column7_cut13824 71 860 [] 460122 470122 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice14761 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 14761 978 [] 470122 480274 :=
+    SliceOk column7 column7_cut14720 35 978 [] 470122 480274 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice15739 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 15739 1022 [] 480274 490274 :=
+    SliceOk column7 column7_cut15616 117 1022 [] 480274 490274 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice16761 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 16761 1080 [] 490274 500274 :=
+    SliceOk column7 column7_cut16640 115 1080 [] 490274 500274 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice17841 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 17841 1102 [] 500274 510274 :=
+    SliceOk column7 column7_cut17792 43 1102 [] 500274 510274 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs

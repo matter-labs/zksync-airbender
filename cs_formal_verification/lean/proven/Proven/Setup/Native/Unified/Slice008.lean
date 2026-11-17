@@ -16,42 +16,42 @@ set_option maxRecDepth 100000
 
 theorem column4_slice14567 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 14567 1102 [] 500123 510123 :=
+    SliceOk column4 column4_cut14464 97 1102 [] 500123 510123 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice15669 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 15669 1098 [] 510123 520123 :=
+    SliceOk column4 column4_cut15616 47 1098 [] 510123 520123 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice16767 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 16767 932 [] 520123 530123 :=
+    SliceOk column4 column4_cut16640 121 932 [] 520123 530123 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice17699 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 17699 998 [] 530123 540123 :=
+    SliceOk column4 column4_cut17664 29 998 [] 530123 540123 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice18697 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 18697 1088 [] 540123 550123 :=
+    SliceOk column4 column4_cut18688 3 1088 [] 540123 550123 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice19785 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 19785 1114 [] 550123 560123 :=
+    SliceOk column4 column4_cut19712 67 1114 [] 550123 560123 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice20899 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 20899 1176 [] 560123 570259 :=
+    SliceOk column4 column4_cut20864 29 1176 [] 560123 570259 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice22075 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 22075 1176 [] 570259 580259 :=
+    SliceOk column4 column4_cut22016 53 1176 [] 570259 580259 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_long590081 : Long.Ok column4 ⟨590081, 0, 1, 1048576, 0⟩ := by
@@ -59,7 +59,7 @@ theorem column4_long590081 : Long.Ok column4 ⟨590081, 0, 1, 1048576, 0⟩ := b
 
 theorem column4_slice23251 :
     AllOk column4 [⟨590081, 0, 1, 1048576, 0⟩] ∧
-    SliceOk column4 column4_blocks 23251 1171 [⟨590081, 0, 1, 1048576, 0⟩] 580259 1638657 :=
+    SliceOk column4 column4_cut23168 77 1171 [⟨590081, 0, 1, 1048576, 0⟩] 580259 1638657 :=
   ⟨⟨column4_long590081, trivial⟩, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs

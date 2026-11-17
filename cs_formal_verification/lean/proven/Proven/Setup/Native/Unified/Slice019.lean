@@ -16,47 +16,47 @@ set_option maxRecDepth 100000
 
 theorem column6_slice9327 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 9327 1094 [] 420122 430122 :=
+    SliceOk column6 column6_cut9216 105 1094 [] 420122 430122 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice10421 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 10421 1098 [] 430122 440122 :=
+    SliceOk column6 column6_cut10368 47 1098 [] 430122 440122 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice11519 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 11519 1096 [] 440122 450122 :=
+    SliceOk column6 column6_cut11392 121 1096 [] 440122 450122 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice12615 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 12615 1028 [] 450122 460290 :=
+    SliceOk column6 column6_cut12544 65 1028 [] 450122 460290 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice13643 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 13643 566 [] 460290 470290 :=
+    SliceOk column6 column6_cut13568 69 566 [] 460290 470290 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice14209 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 14209 578 [] 470290 480290 :=
+    SliceOk column6 column6_cut14080 123 578 [] 470290 480290 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice14787 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 14787 590 [] 480290 490290 :=
+    SliceOk column6 column6_cut14720 61 590 [] 480290 490290 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice15377 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 15377 622 [] 490290 500482 :=
+    SliceOk column6 column6_cut15360 11 622 [] 490290 500482 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice15999 :
     AllOk column6 [] ∧
-    SliceOk column6 column6_blocks 15999 628 [] 500482 510482 :=
+    SliceOk column6 column6_cut15872 121 628 [] 500482 510482 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs

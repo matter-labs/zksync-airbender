@@ -17,16 +17,22 @@ theorem column0_rows :
   (prefixOk_next_from (prefixOk_zero column0 _)
     column0_from0 (by decide) column0_slice0 rfl).2
 
+theorem column1_suffix0 : column1_cut0.drop 0 = column1_cut0 :=
+  rfl
+
 theorem column1_rows :
     ∀ n < 16777216, decode Airbender.Compiler.NativeSetups.subwordMemorySetup_col1 n = column1 n :=
-  fun n bound => (column1_blocks_decode n).symm.trans ((prefixOk_next (prefixOk_next (prefixOk_zero column1 _)
-    column1_slice0 rfl)
-    column1_slice15 rfl).2 n bound)
+  fun n bound => (column1_blocks_decode n).symm.trans ((prefixOk_next_from (prefixOk_next_from (prefixOk_zero column1 _)
+    column1_suffix0 (by decide) column1_slice0 rfl)
+    column1_suffix0 (by decide) column1_slice15 rfl).2 n bound)
+
+theorem column2_suffix0 : column2_cut0.drop 0 = column2_cut0 :=
+  rfl
 
 theorem column2_rows :
     ∀ n < 16777216, decode Airbender.Compiler.NativeSetups.subwordMemorySetup_col2 n = column2 n :=
-  fun n bound => (column2_blocks_decode n).symm.trans ((prefixOk_next (prefixOk_zero column2 _)
-    column2_slice0 rfl).2 n bound)
+  fun n bound => (column2_blocks_decode n).symm.trans ((prefixOk_next_from (prefixOk_zero column2 _)
+    column2_suffix0 (by decide) column2_slice0 rfl).2 n bound)
 
 theorem column3_from0 : Airbender.Compiler.NativeSetups.subwordMemorySetup_col3.drop 0 = Airbender.Compiler.NativeSetups.subwordMemorySetup_col3_from0 :=
   rfl

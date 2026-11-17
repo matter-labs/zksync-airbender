@@ -16,47 +16,47 @@ set_option maxRecDepth 100000
 
 theorem column4_slice24422 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 24422 41 [] 1638657 1648897 :=
+    SliceOk column4 column4_cut24320 96 41 [] 1638657 1648897 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice24463 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 24463 85 [] 1648897 1658945 :=
+    SliceOk column4 column4_cut24448 7 85 [] 1648897 1658945 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice24548 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 24548 305 [] 1658945 1668993 :=
+    SliceOk column4 column4_cut24448 92 305 [] 1658945 1668993 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice24853 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 24853 79 [] 1668993 1679105 :=
+    SliceOk column4 column4_cut24832 13 79 [] 1668993 1679105 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice24932 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 24932 331 [] 1679105 1689345 :=
+    SliceOk column4 column4_cut24832 92 331 [] 1679105 1689345 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice25263 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 25263 40 [] 1689345 1699585 :=
+    SliceOk column4 column4_cut25216 39 40 [] 1689345 1699585 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice25303 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 25303 40 [] 1699585 1709825 :=
+    SliceOk column4 column4_cut25216 79 40 [] 1699585 1709825 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice25343 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 25343 40 [] 1709825 1720065 :=
+    SliceOk column4 column4_cut25216 119 40 [] 1709825 1720065 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice25383 :
     AllOk column4 [] ∧
-    SliceOk column4 column4_blocks 25383 40 [] 1720065 1730305 :=
+    SliceOk column4 column4_cut25344 31 40 [] 1720065 1730305 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs

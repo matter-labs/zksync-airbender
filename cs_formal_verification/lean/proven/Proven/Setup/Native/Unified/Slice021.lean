@@ -16,47 +16,47 @@ set_option maxRecDepth 100000
 
 theorem column7_slice113 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 113 950 [] 329682 339682 :=
+    SliceOk column7 column7_cut0 113 950 [] 329682 339682 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice1063 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 1063 1062 [] 339682 349702 :=
+    SliceOk column7 column7_cut1024 33 1062 [] 339682 349702 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice2125 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 2125 1100 [] 349702 359826 :=
+    SliceOk column7 column7_cut2048 71 1100 [] 349702 359826 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice3225 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 3225 1162 [] 359826 369826 :=
+    SliceOk column7 column7_cut3200 19 1162 [] 359826 369826 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice4387 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 4387 1176 [] 369826 379826 :=
+    SliceOk column7 column7_cut4352 29 1176 [] 369826 379826 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice5563 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 5563 1174 [] 379826 389826 :=
+    SliceOk column7 column7_cut5504 53 1174 [] 379826 389826 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice6737 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 6737 922 [] 389826 399970 :=
+    SliceOk column7 column7_cut6656 75 922 [] 389826 399970 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice7659 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 7659 938 [] 399970 409970 :=
+    SliceOk column7 column7_cut7552 101 938 [] 399970 409970 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice8597 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 8597 1014 [] 409970 419970 :=
+    SliceOk column7 column7_cut8576 15 1014 [] 409970 419970 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs

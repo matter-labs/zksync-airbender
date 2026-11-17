@@ -76,8 +76,8 @@ class ValidateTests(unittest.TestCase):
 
 class CutTests(unittest.TestCase):
     def test_cut_inside_a_period_moves_to_its_bounds(self):
-        pieces, entries = cut_column(setup(cuts=[10]), 1, native()['columns'][1]['blocks'])
-        self.assertEqual(entries, [(1, [4, 4])])
+        pieces, chunks = cut_column(setup(cuts=[10]), 1, native()['columns'][1]['blocks'])
+        self.assertEqual(chunks, [(0, [(1, [4, 4])], 0)])
         self.assertEqual([piece['repetitions'] for piece in pieces[1:]], [1, 1, 13])
         self.assertEqual(pieces[3]['values'], [2, 3, 4, 5])
 

@@ -16,37 +16,37 @@ set_option maxRecDepth 100000
 
 theorem column7_slice18943 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 18943 1098 [] 510274 520274 :=
+    SliceOk column7 column7_cut18816 121 1098 [] 510274 520274 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice20041 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 20041 778 [] 520274 530434 :=
+    SliceOk column7 column7_cut19968 67 778 [] 520274 530434 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice20819 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 20819 568 [] 530434 540434 :=
+    SliceOk column7 column7_cut20736 77 568 [] 530434 540434 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice21387 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 21387 588 [] 540434 550434 :=
+    SliceOk column7 column7_cut21376 5 588 [] 540434 550434 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice21975 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 21975 626 [] 550434 560435 :=
+    SliceOk column7 column7_cut21888 81 626 [] 550434 560435 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice22601 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 22601 706 [] 560435 570620 :=
+    SliceOk column7 column7_cut22528 67 706 [] 560435 570620 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_slice23307 :
     AllOk column7 [] ∧
-    SliceOk column7 column7_blocks 23307 707 [] 570620 580621 :=
+    SliceOk column7 column7_cut23296 5 707 [] 570620 580621 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column7_long590084 : Long.Ok column7 ⟨590084, 0, 1, 1048573, 0⟩ := by
@@ -54,7 +54,7 @@ theorem column7_long590084 : Long.Ok column7 ⟨590084, 0, 1, 1048573, 0⟩ := b
 
 theorem column7_slice24014 :
     AllOk column7 [⟨590084, 0, 1, 1048573, 0⟩] ∧
-    SliceOk column7 column7_blocks 24014 663 [⟨590084, 0, 1, 1048573, 0⟩] 580621 1638657 :=
+    SliceOk column7 column7_cut23936 72 663 [⟨590084, 0, 1, 1048573, 0⟩] 580621 1638657 :=
   ⟨⟨column7_long590084, trivial⟩, by decide +kernel⟩
 
 theorem column7_long1638657 : Long.Ok column7 ⟨1638657, 0, 1, 262144, 0⟩ := by
@@ -71,7 +71,7 @@ theorem column7_long3146113 : Long.Ok column7 ⟨3146113, 0, 1, 5242495, 0⟩ :=
 
 theorem column7_slice24677 :
     AllOk column7 [⟨1638657, 0, 1, 262144, 0⟩, ⟨1900929, 0, 1, 196608, 0⟩, ⟨2097541, 0, 1, 1048572, 0⟩, ⟨3146113, 0, 1, 5242495, 0⟩] ∧
-    SliceOk column7 column7_blocks 24677 6 [⟨1638657, 0, 1, 262144, 0⟩, ⟨1900929, 0, 1, 196608, 0⟩, ⟨2097541, 0, 1, 1048572, 0⟩, ⟨3146113, 0, 1, 5242495, 0⟩] 1638657 8388608 :=
+    SliceOk column7 column7_cut24576 95 6 [⟨1638657, 0, 1, 262144, 0⟩, ⟨1900929, 0, 1, 196608, 0⟩, ⟨2097541, 0, 1, 1048572, 0⟩, ⟨3146113, 0, 1, 5242495, 0⟩] 1638657 8388608 :=
   ⟨⟨column7_long1638657, column7_long1900929, column7_long2097541, column7_long3146113, trivial⟩, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs

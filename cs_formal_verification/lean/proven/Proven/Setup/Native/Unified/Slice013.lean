@@ -16,47 +16,47 @@ set_option maxRecDepth 100000
 
 theorem column5_slice7593 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 7593 590 [] 410114 420114 :=
+    SliceOk column5 column5_cut7552 35 590 [] 410114 420114 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice8183 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 8183 604 [] 420114 430114 :=
+    SliceOk column5 column5_cut8064 113 604 [] 420114 430114 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice8787 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 8787 628 [] 430114 440114 :=
+    SliceOk column5 column5_cut8704 77 628 [] 430114 440114 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice9415 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 9415 628 [] 440114 450306 :=
+    SliceOk column5 column5_cut9344 65 628 [] 440114 450306 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice10043 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 10043 622 [] 450306 460307 :=
+    SliceOk column5 column5_cut9984 53 622 [] 450306 460307 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice10665 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 10665 938 [] 460307 470307 :=
+    SliceOk column5 column5_cut10624 35 938 [] 460307 470307 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice11603 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 11603 1058 [] 470307 480307 :=
+    SliceOk column5 column5_cut11520 77 1058 [] 470307 480307 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice12661 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 12661 1098 [] 480307 490307 :=
+    SliceOk column5 column5_cut12544 111 1098 [] 480307 490307 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice13759 :
     AllOk column5 [] ∧
-    SliceOk column5 column5_blocks 13759 1158 [] 490307 500307 :=
+    SliceOk column5 column5_cut13696 57 1158 [] 490307 500307 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs
