@@ -23,12 +23,11 @@ EXTERN __global__ void ab_pr_whir_in_domain_prepare_indexes_kernel(const u32 *ex
 }
 
 EXTERN __launch_bounds__(PR_WHIR_IN_DOMAIN_BLOCK_THREADS) __global__
-    void ab_pr_whir_in_domain_correct_update_and_fold_kernel(pr *leaves, const u32 leaf_stride, const u32 leaf_width, pr *weights, pr *points, u32 *exponents,
-                                                             pr *reductions, u8 *seed_io, pr *coeffs_out, pr *challenge_out, const u32 count) {
+    void ab_pr_whir_in_domain_correct_update_kernel(const pr *leaves, const u32 leaf_stride, const u32 leaf_width, const pr *weights, const pr *points,
+                                                    pr *reductions, u8 *seed_io, pr *coeffs_out, const u32 count) {
   __shared__ pr smem_p0[PR_WHIR_IN_DOMAIN_BLOCK_THREADS];
   __shared__ pr smem_p1[PR_WHIR_IN_DOMAIN_BLOCK_THREADS];
   __shared__ pr smem_p2[PR_WHIR_IN_DOMAIN_BLOCK_THREADS];
-  __shared__ pr smem_alpha;
   const u32 tid = threadIdx.x;
   pr acc0 = pr::ZERO();
   pr acc1 = pr::ZERO();
@@ -39,11 +38,15 @@ EXTERN __launch_bounds__(PR_WHIR_IN_DOMAIN_BLOCK_THREADS) __global__
     reductions[0] = pr::add(reductions[0], smem_p0[0]);
     reductions[1] = pr::add(reductions[1], smem_p1[0]);
     reductions[2] = pr::add(reductions[2], smem_p2[0]);
-    pr_whir_round_update_inline(reductions, seed_io, coeffs_out, challenge_out);
-    smem_alpha = *challenge_out;
+    pr_whir_round_update_inline(reductions, seed_io, coeffs_out);
   }
-  __syncthreads();
-  const pr alpha = smem_alpha;
+}
+
+EXTERN __launch_bounds__(PR_WHIR_IN_DOMAIN_BLOCK_THREADS) __global__
+    void ab_pr_whir_in_domain_fold_kernel(pr *leaves, const u32 leaf_stride, const u32 leaf_width, pr *weights, pr *points, u32 *exponents, const pr *challenge,
+                                          const u32 count) {
+  const u32 tid = threadIdx.x;
+  const pr alpha = *challenge;
   for (u32 t = tid; t < count; t += PR_WHIR_IN_DOMAIN_BLOCK_THREADS)
     fold_term(leaves + static_cast<size_t>(t) * leaf_stride, leaf_width, weights[t], points[t], exponents[t], alpha);
 }

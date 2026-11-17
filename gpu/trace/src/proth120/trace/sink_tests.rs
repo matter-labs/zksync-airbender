@@ -91,7 +91,7 @@ fn sink_coefficient_tree_matches_reference() {
             .unwrap();
     // Reduced shape (2^15 rows, four of the 16 cosets) on the (r, log_v) = (8, 4) suffix and the
     // coefficient-tree sink, against an independent CPU LDE and Merkle tree.
-    for (log_n, log_v, log_lde, k0, cosets) in [(15, 4, 4, 3, 4)] {
+    for (log_n, log_v, log_lde, k0, cosets) in [(15, 4, 4, 3, 4), (15, 5, 4, 3, 4)] {
         let skip_bottom = 5;
         let log_domain = log_n + log_lde;
         let rows = 1usize << log_n;
@@ -154,7 +154,8 @@ fn sink_coefficient_tree_matches_reference() {
         use prover::merkle_trees::ColumnMajorMerkleTreeConstructor;
         let worker = worker::Worker::new_with_num_threads(8);
         for coset in 0..cosets as usize {
-            let expected = cpu_tile_pass(&monomials_host, log_lde, k0 as usize + coset, 1);
+            let expected =
+                cpu_tile_pass(&monomials_host, log_lde, k0 as usize + coset, 1, 1 << log_v);
             let columns = [expected.as_slice()];
             let tree = <Keccak256MerkleTreeWithCap as ColumnMajorMerkleTreeConstructor<PR>>::construct_from_cosets::<PR, &[PR]>(
                 &[&columns], 1 << log_v, 1, true, false, false, &worker,
@@ -180,7 +181,13 @@ fn sink_coefficient_tree_matches_reference() {
 
 mod packed;
 
-fn cpu_tile_pass(monomials: &[PR], log_lde: u32, k0: usize, cosets: usize) -> Vec<PR> {
+fn cpu_tile_pass(
+    monomials: &[PR],
+    log_lde: u32,
+    k0: usize,
+    cosets: usize,
+    leaf_width: usize,
+) -> Vec<PR> {
     use fft::Twiddles;
     use prover::allocation_pool::GenericAllocationPool;
     use prover::gkr::prover::backend::{
@@ -199,8 +206,9 @@ fn cpu_tile_pass(monomials: &[PR], log_lde: u32, k0: usize, cosets: usize) -> Ve
         &pool,
         &worker,
     );
-    let conv =
-        <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::ext_coeff_conv(&backend, n, 16);
+    let conv = <Proth120WorkStealingLazyBackend as Backend<PR, PR>>::ext_coeff_conv(
+        &backend, n, leaf_width,
+    );
     for k in k0..k0 + cosets {
         conv.apply_serial(&mut all[k * n..(k + 1) * n], offsets[k]);
     }

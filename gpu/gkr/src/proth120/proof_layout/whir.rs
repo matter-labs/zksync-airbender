@@ -28,6 +28,8 @@ pub struct WhirProofLayoutPr {
     pub ood_samples: Range<usize>,
     pub sumcheck_polys: Range<usize>,
     pub pow_nonces: Range<usize>,
+    pub folding_pow_nonces: Range<usize>,
+    pub ood_pow_nonces: Range<usize>,
     pub final_monomials: Range<usize>,
     pub batched_opening: Range<usize>,
 }
@@ -92,6 +94,8 @@ impl WhirProofLayoutPr {
             ood_samples: fields(cursor, folds.len() - 1),
             sumcheck_polys: fields(cursor, product(folds.iter().sum(), 3)),
             pow_nonces: section(cursor, product(folds.len(), size_of::<u64>())),
+            folding_pow_nonces: section(cursor, product(folds.iter().sum(), size_of::<u64>())),
+            ood_pow_nonces: section(cursor, product(folds.len() - 1, size_of::<u64>())),
             final_monomials: fields(cursor, 1 << log_n),
             batched_opening: fields(cursor, 1),
         }
@@ -117,6 +121,8 @@ impl WhirProofLayoutPr {
             self.ood_samples.clone(),
             self.sumcheck_polys.clone(),
             self.pow_nonces.clone(),
+            self.folding_pow_nonces.clone(),
+            self.ood_pow_nonces.clone(),
             self.final_monomials.clone(),
             self.batched_opening.clone(),
         ]);
@@ -161,6 +167,8 @@ impl WhirProofLayoutPr {
             ood_samples: pr(bytes, &self.ood_samples),
             sumcheck_polys: pr(bytes, &self.sumcheck_polys),
             pow_nonces: values(bytes, &self.pow_nonces),
+            folding_pow_nonces: values(bytes, &self.folding_pow_nonces),
+            ood_pow_nonces: values(bytes, &self.ood_pow_nonces),
             final_monomials: pr(bytes, &self.final_monomials),
         }
     }
@@ -183,6 +191,8 @@ pub struct WhirProofFieldsPr<'a> {
     pub ood_samples: &'a [PR],
     pub sumcheck_polys: &'a [PR],
     pub pow_nonces: &'a [u64],
+    pub folding_pow_nonces: &'a [u64],
+    pub ood_pow_nonces: &'a [u64],
     pub final_monomials: &'a [PR],
 }
 

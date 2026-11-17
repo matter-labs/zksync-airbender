@@ -9,7 +9,7 @@ use super::commit::IntermediateOracle;
 use super::kernels;
 use super::openings::schedule_horner_leaves;
 
-const MAX_LEAF_WIDTH: usize = 16;
+const MAX_LEAF_WIDTH: usize = 32;
 
 pub(crate) struct InDomainState {
     weights: DeviceAllocation<PR>,
@@ -104,6 +104,10 @@ impl InDomainState {
             "Proth120 WHIR: symbolic term outside the current oracle domain"
         );
         self.leaf_stride = 1 << log_v;
+        assert!(
+            self.leaf_stride <= MAX_LEAF_WIDTH,
+            "Proth120 WHIR: in-domain leaf width exceeds scratch capacity"
+        );
         self.leaf_width = self.leaf_stride;
         if self.count != 0 {
             kernels::in_domain_prepare_indexes(
@@ -128,12 +132,11 @@ impl InDomainState {
         Ok(())
     }
 
-    pub(crate) fn try_update_and_fold(
+    pub(crate) fn try_update(
         &mut self,
         reductions: &mut DeviceSlice<PR>,
         seed: &mut DeviceSlice<u8>,
         coeffs: &mut DeviceSlice<PR>,
-        challenge: &mut DeviceSlice<PR>,
         context: &ProverContext,
     ) -> CudaResult<bool> {
         if self.count == 0 {
@@ -143,21 +146,40 @@ impl InDomainState {
             self.leaf_width >= 2,
             "Proth120 WHIR: in-domain terms folded without refreshed leaves"
         );
-        kernels::in_domain_correct_update_and_fold(
+        kernels::in_domain_correct_update(
+            &self.leaves[..self.count * self.leaf_stride],
+            self.leaf_stride as u32,
+            self.leaf_width as u32,
+            &self.weights[..self.count],
+            &self.points[..self.count],
+            reductions,
+            seed,
+            coeffs,
+            context.get_exec_stream(),
+        )?;
+        Ok(true)
+    }
+
+    pub(crate) fn fold(
+        &mut self,
+        challenge: &DeviceSlice<PR>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        if self.count == 0 {
+            return Ok(());
+        }
+        kernels::in_domain_fold(
             &mut self.leaves[..self.count * self.leaf_stride],
             self.leaf_stride as u32,
             self.leaf_width as u32,
             &mut self.weights[..self.count],
             &mut self.points[..self.count],
             &mut self.exponents[..self.count],
-            reductions,
-            seed,
-            coeffs,
             challenge,
             context.get_exec_stream(),
         )?;
         self.leaf_width >>= 1;
         self.max_domain_log2 = self.max_domain_log2.saturating_sub(1);
-        Ok(true)
+        Ok(())
     }
 }

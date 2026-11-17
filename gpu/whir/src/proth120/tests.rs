@@ -26,7 +26,7 @@ use prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWith
 use prover::merkle_trees::{ColumnMajorMerkleTreeConstructor, PathQueryable};
 
 use gpu_hash::keccak256::{
-    transcript_commit_fields, transcript_commit_u32, transcript_draw_fields,
+    keccak256_pow, transcript_commit_fields, transcript_commit_u32, transcript_draw_fields,
 };
 use prover::gkr::whir::hypercube_to_monomial::multivariate_coeffs_into_hypercube_evals;
 
@@ -286,6 +286,13 @@ fn pr_monomial_eval_matches_cpu() {
     }
 }
 
+fn host_pow(seed: &mut Keccak256Seed, bits: u32) -> u64 {
+    let (next, nonce) =
+        <Keccak256Transcript as Transcript<PR, PR>>::search_pow(seed, bits, &worker());
+    *seed = next;
+    nonce
+}
+
 #[test]
 fn pr_round_update_matches_cpu() {
     let ctx = context(256);
@@ -299,8 +306,17 @@ fn pr_round_update_matches_cpu() {
         let mut seed_dev = upload(&seed, stream);
         let mut coeffs = upload(&[PR::ZERO; 3], stream);
         let mut challenge = upload(&[PR::ZERO], stream);
-        schedule_round_update(&mut state, &mut seed_dev, &mut coeffs, &mut challenge, &ctx)
-            .unwrap();
+        let mut nonce = upload(&[0u64], stream);
+        schedule_round_update(
+            &mut state,
+            &mut seed_dev,
+            &mut coeffs,
+            &mut challenge,
+            9,
+            &mut nonce[0],
+            &ctx,
+        )
+        .unwrap();
         let got = download(&coeffs, stream);
         let mut half = PR::ONE;
         half.double();
@@ -317,6 +333,8 @@ fn pr_round_update_matches_cpu() {
             &mut host_seed,
             &got,
         );
+        let expected_nonce = host_pow(&mut host_seed, 9);
+        assert_eq!(download(&nonce, stream), [expected_nonce]);
         let mut host_challenge = [PR::ZERO];
         <Keccak256Transcript as Transcript<PR, PR>>::draw_random_field_elements(
             &mut host_seed,
@@ -330,9 +348,12 @@ fn pr_round_update_matches_cpu() {
 type ExtCommitment = CosetByCosetExtCommitment<PR, PR, Keccak256MerkleTreeWithCap>;
 
 pub(super) fn small_oracle(log_n: u32, log_lde: u32, tile_bytes: usize) -> OracleShape {
-    // The production WHIR oracle parameters (log_values_per_leaf = 4, skip_bottom = 5,
-    // cap_log = 3) with fewer rows and cosets, so the CPU can compute the exact cap.
-    let log_v = 4;
+    small_oracle_with_leaf(log_n, log_lde, tile_bytes, 4)
+}
+
+fn small_oracle_with_leaf(log_n: u32, log_lde: u32, tile_bytes: usize, log_v: u32) -> OracleShape {
+    // Production leaf/tree geometry at reduced sizes for an independent CPU cap.
+
     let log_leaves = log_n - log_v;
     let skip_bottom = 5;
     OracleShape {
@@ -417,8 +438,8 @@ fn pr_commit_intermediate_matches_cpu_small() {
     let worker = worker();
     let mut rng = TestRng::new(0x7201);
     // The (r, log_v) = (8, 4) suffix with the fused coefficient-tree sink at log_n = 15 and the
-    // residue sink at log_n = 11, both against independent CPU caps.
-    for (log_n, log_lde, passes) in [(15u32, 4u32, 4usize), (11, 8, 4)] {
+    // residue sink at log_n = 10, both against independent CPU caps.
+    for (log_n, log_lde, passes) in [(15u32, 4u32, 4usize), (10, 8, 4)] {
         let cosets = 1usize << log_lde;
         let tile_bytes = (cosets / passes) << (log_n + 4);
         let shape = small_oracle(log_n, log_lde, tile_bytes);
@@ -463,8 +484,7 @@ fn pr_commit_intermediate_matches_cpu_small() {
 }
 
 fn opening_oracle(log_n: u32, log_lde: u32, tile_log: u32, log_v: u32) -> OracleShape {
-    assert_eq!(log_v, 4);
-    small_oracle(log_n, log_lde, 16usize << (log_n + tile_log))
+    small_oracle_with_leaf(log_n, log_lde, 16usize << (log_n + tile_log), log_v)
 }
 
 fn opening_output(
@@ -616,8 +636,8 @@ fn pr_open_intermediate_matches_cpu_small() {
     let worker = worker();
     let mut rng = TestRng::new(0x7130_7eaf);
     // The (r, log_v) = (8, 4) suffix with the fused coefficient-tree sink at log_n = 15 and the
-    // residue sink at log_n = 11; the paths include every top-tree level.
-    for (log_n, log_lde, tile_log, log_v) in [(15, 4, 2, 4), (11, 8, 6, 4)] {
+    // residue sink at log_n = 10; the paths include every top-tree level.
+    for (log_n, log_lde, tile_log, log_v) in [(15, 4, 2, 4), (15, 4, 2, 5), (10, 8, 6, 4)] {
         let shape = opening_oracle(log_n, log_lde, tile_log, log_v);
         let monomials = rng.fields(1 << log_n);
         let twiddles = Twiddles::new(monomials.len(), &worker);
@@ -684,7 +704,7 @@ fn pr_horner_leaves_match_cpu_small() {
     let stream = ctx.get_exec_stream();
     let worker = worker();
     let mut rng = TestRng::new(0x7130_80a1);
-    for (log_n, log_lde, log_v) in [(11, 8, 4)] {
+    for (log_n, log_lde, log_v) in [(10, 8, 4), (15, 4, 5)] {
         let shape = opening_oracle(log_n, log_lde, log_lde, log_v);
         let monomials = rng.fields(1 << log_n);
         let twiddles = Twiddles::new(monomials.len(), &worker);
@@ -779,11 +799,11 @@ fn pr_transcript_phases_match_reference() {
     assert_eq!(config.whir_message_size_log2(), 24);
     assert_eq!(config.lde_factor(), 128);
     assert_eq!(config.cap_size, 8);
-    assert_eq!(config.whir_schedule.fold_steps(), [1, 4, 4, 4, 4]);
-    assert_eq!(config.whir_schedule.queries_per_round(), [12, 11, 7, 6, 5]);
+    assert_eq!(config.whir_schedule.fold_steps(), [1, 4, 5, 4, 4]);
+    assert_eq!(config.whir_schedule.queries_per_round(), [12, 11, 7, 5, 4]);
     assert_eq!(
         config.whir_schedule.queries_pow_bits_per_round(),
-        [30, 27, 30, 20, 17]
+        [30, 27, 30, 30, 30]
     );
     // The WHIR handoff seed comes from the EVM encoder's CPU replay of the fixture proof's GKR
     // transcript (`verifier_evm::encoding::replay_gkr_points`), independent of the GPU prover.
@@ -807,29 +827,83 @@ fn assert_whir_transcript_phases(
     let whir_polys: Vec<_> = whir.all_sumcheck_polys().copied().collect();
     let whir_ood: Vec<_> = whir.all_ood_samples().copied().collect();
     let whir_nonces = whir.queries_pow_nonces();
+    let expected_folding: Vec<_> = whir
+        .base_folding_pow_nonces
+        .iter()
+        .copied()
+        .chain(
+            whir.intermediate_whir_oracles
+                .iter()
+                .flat_map(|o| o.folding_pow_nonces.iter().copied()),
+        )
+        .collect();
+    assert_eq!(expected_folding.len(), shape.total_sumcheck_polys);
+
     let mut host = HostReplay {
         seed: Keccak256Seed(initial),
     };
     let mut seed = upload(&initial, stream);
     let mut nonces = upload(&vec![0u64; shape.rounds.len()], stream);
+    let mut folding_nonces = upload(&vec![0u64; shape.total_sumcheck_polys], stream);
+    let mut ood_nonces = upload(&vec![0u64; shape.rounds.len() - 1], stream);
+    let mut counter = upload(&[0u64], stream);
+    let mut poly_index = 0;
     let mut polys = whir_polys.iter();
     for (r, round) in shape.rounds.iter().enumerate() {
         for _ in 0..round.folds {
             let poly = polys.next().unwrap();
             transcript_commit_fields(&mut seed, &upload(poly, stream), stream).unwrap();
+            keccak256_pow(
+                &mut seed,
+                round.folding_pow_bits,
+                &mut folding_nonces[poly_index],
+                &mut counter[0],
+                stream,
+            )
+            .unwrap();
             let mut alpha = upload(&[PR::ZERO], stream);
             transcript_draw_fields(&mut seed, &mut alpha, stream).unwrap();
             host.commit_fields(poly);
+            <Keccak256Transcript as Transcript<PR, PR>>::verify_pow(
+                &mut host.seed,
+                expected_folding[poly_index],
+                round.folding_pow_bits,
+            );
             assert_fields(&download(&alpha, stream), &host.draw_fields(1));
+            assert_eq!(
+                download(&folding_nonces[poly_index..poly_index + 1], stream),
+                [expected_folding[poly_index]],
+                "folding nonce {poly_index}"
+            );
+            poly_index += 1;
         }
         if round.oracle.is_some() {
             let words = cap_words(&whir.intermediate_whir_oracles[r].commitment.cap.cap);
             transcript_commit_u32(&mut seed, &upload(&words, stream), stream).unwrap();
+            keccak256_pow(
+                &mut seed,
+                round.ood_pow_bits,
+                &mut ood_nonces[r],
+                &mut counter[0],
+                stream,
+            )
+            .unwrap();
             let mut ood_point = upload(&[PR::ZERO], stream);
             transcript_draw_fields(&mut seed, &mut ood_point, stream).unwrap();
             transcript_commit_fields(&mut seed, &upload(&[whir_ood[r]], stream), stream).unwrap();
             host.commit_u32(&words);
+            let expected_nonce = whir.intermediate_whir_oracles[r].ood_pow_nonce.unwrap();
+            <Keccak256Transcript as Transcript<PR, PR>>::verify_pow(
+                &mut host.seed,
+                expected_nonce,
+                round.ood_pow_bits,
+            );
             assert_fields(&download(&ood_point, stream), &host.draw_fields(1));
+            assert_eq!(
+                download(&ood_nonces[r..r + 1], stream),
+                [expected_nonce],
+                "OOD nonce {r}"
+            );
             host.commit_fields(&[whir_ood[r]]);
         } else {
             transcript_commit_fields(&mut seed, &upload(&whir.final_monomials, stream), stream)
@@ -911,6 +985,8 @@ fn assert_whir_transcript_phases(
         }
         assert_eq!(download(&seed, stream), host.seed.0, "round {r} seed");
     }
+    assert_eq!(poly_index, shape.total_sumcheck_polys);
+    assert_eq!(download(&folding_nonces, stream), expected_folding);
     assert!(polys.next().is_none());
     assert_eq!(download(&nonces, stream), whir_nonces);
 }
@@ -969,7 +1045,7 @@ impl DenseModel {
         );
     }
 
-    fn step(&mut self) -> ([PR; 3], [PR; 3], [PR; 3], PR) {
+    fn step(&mut self) -> ([PR; 3], [PR; 3], [PR; 3], PR, u64) {
         let dense = host_three(&self.evals, &self.eq);
         let query = host_three(&self.evals, &self.query_eq);
         let coeffs = host_interpolate(add3(dense, query));
@@ -977,6 +1053,7 @@ impl DenseModel {
             &mut self.seed,
             &coeffs,
         );
+        let nonce = host_pow(&mut self.seed, 9);
         let mut alpha = [PR::ZERO];
         <Keccak256Transcript as Transcript<PR, PR>>::draw_random_field_elements(
             &mut self.seed,
@@ -991,7 +1068,7 @@ impl DenseModel {
         self.eq.truncate(len);
         let len = fold_eq_poly::<PR, PR>(&mut self.query_eq, &alpha[0], &worker).len();
         self.query_eq.truncate(len);
-        (dense, query, coeffs, alpha[0])
+        (dense, query, coeffs, alpha[0], nonce)
     }
 }
 
@@ -1030,9 +1107,11 @@ fn run_symbolic_group(
         let dense = download(&state.reduce_out, stream);
         let mut coeffs = upload(&[PR::ZERO; 3], stream);
         let mut alpha = upload(&[PR::ZERO], stream);
-        schedule_round_update(state, seed, &mut coeffs, &mut alpha, ctx).unwrap();
+        let mut nonce = upload(&[0u64], stream);
+        schedule_round_update(state, seed, &mut coeffs, &mut alpha, 9, &mut nonce[0], ctx).unwrap();
         let corrected = download(&state.reduce_out, stream);
-        let (host_dense, host_query, host_coeffs, host_alpha) = model.step();
+        let (host_dense, host_query, host_coeffs, host_alpha, host_nonce) = model.step();
+        assert_eq!(download(&nonce, stream), [host_nonce]);
         assert_fields(&dense, &host_dense);
         assert_fields(&corrected, &add3(host_dense, host_query));
         let corrections: Vec<PR> = corrected
@@ -1073,10 +1152,10 @@ fn pr_in_domain_symbolic_matches_dense() {
     .unwrap();
     drop(twiddle_factors);
     let mut rng = TestRng::new(0x7401);
-    // The two production WHIR commit paths at reduced sizes: the fused (8, 4) suffix at
-    // log_n = 15 and the residue sink at log_n = 11 (log_values_per_leaf = 4, skip_bottom = 5).
-    let oracle0 = small_oracle(15, 4, 16 << 17);
-    let oracle1 = small_oracle(11, 8, 16 << 17);
+    // Exercise the 32-value coefficient sink, five folds, then the log_n=10 residue sink
+    // and four folds down to the canonical 64-coefficient tail.
+    let oracle0 = small_oracle_with_leaf(15, 4, 16 << 17, 5);
+    let oracle1 = small_oracle(10, 8, 16 << 17);
     let monomials = rng.fields(1 << 15);
     let mut evals = monomials.clone();
     multivariate_coeffs_into_hypercube_evals(&mut evals, 15);
@@ -1089,7 +1168,7 @@ fn pr_in_domain_symbolic_matches_dense() {
         query_eq: vec![PR::ZERO; 1 << 15],
         seed: Keccak256Seed(seed_bytes),
     };
-    let mut state = L1WhirState::new(15, 36, &ctx).unwrap();
+    let mut state = L1WhirState::new(15, 9, &ctx).unwrap();
     memory_copy_async(&mut state.monomials, &monomials, stream).unwrap();
     memory_copy_async(&mut state.evals, &evals, stream).unwrap();
     memory_copy_async(&mut state.eq, &eq, stream).unwrap();
@@ -1166,7 +1245,7 @@ fn pr_in_domain_symbolic_matches_dense() {
         .start_round(&oracle_b, state.current_len, oracle1.log_v, &ctx)
         .unwrap();
     run_symbolic_group(&mut state, &mut model, &mut seed, oracle1.log_v, &ctx);
-    assert_eq!(state.current_len, 128);
+    assert_eq!(state.current_len, 64);
 }
 
 impl crate::primitive_tests::PrimitiveField for PR {

@@ -35,8 +35,10 @@ fn shape(log_n: u32, r: u32, log_v: u32, skip_bottom: u32, columns: u32) -> Suff
 // complete subtrees of 2^sb leaves, and every natural index of the coset is covered exactly once.
 #[test]
 fn cpu_pr_suffix_tile_maps() {
-    // Reduced rows with the (r, log_v, skip_bottom) of the three production suffix kernels.
-    for (log_n, r, log_v, skip_bottom) in [(18, 7, 1, 10), (19, 8, 1, 10), (15, 8, 4, 5)] {
+    // Reduced rows with the (r, log_v, skip_bottom) of the production suffix kernels.
+    for (log_n, r, log_v, skip_bottom) in
+        [(18, 7, 1, 10), (19, 8, 1, 10), (15, 8, 4, 5), (15, 8, 5, 5)]
+    {
         let s = shape(log_n, r, log_v, skip_bottom, 1);
         let a = s.log_a();
         let h = log_n - log_v;
@@ -144,12 +146,13 @@ fn pr_suffix_micro_matches_reference() {
     };
     let nu = domain_generator_for_size::<PR>(1u64 << 31);
     let mut rng = StdRng::seed_from_u64(0x9120_4201);
-    // Reduced rows for the three production suffix kernels: (r, log_v) = (7, 1) with 12 base
+    // Reduced rows for the production suffix kernels: (r, log_v) = (7, 1) with 12 base
     // columns, (8, 1) with 2 setup columns and (8, 4) with the one WHIR column.
     for (log_n, r, log_v, skip_bottom, columns, cosets) in [
         (18, 7, 1, 10, 12, 1),
         (19, 8, 1, 10, 2, 1),
         (15, 8, 4, 5, 1, 4),
+        (15, 8, 5, 5, 1, 4),
     ] {
         let s = shape(log_n, r, log_v, skip_bottom, columns);
         let a = s.log_a();

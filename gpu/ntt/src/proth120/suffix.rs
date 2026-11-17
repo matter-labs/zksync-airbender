@@ -38,12 +38,14 @@ macro_rules! suffix_micro_kernel {
 suffix_micro_kernel!(ab_pr_dit_suffix_micro_7_1_kernel);
 suffix_micro_kernel!(ab_pr_dit_suffix_micro_8_1_kernel);
 suffix_micro_kernel!(ab_pr_dit_suffix_micro_8_4_kernel);
+suffix_micro_kernel!(ab_pr_dit_suffix_micro_8_5_kernel);
 
 fn suffix_micro_function(r: u32, log_v: u32) -> SuffixMicroFunction {
     SuffixMicroFunction(match (r, log_v) {
         (7, 1) => ab_pr_dit_suffix_micro_7_1_kernel,
         (8, 1) => ab_pr_dit_suffix_micro_8_1_kernel,
         (8, 4) => ab_pr_dit_suffix_micro_8_4_kernel,
+        (8, 5) => ab_pr_dit_suffix_micro_8_5_kernel,
         _ => panic!("Proth120 suffix: no micro kernel for r {r}, log_v {log_v}"),
     })
 }
@@ -119,7 +121,7 @@ pub(crate) fn suffix_launch(
     cosets: u32,
 ) -> SuffixLaunch {
     assert!(
-        matches!((shape.r, shape.log_v), (7, 1) | (8, 1) | (8, 4)),
+        matches!((shape.r, shape.log_v), (7, 1) | (8, 1) | (8, 4) | (8, 5)),
         "Proth120 suffix: no micro kernel for r {}, log_v {}",
         shape.r,
         shape.log_v

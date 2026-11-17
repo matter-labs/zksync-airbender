@@ -33,6 +33,8 @@ pub(crate) struct L1WhirProofDevice {
     pub(crate) ood_samples: ProofSlabSlicePr<PR>,
     pub(crate) sumcheck_polys: ProofSlabSlicePr<PR>,
     pub(crate) pow_nonces: ProofSlabSlicePr<u64>,
+    pub(crate) folding_pow_nonces: ProofSlabSlicePr<u64>,
+    pub(crate) ood_pow_nonces: ProofSlabSlicePr<u64>,
     pub(crate) final_monomials: ProofSlabSlicePr<PR>,
     pub(crate) batched_opening: ProofSlabSlicePr<PR>,
 }
@@ -92,6 +94,14 @@ impl L1WhirProofDevice {
             pow_nonces: ProofSlabSlicePr::new(
                 Arc::clone(&target.backing),
                 layout.pow_nonces.clone(),
+            ),
+            folding_pow_nonces: ProofSlabSlicePr::new(
+                Arc::clone(&target.backing),
+                layout.folding_pow_nonces.clone(),
+            ),
+            ood_pow_nonces: ProofSlabSlicePr::new(
+                Arc::clone(&target.backing),
+                layout.ood_pow_nonces.clone(),
             ),
             final_monomials: ProofSlabSlicePr::new(
                 Arc::clone(&target.backing),
@@ -233,11 +243,17 @@ impl L1WhirReadback {
         assert_eq!(ood_samples.len(), intermediate_whir_oracles.len());
         assert_eq!(pow_nonces.len(), fold_steps.len());
         assert_eq!(sumcheck_polys.len(), fold_steps.iter().sum::<usize>());
+        assert_eq!(host.folding_pow_nonces.len(), sumcheck_polys.len());
+        assert_eq!(host.ood_pow_nonces.len(), intermediate_whir_oracles.len());
         let mut polys = sumcheck_polys.iter().copied();
+        let mut folding_nonces = host.folding_pow_nonces.iter().copied();
         let base_sumcheck_polys = polys.by_ref().take(fold_steps[0]).collect();
+        let base_folding_pow_nonces = folding_nonces.by_ref().take(fold_steps[0]).collect();
         for (i, oracle) in intermediate_whir_oracles.iter_mut().enumerate() {
             oracle.ood_samples = vec![ood_samples[i]];
+            oracle.ood_pow_nonce = Some(host.ood_pow_nonces[i]);
             oracle.sumcheck_polys = polys.by_ref().take(fold_steps[i + 1]).collect();
+            oracle.folding_pow_nonces = folding_nonces.by_ref().take(fold_steps[i + 1]).collect();
             oracle.queries_pow_nonce = pow_nonces[i + 1];
         }
         WhirPolyCommitProof {
@@ -272,7 +288,7 @@ impl L1WhirReadback {
             intermediate_whir_oracles,
             batching_challenge_pow_nonce,
             base_sumcheck_polys,
-            base_folding_pow_nonces: vec![],
+            base_folding_pow_nonces,
             base_queries_pow_nonce: pow_nonces[0],
             final_monomials: host.final_monomials.to_vec(),
             whir_schedule: self.schedule.clone(),

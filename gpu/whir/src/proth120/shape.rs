@@ -21,6 +21,9 @@ pub struct RoundShape {
     pub folds: u32,
     pub queries: usize,
     pub pow_bits: u32,
+    pub folding_pow_bits: u32,
+    /// Difficulty for the next oracle's OOD point; zero in the final round.
+    pub ood_pow_bits: u32,
     pub log_poly_after: u32,
     pub query_domain_log2: u32,
     pub oracle: Option<OracleShape>,
@@ -43,6 +46,13 @@ impl L1WhirShape {
         assert_eq!(
             schedule, &config.whir_schedule,
             "Proth120 WHIR requires the wrap schedule"
+        );
+        assert!(
+            schedule.base_round.folding_pow_bits > 0
+                && schedule.internal_rounds.iter().all(|r| {
+                    r.folding_pow_bits > 0 && r.ood_pow_bits > 0 && r.num_ood_samples == 1
+                }),
+            "Proth120 WHIR requires folding PoW and one OOD sample under PoW"
         );
         let log_message = config.whir_message_size_log2() as u32;
         let log_base_lde = config.lde_factor().trailing_zeros();
@@ -93,6 +103,15 @@ impl L1WhirShape {
                 folds,
                 queries: queries[r],
                 pow_bits: pow_bits[r],
+                folding_pow_bits: if r == 0 {
+                    schedule.base_round.folding_pow_bits
+                } else {
+                    schedule.internal_rounds[r - 1].folding_pow_bits
+                },
+                ood_pow_bits: schedule
+                    .internal_rounds
+                    .get(r)
+                    .map_or(0, |s| s.ood_pow_bits),
                 log_poly_after: log_n,
                 query_domain_log2,
                 oracle,

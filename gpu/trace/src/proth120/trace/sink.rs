@@ -45,6 +45,7 @@ macro_rules! leaf_sink_kernel {
 leaf_sink_kernel!(ab_pr_leaf_sink_2_1_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_12_1_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_1_4_5_residue_tree_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_1_5_5_residue_tree_kernel);
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -112,6 +113,7 @@ fn leaf_sink_function(
         (2, 1, 3, SinkMode::Commit) => ab_pr_leaf_sink_2_1_3_commit_kernel,
         (12, 1, 3, SinkMode::Commit) => ab_pr_leaf_sink_12_1_3_commit_kernel,
         (1, 4, 5, SinkMode::CoefficientTree { .. }) => ab_pr_leaf_sink_1_4_5_residue_tree_kernel,
+        (1, 5, 5, SinkMode::CoefficientTree { .. }) => ab_pr_leaf_sink_1_5_5_residue_tree_kernel,
         _ => return None,
     }))
 }
@@ -806,7 +808,7 @@ macro_rules! residue_sink_kernel {
         );
     };
 }
-residue_sink_kernel!(ab_pr_residue_sink_11_4_kernel);
+residue_sink_kernel!(ab_pr_residue_sink_10_4_kernel);
 
 // The residue-sink kernel and its cosets per block.
 fn residue_sink_function(
@@ -815,7 +817,7 @@ fn residue_sink_function(
     skip_bottom: u32,
 ) -> Option<(ResidueSinkFunction, u32)> {
     let (function, cosets): (ResidueSinkSignature, u32) = match (log_n, log_v, skip_bottom) {
-        (11, 4, 5) => (ab_pr_residue_sink_11_4_kernel, 1),
+        (10, 4, 5) => (ab_pr_residue_sink_10_4_kernel, 2),
         _ => return None,
     };
     Some((ResidueSinkFunction(function), cosets))

@@ -47,10 +47,11 @@ cuda_kernel!(ThreePointCombined, ab_pr_whir_three_point_combined_kernel(eval: *c
 cuda_kernel!(Sum, ab_pr_whir_sum_kernel(values: *const PR, count: u32, out: *mut PR));
 cuda_kernel!(MonomialEval, ab_pr_whir_partially_evaluate_monomials_kernel(src: *const PR, dst: *mut PR, z: *const PR, z_stride: *const PR, log_count: u32));
 cuda_kernel!(MonomialEvalSmall, ab_pr_whir_partially_evaluate_monomials_small_kernel(src: *const PR, dst: *mut PR, z: *const PR, log_count: u32));
-cuda_kernel!(RoundUpdate, ab_pr_whir_fold_round_update_kernel(reductions: *mut PR, seed_io: *mut u8, coeffs_out: *mut PR, challenge_out: *mut PR));
+cuda_kernel!(RoundUpdate, ab_pr_whir_fold_round_update_kernel(reductions: *mut PR, seed_io: *mut u8, coeffs_out: *mut PR));
 cuda_kernel!(InDomainAddTerms, ab_pr_whir_in_domain_add_terms_kernel(indexes: *const u32, challenges: *const PR, query_domain_log2: u32, generator: PR, weights: *mut PR, points: *mut PR, exponents: *mut u32, count: u32));
 cuda_kernel!(InDomainPrepareIndexes, ab_pr_whir_in_domain_prepare_indexes_kernel(exponents: *const u32, points: *const PR, domain_log2: u32, log_v: u32, indexes: *mut u32, leaf_points: *mut PR, count: u32));
-cuda_kernel!(InDomainCorrectUpdateAndFold, ab_pr_whir_in_domain_correct_update_and_fold_kernel(leaves: *mut PR, leaf_stride: u32, leaf_width: u32, weights: *mut PR, points: *mut PR, exponents: *mut u32, reductions: *mut PR, seed_io: *mut u8, coeffs_out: *mut PR, challenge_out: *mut PR, count: u32));
+cuda_kernel!(InDomainCorrectUpdate, ab_pr_whir_in_domain_correct_update_kernel(leaves: *const PR, leaf_stride: u32, leaf_width: u32, weights: *const PR, points: *const PR, reductions: *mut PR, seed_io: *mut u8, coeffs_out: *mut PR, count: u32));
+cuda_kernel!(InDomainFold, ab_pr_whir_in_domain_fold_kernel(leaves: *mut PR, leaf_stride: u32, leaf_width: u32, weights: *mut PR, points: *mut PR, exponents: *mut u32, challenge: *const PR, count: u32));
 cuda_kernel!(PlaceRoots, ab_pr_whir_place_roots_kernel(retained: *const Digest, retained_stride: u64, log_lde: u32, roots: *mut Digest));
 cuda_kernel!(SubtreePoints, ab_pr_whir_subtree_points_kernel(queries: *const u32, count: u32, query_domain_log2: u32, log_lde: u32, skip_bottom: u32, descriptor: TwiddleDescriptor, log_domain: u32, points: *mut PR));
 cuda_kernel!(HornerLeaves, ab_pr_whir_horner_leaves_kernel(monomials: *const PR, log_n: u32, log_v: u32, points: *const PR, leaves: *mut PR, count: u32, tower_log_k: u32));
@@ -361,11 +362,10 @@ pub(crate) fn round_update(
     reductions: &mut DeviceSlice<PR>,
     seed: &mut DeviceSlice<u8>,
     coeffs: &mut DeviceSlice<PR>,
-    challenge: &mut DeviceSlice<PR>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(
-        reductions.len() == 3 && seed.len() == 32 && coeffs.len() == 3 && challenge.len() == 1,
+        reductions.len() == 3 && seed.len() == 32 && coeffs.len() == 3,
         "Proth120 WHIR: round update lengths invalid"
     );
     RoundUpdateFunction::default().launch(
@@ -374,7 +374,6 @@ pub(crate) fn round_update(
             reductions.as_mut_ptr(),
             seed.as_mut_ptr(),
             coeffs.as_mut_ptr(),
-            challenge.as_mut_ptr(),
         ),
     )
 }
@@ -463,8 +462,8 @@ pub(crate) fn horner_leaves(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(
-        (8..=26).contains(&log_n) && (1..=4).contains(&log_v),
-        "Proth120 WHIR: Horner geometry outside log_n 8..=26 and log_v 1..=4"
+        (8..=26).contains(&log_n) && (1..=5).contains(&log_v),
+        "Proth120 WHIR: Horner geometry outside log_n 8..=26 and log_v 1..=5"
     );
     assert!(
         tower_log_k <= 5 && points.len().is_multiple_of(1 << tower_log_k),
@@ -511,7 +510,7 @@ pub(crate) fn extract_paths(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(
-        (1..=4).contains(&log_v) && log_leaves >= 1 && log_lde + log_leaves <= 30,
+        (1..=5).contains(&log_v) && log_leaves >= 1 && log_lde + log_leaves <= 30,
         "Proth120 WHIR: path domain geometry invalid"
     );
     assert!(
@@ -632,17 +631,55 @@ pub(crate) fn in_domain_prepare_indexes(
     )
 }
 
-pub(crate) fn in_domain_correct_update_and_fold(
+pub(crate) fn in_domain_correct_update(
+    leaves: &DeviceSlice<PR>,
+    leaf_stride: u32,
+    leaf_width: u32,
+    weights: &DeviceSlice<PR>,
+    points: &DeviceSlice<PR>,
+    reductions: &mut DeviceSlice<PR>,
+    seed: &mut DeviceSlice<u8>,
+    coeffs: &mut DeviceSlice<PR>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let count = weights.len();
+    assert!(
+        count > 0
+            && points.len() == count
+            && leaves.len() == count * leaf_stride as usize
+            && leaf_width >= 2
+            && leaf_width <= leaf_stride
+            && leaf_width.is_power_of_two(),
+        "Proth120 WHIR: in-domain correction geometry invalid"
+    );
+    assert!(
+        reductions.len() == 3 && seed.len() == 32 && coeffs.len() == 3,
+        "Proth120 WHIR: round update lengths invalid"
+    );
+    InDomainCorrectUpdateFunction::default().launch(
+        &CudaLaunchConfig::basic(1, BLOCK as u32, stream),
+        &InDomainCorrectUpdateArguments::new(
+            leaves.as_ptr(),
+            leaf_stride,
+            leaf_width,
+            weights.as_ptr(),
+            points.as_ptr(),
+            reductions.as_mut_ptr(),
+            seed.as_mut_ptr(),
+            coeffs.as_mut_ptr(),
+            count as u32,
+        ),
+    )
+}
+
+pub(crate) fn in_domain_fold(
     leaves: &mut DeviceSlice<PR>,
     leaf_stride: u32,
     leaf_width: u32,
     weights: &mut DeviceSlice<PR>,
     points: &mut DeviceSlice<PR>,
     exponents: &mut DeviceSlice<u32>,
-    reductions: &mut DeviceSlice<PR>,
-    seed: &mut DeviceSlice<u8>,
-    coeffs: &mut DeviceSlice<PR>,
-    challenge: &mut DeviceSlice<PR>,
+    challenge: &DeviceSlice<PR>,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let count = weights.len();
@@ -653,26 +690,20 @@ pub(crate) fn in_domain_correct_update_and_fold(
             && leaves.len() == count * leaf_stride as usize
             && leaf_width >= 2
             && leaf_width <= leaf_stride
-            && leaf_width.is_power_of_two(),
+            && leaf_width.is_power_of_two()
+            && challenge.len() == 1,
         "Proth120 WHIR: in-domain fold geometry invalid"
     );
-    assert!(
-        reductions.len() == 3 && seed.len() == 32 && coeffs.len() == 3 && challenge.len() == 1,
-        "Proth120 WHIR: round update lengths invalid"
-    );
-    InDomainCorrectUpdateAndFoldFunction::default().launch(
+    InDomainFoldFunction::default().launch(
         &CudaLaunchConfig::basic(1, BLOCK as u32, stream),
-        &InDomainCorrectUpdateAndFoldArguments::new(
+        &InDomainFoldArguments::new(
             leaves.as_mut_ptr(),
             leaf_stride,
             leaf_width,
             weights.as_mut_ptr(),
             points.as_mut_ptr(),
             exponents.as_mut_ptr(),
-            reductions.as_mut_ptr(),
-            seed.as_mut_ptr(),
-            coeffs.as_mut_ptr(),
-            challenge.as_mut_ptr(),
+            challenge.as_ptr(),
             count as u32,
         ),
     )

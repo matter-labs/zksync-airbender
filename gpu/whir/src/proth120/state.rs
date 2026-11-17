@@ -1,9 +1,10 @@
 use era_cudart::result::CudaResult;
-use era_cudart::slice::DeviceSlice;
+use era_cudart::slice::{DeviceSlice, DeviceVariable};
 use gpu_core::allocator::tracker::AllocationPlacement;
 use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_core::primitives::field::PR;
+use gpu_hash::keccak256::{keccak256_pow, transcript_draw_fields};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::holder::TraceHolder;
 
@@ -133,24 +134,21 @@ pub(crate) fn schedule_round_update(
     seed: &mut DeviceSlice<u8>,
     coeffs_dst: &mut DeviceSlice<PR>,
     challenge_out: &mut DeviceSlice<PR>,
+    folding_pow_bits: u32,
+    nonce_out: &mut DeviceVariable<u64>,
     context: &ProverContext,
 ) -> CudaResult<()> {
-    if state.in_domain.try_update_and_fold(
-        &mut state.reduce_out,
-        seed,
-        coeffs_dst,
-        challenge_out,
-        context,
-    )? {
-        return Ok(());
+    let stream = context.get_exec_stream();
+    if !state
+        .in_domain
+        .try_update(&mut state.reduce_out, seed, coeffs_dst, context)?
+    {
+        kernels::round_update(&mut state.reduce_out, seed, coeffs_dst, stream)?;
     }
-    kernels::round_update(
-        &mut state.reduce_out,
-        seed,
-        coeffs_dst,
-        challenge_out,
-        context.get_exec_stream(),
-    )
+    let mut counter = context.alloc(1, AllocationPlacement::BestFit)?;
+    keccak256_pow(seed, folding_pow_bits, nonce_out, &mut counter[0], stream)?;
+    transcript_draw_fields(seed, challenge_out, stream)?;
+    state.in_domain.fold(challenge_out, context)
 }
 
 pub(crate) fn schedule_fold_state(

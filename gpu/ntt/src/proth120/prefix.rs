@@ -436,7 +436,7 @@ pub fn dispatch(
         "Proth120 dispatch requires a non-small wrap shape"
     );
     assert!(
-        columns > 0 && (1..=4).contains(&log_v) && skip_bottom <= log_n - log_v,
+        columns > 0 && (1..=5).contains(&log_v) && skip_bottom <= log_n - log_v,
         "Proth120 dispatch requires valid wrap dimensions"
     );
     let l2_budget = l2_working_set_budget(l2_cache_size_bytes);

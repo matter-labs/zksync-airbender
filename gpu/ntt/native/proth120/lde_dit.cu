@@ -66,4 +66,8 @@ EXTERN __launch_bounds__(256, 2) __global__ void ab_pr_dit_suffix_micro_8_4_kern
   suffix_micro<8, 4>(lazy_dit_policy{{d}}, args);
 }
 
+EXTERN __launch_bounds__(256, 2) __global__ void ab_pr_dit_suffix_micro_8_5_kernel(const suffix_tile_args args, const proth120_twiddle_descriptor d) {
+  suffix_micro<8, 5>(lazy_dit_policy{{d}}, args);
+}
+
 } // namespace airbender::ntt

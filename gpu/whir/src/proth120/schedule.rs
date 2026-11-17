@@ -213,6 +213,8 @@ pub fn schedule_l1_whir_fold(
                 seed,
                 &mut outputs.sumcheck_polys[3 * poly_index..3 * (poly_index + 1)],
                 &mut challenge,
+                round.folding_pow_bits,
+                &mut outputs.folding_pow_nonces[poly_index],
                 context,
             )?;
             schedule_fold_state(&mut state, &challenge, context)?;
@@ -244,6 +246,14 @@ pub fn schedule_l1_whir_fold(
         let ood_point = if current.is_some() {
             let phase = start_phase(format!("gkr.whir.pr.round.{r}.ood"), context)?;
             let mut point = context.alloc(1, AllocationPlacement::BestFit)?;
+            let mut counter = context.alloc(1, AllocationPlacement::BestFit)?;
+            keccak256_pow(
+                seed,
+                round.ood_pow_bits,
+                &mut outputs.ood_pow_nonces[r],
+                &mut counter[0],
+                stream,
+            )?;
             transcript_draw_fields(seed, &mut point, stream)?;
             schedule_monomial_eval(&state, &point, &mut outputs.ood_samples[r..r + 1], context)?;
             transcript_commit_fields(seed, &outputs.ood_samples[r..r + 1], stream)?;

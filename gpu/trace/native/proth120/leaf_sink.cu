@@ -278,7 +278,7 @@ DEVICE_FORCEINLINE void residue_sink(const pr *monomials, digest *leaves, const 
     residue_sink<LOG_N, V, COSETS>(monomials, leaves, k0, cosets, log_domain, d);                                                                              \
   }
 
-RESIDUE_SINK_KERNEL(11, 4, 1)
+RESIDUE_SINK_KERNEL(10, 4, 2)
 
 #define LEAF_SINK_KERNEL(C, V, TREE_DEPTH, MODE, FORM, BLOCKS, ROUNDS)                                                                                         \
   EXTERN __launch_bounds__(256, BLOCKS)                                                                                                                        \
@@ -295,6 +295,7 @@ RESIDUE_SINK_KERNEL(11, 4, 1)
 LEAF_SINK_KERNEL(2, 1, 3, commit, evaluations, 3, 4)
 LEAF_SINK_KERNEL(12, 1, 3, commit, evaluations, 3, 4)
 LEAF_SINK_KERNEL(1, 4, 5, residue_tree, residues, 3, 1)
+LEAF_SINK_KERNEL(1, 5, 5, residue_tree, residues, 3, 1)
 LEAF_OPEN_KERNEL(2, 1)
 LEAF_OPEN_KERNEL(12, 1)
 
