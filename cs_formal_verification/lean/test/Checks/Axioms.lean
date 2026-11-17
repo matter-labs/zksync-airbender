@@ -186,6 +186,7 @@ import Proven.Final.Compiler.MemoryPorts
 import Proven.Final.Compiler.PaddedNativeMachine
 import Proven.Final.Compiler.WorkerMemoryPorts
 import Proven.Final.Compiler.MemoryComposition
+import Proven.Final.Compiler.CertificateMemory
 
 import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 
@@ -1727,3 +1728,15 @@ import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 #print axioms Airbender.Compiler.unified_memory_composition
 
 #print axioms Airbender.Compiler.unified_memory_composition_satisfiable
+
+#print axioms Airbender.Compiler.program_certificate_ram_products
+
+#print axioms Airbender.Compiler.program_certificate_ram_products_satisfiable
+
+#print axioms Airbender.Compiler.unified_certificate_ram_products
+
+#print axioms Airbender.Compiler.unified_certificate_ram_products_satisfiable
+
+#print axioms Airbender.Compiler.worker_certificate_ram_products
+
+#print axioms Airbender.Compiler.worker_certificate_ram_products_satisfiable

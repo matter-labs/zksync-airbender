@@ -125,6 +125,7 @@ import Proven.Final.Compiler.MemoryPorts
 import Proven.Final.Compiler.PaddedNativeMachine
 import Proven.Final.Compiler.WorkerMemoryPorts
 import Proven.Final.Compiler.MemoryComposition
+import Proven.Final.Compiler.CertificateMemory
 
 import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 
@@ -1296,3 +1297,29 @@ example : Airbender.Compiler.UnifiedMemoryCompositionSatisfiableClaim :=
 #print axioms Airbender.Compiler.unified_memory_composition
 
 #print axioms Airbender.Compiler.unified_memory_composition_satisfiable
+
+-- Certificate RAM outputs.
+
+example : Airbender.Compiler.ProgramCertificateRamProductsClaim := @Airbender.Compiler.program_certificate_ram_products
+
+example : Airbender.Compiler.ProgramCertificateRamProductsSatisfiableClaim := @Airbender.Compiler.program_certificate_ram_products_satisfiable
+
+example : Airbender.Compiler.UnifiedCertificateRamProductsClaim := @Airbender.Compiler.unified_certificate_ram_products
+
+example : Airbender.Compiler.UnifiedCertificateRamProductsSatisfiableClaim := @Airbender.Compiler.unified_certificate_ram_products_satisfiable
+
+example : Airbender.Compiler.WorkerCertificateRamProductsClaim := @Airbender.Compiler.worker_certificate_ram_products
+
+example : Airbender.Compiler.WorkerCertificateRamProductsSatisfiableClaim := @Airbender.Compiler.worker_certificate_ram_products_satisfiable
+
+#print axioms Airbender.Compiler.program_certificate_ram_products
+
+#print axioms Airbender.Compiler.program_certificate_ram_products_satisfiable
+
+#print axioms Airbender.Compiler.unified_certificate_ram_products
+
+#print axioms Airbender.Compiler.unified_certificate_ram_products_satisfiable
+
+#print axioms Airbender.Compiler.worker_certificate_ram_products
+
+#print axioms Airbender.Compiler.worker_certificate_ram_products_satisfiable

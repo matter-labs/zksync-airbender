@@ -32,6 +32,8 @@ Each worker output is the product of the encoded port tokens and request token o
 row, masked by the execute column.
 [MemoryComposition.lean](MemoryComposition.lean) splits the single native RAM permutation of each
 machine by address class into the state, request and memory relations of the native machine arguments.
+[CertificateMemory.lean](CertificateMemory.lean) gives the extension values of the native certificates
+under shared challenges. With them each certificate gives the RAM outputs of its row.
 
 [CPU certificate witnesses](../../../proven/Proven/Final/Compiler/CPUCertificates.lean)
 give one active certificate for each of the seven CPU families. Each certificate

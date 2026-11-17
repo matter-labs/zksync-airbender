@@ -57,6 +57,7 @@ globs = [
   "Human.Compiler.MemoryPorts",
   "Human.Compiler.WorkerMemoryPorts",
   "Human.Compiler.MemoryComposition",
+  "Human.Compiler.CertificateMemory",
   "Human.Helpers.Context.VerifierBoundary.Model",
   "Human.Helpers.Context.VerifierBoundary.Theorems",
   "Human.Helpers.Decoder.RVMachineProgram",

@@ -53,6 +53,7 @@ import Proven.Final.Compiler.MemoryPorts
 import Proven.Final.Compiler.PaddedNativeMachine
 import Proven.Final.Compiler.WorkerMemoryPorts
 import Proven.Final.Compiler.MemoryComposition
+import Proven.Final.Compiler.CertificateMemory
 
 open Airbender Trace
 
@@ -1784,3 +1785,11 @@ example (claim : Airbender.Compiler.UnifiedMemoryCompositionClaim) :
         (trace.terminalMemory ++ (Airbender.Trace.Machine.unifiedSteps trace ++ workers.steps).map Prod.fst) :=
   fun ⟨config, trace, workers, initial, cells, program, layout, inits, nonempty, boot, callers, machine, production⟩ =>
     ⟨trace, workers, nonempty, claim config trace workers initial cells program layout inits boot callers machine production⟩
+
+-- Certificate RAM outputs.
+
+example : Airbender.Compiler.ProgramCertificateRamProductsSatisfiableClaim := Airbender.Compiler.program_certificate_ram_products_satisfiable
+
+example : Airbender.Compiler.UnifiedCertificateRamProductsSatisfiableClaim := Airbender.Compiler.unified_certificate_ram_products_satisfiable
+
+example : Airbender.Compiler.WorkerCertificateRamProductsSatisfiableClaim := Airbender.Compiler.worker_certificate_ram_products_satisfiable

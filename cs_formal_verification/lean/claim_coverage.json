@@ -891,6 +891,18 @@
     "Airbender.Compiler.UnifiedMemoryCompositionClaim": {
       "witness": "Airbender.Compiler.UnifiedMemoryCompositionSatisfiableClaim"
     },
-    "Airbender.Compiler.UnifiedMemoryCompositionSatisfiableClaim": {}
+    "Airbender.Compiler.UnifiedMemoryCompositionSatisfiableClaim": {},
+    "Airbender.Compiler.ProgramCertificateRamProductsClaim": {
+      "witness": "Airbender.Compiler.ProgramCertificateRamProductsSatisfiableClaim"
+    },
+    "Airbender.Compiler.ProgramCertificateRamProductsSatisfiableClaim": {},
+    "Airbender.Compiler.UnifiedCertificateRamProductsClaim": {
+      "witness": "Airbender.Compiler.UnifiedCertificateRamProductsSatisfiableClaim"
+    },
+    "Airbender.Compiler.UnifiedCertificateRamProductsSatisfiableClaim": {},
+    "Airbender.Compiler.WorkerCertificateRamProductsClaim": {
+      "witness": "Airbender.Compiler.WorkerCertificateRamProductsSatisfiableClaim"
+    },
+    "Airbender.Compiler.WorkerCertificateRamProductsSatisfiableClaim": {}
   }
 }
