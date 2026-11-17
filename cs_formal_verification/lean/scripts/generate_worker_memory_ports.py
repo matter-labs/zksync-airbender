@@ -17,6 +17,8 @@ GKR = ROOT / "proven/Proven/GKRProtocol"
 WORKERS = [
     ("Bigint", "bigint-cached", "bigint_with_extended_control", "Airbender.Bigint", 0x7CA,
      "standard", ".bigint", "bigint"),
+    ("BlakeG", "blake-g-cached", "blake2_g_function", "Airbender.Blake2G", 0x7C8,
+     "standard", ".blakeG", "blakeG"),
 ]
 
 

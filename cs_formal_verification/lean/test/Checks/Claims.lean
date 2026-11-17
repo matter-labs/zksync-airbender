@@ -1185,6 +1185,10 @@ example : Airbender.Compiler.BigintCachedMemoryClaim := @Airbender.Compiler.bigi
 
 example : Airbender.Compiler.BigintCachedMemorySatisfiableClaim := @Airbender.Compiler.bigint_cached_memory_satisfiable
 
+example : Airbender.Compiler.BlakeGCachedMemoryClaim := @Airbender.Compiler.blakeG_cached_memory
+
+example : Airbender.Compiler.BlakeGCachedMemorySatisfiableClaim := @Airbender.Compiler.blakeG_cached_memory_satisfiable
+
 #print axioms Airbender.Compiler.bigint_cached_memory
 
 #print axioms Airbender.Compiler.bigint_cached_memory_satisfiable
@@ -1236,6 +1240,10 @@ example : Airbender.Compiler.NativeFixedRows.WordMemoryImportClaim := @Airbender
 example : Airbender.Compiler.NativeSetups.Range13ImportClaim := @Airbender.Compiler.NativeSetups.range13_import
 
 #print axioms Airbender.Compiler.NativeSetups.range13_import
+
+#print axioms Airbender.Compiler.blakeG_cached_memory
+
+#print axioms Airbender.Compiler.blakeG_cached_memory_satisfiable
 
 -- RAM permutation composition.
 
