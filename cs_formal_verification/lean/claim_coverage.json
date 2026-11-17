@@ -184,6 +184,10 @@
       "exception": "artifact",
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
+    "Airbender.Compiler.NativeSetups.CPURangesImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
     "Airbender.Compiler.NativeWorkerLookups.CachedWorkerLookupSelectorsClaim": {
       "witness": "Airbender.Compiler.NativeWorkerLookups.CachedWorkerLookupSelectorsSatisfiableClaim"
     },

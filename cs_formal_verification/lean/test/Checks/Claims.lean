@@ -1264,6 +1264,10 @@ example : Airbender.Compiler.NativeSetups.Range13ImportClaim := @Airbender.Compi
 
 #print axioms Airbender.Compiler.NativeSetups.range13_import
 
+example : Airbender.Compiler.NativeSetups.CPURangesImportClaim := @Airbender.Compiler.NativeSetups.cpu_ranges_import
+
+#print axioms Airbender.Compiler.NativeSetups.cpu_ranges_import
+
 #print axioms Airbender.Compiler.blakeG_cached_memory
 
 #print axioms Airbender.Compiler.blakeG_cached_memory_satisfiable

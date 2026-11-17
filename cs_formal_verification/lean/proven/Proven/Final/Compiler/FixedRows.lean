@@ -4,6 +4,7 @@ public import Proven.Setup.Native.MulDiv.Columns
 public import Proven.Setup.Native.WordMemory.Columns
 public import Proven.Setup.Native.JumpBranch.Columns
 public import Proven.Setup.Native.AddSub.Columns
+public import Proven.Setup.Imported
 
 @[expose] public section
 
@@ -58,6 +59,13 @@ theorem NativeSetups.range13_import : NativeSetups.Range13ImportClaim := by
     show ¬196608 + index < 131072 by omega, show ¬196608 + index < 196608 by omega,
     show 196608 + index < 204800 by omega, ↓reduceIte, Nat.add_sub_cancel_left]
   fin_cases position <;> simp
+
+/-- Each CPU setup imports its range columns as the identity run, then zero padding to its trace length. -/
+theorem NativeSetups.cpu_ranges_import : NativeSetups.CPURangesImportClaim := by
+  intro data member index _
+  simp only [NativeSetups.cpuSetups, List.mem_cons, List.not_mem_nil, or_false] at member
+  rcases member with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+  exact ⟨Import.Setup.Proofs.decode_identity_padding _ _ index, Import.Setup.Proofs.decode_identity_padding _ _ index⟩
 
 open NativeFixedRows.WordMemorySetupProofs in
 /-- Each column of the imported setup is the column formula (kernel scans), and the column formula is the reviewed

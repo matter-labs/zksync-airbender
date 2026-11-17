@@ -190,6 +190,7 @@ EXCEPTIONS = {
         'Airbender.Compiler.NativeFixedRows.MulDivImportClaim',
         'Airbender.Compiler.NativeFixedRows.WordMemoryImportClaim',
         'Airbender.Compiler.NativeSetups.Range13ImportClaim',
+        'Airbender.Compiler.NativeSetups.CPURangesImportClaim',
     },
     'constant': {
         'Airbender.MachineChecksClaim',

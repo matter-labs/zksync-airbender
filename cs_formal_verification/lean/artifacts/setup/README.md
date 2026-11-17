@@ -44,6 +44,7 @@ by row, long blocks on one period with an algebraic proof of the period (`Proven
 | `shift-binop` | `Verification.ShiftBinopImportClaim` |
 | `add-sub`, `jump-branch`, `mul-div`, `word-memory` | `Compiler.NativeFixedRows.…ImportClaim` |
 | table 26 of `mul-div` | `Compiler.NativeSetups.Range13ImportClaim` |
+| the range columns of the seven CPU setups | `Compiler.NativeSetups.CPURangesImportClaim` |
 | the six worker setups, with their range columns | `Compiler.NativeWorkerSetup.SetupImportClaim` |
 | `blake-round` | `Blake2Round.SetupImportClaim` (the table definition reads the imported rows) |
 | `keccak-column-parity`, `keccak-theta-rho`, `keccak-chi5` | `Keccak.Split.….SetupProofs.setupRow_eq` (proven/; the table definitions read the imported rows) |
