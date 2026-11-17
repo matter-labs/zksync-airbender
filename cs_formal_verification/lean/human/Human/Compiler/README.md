@@ -45,10 +45,11 @@ lookups and execute equal to one.
 [NativePublicSetup.lean](NativePublicSetup.lean) defines fixed rows, public ROM rows
 and PC-indexed decoder rows. Capacity, selector bounds and omitted zero fields are
 public setup properties. The `…ImportClaim` statements of
-[NativeFixedRows.lean](NativeFixedRows.lean) make the add/sub, jump/branch, multiply/divide and word fixed rows,
-fixture-ROM rows and fixture decoder rows equal to the imported native setups. The
-[fixed-row test library](../../../test/Tests/NativeFixedRows/Bindings.lean) compares the subword and unified fixed
-regions with native data in trusted compiled code. The [import guide](../Import/README.md) states the setup binding.
+[NativeSetups/Claims.lean](NativeSetups/Claims.lean) make the definitions of
+[NativeFixedRows.lean](NativeFixedRows.lean) (the add/sub, jump/branch, multiply/divide, word, subword and unified
+fixed rows, fixture-ROM rows and fixture decoder rows) and the shift/byte rows equal to the imported native setups;
+[NativeSetups/Ranges.lean](NativeSetups/Ranges.lean) does the same for the range columns. These claim modules read
+the raw setup data, and the definitions do not import them. The [import guide](../Import/README.md) states the setup binding.
 
 Source snapshots and their JSON conversion are in `proven/`. Certificate procedures
 read a source snapshot and the production cached layout through the proved parser.

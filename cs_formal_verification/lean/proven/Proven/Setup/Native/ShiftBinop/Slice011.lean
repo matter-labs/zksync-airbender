@@ -16,17 +16,17 @@ set_option maxRecDepth 100000
 
 theorem column6_slice1873 :
     AllOk column6 [] ∧
-    SliceOk column6 Airbender.Compiler.NativeSetups.shiftBinopSetup_col6 1873 2656 [] 283474 308554 :=
+    SliceOk column6 Airbender.Compiler.NativeSetups.shiftBinopSetup_col6_from1792 81 2656 [] 283474 308554 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice4529 :
     AllOk column6 [] ∧
-    SliceOk column6 Airbender.Compiler.NativeSetups.shiftBinopSetup_col6 4529 2592 [] 308554 333574 :=
+    SliceOk column6 Airbender.Compiler.NativeSetups.shiftBinopSetup_col6_from4480 49 2592 [] 308554 333574 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice7121 :
     AllOk column6 [] ∧
-    SliceOk column6 Airbender.Compiler.NativeSetups.shiftBinopSetup_col6 7121 2646 [] 333574 358662 :=
+    SliceOk column6 Airbender.Compiler.NativeSetups.shiftBinopSetup_col6_from7040 81 2646 [] 333574 358662 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Verification.ShiftBinopSetupProofs

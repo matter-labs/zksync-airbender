@@ -55,7 +55,7 @@ theorem column3_long1016052 : Long.Ok column3 ⟨1016052, 0, 1, 4096, 0⟩ := by
 
 theorem column3_slice278 :
     AllOk column3 [⟨966900, 0, 1, 4096, 0⟩, ⟨970996, 0, 1, 4096, 0⟩, ⟨975092, 0, 1, 4096, 0⟩, ⟨979188, 0, 1, 4096, 0⟩, ⟨983284, 0, 1, 4096, 0⟩, ⟨987380, 0, 1, 4096, 0⟩, ⟨991476, 0, 1, 4096, 0⟩, ⟨995572, 0, 1, 4096, 0⟩, ⟨999668, 0, 1, 4096, 0⟩, ⟨1003764, 0, 1, 4096, 0⟩, ⟨1007860, 0, 1, 4096, 0⟩, ⟨1011956, 0, 1, 4096, 0⟩, ⟨1016052, 0, 1, 4096, 0⟩] ∧
-    SliceOk column3 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col3 278 13 [⟨966900, 0, 1, 4096, 0⟩, ⟨970996, 0, 1, 4096, 0⟩, ⟨975092, 0, 1, 4096, 0⟩, ⟨979188, 0, 1, 4096, 0⟩, ⟨983284, 0, 1, 4096, 0⟩, ⟨987380, 0, 1, 4096, 0⟩, ⟨991476, 0, 1, 4096, 0⟩, ⟨995572, 0, 1, 4096, 0⟩, ⟨999668, 0, 1, 4096, 0⟩, ⟨1003764, 0, 1, 4096, 0⟩, ⟨1007860, 0, 1, 4096, 0⟩, ⟨1011956, 0, 1, 4096, 0⟩, ⟨1016052, 0, 1, 4096, 0⟩] 966900 1020148 :=
+    SliceOk column3 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col3_from256 22 13 [⟨966900, 0, 1, 4096, 0⟩, ⟨970996, 0, 1, 4096, 0⟩, ⟨975092, 0, 1, 4096, 0⟩, ⟨979188, 0, 1, 4096, 0⟩, ⟨983284, 0, 1, 4096, 0⟩, ⟨987380, 0, 1, 4096, 0⟩, ⟨991476, 0, 1, 4096, 0⟩, ⟨995572, 0, 1, 4096, 0⟩, ⟨999668, 0, 1, 4096, 0⟩, ⟨1003764, 0, 1, 4096, 0⟩, ⟨1007860, 0, 1, 4096, 0⟩, ⟨1011956, 0, 1, 4096, 0⟩, ⟨1016052, 0, 1, 4096, 0⟩] 966900 1020148 :=
   ⟨⟨column3_long966900, column3_long970996, column3_long975092, column3_long979188, column3_long983284, column3_long987380, column3_long991476, column3_long995572, column3_long999668, column3_long1003764, column3_long1007860, column3_long1011956, column3_long1016052, trivial⟩, by decide +kernel⟩
 
 theorem column3_long1020148 : Long.Ok column3 ⟨1020148, 0, 1, 4096, 0⟩ := by
@@ -99,7 +99,7 @@ theorem column3_long1069300 : Long.Ok column3 ⟨1069300, 0, 1, 4096, 0⟩ := by
 
 theorem column3_slice291 :
     AllOk column3 [⟨1020148, 0, 1, 4096, 0⟩, ⟨1024244, 0, 1, 4096, 0⟩, ⟨1028340, 0, 1, 4096, 0⟩, ⟨1032436, 0, 1, 4096, 0⟩, ⟨1036532, 0, 1, 4096, 0⟩, ⟨1040628, 0, 1, 4096, 0⟩, ⟨1044724, 0, 1, 4096, 0⟩, ⟨1048820, 0, 1, 4096, 0⟩, ⟨1052916, 0, 1, 4096, 0⟩, ⟨1057012, 0, 1, 4096, 0⟩, ⟨1061108, 0, 1, 4096, 0⟩, ⟨1065204, 0, 1, 4096, 0⟩, ⟨1069300, 0, 1, 4096, 0⟩] ∧
-    SliceOk column3 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col3 291 13 [⟨1020148, 0, 1, 4096, 0⟩, ⟨1024244, 0, 1, 4096, 0⟩, ⟨1028340, 0, 1, 4096, 0⟩, ⟨1032436, 0, 1, 4096, 0⟩, ⟨1036532, 0, 1, 4096, 0⟩, ⟨1040628, 0, 1, 4096, 0⟩, ⟨1044724, 0, 1, 4096, 0⟩, ⟨1048820, 0, 1, 4096, 0⟩, ⟨1052916, 0, 1, 4096, 0⟩, ⟨1057012, 0, 1, 4096, 0⟩, ⟨1061108, 0, 1, 4096, 0⟩, ⟨1065204, 0, 1, 4096, 0⟩, ⟨1069300, 0, 1, 4096, 0⟩] 1020148 1073396 :=
+    SliceOk column3 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col3_from256 35 13 [⟨1020148, 0, 1, 4096, 0⟩, ⟨1024244, 0, 1, 4096, 0⟩, ⟨1028340, 0, 1, 4096, 0⟩, ⟨1032436, 0, 1, 4096, 0⟩, ⟨1036532, 0, 1, 4096, 0⟩, ⟨1040628, 0, 1, 4096, 0⟩, ⟨1044724, 0, 1, 4096, 0⟩, ⟨1048820, 0, 1, 4096, 0⟩, ⟨1052916, 0, 1, 4096, 0⟩, ⟨1057012, 0, 1, 4096, 0⟩, ⟨1061108, 0, 1, 4096, 0⟩, ⟨1065204, 0, 1, 4096, 0⟩, ⟨1069300, 0, 1, 4096, 0⟩] 1020148 1073396 :=
   ⟨⟨column3_long1020148, column3_long1024244, column3_long1028340, column3_long1032436, column3_long1036532, column3_long1040628, column3_long1044724, column3_long1048820, column3_long1052916, column3_long1057012, column3_long1061108, column3_long1065204, column3_long1069300, trivial⟩, by decide +kernel⟩
 
 theorem column3_long1073396 : Long.Ok column3 ⟨1073396, 0, 1, 4096, 0⟩ := by
@@ -137,7 +137,7 @@ theorem column3_long1114356 : Long.Ok column3 ⟨1114356, 0, 1, 3079948, 0⟩ :=
 
 theorem column3_slice304 :
     AllOk column3 [⟨1073396, 0, 1, 4096, 0⟩, ⟨1077492, 0, 1, 4096, 0⟩, ⟨1081588, 0, 1, 4096, 0⟩, ⟨1085684, 0, 1, 4096, 0⟩, ⟨1089780, 0, 1, 4096, 0⟩, ⟨1093876, 0, 1, 4096, 0⟩, ⟨1097972, 0, 1, 4096, 0⟩, ⟨1102068, 0, 1, 4096, 0⟩, ⟨1106164, 0, 1, 4096, 0⟩, ⟨1110260, 0, 1, 4096, 0⟩, ⟨1114356, 0, 1, 3079948, 0⟩] ∧
-    SliceOk column3 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col3 304 11 [⟨1073396, 0, 1, 4096, 0⟩, ⟨1077492, 0, 1, 4096, 0⟩, ⟨1081588, 0, 1, 4096, 0⟩, ⟨1085684, 0, 1, 4096, 0⟩, ⟨1089780, 0, 1, 4096, 0⟩, ⟨1093876, 0, 1, 4096, 0⟩, ⟨1097972, 0, 1, 4096, 0⟩, ⟨1102068, 0, 1, 4096, 0⟩, ⟨1106164, 0, 1, 4096, 0⟩, ⟨1110260, 0, 1, 4096, 0⟩, ⟨1114356, 0, 1, 3079948, 0⟩] 1073396 4194304 :=
+    SliceOk column3 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col3_from256 48 11 [⟨1073396, 0, 1, 4096, 0⟩, ⟨1077492, 0, 1, 4096, 0⟩, ⟨1081588, 0, 1, 4096, 0⟩, ⟨1085684, 0, 1, 4096, 0⟩, ⟨1089780, 0, 1, 4096, 0⟩, ⟨1093876, 0, 1, 4096, 0⟩, ⟨1097972, 0, 1, 4096, 0⟩, ⟨1102068, 0, 1, 4096, 0⟩, ⟨1106164, 0, 1, 4096, 0⟩, ⟨1110260, 0, 1, 4096, 0⟩, ⟨1114356, 0, 1, 3079948, 0⟩] 1073396 4194304 :=
   ⟨⟨column3_long1073396, column3_long1077492, column3_long1081588, column3_long1085684, column3_long1089780, column3_long1093876, column3_long1097972, column3_long1102068, column3_long1106164, column3_long1110260, column3_long1114356, trivial⟩, by decide +kernel⟩
 
 theorem column4_long0 : Long.Ok column4 ⟨0, 0, 1, 65536, 0⟩ := by
@@ -181,7 +181,7 @@ theorem column4_long786676 : Long.Ok column4 ⟨786676, 0, 1, 65536, 0⟩ := by
 
 theorem column4_slice0 :
     AllOk column4 [⟨0, 0, 1, 65536, 0⟩, ⟨65658, 122, 1, 65536, 0⟩, ⟨131316, 0, 1, 65536, 0⟩, ⟨196852, 0, 1, 65536, 0⟩, ⟨262388, 0, 1, 65536, 0⟩, ⟨327924, 0, 1, 65536, 0⟩, ⟨393460, 0, 1, 65536, 0⟩, ⟨458996, 0, 1, 65536, 0⟩, ⟨524532, 0, 1, 65536, 0⟩, ⟨590068, 0, 1, 65536, 0⟩, ⟨655604, 0, 1, 65536, 0⟩, ⟨721140, 0, 1, 65536, 0⟩, ⟨786676, 0, 1, 65536, 0⟩] ∧
-    SliceOk column4 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col4 0 23 [⟨0, 0, 1, 65536, 0⟩, ⟨65658, 122, 1, 65536, 0⟩, ⟨131316, 0, 1, 65536, 0⟩, ⟨196852, 0, 1, 65536, 0⟩, ⟨262388, 0, 1, 65536, 0⟩, ⟨327924, 0, 1, 65536, 0⟩, ⟨393460, 0, 1, 65536, 0⟩, ⟨458996, 0, 1, 65536, 0⟩, ⟨524532, 0, 1, 65536, 0⟩, ⟨590068, 0, 1, 65536, 0⟩, ⟨655604, 0, 1, 65536, 0⟩, ⟨721140, 0, 1, 65536, 0⟩, ⟨786676, 0, 1, 65536, 0⟩] 0 852212 :=
+    SliceOk column4 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col4_from0 0 23 [⟨0, 0, 1, 65536, 0⟩, ⟨65658, 122, 1, 65536, 0⟩, ⟨131316, 0, 1, 65536, 0⟩, ⟨196852, 0, 1, 65536, 0⟩, ⟨262388, 0, 1, 65536, 0⟩, ⟨327924, 0, 1, 65536, 0⟩, ⟨393460, 0, 1, 65536, 0⟩, ⟨458996, 0, 1, 65536, 0⟩, ⟨524532, 0, 1, 65536, 0⟩, ⟨590068, 0, 1, 65536, 0⟩, ⟨655604, 0, 1, 65536, 0⟩, ⟨721140, 0, 1, 65536, 0⟩, ⟨786676, 0, 1, 65536, 0⟩] 0 852212 :=
   ⟨⟨column4_long0, column4_long65658, column4_long131316, column4_long196852, column4_long262388, column4_long327924, column4_long393460, column4_long458996, column4_long524532, column4_long590068, column4_long655604, column4_long721140, column4_long786676, trivial⟩, by decide +kernel⟩
 
 theorem column4_long852212 : Long.Ok column4 ⟨852212, 0, 1, 65536, 0⟩ := by
@@ -201,7 +201,7 @@ theorem column4_long1114356 : Long.Ok column4 ⟨1114356, 0, 1, 3079948, 0⟩ :=
 
 theorem column4_slice23 :
     AllOk column4 [⟨852212, 0, 1, 65536, 0⟩, ⟨917748, 0, 1, 65536, 0⟩, ⟨983284, 0, 1, 65536, 0⟩, ⟨1048820, 0, 1, 65536, 0⟩, ⟨1114356, 0, 1, 3079948, 0⟩] ∧
-    SliceOk column4 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col4 23 5 [⟨852212, 0, 1, 65536, 0⟩, ⟨917748, 0, 1, 65536, 0⟩, ⟨983284, 0, 1, 65536, 0⟩, ⟨1048820, 0, 1, 65536, 0⟩, ⟨1114356, 0, 1, 3079948, 0⟩] 852212 4194304 :=
+    SliceOk column4 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col4_from0 23 5 [⟨852212, 0, 1, 65536, 0⟩, ⟨917748, 0, 1, 65536, 0⟩, ⟨983284, 0, 1, 65536, 0⟩, ⟨1048820, 0, 1, 65536, 0⟩, ⟨1114356, 0, 1, 3079948, 0⟩] 852212 4194304 :=
   ⟨⟨column4_long852212, column4_long917748, column4_long983284, column4_long1048820, column4_long1114356, trivial⟩, by decide +kernel⟩
 
 theorem column5_long0 : Long.Ok column5 ⟨0, 0, 1, 65536, 0⟩ := by
@@ -209,17 +209,17 @@ theorem column5_long0 : Long.Ok column5 ⟨0, 0, 1, 65536, 0⟩ := by
 
 theorem column5_slice0 :
     AllOk column5 [⟨0, 0, 1, 65536, 0⟩] ∧
-    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5 0 2313 [⟨0, 0, 1, 65536, 0⟩] 0 88548 :=
+    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5_from0 0 2313 [⟨0, 0, 1, 65536, 0⟩] 0 88548 :=
   ⟨⟨column5_long0, trivial⟩, by decide +kernel⟩
 
 theorem column5_slice2313 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5 2313 2536 [] 88548 113548 :=
+    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5_from2304 9 2536 [] 88548 113548 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice4849 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5 4849 2528 [] 113548 138548 :=
+    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5_from4736 113 2528 [] 113548 138548 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Keccak.Split.ColumnParity.SetupProofs

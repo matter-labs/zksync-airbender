@@ -34,7 +34,7 @@ theorem column0_long5505024 : Long.Ok column0 ⟨5505024, 0, 1, 11272192, 0⟩ :
 
 theorem column0_slice0 :
     AllOk column0 [⟨0, 0, 1, 131072, 1⟩, ⟨131072, 0, 1, 65536, 1⟩, ⟨196608, 0, 1, 65536, 1⟩, ⟨262144, 0, 1, 4194304, 1⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] ∧
-    SliceOk column0 Airbender.Compiler.NativeSetups.jumpBranchSetup_col0 0 7 [⟨0, 0, 1, 131072, 1⟩, ⟨131072, 0, 1, 65536, 1⟩, ⟨196608, 0, 1, 65536, 1⟩, ⟨262144, 0, 1, 4194304, 1⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
+    SliceOk column0 Airbender.Compiler.NativeSetups.jumpBranchSetup_col0_from0 0 7 [⟨0, 0, 1, 131072, 1⟩, ⟨131072, 0, 1, 65536, 1⟩, ⟨196608, 0, 1, 65536, 1⟩, ⟨262144, 0, 1, 4194304, 1⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
   ⟨⟨column0_long0, column0_long131072, column0_long196608, column0_long262144, column0_long4456451, column0_long5505024, trivial⟩, by decide +kernel⟩
 
 theorem column1_long1 : Long.Ok column1 ⟨1, 0, 1, 131073, 0⟩ := by
@@ -60,7 +60,7 @@ theorem column1_long1048576 : Long.Ok column1 ⟨1048576, 0, 1, 327680, 0⟩ := 
 
 theorem column1_slice0 :
     AllOk column1 [⟨1, 0, 1, 131073, 0⟩, ⟨131074, 0, 4, 16384, 0⟩, ⟨196610, 0, 1, 32766, 0⟩, ⟨229376, 0, 1, 32768, 0⟩, ⟨262144, 0, 1, 262144, 0⟩, ⟨524288, 0, 1, 524288, 0⟩, ⟨1048576, 0, 1, 327680, 0⟩] ∧
-    SliceOk column1 Airbender.Compiler.NativeSetups.jumpBranchSetup_col1 0 8 [⟨1, 0, 1, 131073, 0⟩, ⟨131074, 0, 4, 16384, 0⟩, ⟨196610, 0, 1, 32766, 0⟩, ⟨229376, 0, 1, 32768, 0⟩, ⟨262144, 0, 1, 262144, 0⟩, ⟨524288, 0, 1, 524288, 0⟩, ⟨1048576, 0, 1, 327680, 0⟩] 0 1376256 :=
+    SliceOk column1 Airbender.Compiler.NativeSetups.jumpBranchSetup_col1_from0 0 8 [⟨1, 0, 1, 131073, 0⟩, ⟨131074, 0, 4, 16384, 0⟩, ⟨196610, 0, 1, 32766, 0⟩, ⟨229376, 0, 1, 32768, 0⟩, ⟨262144, 0, 1, 262144, 0⟩, ⟨524288, 0, 1, 524288, 0⟩, ⟨1048576, 0, 1, 327680, 0⟩] 0 1376256 :=
   ⟨⟨column1_long1, column1_long131074, column1_long196610, column1_long229376, column1_long262144, column1_long524288, column1_long1048576, trivial⟩, by decide +kernel⟩
 
 theorem column1_long1376256 : Long.Ok column1 ⟨1376256, 0, 1, 32768, 0⟩ := by
@@ -86,7 +86,7 @@ theorem column1_long1638400 : Long.Ok column1 ⟨1638400, 0, 1, 32768, 0⟩ := b
 
 theorem column1_slice8 :
     AllOk column1 [⟨1376256, 0, 1, 32768, 0⟩, ⟨1409024, 0, 1, 32768, 0⟩, ⟨1441792, 0, 1, 32768, 0⟩, ⟨1474560, 0, 1, 32768, 0⟩, ⟨1507328, 0, 1, 65536, 0⟩, ⟨1572864, 0, 1, 65536, 0⟩, ⟨1638400, 0, 1, 32768, 0⟩] ∧
-    SliceOk column1 Airbender.Compiler.NativeSetups.jumpBranchSetup_col1 8 7 [⟨1376256, 0, 1, 32768, 0⟩, ⟨1409024, 0, 1, 32768, 0⟩, ⟨1441792, 0, 1, 32768, 0⟩, ⟨1474560, 0, 1, 32768, 0⟩, ⟨1507328, 0, 1, 65536, 0⟩, ⟨1572864, 0, 1, 65536, 0⟩, ⟨1638400, 0, 1, 32768, 0⟩] 1376256 1671168 :=
+    SliceOk column1 Airbender.Compiler.NativeSetups.jumpBranchSetup_col1_from0 8 7 [⟨1376256, 0, 1, 32768, 0⟩, ⟨1409024, 0, 1, 32768, 0⟩, ⟨1441792, 0, 1, 32768, 0⟩, ⟨1474560, 0, 1, 32768, 0⟩, ⟨1507328, 0, 1, 65536, 0⟩, ⟨1572864, 0, 1, 65536, 0⟩, ⟨1638400, 0, 1, 32768, 0⟩] 1376256 1671168 :=
   ⟨⟨column1_long1376256, column1_long1409024, column1_long1441792, column1_long1474560, column1_long1507328, column1_long1572864, column1_long1638400, trivial⟩, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.JumpBranchSetupProofs

@@ -28,7 +28,7 @@ theorem column0_long344896 : Long.Ok column0 ⟨344896, 0, 1, 3849408, 0⟩ := b
 
 theorem column0_slice0 :
     AllOk column0 [⟨0, 0, 256, 256, 1⟩, ⟨65856, 0, 128, 128, 1⟩, ⟨82240, 0, 512, 512, 1⟩, ⟨344896, 0, 1, 3849408, 0⟩] ∧
-    SliceOk column0 Airbender.Compiler.NativeSetups.blakeGSetup_col0 0 7 [⟨0, 0, 256, 256, 1⟩, ⟨65856, 0, 128, 128, 1⟩, ⟨82240, 0, 512, 512, 1⟩, ⟨344896, 0, 1, 3849408, 0⟩] 0 4194304 :=
+    SliceOk column0 Airbender.Compiler.NativeSetups.blakeGSetup_col0_from0 0 7 [⟨0, 0, 256, 256, 1⟩, ⟨65856, 0, 128, 128, 1⟩, ⟨82240, 0, 512, 512, 1⟩, ⟨344896, 0, 1, 3849408, 0⟩] 0 4194304 :=
   ⟨⟨column0_long0, column0_long65856, column0_long82240, column0_long344896, trivial⟩, by decide +kernel⟩
 
 theorem column1_long0 : Long.Ok column1 ⟨0, 0, 256, 256, 0⟩ := by
@@ -45,17 +45,17 @@ theorem column1_long344896 : Long.Ok column1 ⟨344896, 0, 1, 3849408, 0⟩ := b
 
 theorem column1_slice0 :
     AllOk column1 [⟨0, 0, 256, 256, 0⟩, ⟨65864, 0, 128, 128, 0⟩, ⟨82248, 0, 512, 511, 0⟩, ⟨344896, 0, 1, 3849408, 0⟩] ∧
-    SliceOk column1 Airbender.Compiler.NativeSetups.blakeGSetup_col1 0 12 [⟨0, 0, 256, 256, 0⟩, ⟨65864, 0, 128, 128, 0⟩, ⟨82248, 0, 512, 511, 0⟩, ⟨344896, 0, 1, 3849408, 0⟩] 0 4194304 :=
+    SliceOk column1 Airbender.Compiler.NativeSetups.blakeGSetup_col1_from0 0 12 [⟨0, 0, 256, 256, 0⟩, ⟨65864, 0, 128, 128, 0⟩, ⟨82248, 0, 512, 511, 0⟩, ⟨344896, 0, 1, 3849408, 0⟩] 0 4194304 :=
   ⟨⟨column1_long0, column1_long65864, column1_long82248, column1_long344896, trivial⟩, by decide +kernel⟩
 
 theorem column2_slice0 :
     AllOk column2 [] ∧
-    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2 0 389 [] 0 25088 :=
+    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2_from0 0 389 [] 0 25088 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice389 :
     AllOk column2 [] ∧
-    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2 389 449 [] 25088 50176 :=
+    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2_from384 5 449 [] 25088 50176 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Blake2G.SetupProofs

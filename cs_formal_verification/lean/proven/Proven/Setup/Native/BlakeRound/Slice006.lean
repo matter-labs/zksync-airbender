@@ -19,17 +19,17 @@ theorem column3_long0 : Long.Ok column3 ⟨0, 0, 1, 344064, 0⟩ := by
 
 theorem column3_slice0 :
     AllOk column3 [⟨0, 0, 1, 344064, 0⟩] ∧
-    SliceOk column3 Airbender.Blake2Round.blake2RoundSetup_col3 0 162 [⟨0, 0, 1, 344064, 0⟩] 0 365072 :=
+    SliceOk column3 Airbender.Blake2Round.blake2RoundSetup_col3_from0 0 162 [⟨0, 0, 1, 344064, 0⟩] 0 365072 :=
   ⟨⟨column3_long0, trivial⟩, by decide +kernel⟩
 
 theorem column3_slice162 :
     AllOk column3 [] ∧
-    SliceOk column3 Airbender.Blake2Round.blake2RoundSetup_col3 162 624 [] 365072 390080 :=
+    SliceOk column3 Airbender.Blake2Round.blake2RoundSetup_col3_from128 34 624 [] 365072 390080 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column3_slice786 :
     AllOk column3 [] ∧
-    SliceOk column3 Airbender.Blake2Round.blake2RoundSetup_col3 786 135 [] 390080 415232 :=
+    SliceOk column3 Airbender.Blake2Round.blake2RoundSetup_col3_from768 18 135 [] 390080 415232 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Blake2Round.SetupProofs

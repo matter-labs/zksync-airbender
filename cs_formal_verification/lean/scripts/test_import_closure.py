@@ -2,7 +2,7 @@
 from pathlib import Path
 import tempfile
 import unittest
-from check_import_closure import check_graph, load_graph
+from check_import_closure import check_graph, check_raw_data, load_graph
 
 
 class ImportClosureTest(unittest.TestCase):
@@ -22,6 +22,14 @@ class ImportClosureTest(unittest.TestCase):
             for name in names:
                 with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'Checks.Bad'):
                     check_graph(graph, [name])
+
+    def test_raw_setup_data_in_the_definitions(self):
+        graph = {'Human.Targets': ['Human.Tables'], 'Human.Tables': ['Human.Data'], 'Human.Data': [],
+                 'Human.Allowed': []}
+        check_raw_data(graph, ['Human.Targets'], {'Human.Other'}, set())
+        check_raw_data(graph, ['Human.Targets'], {'Human.Data'}, {'Human.Data'})
+        with self.assertRaisesRegex(ValueError, 'Human.Targets → Human.Tables → Human.Data'):
+            check_raw_data(graph, ['Human.Targets'], {'Human.Data'}, {'Human.Allowed'})
 
     def test_transitive_and_clean_boundaries(self):
         for target in ['Proven.Bad', 'Tests.Bad', 'Checks.Bad', 'Clean.Spec']:

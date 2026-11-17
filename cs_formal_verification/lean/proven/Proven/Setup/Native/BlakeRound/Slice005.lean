@@ -16,7 +16,7 @@ set_option maxRecDepth 100000
 
 theorem column2_slice3250 :
     AllOk column2 [] ∧
-    SliceOk column2 Airbender.Blake2Round.blake2RoundSetup_col2 3250 49 [] 301056 326144 :=
+    SliceOk column2 Airbender.Blake2Round.blake2RoundSetup_col2_from3200 50 49 [] 301056 326144 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_long344064 : Long.Ok column2 ⟨344064, 0, 1, 65536, 0⟩ := by
@@ -27,7 +27,7 @@ theorem column2_long409600 : Long.Ok column2 ⟨409600, 0, 1, 65536, 0⟩ := by
 
 theorem column2_slice3299 :
     AllOk column2 [⟨344064, 0, 1, 65536, 0⟩, ⟨409600, 0, 1, 65536, 0⟩] ∧
-    SliceOk column2 Airbender.Blake2Round.blake2RoundSetup_col2 3299 37 [⟨344064, 0, 1, 65536, 0⟩, ⟨409600, 0, 1, 65536, 0⟩] 326144 475136 :=
+    SliceOk column2 Airbender.Blake2Round.blake2RoundSetup_col2_from3200 99 37 [⟨344064, 0, 1, 65536, 0⟩, ⟨409600, 0, 1, 65536, 0⟩] 326144 475136 :=
   ⟨⟨column2_long344064, column2_long409600, trivial⟩, by decide +kernel⟩
 
 theorem column2_long475136 : Long.Ok column2 ⟨475136, 0, 1, 65536, 0⟩ := by
@@ -50,7 +50,7 @@ theorem column2_long606208 : Long.Ok column2 ⟨606208, 0, 1, 442368, 0⟩ := by
 
 theorem column2_slice3336 :
     AllOk column2 [⟨475136, 0, 1, 65536, 0⟩, ⟨540672, 0, 1, 16384, 0⟩, ⟨557056, 0, 1, 16384, 0⟩, ⟨573440, 0, 1, 16384, 0⟩, ⟨589824, 0, 128, 128, 0⟩, ⟨606208, 0, 1, 442368, 0⟩] ∧
-    SliceOk column2 Airbender.Blake2Round.blake2RoundSetup_col2 3336 6 [⟨475136, 0, 1, 65536, 0⟩, ⟨540672, 0, 1, 16384, 0⟩, ⟨557056, 0, 1, 16384, 0⟩, ⟨573440, 0, 1, 16384, 0⟩, ⟨589824, 0, 128, 128, 0⟩, ⟨606208, 0, 1, 442368, 0⟩] 475136 1048576 :=
+    SliceOk column2 Airbender.Blake2Round.blake2RoundSetup_col2_from3328 8 6 [⟨475136, 0, 1, 65536, 0⟩, ⟨540672, 0, 1, 16384, 0⟩, ⟨557056, 0, 1, 16384, 0⟩, ⟨573440, 0, 1, 16384, 0⟩, ⟨589824, 0, 128, 128, 0⟩, ⟨606208, 0, 1, 442368, 0⟩] 475136 1048576 :=
   ⟨⟨column2_long475136, column2_long540672, column2_long557056, column2_long573440, column2_long589824, column2_long606208, trivial⟩, by decide +kernel⟩
 
 end Airbender.Blake2Round.SetupProofs

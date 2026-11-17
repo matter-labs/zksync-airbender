@@ -16,57 +16,57 @@ set_option maxRecDepth 100000
 
 theorem column5_slice15596 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5 15596 1318 [] 300656 325760 :=
+    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5_from15488 108 1318 [] 300656 325760 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice16914 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5 16914 1285 [] 325760 350760 :=
+    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5_from16896 18 1285 [] 325760 350760 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice18199 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5 18199 1317 [] 350760 375760 :=
+    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5_from18176 23 1317 [] 350760 375760 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice19516 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5 19516 1296 [] 375760 400760 :=
+    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5_from19456 60 1296 [] 375760 400760 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice20812 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5 20812 1317 [] 400760 425760 :=
+    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5_from20736 76 1317 [] 400760 425760 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice22129 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5 22129 1302 [] 425760 450816 :=
+    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5_from22016 113 1302 [] 425760 450816 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice23431 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5 23431 1280 [] 450816 475904 :=
+    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5_from23424 7 1280 [] 450816 475904 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice24711 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5 24711 1282 [] 475904 500928 :=
+    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5_from24704 7 1282 [] 475904 500928 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice25993 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5 25993 1318 [] 500928 525936 :=
+    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5_from25984 9 1318 [] 500928 525936 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice27311 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5 27311 1318 [] 525936 551040 :=
+    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5_from27264 47 1318 [] 525936 551040 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice28629 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5 28629 1285 [] 551040 576040 :=
+    SliceOk column5 Airbender.Keccak.Split.Chi5.chi5Setup_col5_from28544 85 1285 [] 551040 576040 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Keccak.Split.Chi5.SetupProofs

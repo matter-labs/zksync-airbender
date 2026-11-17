@@ -175,7 +175,6 @@ def checkBlock (spec : Nat → Nat) (row : Nat) (block : Block) : Bool :=
     (fun count first step => checkAffine spec step count row first)
     (fun values => checkValues spec 0 values.toList row)
     (fun reps stride values => checkPeriodic spec stride values.toList values.toList.length reps row 0)
-    (fun _ _ => false)
 
 /-- The formula as integers. -/
 abbrev asInt (spec : Nat → Nat) (n : Nat) : Int := spec n
@@ -200,7 +199,6 @@ theorem checkBlock_sound {spec : Nat → Nat} {row : Nat} {block : Block}
     apply periodic_ok
     intro q hq j hj
     simpa using checkPeriodic_sound h q hq j hj
-  | grid _ _ => simp [checkBlock] at h
 
 /-! Long blocks. The kernel checks one period row by row: the anchor period. `Long.Ok` gives the next `reps - 1`
 periods. The kernel checks the periods before the anchor and after the covered periods row by row: they cover rows
@@ -246,7 +244,6 @@ def checkLong (spec : Nat → Nat) (long : Long) (block : Block) : Bool :=
           (and (checkValues spec (stride * long.skip) values.toList long.anchor)
             (checkPeriodic spec stride values.toList values.toList.length (reps - (long.skip + long.reps))
               (long.start + (long.skip + long.reps) * values.toList.length) (stride * (long.skip + long.reps))))))
-    (fun _ _ => false)
 
 theorem checkLong_sound {spec : Nat → Nat} {long : Long} {block : Block} (ok : long.Ok spec)
     (h : checkLong spec long block = true) : BlockOk (asInt spec) long.start block := by
@@ -319,7 +316,6 @@ theorem checkLong_sound {spec : Nat → Nat} {long : Long} {block : Block} (ok :
       rw [← this]
       push_cast
       ring
-  | grid _ _ => simp [checkLong] at h
 
 /-! The scan of a list of blocks. -/
 
@@ -443,6 +439,26 @@ theorem prefixOk_next {spec : Nat → Nat} {blocks : List Block} {first count ne
     (slice : AllOk spec longs ∧ SliceOk spec blocks first count longs row last) (sum : first + count = next) :
     PrefixOk spec blocks next last :=
   sum ▸ prefixOk_step before slice.1.mem slice.2
+
+/-! Named suffixes. The import names the suffix of a column every 128 blocks (`addColumn`); a slice starts from the
+suffix before its first block, so the kernel walks at most 127 blocks to reach it. -/
+
+/-- The next named suffix: 128 blocks further. -/
+theorem drop_from {blocks tail next : List Block} {start : Nat} (here : blocks.drop start = tail)
+    (step : tail.drop 128 = next) : blocks.drop (start + 128) = next := by
+  rw [← List.drop_drop, here, step]
+
+/-- The next slice, checked on the named suffix from block `start`. -/
+theorem prefixOk_next_from {spec : Nat → Nat} {blocks tail : List Block} {first count next row last start : Nat}
+    {longs : List Long} (before : PrefixOk spec blocks first row) (suffix : blocks.drop start = tail)
+    (within : start ≤ first) (slice : AllOk spec longs ∧ SliceOk spec tail (first - start) count longs row last)
+    (sum : first + count = next) : PrefixOk spec blocks next last := by
+  have whole : SliceOk spec blocks first count longs row last := by
+    have split : first = start + (first - start) := by omega
+    unfold SliceOk
+    rw [split, ← List.drop_drop, suffix]
+    exact slice.2
+  exact prefixOk_next before ⟨slice.1, whole⟩ sum
 
 end
 

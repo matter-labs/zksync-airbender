@@ -16,17 +16,17 @@ set_option maxRecDepth 100000
 
 theorem column2_slice2031 :
     AllOk column2 [] ∧
-    SliceOk column2 Airbender.Compiler.NativeSetups.keccakSetup_col2 2031 7 [] 491521 520193 :=
+    SliceOk column2 Airbender.Compiler.NativeSetups.keccakSetup_col2_from1920 111 7 [] 491521 520193 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice2038 :
     AllOk column2 [] ∧
-    SliceOk column2 Airbender.Compiler.NativeSetups.keccakSetup_col2 2038 11 [] 520193 546817 :=
+    SliceOk column2 Airbender.Compiler.NativeSetups.keccakSetup_col2_from1920 118 11 [] 520193 546817 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice2049 :
     AllOk column2 [] ∧
-    SliceOk column2 Airbender.Compiler.NativeSetups.keccakSetup_col2 2049 13 [] 546817 573441 :=
+    SliceOk column2 Airbender.Compiler.NativeSetups.keccakSetup_col2_from2048 1 13 [] 546817 573441 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Keccak.SetupProofs

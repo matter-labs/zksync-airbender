@@ -1,7 +1,6 @@
 module
 public import Human.Compiler.NativeMachineArguments
 public import Human.Compiler.NativeFixedRows
-public import Human.Compiler.NativeSetups.Ranges
 
 @[expose] public section
 namespace Airbender.Compiler.NativePublicSetup

@@ -16,17 +16,17 @@ set_option maxRecDepth 100000
 
 theorem column2_slice0 :
     AllOk column2 [] ∧
-    SliceOk column2 Airbender.Blake2Round.blake2RoundSetup_col2 0 389 [] 0 25088 :=
+    SliceOk column2 Airbender.Blake2Round.blake2RoundSetup_col2_from0 0 389 [] 0 25088 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice389 :
     AllOk column2 [] ∧
-    SliceOk column2 Airbender.Blake2Round.blake2RoundSetup_col2 389 449 [] 25088 50176 :=
+    SliceOk column2 Airbender.Blake2Round.blake2RoundSetup_col2_from384 5 449 [] 25088 50176 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice838 :
     AllOk column2 [] ∧
-    SliceOk column2 Airbender.Blake2Round.blake2RoundSetup_col2 838 276 [] 50176 75200 :=
+    SliceOk column2 Airbender.Blake2Round.blake2RoundSetup_col2_from768 70 276 [] 50176 75200 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Blake2Round.SetupProofs

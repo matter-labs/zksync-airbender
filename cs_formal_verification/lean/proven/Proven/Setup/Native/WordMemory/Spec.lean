@@ -1,5 +1,5 @@
 module
-public import Human.Compiler.NativeFixedRows
+public import Human.Compiler.NativeSetups.Claims
 public import Proven.Setup.Native.Common
 
 @[expose] public section

@@ -34,7 +34,7 @@ theorem column0_long327937 : Long.Ok column0 ⟨327937, 0, 1, 65536, 0⟩ := by
 
 theorem column0_slice0 :
     AllOk column0 [⟨257, 0, 256, 256, 1⟩, ⟨65793, 0, 256, 256, 1⟩, ⟨131329, 0, 256, 256, 1⟩, ⟨196865, 0, 256, 256, 1⟩, ⟨262401, 0, 1, 65536, 0⟩, ⟨327937, 0, 1, 65536, 0⟩] ∧
-    SliceOk column0 Airbender.Compiler.NativeSetups.shiftBinopSetup_col0 0 8 [⟨257, 0, 256, 256, 1⟩, ⟨65793, 0, 256, 256, 1⟩, ⟨131329, 0, 256, 256, 1⟩, ⟨196865, 0, 256, 256, 1⟩, ⟨262401, 0, 1, 65536, 0⟩, ⟨327937, 0, 1, 65536, 0⟩] 0 393473 :=
+    SliceOk column0 Airbender.Compiler.NativeSetups.shiftBinopSetup_col0_from0 0 8 [⟨257, 0, 256, 256, 1⟩, ⟨65793, 0, 256, 256, 1⟩, ⟨131329, 0, 256, 256, 1⟩, ⟨196865, 0, 256, 256, 1⟩, ⟨262401, 0, 1, 65536, 0⟩, ⟨327937, 0, 1, 65536, 0⟩] 0 393473 :=
   ⟨⟨column0_long257, column0_long65793, column0_long131329, column0_long196865, column0_long262401, column0_long327937, trivial⟩, by decide +kernel⟩
 
 theorem column0_long393473 : Long.Ok column0 ⟨393473, 0, 1, 65536, 0⟩ := by
@@ -51,7 +51,7 @@ theorem column0_long1573121 : Long.Ok column0 ⟨1573121, 0, 1, 15204095, 0⟩ :
 
 theorem column0_slice8 :
     AllOk column0 [⟨393473, 0, 1, 65536, 0⟩, ⟨459009, 0, 1, 65536, 0⟩, ⟨524545, 0, 1, 1048576, 0⟩, ⟨1573121, 0, 1, 15204095, 0⟩] ∧
-    SliceOk column0 Airbender.Compiler.NativeSetups.shiftBinopSetup_col0 8 4 [⟨393473, 0, 1, 65536, 0⟩, ⟨459009, 0, 1, 65536, 0⟩, ⟨524545, 0, 1, 1048576, 0⟩, ⟨1573121, 0, 1, 15204095, 0⟩] 393473 16777216 :=
+    SliceOk column0 Airbender.Compiler.NativeSetups.shiftBinopSetup_col0_from0 8 4 [⟨393473, 0, 1, 65536, 0⟩, ⟨459009, 0, 1, 65536, 0⟩, ⟨524545, 0, 1, 1048576, 0⟩, ⟨1573121, 0, 1, 15204095, 0⟩] 393473 16777216 :=
   ⟨⟨column0_long393473, column0_long459009, column0_long524545, column0_long1573121, trivial⟩, by decide +kernel⟩
 
 theorem column1_long257 : Long.Ok column1 ⟨257, 0, 256, 1024, 0⟩ := by
@@ -74,7 +74,7 @@ theorem column1_long524545 : Long.Ok column1 ⟨524545, 0, 1, 1048576, 0⟩ := b
 
 theorem column1_slice0 :
     AllOk column1 [⟨257, 0, 256, 1024, 0⟩, ⟨262401, 0, 256, 256, 1⟩, ⟨327937, 0, 256, 256, 1⟩, ⟨393473, 0, 256, 256, 1⟩, ⟨459009, 0, 256, 256, 1⟩, ⟨524545, 0, 1, 1048576, 0⟩] ∧
-    SliceOk column1 Airbender.Compiler.NativeSetups.shiftBinopSetup_col1 0 8 [⟨257, 0, 256, 1024, 0⟩, ⟨262401, 0, 256, 256, 1⟩, ⟨327937, 0, 256, 256, 1⟩, ⟨393473, 0, 256, 256, 1⟩, ⟨459009, 0, 256, 256, 1⟩, ⟨524545, 0, 1, 1048576, 0⟩] 0 1573121 :=
+    SliceOk column1 Airbender.Compiler.NativeSetups.shiftBinopSetup_col1_from0 0 8 [⟨257, 0, 256, 1024, 0⟩, ⟨262401, 0, 256, 256, 1⟩, ⟨327937, 0, 256, 256, 1⟩, ⟨393473, 0, 256, 256, 1⟩, ⟨459009, 0, 256, 256, 1⟩, ⟨524545, 0, 1, 1048576, 0⟩] 0 1573121 :=
   ⟨⟨column1_long257, column1_long262401, column1_long327937, column1_long393473, column1_long459009, column1_long524545, trivial⟩, by decide +kernel⟩
 
 theorem column1_long1573121 : Long.Ok column1 ⟨1573121, 0, 1, 15204095, 0⟩ := by
@@ -82,12 +82,12 @@ theorem column1_long1573121 : Long.Ok column1 ⟨1573121, 0, 1, 15204095, 0⟩ :
 
 theorem column1_slice8 :
     AllOk column1 [⟨1573121, 0, 1, 15204095, 0⟩] ∧
-    SliceOk column1 Airbender.Compiler.NativeSetups.shiftBinopSetup_col1 8 1 [⟨1573121, 0, 1, 15204095, 0⟩] 1573121 16777216 :=
+    SliceOk column1 Airbender.Compiler.NativeSetups.shiftBinopSetup_col1_from0 8 1 [⟨1573121, 0, 1, 15204095, 0⟩] 1573121 16777216 :=
   ⟨⟨column1_long1573121, trivial⟩, by decide +kernel⟩
 
 theorem column2_slice0 :
     AllOk column2 [] ∧
-    SliceOk column2 Airbender.Compiler.NativeSetups.shiftBinopSetup_col2 0 388 [] 0 25089 :=
+    SliceOk column2 Airbender.Compiler.NativeSetups.shiftBinopSetup_col2_from0 0 388 [] 0 25089 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Verification.ShiftBinopSetupProofs

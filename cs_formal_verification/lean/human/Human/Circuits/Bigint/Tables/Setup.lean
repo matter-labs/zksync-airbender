@@ -2,7 +2,6 @@ module
 public import Human.Helpers.Tables.Lookups
 public import Human.Circuits.JumpBranchSlt.Tables.Control
 
-public import Human.Compiler.NativeSetups.Bigint
 
 @[expose] public section
 
@@ -33,14 +32,5 @@ def setupTable {p : Nat} [Fact p.Prime] : Table (ZMod p) (fields 3) := .fromStat
   Spec x := ∃ i : Fin 1390592, x = #v[((setupRow i).1 : ZMod p), ((setupRow i).2.1 : ZMod p), ((setupRow i).2.2 : ZMod p)]
   contains_iff _ := Iff.rfl
 }
-
-/-- The fixed rows, then zero padding, are the imported native rows on the complete trace domain. -/
-def SetupImportClaim : Prop :=
-  Compiler.NativeSetups.bigintSetup.traceLen = 4194304 ∧
-  Compiler.NativeSetups.bigintSetup.Rows fun index =>
-    if bound : index < 1390592 then
-      let row := setupRow ⟨index, bound⟩
-      #v[(row.1 : Int), (row.2.1 : Int), (row.2.2 : Int)]
-    else #v[0, 0, 0]
 
 end Airbender.Bigint

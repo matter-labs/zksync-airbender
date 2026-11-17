@@ -9,37 +9,18 @@ public meta import Lean
 public meta section
 
 /- TRUSTED: review. Not kernel-checked: the decoding of the setup JSON (`parseSetup`: the JSON value from
-   `Json.parse`, read field by field), and, for the `with grids` form only, the comparison of grid blocks with the
-   JSON rows.
+   `Json.parse`, read field by field).
 
    `import_setup_blocks name from "path"` reads a native setup JSON at elaboration time and
    adds `name : Airbender.Import.Setup.SetupData`: the trace length, every generic column and the two virtual range
-   columns, each as the JSON blocks themselves (`affine`, `dense`, `periodic`), with one declaration per column and
-   small shared literal tails. The terms are built directly as kernel expressions (no surface syntax), so
+   columns, each as the JSON blocks themselves (`affine`, `dense`, `periodic`), with one declaration per column, a
+   named suffix every 128 blocks (`addColumn`) and small shared literal tails. The terms are built directly as kernel expressions (no surface syntax), so
    elaboration cost stays linear in the number of blocks. Lake tracks the file through the `needs` input of the
-   library containing the use. Kernel proofs give the meaning of the rows.
-
-   `import_setup_blocks name from "path" with grids` replaces each table region of `gridCatalogue` by one `grid`
-   block (a named row formula), after `checkColumn` compares every row of the region with the JSON. The emitted
-   blocks tile the rows contiguously and the totals agree, so the emitted column decodes to the JSON column at every
-   row. This comparison is elaborator code, trusted like `parseSetup`; the kernel never sees the JSON blocks of a
-   grid region. -/
+   library containing the use. Kernel proofs give the meaning of the rows. -/
 
 namespace Airbender.Import.Setup
 
 open Lean Elab Command
-
-/-- The decoded file, with the table metadata that only the `with grids` form reads. -/
-structure ParsedSetup extends SetupData where
-  tables : Array Table
-
-/-- The full virtual columns are an increasing prefix and optional zero padding. -/
-def compareRanges (data : ParsedSetup) : Except String Unit := do
-  for (limit, blocks) in [(65536, data.range16), (524288, data.timestampRange)] do
-    unless limit ≤ data.traceLen do throw "Native range exceeds its setup domain"
-    let expected := if limit = data.traceLen then [Block.affine limit 0 1]
-      else [Block.affine limit 0 1, Block.affine (data.traceLen - limit) 0 0]
-    unless blocks == expected do throw "Native range prefix or padding differs"
 
 private def natE (n : Nat) : Lean.Expr := mkRawNatLit n
 
@@ -57,24 +38,12 @@ private def arrayE (ty : Lean.Expr) (xs : List Lean.Expr) : Lean.Expr :=
 private def intTy : Lean.Expr := mkConst ``Int
 private def blockTy : Lean.Expr := mkConst ``Airbender.Import.Setup.Block
 
-private def gridE : GridFn → Lean.Expr
-  | .digit d w => mkAppN (mkConst ``GridFn.digit) #[natE d, natE w]
-  | .xorDigits d₁ d₂ w => mkAppN (mkConst ``GridFn.xorDigits) #[natE d₁, natE d₂, natE w]
-  | .xor4x3 => mkConst ``GridFn.xor4x3
-  | .rotLow => mkConst ``GridFn.rotLow
-  | .rotHigh => mkConst ``GridFn.rotHigh
-  | .xor5 => mkConst ``GridFn.xor5
-  | .chi k => mkApp (mkConst ``GridFn.chi) (natE k)
-  | .xorTable w t => mkAppN (mkConst ``GridFn.xorTable)
-      #[natE w, arrayE (mkConst ``Nat) (t.toList.map natE)]
-
 private def blockE : Block → Lean.Expr
   | .affine n f s => mkAppN (mkConst ``Airbender.Import.Setup.Block.affine) #[natE n, intE f, intE s]
   | .dense vs => mkApp (mkConst ``Airbender.Import.Setup.Block.dense)
       (arrayE intTy (vs.toList.map intE))
   | .periodic r s vs => mkAppN (mkConst ``Airbender.Import.Setup.Block.periodic)
       #[natE r, intE s, arrayE intTy (vs.toList.map intE)]
-  | .grid n f => mkAppN (mkConst ``Airbender.Import.Setup.Block.grid) #[natE n, gridE f]
 
 private def blocksE (bs : List Block) : Lean.Expr := listE blockTy (bs.map blockE)
 
@@ -99,141 +68,16 @@ def blockOf (j : Airbender.Json.Value) : Except String Block := do
 def blocksOf (j : Airbender.Json.Value) : Except String (List Block) := do
   (← (get j "blocks" : Except String (List Airbender.Json.Value))).mapM blockOf
 
-def tableOf (j : Airbender.Json.Value) : Except String Table :=
-  return { id := ← get j "id", offset := ← get j "offset", length := ← get j "length", width := ← get j "width",
-           keyColumns := ← get j "key_columns" }
-
 /-- Parse the setup JSON text (`Json.parse`, fixed by `ParseSoundClaim` and `TextUniqueClaim`). -/
-def parseSetup (text : String) : Except String ParsedSetup := do
+def parseSetup (text : String) : Except String SetupData := do
   let j ← Airbender.Json.parse text.toUTF8
   let version : Nat ← get j "version"
   if version != 1 then throw s!"unsupported setup version {version}"
   let columns : List Airbender.Json.Value ← get j "columns"
-  let tables : List Airbender.Json.Value ← get j "tables"
   return { traceLen := ← get j "trace_len", columns := (← columns.mapM blocksOf).toArray,
-           range16 := ← blocksOf (← get j "range16"), timestampRange := ← blocksOf (← get j "timestamp_range"),
-           tables := (← tables.mapM tableOf).toArray }
+           range16 := ← blocksOf (← get j "range16"), timestampRange := ← blocksOf (← get j "timestamp_range") }
 
 end Parse
-
-/-! Structured regions -/
-
-/-- Row formulas of the Airbender tables the import recognises (`TableType`,
-    cs/src/definitions/table_type.rs; generators in cs/src/tables), one per table column.
-    `xorTable` is completed from the data (`fit`). -/
-def gridCatalogue : Nat → Option (List GridFn)
-  | 4 => some [.digit 256 256, .digit 1 256, .xorDigits 256 1 256]            -- Xor
-  | 19 => some [.digit 128 128, .digit 1 128, .xorDigits 128 1 128]          -- Xor7
-  | 20 => some [.digit 512 512, .digit 1 512, .xorDigits 512 1 512]          -- Xor9
-  | 38 => some [.digit 1 256, .digit 256 256, .xorTable 256 #[]]             -- XorSpecialIota
-  | 55 => some [.digit 256 256, .digit 1 256, .digit 65536 3, .xorDigits 256 1 256]  -- Xor8WithCarry
-  | 56 => some [.digit 128 128, .digit 1 128, .digit 16384 3, .xorDigits 128 1 128]  -- Xor7WithCarry
-  | 57 => some [.digit 1024 16, .digit 128 8, .digit 8 16, .digit 1 8, .xor4x3]      -- Xor4x3
-  | 58 => some [.digit 1 256, .digit 256 256, .digit 65536 8, .rotLow, .rotHigh]     -- KeccakXorSplit
-  | 64 => some [.digit 1 16, .digit 16 16, .digit 256 16, .digit 4096 16, .digit 65536 16,
-      .xor5]                                                                  -- KeccakXor5Nibble
-  | 65 => some [.digit 1 16, .digit 16 16, .digit 256 16, .digit 4096 16, .digit 65536 16,
-      .chi 0, .chi 1, .chi 2, .chi 3, .chi 4]                                 -- KeccakChi5
-  | _ => none
-
-/-- Blocks with their first rows. -/
-def placedBlocks (bs : List Block) : Array (Nat × Block) := Id.run do
-  let mut out := #[]
-  let mut s := 0
-  for b in bs do
-    out := out.push (s, b)
-    s := s + b.len
-  return out
-
-/-- The JSON values of rows `[lo, hi)` of a column. -/
-def rowsOf (placed : Array (Nat × Block)) (lo hi : Nat) : Array Int := Id.run do
-  let mut out : Array Int := Array.mkEmpty (hi - lo)
-  for (s, b) in placed do
-    let e := s + b.len
-    if e ≤ lo then continue
-    if hi ≤ s then break
-    for i in [max s lo - s : min e hi - s] do
-      out := out.push (b.valueAt i)
-  return out
-
-/-- Rows `[lo, hi)` of a block (block-relative), as a block. -/
-def cut (b : Block) (lo hi : Nat) : Block :=
-  match b with
-  | .affine _ first step => .affine (hi - lo) (first + step * lo) step
-  | b => .dense (((List.range (hi - lo)).map fun j => b.valueAt (lo + j)).toArray)
-
-/-- `xorTable` takes its constants from the data: `t[g]` is the region's row `g * w`
-    (where `i % w = 0`); `checkColumn` then checks every row. -/
-def fit (placed : Array (Nat × Block)) (first length : Nat) : GridFn → GridFn
-  | .xorTable w _ =>
-    let rows := rowsOf placed first (first + length)
-    .xorTable w (((List.range ((length + w - 1) / w)).map fun g => (rows.getD (g * w) 0).toNat).toArray)
-  | f => f
-
-/-- The JSON blocks cut at every row of `edges` that falls strictly inside a block. -/
-def cutAt (placed : Array (Nat × Block)) (edges : Array Nat) : Array (Nat × Block) := Id.run do
-  let mut out := #[]
-  for (s, b) in placed do
-    let e := s + b.len
-    let inner := (edges.filter fun x => s < x ∧ x < e).qsort (· < ·)
-    if inner.isEmpty then
-      out := out.push (s, b)
-    else
-      let mut cur := s
-      for x in inner.push e do
-        if cur < x then out := out.push (cur, cut b (cur - s) (x - s))
-        cur := x
-  return out
-
-/-- The emitted column: the grid block of a region at its first row, the (cut) JSON blocks
-    outside the regions (`regions`: first row, length, formula). -/
-def withGrids (pieces : Array (Nat × Block)) (regions : Array (Nat × Nat × GridFn)) : List Block :=
-  pieces.toList.filterMap fun (s, b) =>
-    match regions.find? (fun (r, l, _) => r ≤ s ∧ s < r + l) with
-    | some (r, l, f) => if s = r then some (.grid l f) else none
-    | none => some b
-
-/-- Every emitted block equals the JSON on its rows: identical to the JSON block starting at
-    the same row, a cut of the affine JSON block containing it, or equal row by row. Returns
-    the first mismatch. -/
-def checkColumn (json : Array (Nat × Block)) (emitted : List Block) : Except String Unit := do
-  let total := json.foldl (fun t p => t + p.2.len) 0
-  let mut k := 0
-  for (s, b) in placedBlocks emitted do
-    while k + 1 < json.size && json[k + 1]!.1 ≤ s do k := k + 1
-    if k < json.size then
-      let (s₀, b₀) := json[k]!
-      if s₀ == s && b₀ == b then continue
-      if let .affine .. := b₀ then
-        if s₀ ≤ s && s + b.len ≤ s₀ + b₀.len && cut b₀ (s - s₀) (s - s₀ + b.len) == b then continue
-    let rows := rowsOf json s (s + b.len)
-    if rows.size != b.len then throw s!"block at row {s} runs past the JSON rows"
-    for i in [0:b.len] do
-      if rows[i]! != b.valueAt i then
-        throw s!"row {s + i}: JSON {rows[i]!}, emitted {b.valueAt i}"
-  let emittedTotal := emitted.foldl (fun t b => t + b.len) 0
-  if emittedTotal != total then throw s!"emitted {emittedTotal} rows, JSON {total}"
-
-/-- Column `c`: the JSON blocks cut at every table edge, with grid blocks on the recognised
-    table regions, checked against the JSON. -/
-def structureColumn (tables : Array Table) (c : Nat) (bs : List Block) :
-    Except String (List Block) := do
-  let json := placedBlocks bs
-  let mut regions := #[]
-  for t in tables do
-    if let some fs := gridCatalogue t.id then
-      if fs.length != t.width then throw s!"table {t.id}: width {t.width}, catalogue {fs.length}"
-      if h : c < fs.length then
-        regions := regions.push (t.offset, t.length, fit json t.offset t.length fs[c])
-  let sorted := tables.qsort (fun a b => a.offset < b.offset)
-  for i in [1:sorted.size] do
-    if sorted[i]!.offset < sorted[i-1]!.offset + sorted[i-1]!.length then
-      throw "overlapping table regions"
-  let edges := tables.foldl (fun es t => es.push t.offset |>.push (t.offset + t.length)) #[]
-  let out := withGrids (cutAt json edges) regions
-  match checkColumn json out with
-  | .ok () => return out
-  | .error e => throw s!"column {c}: {e}"
 
 private def blocksTy : Lean.Expr := mkApp (mkConst ``List [Level.zero]) blockTy
 
@@ -242,7 +86,7 @@ private def addDataDef (name : Name) (ty value : Lean.Expr) : CoreM Unit :=
   addDecl (forceExpose := true) <| .defnDecl {
     name, levelParams := [], type := ty, value, hints := .abbrev, safety := .safe }
 
-/-- Share long literal lists through small definitions. Their values and grid formulas stay definitionally equal. -/
+/-- Share long literal lists through small definitions. Their values stay definitionally equal. -/
 private partial def shareDataLists (base : Name) (value : Lean.Expr) : StateT Nat CoreM Lean.Expr := do
   if value.isAppOfArity ``List.cons 3 then
     let ty := value.getAppArgs[0]!
@@ -278,32 +122,41 @@ private def addDef (name : Name) (ty value : Lean.Expr) : CoreM Unit := do
   let (value, _) ← (shareDataLists name value).run 0
   addDataDef name ty value
 
-syntax (name := importSetupBlocks) "import_setup_blocks " ident " from " str (" with" &" grids")? : command
+/-- A column as suffix definitions: `name_from{s}`, for each multiple `s` of 128 below the block count, holds the
+    blocks from block `s` on: the next 128 blocks, then `name_from{s + 128}`. `name` is `name_from0`. The value of
+    `name` is the list of the blocks, as `addDef` gives it; the scans start from a named suffix. -/
+private def addColumn (name : Name) (blocks : List Block) : CoreM Unit := do
+  let blocks := blocks.toArray
+  let mut tail := mkApp (mkConst ``List.nil [Level.zero]) blockTy
+  let mut shared := 0
+  for chunk in (List.range ((blocks.size + 127) / 128)).reverse do
+    let start := 128 * chunk
+    let mut value := tail
+    for index in (List.range (min 128 (blocks.size - start))).reverse do
+      let (block, next) ← (shareDataLists name (blockE blocks[start + index]!)).run shared
+      shared := next
+      value := mkApp3 (mkConst ``List.cons [Level.zero]) blockTy block value
+    let suffix := name.appendAfter s!"_from{start}"
+    addDataDef suffix blocksTy value
+    tail := mkConst suffix
+  addDataDef name blocksTy tail
+
+syntax (name := importSetupBlocks) "import_setup_blocks " ident " from " str : command
 
 @[command_elab importSetupBlocks]
 def elabImportSetupBlocks : CommandElab := fun stx => do
   let name : Ident := ⟨stx[1]⟩
   let some path := stx[3].isStrLit? | throwUnsupportedSyntax
-  let grids := !stx[4].isNone
   let text ← IO.FS.readFile path
   let d ← match parseSetup text with
     | .ok d => pure d
     | .error e => throwError "setup import failed: {e}"
-  if grids then
-    match compareRanges d with
-    | .ok () => pure ()
-    | .error reason => throwError "setup range import failed: {reason}"
   let base := (← getCurrNamespace) ++ name.getId
   liftCoreM do
     let mut colNames : Array Name := #[]
     for h : i in [0:d.columns.size] do
       let n := base.appendAfter s!"_col{i}"
-      let col ← if grids then
-          match structureColumn d.tables i d.columns[i] with
-          | .ok col => pure col
-          | .error e => throwError "setup import failed: {e}"
-        else pure d.columns[i]
-      addDef n blocksTy (blocksE col)
+      addColumn n d.columns[i]
       colNames := colNames.push n
     let range16 := base.appendAfter "_range16"
     addDef range16 blocksTy (blocksE d.range16)

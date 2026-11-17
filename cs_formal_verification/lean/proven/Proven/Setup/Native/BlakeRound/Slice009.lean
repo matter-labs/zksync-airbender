@@ -19,7 +19,7 @@ theorem column3_long589824 : Long.Ok column3 ⟨589824, 0, 8, 2048, 0⟩ := by
 
 theorem column3_slice3281 :
     AllOk column3 [⟨589824, 0, 8, 2048, 0⟩] ∧
-    SliceOk column3 Airbender.Blake2Round.blake2RoundSetup_col3 3281 573 [⟨589824, 0, 8, 2048, 0⟩] 565696 606208 :=
+    SliceOk column3 Airbender.Blake2Round.blake2RoundSetup_col3_from3200 81 573 [⟨589824, 0, 8, 2048, 0⟩] 565696 606208 :=
   ⟨⟨column3_long589824, trivial⟩, by decide +kernel⟩
 
 theorem column3_long606208 : Long.Ok column3 ⟨606208, 0, 1, 442368, 0⟩ := by
@@ -27,7 +27,7 @@ theorem column3_long606208 : Long.Ok column3 ⟨606208, 0, 1, 442368, 0⟩ := by
 
 theorem column3_slice3854 :
     AllOk column3 [⟨606208, 0, 1, 442368, 0⟩] ∧
-    SliceOk column3 Airbender.Blake2Round.blake2RoundSetup_col3 3854 1 [⟨606208, 0, 1, 442368, 0⟩] 606208 1048576 :=
+    SliceOk column3 Airbender.Blake2Round.blake2RoundSetup_col3_from3840 14 1 [⟨606208, 0, 1, 442368, 0⟩] 606208 1048576 :=
   ⟨⟨column3_long606208, trivial⟩, by decide +kernel⟩
 
 theorem column4_long0 : Long.Ok column4 ⟨0, 0, 1, 589824, 0⟩ := by
@@ -38,7 +38,7 @@ theorem column4_long606208 : Long.Ok column4 ⟨606208, 0, 1, 442368, 0⟩ := by
 
 theorem column4_slice0 :
     AllOk column4 [⟨0, 0, 1, 589824, 0⟩, ⟨606208, 0, 1, 442368, 0⟩] ∧
-    SliceOk column4 Airbender.Blake2Round.blake2RoundSetup_col4 0 455 [⟨0, 0, 1, 589824, 0⟩, ⟨606208, 0, 1, 442368, 0⟩] 0 1048576 :=
+    SliceOk column4 Airbender.Blake2Round.blake2RoundSetup_col4_from0 0 455 [⟨0, 0, 1, 589824, 0⟩, ⟨606208, 0, 1, 442368, 0⟩] 0 1048576 :=
   ⟨⟨column4_long0, column4_long606208, trivial⟩, by decide +kernel⟩
 
 theorem column5_long0 : Long.Ok column5 ⟨0, 0, 1, 65536, 0⟩ := by
@@ -64,7 +64,7 @@ theorem column5_long606208 : Long.Ok column5 ⟨606208, 0, 1, 442368, 0⟩ := by
 
 theorem column5_slice0 :
     AllOk column5 [⟨0, 0, 1, 65536, 0⟩, ⟨65536, 0, 1, 16384, 0⟩, ⟨81920, 0, 1, 262144, 0⟩, ⟨344064, 0, 1, 196608, 0⟩, ⟨540672, 0, 1, 49152, 0⟩, ⟨589824, 0, 1, 16384, 0⟩, ⟨606208, 0, 1, 442368, 0⟩] ∧
-    SliceOk column5 Airbender.Blake2Round.blake2RoundSetup_col5 0 7 [⟨0, 0, 1, 65536, 0⟩, ⟨65536, 0, 1, 16384, 0⟩, ⟨81920, 0, 1, 262144, 0⟩, ⟨344064, 0, 1, 196608, 0⟩, ⟨540672, 0, 1, 49152, 0⟩, ⟨589824, 0, 1, 16384, 0⟩, ⟨606208, 0, 1, 442368, 0⟩] 0 1048576 :=
+    SliceOk column5 Airbender.Blake2Round.blake2RoundSetup_col5_from0 0 7 [⟨0, 0, 1, 65536, 0⟩, ⟨65536, 0, 1, 16384, 0⟩, ⟨81920, 0, 1, 262144, 0⟩, ⟨344064, 0, 1, 196608, 0⟩, ⟨540672, 0, 1, 49152, 0⟩, ⟨589824, 0, 1, 16384, 0⟩, ⟨606208, 0, 1, 442368, 0⟩] 0 1048576 :=
   ⟨⟨column5_long0, column5_long65536, column5_long81920, column5_long344064, column5_long540672, column5_long589824, column5_long606208, trivial⟩, by decide +kernel⟩
 
 end Airbender.Blake2Round.SetupProofs

@@ -1,5 +1,5 @@
 module
-public import Human.Circuits.Keccak.Tables.Controller
+public import Human.Circuits.Keccak.Tables.SetupImport
 public import Proven.Setup.Scan
 public import Mathlib.Tactic.IntervalCases
 

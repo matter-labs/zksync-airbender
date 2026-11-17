@@ -1,5 +1,5 @@
 module
-public import Human.Circuits.Blake2G.Tables.Controller
+public import Human.Circuits.Blake2G.Tables.SetupImport
 public import Proven.Setup.Scan
 
 @[expose] public section

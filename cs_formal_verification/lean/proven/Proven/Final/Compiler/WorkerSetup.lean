@@ -1,5 +1,5 @@
 module
-public import Human.Compiler.WorkerPublicSetup
+public import Human.Compiler.WorkerSetupImport
 public import Proven.Setup.Imported
 public import Proven.Final.Circuits.Bigint.Setup
 public import Proven.Final.Circuits.Blake2G.Setup

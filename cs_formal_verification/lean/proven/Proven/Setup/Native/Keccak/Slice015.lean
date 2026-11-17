@@ -22,7 +22,7 @@ theorem column5_long69633 : Long.Ok column5 ⟨69633, 0, 1, 4124671, 0⟩ := by
 
 theorem column5_slice0 :
     AllOk column5 [⟨0, 0, 1, 65537, 0⟩, ⟨69633, 0, 1, 4124671, 0⟩] ∧
-    SliceOk column5 Airbender.Compiler.NativeSetups.keccakSetup_col5 0 108 [⟨0, 0, 1, 65537, 0⟩, ⟨69633, 0, 1, 4124671, 0⟩] 0 4194304 :=
+    SliceOk column5 Airbender.Compiler.NativeSetups.keccakSetup_col5_from0 0 108 [⟨0, 0, 1, 65537, 0⟩, ⟨69633, 0, 1, 4124671, 0⟩] 0 4194304 :=
   ⟨⟨column5_long0, column5_long69633, trivial⟩, by decide +kernel⟩
 
 theorem column6_long0 : Long.Ok column6 ⟨0, 0, 1, 65537, 0⟩ := by
@@ -33,7 +33,7 @@ theorem column6_long69633 : Long.Ok column6 ⟨69633, 0, 1, 4124671, 0⟩ := by
 
 theorem column6_slice0 :
     AllOk column6 [⟨0, 0, 1, 65537, 0⟩, ⟨69633, 0, 1, 4124671, 0⟩] ∧
-    SliceOk column6 Airbender.Compiler.NativeSetups.keccakSetup_col6 0 15 [⟨0, 0, 1, 65537, 0⟩, ⟨69633, 0, 1, 4124671, 0⟩] 0 4194304 :=
+    SliceOk column6 Airbender.Compiler.NativeSetups.keccakSetup_col6_from0 0 15 [⟨0, 0, 1, 65537, 0⟩, ⟨69633, 0, 1, 4124671, 0⟩] 0 4194304 :=
   ⟨⟨column6_long0, column6_long69633, trivial⟩, by decide +kernel⟩
 
 end Airbender.Keccak.SetupProofs

@@ -16,17 +16,17 @@ set_option maxRecDepth 100000
 
 theorem column2_slice1405 :
     AllOk column2 [] ∧
-    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2 1405 67 [] 125760 150848 :=
+    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2_from1280 125 67 [] 125760 150848 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice1472 :
     AllOk column2 [] ∧
-    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2 1472 672 [] 150848 175872 :=
+    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2_from1408 64 672 [] 150848 175872 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice2144 :
     AllOk column2 [] ∧
-    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2 2144 153 [] 175872 201024 :=
+    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2_from2048 96 153 [] 175872 201024 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Blake2G.SetupProofs

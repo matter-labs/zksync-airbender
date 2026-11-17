@@ -19,17 +19,17 @@ theorem column1_long380929 : Long.Ok column1 ⟨380929, 0, 1, 16384, 0⟩ := by
 
 theorem column1_slice113 :
     AllOk column1 [⟨380929, 0, 1, 16384, 0⟩] ∧
-    SliceOk column1 Airbender.Compiler.NativeSetups.keccakSetup_col1 113 3 [⟨380929, 0, 1, 16384, 0⟩] 380929 413697 :=
+    SliceOk column1 Airbender.Compiler.NativeSetups.keccakSetup_col1_from0 113 3 [⟨380929, 0, 1, 16384, 0⟩] 380929 413697 :=
   ⟨⟨column1_long380929, trivial⟩, by decide +kernel⟩
 
 theorem column1_slice116 :
     AllOk column1 [] ∧
-    SliceOk column1 Airbender.Compiler.NativeSetups.keccakSetup_col1 116 4 [] 413697 446465 :=
+    SliceOk column1 Airbender.Compiler.NativeSetups.keccakSetup_col1_from0 116 4 [] 413697 446465 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column1_slice120 :
     AllOk column1 [] ∧
-    SliceOk column1 Airbender.Compiler.NativeSetups.keccakSetup_col1 120 5 [] 446465 475137 :=
+    SliceOk column1 Airbender.Compiler.NativeSetups.keccakSetup_col1_from0 120 5 [] 446465 475137 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Keccak.SetupProofs

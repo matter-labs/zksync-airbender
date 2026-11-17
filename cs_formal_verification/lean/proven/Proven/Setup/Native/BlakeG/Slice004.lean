@@ -16,12 +16,12 @@ set_option maxRecDepth 100000
 
 theorem column2_slice3221 :
     AllOk column2 [] ∧
-    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2 3221 65 [] 276160 301376 :=
+    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2_from3200 21 65 [] 276160 301376 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_slice3286 :
     AllOk column2 [] ∧
-    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2 3286 49 [] 301376 326464 :=
+    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2_from3200 86 49 [] 301376 326464 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column2_long344825 : Long.Ok column2 ⟨344825, 71, 1, 3849408, 0⟩ := by
@@ -29,7 +29,7 @@ theorem column2_long344825 : Long.Ok column2 ⟨344825, 71, 1, 3849408, 0⟩ := 
 
 theorem column2_slice3335 :
     AllOk column2 [⟨344825, 71, 1, 3849408, 0⟩] ∧
-    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2 3335 40 [⟨344825, 71, 1, 3849408, 0⟩] 326464 4194304 :=
+    SliceOk column2 Airbender.Compiler.NativeSetups.blakeGSetup_col2_from3328 7 40 [⟨344825, 71, 1, 3849408, 0⟩] 326464 4194304 :=
   ⟨⟨column2_long344825, trivial⟩, by decide +kernel⟩
 
 theorem column3_long0 : Long.Ok column3 ⟨0, 0, 1, 344384, 0⟩ := by
@@ -40,7 +40,7 @@ theorem column3_long344896 : Long.Ok column3 ⟨344896, 0, 1, 3849408, 0⟩ := b
 
 theorem column3_slice0 :
     AllOk column3 [⟨0, 0, 1, 344384, 0⟩, ⟨344896, 0, 1, 3849408, 0⟩] ∧
-    SliceOk column3 Airbender.Compiler.NativeSetups.blakeGSetup_col3 0 6 [⟨0, 0, 1, 344384, 0⟩, ⟨344896, 0, 1, 3849408, 0⟩] 0 4194304 :=
+    SliceOk column3 Airbender.Compiler.NativeSetups.blakeGSetup_col3_from0 0 6 [⟨0, 0, 1, 344384, 0⟩, ⟨344896, 0, 1, 3849408, 0⟩] 0 4194304 :=
   ⟨⟨column3_long0, column3_long344896, trivial⟩, by decide +kernel⟩
 
 theorem column4_long0 : Long.Ok column4 ⟨0, 0, 1, 344384, 0⟩ := by
@@ -51,7 +51,7 @@ theorem column4_long344896 : Long.Ok column4 ⟨344896, 0, 1, 3849408, 0⟩ := b
 
 theorem column4_slice0 :
     AllOk column4 [⟨0, 0, 1, 344384, 0⟩, ⟨344896, 0, 1, 3849408, 0⟩] ∧
-    SliceOk column4 Airbender.Compiler.NativeSetups.blakeGSetup_col4 0 6 [⟨0, 0, 1, 344384, 0⟩, ⟨344896, 0, 1, 3849408, 0⟩] 0 4194304 :=
+    SliceOk column4 Airbender.Compiler.NativeSetups.blakeGSetup_col4_from0 0 6 [⟨0, 0, 1, 344384, 0⟩, ⟨344896, 0, 1, 3849408, 0⟩] 0 4194304 :=
   ⟨⟨column4_long0, column4_long344896, trivial⟩, by decide +kernel⟩
 
 theorem column5_long0 : Long.Ok column5 ⟨0, 0, 1, 344384, 0⟩ := by
@@ -62,7 +62,7 @@ theorem column5_long344896 : Long.Ok column5 ⟨344896, 0, 1, 3849408, 0⟩ := b
 
 theorem column5_slice0 :
     AllOk column5 [⟨0, 0, 1, 344384, 0⟩, ⟨344896, 0, 1, 3849408, 0⟩] ∧
-    SliceOk column5 Airbender.Compiler.NativeSetups.blakeGSetup_col5 0 6 [⟨0, 0, 1, 344384, 0⟩, ⟨344896, 0, 1, 3849408, 0⟩] 0 4194304 :=
+    SliceOk column5 Airbender.Compiler.NativeSetups.blakeGSetup_col5_from0 0 6 [⟨0, 0, 1, 344384, 0⟩, ⟨344896, 0, 1, 3849408, 0⟩] 0 4194304 :=
   ⟨⟨column5_long0, column5_long344896, trivial⟩, by decide +kernel⟩
 
 end Airbender.Blake2G.SetupProofs

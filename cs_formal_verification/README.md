@@ -79,8 +79,7 @@ Directory READMEs explain the relevant references, mappings, assumptions and sco
 completeness and the observable circuit relation. Shared helpers are grouped by
 [topic](lean/human/Human/Helpers/README.md); properties do not require decoder or
 memory-history review. Supporting calculations remain in `proven/`. The [import guide](lean/human/Human/Import/README.md)
-lists trusted circuit transcription, setup emission and compiled row comparisons
-([NativeGrid](lean/human/Human/Import/NativeGrid.lean)). The parser, decoder and placement claims
+lists trusted circuit transcription and setup emission. The parser, decoder and placement claims
 fix their mathematical meaning. Each executable parser or emitter names the claims that check it.
 The [trust lists](lean/human/Human/Trust.lean) name the external module roots and allowed tactic procedures.
 

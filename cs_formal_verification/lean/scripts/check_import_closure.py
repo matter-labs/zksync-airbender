@@ -59,6 +59,36 @@ def check_sail_edges(graph, listed):
         raise ValueError('Listed Sail import is absent: ' + ', '.join(f'{a} → {b}' for a, b in sorted(stale)))
 
 
+# The definitions that the machine claims use. Their closure reads no raw setup data, except the BLAKE2 round and
+# split Keccak tables, which are defined by their imported rows.
+DEFINITION_ROOTS = ['Human.Compiler.NativeTargets']
+TABLES_FROM_DATA = {
+    'Human.Circuits.Blake2Round.SetupArtifact',
+    'Human.Circuits.KeccakSplit.ColumnParity.SetupArtifact',
+    'Human.Circuits.KeccakSplit.ThetaRho.SetupArtifact',
+    'Human.Circuits.KeccakSplit.Chi5.SetupArtifact',
+}
+
+
+def check_raw_data(graph, roots, data_modules, allowed):
+    """Reject a path from a definition root to a setup data module outside `allowed`."""
+    for root in roots:
+        pending, seen = deque([[root]]), set()
+        while pending:
+            path = pending.popleft()
+            current = path[-1]
+            if current in seen:
+                continue
+            seen.add(current)
+            if current in data_modules and current not in allowed:
+                raise ValueError('Raw setup data in the definitions: ' + ' → '.join(path))
+            pending.extend(path + [dependency] for dependency in graph.get(current, []))
+
+
+def module_path(module):
+    return ROOT.joinpath('human', *module.split('.')).with_suffix('.lean')
+
+
 def module_names(folder):
     return sorted('.'.join(p.relative_to(ROOT / folder).with_suffix('').parts) for p in (ROOT / folder).rglob('*.lean'))
 
@@ -70,8 +100,10 @@ def main():
     check_graph(graph, roots, manifest_list('trustedModuleRoots'), manifest_list('sailModules'))
     listed = manifest_edges('sailImportEdges')
     check_sail_edges(graph, listed)
+    data_modules = {name for name in roots if '\nimport_setup_blocks ' in module_path(name).read_text()}
+    check_raw_data(graph, DEFINITION_ROOTS, data_modules, TABLES_FROM_DATA)
     print(f'PASS import closure: {len(roots)} spec modules, {len(graph)} total modules, '
-          f'{len(listed)} direct Sail imports')
+          f'{len(listed)} direct Sail imports, {len(data_modules)} setup data modules outside the definitions')
 
 
 if __name__ == '__main__':

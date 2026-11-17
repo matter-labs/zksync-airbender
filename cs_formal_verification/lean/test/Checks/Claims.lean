@@ -1268,6 +1268,14 @@ example : Airbender.Compiler.NativeSetups.CPURangesImportClaim := @Airbender.Com
 
 #print axioms Airbender.Compiler.NativeSetups.cpu_ranges_import
 
+example : Airbender.Compiler.NativeFixedRows.SubwordMemoryImportClaim := @Airbender.Compiler.NativeFixedRows.subword_memory_import
+
+#print axioms Airbender.Compiler.NativeFixedRows.subword_memory_import
+
+example : Airbender.Compiler.NativeFixedRows.UnifiedImportClaim := @Airbender.Compiler.NativeFixedRows.unified_import
+
+#print axioms Airbender.Compiler.NativeFixedRows.unified_import
+
 #print axioms Airbender.Compiler.blakeG_cached_memory
 
 #print axioms Airbender.Compiler.blakeG_cached_memory_satisfiable

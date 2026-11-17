@@ -34,7 +34,7 @@ theorem column0_long475136 : Long.Ok column0 ⟨475136, 0, 256, 256, 1⟩ := by
 
 theorem column0_slice0 :
     AllOk column0 [⟨0, 0, 256, 256, 1⟩, ⟨65536, 0, 128, 128, 1⟩, ⟨81920, 0, 512, 512, 1⟩, ⟨344064, 0, 256, 256, 1⟩, ⟨409600, 0, 256, 256, 1⟩, ⟨475136, 0, 256, 256, 1⟩] ∧
-    SliceOk column0 Airbender.Blake2Round.blake2RoundSetup_col0 0 6 [⟨0, 0, 256, 256, 1⟩, ⟨65536, 0, 128, 128, 1⟩, ⟨81920, 0, 512, 512, 1⟩, ⟨344064, 0, 256, 256, 1⟩, ⟨409600, 0, 256, 256, 1⟩, ⟨475136, 0, 256, 256, 1⟩] 0 540672 :=
+    SliceOk column0 Airbender.Blake2Round.blake2RoundSetup_col0_from0 0 6 [⟨0, 0, 256, 256, 1⟩, ⟨65536, 0, 128, 128, 1⟩, ⟨81920, 0, 512, 512, 1⟩, ⟨344064, 0, 256, 256, 1⟩, ⟨409600, 0, 256, 256, 1⟩, ⟨475136, 0, 256, 256, 1⟩] 0 540672 :=
   ⟨⟨column0_long0, column0_long65536, column0_long81920, column0_long344064, column0_long409600, column0_long475136, trivial⟩, by decide +kernel⟩
 
 theorem column0_long540672 : Long.Ok column0 ⟨540672, 0, 128, 128, 1⟩ := by
@@ -54,7 +54,7 @@ theorem column0_long606208 : Long.Ok column0 ⟨606208, 0, 1, 442368, 0⟩ := by
 
 theorem column0_slice6 :
     AllOk column0 [⟨540672, 0, 128, 128, 1⟩, ⟨557056, 0, 128, 128, 1⟩, ⟨573440, 0, 128, 128, 1⟩, ⟨589824, 0, 1024, 16, 1⟩, ⟨606208, 0, 1, 442368, 0⟩] ∧
-    SliceOk column0 Airbender.Blake2Round.blake2RoundSetup_col0 6 5 [⟨540672, 0, 128, 128, 1⟩, ⟨557056, 0, 128, 128, 1⟩, ⟨573440, 0, 128, 128, 1⟩, ⟨589824, 0, 1024, 16, 1⟩, ⟨606208, 0, 1, 442368, 0⟩] 540672 1048576 :=
+    SliceOk column0 Airbender.Blake2Round.blake2RoundSetup_col0_from0 6 5 [⟨540672, 0, 128, 128, 1⟩, ⟨557056, 0, 128, 128, 1⟩, ⟨573440, 0, 128, 128, 1⟩, ⟨589824, 0, 1024, 16, 1⟩, ⟨606208, 0, 1, 442368, 0⟩] 540672 1048576 :=
   ⟨⟨column0_long540672, column0_long557056, column0_long573440, column0_long589824, column0_long606208, trivial⟩, by decide +kernel⟩
 
 theorem column1_long0 : Long.Ok column1 ⟨0, 0, 256, 256, 0⟩ := by
@@ -77,7 +77,7 @@ theorem column1_long589824 : Long.Ok column1 ⟨589824, 0, 1024, 16, 0⟩ := by
 
 theorem column1_slice0 :
     AllOk column1 [⟨0, 0, 256, 256, 0⟩, ⟨65536, 0, 128, 129, 0⟩, ⟨82048, 0, 512, 512, 0⟩, ⟨344192, 0, 256, 768, 0⟩, ⟨540800, 0, 128, 383, 0⟩, ⟨589824, 0, 1024, 16, 0⟩] ∧
-    SliceOk column1 Airbender.Blake2Round.blake2RoundSetup_col1 0 6 [⟨0, 0, 256, 256, 0⟩, ⟨65536, 0, 128, 129, 0⟩, ⟨82048, 0, 512, 512, 0⟩, ⟨344192, 0, 256, 768, 0⟩, ⟨540800, 0, 128, 383, 0⟩, ⟨589824, 0, 1024, 16, 0⟩] 0 606208 :=
+    SliceOk column1 Airbender.Blake2Round.blake2RoundSetup_col1_from0 0 6 [⟨0, 0, 256, 256, 0⟩, ⟨65536, 0, 128, 129, 0⟩, ⟨82048, 0, 512, 512, 0⟩, ⟨344192, 0, 256, 768, 0⟩, ⟨540800, 0, 128, 383, 0⟩, ⟨589824, 0, 1024, 16, 0⟩] 0 606208 :=
   ⟨⟨column1_long0, column1_long65536, column1_long82048, column1_long344192, column1_long540800, column1_long589824, trivial⟩, by decide +kernel⟩
 
 theorem column1_long606208 : Long.Ok column1 ⟨606208, 0, 1, 442368, 0⟩ := by
@@ -85,7 +85,7 @@ theorem column1_long606208 : Long.Ok column1 ⟨606208, 0, 1, 442368, 0⟩ := by
 
 theorem column1_slice6 :
     AllOk column1 [⟨606208, 0, 1, 442368, 0⟩] ∧
-    SliceOk column1 Airbender.Blake2Round.blake2RoundSetup_col1 6 1 [⟨606208, 0, 1, 442368, 0⟩] 606208 1048576 :=
+    SliceOk column1 Airbender.Blake2Round.blake2RoundSetup_col1_from0 6 1 [⟨606208, 0, 1, 442368, 0⟩] 606208 1048576 :=
   ⟨⟨column1_long606208, trivial⟩, by decide +kernel⟩
 
 end Airbender.Blake2Round.SetupProofs

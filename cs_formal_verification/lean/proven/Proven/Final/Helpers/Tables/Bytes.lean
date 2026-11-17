@@ -1,5 +1,6 @@
 module
 public import Proven.Setup.Native.ShiftBinop.Columns
+public import Human.Compiler.NativeSetups.Claims
 
 @[expose] public section
 

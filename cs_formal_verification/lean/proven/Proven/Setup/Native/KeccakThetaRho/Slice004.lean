@@ -22,7 +22,7 @@ theorem column5_long590066 : Long.Ok column5 ⟨590066, 0, 1, 3604238, 0⟩ := b
 
 theorem column5_slice0 :
     AllOk column5 [⟨0, 0, 1, 589824, 0⟩, ⟨590066, 0, 1, 3604238, 0⟩] ∧
-    SliceOk column5 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col5 0 57 [⟨0, 0, 1, 589824, 0⟩, ⟨590066, 0, 1, 3604238, 0⟩] 0 4194304 :=
+    SliceOk column5 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col5_from0 0 57 [⟨0, 0, 1, 589824, 0⟩, ⟨590066, 0, 1, 3604238, 0⟩] 0 4194304 :=
   ⟨⟨column5_long0, column5_long590066, trivial⟩, by decide +kernel⟩
 
 theorem column6_long0 : Long.Ok column6 ⟨0, 0, 1, 589824, 0⟩ := by
@@ -33,7 +33,7 @@ theorem column6_long590066 : Long.Ok column6 ⟨590066, 0, 1, 3604238, 0⟩ := b
 
 theorem column6_slice0 :
     AllOk column6 [⟨0, 0, 1, 589824, 0⟩, ⟨590066, 0, 1, 3604238, 0⟩] ∧
-    SliceOk column6 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col6 0 73 [⟨0, 0, 1, 589824, 0⟩, ⟨590066, 0, 1, 3604238, 0⟩] 0 4194304 :=
+    SliceOk column6 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col6_from0 0 73 [⟨0, 0, 1, 589824, 0⟩, ⟨590066, 0, 1, 3604238, 0⟩] 0 4194304 :=
   ⟨⟨column6_long0, column6_long590066, trivial⟩, by decide +kernel⟩
 
 theorem column7_long0 : Long.Ok column7 ⟨0, 0, 1, 589824, 0⟩ := by
@@ -44,7 +44,7 @@ theorem column7_long590066 : Long.Ok column7 ⟨590066, 0, 1, 3604238, 0⟩ := b
 
 theorem column7_slice0 :
     AllOk column7 [⟨0, 0, 1, 589824, 0⟩, ⟨590066, 0, 1, 3604238, 0⟩] ∧
-    SliceOk column7 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col7 0 74 [⟨0, 0, 1, 589824, 0⟩, ⟨590066, 0, 1, 3604238, 0⟩] 0 4194304 :=
+    SliceOk column7 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col7_from0 0 74 [⟨0, 0, 1, 589824, 0⟩, ⟨590066, 0, 1, 3604238, 0⟩] 0 4194304 :=
   ⟨⟨column7_long0, column7_long590066, trivial⟩, by decide +kernel⟩
 
 theorem column8_long0 : Long.Ok column8 ⟨0, 0, 1, 65536, 0⟩ := by
@@ -58,7 +58,7 @@ theorem column8_long590066 : Long.Ok column8 ⟨590066, 0, 1, 3604238, 0⟩ := b
 
 theorem column8_slice0 :
     AllOk column8 [⟨0, 0, 1, 65536, 0⟩, ⟨65536, 0, 1, 524288, 0⟩, ⟨590066, 0, 1, 3604238, 0⟩] ∧
-    SliceOk column8 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col8 0 5 [⟨0, 0, 1, 65536, 0⟩, ⟨65536, 0, 1, 524288, 0⟩, ⟨590066, 0, 1, 3604238, 0⟩] 0 4194304 :=
+    SliceOk column8 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col8_from0 0 5 [⟨0, 0, 1, 65536, 0⟩, ⟨65536, 0, 1, 524288, 0⟩, ⟨590066, 0, 1, 3604238, 0⟩] 0 4194304 :=
   ⟨⟨column8_long0, column8_long65536, column8_long590066, trivial⟩, by decide +kernel⟩
 
 end Airbender.Keccak.Split.ThetaRho.SetupProofs

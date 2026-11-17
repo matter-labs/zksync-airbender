@@ -19,17 +19,17 @@ theorem column4_long0 : Long.Ok column4 ⟨0, 0, 1, 262401, 0⟩ := by
 
 theorem column4_slice0 :
     AllOk column4 [⟨0, 0, 1, 262401, 0⟩] ∧
-    SliceOk column4 Airbender.Compiler.NativeSetups.shiftBinopSetup_col4 0 1183 [⟨0, 0, 1, 262401, 0⟩] 0 283402 :=
+    SliceOk column4 Airbender.Compiler.NativeSetups.shiftBinopSetup_col4_from0 0 1183 [⟨0, 0, 1, 262401, 0⟩] 0 283402 :=
   ⟨⟨column4_long0, trivial⟩, by decide +kernel⟩
 
 theorem column4_slice1183 :
     AllOk column4 [] ∧
-    SliceOk column4 Airbender.Compiler.NativeSetups.shiftBinopSetup_col4 1183 1520 [] 283402 308482 :=
+    SliceOk column4 Airbender.Compiler.NativeSetups.shiftBinopSetup_col4_from1152 31 1520 [] 283402 308482 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice2703 :
     AllOk column4 [] ∧
-    SliceOk column4 Airbender.Compiler.NativeSetups.shiftBinopSetup_col4 2703 1632 [] 308482 333587 :=
+    SliceOk column4 Airbender.Compiler.NativeSetups.shiftBinopSetup_col4_from2688 15 1632 [] 308482 333587 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Verification.ShiftBinopSetupProofs

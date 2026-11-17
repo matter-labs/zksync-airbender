@@ -1,5 +1,6 @@
 module
 public import Human.Helpers.Tables.Bytes
+public import Human.Compiler.NativeSetups.ShiftBinop
 public import Proven.Setup.Native.Common
 public import Mathlib.Data.Nat.Bitwise
 

@@ -16,52 +16,52 @@ set_option maxRecDepth 100000
 
 theorem column4_slice16 :
     AllOk column4 [] ∧
-    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4 16 4 [] 294912 327680 :=
+    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4_from0 16 4 [] 294912 327680 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice20 :
     AllOk column4 [] ∧
-    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4 20 7 [] 327680 356352 :=
+    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4_from0 20 7 [] 327680 356352 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice27 :
     AllOk column4 [] ∧
-    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4 27 7 [] 356352 385024 :=
+    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4_from0 27 7 [] 356352 385024 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice34 :
     AllOk column4 [] ∧
-    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4 34 11 [] 385024 411648 :=
+    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4_from0 34 11 [] 385024 411648 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice45 :
     AllOk column4 [] ∧
-    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4 45 13 [] 411648 438272 :=
+    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4_from0 45 13 [] 411648 438272 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice58 :
     AllOk column4 [] ∧
-    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4 58 15 [] 438272 463872 :=
+    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4_from0 58 15 [] 438272 463872 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice73 :
     AllOk column4 [] ∧
-    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4 73 25 [] 463872 489472 :=
+    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4_from0 73 25 [] 463872 489472 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice98 :
     AllOk column4 [] ∧
-    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4 98 25 [] 489472 515072 :=
+    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4_from0 98 25 [] 489472 515072 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice123 :
     AllOk column4 [] ∧
-    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4 123 71 [] 515072 540160 :=
+    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4_from0 123 71 [] 515072 540160 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_slice194 :
     AllOk column4 [] ∧
-    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4 194 244 [] 540160 565248 :=
+    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4_from128 66 244 [] 540160 565248 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column4_long590066 : Long.Ok column4 ⟨590066, 0, 1, 3604238, 0⟩ := by
@@ -69,7 +69,7 @@ theorem column4_long590066 : Long.Ok column4 ⟨590066, 0, 1, 3604238, 0⟩ := b
 
 theorem column4_slice438 :
     AllOk column4 [⟨590066, 0, 1, 3604238, 0⟩] ∧
-    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4 438 269 [⟨590066, 0, 1, 3604238, 0⟩] 565248 4194304 :=
+    SliceOk column4 Airbender.Keccak.Split.ThetaRho.thetaRhoSetup_col4_from384 54 269 [⟨590066, 0, 1, 3604238, 0⟩] 565248 4194304 :=
   ⟨⟨column4_long590066, trivial⟩, by decide +kernel⟩
 
 end Airbender.Keccak.Split.ThetaRho.SetupProofs

@@ -16,7 +16,7 @@ set_option maxRecDepth 100000
 
 theorem column1_slice152 :
     AllOk column1 [] ∧
-    SliceOk column1 Airbender.Compiler.NativeSetups.keccakSetup_col1 152 13 [] 557057 583681 :=
+    SliceOk column1 Airbender.Compiler.NativeSetups.keccakSetup_col1_from128 24 13 [] 557057 583681 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column1_long593921 : Long.Ok column1 ⟨593921, 0, 1024, 64, 1⟩ := by
@@ -24,7 +24,7 @@ theorem column1_long593921 : Long.Ok column1 ⟨593921, 0, 1024, 64, 1⟩ := by
 
 theorem column1_slice165 :
     AllOk column1 [⟨593921, 0, 1024, 64, 1⟩] ∧
-    SliceOk column1 Airbender.Compiler.NativeSetups.keccakSetup_col1 165 6 [⟨593921, 0, 1024, 64, 1⟩] 583681 659457 :=
+    SliceOk column1 Airbender.Compiler.NativeSetups.keccakSetup_col1_from128 37 6 [⟨593921, 0, 1024, 64, 1⟩] 583681 659457 :=
   ⟨⟨column1_long593921, trivial⟩, by decide +kernel⟩
 
 theorem column1_long659457 : Long.Ok column1 ⟨659457, 0, 512, 128, 1⟩ := by
@@ -35,7 +35,7 @@ theorem column1_long724993 : Long.Ok column1 ⟨724993, 0, 256, 256, 1⟩ := by
 
 theorem column1_slice171 :
     AllOk column1 [⟨659457, 0, 512, 128, 1⟩, ⟨724993, 0, 256, 256, 1⟩] ∧
-    SliceOk column1 Airbender.Compiler.NativeSetups.keccakSetup_col1 171 2 [⟨659457, 0, 512, 128, 1⟩, ⟨724993, 0, 256, 256, 1⟩] 659457 790529 :=
+    SliceOk column1 Airbender.Compiler.NativeSetups.keccakSetup_col1_from128 43 2 [⟨659457, 0, 512, 128, 1⟩, ⟨724993, 0, 256, 256, 1⟩] 659457 790529 :=
   ⟨⟨column1_long659457, column1_long724993, trivial⟩, by decide +kernel⟩
 
 end Airbender.Keccak.SetupProofs

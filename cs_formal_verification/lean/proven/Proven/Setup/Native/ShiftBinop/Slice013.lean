@@ -16,17 +16,17 @@ set_option maxRecDepth 100000
 
 theorem column6_slice15929 :
     AllOk column6 [] ∧
-    SliceOk column6 Airbender.Compiler.NativeSetups.shiftBinopSetup_col6 15929 1568 [] 433922 459275 :=
+    SliceOk column6 Airbender.Compiler.NativeSetups.shiftBinopSetup_col6_from15872 57 1568 [] 433922 459275 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice17497 :
     AllOk column6 [] ∧
-    SliceOk column6 Airbender.Compiler.NativeSetups.shiftBinopSetup_col6 17497 2314 [] 459275 484363 :=
+    SliceOk column6 Airbender.Compiler.NativeSetups.shiftBinopSetup_col6_from17408 89 2314 [] 459275 484363 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_slice19811 :
     AllOk column6 [] ∧
-    SliceOk column6 Airbender.Compiler.NativeSetups.shiftBinopSetup_col6 19811 2754 [] 484363 509444 :=
+    SliceOk column6 Airbender.Compiler.NativeSetups.shiftBinopSetup_col6_from19712 99 2754 [] 484363 509444 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column6_long524545 : Long.Ok column6 ⟨524545, 0, 1, 1048576, 0⟩ := by
@@ -37,7 +37,7 @@ theorem column6_long1573121 : Long.Ok column6 ⟨1573121, 0, 1, 15204095, 0⟩ :
 
 theorem column6_slice22565 :
     AllOk column6 [⟨524545, 0, 1, 1048576, 0⟩, ⟨1573121, 0, 1, 15204095, 0⟩] ∧
-    SliceOk column6 Airbender.Compiler.NativeSetups.shiftBinopSetup_col6 22565 1725 [⟨524545, 0, 1, 1048576, 0⟩, ⟨1573121, 0, 1, 15204095, 0⟩] 509444 16777216 :=
+    SliceOk column6 Airbender.Compiler.NativeSetups.shiftBinopSetup_col6_from22528 37 1725 [⟨524545, 0, 1, 1048576, 0⟩, ⟨1573121, 0, 1, 15204095, 0⟩] 509444 16777216 :=
   ⟨⟨column6_long524545, column6_long1573121, trivial⟩, by decide +kernel⟩
 
 end Airbender.Verification.ShiftBinopSetupProofs

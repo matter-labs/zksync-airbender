@@ -19,7 +19,7 @@ theorem column0_long4 : Long.Ok column0 ⟨4, 0, 1, 16777212, 0⟩ := by
 
 theorem column0_slice0 :
     AllOk column0 [⟨4, 0, 1, 16777212, 0⟩] ∧
-    SliceOk column0 Airbender.Compiler.NativeSetups.addSubSetup_col0 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
+    SliceOk column0 Airbender.Compiler.NativeSetups.addSubSetup_col0_from0 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
   ⟨⟨column0_long4, trivial⟩, by decide +kernel⟩
 
 theorem column1_long4 : Long.Ok column1 ⟨4, 0, 1, 16777212, 0⟩ := by
@@ -27,7 +27,7 @@ theorem column1_long4 : Long.Ok column1 ⟨4, 0, 1, 16777212, 0⟩ := by
 
 theorem column1_slice0 :
     AllOk column1 [⟨4, 0, 1, 16777212, 0⟩] ∧
-    SliceOk column1 Airbender.Compiler.NativeSetups.addSubSetup_col1 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
+    SliceOk column1 Airbender.Compiler.NativeSetups.addSubSetup_col1_from0 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
   ⟨⟨column1_long4, trivial⟩, by decide +kernel⟩
 
 theorem column2_long4 : Long.Ok column2 ⟨4, 0, 1, 16777212, 0⟩ := by
@@ -35,7 +35,7 @@ theorem column2_long4 : Long.Ok column2 ⟨4, 0, 1, 16777212, 0⟩ := by
 
 theorem column2_slice0 :
     AllOk column2 [⟨4, 0, 1, 16777212, 0⟩] ∧
-    SliceOk column2 Airbender.Compiler.NativeSetups.addSubSetup_col2 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
+    SliceOk column2 Airbender.Compiler.NativeSetups.addSubSetup_col2_from0 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
   ⟨⟨column2_long4, trivial⟩, by decide +kernel⟩
 
 theorem column3_long4 : Long.Ok column3 ⟨4, 0, 1, 16777212, 0⟩ := by
@@ -43,7 +43,7 @@ theorem column3_long4 : Long.Ok column3 ⟨4, 0, 1, 16777212, 0⟩ := by
 
 theorem column3_slice0 :
     AllOk column3 [⟨4, 0, 1, 16777212, 0⟩] ∧
-    SliceOk column3 Airbender.Compiler.NativeSetups.addSubSetup_col3 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
+    SliceOk column3 Airbender.Compiler.NativeSetups.addSubSetup_col3_from0 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
   ⟨⟨column3_long4, trivial⟩, by decide +kernel⟩
 
 theorem column4_long4 : Long.Ok column4 ⟨4, 0, 1, 16777212, 0⟩ := by
@@ -51,7 +51,7 @@ theorem column4_long4 : Long.Ok column4 ⟨4, 0, 1, 16777212, 0⟩ := by
 
 theorem column4_slice0 :
     AllOk column4 [⟨4, 0, 1, 16777212, 0⟩] ∧
-    SliceOk column4 Airbender.Compiler.NativeSetups.addSubSetup_col4 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
+    SliceOk column4 Airbender.Compiler.NativeSetups.addSubSetup_col4_from0 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
   ⟨⟨column4_long4, trivial⟩, by decide +kernel⟩
 
 theorem column5_long4 : Long.Ok column5 ⟨4, 0, 1, 16777212, 0⟩ := by
@@ -59,7 +59,7 @@ theorem column5_long4 : Long.Ok column5 ⟨4, 0, 1, 16777212, 0⟩ := by
 
 theorem column5_slice0 :
     AllOk column5 [⟨4, 0, 1, 16777212, 0⟩] ∧
-    SliceOk column5 Airbender.Compiler.NativeSetups.addSubSetup_col5 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
+    SliceOk column5 Airbender.Compiler.NativeSetups.addSubSetup_col5_from0 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
   ⟨⟨column5_long4, trivial⟩, by decide +kernel⟩
 
 theorem column6_long4 : Long.Ok column6 ⟨4, 0, 1, 16777212, 0⟩ := by
@@ -67,7 +67,7 @@ theorem column6_long4 : Long.Ok column6 ⟨4, 0, 1, 16777212, 0⟩ := by
 
 theorem column6_slice0 :
     AllOk column6 [⟨4, 0, 1, 16777212, 0⟩] ∧
-    SliceOk column6 Airbender.Compiler.NativeSetups.addSubSetup_col6 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
+    SliceOk column6 Airbender.Compiler.NativeSetups.addSubSetup_col6_from0 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
   ⟨⟨column6_long4, trivial⟩, by decide +kernel⟩
 
 theorem column7_long4 : Long.Ok column7 ⟨4, 0, 1, 16777212, 0⟩ := by
@@ -75,7 +75,7 @@ theorem column7_long4 : Long.Ok column7 ⟨4, 0, 1, 16777212, 0⟩ := by
 
 theorem column7_slice0 :
     AllOk column7 [⟨4, 0, 1, 16777212, 0⟩] ∧
-    SliceOk column7 Airbender.Compiler.NativeSetups.addSubSetup_col7 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
+    SliceOk column7 Airbender.Compiler.NativeSetups.addSubSetup_col7_from0 0 2 [⟨4, 0, 1, 16777212, 0⟩] 0 16777216 :=
   ⟨⟨column7_long4, trivial⟩, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.AddSubSetupProofs

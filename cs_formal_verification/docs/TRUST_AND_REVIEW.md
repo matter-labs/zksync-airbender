@@ -96,8 +96,6 @@ CleanCore (Clean's definitions, transcribed) supplies `Expression`, `FlatOperati
 
 - **Trusted (not kernel-checked):** [Transcribe](../lean/human/Human/Import/Transcribe.lean) and
   [TranscribeCommand](../lean/human/Human/Import/TranscribeCommand.lean), headed `TRUSTED: review`.
-  [NativeGrid](../lean/human/Human/Import/NativeGrid.lean) performs the trusted compiled comparison of the subword and
-  unified fixed rows with the native setup rows.
   [Trust.lean](../lean/human/Human/Trust.lean) lists allowed external roots and tactic modules, and the spec modules
   that define commands which add declarations (`declarationCommandModules`; review their code as specification);
   [the source check](../lean/scripts/check_trusted_code.py) requires both lists to be exact. The import_circuit command
@@ -142,12 +140,14 @@ Setup tables (`artifacts/setup/*.json`) are parsed by the same `Json.parse` and 
 [SetupEmit](../lean/human/Human/Import/SetupEmit.lean) (trusted, headed `TRUSTED: review`) into the blocks of
 [SetupBlocks](../lean/human/Human/Import/SetupBlocks.lean). The JSON reader (`parseSetup`) is the trusted step, as
 the file read and the reflection are for circuits. The import emits the JSON blocks as they are. Kernel claims make
-each table definition of the bigint, G, Keccak, shift/byte, add/sub, jump/branch, multiply/divide and word setups
-equal to the imported rows on the complete trace domain, and the public worker tables equal to the imported
-worker data with their range columns. The CPU claims use the setup fixture program. Kernel scans also give the row
-meaning of the BLAKE2 round setup and of the three split Keccak setups (`SetupProofs.setupRow_eq`). One part stays
-trusted compiled code: the fixed-row test library uses NativeGrid to compare the subword and unified fixed
-regions. `test/Tests/ImportSetupSpotChecks.lean` checks single imported values
+each table definition of the bigint, G, Keccak, shift/byte, add/sub, jump/branch, multiply/divide, word, subword and
+unified setups equal to the imported rows on the complete trace domain, the range columns of the CPU setups equal to
+their formulas, and the public worker tables equal to the imported worker data with their range columns. The CPU
+claims use the setup fixture program. The BLAKE2 round table reads the imported rows, and
+`Blake2Round.SetupImportClaim` makes them equal to the round row formulas; kernel scans give the same row meaning
+for the three split Keccak setups (`SetupProofs.setupRow_eq`). The claim modules import the raw setup data; the
+definitions that the machine claims use do not, except the round and split Keccak tables, which read their imported
+rows. `test/Tests/ImportSetupSpotChecks.lean` checks single imported values
 against the JSON. See [the setup README](../lean/artifacts/setup/README.md).
 
 ## What CI re-checks
@@ -189,8 +189,7 @@ The [setup inventory](../lean/artifacts/setup/README.md) lists all 16 exported s
 Fresh Rust exports and content pins check the current input bytes. No theorem verifies the Rust setup generator.
 
 The bigint, G, Keccak, shift/byte and CPU table definitions are mathematical row formulas. Kernel claims make each
-formula equal to the imported native rows, except the subword and unified fixed regions, which compiled comparisons
-bind.
+formula equal to the imported native rows.
 
 `Accepted` checks imported equations/lookups and logical native state/memory
 permutations. Decoder membership and caller/request matching are likewise logical

@@ -25,7 +25,7 @@ theorem column3_long5505024 : Long.Ok column3 ⟨5505024, 0, 1, 11272192, 0⟩ :
 
 theorem column3_slice0 :
     AllOk column3 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] ∧
-    SliceOk column3 Airbender.Compiler.NativeSetups.jumpBranchSetup_col3 0 4 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
+    SliceOk column3 Airbender.Compiler.NativeSetups.jumpBranchSetup_col3_from0 0 4 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
   ⟨⟨column3_long0, column3_long4456451, column3_long5505024, trivial⟩, by decide +kernel⟩
 
 theorem column4_long0 : Long.Ok column4 ⟨0, 0, 1, 4456448, 0⟩ := by
@@ -39,7 +39,7 @@ theorem column4_long5505024 : Long.Ok column4 ⟨5505024, 0, 1, 11272192, 0⟩ :
 
 theorem column4_slice0 :
     AllOk column4 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] ∧
-    SliceOk column4 Airbender.Compiler.NativeSetups.jumpBranchSetup_col4 0 4 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
+    SliceOk column4 Airbender.Compiler.NativeSetups.jumpBranchSetup_col4_from0 0 4 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
   ⟨⟨column4_long0, column4_long4456451, column4_long5505024, trivial⟩, by decide +kernel⟩
 
 theorem column5_long0 : Long.Ok column5 ⟨0, 0, 1, 4456448, 0⟩ := by
@@ -53,7 +53,7 @@ theorem column5_long5505024 : Long.Ok column5 ⟨5505024, 0, 1, 11272192, 0⟩ :
 
 theorem column5_slice0 :
     AllOk column5 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] ∧
-    SliceOk column5 Airbender.Compiler.NativeSetups.jumpBranchSetup_col5 0 4 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
+    SliceOk column5 Airbender.Compiler.NativeSetups.jumpBranchSetup_col5_from0 0 4 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
   ⟨⟨column5_long0, column5_long4456451, column5_long5505024, trivial⟩, by decide +kernel⟩
 
 theorem column6_long0 : Long.Ok column6 ⟨0, 0, 1, 4456448, 0⟩ := by
@@ -67,7 +67,7 @@ theorem column6_long5505024 : Long.Ok column6 ⟨5505024, 0, 1, 11272192, 0⟩ :
 
 theorem column6_slice0 :
     AllOk column6 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] ∧
-    SliceOk column6 Airbender.Compiler.NativeSetups.jumpBranchSetup_col6 0 4 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
+    SliceOk column6 Airbender.Compiler.NativeSetups.jumpBranchSetup_col6_from0 0 4 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
   ⟨⟨column6_long0, column6_long4456451, column6_long5505024, trivial⟩, by decide +kernel⟩
 
 theorem column7_long0 : Long.Ok column7 ⟨0, 0, 1, 4456448, 0⟩ := by
@@ -81,7 +81,7 @@ theorem column7_long5505024 : Long.Ok column7 ⟨5505024, 0, 1, 11272192, 0⟩ :
 
 theorem column7_slice0 :
     AllOk column7 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] ∧
-    SliceOk column7 Airbender.Compiler.NativeSetups.jumpBranchSetup_col7 0 4 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
+    SliceOk column7 Airbender.Compiler.NativeSetups.jumpBranchSetup_col7_from0 0 4 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
   ⟨⟨column7_long0, column7_long4456451, column7_long5505024, trivial⟩, by decide +kernel⟩
 
 theorem column8_long0 : Long.Ok column8 ⟨0, 0, 1, 4456448, 0⟩ := by
@@ -95,7 +95,7 @@ theorem column8_long5505024 : Long.Ok column8 ⟨5505024, 0, 1, 11272192, 0⟩ :
 
 theorem column8_slice0 :
     AllOk column8 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] ∧
-    SliceOk column8 Airbender.Compiler.NativeSetups.jumpBranchSetup_col8 0 4 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
+    SliceOk column8 Airbender.Compiler.NativeSetups.jumpBranchSetup_col8_from0 0 4 [⟨0, 0, 1, 4456448, 0⟩, ⟨4456451, 0, 1, 1048573, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
   ⟨⟨column8_long0, column8_long4456451, column8_long5505024, trivial⟩, by decide +kernel⟩
 
 theorem column9_long0 : Long.Ok column9 ⟨0, 0, 1, 131072, 0⟩ := by
@@ -118,7 +118,7 @@ theorem column9_long5505024 : Long.Ok column9 ⟨5505024, 0, 1, 11272192, 0⟩ :
 
 theorem column9_slice0 :
     AllOk column9 [⟨0, 0, 1, 131072, 0⟩, ⟨131072, 0, 1, 65536, 0⟩, ⟨196608, 0, 1, 65536, 0⟩, ⟨262144, 0, 1, 4194304, 0⟩, ⟨4456448, 0, 1, 1048576, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] ∧
-    SliceOk column9 Airbender.Compiler.NativeSetups.jumpBranchSetup_col9 0 6 [⟨0, 0, 1, 131072, 0⟩, ⟨131072, 0, 1, 65536, 0⟩, ⟨196608, 0, 1, 65536, 0⟩, ⟨262144, 0, 1, 4194304, 0⟩, ⟨4456448, 0, 1, 1048576, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
+    SliceOk column9 Airbender.Compiler.NativeSetups.jumpBranchSetup_col9_from0 0 6 [⟨0, 0, 1, 131072, 0⟩, ⟨131072, 0, 1, 65536, 0⟩, ⟨196608, 0, 1, 65536, 0⟩, ⟨262144, 0, 1, 4194304, 0⟩, ⟨4456448, 0, 1, 1048576, 0⟩, ⟨5505024, 0, 1, 11272192, 0⟩] 0 16777216 :=
   ⟨⟨column9_long0, column9_long131072, column9_long196608, column9_long262144, column9_long4456448, column9_long5505024, trivial⟩, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.JumpBranchSetupProofs

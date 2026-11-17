@@ -16,37 +16,37 @@ set_option maxRecDepth 100000
 
 theorem column5_slice78267 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5 78267 2534 [] 838660 863660 :=
+    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5_from78208 59 2534 [] 838660 863660 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice80801 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5 80801 2534 [] 863660 888660 :=
+    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5_from80768 33 2534 [] 863660 888660 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice83335 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5 83335 2533 [] 888660 913668 :=
+    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5_from83328 7 2533 [] 888660 913668 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice85868 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5 85868 2526 [] 913668 938676 :=
+    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5_from85760 108 2526 [] 913668 938676 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice88394 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5 88394 2538 [] 938676 963684 :=
+    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5_from88320 74 2538 [] 938676 963684 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice90932 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5 90932 2528 [] 963684 988684 :=
+    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5_from90880 52 2528 [] 963684 988684 :=
   ⟨trivial, by decide +kernel⟩
 
 theorem column5_slice93460 :
     AllOk column5 [] ∧
-    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5 93460 2535 [] 988684 1013684 :=
+    SliceOk column5 Airbender.Keccak.Split.ColumnParity.columnParitySetup_col5_from93440 20 2535 [] 988684 1013684 :=
   ⟨trivial, by decide +kernel⟩
 
 end Airbender.Keccak.Split.ColumnParity.SetupProofs

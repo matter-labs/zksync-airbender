@@ -25,7 +25,7 @@ theorem column0_long2097153 : Long.Ok column0 ⟨2097153, 0, 1, 14680063, 0⟩ :
 
 theorem column0_slice0 :
     AllOk column0 [⟨1, 0, 1, 1048576, 4⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] ∧
-    SliceOk column0 Airbender.Compiler.NativeSetups.wordMemorySetup_col0 0 4 [⟨1, 0, 1, 1048576, 4⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
+    SliceOk column0 Airbender.Compiler.NativeSetups.wordMemorySetup_col0_from0 0 4 [⟨1, 0, 1, 1048576, 4⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
   ⟨⟨column0_long1, column0_long1048577, column0_long2097153, trivial⟩, by decide +kernel⟩
 
 theorem column1_long5 : Long.Ok column1 ⟨5, 0, 1, 1048572, 0⟩ := by
@@ -39,7 +39,7 @@ theorem column1_long2097153 : Long.Ok column1 ⟨2097153, 0, 1, 14680063, 0⟩ :
 
 theorem column1_slice0 :
     AllOk column1 [⟨5, 0, 1, 1048572, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] ∧
-    SliceOk column1 Airbender.Compiler.NativeSetups.wordMemorySetup_col1 0 4 [⟨5, 0, 1, 1048572, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
+    SliceOk column1 Airbender.Compiler.NativeSetups.wordMemorySetup_col1_from0 0 4 [⟨5, 0, 1, 1048572, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
   ⟨⟨column1_long5, column1_long1048577, column1_long2097153, trivial⟩, by decide +kernel⟩
 
 theorem column2_long5 : Long.Ok column2 ⟨5, 0, 1, 1048572, 0⟩ := by
@@ -53,7 +53,7 @@ theorem column2_long2097153 : Long.Ok column2 ⟨2097153, 0, 1, 14680063, 0⟩ :
 
 theorem column2_slice0 :
     AllOk column2 [⟨5, 0, 1, 1048572, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] ∧
-    SliceOk column2 Airbender.Compiler.NativeSetups.wordMemorySetup_col2 0 4 [⟨5, 0, 1, 1048572, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
+    SliceOk column2 Airbender.Compiler.NativeSetups.wordMemorySetup_col2_from0 0 4 [⟨5, 0, 1, 1048572, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
   ⟨⟨column2_long5, column2_long1048577, column2_long2097153, trivial⟩, by decide +kernel⟩
 
 theorem column3_long0 : Long.Ok column3 ⟨0, 0, 1, 1048577, 0⟩ := by
@@ -67,7 +67,7 @@ theorem column3_long2097153 : Long.Ok column3 ⟨2097153, 0, 1, 14680063, 0⟩ :
 
 theorem column3_slice0 :
     AllOk column3 [⟨0, 0, 1, 1048577, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] ∧
-    SliceOk column3 Airbender.Compiler.NativeSetups.wordMemorySetup_col3 0 3 [⟨0, 0, 1, 1048577, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
+    SliceOk column3 Airbender.Compiler.NativeSetups.wordMemorySetup_col3_from0 0 3 [⟨0, 0, 1, 1048577, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
   ⟨⟨column3_long0, column3_long1048577, column3_long2097153, trivial⟩, by decide +kernel⟩
 
 theorem column4_long0 : Long.Ok column4 ⟨0, 0, 1, 1048577, 0⟩ := by
@@ -81,7 +81,7 @@ theorem column4_long2097153 : Long.Ok column4 ⟨2097153, 0, 1, 14680063, 0⟩ :
 
 theorem column4_slice0 :
     AllOk column4 [⟨0, 0, 1, 1048577, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] ∧
-    SliceOk column4 Airbender.Compiler.NativeSetups.wordMemorySetup_col4 0 3 [⟨0, 0, 1, 1048577, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
+    SliceOk column4 Airbender.Compiler.NativeSetups.wordMemorySetup_col4_from0 0 3 [⟨0, 0, 1, 1048577, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
   ⟨⟨column4_long0, column4_long1048577, column4_long2097153, trivial⟩, by decide +kernel⟩
 
 theorem column5_long0 : Long.Ok column5 ⟨0, 0, 1, 1048577, 0⟩ := by
@@ -95,7 +95,7 @@ theorem column5_long2097153 : Long.Ok column5 ⟨2097153, 0, 1, 14680063, 0⟩ :
 
 theorem column5_slice0 :
     AllOk column5 [⟨0, 0, 1, 1048577, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] ∧
-    SliceOk column5 Airbender.Compiler.NativeSetups.wordMemorySetup_col5 0 3 [⟨0, 0, 1, 1048577, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
+    SliceOk column5 Airbender.Compiler.NativeSetups.wordMemorySetup_col5_from0 0 3 [⟨0, 0, 1, 1048577, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
   ⟨⟨column5_long0, column5_long1048577, column5_long2097153, trivial⟩, by decide +kernel⟩
 
 theorem column6_long0 : Long.Ok column6 ⟨0, 0, 1, 1048577, 0⟩ := by
@@ -109,7 +109,7 @@ theorem column6_long2097153 : Long.Ok column6 ⟨2097153, 0, 1, 14680063, 0⟩ :
 
 theorem column6_slice0 :
     AllOk column6 [⟨0, 0, 1, 1048577, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] ∧
-    SliceOk column6 Airbender.Compiler.NativeSetups.wordMemorySetup_col6 0 3 [⟨0, 0, 1, 1048577, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
+    SliceOk column6 Airbender.Compiler.NativeSetups.wordMemorySetup_col6_from0 0 3 [⟨0, 0, 1, 1048577, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
   ⟨⟨column6_long0, column6_long1048577, column6_long2097153, trivial⟩, by decide +kernel⟩
 
 theorem column7_long0 : Long.Ok column7 ⟨0, 0, 1, 1048577, 0⟩ := by
@@ -123,7 +123,7 @@ theorem column7_long2097153 : Long.Ok column7 ⟨2097153, 0, 1, 14680063, 0⟩ :
 
 theorem column7_slice0 :
     AllOk column7 [⟨0, 0, 1, 1048577, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] ∧
-    SliceOk column7 Airbender.Compiler.NativeSetups.wordMemorySetup_col7 0 3 [⟨0, 0, 1, 1048577, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
+    SliceOk column7 Airbender.Compiler.NativeSetups.wordMemorySetup_col7_from0 0 3 [⟨0, 0, 1, 1048577, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
   ⟨⟨column7_long0, column7_long1048577, column7_long2097153, trivial⟩, by decide +kernel⟩
 
 theorem column8_long1 : Long.Ok column8 ⟨1, 0, 1, 1048576, 0⟩ := by
@@ -137,7 +137,7 @@ theorem column8_long2097153 : Long.Ok column8 ⟨2097153, 0, 1, 14680063, 0⟩ :
 
 theorem column8_slice0 :
     AllOk column8 [⟨1, 0, 1, 1048576, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] ∧
-    SliceOk column8 Airbender.Compiler.NativeSetups.wordMemorySetup_col8 0 4 [⟨1, 0, 1, 1048576, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
+    SliceOk column8 Airbender.Compiler.NativeSetups.wordMemorySetup_col8_from0 0 4 [⟨1, 0, 1, 1048576, 0⟩, ⟨1048577, 0, 1, 1048576, 0⟩, ⟨2097153, 0, 1, 14680063, 0⟩] 0 16777216 :=
   ⟨⟨column8_long1, column8_long1048577, column8_long2097153, trivial⟩, by decide +kernel⟩
 
 end Airbender.Compiler.NativeFixedRows.WordMemorySetupProofs

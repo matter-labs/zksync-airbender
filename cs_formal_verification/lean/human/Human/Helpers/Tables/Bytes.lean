@@ -2,7 +2,6 @@ module
 public import Human.Helpers.Tables.Lookups
 public import Human.Circuits.JumpBranchSlt.Tables.Control
 public import CleanCore.Utils.Field
-public import Human.Compiler.NativeSetups.ShiftBinop
 
 @[expose] public section
 
@@ -73,15 +72,5 @@ def shiftBinopLookup {p : Nat} [Fact p.Prime] (entry : Vector (Expression (ZMod 
     Lookup (ZMod p) where
   table := shiftBinopTable.toRaw
   entry := entry
-
-/-- The fixed rows, the decoder rows of the setup fixture program, then zero padding, are the imported native rows on
-    the complete trace domain. The fixture program has no shift or binary instruction: each decoder row holds the
-    field element `-1` in every payload field and the tag 46. -/
-def ShiftBinopImportClaim : Prop :=
-  Compiler.NativeSetups.shiftBinopSetup.traceLen = 16777216 ∧
-  Compiler.NativeSetups.shiftBinopSetup.Rows fun index =>
-    if bound : index < 524545 then (shiftBinopRow ⟨index, bound⟩).map (fun n : Nat => (n : Int))
-    else if index < 1573121 then (Vector.replicate 9 ((babyBearModulus - 1 : Nat) : Int)).push 46
-    else Vector.replicate 10 0
 
 end Airbender.Verification

@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """Generate the kernel scans that prove each imported setup column equal to its column formula.
 
-For each configured setup, every column is cut into slices of consecutive blocks of about `SLICE` units of kernel
-work (one unit per row checked). Each slice is one `decide +kernel` check (`Proven.Setup.Scan.SliceOk`), so the kernel
-cache of one check stays small. A non-dense block is a long block when its algebraic periods cover at least the
-setup's `long_cost` units more than one period: the kernel checks one period, and `long_ok` proves that the formula
-repeats with its period and stride (one `long_ok` proof costs about `long_cost` units), outside every
-`per_row` range (rows whose formula reads a table, such as controller rows); the kernel checks the remaining rows of the
-block one by one. On the rows of a `bitwise` column, `long_ok` closes the formula by congruence only, so a long block
-there has stride 0 and the same digits on all its periods. A block across one of the setup's `cuts` rows (a region
-bound of the formula) is cut there into pieces (`Cuts.lean`, `Proven.Setup.Cut`), and the scan checks the pieces. The
-slices are packed into modules of about `MODULE` units, or the setup's `module` units. `Columns.lean` joins the slices
-of each column in order. `--check` regenerates every file in memory, compares it with the committed file, and fails on
-a gap or an overlap between the slices of a column.
+`validate` first rejects a configuration that the scan would read loosely (an unknown column, an empty, reversed or
+out-of-domain row range, a cut outside the trace, a `per_row` bound inside a period). For each configured setup,
+every column is cut into slices of consecutive blocks of about `SLICE` units of kernel work (one unit per row
+checked), or the setup's `slice` units. Each slice is one `decide +kernel` check (`Proven.Setup.Scan.SliceOk`), so
+the kernel cache of one check stays small. A non-dense block is a long block when its algebraic periods cover at
+least the setup's `long_cost` units more than one period: the kernel checks one period, and `long_ok` proves that
+the formula repeats with its period and stride (one `long_ok` proof costs about `long_cost` units), outside every
+`per_row` range (rows whose formula reads a table, such as controller rows); the kernel checks the remaining rows of
+the block one by one. On the rows of a `bitwise` column, `long_ok` closes the formula by congruence only, so a long
+block there has stride 0 and the same digits on all its periods. A block across one of the setup's `cuts` rows (a
+region bound of the formula) is cut there into pieces (`Cuts.lean`, `Proven.Setup.Cut`), and the scan checks the
+pieces. The slices are packed into modules of about `MODULE` units, or the setup's `module` units. `Columns.lean`
+joins the slices of each column in order. `--check` regenerates every file in memory, compares it with the committed
+file, and fails on a gap or an overlap between the slices of a column.
 """
 import argparse
 import json
@@ -22,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DESTINATION = ROOT / 'proven/Proven/Setup/Native'
 SLICE = 25000
 MODULE = 100000
+# The blocks between two named suffixes of an imported column (`addColumn` in `Human/Import/SetupEmit.lean`).
+SUFFIX = 128
 
 # name: the module directory; data: the imported `SetupData`; columns: the fast column formula of each native column;
 # long_cost: the kernel work, in rows, that one `long_ok` proof costs;
@@ -32,7 +36,10 @@ MODULE = 100000
 # these rows has stride 0 and each digit is the same on all its periods; module: the units of one module, when
 # not `MODULE`; cuts: the rows (region bounds) at which the blocks are cut (`Proven.Setup.Cut`), in every column, or
 # (row, columns) in the listed columns only, so that `long_ok` sees one region per piece; regions: the lemmas that
-# give the formula of each region, which `long_ok` applies before it unfolds the other definitions.
+# give the formula of each region, which `long_ok` applies before it unfolds the other definitions; slice: the units
+# of one slice, when not `SLICE` (a smaller slice keeps the kernel cache of one check small).
+# The namespace of the shift/binary column formulas, which the unified formulas read.
+SHIFT = 'Airbender.Verification.ShiftBinopSetupProofs'
 # The five nibbles of a 20-bit key.
 NIBBLES = [(1, 16), (16, 16), (256, 16), (4096, 16), (65536, 16)]
 
@@ -72,6 +79,28 @@ SETUPS = (
          namespace='Airbender.Compiler.NativeFixedRows.AddSubSetupProofs',
          columns=[f'column{index}' for index in range(8)],
          unfold=['byRow'], long_cost=2000, per_row=[]),
+    dict(name='SubwordMemory', json='subword-memory.json', data='Airbender.Compiler.NativeSetups.subwordMemorySetup',
+         namespace='Airbender.Compiler.NativeFixedRows.SubwordMemorySetupProofs',
+         columns=[f'column{index}' for index in range(9)],
+         regions=['byRegion_place', 'byRegion_clear', 'byRegion_loadHalf', 'byRegion_loadByte', 'byRegion_romHalf',
+                  'byRegion_romByte', 'byRegion_decoder', 'byRegion_padding'],
+         unfold=['fixedZero', 'store', 'loadLow', 'loadHigh', 'loadValue', 'negative', 'halfKey', 'byteKey',
+                 'Airbender.Compiler.NativeSetups.Proofs.bit', 'Airbender.Compiler.NativeSetups.Proofs.word',
+                 'Bool.false_and', 'Bool.true_and', 'Nat.zero_div', 'Nat.zero_mod'],
+         long_cost=2000, per_row=[],
+         cuts=[(bound, (1, 2)) for bound in (1, 131073, 262145, 393217, 655361, 4849665, 13238273, 14286849)]),
+    dict(name='Unified', slice=10000, json='unified.json', data='Airbender.Compiler.NativeSetups.unifiedSetup',
+         namespace='Airbender.Compiler.NativeFixedRows.UnifiedSetupProofs',
+         columns=[f'column{index}' for index in range(10)],
+         regions=['byRegionShift', 'byRegion_zeroTest', 'byRegion_jump', 'byRegion_sign', 'byRegion_limbSign',
+                  'byRegion_low5', 'byRegion_shift', 'byRegion_rom', 'byRegion_rotate', 'byRegion_conditional',
+                  'byRegion_wide', 'byRegion_decoder', 'byRegion_padding'],
+         unfold=[f'{SHIFT}.column{index}' for index in range(10)] + [
+             f'{SHIFT}.{name}' for name in ('byRegion', 'high', 'low', 'output', 'contribution')] + [
+             'rotated', 'rotation', 'packedKey', 'decoder', 'Airbender.Compiler.NativeSetups.Proofs.bit',
+             'Airbender.Compiler.NativeSetups.Proofs.word'],
+         long_cost=2000, per_row=[(327937, 590076, (4, 5, 6, 7)), (1638657, 1900801, (2, 3, 4, 5))],
+         cuts=[1, 131073, 196609, 196865, 262401, 327937, 590081, 1638657, 1900801, 1900929, 2097537, 3146113]),
     dict(name='KeccakColumnParity', module=200000, json='keccak-column-parity.json',
          data='Airbender.Keccak.Split.ColumnParity.columnParitySetup',
          namespace='Airbender.Keccak.Split.ColumnParity.SetupProofs',
@@ -93,8 +122,6 @@ SETUPS = (
 UNSCANNED = {
     'decoder-smoke.json': 'a Rust test fixture that no claim reads',
     'inits-and-teardowns.json': 'no generic lookup columns',
-    'unified.json': 'the compiled comparison in test/Tests/NativeFixedRows binds its fixed region',
-    'subword-memory.json': 'the compiled comparison in test/Tests/NativeFixedRows binds its fixed region',
 }
 
 
@@ -112,6 +139,53 @@ def block_rows(block):
     if block['kind'] == 'dense':
         return len(block['values'])
     return block['repetitions'] * len(block['values'])
+
+
+def validate(setup, native):
+    """Reject a setup configuration that the scan would read loosely: a formula count that differs from the native
+    column count, a column number outside the setup, an empty, reversed or out-of-domain row range, a cut row outside
+    the trace, or a `per_row` bound inside a period of a periodic block (the scan would move it to a period bound)."""
+    name, width, trace_len = setup['name'], len(native['columns']), native['trace_len']
+    if len(setup['columns']) != width:
+        raise ValueError(f"{name}: {width} native columns, {len(setup['columns'])} column formulas")
+
+    def check_columns(kind, columns):
+        if not columns or any(not isinstance(column, int) or not 0 <= column < width for column in columns):
+            raise ValueError(f'{name}: {kind} names a column outside 0..{width - 1}: {columns}')
+
+    def check_range(kind, first, end):
+        if not 0 <= first < end <= trace_len:
+            raise ValueError(f'{name}: {kind} range [{first}, {end}) is empty, reversed or outside [0, {trace_len}]')
+
+    for item in setup['per_row']:
+        if len(item) not in (2, 3):
+            raise ValueError(f'{name}: per_row entry {item} is not (first, end) or (first, end, columns)')
+        check_range('per_row', item[0], item[1])
+        if len(item) == 3:
+            check_columns('per_row', item[2])
+    for column, (first, end, places) in setup.get('bitwise', {}).items():
+        check_columns('bitwise', [column])
+        check_range('bitwise', first, end)
+        if not places or any(divisor <= 0 or modulus <= 0 for divisor, modulus in places):
+            raise ValueError(f'{name}: bitwise column {column} has no digits or a digit of zero width')
+    for item in setup.get('cuts', []):
+        row = item[0] if isinstance(item, tuple) else item
+        if isinstance(item, tuple):
+            check_columns('cuts', item[1])
+        if not 0 < row < trace_len:
+            raise ValueError(f'{name}: cut row {row} is outside (0, {trace_len})')
+    for column, data in enumerate(native['columns']):
+        bounds = {bound for item in setup['per_row'] if len(item) == 2 or column in item[2] for bound in item[:2]}
+        row = 0
+        for block in data['blocks']:
+            size = block_rows(block)
+            if block['kind'] == 'periodic':
+                period = len(block['values'])
+                for bound in sorted(bounds):
+                    if row < bound < row + size and (bound - row) % period:
+                        raise ValueError(f'{name} column {column}: per_row bound {bound} is inside a period of the '
+                                         f'block at row {row} (period {period})')
+            row += size
 
 
 def same_digits(digits, anchor, period, reps):
@@ -170,6 +244,10 @@ def cut_block(block, offsets):
     pieces, done = [], 0
     for offset in offsets:
         length = offset - done
+        period = 1 if block['kind'] == 'affine' else len(block['values'])
+        if block['kind'] == 'dense' or length <= 0 or length % period or length >= block_rows(block):
+            raise ValueError(f'cut length {length} does not split the {block["kind"]} block of '
+                             f'{block_rows(block)} rows on a period bound')
         if block['kind'] == 'affine':
             pieces.append(dict(block, length=length))
             block = dict(block, length=block['length'] - length, first=block['first'] + block['step'] * length)
@@ -220,7 +298,7 @@ def slices(setup, columns, trace_len):
             if long:
                 longs.append(long)
             row += block_rows(block)
-            if units >= SLICE or index == len(blocks) - 1:
+            if units >= setup.get('slice', SLICE) or index == len(blocks) - 1:
                 result.append((column, first, index + 1 - first, longs, start_row, row, units))
                 first, start_row, longs, units = index + 1, row, [], 0
         if row != trace_len:
@@ -241,6 +319,11 @@ def check_partition(setup, columns, trace_len, parts):
             raise ValueError(f"{setup['name']} column {column}: slices end at block {next_block}, row {next_row}")
 
 
+def suffix(block):
+    """The first block of the named suffix (`addColumn` in `SetupEmit`) that holds `block`."""
+    return block // SUFFIX * SUFFIX
+
+
 def long_term(long):
     start, skip, period, reps, stride = long
     return f'⟨{start}, {skip}, {period}, {reps}, {stride}⟩'
@@ -250,8 +333,7 @@ def outputs():
     result = {}
     for setup in SETUPS:
         native = json.loads((ROOT / 'artifacts/setup' / setup['json']).read_bytes())
-        if len(setup['columns']) != len(native['columns']):
-            raise ValueError(f"{setup['name']}: {len(native['columns'])} native columns")
+        validate(setup, native)
         cut = [cut_column(setup, column, data['blocks']) for column, data in enumerate(native['columns'])]
         columns = [pieces for pieces, _ in cut]
         parts = slices(setup, columns, native['trace_len'])
@@ -308,9 +390,12 @@ def outputs():
                     lines.append(f'theorem {name} : Long.Ok {formula} {long_term(long)} := by\n'
                                  f'  long_ok [{definitions}]{regions}\n')
                 all_ok = '⟨' + ''.join(f'{name}, ' for name in long_names) + 'trivial⟩' if longs else 'trivial'
+                source, offset = blocks[column], first
+                if not cut[column][1]:
+                    source, offset = f'{blocks[column]}_from{suffix(first)}', first - suffix(first)
                 lines.append(f'theorem {formula}_slice{first} :\n'
                              f'    AllOk {formula} {longs_text} ∧\n'
-                             f"    SliceOk {formula} {blocks[column]} {first} {count} {longs_text}"
+                             f"    SliceOk {formula} {source} {offset} {count} {longs_text}"
                              f' {start_row} {last_row} :=\n'
                              f'  ⟨{all_ok}, by decide +kernel⟩\n')
             lines.append(f"end {setup['namespace']}\n")
@@ -321,8 +406,19 @@ def outputs():
                  '/- Generated by scripts/generate_setup_scans.py: the slices of each column, joined in order. -/\n']
         for column, formula in enumerate(setup['columns']):
             term = f'prefixOk_zero {formula} _'
-            for _, first, count, _, _, _, _ in (part for part in parts if part[0] == column):
-                term = f'prefixOk_next ({term})\n    {formula}_slice{first} rfl'
+            own = [part for part in parts if part[0] == column]
+            if not cut[column][1]:
+                data = f"{setup['data']}_col{column}"
+                for start in range(0, suffix(own[-1][1]) + 1, SUFFIX):
+                    proof = 'rfl' if start == 0 else f'drop_from {formula}_from{start - SUFFIX} rfl'
+                    lines.append(f'theorem {formula}_from{start} : {data}.drop {start} = {data}_from{start} :=\n'
+                                 f'  {proof}\n')
+            for _, first, count, _, _, _, _ in own:
+                if cut[column][1]:
+                    term = f'prefixOk_next ({term})\n    {formula}_slice{first} rfl'
+                else:
+                    term = (f'prefixOk_next_from ({term})\n    {formula}_from{suffix(first)} (by decide)'
+                            f' {formula}_slice{first} rfl')
             proof = f'({term}).2'
             if cut[column][1]:
                 proof = f'fun n bound => ({formula}_blocks_decode n).symm.trans (({term}).2 n bound)'

@@ -27,7 +27,6 @@ These modules perform trusted import or comparison operations:
 - [Transcribe.lean](Human/Import/Transcribe.lean) composes the JSON parser and circuit decoder.
 - [TranscribeCommand.lean](Human/Import/TranscribeCommand.lean) reads circuit files and runs the import command.
 - [SetupEmit.lean](Human/Import/SetupEmit.lean) reads compressed setup data and emits setup terms.
-- [NativeGrid.lean](Human/Import/NativeGrid.lean) compares the subword and unified fixed rows with native JSON rows in compiled code.
 
 The [trust lists](Human/Trust.lean) name the allowed external roots and tactic modules.
 The [import guide](Human/Import/README.md) states the parser, decoder and placement

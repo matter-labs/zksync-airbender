@@ -1,7 +1,6 @@
 module
 public import Human.Circuits.Keccak.Controller
 public import Human.Circuits.Keccak.Tables.Setup
-public import Human.Compiler.NativeSetups.Keccak
 
 @[expose] public section
 
@@ -40,13 +39,5 @@ def rows (key : Fin 4096) : Vector Nat 6 :=
     else if mode = 0 ∧ iteration = 0 ∧ round = 0 then Vector.replicate 6 0
     else #v[0, 1, 2, 3, 4, 5]
   else #v[0, 1, 2, 3, 4, 5]
-
-/-- The fixed regions, the controller rows of `rows`, then zero padding, are the imported native rows on the
-    complete trace domain. -/
-def SetupImportClaim : Prop :=
-  Compiler.NativeSetups.keccakSetup.traceLen = 4194304 ∧
-  Compiler.NativeSetups.keccakSetup.Rows fun index =>
-    if bound : index < 1249281 then (setupRow rows ⟨index, bound⟩).map (fun n : Nat => (n : Int))
-    else Vector.replicate 8 0
 
 end Airbender.Keccak.Controller

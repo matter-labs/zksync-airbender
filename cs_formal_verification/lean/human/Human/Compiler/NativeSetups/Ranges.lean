@@ -13,7 +13,8 @@ public import Human.Compiler.NativeSetups.Unified
 namespace Airbender.Compiler.NativeSetups
 open Import.Setup
 
-/- Import claims of the range tables of the CPU setups. -/
+/- Import claims of the range tables of the CPU setups. This module reads the raw setup data; the definitions that the
+   machine claims use (`NativePublicSetup`) do not import it. -/
 
 /-- The native `RangeCheck13` table (table 26 of the multiply/divide setup, from row 196608) holds the key `index` of
     `Verification.range13Table` in column 0, zeros, and the tag 26, for every `index < 8192`. -/

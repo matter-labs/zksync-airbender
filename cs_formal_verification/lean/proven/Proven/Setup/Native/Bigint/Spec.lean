@@ -1,5 +1,5 @@
 module
-public import Human.Circuits.Bigint.Tables.Setup
+public import Human.Circuits.Bigint.Tables.SetupImport
 public import Proven.Setup.Scan
 
 @[expose] public section

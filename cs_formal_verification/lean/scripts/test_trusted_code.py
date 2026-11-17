@@ -72,7 +72,7 @@ def json := r#"{"text": "/-"}"#
             check_graph(graph, ['Human.Example'], {'Lean', 'Mathlib'})
 
     def test_manifest_contains_the_native_binding(self):
-        self.assertIn('Human.Import.NativeGrid', manifest_list('trustedTacticModules'))
+        self.assertIn('Human.Import.SetupEmit', manifest_list('trustedTacticModules'))
         self.assertIn('SailRV32', manifest_list('trustedModuleRoots'))
         self.assertIn('Human.Import.TranscribeCommand', manifest_list('declarationCommandModules'))
         self.assertIn('Human.Helpers.Core.Configuration', manifest_list('sailModules'))
