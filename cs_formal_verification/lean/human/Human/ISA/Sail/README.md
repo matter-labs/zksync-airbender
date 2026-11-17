@@ -18,10 +18,13 @@ compose native acceptance, whole RV execution and the finite machine simulation.
 configuration and fetch results with separate witnesses.
 [Interpreter.lean](Interpreter.lean) relates `runSail` to lean-sail's `interpretSailEffects`.
 The kernel cannot evaluate the hash maps of lean-sail's state, so the claims use `runSail`.
-`runSail` makes the same request checks as lean-sail and keeps the same cycle counter.
+`runSail` keeps the same cycle counter as lean-sail and makes lean-sail's tag check. It also rejects a memory request
+larger than `maxRequestBytes` = 2^34 bytes (`Helpers/Core/Configuration.lean`), a check that lean-sail does not make.
+RV32 accesses are at most 8 bytes, so no target run reaches this limit.
 A lean-sail state agrees when it holds every register and every byte that a memory request can reach.
-From an agreeing state, every successful `runSail` run is the same lean-sail run, and every finite machine run
-is a run of the same length with lean-sail's interpreter. So each machine-run target also gives a lean-sail run.
+The result goes in one direction: from an agreeing state, every successful `runSail` run is the same lean-sail run,
+and every finite machine run is a run of the same length with lean-sail's interpreter. So each machine-run target
+also gives a lean-sail run. The claims do not state that every lean-sail run is a `runSail` run.
 
 The Airbender machine uses the specification's own definitions for loads into x0,
 `mop.rr.N`, `mop.r.N`, CSR 0x7c0 and all delegations. These are machine overrides.
