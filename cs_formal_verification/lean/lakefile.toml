@@ -431,6 +431,7 @@ roots = [
   "Tests.NativeGridComparison",
   "Tests.KernelExact",
   "Tests.LookupSelectorGroups",
+  "Tests.CachedCaptureText",
   "Tests.VerifierBoundary",
   "Tests.Bigint",
   "Tests.BigintReferenceVectors",

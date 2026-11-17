@@ -170,13 +170,13 @@ def elabImportCircuit : CommandElab := fun stx => do
     | .error e => throwError "circuit import failed: {e}"
   let base := (← getCurrNamespace) ++ stx[1].getId
   liftCoreM do
-    let bytesName := base.appendAfter "SourceBytes"
-    let stringType := mkConst ``String
-    addTranscribedDef bytesName stringType (mkStrLit text)
-    compileDecl (.defnDecl
-      { name := bytesName, levelParams := [], type := stringType, value := mkStrLit text, hints := .abbrev,
-        safety := .safe })
     if stx[5].isNone then
+      let bytesName := base.appendAfter "SourceBytes"
+      let stringType := mkConst ``String
+      addTranscribedDef bytesName stringType (mkStrLit text)
+      compileDecl (.defnDecl
+        { name := bytesName, levelParams := [], type := stringType, value := mkStrLit text, hints := .abbrev,
+          safety := .safe })
       addTranscribedDef base (mkConst ``Circuit) (toExpr c)
     else
       addSharedCircuit base ((← getCurrNamespace) ++ stx[5][1].getId) c
