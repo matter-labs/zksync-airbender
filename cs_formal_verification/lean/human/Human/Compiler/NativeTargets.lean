@@ -170,36 +170,36 @@ def PaddedUnrolledFullFromNativeSatisfiableClaim : Prop :=
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
-    (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1 ∧
     BootInputs .unrolledFullUnsigned (active trace) initial cells program InitsTeardowns.importedLayout inits ∧
     NoSpecial5 program ∧
     NonDeterminism.Pooled.StreamPorts (active trace) initial.input ∧
     NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
     ∃ certificates : List (ProgramRowCertificate tables),
-      PaddedUnrolledNativeArguments tables certificates trace workers
+      PaddedUnrolledNativeArguments tables certificates trace workers ∧
+      (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1
 
 /-- One active CPU row and one padding CPU row meet the exact padded native premises. -/
 def PaddedUnrolledReducedFromNativeSatisfiableClaim : Prop :=
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
-    (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1 ∧
     BootInputs .unrolledReduced (active trace) initial cells program InitsTeardowns.importedLayout inits ∧
     NonDeterminism.Pooled.StreamPorts (active trace) initial.input ∧
     NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
     ∃ certificates : List (ProgramRowCertificate tables),
-      PaddedUnrolledNativeArguments tables certificates trace workers
+      PaddedUnrolledNativeArguments tables certificates trace workers ∧
+      (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1
 
 /-- One active CPU row and one padding CPU row meet the exact padded native premises. -/
 def PaddedUnifiedFromNativeSatisfiableClaim : Prop :=
   ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)) (tables : ProgramLookupRows),
-    (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1 ∧
     BootInputs .unified (active trace) initial cells program InitsTeardowns.unifiedLayout inits ∧
     NoSpecial5 program ∧ UnifiedStreamPorts (active trace) initial.input ∧
     NativePublicSetup.Bound initial program tables ∧
     ∃ certificates : List (UnifiedRowCertificate tables),
-      PaddedUnifiedNativeArguments tables certificates trace workers
+      PaddedUnifiedNativeArguments tables certificates trace workers ∧
+      (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1
 
 end Airbender.Trace.Machine.Native

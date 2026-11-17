@@ -1507,7 +1507,7 @@ example (claim : Airbender.RunSailSimulationClaim) : Airbender.RunSailSimulation
 example (claim : Airbender.MachineRunIsSequentialClaim) : Airbender.MachineRunIsSequentialSatisfiableClaim →
     ∃ (n : Nat) (machine : Airbender.SequentialMachine) (machine' : Airbender.SequentialMachine),
       1 ≤ n ∧ Airbender.SequentialMachine.run n machine = some machine' :=
-  fun ⟨n, machine, machine', sequential, positive, agrees, run⟩ =>
+  fun ⟨n, machine, machine', sequential, agrees, run, positive⟩ =>
     let ⟨_, theirs, _⟩ := claim n machine machine' sequential agrees run
     ⟨n, _, _, positive, theirs⟩
 
@@ -1518,7 +1518,7 @@ example : Airbender.Compiler.NativeMemory.StateTokenMatchingSatisfiableClaim := 
 example (claim : Airbender.Compiler.NativeMemory.StateTokenMatchingClaim) :
     Airbender.Compiler.NativeMemory.StateTokenMatchingSatisfiableClaim →
     ∃ before after : List (Airbender.PCState.State Airbender.babyBearModulus), before ≠ [] ∧ before.Perm after :=
-  fun ⟨before, after, nonempty, matching⟩ => ⟨before, after, nonempty, claim before after matching⟩
+  fun ⟨before, after, matching, nonempty⟩ => ⟨before, after, nonempty, claim before after matching⟩
 
 example : Airbender.Compiler.AddSubCachedMemorySatisfiableClaim := Airbender.Compiler.addSub_cached_memory_satisfiable
 
@@ -1630,8 +1630,8 @@ example (claim : Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNative) :
     ∃ certificates : List (ProgramRowCertificate tables),
       PaddedUnrolledNativeArguments tables certificates trace workers ∧
     RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (PaddingBoundary.active trace)) :=
-  fun ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, noSpecial, stream, bound,
-      covers, certificates, arguments⟩ =>
+  fun ⟨trace, workers, initial, cells, program, inits, tables, boot, noSpecial, stream, bound, covers,
+      certificates, arguments, active, padding⟩ =>
     ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, certificates, arguments,
       claim trace workers initial cells program inits tables boot noSpecial stream bound covers certificates
         arguments⟩
@@ -1646,8 +1646,8 @@ example (claim : Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNative)
     ∃ certificates : List (ProgramRowCertificate tables),
       PaddedUnrolledNativeArguments tables certificates trace workers ∧
     RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (PaddingBoundary.active trace)) :=
-  fun ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, stream, bound, covers,
-      certificates, arguments⟩ =>
+  fun ⟨trace, workers, initial, cells, program, inits, tables, boot, stream, bound, covers, certificates,
+      arguments, active, padding⟩ =>
     ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, certificates, arguments,
       claim trace workers initial cells program inits tables boot stream bound covers certificates arguments⟩
 
@@ -1661,8 +1661,8 @@ example (claim : Airbender.Trace.Machine.Native.PaddedUnifiedFromNative) :
     ∃ certificates : List (UnifiedRowCertificate tables),
       PaddedUnifiedNativeArguments tables certificates trace workers ∧
     RVRealizes trace initial cells (unifiedReadCount (PaddingBoundary.active trace)) :=
-  fun ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, noSpecial, stream, bound,
-      certificates, arguments⟩ =>
+  fun ⟨trace, workers, initial, cells, program, inits, tables, boot, noSpecial, stream, bound, certificates,
+      arguments, active, padding⟩ =>
     ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, certificates, arguments,
       claim trace workers initial cells program inits tables boot noSpecial stream bound certificates arguments⟩
 

@@ -93,6 +93,6 @@ def MachineRunIsSequentialClaim : Prop :=
 /-- A machine that runs at least one step has an agreeing lean-sail state. -/
 def MachineRunIsSequentialSatisfiableClaim : Prop :=
   ∃ (n : Nat) (machine machine' : Machine) (sequential : SequentialSailState),
-    1 ≤ n ∧ SequentialAgrees machine.sail sequential ∧ Machine.run n machine = some machine'
+    SequentialAgrees machine.sail sequential ∧ Machine.run n machine = some machine' ∧ 1 ≤ n
 
 end Airbender

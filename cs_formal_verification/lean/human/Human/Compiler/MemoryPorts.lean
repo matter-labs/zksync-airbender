@@ -21,7 +21,7 @@ def StateTokenMatchingClaim : Prop :=
 /-- Two lists of PC states, the first nonempty, have matching tokens. -/
 def StateTokenMatchingSatisfiableClaim : Prop :=
   ∃ before after : List (PCState.State babyBearModulus),
-    before ≠ [] ∧ (before.map stateToken).Perm (after.map stateToken)
+    (before.map stateToken).Perm (after.map stateToken) ∧ before ≠ []
 
 end Airbender.Compiler.NativeMemory
 

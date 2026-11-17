@@ -18,7 +18,7 @@ theorem state_token_matching : StateTokenMatchingClaim := by
 
 /-- A one-state list matches its own tokens. -/
 theorem state_token_matching_satisfiable : StateTokenMatchingSatisfiableClaim :=
-  ⟨[⟨(0, 0), (0, 0)⟩], [⟨(0, 0), (0, 0)⟩], List.cons_ne_nil _ _, List.Perm.refl _⟩
+  ⟨[⟨(0, 0), (0, 0)⟩], [⟨(0, 0), (0, 0)⟩], List.Perm.refl _, List.cons_ne_nil _ _⟩
 
 end Airbender.Compiler.NativeMemory
 

@@ -166,6 +166,6 @@ theorem machine_run_is_sequential_satisfiable : MachineRunIsSequentialSatisfiabl
   obtain ⟨state, after, machine, agreement, stepped⟩ := Proven.Equiv.NonVacuous.step_assumptions
   obtain ⟨machine', run, _⟩ := Proven.Equiv.run_is_airbender 1 state after machine agreement
     (by simp only [RV.run, stepped, Option.bind_some])
-  exact ⟨1, machine, machine', fullSequential machine.sail, le_refl 1, full_agrees machine.sail, run⟩
+  exact ⟨1, machine, machine', fullSequential machine.sail, full_agrees machine.sail, run, le_refl 1⟩
 
 end Proven.Interpreter

@@ -74,8 +74,8 @@ theorem unified_arguments : PaddedUnifiedNativeArguments unifiedTables unifiedCe
 /-- One active unified ADD row and one padding row meet the padded unified native premises. -/
 theorem unified_witness : Native.PaddedUnifiedFromNativeSatisfiableClaim := by
   refine ⟨unified, Machine.workers, UnifiedBoot.initial, UnifiedBoot.cells, unifiedProgram, UnifiedBoot.inits,
-    unifiedTables, unified_sizes.2.2.1, unified_sizes.2.2.2, ?_, unified_no_special, ?_,
-    unified_tables_bound, unifiedCertificates, unified_arguments⟩
+    unifiedTables, ?_, unified_no_special, ?_,
+    unified_tables_bound, unifiedCertificates, unified_arguments, unified_sizes.2.2.1, unified_sizes.2.2.2⟩
   · simpa only [unified_active] using unified_boot
   · simpa only [unified_active] using unified_stream_ports
 
