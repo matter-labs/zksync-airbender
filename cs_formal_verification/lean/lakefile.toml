@@ -53,6 +53,8 @@ globs = [
   "Human.Compiler.LookupSelectors",
   "Human.Compiler.LookupSelectors.+",
   "Human.Compiler.Theorems",
+  "Human.Compiler.NativeMemory",
+  "Human.Compiler.MemoryPorts",
   "Human.Helpers.Context.VerifierBoundary.Model",
   "Human.Helpers.Context.VerifierBoundary.Theorems",
   "Human.Helpers.Decoder.RVMachineProgram",

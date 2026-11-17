@@ -115,6 +115,7 @@ import Proven.Final.Trace.Satisfiable.Callers
 import Proven.Final.Trace.Satisfiable.UnifiedHashCallers
 import Proven.Final.Trace.Satisfiable.DelegationHashCallers
 import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
+import Proven.Final.Compiler.MemoryPorts
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
@@ -1072,3 +1073,69 @@ example : Airbender.RunSailSimulationClaim := Airbender.run_sail_simulation
 example : Airbender.RunSailSimulationSatisfiableClaim := Airbender.run_sail_simulation_satisfiable
 
 #print axioms Airbender.run_sail_simulation_satisfiable
+
+-- Native RAM outputs.
+
+example : Airbender.Compiler.NativeMemory.StateTokenMatchingClaim := @Airbender.Compiler.NativeMemory.state_token_matching
+
+example : Airbender.Compiler.NativeMemory.StateTokenMatchingSatisfiableClaim := @Airbender.Compiler.NativeMemory.state_token_matching_satisfiable
+
+#print axioms Airbender.Compiler.NativeMemory.state_token_matching
+
+#print axioms Airbender.Compiler.NativeMemory.state_token_matching_satisfiable
+
+example : Airbender.Compiler.AddSubCachedMemoryClaim := @Airbender.Compiler.addSub_cached_memory
+
+example : Airbender.Compiler.AddSubCachedMemorySatisfiableClaim := @Airbender.Compiler.addSub_cached_memory_satisfiable
+
+#print axioms Airbender.Compiler.addSub_cached_memory
+
+#print axioms Airbender.Compiler.addSub_cached_memory_satisfiable
+
+example : Airbender.Compiler.JumpBranchCachedMemoryClaim := @Airbender.Compiler.jumpBranch_cached_memory
+
+example : Airbender.Compiler.JumpBranchCachedMemorySatisfiableClaim := @Airbender.Compiler.jumpBranch_cached_memory_satisfiable
+
+#print axioms Airbender.Compiler.jumpBranch_cached_memory
+
+#print axioms Airbender.Compiler.jumpBranch_cached_memory_satisfiable
+
+example : Airbender.Compiler.MulDivCachedMemoryClaim := @Airbender.Compiler.mulDiv_cached_memory
+
+example : Airbender.Compiler.MulDivCachedMemorySatisfiableClaim := @Airbender.Compiler.mulDiv_cached_memory_satisfiable
+
+#print axioms Airbender.Compiler.mulDiv_cached_memory
+
+#print axioms Airbender.Compiler.mulDiv_cached_memory_satisfiable
+
+example : Airbender.Compiler.ShiftBinopCachedMemoryClaim := @Airbender.Compiler.shiftBinop_cached_memory
+
+example : Airbender.Compiler.ShiftBinopCachedMemorySatisfiableClaim := @Airbender.Compiler.shiftBinop_cached_memory_satisfiable
+
+#print axioms Airbender.Compiler.shiftBinop_cached_memory
+
+#print axioms Airbender.Compiler.shiftBinop_cached_memory_satisfiable
+
+example : Airbender.Compiler.SubwordMemoryCachedMemoryClaim := @Airbender.Compiler.subwordMemory_cached_memory
+
+example : Airbender.Compiler.SubwordMemoryCachedMemorySatisfiableClaim := @Airbender.Compiler.subwordMemory_cached_memory_satisfiable
+
+#print axioms Airbender.Compiler.subwordMemory_cached_memory
+
+#print axioms Airbender.Compiler.subwordMemory_cached_memory_satisfiable
+
+example : Airbender.Compiler.WordMemoryCachedMemoryClaim := @Airbender.Compiler.wordMemory_cached_memory
+
+example : Airbender.Compiler.WordMemoryCachedMemorySatisfiableClaim := @Airbender.Compiler.wordMemory_cached_memory_satisfiable
+
+#print axioms Airbender.Compiler.wordMemory_cached_memory
+
+#print axioms Airbender.Compiler.wordMemory_cached_memory_satisfiable
+
+example : Airbender.Compiler.UnifiedCachedMemoryClaim := @Airbender.Compiler.unified_cached_memory
+
+example : Airbender.Compiler.UnifiedCachedMemorySatisfiableClaim := @Airbender.Compiler.unified_cached_memory_satisfiable
+
+#print axioms Airbender.Compiler.unified_cached_memory
+
+#print axioms Airbender.Compiler.unified_cached_memory_satisfiable

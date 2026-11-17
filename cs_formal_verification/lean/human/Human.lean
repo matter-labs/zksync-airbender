@@ -49,3 +49,5 @@ import Human.ISA.Sail.WholeRun
 import Human.ISA.Sail.MachineTargets
 
 import Human.ISA.Sail.NativeTargets
+
+import Human.Compiler.MemoryPorts

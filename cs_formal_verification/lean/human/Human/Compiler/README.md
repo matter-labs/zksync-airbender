@@ -19,6 +19,13 @@ placement, exact public lookups and participation. The target proofs derive the 
 worker row constraints from them. Certificates describe each submitted worker pool in order.
 State, request and shared memory matching are explicit interfaces.
 
+[NativeMemory.lean](NativeMemory.lean) gives the extension semantics of memory tuples, lookup
+caches and RAM-product gates. [MemoryPorts.lean](MemoryPorts.lean) states one claim for each
+cached CPU circuit: native base gates, extension caches and product gates give the RAM read and
+write outputs. Each output is the product of the encoded port tokens and PC-state token of the
+model row, masked by the execute column. `StateTokenMatchingClaim` gives the raw state matching
+from exact matching of the PC-state tokens. The worker RAM outputs have no claim of this form.
+
 [CPU certificate witnesses](../../../proven/Proven/Final/Compiler/CPUCertificates.lean)
 give one active certificate for each of the seven CPU families. Each certificate
 has full native arithmetic, the supplied logical assignment, all public native

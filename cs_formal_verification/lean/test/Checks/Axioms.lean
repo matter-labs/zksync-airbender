@@ -182,6 +182,7 @@ import Proven.Final.Trace.Satisfiable.Callers
 import Proven.Final.Trace.Satisfiable.UnifiedHashCallers
 import Proven.Final.Trace.Satisfiable.DelegationHashCallers
 import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
+import Proven.Final.Compiler.MemoryPorts
 
 -- Pinned Clean compatibility proofs and the unchanged Keccak reference.
 #print axioms ExplicitCircuit.from_bind
@@ -1639,3 +1640,35 @@ import Proven.Final.Trace.Satisfiable.UnifiedRoundCallers
 #print axioms Airbender.run_sail_simulation
 
 #print axioms Airbender.run_sail_simulation_satisfiable
+
+#print axioms Airbender.Compiler.NativeMemory.state_token_matching
+
+#print axioms Airbender.Compiler.NativeMemory.state_token_matching_satisfiable
+
+#print axioms Airbender.Compiler.addSub_cached_memory
+
+#print axioms Airbender.Compiler.addSub_cached_memory_satisfiable
+
+#print axioms Airbender.Compiler.jumpBranch_cached_memory
+
+#print axioms Airbender.Compiler.jumpBranch_cached_memory_satisfiable
+
+#print axioms Airbender.Compiler.mulDiv_cached_memory
+
+#print axioms Airbender.Compiler.mulDiv_cached_memory_satisfiable
+
+#print axioms Airbender.Compiler.shiftBinop_cached_memory
+
+#print axioms Airbender.Compiler.shiftBinop_cached_memory_satisfiable
+
+#print axioms Airbender.Compiler.subwordMemory_cached_memory
+
+#print axioms Airbender.Compiler.subwordMemory_cached_memory_satisfiable
+
+#print axioms Airbender.Compiler.wordMemory_cached_memory
+
+#print axioms Airbender.Compiler.wordMemory_cached_memory_satisfiable
+
+#print axioms Airbender.Compiler.unified_cached_memory
+
+#print axioms Airbender.Compiler.unified_cached_memory_satisfiable

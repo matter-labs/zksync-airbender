@@ -49,6 +49,7 @@ import Human.Trace.Families.ShiftBinop.RVTheorems
 import Human.Trace.Families.SubwordMemory.RVTheorems
 import Human.Circuits.AddSub.RVCallerTheorems
 import Human.Trace.Delegation.RVCallerTheorems
+import Proven.Final.Compiler.MemoryPorts
 
 open Airbender Trace
 
@@ -1499,3 +1500,103 @@ example (claim : Airbender.RunSailSimulationClaim) : Airbender.RunSailSimulation
   fun ⟨program, state, sequential, value, sequential', avoids, agrees, run⟩ =>
     let ⟨state', ours, _⟩ := (claim program state sequential avoids agrees).1 value sequential' run
     ⟨program, state, value, state', ours⟩
+
+-- Native RAM outputs.
+
+example : Airbender.Compiler.NativeMemory.StateTokenMatchingSatisfiableClaim := Airbender.Compiler.NativeMemory.state_token_matching_satisfiable
+
+example (claim : Airbender.Compiler.NativeMemory.StateTokenMatchingClaim) :
+    Airbender.Compiler.NativeMemory.StateTokenMatchingSatisfiableClaim →
+    ∃ before after : List (Airbender.PCState.State Airbender.babyBearModulus), before ≠ [] ∧ before.Perm after :=
+  fun ⟨before, after, nonempty, matching⟩ => ⟨before, after, nonempty, claim before after matching⟩
+
+example : Airbender.Compiler.AddSubCachedMemorySatisfiableClaim := Airbender.Compiler.addSub_cached_memory_satisfiable
+
+example (claim : Airbender.Compiler.AddSubCachedMemoryClaim) :
+    Airbender.Compiler.AddSubCachedMemorySatisfiableClaim →
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges Airbender.Compiler.NativeArithmetic.F)
+      (values : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (row : Airbender.Trace.Row Airbender.babyBearModulus Airbender.Trace.PooledFamily),
+      Airbender.Compiler.NativeMemory.RamProducts Airbender.Compiler.Captures.AddSub.imported.circuit challenges values
+        (row.assignment row.columns.execute) (Airbender.Compiler.NativeMemory.cpuReads row)
+        (Airbender.Compiler.NativeMemory.cpuWrites row) :=
+  fun ⟨challenges, physical, values, row, family, nativeHolds, placement, extension⟩ =>
+    ⟨challenges, values, row, claim challenges physical values row family nativeHolds placement extension⟩
+
+example : Airbender.Compiler.JumpBranchCachedMemorySatisfiableClaim := Airbender.Compiler.jumpBranch_cached_memory_satisfiable
+
+example (claim : Airbender.Compiler.JumpBranchCachedMemoryClaim) :
+    Airbender.Compiler.JumpBranchCachedMemorySatisfiableClaim →
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges Airbender.Compiler.NativeArithmetic.F)
+      (values : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (row : Airbender.Trace.Row Airbender.babyBearModulus Airbender.Trace.PooledFamily),
+      Airbender.Compiler.NativeMemory.RamProducts Airbender.Compiler.Captures.JumpBranch.imported.circuit challenges values
+        (row.assignment row.columns.execute) (Airbender.Compiler.NativeMemory.cpuReads row)
+        (Airbender.Compiler.NativeMemory.cpuWrites row) :=
+  fun ⟨challenges, physical, values, row, family, nativeHolds, placement, extension⟩ =>
+    ⟨challenges, values, row, claim challenges physical values row family nativeHolds placement extension⟩
+
+example : Airbender.Compiler.MulDivCachedMemorySatisfiableClaim := Airbender.Compiler.mulDiv_cached_memory_satisfiable
+
+example (claim : Airbender.Compiler.MulDivCachedMemoryClaim) :
+    Airbender.Compiler.MulDivCachedMemorySatisfiableClaim →
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges Airbender.Compiler.NativeArithmetic.F)
+      (values : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (row : Airbender.Trace.Row Airbender.babyBearModulus Airbender.Trace.PooledFamily),
+      Airbender.Compiler.NativeMemory.RamProducts Airbender.Compiler.Captures.MulDiv.imported.circuit challenges values
+        (row.assignment row.columns.execute) (Airbender.Compiler.NativeMemory.cpuReads row)
+        (Airbender.Compiler.NativeMemory.cpuWrites row) :=
+  fun ⟨challenges, physical, values, row, family, nativeHolds, placement, extension⟩ =>
+    ⟨challenges, values, row, claim challenges physical values row family nativeHolds placement extension⟩
+
+example : Airbender.Compiler.ShiftBinopCachedMemorySatisfiableClaim := Airbender.Compiler.shiftBinop_cached_memory_satisfiable
+
+example (claim : Airbender.Compiler.ShiftBinopCachedMemoryClaim) :
+    Airbender.Compiler.ShiftBinopCachedMemorySatisfiableClaim →
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges Airbender.Compiler.NativeArithmetic.F)
+      (values : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (row : Airbender.Trace.Row Airbender.babyBearModulus Airbender.Trace.PooledFamily),
+      Airbender.Compiler.NativeMemory.RamProducts Airbender.Compiler.Captures.ShiftBinop.imported.circuit challenges values
+        (row.assignment row.columns.execute) (Airbender.Compiler.NativeMemory.cpuReads row)
+        (Airbender.Compiler.NativeMemory.cpuWrites row) :=
+  fun ⟨challenges, physical, values, row, family, nativeHolds, placement, extension⟩ =>
+    ⟨challenges, values, row, claim challenges physical values row family nativeHolds placement extension⟩
+
+example : Airbender.Compiler.SubwordMemoryCachedMemorySatisfiableClaim := Airbender.Compiler.subwordMemory_cached_memory_satisfiable
+
+example (claim : Airbender.Compiler.SubwordMemoryCachedMemoryClaim) :
+    Airbender.Compiler.SubwordMemoryCachedMemorySatisfiableClaim →
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges Airbender.Compiler.NativeArithmetic.F)
+      (values : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (row : Airbender.Trace.Row Airbender.babyBearModulus Airbender.Trace.PooledFamily),
+      Airbender.Compiler.NativeMemory.RamProducts Airbender.Compiler.Captures.SubwordMemory.imported.circuit challenges values
+        (row.assignment row.columns.execute) (Airbender.Compiler.NativeMemory.cpuReads row)
+        (Airbender.Compiler.NativeMemory.cpuWrites row) :=
+  fun ⟨challenges, physical, values, row, family, nativeHolds, placement, extension⟩ =>
+    ⟨challenges, values, row, claim challenges physical values row family nativeHolds placement extension⟩
+
+example : Airbender.Compiler.WordMemoryCachedMemorySatisfiableClaim := Airbender.Compiler.wordMemory_cached_memory_satisfiable
+
+example (claim : Airbender.Compiler.WordMemoryCachedMemoryClaim) :
+    Airbender.Compiler.WordMemoryCachedMemorySatisfiableClaim →
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges Airbender.Compiler.NativeArithmetic.F)
+      (values : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (row : Airbender.Trace.Row Airbender.babyBearModulus Airbender.Trace.PooledFamily),
+      Airbender.Compiler.NativeMemory.RamProducts Airbender.Compiler.Captures.WordMemory.imported.circuit challenges values
+        (row.assignment row.columns.execute) (Airbender.Compiler.NativeMemory.cpuReads row)
+        (Airbender.Compiler.NativeMemory.cpuWrites row) :=
+  fun ⟨challenges, physical, values, row, family, nativeHolds, placement, extension⟩ =>
+    ⟨challenges, values, row, claim challenges physical values row family nativeHolds placement extension⟩
+
+example : Airbender.Compiler.UnifiedCachedMemorySatisfiableClaim := Airbender.Compiler.unified_cached_memory_satisfiable
+
+example (claim : Airbender.Compiler.UnifiedCachedMemoryClaim) :
+    Airbender.Compiler.UnifiedCachedMemorySatisfiableClaim →
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges Airbender.Compiler.NativeArithmetic.F)
+      (values : Airbender.GKRAddress → Airbender.Compiler.NativeArithmetic.F)
+      (row : Airbender.Trace.Row Airbender.babyBearModulus Airbender.Trace.UnifiedFamily),
+      Airbender.Compiler.NativeMemory.RamProducts Airbender.Compiler.Captures.Unified.imported.circuit challenges values
+        (row.assignment row.columns.execute) (Airbender.Compiler.NativeMemory.cpuReads row)
+        (Airbender.Compiler.NativeMemory.cpuWrites row) :=
+  fun ⟨challenges, physical, values, row, nativeHolds, placement, extension⟩ =>
+    ⟨challenges, values, row, claim challenges physical values row nativeHolds placement extension⟩
