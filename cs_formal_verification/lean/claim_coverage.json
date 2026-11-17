@@ -865,38 +865,31 @@
     },
     "Airbender.Compiler.BigintCachedMemorySatisfiableClaim": {},
     "Airbender.Compiler.BlakeGCachedMemoryClaim": {
-      "witness": "Airbender.Compiler.BlakeGCachedMemorySatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.BlakeGCachedMemorySatisfiableClaim"
     },
     "Airbender.Compiler.BlakeGCachedMemorySatisfiableClaim": {},
     "Airbender.Compiler.BlakeRoundCachedMemoryClaim": {
-      "witness": "Airbender.Compiler.BlakeRoundCachedMemorySatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.BlakeRoundCachedMemorySatisfiableClaim"
     },
     "Airbender.Compiler.BlakeRoundCachedMemorySatisfiableClaim": {},
     "Airbender.Compiler.KeccakColumnParityCachedMemoryClaim": {
-      "witness": "Airbender.Compiler.KeccakColumnParityCachedMemorySatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.KeccakColumnParityCachedMemorySatisfiableClaim"
     },
     "Airbender.Compiler.KeccakColumnParityCachedMemorySatisfiableClaim": {},
     "Airbender.Compiler.KeccakThetaRhoCachedMemoryClaim": {
-      "witness": "Airbender.Compiler.KeccakThetaRhoCachedMemorySatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.KeccakThetaRhoCachedMemorySatisfiableClaim"
     },
     "Airbender.Compiler.KeccakThetaRhoCachedMemorySatisfiableClaim": {},
     "Airbender.Compiler.KeccakChi5CachedMemoryClaim": {
-      "witness": "Airbender.Compiler.KeccakChi5CachedMemorySatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.KeccakChi5CachedMemorySatisfiableClaim"
     },
     "Airbender.Compiler.KeccakChi5CachedMemorySatisfiableClaim": {},
     "Airbender.Compiler.UnrolledMemoryCompositionClaim": {
-      "witness": "Airbender.Compiler.UnrolledMemoryCompositionSatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.UnrolledMemoryCompositionSatisfiableClaim"
     },
     "Airbender.Compiler.UnrolledMemoryCompositionSatisfiableClaim": {},
     "Airbender.Compiler.UnifiedMemoryCompositionClaim": {
-      "witness": "Airbender.Compiler.UnifiedMemoryCompositionSatisfiableClaim",
-      "evidence": "Checks.Satisfiable"
+      "witness": "Airbender.Compiler.UnifiedMemoryCompositionSatisfiableClaim"
     },
     "Airbender.Compiler.UnifiedMemoryCompositionSatisfiableClaim": {}
   }
