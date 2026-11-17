@@ -147,6 +147,12 @@ const UNSIGNED_MUL_DIV: &[u8] =
 
 fn forward_artifact(circuit_type: CircuitType) -> (&'static [u8], &'static str) {
     match circuit_type {
+        CircuitType::L1Wrap => {
+            panic!("BabyBear GKR programs cannot compile CircuitType::L1Wrap; use GkrProgramsPr")
+        }
+        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => {
+            unimplemented!("Unified22 GPU circuit support")
+        }
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
             UnrolledNonMemoryCircuitType::AddSubLuiAuipcMop,
         )) => (ADD_SUB, "add_sub_lui_auipc_mop"),

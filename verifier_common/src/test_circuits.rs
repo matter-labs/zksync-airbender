@@ -29,6 +29,16 @@ macro_rules! make_circuits {
 pub static CIRCUITS: LazyLock<Vec<CircuitData>> =
     LazyLock::new(|| gkr_fixture_circuits!(make_circuits));
 
+/// The canonical fixed-workload 2^23 Compression circuit fixture.
+/// It has a fixture only in pessimistic-conjecture mode and is outside the
+/// Standard-profile circuit catalogue.
+pub static COMPRESSION: LazyLock<CircuitData> = LazyLock::new(|| {
+    CircuitData::new(
+        "compression",
+        "../circuit_defs/unrolled_circuits/unified_reduced_machine",
+    )
+});
+
 /// Every circuit with a generated verifier, including those without a canonical proof.
 pub static ALL_CIRCUITS: LazyLock<Vec<CircuitData>> =
     LazyLock::new(|| gkr_circuits!(make_circuits));
@@ -92,6 +102,22 @@ impl CircuitData {
         )
     }
 
+    /// A circuit outside the `gkr_circuits!` catalogue (its production
+    /// crate and `cs/compiled_circuits/<name>_layout*_gkr.json` artifacts
+    /// exist, but no standard per-level verifier is generated for it).
+    pub fn new(name: &'static str, production_path: &'static str) -> Self {
+        Self {
+            name,
+            production_path,
+            security_levels: [SecurityLevel::Sec100],
+            prover_configs_cache: [[const { OnceLock::new() }; NUM_SOUNDNESS_MODES];
+                NUM_SECURITY_LEVELS],
+            nds_cache: [const {
+                [const { [const { OnceLock::new() }; NUM_BLAKE_MODES] }; NUM_SOUNDNESS_MODES]
+            }; NUM_SECURITY_LEVELS],
+        }
+    }
+
     pub fn prover_config_for(&self, level: SecurityLevel) -> &ProverConfig {
         self.prover_config_for_mode(level, SoundnessMode::DEFAULT)
     }
@@ -103,6 +129,17 @@ impl CircuitData {
         mode: SoundnessMode,
     ) -> &ProverConfig {
         self.prover_configs_cache[level as usize][mode_index(mode)].get_or_init(|| {
+            if self.name == "compression" {
+                assert_eq!(mode, SoundnessMode::PessimisticConjecture);
+                let config =
+                    prover::gkr::prover_config::example_configs::compression_config_for_2_23();
+                assert_eq!(
+                    1usize << config.trace_len_log2,
+                    self.compiled_circuit().trace_len,
+                    "Compression profile trace length differs from the compiled circuit"
+                );
+                return config;
+            }
             let path = self.prover_config_path_for_mode(level, mode);
             let config: ProverConfig = deserialize_from_file(&path);
             assert_eq!(
@@ -139,6 +176,13 @@ impl CircuitData {
     }
 
     pub fn circuit_path(&self) -> String {
+        if self.name == "compression" {
+            return CircuitData::new("unified_reduced_machine", self.production_path)
+                .circuit_path();
+        }
+        if self.name == "unified_reduced_machine_2_22" {
+            return format!("{}/generated/layout.json", self.production_path);
+        }
         if self.name == "inits_and_teardowns" {
             format!(
                 "{}/cs/compiled_circuits/{}_layout_no_caches_gkr.json",

@@ -89,15 +89,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         });
         let binary_holders = BTreeMap::new();
         info!("PROVER generating common precomputations");
-        let common_precomputations: BTreeMap<_, _> = build_common_setups(&worker)
-            .into_iter()
-            .map(|(circuit_type, setup)| {
-                (
-                    circuit_type,
-                    backend.prepare(circuit_type, setup, soundness_mode),
-                )
-            })
-            .collect();
+        let common_precomputations =
+            baby_bear::setup::prepare_common_circuits(backend.as_ref(), &worker, soundness_mode);
         let pending_setup_initialization = request_setup_initialization(
             backend.as_ref(),
             0,
@@ -148,6 +141,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             "PROVER finalized setup in {:?} (host buffer pool: {pool_wait:?}, setup initialization: {setup_wait:?})",
             start.elapsed()
         );
+    }
+
+    #[doc(hidden)]
+    pub fn backend(&self) -> &B {
+        &self.backend
     }
 
     pub(super) fn free_inits_and_teardowns(

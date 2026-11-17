@@ -251,29 +251,56 @@ fn write_mod_rs<MW: FieldWrapper<BaseField = BabyBearField>>(
     write_and_fmt(&format!("{}/mod.rs", dir), &mod_rs);
 }
 
-/// High-LDE "L1 feeder" unified verifier: same circuit and 100-bit target as
-/// `unified_reduced_machine` at sec_100, but every oracle domain sits at
-/// BabyBear's two-adicity cap (base LDE 16; round-0 queries 87 -> 21), the
-/// schedule terminates at a plain-text 2^3 tail, and the base commitment is
-/// the MERGED memory+witness tree (one Merkle path per round-0 query instead
-/// of two). Generated into `.../unified_reduced_machine/pessimistic_conjecture_l1_feeder`
-/// (a pessimistic-conjecture variant; no soundcalc twin has been designed).
+/// The compression unified verifier: the 2^22 `unified_reduced_machine_2_22`
+/// circuit under `compression_final_config_for_2_22` (every oracle domain at
+/// BabyBear's two-adicity cap, base LDE 16, cap 16, a plain-text 2^3 tail)
+/// with the MERGED memory+witness base commitment. Generated into
+/// `.../unified_reduced_machine_2_22/pessimistic_conjecture_compression_final`; the circuit is not
+/// a `gkr_circuits!` catalogue entry, so no standard verifier exists for it.
 #[test]
-fn unified_reduced_machine_l1_feeder() {
-    let circuit = ALL_CIRCUITS
-        .iter()
-        .find(|c| c.name == "unified_reduced_machine")
-        .unwrap();
-    let prover_config = prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23();
+fn unified_reduced_machine_compression_final() {
+    let circuit = CircuitData::new(
+        "unified_reduced_machine_2_22",
+        "../circuit_defs/unrolled_circuits/unified_reduced_machine_2_22",
+    );
+    let prover_config =
+        prover::gkr::prover_config::example_configs::compression_final_config_for_2_22();
+    let compiled = circuit.compiled_circuit();
     assert_eq!(
-        circuit.compiled_circuit().trace_len.trailing_zeros(),
-        23,
-        "the L1 feeder config is computed for the 2^23 unified circuit"
+        compiled.trace_len.trailing_zeros() as usize,
+        prover_config.trace_len_log2,
+        "the compression config is computed for the 2^22 unified circuit"
     );
     generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
-        circuit,
+        &circuit,
         &prover_config,
-        "pessimistic_conjecture_l1_feeder",
+        "pessimistic_conjecture_compression_final",
+    );
+}
+
+/// The 2^23 compression unified verifier (Compression profile): the 2^23
+/// `unified_reduced_machine` circuit under `compression_config_for_2_23`
+/// (base LDE 4, cap 4, every later oracle domain at 2^27, a plain-text 2^3
+/// tail) with the MERGED memory+witness base commitment. Generated into
+/// `.../unified_reduced_machine/pessimistic_conjecture_compression`, beside the standard
+/// verifier of the same circuit.
+#[test]
+fn unified_reduced_machine_compression() {
+    let circuit = CircuitData::new(
+        "unified_reduced_machine",
+        "../circuit_defs/unrolled_circuits/unified_reduced_machine",
+    );
+    let prover_config = prover::gkr::prover_config::example_configs::compression_config_for_2_23();
+    let compiled = circuit.compiled_circuit();
+    assert_eq!(
+        compiled.trace_len.trailing_zeros() as usize,
+        prover_config.trace_len_log2,
+        "Compression profile is computed for the 2^23 unified circuit"
+    );
+    generate_verifier_for_circuit_with_config::<DefaultBabyBearField>(
+        &circuit,
+        &prover_config,
+        "pessimistic_conjecture_compression",
     );
 }
 

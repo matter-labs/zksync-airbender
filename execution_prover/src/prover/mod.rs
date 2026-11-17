@@ -3,20 +3,20 @@
 //! results were collected — a programming bug worth panicking on. Other
 //! fallible operations use `.expect("…")` with a specific message.
 
-mod artifacts;
+mod baby_bear;
 mod binary;
 mod cache;
 mod config;
 mod lifecycle;
 mod non_determinism_wrapper;
-mod pipeline;
-mod proof_artifacts;
-mod result;
+mod proth120;
 mod setup_init;
+mod simulation;
 
-pub use artifacts::{ProgramArtifacts, RiscvFamilyArtifact};
+pub use baby_bear::artifacts::{ProgramArtifacts, RiscvFamilyArtifact};
+pub use baby_bear::result::{CommitMemoryResult, ProveResult};
 pub use config::ExecutionKind;
-pub use result::{CommitMemoryResult, ProveResult};
+pub use proth120::{L1Proof, L1WrapResult};
 
 /// Opaque handle to a binary registered with the `ExecutionProver`. Returned by
 /// [`ExecutionProver::add_binary_variants`]; required to identify the binary in
@@ -28,46 +28,29 @@ pub struct BinaryHandle(usize);
 
 use cache::{TraceCache, TraceCacheEntry};
 use config::BinaryHolder;
-use non_determinism_wrapper::NonDeterminismWrapper;
-use result::ExecutionProverResult;
 use setup_init::{request_setup_initialization, PendingSetupInitialization};
 
-use crate::backend::{CircuitPrecomputation, ExecutionBackend};
+use crate::backend::ExecutionBackend;
 use crate::config::ExecutionProverConfiguration;
-use crate::messages::{
-    InitsAndTeardownsData, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
-    ProofResult, SimulationResult, TracingData, WorkBatch, WorkRequest, WorkResult, WorkerResult,
-};
-use crate::setup::{
-    build_common_setups, build_unrolled_setup_with_preprocessing, preprocess_binary,
-};
+use crate::messages::{SimulationResult, WorkBatch, WorkRequest, WorkResult, WorkerResult};
 use crate::tracing::{SplitTracingType, UnifiedTracingType};
-use crate::upstream::{BF, E4};
 use crate::workers::simulation::{run_replayer, run_simulator};
 use crate::workers::spawn_abort_on_panic;
-use common_constants::TimestampScalar;
+use crate::ProofProfile;
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use execution_prover_model::circuit_type::{
-    CircuitType, DelegationCircuitType, UnrolledCircuitType, UnrolledMemoryCircuitType,
-    UnrolledNonMemoryCircuitType,
-};
+use execution_prover_model::circuit_type::{CircuitType, UnrolledCircuitType};
 use execution_prover_model::trace::InitsAndTeardownsTraceHost;
 use execution_prover_model::trace::TracingDataHost;
 use execution_prover_model::MachineType;
 use itertools::Itertools;
-use log::{debug, info, trace};
-
-use crate::upstream::{
-    Blake2sTranscript, FinalRegisterValue, GKRExternalChallenges, MerkleTreeCapVarLength,
-};
+use log::{info, trace};
 use riscv_transpiler::vm::{NonDeterminismCSRSource, SimpleTape};
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Instant;
 use type_map::concurrent::TypeMap;
-use verifier_common::MEMORY_DELEGATION_POW_BITS;
 use worker::Worker;
 
 pub struct ExecutionProver<B: ExecutionBackend> {
@@ -83,6 +66,7 @@ pub struct ExecutionProver<B: ExecutionBackend> {
     trace_chunk_sets_receiver: Receiver<Vec<B::Snapshot>>,
     binary_holders: BTreeMap<usize, BinaryHolder<B>>,
     next_binary_id: usize,
+    /// The BabyBear delegation and inits-and-teardowns circuits every binary shares.
     common_precomputations: BTreeMap<CircuitType, B::Precomputations>,
     free_allocators_sender: Sender<B::Allocator>,
     free_allocators_receiver: Receiver<B::Allocator>,

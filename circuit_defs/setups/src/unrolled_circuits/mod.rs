@@ -12,6 +12,7 @@ use circuit_common::RiscVCycleCircuit;
 pub use ::mul_div_unsigned;
 pub use ::shift_binary;
 pub use ::unified_reduced_machine;
+pub use ::unified_reduced_machine_2_22;
 
 mod add_sub_lui_auipc_mop_circuit;
 mod inits_and_teardowns_circuit;
@@ -21,6 +22,7 @@ mod load_store_word_only_circuit;
 // mod mul_div_circuit;
 mod mul_div_unsigned_circuit;
 mod shift_binary_circuit;
+mod unifier_reduced_machine_2_22_circuit;
 mod unifier_reduced_machine_circuit;
 
 pub use add_sub_lui_auipc_mop_circuit::*;
@@ -31,8 +33,8 @@ pub use load_store_word_only_circuit::*;
 // pub use mul_div_circuit::*;
 pub use mul_div_unsigned_circuit::*;
 pub use shift_binary_circuit::*;
+pub use unifier_reduced_machine_2_22_circuit::*;
 pub use unifier_reduced_machine_circuit::*;
-// pub use unifier_reduced_machine_circuit::*;
 
 pub fn decoders_for_machine_type<C: MachineConfig>(
 ) -> Vec<Box<dyn crate::cs::gkr_circuits::OpcodeFamilyDecoder>> {

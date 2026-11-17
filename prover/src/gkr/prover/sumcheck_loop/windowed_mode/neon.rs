@@ -2126,8 +2126,8 @@ pub unsafe fn soa_untranspose_to_aos_ext<const N: usize>(acc: *const u32, out: *
 // in-register NTT needs shuffle stages for butterfly distances 2 and 1), one
 // ext element per vector (`soa_lde8` / `soa_lde64_r2` apply unchanged: their
 // per-vector lanes are independent, and broadcast base twiddles times a
-// [4-limb ext element] vector IS the ext-by-base product). Used only by the
-// artificial LSB-binding bench (`lsb_bench`).
+// [4-limb ext element] vector IS the ext-by-base product). The NEON GKR backend
+// uses these through the `lsb_bench` LSB same-size chain.
 // ---------------------------------------------------------------------------
 
 /// In-vector DIF tail: butterfly distances 2 then 1 on the 4 cells of one

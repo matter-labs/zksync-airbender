@@ -208,6 +208,24 @@ jobs:
           done
           exit "$failed"
 
+      - name: Trusted parameter setup caps agree with CPU
+        if: matrix.shard == 'chains'
+        shell: bash
+        run: |
+          cli="$GITHUB_WORKSPACE/zksync-airbender-gpu/cli"
+          chmod +x "$cli"
+          records="$GITHUB_WORKSPACE/trusted-params/basic_fibonacci"
+          mkdir -p "$records"
+          for mode in pessimistic_conjecture ethproofs_soundcalc; do
+            target=recursion-unified
+            [[ $mode != pessimistic_conjecture ]] || target=compression
+            common=(--bin examples/basic_fibonacci/app.bin --soundness-mode "${mode//_/-}" --target "$target")
+            "$cli" trusted-params "${common[@]}" --backend cpu --output "$records/$mode-cpu.json"
+            "$cli" trusted-params "${common[@]}" --backend gpu --output "$records/$mode-gpu.json"
+            cmp "$records/$mode-cpu.json" "$records/$mode-gpu.json"
+            cp "$records/$mode-gpu.json" "$records/${mode//_/-}-trusted-params.json"
+          done
+
       - name: Program-proof chain parity in both soundness modes
         if: matrix.shard == 'chains'
         shell: bash

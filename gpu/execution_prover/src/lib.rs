@@ -10,6 +10,7 @@ mod host_storage;
 #[cfg(feature = "memory_sweep")]
 pub mod memory_sweep;
 mod precomputations;
+pub mod trusted_params;
 #[allow(unused_imports)]
 mod upstream;
 mod workers;

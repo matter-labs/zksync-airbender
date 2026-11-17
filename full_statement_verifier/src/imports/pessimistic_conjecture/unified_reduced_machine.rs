@@ -2,6 +2,7 @@
 mod generated_gkr;
 
 pub use generated_gkr::constants::{
-    ConcreteVerifierOutput, INIT_AND_TEARDOWN_SETS, TRACE_LEN_LOG2,
+    ConcreteVerifierOutput, CAP_SIZE, INIT_AND_TEARDOWN_SETS, NUM_MEMORY_COMMITS,
+    NUM_SETUP_COMMITS, TRACE_LEN_LOG2,
 };
 pub use generated_gkr::verify;

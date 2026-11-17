@@ -23,3 +23,7 @@ mod __generated {
 }
 
 pub use __generated::*;
+
+#[cfg(feature = "miri_compression")]
+#[path = "generated/unified_reduced_machine/pessimistic_conjecture_compression/mod.rs"]
+pub mod compression;

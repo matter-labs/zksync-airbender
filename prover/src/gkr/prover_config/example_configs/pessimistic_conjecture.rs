@@ -258,8 +258,22 @@ mod tests {
     }
 
     #[test]
-    fn l1_feeder_rounds_preserve_security_margin() {
-        assert_every_round_preserves_security_margin(&l1_feeder_config_for_2_23());
+    fn compression_and_wrap_rounds_preserve_security_margin() {
+        for (config, max_pow) in [
+            (
+                compression_final_config_for_2_22(),
+                COMPRESSION_MAX_POW_BITS,
+            ),
+            (compression_config_for_2_23(), COMPRESSION_MAX_POW_BITS),
+            (l1_wrap::packed_prover_config(), l1_wrap::MAX_POW_BITS),
+        ] {
+            assert_every_round_preserves_security_margin(&config);
+            assert!(config
+                .whir_schedule
+                .queries_pow_bits_per_round()
+                .iter()
+                .all(|&bits| bits <= max_pow));
+        }
     }
 
     /// The three base-round strategies on the 2^20 (blake delegation) trace

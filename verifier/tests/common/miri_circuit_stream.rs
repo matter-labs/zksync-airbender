@@ -52,6 +52,17 @@ pub fn verify(
             }
         };
     }
+    #[cfg(feature = "miri_compression")]
+    let output = if name == "compression" {
+        assert_eq!(mode, 0, "compression is pessimistic only");
+        flatten_output(
+            verifier::compression::verify::<_, DebugErrorCreator>(&challenges, payload)
+                .expect("final compression circuit verification failed"),
+        )
+    } else {
+        verifier_common::gkr_fixture_circuits!(dispatch)
+    };
+    #[cfg(not(feature = "miri_compression"))]
     let output = verifier_common::gkr_fixture_circuits!(dispatch);
     assert!(
         payload.next().is_none(),

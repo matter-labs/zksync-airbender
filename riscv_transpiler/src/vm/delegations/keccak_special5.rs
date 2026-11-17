@@ -24,10 +24,7 @@ pub(crate) fn keccak_special5_call<
     let x10 = state.registers[10].value;
     let x11 = state.registers[11].value;
     debug_assert_eq!(state.timestamp % 4, 0);
-    assert!(
-        x11 as usize >= common_constants::rom::ROM_BYTE_SIZE,
-        "state ptr is not in RAM"
-    );
+    assert!(x11 as usize >= R::ROM_BYTE_SIZE, "state ptr is not in RAM");
     assert!(x10 < 1 << 11, "control info is too big");
     assert_eq!(x11 % 256, 0, "state ptr is not aligned");
 

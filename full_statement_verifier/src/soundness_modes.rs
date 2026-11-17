@@ -190,40 +190,6 @@ pub mod pessimistic_conjecture {
     use super::*;
 
     soundness_mode_statements!(pessimistic_conjecture);
-
-    /// [`verify_unified_circuit_recursion_layer`] against the high-LDE
-    /// "L1 feeder" unified verifier (base LDE 16, round-0 queries 22 — see
-    /// `prover::gkr::prover_config::example_configs::l1_feeder_config_for_2_23`).
-    /// Verifies proofs of the FINAL BabyBear recursion layer(s), whose cheap
-    /// verification is what the L1 (Proth120) 2^22 wrapper circuit executes.
-    /// Same circuit, same delegation table, same 100-bit target — only the
-    /// commitment parameters embedded in the generated verify function differ.
-    /// A pessimistic-conjecture variant: no soundcalc twin has been designed.
-    pub fn verify_unified_circuit_recursion_layer_l1_feeder<
-        I: NonDeterminismSource<BabyBearField>,
-        E: ErrorCreator,
-        const REDUCED_ROUNDS: bool,
-    >(
-        nd_source: &mut I,
-    ) -> Result<[u32; 16], E::Error> {
-        unsafe {
-            let unified_setup = read_setup_cap::<I, DEFAULT_CAP_SIZE>(nd_source);
-            crate::unified_circuit_statement::verify_full_statement_for_unified_circuit::<
-                I,
-                E,
-                false,
-                REDUCED_ROUNDS,
-                _,
-                _,
-            >(
-                &unified_setup,
-                crate::imports::pessimistic_conjecture::unified_reduced_machine_l1_feeder::verify::<I, E>,
-                &crate::delegation_circuits_setups::pessimistic_conjecture::DELEGATION_CIRCUITS_SETUP_PARAMS,
-                &crate::delegation_params::pessimistic_conjecture::reduced_machine_delegation_circuit_verifiers::<I, E>(),
-                nd_source,
-            )
-        }
-    }
 }
 
 /// The `ethereum/soundcalc`-certified accounting (see

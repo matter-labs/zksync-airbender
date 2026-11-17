@@ -11,6 +11,7 @@ use execution_prover::config::ExecutionProverConfiguration;
 use execution_prover::config::SoundnessMode;
 use execution_prover::messages::WorkBatch;
 use execution_prover::setup::CanonicalCircuitSetup;
+use execution_prover::ProofProfile;
 use execution_prover_model::circuit_type::CircuitType;
 use gpu_core::primitives::field::BF;
 use riscv_transpiler::jit::JitRunnerRam;
@@ -22,7 +23,7 @@ impl CircuitPrecomputation for CircuitPrecomputations {
         self.gkr_programs.compiled_circuit()
     }
 
-    fn setup_cap(&self) -> Option<MerkleTreeCapVarLength> {
+    fn setup_cap(&self, _profile: ProofProfile) -> Option<MerkleTreeCapVarLength> {
         self.setup_host
             .get_initialized()
             .map(|setup_host| MerkleTreeCapVarLength {
@@ -81,9 +82,15 @@ impl ExecutionBackend for GpuBackend {
         &self,
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
-        soundness_mode: SoundnessMode,
+        selection: SoundnessMode,
+        profiles: &[ProofProfile],
     ) -> Self::Precomputations {
-        CircuitPrecomputations::from_canonical(circuit, setup, soundness_mode)
+        match profiles {
+            [ProofProfile::Standard] => {
+                CircuitPrecomputations::from_canonical(circuit, setup, selection)
+            }
+            _ => unimplemented!("L1 GPU profile preparation"),
+        }
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {

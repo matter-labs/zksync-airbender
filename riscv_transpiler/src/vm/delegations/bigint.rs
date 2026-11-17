@@ -78,14 +78,8 @@ pub(crate) fn bigint_call<C: Counters, S: Snapshotter<C>, R: RAM, E: ExecutionOb
     let x11 = read_register::<C, 3>(state, 11);
     let x12 = state.registers[12].value;
 
-    assert!(
-        x10 >= common_constants::rom::ROM_BYTE_SIZE as u32,
-        "input pointer is in ROM"
-    );
-    assert!(
-        x11 >= common_constants::rom::ROM_BYTE_SIZE as u32,
-        "input pointer is in ROM"
-    );
+    assert!(x10 >= R::ROM_BYTE_SIZE as u32, "input pointer is in ROM");
+    assert!(x11 >= R::ROM_BYTE_SIZE as u32, "input pointer is in ROM");
 
     assert!(x10 != x11);
 

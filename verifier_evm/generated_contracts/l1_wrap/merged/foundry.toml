@@ -1,0 +1,18 @@
+# Wrap verifier and its cryptographic controls.
+[profile.default]
+solc_version = "0.8.38"
+auto_detect_solc = false
+# Target Glamsterdam (EIP-7954 size limit); solc's Amsterdam target is experimental.
+evm_version = "osaka"
+hardfork = "amsterdam"
+code_size_limit = 65536
+src = "src"
+out = "out"
+via_ir = true
+optimizer = true
+optimizer_runs = 1
+fs_permissions = [
+    { access = "read", path = "../../../debug_data/l1_wrap" },
+    { access = "read", path = "./out" },
+    { access = "read", path = "../negative" },
+]

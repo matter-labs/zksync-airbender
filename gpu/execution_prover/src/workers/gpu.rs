@@ -8,6 +8,7 @@ use execution_prover::messages::{
     MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest, ProofResult,
     SetupInitializationRequest, SetupInitializationResult,
 };
+use execution_prover::ProofProfile;
 use gpu_circuit_prover::proof::GpuGKRProofJob;
 use gpu_core::allocator::tracker::AllocationDirection::{Ascending, Descending};
 use gpu_core::primitives::field::{BF, E4};
@@ -235,7 +236,12 @@ fn schedule_phase_one<'a>(
                 precomputations,
                 inits_and_teardowns,
                 tracing_data,
+                profile,
             } = req;
+            match profile {
+                ProofProfile::Standard => {}
+                _ => unimplemented!("L1 GPU profile scheduling"),
+            }
             let state = RequestState {
                 batch_id,
                 circuit_type,
@@ -259,7 +265,12 @@ fn schedule_phase_one<'a>(
                 tracing_data,
                 external_challenges,
                 memory_caps,
+                profile,
             } = req;
+            match profile {
+                ProofProfile::Standard => {}
+                _ => unimplemented!("L1 GPU profile scheduling"),
+            }
             let state = RequestState {
                 batch_id,
                 circuit_type,
@@ -272,6 +283,9 @@ fn schedule_phase_one<'a>(
                 tracing_data_result: tracing_data.clone(),
             };
             (state, inits_and_teardowns, tracing_data)
+        }
+        GpuWorkRequest::L1WrapProof(_) => {
+            unimplemented!("L1 wrap GPU proof scheduling")
         }
         GpuWorkRequest::SetupInitialization(_) => {
             unreachable!("setup initialization returns early above")

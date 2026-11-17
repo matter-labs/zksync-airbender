@@ -2,8 +2,8 @@
 //!
 //! - [`circuit_yul::emit_circuit_yul`] emits the circuit-specific `circuit.yul` (the GKR
 //!   per-layer sumcheck/gate Yul functions) as a String.
-//! - [`generate_verifier`] assembles the merged `GkrWhirVerifier` Solidity source: that Yul and
-//!   the WHIR template's Yul are inlined into the hand-written GKR template and the
+//! - [`generate_wrap_verifier`] assembles the merged `GkrWhirVerifier` Solidity source: that Yul
+//!   and the WHIR template's Yul are inlined into the hand-written GKR template and the
 //!   circuit-derived (plus a few caller-supplied) constants substituted. GKR and WHIR are
 //!   verified in ONE transaction, the GKR→WHIR handoff state passed in memory.
 //!
@@ -15,11 +15,16 @@
 //! literal `"{unassigned}"`, which solc rejects for a numeric constant, so a generator that
 //! forgets an assignment cannot produce a buildable verifier.
 
+mod calldata_decoder;
 mod circuit_yul;
+mod preimage;
 mod whir;
 
 pub use circuit_yul::{emit_circuit_yul, emit_circuit_yul_with_stats, CircuitYulStats};
 pub use whir::WhirGenConfig;
+
+/// Maximum difficulty of the external-challenge and WHIR batching PoW checks.
+pub const MAX_GKR_POW_BITS: u32 = 25;
 // `Lit` (below) is the generated-constant value+expression pair `WhirGenConfig::memory_regions`
 // returns.
 
@@ -116,6 +121,15 @@ impl Lit {
     }
 }
 
-// `generate_verifier` is implemented in `assemble.rs`.
+/// The single-transaction wrap verifier with its setup embedded in runtime code.
+#[derive(Clone, Debug)]
+pub struct WrapContracts {
+    /// The merged `GkrWhirVerifier` source.
+    pub verifier_sol: String,
+    /// Generated memory and tail-relative runtime layout, independent of compiled code size.
+    pub memory_layout: String,
+}
+
+// `generate_wrap_verifier` is implemented in `assemble.rs`.
 mod assemble;
-pub use assemble::generate_verifier;
+pub use assemble::generate_wrap_verifier;

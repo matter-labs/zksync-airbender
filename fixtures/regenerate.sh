@@ -19,8 +19,15 @@ case $mode_filter in
   *) echo "unknown mode: $mode_filter" >&2; exit 1 ;;
 esac
 case $stage_filter in
-  ''|circuits|base_unified|unrolled) ;;
+  ''|circuits|base_unified|unrolled|compression|l1) ;;
   *) echo "unknown stage: $stage_filter" >&2; exit 1 ;;
+esac
+case $stage_filter in
+  compression|l1)
+    [[ $mode_filter != ethproofs_soundcalc ]] || {
+      echo "L1 stages support only pessimistic_conjecture" >&2; exit 1;
+    }
+    mode_filter=pessimistic_conjecture ;;
 esac
 backend=${FIXTURE_BACKEND:-cpu}
 case $backend in
@@ -31,7 +38,7 @@ if [[ $backend == gpu && ( -z $stage_filter || $stage_filter == circuits ) ]]; t
   echo "FIXTURE_BACKEND=gpu does not support the circuits stage; use the canonical GPU matrix" >&2
   exit 1
 fi
-if (( !check )) && [[ -n $stage_filter && $stage_filter != circuits ]]; then
+if (( !check )) && [[ $stage_filter == base_unified || $stage_filter == unrolled ]]; then
   echo "selecting a chain stage is --check-only; write mode regenerates the whole chain" >&2
   exit 1
 fi
@@ -40,9 +47,6 @@ script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 repo=$(cd "${AB_TEST_ARTIFACT_ROOT:-$script_root}" && pwd)
 export AB_TEST_ARTIFACT_ROOT=$repo
 export FSV_DIR="$repo/tools/gkr_verifier/full_statement_verifiers"
-export RECURSION_UNROLLED_BLAKE=blake2_with_compression
-export RECURSION_BRIDGE_BLAKE=blake2_with_compression
-export RECURSION_FINAL_BLAKE=blake2_with_compression
 export RUST_MIN_STACK=${RUST_MIN_STACK:-16777216}
 cd "$repo"
 
@@ -107,9 +111,12 @@ check_artifact() {
   local file="$chain_out/$name.json.zlib"
   "$codec" check "$file"
   local trusted=()
-  if [[ -n $trusted_params ]]; then
+  # The cache includes compression records; L1 wrap verification stays external.
+  if [[ -n $trusted_params && $name != l1 ]]; then
     local params="$trusted_params/$cli_mode-trusted-params.json"
-    [[ -f $params ]] || "$cli" trusted-params --bin "$bin" --soundness-mode "$cli_mode" --output "$params"
+    local params_target=recursion-unified
+    [[ $mode != pessimistic_conjecture ]] || params_target=compression
+    [[ -f $params ]] || "$cli" trusted-params --bin "$bin" --soundness-mode "$cli_mode" --target "$params_target" --backend cpu --output "$params"
     trusted=(--trusted-params "$params")
   fi
   "$cli" verify --proof "$file" --bin "$bin" --soundness-mode "$cli_mode" "${trusted[@]}"
@@ -125,6 +132,7 @@ for mode in "${modes[@]}"; do
   chain_parent="$repo/fixtures/chains/$mode"
   common=(--bin "$bin" --backend "$backend" --soundness-mode "$cli_mode" --output-dir "$chain_out")
   stages=(circuits base_unified unrolled)
+  [[ $mode != pessimistic_conjecture ]] || stages+=(compression l1)
   [[ -z $stage_filter ]] || stages=("$stage_filter")
   for stage in "${stages[@]}"; do
     echo "== $mode / $stage"
@@ -164,6 +172,14 @@ for mode in "${modes[@]}"; do
         RECURSION_UNROLLED_LAYERS=0 "$cli" continue-proof "${common[@]}" \
           --proof "$chain_parent/unrolled.json.zlib" --target recursion-unified --output-file unrolled_unified.json.zlib
         check_artifact unrolled_unified ;;
+      compression)
+        "$cli" continue-proof "${common[@]}" \
+          --proof "$chain_parent/unified.json.zlib" --target compression --output-file compression.json.zlib
+        check_artifact compression ;;
+      l1)
+        "$cli" continue-proof "${common[@]}" \
+          --proof "$chain_parent/compression.json.zlib" --target l1 --output-file l1.json.zlib
+        check_artifact l1 ;;
     esac
   done
 done

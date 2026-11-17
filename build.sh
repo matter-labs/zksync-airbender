@@ -11,5 +11,5 @@ RUST_MIN_STACK=16777216 cargo test -p full_statement_verifier --profile cli \
 
 wait
 
-RUST_MIN_STACK=100000000 cargo test -p verifier_evm regenerate_evm_verifier_stubs
+RUST_MIN_STACK=100000000 cargo test -p verifier_evm --test generate_contracts -- --ignored
 

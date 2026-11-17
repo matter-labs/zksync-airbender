@@ -15,7 +15,7 @@
 
 use super::Lit;
 use field::Proth120;
-use prover::gkr::prover_config::ProverConfig;
+use prover::gkr::prover_config::{example_configs::l1_wrap, ProverConfig};
 
 /// Every WHIR verifier parameter, derived from `(WhirSchedule, pack_log2, trace_len_log2, widths)`.
 #[derive(Clone, Debug)]
@@ -34,7 +34,7 @@ pub struct WhirGenConfig {
     pub nz: usize,            // WHIR evaluation-point coords = message_log2
     pub merged_mw: usize,     // ceil(num_memwit / 2^pack_log2)  (merged mem+wit base columns)
     pub setup_merged: usize,  // ceil(num_setup  / 2^pack_log2)  (merged setup base columns)
-    pub gcount: usize,        // gamma-batched base columns + 1 = merged_mw + setup_merged + 1
+    pub gcount: usize,        // gamma-batched base columns = merged_mw + setup_merged
     pub gen: u128,            // primitive 2^codeword_log2-th root of unity (RS domain generator)
     pub gen_inv: u128,        // its inverse
 }
@@ -44,11 +44,41 @@ impl WhirGenConfig {
     /// (both pre-packing column counts, from the artifact).
     pub fn derive(prover_config: &ProverConfig, num_memwit: usize, num_setup: usize) -> Self {
         let schedule = &prover_config.whir_schedule;
+        assert!(
+            !schedule.is_virtual_packing(),
+            "the compressed calldata requires a folded base round"
+        );
+        assert_eq!(
+            schedule.base_round.folding_pow_bits, 0,
+            "the compressed calldata does not encode base folding PoW"
+        );
+        for round in &schedule.internal_rounds {
+            assert_eq!(
+                round.num_ood_samples, 1,
+                "the compressed calldata encodes one OOD sample per oracle"
+            );
+            assert_eq!(
+                round.ood_pow_bits, 0,
+                "the compressed calldata does not encode OOD PoW"
+            );
+            assert_eq!(
+                round.folding_pow_bits, 0,
+                "the compressed calldata does not encode folding PoW"
+            );
+        }
         let pack_log2 = prover_config.pack_log2();
         let trace_len_log2 = prover_config.trace_len_log2;
         let folds = schedule.fold_steps();
         let queries = schedule.queries_per_round();
         let pow_bits = schedule.queries_pow_bits_per_round();
+        for &bits in &pow_bits {
+            // Keep every query check representable by shr(sub(256, bits), digest).
+            assert!(
+                bits <= l1_wrap::MAX_POW_BITS,
+                "query PoW {bits} exceeds cap {}",
+                l1_wrap::MAX_POW_BITS
+            );
+        }
         let num_rounds = folds.len();
         assert!(num_rounds >= 2, "WHIR schedule needs at least 2 rounds");
         assert_eq!(
@@ -86,6 +116,20 @@ impl WhirGenConfig {
             "WHIR folds sum {total_folds} exceeds message size log2 {message_log2}"
         );
         let rfin = message_log2 - total_folds;
+        assert!(
+            rfin > 0,
+            "WHIR final polynomial must contain at least two monomials"
+        );
+        assert_eq!(schedule.intermediate_lde_factors().len(), num_rounds - 1);
+        let mut lde_bits = base_lde_bits;
+        for (fold, lde) in folds.iter().zip(&schedule.intermediate_lde_factors()) {
+            lde_bits += fold;
+            assert_eq!(
+                *lde,
+                1usize << lde_bits,
+                "EVM WHIR requires a constant codeword domain"
+            );
+        }
         let pack = 1usize << pack_log2;
         let merged_mw = num_memwit.div_ceil(pack);
         let setup_merged = num_setup.div_ceil(pack);
@@ -112,7 +156,7 @@ impl WhirGenConfig {
             nz: message_log2,
             merged_mw,
             setup_merged,
-            gcount: merged_mw + setup_merged + 1,
+            gcount: merged_mw + setup_merged,
             gen,
             gen_inv,
         };
@@ -130,6 +174,56 @@ impl WhirGenConfig {
     /// Query-index bits of round `r`'s oracle tree: `codeword_log2 - fold_r`.
     fn qib(&self, r: usize) -> usize {
         self.codeword_log2 - self.folds[r]
+    }
+
+    /// Final-polynomial Horner evaluation with eight coefficients per cursor/loop update.
+    /// The fixed remainder uses literal offsets; coefficients stay in the existing MONO region.
+    pub fn final_horner_yul(&self) -> String {
+        const MONO: &str = "__TEMPLATE_WHIR_MONO_PTR";
+        let n = 1usize << self.rfin;
+        let tail = (n - 1) % 8;
+        let last_byte = (n - 1) * 32;
+        let tail_byte = tail * 32;
+        let mut out = format!("        // {n} monomial coefficients, one 32-byte word each; highest coefficient at byte {last_byte}.\n        // Process blocks of 8 words (256 bytes), offsets 224/192/160/128/96/64/32/0;\n        // stop at byte {tail_byte}, then finish the {tail} remaining low coefficients.\n        function horner_{n}(x) -> ev {{\n");
+        if n > 8 {
+            out.push_str(&format!(
+                "            let ptr := add({MONO}, {})\n\
+                 \x20           let end := add({MONO}, {})\n\
+                 \x20           ev := mload(ptr)\n\
+                 \x20           for {{ }} gt(ptr, end) {{ }} {{\n\
+                 \x20               ptr := sub(ptr, 256)\n",
+                (n - 1) * 32,
+                tail * 32,
+            ));
+            for offset in (0..8).rev().map(|i| i * 32) {
+                let addr = if offset == 0 {
+                    "ptr".to_string()
+                } else {
+                    format!("add(ptr, {offset})")
+                };
+                out.push_str(&format!(
+                    "                ev := addmod(mulmod(ev, x, P), mload({addr}), P)\n"
+                ));
+            }
+            out.push_str("            }\n");
+        } else {
+            out.push_str(&format!(
+                "            ev := mload(add({MONO}, {}))\n",
+                (n - 1) * 32
+            ));
+        }
+        for offset in (0..tail).rev().map(|i| i * 32) {
+            let addr = if offset == 0 {
+                MONO.to_string()
+            } else {
+                format!("add({MONO}, {offset})")
+            };
+            out.push_str(&format!(
+                "            ev := addmod(mulmod(ev, x, P), mload({addr}), P)\n"
+            ));
+        }
+        out.push_str("        }\n");
+        out
     }
 
     /// Render the per-round `switch r { case i { fold q pow_bits qib vp cb } … }` block that
@@ -152,7 +246,7 @@ impl WhirGenConfig {
                 format!("case {r}")
             };
             out.push_str(&format!(
-                "            {selector} {{ fold := {fold} q := {q} pow_bits := {pow} qib := {qib} vp := {vp} cb := {cb} }}\n"
+                "            // Round {r}: fold {fold} variables, {q} queries at {pow} PoW bits, {qib}-bit indices; {vp} values per leaf, {cb} coset bits.\n            {selector} {{ fold := {fold} q := {q} pow_bits := {pow} qib := {qib} vp := {vp} cb := {cb} }}\n"
             ));
         }
         out
@@ -163,23 +257,24 @@ impl WhirGenConfig {
     /// mirroring exactly how the Yul in whir.sol indexes each region (documented per entry).
     /// The generator lays them out contiguously above the GKR heap and assigns the resulting
     /// absolute offsets to the `__TEMPLATE_WHIR_*` pointer constants.
-    pub fn memory_regions(&self) -> Vec<(&'static str, Lit)> {
+    pub fn memory_regions(&self) -> Vec<(&'static str, Lit, &'static str)> {
         let max_fold = *self.folds.iter().max().unwrap();
         let max_q = *self.queries.iter().max().unwrap();
         let cap = Lit::pow2(self.cap_log2 as u128);
         let cap_bytes = cap.mul(&Lit::num(32));
         let w32 = Lit::num(32);
         let slot = |n: usize| Lit::num(n as u128).mul(&w32);
-        // POW entries (push_pow, 96 B each): every internal round pushes 1 ood point + 1 per
+        // Constraint entries (push_pow, 96 B each): every internal round pushes 1 OOD point + 1 per
         // query; the final round pushes none.
         let numpow: usize = (0..self.num_rounds - 1).map(|r| self.queries[r] + 1).sum();
-        // LEAF scratch: round 0 hashes (merged_mw + setup_merged) columns × vp0/2 words of
-        // the base oracles; a later round r hashes vp_r/2 words of the intermediate oracle.
+        // LEAF scratch: round 0 hashes each base oracle's leaf separately (merged_mw or
+        // setup_merged columns × vp0/2 words); a later round r hashes vp_r/2 words of the
+        // intermediate oracle.
         let leaf_words = (0..self.num_rounds)
             .map(|r| {
                 let words = (1usize << self.folds[r]) / 2;
                 if r == 0 {
-                    (self.merged_mw + self.setup_merged) * words
+                    self.merged_mw.max(self.setup_merged) * words
                 } else {
                     words
                 }
@@ -206,32 +301,61 @@ impl WhirGenConfig {
             w32.add(&Lit::num(64))
         };
         vec![
-            ("SEED_PTR", seed),
-            ("Z_PTR", slot(self.nz)),
-            ("POW_PTR", Lit::num(numpow as u128).mul(&Lit::num(96))),
-            ("ACC_PREF_PTR", w32.clone()),
-            ("GAMMA_PTR", slot(self.gcount)),
-            ("FOLD_CH_PTR", slot(max_fold)),
-            ("HPO_PTR", Lit::pow2(max_fold as u128 - 1).mul(&w32)),
-            ("FBUF_PTR", Lit::pow2(max_fold as u128).mul(&w32)),
-            ("LEAF_PTR", slot(leaf_words)),
-            ("REG_CD", w32.clone()),
-            ("REG_CLAIM", w32.clone()),
-            ("REG_NUMPOW", w32.clone()),
-            ("REG_ZIOFF", w32.clone()),
-            ("REG_CC", w32.clone()),
-            ("REG_CURDELIN", w32.clone()),
-            ("HANDOFF_BATCHING_PTR", w32.clone()),
-            ("BCAP0_PTR", cap_bytes.clone()),
-            ("BCAP1_PTR", cap_bytes.clone()),
-            ("QCAP_PTR", cap_bytes.clone()),
-            ("NCAP_PTR", cap_bytes.clone()),
-            ("QIDX_BUF_PTR", slot(max_q)),
-            ("DRAW_BUF_PTR", slot(draw_words)),
+            ("SEED_PTR", seed, "WHIR transcript seed and absorb scratch"),
+            ("Z_PTR", slot(self.nz), "Opening-point coordinates"),
+            (
+                "POW_PTR",
+                Lit::num(numpow as u128).mul(&Lit::num(96)),
+                "Deferred OOD and query constraints",
+            ),
+            ("ACC_PREF_PTR", w32.clone(), "Accumulated prefix product"),
+            (
+                "GAMMA_PTR",
+                slot(self.gcount),
+                "Base-column batching challenges",
+            ),
+            ("FOLD_CH_PTR", slot(max_fold), "Round folding challenges"),
+            // only round 0 (the coset fold) reads the high-power offsets
+            (
+                "HPO_PTR",
+                Lit::pow2(self.folds[0] as u128 - 1).mul(&w32),
+                "Round-0 high-power offsets",
+            ),
+            (
+                "FBUF_PTR",
+                Lit::pow2(max_fold as u128).mul(&w32),
+                "Folded leaf scratch",
+            ),
+            ("LEAF_PTR", slot(leaf_words), "Merkle leaf hashing scratch"),
+            ("REG_CD", w32.clone(), "Calldata cursor"),
+            ("REG_CLAIM", w32.clone(), "Current opening claim"),
+            ("REG_NUMPOW", w32.clone(), "Deferred constraint count"),
+            ("REG_ZIOFF", w32.clone(), "Opening coordinate cursor"),
+            ("REG_CC", w32.clone(), "Current claim correction"),
+            (
+                "REG_CURDELIN",
+                w32.clone(),
+                "Current delinearization challenge",
+            ),
+            ("BCAP0_PTR", cap_bytes.clone(), "Base oracle cap"),
+            ("QCAP_PTR", cap_bytes.clone(), "Current oracle cap"),
+            ("NCAP_PTR", cap_bytes.clone(), "Next oracle cap"),
+            ("QIDX_BUF_PTR", slot(max_q), "Query indices"),
+            (
+                "DRAW_BUF_PTR",
+                slot(draw_words),
+                "Transcript query-draw scratch",
+            ),
             // do_final: 2^rfin monomials, then the tail absorb (32 + nmono·16 B) and the
             // halving-fold scratch (nmono words) share FEVAL
-            ("MONO_PTR", nmono.mul(&w32)),
-            ("FEVAL_PTR", w32.add(&nmono.mul(&w32))),
+            ("MONO_PTR", nmono.mul(&w32), "Final polynomial monomials"),
+            // rfin > 0, so nmono ≥ 2 and the tail absorb (32 + nmono·16 B) fits in the nmono-word
+            // fold scratch
+            (
+                "FEVAL_PTR",
+                nmono.mul(&w32),
+                "Final polynomial absorb and fold scratch",
+            ),
         ]
     }
 }

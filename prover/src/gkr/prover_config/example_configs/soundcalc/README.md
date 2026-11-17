@@ -4,16 +4,15 @@ The `SoundnessMode::EthproofsSoundnessCalc` entries of `../ethproofs_soundcalc.r
 are produced by `whir_schedule_search.py`, a search over the WHIR PCS model of
 [`ethereum/soundcalc`](https://github.com/ethereum/soundcalc) (commit `2af5e7d`,
 2026-09-21). soundcalc is not vendored and has no package dependencies; it needs
-Python ≥ 3.9 (on the Mac: `/opt/homebrew/bin/python3.11`; the system `python3`
-is 3.8 and fails on `list[int]` annotations).
+Python ≥ 3.9 as `python3` (older versions fail on `list[int]` annotations).
 
 ```bash
 git clone https://github.com/ethereum/soundcalc /tmp/soundcalc && git -C /tmp/soundcalc checkout 2af5e7d
 cd prover/src/gkr/prover_config/example_configs/soundcalc
-PYTHONPATH=/tmp/soundcalc python3.11 whir_schedule_search.py      # the certified entries, one block per shape
-PYTHONPATH=/tmp/soundcalc python3.11 assess_current_configs.py    # the pessimistic ladders under UDR / JBR
-PYTHONPATH=/tmp/soundcalc python3.11 regime_sweep.py              # m / OOD-count sweep of the ladders
-PYTHONPATH=/tmp/soundcalc python3.11 late_round_rebalance.py      # JBR-rebalanced late rounds of the pessimistic ladders
+PYTHONPATH=/tmp/soundcalc python3 whir_schedule_search.py      # the certified entries, one block per shape
+PYTHONPATH=/tmp/soundcalc python3 assess_current_configs.py    # the pessimistic ladders under UDR / JBR
+PYTHONPATH=/tmp/soundcalc python3 regime_sweep.py              # m / OOD-count sweep of the ladders
+PYTHONPATH=/tmp/soundcalc python3 late_round_rebalance.py      # JBR-rebalanced late rounds of the pessimistic ladders
 ```
 
 (`/usr/bin/python3` on a current macOS is 3.9 and works too.)
@@ -61,8 +60,9 @@ unique-decoding analysis would need. Copy a new block into
 `ethproofs_soundcalc.rs` as an `EthproofsSoundcalcEntry` together with the
 reasons for the regime choices.
 
-Not implemented in this mode: the L1-feeder 2^23 schedule (base LDE 16) and the
-EVM Proth120 2^26 packed config (`assess_current_configs.py` evaluates both;
+Not implemented in this mode: the Compression (2^23, base LDE 4) and CompressionFinal
+(2^22, base LDE 16) schedules and the EVM Proth120 2^26 packed config
+(`assess_current_configs.py` evaluates all three;
 Proth120 with 2^31 domains caps the Johnson-bound fold term near 48–57 bits, so
 a 100-bit schedule there needs smaller domains and ~75 unique-decoding queries
 per round).

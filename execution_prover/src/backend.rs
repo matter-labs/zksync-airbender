@@ -2,6 +2,7 @@ use crate::config::{BackendConfiguration, ExecutionProverConfiguration, Soundnes
 use crate::messages::WorkBatch;
 use crate::setup::CanonicalCircuitSetup;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, BF};
+use crate::ProofProfile;
 use execution_prover_model::allocator::HostTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
 use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, TraceChunk};
@@ -13,7 +14,7 @@ pub trait CircuitPrecomputation: Clone + Send + Sync + 'static {
     fn compiled_circuit(&self) -> &Arc<GKRCircuitArtifact<BF>>;
 
     /// Available after setup initialization. `None` means no setup columns.
-    fn setup_cap(&self) -> Option<MerkleTreeCapVarLength>;
+    fn setup_cap(&self, profile: ProofProfile) -> Option<MerkleTreeCapVarLength>;
 }
 
 /// Drop must drain accepted work and join workers before borrowed setup or
@@ -41,13 +42,14 @@ pub trait ExecutionBackend: Send + Sync + Sized + 'static {
         0
     }
 
-    /// The circuit's prepared state under `soundness_mode`. Must assert that compiled circuit
-    /// geometry agrees with `circuit`.
+    /// The circuit's prepared state under `selection` for the declared `profiles`. Must assert
+    /// that compiled circuit geometry agrees with `circuit`.
     fn prepare(
         &self,
         circuit: CircuitType,
         setup: CanonicalCircuitSetup,
-        soundness_mode: SoundnessMode,
+        selection: SoundnessMode,
+        profiles: &[ProofProfile],
     ) -> Self::Precomputations;
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>);

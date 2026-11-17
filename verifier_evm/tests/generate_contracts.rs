@@ -1,100 +1,276 @@
-//! Regenerates the on-chain verifier Solidity into `generated_contracts/merged/src/` from the
-//! circuit artifact. The Foundry project scaffolding (foundry.toml + the single-transaction
-//! test) is committed static. The production verifier binds the checked-in feeder binary; a
-//! separate test-only verifier binds the saved proof's program, which may be an older feeder.
-//!
-//! NOTE: on macOS/aarch64 nightly, rustc may SIGBUS in debuginfo emission while compiling the
-//! `keccak_special5` circuit crate this test transitively depends on; run with
-//! `RUSTFLAGS="-C debuginfo=0"` (see generated_contracts/run_merged.sh).
-
+//! Regenerate the L1 wrap verifier and its ignored negative controls from the canonical bundle.
 mod common;
+use common::MERGED_VERIFIER;
+use prover::gkr::prover_config::example_configs::l1_wrap;
+use verifier_evm::generator::MAX_GKR_POW_BITS;
 
-use common::production_prover_config;
-use cs::gkr_compiler::GKRCircuitArtifact;
-use field::Proth120;
+// CreateX deployCreate2 address for TestRegistry (factory/salt in deploy.sh).
+// TestRegistry intentionally does not import the generated verifier, keeping its initcode stable.
+const REGISTRY_ADDRESS: [u8; 20] = [
+    0x78, 0xd5, 0x49, 0xf2, 0xa1, 0x40, 0x92, 0x3c, 0x51, 0x7c, 0x23, 0xb0, 0x08, 0xdf, 0xfe, 0x97,
+    0x9b, 0x3c, 0x4e, 0x91,
+];
 
-use std::path::Path;
-use trace_and_split::setups::program_setups::find_binary_exit_point;
-
-// Deployment parameters for the program being verified. These are properties of the *program +
-// circuit*, NOT of any particular proof — verifier synthesis must never depend on proof/aux data.
-// The verifier binds the statement to the terminal PC of the checked-in L1 feeder verifier binary
-// (`feeder_exit_pc`); the external-challenges PoW difficulty is a verifier soundness knob.
-const EXTERNAL_POW_BITS: u32 = 20;
-// The inits/teardowns RAM-set base chunk indices the program is proven with (one per teardown
-// set of the circuit, each pinned in the verifier as a uint8 constant): the unified circuit's
-// sets are enumerated 0, 1.
-const INITS_TEARDOWNS_TOP_BITS: &[u32] = &[0, 1];
-// `fsv_unified_recursion_layer_sec_100_l1_feeder` (special-opcodes blake variant) — the merged-mode
-// L1-feeder full-statement verifier whose execution the L1 proof attests (it verifies the final
-// BabyBear recursion artifact).
-const FEEDER_BINARY: &str =
-    "../tools/gkr_verifier/full_statement_verifiers/fsv_unified_recursion_layer_sec_100_l1_feeder_special_opcodes_extension.elf";
-
-fn feeder_exit_pc() -> u32 {
-    let path = std::path::Path::new(FEEDER_BINARY);
-    assert!(
-        path.exists(),
-        "Missing {FEEDER_BINARY} — run reproducible build script first"
-    );
-    let (binary, _text) = riscv_transpiler::elf::load_legacy_program(path);
-    find_binary_exit_point(&binary)
-}
-
-fn generate_contract(final_pc: u32, inits_teardowns_top_bits: &[u32]) -> String {
-    let json = std::fs::read_to_string(
-        "../cs/compiled_circuits/unified_reduced_machine_layout_gkr_proth120.json",
-    )
-    .unwrap();
-    let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_str(&json).unwrap();
-
-    let prover_config = production_prover_config();
-    // the packing factor and the WHIR batching PoW come from the prover config
-    verifier_evm::generate_verifier(
-        &circuit,
-        &prover_config,
-        EXTERNAL_POW_BITS,
+/// The proof aux must match the pinned inputs (external PoW floor, exit PC, top bits).
+/// Packing comes from the prover config.
+/// Returns the final PC.
+fn check_pinned_inputs() -> u32 {
+    let (_, proof, operation_mode) = common::load();
+    let prover::gkr::prover::OperationMode::SingleChunk {
+        external_challenges_pow_bits,
         final_pc,
-        inits_teardowns_top_bits,
+        ..
+    } = operation_mode
+    else {
+        panic!("expected single-chunk operation mode");
+    };
+    assert_eq!(
+        prover::gkr::prover_config::example_configs::l1_wrap::EXTERNAL_CHALLENGES_POW_BITS,
+        external_challenges_pow_bits,
+        "pinned external PoW floor must match proof aux"
+    );
+    assert_eq!(
+        common::final_pc(),
+        final_pc,
+        "pinned exit PC must match proof aux"
+    );
+    assert_eq!(
+        common::INITS_TEARDOWNS_TOP_BITS,
+        &proof.inits_and_teardowns_top_bits[..],
+        "pinned inits/teardowns top bits must match the proof"
+    );
+    final_pc
+}
+
+fn generate_wrap(pc: u32) -> verifier_evm::WrapContracts {
+    let (circuit, proof, _) = common::load();
+    let config = common::prover_config();
+    check_pinned_inputs();
+    let (_, nodes) = common::setup_frontier();
+    verifier_evm::generate_wrap_verifier(
+        &circuit,
+        &config,
+        &common::format_params(),
+        pc,
+        common::INITS_TEARDOWNS_TOP_BITS,
+        &proof.whir_proof.setup_commitment.commitment.cap.cap,
+        &nodes,
+        REGISTRY_ADDRESS,
     )
 }
 
-#[test]
-fn generate_contract_into_dir() {
-    let src = generate_contract(feeder_exit_pc(), INITS_TEARDOWNS_TOP_BITS);
-
-    let p = Path::new("generated_contracts/merged/src/GkrWhirVerifier.sol");
-    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-    std::fs::write(p, &src).unwrap();
-    eprintln!("wrote {} ({} bytes)", p.display(), src.len());
-}
-
-#[test]
-fn generate_fixture_contract_into_dir() {
-    // This preimage is checked against the saved proof by flatten_roundtrip. Its final PC
-    // and teardown top bits are properties of that proof's program, not deployment
-    // parameters for the production verifier above. The preimage begins with 32 registers
-    // of three LE u32 words each, then final PC/timestamp (12 bytes), then the top bits.
-    let preimage = hex::decode(
-        std::fs::read_to_string("debug_data/gkr_step1_preimage.hex")
+fn generated_sources() -> Vec<(String, String)> {
+    let pc = common::final_pc();
+    let contracts = generate_wrap(pc);
+    let wrong = generate_wrap(pc ^ 1);
+    // Preserve the complete former data-contract runtime, including its leading STOP.
+    // The code tail makes its placement independent of Solidity's metadata trailer.
+    let source = &contracts.verifier_sol;
+    assert!(!source.contains("SetupFrontier"));
+    assert!(!source.contains("extcodecopy("));
+    assert!(!source.contains("extcodehash("));
+    assert!(source.contains("constructor()"));
+    assert!(source.contains("sub(codesize(), __TEMPLATE_SETUP_DATA_BYTES)"));
+    let data = hex::decode(
+        source
+            .split_once("hex\"")
             .unwrap()
-            .trim(),
+            .1
+            .split('"')
+            .next()
+            .unwrap(),
     )
     .unwrap();
-    let final_pc = u32::from_le_bytes(preimage[32 * 12..32 * 12 + 4].try_into().unwrap());
-    let top_bits_offset = 32 * 12 + 12;
-    let top_bits: Vec<_> = (0..INITS_TEARDOWNS_TOP_BITS.len())
-        .map(|i| {
-            let offset = top_bits_offset + i * 4;
-            u32::from_le_bytes(preimage[offset..offset + 4].try_into().unwrap())
-        })
+    assert_eq!(data.len(), 16_410);
+    use sha3::{Digest, Keccak256};
+    assert_eq!(
+        hex::encode(Keccak256::digest(&data)),
+        "f5e33e946c45cc936b514c2158e8ac6ce4085a320a7cbd8dde3d90d37b7301ed"
+    );
+    // The negative changes only the decoder's pinned PC word.
+    assert_eq!(
+        contracts.verifier_sol.lines().count(),
+        wrong.verifier_sol.lines().count()
+    );
+    let differences: Vec<_> = contracts
+        .verifier_sol
+        .lines()
+        .zip(wrong.verifier_sol.lines())
+        .filter(|(a, b)| a != b)
         .collect();
-    let src = generate_contract(final_pc, &top_bits);
-    let declaration = "contract GkrWhirVerifier {";
-    assert_eq!(src.matches(declaration).count(), 1);
-    let src = src.replacen(declaration, "contract GkrWhirVerifierFixture {", 1);
-    let p = Path::new("generated_contracts/merged/test/fixtures/GkrWhirVerifierFixture.sol");
+    assert_eq!(differences.len(), 1);
+    assert!(differences
+        .iter()
+        .all(|(a, b)| a.contains("// pinned final PC") && b.contains("// pinned final PC")));
+    assert!(source.contains("address(0x0078d549f2a140923c517c23b008dffe979b3c4e91)"));
+    assert!(!source.contains("abi.encode(registry_)"));
+    assert!(source.contains("ptr := add(SEED_PTR(), __TEMPLATE_GKR_CACHE_OFFSET)"));
+    assert!(source.contains("__TEMPLATE_GKR_CACHE_OFFSET         = 448;"));
+    assert!(source.contains("__TEMPLATE_GKR_SEED_BYTES           = 32 * 34;"));
+    let (circuit, proof, mode) = common::load();
+    let config = common::prover_config();
+    let (external, batching, queries) =
+        common::pow::leading_zeros(&circuit, &proof, &mode, &config);
+    eprintln!("PoW leading zeros: external={external}, batching={batching}, queries={queries:?}");
+    let schedule = config.whir_schedule.queries_pow_bits_per_round();
+    assert!(
+        external < MAX_GKR_POW_BITS && batching < MAX_GKR_POW_BITS,
+        "no room under the GKR PoW cap"
+    );
+    for (&zeros, &bits) in queries.iter().zip(&schedule) {
+        assert!(zeros >= bits, "honest proof misses query PoW");
+    }
+    let mut negative = vec![
+        ("wrong_final_pc".into(), wrong.verifier_sol),
+        (
+            "external_pow".into(),
+            raised_difficulty(source, "__TEMPLATE_EXTERNAL_POW_BITS", external + 1),
+        ),
+        (
+            "batching_pow".into(),
+            raised_difficulty(source, "__TEMPLATE_WHIR_BATCH_POW_BITS", batching + 1),
+        ),
+    ];
+    for (round, &zeros) in queries.iter().enumerate() {
+        // Test-only text replacements may exceed the production cap, but must remain
+        // representable by shr(sub(256, bits), digest). Cover the final default arm too.
+        assert!(zeros < 256, "query PoW control cannot exceed 256 bits");
+        let selector = if round + 1 == queries.len() {
+            "default".to_owned()
+        } else {
+            format!("case {round}")
+        };
+        negative.push((
+            format!("query_pow_{round}"),
+            raised_query_difficulty(source, &selector, schedule[round], zeros + 1),
+        ));
+    }
+    let mut files = Vec::new();
+    // Share the compiler settings, omitting the main project's test file permissions.
+    let foundry = include_str!("../generated_contracts/l1_wrap/merged/foundry.toml")
+        .split("fs_permissions")
+        .next()
+        .unwrap();
+    for (name, control) in negative {
+        assert_one_changed_line(source, &control);
+        files.push((format!("negative/{name}/src/GkrWhirVerifier.sol"), control));
+        files.push((format!("negative/{name}/foundry.toml"), foundry.to_owned()));
+    }
+    files.push((MERGED_VERIFIER.into(), contracts.verifier_sol));
+    files.push(("merged/MEMORY_LAYOUT.md".into(), contracts.memory_layout));
+    files
+}
+
+// Controls use the real generator's complete output, changing exactly one difficulty.
+// They intentionally cannot be produced through the production API's parameter guards.
+fn assert_one_changed_line(source: &str, control: &str) {
+    assert_eq!(source.lines().count(), control.lines().count());
+    assert_eq!(
+        source
+            .lines()
+            .zip(control.lines())
+            .filter(|(a, b)| a != b)
+            .count(),
+        1
+    );
+}
+
+fn raised_difficulty(source: &str, name: &str, bits: u32) -> String {
+    let line = source
+        .lines()
+        .find(|line| line.contains(&format!("constant {name} ")))
+        .unwrap();
+    let (prefix, rest) = line.split_once('=').unwrap();
+    let (old, suffix) = rest.split_once(';').unwrap();
+    assert!(
+        bits > old.trim().parse::<u32>().unwrap(),
+        "control must raise PoW"
+    );
+    source.replacen(line, &format!("{prefix}= {bits};{suffix}"), 1)
+}
+
+fn raised_query_difficulty(source: &str, selector: &str, old: u32, new: u32) -> String {
+    let line = source
+        .lines()
+        .find(|line| line.contains(&format!("{selector} {{ fold :=")))
+        .unwrap();
+    let target = format!("pow_bits := {old}");
+    assert_eq!(line.matches(&target).count(), 1);
+    source.replacen(
+        line,
+        &line.replace(&target, &format!("pow_bits := {new}")),
+        1,
+    )
+}
+
+#[test]
+fn generator_rejects_invalid_inputs() {
+    let (mut circuit, proof, _) = common::load();
+    let config = common::prover_config();
+    let (_, nodes) = common::setup_frontier();
+    let params = common::format_params();
+    let generate = |circuit: &common::Circuit,
+                    config: &prover::gkr::prover_config::ProverConfig,
+                    top: &[u32]| {
+        verifier_evm::generate_wrap_verifier(
+            circuit,
+            config,
+            &params,
+            common::final_pc(),
+            top,
+            &proof.whir_proof.setup_commitment.commitment.cap.cap,
+            &nodes,
+            REGISTRY_ADDRESS,
+        )
+    };
+    let rejects = |circuit: &common::Circuit,
+                   config: &prover::gkr::prover_config::ProverConfig,
+                   top: &[u32],
+                   expected: &str| {
+        let Err(panic) = std::panic::catch_unwind(|| generate(circuit, config, top)) else {
+            panic!("generator accepted invalid inputs");
+        };
+        let message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap();
+        assert!(message.contains(expected), "unexpected panic: {message}");
+    };
+    for top in [&[0, 0][..], &[1, 0], &[0, 256]] {
+        rejects(&circuit, &config, top, "inits/teardowns top bits");
+    }
+    for bits in [l1_wrap::MAX_POW_BITS + 1, 257] {
+        let mut config = config.clone();
+        config.whir_schedule.base_round.queries_pow_bits = bits;
+        rejects(
+            &circuit,
+            &config,
+            common::INITS_TEARDOWNS_TOP_BITS,
+            "query PoW",
+        );
+    }
+    // A layout whose lookup requirement exceeds the GKR cap must fail at generation.
+    circuit.num_generic_lookups = 1 << 32;
+    rejects(
+        &circuit,
+        &config,
+        common::INITS_TEARDOWNS_TOP_BITS,
+        "external challenges PoW",
+    );
+}
+
+fn write(rel: &str, content: &str) {
+    let p = common::contract_path(rel);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-    std::fs::write(p, &src).unwrap();
-    eprintln!("wrote {} ({} bytes)", p.display(), src.len());
+    std::fs::write(&p, content).unwrap();
+    eprintln!("wrote {} ({} bytes)", p.display(), content.len());
+}
+
+#[test]
+#[ignore = "writes committed generated_contracts"]
+fn generate_contracts_into_dir() {
+    for (rel, content) in generated_sources() {
+        write(&rel, &content);
+    }
 }

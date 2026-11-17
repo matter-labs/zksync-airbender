@@ -70,9 +70,12 @@ pub fn heap_end() -> *mut usize {
 pub fn init() {
     use core::ptr::addr_of_mut;
 
-    use common_constants::rom::ROM_BYTE_SIZE;
-    assert!(addr_of_mut!(_rom_size).addr() <= ROM_BYTE_SIZE);
-    assert_eq!(addr_of_mut!(_estack).addr(), ROM_BYTE_SIZE);
+    #[cfg(not(feature = "ram_16mb_no_heap_wrap"))]
+    {
+        const ROM_BYTE_SIZE: usize = crate::GUEST_ROM_GEOMETRY.byte_size();
+        assert!(addr_of_mut!(_rom_size).addr() <= ROM_BYTE_SIZE);
+        assert_eq!(addr_of_mut!(_estack).addr(), ROM_BYTE_SIZE);
+    }
 
     unsafe {
         // copy .rodata
@@ -100,7 +103,7 @@ pub fn init() {
 unsafe fn load_to_ram(src: *const u8, dst_start: *mut u8, dst_end: *mut u8) {
     #[cfg(debug_assertions)]
     {
-        use common_constants::rom::ROM_BYTE_SIZE;
+        const ROM_BYTE_SIZE: usize = crate::GUEST_ROM_GEOMETRY.byte_size();
 
         debug_assert!(src.addr() < ROM_BYTE_SIZE);
         debug_assert!(dst_start.addr() >= ROM_BYTE_SIZE);

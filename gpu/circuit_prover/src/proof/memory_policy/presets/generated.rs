@@ -11,6 +11,8 @@ pub(crate) const PRESET_ARENA_BYTES: &[usize] = &[22548578304, 32212254720];
 pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMemoryPolicy {
     match arena_bytes {
         22548578304 => match circuit {
+            CircuitType::L1Wrap => panic!("L1Wrap uses the hand-authored presets::l1_wrap policy; generated presets do not cover it"),
+            CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 uses the CompressionFinal profile and the hand-authored presets::compression policy"),
             CircuitType::Delegation(DelegationCircuitType::Blake2GFunction)
             | CircuitType::Delegation(DelegationCircuitType::KeccakChi5)
             | CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
@@ -132,6 +134,8 @@ pub(crate) const fn policy(circuit: CircuitType, arena_bytes: usize) -> ProofMem
             },
         },
         32212254720 => match circuit {
+            CircuitType::L1Wrap => panic!("L1Wrap uses the hand-authored presets::l1_wrap policy; generated presets do not cover it"),
+            CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 uses the CompressionFinal profile and the hand-authored presets::compression policy"),
             CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression)
             | CircuitType::Delegation(DelegationCircuitType::Blake2GFunction)
             | CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5)

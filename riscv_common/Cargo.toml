@@ -30,6 +30,7 @@ memcpy_via_precompile = []
 # multiples (zero length touches nothing). General programs keep the default runtime.
 checked_word_memory = []
 ram_32mb_no_heap = ["boot_sequence"]
+ram_16mb_no_heap_wrap = ["boot_sequence"]
 ram_1gb = ["boot_sequence"]
 ram_4gb = ["boot_sequence"]
 default = []

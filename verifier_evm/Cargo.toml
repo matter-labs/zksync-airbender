@@ -22,7 +22,9 @@ serde_json = "1"
 indoc = "2"
 
 [dev-dependencies]
+proof_fixtures = { workspace = true }
 riscv_transpiler = { workspace = true }
+serde = { workspace = true }
 hex = "0.4"
 
 [lints]

@@ -1,21 +1,42 @@
 //! Per-program `Setups` assembly without proving.
 //!
-//! The provers (`prover_examples::{unrolled,unified}`) build the
+//! The provers (`program_prover::{unrolled,unified}`) build the
 //! `Setups` map — one committed setup cap per circuit family — as a
 //! by-product of proving. Drivers and verifiers need the same map without
 //! running a prover: the setup caps prefix every non-determinism stream the
 //! `fsv_*` verifiers consume, and a verifier that wants to bind a proof to a
 //! *supplied* program (rather than trusting proof-carried metadata) must
 //! recompute the caps from the binary alone. The commitment parameters here
-//! must stay in lockstep with the prover's selected compiled-circuit config:
-//! the same LDE factor, WHIR schedule head and cap size, or the recomputed caps stop
+//! must stay in lockstep with the prover's selected compiled-circuit config
+//! (or explicit L1 profile override): the same LDE factor, WHIR schedule head
+//! and cap size, or the recomputed caps stop
 //! byte-matching proof-time setups.
 
 use super::*;
 use prover::definitions::{SecurityLevel, SoundnessMode};
-use prover::gkr::prover_config::ProverConfig;
+use prover::gkr::prover_config::{ProofProfile, ProverConfig};
+use prover::merkle_trees::MerkleTreeCapVarLength;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+
+pub type SetupCommitter<'a> =
+    dyn FnMut(&ProverConfig, &GKRSetup<BabyBearField>) -> MerkleTreeCapVarLength + 'a;
+
+/// CPU setup commitment with twiddles reused across a program's circuit families.
+pub fn cpu_setup_committer(
+    worker: &Worker,
+) -> impl FnMut(&ProverConfig, &GKRSetup<BabyBearField>) -> MerkleTreeCapVarLength + '_ {
+    let mut twiddles: HashMap<usize, Twiddles<BabyBearField, Global>> = HashMap::new();
+    move |config, setup| {
+        let size = 1usize << config.whir_message_size_log2();
+        let twiddles = twiddles
+            .entry(size)
+            .or_insert_with(|| Twiddles::new(size, worker));
+        setup
+            .commit_for_config::<DefaultTreeConstructor>(&*twiddles, config, worker)
+            .get_cap()
+    }
+}
 
 /// Statically derive a program's exit PC: the address of the final opcode of
 /// the unique [`riscv_common::EXIT_SEQUENCE`] occurrence in the binary. This
@@ -53,6 +74,7 @@ pub fn compute_unrolled_program_setups_in_mode<C: MachineConfig, A: GoodAllocato
     security_level: SecurityLevel,
     soundness_mode: SoundnessMode,
     worker: &Worker,
+    commit: &mut SetupCommitter<'_>,
 ) -> Setups {
     let per_family = get_unrolled_circuits_setups_for_machine_type::<C, A>(
         binary_image,
@@ -64,7 +86,7 @@ pub fn compute_unrolled_program_setups_in_mode<C: MachineConfig, A: GoodAllocato
         let config = setup.prover_config_in_mode(security_level, soundness_mode);
         (family_idx as u32, config, setup.setup)
     });
-    commit_setup_params(configs_and_setups, security_level, worker)
+    commit_setup_params(configs_and_setups, security_level, commit)
 }
 
 /// Mode-explicit unified setup reconstruction from actual compiled columns.
@@ -75,6 +97,7 @@ pub fn compute_unified_program_setups_in_mode<A: GoodAllocator + 'static>(
     security_level: SecurityLevel,
     soundness_mode: SoundnessMode,
     worker: &Worker,
+    commit: &mut SetupCommitter<'_>,
 ) -> Setups {
     let unified_setup =
         unified_reduced_machine_circuit_setup::<A>(binary_image, text_section, use_caches, worker);
@@ -86,7 +109,51 @@ pub fn compute_unified_program_setups_in_mode<A: GoodAllocator + 'static>(
             unified_setup.setup,
         )),
         security_level,
-        worker,
+        commit,
+    )
+}
+
+/// Pessimistic setups of the unified family under an explicit proof profile.
+pub fn compute_unified_program_setups_for_profile<A: GoodAllocator + 'static>(
+    binary_image: &[u32],
+    text_section: &[u32],
+    use_caches: bool,
+    security_level: SecurityLevel,
+    profile: ProofProfile,
+    worker: &Worker,
+    commit: &mut SetupCommitter<'_>,
+) -> Setups {
+    let unified_setup = match profile {
+        ProofProfile::Compression => unified_reduced_machine_circuit_setup::<A>(
+            binary_image,
+            text_section,
+            use_caches,
+            worker,
+        ),
+        ProofProfile::CompressionFinal => unified_reduced_machine_2_22_circuit_setup::<A>(
+            binary_image,
+            text_section,
+            use_caches,
+            worker,
+        ),
+        _ => panic!("special unified setups require a compression profile"),
+    };
+    let config = profile.prover_config(
+        unified_setup.trace_len.ilog2() as usize,
+        SoundnessMode::PessimisticConjecture,
+    );
+    assert_eq!(
+        unified_setup.trace_len.ilog2() as usize,
+        config.trace_len_log2
+    );
+    commit_setup_params(
+        core::iter::once((
+            common_constants::REDUCED_MACHINE_CIRCUIT_FAMILY_IDX as u32,
+            config,
+            unified_setup.setup,
+        )),
+        security_level,
+        commit,
     )
 }
 
@@ -95,29 +162,20 @@ pub fn compute_unified_program_setups_in_mode<A: GoodAllocator + 'static>(
 fn commit_setup_params(
     circuit_setups: impl Iterator<Item = (u32, ProverConfig, GKRSetup<BabyBearField>)>,
     security_level: SecurityLevel,
-    worker: &Worker,
+    commit: &mut SetupCommitter<'_>,
 ) -> Setups {
-    let mut twiddles: HashMap<usize, Twiddles<BabyBearField, Global>> = HashMap::new();
     let mut result: Setups = BTreeMap::new();
     for (family_idx, prover_config, setup) in circuit_setups {
         assert_eq!(prover_config.security_level, security_level);
         let trace_len = 1usize << prover_config.trace_len_log2;
-        // the commitment interpolates over the (packed) 2^(trace_len_log2 + pack_log2) domain
-        let twiddles_size = 1usize << prover_config.whir_message_size_log2();
-        let twiddles_for_size = twiddles
-            .entry(twiddles_size)
-            .or_insert_with(|| Twiddles::new(twiddles_size, worker));
-        let setup_commitment = setup.commit_for_config::<DefaultTreeConstructor>(
-            &*twiddles_for_size,
-            &prover_config,
-            worker,
-        );
+        let setup_cap = commit(&prover_config, &setup);
         result.insert(
             family_idx,
             UnrolledCircuitSetupParams::from_setup_tree_cap(
                 family_idx,
                 trace_len as u32,
-                setup_commitment.get_cap(),
+                setup_cap,
+                prover_config.cap_size,
             ),
         );
     }

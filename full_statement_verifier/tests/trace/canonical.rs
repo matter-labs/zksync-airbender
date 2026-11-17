@@ -15,7 +15,7 @@ use verifier_common::cs::utils::split_timestamp;
 use verifier_common::field::baby_bear::{base::BabyBearField as BF, ext4::BabyBearExt4 as E4};
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProgram, SoundnessMode};
 use verifier_common::gkr::flatten::flatten_gkr_proof_for_nds;
-use verifier_common::prover::definitions::{FinalRegisterValue, MerkleTreeCap, DEFAULT_CAP_SIZE};
+use verifier_common::prover::definitions::{FinalRegisterValue, DEFAULT_CAP_SIZE};
 
 const BLAKE: BlakeMode = BlakeMode::Compression;
 type Proof = GKRProof<BF, E4, DefaultTreeConstructor>;
@@ -150,17 +150,7 @@ pub fn stream(mode: SoundnessMode, program: FsvProgram, counts: Counts) -> (Vec<
             UnrolledCircuitSetupParams {
                 family_idx: family,
                 capacity: compiled.trace_len.try_into().unwrap(),
-                setup_caps: MerkleTreeCap {
-                    cap: canonical
-                        .whir_proof
-                        .setup_commitment
-                        .commitment
-                        .cap
-                        .cap
-                        .clone()
-                        .try_into()
-                        .unwrap(),
-                },
+                setup_caps: canonical.whir_proof.setup_commitment.commitment.cap.clone(),
             },
         );
         proof
@@ -216,7 +206,7 @@ pub fn stream(mode: SoundnessMode, program: FsvProgram, counts: Counts) -> (Vec<
 
     let mut stream = Vec::new();
     for parameters in setups.values() {
-        stream.extend_from_slice(MerkleTreeCap::flatten_single(&parameters.setup_caps));
+        parameters.setup_caps.add_into_buffer(&mut stream);
     }
     for register in &proof.register_final_values {
         let (low, high) = split_timestamp(register.last_access_timestamp);

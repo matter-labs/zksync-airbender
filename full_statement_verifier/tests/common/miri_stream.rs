@@ -12,6 +12,7 @@ pub enum Chain {
     Unrolled,
     Unified,
     UnrolledUnified,
+    Compression,
 }
 
 #[derive(Clone, Copy)]
@@ -38,12 +39,19 @@ impl Selection {
                     Chain::Unified | Chain::UnrolledUnified => {
                         verify_unified_circuit_recursion_layer::<_, DebugErrorCreator, USE_REDUCED_BLAKE2_ROUNDS>(nds)
                     },
+                    Chain::Compression => unreachable!("compression statements use their mode-specific entry"),
                 }
             }};
         }
-        let output = match self.mode {
-            SoundnessMode::PessimisticConjecture => verify!(pessimistic_conjecture),
-            SoundnessMode::EthproofsSoundnessCalc => verify!(ethproofs_soundcalc),
+        let output = match (self.mode, self.chain) {
+            (SoundnessMode::PessimisticConjecture, Chain::Compression) => {
+                full_statement_verifier::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_compression_final::<_, DebugErrorCreator, USE_REDUCED_BLAKE2_ROUNDS>(nds)
+            }
+            (SoundnessMode::EthproofsSoundnessCalc, Chain::Compression) => {
+                panic!("Ethproofs compression statement is unavailable")
+            }
+            (SoundnessMode::PessimisticConjecture, _) => verify!(pessimistic_conjecture),
+            (SoundnessMode::EthproofsSoundnessCalc, _) => verify!(ethproofs_soundcalc),
         }
         .expect("full statement verifier rejected input");
         assert!(

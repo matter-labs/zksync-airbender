@@ -45,6 +45,8 @@ jobs:
       - name: Build the native input producers once
         run: |
           cargo build -p verifier --no-default-features --features miri_circuits --example miri_circuit_input
+          cp "$CARGO_TARGET_DIR/debug/examples/miri_circuit_input" "$CARGO_TARGET_DIR/debug/examples/miri_circuit_input_standard"
+          cargo build -p verifier --no-default-features --features miri_compression_coverage --example miri_circuit_input
           cargo build -p full_statement_verifier --no-default-features --features host_utils,miri_fsv --example miri_input
       - name: Verify every committed circuit proof and chain natively in parallel
         run: |
@@ -58,13 +60,20 @@ jobs:
           circuits, statements = {}, {}
           for mode in ['ethproofs_soundcalc', 'pessimistic_conjecture']:
               fixtures = sorted((root / 'fixtures/circuits' / mode).glob('*.json.zlib'))
+              # CompressionFinal is the chain's terminal proof; the repeatable
+              # Compression step covers the multiproof branches under Software Blake.
+              fixtures = [f for f in fixtures if f.name != 'compression_final.json.zlib']
               assert fixtures, mode
               (circuit_inputs / mode).mkdir(parents=True, exist_ok=True)
               for fixture in fixtures:
                   circuit = fixture.name.removesuffix('.json.zlib')
-                  circuits[circuit + '_' + mode] = [str(target / 'debug/examples/miri_circuit_input'), circuit, mode,
+                  producer = 'miri_circuit_input' if circuit == 'compression' else 'miri_circuit_input_standard'
+                  circuits[circuit + '_' + mode] = [str(target / 'debug/examples' / producer), circuit, mode,
                                                     str(circuit_inputs / mode / (circuit + '.bin'))]
-              for chain in ['base', 'unrolled', 'unified', 'unrolled_unified']:
+              chains = ['base', 'unrolled', 'unified', 'unrolled_unified']
+              if (root / 'fixtures/chains' / mode / 'compression.json.zlib').exists():
+                  chains.append('compression')
+              for chain in chains:
                   statements[mode + '_' + chain] = [str(target / 'debug/examples/miri_input'),
                                                     str(statement_inputs / (mode + '_' + chain + '.bin')), mode, chain]
           def run(item):
@@ -83,6 +92,7 @@ jobs:
         run: |
           cargo miri test -p full_statement_verifier --no-default-features --features miri_fsv --test miri_native --no-run
           cargo miri test -p verifier --no-default-features --features miri_circuits --test miri_circuits --no-run
+          cargo miri test -p verifier --no-default-features --features miri_compression --test miri_compression --no-run
       - name: Run every committed chain in both modes in parallel
         run: |
           mapfile -t cases < "$CARGO_TARGET_DIR/statement-cases.txt"
@@ -95,7 +105,8 @@ jobs:
           mapfile -t cases < "$CARGO_TARGET_DIR/circuit-cases.txt"
           python3 .github/scripts/run_miri.py \
             --package verifier --features miri_circuits --test-target miri_circuits \
-            --cases "${cases[@]}" --jobs 28 \
+            --case-config compression_pessimistic_conjecture miri_compression miri_compression \
+            --cases "${cases[@]}" --jobs 29 \
             --output "$CARGO_TARGET_DIR/results/circuits"
       - name: Check verifier_common helpers
         run: cargo miri test -p verifier_common --no-default-features --lib

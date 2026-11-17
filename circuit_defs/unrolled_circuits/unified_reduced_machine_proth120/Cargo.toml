@@ -1,0 +1,23 @@
+[package]
+name = "unified_reduced_machine_proth120"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+prover = { workspace = true, features = ["prover"] }
+common_constants = { workspace = true }
+riscv_transpiler = { workspace = true }
+serde_json = "*"
+
+[dev-dependencies]
+test_utils = { workspace = true }
+witness_eval_generator = { workspace = true }
+
+[lints]
+workspace = true

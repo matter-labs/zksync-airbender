@@ -1,23 +1,27 @@
 #!/bin/sh
-# Deterministic deployment of the merged GkrWhirVerifier (+ a TestRegistry) through the CreateX
+# Requires Foundry v1.9.0 on PATH and a Glamsterdam-capable chain.
+# Deterministic deployment of the L1 wrap GkrWhirVerifier (+ a TestRegistry) through the CreateX
 # factory (https://github.com/pcaversaccio/createx, pre-deployed on most networks at the fixed
 # address below) via `ICreateX.deployCreate2(bytes32 salt, bytes initCode)`, so every address is a
 # pure function of (factory, salt, initCode).
 #
-# The verifier takes the registry address as its ONLY constructor argument (immutable; must be
-# non-zero and have code), so the deployment is two steps: 1. the registry (TestRegistry here —
-# substitute the production IVerificationRegistry's initcode/address), 2. the verifier with the
-# registry address appended to its initcode. On success the verifier calls
-# `registry.markVerified(publicInput, auxInput, setupCommitment)`.
+# The verifier is generated for one registry address and takes NO constructor arguments.
+# Regenerate it (tests/generate_contracts.rs) if the registry changes. The default TestRegistry
+# address is deterministic for this factory, guarded salt and stable registry initcode.
+# Before any deployment, this script checks the selected registry against the generated constant.
+# On success the verifier calls `registry.markVerified(publicInput, auxInput)`. A production
+# registry must accept only approved verifier addresses (`msg.sender`), each pinned to one
+# setup embedded in its runtime code, and compare `auxInput` with the expected chain hash.
 #
-# CREATE2 reverts on an address collision — bump the salts to deploy fresh contracts.
+# CREATE2 reverts on an address collision. Changing the registry salt requires regenerating
+# the verifier for the new registry address; the verifier salt can be changed independently.
 # Feed the printed verifier address to ./send_proof.sh afterwards.
 set -e
 cd "$(dirname "$0")"
 
 # ---- configuration: edit for the target network ------------------------------------------------
-RPC=http://127.0.0.1:8545
-KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+RPC=${RPC:-http://127.0.0.1:8545}
+KEY=${KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
 # First 20 bytes zero + 21st byte zero = CreateX's unpermissioned, non-redeploy-protected salt
 # flavor (anyone can reproduce the address).
 REGISTRY_SALT=0x00000000000000000000000000000000000000000000000000616972621b0001
@@ -28,17 +32,10 @@ REGISTRY_ADDR=${REGISTRY_ADDR:-}
 
 CREATEX=0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed
 
-factory_code=$(cast code $CREATEX --rpc-url $RPC)
-if [ "$factory_code" = "0x" ]; then
-  echo "ERROR: no CreateX factory code at $CREATEX on this RPC." >&2
-  echo "       Use a network where CreateX is deployed (or etch/deploy it first)." >&2
-  exit 1
-fi
-
 # deploy_create2 <salt> <initcode> -> prints the created address (from the factory's event)
 deploy_create2() {
-  receipt=$(cast send $CREATEX "deployCreate2(bytes32,bytes)" "$1" "$2" \
-    --private-key $KEY --rpc-url $RPC --json)
+  receipt=$(cast send "$CREATEX" "deployCreate2(bytes32,bytes)" "$1" "$2" \
+    --private-key "$KEY" --rpc-url "$RPC" --json)
   status=$(printf '%s' "$receipt" | jq -r '.status')
   if [ "$status" != "0x1" ] && [ "$status" != "1" ]; then
     echo "ERROR: deployCreate2 transaction failed (status $status)" >&2
@@ -55,23 +52,62 @@ deploy_create2() {
 }
 
 echo "== building GkrWhirVerifier + TestRegistry =="
-( cd merged && forge build >/dev/null )
+( cd l1_wrap/merged && forge build >/dev/null )
+
+# Read the generated address before sending any transaction. address(0x00...) is an
+# integer-to-address literal, avoiding checksum interpretation by Solidity.
+GENERATED_REGISTRY=$(sed -n 's/.*constant __TEMPLATE_REGISTRY = address(0x00\([0-9a-f]\{40\}\));.*/0x\1/p' l1_wrap/merged/src/GkrWhirVerifier.sol)
+if [ -z "$GENERATED_REGISTRY" ]; then
+  echo "ERROR: generated registry constant not found; regenerate the verifier." >&2
+  exit 1
+fi
+registry_initcode=$(jq -r '.bytecode.object' l1_wrap/merged/out/TestRegistry.sol/TestRegistry.json)
+if [ -z "$REGISTRY_ADDR" ]; then
+  # CreateX hashes this unpermissioned, cross-chain-unprotected salt before CREATE2:
+  # https://github.com/pcaversaccio/createx/blob/main/src/CreateX.sol (_guard).
+  guarded_salt=$(cast keccak "$REGISTRY_SALT")
+  registry_hash=$(cast keccak "$registry_initcode")
+  address_hash=$(cast keccak "0xff${CREATEX#0x}${guarded_salt#0x}${registry_hash#0x}")
+  EXPECTED_REGISTRY=0x$(printf '%s' "$address_hash" | tail -c 40)
+else
+  EXPECTED_REGISTRY=$REGISTRY_ADDR
+fi
+if [ "$(printf '%s' "$EXPECTED_REGISTRY" | tr 'A-F' 'a-f')" != "$GENERATED_REGISTRY" ]; then
+  echo "ERROR: selected registry $EXPECTED_REGISTRY differs from generated $GENERATED_REGISTRY." >&2
+  echo "       Regenerate the verifier for the selected registry before deploying." >&2
+  exit 1
+fi
+
+factory_code=$(cast code "$CREATEX" --rpc-url "$RPC")
+if [ "$factory_code" = "0x" ]; then
+  echo "ERROR: no CreateX factory code at $CREATEX on this RPC." >&2
+  echo "       Use a network where CreateX is deployed (or etch/deploy it first)." >&2
+  exit 1
+fi
 
 if [ -z "$REGISTRY_ADDR" ]; then
   echo "== deploying TestRegistry via CreateX deployCreate2 =="
-  registry_initcode=$(jq -r '.bytecode.object' merged/out/TestRegistry.sol/TestRegistry.json)
+  registry_initcode=$(jq -r '.bytecode.object' l1_wrap/merged/out/TestRegistry.sol/TestRegistry.json)
   REGISTRY_ADDR=$(deploy_create2 "$REGISTRY_SALT" "$registry_initcode")
 fi
 echo "   registry        : $REGISTRY_ADDR"
 
-echo "== deploying GkrWhirVerifier(registry) via CreateX deployCreate2 =="
-initcode=$(jq -r '.bytecode.object' merged/out/GkrWhirVerifier.sol/GkrWhirVerifier.json)
-ctor_args=$(cast abi-encode "constructor(address)" "$REGISTRY_ADDR")
-ADDR=$(deploy_create2 "$VERIFIER_SALT" "${initcode}${ctor_args#0x}")
+echo "== deploying GkrWhirVerifier() via CreateX deployCreate2 =="
+initcode=$(jq -r '.bytecode.object' l1_wrap/merged/out/GkrWhirVerifier.sol/GkrWhirVerifier.json)
+registry_code=$(cast code "$REGISTRY_ADDR" --rpc-url "$RPC")
+if [ "$registry_code" = "0x" ]; then
+  echo "ERROR: registry $REGISTRY_ADDR has no code." >&2
+  exit 1
+fi
+ADDR=$(deploy_create2 "$VERIFIER_SALT" "$initcode")
 echo "   GkrWhirVerifier : $ADDR"
-pinned=$(cast call "$ADDR" "registry()(address)" --rpc-url $RPC)
-if [ "$(printf '%s' "$pinned" | tr 'A-F' 'a-f')" != "$(printf '%s' "$REGISTRY_ADDR" | tr 'A-F' 'a-f')" ]; then
-  echo "ERROR: deployed verifier reports registry $pinned, expected $REGISTRY_ADDR" >&2
+# The runtime has no getter: compare its bytes with the generated runtime prefix
+# plus embedded setup. This also checks that the generated registry constant was deployed.
+prefix=$(jq -r '.deployedBytecode.object' l1_wrap/merged/out/GkrWhirVerifier.sol/GkrWhirVerifierCode.json)
+setup=$(sed -n 's/.*bytes.concat(.*hex"\([0-9a-f]*\)").*/\1/p' l1_wrap/merged/src/GkrWhirVerifier.sol)
+deployed=$(cast code "$ADDR" --rpc-url "$RPC")
+if [ -z "$setup" ] || [ "$deployed" != "0x${prefix#0x}${setup}" ]; then
+  echo "ERROR: deployed verifier runtime differs from the generated registry/setup" >&2
   exit 1
 fi
 echo "== done =="

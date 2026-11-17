@@ -201,6 +201,8 @@ pub fn generate_policy(input: impl Read, output: impl Write) -> Result<(), Box<d
     )?;
     for (arena, policies) in selected {
         writeln!(output, "{arena} => match circuit {{")?;
+        writeln!(output, "CircuitType::L1Wrap => panic!(\"L1Wrap uses the hand-authored presets::l1_wrap policy; generated presets do not cover it\"),")?;
+        writeln!(output, "CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!(\"Unified22 uses the CompressionFinal profile and the hand-authored presets::compression policy\"),")?;
         let mut groups = BTreeMap::<String, Vec<&str>>::new();
         for &circuit in &circuits {
             let policy = policies[circuit_stable_name(circuit)];
@@ -307,6 +309,8 @@ fn policy_expression(policy: MemoryPolicy) -> String {
 
 pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
     match circuit {
+        CircuitType::L1Wrap => panic!("L1Wrap is not enumerated by the all-circuit sweep; its policy is presets::l1_wrap"),
+        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it uses the CompressionFinal profile and presets::compression policy"),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
             "delegation_big_int_with_control"
         }
@@ -353,6 +357,8 @@ pub fn circuit_stable_name(circuit: CircuitType) -> &'static str {
 
 fn circuit_pattern(circuit: CircuitType) -> &'static str {
     match circuit {
+        CircuitType::L1Wrap => panic!("L1Wrap is not enumerated by the all-circuit sweep; its policy is presets::l1_wrap"),
+        CircuitType::Unrolled(UnrolledCircuitType::Unified22) => panic!("Unified22 is not enumerated by the all-circuit sweep; it uses the CompressionFinal profile and presets::compression policy"),
         CircuitType::Delegation(DelegationCircuitType::BigIntWithControl) => {
             "CircuitType::Delegation(DelegationCircuitType::BigIntWithControl)"
         }

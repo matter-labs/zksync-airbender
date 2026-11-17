@@ -1,8 +1,8 @@
 //! The sole writer of ordinary committed Sec100 circuit proofs.
 
 use super::orchestration::canonical_fixtures::{
-    capture_canonical_inputs, CanonicalCircuit, CanonicalInputs, CanonicalTrace,
-    SparseInitsAndTeardowns, CANONICAL_CIRCUITS,
+    canonical_circuits, capture_canonical_inputs, CanonicalCircuit, CanonicalInputs,
+    CanonicalTrace, SparseInitsAndTeardowns,
 };
 use super::orchestration::common::hardcoded_external_challenges;
 use crate::definitions::{GKRExternalChallenges, SoundnessMode};
@@ -322,14 +322,13 @@ fn regenerate_canonical_circuit_proofs_ethproofs_soundcalc() {
 
 fn regenerate_canonical_circuit_proofs(mode: SoundnessMode) {
     let worker = Worker::new();
-    for circuit in CANONICAL_CIRCUITS {
+    for circuit in canonical_circuits(mode) {
         let prepared = prepare(circuit, mode, &worker);
         let proof = prove(prepared, &hardcoded_external_challenges(), &worker);
         write(circuit, mode, &proof);
     }
     let output_root = proof_fixtures::output_root();
-    let expected: BTreeSet<_> = CANONICAL_CIRCUITS
-        .into_iter()
+    let expected: BTreeSet<_> = canonical_circuits(mode)
         .map(|circuit| circuit.proof_path(&output_root, mode))
         .collect();
     let produced: BTreeSet<_> = std::fs::read_dir(

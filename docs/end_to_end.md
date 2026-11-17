@@ -71,10 +71,9 @@ cargo run --release -p cli -- continue-proof \
   --output-file proof.json
 ```
 
-`continue-proof` currently supports only CPU-produced artifacts.
+## 5. Continue to the L1 target
 
-## 5. SNARK wrapping status
-
-The current flow in this repository ends at a verified Airbender proof artifact.
-
-Wrapping that artifact into a SNARK is not implemented yet, but it is expected to be supported soon. Once that lands, this document should be extended with the concrete wrapping and verification steps.
+The flow can continue from unified recursion with `--target compression`, then
+`--target l1`. The generated EVM verifier verifies the L1 wrap proof.
+See the [CLI guide](../tools/cli/README.md) for proving commands and the
+[fixture guide](../fixtures/README.md) for artifact production and EVM verification.

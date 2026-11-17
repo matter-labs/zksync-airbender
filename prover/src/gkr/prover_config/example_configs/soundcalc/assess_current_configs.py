@@ -69,7 +69,10 @@ BB = {
 }
 for n, (f, q, l, p) in BB.items():
     configs.append(our_config(f"BabyBear^4 sec-100 trace 2^{n} (base LDE 2)", BABYBEAR_4, n, 2, f, q, l, p, 114))
-configs.append(our_config("BabyBear^4 L1-feeder 2^23 (base LDE 16, all oracles 2^27)", BABYBEAR_4, 23, 16,
-    [1, 5, 5, 5, 4], [21, 17, 9, 5, 4], [32, 1024, 32768, 1048576], [29, 26, 25, 26, 21], 114))
+# Compression profiles (special_configs.rs): the 2^23 Compression step and the 2^22 CompressionFinal
+configs.append(our_config("BabyBear^4 Compression 2^23 (base LDE 4)", BABYBEAR_4, 23, 4,
+    [1, 5, 5, 5, 4], [45, 18, 9, 6, 5], [32, 1024, 32768, 1048576], [25, 25, 25, 25, 17], 114))
+configs.append(our_config("BabyBear^4 CompressionFinal 2^22 (base LDE 16)", BABYBEAR_4, 22, 16,
+    [1, 5, 5, 5, 3], [23, 18, 9, 6, 5], [32, 1024, 32768, 1048576], [24, 25, 25, 25, 17], 114))
 for c in configs:
     report(*c)

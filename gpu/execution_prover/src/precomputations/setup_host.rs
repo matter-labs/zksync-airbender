@@ -102,6 +102,9 @@ impl CircuitPrecomputations {
                 (setup.compiled_circuit, setup.setup, decoder_table)
             }
             CanonicalCircuitSetup::Delegation(setup) => (setup.compiled_circuit, setup.setup, None),
+            CanonicalCircuitSetup::L1Wrap(_) => {
+                unimplemented!("L1 wrap GPU setup preparation")
+            }
         };
         assert_eq!(
             compiled_circuit.trace_len,
