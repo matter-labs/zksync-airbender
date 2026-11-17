@@ -44,4 +44,5 @@ row). See [trust and review](../../../../../docs/TRUST_AND_REVIEW.md#modeled-tab
 
 The [field-operation model](Modular/Model.lean) names the four Montgomery operations.
 The supporting arithmetic proofs derive canonical output and its field value from the imported constraints.
-`arithmeticResult_rv` identifies that value with `RV.mopVal`. Whole-run modular integration remains open.
+`arithmeticResult_rv` identifies that value with `RV.mopVal`. The reduced and unified machine targets use these
+operations in whole runs.

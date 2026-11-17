@@ -11,9 +11,8 @@ from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parent
 GUIDES = tuple(ROOT.parent / name for name in (
-    "README.md", "docs/VERIFICATION_STATUS.md", "docs/TRUST_AND_REVIEW.md",
-    "docs/FORMAL_VERIFICATION_PLAN.md",
-)) + (ROOT / "human/README.md", ROOT / "human/CleanCore/README.md") + tuple(
+    "README.md", "docs/VERIFICATION_STATUS.md", "docs/TRUST_AND_REVIEW.md", "docs/FINDINGS.md",
+)) + (ROOT / "human/README.md", ROOT / "human/CleanCore/README.md", ROOT / "artifacts/setup/README.md") + tuple(
     sorted((ROOT / "human/Human").rglob("README.md")))
 # The claim modules: the specification (human/) and the proofs of its public theorems (proven/Proven/Final/).
 CLAIM_PREFIXES = ("Human.", "Proven.Final.")

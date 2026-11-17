@@ -24,12 +24,12 @@ Lean-sail can stop where `runSail` continues: on a register or byte that is not 
 The Airbender machine uses the specification's own definitions for loads into x0,
 `mop.rr.N`, `mop.r.N`, CSR 0x7c0 and all delegations. These are machine overrides.
 Sail gives Zimop instructions a zero result; this machine gives them the stated custom effects.
-An aligned load into x0 does not access memory in this machine.
+A load into x0 does not access memory in this machine.
 The machine decodes with `RV.decode`. Other enabled Sail extensions, such as A, have no instruction step.
 A standard instruction step requires `nextPC % 4 = 0`.
 Delegation stores can update shadow RAM below the ROM boundary. Ordinary stores to ROM have no step.
 The equivalence applies to this configured Airbender machine. Both unrolled targets exclude `mop.r.N`.
-Unified admits `mop.r.N` with N = 16, 12, 8 or 7, including rd = x0.
+Unified admits `mop.r.N` with N = 16, 12, 8 or 7, and `mop.r.N x0` for every N as a no-op.
 Special5 remains outside the production machine targets.
 Each whole-run conclusion holds for every configured start that agrees with the public initial state.
 The final input is the public input after the number of reads in the submitted CPU trace.

@@ -33,7 +33,8 @@ runs the images and the delegations on sample inputs: a test, not needed for the
   (they add axioms). `omega`, `bv_omega`, `decide`, `decide +kernel` are fine.
 - **Generated files are compared to the git index.** Stage (`git add`) regenerated files before running, or the
   check fails on a stale index.
-- **The Sail model is pinned and fetched, not committed.** Changes to how Sail is configured (which extensions it
+- **The generated Sail model is pinned and committed.** CI generates it again and requires the same bytes. lean-sail
+  is fetched, not committed. Changes to how Sail is configured (which extensions it
   offers) go through its config; every behavioural difference from Sail lives in Lean (3.1).
 - **The trust checks run on every build of the final theorems** (3.6): statements only from `human/` and the trusted
   libraries, `human/` imports nothing else, no escape hatches outside the listed tactic code, only standard axioms.

@@ -15,8 +15,8 @@ witness. Only compiled layers differ from the no-cache description.
 placement, participation and exact native lookup matching. These derive CPU clock
 constraints and public decoder membership.
 [WorkerCertificates.lean](WorkerCertificates.lean) supplies cached worker gates,
-placement, exact public lookups and participation. These imply the complete worker
-row constraints. Certificates describe each submitted worker pool in order.
+placement, exact public lookups and participation. The target proofs derive the complete
+worker row constraints from them. Certificates describe each submitted worker pool in order.
 State, request and shared memory matching are explicit interfaces.
 
 [CPU certificate witnesses](../../../proven/Proven/Final/Compiler/CPUCertificates.lean)

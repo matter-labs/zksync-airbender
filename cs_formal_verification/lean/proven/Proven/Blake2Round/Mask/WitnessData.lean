@@ -42,8 +42,4 @@ theorem zero_asserts : ∀ i : Fin 220,
       (Verification.environment zeroAssignment) = 0 := by
   decide +kernel
 
-/-- The zero-mask assignment is an active worker row. -/
-theorem zero_active : zeroAssignment 0 = 1 := by decide
-
-
 end Airbender.Blake2Round.Mask.Proofs

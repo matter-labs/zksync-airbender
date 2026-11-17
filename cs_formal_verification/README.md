@@ -34,28 +34,27 @@ checks that our code builds [without warnings](#no-warnings), checks the review 
   neither `proven/` nor `test/`. Its directory READMEs are the review guide.
   The final statements are `def …Claim : Prop` in the RVTheorems, RVCallerTheorems and Theorems modules under `Human/`
   (and `Human/Trace/RVSoundness.lean`), imported by `lean/human/Human.lean`. `human/` holds only what a claim
-  states (P4 shrink): definitions only proofs use are in `proven/Proven/Defs/` and `proven/Proven/CleanCore/`. The executable
+  states: definitions only proofs use are in `proven/Proven/Defs/` and `proven/Proven/CleanCore/`. The executable
   importer code in `Human/Import/Exec/` is pinned by the import claims and is not part of the reviewed spec.
-  Each claim restated by that shrink was checked once against its previous text (old ↔ new, or new → old where
-  the claim got stronger) in `test/Checks/Restatements.lean`, kept in git history up to commit d8cb7e2d8.
+  `test/Checks/Restatements.lean` checks each restated claim against its earlier text (old ↔ new, or new → old where
+  the claim is stronger).
 - `lean/proven/` — everything else (kernel-checked, not meant to be read): supporting calculations, proof assembly and
   artifact guards (`Proven/`), and the proofs of the final statements (`Proven/Final/`, laid out like `Human/`;
   `test/Checks/Claims.lean` checks each theorem against its `…Claim` by name and type, and its axioms).
 - `lean/test/` — regressions and fixtures (`Tests/`), the axiom audits (`Checks/`).
 - `sail/` — the Sail tooling, used only by the equivalence leaf `Human/ISA/Sail/`: `regen.sh` generates the official Sail RISC-V RV32 model (sail-riscv, Sail and lean-sail
-  pins in [PINS.md](sail/PINS.md); machine config `config/airbender-base.json`) into the gitignored
+  pins in [PINS.md](sail/PINS.md); machine config `config/airbender-base.json`) into
   `lean/sail-rv32/`; `fetch-lean-sail.sh` fetches the pinned lean-sail with our Lean 4.35 patches (no upstream licence,
   so never committed).
-- `lean/sail-rv32/` — the Lake package `sail_rv32` (the generated model, not committed; its `lakefile.toml`,
-  `PROVENANCE.txt` and config copy are). `lean/check_review.py` — review-guide and audit-coverage check.
+- `lean/sail-rv32/` — the Lake package `sail_rv32`: the generated model, committed with its `lakefile.toml`,
+  `PROVENANCE.txt` and config copy. CI generates the model again and requires the same bytes. `lean/check_review.py` — review-guide and audit-coverage check.
 - `docs/` — [status](docs/VERIFICATION_STATUS.md), [trust and review boundaries](docs/TRUST_AND_REVIEW.md),
-  [plan](docs/FORMAL_VERIFICATION_PLAN.md), and the pinned Airbender reference (`docs/airbender/00-master.md`).
+  and the pinned Airbender reference (`docs/airbender/00-master.md`).
 - [Lean strategies](docs/lean-strategies.md) — the rules for operating, proving and specifying in Lean.
 
 ## What is checked
 
-[Verification status](docs/VERIFICATION_STATUS.md) lists every circuit, checked coverage
-and open tasks. It is updated after each completed task.
+[Verification status](docs/VERIFICATION_STATUS.md) lists every claim, its scope and the open items.
 
 The proof path is:
 
@@ -63,7 +62,7 @@ The proof path is:
 cached gates, placement and public lookups → shared constraints → RV.step / RV.run
 ```
 
-Cached CPU and worker certificates imply their complete imported row constraints.
+The target proofs derive the complete imported row constraints from the cached CPU and worker certificates.
 The native machine targets use these certificates and explicit public setup, state,
 request and memory interfaces. Cryptographic argument soundness remains open.
 The setup grid comparison is trusted compiled code. It compares each grid formula with the exported JSON rows.
@@ -187,7 +186,7 @@ locally in Docker.
 
 The audit lists theorem axiom dependencies. The checked claims use only standard
 Lean axioms; no `sorry` or project axioms are admitted. Importer tests check rejection paths; the import's
-correctness is the claims of the import guide, up to its trusted transcription step. Subsequent work is in [the plan](docs/FORMAL_VERIFICATION_PLAN.md).
+correctness is the claims of the import guide, up to its trusted transcription step.
 The [review check](lean/check_review.py) uses Lean's compiled declaration locations to require an explicit
 axiom root for every source-declared public theorem in `Human/` and `Proven/Final/`. It also resolves
 guide declaration names and local file/heading links. Source-only Rust/Sail names

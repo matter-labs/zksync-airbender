@@ -171,8 +171,7 @@ def Circuit.delegationColumns (c : Circuit) : Except String Delegation.ClockColu
     unless n < c.memory_layout.total_width do throw "delegation clock outside memory layout"
     c.logicalVariable (.BaseLayerMemory n)
   -- The selected native workers range (invocation-low - execute) / 4,
-  -- then the memory comparisons and each indirect base's alignment. They
-  -- no longer range the two invocation limbs independently.
+  -- then the memory comparisons and each indirect base's alignment.
   let mut alignedRegisters : Array Nat := #[]
   for port in ← c.indirectPorts do
     if !alignedRegisters.contains port.register then

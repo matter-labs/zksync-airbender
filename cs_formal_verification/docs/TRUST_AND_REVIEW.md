@@ -3,8 +3,7 @@
 **Review definitions and assumptions for meaning; let Lean check the proofs.**
 The kernel checks proofs about emitted objects. It does not establish that those
 objects faithfully represent Rust artifacts or express the intended system claim.
-[Verification status](VERIFICATION_STATUS.md) is the coverage and gap inventory;
-[the plan](FORMAL_VERIFICATION_PLAN.md) contains pending work.
+[Verification status](VERIFICATION_STATUS.md) lists every claim and every open item.
 
 The claims cover the constraint description shared by the cached and no-cache circuit JSON files.
 Their constraint sections are identical. Only the compiled GKR layers can differ.
@@ -34,7 +33,9 @@ The accepted initialized history is still part of these claims; reads and ranges
 remain conclusions. Circuit setup definitions live in each family's `Tables/`;
 shared range/byte/subword constructions live in `Helpers/Tables/`.
 
-For whole execution, start with [RVSoundness.lean](../lean/human/Human/Trace/RVSoundness.lean), then
+For whole execution, start with the [native machine targets](../lean/human/Human/Compiler/NativeTargets.lean) and
+their [boot inputs](../lean/human/Human/Trace/Machine/Model.lean).
+[RVSoundness.lean](../lean/human/Human/Trace/RVSoundness.lean) states the CPU-only whole-trace claims. Read it with
 the [public boot inputs](../lean/human/Human/Helpers/Context/RVPooledBoundary.lean),
 [native matching](../lean/human/Human/Helpers/Context/Model.lean), the
 [family registry](../lean/human/Human/Helpers/Context/Registries/Pooled.lean), and
@@ -183,8 +184,8 @@ permutations. Decoder membership and caller/request matching are likewise logica
 conditions; cryptographic enforcement of any of them is outside the claims.
 
 The [native worker certificates](../lean/human/Human/Compiler/WorkerCertificates.lean)
-describe both submitted worker pools exactly, in order. Native cached gates, source
-placement, public worker lookups and participation imply every row constraint.
+describe both submitted worker pools exactly, in order. The target proofs derive every row constraint from the
+native cached gates, source placement, public worker lookups and participation.
 The [worker certificate proofs](../lean/proven/Proven/Final/Compiler/WorkerCertificates.lean)
 include a full active witness for each of the six worker circuits used by the targets.
 The constraint-description targets retain worker constraints as premises.
@@ -223,7 +224,8 @@ Caller and worker claims add public inputs, all visible in their `…Inputs` str
   run valid protocols.
 - `RVProgramCallerRegion` and `RVProgramProtocolWindowInputs` replace the selected worker family and count by a public
   PC/clock interval of CSR entries (a sequential ordinary registry excludes ordinary code from it); matching derives the
-  family, counts and slots. General protocol validity, invalid-call ABI and whole caller retirement remain open.
+  family, counts and slots. The machine targets compose whole runs with callers. The valid-use claims cover valid
+  calls, and invalid calls follow the circuit (`ISA/Delegations.lean`).
 - Caller cycles (`Caller.rv_caller_cycles_soundness`, `Caller.rv_prepared_round_cycles_soundness`) bind each caller's
   fetch, its matched worker's port reads/writes and the PC advance in one history. They carry no code-domain premise:
   the ROM image is separate from RAM and the RV table's fetch guard keeps entries in aligned ROM words. Both bigint control
@@ -275,5 +277,4 @@ The selected claims retain normal-path, field and terminal boundaries.
 The checked unissued-worker and bigint-control fixtures must stay
 visible at their actual logical scope; no whole-system exploit, circuit fix or
 assumed ABI validity follows. Use [Verification status](VERIFICATION_STATUS.md)
-for the fixtures and all unresolved coverage, and
-[the plan](FORMAL_VERIFICATION_PLAN.md#deferred-milestones) for downstream proofs.
+for the fixtures and every open item.

@@ -40,13 +40,13 @@ def scheduledBody (state control : RV.Word) (r : Nat) (h : Vector RV.Word 8) (e 
 
 /-- Reading the three source blocks gives the shared reference-schedule body. -/
 theorem scheduled_reads (state message control : RV.Word) (mem : RV.Word → BitVec 8) (r : Nat) :
-    RV.Delegation.blakeRoundNative state message control mem (decide (r = 0))
+    RV.Delegation.blakeRoundBody state message control mem (decide (r = 0))
       (decide (r + 1 = (if control.getLsbD 16 then 7 else 10)))
       (fun message state => Spec.round message (Spec.SIGMA ⟨r % 10, Nat.mod_lt _ (by decide)⟩) state) =
       scheduledBody state control r (RV.readWords mem state 8) (RV.readWords mem (state + 32) 16)
         (RV.readWords mem message 16) := by
   by_cases first : r = 0
-  all_goals simp only [RV.Delegation.blakeRoundNative, scheduledBody, scheduledMixed, maskedMessage,
+  all_goals simp only [RV.Delegation.blakeRoundBody, scheduledBody, scheduledMixed, maskedMessage,
     first, decide_true, decide_false, Bool.not_true, Bool.not_false, Bool.false_eq_true, ↓reduceIte,
     decide_eq_true_eq]
   all_goals rfl
@@ -57,7 +57,7 @@ theorem masked_reads (state message control : RV.Word) (mem : RV.Word → BitVec
       maskedBody state control (RV.readWords mem state 8) (RV.readWords mem (state + 32) 16)
         (RV.readWords mem message 16) := by
   cases first : RV.Delegation.roundMaskBit control 0
-  all_goals simp only [RV.Delegation.blakeRoundMasked, RV.Delegation.blakeRoundNative, maskedBody, maskedMixed, maskedPrepared,
+  all_goals simp only [RV.Delegation.blakeRoundMasked, RV.Delegation.blakeRoundBody, maskedBody, maskedMixed, maskedPrepared,
     maskedMessage, first, Bool.not_true, Bool.not_false, Bool.false_eq_true, ↓reduceIte]
   all_goals rfl
 

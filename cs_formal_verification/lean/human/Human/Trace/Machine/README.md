@@ -14,8 +14,8 @@ The [input interface](ExternalInput.lean) binds actual response ports to the ind
 The input values are external data. The circuit does not authenticate the stream.
 
 The full target includes split Keccak and excludes special5. Both unrolled targets exclude `mop.r.N`.
-Unified admits `mop.r.N` with N = 16, 12, 8 or 7, including rd = x0.
-Delegation validity is not a target premise. Invalid controls and worker pointer use follow the delegation spec.
+Unified admits `mop.r.N` with N = 16, 12, 8 or 7, and `mop.r.N x0` for every N as a no-op.
+Delegation validity is not a target premise. Invalid controls, ROM pointers and overlapping buffers follow the delegation spec.
 The typed [verifier boundary](../../Helpers/Context/VerifierBoundary/Theorems.lean) derives terminal-PC bounds.
 Its raw tuple and range claims have separate witnesses.
 The [malformed-PC regression](../../../../test/Tests/VerifierBoundary.lean) checks native acceptance and verifier rejection.

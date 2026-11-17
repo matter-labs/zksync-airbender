@@ -64,8 +64,10 @@ def writesAt {n : Nat} (addr : Word) (ws : Vector Word n) : List (Word × Word) 
 
 namespace Delegation
 
-/-- One round body shares preparation, state writes and control advancement. -/
-def blakeRoundNative (x10 x11 x12 : Word) (mem : Word → BitVec 8)
+/-- One BLAKE2s round call. `first` loads the initial work vector: the configured IV in compression mode, otherwise
+    `h`, the IV and the counter and final-block words that the call stores after `h`. `final` writes the final XOR into
+    `h`. `mix` applies the selected round to the message and the work vector. -/
+def blakeRoundBody (x10 x11 x12 : Word) (mem : Word → BitVec 8)
     (first final : Bool) (mix : Vector Word 16 → Vector Word 16 → Vector Word 16) : Effect :=
   let right := x12.getLsbD 17
   let compression := x12.getLsbD 18
@@ -94,10 +96,11 @@ def blakeRoundNative (x10 x11 x12 : Word) (mem : Word → BitVec 8)
 /-- Native extended-round behavior for every accepted control mask.
     The first mask bit controls preparation. Every selected schedule contributes to each message word. -/
 def blakeRoundMasked (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Effect :=
-  blakeRoundNative x10 x11 x12 mem (roundMaskBit x12 0) (maskedRoundFinal x12)
+  blakeRoundBody x10 x11 x12 mem (roundMaskBit x12 0) (maskedRoundFinal x12)
     (fun message state => round (maskedRoundMessage x12 message) id state)
 
-/-- The round ABI has aligned, separate state and message blocks. -/
+/-- The round guard: both bases are aligned and different. The blocks can overlap; the memory argument rejects such a
+    call. -/
 abbrev blakeRoundPointers (state message : Word) : Prop :=
   state.toNat % 128 = 0 ∧ message.toNat + 64 ≤ RAM_END ∧ message.toNat % 64 = 0 ∧ state ≠ message
 
@@ -116,7 +119,7 @@ def blakeRound (x10 x11 x12 : Word) (mem : Word → BitVec 8) : Option Effect :=
   let reduced := x12.getLsbD 16
   let n := if reduced then 7 else 10
   if blakeRoundPointers x10 x11 ∧ mask = 1#32 <<< r ∧ r < n then
-    some (blakeRoundNative x10 x11 x12 mem (decide (r = 0)) (decide (r + 1 = n))
+    some (blakeRoundBody x10 x11 x12 mem (decide (r = 0)) (decide (r + 1 = n))
       (fun message state => round message (SIGMA ⟨r % 10, Nat.mod_lt _ (by decide)⟩) state))
   else if blakeRoundPointers x10 x11 ∧ x12.toNat < 2 ^ 29 then
     some (blakeRoundMasked x10 x11 x12 mem)
@@ -128,7 +131,7 @@ def BlakeRoundOneHotClaim : Prop :=
     roundIndex < (if control.getLsbD 16 then 7 else 10) →
     control >>> 19 = 1#32 <<< roundIndex →
     blakeRoundMasked state message control mem =
-      blakeRoundNative state message control mem (decide (roundIndex = 0))
+      blakeRoundBody state message control mem (decide (roundIndex = 0))
         (decide (roundIndex + 1 = (if control.getLsbD 16 then 7 else 10)))
         (fun message state => round message (SIGMA ⟨roundIndex % 10, Nat.mod_lt _ (by decide)⟩) state)
 

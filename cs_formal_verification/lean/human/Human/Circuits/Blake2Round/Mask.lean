@@ -120,7 +120,7 @@ def SoundnessClaim : Prop :=
     FlatOperation.ConstraintsHoldFlat (Verification.environment w) (importedConstraints setupTable) →
     Mapping input output w → spec input output
 
-/-- The native row premises admit an active assignment with no selected round bit. -/
+/-- The native row premises admit an assignment with no selected round bit. -/
 def SatisfiableClaim : Prop :=
   ∃ (input : Input) (output : Output) (w : Nat → ZMod babyBearModulus),
     Assumptions input ∧
