@@ -7,7 +7,7 @@ public import Proven.Blake2Round.Setup.Rows
 namespace Airbender.Blake2Round
 
 /-- The claimed formula rows are the row formulas that the kernel scans check. -/
-theorem formulaRow_eq (n : Nat) : formulaRow n = SetupProofs.formulaRow n := rfl
+private theorem formulaRow_eq (n : Nat) : formulaRow n = SetupProofs.formulaRow n := rfl
 
 /-- Each column of the imported round setup is its row formula (kernel scans), on all 2^20 rows. -/
 theorem setup_import : SetupImportClaim := by

@@ -193,6 +193,7 @@ import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 import Proven.Final.Circuits.Bigint.Setup
 import Proven.Final.Circuits.Blake2G.Setup
 import Proven.Final.Circuits.Keccak.Setup
+import Proven.Final.Circuits.Blake2Round.Setup
 import Proven.Final.Compiler.WorkerSetup
 import Proven.Final.Compiler.FixedRows
 import Proven.Final.Helpers.Tables.Bytes
@@ -1782,6 +1783,10 @@ import Proven.Final.Helpers.Tables.Bytes
 #print axioms Airbender.Compiler.NativeFixedRows.mul_div_import
 #print axioms Airbender.Compiler.NativeFixedRows.word_memory_import
 #print axioms Airbender.Compiler.NativeSetups.range13_import
+#print axioms Airbender.Compiler.NativeSetups.cpu_ranges_import
+#print axioms Airbender.Compiler.NativeFixedRows.subword_memory_import
+#print axioms Airbender.Compiler.NativeFixedRows.unified_import
+#print axioms Airbender.Blake2Round.setup_import
 
 #print axioms Airbender.InitsTeardowns.shared_bytes_satisfiable
 
