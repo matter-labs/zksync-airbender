@@ -58,4 +58,10 @@ def sailModules : List String := [
   "Human.ISA.Sail.Theorems",
   "Human.ISA.Sail.WholeRun"]
 
+/-- The direct imports of the Sail model from `human/` and `proven/`, each as `Importer Imported`. -/
+def sailImportEdges : List String := [
+  "Human.Helpers.Core.Configuration SailRV32",
+  "Proven.ISA.Equiv.Slice Sail",
+  "Proven.Sail.Bytes SailRV32"]
+
 end Airbender.Trust

@@ -48,13 +48,30 @@ def check_graph(graph, roots, trusted=None, sail_modules=None):
         raise ValueError('Listed Sail modules do not import the Sail model: ' + ', '.join(sorted(stale)))
 
 
+def check_sail_edges(graph, listed):
+    """The direct imports of the Sail model from our modules are exactly the listed edges."""
+    edges = {(module, dependency) for module, dependencies in graph.items()
+             if module.split('.')[0] in {'Human', 'Proven'}
+             for dependency in dependencies if dependency.split('.')[0] in SAIL_ROOTS}
+    if unlisted := edges - listed:
+        raise ValueError('Unlisted direct Sail import: ' + ', '.join(f'{a} → {b}' for a, b in sorted(unlisted)))
+    if stale := listed - edges:
+        raise ValueError('Listed Sail import is absent: ' + ', '.join(f'{a} → {b}' for a, b in sorted(stale)))
+
+
+def module_names(folder):
+    return sorted('.'.join(p.relative_to(ROOT / folder).with_suffix('').parts) for p in (ROOT / folder).rglob('*.lean'))
+
+
 def main():
-    from check_trusted_code import manifest_list
-    roots = sorted('.'.join(p.relative_to(ROOT / 'human').with_suffix('').parts)
-                   for p in (ROOT / 'human').rglob('*.lean'))
-    graph = load_graph(roots)
+    from check_trusted_code import manifest_list, manifest_edges
+    roots = module_names('human')
+    graph = load_graph(roots + module_names('proven'))
     check_graph(graph, roots, manifest_list('trustedModuleRoots'), manifest_list('sailModules'))
-    print(f'PASS import closure: {len(roots)} spec modules, {len(graph)} total modules')
+    listed = manifest_edges('sailImportEdges')
+    check_sail_edges(graph, listed)
+    print(f'PASS import closure: {len(roots)} spec modules, {len(graph)} total modules, '
+          f'{len(listed)} direct Sail imports')
 
 
 if __name__ == '__main__':

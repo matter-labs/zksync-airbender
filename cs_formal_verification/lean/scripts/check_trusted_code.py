@@ -88,6 +88,20 @@ def manifest_list(name):
     return set(values)
 
 
+def manifest_edges(name):
+    """A trust list of import edges, each written as `Importer Imported`."""
+    text, _ = source_text(MANIFEST.read_text())
+    match = re.search(r'\bdef ' + re.escape(name) + r' : List String := (\[[^]]*\])', text)
+    if not match:
+        raise ValueError('Trust list must be a literal List String: ' + name)
+    values = json.loads(match[1])
+    module = r'[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*'
+    if not values or len(values) != len(set(values)) or any(
+            not re.fullmatch(module + ' ' + module, value) for value in values):
+        raise ValueError('Trust edge list is empty, duplicated or malformed: ' + name)
+    return {tuple(value.split(' ')) for value in values}
+
+
 def check_source(module, text, allowed):
     visible, code = source_text(text)
     if match := FORBIDDEN.search(code):

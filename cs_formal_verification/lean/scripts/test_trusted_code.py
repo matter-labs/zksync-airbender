@@ -1,7 +1,7 @@
 """Regressions for reviewed module permissions and source checks."""
 import unittest
-from check_import_closure import check_graph
-from check_trusted_code import check_declaration_commands, check_source, manifest_list
+from check_import_closure import check_graph, check_sail_edges
+from check_trusted_code import check_declaration_commands, check_source, manifest_edges, manifest_list
 
 
 class TrustedCodeTests(unittest.TestCase):
@@ -55,6 +55,17 @@ def json := r#"{"text": "/-"}"#
         with self.assertRaisesRegex(ValueError, 'do not import the Sail model: Human.Other'):
             check_graph(graph, ['Human.Sail', 'Human.Other'], {'Sail'}, {'Human.Sail', 'Human.Other'})
 
+    def test_direct_sail_imports_need_the_exact_edges(self):
+        graph = {'Human.Helpers.Core.Configuration': ['SailRV32'], 'Human.ISA.Sail.Theorems':
+                 ['Human.Helpers.Core.Configuration', 'SailRV32.Functions'], 'Proven.Sail.Bytes': ['SailRV32'],
+                 'SailRV32': [], 'SailRV32.Functions': []}
+        listed = {('Human.Helpers.Core.Configuration', 'SailRV32'), ('Proven.Sail.Bytes', 'SailRV32')}
+        with self.assertRaisesRegex(ValueError, 'Unlisted direct Sail import: Human.ISA.Sail.Theorems → SailRV32.Functions'):
+            check_sail_edges(graph, listed)
+        check_sail_edges(graph, listed | {('Human.ISA.Sail.Theorems', 'SailRV32.Functions')})
+        with self.assertRaisesRegex(ValueError, 'Listed Sail import is absent: Proven.Other → Sail'):
+            check_sail_edges(graph, listed | {('Human.ISA.Sail.Theorems', 'SailRV32.Functions'), ('Proven.Other', 'Sail')})
+
     def test_unlisted_external_library_fails(self):
         graph = {'Human.Example': ['Other.Library'], 'Other.Library': []}
         with self.assertRaisesRegex(ValueError, 'Other.Library'):
@@ -65,6 +76,7 @@ def json := r#"{"text": "/-"}"#
         self.assertIn('SailRV32', manifest_list('trustedModuleRoots'))
         self.assertIn('Human.Import.TranscribeCommand', manifest_list('declarationCommandModules'))
         self.assertIn('Human.Helpers.Core.Configuration', manifest_list('sailModules'))
+        self.assertIn(('Human.Helpers.Core.Configuration', 'SailRV32'), manifest_edges('sailImportEdges'))
 
 
 if __name__ == '__main__':
