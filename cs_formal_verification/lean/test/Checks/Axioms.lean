@@ -1784,3 +1784,25 @@ import Proven.Final.Helpers.Tables.Bytes
 #print axioms Airbender.Compiler.NativeSetups.range13_import
 
 #print axioms Airbender.InitsTeardowns.shared_bytes_satisfiable
+
+-- Canonical extension values of the certificate RAM outputs.
+
+#print axioms Airbender.Compiler.MemoryPortsNative.AddSubCached.canonical_holds
+
+#print axioms Airbender.Compiler.MemoryPortsNative.JumpBranchCached.canonical_holds
+
+#print axioms Airbender.Compiler.MemoryPortsNative.MulDivCached.canonical_holds
+
+#print axioms Airbender.Compiler.MemoryPortsNative.ShiftBinopCached.canonical_holds
+
+#print axioms Airbender.Compiler.MemoryPortsNative.SubwordMemoryCached.canonical_holds
+
+#print axioms Airbender.Compiler.MemoryPortsNative.UnifiedCached.canonical_holds
+
+#print axioms Airbender.Compiler.MemoryPortsNative.WordMemoryCached.canonical_holds
+
+#print axioms Airbender.Compiler.programCanonical_holds
+
+#print axioms Airbender.Compiler.unifiedCanonical_holds
+
+#print axioms Airbender.Compiler.workerProgramValues_holds
