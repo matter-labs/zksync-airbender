@@ -48,10 +48,23 @@ theorem sys_xset {σ : SailState} (hs : Airbender.Configured σ) (i : BitVec 5) 
 theorem sys_of_regs {σ σ' : SailState} (hs : Airbender.Configured σ) (h : σ'.regs = σ.regs) : Airbender.Configured σ' := by
   intro r hr; rw [h]; exact hs r hr
 
+/-- `runSail` runs one effect with a known result, then the continuation. -/
+theorem run_effect_ok {α : Type} (eff : InstructionEffect) (cont : InstructionEffect.ret eff → SailM α)
+    (σ σ' : SailState) (v : InstructionEffect.ret eff) (h : applyEffect eff σ = .ok v σ') :
+    runSail (FreeM.impure (.inl (.ok eff)) cont) σ = runSail (cont v) σ' := by
+  rw [Proven.runF_def, Proven.runF_def]
+  show EStateM.bind (applyEffect eff) (fun res => FreeM.liftM _ (cont res)) σ = _
+  simp only [EStateM.bind, h]
+  rfl
+
 theorem run_memRead_bind {β γ : Type} (req : MemRequest)
     (cont : InstructionEffect.ret (.memRead req) → SailM γ) (f : γ → SailM β) (σ : SailState) {r}
+    (checked : checkRequest req σ = .ok () σ)
     (h : runSail (cont (.ok (readBytes σ.mem req.address.toNat req.size, 0#req.numTag)) >>= f) σ = r) :
-    runSail (FreeM.impure (.inl (.ok (.memRead req))) cont >>= f) σ = r := h
+    runSail (FreeM.impure (.inl (.ok (.memRead req))) cont >>= f) σ = r := by
+  change runSail (FreeM.impure (.inl (.ok (.memRead req))) fun value => cont value >>= f) σ = r
+  rw [run_effect_ok _ _ σ σ _ (Proven.applyEffect_memRead req σ checked)]
+  exact h
 
 /-- Reading a register that is as after reset, whose reset value `v` is known. -/
 theorem run_readReg_bind_sys {β : Type} {σ : SailState} (hs : Airbender.Configured σ) (r : Register)
@@ -61,8 +74,12 @@ theorem run_readReg_bind_sys {β : Type} {σ : SailState} (hs : Airbender.Config
 
 theorem run_memWrite_bind {β γ : Type} (req : MemRequest) (v : BitVec (8 * req.size)) (tags : BitVec req.numTag)
     (cont : InstructionEffect.ret (.memWrite req v tags) → SailM γ) (f : γ → SailM β) (σ : SailState) {r}
+    (checked : checkRequest req σ = .ok () σ)
     (h : runSail (cont (.ok ()) >>= f) { σ with mem := Human.writeBytes σ.mem req.address.toNat req.size v } = r) :
-    runSail (FreeM.impure (.inl (.ok (.memWrite req v tags))) cont >>= f) σ = r := h
+    runSail (FreeM.impure (.inl (.ok (.memWrite req v tags))) cont >>= f) σ = r := by
+  change runSail (FreeM.impure (.inl (.ok (.memWrite req v tags))) fun value => cont value >>= f) σ = r
+  rw [run_effect_ok _ _ σ _ _ (Proven.applyEffect_memWrite req v tags σ checked)]
+  exact h
 
 theorem run_memWriteAnnounce_bind {β γ : Type} (req : MemRequest)
     (cont : InstructionEffect.ret (.memWriteAnnounce req) → SailM γ) (f : γ → SailM β) (σ : SailState) {r}
@@ -239,6 +256,18 @@ def meStep (side : Option Syntax) (X0 : Expr) : MetaM (Option (Expr × Expr)) :=
 theorem run_congr_bind {α β : Type} {m m' : SailM α} (h : m = m') (f : α → SailM β) (σ : SailState) {r}
     (h' : runSail (m' >>= f) σ = r) : runSail (m >>= f) σ = r := by subst h; exact h'
 
+/-- A proof that a memory request with a closed tag count and size passes the request checks. -/
+def requestChecked (req σ : Expr) : MetaM Expr := do
+  let tagTerm ← mkAppM ``MemRequest.numTag #[req]
+  let sizeTerm ← mkAppM ``MemRequest.size #[req]
+  let some tag ← (evalNat (← whnfD tagTerm)).run | throwError "sail_run: the memory request has no closed tag count"
+  let some size ← (evalNat (← whnfD sizeTerm)).run | throwError "sail_run: the memory request has no closed size"
+  unless tag == 0 && size ≤ 2 ^ 34 do throwError "sail_run: the memory request fails the request checks"
+  let untagged ← mkExpectedTypeHint (← mkEqRefl (mkNatLit 0)) (← mkEq tagTerm (mkNatLit 0))
+  let small ← mkExpectedTypeHint (← mkDecideProof (← mkAppM ``LE.le #[mkNatLit size, mkNatLit (2 ^ 34)]))
+    (← mkAppM ``LE.le #[sizeTerm, mkConst ``Airbender.Reference.RiscV.Sail.Configuration.maxRequestBytes])
+  mkAppM ``Proven.checkRequest_ok #[untagged, small, σ]
+
 partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarId) (hs0 : Expr) (fuel : Nat)
     (wholeRest : Bool := true) : MetaM (MVarId × Expr × String) := do
   let mut g := g0
@@ -331,7 +360,8 @@ partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarI
         let eff := m'.getArg! (m'.getAppNumArgs - 2)
         if eff.isAppOf ``Sum.inl && eff.appArg!.isAppOf ``Except.ok && eff.appArg!.appArg!.isAppOf ``InstructionEffect.memRead then
           let req := eff.appArg!.appArg!.appArg!
-          g ← g.withContext (step1 g ``run_memRead_bind #[none, none, req, m'.appArg!, f, σ, r]); continue
+          let checked ← g.withContext (requestChecked req σ)
+          g ← g.withContext (step1 g ``run_memRead_bind #[none, none, req, m'.appArg!, f, σ, r, checked]); continue
         if eff.isAppOf ``Sum.inl && eff.appArg!.isAppOf ``Except.ok && eff.appArg!.appArg!.isAppOf ``InstructionEffect.memWriteAnnounce then
           let req := eff.appArg!.appArg!.appArg!
           g ← g.withContext (step1 g ``run_memWriteAnnounce_bind #[none, none, req, m'.appArg!, f, σ, r]); continue
@@ -343,12 +373,14 @@ partial def sailRunLoop (side : Option Syntax) (lemmas : Array Expr) (g0 : MVarI
           let σ' ← g.withContext do
             let addr ← mkAppM ``BitVec.toNat #[← mkAppM ``MemRequest.address #[req]]
             let mem ← mkAppM ``Airbender.Reference.RiscV.Sail.Configuration.writeBytes #[← mkAppM ``Airbender.Reference.RiscV.Sail.Configuration.SailState.mem #[σ], addr, ← mkAppM ``MemRequest.size #[req], v]
-            mkAppM ``Airbender.Reference.RiscV.Sail.Configuration.SailState.mk #[← mkAppM ``Airbender.Reference.RiscV.Sail.Configuration.SailState.regs #[σ], mem]
+            mkAppM ``Airbender.Reference.RiscV.Sail.Configuration.SailState.mk #[← mkAppM ``Airbender.Reference.RiscV.Sail.Configuration.SailState.regs #[σ], mem,
+              ← mkAppM ``Airbender.Reference.RiscV.Sail.Configuration.SailState.cycles #[σ]]
           hs ← g.withContext do
             let lhs ← mkAppM ``Airbender.Reference.RiscV.Sail.Configuration.SailState.regs #[σ']
             let rhs ← mkAppM ``Airbender.Reference.RiscV.Sail.Configuration.SailState.regs #[σ]
             mkAppM ``sys_of_regs #[hs, ← mkExpectedTypeHint (← mkEqRefl rhs) (← mkEq lhs rhs)]
-          g ← g.withContext (step1 g ``run_memWrite_bind #[none, none, req, v, tags, m'.appArg!, f, σ, r]); continue
+          let checked ← g.withContext (requestChecked req σ)
+          g ← g.withContext (step1 g ``run_memWrite_bind #[none, none, req, v, tags, m'.appArg!, f, σ, r, checked]); continue
       let mut usedLemma := false
       for lem in lemmas do
         if let some (v, σ', hm) ← g.withContext (applyLayer side hs lem m' σ) then

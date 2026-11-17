@@ -396,6 +396,10 @@
       "exception": "constant",
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
+    "Airbender.MachineRunIsSequentialClaim": {
+      "witness": "Airbender.MachineRunIsSequentialSatisfiableClaim"
+    },
+    "Airbender.MachineRunIsSequentialSatisfiableClaim": {},
     "Airbender.MulDiv.ArtifactImportClaim": {
       "exception": "artifact",
       "reason": "This claim checks fixed imported data or a constant proposition."

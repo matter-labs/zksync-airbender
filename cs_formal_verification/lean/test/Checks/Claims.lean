@@ -1181,3 +1181,11 @@ example : Airbender.Compiler.BigintCachedMemorySatisfiableClaim := @Airbender.Co
 #print axioms Airbender.Compiler.bigint_cached_memory
 
 #print axioms Airbender.Compiler.bigint_cached_memory_satisfiable
+
+example : Airbender.MachineRunIsSequentialClaim := Airbender.machine_run_is_sequential
+
+#print axioms Airbender.machine_run_is_sequential
+
+example : Airbender.MachineRunIsSequentialSatisfiableClaim := Airbender.machine_run_is_sequential_satisfiable
+
+#print axioms Airbender.machine_run_is_sequential_satisfiable

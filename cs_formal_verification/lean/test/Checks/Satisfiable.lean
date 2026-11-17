@@ -1490,18 +1490,25 @@ example (claim : Airbender.Compiler.NativeWorkerLookups.CachedWorkerLookupSelect
         .ok ((Airbender.Compiler.NativeWorkerLookups.selectorsFor family).map (fun selector => (selector.gate, selector.operand))) :=
   fun ⟨family, nonempty, _⟩ => ⟨family, nonempty, (claim family).1⟩
 
-/-- Every target worker has a certificate with native nativeHolds, placement, lookups and execute one. -/
+/-- Every target worker has a certificate with native gates, placement, lookups and execute one. -/
 example (family : Airbender.Compiler.NativeWorkerLookups.Family) :
     ∃ entry : Airbender.Compiler.WorkerCertificate, entry.family = family :=
   Airbender.Compiler.cached_worker_certificates_satisfiable family
 
 example (claim : Airbender.RunSailSimulationClaim) : Airbender.RunSailSimulationSatisfiableClaim →
-    ∃ (program : SailRV32.SailM (SailRV32.RegisterType .PC)) (state : Human.SailState)
-      (value : SailRV32.RegisterType .PC) (state' : Human.SailState),
-      Human.runSail program state = .ok value state' :=
-  fun ⟨program, state, sequential, value, sequential', avoids, agrees, run⟩ =>
-    let ⟨state', ours, _⟩ := (claim program state sequential avoids agrees).1 value sequential' run
-    ⟨program, state, value, state', ours⟩
+    ∃ (program : SailRV32.SailM (SailRV32.RegisterType .PC)) (sequential sequential' : Airbender.SequentialSailState)
+      (value : SailRV32.RegisterType .PC),
+      (Sail.ArchSem.interpretSailEffects program).run sequential = .ok value sequential' :=
+  fun ⟨program, state, state', sequential, value, agrees, run⟩ =>
+    let ⟨sequential', theirs, _⟩ := claim program state state' sequential value agrees run
+    ⟨program, sequential, sequential', value, theirs⟩
+
+example (claim : Airbender.MachineRunIsSequentialClaim) : Airbender.MachineRunIsSequentialSatisfiableClaim →
+    ∃ (n : Nat) (machine : Airbender.SequentialMachine) (machine' : Airbender.SequentialMachine),
+      1 ≤ n ∧ Airbender.SequentialMachine.run n machine = some machine' :=
+  fun ⟨n, machine, machine', sequential, positive, agrees, run⟩ =>
+    let ⟨_, theirs, _⟩ := claim n machine machine' sequential agrees run
+    ⟨n, _, _, positive, theirs⟩
 
 -- Native RAM outputs and padded native targets.
 

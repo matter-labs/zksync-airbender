@@ -94,78 +94,66 @@ theorem sequential_writeBytes {size : Nat} (addr : Nat) (value : BitVec (8 * siz
   unfold Sail.ArchSem.writeBytes
   exact forM_insert _ (fun _ _ _ => rfl) _ sequential
 
-/-- Writes agree on every byte that the lean-sail map holds. -/
+/-- Writes keep the agreement. -/
 theorem write_agrees {state : SailState} {sequential : SequentialSailState}
     (agrees : SequentialAgrees state sequential) {size : Nat} (addr : Nat) (value : BitVec (8 * size)) :
     SequentialAgrees { state with mem := writeBytes state.mem addr size value }
       { sequential with
         mem := (List.ofFn fun index : Fin size => (addr + index.val, value.extractLsb' (8 * index.val) 8)).foldl
           (fun map entry => map.insert entry.1 entry.2) sequential.mem } := by
-  refine ⟨agrees.regs, ?_⟩
-  intro a byte present
-  change writeBytes state.mem addr size value a = byte
-  rw [writeBytes_apply]
-  rw [get?_foldl_insert (fun index => value.extractLsb' (8 * index) 8)] at present
+  refine ⟨agrees.regs, ?_, agrees.cycles⟩
+  intro a reach
+  change _ = some (writeBytes state.mem addr size value a)
+  rw [writeBytes_apply, get?_foldl_insert (fun index => value.extractLsb' (8 * index) 8)]
   by_cases inside : addr ≤ a ∧ a < addr + size
-  · rw [ite_eq_left inside] at present ⊢
-    exact Option.some.inj present
-  · rw [ite_eq_right inside] at present ⊢
-    exact agrees.mem a byte present
+  · rw [ite_eq_left inside, ite_eq_left inside]
+  · rw [ite_eq_right inside, ite_eq_right inside]
+    exact agrees.mem a reach
 
-/-- lean-sail's multi-byte read returns the `runSail` bytes, or it stops at a byte that its map does not hold. -/
-theorem sequential_readBytes {state : SailState} {sequential : SequentialSailState}
-    (agrees : SequentialAgrees state sequential) (size : Nat) :
-    ∀ addr : Nat,
-      (Sail.ArchSem.readBytes (ue := exception) size addr) sequential = .ok (readBytes state.mem addr size) sequential ∨
-        ∃ missing, (Sail.ArchSem.readBytes (ue := exception) size addr) sequential =
-          .error (.OutOfMemoryRange missing) sequential := by
+/-- `readBytes` reads only the bytes of its range. -/
+theorem readBytes_congr (mem mem' : Nat → BitVec 8) (size : Nat) :
+    ∀ addr : Nat, (∀ index, index < size → mem (addr + index) = mem' (addr + index)) →
+      readBytes mem addr size = readBytes mem' addr size := by
+  induction size with
+  | zero => intro addr _; rfl
+  | succ size ih =>
+    intro addr same
+    have first : mem addr = mem' addr := same 0 (by omega)
+    have rest := ih (addr + 1) fun index bound => by
+      have shifted := same (index + 1) (by omega)
+      rwa [show addr + (index + 1) = addr + 1 + index by omega] at shifted
+    simp only [Airbender.Reference.RiscV.Sail.Configuration.readBytes, first, rest]
+
+/-- lean-sail's multi-byte read returns the `runSail` bytes when its map holds every byte of the range. -/
+theorem sequential_readBytes (mem : Nat → BitVec 8) {sequential : SequentialSailState} (size : Nat) :
+    ∀ addr : Nat, (∀ index, index < size → sequential.mem.get? (addr + index) = some (mem (addr + index))) →
+      (Sail.ArchSem.readBytes (ue := exception) size addr) sequential = .ok (readBytes mem addr size) sequential := by
   induction size with
   | zero =>
-    intro addr
-    left
+    intro addr _
     change EStateM.Result.ok default sequential = _
     congr 1
   | succ size ih =>
-    intro addr
-    cases present : sequential.mem.get? addr with
-    | none =>
-      right
-      refine ⟨addr, ?_⟩
-      cases size with
-      | zero =>
-        change Sail.ArchSem.readBytes (ue := exception) 1 addr sequential = _
-        simp only [Sail.ArchSem.readBytes, Sail.ArchSem.readByte, bind, EStateM.bind, get, getThe,
-          MonadStateOf.get, EStateM.get, present]
-        rfl
-      | succ size =>
-        simp only [Sail.ArchSem.readBytes, Sail.ArchSem.readByte, bind, EStateM.bind, get, getThe,
-          MonadStateOf.get, EStateM.get, present]
-        rfl
-    | some byte =>
-      have equal : state.mem addr = byte := agrees.mem addr byte present
-      cases size with
-      | zero =>
-        left
-        change Sail.ArchSem.readBytes (ue := exception) 1 addr sequential = _
-        simp only [Sail.ArchSem.readBytes, Sail.ArchSem.readByte, bind, EStateM.bind, get, getThe,
-          MonadStateOf.get, EStateM.get, present, pure, EStateM.pure]
-        congr 1
-        apply BitVec.eq_of_getLsbD_eq
-        intro index bound
-        rw [Airbender.Reference.RiscV.Sail.Configuration.readBytes]
-        simp only [BitVec.append_eq]
-        simp only [BitVec.getLsbD_append]
-        simp [equal, bound]
-      | succ size =>
-        rcases ih (addr + 1) with rest | ⟨missing, rest⟩
-        · left
-          simp only [Sail.ArchSem.readBytes, Sail.ArchSem.readByte, bind, EStateM.bind, get, getThe,
-            MonadStateOf.get, EStateM.get, present, pure, EStateM.pure, rest]
-          rw [← equal]
-          rfl
-        · right
-          refine ⟨missing, ?_⟩
-          simp only [Sail.ArchSem.readBytes, Sail.ArchSem.readByte, bind, EStateM.bind, get, getThe,
-            MonadStateOf.get, EStateM.get, present, pure, EStateM.pure, rest]
+    intro addr present
+    have first : sequential.mem.get? addr = some (mem addr) := by simpa using present 0 (by omega)
+    cases size with
+    | zero =>
+      change Sail.ArchSem.readBytes (ue := exception) 1 addr sequential = _
+      simp only [Sail.ArchSem.readBytes, Sail.ArchSem.readByte, bind, EStateM.bind, get, getThe,
+        MonadStateOf.get, EStateM.get, first, pure, EStateM.pure]
+      congr 1
+      apply BitVec.eq_of_getLsbD_eq
+      intro index bound
+      rw [Airbender.Reference.RiscV.Sail.Configuration.readBytes]
+      simp only [BitVec.append_eq]
+      simp only [BitVec.getLsbD_append]
+      simp [bound]
+    | succ size =>
+      have rest := ih (addr + 1) fun index bound => by
+        have shifted := present (index + 1) (by omega)
+        rwa [show addr + (index + 1) = addr + 1 + index by omega] at shifted
+      simp only [Sail.ArchSem.readBytes, Sail.ArchSem.readByte, bind, EStateM.bind, get, getThe,
+        MonadStateOf.get, EStateM.get, first, pure, EStateM.pure, rest]
+      rfl
 
 end Proven.Interpreter

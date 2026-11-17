@@ -18,8 +18,10 @@ compose native acceptance, whole RV execution and the finite machine simulation.
 configuration and fetch results with separate witnesses.
 [Interpreter.lean](Interpreter.lean) relates `runSail` to lean-sail's `interpretSailEffects`.
 The kernel cannot evaluate the hash maps of lean-sail's state, so the claims use `runSail`.
-The simulation holds for every effect except the cycle-counter read, which the generated model does not use.
-Lean-sail can stop where `runSail` continues: on a register or byte that is not in its map, or on a tagged request.
+`runSail` makes the same request checks as lean-sail and keeps the same cycle counter.
+A lean-sail state agrees when it holds every register and every byte that a memory request can reach.
+From an agreeing state, every successful `runSail` run is the same lean-sail run, and every finite machine run
+is a run of the same length with lean-sail's interpreter. So each machine-run target also gives a lean-sail run.
 
 The Airbender machine uses the specification's own definitions for loads into x0,
 `mop.rr.N`, `mop.r.N`, CSR 0x7c0 and all delegations. These are machine overrides.

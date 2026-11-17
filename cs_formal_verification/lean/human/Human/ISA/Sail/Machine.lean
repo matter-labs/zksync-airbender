@@ -6,13 +6,14 @@ Sail's semantics is a program in an effect monad (`SailM`); `runSail` interprets
 `SailState`. `RunSailSimulationClaim` (`Interpreter.lean`) relates it to lean-sail's `interpretSailEffects`.
 
 The definitions are the Airbender configuration's (`Human/Helpers/Core/Configuration.lean`: `SailState`,
-`SailState.set`, `readBytes`, `writeBytes`, `applyEffect`, `runSail`), made available here under `Human`.
+`SailState.set`, `readBytes`, `writeBytes`, `checkRequest`, `applyEffect`, `runSail`), made available here under `Human`.
 -/
 import Human.Helpers.Core.Configuration
 
 namespace Human
 
 export Airbender.Reference.RiscV.Sail.Configuration
-  (SailState SailState.set SailState.mk SailState.regs SailState.mem SailStateM readBytes writeBytes applyEffect runSail)
+  (SailState SailState.set SailState.mk SailState.regs SailState.mem SailState.cycles SailStateM readBytes writeBytes
+    maxRequestBytes checkRequest applyEffect runSail)
 
 end Human

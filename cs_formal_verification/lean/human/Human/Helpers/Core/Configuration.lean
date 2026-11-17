@@ -4,7 +4,7 @@ import Human.ISA.State
 /-! # The Airbender machine's public configuration
 
 The same definition as the verifier branch's `HumanSail/Airbender.lean` (`misa`, `memoryMap`, `resetState`,
-`writtenByProgram`), on the simple Sail state `SailState` (every register, byte-addressed memory) that `runSail`
+`writtenByProgram`), on the simple Sail state `SailState` (every register, byte-addressed memory, cycle counter) that `runSail`
 interprets Sail's effects on.
 
 A state of the Airbender machine behaves as Sail with these register values: Sail's own reset (with
@@ -16,10 +16,14 @@ decoded extensions) and Airbender's memory map. Everything a program cannot chan
 namespace Airbender.Reference.RiscV.Sail.Configuration
 open _root_.Sail _root_.Sail.ArchSem SailRV32 SailRV32.Functions
 
-/-- All Sail registers and byte-addressed physical memory (used to compute the reset). -/
+/-- All Sail registers, byte-addressed physical memory and the cycle counter. -/
 structure SailState where
+  /-- The value of every Sail register. -/
   regs : (r : Register) → RegisterType r
+  /-- The byte at every physical address. -/
   mem  : Nat → BitVec 8
+  /-- The cycle counter: `clockCycle` increments it and `getCycleCount` reads it. -/
+  cycles : Nat
 
 /-- Set register `r` to `value`. -/
 def SailState.set (σ : SailState) (r : Register) (value : RegisterType r) : SailState :=
@@ -40,15 +44,29 @@ def writeBytes (mem : Nat → BitVec 8) (addr : Nat) : (numBytes : Nat) → BitV
     let restWritten := writeBytes mem (addr+1) n (bytes.extractLsb' 8 (8*n))
     fun a => if a = addr then bytes.extractLsb' 0 8 else restWritten a
 
-/-- How each Sail effect acts on the state (lean-sail's `interpretSailEffects`, on this state). -/
+/-- The largest memory request in bytes. A request reaches only bytes below `2 ^ 34 + maxRequestBytes`. -/
+def maxRequestBytes : Nat := 2 ^ 34
+
+/-- The checks on a memory request. It has no tags, as lean-sail's `interpretSailEffects` requires. It has at most
+    `maxRequestBytes` bytes, so it reaches only bytes that an agreeing lean-sail state holds. -/
+def checkRequest (req : MemRequest) : SailStateM Unit := do
+  if req.numTag != 0 then throw (.Assertion "Tagged memory not supported")
+  if maxRequestBytes < req.size then throw (.OutOfMemoryRange req.address.toNat)
+
+/-- How each Sail effect acts on the state, as lean-sail's `interpretSailEffects` does on its hash-map state.
+    `RunSailSimulationClaim` (`Human/ISA/Sail/Interpreter.lean`) states the relation. -/
 noncomputable def applyEffect : (eff : InstructionEffect) → SailStateM eff.ret
   | .regRead reg _ => do pure ((← get).regs reg)
   | .regWrite reg _ v => modify (·.set reg v)
   | .barrier _ | .cacheOp _ | .tlbOp _ | .translationStart _ | .translationEnd _ | .archException _
-  | .returnException | .memWriteAnnounce _ | .printMessage _ | .clockCycle => pure ()
-  | .getCycleCount => pure (0 : Nat)
-  | .memRead req => do pure (.ok (readBytes (← get).mem req.address.toNat req.size, 0#req.numTag))
+  | .returnException | .memWriteAnnounce _ | .printMessage _ => pure ()
+  | .clockCycle => modify fun s => { s with cycles := s.cycles + 1 }
+  | .getCycleCount => do pure (← get).cycles
+  | .memRead req => do
+      checkRequest req
+      pure (.ok (readBytes (← get).mem req.address.toNat req.size, 0#req.numTag))
   | .memWrite req v _ => do
+      checkRequest req
       modify fun s => { s with mem := writeBytes s.mem req.address.toNat req.size v }
       pure (.ok ())
 
@@ -87,7 +105,7 @@ def memoryMap : List PMA_Region :=
 /-- Sail's own initialisation and reset (all registers at their defaults, memory 0). -/
 noncomputable def sailResetRun :=
   runSail (do sail_model_init (); init_model "")
-    { regs := fun r => by cases r <;> exact default, mem := fun _ => 0 }
+    { regs := fun r => by cases r <;> exact default, mem := fun _ => 0, cycles := 0 }
 
 /-- The state after reset, with Airbender's `misa` and memory map. -/
 noncomputable def resetState : SailState :=

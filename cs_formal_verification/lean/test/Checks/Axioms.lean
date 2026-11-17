@@ -1694,3 +1694,7 @@ import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 #print axioms Airbender.Compiler.bigint_cached_memory
 
 #print axioms Airbender.Compiler.bigint_cached_memory_satisfiable
+
+#print axioms Airbender.machine_run_is_sequential
+
+#print axioms Airbender.machine_run_is_sequential_satisfiable

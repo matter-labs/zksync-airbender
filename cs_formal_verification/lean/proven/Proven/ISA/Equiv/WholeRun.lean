@@ -56,7 +56,7 @@ noncomputable def bootMachine (s : RV.State) : Airbender.Machine :=
       | .x31 => s.getReg 31
       | other => Airbender.resetState.regs other
       else Airbender.resetState.regs register),
-    fun address => s.loadView (BitVec.ofNat 32 address)⟩, s.mem, s.input⟩
+    fun address => s.loadView (BitVec.ofNat 32 address), 0⟩, s.mem, s.input⟩
 
 /-- The machine register bank has every public architectural value. -/
 theorem boot_registers (s : RV.State) (index : RV.Reg) :

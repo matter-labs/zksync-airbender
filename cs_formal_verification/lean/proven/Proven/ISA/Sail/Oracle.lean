@@ -21,11 +21,13 @@ def oracleEff (known : (r : Register) → Option (RegisterType r)) (knownMem : N
     (eff : InstructionEffect) → Option (InstructionEffect.ret eff)
   | .regRead reg _ => known reg
   | .regWrite .. => none
-  | .memRead req => (knownBytes knownMem req.address.toNat req.size).map fun v => .ok (v, 0#req.numTag)
-  | .memWrite .. => none
-  | .getCycleCount => some (0 : Nat)
+  | .memRead req =>
+      if req.numTag = 0 ∧ req.size ≤ maxRequestBytes then
+        (knownBytes knownMem req.address.toNat req.size).map fun v => .ok (v, 0#req.numTag)
+      else none
+  | .memWrite .. | .getCycleCount | .clockCycle => none
   | .barrier _ | .cacheOp _ | .tlbOp _ | .translationStart _ | .translationEnd _ | .archException _
-  | .returnException | .memWriteAnnounce _ | .printMessage _ | .clockCycle => some ()
+  | .returnException | .memWriteAnnounce _ | .printMessage _ => some ()
 
 /-- Oracle run with `n` effects of fuel. Resolves choices to index 0 exactly as `runSail` does. -/
 def oracleGo {α : Type} (known : (r : Register) → Option (RegisterType r))
@@ -68,6 +70,27 @@ theorem knownBytes_sound (km : Nat → Option (BitVec 8)) (mem : Nat → BitVec 
       rfl
     · simp at h
 
+/-- A request with no tags and at most `maxRequestBytes` bytes passes the request checks. -/
+theorem checkRequest_ok {req : MemRequest} (untagged : req.numTag = 0) (small : req.size ≤ maxRequestBytes)
+    (s : SailState) : checkRequest req s = .ok () s := by
+  have tagFlag : (req.numTag != 0) = false := by simp [untagged]
+  have sizeFlag : ¬ maxRequestBytes < req.size := by omega
+  simp only [checkRequest, tagFlag, sizeFlag, Bool.false_eq_true, ↓reduceIte, pure, EStateM.pure]
+
+/-- A memory read that passes the request checks returns the bytes of the state. -/
+theorem applyEffect_memRead (req : MemRequest) (s : SailState) (checked : checkRequest req s = .ok () s) :
+    applyEffect (.memRead req) s = .ok (.ok (readBytes s.mem req.address.toNat req.size, 0#req.numTag)) s := by
+  simp only [applyEffect, bind, EStateM.bind, checked]
+  rfl
+
+/-- A memory write that passes the request checks writes the bytes of the value. -/
+theorem applyEffect_memWrite (req : MemRequest) (value : BitVec (8 * req.size)) (tags : BitVec req.numTag)
+    (s : SailState) (checked : checkRequest req s = .ok () s) :
+    applyEffect (.memWrite req value tags) s =
+      .ok (.ok ()) { s with mem := writeBytes s.mem req.address.toNat req.size value } := by
+  simp only [applyEffect, bind, EStateM.bind, checked]
+  rfl
+
 theorem oracleEff_sound (known : (r : Register) → Option (RegisterType r))
     (km : Nat → Option (BitVec 8)) (s : SailState)
     (hk : ∀ r v, known r = some v → s.regs r = v) (hm : ∀ i b, km i = some b → s.mem i = b)
@@ -83,19 +106,23 @@ theorem oracleEff_sound (known : (r : Register) → Option (RegisterType r))
   | regWrite => simp [oracleEff] at h
   | memRead req =>
     simp only [oracleEff] at h
-    cases hb : knownBytes km req.address.toNat req.size with
-    | none => rw [hb] at h; cases h
-    | some w =>
-      rw [hb] at h
-      change some (Except.ok (w, 0#req.numTag)) = some v at h
+    by_cases checks : req.numTag = 0 ∧ req.size ≤ maxRequestBytes
+    · rw [ite_eq_left checks] at h
+      cases hb : knownBytes km req.address.toNat req.size with
+      | none => rw [hb] at h; cases h
+      | some w =>
+        rw [hb] at h
+        change some (Except.ok (w, 0#req.numTag)) = some v at h
+        cases h
+        rw [applyEffect_memRead req s (checkRequest_ok checks.1 checks.2 s),
+          knownBytes_sound km s.mem hm _ _ _ hb]
+    · rw [ite_eq_right checks] at h
       cases h
-      show EStateM.Result.ok (Except.ok (readBytes s.mem req.address.toNat req.size, 0#req.numTag)) s
-        = EStateM.Result.ok (Except.ok (w, 0#req.numTag)) s
-      rw [knownBytes_sound km s.mem hm _ _ _ hb]
   | memWrite => simp [oracleEff] at h
-  | getCycleCount => simp only [oracleEff] at h; cases h; rfl
+  | getCycleCount => simp [oracleEff] at h
+  | clockCycle => simp [oracleEff] at h
   | barrier _ | cacheOp _ | tlbOp _ | translationStart _ | translationEnd _ | archException _
-  | returnException | memWriteAnnounce _ | printMessage _ | clockCycle =>
+  | returnException | memWriteAnnounce _ | printMessage _ =>
     simp only [oracleEff] at h; cases h; rfl
 
 theorem liftM_impure_ok {ε σ α Eff : Type} [Effect Eff] (I : (e : Eff) → EStateM ε σ (Effect.ret e))
