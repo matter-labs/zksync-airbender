@@ -44,4 +44,6 @@ the relevant input relations; no assumed ABI validity closes them.
 [Trace/Delegation](../../Trace/Delegation/README.md) owns execution and composition.
 
 The machine targets use the delegation spec for undefined controls and worker pointer use, without a validity premise.
-The [valid-use claims](../../ISA/ValidUse/Theorems.lean) give the independent BLAKE2s, Keccak and bigint references for aligned, distinct RAM buffers and valid controls.
+The [valid-use claims](../../ISA/ValidUse/Theorems.lean) give independent BLAKE2s, Keccak and bigint references.
+They require aligned, separate RAM buffers and valid controls.
+The bigint reference uses `BitVec 256` arithmetic and a 512-bit product for MUL_HIGH.

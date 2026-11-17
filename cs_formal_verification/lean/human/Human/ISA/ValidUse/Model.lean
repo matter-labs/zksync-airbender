@@ -42,29 +42,28 @@ def Hash (reduced right : Bool) (state : State) (left sibling : Word) : Prop :=
 def Keccak (state : State) (pointer : Word) : Prop :=
   ROM_END ≤ pointer.toNat ∧ KeccakAssumptions state pointer
 
-/-- Decode eight little-endian words as a natural number. -/
-def bigintValue (words : Vector Word 8) : Nat :=
-  (List.finRange 8).foldr (fun i value => words[i].toNat + 2 ^ 32 * value) 0
+/-- Decode eight little-endian words by bit-vector concatenation. -/
+def bigintValue (words : Vector Word 8) : BitVec 256 :=
+  words[7] ++ words[6] ++ words[5] ++ words[4] ++ words[3] ++ words[2] ++ words[1] ++ words[0]
 
-/-- Encode the low 256 bits as eight little-endian words. -/
-def bigintWords (value : Nat) : Vector Word 8 :=
-  Vector.ofFn fun i => BitVec.ofNat 32 (value / 2 ^ (32 * i.val))
+/-- Extract the eight little-endian words of a 256-bit value. -/
+def bigintWords (value : BitVec 256) : Vector Word 8 :=
+  Vector.ofFn fun index => value.extractLsb' (32 * index.val) 32
 
-/-- The supported u256 operations use natural-number arithmetic and return a carry, borrow or equality flag. -/
-def bigintOperation (operation : Nat) (carry : Bool) (left right : Nat) : Option (Nat × Bool) :=
-  let incoming := if carry then 1 else 0
-  let modulus := 2 ^ 256
-  match operation with
-  | 1 => some (left + right + incoming, modulus ≤ left + right + incoming)
-  | 2 => some (modulus + left - (right + incoming), left < right + incoming)
-  | 4 => some (modulus + right - (left + incoming), right < left + incoming)
-  | 8 => some (left * right, modulus ≤ left * right)
-  | 16 => some (left * right / modulus, false)
-  | 32 => some (left, decide (left = right))
-  | 128 => some (right + incoming, modulus ≤ right + incoming)
+/-- The u256 operations use bit-vector arithmetic and unsigned carry, borrow and equality flags. -/
+def bigintOperation (code : Nat) (carry : Bool) (left right : BitVec 256) : Option (BitVec 256 × Bool) :=
+  let incoming : BitVec 256 := if carry then 1 else 0
+  match code with
+  | 1 => some (left + right + incoming, 2 ^ 256 ≤ left.toNat + right.toNat + incoming.toNat)
+  | 2 => some (left - right - incoming, left.toNat < right.toNat + incoming.toNat)
+  | 4 => some (right - left - incoming, right.toNat < left.toNat + incoming.toNat)
+  | 8 => some (left * right, 2 ^ 256 ≤ left.toNat * right.toNat)
+  | 16 => some (((left.zeroExtend 512) * (right.zeroExtend 512)).extractLsb' 256 256, false)
+  | 32 => some (left, decide (left.toNat = right.toNat))
+  | 128 => some (right + incoming, 2 ^ 256 ≤ right.toNat + incoming.toNat)
   | _ => none
 
-/-- The independent bigint reference decodes RAM, applies the selected u256 operation and encodes its result. -/
+/-- The independent bigint reference uses concatenation, u256 arithmetic and word extraction. -/
 def bigintReference (state : State) : Option Effect :=
   (bigintOperation ((state.getReg 12) &&& 0xbf#32).toNat ((state.getReg 12).getLsbD 6)
     (bigintValue (readWords state.mem (state.getReg 10) 8))

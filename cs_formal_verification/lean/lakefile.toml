@@ -433,6 +433,7 @@ roots = [
   "Tests.LookupSelectorGroups",
   "Tests.VerifierBoundary",
   "Tests.Bigint",
+  "Tests.BigintReferenceVectors",
   "Tests.BigintAbi",
   "Tests.BigintAddresses",
   "Tests.BigintMemory",

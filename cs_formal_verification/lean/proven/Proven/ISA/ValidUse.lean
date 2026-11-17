@@ -1,6 +1,7 @@
 module
 public import Human.ISA.ValidUse.Theorems
 public import Proven.Final.ISA.DelegationRuns
+public import Proven.ISA.ValidUse.Bigint
 
 @[expose] public section
 namespace RV.ValidUse.Proofs
@@ -19,11 +20,11 @@ theorem bigint_reference : BigintReferenceClaim := by
     (Nat.mod_le _ _).trans_lt control.1
   simp only [Delegation.effect, Delegation.bigint, bigintReference, State.delegationRAM]
   rw [ite_eq_left ⟨left.2.1, right.2.2, right.2.1, different, low⟩]
-  have operation := control.2
-  simp only [List.mem_cons, List.not_mem_nil, or_false] at operation
-  rcases operation with operation | operation | operation | operation | operation | operation | operation <;>
-    simp only [Delegation.bigintOp, bigintOperation, operation, bigintValue, bigintWords,
-      Delegation.toU256, Delegation.ofU256] <;> rfl
+  have same := BigintReferenceProofs.words_operation_value ((state.getReg 12) &&& 0xbf#32) ((state.getReg 12).getLsbD 6)
+    (readWords state.mem (state.getReg 10) 8) (readWords state.mem (state.getReg 11) 8) control.2
+  have mapped := congrArg (Option.map (fun result : Vector Word 8 × Bool =>
+    ({ writes := writesAt (state.getReg 10) result.1, reg := 12, val := if result.2 then 1 else 0 } : Effect))) same
+  simpa only [Option.map_map, Function.comp_def] using mapped
 
 /-- Both complete G schedules keep their independent BLAKE2s round reference. -/
 theorem g_reference : GReferenceClaim := by
