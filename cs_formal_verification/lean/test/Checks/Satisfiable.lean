@@ -1025,48 +1025,40 @@ example (claim : Airbender.Trace.Machine.Native.UnrolledFullFromNativeSailClaim)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
     BootInputs .unrolledFullUnsigned trace initial cells program InitsTeardowns.importedLayout inits ∧
-    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
-    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NoSpecial5 program ∧
     NonDeterminism.Pooled.StreamPorts trace initial.input ∧
     NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
     ∃ certificates : List (ProgramLogicalRowCertificate tables),
       UnrolledNativeArguments tables certificates trace workers ∧
     (SailRealizes trace initial cells (NonDeterminism.Pooled.readCount trace)) :=
-  fun ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, premise4, premise5, premise6, premise7, certificates, premise8⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, premise4, premise5, premise6, premise7, certificates, premise8, claim trace workers initial cells program inits tables premise0 premise1 premise2 premise3 premise4 premise5 premise6 premise7 certificates premise8⟩
+  fun ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, premise4, certificates, premise5⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, premise4, certificates, premise5, claim trace workers initial cells program inits tables premise0 premise1 premise2 premise3 premise4 certificates premise5⟩
 
 example (claim : Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSailClaim) : Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSailSatisfiableClaim →
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
     BootInputs .unrolledReduced trace initial cells program InitsTeardowns.importedLayout inits ∧
-    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
-    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NonDeterminism.Pooled.StreamPorts trace initial.input ∧
     NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
     ∃ certificates : List (ProgramLogicalRowCertificate tables),
       UnrolledNativeArguments tables certificates trace workers ∧
     (SailRealizes trace initial cells (NonDeterminism.Pooled.readCount trace)) :=
-  fun ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, premise4, premise5, premise6, certificates, premise7⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, premise4, premise5, premise6, certificates, premise7, claim trace workers initial cells program inits tables premise0 premise1 premise2 premise3 premise4 premise5 premise6 certificates premise7⟩
+  fun ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, certificates, premise4⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, certificates, premise4, claim trace workers initial cells program inits tables premise0 premise1 premise2 premise3 certificates premise4⟩
 
 example (claim : Airbender.Trace.Machine.Native.UnifiedFromNativeSailClaim) : Airbender.Trace.Machine.Native.UnifiedFromNativeSailSatisfiableClaim →
   ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)) (tables : ProgramLookupRows),
     BootInputs .unified trace initial cells program InitsTeardowns.unifiedLayout inits ∧
-    trace.rom = UnifiedReduced.Setup.tableRV initial ∧
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NoSpecial5 program ∧ UnifiedStreamPorts trace initial.input ∧
     NativePublicSetup.Bound initial program tables ∧
     ∃ certificates : List (UnifiedLogicalRowCertificate tables),
       UnifiedNativeArguments tables certificates trace workers ∧
     (SailRealizes trace initial cells (unifiedReadCount trace)) :=
-  fun ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, premise4, premise5, certificates, premise6⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, premise4, premise5, certificates, premise6, claim trace workers initial cells program inits tables premise0 premise1 premise2 premise3 premise4 premise5 certificates premise6⟩
+  fun ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, certificates, premise4⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, premise0, premise1, premise2, premise3, certificates, premise4, claim trace workers initial cells program inits tables premise0 premise1 premise2 premise3 certificates premise4⟩
 
 end Airbender.Trace.Machine.Native
 
@@ -1422,17 +1414,14 @@ example (claim : Airbender.Trace.Machine.Native.UnrolledFullFromNative) :
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
     trace.rows.length = 1 ∧ workers.standard.rows = [] ∧ workers.split.rows = [] ∧
     BootInputs .unrolledFullUnsigned trace initial cells program InitsTeardowns.importedLayout inits ∧
-    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
-    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NoSpecial5 program ∧
     NonDeterminism.Pooled.StreamPorts trace initial.input ∧
     NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
     ∃ certificates : List (ProgramLogicalRowCertificate tables),
       UnrolledNativeArguments tables certificates trace workers ∧
     RVRealizes trace initial cells (NonDeterminism.Pooled.readCount trace) :=
-  fun ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, wordSetup, subwordSetup, workerSetup, noSpecial, stream, bound, covers, certificates, arguments⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, wordSetup, subwordSetup, workerSetup, noSpecial, stream, bound, covers, certificates, arguments, claim trace workers initial cells program inits tables boot wordSetup subwordSetup workerSetup noSpecial stream bound covers certificates arguments⟩
+  fun ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, noSpecial, stream, bound, covers, certificates, arguments⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, noSpecial, stream, bound, covers, certificates, arguments, claim trace workers initial cells program inits tables boot noSpecial stream bound covers certificates arguments⟩
 
 example (claim : Airbender.Trace.Machine.Native.UnrolledReducedFromNative) :
     Airbender.Trace.Machine.Native.UnrolledReducedFromNativeSatisfiableClaim →
@@ -1441,16 +1430,13 @@ example (claim : Airbender.Trace.Machine.Native.UnrolledReducedFromNative) :
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
     trace.rows.length = 1 ∧ workers.standard.rows = [] ∧ workers.split.rows = [] ∧
     BootInputs .unrolledReduced trace initial cells program InitsTeardowns.importedLayout inits ∧
-    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
-    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NonDeterminism.Pooled.StreamPorts trace initial.input ∧
     NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
     ∃ certificates : List (ProgramLogicalRowCertificate tables),
       UnrolledNativeArguments tables certificates trace workers ∧
     RVRealizes trace initial cells (NonDeterminism.Pooled.readCount trace) :=
-  fun ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, wordSetup, subwordSetup, workerSetup, stream, bound, covers, certificates, arguments⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, wordSetup, subwordSetup, workerSetup, stream, bound, covers, certificates, arguments, claim trace workers initial cells program inits tables boot wordSetup subwordSetup workerSetup stream bound covers certificates arguments⟩
+  fun ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, stream, bound, covers, certificates, arguments⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, stream, bound, covers, certificates, arguments, claim trace workers initial cells program inits tables boot stream bound covers certificates arguments⟩
 
 example (claim : Airbender.Trace.Machine.Native.UnifiedFromNative) :
     Airbender.Trace.Machine.Native.UnifiedFromNativeSatisfiableClaim →
@@ -1459,15 +1445,13 @@ example (claim : Airbender.Trace.Machine.Native.UnifiedFromNative) :
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)) (tables : ProgramLookupRows),
     trace.rows.length = 16 ∧ workers.standard.rows.length = 2 ∧ workers.split.rows = [] ∧
     BootInputs .unified trace initial cells program InitsTeardowns.unifiedLayout inits ∧
-    trace.rom = UnifiedReduced.Setup.tableRV initial ∧
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NoSpecial5 program ∧ UnifiedStreamPorts trace initial.input ∧
     NativePublicSetup.Bound initial program tables ∧
     ∃ certificates : List (UnifiedLogicalRowCertificate tables),
       UnifiedNativeArguments tables certificates trace workers ∧
     RVRealizes trace initial cells (unifiedReadCount trace) :=
-  fun ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, setup, workerSetup, noSpecial, stream, bound, certificates, arguments⟩ =>
-    ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, setup, workerSetup, noSpecial, stream, bound, certificates, arguments, claim trace workers initial cells program inits tables boot setup workerSetup noSpecial stream bound certificates arguments⟩
+  fun ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, noSpecial, stream, bound, certificates, arguments⟩ =>
+    ⟨trace, workers, initial, cells, program, inits, tables, row_count, worker_count, split_rows, boot, noSpecial, stream, bound, certificates, arguments, claim trace workers initial cells program inits tables boot noSpecial stream bound certificates arguments⟩
 
 end Airbender.Trace.Machine.Native
 

@@ -14,25 +14,29 @@ set_option warningAsError true
 
 /-- Current cached native certificates imply the full unsigned whole-machine run. -/
 theorem unrolled_full_from_native : UnrolledFullFromNative := by
-  intro trace workers initial cells program inits tables boot wordSetup subwordSetup workerSetup
-    noSpecial stream bound covers certificates arguments
-  exact Machine.unrolled_full_unsigned trace workers initial cells program inits boot wordSetup subwordSetup
-    workerSetup noSpecial stream
-    (NativeAcceptance.unrolled bound cells covers certificates trace workers arguments wordSetup subwordSetup workerSetup boot.initialBoundary)
+  intro trace workers initial cells program inits tables boot noSpecial stream bound covers certificates arguments
+  exact Machine.unrolled_full_unsigned (NativeAcceptance.withPooledSetup trace initial cells)
+    (NativeAcceptance.withModeledSetup workers)
+    initial cells program inits { boot with } rfl rfl rfl noSpecial stream
+    (NativeAcceptance.unrolled_description bound covers certificates arguments boot.initialBoundary)
 
 /-- Current cached native certificates imply the reduced whole-machine run. -/
 theorem unrolled_reduced_from_native : UnrolledReducedFromNative := by
-  intro trace workers initial cells program inits tables boot wordSetup subwordSetup workerSetup
-    stream bound covers certificates arguments
-  exact Machine.unrolled_reduced trace workers initial cells program inits boot wordSetup subwordSetup
-    workerSetup stream
-    (NativeAcceptance.unrolled bound cells covers certificates trace workers arguments wordSetup subwordSetup workerSetup boot.initialBoundary)
+  intro trace workers initial cells program inits tables boot stream bound covers certificates arguments
+  exact Machine.unrolled_reduced (NativeAcceptance.withPooledSetup trace initial cells)
+    (NativeAcceptance.withModeledSetup workers)
+    initial cells program inits { boot with } rfl rfl rfl stream
+    (NativeAcceptance.unrolled_description bound covers certificates arguments boot.initialBoundary)
 
 /-- Current cached native certificates imply the unified whole-machine run. -/
 theorem unified_from_native : UnifiedFromNative := by
-  intro trace workers initial cells program inits tables boot setup workerSetup noSpecial stream bound certificates arguments
-  exact Machine.unified trace workers initial cells program inits boot setup workerSetup noSpecial stream
-    (NativeAcceptance.unified bound certificates trace workers arguments setup workerSetup boot.initialBoundary)
+  intro trace workers initial cells program inits tables boot noSpecial stream bound certificates arguments
+  exact Machine.unified (NativeAcceptance.withUnifiedSetup trace initial)
+    (NativeAcceptance.withModeledSetup workers)
+    initial cells program inits { boot with } rfl rfl noSpecial stream
+    (NativeAcceptance.unified bound certificates _ _
+      ⟨arguments.workerRows, arguments.rows, arguments.states, arguments.requests, arguments.memory⟩
+      rfl rfl boot.initialBoundary)
 
 end Airbender.Trace.Machine.Native
 

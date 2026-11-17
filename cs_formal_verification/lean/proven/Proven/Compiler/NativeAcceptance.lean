@@ -186,4 +186,29 @@ theorem unified {initial : RV.State} {program : List RVMachineProgramEntry}
     obtain ⟨cert, _, rfl⟩ := List.mem_map.mp (arguments.rows ▸ member)
     exact unified_decoded bound cert (incoming cert.row member)
 
+/-- The worker pools with the description worker tables. No native certificate reads this field. -/
+noncomputable def withModeledSetup (workers : WorkerPools babyBearModulus) : WorkerPools babyBearModulus :=
+  { workers with standard := { workers.standard with setup := Delegation.modeledSetup Keccak.Controller.rows } }
+
+/-- The pooled trace with the description ROM tables. No native certificate reads this field. -/
+def withPooledSetup (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell) :
+    PooledTrace babyBearModulus :=
+  { trace with rom := ⟨ROM.table cells (romImageRV initial cells), Verification.subwordTable (ROM.wordsRV initial)⟩ }
+
+/-- The unified trace with the description ROM table. No native certificate reads this field. -/
+def withUnifiedSetup (trace : UnifiedTrace babyBearModulus) (initial : RV.State) : UnifiedTrace babyBearModulus :=
+  { trace with rom := UnifiedReduced.Setup.tableRV initial }
+
+/-- Native unrolled premises transfer to the description model with the public setup fields. -/
+theorem unrolled_description {trace : PooledTrace babyBearModulus} {workers : WorkerPools babyBearModulus}
+    {initial : RV.State} {cells : List Cell} {program : List RVMachineProgramEntry} {tables : ProgramLookupRows}
+    (bound : Bound initial program tables) (covers : CoversROM cells)
+    (certificates : List (ProgramLogicalRowCertificate tables))
+    (arguments : UnrolledNativeArguments tables certificates trace workers)
+    (initialBoundary : trace.initial = PCState.boundary 0 (4, 0)) :
+    UnrolledAcceptance (withPooledSetup trace initial cells) (withModeledSetup workers) program :=
+  unrolled bound cells covers certificates _ _
+    ⟨arguments.workerRows, arguments.rows, arguments.states, arguments.requests, arguments.memory⟩
+    rfl rfl rfl initialBoundary
+
 end Airbender.Compiler.NativeAcceptance

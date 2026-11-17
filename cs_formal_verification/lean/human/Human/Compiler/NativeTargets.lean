@@ -12,9 +12,11 @@ open Airbender.Compiler
 
 /-- The full unsigned production machine executes the whole accepted trace, including standard and split workers.
     Public premises bind ROM bytes, register seeds, all initialization instances, their checked top bits,
-    the typed full statement verifier boundary, and the ROM tables. Worker tables are an explicit setup interface.
+    the typed full statement verifier boundary, and the public CPU lookup tables.
     Native CPU certificates supply the CPU equations, lookups and decoder membership.
     Cached worker certificates supply every worker equation, lookup and participation flag.
+    Worker lookups use the fixed public worker tables. The description setup fields `trace.rom` and
+    `workers.standard.setup` are not premises.
     State, request and memory matching are explicit interfaces.
     Response ports bind the independent input stream. Special5 and `mop.r.N` are excluded. Delegation validity is not a premise. -/
 def UnrolledFullFromNative : Prop :=
@@ -22,9 +24,6 @@ def UnrolledFullFromNative : Prop :=
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
     BootInputs .unrolledFullUnsigned trace initial cells program InitsTeardowns.importedLayout inits →
-    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) →
-    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) →
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows →
     NoSpecial5 program →
     NonDeterminism.Pooled.StreamPorts trace initial.input →
     NativePublicSetup.Bound initial program tables → NativePublicSetup.CoversROM cells →
@@ -34,10 +33,12 @@ def UnrolledFullFromNative : Prop :=
 
 /-- The reduced production machine executes the whole accepted trace with modular operations and round calls.
     Public premises bind ROM bytes, zero register seeds, all initialization instances, checked top bits,
-    the typed full statement verifier boundary and ROM tables. Worker setup is explicit.
+    the typed full statement verifier boundary and the public CPU lookup tables.
     The production program projection restricts the CPU and delegation families.
     Native CPU certificates supply the CPU equations, lookups and decoder membership.
     Cached worker certificates supply every worker equation, lookup and participation flag.
+    Worker lookups use the fixed public worker tables. The description setup fields `trace.rom` and
+    `workers.standard.setup` are not premises.
     State, request and memory matching are explicit interfaces.
     Response ports bind the independent input stream. Delegation validity is not a premise. -/
 def UnrolledReducedFromNative : Prop :=
@@ -45,9 +46,6 @@ def UnrolledReducedFromNative : Prop :=
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
     BootInputs .unrolledReduced trace initial cells program InitsTeardowns.importedLayout inits →
-    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) →
-    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) →
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows →
     NonDeterminism.Pooled.StreamPorts trace initial.input →
     NativePublicSetup.Bound initial program tables → NativePublicSetup.CoversROM cells →
     ∀ certificates : List (ProgramLogicalRowCertificate tables),
@@ -56,9 +54,11 @@ def UnrolledReducedFromNative : Prop :=
 
 /-- The unified production machine executes the whole accepted trace with modular and delegation operations.
     Public premises bind ROM bytes, register seeds, all trailing initialization instances and their checked top bits,
-    the typed full statement verifier boundary and the unified ROM table. Worker setup is explicit.
+    the typed full statement verifier boundary and the public unified lookup tables.
     Native CPU certificates supply the CPU equations, lookups and decoder membership.
     Cached worker certificates supply every worker equation, lookup and participation flag.
+    Worker lookups use the fixed public worker tables. The description setup fields `trace.rom` and
+    `workers.standard.setup` are not premises.
     State, request and memory matching are explicit interfaces.
     Response ports bind the independent input stream. Special5 is excluded. Delegation validity is not a premise. The initialized inline windows lie below `2 ^ 31`. -/
 def UnifiedFromNative : Prop :=
@@ -66,8 +66,6 @@ def UnifiedFromNative : Prop :=
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)) (tables : ProgramLookupRows),
     BootInputs .unified trace initial cells program InitsTeardowns.unifiedLayout inits →
-    trace.rom = UnifiedReduced.Setup.tableRV initial →
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows →
     NoSpecial5 program → UnifiedStreamPorts trace initial.input →
     NativePublicSetup.Bound initial program tables →
     ∀ certificates : List (UnifiedLogicalRowCertificate tables),
@@ -86,9 +84,6 @@ def UnrolledFullFromNativeSatisfiableClaim : Prop :=
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
     trace.rows.length = 1 ∧ workers.standard.rows = [] ∧ workers.split.rows = [] ∧
     BootInputs .unrolledFullUnsigned trace initial cells program InitsTeardowns.importedLayout inits ∧
-    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
-    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NoSpecial5 program ∧
     NonDeterminism.Pooled.StreamPorts trace initial.input ∧
     NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
@@ -102,9 +97,6 @@ def UnrolledReducedFromNativeSatisfiableClaim : Prop :=
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
     trace.rows.length = 1 ∧ workers.standard.rows = [] ∧ workers.split.rows = [] ∧
     BootInputs .unrolledReduced trace initial cells program InitsTeardowns.importedLayout inits ∧
-    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
-    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NonDeterminism.Pooled.StreamPorts trace initial.input ∧
     NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
     ∃ certificates : List (ProgramLogicalRowCertificate tables),
@@ -117,8 +109,6 @@ def UnifiedFromNativeSatisfiableClaim : Prop :=
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)) (tables : ProgramLookupRows),
     trace.rows.length = 16 ∧ workers.standard.rows.length = 2 ∧ workers.split.rows = [] ∧
     BootInputs .unified trace initial cells program InitsTeardowns.unifiedLayout inits ∧
-    trace.rom = UnifiedReduced.Setup.tableRV initial ∧
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NoSpecial5 program ∧ UnifiedStreamPorts trace initial.input ∧
     NativePublicSetup.Bound initial program tables ∧
     ∃ certificates : List (UnifiedLogicalRowCertificate tables),

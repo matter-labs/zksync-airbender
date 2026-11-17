@@ -24,7 +24,7 @@ theorem native_arguments : UnifiedNativeArguments tables certificates trace work
 /-- Sixteen CPU occurrences and two COPY workers meet every native target premise. -/
 theorem native_witness : Trace.Machine.Native.UnifiedFromNativeSatisfiableClaim :=
   ⟨trace, workers, initial, cells, program, inits, tables, row_counts.1, row_counts.2.1,
-    row_counts.2.2, boot, rfl, rfl, no_special, stream_ports, tables_bound, certificates, native_arguments⟩
+    row_counts.2.2, boot, no_special, stream_ports, tables_bound, certificates, native_arguments⟩
 
 end Airbender.NonVacuous.DynamicCopyLoop
 
