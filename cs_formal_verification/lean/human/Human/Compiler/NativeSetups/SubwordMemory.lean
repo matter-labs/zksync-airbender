@@ -1,11 +1,10 @@
 module
-public meta import Human.Import.NativeGrid
+public import Human.Import.SetupEmit
 
 @[expose] public section
 namespace Airbender.Compiler.NativeSetups
 
-/- Native setup validation and input tracking. Lake `needs` tracks the JSON;
-   `check_native_grid` binds the mathematical rows to the native rows. -/
-check_native_setup_input subwordMemorySetupInput from "artifacts/setup/subword-memory.json"
+/- The native subword-memory setup, imported as data. Lake `needs` tracks the JSON. -/
+import_setup_blocks subwordMemorySetup from "artifacts/setup/subword-memory.json"
 
 end Airbender.Compiler.NativeSetups

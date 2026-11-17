@@ -26,6 +26,8 @@ import Proven.Final.Circuits.Bigint.Setup
 import Proven.Final.Circuits.Blake2G.Setup
 import Proven.Final.Circuits.Keccak.Setup
 import Proven.Final.Compiler.WorkerSetup
+import Proven.Final.Compiler.FixedRows
+import Proven.Final.Helpers.Tables.Bytes
 -- Each final theorem (proven/Proven/Final) proves the statement of the same name in human/ (UpperCamelCase).
 import Proven.Final.Circuits.AddSub.RVTheorems
 import Proven.Final.Circuits.Bigint.RVTheorems
@@ -1209,3 +1211,27 @@ example : Airbender.Keccak.Controller.SetupImportClaim := @Airbender.Keccak.Cont
 example : Airbender.Compiler.NativeWorkerSetup.SetupImportClaim := @Airbender.Compiler.NativeWorkerSetup.setup_import
 
 #print axioms Airbender.Compiler.NativeWorkerSetup.setup_import
+
+example : Airbender.Verification.ShiftBinopImportClaim := @Airbender.Verification.shift_binop_import
+
+#print axioms Airbender.Verification.shift_binop_import
+
+example : Airbender.Compiler.NativeFixedRows.AddSubImportClaim := @Airbender.Compiler.NativeFixedRows.add_sub_import
+
+#print axioms Airbender.Compiler.NativeFixedRows.add_sub_import
+
+example : Airbender.Compiler.NativeFixedRows.JumpBranchImportClaim := @Airbender.Compiler.NativeFixedRows.jump_branch_import
+
+#print axioms Airbender.Compiler.NativeFixedRows.jump_branch_import
+
+example : Airbender.Compiler.NativeFixedRows.MulDivImportClaim := @Airbender.Compiler.NativeFixedRows.mul_div_import
+
+#print axioms Airbender.Compiler.NativeFixedRows.mul_div_import
+
+example : Airbender.Compiler.NativeFixedRows.WordMemoryImportClaim := @Airbender.Compiler.NativeFixedRows.word_memory_import
+
+#print axioms Airbender.Compiler.NativeFixedRows.word_memory_import
+
+example : Airbender.Compiler.NativeSetups.Range13ImportClaim := @Airbender.Compiler.NativeSetups.range13_import
+
+#print axioms Airbender.Compiler.NativeSetups.range13_import

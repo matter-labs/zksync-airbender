@@ -168,6 +168,12 @@ EXCEPTIONS = {
         'Airbender.Blake2G.Control.SetupImportClaim',
         'Airbender.Keccak.Controller.SetupImportClaim',
         'Airbender.Compiler.NativeWorkerSetup.SetupImportClaim',
+        'Airbender.Verification.ShiftBinopImportClaim',
+        'Airbender.Compiler.NativeFixedRows.AddSubImportClaim',
+        'Airbender.Compiler.NativeFixedRows.JumpBranchImportClaim',
+        'Airbender.Compiler.NativeFixedRows.MulDivImportClaim',
+        'Airbender.Compiler.NativeFixedRows.WordMemoryImportClaim',
+        'Airbender.Compiler.NativeSetups.Range13ImportClaim',
     },
     'constant': {
         'Airbender.MachineChecksClaim',

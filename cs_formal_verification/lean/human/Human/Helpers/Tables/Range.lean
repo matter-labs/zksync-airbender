@@ -24,12 +24,13 @@ def rangeTable {p : Nat} [Fact p.Prime] (name : String) (bound : Nat) : Table (Z
       exact ⟨⟨x.val, h⟩, (ZMod.natCast_zmod_val x).symm⟩
 }
 
-/-- Native 16-bit range. Every imported setup checks its complete increasing
-    prefix and zero padding in compiled code. Padding adds only zero. -/
+/-- Native 16-bit range. The public setup claims make the imported range column equal to its increasing prefix and
+    zero padding. Padding adds only zero. -/
 def range16Table {p : Nat} [Fact p.Prime] : Table (ZMod p) field :=
   rangeTable "Airbender.Range16" limbBase
 
-/-- Native `RangeCheck13`, table ID 26. `Human.Compiler.NativeSetups.Ranges` checks every row. -/
+/-- Native `RangeCheck13`, table ID 26. `Compiler.NativeSetups.Range13ImportClaim` makes every row equal to the
+    imported native table. -/
 def range13Table {p : Nat} [Fact p.Prime] : Table (ZMod p) field :=
   rangeTable "Airbender.Range13" 8192
 

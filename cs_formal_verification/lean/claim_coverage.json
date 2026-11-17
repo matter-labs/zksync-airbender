@@ -160,10 +160,30 @@
       "exception": "artifact",
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
+    "Airbender.Compiler.NativeFixedRows.AddSubImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
+    "Airbender.Compiler.NativeFixedRows.JumpBranchImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
+    "Airbender.Compiler.NativeFixedRows.MulDivImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
+    "Airbender.Compiler.NativeFixedRows.WordMemoryImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
     "Airbender.Compiler.NativeLookups.CachedLookupSelectorsClaim": {
       "witness": "Airbender.Compiler.NativeLookups.CachedLookupSelectorsSatisfiableClaim"
     },
     "Airbender.Compiler.NativeLookups.CachedLookupSelectorsSatisfiableClaim": {},
+    "Airbender.Compiler.NativeSetups.Range13ImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
     "Airbender.Compiler.NativeWorkerLookups.CachedWorkerLookupSelectorsClaim": {
       "witness": "Airbender.Compiler.NativeWorkerLookups.CachedWorkerLookupSelectorsSatisfiableClaim"
     },
@@ -704,6 +724,10 @@
       "witness": "Airbender.UnifiedReduced.WritesRangeCheckedSatisfiableClaim"
     },
     "Airbender.UnifiedReduced.WritesRangeCheckedSatisfiableClaim": {},
+    "Airbender.Verification.ShiftBinopImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
     "Airbender.VerifierBoundary.TerminalBoundSatisfiableClaim": {},
     "Airbender.VerifierBoundary.TerminalBoundSoundnessClaim": {
       "witness": "Airbender.VerifierBoundary.TerminalBoundSatisfiableClaim"

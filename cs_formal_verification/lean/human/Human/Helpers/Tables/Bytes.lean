@@ -2,13 +2,7 @@ module
 public import Human.Helpers.Tables.Lookups
 public import Human.Circuits.JumpBranchSlt.Tables.Control
 public import CleanCore.Utils.Field
-
-public import Human.Import.NativeGrid
 public import Human.Compiler.NativeSetups.ShiftBinop
-public import CleanCore.Utils.Field
-public meta import CleanCore.Utils.Field
-public meta import Human.Helpers.Tables.Lookups
-public meta import Human.Circuits.JumpBranchSlt.Tables.Control
 
 @[expose] public section
 
@@ -17,7 +11,7 @@ namespace Airbender.Verification
 /- Fixed-table reconstruction for `shift_binop_tables` in
    cs/src/gkr_circuits/binary_shifts_family/circuit.rs. Row generators are in
    cs/src/tables/{binops,shift_opcode_related}.rs; IDs in definitions/table_type.rs.
-   The compiled comparison below binds every fixed row to the native setup.
+   `ShiftBinopImportClaim` makes every row equal to the imported native setup.
    Clean supplies static-table membership and byte-pair decomposition. -/
 
 /-- Native 32-bit contribution of one source byte, as in Rust's shift table. -/
@@ -36,8 +30,7 @@ def binaryByteRow (tag index : Nat) : Vector Nat 10 :=
     if tag = 6 then a.val ||| b.val else a.val &&& b.val
   #v[a.val, b.val, output, 0, 0, 0, 0, 0, 0, tag]
 
-/-- All seven setup tables, with their actual tag and zero-padded columns.
-    The combined row count and offsets are checked during JSON import. -/
+/-- All seven setup tables, with their actual tag and zero-padded columns. -/
 def shiftBinopRow (index : Fin 524545) : Vector Nat 10 :=
   let n := index.val
   if n = 0 then #v[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -81,7 +74,14 @@ def shiftBinopLookup {p : Nat} [Fact p.Prime] (entry : Vector (Expression (ZMod 
   table := shiftBinopTable.toRaw
   entry := entry
 
-/- Compare every fixed row with the native export in trusted compiled code. -/
-check_native_grid "artifacts/setup/shift-binop.json" [0, 524545] ([0,1,2,3,4,5,6,7,8,9]) => (shiftBinopRow)
+/-- The fixed rows, the decoder rows of the setup fixture program, then zero padding, are the imported native rows on
+    the complete trace domain. The fixture program has no shift or binary instruction: each decoder row holds the
+    field element `-1` in every payload field and the tag 46. -/
+def ShiftBinopImportClaim : Prop :=
+  Compiler.NativeSetups.shiftBinopSetup.traceLen = 16777216 ∧
+  Compiler.NativeSetups.shiftBinopSetup.Rows fun index =>
+    if bound : index < 524545 then (shiftBinopRow ⟨index, bound⟩).map (fun n : Nat => (n : Int))
+    else if index < 1573121 then (Vector.replicate 9 ((babyBearModulus - 1 : Nat) : Int)).push 46
+    else Vector.replicate 10 0
 
 end Airbender.Verification

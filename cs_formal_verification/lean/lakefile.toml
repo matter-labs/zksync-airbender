@@ -522,6 +522,7 @@ roots = [
   "Tests.UnifiedDelegation",
   "Tests.WordMemory",
   "Tests.ImportSpotChecks",
+  "Tests.ImportSetupSpotChecks",
 ]
 
 # Compiled comparisons for every native fixed table region.
@@ -1802,12 +1803,6 @@ needs = ["native_setup_blake_g"]
 name = "native_setup_decoder_smoke"
 path = "artifacts/setup/decoder-smoke.json"
 text = true
-
-[[lean_lib]]
-name = "NativeSetupDecoderSmoke"
-srcDir = "human"
-roots = ["Human.Compiler.NativeSetups.DecoderSmoke"]
-needs = ["native_setup_decoder_smoke"]
 
 [[input_file]]
 name = "native_setup_inits_and_teardowns"

@@ -8,11 +8,10 @@ ROOT = Path(__file__).resolve().parents[1]
 DESTINATION = ROOT / 'test/Tests/NativeFixedRows'
 CHUNK = 262144
 REGIONS = (
-    ('JumpBranch', 'jump-branch', 4456448, 10, 'Airbender.Compiler.NativeFixedRows.jumpBranch'),
-    ('MulDiv', 'mul-div', 270336, 9, 'Airbender.Compiler.NativeFixedRows.mulDiv'),
-    ('WordMemory', 'word-memory', 1048577, 9, 'Airbender.Compiler.NativeFixedRows.wordMemory words'),
-    ('SubwordMemory', 'subword-memory', 13238273, 9, 'Verification.subwordRow words'),
-    ('Unified', 'unified', 2097537, 10, 'Airbender.Compiler.NativeFixedRows.unified words'),
+    ('SubwordMemory', 'subword-memory', 13238273, 9,
+     'Verification.subwordRow Airbender.Compiler.NativeSetups.fixtureWords'),
+    ('Unified', 'unified', 2097537, 10,
+     'Airbender.Compiler.NativeFixedRows.unified Airbender.Compiler.NativeSetups.fixtureWords'),
 )
 
 

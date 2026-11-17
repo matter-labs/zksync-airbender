@@ -9,6 +9,6 @@ open Airbender Airbender.Compiler
 
 /- Compare every native row in this slice with the mathematical fixed region. -/
 check_native_grid "artifacts/setup/subword-memory.json" [4718592, 262144] ([0, 1, 2, 3, 4, 5, 6, 7, 8]) =>
-  (fun index => Verification.subwordRow words ⟨index.val + 4718592, by have bound := index.isLt; omega⟩)
+  (fun index => Verification.subwordRow Airbender.Compiler.NativeSetups.fixtureWords ⟨index.val + 4718592, by have bound := index.isLt; omega⟩)
 
 end Tests.NativeFixedRows.SubwordMemory018

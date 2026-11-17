@@ -4,8 +4,9 @@ public meta import Lean
 
 public meta section
 
-/-! # TRUSTED: review. Native setup rows are compared with mathematical row functions
-    in compiled elaborator code. DECISION B uses these comparisons as the setup binding. -/
+/-! # TRUSTED: review. Native setup rows are compared with mathematical row functions in compiled elaborator code.
+    The test library uses `check_native_grid` for the subword and unified fixed regions, which no kernel claim
+    covers. -/
 
 namespace Airbender.Import.Setup
 open Lean Meta Elab Command
@@ -25,26 +26,6 @@ def compareGrid (data : SetupData) (start length : Nat) (selected : List Nat)
     for column in [:width] do
       unless actual[column]![index]! = (expected.toArray[column]! : Int) do
         throw s!"Native grid differs at row {index}, column {column}"
-
-/-- Validate the native ranges and table layout. -/
-def validateSetupInput (data : ParsedSetup) : Except String Unit := do
-  compareRanges data
-  for h : column in [0:data.columns.size] do
-    let _ ← structureColumn data.tables column data.columns[column]
-
-/- The stamp records the JSON for Lake dependency tracking. This command validates
-   ranges and table layout. DECISION B binds setup rows through `check_native_grid`. -/
-syntax "check_native_setup_input " ident " from " str : command
-elab_rules : command
-  | `(check_native_setup_input $name:ident from $path:str) => do
-    let raw ← IO.FS.readFile path.getString
-    let data ← match parseSetup raw with
-      | .ok data => pure data
-      | .error reason => throwError "Native setup parse failed: {reason}"
-    match validateSetupInput data with
-    | .ok () => pure ()
-    | .error reason => throwError "{reason}"
-    elabCommand (← `(@[expose] public def $name : Nat := $(quote ((hash raw).toNat))))
 
 /-- Compare a named mathematical grid with every selected native row. This compiled comparison is trusted. -/
 syntax "check_native_grid " str " [" num "," num "] " term:max " => " term : command

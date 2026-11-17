@@ -2,7 +2,6 @@ module
 import Human.Compiler.NativeSetups.AddSub
 import Human.Compiler.NativeSetups.Bigint
 import Human.Compiler.NativeSetups.BlakeG
-import Human.Compiler.NativeSetups.DecoderSmoke
 import Human.Compiler.NativeSetups.InitsTeardowns
 import Human.Compiler.NativeSetups.JumpBranch
 import Human.Compiler.NativeSetups.Keccak
@@ -65,34 +64,20 @@ run_cmd do
   | .error _ => pure ()
   | .ok _ => throwError "Overlapping native table regions accepted"
 
-/- Setup input modules retain one small content stamp and no unused setup columns. -/
+/- Every imported setup is emitted as `SetupData`. -/
 run_cmd do
-  let env ← getEnv
-  let declarations := env.constants.toList
-  let inputs : List (Name × Name × String) := [
-    (`Airbender.Compiler.NativeSetups.addSubSetup, `Airbender.Compiler.NativeSetups.addSubSetupInput, "artifacts/setup/add-sub.json"),
-    (`Airbender.Compiler.NativeSetups.decoderSmokeSetup, `Airbender.Compiler.NativeSetups.decoderSmokeSetupInput, "artifacts/setup/decoder-smoke.json"),
-    (`Airbender.Compiler.NativeSetups.initsTeardownsSetup, `Airbender.Compiler.NativeSetups.initsTeardownsSetupInput, "artifacts/setup/inits-and-teardowns.json"),
-    (`Airbender.Compiler.NativeSetups.jumpBranchSetup, `Airbender.Compiler.NativeSetups.jumpBranchSetupInput, "artifacts/setup/jump-branch.json"),
-    (`Airbender.Compiler.NativeSetups.mulDivSetup, `Airbender.Compiler.NativeSetups.mulDivSetupInput, "artifacts/setup/mul-div.json"),
-    (`Airbender.Compiler.NativeSetups.shiftBinopSetup, `Airbender.Compiler.NativeSetups.shiftBinopSetupInput, "artifacts/setup/shift-binop.json"),
-    (`Airbender.Compiler.NativeSetups.subwordMemorySetup, `Airbender.Compiler.NativeSetups.subwordMemorySetupInput, "artifacts/setup/subword-memory.json"),
-    (`Airbender.Compiler.NativeSetups.unifiedSetup, `Airbender.Compiler.NativeSetups.unifiedSetupInput, "artifacts/setup/unified.json"),
-    (`Airbender.Compiler.NativeSetups.wordMemorySetup, `Airbender.Compiler.NativeSetups.wordMemorySetupInput, "artifacts/setup/word-memory.json")]
-  for (old, stamp, path) in inputs do
-    let info ← getConstInfoDefn stamp
-    unless info.type.isConstOf ``Nat do
-      throwError "Setup input stamp has the wrong type: {stamp}"
-    let expected := mkNatLit ((hash (← IO.FS.readFile path)).toNat)
-    unless info.value == expected do
-      throwError "Setup input stamp differs from its JSON: {stamp}"
-    for (name, _) in declarations do
-      if name == old || name.toString.startsWith (old.toString ++ "_") then
-        throwError "Unused setup data remains: {name}"
   for name in [
       `Airbender.Compiler.NativeSetups.bigintSetup,
       `Airbender.Compiler.NativeSetups.blakeGSetup,
       `Airbender.Compiler.NativeSetups.keccakSetup,
+      `Airbender.Compiler.NativeSetups.mulDivSetup,
+      `Airbender.Compiler.NativeSetups.addSubSetup,
+      `Airbender.Compiler.NativeSetups.jumpBranchSetup,
+      `Airbender.Compiler.NativeSetups.subwordMemorySetup,
+      `Airbender.Compiler.NativeSetups.wordMemorySetup,
+      `Airbender.Compiler.NativeSetups.shiftBinopSetup,
+      `Airbender.Compiler.NativeSetups.initsTeardownsSetup,
+      `Airbender.Compiler.NativeSetups.unifiedSetup,
       `Airbender.Blake2Round.blake2RoundSetup,
       `Airbender.Keccak.Split.ColumnParity.columnParitySetup,
       `Airbender.Keccak.Split.ThetaRho.thetaRhoSetup,

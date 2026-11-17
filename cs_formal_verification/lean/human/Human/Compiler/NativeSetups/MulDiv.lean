@@ -1,11 +1,10 @@
 module
-public meta import Human.Import.NativeGrid
+public import Human.Import.SetupEmit
 
 @[expose] public section
 namespace Airbender.Compiler.NativeSetups
 
-/- Native setup validation and input tracking. Lake `needs` tracks the JSON;
-   `check_native_grid` binds the mathematical rows to the native rows. -/
-check_native_setup_input mulDivSetupInput from "artifacts/setup/mul-div.json"
+/- The native multiply/divide setup, imported as data. Lake `needs` tracks the JSON. -/
+import_setup_blocks mulDivSetup from "artifacts/setup/mul-div.json"
 
 end Airbender.Compiler.NativeSetups
