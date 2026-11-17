@@ -1621,11 +1621,11 @@ example (claim : Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNative) :
     ∃ certificates : List (ProgramRowCertificate tables),
       PaddedUnrolledNativeArguments tables certificates trace workers ∧
     RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (PaddingBoundary.active trace)) :=
-  fun ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, wordSetup, subwordSetup,
-      workerSetup, noSpecial, stream, bound, covers, certificates, arguments⟩ =>
+  fun ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, noSpecial, stream, bound,
+      covers, certificates, arguments⟩ =>
     ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, certificates, arguments,
-      claim trace workers initial cells program inits tables boot wordSetup subwordSetup workerSetup noSpecial stream
-        bound covers certificates arguments⟩
+      claim trace workers initial cells program inits tables boot noSpecial stream bound covers certificates
+        arguments⟩
 
 example (claim : Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNative) :
     Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativeSatisfiableClaim →
@@ -1637,11 +1637,10 @@ example (claim : Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNative)
     ∃ certificates : List (ProgramRowCertificate tables),
       PaddedUnrolledNativeArguments tables certificates trace workers ∧
     RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (PaddingBoundary.active trace)) :=
-  fun ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, wordSetup, subwordSetup,
-      workerSetup, stream, bound, covers, certificates, arguments⟩ =>
+  fun ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, stream, bound, covers,
+      certificates, arguments⟩ =>
     ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, certificates, arguments,
-      claim trace workers initial cells program inits tables boot wordSetup subwordSetup workerSetup stream
-        bound covers certificates arguments⟩
+      claim trace workers initial cells program inits tables boot stream bound covers certificates arguments⟩
 
 example (claim : Airbender.Trace.Machine.Native.PaddedUnifiedFromNative) :
     Airbender.Trace.Machine.Native.PaddedUnifiedFromNativeSatisfiableClaim →
@@ -1653,10 +1652,9 @@ example (claim : Airbender.Trace.Machine.Native.PaddedUnifiedFromNative) :
     ∃ certificates : List (UnifiedRowCertificate tables),
       PaddedUnifiedNativeArguments tables certificates trace workers ∧
     RVRealizes trace initial cells (unifiedReadCount (PaddingBoundary.active trace)) :=
-  fun ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, setup, workerSetup,
-      noSpecial, stream, bound, certificates, arguments⟩ =>
+  fun ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, noSpecial, stream, bound,
+      certificates, arguments⟩ =>
     ⟨trace, workers, initial, cells, program, inits, tables, active, padding, boot, certificates, arguments,
-      claim trace workers initial cells program inits tables boot setup workerSetup noSpecial stream bound
-        certificates arguments⟩
+      claim trace workers initial cells program inits tables boot noSpecial stream bound certificates arguments⟩
 
 end Airbender.Trace.Machine.Native

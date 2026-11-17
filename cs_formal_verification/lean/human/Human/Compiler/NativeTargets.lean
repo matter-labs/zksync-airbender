@@ -128,9 +128,6 @@ def PaddedUnrolledFullFromNative : Prop :=
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
     BootInputs .unrolledFullUnsigned (active trace) initial cells program InitsTeardowns.importedLayout inits →
-    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) →
-    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) →
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows →
     NoSpecial5 program →
     NonDeterminism.Pooled.StreamPorts (active trace) initial.input →
     NativePublicSetup.Bound initial program tables → NativePublicSetup.CoversROM cells →
@@ -147,9 +144,6 @@ def PaddedUnrolledReducedFromNative : Prop :=
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
     BootInputs .unrolledReduced (active trace) initial cells program InitsTeardowns.importedLayout inits →
-    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) →
-    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) →
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows →
     NonDeterminism.Pooled.StreamPorts (active trace) initial.input →
     NativePublicSetup.Bound initial program tables → NativePublicSetup.CoversROM cells →
     ∀ certificates : List (ProgramRowCertificate tables),
@@ -165,8 +159,6 @@ def PaddedUnifiedFromNative : Prop :=
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)) (tables : ProgramLookupRows),
     BootInputs .unified (active trace) initial cells program InitsTeardowns.unifiedLayout inits →
-    trace.rom = UnifiedReduced.Setup.tableRV initial →
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows →
     NoSpecial5 program → UnifiedStreamPorts (active trace) initial.input →
     NativePublicSetup.Bound initial program tables →
     ∀ certificates : List (UnifiedRowCertificate tables),
@@ -180,9 +172,6 @@ def PaddedUnrolledFullFromNativeSatisfiableClaim : Prop :=
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
     (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1 ∧
     BootInputs .unrolledFullUnsigned (active trace) initial cells program InitsTeardowns.importedLayout inits ∧
-    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
-    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NoSpecial5 program ∧
     NonDeterminism.Pooled.StreamPorts (active trace) initial.input ∧
     NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
@@ -196,9 +185,6 @@ def PaddedUnrolledReducedFromNativeSatisfiableClaim : Prop :=
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
     (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1 ∧
     BootInputs .unrolledReduced (active trace) initial cells program InitsTeardowns.importedLayout inits ∧
-    trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
-    trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NonDeterminism.Pooled.StreamPorts (active trace) initial.input ∧
     NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
     ∃ certificates : List (ProgramRowCertificate tables),
@@ -211,8 +197,6 @@ def PaddedUnifiedFromNativeSatisfiableClaim : Prop :=
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)) (tables : ProgramLookupRows),
     (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1 ∧
     BootInputs .unified (active trace) initial cells program InitsTeardowns.unifiedLayout inits ∧
-    trace.rom = UnifiedReduced.Setup.tableRV initial ∧
-    workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NoSpecial5 program ∧ UnifiedStreamPorts (active trace) initial.input ∧
     NativePublicSetup.Bound initial program tables ∧
     ∃ certificates : List (UnifiedRowCertificate tables),

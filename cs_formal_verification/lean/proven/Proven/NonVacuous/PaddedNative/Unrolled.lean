@@ -45,7 +45,7 @@ theorem arguments : PaddedUnrolledNativeArguments UnrolledNative.tables certific
 /-- One active ADD row and one padding row meet the padded full unsigned native premises. -/
 theorem full_witness : Native.PaddedUnrolledFullFromNativeSatisfiableClaim := by
   refine ⟨pooled, Machine.workers, PooledBoot.initial, PooledBoot.cells, UnrolledNative.program, PooledBoot.inits,
-    UnrolledNative.tables, pooled_sizes.2.2.1, pooled_sizes.2.2.2, ?_, rfl, rfl, rfl, UnrolledNative.no_special, ?_,
+    UnrolledNative.tables, pooled_sizes.2.2.1, pooled_sizes.2.2.2, ?_, UnrolledNative.no_special, ?_,
     UnrolledNative.tables_bound, UnrolledNative.covers_rom, certificates, arguments⟩
   · simpa only [pooled_active] using UnrolledNative.boot .unrolledFullUnsigned (Or.inl rfl)
   · simpa only [pooled_active] using UnrolledNative.stream_ports
@@ -53,7 +53,7 @@ theorem full_witness : Native.PaddedUnrolledFullFromNativeSatisfiableClaim := by
 /-- One active ADD row and one padding row meet the padded reduced native premises. -/
 theorem reduced_witness : Native.PaddedUnrolledReducedFromNativeSatisfiableClaim := by
   refine ⟨pooled, Machine.workers, PooledBoot.initial, PooledBoot.cells, UnrolledNative.program, PooledBoot.inits,
-    UnrolledNative.tables, pooled_sizes.2.2.1, pooled_sizes.2.2.2, ?_, rfl, rfl, rfl, ?_,
+    UnrolledNative.tables, pooled_sizes.2.2.1, pooled_sizes.2.2.2, ?_, ?_,
     UnrolledNative.tables_bound, UnrolledNative.covers_rom, certificates, arguments⟩
   · simpa only [pooled_active] using UnrolledNative.boot .unrolledReduced (Or.inr rfl)
   · simpa only [pooled_active] using UnrolledNative.stream_ports
