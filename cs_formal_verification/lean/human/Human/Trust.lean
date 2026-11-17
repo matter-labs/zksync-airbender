@@ -32,4 +32,28 @@ def trustedTacticModules : List String := [
   "Proven.Import.GKRProtocol.CleanLookupArgumentsImport",
   "Proven.Import.GKRProtocol.NumericExpressionDataImport"]
 
+/-- Spec modules that define commands or elaborators that add declarations. Review their code as
+    specification: the declarations they add do not appear as source text. -/
+def declarationCommandModules : List String := [
+  "Human.Import.Exec.Emit",
+  "Human.Import.Exec.FastColumns",
+  "Human.Import.Exec.InitsTeardowns",
+  "Human.Import.NativeGrid",
+  "Human.Import.NativeRamProducts",
+  "Human.Import.SetupEmit",
+  "Human.Import.TranscribeCommand"]
+
+/-- The only spec modules whose import closure contains the Sail model roots `Sail` and `SailRV32`.
+    `Human` is the library root, which imports every spec module. -/
+def sailModules : List String := [
+  "Human",
+  "Human.Helpers.Core.Configuration",
+  "Human.ISA.Sail.Airbender",
+  "Human.ISA.Sail.Checks",
+  "Human.ISA.Sail.Machine",
+  "Human.ISA.Sail.MachineTargets",
+  "Human.ISA.Sail.NativeTargets",
+  "Human.ISA.Sail.Theorems",
+  "Human.ISA.Sail.WholeRun"]
+
 end Airbender.Trust

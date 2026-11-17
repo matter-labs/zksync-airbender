@@ -7,7 +7,11 @@ import re
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / 'human/Human/Trust.lean'
 RESTRICTED = re.compile(r'\b(?:unsafe|partial|implemented_by|extern)\b')
-FORBIDDEN = re.compile(r'\b(?:axiom|sorry|native_decide|bv_decide)\b')
+FORBIDDEN = re.compile(r'\b(?:axiom|sorry|native_decide|bv_decide|skipKernelTC|addDeclWithoutChecking)\b')
+# Commands and elaborators that can add declarations which do not appear as source text.
+DECLARATION_COMMANDS = re.compile(
+    r'\b(?:elab|elab_rules|command_elab|macro|macro_rules|addDecl|addAndCompile|compileDecl|elabCommand|'
+    r'modifyEnv|setEnv|run_cmd|run_elab|run_meta|initialize|builtin_initialize)\b')
 RAW_STRING = re.compile(r'r(#+)"')
 
 
@@ -94,21 +98,42 @@ def check_source(module, text, allowed):
     return bool(found)
 
 
+def defines_declaration_commands(text):
+    """The spec source defines a command or elaborator that can add declarations."""
+    _, code = source_text(text)
+    return bool(DECLARATION_COMMANDS.search(code))
+
+
+def check_declaration_commands(sources, listed):
+    """The listed spec modules are exactly the spec modules that define declaration-adding commands."""
+    found = {module for module, text in sources.items() if defines_declaration_commands(text)}
+    if unlisted := found - listed:
+        raise ValueError('Unlisted declaration command modules: ' + ', '.join(sorted(unlisted)))
+    if stale := listed - found:
+        raise ValueError('Listed modules define no declaration commands: ' + ', '.join(sorted(stale)))
+
+
 def main():
     roots = manifest_list('trustedModuleRoots')
     allowed = manifest_list('trustedTacticModules')
-    modules, used = set(), set()
+    commands = manifest_list('declarationCommandModules')
+    modules, used, spec = set(), set(), {}
     for directory in ('human', 'proven', 'test'):
         for path in (ROOT / directory).rglob('*.lean'):
             module = '.'.join(path.relative_to(ROOT / directory).with_suffix('').parts)
             modules.add(module)
-            if check_source(module, path.read_text(), allowed):
+            text = path.read_text()
+            if directory == 'human':
+                spec[module] = text
+            if check_source(module, text, allowed):
                 used.add(module)
     if missing := allowed - modules:
         raise ValueError('Missing allowed modules: ' + ', '.join(sorted(missing)))
     if stale := allowed - used:
         raise ValueError('Unused procedure permissions: ' + ', '.join(sorted(stale)))
-    print(f'PASS {len(modules)} source modules: {len(roots)} external roots and {len(allowed)} procedure modules')
+    check_declaration_commands(spec, commands)
+    print(f'PASS {len(modules)} source modules: {len(roots)} external roots, {len(allowed)} procedure modules '
+          f'and {len(commands)} declaration command modules')
 
 
 if __name__ == '__main__':

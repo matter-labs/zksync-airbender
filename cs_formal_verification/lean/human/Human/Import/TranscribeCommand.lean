@@ -17,7 +17,13 @@ kernel terms:
 The kernel checks that `name` is a well-typed `Circuit`; that it is the decoding of the text is this file's
 responsibility, unless the artifact's claims also state it. With `bytes`, the command also adds
 * `nameBytes : ByteArray`, the file's bytes, for a claim that the kernel evaluates
-  (`Json.parse nameBytes >>= Circuit.decode = .ok name`); then only the file read is trusted. -/
+  (`Json.parse nameBytes >>= Circuit.decode = .ok name`); then only the file read is trusted.
+
+With `shared owner`, the command does not add `nameSourceBytes`. It adds the placement array, and each gate or
+cache array with more than 253 entries, as a separate definition with a name that starts with `owner`. Then it
+replaces each subterm of the reflected circuit that is equal to one of these arrays with its constant
+(`addSharedCircuit`). This replacement is trusted code: it must not change the value of `name`.
+`SharedBytesClaim` checks the result for the standalone inits/teardowns artifact. -/
 
 namespace Airbender
 open Lean Elab Command

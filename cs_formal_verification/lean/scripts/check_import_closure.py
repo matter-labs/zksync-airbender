@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
+SAIL_ROOTS = {'Sail', 'SailRV32'}
 
 
 def load_graph(modules, source_root=None):
@@ -17,7 +18,9 @@ def load_graph(modules, source_root=None):
     return dict(json.loads(result.stdout))
 
 
-def check_graph(graph, roots, trusted=None):
+def check_graph(graph, roots, trusted=None, sail_modules=None):
+    """Reject forbidden imports. With `sail_modules`, only those roots reach the Sail model, and each of them does."""
+    reaches_sail = set()
     for root in roots:
         pending, seen = deque([[root]]), set()
         while pending:
@@ -34,9 +37,15 @@ def check_graph(graph, roots, trusted=None):
                     root == 'CleanCore.Equivalence' and prefix == 'Clean')
             if forbidden:
                 raise ValueError('Spec import boundary: ' + ' → '.join(path))
+            if current.split('.')[0] in SAIL_ROOTS:
+                if sail_modules is not None and root not in sail_modules:
+                    raise ValueError('Sail import boundary: ' + ' → '.join(path))
+                reaches_sail.add(root)
             if current not in graph:
                 raise ValueError('Missing module in import graph: ' + current)
             pending.extend(path + [dependency] for dependency in graph[current])
+    if sail_modules is not None and (stale := set(sail_modules) - reaches_sail):
+        raise ValueError('Listed Sail modules do not import the Sail model: ' + ', '.join(sorted(stale)))
 
 
 def main():
@@ -44,7 +53,7 @@ def main():
     roots = sorted('.'.join(p.relative_to(ROOT / 'human').with_suffix('').parts)
                    for p in (ROOT / 'human').rglob('*.lean'))
     graph = load_graph(roots)
-    check_graph(graph, roots, manifest_list('trustedModuleRoots'))
+    check_graph(graph, roots, manifest_list('trustedModuleRoots'), manifest_list('sailModules'))
     print(f'PASS import closure: {len(roots)} spec modules, {len(graph)} total modules')
 
 
