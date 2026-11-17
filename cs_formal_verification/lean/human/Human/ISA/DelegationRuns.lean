@@ -63,7 +63,7 @@ def CallsRun : Prop :=
 
 /-- The assumptions of the delegation run have a concrete witness. -/
 def CallsRunSatisfiableClaim : Prop :=
-  ∃ (ks : List DelegationKind) (s t : State), ks ≠ [] ∧ CallsAssumptions ks s t
+  ∃ (ks : List DelegationKind) (s t : State), CallsAssumptions ks s t ∧ ks ≠ []
 
 /-- `n` bytes at `a`, `al`-aligned, within the address space (RAM; below `ROM_END` shadow RAM). -/
 def Buffer (a : Word) (n al : Nat) : Prop := a.toNat % al = 0 ∧ a.toNat + n ≤ RAM_END

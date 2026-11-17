@@ -16,7 +16,7 @@ namespace RV
 private theorem calls_run_pair : CallsRun ∧ CallsRunSatisfiableClaim := by
   refine ⟨fun ks s t ⟨a, b, c, d⟩ => Deleg.calls_run_curried ks s t a b c d, ?_⟩
   obtain ⟨t, ht, -⟩ := Deleg.blake_hash_run.1 _ _ _ false (Deleg.NonVacuous.hash_assumptions _ 0x7c701073#32)
-  refine ⟨.replicate 7 .blakeRound, _, t, by simp, by decide, by decide, ?_, ht⟩
+  refine ⟨.replicate 7 .blakeRound, _, t, ⟨by decide, by decide, ?_, ht⟩, by simp⟩
   intro i hi
   simp only [List.length_replicate] at hi
   simp only [List.getElem_replicate]

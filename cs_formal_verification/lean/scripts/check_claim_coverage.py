@@ -190,7 +190,6 @@ def witness_pairs(manifest):
 
 
 NO_PREMISES = "The claim has no premises. Its witness shows a nonempty instance of the claim's data."
-EXTRA_FIRST = "The witness states extra facts, such as sizes, before the premises."
 TELESCOPE_EXCEPTIONS = {
     "Airbender.AgreeExistsClaim": NO_PREMISES,
     "Airbender.Compiler.NativeLookups.CachedLookupSelectorsClaim": NO_PREMISES,
@@ -199,31 +198,6 @@ TELESCOPE_EXCEPTIONS = {
     "Airbender.InitsTeardowns.StandaloneClaim": NO_PREMISES,
     "Airbender.InitsTeardowns.UnifiedClaim": NO_PREMISES,
     "Airbender.PlacementsClaim": NO_PREMISES,
-    "Airbender.PaddingBoundary.ContributionSoundnessClaim":
-        "The witness also binds the conclusion variables, to show a nonzero encoded value.",
-    "Airbender.PaddingBoundary.ProductSoundnessClaim":
-        "The witness also binds the conclusion variables, to show a nonzero encoded product.",
-    "Airbender.PaddingBoundary.ProjectionClaim": EXTRA_FIRST,
-    "Airbender.RunIsAirbenderClaim": EXTRA_FIRST,
-    "Airbender.Trace.Machine.Native.UnifiedFromNative": EXTRA_FIRST,
-    "Airbender.Trace.Machine.Native.UnrolledFullFromNative": EXTRA_FIRST,
-    "Airbender.Trace.Machine.Native.UnrolledReducedFromNative": EXTRA_FIRST,
-    "Airbender.Trace.Machine.PaddedUnified": EXTRA_FIRST,
-    "Airbender.Trace.Machine.PaddedUnrolledFullUnsigned": EXTRA_FIRST,
-    "Airbender.Trace.Machine.PaddedUnrolledReduced": EXTRA_FIRST,
-    "Airbender.Trace.Machine.UnifiedCodeHashSegmentationClaim": EXTRA_FIRST,
-    "Airbender.Trace.Machine.UnifiedHashSegmentationClaim": EXTRA_FIRST,
-    "Airbender.Trace.Machine.UnrolledCodeHashSegmentationClaim": EXTRA_FIRST,
-    "Airbender.Trace.Machine.UnrolledFullUnsigned": EXTRA_FIRST,
-    "Airbender.Trace.Machine.UnrolledFullUnsignedSailClaim": EXTRA_FIRST,
-    "Airbender.Trace.Machine.UnrolledHashSegmentationClaim": EXTRA_FIRST,
-    "Airbender.Trace.Machine.UnrolledReduced": EXTRA_FIRST,
-    "Airbender.Trace.Machine.UnrolledReducedSailClaim": EXTRA_FIRST,
-    "Airbender.UnifiedReduced.Caller.RVPreparedRoundMasksSoundnessClaim":
-        "The witness gives a nonempty worker list after an extra caller fact, not a bound worker row.",
-    "Airbender.UnifiedReduced.Caller.RVPreparedRoundRegionMasksSoundnessClaim":
-        "The witness gives a nonempty worker list after an extra caller fact, not a bound worker row.",
-    "RV.CallsRun": EXTRA_FIRST,
 }
 
 

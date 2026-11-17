@@ -54,29 +54,29 @@ def UnrolledCodeHashSegmentationSatisfiableClaim : Prop :=
   ∃ (config : RVMachineConfig) (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (addresses : List (BitVec 32))
     (program : List RVMachineProgramEntry) (windows : List HashWindow),
-    trace.rows ≠ [] ∧ trace.rows.length = 10 ∧ workers.standard.rows.length = 10 ∧
-    workers.split.rows = [] ∧ windows ≠ [] ∧ windows.length = 1 ∧
     config ≠ .unified ∧ rvMachineProgramImage config initial addresses = some program ∧
     UnrolledAcceptance trace workers program ∧
     (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
     windows.Pairwise (fun first second => first.upper ≤ second.lower) ∧
     (∀ request ∈ (unrolledCallers trace).map (fun row => Requests.caller row.assignment),
       request.csr ≠ Requests.csr .bigint ↔ ∃ window ∈ windows, window.select request = true) ∧
-    (∀ window ∈ windows, CodeWindowScope trace program window)
+    (∀ window ∈ windows, CodeWindowScope trace program window) ∧
+    trace.rows ≠ [] ∧ trace.rows.length = 10 ∧ workers.standard.rows.length = 10 ∧
+    workers.split.rows = [] ∧ windows ≠ [] ∧ windows.length = 1
 
 /-- Ten CPU callers and ten round workers meet the complete premises of one nonempty hash window. -/
 def UnifiedCodeHashSegmentationSatisfiableClaim : Prop :=
   ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (addresses : List (BitVec 32))
     (program : List RVMachineProgramEntry) (windows : List HashWindow),
-    trace.rows ≠ [] ∧ trace.rows.length = 10 ∧ workers.standard.rows.length = 10 ∧
-    workers.split.rows = [] ∧ windows ≠ [] ∧ windows.length = 1 ∧
     rvMachineProgramImage .unified initial addresses = some program ∧ UnifiedAcceptance trace workers program ∧
     (timeOfPair trace.initial.timestamp).Bounded ∧ (timeOfPair trace.initial.timestamp).value % 4 = 0 ∧
     windows.Pairwise (fun first second => first.upper ≤ second.lower) ∧
     (∀ request ∈ (trace.rows.filter (fun row => decide (UnifiedReduced.Caller.Selected row.assignment))).map
       (fun row => UnifiedReduced.Caller.request row.assignment),
       request.csr ≠ Requests.csr .bigint ↔ ∃ window ∈ windows, window.select request = true) ∧
-    (∀ window ∈ windows, CodeWindowScope trace program window)
+    (∀ window ∈ windows, CodeWindowScope trace program window) ∧
+    trace.rows ≠ [] ∧ trace.rows.length = 10 ∧ workers.standard.rows.length = 10 ∧
+    workers.split.rows = [] ∧ windows ≠ [] ∧ windows.length = 1
 
 end Airbender.Trace.Machine

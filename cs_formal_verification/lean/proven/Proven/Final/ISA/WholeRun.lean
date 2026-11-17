@@ -10,8 +10,7 @@ theorem fetch_keeps_configured : FetchKeepsConfiguredClaim := Proven.Equiv.fetch
 
 theorem run_is_airbender_satisfiable : RunIsAirbenderSatisfiableClaim := by
   obtain ⟨state, after, machine, agreement, step⟩ := Proven.Equiv.NonVacuous.step_assumptions
-  exact ⟨1, state, after, machine, by decide, agreement,
-    by simp only [RV.run, step, Option.bind_some]⟩
+  exact ⟨1, state, after, machine, agreement, by simp only [RV.run, step, Option.bind_some], by decide⟩
 
 theorem agree_exists_satisfiable : AgreeExistsSatisfiableClaim := by
   obtain ⟨machine, agreement⟩ := agree_exists Proven.Equiv.NonVacuous.state

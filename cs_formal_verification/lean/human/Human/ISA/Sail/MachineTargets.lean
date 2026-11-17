@@ -57,27 +57,27 @@ def UnrolledFullUnsignedSailSatisfiableClaim : Prop :=
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
-    trace.rows ≠ [] ∧ trace.rows.length = 1 ∧
     BootInputs .unrolledFullUnsigned trace initial cells program InitsTeardowns.importedLayout inits ∧
     trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
     workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NoSpecial5 program ∧
     NonDeterminism.Pooled.StreamPorts trace initial.input ∧
-    UnrolledAcceptance trace workers program
+    UnrolledAcceptance trace workers program ∧
+    trace.rows ≠ [] ∧ trace.rows.length = 1
 
 /-- One participating CPU row meets every public boot and acceptance premise. -/
 def UnrolledReducedSailSatisfiableClaim : Prop :=
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
-    trace.rows ≠ [] ∧ trace.rows.length = 1 ∧
     BootInputs .unrolledReduced trace initial cells program InitsTeardowns.importedLayout inits ∧
     trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
     workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NonDeterminism.Pooled.StreamPorts trace initial.input ∧
-    UnrolledAcceptance trace workers program
+    UnrolledAcceptance trace workers program ∧
+    trace.rows ≠ [] ∧ trace.rows.length = 1
 
 /-- The public data and acceptance premises of this claim have a simultaneous witness. -/
 def UnifiedSailSatisfiableClaim : Prop :=

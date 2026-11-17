@@ -27,7 +27,7 @@ def AgreeExistsClaim : Prop :=
 
 /-- Agreeing states meet the finite run premise for at least one instruction. -/
 def RunIsAirbenderSatisfiableClaim : Prop :=
-  ∃ n s s' machine, 1 ≤ n ∧ Agree s machine ∧ RV.run n s = some s'
+  ∃ n s s' machine, Agree s machine ∧ RV.run n s = some s' ∧ 1 ≤ n
 
 /-- The public boot-state premises can be met. -/
 def AgreeExistsSatisfiableClaim : Prop :=

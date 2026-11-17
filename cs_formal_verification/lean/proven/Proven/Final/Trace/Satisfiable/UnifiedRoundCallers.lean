@@ -14,11 +14,11 @@ open NonVacuous.RoundCallers NonVacuous.RoundCallers.Prepared
 
 theorem rv_prepared_round_region_masks_soundness_satisfiable : RVPreparedRoundRegionMasksSoundnessSatisfiableClaim :=
   ⟨data, before, NonVacuous.FamilyCallers.callerPCs 4 10, [0], keys, ordinary, [region], region, accepted,
-    protocol_inputs, region_inputs, callers_ne, region_ne⟩
+    protocol_inputs, region_inputs, _, List.head_mem region_ne, callers_ne⟩
 
 theorem rv_prepared_round_masks_soundness_satisfiable : RVPreparedRoundMasksSoundnessSatisfiableClaim :=
   ⟨data, before, NonVacuous.FamilyCallers.callerPCs 4 10, [0], keys, ordinary, 0, 8, accepted, round_inputs, rfl,
-    callers_ne, rows_ne⟩
+    _, List.head_mem rows_ne, callers_ne⟩
 
 theorem rv_prepared_round_window_soundness_satisfiable : RVPreparedRoundWindowSoundnessSatisfiableClaim :=
   ⟨data, before, NonVacuous.FamilyCallers.callerPCs 4 10, [0], keys, ordinary, 0, 8, 48, accepted, window_inputs, rfl,

@@ -370,8 +370,8 @@ def Caller.RVPreparedRoundRegionMasksSoundnessSatisfiableClaim : Prop :=
     (region : Caller.RoundRegion),
     Caller.RVMixedMemoryAccepted data program ∧
       Caller.RVPreparedProtocolInputs data before ca oa cells program regions ∧
-      Caller.RVRoundRegionInputs data program region ∧ data.callers ≠ [] ∧
-      data.workers.windowRows region.lower region.upper ≠ []
+      Caller.RVRoundRegionInputs data program region ∧
+      ∃ row ∈ data.workers.windowRows region.lower region.upper, data.callers ≠ []
 
 /-- The assumptions of `Caller.RVPreparedRoundMasksSoundnessClaim` can be met, with a caller and worker rows. -/
 def Caller.RVPreparedRoundMasksSoundnessSatisfiableClaim : Prop :=
@@ -379,7 +379,7 @@ def Caller.RVPreparedRoundMasksSoundnessSatisfiableClaim : Prop :=
     (cells : List Trace.Cell) (program : List UnifiedReduced.RVProgramEntry) (flags : Fin 8) (lower : Nat),
     Caller.RVMixedMemoryAccepted data program ∧
       Caller.RVPreparedRoundInputs data before ca oa cells program flags lower ∧ lower % 4 = 0 ∧
-      data.callers ≠ [] ∧ data.workers.rows ≠ []
+      ∃ row ∈ data.workers.rows, data.callers ≠ []
 
 /-- The assumptions of `Caller.RVPreparedRoundWindowSoundnessClaim` can be met, with a caller and worker rows in the
     window. -/

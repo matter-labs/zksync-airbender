@@ -16,11 +16,10 @@ Pₘ, with more conjuncts allowed only after Pₘ (for example rows ≠ []). Lea
 at its position by definitional equality, and the witness binders against the claim binders in the same order and
 with the same types. A claim binder that the witness does not bind must take a closed value, such as the field
 modulus, and an instance binder takes the synthesized instance. The checker lists by exact name, with a reason, the
-28 claims whose witness has another form: 7 claims without premises, 2 witnesses that also bind conclusion variables,
-17 witnesses that state extra facts before the premises, and 2 witnesses that give a nonempty list in place of a
-bound row. The examples in [Satisfiable.lean](../lean/test/Checks/Satisfiable.lean) apply each claim to its witness
-and are only a build check. A witness statement must be an existential, and no claim joins soundness and
-non-vacuity. Only the fixed-data equations of the coverage map have no witness.
+7 claims without premises, whose witness shows a nonempty instance of the claim's data. Every other witness has the
+premise telescope of its claim. The examples in [Satisfiable.lean](../lean/test/Checks/Satisfiable.lean) apply each
+claim to its witness and are only a build check. A witness statement must be an existential, and no claim joins
+soundness and non-vacuity. Only the fixed-data equations of the coverage map have no witness.
 The [axiom audit](../lean/test/Checks/Axioms.lean) checks proof dependencies.
 The replay runs nightly from `main`, and `ci.yml` dispatches it on demand.
 Lean kernel replay, its export axiom audit, the native paranoid kernel and the

@@ -431,7 +431,9 @@ def OldCallsRun : Prop :=
   ∃ (ks : List DelegationKind) (s t : State), ks ≠ [] ∧ CallsAssumptions ks s t
 
 
-example : (CallsRun ∧ CallsRunSatisfiableClaim) ↔ OldCallsRun := Iff.rfl
+example : (CallsRun ∧ CallsRunSatisfiableClaim) ↔ OldCallsRun :=
+  and_congr Iff.rfl ⟨fun ⟨ks, s, t, assumptions, nonempty⟩ => ⟨ks, s, t, nonempty, assumptions⟩,
+    fun ⟨ks, s, t, nonempty, assumptions⟩ => ⟨ks, s, t, assumptions, nonempty⟩⟩
 
 def OldBlakeCompressRun : Prop :=
   (∀ (s : State) (p q t : Word) (last : Bool), BlakeCompressAssumptions 0x90000#32 s p q t last →

@@ -17,16 +17,16 @@ set_option warningAsError true
 theorem unrolled_full_unsigned_satisfiable : UnrolledFullUnsignedSatisfiableClaim := by
   refine ⟨NonVacuous.UnrolledNative.trace, workers, NonVacuous.PooledBoot.initial, NonVacuous.PooledBoot.cells,
     NonVacuous.UnrolledNative.program, NonVacuous.PooledBoot.inits,
-    List.cons_ne_nil _ _, rfl, NonVacuous.UnrolledNative.boot _ (Or.inl rfl), rfl, rfl, rfl,
+    NonVacuous.UnrolledNative.boot _ (Or.inl rfl), rfl, rfl, rfl,
     NonVacuous.UnrolledNative.no_special, NonVacuous.UnrolledNative.stream_ports,
-    NonVacuous.PaddedMachines.pooled_accepted⟩
+    NonVacuous.PaddedMachines.pooled_accepted, List.cons_ne_nil _ _, rfl⟩
 
 /-- One active ADD row meets every reduced unrolled target premise. -/
 theorem unrolled_reduced_satisfiable : UnrolledReducedSatisfiableClaim := by
   refine ⟨NonVacuous.UnrolledNative.trace, workers, NonVacuous.PooledBoot.initial, NonVacuous.PooledBoot.cells,
     NonVacuous.UnrolledNative.program, NonVacuous.PooledBoot.inits,
-    List.cons_ne_nil _ _, rfl, NonVacuous.UnrolledNative.boot _ (Or.inr rfl), rfl, rfl, rfl,
-    NonVacuous.UnrolledNative.stream_ports, NonVacuous.PaddedMachines.pooled_accepted⟩
+    NonVacuous.UnrolledNative.boot _ (Or.inr rfl), rfl, rfl, rfl,
+    NonVacuous.UnrolledNative.stream_ports, NonVacuous.PaddedMachines.pooled_accepted, List.cons_ne_nil _ _, rfl⟩
 
 /-- A loop with sixteen CPU rows and two bigint calls meets every unified target premise. -/
 theorem unified_satisfiable : UnifiedSatisfiableClaim := NonVacuous.DynamicCopyLoop.witness
@@ -56,47 +56,48 @@ theorem unified_sail_satisfiable : UnifiedSailSatisfiableClaim := unified_satisf
 theorem unrolled_hash_segmentation_satisfiable : UnrolledHashSegmentationSatisfiableClaim :=
   ⟨NonVacuous.RoundWindow.unrolledTrace, NonVacuous.RoundWindow.workers,
     NonVacuous.RoundWindow.unrolledProgram, NonVacuous.RoundWindow.windows,
+    NonVacuous.RoundWindow.unrolled_accepted, NonVacuous.RoundWindow.unrolled_initial_bounded,
+    NonVacuous.RoundWindow.unrolled_initial_aligned, NonVacuous.RoundWindow.unrolled_profile,
     NonVacuous.RoundWindow.unrolled_rows_nonempty, NonVacuous.RoundWindow.unrolled_rows_length,
     NonVacuous.RoundWindow.worker_rows_length, NonVacuous.RoundWindow.split_rows,
-    List.cons_ne_nil _ _, NonVacuous.RoundWindow.windows_length,
-    NonVacuous.RoundWindow.unrolled_accepted, NonVacuous.RoundWindow.unrolled_initial_bounded,
-    NonVacuous.RoundWindow.unrolled_initial_aligned, NonVacuous.RoundWindow.unrolled_profile⟩
+    List.cons_ne_nil _ _, NonVacuous.RoundWindow.windows_length⟩
 
 /-- Ten matched round calls supply one complete unified hash window. -/
 theorem unified_hash_segmentation_satisfiable : UnifiedHashSegmentationSatisfiableClaim :=
   ⟨NonVacuous.RoundWindow.unifiedTrace, NonVacuous.RoundWindow.workers,
     NonVacuous.RoundWindow.unifiedProgram, NonVacuous.RoundWindow.windows,
+    NonVacuous.RoundWindow.unified_accepted, NonVacuous.RoundWindow.unified_initial_bounded,
+    NonVacuous.RoundWindow.unified_initial_aligned, NonVacuous.RoundWindow.unified_profile,
     NonVacuous.RoundWindow.unified_rows_nonempty, NonVacuous.RoundWindow.unified_rows_length,
     NonVacuous.RoundWindow.worker_rows_length, NonVacuous.RoundWindow.split_rows,
-    List.cons_ne_nil _ _, NonVacuous.RoundWindow.windows_length,
-    NonVacuous.RoundWindow.unified_accepted, NonVacuous.RoundWindow.unified_initial_bounded,
-    NonVacuous.RoundWindow.unified_initial_aligned, NonVacuous.RoundWindow.unified_profile⟩
+    List.cons_ne_nil _ _, NonVacuous.RoundWindow.windows_length⟩
 
 /-- Public round code and the complete interval meet every unrolled code-window premise. -/
 theorem unrolled_code_hash_segmentation_satisfiable : UnrolledCodeHashSegmentationSatisfiableClaim :=
   ⟨.unrolledFullUnsigned, NonVacuous.RoundWindow.unrolledTrace, NonVacuous.RoundWindow.workers,
     NonVacuous.RoundWindow.initial, NonVacuous.RoundWindow.addresses,
     NonVacuous.RoundWindow.unrolledProgram, NonVacuous.RoundWindow.windows,
-    NonVacuous.RoundWindow.unrolled_rows_nonempty, NonVacuous.RoundWindow.unrolled_rows_length,
-    NonVacuous.RoundWindow.worker_rows_length, NonVacuous.RoundWindow.split_rows,
-    List.cons_ne_nil _ _, NonVacuous.RoundWindow.windows_length, by decide +kernel,
+    by decide +kernel,
     NonVacuous.RoundWindow.unrolled_program_image, NonVacuous.RoundWindow.unrolled_accepted,
     NonVacuous.RoundWindow.unrolled_initial_bounded, NonVacuous.RoundWindow.unrolled_initial_aligned,
     NonVacuous.RoundWindow.unrolled_profile.separated, NonVacuous.RoundWindow.unrolled_profile.coverage,
-    NonVacuous.RoundWindow.unrolled_scope⟩
+    NonVacuous.RoundWindow.unrolled_scope,
+    NonVacuous.RoundWindow.unrolled_rows_nonempty, NonVacuous.RoundWindow.unrolled_rows_length,
+    NonVacuous.RoundWindow.worker_rows_length, NonVacuous.RoundWindow.split_rows,
+    List.cons_ne_nil _ _, NonVacuous.RoundWindow.windows_length⟩
 
 /-- Public round code and the complete interval meet every unified code-window premise. -/
 theorem unified_code_hash_segmentation_satisfiable : UnifiedCodeHashSegmentationSatisfiableClaim :=
   ⟨NonVacuous.RoundWindow.unifiedTrace, NonVacuous.RoundWindow.workers,
     NonVacuous.RoundWindow.initial, NonVacuous.RoundWindow.addresses,
     NonVacuous.RoundWindow.unifiedProgram, NonVacuous.RoundWindow.windows,
-    NonVacuous.RoundWindow.unified_rows_nonempty, NonVacuous.RoundWindow.unified_rows_length,
-    NonVacuous.RoundWindow.worker_rows_length, NonVacuous.RoundWindow.split_rows,
-    List.cons_ne_nil _ _, NonVacuous.RoundWindow.windows_length,
     NonVacuous.RoundWindow.unified_program_image, NonVacuous.RoundWindow.unified_accepted,
     NonVacuous.RoundWindow.unified_initial_bounded, NonVacuous.RoundWindow.unified_initial_aligned,
     NonVacuous.RoundWindow.unified_profile.separated, NonVacuous.RoundWindow.unified_profile.coverage,
-    NonVacuous.RoundWindow.unified_scope⟩
+    NonVacuous.RoundWindow.unified_scope,
+    NonVacuous.RoundWindow.unified_rows_nonempty, NonVacuous.RoundWindow.unified_rows_length,
+    NonVacuous.RoundWindow.worker_rows_length, NonVacuous.RoundWindow.split_rows,
+    List.cons_ne_nil _ _, NonVacuous.RoundWindow.windows_length⟩
 
 end Airbender.Trace.Machine
 
@@ -106,18 +107,21 @@ set_option warningAsError true
 
 /-- One active CPU row meets every full native Sail target premise. -/
 theorem unrolled_full_from_native_sail_satisfiable : UnrolledFullFromNativeSailSatisfiableClaim := by
-  obtain ⟨trace, workers, initial, cells, program, inits, tables, _, _, _, premises⟩ := full_native
-  exact ⟨trace, workers, initial, cells, program, inits, tables, premises⟩
+  obtain ⟨trace, workers, initial, cells, program, inits, tables, boot, special, stream, bound, covers, certificates, arguments, _⟩ :=
+    full_native
+  exact ⟨trace, workers, initial, cells, program, inits, tables, boot, special, stream, bound, covers, certificates, arguments⟩
 
 /-- One active CPU row meets every reduced native Sail target premise. -/
 theorem unrolled_reduced_from_native_sail_satisfiable : UnrolledReducedFromNativeSailSatisfiableClaim := by
-  obtain ⟨trace, workers, initial, cells, program, inits, tables, _, _, _, premises⟩ := reduced_native
-  exact ⟨trace, workers, initial, cells, program, inits, tables, premises⟩
+  obtain ⟨trace, workers, initial, cells, program, inits, tables, boot, stream, bound, covers, certificates, arguments, _⟩ :=
+    reduced_native
+  exact ⟨trace, workers, initial, cells, program, inits, tables, boot, stream, bound, covers, certificates, arguments⟩
 
 /-- Sixteen CPU rows and two bigint calls meet every unified native Sail target premise. -/
 theorem unified_from_native_sail_satisfiable : UnifiedFromNativeSailSatisfiableClaim := by
-  obtain ⟨trace, workers, initial, cells, program, inits, tables, _, _, _, premises⟩ := unified_native
-  exact ⟨trace, workers, initial, cells, program, inits, tables, premises⟩
+  obtain ⟨trace, workers, initial, cells, program, inits, tables, boot, special, stream, bound, certificates, arguments, _⟩ :=
+    unified_native
+  exact ⟨trace, workers, initial, cells, program, inits, tables, boot, special, stream, bound, certificates, arguments⟩
 
 end Airbender.Trace.Machine.Native
 

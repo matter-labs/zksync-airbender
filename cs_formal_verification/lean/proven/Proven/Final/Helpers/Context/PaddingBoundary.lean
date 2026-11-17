@@ -20,9 +20,9 @@ end Airbender.PaddingBoundary
 namespace Airbender.PaddingBoundary
 /-- The Boolean contribution premise holds for a participating row. -/
 theorem contribution_satisfiable : ContributionSatisfiableClaim :=
-  ⟨1, Nat.cast, 1, Or.inr rfl, rfl, by decide +kernel⟩
+  ⟨1, Or.inr rfl, rfl, Nat.cast, 1, by decide +kernel⟩
 
 /-- A participating row supplies a nonempty product. -/
 theorem product_satisfiable : ProductSatisfiableClaim :=
-  ⟨1, Nat.cast, [1], Or.inr rfl, rfl, by decide +kernel, by decide +kernel⟩
+  ⟨1, Or.inr rfl, rfl, Nat.cast, [1], by decide +kernel, by decide +kernel⟩
 end Airbender.PaddingBoundary

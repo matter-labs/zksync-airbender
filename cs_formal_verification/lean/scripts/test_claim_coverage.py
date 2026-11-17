@@ -112,14 +112,14 @@ class ClaimCoverageTests(unittest.TestCase):
             validate(self.data, self.manifest)
 
     def test_listed_telescope_exception(self):
-        listed = "Airbender.RunIsAirbenderClaim"
-        witness = "Airbender.RunIsAirbenderSatisfiableClaim"
+        listed = "Airbender.PlacementsClaim"
+        witness = "Airbender.PlacementsSatisfiableClaim"
         for name in (listed, witness):
             self.data["claims"][name] = copy.copy(self.data["claims"][self.witness if name == witness else self.primary])
             self.data["proofs"][name] = ["Example.proof"]
         self.manifest["claims"][listed] = {"witness": witness}
         self.manifest["claims"][witness] = {}
-        self.data["telescopes"][f"{listed} {witness}"] = "premise 1 differs from the conjunct at its position"
+        self.data["telescopes"][f"{listed} {witness}"] = "no premises"
         self.assertEqual(validate(self.data, self.manifest), 4)
         self.data["telescopes"][f"{listed} {witness}"] = None
         with self.assertRaisesRegex(ValueError, "Stale premise telescope exception"):

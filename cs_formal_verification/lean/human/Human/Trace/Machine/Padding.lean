@@ -147,41 +147,38 @@ def PaddedUnrolledFullUnsignedSatisfiableClaim : Prop :=
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
-    trace.rows ≠ [] ∧ trace.rows.length = 2 ∧
-    (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1 ∧
     BootInputs .unrolledFullUnsigned (active trace) initial cells program InitsTeardowns.importedLayout inits ∧
     trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
     workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NoSpecial5 program ∧
     NonDeterminism.Pooled.StreamPorts (active trace) initial.input ∧
-    MaskedUnrolledAcceptance trace workers program
+    MaskedUnrolledAcceptance trace workers program ∧
+    trace.rows ≠ [] ∧ trace.rows.length = 2 ∧ (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1
 
 /-- One participating CPU row and one padding row meet every public and masked target premise. -/
 def PaddedUnrolledReducedSatisfiableClaim : Prop :=
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)),
-    trace.rows ≠ [] ∧ trace.rows.length = 2 ∧
-    (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1 ∧
     BootInputs .unrolledReduced (active trace) initial cells program InitsTeardowns.importedLayout inits ∧
     trace.rom.wordMemory = ROM.table cells (romImageRV initial cells) ∧
     trace.rom.subwordMemory = Verification.subwordTable (ROM.wordsRV initial) ∧
     workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NonDeterminism.Pooled.StreamPorts (active trace) initial.input ∧
-    MaskedUnrolledAcceptance trace workers program
+    MaskedUnrolledAcceptance trace workers program ∧
+    trace.rows ≠ [] ∧ trace.rows.length = 2 ∧ (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1
 
 /-- One participating CPU row and one padding row meet every public and masked target premise. -/
 def PaddedUnifiedSatisfiableClaim : Prop :=
   ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)),
-    trace.rows ≠ [] ∧ trace.rows.length = 2 ∧
-    (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1 ∧
     BootInputs .unified (active trace) initial cells program InitsTeardowns.unifiedLayout inits ∧
     trace.rom = UnifiedReduced.Setup.tableRV initial ∧
     workers.standard.setup = Delegation.modeledSetup Keccak.Controller.rows ∧
     NoSpecial5 program ∧ UnifiedStreamPorts (active trace) initial.input ∧
-    MaskedUnifiedAcceptance trace workers program
+    MaskedUnifiedAcceptance trace workers program ∧
+    trace.rows ≠ [] ∧ trace.rows.length = 2 ∧ (active trace).rows.length = 1 ∧ (inactive trace).rows.length = 1
 
 end Airbender.Trace.Machine

@@ -82,37 +82,37 @@ def UnrolledFullFromNativeSatisfiableClaim : Prop :=
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
-    trace.rows.length = 1 ∧ workers.standard.rows = [] ∧ workers.split.rows = [] ∧
     BootInputs .unrolledFullUnsigned trace initial cells program InitsTeardowns.importedLayout inits ∧
     NoSpecial5 program ∧
     NonDeterminism.Pooled.StreamPorts trace initial.input ∧
     NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
     ∃ certificates : List (ProgramLogicalRowCertificate tables),
-      UnrolledNativeArguments tables certificates trace workers
+      UnrolledNativeArguments tables certificates trace workers ∧
+      trace.rows.length = 1 ∧ workers.standard.rows = [] ∧ workers.split.rows = []
 
 /-- One submitted CPU row meets the exact public boot and native argument premises. -/
 def UnrolledReducedFromNativeSatisfiableClaim : Prop :=
   ∃ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout)) (tables : ProgramLookupRows),
-    trace.rows.length = 1 ∧ workers.standard.rows = [] ∧ workers.split.rows = [] ∧
     BootInputs .unrolledReduced trace initial cells program InitsTeardowns.importedLayout inits ∧
     NonDeterminism.Pooled.StreamPorts trace initial.input ∧
     NativePublicSetup.Bound initial program tables ∧ NativePublicSetup.CoversROM cells ∧
     ∃ certificates : List (ProgramLogicalRowCertificate tables),
-      UnrolledNativeArguments tables certificates trace workers
+      UnrolledNativeArguments tables certificates trace workers ∧
+      trace.rows.length = 1 ∧ workers.standard.rows = [] ∧ workers.split.rows = []
 
 /-- A loop trace with sixteen CPU rows and two worker rows meets the exact native target premises. -/
 def UnifiedFromNativeSatisfiableClaim : Prop :=
   ∃ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
     (inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout)) (tables : ProgramLookupRows),
-    trace.rows.length = 16 ∧ workers.standard.rows.length = 2 ∧ workers.split.rows = [] ∧
     BootInputs .unified trace initial cells program InitsTeardowns.unifiedLayout inits ∧
     NoSpecial5 program ∧ UnifiedStreamPorts trace initial.input ∧
     NativePublicSetup.Bound initial program tables ∧
     ∃ certificates : List (UnifiedLogicalRowCertificate tables),
-      UnifiedNativeArguments tables certificates trace workers
+      UnifiedNativeArguments tables certificates trace workers ∧
+      trace.rows.length = 16 ∧ workers.standard.rows.length = 2 ∧ workers.split.rows = []
 
 end Airbender.Trace.Machine.Native
 
