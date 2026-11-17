@@ -14,4 +14,8 @@ namespace Airbender.InitsTeardowns
 theorem shared_bytes : SharedBytesClaim :=
   by delta SharedBytesClaim; kernel_rfl
 
+/-- The shared transcription is the decoded circuit, and the kernel counts its placement entries. -/
+theorem shared_bytes_satisfiable : SharedBytesSatisfiableClaim :=
+  ⟨sharedLayoutCircuit, shared_bytes, by kernel_rfl⟩
+
 end Airbender.InitsTeardowns

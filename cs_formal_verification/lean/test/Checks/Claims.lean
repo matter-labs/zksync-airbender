@@ -1374,3 +1374,7 @@ example : Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutationSatis
 #print axioms Airbender.Trace.Machine.Native.padded_unified_from_native_permutation
 
 #print axioms Airbender.Trace.Machine.Native.padded_unified_from_native_permutation_satisfiable
+
+example : Airbender.InitsTeardowns.SharedBytesSatisfiableClaim := @Airbender.InitsTeardowns.shared_bytes_satisfiable
+
+#print axioms Airbender.InitsTeardowns.shared_bytes_satisfiable

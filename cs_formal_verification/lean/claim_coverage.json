@@ -857,8 +857,7 @@
     },
     "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativeSatisfiableClaim": {},
     "Airbender.InitsTeardowns.SharedBytesClaim": {
-      "exception": "artifact",
-      "reason": "This claim checks fixed imported data or a constant proposition."
+      "witness": "Airbender.InitsTeardowns.SharedBytesSatisfiableClaim"
     },
     "Airbender.Compiler.BigintCachedMemoryClaim": {
       "witness": "Airbender.Compiler.BigintCachedMemorySatisfiableClaim"
@@ -927,6 +926,7 @@
     "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutation": {
       "witness": "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutationSatisfiableClaim"
     },
-    "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutationSatisfiableClaim": {}
+    "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutationSatisfiableClaim": {},
+    "Airbender.InitsTeardowns.SharedBytesSatisfiableClaim": {}
   }
 }

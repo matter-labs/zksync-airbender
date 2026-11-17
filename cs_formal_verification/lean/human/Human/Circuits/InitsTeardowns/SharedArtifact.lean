@@ -15,4 +15,9 @@ import_circuit sharedLayoutCircuit from "../../cs/compiled_circuits/inits_and_te
 def SharedBytesClaim : Prop :=
   (Json.parse sharedLayoutCircuitBytes >>= Circuit.decode) = .ok sharedLayoutCircuit
 
+/-- The parser and the decoder accept the bytes of the cached file and give a circuit with 32 placement entries. -/
+def SharedBytesSatisfiableClaim : Prop :=
+  ∃ circuit : Circuit, (Json.parse sharedLayoutCircuitBytes >>= Circuit.decode) = .ok circuit ∧
+    circuit.placement_data.entries.size = 32
+
 end Airbender.InitsTeardowns

@@ -1782,3 +1782,5 @@ import Proven.Final.Helpers.Tables.Bytes
 #print axioms Airbender.Compiler.NativeFixedRows.mul_div_import
 #print axioms Airbender.Compiler.NativeFixedRows.word_memory_import
 #print axioms Airbender.Compiler.NativeSetups.range13_import
+
+#print axioms Airbender.InitsTeardowns.shared_bytes_satisfiable
