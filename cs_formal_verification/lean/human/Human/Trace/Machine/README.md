@@ -59,6 +59,8 @@ cached CPU circuit computes its RAM outputs as products masked by the execute co
 [worker RAM output claims](../../Compiler/WorkerMemoryPorts.lean) show the same for each worker circuit,
 with the request token of the row. The [composition claims](../../Compiler/MemoryComposition.lean) derive the
 state, request and memory relations from the single RAM permutation of these tokens. The
+[permutation targets](../../Compiler/PermutationTargets.lean) take that permutation as their only matching
+premise. The
 [proofs](../../../../proven/Proven/Final/Trace/Machine/Padding.lean) erase identity factors and retain full
 occurrence counts. The [cached circuit results](../../Compiler/README.md)
 connect native CPU and worker gates, placement and public lookups to every imported row constraint.

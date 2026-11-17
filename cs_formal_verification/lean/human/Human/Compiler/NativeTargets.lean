@@ -18,6 +18,8 @@ open Airbender.Compiler
     Worker lookups use the fixed public worker tables. The description setup fields `trace.rom` and
     `workers.standard.setup` are not premises.
     State, request and memory matching are explicit interfaces.
+    `UnrolledFullFromNativePermutation` replaces these three relations with the single RAM permutation
+    of the production prover.
     Response ports bind the independent input stream. Special5 and `mop.r.N` are excluded. Delegation validity is not a premise. -/
 def UnrolledFullFromNative : Prop :=
   ∀ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
@@ -40,6 +42,8 @@ def UnrolledFullFromNative : Prop :=
     Worker lookups use the fixed public worker tables. The description setup fields `trace.rom` and
     `workers.standard.setup` are not premises.
     State, request and memory matching are explicit interfaces.
+    `UnrolledReducedFromNativePermutation` replaces these three relations with the single RAM permutation
+    of the production prover.
     Response ports bind the independent input stream. Delegation validity is not a premise. -/
 def UnrolledReducedFromNative : Prop :=
   ∀ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
@@ -60,6 +64,8 @@ def UnrolledReducedFromNative : Prop :=
     Worker lookups use the fixed public worker tables. The description setup fields `trace.rom` and
     `workers.standard.setup` are not premises.
     State, request and memory matching are explicit interfaces.
+    `UnifiedFromNativePermutation` replaces these three relations with the single RAM permutation
+    of the production prover.
     Response ports bind the independent input stream. Special5 is excluded. Delegation validity is not a premise. The initialized inline windows lie below `2 ^ 31`. -/
 def UnifiedFromNative : Prop :=
   ∀ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
@@ -122,7 +128,9 @@ open Airbender.Compiler PaddingBoundary
 /-- The full unsigned production machine executes the active rows of a padded native layout.
     The public premises of `UnrolledFullFromNative` apply to the active rows.
     Padding rows have native certificates with execute zero. The state, request and memory
-    relations keep every CPU and worker row under the native execute mask. -/
+    relations keep every CPU and worker row under the native execute mask.
+    `PaddedUnrolledFullFromNativePermutation` replaces these three relations with the single masked RAM
+    permutation. -/
 def PaddedUnrolledFullFromNative : Prop :=
   ∀ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
@@ -138,7 +146,9 @@ def PaddedUnrolledFullFromNative : Prop :=
 /-- The reduced production machine executes the active rows of a padded native layout.
     The public premises of `UnrolledReducedFromNative` apply to the active rows.
     Padding rows have native certificates with execute zero. The state, request and memory
-    relations keep every CPU and worker row under the native execute mask. -/
+    relations keep every CPU and worker row under the native execute mask.
+    `PaddedUnrolledReducedFromNativePermutation` replaces these three relations with the single masked RAM
+    permutation. -/
 def PaddedUnrolledReducedFromNative : Prop :=
   ∀ (trace : PooledTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)
@@ -153,7 +163,9 @@ def PaddedUnrolledReducedFromNative : Prop :=
 /-- The unified production machine executes the active rows of a padded native layout.
     The public premises of `UnifiedFromNative` apply to the active rows.
     Padding rows have native certificates with execute zero. The state, request and memory
-    relations keep every CPU and worker row under the native execute mask. -/
+    relations keep every CPU and worker row under the native execute mask.
+    `PaddedUnifiedFromNativePermutation` replaces these three relations with the single masked RAM
+    permutation. -/
 def PaddedUnifiedFromNative : Prop :=
   ∀ (trace : UnifiedTrace babyBearModulus) (workers : WorkerPools babyBearModulus)
     (initial : RV.State) (cells : List Cell) (program : List RVMachineProgramEntry)

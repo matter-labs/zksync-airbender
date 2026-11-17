@@ -903,6 +903,30 @@
     "Airbender.Compiler.WorkerCertificateRamProductsClaim": {
       "witness": "Airbender.Compiler.WorkerCertificateRamProductsSatisfiableClaim"
     },
-    "Airbender.Compiler.WorkerCertificateRamProductsSatisfiableClaim": {}
+    "Airbender.Compiler.WorkerCertificateRamProductsSatisfiableClaim": {},
+    "Airbender.Trace.Machine.Native.UnrolledFullFromNativePermutation": {
+      "witness": "Airbender.Trace.Machine.Native.UnrolledFullFromNativePermutationSatisfiableClaim"
+    },
+    "Airbender.Trace.Machine.Native.UnrolledFullFromNativePermutationSatisfiableClaim": {},
+    "Airbender.Trace.Machine.Native.UnrolledReducedFromNativePermutation": {
+      "witness": "Airbender.Trace.Machine.Native.UnrolledReducedFromNativePermutationSatisfiableClaim"
+    },
+    "Airbender.Trace.Machine.Native.UnrolledReducedFromNativePermutationSatisfiableClaim": {},
+    "Airbender.Trace.Machine.Native.UnifiedFromNativePermutation": {
+      "witness": "Airbender.Trace.Machine.Native.UnifiedFromNativePermutationSatisfiableClaim"
+    },
+    "Airbender.Trace.Machine.Native.UnifiedFromNativePermutationSatisfiableClaim": {},
+    "Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativePermutation": {
+      "witness": "Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativePermutationSatisfiableClaim"
+    },
+    "Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativePermutationSatisfiableClaim": {},
+    "Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativePermutation": {
+      "witness": "Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativePermutationSatisfiableClaim"
+    },
+    "Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativePermutationSatisfiableClaim": {},
+    "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutation": {
+      "witness": "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutationSatisfiableClaim"
+    },
+    "Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutationSatisfiableClaim": {}
   }
 }

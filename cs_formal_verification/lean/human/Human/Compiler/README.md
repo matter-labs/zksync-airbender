@@ -34,6 +34,8 @@ row, masked by the execute column.
 machine by address class into the state, request and memory relations of the native machine arguments.
 [CertificateMemory.lean](CertificateMemory.lean) gives the extension values of the native certificates
 under shared challenges. With them each certificate gives the RAM outputs of its row.
+[PermutationTargets.lean](PermutationTargets.lean) states the native targets with the single RAM
+permutation as the only matching premise; the padded targets take the masked permutation.
 
 [CPU certificate witnesses](../../../proven/Proven/Final/Compiler/CPUCertificates.lean)
 give one active certificate for each of the seven CPU families. Each certificate

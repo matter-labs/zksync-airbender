@@ -54,6 +54,7 @@ import Proven.Final.Compiler.PaddedNativeMachine
 import Proven.Final.Compiler.WorkerMemoryPorts
 import Proven.Final.Compiler.MemoryComposition
 import Proven.Final.Compiler.CertificateMemory
+import Proven.Final.Compiler.PermutationMachine
 
 open Airbender Trace
 
@@ -1764,3 +1765,17 @@ example : Airbender.Compiler.ProgramCertificateRamProductsSatisfiableClaim := Ai
 example : Airbender.Compiler.UnifiedCertificateRamProductsSatisfiableClaim := Airbender.Compiler.unified_certificate_ram_products_satisfiable
 
 example : Airbender.Compiler.WorkerCertificateRamProductsSatisfiableClaim := Airbender.Compiler.worker_certificate_ram_products_satisfiable
+
+-- Native targets with the single RAM permutation.
+
+example : Airbender.Trace.Machine.Native.UnrolledFullFromNativePermutationSatisfiableClaim := Airbender.Trace.Machine.Native.unrolled_full_from_native_permutation_satisfiable
+
+example : Airbender.Trace.Machine.Native.UnrolledReducedFromNativePermutationSatisfiableClaim := Airbender.Trace.Machine.Native.unrolled_reduced_from_native_permutation_satisfiable
+
+example : Airbender.Trace.Machine.Native.UnifiedFromNativePermutationSatisfiableClaim := Airbender.Trace.Machine.Native.unified_from_native_permutation_satisfiable
+
+example : Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativePermutationSatisfiableClaim := Airbender.Trace.Machine.Native.padded_unrolled_full_from_native_permutation_satisfiable
+
+example : Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativePermutationSatisfiableClaim := Airbender.Trace.Machine.Native.padded_unrolled_reduced_from_native_permutation_satisfiable
+
+example : Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutationSatisfiableClaim := Airbender.Trace.Machine.Native.padded_unified_from_native_permutation_satisfiable

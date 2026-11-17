@@ -54,3 +54,4 @@ import Human.Compiler.MemoryPorts
 import Human.Compiler.WorkerMemoryPorts
 import Human.Compiler.MemoryComposition
 import Human.Compiler.CertificateMemory
+import Human.Compiler.PermutationTargets

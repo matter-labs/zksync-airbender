@@ -126,6 +126,7 @@ import Proven.Final.Compiler.PaddedNativeMachine
 import Proven.Final.Compiler.WorkerMemoryPorts
 import Proven.Final.Compiler.MemoryComposition
 import Proven.Final.Compiler.CertificateMemory
+import Proven.Final.Compiler.PermutationMachine
 
 import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 
@@ -1323,3 +1324,53 @@ example : Airbender.Compiler.WorkerCertificateRamProductsSatisfiableClaim := @Ai
 #print axioms Airbender.Compiler.worker_certificate_ram_products
 
 #print axioms Airbender.Compiler.worker_certificate_ram_products_satisfiable
+
+-- Native targets with the single RAM permutation.
+
+example : Airbender.Trace.Machine.Native.UnrolledFullFromNativePermutation := @Airbender.Trace.Machine.Native.unrolled_full_from_native_permutation
+
+example : Airbender.Trace.Machine.Native.UnrolledFullFromNativePermutationSatisfiableClaim := @Airbender.Trace.Machine.Native.unrolled_full_from_native_permutation_satisfiable
+
+example : Airbender.Trace.Machine.Native.UnrolledReducedFromNativePermutation := @Airbender.Trace.Machine.Native.unrolled_reduced_from_native_permutation
+
+example : Airbender.Trace.Machine.Native.UnrolledReducedFromNativePermutationSatisfiableClaim := @Airbender.Trace.Machine.Native.unrolled_reduced_from_native_permutation_satisfiable
+
+example : Airbender.Trace.Machine.Native.UnifiedFromNativePermutation := @Airbender.Trace.Machine.Native.unified_from_native_permutation
+
+example : Airbender.Trace.Machine.Native.UnifiedFromNativePermutationSatisfiableClaim := @Airbender.Trace.Machine.Native.unified_from_native_permutation_satisfiable
+
+example : Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativePermutation := @Airbender.Trace.Machine.Native.padded_unrolled_full_from_native_permutation
+
+example : Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativePermutationSatisfiableClaim := @Airbender.Trace.Machine.Native.padded_unrolled_full_from_native_permutation_satisfiable
+
+example : Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativePermutation := @Airbender.Trace.Machine.Native.padded_unrolled_reduced_from_native_permutation
+
+example : Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativePermutationSatisfiableClaim := @Airbender.Trace.Machine.Native.padded_unrolled_reduced_from_native_permutation_satisfiable
+
+example : Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutation := @Airbender.Trace.Machine.Native.padded_unified_from_native_permutation
+
+example : Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutationSatisfiableClaim := @Airbender.Trace.Machine.Native.padded_unified_from_native_permutation_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_full_from_native_permutation
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_full_from_native_permutation_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_reduced_from_native_permutation
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_reduced_from_native_permutation_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unified_from_native_permutation
+
+#print axioms Airbender.Trace.Machine.Native.unified_from_native_permutation_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_full_from_native_permutation
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_full_from_native_permutation_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_reduced_from_native_permutation
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_reduced_from_native_permutation_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.padded_unified_from_native_permutation
+
+#print axioms Airbender.Trace.Machine.Native.padded_unified_from_native_permutation_satisfiable

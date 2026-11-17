@@ -187,6 +187,7 @@ import Proven.Final.Compiler.PaddedNativeMachine
 import Proven.Final.Compiler.WorkerMemoryPorts
 import Proven.Final.Compiler.MemoryComposition
 import Proven.Final.Compiler.CertificateMemory
+import Proven.Final.Compiler.PermutationMachine
 
 import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 
@@ -1740,3 +1741,27 @@ import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 #print axioms Airbender.Compiler.worker_certificate_ram_products
 
 #print axioms Airbender.Compiler.worker_certificate_ram_products_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_full_from_native_permutation
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_full_from_native_permutation_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_reduced_from_native_permutation
+
+#print axioms Airbender.Trace.Machine.Native.unrolled_reduced_from_native_permutation_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.unified_from_native_permutation
+
+#print axioms Airbender.Trace.Machine.Native.unified_from_native_permutation_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_full_from_native_permutation
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_full_from_native_permutation_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_reduced_from_native_permutation
+
+#print axioms Airbender.Trace.Machine.Native.padded_unrolled_reduced_from_native_permutation_satisfiable
+
+#print axioms Airbender.Trace.Machine.Native.padded_unified_from_native_permutation
+
+#print axioms Airbender.Trace.Machine.Native.padded_unified_from_native_permutation_satisfiable
