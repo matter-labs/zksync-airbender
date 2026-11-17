@@ -1782,21 +1782,6 @@ example : Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativePermutat
 
 example : Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutationSatisfiableClaim := Airbender.Trace.Machine.Native.padded_unified_from_native_permutation_satisfiable
 
-example (claim : Airbender.Compiler.UnifiedMemoryCompositionClaim) :
-    Airbender.Compiler.UnifiedMemoryCompositionSatisfiableClaim →
-    ∃ (trace : Airbender.Trace.UnifiedTrace Airbender.babyBearModulus)
-      (workers : Airbender.Trace.Machine.WorkerPools Airbender.babyBearModulus),
-      trace.rows ≠ [] ∧
-      (trace.initial :: trace.rows.map Airbender.Trace.Row.finish).Perm
-        (trace.terminal :: trace.rows.map Airbender.Trace.Row.start) ∧
-      Airbender.Delegation.Requests.Matching
-        ((trace.rows.filter fun row => decide (Airbender.UnifiedReduced.Caller.Selected row.assignment)).map
-          fun row => Airbender.UnifiedReduced.Caller.request row.assignment) workers.fulfillments ∧
-      (trace.initialMemory ++ (Airbender.Trace.Machine.unifiedSteps trace ++ workers.steps).map Prod.snd).Perm
-        (trace.terminalMemory ++ (Airbender.Trace.Machine.unifiedSteps trace ++ workers.steps).map Prod.fst) :=
-  fun ⟨config, trace, workers, initial, cells, program, layout, inits, boot, callers, machine, production, nonempty⟩ =>
-    ⟨trace, workers, nonempty, claim config trace workers initial cells program layout inits boot callers machine production⟩
-
 example : Airbender.InitsTeardowns.SharedBytesSatisfiableClaim := Airbender.InitsTeardowns.shared_bytes_satisfiable
 
 example (claim : Airbender.InitsTeardowns.SharedBytesClaim) : Airbender.InitsTeardowns.SharedBytesSatisfiableClaim →
