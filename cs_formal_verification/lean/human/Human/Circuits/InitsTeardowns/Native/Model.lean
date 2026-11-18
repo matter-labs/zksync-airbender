@@ -124,25 +124,10 @@ structure Parameters (p : Nat) (E : Type) [CommRing E] where
   /-- The public top-bits value for each set. -/
   windows : Nat → Nat
 
+/-- Raw memory-bank columns by row: row position, then memory column, to field value. -/
 abbrev Raw (p : Nat) := Nat → Nat → ZMod p
-abbrev Wires (E : Type) := Port → Nat → E
 
 variable [CommRing E]
-
-def addressLo (row : Nat) : Nat := (4 * row) % 65536
-
-def addressHi (layout : Layout) (parameters : Parameters p E) (set row : Nat) : Nat :=
-  row / 16384 + parameters.windows set * layout.stride
-
-def Leaf.time (leaf : Leaf) (raw : Raw p) (row : Nat) : ZMod p × ZMod p :=
-  match leaf.phase with
-  | .initial => (0, 0)
-  | .terminal => (raw row leaf.columns.timeLo, raw row leaf.columns.timeHi)
-
-def Leaf.value (leaf : Leaf) (raw : Raw p) (row : Nat) : ZMod p × ZMod p :=
-  match leaf.phase with
-  | .initial => (0, 0)
-  | .terminal => (raw row leaf.columns.valueLo, raw row leaf.columns.valueHi)
 
 /-- The native six-weight encoding of the existing memory-history token type.
     No sampled-product equality is interpreted as logical token matching. -/
@@ -157,38 +142,5 @@ def Parameters.encode (parameters : Parameters p E) (token : Trace.MemoryToken p
     parameters.weights 3 * parameters.embed token.time.2 +
     parameters.weights 4 * parameters.embed (value.1 : ZMod p) +
     parameters.weights 5 * parameters.embed (value.2 : ZMod p)
-
-/-- `evaluate_init` / `evaluate_teardown`: address space, address, timestamp,
-    then value. No range condition is imposed on raw time/value limbs. -/
-def Leaf.factor (layout : Layout) (parameters : Parameters p E) (raw : Raw p)
-    (row : Nat) (leaf : Leaf) : E :=
-  parameters.additive + 1 +
-    parameters.weights 0 * parameters.embed (addressLo row : ZMod p) +
-    parameters.weights 1 * parameters.embed (addressHi layout parameters leaf.set row : ZMod p) +
-    parameters.weights 2 * parameters.embed (leaf.time raw row).1 +
-    parameters.weights 3 * parameters.embed (leaf.time raw row).2 +
-    parameters.weights 4 * parameters.embed (leaf.value raw row).1 +
-    parameters.weights 5 * parameters.embed (leaf.value raw row).2
-
-def Gate.Sat (layout : Layout) (parameters : Parameters p E) (raw : Raw p)
-    (wires : Wires E) (row : Nat) : Gate → Prop
-  | .pair output left right => wires output row =
-      left.factor layout parameters raw row * right.factor layout parameters raw row
-  | .product output left right => wires output row = wires left row * wires right row
-  | .copy output input => wires output row = wires input row
-
-def Tree.eval (layout : Layout) (parameters : Parameters p E) (raw : Raw p)
-    (row : Nat) : Tree → E
-  | .pair _ left right =>
-      left.factor layout parameters raw row * right.factor layout parameters raw row
-  | .product _ left right => left.eval layout parameters raw row * right.eval layout parameters raw row
-  | .copy _ input => input.eval layout parameters raw row
-
-/-- Actual imported GKR acceptance on every native row. Ordinary empty equation
-    arrays do not establish this predicate. Logical matching remains separate. -/
-def Accepted (artifact : Artifact) (parameters : Parameters p E) (raw : Raw p)
-    (wires : Wires E) : Prop :=
-  ∀ row : Fin artifact.layout.rows, ∀ gate ∈ artifact.gates.toList,
-    gate.Sat artifact.layout parameters raw wires row.val
 
 end Airbender.InitsTeardowns.Native

@@ -8,7 +8,7 @@ namespace Airbender.InitsTeardowns.Native.Proofs
 
 variable {p : Nat} [CommRing E]
 
-/-- Window-major native RAM tokens, the proof form of a root product.
+/-- Window-major native RAM tokens, the proof form of an output product.
     Noncomputable keeps the full native row domain out of compiled code. -/
 noncomputable def ramTokens (layout : Layout) (parameters : Parameters p E)
     (raw : Raw p) (phase : Phase) : List (Trace.MemoryToken p) :=
@@ -37,13 +37,13 @@ theorem token_list_product (layout : Layout) (parameters : Parameters p E) (raw 
         List.map_map, List.map_cons, List.prod_cons, ih, Function.comp_def]
 
 theorem output_token_product [Fact p.Prime] {artifact : Artifact} {tree : Tree} {phase : Phase}
-    (parameters : Parameters p E) (raw : Raw p) (wires : Wires E)
+    (parameters : Parameters p E) (raw : Raw p) (values : Nat → GKRAddress → E)
     (linked : tree.Follows artifact.gates)
     (covered : tree.leaves = artifact.layout.leaves phase)
-    (accepted : Accepted artifact parameters raw wires) :
-    rootProduct artifact tree wires =
+    (accepted : Accepted artifact parameters raw fun port row => values row (Extract.address port)) :
+    outputProduct artifact tree values =
       ((ramTokens artifact.layout parameters raw phase).map parameters.encode).prod := by
-  unfold rootProduct
+  unfold outputProduct
   calc
     _ = ((List.finRange artifact.layout.rows).map fun row =>
         ((artifact.layout.leaves phase).map fun leaf =>
@@ -51,7 +51,7 @@ theorem output_token_product [Fact p.Prime] {artifact : Artifact} {tree : Tree} 
       apply congrArg List.prod
       apply List.map_congr_left
       intro row _
-      exact root_tokens parameters raw wires linked covered accepted row
+      exact root_tokens parameters raw _ linked covered accepted row
     _ = ((artifact.layout.leaves phase).map fun leaf =>
         ((List.finRange artifact.layout.rows).map fun row =>
           parameters.encode (leaf.token artifact.layout parameters raw row.val)).prod).prod :=

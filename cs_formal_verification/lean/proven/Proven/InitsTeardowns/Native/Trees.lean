@@ -1,5 +1,5 @@
 module
-public import Human.Circuits.InitsTeardowns.Native.Model
+public import Proven.InitsTeardowns.Native.Semantics
 
 @[expose] public section
 

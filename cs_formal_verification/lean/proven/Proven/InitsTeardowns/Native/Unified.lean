@@ -3,6 +3,7 @@ public import Human.Circuits.InitsTeardowns.Native.Unified
 public import Proven.InitsTeardowns.Native.Emit
 public import Proven.InitsTeardowns.Native.Products
 public import Proven.InitsTeardowns.Native.Satisfiable
+public import Proven.InitsTeardowns.Native.Bridge
 public import Proven.KernelRfl
 import all Init.Data.Range.Basic -- the layout import loops over a range; the kernel needs the loop body
 
@@ -94,18 +95,42 @@ theorem teardown_tokens {E : Type} [CommRing E]
   congr 1
   exact (native_address (layout := InitsTeardowns.unifiedLayout) ⟨rfl, Or.inl rfl⟩ topBound row.isLt).symm
 
-/-- Native gate acceptance gives the products of the boot interface tokens. -/
-theorem soundness : UnifiedSoundnessClaim := by
-  intro E _ parameters w wires windows checked accepted
-  rw [← teardown_tokens parameters w windows checked, ← init_tokens parameters (memoryBank 96 w) w windows checked]
-  exact ⟨output_token_product parameters _ wires terminal_follows terminal_leaves accepted,
-    output_token_product parameters _ wires initial_follows initial_leaves accepted⟩
+/-- Each extracted gate is the decoded form of a compiled relation of the bound circuit. -/
+theorem sourced : ∀ gate ∈ unifiedArtifact.gates.toList,
+    ∃ relation ∈ compiledRelations Compiler.Captures.Unified.imported.circuit, correspond relation gate = true := by
+  decide +kernel
 
-/-- The zero instance with zero windows meets the native gate premises. -/
+/-- The extracted window stride is the window shift of the bound layout. -/
+theorem stride : unifiedArtifact.layout.stride = 2 ^ InitsTeardowns.topShift InitsTeardowns.unifiedLayout := by
+  decide +kernel
+
+/-- Each extracted initialization pair reads sets of the bound layout. -/
+theorem pair_sets : ∀ gate ∈ unifiedArtifact.gates.toList, ∀ set ∈ pairSets gate,
+    set < InitsTeardowns.unifiedLayout.sets.size := by
+  decide +kernel
+
+/-- The window shift leaves room for the verifier ceiling in a `u32`. -/
+theorem shift_small : 2 ^ InitsTeardowns.topShift InitsTeardowns.unifiedLayout ≤ 2 ^ 26 := by
+  decide +kernel
+
+/-- Compiled acceptance gives the products of the boot interface tokens. -/
+theorem soundness : UnifiedSoundnessClaim := by
+  intro E _ challenges w physical values windows checked bank holds
+  have accepted := accepted_of_compiled unifiedArtifact Compiler.Captures.Unified.imported.circuit
+    InitsTeardowns.unifiedLayout (by decide +kernel) stride sourced challenges (fun gate member set inside =>
+      window_bounded challenges.memory.windows w.topBits _ shift_small windows checked set
+        (pair_sets gate member set inside)) physical values (memoryBank 96 w) bank holds
+  rw [← teardown_tokens challenges.memory w windows checked,
+    ← init_tokens challenges.memory (memoryBank 96 w) w windows checked]
+  exact ⟨output_token_product challenges.memory _ _ terminal_follows terminal_leaves accepted,
+    output_token_product challenges.memory _ _ initial_follows initial_leaves accepted⟩
+
+/-- The zero instance with zero windows and unit extension values meets the compiled acceptance premises. -/
 theorem satisfiable : UnifiedSatisfiableClaim :=
-  ⟨_, ⟨Vector.replicate _ 0, fun _ _ => 0⟩, _, fun _ => by simp, fun _ member => by
-    simp only [Vector.toList_replicate, List.mem_replicate] at member
-    rw [member.2]
-    decide, accepted_unit unifiedArtifact⟩
+  ⟨zeroChallenges, ⟨Vector.replicate _ 0, fun _ _ => 0⟩, fun _ _ => 0, fun _ _ => 1,
+    fun _ => by simp [zeroChallenges], fun _ member => by
+      simp only [Vector.toList_replicate, List.mem_replicate] at member
+      rw [member.2]
+      decide, fun _ _ => rfl, fun _ _ => unit_holds _ _ _⟩
 
 end Airbender.InitsTeardowns.Native.Proofs.Unified

@@ -103,7 +103,7 @@ def CacheHolds (challenges : Challenges E) (physical : GKRAddress → F) (values
 
 /-- An extension gate computes its output: copies, vector materialization and the RAM products.
     The mask gate reads the base-field execute wire. Lookup aggregation gates have the
-    `NativeLookups` interface. The initialization pair has the `InitsTeardowns.Native` interface. -/
+    `NativeLookups` interface. The initialization pair has `InitializationGateHolds`. -/
 def GateHolds (challenges : Challenges E) (physical : GKRAddress → F) (values : GKRAddress → E) :
     GKRRelation → Prop
   | .CopyInExtensionField input output => values output = values input
@@ -132,6 +132,59 @@ def Holds (circuit : Circuit) (challenges : Challenges E) (physical : GKRAddress
     (∀ entry ∈ layer.cached_relations, CacheHolds challenges physical values entry.1 entry.2) ∧
     (∀ gate ∈ layer.gates ++ layer.gates_with_external_connections,
       GateHolds challenges physical values gate.enforced_relation)
+
+/-- The weighted timestamp and value limbs of one side of a teardown pair, read from the memory bank. An
+    initialization tuple has none. Source: `gkr_eval_ir/src/lower/memory.rs:391-421`. -/
+def teardownTerms (challenges : Challenges E) (physical : GKRAddress → F) :
+    InitsOrTeardownsTimestampAndValue → Nat → Option E
+  | .Init, _ => some 0
+  | .Teardown leftTime leftValue rightTime rightValue, side =>
+    let (time, value) := if side == 0 then (leftTime, leftValue) else (rightTime, rightValue)
+    match time.values.toList, value.values.toList with
+    | [timeLow, timeHigh], [valueLow, valueHigh] => some
+        (challenges.memory.weights 2 * challenges.column physical timeLow +
+          challenges.memory.weights 3 * challenges.column physical timeHigh +
+          challenges.memory.weights 4 * challenges.column physical valueLow +
+          challenges.memory.weights 5 * challenges.column physical valueHigh)
+    | _, _ => none
+
+/-- One side of an initialization pair for set `set`: the additive challenge, the RAM address space
+    (`AddressSpaceType::RAM = 1`), the low address limb, the high address limb plus the public window of the set
+    shifted left by `shift` as a `u32`, then the teardown limbs. Source: `gkr_eval_ir/src/lower/memory.rs:352-423`,
+    `inits_or_teardowns_tuple`; the generated verifier adds `inits_and_teardowns_top_bits[set] <<
+    address_high_bits_shift` (`verifier/src/generated/inits_and_teardowns/sec_100/gkr.rs:81`). -/
+def initializationTuple (challenges : Challenges E) (physical : GKRAddress → F) (shift : Nat)
+    (state : InitsOrTeardownsTimestampAndValue) (setup : Fixed 2 GKRAddress) (set side : Nat) : Option E :=
+  match setup.values.toList with
+  | [low, high] => (teardownTerms challenges physical state side).map fun terms =>
+      challenges.memory.additive + challenges.embed 1 +
+        challenges.memory.weights 0 * challenges.embed (physical low) +
+        challenges.memory.weights 1 * (challenges.embed (physical high) +
+          challenges.embed (((challenges.memory.windows set <<< shift) % 2 ^ 32 : Nat) : F)) + terms
+  | _ => none
+
+/-- A compiled gate of the initialization products. An initialization pair multiplies the tuples of its two sets.
+    Source: `gkr_eval_ir/src/lower/memory.rs:313-350`, `lower_inits_or_teardowns`. Extension copies and products
+    have their `GateHolds` semantics. -/
+def InitializationGateHolds (shift : Nat) (challenges : Challenges E) (physical : GKRAddress → F)
+    (values : GKRAddress → E) : GKRRelation → Prop
+  | .InitsOrTeardownsInitialPair state setup output sets => match sets.values.toList with
+    | [left, right] => ∃ leftValue rightValue,
+        initializationTuple challenges physical shift state setup left 0 = some leftValue ∧
+        initializationTuple challenges physical shift state setup right 1 = some rightValue ∧
+        values output = leftValue * rightValue
+    | _ => False
+  | .CopyInExtensionField input output => GateHolds challenges physical values (.CopyInExtensionField input output)
+  | .TrivialProduct input output => GateHolds challenges physical values (.TrivialProduct input output)
+  | _ => True
+
+/-- The compiled initialization pairs, extension copies and extension products of `circuit` hold on one row.
+    The window shift is `InitsTeardowns.topShift` of the initialization layout of `circuit`
+    (`top_bits_shift`, `gkr_eval_ir/src/lower/memory.rs:431-440`). -/
+def InitializationHolds (circuit : Circuit) (layout : InitsTeardowns.Layout) (challenges : Challenges E)
+    (physical : GKRAddress → F) (values : GKRAddress → E) : Prop :=
+  ∀ layer ∈ circuit.layers, ∀ gate ∈ layer.gates ++ layer.gates_with_external_connections,
+    InitializationGateHolds (InitsTeardowns.topShift layout) challenges physical values gate.enforced_relation
 
 /-- The native RAM argument outputs, in output-map order: the read product, then the write product. -/
 def ramOutputs (circuit : Circuit) : List GKRAddress :=

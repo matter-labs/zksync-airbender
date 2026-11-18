@@ -1,28 +1,35 @@
 # Native initialization products
 
-[Model.lean](Model.lean) gives the three native extension-gate forms and their memory-token encoding.
+[Model.lean](Model.lean) gives the extracted wiring types, the raw memory bank and the memory-token encoding.
 [Extract.lean](Extract.lean) selects the two RAM output dependency trees from the existing typed circuit.
 It checks their producers, virtual setup inputs, set indices, memory columns and output map.
-[Products.lean](Products.lean) defines the root products and the native memory bank of an instance.
-It keeps the row products symbolic. It does not enumerate the native row domain.
+[Products.lean](Products.lean) defines the output products, the virtual setup address limbs of a row and the native
+memory bank of an instance. It keeps the row products symbolic. It does not enumerate the native row domain.
+The compiled semantics of the initialization pair is `NativeMemory.InitializationHolds`
+([NativeMemory.lean](../../../Compiler/NativeMemory.lean)). It follows the verifier
+(`gkr_eval_ir/src/lower/memory.rs`): the tuple of set `k` adds the public top bits of set `k` to the high address
+limb, shifted left as a 32-bit unsigned word by `InitsTeardowns.topShift` of the bound layout.
 
 | Claim | Result |
 | --- | --- |
 | `Airbender.InitsTeardowns.Native.StandaloneBindingClaim` | The standalone graph is extracted from the existing artifact. |
 | `Airbender.InitsTeardowns.Native.UnifiedBindingClaim` | The cached unified capture has the initialization layout, and its inline graph is extracted from it. |
-| `Airbender.InitsTeardowns.Native.StandaloneSoundnessClaim` | Accepted standalone gates compute the products of the boot interface tokens. |
-| `Airbender.InitsTeardowns.Native.UnifiedSoundnessClaim` | Accepted inline gates of the cached capture compute the products of the boot interface tokens. |
-| `Airbender.InitsTeardowns.Native.StandaloneSatisfiableClaim` | An instance with checked windows meets the standalone gate premises. |
-| `Airbender.InitsTeardowns.Native.UnifiedSatisfiableClaim` | An instance with checked windows meets the inline gate premises. |
+| `Airbender.InitsTeardowns.Native.StandaloneSoundnessClaim` | Compiled acceptance of the standalone capture gives the products of the boot interface tokens on its output wires. |
+| `Airbender.InitsTeardowns.Native.UnifiedSoundnessClaim` | Compiled acceptance of the cached unified capture gives the products of the boot interface tokens on its output wires. |
+| `Airbender.InitsTeardowns.Native.StandaloneSatisfiableClaim` | An instance with checked windows meets the compiled acceptance premises of the standalone capture. |
+| `Airbender.InitsTeardowns.Native.UnifiedSatisfiableClaim` | An instance with checked windows meets the compiled acceptance premises of the cached unified capture. |
 
 The [final proofs](../../../../../proven/Proven/Final/Circuits/InitsTeardowns/NativeProducts.lean) use one generic tree and product argument.
 The kernel checks both extraction bindings. The unified binding reads the cached capture `Captures.Unified.imported`,
 the circuit that production proves, and checks its initialization layout as well.
-The CPU memory claims of that capture read no initialization output. Their proof evaluates the initialization
-subgraph with internal windows. These two claims bind the initialization outputs with the public windows.
+The soundness claims take compiled acceptance on every row of the bound circuit. The virtual setup wires of a row are
+the setup address limbs that the verifier computes (`withSetupAddresses`); they are not premises.
+The [bridge proof](../../../../../proven/Proven/InitsTeardowns/Native/Bridge.lean) checks in the kernel that each
+extracted gate is the decoded form of a compiled relation of the bound circuit, and that the extracted window stride
+is the compiled window shift. The CPU memory claims of the cached capture read no initialization output.
 The [import command](../../../Import/NativeRamProducts.lean) emits data only.
 Its output must pass those bindings. Product equality does not prove a token permutation.
-The extension-wire and product-challenge interfaces remain explicit.
+The extension wires and the product challenges are universally quantified.
 
 The soundness claims state both products over `Witness.initTokens` and `Witness.teardownTokens`.
 The machine boot interface uses the same token lists for its seeds and teardowns.

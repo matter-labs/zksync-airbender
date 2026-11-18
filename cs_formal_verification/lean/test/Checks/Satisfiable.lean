@@ -691,27 +691,33 @@ end Checks.Satisfiable
 
 example (claim : Airbender.InitsTeardowns.Native.StandaloneSoundnessClaim)
     (satisfiable : Airbender.InitsTeardowns.Native.StandaloneSatisfiableClaim) :
-    ∃ (parameters : Airbender.InitsTeardowns.Native.Parameters Airbender.babyBearModulus
-      (ZMod Airbender.babyBearModulus))
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges (ZMod Airbender.babyBearModulus))
       (witness : Airbender.InitsTeardowns.Witness Airbender.babyBearModulus Airbender.InitsTeardowns.importedLayout)
-      (wires : Airbender.InitsTeardowns.Native.Wires (ZMod Airbender.babyBearModulus)),
-      Airbender.InitsTeardowns.Native.Accepted Airbender.InitsTeardowns.Native.standaloneArtifact parameters (Airbender.InitsTeardowns.Native.memoryBank 0 witness) wires ∧
-      Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.standaloneArtifact
-        Airbender.InitsTeardowns.Native.standaloneArtifact.terminal wires = (witness.teardownTokens.map parameters.encode).prod := by
-  obtain ⟨parameters, witness, wires, windows, checked, accepted⟩ := satisfiable
-  exact ⟨parameters, witness, wires, accepted, (claim parameters witness wires windows checked accepted).1⟩
+      (physical : Nat → Airbender.GKRAddress → ZMod Airbender.babyBearModulus)
+      (values : Nat → Airbender.GKRAddress → ZMod Airbender.babyBearModulus),
+      (∀ row < Airbender.InitsTeardowns.Native.standaloneArtifact.layout.rows, Airbender.Compiler.NativeMemory.InitializationHolds
+        Airbender.InitsTeardowns.importedLayoutCircuit Airbender.InitsTeardowns.importedLayout challenges
+        (Airbender.InitsTeardowns.Native.withSetupAddresses Airbender.InitsTeardowns.importedLayout row (physical row)) (values row)) ∧
+      Airbender.InitsTeardowns.Native.outputProduct Airbender.InitsTeardowns.Native.standaloneArtifact Airbender.InitsTeardowns.Native.standaloneArtifact.terminal values =
+        (witness.teardownTokens.map challenges.memory.encode).prod := by
+  obtain ⟨challenges, witness, physical, values, windows, checked, bank, holds⟩ := satisfiable
+  exact ⟨challenges, witness, physical, values, holds,
+    (claim challenges witness physical values windows checked bank holds).1⟩
 
 example (claim : Airbender.InitsTeardowns.Native.UnifiedSoundnessClaim)
     (satisfiable : Airbender.InitsTeardowns.Native.UnifiedSatisfiableClaim) :
-    ∃ (parameters : Airbender.InitsTeardowns.Native.Parameters Airbender.babyBearModulus
-      (ZMod Airbender.babyBearModulus))
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges (ZMod Airbender.babyBearModulus))
       (witness : Airbender.InitsTeardowns.Witness Airbender.babyBearModulus Airbender.InitsTeardowns.unifiedLayout)
-      (wires : Airbender.InitsTeardowns.Native.Wires (ZMod Airbender.babyBearModulus)),
-      Airbender.InitsTeardowns.Native.Accepted Airbender.InitsTeardowns.Native.unifiedArtifact parameters (Airbender.InitsTeardowns.Native.memoryBank 96 witness) wires ∧
-      Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.unifiedArtifact
-        Airbender.InitsTeardowns.Native.unifiedArtifact.terminal wires = (witness.teardownTokens.map parameters.encode).prod := by
-  obtain ⟨parameters, witness, wires, windows, checked, accepted⟩ := satisfiable
-  exact ⟨parameters, witness, wires, accepted, (claim parameters witness wires windows checked accepted).1⟩
+      (physical : Nat → Airbender.GKRAddress → ZMod Airbender.babyBearModulus)
+      (values : Nat → Airbender.GKRAddress → ZMod Airbender.babyBearModulus),
+      (∀ row < Airbender.InitsTeardowns.Native.unifiedArtifact.layout.rows, Airbender.Compiler.NativeMemory.InitializationHolds
+        Airbender.Compiler.Captures.Unified.imported.circuit Airbender.InitsTeardowns.unifiedLayout challenges
+        (Airbender.InitsTeardowns.Native.withSetupAddresses Airbender.InitsTeardowns.unifiedLayout row (physical row)) (values row)) ∧
+      Airbender.InitsTeardowns.Native.outputProduct Airbender.InitsTeardowns.Native.unifiedArtifact Airbender.InitsTeardowns.Native.unifiedArtifact.terminal values =
+        (witness.teardownTokens.map challenges.memory.encode).prod := by
+  obtain ⟨challenges, witness, physical, values, windows, checked, bank, holds⟩ := satisfiable
+  exact ⟨challenges, witness, physical, values, holds,
+    (claim challenges witness physical values windows checked bank holds).1⟩
 
 example (claim : Airbender.Blake2Round.Mask.SoundnessClaim)
     (witness : Airbender.Blake2Round.Mask.SatisfiableClaim) :
@@ -1246,27 +1252,27 @@ example (claim : Airbender.Compiler.WordMemoryCachedArithmeticClaim) :
 
 example (claim : Airbender.InitsTeardowns.Native.StandaloneSoundnessClaim) :
     Airbender.InitsTeardowns.Native.StandaloneSatisfiableClaim →
-    ∃ (parameters : Airbender.InitsTeardowns.Native.Parameters babyBearModulus (ZMod babyBearModulus))
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges (ZMod babyBearModulus))
       (witness : Airbender.InitsTeardowns.Witness babyBearModulus Airbender.InitsTeardowns.importedLayout)
-      (wires : Airbender.InitsTeardowns.Native.Wires (ZMod babyBearModulus)),
-      Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.standaloneArtifact
-        Airbender.InitsTeardowns.Native.standaloneArtifact.terminal wires = (witness.teardownTokens.map parameters.encode).prod ∧
-      Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.standaloneArtifact
-        Airbender.InitsTeardowns.Native.standaloneArtifact.initial wires = (witness.initTokens.map parameters.encode).prod :=
-  fun ⟨parameters, witness, wires, windows, checked, accepted⟩ =>
-    ⟨parameters, witness, wires, claim parameters witness wires windows checked accepted⟩
+      (values : Nat → Airbender.GKRAddress → ZMod babyBearModulus),
+      Airbender.InitsTeardowns.Native.outputProduct Airbender.InitsTeardowns.Native.standaloneArtifact Airbender.InitsTeardowns.Native.standaloneArtifact.terminal values =
+        (witness.teardownTokens.map challenges.memory.encode).prod ∧
+      Airbender.InitsTeardowns.Native.outputProduct Airbender.InitsTeardowns.Native.standaloneArtifact Airbender.InitsTeardowns.Native.standaloneArtifact.initial values =
+        (witness.initTokens.map challenges.memory.encode).prod :=
+  fun ⟨challenges, witness, physical, values, windows, checked, bank, holds⟩ =>
+    ⟨challenges, witness, values, claim challenges witness physical values windows checked bank holds⟩
 
 example (claim : Airbender.InitsTeardowns.Native.UnifiedSoundnessClaim) :
     Airbender.InitsTeardowns.Native.UnifiedSatisfiableClaim →
-    ∃ (parameters : Airbender.InitsTeardowns.Native.Parameters babyBearModulus (ZMod babyBearModulus))
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges (ZMod babyBearModulus))
       (witness : Airbender.InitsTeardowns.Witness babyBearModulus Airbender.InitsTeardowns.unifiedLayout)
-      (wires : Airbender.InitsTeardowns.Native.Wires (ZMod babyBearModulus)),
-      Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.unifiedArtifact
-        Airbender.InitsTeardowns.Native.unifiedArtifact.terminal wires = (witness.teardownTokens.map parameters.encode).prod ∧
-      Airbender.InitsTeardowns.Native.rootProduct Airbender.InitsTeardowns.Native.unifiedArtifact
-        Airbender.InitsTeardowns.Native.unifiedArtifact.initial wires = (witness.initTokens.map parameters.encode).prod :=
-  fun ⟨parameters, witness, wires, windows, checked, accepted⟩ =>
-    ⟨parameters, witness, wires, claim parameters witness wires windows checked accepted⟩
+      (values : Nat → Airbender.GKRAddress → ZMod babyBearModulus),
+      Airbender.InitsTeardowns.Native.outputProduct Airbender.InitsTeardowns.Native.unifiedArtifact Airbender.InitsTeardowns.Native.unifiedArtifact.terminal values =
+        (witness.teardownTokens.map challenges.memory.encode).prod ∧
+      Airbender.InitsTeardowns.Native.outputProduct Airbender.InitsTeardowns.Native.unifiedArtifact Airbender.InitsTeardowns.Native.unifiedArtifact.initial values =
+        (witness.initTokens.map challenges.memory.encode).prod :=
+  fun ⟨challenges, witness, physical, values, windows, checked, bank, holds⟩ =>
+    ⟨challenges, witness, values, claim challenges witness physical values windows checked bank holds⟩
 
 namespace RV.ValidUse
 open Spec
