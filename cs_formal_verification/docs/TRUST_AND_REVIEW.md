@@ -167,7 +167,7 @@ kernel replay ([ci/README.md](../ci/README.md)). A local `./verify.sh` is the co
 | axiom audits | read from Lake's build log of the audit modules (`VERIFY_AUDITS=replay`): the messages recorded when those `.olean` files were built, the same trust as the files themselves | `lake env lean` elaborates each audit file again (`fresh`) |
 | every `#print axioms` answered, standard axioms only | yes | yes |
 | regressions, test executable, JSON pins, guide links | yes | yes |
-| final proof and separate non-vacuity coverage for every public claim | yes | yes |
+| final proof and separate non-vacuity coverage for every public claim, and a checked application of each claim with premises to its witness | yes | yes |
 | review check's Lean inventory (audit roots, guide names) | skipped when its inputs (guides, audit file, Lake input hashes of the claim modules) equal those of a passing check recorded in the build | yes |
 | module budget | ledger of earlier measurements by input hash, plus the modules built now | every module measured in this run |
 

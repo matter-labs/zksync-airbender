@@ -106,7 +106,9 @@ Every other trace, worker and caller claim has a separate statement `…Satisfia
 restated, hold jointly for some data with the conclusion's domain non-empty (a row, a caller, a worker row in the window,
 a complete hash span). Witnesses in `proven/Proven/NonVacuous/`, final theorems in `proven/Proven/Final/Trace/Satisfiable/`;
 [Satisfiable.lean](lean/test/Checks/Satisfiable.lean) applies each claim to its witness, which type-checks only if the
-restated premises are exactly the claim's.
+restated premises are exactly the claim's. For each claim with premises, the coverage checker requires this
+application and checks that its statement contains the claim's conclusion on the witness's data
+([status](docs/VERIFICATION_STATUS.md)).
 
 The official Sail RISC-V model (pins in [PINS.md](sail/PINS.md)), generated to Lean by [regen.sh](sail/regen.sh) into
 `lean/sail-rv32/SailRV32/`, is used only to justify the spec. The [equivalence leaf](lean/human/Human/ISA/Sail/Theorems.lean)

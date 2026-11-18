@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test rejection of missing claim proofs, witnesses and unsupported exceptions."""
+"""Test rejection of missing claim proofs, witnesses, applications and unsupported exceptions."""
 import copy
 import unittest
 import subprocess
@@ -18,7 +18,8 @@ class ClaimCoverageTests(unittest.TestCase):
             self.primary: {"module": "Human.Circuits.Example.Theorems", "head": "forall", "combined": False},
             self.witness: {"module": "Human.Circuits.Example.Theorems", "head": "exists", "combined": False},
         }, "proofs": {self.primary: ["Example.soundness"], self.witness: ["Example.soundness_satisfiable"]},
-            "telescopes": {f"{self.primary} {self.witness}": None}}
+            "telescopes": {f"{self.primary} {self.witness}": None},
+            "applications": {f"{self.primary} {self.witness}": None}}
         self.manifest = {"claims": {self.primary: {"witness": self.witness}, self.witness: {}}}
 
     def test_complete_pair(self):
@@ -51,6 +52,7 @@ class ClaimCoverageTests(unittest.TestCase):
         self.manifest["claims"][witness] = self.manifest["claims"].pop(self.witness)
         self.manifest["claims"][self.primary]["witness"] = witness
         self.data["telescopes"] = {f"{self.primary} {witness}": None}
+        self.data["applications"] = {f"{self.primary} {witness}": None}
         self.assertEqual(validate(self.data, self.manifest), 2)
 
     def test_witness_serves_one_claim(self):
@@ -65,6 +67,7 @@ class ClaimCoverageTests(unittest.TestCase):
         self.data["proofs"][second] = ["Example.claim"]
         self.manifest["claims"][second] = {"witness": shared}
         self.data["telescopes"] = {f"{self.primary} {shared}": None, f"{second} {shared}": None}
+        self.data["applications"] = {f"{self.primary} {shared}": None, f"{second} {shared}": None}
         with self.assertRaisesRegex(ValueError, "serves two claims"):
             validate(self.data, self.manifest)
 
@@ -122,6 +125,7 @@ class ClaimCoverageTests(unittest.TestCase):
         self.manifest["claims"][listed] = {"witness": witness}
         self.manifest["claims"][witness] = {}
         self.data["telescopes"][f"{listed} {witness}"] = "no premises"
+        # A listed claim has no premises, so it has no application to its witness.
         self.assertEqual(validate(self.data, self.manifest), 4)
         self.data["telescopes"][f"{listed} {witness}"] = None
         with self.assertRaisesRegex(ValueError, "Stale premise telescope exception"):
@@ -134,6 +138,16 @@ class ClaimCoverageTests(unittest.TestCase):
         self.data["telescopes"][f"{listed} {witness}"] = "no premises"
         with mock.patch.dict(check_claim_coverage.TELESCOPE_EXCEPTIONS, {listed: "Another reason."}), \
                 self.assertRaisesRegex(ValueError, "exception does not hold"):
+            validate(self.data, self.manifest)
+
+    def test_missing_application_check(self):
+        self.data["applications"] = {}
+        with self.assertRaisesRegex(ValueError, "Missing application check"):
+            validate(self.data, self.manifest)
+
+    def test_claim_must_apply_to_its_witness(self):
+        self.data["applications"][f"{self.primary} {self.witness}"] = "no node of the statement is the claim conclusion"
+        with self.assertRaisesRegex(ValueError, "No theorem applies"):
             validate(self.data, self.manifest)
 
     def test_missing_telescope_check(self):
@@ -262,6 +276,83 @@ run_cmd ClaimCoverageAudit.audit ``Smoke.Claim ``Smoke.ExtraFirst
             "Smoke.Omitted": False, "Smoke.Weaker": False, "Smoke.PremisesSwapped": False,
             "Smoke.ExtraBinder": False, "Smoke.BindersSwapped": False, "Smoke.ArgumentsSwapped": False,
             "Smoke.ProductPermuted": False})
+
+    def test_kernel_application_audit(self):
+        source = r"""import Lean
+set_option linter.unusedVariables false
+namespace Smoke
+def P (a : Nat) : Prop := a < 5
+def R (a : Nat) : Prop := 0 < a
+def Applied : Prop := ∀ a : Nat, P a → R a → a < 6
+def AppliedSatisfiable : Prop := ∃ a : Nat, P a ∧ R a
+theorem Applied.applied (claim : Applied) : AppliedSatisfiable → ∃ a : Nat, R a ∧ a < 6 :=
+  fun ⟨a, p, r⟩ => ⟨a, r, claim a p r⟩
+def Weakened : Prop := ∀ a : Nat, P a → R a → a < 6
+def WeakenedSatisfiable : Prop := ∃ a : Nat, P a ∧ R a
+theorem Weakened.applied (claim : Weakened) : WeakenedSatisfiable → ∃ a : Nat, True :=
+  fun ⟨a, p, r⟩ => ⟨a, (fun _ => trivial) (claim a p r)⟩
+def Unused : Prop := ∀ a : Nat, P a → R a → a < 6
+def UnusedSatisfiable : Prop := ∃ a : Nat, P a ∧ R a
+theorem Unused.applied (claim : Unused) : UnusedSatisfiable → ∃ a : Nat, a < 6 :=
+  fun ⟨a, p, _⟩ => ⟨a, by unfold P at p; omega⟩
+def Closed : Prop := ∀ a : Nat, P a → R a → a < 6
+def ClosedSatisfiable : Prop := ∃ a : Nat, P a ∧ R a
+theorem Closed.applied (claim : Closed) : ClosedSatisfiable → 0 < 6 :=
+  fun ⟨a, p, r⟩ => Nat.lt_of_le_of_lt (Nat.zero_le a) (claim a p r)
+def Shared : Prop := ∀ a b : Nat, a = b → a ≤ b
+def SharedSatisfiable : Prop := ∃ a b : Nat, a = b
+theorem Shared.applied (claim : Shared) : SharedSatisfiable → ∃ a : Nat, a ≤ a :=
+  fun ⟨a, b, equal⟩ => ⟨b, by subst equal; exact claim _ _ rfl⟩
+def Twice : Prop := ∀ a : Nat, P a → R a → a < 6
+def TwiceSatisfiable : Prop := ∃ a : Nat, P a ∧ R a
+theorem Twice.first (claim : Twice) : TwiceSatisfiable → ∃ a : Nat, a < 6 := fun ⟨a, p, r⟩ => ⟨a, claim a p r⟩
+theorem Twice.second (claim : Twice) : TwiceSatisfiable → ∃ a : Nat, a < 6 := fun ⟨a, p, r⟩ => ⟨a, claim a p r⟩
+def Missing : Prop := ∀ a : Nat, P a → R a → a < 6
+def MissingSatisfiable : Prop := ∃ a : Nat, P a ∧ R a
+def Fixed : Prop := ∀ {n : Nat} (index : Fin n), index.val < n → index.val < n + 1
+def FixedSatisfiable : Prop := ∃ index : Fin 3, index.val < 3
+theorem Fixed.applied (claim : Fixed) : FixedSatisfiable → ∃ index : Fin 3, index.val < 3 + 1 :=
+  fun ⟨index, bound⟩ => ⟨index, claim index bound⟩
+def Bounded : Prop := ∀ rows : List Nat, rows ≠ [] → ∀ row ∈ rows, row < 10 → row < 11
+def BoundedSatisfiable : Prop := ∃ rows : List Nat, rows ≠ [] ∧ ∃ row ∈ rows, row < 10
+theorem Bounded.applied (claim : Bounded) : BoundedSatisfiable → ∃ rows : List Nat, ∃ row ∈ rows, row < 11 :=
+  fun ⟨rows, nonempty, row, member, bound⟩ => ⟨rows, row, member, claim rows nonempty row member bound⟩
+structure TwoFieldClaim : Prop where
+  first : ∀ a : Nat, P a → a < 5
+  second : True
+end Smoke
+""" + AUDIT + r"""
+run_cmd ClaimCoverageAudit.auditApplication `Smoke ``Smoke.Applied ``Smoke.AppliedSatisfiable
+run_cmd ClaimCoverageAudit.auditApplication `Smoke ``Smoke.Weakened ``Smoke.WeakenedSatisfiable
+run_cmd ClaimCoverageAudit.auditApplication `Smoke ``Smoke.Unused ``Smoke.UnusedSatisfiable
+run_cmd ClaimCoverageAudit.auditApplication `Smoke ``Smoke.Closed ``Smoke.ClosedSatisfiable
+run_cmd ClaimCoverageAudit.auditApplication `Smoke ``Smoke.Shared ``Smoke.SharedSatisfiable
+run_cmd ClaimCoverageAudit.auditApplication `Smoke ``Smoke.Twice ``Smoke.TwiceSatisfiable
+run_cmd ClaimCoverageAudit.auditApplication `Smoke ``Smoke.Missing ``Smoke.MissingSatisfiable
+run_cmd ClaimCoverageAudit.auditApplication `Smoke ``Smoke.Fixed ``Smoke.FixedSatisfiable
+run_cmd ClaimCoverageAudit.auditApplication `Smoke ``Smoke.Bounded ``Smoke.BoundedSatisfiable
+run_cmd ClaimCoverageAudit.auditApplication `Smoke ``Smoke.TwoFieldClaim ``Smoke.AppliedSatisfiable
+"""
+        with tempfile.TemporaryDirectory(prefix="airbender-coverage-test-") as directory:
+            path = Path(directory) / "Applications.lean"
+            path.write_text(source)
+            result = subprocess.run(["lake", "env", "lean", str(path)], cwd=ROOT,
+                                    text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.assertEqual(result.returncode, 0, result.stdout[-5000:])
+        reasons = {}
+        for line in result.stdout.splitlines():
+            fields = line.split()
+            if fields and fields[0] in {"APPLICATION_MATCH", "APPLICATION_MISMATCH"}:
+                reasons[fields[1]] = None if fields[0] == "APPLICATION_MATCH" else " ".join(fields[3:])
+        self.assertEqual(reasons, {
+            "Smoke.Applied": None, "Smoke.Fixed": None, "Smoke.Bounded": None,
+            "Smoke.Weakened": "no node of the statement is the claim conclusion",
+            "Smoke.Unused": "the proof does not use both its claim and its witness",
+            "Smoke.Closed": "claim binder 1 is not a statement binder",
+            "Smoke.Shared": "claim binder 2 shares its statement binder with another claim binder",
+            "Smoke.Twice": "2 theorems state the claim applied to its witness, not one",
+            "Smoke.Missing": "0 theorems state the claim applied to its witness, not one",
+            "Smoke.TwoFieldClaim": "no premises"})
 
 if __name__ == "__main__":
     unittest.main()

@@ -30,6 +30,9 @@ import Human.Circuits.WordMemory.RVTheorems
 import Human.Circuits.InitsTeardowns.Theorems
 -- Each `…SatisfiableClaim` restates the premises of its claim. Applying the claim to the satisfying data
 -- type-checks only if they are exactly the claim's premises; the result is the claim's conclusion on that data.
+-- For each claim with premises, `scripts/check_claim_coverage.py` requires exactly one theorem here with the
+-- statement `Claim → SatisfiableClaim → S`, whose statement `S` contains the claim's conclusion on the data of the
+-- witness, and whose proof uses both arguments.
 import Human.Trace.Delegation.RVTheorems
 import Human.Trace.ZeroTimestamp
 import Human.Trace.WritesRangeChecked
@@ -123,10 +126,11 @@ theorem Keccak.Split.Native.NoZeroTimestampWritesClaim.applied (claim : Keccak.S
     ⟨data, row, member, port, present, claim room high row member port present⟩
 
 theorem Delegation.WritesRangeCheckedClaim.applied (claim : Delegation.WritesRangeCheckedClaim) : Delegation.WritesRangeCheckedSatisfiableClaim →
-    ∃ data : Delegation.MemoryData babyBearModulus, ∃ row ∈ data.rows, row.memorySteps ≠ [] ∧
-      ∀ step ∈ row.memorySteps, step.2.word.Bounded :=
+    ∃ data : Delegation.MemoryData babyBearModulus, ∃ row ∈ data.rows, Trace.WritesRangeChecked row.memorySteps ∧
+      row.memorySteps ≠ [] ∧ ∀ step ∈ row.memorySteps, step.2.word.Bounded :=
   fun ⟨data, _, accepted, tables, rounds, keccak, row, member, steps, reads⟩ =>
-    ⟨data, row, member, steps, claim accepted tables rounds keccak row member reads⟩
+    have result := claim accepted tables rounds keccak row member
+    ⟨data, row, member, result, steps, result reads⟩
 
 theorem InitsTeardowns.WritesRangeCheckedClaim.applied (claim : InitsTeardowns.WritesRangeCheckedClaim) : InitsTeardowns.WritesRangeCheckedSatisfiableClaim →
     ∃ w : InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout, ∃ token ∈ w.initTokens,
@@ -135,11 +139,13 @@ theorem InitsTeardowns.WritesRangeCheckedClaim.applied (claim : InitsTeardowns.W
 
 theorem Bigint.Native.RVOperationExecutionClaim.applied (claim : Bigint.Native.RVOperationExecutionClaim) : Bigint.Native.RVOperationExecutionSatisfiableClaim →
     ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Cell),
-      Delegation.RVMemoryExecution data before cells ∧ ∃ row ∈ data.rows, row.family = .bigint ∧
-        Bigint.Native.ArithmeticEffects row.assignment :=
+      (Delegation.RVMemoryExecution data before cells ∧
+        (∀ row ∈ data.rows, row.family = .bigint → Bigint.Native.ArithmeticEffects row.assignment) ∧
+        Bigint.Native.RVCalls data before cells) ∧
+      ∃ row ∈ data.rows, row.family = .bigint ∧ Bigint.Native.ArithmeticEffects row.assignment :=
   fun ⟨data, before, cells, accepted, «inputs», aligned, table, row, member, family⟩ =>
     have result := claim accepted «inputs» aligned table
-    ⟨data, before, cells, result.1, row, member, family, result.2.1 row member family⟩
+    ⟨data, before, cells, result, row, member, family, result.2.1 row member family⟩
 
 theorem RVPooledNativeSoundnessClaim.applied (claim : RVPooledNativeSoundnessClaim) : RVPooledNativeSoundnessSatisfiableClaim →
     ∃ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell),
@@ -167,10 +173,11 @@ theorem NoZeroTimestampWritesClaim.applied (claim : NoZeroTimestampWritesClaim) 
     ⟨trace, row, member, token, present, claim accepted boot row member token present⟩
 
 theorem WritesRangeCheckedClaim.applied (claim : WritesRangeCheckedClaim) : WritesRangeCheckedSatisfiableClaim →
-    ∃ trace : PooledTrace babyBearModulus, ∃ row ∈ trace.rows, row.memorySteps ≠ [] ∧
-      ∀ step ∈ row.memorySteps, step.2.word.Bounded :=
+    ∃ trace : PooledTrace babyBearModulus, ∃ row ∈ trace.rows, Trace.WritesRangeChecked row.memorySteps ∧
+      row.memorySteps ≠ [] ∧ ∀ step ∈ row.memorySteps, step.2.word.Bounded :=
   fun ⟨trace, _, _, _, _, _, table, «inputs», accepted, decoded, row, member, steps, reads⟩ =>
-    ⟨trace, row, member, steps, claim table «inputs» accepted decoded row member reads⟩
+    have result := claim table «inputs» accepted decoded row member
+    ⟨trace, row, member, result, steps, result reads⟩
 
 theorem TeardownsBoundedClaim.applied (claim : TeardownsBoundedClaim) : TeardownsBoundedSatisfiableClaim →
     ∃ inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.importedLayout),
@@ -209,9 +216,11 @@ theorem UnifiedReduced.NoZeroTimestampWritesClaim.applied (claim : UnifiedReduce
     ⟨trace, row, member, token, present, claim accepted boot row member token present⟩
 
 theorem UnifiedReduced.WritesRangeCheckedClaim.applied (claim : UnifiedReduced.WritesRangeCheckedClaim) : UnifiedReduced.WritesRangeCheckedSatisfiableClaim →
-    ∃ trace : UnifiedTrace babyBearModulus, ∃ row ∈ trace.rows, row.memorySteps ≠ [] ∧
-      ∀ step ∈ row.memorySteps, step.2.word.Bounded :=
-  fun ⟨trace, accepted, row, member, steps, reads⟩ => ⟨trace, row, member, steps, claim accepted row member reads⟩
+    ∃ trace : UnifiedTrace babyBearModulus, ∃ row ∈ trace.rows, Trace.WritesRangeChecked row.memorySteps ∧
+      row.memorySteps ≠ [] ∧ ∀ step ∈ row.memorySteps, step.2.word.Bounded :=
+  fun ⟨trace, accepted, row, member, steps, reads⟩ =>
+    have result := claim accepted row member
+    ⟨trace, row, member, result, steps, result reads⟩
 
 theorem UnifiedReduced.TeardownsBoundedClaim.applied (claim : UnifiedReduced.TeardownsBoundedClaim) : UnifiedReduced.TeardownsBoundedSatisfiableClaim →
     ∃ inits : List (InitsTeardowns.Witness babyBearModulus InitsTeardowns.unifiedLayout),
@@ -221,46 +230,56 @@ theorem UnifiedReduced.TeardownsBoundedClaim.applied (claim : UnifiedReduced.Tea
 
 theorem Blake2G.Native.RVOperationExecutionClaim.applied (claim : Blake2G.Native.RVOperationExecutionClaim) : Blake2G.Native.RVOperationExecutionSatisfiableClaim →
     ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Cell),
-      Delegation.RVMemoryExecution data before cells ∧ ∃ row ∈ data.rows, row.family = .blakeG ∧
+      (Delegation.RVMemoryExecution data before cells ∧ ∀ row ∈ data.rows, row.family = .blakeG →
+        Blake2G.spec (Blake2G.Native.input row.assignment) (Blake2G.Native.output row.assignment)) ∧
+      ∃ row ∈ data.rows, row.family = .blakeG ∧
         Blake2G.spec (Blake2G.Native.input row.assignment) (Blake2G.Native.output row.assignment) :=
   fun ⟨data, before, cells, _, accepted, «inputs», aligned, row, member, family⟩ =>
     have result := claim accepted «inputs» aligned
-    ⟨data, before, cells, result.1, row, member, family, result.2 row member family⟩
+    ⟨data, before, cells, result, row, member, family, result.2 row member family⟩
 
 theorem Keccak.Native.RVOperationExecutionClaim.applied (claim : Keccak.Native.RVOperationExecutionClaim) : Keccak.Native.RVOperationExecutionSatisfiableClaim →
     ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Cell),
-      Delegation.RVMemoryExecution data before cells ∧ ∃ row ∈ data.rows, row.family = .keccak ∧
-        Keccak.Native.RowEffects row.assignment :=
+      (Delegation.RVMemoryExecution data before cells ∧
+        ∀ row ∈ data.rows, row.family = .keccak → Keccak.Native.RowEffects row.assignment) ∧
+      ∃ row ∈ data.rows, row.family = .keccak ∧ Keccak.Native.RowEffects row.assignment :=
   fun ⟨data, before, cells, accepted, «inputs», aligned, row, member, family⟩ =>
     have result := claim accepted «inputs» aligned
-    ⟨data, before, cells, result.1, row, member, family, result.2 row member family⟩
+    ⟨data, before, cells, result, row, member, family, result.2 row member family⟩
 
 theorem Keccak.Split.Native.RVOperationExecutionClaim.applied (claim : Keccak.Split.Native.RVOperationExecutionClaim) :
     Keccak.Split.Native.RVOperationExecutionSatisfiableClaim →
     ∃ (data : Keccak.Split.Native.MemoryData babyBearModulus) (before : RV.State) (cells : List Cell),
-      Keccak.Split.Native.RVMemoryExecution data before cells ∧
-        ∃ row ∈ data.rows, Keccak.Split.Native.RowEffects row :=
+      (Keccak.Split.Native.RVMemoryExecution data before cells ∧
+        ∀ row ∈ data.rows, Keccak.Split.Native.RowEffects row) ∧
+      ∃ row ∈ data.rows, Keccak.Split.Native.RowEffects row :=
   fun ⟨data, before, cells, accepted, «inputs», aligned, row, member⟩ =>
     have result := claim accepted «inputs» aligned
-    ⟨data, before, cells, result.1, row, member, result.2 row member⟩
+    ⟨data, before, cells, result, row, member, result.2 row member⟩
 
 theorem Keccak.Split.Native.WritesRangeCheckedClaim.applied (claim : Keccak.Split.Native.WritesRangeCheckedClaim) :
     Keccak.Split.Native.WritesRangeCheckedSatisfiableClaim →
-    ∃ data : Keccak.Split.Native.MemoryData babyBearModulus, ∃ row ∈ data.rows, row.memorySteps ≠ [] ∧
-      ∀ step ∈ row.memorySteps, step.2.word.Bounded :=
+    ∃ data : Keccak.Split.Native.MemoryData babyBearModulus, ∃ row ∈ data.rows,
+      Trace.WritesRangeChecked row.memorySteps ∧ row.memorySteps ≠ [] ∧
+        ∀ step ∈ row.memorySteps, step.2.word.Bounded :=
   fun ⟨data, accepted, active, row, member, steps, reads⟩ =>
-    ⟨data, row, member, steps, claim accepted active row member reads⟩
+    have result := claim accepted active row member
+    ⟨data, row, member, result, steps, result reads⟩
 
 theorem Blake2Round.Native.RVOperationExecutionClaim.applied (claim : Blake2Round.Native.RVOperationExecutionClaim) :
     Blake2Round.Native.RVOperationExecutionSatisfiableClaim →
     ∃ (data : Delegation.MemoryData babyBearModulus) (before : RV.State) (cells : List Cell),
-      Delegation.RVMemoryExecution data before cells ∧ ∃ row ∈ data.rows, row.family = .blakeRound ∧
+      (Delegation.RVMemoryExecution data before cells ∧ ∀ row ∈ data.rows, row.family = .blakeRound →
+        ∃ round, Blake2Round.Memory.RoundMask row.assignment round ∧
+          Blake2Round.Row.spec (Blake2Round.Native.input round row.assignment)
+            (Blake2Round.Native.output row.assignment)) ∧
+      ∃ row ∈ data.rows, row.family = .blakeRound ∧
         ∃ round, Blake2Round.Memory.RoundMask row.assignment round ∧
           Blake2Round.Row.spec (Blake2Round.Native.input round row.assignment)
             (Blake2Round.Native.output row.assignment) :=
   fun ⟨data, before, cells, _, accepted, «inputs», aligned, row, member, family⟩ =>
     have result := claim accepted «inputs» aligned
-    ⟨data, before, cells, result.1, row, member, family, result.2 row member family⟩
+    ⟨data, before, cells, result, row, member, family, result.2 row member family⟩
 
 section UnifiedCallers
 open UnifiedReduced.Caller
@@ -408,18 +427,16 @@ theorem RVProgramPreparedProtocolSequenceSoundnessClaim.applied (claim : RVProgr
 
 theorem RVPreparedRoundRegionMasksSoundnessClaim.applied (claim : RVPreparedRoundRegionMasksSoundnessClaim) : RVPreparedRoundRegionMasksSoundnessSatisfiableClaim →
     ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (region : RoundRegion),
-      (∀ row ∈ data.workers.windowRows region.lower region.upper,
-        ∃ round, Blake2Round.Memory.RoundMask row.assignment round) ∧ data.callers ≠ [] ∧
-        data.workers.windowRows region.lower region.upper ≠ [] :=
-  fun ⟨data, _, _, _, _, _, _, region, accepted, «inputs», scope, _, member, callers⟩ =>
-    ⟨data, region, claim accepted «inputs» scope, callers, List.ne_nil_of_mem member⟩
+      ∃ row ∈ data.workers.windowRows region.lower region.upper,
+        (∃ round, Blake2Round.Memory.RoundMask row.assignment round) ∧ data.callers ≠ [] :=
+  fun ⟨data, _, _, _, _, _, _, region, accepted, «inputs», scope, row, member, callers⟩ =>
+    ⟨data, region, row, member, claim accepted «inputs» scope row member, callers⟩
 
 theorem RVPreparedRoundMasksSoundnessClaim.applied (claim : RVPreparedRoundMasksSoundnessClaim) : RVPreparedRoundMasksSoundnessSatisfiableClaim →
-    ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus),
-      (∀ row ∈ data.workers.rows, ∃ round, Blake2Round.Memory.RoundMask row.assignment round) ∧
-        data.callers ≠ [] ∧ data.workers.rows ≠ [] :=
-  fun ⟨data, _, _, _, _, _, _, _, accepted, «inputs», first, _, member, callers⟩ =>
-    ⟨data, claim accepted «inputs» first, callers, List.ne_nil_of_mem member⟩
+    ∃ data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus, ∃ row ∈ data.workers.rows,
+      (∃ round, Blake2Round.Memory.RoundMask row.assignment round) ∧ data.callers ≠ [] :=
+  fun ⟨data, _, _, _, _, _, _, _, accepted, «inputs», first, row, member, callers⟩ =>
+    ⟨data, row, member, claim accepted «inputs» first row member, callers⟩
 
 theorem RVPreparedRoundWindowSoundnessClaim.applied (claim : RVPreparedRoundWindowSoundnessClaim) : RVPreparedRoundWindowSoundnessSatisfiableClaim →
     ∃ (data : UnifiedReduced.Caller.RVRequestTrace babyBearModulus) (before : RV.State) (cells : List Cell)
@@ -538,22 +555,34 @@ theorem Delegation.Caller.RVRequestHashWindowSoundnessClaim.applied (claim : Del
 end Callers
 
 theorem Blake2G.Native.RVWorkvectorSoundnessClaim.applied (claim : Blake2G.Native.RVWorkvectorSoundnessClaim) : Blake2G.Native.RVWorkvectorSoundnessSatisfiableClaim →
-    ∃ (data : Delegation.MemoryData babyBearModulus) (initial after : RV.State) (cells : List Cell),
-      Delegation.RVTraceMapping data initial after cells ∧ data.rows ≠ [] :=
+    ∃ (data : Delegation.MemoryData babyBearModulus) (initial : RV.State) (cells : List Cell) (reduced : Bool),
+      (∃ (after : RV.State) (statePointer messagePointer : BitVec 32)
+          (input message output : Vector Arithmetic.Word 16),
+        Blake2G.WorkVector.RVWordMapping initial after statePointer messagePointer input message output ∧
+          Delegation.RVTraceMapping data initial after cells ∧
+          output.map Arithmetic.Word.value = Blake2G.WorkVector.run reduced input message ∧
+          ∃ s', RV.calls (Blake2G.rvCalls reduced) initial = some s' ∧
+            RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * (Blake2G.rvCalls reduced).length)))) ∧
+        data.rows ≠ [] :=
   fun ⟨data, initial, cells, reduced, accepted, «inputs», aligned⟩ =>
-    have ⟨after, _, _, _, _, _, _, trace, _⟩ := claim accepted «inputs» aligned
-    ⟨data, initial, after, cells, trace, fun empty => by
+    ⟨data, initial, cells, reduced, claim accepted «inputs» aligned, fun empty => by
       have calls := «inputs».calls
       rw [empty] at calls
       cases reduced <;> simp [Blake2G.callCount] at calls⟩
 
 theorem Blake2G.Native.RVWorkvectorBoundarySoundnessClaim.applied (claim : Blake2G.Native.RVWorkvectorBoundarySoundnessClaim) :
     Blake2G.Native.RVWorkvectorBoundarySoundnessSatisfiableClaim →
-    ∃ (data : Delegation.MemoryData babyBearModulus) (initial after : RV.State) (cells : List Cell),
-      Delegation.RVTraceMapping data initial after cells ∧ data.rows ≠ [] :=
+    ∃ (data : Delegation.MemoryData babyBearModulus) (initial : RV.State) (cells : List Cell) (reduced : Bool),
+      (∃ (after : RV.State) (statePointer messagePointer : BitVec 32)
+          (input message output : Vector Arithmetic.Word 16),
+        Blake2G.WorkVector.RVWordMapping initial after statePointer messagePointer input message output ∧
+          Delegation.RVTraceMapping data initial after cells ∧
+          output.map Arithmetic.Word.value = Blake2G.WorkVector.run reduced input message ∧
+          ∃ s', RV.calls (Blake2G.rvCalls reduced) initial = some s' ∧
+            RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * (Blake2G.rvCalls reduced).length)))) ∧
+        data.rows ≠ [] :=
   fun ⟨data, initial, cells, reduced, accepted, «inputs», aligned⟩ =>
-    have ⟨after, _, _, _, _, _, _, trace, _⟩ := claim accepted «inputs» aligned
-    ⟨data, initial, after, cells, trace, fun empty => by
+    ⟨data, initial, cells, reduced, claim accepted «inputs» aligned, fun empty => by
       have calls := «inputs».calls
       rw [empty] at calls
       cases reduced <;> simp [Blake2G.callCount] at calls⟩
@@ -570,32 +599,47 @@ theorem Blake2G.Native.RVWindowSoundnessClaim.applied (claim : Blake2G.Native.RV
 
 theorem Keccak.Split.Native.RVPermutationSoundnessClaim.applied (claim : Keccak.Split.Native.RVPermutationSoundnessClaim) :
     Keccak.Split.Native.RVPermutationSoundnessSatisfiableClaim →
-    ∃ (data : Keccak.Split.Native.MemoryData babyBearModulus) (initial after : RV.State) (cells : List Cell),
-      Keccak.Split.Native.RVTraceMapping data initial after cells ∧ data.rows ≠ [] :=
+    ∃ (data : Keccak.Split.Native.MemoryData babyBearModulus) (initial : RV.State) (cells : List Cell),
+      (∃ (states : Fin 362 → RV.State) (pointer : BitVec 32) (input output : Vector Nat 25),
+        states 0 = initial ∧
+          (∀ index : Fin 361, Keccak.Split.Call.RVExecutesAt index (states index.castSucc) (states index.succ)) ∧
+          Keccak.Permutation.RVWordMapping initial (states 361) pointer input output ∧
+          Keccak.Split.Native.RVTraceMapping data initial (states 361) cells ∧
+          output = Specs.Keccak256.keccakPermutation input ∧
+          ∃ s', RV.calls RV.f1600Calls initial = some s' ∧
+            RV.Same s' ((states 361).setPC (initial.pc + BitVec.ofNat 32 (4 * RV.f1600Calls.length)))) ∧
+        data.rows ≠ [] :=
   fun ⟨data, initial, cells, accepted, «inputs», aligned⟩ =>
-    have ⟨states, _, _, _, _, _, _, trace, _⟩ := claim accepted «inputs» aligned
-    ⟨data, initial, states 361, cells, trace, fun empty => by
+    ⟨data, initial, cells, claim accepted «inputs» aligned, fun empty => by
       have calls := «inputs».calls
       rw [empty] at calls
       simp at calls⟩
 
 theorem Keccak.Native.RVPermutationSoundnessClaim.applied (claim : Keccak.Native.RVPermutationSoundnessClaim) : Keccak.Native.RVPermutationSoundnessSatisfiableClaim →
-    ∃ (data : Delegation.MemoryData babyBearModulus) (initial after : RV.State) (cells : List Cell),
-      Delegation.RVTraceMapping data initial after cells ∧ data.rows ≠ [] :=
+    ∃ (data : Delegation.MemoryData babyBearModulus) (initial : RV.State) (cells : List Cell),
+      (∃ (after : RV.State) (pointer : BitVec 32) (input output : Vector Nat 25),
+        Keccak.Permutation.RVWordMapping initial after pointer input output ∧
+          Delegation.RVTraceMapping data initial after cells ∧ output = Specs.Keccak256.keccakPermutation input ∧
+          ∃ s', RV.calls Keccak.rvCalls initial = some s' ∧
+            RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * Keccak.rvCalls.length)))) ∧
+        data.rows ≠ [] :=
   fun ⟨data, initial, cells, accepted, «inputs», tables, aligned⟩ =>
-    have ⟨after, _, _, _, _, trace, _⟩ := claim accepted «inputs» tables aligned
-    ⟨data, initial, after, cells, trace, fun empty => by
+    ⟨data, initial, cells, claim accepted «inputs» tables aligned, fun empty => by
       have calls := «inputs».calls
       rw [empty] at calls
       simp at calls⟩
 
 theorem Keccak.Native.RVPermutationBoundarySoundnessClaim.applied (claim : Keccak.Native.RVPermutationBoundarySoundnessClaim) :
     Keccak.Native.RVPermutationBoundarySoundnessSatisfiableClaim →
-    ∃ (data : Delegation.MemoryData babyBearModulus) (initial after : RV.State) (cells : List Cell),
-      Delegation.RVTraceMapping data initial after cells ∧ data.rows ≠ [] :=
+    ∃ (data : Delegation.MemoryData babyBearModulus) (initial : RV.State) (cells : List Cell),
+      (∃ (after : RV.State) (pointer : BitVec 32) (input output : Vector Nat 25),
+        Keccak.Permutation.RVWordMapping initial after pointer input output ∧
+          Delegation.RVTraceMapping data initial after cells ∧ output = Specs.Keccak256.keccakPermutation input ∧
+          ∃ s', RV.calls Keccak.rvCalls initial = some s' ∧
+            RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * Keccak.rvCalls.length)))) ∧
+        data.rows ≠ [] :=
   fun ⟨data, initial, cells, accepted, «inputs», tables, aligned⟩ =>
-    have ⟨after, _, _, _, _, trace, _⟩ := claim accepted «inputs» tables aligned
-    ⟨data, initial, after, cells, trace, fun empty => by
+    ⟨data, initial, cells, claim accepted «inputs» tables aligned, fun empty => by
       have calls := «inputs».calls
       rw [empty] at calls
       simp at calls⟩
@@ -612,22 +656,34 @@ theorem Keccak.Native.RVWindowSoundnessClaim.applied (claim : Keccak.Native.RVWi
 
 theorem Blake2Round.Native.RVCompressionSoundnessClaim.applied (claim : Blake2Round.Native.RVCompressionSoundnessClaim) :
     Blake2Round.Native.RVCompressionSoundnessSatisfiableClaim →
-    ∃ (data : Delegation.MemoryData babyBearModulus) (initial after : RV.State) (cells : List Cell),
-      Delegation.RVTraceMapping data initial after cells ∧ data.rows ≠ [] :=
+    ∃ (data : Delegation.MemoryData babyBearModulus) (initial : RV.State) (cells : List Cell) (flags : Fin 8),
+      (∃ (after : RV.State) (statePointer messagePointer : BitVec 32) (input : Blake2Round.Compression.State)
+          (message : Vector Arithmetic.Word 16) (output : Blake2Round.Compression.State),
+        Blake2Round.Compression.RVWordMapping initial after statePointer messagePointer input output message ∧
+          Delegation.RVTraceMapping data initial after cells ∧
+          output = Blake2Round.Compression.run flags input message ∧
+          ∃ s', RV.calls (Blake2Round.rvCalls flags) initial = some s' ∧
+            RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * (Blake2Round.rvCalls flags).length)))) ∧
+        data.rows ≠ [] :=
   fun ⟨data, initial, cells, flags, accepted, «inputs», aligned⟩ =>
-    have ⟨after, _, _, _, _, _, _, trace, _⟩ := claim accepted «inputs» aligned
-    ⟨data, initial, after, cells, trace, fun empty => by
+    ⟨data, initial, cells, flags, claim accepted «inputs» aligned, fun empty => by
       have calls := «inputs».calls
       rw [empty] at calls
       split at calls <;> simp at calls⟩
 
 theorem Blake2Round.Native.RVCompressionBoundarySoundnessClaim.applied (claim : Blake2Round.Native.RVCompressionBoundarySoundnessClaim) :
     Blake2Round.Native.RVCompressionBoundarySoundnessSatisfiableClaim →
-    ∃ (data : Delegation.MemoryData babyBearModulus) (initial after : RV.State) (cells : List Cell),
-      Delegation.RVTraceMapping data initial after cells ∧ data.rows ≠ [] :=
+    ∃ (data : Delegation.MemoryData babyBearModulus) (initial : RV.State) (cells : List Cell) (flags : Fin 8),
+      (∃ (after : RV.State) (statePointer messagePointer : BitVec 32) (input : Blake2Round.Compression.State)
+          (message : Vector Arithmetic.Word 16) (output : Blake2Round.Compression.State),
+        Blake2Round.Compression.RVWordMapping initial after statePointer messagePointer input output message ∧
+          Delegation.RVTraceMapping data initial after cells ∧
+          output = Blake2Round.Compression.run flags input message ∧
+          ∃ s', RV.calls (Blake2Round.rvCalls flags) initial = some s' ∧
+            RV.Same s' (after.setPC (initial.pc + BitVec.ofNat 32 (4 * (Blake2Round.rvCalls flags).length)))) ∧
+        data.rows ≠ [] :=
   fun ⟨data, initial, cells, flags, accepted, «inputs», aligned⟩ =>
-    have ⟨after, _, _, _, _, _, _, trace, _⟩ := claim accepted «inputs» aligned
-    ⟨data, initial, after, cells, trace, fun empty => by
+    ⟨data, initial, cells, flags, claim accepted «inputs» aligned, fun empty => by
       have calls := «inputs».calls
       rw [empty] at calls
       split at calls <;> simp at calls⟩
@@ -1102,17 +1158,19 @@ theorem Airbender.PCState.OutgoingBoundsClaim.applied (claim : Airbender.PCState
 
 theorem Airbender.PaddingBoundary.ContributionSoundnessClaim.applied (claim : Airbender.PaddingBoundary.ContributionSoundnessClaim) :
     Airbender.PaddingBoundary.ContributionSatisfiableClaim →
-    ∃ (execute : ZMod babyBearModulus) (encode : Nat → ZMod babyBearModulus) (value : Nat),
-      PaddingBoundary.evaluate encode (PaddingBoundary.contribution execute value) =
-        PaddingBoundary.mask execute (encode value) :=
-  fun ⟨execute, boolean, _, encode, value, _⟩ => ⟨execute, encode, value, claim execute boolean encode value⟩
+    ∃ execute : ZMod babyBearModulus, execute = 1 ∧
+      ∀ (encode : Nat → ZMod babyBearModulus) (value : Nat),
+        PaddingBoundary.evaluate encode (PaddingBoundary.contribution execute value) =
+          PaddingBoundary.mask execute (encode value) :=
+  fun ⟨execute, boolean, active, _⟩ => ⟨execute, active, claim execute boolean⟩
 
 theorem Airbender.PaddingBoundary.ProductSoundnessClaim.applied (claim : Airbender.PaddingBoundary.ProductSoundnessClaim) :
     Airbender.PaddingBoundary.ProductSatisfiableClaim →
-    ∃ (execute : ZMod babyBearModulus) (encode : Nat → ZMod babyBearModulus) (values : List Nat),
-      ((values.map (PaddingBoundary.contribution execute)).map (PaddingBoundary.evaluate encode)).prod =
-        PaddingBoundary.mask execute (values.map encode).prod :=
-  fun ⟨execute, boolean, _, encode, values, _, _⟩ => ⟨execute, encode, values, claim execute boolean encode values⟩
+    ∃ execute : ZMod babyBearModulus, execute = 1 ∧
+      ∀ (encode : Nat → ZMod babyBearModulus) (values : List Nat),
+        ((values.map (PaddingBoundary.contribution execute)).map (PaddingBoundary.evaluate encode)).prod =
+          PaddingBoundary.mask execute (values.map encode).prod :=
+  fun ⟨execute, boolean, active, _⟩ => ⟨execute, active, claim execute boolean⟩
 
 theorem Airbender.PaddingBoundary.ProjectionClaim.applied (claim : Airbender.PaddingBoundary.ProjectionClaim) :
     Airbender.PaddingBoundary.ProjectionSatisfiableClaim →
@@ -1376,11 +1434,9 @@ theorem Airbender.DecodeIsSailClaim.applied (claim : Airbender.DecodeIsSailClaim
   fun ⟨word, instruction, state, decoded, configured⟩ => ⟨word, instruction, state, claim word instruction state decoded configured⟩
 
 theorem Airbender.StepIsAirbenderClaim.applied (claim : Airbender.StepIsAirbenderClaim) : Airbender.StepIsAirbenderSatisfiableClaim →
-    ∃ (state next : RV.State) (machine machine' : Airbender.Machine),
-      RV.step state = some next ∧ Airbender.step machine = some machine' ∧ Airbender.Agree next machine' :=
-  fun ⟨state, next, machine, agree, step⟩ => by
-    obtain ⟨finish, stepped, agrees⟩ := claim state next machine agree step
-    exact ⟨state, next, machine, finish, step, stepped, agrees⟩
+    ∃ (state next : RV.State) (machine : Airbender.Machine), RV.step state = some next ∧
+      ∃ machine', Airbender.step machine = some machine' ∧ Airbender.Agree next machine' :=
+  fun ⟨state, next, machine, agree, step⟩ => ⟨state, next, machine, step, claim state next machine agree step⟩
 
 theorem Airbender.RunIsAirbenderClaim.applied (claim : Airbender.RunIsAirbenderClaim) : Airbender.RunIsAirbenderSatisfiableClaim →
     ∃ (n : Nat) (state next : RV.State) (machine : Airbender.Machine), Airbender.Agree state machine ∧ 1 ≤ n ∧
@@ -1507,19 +1563,19 @@ example (family : Airbender.Compiler.NativeWorkerLookups.Family) :
   Airbender.Compiler.cached_worker_certificates_satisfiable family
 
 theorem Airbender.RunSailSimulationClaim.applied (claim : Airbender.RunSailSimulationClaim) : Airbender.RunSailSimulationSatisfiableClaim →
-    ∃ (program : SailRV32.SailM (SailRV32.RegisterType .PC)) (sequential sequential' : Airbender.SequentialSailState)
+    ∃ (program : SailRV32.SailM (SailRV32.RegisterType .PC)) (state' : _) (sequential : Airbender.SequentialSailState)
       (value : SailRV32.RegisterType .PC),
-      (Sail.ArchSem.interpretSailEffects program).run sequential = .ok value sequential' :=
+      ∃ sequential', (Sail.ArchSem.interpretSailEffects program).run sequential = .ok value sequential' ∧
+        Airbender.SequentialAgrees state' sequential' :=
   fun ⟨program, state, state', sequential, value, agrees, run⟩ =>
-    let ⟨sequential', theirs, _⟩ := claim program state state' sequential value agrees run
-    ⟨program, sequential, sequential', value, theirs⟩
+    ⟨program, state', sequential, value, claim program state state' sequential value agrees run⟩
 
 theorem Airbender.MachineRunIsSequentialClaim.applied (claim : Airbender.MachineRunIsSequentialClaim) : Airbender.MachineRunIsSequentialSatisfiableClaim →
-    ∃ (n : Nat) (machine : Airbender.SequentialMachine) (machine' : Airbender.SequentialMachine),
-      1 ≤ n ∧ Airbender.SequentialMachine.run n machine = some machine' :=
+    ∃ (n : Nat) (machine machine' : Airbender.Machine) (sequential : Airbender.SequentialSailState), 1 ≤ n ∧
+      ∃ sequential', Airbender.SequentialMachine.run n ⟨sequential, machine.shadow, machine.input⟩ =
+          some ⟨sequential', machine'.shadow, machine'.input⟩ ∧ Airbender.SequentialAgrees machine'.sail sequential' :=
   fun ⟨n, machine, machine', sequential, agrees, run, positive⟩ =>
-    let ⟨_, theirs, _⟩ := claim n machine machine' sequential agrees run
-    ⟨n, _, _, positive, theirs⟩
+    ⟨n, machine, machine', sequential, positive, claim n machine machine' sequential agrees run⟩
 
 -- Native RAM outputs and padded native targets.
 
@@ -1766,6 +1822,32 @@ example : Airbender.Compiler.UnrolledMemoryCompositionSatisfiableClaim :=
 example : Airbender.Compiler.UnifiedMemoryCompositionSatisfiableClaim :=
   Airbender.Compiler.unified_memory_composition_satisfiable
 
+theorem Airbender.Compiler.UnrolledMemoryCompositionClaim.applied (claim : Airbender.Compiler.UnrolledMemoryCompositionClaim) :
+    Airbender.Compiler.UnrolledMemoryCompositionSatisfiableClaim →
+    ∃ (trace : PooledTrace babyBearModulus) (workers : Machine.WorkerPools babyBearModulus),
+      (trace.initial :: trace.rows.map Row.finish).Perm (trace.terminal :: trace.rows.map Row.start) ∧
+      Delegation.Requests.Matching ((Machine.unrolledCallers trace).map
+        fun row => Delegation.Requests.caller row.assignment) workers.fulfillments ∧
+      (trace.initialMemory ++ (Machine.unrolledSteps trace ++ workers.steps).map Prod.snd).Perm
+        (trace.terminalMemory ++ (Machine.unrolledSteps trace ++ workers.steps).map Prod.fst) :=
+  fun ⟨config, trace, workers, initial, cells, program, layout, inits, tables, certificates, unrolled, boot, bound,
+      covers, rows, production, _⟩ =>
+    ⟨trace, workers, claim config trace workers initial cells program layout inits tables certificates unrolled boot
+      bound covers rows production⟩
+
+theorem Airbender.Compiler.UnifiedMemoryCompositionClaim.applied (claim : Airbender.Compiler.UnifiedMemoryCompositionClaim) :
+    Airbender.Compiler.UnifiedMemoryCompositionSatisfiableClaim →
+    ∃ (trace : UnifiedTrace babyBearModulus) (workers : Machine.WorkerPools babyBearModulus),
+      (trace.initial :: trace.rows.map Row.finish).Perm (trace.terminal :: trace.rows.map Row.start) ∧
+      Delegation.Requests.Matching
+        ((trace.rows.filter fun row => decide (UnifiedReduced.Caller.Selected row.assignment)).map
+          fun row => UnifiedReduced.Caller.request row.assignment) workers.fulfillments ∧
+      (trace.initialMemory ++ (Machine.unifiedSteps trace ++ workers.steps).map Prod.snd).Perm
+        (trace.terminalMemory ++ (Machine.unifiedSteps trace ++ workers.steps).map Prod.fst) :=
+  fun ⟨trace, workers, initial, cells, program, layout, inits, tables, certificates, boot, bound, rows, production, _⟩ =>
+    ⟨trace, workers, claim trace workers initial cells program layout inits tables certificates boot bound rows
+      production⟩
+
 -- Certificate RAM outputs.
 
 example : Airbender.Compiler.ProgramCertificateRamProductsSatisfiableClaim := Airbender.Compiler.program_certificate_ram_products_satisfiable
@@ -1773,6 +1855,39 @@ example : Airbender.Compiler.ProgramCertificateRamProductsSatisfiableClaim := Ai
 example : Airbender.Compiler.UnifiedCertificateRamProductsSatisfiableClaim := Airbender.Compiler.unified_certificate_ram_products_satisfiable
 
 example : Airbender.Compiler.WorkerCertificateRamProductsSatisfiableClaim := Airbender.Compiler.worker_certificate_ram_products_satisfiable
+
+theorem Airbender.Compiler.ProgramCertificateRamProductsClaim.applied (claim : Airbender.Compiler.ProgramCertificateRamProductsClaim) :
+    Airbender.Compiler.ProgramCertificateRamProductsSatisfiableClaim →
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges Airbender.Compiler.NativeArithmetic.F) (tables : Airbender.Compiler.ProgramLookupRows)
+      (cert : Airbender.Compiler.ProgramRowCertificate tables) (values : GKRAddress → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeMemory.RamProducts (Airbender.Compiler.NativeLookups.circuitFor (.pooled cert.row.family)) challenges values
+        (cert.row.assignment cert.row.columns.execute) (Airbender.Compiler.NativeMemory.cpuReads cert.row)
+        (Airbender.Compiler.NativeMemory.cpuWrites cert.row) :=
+  fun ⟨challenges, tables, cert, values, holds⟩ =>
+    ⟨challenges, tables, cert, values, claim challenges tables cert values holds⟩
+
+theorem Airbender.Compiler.UnifiedCertificateRamProductsClaim.applied (claim : Airbender.Compiler.UnifiedCertificateRamProductsClaim) :
+    Airbender.Compiler.UnifiedCertificateRamProductsSatisfiableClaim →
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges Airbender.Compiler.NativeArithmetic.F) (tables : Airbender.Compiler.ProgramLookupRows)
+      (cert : Airbender.Compiler.UnifiedRowCertificate tables) (values : GKRAddress → Airbender.Compiler.NativeArithmetic.F),
+      Airbender.Compiler.NativeMemory.RamProducts (Airbender.Compiler.NativeLookups.circuitFor .unified) challenges values
+        (cert.row.assignment cert.row.columns.execute) (Airbender.Compiler.NativeMemory.cpuReads cert.row)
+        (Airbender.Compiler.NativeMemory.cpuWrites cert.row) :=
+  fun ⟨challenges, tables, cert, values, holds⟩ =>
+    ⟨challenges, tables, cert, values, claim challenges tables cert values holds⟩
+
+theorem Airbender.Compiler.WorkerCertificateRamProductsClaim.applied (claim : Airbender.Compiler.WorkerCertificateRamProductsClaim) :
+    Airbender.Compiler.WorkerCertificateRamProductsSatisfiableClaim →
+    ∃ (challenges : Airbender.Compiler.NativeMemory.Challenges Airbender.Compiler.NativeArithmetic.F) (cert : Airbender.Compiler.WorkerRowCertificate)
+      (values : GKRAddress → Airbender.Compiler.NativeArithmetic.F),
+      (∀ row, cert.standardRow = some row →
+        Airbender.Compiler.NativeMemory.RamProducts (Airbender.Compiler.NativeWorkerLookups.circuitFor cert.family) challenges values
+          (row.assignment row.columns.execute) (Airbender.Compiler.NativeMemory.standardReads row)
+          (Airbender.Compiler.NativeMemory.standardWrites row)) ∧
+      (∀ row, cert.splitRow = some row →
+        Airbender.Compiler.NativeMemory.RamProducts (Airbender.Compiler.NativeWorkerLookups.circuitFor cert.family) challenges values
+          (row.assignment row.columns.execute) (Airbender.Compiler.NativeMemory.splitReads row) (Airbender.Compiler.NativeMemory.splitWrites row)) :=
+  fun ⟨challenges, cert, values, holds⟩ => ⟨challenges, cert, values, claim challenges cert values holds⟩
 
 -- Native targets with the single RAM permutation.
 
@@ -1787,6 +1902,54 @@ example : Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativePermutation
 example : Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativePermutationSatisfiableClaim := Airbender.Trace.Machine.Native.padded_unrolled_reduced_from_native_permutation_satisfiable
 
 example : Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutationSatisfiableClaim := Airbender.Trace.Machine.Native.padded_unified_from_native_permutation_satisfiable
+
+theorem Airbender.Trace.Machine.Native.UnrolledFullFromNativePermutation.applied (claim : Airbender.Trace.Machine.Native.UnrolledFullFromNativePermutation) : Airbender.Trace.Machine.Native.UnrolledFullFromNativePermutationSatisfiableClaim →
+    ∃ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell),
+      RVRealizes trace initial cells (NonDeterminism.Pooled.readCount trace) :=
+  fun ⟨trace, workers, initial, cells, program, inits, tables, boot, noSpecial, stream, bound, covers, challenges, certificates, values,
+      arguments, _⟩ =>
+    ⟨trace, initial, cells, claim trace workers initial cells program inits tables boot noSpecial stream bound covers challenges
+      certificates values arguments⟩
+
+theorem Airbender.Trace.Machine.Native.UnrolledReducedFromNativePermutation.applied (claim : Airbender.Trace.Machine.Native.UnrolledReducedFromNativePermutation) : Airbender.Trace.Machine.Native.UnrolledReducedFromNativePermutationSatisfiableClaim →
+    ∃ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell),
+      RVRealizes trace initial cells (NonDeterminism.Pooled.readCount trace) :=
+  fun ⟨trace, workers, initial, cells, program, inits, tables, boot, stream, bound, covers, challenges, certificates, values,
+      arguments, _⟩ =>
+    ⟨trace, initial, cells, claim trace workers initial cells program inits tables boot stream bound covers challenges
+      certificates values arguments⟩
+
+theorem Airbender.Trace.Machine.Native.UnifiedFromNativePermutation.applied (claim : Airbender.Trace.Machine.Native.UnifiedFromNativePermutation) : Airbender.Trace.Machine.Native.UnifiedFromNativePermutationSatisfiableClaim →
+    ∃ (trace : UnifiedTrace babyBearModulus) (initial : RV.State) (cells : List Cell),
+      RVRealizes trace initial cells (Machine.unifiedReadCount trace) :=
+  fun ⟨trace, workers, initial, cells, program, inits, tables, boot, noSpecial, stream, bound, challenges, certificates, values,
+      arguments, _⟩ =>
+    ⟨trace, initial, cells, claim trace workers initial cells program inits tables boot noSpecial stream bound challenges
+      certificates values arguments⟩
+
+theorem Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativePermutation.applied (claim : Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativePermutation) : Airbender.Trace.Machine.Native.PaddedUnrolledFullFromNativePermutationSatisfiableClaim →
+    ∃ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell),
+      RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (PaddingBoundary.active trace)) :=
+  fun ⟨trace, workers, initial, cells, program, inits, tables, boot, noSpecial, stream, bound, covers, challenges, certificates, values,
+      arguments, _⟩ =>
+    ⟨trace, initial, cells, claim trace workers initial cells program inits tables boot noSpecial stream bound covers challenges
+      certificates values arguments⟩
+
+theorem Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativePermutation.applied (claim : Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativePermutation) : Airbender.Trace.Machine.Native.PaddedUnrolledReducedFromNativePermutationSatisfiableClaim →
+    ∃ (trace : PooledTrace babyBearModulus) (initial : RV.State) (cells : List Cell),
+      RVRealizes trace initial cells (NonDeterminism.Pooled.readCount (PaddingBoundary.active trace)) :=
+  fun ⟨trace, workers, initial, cells, program, inits, tables, boot, stream, bound, covers, challenges, certificates, values,
+      arguments, _⟩ =>
+    ⟨trace, initial, cells, claim trace workers initial cells program inits tables boot stream bound covers challenges
+      certificates values arguments⟩
+
+theorem Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutation.applied (claim : Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutation) : Airbender.Trace.Machine.Native.PaddedUnifiedFromNativePermutationSatisfiableClaim →
+    ∃ (trace : UnifiedTrace babyBearModulus) (initial : RV.State) (cells : List Cell),
+      RVRealizes trace initial cells (Machine.unifiedReadCount (PaddingBoundary.active trace)) :=
+  fun ⟨trace, workers, initial, cells, program, inits, tables, boot, noSpecial, stream, bound, challenges, certificates, values,
+      arguments, _⟩ =>
+    ⟨trace, initial, cells, claim trace workers initial cells program inits tables boot noSpecial stream bound challenges
+      certificates values arguments⟩
 
 example : Airbender.InitsTeardowns.SharedBytesSatisfiableClaim := Airbender.InitsTeardowns.shared_bytes_satisfiable
 

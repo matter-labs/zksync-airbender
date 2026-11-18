@@ -17,9 +17,15 @@ Pₘ, with more conjuncts allowed only after Pₘ (for example rows ≠ []). Lea
 at its position by definitional equality, and the witness binders against the claim binders in the same order and
 with the same types. A claim binder that the witness does not bind must take a closed value, such as the field
 modulus, and an instance binder takes the synthesized instance. The checker lists by exact name, with a reason, the
-7 claims without premises, whose witness shows a nonempty instance of the claim's data. Every other witness has the
-premise telescope of its claim. The examples in [Satisfiable.lean](../lean/test/Checks/Satisfiable.lean) apply each
-claim to its witness and are only a build check. A witness statement must be an existential, and no claim joins
+claims without premises, whose witness shows a nonempty instance of the claim's data. Every other witness has the
+premise telescope of its claim. Each claim with premises also has exactly one theorem in
+[Satisfiable.lean](../lean/test/Checks/Satisfiable.lean) with the statement C → W → S, where C is the claim and W is
+its witness. This theorem applies the claim to its witness. Lean opens S into its existential binders and the
+conjuncts of its right spine. One node of that spine, or one conjunct on it, must be definitionally equal to Q on the
+instance of the witness: each claim binder that Q uses and that the witness binds is a binder of S of its own, and
+each claim binder that the witness fixes has the same closed value. The proof term must use both its claim argument
+and its witness argument. More conjuncts in S are allowed, for example a fact about one row. The checker does not
+require this theorem for the claims without premises. A witness statement must be an existential, and no claim joins
 soundness and non-vacuity. Only the fixed-data equations of the coverage map have no witness.
 The [axiom audit](../lean/test/Checks/Axioms.lean) checks proof dependencies.
 The replay runs nightly from `main`, and `ci.yml` dispatches it on demand.
