@@ -3,8 +3,8 @@
 import os
 import json
 from pathlib import Path
+import shlex
 import subprocess
-import sys
 import tempfile
 import unittest
 
@@ -116,20 +116,25 @@ class ExternalCheckerRunnerTests(unittest.TestCase):
             root = Path(directory)
             prefix = root / 'toolchain'
             (prefix / 'bin').mkdir(parents=True)
-            trace = root / 'trace.jsonl'
+            trace = root / 'trace'
             export = root / 'required-export.ndjson'
             if not missing:
                 export.write_text('' if empty else 'retained export\n')
             for name in ('lean4lean', 'nanoda_bin', 'con-leche', 'con-ron'):
                 checker = prefix / 'bin' / name
+                arguments = shlex.quote(str(root / (name + '.args')))
+                # Shell stubs do not need setup-python's shared-library search path.
+                # Capture the real arguments and config for the assertions below.
                 checker.write_text(
-                    '#!' + sys.executable + '\nimport json, pathlib, sys\n'
-                    + 'name = ' + repr(name) + '\n'
-                    + 'config = json.loads(pathlib.Path(sys.argv[1]).read_text()) if name == "nanoda_bin" else None\n'
-                    + 'entry = {"name": name, "arguments": sys.argv[1:], "config": config}\n'
-                    + 'with pathlib.Path(' + repr(str(trace)) + ').open("a") as output:\n'
-                    + '    output.write(json.dumps(entry) + "\\n")\n'
-                    + 'sys.exit(' + str(first_status if name == 'lean4lean' else 0) + ')\n')
+                    '#!/bin/sh\nset -eu\n'
+                    + "printf '%s\\n' " + shlex.quote(name) + ' >> ' + shlex.quote(str(trace)) + '\n'
+                    + ': > ' + arguments + '\n'
+                    + 'for argument in "$@"; do\n'
+                    + "  printf '%s\\000' \"$argument\" >> " + arguments + '\n'
+                    + 'done\n'
+                    + ('/bin/cp "$1" ' + shlex.quote(str(root / 'nanoda-config.json')) + '\n'
+                       if name == 'nanoda_bin' else '')
+                    + 'exit ' + str(first_status if name == 'lean4lean' else 0) + '\n')
                 checker.chmod(0o755)
             sandbox = root / 'sandbox'
             sandbox.write_text('#!/bin/sh\nwhile [ "$1" != "--" ]; do shift; done\nshift\nexec "$@"\n')
@@ -140,7 +145,13 @@ class ExternalCheckerRunnerTests(unittest.TestCase):
                 cwd=CI.parent / 'lean', env=dict(os.environ, LEAN_NUM_THREADS='2'),
                 capture_output=True, text=True,
             )
-            entries = [json.loads(line) for line in trace.read_text().splitlines()] if trace.exists() else []
+            names = trace.read_text().splitlines() if trace.exists() else []
+            entries = [{
+                'name': name,
+                'arguments': [os.fsdecode(argument)
+                              for argument in (root / (name + '.args')).read_bytes().split(b'\0')[:-1]],
+                'config': json.loads((root / 'nanoda-config.json').read_text()) if name == 'nanoda_bin' else None,
+            } for name in names]
             return result, entries, str(export)
 
     def test_only_four_external_checkers_read_the_same_export(self):
