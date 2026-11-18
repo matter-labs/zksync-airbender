@@ -16,8 +16,9 @@ pieces. A slice starts from the named suffix before its first block: of the impo
 `addColumn` in `SetupEmit`) for an uncut column, or of the cut column (the pieces of every `SUFFIX` blocks,
 `Cuts.lean`), so the kernel walks a bounded number of blocks to reach it. The slices are packed into modules of
 about `MODULE` units, or the setup's `module` units. `Columns.lean` joins the slices of each column in order.
-`--check` regenerates every file in memory, compares it with the committed file, and fails on a gap or an overlap
-between the slices of a column.
+`--check` regenerates every file in memory, compares it with the committed file, and fails on a slice that names an
+unknown column, holds no block or does not span the rows of its blocks, and on a gap or an overlap between the
+slices of a column.
 """
 import argparse
 import json
@@ -314,7 +315,19 @@ def slices(setup, columns, trace_len):
 
 
 def check_partition(setup, columns, trace_len, parts):
-    """Each column is covered by consecutive slices, with no gap and no overlap, in blocks and in rows."""
+    """Each slice names a column of the setup, holds at least one of its blocks, and spans exactly the rows of these
+    blocks. Each column is covered by consecutive slices, with no gap and no overlap, in blocks and in rows."""
+    for column, first, count, _, start_row, last_row, _ in parts:
+        if not isinstance(column, int) or not 0 <= column < len(columns):
+            raise ValueError(f"{setup['name']}: a slice names column {column}, outside 0..{len(columns) - 1}")
+        blocks = columns[column]
+        if not isinstance(count, int) or count < 1 or not 0 <= first <= len(blocks) - count:
+            raise ValueError(f"{setup['name']} column {column}: slice blocks [{first}, {first} + {count}) are empty "
+                             f"or outside 0..{len(blocks)}")
+        rows = sum(block_rows(block) for block in blocks[first:first + count])
+        if last_row - start_row != rows:
+            raise ValueError(f"{setup['name']} column {column}: slice rows [{start_row}, {last_row}) do not span "
+                             f"the {rows} rows of its blocks")
     for column, blocks in enumerate(columns):
         own = [part for part in parts if part[0] == column]
         next_block, next_row = 0, 0

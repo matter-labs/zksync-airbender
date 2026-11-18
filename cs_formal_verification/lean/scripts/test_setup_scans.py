@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test that the setup scan generator rejects loose configurations and slices with a gap or an overlap."""
+"""Test that the setup scan generator rejects loose configurations and loose slice plans."""
 import copy
 import unittest
 from generate_setup_scans import check_partition, cut_block, cut_column, slices, validate
@@ -113,6 +113,35 @@ class PartitionTests(unittest.TestCase):
         parts.insert(index + 1, parts[index])
         with self.assertRaisesRegex(ValueError, 'gap or overlap'):
             check_partition(setup(), self.columns, 64, parts)
+
+    def column1(self, *slices_of_column):
+        """The plan with the slices of column 1 replaced by `slices_of_column` (first, count, start row, last row)."""
+        return [part for part in self.parts if part[0] != 1] + [
+            (1, first, count, [], start_row, last_row, 1) for first, count, start_row, last_row in slices_of_column]
+
+    def test_split_partition(self):
+        check_partition(setup(), self.columns, 64, self.column1((0, 1, 0, 4), (1, 1, 4, 64)))
+
+    def test_unknown_column(self):
+        for column in (2, -1):
+            with self.assertRaisesRegex(ValueError, 'a slice names column'):
+                check_partition(setup(), self.columns, 64, self.parts + [(column, 0, 1, [], 0, 64, 1)])
+
+    def test_empty_slice(self):
+        with self.assertRaisesRegex(ValueError, 'are empty or outside'):
+            check_partition(setup(), self.columns, 64, self.column1((0, 0, 0, 0), (0, 2, 0, 64)))
+
+    def test_blocks_outside_column(self):
+        with self.assertRaisesRegex(ValueError, 'are empty or outside'):
+            check_partition(setup(), self.columns, 64, self.column1((0, 3, 0, 64)))
+
+    def test_rows_not_spanned(self):
+        with self.assertRaisesRegex(ValueError, 'do not span'):
+            check_partition(setup(), self.columns, 64, self.column1((0, 1, 0, 10), (1, 1, 10, 64)))
+
+    def test_reversed_rows(self):
+        with self.assertRaisesRegex(ValueError, 'do not span'):
+            check_partition(setup(), self.columns, 64, self.column1((0, 1, 0, 70), (1, 1, 70, 64)))
 
     def test_short_trace(self):
         with self.assertRaisesRegex(ValueError, 'blocks cover'):
