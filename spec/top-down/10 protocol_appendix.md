@@ -164,7 +164,7 @@ RecursionChain (10c): prove the base program, then repeatedly prove the matching
 >
 >    - **Standalone-IT memory-argument terms $\le 2^{30}$:** this follows from the earlier limit of eight chunks and the fixed eight windows of $2^{24}$ terms per chunk (listed before Algorithm 12).
 >    - **Unified-IT memory-argument terms $\le 2^{29}$:** the identifier checks permit at most 64 distinct windows, each contributing $2^{23}$ terms (listed before Algorithm 12).
->    - **33 machine-state boundary terms:** Algorithm 9, step 3 adds 33 initialization writes to $\mathrm{WS}$ and 33 final-state reads to $\mathrm{RS}$, one for each register and the PC.
+>    - **33 machine-state boundary terms:** Algorithm 9, step 2 adds 33 initialization writes to $\mathrm{WS}$ and 33 final-state reads to $\mathrm{RS}$, one for each register and the PC.
 >
 > 4. Return $\mathrm{RS},\mathrm{WS},T_{\mathrm{mem}}$.
 >
@@ -518,36 +518,21 @@ RecursionChain (10c): prove the base program, then repeatedly prove the matching
 
 > **Algorithm 9 — CloseMemory**
 >
-> **Input:** final state $\mathrm{fin}$, shared challenges $\mathbf{r}_{\mathrm{mem}}=(r_{\mathrm{mem},0},\ldots,r_{\mathrm{mem},5},r_{\mathrm{mem},\eta})$, authenticated products $\mathrm{RS},\mathrm{WS}$.
+> **Input:** final state $\mathrm{fin}=\bigl((x_j,\mathrm{ts}_{j,\mathrm{lo}},\mathrm{ts}_{j,\mathrm{hi}})_{j=0}^{31},(\mathrm{pc},\mathrm{ts}_{\mathrm{pc},\mathrm{lo}},\mathrm{ts}_{\mathrm{pc},\mathrm{hi}})\bigr)$, shared challenges $\mathbf{r}_{\mathrm{mem}}=(r_{\mathrm{mem},0},\ldots,r_{\mathrm{mem},5},r_{\mathrm{mem},\eta})$, authenticated products $\mathrm{RS},\mathrm{WS}$.
 >
-> 1. Verifier forms the multiset `Initial` with one write event per register $i=0,\ldots,31$, with value 0 at timestamp 0, and one PC write event with value 0 at timestamp 4.
-> 2. Verifier forms the multiset `Final` with one read event per register $i=0,\ldots,31$, using value $x_i$ and timestamp limbs $(\mathrm{ts}_{i,\mathrm{lo}},\mathrm{ts}_{i,\mathrm{hi}})$ from $\mathrm{fin}$, and one PC read event using $\mathrm{pc}$ and $(\mathrm{ts}_{\mathrm{pc},\mathrm{lo}},\mathrm{ts}_{\mathrm{pc},\mathrm{hi}})$ from $\mathrm{fin}$.
-> 3. Verifier represents each event in `Initial` and `Final` as $\mathbf{t}=(\mathrm{tag},\mathrm{addr}_{\mathrm{lo}},\mathrm{addr}_{\mathrm{hi}},\mathrm{ts}_{\mathrm{lo}},\mathrm{ts}_{\mathrm{hi}},\mathrm{val}_{\mathrm{lo}},\mathrm{val}_{\mathrm{hi}})$, with $\mathrm{tag}$ equal to 0 for registers, 1 for RAM and 2 for the PC. The address is $i$ for register $i$ and 0 for the PC cell. Address and value pairs use 16-bit limbs and encode $\mathrm{lo}+2^{16}\mathrm{hi}$; timestamp pairs use 19-bit limbs and encode $\mathrm{lo}+2^{19}\mathrm{hi}$, taking the final timestamp limbs as sent in $\mathrm{fin}$.
->
->    Verifier encodes each event as
+> 1. Verifier forms two multisets for the remaining boundary events. `Initial` contains one write event of value 0 at timestamp 0 for each register, with $\mathrm{addr}$ running from 0 through 31, and one write event of value 0 at timestamp 4 for the PC, using $\mathrm{addr}=0$. `Final` contains one read event for each register and the PC at those same addresses, using their respective values and timestamp limbs from $\mathrm{fin}$. The input products $\mathrm{RS}$ and $\mathrm{WS}$ already include the IT products for RAM ($\mathrm{addr}_{\mathrm{space}}=1$) initialization and teardown.
+> 2. Verifier encodes the events by setting $\mathrm{addr}_{\mathrm{space}}=0$ for registers and $\mathrm{addr}_{\mathrm{space}}=2$ for the PC, representing addresses and values with low and high 16-bit limbs and timestamps with low and high 19-bit limbs (as sent in $\mathrm{fin}$ for final reads). He then includes the boundary factors
 >
 >    $$
 >    \begin{aligned}
->    L_{\mathbf{r}_{\mathrm{mem}}}(\mathbf{t})
->      &=\mathrm{tag}+r_{\mathrm{mem},\eta} \\
->      &\quad+r_{\mathrm{mem},0}\,\mathrm{addr}_{\mathrm{lo}}+r_{\mathrm{mem},1}\,\mathrm{addr}_{\mathrm{hi}} \\
->      &\quad+r_{\mathrm{mem},2}\,\mathrm{ts}_{\mathrm{lo}}+r_{\mathrm{mem},3}\,\mathrm{ts}_{\mathrm{hi}} \\
->      &\quad+r_{\mathrm{mem},4}\,\mathrm{val}_{\mathrm{lo}}+r_{\mathrm{mem},5}\,\mathrm{val}_{\mathrm{hi}}
+>    \mathrm{WS} &\leftarrow \mathrm{WS}\prod_{\mathbf{t}\in\mathrm{Initial}}L(\mathbf{t}) \\
+>    \mathrm{RS} &\leftarrow \mathrm{RS}\prod_{\mathbf{t}\in\mathrm{Final}}L(\mathbf{t})
 >    \end{aligned}
 >    $$
 >
->    Verifier multiplies $\mathrm{WS}$ by the encoded `Initial` events and $\mathrm{RS}$ by the encoded `Final` events:
+>    where each event $\mathbf{t}=(\mathrm{addr}_{\mathrm{space}},\mathrm{addr}_{\mathrm{lo}},\mathrm{addr}_{\mathrm{hi}},\mathrm{ts}_{\mathrm{lo}},\mathrm{ts}_{\mathrm{hi}},\mathrm{val}_{\mathrm{lo}},\mathrm{val}_{\mathrm{hi}})$ has encoding $L(\mathbf{t})=r_{\mathrm{mem},\eta}+t_0+\sum_{j=0}^5 r_{\mathrm{mem},j}t_{j+1}$.
 >
->    $$
->    \begin{aligned}
->    \mathrm{WS} &\leftarrow \mathrm{WS}\prod_{\mathbf{t}\in\mathrm{Initial}}L_{\mathbf{r}_{\mathrm{mem}}}(\mathbf{t}) \\
->    \mathrm{RS} &\leftarrow \mathrm{RS}\prod_{\mathbf{t}\in\mathrm{Final}}L_{\mathbf{r}_{\mathrm{mem}}}(\mathbf{t})
->    \end{aligned}
->    $$
->
->    RAM initialization and teardown products are already included in $\mathrm{RS}$ and $\mathrm{WS}$.
->
-> 4. Verifier requires $\mathrm{RS}=\mathrm{WS}$.
+> 3. Verifier requires $\mathrm{RS}=\mathrm{WS}$.
 >
 > **Soundness — memory fingerprint (conditional).** Let $R,W$ be the statement's read/write event multisets, including the boundary events. Assume Algorithm 2 fixes $R,W$ before the shared challenges are sampled, and the event encoding is injective on accepted data. If $R\ne W$, unique factorization makes the difference of their products nonzero: each affine factor has $r_{\mathrm{mem},\eta}$-coefficient 1, fixing its normalization. This difference has total degree at most $N=\max(|R|,|W|)$, so acceptance of unequal multisets has probability $\varepsilon_{\mathrm{mem}}\le\min(1,N\mu)$. Algorithm 1a charges this error once per statement, using a capacity bound that includes all instruction, delegation, IT and boundary events. Accepted-boundary injectivity, particularly for timestamp limbs reduced modulo $p$, remains a proof obligation. The reconstruction argument below supplies the execution interpretation of multiset equality.
 >
@@ -555,7 +540,7 @@ RecursionChain (10c): prove the base program, then repeatedly prove the matching
 >
 > - **Local semantics:** instruction and delegation relations hold under the supplied program setups and fixed delegation setups, including instruction decoding, lookup membership and local PC updates. Range constraints give addresses, values and timestamps their intended integer interpretation; inactive rows contribute neutral memory products.
 > - **Memory consistency:** the read/write event multisets, including boundary events, are equal with multiplicity under the injective encoding above. Timestamps strictly increase along each location's state transitions, and each read identifies a unique preceding write by location and timestamp.
-> - **Boundary coverage:** register and PC boundary events are exactly those in Algorithm 9, steps 1–2. Disjoint IT windows cover every RAM location used by the execution and supply its zero-valued initialization and matching teardown.
+> - **Boundary coverage:** register and PC boundary events are exactly those in Algorithm 9, step 1. Disjoint IT windows cover every RAM location used by the execution and supply its zero-valued initialization and matching teardown.
 > - **Global connectivity:** PC events connect all active instruction transitions into a single chain from the initial PC/time to the final PC/time in $\mathrm{fin}$. Delegation requests and responses match with multiplicity, including their operation identities, arguments and results.
 >
 > These premises imply an execution of the program identified by the supplied setups, from $(\mathrm{pc},\mathrm{time})=(0,4)$ and zero ordinary registers/RAM to $\mathrm{fin}$. Proving this implication and deriving its premises from the accepted circuit and participant checks remain reconstruction proof obligations.
