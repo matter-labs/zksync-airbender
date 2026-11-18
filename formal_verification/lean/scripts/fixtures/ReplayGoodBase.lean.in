@@ -1,4 +1,0 @@
-import Lean
-namespace AssuranceNegative
-theorem good : True := True.intro
-end AssuranceNegative

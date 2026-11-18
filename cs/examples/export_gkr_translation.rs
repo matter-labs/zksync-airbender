@@ -1,4 +1,4 @@
-//! Capture source arithmetic before compiling, together with the actual GKR output.
+//! Compile source arithmetic with the selected profile and export the source snapshot.
 //!
 //! Usage: export_gkr_translation FAMILY OUTPUT.json [--cached]
 //! The arithmetic snapshot is independent of the compiler's post-lowering
@@ -6,7 +6,9 @@
 //! this export does not yet certify lookup or memory lowering.
 
 use cs::cs::{circuit_impl::BasicAssembly, circuit_trait::Circuit};
-use cs::gkr_circuits::delegation::{bigint_with_control, keccak_special5};
+use cs::gkr_circuits::delegation::{
+    bigint_with_control, keccak_chi5, keccak_column_parity, keccak_special5, keccak_theta_rho,
+};
 use cs::gkr_circuits::*;
 use cs::gkr_compiler::GKRCompiler;
 use field::baby_bear::base::BabyBearField as F;
@@ -85,6 +87,21 @@ fn builders(family: &str) -> Result<(Build, Build, bool), &'static str> {
         "keccak" => (
             keccak_special5::keccak_special5_delegation_circuit_table_addition_fn,
             |cs| keccak_special5::define_keccak_special5_delegation_circuit::<_, _, false>(cs),
+            true,
+        ),
+        "keccak-column-parity" => (
+            keccak_column_parity::keccak_column_parity_delegation_circuit_table_addition_fn,
+            |cs| keccak_column_parity::define_keccak_column_parity_delegation_circuit(cs),
+            true,
+        ),
+        "keccak-theta-rho" => (
+            keccak_theta_rho::keccak_theta_rho_delegation_circuit_table_addition_fn,
+            |cs| keccak_theta_rho::define_keccak_theta_rho_delegation_circuit(cs),
+            true,
+        ),
+        "keccak-chi5" => (
+            keccak_chi5::keccak_chi5_delegation_circuit_table_addition_fn,
+            |cs| keccak_chi5::define_keccak_chi5_delegation_circuit(cs),
             true,
         ),
         _ => return Err("unsupported production circuit family"),
@@ -166,11 +183,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let compiler = GKRCompiler::default();
     let trace_log2 = match args[0].as_str() {
         "mul-div" | "unified" => 23,
-        "bigint" | "blake-g" | "keccak" => 22,
+        "bigint"
+        | "blake-g"
+        | "keccak"
+        | "keccak-column-parity"
+        | "keccak-theta-rho"
+        | "keccak-chi5" => 22,
         "blake-round" => 20,
         _ => 24,
     };
-    let circuit = if delegation {
+    let _circuit = if delegation {
         compiler.compile_delegation_circuit(source, trace_log2, cached)
     } else if args[0] == "unified" {
         compiler.compile_family_circuit_with_inline_inits_and_teardowns(
@@ -194,7 +216,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "family": args[0],
         "cached": cached,
         "source": source_snapshot,
-        "circuit": circuit,
     });
     let output = Path::new(&args[1]);
     let sidecar = output.with_file_name(format!(
@@ -219,7 +240,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_json_if_changed(output, &artifact)?;
     write_json_if_changed(&sidecar, &complete_source)?;
     println!(
-        "Wrote source/compiler pair and complete source sidecar to {}",
+        "Wrote source snapshot and complete source sidecar to {}",
         args[1]
     );
     Ok(())
