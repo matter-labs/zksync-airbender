@@ -1701,13 +1701,6 @@ needs = ["compiler_subword_memory_cached_layout", "compiler_subword_memory_captu
 
 # A compiler JSON change rebuilds its direct reader and importers.
 [[lean_lib]]
-name = "CompilerInputs_GKRProtocol_MemoryPayloadChecks_UnifiedCached_Inputs"
-srcDir = "proven"
-roots = ["Proven.GKRProtocol.MemoryPayloadChecks.UnifiedCached.Inputs"]
-needs = ["compiler_unified_cached_layout", "compiler_unified_capture", "compiler_unified_capture_source"]
-
-# A compiler JSON change rebuilds its direct reader and importers.
-[[lean_lib]]
 name = "CompilerInputs_GKRProtocol_MemoryPayloadChecks_WordMemoryCached_Inputs"
 srcDir = "proven"
 roots = ["Proven.GKRProtocol.MemoryPayloadChecks.WordMemoryCached.Inputs"]
@@ -2209,3 +2202,52 @@ name = "CompilerInputs_Compiler_WorkerArithmetic_KeccakThetaRho_Projection"
 srcDir = "proven"
 roots = ["Proven.Compiler.WorkerArithmetic.KeccakThetaRho.Projection"]
 needs = ["compiler_certificate_description_arithmetic_keccak_theta_rho_cached", "compiler_keccak_theta_rho_cached_layout", "compiler_keccak_theta_rho_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_GKRProtocol_FunctionalNative_UnifiedCached"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FunctionalNative.UnifiedCached"]
+needs = ["compiler_unified_cached_layout", "compiler_unified_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_GKRProtocol_FunctionalNative_AddSubCached"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FunctionalNative.AddSubCached"]
+needs = ["compiler_add_sub_cached_layout", "compiler_add_sub_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_GKRProtocol_FunctionalNative_JumpBranchCached"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FunctionalNative.JumpBranchCached"]
+needs = ["compiler_jump_branch_cached_layout", "compiler_jump_branch_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_GKRProtocol_FunctionalNative_MulDivCached"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FunctionalNative.MulDivCached"]
+needs = ["compiler_mul_div_cached_layout", "compiler_mul_div_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_GKRProtocol_FunctionalNative_ShiftBinopCached"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FunctionalNative.ShiftBinopCached"]
+needs = ["compiler_shift_binop_cached_layout", "compiler_shift_binop_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_GKRProtocol_FunctionalNative_SubwordMemoryCached"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FunctionalNative.SubwordMemoryCached"]
+needs = ["compiler_subword_memory_cached_layout", "compiler_subword_memory_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_GKRProtocol_FunctionalNative_WordMemoryCached"
+srcDir = "proven"
+roots = ["Proven.GKRProtocol.FunctionalNative.WordMemoryCached"]
+needs = ["compiler_word_memory_cached_layout", "compiler_word_memory_capture"]

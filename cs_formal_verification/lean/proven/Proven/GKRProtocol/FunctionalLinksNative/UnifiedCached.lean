@@ -91,30 +91,4 @@ theorem memoryWrite_source_witness {R : Type} [CommRing R]
     (native.memoryCopies baseValue arithmetic)
     (by rw [native.assignment_value]; exact Airbender.Compiler.FunctionalNative.UnifiedCached.native.canonical_products hom challenges gamma baseValue)
 
-theorem initializationRead_source_witness {R : Type} [CommRing R]
-    (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (baseValue : GKRAddress → Source.BaseField)
-    (arithmetic : ∀ gate ∈ Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.artifact.gates,
-      gate.expressionResidual (baseValue ∘ Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.bank.address) = 0) :
-    ((native.assignment hom challenges gamma baseValue).value Airbender.Compiler.ConsumerNative.UnifiedCached.native.typing hom) (GKRAddress.InnerLayer 4 8) =
-      (Airbender.Compiler.MemoryNative.UnifiedCached.native.initializationReadTerms hom challenges (native.assignment hom challenges gamma baseValue)).prod :=
-  Airbender.Compiler.MemoryNative.UnifiedCached.native.initializationReadSourceReduction hom challenges
-    (native.assignment hom challenges gamma baseValue)
-    (native.memoryDefined hom challenges gamma baseValue arithmetic)
-    (native.memoryCopies baseValue arithmetic)
-    (by rw [native.assignment_value]; exact Airbender.Compiler.FunctionalNative.UnifiedCached.native.canonical_products hom challenges gamma baseValue)
-
-theorem initializationWrite_source_witness {R : Type} [CommRing R]
-    (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (gamma : R)
-    (baseValue : GKRAddress → Source.BaseField)
-    (arithmetic : ∀ gate ∈ Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.artifact.gates,
-      gate.expressionResidual (baseValue ∘ Airbender.Compiler.FullArithmeticNative.UnifiedCached.native.bank.address) = 0) :
-    ((native.assignment hom challenges gamma baseValue).value Airbender.Compiler.ConsumerNative.UnifiedCached.native.typing hom) (GKRAddress.InnerLayer 4 9) =
-      (Airbender.Compiler.MemoryNative.UnifiedCached.native.initializationWriteTerms hom challenges (native.assignment hom challenges gamma baseValue)).prod :=
-  Airbender.Compiler.MemoryNative.UnifiedCached.native.initializationWriteSourceReduction hom challenges
-    (native.assignment hom challenges gamma baseValue)
-    (native.memoryDefined hom challenges gamma baseValue arithmetic)
-    (native.memoryCopies baseValue arithmetic)
-    (by rw [native.assignment_value]; exact Airbender.Compiler.FunctionalNative.UnifiedCached.native.canonical_products hom challenges gamma baseValue)
-
 end Airbender.Compiler.FunctionalLinksNative.UnifiedCached

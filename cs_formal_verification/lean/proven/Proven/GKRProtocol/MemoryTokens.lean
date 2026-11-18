@@ -42,7 +42,7 @@ theorem Source.MemoryField.withOriginal_value (field : Source.MemoryField)
       apply List.map_congr_left
       intro term member
       rw [same term.2 (List.mem_map.mpr ⟨term, member, rfl⟩)]
-  | readTimestamp | initializationAddress | teardownTimestamp | teardownValue | constant => rfl
+  | readTimestamp | constant => rfl
   | add left right leftProof rightProof =>
     simp only [value]
     rw [leftProof (fun index member => same index (List.mem_append_left _ member)),

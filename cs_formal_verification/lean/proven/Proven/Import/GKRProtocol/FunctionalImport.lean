@@ -57,15 +57,16 @@ structure BaseBinding where
 
 structure Reflection where
   definitions : Array (TSyntax `term)
+  inputs : Array (TSyntax `term)
   steps : Array (TSyntax `term)
   affineSteps : Array (Option Nat)
   base : Array BaseBinding
   lookupSteps : Array Nat
   productSteps : Array Nat
 
-/-- Partition every actual opcode. Only base arithmetic is absent from the
-functional program; its complete relation is certified separately. -/
-private def reflect (pair : Import.Pair) (name lookupName productName : Ident) : CommandElabM Reflection := do
+/-- Record the initialization pair outputs as extension inputs. Process base
+arithmetic and the functional steps with their respective certificates. -/
+def reflect (pair : Import.Pair) (name lookupName productName : Ident) : CommandElabM Reflection := do
   let definitions := LookupSourceData.definitions pair.circuit
   let definitionTerms ← definitions.mapM definitionSyntax
   let memoryCaches := pair.circuit.layers.flatMap fun layer =>
@@ -106,16 +107,20 @@ private def reflect (pair : Import.Pair) (name lookupName productName : Ident) :
           affineSteps := affineSteps.set! cacheIndex (some steps.size)
           steps := steps.push (← `(($(memberName name "affine" cacheIndex)).functional))
       cacheIndex := cacheIndex + 1
+  let mut inputs := #[]
   let mut lookupSteps := #[]
   let mut productSteps := #[]
   for layer in pair.circuit.layers do
     for gate in layer.gates ++ layer.gates_with_external_connections do
       let relation := gate.enforced_relation
+      if let .InitsOrTeardownsInitialPair _ _ output _ := relation then
+        inputs := inputs.push (← addressSyntax output)
+        continue
       let operands ← match LookupSourceData.operands relation with
         | .ok operands => pure operands | .error error => throwError "{error}"
       let isLookup := !operands.isEmpty || match relation with
         | .AggregateLookupRationalPair _ _ | .CopyInExtensionField _ _ => true | _ => false
-      let productPiece ← NativeProductImport.pieces pair.circuit memoryCaches 0 relation
+      let productPiece ← NativeProductImport.pieces memoryCaches 0 relation
       let stepIndex := steps.size
       if isLookup then
         steps := steps.push (← `(($(memberName lookupName "gate" lookupSteps.size)).functional))
@@ -141,9 +146,9 @@ private def reflect (pair : Import.Pair) (name lookupName productName : Ident) :
   for index in [:definitions.size] do
     unless (affineSteps[index]!).isSome || base.any (fun binding => binding.affine == index) do
       throwError "actual affine definition is absent from complete graph semantics"
-  return ⟨definitionTerms, steps, affineSteps, base, lookupSteps, productSteps⟩
+  return ⟨definitionTerms, inputs, steps, affineSteps, base, lookupSteps, productSteps⟩
 
-private def readPair (path : StrLit) : CommandElabM Import.Pair := do
+def readPair (path : StrLit) : CommandElabM Import.Pair := do
   match ← Airbender.Compiler.Import.parsePairText (← IO.FS.readFile path.getString) with
   | .ok pair =>
       unless pair.format_version == 1 do throwError "unsupported functional graph artifact"
@@ -167,7 +172,7 @@ elab_rules : command
     let isBase := fieldName name "isBase"
     elabCommand (← `(noncomputable def $isBase (address : GKRAddress) : Bool := ($typingName).compatible (address, .base)))
     let known := memberName name "known" 0
-    elabCommand (← `(def $known : List GKRAddress := []))
+    elabCommand (← `(def $known : List GKRAddress := [$(data.inputs),*]))
     let mut stepNames := #[]
     for (step, index) in data.steps.toList.zipIdx do
       let stepName := memberName name "step" index

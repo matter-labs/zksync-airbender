@@ -93,15 +93,4 @@ def memoryRequests (inputs : SemanticInputs) : Except String MemoryRequests := d
          ⟨.constant 0, markerAddress, .zero, .zero⟩)
   | _, _ => throw "source memory requires exactly one executor or delegation state"
 
-def initializationRequests (pairs wordBits traceLog2 : Nat) : List (MemoryRow × MemoryRow) :=
-  (List.range (2 * pairs)).map fun setIndex =>
-    let address : MemoryWord :=
-      ⟨.initializationAddress ⟨0, by decide⟩,
-       .add (.initializationAddress ⟨1, by decide⟩) (.constant (setIndex * 2 ^ (traceLog2 + wordBits - 16)))⟩
-    -- Teardown consumes the final state; initialization writes the zero state.
-    (⟨.constant 1, address,
-       ⟨.teardownTimestamp setIndex ⟨0, by decide⟩, .teardownTimestamp setIndex ⟨1, by decide⟩⟩,
-       ⟨.teardownValue setIndex ⟨0, by decide⟩, .teardownValue setIndex ⟨1, by decide⟩⟩⟩,
-     ⟨.constant 1, address, .zero, .zero⟩)
-
 end Airbender.Compiler.Source

@@ -475,8 +475,7 @@ def native.borrowProjection : List (Fin 266) :=
 def native.helperPlacement : Source.HelperPlacement 266 :=
   ⟨⟨native.originalProjection, fun query limb =>
       let places := ((native.readProjection)[query]?).getD (⟨0, by decide⟩, ⟨0, by decide⟩)
-      if limb.val = 0 then places.1 else places.2,
-      fun _ => ⟨0, by decide⟩, fun _ _ => ⟨0, by decide⟩, fun _ _ => ⟨0, by decide⟩⟩,
+      if limb.val = 0 then places.1 else places.2⟩,
     fun index => ((native.borrowProjection)[index]?).getD ⟨0, by decide⟩⟩
 
 noncomputable def native.helperAssertions : List Source.HelperAssertion :=
@@ -499,7 +498,7 @@ theorem native.helperReferencesValid :
     (native.helperAssertions).all
         (fun assertion =>
           match assertion with
-          | .zero field | .boolean field => field.referencesValid 222 14 0 14 false) =
+          | .zero field | .boolean field => field.referencesValid 222 14 14) =
       true :=
   by decide +kernel
 

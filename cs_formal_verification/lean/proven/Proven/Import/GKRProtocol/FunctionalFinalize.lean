@@ -8,21 +8,6 @@ set_option warningAsError true
 namespace Airbender.Compiler.FunctionalFinalize
 open Lean Elab Command
 
-/-- Untrusted assembly selectors refer only to already reflected native data.
-The concluding quantified theorems check complete list coverage in the kernel. -/
-structure BaseIndex where
-  affine : Nat
-  gate : Nat
-  deriving FromJson
-
-structure Selectors where
-  steps : Nat
-  affine_steps : Array (Option Nat)
-  «base» : Array BaseIndex
-  lookup_steps : Array Nat
-  product_steps : Array Nat
-  deriving FromJson
-
 private def memberName (owner : Ident) (stem : String) (index : Nat) : Ident :=
   mkIdent (owner.getId ++ Name.mkSimple s!"{stem}{index}")
 
@@ -34,20 +19,20 @@ private def predicateChecks (proofs : Array (TSyntax `term)) : CommandElabM (TSy
   for proof in proofs.reverse do result ← `(PredicateChecks.cons $proof $result)
   return result
 
-syntax (name := finalizeCheckedFunctionalGraph) "finalize_checked_functional_graph " ident " selectors " str
-  " lookup " ident " product " ident " base " ident
+syntax (name := finalizeCheckedFunctionalGraph) "finalize_checked_functional_graph " ident
+  " from " str " lookup " ident " product " ident " base " ident
   " using_steps " term " using_base " ident : command
 
 elab_rules : command
-  | `(finalize_checked_functional_graph $name:ident selectors $selectorText:str
+  | `(finalize_checked_functional_graph $name:ident from $path:str
       lookup $lookupName:ident product $productName:ident base $baseName:ident
       using_steps $stepsChecked:term using_base $baseChecks:ident) => do
-    let data ← match Lean.Json.parse selectorText.getString >>= (fromJson? (α := Selectors)) with
-      | .ok data => pure data | .error error => throwError "invalid functional proof selectors: {error}"
+    let data ← FunctionalImport.reflect (← FunctionalImport.readPair path) name lookupName productName
     let program := fieldName name "program"
     let isBase := fieldName name "isBase"
     let valid := fieldName name "valid"
-    elabCommand (← `(theorem $valid : ($program).Valid $isBase [] :=
+    let supplied := memberName name "known" 0
+    elabCommand (← `(theorem $valid : ($program).Valid $isBase $supplied :=
       FunctionalProgram.check_sound $stepsChecked))
     let canonical := fieldName name "canonical"
     let stepHolds := fieldName name "canonical_step_holds"
@@ -82,10 +67,10 @@ elab_rules : command
     let artifact := fieldName baseName "artifact"
     let bank := fieldName baseName "bank"
     let mut affineProofs := #[]
-    for index in [:data.affine_steps.size] do
+    for index in [:data.affineSteps.size] do
       let affine := memberName name "affine" index
       let result := memberName name "affineHolds" index
-      let proof ← if let some stepIndex := data.affine_steps[index]! then
+      let proof ← if let some stepIndex := data.affineSteps[index]! then
           let step := memberName name "step" stepIndex
           `(by
             have bridge (values : GKRAddress → R) (equation : ($step).Holds hom challenges gamma values) :
@@ -125,7 +110,7 @@ elab_rules : command
       (arithmetic : ∀ gate ∈ ($artifact).gates, gate.expressionResidual (baseValue ∘ ($bank).address) = 0) :
       ∀ definition ∈ $definitions, definition.Holds hom challenges ($canonical hom challenges gamma baseValue) :=
       PredicateChecks.all $(← predicateChecks affineProofs)))
-    for (kind, owner, steps) in [("lookup", lookupName, data.lookup_steps), ("product", productName, data.product_steps)] do
+    for (kind, owner, steps) in [("lookup", lookupName, data.lookupSteps), ("product", productName, data.productSteps)] do
       let mut proofs := #[]
       for (stepIndex, index) in steps.toList.zipIdx do
         let step := memberName name "step" stepIndex
@@ -135,7 +120,7 @@ elab_rules : command
           (List.get_mem $program ⟨$(quote stepIndex), by decide⟩))
         let bridgeType ← if kind == "lookup" then `(($gate).Holds hom challenges gamma values)
           else `(($gate).Holds hom challenges values)
-        let bridgeProof ← if kind == "product" && data.lookup_steps.contains stepIndex then
+        let bridgeProof ← if kind == "product" && data.lookupSteps.contains stepIndex then
             `(by exact equation (($step).get ⟨0, by decide⟩) (List.get_mem $step ⟨0, by decide⟩))
           else `(($gate).functional_sound hom challenges gamma values equation)
         let proof ← `(by
