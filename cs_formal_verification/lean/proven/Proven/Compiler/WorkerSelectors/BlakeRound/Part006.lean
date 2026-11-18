@@ -1,5 +1,5 @@
 module
-public import Proven.Compiler.WorkerSelectors.Common
+public import Proven.Compiler.WorkerSelectors.BlakeRound.Chains
 public import Proven.KernelExact
 
 @[expose] public section
@@ -17,5 +17,8 @@ theorem resolved006 : batch006.all (fun selector =>
     | .ok _ => true | .error _ => false) = true := by
   kernel_exact (resolved_all_eq (circuitFor .blakeRound) batch006).symm.trans
     (show NativeLookups.resolvedAll (circuitFor .blakeRound) batch006 = true from by kernel_rfl)
+
+/-- Every selector in this batch has its actual native output group. -/
+theorem grouped006 : batch006.all grouping = true := by kernel_rfl
 
 end Airbender.Compiler.NativeWorkerLookups.Proofs.BlakeRound

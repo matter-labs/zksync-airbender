@@ -2174,3 +2174,38 @@ name = "CompilerInputs_GKRProtocol_ProductNative_KeccakChi5Cached"
 srcDir = "proven"
 roots = ["Proven.GKRProtocol.ProductNative.KeccakChi5Cached"]
 needs = ["compiler_keccak_chi5_cached_layout", "compiler_keccak_chi5_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_Compiler_WorkerArithmetic_KeccakThetaRho_Backward"
+srcDir = "proven"
+roots = ["Proven.Compiler.WorkerArithmetic.KeccakThetaRho.Backward"]
+needs = ["compiler_certificate_description_arithmetic_keccak_theta_rho_cached", "compiler_keccak_theta_rho_cached_layout", "compiler_keccak_theta_rho_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_Compiler_WorkerArithmetic_KeccakThetaRho_Data"
+srcDir = "proven"
+roots = ["Proven.Compiler.WorkerArithmetic.KeccakThetaRho.Data"]
+needs = ["compiler_certificate_description_arithmetic_keccak_theta_rho_cached", "compiler_keccak_theta_rho_cached_layout", "compiler_keccak_theta_rho_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_Compiler_WorkerArithmetic_KeccakThetaRho_Forward"
+srcDir = "proven"
+roots = ["Proven.Compiler.WorkerArithmetic.KeccakThetaRho.Forward"]
+needs = ["compiler_certificate_description_arithmetic_keccak_theta_rho_cached", "compiler_keccak_theta_rho_cached_layout", "compiler_keccak_theta_rho_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_Compiler_WorkerArithmetic_KeccakThetaRho_Gates"
+srcDir = "proven"
+roots = ["Proven.Compiler.WorkerArithmetic.KeccakThetaRho.Gates"]
+needs = ["compiler_certificate_description_arithmetic_keccak_theta_rho_cached", "compiler_keccak_theta_rho_cached_layout", "compiler_keccak_theta_rho_capture"]
+
+# A compiler JSON change rebuilds its direct reader and importers.
+[[lean_lib]]
+name = "CompilerInputs_Compiler_WorkerArithmetic_KeccakThetaRho_Projection"
+srcDir = "proven"
+roots = ["Proven.Compiler.WorkerArithmetic.KeccakThetaRho.Projection"]
+needs = ["compiler_certificate_description_arithmetic_keccak_theta_rho_cached", "compiler_keccak_theta_rho_cached_layout", "compiler_keccak_theta_rho_capture"]

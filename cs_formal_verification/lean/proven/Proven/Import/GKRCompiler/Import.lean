@@ -113,12 +113,19 @@ private def checksSyntax (proofs : Array (TSyntax `ident)) : CommandElabM (TSynt
     result ← `(Compiler.BoolChecks.cons $proof $result)
   return result
 
-/-- Load actual pre-compiler expressions and actual native arithmetic gates.
-The external certificate supplies identities/selection, never replacement
-source equations or replacement lowered equations. File parsing/emission is
-the same explicit data-binding boundary used by the existing native importer. -/
-elab "import_compiler_arithmetic " name:ident " from " pairPath:str " certificate " certPath:str
-    descriptionMode:(" source_description")? : command => do
+/-- Emit the import, or one phase of it, of one native compiler pair and its identity certificate. -/
+private def elabArithmeticImport (name : TSyntax `ident) (pairPath certPath : TSyntax `str) (description : Bool)
+    (phase : Option String) (first count : Nat) : CommandElabM Unit := do
+  let last := first + count
+  unless phase.all (["data", "gates", "projection", "backward", "forward", "assemble"].contains ·) do
+    throwError "unsupported arithmetic import phase"
+  if (phase == some "data" || phase == some "assemble") && last != 0 then
+    throwError "the data and assemble phases take no slice"
+  -- Without a phase, the command emits every part.
+  let emits (part : String) : Bool := phase.all (· == part)
+  let checkRange (part : String) (size : Nat) : CommandElabM (Nat → Bool) := do
+    if phase == some part && size < last then throwError "the {part} slice ends after the {size} checks"
+    return fun index => emits part && (phase.isNone || (first ≤ index && index < last))
   let pairBytes ← IO.FS.readFile pairPath.getString
   let certBytes ← IO.FS.readFile certPath.getString
   let pair : Pair ← match ← Airbender.Compiler.Import.parsePairText pairBytes with
@@ -131,17 +138,17 @@ elab "import_compiler_arithmetic " name:ident " from " pairPath:str " certificat
     throwError "unsupported compiler translation format"
   unless certificate.addresses.toList.eraseDups.length == certificate.addresses.size do
     throwError "compiler address bank contains duplicate native addresses"
-  let n := if descriptionMode.isSome then pair.circuit.placement_data.entries.size else pair.source.num_variables
+  let n := if description then pair.circuit.placement_data.entries.size else pair.source.num_variables
   let m := certificate.addresses.size
-  let statements := if descriptionMode.isSome then pair.circuit.structured_statements else pair.source.statements
+  let statements := if description then pair.circuit.structured_statements else pair.source.statements
   let mut source ← statements.mapM (statementSyntax n)
-  let booleans := if descriptionMode.isSome then #[] else pair.source.booleans
+  let booleans := if description then #[] else pair.source.booleans
   for wire in booleans do
     let atom ← atomSyntax wire n
     let negative ← `(Compiler.Expression.constant (-1))
     source := source.push (← mulSyntax atom (← addSyntax atom negative))
   let mut gates := #[]
-  if descriptionMode.isSome then
+  if description then
     for layer in pair.circuit.layers do
       for (output, relation) in layer.cached_relations do
         if let .SingleColumnLookup row _ := relation then
@@ -178,76 +185,107 @@ elab "import_compiler_arithmetic " name:ident " from " pairPath:str " certificat
   for index in [:source.size] do
     let reference := mkIdent (name.getId ++ Name.mkSimple s!"sourceExpression{index}")
     let expression := source[index]!
-    elabCommand (← `(def $reference : Compiler.Expression $(quote n) (ZMod babyBearModulus) := $expression))
+    if emits "data" then
+      elabCommand (← `(def $reference : Compiler.Expression $(quote n) (ZMod babyBearModulus) := $expression))
     sourceReferences := sourceReferences.push reference
   let mut gateReferences := #[]
   for index in [:gates.size] do
     let reference := mkIdent (name.getId ++ Name.mkSimple s!"gate{index}")
     let gateTerm := gates[index]!
-    elabCommand (← `(def $reference : Compiler.ArithmeticGate $(quote m) (ZMod babyBearModulus) := $gateTerm))
+    if emits "data" then
+      elabCommand (← `(def $reference : Compiler.ArithmeticGate $(quote m) (ZMod babyBearModulus) := $gateTerm))
     gateReferences := gateReferences.push reference
-  elabCommand (← `(def $artifactName : Compiler.ArithmeticArtifact $(quote n) $(quote m) (ZMod babyBearModulus) := {
-    source := [$[$sourceReferences],*]
-    gates := [$[$gateReferences],*]
-    placement := fun index => (#v[$[$placement],*] : Vector (Fin $(quote m)) $(quote n))[index] }))
-  elabCommand (← `(def $selectedName : List (Fin ($artifactName).gates.length) := [$[$selected],*]))
-  elabCommand (← `(def $extensionDataName : Vector (Compiler.Polynomial $(quote n) (ZMod babyBearModulus)) $(quote m) := #v[$[$extension],*]))
-  elabCommand (← `(def $extensionName (index : Fin $(quote m)) := $extensionDataName[index]))
-  elabCommand (← `(def $translationName := ($artifactName).translation $selectedName $extensionName))
-  elabCommand (← `(def $backwardName : Vector (Compiler.Combination ($translationName).lowered) ($translationName).source.length := #v[$[$backward],*]))
-  elabCommand (← `(def $forwardName : Vector (Compiler.Combination ($translationName).source) ($translationName).lowered.length := #v[$[$forward],*]))
-  elabCommand (← `(def $certificateName : Compiler.Certificate $translationName := {
-    backward := fun index => $backwardName[index]
-    forward := fun index => $forwardName[index] }))
+  if emits "data" then
+    elabCommand (← `(def $artifactName : Compiler.ArithmeticArtifact $(quote n) $(quote m) (ZMod babyBearModulus) := {
+      source := [$[$sourceReferences],*]
+      gates := [$[$gateReferences],*]
+      placement := fun index => (#v[$[$placement],*] : Vector (Fin $(quote m)) $(quote n))[index] }))
+    elabCommand (← `(def $selectedName : List (Fin ($artifactName).gates.length) := [$[$selected],*]))
+    elabCommand (← `(def $extensionDataName : Vector (Compiler.Polynomial $(quote n) (ZMod babyBearModulus)) $(quote m) := #v[$[$extension],*]))
+    elabCommand (← `(def $extensionName (index : Fin $(quote m)) := $extensionDataName[index]))
+    elabCommand (← `(def $translationName := ($artifactName).translation $selectedName $extensionName))
+    elabCommand (← `(def $backwardName : Vector (Compiler.Combination ($translationName).lowered) ($translationName).source.length := #v[$[$backward],*]))
+    elabCommand (← `(def $forwardName : Vector (Compiler.Combination ($translationName).source) ($translationName).lowered.length := #v[$[$forward],*]))
+    elabCommand (← `(def $certificateName : Compiler.Certificate $translationName := {
+      backward := fun index => $backwardName[index]
+      forward := fun index => $forwardName[index] }))
   let mut gateProofs := #[]
+  let checksGate ← checkRange "gates" gates.size
   for index in [:gates.size] do
     let gateName := gateReferences[index]!
     let proof := mkIdent (name.getId ++ Name.mkSimple s!"gateChecked{index}")
-    elabCommand (← `(theorem $proof : ($gateName).check = true := by decide +kernel))
+    if checksGate index then
+      elabCommand (← `(theorem $proof : ($gateName).check = true := by decide +kernel))
     gateProofs := gateProofs.push proof
-  elabCommand (← `(theorem $gatesCheckedName : ($artifactName).gates.all Compiler.ArithmeticGate.check = true :=
-    Compiler.BoolChecks.all_true $(← checksSyntax gateProofs)))
+  if emits "assemble" then
+    elabCommand (← `(theorem $gatesCheckedName : ($artifactName).gates.all Compiler.ArithmeticGate.check = true :=
+      Compiler.BoolChecks.all_true $(← checksSyntax gateProofs)))
   let mut projectionProofs := #[]
+  let checksProjection ← checkRange "projection" n
   for index in [:n] do
     let wire ← finSyntax index n
     let proof := mkIdent (name.getId ++ Name.mkSimple s!"projectionChecked{index}")
-    elabCommand (← `(theorem $proof : Compiler.equal
-      (($translationName).extension (($translationName).projection $wire)) (Compiler.atom $wire) = true := by decide +kernel))
+    if checksProjection index then
+      elabCommand (← `(theorem $proof : Compiler.equal
+        (($translationName).extension (($translationName).projection $wire)) (Compiler.atom $wire) = true := by decide +kernel))
     projectionProofs := projectionProofs.push proof
   let projectionCheckedName := mkIdent (name.getId ++ `projectionChecked)
-  elabCommand (← `(theorem $projectionCheckedName :
-    (List.finRange $(quote n)).all (fun wire => Compiler.equal
-      (($translationName).extension (($translationName).projection wire)) (Compiler.atom wire)) = true :=
-    Compiler.BoolChecks.all_true $(← checksSyntax projectionProofs)))
+  if emits "assemble" then
+    elabCommand (← `(theorem $projectionCheckedName :
+      (List.finRange $(quote n)).all (fun wire => Compiler.equal
+        (($translationName).extension (($translationName).projection wire)) (Compiler.atom wire)) = true :=
+      Compiler.BoolChecks.all_true $(← checksSyntax projectionProofs)))
   let mut backwardProofs := #[]
+  let checksBackward ← checkRange "backward" source.size
   for index in [:source.size] do
     let position ← finSyntax index source.size
     let proof := mkIdent (name.getId ++ Name.mkSimple s!"backwardChecked{index}")
-    elabCommand (← `(theorem $proof : Compiler.equal
-      (Compiler.rename ($translationName).projection (($translationName).source.get $position))
-      (Compiler.combination ($translationName).lowered (($certificateName).backward $position)) = true := by decide +kernel))
+    if checksBackward index then
+      elabCommand (← `(theorem $proof : Compiler.equal
+        (Compiler.rename ($translationName).projection (($translationName).source.get $position))
+        (Compiler.combination ($translationName).lowered (($certificateName).backward $position)) = true := by decide +kernel))
     backwardProofs := backwardProofs.push proof
   let backwardCheckedName := mkIdent (name.getId ++ `backwardChecked)
-  elabCommand (← `(theorem $backwardCheckedName :
-    (List.finRange ($translationName).source.length).all (fun index => Compiler.equal
-      (Compiler.rename ($translationName).projection (($translationName).source.get index))
-      (Compiler.combination ($translationName).lowered (($certificateName).backward index))) = true :=
-    Compiler.BoolChecks.all_true $(← checksSyntax backwardProofs)))
+  if emits "assemble" then
+    elabCommand (← `(theorem $backwardCheckedName :
+      (List.finRange ($translationName).source.length).all (fun index => Compiler.equal
+        (Compiler.rename ($translationName).projection (($translationName).source.get index))
+        (Compiler.combination ($translationName).lowered (($certificateName).backward index))) = true :=
+      Compiler.BoolChecks.all_true $(← checksSyntax backwardProofs)))
   let mut forwardProofs := #[]
+  let checksForward ← checkRange "forward" selected.size
   for index in [:selected.size] do
     let position ← finSyntax index selected.size
     let proof := mkIdent (name.getId ++ Name.mkSimple s!"forwardChecked{index}")
-    elabCommand (← `(theorem $proof : Compiler.equal
-      (Compiler.substitute ($translationName).extension (($translationName).lowered.get $position))
-      (Compiler.combination ($translationName).source (($certificateName).forward $position)) = true := by decide +kernel))
+    if checksForward index then
+      elabCommand (← `(theorem $proof : Compiler.equal
+        (Compiler.substitute ($translationName).extension (($translationName).lowered.get $position))
+        (Compiler.combination ($translationName).source (($certificateName).forward $position)) = true := by decide +kernel))
     forwardProofs := forwardProofs.push proof
   let forwardCheckedName := mkIdent (name.getId ++ `forwardChecked)
-  elabCommand (← `(theorem $forwardCheckedName :
-    (List.finRange ($translationName).lowered.length).all (fun index => Compiler.equal
-      (Compiler.substitute ($translationName).extension (($translationName).lowered.get index))
-      (Compiler.combination ($translationName).source (($certificateName).forward index))) = true :=
-    Compiler.BoolChecks.all_true $(← checksSyntax forwardProofs)))
-  elabCommand (← `(theorem $checkedName : Compiler.check $translationName $certificateName = true :=
-    Compiler.and_checked (Compiler.and_checked $projectionCheckedName $backwardCheckedName) $forwardCheckedName))
+  if emits "assemble" then
+    elabCommand (← `(theorem $forwardCheckedName :
+      (List.finRange ($translationName).lowered.length).all (fun index => Compiler.equal
+        (Compiler.substitute ($translationName).extension (($translationName).lowered.get index))
+        (Compiler.combination ($translationName).source (($certificateName).forward index))) = true :=
+      Compiler.BoolChecks.all_true $(← checksSyntax forwardProofs)))
+    elabCommand (← `(theorem $checkedName : Compiler.check $translationName $certificateName = true :=
+      Compiler.and_checked (Compiler.and_checked $projectionCheckedName $backwardCheckedName) $forwardCheckedName))
+
+/-- Load actual pre-compiler expressions and actual native arithmetic gates.
+The external certificate supplies identities/selection, never replacement
+source equations or replacement lowered equations. File parsing/emission is
+the same explicit data-binding boundary used by the existing native importer.
+`only <phase> <start> <count>` emits one part of the import, so that separate modules hold the kernel checks:
+`data` emits the definitions, `gates`, `projection`, `backward` and `forward` emit the checks with an index in
+`[start, start + count)`, and `assemble` emits the complete checks from the checks of the other phases. -/
+syntax (name := importArithmetic) "import_compiler_arithmetic " ident " from " str " certificate " str
+    (" source_description")? (" only " str num num)? : command
+
+elab_rules : command
+  | `(import_compiler_arithmetic $name:ident from $pairPath:str certificate $certPath:str
+      $[source_description%$description]? $[only $mode:str $offset:num $length:num]?) =>
+    elabArithmeticImport name pairPath certPath description.isSome (mode.map (·.getString))
+      ((offset.map (·.getNat)).getD 0) ((length.map (·.getNat)).getD 0)
 
 end Airbender.Compiler.Import

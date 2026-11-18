@@ -11,9 +11,6 @@ set_option warningAsError true
 namespace Airbender.Compiler.NativeWorkerLookups.Proofs.KeccakColumnParity
 set_option maxRecDepth 32768
 
-/-- The contiguous batches cover every native query selector. -/
-theorem batches : selectorsFor .columnParity = ([batch000, batch001, batch002, batch003]).flatten := by kernel_rfl
-
 /-- Every worker query has its actual gate, expansion and native chain group. -/
 theorem binding :
     NativeLookups.queryLocators (circuitFor .columnParity) =
@@ -22,7 +19,10 @@ theorem binding :
       match NativeLookups.select (circuitFor .columnParity) selector with
       | .ok _ => true | .error _ => false) = true ∧
     NativeLookups.groupsAgree (circuitFor .columnParity) (selectorsFor .columnParity) = true := by
-  refine ⟨by kernel_rfl, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_⟩
+  · unfold NativeLookups.queryLocators NativeLookups.locators
+    rw [compiled_gates_toList]
+    kernel_rfl
   · let predicate := fun selector =>
       match NativeLookups.select (circuitFor .columnParity) selector with
       | .ok _ => true | .error _ => false

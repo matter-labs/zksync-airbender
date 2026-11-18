@@ -15,7 +15,9 @@ def address_key(address):
     return json.dumps(address, sort_keys=True, separators=(",", ":"))
 
 
-def selectors(circuit):
+def native_chains(circuit):
+    """Every primitive query in gate and operand order, and the (gate, operand) position and group of every operand
+    of each public lookup chain, in output and chain order."""
     gates = [gate["enforced_relation"] for layer in circuit["layers"]
              for gate in layer["gates"] + layer["gates_with_external_connections"]]
     definitions, producers = [], {}
@@ -132,7 +134,7 @@ def selectors(circuit):
         elif kind.startswith("Lookup"):
             raise ValueError("unhandled native lookup consumer: " + kind)
 
-    selected = []
+    selected, chains = [], []
     for kind, output in circuit["global_output_map"].items():
         if kind not in GROUPS:
             continue
@@ -142,9 +144,14 @@ def selectors(circuit):
         for index in leaves:
             entry = dict(registry[index])
             entry["group"] = GROUPS[kind]
+            chains.append((tuple(entry["locator"]), GROUPS[kind]))
             if entry["weight"] != "setup":
                 selected.append(entry)
-    return sorted(selected, key=lambda entry: entry["locator"])
+    return sorted(selected, key=lambda entry: entry["locator"]), chains
+
+
+def selectors(circuit):
+    return native_chains(circuit)[0]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

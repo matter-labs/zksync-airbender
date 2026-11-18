@@ -1,144 +1,94 @@
 #!/usr/bin/env python3
-"""Emit independent kernel checks for native worker selector batches and groups."""
+"""Emit independent kernel checks for native worker selector batches and groups.
+
+The kernel follows each worker's native lookup chains once (Chains.lean). Each batch module resolves its selectors and
+reads their groups from these chains. Usage: generate_worker_selector_proofs.py [--check]; --check compares the
+committed modules with the output."""
+import argparse
+import json
+import sys
 from pathlib import Path
-import sys,json
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from generate_worker_selectors import selectors,FAMILIES,WORKERS
-r=ROOT
-variants={'Bigint':'bigint','BlakeG':'blakeG','BlakeRound':'blakeRound','KeccakColumnParity':'columnParity','KeccakThetaRho':'thetaRho','KeccakChi5':'chi5'}
-for title,family in WORKERS.items():
- variant=variants[title];entries=selectors(json.load(open(ROOT.parent.parent / f'cs/compiled_circuits/{FAMILIES[family]}_layout_gkr.json')));n=len(entries)
- d=r/f'proven/Proven/Compiler/WorkerSelectors/{title}';d.mkdir(exist_ok=True)
- parts=[]
- for first in range(0,n,16):
-  name=f'Part{first//16:03d}';parts.append(name)
-  s=f'''module
-public import Proven.Compiler.WorkerSelectors.Common
+from generate_worker_selectors import native_chains, FAMILIES, WORKERS
 
+VARIANTS = {'Bigint': 'bigint', 'BlakeG': 'blakeG', 'BlakeRound': 'blakeRound', 'KeccakColumnParity': 'columnParity',
+            'KeccakThetaRho': 'thetaRho', 'KeccakChi5': 'chi5'}
+BATCH = 16
+
+
+def header(title, imports):
+    return ('module\n' + ''.join(f'public import {module}\n' for module in imports) + f'''
 @[expose] public section
 set_option warningAsError true
 namespace Airbender.Compiler.NativeWorkerLookups.Proofs.{title}
 set_option maxRecDepth 32768
+''')
 
+
+def footer(title):
+    return f'\nend Airbender.Compiler.NativeWorkerLookups.Proofs.{title}\n'
+
+
+def family_modules(title, variant, entries, chains):
+    """The generated modules of one worker, as {path relative to WorkerSelectors: text}."""
+    prefix = f'Proven.Compiler.WorkerSelectors.{title}'
+    count = (len(entries) + BATCH - 1) // BATCH
+    batches = [f'batch{index:03d}' for index in range(count)]
+    listed = '[' + ', '.join(batches) + ']'
+    literal = '[' + ', '.join(f'(({gate}, {operand}), {group})' for (gate, operand), group in chains) + ']'
+    modules = {f'{title}/Chains.lean': header(title, ['Proven.Compiler.WorkerSelectors.Common']) + f'''
+/-- Each operand of a public lookup chain with the group of its output, in output and chain order. -/
+def chains : List ((Nat × Nat) × Fin 3) := {literal}
+
+/-- The kernel follows the actual native chains to these operands and groups. -/
+theorem chain_groups : NativeLookups.chainGroups (circuitFor .{variant}) = .ok chains := by
+  unfold NativeLookups.chainGroups
+  rw [compiled_gates_toList]
+  kernel_rfl
+
+/-- A selector has the group of the one chain that contains its operand. -/
+def grouping (selector : NativeLookups.Selector) : Bool :=
+  (chains.filter (fun entry => entry.1 == (selector.gate, selector.operand))).map Prod.snd == [selector.group]
+''' + footer(title)}
+    for index in range(count):
+        first = index * BATCH
+        modules[f'{title}/Part{index:03d}.lean'] = header(
+            title, [f'{prefix}.Chains', 'Proven.KernelExact']) + f'''
 /-- This contiguous batch retains the native query order. -/
-def batch{first//16:03d} : List NativeLookups.Selector :=
-  ((selectorsFor .{variant}).drop {first}).take {min(16,n-first)}
+def batch{index:03d} : List NativeLookups.Selector :=
+  ((selectorsFor .{variant}).drop {first}).take {min(BATCH, len(entries) - first)}
 
 /-- Every cache or copy expansion in this batch succeeds. -/
-theorem resolved{first//16:03d} : batch{first//16:03d}.all (fun selector =>
+theorem resolved{index:03d} : batch{index:03d}.all (fun selector =>
     match NativeLookups.select (circuitFor .{variant}) selector with
-    | .ok _ => true | .error _ => false) = true := by kernel_rfl
+    | .ok _ => true | .error _ => false) = true := by
+  kernel_exact (resolved_all_eq (circuitFor .{variant}) batch{index:03d}).symm.trans
+    (show NativeLookups.resolvedAll (circuitFor .{variant}) batch{index:03d} = true from by kernel_rfl)
 
 /-- Every selector in this batch has its actual native output group. -/
-theorem grouped{first//16:03d} :
-    NativeLookups.groupsAgree (circuitFor .{variant}) batch{first//16:03d} = true := by kernel_rfl
+theorem grouped{index:03d} : batch{index:03d}.all grouping = true := by kernel_rfl
+''' + footer(title)
 
-end Airbender.Compiler.NativeWorkerLookups.Proofs.{title}
-''';(d/(name+'.lean')).write_text(s)
- s='module\n'+''.join(f'public import Proven.Compiler.WorkerSelectors.{title}.{part}\n' for part in parts)+f'''
-@[expose] public section
-set_option warningAsError true
-namespace Airbender.Compiler.NativeWorkerLookups.Proofs.{title}
-set_option maxRecDepth 32768
+    def accepted(proof):
+        return ('by\n    refine ⟨' + ', '.join(['?_'] * count + ['True.intro']) + '⟩\n'
+                + '\n'.join(f'    · kernel_exact {proof}{index:03d}' for index in range(count)))
 
+    parts = [f'{prefix}.Part{index:03d}' for index in range(count)]
+    modules[f'{title}/Grouped.lean'] = header(title, ['Proven.Compiler.WorkerSelectors.Assemble'] + parts) + f'''
 /-- The contiguous batches cover every native query selector. -/
-theorem batches : selectorsFor .{variant} = '''+' ++ '.join(f'batch{i:03d}' for i in range(len(parts)))+''' := by kernel_rfl
-
-'''
- resolved=f'resolved{len(parts)-1:03d}';grouped=f'grouped{len(parts)-1:03d}'
- for i in reversed(range(len(parts)-1)):
-  resolved=f'(append_all _ resolved{i:03d} {resolved})';grouped=f'(append_groups _ grouped{i:03d} {grouped})'
- s+=f'''/-- Every worker query has its actual gate, expansion and native chain group. -/
-theorem binding :
-    NativeLookups.queryLocators (circuitFor .{variant}) =
-      .ok ((selectorsFor .{variant}).map (fun selector => (selector.gate, selector.operand))) ∧
-    (selectorsFor .{variant}).all (fun selector =>
-      match NativeLookups.select (circuitFor .{variant}) selector with
-      | .ok _ => true | .error _ => false) = true ∧
-    NativeLookups.groupsAgree (circuitFor .{variant}) (selectorsFor .{variant}) = true := by
-  refine ⟨by kernel_rfl, ?_, ?_⟩
-  · rw [batches]
-    exact {resolved}
-  · rw [batches]
-    exact {grouped}
-
-end Airbender.Compiler.NativeWorkerLookups.Proofs.{title}
-'''
- (d.parent/(title+'.lean')).write_text(s)
- print(title,len(parts),'independent selector batches')
-
-# Resolve each batch independently. Check the complete native chain groups once per worker.
-for title, variant in variants.items():
-    directory = r / f'proven/Proven/Compiler/WorkerSelectors/{title}'
-    for path in directory.glob('Part*.lean'):
-        text = path.read_text()
-        position = text.index('/-- Every selector in this batch')
-        text = text[:position] + f'end Airbender.Compiler.NativeWorkerLookups.Proofs.{title}\n'
-        text = text.replace('public import Proven.Compiler.WorkerSelectors.Common',
-                            'public import Proven.Compiler.WorkerSelectors.Common\npublic import Proven.KernelExact')
-        import re
-        batch = re.search(r'def (batch\d+)', text)[1]
-        text = text.replace('= true := by kernel_rfl',
-            f'= true := by\n  kernel_exact (resolved_all_eq (circuitFor .{variant}) {batch}).symm.trans\n'
-            f'    (show NativeLookups.resolvedAll (circuitFor .{variant}) {batch} = true from by kernel_rfl)')
-        path.write_text(text)
-    (directory / 'Grouped.lean').write_text(f"""module
-public import Proven.Compiler.WorkerSelectors.Common
-
-@[expose] public section
-set_option warningAsError true
-namespace Airbender.Compiler.NativeWorkerLookups.Proofs.{title}
-set_option maxRecDepth 32768
+theorem batches : selectorsFor .{variant} = ({listed}).flatten := by kernel_rfl
 
 /-- Each worker selector belongs to its actual public native output chain. -/
 theorem grouped :
-    NativeLookups.groupsAgree (circuitFor .{variant}) (selectorsFor .{variant}) = true := by kernel_rfl
-
-end Airbender.Compiler.NativeWorkerLookups.Proofs.{title}
-""")
-    path = directory.parent / (title + '.lean')
-    text = path.read_text().replace('module\n',
-        f'module\npublic import Proven.Compiler.WorkerSelectors.{title}.Grouped\n', 1)
-    position = text.index('  · rw [batches]', text.index('    exact (append_all'))
-    end = text.index('\nend ', position)
-    path.write_text(text[:position] + '  · exact grouped\n' + text[end:])
-
-# List append is left associative. Keep the proof composition in that order.
-for title in variants:
-    directory = r / f'proven/Proven/Compiler/WorkerSelectors/{title}'
-    path = directory.parent / (title + '.lean')
-    text = path.read_text()
-    proof = 'resolved000'
-    for index in range(1, len(list(directory.glob('Part*.lean')))):
-        proof = f'(append_all _ {proof} resolved{index:03d})'
-    begin = text.index('    exact (append_all')
-    end = text.index('\n', begin)
-    text = text[:begin] + '    kernel_exact ' + proof + text[end:]
-    path.write_text(text.replace('  · exact grouped', '  · kernel_exact grouped'))
-
-# The generic batch proof does not infer concrete prefixes from earlier proofs.
-for title, variant in variants.items():
-    directory = r / f'proven/Proven/Compiler/WorkerSelectors/{title}'
-    count = len(list(directory.glob('Part*.lean')))
-    chunks = '[' + ', '.join(f'batch{index:03d}' for index in range(count)) + ']'
-    witnesses = 'by\n      refine ⟨' + ', '.join(['?_'] * count + ['True.intro']) + '⟩\n'\
-        + '\n'.join(f'      · kernel_exact resolved{index:03d}' for index in range(count))
-    imports = '\n'.join(f'public import Proven.Compiler.WorkerSelectors.{title}.Part{index:03d}'
-                        for index in range(count))
-    text = f'''module
-public import Proven.Compiler.WorkerSelectors.Assemble
-public import Proven.Compiler.WorkerSelectors.{title}.Grouped
-{imports}
-
-@[expose] public section
-set_option warningAsError true
-namespace Airbender.Compiler.NativeWorkerLookups.Proofs.{title}
-set_option maxRecDepth 32768
-
-/-- The contiguous batches cover every native query selector. -/
-theorem batches : selectorsFor .{variant} = ({chunks}).flatten := by kernel_rfl
-
+    NativeLookups.groupsAgree (circuitFor .{variant}) (selectorsFor .{variant}) = true := by
+  have accepted : AllBatches grouping {listed} :=
+    {accepted('grouped')}
+  rw [groups_agree_of_chains chain_groups]
+  kernel_exact (congrArg (fun values : List NativeLookups.Selector => values.all grouping) batches).trans
+    (flatten_all grouping {listed} accepted)
+''' + footer(title)
+    modules[f'{title}.lean'] = header(title, ['Proven.Compiler.WorkerSelectors.Assemble', f'{prefix}.Grouped'] + parts) + f'''
 /-- Every worker query has its actual gate, expansion and native chain group. -/
 theorem binding :
     NativeLookups.queryLocators (circuitFor .{variant}) =
@@ -147,16 +97,51 @@ theorem binding :
       match NativeLookups.select (circuitFor .{variant}) selector with
       | .ok _ => true | .error _ => false) = true ∧
     NativeLookups.groupsAgree (circuitFor .{variant}) (selectorsFor .{variant}) = true := by
-  refine ⟨by kernel_rfl, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_⟩
+  · unfold NativeLookups.queryLocators NativeLookups.locators
+    rw [compiled_gates_toList]
+    kernel_rfl
   · let predicate := fun selector =>
       match NativeLookups.select (circuitFor .{variant}) selector with
       | .ok _ => true | .error _ => false
-    have accepted : AllBatches predicate {chunks} :=
-      {witnesses}
+    have accepted : AllBatches predicate {listed} :=
+      {accepted('resolved').replace(chr(10) + '    ', chr(10) + '      ')}
     kernel_exact (congrArg (fun values : List NativeLookups.Selector => values.all predicate) batches).trans
-      (flatten_all predicate {chunks} accepted)
+      (flatten_all predicate {listed} accepted)
   · kernel_exact grouped
+''' + footer(title)
+    return modules
 
-end Airbender.Compiler.NativeWorkerLookups.Proofs.{title}
-'''
-    (directory.parent / (title + '.lean')).write_text(text)
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check', action='store_true')
+    args = parser.parse_args()
+    directory = ROOT / 'proven/Proven/Compiler/WorkerSelectors'
+    stale = []
+    for title, family in WORKERS.items():
+        circuit = json.loads((ROOT.parent.parent / f'cs/compiled_circuits/{FAMILIES[family]}_layout_gkr.json').read_text())
+        entries, chains = native_chains(circuit)
+        modules = family_modules(title, VARIANTS[title], entries, chains)
+        for relative, text in modules.items():
+            path = directory / relative
+            if not args.check:
+                path.parent.mkdir(exist_ok=True)
+                path.write_text(text)
+            elif not path.exists() or path.read_text() != text:
+                stale.append(relative)
+        for extra in sorted((directory / title).glob('*.lean')):
+            if f'{title}/{extra.name}' not in modules:
+                if args.check:
+                    stale.append(f'{title}/{extra.name}')
+                else:
+                    extra.unlink()
+        print(title, (len(entries) + BATCH - 1) // BATCH, 'selector batches,', len(chains), 'chain operands')
+    if stale:
+        sys.exit('FAIL worker selector proofs differ from scripts/generate_worker_selector_proofs.py: ' + ', '.join(stale))
+    if args.check:
+        print('PASS worker selector proofs')
+
+
+if __name__ == '__main__':
+    main()

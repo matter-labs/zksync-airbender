@@ -9,9 +9,6 @@ set_option warningAsError true
 namespace Airbender.Compiler.NativeWorkerLookups.Proofs.KeccakChi5
 set_option maxRecDepth 32768
 
-/-- The contiguous batches cover every native query selector. -/
-theorem batches : selectorsFor .chi5 = ([batch000, batch001]).flatten := by kernel_rfl
-
 /-- Every worker query has its actual gate, expansion and native chain group. -/
 theorem binding :
     NativeLookups.queryLocators (circuitFor .chi5) =
@@ -20,7 +17,10 @@ theorem binding :
       match NativeLookups.select (circuitFor .chi5) selector with
       | .ok _ => true | .error _ => false) = true ∧
     NativeLookups.groupsAgree (circuitFor .chi5) (selectorsFor .chi5) = true := by
-  refine ⟨by kernel_rfl, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_⟩
+  · unfold NativeLookups.queryLocators NativeLookups.locators
+    rw [compiled_gates_toList]
+    kernel_rfl
   · let predicate := fun selector =>
       match NativeLookups.select (circuitFor .chi5) selector with
       | .ok _ => true | .error _ => false

@@ -26,4 +26,17 @@ theorem append_groups (circuit : Circuit) {first rest : List NativeLookups.Selec
   cases actual : NativeLookups.chainGroups circuit <;>
     simp_all [NativeLookups.groupsAgree, List.all_append]
 
+/-- The compiled gates in list form, so that the kernel reads the layers without building the gate array. -/
+theorem compiled_gates_toList (circuit : Circuit) : (NativeLookups.compiledGates circuit).toList =
+    circuit.layers.toList.flatMap (fun layer => layer.gates.toList ++ layer.gates_with_external_connections.toList) := by
+  simp [NativeLookups.compiledGates, Array.toList_flatMap]
+
+/-- With known chains, the group check reads each selector against these chains. -/
+theorem groups_agree_of_chains {circuit : Circuit} {groups : List ((Nat × Nat) × Fin 3)}
+    (known : NativeLookups.chainGroups circuit = .ok groups) (selectors : List NativeLookups.Selector) :
+    NativeLookups.groupsAgree circuit selectors = selectors.all (fun selector =>
+      (groups.filter (fun entry => entry.1 == (selector.gate, selector.operand))).map Prod.snd == [selector.group]) := by
+  unfold NativeLookups.groupsAgree
+  rw [known]
+
 end Airbender.Compiler.NativeWorkerLookups.Proofs

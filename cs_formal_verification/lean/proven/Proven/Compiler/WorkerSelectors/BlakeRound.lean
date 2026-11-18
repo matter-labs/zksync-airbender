@@ -25,9 +25,6 @@ set_option warningAsError true
 namespace Airbender.Compiler.NativeWorkerLookups.Proofs.BlakeRound
 set_option maxRecDepth 32768
 
-/-- The contiguous batches cover every native query selector. -/
-theorem batches : selectorsFor .blakeRound = ([batch000, batch001, batch002, batch003, batch004, batch005, batch006, batch007, batch008, batch009, batch010, batch011, batch012, batch013, batch014, batch015, batch016, batch017]).flatten := by kernel_rfl
-
 /-- Every worker query has its actual gate, expansion and native chain group. -/
 theorem binding :
     NativeLookups.queryLocators (circuitFor .blakeRound) =
@@ -36,7 +33,10 @@ theorem binding :
       match NativeLookups.select (circuitFor .blakeRound) selector with
       | .ok _ => true | .error _ => false) = true ∧
     NativeLookups.groupsAgree (circuitFor .blakeRound) (selectorsFor .blakeRound) = true := by
-  refine ⟨by kernel_rfl, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_⟩
+  · unfold NativeLookups.queryLocators NativeLookups.locators
+    rw [compiled_gates_toList]
+    kernel_rfl
   · let predicate := fun selector =>
       match NativeLookups.select (circuitFor .blakeRound) selector with
       | .ok _ => true | .error _ => false
