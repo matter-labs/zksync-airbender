@@ -10,7 +10,7 @@ public import Mathlib.Tactic.FinCases
     call at the call's controller row. -/
 
 namespace Airbender.NonVacuous.KeccakSplitSpan.ThetaRho
-open Keccak.Split Keccak.Split.SetupProofs Keccak.Split.ThetaRho.SetupProofs
+open Keccak.Split Keccak.Split.SetupProofs Keccak.Split.ThetaRho Keccak.Split.ThetaRho.SetupProofs
 
 variable {p : Nat} [Fact p.Prime] {env : Environment (ZMod p)}
 
@@ -48,13 +48,13 @@ theorem split_at {e0 e1 e2 e3 e4 e5 e6 e7 e8 : Expression (ZMod p)} {a b s : Nat
     have kb : (65536 + (a + 256 * b + 65536 * s) - 65536) / 256 % 256 = b := by omega
     have ks : (65536 + (a + 256 * b + 65536 * s) - 65536) / 65536 = s := by omega
     simp (disch := omega) only [formulaRow, spec0, spec1, spec2, spec3, spec4, spec5, spec6, spec7, spec8,
-      ite_eq_left, ite_eq_right, splitA, splitB, splitS, ka, kb, ks]
+      ite_eq_left, ite_eq_right, splitKeyA, splitKeyB, splitShift, ka, kb, ks]
   · intro j
     fin_cases j <;> simp [v0, v1, v2, v3, v4, v5, v6, v7, v8]
 
 /-- A theta+rho call's row in a controller region at `base` (control 589824, slots 589945). -/
 theorem ctl_call {k base : Nat} (call : k < 361) (kind : kindAt k = .thetaRho) :
-    ThetaRho.SetupProofs.callAt (base + ctlRow 5 k - base) = k ∧ 1 ≤ ctlRow 5 k ∧ ctlRow 5 k ≤ 120 := by
+    ThetaRho.callAt (base + ctlRow 5 k - base) = k ∧ 1 ≤ ctlRow 5 k ∧ ctlRow 5 k ≤ 120 := by
   have middle : 5 ≤ k % 15 ∧ k % 15 < 10 := by
     unfold kindAt at kind
     split_ifs at kind
@@ -78,7 +78,7 @@ theorem control_at {e0 e1 e2 e3 e4 e5 e6 e7 e8 : Expression (ZMod p)} {k : Nat} 
     if k % 5 = 0 then 1 else 0, if k % 5 = 1 then 1 else 0, if k % 5 = 2 then 1 else 0,
     if k % 5 = 3 then 1 else 0, if k % 5 = 4 then 1 else 0, 59]) ?_ ?_
   · simp (disch := omega) only [formulaRow, spec0, spec1, spec2, spec3, spec4, spec5, spec6, spec7, spec8,
-      ite_eq_left, ite_eq_right, ctl, flag, index]
+      ite_eq_left, ite_eq_right, controlRegion, iterationFlag, index]
   · intro j
     fin_cases j <;> simp [v0, v1, v2, v3, v4, v5, v6, v7, v8]
 
@@ -95,7 +95,7 @@ theorem slots_at {e0 e1 e2 e3 e4 e5 e6 e7 e8 : Expression (ZMod p)} {k : Nat} (c
   refine formula_contains (589945 + ctlRow 5 k) (by omega) (row := #v[controlAt k + 2048, slotNat k 0,
     slotNat k 1, slotNat k 2, slotNat k 3, slotNat k 4, slotNat k 5, slotNat k 6, 60]) ?_ ?_
   · simp (disch := omega) only [formulaRow, spec0, spec1, spec2, spec3, spec4, spec5, spec6, spec7, spec8,
-      ite_eq_left, ite_eq_right, slt, index]
+      ite_eq_left, ite_eq_right, slotRegion, index, callSlot_slotNat]
   · intro j
     fin_cases j <;> simp [v0, v1, v2, v3, v4, v5, v6, v7, v8]
 

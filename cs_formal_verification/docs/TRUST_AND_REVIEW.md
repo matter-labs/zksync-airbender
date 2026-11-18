@@ -145,8 +145,9 @@ unified setups equal to the imported rows on the complete trace domain, the rang
 their formulas, and the public worker tables equal to the imported worker data with their range columns. The CPU
 claims state the public generic rows (`NativePublicSetup.genericRow`) of the setup fixture program: its initial state
 and its program image (`rvMachineProgramImage`). The BLAKE2 round table reads the imported rows, and
-`Blake2Round.SetupImportClaim` makes them equal to the round row formulas; kernel scans give the same row meaning
-for the three split Keccak setups (`SetupProofs.setupRow_eq`). The claim modules import the raw setup data; the
+`Blake2Round.SetupImportClaim` makes them equal to the round row formulas; the three split Keccak tables read their
+imported rows too, and `Keccak.Split.ColumnParity.SetupImportClaim`, `Keccak.Split.ThetaRho.SetupImportClaim` and
+`Keccak.Split.Chi5.SetupImportClaim` make them equal to their row formulas. The claim modules import the raw setup data; the
 definitions that the machine claims use do not, except the round and split Keccak tables, which read their imported
 rows. `test/Tests/ImportSetupSpotChecks.lean` checks single imported values
 against the JSON. See [the setup README](../lean/artifacts/setup/README.md).

@@ -129,6 +129,9 @@ import Proven.Final.Compiler.PermutationMachine
 
 import Proven.Final.Circuits.InitsTeardowns.SharedArtifact
 import Proven.Final.Circuits.Blake2Round.Setup
+import Proven.Final.Circuits.KeccakSplit.ColumnParity.Setup
+import Proven.Final.Circuits.KeccakSplit.ThetaRho.Setup
+import Proven.Final.Circuits.KeccakSplit.Chi5.Setup
 
 example : Airbender.AddSub.RVSoundnessClaim := @Airbender.AddSub.rv_soundness
 example : Airbender.Bigint.Memory.RVAddressesSoundnessClaim := @Airbender.Bigint.Memory.rv_addresses_soundness
@@ -1274,6 +1277,18 @@ example : Airbender.Compiler.NativeFixedRows.SubwordMemoryImportClaim := @Airben
 example : Airbender.Compiler.NativeFixedRows.UnifiedImportClaim := @Airbender.Compiler.NativeFixedRows.unified_import
 
 #print axioms Airbender.Compiler.NativeFixedRows.unified_import
+
+example : Airbender.Keccak.Split.ColumnParity.SetupImportClaim := @Airbender.Keccak.Split.ColumnParity.setup_import
+
+#print axioms Airbender.Keccak.Split.ColumnParity.setup_import
+
+example : Airbender.Keccak.Split.ThetaRho.SetupImportClaim := @Airbender.Keccak.Split.ThetaRho.setup_import
+
+#print axioms Airbender.Keccak.Split.ThetaRho.setup_import
+
+example : Airbender.Keccak.Split.Chi5.SetupImportClaim := @Airbender.Keccak.Split.Chi5.setup_import
+
+#print axioms Airbender.Keccak.Split.Chi5.setup_import
 
 #print axioms Airbender.Compiler.blakeG_cached_memory
 

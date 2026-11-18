@@ -1,5 +1,4 @@
 module
-public import Proven.KeccakSplit.Setup.ColumnParity.Spec
 public import Proven.KeccakSplit.Setup.Facts
 
 @[expose] public section
@@ -11,10 +10,6 @@ namespace Airbender.Keccak.Split.ColumnParity.SetupProofs
 open Airbender.Keccak.Split.SetupProofs
 
 set_option warningAsError true
-
-/-- The row formulas, one per column. -/
-def formulaRow (n : Nat) : Vector Nat 8 :=
-  #v[spec0 n, spec1 n, spec2 n, spec3 n, spec4 n, spec5 n, spec6 n, spec7 n]
 
 theorem get0 (n : Nat) : (formulaRow n)[0] = spec0 n := by rfl
 theorem get1 (n : Nat) : (formulaRow n)[1] = spec1 n := by rfl
@@ -76,19 +71,18 @@ theorem iota_facts {row : Vector (ZMod babyBearModulus) 8} (h : IsFormulaRow row
   have r : n < 65536 := by unfold spec7 at t; split_ifs at t <;> omega
   have e0 : spec0 n = n % 256 := by unfold spec0; region
   have e1 : spec1 n = n / 256 := by unfold spec1; region
-  have e2 : spec2 n = n % 256 ^^^ rcByte (n / 256) := by unfold spec2; region
+  have e2 : spec2 n = n % 256 ^^^ Airbender.Keccak.iotaByte (n / 256) := by unfold spec2; region
   have e3 : spec3 n = 0 := by unfold spec3; region
   have e4 : spec4 n = 0 := by unfold spec4; region
   have e5 : spec5 n = 0 := by unfold spec5; region
   have e6 : spec6 n = 0 := by unfold spec6; region
   have b0 : n % 256 < 256 := Nat.mod_lt _ (by decide)
   have b1 : n / 256 < 256 := by omega
-  have rc : rcByte (n / 256) < 256 := Nat.mod_lt _ (by decide)
-  have b2 : n % 256 ^^^ rcByte (n / 256) < 256 := Nat.xor_lt_two_pow (n := 8) b0 rc
+  have rc : Airbender.Keccak.iotaByte (n / 256) < 256 := Nat.mod_lt _ (by decide)
+  have b2 : n % 256 ^^^ Airbender.Keccak.iotaByte (n / 256) < 256 := Nat.xor_lt_two_pow (n := 8) b0 rc
   simp only [Vector.getElem_map, get0, get1, get2, get3, get4, get5, get6, e0, e1, e2, e3, e4,
     e5, e6, Nat.cast_zero]
-  rw [val_cast (by omega), val_cast (by omega), val_cast (by omega),
-    ← rcByte_eq_iotaByte _ b1]
+  rw [val_cast (by omega), val_cast (by omega), val_cast (by omega)]
   exact ⟨b0, b1, b2, by simp, by simp, by simp, by simp, by simp⟩
 
 /-- Tag 63, executed: the controller row of a column-parity call. -/
@@ -145,14 +139,14 @@ theorem slot_facts {row : Vector (ZMod babyBearModulus) 8} (h : IsFormulaRow row
     controlAt_inj j index.isLt (by have := controlAt_lt j; have := cast_inj (by omega) (by omega) key; omega)
   have hidx : (⟨_, j⟩ : Fin 361) = index := Fin.ext same
   have slot (lane : Nat) (hl : lane < 7) :
-      slotNat (callAt (n - 65536)) lane = ((Call.slots index)[lane]).val := by
-    rw [slotNat_eq j hl, hidx]
-  have e1 : spec1 n = slotNat (callAt (n - 65536)) 0 := by unfold spec1; region
-  have e2 : spec2 n = slotNat (callAt (n - 65536)) 1 := by unfold spec2; region
-  have e3 : spec3 n = slotNat (callAt (n - 65536)) 2 := by unfold spec3; region
-  have e4 : spec4 n = slotNat (callAt (n - 65536)) 3 := by unfold spec4; region
-  have e5 : spec5 n = slotNat (callAt (n - 65536)) 4 := by unfold spec5; region
-  have e6 : spec6 n = slotNat (callAt (n - 65536)) 5 := by unfold spec6; region
+      callSlot (callAt (n - 65536)) lane = ((Call.slots index)[lane]).val := by
+    rw [callSlot_eq j hl, hidx]
+  have e1 : spec1 n = callSlot (callAt (n - 65536)) 0 := by unfold spec1; region
+  have e2 : spec2 n = callSlot (callAt (n - 65536)) 1 := by unfold spec2; region
+  have e3 : spec3 n = callSlot (callAt (n - 65536)) 2 := by unfold spec3; region
+  have e4 : spec4 n = callSlot (callAt (n - 65536)) 3 := by unfold spec4; region
+  have e5 : spec5 n = callSlot (callAt (n - 65536)) 4 := by unfold spec5; region
+  have e6 : spec6 n = callSlot (callAt (n - 65536)) 5 := by unfold spec6; region
   simp only [Vector.getElem_map, get1, get2, get3, get4, get5, get6, e1, e2, e3, e4, e5, e6,
     slot 0 (by omega), slot 1 (by omega), slot 2 (by omega), slot 3 (by omega), slot 4 (by omega),
     slot 5 (by omega)]

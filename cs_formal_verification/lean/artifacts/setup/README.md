@@ -54,7 +54,7 @@ definitions do not import.
 | table 26 of `mul-div` | `Compiler.NativeSetups.Range13ImportClaim` |
 | the six worker setups, with their range columns | `Compiler.NativeWorkerSetup.SetupImportClaim` |
 | `blake-round` | `Blake2Round.SetupImportClaim` (the table definition reads the imported rows) |
-| `keccak-column-parity`, `keccak-theta-rho`, `keccak-chi5` | `Airbender.Keccak.Split.ColumnParity.SetupProofs.setupRow_eq`, `Airbender.Keccak.Split.ThetaRho.SetupProofs.setupRow_eq`, `Airbender.Keccak.Split.Chi5.SetupProofs.setupRow_eq` (proven/; the table definitions read the imported rows) |
+| `keccak-column-parity`, `keccak-theta-rho`, `keccak-chi5` | `Keccak.Split.ColumnParity.SetupImportClaim`, `Keccak.Split.ThetaRho.SetupImportClaim`, `Keccak.Split.Chi5.SetupImportClaim` (the table definitions read the imported rows) |
 
 The CPU claims (`Compiler.NativeSetups.FixtureRows`) state the public generic rows
 (`Compiler.NativePublicSetup.genericRow`) of the setup fixture program. Its initial state
@@ -83,11 +83,13 @@ content pin and each hash in this table.
 The same exporter produces the three split files. Select `keccak-column-parity`, `keccak-theta-rho`
 or `keccak-chi5`. The native freshness check compares every column, table and circuit field.
 
-Row meaning: `Airbender.Keccak.Split.ColumnParity.SetupProofs.setupRow_eq` (and the same theorem for theta/rho and
-chi5) proves that each of the 2^22 decoded rows equals the region formula
-(`Airbender.Keccak.Split.ColumnParity.SetupProofs.formulaRow` and the same for the others; controller rows via
-`Airbender.Keccak.Split.controlAt`, `Airbender.Keccak.Split.bump`, `Airbender.Keccak.Split.Call.slots`, call index
-`Airbender.Keccak.Split.SetupProofs.callIndex`), and the members modules (for example
+Row meaning: `Airbender.Keccak.Split.ColumnParity.SetupImportClaim` (and the same claim for theta/rho and chi5)
+states that each of the 2^22 decoded rows equals the region formula
+(`Airbender.Keccak.Split.ColumnParity.formulaRow` and the same for the others, in
+[the split Keccak setup formulas](../../human/Human/Circuits/KeccakSplit/Tables/SetupImport.lean); controller rows via
+`Airbender.Keccak.Split.controlAt`, `Airbender.Keccak.Split.bump`, `Airbender.Keccak.Split.callSlot`, call index
+`Airbender.Keccak.Split.callIndex`); `Airbender.Keccak.Split.ColumnParity.SetupProofs.setupRow_eq` proves it with the
+kernel scans, and the members modules (for example
 [Chi5/Members.lean](../../proven/Proven/KeccakSplit/Setup/Chi5/Members.lean)) give the per-tag facts used by the
 circuit proofs (BabyBear). Regions:
 column parity: iota 38 [0, 65536), slots 62 [65536, 65658), control 63 [65658, 65780),

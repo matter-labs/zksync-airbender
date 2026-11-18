@@ -29,20 +29,20 @@ theorem setup_contains {p : Nat} [Fact p.Prime] {data : Import.Setup.SetupData} 
 
 /-- Nibble `i` of five packed nibbles. -/
 theorem nib_pack {a0 a1 a2 a3 a4 : Nat} (h0 : a0 < 16) (h1 : a1 < 16) (h2 : a2 < 16) (h3 : a3 < 16) (h4 : a4 < 16) :
-    SetupProofs.nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 0 = a0 ∧
-      SetupProofs.nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 1 = a1 ∧
-      SetupProofs.nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 2 = a2 ∧
-      SetupProofs.nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 3 = a3 ∧
-      SetupProofs.nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 4 = a4 := by
-  simp only [SetupProofs.nib, Nat.reducePow]
+    Keccak.Split.nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 0 = a0 ∧
+      Keccak.Split.nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 1 = a1 ∧
+      Keccak.Split.nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 2 = a2 ∧
+      Keccak.Split.nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 3 = a3 ∧
+      Keccak.Split.nib (a0 + 16 * a1 + 256 * a2 + 4096 * a3 + 65536 * a4) 4 = a4 := by
+  simp only [Keccak.Split.nib, Nat.reducePow]
   omega
 
 /-- The controller row of call `k` (`callIndex offset` inverted): one past its round's five calls before it. -/
 def ctlRow (offset k : Nat) : Nat := 1 + 5 * (k / 15) + (k % 15 - offset)
 
 theorem callIndex_ctlRow {offset k : Nat} (low : offset ≤ k % 15) (high : k % 15 < offset + 5) :
-    SetupProofs.callIndex offset (ctlRow offset k) = k := by
-  unfold SetupProofs.callIndex ctlRow
+    Keccak.Split.callIndex offset (ctlRow offset k) = k := by
+  unfold Keccak.Split.callIndex ctlRow
   omega
 
 end Airbender.NonVacuous.KeccakSplitSpan

@@ -13,7 +13,8 @@ complete effect of one call on the `RV.State`, frame included).
 
 [Native](Native.lean) binds the imported circuits ([column parity](ColumnParity/Artifact.lean),
 [theta+rho](ThetaRho/Artifact.lean), [chi5](Chi5/Artifact.lean)) to the exported
-fixed tables ([setup](Tables/Setup.lean), data in `artifacts/setup/README.md`) and
+fixed tables ([setup](Tables/Setup.lean), data in `artifacts/setup/README.md`; row formulas and
+their claims in [SetupImport](Tables/SetupImport.lean)) and
 states `RowEffects`: an active row is a call of the schedule, reads its control
 word, writes the next one and writes `result` on its lanes. Theta+rho and chi5 fix
 each port group's read time to a whole number of calls earlier

@@ -9,7 +9,7 @@ public import Mathlib.Tactic.FinCases
     and the control query of a chi call at the call's controller row. -/
 
 namespace Airbender.NonVacuous.KeccakSplitSpan.Chi
-open Keccak.Split Keccak.Split.SetupProofs Keccak.Split.Chi5.SetupProofs
+open Keccak.Split Keccak.Split.SetupProofs Keccak.Split.Chi5 Keccak.Split.Chi5.SetupProofs
 
 variable {p : Nat} [Fact p.Prime] {env : Environment (ZMod p)}
 
@@ -53,14 +53,14 @@ theorem control_at {e0 e1 e2 e3 e4 e5 e6 e7 e8 e9 e10 : Expression (ZMod p)} {k 
     unfold kindAt at kind
     split_ifs at kind
     omega
-  have index : Chi5.SetupProofs.callAt (1048576 + ctlRow 10 k - 1048576) = k := by
+  have index : Chi5.callAt (1048576 + ctlRow 10 k - 1048576) = k := by
     rw [Nat.add_sub_cancel_left]
     exact callIndex_ctlRow late.1 late.2
   have small : 1 ≤ ctlRow 10 k ∧ ctlRow 10 k ≤ 120 := by unfold ctlRow; omega
   refine formula_contains (1048576 + ctlRow 10 k) (by omega) (row := #v[controlAt k, 1, bump (controlAt k),
     slotNat k 0, slotNat k 1, slotNat k 2, slotNat k 3, slotNat k 4, k % 5, 0, 66]) ?_ ?_
   · simp (disch := omega) only [formulaRow, spec0, spec1, spec2, spec3, spec4, spec5, spec6, spec7, spec8, spec9,
-      spec10, ite_eq_left, ite_eq_right, ctl, index]
+      spec10, ite_eq_left, ite_eq_right, controlRegion, index, callSlot_slotNat]
   · intro j
     fin_cases j <;> simp [v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10]
 

@@ -52,6 +52,15 @@ theorem slotNat_eq {i pos : Nat} (hi : i < 361) (hp : pos < 7) :
 theorem rcByte_eq_iotaByte : ∀ b < 256, rcByte b = Airbender.Keccak.iotaByte b := by
   decide +kernel
 
+/-- A slot of the formula rows is the slot of `Call.slots`. -/
+theorem callSlot_eq {i pos : Nat} (hi : i < 361) (hp : pos < 7) :
+    callSlot i pos = ((Call.slots ⟨i, hi⟩)[pos]).val := by
+  simp only [callSlot, hi, hp, and_self, ↓reduceDIte]
+
+/-- A slot of the formula rows is the fast form `slotNat`. -/
+theorem callSlot_slotNat {i pos : Nat} (hi : i < 361) (hp : pos < 7) : callSlot i pos = slotNat i pos := by
+  rw [callSlot_eq hi hp, slotNat_eq hi hp]
+
 /-- A small natural keeps its value in the field. -/
 theorem val_cast {v : Nat} (h : v < 2013265921) : ((v : ZMod babyBearModulus)).val = v :=
   ZMod.val_natCast_of_lt h

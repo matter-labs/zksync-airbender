@@ -1,5 +1,4 @@
 module
-public import Proven.KeccakSplit.Setup.Chi5.Spec
 public import Proven.KeccakSplit.Setup.Facts
 
 @[expose] public section
@@ -11,11 +10,6 @@ namespace Airbender.Keccak.Split.Chi5.SetupProofs
 open Airbender.Keccak.Split.SetupProofs
 
 set_option warningAsError true
-
-/-- The row formulas, one per column. -/
-def formulaRow (n : Nat) : Vector Nat 11 :=
-  #v[spec0 n, spec1 n, spec2 n, spec3 n, spec4 n, spec5 n, spec6 n, spec7 n, spec8 n, spec9 n,
-    spec10 n]
 
 theorem get0 (n : Nat) : (formulaRow n)[0] = spec0 n := by rfl
 theorem get1 (n : Nat) : (formulaRow n)[1] = spec1 n := by rfl
@@ -88,7 +82,7 @@ theorem control_plane {row : Vector (ZMod babyBearModulus) 11} (h : IsFormulaRow
     (tag : row[10] = 66) : row[8].val < 5 := by
   obtain ⟨n, -, rfl⟩ := h
   have r := control_region tag
-  have e8 : spec8 n < 5 := by simp only [spec8, ctl]; split_ifs <;> omega
+  have e8 : spec8 n < 5 := by simp only [spec8, controlRegion]; split_ifs <;> omega
   rw [Vector.getElem_map, get8, val_cast (by omega)]
   exact e8
 
@@ -109,33 +103,33 @@ theorem control_facts {row : Vector (ZMod babyBearModulus) 11} (h : IsFormulaRow
   have nz : n ≠ 1048576 := by
     rintro rfl
     rw [Vector.getElem_map, get1] at active
-    have : spec1 1048576 = 0 := by simp (disch := omega) only [spec1, ctl, ite_eq_left, ite_eq_right, ite_true]
+    have : spec1 1048576 = 0 := by simp (disch := omega) only [spec1, controlRegion, ite_eq_left, ite_eq_right, ite_true]
     rw [this, Nat.cast_zero] at active
     exact zero_ne_one active
   have j : callAt (n - 1048576) < 361 := callIndex_lt (by omega) (by omega) (by omega)
   have e0 : spec0 n = controlAt (callAt (n - 1048576)) := by
-    simp (disch := omega) only [spec0, ctl, ite_eq_left, ite_eq_right]
+    simp (disch := omega) only [spec0, controlRegion, ite_eq_left, ite_eq_right]
   have e2 : spec2 n = bump (controlAt (callAt (n - 1048576))) := by
-    simp (disch := omega) only [spec2, ctl, ite_eq_left, ite_eq_right]
-  have e3 : spec3 n = slotNat (callAt (n - 1048576)) 0 := by
-    simp (disch := omega) only [spec3, ctl, ite_eq_left, ite_eq_right]
-  have e4 : spec4 n = slotNat (callAt (n - 1048576)) 1 := by
-    simp (disch := omega) only [spec4, ctl, ite_eq_left, ite_eq_right]
-  have e5 : spec5 n = slotNat (callAt (n - 1048576)) 2 := by
-    simp (disch := omega) only [spec5, ctl, ite_eq_left, ite_eq_right]
-  have e6 : spec6 n = slotNat (callAt (n - 1048576)) 3 := by
-    simp (disch := omega) only [spec6, ctl, ite_eq_left, ite_eq_right]
-  have e7 : spec7 n = slotNat (callAt (n - 1048576)) 4 := by
-    simp (disch := omega) only [spec7, ctl, ite_eq_left, ite_eq_right]
+    simp (disch := omega) only [spec2, controlRegion, ite_eq_left, ite_eq_right]
+  have e3 : spec3 n = callSlot (callAt (n - 1048576)) 0 := by
+    simp (disch := omega) only [spec3, controlRegion, ite_eq_left, ite_eq_right]
+  have e4 : spec4 n = callSlot (callAt (n - 1048576)) 1 := by
+    simp (disch := omega) only [spec4, controlRegion, ite_eq_left, ite_eq_right]
+  have e5 : spec5 n = callSlot (callAt (n - 1048576)) 2 := by
+    simp (disch := omega) only [spec5, controlRegion, ite_eq_left, ite_eq_right]
+  have e6 : spec6 n = callSlot (callAt (n - 1048576)) 3 := by
+    simp (disch := omega) only [spec6, controlRegion, ite_eq_left, ite_eq_right]
+  have e7 : spec7 n = callSlot (callAt (n - 1048576)) 4 := by
+    simp (disch := omega) only [spec7, controlRegion, ite_eq_left, ite_eq_right]
   have e8 : spec8 n = callAt (n - 1048576) % 5 := by
-    simp (disch := omega) only [spec8, ctl, ite_eq_left, ite_eq_right]
+    simp (disch := omega) only [spec8, controlRegion, ite_eq_left, ite_eq_right]
   refine ⟨⟨callAt (n - 1048576), j⟩, chi5_kindAt _, ?_, ?_, ?_, ?_⟩
   · rw [Vector.getElem_map, get0, e0]
   · rw [Vector.getElem_map, get2, e2]
   · simp only [Vector.getElem_map, get3, get4, get5, get6, get7, e3, e4, e5, e6, e7,
-      slotNat_eq j (by omega : 0 < 7), slotNat_eq j (by omega : 1 < 7),
-      slotNat_eq j (by omega : 2 < 7), slotNat_eq j (by omega : 3 < 7),
-      slotNat_eq j (by omega : 4 < 7)]
+      callSlot_eq j (by omega : 0 < 7), callSlot_eq j (by omega : 1 < 7),
+      callSlot_eq j (by omega : 2 < 7), callSlot_eq j (by omega : 3 < 7),
+      callSlot_eq j (by omega : 4 < 7)]
     exact ⟨by simp, by simp, by simp, by simp, by simp⟩
   · rw [Vector.getElem_map, get8, e8]
 

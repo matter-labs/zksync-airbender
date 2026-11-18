@@ -1,5 +1,5 @@
 module
-public import Proven.KeccakSplit.Setup.Chi5.Spec
+public import Proven.KeccakSplit.Setup.Facts
 public import Human.Circuits.KeccakSplit.Chi5.SetupArtifact
 public import Proven.Setup.Scan
 

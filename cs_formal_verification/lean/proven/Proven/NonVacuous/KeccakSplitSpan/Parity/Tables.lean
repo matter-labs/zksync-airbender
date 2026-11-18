@@ -10,7 +10,7 @@ public import Mathlib.Tactic.FinCases
     query at its nibbles. -/
 
 namespace Airbender.NonVacuous.KeccakSplitSpan.Parity
-open Keccak.Split Keccak.Split.SetupProofs Keccak.Split.ColumnParity.SetupProofs
+open Keccak.Split Keccak.Split.SetupProofs Keccak.Split.ColumnParity Keccak.Split.ColumnParity.SetupProofs
 
 variable {p : Nat} [Fact p.Prime] {env : Environment (ZMod p)}
 
@@ -31,7 +31,7 @@ theorem iota_at {e0 e1 e2 e3 e4 e5 e6 e7 : Expression (ZMod p)} {a b : Nat} (ha 
   · have low : (a + 256 * b) % 256 = a := by omega
     have high : (a + 256 * b) / 256 = b := by omega
     simp (disch := omega) only [formulaRow, spec0, spec1, spec2, spec3, spec4, spec5, spec6, spec7, ite_eq_left, low,
-      high]
+      high, (rcByte_eq_iotaByte b hb).symm]
   · intro j
     fin_cases j <;> simp [v0, v1, v2, v3, v4, v5, v6, v7]
 
@@ -55,7 +55,7 @@ theorem xor5_at {e0 e1 e2 e3 e4 e5 e6 e7 : Expression (ZMod p)} {a0 a1 a2 a3 a4 
 
 /-- A parity call's row in a controller region at `base` (slots 65536, control 65658). -/
 theorem ctl_call {k base : Nat} (call : k < 361) (kind : kindAt k = .columnParity) :
-    ColumnParity.SetupProofs.callAt (base + ctlRow 0 k - base) = k ∧ 1 ≤ ctlRow 0 k ∧ ctlRow 0 k ≤ 121 := by
+    ColumnParity.callAt (base + ctlRow 0 k - base) = k ∧ 1 ≤ ctlRow 0 k ∧ ctlRow 0 k ≤ 121 := by
   have small : k % 15 < 5 := by
     unfold kindAt at kind
     split_ifs at kind <;> omega
@@ -75,7 +75,7 @@ theorem slots_at {e0 e1 e2 e3 e4 e5 e6 e7 : Expression (ZMod p)} {k : Nat} (call
   refine formula_contains (65536 + ctlRow 0 k) (by omega) (row := #v[controlAt k + 2048, slotNat k 0,
     slotNat k 1, slotNat k 2, slotNat k 3, slotNat k 4, slotNat k 5, 62]) ?_ ?_
   · simp (disch := omega) only [formulaRow, spec0, spec1, spec2, spec3, spec4, spec5, spec6, spec7, ite_eq_left,
-      ite_eq_right, index]
+      ite_eq_right, index, callSlot_slotNat]
   · intro j
     fin_cases j <;> simp [v0, v1, v2, v3, v4, v5, v6, v7]
 

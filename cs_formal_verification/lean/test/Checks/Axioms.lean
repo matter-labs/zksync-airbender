@@ -194,6 +194,9 @@ import Proven.Final.Circuits.Bigint.Setup
 import Proven.Final.Circuits.Blake2G.Setup
 import Proven.Final.Circuits.Keccak.Setup
 import Proven.Final.Circuits.Blake2Round.Setup
+import Proven.Final.Circuits.KeccakSplit.ColumnParity.Setup
+import Proven.Final.Circuits.KeccakSplit.ThetaRho.Setup
+import Proven.Final.Circuits.KeccakSplit.Chi5.Setup
 import Proven.Final.Compiler.WorkerSetup
 import Proven.Final.Compiler.FixedRows
 
@@ -1786,6 +1789,9 @@ import Proven.Final.Compiler.FixedRows
 #print axioms Airbender.Compiler.NativeFixedRows.subword_memory_import
 #print axioms Airbender.Compiler.NativeFixedRows.unified_import
 #print axioms Airbender.Blake2Round.setup_import
+#print axioms Airbender.Keccak.Split.ColumnParity.setup_import
+#print axioms Airbender.Keccak.Split.ThetaRho.setup_import
+#print axioms Airbender.Keccak.Split.Chi5.setup_import
 
 #print axioms Airbender.InitsTeardowns.shared_bytes_satisfiable
 

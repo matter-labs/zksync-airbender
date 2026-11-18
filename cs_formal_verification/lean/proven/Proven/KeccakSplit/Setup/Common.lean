@@ -1,22 +1,15 @@
 module
-public import Human.Circuits.KeccakSplit.Call
+public import Human.Circuits.KeccakSplit.Tables.SetupImport
 public import Proven.Setup.Blocks
 
 @[expose] public section
 
-/- Shared row-formula helpers of the three split Keccak setups
-   (cs/src/tables/keccak_precompile_related.rs). -/
+/- Forms of the split Keccak setup helpers that the kernel evaluates fast: the slots of a call (`callSlot`) and the
+   iota byte (`iotaByte`). The kernel scans and the witness proofs use them; `Facts` proves them equal. -/
 
 namespace Airbender.Keccak.Split.SetupProofs
 
 set_option warningAsError true
-
-/-- Nibble `k` of `m`. -/
-def nib (m k : Nat) : Nat := m / 16 ^ k % 16
-
-/-- Schedule index of row `j ≥ 1` of a controller region (`control_table_row`:
-    row `1 + 5 * round + iteration`); `offset` is 0, 5 or 10 for parity, theta/rho, chi. -/
-def callIndex (offset j : Nat) : Nat := 15 * ((j - 1) / 5) + offset + (j - 1) % 5
 
 /-- Slot `pos` of call `i` as a number: `Call.slots` unfolded into plain conditionals
     (no `Vector.ofFn`), so the kernel evaluates it directly (`slotNat_eq` in `Facts`). -/

@@ -400,6 +400,18 @@
       "exception": "artifact",
       "reason": "This claim checks fixed imported data or a constant proposition."
     },
+    "Airbender.Keccak.Split.ColumnParity.SetupImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
+    "Airbender.Keccak.Split.ThetaRho.SetupImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
+    "Airbender.Keccak.Split.Chi5.SetupImportClaim": {
+      "exception": "artifact",
+      "reason": "This claim checks fixed imported data or a constant proposition."
+    },
     "Airbender.Keccak.Native.RVOperationExecutionClaim": {
       "witness": "Airbender.Keccak.Native.RVOperationExecutionSatisfiableClaim"
     },

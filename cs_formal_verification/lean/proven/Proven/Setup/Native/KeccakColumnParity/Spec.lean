@@ -1,5 +1,5 @@
 module
-public import Proven.KeccakSplit.Setup.ColumnParity.Spec
+public import Proven.KeccakSplit.Setup.Facts
 public import Human.Circuits.KeccakSplit.ColumnParity.SetupArtifact
 public import Proven.Setup.Scan
 
@@ -41,6 +41,6 @@ theorem columns_eq (n : Nat) :
   simp only [column0, column1, column2, column3, column4, column5, column6, column7, byRegion, spec0, spec1, spec2,
     spec3, spec4, spec5, spec6, spec7, nib, nat_blt, pick_decide, nat_sub, nat_div, nat_mod, nat_xor, Nat.reducePow,
     Nat.pow_zero, Nat.div_one]
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> split_ifs <;> omega
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> split_ifs <;> first | omega | rw [rcByte_eq_iotaByte _ (by omega)]
 
 end Airbender.Keccak.Split.ColumnParity.SetupProofs
