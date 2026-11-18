@@ -3,6 +3,7 @@
 from collections import deque
 import json
 from pathlib import Path
+import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,6 +86,17 @@ def check_raw_data(graph, roots, data_modules, allowed):
             pending.extend(path + [dependency] for dependency in graph.get(current, []))
 
 
+# The setup import command name as a whole token. The syntax atom that declares the command and a name literal (after a
+# backtick) do not run it. Every other occurrence counts, comments included, so the check fails closed.
+SETUP_IMPORT_ATOM = '"import_setup_blocks "'
+SETUP_IMPORT_TOKEN = re.compile(r"(?<![\w'`])import_setup_blocks(?![\w'!?])")
+
+
+def runs_setup_import(text):
+    """Whether a module text can run `import_setup_blocks`."""
+    return SETUP_IMPORT_TOKEN.search(text.replace(SETUP_IMPORT_ATOM, ' ')) is not None
+
+
 def module_path(module):
     return ROOT.joinpath('human', *module.split('.')).with_suffix('.lean')
 
@@ -100,7 +112,7 @@ def main():
     check_graph(graph, roots, manifest_list('trustedModuleRoots'), manifest_list('sailModules'))
     listed = manifest_edges('sailImportEdges')
     check_sail_edges(graph, listed)
-    data_modules = {name for name in roots if '\nimport_setup_blocks ' in module_path(name).read_text()}
+    data_modules = {name for name in roots if runs_setup_import(module_path(name).read_text())}
     check_raw_data(graph, DEFINITION_ROOTS, data_modules, TABLES_FROM_DATA)
     print(f'PASS import closure: {len(roots)} spec modules, {len(graph)} total modules, '
           f'{len(listed)} direct Sail imports, {len(data_modules)} setup data modules outside the definitions')

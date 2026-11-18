@@ -2,7 +2,7 @@
 from pathlib import Path
 import tempfile
 import unittest
-from check_import_closure import check_graph, check_raw_data, load_graph
+from check_import_closure import check_graph, check_raw_data, load_graph, runs_setup_import
 
 
 class ImportClosureTest(unittest.TestCase):
@@ -30,6 +30,19 @@ class ImportClosureTest(unittest.TestCase):
         check_raw_data(graph, ['Human.Targets'], {'Human.Data'}, {'Human.Data'})
         with self.assertRaisesRegex(ValueError, 'Human.Targets → Human.Tables → Human.Data'):
             check_raw_data(graph, ['Human.Targets'], {'Human.Data'}, {'Human.Allowed'})
+
+    def test_setup_import_uses(self):
+        use = 'import_setup_blocks data from "setup.json"'
+        for text in [use, f'module\n{use}\n', f'module\n  {use}\n', f'module\n\t{use}\n', f'def a := 1; {use}',
+                     f'def a := "x"{use}', f'def a := (1){use}', f'-- {use}', f'/- {use} -/',
+                     f'macro "data" : command => `({use})', f'a!{use}']:
+            with self.subTest(text=text):
+                self.assertTrue(runs_setup_import(text))
+        for text in ['syntax (name := importSetupBlocks) "import_setup_blocks " ident " from " str : command',
+                     '/-- `import_setup_blocks name from "path"` reads a setup. -/', 'def import_setup_blocks2 := 1',
+                     "def import_setup_blocks' := 1", 'def ximport_setup_blocks := 1', 'module\n']:
+            with self.subTest(text=text):
+                self.assertFalse(runs_setup_import(text))
 
     def test_transitive_and_clean_boundaries(self):
         for target in ['Proven.Bad', 'Tests.Bad', 'Checks.Bad', 'Clean.Spec']:
