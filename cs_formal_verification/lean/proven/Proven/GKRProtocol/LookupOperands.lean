@@ -21,34 +21,22 @@ def EncodedField.value (values : Nat → BaseField) : EncodedField → BaseField
   | .familyMask bits => (bits.zipIdx.map (fun (wire, index) => (2 ^ index : BaseField) * values wire)).sum
   | .zero => 0
 
-/-- Original source columns and history/setup inputs have separate domains.
+/-- Original source columns and history inputs have separate domains.
 Compiler-generated timestamp cells cannot be reclassified as original columns. -/
 structure MemoryValues where
   original : Nat → BaseField
   readTimestamp : Nat → Fin 2 → BaseField
-  initializationAddress : Fin 2 → BaseField
-  teardownTimestamp : Nat → Fin 2 → BaseField
-  teardownValue : Nat → Fin 2 → BaseField
 
 structure MemoryPlacement (n : Nat) where
   original : Nat → Fin n
   readTimestamp : Nat → Fin 2 → Fin n
-  initializationAddress : Fin 2 → Fin n
-  teardownTimestamp : Nat → Fin 2 → Fin n
-  teardownValue : Nat → Fin 2 → Fin n
 
 def MemoryPlacement.project (placement : MemoryPlacement n) (values : Fin n → BaseField) : MemoryValues :=
-  ⟨values ∘ placement.original, fun query limb => values (placement.readTimestamp query limb),
-    fun limb => values (placement.initializationAddress limb),
-    fun query limb => values (placement.teardownTimestamp query limb),
-    fun query limb => values (placement.teardownValue query limb)⟩
+  ⟨values ∘ placement.original, fun query limb => values (placement.readTimestamp query limb)⟩
 
 inductive MemoryField where
   | input : LookupInput → MemoryField
   | readTimestamp : Nat → Fin 2 → MemoryField
-  | initializationAddress : Fin 2 → MemoryField
-  | teardownTimestamp : Nat → Fin 2 → MemoryField
-  | teardownValue : Nat → Fin 2 → MemoryField
   | constant : Nat → MemoryField
   | add : MemoryField → MemoryField → MemoryField
   | scale : Nat → MemoryField → MemoryField
@@ -57,9 +45,6 @@ inductive MemoryField where
 def MemoryField.value (values : MemoryValues) : MemoryField → BaseField
   | .input expression => expression.value values.original
   | .readTimestamp query limb => values.readTimestamp query limb
-  | .initializationAddress limb => values.initializationAddress limb
-  | .teardownTimestamp query limb => values.teardownTimestamp query limb
-  | .teardownValue query limb => values.teardownValue query limb
   | .constant scalar => scalar
   | .add left right => left.value values + right.value values
   | .scale scalar inner => scalar * inner.value values

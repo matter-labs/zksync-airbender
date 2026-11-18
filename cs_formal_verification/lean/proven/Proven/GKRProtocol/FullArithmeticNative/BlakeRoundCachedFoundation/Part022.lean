@@ -59,7 +59,7 @@ theorem native.helperReferencesValid :
     (native.helperAssertions).all
         (fun assertion =>
           match assertion with
-          | .zero field | .boolean field => field.referencesValid 632 43 0 43 false) =
+          | .zero field | .boolean field => field.referencesValid 632 43 43) =
       true :=
   by decide +kernel
 

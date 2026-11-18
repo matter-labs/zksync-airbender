@@ -78,9 +78,6 @@ private def sourceInputSyntax (bound : Nat) : Source.LookupInput → CommandElab
 private def fieldSyntax (bound : Nat) : Source.MemoryField → CommandElabM (TSyntax `term)
   | .input expression => do `(Source.MemoryField.input $(← sourceInputSyntax bound expression))
   | .readTimestamp query limb => do `(Source.MemoryField.readTimestamp $(quote query) $(← finSyntax limb.val 2))
-  | .initializationAddress limb => do `(Source.MemoryField.initializationAddress $(← finSyntax limb.val 2))
-  | .teardownTimestamp query limb => do `(Source.MemoryField.teardownTimestamp $(quote query) $(← finSyntax limb.val 2))
-  | .teardownValue query limb => do `(Source.MemoryField.teardownValue $(quote query) $(← finSyntax limb.val 2))
   | .constant scalar => `(Source.MemoryField.constant $(quote scalar))
   | .add left right => do `(Source.MemoryField.add $(← fieldSyntax bound left) $(← fieldSyntax bound right))
   | .scale scalar inner => do `(Source.MemoryField.scale $(quote scalar) $(← fieldSyntax bound inner))
@@ -204,17 +201,13 @@ elab_rules : command
       history := history.push (← `(($(← addressSyntax (.BaseLayerMemory low)), $(← addressSyntax (.BaseLayerMemory high)))))
     let historyProjection := mkIdent (name.getId ++ `historyProjection)
     let readTimestamps := mkIdent (memoryPrefix.getId ++ `readTimestamps)
-    let projectionInputs := mkIdent (memoryPrefix.getId ++ `projectionInputs)
     let projectionInBank := mkIdent (memoryPrefix.getId ++ `projectionInBank)
     emitData (← `(theorem $historyProjection :
       ((List.range $(quote history.size)).map (fun index =>
         (($bank).address (($memoryPlacement).readTimestamp index ⟨0, by decide⟩),
          ($bank).address (($memoryPlacement).readTimestamp index ⟨1, by decide⟩)))) = [$history,*] := by
-      have checked := $projectionInBank
-      simp only [WireBank.inputCheck, $projectionInputs:ident, List.flatMap_append,
-        List.all_append, Bool.and_eq_true] at checked
       change HelperHistoryProjectionChecks.projectedPairs $bank $readTimestamps = $readTimestamps
-      exact HelperHistoryProjectionChecks.projectedPairs_eq $bank $readTimestamps checked.1.1.1))
+      exact HelperHistoryProjectionChecks.projectedPairs_eq $bank $readTimestamps $projectionInBank))
     let borrows := pair.circuit.aux_layout_data.shuffle_ram_timestamp_comparison_aux_vars
     unless borrows.size == requests.comparisons.size do throwError "source/native timestamp comparison counts differ"
     let borrowTerms ← borrows.mapM fun row => do
@@ -245,9 +238,7 @@ elab_rules : command
     emitData (← `(noncomputable def $fields : List Source.HelperField := [$sourceFields,*]))
     let scope := mkIdent (name.getId ++ `sourceReferencesValid)
     emitData (← `(theorem $scope : ($fields).all
-      (Source.HelperField.referencesValid $(quote sourceCount) $(quote history.size)
-        $(quote pair.circuit.memory_layout.teardown_sets.size) $(quote borrows.size)
-        $(quote (snapshot.configuration.inline_init_teardown_pairs != 0))) = true := by decide +kernel))
+      (Source.HelperField.referencesValid $(quote sourceCount) $(quote history.size) $(quote borrows.size)) = true := by decide +kernel))
     let gates := pair.circuit.layers.flatMap (fun layer => layer.gates ++ layer.gates_with_external_connections)
     let mut copies : Array (TSyntax `term) := #[]
     for gate in gates do

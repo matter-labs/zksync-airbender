@@ -86,9 +86,6 @@ private def sourceInputSyntax (bound : Nat) : Source.LookupInput → CommandElab
 private def fieldSyntax (bound : Nat) : Source.MemoryField → CommandElabM (TSyntax `term)
   | .input expression => do `(Source.MemoryField.input $(← sourceInputSyntax bound expression))
   | .readTimestamp query limb => do `(Source.MemoryField.readTimestamp $(quote query) $(← finSyntax limb.val 2))
-  | .initializationAddress limb => do `(Source.MemoryField.initializationAddress $(← finSyntax limb.val 2))
-  | .teardownTimestamp query limb => do `(Source.MemoryField.teardownTimestamp $(quote query) $(← finSyntax limb.val 2))
-  | .teardownValue query limb => do `(Source.MemoryField.teardownValue $(quote query) $(← finSyntax limb.val 2))
   | .constant scalar => `(Source.MemoryField.constant $(quote scalar))
   | .add left right => do `(Source.MemoryField.add $(← fieldSyntax bound left) $(← fieldSyntax bound right))
   | .scale scalar inner => do `(Source.MemoryField.scale $(quote scalar) $(← fieldSyntax bound inner))
@@ -109,21 +106,17 @@ private def definitionSyntax (definition : LookupSourceData.Definition) : Comman
     | .vector _ row => CacheImport.program (.VectorizedLookup row)
   `(AffineDefinition.mk $(← addressSyntax definition.output) $program)
 
-private def pairSyntax (addresses : Fixed 2 GKRAddress) : CommandElabM (TSyntax `term) := do
-  let [low, high] := addresses.values.toList | throwError "memory location word width changed"
-  `(($(← addressSyntax low), $(← addressSyntax high)))
-
 private def correspondenceSyntax (proofs : Array (TSyntax `term)) : CommandElabM (TSyntax `term) := do
   let mut result ← `(List.Forall₂.nil)
   for proof in proofs.reverse do result ← `(List.Forall₂.cons $proof $result)
   return result
 
 syntax (name := importSourceMemory) "import_source_memory " ident " from " str " source " str
-  " selectors " str " word_bits " num " native_model " ident " typing " ident (" phase " num)? (" using_checks " ident)? : command
+  " selectors " str " native_model " ident " typing " ident (" phase " num)? (" using_checks " ident)? : command
 
 elab_rules : command
   | `(import_source_memory $name:ident from $pairPath:str source $sourcePath:str selectors $selectorText:str
-      word_bits $wordBitsNumber:num native_model $nativePrefix:ident typing $typingName:ident $[phase $phaseValue:num]? $[using_checks $checks:ident]?) => do
+      native_model $nativePrefix:ident typing $typingName:ident $[phase $phaseValue:num]? $[using_checks $checks:ident]?) => do
     let phaseNumber := phaseValue.map (·.getNat) |>.getD 2
     unless phaseNumber ≤ 2 do throwError "memory phase must be 0, 1 or 2"
     unless (phaseNumber == 1) == checks.isSome do
@@ -157,25 +150,15 @@ elab_rules : command
       unless cert.addresses[index]? == some actual do throwError "memory bank changes original source placement"
     let requests ← match Source.memoryRequests snapshot.semantic_inputs with
       | .ok requests => pure requests | .error error => throwError "{error}"
-    let wordBits := wordBitsNumber.getNat
-    unless wordBits == 2 || wordBits == 3 do throwError "unsupported source initialization word width"
-    if snapshot.configuration.inline_init_teardown_pairs > 0 then
-      unless (pair.circuit.memory_layout.inits_and_teardowns_word_bits.map (·.val)) == some wordBits do
-        throwError "native initialization word width differs from source compile parameter"
-    let initial := Source.initializationRequests snapshot.configuration.inline_init_teardown_pairs wordBits
-      snapshot.configuration.trace_len_log2
-    let sourceGroups := #[("memoryRead", requests.reads.toList), ("memoryWrite", requests.writes.toList),
-      ("initializationRead", initial.map (·.1)), ("initializationWrite", initial.map (·.2))]
+    let sourceGroups := #[("memoryRead", requests.reads.toList), ("memoryWrite", requests.writes.toList)]
     unless 2 ^ snapshot.configuration.trace_len_log2 == pair.circuit.trace_len do
       throwError "source memory trace domain differs from native compilation"
-    let expectedGroups := if initial.isEmpty then #["memoryRead", "memoryWrite"] else
-      #["memoryRead", "memoryWrite", "initializationRead", "initializationWrite"]
+    let expectedGroups := #["memoryRead", "memoryWrite"]
     let mut nativeGroups : Array (String × GKRAddress) := #[]
     for (kind, outputs) in pair.circuit.global_output_map.entries do
-      let some stem := (match kind with
-        | .PermutationProduct => some "memory" | .InitsAndTeardownsProduct => some "initialization" | _ => none) | continue
+      let .PermutationProduct := kind | continue
       let [read, write] := outputs.toList | throwError "actual native memory output width changed"
-      nativeGroups := nativeGroups ++ #[(stem ++ "Read", read), (stem ++ "Write", write)]
+      nativeGroups := nativeGroups ++ #[("memoryRead", read), ("memoryWrite", write)]
     unless nativeGroups.size == expectedGroups.size && cert.groups.entries.size == expectedGroups.size &&
         expectedGroups.all (fun stem => nativeGroups.any (fun entry => entry.1 == stem) &&
           cert.groups.entries.any (fun entry => entry.1 == stem)) do
@@ -187,12 +170,9 @@ elab_rules : command
     let sourceScope := mkIdent (name.getId ++ `sourceReferencesValid)
     let readRows := mkIdent (name.getId ++ `memoryReadRows)
     let writeRows := mkIdent (name.getId ++ `memoryWriteRows)
-    let initialReads := mkIdent (name.getId ++ `initializationReadRows)
-    let initialWrites := mkIdent (name.getId ++ `initializationWriteRows)
     emitData (← `(theorem $sourceScope :
-      ($readRows ++ $writeRows ++ $initialReads ++ $initialWrites).all (fun row => row.fields.all
-        (Source.MemoryField.referencesValid $(quote sourceCount) $(quote pair.circuit.memory_layout.ram_access_sets.size)
-          $(quote pair.circuit.memory_layout.teardown_sets.size) $(quote (!initial.isEmpty)))) = true := by decide +kernel))
+      ($readRows ++ $writeRows).all (fun row => row.fields.all
+        (Source.MemoryField.referencesValid $(quote sourceCount) $(quote pair.circuit.memory_layout.ram_access_sets.size))) = true := by decide +kernel))
     let addresses := mkIdent (name.getId ++ `addresses)
     let addressTerms ← cert.addresses.mapM addressSyntax
     emitData (← `(def $addresses : List GKRAddress := [$addressTerms,*]))
@@ -211,19 +191,11 @@ elab_rules : command
       let [low, high] := timestamps.values.toList | throwError "native history timestamp width changed"
       readTimes := readTimes.push (← `(($(← addressSyntax (.BaseLayerMemory low)), $(← addressSyntax (.BaseLayerMemory high)))))
     emitData (← `(def $readTimesName : List (GKRAddress × GKRAddress) := [$readTimes,*]))
-    let teardownTimes := mkIdent (name.getId ++ `teardownTimestamps)
-    let teardownValues := mkIdent (name.getId ++ `teardownValues)
-    let times ← pair.circuit.memory_layout.teardown_sets.mapM (fun entry => pairSyntax entry.1)
-    let values ← pair.circuit.memory_layout.teardown_sets.mapM (fun entry => pairSyntax entry.2)
-    emitData (← `(def $teardownTimes : List (GKRAddress × GKRAddress) := [$times,*]))
-    emitData (← `(def $teardownValues : List (GKRAddress × GKRAddress) := [$values,*]))
     let projectionInputs := mkIdent (name.getId ++ `projectionInputs)
     let projectionInBank := mkIdent (name.getId ++ `projectionInBank)
     let projectionRoles := mkIdent (name.getId ++ `projectionRoles)
-    let extra ← if initial.isEmpty then `([]) else `([GKRAddress.VirtualSetup .InitsAndTeardownsLow,
-      GKRAddress.VirtualSetup .InitsAndTeardownsHigh])
     emitData (← `(def $projectionInputs : List GKRAddress :=
-      ($readTimesName ++ $teardownTimes ++ $teardownValues).flatMap (fun locations => [locations.1, locations.2]) ++ $extra))
+      ($readTimesName).flatMap (fun locations => [locations.1, locations.2])))
     if phaseNumber == 2 then
       emitFinal (← `(theorem $projectionInBank : ($bank).inputCheck $projectionInputs = true := by decide +kernel))
       emitFinal (← `(theorem $projectionRoles : ($projectionInputs).all
@@ -241,9 +213,7 @@ elab_rules : command
     emitData (← `(def $placement : Source.MemoryPlacement $(quote arity) :=
       ⟨fun index => if bound : index < $(quote sourceCount) then
           ⟨index, Nat.lt_of_lt_of_le bound (by decide)⟩ else ⟨0, by decide⟩,
-        $locateWord $readTimesName,
-        fun limb => $wirePlacement (.VirtualSetup (if limb.val = 0 then .InitsAndTeardownsLow else .InitsAndTeardownsHigh)),
-        $locateWord $teardownTimes, $locateWord $teardownValues⟩))
+        $locateWord $readTimesName⟩))
     let sourceValues := mkIdent (name.getId ++ `sourceValues)
     let sourceExecute := mkIdent (name.getId ++ `sourceExecute)
     emitData (← `(def $sourceValues (base : GKRAddress → Source.BaseField) : Source.MemoryValues :=
@@ -267,7 +237,7 @@ elab_rules : command
     let mut actualLeaves : Array (Array (TSyntax `term)) := #[]
     let mut primitiveCount := 0
     for gate in gates do
-      if let some pieces ← NativeProductImport.pieces pair.circuit memoryCaches primitiveCount gate.enforced_relation then
+      if let some pieces ← NativeProductImport.pieces memoryCaches primitiveCount gate.enforced_relation then
         actualLeaves := actualLeaves.push pieces.leaves
         primitiveCount := primitiveCount + pieces.leaves.size
       else actualLeaves := actualLeaves.push #[]
@@ -367,53 +337,43 @@ elab_rules : command
         (native := ($tree).leaves) (labels := ([$labels,*] : List Nat))
         (by rw [$leavesChecked:ident]; exact $(← correspondenceSyntax matchingProofs)) $coverage)
       let result := mkIdent (name.getId ++ Name.mkSimple s!"{stem}SourceReduction")
-      if stem == "memoryRead" || stem == "memoryWrite" then
-        let some mask := selection.mask | throwError "source RAM output has no execution mask correspondence"
-        let formula := mkIdent (nativePrefix.getId ++ Name.mkSimple s!"{stem}Formula")
-        let shape := mkIdent (name.getId ++ Name.mkSimple s!"{stem}MaskShape")
-        let maskField := mkIdent (name.getId ++ Name.mkSimple s!"{stem}MaskField")
-        let maskChecked := mkIdent (name.getId ++ Name.mkSimple s!"{stem}MaskChecked")
-        let maskInBank := mkIdent (name.getId ++ Name.mkSimple s!"{stem}MaskInBank")
-        let maskRole := mkIdent (name.getId ++ Name.mkSimple s!"{stem}MaskRole")
-        let maskAddress ← addressSyntax mask.address
-        emitData (← `(theorem $shape : $formula = ProductFormula.mask $maskAddress (ProductFormula.ofTree $tree) := by rfl))
-        emitData (← `(noncomputable def $maskField : MemoryFieldAgreement $copyRelations :=
-          ⟨$sourceExecute, Expression.atom ($wirePlacement $maskAddress),
-            $(← combinationSyntax arity copies.size mask.witness)⟩))
-        if phaseNumber == 2 then
-          emitFinal (← `(theorem $maskChecked : ($maskField).check $placement = true := by decide +kernel))
-          emitFinal (← `(theorem $maskInBank : ($bank).inputCheck [$maskAddress] = true := by decide +kernel))
-          emitFinal (← `(theorem $maskRole : ($typingName).compatible ($maskAddress, .base) = true := by decide +kernel))
-        else if phaseNumber == 1 then
-          let some checks := checks | throwError "missing memory checks"
-          let fact := mkIdent (checks.getId ++ Name.mkSimple s!"{stem}Mask")
-          emitFinal (← `(theorem $maskChecked : ($maskField).check $placement = true := ($fact).2))
-          emitFinal (← `(theorem $maskInBank : ($bank).inputCheck [$maskAddress] = true := ($fact).1.1))
-          emitFinal (← `(theorem $maskRole : ($typingName).compatible ($maskAddress, .base) = true := ($fact).1.2))
-        let maskValue ← `(MemoryFieldAgreement.mask_value $placement $bank $maskAddress (by rfl) $maskChecked
-          $maskInBank $typingName $maskRole assignment hom copies)
-        emitFinal (← `(theorem $result {R : Type} [CommRing R]
-          (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (assignment : TypedAssignment R)
-          (defined : ∀ definition ∈ $definitionsName, definition.Holds hom challenges (assignment.value $typingName hom))
-          (copies : Satisfies $copyRelations (assignment.base ∘ ($bank).address))
-          (holds : ∀ gate ∈ $nativeGates, gate.Holds hom challenges (assignment.value $typingName hom)) :
-          assignment.value $typingName hom $output =
-            maskProduct (hom (($sourceExecute).value ($sourceValues assignment.base))) ($terms hom challenges assignment).prod := by
-          have reduced := $nativeReduction hom challenges (assignment.value $typingName hom) holds
-          have products := $productEquality
-          change assignment.value $typingName hom $output =
-            maskProduct (assignment.value $typingName hom $maskAddress)
-              ((($tree).leaves.map (productRegistryValue $registry hom challenges (assignment.value $typingName hom))).prod) at reduced
-          rw [products, $maskValue:term] at reduced
-          exact reduced))
-      else
-        unless selection.mask.isNone do throwError "initialization source product has an unexpected mask"
-        emitFinal (← `(theorem $result {R : Type} [CommRing R]
-          (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (assignment : TypedAssignment R)
-          (defined : ∀ definition ∈ $definitionsName, definition.Holds hom challenges (assignment.value $typingName hom))
-          (copies : Satisfies $copyRelations (assignment.base ∘ ($bank).address))
-          (holds : ∀ gate ∈ $nativeGates, gate.Holds hom challenges (assignment.value $typingName hom)) :
-          assignment.value $typingName hom $output = ($terms hom challenges assignment).prod :=
-          ($nativeReduction hom challenges (assignment.value $typingName hom) holds).trans $productEquality))
+      let some mask := selection.mask | throwError "source RAM output has no execution mask correspondence"
+      let formula := mkIdent (nativePrefix.getId ++ Name.mkSimple s!"{stem}Formula")
+      let shape := mkIdent (name.getId ++ Name.mkSimple s!"{stem}MaskShape")
+      let maskField := mkIdent (name.getId ++ Name.mkSimple s!"{stem}MaskField")
+      let maskChecked := mkIdent (name.getId ++ Name.mkSimple s!"{stem}MaskChecked")
+      let maskInBank := mkIdent (name.getId ++ Name.mkSimple s!"{stem}MaskInBank")
+      let maskRole := mkIdent (name.getId ++ Name.mkSimple s!"{stem}MaskRole")
+      let maskAddress ← addressSyntax mask.address
+      emitData (← `(theorem $shape : $formula = ProductFormula.mask $maskAddress (ProductFormula.ofTree $tree) := by rfl))
+      emitData (← `(noncomputable def $maskField : MemoryFieldAgreement $copyRelations :=
+        ⟨$sourceExecute, Expression.atom ($wirePlacement $maskAddress),
+          $(← combinationSyntax arity copies.size mask.witness)⟩))
+      if phaseNumber == 2 then
+        emitFinal (← `(theorem $maskChecked : ($maskField).check $placement = true := by decide +kernel))
+        emitFinal (← `(theorem $maskInBank : ($bank).inputCheck [$maskAddress] = true := by decide +kernel))
+        emitFinal (← `(theorem $maskRole : ($typingName).compatible ($maskAddress, .base) = true := by decide +kernel))
+      else if phaseNumber == 1 then
+        let some checks := checks | throwError "missing memory checks"
+        let fact := mkIdent (checks.getId ++ Name.mkSimple s!"{stem}Mask")
+        emitFinal (← `(theorem $maskChecked : ($maskField).check $placement = true := ($fact).2))
+        emitFinal (← `(theorem $maskInBank : ($bank).inputCheck [$maskAddress] = true := ($fact).1.1))
+        emitFinal (← `(theorem $maskRole : ($typingName).compatible ($maskAddress, .base) = true := ($fact).1.2))
+      let maskValue ← `(MemoryFieldAgreement.mask_value $placement $bank $maskAddress (by rfl) $maskChecked
+        $maskInBank $typingName $maskRole assignment hom copies)
+      emitFinal (← `(theorem $result {R : Type} [CommRing R]
+        (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (assignment : TypedAssignment R)
+        (defined : ∀ definition ∈ $definitionsName, definition.Holds hom challenges (assignment.value $typingName hom))
+        (copies : Satisfies $copyRelations (assignment.base ∘ ($bank).address))
+        (holds : ∀ gate ∈ $nativeGates, gate.Holds hom challenges (assignment.value $typingName hom)) :
+        assignment.value $typingName hom $output =
+          maskProduct (hom (($sourceExecute).value ($sourceValues assignment.base))) ($terms hom challenges assignment).prod := by
+        have reduced := $nativeReduction hom challenges (assignment.value $typingName hom) holds
+        have products := $productEquality
+        change assignment.value $typingName hom $output =
+          maskProduct (assignment.value $typingName hom $maskAddress)
+            ((($tree).leaves.map (productRegistryValue $registry hom challenges (assignment.value $typingName hom))).prod) at reduced
+        rw [products, $maskValue:term] at reduced
+        exact reduced))
 
 end Airbender.Compiler.MemoryImport

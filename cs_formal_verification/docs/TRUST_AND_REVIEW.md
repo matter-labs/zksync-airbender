@@ -11,6 +11,8 @@ Individual circuit statements use the no-cache files. The cached captures use th
 Native CPU and worker gates, source placement and exact public lookups imply the complete row constraints.
 Cryptographic argument soundness remains open.
 
+The unified RAM outputs reduce to the source read and write tokens.
+
 ## Review entry points
 
 The [directory review guide](../lean/human/Human/README.md) separates

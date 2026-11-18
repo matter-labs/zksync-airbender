@@ -179,9 +179,6 @@ private def sourceInputSyntax (bound : Nat) : Source.LookupInput → CommandElab
 private def fieldSyntax (bound : Nat) : Source.MemoryField → CommandElabM (TSyntax `term)
   | .input expression => do `(Source.MemoryField.input $(← sourceInputSyntax bound expression))
   | .readTimestamp query limb => do `(Source.MemoryField.readTimestamp $(quote query) $(← finSyntax limb.val 2))
-  | .initializationAddress limb => do `(Source.MemoryField.initializationAddress $(← finSyntax limb.val 2))
-  | .teardownTimestamp query limb => do `(Source.MemoryField.teardownTimestamp $(quote query) $(← finSyntax limb.val 2))
-  | .teardownValue query limb => do `(Source.MemoryField.teardownValue $(quote query) $(← finSyntax limb.val 2))
   | .constant scalar => `(Source.MemoryField.constant $(quote scalar))
   | .add left right => do `(Source.MemoryField.add $(← fieldSyntax bound left) $(← fieldSyntax bound right))
   | .scale scalar inner => do `(Source.MemoryField.scale $(quote scalar) $(← fieldSyntax bound inner))
@@ -319,8 +316,7 @@ elab_rules : command
     Export.emit (← `(def $helperPlacement : Source.HelperPlacement $(quote n) :=
       ⟨⟨$originalProjection, fun query limb =>
           let places := (($readProjection)[query]?).getD (⟨0, by decide⟩, ⟨0, by decide⟩)
-          if limb.val = 0 then places.1 else places.2,
-        fun _ => ⟨0, by decide⟩, fun _ _ => ⟨0, by decide⟩, fun _ _ => ⟨0, by decide⟩⟩,
+          if limb.val = 0 then places.1 else places.2⟩,
         fun index => (($borrowProjection)[index]?).getD ⟨0, by decide⟩⟩))
     let helperAssertions := mkIdent (name.getId ++ `helperAssertions)
     let helperTerms ← helpers.mapM (assertionSyntax originalCount)
@@ -329,7 +325,7 @@ elab_rules : command
     Export.emit (← `(theorem $helperScope : ($helperAssertions).all (fun assertion =>
       match assertion with
       | .zero field | .boolean field =>
-          field.referencesValid $(quote originalCount) $(quote history.size) 0 $(quote borrows.size) false) = true := by decide +kernel))
+          field.referencesValid $(quote originalCount) $(quote history.size) $(quote borrows.size)) = true := by decide +kernel))
     let mut originalTerms ← pair.source.statements.mapM (statementSyntax originalCount n)
     for wire in pair.source.booleans do
       unless wire < originalCount do throwError "original Boolean escapes source scope"

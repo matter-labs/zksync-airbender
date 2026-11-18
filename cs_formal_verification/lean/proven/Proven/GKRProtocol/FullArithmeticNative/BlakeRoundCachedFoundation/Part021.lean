@@ -626,7 +626,6 @@ def native.borrowProjection : List (Fin 763) :=
 def native.helperPlacement : Source.HelperPlacement 763 :=
   ⟨⟨native.originalProjection, fun query limb =>
       let places := ((native.readProjection)[query]?).getD (⟨0, by decide⟩, ⟨0, by decide⟩)
-      if limb.val = 0 then places.1 else places.2,
-      fun _ => ⟨0, by decide⟩, fun _ _ => ⟨0, by decide⟩, fun _ _ => ⟨0, by decide⟩⟩,
+      if limb.val = 0 then places.1 else places.2⟩,
     fun index => ((native.borrowProjection)[index]?).getD ⟨0, by decide⟩⟩
 end Airbender.Compiler.FullArithmeticNative.BlakeRoundCached

@@ -1,7 +1,7 @@
 module
 import all Mathlib.Data.List.Sort
 public import Proven.GKRProtocol.MemoryTokens
-public import Proven.GKRProtocol.NativeMemoryExcluded
+public import Proven.GKRProtocol.NativeMemoryBridge
 public import Proven.GKRProtocol.FunctionalLinksNative.UnifiedCached
 public import Proven.Compiler.NativeBindings.Unified
 public import Proven.Compiler.NativeSatisfiable.Unified
@@ -25,23 +25,8 @@ theorem gates_binding :
     ProductNative.UnifiedCached.native.gates = productGates Captures.Unified.imported.circuit := by
   kernel_rfl
 
-/-- The initialization subgraph has its own interface. -/
-noncomputable abbrev initialization : List GKRAddress := initializationWires Captures.Unified.imported.circuit
-
-/-- Every recipe outside the initialization subgraph reads its operands with the field role of the checked typing. -/
-theorem typed : typingCheckedExcept (baseRoles ConsumerNative.UnifiedCached.native.typing) Captures.Unified.imported.circuit
-    initialization = true := by
-  decide +kernel
-
-/-- The initialization subgraph reads only its own and base wires. No other recipe reads it. -/
-theorem definitions_separated : (definitionPrograms Captures.Unified.imported.circuit).all (fun definition =>
-    separated (baseRoles ConsumerNative.UnifiedCached.native.typing) initialization definition.output
-      (definitionAddresses definition)) = true := by
-  decide +kernel
-
-theorem products_separated : (productGates Captures.Unified.imported.circuit).all (fun gate =>
-    separated (baseRoles ConsumerNative.UnifiedCached.native.typing) initialization (productOutput gate)
-      (productAddresses gate)) = true := by
+/-- The RAM recipes use the field roles of the checked typing. -/
+theorem typed : typingChecked (baseRoles ConsumerNative.UnifiedCached.native.typing) Captures.Unified.imported.circuit = true := by
   decide +kernel
 
 /-- The RAM output map names the reduced read and write outputs. Both are extension wires. -/
@@ -52,11 +37,6 @@ theorem outputs : NativeMemory.ramOutputs Captures.Unified.imported.circuit =
 theorem outputs_extension :
     isBase (baseRoles ConsumerNative.UnifiedCached.native.typing) MemoryNative.UnifiedCached.native.memoryReadOutput = false ∧
       isBase (baseRoles ConsumerNative.UnifiedCached.native.typing) MemoryNative.UnifiedCached.native.memoryWriteOutput = false := by
-  decide +kernel
-
-theorem outputs_outside :
-    initialization.contains MemoryNative.UnifiedCached.native.memoryReadOutput = false ∧
-      initialization.contains MemoryNative.UnifiedCached.native.memoryWriteOutput = false := by
   decide +kernel
 
 /-- The source read rows are the port read tokens and the starting PC-state token of the model row. -/
@@ -99,30 +79,17 @@ theorem ram_products {R : Type} [CommRing R] (challenges : NativeMemory.Challeng
       (assignment Airbender.UnifiedReduced.importedConstraintsTraceColumns.execute)
       (NativeMemory.cpuReads (⟨.machine, assignment⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily))
       (NativeMemory.cpuWrites (⟨.machine, assignment⟩ : Trace.Row babyBearModulus Trace.UnifiedFamily)) := by
-  let canonical := FunctionalNative.UnifiedCached.native.canonical challenges.memory.embed (cacheChallenges challenges)
-    0 physical
-  have canonicalBase : ∀ address, isBase (baseRoles ConsumerNative.UnifiedCached.native.typing) address = true →
-      canonical address = challenges.embed (physical address) := fun address role =>
-    FunctionalNative.UnifiedCached.native.canonical_base _ _ 0 physical address
-      ((isBase_baseRoles _ address).symm.trans role)
-  let typed' : TypedAssignment R := ⟨physical, spliced initialization canonical values⟩
+  let typedValues : TypedAssignment R := ⟨physical, values⟩
   have defined : ∀ definition ∈ MemoryNative.UnifiedCached.native.definitions,
       definition.Holds challenges.memory.embed (cacheChallenges challenges)
-        (wires challenges (baseRoles ConsumerNative.UnifiedCached.native.typing) physical (spliced initialization canonical values)) := by
+        (wires challenges (baseRoles ConsumerNative.UnifiedCached.native.typing) physical values) := by
     rw [definitions_binding]
-    refine definitions_hold_spliced challenges _ physical values canonical initialization typed definitions_separated
-      accepted extension canonicalBase ?_
-    rw [← definitions_binding, ← FunctionalLinksNative.UnifiedCached.native.memoryDefinitionsAgree]
-    exact FunctionalNative.UnifiedCached.native.canonical_affines _ _ 0 physical
-      (NativeBindings.Unified.scalar_gates physical accepted)
+    exact definitions_hold challenges _ physical values typed accepted extension
   have holds : ∀ gate ∈ ProductNative.UnifiedCached.native.gates,
       gate.Holds challenges.memory.embed (cacheChallenges challenges)
-        (wires challenges (baseRoles ConsumerNative.UnifiedCached.native.typing) physical (spliced initialization canonical values)) := by
+        (wires challenges (baseRoles ConsumerNative.UnifiedCached.native.typing) physical values) := by
     rw [gates_binding]
-    refine products_hold_spliced challenges _ physical values canonical initialization typed products_separated
-      extension canonicalBase ?_
-    rw [← gates_binding]
-    exact FunctionalNative.UnifiedCached.native.canonical_products _ _ 0 physical
+    exact products_hold challenges _ physical values typed extension
   rw [wires_typed] at defined holds
   have copies := FunctionalLinksNative.UnifiedCached.native.memoryCopies physical
     (NativeBindings.Unified.scalar_gates physical accepted)
@@ -149,17 +116,15 @@ theorem ram_products {R : Type} [CommRing R] (challenges : NativeMemory.Challeng
     rw [← source_write_tokens assignment (MemoryNative.UnifiedCached.native.sourceValues physical)]
     exact (Source.MemoryRow.tokens_original _ _ _ fun row member => rows row (List.mem_append_right _ member)).symm
   have read := MemoryNative.UnifiedCached.native.memoryReadSourceReduction challenges.memory.embed
-    (cacheChallenges challenges) typed' defined copies holds
+    (cacheChallenges challenges) typedValues defined copies holds
   have write := MemoryNative.UnifiedCached.native.memoryWriteSourceReduction challenges.memory.embed
-    (cacheChallenges challenges) typed' defined copies holds
+    (cacheChallenges challenges) typedValues defined copies holds
   apply ram_products_of_outputs outputs
-  · rw [← wires_extension challenges _ physical values outputs_extension.1,
-      ← spliced_values challenges _ physical values canonical initialization _ outputs_outside.1, wires_typed]
+  · rw [← wires_extension challenges _ physical values outputs_extension.1, wires_typed]
     refine read.trans ?_
     rw [execute, ← readTokens, Source.MemoryRow.token_products]
     rfl
-  · rw [← wires_extension challenges _ physical values outputs_extension.2,
-      ← spliced_values challenges _ physical values canonical initialization _ outputs_outside.2, wires_typed]
+  · rw [← wires_extension challenges _ physical values outputs_extension.2, wires_typed]
     refine write.trans ?_
     rw [execute, ← writeTokens, Source.MemoryRow.token_products]
     rfl

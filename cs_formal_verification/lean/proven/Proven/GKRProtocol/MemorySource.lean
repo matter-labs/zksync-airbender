@@ -12,9 +12,6 @@ namespace Airbender.Compiler.Source
 def MemoryField.polynomial (placement : MemoryPlacement n) : MemoryField → Compiler.Polynomial n BaseField
   | .input expression => expression.polynomial placement.original
   | .readTimestamp query limb => Compiler.atom (placement.readTimestamp query limb)
-  | .initializationAddress limb => Compiler.atom (placement.initializationAddress limb)
-  | .teardownTimestamp query limb => Compiler.atom (placement.teardownTimestamp query limb)
-  | .teardownValue query limb => Compiler.atom (placement.teardownValue query limb)
   | .constant scalar => Compiler.constant scalar
   | .add left right => Compiler.add (left.polynomial placement) (right.polynomial placement)
   | .scale scalar inner => Compiler.multiply (Compiler.constant scalar) (inner.polynomial placement)
@@ -26,9 +23,6 @@ theorem MemoryField.polynomial_value (field : MemoryField) (placement : MemoryPl
   induction field with
   | input expression => exact expression.polynomial_value placement.original values
   | readTimestamp query limb => exact Compiler.evaluate_atom _ _
-  | initializationAddress limb => exact Compiler.evaluate_atom _ _
-  | teardownTimestamp query limb => exact Compiler.evaluate_atom _ _
-  | teardownValue query limb => exact Compiler.evaluate_atom _ _
   | constant scalar => exact Compiler.evaluate_constant _ _
   | add left right leftProof rightProof => simpa only [polynomial, value, Compiler.evaluate_add] using congrArg₂ (· + ·) leftProof rightProof
   | scale scalar input proof => simpa only [polynomial, value, Compiler.evaluate_multiply, Compiler.evaluate_constant] using congrArg ((scalar : BaseField) * ·) proof
@@ -39,18 +33,16 @@ def MemoryField.originalIndices : MemoryField → List Nat
   | .input (.Expression terms _) => terms.toList.map (·.2)
   | .add left right => left.originalIndices ++ right.originalIndices
   | .scale _ inner | .neg inner => inner.originalIndices
-  | .readTimestamp _ _ | .initializationAddress _ | .teardownTimestamp _ _ | .teardownValue _ _ | .constant _ => []
+  | .readTimestamp _ _ | .constant _ => []
 
-def MemoryField.referencesValid (originalVariables historySlots teardownSlots : Nat) (hasInitialization : Bool) : MemoryField → Bool
+def MemoryField.referencesValid (originalVariables historySlots : Nat) : MemoryField → Bool
   | .input (.Variable index) => index < originalVariables
   | .input (.Expression terms _) => terms.all (fun term => term.2 < originalVariables)
   | .readTimestamp query _ => query < historySlots
-  | .initializationAddress _ => hasInitialization
-  | .teardownTimestamp query _ | .teardownValue query _ => query < teardownSlots
   | .constant _ => true
-  | .add left right => referencesValid originalVariables historySlots teardownSlots hasInitialization left &&
-      referencesValid originalVariables historySlots teardownSlots hasInitialization right
-  | .scale _ inner | .neg inner => referencesValid originalVariables historySlots teardownSlots hasInitialization inner
+  | .add left right => referencesValid originalVariables historySlots left &&
+      referencesValid originalVariables historySlots right
+  | .scale _ inner | .neg inner => referencesValid originalVariables historySlots inner
 
 structure MemoryWord where
   low : MemoryField

@@ -28,33 +28,6 @@ private def addressSyntax : GKRAddress → CommandElabM (TSyntax `term)
 private def inputSyntax (address : GKRAddress) : CommandElabM (TSyntax `term) := do
   `(AffineProgram.input (R := CacheCoefficient) $(← addressSyntax address))
 
-private def memoryScaled (index : Nat) (payload : TSyntax `term) : CommandElabM (TSyntax `term) :=
-  `(AffineProgram.scale (CacheCoefficient.memoryPower ⟨$(quote index), by decide⟩) $payload)
-
-private def initPayload (circuit : Circuit) (state : InitsOrTeardownsTimestampAndValue)
-    (setup : Fixed 2 GKRAddress) (setIndex side : Nat) : CommandElabM (TSyntax `term) := do
-  let some bits := circuit.memory_layout.inits_and_teardowns_word_bits | throwError "initialization product has no word width"
-  let log := Nat.log2 circuit.trace_len
-  unless (bits.val == 2 || bits.val == 3) && 2 ^ log == circuit.trace_len && 16 ≤ log + bits.val do
-    throwError "invalid native initialization address domain"
-  let highOffset := setIndex * 2 ^ (log + bits.val - 16)
-  unless highOffset < babyBearModulus do throwError "native initialization high-address offset is not canonical"
-  let [low, high] := setup.values.toList | throwError "initialization setup width changed"
-  let mut result ← `(AffineProgram.add (AffineProgram.constant (Address := GKRAddress) CacheCoefficient.memoryGamma)
-    (AffineProgram.constant (CacheCoefficient.natural 1)))
-  result ← `(AffineProgram.add $result $(← memoryScaled 0 (← inputSyntax low)))
-  let highInput ← `(AffineProgram.add $(← inputSyntax high)
-    (AffineProgram.constant (CacheCoefficient.natural $(quote highOffset))))
-  result ← `(AffineProgram.add $result $(← memoryScaled 1 highInput))
-  match state with
-  | .Init => pure ()
-  | .Teardown leftTimestamp leftValue rightTimestamp rightValue =>
-      let timestamps := if side == 0 then leftTimestamp else rightTimestamp
-      let values := if side == 0 then leftValue else rightValue
-      for (offset, index) in (timestamps.values ++ values.values).toList.zipIdx do
-        result ← `(AffineProgram.add $result $(← memoryScaled (index + 2) (← inputSyntax (.BaseLayerMemory offset))))
-  return result
-
 structure Pieces where
   native : TSyntax `term
   step : TSyntax `term
@@ -72,7 +45,7 @@ private def pair (output : GKRAddress) (left right : TSyntax `term) (index : Nat
   return ⟨← `(NativeProductGate.pair $address $left $right), ← `(ProductStep.pair $address $(quote index) $(quote (index + 1))),
     #[left, right], 3, .pair output index (index + 1)⟩
 
-def pieces (circuit : Circuit) (memoryCaches : Array GKRAddress) (index : Nat) :
+def pieces (memoryCaches : Array GKRAddress) (index : Nat) :
     GKRRelation → CommandElabM (Option Pieces)
   | .InitialGrandProductFromCaches input output => do
       let [left, right] := input.values.toList | throwError "invalid cached memory pair"
@@ -100,10 +73,7 @@ def pieces (circuit : Circuit) (memoryCaches : Array GKRAddress) (index : Nat) :
       let maskAddress ← addressSyntax predicate
       return some ⟨← `(NativeProductGate.mask $out $source $maskAddress),
         ← `(ProductStep.mask $out $source $maskAddress), #[], 3, .mask output input predicate⟩
-  | .InitsOrTeardownsInitialPair state setup output setIndices => do
-      let [left, right] := setIndices.values.toList | throwError "invalid initialization set indices"
-      return some (← pair output (← initPayload circuit state setup left 0)
-        (← initPayload circuit state setup right 1) index)
+  | .InitsOrTeardownsInitialPair _ _ _ _ => pure none
   | .UnbalancedGrandProductWithCache _ _ _ => throwError "retired unbalanced product consumer"
   | .EnforceConstraintsMaxQuadratic _ => throwError "retired batched arithmetic consumer"
   | .LookupPairFromCachedVectorInputs _ _ => throwError "retired cached-vector lookup consumer"
@@ -157,7 +127,7 @@ elab_rules : command
     let mut data : Array ProductStep := #[]
     for layer in pair.circuit.layers do
       for gate in layer.gates ++ layer.gates_with_external_connections do
-        if let some description ← pieces pair.circuit memoryCaches leaves.size gate.enforced_relation then
+        if let some description ← pieces memoryCaches leaves.size gate.enforced_relation then
           let raw := mkIdent (name.getId ++ Name.mkSimple s!"gate{gates.size}")
           let binding := mkIdent (name.getId ++ Name.mkSimple s!"binding{bindings.size}")
           elabCommand (← `(noncomputable def $raw : NativeProductGate := $(description.native)))
@@ -218,11 +188,10 @@ elab_rules : command
       previous := checkpoint
       previousSound := checkpointSound
     for (kind, outputs) in pair.circuit.global_output_map.entries do
-      let some stem := (match kind with | .PermutationProduct => some "memory" | .InitsAndTeardownsProduct => some "initialization" | _ => none)
-        | continue
+      let .PermutationProduct := kind | continue
       unless outputs.size == 2 do throwError "native product output group has wrong width"
       for (output, side) in outputs.toList.zipIdx do
-        let label := stem ++ if side == 0 then "Read" else "Write"
+        let label := if side == 0 then "memoryRead" else "memoryWrite"
         let some formula := environment.find output | throwError "native product output has no checked reduction"
         let root := mkIdent (name.getId ++ Name.mkSimple s!"{label}Formula")
         let found := mkIdent (name.getId ++ Name.mkSimple s!"{label}Found")
@@ -234,35 +203,23 @@ elab_rules : command
           (holds : ∀ gate ∈ $native, gate.Holds hom challenges values) :
           values $(← addressSyntax output) = ($root).value values (productRegistryValue $registry hom challenges values) :=
           $previousSound hom challenges values holds _ _ (ProductEnvironment.find_member $found)))
-        let (predicate, tree) ← if stem == "memory" then
-          match formula with
-          | .mask predicate input => match plainTree input with
-            | some tree => pure (some predicate, tree)
-            | none => throwError "native RAM root contains an unexpected nested mask"
-          | _ => throwError "native RAM root has no final execution mask"
-        else match plainTree formula with
-          | some tree => pure (none, tree)
-          | none => throwError "native initialization root contains an unexpected mask"
+        let .mask predicate input := formula | throwError "native RAM root has no final execution mask"
+        let some tree := plainTree input | throwError "native RAM root contains an unexpected nested mask"
         let productTree := mkIdent (name.getId ++ Name.mkSimple s!"{label}Product")
         let shape := mkIdent (name.getId ++ Name.mkSimple s!"{label}Shape")
         let cardinality := mkIdent (name.getId ++ Name.mkSimple s!"{label}OperandCount")
-        let expected := if stem == "memory" then pair.circuit.memory_layout.ram_access_sets.size + 1
-          else pair.circuit.memory_layout.teardown_sets.size
+        let expected := pair.circuit.memory_layout.ram_access_sets.size + 1
         elabCommand (← `(def $productTree : ProductTree Nat := $(← treeSyntax tree)))
         elabCommand (← `(theorem $cardinality : ($productTree).leaves.length = $(quote expected) := by decide +kernel))
-        let body ← match predicate with
-          | some address => `(ProductFormula.mask $(← addressSyntax address) (ProductFormula.ofTree $productTree))
-          | none => `(ProductFormula.ofTree $productTree)
-        elabCommand (← `(theorem $shape : $root = $body := by rfl))
+        let predicateAddress ← addressSyntax predicate
+        elabCommand (← `(theorem $shape :
+          $root = ProductFormula.mask $predicateAddress (ProductFormula.ofTree $productTree) := by rfl))
         let productResult := mkIdent (name.getId ++ Name.mkSimple s!"{label}ProductReduction")
-        let expectedValue ← match predicate with
-          | some address => `(maskProduct (values $(← addressSyntax address))
-              ((($productTree).leaves.map (productRegistryValue $registry hom challenges values)).prod))
-          | none => `((($productTree).leaves.map (productRegistryValue $registry hom challenges values)).prod)
         elabCommand (← `(theorem $productResult {R : Type} [CommRing R]
           (hom : Source.BaseField →+* R) (challenges : CacheChallenges R) (values : GKRAddress → R)
           (holds : ∀ gate ∈ $native, gate.Holds hom challenges values) :
-          values $(← addressSyntax output) = $expectedValue := by
+          values $(← addressSyntax output) = maskProduct (values $predicateAddress)
+            ((($productTree).leaves.map (productRegistryValue $registry hom challenges values)).prod) := by
           have reduced := $result hom challenges values holds
           rw [$shape:ident] at reduced
           simpa only [ProductFormula.value, ProductFormula.ofTree_value, ProductTree.product] using reduced))

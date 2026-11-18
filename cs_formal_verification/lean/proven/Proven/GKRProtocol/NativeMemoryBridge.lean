@@ -110,27 +110,7 @@ def memoryCaches (circuit : Circuit) : List GKRAddress :=
     | .MemoryTuple _ => some entry.1
     | _ => none
 
-/-- One initialization or teardown factor: the RAM address space, the setup address limbs with the
-    set offset of the high limb, then the teardown timestamp and value limbs. -/
-def initPayload (circuit : Circuit) (state : InitsOrTeardownsTimestampAndValue) (setup : Fixed 2 GKRAddress)
-    (setIndex side : Nat) : Option LookupPayload := do
-  let bits ← circuit.memory_layout.inits_and_teardowns_word_bits
-  let highOffset := setIndex * 2 ^ (Nat.log2 circuit.trace_len + bits.val - 16)
-  match setup.values.toList with
-  | [low, high] =>
-    let start : LookupPayload := .add (.add (.add (.constant .memoryGamma) (.constant (.natural 1)))
-        (.scale (.memoryPower 0) (.input low)))
-      (.scale (.memoryPower 1) (.add (.input high) (.constant (.natural highOffset))))
-    match state with
-    | .Init => some start
-    | .Teardown leftTimestamp leftValue rightTimestamp rightValue =>
-      let timestamps := if side == 0 then leftTimestamp else rightTimestamp
-      let values := if side == 0 then leftValue else rightValue
-      some ((timestamps.values ++ values.values).toList.zipIdx.foldl (fun result entry =>
-        .add result (.scale (.memoryPower ⟨(entry.2 + 2) % 6, Nat.mod_lt _ (by decide)⟩) (memoryInput entry.1))) start)
-  | _ => none
-
-def productGate (circuit : Circuit) (caches : List GKRAddress) : GKRRelation → Option NativeProductGate
+def productGate (caches : List GKRAddress) : GKRRelation → Option NativeProductGate
   | .InitialGrandProductFromCaches input output => match input.values.toList with
     | [left, right] => some (.pair output (.input left) (.input right))
     | _ => none
@@ -144,15 +124,11 @@ def productGate (circuit : Circuit) (caches : List GKRAddress) : GKRRelation →
     | [left, right] => some (.mul output left right)
     | _ => none
   | .MaskIntoIdentityProduct input predicate output => some (.mask output input predicate)
-  | .InitsOrTeardownsInitialPair state setup output sets => match sets.values.toList with
-    | [left, right] => do
-      some (.pair output (← initPayload circuit state setup left 0) (← initPayload circuit state setup right 1))
-    | _ => none
   | _ => none
 
 /-- Every RAM-product gate of the circuit, in native order. -/
 def productGates (circuit : Circuit) : List NativeProductGate :=
-  (layerGates circuit).filterMap fun gate => productGate circuit (memoryCaches circuit) gate.enforced_relation
+  (layerGates circuit).filterMap fun gate => productGate (memoryCaches circuit) gate.enforced_relation
 
 /-! Field roles that the semantic lemmas need. The kernel evaluates them for each capture. -/
 
@@ -189,25 +165,12 @@ def gateTyped (roles : GKRAddress → Bool) : GKRRelation → Bool
   | .TrivialProduct input output => !isBase roles output && input.values.toList.all fun address => !isBase roles address
   | .MaskIntoIdentityProduct input predicate output =>
     !isBase roles output && !isBase roles input && isBase roles predicate
-  | .InitsOrTeardownsInitialPair _ _ _ _ => false
   | _ => true
 
-/-- Gates that write an excluded wire. -/
-def excludedRelation (excluded : List GKRAddress) : GKRRelation → Bool
-  | .InitsOrTeardownsInitialPair _ _ output _ | .CopyInExtensionField _ output => excluded.contains output
-  | _ => false
-
-/-- Field roles of every cache and of every gate that writes no excluded wire. -/
-def typingCheckedExcept (roles : GKRAddress → Bool) (circuit : Circuit) (excluded : List GKRAddress) : Bool :=
+/-- Field roles of the caches and gates in the RAM bridge. -/
+def typingChecked (roles : GKRAddress → Bool) (circuit : Circuit) : Bool :=
   (layerCaches circuit).all (fun entry => cacheTyped roles entry.1 entry.2) &&
-    (layerGates circuit).all fun gate =>
-      excludedRelation excluded gate.enforced_relation || gateTyped roles gate.enforced_relation
-
-/-- Field roles of every cache and every gate. -/
-def typingChecked (roles : GKRAddress → Bool) (circuit : Circuit) : Bool := typingCheckedExcept roles circuit []
-
-theorem excludedRelation_nil (relation : GKRRelation) : excludedRelation [] relation = false := by
-  cases relation <;> rfl
+    (layerGates circuit).all fun gate => gateTyped roles gate.enforced_relation
 
 /-! Semantics. -/
 
@@ -563,8 +526,8 @@ theorem gate_definition_holds (relation : GKRRelation) (definition : AffineDefin
       vector_interpret challenges roles physical values row typed.2]
     exact extension
 
-theorem product_gate_holds (circuit : Circuit) (caches : List GKRAddress) (relation : GKRRelation)
-    (gate : NativeProductGate) (found : productGate circuit caches relation = some gate) (typed : gateTyped roles relation = true)
+theorem product_gate_holds (caches : List GKRAddress) (relation : GKRRelation)
+    (gate : NativeProductGate) (found : productGate caches relation = some gate) (typed : gateTyped roles relation = true)
     (extension : NativeMemory.GateHolds challenges physical values relation) :
     gate.Holds challenges.memory.embed (cacheChallenges challenges) (wires challenges roles physical values) := by
   cases relation <;> simp only [productGate, reduceCtorEq] at found
@@ -632,8 +595,6 @@ theorem product_gate_holds (circuit : Circuit) (caches : List GKRAddress) (relat
     rw [extension]
     simp only [PaddingBoundary.mask, maskProduct]
     ring
-  case InitsOrTeardownsInitialPair =>
-    simp [gateTyped] at typed
 
 end Semantics
 
@@ -651,21 +612,15 @@ theorem gate_member {gate : GateArtifacts} (member : gate ∈ layerGates circuit
   obtain ⟨layer, layerMember, inside⟩ := List.mem_flatMap.mp member
   exact ⟨layer, Array.mem_def.mpr layerMember, Array.mem_def.mpr inside⟩
 
-theorem typed_caches {excluded : List GKRAddress} (typed : typingCheckedExcept roles circuit excluded = true) :
+theorem typed_caches (typed : typingChecked roles circuit = true) :
     ∀ entry ∈ layerCaches circuit, cacheTyped roles entry.1 entry.2 = true := by
-  simp only [typingCheckedExcept, Bool.and_eq_true] at typed
+  simp only [typingChecked, Bool.and_eq_true] at typed
   exact List.all_eq_true.mp typed.1
 
-theorem typed_gates_except {excluded : List GKRAddress} (typed : typingCheckedExcept roles circuit excluded = true) :
-    ∀ gate ∈ layerGates circuit, excludedRelation excluded gate.enforced_relation = false →
-      gateTyped roles gate.enforced_relation = true := by
-  simp only [typingCheckedExcept, Bool.and_eq_true] at typed
-  intro gate member outside
-  simpa only [outside, Bool.false_or] using List.all_eq_true.mp typed.2 gate member
-
 theorem typed_gates (typed : typingChecked roles circuit = true) :
-    ∀ gate ∈ layerGates circuit, gateTyped roles gate.enforced_relation = true := fun gate member =>
-  typed_gates_except roles typed gate member (excludedRelation_nil _)
+    ∀ gate ∈ layerGates circuit, gateTyped roles gate.enforced_relation = true := by
+  simp only [typingChecked, Bool.and_eq_true] at typed
+  exact List.all_eq_true.mp typed.2
 
 /-- Native base gates and the extension semantics give every imported affine definition. -/
 theorem definitions_hold (typed : typingChecked roles circuit = true)
@@ -695,7 +650,7 @@ theorem products_hold (typed : typingChecked roles circuit = true)
   intro gate member
   obtain ⟨artifact, artifactMember, found⟩ := List.mem_filterMap.mp member
   obtain ⟨layer, layerMember, inside⟩ := gate_member artifactMember
-  exact product_gate_holds challenges roles physical values circuit _ artifact.enforced_relation gate found
+  exact product_gate_holds challenges roles physical values _ artifact.enforced_relation gate found
     (typed_gates roles typed artifact artifactMember) ((extension layer layerMember).2 artifact inside)
 
 theorem cache_member_definition {layer : GKRLayerDescription} {entry : GKRAddress × GKRCacheRelation}
@@ -716,12 +671,12 @@ theorem gate_member_definition {layer : GKRLayerDescription} {gate : GateArtifac
 
 theorem gate_member_product {layer : GKRLayerDescription} {gate : GateArtifacts} {product : NativeProductGate}
     (layerMember : layer ∈ circuit.layers) (inside : gate ∈ layer.gates ++ layer.gates_with_external_connections)
-    (found : productGate circuit (memoryCaches circuit) gate.enforced_relation = some product) :
+    (found : productGate (memoryCaches circuit) gate.enforced_relation = some product) :
     product ∈ productGates circuit :=
   List.mem_filterMap.mpr ⟨gate, List.mem_flatMap.mpr ⟨layer, Array.mem_def.mp layerMember, Array.mem_def.mp inside⟩, found⟩
 
 /-- Imported definitions and product gates give the extension semantics of every cache and gate. -/
-theorem holds_of_programs {excluded : List GKRAddress} (typed : typingCheckedExcept roles circuit excluded = true)
+theorem holds_of_programs (typed : typingChecked roles circuit = true)
     (definitions : ∀ definition ∈ definitionPrograms circuit, definition.Holds challenges.memory.embed
       (cacheChallenges challenges) (wires challenges roles physical values))
     (products : ∀ gate ∈ productGates circuit, gate.Holds challenges.memory.embed
@@ -755,12 +710,12 @@ theorem holds_of_programs {excluded : List GKRAddress} (typed : typingCheckedExc
       rw [holds (setupProgram addresses) rfl]
       exact setup_interpret challenges roles physical values addresses entryTyped.2
   · intro gate inside
-    have gateTyped' := typed_gates_except roles typed gate
+    have gateTyped' := typed_gates roles typed gate
       (List.mem_flatMap.mpr ⟨layer, Array.mem_def.mp layerMember, Array.mem_def.mp inside⟩)
     have holds (definition : AffineDefinition) (found : gateDefinition gate.enforced_relation = some definition) :=
       definitions _ (gate_member_definition layerMember inside found)
     have product (candidate : NativeProductGate)
-        (found : productGate circuit (memoryCaches circuit) gate.enforced_relation = some candidate) :=
+        (found : productGate (memoryCaches circuit) gate.enforced_relation = some candidate) :=
       products _ (gate_member_product layerMember inside found)
     revert gateTyped' holds product
     cases gate.enforced_relation <;> intro gateTyped' holds product <;>
@@ -769,7 +724,6 @@ theorem holds_of_programs {excluded : List GKRAddress} (typed : typingCheckedExc
       have equation := holds _ rfl
       simpa only [AffineDefinition.Holds, interpret_input] using equation
     case MaterializedVectorLookupInput row output =>
-      have gateTyped' := gateTyped' rfl
       simp only [gateTyped, Bool.and_eq_true, Bool.not_eq_true'] at gateTyped'
       have equation := holds _ rfl
       simp only [AffineDefinition.Holds] at equation
@@ -782,7 +736,6 @@ theorem holds_of_programs {excluded : List GKRAddress} (typed : typingCheckedExc
       simpa only [NativeProductGate.Holds, interpret_input] using equation
     case InitialGrandProductWithoutCaches input output =>
       obtain ⟨left, right, pair⟩ := fixed_two input
-      have gateTyped' := gateTyped' rfl
       simp only [gateTyped, pair, Bool.and_eq_true, List.all_cons, List.all_nil, Bool.and_true,
         Option.isSome_iff_exists] at gateTyped'
       obtain ⟨leftProgram, leftFound⟩ := gateTyped'.2.1
@@ -796,7 +749,6 @@ theorem holds_of_programs {excluded : List GKRAddress} (typed : typingCheckedExc
       simp only [pair]
       exact ⟨_, _, leftSame.symm, rightSame.symm, equation⟩
     case MaterializeGrandProductTermExpression input output =>
-      have gateTyped' := gateTyped' rfl
       simp only [gateTyped, Bool.and_eq_true, Option.isSome_iff_exists] at gateTyped'
       obtain ⟨program, found⟩ := gateTyped'.2
       have equation := product (.single output program) (by simp only [productGate, found, Option.map_some])
@@ -810,7 +762,6 @@ theorem holds_of_programs {excluded : List GKRAddress} (typed : typingCheckedExc
       simp only [pair]
       simpa only [NativeProductGate.Holds] using equation
     case MaskIntoIdentityProduct input predicate output =>
-      have gateTyped' := gateTyped' rfl
       simp only [gateTyped, Bool.and_eq_true, Bool.not_eq_true'] at gateTyped'
       have equation := product (.mask output input predicate) (by simp only [productGate])
       simp only [NativeProductGate.Holds] at equation

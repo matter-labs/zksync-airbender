@@ -28,13 +28,12 @@ theorem HelperField.polynomial_value (field : HelperField) (placement : HelperPl
         congrArg ((coefficient : BaseField) * ·) proof
   | neg field proof => simpa only [polynomial, value, Compiler.evaluate_negate] using congrArg Neg.neg proof
 
-def HelperField.referencesValid (originalVariables historySlots teardownSlots borrows : Nat)
-    (hasInitialization : Bool) : HelperField → Bool
-  | .memory field => field.referencesValid originalVariables historySlots teardownSlots hasInitialization
+def HelperField.referencesValid (originalVariables historySlots borrows : Nat) : HelperField → Bool
+  | .memory field => field.referencesValid originalVariables historySlots
   | .borrow index => index < borrows
-  | .add left right => referencesValid originalVariables historySlots teardownSlots borrows hasInitialization left &&
-      referencesValid originalVariables historySlots teardownSlots borrows hasInitialization right
-  | .scale _ field | .neg field => referencesValid originalVariables historySlots teardownSlots borrows hasInitialization field
+  | .add left right => referencesValid originalVariables historySlots borrows left &&
+      referencesValid originalVariables historySlots borrows right
+  | .scale _ field | .neg field => referencesValid originalVariables historySlots borrows field
 
 def comparisonFields (previous current : MemoryWord) (borrow : Nat) : HelperField × HelperField :=
   (.add (.add (.memory previous.low) (.neg (.memory current.low))) (.scale 524288 (.borrow borrow)),

@@ -42,6 +42,7 @@ Exact state, request and architectural memory matching remain explicit interface
 The [unified native premise witness](../lean/proven/Proven/NonVacuous/DynamicCopyLoop/Native.lean) has sixteen CPU rows
 and two bigint COPY calls. Its cached certificates include native gates, placement, public lookups and participation.
 It checks both complete public initialization windows and their terminal teardown tokens.
+The unified RAM outputs reduce to the source read and write tokens.
 Each unrolled native target has a one-row ADD witness with its complete public boot and teardown contract.
 The unrolled constraint-description targets and their Sail forms use the same active ADD witness.
 Each padded target has exactly two CPU rows: one active ADD row and one constrained padding row.
