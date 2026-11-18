@@ -208,9 +208,9 @@ jobs:
           python-version: "3.12"
       - name: Check the Python runtime
         run: python3 -c 'import tomllib'
+      - uses: ./.github/actions/lean-fv-setup
       - name: Check replay gate behavior
         run: python3 cs_formal_verification/ci/test_kernel_replay.py
-      - uses: ./.github/actions/lean-fv-setup
       # the newest build of the default branch (seeded by its cold runs); Lake rebuilds what is missing
       - name: Restore the Lake build
         uses: actions/cache/restore@v4

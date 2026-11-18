@@ -373,7 +373,7 @@ def outputs():
         modules.append(current)
         package = f"Proven.Setup.Native.{setup['name']}"
 
-        def cutted(column):
+        def has_cuts(column):
             return any(entries for _, entries, _ in cut[column][1])
         spec = f'{package}.Spec'
         names = []
@@ -430,7 +430,7 @@ def outputs():
                     lines.append(f'theorem {name} : Long.Ok {formula} {long_term(long)} := by\n'
                                  f'  long_ok [{definitions}]{regions}\n')
                 all_ok = '⟨' + ''.join(f'{name}, ' for name in long_names) + 'trivial⟩' if longs else 'trivial'
-                if cutted(column):
+                if has_cuts(column):
                     start, _, piece = chunk_of(cut[column][1], first)
                     source, offset = f"{setup['columns'][column]}_cut{start}", first - piece
                 else:
@@ -449,7 +449,7 @@ def outputs():
         for column, formula in enumerate(setup['columns']):
             term = f'prefixOk_zero {formula} _'
             own = [part for part in parts if part[0] == column]
-            if cutted(column):
+            if has_cuts(column):
                 chunks = cut[column][1]
                 tail = f'{formula}_cut0'
                 used = sorted({chunk_of(chunks, part[1])[0] for part in own})
@@ -470,7 +470,7 @@ def outputs():
                     lines.append(f'theorem {formula}_from{start} : {data}.drop {start} = {data}_from{start} :=\n'
                                  f'  {proof}\n')
             for _, first, count, _, _, _, _ in own:
-                if cutted(column):
+                if has_cuts(column):
                     start, _, piece = chunk_of(cut[column][1], first)
                     term = (f'prefixOk_next_from ({term})\n    {formula}_suffix{start} (by decide)'
                             f' {formula}_slice{first} rfl')
@@ -478,7 +478,7 @@ def outputs():
                     term = (f'prefixOk_next_from ({term})\n    {formula}_from{suffix(first)} (by decide)'
                             f' {formula}_slice{first} rfl')
             proof = f'({term}).2'
-            if cutted(column):
+            if has_cuts(column):
                 proof = f'fun n bound => ({formula}_blocks_decode n).symm.trans (({term}).2 n bound)'
             lines.append(f'theorem {formula}_rows :\n'
                          f"    ∀ n < {native['trace_len']}, decode {setup['data']}_col{column} n = {formula} n :=\n"
