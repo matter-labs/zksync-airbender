@@ -263,8 +263,7 @@ pub fn finish_execution_recursion_extended(data: &[u32; 16], rec_counters: &[u32
             in("t1") rec_counters.as_ptr(),
             masking_query_id = const zk_masking::MASKING_QUERY_ID,
             masking_oracle_words = const zk_masking::ORACLE_WORDS,
-            masking_register_groups = const zk_masking::REGISTER_GROUPS,
-            masking_memory_writes = const zk_masking::MEMORY_WRITES,
+            masking_iterations = const zk_masking::ITERATIONS,
             options(noreturn)
         )
     }

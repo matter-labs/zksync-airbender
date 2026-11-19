@@ -180,10 +180,11 @@ verifier_common::gkr_fixture_circuits!(generate_transpiler_tests);
 /// The oracle is a `GuestSource`: the proof as its input words, and a `QueryDispatcher` with the
 /// masking responder, which has to answer the masking query of the exit sequence.
 #[test]
-#[ignore = "requires `./dump_bin.sh --zk-exit add_sub_lui_auipc_mop_ethproofs_soundcalc` in tools/gkr_verifier"]
+#[ignore = "requires `./dump_bin.sh --blake special_opcodes_extension --zk-exit add_sub_lui_auipc_mop_ethproofs_soundcalc` in tools/gkr_verifier"]
 fn add_sub_lui_auipc_mop_ethproofs_soundcalc_zk_masking_exit() {
     use riscv_transpiler::oracle::zk_masking::parameters::{
-        ADDRESS_CHUNKS, MASKING_CYCLES, MEMORY_WRITES, MEMORY_WRITES_PER_ADDRESS_CHUNK,
+        ADDRESS_CHUNKS, ITERATIONS, LOOP_INSTRUCTIONS_BELOW_BOUNDARY, MAX_MASKING_CYCLES,
+        MIN_FRESH_STORES_PER_ADDRESS_CHUNK, MIN_MASKING_CYCLES, PC_LOW_LIMB_SPAN_BYTES,
     };
     use riscv_transpiler::oracle::zk_masking::{
         MaskingMemoryLayout, MaskingResponder, RECURSION_EXIT_TAIL_SEQUENCE,
@@ -193,7 +194,7 @@ fn add_sub_lui_auipc_mop_ethproofs_soundcalc_zk_masking_exit() {
     let name = "add_sub_lui_auipc_mop";
     let (level, mode) = (SecurityLevel::Sec100, SoundnessMode::EthproofsSoundnessCalc);
     let (nds, external_challenges) =
-        common::load_nds_in_mode(name, level, mode, BlakeMode::Compression);
+        common::load_nds_in_mode(name, level, mode, BlakeMode::BlakeSpecialOpcodes);
     let plain_elf_path = common::elf_path_in_mode(name, level, mode);
     let elf_path = plain_elf_path.replace(
         &format!("{}.elf", name),
@@ -240,8 +241,8 @@ fn add_sub_lui_auipc_mop_ethproofs_soundcalc_zk_masking_exit() {
     let exact_cycles =
         (state.timestamp - common_constants::INITIAL_TIMESTAMP) / common_constants::TIMESTAMP_STEP;
     println!(
-        "finished in {} cycles, {} of them masking",
-        exact_cycles, MASKING_CYCLES
+        "finished in {} cycles, {} to {} of them masking",
+        exact_cycles, MIN_MASKING_CYCLES, MAX_MASKING_CYCLES
     );
 
     // the dispatch: the proof is read in full by the guest, the response to the masking query
@@ -269,9 +270,25 @@ fn add_sub_lui_auipc_mop_ethproofs_soundcalc_zk_masking_exit() {
     assert_eq!(tail_starts.len(), 1);
     assert_eq!(state.pc as usize, (tail_starts[0] + tail.len() - 1) * 4);
 
+    // the loop is across a 64 KiB boundary: the branch that skips an instruction is the second
+    // to last instruction below it, and the loop starts 13 instructions below it. The loop is
+    // found by its head, the only place of the binary with two oracle reads into t0 and t1
+    // followed by `add t2, t0, t1`.
+    let loop_head = [0x7c0012f3u32, 0x7c001373, 0x006283b3];
+    let loop_starts: Vec<usize> = binary
+        .windows(loop_head.len())
+        .enumerate()
+        .filter_map(|(offset, window)| (window == loop_head).then_some(offset))
+        .collect();
+    assert_eq!(loop_starts.len(), 1);
+    let boundary = (loop_starts[0] as u32 + LOOP_INSTRUCTIONS_BELOW_BOUNDARY) * 4;
+    assert_eq!(boundary % PC_LOW_LIMB_SPAN_BYTES, 0);
+    // blt t0, t1, +8
+    assert_eq!(binary[boundary as usize / 4 - 2], 0x0062c463);
+
     // the stores: the guest never touches memory above 32 Mb, so every non-zero word there is a
-    // masking store, 64 per 2 Mb chunk of the second inits/teardowns set (less the rare stores
-    // that hit the same word twice)
+    // masking store. About half of the stores go to new addresses, a half of those to the second
+    // inits/teardowns set, evenly over its 2 Mb chunks; the stores to used addresses add a few
     let chunk_bytes = layout.total_init_memory_bytes / ADDRESS_CHUNKS;
     let mut stores_in_second_set = 0;
     for chunk in ADDRESS_CHUNKS / 2..ADDRESS_CHUNKS {
@@ -280,8 +297,7 @@ fn add_sub_lui_auipc_mop_ethproofs_soundcalc_zk_masking_exit() {
             .filter(|address| ram.peek_word(*address) != 0)
             .count() as u32;
         assert!(
-            stores <= MEMORY_WRITES_PER_ADDRESS_CHUNK
-                && stores + 4 >= MEMORY_WRITES_PER_ADDRESS_CHUNK,
+            stores >= MIN_FRESH_STORES_PER_ADDRESS_CHUNK,
             "chunk {}: {} stores",
             chunk,
             stores
@@ -289,8 +305,7 @@ fn add_sub_lui_auipc_mop_ethproofs_soundcalc_zk_masking_exit() {
         stores_in_second_set += stores;
     }
     println!(
-        "{} of {} masking stores found above 32 Mb",
-        stores_in_second_set,
-        MEMORY_WRITES / 2
+        "{} words above 32 Mb hold a masking store, of {} stores",
+        stores_in_second_set, ITERATIONS
     );
 }
