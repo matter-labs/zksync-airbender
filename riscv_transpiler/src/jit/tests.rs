@@ -1610,7 +1610,10 @@ fn run_and_compare() {
     }
 
     if divergent == final_checkpoint {
-        panic!("Only the full unbounded run diverges after {cycles_taken} cycles: {divergence}");
+        let last_matching = u64::from(matching) * u64::from(CHECKPOINT_STEP);
+        panic!(
+            "No bounded checkpoint up to {last_matching} cycles diverges; the full run diverges after {cycles_taken} cycles: {divergence}"
+        );
     }
     let steps = u64::from(divergent) * u64::from(CHECKPOINT_STEP);
     panic!(
