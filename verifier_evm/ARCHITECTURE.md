@@ -8,8 +8,12 @@ The L1 wrap uses Proth120 and Keccak256. `encoding::encode_single_tx` emits the
 compressed GKR and WHIR proof streams consumed by the generated fallback. The
 generator derives PoW difficulties from the circuit and prover config, including
 the wrap's external floor, and pins the final PC, top bits, setup and registry.
-There is one Foundry project, `generated_contracts/l1_wrap/merged/`; its negative
-controls are generated into ignored sibling projects. A successful verifier call
+The pessimistic Foundry project is `generated_contracts/l1_wrap/merged/`. Its
+negative controls are generated into ignored sibling projects. The Ethproofs
+project is `generated_contracts/l1_wrap_ethproofs/merged/`. It uses ETH1020-0047
+with a 2^22 trace, a cap of 32, and a level-10 setup frontier. The helpers
+`generated_contracts/run_merged.sh`, `deploy.sh` and `send_proof.sh` target the
+pessimistic project. A successful verifier call
 reports the statement to the pinned registry and returns the same 64 bytes.
 The contract exposes no getter. See the [L1 wrap README](generated_contracts/l1_wrap/README.md)
 for generation, deployment, file-backed proof submission and rejection controls.

@@ -19,7 +19,7 @@ pub use prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTE
 
 /// gkr.sol consumes monomial rounds, transcript-identical to the windowed prover schedule.
 pub fn prover_config() -> ProverConfig {
-    let mut config = l1_wrap::packed_prover_config();
+    let mut config = l1_wrap::pessimistic_packed_prover_config();
     config.same_size_sumcheck_schedule = prover::gkr::prover_config::naive_same_size_schedule();
     config
 }
@@ -68,7 +68,7 @@ pub fn format_params() -> verifier_evm::encoding::FormatParams {
         setup_frontier_level: setup_frontier().0,
     }
 }
-/// Setup frontier emitted by prover_pipeline::export_l1_wrap_setup_frontier.
+/// Setup frontier emitted by prover_pipeline::export_pessimistic_l1_wrap_setup_frontier.
 pub fn setup_frontier() -> (usize, Vec<[u32; 8]>) {
     let json: serde_json::Value = serde_json::from_reader(
         std::fs::File::open(data_path("setup_frontier.json")).expect("setup frontier"),

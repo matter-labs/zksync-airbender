@@ -35,7 +35,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         "ExecutionKind::{execution_kind:?} requires MachineType::Reduced"
                     );
                 }
-                if let Some(circuit) = execution_kind.unified_circuit() {
+                if let Some(circuit) =
+                    execution_kind.unified_circuit_in_mode(self.configuration.soundness_mode)
+                {
                     crate::config::assert_profiles_for_circuit(circuit, &profiles);
                 } else {
                     for circuit in
@@ -48,6 +50,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     }
                 }
                 for profile in &profiles {
+                    if *profile == ProofProfile::CompressionFinal {
+                        assert_eq!(
+                            self.configuration.soundness_mode,
+                            crate::config::SoundnessMode::PessimisticConjecture,
+                            "Ethproofs compression has no final profile"
+                        );
+                    }
                     profile
                         .config_profile()
                         .assert_supports(self.configuration.soundness_mode);
@@ -75,6 +84,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let text_section = Arc::new(text_section.into_boxed_slice());
         let mut handles = Vec::with_capacity(variants.len());
         for (execution_kind, machine_type, profiles) in variants {
+            let unified_circuit =
+                execution_kind.unified_circuit_in_mode(self.configuration.soundness_mode);
             let key = self.next_binary_id;
             info!(
                 "PROVER inserting binary with key {key:?} ({execution_kind:?}, {machine_type:?})"
@@ -90,8 +101,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 l1_wrap_precomputations,
                 (setup_time, preparation_time),
             ) = if execution_kind.is_l1_wrap() {
-                let (instruction_tape, precomputations) =
-                    self.prepare_l1_wrap(&padded_binary_image, &text_section, &profiles);
+                let (instruction_tape, precomputations) = self.prepare_l1_wrap(
+                    unified_circuit.unwrap(),
+                    &padded_binary_image,
+                    &text_section,
+                    &profiles,
+                );
                 (
                     instruction_tape,
                     HashMap::new(),
@@ -131,7 +146,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     .chain(
                         l1_wrap_precomputations
                             .iter()
-                            .map(|precomp| (CircuitType::L1Wrap, precomp.clone())),
+                            .map(|precomp| (unified_circuit.unwrap(), precomp.clone())),
                     )
                     .collect(),
             );
@@ -163,39 +178,35 @@ mod tests {
     use crate::config::SoundnessMode;
     use crate::test_support::TestBackend;
 
-    /// Every L1 profile under ethproofs is rejected before a binary is registered.
     #[test]
-    fn ethproofs_l1_binary_is_rejected_before_registration() {
-        let soundness_mode = SoundnessMode::EthproofsSoundnessCalc;
+    fn ethproofs_compression_final_binary_is_rejected_before_registration() {
         let mut prover = ExecutionProver::<TestBackend>::with_configuration(
-            ExecutionProverConfiguration::for_mode(soundness_mode),
+            ExecutionProverConfiguration::for_mode(SoundnessMode::EthproofsSoundnessCalc),
         );
         let program = vec![0x0001_2083, 0xffdf_f06f];
-        for (kind, profile) in [
-            (ExecutionKind::Unified22, ProofProfile::CompressionFinal),
-            (ExecutionKind::Unified, ProofProfile::Compression),
-            (ExecutionKind::L1Wrap, ProofProfile::L1Wrap),
-        ] {
-            let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                prover.add_binary_variants(
-                    program.clone(),
-                    program.clone(),
-                    &[(kind, MachineType::Reduced, &[profile])],
-                    Some(32),
-                )
-            }))
-            .map(|handle| panic!("{profile:?}: registered as {handle:?}"))
-            .unwrap_err();
-            let message = payload
-                .downcast_ref::<String>()
-                .map(String::as_str)
-                .unwrap_or_default();
-            assert!(
-                message.contains("supports only the pessimistic-conjecture soundness mode"),
-                "{profile:?}: {message}"
-            );
-            assert_eq!(prover.next_binary_id, 0);
-            assert!(prover.binary_holders.is_empty());
-        }
+        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            prover.add_binary_variants(
+                program.clone(),
+                program,
+                &[(
+                    ExecutionKind::Unified22,
+                    MachineType::Reduced,
+                    &[ProofProfile::CompressionFinal],
+                )],
+                Some(32),
+            )
+        }))
+        .expect_err("Ethproofs has no CompressionFinal profile");
+        let message = payload
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| payload.downcast_ref::<&str>().copied())
+            .unwrap_or_default();
+        assert!(
+            message.contains("Ethproofs compression has no final profile"),
+            "{message}"
+        );
+        assert_eq!(prover.next_binary_id, 0);
+        assert!(prover.binary_holders.is_empty());
     }
 }

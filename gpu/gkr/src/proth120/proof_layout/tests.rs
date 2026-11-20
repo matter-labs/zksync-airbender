@@ -4,7 +4,7 @@ pub(crate) fn programs() -> crate::proth120::programs::GkrProgramsPr {
     ))
     .unwrap();
     crate::proth120::programs::GkrProgramsPr::compile(
-        gpu_trace::witness::circuit_type::CircuitType::L1Wrap,
+        gpu_trace::witness::circuit_type::CircuitType::L1Wrap21,
         std::sync::Arc::new(artifact),
     )
 }

@@ -36,14 +36,13 @@ impl L1Bundle {
 
 /// The setup cap every entry of an artifact's `setups` must carry: the
 /// profile config's `cap_size` of the artifact's final proof layer.
-pub(super) fn expected_setup_cap_size(target: ProofTarget) -> usize {
+pub(super) fn expected_setup_cap_size(target: ProofTarget, mode: SoundnessMode) -> usize {
     if target >= ProofTarget::Compression {
-        ProofProfile::CompressionFinal
-            .prover_config(
-                CircuitType::Unrolled(UnrolledCircuitType::Unified22).get_domain_size_log2()
-                    as usize,
-                SoundnessMode::PessimisticConjecture,
-            )
+        compression_schedule(mode)
+            .last()
+            .unwrap()
+            .1
+            .config(mode)
             .cap_size
     } else {
         CircuitType::Unrolled(UnrolledCircuitType::Unified)
@@ -54,15 +53,33 @@ pub(super) fn expected_setup_cap_size(target: ProofTarget) -> usize {
 
 pub(super) fn validate_artifact_envelope(artifact: &ProofArtifact) -> Result<(), String> {
     match (artifact.target, &artifact.l1) {
-        (ProofTarget::L1, Some(bundle)) => bundle.validate()?,
+        (ProofTarget::L1, Some(bundle)) => {
+            bundle.validate()?;
+            use prover::gkr::prover_config::example_configs::l1_wrap;
+            let config = match artifact.soundness_mode {
+                SoundnessMode::PessimisticConjecture => l1_wrap::pessimistic_packed_prover_config(),
+                SoundnessMode::EthproofsSoundnessCalc => l1_wrap::ethproofs_packed_prover_config(),
+            };
+            if bundle.proof.whir_proof.whir_schedule != config.whir_schedule {
+                return Err(
+                    "L1 bundle WHIR schedule does not match the artifact soundness mode".into(),
+                );
+            }
+        }
         (ProofTarget::L1, None) => return Err("L1 artifact must contain an l1 bundle".into()),
         (_, Some(_)) => return Err("non-L1 artifact must not contain an l1 bundle".into()),
         (_, None) => {}
     }
     // serde bypasses the setup-cap constructor: repeat its shape check here
-    setups::validate_setups_cap_size(&artifact.setups, expected_setup_cap_size(artifact.target))?;
+    setups::validate_setups_cap_size(
+        &artifact.setups,
+        expected_setup_cap_size(artifact.target, artifact.soundness_mode),
+    )?;
     if artifact.target >= ProofTarget::Compression {
-        validate_compression_proof(&artifact.proof, CompressionProfile::Final, 1)?;
+        let &(_, profile, instances) = compression_schedule(artifact.soundness_mode)
+            .last()
+            .unwrap();
+        validate_compression_proof(&artifact.proof, profile, instances, artifact.soundness_mode)?;
     }
     Ok(())
 }
@@ -72,6 +89,7 @@ pub(super) fn validate_compression_proof(
     proof: &ProgramProof,
     profile: CompressionProfile,
     instances: usize,
+    mode: SoundnessMode,
 ) -> Result<(), String> {
     let family = profile.circuit().get_family_idx() as u32;
     if proof.riscv_proofs.len() != 1 || !proof.riscv_proofs.contains_key(&family) {
@@ -110,7 +128,7 @@ pub(super) fn validate_compression_proof(
             profile.circuit()
         ));
     }
-    let expected_schedule = profile.config().whir_schedule;
+    let expected_schedule = profile.config(mode).whir_schedule;
     for instance in &proof.riscv_proofs[&family] {
         if instance.whir_proof.whir_schedule != expected_schedule {
             return Err(format!("compression proof instance was not proven under the {profile:?} compression WHIR schedule"));
@@ -131,8 +149,7 @@ pub(super) fn advance_l1_wrap(
         .as_ref()
         .expect("L1 wrap guest was not loaded");
     let (bin, text) = (guest.bin(), guest.text());
-    let nd_words =
-        build_unified_stream(&state.setups, &state.proof, BlakeMode::BlakeSpecialOpcodes);
+    let nd_words = fsv_input(guest, &state.setups, &state.proof);
     let result = backend.prove_l1_wrap(L1WrapRequest {
         batch_id,
         bin,

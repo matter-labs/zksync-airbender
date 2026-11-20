@@ -31,6 +31,7 @@ const _: fn(
 ) -> UnifiedCircuitOutput = |o| o;
 
 pub mod unified_reduced_machine_sec_100_compression;
+pub mod unified_reduced_machine_sec_100_compression_ethproofs_soundcalc;
 pub mod unified_reduced_machine_sec_100_compression_final;
 
 /// The unified verifier output at setup cap `CAP`: the standard verifier's
@@ -53,5 +54,17 @@ const _: () = assert!(
 );
 const _: () = assert!(
     unified_reduced_machine_sec_100_compression_final::NUM_SETUP_COMMITS
+        == pessimistic_conjecture::unified_reduced_machine::NUM_SETUP_COMMITS
+);
+const _: () = assert!(
+    unified_reduced_machine_sec_100_compression_ethproofs_soundcalc::INIT_AND_TEARDOWN_SETS
+        == pessimistic_conjecture::unified_reduced_machine::INIT_AND_TEARDOWN_SETS
+);
+const _: () = assert!(
+    unified_reduced_machine_sec_100_compression_ethproofs_soundcalc::NUM_MEMORY_COMMITS
+        == pessimistic_conjecture::unified_reduced_machine::NUM_MEMORY_COMMITS
+);
+const _: () = assert!(
+    unified_reduced_machine_sec_100_compression_ethproofs_soundcalc::NUM_SETUP_COMMITS
         == pessimistic_conjecture::unified_reduced_machine::NUM_SETUP_COMMITS
 );

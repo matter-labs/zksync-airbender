@@ -25,5 +25,10 @@ mod __generated {
 pub use __generated::*;
 
 #[cfg(feature = "miri_compression")]
-#[path = "generated/unified_reduced_machine/pessimistic_conjecture_compression/mod.rs"]
-pub mod compression;
+#[path = "generated/unified_reduced_machine"]
+pub mod compression {
+    #[path = "ethproofs_soundcalc_compression/mod.rs"]
+    pub mod ethproofs_soundcalc;
+    #[path = "pessimistic_conjecture_compression/mod.rs"]
+    pub mod pessimistic_conjecture;
+}

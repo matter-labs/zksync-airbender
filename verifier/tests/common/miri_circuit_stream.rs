@@ -54,11 +54,23 @@ pub fn verify(
     }
     #[cfg(feature = "miri_compression")]
     let output = if name == "compression" {
-        assert_eq!(mode, 0, "compression is pessimistic only");
-        flatten_output(
-            verifier::compression::verify::<_, DebugErrorCreator>(&challenges, payload)
-                .expect("final compression circuit verification failed"),
-        )
+        match mode {
+            0 => flatten_output(
+                verifier::compression::pessimistic_conjecture::verify::<_, DebugErrorCreator>(
+                    &challenges,
+                    payload,
+                )
+                .expect("compression circuit verification failed"),
+            ),
+            1 => flatten_output(
+                verifier::compression::ethproofs_soundcalc::verify::<_, DebugErrorCreator>(
+                    &challenges,
+                    payload,
+                )
+                .expect("compression circuit verification failed"),
+            ),
+            _ => panic!("unknown compression mode: {mode}"),
+        }
     } else {
         verifier_common::gkr_fixture_circuits!(dispatch)
     };

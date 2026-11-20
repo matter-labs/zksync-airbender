@@ -5,8 +5,12 @@ use prover::definitions::FinalRegisterValue;
 fn result() -> L1WrapResult {
     let external_challenges_pow_bits =
         prover::gkr::prover_config::example_configs::l1_wrap::EXTERNAL_CHALLENGES_POW_BITS;
+    let mut proof = empty_gkr_proof();
+    proof.whir_proof.whir_schedule =
+        prover::gkr::prover_config::example_configs::l1_wrap::pessimistic_packed_prover_config()
+            .whir_schedule;
     L1WrapResult {
-        proof: empty_gkr_proof(),
+        proof,
         operation_mode: OperationMode::SingleChunk {
             external_challenges_pow_bits,
             register_final_state: [FinalRegisterValue {
@@ -46,6 +50,10 @@ fn malformed_l1_envelopes_fail_verify_and_continuation_before_loading_programs()
             {
                 *external_challenges_pow_bits -= 1;
             }
+        }),
+        ("WHIR schedule", |a| {
+            a.l1.as_mut().unwrap().proof.whir_proof.whir_schedule =
+                prover::gkr::prover_config::example_configs::l1_wrap::ethproofs_packed_prover_config().whir_schedule
         }),
         ("non-L1", |a| a.target = ProofTarget::Compression),
         ("reduced-machine family", |a| {

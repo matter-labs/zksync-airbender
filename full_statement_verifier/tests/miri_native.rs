@@ -72,3 +72,8 @@ statement_test!(
     EthproofsSoundnessCalc,
     UnrolledUnified
 );
+statement_test!(
+    ethproofs_soundcalc_compression,
+    EthproofsSoundnessCalc,
+    Compression
+);

@@ -159,7 +159,7 @@ mod tests {
             assert!(guest.unpadded_bin().len() <= words);
             assert!(guest.unpadded_text().len() <= words);
         }
-        let wrap = FsvDescriptor::compression(FsvProfile::CompressionFinalWrap);
+        let wrap = FsvDescriptor::pessimistic_compression(FsvProfile::CompressionFinalWrap);
         let bytes = std::fs::read(canonical_fsv_dir().join(wrap.relative_path())).unwrap();
         assert!(matches!(
             read_elf_with_rom(

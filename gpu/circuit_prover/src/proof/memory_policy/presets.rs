@@ -50,7 +50,11 @@ pub fn policy(
         return compression::POLICY;
     }
     match circuit {
-        CircuitType::L1Wrap => l1_wrap::L1_WRAP_POLICY,
+        // Reuse the 2^22 witness prefix for the 21 GiB arena.
+        CircuitType::L1Wrap22 if arena_bytes < PRESET_ARENA_BYTES[1] => {
+            l1_wrap::L1_WRAP_REUSE_PREFIX_POLICY
+        }
+        CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => l1_wrap::L1_WRAP_POLICY,
         _ => generated::policy(circuit, select_arena_bytes(arena_bytes)),
     }
 }
@@ -60,7 +64,7 @@ pub fn partial_trees(circuit: CircuitType, profile: ProofProfile) -> PartialTree
         return compression::PARTIAL_TREES;
     }
     match circuit {
-        CircuitType::L1Wrap => l1_wrap::PARTIAL_TREES,
+        CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => l1_wrap::PARTIAL_TREES,
         _ => PartialTreePolicy::DEFAULT,
     }
 }
@@ -78,14 +82,28 @@ mod cpu_tests {
 
     #[test]
     fn cpu_l1_wrap_prefix_reuse_preset() {
-        use WitnessPostCommitStorage::RawAndMonomials;
+        use WitnessPostCommitStorage::{RawAndMonomials, RawWithReusedPrefixScratch};
 
         let [tight, roomy] = PRESET_ARENA_BYTES else {
             panic!("L1 wrap memory schedule test requires both arena presets");
         };
+        let config = ProofProfile::L1Wrap.prover_config(
+            CircuitType::L1Wrap22.get_domain_size_log2() as usize,
+            prover::definitions::SoundnessMode::EthproofsSoundnessCalc,
+        );
+        let shape = gpu_whir::proth120::L1WhirShape::from_config(&config);
+        assert_eq!(
+            (shape.log_message, shape.log_base_lde, shape.cap_log),
+            (25, 7, 5)
+        );
+        let query_domains: Vec<_> = shape.rounds.iter().map(|r| r.query_domain_log2).collect();
+        assert_eq!(query_domains, [31, 31, 28, 25, 23, 20]);
+
         for (circuit, arena, expected) in [
-            (CircuitType::L1Wrap, *tight, RawAndMonomials),
-            (CircuitType::L1Wrap, *roomy, RawAndMonomials),
+            (CircuitType::L1Wrap21, *tight, RawAndMonomials),
+            (CircuitType::L1Wrap21, *roomy, RawAndMonomials),
+            (CircuitType::L1Wrap22, *tight, RawWithReusedPrefixScratch),
+            (CircuitType::L1Wrap22, *roomy, RawAndMonomials),
         ] {
             let selected = policy(circuit, ProofProfile::L1Wrap, arena);
             assert!(selected.witness.is_valid());
