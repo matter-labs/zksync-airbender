@@ -69,16 +69,18 @@ reasons for the regime choices.
 ## Proth120 L1 wrap (`l1_wrap.py`)
 
 ```bash
-PYTHONPATH=/path/to/soundcalc python3 l1_wrap.py --trace-log2 22 --packed-columns 14
+PYTHONPATH=/tmp/soundcalc python3 l1_wrap.py
 ```
 
-The driver compares base LDE factors 8 and 16 at physical packing by 8.
-It checks every PCS term with the configured per-oracle maximum folding grind
-at every step, with both the Proth120 field size and the conservative
-challenge denominator `2^128 / 37`. The LDE-16 result checks
-`l1_wrap::ethproofs_packed_prover_config`. The reported levels are individual
-PCS terms. GKR, Merkle binding, and recursive composition require their own
-accounting.
+The driver emits the committed ETH1020-0047 schedule and certifies every WHIR PCS
+term at 100 bits or more with soundcalc. It uses the 2^22 trace, packing by 8,
+14 packed columns, a cap of 32 and the Johnson bound with m = 3 at every oracle.
+The base LDE factor is 128. The internal factors are 256, 512, 1024, 4096 and 8192.
+The driver applies each oracle's configured folding grind at every step and
+checks both the Proth120 field size and the conservative challenge denominator
+`2^128 / 37`. The Rust test `canonical_ethproofs_l1_schedule` checks that the emitted
+schedule matches the Ethproofs L1 wrap prover config. GKR, Merkle binding and
+recursive composition require their own accounting.
 
 ## Rebalancing the pessimistic ladders' late rounds (`late_round_rebalance.py`)
 

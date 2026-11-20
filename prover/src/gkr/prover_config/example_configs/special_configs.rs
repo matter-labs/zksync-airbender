@@ -44,6 +44,7 @@ pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig
         // NOT the WHIR plain-text tail, which the WHIR schedule determines).
         sumcheck_explicit_output_size_log_2: 4,
         security_level: level,
+        lookup_challenges_pow_floor: None,
         // base LDE factor 32 (base_lde_log2 = 5), round-0 values-per-leaf =
         // 2^2; 6 rounds ending in a 2^4 plain-text tail; the 6th round's
         // huge-LDE oracle (the 2^8 poly on a 2^31 domain) is cheap with the
@@ -116,6 +117,7 @@ fn compression_config_for_schedule(
         cap_size: whir_schedule.cap_size,
         sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
         security_level: SecurityLevel::Sec100,
+        lookup_challenges_pow_floor: None,
         whir_schedule,
     }
 }
@@ -178,7 +180,13 @@ pub fn compression_config_for_2_23() -> ProverConfig {
 
 /// Repeatable Compression profile under [`SoundnessMode::EthproofsSoundnessCalc`].
 pub fn ethproofs_compression_config_for_2_23() -> ProverConfig {
-    compression_config_for_schedule(23, super::ethproofs_soundcalc::COMPRESSION_2_23.schedule(0))
+    let mut config = compression_config_for_schedule(
+        23,
+        super::ethproofs_soundcalc::COMPRESSION_2_23.schedule(0),
+    );
+    config.lookup_challenges_pow_floor =
+        Some(super::ethproofs_soundcalc::COMPRESSION_LOOKUP_CHALLENGES_POW_BITS);
+    config
 }
 
 /// L1 wrap over the 512 KiB wrap ROM.
@@ -229,6 +237,7 @@ pub mod l1_wrap {
             cap_size: CAP_SIZE,
             sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
             security_level: level,
+            lookup_challenges_pow_floor: None,
             whir_schedule: WhirSchedule {
                 cap_size: CAP_SIZE,
                 base_round: crate::gkr::prover_config::WhirBaseRoundSchedule {
@@ -257,12 +266,13 @@ pub mod l1_wrap {
         }
     }
 
-    /// Proth120 L1 wrap with at least 100 bits per PCS term in proven regimes,
-    /// as checked by the soundcalc driver `soundcalc/l1_wrap.py`.
+    /// ETH1020-0047, the Proth120 L1 wrap at 100 bits per PCS term under the
+    /// Johnson bound with multiplicity 3. `soundcalc/l1_wrap.py` certifies the
+    /// schedule using the maximum challenge point mass `37/2^128`.
     pub fn ethproofs_packed_prover_config() -> ProverConfig {
         use crate::gkr::prover_config::{WhirBaseRoundSchedule, WhirInternalRound};
 
-        const CAP_SIZE: usize = 8;
+        const CAP_SIZE: usize = 32;
         ProverConfig {
             trace_len_log2: ETHPROOFS_TRACE_LEN_LOG2,
             commitment_mode: CommitmentMode::MergedMemoryAndWitness,
@@ -271,26 +281,27 @@ pub mod l1_wrap {
             cap_size: CAP_SIZE,
             sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
             security_level: SecurityLevel::Sec100,
+            lookup_challenges_pow_floor: None,
             whir_schedule: WhirSchedule {
                 cap_size: CAP_SIZE,
                 base_round: WhirBaseRoundSchedule {
-                    lde_factor_log2: 4,
+                    lde_factor_log2: 7,
                     physical_packing_log2: PACK_LOG2,
                     fold_log2: 1,
-                    batching_pow_bits: Some(25),
-                    folding_pow_bits: 20,
-                    num_queries: 42,
-                    queries_pow_bits: 27,
+                    batching_pow_bits: Some(32),
+                    folding_pow_bits: 28,
+                    num_queries: 22,
+                    queries_pow_bits: 31,
                 },
-                internal_rounds: (0..4)
+                internal_rounds: (0..5)
                     .map(|i| WhirInternalRound {
-                        lde_factor_log2: [6, 8, 10, 12][i],
-                        folding_log2: 5,
-                        num_queries: [27, 20, 16, 13][i],
-                        queries_pow_bits: [26, 25, 24, 25][i],
-                        folding_pow_bits: 24,
+                        lde_factor_log2: [8, 9, 10, 12, 13][i],
+                        folding_log2: [1, 4, 4, 4, 4][i],
+                        num_queries: [19, 17, 15, 12, 11][i],
+                        queries_pow_bits: [29, 28, 29, 31, 31][i],
+                        folding_pow_bits: [29, 31, 29, 30, 29][i],
                         num_ood_samples: 1,
-                        ood_pow_bits: [10, 7, 4, 1][i],
+                        ood_pow_bits: [12, 12, 9, 7, 4][i],
                     })
                     .collect(),
             },
@@ -304,41 +315,15 @@ pub mod l1_wrap {
 
         #[test]
         fn canonical_ethproofs_l1_schedule() {
-            let mode = SoundnessMode::EthproofsSoundnessCalc;
-            let config = ProofProfile::L1Wrap.prover_config(22, mode);
+            let config =
+                ProofProfile::L1Wrap.prover_config(22, SoundnessMode::EthproofsSoundnessCalc);
             config.validate_for_whir_message_size(25);
             assert!(config.merged_memory_and_witness());
-            assert_eq!(config.cap_size, 8);
+            assert_eq!(config.cap_size, 32);
             assert_eq!(config.sumcheck_explicit_output_size_log_2, 2);
-            let schedule = &config.whir_schedule;
-            assert_eq!(schedule.pack_log2(), 3);
-            assert_eq!(schedule.base_lde_factor_log2(), 4);
-            assert_eq!(schedule.base_round.batching_pow_bits, Some(25));
-            assert_eq!(schedule.base_round.folding_pow_bits, 20);
-            assert_eq!(schedule.fold_steps(), [1, 5, 5, 5, 5]);
-            assert_eq!(schedule.queries_per_round(), [42, 27, 20, 16, 13]);
-            assert_eq!(schedule.queries_pow_bits_per_round(), [27, 26, 25, 24, 25]);
-            let internal: Vec<_> = schedule
-                .internal_rounds
-                .iter()
-                .map(|round| {
-                    (
-                        round.lde_factor_log2,
-                        round.folding_pow_bits,
-                        round.num_ood_samples,
-                        round.ood_pow_bits,
-                    )
-                })
-                .collect();
-            assert_eq!(
-                internal,
-                [
-                    (6, 24, 1, 10),
-                    (8, 24, 1, 7),
-                    (10, 24, 1, 4),
-                    (12, 24, 1, 1)
-                ]
-            );
+            let certified: WhirSchedule =
+                serde_json::from_str(include_str!("soundcalc/eth1020-0047.json")).unwrap();
+            assert_eq!(config.whir_schedule, certified);
         }
 
         #[test]

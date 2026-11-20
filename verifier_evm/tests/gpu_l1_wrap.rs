@@ -99,7 +99,9 @@ fn alternate_case(case: WrapCase) {
         ),
     };
     let mut config = ProofProfile::L1Wrap.prover_config(trace_log, mode);
+    config.cap_size = 8;
     let schedule = &mut config.whir_schedule;
+    schedule.cap_size = config.cap_size;
     schedule.base_round.lde_factor_log2 = rates[0];
     schedule.base_round.fold_log2 = folds[0];
     schedule.base_round.batching_pow_bits = Some(batching);

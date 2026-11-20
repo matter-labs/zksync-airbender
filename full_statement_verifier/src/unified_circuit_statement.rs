@@ -26,7 +26,7 @@ macro_rules! unified_statement_body {
         $read_acc:ident,
         $write_acc:ident,
         $total_perm:ident,
-        $delegations:block
+        $delegations:block $(, $max_instances:expr)?
     ) => {{
         let mut $transcript = Blake2sBufferingTranscript::<REDUCED_ROUNDS>::new();
 
@@ -73,6 +73,11 @@ macro_rules! unified_statement_body {
         // verifier), and the `MAX_TOP_BIT` ceiling + strictly-increasing `top_bits` check below
         // force the trailing i/t-carrying instances onto disjoint memory super-blocks.
         let num_unified_circuits = $nd.read_word();
+        $(assert!(
+            (1..=$max_instances).contains(&num_unified_circuits),
+            "Ethproofs Compression instance count must be in 1..={}",
+            $max_instances,
+        );)?
         assert!(num_unified_circuits > 0);
 
         // extra word: how many of the *trailing* circuits carry real inits/teardowns
@@ -454,7 +459,7 @@ pub fn verify_unified_circuit_recursion_layer<
 // Every compression profile has the same statement; its generated verifier
 // supplies the cap and trace geometry.
 macro_rules! compression_statement {
-    ($entry:ident, $module:ident) => {
+    ($entry:ident, $module:ident, $verify:ident) => {
         pub fn $entry<
             I: NonDeterminismSource<BabyBearField>,
             E: ErrorCreator,
@@ -465,7 +470,7 @@ macro_rules! compression_statement {
             use crate::imports::$module as compression;
             unsafe {
                 let unified_setup = read_setup_cap::<I, { compression::CAP_SIZE }>(nd_source);
-                verify_full_statement_for_unified_circuit_without_delegations::<
+                $verify::<
                     I,
                     E,
                     REDUCED_ROUNDS,
@@ -481,15 +486,18 @@ macro_rules! compression_statement {
 
 compression_statement!(
     verify_unified_circuit_recursion_layer_sec_100_compression,
-    unified_reduced_machine_sec_100_compression
+    unified_reduced_machine_sec_100_compression,
+    verify_full_statement_for_unified_circuit_without_delegations
 );
 compression_statement!(
     verify_unified_circuit_recursion_layer_sec_100_compression_final,
-    unified_reduced_machine_sec_100_compression_final
+    unified_reduced_machine_sec_100_compression_final,
+    verify_full_statement_for_unified_circuit_without_delegations
 );
 compression_statement!(
     verify_unified_circuit_recursion_layer_sec_100_compression_ethproofs_soundcalc,
-    unified_reduced_machine_sec_100_compression_ethproofs_soundcalc
+    unified_reduced_machine_sec_100_compression_ethproofs_soundcalc,
+    verify_ethproofs_compression_statement
 );
 
 pub fn verify_unrolled_or_unified_circuit_recursion_layer<
@@ -528,60 +536,75 @@ pub const fn address_high_bits_shift(trace_len_log2: u32) -> u32 {
 const _: () = assert!(address_high_bits_shift(23) == STANDARD_ADDRESS_HIGH_BITS_SHIFT);
 const _: () = assert!(crate::definitions::DELEGATION_TYPES.len() == NUM_DELEGATION_CIRCUIT_TYPES);
 
-/// [`verify_full_statement_for_unified_circuit`] for the compression layers: the
-/// same statement over a unified circuit of setup cap `UCAP`, instance window
-/// shift `ADDRESS_HIGH_BITS_SHIFT` and `CYCLES_PER_INSTANCE` cycles per
-/// instance, with a zero-only delegation section. The stream keeps one count
-/// word per [`crate::definitions::DELEGATION_TYPES`] entry; a nonzero count
-/// is rejected at the read, before any alleged proof is parsed, and no
-/// delegation verifier or delegation setup table is referenced. The body is
-/// the standard statement's, shared through `unified_statement_body!`.
-///
-/// # Safety
-///
-/// As [`verify_full_statement_for_unified_circuit`].
-#[inline(never)]
-#[allow(clippy::manual_memcpy)]
-pub unsafe fn verify_full_statement_for_unified_circuit_without_delegations<
-    I: NonDeterminismSource<BabyBearField>,
-    E: ErrorCreator,
-    const REDUCED_ROUNDS: bool,
-    const UCAP: usize,
-    const ADDRESS_HIGH_BITS_SHIFT: u32,
-    const CYCLES_PER_INSTANCE: u64,
-    UniVerifyFn,
->(
-    unified_circuit_setup: &MerkleTreeCap<UCAP>,
-    unified_circuit_verifier: UniVerifyFn,
-    nd_source: &mut I,
-) -> Result<[u32; 16], E::Error>
-where
-    UniVerifyFn: Fn(
-        &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
-        &mut I,
-    ) -> Result<UnifiedCircuitOutputWithCap<UCAP>, E::Error>,
-{
-    unified_statement_body!(
-        unified_circuit_setup,
-        unified_circuit_verifier,
-        nd_source,
-        false,
-        ADDRESS_HIGH_BITS_SHIFT,
-        CYCLES_PER_INSTANCE,
-        transcript,
-        external_challenges,
-        read_set_product_accumulator,
-        write_set_product_accumulator,
-        total_permutation_elements,
+pub const ETHPROOFS_COMPRESSION_MAX_INSTANCES: u32 = 3;
+
+macro_rules! compression_statement_verifier {
+    ($(#[$attr:meta])* $vis:vis $name:ident $(, $max_instances:expr)?) => {
+        $(#[$attr])*
+        #[inline(never)]
+        #[allow(clippy::manual_memcpy)]
+        $vis unsafe fn $name<
+            I: NonDeterminismSource<BabyBearField>,
+            E: ErrorCreator,
+            const REDUCED_ROUNDS: bool,
+            const UCAP: usize,
+            const ADDRESS_HIGH_BITS_SHIFT: u32,
+            const CYCLES_PER_INSTANCE: u64,
+            UniVerifyFn,
+        >(
+            unified_circuit_setup: &MerkleTreeCap<UCAP>,
+            unified_circuit_verifier: UniVerifyFn,
+            nd_source: &mut I,
+        ) -> Result<[u32; 16], E::Error>
+        where
+            UniVerifyFn: Fn(
+                &GKRExternalChallenges<BabyBearField, BabyBearExt4>,
+                &mut I,
+            ) -> Result<UnifiedCircuitOutputWithCap<UCAP>, E::Error>,
         {
-            // the delegation section: one count word per type, every count 0
-            for _delegation_type in crate::definitions::DELEGATION_TYPES.iter() {
-                let num_circuits = nd_source.read_word();
-                assert!(
-                    num_circuits == 0,
-                    "compression proofs carry no delegation proofs"
-                );
-            }
+            unified_statement_body!(
+                unified_circuit_setup,
+                unified_circuit_verifier,
+                nd_source,
+                false,
+                ADDRESS_HIGH_BITS_SHIFT,
+                CYCLES_PER_INSTANCE,
+                transcript,
+                external_challenges,
+                read_set_product_accumulator,
+                write_set_product_accumulator,
+                total_permutation_elements,
+                {
+                    // the delegation section: one count word per type, every count 0
+                    for _delegation_type in crate::definitions::DELEGATION_TYPES.iter() {
+                        let num_circuits = nd_source.read_word();
+                        assert!(
+                            num_circuits == 0,
+                            "compression proofs carry no delegation proofs"
+                        );
+                    }
+                } $(, $max_instances)?
+            )
         }
-    )
+    };
 }
+
+compression_statement_verifier! {
+    /// [`verify_full_statement_for_unified_circuit`] for the compression layers: the
+    /// same statement over a unified circuit of setup cap `UCAP`, instance window
+    /// shift `ADDRESS_HIGH_BITS_SHIFT` and `CYCLES_PER_INSTANCE` cycles per
+    /// instance, with a zero-only delegation section. The stream keeps one count
+    /// word per [`crate::definitions::DELEGATION_TYPES`] entry; a nonzero count
+    /// is rejected at the read, before any alleged proof is parsed, and no
+    /// delegation verifier or delegation setup table is referenced. The body is
+    /// the standard statement's, shared through `unified_statement_body!`.
+    ///
+    /// # Safety
+    ///
+    /// As [`verify_full_statement_for_unified_circuit`].
+    pub verify_full_statement_for_unified_circuit_without_delegations
+}
+compression_statement_verifier!(
+    verify_ethproofs_compression_statement,
+    ETHPROOFS_COMPRESSION_MAX_INSTANCES
+);

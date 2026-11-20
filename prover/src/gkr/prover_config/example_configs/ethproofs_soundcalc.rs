@@ -576,8 +576,17 @@ pub const ENTRIES: &[EthproofsSoundcalcEntry] = &[
     },
 ];
 
+pub(super) const COMPRESSION_LOOKUP_CHALLENGES_POW_BITS: u32 = 14;
+
 /// The `ProofProfile::Compression` schedule. Not in [`ENTRIES`]: it shares its
 /// lookup key with a standard entry.
+///
+/// Soundcalc's SWIRL accounting charges the base list on GKR-side terms. This
+/// Johnson base has `L ≈ 12.73`. Charge `log2(L)` to each lookup and
+/// `k * log2(L)` to shared memory for `k` instances. The memory identity has
+/// degree at most `(4k + 2j) * 2^23 + 33` with `j` inline i/t instances.
+/// At `j = k = 3`, 19 memory PoW bits give 100.480 bits with the two-bit
+/// reserve. A 14-bit lookup floor gives 100.890 bits.
 pub const COMPRESSION_2_23: EthproofsSoundcalcEntry = EthproofsSoundcalcEntry {
     shape: "2^23 committed polynomials, two values per column per leaf, base LDE 2^3, merged memory and witness (unified_reduced_machine compression)",
     level: SecurityLevel::Sec100,

@@ -120,15 +120,15 @@ fn mixed_oracle_domains_accept_nonce_width_pow() {
 }
 
 #[test]
-fn ethproofs_wrap_has_growing_and_shrinking_oracle_domains() {
+fn ethproofs_wrap_keeps_the_base_domain_for_two_internal_oracles() {
     let config = l1_wrap::ethproofs_packed_prover_config();
     let geometry = WhirGenConfig::derive(&config, 96, 10);
-    assert_eq!(geometry.base_domain_log2, 29);
-    assert_eq!(geometry.rfin, 4);
+    assert_eq!(geometry.base_domain_log2, 32);
+    assert_eq!(geometry.rfin, 7);
     let query_bits: Vec<_> = (0..geometry.num_rounds).map(|r| geometry.qib(r)).collect();
-    assert_eq!(query_bits, [28, 25, 22, 19, 16]);
+    assert_eq!(query_bits, [31, 31, 28, 25, 23, 20]);
     let schedule = geometry.schedule_switch_yul();
-    for (qib, coset_bits) in query_bits.into_iter().zip([4, 6, 8, 10, 12]) {
+    for (qib, coset_bits) in query_bits.into_iter().zip([7, 8, 9, 10, 12, 13]) {
         assert!(schedule.contains(&format!("qib := {qib} vp :=")));
         assert!(schedule.contains(&format!(" cb := {coset_bits} }}")));
     }

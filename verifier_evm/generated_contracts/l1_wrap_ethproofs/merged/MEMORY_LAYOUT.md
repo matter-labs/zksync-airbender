@@ -33,31 +33,31 @@ The fallback rejects `mload(0x40) > MINIMUM_FREE_HEAP_PTR` (2048 / `0x800`) befo
 | CIRCUIT_CLAIMS | `GKR_CIRCUIT_CLAIMS_PTR` | 6944 / `0x1b20` | 2368 / `0x940` | 9312 / `0x2460` | Circuit-layer at-point evaluations |
 | GATEVAL | `GKR_GATEVAL_PTR` | 9312 / `0x2460` | 3840 / `0xf00` | 13152 / `0x3360` | Layer-0 gate accumulators |
 | QTABLE | `GKR_QTABLE_PTR` | 13152 / `0x3360` | 3360 / `0xd20` | 16512 / `0x4080` | Packed layer-0 term table |
-| IMAGE | `IMAGE_PTR` | 16512 / `0x4080` | 12576 / `0x3120` | 29088 / `0x71a0` | Decoded GKR calldata image |
-| WHIR_SEED_PTR | `__TEMPLATE_WHIR_SEED_PTR` | 29088 / `0x71a0` | 288 / `0x120` | 29376 / `0x72c0` | WHIR transcript seed and absorb scratch |
-| WHIR_Z_PTR | `__TEMPLATE_WHIR_Z_PTR` | 29376 / `0x72c0` | 800 / `0x320` | 30176 / `0x75e0` | Opening-point coordinates |
-| WHIR_POW_PTR | `__TEMPLATE_WHIR_POW_PTR` | 30176 / `0x75e0` | 10464 / `0x28e0` | 40640 / `0x9ec0` | Deferred OOD and query constraints |
-| WHIR_ACC_PREF_PTR | `__TEMPLATE_WHIR_ACC_PREF_PTR` | 40640 / `0x9ec0` | 32 / `0x20` | 40672 / `0x9ee0` | Accumulated prefix product |
-| WHIR_GAMMA_PTR | `__TEMPLATE_WHIR_GAMMA_PTR` | 40672 / `0x9ee0` | 448 / `0x1c0` | 41120 / `0xa0a0` | Base-column batching challenges |
-| WHIR_FOLD_CH_PTR | `__TEMPLATE_WHIR_FOLD_CH_PTR` | 41120 / `0xa0a0` | 160 / `0xa0` | 41280 / `0xa140` | Round folding challenges |
-| WHIR_HPO_PTR | `__TEMPLATE_WHIR_HPO_PTR` | 41280 / `0xa140` | 32 / `0x20` | 41312 / `0xa160` | Round-0 high-power offsets |
-| WHIR_FBUF_PTR | `__TEMPLATE_WHIR_FBUF_PTR` | 41312 / `0xa160` | 1024 / `0x400` | 42336 / `0xa560` | Folded leaf scratch |
-| WHIR_LEAF_PTR | `__TEMPLATE_WHIR_LEAF_PTR` | 42336 / `0xa560` | 512 / `0x200` | 42848 / `0xa760` | Merkle leaf hashing scratch |
-| WHIR_REG_CD | `__TEMPLATE_WHIR_REG_CD` | 42848 / `0xa760` | 32 / `0x20` | 42880 / `0xa780` | Calldata cursor |
-| WHIR_REG_CLAIM | `__TEMPLATE_WHIR_REG_CLAIM` | 42880 / `0xa780` | 32 / `0x20` | 42912 / `0xa7a0` | Current opening claim |
-| WHIR_REG_NUMPOW | `__TEMPLATE_WHIR_REG_NUMPOW` | 42912 / `0xa7a0` | 32 / `0x20` | 42944 / `0xa7c0` | Deferred constraint count |
-| WHIR_REG_ZIOFF | `__TEMPLATE_WHIR_REG_ZIOFF` | 42944 / `0xa7c0` | 32 / `0x20` | 42976 / `0xa7e0` | Opening coordinate cursor |
-| WHIR_REG_CC | `__TEMPLATE_WHIR_REG_CC` | 42976 / `0xa7e0` | 32 / `0x20` | 43008 / `0xa800` | Current claim correction |
-| WHIR_REG_CURDELIN | `__TEMPLATE_WHIR_REG_CURDELIN` | 43008 / `0xa800` | 32 / `0x20` | 43040 / `0xa820` | Current delinearization challenge |
-| WHIR_BCAP0_PTR | `__TEMPLATE_WHIR_BCAP0_PTR` | 43040 / `0xa820` | 256 / `0x100` | 43296 / `0xa920` | Base oracle cap |
-| WHIR_QCAP_PTR | `__TEMPLATE_WHIR_QCAP_PTR` | 43296 / `0xa920` | 256 / `0x100` | 43552 / `0xaa20` | Current oracle cap |
-| WHIR_NCAP_PTR | `__TEMPLATE_WHIR_NCAP_PTR` | 43552 / `0xaa20` | 256 / `0x100` | 43808 / `0xab20` | Next oracle cap |
-| WHIR_QIDX_BUF_PTR | `__TEMPLATE_WHIR_QIDX_BUF_PTR` | 43808 / `0xab20` | 1344 / `0x540` | 45152 / `0xb060` | Query indices |
-| WHIR_DRAW_BUF_PTR | `__TEMPLATE_WHIR_DRAW_BUF_PTR` | 45152 / `0xb060` | 1280 / `0x500` | 46432 / `0xb560` | Transcript query-draw scratch |
-| WHIR_MONO_PTR | `__TEMPLATE_WHIR_MONO_PTR` | 46432 / `0xb560` | 512 / `0x200` | 46944 / `0xb760` | Final polynomial monomials |
-| WHIR_FEVAL_PTR | `__TEMPLATE_WHIR_FEVAL_PTR` | 46944 / `0xb760` | 512 / `0x200` | 47456 / `0xb960` | Final polynomial absorb and fold scratch |
+| IMAGE | `IMAGE_PTR` | 16512 / `0x4080` | 14112 / `0x3720` | 30624 / `0x77a0` | Decoded GKR calldata image |
+| WHIR_SEED_PTR | `__TEMPLATE_WHIR_SEED_PTR` | 30624 / `0x77a0` | 1056 / `0x420` | 31680 / `0x7bc0` | WHIR transcript seed and absorb scratch |
+| WHIR_Z_PTR | `__TEMPLATE_WHIR_Z_PTR` | 31680 / `0x7bc0` | 800 / `0x320` | 32480 / `0x7ee0` | Opening-point coordinates |
+| WHIR_POW_PTR | `__TEMPLATE_WHIR_POW_PTR` | 32480 / `0x7ee0` | 8640 / `0x21c0` | 41120 / `0xa0a0` | Deferred OOD and query constraints |
+| WHIR_ACC_PREF_PTR | `__TEMPLATE_WHIR_ACC_PREF_PTR` | 41120 / `0xa0a0` | 32 / `0x20` | 41152 / `0xa0c0` | Accumulated prefix product |
+| WHIR_GAMMA_PTR | `__TEMPLATE_WHIR_GAMMA_PTR` | 41152 / `0xa0c0` | 448 / `0x1c0` | 41600 / `0xa280` | Base-column batching challenges |
+| WHIR_FOLD_CH_PTR | `__TEMPLATE_WHIR_FOLD_CH_PTR` | 41600 / `0xa280` | 128 / `0x80` | 41728 / `0xa300` | Round folding challenges |
+| WHIR_HPO_PTR | `__TEMPLATE_WHIR_HPO_PTR` | 41728 / `0xa300` | 32 / `0x20` | 41760 / `0xa320` | Round-0 high-power offsets |
+| WHIR_FBUF_PTR | `__TEMPLATE_WHIR_FBUF_PTR` | 41760 / `0xa320` | 512 / `0x200` | 42272 / `0xa520` | Folded leaf scratch |
+| WHIR_LEAF_PTR | `__TEMPLATE_WHIR_LEAF_PTR` | 42272 / `0xa520` | 384 / `0x180` | 42656 / `0xa6a0` | Merkle leaf hashing scratch |
+| WHIR_REG_CD | `__TEMPLATE_WHIR_REG_CD` | 42656 / `0xa6a0` | 32 / `0x20` | 42688 / `0xa6c0` | Calldata cursor |
+| WHIR_REG_CLAIM | `__TEMPLATE_WHIR_REG_CLAIM` | 42688 / `0xa6c0` | 32 / `0x20` | 42720 / `0xa6e0` | Current opening claim |
+| WHIR_REG_NUMPOW | `__TEMPLATE_WHIR_REG_NUMPOW` | 42720 / `0xa6e0` | 32 / `0x20` | 42752 / `0xa700` | Deferred constraint count |
+| WHIR_REG_ZIOFF | `__TEMPLATE_WHIR_REG_ZIOFF` | 42752 / `0xa700` | 32 / `0x20` | 42784 / `0xa720` | Opening coordinate cursor |
+| WHIR_REG_CC | `__TEMPLATE_WHIR_REG_CC` | 42784 / `0xa720` | 32 / `0x20` | 42816 / `0xa740` | Current claim correction |
+| WHIR_REG_CURDELIN | `__TEMPLATE_WHIR_REG_CURDELIN` | 42816 / `0xa740` | 32 / `0x20` | 42848 / `0xa760` | Current delinearization challenge |
+| WHIR_BCAP0_PTR | `__TEMPLATE_WHIR_BCAP0_PTR` | 42848 / `0xa760` | 1024 / `0x400` | 43872 / `0xab60` | Base oracle cap |
+| WHIR_QCAP_PTR | `__TEMPLATE_WHIR_QCAP_PTR` | 43872 / `0xab60` | 1024 / `0x400` | 44896 / `0xaf60` | Current oracle cap |
+| WHIR_NCAP_PTR | `__TEMPLATE_WHIR_NCAP_PTR` | 44896 / `0xaf60` | 1024 / `0x400` | 45920 / `0xb360` | Next oracle cap |
+| WHIR_QIDX_BUF_PTR | `__TEMPLATE_WHIR_QIDX_BUF_PTR` | 45920 / `0xb360` | 704 / `0x2c0` | 46624 / `0xb620` | Query indices |
+| WHIR_DRAW_BUF_PTR | `__TEMPLATE_WHIR_DRAW_BUF_PTR` | 46624 / `0xb620` | 768 / `0x300` | 47392 / `0xb920` | Transcript query-draw scratch |
+| WHIR_MONO_PTR | `__TEMPLATE_WHIR_MONO_PTR` | 47392 / `0xb920` | 4096 / `0x1000` | 51488 / `0xc920` | Final polynomial monomials |
+| WHIR_FEVAL_PTR | `__TEMPLATE_WHIR_FEVAL_PTR` | 51488 / `0xc920` | 4096 / `0x1000` | 55584 / `0xd920` | Final polynomial absorb and fold scratch |
 
-Heap end: 47456 / `0xb960`.
+Heap end: 55584 / `0xd920`.
 
 ## SEED word layout
 
@@ -88,11 +88,11 @@ Offsets are relative to the setup start in runtime code.
 | Section | Start | Size | End |
 | --- | ---: | ---: | ---: |
 | STOP | 0 / `0x0` | 1 / `0x1` | 1 / `0x1` |
-| Setup frontier | 1 / `0x1` | 12800 / `0x3200` | 12801 / `0x3201` |
-| Setup cap image | 12801 / `0x3201` | 256 / `0x100` | 13057 / `0x3301` |
-| GKR term table | 13057 / `0x3301` | 3353 / `0xd19` | 16410 / `0x401a` |
+| Setup frontier | 1 / `0x1` | 25600 / `0x6400` | 25601 / `0x6401` |
+| Setup cap image | 25601 / `0x6401` | 1024 / `0x400` | 26625 / `0x6801` |
+| GKR term table | 26625 / `0x6801` | 3353 / `0xd19` | 29978 / `0x751a` |
 
-Setup total: 16410 / `0x401a` bytes. Pinned Keccak256: `7481d41003375d0adff944c7c2fd89ab509e85f6ea871e59d4acd47dd05dfb9d`.
+Setup total: 29978 / `0x751a` bytes. Pinned Keccak256: `9d6c78d51046914dc104375cb218ee90f7382a5e4b879b094b96c338c47774ea`.
 
 
 ## Transcript preimage in IMAGE
@@ -106,15 +106,15 @@ Setup total: 16410 / `0x401a` bytes. Pinned Keccak256: `7481d41003375d0adff944c7
 | Final timestamp low | 388 / `0x184` | 4 / `0x4` | 392 / `0x188` |
 | Final timestamp high | 392 / `0x188` | 4 / `0x4` | 396 / `0x18c` |
 | Inits/teardowns top bits | 396 / `0x18c` | 8 / `0x8` | 404 / `0x194` |
-| Setup cap (from code) | 404 / `0x194` | 256 / `0x100` | 660 / `0x294` |
-| Memory cap (from calldata) | 660 / `0x294` | 256 / `0x100` | 916 / `0x394` |
+| Setup cap (from code) | 404 / `0x194` | 1024 / `0x400` | 1428 / `0x594` |
+| Memory cap (from calldata) | 1428 / `0x594` | 1024 / `0x400` | 2452 / `0x994` |
 
-Preimage length: 916 / `0x394` bytes (`__TEMPLATE_GKR_INIT_PREIMAGE_BYTES`), checked against the decoder layout. Absolute range: 16512 / `0x4080` .. 17428 / `0x4414`.
+Preimage length: 2452 / `0x994` bytes (`__TEMPLATE_GKR_INIT_PREIMAGE_BYTES`), checked against the decoder layout. Absolute range: 16512 / `0x4080` .. 18964 / `0x4a14`.
 
 
 ## Runtime code layout
 
-Let `C = codesize()` and `S = C - SETUP_DATA_BYTES`. The setup data occupies the last 16410 bytes (`0x401a`) of the deployed code. Its internal offsets above are relative to `S`. Endpoints are exclusive.
+Let `C = codesize()` and `S = C - SETUP_DATA_BYTES`. The setup data occupies the last 29978 bytes (`0x751a`) of the deployed code. Its internal offsets above are relative to `S`. Endpoints are exclusive.
 
 | Section | Start | Size | End |
 | --- | --- | --- | --- |

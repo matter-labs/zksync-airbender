@@ -127,6 +127,42 @@ fn cpu_compression_rejects_tampered_streams() {
 }
 
 #[test]
+#[should_panic(expected = "Ethproofs Compression instance count must be in 1..=3")]
+fn ethproofs_compression_rejects_four_instances() {
+    use full_statement_verifier::unified_circuit_statement::verify_unified_circuit_recursion_layer_sec_100_compression_ethproofs_soundcalc;
+    use prover::field::{
+        baby_bear::base::BabyBearField, baby_bear::ext4::BabyBearExt4, FieldExtension,
+    };
+
+    let artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
+        "ethproofs_soundcalc",
+        "compression",
+    ));
+    let setup_words: usize = artifact
+        .setups
+        .values()
+        .map(|params| params.flattened_setup_caps().len())
+        .sum();
+    let challenge_words = <BabyBearExt4 as FieldExtension<BabyBearField>>::DEGREE
+        * prover::definitions::GKRExternalChallenges::<BabyBearField, BabyBearExt4>::TOTAL_CHALLENGES;
+    let count_offset =
+        setup_words + 3 * artifact.proof.register_final_values.len() + 3 + challenge_words;
+    let mut stream = build_unified_stream(
+        &artifact.setups,
+        &artifact.proof,
+        BlakeMode::BlakeSpecialOpcodes,
+    );
+    assert_eq!(stream[count_offset], 1);
+    stream[count_offset] = 4;
+    stream.truncate(count_offset + 1);
+    let _ = verify_unified_circuit_recursion_layer_sec_100_compression_ethproofs_soundcalc::<
+        _,
+        verifier_common::errors::DebugErrorCreator,
+        { verifier_common::USE_REDUCED_BLAKE2_ROUNDS },
+    >(&mut stream.into_iter());
+}
+
+#[test]
 fn supplied_standard_records_refuse_an_l1_chain_without_recomputation() {
     let artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
         "pessimistic_conjecture",

@@ -151,6 +151,71 @@ pub(super) fn compression_artifact(target: ProofTarget, n: usize) -> ProofArtifa
 }
 
 #[test]
+fn ethproofs_compression_gkr_security_margins() {
+    use full_statement_verifier::unified_circuit_statement::ETHPROOFS_COMPRESSION_MAX_INSTANCES;
+    use prover::field::baby_bear::{base::BabyBearField, ext4::BabyBearExt4};
+    use prover::gkr::prover_config::{example_configs, pow_bits};
+
+    let mode = SoundnessMode::EthproofsSoundnessCalc;
+    let artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
+        mode.file_suffix(),
+        "compression",
+    ));
+    let family = CompressionProfile::Step.circuit().get_family_idx() as u32;
+    let circuit = &artifact.proof.compiled_riscv_circuits[&family];
+    let entry = &example_configs::ethproofs_soundcalc::COMPRESSION_2_23;
+    let example_configs::ProximityRegime::JohnsonBound { m } = entry.base_analysis.regime else {
+        panic!("Ethproofs Compression uses a Johnson base");
+    };
+    let loss =
+        ((f64::from(m) + 0.5) * 2.0_f64.powf(entry.base_lde_factor_log2 as f64 / 2.0)).log2();
+    let challenge_bits = 4.0 * (32.0 - 3.0_f64.log2());
+
+    let config = CompressionProfile::Step.config(mode);
+    assert_eq!(circuit.trace_len, 1 << config.trace_len_log2);
+    assert_eq!(
+        config.lookup_challenges_pow_bits::<BabyBearField, BabyBearExt4>(circuit),
+        14
+    );
+    let lookup_bits =
+        challenge_bits + 14.0 - (pow_bits::lookup_identity_degree(circuit) as f64).log2() - loss;
+    assert!(lookup_bits >= 100.0, "lookup: {lookup_bits:.9} bits");
+    let pessimistic = CompressionProfile::Step.config(SoundnessMode::PessimisticConjecture);
+    assert_eq!(
+        pessimistic.lookup_challenges_pow_bits::<BabyBearField, BabyBearExt4>(circuit),
+        9
+    );
+    assert!(example_configs::l1_wrap::ethproofs_packed_prover_config()
+        .lookup_challenges_pow_floor
+        .is_none());
+    assert!(example_configs::l1_wrap::pessimistic_packed_prover_config()
+        .lookup_challenges_pow_floor
+        .is_none());
+
+    let memory_pow_bits = verifier_common::MEMORY_DELEGATION_POW_BITS;
+    assert_eq!(memory_pow_bits, 19);
+    let keys_per_row =
+        circuit.memory_layout.ram_access_sets.len() + 1 + circuit.memory_layout.teardown_sets.len();
+    let boundary_keys = prover::cs::definitions::NUM_REGISTERS + 1;
+    for (k, expected_degree) in [(1, 50_331_681), (2, 100_663_329), (3, 150_994_977)] {
+        let degree = k * circuit.trace_len * keys_per_row + boundary_keys;
+        let bits = challenge_bits - (degree as f64).log2() - 2.0 + memory_pow_bits as f64
+            - k as f64 * loss;
+        eprintln!("memory k={k}, j={k}: degree {degree}, {bits:.9} bits");
+        assert_eq!(degree, expected_degree);
+        assert!(bits >= 100.0, "memory k={k}, j={k}: {bits:.9} bits");
+    }
+    assert_eq!(ETHPROOFS_COMPRESSION_MAX_INSTANCES, 3);
+    assert_eq!(
+        compression_schedule(mode)
+            .iter()
+            .map(|&(_, _, count)| count)
+            .collect::<Vec<_>>(),
+        [3, 2, 1]
+    );
+}
+
+#[test]
 fn compression_artifacts_require_the_fixed_chain_tail() {
     assert_eq!(
         chain_unrolled_layers(&compression_artifact(ProofTarget::Compression, 7)).unwrap(),
