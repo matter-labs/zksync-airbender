@@ -34,9 +34,9 @@ fn query_sets(log_lde: u32, log_leaves: u32, rng: &mut TestRng) -> Vec<(&'static
             vec![
                 query(3, 1),
                 query(3, 1),
-                query(9, 2),
+                query(9, 2 % cosets),
                 query(3, 1),
-                query(9, 2),
+                query(9, 2 % cosets),
             ],
         ),
         (
@@ -56,8 +56,10 @@ fn query_sets(log_lde: u32, log_leaves: u32, rng: &mut TestRng) -> Vec<(&'static
             (0..12).map(|_| (rng.next_u64() as u32) & last).collect(),
         ),
         (
-            "12 random again",
-            (0..12).map(|_| (rng.next_u64() as u32) & last).collect(),
+            "1024 random",
+            (0..MAX_PLAN_QUERIES)
+                .map(|_| (rng.next_u64() as u32) & last)
+                .collect(),
         ),
     ]
 }
@@ -66,7 +68,7 @@ fn query_sets(log_lde: u32, log_leaves: u32, rng: &mut TestRng) -> Vec<(&'static
 fn keccak256_coset_query_plan_matches_cpu() {
     let stream = CudaStream::create().unwrap();
     let mut rng = TestRng::new(0x3110_0001);
-    for (log_lde, log_leaves) in [(7u32, 23u32)] {
+    for (log_lde, log_leaves) in [(1u32, 23u32), (7, 23), (8, 23)] {
         for (name, queries) in query_sets(log_lde, log_leaves, &mut rng) {
             let (touched, active, count) = cpu_coset_query_plan(&queries, log_lde);
             let device_queries = upload(&queries, &stream);

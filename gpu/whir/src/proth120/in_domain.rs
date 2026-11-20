@@ -9,8 +9,6 @@ use super::commit::IntermediateOracle;
 use super::kernels;
 use super::openings::schedule_horner_leaves;
 
-const MAX_LEAF_WIDTH: usize = 32;
-
 pub(crate) struct InDomainState {
     weights: DeviceAllocation<PR>,
     points: DeviceAllocation<PR>,
@@ -19,6 +17,7 @@ pub(crate) struct InDomainState {
     indexes: DeviceAllocation<u32>,
     leaf_points: DeviceAllocation<PR>,
     capacity: usize,
+    max_leaf_width: usize,
     count: usize,
     leaf_stride: usize,
     leaf_width: usize,
@@ -26,16 +25,21 @@ pub(crate) struct InDomainState {
 }
 
 impl InDomainState {
-    pub(crate) fn new(capacity: usize, context: &ProverContext) -> CudaResult<Self> {
+    pub(crate) fn new(
+        capacity: usize,
+        max_leaf_width: usize,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
         let slots = capacity.max(1);
         Ok(Self {
             weights: context.alloc(slots, AllocationPlacement::BestFit)?,
             points: context.alloc(slots, AllocationPlacement::BestFit)?,
             exponents: context.alloc(slots, AllocationPlacement::BestFit)?,
-            leaves: context.alloc(slots * MAX_LEAF_WIDTH, AllocationPlacement::BestFit)?,
+            leaves: context.alloc(slots * max_leaf_width, AllocationPlacement::BestFit)?,
             indexes: context.alloc(slots, AllocationPlacement::BestFit)?,
             leaf_points: context.alloc(slots, AllocationPlacement::BestFit)?,
             capacity,
+            max_leaf_width,
             count: 0,
             leaf_stride: 0,
             leaf_width: 0,
@@ -105,7 +109,7 @@ impl InDomainState {
         );
         self.leaf_stride = 1 << log_v;
         assert!(
-            self.leaf_stride <= MAX_LEAF_WIDTH,
+            self.leaf_stride <= self.max_leaf_width,
             "Proth120 WHIR: in-domain leaf width exceeds scratch capacity"
         );
         self.leaf_width = self.leaf_stride;

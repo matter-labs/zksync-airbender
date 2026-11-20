@@ -201,7 +201,7 @@ fn pr_accumulate_base_matches_cpu() {
         .unwrap();
         memory_copy_async(base.get_uninit_hypercube_evals_mut(), &memory, stream).unwrap();
         memory_copy_async(setup_raw.get_uninit_hypercube_evals_mut(), &setup, stream).unwrap();
-        let mut state = L1WhirState::new(log_rows + pack, 0, &ctx).unwrap();
+        let mut state = L1WhirState::new(log_rows + pack, 0, 32, &ctx).unwrap();
         schedule_accumulate_base(&base, &setup_raw, &powers_dev, &mut state, &ctx).unwrap();
         let expected = accumulate_reference(&memory, &setup, rows, pack, &powers);
 
@@ -298,10 +298,10 @@ fn pr_round_update_matches_cpu() {
     let ctx = context(256);
     let stream = ctx.get_exec_stream();
     let mut rng = TestRng::new(0x7106);
-    for _ in 0..16 {
+    for bits in [0, 9].into_iter().cycle().take(16) {
         let [a, b, d] = [rng.field(), rng.field(), rng.field()];
         let seed: [u8; 32] = std::array::from_fn(|_| rng.next_u64() as u8);
-        let mut state = L1WhirState::new(1, 0, &ctx).unwrap();
+        let mut state = L1WhirState::new(1, 0, 32, &ctx).unwrap();
         memory_copy_async(&mut state.reduce_out, &[a, b, d], stream).unwrap();
         let mut seed_dev = upload(&seed, stream);
         let mut coeffs = upload(&[PR::ZERO; 3], stream);
@@ -312,8 +312,8 @@ fn pr_round_update_matches_cpu() {
             &mut seed_dev,
             &mut coeffs,
             &mut challenge,
-            9,
-            &mut nonce[0],
+            bits,
+            (bits != 0).then(|| &mut nonce[0]),
             &ctx,
         )
         .unwrap();
@@ -333,7 +333,11 @@ fn pr_round_update_matches_cpu() {
             &mut host_seed,
             &got,
         );
-        let expected_nonce = host_pow(&mut host_seed, 9);
+        let expected_nonce = if bits == 0 {
+            0
+        } else {
+            host_pow(&mut host_seed, bits)
+        };
         assert_eq!(download(&nonce, stream), [expected_nonce]);
         let mut host_challenge = [PR::ZERO];
         <Keccak256Transcript as Transcript<PR, PR>>::draw_random_field_elements(
@@ -355,7 +359,7 @@ fn small_oracle_with_leaf(log_n: u32, log_lde: u32, tile_bytes: usize, log_v: u3
     // Production leaf/tree geometry at reduced sizes for an independent CPU cap.
 
     let log_leaves = log_n - log_v;
-    let skip_bottom = 5;
+    let skip_bottom = log_leaves.min(5);
     OracleShape {
         log_n,
         log_lde,
@@ -438,8 +442,8 @@ fn pr_commit_intermediate_matches_cpu_small() {
     let worker = worker();
     let mut rng = TestRng::new(0x7201);
     // The (r, log_v) = (8, 4) suffix with the fused coefficient-tree sink at log_n = 15 and the
-    // residue sink at log_n = 10, both against independent CPU caps.
-    for (log_n, log_lde, passes) in [(15u32, 4u32, 4usize), (10, 8, 4)] {
+    // specialized and generic residue sinks, all against independent CPU caps.
+    for (log_n, log_lde, passes) in [(15u32, 4u32, 4usize), (10, 8, 4), (11, 5, 4)] {
         let cosets = 1usize << log_lde;
         let tile_bytes = (cosets / passes) << (log_n + 4);
         let shape = small_oracle(log_n, log_lde, tile_bytes);
@@ -637,13 +641,19 @@ fn pr_open_intermediate_matches_cpu_small() {
     let mut rng = TestRng::new(0x7130_7eaf);
     // The (r, log_v) = (8, 4) suffix with the fused coefficient-tree sink at log_n = 15 and the
     // residue sink at log_n = 10; the paths include every top-tree level.
-    for (log_n, log_lde, tile_log, log_v) in [(15, 4, 2, 4), (15, 4, 2, 5), (10, 8, 6, 4)] {
+    for (log_n, log_lde, tile_log, log_v) in [
+        (15, 4, 2, 4),
+        (15, 4, 2, 5),
+        (13, 4, 2, 6),
+        (10, 8, 6, 4),
+        (9, 5, 3, 5),
+    ] {
         let shape = opening_oracle(log_n, log_lde, tile_log, log_v);
         let monomials = rng.fields(1 << log_n);
         let twiddles = Twiddles::new(monomials.len(), &worker);
         let cpu =
             ExtCommitment::commit(&monomials, &twiddles, 1 << log_lde, 1 << log_v, 8, &worker);
-        let mut state = L1WhirState::new(log_n, 0, &ctx).unwrap();
+        let mut state = L1WhirState::new(log_n, 0, 32, &ctx).unwrap();
         memory_copy_async(&mut state.monomials, &monomials, stream).unwrap();
         memory_copy_async(&mut state.evals, &monomials, stream).unwrap();
         memory_copy_async(&mut state.eq, &monomials, stream).unwrap();
@@ -704,7 +714,7 @@ fn pr_horner_leaves_match_cpu_small() {
     let stream = ctx.get_exec_stream();
     let worker = worker();
     let mut rng = TestRng::new(0x7130_80a1);
-    for (log_n, log_lde, log_v) in [(10, 8, 4), (15, 4, 5)] {
+    for (log_n, log_lde, log_v) in [(7, 4, 1), (10, 8, 4), (15, 4, 5)] {
         let shape = opening_oracle(log_n, log_lde, log_lde, log_v);
         let monomials = rng.fields(1 << log_n);
         let twiddles = Twiddles::new(monomials.len(), &worker);
@@ -797,13 +807,13 @@ fn pr_transcript_phases_match_reference() {
     let whir = &bundle.proof.whir_proof;
     assert_eq!(whir.whir_schedule, config.whir_schedule);
     assert_eq!(config.whir_message_size_log2(), 24);
-    assert_eq!(config.lde_factor(), 128);
+    assert_eq!(config.lde_factor(), 256);
     assert_eq!(config.cap_size, 8);
-    assert_eq!(config.whir_schedule.fold_steps(), [1, 4, 5, 4, 4]);
-    assert_eq!(config.whir_schedule.queries_per_round(), [12, 11, 7, 5, 4]);
+    assert_eq!(config.whir_schedule.fold_steps(), [1, 4, 4, 4, 5]);
+    assert_eq!(config.whir_schedule.queries_per_round(), [11, 10, 7, 5, 4]);
     assert_eq!(
         config.whir_schedule.queries_pow_bits_per_round(),
-        [30, 27, 30, 30, 30]
+        [27, 25, 30, 30, 30]
     );
     // The WHIR handoff seed comes from the EVM encoder's CPU replay of the fixture proof's GKR
     // transcript (`verifier_evm::encoding::replay_gkr_points`), independent of the GPU prover.
@@ -813,7 +823,7 @@ fn pr_transcript_phases_match_reference() {
         &bundle.operation_mode,
         &config,
     );
-    let shape = L1WhirShape::from_schedule(&config.whir_schedule);
+    let shape = L1WhirShape::from_config(&config);
     assert_whir_transcript_phases(whir, cpu.handoff_seed, &shape);
 }
 
@@ -1108,7 +1118,16 @@ fn run_symbolic_group(
         let mut coeffs = upload(&[PR::ZERO; 3], stream);
         let mut alpha = upload(&[PR::ZERO], stream);
         let mut nonce = upload(&[0u64], stream);
-        schedule_round_update(state, seed, &mut coeffs, &mut alpha, 9, &mut nonce[0], ctx).unwrap();
+        schedule_round_update(
+            state,
+            seed,
+            &mut coeffs,
+            &mut alpha,
+            9,
+            Some(&mut nonce[0]),
+            ctx,
+        )
+        .unwrap();
         let corrected = download(&state.reduce_out, stream);
         let (host_dense, host_query, host_coeffs, host_alpha, host_nonce) = model.step();
         assert_eq!(download(&nonce, stream), [host_nonce]);
@@ -1168,7 +1187,7 @@ fn pr_in_domain_symbolic_matches_dense() {
         query_eq: vec![PR::ZERO; 1 << 15],
         seed: Keccak256Seed(seed_bytes),
     };
-    let mut state = L1WhirState::new(15, 9, &ctx).unwrap();
+    let mut state = L1WhirState::new(15, 9, 32, &ctx).unwrap();
     memory_copy_async(&mut state.monomials, &monomials, stream).unwrap();
     memory_copy_async(&mut state.evals, &evals, stream).unwrap();
     memory_copy_async(&mut state.eq, &eq, stream).unwrap();
@@ -1254,7 +1273,7 @@ impl crate::primitive_tests::PrimitiveField for PR {
         TestRng::new(u64::from(seed)).field()
     }
     fn state(log_n: u32, context: &ProverContext) -> Self::State {
-        L1WhirState::new(log_n, 0, context).unwrap()
+        L1WhirState::new(log_n, 0, 32, context).unwrap()
     }
     fn set_forms(
         state: &mut Self::State,

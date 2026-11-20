@@ -344,7 +344,10 @@ fn dispatch_with_budget(
     for r in [8, 7] {
         let a = log_n - r;
         let tile_bytes = columns.checked_mul(size_of::<PR>() << (skip_bottom + r))?;
-        if a < skip_bottom || r < log_v || tile_bytes > MAX_TILE_BYTES {
+        if a < skip_bottom
+            || !super::suffix::supports_suffix_micro(r, log_v)
+            || tile_bytes > MAX_TILE_BYTES
+        {
             continue;
         }
         let Some(groups) = prefix_groups(a).map(|g| narrow_groups(&g)) else {
@@ -395,7 +398,10 @@ fn dispatch_degraded(
     for r in [8, 7] {
         let a = log_n - r;
         let tile_bytes = columns.checked_mul(size_of::<PR>() << (skip_bottom + r))?;
-        if a < skip_bottom || r < log_v || tile_bytes > MAX_TILE_BYTES {
+        if a < skip_bottom
+            || !super::suffix::supports_suffix_micro(r, log_v)
+            || tile_bytes > MAX_TILE_BYTES
+        {
             continue;
         }
         let Some(groups) = prefix_groups(a).map(|g| narrow_groups(&g)) else {
@@ -436,7 +442,7 @@ pub fn dispatch(
         "Proth120 dispatch requires a non-small wrap shape"
     );
     assert!(
-        columns > 0 && (1..=5).contains(&log_v) && skip_bottom <= log_n - log_v,
+        columns > 0 && (1..=6).contains(&log_v) && skip_bottom <= log_n - log_v,
         "Proth120 dispatch requires valid wrap dimensions"
     );
     let l2_budget = l2_working_set_budget(l2_cache_size_bytes);
@@ -539,11 +545,26 @@ fn validate_coset(scale: &ScaleArgs, log_n: u32, cosets: usize, log_max_domain: 
             "Proth120 prefix: coset {k} out of range"
         ),
         CosetSource::Batched { k0 } => assert!(
-            u64::from(k0) + cosets as u64 <= limit,
+            u64::from(k0) <= limit && cosets as u64 <= limit - u64::from(k0),
             "Proth120 prefix: batched cosets out of range"
         ),
         CosetSource::Slot { .. } => {}
     }
+}
+
+#[cfg(test)]
+#[test]
+#[should_panic(expected = "Proth120 prefix: log_domain 33 outside 13..=32")]
+fn cpu_pr_coset_domain33_rejected() {
+    validate_coset(
+        &ScaleArgs {
+            coset: CosetSource::Constant(0),
+            log_domain: 33,
+        },
+        13,
+        1,
+        super::LOG_MAX_DOMAIN,
+    );
 }
 
 // The first `plan.stages()` stages of the coset LDE of `cols` monomial columns of 2^log_n rows,

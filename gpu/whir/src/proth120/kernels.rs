@@ -462,8 +462,8 @@ pub(crate) fn horner_leaves(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(
-        (8..=26).contains(&log_n) && (1..=5).contains(&log_v),
-        "Proth120 WHIR: Horner geometry outside log_n 8..=26 and log_v 1..=5"
+        log_n <= 26 && (1..=6).contains(&log_v) && log_v <= log_n,
+        "Proth120 WHIR: Horner log_n, log_v geometry unsupported"
     );
     assert!(
         tower_log_k <= 5 && points.len().is_multiple_of(1 << tower_log_k),
@@ -510,7 +510,7 @@ pub(crate) fn extract_paths(
     stream: &CudaStream,
 ) -> CudaResult<()> {
     assert!(
-        (1..=5).contains(&log_v) && log_leaves >= 1 && log_lde + log_leaves <= 30,
+        (1..=6).contains(&log_v) && log_lde + log_leaves <= 31,
         "Proth120 WHIR: path domain geometry invalid"
     );
     assert!(

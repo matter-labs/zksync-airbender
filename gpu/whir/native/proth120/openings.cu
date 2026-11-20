@@ -45,12 +45,16 @@ EXTERN __launch_bounds__(256) __global__ void ab_pr_whir_horner_leaves_kernel(co
   const u32 tid = threadIdx.x;
   const u32 values = 1u << log_v;
   const u32 slot = tid & (values - 1u);
-  const u32 parts = 256u >> log_v;
+  const u32 parts = (1u << min(log_n, 8u)) >> log_v;
   const pr y = points[leaf];
   const pr y_parts = pr::pow(y, parts);
   pr result = pr::ZERO();
-  for (u32 a = 1u << (log_n - 8); a > 0; a--)
-    result = pr::fma(result, y_parts, load_cg(monomials + ((static_cast<u64>(a - 1u) << 8) + tid)));
+  if (log_n >= 8) {
+    for (u32 a = 1u << (log_n - 8); a > 0; a--)
+      result = pr::fma(result, y_parts, load_cg(monomials + ((static_cast<u64>(a - 1u) << 8) + tid)));
+  } else if (tid < (1u << log_n)) {
+    result = load_cg(monomials + tid);
+  }
   partials[tid] = result;
   __syncthreads();
   if (tid >= values)
@@ -80,10 +84,11 @@ EXTERN __launch_bounds__(128) __global__
   const u32 c = q & ((1u << log_lde) - 1u);
   const u32 j = q >> log_lde;
   const u32 k = 1u << skip_bottom;
-  if (lane < (1u << log_v))
-    out_leaves[(static_cast<u64>(query) << log_v) + lane] =
-        leaves[(static_cast<u64>(query) << (skip_bottom + log_v)) + (j & (k - 1u)) + (static_cast<u64>(bitreverse_low_bits(lane, log_v)) << skip_bottom)];
-  if (lane < log_leaves) {
+  for (u32 slot = lane; slot < (1u << log_v); slot += 32)
+    out_leaves[(static_cast<u64>(query) << log_v) + slot] =
+        leaves[(static_cast<u64>(query) << (skip_bottom + log_v)) + (j & (k - 1u)) +
+               (static_cast<u64>(skip_bottom == 0 ? slot : bitreverse_low_bits(slot, log_v)) << skip_bottom)];
+  if (lane < min(log_leaves, path_stride)) {
     const digest sibling = lane < skip_bottom ? towers[static_cast<u64>(query) * (2u * k - 1u) + pr_whir_sibling_offset(skip_bottom, 0, lane, j & (k - 1u))]
                                               : retained[static_cast<u64>(c) * retained_stride + pr_whir_sibling_offset(log_leaves, skip_bottom, lane, j)];
     out_paths[static_cast<u64>(query) * path_stride + lane] = sibling;

@@ -121,6 +121,22 @@ fn sequential_minimum(seed: &Seed, bits: u32) -> u64 {
 }
 
 #[test]
+fn keccak256_pow_bounded_digest_width() {
+    let stream = CudaStream::default();
+    let seed = [0x5c; 32];
+    let bound = 257;
+    for bits in [64, 128, 255, 256] {
+        let expected = (0..bound)
+            .find(|nonce| cpu_predicate(&cpu_digest(&seed, *nonce), bits))
+            .unwrap_or(u64::MAX);
+        let mut state = PowState::new(&seed, 1, &stream);
+        state.search(bits, bound, 2, &stream);
+        assert_eq!(state.read_nonce(&stream), expected);
+        assert_eq!(state.read_seed(&stream), seed);
+    }
+}
+
+#[test]
 fn keccak256_pow_min_nonce_parity() {
     let stream = CudaStream::default();
     let worker = test_worker();

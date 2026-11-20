@@ -478,3 +478,36 @@ pub fn gather_tree_cap(
     let config = CudaLaunchConfig::basic(grid_dim(NAME, cap, BLOCK_THREADS), BLOCK_THREADS, stream);
     GatherCapFunction::default().launch(&config, &args)
 }
+
+// Copy the partial-tree layer containing a cap that cuts through the cosets.
+// Retained trees are stored in logical coset order; cap nodes are in Merkle order.
+pub fn gather_coset_tree_cap(
+    retained: &DeviceSlice<Digest>,
+    log_lde: u32,
+    log_leaves: u32,
+    skip_bottom: u32,
+    cap_log: u32,
+    out: &mut DeviceSlice<Digest>,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    let log_coset_cap = cap_log - log_lde;
+    let cap_layer = log_leaves - log_coset_cap;
+    let layer_offset = retained_layer_offset(log_leaves, skip_bottom, cap_layer);
+    let stride = retained_layer_offset(log_leaves, skip_bottom, log_leaves) + 1;
+    let count = 1usize << log_coset_cap;
+    assert_eq!(out.len(), 1usize << cap_log, "coset tree cap size");
+    for k in 0..1usize << log_lde {
+        let physical = k
+            .reverse_bits()
+            .checked_shr(usize::BITS - log_lde)
+            .unwrap_or(0);
+        let src = k * stride + layer_offset;
+        let dst = physical * count;
+        era_cudart::memory::memory_copy_async(
+            &mut out[dst..dst + count],
+            &retained[src..src + count],
+            stream,
+        )?;
+    }
+    Ok(())
+}

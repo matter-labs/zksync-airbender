@@ -26,7 +26,7 @@ use super::state::{
     schedule_fold_state, schedule_monomial_eval, schedule_monomials, schedule_round_update,
     schedule_three_point, L1WhirState,
 };
-use crate::upstream::{domain_generator_for_size, WhirSchedule};
+use crate::upstream::{domain_generator_for_size, ProverConfig};
 
 use crate::pow::query_words;
 
@@ -165,17 +165,22 @@ pub fn schedule_l1_whir_fold(
     setup: &mut PackedSetupSource<'_>,
     seed: &mut DeviceSlice<u8>,
     inputs: L1WhirInputs<'_>,
-    schedule: &WhirSchedule,
+    config: &ProverConfig,
     target: WhirProofTargetPr,
     context: &ProverContext,
 ) -> CudaResult<L1WhirPendingReadback> {
-    let shape = L1WhirShape::from_schedule(schedule);
+    let shape = L1WhirShape::from_config(config);
     validate_inputs(base, setup, seed, &inputs, &shape);
     let stream = context.get_exec_stream();
     let mut ranges = Vec::new();
     let mut outputs = L1WhirProofDevice::new(&target);
     let phase = start_phase("gkr.whir.pr.accumulate".to_owned(), context)?;
-    let mut state = L1WhirState::new(shape.log_message, shape.term_capacity, context)?;
+    let mut state = L1WhirState::new(
+        shape.log_message,
+        shape.term_capacity,
+        shape.max_internal_leaf_width,
+        context,
+    )?;
     let mut powers = context.alloc(inputs.claims.len(), AllocationPlacement::BestFit)?;
     get_powers_by_ref(
         unsafe { DeviceVariable::from_raw_parts(inputs.batching_challenge.as_ptr()) },
@@ -184,8 +189,7 @@ pub fn schedule_l1_whir_fold(
         stream,
     )?;
     schedule_accumulate_base(base.raw(), setup.raw(), &powers, &mut state, context)?;
-    base.release_raw();
-    setup.release_raw();
+    base.finish_raw_batching();
     schedule_monomials(&mut state, context)?;
     schedule_eq_from_point(inputs.base_layer_point, &mut state, context)?;
     schedule_batched_opening(
@@ -198,6 +202,9 @@ pub fn schedule_l1_whir_fold(
     end_phase(phase, &mut ranges, context)?;
     let mut previous: Option<IntermediateOracle> = None;
     let mut poly_index = 0;
+    let mut folding_nonce_index = 0;
+    let mut ood_sample_index = 0;
+    let mut ood_nonce_index = 0;
     let mut challenge = context.alloc(1, AllocationPlacement::BestFit)?;
     for (r, round) in shape.rounds.iter().enumerate() {
         let phase = start_phase(format!("gkr.whir.pr.round.{r}.folds"), context)?;
@@ -208,13 +215,20 @@ pub fn schedule_l1_whir_fold(
         }
         for _ in 0..round.folds {
             schedule_three_point(&mut state, context)?;
+            let nonce = if round.folding_pow_bits == 0 {
+                None
+            } else {
+                let nonce = &mut outputs.folding_pow_nonces[folding_nonce_index];
+                folding_nonce_index += 1;
+                Some(nonce)
+            };
             schedule_round_update(
                 &mut state,
                 seed,
                 &mut outputs.sumcheck_polys[3 * poly_index..3 * (poly_index + 1)],
                 &mut challenge,
                 round.folding_pow_bits,
-                &mut outputs.folding_pow_nonces[poly_index],
+                nonce,
                 context,
             )?;
             schedule_fold_state(&mut state, &challenge, context)?;
@@ -243,22 +257,30 @@ pub fn schedule_l1_whir_fold(
             None
         };
         end_phase(phase, &mut ranges, context)?;
-        let ood_point = if current.is_some() {
+        let ood_points = if current.is_some() {
             let phase = start_phase(format!("gkr.whir.pr.round.{r}.ood"), context)?;
-            let mut point = context.alloc(1, AllocationPlacement::BestFit)?;
-            let mut counter = context.alloc(1, AllocationPlacement::BestFit)?;
-            keccak256_pow(
-                seed,
-                round.ood_pow_bits,
-                &mut outputs.ood_pow_nonces[r],
-                &mut counter[0],
-                stream,
-            )?;
-            transcript_draw_fields(seed, &mut point, stream)?;
-            schedule_monomial_eval(&state, &point, &mut outputs.ood_samples[r..r + 1], context)?;
-            transcript_commit_fields(seed, &outputs.ood_samples[r..r + 1], stream)?;
+            let mut points = context.alloc(round.ood_samples, AllocationPlacement::BestFit)?;
+            if round.ood_pow_bits != 0 {
+                let mut counter = context.alloc(1, AllocationPlacement::BestFit)?;
+                keccak256_pow(
+                    seed,
+                    round.ood_pow_bits,
+                    &mut outputs.ood_pow_nonces[ood_nonce_index],
+                    &mut counter[0],
+                    stream,
+                )?;
+                ood_nonce_index += 1;
+            }
+            transcript_draw_fields(seed, &mut points, stream)?;
+            let samples =
+                &mut outputs.ood_samples[ood_sample_index..ood_sample_index + round.ood_samples];
+            for i in 0..round.ood_samples {
+                schedule_monomial_eval(&state, &points[i..i + 1], &mut samples[i..i + 1], context)?;
+            }
+            ood_sample_index += round.ood_samples;
+            transcript_commit_fields(seed, samples, stream)?;
             end_phase(phase, &mut ranges, context)?;
-            Some(point)
+            Some(points)
         } else {
             None
         };
@@ -272,11 +294,21 @@ pub fn schedule_l1_whir_fold(
             context,
         )?;
         let weights = if current.is_some() {
-            Some(schedule_delinearization(seed, round.queries, context)?)
+            Some(schedule_delinearization(
+                seed,
+                round.queries + round.ood_samples - 1,
+                context,
+            )?)
         } else {
             None
         };
         end_phase(phase, &mut ranges, context)?;
+        if r == 0 {
+            let phase = start_phase("gkr.whir.pr.round.0.repack".into(), context)?;
+            base.prepare_opening(context)?;
+            setup.prepare_opening(context)?;
+            end_phase(phase, &mut ranges, context)?;
+        }
         let phase = start_phase(format!("gkr.whir.pr.round.{r}.openings"), context)?;
         if r == 0 {
             let log_lde = base
@@ -323,16 +355,18 @@ pub fn schedule_l1_whir_fold(
             drop(previous.take());
         }
         end_phase(phase, &mut ranges, context)?;
-        if let (Some(point), Some(weights)) = (ood_point.as_ref(), weights.as_ref()) {
+        if let (Some(points), Some(weights)) = (ood_points.as_ref(), weights.as_ref()) {
             let phase = start_phase(format!("gkr.whir.pr.round.{r}.eq"), context)?;
             state.in_domain.append(
                 &indexes,
-                &weights[1..],
+                &weights[round.ood_samples..],
                 round.query_domain_log2,
                 domain_generator_for_size::<PR>(1u64 << round.query_domain_log2),
                 context,
             )?;
-            schedule_eq_update(&mut state, point, &weights[..1], context)?;
+            for i in 0..round.ood_samples {
+                schedule_eq_update(&mut state, &points[i..i + 1], &weights[i..i + 1], context)?;
+            }
             end_phase(phase, &mut ranges, context)?;
         }
         previous = current;
@@ -347,7 +381,7 @@ pub fn schedule_l1_whir_fold(
     drop(outputs);
     Ok(L1WhirPendingReadback {
         layout: Arc::clone(&target.layout),
-        schedule: schedule.clone(),
+        schedule: config.whir_schedule.clone(),
         setup_cap: setup.host.cap().cap,
         tracing_ranges: ranges,
     })

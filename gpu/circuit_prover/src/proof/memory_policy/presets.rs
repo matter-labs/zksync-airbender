@@ -74,6 +74,24 @@ pub fn persists_memory_partial_trees(circuit: CircuitType, profile: ProofProfile
 #[cfg(test)]
 mod cpu_tests {
     use super::*;
+    use crate::proof::memory_policy::WitnessPostCommitStorage;
+
+    #[test]
+    fn cpu_l1_wrap_prefix_reuse_preset() {
+        use WitnessPostCommitStorage::RawAndMonomials;
+
+        let [tight, roomy] = PRESET_ARENA_BYTES else {
+            panic!("L1 wrap memory schedule test requires both arena presets");
+        };
+        for (circuit, arena, expected) in [
+            (CircuitType::L1Wrap, *tight, RawAndMonomials),
+            (CircuitType::L1Wrap, *roomy, RawAndMonomials),
+        ] {
+            let selected = policy(circuit, ProofProfile::L1Wrap, arena);
+            assert!(selected.witness.is_valid());
+            assert_eq!(selected.witness.post_commitment, expected);
+        }
+    }
     #[test]
     #[should_panic(expected = "ProofProfile::CompressionFinal requires")]
     fn cpu_compression_final_requires_unified22() {

@@ -28,11 +28,16 @@ impl L1WrapPrecomputed {
         setup: L1WrapSetup,
         soundness_mode: SoundnessMode,
     ) -> Self {
-        // The wrap's config is resolved at setup initialization; refuse an
-        // unsupported soundness_mode here, before any setup work.
-        ProofProfile::L1Wrap
-            .config_profile()
-            .assert_supports(soundness_mode);
+        let config = ProofProfile::L1Wrap
+            .prover_config(circuit_type.get_domain_size_log2() as usize, soundness_mode);
+        Self::with_config(circuit_type, setup, config)
+    }
+
+    pub(crate) fn with_config(
+        circuit_type: CircuitType,
+        setup: L1WrapSetup,
+        config: ProverConfig,
+    ) -> Self {
         assert!(
             circuit_type.is_l1_wrap(),
             "an L1 wrap setup needs an L1 wrap circuit, got {circuit_type:?}"
@@ -44,8 +49,7 @@ impl L1WrapPrecomputed {
             setup.rom
         );
         Self {
-            config: ProofProfile::L1Wrap
-                .prover_config(circuit_type.get_domain_size_log2() as usize, soundness_mode),
+            config,
             setup,
             committed: OnceLock::new(),
         }

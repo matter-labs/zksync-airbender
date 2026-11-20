@@ -45,6 +45,7 @@ pub(crate) use prover::gkr::prover::{GKRProof, WhirSchedule};
 pub(crate) use prover::gkr::prover_config::commitment_geometry::{
     BaseCommitmentGeometry, BaseOracleRole,
 };
+pub(crate) use prover::gkr::prover_config::example_configs::l1_wrap::EXPLICIT_OUTPUT_LOG2 as L1_WRAP_EXPLICIT_OUTPUT_LOG2;
 pub(crate) use prover::gkr::prover_config::pow_bits;
 pub(crate) use prover::gkr::prover_config::BaseColumns;
 pub(crate) use prover::gkr::prover_config::{ProofProfile, ProverConfig};

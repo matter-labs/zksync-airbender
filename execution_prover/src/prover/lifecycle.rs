@@ -112,6 +112,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             trace_chunk_sets_receiver,
             binary_holders,
             next_binary_id: 0,
+            l1_whir_schedule: None,
             common_precomputations,
             free_allocators_sender,
             free_allocators_receiver,

@@ -17,7 +17,12 @@ use super::super::packed::{
 };
 use crate::trace::holder::{TraceHolder, TreesCacheMode, PARTIAL_TREE_REDUCTION_LAYERS};
 
-fn check_packed(raw_columns: usize, open: bool) {
+fn check_packed(
+    raw_columns: usize,
+    query_count: usize,
+    log_lde_factor: u32,
+    log_values_per_leaf: u32,
+) {
     let context = ProverContext::new(&ProverContextConfig {
         device_allocation_blocks_count: Some(512),
         host_allocator_blocks_count: 256,
@@ -27,16 +32,14 @@ fn check_packed(raw_columns: usize, open: bool) {
     let stream = context.get_exec_stream();
     let baseline = context.get_used_mem_current();
     {
-        // Fewer rows (2^15) and cosets (LDE factor 16) than production, with its pack_log2 = 3,
-        // base and setup widths (96 and 10 columns: 12 and 2 packed), log_values_per_leaf = 1
-        // and skip_bottom = 10. LDE factor 16 with cap size 8 leaves one top-tree path level as
-        // well as all within-coset levels.
+        // Reduced traces with production column packing. A cap of eight has one
+        // top layer at LDE 16 and lies below the coset roots at LDE 2.
         let log_rows = 15;
         let pack_log2 = 3;
         let log_packed = log_rows + pack_log2;
         let cfg = PackedCommitConfig {
-            log_lde_factor: 4,
-            log_values_per_leaf: 1,
+            log_lde_factor,
+            log_values_per_leaf,
             cap_log: 3,
             skip_bottom: 10,
         };
@@ -99,12 +102,12 @@ fn check_packed(raw_columns: usize, open: bool) {
             super::download(oracle.raw().get_hypercube_evals(), stream),
             flat
         );
-        if open {
+        if query_count != 0 {
             let h = log_packed - cfg.log_values_per_leaf;
             let last = (1u32 << h) - 1;
             let coset_mask = (1 << cfg.log_lde_factor) - 1;
             // Touched cosets first seen in the order [last, 1, 0], duplicate queries, several
-            // queries in one coset, the final leaf, and 12 queries in total.
+            // queries in one coset, and the final leaf.
             let queries: Vec<u32> = [
                 (last, coset_mask),
                 (0, 1),
@@ -120,6 +123,8 @@ fn check_packed(raw_columns: usize, open: bool) {
                 (last - 1, 1),
             ]
             .into_iter()
+            .cycle()
+            .take(query_count)
             .map(|(j, k)| (j << cfg.log_lde_factor) | k)
             .collect();
             let expected = cpu.query_many(
@@ -215,7 +220,7 @@ fn check_packed(raw_columns: usize, open: bool) {
 #[cfg(not(no_cuda))]
 fn sink_commit_matches_reference() {
     for columns in [96, 10] {
-        check_packed(columns, false);
+        check_packed(columns, 0, 4, 1);
     }
 }
 
@@ -223,6 +228,25 @@ fn sink_commit_matches_reference() {
 #[cfg(not(no_cuda))]
 fn sink_open_queries_matches_gathers() {
     for columns in [96, 10] {
-        check_packed(columns, true);
+        check_packed(columns, 12, 4, 1);
+        check_packed(columns, 12, 1, 2);
     }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn sink_fold3_main_matches_reference() {
+    check_packed(96, 12, 2, 3);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn sink_fold3_setup_matches_reference() {
+    check_packed(10, 12, 4, 3);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn sink_open_queries_multiple_batches_match_reference() {
+    check_packed(10, 1025, 1, 3);
 }

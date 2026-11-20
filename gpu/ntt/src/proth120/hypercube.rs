@@ -39,22 +39,64 @@ mobius_kernel!(ab_pr_mobius_final_10_stages_kernel);
 mobius_kernel!(ab_pr_mobius_final_12_stages_kernel);
 mobius_kernel!(ab_pr_mobius_small_kernel);
 
-pub(crate) struct MobiusPolicy;
+mobius_kernel!(ab_pr_inverse_mobius_small_kernel);
+mobius_kernel!(ab_pr_inverse_mobius_nonfinal_5_stages_kernel);
+mobius_kernel!(ab_pr_inverse_mobius_nonfinal_6_stages_kernel);
+mobius_kernel!(ab_pr_inverse_mobius_nonfinal_7_stages_kernel);
+mobius_kernel!(ab_pr_inverse_mobius_nonfinal_8_stages_kernel);
+mobius_kernel!(ab_pr_inverse_mobius_final_8_stages_kernel);
+mobius_kernel!(ab_pr_inverse_mobius_final_10_stages_kernel);
+mobius_kernel!(ab_pr_inverse_mobius_final_12_stages_kernel);
+
+struct MobiusPolicy {
+    inverse: bool,
+}
+
+const FORWARD: MobiusPolicy = MobiusPolicy { inverse: false };
+const INVERSE: MobiusPolicy = MobiusPolicy { inverse: true };
+
+#[cfg(test)]
+pub(super) fn forward_mobius_policy() -> impl TransformPolicy {
+    FORWARD
+}
+
 impl TransformPolicy for MobiusPolicy {
     type Function = MobiusFunction;
     type Arguments = MobiusArguments;
     fn function(&self, pass: TransformPass) -> MobiusFunction {
-        MobiusFunction(match pass {
-            TransformPass::Small => ab_pr_mobius_small_kernel,
-            TransformPass::Nonfinal(5) => ab_pr_mobius_nonfinal_5_stages_kernel,
-            TransformPass::Nonfinal(6) => ab_pr_mobius_nonfinal_6_stages_kernel,
-            TransformPass::Nonfinal(7) => ab_pr_mobius_nonfinal_7_stages_kernel,
-            TransformPass::Nonfinal(8) => ab_pr_mobius_nonfinal_8_stages_kernel,
-            TransformPass::Final(8) => ab_pr_mobius_final_8_stages_kernel,
-            TransformPass::Final(10) => ab_pr_mobius_final_10_stages_kernel,
-            TransformPass::Final(12) => ab_pr_mobius_final_12_stages_kernel,
+        let (forward, inverse): (MobiusSignature, MobiusSignature) = match pass {
+            TransformPass::Small => (ab_pr_mobius_small_kernel, ab_pr_inverse_mobius_small_kernel),
+            TransformPass::Nonfinal(5) => (
+                ab_pr_mobius_nonfinal_5_stages_kernel,
+                ab_pr_inverse_mobius_nonfinal_5_stages_kernel,
+            ),
+            TransformPass::Nonfinal(6) => (
+                ab_pr_mobius_nonfinal_6_stages_kernel,
+                ab_pr_inverse_mobius_nonfinal_6_stages_kernel,
+            ),
+            TransformPass::Nonfinal(7) => (
+                ab_pr_mobius_nonfinal_7_stages_kernel,
+                ab_pr_inverse_mobius_nonfinal_7_stages_kernel,
+            ),
+            TransformPass::Nonfinal(8) => (
+                ab_pr_mobius_nonfinal_8_stages_kernel,
+                ab_pr_inverse_mobius_nonfinal_8_stages_kernel,
+            ),
+            TransformPass::Final(8) => (
+                ab_pr_mobius_final_8_stages_kernel,
+                ab_pr_inverse_mobius_final_8_stages_kernel,
+            ),
+            TransformPass::Final(10) => (
+                ab_pr_mobius_final_10_stages_kernel,
+                ab_pr_inverse_mobius_final_10_stages_kernel,
+            ),
+            TransformPass::Final(12) => (
+                ab_pr_mobius_final_12_stages_kernel,
+                ab_pr_inverse_mobius_final_12_stages_kernel,
+            ),
             _ => panic!("Proth120 hypercube transform: unsupported transform pass {pass:?}"),
-        })
+        };
+        MobiusFunction(if self.inverse { inverse } else { forward })
     }
     fn arguments(
         &self,
@@ -71,6 +113,15 @@ impl TransformPolicy for MobiusPolicy {
 pub fn hypercube_evals_to_monomials(
     inputs: &(impl DeviceMatrixChunkImpl<PR> + ?Sized),
     outputs: &mut (impl DeviceMatrixChunkMutImpl<PR> + ?Sized),
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    hypercube_transform(inputs, outputs, &FORWARD, stream)
+}
+
+fn hypercube_transform(
+    inputs: &(impl DeviceMatrixChunkImpl<PR> + ?Sized),
+    outputs: &mut (impl DeviceMatrixChunkMutImpl<PR> + ?Sized),
+    policy: &MobiusPolicy,
     stream: &CudaStream,
 ) -> CudaResult<()> {
     let (log_n, input_range) = validate_matrix(inputs, 0, 26, "Proth120 hypercube input");
@@ -91,7 +142,7 @@ pub fn hypercube_evals_to_monomials(
         "Proth120 hypercube transform: input/output overlap",
     );
     launch_transform(
-        &MobiusPolicy,
+        policy,
         inputs.as_ptr_and_stride(),
         outputs.as_mut_ptr_and_stride(),
         log_n,
@@ -106,6 +157,26 @@ pub fn hypercube_evals_to_monomials(
 pub fn hypercube_evals_to_monomials_chunked(
     inputs: &(impl DeviceMatrixChunkImpl<PR> + ?Sized),
     outputs: &mut (impl DeviceMatrixChunkMutImpl<PR> + ?Sized),
+    l2_cache_size_bytes: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    hypercube_transform_chunked(inputs, outputs, &FORWARD, l2_cache_size_bytes, stream)
+}
+
+/// Restore the hypercube evaluations from packed coefficients into a disjoint matrix.
+pub fn monomials_to_hypercube_evals_chunked(
+    inputs: &(impl DeviceMatrixChunkImpl<PR> + ?Sized),
+    outputs: &mut (impl DeviceMatrixChunkMutImpl<PR> + ?Sized),
+    l2_cache_size_bytes: usize,
+    stream: &CudaStream,
+) -> CudaResult<()> {
+    hypercube_transform_chunked(inputs, outputs, &INVERSE, l2_cache_size_bytes, stream)
+}
+
+fn hypercube_transform_chunked(
+    inputs: &(impl DeviceMatrixChunkImpl<PR> + ?Sized),
+    outputs: &mut (impl DeviceMatrixChunkMutImpl<PR> + ?Sized),
+    policy: &MobiusPolicy,
     l2_cache_size_bytes: usize,
     stream: &CudaStream,
 ) -> CudaResult<()> {
@@ -125,7 +196,7 @@ pub fn hypercube_evals_to_monomials_chunked(
                 .find(|plan| 2 * plan.chunk_bytes() <= budget)
         });
     let Some(plan) = plan else {
-        return hypercube_evals_to_monomials(inputs, outputs, stream);
+        return hypercube_transform(inputs, outputs, policy, stream);
     };
     let (_, input_range) = validate_matrix(inputs, 0, 26, "Proth120 hypercube input");
     let (_, output_range) = validate_matrix(outputs, 0, 26, "Proth120 hypercube output");
@@ -147,7 +218,7 @@ pub fn hypercube_evals_to_monomials_chunked(
     let cols = outputs.cols();
     let target = outputs.as_mut_ptr_and_stride();
     launch_prefix_chunked(
-        &MobiusPolicy,
+        policy,
         inputs.as_ptr_and_stride(),
         target,
         cols,
@@ -155,7 +226,7 @@ pub fn hypercube_evals_to_monomials_chunked(
         None,
         stream,
     )?;
-    launch_final_pass(&MobiusPolicy, target, log_n, plan.stages(), cols, stream)
+    launch_final_pass(policy, target, log_n, plan.stages(), cols, stream)
 }
 
 pub(crate) fn hypercube_evals_to_monomials_in_place(
@@ -166,7 +237,7 @@ pub(crate) fn hypercube_evals_to_monomials_in_place(
     let cols = values.cols();
     let target = values.as_mut_ptr_and_stride();
     let source = PtrAndStride::new(target.ptr as *const PR, target.stride);
-    launch_transform(&MobiusPolicy, source, target, log_n, cols, stream)
+    launch_transform(&FORWARD, source, target, log_n, cols, stream)
 }
 
 #[repr(C)]

@@ -9,7 +9,7 @@ use gpu_core::primitives::field::PR;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use super::context as pr_twiddles;
-use super::hypercube::MobiusPolicy;
+use super::hypercube::forward_mobius_policy;
 use super::lde::{
     launch_transform, set_max_dynamic_smem, ChunkMap, TransformPass, TransformPolicy,
 };
@@ -373,7 +373,15 @@ fn pr_prefix_chunked_mobius_cpu_parity() {
         (16, vec![(8, false)], 12),
         (19, vec![(6, false), (5, false)], 2),
     ] {
-        let plan = prefix_case(&MobiusPolicy, None, log_n, &groups, cols, &mut rng, &stream);
+        let plan = prefix_case(
+            &forward_mobius_policy(),
+            None,
+            log_n,
+            &groups,
+            cols,
+            &mut rng,
+            &stream,
+        );
         println!(
             "pr_prefix_chunked_mobius_cpu_parity: n {log_n} prefix {} strips {} x {}, 0 mismatches",
             groups_text(&plan),

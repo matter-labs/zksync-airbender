@@ -147,9 +147,14 @@ cuda_kernel!(
     ab_keccak256_pow_finalize_kernel(seed_io: *mut u8, bits: u32, nonce: *const u64)
 );
 
+pub const MAX_POW_BITS: u32 = 256;
+
 fn pow_shape(name: &str, seed: &DeviceSlice<u8>, bits: u32, nonce: &DeviceVariable<u64>) {
     assert_seed(name, seed);
-    assert!(bits <= 256, "keccak256::{name}: bits <= 256");
+    assert!(
+        bits <= MAX_POW_BITS,
+        "keccak256::{name}: bits <= {MAX_POW_BITS}"
+    );
     assert_no_overlap(name, seed, nonce);
 }
 

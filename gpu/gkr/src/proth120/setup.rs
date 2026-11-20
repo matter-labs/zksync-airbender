@@ -25,7 +25,6 @@ pub struct L1WrapSetupHost {
     pub pack_log2: u32,
     pub cfg: PackedCommitConfig,
     raw_hypercube_evals: Arc<StaticPinnedBox<PR>>,
-    packed_monomials: Arc<StaticPinnedBox<PR>>,
     retained: Arc<StaticPinnedBox<Digest>>,
     pub(crate) roots: Arc<StaticPinnedBox<Digest>>,
     top_nodes: Arc<StaticPinnedBox<Digest>>,
@@ -76,7 +75,8 @@ impl L1WrapSetupHost {
             .expect("L1WrapSetupHost: log_values_per_leaf exceeds log_packed");
         assert_eq!(
             cfg.skip_bottom,
-            Self::PARTIAL_TREE_REDUCTION_LAYERS.min(log_leaves),
+            Self::PARTIAL_TREE_REDUCTION_LAYERS
+                .min(log_leaves - cfg.cap_log.saturating_sub(cfg.log_lde_factor)),
             "L1WrapSetupHost: host partial-tree depth must be canonical"
         );
         let len = columns_count
@@ -122,7 +122,6 @@ impl L1WrapSetupHost {
         )?;
         drop(twiddle_factors);
         oracle.commit(&cfg, twiddles, context)?;
-        let packed_monomials = copy_to_pinned(oracle.monomials(), context)?;
         let retained = copy_to_pinned(oracle.uninit_retained_mut(), context)?;
         let roots = copy_to_pinned(oracle.uninit_roots_mut(), context)?;
         let top_nodes = copy_to_pinned(oracle.uninit_top_nodes_mut(), context)?;
@@ -134,7 +133,6 @@ impl L1WrapSetupHost {
             pack_log2,
             cfg,
             raw_hypercube_evals: Arc::new(raw_hypercube_evals),
-            packed_monomials: Arc::new(packed_monomials),
             retained: Arc::new(retained),
             roots: Arc::new(roots),
             top_nodes: Arc::new(top_nodes),
@@ -169,7 +167,8 @@ impl<'a> PackedSetupSource<'a> {
             L1WrapSetupHost::PARTIAL_TREE_REDUCTION_LAYERS,
             context,
         )?;
-        let oracle = PackedCosetRecomputeOracle::from_uploaded(raw, host.pack_log2, cfg, context)?;
+        let oracle =
+            PackedCosetRecomputeOracle::from_uploaded_tree(raw, host.pack_log2, cfg, context)?;
         Ok(Self {
             host,
             oracle,
@@ -192,11 +191,6 @@ impl<'a> PackedSetupSource<'a> {
             stream,
         )?;
         memory_copy_async(
-            self.oracle.uninit_monomials_mut(),
-            &self.host.packed_monomials[..],
-            stream,
-        )?;
-        memory_copy_async(
             self.oracle.uninit_retained_mut(),
             &self.host.retained[..],
             stream,
@@ -214,7 +208,7 @@ impl<'a> PackedSetupSource<'a> {
     }
 
     pub fn open_queries(
-        &self,
+        &mut self,
         plan: &CosetQueryPlan,
         queries: &DeviceSlice<u32>,
         leaves: &mut DeviceSlice<PR>,
@@ -240,8 +234,8 @@ impl<'a> PackedSetupSource<'a> {
     pub fn raw(&self) -> &TraceHolder<PR> {
         self.oracle.raw()
     }
-    pub fn release_raw(&mut self) {
-        self.oracle.release_raw();
+    pub fn prepare_opening(&mut self, context: &ProverContext) -> CudaResult<()> {
+        self.oracle.prepare_opening(context)
     }
     pub fn release_commitment_state(&mut self) {
         self.oracle.release_commitment_state();

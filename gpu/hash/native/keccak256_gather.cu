@@ -15,7 +15,7 @@ EXTERN __global__ void ab_keccak256_append_top_paths_kernel(const digest *roots,
   const u32 leaf = query >> log_lde;
   const u32 depth = log_coset_leaves + log_lde - cap_log;
   tree_indexes[index] = (physical << log_coset_leaves) + leaf;
-  for (u32 layer = 0; layer < log_lde - cap_log; layer++) {
+  for (u32 layer = 0; layer + cap_log < log_lde; layer++) {
     const u64 sibling = (physical >> layer) ^ 1;
     const digest value = layer == 0 ? roots[sibling] : top_nodes[cosets - (cosets >> (layer - 1)) + sibling];
     paths[index * depth + log_coset_leaves + layer] = value;
@@ -43,7 +43,7 @@ EXTERN __launch_bounds__(128) __global__
   for (u32 i = tid; i < width; i += blockDim.x)
     subtree[i] = nodes[((leaf >> skip_bottom) << (skip_bottom - 3)) + i];
   __syncthreads();
-  for (u32 layer = 3; layer < skip_bottom; layer++) {
+  for (u32 layer = 3; layer < min(skip_bottom, depth); layer++) {
     const u32 count = 1u << (skip_bottom - layer);
     if (tid == 0)
       path[layer] = subtree[((leaf >> layer) & (count - 1)) ^ 1];
@@ -57,12 +57,12 @@ EXTERN __launch_bounds__(128) __global__
   }
   const digest *retained = retained_all + static_cast<u64>(*coset) * retained_stride;
   const u64 leaves = u64{1} << log_leaves;
-  for (u32 layer = skip_bottom + tid; layer < log_leaves; layer += blockDim.x)
+  for (u32 layer = skip_bottom + tid; layer < min(log_leaves, depth); layer += blockDim.x)
     path[layer] = retained[2 * (leaves >> skip_bottom) - 2 * (leaves >> layer) + ((leaf >> layer) ^ 1)];
 }
 
 // Distinct physical cosets of the queries in first-occurrence order: touched[s] (s < count), count, and active[s] = s < count
-// (inactive slots get touched 0). One warp, thread = query.
+// (inactive slots get touched 0). One block, thread = query.
 EXTERN __launch_bounds__(1024) __global__
     void ab_keccak256_coset_query_plan_kernel(const u32 *queries, const u32 count, const u32 log_lde, u32 *touched, u32 *active, u32 *touched_count) {
   __shared__ u32 first[1u << 12];

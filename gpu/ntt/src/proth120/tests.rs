@@ -3,12 +3,15 @@ use std::ops::Range;
 use era_cudart::memory::{memory_copy, memory_copy_async, DeviceAllocation};
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
-use gpu_core::primitives::device_structures::{DeviceMatrixChunk, DeviceMatrixChunkMut};
+use gpu_core::primitives::device_structures::{
+    DeviceMatrix, DeviceMatrixChunk, DeviceMatrixChunkMut, DeviceMatrixMut,
+};
 use gpu_core::primitives::field::PR;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use super::hypercube::hypercube_evals_to_monomials_in_place;
 use super::{hypercube_evals_to_monomials, pack_hypercubes_to_monomials, update_eq_poly, EqSample};
+use super::{hypercube_evals_to_monomials_chunked, monomials_to_hypercube_evals_chunked};
 use crate::upstream::{
     multivariate_hypercube_evals_into_coeffs_radix4, Backend, Field, GenericAllocationPool,
     Proth120WorkStealingLazyBackend, Worker,
@@ -66,6 +69,58 @@ fn assert_guards(values: &[PR], payload: Range<usize>) {
     assert!(values[payload.end..]
         .iter()
         .all(|value| value.0 == SENTINEL.0));
+}
+
+#[cfg(not(no_cuda))]
+fn check_packed_inverse_round_trip(trace_log: u32) {
+    let rows = 1usize << (trace_log + 3);
+    // Two packed columns span independent raw-column groups at each production row count.
+    let elements = rows * 2;
+    let mut raw = Vec::with_capacity(elements);
+    for index in 0..elements {
+        let value = (index as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15) as u128;
+        raw.push(if index % 7 == 0 {
+            PR::new(PR::ORDER - 1 - value)
+        } else {
+            PR::new(value)
+        });
+    }
+    let stream = CudaStream::create().unwrap();
+    let input = upload(&raw);
+    let mut monomials = DeviceAllocation::<PR>::alloc(raw.len()).unwrap();
+    let mut restored = DeviceAllocation::<PR>::alloc(raw.len()).unwrap();
+    const L2: usize = 128 << 20;
+    hypercube_evals_to_monomials_chunked(
+        &DeviceMatrix::new(&input, rows),
+        &mut DeviceMatrixMut::new(&mut monomials, rows),
+        L2,
+        &stream,
+    )
+    .unwrap();
+    monomials_to_hypercube_evals_chunked(
+        &DeviceMatrix::new(&monomials, rows),
+        &mut DeviceMatrixMut::new(&mut restored, rows),
+        L2,
+        &stream,
+    )
+    .unwrap();
+    const READBACK: usize = 1 << 20;
+    for start in (0..raw.len()).step_by(READBACK) {
+        let end = start + READBACK;
+        assert_raw_eq(&download(&restored[start..end], &stream), &raw[start..end]);
+    }
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn pr_packed_inverse_round_trip_2_21() {
+    check_packed_inverse_round_trip(21);
+}
+
+#[test]
+#[cfg(not(no_cuda))]
+fn pr_packed_inverse_round_trip_2_22() {
+    check_packed_inverse_round_trip(22);
 }
 
 fn assert_matrix_output(actual: &[PR], expected: &[Vec<PR>], rows: usize, stride: usize) {

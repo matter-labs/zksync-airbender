@@ -86,16 +86,35 @@ impl WhirProofLayoutPr {
             });
         }
         log_n -= folds.last().copied().unwrap();
+        let folding_pow_count = folds
+            .iter()
+            .copied()
+            .zip(
+                std::iter::once(schedule.base_round.folding_pow_bits).chain(
+                    schedule
+                        .internal_rounds
+                        .iter()
+                        .map(|round| round.folding_pow_bits),
+                ),
+            )
+            .filter(|&(_, bits)| bits != 0)
+            .map(|(folds, _)| folds)
+            .sum();
+        let ood_pow_count = schedule
+            .internal_rounds
+            .iter()
+            .filter(|round| round.ood_pow_bits != 0)
+            .count();
         Self {
             memory,
             setup,
             intermediate,
             memory_cap: digests(cursor, 1 << cap_log),
-            ood_samples: fields(cursor, folds.len() - 1),
+            ood_samples: fields(cursor, schedule.total_ood_samples()),
             sumcheck_polys: fields(cursor, product(folds.iter().sum(), 3)),
             pow_nonces: section(cursor, product(folds.len(), size_of::<u64>())),
-            folding_pow_nonces: section(cursor, product(folds.iter().sum(), size_of::<u64>())),
-            ood_pow_nonces: section(cursor, product(folds.len() - 1, size_of::<u64>())),
+            folding_pow_nonces: section(cursor, product(folding_pow_count, size_of::<u64>())),
+            ood_pow_nonces: section(cursor, product(ood_pow_count, size_of::<u64>())),
             final_monomials: fields(cursor, 1 << log_n),
             batched_opening: fields(cursor, 1),
         }

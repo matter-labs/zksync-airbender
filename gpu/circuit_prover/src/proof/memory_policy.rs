@@ -24,6 +24,15 @@ impl WitnessMemoryPolicy {
     pub const fn is_valid(self) -> bool {
         use WitnessCommitmentStrategy as Commit;
         use WitnessPostCommitStorage as Store;
+        if matches!(self.opening, WitnessOpeningStrategy::PackedCosetRecompute) {
+            return matches!(
+                (self.commitment, self.post_commitment),
+                (
+                    Commit::PerCoset,
+                    Store::RawAndMonomials | Store::RawWithReusedPrefixScratch
+                )
+            );
+        }
         let storage_available = matches!(
             (self.commitment, self.post_commitment),
             (Commit::AllCosets, _)
@@ -40,10 +49,6 @@ impl WitnessMemoryPolicy {
                     | (
                         Store::RawEvaluations | Store::RawAndMonomials,
                         WitnessOpeningStrategy::Recompute(_)
-                    )
-                    | (
-                        Store::RawAndMonomials,
-                        WitnessOpeningStrategy::PackedCosetRecompute
                     )
             )
     }
