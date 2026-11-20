@@ -407,6 +407,7 @@ contract WhirVerifier {
             }
         }
 
+        // __ORACLE_ROOTS__
         function do_query(r, fold, qib, vp, delin, cb, qq) {
             let cp := mload(__TEMPLATE_WHIR_REG_CD)
             let cur := mulmod(mload(__TEMPLATE_WHIR_REG_CURDELIN), delin, P)
@@ -434,7 +435,7 @@ contract WhirVerifier {
             switch r
             case 0 { folded := fold_coset(fold, powmod(__TEMPLATE_WHIR_GEN_INV, qidx)) }
             default { folded := fold_multilinear(fold) }
-            push_pow(exp_pow2(powmod(__TEMPLATE_WHIR_GEN, qidx), fold), cur)
+            push_pow(exp_pow2(powmod(/*__QUERY_ORACLE_ROOT__*/__TEMPLATE_WHIR_GEN, qidx), fold), cur)
             mstore(__TEMPLATE_WHIR_REG_CC, addmod(mload(__TEMPLATE_WHIR_REG_CC), mulmod(folded, cur, P), P))
         }
 
@@ -508,7 +509,7 @@ contract WhirVerifier {
 
             for { let qq := 0 } lt(qq, q) { qq := add(qq, 1) } {
                 let qidx := mload(add(__TEMPLATE_WHIR_QIDX_BUF_PTR, mul(qq, 32)))
-                let base_root := powmod(__TEMPLATE_WHIR_GEN, qidx)
+                let base_root := powmod(/*__FINAL_ORACLE_ROOT__*/__TEMPLATE_WHIR_GEN, qidx)
                 cp := read_leaf(cp, vp, depth, __TEMPLATE_WHIR_QCAP_PTR, qidx, cb)
                 // final round queries an intermediate oracle: its coefficient leaves fold
                 // with the plain monomial tensor

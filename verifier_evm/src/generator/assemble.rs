@@ -19,7 +19,7 @@
 use super::whir::WhirGenConfig;
 use super::{
     calldata_decoder, emit_circuit_yul_with_stats, CircuitYulStats, Lit, WrapContracts,
-    MAX_GKR_POW_BITS,
+    MAX_NONCE_POW_BITS,
 };
 use crate::encoding::{FormatParams, Geometry};
 use cs::definitions::{GKRAddress, OutputType};
@@ -403,10 +403,10 @@ fn render(
         ("external challenges", external_pow_bits),
         ("WHIR batching", whir_batch_pow_bits),
     ] {
-        // The cap also keeps shr(sub(256, bits), digest) within its 0..=256 range.
+        // Limit claimed difficulty to the width of the calldata nonce.
         assert!(
-            bits <= MAX_GKR_POW_BITS,
-            "{gate} PoW {bits} exceeds GKR cap {MAX_GKR_POW_BITS}"
+            bits <= MAX_NONCE_POW_BITS,
+            "{gate} PoW {bits} exceeds the {MAX_NONCE_POW_BITS}-bit calldata nonce width"
         );
     }
     // WHIR config derived from the same source the prover used, plus the artifact's widths.
@@ -768,6 +768,34 @@ fn render(
         "            // __WHIR_SCHEDULE_SWITCH__",
         whir_schedule_yul.trim_end_matches('\n'),
     );
+    let (roots, query_root, final_root) = if wc.variable_domains() {
+        (
+            wc.oracle_roots_yul(),
+            "oracle_root(r)",
+            format!("0x{:032X}", wc.oracle_root(wc.num_rounds - 1)),
+        )
+    } else {
+        (
+            String::new(),
+            "__TEMPLATE_WHIR_GEN",
+            "__TEMPLATE_WHIR_GEN".into(),
+        )
+    };
+    for (marker, value) in [
+        ("        // __ORACLE_ROOTS__\n", roots.as_str()),
+        ("/*__QUERY_ORACLE_ROOT__*/__TEMPLATE_WHIR_GEN", query_root),
+        (
+            "/*__FINAL_ORACLE_ROOT__*/__TEMPLATE_WHIR_GEN",
+            final_root.as_str(),
+        ),
+    ] {
+        assert_eq!(
+            whir.matches(marker).count(),
+            1,
+            "WHIR template marker {marker}"
+        );
+        whir = whir.replace(marker, value);
+    }
     let setup_data = {
         let f = wrap;
         assert_eq!(whir.matches("        // __FINAL_HORNER__").count(), 1);

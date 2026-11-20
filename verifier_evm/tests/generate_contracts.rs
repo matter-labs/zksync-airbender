@@ -1,8 +1,6 @@
 //! Regenerate the L1 wrap verifier and its ignored negative controls from the canonical bundle.
 mod common;
 use common::MERGED_VERIFIER;
-use prover::gkr::prover_config::example_configs::l1_wrap;
-use verifier_evm::generator::MAX_GKR_POW_BITS;
 
 // CreateX deployCreate2 address for TestRegistry (factory/salt in deploy.sh).
 // TestRegistry intentionally does not import the generated verifier, keeping its initcode stable.
@@ -81,11 +79,11 @@ fn generated_sources() -> Vec<(String, String)> {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(data.len(), 16_410);
+    assert_eq!(data.len(), 29_210);
     use sha3::{Digest, Keccak256};
     assert_eq!(
         hex::encode(Keccak256::digest(&data)),
-        "f5e33e946c45cc936b514c2158e8ac6ce4085a320a7cbd8dde3d90d37b7301ed"
+        "7024dc38fe6be11ae2b04cf75f6210dfdaeced21bde20b3e5836c01737528b85"
     );
     // The negative changes only the decoder's pinned PC word.
     assert_eq!(
@@ -119,8 +117,8 @@ fn generated_sources() -> Vec<(String, String)> {
     eprintln!("PoW leading zeros: external={external}, batching={batching}, queries={queries:?}, folding={folding:?}, OOD={ood:?}");
     let schedule = config.whir_schedule.queries_pow_bits_per_round();
     assert!(
-        external < MAX_GKR_POW_BITS && batching < MAX_GKR_POW_BITS,
-        "no room under the GKR PoW cap"
+        external < 64 && batching < 64,
+        "negative control needs a difficulty within the calldata nonce width"
     );
     for (&zeros, &bits) in queries.iter().zip(&schedule) {
         assert!(zeros >= bits, "honest proof misses query PoW");
@@ -139,7 +137,10 @@ fn generated_sources() -> Vec<(String, String)> {
     for (round, &zeros) in queries.iter().enumerate() {
         // Test-only text replacements may exceed the production cap, but must remain
         // representable by shr(sub(256, bits), digest). Cover the final default arm too.
-        assert!(zeros < 256, "query PoW control cannot exceed 256 bits");
+        assert!(
+            zeros < 64,
+            "query PoW control cannot exceed the calldata nonce width"
+        );
         let selector = if round + 1 == queries.len() {
             "default".to_owned()
         } else {
@@ -241,7 +242,7 @@ fn raised_round_difficulty(source: &str, selector: &str, name: &str, old: u32, n
 
 #[test]
 fn generator_rejects_invalid_inputs() {
-    let (mut circuit, proof, _) = common::load();
+    let (circuit, proof, _) = common::load();
     let config = common::prover_config();
     let (_, nodes) = common::setup_frontier();
     let params = common::format_params();
@@ -276,23 +277,25 @@ fn generator_rejects_invalid_inputs() {
     for top in [&[0, 0][..], &[1, 0], &[0, 256]] {
         rejects(&circuit, &config, top, "inits/teardowns top bits");
     }
-    for bits in [l1_wrap::MAX_POW_BITS + 1, 257] {
-        let mut config = config.clone();
-        config.whir_schedule.base_round.queries_pow_bits = bits;
-        rejects(
-            &circuit,
-            &config,
-            common::INITS_TEARDOWNS_TOP_BITS,
-            "query PoW",
-        );
-    }
-    // A layout whose lookup requirement exceeds the GKR cap must fail at generation.
-    circuit.num_generic_lookups = 1 << 32;
+    let mut high = config.clone();
+    high.whir_schedule.base_round.queries_pow_bits = 64;
+    high.whir_schedule.base_round.batching_pow_bits = Some(64);
+    generate(&circuit, &high, common::INITS_TEARDOWNS_TOP_BITS);
+
+    high.whir_schedule.base_round.queries_pow_bits = 65;
     rejects(
         &circuit,
-        &config,
+        &high,
         common::INITS_TEARDOWNS_TOP_BITS,
-        "external challenges PoW",
+        "query PoW",
+    );
+    high.whir_schedule.base_round.queries_pow_bits = 64;
+    high.whir_schedule.base_round.batching_pow_bits = Some(65);
+    rejects(
+        &circuit,
+        &high,
+        common::INITS_TEARDOWNS_TOP_BITS,
+        "WHIR batching PoW",
     );
 }
 
