@@ -71,8 +71,14 @@ fn zero_pow_schedule_renders_plain_challenges() {
     }
     let derived = WhirGenConfig::derive(&config, 96, 10);
     let switch = derived.schedule_switch_yul();
-    assert!(switch.contains("fold_pow_bits := 0"));
-    assert!(switch.contains("ood_pow_bits := 0"));
+    assert_eq!(
+        switch.matches("fold_pow_bits := 0 ").count(),
+        derived.num_rounds
+    );
+    assert_eq!(
+        switch.matches("ood_pow_bits := 0 ").count(),
+        derived.num_rounds
+    );
 }
 
 #[test]
