@@ -10,7 +10,7 @@ pub struct FormatParams {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct OracleGeometry {
+pub struct OracleGeometry {
     pub domain_log2: usize,
     pub lde_log2: usize,
     pub query_index_bits: usize,

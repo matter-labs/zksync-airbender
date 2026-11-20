@@ -13,7 +13,8 @@
 //! evaluation domain. The base oracle also uses its inverse for coset folding.
 
 use super::{Lit, MAX_NONCE_POW_BITS};
-use crate::encoding::params::{oracle_geometry, OracleGeometry};
+use crate::encoding::params::oracle_geometry;
+use crate::encoding::OracleGeometry;
 use field::Proth120;
 use prover::gkr::prover_config::ProverConfig;
 
@@ -21,26 +22,26 @@ use prover::gkr::prover_config::ProverConfig;
 #[derive(Clone, Debug)]
 pub struct WhirGenConfig {
     pub num_rounds: usize,
-    pub folds: Vec<usize>,   // whir_steps_schedule
-    pub queries: Vec<usize>, // whir_queries_schedule
-    pub pow_bits: Vec<u32>,  // whir_pow_schedule
+    pub folds: Vec<usize>,        // whir_steps_schedule
+    pub queries: Vec<usize>,      // whir_queries_schedule
+    pub query_pow_bits: Vec<u32>, // query PoW
     pub folding_pow_bits: Vec<u32>,
     /// OOD difficulty for each intermediate oracle (committed by rounds 0..N-1).
     pub ood_pow_bits: Vec<u32>,
     pub cap_size: usize,
     pub cap_log2: usize,
     pub pack_log2: usize,
-    pub base_lde_bits: usize, // log2(base_lde_factor)
-    pub message_log2: usize,  // trace_len_log2 + pack_log2
-    pub codeword_log2: usize, // base message_log2 + base_lde_bits
-    oracles: Vec<OracleGeometry>,
-    pub rfin: usize,         // final-poly log2 = message_log2 - Σ folds
-    pub nz: usize,           // WHIR evaluation-point coords = message_log2
-    pub merged_mw: usize,    // ceil(num_memwit / 2^pack_log2)  (merged mem+wit base columns)
-    pub setup_merged: usize, // ceil(num_setup  / 2^pack_log2)  (merged setup base columns)
-    pub gcount: usize,       // gamma-batched base columns = merged_mw + setup_merged
-    pub gen: u128,           // primitive 2^codeword_log2-th root of unity (RS domain generator)
-    pub gen_inv: u128,       // its inverse
+    pub base_lde_bits: usize,    // log2(base_lde_factor)
+    pub message_log2: usize,     // trace_len_log2 + pack_log2
+    pub base_domain_log2: usize, // base message_log2 + base_lde_bits
+    pub oracles: Vec<OracleGeometry>,
+    pub rfin: usize,                // final-poly log2 = message_log2 - Σ folds
+    pub nz: usize,                  // WHIR evaluation-point coords = message_log2
+    pub merged_mw: usize,           // ceil(num_memwit / 2^pack_log2)  (merged mem+wit base columns)
+    pub setup_merged: usize,        // ceil(num_setup  / 2^pack_log2)  (merged setup base columns)
+    pub gcount: usize,              // gamma-batched base columns = merged_mw + setup_merged
+    pub base_domain_root: u128, // primitive 2^base_domain_log2-th root of unity (RS domain generator)
+    pub base_domain_root_inv: u128, // its inverse
 }
 
 impl WhirGenConfig {
@@ -62,7 +63,7 @@ impl WhirGenConfig {
         let trace_len_log2 = prover_config.trace_len_log2;
         let folds = schedule.fold_steps();
         let queries = schedule.queries_per_round();
-        let pow_bits = schedule.queries_pow_bits_per_round();
+        let query_pow_bits = schedule.queries_pow_bits_per_round();
         let folding_pow_bits: Vec<_> = core::iter::once(schedule.base_round.folding_pow_bits)
             .chain(schedule.internal_rounds.iter().map(|r| r.folding_pow_bits))
             .collect();
@@ -73,7 +74,7 @@ impl WhirGenConfig {
             .collect();
         // Limit claimed difficulty to the width of the calldata nonce.
         for (gate, difficulties) in [
-            ("query", &pow_bits),
+            ("query", &query_pow_bits),
             ("folding", &folding_pow_bits),
             ("OOD", &ood_pow_bits),
         ] {
@@ -92,7 +93,7 @@ impl WhirGenConfig {
             "WHIR query schedule length != fold schedule length"
         );
         assert_eq!(
-            pow_bits.len(),
+            query_pow_bits.len(),
             num_rounds,
             "WHIR pow schedule length != fold schedule length"
         );
@@ -114,7 +115,7 @@ impl WhirGenConfig {
         let cap_log2 = schedule.cap_size.trailing_zeros() as usize;
         let base_lde_bits = schedule.base_lde_factor_log2();
         let message_log2 = trace_len_log2 + pack_log2;
-        let codeword_log2 = message_log2 + base_lde_bits;
+        let base_domain_log2 = message_log2 + base_lde_bits;
         let total_folds: usize = folds.iter().sum();
         assert!(
             total_folds <= message_log2,
@@ -134,14 +135,15 @@ impl WhirGenConfig {
         let merged_mw = num_memwit.div_ceil(pack);
         let setup_merged = num_setup.div_ceil(pack);
 
-        let gen = Proth120::TWO_ADICITY_GENERATORS[codeword_log2].to_u128();
-        let gen_inv = Proth120::TWO_ADICITY_GENERATORS_INVERSED[codeword_log2].to_u128();
+        let base_domain_root = Proth120::TWO_ADICITY_GENERATORS[base_domain_log2].to_u128();
+        let base_domain_root_inv =
+            Proth120::TWO_ADICITY_GENERATORS_INVERSED[base_domain_log2].to_u128();
 
         let cfg = Self {
             num_rounds,
             folds,
             queries,
-            pow_bits,
+            query_pow_bits,
             folding_pow_bits,
             ood_pow_bits,
             cap_size: schedule.cap_size,
@@ -149,15 +151,15 @@ impl WhirGenConfig {
             pack_log2,
             base_lde_bits,
             message_log2,
-            codeword_log2,
+            base_domain_log2,
             oracles,
             rfin,
             nz: message_log2,
             merged_mw,
             setup_merged,
             gcount: merged_mw + setup_merged,
-            gen,
-            gen_inv,
+            base_domain_root,
+            base_domain_root_inv,
         };
         // every round's query-index bit count must leave room for the cap levels
         for r in 0..num_rounds {
@@ -179,7 +181,7 @@ impl WhirGenConfig {
     pub(super) fn variable_domains(&self) -> bool {
         self.oracles
             .iter()
-            .any(|oracle| oracle.domain_log2 != self.codeword_log2)
+            .any(|oracle| oracle.domain_log2 != self.base_domain_log2)
     }
 
     pub(super) fn oracle_root(&self, r: usize) -> u128 {
@@ -267,7 +269,7 @@ impl WhirGenConfig {
         for r in 0..self.num_rounds {
             let fold = self.folds[r];
             let q = self.queries[r];
-            let pow = self.pow_bits[r];
+            let pow = self.query_pow_bits[r];
             let fold_pow = self.folding_pow_bits[r];
             let ood_pow = self.ood_pow_bits.get(r).copied().unwrap_or(0);
             let vp = 1usize << fold;

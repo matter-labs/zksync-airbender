@@ -31,8 +31,8 @@ use prover::gkr::prover_config::ProverConfig;
 
 pub use digest::{digest_wire, merkle_node, merkle_reduce};
 pub use gkr::split_round;
-pub use params::FormatParams;
 pub(crate) use params::Geometry;
+pub use params::{FormatParams, OracleGeometry};
 
 pub use replay::{replay_gkr_points, GkrReplay, LayerPoints};
 pub use runs::{fe_run_len, ts_run_len, write_fe_run, write_ts_run};

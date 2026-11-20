@@ -43,10 +43,10 @@ contract WhirVerifier {
     // ── Generated from the prover config + circuit (`__TEMPLATE_WHIR_*`) ─────────────────────
     // Every value below is assigned by the generator (see the note on `__TEMPLATE_*` constants in
     // the GKR template).
-    // RS-codeword evaluation-domain generator and its inverse — a primitive 2^codeword_log2-th
-    // root of unity (`Proth120::TWO_ADICITY_GENERATORS[codeword_log2]`).
-    uint256 constant __TEMPLATE_WHIR_GEN     = "{unassigned}";
-    uint256 constant __TEMPLATE_WHIR_GEN_INV = "{unassigned}";
+    // RS-codeword evaluation-domain generator and its inverse — a primitive 2^base_domain_log2-th
+    // root of unity (`Proth120::TWO_ADICITY_GENERATORS[base_domain_log2]`).
+    uint256 constant __TEMPLATE_WHIR_BASE_DOMAIN_ROOT     = "{unassigned}";
+    uint256 constant __TEMPLATE_WHIR_BASE_DOMAIN_ROOT_INV = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_NUM_ROUNDS   = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_RFIN         = "{unassigned}";  // final-poly log2 = message_log2 - sum(folds)
     uint256 constant __TEMPLATE_WHIR_MERGED_MW    = "{unassigned}";  // merged memory+witness base columns
@@ -219,14 +219,14 @@ contract WhirVerifier {
         }
         // high_powers_offsets: bit-reversed powers of the order-2^fold generator's
         // inverse (matches the prover's `high_powers_offsets`). set_generator =
-        // domain_generator_for_size(2^fold) = __TEMPLATE_WHIR_GEN^(2^(codeword_log2 - fold)), and
-        // qib = codeword_log2 - fold, so set_gen_inv = __TEMPLATE_WHIR_GEN_INV^(2^qib) = exp_pow2(__TEMPLATE_WHIR_GEN_INV, qib).
+        // domain_generator_for_size(2^fold) = __TEMPLATE_WHIR_BASE_DOMAIN_ROOT^(2^(base_domain_log2 - fold)), and
+        // qib = base_domain_log2 - fold, so set_gen_inv = __TEMPLATE_WHIR_BASE_DOMAIN_ROOT_INV^(2^qib) = exp_pow2(__TEMPLATE_WHIR_BASE_DOMAIN_ROOT_INV, qib).
         // hp[i] = set_gen_inv^i, then the length-2^(fold-1) array is bit-reversed.
         function compute_hpo(fold, qib) {
             let logc := sub(fold, 1)         // log2(count)
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let count := shl(logc, 1)
-            let sgi := exp_pow2(__TEMPLATE_WHIR_GEN_INV, qib) // order-2^fold generator inverse
+            let sgi := exp_pow2(__TEMPLATE_WHIR_BASE_DOMAIN_ROOT_INV, qib) // order-2^fold generator inverse
             let pw := 1
             for { let i := 0 } lt(i, count) { i := add(i, 1) } {
                 // bit-reverse i over logc bits -> store hp[i] = sgi^i at position bitrev(i)
@@ -433,9 +433,9 @@ contract WhirVerifier {
             // plain monomial tensor.
             let folded
             switch r
-            case 0 { folded := fold_coset(fold, powmod(__TEMPLATE_WHIR_GEN_INV, qidx)) }
+            case 0 { folded := fold_coset(fold, powmod(__TEMPLATE_WHIR_BASE_DOMAIN_ROOT_INV, qidx)) }
             default { folded := fold_multilinear(fold) }
-            push_pow(exp_pow2(powmod(/*__QUERY_ORACLE_ROOT__*/__TEMPLATE_WHIR_GEN, qidx), fold), cur)
+            push_pow(exp_pow2(powmod(/*__QUERY_ORACLE_ROOT__*/__TEMPLATE_WHIR_BASE_DOMAIN_ROOT, qidx), fold), cur)
             mstore(__TEMPLATE_WHIR_REG_CC, addmod(mload(__TEMPLATE_WHIR_REG_CC), mulmod(folded, cur, P), P))
         }
 
@@ -509,7 +509,7 @@ contract WhirVerifier {
 
             for { let qq := 0 } lt(qq, q) { qq := add(qq, 1) } {
                 let qidx := mload(add(__TEMPLATE_WHIR_QIDX_BUF_PTR, mul(qq, 32)))
-                let base_root := powmod(/*__FINAL_ORACLE_ROOT__*/__TEMPLATE_WHIR_GEN, qidx)
+                let base_root := powmod(/*__FINAL_ORACLE_ROOT__*/__TEMPLATE_WHIR_BASE_DOMAIN_ROOT, qidx)
                 cp := read_leaf(cp, vp, depth, __TEMPLATE_WHIR_QCAP_PTR, qidx, cb)
                 // final round queries an intermediate oracle: its coefficient leaves fold
                 // with the plain monomial tensor

@@ -46,7 +46,7 @@ fn folding_and_ood_pow_geometry() {
     let config = candidate();
     config.validate_for_whir_message_size(24);
     let derived = WhirGenConfig::derive(&config, 96, 10);
-    assert_eq!(derived.codeword_log2, 32);
+    assert_eq!(derived.base_domain_log2, 32);
     assert_eq!(derived.rfin, 6);
     let regions = derived.memory_regions();
     let size = |name| regions.iter().find(|(n, _, _)| *n == name).unwrap().1.value;
