@@ -279,7 +279,8 @@ mod tests {
         const ACCEPTED_DEFICIT_BITS: f64 = 1e-6;
         let config = l1_wrap::packed_prover_config();
         let security_bits = SecurityLevel::Sec100.security_bits();
-        let minimum_bits = security_bits as f64 - ACCEPTED_DEFICIT_BITS;
+        let target_bits = security_bits as f64;
+        let minimum_shift_bits = target_bits - ACCEPTED_DEFICIT_BITS;
         let point_mass = 37.0 * 2.0_f64.powi(-128);
         let challenge_bits = -point_mass.log2();
         let schedule = &config.whir_schedule;
@@ -320,7 +321,7 @@ mod tests {
                 let charge = 3.0 * list_ceiling + 2.0_f64.powi((domain_log2 - step) as i32);
                 let bits = challenge_bits + f64::from(folding_pow) - charge.log2();
                 assert!(
-                    bits >= minimum_bits,
+                    bits >= target_bits,
                     "oracle {i} fold step {step}: {bits:.12} bits"
                 );
             }
@@ -329,7 +330,7 @@ mod tests {
                 let bits = challenge_bits + f64::from(round.ood_pow_bits) + 1.0
                     - message_log2 as f64
                     - 2.0 * list_ceiling.log2();
-                assert!(bits >= minimum_bits, "oracle {i} OOD: {bits:.12} bits");
+                assert!(bits >= target_bits, "oracle {i} OOD: {bits:.12} bits");
             }
 
             let nominal_bits = f64::from(nominal_query_bits_times_six(
@@ -345,7 +346,10 @@ mod tests {
                     * 2.0_f64.powi(-(query_pow as i32))
             });
             let bits = -(2.0_f64.powf(-nominal_bits) + combination_error).log2();
-            assert!(bits >= minimum_bits, "oracle {i} shift: {bits:.12} bits");
+            assert!(
+                bits >= minimum_shift_bits,
+                "oracle {i} shift: {bits:.12} bits"
+            );
         }
 
         let layout = std::fs::File::open(concat!(

@@ -177,14 +177,18 @@ pub mod l1_wrap {
     /// Each round uses the least PoW satisfying `6 * pow + 5 * queries * rate_bits >= 600`.
     pub const POW_BITS: [u32; 5] = [27, 25, 30, 30, 30];
 
+    /// The largest list size each oracle's binding term tolerates at the
+    /// configured PoW. These are tolerances, not derived list bounds.
     pub const LIST_SIZE_CEILINGS: [usize; 5] = [1_044_721_774, 673, 5_387, 172_384, 2_758_157];
 
-    /// Conditional 100-bit pessimistic accounting: queries contribute r/1.2 bits
-    /// (`PessimisticConjectureMode` in `whir/proximity_testing_modes.rs`). The
-    /// linear proximity-gap charge in `pow_bits.rs` is applied to each fold.
-    /// With mu = 37/2^128, the assumed [`LIST_SIZE_CEILINGS`] cover every RS
-    /// substep. Nominal-100 shifts have an accepted deficit below 10^-6 bit.
-    /// These are conjectural bounds.
+    /// 100-bit WHIR accounting under the pessimistic conjecture: queries
+    /// contribute r/1.2 bits (`PessimisticConjectureMode` in
+    /// `whir/proximity_testing_modes.rs`), and the linear proximity-gap charge
+    /// in `pow_bits.rs` is applied to each fold. With mu = 37/2^128, every RS
+    /// substep keeps 100 bits for list sizes up to [`LIST_SIZE_CEILINGS`].
+    /// Nominal-100 shifts have an accepted deficit below 10^-6 bit. The base
+    /// commitment has no OOD sample: the GKR evaluation claims bind it, and the
+    /// GKR and lookup challenges carry no list factor.
     pub fn packed_prover_config() -> ProverConfig {
         const CAP_SIZE: usize = 8;
         let level = SecurityLevel::Sec100;

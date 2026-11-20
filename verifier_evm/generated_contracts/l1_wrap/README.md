@@ -43,7 +43,7 @@ The wrap uses folds `[1,4,4,4,5]`, query PoW `[27,25,30,30,30]`, and folding PoW
 oracle uses one OOD sample with PoW `[18,20,26,30]`. The final polynomial has
 64 coefficients. The oracle domain logs are `[32,32,31,32,32]`, the cap is 8,
 and the setup frontier is level 10. The config documents its conditional
-pessimistic soundness accounting and list-size assumptions in
+pessimistic soundness accounting and the list sizes it tolerates in
 `prover/src/gkr/prover_config/example_configs/special_configs.rs`.
 
 The constructor returns exactly `type(GkrWhirVerifierCode).runtimeCode || setup data`:
