@@ -167,7 +167,6 @@ pub mod l1_wrap {
     use super::*;
 
     pub const TRACE_LEN_LOG2: usize = 21;
-    pub const ETHPROOFS_TRACE_LEN_LOG2: usize = 22;
     pub const PACK_LOG2: usize = 3;
     pub const EXPLICIT_OUTPUT_LOG2: usize = 2;
     pub const EXTERNAL_CHALLENGES_POW_BITS: u32 = 20;
