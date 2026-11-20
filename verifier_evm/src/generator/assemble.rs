@@ -964,9 +964,6 @@ fn render(
         "\n## Runtime code layout\n\nLet `C = codesize()` and `S = C - SETUP_DATA_BYTES`. The setup data occupies the last {} bytes (`{:#x}`) of the deployed code. Its internal offsets above are relative to `S`. Endpoints are exclusive.\n\n| Section | Start | Size | End |\n| --- | --- | --- | --- |\n| Verifier code, including Solidity metadata | 0 | `S` | `S` |\n| Setup data | `S` | `SETUP_DATA_BYTES` | `C` |\n\nThere is no registry suffix. `test_create_requires_glamsterdam_size_limit` reports the actual deployed runtime size and checks the code-size limits. `test_embedded_setup_matches_reference` checks the byte-exact runtime prefix against `type(GkrWhirVerifierCode).runtimeCode`, the setup length and its pinned hash.\n",
         setup_data.len(), setup_data.len(),
     ));
-    let out = out
-        .replace("__TEMPLATE_WHIR_BASE_DOMAIN_ROOT", "__TEMPLATE_WHIR_GEN")
-        .replace("base_domain_log2", "codeword_log2");
     (out, setup_data, memory_layout)
 }
 
