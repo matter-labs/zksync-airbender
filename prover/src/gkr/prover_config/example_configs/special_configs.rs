@@ -61,9 +61,6 @@ pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig
     }
 }
 
-/// PoW ceiling for compression WHIR, lookup, batching and external challenges.
-pub const COMPRESSION_MAX_POW_BITS: u32 = 25;
-
 fn queries_and_pow_under_pessimistic_conjecture<const ROUNDS: usize>(
     level: SecurityLevel,
     base_lde_factor: usize,
@@ -88,13 +85,15 @@ fn queries_and_pow_under_pessimistic_conjecture<const ROUNDS: usize>(
 const COMPRESSION_FINAL_BASE_LDE_FACTOR: usize = 16;
 const COMPRESSION_FINAL_WHIR_STEPS_LDE_FACTORS: [usize; 4] = [32, 1024, 32768, 1048576];
 
-/// Each round uses the least PoW satisfying `6 * pow + 5 * queries * rate_bits >= 600`,
-/// bounded by [`COMPRESSION_MAX_POW_BITS`].
+/// The deliberate 25-bit PoW cap fixes the query count at the fewest queries
+/// that can meet the security target. Each value is the least PoW that meets it.
 pub const COMPRESSION_FINAL_POW_BITS: [u32; 5] = [24, 25, 25, 25, 17];
 
 const COMPRESSION_BASE_LDE_FACTOR: usize = 4;
 
-/// The repeatable Compression step follows the same rule and ceiling as [`COMPRESSION_FINAL_POW_BITS`].
+/// Repeatable Compression uses a deliberate 25-bit PoW cap to fix the query
+/// count at the fewest queries that can meet the security target. Each value is
+/// the least PoW that meets it.
 pub const COMPRESSION_POW_BITS: [u32; 5] = [25, 25, 25, 25, 17];
 
 /// The cap must equal the base LDE: coset commitment requires cap <= LDE,
@@ -171,20 +170,18 @@ pub mod l1_wrap {
     pub const PACK_LOG2: usize = 3;
     pub const EXPLICIT_OUTPUT_LOG2: usize = 2;
     pub const EXTERNAL_CHALLENGES_POW_BITS: u32 = 20;
-    /// No WHIR round grinds above it.
-    pub const MAX_POW_BITS: u32 = 30;
 
-    const BASE_LDE_FACTOR: usize = 1 << 7;
-    const WHIR_STEPS_LDE_FACTORS: [usize; 4] = [1 << 8, 1 << 12, 1 << 17, 1 << 21];
+    const BASE_LDE_FACTOR: usize = 1 << 8;
+    const WHIR_STEPS_LDE_FACTORS: [usize; 4] = [1 << 9, 1 << 12, 1 << 17, 1 << 21];
 
     /// Each round uses the least PoW satisfying `6 * pow + 5 * queries * rate_bits >= 600`.
-    pub const POW_BITS: [u32; 5] = [30, 27, 30, 30, 30];
+    pub const POW_BITS: [u32; 5] = [27, 25, 30, 30, 30];
 
     /// Conditional 100-bit pessimistic accounting: queries contribute r/1.2 bits
     /// (`PessimisticConjectureMode` in `whir/proximity_testing_modes.rs`); the
     /// linear proximity-gap charge in `pow_bits.rs` is applied to each fold.
     /// With mu = 37/2^128, the assumed list ceilings are
-    /// [522360887, 336, 5387, 172384, 2758157], including every RS substep. Nominal-100 shifts
+    /// [1044721774, 673, 5387, 172384, 2758157], including every RS substep. Nominal-100 shifts
     /// have an accepted deficit below 10^-6 bit. These are conjectural bounds.
     pub fn packed_prover_config() -> ProverConfig {
         const CAP_SIZE: usize = 8;
@@ -210,7 +207,7 @@ pub mod l1_wrap {
                     physical_packing_log2: PACK_LOG2,
                     fold_log2: 1,
                     batching_pow_bits: None,
-                    folding_pow_bits: 9,
+                    folding_pow_bits: 10,
                     num_queries: queries_and_pow[0].0,
                     queries_pow_bits: queries_and_pow[0].1,
                 },
@@ -219,12 +216,12 @@ pub mod l1_wrap {
                     .enumerate()
                     .map(|(i, lde)| crate::gkr::prover_config::WhirInternalRound {
                         lde_factor_log2: lde.trailing_zeros() as usize,
-                        folding_log2: [4, 5, 4, 4][i],
+                        folding_log2: [4, 4, 4, 5][i],
                         num_queries: queries_and_pow[i + 1].0,
                         queries_pow_bits: queries_and_pow[i + 1].1,
-                        folding_pow_bits: 9,
+                        folding_pow_bits: [10, 9, 10, 10][i],
                         num_ood_samples: 1,
-                        ood_pow_bits: [16, 20, 25, 29][i],
+                        ood_pow_bits: [18, 20, 26, 30][i],
                     })
                     .collect(),
             },
