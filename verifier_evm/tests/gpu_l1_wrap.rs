@@ -21,11 +21,12 @@ const REGISTRY: [u8; 20] = [
     0x9b, 0x3c, 0x4e, 0x91,
 ];
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum WrapCase {
-    P32_2500,
-    N01,
-    P32_469,
+    OracleDomainAboveBase,
+    EthproofsCapAcrossBaseCosets,
+    BaseFold3,
+    ConstantDomainZeroPow,
 }
 
 fn alternate_case(case: WrapCase) {
@@ -42,8 +43,8 @@ fn alternate_case(case: WrapCase) {
         ood_pow,
         batching,
     ) = match case {
-        // P32-2500, including an intermediate codeword at log domain 32.
-        WrapCase::P32_2500 => (
+        // An intermediate oracle has domain log 32, above the base domain log of 31.
+        WrapCase::OracleDomainAboveBase => (
             SoundnessMode::PessimisticConjecture,
             21,
             "pessimistic_conjecture",
@@ -55,8 +56,9 @@ fn alternate_case(case: WrapCase) {
             vec![18, 20, 22, 24],
             13,
         ),
-        // N01, including a cap that cuts through the base cosets and an ungated OOD sample.
-        WrapCase::N01 => (
+        // An Ethproofs 2^22 wrap whose cap cuts through the base cosets, with an
+        // ungated OOD sample.
+        WrapCase::EthproofsCapAcrossBaseCosets => (
             SoundnessMode::EthproofsSoundnessCalc,
             22,
             "ethproofs_soundcalc",
@@ -68,8 +70,8 @@ fn alternate_case(case: WrapCase) {
             vec![8, 6, 3, 0],
             8,
         ),
-        // P32-469, a base fold of three and oracle domain logs 26, 26, 23, 21.
-        WrapCase::P32_469 => (
+        // The base fold opens eight evaluations per leaf from each base oracle.
+        WrapCase::BaseFold3 => (
             SoundnessMode::PessimisticConjecture,
             21,
             "pessimistic_conjecture",
@@ -80,6 +82,20 @@ fn alternate_case(case: WrapCase) {
             vec![4, 4, 1, 0],
             vec![8, 7, 7],
             8,
+        ),
+        // Every oracle has domain log 26. OOD PoW is disabled and non-final folds
+        // exercise both zero and nonzero PoW.
+        WrapCase::ConstantDomainZeroPow => (
+            SoundnessMode::PessimisticConjecture,
+            21,
+            "pessimistic_conjecture",
+            vec![1, 4, 4, 4, 5],
+            vec![2, 3, 7, 11, 15],
+            vec![4, 4, 4, 4, 4],
+            vec![2, 2, 2, 2, 2],
+            vec![0, 3, 0, 3, 0],
+            vec![0, 0, 0, 0],
+            2,
         ),
     };
     let mut config = ProofProfile::L1Wrap.prover_config(trace_log, mode);
@@ -102,7 +118,7 @@ fn alternate_case(case: WrapCase) {
         })
         .collect();
     let run = root.join("target").join(format!(
-        "l1-gpu-verify-{fixture_dir}-{}",
+        "l1-gpu-verify-{fixture_dir}-{case:?}-{}",
         std::process::id()
     ));
     let data = run.join("data");
@@ -212,6 +228,33 @@ fn alternate_case(case: WrapCase) {
         &frontier,
         REGISTRY,
     );
+    if matches!(case, WrapCase::ConstantDomainZeroPow) {
+        let domain_log2 = config.whir_message_size_log2() + config.base_lde_factor_log2();
+        let root = Proth120::TWO_ADICITY_GENERATORS[domain_log2].to_u128();
+        let root_name = "__TEMPLATE_WHIR_BASE_DOMAIN_ROOT";
+        let declaration = format!("uint256 constant {root_name}");
+        let literal = format!("0x{root:032X};");
+        let declared_root = contracts.verifier_sol.lines().find_map(|line| {
+            let (name, value) = line.split_once('=')?;
+            (name.trim() == declaration).then(|| value.trim())
+        });
+        assert_eq!(
+            declared_root,
+            Some(literal.as_str()),
+            "WHIR base root literal"
+        );
+        let query_root = format!("push_pow(exp_pow2(powmod({root_name}, qidx), fold), cur)");
+        let final_root = format!("let base_root := powmod({root_name}, qidx)");
+        assert!(
+            contracts.verifier_sol.contains(&query_root),
+            "WHIR query root"
+        );
+        assert!(
+            contracts.verifier_sol.contains(&final_root),
+            "WHIR final root"
+        );
+        assert!(!contracts.verifier_sol.contains("function oracle_root("));
+    }
     let calldata = encode_single_tx(
         &setup.circuit,
         &bundle.proof,
@@ -278,19 +321,25 @@ fn alternate_case(case: WrapCase) {
 }
 
 #[test]
-#[ignore = "full GPU wrap and CPU verifier; cargo test -p verifier_evm --release --test gpu_l1_wrap gpu_l1_wrap_p32_2500 -- --exact --ignored"]
-fn gpu_l1_wrap_p32_2500() {
-    alternate_case(WrapCase::P32_2500);
+#[ignore = "full GPU wrap and CPU verifier; cargo test -p verifier_evm --release --test gpu_l1_wrap gpu_l1_wrap_oracle_domain_above_base -- --exact --ignored"]
+fn gpu_l1_wrap_oracle_domain_above_base() {
+    alternate_case(WrapCase::OracleDomainAboveBase);
 }
 
 #[test]
-#[ignore = "full GPU wrap and CPU verifier; cargo test -p verifier_evm --release --test gpu_l1_wrap gpu_l1_wrap_ethproofs_n01 -- --exact --ignored"]
-fn gpu_l1_wrap_ethproofs_n01() {
-    alternate_case(WrapCase::N01);
+#[ignore = "full GPU wrap and CPU verifier; cargo test -p verifier_evm --release --test gpu_l1_wrap gpu_l1_wrap_ethproofs_cap_across_base_cosets -- --exact --ignored"]
+fn gpu_l1_wrap_ethproofs_cap_across_base_cosets() {
+    alternate_case(WrapCase::EthproofsCapAcrossBaseCosets);
 }
 
 #[test]
-#[ignore = "full GPU wrap and CPU verifier; cargo test -p verifier_evm --release --test gpu_l1_wrap gpu_l1_wrap_p32_469_fold3 -- --exact --ignored"]
-fn gpu_l1_wrap_p32_469_fold3() {
-    alternate_case(WrapCase::P32_469);
+#[ignore = "full GPU wrap and CPU verifier; cargo test -p verifier_evm --release --test gpu_l1_wrap gpu_l1_wrap_base_fold_3 -- --exact --ignored"]
+fn gpu_l1_wrap_base_fold_3() {
+    alternate_case(WrapCase::BaseFold3);
+}
+
+#[test]
+#[ignore = "full GPU wrap and CPU verifier; cargo test -p verifier_evm --release --test gpu_l1_wrap gpu_l1_wrap_constant_domain_zero_pow -- --exact --ignored"]
+fn gpu_l1_wrap_constant_domain_zero_pow() {
+    alternate_case(WrapCase::ConstantDomainZeroPow);
 }

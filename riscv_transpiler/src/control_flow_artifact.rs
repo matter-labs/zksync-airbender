@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use common_constants::{TimestampScalar, TIMESTAMP_STEP};
-use field::Mersenne31Field;
+use field::baby_bear::base::BabyBearField;
 
 use crate::ir::simple_instruction_set::{Instruction, InstructionName};
 use crate::vm::{
@@ -192,7 +192,7 @@ impl ControlFlowArtifact {
         while state.timestamp < timestamp_bound {
             let pc = state.pc;
             let is_jalr = tape.read_instruction(pc).name == InstructionName::Jalr;
-            VM::<DelegationsAndFamiliesCounters>::run_step::<(), _, ND, Mersenne31Field>(
+            VM::<DelegationsAndFamiliesCounters>::run_step::<(), _, ND, BabyBearField>(
                 &mut state,
                 &mut ram,
                 &mut (),

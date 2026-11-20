@@ -206,7 +206,13 @@ pub fn virtual_packed_config_for_security_level_under_pessimistic_conjecture(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gkr::prover_config::pow_bits;
     use crate::gkr::whir::proximity_testing_modes::ProximityTestingMode;
+    use field::Proth120;
+
+    fn nominal_query_bits_times_six(queries: u32, pow: u32, rate_bits: u32) -> u32 {
+        6 * pow + 5 * queries * rate_bits
+    }
 
     pub(crate) fn assert_every_round_preserves_security_margin(config: &ProverConfig) {
         let schedule = &config.whir_schedule;
@@ -226,7 +232,7 @@ mod tests {
         {
             let queries = queries as u32;
             assert!(
-                6 * pow + 5 * queries * rate_bits >= 6 * security_bits,
+                nominal_query_bits_times_six(queries, pow, rate_bits) >= 6 * security_bits,
                 "round {round}: {queries} queries at rate 2^-{rate_bits} with {pow} PoW bits"
             );
             assert!(
@@ -266,6 +272,111 @@ mod tests {
         ] {
             assert_every_round_preserves_security_margin(&config);
         }
+    }
+
+    #[test]
+    fn l1_wrap_terms_preserve_security_margin() {
+        const ACCEPTED_DEFICIT_BITS: f64 = 1e-6;
+        let config = l1_wrap::pessimistic_packed_prover_config();
+        let security_bits = SecurityLevel::Sec100.security_bits();
+        let target_bits = security_bits as f64;
+        let minimum_shift_bits = target_bits - ACCEPTED_DEFICIT_BITS;
+        let point_mass = 37.0 * 2.0_f64.powi(-128);
+        let challenge_bits = -point_mass.log2();
+        let schedule = &config.whir_schedule;
+        let base = &schedule.base_round;
+        let base_message_log2 = config.whir_message_size_log2();
+        let list_ceilings = l1_wrap::PESSIMISTIC_LIST_SIZE_CEILINGS;
+        assert_eq!(list_ceilings.len(), schedule.num_rounds());
+        assert_every_round_preserves_security_margin(&config);
+
+        let message_logs =
+            std::iter::once(base_message_log2).chain(schedule.oracle_domains(base_message_log2));
+        for (i, ((message_log2, fold_log2), list_ceiling)) in message_logs
+            .zip(schedule.fold_steps())
+            .zip(list_ceilings)
+            .enumerate()
+        {
+            let list_ceiling = list_ceiling as f64;
+            let internal = i.checked_sub(1).map(|i| &schedule.internal_rounds[i]);
+            let (rate_log2, queries, query_pow, folding_pow) = internal.map_or(
+                (
+                    base.lde_factor_log2,
+                    base.num_queries,
+                    base.queries_pow_bits,
+                    base.folding_pow_bits,
+                ),
+                |round| {
+                    (
+                        round.lde_factor_log2,
+                        round.num_queries,
+                        round.queries_pow_bits,
+                        round.folding_pow_bits,
+                    )
+                },
+            );
+            let domain_log2 = message_log2 + rate_log2;
+            for step in 0..fold_log2 {
+                // Charge both codewords on the halved domain at each RS substep.
+                let charge = 3.0 * list_ceiling + 2.0_f64.powi((domain_log2 - step) as i32);
+                let bits = challenge_bits + f64::from(folding_pow) - charge.log2();
+                assert!(
+                    bits >= target_bits,
+                    "oracle {i} fold step {step}: {bits:.12} bits"
+                );
+            }
+            if let Some(round) = internal {
+                assert_eq!(round.num_ood_samples, 1, "oracle {i}: OOD sample count");
+                let bits = challenge_bits + f64::from(round.ood_pow_bits) + 1.0
+                    - message_log2 as f64
+                    - 2.0 * list_ceiling.log2();
+                assert!(bits >= target_bits, "oracle {i} OOD: {bits:.12} bits");
+            }
+
+            let nominal_bits = f64::from(nominal_query_bits_times_six(
+                queries as u32,
+                query_pow,
+                rate_log2 as u32,
+            )) / 6.0;
+            // Each non-final shift also charges the combination challenge for the next oracle.
+            let combination_error = list_ceilings.get(i + 1).map_or(0.0, |&next_ceiling| {
+                (queries + 1) as f64
+                    * next_ceiling as f64
+                    * point_mass
+                    * 2.0_f64.powi(-(query_pow as i32))
+            });
+            let bits = -(2.0_f64.powf(-nominal_bits) + combination_error).log2();
+            assert!(
+                bits >= minimum_shift_bits,
+                "oracle {i} shift: {bits:.12} bits"
+            );
+        }
+
+        let layout = std::fs::File::open(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json",
+        )).expect("L1 wrap circuit layout");
+        let circuit = serde_json::from_reader(layout).expect("deserialize L1 wrap circuit");
+        let columns = pow_bits::committed_base_oracle_columns::<Proth120>(
+            &circuit,
+            config.pack_log2(),
+            config.merged_memory_and_witness(),
+        );
+        let required = pow_bits::batched_proximity_check_pow_bits::<Proth120, Proth120>(
+            security_bits,
+            base_message_log2,
+            base.lde_factor_log2,
+            columns,
+        );
+        let actual = base.batching_pow_bits::<Proth120, Proth120>(
+            config.security_level.security_bits(),
+            base_message_log2,
+            columns,
+        );
+        assert!(
+            actual >= required,
+            "batching PoW: {actual} bits, requires {required}"
+        );
     }
 
     /// The three base-round strategies on the 2^20 (blake delegation) trace

@@ -669,6 +669,116 @@ mod test {
         }
     }
 
+    mod raw_repr {
+        use super::*;
+
+        proptest! {
+            #[test]
+            fn add_commutative(a in any::<u32>(), b in any::<u32>()) {
+                let fa = BabyBearField::from_raw_repr_with_reduction(a);
+                let fb = BabyBearField::from_raw_repr_with_reduction(b);
+                let mut ab = fa; ab.add_assign(&fb);
+                let mut ba = fb; ba.add_assign(&fa);
+                prop_assert_eq!(ab, ba);
+            }
+
+            #[test]
+            fn add_associative(a in any::<u32>(), b in any::<u32>(), c in any::<u32>()) {
+                let fa = BabyBearField::from_raw_repr_with_reduction(a);
+                let fb = BabyBearField::from_raw_repr_with_reduction(b);
+                let fc = BabyBearField::from_raw_repr_with_reduction(c);
+                let mut ab = fa; ab.add_assign(&fb);
+                let mut abc_left = ab; abc_left.add_assign(&fc);
+                let mut bc = fb; bc.add_assign(&fc);
+                let mut abc_right = fa; abc_right.add_assign(&bc);
+                prop_assert_eq!(abc_left, abc_right);
+            }
+
+            #[test]
+            fn add_identity(a in any::<u32>()) {
+                let fa = BabyBearField::from_raw_repr_with_reduction(a);
+                let mut r = fa;
+                r.add_assign(&BabyBearField::ZERO);
+                prop_assert_eq!(r, fa);
+            }
+
+            #[test]
+            fn add_inverse(a in any::<u32>()) {
+                let fa = BabyBearField::from_raw_repr_with_reduction(a);
+                let mut neg = fa; neg.negate();
+                let mut sum = fa; sum.add_assign(&neg);
+                prop_assert_eq!(sum, BabyBearField::ZERO);
+            }
+
+            #[test]
+            fn mul_commutative(a in any::<u32>(), b in any::<u32>()) {
+                let fa = BabyBearField::from_raw_repr_with_reduction(a);
+                let fb = BabyBearField::from_raw_repr_with_reduction(b);
+                let mut ab = fa; ab.mul_assign(&fb);
+                let mut ba = fb; ba.mul_assign(&fa);
+                prop_assert_eq!(ab, ba);
+            }
+
+            #[test]
+            fn mul_associative(a in any::<u32>(), b in any::<u32>(), c in any::<u32>()) {
+                let fa = BabyBearField::from_raw_repr_with_reduction(a);
+                let fb = BabyBearField::from_raw_repr_with_reduction(b);
+                let fc = BabyBearField::from_raw_repr_with_reduction(c);
+                let mut ab = fa; ab.mul_assign(&fb);
+                let mut abc_left = ab; abc_left.mul_assign(&fc);
+                let mut bc = fb; bc.mul_assign(&fc);
+                let mut abc_right = fa; abc_right.mul_assign(&bc);
+                prop_assert_eq!(abc_left, abc_right);
+            }
+
+            #[test]
+            fn mul_identity(a in any::<u32>()) {
+                let fa = BabyBearField::from_raw_repr_with_reduction(a);
+                let mut r = fa;
+                r.mul_assign(&BabyBearField::ONE);
+                prop_assert_eq!(r, fa);
+            }
+
+            #[test]
+            fn mul_inverse(a in 1..BabyBearField::ORDER) {
+                let fa = BabyBearField::from_raw_repr_with_reduction(a);
+                let inv = fa.inverse().unwrap();
+                let mut product = fa;
+                product.mul_assign(&inv);
+                prop_assert_eq!(product, BabyBearField::ONE);
+            }
+
+            #[test]
+            fn distributive(a in any::<u32>(), b in any::<u32>(), c in any::<u32>()) {
+                let fa = BabyBearField::from_raw_repr_with_reduction(a);
+                let fb = BabyBearField::from_raw_repr_with_reduction(b);
+                let fc = BabyBearField::from_raw_repr_with_reduction(c);
+                let mut bc = fb; bc.add_assign(&fc);
+                let mut left = fa; left.mul_assign(&bc);
+                let mut ab = fa; ab.mul_assign(&fb);
+                let mut ac = fa; ac.mul_assign(&fc);
+                let mut right = ab; right.add_assign(&ac);
+                prop_assert_eq!(left, right);
+            }
+
+            #[test]
+            fn double_is_add_self(a in any::<u32>()) {
+                let fa = BabyBearField::from_raw_repr_with_reduction(a);
+                let mut doubled = fa; doubled.double();
+                let mut added = fa; added.add_assign(&fa);
+                prop_assert_eq!(doubled, added);
+            }
+
+            #[test]
+            fn square_is_mul_self(a in any::<u32>()) {
+                let fa = BabyBearField::from_raw_repr_with_reduction(a);
+                let mut squared = fa; squared.square();
+                let mut mulled = fa; mulled.mul_assign(&fa);
+                prop_assert_eq!(squared, mulled);
+            }
+        }
+    }
+
     // --- Const value and generator tests ---
 
     #[test]

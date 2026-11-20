@@ -1,7 +1,4 @@
 use crate::GoodAllocator;
-// Only the `#[cfg(test)]` module below needs field types (via `use super::*`).
-#[cfg(test)]
-use ::field::*;
 
 pub(crate) const TINY_BITREVERSE_LOOKUP_TABLE_LOG_2_SIZE: usize = 3;
 pub(crate) const TINY_BITREVERSE_LOOKUP_TABLE: [u8; 1 << TINY_BITREVERSE_LOOKUP_TABLE_LOG_2_SIZE] = const {
@@ -421,6 +418,7 @@ pub fn cast_check_alignment_ref_mut_unpack<T: Sized, U: Sized>(a: &mut [T]) -> &
 #[cfg(test)]
 mod tests {
     use super::*;
+    use field::{baby_bear::base::BabyBearField, Rand};
 
     #[test]
     fn test_bitreverse() {
@@ -451,12 +449,11 @@ mod tests {
         assert_eq!(data, expected_result);
     }
 
-    fn get_random_slice(len: usize) -> Vec<Mersenne31Field> {
-        use rand::Rng;
+    fn get_random_slice(len: usize) -> Vec<BabyBearField> {
         let mut rng = rand::rng();
 
         (0..len)
-            .map(|_| Mersenne31Field::from_u32_with_reduction(rng.random_range(0..(1 << 31) - 1)))
+            .map(|_| BabyBearField::random_element(&mut rng))
             .collect()
     }
 }

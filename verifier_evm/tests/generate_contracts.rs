@@ -117,7 +117,7 @@ fn generated_sources() -> Vec<(String, String)> {
     eprintln!("PoW leading zeros: external={external}, batching={batching}, queries={queries:?}, folding={folding:?}, OOD={ood:?}");
     let schedule = config.whir_schedule.queries_pow_bits_per_round();
     assert!(
-        external < 64 && batching < 64,
+        external < u64::BITS && batching < u64::BITS,
         "negative control needs a difficulty within the calldata nonce width"
     );
     for (&zeros, &bits) in queries.iter().zip(&schedule) {
@@ -135,10 +135,10 @@ fn generated_sources() -> Vec<(String, String)> {
         ),
     ];
     for (round, &zeros) in queries.iter().enumerate() {
-        // Test-only text replacements may exceed the production cap, but must remain
-        // representable by shr(sub(256, bits), digest). Cover the final default arm too.
+        // The raised difficulty (zeros + 1) must fit the 64-bit calldata nonce width.
+        // Cover the final default arm too.
         assert!(
-            zeros < 64,
+            zeros < u64::BITS,
             "query PoW control cannot exceed the calldata nonce width"
         );
         let selector = if round + 1 == queries.len() {
@@ -161,7 +161,10 @@ fn generated_sources() -> Vec<(String, String)> {
                 folding[round].iter().all(|&z| z >= bits),
                 "honest proof misses folding PoW"
             );
-            assert!(zeros < 256, "folding control cannot exceed 256 bits");
+            assert!(
+                zeros < u64::BITS,
+                "folding PoW control cannot exceed the calldata nonce width"
+            );
             negative.push((
                 format!("folding_pow_{round}"),
                 raised_round_difficulty(source, &selector, "fold_pow_bits", bits, zeros + 1),
@@ -171,7 +174,10 @@ fn generated_sources() -> Vec<(String, String)> {
             // Round r commits intermediate oracle r+1; its OOD draw happens here.
             let bits = config.whir_schedule.internal_rounds[round].ood_pow_bits;
             assert!(*zeros >= bits, "honest proof misses OOD PoW");
-            assert!(*zeros < 256, "OOD control cannot exceed 256 bits");
+            assert!(
+                *zeros < u64::BITS,
+                "OOD PoW control cannot exceed the calldata nonce width"
+            );
             negative.push((
                 format!("ood_pow_{round}"),
                 raised_round_difficulty(source, &selector, "ood_pow_bits", bits, zeros + 1),
