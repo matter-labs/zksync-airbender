@@ -55,8 +55,8 @@ impl SecurityLevel {
 pub enum SoundnessMode {
     /// The in-house capacity-conjecture accounting
     /// ([`PessimisticConjectureMode`](crate::gkr::whir::proximity_testing_modes::PessimisticConjectureMode):
-    /// one query at rate `ρ` is worth `log2(1/ρ)` bits, plus 20 % extra
-    /// queries; no folding-challenge or OOD proof of work): the production
+    /// one query at rate `ρ` is worth `log2(1/ρ)` bits, with a 20 % query-count
+    /// margin): the production
     /// ladders of `example_configs::pessimistic_conjecture`.
     PessimisticConjecture,
     /// Schedules certified at the security level by `ethereum/soundcalc`
@@ -73,8 +73,7 @@ impl SoundnessMode {
         SoundnessMode::EthproofsSoundnessCalc,
     ];
 
-    /// The mode of the configs proved and verified by default (every tracked
-    /// proof / verifier fixture).
+    /// The default mode when the caller does not specify one.
     pub const DEFAULT: SoundnessMode = SoundnessMode::PessimisticConjecture;
 
     /// Stable spelling accepted by command-line callers.
@@ -108,6 +107,7 @@ pub enum ProverConfigProfile {
     Standard,
     Compression,
     EvmProductionPacked,
+    L1Wrap,
 }
 
 /// The blake2s implementation a verifier program is built with: what a

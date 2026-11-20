@@ -63,7 +63,7 @@ impl FsvDescriptor {
     }
 
     #[must_use]
-    pub const fn compression(profile: FsvProfile) -> Self {
+    pub const fn pessimistic_compression(profile: FsvProfile) -> Self {
         Self {
             soundness_mode: SoundnessMode::PessimisticConjecture,
             program: FsvProgram::UnifiedRecursionLayer,
@@ -191,6 +191,13 @@ pub const FSV_REGISTRY: &[FsvRegistryEntry] = {
             FsvProfile::Compression,
             BlakeSpecialOpcodes,
             "ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100_compression_special_opcodes_extension.elf",
+        ),
+        entry(
+            EthproofsSoundnessCalc,
+            UnifiedRecursionLayer,
+            CompressionFinalWrap,
+            BlakeSpecialOpcodes,
+            "ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100_compression_wrap_special_opcodes_extension.elf",
         ),
     ]
 };

@@ -25,7 +25,7 @@ esac
 case $stage_filter in
   l1)
     [[ $mode_filter != ethproofs_soundcalc ]] || {
-      echo "L1 stages support only pessimistic_conjecture" >&2; exit 1;
+      echo "The fixture recipe manages only the pessimistic L1 fixture" >&2; exit 1;
     }
     mode_filter=pessimistic_conjecture ;;
 esac

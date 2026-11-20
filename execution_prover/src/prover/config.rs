@@ -18,7 +18,7 @@ use execution_prover_model::MachineType;
 ///   `ProofProfile::Compression`).
 /// - `Unified22`: the 2^22 unified circuit of the compression layers
 ///   (`MachineType::Reduced`, exactly `ProofProfile::CompressionFinal`).
-/// - `L1Wrap`: the 2^21 Proth120 L1 wrap (`MachineType::Reduced`, exactly
+/// - `L1Wrap`: the mode-specific Proth120 L1 wrap (`MachineType::Reduced`, exactly
 ///   `ProofProfile::L1Wrap`).
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ExecutionKind {
@@ -36,7 +36,19 @@ impl ExecutionKind {
             Self::Unrolled => None,
             Self::Unified => Some(CircuitType::Unrolled(UnrolledCircuitType::Unified)),
             Self::Unified22 => Some(CircuitType::Unrolled(UnrolledCircuitType::Unified22)),
-            Self::L1Wrap => Some(CircuitType::L1Wrap),
+            Self::L1Wrap => Some(CircuitType::L1Wrap21),
+        }
+    }
+
+    pub(crate) fn unified_circuit_in_mode(
+        self,
+        soundness_mode: crate::config::SoundnessMode,
+    ) -> Option<CircuitType> {
+        match (self, soundness_mode) {
+            (Self::L1Wrap, crate::config::SoundnessMode::EthproofsSoundnessCalc) => {
+                Some(CircuitType::L1Wrap22)
+            }
+            _ => self.unified_circuit(),
         }
     }
 

@@ -53,7 +53,19 @@ pub(super) fn expected_setup_cap_size(target: ProofTarget, mode: SoundnessMode) 
 
 pub(super) fn validate_artifact_envelope(artifact: &ProofArtifact) -> Result<(), String> {
     match (artifact.target, &artifact.l1) {
-        (ProofTarget::L1, Some(bundle)) => bundle.validate()?,
+        (ProofTarget::L1, Some(bundle)) => {
+            bundle.validate()?;
+            use prover::gkr::prover_config::example_configs::l1_wrap;
+            let config = match artifact.soundness_mode {
+                SoundnessMode::PessimisticConjecture => l1_wrap::pessimistic_packed_prover_config(),
+                SoundnessMode::EthproofsSoundnessCalc => l1_wrap::ethproofs_packed_prover_config(),
+            };
+            if bundle.proof.whir_proof.whir_schedule != config.whir_schedule {
+                return Err(
+                    "L1 bundle WHIR schedule does not match the artifact soundness mode".into(),
+                );
+            }
+        }
         (ProofTarget::L1, None) => return Err("L1 artifact must contain an l1 bundle".into()),
         (_, Some(_)) => return Err("non-L1 artifact must not contain an l1 bundle".into()),
         (_, None) => {}
@@ -137,8 +149,7 @@ pub(super) fn advance_l1_wrap(
         .as_ref()
         .expect("L1 wrap guest was not loaded");
     let (bin, text) = (guest.bin(), guest.text());
-    let nd_words =
-        build_unified_stream(&state.setups, &state.proof, BlakeMode::BlakeSpecialOpcodes);
+    let nd_words = fsv_input(guest, &state.setups, &state.proof);
     let result = backend.prove_l1_wrap(L1WrapRequest {
         batch_id,
         bin,

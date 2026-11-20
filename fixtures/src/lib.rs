@@ -33,8 +33,7 @@ pub fn circuits(mode_dir: &str) -> impl Iterator<Item = &'static str> {
 
 pub fn chains(mode_dir: &str) -> impl Iterator<Item = &'static str> {
     let special: &'static [&'static str] = match mode_dir {
-        "pessimistic_conjecture" => &["compression", "l1"],
-        "ethproofs_soundcalc" => &["compression"],
+        "pessimistic_conjecture" | "ethproofs_soundcalc" => &["compression", "l1"],
         _ => panic!("unknown soundness mode: {mode_dir}"),
     };
     CHAINS.into_iter().chain(special.iter().copied())
@@ -143,9 +142,10 @@ mod tests {
             "compression_final"
         ))
         .is_err());
-        assert!(std::panic::catch_unwind(|| chain_artifact("ethproofs_soundcalc", "l1")).is_err());
         circuit_proof_in(repository, "pessimistic_conjecture", "compression_final");
-        chain_artifact("pessimistic_conjecture", "l1");
+        for mode in MODES {
+            chain_artifact(mode, "l1");
+        }
     }
 
     fn assert_inventory(directory: &Path, stems: impl Fn(&str) -> Vec<&'static str>) {

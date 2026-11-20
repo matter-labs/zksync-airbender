@@ -34,13 +34,11 @@ impl ProofProfile {
         match self {
             Self::Standard => ProverConfigProfile::Standard,
             Self::CompressionFinal | Self::Compression => ProverConfigProfile::Compression,
-            Self::L1Wrap => ProverConfigProfile::EvmProductionPacked,
+            Self::L1Wrap => ProverConfigProfile::L1Wrap,
         }
     }
 
-    /// The special config of an L1 profile under `soundness_mode`. The wrap exists only under
-    /// [`SoundnessMode::PessimisticConjecture`]: another mode fails
-    /// [`ProverConfigProfile::assert_supports`](crate::definitions::ProverConfigProfile::assert_supports).
+    /// The special config of a compression or L1 wrap profile under `soundness_mode`.
     /// The [`SoundnessMode::EthproofsSoundnessCalc`] compression chain has no `CompressionFinal`.
     /// `Standard` resolves through the circuit's own config.
     pub fn prover_config(
@@ -78,13 +76,21 @@ impl ProofProfile {
                     }
                 }
             }
-            (Self::L1Wrap, _) => {
+            (Self::L1Wrap, mode) => {
+                use example_configs::l1_wrap;
+                let config = match mode {
+                    SoundnessMode::PessimisticConjecture => {
+                        l1_wrap::pessimistic_packed_prover_config()
+                    }
+                    SoundnessMode::EthproofsSoundnessCalc => {
+                        l1_wrap::ethproofs_packed_prover_config()
+                    }
+                };
                 assert_eq!(
-                    trace_len_log2,
-                    example_configs::l1_wrap::TRACE_LEN_LOG2,
-                    "ProofProfile::L1Wrap requires the 2^21 Proth120 unified circuit"
+                    trace_len_log2, config.trace_len_log2,
+                    "L1Wrap trace length for {mode:?}"
                 );
-                example_configs::l1_wrap::packed_prover_config()
+                config
             }
         };
         assert_eq!(
@@ -901,7 +907,7 @@ mod test {
         for config in [
             example_configs::compression_final_config_for_2_22(),
             example_configs::compression_config_for_2_23(),
-            example_configs::l1_wrap::packed_prover_config(),
+            example_configs::l1_wrap::pessimistic_packed_prover_config(),
         ] {
             config.validate_for_whir_message_size(config.whir_message_size_log2());
         }

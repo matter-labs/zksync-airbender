@@ -99,12 +99,12 @@ root.
 
 ## Chain artifacts
 
-Each mode has Standard CLI artifacts and a `compression` artifact under
-`chains/<mode>/`. Only `pessimistic_conjecture` also has `l1`; Ethproofs refuses
-the wrap target. They use the tracked `examples/basic_fibonacci/app.bin`, CPU
-backend on every available core, and Compression guests for unrolled, bridge,
-and final layers. Every artifact has `program_cycles = 97`; the recipe natively
-verifies its proof and rejects absolute paths inside `Variable at ...` labels.
+Each mode has Standard CLI artifacts and `compression` and `l1` artifacts
+under `chains/<mode>/`. The CLI supports the L1 wrap target in both modes.
+The fixture recipe manages only the pessimistic L1 fixture. The fixtures use
+the tracked `examples/basic_fibonacci/app.bin` and have `program_cycles = 97`.
+The recipe verifies its outputs and rejects absolute paths inside
+`Variable at ...` labels.
 The optional `l1` bundle is serialized only when present, so the eight standard
 chain artifacts have no `l1` field.
 
@@ -115,10 +115,11 @@ chain artifacts have no `l1` field.
 | `unrolled` | `base` | 1 | 2 |
 | `unrolled_unified` | `unrolled` | 0 | 4 |
 | `compression` | `unified` | mode-specific compression schedule | 6 |
-| `l1` (pessimistic only) | `compression` | wrap; same CompressionFinal sidecar | 6 |
+| `l1` (pessimistic) | `compression` | wrap with the CompressionFinal sidecar | 6 |
+| `l1` (Ethproofs) | `compression` | wrap with the terminal Compression sidecar | 6 |
 
 The `prover_pipeline` test `committed_chain_encoding` checks each committed
-artifact's target, chain entries and `program_cycles`.
+recipe-managed artifact's target, chain entries and `program_cycles`.
 
 Write mode publishes each parent before its child. Check mode always reads the
 committed parents and compares only its own stage's outputs. On the CPU backend
@@ -135,6 +136,7 @@ existing artifacts.
 | `chains/pessimistic_conjecture/compression` | native CLI verification, compression tampering and trusted-chain tests; GPU L1 currency and continuation tests |
 | `chains/ethproofs_soundcalc/compression` | native CLI verification, currency and typed encoding; GPU compression parity |
 | `chains/pessimistic_conjecture/l1` | CLI envelope and native CompressionFinal-sidecar verification; wrap/frontier tests; EVM contract and calldata producers; GPU wrap parity |
+| `chains/ethproofs_soundcalc/l1` | Ethproofs EVM contract and calldata regeneration; Forge controls and GPU wrap parity |
 
 ## L1 production and EVM checks
 
@@ -153,9 +155,10 @@ fixtures/regenerate.sh --mode pessimistic_conjecture --stage l1
 git status --porcelain -- fixtures/chains/pessimistic_conjecture
 ```
 
-CPU CI checks compression currency. CPU wrap production is available for local
-regeneration. CLI verification of the L1 artifact checks its envelope, chain and
-native CompressionFinal sidecar; the EVM verifier checks the Proth120 proof.
+CPU CI checks compression currency. The fixture recipe regenerates the pessimistic
+L1 fixture on CPU. The CPU pipeline also wraps Ethproofs compression outputs.
+CLI verification checks the L1 envelope, chain and compression sidecar. The
+EVM verifier checks the pessimistic Proth120 proof.
 The Standard stages use fixed Compression Blake modes. The unrolled-to-unified
 switch threshold is the library default unless `RECURSION_UNIFIED_SWITCH_CYCLES`
 is set; the recipe does not override it.
@@ -170,7 +173,7 @@ native compression refusal tests. After producing the L1 fixture, refresh its
 setup frontier and EVM outputs:
 
 ```bash
-cargo test -p prover_pipeline --release --lib l1_tests::export_l1_wrap_setup_frontier -- --exact --ignored
+cargo test -p prover_pipeline --release --lib l1_tests::export_pessimistic_l1_wrap_setup_frontier -- --exact --ignored
 cargo test -p verifier_evm --release --test generate_contracts -- --ignored
 cargo test -p verifier_evm --release --test flatten_calldata -- --ignored
 git status --porcelain -- verifier_evm/generated_contracts verifier_evm/debug_data

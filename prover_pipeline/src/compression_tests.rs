@@ -258,7 +258,6 @@ fn compression_proof_profile_requires_the_trace_and_every_instance_schedule() {
 #[test]
 fn ethproofs_compression_envelope_uses_its_last_step_profile() {
     let mode = SoundnessMode::EthproofsSoundnessCalc;
-    assert_target_mode(ProofTarget::Compression, mode);
     let mut artifact = compression_artifact(ProofTarget::Compression, 6);
     artifact.soundness_mode = mode;
     artifact.proof = fake_compression_proof_in_mode(0, 1, CompressionProfile::Step, mode);

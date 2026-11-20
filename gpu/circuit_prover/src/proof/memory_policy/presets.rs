@@ -50,7 +50,11 @@ pub fn policy(
         return compression::POLICY;
     }
     match circuit {
-        CircuitType::L1Wrap => l1_wrap::L1_WRAP_POLICY,
+        // The retained-main 2^22 schedule needs the larger arena.
+        CircuitType::L1Wrap22 if arena_bytes < PRESET_ARENA_BYTES[1] => {
+            l1_wrap::L1_WRAP_REUSE_PREFIX_POLICY
+        }
+        CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => l1_wrap::L1_WRAP_POLICY,
         _ => generated::policy(circuit, select_arena_bytes(arena_bytes)),
     }
 }
@@ -60,7 +64,7 @@ pub fn partial_trees(circuit: CircuitType, profile: ProofProfile) -> PartialTree
         return compression::PARTIAL_TREES;
     }
     match circuit {
-        CircuitType::L1Wrap => l1_wrap::PARTIAL_TREES,
+        CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => l1_wrap::PARTIAL_TREES,
         _ => PartialTreePolicy::DEFAULT,
     }
 }
@@ -78,14 +82,16 @@ mod cpu_tests {
 
     #[test]
     fn cpu_l1_wrap_prefix_reuse_preset() {
-        use WitnessPostCommitStorage::RawAndMonomials;
+        use WitnessPostCommitStorage::{RawAndMonomials, RawWithReusedPrefixScratch};
 
         let [tight, roomy] = PRESET_ARENA_BYTES else {
             panic!("L1 wrap memory schedule test requires both arena presets");
         };
         for (circuit, arena, expected) in [
-            (CircuitType::L1Wrap, *tight, RawAndMonomials),
-            (CircuitType::L1Wrap, *roomy, RawAndMonomials),
+            (CircuitType::L1Wrap21, *tight, RawAndMonomials),
+            (CircuitType::L1Wrap21, *roomy, RawAndMonomials),
+            (CircuitType::L1Wrap22, *tight, RawWithReusedPrefixScratch),
+            (CircuitType::L1Wrap22, *roomy, RawAndMonomials),
         ] {
             let selected = policy(circuit, ProofProfile::L1Wrap, arena);
             assert!(selected.witness.is_valid());

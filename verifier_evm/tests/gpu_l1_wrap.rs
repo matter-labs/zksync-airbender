@@ -11,7 +11,7 @@ use riscv_transpiler::elf::{read_elf_from_path_with_rom, ElfReadMode};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup;
+use unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup_for_trace;
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile, FsvProgram};
 use verifier_evm::encoding::{encode_single_tx, FormatParams};
 use worker::Worker;
@@ -24,6 +24,7 @@ const REGISTRY: [u8; 20] = [
 #[derive(Clone, Copy)]
 enum WrapCase {
     P32_2500,
+    N01,
     P32_469,
 }
 
@@ -53,6 +54,19 @@ fn alternate_case(case: WrapCase) {
             vec![9, 10, 9, 8, 7],
             vec![18, 20, 22, 24],
             13,
+        ),
+        // N01, including a cap that cuts through the base cosets and an ungated OOD sample.
+        WrapCase::N01 => (
+            SoundnessMode::EthproofsSoundnessCalc,
+            22,
+            "ethproofs_soundcalc",
+            vec![2, 5, 5, 5, 4],
+            vec![1, 4, 8, 10, 12],
+            vec![198, 45, 22, 18, 15],
+            vec![18, 18, 17, 15, 14],
+            vec![1, 20, 23, 23, 23],
+            vec![8, 6, 3, 0],
+            8,
         ),
         // P32-469, a base fold of three and oracle domain logs 26, 26, 23, 21.
         WrapCase::P32_469 => (
@@ -167,7 +181,7 @@ fn alternate_case(case: WrapCase) {
     };
     assert_eq!(proof_pc, final_pc);
     let worker = Worker::new();
-    let setup = l1_wrap_setup(binary, &image.padded_text_words(), &worker);
+    let setup = l1_wrap_setup_for_trace(trace_log, binary, &image.padded_text_words(), &worker);
     let twiddles = Twiddles::new(1 << config.whir_message_size_log2(), &worker);
     let rows: Vec<_> = setup
         .setup
@@ -267,6 +281,12 @@ fn alternate_case(case: WrapCase) {
 #[ignore = "full GPU wrap and CPU verifier; cargo test -p verifier_evm --release --test gpu_l1_wrap gpu_l1_wrap_p32_2500 -- --exact --ignored"]
 fn gpu_l1_wrap_p32_2500() {
     alternate_case(WrapCase::P32_2500);
+}
+
+#[test]
+#[ignore = "full GPU wrap and CPU verifier; cargo test -p verifier_evm --release --test gpu_l1_wrap gpu_l1_wrap_ethproofs_n01 -- --exact --ignored"]
+fn gpu_l1_wrap_ethproofs_n01() {
+    alternate_case(WrapCase::N01);
 }
 
 #[test]

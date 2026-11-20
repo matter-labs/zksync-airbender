@@ -17,6 +17,7 @@ from soundcalc.proxgaps.johnson_bound import JohnsonBoundRegime
 from soundcalc.proxgaps.unique_decoding import UniqueDecodingRegime
 from soundcalc.common.utils import get_bits_of_security_from_error as bits
 
+HASH_SIZE_BITS = 256
 TARGET = 100; LATER_POW = 27; FOLD_CAP = 24; MAX_DOM = 27; FIELD_BITS = 123
 
 class Mixed(ProximityGapsRegime):
@@ -39,7 +40,7 @@ def batch_pow(msg_log2, n_cols, base_lde_log2=1):   # = prover_config::pow_bits:
 
 def build(log_degree, folds, queries, ldes, pows, fold_pows, ood_pows, n_cols, bpow, base_lde_log2=1):
     M = len(folds)
-    cfg = WHIRConfig(hash_size_bits=256, log_inv_rate=base_lde_log2, num_iterations=M, folding_factors=folds, field=F,
+    cfg = WHIRConfig(hash_size_bits=HASH_SIZE_BITS, log_inv_rate=base_lde_log2, num_iterations=M, folding_factors=folds, field=F,
         log_degree=log_degree, batch_size=n_cols, power_batching=True, grinding_batching_phase=bpow, constraint_degree=3,
         grinding_bits_folding=fold_pows, num_queries=queries, grinding_bits_queries=pows,
         num_ood_samples=[1]*(M-1), grinding_bits_ood=ood_pows)
@@ -134,6 +135,7 @@ def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=F
         needU = math.ceil((TARGET - caps['query']) / -math.log2(1 - UDR.get_proximity_parameter(2.0**-L, 2**(p-1))))
         print(f"internal_round {j}: poly 2^{p}, lde_factor_log2 {L} (domain 2^{p+L}), folding_log2 {k}, num_queries {t}, queries_pow_bits {qpow} (query term {query_term} bits ungrinded), folding_pow_bits {max(fp)} (per sumcheck round {fp}), num_ood_samples 1, ood_pow_bits {op}  | regime {lab}, {bpq:.2f} bits/query; UDR here would need {needU} queries")
     if today: print(f"today: {today}")
+    return w, Mixed(F, regimes)
 
 
 if __name__ == "__main__":

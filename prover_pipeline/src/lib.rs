@@ -136,21 +136,6 @@ pub struct ProgramProverConfig {
     pub gpu_memory_preset: MemoryPreset,
 }
 
-/// The L1 target is pessimistic-conjecture only: the ethproofs wrap and EVM profiles are not
-/// implemented.
-/// Every L1 entry asserts this before it loads a guest, reads an input or creates a backend;
-/// there is no fallback to another mode and no mixed-mode chain. The assert is the profile's
-/// [`ProverConfigProfile::assert_supports`](prover::definitions::ProverConfigProfile::assert_supports).
-fn assert_target_mode(target: ProofTarget, soundness_mode: prover::definitions::SoundnessMode) {
-    use prover::definitions::ProverConfigProfile;
-    if target >= ProofTarget::Compression {
-        ProverConfigProfile::Compression.assert_supports(soundness_mode);
-    }
-    if target == ProofTarget::L1 {
-        ProverConfigProfile::EvmProductionPacked.assert_supports(soundness_mode);
-    }
-}
-
 impl Default for ProgramProverConfig {
     fn default() -> Self {
         Self {
@@ -986,7 +971,6 @@ impl ProgramProver {
         config: ProgramProverConfig,
         schedule: Option<prover::gkr::prover_config::WhirSchedule>,
     ) -> Result<Self, String> {
-        assert_target_mode(config.target, config.soundness_mode);
         if schedule.is_some() && config.target != ProofTarget::L1 {
             return Err("An explicit L1 WHIR schedule requires the L1 target".into());
         }
@@ -1333,7 +1317,6 @@ pub fn compute_trusted_params(
     target: ProofTarget,
     backend: ProverBackend,
 ) -> Result<TrustedParams, String> {
-    assert_target_mode(target, soundness_mode);
     let loaded = load_program(source)?;
     let worker = worker::Worker::new();
     let target = target.min(ProofTarget::Compression);
@@ -2228,52 +2211,45 @@ mod program_source_tests {
     }
 }
 
-/// The soundness-mode check of the wrap target: ethproofs is rejected before any guest, input
-/// or backend is touched; pessimistic L1 entries pass it unchanged.
 #[cfg(test)]
 mod l1_capability_tests {
     use super::*;
     use prover::definitions::SoundnessMode;
 
-    const L1_TARGETS: [ProofTarget; 1] = [ProofTarget::L1];
-
     fn missing() -> ProgramSource {
-        let source = ProgramSource::elf("must-not-read-l1-capability-input.elf");
-        assert!(matches!(&source, ProgramSource::Elf(path) if !path.exists()));
-        source
+        ProgramSource::elf("missing-ethproofs-l1.elf")
     }
 
-    /// The profile assert's message for `entry`, which must panic.
-    fn refusal<T>(entry: impl FnOnce() -> T) -> String {
-        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(entry))
-            .map(|_| ())
-            .expect_err("ethproofs L1 entries must be rejected");
-        payload
-            .downcast_ref::<String>()
-            .map(String::as_str)
-            .or_else(|| payload.downcast_ref::<&str>().copied())
-            .unwrap_or_default()
-            .to_owned()
-    }
-
-    /// CPU and GPU entries: the rejection precedes guest loading, the (missing) source and
-    /// backend construction, so no CUDA is reached even in a `gpu` build.
     #[test]
-    fn ethproofs_l1_prover_entries_reject_before_inputs_and_backends() {
-        for target in L1_TARGETS {
-            for backend in [ProverBackend::Cpu, ProverBackend::Gpu] {
-                let config = ProgramProverConfig {
-                    target,
-                    backend,
-                    soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
-                    ..Default::default()
-                };
-                let error = refusal(|| ProgramProver::new(missing(), config.clone()));
-                assert!(
-                    error.contains("supports only the pessimistic-conjecture soundness mode"),
-                    "{target:?} on {backend:?}: {error}"
-                );
-            }
+    fn ethproofs_l1_gpu_checks_the_program_source_before_initializing_backend() {
+        let config = ProgramProverConfig {
+            target: ProofTarget::L1,
+            backend: ProverBackend::Gpu,
+            soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+            ..Default::default()
+        };
+        let params_error = compute_trusted_params(
+            &missing(),
+            config.soundness_mode,
+            config.target,
+            config.backend,
+        )
+        .unwrap_err();
+        let prover_error = ProgramProver::new(missing(), config).err().unwrap();
+        for error in [prover_error, params_error] {
+            assert!(error.contains("missing-ethproofs-l1.elf"), "{error}");
         }
+    }
+
+    #[test]
+    fn ethproofs_l1_cpu_accepts_the_wrap_guest_and_checks_the_program_source() {
+        let config = ProgramProverConfig {
+            target: ProofTarget::L1,
+            backend: ProverBackend::Cpu,
+            soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
+            ..Default::default()
+        };
+        let error = ProgramProver::new(missing(), config).err().unwrap();
+        assert!(error.contains("missing-ethproofs-l1.elf"), "{error}");
     }
 }

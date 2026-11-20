@@ -68,11 +68,6 @@ impl ProofArtifact {
                 ));
             }
         }
-        // Wrap artifacts exist only in PessimisticConjecture: neither an ethproofs request nor
-        // an ethproofs label reaches a wrap verifier or continuation.
-        for mode in [expected, self.soundness_mode] {
-            super::assert_target_mode(self.target, mode);
-        }
         if self.soundness_mode != expected {
             return Err(format!(
                 "SoundnessModeMismatch: expected {expected:?}, artifact is {:?}",

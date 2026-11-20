@@ -2,7 +2,7 @@ use prover::gkr::prover_config::{example_configs::l1_wrap, ProverConfig};
 use verifier_evm::generator::WhirGenConfig;
 
 fn candidate() -> ProverConfig {
-    let mut config = l1_wrap::packed_prover_config();
+    let mut config = l1_wrap::pessimistic_packed_prover_config();
     let base = &mut config.whir_schedule.base_round;
     base.lde_factor_log2 = 8;
     base.num_queries = 11;
@@ -21,8 +21,8 @@ fn candidate() -> ProverConfig {
 }
 
 #[test]
-fn canonical_l1_wrap_schedule() {
-    let config = l1_wrap::packed_prover_config();
+fn canonical_pessimistic_l1_schedule() {
+    let config = l1_wrap::pessimistic_packed_prover_config();
     config.validate_for_whir_message_size(24);
     let schedule = &config.whir_schedule;
     assert_eq!(schedule, &candidate().whir_schedule);
@@ -112,4 +112,19 @@ fn mixed_oracle_domains_accept_nonce_width_pow() {
     assert!(switch.contains("fold_pow_bits := 64"));
     assert!(switch.contains("ood_pow_bits := 64"));
     assert!(switch.contains("qib := 28 vp := 16 cb := 9"));
+}
+
+#[test]
+fn ethproofs_wrap_has_growing_and_shrinking_oracle_domains() {
+    let config = l1_wrap::ethproofs_packed_prover_config();
+    let geometry = WhirGenConfig::derive(&config, 96, 10);
+    assert_eq!(geometry.base_domain_log2, 29);
+    assert_eq!(geometry.rfin, 4);
+    let query_bits: Vec<_> = (0..geometry.num_rounds).map(|r| geometry.qib(r)).collect();
+    assert_eq!(query_bits, [28, 25, 22, 19, 16]);
+    let schedule = geometry.schedule_switch_yul();
+    for (qib, coset_bits) in query_bits.into_iter().zip([4, 6, 8, 10, 12]) {
+        assert!(schedule.contains(&format!("qib := {qib} vp :=")));
+        assert!(schedule.contains(&format!(" cb := {coset_bits} }}")));
+    }
 }

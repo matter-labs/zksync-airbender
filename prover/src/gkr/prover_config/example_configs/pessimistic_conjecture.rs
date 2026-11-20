@@ -262,7 +262,7 @@ mod tests {
         for config in [
             compression_final_config_for_2_22(),
             compression_config_for_2_23(),
-            l1_wrap::packed_prover_config(),
+            l1_wrap::pessimistic_packed_prover_config(),
         ] {
             assert_every_round_preserves_security_margin(&config);
         }

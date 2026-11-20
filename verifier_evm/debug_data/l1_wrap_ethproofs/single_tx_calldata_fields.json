@@ -1,0 +1,1625 @@
+{
+  "bytes": 160037,
+  "digest_bytes": 25,
+  "fields": {
+    "gkr_batching_pow_nonce": {
+      "length": 8,
+      "offset": 21363
+    },
+    "gkr_dr_10_lines": {
+      "length": 308,
+      "offset": 9577
+    },
+    "gkr_dr_10_rounds": {
+      "length": 492,
+      "offset": 9085
+    },
+    "gkr_dr_11_lines": {
+      "length": 308,
+      "offset": 8777
+    },
+    "gkr_dr_11_rounds": {
+      "length": 462,
+      "offset": 8315
+    },
+    "gkr_dr_12_lines": {
+      "length": 308,
+      "offset": 8007
+    },
+    "gkr_dr_12_rounds": {
+      "length": 431,
+      "offset": 7576
+    },
+    "gkr_dr_13_lines": {
+      "length": 308,
+      "offset": 7268
+    },
+    "gkr_dr_13_rounds": {
+      "length": 400,
+      "offset": 6868
+    },
+    "gkr_dr_14_lines": {
+      "length": 308,
+      "offset": 6560
+    },
+    "gkr_dr_14_rounds": {
+      "length": 369,
+      "offset": 6191
+    },
+    "gkr_dr_15_lines": {
+      "length": 308,
+      "offset": 5883
+    },
+    "gkr_dr_15_rounds": {
+      "length": 339,
+      "offset": 5544
+    },
+    "gkr_dr_16_lines": {
+      "length": 308,
+      "offset": 5236
+    },
+    "gkr_dr_16_rounds": {
+      "length": 308,
+      "offset": 4928
+    },
+    "gkr_dr_17_lines": {
+      "length": 308,
+      "offset": 4620
+    },
+    "gkr_dr_17_rounds": {
+      "length": 277,
+      "offset": 4343
+    },
+    "gkr_dr_18_lines": {
+      "length": 308,
+      "offset": 4035
+    },
+    "gkr_dr_18_rounds": {
+      "length": 246,
+      "offset": 3789
+    },
+    "gkr_dr_19_lines": {
+      "length": 308,
+      "offset": 3481
+    },
+    "gkr_dr_19_rounds": {
+      "length": 216,
+      "offset": 3265
+    },
+    "gkr_dr_20_lines": {
+      "length": 308,
+      "offset": 2957
+    },
+    "gkr_dr_20_rounds": {
+      "length": 185,
+      "offset": 2772
+    },
+    "gkr_dr_21_lines": {
+      "length": 308,
+      "offset": 2464
+    },
+    "gkr_dr_21_rounds": {
+      "length": 154,
+      "offset": 2310
+    },
+    "gkr_dr_22_lines": {
+      "length": 308,
+      "offset": 2002
+    },
+    "gkr_dr_22_rounds": {
+      "length": 123,
+      "offset": 1879
+    },
+    "gkr_dr_23_lines": {
+      "length": 308,
+      "offset": 1571
+    },
+    "gkr_dr_23_rounds": {
+      "length": 93,
+      "offset": 1478
+    },
+    "gkr_dr_24_lines": {
+      "length": 308,
+      "offset": 1170
+    },
+    "gkr_dr_24_rounds": {
+      "length": 62,
+      "offset": 1108
+    },
+    "gkr_dr_5_lines": {
+      "length": 308,
+      "offset": 14040
+    },
+    "gkr_dr_5_rounds": {
+      "length": 646,
+      "offset": 13394
+    },
+    "gkr_dr_6_lines": {
+      "length": 308,
+      "offset": 13086
+    },
+    "gkr_dr_6_rounds": {
+      "length": 615,
+      "offset": 12471
+    },
+    "gkr_dr_7_lines": {
+      "length": 308,
+      "offset": 12163
+    },
+    "gkr_dr_7_rounds": {
+      "length": 585,
+      "offset": 11578
+    },
+    "gkr_dr_8_lines": {
+      "length": 308,
+      "offset": 11270
+    },
+    "gkr_dr_8_rounds": {
+      "length": 554,
+      "offset": 10716
+    },
+    "gkr_dr_9_lines": {
+      "length": 308,
+      "offset": 10408
+    },
+    "gkr_dr_9_rounds": {
+      "length": 523,
+      "offset": 9885
+    },
+    "gkr_external_pow_nonce": {
+      "length": 8,
+      "offset": 485
+    },
+    "gkr_layer_0_evals": {
+      "length": 1630,
+      "offset": 19733
+    },
+    "gkr_layer_0_rounds": {
+      "length": 677,
+      "offset": 19056
+    },
+    "gkr_layer_1_evals": {
+      "length": 1138,
+      "offset": 17918
+    },
+    "gkr_layer_1_rounds": {
+      "length": 677,
+      "offset": 17241
+    },
+    "gkr_layer_2_evals": {
+      "length": 400,
+      "offset": 16841
+    },
+    "gkr_layer_2_rounds": {
+      "length": 677,
+      "offset": 16164
+    },
+    "gkr_layer_3_evals": {
+      "length": 277,
+      "offset": 15887
+    },
+    "gkr_layer_3_rounds": {
+      "length": 677,
+      "offset": 15210
+    },
+    "gkr_layer_4_evals": {
+      "length": 185,
+      "offset": 15025
+    },
+    "gkr_layer_4_rounds": {
+      "length": 677,
+      "offset": 14348
+    },
+    "gkr_memory_cap": {
+      "length": 200,
+      "offset": 285
+    },
+    "gkr_output_evals": {
+      "length": 615,
+      "offset": 493
+    },
+    "gkr_registers": {
+      "length": 128,
+      "offset": 0
+    },
+    "gkr_timestamps": {
+      "length": 157,
+      "offset": 128
+    },
+    "whir_0_cap": {
+      "length": 200,
+      "offset": 21410
+    },
+    "whir_0_folding_nonces": {
+      "length": 8,
+      "offset": 21402
+    },
+    "whir_0_ood": {
+      "length": 16,
+      "offset": 21618
+    },
+    "whir_0_ood_nonce": {
+      "length": 8,
+      "offset": 21610
+    },
+    "whir_0_pow_nonce": {
+      "length": 8,
+      "offset": 21634
+    },
+    "whir_0_query_0_memory_leaf": {
+      "length": 369,
+      "offset": 21642
+    },
+    "whir_0_query_0_memory_path": {
+      "length": 625,
+      "offset": 22011
+    },
+    "whir_0_query_0_setup_leaf": {
+      "length": 62,
+      "offset": 22636
+    },
+    "whir_0_query_0_setup_path": {
+      "length": 475,
+      "offset": 22698
+    },
+    "whir_0_query_10_memory_leaf": {
+      "length": 369,
+      "offset": 36952
+    },
+    "whir_0_query_10_memory_path": {
+      "length": 625,
+      "offset": 37321
+    },
+    "whir_0_query_10_setup_leaf": {
+      "length": 62,
+      "offset": 37946
+    },
+    "whir_0_query_10_setup_path": {
+      "length": 475,
+      "offset": 38008
+    },
+    "whir_0_query_11_memory_leaf": {
+      "length": 369,
+      "offset": 38483
+    },
+    "whir_0_query_11_memory_path": {
+      "length": 625,
+      "offset": 38852
+    },
+    "whir_0_query_11_setup_leaf": {
+      "length": 62,
+      "offset": 39477
+    },
+    "whir_0_query_11_setup_path": {
+      "length": 475,
+      "offset": 39539
+    },
+    "whir_0_query_12_memory_leaf": {
+      "length": 369,
+      "offset": 40014
+    },
+    "whir_0_query_12_memory_path": {
+      "length": 625,
+      "offset": 40383
+    },
+    "whir_0_query_12_setup_leaf": {
+      "length": 62,
+      "offset": 41008
+    },
+    "whir_0_query_12_setup_path": {
+      "length": 475,
+      "offset": 41070
+    },
+    "whir_0_query_13_memory_leaf": {
+      "length": 369,
+      "offset": 41545
+    },
+    "whir_0_query_13_memory_path": {
+      "length": 625,
+      "offset": 41914
+    },
+    "whir_0_query_13_setup_leaf": {
+      "length": 62,
+      "offset": 42539
+    },
+    "whir_0_query_13_setup_path": {
+      "length": 475,
+      "offset": 42601
+    },
+    "whir_0_query_14_memory_leaf": {
+      "length": 369,
+      "offset": 43076
+    },
+    "whir_0_query_14_memory_path": {
+      "length": 625,
+      "offset": 43445
+    },
+    "whir_0_query_14_setup_leaf": {
+      "length": 62,
+      "offset": 44070
+    },
+    "whir_0_query_14_setup_path": {
+      "length": 475,
+      "offset": 44132
+    },
+    "whir_0_query_15_memory_leaf": {
+      "length": 369,
+      "offset": 44607
+    },
+    "whir_0_query_15_memory_path": {
+      "length": 625,
+      "offset": 44976
+    },
+    "whir_0_query_15_setup_leaf": {
+      "length": 62,
+      "offset": 45601
+    },
+    "whir_0_query_15_setup_path": {
+      "length": 475,
+      "offset": 45663
+    },
+    "whir_0_query_16_memory_leaf": {
+      "length": 369,
+      "offset": 46138
+    },
+    "whir_0_query_16_memory_path": {
+      "length": 625,
+      "offset": 46507
+    },
+    "whir_0_query_16_setup_leaf": {
+      "length": 62,
+      "offset": 47132
+    },
+    "whir_0_query_16_setup_path": {
+      "length": 475,
+      "offset": 47194
+    },
+    "whir_0_query_17_memory_leaf": {
+      "length": 369,
+      "offset": 47669
+    },
+    "whir_0_query_17_memory_path": {
+      "length": 625,
+      "offset": 48038
+    },
+    "whir_0_query_17_setup_leaf": {
+      "length": 62,
+      "offset": 48663
+    },
+    "whir_0_query_17_setup_path": {
+      "length": 475,
+      "offset": 48725
+    },
+    "whir_0_query_18_memory_leaf": {
+      "length": 369,
+      "offset": 49200
+    },
+    "whir_0_query_18_memory_path": {
+      "length": 625,
+      "offset": 49569
+    },
+    "whir_0_query_18_setup_leaf": {
+      "length": 62,
+      "offset": 50194
+    },
+    "whir_0_query_18_setup_path": {
+      "length": 475,
+      "offset": 50256
+    },
+    "whir_0_query_19_memory_leaf": {
+      "length": 369,
+      "offset": 50731
+    },
+    "whir_0_query_19_memory_path": {
+      "length": 625,
+      "offset": 51100
+    },
+    "whir_0_query_19_setup_leaf": {
+      "length": 62,
+      "offset": 51725
+    },
+    "whir_0_query_19_setup_path": {
+      "length": 475,
+      "offset": 51787
+    },
+    "whir_0_query_1_memory_leaf": {
+      "length": 369,
+      "offset": 23173
+    },
+    "whir_0_query_1_memory_path": {
+      "length": 625,
+      "offset": 23542
+    },
+    "whir_0_query_1_setup_leaf": {
+      "length": 62,
+      "offset": 24167
+    },
+    "whir_0_query_1_setup_path": {
+      "length": 475,
+      "offset": 24229
+    },
+    "whir_0_query_20_memory_leaf": {
+      "length": 369,
+      "offset": 52262
+    },
+    "whir_0_query_20_memory_path": {
+      "length": 625,
+      "offset": 52631
+    },
+    "whir_0_query_20_setup_leaf": {
+      "length": 62,
+      "offset": 53256
+    },
+    "whir_0_query_20_setup_path": {
+      "length": 475,
+      "offset": 53318
+    },
+    "whir_0_query_21_memory_leaf": {
+      "length": 369,
+      "offset": 53793
+    },
+    "whir_0_query_21_memory_path": {
+      "length": 625,
+      "offset": 54162
+    },
+    "whir_0_query_21_setup_leaf": {
+      "length": 62,
+      "offset": 54787
+    },
+    "whir_0_query_21_setup_path": {
+      "length": 475,
+      "offset": 54849
+    },
+    "whir_0_query_22_memory_leaf": {
+      "length": 369,
+      "offset": 55324
+    },
+    "whir_0_query_22_memory_path": {
+      "length": 625,
+      "offset": 55693
+    },
+    "whir_0_query_22_setup_leaf": {
+      "length": 62,
+      "offset": 56318
+    },
+    "whir_0_query_22_setup_path": {
+      "length": 475,
+      "offset": 56380
+    },
+    "whir_0_query_23_memory_leaf": {
+      "length": 369,
+      "offset": 56855
+    },
+    "whir_0_query_23_memory_path": {
+      "length": 625,
+      "offset": 57224
+    },
+    "whir_0_query_23_setup_leaf": {
+      "length": 62,
+      "offset": 57849
+    },
+    "whir_0_query_23_setup_path": {
+      "length": 475,
+      "offset": 57911
+    },
+    "whir_0_query_24_memory_leaf": {
+      "length": 369,
+      "offset": 58386
+    },
+    "whir_0_query_24_memory_path": {
+      "length": 625,
+      "offset": 58755
+    },
+    "whir_0_query_24_setup_leaf": {
+      "length": 62,
+      "offset": 59380
+    },
+    "whir_0_query_24_setup_path": {
+      "length": 475,
+      "offset": 59442
+    },
+    "whir_0_query_25_memory_leaf": {
+      "length": 369,
+      "offset": 59917
+    },
+    "whir_0_query_25_memory_path": {
+      "length": 625,
+      "offset": 60286
+    },
+    "whir_0_query_25_setup_leaf": {
+      "length": 62,
+      "offset": 60911
+    },
+    "whir_0_query_25_setup_path": {
+      "length": 475,
+      "offset": 60973
+    },
+    "whir_0_query_26_memory_leaf": {
+      "length": 369,
+      "offset": 61448
+    },
+    "whir_0_query_26_memory_path": {
+      "length": 625,
+      "offset": 61817
+    },
+    "whir_0_query_26_setup_leaf": {
+      "length": 62,
+      "offset": 62442
+    },
+    "whir_0_query_26_setup_path": {
+      "length": 475,
+      "offset": 62504
+    },
+    "whir_0_query_27_memory_leaf": {
+      "length": 369,
+      "offset": 62979
+    },
+    "whir_0_query_27_memory_path": {
+      "length": 625,
+      "offset": 63348
+    },
+    "whir_0_query_27_setup_leaf": {
+      "length": 62,
+      "offset": 63973
+    },
+    "whir_0_query_27_setup_path": {
+      "length": 475,
+      "offset": 64035
+    },
+    "whir_0_query_28_memory_leaf": {
+      "length": 369,
+      "offset": 64510
+    },
+    "whir_0_query_28_memory_path": {
+      "length": 625,
+      "offset": 64879
+    },
+    "whir_0_query_28_setup_leaf": {
+      "length": 62,
+      "offset": 65504
+    },
+    "whir_0_query_28_setup_path": {
+      "length": 475,
+      "offset": 65566
+    },
+    "whir_0_query_29_memory_leaf": {
+      "length": 369,
+      "offset": 66041
+    },
+    "whir_0_query_29_memory_path": {
+      "length": 625,
+      "offset": 66410
+    },
+    "whir_0_query_29_setup_leaf": {
+      "length": 62,
+      "offset": 67035
+    },
+    "whir_0_query_29_setup_path": {
+      "length": 475,
+      "offset": 67097
+    },
+    "whir_0_query_2_memory_leaf": {
+      "length": 369,
+      "offset": 24704
+    },
+    "whir_0_query_2_memory_path": {
+      "length": 625,
+      "offset": 25073
+    },
+    "whir_0_query_2_setup_leaf": {
+      "length": 62,
+      "offset": 25698
+    },
+    "whir_0_query_2_setup_path": {
+      "length": 475,
+      "offset": 25760
+    },
+    "whir_0_query_30_memory_leaf": {
+      "length": 369,
+      "offset": 67572
+    },
+    "whir_0_query_30_memory_path": {
+      "length": 625,
+      "offset": 67941
+    },
+    "whir_0_query_30_setup_leaf": {
+      "length": 62,
+      "offset": 68566
+    },
+    "whir_0_query_30_setup_path": {
+      "length": 475,
+      "offset": 68628
+    },
+    "whir_0_query_31_memory_leaf": {
+      "length": 369,
+      "offset": 69103
+    },
+    "whir_0_query_31_memory_path": {
+      "length": 625,
+      "offset": 69472
+    },
+    "whir_0_query_31_setup_leaf": {
+      "length": 62,
+      "offset": 70097
+    },
+    "whir_0_query_31_setup_path": {
+      "length": 475,
+      "offset": 70159
+    },
+    "whir_0_query_32_memory_leaf": {
+      "length": 369,
+      "offset": 70634
+    },
+    "whir_0_query_32_memory_path": {
+      "length": 625,
+      "offset": 71003
+    },
+    "whir_0_query_32_setup_leaf": {
+      "length": 62,
+      "offset": 71628
+    },
+    "whir_0_query_32_setup_path": {
+      "length": 475,
+      "offset": 71690
+    },
+    "whir_0_query_33_memory_leaf": {
+      "length": 369,
+      "offset": 72165
+    },
+    "whir_0_query_33_memory_path": {
+      "length": 625,
+      "offset": 72534
+    },
+    "whir_0_query_33_setup_leaf": {
+      "length": 62,
+      "offset": 73159
+    },
+    "whir_0_query_33_setup_path": {
+      "length": 475,
+      "offset": 73221
+    },
+    "whir_0_query_34_memory_leaf": {
+      "length": 369,
+      "offset": 73696
+    },
+    "whir_0_query_34_memory_path": {
+      "length": 625,
+      "offset": 74065
+    },
+    "whir_0_query_34_setup_leaf": {
+      "length": 62,
+      "offset": 74690
+    },
+    "whir_0_query_34_setup_path": {
+      "length": 475,
+      "offset": 74752
+    },
+    "whir_0_query_35_memory_leaf": {
+      "length": 369,
+      "offset": 75227
+    },
+    "whir_0_query_35_memory_path": {
+      "length": 625,
+      "offset": 75596
+    },
+    "whir_0_query_35_setup_leaf": {
+      "length": 62,
+      "offset": 76221
+    },
+    "whir_0_query_35_setup_path": {
+      "length": 475,
+      "offset": 76283
+    },
+    "whir_0_query_36_memory_leaf": {
+      "length": 369,
+      "offset": 76758
+    },
+    "whir_0_query_36_memory_path": {
+      "length": 625,
+      "offset": 77127
+    },
+    "whir_0_query_36_setup_leaf": {
+      "length": 62,
+      "offset": 77752
+    },
+    "whir_0_query_36_setup_path": {
+      "length": 475,
+      "offset": 77814
+    },
+    "whir_0_query_37_memory_leaf": {
+      "length": 369,
+      "offset": 78289
+    },
+    "whir_0_query_37_memory_path": {
+      "length": 625,
+      "offset": 78658
+    },
+    "whir_0_query_37_setup_leaf": {
+      "length": 62,
+      "offset": 79283
+    },
+    "whir_0_query_37_setup_path": {
+      "length": 475,
+      "offset": 79345
+    },
+    "whir_0_query_38_memory_leaf": {
+      "length": 369,
+      "offset": 79820
+    },
+    "whir_0_query_38_memory_path": {
+      "length": 625,
+      "offset": 80189
+    },
+    "whir_0_query_38_setup_leaf": {
+      "length": 62,
+      "offset": 80814
+    },
+    "whir_0_query_38_setup_path": {
+      "length": 475,
+      "offset": 80876
+    },
+    "whir_0_query_39_memory_leaf": {
+      "length": 369,
+      "offset": 81351
+    },
+    "whir_0_query_39_memory_path": {
+      "length": 625,
+      "offset": 81720
+    },
+    "whir_0_query_39_setup_leaf": {
+      "length": 62,
+      "offset": 82345
+    },
+    "whir_0_query_39_setup_path": {
+      "length": 475,
+      "offset": 82407
+    },
+    "whir_0_query_3_memory_leaf": {
+      "length": 369,
+      "offset": 26235
+    },
+    "whir_0_query_3_memory_path": {
+      "length": 625,
+      "offset": 26604
+    },
+    "whir_0_query_3_setup_leaf": {
+      "length": 62,
+      "offset": 27229
+    },
+    "whir_0_query_3_setup_path": {
+      "length": 475,
+      "offset": 27291
+    },
+    "whir_0_query_40_memory_leaf": {
+      "length": 369,
+      "offset": 82882
+    },
+    "whir_0_query_40_memory_path": {
+      "length": 625,
+      "offset": 83251
+    },
+    "whir_0_query_40_setup_leaf": {
+      "length": 62,
+      "offset": 83876
+    },
+    "whir_0_query_40_setup_path": {
+      "length": 475,
+      "offset": 83938
+    },
+    "whir_0_query_41_memory_leaf": {
+      "length": 369,
+      "offset": 84413
+    },
+    "whir_0_query_41_memory_path": {
+      "length": 625,
+      "offset": 84782
+    },
+    "whir_0_query_41_setup_leaf": {
+      "length": 62,
+      "offset": 85407
+    },
+    "whir_0_query_41_setup_path": {
+      "length": 475,
+      "offset": 85469
+    },
+    "whir_0_query_4_memory_leaf": {
+      "length": 369,
+      "offset": 27766
+    },
+    "whir_0_query_4_memory_path": {
+      "length": 625,
+      "offset": 28135
+    },
+    "whir_0_query_4_setup_leaf": {
+      "length": 62,
+      "offset": 28760
+    },
+    "whir_0_query_4_setup_path": {
+      "length": 475,
+      "offset": 28822
+    },
+    "whir_0_query_5_memory_leaf": {
+      "length": 369,
+      "offset": 29297
+    },
+    "whir_0_query_5_memory_path": {
+      "length": 625,
+      "offset": 29666
+    },
+    "whir_0_query_5_setup_leaf": {
+      "length": 62,
+      "offset": 30291
+    },
+    "whir_0_query_5_setup_path": {
+      "length": 475,
+      "offset": 30353
+    },
+    "whir_0_query_6_memory_leaf": {
+      "length": 369,
+      "offset": 30828
+    },
+    "whir_0_query_6_memory_path": {
+      "length": 625,
+      "offset": 31197
+    },
+    "whir_0_query_6_setup_leaf": {
+      "length": 62,
+      "offset": 31822
+    },
+    "whir_0_query_6_setup_path": {
+      "length": 475,
+      "offset": 31884
+    },
+    "whir_0_query_7_memory_leaf": {
+      "length": 369,
+      "offset": 32359
+    },
+    "whir_0_query_7_memory_path": {
+      "length": 625,
+      "offset": 32728
+    },
+    "whir_0_query_7_setup_leaf": {
+      "length": 62,
+      "offset": 33353
+    },
+    "whir_0_query_7_setup_path": {
+      "length": 475,
+      "offset": 33415
+    },
+    "whir_0_query_8_memory_leaf": {
+      "length": 369,
+      "offset": 33890
+    },
+    "whir_0_query_8_memory_path": {
+      "length": 625,
+      "offset": 34259
+    },
+    "whir_0_query_8_setup_leaf": {
+      "length": 62,
+      "offset": 34884
+    },
+    "whir_0_query_8_setup_path": {
+      "length": 475,
+      "offset": 34946
+    },
+    "whir_0_query_9_memory_leaf": {
+      "length": 369,
+      "offset": 35421
+    },
+    "whir_0_query_9_memory_path": {
+      "length": 625,
+      "offset": 35790
+    },
+    "whir_0_query_9_setup_leaf": {
+      "length": 62,
+      "offset": 36415
+    },
+    "whir_0_query_9_setup_path": {
+      "length": 475,
+      "offset": 36477
+    },
+    "whir_0_sumcheck": {
+      "length": 31,
+      "offset": 21371
+    },
+    "whir_1_cap": {
+      "length": 200,
+      "offset": 86138
+    },
+    "whir_1_folding_nonces": {
+      "length": 40,
+      "offset": 86098
+    },
+    "whir_1_ood": {
+      "length": 16,
+      "offset": 86346
+    },
+    "whir_1_ood_nonce": {
+      "length": 8,
+      "offset": 86338
+    },
+    "whir_1_pow_nonce": {
+      "length": 8,
+      "offset": 86362
+    },
+    "whir_1_query_0_leaf": {
+      "length": 492,
+      "offset": 86370
+    },
+    "whir_1_query_0_path": {
+      "length": 550,
+      "offset": 86862
+    },
+    "whir_1_query_10_leaf": {
+      "length": 492,
+      "offset": 96790
+    },
+    "whir_1_query_10_path": {
+      "length": 550,
+      "offset": 97282
+    },
+    "whir_1_query_11_leaf": {
+      "length": 492,
+      "offset": 97832
+    },
+    "whir_1_query_11_path": {
+      "length": 550,
+      "offset": 98324
+    },
+    "whir_1_query_12_leaf": {
+      "length": 492,
+      "offset": 98874
+    },
+    "whir_1_query_12_path": {
+      "length": 550,
+      "offset": 99366
+    },
+    "whir_1_query_13_leaf": {
+      "length": 492,
+      "offset": 99916
+    },
+    "whir_1_query_13_path": {
+      "length": 550,
+      "offset": 100408
+    },
+    "whir_1_query_14_leaf": {
+      "length": 492,
+      "offset": 100958
+    },
+    "whir_1_query_14_path": {
+      "length": 550,
+      "offset": 101450
+    },
+    "whir_1_query_15_leaf": {
+      "length": 492,
+      "offset": 102000
+    },
+    "whir_1_query_15_path": {
+      "length": 550,
+      "offset": 102492
+    },
+    "whir_1_query_16_leaf": {
+      "length": 492,
+      "offset": 103042
+    },
+    "whir_1_query_16_path": {
+      "length": 550,
+      "offset": 103534
+    },
+    "whir_1_query_17_leaf": {
+      "length": 492,
+      "offset": 104084
+    },
+    "whir_1_query_17_path": {
+      "length": 550,
+      "offset": 104576
+    },
+    "whir_1_query_18_leaf": {
+      "length": 492,
+      "offset": 105126
+    },
+    "whir_1_query_18_path": {
+      "length": 550,
+      "offset": 105618
+    },
+    "whir_1_query_19_leaf": {
+      "length": 492,
+      "offset": 106168
+    },
+    "whir_1_query_19_path": {
+      "length": 550,
+      "offset": 106660
+    },
+    "whir_1_query_1_leaf": {
+      "length": 492,
+      "offset": 87412
+    },
+    "whir_1_query_1_path": {
+      "length": 550,
+      "offset": 87904
+    },
+    "whir_1_query_20_leaf": {
+      "length": 492,
+      "offset": 107210
+    },
+    "whir_1_query_20_path": {
+      "length": 550,
+      "offset": 107702
+    },
+    "whir_1_query_21_leaf": {
+      "length": 492,
+      "offset": 108252
+    },
+    "whir_1_query_21_path": {
+      "length": 550,
+      "offset": 108744
+    },
+    "whir_1_query_22_leaf": {
+      "length": 492,
+      "offset": 109294
+    },
+    "whir_1_query_22_path": {
+      "length": 550,
+      "offset": 109786
+    },
+    "whir_1_query_23_leaf": {
+      "length": 492,
+      "offset": 110336
+    },
+    "whir_1_query_23_path": {
+      "length": 550,
+      "offset": 110828
+    },
+    "whir_1_query_24_leaf": {
+      "length": 492,
+      "offset": 111378
+    },
+    "whir_1_query_24_path": {
+      "length": 550,
+      "offset": 111870
+    },
+    "whir_1_query_25_leaf": {
+      "length": 492,
+      "offset": 112420
+    },
+    "whir_1_query_25_path": {
+      "length": 550,
+      "offset": 112912
+    },
+    "whir_1_query_26_leaf": {
+      "length": 492,
+      "offset": 113462
+    },
+    "whir_1_query_26_path": {
+      "length": 550,
+      "offset": 113954
+    },
+    "whir_1_query_2_leaf": {
+      "length": 492,
+      "offset": 88454
+    },
+    "whir_1_query_2_path": {
+      "length": 550,
+      "offset": 88946
+    },
+    "whir_1_query_3_leaf": {
+      "length": 492,
+      "offset": 89496
+    },
+    "whir_1_query_3_path": {
+      "length": 550,
+      "offset": 89988
+    },
+    "whir_1_query_4_leaf": {
+      "length": 492,
+      "offset": 90538
+    },
+    "whir_1_query_4_path": {
+      "length": 550,
+      "offset": 91030
+    },
+    "whir_1_query_5_leaf": {
+      "length": 492,
+      "offset": 91580
+    },
+    "whir_1_query_5_path": {
+      "length": 550,
+      "offset": 92072
+    },
+    "whir_1_query_6_leaf": {
+      "length": 492,
+      "offset": 92622
+    },
+    "whir_1_query_6_path": {
+      "length": 550,
+      "offset": 93114
+    },
+    "whir_1_query_7_leaf": {
+      "length": 492,
+      "offset": 93664
+    },
+    "whir_1_query_7_path": {
+      "length": 550,
+      "offset": 94156
+    },
+    "whir_1_query_8_leaf": {
+      "length": 492,
+      "offset": 94706
+    },
+    "whir_1_query_8_path": {
+      "length": 550,
+      "offset": 95198
+    },
+    "whir_1_query_9_leaf": {
+      "length": 492,
+      "offset": 95748
+    },
+    "whir_1_query_9_path": {
+      "length": 550,
+      "offset": 96240
+    },
+    "whir_1_sumcheck": {
+      "length": 154,
+      "offset": 85944
+    },
+    "whir_2_cap": {
+      "length": 200,
+      "offset": 114698
+    },
+    "whir_2_folding_nonces": {
+      "length": 40,
+      "offset": 114658
+    },
+    "whir_2_ood": {
+      "length": 16,
+      "offset": 114906
+    },
+    "whir_2_ood_nonce": {
+      "length": 8,
+      "offset": 114898
+    },
+    "whir_2_pow_nonce": {
+      "length": 8,
+      "offset": 114922
+    },
+    "whir_2_query_0_leaf": {
+      "length": 492,
+      "offset": 114930
+    },
+    "whir_2_query_0_path": {
+      "length": 475,
+      "offset": 115422
+    },
+    "whir_2_query_10_leaf": {
+      "length": 492,
+      "offset": 124600
+    },
+    "whir_2_query_10_path": {
+      "length": 475,
+      "offset": 125092
+    },
+    "whir_2_query_11_leaf": {
+      "length": 492,
+      "offset": 125567
+    },
+    "whir_2_query_11_path": {
+      "length": 475,
+      "offset": 126059
+    },
+    "whir_2_query_12_leaf": {
+      "length": 492,
+      "offset": 126534
+    },
+    "whir_2_query_12_path": {
+      "length": 475,
+      "offset": 127026
+    },
+    "whir_2_query_13_leaf": {
+      "length": 492,
+      "offset": 127501
+    },
+    "whir_2_query_13_path": {
+      "length": 475,
+      "offset": 127993
+    },
+    "whir_2_query_14_leaf": {
+      "length": 492,
+      "offset": 128468
+    },
+    "whir_2_query_14_path": {
+      "length": 475,
+      "offset": 128960
+    },
+    "whir_2_query_15_leaf": {
+      "length": 492,
+      "offset": 129435
+    },
+    "whir_2_query_15_path": {
+      "length": 475,
+      "offset": 129927
+    },
+    "whir_2_query_16_leaf": {
+      "length": 492,
+      "offset": 130402
+    },
+    "whir_2_query_16_path": {
+      "length": 475,
+      "offset": 130894
+    },
+    "whir_2_query_17_leaf": {
+      "length": 492,
+      "offset": 131369
+    },
+    "whir_2_query_17_path": {
+      "length": 475,
+      "offset": 131861
+    },
+    "whir_2_query_18_leaf": {
+      "length": 492,
+      "offset": 132336
+    },
+    "whir_2_query_18_path": {
+      "length": 475,
+      "offset": 132828
+    },
+    "whir_2_query_19_leaf": {
+      "length": 492,
+      "offset": 133303
+    },
+    "whir_2_query_19_path": {
+      "length": 475,
+      "offset": 133795
+    },
+    "whir_2_query_1_leaf": {
+      "length": 492,
+      "offset": 115897
+    },
+    "whir_2_query_1_path": {
+      "length": 475,
+      "offset": 116389
+    },
+    "whir_2_query_2_leaf": {
+      "length": 492,
+      "offset": 116864
+    },
+    "whir_2_query_2_path": {
+      "length": 475,
+      "offset": 117356
+    },
+    "whir_2_query_3_leaf": {
+      "length": 492,
+      "offset": 117831
+    },
+    "whir_2_query_3_path": {
+      "length": 475,
+      "offset": 118323
+    },
+    "whir_2_query_4_leaf": {
+      "length": 492,
+      "offset": 118798
+    },
+    "whir_2_query_4_path": {
+      "length": 475,
+      "offset": 119290
+    },
+    "whir_2_query_5_leaf": {
+      "length": 492,
+      "offset": 119765
+    },
+    "whir_2_query_5_path": {
+      "length": 475,
+      "offset": 120257
+    },
+    "whir_2_query_6_leaf": {
+      "length": 492,
+      "offset": 120732
+    },
+    "whir_2_query_6_path": {
+      "length": 475,
+      "offset": 121224
+    },
+    "whir_2_query_7_leaf": {
+      "length": 492,
+      "offset": 121699
+    },
+    "whir_2_query_7_path": {
+      "length": 475,
+      "offset": 122191
+    },
+    "whir_2_query_8_leaf": {
+      "length": 492,
+      "offset": 122666
+    },
+    "whir_2_query_8_path": {
+      "length": 475,
+      "offset": 123158
+    },
+    "whir_2_query_9_leaf": {
+      "length": 492,
+      "offset": 123633
+    },
+    "whir_2_query_9_path": {
+      "length": 475,
+      "offset": 124125
+    },
+    "whir_2_sumcheck": {
+      "length": 154,
+      "offset": 114504
+    },
+    "whir_3_cap": {
+      "length": 200,
+      "offset": 134464
+    },
+    "whir_3_folding_nonces": {
+      "length": 40,
+      "offset": 134424
+    },
+    "whir_3_ood": {
+      "length": 16,
+      "offset": 134672
+    },
+    "whir_3_ood_nonce": {
+      "length": 8,
+      "offset": 134664
+    },
+    "whir_3_pow_nonce": {
+      "length": 8,
+      "offset": 134688
+    },
+    "whir_3_query_0_leaf": {
+      "length": 492,
+      "offset": 134696
+    },
+    "whir_3_query_0_path": {
+      "length": 400,
+      "offset": 135188
+    },
+    "whir_3_query_10_leaf": {
+      "length": 492,
+      "offset": 143616
+    },
+    "whir_3_query_10_path": {
+      "length": 400,
+      "offset": 144108
+    },
+    "whir_3_query_11_leaf": {
+      "length": 492,
+      "offset": 144508
+    },
+    "whir_3_query_11_path": {
+      "length": 400,
+      "offset": 145000
+    },
+    "whir_3_query_12_leaf": {
+      "length": 492,
+      "offset": 145400
+    },
+    "whir_3_query_12_path": {
+      "length": 400,
+      "offset": 145892
+    },
+    "whir_3_query_13_leaf": {
+      "length": 492,
+      "offset": 146292
+    },
+    "whir_3_query_13_path": {
+      "length": 400,
+      "offset": 146784
+    },
+    "whir_3_query_14_leaf": {
+      "length": 492,
+      "offset": 147184
+    },
+    "whir_3_query_14_path": {
+      "length": 400,
+      "offset": 147676
+    },
+    "whir_3_query_15_leaf": {
+      "length": 492,
+      "offset": 148076
+    },
+    "whir_3_query_15_path": {
+      "length": 400,
+      "offset": 148568
+    },
+    "whir_3_query_1_leaf": {
+      "length": 492,
+      "offset": 135588
+    },
+    "whir_3_query_1_path": {
+      "length": 400,
+      "offset": 136080
+    },
+    "whir_3_query_2_leaf": {
+      "length": 492,
+      "offset": 136480
+    },
+    "whir_3_query_2_path": {
+      "length": 400,
+      "offset": 136972
+    },
+    "whir_3_query_3_leaf": {
+      "length": 492,
+      "offset": 137372
+    },
+    "whir_3_query_3_path": {
+      "length": 400,
+      "offset": 137864
+    },
+    "whir_3_query_4_leaf": {
+      "length": 492,
+      "offset": 138264
+    },
+    "whir_3_query_4_path": {
+      "length": 400,
+      "offset": 138756
+    },
+    "whir_3_query_5_leaf": {
+      "length": 492,
+      "offset": 139156
+    },
+    "whir_3_query_5_path": {
+      "length": 400,
+      "offset": 139648
+    },
+    "whir_3_query_6_leaf": {
+      "length": 492,
+      "offset": 140048
+    },
+    "whir_3_query_6_path": {
+      "length": 400,
+      "offset": 140540
+    },
+    "whir_3_query_7_leaf": {
+      "length": 492,
+      "offset": 140940
+    },
+    "whir_3_query_7_path": {
+      "length": 400,
+      "offset": 141432
+    },
+    "whir_3_query_8_leaf": {
+      "length": 492,
+      "offset": 141832
+    },
+    "whir_3_query_8_path": {
+      "length": 400,
+      "offset": 142324
+    },
+    "whir_3_query_9_leaf": {
+      "length": 492,
+      "offset": 142724
+    },
+    "whir_3_query_9_path": {
+      "length": 400,
+      "offset": 143216
+    },
+    "whir_3_sumcheck": {
+      "length": 154,
+      "offset": 134270
+    },
+    "whir_4_folding_nonces": {
+      "length": 40,
+      "offset": 149122
+    },
+    "whir_4_monomials": {
+      "length": 246,
+      "offset": 149162
+    },
+    "whir_4_pow_nonce": {
+      "length": 8,
+      "offset": 149408
+    },
+    "whir_4_query_0_leaf": {
+      "length": 492,
+      "offset": 149416
+    },
+    "whir_4_query_0_path": {
+      "length": 325,
+      "offset": 149908
+    },
+    "whir_4_query_10_leaf": {
+      "length": 492,
+      "offset": 157586
+    },
+    "whir_4_query_10_path": {
+      "length": 325,
+      "offset": 158078
+    },
+    "whir_4_query_11_leaf": {
+      "length": 492,
+      "offset": 158403
+    },
+    "whir_4_query_11_path": {
+      "length": 325,
+      "offset": 158895
+    },
+    "whir_4_query_12_leaf": {
+      "length": 492,
+      "offset": 159220
+    },
+    "whir_4_query_12_path": {
+      "length": 325,
+      "offset": 159712
+    },
+    "whir_4_query_1_leaf": {
+      "length": 492,
+      "offset": 150233
+    },
+    "whir_4_query_1_path": {
+      "length": 325,
+      "offset": 150725
+    },
+    "whir_4_query_2_leaf": {
+      "length": 492,
+      "offset": 151050
+    },
+    "whir_4_query_2_path": {
+      "length": 325,
+      "offset": 151542
+    },
+    "whir_4_query_3_leaf": {
+      "length": 492,
+      "offset": 151867
+    },
+    "whir_4_query_3_path": {
+      "length": 325,
+      "offset": 152359
+    },
+    "whir_4_query_4_leaf": {
+      "length": 492,
+      "offset": 152684
+    },
+    "whir_4_query_4_path": {
+      "length": 325,
+      "offset": 153176
+    },
+    "whir_4_query_5_leaf": {
+      "length": 492,
+      "offset": 153501
+    },
+    "whir_4_query_5_path": {
+      "length": 325,
+      "offset": 153993
+    },
+    "whir_4_query_6_leaf": {
+      "length": 492,
+      "offset": 154318
+    },
+    "whir_4_query_6_path": {
+      "length": 325,
+      "offset": 154810
+    },
+    "whir_4_query_7_leaf": {
+      "length": 492,
+      "offset": 155135
+    },
+    "whir_4_query_7_path": {
+      "length": 325,
+      "offset": 155627
+    },
+    "whir_4_query_8_leaf": {
+      "length": 492,
+      "offset": 155952
+    },
+    "whir_4_query_8_path": {
+      "length": 325,
+      "offset": 156444
+    },
+    "whir_4_query_9_leaf": {
+      "length": 492,
+      "offset": 156769
+    },
+    "whir_4_query_9_path": {
+      "length": 325,
+      "offset": 157261
+    },
+    "whir_4_sumcheck": {
+      "length": 154,
+      "offset": 148968
+    }
+  },
+  "gkr_bytes": 21371,
+  "setup_frontier_level": 9,
+  "whir_rounds": 5
+}

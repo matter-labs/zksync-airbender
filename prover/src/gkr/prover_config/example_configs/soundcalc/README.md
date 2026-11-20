@@ -66,11 +66,19 @@ unique-decoding analysis would need. Copy a new block into
 `ethproofs_soundcalc.rs` as an `EthproofsSoundcalcEntry` together with the
 reasons for the regime choices.
 
-Not implemented in this mode: the CompressionFinal schedule and the EVM
-Proth120 packed config (`assess_current_configs.py` evaluates both;
-Proth120 with 2^31 domains caps the Johnson-bound fold term near 48–57 bits, so
-a 100-bit schedule there needs smaller domains and ~75 unique-decoding queries
-per round).
+## Proth120 L1 wrap (`l1_wrap.py`)
+
+```bash
+PYTHONPATH=/path/to/soundcalc python3 l1_wrap.py --trace-log2 22 --packed-columns 14
+```
+
+The driver compares base LDE factors 8 and 16 at physical packing by 8.
+It checks every PCS term with the configured per-oracle maximum folding grind
+at every step, with both the Proth120 field size and the conservative
+challenge denominator `2^128 / 37`. The LDE-16 result checks
+`l1_wrap::ethproofs_packed_prover_config`. The reported levels are individual
+PCS terms. GKR, Merkle binding, and recursive composition require their own
+accounting.
 
 ## Rebalancing the pessimistic ladders' late rounds (`late_round_rebalance.py`)
 

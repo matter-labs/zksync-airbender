@@ -12,7 +12,7 @@ contract GpuL1WrapControls is MergedBase {
         verifier = _deploy("out/GkrWhirVerifier.sol/GkrWhirVerifier.json");
     }
 
-    function test_gpu_wrap_accepts() external {
+    function test_wrap_accepts() external {
         bytes memory proof = vm.readFileBinary(string.concat(DATA, "proof.bin"));
         bytes memory expected = _hex(string.concat(DATA, "verified_mark.hex"));
         require(keccak256(_accepts(verifier, proof)) == keccak256(expected), "verified mark");
@@ -28,8 +28,8 @@ contract GpuL1WrapControls is MergedBase {
         require(_rejects(verifier, proof), field);
     }
 
-    function test_gpu_wrap_rejects_changed_commitment() external { flip("whir_0_cap", 0); }
-    function test_gpu_wrap_rejects_changed_ood() external { flip("whir_0_ood", 15); }
-    function test_gpu_wrap_rejects_changed_nonce() external { flip("whir_0_pow_nonce", 7); }
-    function test_gpu_wrap_rejects_changed_opening() external { flip("whir_0_query_0_memory_path", 0); }
+    function test_wrap_rejects_changed_commitment() external { flip("whir_0_cap", 0); }
+    function test_wrap_rejects_changed_ood() external { flip("whir_0_ood", 15); }
+    function test_wrap_rejects_changed_nonce() external { flip("whir_0_pow_nonce", 7); }
+    function test_wrap_rejects_changed_opening() external { flip("whir_0_query_0_memory_path", 0); }
 }

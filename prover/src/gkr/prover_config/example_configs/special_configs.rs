@@ -1,16 +1,15 @@
-//! compression and wrap configs. The wrap is supported only in
-//! pessimistic-conjecture mode; see `soundcalc/README.md`.
+//! Compression and L1 wrap configs. See `soundcalc/README.md` for the proven-regime schedules.
 
 use super::*;
 use crate::gkr::whir::proximity_testing_modes::{PessimisticConjectureMode, ProximityTestingMode};
 
 impl ProverConfigProfile {
-    /// The EVM profile exists only in the pessimistic-conjecture mode.
+    /// The EVM-production packed profile requires pessimistic-conjecture mode.
     pub fn assert_supports(self, soundness_mode: SoundnessMode) {
         assert!(
             self != Self::EvmProductionPacked
                 || soundness_mode == SoundnessMode::PessimisticConjecture,
-            "{self:?} supports only the pessimistic-conjecture soundness mode, not {soundness_mode:?}"
+            "{self:?} requires pessimistic-conjecture mode, got {soundness_mode:?}"
         );
     }
 }
@@ -186,16 +185,17 @@ pub fn ethproofs_compression_config_for_2_23() -> ProverConfig {
 pub mod l1_wrap {
     use super::*;
 
-    pub const TRACE_LEN_LOG2: usize = 21;
+    pub const PESSIMISTIC_TRACE_LEN_LOG2: usize = 21;
+    pub const ETHPROOFS_TRACE_LEN_LOG2: usize = 22;
     pub const PACK_LOG2: usize = 3;
     pub const EXPLICIT_OUTPUT_LOG2: usize = 2;
     pub const EXTERNAL_CHALLENGES_POW_BITS: u32 = 20;
 
-    const BASE_LDE_FACTOR: usize = 1 << 8;
-    const WHIR_STEPS_LDE_FACTORS: [usize; 4] = [1 << 9, 1 << 12, 1 << 17, 1 << 21];
+    const PESSIMISTIC_BASE_LDE_FACTOR: usize = 1 << 8;
+    const PESSIMISTIC_INTERNAL_LDE_FACTORS: [usize; 4] = [1 << 9, 1 << 12, 1 << 17, 1 << 21];
 
     /// Each round uses the least PoW satisfying `6 * pow + 5 * queries * rate_bits >= 600`.
-    pub const POW_BITS: [u32; 5] = [27, 25, 30, 30, 30];
+    pub const PESSIMISTIC_QUERY_POW_BITS: [u32; 5] = [27, 25, 30, 30, 30];
 
     /// Conditional 100-bit pessimistic accounting: queries contribute r/1.2 bits
     /// (`PessimisticConjectureMode` in `whir/proximity_testing_modes.rs`); the
@@ -203,19 +203,19 @@ pub mod l1_wrap {
     /// With mu = 37/2^128, the assumed list ceilings are
     /// [1044721774, 673, 5387, 172384, 2758157], including every RS substep. Nominal-100 shifts
     /// have an accepted deficit below 10^-6 bit. These are conjectural bounds.
-    pub fn packed_prover_config() -> ProverConfig {
+    pub fn pessimistic_packed_prover_config() -> ProverConfig {
         const CAP_SIZE: usize = 8;
         let level = SecurityLevel::Sec100;
         let queries_and_pow = queries_and_pow_under_pessimistic_conjecture(
             level,
-            BASE_LDE_FACTOR,
-            &WHIR_STEPS_LDE_FACTORS,
-            POW_BITS,
+            PESSIMISTIC_BASE_LDE_FACTOR,
+            &PESSIMISTIC_INTERNAL_LDE_FACTORS,
+            PESSIMISTIC_QUERY_POW_BITS,
         );
         ProverConfig {
-            trace_len_log2: TRACE_LEN_LOG2,
+            trace_len_log2: PESSIMISTIC_TRACE_LEN_LOG2,
             commitment_mode: CommitmentMode::MergedMemoryAndWitness,
-            same_size_sumcheck_schedule: windowed_same_size_schedule(TRACE_LEN_LOG2),
+            same_size_sumcheck_schedule: windowed_same_size_schedule(PESSIMISTIC_TRACE_LEN_LOG2),
             dimension_reducing_sumcheck_schedule: Default::default(),
             cap_size: CAP_SIZE,
             sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
@@ -223,7 +223,7 @@ pub mod l1_wrap {
             whir_schedule: WhirSchedule {
                 cap_size: CAP_SIZE,
                 base_round: crate::gkr::prover_config::WhirBaseRoundSchedule {
-                    lde_factor_log2: BASE_LDE_FACTOR.trailing_zeros() as usize,
+                    lde_factor_log2: PESSIMISTIC_BASE_LDE_FACTOR.trailing_zeros() as usize,
                     physical_packing_log2: PACK_LOG2,
                     fold_log2: 1,
                     batching_pow_bits: None,
@@ -231,7 +231,7 @@ pub mod l1_wrap {
                     num_queries: queries_and_pow[0].0,
                     queries_pow_bits: queries_and_pow[0].1,
                 },
-                internal_rounds: WHIR_STEPS_LDE_FACTORS
+                internal_rounds: PESSIMISTIC_INTERNAL_LDE_FACTORS
                     .iter()
                     .enumerate()
                     .map(|(i, lde)| crate::gkr::prover_config::WhirInternalRound {
@@ -245,6 +245,98 @@ pub mod l1_wrap {
                     })
                     .collect(),
             },
+        }
+    }
+
+    /// Proth120 L1 wrap with at least 100 bits per PCS term in proven regimes,
+    /// as checked by the soundcalc driver `soundcalc/l1_wrap.py`.
+    pub fn ethproofs_packed_prover_config() -> ProverConfig {
+        use crate::gkr::prover_config::{WhirBaseRoundSchedule, WhirInternalRound};
+
+        const CAP_SIZE: usize = 8;
+        ProverConfig {
+            trace_len_log2: ETHPROOFS_TRACE_LEN_LOG2,
+            commitment_mode: CommitmentMode::MergedMemoryAndWitness,
+            same_size_sumcheck_schedule: windowed_same_size_schedule(ETHPROOFS_TRACE_LEN_LOG2),
+            dimension_reducing_sumcheck_schedule: Default::default(),
+            cap_size: CAP_SIZE,
+            sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
+            security_level: SecurityLevel::Sec100,
+            whir_schedule: WhirSchedule {
+                cap_size: CAP_SIZE,
+                base_round: WhirBaseRoundSchedule {
+                    lde_factor_log2: 4,
+                    physical_packing_log2: PACK_LOG2,
+                    fold_log2: 1,
+                    batching_pow_bits: Some(25),
+                    folding_pow_bits: 20,
+                    num_queries: 42,
+                    queries_pow_bits: 27,
+                },
+                internal_rounds: (0..4)
+                    .map(|i| WhirInternalRound {
+                        lde_factor_log2: [6, 8, 10, 12][i],
+                        folding_log2: 5,
+                        num_queries: [27, 20, 16, 13][i],
+                        queries_pow_bits: [26, 25, 24, 25][i],
+                        folding_pow_bits: 24,
+                        num_ood_samples: 1,
+                        ood_pow_bits: [10, 7, 4, 1][i],
+                    })
+                    .collect(),
+            },
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::gkr::prover_config::ProofProfile;
+
+        #[test]
+        fn canonical_ethproofs_l1_schedule() {
+            let mode = SoundnessMode::EthproofsSoundnessCalc;
+            let config = ProofProfile::L1Wrap.prover_config(22, mode);
+            config.validate_for_whir_message_size(25);
+            assert!(config.merged_memory_and_witness());
+            assert_eq!(config.cap_size, 8);
+            assert_eq!(config.sumcheck_explicit_output_size_log_2, 2);
+            let schedule = &config.whir_schedule;
+            assert_eq!(schedule.pack_log2(), 3);
+            assert_eq!(schedule.base_lde_factor_log2(), 4);
+            assert_eq!(schedule.base_round.batching_pow_bits, Some(25));
+            assert_eq!(schedule.base_round.folding_pow_bits, 20);
+            assert_eq!(schedule.fold_steps(), [1, 5, 5, 5, 5]);
+            assert_eq!(schedule.queries_per_round(), [42, 27, 20, 16, 13]);
+            assert_eq!(schedule.queries_pow_bits_per_round(), [27, 26, 25, 24, 25]);
+            let internal: Vec<_> = schedule
+                .internal_rounds
+                .iter()
+                .map(|round| {
+                    (
+                        round.lde_factor_log2,
+                        round.folding_pow_bits,
+                        round.num_ood_samples,
+                        round.ood_pow_bits,
+                    )
+                })
+                .collect();
+            assert_eq!(
+                internal,
+                [
+                    (6, 24, 1, 10),
+                    (8, 24, 1, 7),
+                    (10, 24, 1, 4),
+                    (12, 24, 1, 1)
+                ]
+            );
+        }
+
+        #[test]
+        #[should_panic(expected = "EvmProductionPacked requires pessimistic-conjecture mode")]
+        fn ethproofs_mode_is_rejected_by_evm_production_packed_profile() {
+            ProverConfigProfile::EvmProductionPacked
+                .assert_supports(SoundnessMode::EthproofsSoundnessCalc);
         }
     }
 }

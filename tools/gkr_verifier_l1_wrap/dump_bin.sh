@@ -6,7 +6,12 @@ export RUSTC_BOOTSTRAP=1
 
 # This package deliberately builds separately from gkr_verifier: Cargo feature
 # unification must never enable the wrap layout on the regular verifier guests.
-[ "$#" -eq 0 ] || { echo "Usage: $0" >&2; exit 1; }
+case "${1:-}" in
+    "") mode=both ;;
+    --ethproofs) mode=ethproofs ;;
+    *) echo "Usage: $0 [--ethproofs]" >&2; exit 1 ;;
+esac
+[ "$#" -le 1 ] || { echo "Usage: $0 [--ethproofs]" >&2; exit 1; }
 
 # Reproducibility across machines: the checkout root, the toolchain sysroot (build-std
 # compiles core/alloc from its rust-src) and the cargo registry would otherwise leak into
@@ -29,17 +34,24 @@ for d in "$CARGO_REGISTRY"/*; do
     REMAP_ARGS="${REMAP_ARGS},\"--remap-path-prefix=${d}=/cargo-registry\""
 done
 
-bin=fsv_unified_recursion_layer_sec_100_compression_final_wrap
-stem=${bin}_special_opcodes_extension
-flags=(--locked --release -Z panic-immediate-abort -Z build-std=core,alloc
-       --config "build.rustflags=[${REMAP_ARGS},\"-A\",\"warnings\",\"-C\",\"link-arg=-Map=wrap-link.map\"]"
-       -p gkr_verifier_l1_wrap --bin "$bin")
-cargo build "${flags[@]}"
-
 # Keep the linked ELF, including .text, as the canonical guest input.
 out_dir=../gkr_verifier/full_statement_verifiers
-mkdir -p "$out_dir"
 tmp_dir=$(mktemp -d)
-trap 'rm -rf "$tmp_dir"' EXIT
-cargo objcopy "${flags[@]}" -- -R .comment "$tmp_dir/$stem.elf"
-cp "$tmp_dir/$stem.elf" "$out_dir/$stem.elf"
+trap 'rm -f -- "$tmp_dir"/*.elf; rmdir -- "$tmp_dir"' EXIT
+
+build_guest() {
+    local bin=$1 dest=$2
+    local stem=${bin}_special_opcodes_extension
+    local -a flags=(--locked --release -Z panic-immediate-abort -Z build-std=core,alloc
+                    --config "build.rustflags=[${REMAP_ARGS},\"-A\",\"warnings\",\"-C\",\"link-arg=-Map=wrap-link.map\"]"
+                    -p gkr_verifier_l1_wrap --bin "$bin")
+    cargo build "${flags[@]}"
+    cargo objcopy "${flags[@]}" -- -R .comment "$tmp_dir/$stem.elf"
+    mkdir -p "$dest"
+    cp "$tmp_dir/$stem.elf" "$dest/$stem.elf"
+}
+
+if [ "$mode" = both ]; then
+    build_guest fsv_unified_recursion_layer_sec_100_compression_final_wrap "$out_dir"
+fi
+build_guest fsv_unified_recursion_layer_sec_100_compression_wrap "$out_dir/ethproofs_soundcalc"

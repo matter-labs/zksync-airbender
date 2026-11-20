@@ -186,7 +186,7 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
         );
         assert!(!result.status.success());
         assert!(String::from_utf8_lossy(&result.stderr)
-            .contains("L1 stages support only pessimistic_conjecture"));
+            .contains("The fixture recipe manages only the pessimistic L1 fixture"));
     }
     assert!(trusted_params
         .join("pessimistic-conjecture-trusted-params.json")

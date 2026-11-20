@@ -24,6 +24,10 @@ full_statement_verifier = { path = "../../full_statement_verifier", default-feat
 name = "fsv_unified_recursion_layer_sec_100_compression_final_wrap"
 path = "src/bin/fsv_unified_recursion_layer_sec_100_compression_final_wrap.rs"
 
+[[bin]]
+name = "fsv_unified_recursion_layer_sec_100_compression_wrap"
+path = "src/bin/fsv_unified_recursion_layer_sec_100_compression_wrap.rs"
+
 [workspace]
 
 [profile.release]
