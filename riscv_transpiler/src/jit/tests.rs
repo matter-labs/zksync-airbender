@@ -6,8 +6,8 @@ use crate::ir::{
     FullUnsignedMachineDecoderConfig, ReducedMachineDecoderConfig,
 };
 use crate::{jit::minimal_tracer::PreallocatedSnapshots, vm::test::*};
-use field::Mersenne31Field;
-use std::{alloc::Global, io::Read};
+use field::baby_bear::base::BabyBearField;
+use std::alloc::Global;
 
 #[cfg(test)]
 use test_utils::skip_if_ci;
@@ -160,83 +160,6 @@ fn test_jit_simple_fibonacci() {
     );
 
     JittedCode::<_>::run_alternative_simulator(&text, &mut (), &binary, None, JitRunnerRam::Medium);
-}
-
-#[test]
-#[serial_test::serial]
-fn test_jit_recursive_verifier() {
-    let path = std::env::current_dir().unwrap();
-    println!("The current directory is {}", path.display());
-
-    let (binary, text) = load_dumps(
-        "examples/recursive_verifier/recursion_in_unrolled_layer.bin",
-        "examples/recursive_verifier/recursion_in_unrolled_layer.text",
-    );
-
-    let mut responses = std::fs::File::open("examples/recursive_verifier/responses.bin").unwrap();
-    let mut buff = vec![];
-    responses.read_to_end(&mut buff).unwrap();
-    let responses: Vec<u32> = buff
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
-    let mut source = QuasiUARTSource::new_with_reads(responses);
-
-    JittedCode::<_>::run_alternative_simulator(
-        &text,
-        &mut source,
-        &binary,
-        None,
-        JitRunnerRam::Medium,
-    );
-}
-
-#[test]
-#[serial_test::serial]
-fn test_ensure_proof_correctness() {
-    let path = std::env::current_dir().unwrap();
-    println!("The current directory is {}", path.display());
-
-    let (binary, text) = load_dumps(
-        "examples/recursive_verifier/recursion_in_unrolled_layer.bin",
-        "examples/recursive_verifier/recursion_in_unrolled_layer.text",
-    );
-
-    let mut responses = std::fs::File::open("examples/recursive_verifier/responses.bin").unwrap();
-    let mut buff = vec![];
-    responses.read_to_end(&mut buff).unwrap();
-    let responses: Vec<u32> = buff
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
-    let mut source = QuasiUARTSource::new_with_reads(responses);
-
-    let instructions: Vec<Instruction> =
-        preprocess_bytecode::<ReducedMachineDecoderConfig, true>(&text);
-    let tape = SimpleTape::new(&instructions);
-    let mut ram =
-        RamWithRomRegion::<{ common_constants::rom::ROM_SECOND_WORD_BITS }>::from_rom_content(
-            &binary,
-            1 << 30,
-        );
-
-    let cycles_bound = 1 << 31;
-
-    let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
-
-    let _now = std::time::Instant::now();
-    VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
-        &mut state,
-        &mut ram,
-        &mut (),
-        &tape,
-        cycles_bound,
-        &mut source,
-    );
 }
 
 #[test]
@@ -453,12 +376,10 @@ fn test_jit_zimop_tri_add() {
     }
 }
 
-/// The MOP prime-field opcodes (ZimopAdd/Sub/Mul/FMA) computed by the env-selected field
-/// emitter (M31 default, BabyBear via `RISCV_MOP_FIELD`) must match the reference `field` crate
-/// exactly. The default decoder config never emits these as a field choice, so build instruction
-/// streams directly, run the JIT under each field, and compare to `from_raw_repr_with_reduction`
-/// + the field op + `as_u32_raw_repr_reduced`. Covers GPR-mapped / XMM-resident placements,
-/// rs2 == x0 (the M31 add fast path), and inputs above the modulus (exercising reduction).
+/// Both BabyBear emitters for ZimopAdd/Sub/Mul/FMA must match the reference
+/// `field` crate. Build instruction streams directly and compare to
+/// `from_raw_repr_with_reduction` + the field op + `as_u32_raw_repr_reduced`.
+/// Covers GPR-mapped / XMM-resident placements, rs2 == x0, and inputs above the modulus.
 #[test]
 #[serial_test::serial]
 fn test_jit_zimop_field_ops() {
@@ -494,9 +415,9 @@ fn test_jit_zimop_field_ops() {
     }
 
     // Distinct (rs1, rs2, rd) so no aliasing; covers all-GPR-mapped, all-XMM-resident, mixed, and
-    // rs2 == x0 (the M31 add fast path). (Each case rebuilds a JIT — keep the matrix modest.)
+    // rs2 == x0. (Each case rebuilds a JIT — keep the matrix modest.)
     let placements: &[(u8, u8, u8)] = &[(10, 11, 12), (5, 6, 7), (5, 11, 6), (11, 0, 12)];
-    // (v1 -> rs1, v2 -> rs2, v_rd -> rd's old value); above the moduli to force reduction, plus 0.
+    // (v1 -> rs1, v2 -> rs2, v_rd -> rd's old value); above the modulus to force reduction, plus 0.
     let values: &[(u32, u32, u32)] = &[
         (0x7fff_fffe, 0x7fff_ffff, 0x8000_0000),
         (0x7800_0000, 0x7800_0001, 0xffff_ffff),
@@ -505,14 +426,14 @@ fn test_jit_zimop_field_ops() {
     ];
     let ops = [ZimopAdd, ZimopSub, ZimopMul, ZimopFMA];
 
-    for field_env in ["m31", "babybear", "babybear_assume_canonical"] {
+    for field_env in ["babybear", "babybear_assume_canonical"] {
         std::env::set_var("RISCV_MOP_FIELD", field_env);
         for &op in &ops {
             for &(rs1, rs2, rd) in placements {
                 for &(v1, v2, v_rd) in values {
                     // this mode is only defined over canonical inputs
                     let (v1, v2, v_rd) = if field_env == "babybear_assume_canonical" {
-                        const P: u32 = 0x7800_0001;
+                        const P: u32 = BabyBearField::ORDER;
                         (v1 % P, v2 % P, v_rd % P)
                     } else {
                         (v1, v2, v_rd)
@@ -533,10 +454,7 @@ fn test_jit_zimop_field_ops() {
                     let a = v1;
                     let b = if rs2 == 0 { 0 } else { v2 };
                     let c = v_rd;
-                    let expected = match field_env {
-                        "m31" => field_expected::<field::Mersenne31Field>(op, a, b, c),
-                        _ => field_expected::<field::baby_bear::base::BabyBearField>(op, a, b, c),
-                    };
+                    let expected = field_expected::<BabyBearField>(op, a, b, c);
 
                     let (state, _mem) =
                         JittedCode::<_>::run_alternative_simulator_from_instructions(
@@ -576,7 +494,7 @@ fn test_jit_zimop_field_ops() {
             }
         }
     }
-    std::env::remove_var("RISCV_MOP_FIELD"); // restore default (M31) for other tests
+    std::env::remove_var("RISCV_MOP_FIELD");
 }
 
 #[test]
@@ -783,7 +701,7 @@ fn test_fusion_opportunity() {
         if idx < exec.len() {
             exec[idx] += 1;
         }
-        VM::<DelegationsAndFamiliesCounters>::run_step::<(), _, _, Mersenne31Field>(
+        VM::<DelegationsAndFamiliesCounters>::run_step::<(), _, _, BabyBearField>(
             &mut state,
             &mut ram,
             &mut (),
@@ -1272,7 +1190,7 @@ fn run_reference_for_num_cycles(
 
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
 
-    VM::<DelegationsAndFamiliesCounters>::run_by_timestamp_bound::<_, _, _, Mersenne31Field>(
+    VM::<DelegationsAndFamiliesCounters>::run_by_timestamp_bound::<_, _, _, BabyBearField>(
         &mut state,
         &mut ram,
         &mut (),
@@ -1313,7 +1231,7 @@ fn run_reference_for_num_cycles_with_snapshots(
     let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
     let mut snapshotter = SimpleSnapshotter::<_, {common_constants::rom::ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(1 << 31, state);
 
-    VM::<DelegationsAndFamiliesCounters>::run_by_timestamp_bound::<_, _, _, Mersenne31Field>(
+    VM::<DelegationsAndFamiliesCounters>::run_by_timestamp_bound::<_, _, _, BabyBearField>(
         &mut state,
         &mut ram,
         &mut snapshotter,
@@ -1356,7 +1274,7 @@ fn test_reference_block_exec() {
     let mut snapshotter = SimpleSnapshotter::<_, { common_constants::rom::ROM_SECOND_WORD_BITS }>::new_with_cycle_limit(cycles_bound, state);
 
     let now = std::time::Instant::now();
-    VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
+    VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, BabyBearField>(
         &mut state,
         &mut ram,
         &mut snapshotter,
@@ -1421,7 +1339,7 @@ fn measure_register_timestamp_deltas() {
 
     for _cycle in 0..cycles_bound {
         let pc = state.pc;
-        VM::<DelegationsAndFamiliesCounters>::run_step::<_, _, _, Mersenne31Field>(
+        VM::<DelegationsAndFamiliesCounters>::run_step::<_, _, _, BabyBearField>(
             &mut state,
             &mut ram,
             &mut snapshotter,
@@ -1740,229 +1658,6 @@ fn run_and_compare() {
         }
 
         if !equal_state {
-            panic!("State diverged");
-        }
-
-        println!("Passed for {} cycles", num_steps);
-
-        num_steps += step;
-    }
-}
-
-#[cfg(test)]
-#[ignore = "long-running manual consistency test"]
-#[test]
-#[serial_test::serial]
-fn run_recursion_and_compare() {
-    skip_if_ci!();
-    let (binary, text) = load_dumps(
-        "examples/recursive_verifier/recursion_in_unrolled_layer.bin",
-        "examples/recursive_verifier/recursion_in_unrolled_layer.text",
-    );
-
-    let mut responses = std::fs::File::open("examples/recursive_verifier/responses.bin").unwrap();
-    let mut buff = vec![];
-    responses.read_to_end(&mut buff).unwrap();
-    let responses: Vec<u32> = buff
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|el| u32::from_le_bytes(*el))
-        .collect();
-    let source = QuasiUARTSource::new_with_reads(responses);
-
-    let step = 1 << 16;
-    let initial_step = 836694;
-    let upper_bound = (1 << 30) - 8;
-
-    let mut previous_cycles_taken = 0;
-
-    let mut num_steps = initial_step;
-    while num_steps < upper_bound {
-        // let (jit_state, jit_memory) = JittedCode::run_alternative_simulator(
-        //     &text,
-        //     &mut source.clone(),
-        //     &binary,
-        //     Some(num_steps),
-        // );
-
-        let (jit_state, jit_memory, jit_last_trace_chunk) =
-            JittedCode::run_alternative_simulator_with_last_snapshot(
-                &text,
-                &mut source.clone(),
-                &binary,
-                Some(num_steps),
-                JitRunnerRam::Medium,
-            );
-
-        let cycles_taken = (jit_state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
-        if cycles_taken == previous_cycles_taken {
-            break;
-        }
-        previous_cycles_taken = cycles_taken;
-
-        // let (reference_state, reference_ram) =
-        //     run_reference_for_num_cycles(&binary, &text, source.clone(), jit_state.timestamp);
-
-        let (reference_state, reference_ram, reference_snapshotter) =
-            run_reference_for_num_cycles_with_snapshots(
-                &binary,
-                &text,
-                source.clone(),
-                jit_state.timestamp,
-                true,
-                1 << 30,
-            );
-
-        assert_eq!(
-            reference_state.timestamp, jit_state.timestamp,
-            "TIMESTAMP diverged after {} steps",
-            num_steps
-        );
-        if reference_state.pc != jit_state.pc {
-            panic!(
-                "PC diverged after {} steps: expected 0x{:08x}, got 0x{:08x}",
-                num_steps, reference_state.pc, jit_state.pc,
-            );
-        }
-
-        // println!("Final instr = 0x{:08x}", text[(reference_state.pc as usize/4) - 1]);
-
-        assert_eq!(
-            reference_state.counters.add_sub_family as u64,
-            jit_state.counters[CounterType::AddSubLui as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.slt_branch_family as u64,
-            jit_state.counters[CounterType::BranchSlt as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.binary_shift_family as u64,
-            jit_state.counters[CounterType::ShiftBinary as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.mul_div_family as u64,
-            jit_state.counters[CounterType::MulDiv as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.word_size_mem_family as u64,
-            jit_state.counters[CounterType::MemWord as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.subword_size_mem_family as u64,
-            jit_state.counters[CounterType::MemSubword as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.blake_calls as u64,
-            jit_state.counters[CounterType::BlakeDelegation as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.bigint_calls as u64,
-            jit_state.counters[CounterType::BigintDelegation as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.keccak_calls as u64,
-            jit_state.counters[CounterType::KeccakDelegation as u8 as usize]
-        );
-
-        let mut equal_state = true;
-        let jit_regs = jit_state.materialized_registers();
-        let jit_reg_ts = jit_state.register_timestamps_array();
-        for (reg_idx, ((reference, jit_value), jit_ts)) in reference_state
-            .registers
-            .iter()
-            .zip(jit_regs.iter())
-            .zip(jit_reg_ts.iter())
-            .enumerate()
-        {
-            if reference.value != *jit_value {
-                println!(
-                    "VALUE diverged for x{} after {} steps:\nreference\n{}\njitted\n{}",
-                    reg_idx, num_steps, reference.value, jit_value
-                );
-                equal_state = false;
-            }
-            if reference.timestamp != *jit_ts {
-                println!(
-                    "TIMESTAMP diverged for x{} after {} steps:\nreference\n{}\njitted\n{}",
-                    reg_idx, num_steps, reference.timestamp, jit_ts
-                );
-                equal_state = false;
-            }
-        }
-
-        assert_eq!(reference_ram.backing.len(), jit_memory.memory().len());
-        for (word_idx, ((reference_value, jit_value), jit_ts)) in reference_ram
-            .backing
-            .iter()
-            .zip(jit_memory.memory().iter())
-            .zip(jit_memory.timestamps().iter())
-            .enumerate()
-        {
-            assert_eq!(
-                reference_value.value, *jit_value,
-                "VALUE diverged for word {} after {} steps",
-                word_idx, num_steps
-            );
-            assert_eq!(
-                reference_value.timestamp, *jit_ts,
-                "TIMESTAMP diverged for word {} after {} steps",
-                word_idx, num_steps
-            );
-        }
-
-        // compare the end of snapshotter
-        let (jit_snapshot_values, jit_snapshot_tses) = jit_last_trace_chunk.data();
-        println!("Snapshot tail length is {}", jit_snapshot_values.len());
-        if !jit_snapshot_values.is_empty() {
-            let length = jit_snapshot_values.len();
-            let last_reference = &reference_snapshotter.reads_buffer
-                [(reference_snapshotter.reads_buffer.len() - length)..];
-
-            assert_eq!(last_reference.len(), length);
-            let mut num_diffs = 0;
-            for (
-                idx,
-                (((reference_value, (reference_ts_low, reference_ts_high)), jit_value), jit_ts),
-            ) in last_reference
-                .iter()
-                .zip(jit_snapshot_values.iter())
-                .zip(jit_snapshot_tses.iter())
-                .enumerate()
-            {
-                if *reference_value != *jit_value {
-                    println!(
-                        "VALUE diverged at snapshot index {}: expected {}, got {}",
-                        idx, reference_value, jit_value
-                    );
-                    equal_state = false;
-                    num_diffs += 1;
-                    if num_diffs >= 32 {
-                        panic!();
-                    }
-                }
-                let reference_ts = ((*reference_ts_high as u64) << 32) | (*reference_ts_low as u64);
-                if reference_ts != *jit_ts {
-                    println!(
-                        "TIMESTAMP diverged at snapshot index {}: expected {}, got {}",
-                        idx, reference_ts, jit_ts
-                    );
-                    equal_state = false;
-                    num_diffs += 1;
-                    if num_diffs >= 32 {
-                        panic!();
-                    }
-                }
-            }
-        }
-
-        if !equal_state {
-            dbg!(&jit_state.pc);
-            println!(
-                "Last opcode = 0x{:08x}",
-                text[((jit_state.pc as usize) - 4) / 4]
-            );
-            dbg!(&jit_state.materialized_registers());
             panic!("State diverged");
         }
 

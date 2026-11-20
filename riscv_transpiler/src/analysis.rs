@@ -497,7 +497,7 @@ where
     ND: crate::vm::NonDeterminismCSRSource,
 {
     use common_constants::TIMESTAMP_STEP;
-    use field::Mersenne31Field;
+    use field::baby_bear::base::BabyBearField;
 
     use crate::vm::{DelegationsAndFamiliesCounters, RamWithRomRegion, SimpleTape, State, VM};
 
@@ -535,7 +535,7 @@ where
             cur_run += 1;
         }
 
-        VM::<DelegationsAndFamiliesCounters>::run_step::<(), _, ND, Mersenne31Field>(
+        VM::<DelegationsAndFamiliesCounters>::run_step::<(), _, ND, BabyBearField>(
             &mut state,
             &mut ram,
             &mut (),

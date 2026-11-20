@@ -24,7 +24,7 @@ sha3 = { workspace = true, optional = true }
 [dev-dependencies]
 prover = { workspace = true, features = ["test", "bincode", "deterministic_pow"] }
 serde_json = "*"
-riscv_transpiler = { workspace = true }
+riscv_transpiler = { workspace = true, features = ["jit"] }
 object = { workspace = true }
 
 [features]

@@ -75,9 +75,9 @@ impl<F: PrimeField> From<Expr<F>> for LookupInput<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use field::{Field, Mersenne31Field};
+    use field::{baby_bear::base::BabyBearField, Field};
 
-    type F = Mersenne31Field;
+    type F = BabyBearField;
 
     #[test]
     fn lookup_input_expr_canonicalizes_before_degree_check() {

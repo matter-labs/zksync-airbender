@@ -3,7 +3,7 @@ use crate::ir::simple_instruction_set::{preprocess_bytecode, Instruction};
 use crate::ir::FullUnsignedMachineDecoderConfig;
 use crate::vm::{DelegationsCounters, RamPeek, RamWithRomRegion, SimpleTape, State, VM};
 use common_constants::rom::{L1_WRAP_ROM, REGULAR_ROM, ROM_SECOND_WORD_BITS};
-use field::Mersenne31Field;
+use field::baby_bear::base::BabyBearField;
 use std::path::PathBuf;
 
 fn repo_root() -> PathBuf {
@@ -326,7 +326,7 @@ fn assert_init_code_fills_ram<const ROM_BITS: usize>(
     let tape = SimpleTape::new(&instructions);
     let mut ram = RamWithRomRegion::<ROM_BITS>::from_rom_content(code, 1 << 30);
     let mut state = State::initial_with_counters(DelegationsCounters::default());
-    let finished = VM::<DelegationsCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
+    let finished = VM::<DelegationsCounters>::run_basic_unrolled::<_, _, _, BabyBearField>(
         &mut state,
         &mut ram,
         &mut (),
