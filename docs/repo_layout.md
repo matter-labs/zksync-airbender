@@ -11,7 +11,7 @@ What follows is a very rough and partly incomplete layout of our repo. What is N
 - execution_prover/ - backend-independent execution proving (simulation, replay, commit/prove orchestration)
 - execution_prover_model/ - CUDA-free circuit types and host traces shared by both backends
 - fft/ - native and verifier fft implementations in multiple layout formats to mirror various gpu layouts
-- field/ - native optimised cpu prover and verifier Mersenne31 basic and extension field implementations
+- field/ - native optimised cpu prover and verifier BabyBear and Proth120 field implementations
 - full_statement_verifier/ - full stark verifier logic, with support for chunking
 - gpu/ - Rust->CUDA GPU prover crate stack (see the "gpu:" section under Prover Implementations)
 - non_determinism_source/ - NonDeterminism storage reader trait, implemented in `prover` crate

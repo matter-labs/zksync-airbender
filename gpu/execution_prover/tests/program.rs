@@ -262,19 +262,6 @@ fn test_program_prover_base_layer_verify() {
 /// with `ExecutionKind::Unified`, assemble the `ProgramProof` (including
 /// `num_it_circuits`), build the unified ND stream, and run the real
 /// base-layer unified verifier natively.
-///
-/// This test used to fail the global memory-permutation closure
-/// (`read_set_product_accumulator == write_set_product_accumulator`, in
-/// `full_statement_verifier`'s unified circuit statement). The root
-/// cause was NOT the canonical inits-and-teardowns top bits (for this
-/// workload the touched 2^24-word RAM chunks are exactly {0, 1}, so the
-/// canonical `[0, 1]` equals the real top bits): the JIT simulator was
-/// building MOP (Zimop) opcodes over M31 (the `RISCV_MOP_FIELD` default)
-/// while the replay worker replays over BabyBear, so the simulation's final
-/// registers / RAM state silently diverged from the traced witness —
-/// per-circuit proofs stayed self-consistent and only the closure caught it.
-/// Fixed by making the MOP field an explicit `JittedCode::preprocess_bytecode`
-/// parameter (the simulation runner passes `MopField::BabyBear`).
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]

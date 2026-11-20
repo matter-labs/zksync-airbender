@@ -354,7 +354,7 @@ fn project_decoder_family<A: GoodAllocator>(
 mod test {
     use std::{alloc::Global, io::Read};
 
-    use field::Mersenne31Field;
+    use field::baby_bear::base::BabyBearField;
     use riscv_transpiler::ir::FullUnsignedMachineDecoderConfig;
 
     use super::*;
@@ -375,7 +375,7 @@ mod test {
             .collect();
 
         let _ = process_binary_into_separate_tables_ext::<
-            Mersenne31Field,
+            BabyBearField,
             FullUnsignedMachineDecoderConfig,
             true,
             Global,

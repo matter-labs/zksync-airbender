@@ -46,12 +46,6 @@ fn test_prover_config() -> prover_config::ProverConfig {
 }
 
 /// Test-only transcript implementing `Transcript<BabyBearField, BabyBearExt4>`.
-///
-/// The production `Blake2sTranscript` only implements `Transcript<BabyBearField,
-/// BabyBearExt4>`; the orphan rule forbids adding a Mersenne impl for it outside
-/// the `transcript` crate, so we wrap it in this local type for the Mersenne-based
-/// sumcheck tests. It delegates everything to `Blake2sTranscript`, reusing the
-/// shared (field-generic) serialization helpers.
 #[derive(Clone, Copy, Debug, Default)]
 struct TestTranscript;
 

@@ -1,1 +1,1 @@
-Our Mersenne31 arithmetic is partially based on [Ingonyama's whitepaper](https://github.com/ingonyama-zk/papers/blob/main/Mersenne31_polynomial_arithmetic.pdf) and [Plonky3's implementation](https://github.com/Plonky3/Plonky3/tree/main/mersenne-31).
+The field crate implements BabyBear and its extension fields, and Proth120.

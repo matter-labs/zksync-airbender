@@ -5,11 +5,11 @@ use cs::oracle::*;
 use cs::tables::TableDriver;
 use cs::utils::split_u32_into_pair_u16;
 use cs::witness_placer::scalar_witness_type_set::ScalarWitnessTypeSet;
-use field::{Mersenne31Field, PrimeField};
+use field::{baby_bear::base::BabyBearField, PrimeField};
 
 // NOTE: very unsafe
 
-pub struct ColumnMajorWitnessProxy<'a, O: Oracle<F> + 'a, F: PrimeField = Mersenne31Field> {
+pub struct ColumnMajorWitnessProxy<'a, O: Oracle<F> + 'a, F: PrimeField = BabyBearField> {
     pub(crate) witness_rows_starts: Box<[*mut F]>,
     pub(crate) memory_rows_starts: Box<[*mut F]>,
     pub(crate) scratch_space: Box<[*mut F]>,
