@@ -184,11 +184,13 @@ pub mod l1_wrap {
     /// 100-bit WHIR accounting under the pessimistic conjecture: queries
     /// contribute r/1.2 bits (`PessimisticConjectureMode` in
     /// `whir/proximity_testing_modes.rs`), and the linear proximity-gap charge
-    /// in `pow_bits.rs` is applied to each fold. With mu = 37/2^128, every RS
-    /// substep keeps 100 bits for list sizes up to [`LIST_SIZE_CEILINGS`].
-    /// Nominal-100 shifts have an accepted deficit below 10^-6 bit. The base
-    /// commitment has no OOD sample: the GKR evaluation claims bind it, and the
-    /// GKR and lookup challenges carry no list factor.
+    /// in `pow_bits.rs` is applied to each fold. With mu = 37/2^128, every
+    /// WHIR RS substep keeps 100 bits for list sizes up to
+    /// [`LIST_SIZE_CEILINGS`]. Nominal-100 shifts have an accepted deficit
+    /// below 10^-6 bit. The base commitment has no OOD sample. The GKR
+    /// evaluation claims bind it for the WHIR rounds; the conjecture assumes
+    /// that the lookup and GKR challenges drawn before them carry no list
+    /// factor.
     pub fn packed_prover_config() -> ProverConfig {
         const CAP_SIZE: usize = 8;
         let level = SecurityLevel::Sec100;
