@@ -6,7 +6,7 @@ The bundle paths and resolved `ProverConfig` are pinned in
 comes from the configuration. The generator derives the effective external difficulty
 as the maximum of the lookup requirement and the wrap's external floor, using the
 same circuit, security level and functions as the prover. Difficulties are bounded by
-the GKR and wrap query/folding/OOD caps, and inits/teardowns top bits must be strictly increasing.
+the 64-bit calldata nonce width, and inits/teardowns top bits must be strictly increasing.
 
 [seed.rs](src/seed.rs) owns transcript initialization and the verified statement.
 Initial-preimage words are little-endian u32s; WHIR digest words are big-endian

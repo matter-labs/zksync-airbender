@@ -13,7 +13,7 @@ differs only in the final PC the decoder pins. `external_pow`, `batching_pow` an
 proof's leading-zero count. `folding_pow_0` through `folding_pow_4` similarly exceed
 every folding nonce's leading-zero count in the selected round. These controls cover
 every per-round literal and both the internal and final-round calls. Test-only
-difficulties can exceed the production cap while remaining representable by the shift check. The producer
+difficulties are bounded by the 64-bit calldata nonce width. The producer
 replays the proof transcript to compute these counts and asserts that each negative source
 differs from the real verifier on one line.
 The merged suite deploys all controls and requires rejection of the honest proof.
@@ -43,7 +43,7 @@ The wrap uses folds `[1,4,4,4,5]`, query PoW `[27,25,30,30,30]`, and folding PoW
 oracle uses one OOD sample with PoW `[18,20,26,30]`. The final polynomial has
 64 coefficients. The oracle domain logs are `[32,32,31,32,32]`, the cap is 8,
 and the setup frontier is level 10. The config documents its conditional
-pessimistic soundness accounting and list-size assumptions in
+pessimistic soundness accounting and the list sizes it tolerates in
 `prover/src/gkr/prover_config/example_configs/special_configs.rs`.
 
 The constructor returns exactly `type(GkrWhirVerifierCode).runtimeCode || setup data`:
