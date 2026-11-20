@@ -112,10 +112,8 @@ fn run_recursion_and_compare() {
             RAM_CONFIG.ram_size(),
         );
         let mut vm_state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
-        let mut snapshotter = SimpleSnapshotter::<_, ROM_SECOND_WORD_BITS>::new_with_cycle_limit(
-            cycles as usize,
-            vm_state,
-        );
+        let mut snapshotter =
+            SimpleSnapshotter::<_, ROM_SECOND_WORD_BITS>::new_with_cycle_limit(1 << 30, vm_state);
         let mut source = QuasiUARTSource::new_with_reads(responses.clone());
         VM::<DelegationsAndFamiliesCounters>::run_by_timestamp_bound::<_, _, _, BabyBearField>(
             &mut vm_state,
