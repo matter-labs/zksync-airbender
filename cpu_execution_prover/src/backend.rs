@@ -58,6 +58,15 @@ impl ExecutionBackend for CpuBackend {
         CpuCircuitPrecomputations::from_canonical(circuit, setup, selection, profiles)
     }
 
+    fn prepare_l1_wrap(
+        &self,
+        circuit: CircuitType,
+        setup: crate::upstream::L1WrapSetup,
+        config: crate::upstream::ProverConfig,
+    ) -> Self::Precomputations {
+        CpuCircuitPrecomputations::l1_with_config(circuit, setup, config)
+    }
+
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {
         self.manager.send_batch(batch);
     }

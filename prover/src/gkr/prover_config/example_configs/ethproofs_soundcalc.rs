@@ -749,23 +749,6 @@ mod tests {
             config.commitment_mode,
             CommitmentMode::MergedMemoryAndWitness
         );
-        let schedule = &config.whir_schedule;
-        let base = &schedule.base_round;
-        let mut grinds = vec![
-            base.batching_pow_bits.unwrap(),
-            base.folding_pow_bits,
-            base.queries_pow_bits,
-        ];
-        for round in &schedule.internal_rounds {
-            grinds.extend([
-                round.queries_pow_bits,
-                round.folding_pow_bits,
-                round.ood_pow_bits,
-            ]);
-        }
-        assert!(grinds
-            .into_iter()
-            .all(|bits| bits <= COMPRESSION_MAX_POW_BITS));
     }
 
     #[test]

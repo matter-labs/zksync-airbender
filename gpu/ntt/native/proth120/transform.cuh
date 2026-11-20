@@ -70,6 +70,13 @@ struct mobius_policy {
   DEVICE_FORCEINLINE void exchg_0(pr &a, pr &b) const { b = pr::sub(b, a); }
 };
 
+struct inverse_mobius_policy {
+  static constexpr bool USES_TWIDDLES = false;
+  static constexpr bool LAZY = false;
+  DEVICE_FORCEINLINE void exchg(pr &a, pr &b, const pr) const { b = pr::add(b, a); }
+  DEVICE_FORCEINLINE void exchg_0(pr &a, pr &b) const { b = pr::add(b, a); }
+};
+
 // `gate` (null: always on) points to a slot's active flag; a gated-off launch returns at entry.
 struct chunk_map {
   const u32 *gate;
@@ -97,8 +104,8 @@ DEVICE_FORCEINLINE u32 coset_scale_index(const coset_scale &s) { return (s.coset
 
 // offset_k^row with offset_k = w_D^k = w_L^(k << (L - D)), natural coefficient index `row`.
 DEVICE_FORCEINLINE pr coset_scale_power(const proth120_twiddle_descriptor &d, const coset_scale &s, const u32 k, const u32 row) {
-  const u64 mask = (u64{1} << d.log_max_domain) - 1;
-  return pr_root_power(d, ((static_cast<u64>(k) * row) << (d.log_max_domain - s.log_domain)) & mask);
+  // Unsigned multiplication and shift retain exactly the low 32 exponent bits.
+  return pr_root_power(d, (k * row) << (d.log_max_domain - s.log_domain));
 }
 
 DEVICE_FORCEINLINE u32 chunk_block_y(const chunk_map &m) {

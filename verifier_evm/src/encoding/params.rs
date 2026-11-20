@@ -9,12 +9,48 @@ pub struct FormatParams {
     pub setup_frontier_level: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OracleGeometry {
+    pub domain_log2: usize,
+    pub lde_log2: usize,
+    pub query_index_bits: usize,
+}
+
+pub(crate) fn oracle_geometry(config: &ProverConfig) -> Vec<OracleGeometry> {
+    let schedule = &config.whir_schedule;
+    let mut message_log2 = config.whir_message_size_log2();
+    let rates = core::iter::once(schedule.base_lde_factor_log2()).chain(
+        schedule
+            .internal_rounds
+            .iter()
+            .map(|round| round.lde_factor_log2),
+    );
+    schedule
+        .fold_steps()
+        .into_iter()
+        .zip(rates)
+        .map(|(fold, lde_log2)| {
+            let domain_log2 = message_log2 + lde_log2;
+            message_log2 = message_log2
+                .checked_sub(fold)
+                .expect("WHIR fold exceeds message size");
+            let query_index_bits = message_log2 + lde_log2;
+            OracleGeometry {
+                domain_log2,
+                lde_log2,
+                query_index_bits,
+            }
+        })
+        .collect()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Geometry {
     pub trace_log2: usize,
     pub explicit_output_log2: usize,
     pub pack_log2: usize,
     pub cap_log2: usize,
+    pub oracles: Vec<OracleGeometry>,
     pub folds: Vec<usize>,
     pub queries: Vec<usize>,
     pub folding_pow_bits: Vec<u32>,
@@ -44,15 +80,28 @@ impl Geometry {
             ws.queries_per_round().len(),
             "WHIR folds/queries schedule length mismatch"
         );
+        let cap_log2 = ws.cap_size.trailing_zeros() as usize;
         assert!(
-            setup_frontier_level > ws.cap_size.trailing_zeros() as usize,
+            setup_frontier_level > cap_log2,
             "the setup frontier must be below the cap"
         );
+        let oracles = oracle_geometry(config);
+        assert!(
+            oracles
+                .iter()
+                .all(|oracle| (cap_log2..=u32::BITS as usize).contains(&oracle.query_index_bits)),
+            "WHIR query index bits must accommodate the cap and fit in 32 bits"
+        );
+        assert!(
+            setup_frontier_level <= oracles[0].query_index_bits,
+            "profile setup frontier lies below the setup leaves"
+        );
         Self {
+            oracles,
             trace_log2: config.trace_len_log2,
             explicit_output_log2: config.sumcheck_explicit_output_size_log_2,
             pack_log2: config.pack_log2(),
-            cap_log2: ws.cap_size.trailing_zeros() as usize,
+            cap_log2,
             folds: ws.fold_steps().clone(),
             queries: ws.queries_per_round().clone(),
             folding_pow_bits: core::iter::once(ws.base_round.folding_pow_bits)

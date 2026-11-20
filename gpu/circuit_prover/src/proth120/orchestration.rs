@@ -36,9 +36,10 @@ use gpu_whir::proth120::{
 };
 
 use super::{L1Proof, L1WrapGeometry, L1WrapInputs};
-use crate::proof::memory_policy::PartialTreePolicy;
+use crate::proof::memory_policy::{presets, PartialTreePolicy, WitnessPostCommitStorage};
 use crate::upstream::{
-    GKRCircuitArtifact, L1WrapResult, OperationMode, ProverConfig, TIMESTAMP_COLUMNS_NUM_BITS,
+    GKRCircuitArtifact, L1WrapResult, OperationMode, ProofProfile, ProverConfig,
+    TIMESTAMP_COLUMNS_NUM_BITS,
 };
 
 use super::L1WrapConstantsHost;
@@ -329,6 +330,16 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
         let p = ProofWork::<L1WrapResult>::phase("l1_wrap.pack", context)?;
         let mut base =
             PackedCosetRecomputeOracle::pack_from_columns(raw, geometry.pack_log2, context)?;
+        let memory_policy = presets::policy(
+            geometry.circuit_type,
+            ProofProfile::L1Wrap,
+            context.get_mem_size(),
+        );
+        if memory_policy.witness.post_commitment
+            == WitnessPostCommitStorage::RawWithReusedPrefixScratch
+        {
+            base.reuse_raw_as_prefix_scratch();
+        }
         work.end_phase(p, context)?;
         let p = ProofWork::<L1WrapResult>::phase("l1_wrap.commit", context)?;
         // Build one pair of forward tables for this proof's commitments and openings.
@@ -508,7 +519,7 @@ impl<'r, 'a, A: GoodAllocator + 'a> ProofPipeline for L1WrapProofRequest<'r, 'a,
                 base_layer_point: handoff.base_layer_point,
                 batching_challenge: handoff.batching_challenge,
             },
-            &config.whir_schedule,
+            config,
             gkr.slab.whir_target(),
             context,
         )?;

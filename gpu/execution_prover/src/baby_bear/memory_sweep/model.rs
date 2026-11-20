@@ -256,6 +256,7 @@ pub fn policy_fields(policy: MemoryPolicy) -> (String, String, String, String, S
         WitnessPostCommitStorage::RawEvaluations => "raw",
         WitnessPostCommitStorage::RawAndMonomials => "raw_monomials",
         WitnessPostCommitStorage::RawAndCosets => "raw_cosets",
+        WitnessPostCommitStorage::RawWithReusedPrefixScratch => "raw_with_reused_prefix_scratch",
     };
     let witness_opening = match policy.witness.opening {
         WitnessOpeningStrategy::ReuseCosets => "reuse_cosets",

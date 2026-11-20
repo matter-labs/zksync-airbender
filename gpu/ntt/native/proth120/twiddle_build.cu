@@ -6,15 +6,15 @@ constexpr u32 FACTOR_BITS = 4;
 constexpr u32 FACTOR_SIZE = 1u << FACTOR_BITS;
 constexpr u32 FACTORS = 32 / FACTOR_BITS;
 constexpr u32 LOW_LEN = 1u << 16;
-constexpr u32 TABLE_LEN = LOW_LEN + (1u << 15);
-// domain_generator_for_size<Proth120>(2^31), in canonical Montgomery form.
-constexpr DEVICE_FORCEINLINE pr root31() { return {{0xeea02be9, 0xe4a2ec2e, 0x23510c85, 0x00c1d7c2}}; }
+constexpr u32 TABLE_LEN = 2 * LOW_LEN;
+// domain_generator_for_size<Proth120>(2^32), in canonical Montgomery form.
+constexpr DEVICE_FORCEINLINE pr root32() { return {{0x592e34f4, 0xda222838, 0x8eb2e1d9, 0x05cc132e}}; }
 } // namespace
 
 extern "C" __global__ void ab_pr_ntt_build_factors_kernel(pr *factors) {
   __shared__ pr base;
   if (threadIdx.x == 0) {
-    pr value = root31();
+    pr value = root32();
     for (u32 i = 0; i < blockIdx.x * FACTOR_BITS; i++)
       value = pr::sqr(value);
     base = value;

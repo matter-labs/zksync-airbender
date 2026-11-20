@@ -32,7 +32,10 @@ fn path_depth(name: &str, log_leaves: u32, log_lde: u32, cap_log: u32) -> usize 
         log_leaves + log_lde <= 31,
         "keccak256::{name}: log_coset_leaves + log_lde <= 31"
     );
-    assert!(cap_log <= log_lde, "keccak256::{name}: cap_log <= log_lde");
+    assert!(
+        cap_log <= log_leaves + log_lde,
+        "keccak256::{name}: cap_log exceeds tree height"
+    );
     (log_leaves + log_lde - cap_log) as usize
 }
 
@@ -55,7 +58,7 @@ pub fn append_top_paths(
         cosets,
         "keccak256::append_top_paths: roots.len() == C"
     );
-    top_tree_log_lde(NAME, roots.len(), cap_log, top_nodes.len());
+    top_tree_log_lde(NAME, roots.len(), cap_log.min(log_lde), top_nodes.len());
     assert_eq!(
         paths.len(),
         checked_product(NAME, queries.len(), depth),

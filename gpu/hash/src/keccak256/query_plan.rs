@@ -6,8 +6,8 @@ use era_cudart::stream::CudaStream;
 
 use super::assert_no_overlap;
 
-pub const MAX_PLAN_QUERIES: usize = 12;
-pub const MAX_PLAN_LOG_LDE: u32 = 7;
+pub const MAX_PLAN_QUERIES: usize = 1024;
+pub const MAX_PLAN_LOG_LDE: u32 = 12;
 
 cuda_kernel!(
     CosetQueryPlan,
@@ -70,5 +70,6 @@ pub fn launch_coset_query_plan(
         active.as_mut_ptr(),
         touched_count.as_mut_ptr(),
     );
-    CosetQueryPlanFunction::default().launch(&CudaLaunchConfig::basic(1, 32, stream), &args)
+    let threads = count.next_multiple_of(32) as u32;
+    CosetQueryPlanFunction::default().launch(&CudaLaunchConfig::basic(1, threads, stream), &args)
 }

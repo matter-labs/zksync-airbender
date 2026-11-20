@@ -26,6 +26,7 @@ impl L1WhirState {
     pub(crate) fn new(
         log_message: u32,
         term_capacity: usize,
+        max_leaf_width: usize,
         context: &ProverContext,
     ) -> CudaResult<Self> {
         assert!(
@@ -39,7 +40,7 @@ impl L1WhirState {
             eq: context.alloc(len, AllocationPlacement::BestFit)?,
             reduce_out: context.alloc(3, AllocationPlacement::BestFit)?,
             current_len: len,
-            in_domain: InDomainState::new(term_capacity, context)?,
+            in_domain: InDomainState::new(term_capacity, max_leaf_width, context)?,
             eq_lo: context.alloc(1 << (log_message / 2), AllocationPlacement::BestFit)?,
             eq_hi: context.alloc(1 << log_message.div_ceil(2), AllocationPlacement::BestFit)?,
         })
@@ -135,7 +136,7 @@ pub(crate) fn schedule_round_update(
     coeffs_dst: &mut DeviceSlice<PR>,
     challenge_out: &mut DeviceSlice<PR>,
     folding_pow_bits: u32,
-    nonce_out: &mut DeviceVariable<u64>,
+    nonce_out: Option<&mut DeviceVariable<u64>>,
     context: &ProverContext,
 ) -> CudaResult<()> {
     let stream = context.get_exec_stream();
@@ -145,8 +146,10 @@ pub(crate) fn schedule_round_update(
     {
         kernels::round_update(&mut state.reduce_out, seed, coeffs_dst, stream)?;
     }
-    let mut counter = context.alloc(1, AllocationPlacement::BestFit)?;
-    keccak256_pow(seed, folding_pow_bits, nonce_out, &mut counter[0], stream)?;
+    if let Some(nonce_out) = nonce_out {
+        let mut counter = context.alloc(1, AllocationPlacement::BestFit)?;
+        keccak256_pow(seed, folding_pow_bits, nonce_out, &mut counter[0], stream)?;
+    }
     transcript_draw_fields(seed, challenge_out, stream)?;
     state.in_domain.fold(challenge_out, context)
 }

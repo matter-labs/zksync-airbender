@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
@@ -7,12 +9,12 @@ use gpu_core::primitives::device_structures::{DeviceMatrix, DeviceMatrixMut};
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::nvtx::scoped_range;
 use gpu_hash::keccak256::{
-    append_top_paths, build_top_tree, gather_tree_cap, launch_coset_query_plan,
-    retained_layer_offset, Digest,
+    append_top_paths, build_top_tree, gather_coset_tree_cap, gather_tree_cap,
+    launch_coset_query_plan, retained_layer_offset, Digest, MAX_PLAN_QUERIES,
 };
 use gpu_ntt::proth120::{
-    dispatch, hypercube_evals_to_monomials_chunked, pack_hypercubes_to_monomials, SuffixShape,
-    TwiddleDescriptor,
+    dispatch, hypercube_evals_to_monomials_chunked, monomials_to_hypercube_evals_chunked,
+    pack_hypercubes_to_monomials, SuffixShape, TwiddleDescriptor,
 };
 use gpu_prover_context::ProverContext;
 
@@ -62,11 +64,16 @@ impl PackedCommitConfig {
         let h = log_packed
             .checked_sub(log_values_per_leaf)
             .expect("PackedCommitConfig: values_per_leaf exceeds the packed domain");
+        let log_lde_factor = config.lde_factor().trailing_zeros();
+        let cap_log = config.cap_size.trailing_zeros();
+        let cap_layer = h
+            .checked_sub(cap_log.saturating_sub(log_lde_factor))
+            .expect("PackedCommitConfig: cap_log exceeds tree height");
         Self {
-            log_lde_factor: config.lde_factor().trailing_zeros(),
+            log_lde_factor,
             log_values_per_leaf,
-            cap_log: config.cap_size.trailing_zeros(),
-            skip_bottom: h.min(requested_skip_bottom),
+            cap_log,
+            skip_bottom: cap_layer.min(requested_skip_bottom),
         }
     }
 }
@@ -79,6 +86,7 @@ pub struct PackedCosetRecomputeOracle<T> {
     raw: Option<TraceHolder<T>>,
     monomials: Option<DeviceAllocation<T>>,
     committed: Option<PackedTreeState>,
+    reuse_raw_as_prefix_scratch: bool,
 }
 
 struct PackedTreeState {
@@ -136,13 +144,17 @@ pub fn coset_root_offset(log_leaves: u32, skip_bottom: u32) -> usize {
     retained_len(log_leaves, skip_bottom) - 1
 }
 
-// The touched-coset plan of the round-0 queries (`launch_coset_query_plan`), built once per proof
-// and shared by the base and the setup openings (same queries and log_lde): openings run one gated
-// slot per query, exactly `count` of them active.
+fn query_batches(count: usize) -> impl Iterator<Item = Range<usize>> {
+    (0..count)
+        .step_by(MAX_PLAN_QUERIES)
+        .map(move |start| start..start + (count - start).min(MAX_PLAN_QUERIES))
+}
+
+// The base and setup openings share this round-0 plan. Each contiguous batch deduplicates
+// its cosets in one CUDA block and keeps the queries in transcript order.
 pub struct CosetQueryPlan {
     pub touched: DeviceAllocation<u32>,
     pub active: DeviceAllocation<u32>,
-    pub count: DeviceAllocation<u32>,
     pub log_lde: u32,
 }
 
@@ -152,27 +164,25 @@ impl CosetQueryPlan {
         log_lde: u32,
         context: &ProverContext,
     ) -> CudaResult<Self> {
+        assert!(!queries.is_empty(), "CosetQueryPlan requires queries");
         let mut touched = context.alloc(queries.len(), AllocationPlacement::BestFit)?;
         let mut active = context.alloc(queries.len(), AllocationPlacement::BestFit)?;
         let mut count = context.alloc(1, AllocationPlacement::BestFit)?;
-        launch_coset_query_plan(
-            queries,
-            log_lde,
-            &mut touched,
-            &mut active,
-            &mut count,
-            context.get_exec_stream(),
-        )?;
+        for batch in query_batches(queries.len()) {
+            launch_coset_query_plan(
+                &queries[batch.clone()],
+                log_lde,
+                &mut touched[batch.clone()],
+                &mut active[batch],
+                &mut count,
+                context.get_exec_stream(),
+            )?;
+        }
         Ok(Self {
             touched,
             active,
-            count,
             log_lde,
         })
-    }
-
-    pub fn slots(&self) -> usize {
-        self.touched.len()
     }
 }
 
@@ -220,7 +230,7 @@ impl<T> PackedCosetRecomputeOracle<T> {
     pub fn monomials(&self) -> &DeviceSlice<T> {
         self.monomials
             .as_ref()
-            .expect("PackedCosetRecomputeOracle: monomials after release_commitment_state")
+            .expect("PackedCosetRecomputeOracle: monomials are not resident")
     }
     pub fn cap_digests(&self) -> &DeviceSlice<Digest> {
         &self
@@ -243,13 +253,9 @@ impl<T> PackedCosetRecomputeOracle<T> {
 }
 
 impl PackedCosetRecomputeOracle<PR> {
-    fn allocate_monomials(
-        raw: TraceHolder<PR>,
-        pack_log2: u32,
-        context: &ProverContext,
-    ) -> CudaResult<Self> {
+    fn new(raw: TraceHolder<PR>, pack_log2: u32) -> Self {
         let log_rows = raw.log_domain_size;
-        let log_packed = log_rows
+        log_rows
             .checked_add(pack_log2)
             .filter(|log| (8..=26).contains(log))
             .expect("PackedCosetRecomputeOracle: log_rows + pack_log2 outside 8..=26");
@@ -266,19 +272,16 @@ impl PackedCosetRecomputeOracle<PR> {
         let packed_columns = columns.div_ceil(pow2(pack_log2));
         u32::try_from(packed_columns)
             .expect("PackedCosetRecomputeOracle: packed column count exceeds u32");
-        let monomials = context.alloc(
-            product(packed_columns, pow2(log_packed)),
-            AllocationPlacement::Bottom,
-        )?;
-        Ok(Self {
+        Self {
             log_rows,
             pack_log2,
             columns,
             packed_columns,
             raw: Some(raw),
-            monomials: Some(monomials),
+            monomials: None,
             committed: None,
-        })
+            reuse_raw_as_prefix_scratch: false,
+        }
     }
 
     pub fn pack_from_columns(
@@ -286,23 +289,71 @@ impl PackedCosetRecomputeOracle<PR> {
         pack_log2: u32,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        let mut oracle = Self::allocate_monomials(raw, pack_log2, context)?;
-        let packed_rows = pow2(oracle.log_packed());
-        let raw = oracle.raw.as_ref().unwrap();
+        let mut oracle = Self::new(raw, pack_log2);
+        oracle.pack_monomials(context)?;
+        Ok(oracle)
+    }
+
+    /// Schedule packing on exec. Used by WHIR to reconstruct the opening source from raw columns.
+    pub fn pack_monomials(&mut self, context: &ProverContext) -> CudaResult<()> {
+        assert!(
+            self.monomials.is_none(),
+            "PackedCosetRecomputeOracle: monomials are already resident"
+        );
+        let raw = self.raw();
+        let packed_rows = pow2(self.log_packed());
+        let len = product(self.packed_columns, packed_rows);
+        let mut monomials = context.alloc(len, AllocationPlacement::Bottom)?;
         let stream = context.get_exec_stream();
-        let mut output = DeviceMatrixMut::new(oracle.monomials.as_mut().unwrap(), packed_rows);
-        if (raw.padded_hypercube_evals().len() >> raw.log_domain_size)
-            == oracle.packed_columns << pack_log2
-        {
+        let mut output = DeviceMatrixMut::new(&mut monomials, packed_rows);
+        if raw.padded_hypercube_evals().len() == len {
             let input = DeviceMatrix::new(raw.padded_hypercube_evals(), packed_rows);
             let _r = scoped_range(Some("ab"), "pack.mobius");
             let l2 = context.get_device_properties().l2_cache_size_bytes;
             hypercube_evals_to_monomials_chunked(&input, &mut output, l2, stream)?;
         } else {
-            let input = DeviceMatrix::new(raw.get_hypercube_evals(), pow2(oracle.log_rows));
-            pack_hypercubes_to_monomials(&input, &mut output, pack_log2, stream)?;
+            let input = DeviceMatrix::new(raw.get_hypercube_evals(), pow2(self.log_rows));
+            pack_hypercubes_to_monomials(&input, &mut output, self.pack_log2, stream)?;
         }
-        Ok(oracle)
+        self.monomials = Some(monomials);
+        Ok(())
+    }
+
+    /// The L1 memory policy can reuse the raw backing for both full-coset prefixes.
+    pub fn reuse_raw_as_prefix_scratch(&mut self) {
+        assert!(self.committed.is_none());
+        assert_eq!(
+            self.raw().padded_hypercube_evals().len(),
+            self.monomials().len(),
+            "packed raw prefix reuse requires equal backing sizes"
+        );
+        self.reuse_raw_as_prefix_scratch = true;
+    }
+
+    fn prefix_scratch(&mut self, context: &ProverContext) -> CudaResult<DeviceAllocation<PR>> {
+        if self.reuse_raw_as_prefix_scratch {
+            Ok(self.raw_mut().take_raw_hypercube_backing())
+        } else {
+            context.alloc(self.monomials().len(), AllocationPlacement::Top)
+        }
+    }
+
+    /// After accumulation, only the policy that will repack still needs raw.
+    pub fn finish_raw_batching(&mut self) {
+        if self.monomials.is_some() {
+            self.release_raw();
+        }
+    }
+
+    /// Prepare coefficients for opening. The reuse policy keeps raw as prefix scratch.
+    pub fn prepare_opening(&mut self, context: &ProverContext) -> CudaResult<()> {
+        if self.monomials.is_none() {
+            self.pack_monomials(context)?;
+        }
+        if !self.reuse_raw_as_prefix_scratch {
+            self.release_raw();
+        }
+        Ok(())
     }
 
     fn allocate_tree(
@@ -318,10 +369,6 @@ impl PackedCosetRecomputeOracle<PR> {
             log_domain <= gpu_ntt::proth120::LOG_MAX_DOMAIN,
             "PackedCosetRecomputeOracle: packed LDE domain exceeds the Proth120 NTT domain"
         );
-        assert!(
-            cfg.cap_log <= cfg.log_lde_factor,
-            "PackedCosetRecomputeOracle: cap_log exceeds log_lde_factor"
-        );
         let h = log_packed
             .checked_sub(cfg.log_values_per_leaf)
             .expect("PackedCosetRecomputeOracle: values_per_leaf exceeds the packed domain");
@@ -330,7 +377,8 @@ impl PackedCosetRecomputeOracle<PR> {
         let cap_len = pow2(cfg.cap_log);
         let retained = context.alloc(product(cosets, per_coset), AllocationPlacement::Bottom)?;
         let roots = context.alloc(cosets, AllocationPlacement::Bottom)?;
-        let top_nodes = context.alloc(cosets - cap_len, AllocationPlacement::Bottom)?;
+        let top_nodes =
+            context.alloc(cosets.saturating_sub(cap_len), AllocationPlacement::Bottom)?;
         let cap = context.alloc(cap_len, AllocationPlacement::BestFit)?;
         Ok(PackedTreeState {
             cfg,
@@ -343,21 +391,16 @@ impl PackedCosetRecomputeOracle<PR> {
         })
     }
 
-    pub fn from_uploaded(
+    /// Allocate the precomputed setup tree for upload. Setup coefficients are packed from raw at opening.
+    pub fn from_uploaded_tree(
         raw: TraceHolder<PR>,
         pack_log2: u32,
         cfg: PackedCommitConfig,
         context: &ProverContext,
     ) -> CudaResult<Self> {
-        let mut oracle = Self::allocate_monomials(raw, pack_log2, context)?;
+        let mut oracle = Self::new(raw, pack_log2);
         oracle.committed = Some(oracle.allocate_tree(cfg, context)?);
         Ok(oracle)
-    }
-
-    pub fn uninit_monomials_mut(&mut self) -> &mut DeviceSlice<PR> {
-        self.monomials
-            .as_mut()
-            .expect("PackedCosetRecomputeOracle: monomials after release_commitment_state")
     }
 
     fn tree_data_mut(&mut self) -> &mut PackedTreeData {
@@ -400,7 +443,7 @@ impl PackedCosetRecomputeOracle<PR> {
         let data = state.data.as_mut().unwrap();
         let h = self.log_packed() - cfg.log_values_per_leaf;
         let per_coset = retained_len(h, cfg.skip_bottom);
-        let mut scratch = context.alloc(self.monomials().len(), AllocationPlacement::Top)?;
+        let mut scratch = self.prefix_scratch(context)?;
         let plan = dispatch(
             self.log_packed(),
             self.packed_columns,
@@ -453,25 +496,48 @@ impl PackedCosetRecomputeOracle<PR> {
             )?;
         }
         let _r = scoped_range(Some("ab"), "packed.commit.top");
-        build_top_tree(&data.roots, cfg.cap_log, &mut data.top_nodes, stream)?;
-        gather_tree_cap(
-            &data.roots,
-            &data.top_nodes,
-            cfg.cap_log,
-            &mut state.cap,
-            stream,
-        )?;
+        if cfg.cap_log > cfg.log_lde_factor {
+            gather_coset_tree_cap(
+                &data.retained,
+                cfg.log_lde_factor,
+                h,
+                cfg.skip_bottom,
+                cfg.cap_log,
+                &mut state.cap,
+                stream,
+            )?;
+        } else {
+            build_top_tree(&data.roots, cfg.cap_log, &mut data.top_nodes, stream)?;
+            gather_tree_cap(
+                &data.roots,
+                &data.top_nodes,
+                cfg.cap_log,
+                &mut state.cap,
+                stream,
+            )?;
+        }
         drop(_r);
         drop(node_scratch);
         drop(nodes);
         drop(tiles);
-        drop(scratch);
+        if self.reuse_raw_as_prefix_scratch {
+            let _range = scoped_range(Some("ab"), "packed.restore_raw");
+            let rows = pow2(self.log_packed());
+            let monomials = self.monomials.take().unwrap();
+            monomials_to_hypercube_evals_chunked(
+                &DeviceMatrix::new(&monomials, rows),
+                &mut DeviceMatrixMut::new(&mut scratch, rows),
+                context.get_device_properties().l2_cache_size_bytes,
+                stream,
+            )?;
+            self.raw_mut().restore_raw_hypercube_backing(scratch);
+        }
         self.committed = Some(state);
         Ok(())
     }
 
     pub fn open_queries(
-        &self,
+        &mut self,
         plan: &CosetQueryPlan,
         queries: &DeviceSlice<u32>,
         leaves: &mut DeviceSlice<PR>,
@@ -484,29 +550,24 @@ impl PackedCosetRecomputeOracle<PR> {
             .committed
             .as_ref()
             .expect("PackedCosetRecomputeOracle: open_queries before commit");
-        let data = state
-            .data
-            .as_ref()
-            .expect("PackedCosetRecomputeOracle: open_queries after release_commitment_state");
         let cfg = state.cfg;
         let log_packed = self.log_packed();
         let h = log_packed - cfg.log_values_per_leaf;
         let count = queries.len();
+        let leaf_len = product(pow2(cfg.log_values_per_leaf), self.packed_columns);
+        let path_len = opening_path_len(log_packed, &cfg);
         assert!(
             count > 0,
             "PackedCosetRecomputeOracle: wrap openings require queries"
         );
         assert_eq!(
             leaves.len(),
-            product(
-                product(count, pow2(cfg.log_values_per_leaf)),
-                self.packed_columns
-            ),
+            product(count, leaf_len),
             "PackedCosetRecomputeOracle: leaves.len() == Q * 2^log_values_per_leaf * packed_columns"
         );
         assert_eq!(
             paths.len(),
-            product(count, opening_path_len(log_packed, &cfg)),
+            product(count, path_len),
             "PackedCosetRecomputeOracle: paths.len() == Q * D"
         );
         assert_eq!(
@@ -519,16 +580,23 @@ impl PackedCosetRecomputeOracle<PR> {
         assert_disjoint(paths, tree_indexes, "paths/tree_indexes overlap");
 
         let per_coset = retained_len(h, cfg.skip_bottom);
-        let mut scratch = context.alloc(self.monomials().len(), AllocationPlacement::Top)?;
+        let mut scratch = self.prefix_scratch(context)?;
+        let data = self
+            .committed
+            .as_ref()
+            .unwrap()
+            .data
+            .as_ref()
+            .expect("PackedCosetRecomputeOracle: open_queries after release_commitment_state");
         let stream = context.get_exec_stream();
         assert_eq!(
             plan.log_lde, cfg.log_lde_factor,
             "PackedCosetRecomputeOracle: query plan LDE differs"
         );
         assert_eq!(
-            plan.slots(),
+            plan.touched.len(),
             count,
-            "PackedCosetRecomputeOracle: query plan slot count differs"
+            "PackedCosetRecomputeOracle: query plan query count differs"
         );
         let dispatched = dispatch(
             log_packed,
@@ -552,33 +620,36 @@ impl PackedCosetRecomputeOracle<PR> {
         let (tiles_len, nodes_len) = open_coset_slot_scratch_lens(&dispatched, &shape);
         let mut tiles = context.alloc(tiles_len, AllocationPlacement::BestFit)?;
         let mut nodes = context.alloc(nodes_len, AllocationPlacement::BestFit)?;
-        let mut open = OpenQueries {
-            queries,
-            log_lde: cfg.log_lde_factor,
-            cap_log: cfg.cap_log,
-            leaves: &mut *leaves,
-            paths: &mut *paths,
-        };
-        for s in 0..plan.slots() {
-            let _r = scoped_range(Some("ab"), "packed.open.slot");
-            open_coset_slot(
-                twiddles,
-                self.monomials(),
-                &dispatched,
-                &shape,
-                OpenSlot {
-                    coset: &plan.touched[s..s + 1],
-                    active: &plan.active[s..s + 1],
-                },
-                log_packed + cfg.log_lde_factor,
-                &data.retained,
-                per_coset,
-                &mut open,
-                &mut scratch,
-                &mut tiles,
-                &mut nodes,
-                stream,
-            )?;
+        for batch in query_batches(count) {
+            let mut open = OpenQueries {
+                queries: &queries[batch.clone()],
+                log_lde: cfg.log_lde_factor,
+                cap_log: cfg.cap_log,
+                leaves: &mut leaves[batch.start * leaf_len..batch.end * leaf_len],
+                paths: &mut paths[batch.start * path_len..batch.end * path_len],
+            };
+            let slots = batch.len().min(pow2(plan.log_lde));
+            for s in batch.start..batch.start + slots {
+                let _r = scoped_range(Some("ab"), "packed.open.slot");
+                open_coset_slot(
+                    twiddles,
+                    self.monomials(),
+                    &dispatched,
+                    &shape,
+                    OpenSlot {
+                        coset: &plan.touched[s..s + 1],
+                        active: &plan.active[s..s + 1],
+                    },
+                    log_packed + cfg.log_lde_factor,
+                    &data.retained,
+                    per_coset,
+                    &mut open,
+                    &mut scratch,
+                    &mut tiles,
+                    &mut nodes,
+                    stream,
+                )?;
+            }
         }
         drop(nodes);
         drop(tiles);

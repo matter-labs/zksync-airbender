@@ -1,9 +1,11 @@
+use gpu_hash::keccak256::MAX_POW_BITS;
 use gpu_trace::witness::circuit_type::CircuitType;
+use gpu_whir::proth120::L1WhirShape;
 
 use super::L1_WRAP_NTT_LOG_MAX_DOMAIN;
 use crate::upstream::{
     pow_bits, BaseColumns, BaseCommitmentGeometry, BaseOracleRole, GKRCircuitArtifact, L1WrapSetup,
-    ProofProfile, Proth120, ProverConfig, RomGeometry,
+    Proth120, ProverConfig, RomGeometry,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,35 +52,37 @@ impl L1WrapGeometry {
             config.trace_len_log2, trace_log as usize,
             "{circuit_type:?} requires a 2^{trace_log} prover config"
         );
-        let expected = ProofProfile::L1Wrap.prover_config(
-            trace_log as usize,
-            prover::definitions::SoundnessMode::PessimisticConjecture,
+        assert!(
+            config.merged_memory_and_witness(),
+            "{circuit_type:?}: unsupported commitment_mode, expected merged memory and witness"
         );
         assert!(
-            config.commitment_mode == expected.commitment_mode
-                && config.pack_log2() == expected.pack_log2()
-                && config.pack_log2() > 0
-                && config.lde_factor() == expected.lde_factor()
-                && config.cap_size == expected.cap_size
-                && config.base_oracles_values_per_leaf() == expected.base_oracles_values_per_leaf()
-                && config.sumcheck_explicit_output_size_log_2
-                    == expected.sumcheck_explicit_output_size_log_2
-                && config.whir_schedule == expected.whir_schedule
-                && config.whir_schedule.cap_size == config.cap_size,
-            "{circuit_type:?} requires the ProofProfile::L1Wrap prover config"
+            (1..=4).contains(&config.pack_log2()),
+            "{circuit_type:?}: unsupported physical_packing_log2 {}, expected 1..=4",
+            config.pack_log2()
+        );
+        assert_eq!(
+            config.sumcheck_explicit_output_size_log_2,
+            crate::upstream::L1_WRAP_EXPLICIT_OUTPUT_LOG2,
+            "{circuit_type:?}: unsupported sumcheck_explicit_output_size_log_2"
+        );
+        let whir = L1WhirShape::from_config(config);
+        assert!(
+            (1..=3).contains(&whir.rounds[0].folds),
+            "{circuit_type:?}: unsupported base fold_log2 {}, expected 1..=3",
+            whir.rounds[0].folds
         );
         assert!(
-            config.lde_factor().is_power_of_two()
-                && config.cap_size.is_power_of_two()
-                && config.base_oracles_values_per_leaf().is_power_of_two(),
-            "{circuit_type:?} requires power-of-two LDE, cap and leaf widths"
+            whir.log_message - whir.rounds[0].folds
+                >= 8 + whir.cap_log.saturating_sub(whir.log_base_lde),
+            "{circuit_type:?}: cap_size leaves fewer than eight retained-tree opening layers"
         );
         // The field-free base commitment dimensions; the Proth120 bounds are checked below.
         let base = BaseCommitmentGeometry::from_config(config, BaseColumns::of(circuit));
         let pack_log2 = u32::try_from(base.pack_log2()).expect("L1Wrap pack_log2 exceeds u32");
         let log_message =
             u32::try_from(base.message_size_log2()).expect("L1Wrap message size exceeds u32");
-        let log_base_lde = base.lde_factor().trailing_zeros();
+        let log_base_lde = whir.log_base_lde;
         assert!(
             log_message + log_base_lde <= L1_WRAP_NTT_LOG_MAX_DOMAIN,
             "{circuit_type:?} base codeword 2^{} exceeds the Proth120 NTT domain 2^{L1_WRAP_NTT_LOG_MAX_DOMAIN}",
@@ -117,6 +121,16 @@ impl L1WrapGeometry {
             decoder_words: rom.word_size(),
             batching_pow_bits: l1_wrap_batching_pow_bits(config, circuit),
         };
+        assert!(
+            (geometry.packed_base_columns, geometry.packed_setup_columns) == (12, 2),
+            "{circuit_type:?}: physical_packing_log2 {} yields unsupported packed memory and setup widths ({}, {})",
+            geometry.pack_log2, geometry.packed_base_columns, geometry.packed_setup_columns
+        );
+        assert!(
+            geometry.batching_pow_bits <= MAX_POW_BITS,
+            "{circuit_type:?}: unsupported batching PoW bits {}",
+            geometry.batching_pow_bits
+        );
         geometry.assert_artifact(circuit);
         geometry
     }
@@ -177,6 +191,7 @@ fn l1_wrap_batching_pow_bits(config: &ProverConfig, circuit: &GKRCircuitArtifact
 #[cfg(test)]
 pub(crate) mod cpu_tests {
     use super::*;
+    use crate::upstream::ProofProfile;
     use common_constants::rom::REGULAR_ROM;
     use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -221,6 +236,39 @@ pub(crate) mod cpu_tests {
     }
 
     #[test]
+    fn cpu_l1_wrap_geometry_accepts_large_query_count_and_digest_pow() {
+        let wrap = CircuitType::L1Wrap;
+        let circuit = committed_layout(wrap);
+        let mut config = ProofProfile::L1Wrap.prover_config(
+            wrap.get_domain_size_log2() as usize,
+            prover::definitions::SoundnessMode::PessimisticConjecture,
+        );
+        let setup = setup_without_evaluations(wrap, circuit.clone());
+        let schedule = &mut config.whir_schedule;
+        schedule.base_round.num_queries = 1025;
+        schedule.base_round.batching_pow_bits = Some(64);
+        schedule.base_round.queries_pow_bits = 128;
+        schedule.base_round.folding_pow_bits = 256;
+        schedule.internal_rounds[0].ood_pow_bits = 256;
+        let geometry = L1WrapGeometry::new(wrap, &config, &circuit, &setup);
+        assert_eq!(geometry.batching_pow_bits, 64);
+        let shape = L1WhirShape::from_config(&config);
+        let first = shape.rounds[0];
+        assert_eq!(first.queries, 1025);
+        assert_eq!(first.pow_bits, 128);
+        assert_eq!(first.folding_pow_bits, 256);
+        assert_eq!(first.ood_pow_bits, 256);
+
+        config.whir_schedule.base_round.queries_pow_bits = 257;
+        assert_panics(
+            || {
+                L1WhirShape::from_config(&config);
+            },
+            "query PoW bits 257 exceed 256",
+        );
+    }
+
+    #[test]
     fn cpu_l1_wrap_geometry_rejects_mismatch() {
         let wrap21 = CircuitType::L1Wrap;
         let circuit = committed_layout(wrap21);
@@ -259,7 +307,7 @@ pub(crate) mod cpu_tests {
             || {
                 L1WrapGeometry::new(wrap21, &unpacked, &circuit, &setup);
             },
-            "L1Wrap requires the ProofProfile::L1Wrap prover config",
+            "L1Wrap: unsupported physical_packing_log2",
         );
         let mut regular_rom = setup_without_evaluations(wrap21, circuit.clone());
         regular_rom.rom = REGULAR_ROM;

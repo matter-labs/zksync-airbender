@@ -9,37 +9,39 @@
 //! This module derives all of those parameters ([`WhirGenConfig`]), renders the per-round
 //! schedule Yul that `whir.sol` used to hardcode as a `switch VARIANT` block, and sizes every
 //! WHIR memory region from the schedule ([`WhirGenConfig::memory_regions`]) so the memory map
-//! is generated rather than hand-placed. The RS-codeword domain generators `GEN`/`GEN_INV` are
-//! computed from the Proth120 field (a primitive `2^codeword_log2`-th root of unity), not
-//! hand-supplied.
+//! is generated rather than hand-placed. Each oracle's RS-codeword root is derived from its
+//! evaluation domain. The base oracle also uses its inverse for coset folding.
 
-use super::Lit;
+use super::{Lit, MAX_NONCE_POW_BITS};
+use crate::encoding::params::oracle_geometry;
+use crate::encoding::OracleGeometry;
 use field::Proth120;
-use prover::gkr::prover_config::{example_configs::l1_wrap, ProverConfig};
+use prover::gkr::prover_config::ProverConfig;
 
 /// Every WHIR verifier parameter, derived from `(WhirSchedule, pack_log2, trace_len_log2, widths)`.
 #[derive(Clone, Debug)]
 pub struct WhirGenConfig {
     pub num_rounds: usize,
-    pub folds: Vec<usize>,   // whir_steps_schedule
-    pub queries: Vec<usize>, // whir_queries_schedule
-    pub pow_bits: Vec<u32>,  // whir_pow_schedule
+    pub folds: Vec<usize>,        // whir_steps_schedule
+    pub queries: Vec<usize>,      // whir_queries_schedule
+    pub query_pow_bits: Vec<u32>, // query PoW
     pub folding_pow_bits: Vec<u32>,
     /// OOD difficulty for each intermediate oracle (committed by rounds 0..N-1).
     pub ood_pow_bits: Vec<u32>,
     pub cap_size: usize,
     pub cap_log2: usize,
     pub pack_log2: usize,
-    pub base_lde_bits: usize, // log2(base_lde_factor)
-    pub message_log2: usize,  // trace_len_log2 + pack_log2
-    pub codeword_log2: usize, // message_log2 + base_lde_bits
-    pub rfin: usize,          // final-poly log2 = message_log2 - Σ folds
-    pub nz: usize,            // WHIR evaluation-point coords = message_log2
-    pub merged_mw: usize,     // ceil(num_memwit / 2^pack_log2)  (merged mem+wit base columns)
-    pub setup_merged: usize,  // ceil(num_setup  / 2^pack_log2)  (merged setup base columns)
-    pub gcount: usize,        // gamma-batched base columns = merged_mw + setup_merged
-    pub gen: u128,            // primitive 2^codeword_log2-th root of unity (RS domain generator)
-    pub gen_inv: u128,        // its inverse
+    pub base_lde_bits: usize,    // log2(base_lde_factor)
+    pub message_log2: usize,     // trace_len_log2 + pack_log2
+    pub base_domain_log2: usize, // base message_log2 + base_lde_bits
+    pub oracles: Vec<OracleGeometry>,
+    pub rfin: usize,                // final-poly log2 = message_log2 - Σ folds
+    pub nz: usize,                  // WHIR evaluation-point coords = message_log2
+    pub merged_mw: usize,           // ceil(num_memwit / 2^pack_log2)  (merged mem+wit base columns)
+    pub setup_merged: usize,        // ceil(num_setup  / 2^pack_log2)  (merged setup base columns)
+    pub gcount: usize,              // gamma-batched base columns = merged_mw + setup_merged
+    pub base_domain_root: u128, // primitive 2^base_domain_log2-th root of unity (RS domain generator)
+    pub base_domain_root_inv: u128, // its inverse
 }
 
 impl WhirGenConfig {
@@ -61,7 +63,7 @@ impl WhirGenConfig {
         let trace_len_log2 = prover_config.trace_len_log2;
         let folds = schedule.fold_steps();
         let queries = schedule.queries_per_round();
-        let pow_bits = schedule.queries_pow_bits_per_round();
+        let query_pow_bits = schedule.queries_pow_bits_per_round();
         let folding_pow_bits: Vec<_> = core::iter::once(schedule.base_round.folding_pow_bits)
             .chain(schedule.internal_rounds.iter().map(|r| r.folding_pow_bits))
             .collect();
@@ -70,27 +72,18 @@ impl WhirGenConfig {
             .iter()
             .map(|r| r.ood_pow_bits)
             .collect();
-        for &bits in &pow_bits {
-            // Keep every query check representable by shr(sub(256, bits), digest).
-            assert!(
-                bits <= l1_wrap::MAX_POW_BITS,
-                "query PoW {bits} exceeds cap {}",
-                l1_wrap::MAX_POW_BITS
-            );
-        }
-        for &bits in &folding_pow_bits {
-            assert!(
-                bits <= l1_wrap::MAX_POW_BITS,
-                "folding PoW exceeds cap {}",
-                l1_wrap::MAX_POW_BITS
-            );
-        }
-        for &bits in &ood_pow_bits {
-            assert!(
-                bits <= l1_wrap::MAX_POW_BITS,
-                "OOD PoW exceeds cap {}",
-                l1_wrap::MAX_POW_BITS
-            );
+        // Limit claimed difficulty to the width of the calldata nonce.
+        for (gate, difficulties) in [
+            ("query", &query_pow_bits),
+            ("folding", &folding_pow_bits),
+            ("OOD", &ood_pow_bits),
+        ] {
+            for &bits in difficulties {
+                assert!(
+                    bits <= MAX_NONCE_POW_BITS,
+                    "{gate} PoW {bits} exceeds the {MAX_NONCE_POW_BITS}-bit calldata nonce width"
+                );
+            }
         }
         let num_rounds = folds.len();
         assert!(num_rounds >= 2, "WHIR schedule needs at least 2 rounds");
@@ -100,7 +93,7 @@ impl WhirGenConfig {
             "WHIR query schedule length != fold schedule length"
         );
         assert_eq!(
-            pow_bits.len(),
+            query_pow_bits.len(),
             num_rounds,
             "WHIR pow schedule length != fold schedule length"
         );
@@ -122,7 +115,7 @@ impl WhirGenConfig {
         let cap_log2 = schedule.cap_size.trailing_zeros() as usize;
         let base_lde_bits = schedule.base_lde_factor_log2();
         let message_log2 = trace_len_log2 + pack_log2;
-        let codeword_log2 = message_log2 + base_lde_bits;
+        let base_domain_log2 = message_log2 + base_lde_bits;
         let total_folds: usize = folds.iter().sum();
         assert!(
             total_folds <= message_log2,
@@ -133,32 +126,24 @@ impl WhirGenConfig {
             rfin > 0,
             "WHIR final polynomial must contain at least two monomials"
         );
-        assert_eq!(schedule.intermediate_lde_factors().len(), num_rounds - 1);
-        let mut lde_bits = base_lde_bits;
-        for (fold, lde) in folds.iter().zip(&schedule.intermediate_lde_factors()) {
-            lde_bits += fold;
-            assert_eq!(
-                *lde,
-                1usize << lde_bits,
-                "EVM WHIR requires a constant codeword domain"
-            );
-        }
+        let oracles = oracle_geometry(prover_config);
+        assert!(
+            oracles.iter().all(|o| o.domain_log2 <= 120),
+            "WHIR domain exceeds Proth120 two-adicity"
+        );
         let pack = 1usize << pack_log2;
         let merged_mw = num_memwit.div_ceil(pack);
         let setup_merged = num_setup.div_ceil(pack);
 
-        assert!(
-            codeword_log2 <= 120,
-            "codeword_log2 {codeword_log2} exceeds the Proth120 two-adicity (120)"
-        );
-        let gen = Proth120::TWO_ADICITY_GENERATORS[codeword_log2].to_u128();
-        let gen_inv = Proth120::TWO_ADICITY_GENERATORS_INVERSED[codeword_log2].to_u128();
+        let base_domain_root = Proth120::TWO_ADICITY_GENERATORS[base_domain_log2].to_u128();
+        let base_domain_root_inv =
+            Proth120::TWO_ADICITY_GENERATORS_INVERSED[base_domain_log2].to_u128();
 
         let cfg = Self {
             num_rounds,
             folds,
             queries,
-            pow_bits,
+            query_pow_bits,
             folding_pow_bits,
             ood_pow_bits,
             cap_size: schedule.cap_size,
@@ -166,17 +151,19 @@ impl WhirGenConfig {
             pack_log2,
             base_lde_bits,
             message_log2,
-            codeword_log2,
+            base_domain_log2,
+            oracles,
             rfin,
             nz: message_log2,
             merged_mw,
             setup_merged,
             gcount: merged_mw + setup_merged,
-            gen,
-            gen_inv,
+            base_domain_root,
+            base_domain_root_inv,
         };
         // every round's query-index bit count must leave room for the cap levels
         for r in 0..num_rounds {
+            assert!(cfg.qib(r) <= 32, "WHIR query index exceeds 32 bits");
             assert!(
                 cfg.qib(r) >= cap_log2,
                 "WHIR round {r}: query index bits {} < cap_log2 {cap_log2}",
@@ -186,9 +173,42 @@ impl WhirGenConfig {
         cfg
     }
 
-    /// Query-index bits of round `r`'s oracle tree: `codeword_log2 - fold_r`.
-    fn qib(&self, r: usize) -> usize {
-        self.codeword_log2 - self.folds[r]
+    /// Query-index bits of the oracle opened in round `r`.
+    pub fn qib(&self, r: usize) -> usize {
+        self.oracles[r].query_index_bits
+    }
+
+    pub(super) fn variable_domains(&self) -> bool {
+        self.oracles
+            .iter()
+            .any(|oracle| oracle.domain_log2 != self.base_domain_log2)
+    }
+
+    pub(super) fn oracle_root(&self, r: usize) -> u128 {
+        Proth120::TWO_ADICITY_GENERATORS[self.oracles[r].domain_log2].to_u128()
+    }
+
+    /// Select the codeword root for a query's oracle on variable-domain schedules.
+    pub(super) fn oracle_roots_yul(&self) -> String {
+        use std::fmt::Write as _;
+        let mut out =
+            String::from("        function oracle_root(r) -> root {\n            switch r\n");
+        for r in 0..self.num_rounds - 1 {
+            writeln!(
+                &mut out,
+                "            case {r} {{ root := 0x{:032X} }}",
+                self.oracle_root(r)
+            )
+            .unwrap();
+        }
+        writeln!(
+            &mut out,
+            "            default {{ root := 0x{:032X} }}",
+            self.oracle_root(self.num_rounds - 1)
+        )
+        .unwrap();
+        out.push_str("        }\n");
+        out
     }
 
     /// Final-polynomial Horner evaluation with eight coefficients per cursor/loop update.
@@ -243,20 +263,18 @@ impl WhirGenConfig {
 
     /// Render the per-round `switch r { case i { fold q pow_bits qib vp cb } … }` block that
     /// replaces the `// __WHIR_SCHEDULE_SWITCH__` marker. Per round: `vp = 2^fold`,
-    /// `qib = codeword_log2 - fold`, `cb = base_lde_bits + Σ folds[..r]`.
+    /// `qib = domain_log2 - fold`, and `cb = lde_log2` for the current oracle.
     pub fn schedule_switch_yul(&self) -> String {
         let mut out = String::from("            switch r\n");
-        let mut prefolds = 0usize;
         for r in 0..self.num_rounds {
             let fold = self.folds[r];
             let q = self.queries[r];
-            let pow = self.pow_bits[r];
+            let pow = self.query_pow_bits[r];
             let fold_pow = self.folding_pow_bits[r];
             let ood_pow = self.ood_pow_bits.get(r).copied().unwrap_or(0);
             let vp = 1usize << fold;
             let qib = self.qib(r);
-            let cb = self.base_lde_bits + prefolds;
-            prefolds += fold;
+            let cb = self.oracles[r].lde_log2;
             let selector = if r + 1 == self.num_rounds {
                 "default".to_string()
             } else {

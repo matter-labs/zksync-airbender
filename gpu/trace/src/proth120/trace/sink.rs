@@ -1,5 +1,7 @@
+use era_cudart::cuda_kernel;
 use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::result::CudaResult;
+use era_cudart::result::CudaResultWrap;
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
 use era_cudart::{cuda_kernel_declaration, cuda_kernel_signature_arguments_and_function};
@@ -46,6 +48,14 @@ leaf_sink_kernel!(ab_pr_leaf_sink_2_1_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_12_1_3_commit_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_1_4_5_residue_tree_kernel);
 leaf_sink_kernel!(ab_pr_leaf_sink_1_5_5_residue_tree_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_1_6_5_residue_tree_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_1_3_5_residue_tree_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_1_2_5_residue_tree_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_1_1_5_residue_tree_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_12_2_3_commit_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_2_2_3_commit_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_2_3_3_commit_kernel);
+leaf_sink_kernel!(ab_pr_leaf_sink_12_3_3_commit_kernel);
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -76,11 +86,19 @@ macro_rules! leaf_open_kernel {
 }
 leaf_open_kernel!(ab_pr_leaf_sink_2_1_3_open_kernel);
 leaf_open_kernel!(ab_pr_leaf_sink_12_1_3_open_kernel);
+leaf_open_kernel!(ab_pr_leaf_sink_12_2_3_open_kernel);
+leaf_open_kernel!(ab_pr_leaf_sink_2_2_3_open_kernel);
+leaf_open_kernel!(ab_pr_leaf_sink_2_3_3_open_kernel);
+leaf_open_kernel!(ab_pr_leaf_sink_12_3_3_open_kernel);
 
 fn leaf_open_function(columns: u32, log_v: u32) -> Option<LeafOpenFunction> {
     Some(LeafOpenFunction(match (columns, log_v) {
         (2, 1) => ab_pr_leaf_sink_2_1_3_open_kernel,
         (12, 1) => ab_pr_leaf_sink_12_1_3_open_kernel,
+        (2, 2) => ab_pr_leaf_sink_2_2_3_open_kernel,
+        (12, 2) => ab_pr_leaf_sink_12_2_3_open_kernel,
+        (2, 3) => ab_pr_leaf_sink_2_3_3_open_kernel,
+        (12, 3) => ab_pr_leaf_sink_12_3_3_open_kernel,
         _ => return None,
     }))
 }
@@ -114,6 +132,14 @@ fn leaf_sink_function(
         (12, 1, 3, SinkMode::Commit) => ab_pr_leaf_sink_12_1_3_commit_kernel,
         (1, 4, 5, SinkMode::CoefficientTree { .. }) => ab_pr_leaf_sink_1_4_5_residue_tree_kernel,
         (1, 5, 5, SinkMode::CoefficientTree { .. }) => ab_pr_leaf_sink_1_5_5_residue_tree_kernel,
+        (2, 2, 3, SinkMode::Commit) => ab_pr_leaf_sink_2_2_3_commit_kernel,
+        (12, 2, 3, SinkMode::Commit) => ab_pr_leaf_sink_12_2_3_commit_kernel,
+        (2, 3, 3, SinkMode::Commit) => ab_pr_leaf_sink_2_3_3_commit_kernel,
+        (12, 3, 3, SinkMode::Commit) => ab_pr_leaf_sink_12_3_3_commit_kernel,
+        (1, 1, 5, SinkMode::CoefficientTree { .. }) => ab_pr_leaf_sink_1_1_5_residue_tree_kernel,
+        (1, 2, 5, SinkMode::CoefficientTree { .. }) => ab_pr_leaf_sink_1_2_5_residue_tree_kernel,
+        (1, 3, 5, SinkMode::CoefficientTree { .. }) => ab_pr_leaf_sink_1_3_5_residue_tree_kernel,
+        (1, 6, 5, SinkMode::CoefficientTree { .. }) => ab_pr_leaf_sink_1_6_5_residue_tree_kernel,
         _ => return None,
     }))
 }
@@ -136,6 +162,14 @@ pub fn has_leaf_sink(shape: &SuffixShape, mode: &SinkMode) -> bool {
             mode,
         )
         .is_some()
+}
+
+fn sink_log_threads(shape: &SuffixShape, mode: &SinkMode) -> u32 {
+    if shape.log_v == 6 && matches!(mode, SinkMode::CoefficientTree { .. }) {
+        7
+    } else {
+        8
+    }
 }
 
 const MAX_GRID_Z: u32 = 1 << 16;
@@ -189,9 +223,11 @@ pub(crate) fn sink_launch(
         shape.skip_bottom
     );
     let log_block_leaves = shape.skip_bottom + shape.r - shape.log_v;
+    let log_threads = sink_log_threads(shape, mode);
     assert!(
-        log_block_leaves >= 8,
-        "leaf sink: a tile holds fewer than 256 leaves"
+        log_block_leaves >= log_threads,
+        "leaf sink: a tile holds fewer than {} leaves",
+        1 << log_threads
     );
     if let SinkMode::CoefficientTree { log_domain, k0 } = *mode {
         assert!(
@@ -234,7 +270,7 @@ pub(crate) fn sink_launch(
         out_len >= out_span,
         "leaf sink: out shorter than its coset span"
     );
-    let blocks = 1u64 << (log_block_leaves - 8);
+    let blocks = 1u64 << (log_block_leaves - log_threads);
     let grid_x = u64::from(tile_count) * blocks;
     assert!(grid_x < 1 << 31, "leaf sink: grid.x overflow");
     SinkLaunch {
@@ -296,7 +332,7 @@ pub fn launch_sink(
     let function =
         leaf_sink_function(shape.columns, shape.log_v, launch.tree_depth, &mode).unwrap();
     function.launch(
-        &CudaLaunchConfig::basic(launch.grid, 256, stream),
+        &CudaLaunchConfig::basic(launch.grid, 1 << sink_log_threads(shape, &mode), stream),
         &LeafSinkArguments::new(args, ctx),
     )
 }
@@ -809,6 +845,12 @@ macro_rules! residue_sink_kernel {
     };
 }
 residue_sink_kernel!(ab_pr_residue_sink_10_4_kernel);
+residue_sink_kernel!(ab_pr_residue_sink_9_5_kernel);
+
+cuda_kernel!(ResidueSinkDynamic, ab_pr_residue_sink_dynamic_kernel(
+    monomials: *const PR, leaves: *mut Digest, k0: u32, cosets: u32, log_domain: u32,
+    log_n: u32, log_v: u32, cosets_per_block: u32, descriptor: TwiddleDescriptor,
+));
 
 // The residue-sink kernel and its cosets per block.
 fn residue_sink_function(
@@ -818,24 +860,32 @@ fn residue_sink_function(
 ) -> Option<(ResidueSinkFunction, u32)> {
     let (function, cosets): (ResidueSinkSignature, u32) = match (log_n, log_v, skip_bottom) {
         (10, 4, 5) => (ab_pr_residue_sink_10_4_kernel, 2),
+        (9, 5, 4) => (ab_pr_residue_sink_9_5_kernel, 4),
         _ => return None,
     };
     Some((ResidueSinkFunction(function), cosets))
 }
 
 pub fn has_residue_sink(log_n: u32, log_v: u32, skip_bottom: u32) -> bool {
-    residue_sink_function(log_n, log_v, skip_bottom).is_some()
+    log_n <= 12 && log_v <= log_n && skip_bottom <= log_n - log_v
 }
 
 // Leaf digests per residue chunk: a chunk's leaves and their first node layer stay L2-resident.
 const RESIDUE_CHUNK_LEAVES: usize = 1 << 20;
 
+fn residue_cosets_per_block(log_n: u32, log_v: u32, skip_bottom: u32) -> u32 {
+    residue_sink_function(log_n, log_v, skip_bottom).map_or_else(
+        || {
+            1 << 11u32
+                .saturating_sub(log_n)
+                .min(8u32.saturating_sub(log_n - log_v))
+        },
+        |(_, cosets)| cosets,
+    )
+}
+
 fn residue_chunk_cosets(log_n: u32, log_v: u32, skip_bottom: u32, cosets: usize) -> usize {
-    let Some((_, cosets_per_block)) = residue_sink_function(log_n, log_v, skip_bottom) else {
-        panic!(
-            "residue sink: no kernel for log_n {log_n}, log_v {log_v}, skip_bottom {skip_bottom}"
-        )
-    };
+    let cosets_per_block = residue_cosets_per_block(log_n, log_v, skip_bottom);
     cosets.min((RESIDUE_CHUNK_LEAVES >> (log_n - log_v)).max(cosets_per_block as usize))
 }
 
@@ -872,12 +922,26 @@ pub fn commit_residue_cosets(
     retained_per_coset: usize,
     stream: &CudaStream,
 ) -> CudaResult<()> {
-    let Some((function, cosets_per_block)) = residue_sink_function(log_n, log_v, skip_bottom)
-    else {
-        panic!(
-            "residue sink: no kernel for log_n {log_n}, log_v {log_v}, skip_bottom {skip_bottom}"
-        )
-    };
+    assert!(
+        has_residue_sink(log_n, log_v, skip_bottom),
+        "residue sink: unsupported log_n {log_n}, log_v {log_v}, skip_bottom {skip_bottom}"
+    );
+    let cosets_per_block = residue_cosets_per_block(log_n, log_v, skip_bottom);
+    let specialized = residue_sink_function(log_n, log_v, skip_bottom);
+    let dynamic = ResidueSinkDynamicFunction::default();
+    let dynamic_bytes = ((cosets_per_block as usize) << log_n) * size_of::<PR>();
+    if specialized.is_none() && dynamic_bytes > 48 * 1024 {
+        use era_cudart_sys::{cudaFuncSetAttribute, CudaFuncAttribute::MaxDynamicSharedMemorySize};
+        // SAFETY: the function pointer is the registered dynamic-shared-memory kernel.
+        unsafe {
+            cudaFuncSetAttribute(
+                dynamic.as_ptr(),
+                MaxDynamicSharedMemorySize,
+                dynamic_bytes as i32,
+            )
+            .wrap()?;
+        }
+    }
     let h = log_n - log_v;
     assert_eq!(
         monomials.len(),
@@ -922,28 +986,59 @@ pub fn commit_residue_cosets(
             .ok()
             .filter(|&grid| grid < 1 << 31)
             .expect("residue sink: grid.x overflow");
-        function.launch(
-            &CudaLaunchConfig::basic(grid, 256, stream),
-            &ResidueSinkArguments::new(
-                monomials.as_ptr(),
-                leaves.as_mut_ptr(),
-                k0 + c0 as u32,
+        let dst = &mut retained[c0 * retained_per_coset..(c0 + count) * retained_per_coset];
+        let output = leaves.as_mut_ptr();
+        let mut launch = CudaLaunchConfig::basic(grid, 256, stream);
+        if let Some((function, _)) = &specialized {
+            function.launch(
+                &launch,
+                &ResidueSinkArguments::new(
+                    monomials.as_ptr(),
+                    output,
+                    k0 + c0 as u32,
+                    count as u32,
+                    log_domain,
+                    ctx,
+                ),
+            )?;
+        } else {
+            launch.dynamic_smem_bytes = dynamic_bytes;
+            dynamic.launch(
+                &launch,
+                &ResidueSinkDynamicArguments::new(
+                    monomials.as_ptr(),
+                    output,
+                    k0 + c0 as u32,
+                    count as u32,
+                    log_domain,
+                    log_n,
+                    log_v,
+                    cosets_per_block,
+                    ctx,
+                ),
+            )?;
+        }
+        if skip_bottom != 0 {
+            build_retained_bottom_from_nodes(
+                leaves,
+                0,
+                h,
+                skip_bottom,
                 count as u32,
-                log_domain,
-                ctx,
-            ),
-        )?;
-        build_retained_bottom_from_nodes(
-            leaves,
-            0,
-            h,
-            skip_bottom,
-            count as u32,
-            rest,
-            &mut retained[c0 * retained_per_coset..(c0 + count) * retained_per_coset],
-            retained_per_coset,
-            stream,
-        )?;
+                rest,
+                dst,
+                retained_per_coset,
+                stream,
+            )?;
+        } else {
+            let per_coset = 1usize << h;
+            for (input, output) in leaves
+                .chunks(per_coset)
+                .zip(dst.chunks_mut(retained_per_coset))
+            {
+                era_cudart::memory::memory_copy_async(&mut output[..per_coset], input, stream)?;
+            }
+        }
     }
     build_retained_layers(
         h,

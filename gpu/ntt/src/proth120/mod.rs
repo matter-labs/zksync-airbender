@@ -9,7 +9,8 @@ pub use context::{
     prepare_proof_twiddles, TwiddleDescriptor, FACTOR_LEN, LOG_MAX_DOMAIN, TABLE_LEN,
 };
 pub use hypercube::{
-    hypercube_evals_to_monomials, hypercube_evals_to_monomials_chunked, update_eq_poly, EqSample,
+    hypercube_evals_to_monomials, hypercube_evals_to_monomials_chunked,
+    monomials_to_hypercube_evals_chunked, update_eq_poly, EqSample,
 };
 pub use pack::pack_hypercubes_to_monomials;
 pub use prefix::{

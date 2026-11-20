@@ -336,6 +336,9 @@ impl TraceHolder<BF> {
                 );
                 self.opening_monomials = None;
             }
+            WitnessPostCommitStorage::RawWithReusedPrefixScratch => {
+                panic!("raw prefix scratch reuse requires the packed Proth120 oracle");
+            }
         }
     }
 

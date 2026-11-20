@@ -94,6 +94,11 @@ pub fn leading_zeros(
     let folds = config.whir_schedule.fold_steps();
     let queries = config.whir_schedule.queries_per_round();
     let nonces = wp.queries_pow_nonces();
+    let geometry = verifier_evm::generator::WhirGenConfig::derive(
+        config,
+        circuit.memory_layout.total_width + circuit.witness_layout.total_width,
+        circuit.generic_lookup_tables_width,
+    );
     let mut query_zeros = Vec::new();
     let mut folding_zeros = Vec::new();
     let mut ood_zeros = Vec::new();
@@ -139,8 +144,7 @@ pub fn leading_zeros(
         }
         query_zeros.push(pow(&mut seed, nonces[r]));
         // Match draw_query_bits' padded draw, including its skipped first word.
-        let qib =
-            config.whir_message_size_log2() + config.whir_schedule.base_lde_factor_log2() - fold;
+        let qib = geometry.qib(r);
         let words = ((queries[r] * qib).div_ceil(32) + 1).next_multiple_of(8);
         Tr::draw_randomness(&mut seed, &mut vec![0u32; words]);
         if r + 1 < folds.len() {

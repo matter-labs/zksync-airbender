@@ -707,13 +707,7 @@ pub fn emit_circuit_yul_with_stats(
     yul_main_output().lock().unwrap().clear();
     let circuit_rounds = {
         assert!(circuit.trace_len.is_power_of_two() && circuit.trace_len > 0);
-        let rounds = circuit.trace_len.trailing_zeros();
-        assert_eq!(
-            rounds as usize,
-            prover::gkr::prover_config::example_configs::l1_wrap::TRACE_LEN_LOG2,
-            "GKR verifier requires the L1 wrap trace geometry"
-        );
-        rounds
+        circuit.trace_len.trailing_zeros()
     };
     let layer0_group_widths = (
         circuit.memory_layout.total_width,

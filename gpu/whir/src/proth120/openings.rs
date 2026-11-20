@@ -46,11 +46,11 @@ pub(crate) fn schedule_open_intermediate(
         "Proth120 WHIR: log_domain below query_domain_log2"
     );
     assert!(
-        (8..=26).contains(&shape.log_n)
-            && (1..=5).contains(&shape.log_v)
+        shape.log_n <= 26
+            && (1..=6).contains(&shape.log_v)
             && shape.log_leaves == shape.log_n - shape.log_v
             && shape.log_domain == shape.log_n + shape.log_lde
-            && shape.log_domain <= 31
+            && shape.log_domain <= gpu_ntt::proth120::LOG_MAX_DOMAIN
             && query_domain_log2 == shape.log_leaves + shape.log_lde,
         "Proth120 WHIR: opening oracle geometry invalid"
     );
@@ -59,8 +59,7 @@ pub(crate) fn schedule_open_intermediate(
         "Proth120 WHIR: skip_bottom exceeds min(5, h)"
     );
     assert!(
-        shape.cap_log <= shape.log_lde
-            && shape.path_len == (query_domain_log2 - shape.cap_log) as usize,
+        shape.path_len == (query_domain_log2 - shape.cap_log) as usize,
         "Proth120 WHIR: opening cap or path geometry invalid"
     );
     assert_eq!(
@@ -72,7 +71,8 @@ pub(crate) fn schedule_open_intermediate(
         oracle.monomials.len() == 1 << shape.log_n
             && oracle.retained.len() == (1usize << shape.log_lde) * shape.retained_per_coset
             && oracle.roots.len() == 1 << shape.log_lde
-            && oracle.top_nodes.len() == (1usize << shape.log_lde) - (1 << shape.cap_log)
+            && oracle.top_nodes.len()
+                == (1usize << shape.log_lde).saturating_sub(1 << shape.cap_log)
             && oracle.cap.len() == 1 << shape.cap_log,
         "Proth120 WHIR: opening oracle buffer lengths invalid"
     );

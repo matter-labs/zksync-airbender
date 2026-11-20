@@ -34,14 +34,15 @@ After deployment it compares the complete runtime with the generated code and se
 the verifier exposes no registry getter.
 
 The generator derives external PoW as the maximum of the circuit's lookup requirement
-and the wrap's external floor, using the prover's functions and config. It enforces
-the GKR cap of 25 and query/folding/OOD cap of 30, and requires strictly increasing top bits.
+and the wrap's external floor, using the prover's functions and config. Configured
+PoW difficulties must fit the 64-bit calldata nonce width. The generator also
+requires strictly increasing top bits.
 
-The wrap uses folds `[1,4,5,4,4]`, query PoW `[30,27,30,30,30]`, folding PoW
-9 per step, and one OOD sample per intermediate oracle under PoW
-`[16,20,25,29]`. The final
-polynomial has 64 coefficients. Every oracle domain remains `2^31`, the cap is
-8, and the setup frontier stays at level 9. The config documents its conditional
+The wrap uses folds `[1,4,4,4,5]`, query PoW `[27,25,30,30,30]`, and folding PoW
+`[10,10,9,10,10]` per step. The batching PoW derives to 14 bits. Each intermediate
+oracle uses one OOD sample with PoW `[18,20,26,30]`. The final polynomial has
+64 coefficients. The oracle domain logs are `[32,32,31,32,32]`, the cap is 8,
+and the setup frontier is level 10. The config documents its conditional
 pessimistic soundness accounting and list-size assumptions in
 `prover/src/gkr/prover_config/example_configs/special_configs.rs`.
 
@@ -75,9 +76,9 @@ state-gas reservoir to CREATE when that cap is enabled. The plain CREATE test
 asserts the size dependency and reports the deployed size and CREATE gas delta.
 
 With Foundry v1.9.0, solc 0.8.38 and these settings, the current verifier has a
-36,487-byte runtime and 40,114-byte initcode; the CREATE test reports 58,430,943 gas.
-For the canonical 66,841-byte proof, a raw verification transaction reports
-4,292,824 regular gas, exactly the calldata floor `15,000 + 64 * 66,841`.
+49,391-byte runtime and 55,818-byte initcode. The CREATE test reports 79,180,101 gas.
+The canonical 64,451-byte proof has a calldata floor of 4,139,864 gas.
+A raw verification transaction uses 4,139,864 gas. The deployment receipt uses 76,701,896 gas.
 The Anvil receipt does not expose a separate state-gas total. These figures
 describe Foundry's Amsterdam model.
 

@@ -240,22 +240,40 @@ impl L1WhirReadback {
         let ood_samples = host.ood_samples;
         let pow_nonces = host.pow_nonces;
         assert_eq!(fold_steps.len(), intermediate_whir_oracles.len() + 1);
-        assert_eq!(ood_samples.len(), intermediate_whir_oracles.len());
+        assert_eq!(ood_samples.len(), self.schedule.total_ood_samples());
         assert_eq!(pow_nonces.len(), fold_steps.len());
         assert_eq!(sumcheck_polys.len(), fold_steps.iter().sum::<usize>());
-        assert_eq!(host.folding_pow_nonces.len(), sumcheck_polys.len());
-        assert_eq!(host.ood_pow_nonces.len(), intermediate_whir_oracles.len());
         let mut polys = sumcheck_polys.iter().copied();
+        let mut samples = ood_samples.iter().copied();
         let mut folding_nonces = host.folding_pow_nonces.iter().copied();
+        let mut ood_nonces = host.ood_pow_nonces.iter().copied();
         let base_sumcheck_polys = polys.by_ref().take(fold_steps[0]).collect();
-        let base_folding_pow_nonces = folding_nonces.by_ref().take(fold_steps[0]).collect();
-        for (i, oracle) in intermediate_whir_oracles.iter_mut().enumerate() {
-            oracle.ood_samples = vec![ood_samples[i]];
-            oracle.ood_pow_nonce = Some(host.ood_pow_nonces[i]);
-            oracle.sumcheck_polys = polys.by_ref().take(fold_steps[i + 1]).collect();
-            oracle.folding_pow_nonces = folding_nonces.by_ref().take(fold_steps[i + 1]).collect();
+        let base_folding_pow_nonces = folding_nonces
+            .by_ref()
+            .take(if self.schedule.base_round.folding_pow_bits == 0 {
+                0
+            } else {
+                fold_steps[0]
+            })
+            .collect();
+        for (i, (oracle, round)) in intermediate_whir_oracles
+            .iter_mut()
+            .zip(&self.schedule.internal_rounds)
+            .enumerate()
+        {
+            oracle.ood_samples = samples.by_ref().take(round.num_ood_samples).collect();
+            if round.ood_pow_bits != 0 {
+                oracle.ood_pow_nonce =
+                    Some(ood_nonces.next().expect("Proth120 WHIR: missing OOD nonce"));
+            }
+            oracle.sumcheck_polys = polys.by_ref().take(round.folding_log2).collect();
+            if round.folding_pow_bits != 0 {
+                oracle.folding_pow_nonces =
+                    folding_nonces.by_ref().take(round.folding_log2).collect();
+            }
             oracle.queries_pow_nonce = pow_nonces[i + 1];
         }
+        assert!(folding_nonces.next().is_none() && ood_nonces.next().is_none());
         WhirPolyCommitProof {
             setup_commitment: WhirBaseLayerCommitmentAndQueries {
                 commitment: WhirCommitment {

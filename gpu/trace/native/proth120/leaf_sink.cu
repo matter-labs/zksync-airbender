@@ -95,14 +95,15 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
   static_assert(TREE_DEPTH >= 3 && TREE_DEPTH <= 8 && (!OPEN || (TREE_DEPTH == 3 && FORM == leaf_form::evaluations)));
   static_assert(FORM != leaf_form::residues || C == 1);
   constexpr u32 VALUES = 1u << V;
-  __shared__ digest leaves[256];
-  __shared__ digest layer_1[128];
-  __shared__ digest layer_2[64];
+  constexpr u32 THREADS = FORM == leaf_form::residues && V == 6 ? 128 : 256;
+  __shared__ digest leaves[THREADS];
+  __shared__ digest layer_1[THREADS / 2];
+  __shared__ digest layer_2[THREADS / 4];
   const u32 tid = threadIdx.x;
   const u32 log_f = args.log_r - V;
   __shared__ u32 hits[OPEN ? 1024 : 1];
   __shared__ u32 hit_count;
-  const u32 block_j = leaf_of(args, log_f, blockIdx.x * 256).j;
+  const u32 block_j = leaf_of(args, log_f, blockIdx.x * THREADS).j;
   if constexpr (OPEN) {
     if (open.gate && !*open.gate)
       return;
@@ -110,7 +111,7 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
     if (tid == 0)
       hit_count = 0;
     __syncthreads();
-    for (u32 q = tid; q < open.count; q += 256) {
+    for (u32 q = tid; q < open.count; q += THREADS) {
       const u32 query = open.queries[q];
       if ((query & ((1u << open.log_lde) - 1)) == coset && (query >> open.log_lde) >> args.skip_bottom == block_j >> args.skip_bottom)
         hits[atomicAdd(&hit_count, 1)] = q;
@@ -119,24 +120,24 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
     if (hit_count == 0)
       return;
   }
-  const sink_leaf leaf = leaf_of(args, log_f, blockIdx.x * 256 + tid);
+  const sink_leaf leaf = leaf_of(args, log_f, blockIdx.x * THREADS + tid);
   const u32 region = (bitreverse_low_bits(leaf.g, args.log_a) << log_f) + bitreverse_low_bits(leaf.f_lo, log_f);
   const u64 column_stride = u64{1} << (args.skip_bottom + args.log_r);
   const pr *group = args.tile + blockIdx.z * args.tile_coset_stride + static_cast<u64>(leaf.tile) * C * column_stride +
                     (static_cast<u64>((leaf.f_lo << args.skip_bottom) + leaf.w) << V);
   // Keep column-loop twiddles in shared memory between absorbs, [entry][thread].
   constexpr u32 HOISTED = C > 1 ? VALUES - 1 : 0;
-  __shared__ pr waiting[HOISTED * 256 + 1];
+  __shared__ pr waiting[HOISTED * THREADS + 1];
   if constexpr (HOISTED) {
 #pragma unroll
     for (u32 u = 0; u < V; u++)
 #pragma unroll
       for (u32 z = 0; z < (1u << u); z++)
-        waiting[((1u << u) - 1 + z) * 256 + tid] = get_forward_pr_twiddle(d, (region << u) + z);
+        waiting[((1u << u) - 1 + z) * THREADS + tid] = get_forward_pr_twiddle(d, (region << u) + z);
   }
   const auto twiddle = [&](const u32 u, const u32 z) {
     if constexpr (HOISTED)
-      return waiting[((1u << u) - 1 + z) * 256 + tid];
+      return waiting[((1u << u) - 1 + z) * THREADS + tid];
     else
       return get_forward_pr_twiddle(d, (region << u) + z);
   };
@@ -180,17 +181,17 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
     });
   leaves[tid] = sponge.finalize();
   __syncthreads();
-  if (tid < 128)
+  if (tid < THREADS / 2)
     layer_1[tid] = hash_node<ROUNDS>(leaves[2 * tid], leaves[2 * tid + 1]);
   __syncthreads();
-  if (tid < 64)
+  if (tid < THREADS / 4)
     layer_2[tid] = hash_node<ROUNDS>(layer_1[2 * tid], layer_1[2 * tid + 1]);
   __syncthreads();
   if constexpr (OPEN) {
-    for (u32 i = tid; i < hit_count; i += 256) {
+    for (u32 i = tid; i < hit_count; i += THREADS) {
       const u32 q = hits[i];
       const u32 w = (open.queries[q] >> open.log_lde) - block_j;
-      if (w < 256) {
+      if (w < THREADS) {
         digest *path = open.paths + static_cast<u64>(q) * open.depth;
         path[0] = leaves[w ^ 1];
         path[1] = layer_1[(w >> 1) ^ 1];
@@ -198,7 +199,7 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
       }
     }
   }
-  if (tid >= 32)
+  if (tid >= THREADS / 8)
     return;
   digest node = hash_node<ROUNDS>(layer_2[2 * tid], layer_2[2 * tid + 1]);
 #pragma unroll
@@ -206,13 +207,13 @@ DEVICE_FORCEINLINE void leaf_sink(const leaf_sink_args &args, const leaf_open_ar
     digest sibling;
 #pragma unroll
     for (u32 word = 0; word < 8; word++)
-      sibling.words[word] = __shfl_xor_sync(0xffffffffu, node.words[word], 1u << shift);
+      sibling.words[word] = __shfl_xor_sync(THREADS == 128 ? 0xffffu : 0xffffffffu, node.words[word], 1u << shift);
     if ((tid & ((2u << shift) - 1)) == 0)
       node = hash_node<ROUNDS>(node, sibling);
   }
   if (tid & ((1u << (TREE_DEPTH - 3)) - 1))
     return;
-  const sink_leaf first = leaf_of(args, log_f, blockIdx.x * 256 + 8 * tid);
+  const sink_leaf first = leaf_of(args, log_f, blockIdx.x * THREADS + 8 * tid);
   args.out[blockIdx.z * args.out_coset_stride + (first.j >> TREE_DEPTH)] = node;
 }
 
@@ -279,6 +280,60 @@ DEVICE_FORCEINLINE void residue_sink(const pr *monomials, digest *leaves, const 
   }
 
 RESIDUE_SINK_KERNEL(10, 4, 2)
+RESIDUE_SINK_KERNEL(9, 5, 4)
+
+EXTERN __launch_bounds__(256) __global__
+    void ab_pr_residue_sink_dynamic_kernel(const pr *monomials, digest *leaves, const u32 k0, const u32 cosets, const u32 log_domain, const u32 log_n,
+                                           const u32 log_v, const u32 cosets_per_block, const proth120_twiddle_descriptor d) {
+  extern __shared__ pr values[];
+  const u32 n = 1u << log_n;
+  const u32 h = log_n - log_v;
+  const u32 m = 1u << h;
+  const u32 slots = 1u << log_v;
+  const u32 tid = threadIdx.x;
+  const u32 first = blockIdx.x * cosets_per_block;
+  const u32 count = min(cosets_per_block, cosets - first);
+  const u32 log_l = d.log_max_domain;
+  const u64 mask = (u64{1} << log_l) - 1;
+  for (u32 c = 0; c < count; c++) {
+    const u64 step = static_cast<u64>(k0 + first + c) << (log_l - (log_domain - log_v));
+    const u32 r = tid % slots;
+    pr power = pr_root_power(d, (step * (tid / slots)) & mask);
+    const pr stride = pr_root_power(d, (step * (blockDim.x / slots)) & mask);
+    for (u32 i = tid; i < n; i += blockDim.x) {
+      values[(c * slots + r) * m + (i / slots)] = pr::mul(load_ca(monomials + i), power);
+      power = pr::mul(power, stride);
+    }
+  }
+  __syncthreads();
+  for (u32 stage = 0; stage < h; stage++) {
+    const u32 half = m >> (stage + 1);
+    for (u32 pair = tid; pair < count * n / 2; pair += blockDim.x) {
+      const u32 column = pair / (m / 2);
+      const u32 local = pair % (m / 2);
+      const u32 region = local / half;
+      const u32 a = column * m + 2 * half * region + (local & (half - 1));
+      pr va = values[a], vb = values[a + half];
+      dit_policy{}.exchg(va, vb, get_forward_pr_twiddle(d, region));
+      values[a] = va;
+      values[a + half] = vb;
+    }
+    __syncthreads();
+  }
+  using namespace ::airbender::hash::keccak256;
+  for (u32 leaf = tid; leaf < count * m; leaf += blockDim.x) {
+    const u32 c = leaf / m;
+    const u32 position = h == 0 ? 0 : bitreverse_low_bits(leaf % m, h);
+    u64 state[25]{};
+    absorb_lanes(state, slots * sizeof(pr), [&](const u64 lane) {
+      const pr value = values[(c * slots + (lane >> 1)) * m + position];
+      u64 first_lane, second_lane;
+      canonical_lanes(value, first_lane, second_lane);
+      return lane & 1 ? second_lane : first_lane;
+    });
+    store_digest(leaves + static_cast<u64>(first) * m + leaf, truncate_merkle_digest(digest_from_state(state)));
+  }
+}
 
 #define LEAF_SINK_KERNEL(C, V, TREE_DEPTH, MODE, FORM, BLOCKS, ROUNDS)                                                                                         \
   EXTERN __launch_bounds__(256, BLOCKS)                                                                                                                        \
@@ -293,10 +348,22 @@ RESIDUE_SINK_KERNEL(10, 4, 2)
   }
 
 LEAF_SINK_KERNEL(2, 1, 3, commit, evaluations, 3, 4)
+LEAF_SINK_KERNEL(2, 2, 3, commit, evaluations, 2, 4)
+LEAF_SINK_KERNEL(12, 2, 3, commit, evaluations, 2, 4)
+LEAF_SINK_KERNEL(2, 3, 3, commit, evaluations, 2, 4)
+LEAF_SINK_KERNEL(12, 3, 3, commit, evaluations, 2, 4)
+LEAF_SINK_KERNEL(1, 1, 5, residue_tree, residues, 3, 1)
+LEAF_SINK_KERNEL(1, 2, 5, residue_tree, residues, 3, 1)
+LEAF_SINK_KERNEL(1, 3, 5, residue_tree, residues, 3, 1)
+LEAF_SINK_KERNEL(1, 6, 5, residue_tree, residues, 1, 1)
 LEAF_SINK_KERNEL(12, 1, 3, commit, evaluations, 3, 4)
 LEAF_SINK_KERNEL(1, 4, 5, residue_tree, residues, 3, 1)
 LEAF_SINK_KERNEL(1, 5, 5, residue_tree, residues, 3, 1)
 LEAF_OPEN_KERNEL(2, 1)
+LEAF_OPEN_KERNEL(2, 2)
+LEAF_OPEN_KERNEL(12, 2)
 LEAF_OPEN_KERNEL(12, 1)
+LEAF_OPEN_KERNEL(2, 3)
+LEAF_OPEN_KERNEL(12, 3)
 
 } // namespace airbender::trace::commit

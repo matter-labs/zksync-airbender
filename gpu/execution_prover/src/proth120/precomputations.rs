@@ -38,6 +38,14 @@ impl L1WrapPrecomputed {
     ) -> CudaResult<Self> {
         let config = ProofProfile::L1Wrap
             .prover_config(circuit_type.get_domain_size_log2() as usize, soundness_mode);
+        Self::with_config(circuit_type, setup, config)
+    }
+
+    pub(crate) fn with_config(
+        circuit_type: CircuitType,
+        setup: L1WrapSetup,
+        config: ProverConfig,
+    ) -> CudaResult<Self> {
         let geometry = L1WrapGeometry::new(circuit_type, &config, &setup.circuit, &setup);
         let decoder_host = decoder_host(&setup.decoder_table)?;
         let circuit = Arc::new(setup.circuit);
@@ -91,62 +99,5 @@ impl L1WrapPrecomputed {
 
     pub fn setup_cap(&self) -> MerkleTreeCapVarLength {
         self.host().cap()
-    }
-}
-
-#[cfg(test)]
-mod cpu_tests {
-    use super::*;
-    use crate::precomputations::CircuitPrecomputations;
-    use execution_prover::setup::CanonicalCircuitSetup;
-    use std::panic::{catch_unwind, AssertUnwindSafe};
-    use ProofProfile::L1Wrap;
-
-    fn panic_message(f: impl FnOnce()) -> String {
-        let payload = catch_unwind(AssertUnwindSafe(f)).expect_err("expected a named panic");
-        payload
-            .downcast_ref::<String>()
-            .cloned()
-            .or_else(|| {
-                payload
-                    .downcast_ref::<&str>()
-                    .map(|message| message.to_string())
-            })
-            .expect("panic payload is a message")
-    }
-
-    /// The GPU L1 wrap precomputation refuses ethproofs with the profile's mode assert before its
-    /// pinned allocations: under the CUDA stubs (or without a device) any allocation would panic
-    /// with another message, so the assert's message also pins the order. The setup is the committed layout with empty tables,
-    /// so the test needs no `memory_sweep` feature.
-    #[test]
-    fn cpu_ethproofs_l1_wrap_precomputation_is_rejected_before_allocation() {
-        use execution_prover::config::SoundnessMode;
-        let setup = crate::upstream::L1WrapSetup {
-            circuit: serde_json::from_str(include_str!(
-                "../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json"
-            ))
-            .expect("committed Proth120 layout"),
-            rom: prover::common_constants::rom::L1_WRAP_ROM,
-            table_driver: cs::tables::TableDriver::new(),
-            decoder_table: vec![None; prover::common_constants::rom::L1_WRAP_ROM.word_size()],
-            setup: prover::gkr::prover::setup::GKRSetup {
-                hypercube_evals: Vec::new(),
-            },
-            trace_len: 1 << 21,
-        };
-        let soundness_mode = SoundnessMode::EthproofsSoundnessCalc;
-        let message = panic_message(|| {
-            CircuitPrecomputations::from_canonical(
-                CircuitType::L1Wrap,
-                CanonicalCircuitSetup::L1Wrap(setup),
-                soundness_mode,
-                &[L1Wrap],
-            );
-        });
-        assert!(
-            message.contains("supports only the pessimistic-conjecture soundness mode"),
-            "{message}"
-        );
     }
 }

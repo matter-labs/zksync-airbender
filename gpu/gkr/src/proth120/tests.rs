@@ -151,6 +151,7 @@ fn l1_setup_host_round_trip_small() {
         );
         let raw = read_back(source.raw().get_hypercube_evals(), PR::ZERO, &context);
         assert_eq!(raw, columns.iter().flatten().copied().collect::<Vec<_>>());
+        source.prepare_opening(&context).unwrap();
         assert_eq!(
             read_back(source.oracle().monomials(), PR::ZERO, &context),
             cpu.monomial_forms
@@ -232,7 +233,6 @@ fn l1_setup_host_round_trip_small() {
                 &host.cap().cap
             ));
         }
-        source.release_raw();
         source.release_commitment_state();
         assert_eq!(
             read_back(source.cap(), 0u32, &context),

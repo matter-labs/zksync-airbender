@@ -89,9 +89,9 @@ fn sink_coefficient_tree_matches_reference() {
     let proof_twiddles =
         pr_twiddles::prepare_proof_twiddles(&mut twiddle_tables, &mut twiddle_factors, &stream)
             .unwrap();
-    // Reduced shape (2^15 rows, four of the 16 cosets) on the (r, log_v) = (8, 4) suffix and the
-    // coefficient-tree sink, against an independent CPU LDE and Merkle tree.
-    for (log_n, log_v, log_lde, k0, cosets) in [(15, 4, 4, 3, 4), (15, 5, 4, 3, 4)] {
+    // Four cosets of the reduced 2^15-row shape for each coefficient-tree leaf width.
+    for log_v in 1..=6 {
+        let (log_n, log_lde, k0, cosets) = (15, 4, 3, 4);
         let skip_bottom = 5;
         let log_domain = log_n + log_lde;
         let rows = 1usize << log_n;

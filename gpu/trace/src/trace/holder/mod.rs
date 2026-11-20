@@ -101,6 +101,8 @@ pub enum WitnessCommitmentStrategy {
 pub enum WitnessPostCommitStorage {
     RawEvaluations,
     RawAndMonomials,
+    /// Packed Proth120 only. Reuse raw backing for prefix scratch and restore raw after commitment.
+    RawWithReusedPrefixScratch,
     #[default]
     RawAndCosets,
 }
@@ -560,6 +562,12 @@ impl<T> TraceHolder<T> {
         std::sync::Arc::try_unwrap(backing).unwrap_or_else(|_| {
             panic!("raw hypercube backing must be exclusively owned at the opening handoff")
         })
+    }
+
+    pub(crate) fn restore_raw_hypercube_backing(&mut self, backing: DeviceAllocation<T>) {
+        assert!(self.raw_hypercube_evals.is_none());
+        assert!(backing.len() >= self.columns_count << self.log_domain_size);
+        self.raw_hypercube_evals = Some(std::sync::Arc::new(backing));
     }
 
     /// Defer LDE materialization until queries. Requires raw backing and no

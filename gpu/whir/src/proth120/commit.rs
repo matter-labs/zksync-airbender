@@ -6,7 +6,8 @@ use gpu_core::primitives::context::DeviceAllocation;
 use gpu_core::primitives::field::PR;
 use gpu_core::primitives::nvtx::scoped_range;
 use gpu_hash::keccak256::{
-    build_top_tree, gather_tree_cap, retained_layer_offset, transcript_commit_u32, Digest,
+    build_top_tree, gather_coset_tree_cap, gather_tree_cap, retained_layer_offset,
+    transcript_commit_u32, Digest,
 };
 use gpu_ntt::proth120::{dispatch, SuffixShape, TwiddleDescriptor};
 use gpu_prover_context::ProverContext;
@@ -74,8 +75,10 @@ pub(crate) fn schedule_commit_intermediate(
     }
     let mut retained = context.alloc(cosets * r, AllocationPlacement::Bottom)?;
     let mut roots = context.alloc(cosets, AllocationPlacement::Bottom)?;
-    let mut top_nodes =
-        context.alloc(cosets - (1 << shape.cap_log), AllocationPlacement::Bottom)?;
+    let mut top_nodes = context.alloc(
+        cosets.saturating_sub(1 << shape.cap_log),
+        AllocationPlacement::Bottom,
+    )?;
     let mut cap = context.alloc(1 << shape.cap_log, AllocationPlacement::Bottom)?;
     if has_residue_sink(shape.log_n, shape.log_v, shape.skip_bottom) {
         log::debug!(
@@ -111,8 +114,20 @@ pub(crate) fn schedule_commit_intermediate(
     }
     let _r = scoped_range(Some("ab"), "whir.commit.top");
     kernels::place_roots(&retained, r, shape.log_lde, &mut roots, stream)?;
-    build_top_tree(&roots, shape.cap_log, &mut top_nodes, stream)?;
-    gather_tree_cap(&roots, &top_nodes, shape.cap_log, &mut cap, stream)?;
+    if shape.cap_log > shape.log_lde {
+        gather_coset_tree_cap(
+            &retained,
+            shape.log_lde,
+            shape.log_leaves,
+            shape.skip_bottom,
+            shape.cap_log,
+            &mut cap,
+            stream,
+        )?;
+    } else {
+        build_top_tree(&roots, shape.cap_log, &mut top_nodes, stream)?;
+        gather_tree_cap(&roots, &top_nodes, shape.cap_log, &mut cap, stream)?;
+    }
     memory_copy_async(cap_dst, &cap, stream)?;
     transcript_commit_u32(seed, unsafe { cap_dst.transmute() }, stream)?;
     Ok(IntermediateOracle {

@@ -76,6 +76,20 @@ impl ExecutionBackend for GpuBackend {
         CircuitPrecomputations::from_canonical(circuit, setup, soundness_mode, profiles)
     }
 
+    fn prepare_l1_wrap(
+        &self,
+        circuit: CircuitType,
+        setup: crate::upstream::L1WrapSetup,
+        config: crate::upstream::ProverConfig,
+    ) -> Self::Precomputations {
+        CircuitPrecomputations::L1Wrap(Arc::new(
+            crate::proth120::precomputations::L1WrapPrecomputed::with_config(
+                circuit, setup, config,
+            )
+            .expect("L1 wrap precomputation allocation failed"),
+        ))
+    }
+
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {
         self.manager.send_batch(batch);
     }

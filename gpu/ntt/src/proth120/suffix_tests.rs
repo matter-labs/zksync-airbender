@@ -2,6 +2,7 @@ use super::context as pr_twiddles;
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+use era_cudart::execution::{CudaLaunchConfig, KernelFunction};
 use era_cudart::memory::{memory_copy, memory_copy_async, DeviceAllocation};
 use era_cudart::slice::DeviceSlice;
 use era_cudart::stream::CudaStream;
@@ -127,6 +128,129 @@ fn reference_plan(log_n: u32, r: u32) -> ChunkPlan {
     chunk_plan(log_n, &groups, 16 << 20).unwrap()
 }
 
+era_cudart::cuda_kernel!(FinishPairs, ab_pr_ntt_test_finish_pairs_kernel(
+    tiles: *mut PR, descriptor: pr_twiddles::TwiddleDescriptor, log_a: u32, skip_bottom: u32,
+    first_tile: u32,
+));
+
+#[test]
+#[cfg(not(no_cuda))]
+fn pr_lde_domain32_cosets_match_cpu() {
+    let stream = CudaStream::create().unwrap();
+    let mut tables = DeviceAllocation::alloc(pr_twiddles::TABLE_LEN).unwrap();
+    let mut factors = DeviceAllocation::alloc(pr_twiddles::FACTOR_LEN).unwrap();
+    let twiddles = pr_twiddles::prepare_proof_twiddles(&mut tables, &mut factors, &stream).unwrap();
+    let log_n = 13;
+    let rows = 1 << log_n;
+    let log_domain = 32;
+    let last_coset = (1u32 << (log_domain - log_n)) - 1;
+    let s = shape(log_n, 8, 1, 5, 1);
+    assert_eq!(s.tiles_per_coset(), 1);
+    let plan = reference_plan(log_n, s.r);
+    let host: Vec<_> = (0..rows).map(|i| PR::new((i as u128 + 1).pow(5))).collect();
+    let monomials = upload(&host);
+    let mut prefix = DeviceAllocation::alloc(2 * rows).unwrap();
+    let mut tile = DeviceAllocation::alloc(rows).unwrap();
+    let worker = crate::upstream::Worker::new_with_num_threads(1);
+    let fft = crate::upstream::Twiddles::<PR, std::alloc::Global>::new(rows, &worker);
+    let omega = domain_generator_for_size::<PR>(1u64 << log_domain);
+    let slot = upload(&[last_coset]);
+    let gate = upload(&[1u32]);
+    for (k, source, count) in [
+        (0, CosetSource::Constant(0), 1),
+        (1, CosetSource::Constant(1), 1),
+        (
+            last_coset - 1,
+            CosetSource::Batched { k0: last_coset - 1 },
+            2,
+        ),
+        (
+            last_coset,
+            CosetSource::Slot {
+                coset: &slot,
+                active: &gate,
+            },
+            1,
+        ),
+    ] {
+        lde_coset_slot(
+            twiddles,
+            &monomials,
+            &mut prefix[..rows * count],
+            count,
+            &plan,
+            ScaleArgs {
+                coset: source,
+                log_domain,
+            },
+            &stream,
+        )
+        .unwrap();
+        for column in 0..count {
+            launch_suffix_micro(
+                twiddles,
+                &prefix[column * rows..][..rows],
+                rows,
+                &mut tile,
+                &s,
+                0,
+                1,
+                1,
+                None,
+                &stream,
+            )
+            .unwrap();
+            FinishPairsFunction::default()
+                .launch(
+                    &CudaLaunchConfig::basic(rows as u32 / 512, 256, &stream),
+                    &FinishPairsArguments::new(
+                        tile.as_mut_ptr(),
+                        twiddles,
+                        s.log_a(),
+                        s.skip_bottom,
+                        0,
+                    ),
+                )
+                .unwrap();
+            let actual = download(&tile, &stream);
+            let coset = k + column as u32;
+            let expected = crate::upstream::lde_coset_lazy_r8(
+                &host,
+                omega.pow(coset),
+                &fft.forward_twiddles[..rows / 2],
+            );
+            // A single tile whose w covers all 2^a components stores the pairs in natural leaf order.
+            for j in 0..rows / 2 {
+                assert_eq!(actual[2 * j].0, expected[j].0, "coset {coset}, index {j}");
+                assert_eq!(
+                    actual[2 * j + 1].0,
+                    expected[j + rows / 2].0,
+                    "coset {coset}, index {}",
+                    j + rows / 2
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn cpu_pr_suffix_domain32_spans() {
+    let s = shape(32, 8, 1, 5, 1);
+    let rows = 1usize << 32;
+    let launch = super::suffix::suffix_launch(
+        pr_twiddles::LOG_MAX_DOMAIN,
+        &s,
+        2 * rows,
+        rows,
+        2 * s.tile_len(),
+        (s.tiles_per_coset() - 1) as u32,
+        1,
+        2,
+    );
+    assert_eq!(launch.grid, (8, 1, 2));
+    assert_eq!(launch.tile_coset_stride, 8192);
+}
+
 // Suffix micro tiles against two CPU oracles: the first r - v stages applied to the downloaded
 // prefix (localizes region errors to the micro) and, after a CPU finish of the last v stages,
 // independent CPU coset evaluations mapped through leaf j = g + 2^a f_lo, slot bitrev_v(t).
@@ -146,10 +270,11 @@ fn pr_suffix_micro_matches_reference() {
     };
     let nu = domain_generator_for_size::<PR>(1u64 << 31);
     let mut rng = StdRng::seed_from_u64(0x9120_4201);
-    // Reduced rows for the production suffix kernels: (r, log_v) = (7, 1) with 12 base
-    // columns, (8, 1) with 2 setup columns and (8, 4) with the one WHIR column.
+    // Reduced rows for both production suffix splits, covering the packed base and
+    // setup columns as well as the batched single-column WHIR commitments.
     for (log_n, r, log_v, skip_bottom, columns, cosets) in [
         (18, 7, 1, 10, 12, 1),
+        (18, 7, 3, 10, 12, 1),
         (19, 8, 1, 10, 2, 1),
         (15, 8, 4, 5, 1, 4),
         (15, 8, 5, 5, 1, 4),
