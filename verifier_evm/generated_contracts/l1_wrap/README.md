@@ -13,7 +13,7 @@ differs only in the final PC the decoder pins. `external_pow`, `batching_pow` an
 proof's leading-zero count. `folding_pow_0` through `folding_pow_4` similarly exceed
 every folding nonce's leading-zero count in the selected round. These controls cover
 every per-round literal and both the internal and final-round calls. Test-only
-difficulties can exceed the production cap while remaining representable by the shift check. The producer
+difficulties are bounded by the 64-bit calldata nonce width. The producer
 replays the proof transcript to compute these counts and asserts that each negative source
 differs from the real verifier on one line.
 The merged suite deploys all controls and requires rejection of the honest proof.

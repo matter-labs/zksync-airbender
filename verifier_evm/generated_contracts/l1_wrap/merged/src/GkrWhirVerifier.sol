@@ -2126,7 +2126,7 @@ function gate_maskintoidentityproduct(alpha, acc, input_idx, mask_idx) -> next_a
             // Reduction is required: unreduced values break `sub(P, x)` for x > P.
             r := mod(shr(128, s), P)
         }
-        // WhirGenConfig::derive obtains canonical GEN/GEN_INV via Proth120::to_u128;
+        // WhirGenConfig::derive obtains canonical base_domain_root and base_domain_root_inv via Proth120::to_u128;
         // powmod and exp_pow2 preserve reduction through mulmod. Binary exponentiation tests
         // bit 0 with and(e, 1), then shifts e right by 1.
         function powmod(base, e) -> res {

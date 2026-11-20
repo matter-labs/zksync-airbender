@@ -177,12 +177,14 @@ pub mod l1_wrap {
     /// Each round uses the least PoW satisfying `6 * pow + 5 * queries * rate_bits >= 600`.
     pub const POW_BITS: [u32; 5] = [27, 25, 30, 30, 30];
 
+    pub const LIST_SIZE_CEILINGS: [usize; 5] = [1_044_721_774, 673, 5_387, 172_384, 2_758_157];
+
     /// Conditional 100-bit pessimistic accounting: queries contribute r/1.2 bits
-    /// (`PessimisticConjectureMode` in `whir/proximity_testing_modes.rs`); the
+    /// (`PessimisticConjectureMode` in `whir/proximity_testing_modes.rs`). The
     /// linear proximity-gap charge in `pow_bits.rs` is applied to each fold.
-    /// With mu = 37/2^128, the assumed list ceilings are
-    /// [1044721774, 673, 5387, 172384, 2758157], including every RS substep. Nominal-100 shifts
-    /// have an accepted deficit below 10^-6 bit. These are conjectural bounds.
+    /// With mu = 37/2^128, the assumed [`LIST_SIZE_CEILINGS`] cover every RS
+    /// substep. Nominal-100 shifts have an accepted deficit below 10^-6 bit.
+    /// These are conjectural bounds.
     pub fn packed_prover_config() -> ProverConfig {
         const CAP_SIZE: usize = 8;
         let level = SecurityLevel::Sec100;
