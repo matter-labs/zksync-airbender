@@ -283,7 +283,7 @@ mod test {
     use crate::witness::NonMemDestinationHolder;
     use crate::witness::*;
     use common_constants::INITIAL_TIMESTAMP;
-    use field::Mersenne31Field;
+    use field::baby_bear::base::BabyBearField;
 
     use super::*;
 
@@ -567,7 +567,7 @@ mod test {
         > = SimpleSnapshotter::new_with_cycle_limit(cycles_bound, state);
 
         let now = std::time::Instant::now();
-        VM::<CountersT>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
+        VM::<CountersT>::run_basic_unrolled::<_, _, _, BabyBearField>(
             &mut state,
             &mut ram,
             &mut snapshotter,
@@ -595,7 +595,7 @@ mod test {
             buffers: &mut buffers[..],
         };
         let now = std::time::Instant::now();
-        ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _, Mersenne31Field>(
+        ReplayerVM::<CountersT>::replay_basic_unrolled::<_, _, BabyBearField>(
             &mut state,
             &mut ram,
             &tape,

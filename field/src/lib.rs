@@ -3,20 +3,9 @@
 #![cfg_attr(target_arch = "riscv32", feature(core_intrinsics))]
 #![cfg_attr(target_arch = "riscv32", feature(const_eval_select))]
 
-use core::fmt::Debug;
-use core::fmt::Display;
-use core::fmt::Formatter;
-/// The prime field `F_p` where `p = 2^31 - 1`.
-use core::hash::Hash;
-use core::hash::Hasher;
 use rand::Rng;
 
-pub(crate) mod ops;
-
-pub mod base;
-pub mod complex;
 pub mod field;
-pub mod quartic;
 
 pub mod baby_bear;
 
@@ -30,10 +19,6 @@ pub mod stats;
 
 #[cfg(feature = "proc_macro_ops")]
 mod proc_macro_ops;
-
-pub use self::base::*;
-pub use self::complex::*;
-pub use self::quartic::*;
 
 pub use self::proth120::*;
 
@@ -95,22 +80,4 @@ pub fn batch_inverse_checked<F: Field>(input: &mut [F], tmp_buffer: &mut [F]) ->
 
 pub trait Rand {
     fn random_element<R: Rng + ?Sized>(rng: &mut R) -> Self;
-}
-
-pub fn rand_fp_from_rng<R: rand::Rng>(rng: &mut R) -> Mersenne31Field {
-    Mersenne31Field::from_u32_unchecked(rng.random_range(0..((1 << 31) - 1)))
-}
-
-pub fn rand_fp2_from_rng<R: rand::Rng>(rng: &mut R) -> Mersenne31Complex {
-    let a = Mersenne31Field::from_u32_unchecked(rng.random_range(0..((1 << 31) - 1)));
-    let b = Mersenne31Field::from_u32_unchecked(rng.random_range(0..((1 << 31) - 1)));
-    Mersenne31Complex::new(a, b)
-}
-
-pub fn rand_fp4_from_rng<R: rand::Rng>(rng: &mut R) -> Mersenne31Quartic {
-    let a = Mersenne31Field::from_u32_unchecked(rng.random_range(0..((1 << 31) - 1)));
-    let b = Mersenne31Field::from_u32_unchecked(rng.random_range(0..((1 << 31) - 1)));
-    let c = Mersenne31Field::from_u32_unchecked(rng.random_range(0..((1 << 31) - 1)));
-    let d = Mersenne31Field::from_u32_unchecked(rng.random_range(0..((1 << 31) - 1)));
-    Mersenne31Quartic::from_array_of_base([a, b, c, d])
 }
