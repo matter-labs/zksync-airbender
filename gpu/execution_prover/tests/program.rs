@@ -262,6 +262,10 @@ fn test_program_prover_base_layer_verify() {
 /// with `ExecutionKind::Unified`, assemble the `ProgramProof` (including
 /// `num_it_circuits`), build the unified ND stream, and run the real
 /// base-layer unified verifier natively.
+///
+/// The simulator's MOP field must match the replay worker's field. A mismatch
+/// keeps every per-circuit proof self-consistent and fails only the global
+/// memory-permutation closure that this verifier checks.
 #[test]
 #[cfg(all(not(no_cuda), feature = "verifiers"))]
 #[ignore]
