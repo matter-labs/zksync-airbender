@@ -518,25 +518,6 @@ fn load_abelian(ops: &mut x64::Assembler, x: u32, y: u32, destination: u8) -> u8
     }
 }
 
-fn load_abelian_into(ops: &mut x64::Assembler, x: u32, y: u32, destination: u8, temporary: u8) {
-    // destination is either RV to GPR mapped register, or RAX
-    let a = rv_to_gpr(x);
-    let b = rv_to_gpr(y);
-    if a == Some(destination) {
-        // x is already in GPR
-        assert!(destination != x64::Rq::RAX as u8);
-        load_into(ops, y, temporary);
-    } else if b == Some(destination) {
-        // y is already in GPR
-        assert!(destination != x64::Rq::RAX as u8);
-        load_into(ops, x, temporary);
-    } else {
-        // just overwrite the destination
-        load_into(ops, x, destination);
-        load_into(ops, y, temporary);
-    }
-}
-
 #[allow(unused_macros)]
 macro_rules! print_registers {
     ($ops:ident, $pc:expr, $instr:expr) => {
@@ -945,15 +926,13 @@ fn emit_merged_word_run(
     dynasm!(ops ; .arch x64 ; add r8, (4 * g) as i32);
 }
 
-// === MOP (Zimop) prime-field arithmetic: M31 (default) or BabyBear ========================
+// === MOP (Zimop) prime-field arithmetic: BabyBear ========================
 // (BabyBear optionally with inputs assumed canonical, `MopField::BabyBearAssumeCanonical`)
 //
 // The MOP opcodes (ZimopAdd / ZimopSub / ZimopMul / ZimopFMA) compute a prime-field operation
 // on the register's RAW field representation, exactly mirroring the reference
 // `add_sub_family::mop::*` (generic over `F: PrimeField`): the inputs are reduced via
 // `from_raw_repr_with_reduction`, combined, and written back as `as_u32_raw_repr_reduced`.
-//   * Mersenne-31 (p = 2^31-1): the raw repr is canonical; add/sub/mul are the classic M31
-//     fold reductions (the long-standing JIT code, extracted verbatim).
 //   * BabyBear (p = 0x78000001): the raw repr is MONTGOMERY form; add/sub are modular, mul is a
 //     Montgomery multiply (`product += ((product_lo * MONT_K) * p); result = product >> 32`,
 //     one conditional subtract), per `field::baby_bear::ops::basic`.
@@ -966,7 +945,6 @@ fn emit_merged_word_run(
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MopField {
-    M31,
     BabyBear,
     /// BabyBear, but the inputs of the field operations are ASSUMED to be canonical
     /// (raw repr `< p`) and are not reduced (or even checked). The outputs are always
@@ -977,29 +955,26 @@ pub enum MopField {
 }
 
 /// Env-driven MOP field selection for callers without a fixed field (e.g. the JIT differential
-/// tests): reads `RISCV_MOP_FIELD` (default `M31`); an unrecognized value panics. Intentionally
+/// tests): reads `RISCV_MOP_FIELD` (default `BabyBear`); an unrecognized value panics. Intentionally
 /// not cached, so a single process can build JITs for different fields by changing the variable
 /// between builds. Production pipelines should pass their field to `preprocess_bytecode`
 /// explicitly instead of relying on process env.
 pub fn mop_field() -> MopField {
     match std::env::var("RISCV_MOP_FIELD") {
         Ok(s) => match s.to_ascii_lowercase().as_str() {
-            "m31" | "mersenne31" | "mersenne" => MopField::M31,
             "babybear" | "baby_bear" | "bb" => MopField::BabyBear,
             "babybear_assume_canonical" | "baby_bear_assume_canonical" | "bb_assume_canonical" => {
                 MopField::BabyBearAssumeCanonical
             }
             other => panic!(
-                "RISCV_MOP_FIELD must be 'm31', 'babybear' or 'babybear_assume_canonical' (got {:?})",
+                "RISCV_MOP_FIELD must be 'babybear' or 'babybear_assume_canonical' (got {:?})",
                 other
             ),
         },
-        Err(_) => MopField::M31,
+        Err(_) => MopField::BabyBear,
     }
 }
 
-const M31_P: i32 = 0x7fff_ffffu32 as i32; // 2^31 - 1
-const M31_2P: i32 = 0xffff_fffeu32 as i32; // 2*(2^31 - 1)
 const BB_ORDER: i32 = 0x7800_0001u32 as i32; // BabyBear p = 2^31 - 2^27 + 1
 const BB_MONT_K: i32 = 0x77ff_ffffu32 as i32; // BabyBear Montgomery factor
 
@@ -1076,150 +1051,6 @@ fn emit_mop<E: MopFieldEmitter>(
         Op::ZimopMul => E::emit_mul(ops, cold, rs1, rs2, out),
         Op::ZimopFMA => E::emit_fma(ops, cold, rs1, rs2, rd, out),
         _ => unreachable!("emit_mop called on a non-MOP opcode"),
-    }
-}
-
-// ---- Mersenne-31 (canonical raw repr; classic fold reductions) ----
-struct M31Emitter;
-impl MopFieldEmitter for M31Emitter {
-    fn emit_add(ops: &mut x64::Assembler, _cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8) {
-        if rs2 == 0 {
-            // ADDI-mod fast path (rs2 == x0), heavily used in the verifier: a single input,
-            // fully reduced by subtracting p then 2p.
-            load_into(ops, rs1, out);
-            dynasm!(ops
-            ; .arch x64
-                ; mov Rd(SCRATCH_REGISTER), Rd(out)
-                ; mov edx, Rd(out)
-                ; sub edx, M31_P
-                ; cmovnc Rd(out), edx
-                ; sub Rd(SCRATCH_REGISTER), M31_2P
-                ; cmovnc Rd(out), Rd(SCRATCH_REGISTER)
-            );
-        } else {
-            load_abelian_into(ops, rs1, rs2, out, x64::Rq::RDX as u8);
-            dynasm!(ops
-            ; .arch x64
-                // reduce first input
-                ; mov Rd(SCRATCH_REGISTER), Rd(out)
-                ; and Rd(out), M31_P
-                ; shr Rd(SCRATCH_REGISTER), 31i8
-                ; add Rd(out), Rd(SCRATCH_REGISTER)
-                // reduce second input
-                ; mov Rd(SCRATCH_REGISTER), edx
-                ; and edx, M31_P
-                ; shr Rd(SCRATCH_REGISTER), 31i8
-                ; add edx, Rd(SCRATCH_REGISTER)
-                // add and almost reduce
-                ; add Rd(out), edx
-                ; mov Rd(SCRATCH_REGISTER), Rd(out)
-                ; and Rd(out), M31_P
-                ; shr Rd(SCRATCH_REGISTER), 31i8
-                ; add Rd(out), Rd(SCRATCH_REGISTER)
-                // reduce completely
-                ; mov Rd(SCRATCH_REGISTER), Rd(out)
-                ; sub Rd(SCRATCH_REGISTER), M31_P
-                ; cmovnc Rd(out), Rd(SCRATCH_REGISTER)
-            );
-        }
-    }
-
-    fn emit_sub(ops: &mut x64::Assembler, _cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8) {
-        load_into(ops, rs2, x64::Rq::RDX as u8);
-        load_into(ops, rs1, out);
-        dynasm!(ops
-            ; .arch x64
-            ; mov Rd(SCRATCH_REGISTER), Rd(out)
-            ; and Rd(out), M31_P
-            ; shr Rd(SCRATCH_REGISTER), 31i8
-            ; add Rd(out), Rd(SCRATCH_REGISTER)
-            ; mov Rd(SCRATCH_REGISTER), edx
-            ; and edx, M31_P
-            ; shr Rd(SCRATCH_REGISTER), 31i8
-            ; add edx, Rd(SCRATCH_REGISTER)
-            ; sub Rd(out), edx
-            ; mov Rd(SCRATCH_REGISTER), Rd(out)
-            ; and Rd(out), M31_P
-            ; shr Rd(SCRATCH_REGISTER), 31i8
-            ; sub Rd(out), Rd(SCRATCH_REGISTER)
-            ; mov Rd(SCRATCH_REGISTER), Rd(out)
-            ; sub Rd(SCRATCH_REGISTER), M31_P
-            ; cmovnc Rd(out), Rd(SCRATCH_REGISTER)
-        );
-    }
-
-    fn emit_mul(ops: &mut x64::Assembler, _cold: &mut ColdStubs, rs1: u32, rs2: u32, out: u8) {
-        load_abelian_into(ops, rs1, rs2, out, x64::Rq::RDX as u8);
-        dynasm!(ops
-            ; .arch x64
-            ; mov Rd(SCRATCH_REGISTER), Rd(out)
-            ; and Rd(out), M31_P
-            ; shr Rd(SCRATCH_REGISTER), 31i8
-            ; add Rd(out), Rd(SCRATCH_REGISTER)
-            ; mov Rd(SCRATCH_REGISTER), edx
-            ; and edx, M31_P
-            ; shr Rd(SCRATCH_REGISTER), 31i8
-            ; add edx, Rd(SCRATCH_REGISTER)
-            ; imul Rq(out), rdx
-            ; mov rdx, Rq(out)
-            ; shr rdx, 31i8
-            ; and Rd(out), M31_P
-            ; add Rd(out), edx
-            ; mov Rd(SCRATCH_REGISTER), Rd(out)
-            ; and Rd(out), M31_P
-            ; shr Rd(SCRATCH_REGISTER), 31i8
-            ; add Rd(out), Rd(SCRATCH_REGISTER)
-            ; mov Rd(SCRATCH_REGISTER), Rd(out)
-            ; sub Rd(SCRATCH_REGISTER), M31_P
-            ; cmovnc Rd(out), Rd(SCRATCH_REGISTER)
-        );
-    }
-
-    fn emit_fma(
-        ops: &mut x64::Assembler,
-        _cold: &mut ColdStubs,
-        rs1: u32,
-        rs2: u32,
-        rd: u32,
-        out: u8,
-    ) {
-        // rd = (rs1*rs2 + rd_old) mod p. Reduce rd_old (single fold) and stash it; then run the
-        // mul, fold rd_old into the 64-bit product before the final folds (matching the host
-        // `ops::fma_mod`: product = a*b + c, then fold low/high).
-        load_into(ops, rd, x64::Rq::RAX as u8); // EAX = rd_old (value-only read)
-        dynasm!(ops
-            ; .arch x64
-            ; mov Rd(SCRATCH_REGISTER), eax
-            ; and eax, M31_P
-            ; shr Rd(SCRATCH_REGISTER), 31i8
-            ; add eax, Rd(SCRATCH_REGISTER)
-            ; mov [rsp - 8], rax // stash reduced rd_old (zero-extended)
-        );
-        load_abelian_into(ops, rs1, rs2, out, x64::Rq::RDX as u8);
-        dynasm!(ops
-            ; .arch x64
-            ; mov Rd(SCRATCH_REGISTER), Rd(out)
-            ; and Rd(out), M31_P
-            ; shr Rd(SCRATCH_REGISTER), 31i8
-            ; add Rd(out), Rd(SCRATCH_REGISTER)
-            ; mov Rd(SCRATCH_REGISTER), edx
-            ; and edx, M31_P
-            ; shr Rd(SCRATCH_REGISTER), 31i8
-            ; add edx, Rd(SCRATCH_REGISTER)
-            ; imul Rq(out), rdx
-            ; add Rq(out), [rsp - 8] // + rd_old (64-bit), before folding
-            ; mov rdx, Rq(out)
-            ; shr rdx, 31i8
-            ; and Rd(out), M31_P
-            ; add Rd(out), edx
-            ; mov Rd(SCRATCH_REGISTER), Rd(out)
-            ; and Rd(out), M31_P
-            ; shr Rd(SCRATCH_REGISTER), 31i8
-            ; add Rd(out), Rd(SCRATCH_REGISTER)
-            ; mov Rd(SCRATCH_REGISTER), Rd(out)
-            ; sub Rd(SCRATCH_REGISTER), M31_P
-            ; cmovnc Rd(out), Rd(SCRATCH_REGISTER)
-        );
     }
 }
 
@@ -2086,23 +1917,14 @@ impl<I: ContextImpl> JittedCode<I> {
                 }
 
                 // MOP (Zimop) prime-field instructions: addmod / submod / mulmod / fmamod. The
-                // value computation is delegated to the env-selected field emitter (M31 default,
-                // BabyBear via RISCV_MOP_FIELD); timestamps (rs1@+0, rs2@+1, rd@+2), store_result
+                // value computation is delegated to the BabyBear field emitter. Timestamps
+                // (rs1@+0, rs2@+1, rd@+2), store_result
                 // and the family counter are handled here and are field-independent. FMA also
                 // reads rd's OLD value inside the emitter (value-only, no timestamp touch).
                 Op::ZimopAdd | Op::ZimopSub | Op::ZimopMul | Op::ZimopFMA => {
                     assert!(rd != 0);
                     let out = destination_gpr(rd); // either a value GPR or EAX
                     match mop_field {
-                        MopField::M31 => emit_mop::<M31Emitter>(
-                            &mut ops,
-                            &mut cold_stubs,
-                            instr.name,
-                            rs1,
-                            rs2,
-                            rd,
-                            out,
-                        ),
                         MopField::BabyBear => emit_mop::<BabyBearEmitter<false>>(
                             &mut ops,
                             &mut cold_stubs,

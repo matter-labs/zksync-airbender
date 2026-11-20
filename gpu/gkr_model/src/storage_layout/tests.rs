@@ -2,7 +2,7 @@ use super::construct::relation_outputs;
 use super::*;
 use crate::address_audit::{collect_addresses_from_relation, AddressClass};
 use crate::upstream::{GKRAddress, GKRCircuitArtifact};
-use field::Field;
+use field::{baby_bear::base::BabyBearField, Field};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
@@ -16,7 +16,7 @@ fn compiled_circuit_dir() -> PathBuf {
         .join("compiled_circuits")
 }
 
-fn load_artifact(json_path: &PathBuf) -> Option<GKRCircuitArtifact<field::Mersenne31Field>> {
+fn load_artifact(json_path: &PathBuf) -> Option<GKRCircuitArtifact<BabyBearField>> {
     let bytes = std::fs::read(json_path).ok()?;
     serde_json::from_slice(&bytes).ok()
 }
@@ -322,8 +322,8 @@ fn relation_outputs_classifies_known_variants() {
         layer: 1,
         offset: 0,
     };
-    let dummy_input = LinearRelation::<field::Mersenne31Field> {
-        constant: field::Mersenne31Field::ZERO,
+    let dummy_input = LinearRelation::<BabyBearField> {
+        constant: BabyBearField::ZERO,
         linear_terms: vec![].into_boxed_slice(),
     };
 
@@ -333,7 +333,7 @@ fn relation_outputs_classifies_known_variants() {
     };
     assert_eq!(relation_outputs(&base), vec![(dummy_addr, FieldType::Base)]);
 
-    let ext: cs::gkr_compiler::GKRRelation<field::Mersenne31Field> = CopyInExtensionField {
+    let ext: cs::gkr_compiler::GKRRelation<BabyBearField> = CopyInExtensionField {
         input: dummy_addr,
         output: dummy_addr,
     };

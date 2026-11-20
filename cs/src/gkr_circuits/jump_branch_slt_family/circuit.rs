@@ -740,7 +740,7 @@ mod test {
     use crate::structured_expr::StructuredStatement;
     use crate::utils::serialize_to_file;
 
-    type F = ::field::Mersenne31Field;
+    type F = ::field::baby_bear::base::BabyBearField;
 
     fn has_sum_factor(expr: &Expr<F>) -> bool {
         let Expr::Product(factors) = expr else {

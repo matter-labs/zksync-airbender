@@ -6,10 +6,7 @@ use cs::gkr_compiler::{GKRLayerDescription, GKRRelation, GateArtifacts};
 use field::baby_bear::base::BabyBearField;
 use field::baby_bear::ext4::BabyBearExt4;
 use field::{FieldExtension, PrimeField};
-use transcript::{
-    commit_base_field_elements_impl, commit_extension_field_elements_impl,
-    draw_random_field_elements_impl, Blake2sTranscript, Seed, Transcript,
-};
+use transcript::{Blake2sTranscript, Seed, Transcript};
 use worker::Worker;
 
 use super::utils::*;
@@ -45,73 +42,7 @@ fn test_prover_config() -> prover_config::ProverConfig {
     }
 }
 
-/// Test-only transcript implementing `Transcript<BabyBearField, BabyBearExt4>`.
-///
-/// The production `Blake2sTranscript` only implements `Transcript<BabyBearField,
-/// BabyBearExt4>`; the orphan rule forbids adding a Mersenne impl for it outside
-/// the `transcript` crate, so we wrap it in this local type for the Mersenne-based
-/// sumcheck tests. It delegates everything to `Blake2sTranscript`, reusing the
-/// shared (field-generic) serialization helpers.
-#[derive(Clone, Copy, Debug, Default)]
-struct TestTranscript;
-
-type TestBlake2s = Blake2sTranscript<true>;
-
-impl Transcript<F, E> for TestTranscript {
-    type Seed = Seed;
-    type Hasher = blake2s_u32::DelegatedBlake2sState;
-
-    fn commit_initial_u32(input: &[u32]) -> Seed {
-        TestBlake2s::commit_initial(input)
-    }
-    fn commit_u32_with_seed(seed: &mut Seed, input: &[u32]) {
-        TestBlake2s::commit_with_seed(seed, input);
-    }
-    fn commit_initial_u32_using_hasher(h: &mut Self::Hasher, input: &[u32]) -> Seed {
-        TestBlake2s::commit_initial_using_hasher(h, input)
-    }
-    fn commit_u32_with_seed_using_hasher(h: &mut Self::Hasher, seed: &mut Seed, input: &[u32]) {
-        TestBlake2s::commit_with_seed_using_hasher(h, seed, input);
-    }
-    fn draw_randomness(seed: &mut Seed, dst: &mut [u32]) {
-        TestBlake2s::draw_randomness(seed, dst);
-    }
-    fn draw_randomness_using_hasher(h: &mut Self::Hasher, seed: &mut Seed, dst: &mut [u32]) {
-        TestBlake2s::draw_randomness_using_hasher(h, seed, dst);
-    }
-    fn pow_threshold(pow_bits: u32) -> u32 {
-        TestBlake2s::pow_threshold(pow_bits)
-    }
-    fn verify_pow(seed: &mut Seed, nonce: u64, pow_bits: u32) {
-        TestBlake2s::verify_pow(seed, nonce, pow_bits);
-    }
-    fn verify_pow_using_hasher(h: &mut Self::Hasher, seed: &mut Seed, nonce: u64, pow_bits: u32) {
-        TestBlake2s::verify_pow_using_hasher(h, seed, nonce, pow_bits);
-    }
-    fn search_pow(seed: &Seed, pow_bits: u32, worker: &worker::Worker) -> (Seed, u64) {
-        TestBlake2s::search_pow(seed, pow_bits, worker)
-    }
-    fn commit_base_field_elements(seed: &mut Seed, els: &[F]) {
-        commit_base_field_elements_impl::<true, F>(seed, els);
-    }
-    fn commit_extension_field_elements(seed: &mut Seed, els: &[E]) {
-        commit_extension_field_elements_impl::<true, F, E>(seed, els);
-    }
-    fn draw_random_field_elements(seed: &mut Seed, buffer: &mut [E]) {
-        draw_random_field_elements_impl::<true, F, E>(seed, buffer);
-    }
-    fn draw_fresh_random_field_elements(_seed: &mut Seed, _buffer: &mut [E]) {
-        todo!();
-    }
-    fn draw_random_field_elements_with_pow(
-        _seed: &Self::Seed,
-        _pow_bits: u32,
-        _buffer: &mut [E],
-        _worker: &worker::Worker,
-    ) -> (Self::Seed, u64) {
-        todo!();
-    }
-}
+type TestTranscript = Blake2sTranscript<true>;
 
 /// Test the full sumcheck loop with a simple product gate.
 #[test]

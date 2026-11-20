@@ -52,14 +52,17 @@ fn folding_and_ood_pow_geometry() {
     let size = |name| regions.iter().find(|(n, _, _)| *n == name).unwrap().1.value;
     assert_eq!(size("FBUF_PTR"), 32 * 32);
     assert!(!regions.iter().any(|(name, _, _)| *name == "OOD_PTR"));
-    assert_eq!(size("POW_PTR"), (11 + 10 + 7 + 5 + 4) * 96);
+    assert_eq!(
+        size("POW_PTR"),
+        ((11 + 1) + (10 + 1) + (7 + 1) + (5 + 1)) * 96
+    );
     let switch = derived.schedule_switch_yul();
     assert!(switch.contains("fold_pow_bits := 10"));
     assert!(switch.contains("ood_pow_bits := 18"));
 }
 
 #[test]
-fn legacy_plain_challenges_remain_supported() {
+fn zero_pow_schedule_renders_plain_challenges() {
     let mut config = candidate();
     config.whir_schedule.base_round.folding_pow_bits = 0;
     for round in &mut config.whir_schedule.internal_rounds {
@@ -67,7 +70,9 @@ fn legacy_plain_challenges_remain_supported() {
         round.ood_pow_bits = 0;
     }
     let derived = WhirGenConfig::derive(&config, 96, 10);
-    assert!(derived.schedule_switch_yul().contains("fold_pow_bits := 0"));
+    let switch = derived.schedule_switch_yul();
+    assert!(switch.contains("fold_pow_bits := 0"));
+    assert!(switch.contains("ood_pow_bits := 0"));
 }
 
 #[test]

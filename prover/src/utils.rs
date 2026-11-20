@@ -1,18 +1,5 @@
-use field::FieldExtension;
-use field::{Mersenne31Field, Mersenne31Quartic};
-
 #[cfg(feature = "prover")]
-use field::{Field, PrimeField};
-
-#[inline(always)]
-pub fn mersenne_quartic_into_base_coeffs(el: Mersenne31Quartic) -> [Mersenne31Field; 4] {
-    <Mersenne31Quartic as FieldExtension<Mersenne31Field>>::into_coeffs(el)
-}
-
-#[inline(always)]
-pub fn mersenne_quartic_from_base_coeffs(coeffs: [Mersenne31Field; 4]) -> Mersenne31Quartic {
-    <Mersenne31Quartic as FieldExtension<Mersenne31Field>>::from_coeffs(coeffs)
-}
+use field::{Field, FieldExtension, PrimeField};
 
 #[cfg(feature = "prover")]
 #[inline(always)]

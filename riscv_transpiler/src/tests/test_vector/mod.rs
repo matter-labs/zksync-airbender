@@ -2,7 +2,7 @@ use std::alloc::Global;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use common_constants::rom::{ROM_BYTE_SIZE, ROM_SECOND_WORD_BITS};
-use field::Mersenne31Field;
+use field::baby_bear::base::BabyBearField;
 use worker::Worker;
 
 use crate::ir::{self, FullMachineDecoderConfig, FullUnsignedMachineDecoderConfig};
@@ -291,15 +291,14 @@ fn finalize_state_with_snapshot(
     let mut ram =
         RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(program, RAM_BOUND_BYTES);
 
-    let finished =
-        VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
-            &mut state,
-            &mut ram,
-            &mut snapshotter,
-            tape,
-            SINGLE_STEP_CYCLE_BOUND,
-            &mut (),
-        );
+    let finished = VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, BabyBearField>(
+        &mut state,
+        &mut ram,
+        &mut snapshotter,
+        tape,
+        SINGLE_STEP_CYCLE_BOUND,
+        &mut (),
+    );
     if !finished {
         snapshotter.take_final_snapshot(&state);
     }
@@ -340,7 +339,7 @@ fn execute_case<D: ir::DecodingOptions>(
         ram_log: &mut ram_log_buffers,
     };
 
-    ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, Mersenne31Field>(
+    ReplayerVM::<DelegationsAndFamiliesCounters>::replay_basic_unrolled::<_, _, BabyBearField>(
         &mut replay_state,
         &mut ram,
         &tape,
@@ -374,7 +373,7 @@ fn run_rejection<D: ir::DecodingOptions>(
         RamWithRomRegion::<{ ROM_SECOND_WORD_BITS }>::from_rom_content(program, RAM_BOUND_BYTES);
 
     let result = catch_unwind(AssertUnwindSafe(|| {
-        let _ = VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
+        let _ = VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, BabyBearField>(
             &mut state,
             &mut ram,
             &mut (),

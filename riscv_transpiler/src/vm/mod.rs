@@ -539,7 +539,7 @@ impl<C: Counters, E: ExecutionObserver<C>> VM<C, E> {
 
 #[cfg(test)]
 pub(crate) mod test {
-    use field::Mersenne31Field;
+    use field::baby_bear::base::BabyBearField;
 
     use crate::ir::FullUnsignedMachineDecoderConfig;
 
@@ -570,7 +570,7 @@ pub(crate) mod test {
                 _,
                 _,
                 _,
-                Mersenne31Field,
+                BabyBearField,
             >(&mut state, &mut ram, &mut (), &tape, program.len(), &mut ())
         });
 
@@ -616,7 +616,7 @@ pub(crate) mod test {
             let tape = SimpleTape::new(&instructions);
             let mut ram = RamWithRomRegion::<5>::from_rom_content(program, 1 << 22);
             let mut state = State::initial_with_counters(DelegationsAndFamiliesCounters::default());
-            VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
+            VM::<DelegationsAndFamiliesCounters>::run_basic_unrolled::<_, _, _, BabyBearField>(
                 &mut state,
                 &mut ram,
                 &mut (),
@@ -664,7 +664,7 @@ pub(crate) mod test {
         >::new_with_cycle_limit(cycles_bound, state);
 
         let now = std::time::Instant::now();
-        VM::<DelegationsCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
+        VM::<DelegationsCounters>::run_basic_unrolled::<_, _, _, BabyBearField>(
             &mut state,
             &mut ram,
             &mut snapshotter,
@@ -726,7 +726,7 @@ pub(crate) mod test {
         >::new_with_cycle_limit(cycles_bound, state);
 
         let now = std::time::Instant::now();
-        VM::<DelegationsCounters>::run_basic_unrolled::<_, _, _, Mersenne31Field>(
+        VM::<DelegationsCounters>::run_basic_unrolled::<_, _, _, BabyBearField>(
             &mut state,
             &mut ram,
             &mut snapshotter,
@@ -802,7 +802,7 @@ pub(crate) mod test {
             SimpleSnapshotter<DelegationsCounters, { common_constants::rom::ROM_SECOND_WORD_BITS }>,
             _,
             _,
-            Mersenne31Field,
+            BabyBearField,
         >(
             &mut state,
             &mut ram,
@@ -859,7 +859,7 @@ pub(crate) mod test {
             SimpleSnapshotter<DelegationsCounters, { common_constants::rom::ROM_SECOND_WORD_BITS }>,
             _,
             _,
-            Mersenne31Field,
+            BabyBearField,
         >(
             &mut state,
             &mut ram,
@@ -916,7 +916,7 @@ pub(crate) mod test {
             SimpleSnapshotter<DelegationsCounters, { common_constants::rom::ROM_SECOND_WORD_BITS }>,
             _,
             _,
-            Mersenne31Field,
+            BabyBearField,
         >(
             &mut state,
             &mut ram,

@@ -457,3 +457,99 @@ impl FieldExtension<BabyBearField> for BabyBearExt2 {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn arb_baby_bear_ext2() -> impl Strategy<Value = BabyBearExt2> {
+        (0..BabyBearField::ORDER, 0..BabyBearField::ORDER)
+            .prop_map(|(a, b)| BabyBearExt2::new(BabyBearField::new(a), BabyBearField::new(b)))
+    }
+
+    proptest! {
+        #[test]
+        fn mul_commutative(
+            a in arb_baby_bear_ext2(),
+            b in arb_baby_bear_ext2(),
+        ) {
+            let mut ab = a; ab.mul_assign(&b);
+            let mut ba = b; ba.mul_assign(&a);
+            prop_assert_eq!(ab, ba);
+        }
+
+        #[test]
+        fn mul_associative(
+            a in arb_baby_bear_ext2(),
+            b in arb_baby_bear_ext2(),
+            c in arb_baby_bear_ext2(),
+        ) {
+            let mut ab = a; ab.mul_assign(&b);
+            let mut abc_left = ab; abc_left.mul_assign(&c);
+            let mut bc = b; bc.mul_assign(&c);
+            let mut abc_right = a; abc_right.mul_assign(&bc);
+            prop_assert_eq!(abc_left, abc_right);
+        }
+
+        #[test]
+        fn mul_inverse(a in arb_baby_bear_ext2()) {
+            if let Some(inv) = a.inverse() {
+                let mut product = a;
+                product.mul_assign(&inv);
+                prop_assert_eq!(product, BabyBearExt2::ONE);
+            }
+        }
+
+        #[test]
+        fn distributive(
+            a in arb_baby_bear_ext2(),
+            b in arb_baby_bear_ext2(),
+            c in arb_baby_bear_ext2(),
+        ) {
+            let mut bc = b; bc.add_assign(&c);
+            let mut left = a; left.mul_assign(&bc);
+            let mut ab = a; ab.mul_assign(&b);
+            let mut ac = a; ac.mul_assign(&c);
+            let mut right = ab; right.add_assign(&ac);
+            prop_assert_eq!(left, right);
+        }
+
+        #[test]
+        fn square_is_mul_self(a in arb_baby_bear_ext2()) {
+            let mut squared = a; squared.square();
+            let mut mulled = a; mulled.mul_assign(&a);
+            prop_assert_eq!(squared, mulled);
+        }
+    }
+
+    const TWO_ADICITY: usize = <BabyBearField as crate::TwoAdicField>::TWO_ADICITY + 1;
+
+    fn two_adic_generator() -> BabyBearExt2 {
+        let odd_factor = (BabyBearField::ORDER - 1) >> (TWO_ADICITY - 1);
+        BabyBearExt2::new(BabyBearField::ZERO, BabyBearField::ONE).pow(odd_factor)
+    }
+
+    #[test]
+    fn two_adicity_generators_are_valid() {
+        let mut generator = two_adic_generator();
+        for k in (1..=TWO_ADICITY).rev() {
+            let mut half_powered = generator;
+            half_powered.exp_power_of_2(k - 1);
+            assert_ne!(half_powered, BabyBearExt2::ONE);
+            assert_eq!(*half_powered.square(), BabyBearExt2::ONE);
+            generator.square();
+        }
+    }
+
+    #[test]
+    fn two_adicity_generators_inversed_are_correct() {
+        let mut generator = two_adic_generator();
+        let mut inverse = generator.inverse().unwrap();
+        for _ in 0..=TWO_ADICITY {
+            assert_eq!(generator * inverse, BabyBearExt2::ONE);
+            generator.square();
+            inverse.square();
+        }
+    }
+}
