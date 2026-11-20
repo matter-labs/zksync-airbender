@@ -1451,8 +1451,11 @@ fn measure_register_timestamp_deltas() {
 }
 
 #[test]
+#[ignore = "full-block JIT/VM comparison, run on demand"]
 #[serial_test::serial]
 fn run_and_compare() {
+    const CHECKPOINT_STEP: u32 = 1 << 22;
+
     let (binary, text) = load_dumps("examples/zksync_os/app.bin", "examples/zksync_os/app.text");
     let ram_config = JitRunnerRam::Full;
 
@@ -1466,39 +1469,21 @@ fn run_and_compare() {
         .collect();
     let source = QuasiUARTSource::new_with_reads(witness);
 
-    let step = 1 << 22;
-    let initial_step = step;
-    let upper_bound = (1 << 30) - 8;
+    let (cycles_taken, result) = compare_full_block(&binary, &text, &source, ram_config);
+    let Err(mut divergence) = result else {
+        println!("Passed for {cycles_taken} cycles");
+        return;
+    };
 
-    let mut previous_cycles_taken = 0;
-
-    let mut num_steps = initial_step;
-    while num_steps < upper_bound {
-        // let (jit_state, jit_memory) = JittedCode::run_alternative_simulator(
-        //     &text,
-        //     &mut source.clone(),
-        //     &binary,
-        //     Some(num_steps),
-        // );
-
+    let compare_checkpoint = |cycles_bound| {
         let (jit_state, jit_memory, jit_last_trace_chunk) =
             JittedCode::run_alternative_simulator_with_last_snapshot(
                 &text,
                 &mut source.clone(),
                 &binary,
-                Some(num_steps),
+                Some(cycles_bound),
                 ram_config,
             );
-
-        let cycles_taken = (jit_state.timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
-        if cycles_taken == previous_cycles_taken {
-            break;
-        }
-        previous_cycles_taken = cycles_taken;
-
-        // let (reference_state, reference_ram) =
-        //     run_reference_for_num_cycles(&binary, &text, source.clone(), jit_state.timestamp);
-
         let (reference_state, reference_ram, reference_snapshotter) =
             run_reference_for_num_cycles_with_snapshots(
                 &binary,
@@ -1508,163 +1493,278 @@ fn run_and_compare() {
                 false,
                 ram_config.ram_size(),
             );
+        compare_block_state(
+            u64::from(cycles_bound),
+            &reference_state,
+            &jit_state,
+            &reference_ram.backing,
+            &jit_memory,
+        )?;
+        let reference_reads = &reference_snapshotter.reads_buffer;
+        let tail_len = jit_last_trace_chunk.len as usize;
+        let offset = reference_reads.len().checked_sub(tail_len).ok_or_else(|| {
+            format!(
+                "Snapshot length diverged after {cycles_bound} steps: reference has {} reads, JIT tail has {tail_len}",
+                reference_reads.len()
+            )
+        })?;
+        compare_block_trace_chunk(reference_reads, offset, &jit_last_trace_chunk)
+    };
 
-        assert_eq!(
-            reference_state.timestamp, jit_state.timestamp,
-            "TIMESTAMP diverged after {} steps",
-            num_steps
-        );
-        if reference_state.pc != jit_state.pc {
-            panic!(
-                "PC diverged after {} steps: expected 0x{:08x}, got 0x{:08x}",
-                num_steps, reference_state.pc, jit_state.pc,
-            );
-        }
-
-        // println!("Final instr = 0x{:08x}", text[(reference_state.pc as usize/4) - 1]);
-
-        assert_eq!(
-            reference_state.counters.add_sub_family as u64,
-            jit_state.counters[CounterType::AddSubLui as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.slt_branch_family as u64,
-            jit_state.counters[CounterType::BranchSlt as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.binary_shift_family as u64,
-            jit_state.counters[CounterType::ShiftBinary as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.mul_div_family as u64,
-            jit_state.counters[CounterType::MulDiv as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.word_size_mem_family as u64,
-            jit_state.counters[CounterType::MemWord as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.subword_size_mem_family as u64,
-            jit_state.counters[CounterType::MemSubword as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.blake_calls as u64,
-            jit_state.counters[CounterType::BlakeDelegation as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.bigint_calls as u64,
-            jit_state.counters[CounterType::BigintDelegation as u8 as usize]
-        );
-        assert_eq!(
-            reference_state.counters.keccak_calls as u64,
-            jit_state.counters[CounterType::KeccakDelegation as u8 as usize]
-        );
-
-        let mut equal_state = true;
-        let jit_regs = jit_state.materialized_registers();
-        let jit_reg_ts = jit_state.register_timestamps_array();
-        for (reg_idx, ((reference, jit_value), jit_ts)) in reference_state
-            .registers
-            .iter()
-            .zip(jit_regs.iter())
-            .zip(jit_reg_ts.iter())
-            .enumerate()
-        {
-            if reference.value != *jit_value {
-                println!(
-                    "VALUE diverged for x{} after {} steps:\nreference\n{}\njitted\n{}",
-                    reg_idx, num_steps, reference.value, jit_value
-                );
-                equal_state = false;
-            }
-            if reference.timestamp != *jit_ts {
-                println!(
-                    "TIMESTAMP diverged for x{} after {} steps:\nreference\n{}\njitted\n{}",
-                    reg_idx, num_steps, reference.timestamp, jit_ts
-                );
-                equal_state = false;
+    let mut matching = 0;
+    let final_checkpoint = u32::try_from(cycles_taken.div_ceil(u64::from(CHECKPOINT_STEP)))
+        .unwrap()
+        .max(1);
+    let mut divergent = final_checkpoint;
+    while divergent - matching > 1 {
+        let checkpoint = matching + (divergent - matching) / 2;
+        match compare_checkpoint(checkpoint * CHECKPOINT_STEP) {
+            Ok(()) => matching = checkpoint,
+            Err(mismatch) => {
+                divergent = checkpoint;
+                divergence = mismatch;
             }
         }
-
-        assert_eq!(reference_ram.backing.len(), jit_memory.memory().len());
-        for (word_idx, ((reference_value, jit_value), jit_ts)) in reference_ram
-            .backing
-            .iter()
-            .zip(jit_memory.memory().iter())
-            .zip(jit_memory.timestamps().iter())
-            .enumerate()
-        {
-            assert!(
-                reference_value.value == *jit_value,
-                "VALUE diverged for word {} after {} steps: reference is {}, JIT is {}",
-                word_idx,
-                num_steps,
-                reference_value.value,
-                jit_value
-            );
-            assert!(
-                reference_value.timestamp == *jit_ts,
-                "TIMESTAMP diverged for word {} after {} steps: reference is {}, JIT is {}",
-                word_idx,
-                num_steps,
-                reference_value.timestamp,
-                jit_ts,
-            );
-        }
-
-        // compare the end of snapshotter
-        let (jit_snapshot_values, jit_snapshot_tses) = jit_last_trace_chunk.data();
-        println!("Snapshot tail length is {}", jit_snapshot_values.len());
-        if !jit_snapshot_values.is_empty() {
-            let length = jit_snapshot_values.len();
-            let last_reference = &reference_snapshotter.reads_buffer
-                [(reference_snapshotter.reads_buffer.len() - length)..];
-
-            assert_eq!(last_reference.len(), length);
-            let mut num_diffs = 0;
-            for (
-                idx,
-                (((reference_value, (reference_ts_low, reference_ts_high)), jit_value), jit_ts),
-            ) in last_reference
-                .iter()
-                .zip(jit_snapshot_values.iter())
-                .zip(jit_snapshot_tses.iter())
-                .enumerate()
-            {
-                if *reference_value != *jit_value {
-                    println!(
-                        "VALUE diverged at snapshot index {}: expected {}, got {}",
-                        idx, reference_value, jit_value
-                    );
-                    equal_state = false;
-                    num_diffs += 1;
-                    if num_diffs >= 32 {
-                        panic!();
-                    }
-                }
-                let reference_ts = ((*reference_ts_high as u64) << 32) | (*reference_ts_low as u64);
-                if reference_ts != *jit_ts {
-                    println!(
-                        "TIMESTAMP diverged at snapshot index {}: expected {}, got {}",
-                        idx, reference_ts, jit_ts
-                    );
-                    equal_state = false;
-                    num_diffs += 1;
-                    if num_diffs >= 32 {
-                        panic!();
-                    }
-                }
-            }
-        }
-
-        if !equal_state {
-            panic!("State diverged");
-        }
-
-        println!("Passed for {} cycles", num_steps);
-
-        num_steps += step;
     }
+
+    if divergent == final_checkpoint {
+        let last_matching = u64::from(matching) * u64::from(CHECKPOINT_STEP);
+        panic!(
+            "No bounded checkpoint up to {last_matching} cycles diverges; the full run diverges after {cycles_taken} cycles: {divergence}"
+        );
+    }
+    let steps = u64::from(divergent) * u64::from(CHECKPOINT_STEP);
+    panic!(
+        "Divergent checkpoint at {steps} cycles (bisection assumes the divergence persists): {divergence}"
+    );
+}
+
+fn compare_full_block(
+    binary: &[u32],
+    text: &[u32],
+    source: &QuasiUARTSource,
+    ram_config: JitRunnerRam,
+) -> (u64, Result<(), String>) {
+    let final_timestamp = JittedCode::run_alternative_simulator_with_last_snapshot(
+        text,
+        &mut source.clone(),
+        binary,
+        None,
+        ram_config,
+    )
+    .0
+    .timestamp;
+    let cycles_taken = (final_timestamp - INITIAL_TIMESTAMP) / TIMESTAMP_STEP;
+    let (reference_state, reference_ram, reference_snapshotter) =
+        run_reference_for_num_cycles_with_snapshots(
+            binary,
+            text,
+            source.clone(),
+            final_timestamp,
+            false,
+            ram_config.ram_size(),
+        );
+
+    let mut source = source.clone();
+    let reference_reads = &reference_snapshotter.reads_buffer;
+    let mut context = Context::new(
+        BlockTraceContext {
+            inner: DefaultContextImpl::new(&mut source),
+            reference_reads,
+            mismatch: None,
+        },
+        ram_config,
+    );
+    let instructions = preprocess_bytecode::<FullUnsignedMachineDecoderConfig, false>(text);
+    let jit = JittedCode::preprocess_bytecode(&instructions, None, mop_field(), ram_config);
+    let mut jit_memory = MemoryHolder::allocate_zeroed(ram_config, Global);
+    let mut trace = unsafe { Box::<TraceChunk>::new_zeroed().assume_init() };
+    jit.run(
+        &mut context,
+        &mut jit_memory,
+        NonNull::from(trace.as_mut()),
+        binary,
+    );
+
+    let mut comparison = context.into_implementation();
+    if let Some(mismatch) = comparison.mismatch {
+        panic!("{mismatch}");
+    }
+    let trace_len = comparison.inner.trace_len;
+    assert_eq!(
+        trace_len,
+        reference_reads.len(),
+        "Total trace length diverged"
+    );
+    println!("Compared {trace_len} trace entries");
+
+    let jit_state = comparison
+        .take_final_state()
+        .expect("must finish execution");
+    let result = compare_block_state(
+        cycles_taken,
+        &reference_state,
+        &jit_state,
+        &reference_ram.backing,
+        &jit_memory,
+    );
+    (cycles_taken, result)
+}
+
+struct BlockTraceContext<'source, 'trace> {
+    inner: DefaultContextImpl<'source, QuasiUARTSource>,
+    reference_reads: &'trace [(u32, (u32, u32))],
+    mismatch: Option<String>,
+}
+
+impl BlockTraceContext<'_, '_> {
+    fn compare_chunk(&mut self, trace: NonNull<TraceChunk>) {
+        if self.mismatch.is_none() {
+            self.mismatch =
+                compare_block_trace_chunk(self.reference_reads, self.inner.trace_len, unsafe {
+                    trace.as_ref()
+                })
+                .err();
+        }
+    }
+}
+
+impl ContextImpl for BlockTraceContext<'_, '_> {
+    fn read_nondeterminism(&mut self) -> u32 {
+        self.inner.read_nondeterminism()
+    }
+
+    fn write_nondeterminism(&mut self, value: u32, memory: &[u32]) {
+        self.inner.write_nondeterminism(value, memory);
+    }
+
+    fn receive_trace(
+        &mut self,
+        trace: NonNull<TraceChunk>,
+        machine_state: &MachineState,
+    ) -> NonNull<TraceChunk> {
+        self.compare_chunk(trace);
+        self.inner.receive_trace(trace, machine_state)
+    }
+
+    fn receive_final_trace_piece(
+        &mut self,
+        trace: NonNull<TraceChunk>,
+        machine_state: &MachineState,
+    ) {
+        self.compare_chunk(trace);
+        self.inner.receive_final_trace_piece(trace, machine_state);
+    }
+
+    fn take_final_state(&mut self) -> Option<MachineState> {
+        self.inner.take_final_state()
+    }
+
+    fn final_state_ref(&self) -> Option<&MachineState> {
+        self.inner.final_state_ref()
+    }
+}
+
+fn compare_block_state(
+    steps: u64,
+    reference: &State<DelegationsAndFamiliesCounters>,
+    jit: &MachineState,
+    reference_ram: &[Register],
+    jit_memory: &MemoryHolder,
+) -> Result<(), String> {
+    if reference.timestamp != jit.timestamp {
+        return Err(format!(
+            "TIMESTAMP diverged after {steps} steps: reference is {}, JIT is {}",
+            reference.timestamp, jit.timestamp
+        ));
+    }
+    if reference.pc != jit.pc {
+        return Err(format!(
+            "PC diverged after {steps} steps: expected {:#010x}, got {:#010x}",
+            reference.pc, jit.pc
+        ));
+    }
+
+    let jit = jit.as_replayer_state();
+    if reference.counters != jit.counters {
+        return Err(format!(
+            "COUNTERS diverged after {steps} steps: reference is {:?}, JIT is {:?}",
+            reference.counters, jit.counters
+        ));
+    }
+    for (reg_idx, (reference, jit)) in reference.registers.iter().zip(&jit.registers).enumerate() {
+        if reference.value != jit.value {
+            return Err(format!(
+                "VALUE diverged for x{reg_idx} after {steps} steps:\nreference\n{}\njitted\n{}",
+                reference.value, jit.value
+            ));
+        }
+        if reference.timestamp != jit.timestamp {
+            return Err(format!(
+                "TIMESTAMP diverged for x{reg_idx} after {steps} steps:\nreference\n{}\njitted\n{}",
+                reference.timestamp, jit.timestamp
+            ));
+        }
+    }
+
+    if reference_ram.len() != jit_memory.memory().len() {
+        return Err(format!(
+            "RAM length diverged after {steps} steps: reference is {}, JIT is {}",
+            reference_ram.len(),
+            jit_memory.memory().len()
+        ));
+    }
+    for (word_idx, (reference, (&jit_value, &jit_ts))) in reference_ram
+        .iter()
+        .zip(jit_memory.memory().iter().zip(jit_memory.timestamps()))
+        .enumerate()
+    {
+        if reference.value != jit_value {
+            return Err(format!(
+                "VALUE diverged for word {word_idx} after {steps} steps: reference is {}, JIT is {jit_value}",
+                reference.value
+            ));
+        }
+        if reference.timestamp != jit_ts {
+            return Err(format!(
+                "TIMESTAMP diverged for word {word_idx} after {steps} steps: reference is {}, JIT is {jit_ts}",
+                reference.timestamp
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn compare_block_trace_chunk(
+    reference_reads: &[(u32, (u32, u32))],
+    offset: usize,
+    jit_trace: &TraceChunk,
+) -> Result<(), String> {
+    let (values, timestamps) = jit_trace.data();
+    let end = offset + values.len();
+    let reference = reference_reads.get(offset..end).ok_or_else(|| {
+        format!(
+            "Snapshot length diverged at index {offset}: JIT chunk ends at {end}, reference has {} reads",
+            reference_reads.len()
+        )
+    })?;
+    for (idx, ((&(reference_value, (low, high)), &jit_value), &jit_ts)) in
+        (offset..end).zip(reference.iter().zip(values).zip(timestamps))
+    {
+        if reference_value != jit_value {
+            return Err(format!(
+                "VALUE diverged at snapshot index {idx}: expected {reference_value}, got {jit_value}"
+            ));
+        }
+        let reference_ts = (u64::from(high) << 32) | u64::from(low);
+        if reference_ts != jit_ts {
+            return Err(format!(
+                "TIMESTAMP diverged at snapshot index {idx}: expected {reference_ts}, got {jit_ts}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
