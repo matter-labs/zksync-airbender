@@ -41,9 +41,10 @@ fn cpu_generation_requires_complete_coverage_at_each_budget() {
         .into_iter()
         .flat_map(|arena| all_circuits().into_iter().map(move |c| row(c, arena)))
         .collect();
-    assert!(generate(&rows)
-        .unwrap()
-        .contains("PRESET_ARENA_BYTES: &[usize] = &[22548578304, 31138512896]"));
+    let generated = generate(&rows).unwrap();
+    for arena_bytes in [21usize << 30, 29usize << 30] {
+        assert!(generated.contains(&format!("\n{arena_bytes} => match circuit {{")));
+    }
     let mut missing_budget = rows.clone();
     for row in &mut missing_budget {
         if row.arena_bytes == 21 << 30 {
