@@ -115,11 +115,11 @@ contract MergedTest is MergedBase {
         bytes memory code = wrapVerifier.code;
         require(
             keccak256(_slice(code, _setupOffset(), code.length))
-                == 0xf5e33e946c45cc936b514c2158e8ac6ce4085a320a7cbd8dde3d90d37b7301ed,
+                == 0x7024dc38fe6be11ae2b04cf75f6210dfdaeced21bde20b3e5836c01737528b85,
             "embedded setup bytes changed"
         );
         bytes memory prefix = type(GkrWhirVerifierCode).runtimeCode;
-        require(code.length == prefix.length + 16_410, "runtime length differs");
+        require(code.length == prefix.length + 29_210, "runtime length differs");
         // Check every byte; the pinned setup hash above identifies the complete suffix.
         for (uint256 i; i < prefix.length; ++i) {
             require(code[i] == prefix[i], "runtime prefix differs");
@@ -200,6 +200,7 @@ contract MergedTest is MergedBase {
 
     function test_rejects_whir_sumcheck_pad() external {
         _rejectsRunPad("whir_0_sumcheck");
+        _rejectsRunPad(_finalRound("_sumcheck")); // fold 5: ten fields, then five folding nonces
     }
 
     function test_rejects_setup_leaf_pad() external {
@@ -296,6 +297,26 @@ contract MergedTest is MergedBase {
                 "../negative/query_pow_", vm.toString(r), "/out/GkrWhirVerifier.sol/GkrWhirVerifier.json"
             ));
             require(_rejects(control, proof), string.concat("query PoW check missing at round ", vm.toString(r)));
+        }
+    }
+
+    function test_rejects_folding_pow() external {
+        uint256 rounds = vm.parseJsonUint(fields, ".whir_rounds");
+        for (uint256 r; r < rounds; ++r) {
+            address control = _deploy(string.concat(
+                "../negative/folding_pow_", vm.toString(r), "/out/GkrWhirVerifier.sol/GkrWhirVerifier.json"
+            ));
+            require(_rejects(control, proof), string.concat("folding PoW check missing at round ", vm.toString(r)));
+        }
+    }
+
+    function test_rejects_ood_pow() external {
+        uint256 rounds = vm.parseJsonUint(fields, ".whir_rounds");
+        for (uint256 r; r + 1 < rounds; ++r) {
+            address control = _deploy(string.concat(
+                "../negative/ood_pow_", vm.toString(r), "/out/GkrWhirVerifier.sol/GkrWhirVerifier.json"
+            ));
+            require(_rejects(control, proof), string.concat("OOD PoW check missing at oracle ", vm.toString(r + 1)));
         }
     }
 

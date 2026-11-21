@@ -7,7 +7,7 @@ if [ "$#" -ne 0 ]; then
   exit 1
 fi
 cd "$SCRIPT_DIR/l1_wrap"
-for p in merged negative/wrong_final_pc negative/external_pow negative/batching_pow negative/query_pow_*; do
+for p in merged negative/wrong_final_pc negative/external_pow negative/batching_pow negative/query_pow_* negative/folding_pow_* negative/ood_pow_*; do
   ( cd "$p" && forge build >/dev/null )
 done
 ( cd merged && forge test -vv )

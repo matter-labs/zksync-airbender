@@ -13,11 +13,13 @@
 //! `e_z(X) = (1 − z) + (2z − 1)·X` and the quadratic `u = a + bX + cX²`. Only `(b, c)`
 //! is sent; the verifier derives `a` from the running claim and absorbs the rebuilt
 //! coefficients of `p`. A WHIR sumcheck round sends `(c0, c2)`: `c1` is derived as
-//! `claim − 2·c0 − c2`.
+//! `claim − 2·c0 − c2`. Each WHIR round's packed coefficient run is followed by
+//! its folding-PoW nonce array when gated. Each intermediate cap is followed by
+//! an OOD-PoW nonce when gated and one raw BE u128 OOD value.
 
 mod digest;
 mod gkr;
-mod params;
+pub(crate) mod params;
 mod replay;
 mod runs;
 mod whir;
@@ -29,8 +31,8 @@ use prover::gkr::prover_config::ProverConfig;
 
 pub use digest::{digest_wire, merkle_node, merkle_reduce};
 pub use gkr::split_round;
-pub use params::FormatParams;
 pub(crate) use params::Geometry;
+pub use params::{FormatParams, OracleGeometry};
 
 pub use replay::{replay_gkr_points, GkrReplay, LayerPoints};
 pub use runs::{fe_run_len, ts_run_len, write_fe_run, write_ts_run};
@@ -113,10 +115,88 @@ fn check_profile(
         ws, &config.whir_schedule,
         "profile WHIR schedule differs from the proof"
     );
-    let setup_path = proof.whir_proof.setup_commitment.queries[0].path.len();
+    let whir = &proof.whir_proof;
+    let pack = 1 << params.pack_log2;
+    let packed_memory =
+        (circuit.memory_layout.total_width + circuit.witness_layout.total_width).div_ceil(pack);
+    let packed_setup = circuit.generic_lookup_tables_width.div_ceil(pack);
+    let query_shape = |round: usize, columns: usize| {
+        let query_bits = params.oracles[round].query_index_bits;
+        (
+            1usize << query_bits,
+            query_bits - params.cap_log2,
+            columns << params.folds[round],
+        )
+    };
+    let check_query = |round: usize, columns: usize, index, depth, values| {
+        let (leaves, expected_depth, expected_values) = query_shape(round, columns);
+        assert!(
+            index < leaves,
+            "WHIR round {round} query index exceeds its oracle"
+        );
+        assert_eq!(depth, expected_depth, "WHIR round {round} query path depth");
+        assert_eq!(
+            values, expected_values,
+            "WHIR round {round} query leaf width"
+        );
+    };
+    for (oracle, columns) in [
+        (&whir.memory_commitment, packed_memory),
+        (&whir.setup_commitment, packed_setup),
+    ] {
+        assert_eq!(oracle.num_columns, columns, "WHIR packed base columns");
+        assert_eq!(oracle.evals.len(), columns, "WHIR packed claim count");
+        assert_eq!(
+            oracle.commitment.cap.cap.len(),
+            params.cap(),
+            "WHIR base cap size"
+        );
+        assert_eq!(
+            oracle.queries.len(),
+            params.queries[0],
+            "WHIR base query count"
+        );
+        for q in &oracle.queries {
+            check_query(
+                0,
+                columns,
+                q.index,
+                q.path.len(),
+                q.leaf_values_concatenated.len(),
+            );
+        }
+    }
     assert!(
-        params.setup_frontier_skip() <= setup_path,
-        "profile setup frontier lies below the setup leaves"
+        whir.witness_commitment.queries.is_empty(),
+        "expected a merged memory and witness tree"
+    );
+    assert_eq!(
+        whir.intermediate_whir_oracles.len(),
+        params.folds.len() - 1,
+        "WHIR intermediate oracle count"
+    );
+    for (i, oracle) in whir.intermediate_whir_oracles.iter().enumerate() {
+        let round = i + 1;
+        assert_eq!(
+            oracle.queries.len(),
+            params.queries[round],
+            "WHIR round {round} query count"
+        );
+        for q in &oracle.queries {
+            check_query(
+                round,
+                1,
+                q.index,
+                q.path.len(),
+                q.leaf_values_concatenated.len(),
+            );
+        }
+    }
+    let final_log = config.whir_message_size_log2() - params.folds.iter().sum::<usize>();
+    assert_eq!(
+        whir.final_monomials.len(),
+        1 << final_log,
+        "WHIR final monomial count"
     );
 }
 

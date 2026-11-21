@@ -8,7 +8,7 @@ fn source() -> ProgramSource {
 }
 
 /// Setup-tree level the verifier's pinned setup frontier holds (the cap is level 3).
-const SETUP_FRONTIER_LEVEL: usize = 9;
+const SETUP_FRONTIER_LEVEL: usize = 10;
 
 /// Recommits the L1 wrap setup (setup only, no proof), checks its cap against the committed
 /// reference wrap proof, and writes the `2^SETUP_FRONTIER_LEVEL` setup-tree nodes at that

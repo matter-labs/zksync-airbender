@@ -28,23 +28,11 @@ pub(super) fn encode_whir(w: &mut Writer, proof: &Proof, params: &Geometry) {
     let mut steps = wp.all_sumcheck_polys();
     let nonces = wp.queries_pow_nonces();
     assert_eq!(nonces.len(), num_rounds, "WHIR query PoW count");
-    assert!(
-        wp.base_folding_pow_nonces.is_empty(),
-        "the compressed calldata does not encode base folding PoW"
-    );
     for oracle in &wp.intermediate_whir_oracles {
         assert_eq!(
             oracle.ood_samples.len(),
             1,
-            "the compressed calldata encodes one OOD sample per oracle"
-        );
-        assert!(
-            oracle.ood_pow_nonce.is_none(),
-            "the compressed calldata does not encode OOD PoW"
-        );
-        assert!(
-            oracle.folding_pow_nonces.is_empty(),
-            "the compressed calldata does not encode folding PoW"
+            "the compressed calldata encodes exactly one OOD sample"
         );
     }
     for r in 0..num_rounds {
@@ -56,15 +44,40 @@ pub(super) fn encode_whir(w: &mut Writer, proof: &Proof, params: &Geometry) {
             })
             .collect();
         w.put(format!("whir_{r}_sumcheck"), &write_fe_run(&sumcheck));
+        let folding_nonces = if r == 0 {
+            &wp.base_folding_pow_nonces
+        } else {
+            &wp.intermediate_whir_oracles[r - 1].folding_pow_nonces
+        };
+        let expected = if params.folding_pow_bits[r] > 0 {
+            params.folds[r]
+        } else {
+            0
+        };
+        assert_eq!(folding_nonces.len(), expected, "folding PoW nonce count");
+        if expected > 0 {
+            let bytes: Vec<_> = folding_nonces
+                .iter()
+                .flat_map(|n| n.to_be_bytes())
+                .collect();
+            w.put(format!("whir_{r}_folding_nonces"), &bytes);
+        }
         if r < num_rounds - 1 {
-            let cap = &wp.intermediate_whir_oracles[r].commitment.cap.cap;
+            let oracle = &wp.intermediate_whir_oracles[r];
+            let cap = &oracle.commitment.cap.cap;
             assert_eq!(cap.len(), params.cap(), "intermediate cap size");
             w.put(format!("whir_{r}_cap"), &digests(cap));
+            assert_eq!(
+                oracle.ood_pow_nonce.is_some(),
+                params.ood_pow_bits[r] > 0,
+                "OOD PoW nonce presence"
+            );
+            if let Some(nonce) = oracle.ood_pow_nonce {
+                w.put(format!("whir_{r}_ood_nonce"), &nonce.to_be_bytes());
+            }
             w.put(
                 format!("whir_{r}_ood"),
-                &wp.intermediate_whir_oracles[r].ood_samples[0]
-                    .to_u128()
-                    .to_be_bytes(),
+                &oracle.ood_samples[0].to_u128().to_be_bytes(),
             );
             w.put(format!("whir_{r}_pow_nonce"), &nonces[r].to_be_bytes());
         } else {

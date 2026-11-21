@@ -6,7 +6,7 @@ The bundle paths and resolved `ProverConfig` are pinned in
 comes from the configuration. The generator derives the effective external difficulty
 as the maximum of the lookup requirement and the wrap's external floor, using the
 same circuit, security level and functions as the prover. Difficulties are bounded by
-the existing GKR/query caps, and inits/teardowns top bits must be strictly increasing.
+the 64-bit calldata nonce width, and inits/teardowns top bits must be strictly increasing.
 
 [seed.rs](src/seed.rs) owns transcript initialization and the verified statement.
 Initial-preimage words are little-endian u32s; WHIR digest words are big-endian
@@ -18,6 +18,20 @@ transcript order, shape and the WHIR batching claim; it does not verify the full
 proof or PoW difficulty. Proof acceptance belongs to the generated Solidity
 verifier and [WHIR template](src/templates/whir.sol). The calldata decoder rejects
 unconsumed input.
+
+Each WHIR round carries a separately padded 123-bit run of `(c0,c2)` pairs,
+followed by one big-endian u64 nonce per folding step when folding PoW is
+nonzero. The verifier absorbs the reconstructed polynomial, verifies that
+step's nonce, then draws its folding challenge. A zero folding difficulty
+uses a plain challenge and carries no folding nonces.
+
+After committing an intermediate cap, the prover grinds an OOD nonce; the
+verifier checks it before drawing the OOD point. Both then absorb its raw
+big-endian u128 value. The verifier
+checks the value is canonical before absorbing it. Query PoW, query indices
+and the delinearization challenge follow. The OOD value receives power
+`delta`; queries continue at `delta^2`. The generator sizes deferred constraints
+and 32-value leaf scratch from the schedule and rejects multiple OOD samples.
 
 The statement passed to `IVerificationRegistry.markVerified` is
 `publicInput || auxInput` (64 bytes). The two words concatenate registers
@@ -42,7 +56,8 @@ controls require [run_merged.sh](generated_contracts/run_merged.sh).
 The ignored contract producer also replays PoW digests from the proof and writes
 negative renders differing in exactly one difficulty. Each must reject the honest
 proof. Real pad-bit cases assert their geometry from the calldata field map, and
-Merkle controls include the memory+witness path.
+Merkle controls include the memory+witness path. Folding controls cover every
+round, including the final arm. OOD-PoW controls cover every intermediate oracle.
 
 Proof and setup-frontier producer commands are in the
 [fixture README](../fixtures/README.md).

@@ -27,13 +27,21 @@ fn pow(seed: &mut Keccak256Seed, nonce: u64) -> u32 {
     zeros
 }
 
-/// Leading-zero counts at the external draw, batching draw, and every query round.
+pub struct PowLeadingZeros {
+    pub external: u32,
+    pub batching: u32,
+    pub queries: Vec<u32>,
+    pub folding: Vec<Vec<u32>>,
+    pub ood: Vec<Option<u32>>,
+}
+
+/// Leading-zero counts at every gated transcript draw.
 pub fn leading_zeros(
     circuit: &Circuit,
     proof: &Proof,
     mode: &OperationMode,
     config: &ProverConfig,
-) -> (u32, u32, Vec<u32>) {
+) -> PowLeadingZeros {
     let replay = verifier_evm::encoding::replay_gkr_points(circuit, proof, mode, config);
     let preimage = verifier_evm::commit_seed_preimage(circuit, proof, mode);
     let mut seed = Keccak256Seed(Keccak256::digest(preimage).into());
@@ -86,7 +94,14 @@ pub fn leading_zeros(
     let folds = config.whir_schedule.fold_steps();
     let queries = config.whir_schedule.queries_per_round();
     let nonces = wp.queries_pow_nonces();
+    let geometry = verifier_evm::generator::WhirGenConfig::derive(
+        config,
+        circuit.memory_layout.total_width + circuit.witness_layout.total_width,
+        circuit.generic_lookup_tables_width,
+    );
     let mut query_zeros = Vec::new();
+    let mut folding_zeros = Vec::new();
+    let mut ood_zeros = Vec::new();
     for (r, &fold) in folds.iter().enumerate() {
         let polys = if r == 0 {
             &wp.base_sumcheck_polys
@@ -94,10 +109,21 @@ pub fn leading_zeros(
             &wp.intermediate_whir_oracles[r - 1].sumcheck_polys
         };
         assert_eq!(polys.len(), fold);
-        for poly in polys {
+        let folding_nonces = if r == 0 {
+            &wp.base_folding_pow_nonces
+        } else {
+            &wp.intermediate_whir_oracles[r - 1].folding_pow_nonces
+        };
+        assert!(folding_nonces.is_empty() || folding_nonces.len() == fold);
+        let mut zeros = Vec::new();
+        for (step, poly) in polys.iter().enumerate() {
             absorb(&mut seed, poly);
+            if !folding_nonces.is_empty() {
+                zeros.push(pow(&mut seed, folding_nonces[step]));
+            }
             draw(&mut seed, 1);
         }
+        folding_zeros.push(zeros);
         if r + 1 < folds.len() {
             let oracle = &wp.intermediate_whir_oracles[r];
             let cap: Vec<_> = oracle
@@ -109,20 +135,27 @@ pub fn leading_zeros(
                 .copied()
                 .collect();
             Tr::commit_u32_with_seed(&mut seed, &cap);
-            draw(&mut seed, 1); // OOD point
+            assert_eq!(oracle.ood_samples.len(), 1);
+            ood_zeros.push(oracle.ood_pow_nonce.map(|nonce| pow(&mut seed, nonce)));
+            draw(&mut seed, 1);
             absorb(&mut seed, &oracle.ood_samples);
         } else {
             absorb(&mut seed, &wp.final_monomials);
         }
         query_zeros.push(pow(&mut seed, nonces[r]));
         // Match draw_query_bits' padded draw, including its skipped first word.
-        let qib =
-            config.whir_message_size_log2() + config.whir_schedule.base_lde_factor_log2() - fold;
+        let qib = geometry.qib(r);
         let words = ((queries[r] * qib).div_ceil(32) + 1).next_multiple_of(8);
         Tr::draw_randomness(&mut seed, &mut vec![0u32; words]);
         if r + 1 < folds.len() {
             draw(&mut seed, 1); // delinearization
         }
     }
-    (external, batching, query_zeros)
+    PowLeadingZeros {
+        external,
+        batching,
+        queries: query_zeros,
+        folding: folding_zeros,
+        ood: ood_zeros,
+    }
 }

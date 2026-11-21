@@ -43,10 +43,10 @@ contract WhirVerifier {
     // ── Generated from the prover config + circuit (`__TEMPLATE_WHIR_*`) ─────────────────────
     // Every value below is assigned by the generator (see the note on `__TEMPLATE_*` constants in
     // the GKR template).
-    // RS-codeword evaluation-domain generator and its inverse — a primitive 2^codeword_log2-th
-    // root of unity (`Proth120::TWO_ADICITY_GENERATORS[codeword_log2]`).
-    uint256 constant __TEMPLATE_WHIR_GEN     = "{unassigned}";
-    uint256 constant __TEMPLATE_WHIR_GEN_INV = "{unassigned}";
+    // RS-codeword evaluation-domain generator and its inverse — a primitive 2^base_domain_log2-th
+    // root of unity (`Proth120::TWO_ADICITY_GENERATORS[base_domain_log2]`).
+    uint256 constant __TEMPLATE_WHIR_BASE_DOMAIN_ROOT     = "{unassigned}";
+    uint256 constant __TEMPLATE_WHIR_BASE_DOMAIN_ROOT_INV = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_NUM_ROUNDS   = "{unassigned}";
     uint256 constant __TEMPLATE_WHIR_RFIN         = "{unassigned}";  // final-poly log2 = message_log2 - sum(folds)
     uint256 constant __TEMPLATE_WHIR_MERGED_MW    = "{unassigned}";  // merged memory+witness base columns
@@ -113,7 +113,7 @@ contract WhirVerifier {
             // Reduction is required: unreduced values break `sub(P, x)` for x > P.
             r := mod(shr(128, s), P)
         }
-        // WhirGenConfig::derive obtains canonical GEN/GEN_INV via Proth120::to_u128;
+        // WhirGenConfig::derive obtains canonical base_domain_root and base_domain_root_inv via Proth120::to_u128;
         // powmod and exp_pow2 preserve reduction through mulmod. Binary exponentiation tests
         // bit 0 with and(e, 1), then shifts e right by 1.
         function powmod(base, e) -> res {
@@ -219,14 +219,14 @@ contract WhirVerifier {
         }
         // high_powers_offsets: bit-reversed powers of the order-2^fold generator's
         // inverse (matches the prover's `high_powers_offsets`). set_generator =
-        // domain_generator_for_size(2^fold) = __TEMPLATE_WHIR_GEN^(2^(codeword_log2 - fold)), and
-        // qib = codeword_log2 - fold, so set_gen_inv = __TEMPLATE_WHIR_GEN_INV^(2^qib) = exp_pow2(__TEMPLATE_WHIR_GEN_INV, qib).
+        // domain_generator_for_size(2^fold) = __TEMPLATE_WHIR_BASE_DOMAIN_ROOT^(2^(base_domain_log2 - fold)), and
+        // qib = base_domain_log2 - fold, so set_gen_inv = __TEMPLATE_WHIR_BASE_DOMAIN_ROOT_INV^(2^qib) = exp_pow2(__TEMPLATE_WHIR_BASE_DOMAIN_ROOT_INV, qib).
         // hp[i] = set_gen_inv^i, then the length-2^(fold-1) array is bit-reversed.
         function compute_hpo(fold, qib) {
             let logc := sub(fold, 1)         // log2(count)
             // forge-lint: disable-next-line(incorrect-shift) — `shl(n, 1)` is `1 << n` (2^n), args are correct
             let count := shl(logc, 1)
-            let sgi := exp_pow2(__TEMPLATE_WHIR_GEN_INV, qib) // order-2^fold generator inverse
+            let sgi := exp_pow2(__TEMPLATE_WHIR_BASE_DOMAIN_ROOT_INV, qib) // order-2^fold generator inverse
             let pw := 1
             for { let i := 0 } lt(i, count) { i := add(i, 1) } {
                 // bit-reverse i over logc bits -> store hp[i] = sgi^i at position bitrev(i)
@@ -407,6 +407,7 @@ contract WhirVerifier {
             }
         }
 
+        // __ORACLE_ROOTS__
         function do_query(r, fold, qib, vp, delin, cb, qq) {
             let cp := mload(__TEMPLATE_WHIR_REG_CD)
             let cur := mulmod(mload(__TEMPLATE_WHIR_REG_CURDELIN), delin, P)
@@ -432,14 +433,14 @@ contract WhirVerifier {
             // plain monomial tensor.
             let folded
             switch r
-            case 0 { folded := fold_coset(fold, powmod(__TEMPLATE_WHIR_GEN_INV, qidx)) }
+            case 0 { folded := fold_coset(fold, powmod(__TEMPLATE_WHIR_BASE_DOMAIN_ROOT_INV, qidx)) }
             default { folded := fold_multilinear(fold) }
-            push_pow(exp_pow2(powmod(__TEMPLATE_WHIR_GEN, qidx), fold), cur)
+            push_pow(exp_pow2(powmod(/*__QUERY_ORACLE_ROOT__*/__TEMPLATE_WHIR_BASE_DOMAIN_ROOT, qidx), fold), cur)
             mstore(__TEMPLATE_WHIR_REG_CC, addmod(mload(__TEMPLATE_WHIR_REG_CC), mulmod(folded, cur, P), P))
         }
 
-        // The OOD absorb is seed32 || value16 = 48 bytes; shr(128, word) extracts that u128 value.
-        function do_internal(r, fold, q, pow_bits, qib, vp, cb) {
+        // OOD point PoW precedes its draw; the absorb is seed32 || one raw u128 value.
+        function do_internal(r, fold, q, pow_bits, ood_pow_bits, qib, vp, cb) {
             let cp := mload(__TEMPLATE_WHIR_REG_CD)
             // read + absorb the next oracle's __TEMPLATE_WHIR_CAP (__TEMPLATE_WHIR_CAP*32 bytes)
             // keep BE digests for Merkle roots; absorb LE-word copies (commit_u32_with_seed)
@@ -450,10 +451,11 @@ contract WhirVerifier {
             }
             mstore(__TEMPLATE_WHIR_SEED_PTR, keccak256(__TEMPLATE_WHIR_SEED_PTR, add(32, mul(__TEMPLATE_WHIR_CAP, 32))))
             cp := add(cp, mul(__TEMPLATE_WHIR_CAP, __TEMPLATE_DIGEST_BYTES))
+            if ood_pow_bits {
+                cp := verify_pow(cp, ood_pow_bits)
+            }
             let ood_point := draw1()
             let ood_value := shr(128, calldataload(cp))
-            // do_internal rejects ood_value >= P here before absorbing its raw bytes;
-            // this binds the transcript to a canonical field value.
             if iszero(lt(ood_value, P)) { revert(0, 0) }
             calldatacopy(add(__TEMPLATE_WHIR_SEED_PTR, 32), cp, 16)
             mstore(__TEMPLATE_WHIR_SEED_PTR, keccak256(__TEMPLATE_WHIR_SEED_PTR, 48))
@@ -507,7 +509,7 @@ contract WhirVerifier {
 
             for { let qq := 0 } lt(qq, q) { qq := add(qq, 1) } {
                 let qidx := mload(add(__TEMPLATE_WHIR_QIDX_BUF_PTR, mul(qq, 32)))
-                let base_root := powmod(__TEMPLATE_WHIR_GEN, qidx)
+                let base_root := powmod(/*__FINAL_ORACLE_ROOT__*/__TEMPLATE_WHIR_BASE_DOMAIN_ROOT, qidx)
                 cp := read_leaf(cp, vp, depth, __TEMPLATE_WHIR_QCAP_PTR, qidx, cb)
                 // final round queries an intermediate oracle: its coefficient leaves fold
                 // with the plain monomial tensor
@@ -560,7 +562,7 @@ contract WhirVerifier {
 
         for { let r := 0 } lt(r, __TEMPLATE_WHIR_NUM_ROUNDS) { r := add(r, 1) } {
             // `cb` = coset bits = log2(LDE factor) for this round's oracle tree.
-            let fold, q, pow_bits, qib, vp, cb
+            let fold, q, pow_bits, fold_pow_bits, ood_pow_bits, qib, vp, cb
             // __WHIR_SCHEDULE_SWITCH__
 
             {
@@ -577,6 +579,9 @@ contract WhirVerifier {
                 mstore(add(__TEMPLATE_WHIR_SEED_PTR, 32), or(shl(128, c0), c1))
                 mstore(add(__TEMPLATE_WHIR_SEED_PTR, 64), shl(128, c2))
                 mstore(__TEMPLATE_WHIR_SEED_PTR, keccak256(__TEMPLATE_WHIR_SEED_PTR, 80))
+                if fold_pow_bits {
+                    mstore(__TEMPLATE_WHIR_REG_CD, verify_pow(mload(__TEMPLATE_WHIR_REG_CD), fold_pow_bits))
+                }
                 let alpha := draw1()
                 mstore(__TEMPLATE_WHIR_REG_CLAIM,
                     addmod(mulmod(addmod(mulmod(c2, alpha, P), c1, P), alpha, P), c0, P))
@@ -588,7 +593,7 @@ contract WhirVerifier {
             }
 
             switch lt(r, sub(__TEMPLATE_WHIR_NUM_ROUNDS, 1))
-            case 1 { do_internal(r, fold, q, pow_bits, qib, vp, cb) }
+            case 1 { do_internal(r, fold, q, pow_bits, ood_pow_bits, qib, vp, cb) }
             default { do_final(fold, q, pow_bits, qib, vp, mload(__TEMPLATE_WHIR_REG_ZIOFF), rfin, cb) }
         }
 
