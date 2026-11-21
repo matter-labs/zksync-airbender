@@ -197,7 +197,7 @@ enum Commands {
         #[arg(long, value_enum)]
         backend: Option<ProverBackend>,
         /// JSON WHIR schedule for an L1 wrap.
-        #[arg(long)]
+        #[arg(long, hide = true)]
         l1_whir_schedule: Option<String>,
         #[clap(flatten)]
         soundness: SoundnessArgs,
