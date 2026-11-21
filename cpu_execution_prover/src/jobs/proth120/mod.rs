@@ -29,6 +29,11 @@ pub(super) fn run<A: HostTraceAllocator>(
         operation_mode,
     } = request;
     let precomputed = precomputations.l1_wrap();
+    assert_eq!(
+        precomputed.setup.trace_len,
+        circuit_type.get_domain_size(),
+        "L1 wrap request {circuit_type:?} disagrees with its setup"
+    );
     let committed = precomputed.committed();
     let setup = &precomputed.setup;
     assert_eq!(
@@ -132,4 +137,58 @@ pub fn expand_inits_and_teardowns<A: HostTraceAllocator>(
     trace_len_log2: u32,
 ) -> Vec<([Vec<Proth120>; 2], [Vec<Proth120>; 2])> {
     inits_and_teardowns::expand::<Proth120, A>(trace, num_sets, trace_len_log2)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::upstream::{CpuGKRSetup, OperationMode, TableDriver};
+    use execution_prover::config::SoundnessMode;
+    use execution_prover::ProofProfile;
+    use execution_prover_model::allocator::CpuTraceAllocator;
+    use execution_prover_model::trace::ChunkedTraceHolder;
+    use prover::definitions::FinalRegisterValue;
+
+    #[test]
+    #[should_panic(expected = "L1 wrap request L1Wrap22 disagrees with its setup")]
+    fn l1_wrap_request_identity_must_match_its_setup() {
+        let circuit_type = CircuitType::L1Wrap21;
+        let rom = circuit_type.rom();
+        let setup = L1WrapSetup {
+            circuit: l1_wrap::circuit_artifact(),
+            table_driver: TableDriver::new(),
+            decoder_table: vec![None; rom.word_size()],
+            setup: CpuGKRSetup {
+                hypercube_evals: Vec::new(),
+            },
+            trace_len: circuit_type.get_domain_size(),
+            rom,
+        };
+        let config = ProofProfile::L1Wrap.prover_config(
+            circuit_type.get_domain_size_log2() as usize,
+            SoundnessMode::PessimisticConjecture,
+        );
+        let request = L1WrapProofRequest::<CpuTraceAllocator, _> {
+            batch_id: 0,
+            circuit_type: CircuitType::L1Wrap22,
+            precomputations: CpuCircuitPrecomputations::l1_with_config(circuit_type, setup, config),
+            inits_and_teardowns: InitsAndTeardownsTraceHost {
+                page_indices: ChunkedTraceHolder { chunks: vec![] },
+                values_packed: ChunkedTraceHolder { chunks: vec![] },
+                timestamps_packed: ChunkedTraceHolder { chunks: vec![] },
+                top_bits: vec![0, 0],
+            },
+            tracing_data: ChunkedTraceHolder { chunks: vec![] },
+            operation_mode: OperationMode::SingleChunk {
+                external_challenges_pow_bits: 0,
+                register_final_state: [FinalRegisterValue {
+                    value: 0,
+                    last_access_timestamp: 0,
+                }; 32],
+                final_pc: 0,
+                final_timestamp: 0,
+            },
+        };
+        run(request, &Worker::new_with_num_threads(1));
+    }
 }
