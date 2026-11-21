@@ -21,13 +21,14 @@ itertools = { workspace = true }
 log = "0.4"
 
 [features]
-# Builds the field micro-benchmark (`benches/field.rs`) + its CUDA archive
-# (`native/bench/field.cu` → `gpu_core_bench_native`).
+# Builds the field micro-benchmark (`benches/field.rs`) and its kernels
+# (`native/baby_bear/bench/field.cu`).
 bench = []
 
 [dev-dependencies]
 criterion = "0.5"
 era_criterion_cuda = "0.2"
+rand = { workspace = true, features = ["std_rng"] }
 
 [build-dependencies]
 cc = "1"

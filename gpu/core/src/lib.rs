@@ -21,4 +21,6 @@ pub mod primitives;
 crate::force_serial_libtest!();
 
 #[cfg(feature = "bench")]
-pub mod bench;
+pub mod baby_bear;
+#[cfg(test)]
+mod proth120;

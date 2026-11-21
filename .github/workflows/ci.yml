@@ -93,6 +93,10 @@ jobs:
             rustflags: "-D warnings -C target-cpu=x86-64-v4"
             # An explicit target keeps RUSTFLAGS off build scripts, which run on the runner's CPU.
             args: "--target x86_64-unknown-linux-gnu"
+          - name: host-features
+            rustflags: "-D warnings"
+            # gpu_core and gpu_ntt have no features of their own.
+            features: "--features $(python3 .github/scripts/clippy_features.py)"
     env:
       RUSTFLAGS: ${{ matrix.rustflags }}
       # no_cuda mode: the GPU crates skip their CMake/nvcc builds.
@@ -102,13 +106,14 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          components: clippy
           rustflags: ""
           cache-key: ${{ matrix.name }}
       # The bench-only dev-dependency era_criterion_cuda of gpu_core and gpu_ntt needs a CUDA toolkit.
-      - name: Check
+      - name: Clippy
         run: |
-          cargo check --workspace --all-targets --exclude gpu_core --exclude gpu_ntt ${{ matrix.args }}
-          cargo check -p gpu_core -p gpu_ntt --lib ${{ matrix.args }}
+          cargo clippy --workspace --all-targets --exclude gpu_core --exclude gpu_ntt ${{ matrix.args }} ${{ matrix.features }}
+          cargo clippy -p gpu_core -p gpu_ntt --lib ${{ matrix.args }}
 
   check_verifiers:
     name: check_verifiers
@@ -164,6 +169,24 @@ jobs:
             git status --porcelain
             exit 1
           fi
+
+  guest_clippy:
+    name: guest clippy
+    runs-on: [matterlabs-ci-runner-high-performance]
+    steps:
+      - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          # rust-src: the root-workspace guest dependencies are linted with -Z build-std.
+          components: clippy, rust-src
+          target: riscv32i-unknown-none-elf
+          rustflags: ""
+      - name: Setup
+        # The verifier guests' toolchain is installed on demand from
+        # tools/gkr_verifier/rust-toolchain.toml; the default profile brings clippy.
+        run: rustup set profile default
+      - name: Clippy on every guest workspace
+        run: .github/scripts/guest_clippy.sh
 
   evm_verifier:
     name: evm_verifier

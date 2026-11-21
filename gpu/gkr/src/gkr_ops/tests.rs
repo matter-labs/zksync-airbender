@@ -1,203 +1,9 @@
-use era_cudart::memory::{memory_copy_async, DeviceAllocation};
-use era_cudart::stream::CudaStream;
-
-use rand::Rng;
-
-use crate::upstream::{Field, Seed};
-use gpu_core::primitives::field::{BF, E4};
+use era_cudart::{
+    memory::{memory_copy_async, DeviceAllocation},
+    stream::CudaStream,
+};
 use gpu_hash::blake2s::STATE_SIZE;
-
-fn sample_e4(seed: u32) -> E4 {
-    use field::PrimeField;
-    E4::from_array_of_base([
-        BF::from_u32_with_reduction(seed.wrapping_mul(0x9E3779B1)),
-        BF::from_u32_with_reduction(seed.wrapping_mul(0x85EBCA77)),
-        BF::from_u32_with_reduction(seed.wrapping_mul(0xC2B2AE3D)),
-        BF::from_u32_with_reduction(seed.wrapping_mul(0x27D4EB2F)),
-    ])
-}
-
-/// Reference host-side implementation of the sumcheck Lagrange interpolant
-/// at (0, 1, random_point). Mirrors `whir_fold::special_lagrange_interpolate`,
-/// inlined here so this module's tests stay self-contained.
-fn special_lagrange_interpolate_host(
-    eval_at_0: E4,
-    eval_at_1: E4,
-    eval_at_random: E4,
-    random_point: E4,
-) -> [E4; 3] {
-    use field::Field;
-
-    let mut coeffs_for_0 = [E4::ZERO, E4::ZERO, E4::ONE];
-    coeffs_for_0[1] = E4::ONE;
-    coeffs_for_0[1].add_assign(&random_point);
-    coeffs_for_0[1].negate();
-    coeffs_for_0[0] = random_point;
-
-    let mut coeffs_for_1 = [E4::ZERO, E4::ZERO, E4::ONE];
-    coeffs_for_1[1] = random_point;
-    coeffs_for_1[1].negate();
-
-    let mut coeffs_for_random = [E4::ZERO, E4::ZERO, E4::ONE];
-    coeffs_for_random[1] = E4::ONE;
-    coeffs_for_random[1].negate();
-
-    let mut dens = [E4::ONE, E4::ONE, E4::ONE];
-    let mut t = E4::ZERO;
-    t.sub_assign(&E4::ONE);
-    dens[0].mul_assign(&t);
-    let mut t = E4::ZERO;
-    t.sub_assign(&random_point);
-    dens[0].mul_assign(&t);
-
-    let mut t = E4::ONE;
-    t.sub_assign(&random_point);
-    dens[1].mul_assign(&t);
-
-    let t = random_point;
-    dens[2].mul_assign(&t);
-    let mut t = random_point;
-    t.sub_assign(&E4::ONE);
-    dens[2].mul_assign(&t);
-
-    for d in dens.iter_mut() {
-        *d = d.inverse().expect("non-zero denominator");
-    }
-
-    let mut result = [E4::ZERO; 3];
-    for (eval, den, coeffs) in [
-        (eval_at_0, dens[0], coeffs_for_0),
-        (eval_at_1, dens[1], coeffs_for_1),
-        (eval_at_random, dens[2], coeffs_for_random),
-    ] {
-        for (dst, coeff) in result.iter_mut().zip(coeffs) {
-            let mut term = coeff;
-            term.mul_assign(&den);
-            term.mul_assign(&eval);
-            dst.add_assign(&term);
-        }
-    }
-    result
-}
-
-/// Runs the exact host-side per-round callback logic and returns the
-/// updated state plus the derived sumcheck coefficients and challenge.
-fn host_whir_fold_round_update(
-    mut seed: Seed,
-    f_at_0: E4,
-    f_at_1: E4,
-    raw_half_input: E4,
-) -> (Seed, [E4; 3], E4) {
-    use field::{Field, FieldExtension, PrimeField};
-    use prover::gkr::prover::transcript_utils::{commit_field_els, draw_random_field_els};
-
-    let quart = BF::from_u32_unchecked(4).inverse().unwrap();
-    let two_inv = BF::from_u32_unchecked(2).inverse().unwrap();
-    let mut f_half = raw_half_input;
-    f_half.mul_assign_by_base(&quart);
-
-    let coeffs = special_lagrange_interpolate_host(f_at_0, f_at_1, f_half, E4::from_base(two_inv));
-    commit_field_els::<BF, E4, prover::transcript::Blake2sTranscript>(&mut seed, &coeffs);
-    let challenge =
-        draw_random_field_els::<BF, E4, prover::transcript::Blake2sTranscript>(&mut seed, 1)[0];
-    (seed, coeffs, challenge)
-}
-
-fn run_device_whir_fold_round_update(
-    seed_in: Seed,
-    f_at_0: E4,
-    f_at_1: E4,
-    raw_half_input: E4,
-) -> (Seed, [E4; 3], E4) {
-    let stream = CudaStream::default();
-
-    let mut d_reduction: DeviceAllocation<E4> = DeviceAllocation::alloc(3).unwrap();
-    memory_copy_async(&mut d_reduction, &[f_at_0, f_at_1, raw_half_input], &stream).unwrap();
-
-    let mut d_seed: DeviceAllocation<u32> = DeviceAllocation::alloc(STATE_SIZE).unwrap();
-    memory_copy_async(&mut d_seed, &seed_in.0[..], &stream).unwrap();
-
-    let mut d_coeffs: DeviceAllocation<E4> = DeviceAllocation::alloc(3).unwrap();
-    let mut d_challenge: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
-
-    super::whir_fold_round_update(
-        &d_reduction,
-        &mut d_seed,
-        &mut d_coeffs,
-        &mut d_challenge,
-        &stream,
-    )
-    .unwrap();
-
-    let mut seed_out = Seed::default();
-    let mut coeffs_out = [E4::ZERO; 3];
-    let mut challenge_out = [E4::ZERO];
-    memory_copy_async(&mut seed_out.0[..], &d_seed, &stream).unwrap();
-    memory_copy_async(&mut coeffs_out[..], &d_coeffs, &stream).unwrap();
-    memory_copy_async(&mut challenge_out[..], &d_challenge, &stream).unwrap();
-    stream.synchronize().unwrap();
-
-    (seed_out, coeffs_out, challenge_out[0])
-}
-
-fn assert_whir_fold_round_parity(seed_in: Seed, f_at_0: E4, f_at_1: E4, raw_half_input: E4) {
-    let (h_seed, h_coeffs, h_challenge) =
-        host_whir_fold_round_update(seed_in, f_at_0, f_at_1, raw_half_input);
-    let (d_seed, d_coeffs, d_challenge) =
-        run_device_whir_fold_round_update(seed_in, f_at_0, f_at_1, raw_half_input);
-    assert_eq!(d_seed.0, h_seed.0, "seed mismatch");
-    assert_eq!(d_coeffs, h_coeffs, "coeffs mismatch");
-    assert_eq!(d_challenge, h_challenge, "challenge mismatch");
-}
-
-#[test]
-fn whir_fold_round_update_parity_fixed() {
-    let seed = Seed([
-        0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555, 0x66666666, 0x77777777,
-        0x88888888,
-    ]);
-    let f_at_0 = sample_e4(1);
-    let f_at_1 = sample_e4(2);
-    let raw_half_input = sample_e4(3);
-    assert_whir_fold_round_parity(seed, f_at_0, f_at_1, raw_half_input);
-}
-
-#[test]
-fn whir_fold_round_update_parity_randomized() {
-    let mut rng = rand::rng();
-    for _ in 0..16 {
-        let seed = Seed(std::array::from_fn(|_| rng.random()));
-        let f_at_0 = sample_e4(rng.random());
-        let f_at_1 = sample_e4(rng.random());
-        let raw_half_input = sample_e4(rng.random());
-        assert_whir_fold_round_parity(seed, f_at_0, f_at_1, raw_half_input);
-    }
-}
-
-#[test]
-fn whir_fold_round_update_parity_chained() {
-    // Emulates multiple sequential fold rounds: the output seed of one
-    // round becomes the input of the next. Catches state-propagation
-    // mismatches that a single-round test would miss.
-    let mut seed = Seed([0xcc; STATE_SIZE]);
-
-    for round in 0..8u32 {
-        let f_at_0 = sample_e4(round * 17 + 1);
-        let f_at_1 = sample_e4(round * 19 + 2);
-        let raw_half_input = sample_e4(round * 23 + 3);
-
-        let (h_seed, h_coeffs, h_challenge) =
-            host_whir_fold_round_update(seed, f_at_0, f_at_1, raw_half_input);
-        let (d_seed, d_coeffs, d_challenge) =
-            run_device_whir_fold_round_update(seed, f_at_0, f_at_1, raw_half_input);
-
-        assert_eq!(d_seed.0, h_seed.0, "round {round}: seed");
-        assert_eq!(d_coeffs, h_coeffs, "round {round}: coeffs");
-        assert_eq!(d_challenge, h_challenge, "round {round}: challenge");
-
-        seed = h_seed;
-    }
-}
+use rand::Rng;
 
 // -----------------------------------------------------------------------
 // Assemble-query-indexes kernel parity test.
@@ -276,379 +82,401 @@ fn assemble_query_indexes_parity_realistic() {
 // layer boundary in the backward pass and produce `num_addresses` E4s.
 // -----------------------------------------------------------------------
 
-fn host_new_claim_two_var(values: &[E4; 4], r_before_last: E4, r_last: E4) -> E4 {
-    let mut result = E4::ZERO;
-    let mut w00 = E4::ONE;
-    w00.sub_assign(&r_before_last);
-    let mut tmp = E4::ONE;
-    tmp.sub_assign(&r_last);
-    w00.mul_assign(&tmp);
-    let mut term = values[0];
-    term.mul_assign(&w00);
-    result.add_assign(&term);
-
-    let mut w01 = E4::ONE;
-    w01.sub_assign(&r_before_last);
-    w01.mul_assign(&r_last);
-    let mut term = values[1];
-    term.mul_assign(&w01);
-    result.add_assign(&term);
-
-    let mut w10 = r_before_last;
-    let mut tmp = E4::ONE;
-    tmp.sub_assign(&r_last);
-    w10.mul_assign(&tmp);
-    let mut term = values[2];
-    term.mul_assign(&w10);
-    result.add_assign(&term);
-
-    let mut w11 = r_before_last;
-    w11.mul_assign(&r_last);
-    let mut term = values[3];
-    term.mul_assign(&w11);
-    result.add_assign(&term);
-    result
-}
-
-fn host_new_claim_linear(f0: E4, f1: E4, r: E4) -> E4 {
-    let mut result = f1;
-    result.sub_assign(&f0);
-    result.mul_assign(&r);
-    result.add_assign(&f0);
-    result
-}
-
-fn run_device_new_claims_two_var(packed_values: &[E4], r_before_last: E4, r_last: E4) -> Vec<E4> {
-    let stream = CudaStream::default();
-    let num_addresses = packed_values.len() / 4;
-    let mut d_packed: DeviceAllocation<E4> = DeviceAllocation::alloc(packed_values.len()).unwrap();
-    memory_copy_async(&mut d_packed, packed_values, &stream).unwrap();
-    let mut d_challenges: DeviceAllocation<E4> = DeviceAllocation::alloc(2).unwrap();
-    memory_copy_async(&mut d_challenges, &[r_before_last, r_last], &stream).unwrap();
-    let mut d_out: DeviceAllocation<E4> = DeviceAllocation::alloc(num_addresses).unwrap();
-    super::backward_new_claims_two_var(&d_packed, &d_challenges, &mut d_out, &stream).unwrap();
-    let mut out = vec![E4::ZERO; num_addresses];
-    memory_copy_async(&mut out[..], &d_out, &stream).unwrap();
-    stream.synchronize().unwrap();
-    out
-}
-
-fn run_device_new_claims_linear(packed_values: &[E4], last_r: E4) -> Vec<E4> {
-    let stream = CudaStream::default();
-    let num_addresses = packed_values.len() / 2;
-    let mut d_packed: DeviceAllocation<E4> = DeviceAllocation::alloc(packed_values.len()).unwrap();
-    memory_copy_async(&mut d_packed, packed_values, &stream).unwrap();
-    let mut d_challenges: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
-    memory_copy_async(&mut d_challenges, &[last_r], &stream).unwrap();
-    let mut d_out: DeviceAllocation<E4> = DeviceAllocation::alloc(num_addresses).unwrap();
-    super::backward_new_claims_linear(&d_packed, &d_challenges, &mut d_out, &stream).unwrap();
-    let mut out = vec![E4::ZERO; num_addresses];
-    memory_copy_async(&mut out[..], &d_out, &stream).unwrap();
-    stream.synchronize().unwrap();
-    out
-}
-
-#[test]
-fn backward_new_claims_two_var_parity_fixed() {
-    let r_before_last = sample_e4(17);
-    let r_last = sample_e4(23);
-    let num_addresses = 7usize;
-    let mut packed = Vec::with_capacity(num_addresses * 4);
-    for i in 0..num_addresses * 4 {
-        packed.push(sample_e4(100 + i as u32));
-    }
-    let device = run_device_new_claims_two_var(&packed, r_before_last, r_last);
-    for i in 0..num_addresses {
-        let v: [E4; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
-        let host = host_new_claim_two_var(&v, r_before_last, r_last);
-        assert_eq!(device[i], host, "address {i} mismatch");
-    }
-}
-
-#[test]
-fn backward_new_claims_two_var_parity_randomized() {
-    use rand::Rng;
-    let mut rng = rand::rng();
-    for num_addresses in [1usize, 2, 3, 8, 17, 64, 257] {
-        let r_before_last = sample_e4(rng.random::<u32>());
-        let r_last = sample_e4(rng.random::<u32>());
-        let packed: Vec<E4> = (0..num_addresses * 4)
-            .map(|_| sample_e4(rng.random::<u32>()))
-            .collect();
-        let device = run_device_new_claims_two_var(&packed, r_before_last, r_last);
-        for i in 0..num_addresses {
-            let v: [E4; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
-            let host = host_new_claim_two_var(&v, r_before_last, r_last);
-            assert_eq!(device[i], host, "N={num_addresses} addr {i} mismatch");
-        }
-    }
-}
-
-#[test]
-fn backward_new_claims_linear_parity_fixed() {
-    let last_r = sample_e4(31);
-    let num_addresses = 5usize;
-    let mut packed = Vec::with_capacity(num_addresses * 2);
-    for i in 0..num_addresses * 2 {
-        packed.push(sample_e4(200 + i as u32));
-    }
-    let device = run_device_new_claims_linear(&packed, last_r);
-    for i in 0..num_addresses {
-        let f0 = packed[i * 2];
-        let f1 = packed[i * 2 + 1];
-        let host = host_new_claim_linear(f0, f1, last_r);
-        assert_eq!(device[i], host, "address {i} mismatch");
-    }
-}
-
-#[test]
-fn backward_new_claims_linear_parity_randomized() {
-    use rand::Rng;
-    let mut rng = rand::rng();
-    for num_addresses in [1usize, 2, 3, 8, 17, 64, 257] {
-        let last_r = sample_e4(rng.random::<u32>());
-        let packed: Vec<E4> = (0..num_addresses * 2)
-            .map(|_| sample_e4(rng.random::<u32>()))
-            .collect();
-        let device = run_device_new_claims_linear(&packed, last_r);
-        for i in 0..num_addresses {
-            let f0 = packed[i * 2];
-            let f1 = packed[i * 2 + 1];
-            let host = host_new_claim_linear(f0, f1, last_r);
-            assert_eq!(device[i], host, "N={num_addresses} addr {i} mismatch");
-        }
-    }
-}
-
-// `backward_dim_reducing_lsb_lines` must match the host dim-reducing
-// final-round reduction: out[0] = interpolate_linear(evals[0], evals[2], rbl),
-// out[1] = interpolate_linear(evals[1], evals[3], rbl). The two LSB lines are
-// what the new structure commits to the transcript and sends in the proof.
-fn run_device_lsb_lines(packed_values: &[E4], r_before_last: E4) -> Vec<E4> {
-    let stream = CudaStream::default();
-    let num_addresses = packed_values.len() / 4;
-    let mut d_packed: DeviceAllocation<E4> = DeviceAllocation::alloc(packed_values.len()).unwrap();
-    memory_copy_async(&mut d_packed, packed_values, &stream).unwrap();
-    let mut d_challenges: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
-    memory_copy_async(&mut d_challenges, &[r_before_last], &stream).unwrap();
-    let mut d_out: DeviceAllocation<E4> = DeviceAllocation::alloc(num_addresses * 2).unwrap();
-    super::backward_dim_reducing_lsb_lines(&d_packed, &d_challenges, &mut d_out, &stream).unwrap();
-    let mut out = vec![E4::ZERO; num_addresses * 2];
-    memory_copy_async(&mut out[..], &d_out, &stream).unwrap();
-    stream.synchronize().unwrap();
-    out
-}
-
-#[test]
-fn backward_dim_reducing_lsb_lines_parity_fixed() {
-    let r_before_last = sample_e4(41);
-    let num_addresses = 6usize;
-    let packed: Vec<E4> = (0..num_addresses * 4)
-        .map(|i| sample_e4(300 + i as u32))
-        .collect();
-    let device = run_device_lsb_lines(&packed, r_before_last);
-    for i in 0..num_addresses {
-        let v: [E4; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
-        let lsb0 = host_new_claim_linear(v[0], v[2], r_before_last);
-        let lsb1 = host_new_claim_linear(v[1], v[3], r_before_last);
-        assert_eq!(device[i * 2], lsb0, "address {i} lsb0 mismatch");
-        assert_eq!(device[i * 2 + 1], lsb1, "address {i} lsb1 mismatch");
-    }
-}
-
-#[test]
-fn backward_dim_reducing_lsb_lines_parity_randomized() {
-    use rand::Rng;
-    let mut rng = rand::rng();
-    for num_addresses in [1usize, 2, 3, 8, 17, 64, 257] {
-        let r_before_last = sample_e4(rng.random::<u32>());
-        let packed: Vec<E4> = (0..num_addresses * 4)
-            .map(|_| sample_e4(rng.random::<u32>()))
-            .collect();
-        let device = run_device_lsb_lines(&packed, r_before_last);
-        for i in 0..num_addresses {
-            let v: [E4; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
-            let lsb0 = host_new_claim_linear(v[0], v[2], r_before_last);
-            let lsb1 = host_new_claim_linear(v[1], v[3], r_before_last);
-            assert_eq!(
-                device[i * 2],
-                lsb0,
-                "N={num_addresses} addr {i} lsb0 mismatch"
-            );
-            assert_eq!(
-                device[i * 2 + 1],
-                lsb1,
-                "N={num_addresses} addr {i} lsb1 mismatch"
-            );
-        }
-    }
-}
-
-// Cross-check: lerp over LSB of the two lines at r_last must reproduce the full
-// two-var new_claim — i.e. the LSB-line split + linear new_claim is consistent
-// with the existing two-var kernel (and so with the CPU final claim).
-#[test]
-fn lsb_lines_then_linear_matches_two_var() {
-    let rbl = sample_e4(71);
-    let r_last = sample_e4(89);
-    let num_addresses = 4usize;
-    let packed: Vec<E4> = (0..num_addresses * 4)
-        .map(|i| sample_e4(400 + i as u32))
-        .collect();
-    let lines = run_device_lsb_lines(&packed, rbl);
-    let claims = run_device_new_claims_linear(&lines, r_last);
-    for i in 0..num_addresses {
-        let v: [E4; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
-        let expected = host_new_claim_two_var(&v, rbl, r_last);
-        assert_eq!(claims[i], expected, "address {i} composed mismatch");
-    }
-}
-
-fn host_combined_claim(claims: &[E4], batching: E4, exp_idx: &[(u32, u32)]) -> E4 {
-    let mut result = E4::ZERO;
-    for (exp, idx) in exp_idx {
-        let mut pow = E4::ONE;
-        for _ in 0..*exp {
-            pow.mul_assign(&batching);
-        }
-        let mut term = claims[*idx as usize];
-        term.mul_assign(&pow);
-        result.add_assign(&term);
-    }
-    result
-}
-
-fn run_device_combined_claim(claims: &[E4], batching: E4, exp_idx: &[(u32, u32)]) -> (E4, E4) {
-    let stream = CudaStream::default();
-    let mut d_claims: DeviceAllocation<E4> = DeviceAllocation::alloc(claims.len()).unwrap();
-    memory_copy_async(&mut d_claims, claims, &stream).unwrap();
-    let mut d_batching: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
-    memory_copy_async(&mut d_batching, &[batching], &stream).unwrap();
-    let desc_flat: Vec<u32> = exp_idx.iter().flat_map(|(exp, idx)| [*exp, *idx]).collect();
-    let mut d_claim_out: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
-    let mut d_eq_out: DeviceAllocation<E4> = DeviceAllocation::alloc(1).unwrap();
-    super::build_combined_claim(
-        &d_claims,
-        &d_batching,
-        &desc_flat,
-        &mut d_claim_out,
-        &mut d_eq_out,
-        &stream,
-    )
-    .unwrap();
-    let mut claim_out = [E4::ZERO];
-    let mut eq_out = [E4::ZERO];
-    memory_copy_async(&mut claim_out[..], &d_claim_out, &stream).unwrap();
-    memory_copy_async(&mut eq_out[..], &d_eq_out, &stream).unwrap();
-    stream.synchronize().unwrap();
-    (claim_out[0], eq_out[0])
-}
-
-#[test]
-fn build_combined_claim_parity_fixed() {
-    let claims: Vec<E4> = (0..6usize).map(|idx| sample_e4(500 + idx as u32)).collect();
-    let batching = sample_e4(999);
-    let exp_idx = vec![(0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)];
-    let (device_claim, device_eq) = run_device_combined_claim(&claims, batching, &exp_idx);
-    let host_claim = host_combined_claim(&claims, batching, &exp_idx);
-    assert_eq!(device_claim, host_claim, "combined-claim mismatch");
-    assert_eq!(device_eq, E4::ONE, "eq-prefactor must be ONE");
-}
-
-#[test]
-fn build_combined_claim_parity_randomized() {
-    use rand::Rng;
-    let mut rng = rand::rng();
-    for _ in 0..8 {
-        let num_claims = rng.random_range(1usize..=40);
-        let num_terms = rng.random_range(1usize..=50);
-        let claims: Vec<E4> = (0..num_claims)
-            .map(|_| sample_e4(rng.random::<u32>()))
-            .collect();
-        let batching = sample_e4(rng.random::<u32>());
-        let exp_idx: Vec<(u32, u32)> = (0..num_terms)
-            .map(|_| {
-                let exp = rng.random_range(0u32..=40);
-                let idx = rng.random_range(0..num_claims as u32);
-                (exp, idx)
-            })
-            .collect();
-        let (device_claim, device_eq) = run_device_combined_claim(&claims, batching, &exp_idx);
-        let host_claim = host_combined_claim(&claims, batching, &exp_idx);
-        assert_eq!(
-            device_claim, host_claim,
-            "random combined-claim mismatch (N_claims={num_claims}, N_terms={num_terms})"
-        );
-        assert_eq!(device_eq, E4::ONE);
-    }
-}
-
-#[test]
-fn build_combined_claim_empty_and_zero_batching() {
-    let claims = [sample_e4(5), sample_e4(17), sample_e4(31)];
-    for batching in [E4::ZERO, E4::ONE, sample_e4(99)] {
-        for terms in [vec![], vec![(3, 0), (0, 1), (3, 2), (1, 0), (0, 2)]] {
-            let (actual, eq) = run_device_combined_claim(&claims, batching, &terms);
-            assert_eq!(actual, host_combined_claim(&claims, batching, &terms));
-            assert_eq!(eq, E4::ONE);
-        }
-    }
-}
-
-#[test]
-fn build_combined_claim_full_exponent_range() {
-    // The CPU Field implementation is independent of the CUDA e4 helper
-    // and of the descriptor traversal.
-    let claims = [sample_e4(5), sample_e4(17), sample_e4(31)];
-    let sparse = vec![
-        (u32::MAX, 0),
-        (0, 1),
-        (31, 2),
-        (1 << 31, 0),
-        (u32::MAX - 1, 1),
-        (31, 1),
-        (0, 0),
-    ];
-    let full: Vec<(u32, u32)> = (0..super::GKR_COMBINED_CLAIM_MAX_PAIRS)
-        .map(|i| ((i as u32).wrapping_mul(0x9e3779b1), (i % 3) as u32))
-        .collect();
-    for batching in [E4::ZERO, E4::ONE, sample_e4(99)] {
-        for terms in [&[][..], sparse.as_slice(), full.as_slice()] {
-            let mut expected = E4::ZERO;
-            for &(exp, index) in terms {
-                let mut term = batching.pow(exp);
-                term.mul_assign(&claims[index as usize]);
-                expected.add_assign(&term);
+// One parity suite instantiated for each field's thin launchers.
+macro_rules! claims_parity_suite {
+    ($module:ident, $field:ty, $sample:path, $two_var:path, $linear:path, $lsb:path, $combined:path) => {
+        mod $module {
+            use super::*;
+            type F = $field;
+            use $two_var as launch_two_var;
+            use $linear as launch_linear;
+            use $lsb as launch_lsb_lines;
+            use $combined as launch_combined;
+            fn sample(seed: u32) -> F {
+                $sample(seed)
             }
-            let (actual, eq) = run_device_combined_claim(&claims, batching, terms);
-            assert_eq!(actual, expected);
-            assert_eq!(eq, E4::ONE);
+            fn host_new_claim_two_var(values: &[F; 4], r_before_last: F, r_last: F) -> F {
+                let mut result = F::ZERO;
+                let mut w00 = F::ONE;
+                w00.sub_assign(&r_before_last);
+                let mut tmp = F::ONE;
+                tmp.sub_assign(&r_last);
+                w00.mul_assign(&tmp);
+                let mut term = values[0];
+                term.mul_assign(&w00);
+                result.add_assign(&term);
+
+                let mut w01 = F::ONE;
+                w01.sub_assign(&r_before_last);
+                w01.mul_assign(&r_last);
+                let mut term = values[1];
+                term.mul_assign(&w01);
+                result.add_assign(&term);
+
+                let mut w10 = r_before_last;
+                let mut tmp = F::ONE;
+                tmp.sub_assign(&r_last);
+                w10.mul_assign(&tmp);
+                let mut term = values[2];
+                term.mul_assign(&w10);
+                result.add_assign(&term);
+
+                let mut w11 = r_before_last;
+                w11.mul_assign(&r_last);
+                let mut term = values[3];
+                term.mul_assign(&w11);
+                result.add_assign(&term);
+                result
+            }
+
+            fn host_new_claim_linear(f0: F, f1: F, r: F) -> F {
+                let mut result = f1;
+                result.sub_assign(&f0);
+                result.mul_assign(&r);
+                result.add_assign(&f0);
+                result
+            }
+
+            fn run_device_new_claims_two_var(packed_values: &[F], r_before_last: F, r_last: F) -> Vec<F> {
+                let stream = CudaStream::default();
+                let num_addresses = packed_values.len() / 4;
+                let mut d_packed: DeviceAllocation<F> =
+                    DeviceAllocation::alloc(packed_values.len()).unwrap();
+                memory_copy_async(&mut d_packed, packed_values, &stream).unwrap();
+                let mut d_challenges: DeviceAllocation<F> = DeviceAllocation::alloc(2).unwrap();
+                memory_copy_async(&mut d_challenges, &[r_before_last, r_last], &stream).unwrap();
+                let mut d_out: DeviceAllocation<F> = DeviceAllocation::alloc(num_addresses).unwrap();
+                launch_two_var(&d_packed, &d_challenges, &mut d_out, &stream).unwrap();
+                let mut out = vec![F::ZERO; num_addresses];
+                memory_copy_async(&mut out[..], &d_out, &stream).unwrap();
+                stream.synchronize().unwrap();
+                out
+            }
+
+            fn run_device_new_claims_linear(packed_values: &[F], last_r: F) -> Vec<F> {
+                let stream = CudaStream::default();
+                let num_addresses = packed_values.len() / 2;
+                let mut d_packed: DeviceAllocation<F> =
+                    DeviceAllocation::alloc(packed_values.len()).unwrap();
+                memory_copy_async(&mut d_packed, packed_values, &stream).unwrap();
+                let mut d_challenges: DeviceAllocation<F> = DeviceAllocation::alloc(1).unwrap();
+                memory_copy_async(&mut d_challenges, &[last_r], &stream).unwrap();
+                let mut d_out: DeviceAllocation<F> = DeviceAllocation::alloc(num_addresses).unwrap();
+                launch_linear(&d_packed, &d_challenges, &mut d_out, &stream).unwrap();
+                let mut out = vec![F::ZERO; num_addresses];
+                memory_copy_async(&mut out[..], &d_out, &stream).unwrap();
+                stream.synchronize().unwrap();
+                out
+            }
+
+            #[test]
+            fn backward_new_claims_two_var_parity_fixed() {
+                let r_before_last = sample(17);
+                let r_last = sample(23);
+                let num_addresses = 7usize;
+                let mut packed = Vec::with_capacity(num_addresses * 4);
+                for i in 0..num_addresses * 4 {
+                    packed.push(sample(100 + i as u32));
+                }
+                let device = run_device_new_claims_two_var(&packed, r_before_last, r_last);
+                for i in 0..num_addresses {
+                    let v: [F; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
+                    let host = host_new_claim_two_var(&v, r_before_last, r_last);
+                    assert_eq!(device[i], host, "address {i} mismatch");
+                }
+            }
+
+            #[test]
+            fn backward_new_claims_two_var_parity_randomized() {
+                use rand::Rng;
+                let mut rng = rand::rng();
+                for num_addresses in [1usize, 2, 3, 8, 17, 64, 257] {
+                    let r_before_last = sample(rng.random::<u32>());
+                    let r_last = sample(rng.random::<u32>());
+                    let packed: Vec<F> = (0..num_addresses * 4)
+                        .map(|_| sample(rng.random::<u32>()))
+                        .collect();
+                    let device = run_device_new_claims_two_var(&packed, r_before_last, r_last);
+                    for i in 0..num_addresses {
+                        let v: [F; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
+                        let host = host_new_claim_two_var(&v, r_before_last, r_last);
+                        assert_eq!(device[i], host, "N={num_addresses} addr {i} mismatch");
+                    }
+                }
+            }
+
+            #[test]
+            fn backward_new_claims_linear_parity_fixed() {
+                let last_r = sample(31);
+                let num_addresses = 5usize;
+                let mut packed = Vec::with_capacity(num_addresses * 2);
+                for i in 0..num_addresses * 2 {
+                    packed.push(sample(200 + i as u32));
+                }
+                let device = run_device_new_claims_linear(&packed, last_r);
+                for i in 0..num_addresses {
+                    let f0 = packed[i * 2];
+                    let f1 = packed[i * 2 + 1];
+                    let host = host_new_claim_linear(f0, f1, last_r);
+                    assert_eq!(device[i], host, "address {i} mismatch");
+                }
+            }
+
+            #[test]
+            fn backward_new_claims_linear_parity_randomized() {
+                use rand::Rng;
+                let mut rng = rand::rng();
+                for num_addresses in [1usize, 2, 3, 8, 17, 64, 257] {
+                    let last_r = sample(rng.random::<u32>());
+                    let packed: Vec<F> = (0..num_addresses * 2)
+                        .map(|_| sample(rng.random::<u32>()))
+                        .collect();
+                    let device = run_device_new_claims_linear(&packed, last_r);
+                    for i in 0..num_addresses {
+                        let f0 = packed[i * 2];
+                        let f1 = packed[i * 2 + 1];
+                        let host = host_new_claim_linear(f0, f1, last_r);
+                        assert_eq!(device[i], host, "N={num_addresses} addr {i} mismatch");
+                    }
+                }
+            }
+
+            // `backward_dim_reducing_lsb_lines` must match the host dim-reducing
+            // final-round reduction: out[0] = interpolate_linear(evals[0], evals[2], rbl),
+            // out[1] = interpolate_linear(evals[1], evals[3], rbl). The two LSB lines are
+            // what the prover commits to the transcript and sends in the proof.
+            fn run_device_lsb_lines(packed_values: &[F], r_before_last: F) -> Vec<F> {
+                let stream = CudaStream::default();
+                let num_addresses = packed_values.len() / 4;
+                let mut d_packed: DeviceAllocation<F> =
+                    DeviceAllocation::alloc(packed_values.len()).unwrap();
+                memory_copy_async(&mut d_packed, packed_values, &stream).unwrap();
+                let mut d_challenges: DeviceAllocation<F> = DeviceAllocation::alloc(1).unwrap();
+                memory_copy_async(&mut d_challenges, &[r_before_last], &stream).unwrap();
+                let mut d_out: DeviceAllocation<F> = DeviceAllocation::alloc(num_addresses * 2).unwrap();
+                launch_lsb_lines(&d_packed, &d_challenges, &mut d_out, &stream).unwrap();
+                let mut out = vec![F::ZERO; num_addresses * 2];
+                memory_copy_async(&mut out[..], &d_out, &stream).unwrap();
+                stream.synchronize().unwrap();
+                out
+            }
+
+            #[test]
+            fn backward_dim_reducing_lsb_lines_parity_fixed() {
+                let r_before_last = sample(41);
+                let num_addresses = 6usize;
+                let packed: Vec<F> = (0..num_addresses * 4)
+                    .map(|i| sample(300 + i as u32))
+                    .collect();
+                let device = run_device_lsb_lines(&packed, r_before_last);
+                for i in 0..num_addresses {
+                    let v: [F; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
+                    let lsb0 = host_new_claim_linear(v[0], v[2], r_before_last);
+                    let lsb1 = host_new_claim_linear(v[1], v[3], r_before_last);
+                    assert_eq!(device[i * 2], lsb0, "address {i} lsb0 mismatch");
+                    assert_eq!(device[i * 2 + 1], lsb1, "address {i} lsb1 mismatch");
+                }
+            }
+
+            #[test]
+            fn backward_dim_reducing_lsb_lines_parity_randomized() {
+                use rand::Rng;
+                let mut rng = rand::rng();
+                for num_addresses in [1usize, 2, 3, 8, 17, 64, 257] {
+                    let r_before_last = sample(rng.random::<u32>());
+                    let packed: Vec<F> = (0..num_addresses * 4)
+                        .map(|_| sample(rng.random::<u32>()))
+                        .collect();
+                    let device = run_device_lsb_lines(&packed, r_before_last);
+                    for i in 0..num_addresses {
+                        let v: [F; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
+                        let lsb0 = host_new_claim_linear(v[0], v[2], r_before_last);
+                        let lsb1 = host_new_claim_linear(v[1], v[3], r_before_last);
+                        assert_eq!(
+                            device[i * 2],
+                            lsb0,
+                            "N={num_addresses} addr {i} lsb0 mismatch"
+                        );
+                        assert_eq!(
+                            device[i * 2 + 1],
+                            lsb1,
+                            "N={num_addresses} addr {i} lsb1 mismatch"
+                        );
+                    }
+                }
+            }
+
+            // Cross-check: lerp over LSB of the two lines at r_last must reproduce the full
+            // two-var new_claim — i.e. the LSB-line split + linear new_claim is consistent
+            // with the two-variable reference `host_new_claim_two_var` (and so with the CPU
+            // final claim).
+            #[test]
+            fn lsb_lines_then_linear_matches_two_var() {
+                let rbl = sample(71);
+                let r_last = sample(89);
+                let num_addresses = 4usize;
+                let packed: Vec<F> = (0..num_addresses * 4)
+                    .map(|i| sample(400 + i as u32))
+                    .collect();
+                let lines = run_device_lsb_lines(&packed, rbl);
+                let claims = run_device_new_claims_linear(&lines, r_last);
+                for i in 0..num_addresses {
+                    let v: [F; 4] = packed[i * 4..i * 4 + 4].try_into().unwrap();
+                    let expected = host_new_claim_two_var(&v, rbl, r_last);
+                    assert_eq!(claims[i], expected, "address {i} composed mismatch");
+                }
+            }
+
+            fn host_combined_claim(claims: &[F], batching: F, exp_idx: &[(u32, u32)]) -> F {
+                let mut result = F::ZERO;
+                for (exp, idx) in exp_idx {
+                    let mut pow = F::ONE;
+                    for _ in 0..*exp {
+                        pow.mul_assign(&batching);
+                    }
+                    let mut term = claims[*idx as usize];
+                    term.mul_assign(&pow);
+                    result.add_assign(&term);
+                }
+                result
+            }
+
+            fn run_device_combined_claim(claims: &[F], batching: F, exp_idx: &[(u32, u32)]) -> (F, F) {
+                let stream = CudaStream::default();
+                let mut d_claims: DeviceAllocation<F> = DeviceAllocation::alloc(claims.len()).unwrap();
+                memory_copy_async(&mut d_claims, claims, &stream).unwrap();
+                let mut d_batching: DeviceAllocation<F> = DeviceAllocation::alloc(1).unwrap();
+                memory_copy_async(&mut d_batching, &[batching], &stream).unwrap();
+                let desc_flat: Vec<u32> = exp_idx.iter().flat_map(|(exp, idx)| [*exp, *idx]).collect();
+                let mut d_claim_out: DeviceAllocation<F> = DeviceAllocation::alloc(1).unwrap();
+                let mut d_eq_out: DeviceAllocation<F> = DeviceAllocation::alloc(1).unwrap();
+                launch_combined(
+                    &d_claims,
+                    &d_batching,
+                    &desc_flat,
+                    &mut d_claim_out,
+                    &mut d_eq_out,
+                    &stream,
+                )
+                .unwrap();
+                let mut claim_out = [F::ZERO];
+                let mut eq_out = [F::ZERO];
+                memory_copy_async(&mut claim_out[..], &d_claim_out, &stream).unwrap();
+                memory_copy_async(&mut eq_out[..], &d_eq_out, &stream).unwrap();
+                stream.synchronize().unwrap();
+                (claim_out[0], eq_out[0])
+            }
+
+            #[test]
+            fn build_combined_claim_parity_fixed() {
+                let claims: Vec<F> = (0..6usize).map(|idx| sample(500 + idx as u32)).collect();
+                let batching = sample(999);
+                let exp_idx = vec![(0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)];
+                let (device_claim, device_eq) = run_device_combined_claim(&claims, batching, &exp_idx);
+                let host_claim = host_combined_claim(&claims, batching, &exp_idx);
+                assert_eq!(device_claim, host_claim, "combined-claim mismatch");
+                assert_eq!(device_eq, F::ONE, "eq-prefactor must be ONE");
+            }
+
+            #[test]
+            fn build_combined_claim_parity_randomized() {
+                use rand::Rng;
+                let mut rng = rand::rng();
+                for _ in 0..8 {
+                    let num_claims = rng.random_range(1usize..=40);
+                    let num_terms = rng.random_range(1usize..=50);
+                    let claims: Vec<F> = (0..num_claims)
+                        .map(|_| sample(rng.random::<u32>()))
+                        .collect();
+                    let batching = sample(rng.random::<u32>());
+                    let exp_idx: Vec<(u32, u32)> = (0..num_terms)
+                        .map(|_| {
+                            let exp = rng.random_range(0u32..=40);
+                            let idx = rng.random_range(0..num_claims as u32);
+                            (exp, idx)
+                        })
+                        .collect();
+                    let (device_claim, device_eq) = run_device_combined_claim(&claims, batching, &exp_idx);
+                    let host_claim = host_combined_claim(&claims, batching, &exp_idx);
+                    assert_eq!(
+                        device_claim, host_claim,
+                        "random combined-claim mismatch (N_claims={num_claims}, N_terms={num_terms})"
+                    );
+                    assert_eq!(device_eq, F::ONE);
+                }
+            }
+
+            #[test]
+            fn build_combined_claim_empty_and_zero_batching() {
+                let claims = [sample(5), sample(17), sample(31)];
+                for batching in [F::ZERO, F::ONE, sample(99)] {
+                    for terms in [vec![], vec![(3, 0), (0, 1), (3, 2), (1, 0), (0, 2)]] {
+                        let (actual, eq) = run_device_combined_claim(&claims, batching, &terms);
+                        assert_eq!(actual, host_combined_claim(&claims, batching, &terms));
+                        assert_eq!(eq, F::ONE);
+                    }
+                }
+            }
+
+            #[test]
+            fn build_combined_claim_full_exponent_range() {
+                // The CPU Field implementation is independent of the CUDA e4 helper
+                // and of the descriptor traversal.
+                let claims = [sample(5), sample(17), sample(31)];
+                let sparse = vec![
+                    (u32::MAX, 0),
+                    (0, 1),
+                    (31, 2),
+                    (1 << 31, 0),
+                    (u32::MAX - 1, 1),
+                    (31, 1),
+                    (0, 0),
+                ];
+                let full: Vec<(u32, u32)> = (0..crate::gkr_ops::GKR_COMBINED_CLAIM_MAX_PAIRS)
+                    .map(|i| ((i as u32).wrapping_mul(0x9e3779b1), (i % 3) as u32))
+                    .collect();
+                for batching in [F::ZERO, F::ONE, sample(99)] {
+                    for terms in [&[][..], sparse.as_slice(), full.as_slice()] {
+                        let mut expected = F::ZERO;
+                        for &(exp, index) in terms {
+                            let mut term = batching.pow(exp);
+                            term.mul_assign(&claims[index as usize]);
+                            expected.add_assign(&term);
+                        }
+                        let (actual, eq) = run_device_combined_claim(&claims, batching, terms);
+                        assert_eq!(actual, expected);
+                        assert_eq!(eq, F::ONE);
+                    }
+                }
+            }
+
+            #[test]
+            fn build_combined_claim_reduction_boundaries() {
+                let claims: Vec<F> = (0..37).map(|i| sample(1000 + i)).collect();
+                // Cover partial warps, the block boundary and a final partial strided pass.
+                // Exponents repeat in non-monotone order; claim indices repeat independently.
+                for count in [31usize, 32, 33, 255, 256, 257, 513] {
+                    let terms: Vec<(u32, u32)> = (0..count)
+                        .map(|i| {
+                            (
+                                ((i * 17 + 9) % 41) as u32,
+                                ((i * 13 + 5) % claims.len()) as u32,
+                            )
+                        })
+                        .collect();
+                    for batching in [F::ZERO, F::ONE, sample(1234)] {
+                        let (actual, prefactor) = run_device_combined_claim(&claims, batching, &terms);
+                        assert_eq!(
+                            actual,
+                            host_combined_claim(&claims, batching, &terms),
+                            "terms={count}"
+                        );
+                        assert_eq!(prefactor, F::ONE);
+                    }
+                }
+            }
         }
-    }
+    };
 }
 
-#[test]
-fn build_combined_claim_reduction_boundaries() {
-    let claims: Vec<E4> = (0..37).map(|i| sample_e4(1000 + i)).collect();
-    // Cover partial warps, the block boundary and a final partial strided pass.
-    // Exponents repeat in non-monotone order; claim indices repeat independently.
-    for count in [31usize, 32, 33, 255, 256, 257, 513] {
-        let terms: Vec<(u32, u32)> = (0..count)
-            .map(|i| {
-                (
-                    ((i * 17 + 9) % 41) as u32,
-                    ((i * 13 + 5) % claims.len()) as u32,
-                )
-            })
-            .collect();
-        for batching in [E4::ZERO, E4::ONE, sample_e4(1234)] {
-            let (actual, prefactor) = run_device_combined_claim(&claims, batching, &terms);
-            assert_eq!(
-                actual,
-                host_combined_claim(&claims, batching, &terms),
-                "terms={count}"
-            );
-            assert_eq!(prefactor, E4::ONE);
-        }
-    }
-}
+pub(crate) use claims_parity_suite;

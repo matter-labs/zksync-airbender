@@ -1,12 +1,12 @@
 # AGENTS.md
 
-`gpu_trace` owns witness generation (`witness/**`) and trace commit/holder
-(`trace/**`): the machinery that turns a compiled circuit + captured
-non-determinism into a device-resident trace and commits it (LDE, leaf
-transform, Merkle-tree build). Recursive-WHIR oracle commitment is owned by
-`gpu_whir/src/oracle_commit.rs`. This crate carries the `gpu_trace_native`
-CUDA archive (the tree that used to live under
-`circuit_prover/native/witness/`).
+`gpu_trace` owns witness generation and trace commit/holder: the machinery
+that turns a compiled circuit + captured non-determinism into a device-resident
+trace and commits it (LDE, leaf transform, Merkle-tree build). Field-specific
+Rust code lives in `src/{baby_bear,proth120}/{trace,witness}/`; shared types and
+helpers stay in `src/trace/` and `src/witness/`. Recursive-WHIR oracle commitment
+is owned by `gpu_whir/src/baby_bear/oracle_commit.rs`. This crate carries the
+`gpu_trace_native` CUDA archive.
 
 ## Layer position
 
@@ -19,16 +19,16 @@ it, never the reverse.
 
 ## GPU Scheduling Contract
 
-`trace::holder` schedules GPU work directly (LDE, leaf-transform and
-leaf-commit kernels, and Merkle-tree builds). Before editing anything under `src/trace/` or
-`src/witness/` that launches kernels, schedules host callbacks, or manages
-streams, read [`../docs/gpu_scheduling_contract.md`](../docs/gpu_scheduling_contract.md)
+`baby_bear::trace::holder` and `proth120::trace` schedule GPU work directly
+(LDE, leaf-transform and leaf-commit kernels, and Merkle-tree builds). Before
+editing shared or field-specific trace/witness code that launches kernels,
+schedules host callbacks, or manages streams, read [`../docs/gpu_scheduling_contract.md`](../docs/gpu_scheduling_contract.md)
 in full. Compute kernels are scheduled on `exec_stream`.
 
 ## Upstream imports
 
-Production code (`witness/**`, `trace/**`) imports items from the upstream
-crates (`cs`, `prover`, `field`, `setups`) **exclusively through
+Production code (shared and field-specific trace/witness modules) imports items
+from the upstream crates (`cs`, `prover`, `field`, `setups`) **exclusively through
 `crate::upstream`**. Direct `use cs::…;` / `use prover::…;` in non-test code
 is forbidden. `#[cfg(test)]` modules are exempt.
 
@@ -63,6 +63,13 @@ because the witness CUDA it guards moved here.
   `gpu_native_build::CudaArchive::new("gpu_trace_native", "GPU_TRACE").build()`
   call — no `export_include`, no `deterministic_pow` — preceded by
   `cargo:rerun-if-changed` for each generated witness header, see below).
+- **Layout**: shared headers stay in `native/witness/`; field sources and headers
+  live in `native/baby_bear/` and `native/proth120/`, each with a `CMakeLists.txt`
+  contributing to the same archive. Circuit templates live at
+  `native/<field>/circuits/` so their generated witness include prefixes resolve.
+  Include field/shared headers relative to `native/` to disambiguate basenames.
+  Every field witness-generation/fused-unrolled wrapper defines its field macros
+  before including the shared header; the shared headers enforce this with `#error`.
 - No `__device__ __constant__` symbols in this archive (all cluster-wide ones
   live in `gpu_gkr`).
 - **Namespace**: `airbender::trace::witness::*` (sub-namespaces per concern:
@@ -73,19 +80,20 @@ because the witness CUDA it guards moved here.
   `circuit_prover` no longer owns any `airbender::witness::*` kernels.
   **Note**: `gpu_hash`'s kernels stay `airbender::hash`, unaffected by this
   split.
-- **Header relationships**: self-contained. It needs only `gpu_core`'s base
-  headers (`DEP_GPU_CORE_NATIVE_INCLUDE`) plus its own local headers and the
-  committed generated witness bodies under
+- **Header relationships**: witness kernels need `gpu_core`'s base headers
+  (`DEP_GPU_CORE_NATIVE_INCLUDE`), their shared and field-specific local headers,
+  and the committed generated witness bodies under
   `circuit_defs/**/generated/witness_generation_fn.cuh`. Those bodies sit
   outside `native/`, so `build.rs` tracks each one explicitly; a regenerated
-  `.cuh` reruns the native build. It does not
+  `.cuh` reruns the native build. `native/proth120/leaf_sink.cu` also reads
+  `gpu_ntt` and `gpu_hash` headers through per-source include directories. It does not
   `export_include` — nothing includes `gpu_trace`'s native headers
   cross-crate — and it carries no PoW kernel (that stays in `gpu_hash`).
 
 ## Widening convention
 
-Several items in `trace::holder` and elsewhere are exposed across the crate
-boundary specifically for the apex e2e test suite or for production
+Several items in shared `trace::holder`, `baby_bear::trace::holder` and elsewhere
+are exposed across the crate boundary specifically for the apex e2e test suite or for production
 cross-crate consumers — each site carries a `// pub because …` /
 `// test-reference` comment naming the caller:
 

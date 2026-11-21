@@ -1,0 +1,268 @@
+use std::collections::BTreeMap;
+
+use gpu_core::{
+    allocator::tracker::AllocationPlacement,
+    primitives::{
+        device_tracing::Range,
+        field::{BF, E4},
+    },
+};
+use gpu_prover_context::ProverContext;
+
+pub(crate) use crate::baby_bear::backward::kernels::*;
+pub use crate::baby_bear::backward::kernels::{
+    launch_build_eq_values_from_point, GpuGKRBackwardScheduledExecution,
+    GpuGKRDimensionReducingBackwardState,
+};
+#[cfg(test)]
+pub(crate) use crate::baby_bear::backward::window::bank::final_evaluation_repoint_probe;
+use crate::{
+    baby_bear::backward::dr_tail::resources::DrTailResources,
+    backward::main_layer::blueprints::build_dimension_reducing_slots_static,
+    upstream::{DimensionReducingInputOutput, GKRAddress, OutputType, PrimeField},
+    GpuGKRStorage,
+};
+
+pub(crate) mod dim_reducing_sumcheck_plan;
+pub mod main_tail;
+pub(crate) mod scheduled_execution;
+
+pub(crate) fn babybear_from_canonical(value: u128) -> BF {
+    let canonical = u32::try_from(value)
+        .ok()
+        .filter(|&canonical| canonical < BF::CHARACTERISTICS_U32)
+        .unwrap_or_else(|| panic!("backward value {value} is not a canonical BabyBear value"));
+    BF::from_u32_with_reduction(canonical)
+}
+
+fn validate_dr_window_layer_program(
+    program: &crate::DrWindowLayerProgram,
+    layer_idx: usize,
+    folding_steps: usize,
+    folding_addresses: &[GKRAddress],
+) {
+    assert_eq!(
+        program.layer(),
+        layer_idx,
+        "DR window preparation must use the absolute layer key"
+    );
+    assert_eq!(
+        program.folding_steps(),
+        folding_steps,
+        "compiled DR geometry must match the runtime layer"
+    );
+    assert_eq!(
+        program.input_projection().canonical_sources(),
+        folding_addresses,
+        "the DR window projection must publish exactly the layer's canonical inputs"
+    );
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct DrWindowPassEqGeometry {
+    build_offset: usize,
+    challenge_count: usize,
+    eq_sizes: GkrEqSizes,
+}
+
+fn dr_window_pass_eq_geometry(folding_steps: usize) -> DrWindowPassEqGeometry {
+    const BUILD_OFFSET: usize = 3;
+    let challenge_count = folding_steps
+        .checked_sub(BUILD_OFFSET)
+        .expect("compiled DR R0 geometry must include the first three coordinates");
+    DrWindowPassEqGeometry {
+        build_offset: BUILD_OFFSET,
+        challenge_count,
+        eq_sizes: make_eq_sizes(challenge_count),
+    }
+}
+
+impl GpuGKRDimensionReducingBackwardState {
+    pub(super) fn new(
+        forward_tracing_ranges: Vec<Range>,
+        storage: GpuGKRStorage<BF, E4>,
+        initial_layer_for_sumcheck: usize,
+        dimension_reducing_inputs: BTreeMap<
+            usize,
+            BTreeMap<OutputType, DimensionReducingInputOutput>,
+        >,
+    ) -> Self {
+        let first_output_addr = dimension_reducing_inputs[&initial_layer_for_sumcheck]
+            .values()
+            .next()
+            .and_then(|io| io.output.first())
+            .copied()
+            .expect("dimension-reducing backward state requires at least one reduced output");
+        let next_trace_len_after_reduction = storage.get_ext_poly(first_output_addr).len();
+        let pending_layers = dimension_reducing_inputs.into_iter().rev().collect();
+
+        Self {
+            forward_tracing_ranges,
+            storage,
+            pending_layers,
+            next_trace_len_after_reduction,
+        }
+    }
+}
+
+impl GpuGKRDimensionReducingBackwardState {
+    pub(crate) fn into_main_layer_backward_state_static(
+        self,
+        inits_and_teardowns_top_bits: Vec<u32>,
+        programs: std::sync::Arc<crate::baby_bear::GkrPrograms>,
+    ) -> GpuGKRMainLayerBackwardState {
+        assert!(
+            self.pending_layers.is_empty(),
+            "main-layer handoff requires dimension-reducing layers to be exhausted"
+        );
+        let compiled_circuit = programs.runtime_circuit();
+        let num_layers = compiled_circuit.layers.len();
+        let trace_len = compiled_circuit.trace_len;
+        let teardown_sets = compiled_circuit.memory_layout.teardown_sets.len();
+        GpuGKRMainLayerBackwardState {
+            forward_tracing_ranges: self.forward_tracing_ranges,
+            storage: self.storage,
+            pending_layers: (0..num_layers).rev().collect(),
+            trace_len,
+            inits_and_teardowns_top_bits: {
+                assert_eq!(
+                    inits_and_teardowns_top_bits.len(),
+                    teardown_sets,
+                    "i&t top bits must have one entry per teardown set",
+                );
+                inits_and_teardowns_top_bits
+            },
+            programs,
+        }
+    }
+}
+
+impl GpuGKRDimensionReducingBackwardState {
+    fn prepare_layer_from_slots(
+        &mut self,
+        layer_idx: usize,
+        layer_slots: GpuGKRDimensionReducingLayerSlots,
+        dr_window_program: &std::sync::Arc<crate::DrWindowLayerProgram>,
+        dr_tail_resources: &mut DrTailResources,
+        context: &ProverContext,
+    ) -> era_cudart::result::CudaResult<GpuGKRDimensionReducingSumcheckLayerPlan> {
+        let trace_len_after_reduction = self.next_trace_len_after_reduction;
+        assert!(trace_len_after_reduction.is_power_of_two());
+        let folding_steps = trace_len_after_reduction.trailing_zeros() as usize;
+        assert!(folding_steps >= 2);
+        assert_ne!(
+            layer_slots.enabled_mask(),
+            0,
+            "dimension-reducing layer must enable at least one slot"
+        );
+
+        let aliases = self.storage.layout.as_ref().map(|layout| &layout.aliases);
+        let dim_reducing_ext_inputs: std::collections::BTreeSet<GKRAddress> = layer_slots
+            .input_addresses()
+            .map(|address| {
+                aliases
+                    .and_then(|aliases| aliases.get(&address))
+                    .copied()
+                    .unwrap_or(address)
+            })
+            .collect();
+        let folding_addresses: Vec<GKRAddress> = dim_reducing_ext_inputs.into_iter().collect();
+        let dr_tail_capacity =
+            dr_tail_resources.capacity(folding_steps, folding_addresses.len())?;
+        if crate::backward::dr_tail::resources::dr_continuation_window_count(
+            dr_tail_capacity.entry_round,
+        ) != 0
+        {
+            gpu_gkr_compiler::validate_dr_window_split_ownership(
+                dr_window_program.input_projection(),
+            )
+            .unwrap_or_else(|error| panic!("DR continuation split at layer {layer_idx}: {error}"));
+        }
+        validate_dr_window_layer_program(
+            dr_window_program,
+            layer_idx,
+            folding_steps,
+            &folding_addresses,
+        );
+        let (dr_window, direct_tail_inputs, partials) = if dr_tail_capacity.entry_round == 0 {
+            let inputs = window_dr::DrWindowRawInputKeepalive::from_projection(
+                &self.storage,
+                dr_window_program.input_projection(),
+            )
+            .expect("direct DR tail must retain its canonical raw inputs");
+            (None, Some(inputs), None)
+        } else {
+            let max_acc_size = trace_len_after_reduction / 2;
+            let required_future_partials_len =
+                crate::backward::window_dr::dr_window_partials_len(folding_steps);
+            let retained_partials_len = crate::backward::kernels::max_partials_len(max_acc_size)
+                .max(required_future_partials_len);
+            let mut partials = context.alloc(retained_partials_len, AllocationPlacement::Top)?;
+            let eq_geometry = dr_window_pass_eq_geometry(folding_steps);
+            let eq_low = context.alloc(GKR_EQ_GROUP_TABLE_LEN, AllocationPlacement::Top)?;
+            let eq_pointer = eq_low.as_ptr();
+            let eq = window_dr::DrWindowPassEqState {
+                eq_low,
+                eq_sizes: eq_geometry.eq_sizes,
+                build_offset: eq_geometry.build_offset,
+            };
+            let dr_window = window_dr::prepare_dr_window_r0(
+                dr_window_program,
+                &self.storage,
+                folding_steps,
+                dr_tail_capacity.entry_round,
+                eq,
+                partials.as_mut_ptr(),
+            )
+            .expect("compiled DR window program must bind to runtime storage");
+            assert_eq!(dr_window.r0_launch.binding.batch.eq_low, eq_pointer);
+
+            (Some(dr_window), None, Some(partials))
+        };
+
+        self.next_trace_len_after_reduction *= 2;
+
+        Ok(GpuGKRDimensionReducingSumcheckLayerPlan {
+            layer_idx,
+            folding_steps,
+            layer_slots,
+            folding_addresses,
+            dr_window_program: std::sync::Arc::clone(dr_window_program),
+            dr_window,
+            direct_tail_inputs,
+            dr_tail_capacity,
+            _partials: partials,
+        })
+    }
+
+    pub(crate) fn prepare_next_layer_static(
+        &mut self,
+        dr_window_programs: &crate::DrWindowProgramBundle,
+        dr_tail_resources: &mut DrTailResources,
+        context: &ProverContext,
+    ) -> era_cudart::result::CudaResult<Option<GpuGKRDimensionReducingSumcheckLayerPlan>> {
+        let Some((layer_idx, layer)) = self.pending_layers.pop_front() else {
+            return Ok(None);
+        };
+        let layer_slots = build_dimension_reducing_slots_static(&layer);
+        let dr_window_program = dr_window_programs.layer(layer_idx).unwrap_or_else(|| {
+            panic!("compiled DR window bundle is missing absolute layer {layer_idx}")
+        });
+        Ok(Some(self.prepare_layer_from_slots(
+            layer_idx,
+            layer_slots,
+            dr_window_program,
+            dr_tail_resources,
+            context,
+        )?))
+    }
+}
+pub(crate) mod dr_tail;
+pub mod kernels;
+pub mod main_continuation;
+pub(crate) mod main_layer;
+mod stage_snapshots;
+pub mod window;
+pub(crate) mod window_dr;
+
+use crate::backward::*;

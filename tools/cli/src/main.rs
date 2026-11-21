@@ -63,6 +63,31 @@ struct BackendSettings {
     /// Replay threads; the backend's default when absent.
     #[arg(long)]
     replay_threads: Option<usize>,
+    /// GPU device arena size; auto selects according to available device memory.
+    #[cfg(feature = "gpu")]
+    #[arg(long, value_enum, default_value = "auto")]
+    gpu_memory_preset: GpuMemoryPreset,
+}
+
+#[cfg(feature = "gpu")]
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum GpuMemoryPreset {
+    Auto,
+    #[value(name = "30gib")]
+    GiB30,
+    #[value(name = "21gib")]
+    GiB21,
+}
+
+#[cfg(feature = "gpu")]
+impl From<GpuMemoryPreset> for prover_pipeline::MemoryPreset {
+    fn from(preset: GpuMemoryPreset) -> Self {
+        match preset {
+            GpuMemoryPreset::Auto => Self::Auto,
+            GpuMemoryPreset::GiB30 => Self::GiB30,
+            GpuMemoryPreset::GiB21 => Self::GiB21,
+        }
+    }
 }
 
 /// `--soundness-mode` values: the [`SoundnessMode::cli_name`] spellings.
@@ -171,6 +196,9 @@ enum Commands {
         target: ProofTarget,
         #[arg(long, value_enum)]
         backend: Option<ProverBackend>,
+        /// JSON WHIR schedule for an L1 wrap.
+        #[arg(long, hide = true)]
+        l1_whir_schedule: Option<String>,
         #[clap(flatten)]
         soundness: SoundnessArgs,
         #[clap(flatten)]
@@ -306,8 +334,7 @@ fn parse_input_data(
     }
 }
 
-/// Construct the prover configuration. The library entry asserts unsupported L1
-/// soundness modes before reading inputs or loading a backend.
+/// Construct the prover configuration from CLI backend settings.
 fn make_prover_config(
     soundness_mode: SoundnessMode,
     target: ProofTarget,
@@ -322,6 +349,8 @@ fn make_prover_config(
         ram_size: settings.ram_size,
         worker_threads: settings.worker_threads,
         replay_threads: settings.replay_threads,
+        #[cfg(feature = "gpu")]
+        gpu_memory_preset: settings.gpu_memory_preset.into(),
     }
 }
 
@@ -470,12 +499,16 @@ fn run_cli() {
             backend,
             soundness: SoundnessArgs { soundness_mode },
             settings,
+            l1_whir_schedule,
         } => {
             let prover_config = make_prover_config(soundness_mode, target, backend, settings);
             let input_artifact = read_artifact(&proof);
             let source = program_source(bin, text, elf);
 
-            let mut prover = ProgramProver::new(source, prover_config)
+            let schedule = l1_whir_schedule
+                .as_ref()
+                .map(|path| deserialize_from_file(path));
+            let mut prover = ProgramProver::with_l1_whir_schedule(source, prover_config, schedule)
                 .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
             let artifact = prover
                 .continue_artifact(input_artifact)

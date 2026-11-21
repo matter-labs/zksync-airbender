@@ -10,7 +10,7 @@ The rules below are the ones most often violated. They are a summary — the
 sections that follow are the source of truth and describe the reasoning,
 edge cases, and wiring behind each rule.
 
-- **MUST NOT** dereference pool-backed device or host allocations from the
+- **MUST NOT** dereference stream-ordered pool-backed device or host allocations from the
   scheduling thread. All reads and writes must be expressed as stream ops:
   kernel launches, `memory_copy_async`, or host callbacks scheduled via
   `Callbacks::schedule` / `launch_host_fn`. `UnsafeAccessor::get()` /
@@ -28,8 +28,9 @@ edge cases, and wiring behind each rule.
   construction invariant and what belongs there.
 - **MUST NOT** pin host memory per request. Small per-request H2D sources go
   through `Transfer::stage` and the context's fixed staging buffer.
-- **MUST** consume D2H readback buffers via a scheduled host callback, never
-  from the scheduling thread.
+- **MUST** consume stream-ordered D2H readback buffers via a scheduled host
+  callback, never from the scheduling thread. Exclusive persistent-tree buffers
+  follow the completion-fenced ownership described below.
 - **MUST** fork/join any op on an auxiliary stream (`h2d_stream`)
   against `exec_stream` with explicit CUDA events. The driver gives independent
   streams no implicit ordering.
@@ -225,13 +226,11 @@ kernels do not read a buffer that is still being transferred.
 A `Transfer` issues the `E_alloc` wait once, at its first copy or at
 `record_transferred`.
 
-**Per-request sources.** Small inputs that change with every request (top bits,
-external challenges, the unified memory cap) are recorded with
-`Transfer::stage` before any direct copy of the bundle. They are packed into
-the context's fixed pinned staging buffer (`H2D_STAGING_BYTES`) by one
-`h2d_stream` callback enqueued ahead of the wait, and copied right after it.
-Each bundle's fill sits behind every earlier staged copy on the in-order
-`h2d_stream`, so all bundles reuse the same buffer.
+**Per-request sources.** Small per-request inputs go through `Transfer::stage`
+into the context's pinned staging buffer, sized by `H2D_STAGING_BYTES`.
+A scheduled callback fills the buffer; H2D copies follow the allocation wait.
+Submission panics if a bundle exceeds the buffer. Each fill follows earlier
+copies on the in-order `h2d_stream`, so bundles reuse the buffer.
 
 ## D2H copies
 
@@ -239,6 +238,18 @@ D2H copies run on `exec_stream`. Schedule the consumer callback after the copy.
 The stream-ordered host-pool destination may be released once that callback is
 scheduled. Keep the callback owner alive until stream or event synchronization
 confirms completion: the CUDA callback dispatch holds only a weak reference.
+
+**L1 wrap.** Commitment, device-derived challenges and proof are one device
+workflow. Trace inputs, setup and staged per-request values enter the request's
+phase-one `Transfer`; lookup relations and base-claim indices ride kernel
+arguments by value. Between `prove()`'s
+`ensure_transferred` and the readback phase nothing crosses to the host: no
+copy to or from it, no callback, no host synchronization; kernels, D2D copies,
+memsets and device-side event waits stay on the device. The readback phase
+copies the single proof slab, including its WHIR output regions, then schedules
+one callback that assembles the `L1WrapResult`. A host hop in between would
+stall the stream, and a small exec-stream H2D can queue behind the next
+request's phase-one copies on the copy engine.
 
 ## H2D source lifetime
 
@@ -248,6 +259,23 @@ them until stream or event synchronization confirms completion (`finish()`).
 Dropping them sooner can release a source while its copy is in flight, or skip
 the fill. This differs from the scheduled-use lifetime of stream-ordered pool
 reservations.
+
+**Persistent memory partial trees.** Their buffer comes from the execution
+prover's existing host trace pool. A producer takes a separate buffer handle
+before publishing the data used to construct a memory-commitment request; the
+result loop and backend workers keep draining completions and returning buffers
+while a producer waits for that queue. The handle is independent of the trace
+container, so trace eviction or proof replay cannot release it.
+
+The commitment copies live tree nodes directly into this exclusive pinned
+buffer, in device stride with zero padding. Its completion fence precedes host
+validation. The same buffer travels in the commitment result and proof request;
+`Transfer::schedule` owns its source for one H2D copy until proof completion.
+Dropping the last owner then returns the original buffer handle to the same
+queue, including when an unconsumed commitment ticket is dropped. This pool
+reuses buffers only after completion, unlike stream-ordered arena reservations;
+its exclusive owner may initialize the buffer before D2H and read it after the
+completion fence. No pinned allocation is made per request.
 
 The staging fill callback is distinct from exec-stream callbacks:
 

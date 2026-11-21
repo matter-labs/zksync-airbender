@@ -5,39 +5,29 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use field::{Field, PrimeField};
-
 use super::limits::{LEAN_MAX_IMMEDIATES, MAX_COEFFICIENT_ENCODINGS};
 use super::model::{
     CoeffError, CoeffGroup, CoeffGroupMember, CoeffLayer, CoeffProduct, CoeffTerm,
     CoefficientRecipeId, ImmediateId, NormalizedCoefficientRecipe, TermId,
 };
-use super::Bf;
-
-fn bf(value: u32) -> Bf {
-    Bf::from_u32_with_reduction(value)
-}
-
-/// The canonical reduced representative of `-1`, the second reserved immediate.
-fn neg_one() -> u32 {
-    let mut v = Bf::ONE;
-    v.negate();
-    v.as_u32_reduced()
-}
+use crate::ElementModel;
 
 /// Multiply every product's scalar by `scale` and re-canonicalize.
-fn scale_by(recipe: &NormalizedCoefficientRecipe, scale: Bf) -> NormalizedCoefficientRecipe {
+fn scale_by(
+    model: ElementModel,
+    recipe: &NormalizedCoefficientRecipe,
+    scale: u128,
+) -> NormalizedCoefficientRecipe {
     NormalizedCoefficientRecipe::from_terms(
+        model,
         recipe
             .terms
             .iter()
             .map(|product| {
-                let mut scaled = bf(product.scalar);
-                scaled.mul_assign(&scale);
                 let challenges = product.challenges.clone();
                 let inits_and_teardowns_top_bits = product.inits_and_teardowns_top_bits.clone();
                 CoeffProduct {
-                    scalar: scaled.as_u32_reduced(),
+                    scalar: model.scalar_mul(product.scalar, scale),
                     challenges,
                     inits_and_teardowns_top_bits,
                 }
@@ -60,7 +50,10 @@ fn scale_by(recipe: &NormalizedCoefficientRecipe, scale: Bf) -> NormalizedCoeffi
 ///     multiplicative identity, which is not a bank entry at all; and
 ///   * the additive identity, which is never encoded.
 ///
-fn factor(recipe: &NormalizedCoefficientRecipe) -> Option<(u32, NormalizedCoefficientRecipe)> {
+fn factor(
+    model: ElementModel,
+    recipe: &NormalizedCoefficientRecipe,
+) -> Option<(u128, NormalizedCoefficientRecipe)> {
     let leading = recipe.terms.first()?;
     if recipe.terms.len() == 1
         && leading.challenges.is_empty()
@@ -71,22 +64,22 @@ fn factor(recipe: &NormalizedCoefficientRecipe) -> Option<(u32, NormalizedCoeffi
     let immediate = leading.scalar;
     // A canonical recipe never banks a zero scalar, so the inverse exists; a
     // violated invariant degrades to "does not group", never to a panic.
-    let inverse = bf(immediate).inverse()?;
-    Some((immediate, scale_by(recipe, inverse)))
+    let inverse = model.scalar_inverse(immediate)?;
+    Some((immediate, scale_by(model, recipe, inverse)))
 }
 
-/// The canonical BF value an [`ImmediateId`] denotes in `layer`:
+/// The canonical base-field value an [`ImmediateId`] denotes in `layer`:
 /// `0 → +1`, `1 → −1`, `≥ 2 → immediates[id − 2]`), or `None` for an id past the
 /// layer's table.
 ///
 /// The only decoder of that id space in the crate, so a validator, the interpreter
 /// and the tests cannot disagree with the transform that minted the ids.
-pub(crate) fn immediate_value(layer: &CoeffLayer, id: ImmediateId) -> Option<u32> {
+pub(crate) fn immediate_value(layer: &CoeffLayer, id: ImmediateId) -> Option<u128> {
     match id.bank_index() {
         None => Some(if id == ImmediateId::NEG_ONE {
-            neg_one()
+            layer.model.minus_one
         } else {
-            Bf::ONE.as_u32_reduced()
+            1
         }),
         Some(index) => layer.immediates.get(index).copied(),
     }
@@ -114,7 +107,7 @@ fn term_sides(term: &CoeffTerm) -> (bool, bool) {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct CoeffGroupingMemberAnalysis {
     pub term: TermId,
-    pub immediate: u32,
+    pub immediate: u128,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -139,7 +132,7 @@ fn recipe_for_id(
         return Ok(NormalizedCoefficientRecipe::one());
     }
     if id == CoefficientRecipeId::NEG_ONE {
-        return Ok(NormalizedCoefficientRecipe::neg_one());
+        return Ok(NormalizedCoefficientRecipe::neg_one(layer.model));
     }
     layer
         .banked_recipe(id)
@@ -158,7 +151,7 @@ fn reconstruct_term_recipes(
                 immediate_value(layer, member.immediate).ok_or(CoeffError::UnknownImmediate {
                     id: member.immediate,
                 })?;
-            grouped.insert(member.term, scale_by(&core, bf(immediate)));
+            grouped.insert(member.term, scale_by(layer.model, &core, immediate));
         }
     }
     layer
@@ -182,7 +175,7 @@ pub(crate) fn analyze_coeff_grouping(
     let mut by_core: BTreeMap<NormalizedCoefficientRecipe, Vec<CoeffGroupingMemberAnalysis>> =
         BTreeMap::new();
     for (term, recipe) in &term_recipes {
-        let Some((immediate, core)) = factor(recipe) else {
+        let Some((immediate, core)) = factor(layer.model, recipe) else {
             continue;
         };
         by_core
@@ -233,7 +226,7 @@ pub(crate) fn group_coeff_layer(layer: CoeffLayer) -> Result<CoeffLayer, CoeffEr
     );
     // 1. Factor every banked term recipe; collect candidates by core. Terms with
     //    literal ids (`ONE`/`NEG_ONE`) and bare-scalar recipes never group.
-    let mut by_core: BTreeMap<NormalizedCoefficientRecipe, Vec<(TermId, u32)>> = BTreeMap::new();
+    let mut by_core: BTreeMap<NormalizedCoefficientRecipe, Vec<(TermId, u128)>> = BTreeMap::new();
     for term in &layer.terms {
         let Some(bank_index) = term.coefficient().bank_index() else {
             continue;
@@ -241,7 +234,7 @@ pub(crate) fn group_coeff_layer(layer: CoeffLayer) -> Result<CoeffLayer, CoeffEr
         let Some(recipe) = layer.coefficients.get(bank_index) else {
             continue;
         };
-        let Some((immediate, core)) = factor(recipe) else {
+        let Some((immediate, core)) = factor(layer.model, recipe) else {
             continue;
         };
         by_core
@@ -251,7 +244,7 @@ pub(crate) fn group_coeff_layer(layer: CoeffLayer) -> Result<CoeffLayer, CoeffEr
     }
 
     // Keep one maximal group per multi-member core.
-    let mut proto_groups: Vec<(NormalizedCoefficientRecipe, Vec<(TermId, u32)>)> = Vec::new();
+    let mut proto_groups: Vec<(NormalizedCoefficientRecipe, Vec<(TermId, u128)>)> = Vec::new();
     for (core, mut members) in by_core {
         if members.len() < 2 {
             continue;
@@ -311,9 +304,9 @@ pub(crate) fn group_coeff_layer(layer: CoeffLayer) -> Result<CoeffLayer, CoeffEr
     };
 
     // Build the sorted table of non-literal immediates.
-    let one = Bf::ONE.as_u32_reduced();
-    let minus_one = neg_one();
-    let mut distinct: BTreeSet<u32> = BTreeSet::new();
+    let one = 1;
+    let minus_one = layer.model.minus_one;
+    let mut distinct: BTreeSet<u128> = BTreeSet::new();
     for (_, members) in &proto_groups {
         for (_, immediate) in members {
             if *immediate != one && *immediate != minus_one {
@@ -321,14 +314,14 @@ pub(crate) fn group_coeff_layer(layer: CoeffLayer) -> Result<CoeffLayer, CoeffEr
             }
         }
     }
-    let immediates: Vec<u32> = distinct.into_iter().collect();
+    let immediates: Vec<u128> = distinct.into_iter().collect();
     // Check before converting table positions to u16 ids.
     if immediates.len() > LEAN_MAX_IMMEDIATES {
         return Err(CoeffError::ImmediateTableOverflow {
             len: immediates.len(),
         });
     }
-    let immediate_id = |value: u32| -> ImmediateId {
+    let immediate_id = |value: u128| -> ImmediateId {
         if value == one {
             return ImmediateId::ONE;
         }
@@ -385,6 +378,7 @@ pub(crate) fn group_coeff_layer(layer: CoeffLayer) -> Result<CoeffLayer, CoeffEr
 
     Ok(CoeffLayer {
         regime: layer.regime,
+        model: layer.model,
         c_init,
         coefficients,
         sources: layer.sources,

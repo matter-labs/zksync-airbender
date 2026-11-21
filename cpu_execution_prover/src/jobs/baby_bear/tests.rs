@@ -71,6 +71,7 @@ fn prove(
             inits_and_teardowns: None,
             tracing_data: Some(empty_trace()),
             profile: ProofProfile::Standard,
+            partial_tree_buffer: None,
         }),
         &worker,
     ) else {
@@ -86,6 +87,8 @@ fn prove(
             tracing_data: Some(empty_trace()),
             external_challenges: challenges(),
             memory_caps: memory_caps(committed.merkle_tree_caps),
+            memory_partial_trees: None,
+
             profile: ProofProfile::Standard,
         }),
         &worker,

@@ -19,8 +19,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         pow_challenge: u64,
         external_challenges: Option<GKRExternalChallenges<BF, E4>>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
+        mut proof_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees<B::Allocator>>,
         profile: ProofProfile,
-    ) -> (ExecutionProverResult, ND) {
+    ) -> (ExecutionProverResult<B::Allocator>, ND) {
         if let Some(cache) = cache.as_ref() {
             if proving {
                 assert!(cache.simulation_result.is_some());
@@ -62,6 +63,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             batch_id,
             external_challenges.as_ref(),
             &proof_caps,
+            &mut proof_partial_trees,
             &work_requests_sender,
             profile,
         );
@@ -101,11 +103,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 non_determinism_source,
                 &work_results_sender,
                 &abort,
+                !proving && self.backend.persists_memory_partial_trees(profile),
             )
         };
         drop(work_results_sender);
 
-        let request_context = RequestContext {
+        let mut request_context = RequestContext {
             proving,
             commitment_mode,
             profile,
@@ -113,6 +116,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             binary_holder,
             external_challenges: external_challenges.as_ref(),
             proof_caps: &proof_caps,
+            proof_partial_trees,
         };
         for sequence_id in trivial_unified_inits_and_teardowns {
             let data = InitsAndTeardownsData {
@@ -122,6 +126,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     .expect("trivial unified inits-and-teardowns belong to a unified execution"),
                 sequence_id,
                 inits_and_teardowns: None,
+                partial_tree_buffer: None,
             };
             acc.unpaired_unified_inits_and_teardowns
                 .insert(sequence_id, data);
@@ -156,7 +161,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         }
 
         for work_result in work_results_receiver {
-            let work_requests = acc.handle_work_result(self, cache, work_result, &request_context);
+            let work_requests =
+                acc.handle_work_result(self, cache, work_result, &mut request_context);
             dispatch_backend_requests(
                 self,
                 &requests_served_from_cache,
@@ -230,7 +236,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         handle: BinaryHandle,
         non_determinism_source: ND,
         profile: ProofProfile,
-    ) -> (CommitMemoryResult, ND) {
+    ) -> (CommitMemoryResult<B::Allocator>, ND) {
         let binary_key = handle.0;
         info!(
             "BATCH[{batch_id}] PROVER producing memory commitments for binary with key {binary_key:?}"
@@ -244,6 +250,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             non_determinism_source,
             0,
             None,
+            BTreeMap::new(),
             BTreeMap::new(),
             profile,
         );
@@ -265,6 +272,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         pow_challenge: u64,
         external_challenges: GKRExternalChallenges<BF, E4>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
+        proof_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees<B::Allocator>>,
         profile: ProofProfile,
     ) -> ProveResult {
         info!("BATCH[{batch_id}] PROVER producing proofs for binary with key {binary_key:?}");
@@ -278,6 +286,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             pow_challenge,
             Some(external_challenges),
             proof_caps,
+            proof_partial_trees,
             profile,
         );
         let result = result.into_proof_result();
@@ -299,7 +308,7 @@ fn assemble_result<A: fft::GoodAllocator>(
     pow_challenge: u64,
     binary_key: usize,
     profile: ProofProfile,
-) -> ExecutionProverResult {
+) -> ExecutionProverResult<A> {
     let ResultAccumulator {
         trivial_unified_inits_and_teardowns_count,
         inits_and_teardowns_top_bits,
@@ -307,6 +316,7 @@ fn assemble_result<A: fft::GoodAllocator>(
         circuit_families_memory_caps,
         inits_and_teardowns_memory_caps,
         delegation_circuits_memory_caps,
+        memory_partial_trees,
         circuit_families_proofs,
         inits_and_teardowns_proofs,
         delegation_circuits_proofs,
@@ -376,6 +386,7 @@ fn assemble_result<A: fft::GoodAllocator>(
             circuit_families_memory_caps,
             inits_and_teardowns_memory_caps,
             delegation_circuits_memory_caps,
+            memory_partial_trees,
             num_trivial_unified_circuits: trivial_unified_inits_and_teardowns_count,
             inits_and_teardowns_top_bits,
             binary_handle: BinaryHandle(binary_key),
@@ -406,7 +417,7 @@ mod tests {
         )[0];
         prover.finalize_setup();
         let proof_caps = BTreeMap::new();
-        let context = RequestContext {
+        let mut context = RequestContext {
             proving: false,
             commitment_mode: crate::config::execution_commitment_mode(
                 kind,
@@ -419,6 +430,7 @@ mod tests {
             binary_holder: &prover.binary_holders[&handle.0],
             external_challenges: None,
             proof_caps: &proof_caps,
+            proof_partial_trees: Default::default(),
         };
         context.build_work_request(
             &prover,
@@ -426,6 +438,7 @@ mod tests {
                 circuit_type: CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
                 sequence_id: 0,
                 inits_and_teardowns: None,
+                partial_tree_buffer: None,
             }),
             None,
         );

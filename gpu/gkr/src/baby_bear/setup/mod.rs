@@ -1,0 +1,588 @@
+use std::{marker::PhantomData, ptr::null_mut, sync::Arc};
+
+use era_cudart::{memory::memory_copy_async, result::CudaResult, slice::CudaSlice};
+use gpu_core::{
+    allocator::tracker::AllocationPlacement,
+    primitives::{
+        callbacks::Callbacks,
+        context::DeviceAllocation,
+        device_tracing::Range,
+        field::{BF, E4},
+        static_host::{alloc_static_pinned_box_uninit, StaticPinnedBox},
+    },
+};
+use gpu_hash::blake2s::Digest;
+use gpu_prover_context::{transfer::Transfer, ProverContext};
+use gpu_trace::trace::holder::{
+    resolve_partial_tree_reduction_layers, TraceHolder, TreesCacheMode, TreesHolder,
+};
+
+pub use crate::baby_bear::setup::kernels::GpuGKRSetupHost;
+pub(crate) use crate::baby_bear::setup::kernels::*;
+use crate::{
+    setup::*,
+    upstream::{CpuGKRSetup, Field, GKRAddress, GKRCircuitArtifact, TableType},
+    GpuGKRStorage,
+};
+
+pub(crate) mod kernels;
+
+/// Device setup with consumable raw backing. The host setup can be reused
+/// to create fresh transfers.
+pub struct GpuGKRSetupTransfer<'a> {
+    pub host: Arc<GpuGKRSetupHost>,
+    pub trace_holder: TraceHolder<BF>,
+    _marker: PhantomData<&'a ()>,
+}
+
+impl<'a> GpuGKRSetupTransfer<'a> {
+    /// Unified device cap populated by `schedule_transfer`.
+    pub fn unified_device_cap(&self) -> &DeviceAllocation<Digest> {
+        self.trace_holder.unified_device_cap()
+    }
+}
+
+impl<'a> GpuGKRSetupTransfer<'a> {
+    pub fn new(
+        host: Arc<GpuGKRSetupHost>,
+        target_reduction_layers: u32,
+        context: &ProverContext,
+    ) -> CudaResult<Self> {
+        let geometry = host.base_commitment_geometry();
+        let commitment_domain = geometry.message_size_log2() as u32;
+        let target_depth = resolve_partial_tree_reduction_layers(
+            target_reduction_layers,
+            commitment_domain,
+            host.log_lde_factor,
+            host.log_rows_per_leaf,
+            host.log_tree_cap_size,
+        );
+        assert!(
+            target_depth >= host.partial_tree_reduction_layers,
+            "GpuGKRSetupTransfer: target partial-tree depth must be >= source depth"
+        );
+        let mut trace_holder = TraceHolder::<BF>::new_base_without_cosets(
+            geometry,
+            crate::upstream::BaseOracleRole::Setup,
+            TreesCacheMode::CachePartial,
+            target_reduction_layers,
+            context,
+        )?;
+        // Allocate the cap up front so `schedule_transfer` has a stable destination.
+        let cap_size = 1usize << host.log_tree_cap_size;
+        let unified_cap = context.alloc::<Digest>(cap_size, AllocationPlacement::BestFit)?;
+        assert!(trace_holder
+            .unified_device_cap
+            .replace(unified_cap)
+            .is_none());
+        Ok(Self {
+            host,
+            trace_holder,
+            _marker: PhantomData,
+        })
+    }
+
+    pub fn schedule_transfer(
+        &mut self,
+        transfer: &mut Transfer<'a>,
+        context: &ProverContext,
+    ) -> CudaResult<()> {
+        transfer.ensure_allocated(context)?;
+        let stream = context.get_h2d_stream();
+        memory_copy_async(
+            self.trace_holder.get_uninit_hypercube_evals_mut(),
+            &self.host.raw_hypercube_evals[..],
+            stream,
+        )?;
+        assert_eq!(
+            self.host.partial_trees.len(),
+            1usize << self.host.log_lde_factor,
+            "expected one cached partial tree per coset",
+        );
+        let source_depth = self.host.partial_tree_reduction_layers;
+        let target_depth = self.trace_holder.partial_tree_reduction_layers();
+        let source_len = 1usize
+            << (self.host.commitment_log_domain_size() + 1
+                - self.host.log_rows_per_leaf
+                - source_depth);
+        for (coset_index, src_tree) in self.host.partial_trees.iter().enumerate() {
+            assert_eq!(
+                src_tree.len(),
+                source_len,
+                "GpuGKRSetupTransfer: source tree length mismatch"
+            );
+            let dst_tree = self
+                .trace_holder
+                .get_uninit_tree_mut(coset_index)
+                .expect("setup transfers require partial-tree caching");
+            let start = partial_tree_projection_start(
+                "GpuGKRSetupTransfer",
+                source_depth,
+                target_depth,
+                src_tree.len(),
+                dst_tree.len(),
+            );
+            memory_copy_async(dst_tree, &src_tree[start..], stream)?;
+        }
+        let unified_dst = self
+            .trace_holder
+            .unified_device_cap
+            .as_mut()
+            .expect("setup transfer must have allocated the unified device cap");
+        memory_copy_async(unified_dst, &self.host.unified_tree_cap[..], stream)?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bind_setup_columns_into_storage<E>(&self, storage: &mut GpuGKRStorage<BF, E>) {
+        assert!(self.host.columns_count > 0);
+        assert_eq!(self.trace_holder.columns_count, self.host.columns_count);
+        assert_eq!(
+            1usize << self.trace_holder.log_domain_size,
+            self.host.raw_hypercube_evals.len() / self.host.columns_count
+        );
+        bind_trace_holder_column_range_into_storage(
+            &self.trace_holder,
+            0,
+            self.trace_holder.columns_count,
+            storage,
+            GKRAddress::Setup,
+        );
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bootstrap_storage<E>(
+        &self,
+        memory_trace_holder: &TraceHolder<BF>,
+        witness_trace_holder: &TraceHolder<BF>,
+        _context: &ProverContext,
+    ) -> CudaResult<GpuGKRStorage<BF, E>> {
+        for (label, trace_holder) in [
+            ("memory", memory_trace_holder),
+            ("witness", witness_trace_holder),
+        ] {
+            assert_eq!(
+                trace_holder.log_domain_size, self.trace_holder.log_domain_size,
+                "{label} trace holder must match setup trace length",
+            );
+            assert_eq!(
+                trace_holder.log_lde_factor, self.trace_holder.log_lde_factor,
+                "{label} trace holder must match setup LDE factor",
+            );
+            assert_eq!(
+                trace_holder.log_rows_per_leaf, self.trace_holder.log_rows_per_leaf,
+                "{label} trace holder must match setup rows per leaf",
+            );
+            assert_eq!(
+                trace_holder.log_tree_cap_size, self.trace_holder.log_tree_cap_size,
+                "{label} trace holder must match setup tree cap size",
+            );
+        }
+
+        let mut storage = GpuGKRStorage::default();
+        self.bind_setup_columns_into_storage(&mut storage);
+        bind_trace_holder_column_range_into_storage(
+            memory_trace_holder,
+            0,
+            memory_trace_holder.columns_count,
+            &mut storage,
+            GKRAddress::BaseLayerMemory,
+        );
+        bind_trace_holder_column_range_into_storage(
+            witness_trace_holder,
+            0,
+            witness_trace_holder.columns_count,
+            &mut storage,
+            GKRAddress::BaseLayerWitness,
+        );
+
+        Ok(storage)
+    }
+
+    /// Schedule the forward setup kernels on `exec_stream`. The caller must
+    /// have already ensured the H2D into `self.trace_holder` is visible to
+    /// `exec_stream` (via the bundle's `ensure_transferred` in production, or
+    /// `h2d_stream.synchronize()` in tests).
+    pub fn schedule_forward_setup(
+        &self,
+        compiled_circuit: &GKRCircuitArtifact<BF>,
+        d_lookup_challenges: DeviceAllocation<E4>,
+        context: &ProverContext,
+    ) -> CudaResult<GpuGKRForwardSetup> {
+        schedule_forward_setup_for_shape(
+            Some((&self.trace_holder, self.host.columns_count)),
+            compiled_circuit.trace_len,
+            compiled_circuit.generic_lookup_tables_width,
+            compiled_circuit.total_tables_size,
+            compiled_circuit.tables_ids_in_generic_lookups,
+            compiled_circuit.generic_lookup_padding,
+            d_lookup_challenges,
+            context,
+        )
+    }
+}
+
+pub fn schedule_forward_setup_for_shape(
+    setup_trace_holder: Option<(&TraceHolder<BF>, usize)>,
+    trace_len: usize,
+    generic_lookup_width: usize,
+    generic_lookup_len: usize,
+    tables_ids_in_generic_lookups: bool,
+    generic_lookup_padding: Option<BF>,
+    d_lookup_challenges: DeviceAllocation<E4>,
+    context: &ProverContext,
+) -> CudaResult<GpuGKRForwardSetup> {
+    if let Some((setup_trace_holder, setup_columns_count)) = setup_trace_holder {
+        assert_eq!(
+            trace_len,
+            1usize << setup_trace_holder.log_domain_size,
+            "forward setup trace length mismatch",
+        );
+        assert_eq!(
+            generic_lookup_width, setup_columns_count,
+            "generic lookup setup width does not match uploaded setup columns",
+        );
+    } else {
+        assert_eq!(
+            generic_lookup_width, 0,
+            "setup-less forward scheduling does not support uploaded setup columns",
+        );
+        assert_eq!(
+            generic_lookup_len, 0,
+            "setup-less forward scheduling does not support generic lookup preprocessing",
+        );
+    }
+
+    assert!(
+        generic_lookup_len == 0
+            || generic_lookup_width <= GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS,
+        "generic lookup setup width {} exceeds the fused setup cap of {}",
+        generic_lookup_width,
+        GKR_FORWARD_SETUP_GENERIC_LOOKUP_MAX_COLUMNS
+    );
+    assert!(
+        d_lookup_challenges.len() >= 2,
+        "lookup scheduling expects [lookup_alpha, lookup_additive_part, ...]",
+    );
+    let stream = context.get_exec_stream();
+    let tracing_ranges = Vec::new();
+    let callbacks = Callbacks::new();
+
+    let mut device_lookup_fill_values =
+        context.alloc::<E4>(LOOKUP_FILL_COUNT, AllocationPlacement::BestFit)?;
+
+    // We need `alpha_powers` populated in setup constant memory whenever we'll
+    // launch the generic-lookup kernel. The kernel runs when either:
+    //   (a) there is real generic lookup preprocessing to do (`generic_lookup_len > 0`), or
+    //   (b) we still need to emit the decoder fill value inline (tables_ids_in_generic_lookups
+    //       && generic_lookup_width > 0), even though there are no generic lookups to accumulate, or
+    //   (c) the circuit pads its setup tail with a nonzero value.
+    let decoder_table_id_value = if tables_ids_in_generic_lookups && generic_lookup_width > 0 {
+        TableType::Decoder as u32
+    } else {
+        0
+    };
+    let padding_value = generic_lookup_padding.unwrap_or(BF::ZERO);
+    let needs_generic_lookup_kernel =
+        generic_lookup_len > 0 || decoder_table_id_value != 0 || !padding_value.is_zero();
+    if needs_generic_lookup_kernel && generic_lookup_width > 0 {
+        schedule_lookup_alpha_powers_prelude(
+            d_lookup_challenges.as_ptr().cast::<E4>(),
+            generic_lookup_width,
+            context,
+        )?;
+    }
+    let mut generic_lookup = if generic_lookup_len > 0 {
+        Some(context.alloc::<E4>(generic_lookup_len, AllocationPlacement::BestFit)?)
+    } else {
+        None
+    };
+
+    if needs_generic_lookup_kernel && generic_lookup_width > 0 {
+        let setup_columns: Vec<*const BF> =
+            if let Some((setup_trace_holder, _)) = setup_trace_holder {
+                let raw = setup_trace_holder.get_hypercube_evals();
+                (0..generic_lookup_width)
+                    .map(|column_idx| unsafe { raw.as_ptr().add(column_idx * trace_len) })
+                    .collect()
+            } else {
+                // The `setup_trace_holder.is_none()` branch asserts generic_lookup_width == 0 above,
+                // so we never reach here when there is no setup.
+                unreachable!(
+                    "generic_lookup_width > 0 requires a setup_trace_holder (asserted earlier)"
+                );
+            };
+        let (output_ptr, output_len) = if let Some(gl) = generic_lookup.as_mut() {
+            (gl.as_mut_ptr(), gl.len())
+        } else {
+            (null_mut(), 0)
+        };
+        let fill_values = device_lookup_fill_values.as_mut_ptr();
+        let batch = pack_forward_setup_generic_lookup_batch(
+            &setup_columns,
+            output_ptr,
+            fill_values.wrapping_add(DECODER_FILL_INDEX),
+            fill_values.wrapping_add(SETUP_PADDING_FILL_INDEX),
+            decoder_table_id_value,
+            padding_value,
+        );
+        launch_forward_setup_generic_lookup(&batch, output_len, context)?;
+    } else {
+        // The fused kernel writes every fill value when it runs.
+        unsafe {
+            era_cudart::memory::memory_set_async(
+                device_lookup_fill_values.transmute_mut::<u8>(),
+                0,
+                stream,
+            )?;
+        }
+    }
+
+    #[expect(
+        clippy::arc_with_non_send_sync,
+        reason = "Storage shares Arc backings; the non-concurrent allocator stays on the scheduling thread."
+    )]
+    let device_lookup_fill_values = Arc::new(device_lookup_fill_values);
+
+    Ok(GpuGKRForwardSetup {
+        _tracing_ranges: tracing_ranges,
+        _callbacks: callbacks,
+        d_lookup_challenges,
+        device_lookup_fill_values,
+        generic_lookup,
+    })
+}
+
+pub(crate) fn bootstrap_storage_from_trace_holders<E>(
+    setup_trace_holder: Option<&TraceHolder<BF>>,
+    setup_columns_count: usize,
+    trace_len_log2: u32,
+    log_lde_factor: u32,
+    log_rows_per_leaf: u32,
+    log_tree_cap_size: u32,
+    memory_trace_holder: &TraceHolder<BF>,
+    witness_trace_holder: &TraceHolder<BF>,
+    merged_witness_offset: Option<usize>,
+) -> CudaResult<GpuGKRStorage<BF, E>> {
+    for (label, trace_holder) in [
+        ("memory", memory_trace_holder),
+        ("witness", witness_trace_holder),
+    ] {
+        assert_eq!(
+            trace_holder.log_domain_size, trace_len_log2,
+            "{label} trace holder must match setup trace length",
+        );
+        assert_eq!(
+            trace_holder.log_lde_factor, log_lde_factor,
+            "{label} trace holder must match setup LDE factor",
+        );
+        assert_eq!(
+            trace_holder.log_rows_per_leaf, log_rows_per_leaf,
+            "{label} trace holder must match setup rows per leaf",
+        );
+        assert_eq!(
+            trace_holder.log_tree_cap_size, log_tree_cap_size,
+            "{label} trace holder must match setup tree cap size",
+        );
+    }
+    if let Some(setup_trace_holder) = setup_trace_holder {
+        assert_eq!(
+            setup_trace_holder.log_domain_size, trace_len_log2,
+            "setup trace holder must match trace length",
+        );
+        assert_eq!(
+            setup_trace_holder.log_lde_factor, log_lde_factor,
+            "setup trace holder must match LDE factor",
+        );
+        assert_eq!(
+            setup_trace_holder.log_rows_per_leaf, log_rows_per_leaf,
+            "setup trace holder must match rows per leaf",
+        );
+        assert_eq!(
+            setup_trace_holder.log_tree_cap_size, log_tree_cap_size,
+            "setup trace holder must match tree cap size",
+        );
+        assert_eq!(
+            setup_trace_holder.columns_count, setup_columns_count,
+            "setup trace holder columns count mismatch",
+        );
+    } else {
+        assert_eq!(
+            setup_columns_count, 0,
+            "setup-less storage bootstrap expects zero uploaded setup columns",
+        );
+    }
+
+    let mut storage = GpuGKRStorage::default();
+    if let Some(setup_trace_holder) = setup_trace_holder {
+        bind_trace_holder_column_range_into_storage(
+            setup_trace_holder,
+            0,
+            setup_trace_holder.columns_count,
+            &mut storage,
+            GKRAddress::Setup,
+        );
+    }
+    let memory_columns = merged_witness_offset.unwrap_or(memory_trace_holder.columns_count);
+    bind_trace_holder_column_range_into_storage(
+        memory_trace_holder,
+        0,
+        memory_columns,
+        &mut storage,
+        GKRAddress::BaseLayerMemory,
+    );
+    match merged_witness_offset {
+        None => bind_trace_holder_columns_into_storage(
+            witness_trace_holder,
+            &mut storage,
+            GKRAddress::BaseLayerWitness,
+        ),
+        Some(memory_columns) => {
+            assert_eq!(
+                witness_trace_holder.columns_count, 0,
+                "merged witness holder must be empty"
+            );
+            let witness_columns = memory_trace_holder
+                .columns_count
+                .checked_sub(memory_columns)
+                .expect("merged memory width exceeds the holder");
+            bind_trace_holder_column_range_into_storage(
+                memory_trace_holder,
+                memory_columns,
+                witness_columns,
+                &mut storage,
+                GKRAddress::BaseLayerWitness,
+            );
+        }
+    }
+
+    Ok(storage)
+}
+
+pub struct GpuGKRForwardSetup {
+    _tracing_ranges: Vec<Range>,
+    _callbacks: Callbacks<'static>,
+    d_lookup_challenges: DeviceAllocation<E4>,
+    device_lookup_fill_values: Arc<DeviceAllocation<E4>>,
+    generic_lookup: Option<DeviceAllocation<E4>>,
+}
+
+pub struct GpuGKRForwardSetupHostKeepalive {
+    _tracing_ranges: Vec<Range>,
+    _callbacks: Callbacks<'static>,
+}
+
+impl GpuGKRForwardSetup {
+    /// Device view over `d_lookup_challenges[1..2]` — `lookup_additive_part` lives in the
+    /// second slot of the device-resident lookup challenges buffer. No standalone allocation.
+    pub(crate) fn lookup_additive_part_device(&self) -> &era_cudart::slice::DeviceSlice<E4> {
+        &self.d_lookup_challenges[1..2]
+    }
+
+    pub(crate) fn lookup_fill_values_device(&self) -> &DeviceAllocation<E4> {
+        &self.device_lookup_fill_values
+    }
+
+    pub fn generic_lookup(&self) -> &DeviceAllocation<E4> {
+        self.generic_lookup
+            .as_ref()
+            .expect("generic lookup runtime was released")
+    }
+
+    pub fn generic_lookup_len(&self) -> usize {
+        self.generic_lookup
+            .as_ref()
+            .map(DeviceAllocation::len)
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn take_generic_lookup(&mut self) -> Option<DeviceAllocation<E4>> {
+        self.generic_lookup.take()
+    }
+
+    pub(crate) fn lookup_fill_values_owner(&self) -> Arc<DeviceAllocation<E4>> {
+        self.device_lookup_fill_values.clone()
+    }
+
+    /// Hands the `d_lookup_challenges` device buffer back to the caller instead
+    /// of dropping it. The forward pass no longer reads it once this is called,
+    /// so it can be repurposed as the lookup-and-constraint device input for
+    /// `schedule_execute_backward_workflow` — saves the
+    /// otherwise-required separate allocation + D2D from the post-forward
+    /// transcript squeeze.
+    pub fn into_host_keepalive_taking_lookup_challenges(
+        self,
+    ) -> (GpuGKRForwardSetupHostKeepalive, DeviceAllocation<E4>) {
+        let Self {
+            _tracing_ranges,
+            _callbacks,
+            d_lookup_challenges,
+            device_lookup_fill_values: _,
+            generic_lookup: _,
+        } = self;
+        (
+            GpuGKRForwardSetupHostKeepalive {
+                _tracing_ranges,
+                _callbacks,
+            },
+            d_lookup_challenges,
+        )
+    }
+}
+
+pub(super) fn flatten_setup_columns_into_pinned_buffer(
+    setup: &CpuGKRSetup<BF>,
+    columns_count: usize,
+    trace_len: usize,
+) -> CudaResult<StaticPinnedBox<BF>> {
+    let mut raw_hypercube_evals = alloc_static_pinned_box_uninit(columns_count * trace_len)?;
+    for (column_idx, src_column) in setup.hypercube_evals.iter().enumerate() {
+        let dst_range = column_idx * trace_len..(column_idx + 1) * trace_len;
+        raw_hypercube_evals[dst_range].copy_from_slice(src_column.as_ref());
+    }
+    Ok(raw_hypercube_evals)
+}
+
+pub(super) fn precompute_partial_tree_cache_in_holder(
+    raw_hypercube_evals: &StaticPinnedBox<BF>,
+    mut trace_holder: TraceHolder<BF>,
+    context: &ProverContext,
+) -> CudaResult<(Vec<StaticPinnedBox<Digest>>, StaticPinnedBox<Digest>)> {
+    assert_eq!(
+        raw_hypercube_evals.len(),
+        trace_holder.get_hypercube_evals().len(),
+        "pinned setup copy must contain only logical columns"
+    );
+    let log_tree_cap_size = trace_holder.log_tree_cap_size;
+    memory_copy_async(
+        trace_holder.get_uninit_hypercube_evals_mut(),
+        &raw_hypercube_evals[..],
+        context.get_exec_stream(),
+    )?;
+    trace_holder.ensure_cosets_materialized(context)?;
+    trace_holder.commit_all(context)?;
+
+    let partial_trees = match &trace_holder.trees {
+        TreesHolder::Partial(backing) => {
+            let instances_count = 1usize << trace_holder.log_lde_factor;
+            copy_partial_trees_to_pinned_host(backing, instances_count, context)?
+        }
+        _ => unreachable!("host setup precomputation always caches partial trees"),
+    };
+
+    // Store the cap in pinned host memory for subsequent H2D transfers.
+    // Synchronize before returning the host data.
+    let cap_size = 1usize << log_tree_cap_size;
+    let mut unified_tree_cap = alloc_static_pinned_box_uninit::<Digest>(cap_size)?;
+    memory_copy_async(
+        &mut unified_tree_cap[..],
+        trace_holder.unified_device_cap(),
+        context.get_exec_stream(),
+    )?;
+    context.get_exec_stream().synchronize()?;
+
+    Ok((partial_trees, unified_tree_cap))
+}
+
+#[cfg(test)]
+pub(crate) mod tests;

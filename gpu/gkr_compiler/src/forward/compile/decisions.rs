@@ -7,6 +7,7 @@ use gkr_eval_ir::{DagLayer, Expr, ExprId, RootId, SourceKind};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::forward::artifact::{SiteConsumer, SiteKey};
+use crate::forward::ElementModel;
 
 // ── SiteDecisions ────────────────────────────────────────────────────────────
 
@@ -40,8 +41,9 @@ impl OccurrenceStreams {
         order: &[RootId],
         compute_roots: &BTreeSet<RootId>,
         decisions: &SiteDecisions,
+        model: ElementModel,
     ) -> Self {
-        let flat = demand_sites(layer, order, compute_roots);
+        let flat = demand_sites(layer, order, compute_roots, model);
         let domain = site_domain(layer, &flat);
         let mut streams: BTreeMap<ExprId, VecDeque<f64>> = BTreeMap::new();
         for key in flat {
@@ -71,8 +73,9 @@ pub(crate) fn enumerate_site_domain(
     layer: &DagLayer,
     order: &[RootId],
     compute_roots: &BTreeSet<RootId>,
+    model: ElementModel,
 ) -> BTreeSet<SiteKey> {
-    site_domain(layer, &demand_sites(layer, order, compute_roots))
+    site_domain(layer, &demand_sites(layer, order, compute_roots, model))
 }
 
 fn site_domain(layer: &DagLayer, demands: &[SiteKey]) -> BTreeSet<SiteKey> {
@@ -114,6 +117,7 @@ fn demand_sites(
     layer: &DagLayer,
     order: &[RootId],
     compute_roots: &BTreeSet<RootId>,
+    model: ElementModel,
 ) -> Vec<SiteKey> {
     let representatives: BTreeMap<ExprId, RootId> = layer
         .roots
@@ -146,7 +150,7 @@ fn demand_sites(
                 consumer: SiteConsumer::RootOutput,
                 value: root_expr,
             });
-            demand_expand(layer, site_root, root_expr, &mut demands);
+            demand_expand(layer, site_root, root_expr, &mut demands, model);
         }
     }
     demands
@@ -188,7 +192,13 @@ fn compute_reaches_dram(layer: &DagLayer) -> BTreeSet<ExprId> {
 }
 
 /// Enumerate the operand sites produced by lowering `value`.
-fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec<SiteKey>) {
+fn demand_expand(
+    layer: &DagLayer,
+    root_id: RootId,
+    value: ExprId,
+    out: &mut Vec<SiteKey>,
+    model: ElementModel,
+) {
     if layer.resolutions.contains_key(&value) {
         return;
     }
@@ -205,6 +215,7 @@ fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec
                     },
                     q,
                     out,
+                    model,
                 );
             }
         }
@@ -215,7 +226,7 @@ fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec
             let mut addends: Vec<ExprId> = Vec::new();
             let mut products: Vec<(ExprId, ExprId)> = Vec::new();
             for &c in children {
-                match classify_additive_child(layer, c) {
+                match classify_additive_child(layer, c, model) {
                     AdditiveChild::Product { lhs, rhs, .. } => products.push((lhs, rhs)),
                     AdditiveChild::Addend { id, .. } => addends.push(id),
                 }
@@ -231,6 +242,7 @@ fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec
                     },
                     id,
                     out,
+                    model,
                 );
                 idx += 1;
             }
@@ -244,6 +256,7 @@ fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec
                     },
                     lhs,
                     out,
+                    model,
                 );
                 idx += 1;
                 push_and_expand(
@@ -255,6 +268,7 @@ fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec
                     },
                     rhs,
                     out,
+                    model,
                 );
                 idx += 1;
             }
@@ -273,7 +287,7 @@ fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec
             }
             let surviving: Vec<ExprId> = factors
                 .into_iter()
-                .filter(|&f| !is_neg_one_factor(layer, f))
+                .filter(|&f| !is_neg_one_factor(layer, f, model))
                 .collect();
             for (idx, f) in surviving.into_iter().enumerate() {
                 push_and_expand(
@@ -285,6 +299,7 @@ fn demand_expand(layer: &DagLayer, root_id: RootId, value: ExprId, out: &mut Vec
                     },
                     f,
                     out,
+                    model,
                 );
             }
         }
@@ -299,11 +314,12 @@ fn push_and_expand(
     consumer: SiteConsumer,
     value: ExprId,
     out: &mut Vec<SiteKey>,
+    model: ElementModel,
 ) {
     out.push(SiteKey {
         root: root_id,
         consumer,
         value,
     });
-    demand_expand(layer, root_id, value, out);
+    demand_expand(layer, root_id, value, out, model);
 }

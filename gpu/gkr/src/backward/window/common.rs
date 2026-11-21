@@ -22,7 +22,6 @@ const _: () = {
             >= WINDOW_MAX_COEFFICIENT_PLANS + WINDOW_COEFFICIENT_BANK_BIAS as usize
     );
     assert!(BWD_COEFF_BANK_CAPACITY <= MAX_COEFFICIENT_ENCODINGS);
-    assert!(BWD_COEFF_BANK_CAPACITY * size_of::<gpu_core::primitives::field::E4>() == 28 * 1_024);
 };
 
 pub(crate) const BWD_COEFF_ORIGIN_READ_BASE: u8 = 0;

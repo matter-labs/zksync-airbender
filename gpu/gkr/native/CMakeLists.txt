@@ -11,8 +11,9 @@ if (NOT DEFINED AB_CUDA_CMAKE_DIR)
 endif ()
 include(${AB_CUDA_CMAKE_DIR}/ab_cuda_target.cmake)
 add_library(gpu_gkr_native STATIC)
+# Preserve the existing object order: device-link constant addresses depend on it.
 add_subdirectory(ops)
 add_subdirectory(gkr)
 ab_cuda_configure_target(gpu_gkr_native
         PREFIX GPU_GKR
-        INCLUDE_DIRS ${GPU_CORE_NATIVE_INCLUDE} ${GPU_HASH_NATIVE_INCLUDE})
+        INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} ${GPU_CORE_NATIVE_INCLUDE} ${GPU_HASH_NATIVE_INCLUDE})

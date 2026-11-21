@@ -1,0 +1,44 @@
+#pragma once
+#include "memory_unrolled.cuh"
+namespace airbender::trace::witness::memory::unrolled {
+struct InitsAndTeardownsTraceRaw {
+  const u32 num_pages;
+  const u32 *const __restrict__ page_indices;
+  const u32 *const __restrict__ values_packed;
+  const TimestampScalar *const __restrict__ timestamps_packed;
+};
+
+#define MAX_INITS_AND_TEARDOWNS_SETS_COUNT 16
+
+struct InitsAndTeardownsLayout {
+  const u32 teardown_timestamps_columns[NUM_TIMESTAMP_COLUMNS_FOR_RAM];
+  const u32 teardown_values_columns[2];
+};
+
+struct InitsAndTeardownsLayouts {
+  const u32 count;
+  const InitsAndTeardownsLayout layouts[MAX_INITS_AND_TEARDOWNS_SETS_COUNT];
+};
+
+template <typename F>
+DEVICE_FORCEINLINE void process_inits_and_teardowns_pages(const InitsAndTeardownsLayouts &init_and_teardown_layouts, const InitsAndTeardownsTraceRaw &trace,
+                                                          const matrix_setter<F, st_modifier::cg> memory, const u32 page_size_log2,
+                                                          const u32 pages_per_set_log2, const unsigned global_word) {
+  if (global_word >= trace.num_pages << page_size_log2)
+    return;
+  const u32 page_size_mask = (1u << page_size_log2) - 1u;
+  const u32 pages_per_set_mask = (1u << pages_per_set_log2) - 1u;
+  const unsigned page_slot = global_word >> page_size_log2;
+  const unsigned word_in_page = global_word & page_size_mask;
+  const u32 page_idx = trace.page_indices[page_slot];
+  const u32 set_idx = page_idx >> pages_per_set_log2;
+  const unsigned row_idx = ((page_idx & pages_per_set_mask) << page_size_log2) | word_in_page;
+  const u32 val = trace.values_packed[global_word];
+  const TimestampScalar ts_scalar = trace.timestamps_packed[global_word];
+  const auto layout = init_and_teardown_layouts.layouts[set_idx];
+  const auto row_memory = memory.copy().add_row(row_idx);
+  write_timestamp_value(layout.teardown_timestamps_columns, TimestampData::from_scalar(ts_scalar), row_memory);
+  write_u32_value(layout.teardown_values_columns, val, row_memory);
+}
+
+} // namespace airbender::trace::witness::memory::unrolled

@@ -1,13 +1,26 @@
 # AGENTS.md
 
-`gpu_gkr` owns the GKR engine: the forward pass (`forward/`), the
-backward/sumcheck rounds (`backward/`), setup (`setup/`), base-layer claims
-(`base_layer_claims/`), the proof layout model (`proof_layout/`), stage 1 with the
-merged memory/witness commitment producer (`stage1/`), and the
-GKR/WHIR protocol kernels (`gkr_ops/`, e.g. transcript/PoW-adjacent
-sumcheck-round helpers) that used to live in `circuit_prover`'s
-`ops::gkr_ops`. It carries the `gpu_gkr_native` CUDA archive (the tree that
-used to live under `circuit_prover/native/gkr/` and `native/ops/gkr_ops.cu`).
+`gpu_gkr` owns the GKR engine and GKR/WHIR protocol kernels. Shared Rust
+code stays at `src/{backward,forward,gkr_ops,programs,setup,storage,storage_types}`;
+`src/baby_bear/` and `src/proth120/` hold the field implementations. BabyBear
+forward/backward scheduling, setup, stage 1, base-layer claims, and proof layout
+live under `src/baby_bear/`; shared planners, descriptors, and field-generic
+helpers stay at their original root paths. `GkrPrograms` is exposed through
+`gpu_gkr::baby_bear::GkrPrograms`; Proth120 setup lives in
+`gpu_gkr::proth120::setup`.
+
+The single `gpu_gkr_native` CUDA archive contains shared headers at
+`native/gkr/` and `native/ops/`, BabyBear sources at
+`native/gkr/baby_bear/` and `native/ops/baby_bear/`, and Proth120 sources at
+`native/gkr/proth120/` and `native/ops/proth120/`. The native root CMakeLists
+creates the archive and visits `ops/` before `gkr/`. Each source-owning folder
+lists its local files with `target_sources(gpu_gkr_native PRIVATE ...)` and
+visits its children in the existing translation-unit order. The Proth120
+backward folder visits the compiler-generated continuation-bank source list
+last. The compiler checks the exact BabyBear continuation `generated/` inventory,
+so its files remain listed by the continuation parent's CMakeLists.
+Root-relative native includes distinguish
+shared and field headers with the same basename.
 
 ## Layer position
 
@@ -71,10 +84,10 @@ drift by convention.
 - **Header relationships**: `export_include(true)` — this crate exports its
   `native/` dir as `DEP_GPU_GKR_NATIVE_INCLUDE`, consumed by `gpu_whir`'s
   `accumulate_eq.cu` for `gkr/support/{eq_inline,kernel_helpers}.cuh` (which
-  pulls in `descriptors.cuh`), and `ops/gkr_ops_helpers.cuh` supplies the
+  pulls in `descriptors.cuh`), and `ops/baby_bear/gkr_ops_helpers.cuh` supplies the
   inline WHIR round update to `gpu_whir`'s `in_domain.cu`. This crate itself reads `gpu_core`'s base
   headers and `gpu_hash`'s `hash.cuh` (via `DEP_GPU_HASH_NATIVE_INCLUDE`) for
-  the blake2s-dependent protocol kernels in `ops/gkr_ops.cu`.
+  the blake2s-dependent protocol kernels in `ops/baby_bear/gkr_ops.cu`.
 
 ## Public API
 

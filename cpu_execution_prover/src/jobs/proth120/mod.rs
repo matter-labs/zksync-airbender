@@ -85,7 +85,7 @@ pub(super) fn run<A: HostTraceAllocator>(
     }
 }
 
-fn evaluate_witness<A: HostTraceAllocator>(
+pub(crate) fn evaluate_witness<A: HostTraceAllocator>(
     circuit_type: CircuitType,
     setup: &L1WrapSetup,
     inits_and_teardowns: &InitsAndTeardownsTraceHost<A>,
@@ -121,4 +121,15 @@ fn evaluate_witness<A: HostTraceAllocator>(
         Global,
         Global,
     )
+}
+
+/// CPU production expansion used by `gpu_trace`'s Proth120 parity tests.
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub fn expand_inits_and_teardowns<A: HostTraceAllocator>(
+    trace: &InitsAndTeardownsTraceHost<A>,
+    num_sets: usize,
+    trace_len_log2: u32,
+) -> Vec<([Vec<Proth120>; 2], [Vec<Proth120>; 2])> {
+    inits_and_teardowns::expand::<Proth120, A>(trace, num_sets, trace_len_log2)
 }

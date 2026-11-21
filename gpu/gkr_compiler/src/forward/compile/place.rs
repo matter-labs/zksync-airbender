@@ -6,6 +6,7 @@ use gkr_eval_ir::ExprId;
 
 use crate::forward::compile::CompileError;
 use crate::forward::isa::{LdcSub, OperandField};
+use crate::forward::ElementModel;
 use crate::interval_pack::{self, Interval, PackFailure, PackWidth};
 
 use super::lower::VInstr;
@@ -52,9 +53,14 @@ fn compute_live_ranges(instrs: &[VInstr]) -> HashMap<ValueId, LiveRange> {
 }
 
 /// The packer's width for a forward value.
-fn pack_width_of(widths: &HashMap<ValueId, OperandField>, v: ValueId) -> PackWidth {
+fn pack_width_of(
+    widths: &HashMap<ValueId, OperandField>,
+    v: ValueId,
+    model: ElementModel,
+) -> PackWidth {
     match widths.get(&v) {
-        Some(OperandField::Ext) => PackWidth::Quad,
+        Some(OperandField::Ext) if model.bf_lanes_per_bucket == 4 => PackWidth::Quad,
+        Some(OperandField::Ext) => PackWidth::Single,
         Some(OperandField::Base) => PackWidth::Single,
         None => panic!("no width recorded for value {v:?}"),
     }
@@ -69,8 +75,9 @@ fn assign_cells(
     ranges: &HashMap<ValueId, LiveRange>,
     widths: &HashMap<ValueId, OperandField>,
     budget: usize,
+    model: ElementModel,
 ) -> Result<HashMap<ValueId, u16>, CompileError> {
-    interval_pack::assign_lanes(ranges, |v| pack_width_of(widths, v), budget).map_err(
+    interval_pack::assign_lanes(ranges, |v| pack_width_of(widths, v, model), budget).map_err(
         |e: PackFailure| CompileError::BudgetBelowFloor {
             floor: e.floor(budget),
             budget,
@@ -82,6 +89,7 @@ pub(super) fn plan_placement(
     instrs: &[VInstr],
     widths: &HashMap<ValueId, OperandField>,
     budget: usize,
+    model: ElementModel,
 ) -> Result<HashMap<ValueId, u16>, CompileError> {
-    assign_cells(&compute_live_ranges(instrs), widths, budget)
+    assign_cells(&compute_live_ranges(instrs), widths, budget, model)
 }

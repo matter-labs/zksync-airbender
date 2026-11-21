@@ -14,7 +14,7 @@ use super::super::kernels::{
 /// `OutputType` `Ord` order and slot index is monotonic in that order, so this
 /// reproduces the numbering the generated verifier derives by walking its own
 /// present output groups.
-pub(in crate::backward) fn build_dimension_reducing_slots_static(
+pub(crate) fn build_dimension_reducing_slots_static(
     layer: &BTreeMap<OutputType, DimensionReducingInputOutput>,
 ) -> GpuGKRDimensionReducingLayerSlots {
     let mut layer_slots = GpuGKRDimensionReducingLayerSlots::default();

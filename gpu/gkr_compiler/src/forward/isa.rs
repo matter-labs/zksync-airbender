@@ -69,10 +69,10 @@ pub enum OperandField {
 }
 
 impl OperandField {
-    pub(crate) const fn lanes(self) -> usize {
+    pub(crate) const fn lanes(self, model: super::ElementModel) -> usize {
         match self {
             Self::Base => 1,
-            Self::Ext => super::BF_LANES_PER_E4_BUCKET,
+            Self::Ext => model.bf_lanes_per_bucket as usize,
         }
     }
 }

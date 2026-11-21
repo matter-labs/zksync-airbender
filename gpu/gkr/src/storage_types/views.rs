@@ -26,7 +26,7 @@ pub(crate) struct GpuGKRLayerSource<B, E> {
 pub(crate) struct GpuGKRStorage<B, E> {
     pub(crate) layers: Vec<GpuGKRLayerSource<B, E>>,
     pub(crate) layout: Option<Arc<GpuGKRStorageLayout>>,
-    pub(crate) replay: Option<crate::forward::recompute::ForwardReplay>,
+    pub(crate) replay: Option<crate::baby_bear::forward::recompute::ForwardReplay>,
 }
 
 impl<B, E> Default for GpuGKRLayerSource<B, E> {

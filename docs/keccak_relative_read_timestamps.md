@@ -205,7 +205,7 @@ with the main machine's committed limbs.
 | `keccak_theta_rho/mod.rs`, `keccak_chi5/mod.rs` | the groups above and their distance expressions |
 | `common_constants/src/delegation_types/keccak_f1600.rs` | the distance constants, the chi5 slot order, and a test that derives every distance from the 361-call schedule |
 | `prover/src/gkr/witness_gen/delegation_circuits/memory.rs` | CPU witness: checks that all members recorded the same timestamp and that `I_hi − r_hi` is 0 or 1 |
-| `gpu/trace/src/witness/memory_delegation.rs`, `native/witness/memory_delegation.cuh` | the same on GPU; fixed-size group ABI |
+| `gpu/trace/src/baby_bear/witness/memory_delegation.rs`, `native/witness/memory_delegation.cuh` | the same on GPU; fixed-size group ABI |
 | `cs/src/gkr_compiler/aux_layout_test.rs` | every member's tuple references its group's committed pair, every read-timestamp column lies in the memory subtree, every memory-tuple cache relation depends on memory-subtree columns only, every ungrouped access has its comparison |
 | `prover/src/tests/gkr/relative_timestamps.rs` | R1 and R3 on compiled layouts, limb-boundary borrows, a forged high limb that only R3 rejects, the alternative limb representation, padding, and retimed, skipped and interleaved sequences |
 

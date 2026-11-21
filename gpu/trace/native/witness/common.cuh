@@ -1,8 +1,6 @@
 #pragma once
 
-#include "primitives/field.cuh"
-
-using namespace ::airbender::primitives::field;
+#include "primitives/ptx.cuh"
 
 namespace airbender::trace::witness {
 
@@ -24,28 +22,34 @@ struct Address {
   u32 layer;
 };
 
-struct LinearTerm {
-  u32 coefficient;
-  Address address;
-};
+template <typename F> struct witness_field;
 
 #define MAX_LINEAR_TERMS_COUNT 4
 
-struct LinearRelation {
-  u32 linear_terms_count;
-  LinearTerm linear_terms[MAX_LINEAR_TERMS_COUNT];
-  u32 constant;
+template <typename F> struct LinearTerm {
+  F coefficient;
+  Address address;
+  u32 padding;
 };
 
-template <typename Memory, typename Witness, typename Scratch>
-DEVICE_FORCEINLINE bf evaluate_linear_relation(const Memory &memory, const Witness &witness, const Scratch &scratch, const LinearRelation relation) {
-  bf result = relation.constant == 0 ? bf::ZERO() : bf::from_u32_unchecked(relation.constant);
+template <typename F> struct LinearRelation {
+  F constant;
+  LinearTerm<F> linear_terms[MAX_LINEAR_TERMS_COUNT];
+  u32 linear_terms_count;
+  u32 padding[3];
+};
+
+template <typename F, typename Memory, typename Witness, typename Scratch>
+DEVICE_FORCEINLINE F evaluate_linear_relation(const Memory &memory, const Witness &witness, const Scratch &scratch, const LinearRelation<F> relation) {
+  F result = witness_field<F>::linear_relation_constant(relation.constant, relation.linear_terms_count);
 #pragma unroll
   for (int i = 0; i < MAX_LINEAR_TERMS_COUNT; ++i) {
     if (i == relation.linear_terms_count)
       break;
-    const auto [coefficient, address] = relation.linear_terms[i];
-    bf value;
+    const auto &term = relation.linear_terms[i];
+    const auto coefficient = term.coefficient;
+    const auto address = term.address;
+    F value = F::ZERO();
     switch (address.tag) {
     case BaseLayerMemory:
       value = memory.get_at_col(address.offset);
@@ -60,22 +64,7 @@ DEVICE_FORCEINLINE bf evaluate_linear_relation(const Memory &memory, const Witne
       __trap();
       break;
     }
-    switch (coefficient) {
-    case 0:
-      __trap();
-      break;
-    case 1:
-      // no need to multiply by 1
-      break;
-    case bf::ORDER - 1:
-      // minus one, just negate
-      value = bf::neg(value);
-      break;
-    default:
-      value = bf::mul(value, bf::from_u32_unchecked(coefficient));
-      break;
-    }
-    result = bf::add(result, value);
+    result = witness_field<F>::add_linear_term(coefficient, value, result);
   }
   return result;
 }

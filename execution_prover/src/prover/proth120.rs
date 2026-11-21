@@ -90,6 +90,15 @@ fn collect_l1_wrap_trace<A: HostTraceAllocator>(
 }
 
 impl<B: ExecutionBackend> ExecutionProver<B> {
+    /// Override the mode's L1 WHIR schedule before registering binaries.
+    pub fn set_l1_whir_schedule(&mut self, schedule: ::prover::gkr::prover_config::WhirSchedule) {
+        assert!(
+            self.next_binary_id == 0,
+            "set L1 WHIR schedule before binary registration"
+        );
+        self.l1_whir_schedule = Some(schedule);
+    }
+
     /// The instruction tape and prepared setup of an L1 wrap binary.
     pub(super) fn prepare_l1_wrap(
         &self,
@@ -120,12 +129,23 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             setup.circuit.memory_layout.teardown_sets.len(),
             circuit_type.get_num_inits_and_teardowns_sets()
         );
-        let precomputations = self.backend.prepare(
-            circuit_type,
-            crate::setup::CanonicalCircuitSetup::L1Wrap(setup),
-            self.configuration.soundness_mode,
-            profiles,
-        );
+        let precomputations = if let Some(schedule) = &self.l1_whir_schedule {
+            let mut config = ProofProfile::L1Wrap.prover_config(
+                circuit_type.get_domain_size_log2() as usize,
+                self.configuration.soundness_mode,
+            );
+            config.cap_size = schedule.cap_size;
+            config.whir_schedule = schedule.clone();
+            config.validate_for_whir_message_size(config.whir_message_size_log2());
+            self.backend.prepare_l1_wrap(circuit_type, setup, config)
+        } else {
+            self.backend.prepare(
+                circuit_type,
+                crate::setup::CanonicalCircuitSetup::L1Wrap(setup),
+                self.configuration.soundness_mode,
+                profiles,
+            )
+        };
         (instruction_tape, precomputations)
     }
 
@@ -152,6 +172,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             non_determinism,
             &sender,
             &Arc::new(AtomicBool::new(false)),
+            false,
         );
         drop(sender);
         let trace =
@@ -237,6 +258,7 @@ mod tests {
     fn events() -> Vec<WorkerResult<CpuTraceAllocator>> {
         vec![
             WorkerResult::TracingData(TracingData {
+                partial_tree_buffer: None,
                 circuit_type: CircuitType::L1Wrap,
                 sequence_id: 0,
                 tracing_data: TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(
@@ -245,6 +267,7 @@ mod tests {
                 participating_snapshot_indexes: BTreeSet::from([0, 2]),
             }),
             WorkerResult::InitsAndTeardownsData(InitsAndTeardownsData {
+                partial_tree_buffer: None,
                 circuit_type: CircuitType::L1Wrap,
                 sequence_id: 0,
                 inits_and_teardowns: Some(InitsAndTeardownsTraceHost {

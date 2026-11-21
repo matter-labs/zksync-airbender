@@ -1,0 +1,162 @@
+use crate::backward::dr_tail::kernels::DrTailSlot;
+use crate::backward::dr_tail::kernels::DR_TAIL_MAX_REMAINING_ROUNDS;
+mod resources;
+
+pub(crate) use resources::DrTailPlanCursorPr;
+#[cfg(test)]
+pub(crate) use resources::{cpu_validate_dr_tail_shapes_pr, DrTailLayerPlanPr};
+pub use resources::{prepare_dr_tail_resources_pr, DrTailProofPlanPr};
+
+use core::mem::{align_of, offset_of, size_of};
+
+use era_cudart::cuda_kernel;
+use era_cudart::result::CudaResult;
+use gpu_gkr_compiler::KERNEL_ARGUMENT_CEILING_BYTES;
+use gpu_prover_context::ProverContext;
+
+use crate::backward::dr_tail::capacity::DrTailCapacityDecision;
+use crate::backward::GKR_DIM_REDUCING_SLOTS;
+use crate::upstream::{L1_WRAP_EXPLICIT_OUTPUT_LOG2, PR};
+
+pub(crate) const PR_DR_FINAL_TRACE_LOG_2: u32 = L1_WRAP_EXPLICIT_OUTPUT_LOG2 as u32;
+pub(crate) const PR_DR_TAIL_MAX_SOURCES: usize = 10;
+pub(crate) const PR_DR_TAIL_BLOCK_THREADS: u32 = 256;
+pub(crate) const PR_DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE: usize = 128;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(crate) struct DrTailMegakernelDescPr {
+    pub(crate) enabled_mask: u32,
+    pub(crate) folding_steps: u32,
+    pub(crate) entry_round: u32,
+    pub(crate) source_count: u32,
+    pub(crate) source_ptrs: [*const PR; PR_DR_TAIL_MAX_SOURCES],
+    pub(crate) final_sources: *mut PR,
+    pub(crate) tau: *const PR,
+    pub(crate) seed: *mut u8,
+    pub(crate) claim: *mut PR,
+    pub(crate) eq_prefactor: *mut PR,
+    pub(crate) coeffs_out: *mut PR,
+    pub(crate) challenges_out: *mut PR,
+    pub(crate) slots: [DrTailSlot; GKR_DIM_REDUCING_SLOTS],
+}
+
+pub(crate) const PR_DR_TAIL_ARGUMENT_BYTES: usize =
+    size_of::<DrTailMegakernelDescPr>() + size_of::<*mut PR>();
+
+const _: () = {
+    assert!(size_of::<DrTailSlot>() == 8);
+    assert!(align_of::<DrTailSlot>() == 2);
+    assert!(offset_of!(DrTailSlot, input_source) == 0);
+    assert!(offset_of!(DrTailSlot, batch_exp) == 4);
+    assert!(size_of::<DrTailMegakernelDescPr>() == 192);
+    assert!(align_of::<DrTailMegakernelDescPr>() == 8);
+    assert!(PR_DR_TAIL_ARGUMENT_BYTES == 200);
+    assert!(PR_DR_TAIL_ARGUMENT_BYTES <= KERNEL_ARGUMENT_CEILING_BYTES);
+    assert!(offset_of!(DrTailMegakernelDescPr, enabled_mask) == 0);
+    assert!(offset_of!(DrTailMegakernelDescPr, folding_steps) == 4);
+    assert!(offset_of!(DrTailMegakernelDescPr, entry_round) == 8);
+    assert!(offset_of!(DrTailMegakernelDescPr, source_count) == 12);
+    assert!(offset_of!(DrTailMegakernelDescPr, source_ptrs) == 16);
+    assert!(offset_of!(DrTailMegakernelDescPr, final_sources) == 96);
+    assert!(offset_of!(DrTailMegakernelDescPr, tau) == 104);
+    assert!(offset_of!(DrTailMegakernelDescPr, seed) == 112);
+    assert!(offset_of!(DrTailMegakernelDescPr, claim) == 120);
+    assert!(offset_of!(DrTailMegakernelDescPr, eq_prefactor) == 128);
+    assert!(offset_of!(DrTailMegakernelDescPr, coeffs_out) == 136);
+    assert!(offset_of!(DrTailMegakernelDescPr, challenges_out) == 144);
+    assert!(offset_of!(DrTailMegakernelDescPr, slots) == 152);
+};
+
+cuda_kernel!(
+    pub(crate) PrDrTailMegakernel,
+    ab_pr_gkr_dr_tail_megakernel(desc: DrTailMegakernelDescPr, global_state: *mut PR,)
+);
+
+fn assert_capacity_matches_descriptor(
+    desc: &DrTailMegakernelDescPr,
+    capacity: &DrTailCapacityDecision,
+) {
+    let folding_steps = desc.folding_steps as usize;
+    let entry_round = desc.entry_round as usize;
+    let source_count = desc.source_count as usize;
+    assert_eq!(
+        entry_round, capacity.entry_round,
+        "Proth120 DR-tail entry round differs from the capacity decision"
+    );
+    let remaining_rounds = folding_steps
+        .checked_sub(entry_round)
+        .expect("Proth120 DR-tail entry round exceeds the folding steps");
+    assert!(
+        (1..=DR_TAIL_MAX_REMAINING_ROUNDS).contains(&remaining_rounds),
+        "Proth120 DR-tail remaining rounds out of range"
+    );
+    assert!(
+        (1usize << (remaining_rounds - 1)) <= PR_DR_TAIL_MAX_FIRST_ROUND_ACC_SIZE,
+        "Proth120 DR-tail first-round accumulator exceeds the block"
+    );
+    assert!(
+        (1..=PR_DR_TAIL_MAX_SOURCES).contains(&source_count),
+        "Proth120 DR-tail source count out of range"
+    );
+    for source in desc.source_ptrs.iter().take(source_count) {
+        assert_eq!(
+            *source as usize % 32,
+            0,
+            "Proth120 DR-tail packed entry load requires 32-byte aligned canonical source pointers"
+        );
+    }
+    for (name, pointer) in [
+        ("final sources", desc.final_sources as usize),
+        ("tau", desc.tau as usize),
+        ("seed", desc.seed as usize),
+        ("claim", desc.claim as usize),
+        ("eq prefactor", desc.eq_prefactor as usize),
+        ("coefficients", desc.coeffs_out as usize),
+        ("challenges", desc.challenges_out as usize),
+    ] {
+        assert_ne!(pointer, 0, "Proth120 DR-tail {name} pointer is null");
+    }
+    assert!((1usize << remaining_rounds) <= PR_DR_TAIL_BLOCK_THREADS as usize);
+}
+
+pub(crate) fn launch_dr_tail_megakernel_pr(
+    desc: DrTailMegakernelDescPr,
+    capacity: &DrTailCapacityDecision,
+    context: &ProverContext,
+) -> CudaResult<()> {
+    assert_capacity_matches_descriptor(&desc, capacity);
+    crate::backward::launch_dr_tail_state::<PR, _, _>(
+        capacity.global_state_bytes,
+        capacity.dynamic_smem_bytes,
+        PR_DR_TAIL_BLOCK_THREADS,
+        &PrDrTailMegakernelFunction::default(),
+        |state| PrDrTailMegakernelArguments::new(desc, state),
+        context,
+    )
+}
+
+pub(crate) use crate::backward::DrTailRawAttributes as DrTailRawAttributesPr;
+
+pub(crate) fn dr_tail_attributes_pr() -> CudaResult<DrTailRawAttributesPr> {
+    crate::backward::dr_tail_kernel_attributes(&PrDrTailMegakernelFunction::default())
+}
+
+pub(crate) fn dr_tail_device_optin_cap_bytes_pr(device_id: i32) -> CudaResult<usize> {
+    crate::backward::dr_tail_device_optin_cap_bytes(device_id)
+}
+
+pub(crate) fn set_dr_tail_max_dynamic_smem_bytes_pr(bytes: usize) -> CudaResult<()> {
+    crate::backward::dr_tail_set_kernel_max_dynamic_smem(
+        &PrDrTailMegakernelFunction::default(),
+        bytes,
+    )
+}
+
+pub(crate) fn dr_tail_occupancy_pr(dynamic_smem_bytes: usize) -> CudaResult<u32> {
+    crate::backward::dr_tail_kernel_occupancy(
+        &PrDrTailMegakernelFunction::default(),
+        PR_DR_TAIL_BLOCK_THREADS,
+        dynamic_smem_bytes,
+    )
+}

@@ -2296,6 +2296,7 @@ pub fn generate_gkr_inlined<MW: FieldWrapper>(
         /// base commitment (`TRACE_LEN_LOG2 + pack_log2`, the committed column
         /// size the WHIR point has). Equals `GKR_ROUNDS` when unpacked.
         pub const CLAIM_POINT_CAPACITY: usize = #claim_point_capacity;
+        #[allow(dead_code)]
         pub const TRACE_LEN_LOG2: u32 = #trace_len_log2_u32;
         pub const GKR_ADDRS: usize = #max_addrs;
         #[allow(dead_code)]

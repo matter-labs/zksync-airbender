@@ -9,6 +9,56 @@ pub trait HostTraceAllocator: GoodAllocator {
     fn capacity(&self) -> usize;
 }
 
+/// A view of one buffer taken from the host pool, returned after its last user.
+pub struct PooledHostBuffer<T, A: GoodAllocator> {
+    values: Option<Vec<T, A>>,
+    pool: crossbeam_channel::Sender<A>,
+}
+
+impl<T, A: GoodAllocator> PooledHostBuffer<T, A> {
+    pub fn new(values: Vec<T, A>, pool: crossbeam_channel::Sender<A>) -> Self {
+        Self {
+            values: Some(values),
+            pool,
+        }
+    }
+}
+
+impl<T, A: GoodAllocator> std::ops::Deref for PooledHostBuffer<T, A> {
+    type Target = Vec<T, A>;
+    fn deref(&self) -> &Self::Target {
+        self.values.as_ref().unwrap()
+    }
+}
+
+impl<T, A: GoodAllocator> std::ops::DerefMut for PooledHostBuffer<T, A> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.values.as_mut().unwrap()
+    }
+}
+
+impl<T, A: GoodAllocator> AsRef<[T]> for PooledHostBuffer<T, A> {
+    fn as_ref(&self) -> &[T] {
+        self
+    }
+}
+
+impl<T, A: GoodAllocator> AsMut<[T]> for PooledHostBuffer<T, A> {
+    fn as_mut(&mut self) -> &mut [T] {
+        self
+    }
+}
+
+impl<T, A: GoodAllocator> Drop for PooledHostBuffer<T, A> {
+    fn drop(&mut self) {
+        let values = self.values.take().unwrap();
+        let allocator = values.allocator().clone();
+        drop(values);
+        // A ticket can outlive its prover; then the disconnected pool drops the buffer.
+        let _ = self.pool.send(allocator);
+    }
+}
+
 const BLOCK_ALIGNMENT: usize = 4096;
 
 #[derive(Debug)]
