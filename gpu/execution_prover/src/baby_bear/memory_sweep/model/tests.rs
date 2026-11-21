@@ -41,9 +41,10 @@ fn cpu_generation_requires_complete_coverage_at_each_budget() {
         .into_iter()
         .flat_map(|arena| all_circuits().into_iter().map(move |c| row(c, arena)))
         .collect();
-    assert!(generate(&rows)
-        .unwrap()
-        .contains("PRESET_ARENA_BYTES: &[usize] = &[22548578304, 31138512896]"));
+    let generated = generate(&rows).unwrap();
+    for arena_bytes in [21usize << 30, 29usize << 30] {
+        assert!(generated.contains(&format!("\n{arena_bytes} => match circuit {{")));
+    }
     let mut missing_budget = rows.clone();
     for row in &mut missing_budget {
         if row.arena_bytes == 21 << 30 {
@@ -56,6 +57,21 @@ fn cpu_generation_requires_complete_coverage_at_each_budget() {
     rows.remove(0);
     assert!(generate(&rows).is_err());
     assert!(generate(&[]).is_err());
+}
+
+#[test]
+fn cpu_generated_policy_rejects_both_l1_wrap_identities() {
+    let rows: Vec<_> = [21, 29]
+        .into_iter()
+        .flat_map(|arena| all_circuits().into_iter().map(move |c| row(c, arena)))
+        .collect();
+    let generated = generate(&rows).unwrap();
+    assert_eq!(
+        generated
+            .matches("CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => panic!(")
+            .count(),
+        2
+    );
 }
 
 #[test]

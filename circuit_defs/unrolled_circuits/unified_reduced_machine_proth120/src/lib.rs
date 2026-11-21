@@ -44,10 +44,13 @@ pub mod l1_wrap {
 
     /// The compiled gate and witness layout is shared by the two trace sizes.
     pub fn circuit_artifact_for_trace(trace_len_log2: usize) -> GKRCircuitArtifact<Proth120> {
-        assert!(matches!(
-            trace_len_log2,
-            PESSIMISTIC_TRACE_LEN_LOG2 | ETHPROOFS_TRACE_LEN_LOG2
-        ));
+        assert!(
+            matches!(
+                trace_len_log2,
+                PESSIMISTIC_TRACE_LEN_LOG2 | ETHPROOFS_TRACE_LEN_LOG2
+            ),
+            "the wrap layout has no 2^{trace_len_log2}-row trace"
+        );
         let mut circuit = circuit_artifact();
         assert_eq!(circuit.trace_len, 1 << LAYOUT_TRACE_LEN_LOG2);
         circuit.trace_len = 1 << trace_len_log2;

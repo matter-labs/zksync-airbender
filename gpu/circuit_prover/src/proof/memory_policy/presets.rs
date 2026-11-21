@@ -79,6 +79,44 @@ pub fn persists_memory_partial_trees(circuit: CircuitType, profile: ProofProfile
 mod cpu_tests {
     use super::*;
     use crate::proof::memory_policy::WitnessPostCommitStorage;
+    use gpu_trace::witness::circuit_type::{
+        DelegationCircuitType, UnrolledMemoryCircuitType, UnrolledNonMemoryCircuitType,
+    };
+
+    #[test]
+    fn generated_policies_cover_every_preset_arena() {
+        use CircuitType::{Delegation, Unrolled};
+        use DelegationCircuitType::*;
+        use UnrolledCircuitType::{InitsAndTeardowns, Memory, NonMemory, Unified};
+        use UnrolledMemoryCircuitType::*;
+        use UnrolledNonMemoryCircuitType::*;
+
+        let circuits = [
+            Delegation(BigIntWithControl),
+            Delegation(Blake2WithCompression),
+            Delegation(Blake2GFunction),
+            Delegation(KeccakSpecial5),
+            Delegation(KeccakColumnParity),
+            Delegation(KeccakThetaRho),
+            Delegation(KeccakChi5),
+            Unrolled(InitsAndTeardowns),
+            Unrolled(Memory(LoadStoreSubwordOnly)),
+            Unrolled(Memory(LoadStoreWordOnly)),
+            Unrolled(NonMemory(AddSubLuiAuipcMop)),
+            Unrolled(NonMemory(JumpBranchSlt)),
+            Unrolled(NonMemory(MulDivUnsigned)),
+            Unrolled(NonMemory(ShiftBinary)),
+            Unrolled(Unified),
+        ];
+        for &arena_bytes in PRESET_ARENA_BYTES {
+            for circuit in circuits {
+                assert!(
+                    generated::policy(circuit, arena_bytes).witness.is_valid(),
+                    "invalid generated policy for {circuit:?} at {arena_bytes} bytes"
+                );
+            }
+        }
+    }
 
     #[test]
     fn cpu_l1_wrap_prefix_reuse_preset() {

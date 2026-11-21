@@ -90,6 +90,18 @@ EXTERN __launch_bounds__(256, 2) __global__ void ab_pr_dit_suffix_micro_8_6_kern
   suffix_micro<8, 6>(lazy_dit_policy{{d}}, args);
 }
 
+EXTERN __launch_bounds__(256, 2) __global__ void ab_pr_dit_suffix_micro_7_4_kernel(const suffix_tile_args args, const proth120_twiddle_descriptor d) {
+  suffix_micro<7, 4>(lazy_dit_policy{{d}}, args);
+}
+
+EXTERN __launch_bounds__(256, 2) __global__ void ab_pr_dit_suffix_micro_7_5_kernel(const suffix_tile_args args, const proth120_twiddle_descriptor d) {
+  suffix_micro<7, 5>(lazy_dit_policy{{d}}, args);
+}
+
+EXTERN __launch_bounds__(256, 2) __global__ void ab_pr_dit_suffix_micro_7_6_kernel(const suffix_tile_args args, const proth120_twiddle_descriptor d) {
+  suffix_micro<7, 6>(lazy_dit_policy{{d}}, args);
+}
+
 // Finish one-column, one-coset (R=8, V=1) tiles for parity tests and timing.
 EXTERN __global__ void ab_pr_ntt_test_finish_pairs_kernel(pr *tiles, const proth120_twiddle_descriptor d, const u32 log_a, const u32 skip_bottom,
                                                           const u32 first_tile) {

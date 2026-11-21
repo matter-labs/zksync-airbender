@@ -581,7 +581,7 @@ pub fn open_coset_slot(
         open_coset_slot_scratch_lens(plan, shape),
         "open_coset_slot: scratch lengths"
     );
-    open_paths_depth(
+    let depth = open_paths_depth(
         nodes.len(),
         retained_all.len(),
         retained_stride,
@@ -591,6 +591,10 @@ pub fn open_coset_slot(
         open.cap_log,
         open.queries.len(),
         open.paths.len(),
+    );
+    assert!(
+        depth >= 3,
+        "leaf open: authentication path shorter than the sink's three layers"
     );
     lde_coset_slot(
         ctx,

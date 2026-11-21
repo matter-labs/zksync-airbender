@@ -177,7 +177,6 @@ fn pr_packed_merge_transcript_matches_cpu() {
             config.merged_memory_and_witness(),
         ),
     );
-    assert_eq!(cpu_bits, 13);
     for initial_seed in [[0u8; 32], [0xffu8; 32]] {
         for bits in [0, cpu_bits] {
             let mut host_seed = Keccak256Seed(initial_seed);

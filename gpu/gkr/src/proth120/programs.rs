@@ -50,6 +50,10 @@ impl GkrProgramsPr {
         artifact: Arc<GKRCircuitArtifact<PR>>,
         schedule: &[u8],
     ) -> Result<Self, String> {
+        assert!(
+            artifact.generic_lookup_padding.is_none(),
+            "Proth120 GKR does not support generic lookup padding"
+        );
         let searched = parse_forward_artifact(schedule, "Proth120 forward schedule")
             .map_err(|error| error.to_string())?;
         assert_eq!(

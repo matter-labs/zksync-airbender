@@ -971,9 +971,10 @@ impl ProgramProver {
         config: ProgramProverConfig,
         schedule: Option<prover::gkr::prover_config::WhirSchedule>,
     ) -> Result<Self, String> {
-        if schedule.is_some() && config.target != ProofTarget::L1 {
-            return Err("An explicit L1 WHIR schedule requires the L1 target".into());
-        }
+        assert!(
+            schedule.is_none() || config.target == ProofTarget::L1,
+            "An explicit L1 WHIR schedule requires the L1 target"
+        );
         let fsv = FsvPrograms::load(config.target, config.soundness_mode);
         // Resolve source errors before creating the backend's worker pools and buffers.
         let loaded = load_program(&source)?;

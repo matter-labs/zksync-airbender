@@ -38,6 +38,10 @@ pub(crate) fn schedule_l1_wrap_phase_one<'a>(
     let request_range = Range::new("l1_wrap.request")?;
     request_range.start(context.get_exec_stream())?;
     let precomputed = Arc::clone(precomputations.l1_wrap());
+    assert_eq!(
+        precomputed.circuit_type, circuit_type,
+        "L1 wrap request {circuit_type:?} disagrees with its precomputations"
+    );
     let state = RequestState {
         batch_id,
         circuit_type,
