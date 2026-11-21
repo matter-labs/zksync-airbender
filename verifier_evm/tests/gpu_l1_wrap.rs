@@ -11,7 +11,7 @@ use riscv_transpiler::elf::{read_elf_from_path_with_rom, ElfReadMode};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup;
+use unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup_for_trace;
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile, FsvProgram};
 use verifier_evm::encoding::{encode_single_tx, FormatParams};
 use worker::Worker;
@@ -208,7 +208,7 @@ fn alternate_case(case: WrapCase) {
     };
     assert_eq!(proof_pc, final_pc);
     let worker = Worker::new();
-    let setup = l1_wrap_setup(binary, &image.padded_text_words(), &worker);
+    let setup = l1_wrap_setup_for_trace(trace_log, binary, &image.padded_text_words(), &worker);
     let twiddles = Twiddles::new(1 << config.whir_message_size_log2(), &worker);
     let rows: Vec<_> = setup
         .setup

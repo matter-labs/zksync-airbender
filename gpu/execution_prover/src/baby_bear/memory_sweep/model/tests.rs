@@ -60,6 +60,21 @@ fn cpu_generation_requires_complete_coverage_at_each_budget() {
 }
 
 #[test]
+fn cpu_generated_policy_rejects_both_l1_wrap_identities() {
+    let rows: Vec<_> = [21, 29]
+        .into_iter()
+        .flat_map(|arena| all_circuits().into_iter().map(move |c| row(c, arena)))
+        .collect();
+    let generated = generate(&rows).unwrap();
+    assert_eq!(
+        generated
+            .matches("CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => panic!(")
+            .count(),
+        2
+    );
+}
+
+#[test]
 fn cpu_duplicate_policy_and_invalid_measurements_rejected() {
     let rows: Vec<_> = all_circuits().into_iter().map(|c| row(c, 34)).collect();
     let mut duplicate = rows.clone();

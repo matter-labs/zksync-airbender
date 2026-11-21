@@ -50,7 +50,7 @@ pub fn policy(
         return compression::POLICY;
     }
     match circuit {
-        CircuitType::L1Wrap => l1_wrap::L1_WRAP_POLICY,
+        CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => l1_wrap::L1_WRAP_POLICY,
         _ => generated::policy(circuit, select_arena_bytes(arena_bytes)),
     }
 }
@@ -60,7 +60,7 @@ pub fn partial_trees(circuit: CircuitType, profile: ProofProfile) -> PartialTree
         return compression::PARTIAL_TREES;
     }
     match circuit {
-        CircuitType::L1Wrap => l1_wrap::PARTIAL_TREES,
+        CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => l1_wrap::PARTIAL_TREES,
         _ => PartialTreePolicy::DEFAULT,
     }
 }
@@ -122,8 +122,8 @@ mod cpu_tests {
             panic!("L1 wrap memory schedule test requires both arena presets");
         };
         for (circuit, arena, expected) in [
-            (CircuitType::L1Wrap, *tight, RawAndMonomials),
-            (CircuitType::L1Wrap, *roomy, RawAndMonomials),
+            (CircuitType::L1Wrap21, *tight, RawAndMonomials),
+            (CircuitType::L1Wrap21, *roomy, RawAndMonomials),
         ] {
             let selected = policy(circuit, ProofProfile::L1Wrap, arena);
             assert!(selected.witness.is_valid());

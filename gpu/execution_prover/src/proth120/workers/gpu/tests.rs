@@ -15,6 +15,7 @@ use full_statement_verifier::host_utils::{build_unified_stream, load_fsv_exact};
 use full_statement_verifier::program_proof::ProgramProof;
 use gpu_circuit_prover::proth120::L1Proof;
 use gpu_core::allocator::tracker::AllocationDirection;
+use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -122,10 +123,10 @@ fn clone_setup(setup: &L1WrapSetup) -> L1WrapSetup {
 
 fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) -> Vec<Observed> {
     const WRAPS: u64 = 3;
-    assert_eq!(fixture.circuit_type, CircuitType::L1Wrap);
+    assert_eq!(fixture.circuit_type, CircuitType::L1Wrap21);
     set_device(0).unwrap();
     let precomputations = CircuitPrecomputations::from_canonical(
-        CircuitType::L1Wrap,
+        CircuitType::L1Wrap21,
         CanonicalCircuitSetup::L1Wrap(clone_setup(fixture.setup)),
         execution_prover::config::SoundnessMode::PessimisticConjecture,
         &[ProofProfile::L1Wrap],
@@ -142,7 +143,7 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) -> Vec<Obse
         .send(Some(WorkRequest::SetupInitialization(
             SetupInitializationRequest {
                 batch_id: 0,
-                circuit_type: CircuitType::L1Wrap,
+                circuit_type: CircuitType::L1Wrap21,
                 sequence_id: 0,
                 precomputations: precomputations.clone(),
             },
@@ -152,7 +153,7 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) -> Vec<Obse
         requests_sender
             .send(Some(WorkRequest::L1WrapProof(L1WrapProofRequest {
                 batch_id,
-                circuit_type: CircuitType::L1Wrap,
+                circuit_type: CircuitType::L1Wrap21,
                 precomputations: precomputations.clone(),
                 inits_and_teardowns: inits_and_teardowns.clone(),
                 tracing_data: tracing_data.clone(),
@@ -222,7 +223,7 @@ fn l1_wrap_followed_worker_parity() {
         move |fixture| run_followed_worker(&fixture, &bundle),
     );
     let wrap = RequestIdentity {
-        circuit_type: CircuitType::L1Wrap,
+        circuit_type: CircuitType::L1Wrap21,
         profile: ProofProfile::L1Wrap,
         kind: RequestKind::L1WrapProof,
     };

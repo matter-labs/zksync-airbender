@@ -52,7 +52,7 @@ impl CircuitPrecomputations {
         assert_profiles_for_circuit(circuit_type, profiles);
         assert_eq!(
             matches!(setup, CanonicalCircuitSetup::L1Wrap(_)),
-            circuit_type == CircuitType::L1Wrap,
+            circuit_type.is_l1_wrap(),
             "canonical setup variant disagrees with {circuit_type:?}"
         );
         let (compiled_circuit, cpu_setup, decoder_table) = match setup {

@@ -131,7 +131,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     .chain(
                         l1_wrap_precomputations
                             .iter()
-                            .map(|precomp| (CircuitType::L1Wrap, precomp.clone())),
+                            .map(|precomp| (CircuitType::L1Wrap21, precomp.clone())),
                     )
                     .collect(),
             );
