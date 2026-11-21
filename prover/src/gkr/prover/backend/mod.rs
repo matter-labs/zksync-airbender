@@ -497,17 +497,6 @@ pub trait Backend<F: PrimeField + TwoAdicField, E: FieldExtension<F> + Field>: S
     type ExtCoeffConv: ExtCoeffConversion<F, E> + 'static;
     fn ext_coeff_conv(&self, coset_len: usize, values_per_leaf: usize) -> Self::ExtCoeffConv;
 
-    /// `Some(n)` when this backend's base-column LDE has a fast path at ONE
-    /// column length `n` (the strided 2^24 pipeline): the WHIR prover then
-    /// commits an intermediate oracle of `n / 2` values BY COEFFICIENT — its
-    /// `E::DEGREE` base-field limb columns, duplicated to length `n` (the
-    /// same codeword), through [`Self::lde_multiple_polys_from_hypercubes`]
-    /// at half the LDE factor — instead of through the extension-field coset
-    /// LDE (see [`crate::gkr::whir::by_coefficient`]). `None`: no such path.
-    fn by_coefficient_lde_len(&self) -> Option<usize> {
-        None
-    }
-
     /// Leaf accessor of one evaluation-form coset column (the committed,
     /// converted leaves), built over the oracle-wide conversion context
     /// [`Self::ext_coeff_conv`] and the coset's LDE offset: the tree
@@ -1537,10 +1526,14 @@ mod tests {
         let backend = BabyBearNeonWorkStealingBackend;
 
         // n covers: fallback (8 < 16), NEON without radix-4 pass (16), NEON
-        // with radix-4 + u64-acc passes (1024/4096)
-        for (num_threads, num_cols, n_log, lde) in
-            [(4, 5, 3, 2), (4, 3, 4, 2), (4, 5, 10, 8), (8, 2, 12, 2)]
-        {
+        // with radix-4 + u64-acc passes (1024/4096), production size (2^20)
+        for (num_threads, num_cols, n_log, lde) in [
+            (4, 5, 3, 2),
+            (4, 3, 4, 2),
+            (4, 5, 10, 8),
+            (8, 2, 12, 2),
+            (8, 4, 20, 2),
+        ] {
             let worker = Worker::new_with_num_threads(num_threads);
             let n = 1usize << n_log;
             let twiddles = Twiddles::<F, Global>::new(n, &worker);
@@ -1660,10 +1653,15 @@ mod tests {
         let backend = BabyBearAvx2WorkStealingBackend;
 
         // n covers: fallback (8 < 16), AVX2 base fallback (16 < 32), AVX2
-        // with radix-4 + u64-acc passes (1024/4096)
-        for (num_threads, num_cols, n_log, lde) in
-            [(4, 5, 3, 2), (4, 3, 4, 2), (4, 5, 10, 8), (8, 2, 12, 2)]
-        {
+        // with radix-4 + u64-acc passes (1024/4096), blocked all-threads
+        // plan (2^20)
+        for (num_threads, num_cols, n_log, lde) in [
+            (4, 5, 3, 2),
+            (4, 3, 4, 2),
+            (4, 5, 10, 8),
+            (8, 2, 12, 2),
+            (8, 4, 20, 2),
+        ] {
             let worker = Worker::new_with_num_threads(num_threads);
             let n = 1usize << n_log;
             let twiddles = Twiddles::<F, Global>::new(n, &worker);

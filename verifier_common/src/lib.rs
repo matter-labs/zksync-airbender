@@ -225,8 +225,6 @@ pub const BLAKE_MODE: BlakeMode = if cfg!(all(
     feature = "blake2_with_compression"
 )) {
     BlakeMode::Compression
-} else if cfg!(all(target_arch = "riscv32", feature = "blake2_g_function")) {
-    BlakeMode::GFunction
 } else if cfg!(all(
     target_arch = "riscv32",
     feature = "special_opcodes_extension"
@@ -249,16 +247,10 @@ pub mod field_ops {
     pub use crate::no_inline_ops::*;
 }
 
-#[cfg(not(all(
-    target_arch = "riscv32",
-    any(feature = "blake2_with_compression", feature = "blake2_g_function")
-)))]
+#[cfg(not(all(target_arch = "riscv32", feature = "blake2_with_compression")))]
 pub type DefaultLeafInclusionVerifier = ::prover::definitions::Blake2sForEverythingVerifier;
 
-#[cfg(all(
-    target_arch = "riscv32",
-    any(feature = "blake2_with_compression", feature = "blake2_g_function")
-))]
+#[cfg(all(target_arch = "riscv32", feature = "blake2_with_compression"))]
 pub type DefaultLeafInclusionVerifier =
     ::prover::definitions::Blake2sForEverythingVerifierWithAlternativeCompression;
 

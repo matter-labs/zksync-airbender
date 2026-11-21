@@ -1,11 +1,11 @@
-//! Fused front-end for the LDE coset pipeline: one out-of-place pass that
-//! combines the input copy, the coset-offset scaling (`x[i]·offset^i`) and the
-//! bit-reversal permutation, feeding the classic DIT
-//! (`serial_ct_ntt_bitreversed_to_natural`) directly.
+//! Fused front-end for the LDE coset pipeline: one sequential pass that
+//! combines the input copy and the coset-offset scaling (`x[i]·offset^i`),
+//! followed by the in-place bit-reversal and the classic DIT
+//! (`serial_ct_ntt_bitreversed_to_natural`).
 //!
-//! Compared to the historical `to_vec + distribute_powers_serial + bitreverse`
-//! prefix this removes two full passes over the array and, more importantly,
-//! replaces `distribute_powers`' serial multiplication chain (latency-bound: each
+//! Compared to the historical `to_vec + distribute_powers_serial` prefix this
+//! removes one full pass over the array and, more importantly, replaces
+//! `distribute_powers`' serial multiplication chain (latency-bound: each
 //! element's factor depends on the previous one) with a two-table split
 //! `offset^i = lo[i & (2^h-1)] · hi[i >> h]` of two ~√n tables — a
 //! throughput-bound lookup+multiply per element.
@@ -14,10 +14,6 @@
 //! arithmetic), so commitments/proofs are unchanged.
 
 use crate::column_major::naive::serial_ct_ntt_bitreversed_to_natural;
-use crate::utils::{
-    bitreverse_index, MEDIUM_BITREVERSE_LOOKUP_TABLE, TINY_BITREVERSE_LOOKUP_TABLE,
-    TINY_BITREVERSE_LOOKUP_TABLE_LOG_2_SIZE,
-};
 use ::field::*;
 
 /// `offset^i` factored as `lo[i & (2^h - 1)] · hi[i >> h]` with `h = ⌈log n / 2⌉`:
@@ -58,71 +54,6 @@ impl<F: Field> SplitPowers<F> {
         let mut f = unsafe { *self.lo.get_unchecked(i & ((1usize << self.h) - 1)) };
         f.mul_assign(unsafe { self.hi.get_unchecked(i >> self.h) });
         f
-    }
-}
-
-/// `dst[j] = src[bitrev(j)] · offset^{bitrev(j)}` for every `j` — the fused
-/// copy + scale + bit-reversal. Pass `None` for `powers` when `offset == 1`.
-///
-/// Loop structure mirrors the optimized in-place bit-reversal: `j` is split into
-/// a low `TINY`-sized part and a high part so that for each fixed high part a
-/// batch of `2^TINY` destinations is written; the batched sources share their
-/// high bits, keeping reads within `2^TINY` cache lines per batch.
-pub fn scaled_bitreverse_gather<F: Field, E: Field + FieldExtension<F>>(
-    src: &[E],
-    powers: Option<&SplitPowers<F>>,
-    dst: &mut [E],
-) {
-    let n = src.len();
-    assert_eq!(dst.len(), n);
-    assert!(n.is_power_of_two());
-    let log_n = n.trailing_zeros();
-
-    // Small inputs: direct loop.
-    if n <= MEDIUM_BITREVERSE_LOOKUP_TABLE.len() {
-        for j in 0..n {
-            let src_idx = bitreverse_index(j, log_n);
-            let mut v = src[src_idx];
-            if let Some(p) = powers {
-                v.mul_assign_by_base(&p.get(src_idx));
-            }
-            dst[j] = v;
-        }
-        return;
-    }
-
-    let tiny_log = TINY_BITREVERSE_LOOKUP_TABLE_LOG_2_SIZE as u32;
-    let common_part_log_n = log_n - tiny_log;
-    let work_size = 1u32 << common_part_log_n;
-
-    let mut i = 0u32;
-    while i < work_size {
-        // bitreverse the common (high destination) part byte by byte
-        let mut bytes = i.swap_bytes().to_le_bytes();
-        bytes[0] = 0;
-        bytes[1] = MEDIUM_BITREVERSE_LOOKUP_TABLE[bytes[1] as usize];
-        bytes[2] = MEDIUM_BITREVERSE_LOOKUP_TABLE[bytes[2] as usize];
-        bytes[3] = MEDIUM_BITREVERSE_LOOKUP_TABLE[bytes[3] as usize];
-        let reversed_i = u32::from_le_bytes(bytes) >> (32 - common_part_log_n);
-
-        debug_assert!(reversed_i == i.reverse_bits() >> (32 - common_part_log_n));
-
-        let mut j = 0usize;
-        while j < TINY_BITREVERSE_LOOKUP_TABLE.len() {
-            let reversed_j = TINY_BITREVERSE_LOOKUP_TABLE[j] as usize;
-            let dst_idx = (i as usize) | (j << common_part_log_n);
-            let src_idx = reversed_j | ((reversed_i as usize) << tiny_log);
-            unsafe {
-                let mut v = *src.get_unchecked(src_idx);
-                if let Some(p) = powers {
-                    v.mul_assign_by_base(&p.get(src_idx));
-                }
-                *dst.get_unchecked_mut(dst_idx) = v;
-            }
-            j += 1;
-        }
-
-        i += 1;
     }
 }
 
@@ -205,32 +136,6 @@ pub fn lde_coset_natural_seq_fused_into<F: Field, E: Field + FieldExtension<F>>(
     serial_ct_ntt_bitreversed_to_natural(out, log_n, &omegas_bit_reversed[..(n / 2).max(1)]);
 }
 
-/// One serial LDE coset from monomial coefficients (natural order in, natural
-/// order out): the fused equivalent of
-/// `to_vec + distribute_powers_serial + bitreverse + serial DIT`. `scratch` is
-/// resized to `n` and holds the result (returned); reuse it across calls to
-/// avoid re-allocation.
-pub fn lde_coset_natural_fused<F: Field, E: Field + FieldExtension<F>>(
-    monomials_natural_order: &[E],
-    offset: F,
-    omegas_bit_reversed: &[F],
-) -> Vec<E> {
-    let n = monomials_natural_order.len();
-    assert!(n.is_power_of_two());
-    let log_n = n.trailing_zeros();
-
-    let mut out: Vec<E> = Vec::with_capacity(n);
-    #[allow(clippy::uninit_vec)]
-    unsafe {
-        out.set_len(n)
-    };
-
-    let powers = (offset != F::ONE).then(|| SplitPowers::new(offset, n));
-    scaled_bitreverse_gather(monomials_natural_order, powers.as_ref(), &mut out[..]);
-    serial_ct_ntt_bitreversed_to_natural(&mut out, log_n, &omegas_bit_reversed[..(n / 2).max(1)]);
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,9 +167,6 @@ mod tests {
         }
         bitreverse_enumeration_inplace(&mut expected);
         serial_ct_ntt_bitreversed_to_natural(&mut expected, log_n, &tw[..n / 2]);
-
-        let got = lde_coset_natural_fused(&x, offset, &tw);
-        assert_eq!(got, expected, "fused pipeline diverged at log_n={log_n}");
 
         let got = lde_coset_natural_seq_fused(&x, offset, &tw);
         assert_eq!(

@@ -21,23 +21,11 @@ pub(crate) fn deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &s
     serde_json::from_reader(src).unwrap()
 }
 
-#[cfg(test)]
-pub(crate) fn bincode_deserialize_from_file<T: serde::de::DeserializeOwned>(filename: &str) -> T {
-    let src = std::fs::File::open(filename).unwrap();
-    bincode::deserialize_from(src).unwrap()
-}
-
-pub(crate) fn bincode_serialize_to_file<T: serde::Serialize>(el: &T, filename: &str) {
-    let dst = std::fs::File::create(filename).unwrap();
-    bincode::serialize_into(dst, el).unwrap();
-}
-
 // The orchestration layer (VM capture + per-circuit prove helpers) is exposed
-// under `feature = "test"` so thin downstream harnesses (`experiments_runner`'s
-// fast add/sub proving test) can reuse the exact prove path of the per-family
-// tests. The concrete test suites below — and all generated witness-eval
-// includes except the add/sub one — stay `cfg(test)`-only so a lib build with
-// that feature does not pay for ~49K lines of other generated circuit code.
+// under `feature = "test"` so downstream test harnesses can reuse the exact
+// prove path of the per-family tests. The concrete test suites below and the
+// per-family generated witness-eval includes stay `cfg(test)`-only so a lib
+// build with that feature does not pay for the generated circuit code.
 pub mod orchestration;
 
 #[cfg(test)]
@@ -48,11 +36,6 @@ mod canonical_proofs;
 mod constraint_check;
 #[cfg(test)]
 mod family_circuits;
-// Also exposed under `feature = "test"`: the L1 wrap driver in
-// `prover_examples` reuses the Proth120 unified packed-proving pieces
-// (`build_unified_trace_without_precompiles`, the EVM-production config and
-// the Proth120 witness eval fn).
-pub mod large_field;
 #[cfg(test)]
 mod malicious_proofs;
 #[cfg(test)]
@@ -545,7 +528,8 @@ pub fn check_satisfied_row<F: PrimeField, A: GoodAllocator, B: GoodAllocator>(
     true
 }
 
-pub mod add_sub_lui_auipc_mop {
+#[cfg(test)]
+mod add_sub_lui_auipc_mop {
     use crate::gkr::witness_gen::column_major_proxy::ColumnMajorWitnessProxy;
     use crate::gkr::witness_gen::oracles::NonMemoryCircuitOracle;
     use crate::gkr::witness_gen::witness_proxy::WitnessProxy;
@@ -927,16 +911,6 @@ pub(crate) fn read_u32<F: PrimeField>(trace_row: &[F], columns: [usize; 2]) -> u
 }
 
 #[cfg(test)]
-pub(crate) fn read_u32_from_u8x4<F: PrimeField>(trace_row: &[F], columns: [usize; 4]) -> u32 {
-    let a = trace_row[columns[0]].as_u32_reduced();
-    let b = trace_row[columns[1]].as_u32_reduced();
-    let c = trace_row[columns[2]].as_u32_reduced();
-    let d = trace_row[columns[3]].as_u32_reduced();
-
-    a | (b << 8) | (c << 16) | (d << 24)
-}
-
-#[cfg(test)]
 pub(crate) fn read_u16<F: PrimeField>(trace_row: &[F], column: usize) -> u16 {
     let low = trace_row[column].as_u32_reduced();
 
@@ -952,168 +926,6 @@ pub(crate) fn read_timestamp<F: PrimeField>(
     let high = trace_row[columns[1]].as_u32_reduced();
 
     ((high as TimestampScalar) << TIMESTAMP_COLUMNS_NUM_BITS) | (low as TimestampScalar)
-}
-
-#[cfg(test)]
-pub(crate) fn parse_state_permutation_elements<F: PrimeField>(
-    compiled_circuit: &GKRCircuitArtifact<F>,
-    trace_row: &[F],
-    write_set: &mut BTreeSet<(u32, TimestampScalar)>,
-    read_set: &mut BTreeSet<(u32, TimestampScalar)>,
-) {
-    let machine_state_layout = compiled_circuit.memory_layout.machine_state.unwrap();
-    let execute = machine_state_layout.execute;
-    let is_active = trace_row[execute].as_boolean();
-    let initial_ts = read_timestamp(trace_row, machine_state_layout.initial_state.timestamp);
-    let final_ts = read_timestamp(trace_row, machine_state_layout.final_state.timestamp);
-
-    let initial_pc = read_u32(trace_row, machine_state_layout.initial_state.pc);
-    let final_pc = read_u32(trace_row, machine_state_layout.final_state.pc);
-
-    if is_active {
-        let is_unique = write_set.insert((final_pc, final_ts));
-        if !is_unique {
-            panic!("Duplicate entry {:?} in write set", (final_pc, final_ts));
-        }
-
-        let is_unique = read_set.insert((initial_pc, initial_ts));
-        if !is_unique {
-            panic!("Duplicate entry {:?} in read set", (initial_pc, initial_ts));
-        }
-    }
-}
-
-#[track_caller]
-#[cfg(test)]
-pub(crate) fn parse_shuffle_ram_accesses<F: PrimeField>(
-    compiled_circuit: &GKRCircuitArtifact<F>,
-    trace_row: &[F],
-    write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-    read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-    delegation_write_set: &mut BTreeSet<(bool, u32, TimestampScalar)>,
-    _row: usize,
-) {
-    let machine_state_layout = compiled_circuit.memory_layout.machine_state.unwrap();
-    let execute = machine_state_layout.execute;
-    let is_active = trace_row[execute].as_boolean();
-    if is_active {
-        let base_ts = read_timestamp(trace_row, machine_state_layout.initial_state.timestamp);
-        assert!(base_ts >= INITIAL_TIMESTAMP);
-        for (access_idx, access) in compiled_circuit
-            .memory_layout
-            .ram_access_sets
-            .iter()
-            .enumerate()
-        {
-            let read_ts = read_timestamp(trace_row, access.get_read_timestamp_columns());
-            let read_value = match access.get_read_value_columns() {
-                RamWordRepresentation::U16Limbs(words) => read_u32(trace_row, words),
-                RamWordRepresentation::U8Limbs(bytes) => read_u32_from_u8x4(trace_row, bytes),
-                RamWordRepresentation::Zero => 0u32,
-            };
-            let mut write_value = read_value;
-            if let RamQuery::Write(write) = access {
-                write_value = match write.write_value {
-                    RamWordRepresentation::U16Limbs(words) => read_u32(trace_row, words),
-                    RamWordRepresentation::U8Limbs(bytes) => read_u32_from_u8x4(trace_row, bytes),
-                    RamWordRepresentation::Zero => 0u32,
-                };
-            }
-            let write_ts = base_ts + (access.local_timestamp_in_cycle() as TimestampScalar);
-            let mut is_register = true;
-            let address;
-            match access.get_address() {
-                RamAddress::ConstantRegister(reg_idx) => {
-                    address = reg_idx as u32;
-                }
-                RamAddress::RegisterOnly(reg_idx) => {
-                    let reg_idx = read_u16(trace_row, reg_idx.register_index);
-                    address = reg_idx as u32;
-                }
-                RamAddress::RegisterOrRam(addr) => {
-                    match addr.address_space {
-                        RegisterOrRamAddressSpace::RamAddressSpace(column) => {
-                            let flag = read_u16(trace_row, column) == 1;
-                            if flag {
-                                is_register = false;
-                            }
-                        }
-                        RegisterOrRamAddressSpace::RegisterAddressSpace(column) => {
-                            let flag = read_u16(trace_row, column) == 1;
-                            if !flag {
-                                is_register = false;
-                            }
-                        }
-                    }
-                    address = read_u32(trace_row, addr.address);
-                }
-                RamAddress::IndirectRam(..) => {
-                    unreachable!()
-                }
-            }
-
-            if !is_register && address < common_constants::rom::ROM_BYTE_SIZE as u32 {
-                assert_eq!(read_value, 0);
-                let RamQuery::Readonly(..) = access else {
-                    panic!("write access into ROM");
-                };
-            }
-
-            // if _row < 100 {
-            //     println!("Row {}, index {}: read reg = {}, address = {} at ts = {} into value {}", _row, access_idx, is_register, address, read_ts, read_value);
-            // }
-
-            // if _row < 100 {
-            //     println!("Row {}, index {}: write reg = {}, address = {} at ts = {} into value {}", _row, access_idx, is_register, address, write_ts, write_value);
-            // }
-
-            let to_write = (is_register, address, write_ts, write_value);
-            if is_register && address >= 32 {
-                assert_eq!(write_value, 0);
-                assert_eq!(read_value, 0);
-                assert!((read_ts == 0 && write_ts != 0) | (read_ts != 0 && write_ts == 0));
-                if read_ts == 0 {
-                    let is_unique = delegation_write_set.insert((is_register, address, write_ts));
-                    if !is_unique {
-                        dbg!(trace_row);
-                        dbg!(access_idx);
-                        panic!(
-                            "Duplicate delegation entry {:?} in write set",
-                            (is_register, address, write_ts)
-                        );
-                    }
-                } else {
-                    dbg!(trace_row);
-                    dbg!(access_idx);
-                    panic!(
-                        "Delegation entry {:?} in with zero write ts",
-                        (is_register, address, read_ts)
-                    );
-                }
-            } else {
-                let is_unique = write_set.insert(to_write);
-                if !is_unique {
-                    dbg!(trace_row);
-                    dbg!(access_idx);
-                    panic!("Duplicate entry {:?} in write set", to_write);
-                }
-
-                let to_read = (is_register, address, read_ts, read_value);
-                let is_unique = read_set.insert(to_read);
-                if !is_unique {
-                    dbg!(trace_row);
-                    dbg!(access_idx);
-                    panic!("Duplicate entry {:?} in read set", to_read);
-                }
-            }
-
-            // if is_register == false && address == 71302656 {
-            //     // dbg!(trace_row);
-            //     dbg!(access_idx);
-            //     dbg!(read_ts);
-            // }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1285,43 +1097,6 @@ pub(crate) fn read_memory_trace_row<F: PrimeField>(
     for column in witness.column_major_trace.iter() {
         let value = column[row];
         buffer.push(value);
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn parse_state_permutation_elements_from_full_trace<F: PrimeField>(
-    compiled_circuit: &GKRCircuitArtifact<F>,
-    witness: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,
-    write_set: &mut BTreeSet<(u32, TimestampScalar)>,
-    read_set: &mut BTreeSet<(u32, TimestampScalar)>,
-) {
-    let mut buffer = Vec::new();
-    for row in 0..compiled_circuit.trace_len {
-        // dbg!(_row);
-        read_memory_trace_row(witness, row, &mut buffer);
-        parse_state_permutation_elements(compiled_circuit, &buffer, write_set, read_set);
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn parse_shuffle_ram_accesses_from_full_trace<F: PrimeField>(
-    compiled_circuit: &GKRCircuitArtifact<F>,
-    witness: &GKRMemoryOnlyWitnessTrace<F, impl Allocator + Clone, impl Allocator + Clone>,
-    write_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-    read_set: &mut BTreeSet<(bool, u32, TimestampScalar, u32)>,
-    delegation_write_set: &mut BTreeSet<(bool, u32, TimestampScalar)>,
-) {
-    let mut buffer = Vec::new();
-    for row in 0..compiled_circuit.trace_len {
-        read_memory_trace_row(witness, row, &mut buffer);
-        parse_shuffle_ram_accesses(
-            compiled_circuit,
-            &buffer,
-            write_set,
-            read_set,
-            delegation_write_set,
-            row,
-        );
     }
 }
 
