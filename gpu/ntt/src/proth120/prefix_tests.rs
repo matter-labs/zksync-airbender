@@ -133,6 +133,23 @@ fn assert_closure(plan: &ChunkPlan, exhaustive: bool) {
 }
 
 #[test]
+fn cpu_pr_dispatch_log_n_17() {
+    for log_v in 4..=6 {
+        for l2_cache in [40 * MIB, 0] {
+            let plan = dispatch(17, 1, log_v, 5, l2_cache);
+            assert_eq!(plan.prefix.stages() + plan.r, 17);
+            assert_eq!(
+                plan.tiles_per_coset * plan.tile_bytes,
+                size_of::<PR>() << 17
+            );
+            assert_eq!(plan.prefix_resident, l2_cache > 0);
+            assert_eq!(plan.suffix_resident, l2_cache > 0);
+            assert_closure(&plan.prefix, false);
+        }
+    }
+}
+
+#[test]
 fn cpu_pr_chunk_plan_closure() {
     for (n, c, v, sb) in [
         (24, 12, 1, 10),

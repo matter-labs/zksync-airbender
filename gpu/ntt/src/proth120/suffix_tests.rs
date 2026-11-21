@@ -278,6 +278,9 @@ fn pr_suffix_micro_matches_reference() {
         (19, 8, 1, 10, 2, 1),
         (15, 8, 4, 5, 1, 4),
         (15, 8, 5, 5, 1, 4),
+        (17, 7, 4, 5, 1, 2),
+        (17, 7, 5, 5, 1, 2),
+        (17, 7, 6, 5, 1, 2),
     ] {
         let s = shape(log_n, r, log_v, skip_bottom, columns);
         let a = s.log_a();

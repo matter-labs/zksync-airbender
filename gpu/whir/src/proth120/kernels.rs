@@ -518,8 +518,8 @@ pub(crate) fn extract_paths(
         "Proth120 WHIR: skip_bottom exceeds min(5, h)"
     );
     assert!(
-        path_stride >= log_leaves,
-        "Proth120 WHIR: path stride below coset depth"
+        (skip_bottom..=log_leaves + log_lde).contains(&path_stride),
+        "Proth120 WHIR: path stride outside skip_bottom..=log_leaves + log_lde"
     );
     let k = 1usize << skip_bottom;
     assert!(

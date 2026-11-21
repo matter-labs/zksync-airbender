@@ -26,6 +26,8 @@ enum WrapCase {
     OracleDomainAboveBase,
     BaseFold3,
     ConstantDomainZeroPow,
+    OracleLog17,
+    CapAboveInternalLde,
 }
 
 fn alternate_case(case: WrapCase) {
@@ -80,6 +82,30 @@ fn alternate_case(case: WrapCase) {
             vec![2, 2, 2, 2, 2],
             vec![0, 3, 0, 3, 0],
             vec![0, 0, 0, 0],
+            2,
+        ),
+        WrapCase::OracleLog17 => (
+            SoundnessMode::PessimisticConjecture,
+            21,
+            "pessimistic_conjecture",
+            vec![1, 6, 4, 4, 5],
+            vec![3; 5],
+            vec![3; 5],
+            vec![2; 5],
+            vec![0; 5],
+            vec![0; 4],
+            2,
+        ),
+        WrapCase::CapAboveInternalLde => (
+            SoundnessMode::PessimisticConjecture,
+            21,
+            "pessimistic_conjecture",
+            vec![1, 4, 4, 4, 5],
+            vec![2; 5],
+            vec![3; 5],
+            vec![2; 5],
+            vec![0; 5],
+            vec![0; 4],
             2,
         ),
     };
@@ -321,4 +347,16 @@ fn gpu_l1_wrap_base_fold_3() {
 #[ignore = "full GPU wrap and CPU verifier; cargo test -p verifier_evm --release --test gpu_l1_wrap gpu_l1_wrap_constant_domain_zero_pow -- --exact --ignored"]
 fn gpu_l1_wrap_constant_domain_zero_pow() {
     alternate_case(WrapCase::ConstantDomainZeroPow);
+}
+
+#[test]
+#[ignore = "full GPU wrap and CPU verifier"]
+fn gpu_l1_wrap_oracle_log17() {
+    alternate_case(WrapCase::OracleLog17);
+}
+
+#[test]
+#[ignore = "full GPU wrap and CPU verifier"]
+fn gpu_l1_wrap_cap_above_internal_lde() {
+    alternate_case(WrapCase::CapAboveInternalLde);
 }

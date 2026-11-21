@@ -359,7 +359,9 @@ fn small_oracle_with_leaf(log_n: u32, log_lde: u32, tile_bytes: usize, log_v: u3
     // Production leaf/tree geometry at reduced sizes for an independent CPU cap.
 
     let log_leaves = log_n - log_v;
-    let skip_bottom = log_leaves.min(5);
+    let cap_log = 3u32;
+    let path_len = log_leaves + log_lde - cap_log;
+    let skip_bottom = log_leaves.min(path_len).min(5);
     OracleShape {
         log_n,
         log_lde,
@@ -367,10 +369,10 @@ fn small_oracle_with_leaf(log_n: u32, log_lde: u32, tile_bytes: usize, log_v: u3
         log_v,
         log_leaves,
         skip_bottom,
-        cap_log: 3,
+        cap_log,
         tile_cosets_log2: ((tile_bytes / 16).trailing_zeros() - log_n).min(log_lde),
         retained_per_coset: 2 * (1 << (log_leaves - skip_bottom)) - 1,
-        path_len: (log_leaves + log_lde - 3) as usize,
+        path_len: path_len as usize,
     }
 }
 
@@ -639,10 +641,10 @@ fn pr_open_intermediate_matches_cpu_small() {
     drop(twiddle_factors);
     let worker = worker();
     let mut rng = TestRng::new(0x7130_7eaf);
-    // The (r, log_v) = (8, 4) suffix with the fused coefficient-tree sink at log_n = 15 and the
-    // residue sink at log_n = 10; the paths include every top-tree level.
     for (log_n, log_lde, tile_log, log_v) in [
         (15, 4, 2, 4),
+        (15, 2, 2, 4),
+        (17, 3, 1, 4),
         (15, 4, 2, 5),
         (13, 4, 2, 6),
         (10, 8, 6, 4),
@@ -695,7 +697,7 @@ fn pr_open_intermediate_matches_cpu_small() {
             let retained = download(&oracle.retained, stream);
             let paths = download(&out.paths, stream);
             for (i, &q) in queries.iter().enumerate() {
-                for level in shape.skip_bottom..shape.log_leaves {
+                for level in shape.skip_bottom..shape.log_leaves.min(shape.path_len as u32) {
                     let c = q & ((1 << shape.log_lde) - 1);
                     let j = q >> shape.log_lde;
                     let offset = c as usize * shape.retained_per_coset
