@@ -17,6 +17,33 @@ pub(crate) fn programs() -> GkrProgramsPr {
 }
 
 #[test]
+fn cpu_pr_lookup_pow_bits_follow_the_config() {
+    use crate::proth120::packed_challenges::lookup_pow_bits;
+    use prover::gkr::prover_config::pow_bits::{
+        lookup_challenges_pow_bits, lookup_identity_degree,
+    };
+
+    let programs = programs();
+    let circuit = &programs.runtime_circuit;
+    let mut config = prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(
+        21,
+        prover::definitions::SoundnessMode::PessimisticConjecture,
+    );
+    let derived = lookup_challenges_pow_bits::<PR, PR>(
+        config.security_level.security_bits(),
+        lookup_identity_degree(circuit),
+    );
+    for external in [0, derived, derived + 1] {
+        assert_eq!(
+            lookup_pow_bits(circuit, &config, external),
+            derived.max(external)
+        );
+    }
+    config.lookup_challenges_pow_floor = Some(derived + 1);
+    assert_eq!(lookup_pow_bits(circuit, &config, 0), derived + 1);
+}
+
+#[test]
 fn cpu_pr_complete_launch_argument_abi() {
     let programs = programs();
     let config = prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(

@@ -281,6 +281,7 @@ pub fn standard_config(
         cap_size: whir_schedule.cap_size,
         sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
         security_level: level,
+        lookup_challenges_pow_floor: None,
         whir_schedule,
     };
     config.validate_for_whir_message_size(config.whir_message_size_log2());
