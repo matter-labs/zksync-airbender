@@ -20,6 +20,7 @@ pub mod cycle;
 pub mod elf;
 pub mod ir;
 pub mod jit;
+pub mod oracle;
 pub mod replayer;
 pub mod vm;
 pub mod witness;
