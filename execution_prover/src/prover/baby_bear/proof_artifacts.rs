@@ -420,11 +420,7 @@ mod tests {
         let handle = prover.add_binary_variants(
             program.clone(),
             program,
-            &[(
-                ExecutionKind::Unrolled,
-                MachineType::FullUnsigned,
-                &[profile],
-            )],
+            &[(ExecutionKind::Unified, MachineType::Reduced, &[profile])],
             Some(32),
         )[0];
         prover.finalize_setup();

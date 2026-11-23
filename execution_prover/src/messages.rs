@@ -46,11 +46,7 @@ pub enum WorkerResult<A: GoodAllocator> {
     TracingData(TracingData<A>),
     SimulationResult(SimulationResult),
     SnapshotReplayed(usize),
-    PartialTreeAllocator {
-        circuit_type: CircuitType,
-        sequence_id: usize,
-        allocator: A,
-    },
+    PartialTreeAllocator { sequence_id: usize, allocator: A },
     BackendWorkResult(WorkResult<A>),
 }
 

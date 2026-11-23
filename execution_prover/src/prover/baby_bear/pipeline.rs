@@ -103,21 +103,21 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 &abort,
             )
         };
-        let partial_tree_allocator_requests = (!proving
+        acc.partial_tree_allocator_requests = (!proving
             && cache.is_some()
+            && execution_kind.unified_circuit().is_some()
             && self.backend.persists_memory_partial_trees(profile))
         .then(|| {
-            let (requests, keys) = unbounded();
+            let (requests, sequence_ids) = unbounded();
             let free_allocators = self.free_allocators_receiver.clone();
             let results = work_results_sender.clone();
             spawn_abort_on_panic(format!("ab-partial-tree-allocator-{batch_id}"), move || {
-                for (circuit_type, sequence_id) in keys {
+                for sequence_id in sequence_ids {
                     let allocator = free_allocators
                         .recv()
                         .expect("partial-tree free allocator channel closed");
                     results
                         .send(WorkerResult::PartialTreeAllocator {
-                            circuit_type,
                             sequence_id,
                             allocator,
                         })
@@ -130,15 +130,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         });
         drop(work_results_sender);
 
-        let mut request_context = RequestContext {
+        let request_context = RequestContext {
             proving,
             commitment_mode,
             profile,
             batch_id,
             binary_holder,
             external_challenges: external_challenges.as_ref(),
-            partial_tree_allocator_requests,
-            parked_commitments: BTreeMap::new(),
             proof_caps: &proof_caps,
         };
         for sequence_id in trivial_unified_inits_and_teardowns {
@@ -183,8 +181,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         }
 
         for work_result in work_results_receiver {
-            let work_requests =
-                acc.handle_work_result(self, cache, work_result, &mut request_context);
+            let work_requests = acc.handle_work_result(self, cache, work_result, &request_context);
             dispatch_backend_requests(
                 self,
                 &requests_served_from_cache,
@@ -193,27 +190,25 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 &mut acc.pending_requests_count,
                 &mut sent_requests_count,
             );
-            if request_context.parked_commitments.is_empty() {
-                maybe_close_request_sender_after_progress::<B>(
-                    cache,
-                    &mut work_requests_sender,
-                    sent_requests_count,
-                    &mut abort_signaled,
-                    &mut acc.simulation_result,
-                    &acc.uninitialized_tracing_data,
-                    &acc.unpaired_unified_inits_and_teardowns,
-                    &acc.unpaired_unified_tracing_data,
-                    &abort,
-                    proving,
-                    batch_id,
-                );
-                if work_requests_sender.is_none() {
-                    request_context.partial_tree_allocator_requests = None;
-                }
+            maybe_close_request_sender_after_progress::<B>(
+                cache,
+                &mut work_requests_sender,
+                sent_requests_count,
+                &mut abort_signaled,
+                &mut acc.simulation_result,
+                &acc.uninitialized_tracing_data,
+                &acc.unpaired_unified_inits_and_teardowns,
+                &acc.unpaired_unified_tracing_data,
+                &abort,
+                proving,
+                batch_id,
+            );
+            if work_requests_sender.is_none() {
+                acc.partial_tree_allocator_requests = None;
             }
         }
 
-        assert!(request_context.parked_commitments.is_empty());
+        assert!(acc.unpaired_unified_partial_tree_allocators.is_empty());
         assert_eq!(acc.pending_requests_count, 0);
         if abort_signaled {
             std::mem::take(&mut acc.uninitialized_tracing_data)
@@ -440,7 +435,7 @@ mod tests {
         )[0];
         prover.finalize_setup();
         let proof_caps = BTreeMap::new();
-        let mut context = RequestContext {
+        let context = RequestContext {
             proving: false,
             commitment_mode: crate::config::execution_commitment_mode(
                 kind,
@@ -452,17 +447,16 @@ mod tests {
             batch_id: 1,
             binary_holder: &prover.binary_holders[&handle.0],
             external_challenges: None,
-            partial_tree_allocator_requests: None,
-            parked_commitments: BTreeMap::new(),
             proof_caps: &proof_caps,
         };
-        let _ = context.build_work_request(
+        context.build_work_request(
             &prover,
             Some(InitsAndTeardownsData {
                 circuit_type: CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
                 sequence_id: 0,
                 inits_and_teardowns: None,
             }),
+            None,
             None,
         );
     }
