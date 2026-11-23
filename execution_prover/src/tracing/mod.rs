@@ -1,3 +1,5 @@
+use execution_prover_model::allocator::{HostTraceAllocator, PooledHostAllocator};
+
 mod producer;
 mod producers;
 mod ranges;
@@ -10,17 +12,16 @@ pub(crate) use ranges::*;
 pub(crate) use tracer::*;
 pub(crate) use ty::*;
 
-/// Only producer threads wait for a free buffer; the result loop returns them.
-pub(crate) fn take_partial_tree_buffer<A: execution_prover_model::allocator::HostTraceAllocator>(
+/// Only producer threads wait for a free allocator.
+pub(crate) fn take_partial_tree_allocator<A: HostTraceAllocator>(
     free: &crossbeam_channel::Receiver<A>,
     pool: &Option<crossbeam_channel::Sender<A>>,
-) -> Option<execution_prover_model::allocator::PooledHostBuffer<[u32; 8], A>> {
+) -> Option<PooledHostAllocator<A>> {
     pool.as_ref().map(|pool| {
         let allocator = free
             .recv()
             .expect("ExecutionProver host-buffer pool closed during commitment preparation");
-        let capacity = allocator.capacity() / size_of::<[u32; 8]>();
-        let values = Vec::with_capacity_in(capacity, allocator);
-        execution_prover_model::allocator::PooledHostBuffer::new(values, pool.clone())
+        let capacity = allocator.capacity();
+        PooledHostAllocator::new(allocator, capacity, pool.clone())
     })
 }

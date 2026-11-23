@@ -193,7 +193,7 @@ impl<T: TracingDataProducerType, A: HostTraceAllocator> TracingDataProducer<T, A
             sequence_id: self.current_circuit_index,
             tracing_data,
             participating_snapshot_indexes,
-            partial_tree_buffer: super::take_partial_tree_buffer(
+            partial_tree_allocator: super::take_partial_tree_allocator(
                 &self.free_allocators,
                 &self.partial_tree_pool,
             ),

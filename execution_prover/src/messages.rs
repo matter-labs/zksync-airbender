@@ -3,7 +3,7 @@ use crate::OperationMode;
 use crate::ProofProfile;
 use common_constants::TimestampScalar;
 use crossbeam_channel::{Receiver, Sender};
-use execution_prover_model::allocator::PooledHostBuffer;
+use execution_prover_model::allocator::{PooledHostAllocator, PooledHostBuffer};
 use execution_prover_model::circuit_type::CircuitType;
 use execution_prover_model::trace::UnrolledUnifiedTraceHost;
 use execution_prover_model::trace::{InitsAndTeardownsTraceHost, TracingDataHost};
@@ -20,7 +20,7 @@ pub struct InitsAndTeardownsData<A: GoodAllocator> {
     pub circuit_type: CircuitType,
     pub sequence_id: usize,
     pub inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
-    pub partial_tree_buffer: Option<PooledHostBuffer<[u32; 8], A>>,
+    pub partial_tree_allocator: Option<PooledHostAllocator<A>>,
 }
 
 pub struct TracingData<A: GoodAllocator> {
@@ -28,7 +28,7 @@ pub struct TracingData<A: GoodAllocator> {
     pub sequence_id: usize,
     pub tracing_data: TracingDataHost<A>,
     pub participating_snapshot_indexes: BTreeSet<usize>,
-    pub partial_tree_buffer: Option<PooledHostBuffer<[u32; 8], A>>,
+    pub partial_tree_allocator: Option<PooledHostAllocator<A>>,
 }
 
 #[derive(Clone)]
@@ -61,7 +61,7 @@ pub struct MemoryCommitmentRequest<A: GoodAllocator, P> {
     pub tracing_data: Option<TracingDataHost<A>>,
 
     pub profile: ProofProfile,
-    pub partial_tree_buffer: Option<PooledHostBuffer<[u32; 8], A>>,
+    pub partial_tree_allocator: Option<PooledHostAllocator<A>>,
 }
 
 /// A commitment's partial Merkle trees, kept on the host so the proof of the

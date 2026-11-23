@@ -1,7 +1,7 @@
 use super::*;
 use crate::config::{GpuBackendConfiguration, MemoryPreset};
 use crate::upstream::{L1WrapSetup, OperationMode};
-use crate::workers::gpu::{gpu_worker, RequestIdentity};
+use crate::workers::gpu::gpu_worker;
 use cpu_execution_prover::test_support::{with_l1_wrap_fixture, L1WrapFixture};
 use cpu_execution_prover::CpuExecutionProverConfiguration;
 use crossbeam_channel::unbounded;
@@ -14,37 +14,12 @@ use fft::GoodAllocator;
 use full_statement_verifier::host_utils::{build_unified_stream, load_fsv_exact};
 use full_statement_verifier::program_proof::ProgramProof;
 use gpu_circuit_prover::proth120::L1Proof;
-use gpu_core::allocator::tracker::AllocationDirection;
 use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use setups::Setups;
-use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use verifier_common::fsv_binaries::{BlakeMode, FsvDescriptor, FsvProfile};
-
-#[derive(Clone, Copy, Debug)]
-struct Observed {
-    batch_id: u64,
-    identity: RequestIdentity,
-    direction: Option<AllocationDirection>,
-    follower: Option<RequestIdentity>,
-}
-
-thread_local! {
-    static OBSERVED: RefCell<Vec<Observed>> = const { RefCell::new(Vec::new()) };
-}
-
-pub(crate) fn observe(state: &RequestState) {
-    OBSERVED.with(|observed| {
-        observed.borrow_mut().push(Observed {
-            batch_id: state.batch_id,
-            identity: state.identity(),
-            direction: state.direction,
-            follower: state.follower,
-        })
-    });
-}
 
 #[derive(Deserialize)]
 struct CompressionArtifact {
@@ -120,7 +95,7 @@ fn clone_setup(setup: &L1WrapSetup) -> L1WrapSetup {
     }
 }
 
-fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) -> Vec<Observed> {
+fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) {
     const WRAPS: u64 = 3;
     assert_eq!(fixture.circuit_type, CircuitType::L1Wrap);
     set_device(0).unwrap();
@@ -171,10 +146,10 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) -> Vec<Obse
     }
     .context_config();
     gpu_worker(0, config, initialized_sender, requests, results_sender).unwrap();
-    let mut proven = 0;
+    let mut proven = Vec::new();
     for result in results.try_iter().flatten() {
         if let GpuWorkResult::L1WrapProof(result) = result {
-            proven += 1;
+            proven.push(result.batch_id);
             assert!(
                 serde_json::to_vec(&result.result.operation_mode).unwrap()
                     == serde_json::to_vec(&bundle.operation_mode).unwrap(),
@@ -189,8 +164,10 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) -> Vec<Obse
             );
         }
     }
-    assert_eq!(proven, WRAPS, "every L1 wrap request must produce a proof");
-    OBSERVED.with(|observed| observed.borrow().clone())
+    assert!(
+        proven.into_iter().eq(1..=WRAPS),
+        "every L1 wrap request must produce a proof in batch order"
+    );
 }
 
 #[test]
@@ -213,51 +190,12 @@ fn l1_wrap_followed_worker_parity() {
         BlakeMode::BlakeSpecialOpcodes,
     );
     drop(compression);
-    let observed = with_l1_wrap_fixture(
+    with_l1_wrap_fixture(
         CpuExecutionProverConfiguration::default(),
         bin,
         text,
         nd_words,
         None,
         move |fixture| run_followed_worker(&fixture, &bundle),
-    );
-    let wrap = RequestIdentity {
-        circuit_type: CircuitType::L1Wrap,
-        profile: ProofProfile::L1Wrap,
-        kind: RequestKind::L1WrapProof,
-    };
-    let wraps: Vec<_> = observed
-        .iter()
-        .filter(|entry| entry.identity == wrap)
-        .collect();
-    for entry in &observed {
-        log::info!(
-            "observed batch {} {:?} direction {:?} follower {}",
-            entry.batch_id,
-            entry.identity,
-            entry.direction,
-            follower_label(entry.follower)
-        );
-    }
-    assert_eq!(
-        wraps.iter().map(|entry| entry.batch_id).collect::<Vec<_>>(),
-        [1, 2, 3]
-    );
-    assert_eq!(
-        wraps[0].follower,
-        Some(wrap),
-        "request 1 ran without a wrap follower"
-    );
-    assert_eq!(
-        wraps[1].follower,
-        Some(wrap),
-        "request 2 ran without a wrap follower"
-    );
-    assert_eq!(wraps[2].follower, None, "request 3 ran with a follower");
-    assert!(
-        wraps[0].direction.is_some() && wraps[0].direction != wraps[1].direction,
-        "requests 1 and 2 must run in opposite allocation directions, got {:?} and {:?}",
-        wraps[0].direction,
-        wraps[1].direction
     );
 }

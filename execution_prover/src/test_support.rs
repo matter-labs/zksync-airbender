@@ -210,7 +210,10 @@ impl ExecutionBackend for TestBackend {
                                     request.circuit_type,
                                     request.profile,
                                     request.sequence_id,
-                                    request.partial_tree_buffer.expect("mock commitment buffer"),
+                                    request
+                                        .partial_tree_allocator
+                                        .expect("mock commitment allocator")
+                                        .into_buffer(),
                                 )),
                             })
                         }

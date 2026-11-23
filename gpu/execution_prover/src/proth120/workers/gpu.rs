@@ -1,8 +1,6 @@
 use crate::precomputations::CircuitPrecomputations;
 use crate::upstream::{OperationMode, L1_WRAP_EXPLICIT_OUTPUT_LOG2};
-use crate::workers::gpu::{
-    follower_label, JobType, PhaseOne, PhaseOneInputs, RequestKind, RequestState,
-};
+use crate::workers::gpu::{JobType, PhaseOne, PhaseOneInputs, RequestKind, RequestState};
 use crate::workers::gpu_manager::GpuWorkResult;
 use crate::A;
 use era_cudart::result::CudaResult;
@@ -48,16 +46,11 @@ pub(crate) fn schedule_l1_wrap_phase_one<'a>(
         kind: RequestKind::L1WrapProof,
         external_challenges: None,
         memory_caps: None,
-        memory_partial_trees: None,
-        partial_tree_buffer: None,
         inits_and_teardowns_result: Some(inits_and_teardowns.clone()),
         tracing_data_result: Some(TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(
             tracing_data.clone(),
         ))),
         profile: ProofProfile::L1Wrap,
-        device_peak_bytes: None,
-        direction: None,
-        follower: None,
     };
     let dr_tail_plan =
         prepare_dr_tail_resources_pr(&precomputed.programs, WRAP_FINAL_TRACE_SIZE_LOG_2, context);
@@ -83,7 +76,7 @@ pub(crate) fn schedule_l1_wrap_phase_one<'a>(
 pub(crate) fn enqueue_phase_two<'a>(
     device_id: i32,
     context: &ProverContext,
-    state: &mut RequestState,
+    state: &RequestState,
     inputs: L1WrapInputs<'a, A>,
     dr_tail_plan: DrTailProofPlanPr,
     operation_mode: OperationMode,
@@ -93,7 +86,6 @@ pub(crate) fn enqueue_phase_two<'a>(
         "BATCH[{}] GPU_WORKER[{device_id}] producing L1 wrap proof",
         state.batch_id
     );
-    context.reset_used_mem_peak();
     let job = gpu_circuit_prover::proof::prove(
         gpu_circuit_prover::proth120::L1WrapProofRequest::new(
             &precomputed.programs,
@@ -107,7 +99,6 @@ pub(crate) fn enqueue_phase_two<'a>(
         ),
         context,
     )?;
-    state.device_peak_bytes = Some(context.get_used_mem_peak());
     Ok(JobType::L1Wrap(job))
 }
 
@@ -123,17 +114,11 @@ pub(crate) fn finish_l1_wrap(
         inits_and_teardowns_result,
         tracing_data_result,
         profile,
-        device_peak_bytes,
-        direction,
-        follower,
         ..
     } = state;
-    let follower = follower_label(follower);
     let result = job.finish()?;
-    let bytes = device_peak_bytes.expect("L1 wrap proof device peak was recorded");
-    let direction = direction.expect("L1 wrap proof allocation direction was recorded");
     debug!(
-        "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced L1 wrap proof for circuit {circuit_type:?}[{sequence_id}] profile {profile:?} direction {direction:?} follower {follower} device peak {bytes} B"
+        "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced L1 wrap proof for circuit {circuit_type:?}[{sequence_id}] profile {profile:?}"
     );
     let inits_and_teardowns =
         inits_and_teardowns_result.expect("L1 wrap proof returns its inits and teardowns");
@@ -152,4 +137,4 @@ pub(crate) fn finish_l1_wrap(
 }
 
 #[cfg(test)]
-pub(crate) mod tests;
+mod tests;

@@ -126,7 +126,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     .expect("trivial unified inits-and-teardowns belong to a unified execution"),
                 sequence_id,
                 inits_and_teardowns: None,
-                partial_tree_buffer: None,
+                partial_tree_allocator: None,
             };
             acc.unpaired_unified_inits_and_teardowns
                 .insert(sequence_id, data);
@@ -438,7 +438,7 @@ mod tests {
                 circuit_type: CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
                 sequence_id: 0,
                 inits_and_teardowns: None,
-                partial_tree_buffer: None,
+                partial_tree_allocator: None,
             }),
             None,
         );

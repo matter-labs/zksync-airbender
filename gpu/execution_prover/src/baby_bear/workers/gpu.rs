@@ -1,7 +1,5 @@
 use crate::upstream::{CommitmentMode, GKRCircuitArtifact, ProverConfig};
-use crate::workers::gpu::{
-    follower_label, JobType, PhaseOne, PhaseOneInputs, RequestKind, RequestState,
-};
+use crate::workers::gpu::{JobType, PhaseOne, PhaseOneInputs, RequestKind, RequestState};
 use crate::workers::gpu_manager::{GpuWorkRequest, GpuWorkResult};
 use crate::A;
 use era_cudart::result::CudaResult;
@@ -38,7 +36,13 @@ pub(crate) fn schedule_phase_one<'a>(
 ) -> CudaResult<PhaseOne<'a>> {
     // Decompose the request into bookkeeping plus the host buffers that
     // become Phase 1 H2D inputs.
-    let (mut state, inits_and_teardowns_host, tracing_data_host) = match request {
+    let (
+        state,
+        inits_and_teardowns_host,
+        tracing_data_host,
+        partial_tree_allocator,
+        memory_partial_trees,
+    ) = match request {
         GpuWorkRequest::L1WrapProof(_) => {
             unreachable!("L1Wrap proof requests return early above")
         }
@@ -51,7 +55,7 @@ pub(crate) fn schedule_phase_one<'a>(
                 inits_and_teardowns,
                 tracing_data,
                 profile,
-                partial_tree_buffer,
+                partial_tree_allocator,
             } = req;
 
             let state = RequestState {
@@ -62,17 +66,18 @@ pub(crate) fn schedule_phase_one<'a>(
                 kind: RequestKind::MemoryCommitment,
                 external_challenges: None,
                 memory_caps: None,
-                memory_partial_trees: None,
-                partial_tree_buffer,
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
 
                 profile,
-                device_peak_bytes: None,
-                direction: None,
-                follower: None,
             };
-            (state, inits_and_teardowns, tracing_data)
+            (
+                state,
+                inits_and_teardowns,
+                tracing_data,
+                partial_tree_allocator,
+                None,
+            )
         }
         GpuWorkRequest::Proof(req) => {
             let ProofRequest {
@@ -96,17 +101,18 @@ pub(crate) fn schedule_phase_one<'a>(
                 kind: RequestKind::Proof,
                 external_challenges: Some(external_challenges),
                 memory_caps: Some(memory_caps),
-                memory_partial_trees,
-                partial_tree_buffer: None,
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
 
                 profile,
-                device_peak_bytes: None,
-                direction: None,
-                follower: None,
             };
-            (state, inits_and_teardowns, tracing_data)
+            (
+                state,
+                inits_and_teardowns,
+                tracing_data,
+                None,
+                memory_partial_trees,
+            )
         }
         GpuWorkRequest::SetupInitialization(_) => {
             unreachable!("setup initialization returns early above")
@@ -116,7 +122,6 @@ pub(crate) fn schedule_phase_one<'a>(
     let circuit_type = state.circuit_type;
     let sequence_id = state.sequence_id;
     let is_proof = matches!(state.kind, RequestKind::Proof);
-    let memory_partial_trees = state.memory_partial_trees.take();
 
     let resolved = state
         .precomputations
@@ -254,7 +259,7 @@ pub(crate) fn schedule_phase_one<'a>(
             context,
         )?;
         bundle.schedule(context)?;
-        PhaseOneInputs::MergedCommitment(bundle)
+        PhaseOneInputs::MergedCommitment(bundle, partial_tree_allocator)
     } else {
         let mut bundle =
             gpu_trace::baby_bear::trace::memory::GpuGKRCommitMemoryTransfer::<'_, A>::new(
@@ -276,7 +281,7 @@ pub(crate) fn schedule_phase_one<'a>(
 pub(crate) fn enqueue_phase_two<'a>(
     device_id: i32,
     context: &ProverContext,
-    state: &mut RequestState,
+    state: &RequestState,
     inputs: PhaseOneInputs<'a>,
 ) -> CudaResult<JobType<'a>> {
     let batch_id = state.batch_id;
@@ -301,7 +306,6 @@ pub(crate) fn enqueue_phase_two<'a>(
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
         );
-                context.reset_used_mem_peak();
                 let job = gpu_circuit_prover::proof::prove(
                     gpu_circuit_prover::baby_bear::BabyBearProofRequest::new(
                         &state.precomputations.baby_bear().gkr_programs,
@@ -317,14 +321,12 @@ pub(crate) fn enqueue_phase_two<'a>(
                     ),
                     context,
                 )?;
-                state.device_peak_bytes = Some(context.get_used_mem_peak());
                 JobType::Proof(job)
             }
             PhaseOneInputs::MemoryCommitment(bundle) => {
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing memory commitment for circuit {circuit_type:?}[{sequence_id}]"
         );
-                context.reset_used_mem_peak();
                 let job = commit_memory_from_transfers_for_geometry::<A>(
                     circuit_type,
                     &compiled_circuit_arc,
@@ -333,14 +335,12 @@ pub(crate) fn enqueue_phase_two<'a>(
                     crate::memory_policy::partial_trees(circuit_type, state.profile).memory,
                     context,
                 )?;
-                state.device_peak_bytes = Some(context.get_used_mem_peak());
                 JobType::MemoryCommitment(job)
             }
-            PhaseOneInputs::MergedCommitment(bundle) => {
+            PhaseOneInputs::MergedCommitment(bundle, partial_tree_allocator) => {
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing merged memory+witness commitment for circuit {circuit_type:?}[{sequence_id}]"
         );
-                context.reset_used_mem_peak();
                 let job = commit_merged_from_transfers::<A>(
                     &state.precomputations.baby_bear().gkr_programs,
                     prover_config,
@@ -350,10 +350,9 @@ pub(crate) fn enqueue_phase_two<'a>(
                         state.profile,
                     ),
                     crate::memory_policy::partial_trees(circuit_type, state.profile),
-                    state.partial_tree_buffer.take(),
+                    partial_tree_allocator,
                     context,
                 )?;
-                state.device_peak_bytes = Some(context.get_used_mem_peak());
                 JobType::MemoryCommitment(job)
             }
             PhaseOneInputs::SetupInitialization => {
@@ -379,19 +378,13 @@ pub(crate) fn finish_memory_commitment(
         inits_and_teardowns_result,
         tracing_data_result,
         profile,
-        device_peak_bytes,
-        direction,
-        follower,
         ..
     } = state;
-    let follower = follower_label(follower);
     let (merkle_tree_caps, partial_trees, commitment_time_ms) = job.finish_with_partial_trees()?;
     let memory_partial_trees =
         partial_trees.map(|trees| persisted_partial_trees(circuit_type, profile, trees));
-    let bytes = device_peak_bytes.expect("memory commitment device peak was recorded");
-    let direction = direction.expect("memory commitment allocation direction was recorded");
     debug!(
-        "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for circuit {circuit_type:?}[{sequence_id}] profile {profile:?} direction {direction:?} follower {follower} device peak {bytes} B in {commitment_time_ms:.3} ms"
+        "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced memory commitment for circuit {circuit_type:?}[{sequence_id}] profile {profile:?} in {commitment_time_ms:.3} ms"
     );
     Ok(GpuWorkResult::MemoryCommitment(MemoryCommitmentResult {
         batch_id,
@@ -416,17 +409,11 @@ pub(crate) fn finish_proof(
         inits_and_teardowns_result,
         tracing_data_result,
         profile,
-        device_peak_bytes,
-        direction,
-        follower,
         ..
     } = state;
-    let follower = follower_label(follower);
     let (proof, proof_time_ms) = job.finish()?;
-    let bytes = device_peak_bytes.expect("proof device peak was recorded");
-    let direction = direction.expect("proof allocation direction was recorded");
     debug!(
-        "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for circuit {circuit_type:?}[{sequence_id}] profile {profile:?} direction {direction:?} follower {follower} device peak {bytes} B in {proof_time_ms:.3} ms"
+        "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for circuit {circuit_type:?}[{sequence_id}] profile {profile:?} in {proof_time_ms:.3} ms"
     );
     Ok(GpuWorkResult::Proof(ProofResult {
         batch_id,

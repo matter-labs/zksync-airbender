@@ -163,7 +163,7 @@ pub(crate) fn run_simulator<
                     circuit_type: unified_circuit,
                     sequence_id,
                     inits_and_teardowns: None,
-                    partial_tree_buffer: None,
+                    partial_tree_allocator: None,
                 };
                 let result = WorkerResult::InitsAndTeardownsData(data);
                 results.send(result).expect(
@@ -185,8 +185,11 @@ pub(crate) fn run_simulator<
                 circuit_type,
                 sequence_id,
                 inits_and_teardowns: Some(inits_and_teardowns_data),
-                partial_tree_buffer: if T::IS_SPLIT {
-                    crate::tracing::take_partial_tree_buffer(&free_allocators, &partial_tree_pool)
+                partial_tree_allocator: if T::IS_SPLIT {
+                    crate::tracing::take_partial_tree_allocator(
+                        &free_allocators,
+                        &partial_tree_pool,
+                    )
                 } else {
                     None
                 },

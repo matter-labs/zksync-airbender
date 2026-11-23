@@ -258,7 +258,7 @@ mod tests {
     fn events() -> Vec<WorkerResult<CpuTraceAllocator>> {
         vec![
             WorkerResult::TracingData(TracingData {
-                partial_tree_buffer: None,
+                partial_tree_allocator: None,
                 circuit_type: CircuitType::L1Wrap,
                 sequence_id: 0,
                 tracing_data: TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(
@@ -267,7 +267,7 @@ mod tests {
                 participating_snapshot_indexes: BTreeSet::from([0, 2]),
             }),
             WorkerResult::InitsAndTeardownsData(InitsAndTeardownsData {
-                partial_tree_buffer: None,
+                partial_tree_allocator: None,
                 circuit_type: CircuitType::L1Wrap,
                 sequence_id: 0,
                 inits_and_teardowns: Some(InitsAndTeardownsTraceHost {

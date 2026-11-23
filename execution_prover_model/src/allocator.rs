@@ -9,6 +9,36 @@ pub trait HostTraceAllocator: GoodAllocator {
     fn capacity(&self) -> usize;
 }
 
+/// One reserved allocator from the host pool.
+pub struct PooledHostAllocator<A: GoodAllocator> {
+    reservation: Option<(A, crossbeam_channel::Sender<A>)>,
+    capacity: usize,
+}
+
+impl<A: GoodAllocator> PooledHostAllocator<A> {
+    pub fn new(allocator: A, capacity: usize, pool: crossbeam_channel::Sender<A>) -> Self {
+        Self {
+            reservation: Some((allocator, pool)),
+            capacity,
+        }
+    }
+
+    pub fn into_buffer<T>(mut self) -> PooledHostBuffer<T, A> {
+        let (allocator, pool) = self.reservation.take().unwrap();
+        let capacity = self.capacity.checked_div(size_of::<T>()).unwrap_or(0);
+        let values = Vec::with_capacity_in(capacity, allocator);
+        PooledHostBuffer::new(values, pool)
+    }
+}
+
+impl<A: GoodAllocator> Drop for PooledHostAllocator<A> {
+    fn drop(&mut self) {
+        if let Some((allocator, pool)) = self.reservation.take() {
+            let _ = pool.send(allocator);
+        }
+    }
+}
+
 /// A view of one buffer taken from the host pool, returned after its last user.
 pub struct PooledHostBuffer<T, A: GoodAllocator> {
     values: Option<Vec<T, A>>,

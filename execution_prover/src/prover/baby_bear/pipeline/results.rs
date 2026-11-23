@@ -24,7 +24,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
         inits_and_teardowns: Option<InitsAndTeardownsData<B::Allocator>>,
         tracing_data: Option<TracingData<B::Allocator>>,
     ) -> WorkRequest<B::Allocator, B::Precomputations> {
-        let mut partial_tree_buffer = None;
+        let mut partial_tree_allocator = None;
         let mut circuit_type_value = None;
         let mut sequence_id_value = None;
         let inits_and_teardowns = if let Some(inits_and_teardowns) = inits_and_teardowns {
@@ -32,9 +32,9 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 circuit_type,
                 sequence_id,
                 inits_and_teardowns,
-                partial_tree_buffer: inits_partial_tree_buffer,
+                partial_tree_allocator: inits_partial_tree_allocator,
             } = inits_and_teardowns;
-            partial_tree_buffer = inits_partial_tree_buffer;
+            partial_tree_allocator = inits_partial_tree_allocator;
             circuit_type_value = Some(circuit_type);
             sequence_id_value = Some(sequence_id);
             inits_and_teardowns
@@ -46,10 +46,10 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 circuit_type,
                 sequence_id,
                 tracing_data,
-                partial_tree_buffer: tracing_partial_tree_buffer,
+                partial_tree_allocator: tracing_partial_tree_allocator,
                 ..
             } = tracing_data;
-            partial_tree_buffer = tracing_partial_tree_buffer.or(partial_tree_buffer);
+            partial_tree_allocator = tracing_partial_tree_allocator.or(partial_tree_allocator);
             assert_eq!(
                 circuit_type_value.get_or_insert(circuit_type),
                 &circuit_type
@@ -122,7 +122,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 inits_and_teardowns,
                 tracing_data,
                 profile,
-                partial_tree_buffer,
+                partial_tree_allocator,
             };
             WorkRequest::MemoryCommitment(request)
         }

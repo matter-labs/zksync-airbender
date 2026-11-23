@@ -36,11 +36,11 @@ use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
-use execution_prover_model::allocator::PooledHostBuffer;
+use execution_prover_model::allocator::PooledHostAllocator;
 use fft::GoodAllocator;
 use std::alloc::Global;
 
-pub type PartialTreeBuffer<A> = PooledHostBuffer<Digest, A>;
+pub type PartialTreeAllocator<A> = PooledHostAllocator<A>;
 
 pub struct MemoryCommitmentJob<'a, A: GoodAllocator = Global> {
     is_finished_event: CudaEvent,
@@ -331,14 +331,14 @@ pub fn schedule_memory_commitment_job_in_place<'a, A: GoodAllocator>(
     schedule_memory_cap_readback(holder, callbacks, inputs, range, None, context)
 }
 
-/// With a request buffer, the job also exports the partial trees for
+/// With a host allocator, the job also exports the partial trees for
 /// the proof to open instead of rebuilding them.
 pub fn schedule_memory_commitment_job_with_monomials<'a, A: GoodAllocator>(
     holder: &mut TraceHolder<BF>,
     callbacks: Callbacks<'a>,
     inputs: Option<TransferKeepalive<'a>>,
     range: Range,
-    partial_tree_buffer: Option<PooledHostBuffer<Digest, A>>,
+    partial_tree_allocator: Option<PartialTreeAllocator<A>>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a, A>> {
     holder.install_partial_trees(context)?;
@@ -349,15 +349,15 @@ pub fn schedule_memory_commitment_job_with_monomials<'a, A: GoodAllocator>(
         callbacks,
         inputs,
         range,
-        partial_tree_buffer,
+        partial_tree_allocator,
         context,
     )
 }
 
-/// D2H writes the live nodes directly into the request's buffer in device stride.
+/// D2H writes the live nodes directly into the host buffer in device stride.
 fn schedule_partial_trees_readback<A: GoodAllocator>(
     holder: &TraceHolder<BF>,
-    mut nodes: PooledHostBuffer<Digest, A>,
+    allocator: PartialTreeAllocator<A>,
     context: &ProverContext,
 ) -> CudaResult<PartialTrees<A>> {
     assert!(
@@ -368,6 +368,7 @@ fn schedule_partial_trees_readback<A: GoodAllocator>(
     let live = geometry.coset_live_len();
     let stride = geometry.coset_stride();
     let required = geometry.cosets_count() * stride;
+    let mut nodes = allocator.into_buffer();
     assert!(
         required <= nodes.capacity(),
         "partial trees need {required} digests, host pool buffer has {}",
@@ -396,7 +397,7 @@ pub fn schedule_memory_cap_readback<'a, A: GoodAllocator>(
     mut callbacks: Callbacks<'a>,
     inputs: Option<TransferKeepalive<'a>>,
     range: Range,
-    partial_tree_buffer: Option<PooledHostBuffer<Digest, A>>,
+    partial_tree_allocator: Option<PartialTreeAllocator<A>>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a, A>> {
     let stream = context.get_exec_stream();
@@ -437,8 +438,8 @@ pub fn schedule_memory_cap_readback<'a, A: GoodAllocator>(
     // the callback above has already been scheduled, so the contract's
     // scheduled-not-completed lifetime rule is satisfied.
     drop(cap_host);
-    let partial_trees = partial_tree_buffer
-        .map(|buffer| schedule_partial_trees_readback(holder, buffer, context))
+    let partial_trees = partial_tree_allocator
+        .map(|allocator| schedule_partial_trees_readback(holder, allocator, context))
         .transpose()?;
     range.end(stream)?;
     let is_finished_event = CudaEvent::create_with_flags(CudaEventCreateFlags::DISABLE_TIMING)?;

@@ -71,7 +71,7 @@ impl EmptyInitsAndTeardownsStreamer {
                 circuit_type: self.circuit_type,
                 sequence_id: self.next_sequence_id,
                 inits_and_teardowns: None,
-                partial_tree_buffer: None,
+                partial_tree_allocator: None,
             };
             results
                 .send(WorkerResult::InitsAndTeardownsData(data))

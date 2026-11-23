@@ -302,7 +302,7 @@ fn persisted_partial_trees_open_like_rebuilt_trees() {
     use crate::baby_bear::trace::memory::schedule_memory_cap_readback;
     use crate::baby_bear::trace::memory_cap::{GpuGKRMemoryCapHost, GpuGKRMemoryCapTransfer};
     use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
-    use execution_prover_model::allocator::PooledHostBuffer;
+    use execution_prover_model::allocator::PooledHostAllocator;
     use gpu_core::allocator::host::ConcurrentStaticHostAllocator;
     use gpu_core::primitives::callbacks::Callbacks;
     use gpu_core::primitives::device_tracing::Range;
@@ -388,8 +388,9 @@ fn persisted_partial_trees_open_like_rebuilt_trees() {
             )
             .unwrap();
             let allocator = ConcurrentStaticHostAllocator::new([backing], 12);
-            let buffer = PooledHostBuffer::new(
-                Vec::with_capacity_in(node_count, allocator),
+            let allocator = PooledHostAllocator::new(
+                allocator,
+                node_count * size_of::<Digest>(),
                 crossbeam_channel::unbounded().0,
             );
             let job = schedule_memory_cap_readback(
@@ -397,7 +398,7 @@ fn persisted_partial_trees_open_like_rebuilt_trees() {
                 Callbacks::new(),
                 None,
                 range,
-                Some(buffer),
+                Some(allocator),
                 &context,
             )
             .unwrap();
