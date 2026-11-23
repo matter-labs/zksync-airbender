@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1064" height="387" viewBox="0 0 1064 387" role="img" aria-labelledby="title desc">
+  <title id="title">Airbender protocol algorithms by entry point</title>
+  <desc id="desc">Read each panel from top to bottom. In Algorithm 1a, VerifyChunks (2) calls Chunk (3a) for each chunk, and Chunk calls SeededChunk (3b). In Algorithm 1b, the caller runs SeededChunk directly for the single wrapper chunk. On both paths, SeededChunk calls GKRLayer (4), which calls EQSumcheck (5), followed by OutputChecks (6) and WHIR (7) in SeededChunk. After chunk verification, both callers run CloseMemory (9). Only BabyBear runs UpdateProgramHistory (10), then forwards the result and history or checks the updated history and returns the result. The wrapper checks the carried history, setup digest and exit PC, then returns the result.</desc>
+  <defs>
+    <style>
+      text { font-family: Menlo, Consolas, monospace; }
+      .panel { fill: #fffdf6; stroke: #bdc1b6; stroke-width: 1.5; }
+      .band, .stage { font-size: 16px; font-weight: 700; }
+      .body { font-size: 16px; }
+      .branch { font-size: 15px; }
+    </style>
+  </defs>
+  <rect width="1064" height="387" rx="8" fill="#f3f0e7"/>
+
+  <!-- Each panel follows one caller; indentation shows the calls within each chunk. -->
+  <g transform="translate(24 18)" fill="#262b2b">
+    <rect class="panel" width="498" height="351" rx="3"/>
+    <rect width="498" height="34" rx="3" fill="#526b46"/>
+    <text class="band" fill="#fffdf6" x="15" y="23">ALGORITHM 1a / BABYBEAR (RECURSIVE OR TERMINAL)</text>
+    <text class="body" x="15" y="61">Alg. 2 / VerifyChunks</text>
+    <path d="M22 69v12h12" fill="none" stroke="#526b46" stroke-width="2"/>
+    <text class="branch" x="43" y="86">Per chunk:</text>
+    <text class="branch" x="143" y="86">Alg. 3a / Chunk</text>
+    <text class="branch" x="143" y="108">Alg. 3b / SeededChunk</text>
+    <text class="branch" x="167" y="130">Alg. 4 / GKRLayer</text>
+    <text class="branch" x="191" y="152">Alg. 5 / EQSumcheck</text>
+    <text class="branch" x="167" y="174">Alg. 6 / OutputChecks</text>
+    <text class="branch" x="167" y="196">Alg. 7 / WHIR</text>
+    <path d="M0 213h498" stroke="#bdc1b6"/>
+    <text class="stage" x="15" y="238">AFTER ALL CHUNKS</text>
+    <text class="body" x="15" y="265">Alg. 9 / CloseMemory</text>
+    <text class="body" x="15" y="289">Alg. 10 / UpdateProgramHistory</text>
+    <text class="branch" x="15" y="318">If Recursive, forward result/history</text>
+    <text class="branch" x="15" y="340">If Terminal, check history and return result</text>
+  </g>
+
+  <g transform="translate(542 18)" fill="#262b2b">
+    <rect class="panel" width="498" height="351" rx="3"/>
+    <rect width="498" height="34" rx="3" fill="#75617f"/>
+    <text class="band" fill="#fffdf6" x="15" y="23">ALGORITHM 1b / PROTH120 WRAPPER (TERMINAL)</text>
+    <text class="body" x="15" y="61">Alg. 3b / SeededChunk</text>
+    <text class="branch" x="39" y="83">Alg. 4 / GKRLayer</text>
+    <text class="branch" x="63" y="105">Alg. 5 / EQSumcheck</text>
+    <text class="branch" x="39" y="127">Alg. 6 / OutputChecks</text>
+    <text class="branch" x="39" y="149">Alg. 7 / WHIR</text>
+    <path d="M0 213h498" stroke="#bdc1b6"/>
+    <text class="stage" x="15" y="238">AFTER THE WRAPPER CHUNK</text>
+    <text class="body" x="15" y="265">Alg. 9 / CloseMemory</text>
+    <text class="branch" x="15" y="289">Check history and return result</text>
+  </g>
+</svg>
