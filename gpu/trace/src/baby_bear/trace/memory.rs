@@ -36,11 +36,8 @@ use era_cudart::event::{CudaEvent, CudaEventCreateFlags};
 use era_cudart::memory::memory_copy_async;
 use era_cudart::result::CudaResult;
 use era_cudart::slice::DeviceSlice;
-use execution_prover_model::allocator::PooledHostAllocator;
 use fft::GoodAllocator;
 use std::alloc::Global;
-
-pub type PartialTreeAllocator<A> = PooledHostAllocator<A>;
 
 pub struct MemoryCommitmentJob<'a, A: GoodAllocator = Global> {
     is_finished_event: CudaEvent,
@@ -338,7 +335,7 @@ pub fn schedule_memory_commitment_job_with_monomials<'a, A: GoodAllocator>(
     callbacks: Callbacks<'a>,
     inputs: Option<TransferKeepalive<'a>>,
     range: Range,
-    partial_tree_allocator: Option<PartialTreeAllocator<A>>,
+    partial_tree_allocator: Option<A>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a, A>> {
     holder.install_partial_trees(context)?;
@@ -357,7 +354,7 @@ pub fn schedule_memory_commitment_job_with_monomials<'a, A: GoodAllocator>(
 /// D2H writes the live nodes directly into the host buffer in device stride.
 fn schedule_partial_trees_readback<A: GoodAllocator>(
     holder: &TraceHolder<BF>,
-    allocator: PartialTreeAllocator<A>,
+    allocator: A,
     context: &ProverContext,
 ) -> CudaResult<PartialTrees<A>> {
     assert!(
@@ -368,12 +365,7 @@ fn schedule_partial_trees_readback<A: GoodAllocator>(
     let live = geometry.coset_live_len();
     let stride = geometry.coset_stride();
     let required = geometry.cosets_count() * stride;
-    let mut nodes = allocator.into_buffer();
-    assert!(
-        required <= nodes.capacity(),
-        "partial trees need {required} digests, host pool buffer has {}",
-        nodes.capacity()
-    );
+    let mut nodes = Vec::with_capacity_in(required, allocator);
     nodes.resize(required, Digest::default());
     for coset in 0..geometry.cosets_count() {
         let tree = holder
@@ -397,7 +389,7 @@ pub fn schedule_memory_cap_readback<'a, A: GoodAllocator>(
     mut callbacks: Callbacks<'a>,
     inputs: Option<TransferKeepalive<'a>>,
     range: Range,
-    partial_tree_allocator: Option<PartialTreeAllocator<A>>,
+    partial_tree_allocator: Option<A>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a, A>> {
     let stream = context.get_exec_stream();

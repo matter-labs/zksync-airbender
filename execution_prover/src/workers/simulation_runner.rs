@@ -130,7 +130,7 @@ impl<
         snapshots: Sender<Snapshot<T::Ranges, S>>,
         results: Sender<WorkerResult<A>>,
         free_allocators: Receiver<A>,
-        partial_tree_pool: Option<Sender<A>>,
+        persist_partial_trees: bool,
         abort: Arc<AtomicBool>,
         empty_it_streamer: Option<EmptyInitsAndTeardownsStreamer>,
         ram_config: JitRunnerRam,
@@ -141,7 +141,7 @@ impl<
             unified_circuit,
             free_allocators,
             results.clone(),
-            partial_tree_pool,
+            persist_partial_trees,
         );
         let tracing_data_producers = Some(tracing_data_producers);
         Self {

@@ -12,6 +12,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     pub(super) fn get_result<ND: NonDeterminismCSRSource + Send + 'static>(
         &self,
         proving: bool,
+        request_partial_trees: bool,
         cache: &mut Option<TraceCache<B::Allocator>>,
         batch_id: u64,
         binary_key: usize,
@@ -103,7 +104,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 non_determinism_source,
                 &work_results_sender,
                 &abort,
-                !proving && self.backend.persists_memory_partial_trees(profile),
+                !proving
+                    && request_partial_trees
+                    && self.backend.persists_memory_partial_trees(profile),
             )
         };
         drop(work_results_sender);
@@ -192,6 +195,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 .into_values()
                 .for_each(|data| {
                     self.free_tracing_data(data.tracing_data);
+                    self.free_partial_tree_allocator(data.partial_tree_allocator);
                 });
             std::mem::take(&mut acc.unpaired_unified_inits_and_teardowns)
                 .into_values()
@@ -199,11 +203,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     if let Some(inits_and_teardowns) = data.inits_and_teardowns {
                         self.free_inits_and_teardowns(inits_and_teardowns);
                     }
+                    self.free_partial_tree_allocator(data.partial_tree_allocator);
                 });
             std::mem::take(&mut acc.unpaired_unified_tracing_data)
                 .into_values()
                 .for_each(|data| {
                     self.free_tracing_data(data.tracing_data);
+                    self.free_partial_tree_allocator(data.partial_tree_allocator);
                 });
         } else {
             assert!(acc.uninitialized_tracing_data.is_empty());
@@ -219,6 +225,9 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     acc.trivial_unified_inits_and_teardowns_count;
                 cache.simulation_result = acc.simulation_result.clone();
             }
+        }
+        for trees in request_context.proof_partial_trees.into_values() {
+            self.free_partial_tree_nodes(Some(trees.nodes));
         }
         let non_determinism_source = non_determinism_return
             .recv()
@@ -236,7 +245,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         handle: BinaryHandle,
         non_determinism_source: ND,
         profile: ProofProfile,
-    ) -> (CommitMemoryResult<B::Allocator>, ND) {
+        request_partial_trees: bool,
+    ) -> (
+        CommitMemoryResult,
+        ND,
+        MemoryPartialTreesByInstance<B::Allocator>,
+    ) {
         let binary_key = handle.0;
         info!(
             "BATCH[{batch_id}] PROVER producing memory commitments for binary with key {binary_key:?}"
@@ -244,6 +258,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let timer = Instant::now();
         let (result, non_determinism_source) = self.get_result(
             false,
+            request_partial_trees,
             cache,
             batch_id,
             binary_key,
@@ -254,13 +269,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             BTreeMap::new(),
             profile,
         );
-        let mut result = result.into_memory_commitment_result();
+        let (mut result, memory_partial_trees) = result.into_memory_commitment_result();
         result.binary_handle = handle;
         let elapsed = timer.elapsed().as_secs_f64();
         info!(
             "BATCH[{batch_id}] PROVER produced memory commitments for binary with key {binary_key:?} in {elapsed:.3}s"
         );
-        (result, non_determinism_source)
+        (result, non_determinism_source, memory_partial_trees)
     }
 
     pub(super) fn prove_inner<ND: NonDeterminismCSRSource + Send + 'static>(
@@ -279,6 +294,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let timer = Instant::now();
         let (result, _) = self.get_result(
             true,
+            false,
             cache,
             batch_id,
             binary_key,
@@ -386,12 +402,11 @@ fn assemble_result<A: fft::GoodAllocator>(
             circuit_families_memory_caps,
             inits_and_teardowns_memory_caps,
             delegation_circuits_memory_caps,
-            memory_partial_trees,
             num_trivial_unified_circuits: trivial_unified_inits_and_teardowns_count,
             inits_and_teardowns_top_bits,
             binary_handle: BinaryHandle(binary_key),
         };
-        ExecutionProverResult::CommitMemory(Box::new(result))
+        ExecutionProverResult::CommitMemory(Box::new(result), memory_partial_trees)
     }
 }
 

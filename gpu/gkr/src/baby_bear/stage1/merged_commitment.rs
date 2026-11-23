@@ -7,7 +7,7 @@ use gpu_prover_context::{transfer::Transfer, ProverContext};
 use gpu_trace::{
     baby_bear::trace::memory::{
         schedule_memory_commitment_job, schedule_memory_commitment_job_in_place,
-        schedule_memory_commitment_job_with_monomials, MemoryCommitmentJob, PartialTreeAllocator,
+        schedule_memory_commitment_job_with_monomials, MemoryCommitmentJob,
     },
     trace::{
         decoder::DecoderTableTransfer,
@@ -82,7 +82,7 @@ pub fn commit_merged_from_transfers<'a, A: GoodAllocator + 'a>(
     inputs: GpuGKRMergedCommitTransfer<'a, A>,
     strategy: MergedCommitStrategy,
     partial_trees: PartialTreePolicy,
-    partial_tree_allocator: Option<PartialTreeAllocator<A>>,
+    partial_tree_allocator: Option<A>,
     context: &ProverContext,
 ) -> CudaResult<MemoryCommitmentJob<'a, A>> {
     assert_eq!(

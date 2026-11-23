@@ -302,7 +302,6 @@ fn persisted_partial_trees_open_like_rebuilt_trees() {
     use crate::baby_bear::trace::memory::schedule_memory_cap_readback;
     use crate::baby_bear::trace::memory_cap::{GpuGKRMemoryCapHost, GpuGKRMemoryCapTransfer};
     use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
-    use execution_prover_model::allocator::PooledHostAllocator;
     use gpu_core::allocator::host::ConcurrentStaticHostAllocator;
     use gpu_core::primitives::callbacks::Callbacks;
     use gpu_core::primitives::device_tracing::Range;
@@ -388,11 +387,6 @@ fn persisted_partial_trees_open_like_rebuilt_trees() {
             )
             .unwrap();
             let allocator = ConcurrentStaticHostAllocator::new([backing], 12);
-            let allocator = PooledHostAllocator::new(
-                allocator,
-                node_count * size_of::<Digest>(),
-                crossbeam_channel::unbounded().0,
-            );
             let job = schedule_memory_cap_readback(
                 &committed,
                 Callbacks::new(),
@@ -437,12 +431,13 @@ fn persisted_partial_trees_open_like_rebuilt_trees() {
                     "{label}: coset {coset} builder wrote past its cap"
                 );
             }
-            let host = Arc::new(GpuGKRMemoryCapHost::from_per_coset_caps_and_partial_trees(
+            let (host, _) = GpuGKRMemoryCapHost::from_per_coset_caps_and_partial_trees(
                 &caps,
                 base_geometry,
                 geometry,
                 trees,
-            ));
+            );
+            let host = Arc::new(host);
             for queries in [&every_coset, &without_first] {
                 let mut imported = new_holder();
                 let mut memory = GpuGKRMemoryCapTransfer::new(Arc::clone(&host), &context).unwrap();

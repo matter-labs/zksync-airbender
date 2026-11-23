@@ -57,7 +57,7 @@ pub(crate) fn run_simulator<
     snapshots: Sender<Snapshot<T::Ranges, S>>,
     results: Sender<WorkerResult<A>>,
     free_allocators: Receiver<A>,
-    partial_tree_pool: Option<Sender<A>>,
+    persist_partial_trees: bool,
     abort: Arc<AtomicBool>,
     worker: &Worker,
     ram_config: JitRunnerRam,
@@ -90,7 +90,7 @@ pub(crate) fn run_simulator<
         snapshots,
         results,
         free_allocators.clone(),
-        partial_tree_pool.clone(),
+        persist_partial_trees,
         abort,
         empty_it_streamer,
         ram_config,
@@ -188,7 +188,7 @@ pub(crate) fn run_simulator<
                 partial_tree_allocator: if T::IS_SPLIT {
                     crate::tracing::take_partial_tree_allocator(
                         &free_allocators,
-                        &partial_tree_pool,
+                        persist_partial_trees,
                     )
                 } else {
                     None

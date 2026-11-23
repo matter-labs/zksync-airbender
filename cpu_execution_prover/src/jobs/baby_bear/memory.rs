@@ -42,7 +42,7 @@ pub(in crate::jobs) fn run<A: HostTraceAllocator>(
         inits_and_teardowns,
         tracing_data,
         profile,
-        partial_tree_allocator: _,
+        partial_tree_allocator,
     } = request;
     let config = precomputations.config(profile);
     let storage = whir_storage(profile, config);
@@ -302,6 +302,7 @@ pub(in crate::jobs) fn run<A: HostTraceAllocator>(
         tracing_data,
         merkle_tree_caps,
         memory_partial_trees: None,
+        partial_tree_allocator,
     }
 }
 

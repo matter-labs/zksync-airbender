@@ -12,10 +12,7 @@ fn tagged_partial_trees(circuit_type: CircuitType, profile: ProofProfile) -> Mem
         log_tree_cap_size: 4,
         reduction_layers: 10,
         columns_count: 104,
-        nodes: execution_prover_model::allocator::PooledHostBuffer::new(
-            vec![[7; 8]; 3],
-            crossbeam_channel::unbounded().0,
-        ),
+        nodes: vec![[7; 8]; 3],
     }
 }
 
@@ -23,11 +20,13 @@ const UNIFIED: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified)
 const UNIFIED22: CircuitType = CircuitType::Unrolled(UnrolledCircuitType::Unified22);
 
 #[test]
-#[should_panic(
-    expected = "Unrolled(Unified22)/CompressionFinal proof requires the memory partial trees persisted by its commitment"
-)]
-fn cpu_compression_proof_without_partial_trees_panics() {
-    proof_partial_trees::<std::alloc::Global>(UNIFIED22, ProofProfile::CompressionFinal, None);
+fn cpu_standalone_compression_proof_can_rebuild_partial_trees() {
+    assert!(proof_partial_trees::<std::alloc::Global>(
+        UNIFIED22,
+        ProofProfile::CompressionFinal,
+        None
+    )
+    .is_none());
 }
 
 #[test]

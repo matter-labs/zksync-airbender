@@ -12,7 +12,7 @@ use crate::upstream::{BF, E4};
 use crate::ProofProfile;
 use execution_prover_model::circuit_type::CircuitType;
 
-pub struct CommitMemoryResult<A: GoodAllocator> {
+pub struct CommitMemoryResult {
     pub profile: ProofProfile,
     pub final_register_values: [FinalRegisterValue; 32],
     pub final_pc: u32,
@@ -20,9 +20,6 @@ pub struct CommitMemoryResult<A: GoodAllocator> {
     pub circuit_families_memory_caps: BTreeMap<u8, Vec<Vec<MerkleTreeCapVarLength>>>,
     pub inits_and_teardowns_memory_caps: Vec<Vec<MerkleTreeCapVarLength>>,
     pub delegation_circuits_memory_caps: BTreeMap<u32, Vec<Vec<MerkleTreeCapVarLength>>>,
-    /// Partial trees the backend persisted, keyed by circuit and sequence ID;
-    /// moved into this commitment's proof requests by `prove`.
-    pub(super) memory_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees<A>>,
     /// Unified mode only (0 otherwise): the number of LEADING unified circuits
     /// whose inits-and-teardowns are trivial (dummy, all-zero). Only the
     /// trailing circuits carry real i&t data. Consumed by the FS-seed
@@ -54,15 +51,20 @@ pub struct ProveResult {
     pub num_unified_it_circuits: Option<u32>,
 }
 
+pub(super) type MemoryPartialTreesByInstance<A> =
+    BTreeMap<(CircuitType, usize), MemoryPartialTrees<A>>;
+
 pub(super) enum ExecutionProverResult<A: GoodAllocator> {
-    CommitMemory(Box<CommitMemoryResult<A>>),
+    CommitMemory(Box<CommitMemoryResult>, MemoryPartialTreesByInstance<A>),
     Prove(Box<ProveResult>),
 }
 
 impl<A: GoodAllocator> ExecutionProverResult<A> {
-    pub fn into_memory_commitment_result(self) -> CommitMemoryResult<A> {
+    pub fn into_memory_commitment_result(
+        self,
+    ) -> (CommitMemoryResult, MemoryPartialTreesByInstance<A>) {
         match self {
-            ExecutionProverResult::CommitMemory(result) => *result,
+            ExecutionProverResult::CommitMemory(result, trees) => (*result, trees),
             _ => panic!("expected CommitMemoryResult"),
         }
     }

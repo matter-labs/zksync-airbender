@@ -1,5 +1,7 @@
 use crate::upstream::{CommitmentMode, GKRCircuitArtifact, ProverConfig};
-use crate::workers::gpu::{JobType, PhaseOne, PhaseOneInputs, RequestKind, RequestState};
+use crate::workers::gpu::{
+    JobType, MemoryPartialTreeNodes, PhaseOne, PhaseOneInputs, RequestKind, RequestState,
+};
 use crate::workers::gpu_manager::{GpuWorkRequest, GpuWorkResult};
 use crate::A;
 use era_cudart::result::CudaResult;
@@ -11,7 +13,9 @@ use gpu_circuit_prover::baby_bear::GpuGKRProofJob;
 use gpu_core::primitives::field::BF;
 use gpu_gkr::baby_bear::setup::GpuGKRSetupTransfer;
 use gpu_gkr::baby_bear::stage1::merged_commitment::commit_merged_from_transfers;
-use gpu_gkr::baby_bear::stage1::merged_commitment::GpuGKRMergedCommitTransfer;
+use gpu_gkr::baby_bear::stage1::merged_commitment::{
+    GpuGKRMergedCommitTransfer, MergedCommitStrategy,
+};
 use gpu_prover_context::ProverContext;
 use gpu_trace::baby_bear::trace::memory::{
     commit_memory_from_transfers_for_geometry, MemoryCommitmentJob,
@@ -196,10 +200,10 @@ pub(crate) fn schedule_phase_one<'a>(
             .transpose()?;
         let admitted_memory_host =
             Arc::clone(memory_host.as_ref().expect("a proof needs memory caps"));
-        let memory_host =
+        let (memory_host, nodes) =
             match proof_partial_trees(circuit_type, state.profile, memory_partial_trees) {
                 Some(trees) => {
-                    let host = GpuGKRMemoryCapHost::from_per_coset_caps_and_partial_trees(
+                    let (host, nodes) = GpuGKRMemoryCapHost::from_per_coset_caps_and_partial_trees(
                         state.memory_caps.as_deref().expect("proof caps"),
                         geometry,
                         memory_partial_trees_geometry(
@@ -214,9 +218,9 @@ pub(crate) fn schedule_phase_one<'a>(
                         ),
                         trees,
                     );
-                    Arc::new(host)
+                    (Arc::new(host), Some(nodes))
                 }
-                None => admitted_memory_host,
+                None => (admitted_memory_host, None),
             };
         let memory_transfer = GpuGKRMemoryCapTransfer::new(memory_host, context)?;
         let external_challenges_value = state
@@ -244,7 +248,7 @@ pub(crate) fn schedule_phase_one<'a>(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling proof H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
         bundle.schedule(context)?;
-        PhaseOneInputs::Proof(bundle)
+        PhaseOneInputs::Proof(bundle, nodes)
     } else if config.commitment_mode == CommitmentMode::MergedMemoryAndWitness {
         let setup_transfer = GpuGKRSetupTransfer::new(
             Arc::clone(setup_host.as_ref().expect("a merged commit needs a setup")),
@@ -272,7 +276,7 @@ pub(crate) fn schedule_phase_one<'a>(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling commit-memory H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
         bundle.schedule(context)?;
-        PhaseOneInputs::MemoryCommitment(bundle)
+        PhaseOneInputs::MemoryCommitment(bundle, partial_tree_allocator)
     };
 
     Ok(PhaseOne { state, inputs })
@@ -302,7 +306,7 @@ pub(crate) fn enqueue_phase_two<'a>(
                 .compiled_circuit(),
         );
         match inputs {
-            PhaseOneInputs::Proof(bundle) => {
+            PhaseOneInputs::Proof(bundle, nodes) => {
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing proof for circuit {circuit_type:?}[{sequence_id}]"
         );
@@ -321,9 +325,9 @@ pub(crate) fn enqueue_phase_two<'a>(
                     ),
                     context,
                 )?;
-                JobType::Proof(job)
+                JobType::Proof(job, nodes)
             }
-            PhaseOneInputs::MemoryCommitment(bundle) => {
+            PhaseOneInputs::MemoryCommitment(bundle, partial_tree_allocator) => {
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing memory commitment for circuit {circuit_type:?}[{sequence_id}]"
         );
@@ -335,25 +339,30 @@ pub(crate) fn enqueue_phase_two<'a>(
                     crate::memory_policy::partial_trees(circuit_type, state.profile).memory,
                     context,
                 )?;
-                JobType::MemoryCommitment(job)
+                JobType::MemoryCommitment(job, partial_tree_allocator)
             }
             PhaseOneInputs::MergedCommitment(bundle, partial_tree_allocator) => {
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing merged memory+witness commitment for circuit {circuit_type:?}[{sequence_id}]"
         );
+                let strategy = gpu_circuit_prover::baby_bear::presets::merged_commit_strategy(
+                    circuit_type,
+                    state.profile,
+                );
+                let (partial_tree_allocator, unused_allocator) = match strategy {
+                    MergedCommitStrategy::Monomials => (partial_tree_allocator, None),
+                    _ => (None, partial_tree_allocator),
+                };
                 let job = commit_merged_from_transfers::<A>(
                     &state.precomputations.baby_bear().gkr_programs,
                     prover_config,
                     bundle,
-                    gpu_circuit_prover::baby_bear::presets::merged_commit_strategy(
-                        circuit_type,
-                        state.profile,
-                    ),
+                    strategy,
                     crate::memory_policy::partial_trees(circuit_type, state.profile),
                     partial_tree_allocator,
                     context,
                 )?;
-                JobType::MemoryCommitment(job)
+                JobType::MemoryCommitment(job, unused_allocator)
             }
             PhaseOneInputs::SetupInitialization => {
                 unreachable!("setup initialization returns early above")
@@ -370,6 +379,7 @@ pub(crate) fn finish_memory_commitment(
     device_id: i32,
     state: RequestState,
     job: MemoryCommitmentJob<'_, A>,
+    partial_tree_allocator: Option<A>,
 ) -> CudaResult<GpuWorkResult<A>> {
     let RequestState {
         batch_id,
@@ -394,6 +404,7 @@ pub(crate) fn finish_memory_commitment(
         tracing_data: tracing_data_result,
         merkle_tree_caps,
         memory_partial_trees,
+        partial_tree_allocator,
     }))
 }
 
@@ -401,6 +412,7 @@ pub(crate) fn finish_proof(
     device_id: i32,
     state: RequestState,
     job: GpuGKRProofJob<'_>,
+    nodes: Option<MemoryPartialTreeNodes>,
 ) -> CudaResult<GpuWorkResult<A>> {
     let RequestState {
         batch_id,
@@ -412,6 +424,9 @@ pub(crate) fn finish_proof(
         ..
     } = state;
     let (proof, proof_time_ms) = job.finish()?;
+    let memory_partial_trees = nodes.map(|nodes| {
+        Arc::into_inner(nodes).expect("proof completion releases the partial-tree transfer")
+    });
     debug!(
         "BATCH[{batch_id}] GPU_WORKER[{device_id}] produced proof for circuit {circuit_type:?}[{sequence_id}] profile {profile:?} in {proof_time_ms:.3} ms"
     );
@@ -422,6 +437,7 @@ pub(crate) fn finish_proof(
         inits_and_teardowns: inits_and_teardowns_result,
         tracing_data: tracing_data_result,
         proof,
+        memory_partial_trees,
     }))
 }
 
@@ -462,24 +478,17 @@ pub(crate) fn memory_partial_trees_geometry(
     }
 }
 
-/// The trees a proof request carries: required exactly when its profile
-/// persists them, and only those of its own circuit and profile.
+/// Validate that any persisted trees belong to this circuit and profile.
 pub(crate) fn proof_partial_trees<T: fft::GoodAllocator>(
     circuit_type: CircuitType,
     profile: ProofProfile,
     trees: Option<MemoryPartialTrees<T>>,
 ) -> Option<PartialTrees<T>> {
-    let required = crate::memory_policy::persists_memory_partial_trees(circuit_type, profile);
-    let trees = match (required, trees) {
-        (true, Some(trees)) => trees,
-        (true, None) => panic!(
-            "{circuit_type:?}/{profile:?} proof requires the memory partial trees persisted by its commitment"
-        ),
-        (false, Some(_)) => {
-            panic!("{circuit_type:?}/{profile:?} proof does not take memory partial trees")
-        }
-        (false, None) => return None,
-    };
+    let trees = trees?;
+    assert!(
+        crate::memory_policy::persists_memory_partial_trees(circuit_type, profile),
+        "{circuit_type:?}/{profile:?} proof does not take memory partial trees"
+    );
     let MemoryPartialTrees {
         layout_version,
         circuit_type: trees_circuit_type,

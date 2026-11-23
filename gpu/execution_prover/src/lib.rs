@@ -17,7 +17,7 @@ mod workers;
 pub(crate) type A = GpuTraceAllocator;
 
 pub type ExecutionProver = execution_prover::ExecutionProver<GpuBackend>;
-pub type CommitMemoryResult = execution_prover::CommitMemoryResult<A>;
+pub type CommitMemoryResult = execution_prover::CommitMemoryResult;
 
 pub type ExecutionProverConfiguration =
     execution_prover::ExecutionProverConfiguration<GpuBackendConfiguration>;

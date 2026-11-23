@@ -9,7 +9,7 @@ use crate::messages::{
 use crate::setup::CanonicalCircuitSetup;
 use crate::upstream::{GKRCircuitArtifact, MerkleTreeCapVarLength, BF};
 use crate::ProofProfile;
-use execution_prover_model::allocator::{CpuTraceAllocator, PooledHostBuffer};
+use execution_prover_model::allocator::CpuTraceAllocator;
 use execution_prover_model::circuit_type::CircuitType;
 use riscv_transpiler::jit::{JitRunnerRam, MemoryHolder, TraceChunk};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -31,9 +31,10 @@ fn tagged_partial_trees(
     circuit_type: CircuitType,
     profile: ProofProfile,
     sequence_id: usize,
-    mut nodes: PooledHostBuffer<[u32; 8], CpuTraceAllocator>,
+    allocator: CpuTraceAllocator,
 ) -> MemoryPartialTrees<CpuTraceAllocator> {
-    nodes.resize(1, [sequence_id as u32; 8]);
+    let mut nodes = Vec::with_capacity_in(1, allocator);
+    nodes.push([sequence_id as u32; 8]);
     MemoryPartialTrees {
         layout_version: 0,
         circuit_type,
@@ -206,15 +207,17 @@ impl ExecutionBackend for TestBackend {
                                     };
                                     config.lde_factor()
                                 ],
-                                memory_partial_trees: Some(tagged_partial_trees(
-                                    request.circuit_type,
-                                    request.profile,
-                                    request.sequence_id,
-                                    request
-                                        .partial_tree_allocator
-                                        .expect("mock commitment allocator")
-                                        .into_buffer(),
-                                )),
+                                memory_partial_trees: request.partial_tree_allocator.map(
+                                    |allocator| {
+                                        tagged_partial_trees(
+                                            request.circuit_type,
+                                            request.profile,
+                                            request.sequence_id,
+                                            allocator,
+                                        )
+                                    },
+                                ),
+                                partial_tree_allocator: None,
                             })
                         }
                         WorkRequest::Proof(request) => {
@@ -233,6 +236,9 @@ impl ExecutionBackend for TestBackend {
                                 sequence_id: request.sequence_id,
                                 inits_and_teardowns: request.inits_and_teardowns,
                                 tracing_data: request.tracing_data,
+                                memory_partial_trees: request
+                                    .memory_partial_trees
+                                    .map(|trees| trees.nodes),
                                 proof: crate::upstream::GKRProof {
                                     external_challenges: request.external_challenges,
                                     final_explicit_evaluations: Default::default(),

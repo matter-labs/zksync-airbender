@@ -3,7 +3,6 @@ use crate::OperationMode;
 use crate::ProofProfile;
 use common_constants::TimestampScalar;
 use crossbeam_channel::{Receiver, Sender};
-use execution_prover_model::allocator::{PooledHostAllocator, PooledHostBuffer};
 use execution_prover_model::circuit_type::CircuitType;
 use execution_prover_model::trace::UnrolledUnifiedTraceHost;
 use execution_prover_model::trace::{InitsAndTeardownsTraceHost, TracingDataHost};
@@ -20,7 +19,7 @@ pub struct InitsAndTeardownsData<A: GoodAllocator> {
     pub circuit_type: CircuitType,
     pub sequence_id: usize,
     pub inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
-    pub partial_tree_allocator: Option<PooledHostAllocator<A>>,
+    pub partial_tree_allocator: Option<A>,
 }
 
 pub struct TracingData<A: GoodAllocator> {
@@ -28,7 +27,7 @@ pub struct TracingData<A: GoodAllocator> {
     pub sequence_id: usize,
     pub tracing_data: TracingDataHost<A>,
     pub participating_snapshot_indexes: BTreeSet<usize>,
-    pub partial_tree_allocator: Option<PooledHostAllocator<A>>,
+    pub partial_tree_allocator: Option<A>,
 }
 
 #[derive(Clone)]
@@ -61,7 +60,7 @@ pub struct MemoryCommitmentRequest<A: GoodAllocator, P> {
     pub tracing_data: Option<TracingDataHost<A>>,
 
     pub profile: ProofProfile,
-    pub partial_tree_allocator: Option<PooledHostAllocator<A>>,
+    pub partial_tree_allocator: Option<A>,
 }
 
 /// A commitment's partial Merkle trees, kept on the host so the proof of the
@@ -78,7 +77,7 @@ pub struct MemoryPartialTrees<A: GoodAllocator = Global> {
     pub log_tree_cap_size: u32,
     pub reduction_layers: u32,
     pub columns_count: usize,
-    pub nodes: PooledHostBuffer<[u32; 8], A>,
+    pub nodes: Vec<[u32; 8], A>,
 }
 
 pub struct MemoryCommitmentResult<A: GoodAllocator> {
@@ -89,6 +88,7 @@ pub struct MemoryCommitmentResult<A: GoodAllocator> {
     pub tracing_data: Option<TracingDataHost<A>>,
     pub merkle_tree_caps: Vec<MerkleTreeCapVarLength>,
     pub memory_partial_trees: Option<MemoryPartialTrees<A>>,
+    pub partial_tree_allocator: Option<A>,
 }
 
 pub struct SetupInitializationRequest<P> {
@@ -129,6 +129,7 @@ pub struct ProofResult<A: GoodAllocator> {
     pub inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
     pub tracing_data: Option<TracingDataHost<A>>,
     pub proof: GKRProof<BF, E4, DefaultTreeConstructor>,
+    pub memory_partial_trees: Option<Vec<[u32; 8], A>>,
 }
 
 pub struct L1WrapProofRequest<A: GoodAllocator, P> {

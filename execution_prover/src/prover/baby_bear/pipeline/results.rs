@@ -49,7 +49,9 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 partial_tree_allocator: tracing_partial_tree_allocator,
                 ..
             } = tracing_data;
-            partial_tree_allocator = tracing_partial_tree_allocator.or(partial_tree_allocator);
+            if let Some(allocator) = tracing_partial_tree_allocator {
+                prover.free_partial_tree_allocator(partial_tree_allocator.replace(allocator));
+            }
             assert_eq!(
                 circuit_type_value.get_or_insert(circuit_type),
                 &circuit_type
@@ -90,6 +92,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
             }
         };
         if self.proving {
+            prover.free_partial_tree_allocator(partial_tree_allocator);
             let memory_caps = self
                 .proof_caps
                 .get(&(circuit_type, sequence_id))
@@ -266,6 +269,8 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                                 .insert(sequence_id, data)
                                 .is_none());
                         }
+                    } else {
+                        prover.free_partial_tree_allocator(data.partial_tree_allocator);
                     }
                 }
                 _ => panic!("unexpected circuit type for inits and teardowns data"),
@@ -356,7 +361,9 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                     tracing_data,
                     merkle_tree_caps,
                     memory_partial_trees,
+                    partial_tree_allocator,
                 } = commitment;
+                prover.free_partial_tree_allocator(partial_tree_allocator);
                 trace!(
                     "BATCH[{batch_id}] PROVER received memory commitment for circuit {circuit_type:?}[{sequence_id}]"
                 );
@@ -409,7 +416,9 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                     inits_and_teardowns,
                     tracing_data,
                     proof,
+                    memory_partial_trees,
                 } = proof;
+                prover.free_partial_tree_nodes(memory_partial_trees);
                 trace!(
                     "BATCH[{batch_id}] PROVER received proof for circuit {circuit_type:?}[{sequence_id}]"
                 );
@@ -470,12 +479,14 @@ pub(super) fn dispatch_backend_requests<B: ExecutionBackend>(
                         sequence_id,
                         inits_and_teardowns,
                         tracing_data,
+                        memory_partial_trees,
                         ..
                     } = request;
                     trace!(
                         "BATCH[{batch_id}] PROVER skipping cached proof request for circuit {circuit_type:?}[{sequence_id}]"
                     );
                     prover.free_traces(inits_and_teardowns, tracing_data);
+                    prover.free_partial_tree_nodes(memory_partial_trees.map(|trees| trees.nodes));
                 }
                 _ => panic!("only proof requests are cached"),
             }

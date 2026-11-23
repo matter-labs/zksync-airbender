@@ -11,7 +11,7 @@ pub(super) mod setup;
 
 use super::non_determinism_wrapper::NonDeterminismWrapper;
 use super::*;
-use result::ExecutionProverResult;
+use result::{ExecutionProverResult, MemoryPartialTreesByInstance};
 
 use crate::backend::CircuitPrecomputation;
 use crate::messages::{
