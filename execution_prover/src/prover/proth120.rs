@@ -102,11 +102,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     /// The instruction tape and prepared setup of an L1 wrap binary.
     pub(super) fn prepare_l1_wrap(
         &self,
-        circuit_type: CircuitType,
         padded_binary_image: &[u32],
         text_section: &[u32],
         profiles: &[ProofProfile],
     ) -> (Arc<SimpleTape>, B::Precomputations) {
+        let circuit_type = CircuitType::L1Wrap;
         let instruction_tape = Arc::new(SimpleTape::new(
             &riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode::<
                 riscv_transpiler::ir::ReducedMachineDecoderConfig,
@@ -118,8 +118,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             &mut padded_text_section,
             circuit_type.rom(),
         );
-        let setup = unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup_for_trace(
-            circuit_type.get_domain_size_log2() as usize,
+        let setup = unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup(
             padded_binary_image,
             &padded_text_section,
             &self.worker,
@@ -176,26 +175,30 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             false,
         );
         drop(sender);
-        let circuit_type = holder.execution_kind.unified_circuit().unwrap();
-        let trace = collect_l1_wrap_trace(circuit_type, receiver);
+        let trace =
+            collect_l1_wrap_trace(holder.execution_kind.unified_circuit().unwrap(), receiver);
         drop(
             non_determinism_return
                 .recv()
                 .expect("wrap simulation did not return its non-determinism source"),
         );
-        self.prove_l1_wrap_trace(batch_id, circuit_type, holder, trace)
+        self.prove_l1_wrap_trace(batch_id, holder, trace)
     }
 
     fn prove_l1_wrap_trace(
         &self,
         batch_id: u64,
-        circuit_type: CircuitType,
         holder: &BinaryHolder<B>,
         trace: L1WrapTrace<B::Allocator>,
     ) -> L1WrapResult {
+        let circuit_type = holder.execution_kind.unified_circuit().unwrap();
         use ::prover::gkr::prover_config::example_configs::l1_wrap;
+        let external_challenges_pow_bits = match circuit_type {
+            CircuitType::L1Wrap => l1_wrap::EXTERNAL_CHALLENGES_POW_BITS,
+            other => panic!("{other:?} is not an L1 wrap circuit"),
+        };
         let operation_mode = OperationMode::SingleChunk {
-            external_challenges_pow_bits: l1_wrap::EXTERNAL_CHALLENGES_POW_BITS,
+            external_challenges_pow_bits,
             final_pc: trace.simulation.final_pc,
             final_timestamp: trace.simulation.final_timestamp,
             register_final_state: trace.simulation.final_register_values,
@@ -256,7 +259,7 @@ mod tests {
         vec![
             WorkerResult::TracingData(TracingData {
                 partial_tree_buffer: None,
-                circuit_type: CircuitType::L1Wrap21,
+                circuit_type: CircuitType::L1Wrap,
                 sequence_id: 0,
                 tracing_data: TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(
                     ChunkedTraceHolder { chunks: vec![] },
@@ -265,7 +268,7 @@ mod tests {
             }),
             WorkerResult::InitsAndTeardownsData(InitsAndTeardownsData {
                 partial_tree_buffer: None,
-                circuit_type: CircuitType::L1Wrap21,
+                circuit_type: CircuitType::L1Wrap,
                 sequence_id: 0,
                 inits_and_teardowns: Some(InitsAndTeardownsTraceHost {
                     page_indices: ChunkedTraceHolder { chunks: vec![] },
@@ -289,7 +292,7 @@ mod tests {
 
     #[test]
     fn delayed_out_of_order_replay_is_drained_before_consuming_trace() {
-        let trace = collect_l1_wrap_trace(CircuitType::L1Wrap21, events());
+        let trace = collect_l1_wrap_trace(CircuitType::L1Wrap, events());
         assert_eq!(trace.simulation.final_pc, 42);
         assert_eq!(trace.inits_and_teardowns.top_bits, [0, 1]);
     }
@@ -299,7 +302,7 @@ mod tests {
     fn missing_replay_is_rejected() {
         let mut events = events();
         events.pop();
-        collect_l1_wrap_trace(CircuitType::L1Wrap21, events);
+        collect_l1_wrap_trace(CircuitType::L1Wrap, events);
     }
 
     #[test]
@@ -310,6 +313,6 @@ mod tests {
             unreachable!()
         };
         trace.circuit_type = CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression);
-        collect_l1_wrap_trace(CircuitType::L1Wrap21, events);
+        collect_l1_wrap_trace(CircuitType::L1Wrap, events);
     }
 }

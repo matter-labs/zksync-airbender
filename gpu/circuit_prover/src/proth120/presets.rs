@@ -15,14 +15,6 @@ pub const L1_WRAP_POLICY: ProofMemoryPolicy = ProofMemoryPolicy {
     },
 };
 
-pub const L1_WRAP_REUSE_PREFIX_POLICY: ProofMemoryPolicy = ProofMemoryPolicy {
-    witness: WitnessMemoryPolicy {
-        post_commitment: WitnessPostCommitStorage::RawWithReusedPrefixScratch,
-        ..L1_WRAP_POLICY.witness
-    },
-    ..L1_WRAP_POLICY
-};
-
 pub const PARTIAL_TREES: PartialTreePolicy = PartialTreePolicy {
     setup: gpu_gkr::proth120::setup::L1WrapSetupHost::PARTIAL_TREE_REDUCTION_LAYERS,
     memory: 10,

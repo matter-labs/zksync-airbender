@@ -75,7 +75,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let text_section = Arc::new(text_section.into_boxed_slice());
         let mut handles = Vec::with_capacity(variants.len());
         for (execution_kind, machine_type, profiles) in variants {
-            let unified_circuit = execution_kind.unified_circuit();
             let key = self.next_binary_id;
             info!(
                 "PROVER inserting binary with key {key:?} ({execution_kind:?}, {machine_type:?})"
@@ -91,12 +90,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 l1_wrap_precomputations,
                 (setup_time, preparation_time),
             ) = if execution_kind.is_l1_wrap() {
-                let (instruction_tape, precomputations) = self.prepare_l1_wrap(
-                    unified_circuit.unwrap(),
-                    &padded_binary_image,
-                    &text_section,
-                    &profiles,
-                );
+                let (instruction_tape, precomputations) =
+                    self.prepare_l1_wrap(&padded_binary_image, &text_section, &profiles);
                 (
                     instruction_tape,
                     HashMap::new(),
@@ -136,7 +131,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     .chain(
                         l1_wrap_precomputations
                             .iter()
-                            .map(|precomp| (unified_circuit.unwrap(), precomp.clone())),
+                            .map(|precomp| (CircuitType::L1Wrap, precomp.clone())),
                     )
                     .collect(),
             );

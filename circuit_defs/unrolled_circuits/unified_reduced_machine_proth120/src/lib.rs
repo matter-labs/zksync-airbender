@@ -1,6 +1,6 @@
 #![feature(allocator_api)]
 
-//! The unified reduced-machine circuits over Proth120 for L1 wrapping.
+//! The unified reduced-machine circuit over Proth120: the 2^21 L1 wrap circuit.
 //!
 //! `generated/layout.json` is the compiled circuit the L1 wrap verifiers are generated from,
 //! and `generated/witness_generation_fn.rs` is the witness-eval fn derived from its SSA; the
@@ -25,29 +25,17 @@ use std::alloc::Global;
 
 pub const NUM_INIT_AND_TEARDOWN_SETS: usize = 2;
 
-/// The wrap circuit over the 512 KiB wrap ROM.
+/// The 2^21 wrap circuit over the 512 KiB wrap ROM.
 pub mod l1_wrap {
     use super::*;
 
-    pub const LAYOUT_TRACE_LEN_LOG2: usize = 21;
+    pub const TRACE_LEN_LOG2: usize = 21;
     pub const ROM: RomGeometry = L1_WRAP_ROM;
 
     pub const LAYOUT_JSON: &str = include_str!("../generated/layout.json");
 
     pub fn circuit_artifact() -> GKRCircuitArtifact<Proth120> {
         serde_json::from_str(LAYOUT_JSON).expect("embedded 2^21 Proth120 unified layout")
-    }
-
-    /// The compiled gate and witness layout is shared by the two trace sizes.
-    pub fn circuit_artifact_for_trace(trace_len_log2: usize) -> GKRCircuitArtifact<Proth120> {
-        assert!(
-            matches!(trace_len_log2, LAYOUT_TRACE_LEN_LOG2 | 22),
-            "the wrap layout has no 2^{trace_len_log2}-row trace"
-        );
-        let mut circuit = circuit_artifact();
-        assert_eq!(circuit.trace_len, 1 << LAYOUT_TRACE_LEN_LOG2);
-        circuit.trace_len = 1 << trace_len_log2;
-        circuit
     }
 
     mod sealed {
@@ -69,21 +57,12 @@ pub mod l1_wrap {
         (fn_ptr)(proxy);
     }
 
-    pub fn l1_wrap_setup_for_2_21(
+    pub fn l1_wrap_setup(
         binary: &[u32],
         text: &[u32],
         worker: &prover::worker::Worker,
     ) -> L1WrapSetup {
-        l1_wrap_setup_for_trace(LAYOUT_TRACE_LEN_LOG2, binary, text, worker)
-    }
-
-    pub fn l1_wrap_setup_for_trace(
-        trace_len_log2: usize,
-        binary: &[u32],
-        text: &[u32],
-        worker: &prover::worker::Worker,
-    ) -> L1WrapSetup {
-        let circuit = circuit_artifact_for_trace(trace_len_log2);
+        let circuit = circuit_artifact();
         assert!(
             binary.len() <= ROM.word_size() && text.len() <= ROM.word_size(),
             "the wrap image ({} binary / {} text words) exceeds the 2^{}-word ROM",
@@ -91,6 +70,7 @@ pub mod l1_wrap {
             text.len(),
             ROM.word_size().trailing_zeros()
         );
+        assert_eq!(circuit.trace_len, 1 << TRACE_LEN_LOG2);
         assert_eq!(
             circuit.memory_layout.teardown_sets.len(),
             NUM_INIT_AND_TEARDOWN_SETS
@@ -115,7 +95,7 @@ pub mod l1_wrap {
             Proth120,
             { L1_WRAP_ROM.second_word_bits() },
         >(binary);
-        let trace_len = circuit.trace_len;
+        let trace_len = 1 << TRACE_LEN_LOG2;
         let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &circuit, worker);
         L1WrapSetup {
             circuit,
@@ -149,17 +129,6 @@ mod test {
     use std::io::Write;
     use test_utils::skip_if_ci;
 
-    #[test]
-    fn trace_2_22_shares_the_compiled_layout() {
-        let compiled =
-            build_unified_artifact_core::<Proth120, BabyBearField>(true, 22, 1, L1_WRAP_ROM);
-        let wrap = l1_wrap::circuit_artifact_for_trace(22);
-        assert!(
-            compiled == wrap,
-            "the shared wrap layout must match the compiler at the 2^22 trace length"
-        );
-    }
-
     /// Writes `generated/layout.json` and `generated/witness_generation_fn.rs`.
     #[test]
     fn generate() {
@@ -167,7 +136,7 @@ mod test {
 
         let layout = build_unified_artifact_core::<Proth120, BabyBearField>(
             true,
-            l1_wrap::LAYOUT_TRACE_LEN_LOG2,
+            l1_wrap::TRACE_LEN_LOG2,
             1,
             L1_WRAP_ROM,
         );

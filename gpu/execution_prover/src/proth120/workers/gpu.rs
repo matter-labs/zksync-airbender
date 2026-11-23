@@ -13,6 +13,7 @@ use gpu_core::primitives::device_tracing::Range;
 use gpu_gkr::proth120::backward::{prepare_dr_tail_resources_pr, DrTailProofPlanPr};
 use gpu_prover_context::ProverContext;
 use gpu_trace::trace::tracing_data::{TracingDataHost, UnrolledTracingDataHost};
+use gpu_trace::witness::circuit_type::CircuitType;
 use log::{debug, trace};
 use std::sync::Arc;
 
@@ -31,17 +32,14 @@ pub(crate) fn schedule_l1_wrap_phase_one<'a>(
         tracing_data,
         operation_mode,
     } = request;
-    assert!(
-        circuit_type.is_l1_wrap(),
-        "Proth120 GPU requires an L1 wrap circuit type, got {circuit_type:?}"
+    assert_eq!(
+        circuit_type,
+        CircuitType::L1Wrap,
+        "the GPU backend proves only the 2^21 L1 wrap (CircuitType::L1Wrap)"
     );
     let request_range = Range::new("l1_wrap.request")?;
     request_range.start(context.get_exec_stream())?;
     let precomputed = Arc::clone(precomputations.l1_wrap());
-    assert_eq!(
-        precomputed.circuit_type, circuit_type,
-        "L1 wrap request {circuit_type:?} disagrees with its precomputations"
-    );
     let state = RequestState {
         batch_id,
         circuit_type,

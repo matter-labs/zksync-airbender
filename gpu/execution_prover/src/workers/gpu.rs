@@ -264,7 +264,7 @@ fn schedule_phase_one<'a>(
             inits_and_teardowns_result: None,
             tracing_data_result: None,
 
-            profile: if circuit_type.is_l1_wrap() {
+            profile: if circuit_type == CircuitType::L1Wrap {
                 ProofProfile::L1Wrap
             } else {
                 ProofProfile::Standard

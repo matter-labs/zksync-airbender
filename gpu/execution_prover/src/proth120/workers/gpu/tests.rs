@@ -15,7 +15,6 @@ use full_statement_verifier::host_utils::{build_unified_stream, load_fsv_exact};
 use full_statement_verifier::program_proof::ProgramProof;
 use gpu_circuit_prover::proth120::L1Proof;
 use gpu_core::allocator::tracker::AllocationDirection;
-use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -123,10 +122,10 @@ fn clone_setup(setup: &L1WrapSetup) -> L1WrapSetup {
 
 fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) -> Vec<Observed> {
     const WRAPS: u64 = 3;
-    assert_eq!(fixture.circuit_type, CircuitType::L1Wrap21);
+    assert_eq!(fixture.circuit_type, CircuitType::L1Wrap);
     set_device(0).unwrap();
     let precomputations = CircuitPrecomputations::from_canonical(
-        CircuitType::L1Wrap21,
+        CircuitType::L1Wrap,
         CanonicalCircuitSetup::L1Wrap(clone_setup(fixture.setup)),
         execution_prover::config::SoundnessMode::PessimisticConjecture,
         &[ProofProfile::L1Wrap],
@@ -143,7 +142,7 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) -> Vec<Obse
         .send(Some(WorkRequest::SetupInitialization(
             SetupInitializationRequest {
                 batch_id: 0,
-                circuit_type: CircuitType::L1Wrap21,
+                circuit_type: CircuitType::L1Wrap,
                 sequence_id: 0,
                 precomputations: precomputations.clone(),
             },
@@ -153,7 +152,7 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) -> Vec<Obse
         requests_sender
             .send(Some(WorkRequest::L1WrapProof(L1WrapProofRequest {
                 batch_id,
-                circuit_type: CircuitType::L1Wrap21,
+                circuit_type: CircuitType::L1Wrap,
                 precomputations: precomputations.clone(),
                 inits_and_teardowns: inits_and_teardowns.clone(),
                 tracing_data: tracing_data.clone(),
@@ -223,7 +222,7 @@ fn l1_wrap_followed_worker_parity() {
         move |fixture| run_followed_worker(&fixture, &bundle),
     );
     let wrap = RequestIdentity {
-        circuit_type: CircuitType::L1Wrap21,
+        circuit_type: CircuitType::L1Wrap,
         profile: ProofProfile::L1Wrap,
         kind: RequestKind::L1WrapProof,
     };
@@ -261,59 +260,4 @@ fn l1_wrap_followed_worker_parity() {
         wraps[0].direction,
         wraps[1].direction
     );
-}
-
-#[test]
-#[should_panic(expected = "L1 wrap request L1Wrap22 disagrees with its precomputations")]
-fn l1_wrap_request_identity_must_match_its_precomputations() {
-    set_device(0).unwrap();
-    let circuit_type = CircuitType::L1Wrap21;
-    let rom = circuit_type.rom();
-    let setup = L1WrapSetup {
-        circuit: serde_json::from_str(include_str!(
-            "../../../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json"
-        ))
-        .unwrap(),
-        table_driver: prover::cs::tables::TableDriver::new(),
-        decoder_table: vec![None; rom.word_size()],
-        setup: prover::gkr::prover::setup::GKRSetup {
-            hypercube_evals: Vec::new(),
-        },
-        trace_len: circuit_type.get_domain_size(),
-        rom,
-    };
-    let precomputations = CircuitPrecomputations::from_canonical(
-        circuit_type,
-        CanonicalCircuitSetup::L1Wrap(setup),
-        execution_prover::config::SoundnessMode::PessimisticConjecture,
-        &[ProofProfile::L1Wrap],
-    );
-    let context = ProverContext::new(&gpu_prover_context::ProverContextConfig {
-        device_allocation_blocks_count: Some(256),
-        host_allocator_blocks_count: 1024,
-        ..Default::default()
-    })
-    .unwrap();
-    let request = L1WrapProofRequest {
-        batch_id: 0,
-        circuit_type: CircuitType::L1Wrap22,
-        precomputations,
-        inits_and_teardowns: InitsAndTeardownsTraceHost {
-            page_indices: ChunkedTraceHolder { chunks: vec![] },
-            values_packed: ChunkedTraceHolder { chunks: vec![] },
-            timestamps_packed: ChunkedTraceHolder { chunks: vec![] },
-            top_bits: vec![0, 0],
-        },
-        tracing_data: ChunkedTraceHolder { chunks: vec![] },
-        operation_mode: OperationMode::SingleChunk {
-            external_challenges_pow_bits: 0,
-            register_final_state: [prover::definitions::FinalRegisterValue {
-                value: 0,
-                last_access_timestamp: 0,
-            }; 32],
-            final_pc: 0,
-            final_timestamp: 0,
-        },
-    };
-    let _ = schedule_l1_wrap_phase_one(0, &context, request);
 }
