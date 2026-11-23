@@ -71,7 +71,6 @@ impl EmptyInitsAndTeardownsStreamer {
                 circuit_type: self.circuit_type,
                 sequence_id: self.next_sequence_id,
                 inits_and_teardowns: None,
-                partial_tree_allocator: None,
             };
             results
                 .send(WorkerResult::InitsAndTeardownsData(data))
@@ -130,7 +129,6 @@ impl<
         snapshots: Sender<Snapshot<T::Ranges, S>>,
         results: Sender<WorkerResult<A>>,
         free_allocators: Receiver<A>,
-        persist_partial_trees: bool,
         abort: Arc<AtomicBool>,
         empty_it_streamer: Option<EmptyInitsAndTeardownsStreamer>,
         ram_config: JitRunnerRam,
@@ -141,7 +139,6 @@ impl<
             unified_circuit,
             free_allocators,
             results.clone(),
-            persist_partial_trees,
         );
         let tracing_data_producers = Some(tracing_data_producers);
         Self {

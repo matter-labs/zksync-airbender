@@ -33,10 +33,8 @@ pub trait ExecutionBackend: Send + Sync + Sized + 'static {
 
     fn allocate_trace_block(&self, bytes: usize) -> Self::Allocator;
 
-    /// Whether a commitment carries a host-pool buffer of partial trees to its proof.
-    fn persists_memory_partial_trees(&self, _profile: ProofProfile) -> bool {
-        false
-    }
+    /// Whether a commitment for this profile needs a host allocator to persist partial trees.
+    fn persists_memory_partial_trees(&self, profile: ProofProfile) -> bool;
 
     fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory;
 

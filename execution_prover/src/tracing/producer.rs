@@ -99,7 +99,6 @@ pub(crate) struct TracingDataProducer<T: TracingDataProducerType, A: HostTraceAl
     circuit_type: CircuitType,
     cycles_per_circuit: usize,
     free_allocators: Receiver<A>,
-    persist_partial_trees: bool,
     results: Sender<WorkerResult<A>>,
     current_circuit_index: usize,
     chunks: VecDeque<Arc<Vec<T, A>>>,
@@ -111,13 +110,11 @@ impl<T: TracingDataProducerType, A: HostTraceAllocator> TracingDataProducer<T, A
         circuit_type: CircuitType,
         free_allocators: Receiver<A>,
         results: Sender<WorkerResult<A>>,
-        persist_partial_trees: bool,
     ) -> Self {
         Self {
             circuit_type,
             cycles_per_circuit: cycles_per_circuit_for(circuit_type),
             free_allocators,
-            persist_partial_trees,
             results,
             current_circuit_index: 0,
             chunks: VecDeque::new(),
@@ -193,10 +190,6 @@ impl<T: TracingDataProducerType, A: HostTraceAllocator> TracingDataProducer<T, A
             sequence_id: self.current_circuit_index,
             tracing_data,
             participating_snapshot_indexes,
-            partial_tree_allocator: super::take_partial_tree_allocator(
-                &self.free_allocators,
-                self.persist_partial_trees,
-            ),
         };
         let result = WorkerResult::TracingData(data);
         self.results

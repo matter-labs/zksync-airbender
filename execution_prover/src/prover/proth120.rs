@@ -48,6 +48,9 @@ fn collect_l1_wrap_trace<A: HostTraceAllocator>(
             WorkerResult::SnapshotReplayed(index) => {
                 assert!(replayed.insert(index), "duplicate L1Wrap replay completion");
             }
+            WorkerResult::PartialTreeAllocator { .. } => {
+                panic!("unexpected partial-tree allocator during L1Wrap tracing")
+            }
             WorkerResult::BackendWorkResult(_) => {
                 panic!("unexpected backend result during L1Wrap tracing")
             }
@@ -152,7 +155,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             non_determinism,
             &sender,
             &Arc::new(AtomicBool::new(false)),
-            false,
         );
         drop(sender);
         let trace =
@@ -238,7 +240,6 @@ mod tests {
     fn events() -> Vec<WorkerResult<CpuTraceAllocator>> {
         vec![
             WorkerResult::TracingData(TracingData {
-                partial_tree_allocator: None,
                 circuit_type: CircuitType::L1Wrap,
                 sequence_id: 0,
                 tracing_data: TracingDataHost::Unrolled(UnrolledTracingDataHost::Unified(
@@ -247,7 +248,6 @@ mod tests {
                 participating_snapshot_indexes: BTreeSet::from([0, 2]),
             }),
             WorkerResult::InitsAndTeardownsData(InitsAndTeardownsData {
-                partial_tree_allocator: None,
                 circuit_type: CircuitType::L1Wrap,
                 sequence_id: 0,
                 inits_and_teardowns: Some(InitsAndTeardownsTraceHost {

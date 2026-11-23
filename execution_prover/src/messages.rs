@@ -19,7 +19,6 @@ pub struct InitsAndTeardownsData<A: GoodAllocator> {
     pub circuit_type: CircuitType,
     pub sequence_id: usize,
     pub inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
-    pub partial_tree_allocator: Option<A>,
 }
 
 pub struct TracingData<A: GoodAllocator> {
@@ -27,7 +26,6 @@ pub struct TracingData<A: GoodAllocator> {
     pub sequence_id: usize,
     pub tracing_data: TracingDataHost<A>,
     pub participating_snapshot_indexes: BTreeSet<usize>,
-    pub partial_tree_allocator: Option<A>,
 }
 
 #[derive(Clone)]
@@ -48,6 +46,11 @@ pub enum WorkerResult<A: GoodAllocator> {
     TracingData(TracingData<A>),
     SimulationResult(SimulationResult),
     SnapshotReplayed(usize),
+    PartialTreeAllocator {
+        circuit_type: CircuitType,
+        sequence_id: usize,
+        allocator: A,
+    },
     BackendWorkResult(WorkResult<A>),
 }
 

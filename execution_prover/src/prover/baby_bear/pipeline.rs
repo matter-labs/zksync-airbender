@@ -104,11 +104,33 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 non_determinism_source,
                 &work_results_sender,
                 &abort,
-                !proving
-                    && request_partial_trees
-                    && self.backend.persists_memory_partial_trees(profile),
             )
         };
+        let partial_tree_allocator_requests = (!proving
+            && request_partial_trees
+            && self.backend.persists_memory_partial_trees(profile))
+        .then(|| {
+            let (requests, keys) = unbounded();
+            let free_allocators = self.free_allocators_receiver.clone();
+            let results = work_results_sender.clone();
+            spawn_abort_on_panic(format!("ab-partial-tree-allocator-{batch_id}"), move || {
+                for (circuit_type, sequence_id) in keys {
+                    let allocator = free_allocators
+                        .recv()
+                        .expect("partial-tree free allocator channel closed");
+                    results
+                        .send(WorkerResult::PartialTreeAllocator {
+                            circuit_type,
+                            sequence_id,
+                            allocator,
+                        })
+                        .expect(
+                            "worker results channel closed while sending a partial-tree allocator",
+                        );
+                }
+            });
+            requests
+        });
         drop(work_results_sender);
 
         let mut request_context = RequestContext {
@@ -118,6 +140,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             batch_id,
             binary_holder,
             external_challenges: external_challenges.as_ref(),
+            partial_tree_allocator_requests,
+            parked_commitments: BTreeMap::new(),
             proof_caps: &proof_caps,
             proof_partial_trees,
         };
@@ -129,7 +153,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     .expect("trivial unified inits-and-teardowns belong to a unified execution"),
                 sequence_id,
                 inits_and_teardowns: None,
-                partial_tree_allocator: None,
             };
             acc.unpaired_unified_inits_and_teardowns
                 .insert(sequence_id, data);
@@ -174,28 +197,33 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 &mut acc.pending_requests_count,
                 &mut sent_requests_count,
             );
-            maybe_close_request_sender_after_progress::<B>(
-                cache,
-                &mut work_requests_sender,
-                sent_requests_count,
-                &mut abort_signaled,
-                &mut acc.simulation_result,
-                &acc.uninitialized_tracing_data,
-                &acc.unpaired_unified_inits_and_teardowns,
-                &acc.unpaired_unified_tracing_data,
-                &abort,
-                proving,
-                batch_id,
-            );
+            if request_context.parked_commitments.is_empty() {
+                maybe_close_request_sender_after_progress::<B>(
+                    cache,
+                    &mut work_requests_sender,
+                    sent_requests_count,
+                    &mut abort_signaled,
+                    &mut acc.simulation_result,
+                    &acc.uninitialized_tracing_data,
+                    &acc.unpaired_unified_inits_and_teardowns,
+                    &acc.unpaired_unified_tracing_data,
+                    &abort,
+                    proving,
+                    batch_id,
+                );
+                if work_requests_sender.is_none() {
+                    request_context.partial_tree_allocator_requests = None;
+                }
+            }
         }
 
+        assert!(request_context.parked_commitments.is_empty());
         assert_eq!(acc.pending_requests_count, 0);
         if abort_signaled {
             std::mem::take(&mut acc.uninitialized_tracing_data)
                 .into_values()
                 .for_each(|data| {
                     self.free_tracing_data(data.tracing_data);
-                    self.free_allocators(data.partial_tree_allocator);
                 });
             std::mem::take(&mut acc.unpaired_unified_inits_and_teardowns)
                 .into_values()
@@ -203,13 +231,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     if let Some(inits_and_teardowns) = data.inits_and_teardowns {
                         self.free_inits_and_teardowns(inits_and_teardowns);
                     }
-                    self.free_allocators(data.partial_tree_allocator);
                 });
             std::mem::take(&mut acc.unpaired_unified_tracing_data)
                 .into_values()
                 .for_each(|data| {
                     self.free_tracing_data(data.tracing_data);
-                    self.free_allocators(data.partial_tree_allocator);
                 });
         } else {
             assert!(acc.uninitialized_tracing_data.is_empty());
@@ -444,16 +470,17 @@ mod tests {
             batch_id: 1,
             binary_holder: &prover.binary_holders[&handle.0],
             external_challenges: None,
+            partial_tree_allocator_requests: None,
+            parked_commitments: BTreeMap::new(),
             proof_caps: &proof_caps,
             proof_partial_trees: Default::default(),
         };
-        context.build_work_request(
+        let _ = context.build_work_request(
             &prover,
             Some(InitsAndTeardownsData {
                 circuit_type: CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
                 sequence_id: 0,
                 inits_and_teardowns: None,
-                partial_tree_allocator: None,
             }),
             None,
         );

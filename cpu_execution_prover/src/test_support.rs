@@ -165,6 +165,10 @@ impl ExecutionBackend for CaptureBackend {
         CpuTraceAllocator::new(bytes)
     }
 
+    fn persists_memory_partial_trees(&self, _profile: ProofProfile) -> bool {
+        false
+    }
+
     fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory {
         MemoryHolder::allocate_zeroed(ram, Global)
     }

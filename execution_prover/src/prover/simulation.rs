@@ -15,7 +15,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         non_determinism_source: ND,
         work_results_sender: &Sender<WorkerResult<B::Allocator>>,
         abort: &Arc<AtomicBool>,
-        persist_partial_trees: bool,
     ) -> Receiver<ND> {
         let (non_determinism_sender, non_determinism_receiver) = crossbeam_channel::bounded(1);
         let unified_circuit = binary_holder
@@ -81,7 +80,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                         split_snapshot_sender,
                         work_results_sender,
                         free_allocators_receiver,
-                        persist_partial_trees,
                         abort,
                         &worker,
                         ram_config,
@@ -104,7 +102,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                             unified_snapshot_sender,
                             work_results_sender,
                             free_allocators_receiver,
-                            persist_partial_trees,
                             abort,
                             &worker,
                             ram_config,

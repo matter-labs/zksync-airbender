@@ -57,7 +57,6 @@ pub(crate) fn run_simulator<
     snapshots: Sender<Snapshot<T::Ranges, S>>,
     results: Sender<WorkerResult<A>>,
     free_allocators: Receiver<A>,
-    persist_partial_trees: bool,
     abort: Arc<AtomicBool>,
     worker: &Worker,
     ram_config: JitRunnerRam,
@@ -90,7 +89,6 @@ pub(crate) fn run_simulator<
         snapshots,
         results,
         free_allocators.clone(),
-        persist_partial_trees,
         abort,
         empty_it_streamer,
         ram_config,
@@ -163,7 +161,6 @@ pub(crate) fn run_simulator<
                     circuit_type: unified_circuit,
                     sequence_id,
                     inits_and_teardowns: None,
-                    partial_tree_allocator: None,
                 };
                 let result = WorkerResult::InitsAndTeardownsData(data);
                 results.send(result).expect(
@@ -185,14 +182,6 @@ pub(crate) fn run_simulator<
                 circuit_type,
                 sequence_id,
                 inits_and_teardowns: Some(inits_and_teardowns_data),
-                partial_tree_allocator: if T::IS_SPLIT {
-                    crate::tracing::take_partial_tree_allocator(
-                        &free_allocators,
-                        persist_partial_trees,
-                    )
-                } else {
-                    None
-                },
             };
             let result = WorkerResult::InitsAndTeardownsData(data);
             results
