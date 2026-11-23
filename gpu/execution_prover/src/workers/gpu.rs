@@ -96,10 +96,7 @@ pub(crate) enum PhaseOneInputs<'a> {
         gpu_circuit_prover::baby_bear::inputs::GpuGKRProofTransfer<'a, A>,
         Option<MemoryPartialTreeNodes>,
     ),
-    MemoryCommitment(
-        gpu_trace::baby_bear::trace::memory::GpuGKRCommitMemoryTransfer<'a, A>,
-        Option<A>,
-    ),
+    MemoryCommitment(gpu_trace::baby_bear::trace::memory::GpuGKRCommitMemoryTransfer<'a, A>),
     MergedCommitment(GpuGKRMergedCommitTransfer<'a, A>, Option<A>),
     L1Wrap(L1WrapInputs<'a, A>, DrTailProofPlanPr, OperationMode),
     SetupInitialization,
@@ -117,7 +114,7 @@ struct PhaseTwo<'a> {
 // collection.
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum JobType<'a> {
-    MemoryCommitment(MemoryCommitmentJob<'a, A>, Option<A>),
+    MemoryCommitment(MemoryCommitmentJob<'a, A>),
     Proof(GpuGKRProofJob<'a>, Option<MemoryPartialTreeNodes>),
     L1Wrap(GpuL1WrapProofJob<'a>),
     SetupInitialization,
@@ -281,13 +278,8 @@ fn enqueue_phase_two<'a>(
 fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWorkResult<A>> {
     let PhaseTwo { state, job } = p2;
     match job {
-        JobType::MemoryCommitment(job, partial_tree_allocator) => {
-            crate::baby_bear::workers::gpu::finish_memory_commitment(
-                device_id,
-                state,
-                job,
-                partial_tree_allocator,
-            )
+        JobType::MemoryCommitment(job) => {
+            crate::baby_bear::workers::gpu::finish_memory_commitment(device_id, state, job)
         }
         JobType::Proof(job, nodes) => {
             crate::baby_bear::workers::gpu::finish_proof(device_id, state, job, nodes)

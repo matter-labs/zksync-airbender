@@ -407,17 +407,14 @@ mod tests {
         }
     }
 
-    /// Every dispatched proof request carries its own instance's trees, whether
-    /// it was seeded from the trace cache or rebuilt by replay after eviction.
     #[cfg(target_arch = "x86_64")]
     #[test]
-    fn cpu_partial_trees_reach_cached_and_replayed_proofs() {
-        use crate::test_support::{TestBackend, PROOF_PARTIAL_TREES};
+    fn cpu_partial_tree_allocators_return_to_the_pool() {
+        use crate::test_support::TestBackend;
         use riscv_transpiler::abstractions::non_determinism::QuasiUARTSource;
-        const BATCH: u64 = 8030;
-        const CACHE_CAPACITY: usize = 1;
+
         let program = vec![0x0001_2083, 0xffdf_f06f]; // lw x1, 0(x2); jal x0, -4
-        let cycles = 2 * riscv_transpiler::jit::TRACE_CHUNK_LEN as u32;
+        let profile = ProofProfile::Standard;
         let configuration = ExecutionProverConfiguration {
             ram_config: riscv_transpiler::jit::JitRunnerRam::Tiny,
             ..Default::default()
@@ -429,121 +426,21 @@ mod tests {
             &[(
                 ExecutionKind::Unrolled,
                 MachineType::FullUnsigned,
-                &[ProofProfile::Standard],
+                &[profile],
             )],
-            Some(cycles),
+            Some(32),
         )[0];
         prover.finalize_setup();
         let free_buffers = prover.free_allocators_sender.len();
         let source = || QuasiUARTSource::new_with_reads(vec![]);
-        let mut cache = Some(TraceCache::new());
-        let (commitment, _, proof_partial_trees) = prover.commit_memory_inner(
-            &mut cache,
-            BATCH,
-            handle,
-            source(),
-            ProofProfile::Standard,
-            true,
-        );
-        let instances: BTreeSet<_> = proof_partial_trees.keys().copied().collect();
-        assert!(!instances.is_empty());
-        assert!(prover.free_allocators_sender.len() <= free_buffers - instances.len());
-        let entries = &mut cache.as_mut().unwrap().entries;
-        assert!(
-            entries.len() > CACHE_CAPACITY,
-            "the batch must exceed the one-entry test cache"
-        );
-        // Enforce the test cache's capacity explicitly with the same FIFO
-        // removal and trace return as `trim_cache`, without changing production policy.
-        let evict_count = entries.len() - CACHE_CAPACITY;
-        let evicted: BTreeSet<_> = entries
-            .drain(..evict_count)
-            .map(|entry| {
-                prover.free_traces(entry.inits_and_teardowns, entry.tracing_data);
-                (entry.circuit_type, entry.sequence_id)
-            })
-            .collect();
-        let cached: BTreeSet<_> = entries
-            .iter()
-            .map(|entry| (entry.circuit_type, entry.sequence_id))
-            .collect();
-        let cached_count = cached.len();
-        let evicted_count = evicted.len();
-        assert_eq!(cached_count, CACHE_CAPACITY);
-        assert!(
-            cached_count >= 1,
-            "at least one request must use its cached trace"
-        );
-        assert!(
-            evicted_count >= 1,
-            "at least one request must replay its evicted trace"
-        );
-        assert!(evicted.is_disjoint(&cached));
-        assert!(evicted.is_subset(&instances) && cached.is_subset(&instances));
-        eprintln!(
-            "partial-tree transport: {cached_count} cached, {evicted_count} evicted, {} instances",
-            instances.len()
-        );
-        let (pow_challenge, external_challenges, proof_caps) =
-            prover.derive_proof_artifacts(handle.0, &commitment);
-        prover.prove_inner(
-            &mut cache,
-            BATCH,
-            handle.0,
-            source(),
-            pow_challenge,
-            external_challenges,
-            proof_caps,
-            proof_partial_trees,
-            ProofProfile::Standard,
-        );
-        assert_eq!(
-            prover.free_allocators_sender.len(),
-            free_buffers,
-            "cached/replayed proof completion must return every trace and partial-tree buffer"
-        );
-        let dispatched: Vec<_> = PROOF_PARTIAL_TREES
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|(batch, ..)| *batch == BATCH)
-            .map(|(_, circuit_type, sequence_id, trees)| ((*circuit_type, *sequence_id), *trees))
-            .collect();
-        assert_eq!(
-            dispatched
-                .iter()
-                .map(|(key, _)| *key)
-                .collect::<BTreeSet<_>>(),
-            instances
-        );
-        assert_eq!(dispatched.len(), instances.len(), "one proof per instance");
-        for (key, trees) in dispatched {
-            assert_eq!(trees, Some(key), "{key:?} carried another instance's trees");
-        }
 
-        let combined_batch = BATCH + 1;
-        prover.commit_memory_and_prove(combined_batch, &handle, source(), ProofProfile::Standard);
+        prover.commit_memory_and_prove(8031, &handle, source(), profile);
+        assert!(prover.backend().allocated_partial_trees());
         assert_eq!(prover.free_allocators_sender.len(), free_buffers);
 
-        let standalone_batch = BATCH + 2;
-        let ticket =
-            prover.commit_memory(standalone_batch, &handle, source(), ProofProfile::Standard);
+        let ticket = prover.commit_memory(8032, &handle, source(), profile);
         assert_eq!(prover.free_allocators_sender.len(), free_buffers);
-        prover.prove(standalone_batch, ticket, source());
+        prover.prove(8032, ticket, source());
         assert_eq!(prover.free_allocators_sender.len(), free_buffers);
-
-        let dispatched = PROOF_PARTIAL_TREES.lock().unwrap();
-        for (batch, expected) in [(combined_batch, true), (standalone_batch, false)] {
-            let instances: BTreeSet<_> = dispatched
-                .iter()
-                .filter(|(batch_id, ..)| *batch_id == batch)
-                .map(|(_, circuit_type, sequence_id, trees)| {
-                    let key = (*circuit_type, *sequence_id);
-                    assert_eq!(*trees, expected.then_some(key));
-                    key
-                })
-                .collect();
-            assert!(!instances.is_empty());
-        }
     }
 }

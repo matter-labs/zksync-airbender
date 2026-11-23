@@ -195,7 +195,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 .into_values()
                 .for_each(|data| {
                     self.free_tracing_data(data.tracing_data);
-                    self.free_partial_tree_allocator(data.partial_tree_allocator);
+                    self.free_allocators(data.partial_tree_allocator);
                 });
             std::mem::take(&mut acc.unpaired_unified_inits_and_teardowns)
                 .into_values()
@@ -203,13 +203,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     if let Some(inits_and_teardowns) = data.inits_and_teardowns {
                         self.free_inits_and_teardowns(inits_and_teardowns);
                     }
-                    self.free_partial_tree_allocator(data.partial_tree_allocator);
+                    self.free_allocators(data.partial_tree_allocator);
                 });
             std::mem::take(&mut acc.unpaired_unified_tracing_data)
                 .into_values()
                 .for_each(|data| {
                     self.free_tracing_data(data.tracing_data);
-                    self.free_partial_tree_allocator(data.partial_tree_allocator);
+                    self.free_allocators(data.partial_tree_allocator);
                 });
         } else {
             assert!(acc.uninitialized_tracing_data.is_empty());
@@ -227,7 +227,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             }
         }
         for trees in request_context.proof_partial_trees.into_values() {
-            self.free_partial_tree_nodes(Some(trees.nodes));
+            self.free_buffer(Some(trees.nodes));
         }
         let non_determinism_source = non_determinism_return
             .recv()

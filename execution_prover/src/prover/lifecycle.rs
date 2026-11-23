@@ -149,19 +149,19 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         &self.backend
     }
 
-    pub(super) fn free_partial_tree_allocator(&self, allocator: Option<B::Allocator>) {
-        if let Some(allocator) = allocator {
+    pub(super) fn free_allocators(&self, allocators: impl IntoIterator<Item = B::Allocator>) {
+        for allocator in allocators {
             self.free_allocators_sender
                 .send(allocator)
-                .expect("ExecutionProver allocator return channel closed during partial-tree free");
+                .expect("ExecutionProver allocator return channel closed");
         }
     }
 
-    pub(super) fn free_partial_tree_nodes(&self, nodes: Option<Vec<[u32; 8], B::Allocator>>) {
-        if let Some(nodes) = nodes {
-            let allocator = nodes.allocator().clone();
-            drop(nodes);
-            self.free_partial_tree_allocator(Some(allocator));
+    pub(super) fn free_buffer<T>(&self, buffer: Option<Vec<T, B::Allocator>>) {
+        if let Some(buffer) = buffer {
+            let allocator = buffer.allocator().clone();
+            drop(buffer);
+            self.free_allocators([allocator]);
         }
     }
 
@@ -169,19 +169,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         &self,
         inits_and_teardowns: InitsAndTeardownsTraceHost<B::Allocator>,
     ) {
-        for allocator in inits_and_teardowns.into_allocators() {
-            self.free_allocators_sender.send(allocator).expect(
-                "ExecutionProver allocator return channel closed during init/teardown free",
-            );
-        }
+        self.free_allocators(inits_and_teardowns.into_allocators());
     }
 
     pub(super) fn free_tracing_data(&self, tracing_data: TracingDataHost<B::Allocator>) {
-        for allocator in tracing_data.into_allocators() {
-            self.free_allocators_sender
-                .send(allocator)
-                .expect("ExecutionProver allocator return channel closed during tracing-data free");
-        }
+        self.free_allocators(tracing_data.into_allocators());
     }
 
     pub(super) fn free_traces(

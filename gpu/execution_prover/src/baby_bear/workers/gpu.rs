@@ -265,6 +265,10 @@ pub(crate) fn schedule_phase_one<'a>(
         bundle.schedule(context)?;
         PhaseOneInputs::MergedCommitment(bundle, partial_tree_allocator)
     } else {
+        assert!(
+            partial_tree_allocator.is_none(),
+            "separate GPU memory commitment must receive no partial-tree allocator"
+        );
         let mut bundle =
             gpu_trace::baby_bear::trace::memory::GpuGKRCommitMemoryTransfer::<'_, A>::new(
                 decoder_transfer,
@@ -276,7 +280,7 @@ pub(crate) fn schedule_phase_one<'a>(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] scheduling commit-memory H2D bundle for circuit {circuit_type:?}[{sequence_id}]"
         );
         bundle.schedule(context)?;
-        PhaseOneInputs::MemoryCommitment(bundle, partial_tree_allocator)
+        PhaseOneInputs::MemoryCommitment(bundle)
     };
 
     Ok(PhaseOne { state, inputs })
@@ -327,7 +331,7 @@ pub(crate) fn enqueue_phase_two<'a>(
                 )?;
                 JobType::Proof(job, nodes)
             }
-            PhaseOneInputs::MemoryCommitment(bundle, partial_tree_allocator) => {
+            PhaseOneInputs::MemoryCommitment(bundle) => {
                 trace!(
             "BATCH[{batch_id}] GPU_WORKER[{device_id}] producing memory commitment for circuit {circuit_type:?}[{sequence_id}]"
         );
@@ -339,7 +343,7 @@ pub(crate) fn enqueue_phase_two<'a>(
                     crate::memory_policy::partial_trees(circuit_type, state.profile).memory,
                     context,
                 )?;
-                JobType::MemoryCommitment(job, partial_tree_allocator)
+                JobType::MemoryCommitment(job)
             }
             PhaseOneInputs::MergedCommitment(bundle, partial_tree_allocator) => {
                 trace!(
@@ -349,10 +353,10 @@ pub(crate) fn enqueue_phase_two<'a>(
                     circuit_type,
                     state.profile,
                 );
-                let (partial_tree_allocator, unused_allocator) = match strategy {
-                    MergedCommitStrategy::Monomials => (partial_tree_allocator, None),
-                    _ => (None, partial_tree_allocator),
-                };
+                assert!(
+                    partial_tree_allocator.is_none() || strategy == MergedCommitStrategy::Monomials,
+                    "GPU merged memory commitment requires Monomials to use a partial-tree allocator"
+                );
                 let job = commit_merged_from_transfers::<A>(
                     &state.precomputations.baby_bear().gkr_programs,
                     prover_config,
@@ -362,7 +366,7 @@ pub(crate) fn enqueue_phase_two<'a>(
                     partial_tree_allocator,
                     context,
                 )?;
-                JobType::MemoryCommitment(job, unused_allocator)
+                JobType::MemoryCommitment(job)
             }
             PhaseOneInputs::SetupInitialization => {
                 unreachable!("setup initialization returns early above")
@@ -379,7 +383,6 @@ pub(crate) fn finish_memory_commitment(
     device_id: i32,
     state: RequestState,
     job: MemoryCommitmentJob<'_, A>,
-    partial_tree_allocator: Option<A>,
 ) -> CudaResult<GpuWorkResult<A>> {
     let RequestState {
         batch_id,
@@ -404,7 +407,6 @@ pub(crate) fn finish_memory_commitment(
         tracing_data: tracing_data_result,
         merkle_tree_caps,
         memory_partial_trees,
-        partial_tree_allocator,
     }))
 }
 

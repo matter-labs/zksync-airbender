@@ -44,6 +44,10 @@ pub(in crate::jobs) fn run<A: HostTraceAllocator>(
         profile,
         partial_tree_allocator,
     } = request;
+    assert!(
+        partial_tree_allocator.is_none(),
+        "CPU memory commitment must receive no partial-tree allocator"
+    );
     let config = precomputations.config(profile);
     let storage = whir_storage(profile, config);
     let twiddles = jobs.twiddles(1usize << config.whir_message_size_log2(), worker);
@@ -302,7 +306,6 @@ pub(in crate::jobs) fn run<A: HostTraceAllocator>(
         tracing_data,
         merkle_tree_caps,
         memory_partial_trees: None,
-        partial_tree_allocator,
     }
 }
 

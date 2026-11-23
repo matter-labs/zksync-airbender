@@ -88,7 +88,6 @@ pub struct MemoryCommitmentResult<A: GoodAllocator> {
     pub tracing_data: Option<TracingDataHost<A>>,
     pub merkle_tree_caps: Vec<MerkleTreeCapVarLength>,
     pub memory_partial_trees: Option<MemoryPartialTrees<A>>,
-    pub partial_tree_allocator: Option<A>,
 }
 
 pub struct SetupInitializationRequest<P> {
