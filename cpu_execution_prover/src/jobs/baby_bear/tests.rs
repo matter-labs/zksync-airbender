@@ -88,7 +88,6 @@ fn prove(
             external_challenges: challenges(),
             memory_caps: memory_caps(committed.merkle_tree_caps),
             memory_partial_trees: None,
-
             profile: ProofProfile::Standard,
         }),
         &worker,

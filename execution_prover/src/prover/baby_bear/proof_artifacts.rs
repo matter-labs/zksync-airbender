@@ -174,8 +174,14 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             self.host_pool_allocation.is_none() && self.pending_setup_initializations.is_empty(),
             "setup must be finalized before proving or reading artifacts"
         );
-        self.commit_memory_inner(&mut None, batch_id, *handle, non_determinism_source, profile)
-            .0
+        self.commit_memory_inner(
+            &mut None,
+            batch_id,
+            *handle,
+            non_determinism_source,
+            profile,
+        )
+        .0
     }
 
     pub fn prove(

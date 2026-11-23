@@ -225,7 +225,6 @@ fn schedule_phase_one<'a>(
             memory_caps: None,
             inits_and_teardowns_result: None,
             tracing_data_result: None,
-
             profile: if circuit_type == CircuitType::L1Wrap {
                 ProofProfile::L1Wrap
             } else {

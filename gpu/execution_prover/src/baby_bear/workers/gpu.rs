@@ -72,7 +72,6 @@ pub(crate) fn schedule_phase_one<'a>(
                 memory_caps: None,
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
-
                 profile,
             };
             (
@@ -107,7 +106,6 @@ pub(crate) fn schedule_phase_one<'a>(
                 memory_caps: Some(memory_caps),
                 inits_and_teardowns_result: inits_and_teardowns.clone(),
                 tracing_data_result: tracing_data.clone(),
-
                 profile,
             };
             (
