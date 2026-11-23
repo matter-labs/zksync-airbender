@@ -167,6 +167,8 @@ pub fn compression_config_for_2_23() -> ProverConfig {
 /// L1 wrap over the 512 KiB wrap ROM.
 pub mod l1_wrap {
     use super::*;
+    use std::path::PathBuf;
+    use std::sync::OnceLock;
 
     pub const TRACE_LEN_LOG2: usize = 21;
     pub const PACK_LOG2: usize = 3;
@@ -194,6 +196,37 @@ pub mod l1_wrap {
     /// that the lookup and GKR challenges drawn before them carry no list
     /// factor.
     pub fn packed_prover_config() -> ProverConfig {
+        const SCHEDULE_ENV: &str = "AB_L1_WHIR_SCHEDULE";
+        static CONFIG: OnceLock<ProverConfig> = OnceLock::new();
+        CONFIG
+            .get_or_init(|| {
+                let mut config = default_packed_prover_config();
+                let Some(path) = std::env::var_os(SCHEDULE_ENV).map(PathBuf::from) else {
+                    return config;
+                };
+                let data = std::fs::read(&path).unwrap_or_else(|error| {
+                    panic!("{SCHEDULE_ENV}: could not read {}: {error}", path.display())
+                });
+                let schedule: WhirSchedule =
+                    serde_json::from_slice(&data).unwrap_or_else(|error| {
+                        panic!(
+                            "{SCHEDULE_ENV}: invalid WHIR schedule in {}: {error}",
+                            path.display()
+                        )
+                    });
+                config.cap_size = schedule.cap_size;
+                config.whir_schedule = schedule;
+                eprintln!(
+                    "{SCHEDULE_ENV}: using L1 WHIR schedule from {}",
+                    path.display()
+                );
+                config.validate_for_whir_message_size(config.whir_message_size_log2());
+                config
+            })
+            .clone()
+    }
+
+    fn default_packed_prover_config() -> ProverConfig {
         const CAP_SIZE: usize = 8;
         let level = SecurityLevel::Sec100;
         let queries_and_pow = queries_and_pow_under_pessimistic_conjecture(

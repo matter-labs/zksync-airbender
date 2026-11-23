@@ -196,9 +196,6 @@ enum Commands {
         target: ProofTarget,
         #[arg(long, value_enum)]
         backend: Option<ProverBackend>,
-        /// JSON WHIR schedule for an L1 wrap.
-        #[arg(long, hide = true)]
-        l1_whir_schedule: Option<String>,
         #[clap(flatten)]
         soundness: SoundnessArgs,
         #[clap(flatten)]
@@ -499,16 +496,12 @@ fn run_cli() {
             backend,
             soundness: SoundnessArgs { soundness_mode },
             settings,
-            l1_whir_schedule,
         } => {
             let prover_config = make_prover_config(soundness_mode, target, backend, settings);
             let input_artifact = read_artifact(&proof);
             let source = program_source(bin, text, elf);
 
-            let schedule = l1_whir_schedule
-                .as_ref()
-                .map(|path| deserialize_from_file(path));
-            let mut prover = ProgramProver::with_l1_whir_schedule(source, prover_config, schedule)
+            let mut prover = ProgramProver::new(source, prover_config)
                 .unwrap_or_else(|e| panic!("Failed to create prover: {}", e));
             let artifact = prover
                 .continue_artifact(input_artifact)

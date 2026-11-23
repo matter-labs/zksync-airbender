@@ -57,16 +57,5 @@ pub trait ExecutionBackend: Send + Sync + Sized + 'static {
         profiles: &[ProofProfile],
     ) -> Self::Precomputations;
 
-    /// Prepare an L1 wrap under an explicit WHIR configuration.
-    fn prepare_l1_wrap(
-        &self,
-        circuit: CircuitType,
-        setup: crate::setup::L1WrapSetup,
-        config: prover::gkr::prover_config::ProverConfig,
-    ) -> Self::Precomputations {
-        let _ = (circuit, setup, config);
-        panic!("execution backend does not support an explicit L1 WHIR schedule")
-    }
-
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>);
 }

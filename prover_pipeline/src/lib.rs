@@ -965,42 +965,19 @@ pub struct ProgramProver {
 
 impl ProgramProver {
     pub fn new(source: ProgramSource, config: ProgramProverConfig) -> Result<Self, String> {
-        Self::with_l1_whir_schedule(source, config, None)
-    }
-
-    /// Prepare an L1 session with a caller-selected WHIR schedule.
-    pub fn with_l1_whir_schedule(
-        source: ProgramSource,
-        config: ProgramProverConfig,
-        schedule: Option<prover::gkr::prover_config::WhirSchedule>,
-    ) -> Result<Self, String> {
         assert_target_mode(config.target, config.soundness_mode);
-        assert!(
-            schedule.is_none() || config.target == ProofTarget::L1,
-            "An explicit L1 WHIR schedule requires the L1 target"
-        );
         let fsv = FsvPrograms::load(config.target, config.soundness_mode);
         // Resolve source errors before creating the backend's worker pools and buffers.
         let loaded = load_program(&source)?;
         let backend = match config.backend {
-            ProverBackend::Cpu => {
-                let mut backend = PipelineBackend::new(&config);
-                if let Some(schedule) = schedule {
-                    backend.prover.set_l1_whir_schedule(schedule);
-                }
-                BackendImpl::Cpu(backend)
-            }
+            ProverBackend::Cpu => BackendImpl::Cpu(PipelineBackend::new(&config)),
             ProverBackend::Gpu => {
                 #[cfg(feature = "gpu")]
                 {
                     let mut configuration =
                         PipelineBackend::<gpu_execution_prover::GpuBackend>::configuration(&config);
                     configuration.backend.memory_preset = config.gpu_memory_preset;
-                    let mut backend = PipelineBackend::with_configuration(configuration);
-                    if let Some(schedule) = schedule {
-                        backend.prover.set_l1_whir_schedule(schedule);
-                    }
-                    BackendImpl::Gpu(backend)
+                    BackendImpl::Gpu(PipelineBackend::with_configuration(configuration))
                 }
                 #[cfg(not(feature = "gpu"))]
                 {

@@ -66,7 +66,6 @@ pub struct ExecutionProver<B: ExecutionBackend> {
     trace_chunk_sets_receiver: Receiver<Vec<B::Snapshot>>,
     binary_holders: BTreeMap<usize, BinaryHolder<B>>,
     next_binary_id: usize,
-    l1_whir_schedule: Option<::prover::gkr::prover_config::WhirSchedule>,
     /// The BabyBear delegation and inits-and-teardowns circuits every binary shares.
     common_precomputations: BTreeMap<CircuitType, B::Precomputations>,
     free_allocators_sender: Sender<B::Allocator>,
