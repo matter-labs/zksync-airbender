@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/matter-labs/zksync-airbender",
+  "revision": "2331d1c511f26c17be85879fbab02ab109aefd05",
+  "source_path": "spec/top-down/00 master.md",
+  "sha256": "81e265ea926e442fcf54882e67dead41842fa50cb07d87014ec02bc7a4dce0ce",
+  "scope": "Project instruction profile and custom operations; standard ISA execution uses the independently pinned Sail model."
+}

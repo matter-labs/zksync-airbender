@@ -1,0 +1,344 @@
+#!/usr/bin/env python3
+"""Compare compiled Lean public-text decoder rows with native Rust setup rows.
+
+The comparison covers every padded decoder row, including unsupported words.
+The Lean oracle emits active rows; the checker verifies that every other native
+row is the out-of-range sentinel. Both checks enforce the public decoder mask
+and omitted-field conditions. The importer/Rust-model boundary is a differential
+test, not a kernel proof.
+"""
+
+import argparse
+import bisect
+import csv
+import hashlib
+import json
+import pathlib
+import struct
+import subprocess
+import sys
+import tempfile
+
+POOLED_FAMILIES = ("add-sub", "jump-branch", "shift-binop", "word-memory", "mul-div", "subword-memory")
+REDUCED_FAMILIES = POOLED_FAMILIES[:4]
+FAMILIES = POOLED_FAMILIES + ("unified",)
+FIELD_MODULUS = 2013265921
+SMALL_PROGRAMS = {
+    "one": (0x13, 0xC0001073, 0x00408093, 0x6F, 0x007181B3),
+    "two": (0x13, 0x00408113, 0x6F, 0x007181B3),
+    "zero-destinations": (0x00002003, 0x00005003, 0x00000003, 0x02208033, 0x13),
+    "muldiv": (0x02E585B3, 0x02E5B5B3, 0x02E5D5B3, 0x02E5F5B3, 0x13),
+    "blake-caller": (0x7C701073,) * 7 + (0x13,),
+    "split-keccak": tuple(
+        ((0x7CD if index == 360 or index % 15 < 5 else
+          0x7CC if index % 15 < 10 else 0x7CE) << 20) | 0x1073
+        for index in range(361)
+    ) + (0x13,),
+}
+
+
+def csr_word(csr):
+    return (csr << 20) | 0x1073
+
+
+def check_group_shapes(data, config, label):
+    """Check the explicit public call-group premise before native preprocessing.
+
+    Full and unified profiles admit bigint and special5. Only unified admits G.
+    All profiles admit the extended round. Only full admits split Keccak.
+    The native exporter and row differential check these profiles across languages.
+    """
+    if len(data) % 4:
+        raise ValueError(f"{label}: text length is not a whole number of words")
+    words = tuple(word[0] for word in struct.iter_unpack("<I", data))
+    split = tuple(csr_word(0x7CD if index == 360 or index % 15 < 5 else
+                           0x7CC if index % 15 < 10 else 0x7CE)
+                  for index in range(361))
+    i = 0
+    while i < len(words):
+        word = words[i]
+        if word in (csr_word(0x7C7), csr_word(0x7C8), csr_word(0x7CB)):
+            csr = word >> 20
+            if csr == 0x7C8 and config != "unified":
+                raise ValueError(f"{label}: unsupported BLAKE2 G CSR at word {i}")
+            if csr == 0x7CB and config == "reduced":
+                raise ValueError(f"{label}: unsupported special5 CSR at word {i}")
+            end = i + 1
+            while end < len(words) and words[end] == word:
+                end += 1
+            length = end - i
+            sizes = {0x7C7: (7, 10), 0x7C8: (56, 80), 0x7CB: (649,)}[csr]
+            if length not in sizes or end == len(words):
+                raise ValueError(f"{label}: invalid CSR 0x{csr:03x} group at word {i}, length {length}")
+            i = end
+            continue
+        if word == csr_word(0x7CD) and config == "full":
+            if tuple(words[i:i + 361]) != split:
+                raise ValueError(f"{label}: invalid split Keccak group at word {i}")
+            i += 361
+            continue
+        if word in (csr_word(0x7CC), csr_word(0x7CD), csr_word(0x7CE)):
+            raise ValueError(f"{label}: split Keccak CSR outside a full-machine group at word {i}")
+        if word == csr_word(0x7CA) and config == "reduced":
+            raise ValueError(f"{label}: unsupported bigint CSR at word {i}")
+        i += 1
+
+
+def block_length(block):
+    kind = block["kind"]
+    if kind == "dense":
+        return len(block["values"])
+    if kind == "affine":
+        return block["length"]
+    if kind == "periodic":
+        return block["repetitions"] * len(block["values"])
+    raise ValueError(f"unknown setup block kind: {kind}")
+
+
+def block_value(block, index):
+    kind = block["kind"]
+    if kind == "dense":
+        return block["values"][index]
+    if kind == "affine":
+        return block["first"] + block["step"] * index
+    values = block["values"]
+    return values[index % len(values)] + block["stride"] * (index // len(values))
+
+
+def checked_rows(artifact, active, label, expected_mask=None):
+    circuit = artifact["circuit"]
+    mask = circuit["decode_table_columns_mask"]
+    if len(mask) != 9 or mask[:2] != [True, True]:
+        raise ValueError(f"{label}: invalid native decoder mask")
+    if expected_mask is not None and mask != expected_mask:
+        raise ValueError(f"{label}: native decoder mask differs from imported Lean mask")
+    width = sum(mask)
+    tagged = bool(circuit["tables_ids_in_generic_lookups"])
+    if len(artifact["columns"]) != width + int(tagged):
+        raise ValueError(f"{label}: native decoder column count differs from mask")
+    offset = circuit["offset_for_decoder_table"]
+    count = artifact["program"]["text_words"]
+    if circuit["total_tables_size"] - offset != count:
+        raise ValueError(f"{label}: native decoder extent differs from public text")
+    if any(index >= count or len(row) != width for index, row in active.items()):
+        raise ValueError(f"{label}: Lean active row outside native decoder extent")
+    sentinel = artifact["field_modulus"] - 1
+    active_indices = sorted(active)
+    for column_index, column in enumerate(artifact["columns"][:width]):
+        position = 0
+        compared = 0
+        for block in column["blocks"]:
+            length = block_length(block)
+            start = max(position, offset)
+            end = min(position + length, offset + count)
+            if start < end:
+                # Most padding is one affine sentinel block; verify it once.
+                first_active = bisect.bisect_left(active_indices, start - offset)
+                has_active = (first_active < len(active_indices) and
+                              active_indices[first_active] < end - offset)
+                if not has_active and block["kind"] == "affine" and block["step"] == 0:
+                    if block["first"] != sentinel:
+                        raise ValueError(f"{label}: non-sentinel padding at column {column_index}")
+                else:
+                    for row_position in range(start, end):
+                        index = row_position - offset
+                        expected = active[index][column_index] if index in active else sentinel
+                        actual = block_value(block, row_position - position)
+                        if actual != expected:
+                            raise ValueError(
+                                f"{label}: decoder row {index}, column {column_index}: "
+                                f"Lean {expected}, Rust {actual}"
+                            )
+                compared += end - start
+            position += length
+        if position != artifact["trace_len"] or compared != count:
+            raise ValueError(f"{label}: incomplete native column {column_index}")
+
+
+def active_rows(path):
+    result = {}
+    with path.open(newline="") as source:
+        for fields in csv.reader(source):
+            if not fields:
+                continue
+            index, *values = map(int, fields)
+            if index in result:
+                raise ValueError(f"duplicate Lean row {index}")
+            result[index] = values
+    return result
+
+
+def run_checked(command, label):
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode:
+        detail = (result.stderr or result.stdout).strip()[-1200:]
+        raise RuntimeError(f"{label} failed (exit {result.returncode}): {detail}")
+    return result.stdout
+
+
+def validate_projected_row(row, expected_mask, family, label):
+    """Check the mask and omitted-field premises of NativePublicSetup.Bound."""
+    if len(row) != 9 or len(expected_mask) != 9 or any(value < 0 for value in row):
+        raise ValueError(f"{label}: Lean row has the wrong width or a negative field")
+    destination, mask = row[4], row[8]
+    if not (0 < mask < FIELD_MODULUS or
+            (family in ("word-memory", "subword-memory") and mask == 0 and
+             0 < destination < FIELD_MODULUS)):
+        raise ValueError(f"{label}: invalid public decoder mask")
+    if any(value != 0 for value, included in zip(row, expected_mask) if not included):
+        raise ValueError(f"{label}: Lean row has a nonzero omitted field")
+
+
+def zero_destination_rows(config, family):
+    """Pin x0 loads and MUL to NOP rows or unsupported sentinel slots."""
+    arithmetic_family = "unified" if config == "unified" else "add-sub"
+    if family != arithmetic_family:
+        return {}
+    indices = range(5) if config == "full" else (0, 4)
+    return {index: [4 * index, 0, 0, 0, 0, 0, 0, 0, 1] for index in indices}
+
+
+def run_case(exporter, oracle, directory, text, image, config, family, cache):
+    name = f"{text.stem}-{config}-{family}-{cache}"
+    artifact_path = directory / f"{name}.json"
+    lean_path = directory / f"{name}.csv"
+    export = [str(exporter), family, str(image), str(text), str(artifact_path)]
+    if config == "reduced":
+        export.append("--reduced")
+    if cache == "cached":
+        export.append("--cached")
+    run_checked(export, f"{name} native export")
+    run_checked([str(oracle), config, family, str(text), str(lean_path)],
+                f"{name} Lean oracle")
+    artifact = json.loads(artifact_path.read_text())
+    names = {'add-sub': 'add_sub_lui_auipc_mop', 'jump-branch': 'jump_branch_slt',
+             'mul-div': 'unsigned_mul_div', 'shift-binop': 'shift_binop',
+             'word-memory': 'mem_word_only', 'subword-memory': 'mem_subword_only',
+             'unified': 'unified_reduced_machine'}
+    repository = pathlib.Path(__file__).resolve().parents[3]
+    circuit = repository / 'cs/compiled_circuits' / (names[family] + '_layout_no_caches_gkr.json')
+    expected_mask = json.loads(circuit.read_text())['decode_table_columns_mask']
+    logical_rows = active_rows(lean_path)
+    if text.stem == "zero-destinations":
+        expected_text = b"".join(struct.pack("<I", word) for word in SMALL_PROGRAMS[text.stem])
+        if text.read_bytes() != expected_text:
+            raise ValueError(f"{name}: incorrect x0 fixture text")
+        if {index: values[:9] for index, values in logical_rows.items()} != zero_destination_rows(config, family):
+            raise ValueError(f"{name}: incorrect x0 decoder rows")
+    active = {}
+    for index, values in logical_rows.items():
+        row, payload = values[:9], values[9:]
+        validate_projected_row(row, expected_mask, family, f"{name}: row {index}")
+        projected = [value for value, selected in zip(row, expected_mask) if selected]
+        tagged = artifact["circuit"]["tables_ids_in_generic_lookups"]
+        if payload != projected + ([46] if tagged else []):
+            raise ValueError(f"{name}: Lean row {index} differs from NativePublicSetup.rows")
+        active[index] = projected
+    checked_rows(artifact, active, name, expected_mask)
+    circuit_bytes = json.dumps(artifact["circuit"], sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(circuit_bytes).hexdigest()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--exporter", required=True, type=pathlib.Path)
+    parser.add_argument("--oracle", required=True, type=pathlib.Path)
+    parser.add_argument("--program", action="append", type=pathlib.Path,
+                        help="public TEXT file; matching .bin supplies the initial image")
+    parser.add_argument("--committed-verifiers", action="store_true",
+                        help="check registered verifier programs that use the regular ROM")
+    parser.add_argument("--work-dir", type=pathlib.Path)
+    parser.add_argument("--configs", default="full,reduced,unified")
+    parser.add_argument("--cache-modes", default="plain,cached")
+    parser.add_argument("--families", default=",".join(FAMILIES))
+    args = parser.parse_args()
+    configs = args.configs.split(",")
+    caches = args.cache_modes.split(",")
+    families = args.families.split(",")
+    if not set(configs) <= {"full", "reduced", "unified"} or not set(caches) <= {"plain", "cached"}:
+        parser.error("unknown configuration or cache mode")
+    if not set(families) <= set(FAMILIES):
+        parser.error("unknown decoder family")
+    if args.committed_verifiers and args.program:
+        parser.error("select only one program source")
+    with tempfile.TemporaryDirectory(prefix="airbender-decoder-") if args.work_dir is None else _kept(args.work_dir) as work:
+        directory = pathlib.Path(work)
+        verifier_configs = {}
+        if args.committed_verifiers:
+            repository = pathlib.Path(__file__).resolve().parents[3]
+            verifier_root = repository / "tools/gkr_verifier/full_statement_verifiers"
+            output = directory / "committed-verifiers"
+            manifest = run_checked(
+                [str(args.exporter.resolve()), "--export-verifier-programs", str(verifier_root), str(output)],
+                "committed verifier export",
+            )
+            exported = list(csv.reader(manifest.splitlines(), delimiter="\t"))
+            verifier_configs = {output / f"{name}.text": config for name, config in exported}
+            if len(verifier_configs) != len(exported) or sorted(verifier_configs.values()) != ["reduced"] * 4 + ["unified"] * 5:
+                raise ValueError("expected four reduced and five unified verifier programs")
+            programs = [(text, text.with_suffix(".bin")) for text in verifier_configs]
+        elif args.program:
+            programs = [(text, text.with_suffix(".bin")) for text in args.program]
+        else:
+            programs = []
+            for name, words in SMALL_PROGRAMS.items():
+                path = directory / f"{name}.bin"
+                path.write_bytes(b"".join(struct.pack("<I", word) for word in words))
+                programs.append((path, path))
+        hashes = {}
+        validated = set()
+        for text, image in programs:
+            if not text.is_file() or not image.is_file():
+                raise FileNotFoundError(f"missing public text or image: {text}, {image}")
+            for cache in caches:
+                for config in configs:
+                    if text in verifier_configs and config != verifier_configs[text]:
+                        continue
+                    if text.stem == "split-keccak" and config != "full":
+                        continue
+                    if (text, config) not in validated:
+                        check_group_shapes(text.read_bytes(), config, text.name)
+                        validated.add((text, config))
+                    for family in families:
+                        if text.stem == "split-keccak" and family != "add-sub":
+                            continue
+                        if (config == "reduced" and family not in REDUCED_FAMILIES) or \
+                           (config == "full" and family not in POOLED_FAMILIES) or \
+                           (config == "unified" and family != "unified"):
+                            continue
+                        case = (args.exporter.resolve(), args.oracle.resolve(), directory,
+                                text.resolve(), image.resolve(), config, family, cache)
+                        digest = run_case(*case)
+                        hashes[(text, cache, config, family)] = digest
+                        print(f"PASS {text.name} {cache} {config} {family}", flush=True)
+        for text, _ in programs:
+            for cache in caches:
+                for family in REDUCED_FAMILIES:
+                    full = hashes.get((text, cache, "full", family))
+                    reduced = hashes.get((text, cache, "reduced", family))
+                    if full is not None and reduced is not None and full != reduced:
+                        raise ValueError(f"{text.name} {cache} {family}: full/reduced circuit differs")
+        for cache in caches:
+            for config in configs:
+                for family in families:
+                    digests = [hashes.get((text, cache, config, family)) for text, _ in programs]
+                    digests = [digest for digest in digests if digest is not None]
+                    if len(set(digests)) > 1:
+                        raise ValueError(f"{cache} {config} {family}: circuit depends on public text")
+        print(f"PASS {len(hashes)} exact decoder row comparisons and circuit-object checks")
+
+
+class _kept:
+    def __init__(self, path):
+        self.path = path
+
+    def __enter__(self):
+        self.path.mkdir(parents=True, exist_ok=True)
+        return self.path
+
+    def __exit__(self, *_):
+        return False
+
+
+if __name__ == "__main__":
+    main()
