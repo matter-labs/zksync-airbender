@@ -12,7 +12,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     pub(super) fn get_result<ND: NonDeterminismCSRSource + Send + 'static>(
         &self,
         proving: bool,
-        request_partial_trees: bool,
         cache: &mut Option<TraceCache<B::Allocator>>,
         batch_id: u64,
         binary_key: usize,
@@ -20,9 +19,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         pow_challenge: u64,
         external_challenges: Option<GKRExternalChallenges<BF, E4>>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
-        mut proof_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees<B::Allocator>>,
         profile: ProofProfile,
-    ) -> (ExecutionProverResult<B::Allocator>, ND) {
+    ) -> (ExecutionProverResult, ND) {
         if let Some(cache) = cache.as_ref() {
             if proving {
                 assert!(cache.simulation_result.is_some());
@@ -64,7 +62,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             batch_id,
             external_challenges.as_ref(),
             &proof_caps,
-            &mut proof_partial_trees,
             &work_requests_sender,
             profile,
         );
@@ -107,7 +104,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             )
         };
         let partial_tree_allocator_requests = (!proving
-            && request_partial_trees
+            && cache.is_some()
             && self.backend.persists_memory_partial_trees(profile))
         .then(|| {
             let (requests, keys) = unbounded();
@@ -143,7 +140,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             partial_tree_allocator_requests,
             parked_commitments: BTreeMap::new(),
             proof_caps: &proof_caps,
-            proof_partial_trees,
         };
         for sequence_id in trivial_unified_inits_and_teardowns {
             let data = InitsAndTeardownsData {
@@ -252,9 +248,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 cache.simulation_result = acc.simulation_result.clone();
             }
         }
-        for trees in request_context.proof_partial_trees.into_values() {
-            self.free_buffer(Some(trees.nodes));
-        }
         let non_determinism_source = non_determinism_return
             .recv()
             .expect("simulation did not return its non-determinism source");
@@ -271,12 +264,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         handle: BinaryHandle,
         non_determinism_source: ND,
         profile: ProofProfile,
-        request_partial_trees: bool,
-    ) -> (
-        CommitMemoryResult,
-        ND,
-        MemoryPartialTreesByInstance<B::Allocator>,
-    ) {
+    ) -> (CommitMemoryResult, ND) {
         let binary_key = handle.0;
         info!(
             "BATCH[{batch_id}] PROVER producing memory commitments for binary with key {binary_key:?}"
@@ -284,7 +272,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let timer = Instant::now();
         let (result, non_determinism_source) = self.get_result(
             false,
-            request_partial_trees,
             cache,
             batch_id,
             binary_key,
@@ -292,16 +279,15 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             0,
             None,
             BTreeMap::new(),
-            BTreeMap::new(),
             profile,
         );
-        let (mut result, memory_partial_trees) = result.into_memory_commitment_result();
+        let mut result = result.into_memory_commitment_result();
         result.binary_handle = handle;
         let elapsed = timer.elapsed().as_secs_f64();
         info!(
             "BATCH[{batch_id}] PROVER produced memory commitments for binary with key {binary_key:?} in {elapsed:.3}s"
         );
-        (result, non_determinism_source, memory_partial_trees)
+        (result, non_determinism_source)
     }
 
     pub(super) fn prove_inner<ND: NonDeterminismCSRSource + Send + 'static>(
@@ -313,14 +299,12 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         pow_challenge: u64,
         external_challenges: GKRExternalChallenges<BF, E4>,
         proof_caps: BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
-        proof_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees<B::Allocator>>,
         profile: ProofProfile,
     ) -> ProveResult {
         info!("BATCH[{batch_id}] PROVER producing proofs for binary with key {binary_key:?}");
         let timer = Instant::now();
         let (result, _) = self.get_result(
             true,
-            false,
             cache,
             batch_id,
             binary_key,
@@ -328,7 +312,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             pow_challenge,
             Some(external_challenges),
             proof_caps,
-            proof_partial_trees,
             profile,
         );
         let result = result.into_proof_result();
@@ -350,7 +333,7 @@ fn assemble_result<A: fft::GoodAllocator>(
     pow_challenge: u64,
     binary_key: usize,
     profile: ProofProfile,
-) -> ExecutionProverResult<A> {
+) -> ExecutionProverResult {
     let ResultAccumulator {
         trivial_unified_inits_and_teardowns_count,
         inits_and_teardowns_top_bits,
@@ -358,7 +341,6 @@ fn assemble_result<A: fft::GoodAllocator>(
         circuit_families_memory_caps,
         inits_and_teardowns_memory_caps,
         delegation_circuits_memory_caps,
-        memory_partial_trees,
         circuit_families_proofs,
         inits_and_teardowns_proofs,
         delegation_circuits_proofs,
@@ -432,7 +414,7 @@ fn assemble_result<A: fft::GoodAllocator>(
             inits_and_teardowns_top_bits,
             binary_handle: BinaryHandle(binary_key),
         };
-        ExecutionProverResult::CommitMemory(Box::new(result), memory_partial_trees)
+        ExecutionProverResult::CommitMemory(Box::new(result))
     }
 }
 
@@ -473,7 +455,6 @@ mod tests {
             partial_tree_allocator_requests: None,
             parked_commitments: BTreeMap::new(),
             proof_caps: &proof_caps,
-            proof_partial_trees: Default::default(),
         };
         let _ = context.build_work_request(
             &prover,

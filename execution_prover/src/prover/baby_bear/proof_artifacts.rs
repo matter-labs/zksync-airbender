@@ -174,15 +174,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             self.host_pool_allocation.is_none() && self.pending_setup_initializations.is_empty(),
             "setup must be finalized before proving or reading artifacts"
         );
-        self.commit_memory_inner(
-            &mut None,
-            batch_id,
-            *handle,
-            non_determinism_source,
-            profile,
-            false,
-        )
-        .0
+        self.commit_memory_inner(&mut None, batch_id, *handle, non_determinism_source, profile)
+            .0
     }
 
     pub fn prove(
@@ -207,7 +200,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             pow_challenge,
             external_challenges,
             proof_caps,
-            BTreeMap::new(),
             commit_ticket.profile,
         )
     }
@@ -227,8 +219,8 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         let nd_wrapper = NonDeterminismWrapper::new(non_determinism_source);
         let mut cache = Some(TraceCache::new());
         let timer = Instant::now();
-        let (memory_commitment, nd_wrapper, proof_partial_trees) =
-            self.commit_memory_inner(&mut cache, batch_id, *handle, nd_wrapper, profile, true);
+        let (memory_commitment, nd_wrapper) =
+            self.commit_memory_inner(&mut cache, batch_id, *handle, nd_wrapper, profile);
         let non_determinism_source = nd_wrapper.into_replay_source();
         let (pow_challenge, external_challenges, proof_caps) =
             self.derive_proof_artifacts(binary_key, &memory_commitment);
@@ -243,7 +235,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             pow_challenge,
             external_challenges,
             proof_caps,
-            proof_partial_trees,
             memory_commitment.profile,
         );
         assert_eq!(prove_result.register_final_values, final_register_values);

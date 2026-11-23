@@ -1,16 +1,13 @@
-use fft::GoodAllocator;
 use std::collections::BTreeMap;
 
 use common_constants::TimestampScalar;
 
-use crate::messages::MemoryPartialTrees;
 use crate::prover::BinaryHandle;
 use crate::upstream::{
     DefaultTreeConstructor, FinalRegisterValue, GKRProof, MerkleTreeCapVarLength,
 };
 use crate::upstream::{BF, E4};
 use crate::ProofProfile;
-use execution_prover_model::circuit_type::CircuitType;
 
 pub struct CommitMemoryResult {
     pub profile: ProofProfile,
@@ -51,20 +48,15 @@ pub struct ProveResult {
     pub num_unified_it_circuits: Option<u32>,
 }
 
-pub(super) type MemoryPartialTreesByInstance<A> =
-    BTreeMap<(CircuitType, usize), MemoryPartialTrees<A>>;
-
-pub(super) enum ExecutionProverResult<A: GoodAllocator> {
-    CommitMemory(Box<CommitMemoryResult>, MemoryPartialTreesByInstance<A>),
+pub(super) enum ExecutionProverResult {
+    CommitMemory(Box<CommitMemoryResult>),
     Prove(Box<ProveResult>),
 }
 
-impl<A: GoodAllocator> ExecutionProverResult<A> {
-    pub fn into_memory_commitment_result(
-        self,
-    ) -> (CommitMemoryResult, MemoryPartialTreesByInstance<A>) {
+impl ExecutionProverResult {
+    pub fn into_memory_commitment_result(self) -> CommitMemoryResult {
         match self {
-            ExecutionProverResult::CommitMemory(result, trees) => (*result, trees),
+            ExecutionProverResult::CommitMemory(result) => *result,
             _ => panic!("expected CommitMemoryResult"),
         }
     }

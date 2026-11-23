@@ -11,12 +11,12 @@ pub(super) mod setup;
 
 use super::non_determinism_wrapper::NonDeterminismWrapper;
 use super::*;
-use result::{ExecutionProverResult, MemoryPartialTreesByInstance};
+use result::ExecutionProverResult;
 
 use crate::backend::CircuitPrecomputation;
 use crate::messages::{
-    InitsAndTeardownsData, MemoryCommitmentRequest, MemoryCommitmentResult, MemoryPartialTrees,
-    ProofRequest, ProofResult, TracingData,
+    InitsAndTeardownsData, MemoryCommitmentRequest, MemoryCommitmentResult, ProofRequest,
+    ProofResult, TracingData,
 };
 use crate::upstream::{
     Blake2sTranscript, FinalRegisterValue, GKRExternalChallenges, MerkleTreeCapVarLength, BF, E4,

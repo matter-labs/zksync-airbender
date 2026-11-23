@@ -188,18 +188,24 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         }
     }
 
+    pub(super) fn free_cache_entry(&self, entry: TraceCacheEntry<B::Allocator>) {
+        let TraceCacheEntry {
+            inits_and_teardowns,
+            tracing_data,
+            memory_partial_trees,
+            ..
+        } = entry;
+        self.free_traces(inits_and_teardowns, tracing_data);
+        self.free_buffer(memory_partial_trees.map(|trees| trees.nodes));
+    }
+
     pub(super) fn trim_cache(&self, cache: &mut TraceCache<B::Allocator>) {
         let entries = &mut cache.entries;
         let min = self.configuration.min_free_host_allocators_per_job
             * self.configuration.expected_concurrent_jobs;
         while self.free_allocators_sender.len() < min && !entries.is_empty() {
             let evicted_entry = entries.pop_front().unwrap();
-            let TraceCacheEntry {
-                inits_and_teardowns,
-                tracing_data,
-                ..
-            } = evicted_entry;
-            self.free_traces(inits_and_teardowns, tracing_data);
+            self.free_cache_entry(evicted_entry);
         }
     }
 }

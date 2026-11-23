@@ -14,10 +14,6 @@ pub(super) struct RequestContext<'a, B: ExecutionBackend> {
     pub(super) parked_commitments:
         BTreeMap<(CircuitType, usize), MemoryCommitmentRequest<B::Allocator, B::Precomputations>>,
     pub(super) proof_caps: &'a BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
-    /// Taken by the first proof request built for each instance; a later
-    /// duplicate of a cache-served request gets `None` and is never dispatched.
-    pub(super) proof_partial_trees:
-        BTreeMap<(CircuitType, usize), MemoryPartialTrees<B::Allocator>>,
 }
 
 impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
@@ -104,10 +100,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                     .external_challenges
                     .expect("proof request construction requires external challenges"),
                 memory_caps,
-                memory_partial_trees: self
-                    .proof_partial_trees
-                    .remove(&(circuit_type, sequence_id)),
-
+                memory_partial_trees: None,
                 profile,
             };
             Some(WorkRequest::Proof(request))
@@ -200,7 +193,6 @@ pub(super) struct ResultAccumulator<A: GoodAllocator> {
     pub(super) inits_and_teardowns_memory_caps: BTreeMap<usize, Vec<MerkleTreeCapVarLength>>,
     pub(super) delegation_circuits_memory_caps:
         BTreeMap<u32, BTreeMap<usize, Vec<MerkleTreeCapVarLength>>>,
-    pub(super) memory_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees<A>>,
     pub(super) circuit_families_proofs: BTreeMap<u8, BTreeMap<usize, ScheduledProof>>,
     pub(super) inits_and_teardowns_proofs: BTreeMap<usize, ScheduledProof>,
     pub(super) delegation_circuits_proofs: BTreeMap<u32, BTreeMap<usize, ScheduledProof>>,
@@ -392,13 +384,15 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                         sequence_id,
                         inits_and_teardowns,
                         tracing_data,
+                        memory_partial_trees,
                     };
                     cache.push_back(cache_entry);
                     if self.simulation_result.is_none() {
                         prover.trim_cache(cache);
                     }
                 } else {
-                    prover.free_traces(inits_and_teardowns, tracing_data)
+                    prover.free_traces(inits_and_teardowns, tracing_data);
+                    prover.free_buffer(memory_partial_trees.map(|trees| trees.nodes));
                 }
                 let caps: &mut BTreeMap<usize, Vec<MerkleTreeCapVarLength>> = match circuit_type {
                     CircuitType::L1Wrap => {
@@ -419,12 +413,6 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                     },
                 };
                 assert!(caps.insert(sequence_id, merkle_tree_caps).is_none());
-                if let Some(trees) = memory_partial_trees {
-                    assert!(self
-                        .memory_partial_trees
-                        .insert((circuit_type, sequence_id), trees)
-                        .is_none());
-                }
             }
             WorkResult::Proof(proof) => {
                 assert!(proving);
@@ -498,14 +486,12 @@ pub(super) fn dispatch_backend_requests<B: ExecutionBackend>(
                         sequence_id,
                         inits_and_teardowns,
                         tracing_data,
-                        memory_partial_trees,
                         ..
                     } = request;
                     trace!(
                         "BATCH[{batch_id}] PROVER skipping cached proof request for circuit {circuit_type:?}[{sequence_id}]"
                     );
                     prover.free_traces(inits_and_teardowns, tracing_data);
-                    prover.free_buffer(memory_partial_trees.map(|trees| trees.nodes));
                 }
                 _ => panic!("only proof requests are cached"),
             }
