@@ -40,9 +40,24 @@ def certify(schedule, trace_log2, packed_columns, field_size):
 
 
 if __name__ == "__main__":
-    schedule = json.loads(Path(__file__).with_name("eth1020-0047.json").read_text())
+    config_path = (
+        Path(__file__).resolve().parents[6]
+        / "circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_22"
+        / "generated/prover_config_sec_100_ethproofs_soundcalc.json"
+    )
+    config = json.loads(config_path.read_text())
+    schedule = config["whir_schedule"]
+    base = schedule["base_round"]
+    # Preserve the certificate's output order.
+    schedule["base_round"] = {
+        key: base[key]
+        for key in (
+            "lde_factor_log2", "num_queries", "queries_pow_bits", "folding_pow_bits",
+            "fold_log2", "physical_packing_log2", "batching_pow_bits",
+        )
+    }
     certificates = [
-        certify(schedule, 22, 14, field_size)
+        certify(schedule, config["trace_len_log2"], 14, field_size)
         for field_size in (7 * 2**120 + 1, 2**128 / 37)
     ]
     print(json.dumps(dict(schedule=schedule, certificates=certificates), indent=2))

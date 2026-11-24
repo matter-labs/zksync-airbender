@@ -362,6 +362,17 @@ pub fn prover_config_notes_file_name(level: SecurityLevel, mode: SoundnessMode) 
     )
 }
 
+pub fn save_prover_config_in(
+    crate_root: &std::path::Path,
+    level: SecurityLevel,
+    mode: SoundnessMode,
+    config: &ProverConfig,
+) {
+    let path = crate_root.join(prover_config_file_name(level, mode));
+    let dst = std::fs::File::create(path).unwrap();
+    serde_json::to_writer_pretty(dst, config).unwrap();
+}
+
 /// Serialize the circuit's prover config for every security level and every
 /// [`SoundnessMode`] next to the layout ([`prover_config_file_name`], the
 /// notes as [`prover_config_notes_file_name`]), built from the compiled
@@ -383,10 +394,7 @@ pub fn save_prover_configs_in(
         for &mode in SoundnessMode::ALL {
             let config = geometry.prover_config(compiled_circuit, level, mode);
             assert_eq!(1usize << config.trace_len_log2, compiled_circuit.trace_len);
-            let mut dst =
-                std::fs::File::create(crate_root.join(prover_config_file_name(level, mode)))
-                    .unwrap();
-            serde_json::to_writer_pretty(&mut dst, &config).unwrap();
+            save_prover_config_in(crate_root, level, mode, &config);
             let notes_path = crate_root.join(prover_config_notes_file_name(level, mode));
             match geometry.prover_config_notes(compiled_circuit, level, mode) {
                 Some(notes) => std::fs::write(notes_path, notes).unwrap(),
