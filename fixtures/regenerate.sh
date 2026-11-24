@@ -106,7 +106,7 @@ check_artifact() {
   local trusted=()
   # The cache includes compression records; L1 wrap verification stays external.
   if [[ -n $trusted_params && $name != l1 ]]; then
-    local params="$trusted_params/$cli_mode-trusted-params.json"
+    local params="$trusted_params/$cli_mode-compression-trusted-params.json"
     [[ -f $params ]] || "$cli" trusted-params --bin "$bin" --soundness-mode "$cli_mode" --target compression --backend cpu --output "$params"
     trusted=(--trusted-params "$params")
   fi

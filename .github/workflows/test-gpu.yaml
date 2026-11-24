@@ -234,7 +234,7 @@ jobs:
             "$cli" trusted-params "${common[@]}" --backend cpu --output "$records/$mode-cpu.json"
             "$cli" trusted-params "${common[@]}" --backend gpu --output "$records/$mode-gpu.json"
             cmp "$records/$mode-cpu.json" "$records/$mode-gpu.json"
-            cp "$records/$mode-gpu.json" "$records/${mode//_/-}-trusted-params.json"
+            cp "$records/$mode-gpu.json" "$records/${mode//_/-}-compression-trusted-params.json"
           done
 
       - name: Program-proof chain parity in both soundness modes

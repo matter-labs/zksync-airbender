@@ -186,10 +186,10 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
         }
     }
     assert!(trusted_params
-        .join("pessimistic-conjecture-trusted-params.json")
+        .join("pessimistic-conjecture-compression-trusted-params.json")
         .is_file());
     assert!(trusted_params
-        .join("ethproofs-soundcalc-trusted-params.json")
+        .join("ethproofs-soundcalc-compression-trusted-params.json")
         .is_file());
     for arguments in [vec!["--check"], vec!["--check", "--stage", "circuits"]] {
         let result = run_with_backend(&root, &arguments, Some("gpu"));
