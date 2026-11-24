@@ -79,17 +79,34 @@ pub fn format_params(mode: SoundnessMode) -> verifier_evm::encoding::FormatParam
 }
 /// Setup frontier emitted by prover_pipeline::export_l1_wrap_setup_frontier.
 pub fn setup_frontier(mode: SoundnessMode) -> (usize, Vec<[u32; 8]>) {
-    let json: serde_json::Value = serde_json::from_reader(
-        std::fs::File::open(data_path(mode, "setup_frontier.json")).expect("setup frontier"),
-    )
-    .expect("setup frontier JSON");
+    let source =
+        std::fs::read_to_string(data_path(mode, "setup_frontier.json")).expect("setup frontier");
+    let json: serde_json::Value = serde_json::from_str(&source).expect("setup frontier JSON");
+    assert_eq!(
+        json["cap_size"],
+        prover_config(mode).cap_size,
+        "frontier cap size"
+    );
     let level = json["level"].as_u64().expect("frontier level") as usize;
+    assert_eq!(level, 10, "frontier level");
+    assert_eq!(
+        source,
+        format!("{}\n", serde_json::to_string_pretty(&json).unwrap()),
+        "canonical frontier JSON"
+    );
     let nodes: Vec<[u32; 8]> = json["digests"]
         .as_array()
         .expect("frontier digests")
         .iter()
         .map(|d| {
             let hex = d.as_str().expect("hex digest");
+            assert!(
+                hex.len() == 64
+                    && hex
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+                "frontier digest must be 64 lowercase hex characters"
+            );
             std::array::from_fn(|i| u32::from_str_radix(&hex[8 * i..8 * i + 8], 16).unwrap())
         })
         .collect();
