@@ -69,8 +69,8 @@ because a dependency's `#[cfg(test)]` items are invisible to its consumers.
   there.
 - **Field layout:** code shared by BabyBear and Proth120 lives at the crate root;
   field-specific Rust and native code lives in parallel `baby_bear/` and `proth120/`
-  folders. Each native field folder has a CMakeLists that only adds its sources to
-  the crate's single archive.
+  folders. Top-level or nested `CMakeLists.txt` files add native field sources to
+  the crate's single CUDA archive.
 - **C++ namespace = owning crate** (`airbender::{hash, ntt, ops, primitives,
   trace::witness, gkr, whir}`). Launched kernels are `extern "C"`: the bare symbol
   name is the ABI.
