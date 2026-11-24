@@ -1,0 +1,297 @@
+module
+public import Human.Import.Transcribe
+public meta import Human.Import.Transcribe
+public import Human.Import.Columns
+public meta import Human.Import.Columns
+public import Human.Import.Coefficients
+public meta import Human.Import.Coefficients
+public import Human.Helpers.Tables.Range
+public meta import Human.Helpers.Tables.Range
+public import Human.Helpers.Tables.Lookups
+public meta import Human.Helpers.Tables.Lookups
+public import Human.Circuits.JumpBranchSlt.Tables.Control
+public meta import Human.Circuits.JumpBranchSlt.Tables.Control
+public import Human.Helpers.Tables.Bytes
+public meta import Human.Helpers.Tables.Bytes
+public import Human.Import.Exec.FastColumns
+public meta import Human.Import.Exec.FastColumns
+public import Lean
+public meta import Lean
+
+public meta section
+
+/-! No need to review: behaviour is fixed by each artifact's `ArtifactImportClaim` (its `Artifact.lean`).
+
+`import_clean name from circuit flags` emits the imported operations and column descriptors of the transcribed
+artifact `circuit` (`import_circuit`, `TranscribeCommand.lean`) as literal terms, which the proofs unfold. -/
+
+open Lean Elab Command
+
+namespace Airbender
+
+private def cleanConstantSyntax (n : Int) : CommandElabM (TSyntax `term) := do
+  let value ← if n ≥ 0 then `(Int.ofNat $(quote n.toNat))
+    else `(Int.negSucc $(quote (-n - 1).toNat))
+  `(Airbender.Expression.const (Int.cast $value))
+
+/-- Emit native Clean expressions directly from decoded JSON data. -/
+private partial def cleanExprSyntax (e : Airbender.Expr) : CommandElabM (TSyntax `term) := do
+  match e with
+  | .Constant c => cleanConstantSyntax (Artifact.signedCoefficient c)
+  | .Var v => `(Airbender.Expression.var ⟨$(quote v)⟩)
+  | .Sum es =>
+    es.foldlM (fun acc e => do `(Airbender.Expression.add $acc $(← cleanExprSyntax e)))
+      (← cleanConstantSyntax 0)
+  | .Product es =>
+    es.foldlM (fun acc e => do `(Airbender.Expression.mul $acc $(← cleanExprSyntax e)))
+      (← cleanConstantSyntax 1)
+
+private def cleanStatementSyntax (s : StructuredStatement) : CommandElabM (TSyntax `term) := do
+  match s with
+  | .AssertZero e _ _ => `(Airbender.FlatOperation.assert $(← cleanExprSyntax e))
+  | .Define v _ e _ =>
+    let rhs ← cleanExprSyntax e
+    let negOne ← cleanConstantSyntax (-1)
+    `(Airbender.FlatOperation.assert
+      (Airbender.Expression.add (Airbender.Expression.var ⟨$(quote v)⟩)
+        (Airbender.Expression.mul $negOne $rhs)))
+
+/-- Emit the operations (equations, range queries, alignment and fixed-table queries) and the column metadata. -/
+elab "import_clean " name:ident " from " circuit:ident comparisons:(" comparison_lookups")?
+    muldiv:(" mul_div_lookups")? shifts:(" shift_binop_lookups")? memory:(" word_memory_lookups")?
+    submemory:(" subword_memory_lookups")? unified:(" unified_reduced_lookups")?
+    blake:(" blake_g_lookups")? blakeRound:(" blake_round_lookups")?
+    bigint:(" bigint_lookups")? keccak:(" keccak_lookups")?
+    keccakParity:(" keccak_column_parity_lookups")? keccakThetaRho:(" keccak_theta_rho_lookups")?
+    keccakChi5:(" keccak_chi5_lookups")?
+    traceMetadata:(" trace_metadata")? delegationMetadata:(" delegation_metadata")?
+    splitMetadata:(" split_delegation_timestamps")? : command => do
+  if (traceMetadata.isSome.toNat + delegationMetadata.isSome.toNat + splitMetadata.isSome.toNat) > 1 then
+    throwError "select one of machine, delegation or split metadata"
+  if (comparisons.isSome.toNat + muldiv.isSome.toNat + shifts.isSome.toNat +
+      memory.isSome.toNat + submemory.isSome.toNat + unified.isSome.toNat + blake.isSome.toNat +
+      blakeRound.isSome.toNat + bigint.isSome.toNat + keccak.isSome.toNat +
+      keccakParity.isSome.toNat + keccakThetaRho.isSome.toNat + keccakChi5.isSome.toNat) > 1 then
+    throwError "select one fixed-lookup family"
+  let splitKeccak := keccakParity.isSome || keccakThetaRho.isSome || keccakChi5.isSome
+  let circuitName ← liftCoreM <| realizeGlobalConstNoOverload circuit
+  let some (.lit (.strVal source)) := (← getConstInfo (circuitName.appendAfter "SourceBytes")).value?
+    | throwError "{circuit} is not a transcribed circuit"
+  let c ← match parseCircuit source with
+    | .ok c => pure c
+    | .error e => throwError "circuit import failed: {e}"
+  -- the address map, built once (`FastColumns.lean`)
+  let pl := c.placements
+  let ss ← c.structured_statements.toList.mapM cleanStatementSyntax
+  let ranges ← match (Fast.range16Expressions pl c) with
+    | .ok ranges => pure ranges
+    | .error e => throwError "circuit import failed: {e}"
+  let lookups ← ranges.toList.mapM fun e => do
+    `(Airbender.FlatOperation.lookup (Airbender.Verification.range16 $(← cleanExprSyntax e)))
+  -- Native worker pointer alignment moved to the timestamp range table.
+  -- Keep these actual queries in the operation core, before its fixed-table
+  -- queries, while retaining the complete timestamp metadata separately.
+  -- Split theta/rho and chi5 compare grouped timestamps by native equations,
+  -- so only their invocation query precedes the alignment queries.
+  let alignments ← if blake.isSome || blakeRound.isSome || bigint.isSome || keccak.isSome ||
+      splitKeccak then do
+      let _ ← match (if splitMetadata.isSome then (Fast.splitDelegationColumns pl c) else (Fast.delegationColumns pl c)) with
+        | .ok columns => pure columns
+        | .error e => throwError "circuit import failed: {e}"
+      let queries ← match (Fast.timestampExpressions pl c) with
+        | .ok queries => pure queries
+        | .error e => throwError "circuit import failed: {e}"
+      let comparisons := if splitMetadata.isSome then 0 else 2 * c.memory_layout.ram_access_sets.size
+      (queries.toList.drop (1 + comparisons)).mapM fun e => do
+        `(Airbender.FlatOperation.lookup (Airbender.Trace.timestampLookup $(← cleanExprSyntax e)))
+    else pure []
+  let memoryFamily := memory.isSome || submemory.isSome || unified.isSome || blake.isSome ||
+    blakeRound.isSome || bigint.isSome || keccak.isSome || splitKeccak
+  let tableWidth := if keccak.isSome || keccakParity.isSome then 8 else if bigint.isSome then 3
+    else if blakeRound.isSome then 6 else if unified.isSome then 10 else if keccakChi5.isSome then 11 else 9
+  let rom := mkIdent (if submemory.isSome || unified.isSome || blake.isSome || blakeRound.isSome ||
+    bigint.isSome || keccak.isSome || splitKeccak then `setup else `rom)
+  let generic ← if memoryFamily then do
+    let queries ← match (if keccak.isSome then (Fast.keccakQueries pl c) else if bigint.isSome then (Fast.bigintQueries pl c) else if blakeRound.isSome then (Fast.blakeRoundQueries pl c)
+        else if keccakParity.isSome then (Fast.keccakColumnParityQueries pl c)
+        else if keccakThetaRho.isSome then (Fast.keccakThetaRhoQueries pl c)
+        else if keccakChi5.isSome then (Fast.keccakChi5Queries pl c)
+        else if blake.isSome then (Fast.blakeGQueries pl c) else if unified.isSome then (Fast.unifiedReducedQueries pl c)
+        else if submemory.isSome then (Fast.subwordMemoryQueries pl c) else (Fast.wordMemoryQueries pl c)) with
+      | .ok queries => pure queries
+      | .error e => throwError "circuit import failed: {e}"
+    queries.toList.mapM fun entries => do
+      let entries ← entries.toList.mapM cleanExprSyntax
+      let entries := entries.toArray
+      `(Airbender.FlatOperation.lookup {
+        table := ($rom).toRaw
+        entry := #v[$[$entries],*]
+      })
+    else if comparisons.isSome || muldiv.isSome then do
+    let queries ← match (if comparisons.isSome then (Fast.comparisonQueries pl c) else (Fast.mulDivQueries pl c)) with
+      | .ok queries => pure queries
+      | .error e => throwError "circuit import failed: {e}"
+    queries.toList.mapM fun (id, entries) => do
+      let some keyExpr := entries[0]? | throwError "comparison lookup is missing its key"
+      let key ← cleanExprSyntax keyExpr
+      let value ← match entries[1]? with
+        | some expr => cleanExprSyntax expr
+        | none => cleanConstantSyntax 0
+      let query ← match id with
+        | 1 => `(Airbender.Verification.pairLookup Airbender.Verification.regIsZeroTable $key $value)
+        | 5 => `(Airbender.Verification.pairLookup Airbender.Verification.u16SignTable $key $value)
+        | 31 => `(Airbender.Verification.pairLookup Airbender.Verification.conditionalTable $key $value)
+        | 41 => `(Airbender.Verification.pairLookup Airbender.Verification.u16LowByteTable $key $value)
+        | 26 => `(Airbender.Verification.range13 $key)
+        | 2 => do
+          let some cleaned := entries[2]? | throwError "cleanup lookup is missing its result"
+          `(Airbender.Verification.jumpCleanup $key $value $(← cleanExprSyntax cleaned))
+        | _ => throwError "unsupported comparison table"
+      `(Airbender.FlatOperation.lookup $query)
+    else if shifts.isSome then do
+      let queries ← match (Fast.shiftBinopQueries pl c) with
+        | .ok queries => pure queries
+        | .error e => throwError "circuit import failed: {e}"
+      queries.toList.mapM fun entries => do
+        let entries ← entries.toList.mapM cleanExprSyntax
+        let entries := entries.toArray
+        `(Airbender.FlatOperation.lookup (Airbender.Verification.shiftBinopLookup #v[$[$entries],*]))
+    else pure []
+  let ops := (ss ++ lookups ++ alignments ++ generic).toArray
+  let prime := mkIdent `p
+  if memoryFamily then
+    elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)]
+      ($rom : Airbender.Table (ZMod $prime) (Airbender.fields $(quote tableWidth))) :
+      List (Airbender.FlatOperation (ZMod $prime)) := [$[$ops],*]))
+  else
+    elabCommand (← `(def $name {$prime : Nat} [Fact (Nat.Prime $prime)] :
+      List (Airbender.FlatOperation (ZMod $prime)) := [$[$ops],*]))
+  if traceMetadata.isSome || delegationMetadata.isSome || splitMetadata.isSome then
+    let timestamps ← match (Fast.timestampExpressions pl c) with
+      | .ok queries => pure queries
+      | .error e => throwError "timestamp import failed: {e}"
+    let operations ← timestamps.toList.mapM fun e => do
+      `(Airbender.FlatOperation.lookup (Airbender.Trace.timestampLookup $(← cleanExprSyntax e)))
+    let operations := operations.toArray
+    let timestampName := mkIdent (name.getId.appendAfter "TimestampLookups")
+    elabCommand (← `(def $timestampName {$prime : Nat} [Fact (Nat.Prime $prime)] :
+      List (Airbender.FlatOperation (ZMod $prime)) := [$[$operations],*]))
+  if splitMetadata.isSome then
+    let groups ← match (Fast.splitTimestampGroups pl c) with
+      | .ok groups => pure groups
+      | .error e => throwError "split timestamp metadata import failed: {e}"
+    let groupTerms ← groups.toList.mapM fun group => do
+      let members := group.members.map quote
+      `(Airbender.Delegation.GroupedTimestamp.mk #v[$(quote group.previous[0]), $(quote group.previous[1])]
+        $(quote group.invocationHigh) #[$[$members],*])
+    let groupTerms := groupTerms.toArray
+    let groupName := mkIdent (name.getId.appendAfter "TimestampGroups")
+    elabCommand (← `(def $groupName : Array Airbender.Delegation.GroupedTimestamp := #[$[$groupTerms],*]))
+  if delegationMetadata.isSome || splitMetadata.isSome then
+    let columns ← match (if splitMetadata.isSome then (Fast.splitDelegationColumns pl c) else (Fast.delegationColumns pl c)) with
+      | .ok columns => pure columns
+      | .error e => throwError "delegation metadata import failed: {e}"
+    let pairSyntax := fun (columns : Vector Nat 2) => do
+      let terms := columns.toArray.map quote
+      `(#v[$[$terms],*])
+    let portTerms ← columns.ports.toList.mapM fun port => do
+      `(Airbender.Trace.TimestampPort.mk $(quote port.offset)
+        $(← pairSyntax port.previous) $(quote port.borrow))
+    let portTerms := portTerms.toArray
+    let columnsName := mkIdent (name.getId.appendAfter "DelegationColumns")
+    elabCommand (← `(def $columnsName : Airbender.Delegation.ClockColumns :=
+      ⟨$(quote columns.execute), $(← pairSyntax columns.invocation), #[$[$portTerms],*]⟩))
+  if traceMetadata.isSome then
+    let columns ← match (Fast.traceColumns pl c) with
+      | .ok columns => pure columns
+      | .error e => throwError "trace metadata import failed: {e}"
+    let pairSyntax := fun (columns : Vector Nat 2) => do
+      let terms := columns.toArray.map quote
+      `(#v[$[$terms],*])
+    let portTerms ← columns.ports.toList.mapM fun port => do
+      `(Airbender.Trace.TimestampPort.mk $(quote port.offset)
+        $(← pairSyntax port.previous) $(quote port.borrow))
+    let portTerms := portTerms.toArray
+    let columnsName := mkIdent (name.getId.appendAfter "TraceColumns")
+    elabCommand (← `(def $columnsName : Airbender.Trace.TraceColumns :=
+      ⟨$(quote columns.execute), $(← pairSyntax columns.initialPC), $(← pairSyntax columns.finalPC),
+        $(← pairSyntax columns.initialTime), $(← pairSyntax columns.finalTime), #[$[$portTerms],*]⟩))
+  if traceMetadata.isSome || delegationMetadata.isSome || splitMetadata.isSome then
+    let pairSyntax := fun (columns : Vector Nat 2) => do
+      let terms := columns.toArray.map quote
+      `(#v[$[$terms],*])
+    let ports ← match (if splitMetadata.isSome then (Fast.splitMemoryPorts pl c)
+        else if delegationMetadata.isSome then (Fast.delegationPorts pl c) else (Fast.memoryPorts pl c)) with
+      | .ok ports => pure ports
+      | .error e => throwError "memory metadata import failed: {e}"
+    let wordSyntax := fun (word : Airbender.Trace.WordColumns) => do
+      match word with
+      | .zero => `(Airbender.Trace.WordColumns.zero)
+      | .u16 columns => `(Airbender.Trace.WordColumns.u16 $(← pairSyntax columns))
+      | .u8 columns =>
+        `(Airbender.Trace.WordColumns.u8 #v[$(quote columns[0]), $(quote columns[1]),
+          $(quote columns[2]), $(quote columns[3])])
+    let memoryTerms ← ports.toList.mapM fun port => do
+      let address ← match port.address with
+        | .constantRegister index => `(Airbender.Trace.MemoryAddress.constantRegister $(quote index))
+        | .register column => `(Airbender.Trace.MemoryAddress.register $(quote column))
+        | .mixed selector registerOnTrue columns =>
+          `(Airbender.Trace.MemoryAddress.mixed $(quote selector) $(quote registerOnTrue)
+            $(← pairSyntax columns))
+        | .indirect port =>
+          let offset ← match port.offsetColumn with
+            | none => `(none)
+            | some column => `(some $(quote column))
+          let writes ← match port.writeColumns with
+            | none => `(none)
+            | some columns => `(some $(← pairSyntax columns))
+          `(Airbender.Trace.MemoryAddress.indirect
+            (Airbender.Verification.IndirectPort.mk $(quote port.register) $(quote port.access)
+              $(← pairSyntax port.baseColumns) $(quote port.scale) $offset $(quote port.constant)
+              $(← pairSyntax port.readColumns) $writes))
+      let writes ← match port.writeValue with
+        | none => `(none)
+        | some columns => `(some $(← wordSyntax columns))
+      `(Airbender.Trace.MemoryPort.mk
+        (Airbender.Trace.TimestampPort.mk $(quote port.clock.offset)
+          $(← pairSyntax port.clock.previous) $(quote port.clock.borrow))
+        $address $(← wordSyntax port.readValue) $writes)
+    let memoryTerms := memoryTerms.toArray
+    let memoryName := mkIdent (name.getId.appendAfter "MemoryPorts")
+    elabCommand (← `(def $memoryName : Array Airbender.Trace.MemoryPort := #[$[$memoryTerms],*]))
+  if traceMetadata.isSome then
+    let pairSyntax := fun (columns : Vector Nat 2) => do
+      let terms := columns.toArray.map quote
+      `(#v[$[$terms],*])
+    let decoder ← match (Fast.decoderColumns pl c) with
+      | .ok decoder => pure decoder
+      | .error e => throwError "decoder metadata import failed: {e}"
+    let funct3 ← match decoder.funct3 with
+      | none => `(none)
+      | some column => `(some $(quote column))
+    let flags := decoder.flags.map quote
+    let decoderName := mkIdent (name.getId.appendAfter "DecoderColumns")
+    elabCommand (← `(def $decoderName : Airbender.Trace.DecoderColumns :=
+      ⟨$(quote decoder.rs1), $(quote decoder.rs2), $(quote decoder.rd),
+        $(← pairSyntax decoder.immediate), $funct3, #[$[$flags],*]⟩))
+  if blake.isSome || blakeRound.isSome || bigint.isSome || keccak.isSome || splitKeccak then
+    let ports ← match (Fast.indirectPorts pl c) with
+      | .ok ports => pure ports
+      | .error e => throwError "indirect port import failed: {e}"
+    let portTerms ← ports.toList.mapM fun port => do
+      let base := port.baseColumns.toArray.map quote
+      let reads := port.readColumns.toArray.map quote
+      let writes ← match port.writeColumns with
+        | none => `(none)
+        | some columns =>
+          let columns := columns.toArray.map quote
+          `(some #v[$[$columns],*])
+      `(Airbender.Verification.IndirectPort.mk $(quote port.register) $(quote port.access)
+        #v[$[$base],*] $(quote port.scale) $(quote port.offsetColumn) $(quote port.constant)
+        #v[$[$reads],*] $writes)
+    let portsName := mkIdent (name.getId.appendAfter "IndirectPorts")
+    let portTerms := portTerms.toArray
+    elabCommand (← `(def $portsName : Vector Airbender.Verification.IndirectPort $(quote ports.size) :=
+      #v[$[$portTerms],*]))
+
+end Airbender
