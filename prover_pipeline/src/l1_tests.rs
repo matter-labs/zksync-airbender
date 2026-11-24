@@ -6,6 +6,35 @@ fn source() -> ProgramSource {
     ProgramSource::legacy_binaries_from_bin(root.join("examples/basic_fibonacci/app.bin"))
 }
 
+#[test]
+fn ethproofs_l1_wrap_gkr_security_margins() {
+    use ::prover::cs::{definitions::NUM_REGISTERS, gkr_compiler::GKRCircuitArtifact};
+    use ::prover::field::Proth120;
+    use ::prover::gkr::prover_config::{example_configs::l1_wrap, pow_bits};
+
+    let circuit: GKRCircuitArtifact<Proth120> = serde_json::from_str(include_str!(
+        "../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_22/generated/layout.json"
+    ))
+    .expect("embedded 2^22 Proth120 unified layout");
+    let config = l1_wrap::ethproofs_packed_prover_config();
+    assert_eq!(circuit.trace_len, 1 << config.trace_len_log2);
+    let m = 3.0;
+    let loss = ((m + 0.5) * 2.0_f64.powf(config.base_round().lde_factor_log2 as f64 / 2.0)).log2();
+    let challenge_bits = 128.0 - 37.0_f64.log2();
+    let external_pow_bits = f64::from(l1_wrap::EXTERNAL_CHALLENGES_POW_BITS);
+
+    let lookup_degree = pow_bits::lookup_identity_degree(&circuit);
+    let lookup_bits = challenge_bits + external_pow_bits - (lookup_degree as f64).log2() - loss;
+    assert!(lookup_bits >= 100.0, "lookup: {lookup_bits:.9} bits");
+
+    let keys_per_row =
+        circuit.memory_layout.ram_access_sets.len() + 1 + circuit.memory_layout.teardown_sets.len();
+    let memory_degree = circuit.trace_len * keys_per_row + NUM_REGISTERS + 1;
+    let memory_bits =
+        challenge_bits + external_pow_bits - (memory_degree as f64).log2() - 2.0 - loss;
+    assert!(memory_bits >= 100.0, "single-instance memory: {memory_bits:.9} bits");
+}
+
 /// Setup-tree level pinned by the wrap verifier.
 const SETUP_FRONTIER_LEVEL: usize = 10;
 

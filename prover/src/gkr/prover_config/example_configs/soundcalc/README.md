@@ -83,8 +83,10 @@ every WHIR PCS term at 100 bits or more with soundcalc. It uses the 2^22 trace, 
 The base LDE factor is 128. The internal factors are 256, 512, 1024, 4096 and 8192.
 The driver applies each oracle's configured folding grind at every step and
 checks both the Proth120 field size and the conservative challenge denominator
-`2^128 / 37`. GKR, Merkle binding and recursive composition require their own
-accounting.
+`2^128 / 37`. With the same challenge denominator, a 20-bit external
+challenge grind and a 5.31-bit Johnson list loss, the committed layout gives
+107.28 bits for GKR lookup and 110.90 bits for single-instance memory with a
+2-bit reserve. The `ethproofs_l1_wrap_gkr_security_margins` test checks both terms.
 
 ## Rebalancing the pessimistic ladders' late rounds (`late_round_rebalance.py`)
 
