@@ -385,12 +385,7 @@ jobs:
       fail-fast: false
       matrix:
         mode: [pessimistic_conjecture, ethproofs_soundcalc]
-        stage: [circuits, base_unified, unrolled]
-        include:
-          - mode: pessimistic_conjecture
-            stage: compression
-          - mode: ethproofs_soundcalc
-            stage: compression
+        stage: [circuits, base_unified, unrolled, compression]
     defaults:
       run:
         shell: bash

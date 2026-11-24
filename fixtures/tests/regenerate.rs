@@ -106,13 +106,13 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
         "#!/bin/sh\ntest -n \"$FIXTURE_CHAIN_ROOT\"\ntest -n \"$SMOKE_OUTPUT_DIR\"\ntest \"$3\" = cpu\n",
     );
     for mode in proof_fixtures::MODES {
-        for chain in proof_fixtures::chains(mode) {
+        for chain in proof_fixtures::CHAINS {
             let name = format!("{chain}.json.zlib");
             fs::write(root.join("fixtures/chains").join(mode).join(&name), &name).unwrap();
         }
     }
-    for backend in [None, Some("cpu")] {
-        for stage in ["base_unified", "unrolled", "compression"] {
+    for backend in [None, Some("cpu"), Some("gpu")] {
+        for stage in ["base_unified", "unrolled", "compression", "l1"] {
             let result = run_with_backend(
                 &root,
                 &["--check", "--mode", "ethproofs_soundcalc", "--stage", stage],
@@ -153,7 +153,7 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
         ),
         (
             "ethproofs_soundcalc",
-            &["base_unified", "unrolled", "compression"][..],
+            &["base_unified", "unrolled", "compression", "l1"][..],
         ),
     ] {
         for stage in stages {
@@ -177,16 +177,6 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
                 String::from_utf8_lossy(&result.stderr)
             );
         }
-    }
-    for backend in ["cpu", "gpu"] {
-        let result = run_with_backend(
-            &root,
-            &["--check", "--mode", "ethproofs_soundcalc", "--stage", "l1"],
-            Some(backend),
-        );
-        assert!(!result.status.success());
-        assert!(String::from_utf8_lossy(&result.stderr)
-            .contains("The fixture recipe manages only the pessimistic L1 fixture"));
     }
     assert!(trusted_params
         .join("pessimistic-conjecture-trusted-params.json")

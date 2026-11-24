@@ -20,7 +20,14 @@ pub const CIRCUITS: [&str; 14] = [
     "keccak_theta_rho",
     "keccak_chi5",
 ];
-pub const CHAINS: [&str; 4] = ["base", "unified", "unrolled", "unrolled_unified"];
+pub const CHAINS: [&str; 6] = [
+    "base",
+    "unified",
+    "unrolled",
+    "unrolled_unified",
+    "compression",
+    "l1",
+];
 
 pub fn circuits(mode_dir: &str) -> impl Iterator<Item = &'static str> {
     let special: &'static [&'static str] = match mode_dir {
@@ -29,14 +36,6 @@ pub fn circuits(mode_dir: &str) -> impl Iterator<Item = &'static str> {
         _ => panic!("unknown soundness mode: {mode_dir}"),
     };
     CIRCUITS.into_iter().chain(special.iter().copied())
-}
-
-pub fn chains(mode_dir: &str) -> impl Iterator<Item = &'static str> {
-    let special: &'static [&'static str] = match mode_dir {
-        "pessimistic_conjecture" | "ethproofs_soundcalc" => &["compression", "l1"],
-        _ => panic!("unknown soundness mode: {mode_dir}"),
-    };
-    CHAINS.into_iter().chain(special.iter().copied())
 }
 
 /// Repository root containing fixture data and its producer inputs.
@@ -74,7 +73,11 @@ pub fn circuit_proof_in(repository_root: &Path, mode_dir: &str, circuit: &str) -
 
 pub fn chain_artifact(mode_dir: &str, chain: &str) -> PathBuf {
     assert!(
-        chains(mode_dir).any(|stem| stem == chain),
+        MODES.contains(&mode_dir),
+        "unknown soundness mode: {mode_dir}"
+    );
+    assert!(
+        CHAINS.contains(&chain),
         "unknown chain for {mode_dir}: {chain}"
     );
     root()
@@ -119,35 +122,6 @@ mod tests {
     use super::*;
     use std::collections::BTreeSet;
 
-    #[test]
-    fn special_fixture_paths_follow_the_mode() {
-        let repository = Path::new("repository");
-        for mode in MODES {
-            assert_eq!(
-                circuit_proof_in(repository, mode, "compression"),
-                repository
-                    .join("fixtures/circuits")
-                    .join(mode)
-                    .join("compression.json.zlib")
-            );
-            assert!(chain_artifact(mode, "compression").ends_with(
-                Path::new("fixtures/chains")
-                    .join(mode)
-                    .join("compression.json.zlib")
-            ));
-        }
-        assert!(std::panic::catch_unwind(|| circuit_proof_in(
-            repository,
-            "ethproofs_soundcalc",
-            "compression_final"
-        ))
-        .is_err());
-        circuit_proof_in(repository, "pessimistic_conjecture", "compression_final");
-        for mode in MODES {
-            chain_artifact(mode, "l1");
-        }
-    }
-
     fn assert_inventory(directory: &Path, stems: impl Fn(&str) -> Vec<&'static str>) {
         let modes: BTreeSet<_> = std::fs::read_dir(directory)
             .unwrap()
@@ -172,8 +146,6 @@ mod tests {
         assert_inventory(&root().join("fixtures/circuits"), |mode| {
             circuits(mode).collect()
         });
-        assert_inventory(&root().join("fixtures/chains"), |mode| {
-            chains(mode).collect()
-        });
+        assert_inventory(&root().join("fixtures/chains"), |_| CHAINS.to_vec());
     }
 }

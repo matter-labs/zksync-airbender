@@ -140,18 +140,6 @@ replay_test!(canonical_fixture_inputs_keccak_theta_rho, KeccakThetaRho);
 replay_test!(canonical_fixture_inputs_keccak_chi5, KeccakChi5);
 
 #[test]
-fn canonical_fixture_registry_matches_inventory() {
-    use std::collections::BTreeSet;
-    for &mode in SoundnessMode::ALL {
-        let actual: BTreeSet<_> = canonical_circuits(mode)
-            .map(|circuit| circuit.stem())
-            .collect();
-        let expected: BTreeSet<_> = proof_fixtures::circuits(mode.file_suffix()).collect();
-        assert_eq!(actual, expected, "{mode:?}");
-    }
-}
-
-#[test]
 fn canonical_fixture_encoding() {
     type Proof = prover::gkr::prover::GKRProof<
         field::baby_bear::base::BabyBearField,

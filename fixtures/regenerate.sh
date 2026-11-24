@@ -22,13 +22,9 @@ case $stage_filter in
   ''|circuits|base_unified|unrolled|compression|l1) ;;
   *) echo "unknown stage: $stage_filter" >&2; exit 1 ;;
 esac
-case $stage_filter in
-  l1)
-    [[ $mode_filter != ethproofs_soundcalc ]] || {
-      echo "The fixture recipe manages only the pessimistic L1 fixture" >&2; exit 1;
-    }
-    mode_filter=pessimistic_conjecture ;;
-esac
+if [[ $stage_filter == l1 && -z $mode_filter ]]; then
+  mode_filter=pessimistic_conjecture
+fi
 backend=${FIXTURE_BACKEND:-cpu}
 case $backend in
   cpu|gpu) ;;
@@ -114,8 +110,7 @@ check_artifact() {
   # The cache includes compression records; L1 wrap verification stays external.
   if [[ -n $trusted_params && $name != l1 ]]; then
     local params="$trusted_params/$cli_mode-trusted-params.json"
-    local params_target=compression
-    [[ -f $params ]] || "$cli" trusted-params --bin "$bin" --soundness-mode "$cli_mode" --target "$params_target" --backend cpu --output "$params"
+    [[ -f $params ]] || "$cli" trusted-params --bin "$bin" --soundness-mode "$cli_mode" --target compression --backend cpu --output "$params"
     trusted=(--trusted-params "$params")
   fi
   "$cli" verify --proof "$file" --bin "$bin" --soundness-mode "$cli_mode" "${trusted[@]}"
@@ -130,8 +125,7 @@ for mode in "${modes[@]}"; do
   chain_out="$out_repo/fixtures/chains/$mode"
   chain_parent="$repo/fixtures/chains/$mode"
   common=(--bin "$bin" --backend "$backend" --soundness-mode "$cli_mode" --output-dir "$chain_out")
-  stages=(circuits base_unified unrolled compression)
-  [[ $mode != pessimistic_conjecture ]] || stages+=(l1)
+  stages=(circuits base_unified unrolled compression l1)
   [[ -z $stage_filter ]] || stages=("$stage_filter")
   for stage in "${stages[@]}"; do
     echo "== $mode / $stage"

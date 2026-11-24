@@ -101,8 +101,7 @@ root.
 
 Each mode has Standard CLI artifacts and `compression` and `l1` artifacts
 under `chains/<mode>/`. The CLI supports the L1 wrap target in both modes.
-The fixture recipe manages only the pessimistic L1 fixture. The fixtures use
-the tracked `examples/basic_fibonacci/app.bin` and have `program_cycles = 97`.
+The fixtures use the tracked `examples/basic_fibonacci/app.bin` and have `program_cycles = 97`.
 The recipe verifies its outputs and rejects absolute paths inside
 `Variable at ...` labels.
 The optional `l1` bundle is serialized only when present, so the eight standard
@@ -119,7 +118,7 @@ chain artifacts have no `l1` field.
 | `l1` (Ethproofs) | `compression` | wrap with the terminal Compression sidecar | 6 |
 
 The `prover_pipeline` test `committed_chain_encoding` checks each committed
-recipe-managed artifact's target, chain entries and `program_cycles`.
+artifact's target, chain entries and `program_cycles`.
 
 Write mode publishes each parent before its child. Check mode always reads the
 committed parents and compares only its own stage's outputs. On the CPU backend
@@ -155,12 +154,10 @@ fixtures/regenerate.sh --mode pessimistic_conjecture --stage l1
 git status --porcelain -- fixtures/chains/pessimistic_conjecture
 ```
 
-CPU CI checks compression currency. The fixture recipe regenerates the pessimistic
-L1 fixture on CPU. For the Ethproofs L1 fixture, continue the Ethproofs compression
-output with the CPU CLI using `--target l1 --soundness-mode ethproofs-soundcalc`.
-This uses the ETH1020-0047 wrap schedule. CLI verification checks the L1 envelope,
-chain and compression sidecar. The EVM verifier has generated projects for both
-of the Proth120 proofs.
+CPU CI checks compression currency. The recipe regenerates the Ethproofs L1 fixture
+with `--mode ethproofs_soundcalc --stage l1` using the ETH1020-0047 wrap schedule.
+CLI verification checks the L1 envelope, chain and compression sidecar. The EVM
+verifier has generated projects for both Proth120 proofs.
 The Standard stages use fixed Compression Blake modes. The unrolled-to-unified
 switch threshold is the library default unless `RECURSION_UNIFIED_SWITCH_CYCLES`
 is set; the recipe does not override it.
