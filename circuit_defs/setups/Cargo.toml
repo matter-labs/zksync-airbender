@@ -35,6 +35,7 @@ mul_div_unsigned = { workspace = true }
 shift_binary = { workspace = true }
 unified_reduced_machine = { workspace = true }
 unified_reduced_machine_2_22 = { workspace = true }
+unified_reduced_machine_proth120_2_22 = { workspace = true }
 
 serde = { workspace = true }
 serde_json = "*"

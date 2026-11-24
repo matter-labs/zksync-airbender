@@ -79,5 +79,5 @@ pub(super) struct BinaryHolder<B: ExecutionBackend> {
     /// The BabyBear RISC-V family circuits; empty for `ExecutionKind::L1Wrap`.
     pub(super) precomputations: HashMap<UnrolledCircuitType, B::Precomputations>,
     /// The Proth120 wrap circuit; `Some` for `ExecutionKind::L1Wrap` only.
-    pub(super) l1_wrap_precomputations: Option<B::Precomputations>,
+    pub(super) l1_wrap_precomputations: Option<(CircuitType, B::Precomputations)>,
 }

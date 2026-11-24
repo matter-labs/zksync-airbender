@@ -7,8 +7,7 @@ fn result() -> L1WrapResult {
         prover::gkr::prover_config::example_configs::l1_wrap::EXTERNAL_CHALLENGES_POW_BITS;
     let mut proof = empty_gkr_proof();
     proof.whir_proof.whir_schedule =
-        prover::gkr::prover_config::example_configs::l1_wrap::packed_prover_config()
-            .whir_schedule;
+        prover::gkr::prover_config::example_configs::l1_wrap::packed_prover_config().whir_schedule;
     L1WrapResult {
         proof,
         operation_mode: OperationMode::SingleChunk {

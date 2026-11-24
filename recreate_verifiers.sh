@@ -65,9 +65,14 @@ done
 (RUST_MIN_STACK=100000000 cargo test -p unified_reduced_machine_2_22 --profile cli --lib \
     test::witness_eval_fn_matches_sibling -- --exact)
 
+(RUST_MIN_STACK=100000000 cargo test -p unified_reduced_machine_proth120 --profile cli --lib \
+    test::l1_wrap22_is_current -- --exact)
+
 (cd circuit_defs/setups && RUST_MIN_STACK=100000000 cargo test --release generate_delegation_circuits_artifacts)
 
 cargo run -p gpu_witness_eval_generator --bin regenerate_committed
+cargo test -p gpu_witness_eval_generator --profile cli --lib \
+    tests::l1_wrap22_shares_committed_witness_cuh -- --exact
 
 for SCHEDULE in cs/compiled_circuits/*_schedule_b4_gkr.json; do
     STEM=$(basename "$SCHEDULE" _schedule_b4_gkr.json)

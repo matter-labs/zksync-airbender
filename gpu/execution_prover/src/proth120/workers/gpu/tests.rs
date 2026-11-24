@@ -7,6 +7,7 @@ use cpu_execution_prover::CpuExecutionProverConfiguration;
 use crossbeam_channel::unbounded;
 use era_cudart::device::set_device;
 use era_cudart::memory::{CudaHostAllocFlags, HostAllocation};
+use execution_prover::config::SoundnessMode;
 use execution_prover::messages::{L1WrapProofRequest, SetupInitializationRequest, WorkRequest};
 use execution_prover::setup::CanonicalCircuitSetup;
 use execution_prover_model::trace::ChunkedTraceHolder;
@@ -14,6 +15,7 @@ use fft::GoodAllocator;
 use full_statement_verifier::host_utils::{build_unified_stream, load_fsv_exact};
 use full_statement_verifier::program_proof::ProgramProof;
 use gpu_circuit_prover::proth120::L1Proof;
+use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -40,14 +42,11 @@ struct L1Artifact {
     l1: Bundle,
 }
 
-fn read_reference<T: DeserializeOwned>(chain: &str) -> T {
-    proof_fixtures::read_file(proof_fixtures::chain_artifact(
-        "pessimistic_conjecture",
-        chain,
-    ))
+fn read_reference<T: DeserializeOwned>(mode: SoundnessMode, chain: &str) -> T {
+    proof_fixtures::read_file(proof_fixtures::chain_artifact(mode.file_suffix(), chain))
 }
 
-fn wrap_program() -> (Vec<u32>, Vec<u32>) {
+fn wrap_program(mode: SoundnessMode) -> (Vec<u32>, Vec<u32>) {
     let dir = std::env::var_os("FSV_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
@@ -56,7 +55,12 @@ fn wrap_program() -> (Vec<u32>, Vec<u32>) {
         });
     load_fsv_exact(
         &dir,
-        &FsvDescriptor::pessimistic_compression(FsvProfile::CompressionFinalWrap),
+        &FsvDescriptor {
+            soundness_mode: mode,
+            profile: FsvProfile::CompressionFinalWrap,
+            program: verifier_common::fsv_binaries::FsvProgram::UnifiedRecursionLayer,
+            blake: BlakeMode::BlakeSpecialOpcodes,
+        },
     )
     .into_words()
 }
@@ -95,14 +99,18 @@ fn clone_setup(setup: &L1WrapSetup) -> L1WrapSetup {
     }
 }
 
-fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) {
+fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle, mode: SoundnessMode) {
     const WRAPS: u64 = 3;
-    assert_eq!(fixture.circuit_type, CircuitType::L1Wrap);
+    let (circuit_type, memory_preset) = match mode {
+        SoundnessMode::PessimisticConjecture => (CircuitType::L1Wrap, MemoryPreset::GiB30),
+        SoundnessMode::EthproofsSoundnessCalc => (CircuitType::L1Wrap22, MemoryPreset::GiB21),
+    };
+    assert_eq!(fixture.circuit_type, circuit_type);
     set_device(0).unwrap();
     let precomputations = CircuitPrecomputations::from_canonical(
-        CircuitType::L1Wrap,
+        circuit_type,
         CanonicalCircuitSetup::L1Wrap(clone_setup(fixture.setup)),
-        execution_prover::config::SoundnessMode::PessimisticConjecture,
+        mode,
         &[ProofProfile::L1Wrap],
     );
     let inits_and_teardowns = InitsAndTeardownsTraceHost {
@@ -117,7 +125,7 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) {
         .send(Some(WorkRequest::SetupInitialization(
             SetupInitializationRequest {
                 batch_id: 0,
-                circuit_type: CircuitType::L1Wrap,
+                circuit_type,
                 sequence_id: 0,
                 precomputations: precomputations.clone(),
             },
@@ -127,7 +135,7 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) {
         requests_sender
             .send(Some(WorkRequest::L1WrapProof(L1WrapProofRequest {
                 batch_id,
-                circuit_type: CircuitType::L1Wrap,
+                circuit_type,
                 precomputations: precomputations.clone(),
                 inits_and_teardowns: inits_and_teardowns.clone(),
                 tracing_data: tracing_data.clone(),
@@ -141,7 +149,7 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) {
     let (initialized_sender, _initialized) = unbounded();
     let (results_sender, results) = unbounded();
     let config = GpuBackendConfiguration {
-        memory_preset: MemoryPreset::GiB30,
+        memory_preset,
         ..Default::default()
     }
     .context_config();
@@ -173,17 +181,27 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle) {
 #[test]
 #[ignore = "proves the 2^21 L1 wrap three times on the GPU"]
 fn l1_wrap_followed_worker_pessimistic_parity() {
+    followed_worker_parity(SoundnessMode::PessimisticConjecture);
+}
+
+#[test]
+#[ignore = "proves the 2^22 L1 wrap three times on the GPU"]
+fn l1_wrap_followed_worker_ethproofs_parity() {
+    followed_worker_parity(SoundnessMode::EthproofsSoundnessCalc);
+}
+
+fn followed_worker_parity(mode: SoundnessMode) {
     let _ = env_logger::builder()
         .is_test(true)
         .format_timestamp_millis()
         .try_init();
-    let compression: CompressionArtifact = read_reference("compression");
+    let compression: CompressionArtifact = read_reference(mode, "compression");
     assert!(
         compression.schema_version == 5 && compression.target == "Compression",
         "L1 reference last-compression checkpoint must be a schema-5 Compression artifact"
     );
-    let L1Artifact { l1: bundle } = read_reference("l1");
-    let (bin, text) = wrap_program();
+    let L1Artifact { l1: bundle } = read_reference(mode, "l1");
+    let (bin, text) = wrap_program(mode);
     let nd_words = build_unified_stream(
         &compression.setups,
         &compression.proof,
@@ -191,11 +209,66 @@ fn l1_wrap_followed_worker_pessimistic_parity() {
     );
     drop(compression);
     with_l1_wrap_fixture(
-        CpuExecutionProverConfiguration::default(),
+        CpuExecutionProverConfiguration::for_mode(mode),
         bin,
         text,
         nd_words,
         None,
-        move |fixture| run_followed_worker(&fixture, &bundle),
+        move |fixture| run_followed_worker(&fixture, &bundle, mode),
     );
+}
+
+#[test]
+#[should_panic(expected = "L1 wrap request L1Wrap22 disagrees with its precomputations")]
+fn l1_wrap_request_identity_must_match_its_precomputations() {
+    set_device(0).unwrap();
+    let circuit_type = CircuitType::L1Wrap;
+    let rom = circuit_type.rom();
+    let setup = L1WrapSetup {
+        circuit: serde_json::from_str(include_str!(
+            "../../../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json"
+        ))
+        .unwrap(),
+        table_driver: prover::cs::tables::TableDriver::new(),
+        decoder_table: vec![None; rom.word_size()],
+        setup: prover::gkr::prover::setup::GKRSetup {
+            hypercube_evals: Vec::new(),
+        },
+        trace_len: circuit_type.get_domain_size(),
+        rom,
+    };
+    let precomputations = CircuitPrecomputations::from_canonical(
+        circuit_type,
+        CanonicalCircuitSetup::L1Wrap(setup),
+        execution_prover::config::SoundnessMode::PessimisticConjecture,
+        &[ProofProfile::L1Wrap],
+    );
+    let context = ProverContext::new(&gpu_prover_context::ProverContextConfig {
+        device_allocation_blocks_count: Some(256),
+        host_allocator_blocks_count: 1024,
+        ..Default::default()
+    })
+    .unwrap();
+    let request = L1WrapProofRequest {
+        batch_id: 0,
+        circuit_type: CircuitType::L1Wrap22,
+        precomputations,
+        inits_and_teardowns: InitsAndTeardownsTraceHost {
+            page_indices: ChunkedTraceHolder { chunks: vec![] },
+            values_packed: ChunkedTraceHolder { chunks: vec![] },
+            timestamps_packed: ChunkedTraceHolder { chunks: vec![] },
+            top_bits: vec![0, 0],
+        },
+        tracing_data: ChunkedTraceHolder { chunks: vec![] },
+        operation_mode: OperationMode::SingleChunk {
+            external_challenges_pow_bits: 0,
+            register_final_state: [prover::definitions::FinalRegisterValue {
+                value: 0,
+                last_access_timestamp: 0,
+            }; 32],
+            final_pc: 0,
+            final_timestamp: 0,
+        },
+    };
+    let _ = schedule_l1_wrap_phase_one(0, &context, request);
 }

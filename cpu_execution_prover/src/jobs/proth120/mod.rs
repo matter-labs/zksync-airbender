@@ -29,6 +29,15 @@ pub(super) fn run<A: HostTraceAllocator>(
         operation_mode,
     } = request;
     let precomputed = precomputations.l1_wrap();
+    assert!(
+        circuit_type.is_l1_wrap(),
+        "Proth120 CPU requires an L1 wrap circuit type, got {circuit_type:?}"
+    );
+    assert_eq!(
+        precomputed.setup.trace_len,
+        circuit_type.get_domain_size(),
+        "L1 wrap request {circuit_type:?} disagrees with its setup"
+    );
     let committed = precomputed.committed();
     let setup = &precomputed.setup;
     assert_eq!(
@@ -107,7 +116,7 @@ pub(crate) fn evaluate_witness<A: HostTraceAllocator>(
         decoder_table: &setup.decoder_table,
     };
     let witness_eval_fn = match circuit_type {
-        CircuitType::L1Wrap => l1_wrap::witness_eval_fn,
+        CircuitType::L1Wrap | CircuitType::L1Wrap22 => l1_wrap::witness_eval_fn,
         other => panic!("{other:?} is not an L1 wrap circuit"),
     };
     evaluate_gkr_witness_for_executor_family::<Proth120, _, _, _>(
@@ -132,4 +141,60 @@ pub fn expand_inits_and_teardowns<A: HostTraceAllocator>(
     trace_len_log2: u32,
 ) -> Vec<([Vec<Proth120>; 2], [Vec<Proth120>; 2])> {
     inits_and_teardowns::expand::<Proth120, A>(trace, num_sets, trace_len_log2)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::upstream::{CpuGKRSetup, OperationMode, TableDriver};
+    use execution_prover::config::SoundnessMode;
+    use execution_prover::setup::CanonicalCircuitSetup;
+    use execution_prover::ProofProfile;
+    use execution_prover_model::allocator::CpuTraceAllocator;
+    use execution_prover_model::trace::ChunkedTraceHolder;
+    use prover::definitions::FinalRegisterValue;
+
+    #[test]
+    #[should_panic(expected = "L1 wrap request L1Wrap22 disagrees with its setup")]
+    fn l1_wrap_request_identity_must_match_its_setup() {
+        let circuit_type = CircuitType::L1Wrap;
+        let rom = circuit_type.rom();
+        let setup = L1WrapSetup {
+            circuit: l1_wrap::circuit_artifact(),
+            table_driver: TableDriver::new(),
+            decoder_table: vec![None; rom.word_size()],
+            setup: CpuGKRSetup {
+                hypercube_evals: Vec::new(),
+            },
+            trace_len: circuit_type.get_domain_size(),
+            rom,
+        };
+        let request = L1WrapProofRequest::<CpuTraceAllocator, _> {
+            batch_id: 0,
+            circuit_type: CircuitType::L1Wrap22,
+            precomputations: CpuCircuitPrecomputations::from_canonical(
+                circuit_type,
+                CanonicalCircuitSetup::L1Wrap(setup),
+                SoundnessMode::PessimisticConjecture,
+                &[ProofProfile::L1Wrap],
+            ),
+            inits_and_teardowns: InitsAndTeardownsTraceHost {
+                page_indices: ChunkedTraceHolder { chunks: vec![] },
+                values_packed: ChunkedTraceHolder { chunks: vec![] },
+                timestamps_packed: ChunkedTraceHolder { chunks: vec![] },
+                top_bits: vec![0, 0],
+            },
+            tracing_data: ChunkedTraceHolder { chunks: vec![] },
+            operation_mode: OperationMode::SingleChunk {
+                external_challenges_pow_bits: 0,
+                register_final_state: [FinalRegisterValue {
+                    value: 0,
+                    last_access_timestamp: 0,
+                }; 32],
+                final_pc: 0,
+                final_timestamp: 0,
+            },
+        };
+        run(request, &Worker::new_with_num_threads(1));
+    }
 }

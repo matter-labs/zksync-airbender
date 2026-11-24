@@ -37,10 +37,14 @@ const _: () = assert!(PR_FWD_VM_BUCKETS == 4);
 
 impl GkrProgramsPr {
     pub fn compile(circuit_type: CircuitType, artifact: Arc<GKRCircuitArtifact<PR>>) -> Self {
+        assert!(
+            circuit_type.is_l1_wrap(),
+            "Proth120 GPU requires an L1 wrap circuit type, got {circuit_type:?}"
+        );
         assert_eq!(
-            circuit_type,
-            CircuitType::L1Wrap,
-            "Proth120 GKR supports CircuitType::L1Wrap only"
+            artifact.trace_len,
+            circuit_type.get_domain_size(),
+            "{circuit_type:?} disagrees with its Proth120 GKR layout"
         );
         Self::compile_with_schedule(artifact, SCHEDULE)
             .expect("committed Proth120 GKR programs must compile")

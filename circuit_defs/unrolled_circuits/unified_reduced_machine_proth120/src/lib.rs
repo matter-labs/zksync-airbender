@@ -63,6 +63,17 @@ pub mod l1_wrap {
         worker: &prover::worker::Worker,
     ) -> L1WrapSetup {
         let circuit = circuit_artifact();
+        assert_eq!(circuit.trace_len, 1 << TRACE_LEN_LOG2);
+        l1_wrap_setup_from_artifact(circuit, binary, text, worker)
+    }
+
+    #[doc(hidden)]
+    pub fn l1_wrap_setup_from_artifact(
+        circuit: GKRCircuitArtifact<Proth120>,
+        binary: &[u32],
+        text: &[u32],
+        worker: &prover::worker::Worker,
+    ) -> L1WrapSetup {
         assert!(
             binary.len() <= ROM.word_size() && text.len() <= ROM.word_size(),
             "the wrap image ({} binary / {} text words) exceeds the 2^{}-word ROM",
@@ -70,7 +81,6 @@ pub mod l1_wrap {
             text.len(),
             ROM.word_size().trailing_zeros()
         );
-        assert_eq!(circuit.trace_len, 1 << TRACE_LEN_LOG2);
         assert_eq!(
             circuit.memory_layout.teardown_sets.len(),
             NUM_INIT_AND_TEARDOWN_SETS
@@ -95,7 +105,7 @@ pub mod l1_wrap {
             Proth120,
             { L1_WRAP_ROM.second_word_bits() },
         >(binary);
-        let trace_len = 1 << TRACE_LEN_LOG2;
+        let trace_len = circuit.trace_len;
         let setup = GKRSetup::construct(&table_driver, &decoder_table, trace_len, &circuit, worker);
         L1WrapSetup {
             circuit,
@@ -129,17 +139,11 @@ mod test {
     use std::io::Write;
     use test_utils::skip_if_ci;
 
-    /// Writes `generated/layout.json` and `generated/witness_generation_fn.rs`.
-    #[test]
-    fn generate() {
-        skip_if_ci!();
+    fn compile(trace_len_log2: usize) -> GKRCircuitArtifact<Proth120> {
+        build_unified_artifact_core::<Proth120, BabyBearField>(true, trace_len_log2, 1, L1_WRAP_ROM)
+    }
 
-        let layout = build_unified_artifact_core::<Proth120, BabyBearField>(
-            true,
-            l1_wrap::TRACE_LEN_LOG2,
-            1,
-            L1_WRAP_ROM,
-        );
+    fn witness(layout: &GKRCircuitArtifact<Proth120>) -> String {
         let ssa = dump_ssa_witness_eval_form::<Proth120>(
             &|cs| unified_register_all_tables(cs, L1_WRAP_ROM),
             &|cs| {
@@ -150,14 +154,62 @@ mod test {
                 >(cs, L1_WRAP_ROM)
             },
         );
+        witness_eval_generator::derive_from_ssa::derive_from_gkr_ssa(
+            &ssa, layout, false, "Proth120",
+        )
+        .to_string()
+    }
+
+    /// Writes `generated/layout.json` and `generated/witness_generation_fn.rs`.
+    #[test]
+    fn generate() {
+        skip_if_ci!();
+
+        let layout = compile(l1_wrap::TRACE_LEN_LOG2);
         let mut dst = std::fs::File::create("generated/layout.json").unwrap();
         serde_json::to_writer_pretty(&mut dst, &layout).unwrap();
-        let witness = witness_eval_generator::derive_from_ssa::derive_from_gkr_ssa(
-            &ssa, &layout, false, "Proth120",
-        );
         std::fs::File::create("generated/witness_generation_fn.rs")
             .unwrap()
-            .write_all(witness.to_string().as_bytes())
+            .write_all(witness(&layout).as_bytes())
             .unwrap();
+    }
+
+    const L1_WRAP22_LAYOUT: &str = "../unified_reduced_machine_proth120_2_22/generated/layout.json";
+
+    #[test]
+    fn generate_l1_wrap22() {
+        skip_if_ci!();
+
+        let layout =
+            compile(prover::gkr::prover_config::example_configs::l1_wrap::ETHPROOFS_TRACE_LEN_LOG2);
+        let dst = std::fs::File::create(L1_WRAP22_LAYOUT).unwrap();
+        serde_json::to_writer_pretty(dst, &layout).unwrap();
+    }
+
+    #[test]
+    fn l1_wrap22_is_current() {
+        use prover::gkr::prover_config::example_configs::l1_wrap::ETHPROOFS_TRACE_LEN_LOG2;
+
+        let layout = compile(ETHPROOFS_TRACE_LEN_LOG2);
+        let committed = std::fs::read_to_string(L1_WRAP22_LAYOUT).unwrap();
+        assert!(
+            serde_json::to_string_pretty(&layout).unwrap() == committed,
+            "the committed 2^22 L1 wrap layout is stale"
+        );
+        let mut wrap22: serde_json::Value = serde_json::from_str(&committed).unwrap();
+        let mut wrap21: serde_json::Value = serde_json::from_str(l1_wrap::LAYOUT_JSON).unwrap();
+        assert_eq!(
+            wrap22.as_object_mut().unwrap().remove("trace_len").unwrap(),
+            1 << ETHPROOFS_TRACE_LEN_LOG2
+        );
+        assert_eq!(
+            wrap21.as_object_mut().unwrap().remove("trace_len").unwrap(),
+            1 << l1_wrap::TRACE_LEN_LOG2
+        );
+        assert!(wrap21 == wrap22, "L1 wrap layouts differ beyond trace_len");
+        assert!(
+            witness(&layout) == include_str!("../generated/witness_generation_fn.rs"),
+            "2^22 L1 wrap witness generation differs from the shared witness function"
+        );
     }
 }

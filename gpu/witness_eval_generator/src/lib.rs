@@ -858,6 +858,27 @@ mod tests {
         );
     }
 
+    #[test]
+    fn l1_wrap22_shares_committed_witness_cuh() {
+        let root = repo_root();
+        let wrap21 = CIRCUITS
+            .iter()
+            .find(|circuit| circuit.id == "unified_reduced_machine_proth120")
+            .unwrap();
+        let wrap22 = generate_from_files_for_field::<Proth120>(
+            root.join("circuit_defs/unrolled_circuits/unified_reduced_machine_proth120_2_22/generated/layout.json"),
+            root.join(wrap21.inputs.ssa_json),
+            false,
+        )
+        .unwrap();
+        let committed = std::fs::read_to_string(wrap21.committed_path(&root)).unwrap();
+        assert!(
+            wrap22 == committed,
+            "2^22 L1 wrap CUDA witness differs from the shared witness: {}",
+            first_diff(&wrap22, &committed)
+        );
+    }
+
     /// Completeness guard: every committed `witness_generation_fn.cuh` under
     /// `circuit_defs/` must be listed in `CIRCUITS`. Without this, a future
     /// artifact added without a table entry would be silently unguarded by

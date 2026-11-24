@@ -98,13 +98,20 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                 precomputations,
                 l1_wrap_precomputations,
                 (setup_time, preparation_time),
-            ) = if execution_kind.is_l1_wrap() {
-                let (instruction_tape, precomputations) =
-                    self.prepare_l1_wrap(&padded_binary_image, &text_section, &profiles);
+            ) = if let Some(circuit_type) = execution_kind
+                .unified_circuit_in_mode(self.configuration.soundness_mode)
+                .filter(CircuitType::is_l1_wrap)
+            {
+                let (instruction_tape, precomputations) = self.prepare_l1_wrap(
+                    circuit_type,
+                    &padded_binary_image,
+                    &text_section,
+                    &profiles,
+                );
                 (
                     instruction_tape,
                     HashMap::new(),
-                    Some(precomputations),
+                    Some((circuit_type, precomputations)),
                     Default::default(),
                 )
             } else {
@@ -140,7 +147,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                     .chain(
                         l1_wrap_precomputations
                             .iter()
-                            .map(|precomp| (CircuitType::L1Wrap, precomp.clone())),
+                            .map(|(circuit_type, precomp)| (*circuit_type, precomp.clone())),
                     )
                     .collect(),
             );

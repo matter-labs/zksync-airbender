@@ -224,7 +224,12 @@ fn alternate_case(case: WrapCase) {
     };
     assert_eq!(proof_pc, final_pc);
     let worker = Worker::new();
-    let setup = l1_wrap_setup(binary, &image.padded_text_words(), &worker);
+    let setup = match mode {
+        SoundnessMode::PessimisticConjecture => l1_wrap_setup,
+        SoundnessMode::EthproofsSoundnessCalc => {
+            trace_and_split::setups::unrolled_circuits::unified_reduced_machine_proth120_2_22::l1_wrap_setup
+        }
+    }(binary, &image.padded_text_words(), &worker);
     let twiddles = Twiddles::new(1 << config.whir_message_size_log2(), &worker);
     let rows: Vec<_> = setup
         .setup

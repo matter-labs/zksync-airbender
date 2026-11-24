@@ -96,11 +96,11 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
     /// The instruction tape and prepared setup of an L1 wrap binary.
     pub(super) fn prepare_l1_wrap(
         &self,
+        circuit_type: CircuitType,
         padded_binary_image: &[u32],
         text_section: &[u32],
         profiles: &[ProofProfile],
     ) -> (Arc<SimpleTape>, B::Precomputations) {
-        let circuit_type = CircuitType::L1Wrap;
         let instruction_tape = Arc::new(SimpleTape::new(
             &riscv_transpiler::ir::simple_instruction_set::preprocess_bytecode::<
                 riscv_transpiler::ir::ReducedMachineDecoderConfig,
@@ -112,11 +112,13 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             &mut padded_text_section,
             circuit_type.rom(),
         );
-        let setup = unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup(
-            padded_binary_image,
-            &padded_text_section,
-            &self.worker,
-        );
+        let setup = match circuit_type {
+            CircuitType::L1Wrap => unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup,
+            CircuitType::L1Wrap22 => {
+                setups::unrolled_circuits::unified_reduced_machine_proth120_2_22::l1_wrap_setup
+            }
+            other => panic!("{other:?} is not an L1 wrap circuit"),
+        }(padded_binary_image, &padded_text_section, &self.worker);
         assert_eq!(setup.trace_len, circuit_type.get_domain_size());
         assert_eq!(setup.rom, circuit_type.rom());
         assert_eq!(
@@ -157,26 +159,29 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             &Arc::new(AtomicBool::new(false)),
         );
         drop(sender);
-        let trace =
-            collect_l1_wrap_trace(holder.execution_kind.unified_circuit().unwrap(), receiver);
+        let (circuit_type, precomputations) = holder
+            .l1_wrap_precomputations
+            .as_ref()
+            .expect("L1Wrap setup was not registered");
+        let trace = collect_l1_wrap_trace(*circuit_type, receiver);
         drop(
             non_determinism_return
                 .recv()
                 .expect("wrap simulation did not return its non-determinism source"),
         );
-        self.prove_l1_wrap_trace(batch_id, holder, trace)
+        self.prove_l1_wrap_trace(batch_id, *circuit_type, precomputations, trace)
     }
 
     fn prove_l1_wrap_trace(
         &self,
         batch_id: u64,
-        holder: &BinaryHolder<B>,
+        circuit_type: CircuitType,
+        precomputations: &B::Precomputations,
         trace: L1WrapTrace<B::Allocator>,
     ) -> L1WrapResult {
-        let circuit_type = holder.execution_kind.unified_circuit().unwrap();
         use ::prover::gkr::prover_config::example_configs::l1_wrap;
         let external_challenges_pow_bits = match circuit_type {
-            CircuitType::L1Wrap => l1_wrap::EXTERNAL_CHALLENGES_POW_BITS,
+            CircuitType::L1Wrap | CircuitType::L1Wrap22 => l1_wrap::EXTERNAL_CHALLENGES_POW_BITS,
             other => panic!("{other:?} is not an L1 wrap circuit"),
         };
         let operation_mode = OperationMode::SingleChunk {
@@ -196,11 +201,7 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             .send(WorkRequest::L1WrapProof(L1WrapProofRequest {
                 batch_id,
                 circuit_type,
-                precomputations: holder
-                    .l1_wrap_precomputations
-                    .as_ref()
-                    .expect("L1Wrap setup was not registered")
-                    .clone(),
+                precomputations: precomputations.clone(),
                 inits_and_teardowns: trace.inits_and_teardowns,
                 tracing_data: trace.tracing_data,
                 operation_mode,

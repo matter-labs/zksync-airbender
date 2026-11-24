@@ -79,9 +79,7 @@ impl ProofProfile {
             (Self::L1Wrap, mode) => {
                 use example_configs::l1_wrap;
                 let config = match mode {
-                    SoundnessMode::PessimisticConjecture => {
-                        l1_wrap::packed_prover_config()
-                    }
+                    SoundnessMode::PessimisticConjecture => l1_wrap::packed_prover_config(),
                     SoundnessMode::EthproofsSoundnessCalc => {
                         l1_wrap::ethproofs_packed_prover_config()
                     }
