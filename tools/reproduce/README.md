@@ -22,6 +22,10 @@ only the full-statement verifiers; `--only-circuit-verifiers` builds only the pe
 verifiers, from the generated sources already in the tree. CI checks the two sets in separate
 jobs. `build.sh` passes its arguments on to the script.
 
+Cargo binary targets end in `_pessimistic_conjecture` or `_ethproofs_soundcalc`.
+The dump scripts remove the mode suffix from the ELF filename because the
+containing directory already identifies the mode.
+
 The build uses the native toolchain pinned by `tools/gkr_verifier/rust-toolchain.toml` (rustup
 installs it on first use, including the `rust-src` / `llvm-tools` components and the
 `riscv32i-unknown-none-elf` target) plus `cargo-binutils` for `cargo objcopy`:

@@ -21,11 +21,11 @@ field = { path = "../../field", default-features = false, features = ["modular_o
 full_statement_verifier = { path = "../../full_statement_verifier", default-features = false, features = ["verifiers"] }
 
 [[bin]]
-name = "fsv_unified_recursion_layer_sec_100_compression_final_wrap"
+name = "fsv_unified_recursion_layer_sec_100_compression_final_wrap_pessimistic_conjecture"
 path = "src/bin/pessimistic_conjecture/fsv_unified_recursion_layer_sec_100_compression_final_wrap.rs"
 
 [[bin]]
-name = "fsv_unified_recursion_layer_sec_100_compression_wrap"
+name = "fsv_unified_recursion_layer_sec_100_compression_wrap_ethproofs_soundcalc"
 path = "src/bin/ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100_compression_wrap.rs"
 
 [workspace]

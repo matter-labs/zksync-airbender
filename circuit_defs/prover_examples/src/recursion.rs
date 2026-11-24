@@ -5,9 +5,9 @@
 //!
 //! 1. Prove the `zksync_os` app+witness as a **base layer** program (unrolled
 //!    machine mode, IM ISA + delegations). Verify natively.
-//! 2. Feed that proof into `fsv_unrolled_base_layer_sec_100` and prove it
+//! 2. Feed that proof into `fsv_unrolled_base_layer_sec_100_pessimistic_conjecture` and prove it
 //!    (unrolled machine mode, reduced ISA + delegations). Verify natively.
-//! 3. Feed into `fsv_unrolled_recursion_layer_sec_100`, prove (unrolled, reduced).
+//! 3. Feed into `fsv_unrolled_recursion_layer_sec_100_pessimistic_conjecture`, prove (unrolled, reduced).
 //!    Before each round we *measure* how many cycles running the verifier over
 //!    the current proof would take; we keep recursing on the unrolled machine
 //!    while that stays at/above a configurable threshold.
@@ -15,7 +15,7 @@
 //!    (`RECURSION_UNIFIED_SWITCH_CYCLES`, default 64M), **bridge** to the unified
 //!    machine: re-prove the unrolled verifier over the last unrolled proof in
 //!    **unified** machine mode, emitting a *unified* single-circuit proof.
-//! 5. Feed the unified proof into `fsv_unified_recursion_layer_sec_100` and prove
+//! 5. Feed the unified proof into `fsv_unified_recursion_layer_sec_100_pessimistic_conjecture` and prove
 //!    it in unified machine mode. Verify natively.
 //!
 //! Blake variants of the recursive verifiers are selected at runtime, per stage:

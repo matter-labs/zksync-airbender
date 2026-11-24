@@ -25,10 +25,8 @@ build_variant() {
     circuit="$1"
     soundness="$2"
     mode="$3"
-    case "$soundness" in
-        pessimistic_conjecture) bin="${circuit}"; dir="full_statement_verifiers/pessimistic_conjecture" ;;
-        ethproofs_soundcalc) bin="${circuit}_ethproofs_soundcalc"; dir="full_statement_verifiers/ethproofs_soundcalc" ;;
-    esac
+    bin="${circuit}_${soundness}"
+    dir="full_statement_verifiers/${soundness}"
     echo "==> building ${circuit} (soundness: ${soundness}, blake: ${mode}, variant: ${VARIANT})"
     ./dump_bin.sh --blake "${mode}" --variant "${VARIANT}" "${bin}"
     mv -f "${dir}/${circuit}.elf" "${dir}/${circuit}_${mode}.elf"

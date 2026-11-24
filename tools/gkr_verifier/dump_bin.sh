@@ -23,11 +23,11 @@ usage() {
     echo "  -h, --help      show this message"
     echo ""
     echo "Binaries (cargo bin names):"
-    echo "  pessimistic_conjecture full statement verifiers -> full_statement_verifiers/pessimistic_conjecture/<name>.elf:"
-    ls src/bin/full_statement_verifiers/pessimistic_conjecture/*.rs 2>/dev/null | sed 's|.*/||;s|\.rs||;s|^|    |'
-    echo "  ethproofs_soundcalc full statement verifiers <name>_ethproofs_soundcalc"
-    echo "    -> full_statement_verifiers/ethproofs_soundcalc/<name>.elf:"
-    ls src/bin/full_statement_verifiers/ethproofs_soundcalc/*.rs 2>/dev/null | sed 's|.*/||;s|\.rs||;s|^|    |;s|$|_ethproofs_soundcalc|'
+    echo "  full statement verifiers <name>_<mode> -> full_statement_verifiers/<mode>/<name>.elf:"
+    for m in src/bin/full_statement_verifiers/*/; do
+        m=$(basename "$m")
+        ls "src/bin/full_statement_verifiers/$m"/*.rs 2>/dev/null | sed "s|.*/||;s|\.rs||;s|^|    |;s|\$|_$m|"
+    done
     echo "  per-circuit verifiers <circuit>_<mode> -> circuit_verifiers/<mode>/<circuit>.elf:"
     for m in src/bin/circuit_verifiers/*/; do
         m=$(basename "$m")
@@ -67,14 +67,11 @@ case "$SEC" in
     *) echo "ERROR: --sec currently supports only 100 (got '$SEC')" >&2; exit 1 ;;
 esac
 
-# Binary name -> output path. Per-circuit verifiers are named `<circuit>_<mode>` and land in
-# `circuit_verifiers/<mode>/<circuit>.elf`; pessimistic-conjecture full statement verifiers keep
-# their name in `full_statement_verifiers/pessimistic_conjecture/`. Ethproofs-soundcalc guests (`fsv_<name>_ethproofs_soundcalc`)
-# land in `full_statement_verifiers/ethproofs_soundcalc/fsv_<name>.elf`.
+# Both sets use `<name>_<mode>` Cargo targets and store `<name>.elf` in the mode directory.
 out_path() {
     case "$1" in
+        fsv_*_pessimistic_conjecture) echo "full_statement_verifiers/pessimistic_conjecture/${1%_pessimistic_conjecture}.elf" ;;
         fsv_*_ethproofs_soundcalc) echo "full_statement_verifiers/ethproofs_soundcalc/${1%_ethproofs_soundcalc}.elf" ;;
-        fsv_*) echo "full_statement_verifiers/pessimistic_conjecture/$1.elf" ;;
         *_pessimistic_conjecture) echo "circuit_verifiers/pessimistic_conjecture/${1%_pessimistic_conjecture}.elf" ;;
         *_ethproofs_soundcalc) echo "circuit_verifiers/ethproofs_soundcalc/${1%_ethproofs_soundcalc}.elf" ;;
         *) echo "ERROR: unknown binary naming for $1" >&2; exit 1 ;;
@@ -87,8 +84,11 @@ out_path() {
 if [ $# -gt 0 ]; then
     CIRCUITS="$@"
 else
-    FSV=$(ls src/bin/full_statement_verifiers/pessimistic_conjecture/*.rs | sed 's|.*/||;s|\.rs||' | grep "_sec_${SEC}")
-    FSV="$FSV $(ls src/bin/full_statement_verifiers/ethproofs_soundcalc/*.rs | sed 's|.*/||;s|\.rs||;s|$|_ethproofs_soundcalc|' | grep "_sec_${SEC}_")"
+    FSV=""
+    for m in src/bin/full_statement_verifiers/*/; do
+        m=$(basename "$m")
+        FSV="$FSV $(ls "src/bin/full_statement_verifiers/$m"/*.rs | sed "s|.*/||;s|\.rs||;s|\$|_$m|" | grep "_sec_${SEC}_")"
+    done
     PER_CIRCUIT=""
     for m in src/bin/circuit_verifiers/*/; do
         m=$(basename "$m")

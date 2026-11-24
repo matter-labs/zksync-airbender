@@ -119,13 +119,13 @@ pub fn native_verify_unified_compression_in_mode(
         .spawn(move || {
             use crate::unified_circuit_statement::{
                 verify_unified_circuit_recursion_layer_sec_100_compression_ethproofs_soundcalc,
-                verify_unified_circuit_recursion_layer_sec_100_compression_final,
+                verify_unified_circuit_recursion_layer_sec_100_compression_final_pessimistic_conjecture,
             };
             use verifier_common::errors::DebugErrorCreator;
             let mut it = stream.into_iter();
             let output = match mode {
                 SoundnessMode::PessimisticConjecture => {
-                    verify_unified_circuit_recursion_layer_sec_100_compression_final::<
+                    verify_unified_circuit_recursion_layer_sec_100_compression_final_pessimistic_conjecture::<
                         _,
                         DebugErrorCreator,
                         USE_REDUCED_BLAKE2_ROUNDS,

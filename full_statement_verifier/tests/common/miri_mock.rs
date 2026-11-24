@@ -360,7 +360,7 @@ macro_rules! compression_statement {
 
 compression_statement!(
     pessimistic_conjecture_compression,
-    unified_reduced_machine_sec_100_compression_final,
+    unified_reduced_machine_sec_100_compression_final_pessimistic_conjecture,
     verify_full_statement_for_unified_circuit_without_delegations
 );
 compression_statement!(

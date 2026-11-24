@@ -30,11 +30,9 @@ const _: fn(
     ethproofs_soundcalc::unified_reduced_machine::ConcreteVerifierOutput,
 ) -> UnifiedCircuitOutput = |o| o;
 
-// The module name is part of the reproducible compression guest's ELF symbols.
-#[path = "unified_reduced_machine_sec_100_compression_pessimistic_conjecture.rs"]
-pub mod unified_reduced_machine_sec_100_compression;
 pub mod unified_reduced_machine_sec_100_compression_ethproofs_soundcalc;
-pub mod unified_reduced_machine_sec_100_compression_final;
+pub mod unified_reduced_machine_sec_100_compression_final_pessimistic_conjecture;
+pub mod unified_reduced_machine_sec_100_compression_pessimistic_conjecture;
 
 /// The unified verifier output at setup cap `CAP`: the standard verifier's
 /// shape (`UnifiedCircuitOutput` at [`prover::definitions::DEFAULT_CAP_SIZE`])
@@ -47,14 +45,14 @@ pub type UnifiedCircuitOutputWithCap<const CAP: usize> = verifier_common::Verifi
     { pessimistic_conjecture::unified_reduced_machine::NUM_SETUP_COMMITS },
 >;
 const _: () = assert!(
-    unified_reduced_machine_sec_100_compression_final::INIT_AND_TEARDOWN_SETS
+    unified_reduced_machine_sec_100_compression_final_pessimistic_conjecture::INIT_AND_TEARDOWN_SETS
         == pessimistic_conjecture::unified_reduced_machine::INIT_AND_TEARDOWN_SETS
 );
 const _: () = assert!(
-    unified_reduced_machine_sec_100_compression_final::NUM_MEMORY_COMMITS
+    unified_reduced_machine_sec_100_compression_final_pessimistic_conjecture::NUM_MEMORY_COMMITS
         == pessimistic_conjecture::unified_reduced_machine::NUM_MEMORY_COMMITS
 );
 const _: () = assert!(
-    unified_reduced_machine_sec_100_compression_final::NUM_SETUP_COMMITS
+    unified_reduced_machine_sec_100_compression_final_pessimistic_conjecture::NUM_SETUP_COMMITS
         == pessimistic_conjecture::unified_reduced_machine::NUM_SETUP_COMMITS
 );

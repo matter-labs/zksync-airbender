@@ -35,8 +35,10 @@ tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT
 
 build_guest() {
-    local bin=$1 dest=$2
-    local stem=${bin}_special_opcodes_extension
+    local name=$1 soundness=$2
+    local bin=${name}_${soundness}
+    local stem=${name}_special_opcodes_extension
+    local dest=$out_dir/$soundness
     local -a flags=(--locked --release -Z panic-immediate-abort -Z build-std=core,alloc
                     --config "build.rustflags=[${REMAP_ARGS},\"-A\",\"warnings\",\"-C\",\"link-arg=-Map=wrap-link.map\"]"
                     -p gkr_verifier_l1_wrap --bin "$bin")
@@ -46,5 +48,5 @@ build_guest() {
     cp "$tmp_dir/$stem.elf" "$dest/$stem.elf"
 }
 
-build_guest fsv_unified_recursion_layer_sec_100_compression_final_wrap "$out_dir/pessimistic_conjecture"
-build_guest fsv_unified_recursion_layer_sec_100_compression_wrap "$out_dir/ethproofs_soundcalc"
+build_guest fsv_unified_recursion_layer_sec_100_compression_final_wrap pessimistic_conjecture
+build_guest fsv_unified_recursion_layer_sec_100_compression_wrap ethproofs_soundcalc
