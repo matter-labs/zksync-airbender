@@ -58,7 +58,7 @@ impl ProofProfile {
                 );
                 match soundness_mode {
                     SoundnessMode::PessimisticConjecture => {
-                        example_configs::compression_config_for_2_23()
+                        example_configs::pessimistic_compression_config_for_2_23()
                     }
                     SoundnessMode::EthproofsSoundnessCalc => {
                         example_configs::ethproofs_compression_config_for_2_23()
@@ -899,8 +899,8 @@ mod test {
         }
         for config in [
             example_configs::compression_final_config_for_2_22(),
-            example_configs::compression_config_for_2_23(),
-            example_configs::l1_wrap::packed_prover_config(),
+            example_configs::pessimistic_compression_config_for_2_23(),
+            example_configs::l1_wrap::pessimistic_packed_prover_config(),
         ] {
             config.validate_for_whir_message_size(config.whir_message_size_log2());
         }

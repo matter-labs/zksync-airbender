@@ -55,10 +55,7 @@ fn wrap_program(mode: SoundnessMode) -> (Vec<u32>, Vec<u32>) {
         });
     load_fsv_exact(
         &dir,
-        &FsvDescriptor {
-            soundness_mode: mode,
-            ..FsvDescriptor::compression(FsvProfile::CompressionFinalWrap)
-        },
+        &FsvDescriptor::compression(mode, FsvProfile::CompressionFinalWrap),
     )
     .into_words()
 }
@@ -178,7 +175,7 @@ fn run_followed_worker(fixture: &L1WrapFixture<'_>, bundle: &Bundle, mode: Sound
 
 #[test]
 #[ignore = "proves the 2^21 L1 wrap three times on the GPU"]
-fn l1_wrap_followed_worker_parity() {
+fn l1_wrap_followed_worker_pessimistic_parity() {
     followed_worker_parity(SoundnessMode::PessimisticConjecture);
 }
 

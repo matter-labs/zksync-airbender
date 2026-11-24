@@ -778,7 +778,7 @@ fn test_program_prover_recursion_layer_verify() {
     )[0];
     let (fsv_binary, fsv_text) = ProgramSource::elf(
         artifact_root()
-            .join("tools/gkr_verifier/full_statement_verifiers/fsv_unrolled_base_layer_sec_100_blake2_with_compression.elf"),
+            .join("tools/gkr_verifier/full_statement_verifiers/pessimistic_conjecture/fsv_unrolled_base_layer_sec_100_blake2_with_compression.elf"),
     )
     .load_unpadded();
     let verifier = prover.add_binary_variants(

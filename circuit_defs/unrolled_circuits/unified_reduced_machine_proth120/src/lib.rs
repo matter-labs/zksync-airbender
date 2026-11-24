@@ -165,7 +165,7 @@ mod test {
     fn generate() {
         skip_if_ci!();
 
-        let layout = compile(l1_wrap::TRACE_LEN_LOG2);
+        let layout = compile(l1_wrap::PESSIMISTIC_TRACE_LEN_LOG2);
         let mut dst = std::fs::File::create("generated/layout.json").unwrap();
         serde_json::to_writer_pretty(&mut dst, &layout).unwrap();
         std::fs::File::create("generated/witness_generation_fn.rs")
@@ -204,7 +204,7 @@ mod test {
         );
         assert_eq!(
             wrap21.as_object_mut().unwrap().remove("trace_len").unwrap(),
-            1 << l1_wrap::TRACE_LEN_LOG2
+            1 << l1_wrap::PESSIMISTIC_TRACE_LEN_LOG2
         );
         assert!(wrap21 == wrap22, "L1 wrap layouts differ beyond trace_len");
         assert!(

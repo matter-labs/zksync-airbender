@@ -46,5 +46,5 @@ build_guest() {
     cp "$tmp_dir/$stem.elf" "$dest/$stem.elf"
 }
 
-build_guest fsv_unified_recursion_layer_sec_100_compression_final_wrap "$out_dir"
+build_guest fsv_unified_recursion_layer_sec_100_compression_final_wrap "$out_dir/pessimistic_conjecture"
 build_guest fsv_unified_recursion_layer_sec_100_compression_wrap "$out_dir/ethproofs_soundcalc"

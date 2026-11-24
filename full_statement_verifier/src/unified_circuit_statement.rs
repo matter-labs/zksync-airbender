@@ -483,7 +483,7 @@ macro_rules! compression_statement {
 }
 
 compression_statement!(
-    verify_unified_circuit_recursion_layer_sec_100_compression,
+    verify_unified_circuit_recursion_layer_sec_100_compression_pessimistic_conjecture,
     unified_reduced_machine_sec_100_compression,
     verify_full_statement_for_unified_circuit_without_delegations
 );

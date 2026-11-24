@@ -23,8 +23,8 @@ usage() {
     echo "  -h, --help      show this message"
     echo ""
     echo "Binaries (cargo bin names):"
-    echo "  full statement verifiers -> full_statement_verifiers/<name>.elf:"
-    ls src/bin/full_statement_verifiers/*.rs 2>/dev/null | sed 's|.*/||;s|\.rs||;s|^|    |'
+    echo "  pessimistic_conjecture full statement verifiers -> full_statement_verifiers/pessimistic_conjecture/<name>.elf:"
+    ls src/bin/full_statement_verifiers/pessimistic_conjecture/*.rs 2>/dev/null | sed 's|.*/||;s|\.rs||;s|^|    |'
     echo "  ethproofs_soundcalc full statement verifiers <name>_ethproofs_soundcalc"
     echo "    -> full_statement_verifiers/ethproofs_soundcalc/<name>.elf:"
     ls src/bin/full_statement_verifiers/ethproofs_soundcalc/*.rs 2>/dev/null | sed 's|.*/||;s|\.rs||;s|^|    |;s|$|_ethproofs_soundcalc|'
@@ -69,12 +69,12 @@ esac
 
 # Binary name -> output path. Per-circuit verifiers are named `<circuit>_<mode>` and land in
 # `circuit_verifiers/<mode>/<circuit>.elf`; pessimistic-conjecture full statement verifiers keep
-# their name in `full_statement_verifiers/`, ethproofs-soundcalc ones (`fsv_<name>_ethproofs_soundcalc`)
+# their name in `full_statement_verifiers/pessimistic_conjecture/`. Ethproofs-soundcalc guests (`fsv_<name>_ethproofs_soundcalc`)
 # land in `full_statement_verifiers/ethproofs_soundcalc/fsv_<name>.elf`.
 out_path() {
     case "$1" in
         fsv_*_ethproofs_soundcalc) echo "full_statement_verifiers/ethproofs_soundcalc/${1%_ethproofs_soundcalc}.elf" ;;
-        fsv_*) echo "full_statement_verifiers/$1.elf" ;;
+        fsv_*) echo "full_statement_verifiers/pessimistic_conjecture/$1.elf" ;;
         *_pessimistic_conjecture) echo "circuit_verifiers/pessimistic_conjecture/${1%_pessimistic_conjecture}.elf" ;;
         *_ethproofs_soundcalc) echo "circuit_verifiers/ethproofs_soundcalc/${1%_ethproofs_soundcalc}.elf" ;;
         *) echo "ERROR: unknown binary naming for $1" >&2; exit 1 ;;
@@ -87,7 +87,7 @@ out_path() {
 if [ $# -gt 0 ]; then
     CIRCUITS="$@"
 else
-    FSV=$(ls src/bin/full_statement_verifiers/*.rs | sed 's|.*/||;s|\.rs||' | grep "_sec_${SEC}")
+    FSV=$(ls src/bin/full_statement_verifiers/pessimistic_conjecture/*.rs | sed 's|.*/||;s|\.rs||' | grep "_sec_${SEC}")
     FSV="$FSV $(ls src/bin/full_statement_verifiers/ethproofs_soundcalc/*.rs | sed 's|.*/||;s|\.rs||;s|$|_ethproofs_soundcalc|' | grep "_sec_${SEC}_")"
     PER_CIRCUIT=""
     for m in src/bin/circuit_verifiers/*/; do

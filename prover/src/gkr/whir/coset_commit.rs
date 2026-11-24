@@ -1198,11 +1198,11 @@ mod test {
 
     fn packed_recompute_setup_matches_materialized_with(num_columns: usize) {
         use crate::gkr::prover::setup::GKRSetup;
-        use crate::gkr::prover_config::example_configs::l1_wrap::packed_prover_config;
+        use crate::gkr::prover_config::example_configs::l1_wrap::pessimistic_packed_prover_config;
         use std::sync::Arc;
 
         let worker = Worker::new_with_num_threads(2);
-        let mut config = packed_prover_config();
+        let mut config = pessimistic_packed_prover_config();
         config.trace_len_log2 = 6;
         let trace_len = 1 << config.trace_len_log2;
         let setup = GKRSetup {

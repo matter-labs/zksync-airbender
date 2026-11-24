@@ -2,7 +2,7 @@ use prover::gkr::prover_config::{example_configs::l1_wrap, ProverConfig};
 use verifier_evm::generator::WhirGenConfig;
 
 fn candidate() -> ProverConfig {
-    let mut config = l1_wrap::packed_prover_config();
+    let mut config = l1_wrap::pessimistic_packed_prover_config();
     let base = &mut config.whir_schedule.base_round;
     base.lde_factor_log2 = 8;
     base.num_queries = 11;
@@ -21,8 +21,8 @@ fn candidate() -> ProverConfig {
 }
 
 #[test]
-fn canonical_l1_wrap_schedule() {
-    let config = l1_wrap::packed_prover_config();
+fn canonical_pessimistic_l1_schedule() {
+    let config = l1_wrap::pessimistic_packed_prover_config();
     config.validate_for_whir_message_size(24);
     let schedule = &config.whir_schedule;
     assert_eq!(schedule, &candidate().whir_schedule);

@@ -26,7 +26,7 @@ build_variant() {
     soundness="$2"
     mode="$3"
     case "$soundness" in
-        pessimistic_conjecture) bin="${circuit}"; dir="full_statement_verifiers" ;;
+        pessimistic_conjecture) bin="${circuit}"; dir="full_statement_verifiers/pessimistic_conjecture" ;;
         ethproofs_soundcalc) bin="${circuit}_ethproofs_soundcalc"; dir="full_statement_verifiers/ethproofs_soundcalc" ;;
     esac
     echo "==> building ${circuit} (soundness: ${soundness}, blake: ${mode}, variant: ${VARIANT})"

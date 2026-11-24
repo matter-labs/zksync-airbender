@@ -43,23 +43,23 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("verifier_
 # guests is `verifier_common::fsv_binaries::FSV_REGISTRY`. ---
 [[bin]]
 name = "fsv_unrolled_base_layer_sec_100"
-path = "src/bin/full_statement_verifiers/fsv_unrolled_base_layer_sec_100.rs"
+path = "src/bin/full_statement_verifiers/pessimistic_conjecture/fsv_unrolled_base_layer_sec_100.rs"
 
 [[bin]]
 name = "fsv_unrolled_recursion_layer_sec_100"
-path = "src/bin/full_statement_verifiers/fsv_unrolled_recursion_layer_sec_100.rs"
+path = "src/bin/full_statement_verifiers/pessimistic_conjecture/fsv_unrolled_recursion_layer_sec_100.rs"
 
 [[bin]]
 name = "fsv_unified_base_layer_sec_100"
-path = "src/bin/full_statement_verifiers/fsv_unified_base_layer_sec_100.rs"
+path = "src/bin/full_statement_verifiers/pessimistic_conjecture/fsv_unified_base_layer_sec_100.rs"
 
 [[bin]]
 name = "fsv_unified_recursion_layer_sec_100"
-path = "src/bin/full_statement_verifiers/fsv_unified_recursion_layer_sec_100.rs"
+path = "src/bin/full_statement_verifiers/pessimistic_conjecture/fsv_unified_recursion_layer_sec_100.rs"
 
 [[bin]]
 name = "fsv_unified_recursion_layer_sec_100_compression"
-path = "src/bin/full_statement_verifiers/fsv_unified_recursion_layer_sec_100_compression.rs"
+path = "src/bin/full_statement_verifiers/pessimistic_conjecture/fsv_unified_recursion_layer_sec_100_compression.rs"
 
 # --- Full-statement verifiers wired to the ethproofs-soundcalc circuit verifiers
 # (`full_statement_verifiers/ethproofs_soundcalc/<name without the mode suffix>_<blake>.elf`).

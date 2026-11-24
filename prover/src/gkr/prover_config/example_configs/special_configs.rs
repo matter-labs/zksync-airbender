@@ -89,12 +89,12 @@ const COMPRESSION_FINAL_WHIR_STEPS_LDE_FACTORS: [usize; 4] = [32, 1024, 32768, 1
 /// that can meet the security target. Each value is the least PoW that meets it.
 pub const COMPRESSION_FINAL_POW_BITS: [u32; 5] = [24, 25, 25, 25, 17];
 
-const COMPRESSION_BASE_LDE_FACTOR: usize = 4;
+const PESSIMISTIC_COMPRESSION_BASE_LDE_FACTOR: usize = 4;
 
 /// Repeatable Compression uses a deliberate 25-bit PoW cap to fix the query
 /// count at the fewest queries that can meet the security target. Each value is
 /// the least PoW that meets it.
-pub const COMPRESSION_POW_BITS: [u32; 5] = [25, 25, 25, 25, 17];
+pub const PESSIMISTIC_COMPRESSION_POW_BITS: [u32; 5] = [25, 25, 25, 25, 17];
 
 /// The cap must equal the base LDE: coset commitment requires cap <= LDE,
 /// while splitting the memory cap requires cap >= LDE.
@@ -164,16 +164,16 @@ pub fn compression_final_config_for_2_22() -> ProverConfig {
 }
 
 /// Repeatable Compression profile.
-pub fn compression_config_for_2_23() -> ProverConfig {
+pub fn pessimistic_compression_config_for_2_23() -> ProverConfig {
     compression_config(
         23,
-        COMPRESSION_BASE_LDE_FACTOR,
+        PESSIMISTIC_COMPRESSION_BASE_LDE_FACTOR,
         vec![1, 5, 5, 5, 4],
         &queries_and_pow_under_pessimistic_conjecture(
             SecurityLevel::Sec100,
-            COMPRESSION_BASE_LDE_FACTOR,
+            PESSIMISTIC_COMPRESSION_BASE_LDE_FACTOR,
             &COMPRESSION_FINAL_WHIR_STEPS_LDE_FACTORS,
-            COMPRESSION_POW_BITS,
+            PESSIMISTIC_COMPRESSION_POW_BITS,
         ),
     )
 }
@@ -195,38 +195,39 @@ pub mod l1_wrap {
     use std::path::PathBuf;
     use std::sync::OnceLock;
 
-    pub const TRACE_LEN_LOG2: usize = 21;
+    pub const PESSIMISTIC_TRACE_LEN_LOG2: usize = 21;
     pub const ETHPROOFS_TRACE_LEN_LOG2: usize = 22;
     pub const PACK_LOG2: usize = 3;
     pub const EXPLICIT_OUTPUT_LOG2: usize = 2;
     pub const EXTERNAL_CHALLENGES_POW_BITS: u32 = 20;
 
-    const BASE_LDE_FACTOR: usize = 1 << 8;
-    const WHIR_STEPS_LDE_FACTORS: [usize; 4] = [1 << 9, 1 << 12, 1 << 17, 1 << 21];
+    const PESSIMISTIC_BASE_LDE_FACTOR: usize = 1 << 8;
+    const PESSIMISTIC_INTERNAL_LDE_FACTORS: [usize; 4] = [1 << 9, 1 << 12, 1 << 17, 1 << 21];
 
     /// Each round uses the least PoW satisfying `6 * pow + 5 * queries * rate_bits >= 600`.
-    pub const POW_BITS: [u32; 5] = [27, 25, 30, 30, 30];
+    pub const PESSIMISTIC_QUERY_POW_BITS: [u32; 5] = [27, 25, 30, 30, 30];
 
     /// The largest list size each oracle's binding term tolerates at the
     /// configured PoW. These are tolerances, not derived list bounds.
-    pub const LIST_SIZE_CEILINGS: [usize; 5] = [1_044_721_774, 673, 5_387, 172_384, 2_758_157];
+    pub const PESSIMISTIC_LIST_SIZE_CEILINGS: [usize; 5] =
+        [1_044_721_774, 673, 5_387, 172_384, 2_758_157];
 
     /// 100-bit WHIR accounting under the pessimistic conjecture: queries
     /// contribute r/1.2 bits (`PessimisticConjectureMode` in
     /// `whir/proximity_testing_modes.rs`), and the linear proximity-gap charge
     /// in `pow_bits.rs` is applied to each fold. With mu = 37/2^128, every
     /// WHIR RS substep keeps 100 bits for list sizes up to
-    /// [`LIST_SIZE_CEILINGS`]. Nominal-100 shifts have an accepted
+    /// [`PESSIMISTIC_LIST_SIZE_CEILINGS`]. Nominal-100 shifts have an accepted
     /// deficit below 10^-6 bit. The base commitment has no OOD sample. The GKR
     /// evaluation claims bind it for the WHIR rounds; the conjecture assumes
     /// that the lookup and GKR challenges drawn before them carry no list
     /// factor.
-    pub fn packed_prover_config() -> ProverConfig {
+    pub fn pessimistic_packed_prover_config() -> ProverConfig {
         const SCHEDULE_ENV: &str = "AB_L1_WHIR_SCHEDULE";
         static CONFIG: OnceLock<ProverConfig> = OnceLock::new();
         CONFIG
             .get_or_init(|| {
-                let mut config = default_packed_prover_config();
+                let mut config = default_pessimistic_packed_prover_config();
                 let Some(path) = std::env::var_os(SCHEDULE_ENV).map(PathBuf::from) else {
                     return config;
                 };
@@ -252,19 +253,19 @@ pub mod l1_wrap {
             .clone()
     }
 
-    fn default_packed_prover_config() -> ProverConfig {
+    fn default_pessimistic_packed_prover_config() -> ProverConfig {
         const CAP_SIZE: usize = 8;
         let level = SecurityLevel::Sec100;
         let queries_and_pow = queries_and_pow_under_pessimistic_conjecture(
             level,
-            BASE_LDE_FACTOR,
-            &WHIR_STEPS_LDE_FACTORS,
-            POW_BITS,
+            PESSIMISTIC_BASE_LDE_FACTOR,
+            &PESSIMISTIC_INTERNAL_LDE_FACTORS,
+            PESSIMISTIC_QUERY_POW_BITS,
         );
         ProverConfig {
-            trace_len_log2: TRACE_LEN_LOG2,
+            trace_len_log2: PESSIMISTIC_TRACE_LEN_LOG2,
             commitment_mode: CommitmentMode::MergedMemoryAndWitness,
-            same_size_sumcheck_schedule: windowed_same_size_schedule(TRACE_LEN_LOG2),
+            same_size_sumcheck_schedule: windowed_same_size_schedule(PESSIMISTIC_TRACE_LEN_LOG2),
             dimension_reducing_sumcheck_schedule: Default::default(),
             cap_size: CAP_SIZE,
             sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
@@ -273,7 +274,7 @@ pub mod l1_wrap {
             whir_schedule: WhirSchedule {
                 cap_size: CAP_SIZE,
                 base_round: crate::gkr::prover_config::WhirBaseRoundSchedule {
-                    lde_factor_log2: BASE_LDE_FACTOR.trailing_zeros() as usize,
+                    lde_factor_log2: PESSIMISTIC_BASE_LDE_FACTOR.trailing_zeros() as usize,
                     physical_packing_log2: PACK_LOG2,
                     fold_log2: 1,
                     batching_pow_bits: None,
@@ -281,7 +282,7 @@ pub mod l1_wrap {
                     num_queries: queries_and_pow[0].0,
                     queries_pow_bits: queries_and_pow[0].1,
                 },
-                internal_rounds: WHIR_STEPS_LDE_FACTORS
+                internal_rounds: PESSIMISTIC_INTERNAL_LDE_FACTORS
                     .iter()
                     .enumerate()
                     .map(|(i, lde)| crate::gkr::prover_config::WhirInternalRound {
@@ -300,7 +301,7 @@ pub mod l1_wrap {
 
     pub fn packed_prover_config_in_mode(mode: SoundnessMode) -> ProverConfig {
         match mode {
-            SoundnessMode::PessimisticConjecture => packed_prover_config(),
+            SoundnessMode::PessimisticConjecture => pessimistic_packed_prover_config(),
             SoundnessMode::EthproofsSoundnessCalc => ethproofs_packed_prover_config(),
         }
     }

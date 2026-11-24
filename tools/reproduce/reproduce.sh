@@ -72,6 +72,6 @@ if [ "$CIRCUIT_VERIFIERS" = 1 ]; then
 fi
 
 echo "==> checksums"
-for f in full_statement_verifiers/*.elf full_statement_verifiers/*/*.elf circuit_verifiers/*/*.elf; do
+for f in full_statement_verifiers/*/*.elf circuit_verifiers/*/*.elf; do
     [ -f "$f" ] && shasum -a 256 "$f"
 done | sort -k2 -u

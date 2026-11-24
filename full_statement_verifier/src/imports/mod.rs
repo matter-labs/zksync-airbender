@@ -30,6 +30,8 @@ const _: fn(
     ethproofs_soundcalc::unified_reduced_machine::ConcreteVerifierOutput,
 ) -> UnifiedCircuitOutput = |o| o;
 
+// The module name is part of the reproducible compression guest's ELF symbols.
+#[path = "unified_reduced_machine_sec_100_compression_pessimistic_conjecture.rs"]
 pub mod unified_reduced_machine_sec_100_compression;
 pub mod unified_reduced_machine_sec_100_compression_ethproofs_soundcalc;
 pub mod unified_reduced_machine_sec_100_compression_final;

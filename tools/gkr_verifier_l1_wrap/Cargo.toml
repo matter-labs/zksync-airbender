@@ -22,11 +22,11 @@ full_statement_verifier = { path = "../../full_statement_verifier", default-feat
 
 [[bin]]
 name = "fsv_unified_recursion_layer_sec_100_compression_final_wrap"
-path = "src/bin/fsv_unified_recursion_layer_sec_100_compression_final_wrap.rs"
+path = "src/bin/pessimistic_conjecture/fsv_unified_recursion_layer_sec_100_compression_final_wrap.rs"
 
 [[bin]]
 name = "fsv_unified_recursion_layer_sec_100_compression_wrap"
-path = "src/bin/fsv_unified_recursion_layer_sec_100_compression_wrap.rs"
+path = "src/bin/ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100_compression_wrap.rs"
 
 [workspace]
 

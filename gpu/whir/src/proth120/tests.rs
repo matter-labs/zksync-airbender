@@ -780,7 +780,7 @@ impl HostReplay {
 
 #[test]
 #[ignore = "production L1 WHIR query PoW and transcript draws on GPU"]
-fn pr_transcript_phases_match_reference() {
+fn pr_transcript_phases_match_pessimistic_fixture() {
     #[derive(serde::Deserialize)]
     struct Bundle {
         proof: verifier_evm::seed::Proof,
@@ -974,7 +974,7 @@ fn assert_whir_transcript_phases(
         let nonce = download(&nonces[r..r + 1], stream)[0];
         assert_eq!(nonce, whir_nonces[r], "round {r} nonce");
         println!(
-            "pr_transcript_phases_match_reference round {r} pow bits={} nonce={nonce} seconds={seconds:.3}",
+            "pr_transcript_phases_match_pessimistic_fixture round {r} pow bits={} nonce={nonce} seconds={seconds:.3}",
             round.pow_bits
         );
         <Keccak256Transcript as Transcript<PR, PR>>::verify_pow(

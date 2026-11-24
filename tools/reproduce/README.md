@@ -14,7 +14,7 @@ and `ethproofs_soundcalc`): the delegation circuits' setup parameters
 `generate_delegation_circuits_artifacts` test) and every circuit's verifier
 (`verifier/src/generated/<circuit>/<mode>/`, via the `verifier_generator` crate's
 `generate_verifiers` test). Then it builds the binaries: the full-statement verifiers of both
-modes (`full_statement_verifiers/` and `full_statement_verifiers/ethproofs_soundcalc/`, the set
+modes (`full_statement_verifiers/pessimistic_conjecture/` and `full_statement_verifiers/ethproofs_soundcalc/`, the set
 `verifier_common::fsv_binaries::FSV_REGISTRY` names) and the per-circuit verifiers.
 `--skip-generate-verifiers` keeps the circuit verifiers already in the tree; `build.sh` passes it
 because `recreate_verifiers.sh` has just regenerated them. `--skip-circuit-verifiers` builds
