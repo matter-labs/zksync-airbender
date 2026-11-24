@@ -252,7 +252,18 @@ jobs:
           for mode in pessimistic_conjecture ethproofs_soundcalc; do
             stages=(base_unified unrolled compression l1)
             for stage in "${stages[@]}"; do
-              fixtures/regenerate.sh --check --mode "$mode" --stage "$stage" || failed=1
+              if [[ $mode == ethproofs_soundcalc && $stage == l1 ]]; then
+                (
+                  tmp=$(mktemp -d) &&
+                  "$FIXTURE_CLI" continue-proof --bin examples/basic_fibonacci/app.bin --backend gpu \
+                    --gpu-memory-preset 21gib --soundness-mode ethproofs-soundcalc \
+                    --proof fixtures/chains/ethproofs_soundcalc/compression.json.zlib \
+                    --target l1 --output-dir "$tmp" --output-file l1.json.zlib &&
+                  cmp "$tmp/l1.json.zlib" fixtures/chains/ethproofs_soundcalc/l1.json.zlib
+                ) || failed=1
+              else
+                fixtures/regenerate.sh --check --mode "$mode" --stage "$stage" || failed=1
+              fi
             done
           done
           exit "$failed"
