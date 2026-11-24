@@ -45,7 +45,6 @@ pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig
         // NOT the WHIR plain-text tail, which the WHIR schedule determines).
         sumcheck_explicit_output_size_log_2: 4,
         security_level: level,
-        lookup_challenges_pow_floor: None,
         // base LDE factor 32 (base_lde_log2 = 5), round-0 values-per-leaf =
         // 2^2; 6 rounds ending in a 2^4 plain-text tail; the 6th round's
         // huge-LDE oracle (the 2^8 poly on a 2^31 domain) is cheap with the
@@ -115,7 +114,6 @@ fn compression_config(
         cap_size: base_lde_factor,
         sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
         security_level: SecurityLevel::Sec100,
-        lookup_challenges_pow_floor: None,
         whir_schedule: WhirSchedule::from_legacy_arrays(
             base_lde_factor,
             base_lde_factor,
@@ -243,7 +241,6 @@ pub mod l1_wrap {
             cap_size: CAP_SIZE,
             sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
             security_level: level,
-            lookup_challenges_pow_floor: None,
             whir_schedule: WhirSchedule {
                 cap_size: CAP_SIZE,
                 base_round: crate::gkr::prover_config::WhirBaseRoundSchedule {

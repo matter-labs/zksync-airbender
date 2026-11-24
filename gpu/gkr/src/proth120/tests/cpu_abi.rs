@@ -25,7 +25,7 @@ fn cpu_pr_lookup_pow_bits_follow_the_config() {
 
     let programs = programs();
     let circuit = &programs.runtime_circuit;
-    let mut config = prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(
+    let config = prover::gkr::prover_config::ProofProfile::L1Wrap.prover_config(
         21,
         prover::definitions::SoundnessMode::PessimisticConjecture,
     );
@@ -35,12 +35,10 @@ fn cpu_pr_lookup_pow_bits_follow_the_config() {
     );
     for external in [0, derived, derived + 1] {
         assert_eq!(
-            lookup_pow_bits(circuit, &config, external),
+            lookup_pow_bits(circuit, config.security_level, external),
             derived.max(external)
         );
     }
-    config.lookup_challenges_pow_floor = Some(derived + 1);
-    assert_eq!(lookup_pow_bits(circuit, &config, 0), derived + 1);
 }
 
 #[test]
