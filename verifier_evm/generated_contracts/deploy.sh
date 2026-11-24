@@ -66,7 +66,8 @@ if [ -z "$GENERATED_REGISTRY" ]; then
   echo "ERROR: generated registry constant not found; regenerate the verifier." >&2
   exit 1
 fi
-registry_initcode=$(jq -r '.bytecode.object' "$MODE/merged/out/TestRegistry.sol/TestRegistry.json")
+registry_artifact="$MODE/merged/out/TestRegistry.sol/TestRegistry.json"
+registry_initcode=$(jq -r '.bytecode.object' "$registry_artifact")
 if [ -z "$REGISTRY_ADDR" ]; then
   # CreateX hashes this unpermissioned, cross-chain-unprotected salt before CREATE2:
   # https://github.com/pcaversaccio/createx/blob/main/src/CreateX.sol (_guard).
@@ -91,9 +92,18 @@ if [ "$factory_code" = "0x" ]; then
 fi
 
 if [ -z "$REGISTRY_ADDR" ]; then
-  echo "== deploying TestRegistry via CreateX deployCreate2 =="
-  registry_initcode=$(jq -r '.bytecode.object' "$MODE/merged/out/TestRegistry.sol/TestRegistry.json")
-  REGISTRY_ADDR=$(deploy_create2 "$REGISTRY_SALT" "$registry_initcode")
+  registry_code=$(cast code "$EXPECTED_REGISTRY" --rpc-url "$RPC")
+  registry_runtime=$(jq -r '.deployedBytecode.object' "$registry_artifact")
+  if [ "$registry_code" = "0x" ]; then
+    echo "== deploying TestRegistry via CreateX deployCreate2 =="
+    REGISTRY_ADDR=$(deploy_create2 "$REGISTRY_SALT" "$registry_initcode")
+  elif [ "$registry_code" = "$registry_runtime" ]; then
+    echo "== reusing TestRegistry at $EXPECTED_REGISTRY =="
+    REGISTRY_ADDR=$EXPECTED_REGISTRY
+  else
+    echo "ERROR: registry code at $EXPECTED_REGISTRY differs from TestRegistry." >&2
+    exit 1
+  fi
 fi
 echo "   registry        : $REGISTRY_ADDR"
 

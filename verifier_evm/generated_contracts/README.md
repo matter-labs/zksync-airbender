@@ -98,7 +98,10 @@ sh verifier_evm/generated_contracts/run_merged.sh
 ```
 
 `deploy.sh <mode>` builds the selected L1 project and deploys the registry and
-verifier. `send_proof.sh <mode> <verifier-address>` reads the committed calldata
+verifier. It reuses the default registry when its deployed runtime matches
+`TestRegistry`. To deploy the second mode with the first mode's registry, set
+`REGISTRY_ADDR=<first registry address>` to the address printed by the first run.
+`send_proof.sh <mode> <verifier-address>` reads the committed calldata
 through `<mode>/merged/script/SendProof.s.sol`
 and broadcasts one verification transaction. The proof stays on disk rather than in
 a command argument, whose length limit it exceeds on Linux. Both scripts expect a
