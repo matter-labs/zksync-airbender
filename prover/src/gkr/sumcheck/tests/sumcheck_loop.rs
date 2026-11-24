@@ -28,6 +28,7 @@ fn test_prover_config() -> prover_config::ProverConfig {
         cap_size: 64,
         sumcheck_explicit_output_size_log_2: 4,
         security_level: crate::definitions::SecurityLevel::Sec100,
+        lookup_challenges_pow_floor: None,
         whir_schedule: crate::gkr::prover::WhirSchedule {
             cap_size: 64,
             base_round: prover_config::WhirBaseRoundSchedule {
