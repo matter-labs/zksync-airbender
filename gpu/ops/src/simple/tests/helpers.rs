@@ -217,7 +217,7 @@ pub(super) const E4_VALUES: [E4; 6] = [
     E4::new(E2_VALUES[5], E2_VALUES[5]),
 ];
 
-pub(super) const PR_VALUES: [PR; 8] = [
+pub(super) const PR_VALUES: [PR; 20] = [
     PR::ZERO,
     PR::ONE,
     PR::TWO,
@@ -226,6 +226,18 @@ pub(super) const PR_VALUES: [PR; 8] = [
     PR::new(1 << 64),
     PR::new(1 << 120),
     PR::from_u128_with_reduction(u128::MAX),
+    PR::from_raw_u128((1 << 32) - 1),
+    PR::from_raw_u128(1 << 32),
+    PR::from_raw_u128((1 << 32) + 1),
+    PR::from_raw_u128((1 << 64) - 1),
+    PR::from_raw_u128(1 << 64),
+    PR::from_raw_u128((1 << 64) + 1),
+    PR::from_raw_u128((1 << 96) - 1),
+    PR::from_raw_u128(1 << 96),
+    PR::from_raw_u128((1 << 96) + 1),
+    PR::from_raw_u128((1 << 120) - 1),
+    PR::from_raw_u128(1 << 120),
+    PR::from_raw_u128((1 << 120) + 1),
 ];
 
 pub(super) fn get_values<T: Field>(count: usize, additional_values: &[T]) -> Vec<T> {

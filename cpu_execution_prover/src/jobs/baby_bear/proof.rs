@@ -42,7 +42,7 @@ pub(in crate::jobs) fn run<A: HostTraceAllocator>(
         tracing_data,
         external_challenges,
         memory_caps,
-        memory_partial_trees: _,
+        memory_partial_trees,
         profile,
     } = request;
     let config = precomputations.config(profile);
@@ -94,6 +94,7 @@ pub(in crate::jobs) fn run<A: HostTraceAllocator>(
         inits_and_teardowns,
         tracing_data,
         proof,
+        memory_partial_trees: memory_partial_trees.map(|trees| trees.nodes),
     }
 }
 
@@ -105,7 +106,7 @@ pub(super) fn build_witness<A: HostTraceAllocator>(
     worker: &Worker,
 ) -> (Witness, Vec<u32>) {
     match circuit_type {
-        CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => {
+        CircuitType::L1Wrap => {
             panic!("L1Wrap requires its typed proof request")
         }
         CircuitType::Unrolled(UnrolledCircuitType::NonMemory(_)) => {

@@ -16,7 +16,6 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
     batch_id: u64,
     external_challenges: Option<&GKRExternalChallenges<BF, E4>>,
     proof_caps: &BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
-    proof_partial_trees: &mut BTreeMap<(CircuitType, usize), MemoryPartialTrees<B::Allocator>>,
     work_requests_sender: &Sender<WorkRequest<B::Allocator, B::Precomputations>>,
     profile: ProofProfile,
 ) -> CacheSeedOutcome {
@@ -37,6 +36,7 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
                 sequence_id,
                 inits_and_teardowns,
                 tracing_data,
+                memory_partial_trees,
             } = entry;
             if matches!(
                 circuit_type,
@@ -53,7 +53,7 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
                 _ => profile,
             };
             let precomputations = match circuit_type {
-                CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => {
+                CircuitType::L1Wrap => {
                     panic!("L1Wrap does not use the BabyBear trace cache")
                 }
                 CircuitType::Delegation(_)
@@ -78,8 +78,7 @@ pub(super) fn seed_from_cache<B: ExecutionBackend>(
                 external_challenges: *external_challenges
                     .expect("proof cache seeding requires external challenges"),
                 memory_caps,
-                memory_partial_trees: proof_partial_trees.remove(&(circuit_type, sequence_id)),
-
+                memory_partial_trees,
                 profile,
             };
             let request = WorkRequest::Proof(request);

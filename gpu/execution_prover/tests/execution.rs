@@ -162,6 +162,50 @@ fn test_execution_prover_commit_then_prove() {
     drop(prover);
 }
 
+#[test]
+#[cfg(not(no_cuda))]
+#[ignore = "proves Unified22 compression with persisted and rebuilt partial trees"]
+fn test_execution_prover_compression_partial_trees() {
+    use execution_prover::{config::SoundnessMode, ProofProfile};
+    use riscv_transpiler::jit::JitRunnerRam;
+
+    init_test_logger();
+    let defaults = ExecutionProverConfiguration::for_mode(SoundnessMode::PessimisticConjecture);
+    let mut prover = ExecutionProver::with_configuration(ExecutionProverConfiguration {
+        max_thread_pool_threads: Some(4),
+        replay_worker_threads_count: 1,
+        host_allocators_per_job_count: 16,
+        min_free_host_allocators_per_job: 4,
+        ram_config: JitRunnerRam::Tiny,
+        backend: GpuBackendConfiguration {
+            host_allocators_per_device_count: 0,
+            ..defaults.backend
+        },
+        ..defaults
+    });
+    let program = vec![0x0001_2083, 0xffdf_f06f]; // lw x1, 0(x2); jal x0, -4
+    let profile = ProofProfile::CompressionFinal;
+    let handle = prover.add_binary_variants(
+        program.clone(),
+        program,
+        &[(ExecutionKind::Unified22, MachineType::Reduced, &[profile])],
+        Some(32),
+    )[0];
+    prover.finalize_setup();
+
+    let source = || FlatResponsesSource::new_with_reads(Vec::new());
+    let persisted = prover.commit_memory_and_prove(1, &handle, source(), profile);
+    let ticket = prover.commit_memory(2, &handle, source(), profile);
+    let rebuilt = prover.prove(2, ticket, source());
+    let family_id = UnrolledCircuitType::Unified22.get_family_idx();
+    assert_eq!(persisted.circuit_families_proofs[&family_id].len(), 1);
+    assert_eq!(persisted.pow_challenge, rebuilt.pow_challenge);
+    assert!(
+        serde_json::to_vec(&persisted.circuit_families_proofs).unwrap()
+            == serde_json::to_vec(&rebuilt.circuit_families_proofs).unwrap()
+    );
+}
+
 /// Same workload as `test_execution_prover`, but the binary is built with the
 /// `blake2_with_compression` feature, so every blake round fires the
 /// Blake2WithCompression delegation CSR — covering the delegation

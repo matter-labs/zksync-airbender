@@ -44,7 +44,6 @@ pub fn evm_production_packed_prover_config(level: SecurityLevel) -> ProverConfig
         // NOT the WHIR plain-text tail, which the WHIR schedule determines).
         sumcheck_explicit_output_size_log_2: 4,
         security_level: level,
-        lookup_challenges_pow_floor: None,
         // base LDE factor 32 (base_lde_log2 = 5), round-0 values-per-leaf =
         // 2^2; 6 rounds ending in a 2^4 plain-text tail; the 6th round's
         // huge-LDE oracle (the 2^8 poly on a 2^31 domain) is cheap with the
@@ -117,7 +116,6 @@ fn compression_config_for_schedule(
         cap_size: whir_schedule.cap_size,
         sumcheck_explicit_output_size_log_2: DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
         security_level: SecurityLevel::Sec100,
-        lookup_challenges_pow_floor: None,
         whir_schedule,
     }
 }
@@ -192,6 +190,8 @@ pub fn ethproofs_compression_config_for_2_23() -> ProverConfig {
 /// L1 wrap over the 512 KiB wrap ROM.
 pub mod l1_wrap {
     use super::*;
+    use std::path::PathBuf;
+    use std::sync::OnceLock;
 
     pub const PESSIMISTIC_TRACE_LEN_LOG2: usize = 21;
     pub const ETHPROOFS_TRACE_LEN_LOG2: usize = 22;
@@ -220,7 +220,38 @@ pub mod l1_wrap {
     /// evaluation claims bind it for the WHIR rounds; the conjecture assumes
     /// that the lookup and GKR challenges drawn before them carry no list
     /// factor.
-    pub fn pessimistic_packed_prover_config() -> ProverConfig {
+    pub fn packed_prover_config() -> ProverConfig {
+        const SCHEDULE_ENV: &str = "AB_L1_WHIR_SCHEDULE";
+        static CONFIG: OnceLock<ProverConfig> = OnceLock::new();
+        CONFIG
+            .get_or_init(|| {
+                let mut config = default_packed_prover_config();
+                let Some(path) = std::env::var_os(SCHEDULE_ENV).map(PathBuf::from) else {
+                    return config;
+                };
+                let data = std::fs::read(&path).unwrap_or_else(|error| {
+                    panic!("{SCHEDULE_ENV}: could not read {}: {error}", path.display())
+                });
+                let schedule: WhirSchedule =
+                    serde_json::from_slice(&data).unwrap_or_else(|error| {
+                        panic!(
+                            "{SCHEDULE_ENV}: invalid WHIR schedule in {}: {error}",
+                            path.display()
+                        )
+                    });
+                config.cap_size = schedule.cap_size;
+                config.whir_schedule = schedule;
+                eprintln!(
+                    "{SCHEDULE_ENV}: using L1 WHIR schedule from {}",
+                    path.display()
+                );
+                config.validate_for_whir_message_size(config.whir_message_size_log2());
+                config
+            })
+            .clone()
+    }
+
+    fn default_packed_prover_config() -> ProverConfig {
         const CAP_SIZE: usize = 8;
         let level = SecurityLevel::Sec100;
         let queries_and_pow = queries_and_pow_under_pessimistic_conjecture(
@@ -237,7 +268,6 @@ pub mod l1_wrap {
             cap_size: CAP_SIZE,
             sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
             security_level: level,
-            lookup_challenges_pow_floor: None,
             whir_schedule: WhirSchedule {
                 cap_size: CAP_SIZE,
                 base_round: crate::gkr::prover_config::WhirBaseRoundSchedule {

@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::messages::SimulationResult;
+use crate::messages::{MemoryPartialTrees, SimulationResult};
 use execution_prover_model::circuit_type::CircuitType;
 use execution_prover_model::trace::{InitsAndTeardownsTraceHost, TracingDataHost};
 use fft::GoodAllocator;
@@ -10,6 +10,7 @@ pub(super) struct TraceCacheEntry<A: GoodAllocator> {
     pub sequence_id: usize,
     pub inits_and_teardowns: Option<InitsAndTeardownsTraceHost<A>>,
     pub tracing_data: Option<TracingDataHost<A>>,
+    pub memory_partial_trees: Option<MemoryPartialTrees<A>>,
 }
 
 #[derive(Default)]

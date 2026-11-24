@@ -28,7 +28,7 @@ fn export_pessimistic_l1_wrap_setup_frontier() {
     bundle.validate().expect("committed L1 wrap bundle");
     let setup_commitment = &bundle.proof.whir_proof.setup_commitment;
 
-    let circuit_type = CircuitType::L1Wrap21;
+    let circuit_type = CircuitType::L1Wrap;
     let (mut binary, mut text) = load_fsv_exact(
         fsv_dir(),
         &FsvDescriptor::pessimistic_compression(FsvProfile::CompressionFinalWrap),
@@ -37,8 +37,7 @@ fn export_pessimistic_l1_wrap_setup_frontier() {
     setups::pad_bytecode_for_proving_with_rom(&mut binary, circuit_type.rom());
     setups::pad_bytecode_for_proving_with_rom(&mut text, circuit_type.rom());
     let worker = Worker::new();
-    let setup =
-        unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup_for_2_21(&binary, &text, &worker);
+    let setup = unified_reduced_machine_proth120::l1_wrap::l1_wrap_setup(&binary, &text, &worker);
     let config = ProofProfile::L1Wrap.prover_config(
         circuit_type.get_domain_size_log2() as usize,
         SoundnessMode::PessimisticConjecture,

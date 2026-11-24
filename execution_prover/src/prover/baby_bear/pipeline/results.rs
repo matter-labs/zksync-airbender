@@ -11,20 +11,16 @@ pub(super) struct RequestContext<'a, B: ExecutionBackend> {
     pub(super) binary_holder: &'a BinaryHolder<B>,
     pub(super) external_challenges: Option<&'a GKRExternalChallenges<BF, E4>>,
     pub(super) proof_caps: &'a BTreeMap<(CircuitType, usize), Vec<MerkleTreeCapVarLength>>,
-    /// Taken by the first proof request built for each instance; a later
-    /// duplicate of a cache-served request gets `None` and is never dispatched.
-    pub(super) proof_partial_trees:
-        BTreeMap<(CircuitType, usize), MemoryPartialTrees<B::Allocator>>,
 }
 
 impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
     pub(super) fn build_work_request(
-        &mut self,
+        &self,
         prover: &ExecutionProver<B>,
         inits_and_teardowns: Option<InitsAndTeardownsData<B::Allocator>>,
         tracing_data: Option<TracingData<B::Allocator>>,
+        partial_tree_allocator: Option<B::Allocator>,
     ) -> WorkRequest<B::Allocator, B::Precomputations> {
-        let mut partial_tree_buffer = None;
         let mut circuit_type_value = None;
         let mut sequence_id_value = None;
         let inits_and_teardowns = if let Some(inits_and_teardowns) = inits_and_teardowns {
@@ -32,9 +28,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 circuit_type,
                 sequence_id,
                 inits_and_teardowns,
-                partial_tree_buffer: inits_partial_tree_buffer,
             } = inits_and_teardowns;
-            partial_tree_buffer = inits_partial_tree_buffer;
             circuit_type_value = Some(circuit_type);
             sequence_id_value = Some(sequence_id);
             inits_and_teardowns
@@ -46,10 +40,8 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 circuit_type,
                 sequence_id,
                 tracing_data,
-                partial_tree_buffer: tracing_partial_tree_buffer,
                 ..
             } = tracing_data;
-            partial_tree_buffer = tracing_partial_tree_buffer.or(partial_tree_buffer);
             assert_eq!(
                 circuit_type_value.get_or_insert(circuit_type),
                 &circuit_type
@@ -70,6 +62,16 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
         let sequence_id = sequence_id_value.expect(
             "get_gpu_work_request needs at least one of inits_and_teardowns or tracing_data",
         );
+        assert!(
+            partial_tree_allocator.is_none()
+                || (!self.proving
+                    && matches!(
+                        circuit_type,
+                        CircuitType::Unrolled(
+                            UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22
+                        )
+                    ))
+        );
         let profile = match circuit_type {
             CircuitType::Delegation(_)
             | CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
@@ -78,7 +80,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
             _ => self.profile,
         };
         let precomputations = match circuit_type {
-            CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => {
+            CircuitType::L1Wrap => {
                 panic!("L1Wrap requires its typed proof request")
             }
             CircuitType::Delegation(_)
@@ -106,10 +108,7 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                     .external_challenges
                     .expect("proof request construction requires external challenges"),
                 memory_caps,
-                memory_partial_trees: self
-                    .proof_partial_trees
-                    .remove(&(circuit_type, sequence_id)),
-
+                memory_partial_trees: None,
                 profile,
             };
             WorkRequest::Proof(request)
@@ -122,20 +121,57 @@ impl<'a, B: ExecutionBackend> RequestContext<'a, B> {
                 inits_and_teardowns,
                 tracing_data,
                 profile,
-                partial_tree_buffer,
+                partial_tree_allocator,
             };
             WorkRequest::MemoryCommitment(request)
         }
     }
 }
 
+fn enqueue_unified_work_request<B: ExecutionBackend>(
+    prover: &ExecutionProver<B>,
+    request_context: &RequestContext<'_, B>,
+    sequence_id: usize,
+    work_requests: &mut VecDeque<WorkRequest<B::Allocator, B::Precomputations>>,
+    unpaired_unified_inits_and_teardowns: &mut BTreeMap<usize, InitsAndTeardownsData<B::Allocator>>,
+    unpaired_unified_tracing_data: &mut BTreeMap<usize, TracingData<B::Allocator>>,
+    unpaired_unified_partial_tree_allocators: &mut BTreeMap<usize, B::Allocator>,
+    partial_tree_allocator_requests: Option<&Sender<usize>>,
+) {
+    if !unpaired_unified_inits_and_teardowns.contains_key(&sequence_id)
+        || !unpaired_unified_tracing_data.contains_key(&sequence_id)
+    {
+        return;
+    }
+    let allocator = unpaired_unified_partial_tree_allocators.remove(&sequence_id);
+    if let (Some(requests), None) = (partial_tree_allocator_requests, allocator.as_ref()) {
+        requests
+            .send(sequence_id)
+            .expect("partial-tree allocator request channel closed");
+        return;
+    }
+    let inits_and_teardowns = unpaired_unified_inits_and_teardowns
+        .remove(&sequence_id)
+        .unwrap();
+    let tracing_data = unpaired_unified_tracing_data.remove(&sequence_id).unwrap();
+    let request = request_context.build_work_request(
+        prover,
+        Some(inits_and_teardowns),
+        Some(tracing_data),
+        allocator,
+    );
+    work_requests.push_back(request);
+}
+
 fn enqueue_ready_tracing_data<B: ExecutionBackend>(
     prover: &ExecutionProver<B>,
-    request_context: &mut RequestContext<'_, B>,
+    request_context: &RequestContext<'_, B>,
     data: TracingData<B::Allocator>,
     work_requests: &mut VecDeque<WorkRequest<B::Allocator, B::Precomputations>>,
     unpaired_unified_inits_and_teardowns: &mut BTreeMap<usize, InitsAndTeardownsData<B::Allocator>>,
     unpaired_unified_tracing_data: &mut BTreeMap<usize, TracingData<B::Allocator>>,
+    unpaired_unified_partial_tree_allocators: &mut BTreeMap<usize, B::Allocator>,
+    partial_tree_allocator_requests: Option<&Sender<usize>>,
 ) {
     match data.circuit_type {
         CircuitType::Unrolled(UnrolledCircuitType::InitsAndTeardowns) => {
@@ -143,24 +179,22 @@ fn enqueue_ready_tracing_data<B: ExecutionBackend>(
         }
         CircuitType::Unrolled(UnrolledCircuitType::Unified | UnrolledCircuitType::Unified22) => {
             let sequence_id = data.sequence_id;
-            assert!(!unpaired_unified_tracing_data.contains_key(&sequence_id));
-            if let Some(inits_and_teardowns) =
-                unpaired_unified_inits_and_teardowns.remove(&sequence_id)
-            {
-                let request = request_context.build_work_request(
-                    prover,
-                    Some(inits_and_teardowns),
-                    Some(data),
-                );
-                work_requests.push_back(request);
-            } else {
-                assert!(unpaired_unified_tracing_data
-                    .insert(sequence_id, data)
-                    .is_none());
-            }
+            assert!(unpaired_unified_tracing_data
+                .insert(sequence_id, data)
+                .is_none());
+            enqueue_unified_work_request(
+                prover,
+                request_context,
+                sequence_id,
+                work_requests,
+                unpaired_unified_inits_and_teardowns,
+                unpaired_unified_tracing_data,
+                unpaired_unified_partial_tree_allocators,
+                partial_tree_allocator_requests,
+            );
         }
         _ => {
-            let request = request_context.build_work_request(prover, None, Some(data));
+            let request = request_context.build_work_request(prover, None, Some(data), None);
             work_requests.push_back(request);
         }
     }
@@ -182,6 +216,8 @@ pub(super) struct ResultAccumulator<A: GoodAllocator> {
         BTreeMap<usize, BTreeSet<(CircuitType, usize)>>,
     pub(super) unpaired_unified_inits_and_teardowns: BTreeMap<usize, InitsAndTeardownsData<A>>,
     pub(super) unpaired_unified_tracing_data: BTreeMap<usize, TracingData<A>>,
+    pub(super) unpaired_unified_partial_tree_allocators: BTreeMap<usize, A>,
+    pub(super) partial_tree_allocator_requests: Option<Sender<usize>>,
     /// The i&t address windows assigned to each instance, keyed by sequence ID.
     /// Trivial leading unified instances are absent.
     pub(super) inits_and_teardowns_top_bits: BTreeMap<usize, Vec<u32>>,
@@ -191,7 +227,6 @@ pub(super) struct ResultAccumulator<A: GoodAllocator> {
     pub(super) inits_and_teardowns_memory_caps: BTreeMap<usize, Vec<MerkleTreeCapVarLength>>,
     pub(super) delegation_circuits_memory_caps:
         BTreeMap<u32, BTreeMap<usize, Vec<MerkleTreeCapVarLength>>>,
-    pub(super) memory_partial_trees: BTreeMap<(CircuitType, usize), MemoryPartialTrees<A>>,
     pub(super) circuit_families_proofs: BTreeMap<u8, BTreeMap<usize, ScheduledProof>>,
     pub(super) inits_and_teardowns_proofs: BTreeMap<usize, ScheduledProof>,
     pub(super) delegation_circuits_proofs: BTreeMap<u32, BTreeMap<usize, ScheduledProof>>,
@@ -207,7 +242,7 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
         prover: &ExecutionProver<B>,
         cache: &mut Option<TraceCache<B::Allocator>>,
         work_result: WorkerResult<B::Allocator>,
-        request_context: &mut RequestContext<'_, B>,
+        request_context: &RequestContext<'_, B>,
     ) -> VecDeque<WorkRequest<B::Allocator, B::Precomputations>> {
         let mut work_requests = VecDeque::new();
         match work_result {
@@ -223,7 +258,8 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                     let host = data.inits_and_teardowns.as_ref().unwrap();
                     self.inits_and_teardowns_top_bits
                         .insert(data.sequence_id, host.top_bits.clone());
-                    let request = request_context.build_work_request(prover, Some(data), None);
+                    let request =
+                        request_context.build_work_request(prover, Some(data), None, None);
                     work_requests.push_back(request);
                 }
                 CircuitType::Unrolled(
@@ -241,9 +277,6 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                         || cache.is_none()
                         || sequence_id >= self.trivial_unified_inits_and_teardowns_count
                     {
-                        assert!(!self
-                            .unpaired_unified_inits_and_teardowns
-                            .contains_key(&sequence_id));
                         if sequence_id >= self.trivial_unified_inits_and_teardowns_count {
                             if request_context.proving && cache.is_some() {
                                 assert!(data.inits_and_teardowns.is_some())
@@ -251,21 +284,20 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                                 self.trivial_unified_inits_and_teardowns_count = sequence_id + 1;
                             }
                         }
-                        if let Some(tracing_data) =
-                            self.unpaired_unified_tracing_data.remove(&sequence_id)
-                        {
-                            let request = request_context.build_work_request(
-                                prover,
-                                Some(data),
-                                Some(tracing_data),
-                            );
-                            work_requests.push_back(request);
-                        } else {
-                            assert!(self
-                                .unpaired_unified_inits_and_teardowns
-                                .insert(sequence_id, data)
-                                .is_none());
-                        }
+                        assert!(self
+                            .unpaired_unified_inits_and_teardowns
+                            .insert(sequence_id, data)
+                            .is_none());
+                        enqueue_unified_work_request(
+                            prover,
+                            request_context,
+                            sequence_id,
+                            &mut work_requests,
+                            &mut self.unpaired_unified_inits_and_teardowns,
+                            &mut self.unpaired_unified_tracing_data,
+                            &mut self.unpaired_unified_partial_tree_allocators,
+                            self.partial_tree_allocator_requests.as_ref(),
+                        );
                     }
                 }
                 _ => panic!("unexpected circuit type for inits and teardowns data"),
@@ -282,6 +314,8 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                         &mut work_requests,
                         &mut self.unpaired_unified_inits_and_teardowns,
                         &mut self.unpaired_unified_tracing_data,
+                        &mut self.unpaired_unified_partial_tree_allocators,
+                        self.partial_tree_allocator_requests.as_ref(),
                     );
                 } else {
                     let key = (data.circuit_type, data.sequence_id);
@@ -322,10 +356,31 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                                 &mut work_requests,
                                 &mut self.unpaired_unified_inits_and_teardowns,
                                 &mut self.unpaired_unified_tracing_data,
+                                &mut self.unpaired_unified_partial_tree_allocators,
+                                self.partial_tree_allocator_requests.as_ref(),
                             );
                         }
                     }
                 }
+            }
+            WorkerResult::PartialTreeAllocator {
+                sequence_id,
+                allocator,
+            } => {
+                assert!(self
+                    .unpaired_unified_partial_tree_allocators
+                    .insert(sequence_id, allocator)
+                    .is_none());
+                enqueue_unified_work_request(
+                    prover,
+                    request_context,
+                    sequence_id,
+                    &mut work_requests,
+                    &mut self.unpaired_unified_inits_and_teardowns,
+                    &mut self.unpaired_unified_tracing_data,
+                    &mut self.unpaired_unified_partial_tree_allocators,
+                    self.partial_tree_allocator_requests.as_ref(),
+                );
             }
             WorkerResult::BackendWorkResult(result) => {
                 assert_ne!(self.pending_requests_count, 0);
@@ -366,16 +421,18 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                         sequence_id,
                         inits_and_teardowns,
                         tracing_data,
+                        memory_partial_trees,
                     };
                     cache.push_back(cache_entry);
                     if self.simulation_result.is_none() {
                         prover.trim_cache(cache);
                     }
                 } else {
-                    prover.free_traces(inits_and_teardowns, tracing_data)
+                    prover.free_traces(inits_and_teardowns, tracing_data);
+                    prover.free_buffer(memory_partial_trees.map(|trees| trees.nodes));
                 }
                 let caps: &mut BTreeMap<usize, Vec<MerkleTreeCapVarLength>> = match circuit_type {
-                    CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => {
+                    CircuitType::L1Wrap => {
                         panic!("L1Wrap result reached the BabyBear pipeline")
                     }
                     CircuitType::Delegation(circuit_type) => self
@@ -393,12 +450,6 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                     },
                 };
                 assert!(caps.insert(sequence_id, merkle_tree_caps).is_none());
-                if let Some(trees) = memory_partial_trees {
-                    assert!(self
-                        .memory_partial_trees
-                        .insert((circuit_type, sequence_id), trees)
-                        .is_none());
-                }
             }
             WorkResult::Proof(proof) => {
                 assert!(proving);
@@ -409,13 +460,15 @@ impl<A: GoodAllocator> ResultAccumulator<A> {
                     inits_and_teardowns,
                     tracing_data,
                     proof,
+                    memory_partial_trees,
                 } = proof;
+                prover.free_buffer(memory_partial_trees);
                 trace!(
                     "BATCH[{batch_id}] PROVER received proof for circuit {circuit_type:?}[{sequence_id}]"
                 );
                 prover.free_traces(inits_and_teardowns, tracing_data);
                 match circuit_type {
-                    CircuitType::L1Wrap21 | CircuitType::L1Wrap22 => {
+                    CircuitType::L1Wrap => {
                         panic!("L1Wrap result reached the BabyBear pipeline")
                     }
                     CircuitType::Delegation(circuit_type) => {

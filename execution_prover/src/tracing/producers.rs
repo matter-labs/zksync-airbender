@@ -33,7 +33,6 @@ pub(crate) trait TracingDataProducers<A: HostTraceAllocator> {
         unified_circuit: CircuitType,
         free_allocators: Receiver<A>,
         results: Sender<WorkerResult<A>>,
-        partial_tree_pool: Option<Sender<A>>,
     ) -> Self;
 
     fn process_snapshot(
@@ -61,55 +60,44 @@ struct DelegationProducers<A: HostTraceAllocator> {
 }
 
 impl<A: HostTraceAllocator> DelegationProducers<A> {
-    fn new(
-        free_allocators: &Receiver<A>,
-        results: &Sender<WorkerResult<A>>,
-        partial_tree_pool: Option<Sender<A>>,
-    ) -> Self {
+    fn new(free_allocators: &Receiver<A>, results: &Sender<WorkerResult<A>>) -> Self {
         let blake_producer = TracingDataProducer::<Blake2sRoundFunctionDelegationWitness, _>::new(
             CircuitType::Delegation(DelegationCircuitType::Blake2WithCompression),
             free_allocators.clone(),
             results.clone(),
-            partial_tree_pool.clone(),
         );
         let bigint_producer = TracingDataProducer::<BigintDelegationWitness, _>::new(
             CircuitType::Delegation(DelegationCircuitType::BigIntWithControl),
             free_allocators.clone(),
             results.clone(),
-            partial_tree_pool.clone(),
         );
         let keccak_producer = TracingDataProducer::<KeccakSpecial5DelegationWitness, _>::new(
             CircuitType::Delegation(DelegationCircuitType::KeccakSpecial5),
             free_allocators.clone(),
             results.clone(),
-            partial_tree_pool.clone(),
         );
         let keccak_column_parity_producer =
             TracingDataProducer::<KeccakColumnParityDelegationWitness, _>::new(
                 CircuitType::Delegation(DelegationCircuitType::KeccakColumnParity),
                 free_allocators.clone(),
                 results.clone(),
-                partial_tree_pool.clone(),
             );
         let keccak_theta_rho_producer =
             TracingDataProducer::<KeccakThetaRhoDelegationWitness, _>::new(
                 CircuitType::Delegation(DelegationCircuitType::KeccakThetaRho),
                 free_allocators.clone(),
                 results.clone(),
-                partial_tree_pool.clone(),
             );
         let keccak_chi5_producer = TracingDataProducer::<KeccakChi5DelegationWitness, _>::new(
             CircuitType::Delegation(DelegationCircuitType::KeccakChi5),
             free_allocators.clone(),
             results.clone(),
-            partial_tree_pool.clone(),
         );
         let blake_g_function_producer =
             TracingDataProducer::<Blake2sGFunctionDelegationWitness, _>::new(
                 CircuitType::Delegation(DelegationCircuitType::Blake2GFunction),
                 free_allocators.clone(),
                 results.clone(),
-                partial_tree_pool.clone(),
             );
         Self {
             blake_producer,
@@ -178,10 +166,8 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for SplitTracingDataProducer
         _unified_circuit: CircuitType,
         free_allocators: Receiver<A>,
         results: Sender<WorkerResult<A>>,
-        partial_tree_pool: Option<Sender<A>>,
     ) -> Self {
-        let delegation =
-            DelegationProducers::new(&free_allocators, &results, partial_tree_pool.clone());
+        let delegation = DelegationProducers::new(&free_allocators, &results);
         let add_sub_family_producer =
             TracingDataProducer::<NonMemoryOpcodeTracingDataWithTimestamp, _>::new(
                 CircuitType::Unrolled(UnrolledCircuitType::NonMemory(
@@ -189,7 +175,6 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for SplitTracingDataProducer
                 )),
                 free_allocators.clone(),
                 results.clone(),
-                partial_tree_pool.clone(),
             );
         let binary_shift_csr_family_producer =
             TracingDataProducer::<NonMemoryOpcodeTracingDataWithTimestamp, _>::new(
@@ -198,7 +183,6 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for SplitTracingDataProducer
                 )),
                 free_allocators.clone(),
                 results.clone(),
-                partial_tree_pool.clone(),
             );
         let slt_branch_family_producer =
             TracingDataProducer::<NonMemoryOpcodeTracingDataWithTimestamp, _>::new(
@@ -207,7 +191,6 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for SplitTracingDataProducer
                 )),
                 free_allocators.clone(),
                 results.clone(),
-                partial_tree_pool.clone(),
             );
         let mul_div_family_producer =
             TracingDataProducer::<NonMemoryOpcodeTracingDataWithTimestamp, _>::new(
@@ -216,7 +199,6 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for SplitTracingDataProducer
                 )),
                 free_allocators.clone(),
                 results.clone(),
-                partial_tree_pool.clone(),
             );
         let word_size_mem_family_producer =
             TracingDataProducer::<MemoryOpcodeTracingDataWithTimestamp, _>::new(
@@ -225,7 +207,6 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for SplitTracingDataProducer
                 )),
                 free_allocators.clone(),
                 results.clone(),
-                partial_tree_pool.clone(),
             );
         let subword_size_mem_family_producer =
             TracingDataProducer::<MemoryOpcodeTracingDataWithTimestamp, _>::new(
@@ -234,7 +215,6 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for SplitTracingDataProducer
                 )),
                 free_allocators,
                 results,
-                partial_tree_pool.clone(),
             );
         Self {
             delegation,
@@ -363,16 +343,13 @@ impl<A: HostTraceAllocator> TracingDataProducers<A> for UnifiedTracingDataProduc
         unified_circuit: CircuitType,
         free_allocators: Receiver<A>,
         results: Sender<WorkerResult<A>>,
-        partial_tree_pool: Option<Sender<A>>,
     ) -> Self {
         assert_eq!(machine_type, MachineType::Reduced);
-        let delegation =
-            DelegationProducers::new(&free_allocators, &results, partial_tree_pool.clone());
+        let delegation = DelegationProducers::new(&free_allocators, &results);
         let cycles_producer = TracingDataProducer::<UnifiedOpcodeTracingDataWithTimestamp, _>::new(
             unified_circuit,
             free_allocators.clone(),
             results.clone(),
-            partial_tree_pool.clone(),
         );
         Self {
             delegation,

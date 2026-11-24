@@ -4,7 +4,6 @@
 //! partial trees use their own pooled pinned source in natural coset order.
 
 use era_cudart::slice::CudaSlice;
-use execution_prover_model::allocator::PooledHostBuffer;
 use fft::GoodAllocator;
 use std::alloc::Global;
 use std::marker::PhantomData;
@@ -29,7 +28,7 @@ pub const PARTIAL_TREES_LAYOUT_VERSION: u32 = 2;
 pub struct PartialTrees<A: GoodAllocator = Global> {
     pub layout_version: u32,
     pub geometry: PartialTreesGeometry,
-    pub nodes: PooledHostBuffer<Digest, A>,
+    pub nodes: Vec<Digest, A>,
 }
 
 /// Rejects persisted trees that do not belong to a commitment of `expected`
@@ -141,7 +140,7 @@ impl GpuGKRMemoryCapHost {
         geometry: BaseCommitmentGeometry,
         expected: PartialTreesGeometry,
         trees: PartialTrees<A>,
-    ) -> Self {
+    ) -> (Self, Arc<Vec<Digest, A>>) {
         validate_partial_trees(&trees, &expected, memory_tree_caps);
         let mut host = Self::from_per_coset_caps_for_geometry(memory_tree_caps, geometry);
         assert_eq!(
@@ -164,8 +163,9 @@ impl GpuGKRMemoryCapHost {
             expected.columns_count,
             geometry.oracle(BaseOracleRole::Memory).physical_columns()
         );
-        host.partial_trees = Some((expected, Arc::new(trees.nodes)));
-        host
+        let nodes = Arc::new(trees.nodes);
+        host.partial_trees = Some((expected, nodes.clone()));
+        (host, nodes)
     }
 }
 
@@ -253,7 +253,6 @@ mod cpu_tests {
                 cap: coset[live - GEOMETRY.coset_cap_len()..live].to_vec(),
             })
             .collect();
-        let nodes = PooledHostBuffer::new(nodes, crossbeam_channel::unbounded().0);
         let trees = PartialTrees {
             layout_version: PARTIAL_TREES_LAYOUT_VERSION,
             geometry: GEOMETRY,

@@ -40,7 +40,7 @@ pub(crate) use field::{Field, FieldExtension, PrimeField, TwoAdicField};
 // `prover` — CPU prover types the GPU prover mirrors / interoperates with
 // -----------------------------------------------------------------------
 
-pub(crate) use prover::definitions::GKRExternalChallenges;
+pub(crate) use prover::definitions::{GKRExternalChallenges, SecurityLevel};
 pub(crate) use prover::gkr::prover::dimension_reduction::forward::DimensionReducingInputOutput;
 pub(crate) use prover::gkr::prover_config::commitment_geometry::{
     BaseCommitmentGeometry, BaseOracleRole,
@@ -52,6 +52,9 @@ pub(crate) use prover::gkr::prover::{
     OperationMode, SumcheckIntermediateProofValues, SumcheckRoundCoefficients, WhirSchedule,
 };
 pub(crate) use prover::gkr::prover_config::example_configs::l1_wrap::EXPLICIT_OUTPUT_LOG2 as L1_WRAP_EXPLICIT_OUTPUT_LOG2;
+pub(crate) use prover::gkr::prover_config::pow_bits::{
+    lookup_challenges_pow_bits, lookup_identity_degree,
+};
 pub(crate) use prover::gkr::whir::{
     BaseFieldQuery, ExtensionFieldQuery, WhirBaseLayerCommitmentAndQueries, WhirCommitment,
     WhirIntermediateCommitmentAndQueries, WhirPolyCommitProof,

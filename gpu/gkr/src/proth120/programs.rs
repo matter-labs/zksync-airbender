@@ -37,9 +37,10 @@ const _: () = assert!(PR_FWD_VM_BUCKETS == 4);
 
 impl GkrProgramsPr {
     pub fn compile(circuit_type: CircuitType, artifact: Arc<GKRCircuitArtifact<PR>>) -> Self {
-        assert!(
-            circuit_type.is_l1_wrap(),
-            "Proth120 GPU requires an L1 wrap circuit type, got {circuit_type:?}"
+        assert_eq!(
+            circuit_type,
+            CircuitType::L1Wrap,
+            "Proth120 GKR supports CircuitType::L1Wrap only"
         );
         Self::compile_with_schedule(artifact, SCHEDULE)
             .expect("committed Proth120 GKR programs must compile")
@@ -132,7 +133,7 @@ mod cpu_tests {
             "../../../../circuit_defs/unrolled_circuits/unified_reduced_machine_proth120/generated/layout.json"
         ))
         .unwrap();
-        let programs = GkrProgramsPr::compile(CircuitType::L1Wrap21, Arc::new(artifact));
+        let programs = GkrProgramsPr::compile(CircuitType::L1Wrap, Arc::new(artifact));
         // Match the BabyBear CPU lowering test with the committed wrap program.
         let resolved =
             crate::forward::vm::lower_common::resolve_test_columns(&programs.forward.layers, 256);

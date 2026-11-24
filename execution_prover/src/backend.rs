@@ -33,10 +33,8 @@ pub trait ExecutionBackend: Send + Sync + Sized + 'static {
 
     fn allocate_trace_block(&self, bytes: usize) -> Self::Allocator;
 
-    /// Whether a commitment carries a host-pool buffer of partial trees to its proof.
-    fn persists_memory_partial_trees(&self, _profile: ProofProfile) -> bool {
-        false
-    }
+    /// Whether a commitment for this profile needs a host allocator to persist partial trees.
+    fn persists_memory_partial_trees(&self, profile: ProofProfile) -> bool;
 
     fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory;
 
@@ -56,17 +54,6 @@ pub trait ExecutionBackend: Send + Sync + Sized + 'static {
         selection: SoundnessMode,
         profiles: &[ProofProfile],
     ) -> Self::Precomputations;
-
-    /// Prepare an L1 wrap under an explicit WHIR configuration.
-    fn prepare_l1_wrap(
-        &self,
-        circuit: CircuitType,
-        setup: crate::setup::L1WrapSetup,
-        config: prover::gkr::prover_config::ProverConfig,
-    ) -> Self::Precomputations {
-        let _ = (circuit, setup, config);
-        panic!("execution backend does not support an explicit L1 WHIR schedule")
-    }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>);
 }

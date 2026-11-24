@@ -1,0 +1,32 @@
+module
+public import Human.Helpers.Decoder.PooledProgram
+public import Human.Helpers.Decoder.ExternalInput
+
+@[expose] public section
+
+namespace Airbender.Trace.NonDeterminism.Pooled
+
+variable {p : Nat} [Fact p.Prime]
+
+/-- The imported ADD/SUB external-read selector. Other pooled families never
+    consume input, even when the same numeric column contains one.
+    The decoder theorem binds it to the actual custom CSR read form. -/
+def isRead (row : Row p PooledFamily) : Bool :=
+  match row.family with
+  | .addSub => NonDeterminism.isRead ⟨.addSub, row.assignment⟩
+  | _ => false
+
+/-- The external response in ADD/SUB's destination columns. It is used only
+    for selected reads; the caller fixes the independent input stream. -/
+def response (row : Row p PooledFamily) : BitVec 32 :=
+  NonDeterminism.response ⟨.addSub, row.assignment⟩
+
+/-- Total external-read count; all standard pooled rows consume zero words. -/
+def readCount (trace : PooledTrace p) : Nat := ExternalStream.count isRead trace.rows
+
+/-- Bind response ports to the independent stream using the shared clock-based
+    interpretation. This supplies input values, not successful ISA execution. -/
+def StreamPorts (trace : PooledTrace p) (stream : List (BitVec 32)) : Prop :=
+  ExternalStream.Ports Row.clock isRead response trace.rows stream
+
+end Airbender.Trace.NonDeterminism.Pooled

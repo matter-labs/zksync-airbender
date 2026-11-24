@@ -22,8 +22,7 @@ workspace-root `gkr_eval_ir`), and `gpu_native_build` (the shared build-script h
 
 - **`gpu_core`**: allocators and GPU primitives, and the base CUDA headers
   (`native_headers/`, exported as `DEP_GPU_CORE_NATIVE_INCLUDE`). No production
-  kernels: its archive holds the Proth120 field-header probes its tests launch and,
-  under `bench`, the field benches. Its headers are a complete library on purpose: the PTX cache-operator set,
+  kernels. Its headers are a complete library on purpose: the PTX cache-operator set,
   u32 and u64 carry chains, the field operations (incl. `e6`) and the full accessor
   matrix stay even when unused in-project. Broken or incomplete vestiges may still go.
 - **`gpu_ntt`**: NTT launchers and twiddles; exports `native/` so `gpu_whir` can
@@ -70,8 +69,8 @@ because a dependency's `#[cfg(test)]` items are invisible to its consumers.
   there.
 - **Field layout:** code shared by BabyBear and Proth120 lives at the crate root;
   field-specific Rust and native code lives in parallel `baby_bear/` and `proth120/`
-  folders. Each native field folder has a CMakeLists that only adds its sources to
-  the crate's single archive.
+  folders. Top-level or nested `CMakeLists.txt` files add native field sources to
+  the crate's single CUDA archive.
 - **C++ namespace = owning crate** (`airbender::{hash, ntt, ops, primitives,
   trace::witness, gkr, whir}`). Launched kernels are `extern "C"`: the bare symbol
   name is the ABI.

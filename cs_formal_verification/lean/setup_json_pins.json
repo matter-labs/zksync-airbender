@@ -1,0 +1,18 @@
+{
+  "artifacts/setup/add-sub.json": "95345378dd636b1b4c2c48d9515199d714422b94771f75dc661de083cf35a121",
+  "artifacts/setup/bigint.json": "95bbf0be28e488e6674e81025f0ca10968a5a85303a845d8bfaba97cfb53df83",
+  "artifacts/setup/blake-g.json": "eec4037dd36a90af7a99d84288fd79193a83f5f2b2e059617d22cc7b1fde8f1a",
+  "artifacts/setup/blake-round.json": "333f3d6334e077a39cac5bc562bc98ac6b2ec95163d0cc0375e7206929259909",
+  "artifacts/setup/decoder-smoke.json": "fa68f92ff6664dc7def7c012f6cc24dce07533de427f7597cb9049ddc90b8487",
+  "artifacts/setup/inits-and-teardowns.json": "e6bc84ff8f96346f0c44cae8e10bcc74f38555a5bcbf2c79be40d359001a1e24",
+  "artifacts/setup/jump-branch.json": "2e4a13a1508b86288e7ff88f47070001a28864f3946dc6e31ea874f7e85e3e9e",
+  "artifacts/setup/keccak-chi5.json": "3908223fc7221242c3004e472d63950440cfbbec4ad9f88e1842d6a45fe92710",
+  "artifacts/setup/keccak-column-parity.json": "e3ceeb5372616a87cfacfe888a0847bad784bf94cad81e5c143a1ff77d47919d",
+  "artifacts/setup/keccak-theta-rho.json": "66d98adf0070f516b1b5c299ed5b5a2f935819a83bfe6191a3f3ed24033b04d1",
+  "artifacts/setup/keccak.json": "84dfb734f5889aff4b6912c90dfdb5222906d37fcfc33566928f94a253146153",
+  "artifacts/setup/mul-div.json": "99b68f095ff9e3a552562633222a3b32eafcff42b6add769ef79d7aff8b7eb12",
+  "artifacts/setup/shift-binop.json": "0da4edbe7692cdfd3ed0338c48a6fb99fb8a90ba5e7d303fb93f0019ae9bc44b",
+  "artifacts/setup/subword-memory.json": "9c577823c9af078799bc73f0d766ee40bf33d6ba8e2a15b6e164d4a0a33d5525",
+  "artifacts/setup/unified.json": "4c8b5e2034d2a761b34972a239d0cefbf708e9754813d1fb908fd88d1fc0d39c",
+  "artifacts/setup/word-memory.json": "3d948b663a5fc7c2dfb64c85f991e3b63090b91a714fa58a9c7de0bb6a45a032"
+}

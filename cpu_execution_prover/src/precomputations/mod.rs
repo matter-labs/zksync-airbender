@@ -18,16 +18,6 @@ enum CpuPrecomputed {
 }
 
 impl CpuCircuitPrecomputations {
-    pub(crate) fn l1_with_config(
-        circuit_type: CircuitType,
-        setup: crate::upstream::L1WrapSetup,
-        config: crate::upstream::ProverConfig,
-    ) -> Self {
-        Self(Arc::new(CpuPrecomputed::L1Wrap(Box::new(
-            L1WrapPrecomputed::with_config(circuit_type, setup, config),
-        ))))
-    }
-
     pub(crate) fn from_canonical(
         circuit_type: CircuitType,
         setup: CanonicalCircuitSetup,

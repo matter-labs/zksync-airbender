@@ -5,24 +5,23 @@ use crate::A;
 use crossbeam_channel::{Receiver, Sender};
 use era_cudart::device::{get_device_properties, set_device};
 use era_cudart::result::CudaResult;
-use execution_prover::messages::{
-    MemoryPartialTrees, SetupInitializationRequest, SetupInitializationResult,
-};
+use execution_prover::messages::{SetupInitializationRequest, SetupInitializationResult};
 use execution_prover::ProofProfile;
 use gpu_circuit_prover::baby_bear::GpuGKRProofJob;
 use gpu_circuit_prover::proth120::{GpuL1WrapProofJob, L1WrapInputs};
-use gpu_core::allocator::tracker::AllocationDirection::{self, Ascending, Descending};
+use gpu_core::allocator::tracker::AllocationDirection::{Ascending, Descending};
 use gpu_core::primitives::field::{BF, E4};
 use gpu_gkr::baby_bear::stage1::merged_commitment::GpuGKRMergedCommitTransfer;
 use gpu_gkr::proth120::backward::DrTailProofPlanPr;
 use gpu_prover_context::{AllocationMode, ProverContext, ProverContextConfig};
-use gpu_trace::baby_bear::trace::memory::{MemoryCommitmentJob, PartialTreeBuffer};
+use gpu_trace::baby_bear::trace::memory::MemoryCommitmentJob;
 use gpu_trace::witness::circuit_type::CircuitType;
 use gpu_trace::witness::trace_unrolled::InitsAndTeardownsTraceHost;
 use log::{debug, error, info, trace};
 use std::ffi::CStr;
 use std::mem;
 use std::process::exit;
+use std::sync::Arc;
 
 pub(crate) fn get_gpu_worker_func(
     device_id: i32,
@@ -70,49 +69,14 @@ pub(crate) struct RequestState {
     /// Per-coset caps from a prior commit_memory phase; only present for
     /// Proof requests and consumed in Phase 1 to build the memory transfer.
     pub(crate) memory_caps: Option<Vec<MerkleTreeCapVarLength>>,
-    /// The partial trees its commitment persisted; only for Proof requests
-    /// whose profile persists them, consumed in Phase 1 with the caps.
-    pub(crate) memory_partial_trees: Option<MemoryPartialTrees<A>>,
-    pub(crate) partial_tree_buffer: Option<PartialTreeBuffer<A>>,
     /// Original host witnesses returned to the orchestrator after the GPU work
     /// completes so their allocators return to the pool.
     pub(crate) inits_and_teardowns_result: Option<InitsAndTeardownsTraceHost<A>>,
     pub(crate) tracing_data_result: Option<gpu_trace::trace::tracing_data::TracingDataHost<A>>,
     pub(crate) profile: ProofProfile,
-    pub(crate) device_peak_bytes: Option<usize>,
-    pub(crate) direction: Option<AllocationDirection>,
-    /// The request whose phase one was staged while this request's phase two
-    /// was enqueued: its inputs stay resident in the arena during this proof.
-    pub(crate) follower: Option<RequestIdentity>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct RequestIdentity {
-    pub(crate) circuit_type: CircuitType,
-    pub(crate) profile: ProofProfile,
-    pub(crate) kind: RequestKind,
-}
-
-impl RequestState {
-    pub(crate) fn identity(&self) -> RequestIdentity {
-        RequestIdentity {
-            circuit_type: self.circuit_type,
-            profile: self.profile,
-            kind: self.kind,
-        }
-    }
-}
-
-pub(crate) fn follower_label(follower: Option<RequestIdentity>) -> String {
-    match follower {
-        Some(RequestIdentity {
-            circuit_type,
-            profile,
-            kind,
-        }) => format!("{circuit_type:?}/{profile:?}/{kind:?}"),
-        None => "none".to_string(),
-    }
-}
+pub(crate) type MemoryPartialTreeNodes = Arc<Vec<[u32; 8], A>>;
 
 /// Phase-1 state: H2D transfers scheduled, no GPU job enqueued yet.
 pub(crate) struct PhaseOne<'a> {
@@ -128,9 +92,12 @@ pub(crate) struct PhaseOne<'a> {
 // for no steady-state benefit.
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum PhaseOneInputs<'a> {
-    Proof(gpu_circuit_prover::baby_bear::inputs::GpuGKRProofTransfer<'a, A>),
+    Proof(
+        gpu_circuit_prover::baby_bear::inputs::GpuGKRProofTransfer<'a, A>,
+        Option<MemoryPartialTreeNodes>,
+    ),
     MemoryCommitment(gpu_trace::baby_bear::trace::memory::GpuGKRCommitMemoryTransfer<'a, A>),
-    MergedCommitment(GpuGKRMergedCommitTransfer<'a, A>),
+    MergedCommitment(GpuGKRMergedCommitTransfer<'a, A>, Option<A>),
     L1Wrap(L1WrapInputs<'a, A>, DrTailProofPlanPr, OperationMode),
     SetupInitialization,
 }
@@ -148,7 +115,7 @@ struct PhaseTwo<'a> {
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum JobType<'a> {
     MemoryCommitment(MemoryCommitmentJob<'a, A>),
-    Proof(GpuGKRProofJob<'a>),
+    Proof(GpuGKRProofJob<'a>, Option<MemoryPartialTreeNodes>),
     L1Wrap(GpuL1WrapProofJob<'a>),
     SetupInitialization,
 }
@@ -199,11 +166,8 @@ pub(crate) fn gpu_worker(
         mem::swap(&mut current_phase_one, &mut phase_one);
         let direction = [Descending, Ascending][even_odd_index];
         context.set_allocation_mode(AllocationMode::Proof(direction));
-        let follower = current_phase_one.as_ref().map(|p1| p1.state.identity());
         let mut phase_two = if let Some(p1) = phase_one {
-            Some(enqueue_phase_two(
-                device_id, &context, p1, direction, follower,
-            )?)
+            Some(enqueue_phase_two(device_id, &context, p1)?)
         } else {
             None
         };
@@ -259,19 +223,13 @@ fn schedule_phase_one<'a>(
             kind: RequestKind::SetupInitialization,
             external_challenges: None,
             memory_caps: None,
-            memory_partial_trees: None,
-            partial_tree_buffer: None,
             inits_and_teardowns_result: None,
             tracing_data_result: None,
-
-            profile: if circuit_type.is_l1_wrap() {
+            profile: if circuit_type == CircuitType::L1Wrap {
                 ProofProfile::L1Wrap
             } else {
                 ProofProfile::Standard
             },
-            device_peak_bytes: None,
-            direction: None,
-            follower: None,
         };
         return Ok(PhaseOne {
             state,
@@ -290,45 +248,41 @@ fn enqueue_phase_two<'a>(
     device_id: i32,
     context: &ProverContext,
     p1: PhaseOne<'a>,
-    direction: AllocationDirection,
-    follower: Option<RequestIdentity>,
 ) -> CudaResult<PhaseTwo<'a>> {
-    let PhaseOne { mut state, inputs } = p1;
-    state.follower = follower;
+    let PhaseOne { state, inputs } = p1;
     if let PhaseOneInputs::SetupInitialization = inputs {
         return Ok(PhaseTwo {
             state,
             job: JobType::SetupInitialization,
         });
     }
-    state.direction = Some(direction);
     let job = match inputs {
         PhaseOneInputs::L1Wrap(inputs, dr_tail_plan, operation_mode) => {
             crate::proth120::workers::gpu::enqueue_phase_two(
                 device_id,
                 context,
-                &mut state,
+                &state,
                 inputs,
                 dr_tail_plan,
                 operation_mode,
             )?
         }
-        inputs => crate::baby_bear::workers::gpu::enqueue_phase_two(
-            device_id, context, &mut state, inputs,
-        )?,
+        inputs => {
+            crate::baby_bear::workers::gpu::enqueue_phase_two(device_id, context, &state, inputs)?
+        }
     };
     Ok(PhaseTwo { state, job })
 }
 
 fn finish_phase_three<'a>(device_id: i32, p2: PhaseTwo<'a>) -> CudaResult<GpuWorkResult<A>> {
     let PhaseTwo { state, job } = p2;
-    #[cfg(test)]
-    crate::proth120::workers::gpu::tests::observe(&state);
     match job {
         JobType::MemoryCommitment(job) => {
             crate::baby_bear::workers::gpu::finish_memory_commitment(device_id, state, job)
         }
-        JobType::Proof(job) => crate::baby_bear::workers::gpu::finish_proof(device_id, state, job),
+        JobType::Proof(job, nodes) => {
+            crate::baby_bear::workers::gpu::finish_proof(device_id, state, job, nodes)
+        }
         JobType::L1Wrap(job) => {
             crate::proth120::workers::gpu::finish_l1_wrap(device_id, state, job)
         }

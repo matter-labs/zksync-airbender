@@ -36,7 +36,7 @@ impl ExecutionKind {
             Self::Unrolled => None,
             Self::Unified => Some(CircuitType::Unrolled(UnrolledCircuitType::Unified)),
             Self::Unified22 => Some(CircuitType::Unrolled(UnrolledCircuitType::Unified22)),
-            Self::L1Wrap => Some(CircuitType::L1Wrap21),
+            Self::L1Wrap => Some(CircuitType::L1Wrap),
         }
     }
 

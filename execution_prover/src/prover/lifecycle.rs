@@ -112,7 +112,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
             trace_chunk_sets_receiver,
             binary_holders,
             next_binary_id: 0,
-            l1_whir_schedule: None,
             common_precomputations,
             free_allocators_sender,
             free_allocators_receiver,
@@ -149,23 +148,31 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         &self.backend
     }
 
+    pub(super) fn free_allocators(&self, allocators: impl IntoIterator<Item = B::Allocator>) {
+        for allocator in allocators {
+            self.free_allocators_sender
+                .send(allocator)
+                .expect("ExecutionProver allocator return channel closed");
+        }
+    }
+
+    pub(super) fn free_buffer<T>(&self, buffer: Option<Vec<T, B::Allocator>>) {
+        if let Some(buffer) = buffer {
+            let allocator = buffer.allocator().clone();
+            drop(buffer);
+            self.free_allocators([allocator]);
+        }
+    }
+
     pub(super) fn free_inits_and_teardowns(
         &self,
         inits_and_teardowns: InitsAndTeardownsTraceHost<B::Allocator>,
     ) {
-        for allocator in inits_and_teardowns.into_allocators() {
-            self.free_allocators_sender.send(allocator).expect(
-                "ExecutionProver allocator return channel closed during init/teardown free",
-            );
-        }
+        self.free_allocators(inits_and_teardowns.into_allocators());
     }
 
     pub(super) fn free_tracing_data(&self, tracing_data: TracingDataHost<B::Allocator>) {
-        for allocator in tracing_data.into_allocators() {
-            self.free_allocators_sender
-                .send(allocator)
-                .expect("ExecutionProver allocator return channel closed during tracing-data free");
-        }
+        self.free_allocators(tracing_data.into_allocators());
     }
 
     pub(super) fn free_traces(
@@ -181,18 +188,24 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
         }
     }
 
+    pub(super) fn free_cache_entry(&self, entry: TraceCacheEntry<B::Allocator>) {
+        let TraceCacheEntry {
+            inits_and_teardowns,
+            tracing_data,
+            memory_partial_trees,
+            ..
+        } = entry;
+        self.free_traces(inits_and_teardowns, tracing_data);
+        self.free_buffer(memory_partial_trees.map(|trees| trees.nodes));
+    }
+
     pub(super) fn trim_cache(&self, cache: &mut TraceCache<B::Allocator>) {
         let entries = &mut cache.entries;
         let min = self.configuration.min_free_host_allocators_per_job
             * self.configuration.expected_concurrent_jobs;
         while self.free_allocators_sender.len() < min && !entries.is_empty() {
             let evicted_entry = entries.pop_front().unwrap();
-            let TraceCacheEntry {
-                inits_and_teardowns,
-                tracing_data,
-                ..
-            } = evicted_entry;
-            self.free_traces(inits_and_teardowns, tracing_data);
+            self.free_cache_entry(evicted_entry);
         }
     }
 }

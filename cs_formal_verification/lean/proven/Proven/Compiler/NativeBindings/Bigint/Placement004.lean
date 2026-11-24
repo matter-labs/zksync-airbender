@@ -1,0 +1,380 @@
+module
+public import Proven.Compiler.NativeBridge
+public import Proven.Compiler.NativeBindings.Bigint.PlacementData
+public import Proven.KernelRfl
+public import Human.Compiler.Captures.Bigint
+public import Proven.GKRProtocol.CleanArithmeticNative.BigintCached
+
+@[expose] public section
+set_option warningAsError true
+namespace Airbender.Compiler.NativeBindings.Bigint
+open Airbender Airbender.Compiler NativeBridge
+set_option maxRecDepth 32768
+
+/-- Logical column 96 uses its actual native placement. -/
+theorem placement96 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 96 = logical 96 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 96) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[96]'(by decide) = (96, (GKRAddress.BaseLayerWitness 37)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 96 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 37) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 37)) = (GKRAddress.BaseLayerWitness 37) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank96
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 97 uses its actual native placement. -/
+theorem placement97 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 97 = logical 97 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 97) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[97]'(by decide) = (97, (GKRAddress.BaseLayerWitness 38)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 97 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 38) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 38)) = (GKRAddress.BaseLayerWitness 38) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank97
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 98 uses its actual native placement. -/
+theorem placement98 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 98 = logical 98 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 98) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[98]'(by decide) = (98, (GKRAddress.BaseLayerWitness 39)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 98 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 39) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 39)) = (GKRAddress.BaseLayerWitness 39) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank98
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 99 uses its actual native placement. -/
+theorem placement99 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 99 = logical 99 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 99) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[99]'(by decide) = (99, (GKRAddress.BaseLayerWitness 40)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 99 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 40) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 40)) = (GKRAddress.BaseLayerWitness 40) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank99
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 100 uses its actual native placement. -/
+theorem placement100 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 100 = logical 100 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 100) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[100]'(by decide) = (100, (GKRAddress.BaseLayerWitness 41)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 100 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 41) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 41)) = (GKRAddress.BaseLayerWitness 41) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank100
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 101 uses its actual native placement. -/
+theorem placement101 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 101 = logical 101 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 101) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[101]'(by decide) = (101, (GKRAddress.BaseLayerWitness 42)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 101 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 42) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 42)) = (GKRAddress.BaseLayerWitness 42) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank101
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 102 uses its actual native placement. -/
+theorem placement102 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 102 = logical 102 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 102) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[102]'(by decide) = (102, (GKRAddress.BaseLayerWitness 43)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 102 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 43) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 43)) = (GKRAddress.BaseLayerWitness 43) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank102
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 103 uses its actual native placement. -/
+theorem placement103 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 103 = logical 103 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 103) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[103]'(by decide) = (103, (GKRAddress.BaseLayerWitness 44)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 103 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 44) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 44)) = (GKRAddress.BaseLayerWitness 44) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank103
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 104 uses its actual native placement. -/
+theorem placement104 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 104 = logical 104 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 104) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[104]'(by decide) = (104, (GKRAddress.BaseLayerWitness 45)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 104 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 45) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 45)) = (GKRAddress.BaseLayerWitness 45) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank104
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 105 uses its actual native placement. -/
+theorem placement105 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 105 = logical 105 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 105) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[105]'(by decide) = (105, (GKRAddress.BaseLayerWitness 46)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 105 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 46) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 46)) = (GKRAddress.BaseLayerWitness 46) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank105
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 106 uses its actual native placement. -/
+theorem placement106 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 106 = logical 106 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 106) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[106]'(by decide) = (106, (GKRAddress.BaseLayerWitness 47)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 106 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 47) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 47)) = (GKRAddress.BaseLayerWitness 47) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank106
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 107 uses its actual native placement. -/
+theorem placement107 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 107 = logical 107 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 107) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[107]'(by decide) = (107, (GKRAddress.BaseLayerWitness 48)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 107 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 48) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 48)) = (GKRAddress.BaseLayerWitness 48) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank107
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 108 uses its actual native placement. -/
+theorem placement108 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 108 = logical 108 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 108) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[108]'(by decide) = (108, (GKRAddress.BaseLayerWitness 49)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 108 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 49) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 49)) = (GKRAddress.BaseLayerWitness 49) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank108
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 109 uses its actual native placement. -/
+theorem placement109 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 109 = logical 109 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 109) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[109]'(by decide) = (109, (GKRAddress.BaseLayerWitness 50)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 109 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 50) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 50)) = (GKRAddress.BaseLayerWitness 50) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank109
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 110 uses its actual native placement. -/
+theorem placement110 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 110 = logical 110 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 110) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[110]'(by decide) = (110, (GKRAddress.BaseLayerWitness 51)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 110 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 51) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 51)) = (GKRAddress.BaseLayerWitness 51) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank110
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 111 uses its actual native placement. -/
+theorem placement111 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 111 = logical 111 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 111) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[111]'(by decide) = (111, (GKRAddress.BaseLayerWitness 52)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 111 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 52) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 52)) = (GKRAddress.BaseLayerWitness 52) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank111
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 112 uses its actual native placement. -/
+theorem placement112 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 112 = logical 112 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 112) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[112]'(by decide) = (112, (GKRAddress.BaseLayerWitness 53)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 112 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 53) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 53)) = (GKRAddress.BaseLayerWitness 53) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank112
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 113 uses its actual native placement. -/
+theorem placement113 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 113 = logical 113 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 113) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[113]'(by decide) = (113, (GKRAddress.BaseLayerWitness 54)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 113 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 54) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 54)) = (GKRAddress.BaseLayerWitness 54) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank113
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 114 uses its actual native placement. -/
+theorem placement114 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 114 = logical 114 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 114) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[114]'(by decide) = (114, (GKRAddress.BaseLayerWitness 55)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 114 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 55) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 55)) = (GKRAddress.BaseLayerWitness 55) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank114
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 115 uses its actual native placement. -/
+theorem placement115 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 115 = logical 115 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 115) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[115]'(by decide) = (115, (GKRAddress.BaseLayerWitness 56)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 115 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 56) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 56)) = (GKRAddress.BaseLayerWitness 56) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank115
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 116 uses its actual native placement. -/
+theorem placement116 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 116 = logical 116 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 116) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[116]'(by decide) = (116, (GKRAddress.BaseLayerWitness 57)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 116 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 57) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 57)) = (GKRAddress.BaseLayerWitness 57) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank116
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 117 uses its actual native placement. -/
+theorem placement117 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 117 = logical 117 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 117) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[117]'(by decide) = (117, (GKRAddress.BaseLayerWitness 58)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 117 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 58) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 58)) = (GKRAddress.BaseLayerWitness 58) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank117
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 118 uses its actual native placement. -/
+theorem placement118 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 118 = logical 118 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 118) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[118]'(by decide) = (118, (GKRAddress.BaseLayerWitness 59)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 118 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 59) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 59)) = (GKRAddress.BaseLayerWitness 59) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank118
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Logical column 119 uses its actual native placement. -/
+theorem placement119 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get 119 = logical 119 := by
+  have included := Array.getElem_mem (xs := (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries) (i := 119) (by decide)
+  have captured : (Airbender.Compiler.Captures.Bigint.imported.circuit).placement_data.entries[119]'(by decide) = (119, (GKRAddress.BaseLayerWitness 60)) :=
+    entry_of_binding (by decide) placement_entries (by cbv)
+  have same := agreement _ included
+  rw [captured] at same
+  have selected : Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placement 119 = Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 60) := by
+    as_aux_lemma => kernel_rfl
+  have inverse : Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address (Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.placement (GKRAddress.BaseLayerWitness 60)) = (GKRAddress.BaseLayerWitness 60) :=
+    of_decide_eq_true Airbender.Compiler.CleanArithmeticNative.BigintCached.native.placementInBank119
+  exact (congrArg physical ((congrArg Airbender.Compiler.FullArithmeticNative.BigintCached.native.bank.address selected).trans inverse)).trans same.symm
+
+/-- Public placements cover each column in this batch. -/
+theorem placements004 (physical : GKRAddress → NativeArithmetic.F) (logical : Nat → NativeArithmetic.F)
+    (agreement : NativeArithmetic.PlacementAgreement Airbender.Compiler.Captures.Bigint.imported.circuit physical logical) :
+    ∀ index ∈ [96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119],
+      (Airbender.Compiler.CleanArithmeticNative.BigintCached.native.environment physical (Verification.environment logical).data).get index = logical index :=
+  (cons_placements (placement96 physical logical agreement) (cons_placements (placement97 physical logical agreement) (cons_placements (placement98 physical logical agreement) (cons_placements (placement99 physical logical agreement) (cons_placements (placement100 physical logical agreement) (cons_placements (placement101 physical logical agreement) (cons_placements (placement102 physical logical agreement) (cons_placements (placement103 physical logical agreement) (cons_placements (placement104 physical logical agreement) (cons_placements (placement105 physical logical agreement) (cons_placements (placement106 physical logical agreement) (cons_placements (placement107 physical logical agreement) (cons_placements (placement108 physical logical agreement) (cons_placements (placement109 physical logical agreement) (cons_placements (placement110 physical logical agreement) (cons_placements (placement111 physical logical agreement) (cons_placements (placement112 physical logical agreement) (cons_placements (placement113 physical logical agreement) (cons_placements (placement114 physical logical agreement) (cons_placements (placement115 physical logical agreement) (cons_placements (placement116 physical logical agreement) (cons_placements (placement117 physical logical agreement) (cons_placements (placement118 physical logical agreement) (cons_placements (placement119 physical logical agreement) (by intro index member; cases member)))))))))))))))))))))))))
+end Airbender.Compiler.NativeBindings.Bigint

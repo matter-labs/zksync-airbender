@@ -345,9 +345,10 @@ pub struct ProverConfig {
     // we do not expect any challenges for sumcheck, as it's soundness
     // error is very small
     pub sumcheck_explicit_output_size_log_2: usize,
+    // The lookup-challenge proof-of-work bit count is derived per-circuit from
+    // `security_level` via `pow_bits`; the WHIR-side PoW knobs live in the
+    // schedule.
     pub security_level: SecurityLevel,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub lookup_challenges_pow_floor: Option<u32>,
     /// The whole WHIR geometry: the base round ([`WhirBaseRoundSchedule`]:
     /// the base oracles' LDE factor, physical packing, round-0 fold — `0` is
     /// virtual packing with one value per column per leaf — and base query
@@ -372,17 +373,6 @@ pub struct ProverConfig {
 }
 
 impl ProverConfig {
-    pub fn lookup_challenges_pow_bits<F: field::PrimeField, E: field::FieldExtension<F>>(
-        &self,
-        circuit: &cs::gkr_compiler::GKRCircuitArtifact<F>,
-    ) -> u32 {
-        pow_bits::lookup_challenges_pow_bits::<F, E>(
-            self.security_level.security_bits(),
-            pow_bits::lookup_identity_degree(circuit),
-        )
-        .max(self.lookup_challenges_pow_floor.unwrap_or(0))
-    }
-
     /// A bare config for WHIR-only drivers and tests: a
     /// `SeparateMemoryAndWitness` commitment of `2^trace_len_log2` columns
     /// under `whir_schedule` (the base LDE factor, cap, packing and round-0
@@ -399,7 +389,6 @@ impl ProverConfig {
             sumcheck_explicit_output_size_log_2:
                 crate::definitions::DEFAULT_PLAIN_TEXT_POLY_SIZE_LOG2,
             security_level,
-            lookup_challenges_pow_floor: None,
             whir_schedule,
             same_size_sumcheck_schedule: naive_same_size_schedule(),
             dimension_reducing_sumcheck_schedule: Default::default(),

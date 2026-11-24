@@ -38,6 +38,10 @@ impl ExecutionBackend for CpuBackend {
         CpuTraceAllocator::new(bytes)
     }
 
+    fn persists_memory_partial_trees(&self, _profile: ProofProfile) -> bool {
+        false
+    }
+
     fn allocate_memory(&self, ram: JitRunnerRam) -> Self::Memory {
         MemoryHolder::allocate_zeroed(ram, Global)
     }
@@ -56,15 +60,6 @@ impl ExecutionBackend for CpuBackend {
         profiles: &[ProofProfile],
     ) -> Self::Precomputations {
         CpuCircuitPrecomputations::from_canonical(circuit, setup, selection, profiles)
-    }
-
-    fn prepare_l1_wrap(
-        &self,
-        circuit: CircuitType,
-        setup: crate::upstream::L1WrapSetup,
-        config: crate::upstream::ProverConfig,
-    ) -> Self::Precomputations {
-        CpuCircuitPrecomputations::l1_with_config(circuit, setup, config)
     }
 
     fn submit(&self, batch: WorkBatch<Self::Allocator, Self::Precomputations>) {
