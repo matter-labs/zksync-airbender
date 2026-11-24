@@ -24,7 +24,6 @@ const REGISTRY: [u8; 20] = [
 #[derive(Clone, Copy, Debug)]
 enum WrapCase {
     OracleDomainAboveBase,
-    EthproofsCapAcrossBaseCosets,
     BaseFold3,
     ConstantDomainZeroPow,
     OracleLog17,
@@ -57,20 +56,6 @@ fn alternate_case(case: WrapCase) {
             vec![9, 10, 9, 8, 7],
             vec![18, 20, 22, 24],
             13,
-        ),
-        // An Ethproofs 2^22 wrap whose cap cuts through the base cosets, with an
-        // ungated OOD sample.
-        WrapCase::EthproofsCapAcrossBaseCosets => (
-            SoundnessMode::EthproofsSoundnessCalc,
-            22,
-            "ethproofs_soundcalc",
-            vec![2, 5, 5, 5, 4],
-            vec![1, 4, 8, 10, 12],
-            vec![198, 45, 22, 18, 15],
-            vec![18, 18, 17, 15, 14],
-            vec![1, 20, 23, 23, 23],
-            vec![8, 6, 3, 0],
-            8,
         ),
         // The base fold opens eight evaluations per leaf from each base oracle.
         WrapCase::BaseFold3 => (
@@ -125,9 +110,7 @@ fn alternate_case(case: WrapCase) {
         ),
     };
     let mut config = ProofProfile::L1Wrap.prover_config(trace_log, mode);
-    config.cap_size = 8;
     let schedule = &mut config.whir_schedule;
-    schedule.cap_size = config.cap_size;
     schedule.base_round.lde_factor_log2 = rates[0];
     schedule.base_round.fold_log2 = folds[0];
     schedule.base_round.batching_pow_bits = Some(batching);
@@ -224,12 +207,7 @@ fn alternate_case(case: WrapCase) {
     };
     assert_eq!(proof_pc, final_pc);
     let worker = Worker::new();
-    let setup = match mode {
-        SoundnessMode::PessimisticConjecture => l1_wrap_setup,
-        SoundnessMode::EthproofsSoundnessCalc => {
-            trace_and_split::setups::unrolled_circuits::unified_reduced_machine_proth120_2_22::l1_wrap_setup
-        }
-    }(binary, &image.padded_text_words(), &worker);
+    let setup = l1_wrap_setup(binary, &image.padded_text_words(), &worker);
     let twiddles = Twiddles::new(1 << config.whir_message_size_log2(), &worker);
     let rows: Vec<_> = setup
         .setup
@@ -356,12 +334,6 @@ fn alternate_case(case: WrapCase) {
 #[ignore = "full GPU wrap and CPU verifier; cargo test -p verifier_evm --release --test gpu_l1_wrap gpu_l1_wrap_oracle_domain_above_base -- --exact --ignored"]
 fn gpu_l1_wrap_oracle_domain_above_base() {
     alternate_case(WrapCase::OracleDomainAboveBase);
-}
-
-#[test]
-#[ignore = "full GPU wrap and CPU verifier; cargo test -p verifier_evm --release --test gpu_l1_wrap gpu_l1_wrap_ethproofs_cap_across_base_cosets -- --exact --ignored"]
-fn gpu_l1_wrap_ethproofs_cap_across_base_cosets() {
-    alternate_case(WrapCase::EthproofsCapAcrossBaseCosets);
 }
 
 #[test]
