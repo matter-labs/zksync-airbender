@@ -206,6 +206,9 @@ export FIXTURE_BACKEND=gpu
 Builds and CPU verification do not take the GPU lock. The currency recipe
 compares the complete compressed files.
 
+`AB_PESSIMISTIC_L1_WHIR_SCHEDULE` selects a JSON WHIR schedule for local
+pessimistic L1 wrap runs.
+
 ## Census tables
 
 `build.sh` rebuilds the registered guests and emits all four census tables from

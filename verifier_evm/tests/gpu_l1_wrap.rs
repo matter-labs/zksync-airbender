@@ -169,7 +169,7 @@ fn alternate_case(case: WrapCase) {
         .arg(compression)
         .args(["--soundness-mode", mode.cli_name()])
         .args(["--gpu-memory-preset", "21gib"])
-        .env("AB_L1_WHIR_SCHEDULE", schedule_path)
+        .env("AB_PESSIMISTIC_L1_WHIR_SCHEDULE", schedule_path)
         .arg("--output-dir")
         .arg(&data)
         .args(["--output-file", "proof.json.zlib"])

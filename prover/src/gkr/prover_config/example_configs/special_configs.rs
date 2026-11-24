@@ -223,7 +223,7 @@ pub mod l1_wrap {
     /// that the lookup and GKR challenges drawn before them carry no list
     /// factor.
     pub fn pessimistic_packed_prover_config() -> ProverConfig {
-        const SCHEDULE_ENV: &str = "AB_L1_WHIR_SCHEDULE";
+        const SCHEDULE_ENV: &str = "AB_PESSIMISTIC_L1_WHIR_SCHEDULE";
         static CONFIG: OnceLock<ProverConfig> = OnceLock::new();
         CONFIG
             .get_or_init(|| {
