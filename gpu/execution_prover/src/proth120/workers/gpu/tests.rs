@@ -53,11 +53,7 @@ fn wrap_program(mode: SoundnessMode) -> (Vec<u32>, Vec<u32>) {
             Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../tools/gkr_verifier/full_statement_verifiers")
         });
-    load_fsv_exact(
-        &dir,
-        &FsvDescriptor::compression(mode, FsvProfile::L1Wrap),
-    )
-    .into_words()
+    load_fsv_exact(&dir, &FsvDescriptor::compression(mode, FsvProfile::L1Wrap)).into_words()
 }
 
 fn pinned_copy<T: Copy, B: GoodAllocator>(

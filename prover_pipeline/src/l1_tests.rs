@@ -32,7 +32,10 @@ fn ethproofs_l1_wrap_gkr_security_margins() {
     let memory_degree = circuit.trace_len * keys_per_row + NUM_REGISTERS + 1;
     let memory_bits =
         challenge_bits + external_pow_bits - (memory_degree as f64).log2() - 2.0 - loss;
-    assert!(memory_bits >= 100.0, "single-instance memory: {memory_bits:.9} bits");
+    assert!(
+        memory_bits >= 100.0,
+        "single-instance memory: {memory_bits:.9} bits"
+    );
 }
 
 /// Setup-tree level pinned by the wrap verifier.
