@@ -58,9 +58,10 @@ bytes. `test_create_requires_glamsterdam_size_limit` reports the actual runtime 
 
 `test_embedded_setup_matches_reference` checks every deployed runtime-prefix byte, the exact
 setup length and its pinned Keccak256. It catches a toolchain that appends bytes after the
-constructor's returned array. Changing setup length without regenerating is caught by the
-Rust producer's pinned payload length/hash assertions and this deployed-code check, while
-`test_merged_single_tx` exercises the resulting reads. `test_rejects_shifted_setup` appends a
+constructor's returned array. The Rust producer independently pins the pessimistic setup
+length and hash. For Ethproofs, the producer renders the Forge expectations from the setup
+in the same run, and the CI comparison of committed output catches setup changes.
+`test_merged_single_tx` exercises the setup reads. `test_rejects_shifted_setup` appends a
 byte after setup using `vm.etch`, checks rejection of the canonical proof, then restores the
 code and checks acceptance. `test_rejects_altered_setup_data` covers frontier, cap and term
 table mutations.
