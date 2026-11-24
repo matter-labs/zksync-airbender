@@ -159,19 +159,21 @@ mod tests {
             assert!(guest.unpadded_bin().len() <= words);
             assert!(guest.unpadded_text().len() <= words);
         }
-        let wrap = FsvDescriptor::compression(
-            SoundnessMode::PessimisticConjecture,
-            FsvProfile::L1Wrap,
-        );
-        let bytes = std::fs::read(canonical_fsv_dir().join(wrap.relative_path())).unwrap();
-        assert!(matches!(
-            read_elf_with_rom(
-                &bytes,
-                ElfReadMode::Legacy,
-                common_constants::rom::REGULAR_ROM
-            ),
-            Err(riscv_transpiler::elf::ElfReadError::Layout(_))
-        ));
+        for &mode in SoundnessMode::ALL {
+            let wrap = FsvDescriptor::compression(mode, FsvProfile::L1Wrap);
+            let bytes = std::fs::read(canonical_fsv_dir().join(wrap.relative_path())).unwrap();
+            assert!(
+                matches!(
+                    read_elf_with_rom(
+                        &bytes,
+                        ElfReadMode::Legacy,
+                        common_constants::rom::REGULAR_ROM
+                    ),
+                    Err(riscv_transpiler::elf::ElfReadError::Layout(_))
+                ),
+                "{mode:?} wrap guest must reject the regular ROM geometry"
+            );
+        }
     }
 
     #[test]
