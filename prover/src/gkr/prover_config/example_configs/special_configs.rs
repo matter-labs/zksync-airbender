@@ -305,7 +305,7 @@ pub mod l1_wrap {
         }
     }
 
-    /// ETH1020-0047, the Proth120 L1 wrap at 100 bits per PCS term under the
+    /// The Proth120 L1 wrap at 100 bits per PCS term under the
     /// Johnson bound with multiplicity 3. `soundcalc/l1_wrap.py` certifies the
     /// schedule using the maximum challenge point mass `37/2^128`.
     pub fn ethproofs_packed_prover_config() -> ProverConfig {

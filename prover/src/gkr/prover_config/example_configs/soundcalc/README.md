@@ -72,7 +72,7 @@ reasons for the regime choices.
 PYTHONPATH=/tmp/soundcalc python3 l1_wrap.py
 ```
 
-The driver emits the committed ETH1020-0047 schedule and certifies every WHIR PCS
+The driver emits the Ethproofs L1 wrap schedule and certifies every WHIR PCS
 term at 100 bits or more with soundcalc. It uses the 2^22 trace, packing by 8,
 14 packed columns, a cap of 32 and the Johnson bound with m = 3 at every oracle.
 The base LDE factor is 128. The internal factors are 256, 512, 1024, 4096 and 8192.

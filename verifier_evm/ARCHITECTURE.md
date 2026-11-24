@@ -10,7 +10,7 @@ generator derives PoW difficulties from the circuit and prover config, including
 the wrap's external floor, and pins the final PC, top bits, setup and registry.
 The pessimistic Foundry project is `generated_contracts/l1_wrap/merged/`. Its
 negative controls are generated into ignored sibling projects. The Ethproofs
-project is `generated_contracts/l1_wrap_ethproofs/merged/`. It uses ETH1020-0047
+project is `generated_contracts/l1_wrap_ethproofs/merged/`. It uses the Ethproofs L1 wrap schedule
 with a 2^22 trace, a cap of 32, and a level-10 setup frontier. The helpers
 `generated_contracts/run_merged.sh`, `deploy.sh` and `send_proof.sh` target the
 pessimistic project. A successful verifier call

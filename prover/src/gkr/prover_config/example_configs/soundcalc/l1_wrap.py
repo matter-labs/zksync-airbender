@@ -1,4 +1,4 @@
-"""Reproduce and certify the Proth120 ETH1020-0047 schedule with soundcalc 2af5e7d."""
+"""Reproduce and certify the Ethproofs Proth120 L1 wrap schedule with soundcalc 2af5e7d."""
 import json
 from pathlib import Path
 

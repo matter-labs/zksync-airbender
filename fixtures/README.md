@@ -155,7 +155,7 @@ git status --porcelain -- fixtures/chains/pessimistic_conjecture
 ```
 
 CPU CI checks compression currency. The recipe regenerates the Ethproofs L1 fixture
-with `--mode ethproofs_soundcalc --stage l1` using the ETH1020-0047 wrap schedule.
+with `--mode ethproofs_soundcalc --stage l1` using the Ethproofs L1 wrap schedule.
 CLI verification checks the L1 envelope, chain and compression sidecar. The EVM
 verifier has generated projects for both Proth120 proofs.
 The Standard stages use fixed Compression Blake modes. The unrolled-to-unified
