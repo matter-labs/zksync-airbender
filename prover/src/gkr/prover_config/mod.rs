@@ -72,6 +72,10 @@ impl ProofProfile {
                     trace_len_log2, config.trace_len_log2,
                     "L1Wrap trace length for {mode:?}"
                 );
+                assert!(
+                    config.lookup_challenges_pow_floor.is_none(),
+                    "L1 wrap does not support a lookup PoW floor"
+                );
                 config
             }
         };

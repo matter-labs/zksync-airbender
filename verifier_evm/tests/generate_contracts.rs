@@ -2,6 +2,7 @@
 mod common;
 use common::MERGED_VERIFIER;
 use prover::definitions::SoundnessMode;
+use prover::gkr::prover_config::ProverConfig;
 use sha3::{Digest, Keccak256};
 
 // CreateX deployCreate2 address for TestRegistry (factory/salt in deploy.sh).
@@ -16,9 +17,14 @@ const REGISTRY_ADDRESS: [u8; 20] = [
 /// Returns the final PC.
 fn check_pinned_inputs(
     mode: SoundnessMode,
+    config: &ProverConfig,
     proof: &common::Proof,
     operation_mode: &prover::gkr::prover::OperationMode,
 ) -> u32 {
+    assert!(
+        config.lookup_challenges_pow_floor.is_none(),
+        "the EVM L1 wrap generator does not support a lookup PoW floor"
+    );
     let prover::gkr::prover::OperationMode::SingleChunk {
         external_challenges_pow_bits,
         final_pc,
@@ -48,7 +54,7 @@ fn check_pinned_inputs(
 fn generated_sources(mode: SoundnessMode) -> Vec<(String, String)> {
     let (circuit, proof, operation_mode) = common::load(mode);
     let config = common::prover_config(mode);
-    let pc = check_pinned_inputs(mode, &proof, &operation_mode);
+    let pc = check_pinned_inputs(mode, &config, &proof, &operation_mode);
     let (level, nodes) = common::setup_frontier(mode);
     let params = verifier_evm::encoding::FormatParams {
         setup_frontier_level: level,

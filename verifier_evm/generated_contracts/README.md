@@ -31,10 +31,11 @@ before deploying the verifier.
 After deployment it compares the complete runtime with the generated code and setup;
 the verifier exposes no registry getter.
 
-The generator derives external PoW as the maximum of the circuit's lookup requirement
-and the wrap's external floor, using the prover's functions and config. Configured
-PoW difficulties must fit the 64-bit calldata nonce width. The generator also
-requires strictly increasing top bits.
+The generator derives lookup PoW from the security level and the circuit. Wrap
+configs must leave the lookup PoW floor unset. The generator takes the maximum
+of the lookup PoW and the wrap's external floor. Configured PoW difficulties must
+fit the 64-bit calldata nonce width. The generator also requires strictly
+increasing top bits.
 
 The pessimistic wrap uses folds `[1,4,4,4,5]`, query PoW `[27,25,30,30,30]`, and folding PoW
 `[10,10,9,10,10]` per step. The batching PoW derives to 14 bits. Each intermediate
