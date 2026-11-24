@@ -91,7 +91,7 @@ impl FsvPrograms {
             compression_wrap: load(
                 target == ProofTarget::L1,
                 FsvProgram::UnifiedRecursionLayer,
-                FsvProfile::CompressionFinalWrap,
+                FsvProfile::L1Wrap,
                 BlakeMode::BlakeSpecialOpcodes,
             ),
         }

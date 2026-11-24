@@ -28,14 +28,15 @@ pub enum FsvProfile {
     Standard,
     /// Unified recursion verifying the merged-mode compression schedule.
     Compression,
-    CompressionFinalWrap,
+    /// The mode's last compression statement linked for the wrap ROM.
+    L1Wrap,
 }
 
 impl FsvProfile {
     #[must_use]
     pub const fn rom(self) -> RomGeometry {
         match self {
-            Self::CompressionFinalWrap => L1_WRAP_ROM,
+            Self::L1Wrap => L1_WRAP_ROM,
             Self::Standard | Self::Compression => REGULAR_ROM,
         }
     }
@@ -111,7 +112,7 @@ const fn entry(
 /// Every built guest, grouped by soundness mode.
 pub const FSV_REGISTRY: &[FsvRegistryEntry] = {
     use BlakeMode::{BlakeSpecialOpcodes, Compression};
-    use FsvProfile::{CompressionFinalWrap, Standard};
+    use FsvProfile::{L1Wrap, Standard};
     use FsvProgram::*;
     use SoundnessMode::{EthproofsSoundnessCalc, PessimisticConjecture};
     &[
@@ -153,7 +154,7 @@ pub const FSV_REGISTRY: &[FsvRegistryEntry] = {
         entry(
             PessimisticConjecture,
             UnifiedRecursionLayer,
-            CompressionFinalWrap,
+            L1Wrap,
             BlakeSpecialOpcodes,
             "pessimistic_conjecture/fsv_unified_recursion_layer_sec_100_compression_final_wrap_special_opcodes_extension.elf",
         ),
@@ -195,7 +196,7 @@ pub const FSV_REGISTRY: &[FsvRegistryEntry] = {
         entry(
             EthproofsSoundnessCalc,
             UnifiedRecursionLayer,
-            CompressionFinalWrap,
+            L1Wrap,
             BlakeSpecialOpcodes,
             "ethproofs_soundcalc/fsv_unified_recursion_layer_sec_100_compression_wrap_special_opcodes_extension.elf",
         ),

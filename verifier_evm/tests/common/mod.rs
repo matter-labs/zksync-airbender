@@ -41,7 +41,7 @@ pub fn load(mode: SoundnessMode) -> (Circuit, Proof, OperationMode) {
 }
 
 pub fn final_pc(mode: SoundnessMode) -> u32 {
-    let descriptor = FsvDescriptor::compression(mode, FsvProfile::CompressionFinalWrap);
+    let descriptor = FsvDescriptor::compression(mode, FsvProfile::L1Wrap);
     let elf = Path::new("../tools/gkr_verifier/full_statement_verifiers")
         .join(descriptor.relative_path());
     let image = riscv_transpiler::elf::read_elf_from_path_with_rom(

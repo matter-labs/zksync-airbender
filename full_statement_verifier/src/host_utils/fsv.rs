@@ -161,7 +161,7 @@ mod tests {
         }
         let wrap = FsvDescriptor::compression(
             SoundnessMode::PessimisticConjecture,
-            FsvProfile::CompressionFinalWrap,
+            FsvProfile::L1Wrap,
         );
         let bytes = std::fs::read(canonical_fsv_dir().join(wrap.relative_path())).unwrap();
         assert!(matches!(

@@ -79,7 +79,7 @@ fn l1_wrap_stagewise_pessimistic_conjecture() {
         &fsv_dir,
         &FsvDescriptor::compression(
             SoundnessMode::PessimisticConjecture,
-            FsvProfile::CompressionFinalWrap,
+            FsvProfile::L1Wrap,
         ),
     )
     .into_words();

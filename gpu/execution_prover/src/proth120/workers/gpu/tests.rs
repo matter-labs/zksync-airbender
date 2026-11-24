@@ -55,7 +55,7 @@ fn wrap_program(mode: SoundnessMode) -> (Vec<u32>, Vec<u32>) {
         });
     load_fsv_exact(
         &dir,
-        &FsvDescriptor::compression(mode, FsvProfile::CompressionFinalWrap),
+        &FsvDescriptor::compression(mode, FsvProfile::L1Wrap),
     )
     .into_words()
 }

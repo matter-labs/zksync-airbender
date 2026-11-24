@@ -64,7 +64,7 @@ fn export_setup_frontier(mode: SoundnessMode) {
     let rom = ::prover::common_constants::rom::L1_WRAP_ROM;
     let (mut binary, mut text) = load_fsv_exact(
         fsv_dir(),
-        &FsvDescriptor::compression(mode, FsvProfile::CompressionFinalWrap),
+        &FsvDescriptor::compression(mode, FsvProfile::L1Wrap),
     )
     .into_words();
     setups::pad_bytecode_for_proving_with_rom(&mut binary, rom);

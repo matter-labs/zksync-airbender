@@ -185,7 +185,7 @@ fn alternate_case(case: WrapCase) {
     assert_eq!(bundle.proof.whir_proof.whir_schedule, config.whir_schedule);
     let guest = FsvDescriptor {
         soundness_mode: mode,
-        profile: FsvProfile::CompressionFinalWrap,
+        profile: FsvProfile::L1Wrap,
         program: FsvProgram::UnifiedRecursionLayer,
         blake: BlakeMode::BlakeSpecialOpcodes,
     };
