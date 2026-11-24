@@ -209,7 +209,7 @@ fn generated_sources(mode: SoundnessMode) -> Vec<(String, String)> {
         "_rejectsRunPad(_finalRound(\"_sumcheck\")); // fold 5: ten fields, then five folding nonces".into()
     } else {
         let round = (1..folds.len())
-            .rfind(|&round| (2 * folds[round] * 123) % 8 != 0)
+            .rfind(|&round| !(2 * folds[round] * 123).is_multiple_of(8))
             .expect("a padded internal WHIR sumcheck run");
         format!("_rejectsRunPad(\"whir_{round}_sumcheck\");")
     };
