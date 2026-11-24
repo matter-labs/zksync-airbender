@@ -6,12 +6,7 @@ export RUSTC_BOOTSTRAP=1
 
 # This package deliberately builds separately from gkr_verifier: Cargo feature
 # unification must never enable the wrap layout on the regular verifier guests.
-case "${1:-}" in
-    "") mode=both ;;
-    --ethproofs) mode=ethproofs ;;
-    *) echo "Usage: $0 [--ethproofs]" >&2; exit 1 ;;
-esac
-[ "$#" -le 1 ] || { echo "Usage: $0 [--ethproofs]" >&2; exit 1; }
+[ "$#" -eq 0 ] || { echo "Usage: $0" >&2; exit 1; }
 
 # Reproducibility across machines: the checkout root, the toolchain sysroot (build-std
 # compiles core/alloc from its rust-src) and the cargo registry would otherwise leak into
@@ -37,7 +32,7 @@ done
 # Keep the linked ELF, including .text, as the canonical guest input.
 out_dir=../gkr_verifier/full_statement_verifiers
 tmp_dir=$(mktemp -d)
-trap 'rm -f -- "$tmp_dir"/*.elf; rmdir -- "$tmp_dir"' EXIT
+trap 'rm -rf "$tmp_dir"' EXIT
 
 build_guest() {
     local bin=$1 dest=$2
@@ -51,7 +46,5 @@ build_guest() {
     cp "$tmp_dir/$stem.elf" "$dest/$stem.elf"
 }
 
-if [ "$mode" = both ]; then
-    build_guest fsv_unified_recursion_layer_sec_100_compression_final_wrap "$out_dir"
-fi
+build_guest fsv_unified_recursion_layer_sec_100_compression_final_wrap "$out_dir"
 build_guest fsv_unified_recursion_layer_sec_100_compression_wrap "$out_dir/ethproofs_soundcalc"
