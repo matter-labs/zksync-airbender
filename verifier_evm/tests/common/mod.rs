@@ -68,7 +68,7 @@ pub fn format_params() -> verifier_evm::encoding::FormatParams {
         setup_frontier_level: setup_frontier().0,
     }
 }
-/// Setup frontier emitted by prover_pipeline::export_pessimistic_l1_wrap_setup_frontier.
+/// Setup frontier emitted by prover_pipeline::export_l1_wrap_setup_frontier.
 pub fn setup_frontier() -> (usize, Vec<[u32; 8]>) {
     let json: serde_json::Value = serde_json::from_reader(
         std::fs::File::open(data_path("setup_frontier.json")).expect("setup frontier"),

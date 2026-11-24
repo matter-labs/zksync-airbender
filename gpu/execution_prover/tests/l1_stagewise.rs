@@ -77,7 +77,7 @@ fn l1_wrap_stagewise_pessimistic_conjecture() {
         .unwrap_or_else(|| root.join("../../tools/gkr_verifier/full_statement_verifiers"));
     let (binary, text) = load_fsv_exact(
         &fsv_dir,
-        &FsvDescriptor::pessimistic_compression(FsvProfile::CompressionFinalWrap),
+        &FsvDescriptor::compression(FsvProfile::CompressionFinalWrap),
     )
     .into_words();
     with_l1_wrap_fixture(

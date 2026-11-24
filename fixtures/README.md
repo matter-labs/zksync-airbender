@@ -172,7 +172,7 @@ native compression refusal tests. After producing the L1 fixture, refresh its
 setup frontier and EVM outputs:
 
 ```bash
-cargo test -p prover_pipeline --release --lib l1_tests::export_pessimistic_l1_wrap_setup_frontier -- --exact --ignored
+cargo test -p prover_pipeline --release --lib l1_tests::export_l1_wrap_setup_frontier -- --exact --ignored
 cargo test -p verifier_evm --release --test generate_contracts -- --ignored
 cargo test -p verifier_evm --release --test flatten_calldata -- --ignored
 git status --porcelain -- verifier_evm/generated_contracts verifier_evm/debug_data

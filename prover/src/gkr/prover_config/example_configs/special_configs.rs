@@ -298,6 +298,13 @@ pub mod l1_wrap {
         }
     }
 
+    pub fn packed_prover_config_in_mode(mode: SoundnessMode) -> ProverConfig {
+        match mode {
+            SoundnessMode::PessimisticConjecture => packed_prover_config(),
+            SoundnessMode::EthproofsSoundnessCalc => ethproofs_packed_prover_config(),
+        }
+    }
+
     /// ETH1020-0047, the Proth120 L1 wrap at 100 bits per PCS term under the
     /// Johnson bound with multiplicity 3. `soundcalc/l1_wrap.py` certifies the
     /// schedule using the maximum challenge point mass `37/2^128`.

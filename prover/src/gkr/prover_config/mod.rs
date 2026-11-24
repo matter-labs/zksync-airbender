@@ -67,12 +67,7 @@ impl ProofProfile {
             }
             (Self::L1Wrap, mode) => {
                 use example_configs::l1_wrap;
-                let config = match mode {
-                    SoundnessMode::PessimisticConjecture => l1_wrap::packed_prover_config(),
-                    SoundnessMode::EthproofsSoundnessCalc => {
-                        l1_wrap::ethproofs_packed_prover_config()
-                    }
-                };
+                let config = l1_wrap::packed_prover_config_in_mode(mode);
                 assert_eq!(
                     trace_len_log2, config.trace_len_log2,
                     "L1Wrap trace length for {mode:?}"

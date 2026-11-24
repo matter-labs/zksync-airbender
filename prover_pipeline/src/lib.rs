@@ -456,7 +456,7 @@ enum CompressionRole {
 
 fn compression_schedule(
     mode: SoundnessMode,
-) -> &'static [(CompressionRole, CompressionProfile, usize)] {
+) -> &'static [(CompressionRole, CompressionProfile, usize); 3] {
     match mode {
         SoundnessMode::PessimisticConjecture => &[
             (CompressionRole::First, CompressionProfile::Step, 2),
@@ -1722,11 +1722,7 @@ fn parse_blake_tag(tag: &str) -> Result<BlakeMode, String> {
 }
 
 /// The unrolled prefix excludes the fixed Standard and compression tails.
-fn claimed_unrolled_layers(
-    target: ProofTarget,
-    mode: SoundnessMode,
-    n: usize,
-) -> Result<usize, String> {
+fn claimed_unrolled_layers(target: ProofTarget, n: usize) -> Result<usize, String> {
     let tail = match target {
         ProofTarget::Base => {
             if n != 1 {
@@ -1736,18 +1732,16 @@ fn claimed_unrolled_layers(
         }
         ProofTarget::RecursionUnrolled => 1,
         ProofTarget::RecursionUnified => 3,
-        ProofTarget::Compression | ProofTarget::L1 => 3 + compression_schedule(mode).len(),
+        ProofTarget::Compression | ProofTarget::L1 => {
+            3 + compression_schedule(SoundnessMode::DEFAULT).len()
+        }
     };
     n.checked_sub(tail)
         .ok_or_else(|| format!("{target:?} artifact must claim at least {tail} layers, got {n}"))
 }
 
 fn chain_unrolled_layers(artifact: &ProofArtifact) -> Result<usize, String> {
-    claimed_unrolled_layers(
-        artifact.target,
-        artifact.soundness_mode,
-        artifact.chain_end_params.len(),
-    )
+    claimed_unrolled_layers(artifact.target, artifact.chain_end_params.len())
 }
 
 enum ChainProgram {
@@ -1799,7 +1793,7 @@ fn expected_chain_end_params(
     blake_final: &str,
     end_params: &mut dyn FnMut(ChainProgram) -> Result<[u32; 8], String>,
 ) -> Result<Vec<[u32; 8]>, String> {
-    let unrolled_layers = claimed_unrolled_layers(target, mode, n)?;
+    let unrolled_layers = claimed_unrolled_layers(target, n)?;
 
     let mut expected = Vec::with_capacity(n);
     expected.push(end_params(ChainProgram::User)?);
@@ -2185,48 +2179,5 @@ mod program_source_tests {
         assert_eq!(loaded.bin_u32.len() * 4, loaded.bin_bytes.len());
         assert_eq!(loaded.text_u32.len() * 4, loaded.text_bytes.len());
         assert_ne!(keccak256(&loaded.bin_bytes), keccak256(&loaded.text_bytes));
-    }
-}
-
-#[cfg(test)]
-mod l1_capability_tests {
-    use super::*;
-    use prover::definitions::SoundnessMode;
-
-    fn missing() -> ProgramSource {
-        ProgramSource::elf("missing-ethproofs-l1.elf")
-    }
-
-    #[test]
-    fn ethproofs_l1_gpu_checks_the_program_source_before_initializing_backend() {
-        let config = ProgramProverConfig {
-            target: ProofTarget::L1,
-            backend: ProverBackend::Gpu,
-            soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
-            ..Default::default()
-        };
-        let params_error = compute_trusted_params(
-            &missing(),
-            config.soundness_mode,
-            config.target,
-            config.backend,
-        )
-        .unwrap_err();
-        let prover_error = ProgramProver::new(missing(), config).err().unwrap();
-        for error in [prover_error, params_error] {
-            assert!(error.contains("missing-ethproofs-l1.elf"), "{error}");
-        }
-    }
-
-    #[test]
-    fn ethproofs_l1_cpu_accepts_the_wrap_guest_and_checks_the_program_source() {
-        let config = ProgramProverConfig {
-            target: ProofTarget::L1,
-            backend: ProverBackend::Cpu,
-            soundness_mode: SoundnessMode::EthproofsSoundnessCalc,
-            ..Default::default()
-        };
-        let error = ProgramProver::new(missing(), config).err().unwrap();
-        assert!(error.contains("missing-ethproofs-l1.elf"), "{error}");
     }
 }

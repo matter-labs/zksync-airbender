@@ -57,9 +57,7 @@ fn wrap_program(mode: SoundnessMode) -> (Vec<u32>, Vec<u32>) {
         &dir,
         &FsvDescriptor {
             soundness_mode: mode,
-            profile: FsvProfile::CompressionFinalWrap,
-            program: verifier_common::fsv_binaries::FsvProgram::UnifiedRecursionLayer,
-            blake: BlakeMode::BlakeSpecialOpcodes,
+            ..FsvDescriptor::compression(FsvProfile::CompressionFinalWrap)
         },
     )
     .into_words()

@@ -14,7 +14,7 @@ const SETUP_FRONTIER_LEVEL: usize = 10;
 /// level, in physical order, for the verifier_evm setup frontier.
 #[test]
 #[ignore = "recommits the L1 wrap setup (about a minute of CPU) and writes the verifier_evm setup frontier"]
-fn export_pessimistic_l1_wrap_setup_frontier() {
+fn export_l1_wrap_setup_frontier() {
     use ::prover::field::Proth120;
     use ::prover::gkr::whir::coset_commit::CosetByCosetBaseCommitment;
     use ::prover::merkle_trees::keccak256_for_everything_tree::Keccak256MerkleTreeWithCap;
@@ -31,7 +31,7 @@ fn export_pessimistic_l1_wrap_setup_frontier() {
     let circuit_type = CircuitType::L1Wrap;
     let (mut binary, mut text) = load_fsv_exact(
         fsv_dir(),
-        &FsvDescriptor::pessimistic_compression(FsvProfile::CompressionFinalWrap),
+        &FsvDescriptor::compression(FsvProfile::CompressionFinalWrap),
     )
     .into_words();
     setups::pad_bytecode_for_proving_with_rom(&mut binary, circuit_type.rom());

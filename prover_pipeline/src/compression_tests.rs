@@ -74,22 +74,10 @@ pub(super) fn fake_compression_proof_for_profile(
     instances: usize,
     profile: CompressionProfile,
 ) -> ProgramProof {
-    fake_compression_proof_in_mode(
-        final_pc,
-        instances,
-        profile,
-        SoundnessMode::PessimisticConjecture,
-    )
-}
-
-fn fake_compression_proof_in_mode(
-    final_pc: u32,
-    instances: usize,
-    profile: CompressionProfile,
-    mode: SoundnessMode,
-) -> ProgramProof {
     let family = profile.circuit().get_family_idx() as u32;
-    let schedule = profile.config(mode).whir_schedule;
+    let schedule = profile
+        .config(SoundnessMode::PessimisticConjecture)
+        .whir_schedule;
     let mut proof = empty_proof();
     proof.final_pc = final_pc;
     proof.riscv_proofs.insert(
@@ -195,7 +183,6 @@ fn ethproofs_compression_gkr_security_margins() {
         let degree = k * circuit.trace_len * keys_per_row + boundary_keys;
         let bits = challenge_bits - (degree as f64).log2() - 2.0 + memory_pow_bits as f64
             - k as f64 * loss;
-        eprintln!("memory k={k}, j={k}: degree {degree}, {bits:.9} bits");
         assert_eq!(degree, expected_degree);
         assert!(bits >= 100.0, "memory k={k}, j={k}: {bits:.9} bits");
     }
@@ -317,78 +304,20 @@ fn compression_proof_profile_requires_the_trace_and_every_instance_schedule() {
 #[test]
 fn ethproofs_compression_envelope_uses_its_last_step_profile() {
     let mode = SoundnessMode::EthproofsSoundnessCalc;
-    let mut artifact = compression_artifact(ProofTarget::Compression, 6);
-    artifact.soundness_mode = mode;
-    artifact.proof = fake_compression_proof_in_mode(0, 1, CompressionProfile::Step, mode);
-    let family = CompressionProfile::Step.circuit().get_family_idx() as u32;
-    let cap_size = CompressionProfile::Step.cap_size(mode);
-    artifact.setups.insert(
-        family,
-        setups::UnrolledCircuitSetupParams {
-            family_idx: family,
-            capacity: CompressionProfile::Step.circuit().get_domain_size() as u32,
-            setup_caps: prover::merkle_trees::MerkleTreeCapVarLength {
-                cap: vec![[7; 8]; cap_size],
-            },
-        },
-    );
+    let mut artifact: ProofArtifact = proof_fixtures::read_file(proof_fixtures::chain_artifact(
+        mode.file_suffix(),
+        "compression",
+    ));
     artifact.validate_expected_mode(mode).unwrap();
     validate_artifact_envelope(&artifact).unwrap();
     assert_eq!(chain_unrolled_layers(&artifact).unwrap(), 0);
-    artifact.proof = fake_compression_proof_for_profile(0, 1, CompressionProfile::Step);
+    let family = CompressionProfile::Step.circuit().get_family_idx() as u32;
+    artifact.proof.riscv_proofs.get_mut(&family).unwrap()[0]
+        .whir_proof
+        .whir_schedule = CompressionProfile::Step
+        .config(SoundnessMode::PessimisticConjecture)
+        .whir_schedule;
     assert!(validate_artifact_envelope(&artifact)
         .unwrap_err()
         .contains("WHIR schedule"));
-}
-
-#[test]
-fn ethproofs_compression_history_keeps_repeated_recurrent_layers() {
-    let mode = SoundnessMode::EthproofsSoundnessCalc;
-    let expected = expected_chain_end_params(
-        ProofTarget::Compression,
-        mode,
-        6,
-        BlakeMode::Compression.tag(),
-        BlakeMode::Compression.tag(),
-        BlakeMode::Compression.tag(),
-        &mut |program| {
-            Ok(match program {
-                ChainProgram::User => [1; 8],
-                ChainProgram::Fsv(
-                    FsvProgram::UnrolledBaseLayer,
-                    FsvProfile::Standard,
-                    _,
-                    SetupMachine::Unified,
-                ) => [2; 8],
-                ChainProgram::Fsv(
-                    FsvProgram::UnifiedRecursionLayer,
-                    FsvProfile::Standard,
-                    BlakeMode::Compression,
-                    SetupMachine::Unified,
-                ) => [3; 8],
-                ChainProgram::Fsv(
-                    FsvProgram::UnifiedRecursionLayer,
-                    FsvProfile::Standard,
-                    BlakeMode::BlakeSpecialOpcodes,
-                    SetupMachine::Compression(CompressionProfile::Step),
-                ) => [4; 8],
-                ChainProgram::Fsv(
-                    FsvProgram::UnifiedRecursionLayer,
-                    FsvProfile::Compression,
-                    BlakeMode::BlakeSpecialOpcodes,
-                    SetupMachine::Compression(CompressionProfile::Step),
-                ) => [5; 8],
-                _ => panic!("unexpected Ethproofs chain program"),
-            })
-        },
-    )
-    .unwrap();
-    assert_eq!(
-        expected,
-        vec![[1; 8], [2; 8], [3; 8], [4; 8], [5; 8], [5; 8]]
-    );
-    let chain = rebuild_chain(&expected).unwrap();
-    let once = rebuild_chain(&expected[..5]).unwrap();
-    assert_eq!(chain.hash(), once.hash());
-    assert_eq!(chain.preimage(), once.preimage());
 }

@@ -63,7 +63,7 @@ impl FsvDescriptor {
     }
 
     #[must_use]
-    pub const fn pessimistic_compression(profile: FsvProfile) -> Self {
+    pub const fn compression(profile: FsvProfile) -> Self {
         Self {
             soundness_mode: SoundnessMode::PessimisticConjecture,
             program: FsvProgram::UnifiedRecursionLayer,
