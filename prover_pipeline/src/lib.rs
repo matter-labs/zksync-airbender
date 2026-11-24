@@ -1722,7 +1722,11 @@ fn parse_blake_tag(tag: &str) -> Result<BlakeMode, String> {
 }
 
 /// The unrolled prefix excludes the fixed Standard and compression tails.
-fn claimed_unrolled_layers(target: ProofTarget, n: usize) -> Result<usize, String> {
+fn claimed_unrolled_layers(
+    target: ProofTarget,
+    mode: SoundnessMode,
+    n: usize,
+) -> Result<usize, String> {
     let tail = match target {
         ProofTarget::Base => {
             if n != 1 {
@@ -1732,16 +1736,18 @@ fn claimed_unrolled_layers(target: ProofTarget, n: usize) -> Result<usize, Strin
         }
         ProofTarget::RecursionUnrolled => 1,
         ProofTarget::RecursionUnified => 3,
-        ProofTarget::Compression | ProofTarget::L1 => {
-            3 + compression_schedule(SoundnessMode::DEFAULT).len()
-        }
+        ProofTarget::Compression | ProofTarget::L1 => 3 + compression_schedule(mode).len(),
     };
     n.checked_sub(tail)
         .ok_or_else(|| format!("{target:?} artifact must claim at least {tail} layers, got {n}"))
 }
 
 fn chain_unrolled_layers(artifact: &ProofArtifact) -> Result<usize, String> {
-    claimed_unrolled_layers(artifact.target, artifact.chain_end_params.len())
+    claimed_unrolled_layers(
+        artifact.target,
+        artifact.soundness_mode,
+        artifact.chain_end_params.len(),
+    )
 }
 
 enum ChainProgram {
@@ -1793,7 +1799,7 @@ fn expected_chain_end_params(
     blake_final: &str,
     end_params: &mut dyn FnMut(ChainProgram) -> Result<[u32; 8], String>,
 ) -> Result<Vec<[u32; 8]>, String> {
-    let unrolled_layers = claimed_unrolled_layers(target, n)?;
+    let unrolled_layers = claimed_unrolled_layers(target, mode, n)?;
 
     let mut expected = Vec::with_capacity(n);
     expected.push(end_params(ChainProgram::User)?);
