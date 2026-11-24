@@ -92,7 +92,7 @@ Offsets are relative to the setup start in runtime code.
 | Setup cap image | 25601 / `0x6401` | 1024 / `0x400` | 26625 / `0x6801` |
 | GKR term table | 26625 / `0x6801` | 3353 / `0xd19` | 29978 / `0x751a` |
 
-Setup total: 29978 / `0x751a` bytes. Pinned Keccak256: `9d6c78d51046914dc104375cb218ee90f7382a5e4b879b094b96c338c47774ea`.
+Setup total: 29978 / `0x751a` bytes. Pinned Keccak256: `08533672f76282afef58266afb1c35b581bd89810804a18156b076c06d6dc551`.
 
 
 ## Transcript preimage in IMAGE

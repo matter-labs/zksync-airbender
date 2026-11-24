@@ -115,7 +115,7 @@ contract MergedTest is MergedBase {
         bytes memory code = wrapVerifier.code;
         require(
             keccak256(_slice(code, _setupOffset(), code.length))
-                == 0x9d6c78d51046914dc104375cb218ee90f7382a5e4b879b094b96c338c47774ea,
+                == 0x08533672f76282afef58266afb1c35b581bd89810804a18156b076c06d6dc551,
             "embedded setup bytes changed"
         );
         bytes memory prefix = type(GkrWhirVerifierCode).runtimeCode;
