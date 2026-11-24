@@ -19,7 +19,7 @@ pub use prover::merkle_trees::keccak256_hash_leafs::KECCAK256_MERKLE_DIGEST_BYTE
 
 /// gkr.sol consumes monomial rounds, transcript-identical to the windowed prover schedule.
 pub fn prover_config() -> ProverConfig {
-    let mut config = l1_wrap::pessimistic_packed_prover_config();
+    let mut config = l1_wrap::packed_prover_config();
     config.same_size_sumcheck_schedule = prover::gkr::prover_config::naive_same_size_schedule();
     config
 }

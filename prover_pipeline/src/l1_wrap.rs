@@ -57,7 +57,7 @@ pub(super) fn validate_artifact_envelope(artifact: &ProofArtifact) -> Result<(),
             bundle.validate()?;
             use prover::gkr::prover_config::example_configs::l1_wrap;
             let config = match artifact.soundness_mode {
-                SoundnessMode::PessimisticConjecture => l1_wrap::pessimistic_packed_prover_config(),
+                SoundnessMode::PessimisticConjecture => l1_wrap::packed_prover_config(),
                 SoundnessMode::EthproofsSoundnessCalc => l1_wrap::ethproofs_packed_prover_config(),
             };
             if bundle.proof.whir_proof.whir_schedule != config.whir_schedule {

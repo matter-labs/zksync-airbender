@@ -80,7 +80,7 @@ impl ProofProfile {
                 use example_configs::l1_wrap;
                 let config = match mode {
                     SoundnessMode::PessimisticConjecture => {
-                        l1_wrap::pessimistic_packed_prover_config()
+                        l1_wrap::packed_prover_config()
                     }
                     SoundnessMode::EthproofsSoundnessCalc => {
                         l1_wrap::ethproofs_packed_prover_config()
@@ -907,7 +907,7 @@ mod test {
         for config in [
             example_configs::compression_final_config_for_2_22(),
             example_configs::compression_config_for_2_23(),
-            example_configs::l1_wrap::pessimistic_packed_prover_config(),
+            example_configs::l1_wrap::packed_prover_config(),
         ] {
             config.validate_for_whir_message_size(config.whir_message_size_log2());
         }

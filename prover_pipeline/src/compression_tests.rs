@@ -188,7 +188,7 @@ fn ethproofs_compression_gkr_security_margins() {
     assert!(example_configs::l1_wrap::ethproofs_packed_prover_config()
         .lookup_challenges_pow_floor
         .is_none());
-    assert!(example_configs::l1_wrap::pessimistic_packed_prover_config()
+    assert!(example_configs::l1_wrap::packed_prover_config()
         .lookup_challenges_pow_floor
         .is_none());
 
