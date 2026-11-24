@@ -44,6 +44,10 @@ impl ColumnBlock {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn value_at(&self, index: usize) -> Option<u32> {
         if index >= self.len() {
             return None;
@@ -108,17 +112,17 @@ impl EncodedColumn {
                         }
                         copies += 1;
                     }
-                    if copies >= 4 && copies * period > end - index {
-                        if periodic
+                    if copies >= 4
+                        && copies * period > end - index
+                        && periodic
                             .as_ref()
                             .is_none_or(|block: &ColumnBlock| block.len() < copies * period)
-                        {
-                            periodic = Some(ColumnBlock::Periodic {
-                                repetitions: copies,
-                                stride,
-                                values: (0..period).map(|i| value(index + i)).collect(),
-                            });
-                        }
+                    {
+                        periodic = Some(ColumnBlock::Periodic {
+                            repetitions: copies,
+                            stride,
+                            values: (0..period).map(|i| value(index + i)).collect(),
+                        });
                     }
                 }
             }
@@ -184,7 +188,7 @@ impl EncodedColumn {
     pub fn validate(&self, length: usize, exclusive_bound: u64) -> Result<(), String> {
         let mut covered = 0usize;
         for block in &self.blocks {
-            if block.len() == 0 {
+            if block.is_empty() {
                 return Err("empty setup column block".into());
             }
             covered = covered
