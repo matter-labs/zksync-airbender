@@ -22,9 +22,6 @@ case $stage_filter in
   ''|circuits|base_unified|unrolled|compression|l1) ;;
   *) echo "unknown stage: $stage_filter" >&2; exit 1 ;;
 esac
-if [[ $stage_filter == l1 && -z $mode_filter ]]; then
-  mode_filter=pessimistic_conjecture
-fi
 backend=${FIXTURE_BACKEND:-cpu}
 case $backend in
   cpu|gpu) ;;

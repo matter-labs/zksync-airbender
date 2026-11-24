@@ -91,6 +91,7 @@ if [[ $action == continue-proof ]]; then
     *) parent=base; [[ $output_file != unrolled_unified.json.zlib ]] || parent=unrolled ;;
   esac
   [[ $proof == "$AB_TEST_ARTIFACT_ROOT/fixtures/chains/$mode/$parent.json.zlib" ]]
+  printf '%s %s\n' "$mode" "$target" >>"$AB_TEST_ARTIFACT_ROOT/continue-proof.log"
 fi
 mkdir -p "$output_dir"
 printf '%s' "$output_file" >"$output_dir/$output_file"
@@ -168,13 +169,19 @@ printf '%s' "$output_file" >"$output_dir/$output_file"
             );
         }
     }
+    let invocations = root.join("continue-proof.log");
     for stage in ["compression", "l1"] {
         for arguments in [vec!["--check", "--stage", stage], vec!["--stage", stage]] {
+            fs::write(&invocations, "").unwrap();
             let result = run(&root, &arguments);
             assert!(
                 result.status.success(),
                 "{}",
                 String::from_utf8_lossy(&result.stderr)
+            );
+            assert_eq!(
+                fs::read_to_string(&invocations).unwrap(),
+                format!("pessimistic_conjecture {stage}\nethproofs_soundcalc {stage}\n")
             );
         }
     }

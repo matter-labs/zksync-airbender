@@ -20,10 +20,8 @@ fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage base_unifie
 Modes are `pessimistic_conjecture` and `ethproofs_soundcalc`. Stages are
 `circuits`, `base_unified`, `unrolled`, `compression`, and `l1`. Selecting
 `base_unified` or `unrolled` requires `--check`; without a stage, write mode
-refreshes a mode's circuits and whole chain in order. The `compression` stage
-supports both modes and can be written individually. The `l1` stage can also be
-written individually, selects `pessimistic_conjecture` by default and rejects
-`ethproofs_soundcalc`. `--mode` may select one mode in either operation.
+refreshes a mode's circuits and whole chain in order. The `compression` and
+`l1` stages can be written individually. `--mode` may select one mode.
 
 The two canonical producer tests share one body and fix their mode in code:
 `tests::gkr::canonical_proofs::regenerate_canonical_circuit_proofs_<mode>`.
@@ -202,6 +200,7 @@ export FIXTURE_BACKEND=gpu
 .agents/bin/with_gpu_lock.sh fixtures/regenerate.sh --check --mode ethproofs_soundcalc --stage compression
 .agents/bin/with_gpu_lock.sh fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage compression
 .agents/bin/with_gpu_lock.sh fixtures/regenerate.sh --check --mode pessimistic_conjecture --stage l1
+.agents/bin/with_gpu_lock.sh fixtures/regenerate.sh --check --mode ethproofs_soundcalc --stage l1
 ```
 
 Builds and CPU verification do not take the GPU lock. The currency recipe
