@@ -250,10 +250,7 @@ jobs:
           chmod +x "$FIXTURE_CLI" "$FIXTURE_CODEC"
           failed=0
           for mode in pessimistic_conjecture ethproofs_soundcalc; do
-            stages=(base_unified unrolled compression)
-            if [[ $mode == pessimistic_conjecture ]]; then
-              stages+=(l1)
-            fi
+            stages=(base_unified unrolled compression l1)
             for stage in "${stages[@]}"; do
               fixtures/regenerate.sh --check --mode "$mode" --stage "$stage" || failed=1
             done
