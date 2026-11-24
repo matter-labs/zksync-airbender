@@ -1,5 +1,4 @@
 """Reproduce and certify the Proth120 ETH1020-0047 schedule with soundcalc 2af5e7d."""
-import argparse
 import json
 from pathlib import Path
 
@@ -41,13 +40,9 @@ def certify(schedule, trace_log2, packed_columns, field_size):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--trace-log2", type=int, default=22)
-    parser.add_argument("--packed-columns", type=int, default=14)
-    args = parser.parse_args()
     schedule = json.loads(Path(__file__).with_name("eth1020-0047.json").read_text())
     certificates = [
-        certify(schedule, args.trace_log2, args.packed_columns, field_size)
+        certify(schedule, 22, 14, field_size)
         for field_size in (7 * 2**120 + 1, 2**128 / 37)
     ]
     print(json.dumps(dict(schedule=schedule, certificates=certificates), indent=2))

@@ -2,8 +2,8 @@
 Run: PYTHONPATH=<soundcalc clone> python3.11 whir_schedule_search.py   (python >= 3.9; soundcalc commit 2af5e7d)
 The shapes under __main__ are the EthproofsSoundnessCalc entries of ../ethproofs_soundcalc.rs.
 Constraints: BabyBear^4, sec 100, configurable base LDE and regime, ONE OOD sample per oracle (+ OOD PoW).
-Folding PoW defaults to the FOLD_CAP cap per sumcheck round; OOD and query PoW default to the LATER_POW cap.
-Each shape may override these caps and supplies its base query PoW. Later query counts are sized against
+Folding PoW is capped at FOLD_CAP per sumcheck round. Each shape may override the LATER_POW cap
+for query, OOD and batching PoW and supplies its base query PoW. Later query counts are sized against
 the query cap, then the PoW is lowered to the smallest value that still reaches the target.
 Virtual packing (fold_log2 = 0) is emulated with log_degree + 1 and k_0 = 1 (soundcalc needs k >= 1):
 the batched polynomial of size 2^m is then re-committed as the first internal oracle at size 2^m,
@@ -47,10 +47,8 @@ def build(log_degree, folds, queries, ldes, pows, fold_pows, ood_pows, n_cols, b
     w = WHIR(cfg); rates = [base_lde_log2] + ldes; w.log_inv_rates = rates + [rates[-1]]; return w
 
 def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=False, today=None,
-          base_lde_log2=1, base_regimes=None, max_pow=None):
-    caps = dict(query=LATER_POW, fold=FOLD_CAP, ood=LATER_POW, batching=LATER_POW)
-    if max_pow is not None: caps.update(max_pow)
-    assert base_pow <= caps['query']
+          base_lde_log2=1, base_regimes=None, max_pow=LATER_POW):
+    assert base_pow <= max_pow
     assert msg_log2 + base_lde_log2 <= MAX_DOM
     log_degree = msg_log2 + (1 if virtual else 0)
     folds = ([1] + folds[1:]) if virtual else folds
@@ -66,7 +64,7 @@ def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=F
             ls = reg.get_max_list_size(base_rate, 2 ** (log_degree - s + 1))
             e = 3 * ls / F.F + reg.get_error_powers(base_rate, 2 ** (log_degree - s), 2)
             fp.append(max(0, TARGET - bits(e)))
-        if bpow > caps['batching'] or max(fp) > caps['fold']: continue
+        if bpow > max_pow or max(fp) > FOLD_CAP: continue
         bpq = -math.log2(1 - reg.get_proximity_parameter(base_rate, 2 ** (log_degree - 1)))
         t = base_queries if base_queries else math.ceil((TARGET - base_pow) / bpq)
         key = (t, bpow + max(fp))
@@ -82,19 +80,19 @@ def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=F
             if L in regimes: continue
             rate = 2.0 ** -L
             bpq = -math.log2(1 - reg.get_proximity_parameter(rate, 2 ** (p - 1)))
-            t = math.ceil((TARGET - caps['query']) / bpq)
+            t = math.ceil((TARGET - max_pow) / bpq)
             fp = []
             for s in range(1, k + 1):
                 ls = reg.get_max_list_size(rate, 2 ** (p - s + 1))
                 e = 3 * ls / F.F + reg.get_error_powers(rate, 2 ** (p - s), 2)
                 fp.append(max(0, TARGET - bits(e)))
-            if max(fp) > caps['fold']: continue
+            if max(fp) > FOLD_CAP: continue
             ls0 = reg.get_max_list_size(rate, 2 ** p)
             op = max(0, TARGET - bits(ls0 * ls0 * ((2 ** p) / (2 * F.F))))
-            if op > caps['ood']: continue
+            if op > max_pow: continue
             rest = M - 1 - i
             trial = build(log_degree, folds, queries + [t] + [80] * rest, ldes + [L] + [21 + j for j in range(rest)],
-                          pows + [caps['query']] * (rest + 1), fold_pows + [fp] + [[0] * folds[i + 1 + j] for j in range(rest)],
+                          pows + [max_pow] * (rest + 1), fold_pows + [fp] + [[0] * folds[i + 1 + j] for j in range(rest)],
                           ood_pows + [op] + [0] * rest, n_cols, bpow, base_lde_log2)
             regs = dict(regimes); regs[L] = reg
             for j in range(rest): regs[21 + j] = UDR
@@ -105,7 +103,7 @@ def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=F
             if best is None or key < best[0]: best = (key, lab, reg, L, fp, op, t, bpq)
         assert best, f"{label}: no option for oracle 2^{p}"
         _, lab, reg, L, fp, op, t, bpq = best
-        # The query count was sized against the LATER_POW cap; now take the SMALLEST query PoW that
+        # The query count was sized against the query cap; now take the SMALLEST query PoW that
         # still lifts this oracle's query term (Shift / fin) to the target: t * bits_per_query is
         # rarely a whole number of bits short of the target, and every spare bit is wasted grinding.
         rest = M - 1 - i
@@ -117,7 +115,7 @@ def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=F
         lv = probe.get_pcs_security_levels(Mixed(F, regs))
         query_term = lv['fin'] if i == M - 1 else lv[f"Shift(i={i+1})"]
         qpow = max(0, TARGET - query_term)
-        assert qpow <= caps['query'], (label, i, qpow)
+        assert qpow <= max_pow, (label, i, qpow)
         queries.append(t); ldes.append(L); regimes[L] = reg; pows.append(qpow); fold_pows.append(fp); ood_pows.append(op)
         rows.append((p, L, k, lab, bpq, t, fp, op, qpow, query_term))
     w = build(log_degree, folds, queries, ldes, pows, fold_pows, ood_pows, n_cols, bpow, base_lde_log2)
@@ -132,10 +130,9 @@ def solve(label, msg_log2, folds, n_cols, base_pow, base_queries=None, virtual=F
     reason = "; JBR not certifiable here (batching term 73-90 bits for any m within the PoW budget) and its delta at rate 1/2 is below UDR's" if base_lde_log2 == 1 and base_reg is UDR else f'; per sumcheck round {base_fp}'
     print(f"base_round: lde_factor_log2 {base_lde_log2}, {bk}, num_queries {t0}, queries_pow_bits {base_pow}, folding_pow_bits {max(base_fp)}, batching_pow_bits {bpow}  | regime {base_lab} (delta {delta:g}, {bpq0:.3f} bits/query, ell {ell:g}) -> base query term {base_bits} bits{reason}")
     for j, (p, L, k, lab, bpq, t, fp, op, qpow, query_term) in enumerate(rows):
-        needU = math.ceil((TARGET - caps['query']) / -math.log2(1 - UDR.get_proximity_parameter(2.0**-L, 2**(p-1))))
+        needU = math.ceil((TARGET - max_pow) / -math.log2(1 - UDR.get_proximity_parameter(2.0**-L, 2**(p-1))))
         print(f"internal_round {j}: poly 2^{p}, lde_factor_log2 {L} (domain 2^{p+L}), folding_log2 {k}, num_queries {t}, queries_pow_bits {qpow} (query term {query_term} bits ungrinded), folding_pow_bits {max(fp)} (per sumcheck round {fp}), num_ood_samples 1, ood_pow_bits {op}  | regime {lab}, {bpq:.2f} bits/query; UDR here would need {needU} queries")
     if today: print(f"today: {today}")
-    return w, Mixed(F, regimes)
 
 
 if __name__ == "__main__":
@@ -154,4 +151,4 @@ if __name__ == "__main__":
     solve("2^23, fold_log2 1, base round kept at 89 queries / PoW 26 (what today's base round certifies)", 23, [1,5,5,5,4], 128, 26, base_queries=89)
     solve("2^23, fold_log2 1, base LDE 2^3, ceiling 128, compression", 23, [1,5,5,5,4], 128, 25,
           base_lde_log2=3, base_regimes=[('UDR', UDR)] + [(f'JBR m={m}', JBR[m]) for m in JBR],
-          max_pow=dict(query=25, fold=24, ood=25, batching=25))
+          max_pow=25)
