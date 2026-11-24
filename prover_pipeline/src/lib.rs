@@ -1635,7 +1635,6 @@ fn recompute_program_setups_with_committer(
             )
         }
         SetupMachine::Compression(profile) => {
-            prover::definitions::ProverConfigProfile::Compression.assert_supports(soundness_mode);
             setups::program_setups::compute_unified_program_setups_for_profile::<Global>(
                 &padded_bin,
                 &padded_text,

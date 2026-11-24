@@ -57,9 +57,6 @@ impl<B: ExecutionBackend> ExecutionProver<B> {
                             "Ethproofs compression has no final profile"
                         );
                     }
-                    profile
-                        .config_profile()
-                        .assert_supports(self.configuration.soundness_mode);
                 }
                 (execution_kind, machine_type, profiles)
             })

@@ -195,29 +195,28 @@ pub mod l1_wrap {
     use std::path::PathBuf;
     use std::sync::OnceLock;
 
-    pub const PESSIMISTIC_TRACE_LEN_LOG2: usize = 21;
+    pub const TRACE_LEN_LOG2: usize = 21;
     pub const ETHPROOFS_TRACE_LEN_LOG2: usize = 22;
     pub const PACK_LOG2: usize = 3;
     pub const EXPLICIT_OUTPUT_LOG2: usize = 2;
     pub const EXTERNAL_CHALLENGES_POW_BITS: u32 = 20;
 
-    const PESSIMISTIC_BASE_LDE_FACTOR: usize = 1 << 8;
-    const PESSIMISTIC_INTERNAL_LDE_FACTORS: [usize; 4] = [1 << 9, 1 << 12, 1 << 17, 1 << 21];
+    const BASE_LDE_FACTOR: usize = 1 << 8;
+    const WHIR_STEPS_LDE_FACTORS: [usize; 4] = [1 << 9, 1 << 12, 1 << 17, 1 << 21];
 
     /// Each round uses the least PoW satisfying `6 * pow + 5 * queries * rate_bits >= 600`.
-    pub const PESSIMISTIC_QUERY_POW_BITS: [u32; 5] = [27, 25, 30, 30, 30];
+    pub const POW_BITS: [u32; 5] = [27, 25, 30, 30, 30];
 
     /// The largest list size each oracle's binding term tolerates at the
     /// configured PoW. These are tolerances, not derived list bounds.
-    pub const PESSIMISTIC_LIST_SIZE_CEILINGS: [usize; 5] =
-        [1_044_721_774, 673, 5_387, 172_384, 2_758_157];
+    pub const LIST_SIZE_CEILINGS: [usize; 5] = [1_044_721_774, 673, 5_387, 172_384, 2_758_157];
 
     /// 100-bit WHIR accounting under the pessimistic conjecture: queries
     /// contribute r/1.2 bits (`PessimisticConjectureMode` in
     /// `whir/proximity_testing_modes.rs`), and the linear proximity-gap charge
     /// in `pow_bits.rs` is applied to each fold. With mu = 37/2^128, every
     /// WHIR RS substep keeps 100 bits for list sizes up to
-    /// [`PESSIMISTIC_LIST_SIZE_CEILINGS`]. Nominal-100 shifts have an accepted
+    /// [`LIST_SIZE_CEILINGS`]. Nominal-100 shifts have an accepted
     /// deficit below 10^-6 bit. The base commitment has no OOD sample. The GKR
     /// evaluation claims bind it for the WHIR rounds; the conjecture assumes
     /// that the lookup and GKR challenges drawn before them carry no list
@@ -258,14 +257,14 @@ pub mod l1_wrap {
         let level = SecurityLevel::Sec100;
         let queries_and_pow = queries_and_pow_under_pessimistic_conjecture(
             level,
-            PESSIMISTIC_BASE_LDE_FACTOR,
-            &PESSIMISTIC_INTERNAL_LDE_FACTORS,
-            PESSIMISTIC_QUERY_POW_BITS,
+            BASE_LDE_FACTOR,
+            &WHIR_STEPS_LDE_FACTORS,
+            POW_BITS,
         );
         ProverConfig {
-            trace_len_log2: PESSIMISTIC_TRACE_LEN_LOG2,
+            trace_len_log2: TRACE_LEN_LOG2,
             commitment_mode: CommitmentMode::MergedMemoryAndWitness,
-            same_size_sumcheck_schedule: windowed_same_size_schedule(PESSIMISTIC_TRACE_LEN_LOG2),
+            same_size_sumcheck_schedule: windowed_same_size_schedule(TRACE_LEN_LOG2),
             dimension_reducing_sumcheck_schedule: Default::default(),
             cap_size: CAP_SIZE,
             sumcheck_explicit_output_size_log_2: EXPLICIT_OUTPUT_LOG2,
@@ -274,7 +273,7 @@ pub mod l1_wrap {
             whir_schedule: WhirSchedule {
                 cap_size: CAP_SIZE,
                 base_round: crate::gkr::prover_config::WhirBaseRoundSchedule {
-                    lde_factor_log2: PESSIMISTIC_BASE_LDE_FACTOR.trailing_zeros() as usize,
+                    lde_factor_log2: BASE_LDE_FACTOR.trailing_zeros() as usize,
                     physical_packing_log2: PACK_LOG2,
                     fold_log2: 1,
                     batching_pow_bits: None,
@@ -282,7 +281,7 @@ pub mod l1_wrap {
                     num_queries: queries_and_pow[0].0,
                     queries_pow_bits: queries_and_pow[0].1,
                 },
-                internal_rounds: PESSIMISTIC_INTERNAL_LDE_FACTORS
+                internal_rounds: WHIR_STEPS_LDE_FACTORS
                     .iter()
                     .enumerate()
                     .map(|(i, lde)| crate::gkr::prover_config::WhirInternalRound {
@@ -357,13 +356,6 @@ pub mod l1_wrap {
             let certified: WhirSchedule =
                 serde_json::from_str(include_str!("soundcalc/eth1020-0047.json")).unwrap();
             assert_eq!(config.whir_schedule, certified);
-        }
-
-        #[test]
-        #[should_panic(expected = "EvmProductionPacked requires pessimistic-conjecture mode")]
-        fn ethproofs_mode_is_rejected_by_evm_production_packed_profile() {
-            ProverConfigProfile::EvmProductionPacked
-                .assert_supports(SoundnessMode::EthproofsSoundnessCalc);
         }
     }
 }

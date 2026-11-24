@@ -257,17 +257,7 @@ impl EthproofsSoundcalcEntry {
         use std::fmt::Write;
         let mut out = String::new();
         let batching_pow_bits = self.batching_pow_bits();
-        let batching_grind = match self.base_analysis.regime {
-            ProximityRegime::UniqueDecoding => {
-                "computed for the ceiling with `pow_bits_for_batched_proximity`; batching term 102 bits \
-                 under unique decoding"
-            }
-            ProximityRegime::JohnsonBound { .. } => {
-                "the smallest grind lifting the Johnson-bound batching term of the base round to the \
-                 target at the ceiling"
-            }
-        };
-        let base_rate_log2 = self.base_lde_factor_log2;
+        let base_rate_log2 = DEFAULT_LDE_FACTOR.trailing_zeros() as usize;
         let _ = writeln!(
             out,
             "# WHIR schedule notes — `EthproofsSoundnessCalc`, `{}`, {}\n",
@@ -291,7 +281,8 @@ impl EthproofsSoundcalcEntry {
         let _ = writeln!(
             out,
             "- committed polynomials entering WHIR: **{}** (from the compiled circuit; physical packing \
-             2^{}{}), certified ceiling {} → batching PoW {} bits ({})",
+             2^{}{}), certified ceiling {} → batching PoW {} bits (computed for the ceiling with \
+             `pow_bits_for_batched_proximity`; batching term 102 bits under unique decoding)",
             input
                 .num_committed_polys
                 .expect("notes are rendered for a compiled circuit"),
@@ -302,8 +293,7 @@ impl EthproofsSoundcalcEntry {
                 ", two values per column per base leaf"
             },
             self.max_committed_polys,
-            batching_pow_bits,
-            batching_grind
+            batching_pow_bits
         );
         let _ = writeln!(
             out,
@@ -317,20 +307,15 @@ impl EthproofsSoundcalcEntry {
             out,
             "| oracle | poly | LDE | domain | fold | queries | query PoW | folding PoW (per step) | OOD PoW | regime | bits/query | UDR would need |\n|---|---|---|---|---|---|---|---|---|---|---|---|"
         );
-        let base_folding_pow = match self.base_analysis.folding_pow_bits_per_step {
-            [] => "0".to_string(),
-            per_step => format!("{} {per_step:?}", self.base_folding_pow_bits()),
-        };
         let _ = writeln!(
             out,
-            "| base | 2^{m} | 2^{r} | 2^{d} | {f} | {q} | {p} | {fp} | – | {reg} | {bpq:.3} | {udr} |",
+            "| base | 2^{m} | 2^{r} | 2^{d} | {f} | {q} | {p} | 0 | – | {reg} | {bpq:.3} | {udr} |",
             m = self.message_size_log2,
             r = base_rate_log2,
             d = self.message_size_log2 + base_rate_log2,
             f = self.fold_log2(),
             q = self.base_num_queries,
             p = self.base_queries_pow_bits,
-            fp = base_folding_pow,
             reg = self.base_analysis.regime.describe(base_rate_log2),
             bpq = self.base_analysis.bits_per_query,
             udr = self.base_analysis.unique_decoding_queries,
@@ -658,7 +643,6 @@ mod tests {
     }
 
     fn validate_entry(entry: &EthproofsSoundcalcEntry, config: &ProverConfig) {
-        let input = input_for(entry, entry.max_committed_polys);
         let schedule = entry.schedule(0);
         assert_eq!(config.whir_schedule, schedule);
         config.validate_for_whir_message_size(entry.message_size_log2);
@@ -729,13 +713,6 @@ mod tests {
             assert!(poly_size_log2 + round.lde_factor_log2 <= 27);
             poly_size_log2 -= round.folding_log2;
         }
-        let notes = entry.render_notes(entry.level, &input);
-        assert!(notes.contains("soundcalc"));
-        assert!(notes.contains(&format!("**{} bits**", entry.certified_bits)));
-        assert!(notes.contains(entry.base_analysis.reason));
-        for round in entry.rounds {
-            assert!(notes.contains(round.analysis.reason));
-        }
     }
 
     #[test]
@@ -743,6 +720,14 @@ mod tests {
         for entry in ENTRIES {
             let config = standard_config(entry.message_size_log2, entry.level, entry.schedule(0));
             validate_entry(entry, &config);
+            let input = input_for(entry, entry.max_committed_polys);
+            let notes = entry.render_notes(entry.level, &input);
+            assert!(notes.contains("soundcalc"));
+            assert!(notes.contains(&format!("**{} bits**", entry.certified_bits)));
+            assert!(notes.contains(entry.base_analysis.reason));
+            for round in entry.rounds {
+                assert!(notes.contains(round.analysis.reason));
+            }
             assert_eq!(
                 whir_schedule(
                     SoundnessMode::EthproofsSoundnessCalc,

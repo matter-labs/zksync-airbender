@@ -286,7 +286,7 @@ mod tests {
         let schedule = &config.whir_schedule;
         let base = &schedule.base_round;
         let base_message_log2 = config.whir_message_size_log2();
-        let list_ceilings = l1_wrap::PESSIMISTIC_LIST_SIZE_CEILINGS;
+        let list_ceilings = l1_wrap::LIST_SIZE_CEILINGS;
         assert_eq!(list_ceilings.len(), schedule.num_rounds());
         assert_every_round_preserves_security_margin(&config);
 

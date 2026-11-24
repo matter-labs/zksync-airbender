@@ -28,16 +28,6 @@ impl ProofProfile {
         matches!(self, Self::CompressionFinal | Self::Compression)
     }
 
-    /// The named special-config profile this proof profile is selected under.
-    pub fn config_profile(self) -> crate::definitions::ProverConfigProfile {
-        use crate::definitions::ProverConfigProfile;
-        match self {
-            Self::Standard => ProverConfigProfile::Standard,
-            Self::CompressionFinal | Self::Compression => ProverConfigProfile::Compression,
-            Self::L1Wrap => ProverConfigProfile::L1Wrap,
-        }
-    }
-
     /// The special config of a compression or L1 wrap profile under `soundness_mode`.
     /// The [`SoundnessMode::EthproofsSoundnessCalc`] compression chain has no `CompressionFinal`.
     /// `Standard` resolves through the circuit's own config.
@@ -47,7 +37,6 @@ impl ProofProfile {
         soundness_mode: crate::definitions::SoundnessMode,
     ) -> ProverConfig {
         use crate::definitions::SoundnessMode;
-        self.config_profile().assert_supports(soundness_mode);
         let config = match (self, soundness_mode) {
             (Self::Standard, _) => {
                 panic!("ProofProfile::Standard resolves through the circuit's own prover_config")

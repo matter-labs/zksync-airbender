@@ -60,9 +60,10 @@ pub enum SoundnessMode {
     /// ladders of `example_configs::pessimistic_conjecture`.
     PessimisticConjecture,
     /// Schedules certified at the security level by `ethereum/soundcalc`
-    /// (commit `2af5e7d`, 2026-09-21): a unique-decoding base round, Johnson
-    /// bound later rounds with an explicit multiplicity, a proof of work on
-    /// every folding challenge and on the single OOD sample of every oracle.
+    /// (commit `2af5e7d`, 2026-09-21): a unique-decoding or Johnson-bound base
+    /// round, Johnson-bound later rounds with an explicit multiplicity, and a
+    /// proof of work on every folding challenge and on the single OOD sample
+    /// of every oracle.
     /// See `example_configs::ethproofs_soundcalc`.
     EthproofsSoundnessCalc,
 }
@@ -107,7 +108,6 @@ pub enum ProverConfigProfile {
     Standard,
     Compression,
     EvmProductionPacked,
-    L1Wrap,
 }
 
 /// The blake2s implementation a verifier program is built with: what a

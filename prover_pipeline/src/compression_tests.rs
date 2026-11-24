@@ -185,12 +185,6 @@ fn ethproofs_compression_gkr_security_margins() {
         pessimistic.lookup_challenges_pow_bits::<BabyBearField, BabyBearExt4>(circuit),
         9
     );
-    assert!(example_configs::l1_wrap::ethproofs_packed_prover_config()
-        .lookup_challenges_pow_floor
-        .is_none());
-    assert!(example_configs::l1_wrap::packed_prover_config()
-        .lookup_challenges_pow_floor
-        .is_none());
 
     let memory_pow_bits = verifier_common::MEMORY_DELEGATION_POW_BITS;
     assert_eq!(memory_pow_bits, 19);

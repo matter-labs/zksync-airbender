@@ -160,9 +160,7 @@ pub fn prove_unified_execution_with_replayer_in_profile<
             gkr_backend,
         ),
         // The compression is proven by the pipeline's `ProofTarget::Compression` route.
-        ProverConfigProfile::Compression
-        | ProverConfigProfile::EvmProductionPacked
-        | ProverConfigProfile::L1Wrap => {
+        ProverConfigProfile::Compression | ProverConfigProfile::EvmProductionPacked => {
             panic!("BabyBear unified execution cannot use {profile:?}")
         }
     }
